@@ -74,6 +74,10 @@ pub enum IndexError {
         what: &'static str,
     },
     RuleWithoutCondition,
+    /// The tag is used by these rules as a condition and so cannot be deleted.
+    TagInUse {
+        rules: Vec<RuleId>,
+    },
     /// The regex condition at `position` of the condition list does not compile
     /// within the size limits.
     InvalidRegex {
@@ -146,6 +150,9 @@ impl fmt::Display for IndexError {
             Self::EmptyName { what } => write!(f, "a {what} name must not be empty"),
             Self::RuleWithoutCondition => {
                 write!(f, "a rule needs a text match or a sender to match")
+            }
+            Self::TagInUse { rules } => {
+                write!(f, "the tag is a condition of {} rule(s)", rules.len())
             }
             Self::InvalidRegex { position, reason } => {
                 write!(f, "condition {position}: invalid regex: {reason}")

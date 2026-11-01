@@ -21,6 +21,7 @@ pub const LEFT_TAB_ID: &str = "title-tab-left";
 pub const RIGHT_TAB_ID: &str = "title-tab-right";
 pub const HERMES_CHIP_ID: &str = "title-hermes-chip";
 pub const SETTINGS_TAB_ID: &str = "title-tab-settings";
+pub const ABLAGE_TAB_ID: &str = "title-tab-ablage";
 const CLOSE_CROSS: &str = "×";
 
 /// The macOS window has its own buttons (the traffic lights); the others get
@@ -61,6 +62,15 @@ pub enum TabTitle<'a> {
 
 pub use crate::hermes_status::Tone as HermesTone;
 
+/// The page that stands in for the panels, as a tab with a cross.
+pub enum PageTab {
+    Settings,
+    /// A page of filing; the cross sends what Escape sends on its top level.
+    Filing {
+        close: Box<Message>,
+    },
+}
+
 pub struct TitleBar<'a> {
     pub tabs: [Tab<'a>; 2],
     pub home: &'a Path,
@@ -70,8 +80,8 @@ pub struct TitleBar<'a> {
     pub hermes_tone: HermesTone,
     /// The key of the command palette, if it has one.
     pub lab_shortcut: Option<String>,
-    /// The settings tab after the two path tabs; it is the active one then.
-    pub settings_tab: bool,
+    /// The tab of a page after the two path tabs; it is the active one then.
+    pub page_tab: Option<PageTab>,
     pub lang: Language,
     pub palette: &'a Palette,
 }
@@ -181,8 +191,24 @@ pub fn view<'a>(bar: &TitleBar<'a>) -> Element<'a, Message> {
         tab(right, RIGHT_TAB_ID, Msg::StatusModeRight),
     ]
     .height(Length::Fill);
-    if bar.settings_tab {
-        tabs = tabs.push(settings_tab(lang, palette));
+    match &bar.page_tab {
+        Some(PageTab::Settings) => {
+            tabs = tabs.push(page_tab(
+                lang.text(Msg::SettingsTab),
+                SETTINGS_TAB_ID,
+                Message::Settings(SettingsMessage::Close),
+                palette,
+            ));
+        }
+        Some(PageTab::Filing { close }) => {
+            tabs = tabs.push(page_tab(
+                lang.text(Msg::GroupHermes),
+                ABLAGE_TAB_ID,
+                (**close).clone(),
+                palette,
+            ));
+        }
+        None => {}
     }
 
     let mut right_side = row![]
@@ -271,15 +297,20 @@ pub fn view<'a>(bar: &TitleBar<'a>) -> Element<'a, Message> {
     .into()
 }
 
-/// The tab of the settings: always the active one, with a cross that closes it.
-fn settings_tab<'a>(lang: Language, palette: &Palette) -> Element<'a, Message> {
+/// The tab of a page: always the active one, with a cross that closes it.
+fn page_tab<'a>(
+    title: &str,
+    id: &'static str,
+    close: Message,
+    palette: &Palette,
+) -> Element<'a, Message> {
     let label = row![
-        text(lang.text(Msg::SettingsTab).to_owned())
+        text(title.to_owned())
             .size(font_size::FILE)
             .width(Length::Fill)
             .wrapping(text::Wrapping::None),
         button(text(CLOSE_CROSS).size(font_size::FILE))
-            .on_press(Message::Settings(SettingsMessage::Close))
+            .on_press(close)
             .padding([0.0, spacing::XS])
             .style(theme::close_button(palette)),
     ]
@@ -298,7 +329,7 @@ fn settings_tab<'a>(lang: Language, palette: &Palette) -> Element<'a, Message> {
         ],
         theme::vertical_rule(palette.border_inactive),
     ])
-    .id(SETTINGS_TAB_ID)
+    .id(id)
     .width(size::TAB_WIDTH)
     .height(Length::Fill)
     .into()

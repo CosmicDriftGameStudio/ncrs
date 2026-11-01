@@ -1,55 +1,32 @@
-//! The overview page of Hermes: what it does, whether it runs, and the
+//! The overview page of Hermes, a tab: what it does, whether it runs, and the
 //! settings a user without technical knowledge needs. Pure view over
 //! [`OverviewFacts`] and [`OverviewState`]; the app gathers both.
 
 use std::path::Path;
 
-use iced::widget::text::Wrapping;
-use iced::widget::{column, container, row, text, Row, Space};
-use iced::{alignment, Color, Element, Length, Size};
-use ncrs_pipeline::{Load, RunnerState};
+use iced::widget::column;
+use iced::{Color, Element, Size};
+use ncrs_pipeline::RunnerState;
 
 use super::filing_pieces::{target_view, TargetHost};
-use super::frame::{DialogSize, Frame, KeyHints, PageHint};
+use super::frame::{DialogSize, Frame, KeyHints};
 use super::hermes::{self, Badges};
-use super::hermes_flow::{self, FlowBox, FlowBoxes};
+use super::hermes_kit::{self as page_kit, MenuItem, MenuLook};
 use super::hermes_setup::{model_size_label, on_this_computer};
-use super::kit::{self, dim, error_line, paragraph, Check, Tone};
-use super::theme::{self, font_size, spacing};
+use super::kit::{self, paragraph, Check, Tone};
+use super::theme::spacing;
 use crate::app::fill_template;
+use crate::filing::{KeyProblem, ProtectionNote};
 use crate::filing_setup::shown_path;
 use crate::hermes_overview::{
-    AiTile, ModuleState, OverviewFacts, OverviewState, PatternNote, Pill, ReviewTile,
+    AiTile, ModuleState, OcrTile, OverviewFacts, OverviewState, PatternNote, Pill, Protection,
     Tone as TileTone,
 };
 use crate::i18n::{FuturamaName, Language, Msg};
 use crate::messages::{FilingStatusMessage, HermesOverviewMessage, HermesPage, Message};
 use crate::palette::Palette;
 
-const SIZE: DialogSize = DialogSize::Card;
-const HEADLINE_SIZE: f32 = 24.0;
-const INTRO_WIDTH: f32 = 720.0;
-const TILE_PADDING: f32 = 16.0;
-const TILE_GAP: f32 = 16.0;
 pub const FOLDER_NAME_FIELD_ID: &str = "hermes-overview-folder-name";
-
-/// The keys of the page, named in the footer where there is room.
-const PAGE_HINTS: &[PageHint] = &[
-    PageHint {
-        key: "P",
-        verb: Msg::HermesOverviewHintPause,
-    },
-    PageHint {
-        key: "1 2 3",
-        verb: Msg::HermesOverviewHintLoad,
-    },
-    PageHint {
-        key: "+ -",
-        verb: Msg::HermesOverviewHintWorkers,
-    },
-];
-const LOAD_CONTROL_WIDTH: f32 = 380.0;
-const ROLE_WIDTH: f32 = 140.0;
 
 /// Where the folders are, by their role.
 #[derive(Debug, Clone, Copy, Default)]
@@ -65,13 +42,10 @@ pub struct OverviewView<'a> {
     pub state: &'a OverviewState,
     pub folders: Folders<'a>,
     pub home: &'a Path,
-    /// The load in the config.
-    pub load: Option<Load>,
-    /// The pipeline's state and worker target, while one runs.
-    pub pipeline: Option<(RunnerState, usize)>,
-    pub flow_step: u32,
+    /// The state of the pipeline, and how many files it works on.
+    pub runner: RunnerState,
+    pub in_progress: usize,
     pub badges: Badges,
-    pub window: Size,
     pub lang: Language,
 }
 
@@ -83,50 +57,23 @@ fn tone_color(tone: TileTone, palette: &Palette) -> Color {
     match tone {
         TileTone::Good => palette.success,
         TileTone::Needs => palette.accent,
-        TileTone::Quiet => palette.border_inactive,
+        TileTone::Quiet => palette.dim_text,
     }
 }
 
+/// The page with its navigation, header, content and action bar.
 pub fn view<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element<'a, Message> {
     let lang = page.lang;
     let module = page.facts.module;
-    let mut body = column![header(page, palette)].spacing(spacing::XL);
-    if let Some(banner) = banner(page, palette) {
-        body = body.push(banner);
-    }
-    if !matches!(module, ModuleState::Off | ModuleState::Dismissed) {
-        body = body
-            .push(hermes_flow::flow(page.flow_step, flow_boxes(page), palette))
-            .push(tiles(page, palette));
-        if let Some(read_again) = read_again_button(page, palette) {
-            body = body.push(read_again);
-        }
-        body = body
-            .push(folders_section(page, palette))
-            .push(filing_section(page, palette))
-            .push(ai_section(page, palette))
-            .push(load_section(page, palette))
-            .push(protection_section(page, palette));
-    }
-    Frame::new(
-        lang.text(Msg::HermesNavOverview),
-        body,
-        SIZE,
-        page.window,
-        lang,
+    let active = !matches!(module, ModuleState::Off | ModuleState::Dismissed);
+    let bar = active.then(|| action_bar(page, palette));
+    page_kit::tab_page(
+        hermes::tab_nav(HermesPage::Overview, page.badges, lang, palette),
+        header(page, palette),
+        content(page, palette),
+        bar,
         palette,
     )
-    .title_theme(lang.futurama_name(FuturamaName::HermesNavOverview))
-    .sidebar(hermes::nav(
-        HermesPage::Overview,
-        page.badges,
-        lang,
-        palette,
-    ))
-    .on_close(send(HermesOverviewMessage::Close))
-    .hints(KeyHints::default())
-    .page_hints(PAGE_HINTS)
-    .into_element()
 }
 
 fn pill_text(pill: Pill) -> (Msg, TileTone) {
@@ -138,105 +85,55 @@ fn pill_text(pill: Pill) -> (Msg, TileTone) {
     }
 }
 
-fn header<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element<'a, Message> {
+/// The word behind the title: running in green, paused dimmed, a failure red.
+fn state_word<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element<'a, Message> {
     let lang = page.lang;
     let (label, tone) = pill_text(page.facts.pill());
-    let color = match tone {
-        TileTone::Quiet => palette.dim_text,
-        other => tone_color(other, palette),
+    let paused = page.runner == RunnerState::Paused && tone == TileTone::Good;
+    let (shown, color) = if paused {
+        (Msg::FilingStatusStatePaused, palette.dim_text)
+    } else if matches!(
+        page.facts.module,
+        ModuleState::Failed | ModuleState::KeyMissing
+    ) {
+        (label, palette.error)
+    } else {
+        (label, tone_color(tone, palette))
     };
-    let pill = container(text(lang.text(label)).size(font_size::BODY).color(color))
-        .padding([spacing::XS, spacing::L])
-        .style(theme::outlined_in(color));
-    let intro = container(
-        text(on_this_computer(
-            lang,
-            Msg::HermesOverviewIntroMac,
-            Msg::HermesOverviewIntroOther,
-        ))
-        .size(font_size::ROW)
-        .color(palette.dim_text)
-        .wrapping(Wrapping::Word)
-        .align_x(alignment::Horizontal::Center),
-    )
-    .max_width(INTRO_WIDTH);
-    column![
-        pill,
-        text(lang.text(Msg::HermesOverviewTitle))
-            .size(HEADLINE_SIZE)
-            .color(palette.text)
-            .wrapping(Wrapping::Word),
-        intro,
-    ]
-    .spacing(spacing::M)
-    .align_x(alignment::Horizontal::Center)
-    .width(Length::Fill)
-    .into()
+    page_kit::value_in(lang.text(shown), color)
 }
 
-/// The sentence and the button for a module that does not run: what is wrong
-/// and the one step that helps.
-fn banner<'a>(page: &OverviewView<'a>, palette: &Palette) -> Option<Element<'a, Message>> {
+fn header<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element<'a, Message> {
     let lang = page.lang;
-    let facts = &page.facts;
-    let (sentence, button) = match facts.module {
-        ModuleState::Off => (
-            lang.text(Msg::HermesOverviewOffNote).to_owned(),
-            Some((
-                Msg::HermesOverviewSwitchOn,
-                HermesOverviewMessage::SwitchHermesOn,
-            )),
-        ),
-        ModuleState::Dismissed => (
-            lang.text(Msg::HermesOverviewDismissedNote).to_owned(),
-            Some((
-                Msg::HermesOverviewContinueSetup,
-                HermesOverviewMessage::ContinueSetup,
-            )),
-        ),
-        ModuleState::Failed => (
-            fill_template(
-                lang.text(Msg::HermesOverviewFailedNote),
-                &[("{reason}", facts.failure.as_deref().unwrap_or_default())],
+    let more = page_kit::menu_button(
+        "",
+        &[
+            MenuItem::new(
+                lang.text(Msg::HermesOverviewOwnServer),
+                send(HermesOverviewMessage::ShowOwnServerSettings),
             ),
-            Some((Msg::HermesOverviewTryAgain, HermesOverviewMessage::TryAgain)),
+            MenuItem::new(
+                lang.text(Msg::HermesOverviewMenuProtection),
+                send(HermesOverviewMessage::ShowProtectionSettings),
+            ),
+        ],
+        MenuLook::Icon,
+        palette,
+    );
+    page_kit::page_header(
+        lang.text(Msg::HermesNavOverview),
+        lang.futurama_name(FuturamaName::HermesNavOverview),
+        Some(
+            on_this_computer(
+                lang,
+                Msg::HermesOverviewIntroMac,
+                Msg::HermesOverviewIntroOther,
+            )
+            .to_owned(),
         ),
-        ModuleState::WaitsForYou => (lang.text(Msg::HermesOverviewWaitsNote).to_owned(), None),
-        ModuleState::KeyMissing | ModuleState::Encrypting | ModuleState::StartingOver => {
-            return None
-        }
-        ModuleState::Ready | ModuleState::Starting if !facts.has_locations => (
-            lang.text(Msg::HermesOverviewNoFoldersNote).to_owned(),
-            Some((
-                Msg::HermesOverviewTileFoldersButton,
-                HermesOverviewMessage::ChangeFolders,
-            )),
-        ),
-        ModuleState::Ready | ModuleState::Starting => return None,
-    };
-    let line = if facts.module == ModuleState::Failed {
-        error_line(sentence, palette)
-    } else {
-        paragraph(sentence, palette)
-    };
-    let mut content = Row::new()
-        .push(container(line).width(Length::Fill))
-        .spacing(spacing::XL)
-        .align_y(alignment::Vertical::Center);
-    if let Some((label, message)) = button {
-        content = content.push(kit::button(
-            lang.text(label),
-            Some(send(message)),
-            Tone::Primary,
-            palette,
-        ));
-    }
-    Some(
-        container(content)
-            .padding([spacing::L, spacing::XL])
-            .width(Length::Fill)
-            .style(theme::outlined_in(palette.accent))
-            .into(),
+        Some(state_word(page, palette)),
+        vec![more],
+        palette,
     )
 }
 
@@ -244,403 +141,327 @@ fn count_text(template: Msg, count: u64, lang: Language) -> String {
     fill_template(lang.text(template), &[("{count}", &count.to_string())])
 }
 
-fn flow_boxes<'a>(page: &OverviewView<'a>) -> FlowBoxes<'a> {
+fn waiting_text(count: u64, lang: Language) -> String {
+    match count {
+        0 => lang.text(Msg::HermesOverviewTileReviewClear).to_owned(),
+        1 => lang
+            .text(Msg::HermesOverviewTileReviewWaitingOne)
+            .to_owned(),
+        many => count_text(Msg::HermesOverviewTileReviewWaiting, many, lang),
+    }
+}
+
+fn action_bar<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element<'a, Message> {
+    let lang = page.lang;
+    let waiting = page.facts.open_reviews();
+    page_kit::action_bar(
+        Some(waiting_text(waiting, lang)),
+        vec![page_kit::primary(
+            lang.text(Msg::HermesOverviewTileReviewButton),
+            Some(kit::ENTER_KEY),
+            (waiting > 0).then(|| send(HermesOverviewMessage::ShowReviews)),
+            palette,
+        )],
+        palette,
+    )
+}
+
+fn content<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element<'a, Message> {
     let lang = page.lang;
     let facts = &page.facts;
-    let counts = facts.counts.unwrap_or_default();
-    let inbox_name = page
-        .folders
-        .inbox
-        .and_then(Path::file_name)
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    let inbox_note = fill_template(
-        lang.text(Msg::HermesOverviewFlowInboxNote),
-        &[
-            ("{name}", &inbox_name),
-            ("{count}", &counts.inbox.new.to_string()),
-        ],
-    );
-    let archive_note = if page.folders.archive.is_some() {
-        count_text(
-            Msg::HermesOverviewFlowArchiveNote,
-            counts.archive_documents,
-            lang,
-        )
-    } else {
-        lang.text(Msg::HermesOverviewFlowArchiveNone).to_owned()
+    let (sentence, button) = match facts.module {
+        ModuleState::Off => (
+            Msg::HermesOverviewOffNote,
+            Some((
+                Msg::HermesOverviewSwitchOn,
+                HermesOverviewMessage::SwitchHermesOn,
+            )),
+        ),
+        ModuleState::Dismissed => (
+            Msg::HermesOverviewDismissedNote,
+            Some((
+                Msg::HermesOverviewContinueSetup,
+                HermesOverviewMessage::ContinueSetup,
+            )),
+        ),
+        _ => return sections(page, palette),
     };
-    let reading_note = match facts.ai_tile() {
-        tile if tile.reads() => Msg::HermesOverviewFlowReadAi,
-        AiTile::Off => Msg::HermesOverviewFlowReadNoAi,
-        _ => Msg::HermesOverviewFlowReadModelMissing,
-    };
-    let rules_note = if counts.confirmed_rules == 1 {
-        lang.text(Msg::HermesOverviewFlowRulesNoteOne).to_owned()
-    } else {
-        count_text(
-            Msg::HermesOverviewFlowRulesNote,
-            counts.confirmed_rules,
-            lang,
-        )
-    };
-    let pattern_text = page.state.target().target.in_words(lang);
-    let filed_note = fill_template(
-        lang.text(Msg::HermesOverviewFlowFiledNote),
-        &[
-            (
-                "{path}",
-                &page
-                    .folders
-                    .filing_location
-                    .map(|path| shown_path(path, page.home))
-                    .unwrap_or_default(),
-            ),
-            ("{pattern}", &pattern_text),
-        ],
-    );
-    let titled = |title: Msg, note: String| FlowBox {
-        title: lang.text(title).into(),
-        note: Some(note.into()),
-    };
-    FlowBoxes {
-        inbox: titled(Msg::HermesSetupFlowInbox, inbox_note),
-        archive: titled(Msg::HermesSetupFlowArchive, archive_note),
-        reading: titled(Msg::HermesSetupFlowRead, lang.text(reading_note).to_owned()),
-        rules: titled(Msg::HermesSetupFlowRules, rules_note),
-        filed: titled(Msg::HermesSetupFlowFiled, filed_note),
-    }
-}
-
-fn tile<'a>(
-    title: &str,
-    tone: TileTone,
-    lines: Vec<Element<'a, Message>>,
-    palette: &Palette,
-) -> Element<'a, Message> {
-    let color = tone_color(tone, palette);
-    container(
-        column![
-            text(title.to_owned()).size(font_size::ROW).color(color),
-            column(lines).spacing(spacing::M),
-        ]
-        .spacing(spacing::M),
-    )
-    .padding(TILE_PADDING)
-    .width(Length::FillPortion(1))
-    .style(theme::outlined_in(color))
-    .into()
-}
-
-fn tiles<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element<'a, Message> {
-    Row::new()
-        .push(folders_tile(page, palette))
-        .push(ocr_tile(page, palette))
-        .push(ai_tile(page, palette))
-        .push(review_tile(page, palette))
-        .spacing(TILE_GAP)
-        .height(Length::Shrink)
-        .into()
-}
-
-fn folders_tile<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element<'a, Message> {
-    let lang = page.lang;
-    let tile_state = page.facts.folder_tile();
-    let sentence = match tile_state {
-        crate::hermes_overview::FolderTile::Ready => Msg::HermesOverviewTileFoldersOk,
-        crate::hermes_overview::FolderTile::Missing => Msg::HermesOverviewTileFoldersMissing,
-    };
-    let mut lines = vec![dim(lang.text(sentence), palette)];
-    if tile_state.tone() == TileTone::Needs {
-        lines.push(kit::button(
-            lang.text(Msg::HermesOverviewTileFoldersButton),
-            Some(send(HermesOverviewMessage::ChangeFolders)),
-            Tone::Secondary,
-            palette,
-        ));
-    }
-    tile(
-        lang.text(Msg::HermesOverviewTileFoldersTitle),
-        tile_state.tone(),
-        lines,
+    page_kit::empty_state(
+        lang.text(Msg::HermesOverviewTitle),
+        lang.text(sentence),
+        button.map(|(label, message)| {
+            page_kit::primary(lang.text(label), None, Some(send(message)), palette)
+        }),
         palette,
     )
 }
 
-fn ocr_tile<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element<'a, Message> {
+/// What is wrong with the module and the one step that helps, above the rows.
+fn problem<'a>(page: &OverviewView<'a>, palette: &Palette) -> Option<Element<'a, Message>> {
     let lang = page.lang;
-    let tile_state = page.facts.ocr_tile();
-    let (sentence, button) = match tile_state {
-        crate::hermes_overview::OcrTile::Ready => (Msg::HermesOverviewTileOcrReady, false),
-        crate::hermes_overview::OcrTile::Missing => (Msg::HermesOverviewTileOcrMissing, true),
-    };
-    let mut lines = vec![dim(lang.text(sentence), palette)];
-    if button {
-        lines.push(kit::button(
-            lang.text(Msg::HermesOverviewTileOcrButton),
-            Some(send(HermesOverviewMessage::LoadOcrModels)),
-            Tone::Secondary,
-            palette,
-        ));
-    }
-    tile(
-        lang.text(Msg::HermesOverviewTileOcrTitle),
-        tile_state.tone(),
-        lines,
-        palette,
-    )
-}
-
-fn ai_tile<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element<'a, Message> {
-    let lang = page.lang;
-    let state = page.facts.ai_tile();
-    let lines: Vec<Element<'a, Message>> = match &state {
-        AiTile::Off => vec![dim(lang.text(Msg::HermesOverviewTileAiOff), palette)],
-        AiTile::NotLoaded => vec![
-            dim(lang.text(Msg::HermesOverviewTileAiNotLoaded), palette),
-            kit::button(
-                &fill_template(
-                    lang.text(Msg::HermesOverviewTileAiLoad),
-                    &[("{size}", &model_size_label())],
+    let facts = &page.facts;
+    let (line, links): (
+        Element<'a, Message>,
+        Vec<(Msg, HermesOverviewMessage, bool)>,
+    ) = match facts.module {
+        ModuleState::Failed => (
+            page_kit::error_line(
+                fill_template(
+                    lang.text(Msg::HermesOverviewFailedNote),
+                    &[("{reason}", facts.failure.as_deref().unwrap_or_default())],
                 ),
-                Some(send(HermesOverviewMessage::LoadAiModel)),
-                Tone::Secondary,
                 palette,
             ),
-        ],
-        AiTile::Downloading { received, total } => {
-            let fraction = if *total == 0 {
-                0.0
-            } else {
-                *received as f32 / *total as f32
-            };
+            vec![(
+                Msg::HermesOverviewTryAgain,
+                HermesOverviewMessage::TryAgain,
+                true,
+            )],
+        ),
+        ModuleState::KeyMissing => (
+            page_kit::error_line(key_sentence(facts, lang), palette),
             vec![
-                kit::progress_bar(fraction, palette),
-                dim(download_line(*received, *total, lang), palette),
-            ]
-        }
-        AiTile::Ready => vec![dim(lang.text(Msg::HermesOverviewTileAiReady), palette)],
-        AiTile::OwnServer { model } => vec![dim(
-            fill_template(
-                lang.text(Msg::HermesOverviewTileAiOwnServer),
-                &[("{model}", model)],
-            ),
-            palette,
-        )],
-        AiTile::TakesEffectAtRestart => {
-            vec![dim(lang.text(Msg::HermesOverviewTileAiRestart), palette)]
-        }
-        AiTile::Failed(reason) => vec![dim(
-            fill_template(
-                lang.text(Msg::HermesOverviewTileAiFailed),
-                &[("{reason}", reason)],
-            ),
-            palette,
-        )],
+                (
+                    Msg::HermesOverviewEnterRecoveryKey,
+                    HermesOverviewMessage::EnterRecoveryKey,
+                    facts.can_start_over,
+                ),
+                (
+                    Msg::HermesOverviewTryAgain,
+                    HermesOverviewMessage::TryAgain,
+                    facts.can_start_over,
+                ),
+            ],
+        ),
+        ModuleState::WaitsForYou => (
+            page_kit::hint(lang.text(Msg::HermesOverviewWaitsNote), palette),
+            Vec::new(),
+        ),
+        ModuleState::Ready | ModuleState::Starting if !facts.has_locations => (
+            page_kit::hint(lang.text(Msg::HermesOverviewNoFoldersNote), palette),
+            vec![(
+                Msg::HermesOverviewTileFoldersButton,
+                HermesOverviewMessage::ChangeFolders,
+                true,
+            )],
+        ),
+        _ => return None,
     };
-    tile(
-        lang.text(Msg::HermesOverviewTileAiTitle),
-        state.tone(),
-        lines,
+    let mut cell = vec![line];
+    cell.extend(links.into_iter().map(|(label, message, enabled)| {
+        page_kit::link(lang.text(label), enabled.then(|| send(message)), palette)
+    }));
+    Some(page_kit::cell(cell))
+}
+
+fn sections<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element<'a, Message> {
+    let lang = page.lang;
+    let mut children: Vec<Element<'a, Message>> = Vec::new();
+    children.extend(problem(page, palette));
+    children.push(page_kit::section(
+        lang.text(Msg::HermesOverviewSectionState),
         palette,
-    )
-}
-
-fn review_tile<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element<'a, Message> {
-    let lang = page.lang;
-    let state = page.facts.review_tile();
-    let (title, text_msg, button) = match state {
-        ReviewTile::Waiting(1) => (
-            lang.text(Msg::HermesOverviewTileReviewWaitingOne)
-                .to_owned(),
-            Msg::HermesOverviewTileReviewText,
-            true,
-        ),
-        ReviewTile::Waiting(count) => (
-            count_text(Msg::HermesOverviewTileReviewWaiting, count, lang),
-            Msg::HermesOverviewTileReviewText,
-            true,
-        ),
-        ReviewTile::Clear => (
-            lang.text(Msg::HermesOverviewTileReviewClear).to_owned(),
-            Msg::HermesOverviewTileReviewClearText,
-            false,
-        ),
-    };
-    let mut lines = vec![dim(lang.text(text_msg), palette)];
-    if button {
-        lines.push(kit::button(
-            lang.text(Msg::HermesOverviewTileReviewButton),
-            Some(Message::HermesPage(HermesPage::Review)),
-            Tone::Secondary,
-            palette,
-        ));
-    }
-    tile(&title, state.tone(), lines, palette)
-}
-
-fn read_again_button<'a>(
-    page: &OverviewView<'a>,
-    palette: &Palette,
-) -> Option<Element<'a, Message>> {
-    if !page.facts.can_read_reviews_again() {
-        return None;
-    }
-    let lang = page.lang;
-    let count = page.facts.open_reviews();
-    let label = if count == 1 {
-        lang.text(Msg::HermesOverviewReadAgainOne).to_owned()
-    } else {
-        count_text(Msg::HermesOverviewReadAgain, count, lang)
-    };
-    Some(
-        row![kit::button(
-            &label,
-            Some(send(HermesOverviewMessage::ReadReviewsAgainWithAi)),
-            Tone::Secondary,
-            palette,
-        )]
-        .into(),
-    )
-}
-
-fn role_line<'a>(
-    role: Msg,
-    path: Option<&Path>,
-    none: Msg,
-    page: &OverviewView<'a>,
-    palette: &Palette,
-) -> Element<'a, Message> {
-    let lang = page.lang;
-    let value: Element<'a, Message> = match path {
-        Some(folder) => text(shown_path(folder, page.home))
-            .size(font_size::BODY)
-            .font(iced::Font::MONOSPACE)
-            .color(palette.text)
-            .wrapping(Wrapping::None)
-            .into(),
-        None => dim(lang.text(none), palette),
-    };
-    row![
-        container(dim(lang.text(role), palette)).width(ROLE_WIDTH),
-        container(value).width(Length::Fill),
-    ]
-    .spacing(spacing::M)
-    .into()
-}
-
-fn folders_section<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element<'a, Message> {
-    let lang = page.lang;
-    let folders = page.folders;
-    let lines = kit::stack([
-        role_line(
-            Msg::HermesOverviewRoleInbox,
-            folders.inbox,
-            Msg::HermesSetupNotChosen,
-            page,
-            palette,
-        ),
-        role_line(
-            Msg::HermesOverviewRoleFilingLocation,
-            folders.filing_location,
-            Msg::HermesSetupNotChosen,
-            page,
-            palette,
-        ),
-        role_line(
-            Msg::HermesOverviewRoleArchive,
-            folders.archive,
-            Msg::HermesOverviewArchiveNone,
-            page,
-            palette,
-        ),
-    ]);
-    let content = row![
-        container(lines).width(Length::Fill),
-        kit::button(
-            lang.text(Msg::HermesOverviewFoldersChange),
-            Some(send(HermesOverviewMessage::ChangeFolders)),
-            Tone::Secondary,
-            palette,
-        ),
-    ]
-    .spacing(spacing::XL)
-    .align_y(alignment::Vertical::Center);
-    kit::section(
+    ));
+    children.push(state_row(page, palette));
+    children.push(ocr_row(page, palette));
+    children.push(ai_row(page, palette));
+    children.push(page_kit::section(
         lang.text(Msg::HermesOverviewSectionFolders),
-        content,
         palette,
-    )
-}
-
-fn filing_section<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element<'a, Message> {
-    let lang = page.lang;
-    let state = page.state;
-    let problem = state.pattern_note().map(|note| match note {
-        PatternNote::WriteFailed(reason) => fill_template(
-            lang.text(Msg::HermesOverviewPatternWriteFailed),
-            &[("{reason}", reason)],
-        ),
-    });
+    ));
+    children.extend(folder_rows(page, palette));
+    children.push(page_kit::section(
+        lang.text(Msg::HermesOverviewPatternLabel),
+        palette,
+    ));
+    children.push(page_kit::hint(
+        lang.text(Msg::HermesOverviewPatternNote),
+        palette,
+    ));
     let host = TargetHost {
         wrap: |edit| send(HermesOverviewMessage::TargetEdited(edit)),
         name_field_id: FOLDER_NAME_FIELD_ID,
         lang,
         palette,
     };
-    let mut content = column![
-        paragraph(lang.text(Msg::HermesOverviewPatternLabel), palette),
-        dim(lang.text(Msg::HermesOverviewPatternNote), palette),
-        target_view(state.target(), &host),
-    ]
-    .spacing(spacing::S);
-    if let Some(wrong) = problem {
-        content = content.push(error_line(wrong, palette));
+    children.push(target_view(page.state.target(), &host));
+    if let Some(PatternNote::WriteFailed(reason)) = page.state.pattern_note() {
+        children.push(page_kit::error_line(
+            fill_template(
+                lang.text(Msg::HermesOverviewPatternWriteFailed),
+                &[("{reason}", reason)],
+            ),
+            palette,
+        ));
     }
-    kit::section(
-        lang.text(Msg::HermesOverviewSectionFiling),
-        content,
+    page_kit::form_column(children)
+}
+
+fn runner_word(page: &OverviewView<'_>) -> String {
+    let lang = page.lang;
+    let word = lang.text(match page.runner {
+        RunnerState::Running => Msg::FilingStatusStateRunning,
+        RunnerState::Paused => Msg::FilingStatusStatePaused,
+        RunnerState::Idle => Msg::FilingStatusStateIdle,
+        RunnerState::Off => Msg::FilingStatusStateOff,
+    });
+    if page.runner == RunnerState::Running && page.in_progress > 0 {
+        let busy = fill_template(
+            lang.text(Msg::HermesOverviewInProgress),
+            &[("{count}", &page.in_progress.to_string())],
+        );
+        format!("{word} · {busy}")
+    } else {
+        word.to_owned()
+    }
+}
+
+fn state_row<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element<'a, Message> {
+    let lang = page.lang;
+    let mut cell = vec![page_kit::value(runner_word(page), palette)];
+    if page.runner != RunnerState::Off {
+        let label = if page.runner == RunnerState::Paused {
+            Msg::FilingStatusResume
+        } else {
+            Msg::FilingStatusPause
+        };
+        cell.push(page_kit::link(
+            lang.text(label),
+            Some(Message::FilingStatus(FilingStatusMessage::TogglePause)),
+            palette,
+        ));
+    }
+    page_kit::form_row(
+        lang.text(Msg::FilingStatusStateLabel),
+        page_kit::cell(cell),
+        None,
         palette,
     )
 }
 
-fn ai_section<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element<'a, Message> {
+fn ocr_row<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element<'a, Message> {
+    let lang = page.lang;
+    let cell = match page.facts.ocr_tile() {
+        OcrTile::Ready => vec![page_kit::value(
+            lang.text(Msg::HermesOverviewTileOcrReady),
+            palette,
+        )],
+        OcrTile::Missing => vec![
+            page_kit::value(lang.text(Msg::HermesOverviewTileOcrMissing), palette),
+            page_kit::link(
+                lang.text(Msg::HermesOverviewTileOcrButton),
+                Some(send(HermesOverviewMessage::LoadOcrModels)),
+                palette,
+            ),
+        ],
+    };
+    page_kit::form_row(
+        lang.text(Msg::HermesOverviewTileOcrTitle),
+        page_kit::cell(cell),
+        None,
+        palette,
+    )
+}
+
+fn ai_row<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element<'a, Message> {
     let lang = page.lang;
     let on = page.facts.ai_on;
-    let word = lang.text(if on {
-        Msg::SettingsOn
-    } else {
-        Msg::SettingsOff
-    });
-    let switch = row![
-        kit::checkbox(
-            if on { Check::On } else { Check::Off },
-            Some(send(HermesOverviewMessage::SetAiEnabled(!on))),
+    let state = page.facts.ai_tile();
+    let mut cell = vec![page_kit::checkbox(
+        if on { Check::On } else { Check::Off },
+        Some(send(HermesOverviewMessage::SetAiEnabled(!on))),
+        Some(lang.text(Msg::HermesOverviewAiSwitch)),
+        palette,
+    )];
+    if matches!(state, AiTile::NotLoaded) {
+        cell.push(page_kit::link(
+            &fill_template(
+                lang.text(Msg::HermesOverviewTileAiLoad),
+                &[("{size}", &model_size_label())],
+            ),
+            Some(send(HermesOverviewMessage::LoadAiModel)),
+            palette,
+        ));
+    }
+    let note = match &state {
+        AiTile::Off => lang.text(Msg::HermesOverviewTileAiOff).to_owned(),
+        other => ai_sentence(other, lang),
+    };
+    page_kit::form_row(
+        lang.text(Msg::HermesOverviewTileAiTitle),
+        page_kit::cell(cell),
+        Some(page_kit::hint(note, palette)),
+        palette,
+    )
+}
+
+fn folder_value<'a>(
+    path: Option<&Path>,
+    none: Msg,
+    change: bool,
+    page: &OverviewView<'a>,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let lang = page.lang;
+    let mut cell = vec![match path {
+        Some(folder) => page_kit::mono(
+            shown_path(folder, page.home),
+            page_kit::TEXT_BODY,
+            palette.text,
+        ),
+        None => page_kit::value_dim(lang.text(none), palette),
+    }];
+    if change {
+        cell.push(page_kit::link(
+            lang.text(Msg::HermesOverviewFoldersChange),
+            Some(send(HermesOverviewMessage::ChangeFolders)),
+            palette,
+        ));
+    }
+    page_kit::cell(cell)
+}
+
+fn folder_rows<'a>(page: &OverviewView<'a>, palette: &Palette) -> Vec<Element<'a, Message>> {
+    let lang = page.lang;
+    let folders = page.folders;
+    vec![
+        page_kit::form_row(
+            lang.text(Msg::HermesOverviewRoleInbox),
+            folder_value(
+                folders.inbox,
+                Msg::HermesSetupNotChosen,
+                true,
+                page,
+                palette,
+            ),
+            None,
             palette,
         ),
-        dim(word, palette),
+        page_kit::form_row(
+            lang.text(Msg::HermesOverviewRoleFilingLocation),
+            folder_value(
+                folders.filing_location,
+                Msg::HermesSetupNotChosen,
+                false,
+                page,
+                palette,
+            ),
+            None,
+            palette,
+        ),
+        page_kit::form_row(
+            lang.text(Msg::HermesOverviewRoleArchive),
+            folder_value(
+                folders.archive,
+                Msg::HermesOverviewArchiveNone,
+                false,
+                page,
+                palette,
+            ),
+            None,
+            palette,
+        ),
     ]
-    .spacing(spacing::S)
-    .align_y(alignment::Vertical::Center);
-    let mut content = column![kit::form_row(
-        lang.text(Msg::HermesOverviewAiSwitch),
-        None,
-        Some(lang.text(Msg::HermesOverviewAiSwitchNote)),
-        switch.into(),
-        palette,
-    )]
-    .spacing(spacing::S);
-    let state = page.facts.ai_tile();
-    if on && !matches!(state, AiTile::Off) {
-        content = content.push(dim(ai_sentence(&state, lang), palette));
-    }
-    content = content.push(row![kit::button(
-        lang.text(Msg::HermesOverviewOwnServer),
-        Some(send(HermesOverviewMessage::ShowOwnServerSettings)),
-        Tone::Secondary,
-        palette,
-    )]);
-    kit::section(lang.text(Msg::HermesOverviewSectionAi), content, palette)
 }
 
 fn download_line(received: u64, total: u64, lang: Language) -> String {
@@ -673,114 +494,32 @@ fn ai_sentence(state: &AiTile, lang: Language) -> String {
     }
 }
 
-fn load_section<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element<'a, Message> {
-    let lang = page.lang;
-    let loads = [
-        (Msg::FilingStatusLoadGentle, Load::Gentle),
-        (Msg::FilingStatusLoadBalanced, Load::Balanced),
-        (Msg::FilingStatusLoadFull, Load::Full),
-    ];
-    let options: Vec<(&str, Message)> = loads
-        .iter()
-        .map(|(label, target)| {
-            (
-                lang.text(*label),
-                send(HermesOverviewMessage::SetLoad(*target)),
-            )
-        })
-        .collect();
-    let selected = loads
-        .iter()
-        .position(|(_, target)| page.load == Some(*target))
-        .unwrap_or(loads.len());
-    let load_row = kit::form_row_wide(
-        lang.text(Msg::FilingStatusLoadLabel),
-        None,
-        Some(lang.text(Msg::FilingStatusLoadExplain)),
-        kit::segmented(&options, selected, true, palette),
-        LOAD_CONTROL_WIDTH,
-        palette,
-    );
-    let mut content = column![load_row].spacing(spacing::S);
-    if let Some((state, workers)) = page.pipeline {
-        content = content.push(pipeline_controls(state, workers, lang, palette));
+fn key_sentence(facts: &OverviewFacts, lang: Language) -> &'static str {
+    match facts.key_problem {
+        Some(KeyProblem::Mismatch) => lang.text(Msg::HermesOverviewKeyMismatch),
+        _ => on_this_computer(
+            lang,
+            Msg::HermesOverviewKeyMissingMac,
+            Msg::HermesOverviewKeyMissingOther,
+        ),
     }
-    kit::section(lang.text(Msg::HermesOverviewSectionLoad), content, palette)
 }
 
-fn pipeline_controls<'a>(
-    state: RunnerState,
-    workers: usize,
-    lang: Language,
-    palette: &Palette,
-) -> Element<'a, Message> {
-    let running = state != RunnerState::Off;
-    let pause_label = if state == RunnerState::Paused {
-        Msg::FilingStatusResume
-    } else {
-        Msg::FilingStatusPause
-    };
-    let pause = kit::button(
-        lang.text(pause_label),
-        running.then(|| Message::FilingStatus(FilingStatusMessage::TogglePause)),
-        Tone::Secondary,
-        palette,
-    );
-    let step = |label: &str, delta: i8| {
-        kit::button(
-            label,
-            running.then(|| Message::FilingStatus(FilingStatusMessage::StepWorkers(delta))),
-            Tone::Secondary,
-            palette,
-        )
-    };
-    let workers_row = row![
-        step("-", -1),
-        paragraph(workers.to_string(), palette),
-        step("+", 1)
-    ]
-    .spacing(spacing::M)
-    .align_y(alignment::Vertical::Center);
-    column![
-        kit::form_row(
-            lang.text(Msg::FilingStatusStateLabel),
-            None,
-            None,
-            pause,
-            palette
-        ),
-        kit::form_row(
-            lang.text(Msg::FilingStatusWorkersLabel),
-            None,
-            Some(lang.text(Msg::FilingStatusLoadNote)),
-            workers_row.into(),
-            palette,
-        ),
-    ]
-    .spacing(spacing::S)
-    .into()
+/// How the index is protected, for the settings page: the state word and
+/// whether it is a good one, what it means, and why the last change failed.
+pub struct ProtectionText {
+    pub state: Option<&'static str>,
+    pub good: bool,
+    pub sentence: &'static str,
+    pub failure: Option<String>,
 }
 
-/// The protection: its state, what it means, why the last change failed, and
-/// the buttons that change it. While a change runs the buttons are inactive.
-fn protection_section<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element<'a, Message> {
-    use crate::filing::{KeyProblem, ProtectionNote};
-    use crate::hermes_overview::Protection;
-
-    let lang = page.lang;
-    let facts = &page.facts;
+pub fn protection_text(facts: &OverviewFacts, lang: Language) -> ProtectionText {
     let key_missing = facts.module == ModuleState::KeyMissing;
-    let (state_word, sentence) = match facts.protection {
+    let (state, sentence) = match facts.protection {
         Protection::Encrypted if key_missing => (
             Some(Msg::HermesOverviewProtectionEncrypted),
-            match facts.key_problem {
-                Some(KeyProblem::Mismatch) => lang.text(Msg::HermesOverviewKeyMismatch),
-                _ => on_this_computer(
-                    lang,
-                    Msg::HermesOverviewKeyMissingMac,
-                    Msg::HermesOverviewKeyMissingOther,
-                ),
-            },
+            key_sentence(facts, lang),
         ),
         Protection::Encrypted => (
             Some(Msg::HermesOverviewProtectionEncrypted),
@@ -808,59 +547,59 @@ fn protection_section<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element
         ),
         Protection::Unknown => (None, lang.text(Msg::HermesOverviewProtectionNone)),
     };
-    let headline_color = match facts.protection {
-        Protection::Encrypted if !key_missing => palette.success,
-        _ => palette.accent,
-    };
-    let mut lines = column![].spacing(spacing::S);
-    if let Some(headline) = state_word {
-        lines = lines.push(
-            text(lang.text(headline))
-                .size(font_size::ROW)
-                .color(headline_color),
-        );
-    }
-    lines = lines.push(dim(sentence, palette));
-    if let Some(note) = facts.protection_note.as_ref() {
+    let failure = facts.protection_note.as_ref().map(|note| {
         let (template, reason) = match note {
             ProtectionNote::EncryptFailed(reason) => (Msg::HermesOverviewEncryptFailed, reason),
             ProtectionNote::StartOverFailed(reason) => (Msg::HermesOverviewStartOverFailed, reason),
             ProtectionNote::KeyEntryNotRemoved(reason) => (Msg::HermesOverviewKeyEntryKept, reason),
         };
-        lines = lines.push(error_line(
-            fill_template(lang.text(template), &[("{reason}", reason)]),
-            palette,
-        ));
+        fill_template(lang.text(template), &[("{reason}", reason)])
+    });
+    ProtectionText {
+        state: state.map(|word| lang.text(word)),
+        good: facts.protection == Protection::Encrypted && !key_missing,
+        sentence,
+        failure,
     }
-    let button = |label: Msg, message: HermesOverviewMessage, enabled: bool, tone: Tone| {
-        kit::button(
-            lang.text(label),
-            enabled.then(|| send(message)),
-            tone,
-            palette,
-        )
+}
+
+/// One thing the user can do about the protection.
+pub struct ProtectionAction {
+    pub label: Msg,
+    pub message: HermesOverviewMessage,
+    pub enabled: bool,
+    pub primary: bool,
+}
+
+/// The buttons for the protection. While a change runs they are inactive.
+pub fn protection_actions(facts: &OverviewFacts) -> Vec<ProtectionAction> {
+    let key_missing = facts.module == ModuleState::KeyMissing;
+    let action = |label, message, enabled, primary| ProtectionAction {
+        label,
+        message,
+        enabled,
+        primary,
     };
-    let mut buttons = Row::new().spacing(spacing::M);
+    let mut actions = Vec::new();
     if key_missing {
-        buttons = buttons
-            .push(button(
-                Msg::HermesOverviewEnterRecoveryKey,
-                HermesOverviewMessage::EnterRecoveryKey,
-                facts.can_start_over,
-                Tone::Primary,
-            ))
-            .push(button(
-                Msg::HermesOverviewTryAgain,
-                HermesOverviewMessage::TryAgain,
-                facts.can_start_over,
-                Tone::Secondary,
-            ));
+        actions.push(action(
+            Msg::HermesOverviewEnterRecoveryKey,
+            HermesOverviewMessage::EnterRecoveryKey,
+            facts.can_start_over,
+            true,
+        ));
+        actions.push(action(
+            Msg::HermesOverviewTryAgain,
+            HermesOverviewMessage::TryAgain,
+            facts.can_start_over,
+            false,
+        ));
     } else if facts.can_encrypt || facts.protection == Protection::Encrypting {
-        buttons = buttons.push(button(
+        actions.push(action(
             Msg::HermesOverviewEncryptNow,
             HermesOverviewMessage::EncryptNow,
             facts.can_encrypt,
-            Tone::Secondary,
+            false,
         ));
     }
     let changing = matches!(
@@ -868,24 +607,14 @@ fn protection_section<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element
         Protection::Encrypting | Protection::StartingOver
     );
     if facts.can_start_over || key_missing || changing {
-        buttons = buttons.push(button(
+        actions.push(action(
             Msg::HermesOverviewStartOver,
             HermesOverviewMessage::AskStartOver,
             facts.can_start_over,
-            Tone::Secondary,
+            false,
         ));
     }
-    let content = row![
-        container(lines).width(Length::Fill),
-        Space::new().width(spacing::M),
-        buttons,
-    ]
-    .align_y(alignment::Vertical::Center);
-    kit::section(
-        lang.text(Msg::HermesOverviewSectionProtection),
-        content,
-        palette,
-    )
+    actions
 }
 
 /// Buttons: Cancel `0`, "Remove index" `1`.

@@ -115,33 +115,9 @@ pub enum Tone {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FolderTile {
-    Ready,
-    Missing,
-}
-
-impl FolderTile {
-    pub fn tone(self) -> Tone {
-        match self {
-            Self::Ready => Tone::Good,
-            Self::Missing => Tone::Needs,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OcrTile {
     Ready,
     Missing,
-}
-
-impl OcrTile {
-    pub fn tone(self) -> Tone {
-        match self {
-            Self::Ready => Tone::Good,
-            Self::Missing => Tone::Needs,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -160,36 +136,6 @@ pub enum AiTile {
     /// On in the config; the module takes it up when it restarts.
     TakesEffectAtRestart,
     Failed(String),
-}
-
-impl AiTile {
-    pub fn tone(&self) -> Tone {
-        match self {
-            Self::Off => Tone::Quiet,
-            Self::NotLoaded | Self::Downloading { .. } | Self::Failed(_) => Tone::Needs,
-            Self::Ready | Self::OwnServer { .. } | Self::TakesEffectAtRestart => Tone::Good,
-        }
-    }
-
-    /// The model can fill in fields now.
-    pub fn reads(&self) -> bool {
-        matches!(self, Self::Ready | Self::OwnServer { .. })
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ReviewTile {
-    Waiting(u64),
-    Clear,
-}
-
-impl ReviewTile {
-    pub fn tone(self) -> Tone {
-        match self {
-            Self::Waiting(_) => Tone::Needs,
-            Self::Clear => Tone::Good,
-        }
-    }
 }
 
 /// Everything the page needs to know, gathered by the app.
@@ -234,14 +180,6 @@ impl OverviewFacts {
         }
     }
 
-    pub fn folder_tile(&self) -> FolderTile {
-        if self.has_locations {
-            FolderTile::Ready
-        } else {
-            FolderTile::Missing
-        }
-    }
-
     pub fn ocr_tile(&self) -> OcrTile {
         match self.ocr {
             OcrFacts::BuiltIn | OcrFacts::ModelsPresent => OcrTile::Ready,
@@ -265,18 +203,6 @@ impl OverviewFacts {
             },
             AiStatus::Failed(reason) => AiTile::Failed((*reason).to_owned()),
         }
-    }
-
-    pub fn review_tile(&self) -> ReviewTile {
-        match self.open_reviews() {
-            0 => ReviewTile::Clear,
-            waiting => ReviewTile::Waiting(waiting),
-        }
-    }
-
-    /// The reviews can be read again with the AI: it is ready and some wait.
-    pub fn can_read_reviews_again(&self) -> bool {
-        self.module == ModuleState::Ready && self.ai_tile().reads() && self.open_reviews() > 0
     }
 }
 
@@ -445,23 +371,6 @@ mod tests {
     }
 
     #[test]
-    fn the_review_tile_counts_what_waits() {
-        assert_eq!(facts(ModuleState::Ready).review_tile(), ReviewTile::Clear);
-        let tile = with_open_reviews(facts(ModuleState::Ready), 5).review_tile();
-        assert_eq!(tile, ReviewTile::Waiting(5));
-        assert_eq!(tile.tone(), Tone::Needs);
-        assert_eq!(ReviewTile::Clear.tone(), Tone::Good);
-    }
-
-    #[test]
-    fn the_folder_tile_needs_folders() {
-        let mut facts = facts(ModuleState::Ready);
-        assert_eq!(facts.folder_tile().tone(), Tone::Good);
-        facts.has_locations = false;
-        assert_eq!(facts.folder_tile().tone(), Tone::Needs);
-    }
-
-    #[test]
     fn scans_need_models_unless_the_system_reads_them() {
         let mut facts = facts(ModuleState::Ready);
         assert_eq!(facts.ocr_tile(), OcrTile::Ready);
@@ -469,14 +378,12 @@ mod tests {
         assert_eq!(facts.ocr_tile(), OcrTile::Ready);
         facts.ocr = OcrFacts::of(false, false);
         assert_eq!(facts.ocr_tile(), OcrTile::Missing);
-        assert_eq!(facts.ocr_tile().tone(), Tone::Needs);
     }
 
     #[test]
     fn the_ai_tile_follows_the_switch_the_download_and_the_model() {
         let mut facts = facts(ModuleState::Ready);
         assert_eq!(facts.ai_tile(), AiTile::NotLoaded);
-        assert_eq!(facts.ai_tile().tone(), Tone::Needs);
 
         facts.ai_download = Some((312_000_000, 639_000_000));
         assert_eq!(
@@ -490,7 +397,6 @@ mod tests {
         facts.ai_download = None;
         facts.ai_status = AiStatus::NotLoadedYet;
         assert_eq!(facts.ai_tile(), AiTile::Ready);
-        assert_eq!(facts.ai_tile().tone(), Tone::Good);
 
         facts.ai_status = AiStatus::Failed("the model file is damaged");
         assert!(matches!(facts.ai_tile(), AiTile::Failed(_)));
@@ -500,19 +406,6 @@ mod tests {
 
         facts.ai_on = false;
         assert_eq!(facts.ai_tile(), AiTile::Off);
-        assert_eq!(facts.ai_tile().tone(), Tone::Quiet);
-    }
-
-    #[test]
-    fn reading_again_is_offered_only_with_a_ready_ai_and_open_reviews() {
-        let ready = |reviews| {
-            let mut facts = with_open_reviews(facts(ModuleState::Ready), reviews);
-            facts.ai_status = AiStatus::NotLoadedYet;
-            facts
-        };
-        assert!(ready(3).can_read_reviews_again());
-        assert!(!ready(0).can_read_reviews_again());
-        assert!(!with_open_reviews(facts(ModuleState::Ready), 3).can_read_reviews_again());
     }
 
     #[test]

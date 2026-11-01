@@ -23,6 +23,7 @@ mod rule_suggestions;
 mod rules;
 mod saved_queries;
 mod sender_aliases;
+mod tags;
 #[cfg(test)]
 mod test_support;
 
@@ -45,3 +46,4 @@ pub use model::{
     SenderAliasState, SenderAliases, StatusCounts, SubtreePattern,
 };
 pub use regex_limits::compile_bounded_regex;
+pub use tags::TagTally;

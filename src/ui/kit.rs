@@ -1035,13 +1035,6 @@ pub fn checkbox<'a>(
     boxed.into()
 }
 
-/// A few numbers, each under its dimmed name, side by side in an outlined box.
-pub fn figures<'a>(figures: &[(&str, String)], palette: &Palette) -> Element<'a, Message> {
-    container(figure_cells(figures, palette))
-        .style(theme::outlined(palette))
-        .into()
-}
-
 fn figure_cells<'a>(figures: &[(&str, String)], palette: &Palette) -> Row<'a, Message> {
     let cells = figures.iter().map(|(label, value)| {
         let shown: Element<'a, Message> = if value.chars().any(|c| c.is_ascii_digit()) {

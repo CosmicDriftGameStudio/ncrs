@@ -1649,6 +1649,29 @@ mod filing_status_page {
         simulator(app).find(label).is_ok()
     }
 
+    /// The page with the steps and the workers unfolded.
+    fn with_steps_shown(mut app: App) -> App {
+        drop(app.update(page_message(FilingStatusMessage::ToggleSteps)));
+        app
+    }
+
+    fn two_errors() -> Vec<ErrorEntry> {
+        [
+            ("scan-0042.pdf", "no text could be read"),
+            ("company-a-invoice.pdf", "the step stopped unexpectedly"),
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(sequence, (name, message))| ErrorEntry {
+            file: PathBuf::from(format!("/tmp/inbox/{name}")),
+            task: Task::Step("probe"),
+            message: message.to_owned(),
+            at: taken_at() - Duration::from_secs(60 * (2 - sequence as u64)),
+            sequence: sequence as u64,
+        })
+        .collect()
+    }
+
     fn messages_after_click(app: &App, label: &str) -> Vec<Message> {
         let mut sim = simulator(app);
         sim.click(label).expect("the clicked label");
@@ -1778,46 +1801,38 @@ mod filing_status_page {
     #[test]
     fn the_inspection_matches_its_snapshots() {
         for (language, name) in [
-            (Language::English, "inspection_en"),
-            (Language::German, "inspection_de"),
+            (Language::English, "filing_status_en"),
+            (Language::German, "filing_status_de"),
         ] {
-            let matches = simulator(&inspection(language))
+            let mut snapshot = inspection_snapshot();
+            snapshot.errors = two_errors();
+            let mut app = inspection_of(snapshot, language);
+            drop(app.update(page_message(FilingStatusMessage::SelectError(0))));
+            drop(
+                app.update(page_message(FilingStatusMessage::ToggleErrorChecked(
+                    PathBuf::from(ERROR_FILE),
+                ))),
+            );
+            let matches = simulator(&app)
                 .snapshot(&iced::Theme::Dark)
                 .unwrap()
                 .matches_image(format!("tests/snapshots/{name}.png"))
                 .expect("snapshot comparison");
             assert!(
                 matches,
-                "the inspection does not match tests/snapshots/{name}.png"
+                "the page does not match tests/snapshots/{name}.png"
             );
         }
     }
 
     #[test]
-    fn a_long_file_name_does_not_change_the_inspection_frame() {
-        let short = frame_bounds(&inspection(Language::English));
-        let mut snapshot = inspection_snapshot();
-        let long_name = format!("/home/user/inbox/{}.pdf", "very-long-file-name-".repeat(10));
-        snapshot.workers = vec![WorkerSnapshot {
-            id: 0,
-            busy: Some(Busy {
-                file: PathBuf::from(long_name),
-                task: Task::Step("intake"),
-                started_at: taken_at() - Duration::from_secs(12),
-            }),
-        }];
-        let long = frame_bounds(&inspection_of(snapshot, Language::English));
-        assert_eq!(short, long);
-    }
-
-    #[test]
     fn the_inspection_uses_the_visible_names_and_says_when_figures_come() {
-        let english = inspection(Language::English);
+        let english = with_steps_shown(inspection(Language::English));
         for label in ["Intake", "waiting", "done", "failed", "unchanged", "Review"] {
             assert!(shows(&english, label), "{label}");
         }
         assert!(shows(&english, "after the first full minute"));
-        let german = inspection(Language::German);
+        let german = with_steps_shown(inspection(Language::German));
         assert!(shows(&german, "Annahme"));
         assert!(shows(&german, "wartend"));
         assert!(shows(&german, "Rückfragen"));
@@ -1828,42 +1843,44 @@ mod filing_status_page {
     }
 
     #[test]
-    fn the_page_shows_every_state_and_offers_no_controls() {
+    fn the_page_shows_every_state_and_offers_the_pause_only_while_there_is_one() {
         let cases = [
-            (RunnerState::Off, "Off"),
-            (RunnerState::Idle, "Idle"),
-            (RunnerState::Running, "Running"),
-            (RunnerState::Paused, "Paused"),
+            (RunnerState::Off, "Off", None),
+            (RunnerState::Idle, "Idle", Some("Pause")),
+            (RunnerState::Running, "Running", Some("Pause")),
+            (RunnerState::Paused, "Paused", Some("Resume")),
         ];
-        for (state, state_text) in cases {
+        for (state, state_text, pause) in cases {
             let app = page(snapshot(state, 0, 0));
             assert!(shows(&app, state_text), "{state:?}: {state_text}");
-            for control in ["Pause", "Resume", "Balanced"] {
-                assert!(!shows(&app, control), "{state:?}: {control}");
+            assert!(shows(&app, "Balanced"), "{state:?}: the load");
+            for control in ["Pause", "Resume"] {
+                assert_eq!(shows(&app, control), pause == Some(control), "{state:?}");
             }
         }
     }
 
     #[test]
-    fn an_error_is_listed_and_a_click_on_it_asks_to_show_the_file() {
+    fn an_error_is_listed_selected_by_a_click_and_its_file_can_be_shown() {
         let mut with_error = snapshot(RunnerState::Idle, 0, 1);
-        with_error.errors = vec![ErrorEntry {
-            file: PathBuf::from(ERROR_FILE),
-            task: Task::Step("probe"),
-            message: "the step stopped unexpectedly".to_owned(),
-            at: taken_at(),
-            sequence: 0,
-        }];
-        let app = page(with_error);
+        with_error.errors = two_errors();
+        let mut app = page(with_error);
 
         assert!(shows(&app, "the step stopped unexpectedly"));
+        assert!(!shows(&app, "No errors"));
         assert_eq!(
-            messages_after_click(&app, ERROR_FILE),
+            messages_after_click(&app, "company-a-invoice.pdf"),
+            [page_message(FilingStatusMessage::SelectError(0))]
+        );
+        assert!(!shows(&app, "Show file"));
+
+        drop(app.update(page_message(FilingStatusMessage::SelectError(0))));
+        assert_eq!(
+            messages_after_click(&app, "Show file"),
             [page_message(FilingStatusMessage::ErrorActivated(
                 PathBuf::from(ERROR_FILE)
             ))]
         );
-        assert!(!shows(&app, "No errors"));
         assert!(shows(&page(snapshot(RunnerState::Idle, 0, 0)), "No errors"));
     }
 
@@ -1881,7 +1898,7 @@ mod filing_status_page {
             },
             WorkerSnapshot { id: 1, busy: None },
         ];
-        let app = page(busy);
+        let app = with_steps_shown(page(busy));
 
         assert!(shows(&app, "0:42"));
         assert!(shows(&app, "company-a-invoice.pdf"));
@@ -4214,22 +4231,6 @@ mod rules_card {
         for text in ["Enter a value.", "Add at least one folder."] {
             assert!(simulator(&app).find(text).is_ok(), "{text}");
         }
-    }
-
-    #[test]
-    fn the_folder_buttons_append_their_field() {
-        let app = App::with_rules(with_new_form());
-        let mut sim = simulator(&app);
-        sim.click("Month").expect("folder button");
-
-        assert_eq!(
-            sim.into_messages().filter(is_action).collect::<Vec<_>>(),
-            [Message::Rules(RulesMessage::Form(RuleFormMessage::Target(
-                crate::filing_pieces::TargetEdit::AddField(
-                    crate::filing_pieces::FolderField::Month
-                )
-            )))]
-        );
     }
 }
 
@@ -6588,32 +6589,6 @@ mod hermes_overview_page {
         assert!(matches, "the overview does not match {name}.png");
     }
 
-    /// The page scrolls: its protection section lies below the fold and is
-    /// reached by the wheel, as by a user.
-    fn scrolled_to_the_end(app: &App) -> Simulator<'_, Message, iced::Theme> {
-        let mut sim = simulator(app);
-        sim.point_at(frame_bounds(app).center());
-        let _statuses = sim.simulate([iced::Event::Mouse(iced::mouse::Event::WheelScrolled {
-            delta: iced::mouse::ScrollDelta::Lines { x: 0.0, y: -60.0 },
-        })]);
-        sim
-    }
-
-    fn assert_scrolled_snapshot(app: &App, name: &str) {
-        let matches = scrolled_to_the_end(app)
-            .snapshot(&iced::Theme::Dark)
-            .unwrap()
-            .matches_image(format!("tests/snapshots/{name}.png"))
-            .expect("snapshot comparison");
-        assert!(matches, "the overview does not match {name}.png");
-    }
-
-    fn scrolled_clicks(app: &App, label: &str) -> Vec<Message> {
-        let mut sim = scrolled_to_the_end(app);
-        sim.click(label).unwrap();
-        sim.into_messages().collect()
-    }
-
     fn in_both_languages(app: impl Fn() -> App, name: &str) {
         assert_snapshot(&app().in_language(Language::English), &format!("{name}_en"));
         assert_snapshot(&app().in_language(Language::German), &format!("{name}_de"));
@@ -6642,29 +6617,16 @@ mod hermes_overview_page {
             (Language::English, "hermes_overview_standard_target_en"),
             (Language::German, "hermes_overview_standard_target_de"),
         ] {
-            assert_scrolled_snapshot(&own_target().in_language(lang), name);
+            assert_snapshot(&own_target().in_language(lang), name);
         }
-    }
-
-    #[test]
-    fn the_question_before_starting_over_matches_its_snapshots() {
-        in_both_languages(
-            || running().with_start_over_question_for_test(),
-            "hermes_overview_reset_confirm",
-        );
     }
 
     #[test]
     fn a_missing_key_matches_its_snapshots() {
-        for (lang, name) in [
-            (Language::English, "hermes_overview_key_missing_en"),
-            (Language::German, "hermes_overview_key_missing_de"),
-        ] {
-            assert_scrolled_snapshot(
-                &running().with_missing_key_for_test().in_language(lang),
-                name,
-            );
-        }
+        in_both_languages(
+            || running().with_missing_key_for_test(),
+            "hermes_overview_key_missing",
+        );
     }
 
     fn clicks(app: &App, label: &str) -> Vec<Message> {
@@ -6680,9 +6642,12 @@ mod hermes_overview_page {
     #[test]
     fn the_buttons_send_what_they_say() {
         let app = running();
-        let load_model = format!("Load · {}", crate::ui::hermes_setup::model_size_label());
         assert_eq!(
-            clicks(&app, &load_model),
+            clicks(&app, "Load"),
+            [overview_message(HermesOverviewMessage::LoadOcrModels)]
+        );
+        assert_eq!(
+            clicks(&app, "Load · 639 MB"),
             [overview_message(HermesOverviewMessage::LoadAiModel)]
         );
         assert_eq!(
@@ -6692,14 +6657,8 @@ mod hermes_overview_page {
     }
 
     #[test]
-    fn a_click_on_own_name_opens_the_field_for_the_folder_name() {
+    fn the_folder_name_field_opens_while_editing() {
         let mut app = running();
-        assert_eq!(
-            scrolled_clicks(&app, "Own name …"),
-            [overview_message(HermesOverviewMessage::TargetEdited(
-                crate::filing_pieces::TargetEdit::StartOwnName
-            ))]
-        );
         drop(
             app.update(overview_message(HermesOverviewMessage::TargetEdited(
                 crate::filing_pieces::TargetEdit::StartOwnName,
@@ -6713,32 +6672,64 @@ mod hermes_overview_page {
     }
 
     #[test]
-    fn a_missing_key_offers_the_key_a_new_try_and_a_new_start() {
+    fn a_missing_key_offers_the_key_and_a_new_try() {
         let app = running().with_missing_key_for_test();
         assert_eq!(
-            scrolled_clicks(&app, "Enter recovery key"),
+            clicks(&app, "Enter recovery key"),
             [overview_message(HermesOverviewMessage::EnterRecoveryKey)]
         );
         assert_eq!(
-            scrolled_clicks(&app, "Try again"),
+            clicks(&app, "Try again"),
             [overview_message(HermesOverviewMessage::TryAgain)]
-        );
-        assert_eq!(
-            scrolled_clicks(&app, "Start over …"),
-            [overview_message(HermesOverviewMessage::AskStartOver)]
         );
     }
 
     #[test]
-    fn the_question_has_cancel_and_a_danger_button() {
-        let app = running().with_start_over_question_for_test();
+    fn the_settings_hold_the_protection_and_the_question_before_starting_over() {
+        let missing =
+            App::with_hermes_settings(Some(Phase::Ready), configured()).with_missing_key_for_test();
         assert_eq!(
-            clicks(&app, "Cancel"),
+            clicks(&missing, "Start over …"),
+            [overview_message(HermesOverviewMessage::AskStartOver)]
+        );
+        let asking = App::with_hermes_settings(Some(Phase::Ready), configured())
+            .with_start_over_question_for_test();
+        assert_eq!(
+            clicks(&asking, "Cancel"),
             [overview_message(HermesOverviewMessage::CancelStartOver)]
         );
         assert_eq!(
-            clicks(&app, "Remove index"),
+            clicks(&asking, "Remove index"),
             [overview_message(HermesOverviewMessage::ConfirmStartOver)]
+        );
+    }
+
+    fn settings_over_index(encrypted: bool) -> App {
+        App::with_hermes_settings(Some(Phase::Ready), configured()).with_index_for_test(encrypted)
+    }
+
+    #[test]
+    fn the_settings_with_the_protection_match_their_snapshots() {
+        in_both_languages(|| settings_over_index(true), "settings_hermes_protection");
+        in_both_languages(
+            || settings_over_index(false),
+            "settings_hermes_protection_plain",
+        );
+        in_both_languages(
+            || settings_over_index(true).with_missing_key_for_test(),
+            "settings_hermes_key_missing",
+        );
+        in_both_languages(
+            || settings_over_index(true).with_start_over_question_for_test(),
+            "settings_hermes_reset_confirm",
+        );
+    }
+
+    #[test]
+    fn the_primary_button_and_enter_open_the_reviews() {
+        assert_eq!(
+            clicks(&running(), "Check"),
+            [overview_message(HermesOverviewMessage::ShowReviews)]
         );
     }
 

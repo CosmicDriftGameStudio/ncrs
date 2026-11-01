@@ -7,6 +7,7 @@ use iced::{alignment, Element, Length};
 
 use super::format;
 use super::frame::SIDEBAR_ROOM;
+use super::hermes_kit::{self, NavEntry};
 use super::theme::{self, font_size, size, spacing};
 use crate::i18n::{FuturamaName, Language, Msg};
 use ncrs_index::HermesCounts;
@@ -123,6 +124,35 @@ pub fn nav<'a>(
     .height(size::SIDEBAR_ITEM)
     .padding([0.0, spacing::CELL_PADDING_X]);
     Column::new().push(heading).extend(items).into()
+}
+
+/// The navigation of the pages that are tabs: the same entries as [`nav`], in
+/// the layout of the filing kit.
+pub fn tab_nav<'a>(
+    current: HermesPage,
+    badges: Badges,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let entries = PAGES
+        .iter()
+        .map(|&page| NavEntry {
+            label: lang.text(name(page)).to_owned(),
+            count: badges.of(page).map(|count| count.to_string()),
+            active: page == current,
+            on_press: Message::HermesPage(page),
+        })
+        .collect();
+    let heading = lang
+        .futurama_name(FuturamaName::GroupHermes)
+        .unwrap_or_else(|| lang.text(Msg::GroupHermes));
+    hermes_kit::nav(
+        heading,
+        lang.text(Msg::HermesBeta),
+        entries,
+        badges.focus == HermesFocus::Sidebar,
+        palette,
+    )
 }
 
 /// The page before (`step` below zero) or after the one open, or `None` at

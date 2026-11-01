@@ -112,6 +112,7 @@ use crate::ui::filing_status as filing_status_ui;
 use crate::ui::grant as grant_ui;
 use crate::ui::hermes::Badges;
 use crate::ui::hermes_flow;
+use crate::ui::hermes_kit as hermes_kit_ui;
 use crate::ui::hermes_overview as hermes_overview_ui;
 use crate::ui::hermes_setup as hermes_setup_ui;
 use crate::ui::key_bindings as key_bindings_ui;
@@ -2775,7 +2776,7 @@ fn dialog_focus_key(key: Key, modifiers: Modifiers) -> Option<Message> {
 /// target, and it exists only while it is open. While it has the focus the
 /// letters, the digits and the arrows are its, Enter adds the folder and
 /// Escape closes the field; otherwise the page has the keys of the pause, the
-/// load, the workers and the sidebar.
+/// review list and the sidebar.
 fn hermes_overview_key(
     prompt: &PromptKeyState,
     key: &Key,
@@ -2799,21 +2800,7 @@ fn hermes_overview_key(
         Key::Character("p") if plain && !editing => {
             Some(Message::FilingStatus(FilingStatusMessage::TogglePause))
         }
-        Key::Character("1") if plain && !editing => {
-            overview(HermesOverviewMessage::SetLoad(Load::Gentle))
-        }
-        Key::Character("2") if plain && !editing => {
-            overview(HermesOverviewMessage::SetLoad(Load::Balanced))
-        }
-        Key::Character("3") if plain && !editing => {
-            overview(HermesOverviewMessage::SetLoad(Load::Full))
-        }
-        Key::Character("+") if plain && !editing => {
-            Some(Message::FilingStatus(FilingStatusMessage::StepWorkers(1)))
-        }
-        Key::Character("-") if plain && !editing => {
-            Some(Message::FilingStatus(FilingStatusMessage::StepWorkers(-1)))
-        }
+        Key::Named(Named::Enter) if plain => overview(HermesOverviewMessage::ShowReviews),
         _ if !is_not_typed_by_text_field(key, key_modifiers) => None,
         _ => match bound_message(&prompt.keymap, key, key_modifiers, scope) {
             Some(Message::FilingStatus(FilingStatusMessage::Toggle)) => {
@@ -2840,7 +2827,22 @@ fn filing_status_key(
         Key::Named(Named::Escape) => page(Page::Close),
         Key::Named(Named::ArrowUp) if key_modifiers.is_empty() => page(Page::MoveError(-1)),
         Key::Named(Named::ArrowDown) if key_modifiers.is_empty() => page(Page::MoveError(1)),
-        Key::Named(Named::Enter) if key_modifiers.is_empty() => page(Page::ActivateSelectedError),
+        Key::Named(Named::Enter) if key_modifiers.is_empty() => page(Page::ProcessAgain),
+        Key::Named(Named::Space) if key_modifiers.is_empty() => {
+            page(Page::ToggleSelectedErrorChecked)
+        }
+        Key::Character("p") if key_modifiers.is_empty() => page(Page::TogglePause),
+        Key::Character("1") if key_modifiers.is_empty() => Some(Message::HermesOverview(
+            HermesOverviewMessage::SetLoad(Load::Gentle),
+        )),
+        Key::Character("2") if key_modifiers.is_empty() => Some(Message::HermesOverview(
+            HermesOverviewMessage::SetLoad(Load::Balanced),
+        )),
+        Key::Character("3") if key_modifiers.is_empty() => Some(Message::HermesOverview(
+            HermesOverviewMessage::SetLoad(Load::Full),
+        )),
+        Key::Character("+") if key_modifiers.is_empty() => page(Page::StepWorkers(1)),
+        Key::Character("-") if key_modifiers.is_empty() => page(Page::StepWorkers(-1)),
         _ => match bound_message(&prompt.keymap, key, key_modifiers, scope) {
             Some(Message::FilingStatus(Page::Toggle)) => page(Page::Close),
             Some(Message::Quit) => Some(Message::Quit),
@@ -5330,6 +5332,8 @@ impl App {
 
         let below_title_bar = if let Some(state) = self.settings.as_ref() {
             self.settings_area(state)
+        } else if let Some(area) = self.ablage_area() {
+            area
         } else {
             container(column![
                 panels,
@@ -5537,14 +5541,7 @@ impl App {
                 self.lang,
                 &self.palette,
             );
-            let mut layers = vec![root];
-            layers.extend(self.hermes_overview_view().map(dialog::scrim));
-            layers.push(dialog::scrim(question));
-            return Stack::with_children(layers).into();
-        }
-
-        if let Some(page) = self.hermes_overview_view() {
-            return Stack::with_children([root, dialog::scrim(page)]).into();
+            return Stack::with_children([root, dialog::scrim(question)]).into();
         }
 
         if let Some(dialog) = self.connect_dialog.as_ref() {
@@ -5592,26 +5589,6 @@ impl App {
             let progress_element =
                 transfer_ui::progress(&running, self.window_size, self.lang, &self.palette);
             return Stack::with_children([root, dialog::scrim(progress_element)]).into();
-        }
-
-        if self.filing_status.page_open() {
-            let index_open = self
-                .filing
-                .as_ref()
-                .is_some_and(|module| matches!(module.phase(), Phase::Ready));
-            let page = filing_status_ui::view(
-                &self.filing_status,
-                filing_status_ui::Setting {
-                    load: self.filing.as_ref().map(FilingModule::load),
-                    index_open,
-                    pdf_library_missing: self.pdf_library_missing.as_deref(),
-                },
-                self.window_size,
-                self.hermes_badges(),
-                self.lang,
-                &self.palette,
-            );
-            return Stack::with_children([root, dialog::scrim(page)]).into();
         }
 
         if let Some(quick_open) = self.quick_open.as_ref() {
@@ -6719,7 +6696,19 @@ impl App {
     /// Everything on top of the panels except the context menu, which a new
     /// right click may replace.
     fn blocking_overlay_is_open(&self) -> bool {
-        self.hermes_overview.is_some() || self.overlay_apart_from_overview_is_open()
+        self.ablage_tab_is_open() || self.overlay_apart_from_overview_is_open()
+    }
+
+    /// The page of filing that stands in for the panels: the overview or the
+    /// status.
+    fn ablage_tab_is_open(&self) -> bool {
+        self.hermes_overview.is_some() || self.filing_status.page_open()
+    }
+
+    /// Closes the page of filing without a word, for a page that replaces it.
+    fn close_ablage_tab(&mut self) -> Task<Message> {
+        self.filing_status.close_page();
+        self.leave_hermes_overview()
     }
 
     /// What the overview itself may open on top of it: the model cards.
@@ -6748,7 +6737,6 @@ impl App {
             || self.grant_dialog
             || self.connect_dialog.is_some()
             || self.hermes_setup.is_some()
-            || self.filing_status.page_open()
     }
 
     /// Whether the context menu entry can do something for the current
@@ -11720,7 +11708,7 @@ impl App {
         }
     }
 
-    fn overview_facts(&self, state: &OverviewState) -> OverviewFacts {
+    fn overview_facts(&self, ocr_models_present: bool) -> OverviewFacts {
         let module = self.filing.as_ref();
         let module_state = if self.hermes_is_restarting() {
             ModuleState::Starting
@@ -11747,10 +11735,7 @@ impl App {
                 .as_ref()
                 .filter(|card| card.is_downloading())
                 .and_then(AiModelCard::progress),
-            ocr: OcrFacts::of(
-                crate::ocr_models::system_reads_scans(),
-                state.ocr_models_present(),
-            ),
+            ocr: OcrFacts::of(crate::ocr_models::system_reads_scans(), ocr_models_present),
             protection: Protection::of(
                 module_state,
                 module.and_then(FilingModule::index_encryption),
@@ -11766,26 +11751,88 @@ impl App {
         let state = self.hermes_overview.as_ref()?;
         let snapshot = self.filing_status.snapshot();
         let page = hermes_overview_ui::OverviewView {
-            facts: self.overview_facts(state),
+            facts: self.overview_facts(state.ocr_models_present()),
             state,
             folders: self.overview_folders(),
             home: &self.home,
-            load: Some(self.filing_config.load),
-            pipeline: self
-                .pipeline
-                .as_ref()
-                .map(|_| (snapshot.state, snapshot.worker_target)),
-            flow_step: self.hermes_flow_step,
+            runner: snapshot.state,
+            in_progress: snapshot.open_files(),
             badges: self.hermes_badges(),
-            window: self.window_size,
             lang: self.lang,
         };
         Some(hermes_overview_ui::view(&page, &self.palette))
     }
 
+    fn filing_status_page(&self) -> Option<Element<'_, Message>> {
+        if !self.filing_status.page_open() {
+            return None;
+        }
+        let index_open = self
+            .filing
+            .as_ref()
+            .is_some_and(|module| matches!(module.phase(), Phase::Ready));
+        Some(filing_status_ui::view(
+            &self.filing_status,
+            filing_status_ui::Setting {
+                load: self.filing.as_ref().map(FilingModule::load),
+                index_open,
+                pdf_library_missing: self.pdf_library_missing.as_deref(),
+            },
+            self.window_size,
+            self.hermes_badges(),
+            self.lang,
+            &self.palette,
+        ))
+    }
+
+    /// The overview or the status below the title bar, with the status bar of
+    /// filing under it.
+    fn ablage_area(&self) -> Option<Container<'_, Message>> {
+        let (page, hints): (_, Vec<(&str, Msg)>) = if let Some(page) = self.hermes_overview_view() {
+            (
+                page,
+                vec![
+                    ("↑↓", Msg::HermesKitHintSelect),
+                    ("Tab", Msg::HermesKitHintNextField),
+                    ("Esc", Msg::DialogClose),
+                ],
+            )
+        } else {
+            (
+                self.filing_status_page()?,
+                vec![
+                    ("↑↓", Msg::HermesKitHintSelect),
+                    (
+                        self.lang.text(Msg::HermesKitKeySpace),
+                        Msg::HermesKitHintCheck,
+                    ),
+                    ("Esc", Msg::DialogClose),
+                ],
+            )
+        };
+        let bar = hermes_kit_ui::status_bar(
+            self.lang.text(Msg::GroupHermes),
+            &hints,
+            self.hermes_status()
+                .map(|status| status.line(self.lang))
+                .unwrap_or_default(),
+            self.lang,
+            &self.palette,
+        );
+        Some(
+            container(column![page, bar])
+                .width(Length::Fill)
+                .height(Length::Fill),
+        )
+    }
+
     fn open_hermes_overview(&mut self) -> Task<Message> {
         if self.blocking_overlay_is_open() {
             return Task::none();
+        }
+        let left_settings = self.leave_settings_page(Self::close_settings);
+        if self.settings.is_some() {
+            return left_settings;
         }
         self.hermes_focus = HermesFocus::Content;
         self.return_to_hermes_overview = false;
@@ -11795,7 +11842,7 @@ impl App {
             self.ocr_models_present(),
         ));
         self.refresh_filing_snapshot();
-        self.request_hermes_counts()
+        Task::batch([left_settings, self.request_hermes_counts()])
     }
 
     fn leave_hermes_overview(&mut self) -> Task<Message> {
@@ -11909,6 +11956,7 @@ impl App {
             }
             HermesOverviewMessage::TargetEdited(edit) => {
                 let opens_name_field = edit == TargetEdit::StartOwnName;
+                let opens_text_field = edit == TargetEdit::StartNameText;
                 if let Some(state) = self.hermes_overview.as_mut() {
                     state.edit_target(edit);
                 }
@@ -11917,6 +11965,12 @@ impl App {
                     self.hermes_focus = HermesFocus::Content;
                     Task::batch([
                         operation::focus(hermes_overview_ui::FOLDER_NAME_FIELD_ID),
+                        write,
+                    ])
+                } else if opens_text_field {
+                    self.hermes_focus = HermesFocus::Content;
+                    Task::batch([
+                        operation::focus(crate::ui::filing_pieces::FILE_NAME_TEXT_FIELD_ID),
                         write,
                     ])
                 } else {
@@ -11940,18 +11994,31 @@ impl App {
                 let download = self.start_ai_model_download();
                 Task::batch([open, download])
             }
-            HermesOverviewMessage::ReadReviewsAgainWithAi => self.load_reviews_to_read_again(),
-            HermesOverviewMessage::ReviewsToReadAgain(result) => match result {
-                Ok(items) => {
-                    self.read_paths_again(items.into_iter().map(|item| item.path).collect())
-                }
-                Err(_) => Task::none(),
-            },
             HermesOverviewMessage::ShowOwnServerSettings => {
                 let write = self.leave_hermes_overview_state();
                 let row = self.lang.text(Msg::SettingsRowAiProvider).to_owned();
                 let shown = self.show_setting(crate::messages::SettingsFeature::Hermes, Some(row));
                 Task::batch([write, shown])
+            }
+            HermesOverviewMessage::ShowProtectionSettings => {
+                let write = self.leave_hermes_overview_state();
+                let row = self
+                    .lang
+                    .text(Msg::HermesOverviewSectionProtection)
+                    .to_owned();
+                let shown = self.show_setting(crate::messages::SettingsFeature::Hermes, Some(row));
+                Task::batch([write, shown])
+            }
+            HermesOverviewMessage::ShowReviews => {
+                let has_reviews = self
+                    .filing_status
+                    .hermes_counts()
+                    .is_some_and(|counts| counts.open_reviews > 0);
+                if has_reviews {
+                    self.go_to_hermes_page(HermesPage::Review)
+                } else {
+                    Task::none()
+                }
             }
             HermesOverviewMessage::SwitchHermesOn => {
                 let written = self.write_setting(SettingChange::HermesEnabled(true));
@@ -11987,20 +12054,6 @@ impl App {
         let pipeline = self.pipeline.take();
         self.refresh_filing_snapshot();
         run_filing_work_after(pipeline, work)
-    }
-
-    fn load_reviews_to_read_again(&mut self) -> Task<Message> {
-        let Some(access) = self.review_access() else {
-            return Task::none();
-        };
-        Task::perform(
-            tokio::task::spawn_blocking(move || access.load()),
-            |joined| {
-                Message::HermesOverview(HermesOverviewMessage::ReviewsToReadAgain(
-                    joined.unwrap_or_else(|join| Err(join.to_string())),
-                ))
-            },
-        )
     }
 
     /// Builds the module again from the config it started with, when it is not
@@ -12444,6 +12497,7 @@ impl App {
                 .iter()
                 .filter(|&&action| !self.keymap.has_built_in_keys(action))
                 .count(),
+            protection: Some(self.overview_facts(state.ocr_models_present)),
             lang: self.lang,
             palette: &self.palette,
         }
@@ -12658,15 +12712,16 @@ impl App {
     }
 
     fn open_settings(&mut self) -> Task<Message> {
-        if self.blocking_overlay_is_open() {
+        if self.overlay_apart_from_overview_is_open() {
             return Task::none();
         }
+        let left_ablage = self.close_ablage_tab();
         self.context_menu = None;
         self.set_path_field(None);
         self.notice = None;
         self.settings_failure = None;
         self.settings = Some(self.fresh_settings_state());
-        release_focus()
+        Task::batch([left_ablage, release_focus()])
     }
 
     fn ocr_models_present(&self) -> bool {
@@ -13745,12 +13800,12 @@ impl App {
             titlebar::Tab {
                 side,
                 title,
-                active: self.active_panel == side && self.settings.is_none(),
+                active: self.active_panel == side && !self.page_tab_is_open(),
             }
         };
         titlebar::view(&titlebar::TitleBar {
             tabs: [tab(PanelSide::Left), tab(PanelSide::Right)],
-            settings_tab: self.settings.is_some(),
+            page_tab: self.page_tab(),
             home: &self.home,
             hermes: self.hermes_chip(),
             hermes_tone: self
@@ -13762,6 +13817,26 @@ impl App {
             lang: self.lang,
             palette: &self.palette,
         })
+    }
+
+    fn page_tab_is_open(&self) -> bool {
+        self.settings.is_some() || self.ablage_tab_is_open()
+    }
+
+    fn page_tab(&self) -> Option<titlebar::PageTab> {
+        if self.settings.is_some() {
+            Some(titlebar::PageTab::Settings)
+        } else if self.hermes_overview.is_some() {
+            Some(titlebar::PageTab::Filing {
+                close: Box::new(Message::HermesOverview(HermesOverviewMessage::Close)),
+            })
+        } else if self.filing_status.page_open() {
+            Some(titlebar::PageTab::Filing {
+                close: Box::new(Message::FilingStatus(FilingStatusMessage::Close)),
+            })
+        } else {
+            None
+        }
     }
 
     /// The name of the colour theme when the palette is one of the presets.
@@ -14282,10 +14357,14 @@ impl App {
         if self.blocking_overlay_is_open() {
             return Task::none();
         }
+        let left_settings = self.leave_settings_page(Self::close_settings);
+        if self.settings.is_some() {
+            return left_settings;
+        }
         self.context_menu = None;
         self.filing_status.open_page();
         self.refresh_filing_snapshot();
-        self.request_index_figures()
+        Task::batch([left_settings, self.request_index_figures()])
     }
 
     fn set_pipeline_load(&mut self, load: Load) {
@@ -14395,16 +14474,24 @@ impl App {
                 self.filing_status.move_error_selection(delta);
                 Task::none()
             }
-            FilingStatusMessage::ActivateSelectedError => {
-                let Some(path) = self
-                    .filing_status
-                    .selected_error_file()
-                    .map(Path::to_path_buf)
-                else {
-                    return Task::none();
-                };
-                self.filing_status.close_page();
-                self.reveal_file(&path)
+            FilingStatusMessage::SelectError(position) => {
+                self.filing_status.select_error(position);
+                Task::none()
+            }
+            FilingStatusMessage::ToggleErrorChecked(path) => {
+                self.filing_status.toggle_error_checked(&path);
+                Task::none()
+            }
+            FilingStatusMessage::ToggleSelectedErrorChecked => {
+                self.filing_status.toggle_selected_error_checked();
+                Task::none()
+            }
+            FilingStatusMessage::ProcessAgain => {
+                self.read_paths_again(self.filing_status.files_to_process_again())
+            }
+            FilingStatusMessage::ToggleSteps => {
+                self.filing_status.toggle_steps();
+                Task::none()
             }
         }
     }
@@ -16359,7 +16446,13 @@ impl App {
         let mut app = Self::with_fixed_panels();
         app.palette = ThemePreset::Dracula.palette();
         app.theme_preset = ThemePreset::Dracula;
+        let module_exists = phase.is_some();
         app.filing = phase.map(|in_phase| FilingModule::in_phase_with_ai(in_phase, &config.ai));
+        if module_exists {
+            let mut idle = ncrs_pipeline::Snapshot::off();
+            idle.state = ncrs_pipeline::RunnerState::Idle;
+            app.filing_status.set_snapshot(idle, app.wall_clock.now());
+        }
         if let Some(read) = counts {
             app.filing_status.counts_arrived(Ok(read));
         }
@@ -16387,7 +16480,21 @@ impl App {
         self
     }
 
-    /// The overview with the question whether to remove the index up.
+    /// An open index with or without encryption under the ready module.
+    pub fn with_index_for_test(mut self, encrypted: bool) -> Self {
+        self.filing = Some(FilingModule::in_phase_with_index(Phase::Ready, encrypted));
+        self
+    }
+
+    /// The settings tab on the filing page, over a module in `phase`.
+    pub fn with_hermes_settings(phase: Option<Phase>, config: config::Filing) -> Self {
+        let mut app = Self::with_settings_open(crate::messages::SettingsFeature::Hermes, config);
+        app.filing =
+            phase.map(|in_phase| FilingModule::in_phase_with_ai(in_phase, &app.filing_config.ai));
+        app
+    }
+
+    /// The question whether to remove the index up.
     pub fn with_start_over_question_for_test(mut self) -> Self {
         drop(self.update(Message::HermesOverview(HermesOverviewMessage::AskStartOver)));
         self
@@ -22963,9 +23070,7 @@ mod filing_status_tests {
 
     use super::*;
     use crate::filing_status::INDEX_FIGURES_EVERY_TICKS;
-    use ncrs_pipeline::{
-        ErrorEntry, RunnerState, Settings, Snapshot, SystemClock, Task as PipelineTask,
-    };
+    use ncrs_pipeline::{RunnerState, Settings, Snapshot, SystemClock};
 
     fn status(message: FilingStatusMessage) -> Message {
         Message::FilingStatus(message)
@@ -23123,8 +23228,16 @@ mod filing_status_tests {
             route(Key::Named(Named::Escape)),
             Some(status(FilingStatusMessage::Close))
         );
-        assert_eq!(route(Key::Character("p".into())), None);
-        assert_eq!(route(Key::Character("2".into())), None);
+        assert_eq!(
+            route(Key::Character("p".into())),
+            Some(status(FilingStatusMessage::TogglePause))
+        );
+        assert_eq!(
+            route(Key::Character("2".into())),
+            Some(Message::HermesOverview(HermesOverviewMessage::SetLoad(
+                Load::Balanced
+            )))
+        );
         assert_eq!(
             route(Key::Named(Named::ArrowDown)),
             Some(status(FilingStatusMessage::MoveError(1)))
@@ -23177,24 +23290,23 @@ mod filing_status_tests {
     }
 
     #[test]
-    fn enter_shows_the_selected_error_and_does_nothing_without_one() {
-        let mut snapshot = Snapshot::off();
-        snapshot.errors = vec![ErrorEntry {
-            file: PathBuf::from("/tmp/inbox/company-a-invoice.pdf"),
-            task: PipelineTask::Step("probe"),
-            message: "the step stopped unexpectedly".to_owned(),
-            at: SystemTime::UNIX_EPOCH,
-            sequence: 0,
-        }];
-        let mut app = App::with_filing_status_page(snapshot, SystemTime::UNIX_EPOCH);
+    fn enter_reads_the_errors_again_and_space_checks_the_selected_one() {
+        let open = PromptKeyState {
+            filing_status: true,
+            ..PromptKeyState::default()
+        };
+        assert_eq!(
+            route_key(&open, Key::Named(Named::Enter), Modifiers::empty()),
+            Some(status(FilingStatusMessage::ProcessAgain))
+        );
+        assert_eq!(
+            route_key(&open, Key::Named(Named::Space), Modifiers::empty()),
+            Some(status(FilingStatusMessage::ToggleSelectedErrorChecked))
+        );
 
-        drop(app.update(status(FilingStatusMessage::ActivateSelectedError)));
+        let mut app = App::with_filing_status_page(Snapshot::off(), SystemTime::UNIX_EPOCH);
+        drop(app.update(status(FilingStatusMessage::ProcessAgain)));
         assert!(app.filing_status.page_open());
-
-        drop(app.update(status(FilingStatusMessage::MoveError(1))));
-        drop(app.update(status(FilingStatusMessage::ActivateSelectedError)));
-        assert!(!app.filing_status.page_open());
-        assert!(app.panel(PanelSide::Left).loading);
     }
 }
 
@@ -29077,6 +29189,25 @@ mod hermes_overview_tests {
     }
 
     #[test]
+    fn enter_opens_the_review_list_only_when_something_waits() {
+        let counts = ncrs_index::HermesCounts {
+            open_reviews: 5,
+            ..ncrs_index::HermesCounts::default()
+        };
+        let mut waiting =
+            App::with_hermes_overview(Some(Phase::Ready), config::Filing::default(), Some(counts));
+        drop(waiting.update(Message::HermesOverview(HermesOverviewMessage::ShowReviews)));
+        assert!(waiting.review_list.is_some());
+        assert!(waiting.hermes_overview.is_none());
+
+        let mut clear =
+            App::with_hermes_overview(Some(Phase::Ready), config::Filing::default(), None);
+        drop(clear.update(Message::HermesOverview(HermesOverviewMessage::ShowReviews)));
+        assert!(clear.review_list.is_none());
+        assert!(clear.hermes_overview.is_some());
+    }
+
+    #[test]
     fn without_the_field_the_page_has_the_letters_the_sidebar_and_enter() {
         let route = overview_keys(false, false);
         assert_eq!(
@@ -29088,13 +29219,10 @@ mod hermes_overview_tests {
             Some(Message::FilingStatus(FilingStatusMessage::TogglePause))
         );
         assert_eq!(
-            route(Key::Character("2".into())),
-            overview(HermesOverviewMessage::SetLoad(Load::Balanced))
+            route(Key::Named(Named::Enter)),
+            overview(HermesOverviewMessage::ShowReviews)
         );
-        assert_eq!(
-            route(Key::Character("+".into())),
-            Some(Message::FilingStatus(FilingStatusMessage::StepWorkers(1)))
-        );
+        assert_eq!(route(Key::Character("2".into())), None);
         assert_eq!(route(Key::Character("e".into())), None);
         assert_eq!(
             route(Key::Named(Named::ArrowLeft)),
@@ -29309,7 +29437,7 @@ mod hermes_overview_tests {
     }
 
     fn facts_of(app: &App) -> OverviewFacts {
-        app.overview_facts(app.hermes_overview.as_ref().unwrap())
+        app.overview_facts(app.hermes_overview.as_ref().unwrap().ocr_models_present())
     }
 
     #[test]

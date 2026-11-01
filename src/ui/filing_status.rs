@@ -1,30 +1,29 @@
-//! The filing status page: a box over the panels that shows what the filing
-//! module is doing. Pure view over [`FilingStatus`].
+//! The filing status page, a tab: what the filing module is doing, in two
+//! columns. Pure view over [`FilingStatus`].
 
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
 use iced::widget::{column, container, row, scrollable, Column};
-use iced::{Element, Length, Size};
+use iced::{Element, Length, Padding, Size};
 use ncrs_index::HermesCounts;
 use ncrs_pipeline::{Load, RunnerState, Task, WorkerSnapshot};
 
 use super::format;
-use super::frame::{self, DialogSize, Frame, KeyHints, PageHint};
+use super::frame;
 use super::hermes::{self, Badges};
-use super::kit::{self, first_section, form_row, one_line, paragraph, section, Columns};
-use super::theme::{font_size, size, spacing};
+use super::hermes_kit::{self as page_kit, MenuItem, MenuLook};
+use super::kit::{self, Check, Columns};
+use super::theme::{self, font_size};
 use crate::app::fill_template;
 use crate::filing::{AiStatus, IndexFigures};
 use crate::filing_status::FilingStatus;
 use crate::i18n::{FuturamaName, Language, Msg};
-use crate::messages::{FilingStatusMessage, HermesFocus, HermesPage, Message};
+use crate::messages::{
+    FilingStatusMessage, HermesFocus, HermesOverviewMessage, HermesPage, Message,
+};
 use crate::palette::Palette;
 
-const SIZE: DialogSize = DialogSize::Card;
-const ERROR_LIST_HEIGHT: f32 = 120.0;
-/// File and message of an error row take three of seven parts each.
-const ERROR_TEXT_SHARE: f32 = 3.0 / 7.0;
 /// How the width of the step table is shared: the step, then four counts.
 const STEP_PORTIONS: [u16; 5] = [2, 1, 1, 1, 1];
 /// The worker table: number, file, task, time.
@@ -32,41 +31,35 @@ const WORKER_PORTIONS: [u16; 4] = [1, 10, 4, 2];
 const NOTHING_YET: &str = "—";
 const NOT_READ_YET: &str = "…";
 const SECONDS_PER_HOUR: u64 = 3600;
-
-/// The keys of the page, named in the footer where there is room.
-const PAGE_HINTS: &[PageHint] = &[PageHint {
-    key: "↑ ↓",
-    verb: Msg::FilingStatusHintErrors,
-}];
+/// What the checkbox, the age and the gaps of an error row take, in characters.
+const ERROR_ROW_FIXED_CHARS: usize = 10;
+/// A monospace character is this many tenths wider than an average one.
+const MONO_WIDTH_TENTHS: usize = 13;
+/// The room for the button in the action bar.
+const ACTION_BUTTON_ROOM: f32 = 220.0;
 
 fn send(message: FilingStatusMessage) -> Message {
     Message::FilingStatus(message)
 }
 
-/// How many characters the one-line texts of the page hold, from the width
-/// the frame gives its content. These texts are cut, never wrapped.
+/// How many characters the tables of the page hold in one line.
 struct LineBudget {
     table_chars: usize,
-    index_path: usize,
-    error_file: f32,
-    error_message: f32,
-    /// The path in the PDF library notice: the box pads both sides.
+    /// The note in the action bar.
+    note_chars: usize,
+    /// The path in the PDF library notice.
     notice_path: f32,
 }
 
 impl LineBudget {
     fn of(window: Size) -> Self {
-        let width = frame::content_width(SIZE, window) - frame::SIDEBAR_ROOM;
-        let gap = spacing::CELL_PADDING_X;
-        // Three parts of seven each for file and message, one for the task; the
-        // button around the row pads both sides.
-        let error_width = width - 2.0 * spacing::CELL_PADDING_X - 2.0 * gap;
+        let column = (window.width - page_kit::NAV_WIDTH) / 2.0 - page_kit::GAP_M - page_kit::GAP_L;
         Self {
-            table_chars: frame::chars_that_fit(width),
-            index_path: frame::chars_that_fit(size::CONTROL_WIDTH),
-            error_file: error_width * ERROR_TEXT_SHARE - kit::SCROLL_LANE - spacing::S,
-            error_message: error_width * ERROR_TEXT_SHARE - kit::SCROLL_LANE - spacing::S,
-            notice_path: width - 4.0 * spacing::M,
+            table_chars: frame::chars_that_fit(column),
+            note_chars: frame::chars_that_fit(
+                window.width - page_kit::NAV_WIDTH - ACTION_BUTTON_ROOM - 3.0 * page_kit::GAP_L,
+            ),
+            notice_path: column - 4.0 * theme::spacing::M,
         }
     }
 }
@@ -79,6 +72,7 @@ pub struct Setting<'a> {
     pub pdf_library_missing: Option<&'a Path>,
 }
 
+/// The page with its navigation, header, two columns and action bar.
 pub fn view<'a>(
     status: &'a FilingStatus,
     setting: Setting<'_>,
@@ -87,16 +81,96 @@ pub fn view<'a>(
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let Setting {
-        load,
-        index_open,
-        pdf_library_missing,
-    } = setting;
     let budget = LineBudget::of(window);
-    let mut notices =
-        column![paragraph(lang.text(Msg::FilingStatusExplain), palette)].spacing(spacing::LINE_GAP);
-    if let Some(searched) = pdf_library_missing {
-        notices = notices.push(kit::warning_box(
+    let left = scrollable(
+        Column::with_children(left_column(status, &setting, &budget, lang, palette))
+            .spacing(page_kit::GAP_S)
+            .padding(Padding {
+                top: page_kit::GAP_M,
+                right: page_kit::GAP_M - page_kit::GAP_S - page_kit::GAP_XS,
+                bottom: page_kit::GAP_M,
+                left: page_kit::GAP_L,
+            })
+            .width(Length::Fill),
+    )
+    .width(Length::FillPortion(1))
+    .height(Length::Fill);
+    let right = scrollable(
+        Column::with_children(right_column(
+            status, &setting, &budget, badges, lang, palette,
+        ))
+        .spacing(page_kit::GAP_S)
+        .width(Length::Fill),
+    )
+    .width(Length::FillPortion(1))
+    .height(Length::Fill);
+    let body = row![left, right].width(Length::Fill).height(Length::Fill);
+    page_kit::tab_page(
+        hermes::tab_nav(HermesPage::Inspection, badges, lang, palette),
+        header(status, lang, palette),
+        body.into(),
+        Some(action_bar(status, badges, &budget, lang, palette)),
+        palette,
+    )
+}
+
+fn header<'a>(status: &FilingStatus, lang: Language, palette: &Palette) -> Element<'a, Message> {
+    let toggle = if status.steps_shown() {
+        Msg::FilingStatusHideWorkers
+    } else {
+        Msg::FilingStatusShowWorkers
+    };
+    let more = page_kit::menu_button(
+        "",
+        &[MenuItem::new(
+            lang.text(toggle),
+            send(FilingStatusMessage::ToggleSteps),
+        )],
+        MenuLook::Icon,
+        palette,
+    );
+    page_kit::page_header(
+        lang.text(Msg::HermesNavInspection),
+        lang.futurama_name(FuturamaName::HermesNavInspection),
+        Some(lang.text(Msg::FilingStatusExplain).to_owned()),
+        None,
+        vec![more],
+        palette,
+    )
+}
+
+fn action_bar<'a>(
+    status: &FilingStatus,
+    badges: Badges,
+    budget: &LineBudget,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let again = !status.files_to_process_again().is_empty();
+    page_kit::action_bar(
+        badges
+            .counts
+            .map(|counts| format::ellipsize_end(&seen_sentence(&counts, lang), budget.note_chars)),
+        vec![page_kit::primary(
+            lang.text(Msg::FilingStatusProcessAgain),
+            Some(kit::ENTER_KEY),
+            again.then(|| send(FilingStatusMessage::ProcessAgain)),
+            palette,
+        )],
+        palette,
+    )
+}
+
+fn left_column<'a>(
+    status: &'a FilingStatus,
+    setting: &Setting<'_>,
+    budget: &LineBudget,
+    lang: Language,
+    palette: &Palette,
+) -> Vec<Element<'a, Message>> {
+    let mut children = Vec::new();
+    if let Some(searched) = setting.pdf_library_missing {
+        children.push(kit::warning_box(
             format!(
                 "{}\n{}",
                 lang.text(Msg::FilingStatusPdfMissing),
@@ -115,55 +189,99 @@ pub fn view<'a>(
             palette,
         ));
     }
-    if let Some(counts) = badges.counts {
-        notices = notices.push(paragraph(counts_sentences(&counts, lang), palette));
-    }
-    let pipeline =
-        container(pipeline_section(status, load, lang, palette)).padding(iced::Padding {
-            top: spacing::SECTION_LEAD,
-            ..iced::Padding::ZERO
-        });
-    let body = column![
-        notices,
-        pipeline,
-        throughput_section(status, lang, palette),
-        steps_section(status, &budget, lang, palette),
-        workers_section(status, &budget, lang, palette),
-        index_section(status, index_open, &budget, lang, palette),
-        errors_section(status, &budget, badges.focus, lang, palette),
-    ];
-
-    Frame::new(
-        lang.text(Msg::HermesNavInspection),
-        body,
-        SIZE,
-        window,
-        lang,
+    children.push(page_kit::section(
+        lang.text(Msg::FilingStatusSectionPipeline),
         palette,
+    ));
+    children.extend(pipeline_rows(status, setting.load, lang, palette));
+    children.push(page_kit::section(
+        lang.text(Msg::FilingStatusSectionThroughput),
+        palette,
+    ));
+    children.extend(throughput_rows(status, lang, palette));
+    children
+}
+
+fn right_column<'a>(
+    status: &'a FilingStatus,
+    setting: &Setting<'_>,
+    budget: &LineBudget,
+    badges: Badges,
+    lang: Language,
+    palette: &Palette,
+) -> Vec<Element<'a, Message>> {
+    let inset = Padding {
+        top: 0.0,
+        right: page_kit::GAP_L,
+        bottom: 0.0,
+        left: page_kit::GAP_M - page_kit::GAP_S - page_kit::GAP_XS,
+    };
+    let padded = |content: Element<'a, Message>| -> Element<'a, Message> {
+        container(content).padding(inset).width(Length::Fill).into()
+    };
+    let mut children = vec![container(page_kit::section(
+        lang.text(Msg::FilingStatusSectionIndex),
+        palette,
+    ))
+    .padding(Padding {
+        top: page_kit::GAP_M,
+        ..inset
+    })
+    .width(Length::Fill)
+    .into()];
+    children.extend(
+        index_rows(status, setting.index_open, lang, palette)
+            .into_iter()
+            .map(padded),
+    );
+    children.push(padded(page_kit::section(
+        lang.text(Msg::FilingStatusSectionErrors),
+        palette,
+    )));
+    children.extend(error_rows(status, badges, budget, lang, palette));
+    if let Some(full) = selected_error_line(status, lang, palette) {
+        children.push(padded(full));
+    }
+    if status.steps_shown() {
+        children.push(padded(page_kit::section(
+            lang.text(Msg::FilingStatusSectionSteps),
+            palette,
+        )));
+        children.push(padded(steps_table(status, budget, lang, palette)));
+        children.push(padded(page_kit::section(
+            lang.text(Msg::FilingStatusSectionWorkers),
+            palette,
+        )));
+        children.push(padded(workers_table(status, budget, lang, palette)));
+    }
+    children.push(
+        container(iced::widget::Space::new())
+            .height(page_kit::GAP_M)
+            .into(),
+    );
+    children
+}
+
+/// The first sentence of `counts_sentences`: the documents seen and where they are.
+fn seen_sentence(counts: &HermesCounts, lang: Language) -> String {
+    let inbox = counts.inbox;
+    let seen = inbox.new + inbox.planned + inbox.in_review + inbox.filed;
+    fill_template(
+        lang.text(Msg::FilingStatusCountsSeen),
+        &[
+            ("{seen}", &format::grouped(seen)),
+            ("{filed}", &format::grouped(inbox.filed)),
+            ("{waiting}", &format::grouped(counts.open_reviews)),
+        ],
     )
-    .title_theme(lang.futurama_name(FuturamaName::HermesNavInspection))
-    .sidebar(hermes::nav(HermesPage::Inspection, badges, lang, palette))
-    .on_close(send(FilingStatusMessage::Close))
-    // Enter opens the selected error, which the content defines.
-    .hints(KeyHints::default())
-    .page_hints(PAGE_HINTS)
-    .into_element()
 }
 
 /// What Hermes has done so far, in plain sentences: the documents seen and
 /// where they are, and why the rest waits.
+#[cfg(test)]
 pub fn counts_sentences(counts: &HermesCounts, lang: Language) -> String {
-    let inbox = counts.inbox;
-    let seen = inbox.new + inbox.planned + inbox.in_review + inbox.filed;
     let count = |number: u64| format::grouped(number);
-    let mut sentences = vec![fill_template(
-        lang.text(Msg::FilingStatusCountsSeen),
-        &[
-            ("{seen}", &count(seen)),
-            ("{filed}", &count(inbox.filed)),
-            ("{waiting}", &count(counts.open_reviews)),
-        ],
-    )];
+    let mut sentences = vec![seen_sentence(counts, lang)];
     if counts.open_reviews_without_text > 0 {
         sentences.push(fill_template(
             lang.text(Msg::FilingStatusCountsWithoutText),
@@ -194,78 +312,133 @@ fn state_message(state: RunnerState) -> Msg {
     }
 }
 
-/// The state of the pipeline as sentences. Pausing and the load are set on the
-/// overview; here they are only read.
-fn pipeline_section<'a>(
+fn state_word(status: &FilingStatus, lang: Language) -> String {
+    let snapshot = status.snapshot();
+    let word = lang.text(state_message(snapshot.state));
+    let open = snapshot.open_files();
+    if snapshot.state == RunnerState::Running && open > 0 {
+        let busy = fill_template(
+            lang.text(Msg::HermesOverviewInProgress),
+            &[("{count}", &open.to_string())],
+        );
+        format!("{word} · {busy}")
+    } else {
+        word.to_owned()
+    }
+}
+
+const LOADS: [(Load, Msg, FuturamaName); 3] = [
+    (
+        Load::Gentle,
+        Msg::FilingStatusLoadGentle,
+        FuturamaName::FilingStatusLoadGentle,
+    ),
+    (
+        Load::Balanced,
+        Msg::FilingStatusLoadBalanced,
+        FuturamaName::FilingStatusLoadBalanced,
+    ),
+    (
+        Load::Full,
+        Msg::FilingStatusLoadFull,
+        FuturamaName::FilingStatusLoadFull,
+    ),
+];
+
+/// The name of a load as the buttons show it: plain, and in the theme
+/// languages the theme name behind it.
+fn load_name(load: Load, lang: Language) -> String {
+    match LOADS.iter().find(|(listed, ..)| *listed == load) {
+        Some((_, plain, themed)) => lang.titled(*plain, Some(*themed)),
+        None => match load {
+            Load::Workers(count) => fill_template(
+                lang.text(Msg::SettingsLoadWorkers),
+                &[("{count}", &count.to_string())],
+            ),
+            _ => NOTHING_YET.to_owned(),
+        },
+    }
+}
+
+/// The state with the pause, the load with its buttons, the workers.
+fn pipeline_rows<'a>(
     status: &'a FilingStatus,
     load: Option<Load>,
     lang: Language,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Vec<Element<'a, Message>> {
     let snapshot = status.snapshot();
-    let mut rows = column![
-        form_row(
+    let mut state = vec![page_kit::value(state_word(status, lang), palette)];
+    if snapshot.state != RunnerState::Off {
+        let label = if snapshot.state == RunnerState::Paused {
+            Msg::FilingStatusResume
+        } else {
+            Msg::FilingStatusPause
+        };
+        state.push(page_kit::link(
+            lang.text(label),
+            Some(send(FilingStatusMessage::TogglePause)),
+            palette,
+        ));
+    }
+    let names: Vec<String> = LOADS
+        .iter()
+        .map(|(listed, ..)| load_name(*listed, lang))
+        .collect();
+    let options: Vec<(&str, Message)> = LOADS
+        .iter()
+        .zip(&names)
+        .map(|((listed, ..), name)| {
+            (
+                name.as_str(),
+                Message::HermesOverview(HermesOverviewMessage::SetLoad(*listed)),
+            )
+        })
+        .collect();
+    let selected = LOADS
+        .iter()
+        .position(|(listed, ..)| load == Some(*listed))
+        .unwrap_or(LOADS.len());
+    let mut rows = vec![
+        page_kit::form_row(
             lang.text(Msg::FilingStatusStateLabel),
+            page_kit::cell(state),
             None,
-            None,
-            paragraph(lang.text(state_message(snapshot.state)), palette),
             palette,
         ),
-        form_row(
+        page_kit::form_row(
             lang.text(Msg::FilingStatusLoadLabel),
-            None,
-            Some(lang.text(Msg::FilingStatusLoadExplain)),
-            paragraph(load_text(load, lang), palette),
+            page_kit::segmented(&options, selected, palette),
+            Some(page_kit::hint(
+                lang.text(Msg::FilingStatusLoadNote),
+                palette,
+            )),
             palette,
         ),
-        form_row(
+        page_kit::form_row(
             lang.text(Msg::FilingStatusWorkersLabel),
+            page_kit::value(snapshot.worker_target.to_string(), palette),
             None,
-            Some(lang.text(Msg::FilingStatusLoadNote)),
-            paragraph(snapshot.worker_target.to_string(), palette),
             palette,
         ),
     ];
     if let Some(ai) = ai_value(status.ai(), lang) {
-        rows = rows.push(form_row(
+        rows.push(page_kit::form_row(
             lang.text(Msg::FilingStatusAiLabel),
+            page_kit::value(ai, palette),
             None,
-            None,
-            paragraph(ai, palette),
             palette,
         ));
     }
-    first_section(lang.text(Msg::FilingStatusSectionPipeline), rows, palette)
-}
-
-fn load_text(load: Option<Load>, lang: Language) -> String {
-    match load {
-        Some(Load::Gentle) => lang.titled(
-            Msg::FilingStatusLoadGentle,
-            Some(FuturamaName::FilingStatusLoadGentle),
-        ),
-        Some(Load::Balanced) => lang.titled(
-            Msg::FilingStatusLoadBalanced,
-            Some(FuturamaName::FilingStatusLoadBalanced),
-        ),
-        Some(Load::Full) => lang.titled(
-            Msg::FilingStatusLoadFull,
-            Some(FuturamaName::FilingStatusLoadFull),
-        ),
-        Some(Load::Workers(count)) => fill_template(
-            lang.text(Msg::SettingsLoadWorkers),
-            &[("{count}", &count.to_string())],
-        ),
-        None => NOTHING_YET.to_owned(),
-    }
+    rows
 }
 
 /// The throughput and the time left, as figures.
-fn throughput_section<'a>(
+fn throughput_rows<'a>(
     status: &'a FilingStatus,
     lang: Language,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Vec<Element<'a, Message>> {
     let figure = |found: Option<String>| match found {
         Some(text_found) => text_found,
         None if status.awaiting_first_minute() => {
@@ -285,21 +458,24 @@ fn throughput_section<'a>(
             &[("{minutes}", &left.as_secs().div_euclid(60).to_string())],
         )
     }));
-    section(
-        lang.text(Msg::FilingStatusSectionThroughput),
-        kit::figures(
-            &[
-                (lang.text(Msg::FilingStatusThroughputLabel), throughput),
-                (lang.text(Msg::FilingStatusRemainingLabel), remaining),
-            ],
+    vec![
+        page_kit::form_row(
+            lang.text(Msg::FilingStatusThroughputLabel),
+            page_kit::value(throughput, palette),
+            None,
             palette,
         ),
-        palette,
-    )
+        page_kit::form_row(
+            lang.text(Msg::FilingStatusRemainingLabel),
+            page_kit::value(remaining, palette),
+            None,
+            palette,
+        ),
+    ]
 }
 
 /// What each step of the pipeline has waiting, done, failed and unchanged.
-fn steps_section<'a>(
+fn steps_table<'a>(
     status: &'a FilingStatus,
     budget: &LineBudget,
     lang: Language,
@@ -331,11 +507,7 @@ fn steps_section<'a>(
             palette.text,
         )
     });
-    section(
-        lang.text(Msg::FilingStatusSectionSteps),
-        column![header, Column::with_children(lines)],
-        palette,
-    )
+    column![header, Column::with_children(lines)].into()
 }
 
 /// Not there at all while the AI is off, so a setup without it looks as before.
@@ -428,7 +600,7 @@ fn worker_row<'a>(
     )
 }
 
-fn workers_section<'a>(
+fn workers_table<'a>(
     status: &'a FilingStatus,
     budget: &LineBudget,
     lang: Language,
@@ -443,11 +615,7 @@ fn workers_section<'a>(
         .workers
         .iter()
         .map(|worker| worker_row(worker, status.taken_at(), &columns, lang, palette));
-    section(
-        lang.text(Msg::FilingStatusSectionWorkers),
-        Column::with_children(rows),
-        palette,
-    )
+    Column::with_children(rows).into()
 }
 
 fn yes_no(answer: bool, lang: Language) -> &'static str {
@@ -459,137 +627,151 @@ fn yes_no(answer: bool, lang: Language) -> &'static str {
 }
 
 fn index_rows<'a>(
+    status: &'a FilingStatus,
+    index_open: bool,
+    lang: Language,
+    palette: &Palette,
+) -> Vec<Element<'a, Message>> {
+    let note = |content: String| vec![page_kit::hint(content, palette)];
+    match status.index_figures() {
+        _ if !index_open => note(lang.text(Msg::FilingStatusIndexNotOpen).to_owned()),
+        None => note(NOT_READ_YET.to_owned()),
+        Some(Err(reason)) => note(fill_template(
+            lang.text(Msg::FilingStatusIndexUnavailable),
+            &[("{reason}", reason)],
+        )),
+        Some(Ok(figures)) => index_figure_rows(figures, lang, palette),
+    }
+}
+
+fn index_figure_rows<'a>(
     figures: &IndexFigures,
-    budget: &LineBudget,
     lang: Language,
     palette: &Palette,
 ) -> Vec<Element<'a, Message>> {
     let statistics = &figures.statistics;
-    let value = |content: String| paragraph(content, palette);
-    let row_of = |label: Msg, shown: Element<'a, Message>| {
-        form_row(lang.text(label), None, None, shown, palette)
+    let row_of = |label: Msg, shown: String| {
+        page_kit::form_row(
+            lang.text(label),
+            page_kit::value(shown, palette),
+            None,
+            palette,
+        )
     };
     vec![
-        kit::figures(
-            &[
-                (
-                    lang.text(Msg::FilingStatusIndexDocuments),
-                    statistics.document_count.to_string(),
-                ),
-                (
-                    lang.text(Msg::FilingStatusIndexFullText),
-                    format::size(statistics.full_text_bytes),
-                ),
-                (
-                    lang.text(Msg::FilingStatusIndexReviews),
-                    statistics.open_reviews.to_string(),
-                ),
-            ],
-            palette,
+        row_of(
+            Msg::FilingStatusIndexDocuments,
+            format::grouped(statistics.document_count),
         ),
         row_of(
-            Msg::FilingStatusIndexPath,
-            one_line(
-                format::ellipsize_middle(&figures.path.display().to_string(), budget.index_path),
-                palette,
-            ),
-        ),
-        row_of(
-            Msg::FilingStatusIndexSize,
-            value(
-                figures
-                    .file_bytes
-                    .map_or_else(|| NOTHING_YET.to_owned(), format::size),
-            ),
+            Msg::FilingStatusIndexReviews,
+            format::grouped(statistics.open_reviews),
         ),
         row_of(
             Msg::FilingStatusIndexEncrypted,
-            value(yes_no(figures.encrypted, lang).to_owned()),
+            yes_no(figures.encrypted, lang).to_owned(),
         ),
         row_of(
-            Msg::FilingStatusIndexSchema,
-            value(statistics.schema_version.to_string()),
+            Msg::FilingStatusIndexSize,
+            figures
+                .file_bytes
+                .map_or_else(|| NOTHING_YET.to_owned(), format::size),
         ),
     ]
 }
 
-fn index_section<'a>(
-    status: &'a FilingStatus,
-    index_open: bool,
-    budget: &LineBudget,
-    lang: Language,
-    palette: &Palette,
-) -> Element<'a, Message> {
-    let rows: Vec<Element<'a, Message>> = match status.index_figures() {
-        _ if !index_open => vec![paragraph(lang.text(Msg::FilingStatusIndexNotOpen), palette)],
-        None => vec![paragraph(NOT_READ_YET, palette)],
-        Some(Err(reason)) => vec![paragraph(
-            fill_template(
-                lang.text(Msg::FilingStatusIndexUnavailable),
-                &[("{reason}", reason)],
-            ),
-            palette,
-        )],
-        Some(Ok(figures)) => index_rows(figures, budget, lang, palette),
-    };
-    section(
-        lang.text(Msg::FilingStatusSectionIndex),
-        kit::stack(rows),
-        palette,
-    )
+/// How long ago an error happened, as `m:ss`.
+fn age_label(status: &FilingStatus, at: SystemTime) -> String {
+    elapsed_label(status.taken_at().duration_since(at).unwrap_or_default())
 }
 
-fn errors_section<'a>(
+fn error_rows<'a>(
     status: &'a FilingStatus,
+    badges: Badges,
     budget: &LineBudget,
-    focus: HermesFocus,
     lang: Language,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Vec<Element<'a, Message>> {
+    let row_chars = budget.table_chars.saturating_sub(ERROR_ROW_FIXED_CHARS);
     let selected = status.selected_error();
     let rows: Vec<Element<'a, Message>> = status
         .errors_newest_first()
         .enumerate()
         .map(|(position, error)| {
+            let checked = if status.error_is_checked(&error.file) {
+                Check::On
+            } else {
+                Check::Off
+            };
+            let name = format::ellipsize_end(&file_label(&error.file), row_chars.div_euclid(2));
+            let reason_chars = row_chars
+                .saturating_sub((name.chars().count() * MONO_WIDTH_TENTHS).div_euclid(10))
+                .saturating_sub(2);
             let content = row![
-                container(one_line(
-                    format::fit_middle(
-                        &error.file.display().to_string(),
-                        budget.error_file,
-                        font_size::BODY,
-                    ),
+                page_kit::checkbox(
+                    checked,
+                    Some(send(FilingStatusMessage::ToggleErrorChecked(
+                        error.file.clone()
+                    ))),
+                    None,
+                    palette,
+                ),
+                page_kit::mono(name, page_kit::TEXT_BODY, palette.text),
+                container(page_kit::value_dim(
+                    format::ellipsize_end(&error.message, reason_chars),
                     palette,
                 ))
-                .width(Length::FillPortion(3))
-                .clip(true),
-                container(one_line(task_label(error.task, lang), palette))
-                    .width(Length::FillPortion(1)),
-                container(one_line(
-                    format::fit_end(&error.message, budget.error_message, font_size::BODY),
-                    palette,
-                ))
-                .width(Length::FillPortion(3))
+                .width(Length::Fill)
                 .clip(true),
             ]
-            .spacing(spacing::CELL_PADDING_X)
+            .spacing(page_kit::GAP_S)
             .align_y(iced::alignment::Vertical::Center);
-            kit::list_row(
+            page_kit::list_row_one(
                 content.into(),
-                send(FilingStatusMessage::ErrorActivated(error.file.clone())),
-                selected == Some(position),
-                focus == HermesFocus::Content,
+                Some(age_label(status, error.at)),
+                false,
+                selected == Some(position) && badges.focus == HermesFocus::Content,
+                Some(send(FilingStatusMessage::SelectError(position))),
                 palette,
             )
         })
         .collect();
-    let list: Element<'a, Message> = if rows.is_empty() {
-        paragraph(lang.text(Msg::FilingStatusErrorsNone), palette)
-    } else {
-        scrollable(Column::with_children(rows))
-            .height(ERROR_LIST_HEIGHT)
-            .into()
-    };
-    section(lang.text(Msg::FilingStatusSectionErrors), list, palette)
+    if rows.is_empty() {
+        let none = container(page_kit::hint(
+            lang.text(Msg::FilingStatusErrorsNone),
+            palette,
+        ))
+        .padding([0.0, page_kit::GAP_L]);
+        return vec![none.into()];
+    }
+    rows
+}
+
+/// The selected error with its whole reason, and the way to its file.
+fn selected_error_line<'a>(
+    status: &'a FilingStatus,
+    lang: Language,
+    palette: &Palette,
+) -> Option<Element<'a, Message>> {
+    let position = status.selected_error()?;
+    let error = status.errors_newest_first().nth(position)?;
+    Some(
+        column![
+            page_kit::error_line(
+                format!("{}: {}", file_label(&error.file), error.message),
+                palette,
+            ),
+            page_kit::link(
+                lang.text(Msg::FilingStatusShowFile),
+                Some(send(FilingStatusMessage::ErrorActivated(
+                    error.file.clone()
+                ))),
+                palette,
+            ),
+        ]
+        .spacing(page_kit::GAP_XS)
+        .into(),
+    )
 }
 
 // reason: a failing assertion is the signal in a test
@@ -616,7 +798,7 @@ mod tests {
     #[test]
     fn the_standard_languages_name_the_loads_plainly_and_the_futurama_variants_add_the_theme_name()
     {
-        let shown = |load, lang| load_text(Some(load), lang);
+        let shown = |load, lang| load_name(load, lang);
         for (load, plain_en, plain_de, theme_en, theme_de) in [
             (
                 Load::Gentle,

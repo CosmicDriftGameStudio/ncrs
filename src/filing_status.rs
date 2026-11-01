@@ -1,7 +1,7 @@
 //! What the filing status page knows: the latest snapshot of the pipeline, how
 //! far the current stretch of work has come, and the index figures.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use ncrs_index::HermesCounts;
@@ -28,6 +28,9 @@ pub struct FilingStatus {
     ticks_since_counts: u32,
     /// Position in the list as shown, newest first.
     selected_error: Option<usize>,
+    /// The files whose errors the user ticked to be read again.
+    checked_errors: Vec<PathBuf>,
+    steps_shown: bool,
     ai: AiStatus,
 }
 
@@ -44,6 +47,8 @@ impl Default for FilingStatus {
             counts_in_flight: false,
             ticks_since_counts: HERMES_COUNTS_EVERY_TICKS,
             selected_error: None,
+            checked_errors: Vec::new(),
+            steps_shown: false,
             ai: AiStatus::Off,
         }
     }
@@ -120,6 +125,58 @@ impl FilingStatus {
         self.selected_error = Some(usize::try_from(moved.max(0)).unwrap_or(0).min(last));
     }
 
+    pub fn select_error(&mut self, position: usize) {
+        if position < self.snapshot.errors.len() {
+            self.selected_error = Some(position);
+        }
+    }
+
+    pub fn error_is_checked(&self, file: &Path) -> bool {
+        self.checked_errors.iter().any(|checked| checked == file)
+    }
+
+    pub fn toggle_error_checked(&mut self, file: &Path) {
+        match self
+            .checked_errors
+            .iter()
+            .position(|checked| checked == file)
+        {
+            Some(position) => {
+                self.checked_errors.remove(position);
+            }
+            None => self.checked_errors.push(file.to_path_buf()),
+        }
+    }
+
+    pub fn toggle_selected_error_checked(&mut self) {
+        if let Some(file) = self.selected_error_file().map(Path::to_path_buf) {
+            self.toggle_error_checked(&file);
+        }
+    }
+
+    /// The files to read again: the ticked ones that still have an error in
+    /// the list, else the selected one. Each file once, newest error first.
+    pub fn files_to_process_again(&self) -> Vec<PathBuf> {
+        let mut files: Vec<PathBuf> = Vec::new();
+        for entry in self.errors_newest_first() {
+            if self.error_is_checked(&entry.file) && !files.contains(&entry.file) {
+                files.push(entry.file.clone());
+            }
+        }
+        if files.is_empty() {
+            files.extend(self.selected_error_file().map(Path::to_path_buf));
+        }
+        files
+    }
+
+    pub fn steps_shown(&self) -> bool {
+        self.steps_shown
+    }
+
+    pub fn toggle_steps(&mut self) {
+        self.steps_shown = !self.steps_shown;
+    }
+
     pub fn selected_error_file(&self) -> Option<&Path> {
         let position = self.selected_error()?;
         self.errors_newest_first()
@@ -144,6 +201,7 @@ impl FilingStatus {
     pub fn open_page(&mut self) {
         self.page_open = true;
         self.selected_error = None;
+        self.checked_errors.clear();
     }
 
     pub fn close_page(&mut self) {
@@ -329,6 +387,34 @@ mod tests {
         empty.move_error_selection(1);
         assert_eq!(empty.selected_error(), None);
         assert_eq!(empty.selected_error_file(), None);
+    }
+
+    #[test]
+    fn the_files_to_read_again_are_the_checked_ones_else_the_selected_one() {
+        let mut status = with_errors(3);
+        assert!(status.files_to_process_again().is_empty());
+
+        status.select_error(1);
+        assert_eq!(
+            status.files_to_process_again(),
+            [PathBuf::from("/tmp/inbox/company-a-1.pdf")]
+        );
+
+        status.toggle_error_checked(Path::new("/tmp/inbox/company-a-0.pdf"));
+        status.toggle_selected_error_checked();
+        status.toggle_selected_error_checked();
+        assert_eq!(
+            status.files_to_process_again(),
+            [PathBuf::from("/tmp/inbox/company-a-0.pdf")]
+        );
+
+        status.toggle_error_checked(Path::new("/tmp/inbox/company-a-0.pdf"));
+        status.toggle_error_checked(Path::new("/tmp/inbox/gone.pdf"));
+        assert_eq!(
+            status.files_to_process_again(),
+            [PathBuf::from("/tmp/inbox/company-a-1.pdf")],
+            "a ticked file without an error in the list is not read"
+        );
     }
 
     #[test]
