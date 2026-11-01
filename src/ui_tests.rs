@@ -5031,12 +5031,26 @@ mod reorganisation_plan_card {
     }
 
     #[test]
-    fn what_cannot_be_run_is_named_with_its_reason() {
+    fn a_group_lists_its_steps_and_leaves_the_blocked_ones_out() {
+        assert!(
+            shows(loaded_view(), "Misc/2024-04-01_invoice.pdf"),
+            "the step of the group"
+        );
+        assert!(
+            !shows(loaded_view(), "IMG_7.pdf: Not enough is known to name it"),
+            "a blocked entry under another group"
+        );
+    }
+
+    #[test]
+    fn the_blocked_group_names_each_entry_with_its_reason() {
+        let mut view = loaded_view();
+        view.move_cursor(isize::try_from(header_line(&view, Group::Blocked)).unwrap());
         for label in [
             "2024-06-01_invoice.pdf: The target already exists",
             "IMG_7.pdf: Not enough is known to name it",
         ] {
-            assert!(shows(loaded_view(), label), "{label}");
+            assert!(shows(view.clone(), label), "{label}");
         }
     }
 
@@ -5053,7 +5067,10 @@ mod reorganisation_plan_card {
         ] {
             assert!(shows(view.clone(), label), "{label}");
         }
-        assert!(!shows(loaded_view(), "Proposed"));
+        assert!(!shows(
+            at(loaded_view(), "Insurance/2024/IMG_7.pdf"),
+            "Proposed"
+        ));
         assert!(!shows(view, "Before"));
     }
 
