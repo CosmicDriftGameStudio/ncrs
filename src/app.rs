@@ -4851,7 +4851,8 @@ impl App {
             .filing
             .as_ref()
             .filter(|module| module.has_card())
-            .and_then(|module| filing_ui::view(module, self.window_size, self.lang, &self.palette));
+            .and_then(|module| filing_ui::view(module, self.window_size, self.lang, &self.palette))
+            .map(|card| card.map(Message::from));
         let setup_card = self.filing_setup.as_ref().map(|setup| {
             let context = filing_setup_ui::SetupContext {
                 current_folder: &self.active_panel().path,
@@ -4863,7 +4864,7 @@ impl App {
                 lang: self.lang,
                 window: self.window_size,
             };
-            filing_setup_ui::view(setup, &context, &self.palette)
+            filing_setup_ui::view(setup, &context, &self.palette).map(Message::from)
         });
         let hermes_card = self.hermes_setup_view();
         let cards: Vec<Element<'_, Message>> = setup_card
@@ -4891,7 +4892,7 @@ impl App {
             return Stack::with_children([
                 root,
                 click_catcher.into(),
-                quick_fix_view::view(menu, self.lang, &self.palette),
+                quick_fix_view::view(menu, self.lang, &self.palette).map(Message::from),
             ])
             .into();
         }
@@ -4995,7 +4996,8 @@ impl App {
                 self.window_size,
                 self.lang,
                 &self.palette,
-            );
+            )
+            .map(Message::from);
             return Stack::with_children([root, dialog::scrim(question)]).into();
         }
 
@@ -5564,7 +5566,7 @@ impl App {
             lang: self.lang,
             window: self.window_size,
         };
-        Some(hermes_setup_ui::view(&card, &self.palette))
+        Some(hermes_setup_ui::view(&card, &self.palette).map(Message::from))
     }
 
     /// Enter on the element that has the focus.
@@ -11301,78 +11303,76 @@ impl App {
             badges: self.hermes_badges(),
             lang: self.lang,
         };
-        Some(hermes_overview_ui::view(&page, &self.palette))
+        Some(hermes_overview_ui::view(&page, &self.palette).map(Message::from))
     }
 
     fn rule_suggestions_view(&self) -> Option<Element<'_, Message>> {
         let state = self.rule_suggestions.as_ref()?;
-        Some(rule_suggestions_ui::view(
-            state,
-            self.hermes_badges(),
-            self.lang,
-            &self.palette,
-        ))
+        Some(
+            rule_suggestions_ui::view(state, self.hermes_badges(), self.lang, &self.palette)
+                .map(Message::from),
+        )
     }
 
     fn reorganisation_view(&self) -> Option<Element<'_, Message>> {
         let state = self.reorganisation.as_ref()?;
-        Some(reorganisation_plan_ui::view(
-            state,
-            self.hermes_badges(),
-            self.lang,
-            &self.palette,
-        ))
+        Some(
+            reorganisation_plan_ui::view(state, self.hermes_badges(), self.lang, &self.palette)
+                .map(Message::from),
+        )
     }
 
     fn rules_view(&self) -> Option<Element<'_, Message>> {
         let state = self.rules.as_ref()?;
-        Some(rules_ui::view(
-            state,
-            self.hermes_badges(),
-            self.lang,
-            &self.palette,
-        ))
+        Some(
+            rules_ui::view(state, self.hermes_badges(), self.lang, &self.palette)
+                .map(Message::from),
+        )
     }
 
     fn saved_queries_view(&self) -> Option<Element<'_, Message>> {
         let state = self.saved_queries.as_ref()?;
-        Some(saved_queries_ui::view(
-            state,
-            self.hermes_badges(),
-            self.lang,
-            &self.palette,
-        ))
+        Some(
+            saved_queries_ui::view(state, self.hermes_badges(), self.lang, &self.palette)
+                .map(Message::from),
+        )
     }
 
     fn tags_view(&self) -> Option<Element<'_, Message>> {
         let state = self.tags.as_ref()?;
-        Some(tags_ui::view(
-            state,
-            &self.file_list_tags,
-            self.hermes_badges(),
-            self.lang,
-            &self.palette,
-        ))
+        Some(
+            tags_ui::view(
+                state,
+                &self.file_list_tags,
+                self.hermes_badges(),
+                self.lang,
+                &self.palette,
+            )
+            .map(Message::from),
+        )
     }
 
     fn review_list_view(&self) -> Option<Element<'_, Message>> {
         let state = self.review_list.as_ref()?;
-        Some(review_list_ui::view(
-            state,
-            self.hermes_badges(),
-            self.review_field_guide(),
-            review_list_ui::PreviewRoot {
-                archive: self
-                    .filing_config
-                    .locations
-                    .iter()
-                    .find(|location| location.is_target)
-                    .map(|location| location.path.as_path()),
-                home: &self.home,
-            },
-            self.lang,
-            &self.palette,
-        ))
+        Some(
+            review_list_ui::view(
+                state,
+                self.hermes_badges(),
+                self.review_field_guide(),
+                review_list_ui::PreviewRoot {
+                    archive: self
+                        .filing_config
+                        .locations
+                        .iter()
+                        .find(|location| location.is_target)
+                        .map(|location| location.path.as_path()),
+                    home: &self.home,
+                },
+                self.lang,
+                &self.palette,
+            )
+            .map(Message::from),
+        )
     }
 
     fn filing_status_page(&self) -> Option<Element<'_, Message>> {
@@ -11383,18 +11383,21 @@ impl App {
             .filing
             .as_ref()
             .is_some_and(|module| matches!(module.phase(), Phase::Ready));
-        Some(filing_status_ui::view(
-            &self.filing_status,
-            filing_status_ui::Setting {
-                load: self.filing.as_ref().map(FilingModule::load),
-                index_open,
-                pdf_library_missing: self.pdf_library_missing.as_deref(),
-            },
-            self.window_size,
-            self.hermes_badges(),
-            self.lang,
-            &self.palette,
-        ))
+        Some(
+            filing_status_ui::view(
+                &self.filing_status,
+                filing_status_ui::Setting {
+                    load: self.filing.as_ref().map(FilingModule::load),
+                    index_open,
+                    pdf_library_missing: self.pdf_library_missing.as_deref(),
+                },
+                self.window_size,
+                self.hermes_badges(),
+                self.lang,
+                &self.palette,
+            )
+            .map(Message::from),
+        )
     }
 
     /// The overview or the status below the title bar, with the status bar of
@@ -15694,7 +15697,7 @@ impl App {
     pub fn with_hermes_quick_fix_sample() -> Self {
         let mut app = Self::with_hermes_column_sample();
         let path = app.panels.right.path.join("2025-03 receipt market.pdf");
-        let mut item = crate::review_list::tests::loaded_list()
+        let mut item = crate::review_list::fixtures::loaded_list()
             .rows()
             .to_vec()
             .swap_remove(0);

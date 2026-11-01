@@ -16,7 +16,7 @@ use crate::messages::{
 };
 use crate::transfer_dialog::TransferDialogMessage;
 use crate::ui::layout::{
-    MENU_ITEM_HEIGHT, MENU_PADDING, MENU_SEPARATOR_HEIGHT, MENU_SUB_WIDTH, MENU_WIDTH,
+    place, MENU_ITEM_HEIGHT, MENU_PADDING, MENU_SEPARATOR_HEIGHT, MENU_SUB_WIDTH, MENU_WIDTH,
 };
 
 /// What an entry does. Each one is exactly the message its key sends.
@@ -724,17 +724,6 @@ pub fn sub_height(entries: &[SubEntry]) -> f32 {
         })
         .sum();
     inner + 2.0 * MENU_PADDING
-}
-
-/// Where a span of `length` starts so it stays within `0..limit`: at `anchor`,
-/// or ending there when it would not fit.
-pub fn place(anchor: f32, length: f32, limit: f32) -> f32 {
-    let start = if anchor + length > limit {
-        anchor - length
-    } else {
-        anchor
-    };
-    start.min(limit - length).max(0.0)
 }
 
 /// A tap of Option (Alt) on its own: pressed and released with no other key,

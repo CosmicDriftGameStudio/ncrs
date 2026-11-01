@@ -79,6 +79,8 @@ ncrs-palette = { path = "crates/ncrs-palette", version = "0.0.0" }
 ncrs-settings = { path = "crates/ncrs-settings", version = "0.0.0" }
 # The filing logic: the filing module, the work behind the Hermes pages and the reading of the column.
 ncrs-filing = { path = "crates/ncrs-filing", version = "0.0.0" }
+# The Hermes pages: filing setup and status, overview, review, rules, tags, reorganisation.
+ncrs-hermes-ui = { path = "crates/ncrs-hermes-ui", version = "0.0.0" }
 # Translated UI strings, generated from strings.json.
 ncrs-i18n = { path = "crates/ncrs-i18n", version = "0.0.0" }
 # Colors, sizes and widgets the screens are built from, generic over the message type.
@@ -195,6 +197,7 @@ ncrs-palette = { path = "crates/ncrs-palette", version = "0.0.0", features = ["t
 ncrs-settings = { path = "crates/ncrs-settings", version = "0.0.0", features = ["test-support"] }
 # The fixtures of the filing module and of the reorganisation and replan work, for the tests of the app.
 ncrs-filing = { path = "crates/ncrs-filing", version = "0.0.0", features = ["test-support"] }
+ncrs-hermes-ui = { path = "crates/ncrs-hermes-ui", version = "0.0.0", features = ["test-support"] }
 # `PanelState::apply_listing`, for the tests of the panel in the app.
 ncrs-files = { path = "crates/ncrs-files", version = "0.0.0", features = ["test-support"] }
 

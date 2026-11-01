@@ -80,3 +80,21 @@ pub fn search_visible_rows(window: Size, filtered: bool, row_height: f32) -> usi
     let rows = ((window.height - CHROME - header) / row_height).floor();
     (rows as isize).max(1) as usize
 }
+
+pub const MENU_ITEM_HEIGHT: f32 = 24.0;
+pub const MENU_PADDING: f32 = 4.0;
+/// The quick-fix menu: wider than the context menu for a target path, with a
+/// two-line header above its entries.
+pub const QUICK_FIX_WIDTH: f32 = 480.0;
+pub const QUICK_FIX_HEADER_HEIGHT: f32 = 44.0;
+
+/// Where a span of `length` starts so it stays within `0..limit`: at `anchor`,
+/// or ending there when it would not fit.
+pub fn place(anchor: f32, length: f32, limit: f32) -> f32 {
+    let start = if anchor + length > limit {
+        anchor - length
+    } else {
+        anchor
+    };
+    start.min(limit - length).max(0.0)
+}

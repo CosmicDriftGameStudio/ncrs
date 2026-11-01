@@ -2708,7 +2708,7 @@ mod review_list_card {
     use super::*;
     use crate::document_preview::{PreviewContent, PreviewImage};
     use crate::messages::{HermesFocus, HermesPage, ReviewListMessage};
-    use crate::review_list::tests::{
+    use crate::review_list::fixtures::{
         default_pattern_list, loaded_list, long_list, nothing_recognised_list, origins_list,
     };
     use crate::review_list::{FormField, ReviewList};
@@ -2867,7 +2867,7 @@ mod review_list_card {
         let mut saved = opened();
         let _ = saved.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Saved {
             generation: 1,
-            result: Ok(crate::rules_page::tests::rule_id(1)),
+            result: Ok(crate::rules_page::fixtures::rule_id(1)),
         })));
         assert!(saved.rules_for_test().is_none());
         assert!(saved.review_list_for_test().is_some());
@@ -2988,11 +2988,11 @@ mod review_list_card {
     #[test]
     fn the_tags_and_the_default_target_match_their_snapshots() {
         matches_snapshot(
-            crate::review_list::tests::tags_list(),
+            crate::review_list::fixtures::tags_list(),
             "review_list_tags_en",
         );
         matches_snapshot(
-            crate::review_list::tests::tags_list(),
+            crate::review_list::fixtures::tags_list(),
             "review_list_tags_de",
         );
     }
@@ -3496,7 +3496,7 @@ pub mod search_filters_card {
         let _inside = runtime.enter();
         let mut app = App::with_search_filters("telekom", |root| {
             let mut filters = filters_for(root, "telekom");
-            let report = crate::saved_queries::tests::stored_queries()[0].id;
+            let report = crate::saved_queries::fixtures::stored_queries()[0].id;
             filters.edit_report(report, &ncrs_index::QuerySpec::default());
             filters
         })
@@ -3589,7 +3589,7 @@ mod saved_queries_card {
 
     use super::*;
     use crate::messages::{HermesPage, SavedQueriesMessage};
-    use crate::saved_queries::tests::{hit, loaded_list, THIS_YEAR};
+    use crate::saved_queries::fixtures::{hit, loaded_list, THIS_YEAR};
     use crate::saved_queries::{Draft, SavedQueries};
 
     fn queries_message(message: SavedQueriesMessage) -> Message {
@@ -3753,7 +3753,7 @@ mod saved_queries_card {
 
     #[test]
     fn a_sidebar_click_opens_the_page_and_closes_the_other() {
-        let mut app = App::with_review_list(crate::review_list::tests::loaded_list());
+        let mut app = App::with_review_list(crate::review_list::fixtures::loaded_list());
         let _ = app.update(Message::HermesPage(HermesPage::SavedQueries));
 
         assert!(app.review_list_for_test().is_none());
@@ -3810,7 +3810,7 @@ mod saved_queries_card {
                 ..ncrs_index::QuerySpec::default()
             },
         });
-        list.loaded(crate::saved_queries::tests::stored_queries());
+        list.loaded(crate::saved_queries::fixtures::stored_queries());
         let (serial, _) = list.begin_run().expect("a spec");
         list.ran(serial, vec![hit("invoice-1.pdf", false)]);
         list
@@ -3832,7 +3832,7 @@ mod saved_queries_card {
     fn editing_in_the_search_binds_the_report_and_opening_does_not() {
         let runtime = tokio::runtime::Runtime::new().expect("a runtime");
         let _inside = runtime.enter();
-        let first = crate::saved_queries::tests::stored_queries()[0].id;
+        let first = crate::saved_queries::fixtures::stored_queries()[0].id;
         for (message, bound) in [
             (SavedQueriesMessage::EditInSearch, Some(first)),
             (SavedQueriesMessage::OpenInSearch, None),
@@ -3876,7 +3876,7 @@ mod tags_card {
     use crate::config::Filing;
     use crate::file_list_tags::TagExceptions;
     use crate::messages::{HermesPage, SettingsFeature, SettingsMessage, TagsMessage};
-    use crate::tags_page::tests::loaded_page;
+    use crate::tags_page::fixtures::loaded_page;
     use crate::tags_page::TagsPage;
     use crate::tags_work::{TagsFailure, TagsLoaded};
 
@@ -4004,7 +4004,7 @@ mod tags_card {
 
     #[test]
     fn a_sidebar_click_opens_the_page_and_closes_the_other() {
-        let mut app = App::with_saved_queries(crate::saved_queries::tests::loaded_list());
+        let mut app = App::with_saved_queries(crate::saved_queries::fixtures::loaded_list());
         let _ = app.update(Message::HermesPage(HermesPage::Tags));
         assert!(app.saved_queries_for_test().is_none());
         assert!(app.tags_for_test().is_some());
@@ -4119,7 +4119,7 @@ mod rules_card {
     use super::*;
     use crate::condition_editor::ConditionEdit;
     use crate::messages::{RuleFormMessage, RulesMessage};
-    use crate::rules_page::tests::rule_id;
+    use crate::rules_page::fixtures::rule_id;
     use crate::rules_page::RulesPage;
     use crate::rules_work::{ListedRule, RulesLoad};
 
@@ -4610,7 +4610,7 @@ mod rule_suggestions_card {
     use super::*;
     use crate::messages::{RuleFormMessage, RuleSuggestionsMessage, RulesMessage};
     use crate::rule_form::RuleFormTarget;
-    use crate::rule_suggestions::tests::{loaded_view, rule_ids, suggestion};
+    use crate::rule_suggestions::fixtures::{loaded_view, rule_ids, suggestion};
     use crate::rule_suggestions::{Problem, RuleSuggestions};
     use crate::suggestion_work::INDEX_NOT_OPEN;
 
@@ -4852,7 +4852,7 @@ mod rule_suggestions_card {
 
         let _ = app.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Saved {
             generation: 1,
-            result: Ok(crate::rules_page::tests::rule_id(1)),
+            result: Ok(crate::rules_page::fixtures::rule_id(1)),
         })));
 
         assert!(app.rules_for_test().is_none());
@@ -4980,7 +4980,7 @@ mod rule_suggestions_card {
 mod reorganisation_plan_card {
     use super::*;
     use crate::messages::ReorganisationPlanMessage;
-    use crate::reorganisation_plan::tests::loaded_view;
+    use crate::reorganisation_plan::fixtures::loaded_view;
     use crate::reorganisation_plan::{Group, Line, ReorganisationView};
     use crate::reorganisation_work::fixtures::{archive, sample_items};
     use crate::suggestion_work::INDEX_NOT_OPEN;
@@ -5242,7 +5242,7 @@ mod reorganisation_plan_card {
     #[test]
     fn the_link_of_a_confirmed_rule_ends_on_the_rules_page_with_that_rule_selected() {
         use crate::messages::RulesMessage;
-        use crate::rules_page::tests::{listed, rule_id};
+        use crate::rules_page::fixtures::{listed, rule_id};
         use crate::rules_work::RulesLoad;
         let (mut app, rule) = plan_app_on("Insurance/2024/2024-07-01_invoice.pdf");
 
@@ -5263,7 +5263,7 @@ mod reorganisation_plan_card {
     #[test]
     fn the_link_of_an_unconfirmed_rule_ends_on_the_suggestions_page_with_it_selected() {
         use crate::messages::RuleSuggestionsMessage;
-        use crate::rule_suggestions::tests::{rule_ids, suggestion};
+        use crate::rule_suggestions::fixtures::{rule_ids, suggestion};
         let (mut app, rule) = plan_app_on("Insurance/2024/2024-08-01_invoice.pdf");
         let [first, second, third] = rule_ids();
 

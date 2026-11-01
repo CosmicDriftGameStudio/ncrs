@@ -4,12 +4,13 @@ use iced::{Point, Size};
 
 use super::theme::{size, spacing};
 
+pub use ncrs_ui_kit::layout::{
+    place, CHROME, COLUMN_HEADER_HEIGHT, INITIAL_WINDOW_SIZE, MENU_ITEM_HEIGHT, MENU_PADDING,
+    ROW_HEIGHT, TAG_COLUMN_WIDTH,
+};
 #[cfg(test)]
 pub use ncrs_ui_kit::layout::{
     search_visible_rows, FKEYBAR_HEIGHT, HIT_LIST_ROW_HEIGHT, SEARCH_CONTENT_ROW_HEIGHT,
-};
-pub use ncrs_ui_kit::layout::{
-    CHROME, COLUMN_HEADER_HEIGHT, INITIAL_WINDOW_SIZE, ROW_HEIGHT, TAG_COLUMN_WIDTH,
 };
 
 pub const STATUSBAR_HEIGHT: f32 = size::STATUS_BAR;
@@ -22,13 +23,7 @@ pub const TRAFFIC_LIGHTS_INSET: f32 = 78.0;
 pub const MENU_WIDTH: f32 = 300.0;
 /// The Hermes submenu has labels with a note and a key.
 pub const MENU_SUB_WIDTH: f32 = 340.0;
-pub const MENU_ITEM_HEIGHT: f32 = 24.0;
 pub const MENU_SEPARATOR_HEIGHT: f32 = 7.0;
-pub const MENU_PADDING: f32 = 4.0;
-/// The quick-fix menu: wider than the context menu for a target path, with a
-/// two-line header above its entries.
-pub const QUICK_FIX_WIDTH: f32 = 480.0;
-pub const QUICK_FIX_HEADER_HEIGHT: f32 = 44.0;
 
 /// Number of file rows that fit into a panel for a given window size.
 pub fn visible_rows(window: Size) -> usize {
