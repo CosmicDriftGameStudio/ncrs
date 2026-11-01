@@ -31,7 +31,7 @@ use crate::config::{
 use crate::context_menu::{ContextAction, ContextMenu, HermesAction, HermesMenu, InputState};
 use crate::dialog::{Prompt, PromptKind};
 use crate::execute;
-use crate::file_list_tags::{FileListTags, TagExceptions, TagGroup};
+use crate::file_list_tags::{FileListTags, TagExceptions};
 use crate::filing::{
     DocumentFinder, FilingMessage, FilingModule, LocationStatus, Phase, Work, WorkOutcome,
 };
@@ -81,7 +81,6 @@ use crate::ocr_models::OcrModelsCard;
 use crate::ocr_models::{download_models, DownloadError};
 use crate::open_vsx::{self, ExtensionId, FetchError, FetchedExtension};
 use crate::palette::{Palette, ThemePreset};
-use crate::query_work::{self, QueryAccess};
 #[cfg(test)]
 use crate::quick_fix::QuickFix;
 use crate::quick_open::{
@@ -97,17 +96,18 @@ use crate::review_list::ReviewList;
 use crate::review_work::AcceptSummary;
 #[cfg(test)]
 use crate::review_work::ReviewItem;
-use crate::rule_form::{RuleForm, RuleSave, TRY_DEBOUNCE};
+#[cfg(test)]
 use crate::rule_suggestions::RuleSuggestions;
 use crate::rules_page::RulesPage;
-use crate::rules_work::{RuleChange, RulesAccess};
-use crate::saved_queries::{Draft, SavedQueries};
+use crate::saved_queries::Draft;
+#[cfg(test)]
+use crate::saved_queries::SavedQueries;
 use crate::search_filters::SearchFilters;
 use crate::search_view::{stays_on_file_system, SearchField, SearchView};
 use crate::session_state::{self, PanelRecord, SessionState, WindowSize, WriteOrder};
-use crate::suggestion_work::{SuggestedRule, SuggestionAccess, INDEX_NOT_OPEN};
-use crate::tags_page::{TagRow, TagsPage};
-use crate::tags_work::{TagsAccess, TagsFailure, TagsLoaded};
+use crate::suggestion_work::INDEX_NOT_OPEN;
+#[cfg(test)]
+use crate::tags_page::TagsPage;
 #[cfg(test)]
 use crate::theme_fetch::{Fetched, Stage, ThemeFetch};
 use crate::theme_fetch::{Installed, Pick};
@@ -150,7 +150,7 @@ use crate::ui::{conflict, dialog, fkeys, layout, panel, statusbar, theme, PanelS
 use ncrs_files::{PanelMessage, Panels};
 pub use ncrs_i18n::fill_template;
 use ncrs_index::{
-    IncludeOutcome, KeyStore, KeyringKeyStore, KindSkip, Kinds, QuerySpec, RuleId, SavedQueryId,
+    IncludeOutcome, KeyStore, KeyringKeyStore, KindSkip, Kinds, QuerySpec, SavedQueryId,
 };
 use ncrs_intake::LocationMode;
 use ncrs_ops::{TransferAction, TrashAction};
@@ -1224,7 +1224,7 @@ pub struct App {
     kinds: Kinds,
     /// The settings tab, while it is open.
     settings: Settings,
-    /// The review list, the reorganisation plan and the quick-fix menu.
+    /// The pages of Hermes that its crate owns and the quick-fix menu.
     hermes: ncrs_hermes_ui::Hermes,
     /// The preset and the VS Code theme file the config names, as last loaded
     /// or written.
@@ -1262,20 +1262,8 @@ pub struct App {
     /// Where a pasted picture or text is written before it is copied into the
     /// panel. Kept until the next paste so the running copy keeps its source.
     paste_staging: Option<tempfile::TempDir>,
-    rule_suggestions: Option<RuleSuggestions>,
-    /// Tells the answer of the work that is current from a stale one.
-    rule_suggestions_generation: u64,
-    rules: Option<RulesPage>,
-    /// Tells the answer of the work that is current from a stale one.
-    rules_generation: u64,
     /// The overview, the first page of the Hermes card.
     hermes_overview: Option<OverviewState>,
-    saved_queries: Option<SavedQueries>,
-    /// Tells the answer of the work that is current from a stale one.
-    saved_queries_generation: u64,
-    tags: Option<TagsPage>,
-    /// Tells the answer of the work that is current from a stale one.
-    tags_generation: u64,
     /// The tags the file list shows against their group, from the index.
     tag_exceptions: TagExceptions,
     /// Whether the arrow keys act on the sidebar or the page of the Hermes card.
@@ -3045,10 +3033,10 @@ impl App {
         if let Some(list) = &mut self.hermes.review_list {
             list.set_kinds(kinds.clone());
         }
-        if let Some(view) = &mut self.saved_queries {
+        if let Some(view) = &mut self.hermes.saved_queries {
             view.set_kinds(kinds.clone());
         }
-        if let Some(page) = &mut self.tags {
+        if let Some(page) = &mut self.hermes.tags {
             page.set_kinds(kinds);
         }
         self.refresh_function_keys();
@@ -3299,15 +3287,7 @@ impl App {
             },
             pending_paste: None,
             paste_staging: None,
-            rule_suggestions: None,
-            rule_suggestions_generation: 0,
-            rules: None,
-            rules_generation: 0,
             hermes_overview: None,
-            saved_queries: None,
-            saved_queries_generation: 0,
-            tags: None,
-            tags_generation: 0,
             tag_exceptions: TagExceptions::new(),
             hermes_focus: HermesFocus::default(),
             return_to_hermes_overview: false,
@@ -4469,11 +4449,11 @@ impl App {
             .as_ref()
             .is_some_and(|shortcuts| !shortcuts.is_recording());
         input.theme_fetch = self.settings.theme_fetch.is_some();
-        input.rule_suggestions = self.rule_suggestions.is_some();
-        input.rules = self.rules.is_some();
+        input.rule_suggestions = self.hermes.rule_suggestions.is_some();
+        input.rules = self.hermes.rules.is_some();
         input.review_list = self.hermes.review_list.is_some();
-        input.saved_queries = self.saved_queries.is_some();
-        input.tags = self.tags.is_some();
+        input.saved_queries = self.hermes.saved_queries.is_some();
+        input.tags = self.hermes.tags.is_some();
         input.hermes_sidebar = state.hermes_sidebar;
         input.transfer_dialog = self.transfer_dialog.is_some();
         input.reorganisation_plan = self.hermes.reorganisation.is_some();
@@ -5041,10 +5021,15 @@ impl App {
             .as_ref()
             .is_some_and(FilingModule::card_can_be_dismissed);
         let theme_fetch = self.settings.theme_fetch.is_some();
-        let rule_suggestions = self.rule_suggestions.is_some();
-        let rules = self.rules.is_some();
-        let rules_form = self.rules.as_ref().is_some_and(RulesPage::is_editing);
+        let rule_suggestions = self.hermes.rule_suggestions.is_some();
+        let rules = self.hermes.rules.is_some();
+        let rules_form = self
+            .hermes
+            .rules
+            .as_ref()
+            .is_some_and(RulesPage::is_editing);
         let rules_confirming_delete = self
+            .hermes
             .rules
             .as_ref()
             .is_some_and(RulesPage::is_confirming_delete);
@@ -5059,8 +5044,8 @@ impl App {
             .review_list
             .as_ref()
             .is_some_and(|view| view.replan().is_some());
-        let saved_queries = self.saved_queries.is_some();
-        let tags = self.tags.is_some();
+        let saved_queries = self.hermes.saved_queries.is_some();
+        let tags = self.hermes.tags.is_some();
         let hermes_sidebar =
             self.hermes_focus == HermesFocus::Sidebar && self.open_hermes_page().is_some();
         let reorganisation_plan = self.hermes.reorganisation.is_some();
@@ -5956,13 +5941,6 @@ impl App {
         self.ablage_tab_is_open() || self.overlay_apart_from_overview_is_open()
     }
 
-    /// The same, without the pages and the menu of the Hermes state, which the
-    /// update of those reads itself.
-    fn overlay_apart_from_hermes_is_open(&self) -> bool {
-        self.ablage_tab_apart_from_hermes_is_open()
-            || self.overlay_apart_from_overview_and_hermes_is_open()
-    }
-
     /// The page of filing that stands in for the panels: the overview or the
     /// status.
     fn ablage_tab_is_open(&self) -> bool {
@@ -5970,22 +5948,13 @@ impl App {
     }
 
     fn ablage_tab_apart_from_hermes_is_open(&self) -> bool {
-        self.hermes_overview.is_some()
-            || self.filing_status.page_open()
-            || self.rule_suggestions.is_some()
-            || self.rules.is_some()
-            || self.saved_queries.is_some()
-            || self.tags.is_some()
+        self.hermes_overview.is_some() || self.filing_status.page_open()
     }
 
     /// Closes the page of filing without a word, for a page that replaces it.
     fn close_ablage_tab(&mut self) -> Task<Message> {
         self.filing_status.close_page();
-        self.rule_suggestions = None;
         self.hermes.close_pages();
-        self.rules = None;
-        self.saved_queries = None;
-        self.tags = None;
         self.leave_hermes_overview()
     }
 
@@ -9315,7 +9284,7 @@ impl App {
     ) -> Task<Message> {
         let closed = self.close_search();
         let opened = self.open_saved_queries();
-        if let Some(view) = self.saved_queries.as_mut() {
+        if let Some(view) = self.hermes.saved_queries.as_mut() {
             if let Some(draft) = unsaved {
                 view.prefill(draft);
             }
@@ -9329,7 +9298,7 @@ impl App {
     /// The search opened on `spec`, in place of the reports page. With a
     /// `report` the search changes that one.
     fn open_search_for(&mut self, spec: &QuerySpec, report: Option<SavedQueryId>) -> Task<Message> {
-        self.saved_queries = None;
+        self.hermes.saved_queries = None;
         let opened = self.open_search();
         if let Some(view) = self.search.view.as_mut() {
             view.query = spec.full_text.clone().unwrap_or_default();
@@ -9509,487 +9478,6 @@ impl App {
         Task::batch([focus, task])
     }
 
-    fn update_rule_suggestions(&mut self, message: RuleSuggestionsMessage) -> Task<Message> {
-        match message {
-            RuleSuggestionsMessage::Open => self.open_rule_suggestions(),
-            RuleSuggestionsMessage::Close => self.close_rule_suggestions(),
-            RuleSuggestionsMessage::Reanalyse => {
-                let Some(view) = self.rule_suggestions.as_mut() else {
-                    return Task::none();
-                };
-                if view.is_busy() {
-                    return Task::none();
-                }
-                view.begin_analysis();
-                self.run_suggestion_work(SuggestionAccess::analyse)
-            }
-            RuleSuggestionsMessage::Loaded { generation, result } => {
-                if generation != self.rule_suggestions_generation {
-                    return Task::none();
-                }
-                let Some(view) = self.rule_suggestions.as_mut() else {
-                    return Task::none();
-                };
-                match result {
-                    Ok(rows) => view.loaded(rows),
-                    Err(detail) => view.failed(detail),
-                }
-                self.look_up_suggestion_matches()
-            }
-            RuleSuggestionsMessage::Move(delta) => {
-                if let Some(view) = self.rule_suggestions.as_mut() {
-                    view.move_cursor(delta);
-                }
-                self.look_up_suggestion_matches()
-            }
-            RuleSuggestionsMessage::Scrolled(delta) => {
-                if let Some(view) = self.rule_suggestions.as_mut() {
-                    view.scroll(delta);
-                }
-                self.look_up_suggestion_matches()
-            }
-            RuleSuggestionsMessage::Select(index) => {
-                if let Some(view) = self.rule_suggestions.as_mut() {
-                    view.select(index);
-                }
-                self.look_up_suggestion_matches()
-            }
-            RuleSuggestionsMessage::Edit => {
-                let Some(view) = self.rule_suggestions.as_ref() else {
-                    return Task::none();
-                };
-                let Some(rule) = view.rule_to_edit() else {
-                    return Task::none();
-                };
-                self.open_rule_form(
-                    RuleForm::from_suggestion(&rule),
-                    Some(HermesPage::RuleSuggestions),
-                )
-            }
-            RuleSuggestionsMessage::Confirm => {
-                let Some((id, spec)) = self
-                    .rule_suggestions
-                    .as_mut()
-                    .and_then(RuleSuggestions::begin_confirm)
-                else {
-                    return Task::none();
-                };
-                self.run_suggestion_work(move |access| access.confirm(id, &spec))
-            }
-            RuleSuggestionsMessage::Discard => {
-                let Some(id) = self
-                    .rule_suggestions
-                    .as_mut()
-                    .and_then(RuleSuggestions::begin_discard)
-                else {
-                    return Task::none();
-                };
-                self.run_suggestion_work(move |access| access.discard(id))
-            }
-            RuleSuggestionsMessage::MatchesFound { id, result } => {
-                if let (Some(view), Ok(paths)) = (self.rule_suggestions.as_mut(), result) {
-                    view.matches_found(id, paths);
-                }
-                Task::none()
-            }
-        }
-    }
-
-    /// The analysis starts with the view; the list appears when it is done.
-    fn update_rules(&mut self, message: RulesMessage) -> Task<Message> {
-        match message {
-            RulesMessage::Open => self.open_rules(),
-            RulesMessage::Close => self.close_rules(),
-            RulesMessage::Loaded { generation, result } => {
-                if generation != self.rules_generation {
-                    return Task::none();
-                }
-                if let Some(view) = self.rules.as_mut() {
-                    match result {
-                        Ok(load) => view.loaded(load),
-                        Err(detail) => view.failed(detail),
-                    }
-                }
-                self.schedule_rule_try()
-            }
-            RulesMessage::Move(delta) => {
-                if let Some(view) = self.rules.as_mut() {
-                    view.move_cursor(delta);
-                }
-                self.schedule_rule_try()
-            }
-            RulesMessage::Scrolled(delta) => {
-                if let Some(view) = self.rules.as_mut() {
-                    view.scroll(delta);
-                }
-                self.schedule_rule_try()
-            }
-            RulesMessage::Select(index) => {
-                if let Some(view) = self.rules.as_mut() {
-                    view.select(index);
-                }
-                Task::batch([release_focus(), self.schedule_rule_try()])
-            }
-            RulesMessage::ToggleTryList => {
-                if let Some(view) = self.rules.as_mut() {
-                    view.toggle_try_list();
-                }
-                Task::none()
-            }
-            RulesMessage::Toggle => {
-                let change = self
-                    .rules
-                    .as_mut()
-                    .and_then(|view| view.begin_toggle(view.cursor()));
-                self.run_rule_change(change)
-            }
-            RulesMessage::ToggleAt(index) => {
-                let change = self
-                    .rules
-                    .as_mut()
-                    .and_then(|view| view.begin_toggle(index));
-                self.run_rule_change(change)
-            }
-            RulesMessage::Reorder(delta) => {
-                let change = self.rules.as_mut().and_then(|view| view.begin_move(delta));
-                self.run_rule_change(change)
-            }
-            RulesMessage::AskDelete => {
-                if let Some(view) = self.rules.as_mut() {
-                    view.ask_delete();
-                }
-                Task::none()
-            }
-            RulesMessage::CancelDelete => {
-                if let Some(view) = self.rules.as_mut() {
-                    view.cancel_delete();
-                }
-                Task::none()
-            }
-            RulesMessage::ConfirmDelete => {
-                let change = self.rules.as_mut().and_then(RulesPage::begin_delete);
-                self.run_rule_change(change)
-            }
-            RulesMessage::Changed { generation, result } => {
-                if generation != self.rules_generation {
-                    return Task::none();
-                }
-                match result {
-                    Ok(()) => self.run_rules_load(),
-                    Err(detail) => {
-                        if let Some(view) = self.rules.as_mut() {
-                            view.failed(detail);
-                        }
-                        Task::none()
-                    }
-                }
-            }
-            RulesMessage::New => {
-                if let Some(view) = self.rules.as_mut() {
-                    view.begin_new();
-                }
-                Task::batch([self.focus_rule_form(), self.schedule_rule_try()])
-            }
-            RulesMessage::Edit => {
-                if let Some(view) = self.rules.as_mut() {
-                    view.begin_edit();
-                }
-                Task::batch([self.focus_rule_form(), self.schedule_rule_try()])
-            }
-            RulesMessage::Form(form_message) => self.update_rule_form(form_message),
-            RulesMessage::TryElapsed(generation) => self.run_rule_try(generation),
-            RulesMessage::Tried { generation, result } => {
-                if let Some(form) = self.rules.as_mut().and_then(RulesPage::form_mut) {
-                    form.try_answered(generation, result);
-                }
-                Task::none()
-            }
-        }
-    }
-
-    fn focus_rule_form(&self) -> Task<Message> {
-        if self
-            .rules
-            .as_ref()
-            .is_some_and(|view| view.form().is_some())
-        {
-            operation::focus(crate::ui::rules::NAME_FIELD_ID)
-        } else {
-            Task::none()
-        }
-    }
-
-    /// Closes the form without saving, if there is one, and goes back to the
-    /// page it was opened from.
-    fn cancel_rule_form(&mut self) -> Option<Task<Message>> {
-        let view = self.rules.as_mut()?;
-        if !view.cancel_form() {
-            return None;
-        }
-        Some(match view.take_return_to() {
-            Some(page) => self.go_to_hermes_page(page),
-            None => Task::batch([release_focus(), self.schedule_rule_try()]),
-        })
-    }
-
-    /// Shows the Rules page with `form` open. From another Hermes page, or
-    /// from the panels, the page loads as the sidebar would load it.
-    fn open_rule_form(&mut self, form: RuleForm, return_to: Option<HermesPage>) -> Task<Message> {
-        let opened = if self.open_hermes_page().is_some() {
-            self.go_to_hermes_page(HermesPage::Rules)
-        } else {
-            self.open_rules()
-        };
-        let Some(view) = self.rules.as_mut() else {
-            return opened;
-        };
-        view.open_form(form, return_to);
-        Task::batch([opened, self.focus_rule_form(), self.schedule_rule_try()])
-    }
-
-    /// The form changed: its try waits for the form to rest.
-    fn schedule_rule_try(&mut self) -> Task<Message> {
-        let Some(form) = self.rules.as_mut().and_then(RulesPage::form_mut) else {
-            return Task::none();
-        };
-        let generation = form.restart_try();
-        Task::perform(
-            async { tokio::time::sleep(TRY_DEBOUNCE).await },
-            move |()| Message::Rules(RulesMessage::TryElapsed(generation)),
-        )
-    }
-
-    fn run_rule_try(&mut self, generation: u64) -> Task<Message> {
-        let Some(request) = self
-            .rules
-            .as_mut()
-            .and_then(RulesPage::form_mut)
-            .and_then(|form| form.try_request(generation))
-        else {
-            return Task::none();
-        };
-        let Some(access) = self.filing.as_ref().and_then(FilingModule::rules_access) else {
-            if let Some(form) = self.rules.as_mut().and_then(RulesPage::form_mut) {
-                form.try_answered(generation, Err(INDEX_NOT_OPEN.to_owned()));
-            }
-            return Task::none();
-        };
-        Task::perform(
-            tokio::task::spawn_blocking(move || access.try_rule(&request)),
-            move |joined| {
-                let result = joined.unwrap_or_else(|join| Err(join.to_string()));
-                Message::Rules(RulesMessage::Tried { generation, result })
-            },
-        )
-    }
-
-    fn update_rule_form(&mut self, message: RuleFormMessage) -> Task<Message> {
-        let Some(view) = self.rules.as_mut() else {
-            return Task::none();
-        };
-        match message {
-            RuleFormMessage::Save => {
-                let save = view.begin_save();
-                self.run_rule_save(save)
-            }
-            RuleFormMessage::Cancel => self.cancel_rule_form().unwrap_or_else(Task::none),
-            RuleFormMessage::Saved { generation, result } => {
-                if generation != self.rules_generation {
-                    return Task::none();
-                }
-                match result {
-                    Ok(id) => match view.saved(id) {
-                        Some(page) => self.go_to_hermes_page(page),
-                        None => self.run_rules_load(),
-                    },
-                    Err(detail) => {
-                        view.save_failed(detail);
-                        Task::none()
-                    }
-                }
-            }
-            RuleFormMessage::OpenTagInput => {
-                if let Some(form) = view.form_mut() {
-                    form.update(RuleFormMessage::OpenTagInput);
-                }
-                view.start_editing();
-                operation::focus(crate::ui::rules::TAG_FIELD_ID)
-            }
-            field_change => {
-                if let Some(form) = view.form_mut() {
-                    form.update(field_change);
-                }
-                view.start_editing();
-                self.schedule_rule_try()
-            }
-        }
-    }
-
-    fn open_rules(&mut self) -> Task<Message> {
-        if self.rules.is_some() || self.blocking_overlay_is_open() {
-            return Task::none();
-        }
-        self.context_menu = None;
-        self.rules_generation = self.rules_generation.wrapping_add(1);
-        self.rules = Some(RulesPage::new().with_kinds(Arc::clone(&self.kinds.catalog)));
-        self.run_rules_load()
-    }
-
-    /// Escape backs out of the delete question, the list of the try, a form
-    /// that is not listed yet and the fields, then leaves the page.
-    fn close_rules(&mut self) -> Task<Message> {
-        let Some(view) = self.rules.as_mut() else {
-            return Task::none();
-        };
-        if view.cancel_delete() {
-            return Task::none();
-        }
-        if view.is_try_list_open() {
-            view.toggle_try_list();
-            return Task::none();
-        }
-        if view.has_unlisted_form() {
-            return self.cancel_rule_form().unwrap_or_else(Task::none);
-        }
-        if view.stop_editing() {
-            return release_focus();
-        }
-        self.rules = None;
-        release_focus()
-    }
-
-    fn rules_access(&mut self) -> Option<RulesAccess> {
-        let access = self.filing.as_ref().and_then(FilingModule::rules_access);
-        if access.is_none() {
-            if let Some(view) = self.rules.as_mut() {
-                view.failed(INDEX_NOT_OPEN.to_owned());
-            }
-        }
-        access
-    }
-
-    fn run_rules_load(&mut self) -> Task<Message> {
-        let generation = self.rules_generation;
-        let Some(access) = self.rules_access() else {
-            return Task::none();
-        };
-        Task::perform(
-            tokio::task::spawn_blocking(move || access.load()),
-            move |joined| {
-                let result = joined.unwrap_or_else(|join| Err(join.to_string()));
-                Message::Rules(RulesMessage::Loaded { generation, result })
-            },
-        )
-    }
-
-    fn run_rule_save(&mut self, requested: Option<RuleSave>) -> Task<Message> {
-        let Some(save) = requested else {
-            return Task::none();
-        };
-        let generation = self.rules_generation;
-        let Some(access) = self.rules_access() else {
-            if let Some(form) = self.rules.as_mut().and_then(RulesPage::form_mut) {
-                form.saving = false;
-            }
-            return Task::none();
-        };
-        Task::perform(
-            tokio::task::spawn_blocking(move || access.save(save)),
-            move |joined| {
-                let result = joined.unwrap_or_else(|join| Err(join.to_string()));
-                Message::Rules(RulesMessage::Form(RuleFormMessage::Saved {
-                    generation,
-                    result,
-                }))
-            },
-        )
-    }
-
-    fn run_rule_change(&mut self, requested: Option<RuleChange>) -> Task<Message> {
-        let Some(change) = requested else {
-            return Task::none();
-        };
-        let generation = self.rules_generation;
-        let Some(access) = self.rules_access() else {
-            return Task::none();
-        };
-        Task::perform(
-            tokio::task::spawn_blocking(move || access.apply(change)),
-            move |joined| {
-                let result = joined.unwrap_or_else(|join| Err(join.to_string()));
-                Message::Rules(RulesMessage::Changed { generation, result })
-            },
-        )
-    }
-
-    fn open_rule_suggestions(&mut self) -> Task<Message> {
-        if self.rule_suggestions.is_some() || self.blocking_overlay_is_open() {
-            return Task::none();
-        }
-        self.context_menu = None;
-        self.rule_suggestions_generation = self.rule_suggestions_generation.wrapping_add(1);
-        self.rule_suggestions = Some(RuleSuggestions::new());
-        self.run_suggestion_work(SuggestionAccess::analyse)
-    }
-
-    fn close_rule_suggestions(&mut self) -> Task<Message> {
-        if self.rule_suggestions.take().is_none() {
-            return Task::none();
-        }
-        release_focus()
-    }
-
-    /// Runs `work` on a blocking thread: the index is shared with the intake,
-    /// which may hold it while it hashes a large file.
-    fn run_suggestion_work(
-        &mut self,
-        work: impl FnOnce(&SuggestionAccess) -> Result<Vec<SuggestedRule>, String> + Send + 'static,
-    ) -> Task<Message> {
-        let generation = self.rule_suggestions_generation;
-        let Some(access) = self
-            .filing
-            .as_ref()
-            .and_then(FilingModule::suggestion_access)
-        else {
-            if let Some(view) = self.rule_suggestions.as_mut() {
-                view.failed(INDEX_NOT_OPEN.to_owned());
-            }
-            return Task::none();
-        };
-        Task::perform(
-            tokio::task::spawn_blocking(move || work(&access)),
-            move |joined| {
-                let result = joined.unwrap_or_else(|join| Err(join.to_string()));
-                Message::RuleSuggestions(RuleSuggestionsMessage::Loaded { generation, result })
-            },
-        )
-    }
-
-    /// Looks up the documents of the selected suggestion, once per selection.
-    fn look_up_suggestion_matches(&mut self) -> Task<Message> {
-        let Some((id, condition)) = self
-            .rule_suggestions
-            .as_mut()
-            .and_then(RuleSuggestions::matches_wanted)
-        else {
-            return Task::none();
-        };
-        let Some(access) = self
-            .filing
-            .as_ref()
-            .and_then(FilingModule::suggestion_access)
-        else {
-            return Task::none();
-        };
-        Task::perform(
-            tokio::task::spawn_blocking(move || access.matching_documents(&condition)),
-            move |joined| {
-                let result = joined.unwrap_or_else(|join| Err(join.to_string()));
-                Message::RuleSuggestions(RuleSuggestionsMessage::MatchesFound { id, result })
-            },
-        )
-    }
-
     /// Plans the documents below `folder` again, if it lies in an inbox
     /// location. Anywhere else nothing happens but the message.
     fn reprocess_folder(&mut self, folder: PathBuf) -> Task<Message> {
@@ -10131,494 +9619,6 @@ impl App {
         }
     }
 
-    fn update_saved_queries(&mut self, message: SavedQueriesMessage) -> Task<Message> {
-        match message {
-            SavedQueriesMessage::Open => self.open_saved_queries(),
-            SavedQueriesMessage::Close => self.close_saved_queries(),
-            SavedQueriesMessage::Loaded { generation, result } => {
-                if generation != self.saved_queries_generation {
-                    return Task::none();
-                }
-                let Some(view) = self.saved_queries.as_mut() else {
-                    return Task::none();
-                };
-                match result {
-                    Ok(rows) => {
-                        let prefilled = view.is_prefilled();
-                        view.loaded(rows);
-                        let focus = if prefilled {
-                            operation::focus(saved_queries_ui::NAME_ID)
-                        } else {
-                            Task::none()
-                        };
-                        Task::batch([focus, self.run_selected_query(), self.run_query_counts()])
-                    }
-                    Err(detail) => {
-                        view.failed(detail);
-                        Task::none()
-                    }
-                }
-            }
-            SavedQueriesMessage::Counted { generation, result } => {
-                if generation == self.saved_queries_generation {
-                    if let Some(view) = self.saved_queries.as_mut() {
-                        match result {
-                            Ok(counts) => view.counted(counts),
-                            Err(detail) => view.failed(detail),
-                        }
-                    }
-                }
-                Task::none()
-            }
-            SavedQueriesMessage::Move(delta) => {
-                let Some(view) = self.saved_queries.as_mut() else {
-                    return Task::none();
-                };
-                let before = view.cursor();
-                view.move_cursor(delta);
-                if view.cursor() == before {
-                    return Task::none();
-                }
-                self.run_selected_query()
-            }
-            SavedQueriesMessage::Scrolled(delta) => {
-                let Some(view) = self.saved_queries.as_mut() else {
-                    return Task::none();
-                };
-                let before = view.cursor();
-                view.scroll(delta);
-                if view.cursor() == before {
-                    return Task::none();
-                }
-                self.run_selected_query()
-            }
-            SavedQueriesMessage::Select(index) => {
-                let Some(view) = self.saved_queries.as_mut() else {
-                    return Task::none();
-                };
-                let before = view.cursor();
-                view.select(index);
-                if view.cursor() == before {
-                    return Task::none();
-                }
-                self.run_selected_query()
-            }
-            SavedQueriesMessage::NewSearch(spec) => self.open_search_for(&spec, None),
-            SavedQueriesMessage::EditInSearch => {
-                let Some(view) = self.saved_queries.as_ref() else {
-                    return Task::none();
-                };
-                let Some(spec) = view.selected_spec().cloned() else {
-                    return Task::none();
-                };
-                let report = view.selected().map(|query| query.id);
-                self.open_search_for(&spec, report)
-            }
-            SavedQueriesMessage::OpenInSearch => {
-                let Some(spec) = self
-                    .saved_queries
-                    .as_ref()
-                    .and_then(|view| view.selected_spec().cloned())
-                else {
-                    return Task::none();
-                };
-                self.open_search_for(&spec, None)
-            }
-            SavedQueriesMessage::NameChanged(name) => {
-                if let Some(view) = self.saved_queries.as_mut() {
-                    view.set_name(name);
-                }
-                Task::none()
-            }
-            SavedQueriesMessage::Confirm => {
-                let Some(view) = self.saved_queries.as_ref() else {
-                    return Task::none();
-                };
-                let next = if view.export_step().is_some() {
-                    SavedQueriesMessage::Export
-                } else if view.is_confirming_delete() {
-                    SavedQueriesMessage::ConfirmDelete
-                } else if view.unsaved().is_some() || view.name_is_changed() {
-                    SavedQueriesMessage::Save
-                } else {
-                    SavedQueriesMessage::StartExport
-                };
-                self.update_saved_queries(next)
-            }
-            SavedQueriesMessage::Save => {
-                let Some(request) = self
-                    .saved_queries
-                    .as_mut()
-                    .and_then(SavedQueries::begin_save)
-                else {
-                    return Task::none();
-                };
-                let generation = self.saved_queries_generation;
-                let Some(access) = self.query_access() else {
-                    return Task::none();
-                };
-                Task::perform(
-                    tokio::task::spawn_blocking(move || {
-                        access.save(request.id, &request.name, &request.spec)
-                    }),
-                    move |joined| {
-                        let result = joined.unwrap_or_else(|join| Err(join.to_string()));
-                        Message::SavedQueries(SavedQueriesMessage::Saved { generation, result })
-                    },
-                )
-            }
-            SavedQueriesMessage::Saved { generation, result } => {
-                if generation != self.saved_queries_generation {
-                    return Task::none();
-                }
-                let Some(view) = self.saved_queries.as_mut() else {
-                    return Task::none();
-                };
-                match result {
-                    Ok(id) => view.saved(id),
-                    Err(detail) => {
-                        view.failed(detail);
-                        return Task::none();
-                    }
-                }
-                self.run_query_load()
-            }
-            SavedQueriesMessage::AskDelete => {
-                if let Some(view) = self.saved_queries.as_mut() {
-                    view.ask_delete();
-                }
-                Task::none()
-            }
-            SavedQueriesMessage::CancelStep => {
-                if let Some(view) = self.saved_queries.as_mut() {
-                    view.cancel_step();
-                }
-                Task::none()
-            }
-            SavedQueriesMessage::ConfirmDelete => {
-                let Some(id) = self
-                    .saved_queries
-                    .as_mut()
-                    .and_then(SavedQueries::begin_delete)
-                else {
-                    return Task::none();
-                };
-                let generation = self.saved_queries_generation;
-                let Some(access) = self.query_access() else {
-                    return Task::none();
-                };
-                Task::perform(
-                    tokio::task::spawn_blocking(move || access.delete(id).map(|_| id)),
-                    move |joined| {
-                        let result = joined.unwrap_or_else(|join| Err(join.to_string()));
-                        Message::SavedQueries(SavedQueriesMessage::Deleted { generation, result })
-                    },
-                )
-            }
-            SavedQueriesMessage::Deleted { generation, result } => {
-                if generation != self.saved_queries_generation {
-                    return Task::none();
-                }
-                let Some(view) = self.saved_queries.as_mut() else {
-                    return Task::none();
-                };
-                match result {
-                    Ok(id) => view.deleted(id),
-                    Err(detail) => {
-                        view.failed(detail);
-                        return Task::none();
-                    }
-                }
-                self.run_query_load()
-            }
-            SavedQueriesMessage::Ran {
-                generation,
-                serial,
-                result,
-            } => {
-                if generation == self.saved_queries_generation {
-                    if let Some(view) = self.saved_queries.as_mut() {
-                        match result {
-                            Ok(hits) => view.ran(serial, hits),
-                            Err(detail) => view.failed(detail),
-                        }
-                    }
-                }
-                Task::none()
-            }
-            SavedQueriesMessage::ToggleMissing => {
-                if let Some(view) = self.saved_queries.as_mut() {
-                    view.toggle_missing();
-                }
-                Task::none()
-            }
-            SavedQueriesMessage::StartExport => {
-                // The other panel's folder is where files are usually wanted.
-                let folder = self.panel(self.panels.active.other()).path.clone();
-                if let Some(view) = self.saved_queries.as_mut() {
-                    view.start_export(folder);
-                }
-                Task::none()
-            }
-            SavedQueriesMessage::PickFolder => {
-                let start_in = self
-                    .saved_queries
-                    .as_ref()
-                    .and_then(|view| view.export_step())
-                    .map_or_else(
-                        || self.active_panel().path.clone(),
-                        |step| step.folder.clone(),
-                    );
-                (self.pick_folder)(&start_in)
-                    .map(|folder| Message::SavedQueries(SavedQueriesMessage::FolderPicked(folder)))
-            }
-            SavedQueriesMessage::FolderPicked(folder) => {
-                if let (Some(view), Some(picked)) = (self.saved_queries.as_mut(), folder) {
-                    view.set_export_folder(&picked);
-                }
-                Task::none()
-            }
-            SavedQueriesMessage::Export => {
-                let Some(request) = self
-                    .saved_queries
-                    .as_mut()
-                    .and_then(SavedQueries::begin_export)
-                else {
-                    return Task::none();
-                };
-                let generation = self.saved_queries_generation;
-                let now = chrono::Local::now().naive_local();
-                Task::perform(
-                    tokio::task::spawn_blocking(move || {
-                        query_work::export(&request.hits, &request.folder, now)
-                    }),
-                    move |joined| {
-                        let result = joined.unwrap_or_else(|join| Err(join.to_string()));
-                        Message::SavedQueries(SavedQueriesMessage::Exported { generation, result })
-                    },
-                )
-            }
-            SavedQueriesMessage::Exported { generation, result } => {
-                if generation == self.saved_queries_generation {
-                    if let Some(view) = self.saved_queries.as_mut() {
-                        match result {
-                            Ok(summary) => view.export_done(summary),
-                            Err(detail) => view.failed(detail),
-                        }
-                    }
-                }
-                Task::none()
-            }
-        }
-    }
-
-    /// Asks the index for the hits of the selected report.
-    fn run_selected_query(&mut self) -> Task<Message> {
-        let Some((serial, spec)) = self
-            .saved_queries
-            .as_mut()
-            .and_then(SavedQueries::begin_run)
-        else {
-            return Task::none();
-        };
-        let generation = self.saved_queries_generation;
-        let Some(access) = self.query_access() else {
-            return Task::none();
-        };
-        Task::perform(
-            tokio::task::spawn_blocking(move || access.run(&spec)),
-            move |joined| {
-                let result = joined.unwrap_or_else(|join| Err(join.to_string()));
-                Message::SavedQueries(SavedQueriesMessage::Ran {
-                    generation,
-                    serial,
-                    result,
-                })
-            },
-        )
-    }
-
-    /// Counts the hits of every report for the list.
-    fn run_query_counts(&mut self) -> Task<Message> {
-        let Some(rows) = self.saved_queries.as_ref().map(|view| view.rows().to_vec()) else {
-            return Task::none();
-        };
-        if rows.is_empty() {
-            return Task::none();
-        }
-        let generation = self.saved_queries_generation;
-        let Some(access) = self.query_access() else {
-            return Task::none();
-        };
-        Task::perform(
-            tokio::task::spawn_blocking(move || access.counts(&rows)),
-            move |joined| {
-                let result = joined.unwrap_or_else(|join| Err(join.to_string()));
-                Message::SavedQueries(SavedQueriesMessage::Counted { generation, result })
-            },
-        )
-    }
-
-    fn query_access(&mut self) -> Option<QueryAccess> {
-        let access = self.filing.as_ref().and_then(FilingModule::query_access);
-        if access.is_none() {
-            if let Some(view) = self.saved_queries.as_mut() {
-                view.failed(INDEX_NOT_OPEN.to_owned());
-            }
-        }
-        access
-    }
-
-    fn update_tags(&mut self, message: TagsMessage) -> Task<Message> {
-        match message {
-            TagsMessage::Close => self.close_tags(),
-            TagsMessage::Done { generation, result } => {
-                if generation != self.tags_generation {
-                    return Task::none();
-                }
-                match result {
-                    Ok(loaded) => {
-                        self.tag_exceptions = loaded.exceptions.clone();
-                        if let Some(page) = self.tags.as_mut() {
-                            page.loaded(loaded);
-                        }
-                    }
-                    Err(failure) => {
-                        if let Some(page) = self.tags.as_mut() {
-                            page.failed(failure);
-                        }
-                    }
-                }
-                Task::none()
-            }
-            TagsMessage::ExceptionsRead(result) => {
-                if let Ok(exceptions) = result {
-                    self.tag_exceptions = exceptions;
-                }
-                Task::none()
-            }
-            TagsMessage::Scrolled(delta) => {
-                if let Some(page) = self.tags.as_mut() {
-                    page.scroll(delta);
-                }
-                Task::none()
-            }
-            TagsMessage::Move(delta) => {
-                if let Some(page) = self.tags.as_mut() {
-                    page.move_cursor(delta);
-                }
-                Task::none()
-            }
-            TagsMessage::Select(index) => {
-                if let Some(page) = self.tags.as_mut() {
-                    page.select(index);
-                }
-                Task::none()
-            }
-            TagsMessage::ToggleSelected => {
-                let next = match self.tags.as_ref().and_then(TagsPage::selected) {
-                    Some(TagRow::Group(group)) => TagsMessage::ToggleGroup(group),
-                    Some(TagRow::Tag { group, tag, .. }) => TagsMessage::ToggleTag { group, tag },
-                    Some(TagRow::More { group, .. }) => TagsMessage::Unfold(group),
-                    None => return Task::none(),
-                };
-                self.update_tags(next)
-            }
-            TagsMessage::ToggleOpen(group) => {
-                if let Some(page) = self.tags.as_mut() {
-                    page.toggle_open(group);
-                }
-                Task::none()
-            }
-            TagsMessage::Unfold(group) => {
-                if let Some(page) = self.tags.as_mut() {
-                    page.unfold(group);
-                }
-                Task::none()
-            }
-            TagsMessage::ToggleTag { group, tag } => {
-                let Some(page) = self.tags.as_mut().filter(|page| !page.is_busy()) else {
-                    return Task::none();
-                };
-                let shown = page.exception_after_toggle(&self.file_list_tags, group, &tag);
-                page.begin_change();
-                self.run_tags_work(move |access| access.set_shown(&tag, shown))
-            }
-            TagsMessage::ToggleGroup(group) => self.toggle_tag_group(group),
-            TagsMessage::SearchChanged(text) => {
-                if let Some(page) = self.tags.as_mut() {
-                    page.set_search(text);
-                }
-                Task::none()
-            }
-            TagsMessage::StartRename(tag) => {
-                let Some(page) = self.tags.as_mut() else {
-                    return Task::none();
-                };
-                page.start_rename(tag);
-                if page.is_editing() {
-                    operation::focus(tags_ui::RENAME_ID)
-                } else {
-                    Task::none()
-                }
-            }
-            TagsMessage::RenameChanged(text) => {
-                if let Some(page) = self.tags.as_mut() {
-                    page.set_rename_text(text);
-                }
-                Task::none()
-            }
-            TagsMessage::ConfirmRename => {
-                let Some((old_name, new_name)) =
-                    self.tags.as_mut().and_then(TagsPage::begin_rename)
-                else {
-                    return Task::none();
-                };
-                self.run_tags_work(move |access| access.rename(&old_name, &new_name))
-            }
-            TagsMessage::AskDelete(tag) => {
-                if let Some(page) = self.tags.as_mut() {
-                    page.ask_delete(tag);
-                }
-                Task::none()
-            }
-            TagsMessage::ConfirmDelete => {
-                let Some(page) = self.tags.as_mut() else {
-                    return Task::none();
-                };
-                if page.step().is_none() {
-                    return self.update_tags(TagsMessage::ToggleSelected);
-                }
-                let Some(name) = page.begin_delete() else {
-                    return Task::none();
-                };
-                self.run_tags_work(move |access| access.delete(&name))
-            }
-        }
-    }
-
-    /// The default of the group follows the tick; the tags of the group that
-    /// differed from it follow the group again.
-    fn toggle_tag_group(&mut self, group: TagGroup) -> Task<Message> {
-        let Some(page) = self.tags.as_mut().filter(|page| !page.is_busy()) else {
-            return Task::none();
-        };
-        let on = page.group_will_be_on(&self.file_list_tags, group);
-        let exceptional = page.exceptional_tags(group);
-        let switched = self.file_list_tags.with_group(group, on);
-        let write = self.update_settings(SettingsMessage::Change(SettingChange::FileListTags(
-            switched,
-        )));
-        if exceptional.is_empty() {
-            return write;
-        }
-        if let Some(open) = self.tags.as_mut() {
-            open.begin_change();
-        }
-        let clear = self.run_tags_work(move |access| access.clear_exceptions(&exceptional));
-        Task::batch([write, clear])
-    }
-
     /// The tags page, from the settings or the command list: in place of the
     /// page of the Ablage tab that is up, if any.
     fn show_tags_page(&mut self) -> Task<Message> {
@@ -10629,88 +9629,6 @@ impl App {
             self.open_tags()
         };
         Task::batch([left, opened])
-    }
-
-    fn open_tags(&mut self) -> Task<Message> {
-        if self.tags.is_some() || self.blocking_overlay_is_open() {
-            return Task::none();
-        }
-        self.context_menu = None;
-        self.tags_generation = self.tags_generation.wrapping_add(1);
-        self.tags = Some(TagsPage::new(self.kinds.clone()));
-        self.run_tags_work(TagsAccess::load)
-    }
-
-    /// Escape backs out of the step that is up first, then leaves the page.
-    fn close_tags(&mut self) -> Task<Message> {
-        let Some(page) = self.tags.as_mut() else {
-            return Task::none();
-        };
-        if page.cancel_step() {
-            return Task::none();
-        }
-        self.tags = None;
-        release_focus()
-    }
-
-    fn run_tags_work(
-        &mut self,
-        work: impl FnOnce(&TagsAccess) -> Result<TagsLoaded, TagsFailure> + Send + 'static,
-    ) -> Task<Message> {
-        let generation = self.tags_generation;
-        let Some(access) = self.filing.as_ref().and_then(FilingModule::tags_access) else {
-            if let Some(page) = self.tags.as_mut() {
-                page.failed(TagsFailure::Other(INDEX_NOT_OPEN.to_owned()));
-            }
-            return Task::none();
-        };
-        Task::perform(
-            tokio::task::spawn_blocking(move || work(&access)),
-            move |joined| {
-                let result =
-                    joined.unwrap_or_else(|join| Err(TagsFailure::Other(join.to_string())));
-                Message::Tags(TagsMessage::Done { generation, result })
-            },
-        )
-    }
-
-    fn open_saved_queries(&mut self) -> Task<Message> {
-        if self.saved_queries.is_some() || self.blocking_overlay_is_open() {
-            return Task::none();
-        }
-        self.context_menu = None;
-        self.saved_queries_generation = self.saved_queries_generation.wrapping_add(1);
-        self.saved_queries = Some(
-            SavedQueries::new(chrono::Datelike::year(&chrono::Local::now()))
-                .with_kinds(self.kinds.clone()),
-        );
-        self.run_query_load()
-    }
-
-    /// Escape backs out of the step that is up first, then leaves the page.
-    fn close_saved_queries(&mut self) -> Task<Message> {
-        let Some(view) = self.saved_queries.as_mut() else {
-            return Task::none();
-        };
-        if view.cancel_step() {
-            return Task::none();
-        }
-        self.saved_queries = None;
-        release_focus()
-    }
-
-    fn run_query_load(&mut self) -> Task<Message> {
-        let generation = self.saved_queries_generation;
-        let Some(access) = self.query_access() else {
-            return Task::none();
-        };
-        Task::perform(
-            tokio::task::spawn_blocking(move || access.load()),
-            move |joined| {
-                let result = joined.unwrap_or_else(|join| Err(join.to_string()));
-                Message::SavedQueries(SavedQueriesMessage::Loaded { generation, result })
-            },
-        )
     }
 
     /// The inbox, the filing location and the archive of the config, by role.
@@ -10789,7 +9707,7 @@ impl App {
     }
 
     fn rule_suggestions_view(&self) -> Option<Element<'_, Message>> {
-        let state = self.rule_suggestions.as_ref()?;
+        let state = self.hermes.rule_suggestions.as_ref()?;
         Some(
             rule_suggestions_ui::view(state, self.hermes_badges(), self.lang, &self.palette)
                 .map(Message::from),
@@ -10805,7 +9723,7 @@ impl App {
     }
 
     fn rules_view(&self) -> Option<Element<'_, Message>> {
-        let state = self.rules.as_ref()?;
+        let state = self.hermes.rules.as_ref()?;
         Some(
             rules_ui::view(state, self.hermes_badges(), self.lang, &self.palette)
                 .map(Message::from),
@@ -10813,7 +9731,7 @@ impl App {
     }
 
     fn saved_queries_view(&self) -> Option<Element<'_, Message>> {
-        let state = self.saved_queries.as_ref()?;
+        let state = self.hermes.saved_queries.as_ref()?;
         Some(
             saved_queries_ui::view(state, self.hermes_badges(), self.lang, &self.palette)
                 .map(Message::from),
@@ -10821,7 +9739,7 @@ impl App {
     }
 
     fn tags_view(&self) -> Option<Element<'_, Message>> {
-        let state = self.tags.as_ref()?;
+        let state = self.hermes.tags.as_ref()?;
         Some(
             tags_ui::view(
                 state,
@@ -11234,27 +10152,22 @@ impl App {
         task
     }
 
-    /// The Hermes card that is up, if any.
-    fn open_hermes_page(&self) -> Option<HermesPage> {
+    /// The overview or the status page, whichever is up; the others are in
+    /// [`ncrs_hermes_ui::Hermes`].
+    fn page_apart_from_hermes(&self) -> Option<HermesPage> {
         if self.hermes_overview.is_some() {
             Some(HermesPage::Overview)
         } else if self.filing_status.page_open() {
             Some(HermesPage::Inspection)
-        } else if self.hermes.review_list.is_some() {
-            Some(HermesPage::Review)
-        } else if self.saved_queries.is_some() {
-            Some(HermesPage::SavedQueries)
-        } else if self.rules.is_some() {
-            Some(HermesPage::Rules)
-        } else if self.rule_suggestions.is_some() {
-            Some(HermesPage::RuleSuggestions)
-        } else if self.tags.is_some() {
-            Some(HermesPage::Tags)
-        } else if self.hermes.reorganisation.is_some() {
-            Some(HermesPage::Reorganisation)
         } else {
             None
         }
+    }
+
+    /// The Hermes card that is up, if any.
+    fn open_hermes_page(&self) -> Option<HermesPage> {
+        self.page_apart_from_hermes()
+            .or_else(|| self.hermes.open_page())
     }
 
     /// A click in the sidebar: the card that is up closes without its Escape
@@ -11268,11 +10181,7 @@ impl App {
         }
         let pattern_write = self.leave_hermes_overview_state();
         self.filing_status.close_page();
-        self.rule_suggestions = None;
-        self.rules = None;
         self.hermes.close_pages();
-        self.saved_queries = None;
-        self.tags = None;
         let open = match page {
             HermesPage::Overview => self.open_hermes_overview(),
             HermesPage::Inspection => self.open_filing_status(),
@@ -11303,24 +10212,12 @@ impl App {
                 .and_then(ReviewList::open_count)
                 .or(figures),
             rule_suggestions: self
+                .hermes
                 .rule_suggestions
                 .as_ref()
                 .filter(|view| !view.is_busy())
                 .map(|view| view.rows().len()),
         }
-    }
-
-    /// Leaves the plan for the page of the rule behind an entry: the Rules
-    /// page for a confirmed rule, the suggestions for one that is not.
-    fn open_rule_of_plan(&mut self, id: RuleId, page: HermesPage) -> Task<Message> {
-        let open = self.go_to_hermes_page(page);
-        if let Some(rules) = self.rules.as_mut() {
-            rules.select_on_load(id);
-        }
-        if let Some(suggestions) = self.rule_suggestions.as_mut() {
-            suggestions.select_on_load(id);
-        }
-        open
     }
 
     fn settings_view<'a>(
@@ -11510,7 +10407,13 @@ impl App {
             kinds: &self.kinds,
             default_pattern: self.filing_config.default_pattern.as_deref(),
             filing: self.filing.as_ref(),
-            overlay_apart_from_hermes_open: self.overlay_apart_from_hermes_is_open(),
+            ablage_tab_apart_from_hermes_open: self.ablage_tab_apart_from_hermes_is_open(),
+            overlay_apart_from_ablage_tab_open: self
+                .overlay_apart_from_overview_and_hermes_is_open(),
+            page_apart_from_hermes: self.page_apart_from_hermes(),
+            file_list_tags: &self.file_list_tags,
+            active_panel_path: &panel.path,
+            other_panel_path: &self.panel(side.other()).path,
             context_menu_open: self.context_menu.is_some(),
             search_open: self.search.open,
             hermes_active: self.hermes_active(),
@@ -11569,8 +10472,22 @@ impl App {
             }
             Ask::RequestHermesCounts => self.request_hermes_counts(),
             Ask::ReadPathsAgain(paths) => self.read_paths_again(paths),
-            Ask::OpenRuleForm { form, return_to } => self.open_rule_form(*form, return_to),
-            Ask::OpenRuleOfPlan { id, page } => self.open_rule_of_plan(id, page),
+            Ask::CloseOverviewAndStatus => {
+                let pattern_write = self.leave_hermes_overview_state();
+                self.filing_status.close_page();
+                pattern_write
+            }
+            Ask::GoToHermesPage(page) => self.go_to_hermes_page(page),
+            Ask::SetTagExceptions(exceptions) => {
+                self.tag_exceptions = exceptions;
+                Task::none()
+            }
+            Ask::ChangeFileListTags(tags) => {
+                self.update_settings(SettingsMessage::Change(SettingChange::FileListTags(tags)))
+            }
+            Ask::OpenSearchFor { spec, report } => self.open_search_for(&spec, report),
+            Ask::PickExportFolder(start_in) => (self.pick_folder)(&start_in)
+                .map(|folder| Message::SavedQueries(SavedQueriesMessage::FolderPicked(folder))),
             Ask::ExcludeFromHermes(paths) => self.exclude_from_hermes(paths),
             Ask::Refile { scope, items } => self.confirm_replan(scope, items),
             Ask::QuickFixFiled(summary) => self.quick_fix_filed(&summary),
@@ -11603,8 +10520,56 @@ impl App {
         self.run_hermes_outcome(outcome)
     }
 
+    fn update_rule_suggestions(&mut self, message: RuleSuggestionsMessage) -> Task<Message> {
+        let outcome = self.with_hermes(Vec::new(), |hermes, ctx| {
+            ncrs_hermes_ui::update_rule_suggestions(hermes, message, ctx)
+        });
+        self.run_hermes_outcome(outcome)
+    }
+
+    fn update_rules(&mut self, message: RulesMessage) -> Task<Message> {
+        let outcome = self.with_hermes(Vec::new(), |hermes, ctx| {
+            ncrs_hermes_ui::update_rules(hermes, message, ctx)
+        });
+        self.run_hermes_outcome(outcome)
+    }
+
+    fn update_saved_queries(&mut self, message: SavedQueriesMessage) -> Task<Message> {
+        let outcome = self.with_hermes(Vec::new(), |hermes, ctx| {
+            ncrs_hermes_ui::update_saved_queries(hermes, message, ctx)
+        });
+        self.run_hermes_outcome(outcome)
+    }
+
+    fn update_tags(&mut self, message: TagsMessage) -> Task<Message> {
+        let outcome = self.with_hermes(Vec::new(), |hermes, ctx| {
+            ncrs_hermes_ui::update_tags(hermes, message, ctx)
+        });
+        self.run_hermes_outcome(outcome)
+    }
+
     fn open_review_list(&mut self) -> Task<Message> {
         let outcome = self.with_hermes(Vec::new(), ncrs_hermes_ui::open_review_list);
+        self.run_hermes_outcome(outcome)
+    }
+
+    fn open_rules(&mut self) -> Task<Message> {
+        let outcome = self.with_hermes(Vec::new(), ncrs_hermes_ui::open_rules);
+        self.run_hermes_outcome(outcome)
+    }
+
+    fn open_rule_suggestions(&mut self) -> Task<Message> {
+        let outcome = self.with_hermes(Vec::new(), ncrs_hermes_ui::open_rule_suggestions);
+        self.run_hermes_outcome(outcome)
+    }
+
+    fn open_saved_queries(&mut self) -> Task<Message> {
+        let outcome = self.with_hermes(Vec::new(), ncrs_hermes_ui::open_saved_queries);
+        self.run_hermes_outcome(outcome)
+    }
+
+    fn open_tags(&mut self) -> Task<Message> {
+        let outcome = self.with_hermes(Vec::new(), ncrs_hermes_ui::open_tags);
         self.run_hermes_outcome(outcome)
     }
 
@@ -14824,15 +13789,7 @@ impl App {
             write_clipboard_files: Box::new(|_| Ok(())),
             pending_paste: None,
             paste_staging: None,
-            rule_suggestions: None,
-            rule_suggestions_generation: 0,
-            rules: None,
-            rules_generation: 0,
             hermes_overview: None,
-            saved_queries: None,
-            saved_queries_generation: 0,
-            tags: None,
-            tags_generation: 0,
             tag_exceptions: TagExceptions::new(),
             hermes_focus: HermesFocus::default(),
             return_to_hermes_overview: false,
@@ -15501,26 +14458,26 @@ impl App {
     }
 
     pub fn rules_for_test(&self) -> Option<&RulesPage> {
-        self.rules.as_ref()
+        self.hermes.rules.as_ref()
     }
 
     /// Fixed panels with the rules page up, in the state of `view`.
     pub fn with_rules(view: RulesPage) -> Self {
         let mut app = Self::with_fixed_panels();
         app.set_idle_hermes_status();
-        app.rules = Some(view);
+        app.hermes.rules = Some(view);
         app
     }
 
     pub fn rule_suggestions_for_test(&self) -> Option<&RuleSuggestions> {
-        self.rule_suggestions.as_ref()
+        self.hermes.rule_suggestions.as_ref()
     }
 
     /// Fixed panels with the rule suggestions view up, in the state of `view`.
     pub fn with_rule_suggestions(view: RuleSuggestions) -> Self {
         let mut app = Self::with_fixed_panels();
         app.set_idle_hermes_status();
-        app.rule_suggestions = Some(view);
+        app.hermes.rule_suggestions = Some(view);
         app
     }
 
@@ -15567,7 +14524,7 @@ impl App {
     }
 
     pub fn saved_queries_generation_for_test(&self) -> u64 {
-        self.saved_queries_generation
+        self.hermes.saved_queries_generation
     }
 
     /// The search view up over `filters`, which `hits_below` builds from the
@@ -15600,11 +14557,11 @@ impl App {
     }
 
     pub fn tags_for_test(&self) -> Option<&TagsPage> {
-        self.tags.as_ref()
+        self.hermes.tags.as_ref()
     }
 
     pub fn tags_generation_for_test(&self) -> u64 {
-        self.tags_generation
+        self.hermes.tags_generation
     }
 
     pub fn tag_exceptions_for_test(&self) -> &TagExceptions {
@@ -15614,18 +14571,18 @@ impl App {
     /// Fixed panels with the tags page up, in the state of `page`.
     pub fn with_tags(page: TagsPage) -> Self {
         let mut app = Self::with_fixed_panels();
-        app.tags = Some(page);
+        app.hermes.tags = Some(page);
         app
     }
 
     pub fn saved_queries_for_test(&self) -> Option<&SavedQueries> {
-        self.saved_queries.as_ref()
+        self.hermes.saved_queries.as_ref()
     }
 
     /// Fixed panels with the saved queries page up, in the state of `view`.
     pub fn with_saved_queries(view: SavedQueries) -> Self {
         let mut app = Self::with_fixed_panels();
-        app.saved_queries = Some(view);
+        app.hermes.saved_queries = Some(view);
         app
     }
 

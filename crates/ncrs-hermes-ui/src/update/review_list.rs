@@ -7,6 +7,7 @@ use ncrs_filing::review_work::ReviewAccess;
 use ncrs_ui_kit::focus::release_focus;
 
 use super::blocking_overlay_is_open;
+use super::rules::open_rule_form;
 use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::document_preview;
@@ -171,11 +172,13 @@ pub fn update(
             let Some(prefill) = hermes.review_list.as_ref().and_then(ReviewList::rule_offer) else {
                 return Task::none();
             };
-            actions.push(Action::OpenRuleForm {
-                form: Box::new(RuleForm::from_document(prefill, ctx.kinds)),
-                return_to: Some(HermesPage::Review),
-            });
-            Task::none()
+            open_rule_form(
+                hermes,
+                RuleForm::from_document(prefill, ctx.kinds),
+                Some(HermesPage::Review),
+                ctx,
+                actions,
+            )
         }
         ReviewListMessage::ReplanOpenCases => {
             start_replan(hermes, ReplanScope::OpenCases, ctx, actions)

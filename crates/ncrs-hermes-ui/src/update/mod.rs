@@ -4,14 +4,23 @@
 mod quick_fix;
 mod reorganisation;
 mod review_list;
+mod rule_suggestions;
+mod rules;
+mod saved_queries;
+mod tags;
 
 use iced::Task;
 use ncrs_filing::replan_work::ReplanScope;
+use ncrs_ui_kit::focus::release_focus;
 
 use crate::action::Action;
 use crate::ctx::Ctx;
-use crate::message::{Message, QuickFixMessage, ReorganisationPlanMessage, ReviewListMessage};
+use crate::message::{
+    HermesPage, Message, QuickFixMessage, ReorganisationPlanMessage, ReviewListMessage,
+    RuleSuggestionsMessage, RulesMessage, SavedQueriesMessage, TagsMessage,
+};
 use crate::state::Hermes;
+use ncrs_index::RuleId;
 
 pub use self::review_list::{request_review_preview, run_review_load};
 
@@ -19,7 +28,72 @@ pub type Outcome = (Task<Message>, Vec<Action>);
 
 /// The pages and the menu of the Hermes state count, as they are now.
 fn blocking_overlay_is_open(hermes: &Hermes, ctx: &Ctx<'_>) -> bool {
-    ctx.overlay_apart_from_hermes_open || hermes.page_is_open() || hermes.quick_fix.is_some()
+    ctx.ablage_tab_apart_from_hermes_open
+        || ctx.overlay_apart_from_ablage_tab_open
+        || hermes.page_is_open()
+        || hermes.quick_fix.is_some()
+}
+
+/// The Hermes page that is up, in the order the sidebar knows them.
+fn open_page(hermes: &Hermes, ctx: &Ctx<'_>) -> Option<HermesPage> {
+    ctx.page_apart_from_hermes.or_else(|| hermes.open_page())
+}
+
+type Opener = fn(&mut Hermes, &Ctx<'_>, &mut Vec<Action>) -> Task<Message>;
+
+/// A click in the sidebar: the page that is up closes without its Escape
+/// steps, the chosen page opens. Nothing happens when it is the open one, or
+/// when no Hermes page is up. The overview and the status page are the app's:
+/// it goes there.
+fn go_to_page(
+    hermes: &mut Hermes,
+    page: HermesPage,
+    ctx: &Ctx<'_>,
+    actions: &mut Vec<Action>,
+) -> Task<Message> {
+    match open_page(hermes, ctx) {
+        None => return Task::none(),
+        Some(open) if open == page => return Task::none(),
+        Some(_) => {}
+    }
+    let open: Opener = match page {
+        HermesPage::Review => review_list::open,
+        HermesPage::SavedQueries => saved_queries::open,
+        HermesPage::Rules => rules::open,
+        HermesPage::RuleSuggestions => rule_suggestions::open,
+        HermesPage::Tags => tags::open,
+        HermesPage::Reorganisation => reorganisation::open,
+        HermesPage::Overview | HermesPage::Inspection => {
+            actions.push(Action::GoToHermesPage(page));
+            return Task::none();
+        }
+    };
+    actions.push(Action::CloseOverviewAndStatus);
+    hermes.close_pages();
+    let without_ablage_tab = Ctx {
+        ablage_tab_apart_from_hermes_open: false,
+        ..ctx.clone()
+    };
+    Task::batch([release_focus(), open(hermes, &without_ablage_tab, actions)])
+}
+
+/// Leaves the plan for the page of the rule behind an entry: the Rules page
+/// for a confirmed rule, the suggestions for one that is not.
+fn open_rule_of_plan(
+    hermes: &mut Hermes,
+    id: RuleId,
+    page: HermesPage,
+    ctx: &Ctx<'_>,
+    actions: &mut Vec<Action>,
+) -> Task<Message> {
+    let open = go_to_page(hermes, page, ctx, actions);
+    if let Some(rules) = hermes.rules.as_mut() {
+        rules.select_on_load(id);
+    }
+    if let Some(suggestions) = hermes.rule_suggestions.as_mut() {
+        suggestions.select_on_load(id);
+    }
+    open
 }
 
 pub fn update_review_list(
@@ -45,6 +119,62 @@ pub fn update_reorganisation(
 ) -> Outcome {
     let mut actions = Vec::new();
     let task = reorganisation::update(hermes, message, ctx, &mut actions);
+    (task, actions)
+}
+
+pub fn update_rule_suggestions(
+    hermes: &mut Hermes,
+    message: RuleSuggestionsMessage,
+    ctx: &Ctx<'_>,
+) -> Outcome {
+    let mut actions = Vec::new();
+    let task = rule_suggestions::update(hermes, message, ctx, &mut actions);
+    (task, actions)
+}
+
+pub fn update_rules(hermes: &mut Hermes, message: RulesMessage, ctx: &Ctx<'_>) -> Outcome {
+    let mut actions = Vec::new();
+    let task = rules::update(hermes, message, ctx, &mut actions);
+    (task, actions)
+}
+
+pub fn update_saved_queries(
+    hermes: &mut Hermes,
+    message: SavedQueriesMessage,
+    ctx: &Ctx<'_>,
+) -> Outcome {
+    let mut actions = Vec::new();
+    let task = saved_queries::update(hermes, message, ctx, &mut actions);
+    (task, actions)
+}
+
+pub fn update_tags(hermes: &mut Hermes, message: TagsMessage, ctx: &Ctx<'_>) -> Outcome {
+    let mut actions = Vec::new();
+    let task = tags::update(hermes, message, ctx, &mut actions);
+    (task, actions)
+}
+
+pub fn open_rules(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Outcome {
+    let mut actions = Vec::new();
+    let task = rules::open(hermes, ctx, &mut actions);
+    (task, actions)
+}
+
+pub fn open_rule_suggestions(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Outcome {
+    let mut actions = Vec::new();
+    let task = rule_suggestions::open(hermes, ctx, &mut actions);
+    (task, actions)
+}
+
+pub fn open_saved_queries(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Outcome {
+    let mut actions = Vec::new();
+    let task = saved_queries::open(hermes, ctx, &mut actions);
+    (task, actions)
+}
+
+pub fn open_tags(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Outcome {
+    let mut actions = Vec::new();
+    let task = tags::open(hermes, ctx, &mut actions);
     (task, actions)
 }
 

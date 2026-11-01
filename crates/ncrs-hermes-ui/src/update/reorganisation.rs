@@ -3,7 +3,7 @@ use ncrs_core::INDEX_NOT_OPEN;
 use ncrs_filing::filing::FilingModule;
 use ncrs_ui_kit::focus::release_focus;
 
-use super::blocking_overlay_is_open;
+use super::{blocking_overlay_is_open, open_rule_of_plan};
 use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::message::{HermesPage, Message, ReorganisationPlanMessage};
@@ -95,8 +95,7 @@ pub fn update(
             } else {
                 HermesPage::RuleSuggestions
             };
-            actions.push(Action::OpenRuleOfPlan { id, page });
-            Task::none()
+            open_rule_of_plan(hermes, id, page, ctx, actions)
         }
         ReorganisationPlanMessage::Execute => match hermes.reorganisation.as_ref() {
             Some(view) if view.has_selection() && !view.is_busy() => {

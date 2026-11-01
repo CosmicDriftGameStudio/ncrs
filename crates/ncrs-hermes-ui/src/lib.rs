@@ -38,7 +38,8 @@ pub use message::{
 };
 pub use state::Hermes;
 pub use update::{
-    open_reorganisation, open_review_list, replan_reorganisation_if_open, request_review_preview,
-    run_review_load, start_replan, update_quick_fix, update_reorganisation, update_review_list,
-    Outcome,
+    open_reorganisation, open_review_list, open_rule_suggestions, open_rules, open_saved_queries,
+    open_tags, replan_reorganisation_if_open, request_review_preview, run_review_load,
+    start_replan, update_quick_fix, update_reorganisation, update_review_list,
+    update_rule_suggestions, update_rules, update_saved_queries, update_tags, Outcome,
 };

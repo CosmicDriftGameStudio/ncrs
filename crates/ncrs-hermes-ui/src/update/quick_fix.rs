@@ -4,6 +4,7 @@ use ncrs_filing::filing::FilingModule;
 use ncrs_filing::review_work::{AcceptSummary, ReviewItem};
 use ncrs_i18n::Msg;
 
+use super::rules::open_rule_form;
 use super::{blocking_overlay_is_open, review_list};
 use crate::action::Action;
 use crate::ctx::Ctx;
@@ -210,9 +211,11 @@ fn open_rule_form_from_menu(
         return Task::none();
     };
     let prefill = rule_prefill_of(item, ctx.default_pattern, ctx.kinds);
-    actions.push(Action::OpenRuleForm {
-        form: Box::new(RuleForm::from_document(prefill, ctx.kinds)),
-        return_to: None,
-    });
-    Task::none()
+    open_rule_form(
+        hermes,
+        RuleForm::from_document(prefill, ctx.kinds),
+        None,
+        ctx,
+        actions,
+    )
 }
