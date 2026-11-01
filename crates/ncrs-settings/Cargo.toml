@@ -40,7 +40,7 @@ local-ai = ["ncrs-ai/llama"]
 
 [dev-dependencies]
 tempfile = "3.27"
-sha2 = "0.10"
+sha2 = "0.11"
 ncrs-index = { path = "../ncrs-index", version = "0.0.0" }
 # `config::from_text`, to build a config from a text.
 ncrs-config = { path = "../ncrs-config", version = "0.0.0", features = ["test-support"] }
