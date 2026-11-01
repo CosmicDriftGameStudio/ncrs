@@ -32108,7 +32108,10 @@ mod hit_list_tests {
         let mut hits = opened(&["same.txt", "same.txt"], PanelSide::Left);
         pack_prompt_of(&mut hits);
         let prompt = hits.app.prompt.as_ref().unwrap();
-        assert!(prompt.name().ends_with("/needle.zip"));
+        assert_eq!(
+            Path::new(prompt.name()).file_name(),
+            Some(std::ffi::OsStr::new("needle.zip"))
+        );
         let pack = prompt.hits().unwrap();
         assert!(!pack.keep_folders);
         assert_eq!(pack.numbered.len(), 2);
@@ -32125,7 +32128,10 @@ mod hit_list_tests {
             .query = "rech.*nung".to_owned();
         pack_prompt_of(&mut hits);
         let name = hits.app.prompt.as_ref().unwrap().name().to_owned();
-        assert!(name.ends_with(&format!("/{}", suggested_archive_name(&hits.files))));
+        assert_eq!(
+            Path::new(&name).file_name(),
+            Some(std::ffi::OsStr::new(&suggested_archive_name(&hits.files)))
+        );
     }
 
     #[test]
