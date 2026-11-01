@@ -14,9 +14,10 @@ can be agreed before the work is done.
 
 ## Ground rules
 
-- `App::update` is the only place that changes state. Views are pure
-  functions of state. A commit that mutates state somewhere else will be
-  asked to change.
+- Every feature is its own crate with its own `State`, `Message`, `update`
+  and `view` (nested TEA); `App::update` only routes messages to them. Only
+  `update` functions change state, views are pure functions of state. See
+  `CLAUDE.md` for the crate layout and the UI kit rule.
 - The `fs` layer knows nothing about the UI. It returns structured errors, and
   the UI layer turns them into text in the active language.
 - Comments explain *why*, never *what*. If a line needs a comment to say what
