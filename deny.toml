@@ -119,6 +119,12 @@ exceptions = [
     # The Mozilla root certificates the theme download trusts. The license
     # covers data, not code, and asks only that its text travels with it.
     { allow = ["CDLA-Permissive-2.0"], crate = "webpki-roots" },
+    # The SQLCipher sources of the encrypted index (a build dependency of
+    # libsqlite3-sys). blessing is SQLite's public-domain dedication, which the
+    # bundled SQLite always carried. WTFPL covers libtomcrypt, which ships in
+    # the crate but is not compiled: bundled-sqlcipher-vendored-openssl builds
+    # SQLCipher against the vendored OpenSSL.
+    { allow = ["blessing", "WTFPL"], crate = "sqlcipher-src" },
 ]
 
 [bans]
