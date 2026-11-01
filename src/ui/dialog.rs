@@ -91,13 +91,13 @@ pub fn view<'a>(
 
     let mut body = column![field].spacing(spacing::LINE_GAP);
     let hits = state.hits().filter(|_| state.kind() == PromptKind::Pack);
-    if let Some(hits) = hits {
-        body = body.push(keep_folders_row(hits.keep_folders, lang, palette));
-        if !hits.keep_folders {
+    if let Some(pack) = hits {
+        body = body.push(keep_folders_row(pack.keep_folders, lang, palette));
+        if !pack.keep_folders {
             body = body.extend(numbered_hint(
                 lang.text(Msg::HintNumberedInArchive),
-                &hits.numbered,
-                Some(&hits.scope),
+                &pack.numbered,
+                Some(&pack.scope),
                 lang,
                 palette,
             ));
@@ -171,7 +171,7 @@ pub fn numbered_hint<'a>(
     )];
     for (source, name) in members.iter().take(HINT_LINES) {
         let folder = match scope {
-            Some(scope) => format::folder_below(source, scope),
+            Some(root) => format::folder_below(source, root),
             None => source
                 .parent()
                 .map_or_else(String::new, |parent| parent.to_string_lossy().into_owned()),

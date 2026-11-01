@@ -63,7 +63,7 @@ pub fn visible_rows(window: Size) -> usize {
 
 /// Rows of a hit list that fit where `normal_rows` folder rows fit.
 pub fn hit_list_rows(normal_rows: usize) -> usize {
-    (normal_rows / 2).max(1)
+    normal_rows.div_euclid(2).max(1)
 }
 
 /// The three fields and the summary line of the search view, above the result

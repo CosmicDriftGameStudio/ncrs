@@ -3554,53 +3554,6 @@ pub mod search_filters_card {
     }
 }
 
-mod hit_list_snapshots {
-    use super::*;
-
-    fn matches_snapshot(app: &App, name: &str) {
-        let matches = simulator(app)
-            .snapshot(&iced::Theme::Dark)
-            .unwrap()
-            .matches_image(format!("tests/snapshots/{name}.png"))
-            .expect("snapshot comparison");
-        assert!(
-            matches,
-            "the view does not match tests/snapshots/{name}.png"
-        );
-    }
-
-    fn both_languages(build: fn() -> App, name: &str) {
-        matches_snapshot(
-            &build().in_language(Language::English),
-            &format!("{name}_en"),
-        );
-        matches_snapshot(
-            &build().in_language(Language::German),
-            &format!("{name}_de"),
-        );
-    }
-
-    #[test]
-    fn the_search_with_hit_buttons_matches_its_snapshots() {
-        both_languages(App::with_fixed_search_hits, "search_hit_buttons");
-    }
-
-    #[test]
-    fn the_hit_list_matches_its_snapshots() {
-        both_languages(App::with_fixed_hit_list, "hit_list");
-    }
-
-    #[test]
-    fn the_hit_list_context_menu_matches_its_snapshots() {
-        both_languages(App::with_fixed_hit_list_menu, "hit_list_context_menu");
-    }
-
-    #[test]
-    fn the_pack_prompt_of_a_hit_list_matches_its_snapshots() {
-        both_languages(App::with_fixed_hit_list_pack, "hit_list_pack");
-    }
-}
-
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
 #[allow(
@@ -7153,5 +7106,52 @@ mod hermes_overview_page {
             clicks(&off(), "Switch filing on"),
             [overview_message(HermesOverviewMessage::SwitchHermesOn)]
         );
+    }
+
+    mod hit_list_snapshots {
+        use super::*;
+
+        fn matches_snapshot(app: &App, name: &str) {
+            let matches = simulator(app)
+                .snapshot(&iced::Theme::Dark)
+                .unwrap()
+                .matches_image(format!("tests/snapshots/{name}.png"))
+                .expect("snapshot comparison");
+            assert!(
+                matches,
+                "the view does not match tests/snapshots/{name}.png"
+            );
+        }
+
+        fn both_languages(build: fn() -> App, name: &str) {
+            matches_snapshot(
+                &build().in_language(Language::English),
+                &format!("{name}_en"),
+            );
+            matches_snapshot(
+                &build().in_language(Language::German),
+                &format!("{name}_de"),
+            );
+        }
+
+        #[test]
+        fn the_search_with_hit_buttons_matches_its_snapshots() {
+            both_languages(App::with_fixed_search_hits, "search_hit_buttons");
+        }
+
+        #[test]
+        fn the_hit_list_matches_its_snapshots() {
+            both_languages(App::with_fixed_hit_list, "hit_list");
+        }
+
+        #[test]
+        fn the_hit_list_context_menu_matches_its_snapshots() {
+            both_languages(App::with_fixed_hit_list_menu, "hit_list_context_menu");
+        }
+
+        #[test]
+        fn the_pack_prompt_of_a_hit_list_matches_its_snapshots() {
+            both_languages(App::with_fixed_hit_list_pack, "hit_list_pack");
+        }
     }
 }
