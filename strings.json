@@ -3067,6 +3067,42 @@
       "de": "{selected} von {count} ausgewählt"
     },
     {
+      "key": "reorganisation_plan.group_explain_duplicate",
+      "context": "Explanation under the heading of the group of copies in the detail of the reorganisation plan view.",
+      "en": "Copies of a file that stays where it is. The plan moves each copy into the folder ‘duplicates’ and deletes nothing.",
+      "de": "Kopien einer Datei, die an ihrem Platz bleibt. Der Plan verschiebt jede Kopie in den Ordner ‘duplicates’ und löscht nichts."
+    },
+    {
+      "key": "reorganisation_plan.group_explain_misplaced",
+      "context": "Explanation under the heading of the group of misplaced documents in the detail of the reorganisation plan view.",
+      "en": "Documents that a rule files in another folder than the one they are in.",
+      "de": "Dokumente, die eine Regel in einem anderen Ordner ablegt als dem, in dem sie liegen."
+    },
+    {
+      "key": "reorganisation_plan.group_explain_year",
+      "context": "Explanation under the heading of the group of documents in the folder of a wrong year in the detail of the reorganisation plan view.",
+      "en": "Documents in the folder of one year that are dated in another year.",
+      "de": "Dokumente im Ordner eines Jahres, die aus einem anderen Jahr stammen."
+    },
+    {
+      "key": "reorganisation_plan.group_explain_name",
+      "context": "Explanation under the heading of the group of oddly named files in the detail of the reorganisation plan view.",
+      "en": "Files whose name does not follow the pattern of their folder. They get a name that does.",
+      "de": "Dateien, deren Name nicht dem Muster ihres Ordners folgt. Sie bekommen einen passenden Namen."
+    },
+    {
+      "key": "reorganisation_plan.group_explain_blocked",
+      "context": "Explanation under the heading of the group of entries that cannot be run in the detail of the reorganisation plan view.",
+      "en": "Entries that cannot be run: the target is taken, or too little is known about the document. They are shown for information only.",
+      "de": "Einträge, die sich nicht ausführen lassen: Das Ziel ist belegt, oder über das Dokument ist zu wenig bekannt. Sie stehen nur zur Information hier."
+    },
+    {
+      "key": "reorganisation_plan.more_steps",
+      "context": "Line below the steps of a group in the detail of the reorganisation plan view when more steps exist than are listed. Takes the number of steps not listed.",
+      "en": "… and {count} more",
+      "de": "… und {count} weitere"
+    },
+    {
       "key": "reorganisation_plan.column_current",
       "context": "Column heading in the reorganisation plan view above the current path of each document, below its document folder.",
       "en": "Now",

@@ -26,6 +26,8 @@ const FILE_NAME_CHARS: usize = 26;
 /// What fits a line of the detail, in characters.
 const PATH_CHARS: usize = 80;
 const REASON_CHARS: usize = 90;
+/// Steps of a group the detail lists before it only counts the rest.
+const GROUP_STEPS_SHOWN: usize = 20;
 
 fn send(message: ReorganisationPlanMessage) -> Message {
     Message::ReorganisationPlan(message)
@@ -114,6 +116,16 @@ fn group_name(group: Group) -> Msg {
         Group::YearMismatch => Msg::ReorganisationPlanGroupYear,
         Group::NameOutlier => Msg::ReorganisationPlanGroupName,
         Group::Blocked => Msg::ReorganisationPlanGroupBlocked,
+    }
+}
+
+fn group_explanation(group: Group) -> Msg {
+    match group {
+        Group::Duplicate => Msg::ReorganisationPlanGroupExplainDuplicate,
+        Group::Misplaced => Msg::ReorganisationPlanGroupExplainMisplaced,
+        Group::YearMismatch => Msg::ReorganisationPlanGroupExplainYear,
+        Group::NameOutlier => Msg::ReorganisationPlanGroupExplainName,
+        Group::Blocked => Msg::ReorganisationPlanGroupExplainBlocked,
     }
 }
 
@@ -441,10 +453,18 @@ fn detail<'a>(
                 lang.text(group_name(group)).to_owned(),
                 palette,
             ));
+            children.push(page_kit::hint(
+                lang.text(group_explanation(group)).to_owned(),
+                palette,
+            ));
+            if group == Group::Blocked {
+                children.extend(blocked_rows(state, lang, palette));
+            } else {
+                children.extend(group_step_rows(state, group, lang, palette));
+            }
         }
         None => {}
     }
-    children.extend(blocked_rows(state, lang, palette));
     if let Some(line) = problem(state, lang, palette) {
         children.push(line);
     }
@@ -456,38 +476,26 @@ fn entry_rows<'a>(
     lang: Language,
     palette: &Palette,
 ) -> Vec<Element<'a, Message>> {
-    let proposed_target = proposed_path(planned);
-    let mut rows = vec![
-        page_kit::mono(
-            format::ellipsize_end(&file_name(planned), PATH_CHARS),
-            page_kit::TEXT_BODY,
-            palette.text,
-        ),
-        page_kit::form_row(
-            lang.text(Msg::ReorganisationPlanColumnCurrent),
-            page_kit::path(path_parts(&planned.item.source, proposed_target), palette),
-            None,
-            palette,
-        ),
-    ];
-    if let Some(proposed) = proposed_target {
-        rows.push(page_kit::form_row(
-            lang.text(Msg::ReorganisationPlanColumnProposed),
-            page_kit::path(path_parts(proposed, Some(&planned.item.source)), palette),
-            None,
-            palette,
-        ));
-    }
+    let mut rows = vec![page_kit::mono(
+        format::ellipsize_end(&file_name(planned), PATH_CHARS),
+        page_kit::TEXT_BODY,
+        palette.text,
+    )];
+    rows.extend(now_and_proposed_rows(planned, lang, palette));
     rows.push(page_kit::form_row(
         lang.text(Msg::ReorganisationPlanColumnReason),
         page_kit::sentence(reason_text(planned, lang), palette),
         None,
         palette,
     ));
+    let sentence = finding_sentence(planned, lang);
+    let finding = if Group::of(planned) == Group::Blocked {
+        page_kit::error_line(sentence, palette)
+    } else {
+        page_kit::hint(sentence, palette)
+    };
     let mut why = Row::new()
-        .push(
-            container(page_kit::hint(finding_sentence(planned, lang), palette)).width(Length::Fill),
-        )
+        .push(container(finding).width(Length::Fill))
         .spacing(page_kit::GAP_S)
         .align_y(alignment::Vertical::Center);
     if let Some(rule) = &planned.rule {
@@ -505,34 +513,83 @@ fn entry_rows<'a>(
     rows
 }
 
+/// The current path of an entry and, where it has one, the proposed path.
+fn now_and_proposed_rows<'a>(
+    planned: &PlannedItem,
+    lang: Language,
+    palette: &Palette,
+) -> Vec<Element<'a, Message>> {
+    let proposed_target = proposed_path(planned);
+    let mut rows = vec![page_kit::form_row(
+        lang.text(Msg::ReorganisationPlanColumnCurrent),
+        page_kit::path(path_parts(&planned.item.source, proposed_target), palette),
+        None,
+        palette,
+    )];
+    if let Some(proposed) = proposed_target {
+        rows.push(page_kit::form_row(
+            lang.text(Msg::ReorganisationPlanColumnProposed),
+            page_kit::path(path_parts(proposed, Some(&planned.item.source)), palette),
+            None,
+            palette,
+        ));
+    }
+    rows
+}
+
+/// The steps of a group in the order of the list, as many as fit.
+fn group_step_rows<'a>(
+    state: &ReorganisationView,
+    group: Group,
+    lang: Language,
+    palette: &Palette,
+) -> Vec<Element<'a, Message>> {
+    let steps: Vec<&PlannedItem> = state
+        .rows()
+        .iter()
+        .filter(|planned| Group::of(planned) == group)
+        .collect();
+    let mut rows: Vec<Element<'a, Message>> = Vec::new();
+    for planned in steps.iter().take(GROUP_STEPS_SHOWN) {
+        rows.push(page_kit::mono(
+            format::ellipsize_end(&file_name(planned), PATH_CHARS),
+            page_kit::TEXT_SMALL,
+            palette.text,
+        ));
+        rows.extend(now_and_proposed_rows(planned, lang, palette));
+    }
+    if steps.len() > GROUP_STEPS_SHOWN {
+        rows.push(page_kit::hint(
+            fill_template(
+                lang.text(Msg::ReorganisationPlanMoreSteps),
+                &[("{count}", &(steps.len() - GROUP_STEPS_SHOWN).to_string())],
+            ),
+            palette,
+        ));
+    }
+    rows
+}
+
 /// What cannot be run, one line each with the reason.
 fn blocked_rows<'a>(
     state: &ReorganisationView,
     lang: Language,
     palette: &Palette,
 ) -> Vec<Element<'a, Message>> {
-    let blocked: Vec<&PlannedItem> = state
+    state
         .rows()
         .iter()
         .filter(|planned| Group::of(planned) == Group::Blocked)
-        .collect();
-    if blocked.is_empty() {
-        return Vec::new();
-    }
-    let mut rows = vec![page_kit::section(
-        lang.text(Msg::ReorganisationPlanGroupBlocked),
-        palette,
-    )];
-    rows.extend(blocked.into_iter().map(|planned| {
-        page_kit::error_line(
-            format::ellipsize_end(
-                &format!("{}: {}", file_name(planned), reason_text(planned, lang)),
-                REASON_CHARS,
-            ),
-            palette,
-        )
-    }));
-    rows
+        .map(|planned| {
+            page_kit::error_line(
+                format::ellipsize_end(
+                    &format!("{}: {}", file_name(planned), reason_text(planned, lang)),
+                    REASON_CHARS,
+                ),
+                palette,
+            )
+        })
+        .collect()
 }
 
 fn action_bar<'a>(
