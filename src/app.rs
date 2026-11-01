@@ -17946,6 +17946,8 @@ impl App {
         hits_below: impl FnOnce(&Path) -> SearchFilters,
     ) -> Self {
         let mut app = Self::with_fixed_panels();
+        // The home the README screenshots use, so the search shows the same paths.
+        app.left_panel.path = PathBuf::from("/Users/alex/Documents");
         drop(app.update(Message::OpenSearch));
         let root = app.panel(PanelSide::Left).path.clone();
         app.search_rows = layout::search_visible_rows(app.window_size, true);
