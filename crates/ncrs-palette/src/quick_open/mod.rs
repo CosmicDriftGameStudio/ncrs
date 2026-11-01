@@ -19,10 +19,12 @@ pub mod action;
 pub mod ctx;
 pub mod update;
 pub mod view;
+pub mod walk;
 
 pub use action::QuickOpenAction;
 pub use ctx::QuickOpenCtx;
-pub use update::update;
+pub use update::{close, update};
+pub use walk::find_documents;
 
 /// What the file walk reports to Quick Open: the files, and that it is over.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -3,6 +3,7 @@
 
 pub mod command_line;
 pub mod command_list;
+pub mod keys;
 pub mod message;
 pub mod quick_open;
 

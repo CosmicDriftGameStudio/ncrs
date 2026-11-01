@@ -84,8 +84,7 @@ use crate::palette::{Palette, ThemePreset};
 #[cfg(test)]
 use crate::quick_fix::QuickFix;
 use crate::quick_open::{
-    self, DocumentRequest, QuickOpen, QuickOpenAction, QuickOpenCtx, WalkEvent, MAX_DOCUMENT_HITS,
-    QUICK_OPEN_FILE_LIMIT,
+    self, QuickOpen, QuickOpenAction, QuickOpenCtx, WalkEvent, QUICK_OPEN_FILE_LIMIT,
 };
 #[cfg(test)]
 use crate::reorganisation_plan::ReorganisationView;
@@ -100,8 +99,11 @@ use crate::rules_page::RulesPage;
 use crate::saved_queries::Draft;
 #[cfg(test)]
 use crate::saved_queries::SavedQueries;
+#[cfg(test)]
 use crate::search_filters::SearchFilters;
-use crate::search_view::{stays_on_file_system, SearchField, SearchView};
+#[cfg(test)]
+use crate::search_view::SearchField;
+use crate::search_view::{stays_on_file_system, SearchView};
 use crate::session_state::{self, PanelRecord, SessionState, WindowSize, WriteOrder};
 use crate::system_dialogs::FilePick;
 #[cfg(test)]
@@ -172,7 +174,9 @@ use ncrs_palette::command_list::{
 #[cfg(test)]
 use ncrs_pipeline::Load;
 
-use ncrs_search::search_events;
+use ncrs_palette::keys::{CommandLineBound, CommandLineKey};
+use ncrs_search::{search_events, SearchKey, SearchKeyFacts};
+use ncrs_settings::keys::{SettingsKey, ThemeFetchKey};
 #[cfg(test)]
 use ncrs_settings::theme_fetch::install::download_theme;
 #[cfg(test)]
@@ -288,28 +292,6 @@ fn shell_directory(panel: &PanelState) -> PathBuf {
 /// The folder an archive lies in and its file name.
 fn archive_file_place(archive: &Path) -> Option<(&Path, String)> {
     Some((archive.parent()?, archive.file_name()?.to_str()?.to_owned()))
-}
-
-fn document_search_task(request: DocumentRequest, finder: DocumentFinder) -> Task<Message> {
-    let DocumentRequest {
-        walk_generation,
-        generation,
-        words,
-    } = request;
-    Task::perform(
-        async move {
-            tokio::task::spawn_blocking(move || finder.find(&words, MAX_DOCUMENT_HITS))
-                .await
-                .unwrap_or_else(|failure| Err(failure.to_string()))
-        },
-        move |result| {
-            Message::QuickOpen(QuickOpenMessage::DocumentsFound {
-                walk_generation,
-                generation,
-                result,
-            })
-        },
-    )
 }
 
 fn quick_open_batch(generation: u64, events: Vec<fs::search::SearchEvent>) -> Message {
@@ -1069,19 +1051,17 @@ fn theme_fetch_key(
     key_modifiers: Modifiers,
     scope: KeyScope,
 ) -> Option<Message> {
-    match key.as_ref() {
-        Key::Named(Named::Escape) => Some(Message::ThemeFetch(ThemeFetchMessage::Close)),
-        Key::Named(Named::Enter) => Some(Message::ThemeFetch(ThemeFetchMessage::Activate)),
-        Key::Named(Named::ArrowUp) if key_modifiers.is_empty() => {
-            Some(Message::ThemeFetch(ThemeFetchMessage::Move(-1)))
-        }
-        Key::Named(Named::ArrowDown) if key_modifiers.is_empty() => {
-            Some(Message::ThemeFetch(ThemeFetchMessage::Move(1)))
-        }
-        _ => bound_message(&prompt.keymap, key, key_modifiers, scope)
-            .filter(|message| *message == Message::Quit)
-            .filter(|_| is_not_typed_by_text_field(key, key_modifiers)),
-    }
+    let quits = || {
+        bound_message(&prompt.keymap, key, key_modifiers, scope)
+            .is_some_and(|message| message == Message::Quit)
+            && is_not_typed_by_text_field(key, key_modifiers)
+    };
+    Some(
+        match ncrs_settings::keys::theme_fetch_key(key, key_modifiers, quits)? {
+            ThemeFetchKey::Message(message) => Message::ThemeFetch(message),
+            ThemeFetchKey::Quit => Message::Quit,
+        },
+    )
 }
 
 fn keys_without_prompt(
@@ -1332,73 +1312,36 @@ fn command_line_key(
     key_modifiers: Modifiers,
     scope: KeyScope,
 ) -> Option<Message> {
-    let line = |message| Some(Message::CommandLine(message));
-    match key.as_ref() {
-        Key::Named(Named::Escape) => return line(CommandLineMessage::Leave),
-        Key::Named(Named::ArrowUp) if key_modifiers.is_empty() => {
-            return line(CommandLineMessage::HistoryPrevious)
+    let bound = || {
+        let Some(message) = bound_message(&prompt.keymap, key, key_modifiers, scope)
+            .filter(|_| is_not_typed_by_text_field(key, key_modifiers))
+        else {
+            return CommandLineBound::Other;
+        };
+        if message == Message::Quit {
+            CommandLineBound::Quit
+        } else if message == KeyAction::CommandLine.message() {
+            CommandLineBound::CommandLine
+        } else {
+            CommandLineBound::Other
         }
-        Key::Named(Named::ArrowDown) if key_modifiers.is_empty() => {
-            return line(CommandLineMessage::HistoryNext)
-        }
-        _ => {}
-    }
-    let message = bound_message(&prompt.keymap, key, key_modifiers, scope)
-        .filter(|_| is_not_typed_by_text_field(key, key_modifiers))?;
-    if message == Message::Quit {
-        Some(message)
-    } else if message == KeyAction::CommandLine.message() {
-        line(CommandLineMessage::Leave)
-    } else {
-        None
-    }
+    };
+    Some(
+        match ncrs_palette::keys::command_line_key(key, key_modifiers, bound)? {
+            CommandLineKey::Message(message) => Message::CommandLine(message),
+            CommandLineKey::Quit => Message::Quit,
+        },
+    )
 }
 
-/// The keyboard shortcuts dialog. While it records, every key but Escape is
-/// the key recorded, also one bound to something else. Otherwise the search
-/// field takes the typing and Enter (and `InputState` takes Escape); a key it
-/// does not type searches for what is bound to it, and the list takes the
-/// arrows, Delete and Backspace.
+/// The keyboard shortcuts dialog: see `ncrs_settings::keys::key_bindings_key`.
 fn key_bindings_key(
     prompt: &PromptKeyState,
     key: &Key,
     key_modifiers: Modifiers,
 ) -> Option<Message> {
-    use KeyBindingsMessage as Shortcuts;
-    let shortcuts = |message| Some(Message::KeyBindings(message));
-    let is_escape = matches!(key.as_ref(), Key::Named(Named::Escape));
-    if prompt.key_bindings_recording {
-        if is_escape {
-            return shortcuts(Shortcuts::CancelRecording);
-        }
-        return shortcuts(Shortcuts::Recorded(keymap::recorded_binding(
-            key,
-            key_modifiers,
-        )?));
-    }
-    let plain = key_modifiers.is_empty();
-    let page = isize::try_from(crate::key_bindings::VISIBLE_ROWS).unwrap_or(1);
-    match key.as_ref() {
-        Key::Named(Named::Escape) => None,
-        Key::Named(Named::Enter) if plain => shortcuts(Shortcuts::Record),
-        Key::Named(Named::ArrowUp) if plain => shortcuts(Shortcuts::Move(-1)),
-        Key::Named(Named::ArrowDown) if plain => shortcuts(Shortcuts::Move(1)),
-        Key::Named(Named::PageUp) if plain => shortcuts(Shortcuts::Move(-page)),
-        Key::Named(Named::PageDown) if plain => shortcuts(Shortcuts::Move(page)),
-        Key::Named(Named::ArrowLeft) if plain => shortcuts(Shortcuts::MoveKey(-1)),
-        Key::Named(Named::ArrowRight) if plain => shortcuts(Shortcuts::MoveKey(1)),
-        Key::Named(Named::Delete | Named::Backspace) if plain => shortcuts(Shortcuts::RemoveKey),
-        Key::Named(Named::Delete | Named::Backspace) if key_modifiers == Modifiers::SHIFT => {
-            shortcuts(Shortcuts::Reset)
-        }
-        Key::Character(typed) if (key_modifiers - Modifiers::SHIFT).is_empty() => {
-            shortcuts(Shortcuts::Typed(typed.to_string()))
-        }
-        _ => shortcuts(Shortcuts::SearchByKey(keymap::recorded_binding(
-            key,
-            key_modifiers,
-        )?)),
-    }
+    ncrs_settings::keys::key_bindings_key(prompt.key_bindings_recording, key, key_modifiers)
+        .map(Message::KeyBindings)
 }
 
 /// The tab shows no panel, so the panel keys do nothing. Of the bindings the
@@ -1410,21 +1353,23 @@ fn settings_key(
     key_modifiers: Modifiers,
     scope: KeyScope,
 ) -> Option<Message> {
-    if matches!(key.as_ref(), Key::Named(Named::Escape)) {
-        return Some(if prompt.filing_setup {
-            Message::FilingSetup(FilingSetupMessage::Close)
-        } else {
-            Message::Settings(SettingsMessage::Close)
-        });
+    let bound = || {
+        bound_message(&prompt.keymap, key, key_modifiers, scope)
+            .filter(|message| {
+                *message == Message::Quit
+                    || *message == KeyAction::CommandPalette.message()
+                    || *message == KeyAction::Settings.message()
+                    || *message == KeyAction::KeyBindings.message()
+            })
+            .filter(|_| is_not_typed_by_text_field(key, key_modifiers))
+    };
+    match ncrs_settings::keys::settings_key(key, || bound().is_some())? {
+        SettingsKey::Close if prompt.filing_setup => {
+            Some(Message::FilingSetup(FilingSetupMessage::Close))
+        }
+        SettingsKey::Close => Some(Message::Settings(SettingsMessage::Close)),
+        SettingsKey::Bound => bound(),
     }
-    bound_message(&prompt.keymap, key, key_modifiers, scope)
-        .filter(|message| {
-            *message == Message::Quit
-                || *message == KeyAction::CommandPalette.message()
-                || *message == KeyAction::Settings.message()
-                || *message == KeyAction::KeyBindings.message()
-        })
-        .filter(|_| is_not_typed_by_text_field(key, key_modifiers))
 }
 
 // A visible card whose footer promises "Esc: close" goes before the job
@@ -1448,39 +1393,21 @@ fn escape_message(prompt: &PromptKeyState) -> Option<Message> {
     }
 }
 
-/// Keys while the search view is up. A text field captures what it types, so
-/// what arrives here is either not text (arrows, function keys, chords) or the
-/// field has no focus, and then the result list has the keys.
+/// Keys while the search view is up: see `ncrs_search::search_key`.
 fn search_key(prompt: &PromptKeyState, key: &Key, key_modifiers: Modifiers) -> Option<Message> {
-    let search = |message| Some(Message::Search(message));
     let bound = bound_message(&prompt.keymap, key, key_modifiers, KeyScope::Search);
-    // Tagging and the toggles skip the filter below, which would drop Space,
-    // `*` and the Alt chords as typing: a key only gets here when no text field
-    // took it. Before the arrow match too, which ignores Shift and would turn
-    // Shift+arrows into plain moves.
-    if let Some(message) = bound.as_ref().and_then(tag_or_toggle) {
-        return search(message);
-    }
-    if (key_modifiers - Modifiers::SHIFT).is_empty() {
-        match key.as_ref() {
-            Key::Named(Named::ArrowUp) => return search(SearchMessage::Move(-1)),
-            Key::Named(Named::ArrowDown) => return search(SearchMessage::Move(1)),
-            Key::Named(Named::PageUp) => return search(SearchMessage::Page(-1)),
-            Key::Named(Named::PageDown) => return search(SearchMessage::Page(1)),
-            Key::Named(Named::Home) => return search(SearchMessage::First),
-            Key::Named(Named::End) => return search(SearchMessage::Last),
-            Key::Named(Named::Enter) => return search(SearchMessage::Activate),
-            _ => {}
-        }
-    }
-    bound
-        .filter(|_| is_not_typed_by_text_field(key, key_modifiers))
-        .or_else(|| match type_ahead_message(key, key_modifiers) {
-            Some(Message::Panel(PanelMessage::TypeAhead(typed))) => {
-                search(SearchMessage::AppendToQuery(typed))
-            }
+    let facts = SearchKeyFacts {
+        tag_or_toggle: bound.as_ref().and_then(tag_or_toggle),
+        bound_untyped: bound.is_some() && is_not_typed_by_text_field(key, key_modifiers),
+        type_ahead: match type_ahead_message(key, key_modifiers) {
+            Some(Message::Panel(PanelMessage::TypeAhead(typed))) => Some(typed),
             _ => None,
-        })
+        },
+    };
+    match ncrs_search::search_key(key, key_modifiers, facts)? {
+        SearchKey::Message(message) => Some(Message::Search(message)),
+        SearchKey::Bound => bound,
+    }
 }
 
 /// Keys while the trash view is up: it owns the cursor keys, Enter puts back,
@@ -1528,13 +1455,6 @@ fn trash_tagging(message: &Message) -> Option<TrashMessage> {
     }
 }
 
-fn is_search_toggle(message: &SearchMessage) -> bool {
-    matches!(
-        message,
-        SearchMessage::ToggleCase | SearchMessage::ToggleWholeWord | SearchMessage::ToggleRegex
-    )
-}
-
 /// The search's version of a bound tagging or toggle message.
 fn tag_or_toggle(message: &Message) -> Option<SearchMessage> {
     match message {
@@ -1542,7 +1462,7 @@ fn tag_or_toggle(message: &Message) -> Option<SearchMessage> {
         Message::Panel(PanelMessage::TagMove(delta)) => Some(SearchMessage::TagMove(*delta)),
         Message::Panel(PanelMessage::TagAll) => Some(SearchMessage::TagAll),
         Message::Panel(PanelMessage::ClearTags) => Some(SearchMessage::ClearTags),
-        Message::Search(toggle) if is_search_toggle(toggle) => Some(toggle.clone()),
+        Message::Search(toggle) if toggle.is_toggle() => Some(toggle.clone()),
         _ => None,
     }
 }
@@ -1557,7 +1477,7 @@ pub fn search_toggle_for_press(
 ) -> Option<SearchMessage> {
     let bound_key = binding_key(key, physical_key, modifiers);
     match bound_message(keymap, &bound_key, modifiers, KeyScope::Search)? {
-        Message::Search(toggle) if is_search_toggle(&toggle) => Some(toggle),
+        Message::Search(toggle) if toggle.is_toggle() => Some(toggle),
         _ => None,
     }
 }
@@ -3771,15 +3691,7 @@ impl App {
     /// Empty without a cursor, so the panel's entry does not pose as the
     /// search's.
     fn search_status(&self) -> Option<String> {
-        if !self.search_has_keys() {
-            return None;
-        }
-        let view = self.search.view.as_ref()?;
-        let Some((path, _)) = view.cursor_target() else {
-            return Some(String::new());
-        };
-        let relative = path.strip_prefix(&view.root).unwrap_or(&path);
-        Some(relative.display().to_string())
+        self.search.status(self.search_has_keys())
     }
 
     /// The state the key routing needs, cheap to clone.
@@ -4069,7 +3981,7 @@ impl App {
             self.hermes.setup_focus_order().len()
         } else if self.about.is_some() {
             3
-        } else if self.model_card_has_one_button() {
+        } else if self.settings.model_card_has_one_button() {
             1
         } else if self.ops.delete_dialog.is_some()
             || self.start_over_dialog
@@ -4083,22 +3995,6 @@ impl App {
         } else {
             0
         }
-    }
-
-    /// A model card that has nothing left to ask: it only reports, and has
-    /// Close or Done. The AI card that could not turn the AI on has a second
-    /// button.
-    fn model_card_has_one_button(&self) -> bool {
-        let ocr = self
-            .settings
-            .ocr_models
-            .as_ref()
-            .is_some_and(|card| card.is_installed() || card.is_finished());
-        let ai = self.settings.ai_model.as_ref().is_some_and(|card| {
-            card.is_installed()
-                || (card.is_finished() && card.outcome() != Some(InstallOutcome::StillOff))
-        });
-        ocr || ai
     }
 
     /// Enter in a button dialog: whatever the focused button does.
@@ -4129,7 +4025,7 @@ impl App {
                 _ => self.update_about(AboutMessage::Close),
             };
         }
-        if self.model_card_has_one_button() {
+        if self.settings.model_card_has_one_button() {
             return if self.settings.ocr_models.is_some() {
                 self.update_ocr_models(OcrModelsMessage::Close)
             } else {
@@ -5195,7 +5091,7 @@ impl App {
 
     /// The search view, while it is up.
     fn open_search_view(&self) -> Option<&SearchView> {
-        self.search.view.as_ref().filter(|_| self.search_has_keys())
+        self.search.open_view(self.search_has_keys())
     }
 
     /// The search view is up and its panel is the active one: the keys and the
@@ -5369,9 +5265,7 @@ impl App {
         }
         if self.search.open {
             if self.search_has_keys() {
-                if let Some(view) = self.search.view.as_mut() {
-                    view.focused = view.focused.next();
-                }
+                self.search.focus_next_field();
             } else {
                 self.panels.active = self.search.side;
             }
@@ -5385,8 +5279,6 @@ impl App {
             self.ops.close_trash();
         }
         let root = self.panel(side).path.clone();
-        self.search.side = side;
-        self.search.open = true;
         let indexed = self.panel(side).remote().is_none()
             && self
                 .hermes
@@ -5395,18 +5287,7 @@ impl App {
                 .and_then(FilingModule::query_access)
                 .is_some();
         let kinds = Arc::clone(&self.kinds.catalog);
-        let view = self
-            .search
-            .view
-            .get_or_insert_with(|| SearchView::new(root.clone()));
-        view.root = root;
-        view.filters = if indexed {
-            view.filters
-                .take()
-                .or_else(|| Some(SearchFilters::new(kinds)))
-        } else {
-            None
-        };
+        self.search.show(side, root, indexed, kinds);
         self.refresh_search_rows();
         let search = self.restart_search();
         Task::batch([self.focus_search_field(), search])
@@ -5415,10 +5296,7 @@ impl App {
     /// The search opened with the words typed in the box that asked.
     fn open_search_with_words(&mut self, text: String) -> Task<Message> {
         let opened = self.open_search();
-        if let Some(view) = self.search.view.as_mut() {
-            view.query = text;
-            view.focused = SearchField::Query;
-        }
+        self.search.set_query(text);
         Task::batch([opened, self.restart_search()])
     }
 
@@ -5556,16 +5434,7 @@ impl App {
     fn open_search_for(&mut self, spec: &QuerySpec, report: Option<SavedQueryId>) -> Task<Message> {
         self.hermes.saved_queries = None;
         let opened = self.open_search();
-        if let Some(view) = self.search.view.as_mut() {
-            view.query = spec.full_text.clone().unwrap_or_default();
-            view.focused = SearchField::Query;
-            if let Some(filters) = view.filters.as_mut() {
-                match report {
-                    Some(id) => filters.edit_report(id, spec),
-                    None => filters.start_from(spec),
-                }
-            }
-        }
+        self.search.start_from(spec, report);
         self.refresh_search_rows();
         Task::batch([opened, self.restart_search()])
     }
@@ -5743,18 +5612,10 @@ impl App {
 
     /// Enter on a result: the file is shown in the other panel.
     fn activate_search_cursor(&mut self) -> Task<Message> {
-        let Some((path, _)) = self.open_search_view().and_then(SearchView::cursor_target) else {
+        let Some((directory, name)) = self.search.cursor_location(self.search_has_keys()) else {
             return Task::none();
         };
-        let (Some(directory), Some(file)) = (path.parent(), path.file_name()) else {
-            return Task::none();
-        };
-        let name = file.to_string_lossy().into_owned();
-        self.load(
-            self.search.side.other(),
-            directory.to_path_buf(),
-            Some(name),
-        )
+        self.load(self.search.side.other(), directory, Some(name))
     }
 
     /// Cmd/Ctrl+P: lists the files below the active panel's directory. Pressed
@@ -6846,15 +6707,9 @@ impl App {
 
     /// Which Hermes commands on a file the command list offers.
     fn command_palette_hermes(&self) -> HermesCommands {
-        if !self.hermes.is_ready() {
-            HermesCommands::None
-        } else if !self.hermes.is_active() {
-            HermesCommands::RolesOnly
-        } else if !self.hermes_action_enabled(HermesAction::ProcessAgain) {
-            HermesCommands::WithoutProcessAgain
-        } else {
-            HermesCommands::All
-        }
+        HermesCommands::from_facts(self.hermes.is_ready(), self.hermes.is_active(), || {
+            self.hermes_action_enabled(HermesAction::ProcessAgain)
+        })
     }
 
     /// The settings pages and settings the command list finds by a query.
@@ -6871,17 +6726,11 @@ impl App {
     }
 
     fn resize_command_palette(&mut self, window: Size) {
-        if let Some(palette) = self.command_palette.as_mut() {
-            palette.set_visible_rows(command_palette_ui::visible_rows(window));
-        }
+        command_list::resize(&mut self.command_palette, window);
     }
 
     fn close_command_palette(&mut self) -> Task<Message> {
-        if self.command_palette.take().is_some() {
-            release_focus()
-        } else {
-            Task::none()
-        }
+        command_list::close(&mut self.command_palette).map(Message::CommandPalette)
     }
 
     fn update_command_palette(&mut self, message: CommandPaletteMessage) -> Task<Message> {
@@ -6960,11 +6809,7 @@ impl App {
     /// Closes the box and stops its walk.
     fn close_quick_open(&mut self) -> Task<Message> {
         self.quick_open_walk = None;
-        if self.quick_open.take().is_some() {
-            release_focus()
-        } else {
-            Task::none()
-        }
+        quick_open::close(&mut self.quick_open)
     }
 
     fn update_quick_open(&mut self, message: QuickOpenMessage) -> Task<Message> {
@@ -6981,9 +6826,12 @@ impl App {
                 self.switch_quick_open_to_commands(query)
             }
             Some(QuickOpenAction::FindDocuments(wanted)) => {
-                let documents = self
-                    .document_finder()
-                    .map_or_else(Task::none, |finder| document_search_task(wanted, finder));
+                let documents = self.document_finder().map_or_else(Task::none, |finder| {
+                    quick_open::find_documents(wanted, move |words, limit| {
+                        finder.find(words, limit)
+                    })
+                    .map(Message::QuickOpen)
+                });
                 Task::batch([task, documents])
             }
             Some(QuickOpenAction::WalkFinished) => {

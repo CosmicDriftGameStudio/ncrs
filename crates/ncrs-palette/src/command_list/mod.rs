@@ -18,7 +18,7 @@ pub mod view;
 
 pub use action::CommandPaletteAction;
 pub use ctx::{CommandPaletteCtx, HermesCommands};
-pub use update::update;
+pub use update::{close, resize, update};
 
 /// Rows shown at once, headers included, in the smallest window; the list
 /// scrolls past that.

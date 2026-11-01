@@ -1,4 +1,4 @@
-use crate::ai_model::AiModelCard;
+use crate::ai_model::{AiModelCard, InstallOutcome};
 use crate::key_bindings::KeyBindings;
 use crate::ocr_models::OcrModelsCard;
 use crate::settings::SettingsState;
@@ -34,6 +34,21 @@ impl Settings {
         self.ocr_models
             .as_ref()
             .is_some_and(OcrModelsCard::is_downloading)
+    }
+
+    /// A model card that has nothing left to ask: it only reports, and has
+    /// Close or Done. The AI card that could not turn the AI on has a second
+    /// button.
+    pub fn model_card_has_one_button(&self) -> bool {
+        let ocr = self
+            .ocr_models
+            .as_ref()
+            .is_some_and(|card| card.is_installed() || card.is_finished());
+        let ai = self.ai_model.as_ref().is_some_and(|card| {
+            card.is_installed()
+                || (card.is_finished() && card.outcome() != Some(InstallOutcome::StillOff))
+        });
+        ocr || ai
     }
 
     pub fn ai_card_is_shown(&self) -> bool {

@@ -16,6 +16,27 @@ pub enum HermesCommands {
     All,
 }
 
+impl HermesCommands {
+    /// From what the app knows: the Hermes column is up (`ready`), locations
+    /// are configured (`active`), and "process again" can run for the row
+    /// under the cursor.
+    pub fn from_facts(
+        ready: bool,
+        active: bool,
+        process_again_enabled: impl FnOnce() -> bool,
+    ) -> Self {
+        if !ready {
+            Self::None
+        } else if !active {
+            Self::RolesOnly
+        } else if !process_again_enabled() {
+            Self::WithoutProcessAgain
+        } else {
+            Self::All
+        }
+    }
+}
+
 /// What the command list reads from the app.
 #[derive(Debug)]
 pub struct CommandPaletteCtx<'a> {

@@ -73,3 +73,13 @@ pub enum SearchMessage {
     /// The hits of the search as a list in the panel on this side.
     OpenHitList(PanelSide),
 }
+
+impl SearchMessage {
+    /// One of the three switches of the query: case, whole word, regex.
+    pub fn is_toggle(&self) -> bool {
+        matches!(
+            self,
+            Self::ToggleCase | Self::ToggleWholeWord | Self::ToggleRegex
+        )
+    }
+}

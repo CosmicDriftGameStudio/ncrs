@@ -2,7 +2,7 @@
 //! as an action.
 
 use iced::widget::operation;
-use iced::Task;
+use iced::{Size, Task};
 use ncrs_config::keymap::KeyAction;
 use ncrs_ui_kit::focus::release_focus;
 
@@ -66,11 +66,19 @@ fn open(command_palette: &mut Option<CommandPalette>, ctx: &CommandPaletteCtx<'_
     (focus, Some(CommandPaletteAction::CloseContextMenu))
 }
 
-fn close(command_palette: &mut Option<CommandPalette>) -> Task<CommandPaletteMessage> {
+/// Closes the list. Gives the focus up only when the list was open.
+pub fn close(command_palette: &mut Option<CommandPalette>) -> Task<CommandPaletteMessage> {
     if command_palette.take().is_some() {
         release_focus()
     } else {
         Task::none()
+    }
+}
+
+/// The window changed: the list shows as many rows as fit.
+pub fn resize(command_palette: &mut Option<CommandPalette>, window: Size) {
+    if let Some(palette) = command_palette.as_mut() {
+        palette.set_visible_rows(visible_rows(window));
     }
 }
 

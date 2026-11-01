@@ -2,6 +2,7 @@
 //! action.
 
 use iced::Task;
+use ncrs_ui_kit::focus::release_focus;
 
 use super::action::QuickOpenAction;
 use super::ctx::QuickOpenCtx;
@@ -76,6 +77,15 @@ pub fn update(
             activate(open)
         }
         QuickOpenMessage::Open | QuickOpenMessage::Close => (Task::none(), None),
+    }
+}
+
+/// Closes the box. Gives the focus up only when the box was open.
+pub fn close<T: Send + 'static>(quick_open: &mut Option<QuickOpen>) -> Task<T> {
+    if quick_open.take().is_some() {
+        release_focus()
+    } else {
+        Task::none()
     }
 }
 

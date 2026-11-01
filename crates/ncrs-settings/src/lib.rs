@@ -5,6 +5,7 @@ pub mod action;
 pub mod ai_model;
 pub mod ctx;
 pub mod key_bindings;
+pub mod keys;
 pub mod message;
 pub mod ocr_models;
 pub mod open_vsx;

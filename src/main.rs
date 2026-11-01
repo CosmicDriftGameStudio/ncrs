@@ -50,6 +50,7 @@ pub use ncrs_config::palette;
 pub use ncrs_files::panel_drag;
 mod quick_open;
 pub use ncrs_remote::dialog as remote_dialog;
+#[cfg(test)]
 mod search_filters;
 mod search_view;
 pub use ncrs_core::selection;
