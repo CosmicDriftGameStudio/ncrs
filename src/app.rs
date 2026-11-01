@@ -18510,7 +18510,7 @@ impl App {
     /// The search results with the context menu open on the third row.
     pub fn with_fixed_search_hits_menu() -> Self {
         let mut app = Self::with_fixed_search_hits();
-        app.set_pointer_for_test(Point::new(260.0, 140.0));
+        app.set_pointer_for_test(Point::new(260.0, 380.0));
         drop(app.update(Message::Search(SearchMessage::ContextAt(2))));
         app
     }
