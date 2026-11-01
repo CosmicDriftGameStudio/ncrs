@@ -1,0 +1,17 @@
+[package]
+name = "ncrs-jobs"
+version = "0.0.0"
+edition = "2021"
+# Same as the root package: one place decides the compiler.
+rust-version = "1.98"
+description = "The queue of long-running file operations: one job at a time, the rest waiting"
+license = "MIT"
+publish = false
+
+[dependencies]
+# Same as the kit: no renderer or window system, the app picks them.
+iced = { version = "0.14", default-features = false, features = ["tokio", "advanced"] }
+ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
+
+[lints]
+workspace = true

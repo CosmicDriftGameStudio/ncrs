@@ -14,7 +14,11 @@ iced = { version = "0.14", default-features = false, features = ["tokio", "advan
 ncrs-core = { path = "../ncrs-core", version = "0.0.0" }
 ncrs-fs = { path = "../ncrs-fs", version = "0.0.0" }
 ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
+ncrs-jobs = { path = "../ncrs-jobs", version = "0.0.0" }
 ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0" }
+
+# The work of a flow runs on the blocking pool, as in the app.
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
 
 [dev-dependencies]
 # The archive fixtures and the temporary folders of the dialog tests.

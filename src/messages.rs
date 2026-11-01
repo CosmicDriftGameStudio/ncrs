@@ -504,6 +504,15 @@ impl From<OpsMessage> for Message {
             OpsMessage::ToggleConflictAll => Self::ToggleConflictAll,
             OpsMessage::DeleteCancel => Self::DeleteCancel,
             OpsMessage::DeleteConfirm => Self::DeleteConfirm,
+            OpsMessage::DeleteRowDone {
+                result,
+                index,
+                generation,
+            } => Self::DeleteRowDone {
+                result,
+                index,
+                generation,
+            },
             OpsMessage::AbortJob => Self::AbortJob,
             OpsMessage::Trash(trash) => Self::Trash(trash),
         }

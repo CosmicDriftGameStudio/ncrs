@@ -16,8 +16,6 @@
 use std::collections::VecDeque;
 use std::path::PathBuf;
 
-use crate::messages::Message;
-
 /// What a job does. The label is the i18n key, so the status bar can name it in
 /// the active language.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,16 +31,16 @@ pub enum JobKind {
 }
 
 impl JobKind {
-    pub fn label(self) -> crate::i18n::Msg {
+    pub fn label(self) -> ncrs_i18n::Msg {
         match self {
-            JobKind::Copy => crate::i18n::Msg::JobCopy,
-            JobKind::Move => crate::i18n::Msg::JobMove,
-            JobKind::Delete => crate::i18n::Msg::JobDelete,
-            JobKind::Restore => crate::i18n::Msg::JobRestore,
-            JobKind::Reorganise => crate::i18n::Msg::JobReorganise,
-            JobKind::File => crate::i18n::Msg::JobFile,
-            JobKind::Extract => crate::i18n::Msg::JobExtract,
-            JobKind::Pack => crate::i18n::Msg::JobPack,
+            JobKind::Copy => ncrs_i18n::Msg::JobCopy,
+            JobKind::Move => ncrs_i18n::Msg::JobMove,
+            JobKind::Delete => ncrs_i18n::Msg::JobDelete,
+            JobKind::Restore => ncrs_i18n::Msg::JobRestore,
+            JobKind::Reorganise => ncrs_i18n::Msg::JobReorganise,
+            JobKind::File => ncrs_i18n::Msg::JobFile,
+            JobKind::Extract => ncrs_i18n::Msg::JobExtract,
+            JobKind::Pack => ncrs_i18n::Msg::JobPack,
         }
     }
 }
@@ -75,8 +73,14 @@ struct Running {
     abort: Box<dyn Fn()>,
 }
 
+impl std::fmt::Debug for Running {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Running").field("job", &self.job).finish()
+    }
+}
+
 /// Jobs waiting their turn.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Queue {
     running: Option<Running>,
     waiting: VecDeque<Job>,
@@ -116,10 +120,10 @@ impl Queue {
     ///
     /// The task is returned rather than started here so the one place that
     /// starts work stays `App::update`, where a `Task` can be handed back.
-    pub fn start_next(
+    pub fn start_next<M: 'static>(
         &mut self,
-        make_task: impl FnOnce(Job) -> iced::Task<Message>,
-    ) -> Option<iced::Task<Message>> {
+        make_task: impl FnOnce(Job) -> iced::Task<M>,
+    ) -> Option<iced::Task<M>> {
         if self.running.is_some() {
             return None;
         }
@@ -179,10 +183,10 @@ mod tests {
         let mut q = Queue::new();
         q.enqueue(job(JobKind::Copy));
 
-        let started = q.start_next(|_| Task::none());
+        let started = q.start_next(|_| Task::<()>::none());
         assert!(started.is_some(), "the first job should start");
         assert!(
-            q.start_next(|_| Task::none()).is_none(),
+            q.start_next(|_| Task::<()>::none()).is_none(),
             "a second job started while one was running"
         );
     }
@@ -195,10 +199,10 @@ mod tests {
         q.enqueue(job(JobKind::Move));
         assert_eq!(q.waiting(), 2);
 
-        q.start_next(|_| Task::none());
+        q.start_next(|_| Task::<()>::none());
         q.finish();
 
-        let started = q.start_next(|_| Task::none());
+        let started = q.start_next(|_| Task::<()>::none());
         assert!(started.is_some(), "the queued job should start");
         assert_eq!(q.running().map(|j| j.kind), Some(JobKind::Move));
     }
@@ -216,6 +220,6 @@ mod tests {
     fn a_job_names_itself_and_its_path() {
         let j = job(JobKind::Delete);
         assert_eq!(j.path, PathBuf::from("/tmp"));
-        assert_eq!(j.kind.label(), crate::i18n::Msg::JobDelete);
+        assert_eq!(j.kind.label(), ncrs_i18n::Msg::JobDelete);
     }
 }

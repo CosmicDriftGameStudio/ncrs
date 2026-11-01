@@ -153,7 +153,9 @@ use ncrs_index::{
     IncludeOutcome, KeyStore, KeyringKeyStore, KindSkip, Kinds, QuerySpec, SavedQueryId,
 };
 use ncrs_intake::LocationMode;
-use ncrs_ops::{TransferAction, TrashAction};
+#[cfg(test)]
+use ncrs_ops::{restore_one, Restoration};
+use ncrs_ops::{Deletion, TransferAction, TrashAction};
 use ncrs_palette::command_list::{
     self, view as command_palette_ui, CommandPalette, CommandPaletteAction, CommandPaletteCtx,
     HermesCommands, RECENT_LIMIT,
@@ -313,20 +315,6 @@ fn remote_refusal(panel: &PanelState, message: &Message) -> Option<Msg> {
 }
 
 type ClipboardFileWriter = Box<dyn FnMut(&[PathBuf]) -> Result<(), String>>;
-
-/// Of each path the session trashed, the newest entry of the trash from that
-/// place. Blocking: comparing places resolves folders on the disk.
-fn newest_entries_from(listed: &[fs::TrashedItem], trashed: &[PathBuf]) -> Vec<fs::TrashedItem> {
-    trashed
-        .iter()
-        .filter_map(|path| {
-            listed
-                .iter()
-                .find(|item| fs::is_same_place(&item.original, path))
-                .cloned()
-        })
-        .collect()
-}
 
 /// The system clipboard is read on a blocking thread: on X11 it can wait for
 /// the program that owns the content.
@@ -779,18 +767,6 @@ impl Transfer {
     }
 }
 
-/// What a delete works on, resolved once when F8 is pressed: by the time the
-/// user has answered the dialog the cursor may have moved.
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct Deletion {
-    sources: Vec<PathBuf>,
-    /// The permanent-delete key (Shift+F8 by default): no trash.
-    permanent: bool,
-    /// The panel the entries came from, which is cleared and reloaded at the
-    /// end even if the user switches panels meanwhile.
-    side: PanelSide,
-}
-
 /// What a file handed to the viewer or editor is a copy of.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CopyOf {
@@ -844,43 +820,12 @@ pub enum DeleteKeys {
     Permanent,
 }
 
-/// A put-back from the trash, resolved when Enter is pressed: by the time a
-/// name turns out to be taken the cursor may have moved.
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct Restoration {
-    items: Vec<fs::TrashedItem>,
-    restored: usize,
-    skipped: usize,
-    /// An "all" answer to the dialog, applied to the rows after it.
-    rule: Option<fs::transfer::OnConflict>,
-}
-
 /// One file waiting for an answer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct PendingConflict {
     transfer: Transfer,
     /// Which of `sources` is in the way.
     index: usize,
-}
-
-/// Puts one trashed entry back. A folder the sandbox cannot reach is refused
-/// first, before the entry in the way is trashed.
-fn restore_one(
-    trash: &dyn fs::Trash,
-    sandbox: &fs::SandboxAccess,
-    item: &fs::TrashedItem,
-    overwrite: bool,
-) -> Result<(), fs::RestoreError> {
-    let folder = item.original.parent().unwrap_or(&item.original);
-    if !sandbox.reaches(folder) {
-        return Err(fs::RestoreError::NotGranted);
-    }
-    if overwrite {
-        trash
-            .trash(&item.original)
-            .map_err(fs::RestoreError::Failed)?;
-    }
-    trash.restore(item)
 }
 
 /// What a click on the "access blocked" error sends. Only macOS has a privacy
@@ -1049,12 +994,6 @@ pub struct App {
     transfer: Option<Transfer>,
     /// A transfer paused on a name that is already taken.
     pending_conflict: Option<PendingConflict>,
-    /// A restore from the trash, while it runs.
-    restoring: Option<Restoration>,
-    /// The restore paused on a name that is taken: the index of its row.
-    restore_conflict: Option<usize>,
-    /// What the latest F8 run moved to the trash, for the restore key.
-    last_deletion: Vec<PathBuf>,
     /// The trash view, in place of the panel on `trash_side`.
     trash_view: Option<TrashView>,
     trash_side: PanelSide,
@@ -1075,12 +1014,8 @@ pub struct App {
     transfer_mask_visible: bool,
     /// How many rows (top-level entries) of the running transfer are done.
     transfer_rows_done: usize,
-    /// The delete confirmation dialog, while it is up.
-    delete_dialog: Option<Deletion>,
     /// The question whether to remove the Hermes index and begin again.
     start_over_dialog: bool,
-    /// The delete that is running.
-    deleting: Option<Deletion>,
     /// The folders F3 unpacks archive files into. `None` when there is no
     /// cache folder to put them in.
     view_copies: Option<fs::archive::ViewCopies>,
@@ -1131,10 +1066,9 @@ pub struct App {
     /// The conflict rule from a previous "for all" answer, applied to the rest
     /// without asking again.
     conflict_rule: Option<fs::transfer::OnConflict>,
-    /// Which transfer is current. A row's result carries the number it started
-    /// under, and one from an earlier transfer — stopped, then replaced — is
-    /// ignored instead of steering the new one.
-    generation: u64,
+    /// The state of the delete flow and the generation that tells a late result
+    /// of a transfer, a delete or a restore from the current one.
+    ops: ncrs_ops::Ops,
     /// How far the running transfer has got, filled from the job's channel.
     job_progress: Option<fs::transfer::Tick>,
     /// Receives the transfer's ticks, for the life of the app rather than of
@@ -3185,9 +3119,6 @@ impl App {
             jobs: jobs::Queue::new(),
             transfer: None,
             pending_conflict: None,
-            restoring: None,
-            restore_conflict: None,
-            last_deletion: Vec::new(),
             trash_view: None,
             trash_side: PanelSide::Left,
             trash_generation: 0,
@@ -3198,9 +3129,7 @@ impl App {
             transfer_dialogs_opened: 0,
             transfer_mask_visible: false,
             transfer_rows_done: 0,
-            delete_dialog: None,
             start_over_dialog: false,
-            deleting: None,
             view_copies: None,
             extracting: None,
             archive_write: None,
@@ -3222,7 +3151,7 @@ impl App {
             job_done: 0,
             conflict_all: false,
             conflict_rule: None,
-            generation: 0,
+            ops: ncrs_ops::Ops::default(),
             job_progress: None,
             progress_rx: None,
             progress_tx: None,
@@ -3604,7 +3533,7 @@ impl App {
                 index,
                 generation,
             } => {
-                if generation != self.generation {
+                if generation != self.ops.generation {
                     return Task::none();
                 }
                 self.jobs.finish();
@@ -3747,7 +3676,7 @@ impl App {
             Message::ClipboardRead(content) => self.paste_content(content),
             Message::CopyFilesToClipboard => self.copy_files_to_clipboard(),
             Message::DeleteCancel => {
-                self.delete_dialog = None;
+                self.ops.delete_dialog = None;
                 Task::none()
             }
             Message::DeleteConfirm => self.confirm_delete(),
@@ -3755,23 +3684,9 @@ impl App {
                 result,
                 index,
                 generation,
-            } => {
-                if generation != self.generation {
-                    return Task::none();
-                }
-                self.jobs.finish();
-                match result {
-                    Ok(()) => {
-                        self.remember_trashed(index);
-                        self.run_delete_row(index + 1)
-                    }
-                    Err(reason) => {
-                        let text = self.delete_failure(index, &reason);
-                        self.set_status_error(&text);
-                        self.end_delete()
-                    }
-                }
-            }
+            } => self.with_ops(|ops, ctx| {
+                ncrs_ops::delete_row_done(ops, result, index, generation, ctx)
+            }),
 
             // --- job queue ---
             Message::JobFinished(event) => {
@@ -4709,9 +4624,9 @@ impl App {
             return Stack::with_children([root, dialog::scrim(menu_element)]).into();
         }
 
-        if let Some(deletion) = self.delete_dialog.as_ref() {
+        if let Some(deletion) = self.ops.delete_dialog.as_ref() {
             let dialog_element = delete_dialog_view::view(
-                &self.delete_subject(deletion),
+                &ncrs_ops::delete_subject(self.lang, deletion),
                 deletion.permanent,
                 self.dialog_focus,
                 self.window_size,
@@ -5048,7 +4963,7 @@ impl App {
         let transfer_dialog = self.transfer_dialog.is_some();
         let transfer_progress = self.progress_mask_is_open();
         let start_over_dialog = self.start_over_dialog;
-        let delete_dialog = match &self.delete_dialog {
+        let delete_dialog = match &self.ops.delete_dialog {
             None => DeleteKeys::Closed,
             Some(deletion) if deletion.permanent => DeleteKeys::Permanent,
             Some(_) => DeleteKeys::Trash,
@@ -5646,7 +5561,7 @@ impl App {
             3
         } else if self.model_card_has_one_button() {
             1
-        } else if self.delete_dialog.is_some()
+        } else if self.ops.delete_dialog.is_some()
             || self.start_over_dialog
             || self.settings.ocr_models.is_some()
             || self.settings.ai_card_is_shown()
@@ -5689,11 +5604,11 @@ impl App {
                 Task::none()
             };
         }
-        if self.delete_dialog.is_some() {
+        if self.ops.delete_dialog.is_some() {
             return if self.dialog_focus == delete_dialog_view::CONFIRM_FOCUS {
                 self.confirm_delete()
             } else {
-                self.delete_dialog = None;
+                self.ops.delete_dialog = None;
                 Task::none()
             };
         }
@@ -5795,7 +5710,7 @@ impl App {
             || self.conflict_is_open()
             || self.transfer_dialog.is_some()
             || self.progress_mask_is_open()
-            || self.delete_dialog.is_some()
+            || self.ops.delete_dialog.is_some()
             || self.start_over_dialog
             || self.volume_menu.is_some()
             || self.quick_open.is_some()
@@ -6510,172 +6425,154 @@ impl App {
         self.load(menu.side, target, None)
     }
 
-    /// F8 / Shift+F8: ask before deleting. Nothing to act on, or something
-    /// else already holding the keyboard or the queue, means nothing happens.
+    /// F8 / Shift+F8: ask before deleting.
     fn open_delete_dialog(&mut self, permanent: bool) -> Task<Message> {
-        if self.jobs.is_busy()
-            || self.prompt.is_some()
-            || self.conflict_is_open()
-            || self.delete_dialog.is_some()
-        {
-            return Task::none();
-        }
-        let sources = self.action_sources();
-        if sources.is_empty() {
-            return Task::none();
-        }
-        // An archive has no trash: its entries go for good.
-        let permanent_on_this_side = permanent || self.panel(self.source_side()).archive.is_some();
-        self.job_error = None;
-        self.notice = None;
-        self.dialog_focus = delete_dialog_view::default_focus(permanent_on_this_side);
-        self.delete_dialog = Some(Deletion {
-            sources,
-            permanent: permanent_on_this_side,
-            side: self.source_side(),
-        });
-        Task::none()
+        let side = self.source_side();
+        let request = ncrs_ops::DeleteRequest {
+            permanent,
+            sources: self.action_sources(),
+            side,
+            in_archive: self.panel(side).archive.is_some(),
+        };
+        self.with_ops(|ops, ctx| ncrs_ops::open_delete(ops, request, ctx))
     }
 
-    /// The dialog's subject line: the name for one entry, the count for more.
-    ///
-    /// A permanent delete also lists the first names, because tagged rows may
-    /// lie outside the visible part of the panel and the user is about to lose
-    /// them for good.
-    fn delete_subject(&self, deletion: &Deletion) -> String {
-        const LISTED: usize = 5;
-        let name_of = |path: &PathBuf| {
-            path.file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default()
-        };
-        match deletion.sources.as_slice() {
-            [only] => self.lang.text(Msg::DeleteOne).replace(
-                "{name}",
-                &only
-                    .file_name()
-                    .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or_default(),
-            ),
-            many => {
-                let mut lines = vec![self
-                    .lang
-                    .text(Msg::DeleteMany)
-                    .replace("{count}", &many.len().to_string())];
-                if deletion.permanent {
-                    lines.extend(many.iter().take(LISTED).map(name_of));
-                    if many.len() > LISTED {
-                        lines.push(
-                            self.lang
-                                .text(Msg::DeleteMore)
-                                .replace("{count}", &(many.len() - LISTED).to_string()),
-                        );
-                    }
-                }
-                lines.join("\n")
+    fn confirm_delete(&mut self) -> Task<Message> {
+        self.with_ops(ncrs_ops::confirm_delete)
+    }
+
+    fn end_delete(&mut self) -> Task<Message> {
+        self.with_ops(ncrs_ops::end_delete)
+    }
+
+    fn end_restore(&mut self) -> Task<Message> {
+        self.with_ops(|ops, ctx| ncrs_ops::end_restore(ops, ctx, false))
+    }
+
+    fn restore_row_done(
+        &mut self,
+        result: Result<(), fs::RestoreError>,
+        index: usize,
+        generation: u64,
+    ) -> Task<Message> {
+        self.with_ops(|ops, ctx| ncrs_ops::restore_row_done(ops, result, index, generation, ctx))
+    }
+
+    /// Runs `step` on the file operation flows and then what they ask of the app.
+    fn with_ops(
+        &mut self,
+        step: impl FnOnce(&mut ncrs_ops::Ops, &ncrs_ops::FlowCtx<'_>) -> ncrs_ops::Outcome,
+    ) -> Task<Message> {
+        let outcome = self.with_ops_ctx(step);
+        self.run_ops_outcome(outcome)
+    }
+
+    /// Runs `step` on the flows' state, taken out of the app for it since the
+    /// context borrows the rest.
+    fn with_ops_ctx<R>(
+        &mut self,
+        step: impl FnOnce(&mut ncrs_ops::Ops, &ncrs_ops::FlowCtx<'_>) -> R,
+    ) -> R {
+        let start_blocked = self.jobs.is_busy() || self.prompt.is_some() || self.conflict_is_open();
+        let permanent_delete_key = self
+            .keymap
+            .shortcut_label(&Message::Delete { permanent: true });
+        let restore_last_key = self
+            .keymap
+            .shortcut_label(&KeyAction::RestoreLastDeletion.message());
+        let mut ops = std::mem::take(&mut self.ops);
+        let outcome = step(
+            &mut ops,
+            &ncrs_ops::FlowCtx {
+                lang: self.lang,
+                trash: &self.trash,
+                start_blocked,
+                transfer_dialog_open: self.transfer_dialog.is_some(),
+                has_job_error: self.job_error.is_some(),
+                sandbox: &self.sandbox,
+                source_side: self.source_side(),
+                left_archive: self.panel(PanelSide::Left).archive.as_deref(),
+                right_archive: self.panel(PanelSide::Right).archive.as_deref(),
+                permanent_delete_key,
+                restore_last_key,
+            },
+        );
+        self.ops = ops;
+        outcome
+    }
+
+    fn run_ops_outcome(&mut self, (task, actions): ncrs_ops::Outcome) -> Task<Message> {
+        let mut tasks = vec![task.map(Message::from)];
+        for action in actions {
+            tasks.push(self.run_ops_action(action));
+        }
+        Task::batch(tasks)
+    }
+
+    fn run_ops_action(&mut self, action: ncrs_ops::Action) -> Task<Message> {
+        use ncrs_ops::Action as Ask;
+        match action {
+            Ask::ClearStatus => {
+                self.job_error = None;
+                self.notice = None;
+                Task::none()
+            }
+            Ask::ShowNotice(text) => self.show_notice(text),
+            Ask::ShowError(text) => {
+                self.set_status_error(&text);
+                Task::none()
+            }
+            Ask::FocusDialogButton(button) => {
+                self.dialog_focus = button;
+                Task::none()
+            }
+            Ask::StartJob(start) => {
+                self.jobs.enqueue(start.job);
+                let build = start.build;
+                self.jobs
+                    .start_next(move |_| build().map(Message::from))
+                    .unwrap_or_else(Task::none)
+            }
+            Ask::FinishJob => {
+                self.jobs.finish();
+                Task::none()
+            }
+            Ask::SetJobProgress(tick) => {
+                self.job_progress = Some(tick);
+                Task::none()
+            }
+            Ask::ClearJobProgress => {
+                self.job_progress = None;
+                Task::none()
+            }
+            Ask::ClearSelection(side) => {
+                self.panel_mut(side).selection.clear();
+                Task::none()
+            }
+            Ask::ReloadPanels => {
+                let tasks = [PanelSide::Left, PanelSide::Right].map(|each| {
+                    let path = self.panel(each).path.clone();
+                    self.load(each, path, None)
+                });
+                Task::batch(tasks)
+            }
+            Ask::RestartSearch => self.restart_search(),
+            Ask::ListTrash => self.list_trash(),
+            Ask::CloseQuickOpenAndPalette => {
+                Task::batch([self.close_quick_open(), self.close_command_palette()])
+            }
+            Ask::ClearConflictAll => {
+                self.conflict_all = false;
+                Task::none()
+            }
+            Ask::ShowErrorWithFinderPress(text) => {
+                self.set_status_error_with_press(&text, Message::Trash(TrashMessage::OpenInFinder));
+                Task::none()
+            }
+            Ask::DeleteInArchive { archive, deletion } => {
+                self.start_archive_delete(archive, deletion)
             }
         }
-    }
-
-    /// The dialog was confirmed: start on the first entry.
-    fn confirm_delete(&mut self) -> Task<Message> {
-        let Some(deletion) = self.delete_dialog.take() else {
-            return Task::none();
-        };
-        if let Some(archive) = self.panel(deletion.side).archive.clone() {
-            return self.start_archive_delete(archive, deletion);
-        }
-        if !deletion.permanent {
-            self.last_deletion.clear();
-        }
-        self.deleting = Some(deletion);
-        self.generation = self.generation.wrapping_add(1);
-        self.run_delete_row(0)
-    }
-
-    /// Deletes the entry at `index` on the blocking pool, or finishes when
-    /// there is none. One entry per job, so Escape works between two entries.
-    fn run_delete_row(&mut self, index: usize) -> Task<Message> {
-        let Some(deletion) = self.deleting.clone() else {
-            return Task::none();
-        };
-        let Some(path) = deletion.sources.get(index).cloned() else {
-            let notice = self.moved_to_trash_notice(&deletion);
-            return Task::batch([self.end_delete(), notice]);
-        };
-        let total = deletion.sources.len();
-        self.job_progress = Some(fs::transfer::Tick { done: index, total });
-        self.jobs.enqueue(jobs::Job {
-            kind: jobs::JobKind::Delete,
-            path: path.clone(),
-            total: Some(total),
-        });
-        let generation = self.generation;
-        let trash = Arc::clone(&self.trash);
-        self.jobs
-            .start_next(|_| {
-                Task::perform(
-                    tokio::task::spawn_blocking(move || {
-                        if deletion.permanent {
-                            fs::remove_permanently(&path).map_err(|err| err.to_string())
-                        } else {
-                            trash.trash(&path)
-                        }
-                    }),
-                    move |outcome| Message::DeleteRowDone {
-                        result: outcome.unwrap_or_else(|join| Err(join.to_string())),
-                        index,
-                        generation,
-                    },
-                )
-            })
-            .unwrap_or_else(Task::none)
-    }
-
-    /// Ends the delete, finished, failed or stopped: the tags refer to entries
-    /// that may be gone, so they go, and both panels are re-read.
-    fn end_delete(&mut self) -> Task<Message> {
-        let side = self.deleting.take().map_or(self.source_side(), |d| d.side);
-        self.generation = self.generation.wrapping_add(1);
-        self.job_progress = None;
-        self.panel_mut(side).selection.clear();
-        let tasks = [PanelSide::Left, PanelSide::Right].map(|each| {
-            let path = self.panel(each).path.clone();
-            self.load(each, path, None)
-        });
-        Task::batch(tasks.into_iter().chain([self.restart_search()]))
-    }
-
-    /// Notes that the entry at `index` of a delete went to the trash, for the
-    /// key that puts the latest deletion back. A permanent delete has nothing
-    /// to put back.
-    fn remember_trashed(&mut self, index: usize) {
-        let Some(deletion) = self.deleting.as_ref().filter(|d| !d.permanent) else {
-            return;
-        };
-        if let Some(path) = deletion.sources.get(index) {
-            self.last_deletion.push(path.clone());
-        }
-    }
-
-    /// The notice after a delete that moved everything to a trash that can
-    /// give it back.
-    fn moved_to_trash_notice(&mut self, deletion: &Deletion) -> Task<Message> {
-        if deletion.permanent || self.trash.reach() == fs::TrashReach::FinderOnly {
-            return Task::none();
-        }
-        let count = deletion.sources.len().to_string();
-        let text = match self
-            .keymap
-            .shortcut_label(&KeyAction::RestoreLastDeletion.message())
-        {
-            Some(key) => fill_template(
-                self.lang.text(Msg::TrashMovedWithKey),
-                &[("{count}", &count), ("{key}", &key)],
-            ),
-            None => fill_template(self.lang.text(Msg::TrashMoved), &[("{count}", &count)]),
-        };
-        self.show_notice(text)
     }
 
     // --- the trash ---
@@ -6694,16 +6591,18 @@ impl App {
                 self.close_trash();
                 release_focus()
             }
-            TrashAction::Restore(items) => self.start_restore(items),
+            TrashAction::Restore(items) => {
+                self.with_ops(|ops, flow| ncrs_ops::start_restore(ops, items, flow))
+            }
             TrashAction::RestoreRowDone {
                 result,
                 index,
                 generation,
             } => self.restore_row_done(result, index, generation),
-            TrashAction::RestoreLast => self.restore_last_deletion(),
-            TrashAction::LastListed { generation, result } => {
-                self.restore_listed_deletion(generation, result)
-            }
+            TrashAction::RestoreLast => self.with_ops(ncrs_ops::restore_last_deletion),
+            TrashAction::LastListed { generation, result } => self.with_ops(|ops, flow| {
+                ncrs_ops::restore_listed_deletion(ops, generation, result, flow)
+            }),
             TrashAction::OpenInFinder => self.open_trash_in_finder(),
         }
     }
@@ -6792,254 +6691,6 @@ impl App {
                 .shortcut_label(&KeyAction::OpenTrashInFinder.message()),
         })
         .map(Message::from)
-    }
-
-    /// Whether a restore may start: nothing else holds the queue or the keys.
-    fn restore_is_blocked(&self) -> bool {
-        self.jobs.is_busy()
-            || self.prompt.is_some()
-            || self.conflict_is_open()
-            || self.delete_dialog.is_some()
-            || self.transfer_dialog.is_some()
-            || self.restoring.is_some()
-    }
-
-    /// Puts `items` back, one per job, so Escape works between two entries.
-    fn start_restore(&mut self, items: Vec<fs::TrashedItem>) -> Task<Message> {
-        if items.is_empty() || self.restore_is_blocked() {
-            return Task::none();
-        }
-        self.job_error = None;
-        self.notice = None;
-        self.restoring = Some(Restoration {
-            items,
-            restored: 0,
-            skipped: 0,
-            rule: None,
-        });
-        self.generation = self.generation.wrapping_add(1);
-        self.run_restore_row(0, false)
-    }
-
-    /// Puts the entry at `index` back on the blocking pool, or finishes when
-    /// there is none. With `overwrite`, what is in the way goes to the trash
-    /// first: nothing is ever deleted for good here.
-    fn run_restore_row(&mut self, index: usize, overwrite: bool) -> Task<Message> {
-        let Some(restoring) = self.restoring.as_ref() else {
-            return Task::none();
-        };
-        let Some(item) = restoring.items.get(index).cloned() else {
-            return self.end_restore();
-        };
-        let total = restoring.items.len();
-        self.job_progress = Some(fs::transfer::Tick { done: index, total });
-        self.jobs.enqueue(jobs::Job {
-            kind: jobs::JobKind::Restore,
-            path: item.original.clone(),
-            total: Some(total),
-        });
-        let generation = self.generation;
-        let trash = Arc::clone(&self.trash);
-        let sandbox = self.sandbox.clone();
-        self.jobs
-            .start_next(|_| {
-                Task::perform(
-                    tokio::task::spawn_blocking(move || {
-                        restore_one(trash.as_ref(), &sandbox, &item, overwrite)
-                    }),
-                    move |outcome| {
-                        Message::Trash(TrashMessage::RestoreRowDone {
-                            result: outcome.unwrap_or_else(|join| {
-                                Err(fs::RestoreError::Failed(join.to_string()))
-                            }),
-                            index,
-                            generation,
-                        })
-                    },
-                )
-            })
-            .unwrap_or_else(Task::none)
-    }
-
-    fn restore_row_done(
-        &mut self,
-        result: Result<(), fs::RestoreError>,
-        index: usize,
-        generation: u64,
-    ) -> Task<Message> {
-        if generation != self.generation {
-            return Task::none();
-        }
-        self.jobs.finish();
-        let rule = self.restoring.as_ref().and_then(|restoring| restoring.rule);
-        match result {
-            Ok(()) => {
-                if let Some(restoring) = self.restoring.as_mut() {
-                    restoring.restored += 1;
-                }
-                self.run_restore_row(index + 1, false)
-            }
-            Err(fs::RestoreError::Taken) => match rule {
-                Some(fs::transfer::OnConflict::Overwrite) => self.run_restore_row(index, true),
-                Some(_) => self.skip_restore_row(index),
-                None => {
-                    self.dialog_focus = conflict::OVERWRITE_FOCUS;
-                    self.restore_conflict = Some(index);
-                    Task::batch([self.close_quick_open(), self.close_command_palette()])
-                }
-            },
-            Err(fs::RestoreError::NotGranted) => {
-                let name = self.restore_row_name(index);
-                let text = fill_template(
-                    self.lang.text(Msg::TrashRestoreNotGranted),
-                    &[("{name}", &name)],
-                );
-                self.set_status_error_with_press(&text, Message::Trash(TrashMessage::OpenInFinder));
-                self.end_restore()
-            }
-            Err(fs::RestoreError::Failed(reason)) => {
-                let name = self.restore_row_name(index);
-                let params = [("{name}", name.as_str()), ("{reason}", reason.as_str())];
-                if cfg!(target_os = "macos") {
-                    let text =
-                        fill_template(self.lang.text(Msg::TrashRestoreFailedFinder), &params);
-                    self.set_status_error_with_press(
-                        &text,
-                        Message::Trash(TrashMessage::OpenInFinder),
-                    );
-                } else {
-                    let text = fill_template(self.lang.text(Msg::TrashRestoreFailed), &params);
-                    self.set_status_error(&text);
-                }
-                self.end_restore()
-            }
-        }
-    }
-
-    fn restore_row_name(&self, index: usize) -> String {
-        self.restoring
-            .as_ref()
-            .and_then(|restoring| restoring.items.get(index))
-            .and_then(|item| item.original.file_name())
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_default()
-    }
-
-    fn skip_restore_row(&mut self, index: usize) -> Task<Message> {
-        if let Some(restoring) = self.restoring.as_mut() {
-            restoring.skipped += 1;
-        }
-        self.run_restore_row(index + 1, false)
-    }
-
-    /// The answer to the conflict dialog of a restore.
-    fn resume_restore(&mut self, index: usize, choice: ConflictChoice) -> Task<Message> {
-        if choice == ConflictChoice::Cancel {
-            return self.end_restore();
-        }
-        if choice.applies_to_all() {
-            if let Some(restoring) = self.restoring.as_mut() {
-                restoring.rule = Some(choice.conflict());
-            }
-        }
-        match choice.conflict() {
-            fs::transfer::OnConflict::Overwrite => self.run_restore_row(index, true),
-            fs::transfer::OnConflict::Skip | fs::transfer::OnConflict::Fail => {
-                self.skip_restore_row(index)
-            }
-        }
-    }
-
-    /// Ends the restore, finished, failed or stopped: reloads both panels and
-    /// the trash, and says what came back unless an error already speaks.
-    fn end_restore(&mut self) -> Task<Message> {
-        let outcome = self.restoring.take();
-        self.restore_conflict = None;
-        self.conflict_all = false;
-        self.generation = self.generation.wrapping_add(1);
-        self.job_progress = None;
-        let notice = match outcome {
-            Some(done) if self.job_error.is_none() && (done.restored > 0 || done.skipped > 0) => {
-                let mut text = fill_template(
-                    self.lang.text(Msg::TrashRestored),
-                    &[("{count}", &done.restored.to_string())],
-                );
-                if done.skipped > 0 {
-                    text.push_str(&fill_template(
-                        self.lang.text(Msg::TrashRestoredLeft),
-                        &[("{skipped}", &done.skipped.to_string())],
-                    ));
-                }
-                self.show_notice(text)
-            }
-            _ => Task::none(),
-        };
-        let reloads = [PanelSide::Left, PanelSide::Right].map(|each| {
-            let path = self.panel(each).path.clone();
-            self.load(each, path, None)
-        });
-        Task::batch(
-            reloads
-                .into_iter()
-                .chain([self.list_trash(), self.restart_search(), notice]),
-        )
-    }
-
-    /// The key behind "Restore the last deletion": reads the trash, then puts
-    /// back what the latest F8 of this session moved there.
-    fn restore_last_deletion(&mut self) -> Task<Message> {
-        if self.restore_is_blocked() {
-            return Task::none();
-        }
-        if self.last_deletion.is_empty() {
-            return self.show_notice(self.lang.text(Msg::TrashNothingToRestore).to_owned());
-        }
-        self.generation = self.generation.wrapping_add(1);
-        let generation = self.generation;
-        let trash = Arc::clone(&self.trash);
-        let trashed = self.last_deletion.clone();
-        Task::perform(
-            tokio::task::spawn_blocking(move || {
-                trash
-                    .list()
-                    .map(|listed| newest_entries_from(&listed, &trashed))
-            }),
-            move |outcome| {
-                Message::Trash(TrashMessage::LastListed {
-                    generation,
-                    result: outcome.unwrap_or_else(|join| Err(join.to_string())),
-                })
-            },
-        )
-    }
-
-    /// Puts back the entries the trash still holds of the latest deletion.
-    fn restore_listed_deletion(
-        &mut self,
-        generation: u64,
-        result: Result<Vec<fs::TrashedItem>, String>,
-    ) -> Task<Message> {
-        if generation != self.generation {
-            return Task::none();
-        }
-        let found = match result {
-            Ok(found) => found,
-            Err(reason) => {
-                let text = fill_template(self.lang.text(Msg::TrashError), &[("{reason}", &reason)]);
-                self.set_status_error(&text);
-                return Task::none();
-            }
-        };
-        // A job started while the trash was read: the deletion stays for the
-        // next press.
-        if self.restore_is_blocked() {
-            return Task::none();
-        }
-        self.last_deletion.clear();
-        if found.is_empty() {
-            return self.show_notice(self.lang.text(Msg::TrashNothingToRestore).to_owned());
-        }
-        self.start_restore(found)
     }
 
     /// Shows the trash folder in the Finder, where the app cannot list it.
@@ -7155,8 +6806,8 @@ impl App {
         // the queue and `generation`; unpacking beside it would lose its result.
         if self.jobs.is_busy()
             || self.transfer.is_some()
-            || self.deleting.is_some()
-            || self.delete_dialog.is_some()
+            || self.ops.deleting.is_some()
+            || self.ops.delete_dialog.is_some()
             || self.transfer_dialog.is_some()
             || self.conflict_is_open()
         {
@@ -7184,7 +6835,7 @@ impl App {
         self.job_done = 0;
         self.job_progress = None;
         let progress_tx = self.progress_sender();
-        let generation = self.generation;
+        let generation = self.ops.generation;
         self.extracting = Some(Extracting {
             archive: group,
             slot: slot.clone(),
@@ -7225,7 +6876,7 @@ impl App {
         slot: PathBuf,
         result: Result<PathBuf, RowFailure>,
     ) -> Task<Message> {
-        if generation != self.generation {
+        if generation != self.ops.generation {
             // The unpacking thread removed the slot itself when it failed.
             if result.is_ok() {
                 self.discard_view_slot(&slot);
@@ -7319,7 +6970,7 @@ impl App {
         if self.jobs.is_busy()
             || self.prompt.is_some()
             || self.conflict_is_open()
-            || self.delete_dialog.is_some()
+            || self.ops.delete_dialog.is_some()
             || self.transfer_dialog.is_some()
             || self.transfer.is_some()
         {
@@ -7470,7 +7121,7 @@ impl App {
     ) -> Task<Message> {
         if self.jobs.is_busy()
             || self.transfer.is_some()
-            || self.deleting.is_some()
+            || self.ops.deleting.is_some()
             || self.extracting.is_some()
             || self.archive_write.is_some()
         {
@@ -7482,8 +7133,8 @@ impl App {
         self.job_done = 0;
         self.job_progress = None;
         let progress_tx = self.progress_sender();
-        self.generation = self.generation.wrapping_add(1);
-        let generation = self.generation;
+        self.ops.generation = self.ops.generation.wrapping_add(1);
+        let generation = self.ops.generation;
         self.archive_write = Some(write);
         self.jobs.enqueue(jobs::Job {
             kind,
@@ -7515,7 +7166,7 @@ impl App {
         generation: u64,
         result: Result<fs::archive::WriteReport, RowFailure>,
     ) -> Task<Message> {
-        if generation != self.generation {
+        if generation != self.ops.generation {
             return Task::none();
         }
         self.jobs.finish();
@@ -7523,7 +7174,7 @@ impl App {
         let Some(write) = self.archive_write.take() else {
             return Task::none();
         };
-        self.generation = self.generation.wrapping_add(1);
+        self.ops.generation = self.ops.generation.wrapping_add(1);
         let notice = match result {
             Ok(report) => Some(self.written_text(&write, report)),
             Err(failure) => {
@@ -7609,11 +7260,11 @@ impl App {
             self.end_extraction();
             Task::none()
         } else if let Some(write) = self.archive_write.take() {
-            self.generation = self.generation.wrapping_add(1);
+            self.ops.generation = self.ops.generation.wrapping_add(1);
             self.end_archive_write(&write)
-        } else if self.deleting.is_some() {
+        } else if self.ops.deleting.is_some() {
             self.end_delete()
-        } else if self.restoring.is_some() {
+        } else if self.ops.restoring.is_some() {
             self.end_restore()
         } else {
             self.end_transfer()
@@ -7636,7 +7287,7 @@ impl App {
     /// thread removes it when it notices the stop, and if it finished first,
     /// the copy goes with the others of its archive.
     fn end_extraction(&mut self) {
-        self.generation = self.generation.wrapping_add(1);
+        self.ops.generation = self.ops.generation.wrapping_add(1);
         self.extracting = None;
     }
 
@@ -7727,36 +7378,6 @@ impl App {
         }
     }
 
-    /// The status line for an entry that could not be deleted. A failed trash
-    /// points at the permanent-delete key rather than falling back to it:
-    /// deleting for good is the user's decision, not the app's.
-    fn delete_failure(&self, index: usize, reason: &str) -> String {
-        let permanent = self.deleting.as_ref().is_some_and(|d| d.permanent);
-        let name = self
-            .deleting
-            .as_ref()
-            .and_then(|d| d.sources.get(index))
-            .and_then(|p| p.file_name())
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        let permanent_key = self
-            .keymap
-            .shortcut_label(&Message::Delete { permanent: true });
-        let template = match (permanent, &permanent_key) {
-            (true, _) => Msg::ErrorDeleteFailed,
-            (false, Some(_)) => Msg::ErrorTrashFailed,
-            (false, None) => Msg::ErrorTrashFailedNoKey,
-        };
-        fill_template(
-            self.lang.text(template),
-            &[
-                ("{name}", &name),
-                ("{reason}", reason),
-                ("{key}", permanent_key.as_deref().unwrap_or_default()),
-            ],
-        )
-    }
-
     /// F5 / F6: resolve what to transfer and ask before anything starts.
     ///
     /// The rows are resolved here rather than at the confirmation because a
@@ -7784,7 +7405,7 @@ impl App {
         }
         if self.prompt.is_some()
             || self.conflict_is_open()
-            || self.delete_dialog.is_some()
+            || self.ops.delete_dialog.is_some()
             || self.transfer_dialog.is_some()
             || self.archive_write.is_some()
         {
@@ -7917,7 +7538,7 @@ impl App {
             || self.extracting.is_some()
             || self.prompt.is_some()
             || self.conflict_is_open()
-            || self.delete_dialog.is_some()
+            || self.ops.delete_dialog.is_some()
             || self.transfer_dialog.is_some()
             || self.archive_write.is_some()
     }
@@ -8189,7 +7810,7 @@ impl App {
         };
         self.transfer = Some(transfer.clone());
         self.conflict_rule = policy.standing_rule();
-        self.generation = self.generation.wrapping_add(1);
+        self.ops.generation = self.ops.generation.wrapping_add(1);
         self.transfer_mask_visible = true;
         self.transfer_rows_done = 0;
         self.run_from(transfer, 0, policy.on_conflict())
@@ -8225,9 +7846,9 @@ impl App {
     /// Answers a conflict and remembers an "all" answer, so the next
     /// conflict does not ask again.
     fn answer_conflict(&mut self, clicked: ConflictChoice) -> Task<Message> {
-        if let Some(index) = self.restore_conflict.take() {
+        if let Some(index) = self.ops.restore_conflict.take() {
             let choice = self.conflict_answer(clicked);
-            return self.resume_restore(index, choice);
+            return self.with_ops(|ops, ctx| ncrs_ops::resume_restore(ops, index, choice, ctx));
         }
         let Some(pending) = self.pending_conflict.take() else {
             return Task::none();
@@ -8248,9 +7869,10 @@ impl App {
 
     /// The file the open conflict dialog asks about.
     fn conflict_name(&self) -> String {
-        let path = match (self.pending_conflict.as_ref(), self.restore_conflict) {
+        let path = match (self.pending_conflict.as_ref(), self.ops.restore_conflict) {
             (Some(pending), _) => pending.transfer.sources.get(pending.index),
             (None, Some(index)) => self
+                .ops
                 .restoring
                 .as_ref()
                 .and_then(|restoring| restoring.items.get(index))
@@ -8283,7 +7905,7 @@ impl App {
     /// Whether a name that is taken waits for an answer, in a transfer or in
     /// a restore from the trash.
     fn conflict_is_open(&self) -> bool {
-        self.pending_conflict.is_some() || self.restore_conflict.is_some()
+        self.pending_conflict.is_some() || self.ops.restore_conflict.is_some()
     }
 
     /// Continues a transfer from `index` under the given conflict rule.
@@ -8305,7 +7927,7 @@ impl App {
         self.transfer_mask_visible = false;
         self.transfer_rows_done = 0;
         self.conflict_rule = None;
-        self.generation = self.generation.wrapping_add(1);
+        self.ops.generation = self.ops.generation.wrapping_add(1);
         let source_side = self.source_side();
         let target_side = source_side.other();
         let source_path = self.panel(source_side).path.clone();
@@ -8510,7 +8132,7 @@ impl App {
         // have to hand out a fresh receiver after every row.
         let progress_tx = self.progress_sender();
 
-        let generation = self.generation;
+        let generation = self.ops.generation;
         let target = transfer.target.clone();
         let name_in_target = transfer.name_in_target(index);
         let pool = Arc::clone(&self.remote);
@@ -13140,9 +12762,6 @@ impl App {
             jobs: jobs::Queue::new(),
             transfer: None,
             pending_conflict: None,
-            restoring: None,
-            restore_conflict: None,
-            last_deletion: Vec::new(),
             trash_view: None,
             trash_side: PanelSide::Left,
             trash_generation: 0,
@@ -13153,9 +12772,7 @@ impl App {
             transfer_dialogs_opened: 0,
             transfer_mask_visible: false,
             transfer_rows_done: 0,
-            delete_dialog: None,
             start_over_dialog: false,
-            deleting: None,
             view_copies: None,
             extracting: None,
             archive_write: None,
@@ -13177,7 +12794,7 @@ impl App {
             job_done: 0,
             conflict_all: false,
             conflict_rule: None,
-            generation: 0,
+            ops: ncrs_ops::Ops::default(),
             job_progress: None,
             progress_rx: None,
             progress_tx: None,
@@ -14165,7 +13782,7 @@ impl App {
 
     /// Whether the restore is done and its dialog gone.
     pub fn restore_is_idle(&self) -> bool {
-        self.restoring.is_none() && self.restore_conflict.is_none()
+        self.ops.restoring.is_none() && self.ops.restore_conflict.is_none()
     }
 
     /// Tags the row at `index`, addressed by position the way a keypress is.
@@ -14197,7 +13814,7 @@ impl App {
 
     /// Whether the delete confirmation is up.
     pub fn delete_dialog_is_open(&self) -> bool {
-        self.delete_dialog.is_some()
+        self.ops.delete_dialog.is_some()
     }
 
     /// Replaces the clock type-ahead reads.
@@ -14358,7 +13975,7 @@ impl App {
     /// for the snapshot tests.
     pub fn open_delete_dialog_for_test(&mut self, count: usize, permanent: bool) {
         self.dialog_focus = delete_dialog_view::default_focus(permanent);
-        self.delete_dialog = Some(Deletion {
+        self.ops.delete_dialog = Some(Deletion {
             sources: (0..count)
                 .map(|i| PathBuf::from("/left").join(format!("entry-{}.txt", i + 1)))
                 .collect(),
@@ -15435,7 +15052,7 @@ mod conflict_tests {
                 "alpha.txt already exists",
             ))),
             index: 0,
-            generation: app.generation,
+            generation: app.ops.generation,
         });
     }
 
@@ -15559,7 +15176,7 @@ mod conflict_tests {
                 let _task = app.update(Message::TransferRowDone {
                     result: Err(RowFailure::from_io(error)),
                     index: 0,
-                    generation: app.generation,
+                    generation: app.ops.generation,
                 });
 
                 assert_eq!(app.job_error.as_deref(), Some(lang.text(*expected)));
@@ -15573,7 +15190,7 @@ mod conflict_tests {
     async fn a_late_result_of_a_stopped_transfer_is_ignored() {
         let (mut app, _scratch) = with_conflict();
         let _first = app.start_transfer(TransferKind::Copy);
-        let stale = app.generation;
+        let stale = app.ops.generation;
         let _stopped = app.update(Message::AbortJob);
         let _second = app.start_transfer(TransferKind::Copy);
         assert!(app.jobs.is_busy());
@@ -15605,7 +15222,7 @@ mod conflict_tests {
         let _task = app.update(Message::TransferRowDone {
             result: Ok(transfer),
             index: 0,
-            generation: app.generation,
+            generation: app.ops.generation,
         });
 
         assert!(app.transfer.is_none());
@@ -16090,7 +15707,7 @@ mod delete_tests {
         assert_eq!(app.dialog_focus, delete_dialog_view::CANCEL_FOCUS);
         let _cancel = app.update(Message::DialogActivate);
         assert!(
-            app.delete_dialog.is_none(),
+            app.ops.delete_dialog.is_none(),
             "Enter on Cancel kept the dialog"
         );
 
@@ -16102,8 +15719,11 @@ mod delete_tests {
         );
         let _move = app.update(Message::DialogFocus(1));
         let _enter = app.update(Message::DialogActivate);
-        assert!(app.delete_dialog.is_none());
-        assert!(app.deleting.is_none(), "Enter on Cancel started a delete");
+        assert!(app.ops.delete_dialog.is_none());
+        assert!(
+            app.ops.deleting.is_none(),
+            "Enter on Cancel started a delete"
+        );
     }
 
     #[tokio::test]
@@ -16175,7 +15795,7 @@ mod delete_tests {
     async fn an_empty_panel_opens_no_dialog() {
         let mut app = app_with_entries(&[]);
         let _task = app.update(Message::Delete { permanent: false });
-        assert!(app.delete_dialog.is_none());
+        assert!(app.ops.delete_dialog.is_none());
     }
 
     #[tokio::test]
@@ -16183,15 +15803,18 @@ mod delete_tests {
         let mut app = app_with_entries(&["a.txt", "b.txt"]);
         app.panels.left.selected = 0;
         let _task = app.update(Message::Delete { permanent: false });
-        let one = app.delete_dialog.clone().unwrap();
-        assert_eq!(app.delete_subject(&one), "a.txt");
+        let one = app.ops.delete_dialog.clone().unwrap();
+        assert_eq!(ncrs_ops::delete_subject(app.lang, &one), "a.txt");
 
-        app.delete_dialog = None;
+        app.ops.delete_dialog = None;
         app.panels.left.selection.toggle(Path::new("/left/a.txt"));
         app.panels.left.selection.toggle(Path::new("/left/b.txt"));
         let _again = app.update(Message::Delete { permanent: true });
-        let many = app.delete_dialog.clone().unwrap();
-        assert_eq!(app.delete_subject(&many), "2 items\na.txt\nb.txt");
+        let many = app.ops.delete_dialog.clone().unwrap();
+        assert_eq!(
+            ncrs_ops::delete_subject(app.lang, &many),
+            "2 items\na.txt\nb.txt"
+        );
         assert!(many.permanent);
 
         // The trash dialog stays short: only the count.
@@ -16199,7 +15822,7 @@ mod delete_tests {
             permanent: false,
             ..many.clone()
         };
-        assert_eq!(app.delete_subject(&trash), "2 items");
+        assert_eq!(ncrs_ops::delete_subject(app.lang, &trash), "2 items");
 
         let seven = Deletion {
             sources: (1..=7)
@@ -16208,7 +15831,7 @@ mod delete_tests {
             ..many
         };
         assert_eq!(
-            app.delete_subject(&seven),
+            ncrs_ops::delete_subject(app.lang, &seven),
             "7 items\nf1\nf2\nf3\nf4\nf5\n… and 2 more"
         );
     }
@@ -16909,7 +16532,7 @@ mod context_menu_tests {
         drop(app.update(Message::ContextMenuClick(trash)));
 
         assert!(!app.context_menu_is_open());
-        assert_eq!(app.delete_dialog.as_ref().unwrap().sources.len(), 2);
+        assert_eq!(app.ops.delete_dialog.as_ref().unwrap().sources.len(), 2);
     }
 
     #[test]
@@ -16939,7 +16562,7 @@ mod context_menu_tests {
         assert!(!app.left_panel_selection_tagged_for_test(3));
         let trash = index_of(&app, ContextAction::Trash);
         drop(app.update(Message::ContextMenuClick(trash)));
-        assert_eq!(app.delete_dialog.as_ref().unwrap().sources.len(), 1);
+        assert_eq!(app.ops.delete_dialog.as_ref().unwrap().sources.len(), 1);
     }
 
     #[test]
@@ -18355,8 +17978,8 @@ mod configured_keys_tests {
         };
         let mut app = App::with_fixed_panels()
             .with_config(Ok(config_with("[keys]\ndelete_permanently = \"ctrl+d\"\n")));
-        app.deleting = Some(deleting.clone());
-        let shown = app.delete_failure(0, "denied");
+        app.ops.deleting = Some(deleting.clone());
+        let shown = app.with_ops_ctx(|ops, ctx| ncrs_ops::delete_failure(ops, ctx, 0, "denied"));
         assert!(
             shown.contains("a.txt") && shown.contains("denied"),
             "{shown}"
@@ -18373,8 +17996,9 @@ mod configured_keys_tests {
 
         let mut unbound = App::with_fixed_panels()
             .with_config(Ok(config_with("[keys]\ndelete_permanently = []\n")));
-        unbound.deleting = Some(deleting);
-        let shown_unbound = unbound.delete_failure(0, "denied");
+        unbound.ops.deleting = Some(deleting);
+        let shown_unbound =
+            unbound.with_ops_ctx(|ops, ctx| ncrs_ops::delete_failure(ops, ctx, 0, "denied"));
         assert!(shown_unbound.contains("denied"), "{shown_unbound}");
         assert!(
             !shown_unbound.contains("{key}") && !shown_unbound.contains("permanently"),
@@ -18395,10 +18019,14 @@ mod configured_keys_tests {
         let sources = (0..count)
             .map(|index| PathBuf::from(format!("/left/{index}.txt")))
             .collect();
-        drop(app.moved_to_trash_notice(&Deletion {
+        app.ops.deleting = Some(Deletion {
             sources,
             permanent: false,
             side: PanelSide::Left,
+        });
+        let generation = app.ops.generation;
+        drop(app.with_ops(|ops, ctx| {
+            ncrs_ops::delete_row_done(ops, Ok(()), count - 1, generation, ctx)
         }));
     }
 
@@ -18456,7 +18084,7 @@ mod configured_keys_tests {
     #[test]
     fn the_notice_after_a_restore_counts_what_came_back_and_what_stayed() {
         let (_folder, mut app) = app_with_a_trash_that_lists();
-        app.restoring = Some(Restoration {
+        app.ops.restoring = Some(Restoration {
             items: Vec::new(),
             restored: 2,
             skipped: 1,
@@ -18467,13 +18095,13 @@ mod configured_keys_tests {
             app.notice_for_test(),
             Some("Restored 2 from the trash. 1 left in the trash.")
         );
-        assert!(app.restoring.is_none());
+        assert!(app.ops.restoring.is_none());
     }
 
     #[test]
     fn a_failed_restore_keeps_its_error_instead_of_a_notice() {
         let (_folder, mut app) = app_with_a_trash_that_lists();
-        app.restoring = Some(Restoration {
+        app.ops.restoring = Some(Restoration {
             items: vec![fs::TrashedItem {
                 original: PathBuf::from("/left/a.txt"),
                 deleted_at: 0,
@@ -18483,7 +18111,7 @@ mod configured_keys_tests {
             skipped: 0,
             rule: None,
         });
-        let generation = app.generation;
+        let generation = app.ops.generation;
         drop(app.restore_row_done(
             Err(fs::RestoreError::Failed("denied".to_string())),
             0,
@@ -18498,7 +18126,7 @@ mod configured_keys_tests {
     #[test]
     fn a_restore_the_sandbox_cannot_reach_says_so_and_offers_the_finder() {
         let (_folder, mut app) = app_with_a_trash_that_lists();
-        app.restoring = Some(Restoration {
+        app.ops.restoring = Some(Restoration {
             items: vec![fs::TrashedItem {
                 original: PathBuf::from("/left/a.txt"),
                 deleted_at: 0,
@@ -18508,7 +18136,7 @@ mod configured_keys_tests {
             skipped: 0,
             rule: None,
         });
-        let generation = app.generation;
+        let generation = app.ops.generation;
         drop(app.restore_row_done(Err(fs::RestoreError::NotGranted), 0, generation));
 
         assert_eq!(
@@ -18743,12 +18371,12 @@ mod configured_keys_tests {
     #[test]
     fn a_name_with_a_placeholder_in_it_is_shown_as_written() {
         let mut app = App::with_fixed_panels();
-        app.deleting = Some(Deletion {
+        app.ops.deleting = Some(Deletion {
             sources: vec![PathBuf::from("/left/{key}.txt")],
             permanent: false,
             side: PanelSide::Left,
         });
-        let shown = app.delete_failure(0, "{name}");
+        let shown = app.with_ops_ctx(|ops, ctx| ncrs_ops::delete_failure(ops, ctx, 0, "{name}"));
         assert!(shown.contains("{key}.txt"), "{shown}");
         assert!(shown.contains("{name}"), "{shown}");
 
@@ -19117,9 +18745,9 @@ mod search_tests {
         let mut app = app_with_results(&[]);
         assert!(app.action_sources().is_empty());
         drop(app.update(Message::Delete { permanent: false }));
-        assert!(app.delete_dialog.is_none());
+        assert!(app.ops.delete_dialog.is_none());
         drop(app.update(Message::Delete { permanent: true }));
-        assert!(app.delete_dialog.is_none());
+        assert!(app.ops.delete_dialog.is_none());
     }
 
     #[test]
@@ -19132,7 +18760,7 @@ mod search_tests {
         drop(app.update(search_message(SearchMessage::ToggleTag)));
         drop(app.update(search_message(SearchMessage::ToggleTag)));
         drop(app.update(Message::Delete { permanent: false }));
-        assert_eq!(app.delete_dialog.as_ref().unwrap().sources.len(), 2);
+        assert_eq!(app.ops.delete_dialog.as_ref().unwrap().sources.len(), 2);
     }
 
     #[test]
@@ -19620,7 +19248,7 @@ mod search_tests {
 
         drop(app.update(Message::ContextMenuClick(trash)));
 
-        let sources = &app.delete_dialog.as_ref().unwrap().sources;
+        let sources = &app.ops.delete_dialog.as_ref().unwrap().sources;
         let names: Vec<_> = sources.iter().filter_map(|path| path.file_name()).collect();
         assert_eq!(names, [std::ffi::OsStr::new("b.txt")]);
     }
@@ -19772,7 +19400,7 @@ mod quick_open_tests {
         drop(app.update(Message::TransferRowDone {
             result: Err(RowFailure::Conflict("exists".to_string())),
             index: 0,
-            generation: app.generation,
+            generation: app.ops.generation,
         }));
         assert!(app.pending_conflict.is_some());
         assert!(app.quick_open_for_test().is_none());
@@ -20678,7 +20306,7 @@ mod command_palette_tests {
         open_palette(&mut app);
         let routed = route(&app, Key::Named(Named::F8), Modifiers::default());
         assert_eq!(routed, None);
-        assert!(app.delete_dialog.is_none());
+        assert!(app.ops.delete_dialog.is_none());
     }
 
     #[test]
@@ -23044,7 +22672,7 @@ mod archive_view_tests {
             path: archive.to_path_buf(),
             total: None,
         });
-        assert!(app.jobs.start_next(|_| Task::none()).is_some());
+        assert!(app.jobs.start_next(|_| Task::<Message>::none()).is_some());
         slot
     }
 
@@ -23125,14 +22753,17 @@ mod archive_view_tests {
         let archive = dir.path().join("x.zip");
         let mut app = app_with_copies(&dir.path().join("cache"));
         let slot = pretend_extracting(&mut app, &archive);
-        let generation = app.generation;
+        let generation = app.ops.generation;
         app.panel_mut(PanelSide::Left).archive = Some(archive);
 
         leave(&mut app, PanelSide::Left);
 
         assert!(app.extracting.is_none());
         assert!(!app.jobs.is_busy(), "the job is still running");
-        assert_ne!(app.generation, generation, "a late result would be taken");
+        assert_ne!(
+            app.ops.generation, generation,
+            "a late result would be taken"
+        );
         assert!(!slot.exists());
     }
 
@@ -23194,7 +22825,7 @@ mod archive_view_tests {
         drop(app.update(Message::ViewExtracted {
             slot,
             result: Ok(copy),
-            generation: app.generation,
+            generation: app.ops.generation,
         }));
 
         assert!(!app.jobs.is_busy(), "the queue is stuck");
@@ -23217,8 +22848,8 @@ mod archive_view_tests {
         };
         match name {
             "transfer" => app.transfer = Some(transfer),
-            "deleting" => app.deleting = Some(deletion),
-            "delete dialog" => app.delete_dialog = Some(deletion),
+            "deleting" => app.ops.deleting = Some(deletion),
+            "delete dialog" => app.ops.delete_dialog = Some(deletion),
             "transfer dialog" => {
                 app.transfer_dialog = Some(TransferDialog::new(
                     1,
@@ -23297,7 +22928,7 @@ mod archive_view_tests {
         drop(app.update(Message::ViewExtracted {
             slot,
             result: Err(RowFailure::Refused(fs::archive::SevenZipRefusal::Encrypted)),
-            generation: app.generation,
+            generation: app.ops.generation,
         }));
 
         assert_eq!(
@@ -23318,7 +22949,7 @@ mod archive_view_tests {
         let slot = app.view_copies.as_mut().unwrap().slot(&archive).unwrap();
         let copy = slot.join("a.txt");
         std::fs::write(&copy, "x").unwrap();
-        let stale = app.generation.wrapping_sub(1);
+        let stale = app.ops.generation.wrapping_sub(1);
 
         drop(app.update(Message::ViewExtracted {
             slot: slot.clone(),
@@ -23344,7 +22975,7 @@ mod archive_view_tests {
         drop(app.update(Message::ViewExtracted {
             slot: slot.clone(),
             result: Ok(copy),
-            generation: app.generation,
+            generation: app.ops.generation,
         }));
 
         assert!(!slot.exists());
@@ -24606,7 +24237,7 @@ mod remote_panel_tests {
         settle(&mut app, KeyAction::ConnectServer.message()).await;
         assert!(app.remote_ui.dialog.is_none());
 
-        app.delete_dialog = None;
+        app.ops.delete_dialog = None;
         settle(&mut app, KeyAction::ConnectServer.message()).await;
         assert!(app.remote_ui.dialog.is_some());
     }
@@ -24730,7 +24361,7 @@ mod remote_panel_tests {
             path: PathBuf::from("x"),
             total: None,
         });
-        assert!(app.jobs.start_next(|_| Task::none()).is_some());
+        assert!(app.jobs.start_next(|_| Task::<Message>::none()).is_some());
 
         drop(app.update(Message::OpenExternal(fs::OpenKind::View)));
 
@@ -27930,7 +27561,7 @@ mod replan_flow {
             path: PathBuf::new(),
             total: None,
         });
-        drop(fixture.app.jobs.start_next(|_| Task::none()));
+        drop(fixture.app.jobs.start_next(|_| Task::<Message>::none()));
 
         drop(
             fixture

@@ -83,6 +83,8 @@ ncrs-remote = { path = "crates/ncrs-remote", version = "0.0.0" }
 ncrs-filing = { path = "crates/ncrs-filing", version = "0.0.0" }
 # The Hermes pages: filing setup and status, overview, review, rules, tags, reorganisation.
 ncrs-hermes-ui = { path = "crates/ncrs-hermes-ui", version = "0.0.0" }
+# The queue of long-running file operations.
+ncrs-jobs = { path = "crates/ncrs-jobs", version = "0.0.0" }
 # Translated UI strings, generated from strings.json.
 ncrs-i18n = { path = "crates/ncrs-i18n", version = "0.0.0" }
 # Colors, sizes and widgets the screens are built from, generic over the message type.

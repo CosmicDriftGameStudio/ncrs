@@ -132,6 +132,13 @@ pub enum OpsMessage {
     ToggleConflictAll,
     DeleteCancel,
     DeleteConfirm,
+    /// One entry of a delete is gone or failed. Dropped when `generation` is
+    /// not the current one.
+    DeleteRowDone {
+        result: Result<(), String>,
+        index: usize,
+        generation: u64,
+    },
     /// The progress mask's abort button.
     AbortJob,
     Trash(TrashMessage),

@@ -3385,6 +3385,7 @@ dependencies = [
  "ncrs-i18n",
  "ncrs-index",
  "ncrs-intake",
+ "ncrs-jobs",
  "ncrs-ops",
  "ncrs-palette",
  "ncrs-pipeline",
@@ -3569,6 +3570,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ncrs-jobs"
+version = "0.0.0"
+dependencies = [
+ "iced",
+ "ncrs-i18n",
+]
+
+[[package]]
 name = "ncrs-ocr-vision"
 version = "0.0.0"
 dependencies = [
@@ -3589,8 +3598,10 @@ dependencies = [
  "ncrs-core",
  "ncrs-fs",
  "ncrs-i18n",
+ "ncrs-jobs",
  "ncrs-ui-kit",
  "tempfile",
+ "tokio",
 ]
 
 [[package]]

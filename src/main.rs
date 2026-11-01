@@ -37,7 +37,7 @@ pub use ncrs_hermes_ui::{
     review_list, rule_form, rule_suggestions, rules_page, saved_queries, tags_page,
 };
 pub use ncrs_i18n as i18n;
-mod jobs;
+pub use ncrs_jobs as jobs;
 mod keymap;
 pub use ncrs_ui_kit::list_window;
 #[cfg(any(target_os = "macos", test))]
