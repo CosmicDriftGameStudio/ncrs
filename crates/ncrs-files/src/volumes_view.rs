@@ -7,15 +7,14 @@ use iced::widget::container;
 use iced::widget::{button, column, text, Column, Row};
 use iced::{Element, Length, Size};
 
-use super::format;
-use super::frame::{self, DialogSize, Frame, KeyHints, PageHint};
-use super::kit;
-use super::theme::{self, font_size, spacing};
-use crate::fs::remote::ServerId;
-use crate::fs::Volume;
-use crate::i18n::{FuturamaName, Language, Msg};
-use crate::messages::{Message, PanelSide};
-use crate::palette::Palette;
+use ncrs_core::PanelSide;
+use ncrs_fs::remote::ServerId;
+use ncrs_fs::Volume;
+use ncrs_i18n::{FuturamaName, Language, Msg};
+use ncrs_ui_kit::frame::{self, DialogSize, Frame, KeyHints, PageHint};
+use ncrs_ui_kit::palette::Palette;
+use ncrs_ui_kit::theme::{self, font_size, spacing};
+use ncrs_ui_kit::{format, kit};
 
 /// Medium rather than large: the list is short, and a large frame would be
 /// mostly empty.
@@ -122,14 +121,28 @@ pub struct MenuRows<'a> {
     pub trash: Option<Msg>,
 }
 
-pub fn view<'a>(
+/// What a click on a row and closing the menu send.
+pub struct MenuMessages<'a, Message> {
+    pub on_click: Box<dyn Fn(usize) -> Message + 'a>,
+    pub on_close: Message,
+}
+
+impl<Message> std::fmt::Debug for MenuMessages<'_, Message> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MenuMessages").finish_non_exhaustive()
+    }
+}
+
+pub fn view<'a, Message: Clone + 'a>(
     side: PanelSide,
     listed: MenuRows<'a>,
     selected: usize,
     window: Size,
     lang: Language,
     palette: &Palette,
+    messages: MenuMessages<'a, Message>,
 ) -> Element<'a, Message> {
+    let MenuMessages { on_click, on_close } = messages;
     let MenuRows {
         volumes,
         favourites,
@@ -263,7 +276,7 @@ pub fn view<'a>(
             ])
             .spacing(spacing::CELL_PADDING_X);
             button(content)
-                .on_press(Message::VolumeMenuClick(index))
+                .on_press(on_click(index))
                 .width(Length::Fill)
                 .style(theme::row(palette, false, is_selected, true))
                 .into()
@@ -284,7 +297,7 @@ pub fn view<'a>(
         palette,
     )
     .title_theme(lang.futurama_name(theme_name))
-    .on_close(Message::VolumeMenuClose)
+    .on_close(on_close)
     // Enter goes to the highlighted row, which the content defines.
     .hints(KeyHints::default())
     .page_hints(if on_favourite {

@@ -21,12 +21,13 @@ mod clipboard_system_tests;
 mod command_line;
 pub use ncrs_config::commands;
 pub use ncrs_config::config;
-mod context_menu;
-mod dialog;
+mod context_action_message;
+pub use ncrs_files::context_menu;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod drag_out;
 pub use ncrs_config::file_list_tags;
 mod fs;
+mod input_state;
 pub use ncrs_filing::{
     execute, filing, filing_work, query_work, reorganisation_work, replan_work, review_work,
     rules_work, suggestion_work, tags_work,
@@ -54,6 +55,7 @@ mod search_view;
 pub use ncrs_core::selection;
 mod session_state;
 mod system_dialogs;
+pub use ncrs_ops::prompt as dialog;
 pub use ncrs_ops::transfer as transfer_dialog;
 pub use ncrs_ops::trash as trash_view;
 pub use ncrs_settings::{ai_model, key_bindings, ocr_models, open_vsx, theme_fetch, vsix};

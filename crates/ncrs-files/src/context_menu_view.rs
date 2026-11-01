@@ -7,24 +7,43 @@ use iced::widget::{
 };
 use iced::{alignment, Element, Length};
 
-use super::kit::{self, Icon};
-use super::layout::{
+use ncrs_i18n::{Language, Msg};
+use ncrs_ui_kit::kit::{self, Icon};
+use ncrs_ui_kit::layout::{
     MENU_ITEM_HEIGHT, MENU_PADDING, MENU_SEPARATOR_HEIGHT, MENU_SUB_WIDTH, MENU_WIDTH,
 };
-use super::theme::{self, font_size, spacing};
-use crate::context_menu::{ContextMenu, MenuEntry, SubEntry};
-use crate::i18n::{Language, Msg};
-use crate::keymap::Keymap;
-use crate::keymap::KeymapMessages as _;
-use crate::messages::Message;
-use crate::palette::Palette;
+use ncrs_ui_kit::palette::Palette;
+use ncrs_ui_kit::theme::{self, font_size, spacing};
+
+use crate::context_menu::{ContextAction, ContextMenu, HermesAction, MenuEntry, SubEntry};
+
+/// What a click or the pointer over an entry sends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ContextMenuMessage {
+    Click(usize),
+    Hover(usize),
+    SubClick(usize),
+    SubHover(usize),
+}
+
+/// The keys the entries show, spelled for this platform and keymap.
+pub struct EntryKeys<'a> {
+    pub context: &'a dyn Fn(ContextAction) -> Option<String>,
+    pub hermes: &'a dyn Fn(HermesAction) -> Option<String>,
+}
+
+impl std::fmt::Debug for EntryKeys<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EntryKeys").finish_non_exhaustive()
+    }
+}
 
 pub fn view<'a>(
     menu: &'a ContextMenu,
     lang: Language,
-    keymap: &Keymap,
+    keys: &EntryKeys<'_>,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, ContextMenuMessage> {
     let entries = menu
         .entries()
         .iter()
@@ -48,13 +67,13 @@ pub fn view<'a>(
                 ]
                 .align_y(alignment::Vertical::Center);
                 let item = button(content)
-                    .on_press(Message::ContextMenuClick(index))
+                    .on_press(ContextMenuMessage::Click(index))
                     .padding([0.0, spacing::CELL_PADDING_X])
                     .height(MENU_ITEM_HEIGHT)
                     .width(Length::Fill)
                     .style(theme::menu_item(palette, is_selected));
                 mouse_area(item)
-                    .on_enter(Message::ContextMenuHover(index))
+                    .on_enter(ContextMenuMessage::Hover(index))
                     .into()
             }
             MenuEntry::Item { action, enabled } => {
@@ -69,7 +88,7 @@ pub fn view<'a>(
                     (true, true) => palette.menu_shortcut_on_cursor,
                     (true, false) => palette.menu_shortcut,
                 };
-                let shortcut = keymap.shortcut_label(&action.message()).unwrap_or_default();
+                let shortcut = (keys.context)(*action).unwrap_or_default();
                 let content = row![
                     text(lang.text(action.label()))
                         .size(font_size::ROW)
@@ -83,14 +102,14 @@ pub fn view<'a>(
                 ]
                 .align_y(alignment::Vertical::Center);
                 let item = button(content)
-                    .on_press_maybe(enabled.then_some(Message::ContextMenuClick(index)))
+                    .on_press_maybe(enabled.then_some(ContextMenuMessage::Click(index)))
                     .padding([0.0, spacing::CELL_PADDING_X])
                     .height(MENU_ITEM_HEIGHT)
                     .width(Length::Fill)
                     .style(theme::menu_item(palette, is_selected));
                 if *enabled {
                     mouse_area(item)
-                        .on_enter(Message::ContextMenuHover(index))
+                        .on_enter(ContextMenuMessage::Hover(index))
                         .into()
                 } else {
                     item.into()
@@ -113,7 +132,7 @@ pub fn view<'a>(
     match menu.submenu_origin() {
         Some(origin) => stack![
             main,
-            pin(opaque(submenu(menu, lang, keymap, palette)))
+            pin(opaque(submenu(menu, lang, keys, palette)))
                 .x(origin.x)
                 .y(origin.y)
                 .width(Length::Fill)
@@ -127,9 +146,9 @@ pub fn view<'a>(
 fn submenu<'a>(
     menu: &'a ContextMenu,
     lang: Language,
-    keymap: &Keymap,
+    keys: &EntryKeys<'_>,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, ContextMenuMessage> {
     let entries = menu
         .sub_entries()
         .iter()
@@ -143,7 +162,7 @@ fn submenu<'a>(
                     (true, true) => (palette.cursor_text, palette.menu_shortcut_on_cursor),
                     (true, false) => (palette.text, palette.menu_shortcut),
                 };
-                let shortcut = keymap.shortcut_label(&action.message());
+                let shortcut = (keys.hermes)(*action);
                 let content = row![text(lang.text(action.label()))
                     .size(font_size::ROW)
                     .color(label_color)
@@ -158,19 +177,19 @@ fn submenu<'a>(
                 .push(Space::new().width(Length::Fill))
                 .extend(
                     shortcut
-                        .map(|keys| kit::key_cap_in_row(&keys, is_selected && *enabled, palette)),
+                        .map(|caps| kit::key_cap_in_row(&caps, is_selected && *enabled, palette)),
                 )
                 .spacing(spacing::S)
                 .align_y(alignment::Vertical::Center);
                 let item = button(content)
-                    .on_press_maybe(enabled.then_some(Message::ContextMenuSubClick(index)))
+                    .on_press_maybe(enabled.then_some(ContextMenuMessage::SubClick(index)))
                     .padding([0.0, spacing::CELL_PADDING_X])
                     .height(MENU_ITEM_HEIGHT)
                     .width(Length::Fill)
                     .style(theme::menu_item(palette, is_selected));
                 if *enabled {
                     mouse_area(item)
-                        .on_enter(Message::ContextMenuSubHover(index))
+                        .on_enter(ContextMenuMessage::SubHover(index))
                         .into()
                 } else {
                     item.into()
@@ -184,7 +203,7 @@ fn submenu<'a>(
         .into()
 }
 
-fn separator<'a>(palette: &Palette) -> Element<'a, Message> {
+fn separator<'a>(palette: &Palette) -> Element<'a, ContextMenuMessage> {
     container(
         container(column![])
             .width(Length::Fill)

@@ -3,8 +3,8 @@
 //! so they can be reused in other contexts.
 
 pub mod about;
+pub use ncrs_files::context_menu_view as context_menu;
 pub use ncrs_palette::command_line::view as command_line;
-pub mod context_menu;
 pub mod dialog;
 pub mod grant;
 pub mod layout;
@@ -17,9 +17,9 @@ pub use ncrs_palette::quick_open::view as quick_open;
 pub use ncrs_remote::view as remote;
 pub mod statusbar;
 pub mod titlebar;
-pub mod volumes;
+pub use ncrs_files::volumes_view as volumes;
 
-pub use ncrs_ui_kit::{fkeys, format, frame, hermes_kit, kit, theme};
+pub use ncrs_ui_kit::{fkeys, format, frame, kit, theme};
 pub use panel::PanelState;
 
 #[cfg(test)]

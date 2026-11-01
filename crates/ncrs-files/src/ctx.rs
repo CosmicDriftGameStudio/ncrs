@@ -1,21 +1,16 @@
 //! What the panels take from the app: data they read, never state they change.
 
-use std::collections::HashMap;
-use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use iced::keyboard::Modifiers;
 use iced::{Point, Size};
-use ncrs_core::{FileEntry, FolderSize, PanelSide};
+use ncrs_core::{FileEntry, PanelSide};
 use ncrs_i18n::Language;
 use ncrs_ui_kit::file_row::HermesCell;
 use ncrs_ui_kit::palette::Palette;
 
 use crate::message::PanelMessage;
-
-/// The folder sizes measured in this session, by folder and entry name.
-pub type FolderSizes = HashMap<PathBuf, HashMap<OsString, FolderSize>>;
 
 /// What `update` reads from the app.
 pub struct Ctx<'a> {
@@ -31,7 +26,6 @@ pub struct Ctx<'a> {
     pub overlay_is_open: bool,
     pub context_menu_is_open: bool,
     pub clock: &'a (dyn Fn() -> Instant + Send + Sync),
-    pub folder_sizes: &'a FolderSizes,
     /// The first of a path and its ancestors that is a folder.
     pub nearest_existing_directory: fn(&Path) -> Option<PathBuf>,
 }

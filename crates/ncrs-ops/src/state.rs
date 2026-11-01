@@ -9,6 +9,7 @@ use ncrs_fs::transfer::OnConflict;
 use ncrs_fs::TrashedItem;
 
 use crate::message::ConflictChoice;
+use crate::prompt::Prompt;
 
 /// What a transfer does, and to which rows.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -97,6 +98,14 @@ pub struct Restoration {
 /// ends, so a result that arrives after that is dropped.
 #[derive(Debug, Default)]
 pub struct Ops {
+    /// The open modal prompt, if any.
+    pub prompt: Option<Prompt>,
+    /// Panel the prompt belongs to, so a panel switch while it is open cannot
+    /// create a directory in the wrong place.
+    pub prompt_side: Option<PanelSide>,
+    /// Id of the running prompt operation, so a late result cannot land on a
+    /// prompt the user already dismissed.
+    pub prompt_request_id: u64,
     /// The delete confirmation dialog, while it is up.
     pub delete_dialog: Option<Deletion>,
     /// The delete that is running.

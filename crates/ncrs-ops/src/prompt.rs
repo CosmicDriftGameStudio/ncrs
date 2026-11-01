@@ -1,8 +1,8 @@
 //! State of the modal prompt.
 //!
-//! Lives next to `App` rather than in `ui/`, because it is state, not a view:
-//! `App` owns it and only `App::update` changes it. The matching `view` function
-//! is in `ui::dialog`.
+//! Lives next to the flows rather than in the view, because it is state: the
+//! app owns it and only its update changes it. The matching `view` function is
+//! in `prompt_view`.
 //!
 //! Not yet in the roadmap's T10 (config): the prompt remembers the name the
 //! user typed while the operation runs, so a failure can be shown next to the
@@ -10,7 +10,7 @@
 use std::ffi::OsString;
 use std::path::PathBuf;
 
-use crate::fs::archive;
+use ncrs_fs::archive;
 
 /// Which operation the prompt is collecting input for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -97,7 +97,7 @@ impl Prompt {
 
     /// The pack prompt for the files of a hit list that ran in `scope`.
     pub fn pack_hits(parent: PathBuf, sources: Vec<PathBuf>, scope: PathBuf, name: &str) -> Self {
-        let numbered = crate::fs::flat_names::members_of_shared_names(&sources);
+        let numbered = ncrs_fs::flat_names::members_of_shared_names(&sources);
         Self {
             hits: Some(PackHits {
                 scope,

@@ -1,10 +1,9 @@
 //! Root application: state, `update` (the only place state changes) and
 //! `view` (pure composition of UI components).
-use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use std::sync::atomic::{AtomicBool, AtomicU64};
+use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use iced::futures;
@@ -27,7 +26,8 @@ use crate::config::ServerEntry;
 use crate::config::{
     self, Config, ConfigError, ContrastWarning, Filing, KindWarning, LanguageWarning, VscodeWarning,
 };
-use crate::context_menu::{ContextAction, ContextMenu, HermesAction, HermesMenu, InputState};
+use crate::context_action_message::ContextActionMessage as _;
+use crate::context_menu::{ContextAction, ContextMenu, HermesAction, HermesMenu};
 use crate::dialog::{Prompt, PromptKind};
 use crate::execute;
 use crate::file_list_tags::{FileListTags, TagExceptions};
@@ -41,11 +41,13 @@ use crate::filing_setup;
 use crate::filing_setup::{FilingSetup, SetupNote};
 use crate::filing_status::SNAPSHOT_EVERY;
 use crate::filing_work::FilingSummary;
+use crate::fs;
 use crate::fs::remote::credentials::KeyringPasswords;
 use crate::fs::remote::credentials::PasswordStore;
 use crate::fs::remote::session::Pool;
 use crate::fs::remote::{KnownHostsFiles, RemotePath, ServerId};
-use crate::fs::{self, CreateDirError};
+#[cfg(test)]
+use crate::fs::CreateDirError;
 use crate::hermes_column::{role_of, ColumnView, FolderRole, HermesFileState};
 #[cfg(test)]
 use crate::hermes_overview::{ModuleState, Protection};
@@ -54,6 +56,7 @@ use crate::hermes_overview::{OverviewFacts, OverviewState};
 use crate::hermes_setup::{HermesSetup, SetupFocus, SetupOffer};
 use crate::hermes_status::HermesStatus;
 use crate::i18n::{Language, Msg};
+use crate::input_state::InputState;
 use crate::jobs::{self, JobEvent};
 use crate::key_bindings::KeyBindings;
 use crate::keymap::{self, KeyAction, KeyScope, Keymap};
@@ -131,11 +134,13 @@ use crate::ui::transfer as transfer_ui;
 use crate::ui::trash as trash_ui;
 use crate::ui::volumes::{self as volumes_view, FavouriteRow, ServerRow};
 use crate::ui::{conflict, dialog, fkeys, layout, panel, statusbar, theme, PanelState};
+use ncrs_files::volumes::VolumeMenu;
 use ncrs_files::{PanelMessage, Panels};
 use ncrs_hermes_ui::{SavedFilingApplies, SetupCard};
 pub use ncrs_i18n::fill_template;
 use ncrs_index::{KeyStore, KeyringKeyStore, KindSkip, Kinds, QuerySpec, SavedQueryId};
 use ncrs_intake::LocationMode;
+use ncrs_ops::prompt_view::PromptMessages;
 use ncrs_ops::{child_path, TransferAction, TrashAction};
 #[cfg(test)]
 use ncrs_ops::{restore_one, Restoration};
@@ -552,42 +557,20 @@ fn update_title_bar(message: TitleBarMessage) -> Task<Message> {
     }
 }
 
-/// The folders of one directory still to be measured, one walk at a time.
-struct FolderSizeRun {
-    id: u64,
-    side: PanelSide,
-    directory: PathBuf,
-    waiting: VecDeque<PathBuf>,
-    stop: Arc<AtomicBool>,
-}
-
-/// The folders "Compute folder sizes" acts on: the tagged ones, else the one
-/// under the cursor, else every folder of the listing when the cursor is on
-/// `..`. Links are not entered, so they are not measured.
-fn folder_size_targets(panel: &PanelState) -> Vec<PathBuf> {
-    if panel.is_virtual() || panel.loading {
-        return Vec::new();
-    }
-    let measurable = |entry: &fs::FileEntry| entry.is_dir && !entry.is_parent && !entry.is_symlink;
-    if panel.selection.any_tagged() {
-        return panel
-            .selection
-            .ordered(&panel.entries)
-            .into_iter()
-            .filter(|entry| measurable(entry))
-            .map(|entry| entry.path.clone())
-            .collect();
-    }
-    match panel.selected_entry() {
-        Some(entry) if entry.is_parent => panel
-            .entries
-            .iter()
-            .filter(|listed| measurable(listed))
-            .map(|listed| listed.path.clone())
-            .collect(),
-        Some(entry) if measurable(entry) => vec![entry.path.clone()],
-        _ => Vec::new(),
-    }
+/// The walk of one folder, off the UI thread; nothing when the run is over.
+fn folder_size_task(walk: Option<ncrs_files::folder_size::FolderWalk>) -> Task<Message> {
+    let Some(ncrs_files::folder_size::FolderWalk { run, folder, stop }) = walk else {
+        return Task::none();
+    };
+    let walked = folder.clone();
+    Task::perform(
+        tokio::task::spawn_blocking(move || fs::measure_folder(&walked, &stop)),
+        move |done| Message::FolderSizeMeasured {
+            run,
+            folder: folder.clone(),
+            size: done.ok().flatten(),
+        },
+    )
 }
 
 /// Counts what the selection of `dialog` holds, off the UI thread. The dialog's
@@ -692,99 +675,6 @@ fn blocked_access_press(sandbox_active: bool, blocked: &Path) -> Option<Message>
     None
 }
 
-/// The open drive menu. The list is read when the menu opens, so a drive
-/// plugged in a moment ago is there and one removed since is gone.
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct VolumeMenu {
-    /// The panel that changes drive.
-    side: PanelSide,
-    volumes: Vec<fs::Volume>,
-    /// Listed below the drives; `present` is read when the menu opens.
-    favourites: Vec<FavouriteRow>,
-    /// The servers, below the favourites.
-    servers: Vec<ServerRow>,
-    /// The last row, below the servers: what the trash is called here, or
-    /// nothing in a build that has no trash to show.
-    trash: Option<Msg>,
-    /// The highlighted row, the one Enter goes to. Counts the drives first,
-    /// then the favourites, then the servers, then the trash.
-    selected: usize,
-}
-
-impl VolumeMenu {
-    /// Opens on the drive `current` lives on: the volume with the longest path
-    /// that `current` starts with.
-    fn new(side: PanelSide, volumes: Vec<fs::Volume>, current: &Path) -> Self {
-        let selected = volumes
-            .iter()
-            .enumerate()
-            .filter(|(_, volume)| current.starts_with(&volume.path))
-            .max_by_key(|(index, volume)| (volume.path.components().count(), usize::MAX - index))
-            .map_or(0, |(index, _)| index);
-        Self {
-            side,
-            volumes,
-            favourites: Vec::new(),
-            servers: Vec::new(),
-            trash: None,
-            selected,
-        }
-    }
-
-    fn with_trash(mut self, trash: Option<Msg>) -> Self {
-        self.trash = trash;
-        self
-    }
-
-    fn with_favourites(mut self, favourites: Vec<FavouriteRow>) -> Self {
-        self.favourites = favourites;
-        self
-    }
-
-    fn with_servers(mut self, servers: Vec<ServerRow>) -> Self {
-        self.servers = servers;
-        self
-    }
-
-    /// Drives, favourites and servers together: what `selected` runs over.
-    fn row_count(&self) -> usize {
-        self.volumes.len()
-            + self.favourites.len()
-            + self.servers.len()
-            + usize::from(self.trash.is_some())
-    }
-
-    fn last_row(&self) -> usize {
-        self.row_count().saturating_sub(1)
-    }
-
-    fn move_by(&mut self, delta: isize) {
-        self.selected = self
-            .selected
-            .saturating_add_signed(delta)
-            .min(self.last_row());
-    }
-
-    /// The index among the favourites when the highlight is on one.
-    fn selected_favourite(&self) -> Option<usize> {
-        self.selected
-            .checked_sub(self.volumes.len())
-            .filter(|index| *index < self.favourites.len())
-    }
-
-    /// Whether the highlight is on the trash row.
-    fn selected_trash(&self) -> bool {
-        self.trash.is_some() && self.selected + 1 == self.row_count()
-    }
-
-    /// The index among the servers when the highlight is on one.
-    fn selected_server(&self) -> Option<usize> {
-        self.selected
-            .checked_sub(self.volumes.len() + self.favourites.len())
-            .filter(|index| *index < self.servers.len())
-    }
-}
-
 /// What is wrong with the config, kept to word it again after F9.
 #[derive(Debug)]
 enum ConfigProblem {
@@ -812,14 +702,6 @@ pub struct App {
     search_function_keys: [Option<&'static str>; keymap::FUNCTION_KEY_COUNT],
     /// The keys in effect: the built-in ones, or those of the config file.
     keymap: Arc<Keymap>,
-    /// The open modal prompt, if any. Mutated only here.
-    prompt: Option<Prompt>,
-    /// Panel the prompt belongs to, so a panel switch while it is open cannot
-    /// create a directory in the wrong place.
-    prompt_side: Option<PanelSide>,
-    /// Id of the running prompt operation, so a late result cannot land on a
-    /// prompt the user already dismissed.
-    prompt_request_id: u64,
     /// Reload queued by `PromptSubmit`, run once the create has reported.
     pending_reload: Option<PendingReload>,
     /// Long-running file operations, one at a time.
@@ -831,9 +713,6 @@ pub struct App {
     trash_generation: u64,
     /// Folder sizes computed this session, by directory and then entry name.
     /// Kept in memory only, so coming back to a folder shows them again.
-    folder_sizes: HashMap<PathBuf, HashMap<std::ffi::OsString, fs::FolderSize>>,
-    folder_size_run: Option<FolderSizeRun>,
-    folder_size_runs_started: u64,
     /// The copy or move confirmation, while it is up.
     transfer_dialog: Option<TransferDialog>,
     /// Counts the confirmations opened, so a result of the background scan can
@@ -2647,17 +2526,11 @@ impl App {
             search_function_keys: Keymap::built_in()
                 .function_keys(Language::default(), KeyScope::Search),
             keymap: Keymap::built_in(),
-            prompt: None,
-            prompt_side: None,
-            prompt_request_id: 0,
             pending_reload: None,
             jobs: jobs::Queue::new(),
             trash_view: None,
             trash_side: PanelSide::Left,
             trash_generation: 0,
-            folder_sizes: HashMap::new(),
-            folder_size_run: None,
-            folder_size_runs_started: 0,
             transfer_dialog: None,
             transfer_dialogs_opened: 0,
             start_over_dialog: false,
@@ -3179,7 +3052,7 @@ impl App {
                 self.with_ops(|ops, ctx| ncrs_ops::archive_written(ops, generation, result, ctx))
             }
             Message::PromptInput(text) => {
-                if let Some(prompt) = self.prompt.as_mut() {
+                if let Some(prompt) = self.ops.prompt.as_mut() {
                     prompt.set_name(text);
                 }
                 Task::none()
@@ -3187,22 +3060,24 @@ impl App {
             Message::PromptToggleKeepFolders => self.toggle_keep_folders(),
             // Its own arm, not an early return: starting the job changes what the
             // keys mean, and the routing state is published after the match.
-            Message::PromptSubmit if self.valid_prompt_has_its_own_job() => self.start_prompt_job(),
+            Message::PromptSubmit if self.ops.valid_prompt_has_its_own_job() => {
+                self.start_prompt_job()
+            }
             Message::PromptSubmit => {
-                let Some(prompt) = self.prompt.as_ref() else {
+                let Some(prompt) = self.ops.prompt.as_ref() else {
                     return Task::none();
                 };
                 if let Err(reason) = prompt.validate() {
-                    self.set_prompt_error(reason);
+                    self.ops.set_prompt_error(reason);
                     return Task::none();
                 }
                 let kind = prompt.kind();
-                let side = self.prompt_side.unwrap_or(self.panels.active);
+                let side = self.ops.prompt_side.unwrap_or(self.panels.active);
                 let parent = self.panel(side).path.clone();
                 let new_name = prompt.name().trim().to_string();
-                let request_id = self.prompt_request_id.wrapping_add(1);
-                self.prompt_request_id = request_id;
-                self.set_prompt_busy(true);
+                let request_id = self.ops.prompt_request_id.wrapping_add(1);
+                self.ops.prompt_request_id = request_id;
+                self.ops.set_prompt_busy(true);
 
                 // The new entry's name, carried through the task so the
                 // reload can select it.
@@ -3230,9 +3105,9 @@ impl App {
                 create
             }
             Message::PromptCancel => {
-                self.prompt = None;
+                self.ops.prompt = None;
                 self.pending_paste = None;
-                self.prompt_side = None;
+                self.ops.prompt_side = None;
                 Task::none()
             }
             Message::PromptFinished {
@@ -3243,9 +3118,15 @@ impl App {
 
             Message::Panel(panel_message) => self.update_panel(panel_message),
             Message::TitleBar(title_bar) => update_title_bar(title_bar),
-            Message::ComputeFolderSizes => self.compute_folder_sizes(),
+            Message::ComputeFolderSizes => {
+                let walk = self.panels.start_folder_size_run();
+                folder_size_task(walk)
+            }
             Message::FolderSizeMeasured { run, folder, size } => {
-                self.folder_size_measured(run, folder, size)
+                let walk = self
+                    .panels
+                    .folder_size_measured(run, folder, size, self.visible_rows);
+                folder_size_task(walk)
             }
             Message::SwitchLanguage => {
                 self.switch_language();
@@ -3362,100 +3243,6 @@ impl App {
         } else {
             Availability::Open(KeyScope::Panel)
         }
-    }
-
-    /// A reload of the same folder keeps the run; another folder ends it.
-    fn stop_folder_size_run_if_left(&mut self, side: PanelSide) {
-        let left = self
-            .folder_size_run
-            .as_ref()
-            .is_some_and(|run| run.side == side && self.panel(side).path != run.directory);
-        if left {
-            self.stop_folder_size_run();
-        }
-    }
-
-    fn stop_folder_size_run(&mut self) {
-        if let Some(run) = self.folder_size_run.take() {
-            run.stop.store(true, std::sync::atomic::Ordering::Relaxed);
-        }
-    }
-
-    fn compute_folder_sizes(&mut self) -> Task<Message> {
-        let targets = folder_size_targets(self.active_panel());
-        if targets.is_empty() {
-            return Task::none();
-        }
-        self.stop_folder_size_run();
-        self.folder_size_runs_started += 1;
-        self.folder_size_run = Some(FolderSizeRun {
-            id: self.folder_size_runs_started,
-            side: self.panels.active,
-            directory: self.active_panel().path.clone(),
-            waiting: targets.into(),
-            stop: Arc::new(AtomicBool::new(false)),
-        });
-        self.next_folder_size_walk()
-    }
-
-    /// Starts the walk of the next waiting folder; the run is over when none is
-    /// left.
-    fn next_folder_size_walk(&mut self) -> Task<Message> {
-        let Some(run) = self.folder_size_run.as_mut() else {
-            return Task::none();
-        };
-        let Some(folder) = run.waiting.pop_front() else {
-            self.folder_size_run = None;
-            return Task::none();
-        };
-        let (id, stop) = (run.id, Arc::clone(&run.stop));
-        let walked = folder.clone();
-        Task::perform(
-            tokio::task::spawn_blocking(move || fs::measure_folder(&walked, &stop)),
-            move |done| Message::FolderSizeMeasured {
-                run: id,
-                folder: folder.clone(),
-                size: done.ok().flatten(),
-            },
-        )
-    }
-
-    fn folder_size_measured(
-        &mut self,
-        run: u64,
-        folder: PathBuf,
-        measured: Option<fs::FolderSize>,
-    ) -> Task<Message> {
-        if self.folder_size_run.as_ref().map(|current| current.id) != Some(run) {
-            return Task::none();
-        }
-        if let (Some(size), Some(parent), Some(name)) =
-            (measured, folder.parent(), folder.file_name())
-        {
-            self.folder_sizes
-                .entry(parent.to_path_buf())
-                .or_default()
-                .insert(name.to_owned(), size);
-            let rows = self.visible_rows;
-            for side in [PanelSide::Left, PanelSide::Right] {
-                let panel = self.panel_mut(side);
-                if panel.path != parent || panel.is_virtual() {
-                    continue;
-                }
-                let Some(entry) = panel
-                    .entries
-                    .iter_mut()
-                    .find(|entry| entry.is_dir && entry.name == name)
-                else {
-                    continue;
-                };
-                entry.folder_size = Some(size);
-                if panel.sort.column == fs::SortColumn::Size {
-                    panel.resort(rows);
-                }
-            }
-        }
-        self.next_folder_size_walk()
     }
 
     /// The inquiries under the cursor or among the marked files of the active
@@ -4064,7 +3851,16 @@ impl App {
             return Stack::with_children([
                 root,
                 click_catcher.into(),
-                context_menu_view::view(menu, self.lang, &self.keymap, &self.palette),
+                context_menu_view::view(
+                    menu,
+                    self.lang,
+                    &context_menu_view::EntryKeys {
+                        context: &|action| self.keymap.shortcut_label(&action.message()),
+                        hermes: &|action| self.keymap.shortcut_label(&action.message()),
+                    },
+                    &self.palette,
+                )
+                .map(Message::from),
             ])
             .into();
         }
@@ -4082,6 +3878,10 @@ impl App {
                 self.window_size,
                 self.lang,
                 &self.palette,
+                volumes_view::MenuMessages {
+                    on_click: Box::new(Message::VolumeMenuClick),
+                    on_close: Message::VolumeMenuClose,
+                },
             );
             return Stack::with_children([root, dialog::scrim(menu_element)]).into();
         }
@@ -4243,7 +4043,7 @@ impl App {
         }
 
         // Then the create-directory prompt, for F7.
-        let Some(prompt) = self.prompt.as_ref() else {
+        let Some(prompt) = self.ops.prompt.as_ref() else {
             return root;
         };
         let overlay = dialog::view(
@@ -4251,9 +4051,12 @@ impl App {
             self.window_size,
             self.lang,
             &self.palette,
-            Message::PromptInput,
-            Message::PromptSubmit,
-            Message::PromptCancel,
+            PromptMessages {
+                on_input: Box::new(Message::PromptInput),
+                on_submit: Message::PromptSubmit,
+                on_cancel: Message::PromptCancel,
+                on_toggle_keep_folders: Message::PromptToggleKeepFolders,
+            },
         );
         let Some(prompt_element) = overlay else {
             return root;
@@ -4432,7 +4235,7 @@ impl App {
             Some(deletion) if deletion.permanent => DeleteKeys::Permanent,
             Some(_) => DeleteKeys::Trash,
         };
-        match &self.prompt {
+        match &self.ops.prompt {
             None => PromptKeyState {
                 keymap: Arc::clone(&self.keymap),
                 job_running,
@@ -4789,7 +4592,7 @@ impl App {
     }
 
     fn overlay_apart_from_overview_and_hermes_is_open(&self) -> bool {
-        self.prompt.is_some()
+        self.ops.prompt.is_some()
             || self.conflict_is_open()
             || self.transfer_dialog.is_some()
             || self.progress_mask_is_open()
@@ -4841,7 +4644,9 @@ impl App {
             ContextAction::NewFolder => true,
             ContextAction::CopyPath => clipboard_text(panel, ClipboardKind::Path).is_some(),
             ContextAction::CopyName => clipboard_text(panel, ClipboardKind::Name).is_some(),
-            ContextAction::ComputeFolderSizes => !folder_size_targets(panel).is_empty(),
+            ContextAction::ComputeFolderSizes => {
+                !ncrs_files::folder_size::folder_size_targets(panel).is_empty()
+            }
             ContextAction::ShowOnOtherSide => cursor_row.is_some(),
             ContextAction::RemoveFromList => cursor_row.is_some(),
         }
@@ -5174,7 +4979,7 @@ impl App {
         request_id: u64,
         result: Result<(), fs::CreateDirError>,
     ) -> Task<Message> {
-        if request_id != self.prompt_request_id {
+        if request_id != self.ops.prompt_request_id {
             // Dismissed or retried while the operation ran.
             return Task::none();
         }
@@ -5193,15 +4998,16 @@ impl App {
 
         match result {
             Ok(()) => {
-                self.prompt = None;
-                self.prompt_side = None;
+                self.ops.prompt = None;
+                self.ops.prompt_side = None;
                 if let (PromptKind::CreateFile, Some(path)) = (kind, created) {
                     self.launch_external(fs::OpenKind::Edit, path, None, CopyOf::Nothing);
                 }
             }
             Err(err) => {
-                self.set_prompt_busy(false);
-                self.set_prompt_error_text(&self.prompt_error(&err));
+                self.ops.set_prompt_busy(false);
+                let text = self.ops.prompt_error(self.lang, &err);
+                self.ops.set_prompt_error_text(&text);
             }
         }
         reload.unwrap_or_else(Task::none)
@@ -5417,7 +5223,8 @@ impl App {
         &mut self,
         step: impl FnOnce(&mut ncrs_ops::Ops, &ncrs_ops::FlowCtx<'_>) -> R,
     ) -> R {
-        let start_blocked = self.jobs.is_busy() || self.prompt.is_some() || self.conflict_is_open();
+        let start_blocked =
+            self.jobs.is_busy() || self.ops.prompt.is_some() || self.conflict_is_open();
         let permanent_delete_key = self
             .keymap
             .shortcut_label(&Message::Delete { permanent: true });
@@ -5685,8 +5492,8 @@ impl App {
 
     /// F7 and Shift+F4: the name prompt for the active panel's folder.
     fn open_prompt(&mut self, prompt: Prompt) -> Task<Message> {
-        self.prompt = Some(prompt);
-        self.prompt_side = Some(self.panels.active);
+        self.ops.prompt = Some(prompt);
+        self.ops.prompt_side = Some(self.panels.active);
         // The field has to be focused or the prompt swallows every
         // keystroke: `TextInput` only takes keys while focused, and
         // giving it an Id does not focus it.
@@ -5809,7 +5616,7 @@ impl App {
     /// start.
     fn open_pack_prompt(&mut self) -> Task<Message> {
         if self.jobs.is_busy()
-            || self.prompt.is_some()
+            || self.ops.prompt.is_some()
             || self.conflict_is_open()
             || self.ops.delete_dialog.is_some()
             || self.transfer_dialog.is_some()
@@ -5840,7 +5647,7 @@ impl App {
         self.notice = None;
         let target = self.panel(target_side).path.clone();
         let hit_list = self.panel(source_side).hit_list.as_ref();
-        self.prompt = Some(match hit_list {
+        self.ops.prompt = Some(match hit_list {
             Some(list) => {
                 let name = hit_archive_name(&list.query)
                     .unwrap_or_else(|| suggested_archive_name(&sources));
@@ -5851,14 +5658,12 @@ impl App {
                 Prompt::pack(target, sources, &name)
             }
         });
-        self.prompt_side = Some(target_side);
+        self.ops.prompt_side = Some(target_side);
         operation::focus(FIELD_ID)
     }
 
     fn toggle_keep_folders(&mut self) -> Task<Message> {
-        if let Some(prompt) = self.prompt.as_mut().filter(|prompt| !prompt.busy()) {
-            prompt.toggle_keep_folders();
-        }
+        self.ops.toggle_keep_folders();
         Task::none()
     }
 
@@ -5869,10 +5674,10 @@ impl App {
             let text = self.lang.text(Msg::StatusArchiveWriteBusy).to_owned();
             return self.show_notice(text);
         }
-        let Some(prompt) = self.prompt.take() else {
+        let Some(prompt) = self.ops.prompt.take() else {
             return Task::none();
         };
-        let target_side = self.prompt_side.take().unwrap_or(self.panels.active);
+        let target_side = self.ops.prompt_side.take().unwrap_or(self.panels.active);
         let request = ncrs_ops::PackRequest {
             archive: prompt.archive_path(),
             sources: prompt.sources().to_vec(),
@@ -6027,7 +5832,7 @@ impl App {
             let text = self.lang.text(Msg::StatusArchiveViewBusy).to_owned();
             return self.show_notice(text);
         }
-        if self.prompt.is_some()
+        if self.ops.prompt.is_some()
             || self.conflict_is_open()
             || self.ops.delete_dialog.is_some()
             || self.transfer_dialog.is_some()
@@ -6162,7 +5967,7 @@ impl App {
     fn transfer_into_panel_is_blocked(&self) -> bool {
         self.ops.transfer.is_some()
             || self.ops.extracting.is_some()
-            || self.prompt.is_some()
+            || self.ops.prompt.is_some()
             || self.conflict_is_open()
             || self.ops.delete_dialog.is_some()
             || self.transfer_dialog.is_some()
@@ -6208,17 +6013,13 @@ impl App {
         }
     }
 
-    /// The prompt is a pack or a paste with a name that passed validation:
-    /// neither creates an entry by itself, each starts its own job.
-    fn valid_prompt_has_its_own_job(&self) -> bool {
-        self.prompt.as_ref().is_some_and(|prompt| {
-            matches!(prompt.kind(), PromptKind::Pack | PromptKind::Paste)
-                && prompt.validate().is_ok()
-        })
+    #[cfg(test)]
+    fn prompt_error(&self, err: &CreateDirError) -> String {
+        self.ops.prompt_error(self.lang, err)
     }
 
     fn start_prompt_job(&mut self) -> Task<Message> {
-        match self.prompt.as_ref().map(Prompt::kind) {
+        match self.ops.prompt.as_ref().map(Prompt::kind) {
             Some(PromptKind::Pack) => self.start_pack(),
             Some(PromptKind::Paste) => self.submit_paste(),
             Some(PromptKind::CreateDir | PromptKind::CreateFile) | None => Task::none(),
@@ -6276,7 +6077,7 @@ impl App {
     /// private folder and copy it into the panel the way F5 would.
     fn submit_paste(&mut self) -> Task<Message> {
         let (Some(prompt), Some(bytes)) = (
-            self.prompt.as_ref(),
+            self.ops.prompt.as_ref(),
             self.pending_paste
                 .as_ref()
                 .and_then(PastedContent::file_bytes),
@@ -6295,12 +6096,12 @@ impl App {
         let (folder, file) = match written {
             Ok(staging) => staging,
             Err(error) => {
-                self.set_prompt_error_text(&error.to_string());
+                self.ops.set_prompt_error_text(&error.to_string());
                 return Task::none();
             }
         };
-        self.prompt = None;
-        self.prompt_side = None;
+        self.ops.prompt = None;
+        self.ops.prompt_side = None;
         self.pending_paste = None;
         self.paste_staging = Some(folder);
         self.copy_external_files_into_active_panel(vec![file])
@@ -6501,7 +6302,7 @@ impl App {
             waiting: self.jobs.waiting(),
             // Escape belongs to the prompt while one is open, so the hint is
             // only true when nothing else is claiming the key.
-            abortable: self.prompt.is_none() && !self.conflict_is_open(),
+            abortable: self.ops.prompt.is_none() && !self.conflict_is_open(),
         })
     }
 
@@ -6518,54 +6319,6 @@ impl App {
     fn set_status_error_with_press(&mut self, reason: &str, press: Message) {
         self.set_status_error(reason);
         self.job_error_press = Some(press);
-    }
-
-    /// Shows a validation failure in the open prompt.
-    fn set_prompt_error(&mut self, reason: &'static str) {
-        if let Some(prompt) = self.prompt.as_mut() {
-            prompt.set_validation_error(reason);
-        }
-    }
-
-    /// Wording for a failed create, in the active language. Deciding here
-    /// rather than in the filesystem layer keeps `fs` free of user-facing text,
-    /// and the two failures need different advice: a taken name means pick
-    /// another, a missing parent means the panel has gone stale.
-    fn prompt_error(&self, err: &CreateDirError) -> String {
-        use std::io::ErrorKind;
-        let lang = self.lang;
-        let name = self.prompt_name();
-        match err.io_error().map(|e| e.kind()) {
-            Some(ErrorKind::AlreadyExists) => {
-                lang.text(Msg::ErrorMkdirTaken).replace("{name}", &name)
-            }
-            Some(ErrorKind::NotFound) => lang.text(Msg::ErrorParentMissing).to_string(),
-            _ => lang
-                .text(Msg::ErrorMkdirFailed)
-                .replace("{name}", &name)
-                .replace("{reason}", &err.to_string()),
-        }
-    }
-
-    /// The name currently in the prompt, or an empty string.
-    fn prompt_name(&self) -> String {
-        self.prompt
-            .as_ref()
-            .map(|p| p.name().to_string())
-            .unwrap_or_default()
-    }
-
-    /// Shows a filesystem failure in the open prompt.
-    fn set_prompt_error_text(&mut self, reason: &str) {
-        if let Some(prompt) = self.prompt.as_mut() {
-            prompt.set_error(reason.to_string());
-        }
-    }
-
-    fn set_prompt_busy(&mut self, busy: bool) {
-        if let Some(prompt) = self.prompt.as_mut() {
-            prompt.set_busy(busy);
-        }
     }
 
     /// A panel inside an archive can be read and copied from, nothing else.
@@ -7044,7 +6797,6 @@ impl App {
             overlay_is_open,
             context_menu_is_open,
             clock: &*self.clock,
-            folder_sizes: &self.folder_sizes,
             nearest_existing_directory: session_state::nearest_existing_directory,
         };
         let (task, actions) = ncrs_files::update(&mut self.panels, message, &ctx);
@@ -7094,7 +6846,7 @@ impl App {
                 Task::none()
             }
             Action::StopFolderSizeRunIfLeft(side) => {
-                self.stop_folder_size_run_if_left(side);
+                self.panels.stop_folder_size_run_if_left(side);
                 Task::none()
             }
             Action::DragArmed(armed) => {
@@ -7578,7 +7330,7 @@ impl App {
                 self.panel_facts(PanelSide::Right),
             ],
             cursor_entry: Some(self.active_panel())
-                .filter(|panel| !panel.is_virtual())
+                .filter(|active| !active.is_virtual())
                 .and_then(PanelState::selected_entry)
                 .map(|entry| entry.path.as_path()),
         }
@@ -9234,7 +8986,7 @@ mod prompt_routing {
 
     fn with_prompt() -> App {
         let mut app = app();
-        app.prompt = Some(Prompt::create_dir(PathBuf::from("/tmp")));
+        app.ops.prompt = Some(Prompt::create_dir(PathBuf::from("/tmp")));
         app
     }
 
@@ -9393,7 +9145,7 @@ mod prompt_routing {
     #[test]
     fn typing_and_backspace_edit_the_name() {
         let mut app = with_prompt();
-        app.prompt.as_mut().unwrap().set_name("abc".into());
+        app.ops.prompt.as_mut().unwrap().set_name("abc".into());
 
         assert_eq!(
             press(&app, Key::Character("d".into())),
@@ -9481,21 +9233,21 @@ mod prompt_routing {
         app.panels.left.path = base.clone();
 
         press_and_update(&mut app, Key::Named(Named::F7));
-        assert!(app.prompt.is_some(), "F7 did not open the prompt");
+        assert!(app.ops.prompt.is_some(), "F7 did not open the prompt");
 
         for c in "neuer ordner".chars() {
             press_and_update(&mut app, Key::Character(c.to_string().into()));
         }
-        assert_eq!(app.prompt.as_ref().unwrap().name(), "neuer ordner");
+        assert_eq!(app.ops.prompt.as_ref().unwrap().name(), "neuer ordner");
 
         // Submit starts the operation and marks the prompt busy.
         let _task = app.update(Message::PromptSubmit);
         assert!(
-            app.prompt.is_some(),
+            app.ops.prompt.is_some(),
             "the prompt closed before the work ran"
         );
-        assert!(app.prompt.as_ref().unwrap().busy());
-        assert_eq!(app.prompt.as_ref().unwrap().error(), None);
+        assert!(app.ops.prompt.as_ref().unwrap().busy());
+        assert_eq!(app.ops.prompt.as_ref().unwrap().error(), None);
     }
 
     /// An empty name is refused while the dialog is still open: no filesystem
@@ -9511,9 +9263,12 @@ mod prompt_routing {
         press_and_update(&mut app, Key::Named(Named::F7));
         let _task = app.update(Message::PromptSubmit);
 
-        assert!(app.prompt.is_some(), "the prompt closed on an invalid name");
-        assert!(!app.prompt.as_ref().unwrap().busy());
-        assert_eq!(app.prompt.as_ref().unwrap().error(), Some("empty_name"));
+        assert!(
+            app.ops.prompt.is_some(),
+            "the prompt closed on an invalid name"
+        );
+        assert!(!app.ops.prompt.as_ref().unwrap().busy());
+        assert_eq!(app.ops.prompt.as_ref().unwrap().error(), Some("empty_name"));
     }
 
     /// Escape closes the prompt and leaves no state behind.
@@ -9521,11 +9276,11 @@ mod prompt_routing {
     fn escape_closes_the_prompt() {
         let mut app = app();
         press_and_update(&mut app, Key::Named(Named::F7));
-        assert!(app.prompt.is_some());
+        assert!(app.ops.prompt.is_some());
 
         press_and_update(&mut app, Key::Named(Named::Escape));
-        assert!(app.prompt.is_none());
-        assert_eq!(app.prompt_side, None);
+        assert!(app.ops.prompt.is_none());
+        assert_eq!(app.ops.prompt_side, None);
     }
 
     /// A result that arrives after the user dismissed the prompt is dropped:
@@ -9533,8 +9288,8 @@ mod prompt_routing {
     #[test]
     fn a_result_from_a_dismissed_prompt_is_ignored() {
         let mut app = app();
-        app.prompt = Some(Prompt::create_dir(PathBuf::from("/tmp")));
-        app.prompt_request_id = 7;
+        app.ops.prompt = Some(Prompt::create_dir(PathBuf::from("/tmp")));
+        app.ops.prompt_request_id = 7;
         press_and_update(&mut app, Key::Named(Named::Escape));
 
         let stale = Message::PromptFinished {
@@ -9545,7 +9300,7 @@ mod prompt_routing {
             }),
         };
         let _task = app.update(stale);
-        assert!(app.prompt.is_none());
+        assert!(app.ops.prompt.is_none());
     }
 
     /// The two filesystem failures get different wording, because the user
@@ -9554,8 +9309,8 @@ mod prompt_routing {
     #[test]
     fn the_two_failures_read_differently() {
         let mut app = app();
-        app.prompt = Some(Prompt::create_dir(PathBuf::from("/tmp")));
-        app.prompt.as_mut().unwrap().set_name("x".into());
+        app.ops.prompt = Some(Prompt::create_dir(PathBuf::from("/tmp")));
+        app.ops.prompt.as_mut().unwrap().set_name("x".into());
 
         let taken = fs::CreateDirError::AlreadyExists {
             path: PathBuf::from("/tmp/x"),
@@ -9680,8 +9435,8 @@ mod reload_order {
 
         let mut app = App::with_environment(Environment::isolated()).0;
         app.panels.left.path = base.clone();
-        app.prompt = Some(Prompt::create_dir(base.clone()));
-        app.prompt.as_mut().unwrap().set_name("neu".into());
+        app.ops.prompt = Some(Prompt::create_dir(base.clone()));
+        app.ops.prompt.as_mut().unwrap().set_name("neu".into());
         // Submitting queues the reload instead of running it.
         let _ = app.update(Message::PromptSubmit);
         assert!(
@@ -9689,12 +9444,12 @@ mod reload_order {
             "no reload was queued, so the panel would never refresh"
         );
         assert_ne!(
-            app.prompt_request_id, 0,
+            app.ops.prompt_request_id, 0,
             "the request id was not advanced, so a stale result could land"
         );
 
         // Still busy: the create has not reported.
-        assert!(app.prompt.as_ref().unwrap().busy());
+        assert!(app.ops.prompt.as_ref().unwrap().busy());
     }
 
     /// The queued reload runs when the create reports, and clears itself so a
@@ -9707,9 +9462,9 @@ mod reload_order {
 
         let mut app = App::with_environment(Environment::isolated()).0;
         app.panels.left.path = base.clone();
-        app.prompt = Some(Prompt::create_dir(base.clone()));
-        app.prompt.as_mut().unwrap().set_name("spaet".into());
-        app.prompt_request_id = 1;
+        app.ops.prompt = Some(Prompt::create_dir(base.clone()));
+        app.ops.prompt.as_mut().unwrap().set_name("spaet".into());
+        app.ops.prompt_request_id = 1;
         app.pending_reload = Some(PendingReload {
             side: PanelSide::Left,
             name: "spaet".into(),
@@ -9725,7 +9480,10 @@ mod reload_order {
             app.pending_reload.is_none(),
             "the reload was not consumed and would run again"
         );
-        assert!(app.prompt.is_none(), "the prompt stayed open after success");
+        assert!(
+            app.ops.prompt.is_none(),
+            "the prompt stayed open after success"
+        );
     }
 
     /// On failure the prompt stays open with the error, and the reload still
@@ -9738,9 +9496,9 @@ mod reload_order {
 
         let mut app = App::with_environment(Environment::isolated()).0;
         app.panels.left.path = base.clone();
-        app.prompt = Some(Prompt::create_dir(base.clone()));
-        app.prompt.as_mut().unwrap().set_name("weg".into());
-        app.prompt_request_id = 2;
+        app.ops.prompt = Some(Prompt::create_dir(base.clone()));
+        app.ops.prompt.as_mut().unwrap().set_name("weg".into());
+        app.ops.prompt_request_id = 2;
         app.pending_reload = Some(PendingReload {
             side: PanelSide::Left,
             name: "weg".into(),
@@ -9760,10 +9518,10 @@ mod reload_order {
             "a failed create left a reload queued"
         );
         assert!(
-            app.prompt.is_some(),
+            app.ops.prompt.is_some(),
             "the prompt closed on failure, so the user cannot correct the name"
         );
-        assert!(!app.prompt.as_ref().unwrap().busy());
+        assert!(!app.ops.prompt.as_ref().unwrap().busy());
     }
 
     #[derive(Default)]
@@ -9792,13 +9550,13 @@ mod reload_order {
         };
         app.panels.left.path = base.to_path_buf();
         drop(app.update(Message::CreateFilePrompt));
-        app.prompt.as_mut().unwrap().set_name(name.into());
+        app.ops.prompt.as_mut().unwrap().set_name(name.into());
         drop(app.update(Message::PromptSubmit));
 
         let result = fs::create_file(base.join(name)).await;
         drop(app.update(Message::PromptFinished {
             prompt: PromptKind::CreateFile,
-            request_id: app.prompt_request_id,
+            request_id: app.ops.prompt_request_id,
             result,
         }));
         (app, launcher)
@@ -9811,7 +9569,10 @@ mod reload_order {
 
         let (mut app, launcher) = submit_new_file(&base, "note.txt").await;
 
-        assert!(app.prompt.is_none(), "the prompt stayed open after success");
+        assert!(
+            app.ops.prompt.is_none(),
+            "the prompt stayed open after success"
+        );
         assert_eq!(std::fs::read(base.join("note.txt")).unwrap(), b"");
         let calls = launcher.0.lock().unwrap().clone();
         assert_eq!(calls.len(), 1, "the editor was not started exactly once");
@@ -9851,7 +9612,11 @@ mod reload_order {
 
         let (app, launcher) = submit_new_file(&base, "note.txt").await;
 
-        let prompt = app.prompt.as_ref().expect("the prompt stays for a retry");
+        let prompt = app
+            .ops
+            .prompt
+            .as_ref()
+            .expect("the prompt stays for a retry");
         assert!(!prompt.busy());
         assert_eq!(prompt.name(), "note.txt");
         assert!(prompt.error().is_some_and(|text| text.contains("note.txt")));
@@ -9864,7 +9629,7 @@ mod reload_order {
     #[test]
     fn a_stale_result_touches_neither() {
         let mut app = App::with_environment(Environment::isolated()).0;
-        app.prompt_request_id = 5;
+        app.ops.prompt_request_id = 5;
         app.pending_reload = Some(PendingReload {
             side: PanelSide::Left,
             name: "x".into(),
@@ -9876,7 +9641,7 @@ mod reload_order {
             result: Ok(()),
         });
 
-        assert!(app.prompt.is_none());
+        assert!(app.ops.prompt.is_none());
         assert!(
             app.pending_reload.is_some(),
             "a stale result consumed the queued reload"
@@ -9995,17 +9760,11 @@ impl App {
             search_function_keys: Keymap::built_in()
                 .function_keys(Language::default(), KeyScope::Search),
             keymap: Keymap::built_in(),
-            prompt: None,
-            prompt_side: None,
-            prompt_request_id: 0,
             pending_reload: None,
             jobs: jobs::Queue::new(),
             trash_view: None,
             trash_side: PanelSide::Left,
             trash_generation: 0,
-            folder_sizes: HashMap::new(),
-            folder_size_run: None,
-            folder_size_runs_started: 0,
             transfer_dialog: None,
             transfer_dialogs_opened: 0,
             start_over_dialog: false,
@@ -10493,8 +10252,8 @@ impl App {
     /// A prompt on fixed data, for the prompt's own reference image.
     pub fn with_fixed_prompt() -> Self {
         let mut app = Self::with_fixed_panels();
-        app.prompt = Some(Prompt::create_dir(PathBuf::from("/home/test/links")));
-        if let Some(prompt) = app.prompt.as_mut() {
+        app.ops.prompt = Some(Prompt::create_dir(PathBuf::from("/home/test/links")));
+        if let Some(prompt) = app.ops.prompt.as_mut() {
             prompt.set_name("neuer ordner".to_string());
         }
         app
@@ -10505,14 +10264,14 @@ impl App {
         let mut app = Self::with_fixed_panels();
         let mut prompt = Prompt::create_file(PathBuf::from("/home/test/links"));
         prompt.set_name("notes.txt".to_string());
-        app.prompt = Some(prompt);
+        app.ops.prompt = Some(prompt);
         app
     }
 
     /// The pack prompt on fixed data, for its reference image.
     pub fn with_fixed_pack_prompt() -> Self {
         let mut app = Self::with_fixed_panels();
-        app.prompt = Some(Prompt::pack(
+        app.ops.prompt = Some(Prompt::pack(
             PathBuf::from("/home/test/links"),
             vec![PathBuf::from("/home/test/fotos")],
             "fotos.zip",
@@ -10533,7 +10292,7 @@ impl App {
     }
 
     pub fn set_prompt(&mut self, name: &str, error: Option<&str>) {
-        let Some(open) = self.prompt.as_mut() else {
+        let Some(open) = self.ops.prompt.as_mut() else {
             return;
         };
         open.set_name(name.to_string());
@@ -13864,7 +13623,10 @@ mod context_menu_tests {
         open_at(&mut app, LEFT, FILE);
         let new_folder = index_of(&app, ContextAction::NewFolder);
         drop(app.update(Message::ContextMenuClick(new_folder)));
-        assert!(app.prompt.is_some(), "F7 opens the create-directory prompt");
+        assert!(
+            app.ops.prompt.is_some(),
+            "F7 opens the create-directory prompt"
+        );
     }
 
     #[test]
@@ -17689,7 +17451,7 @@ mod command_palette_tests {
         type_into_palette(&mut app, "create folder");
         drop(app.update(palette_message(CommandPaletteMessage::Run)));
         assert!(app.command_palette_for_test().is_none());
-        assert!(app.prompt.is_some(), "the prompt did not open");
+        assert!(app.ops.prompt.is_some(), "the prompt did not open");
         assert!(app.prompt_key_state().open);
     }
 
@@ -19650,7 +19412,7 @@ mod archive_panel_tests {
         app.panels.right = panel_in_archive(Vec::new());
         drop(app.update(Message::PackPrompt));
         assert_eq!(
-            app.prompt.as_ref().map(Prompt::archive_path),
+            app.ops.prompt.as_ref().map(Prompt::archive_path),
             Some(PathBuf::from("/home/test/links/fotos.zip"))
         );
     }
@@ -24030,6 +23792,7 @@ mod clipboard_tests {
 
         let name = case
             .app
+            .ops
             .prompt
             .as_ref()
             .expect("no prompt")
@@ -24037,11 +23800,14 @@ mod clipboard_tests {
             .to_owned();
         assert!(name.starts_with("Pasted "), "{name}");
         assert!(name.ends_with(".txt"), "{name}");
-        assert_eq!(case.app.prompt.as_ref().unwrap().kind(), PromptKind::Paste);
+        assert_eq!(
+            case.app.ops.prompt.as_ref().unwrap().kind(),
+            PromptKind::Paste
+        );
 
         deliver(&mut case.app, Message::PromptSubmit).await;
 
-        assert!(case.app.prompt.is_none());
+        assert!(case.app.ops.prompt.is_none());
         assert!(case.app.pending_paste.is_none());
         let created = only_file_in(&case.target);
         assert_eq!(created.file_name().unwrap().to_string_lossy(), name);
@@ -24074,6 +23840,7 @@ mod clipboard_tests {
         deliver(&mut case.app, Message::Paste).await;
         let name = case
             .app
+            .ops
             .prompt
             .as_ref()
             .expect("no prompt")
@@ -24098,7 +23865,7 @@ mod clipboard_tests {
         );
         deliver(&mut case.app, Message::PromptSubmit).await;
 
-        assert!(case.app.prompt.as_ref().unwrap().error().is_some());
+        assert!(case.app.ops.prompt.as_ref().unwrap().error().is_some());
         assert!(case.app.paste_staging.is_none());
         assert_eq!(std::fs::read_dir(&case.target).unwrap().count(), 0);
     }
@@ -24112,7 +23879,7 @@ mod clipboard_tests {
 
         drop(case.app.update(Message::PromptCancel));
 
-        assert!(case.app.prompt.is_none());
+        assert!(case.app.ops.prompt.is_none());
         assert!(case.app.pending_paste.is_none());
         assert_eq!(std::fs::read_dir(&case.target).unwrap().count(), 0);
     }
@@ -24161,7 +23928,7 @@ mod clipboard_tests {
             case.app.notice.as_deref(),
             Some("The clipboard holds no files, image or text.")
         );
-        assert!(case.app.prompt.is_none());
+        assert!(case.app.ops.prompt.is_none());
         assert!(case.app.ops.transfer.is_none());
     }
 
@@ -24180,7 +23947,7 @@ mod clipboard_tests {
         drop(case.app.update(Message::Paste));
 
         assert_eq!(case.app.ops.transfer.as_ref(), Some(&running));
-        assert!(case.app.prompt.is_none());
+        assert!(case.app.ops.prompt.is_none());
         assert!(case.app.notice.is_some());
     }
 
@@ -24385,7 +24152,7 @@ mod folder_size_tests {
     }
 
     fn run_id(app: &App) -> u64 {
-        app.folder_size_run.as_ref().unwrap().id
+        app.panels.folder_size_run.as_ref().unwrap().id
     }
 
     fn measured(app: &mut App, run: u64, name: &str, bytes: u64) {
@@ -24411,14 +24178,14 @@ mod folder_size_tests {
 
         drop(app.update(Message::ComputeFolderSizes));
 
-        let run = app.folder_size_run.as_ref().unwrap();
+        let run = app.panels.folder_size_run.as_ref().unwrap();
         assert!(run.waiting.is_empty(), "one folder, already walking");
         assert_eq!(shown(&app, "beta"), "<DIR>", "until the value arrives");
         let id = run.id;
         measured(&mut app, id, "beta", 2048);
         assert_eq!(shown(&app, "beta"), "2.0 KB");
         assert_eq!(shown(&app, "alpha"), "<DIR>");
-        assert!(app.folder_size_run.is_none(), "the run is over");
+        assert!(app.panels.folder_size_run.is_none(), "the run is over");
     }
 
     #[tokio::test]
@@ -24435,7 +24202,7 @@ mod folder_size_tests {
 
         let id = run_id(&app);
         assert_eq!(
-            app.folder_size_run.as_ref().unwrap().waiting,
+            app.panels.folder_size_run.as_ref().unwrap().waiting,
             [directory().join("gamma")],
             "alpha is already walking, the file is not a target"
         );
@@ -24453,7 +24220,7 @@ mod folder_size_tests {
 
         drop(app.update(Message::ComputeFolderSizes));
 
-        let run = app.folder_size_run.as_ref().unwrap();
+        let run = app.panels.folder_size_run.as_ref().unwrap();
         assert_eq!(
             run.waiting,
             [directory().join("beta"), directory().join("gamma")],
@@ -24468,7 +24235,7 @@ mod folder_size_tests {
 
         drop(app.update(Message::ComputeFolderSizes));
 
-        assert!(app.folder_size_run.is_none());
+        assert!(app.panels.folder_size_run.is_none());
         assert!(!app.context_action_enabled(ContextAction::ComputeFolderSizes));
         put_cursor_on(&mut app, "alpha");
         assert!(app.context_action_enabled(ContextAction::ComputeFolderSizes));
@@ -24507,7 +24274,7 @@ mod folder_size_tests {
         }));
 
         assert_eq!(shown(&app, "alpha"), "<DIR>");
-        assert!(app.folder_sizes.is_empty());
+        assert!(app.panels.folder_sizes.is_empty());
     }
 
     #[tokio::test]
@@ -24554,7 +24321,7 @@ mod folder_size_tests {
         put_cursor_on(&mut app, "gamma");
         drop(app.update(Message::ComputeFolderSizes));
         let id = run_id(&app);
-        let stop = Arc::clone(&app.folder_size_run.as_ref().unwrap().stop);
+        let stop = Arc::clone(&app.panels.folder_size_run.as_ref().unwrap().stop);
 
         load(
             &mut app,
@@ -24564,9 +24331,9 @@ mod folder_size_tests {
         );
 
         assert!(stop.load(Ordering::Relaxed));
-        assert!(app.folder_size_run.is_none());
+        assert!(app.panels.folder_size_run.is_none());
         measured(&mut app, id, "gamma", 777);
-        assert!(app.folder_sizes.is_empty());
+        assert!(app.panels.folder_sizes.is_empty());
         load(&mut app, directory(), listing(), fs::SortKey::default());
         assert_eq!(shown(&app, "gamma"), "<DIR>");
     }
@@ -24577,7 +24344,7 @@ mod folder_size_tests {
         put_cursor_on(&mut app, "gamma");
         drop(app.update(Message::ComputeFolderSizes));
         let id = run_id(&app);
-        let stop = Arc::clone(&app.folder_size_run.as_ref().unwrap().stop);
+        let stop = Arc::clone(&app.panels.folder_size_run.as_ref().unwrap().stop);
 
         load(&mut app, directory(), listing(), fs::SortKey::default());
 
@@ -24634,7 +24401,7 @@ mod folder_size_tests {
 
         drop(app.update(Message::ComputeFolderSizes));
 
-        assert!(app.folder_size_run.is_none());
+        assert!(app.panels.folder_size_run.is_none());
     }
 }
 
@@ -25191,7 +24958,7 @@ mod hit_list_tests {
             Message::ComputeFolderSizes,
         ] {
             drop(hits.app.apply_unless_refused(message));
-            assert!(hits.app.prompt.is_none());
+            assert!(hits.app.ops.prompt.is_none());
         }
     }
 
@@ -25331,7 +25098,7 @@ mod hit_list_tests {
     fn the_pack_prompt_of_a_list_suggests_the_query_and_lists_equal_names() {
         let mut hits = opened(&["same.txt", "same.txt"], PanelSide::Left);
         pack_prompt_of(&mut hits);
-        let prompt = hits.app.prompt.as_ref().unwrap();
+        let prompt = hits.app.ops.prompt.as_ref().unwrap();
         assert_eq!(
             Path::new(prompt.name()).file_name(),
             Some(std::ffi::OsStr::new("needle.zip"))
@@ -25351,7 +25118,7 @@ mod hit_list_tests {
             .unwrap()
             .query = "rech.*nung".to_owned();
         pack_prompt_of(&mut hits);
-        let name = hits.app.prompt.as_ref().unwrap().name().to_owned();
+        let name = hits.app.ops.prompt.as_ref().unwrap().name().to_owned();
         assert_eq!(
             Path::new(&name).file_name(),
             Some(std::ffi::OsStr::new(&suggested_archive_name(&hits.files)))
@@ -25363,7 +25130,7 @@ mod hit_list_tests {
         let mut hits = opened(&["a.txt", "b.txt"], PanelSide::Left);
         pack_prompt_of(&mut hits);
         drop(hits.app.update(Message::PromptToggleKeepFolders));
-        let prompt = hits.app.prompt.as_ref().unwrap();
+        let prompt = hits.app.ops.prompt.as_ref().unwrap();
         assert!(prompt.hits().unwrap().keep_folders);
         assert_eq!(
             prompt.kept_folders_under(),
@@ -25380,6 +25147,7 @@ mod hit_list_tests {
         drop(hits.app.update(Message::PromptToggleKeepFolders));
         assert!(hits
             .app
+            .ops
             .prompt
             .as_ref()
             .unwrap()

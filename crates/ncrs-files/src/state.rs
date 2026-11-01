@@ -7,6 +7,7 @@ use iced::keyboard::Modifiers;
 use iced::mouse;
 use ncrs_core::PanelSide;
 
+use crate::folder_size::{FolderSizeRun, FolderSizes};
 use crate::panel::PanelState;
 use crate::panel_drag::{self, PanelDrag};
 
@@ -51,6 +52,11 @@ pub struct Panels {
     pub drag: Option<PanelDrag>,
     /// The panel under the pointer, which is where a drag can be dropped.
     pub hovered: Option<PanelSide>,
+    /// The folder sizes measured in this session.
+    pub folder_sizes: FolderSizes,
+    /// The "Compute folder sizes" run that is under way.
+    pub folder_size_run: Option<FolderSizeRun>,
+    pub folder_size_runs_started: u64,
 }
 
 impl Panels {
@@ -62,6 +68,9 @@ impl Panels {
             type_ahead: TypeAhead::default(),
             drag: None,
             hovered: None,
+            folder_sizes: FolderSizes::new(),
+            folder_size_run: None,
+            folder_size_runs_started: 0,
         }
     }
 

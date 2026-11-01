@@ -42,7 +42,6 @@ pub fn update(
         } => {
             let sorted_by_claim = fill_cached_folder_sizes(
                 panels,
-                ctx,
                 side,
                 &path,
                 archive.is_none(),
@@ -213,14 +212,13 @@ pub fn update(
 /// panel, so that the listing is sorted again.
 fn fill_cached_folder_sizes(
     panels: &Panels,
-    ctx: &Ctx<'_>,
     side: PanelSide,
     path: &Path,
     outside_an_archive: bool,
     entries: &mut [FileEntry],
     sorted_by: SortKey,
 ) -> Option<SortKey> {
-    let cached = ctx.folder_sizes.get(path);
+    let cached = panels.folder_sizes.get(path);
     let Some(known) = cached.filter(|_| outside_an_archive && RemotePath::parse(path).is_none())
     else {
         return Some(sorted_by);

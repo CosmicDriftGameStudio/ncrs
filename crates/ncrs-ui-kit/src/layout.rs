@@ -82,6 +82,10 @@ pub fn search_visible_rows(window: Size, filtered: bool, row_height: f32) -> usi
 }
 
 pub const MENU_ITEM_HEIGHT: f32 = 24.0;
+pub const MENU_WIDTH: f32 = 300.0;
+/// The Hermes submenu has labels with a note and a key.
+pub const MENU_SUB_WIDTH: f32 = 340.0;
+pub const MENU_SEPARATOR_HEIGHT: f32 = 7.0;
 pub const MENU_PADDING: f32 = 4.0;
 /// The quick-fix menu: wider than the context menu for a target path, with a
 /// two-line header above its entries.

@@ -546,3 +546,15 @@ impl Message {
         }
     }
 }
+
+impl From<ncrs_files::context_menu_view::ContextMenuMessage> for Message {
+    fn from(menu: ncrs_files::context_menu_view::ContextMenuMessage) -> Self {
+        use ncrs_files::context_menu_view::ContextMenuMessage as Menu;
+        match menu {
+            Menu::Click(index) => Self::ContextMenuClick(index),
+            Menu::Hover(index) => Self::ContextMenuHover(index),
+            Menu::SubClick(index) => Self::ContextMenuSubClick(index),
+            Menu::SubHover(index) => Self::ContextMenuSubHover(index),
+        }
+    }
+}

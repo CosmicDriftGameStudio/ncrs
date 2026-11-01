@@ -3,7 +3,10 @@
 //! and the list of search hits a panel can show.
 
 pub mod action;
+pub mod context_menu;
+pub mod context_menu_view;
 pub mod ctx;
+pub mod folder_size;
 pub mod hit_list;
 pub mod message;
 pub mod panel;
@@ -12,6 +15,8 @@ pub mod panel_history;
 pub mod state;
 pub mod update;
 pub mod view;
+pub mod volumes;
+pub mod volumes_view;
 
 pub use action::Action;
 pub use ctx::{Ctx, HermesCellOf, ViewCtx};
