@@ -565,20 +565,28 @@ mod tests {
 
     #[test]
     fn a_folder_keeps_the_documents_below_it_and_the_full_text_works_inside_it() {
-        let (_dir, mut index, ids) = stocked();
-        index
-            .set_document_text(ids[0], "Rent for the office")
-            .unwrap();
-        index
-            .set_document_text(ids[1], "Rent for the office")
-            .unwrap();
+        // Stored paths use the separator of the platform, as the walk writes them.
+        let native =
+            |path: &str| std::path::PathBuf::from(path.replace('/', std::path::MAIN_SEPARATOR_STR));
+        let (_dir, mut index) = encrypted_index();
+        let mut ids = Vec::new();
+        for (seed, path) in (1..).zip(["inbox/scan-1.pdf", "inbox/scan-2.pdf", "other/scan-3.pdf"])
+        {
+            let document = crate::NewDocument {
+                path: native(path),
+                ..new_document(seed)
+            };
+            let id = index.insert_document(&document).unwrap();
+            index.set_document_text(id, "Rent for the office").unwrap();
+            ids.push(id);
+        }
         let spec = QuerySpec {
             full_text: Some("rent".to_owned()),
             ..QuerySpec::default()
         };
         let under = |folder: &str| -> Vec<DocumentId> {
             index
-                .run_query_under(&spec, Some(Path::new(folder)))
+                .run_query_under(&spec, Some(&native(folder)))
                 .unwrap()
                 .into_iter()
                 .map(|document| document.id)
