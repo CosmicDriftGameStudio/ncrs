@@ -75,6 +75,12 @@ pub struct SuggestionAccess {
     archive_roots: Vec<PathBuf>,
 }
 
+impl std::fmt::Debug for SuggestionAccess {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SuggestionAccess").finish_non_exhaustive()
+    }
+}
+
 impl SuggestionAccess {
     pub fn new(slot: IndexSlot, archive_roots: Vec<PathBuf>) -> Self {
         Self {

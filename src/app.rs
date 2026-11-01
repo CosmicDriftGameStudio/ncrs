@@ -15523,7 +15523,8 @@ impl App {
     /// every role on the left, files in every state on the right with the
     /// cursor on an inquiry.
     pub fn with_hermes_column_sample() -> Self {
-        use crate::hermes_column::{ColumnReading, DirectoryStates, FolderReading};
+        use crate::hermes_column::{ColumnReading, DirectoryStates};
+        use ncrs_filing::column_reading::FolderReading;
         use ncrs_index::{DocumentStatus, PathState, ReviewReason, StatusCounts};
 
         let home = PathBuf::from("/home/test");
@@ -29823,7 +29824,7 @@ mod replan_flow {
     use ncrs_index::ReviewReason;
 
     use super::*;
-    use crate::replan_work::tests::Setup;
+    use crate::replan_work::fixtures::Setup;
     use crate::replan_work::ReplanAfter;
     use crate::review_list::ReplanStep;
 

@@ -12,6 +12,7 @@ use ncrs_index::{
 use crate::condition_editor::{ConditionEditor, ConditionProblem, NEW_CONDITION_KINDS};
 use crate::filing_pieces::TargetEditor;
 use crate::messages::RuleFormMessage;
+pub use crate::rules_work::RuleSave;
 use crate::rules_work::{RuleTry, TryResult};
 
 const NEW_RULE_PATTERN: &str = "{year}/{sender}/";
@@ -88,18 +89,6 @@ pub struct RuleFormProblems {
     pub no_condition: bool,
     /// The target has no folder and no file name.
     pub no_target: bool,
-}
-
-/// What to write to the index.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RuleSave {
-    Create {
-        spec: RuleSpec,
-        origin: RuleOrigin,
-    },
-    Update(RuleId, RuleSpec),
-    /// The suggestion becomes a confirmed rule with these values.
-    ConfirmSuggestion(RuleId, RuleSpec),
 }
 
 impl RuleForm {

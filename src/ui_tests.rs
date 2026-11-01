@@ -4982,7 +4982,7 @@ mod reorganisation_plan_card {
     use crate::messages::ReorganisationPlanMessage;
     use crate::reorganisation_plan::tests::loaded_view;
     use crate::reorganisation_plan::{Group, Line, ReorganisationView};
-    use crate::reorganisation_work::tests::{archive, sample_items};
+    use crate::reorganisation_work::fixtures::{archive, sample_items};
     use crate::suggestion_work::INDEX_NOT_OPEN;
 
     fn plan_message(message: ReorganisationPlanMessage) -> Message {

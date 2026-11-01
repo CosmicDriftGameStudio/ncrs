@@ -17,7 +17,7 @@ use ncrs_index::{
 };
 use ncrs_intake::{has_symlink_ancestor_under, hash_path, stays_below, IntakeError};
 
-use crate::fs::transfer::{
+use ncrs_fs::transfer::{
     partial_prefix, transfer_to, Counting, Move, OnConflict, Progress, Source,
 };
 
@@ -546,7 +546,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
-    use crate::fs::transfer::Counting;
+    use ncrs_fs::transfer::Counting;
 
     struct Setup {
         _dir: TempDir,

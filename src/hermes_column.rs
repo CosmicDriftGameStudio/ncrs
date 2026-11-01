@@ -9,7 +9,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use ncrs_index::{DocumentStatus, FileTags, Index, IndexError, Kinds, PathState, StatusCounts};
+use ncrs_index::{DocumentStatus, FileTags, Kinds, PathState};
 use ncrs_intake::LocationMode;
 use ncrs_pipeline::{Snapshot, Task};
 
@@ -21,6 +21,7 @@ use crate::review_work::TextState;
 use crate::ui::format;
 use crate::ui::review_list::reason_text;
 
+pub use ncrs_filing::column_reading::{ColumnReading, ColumnRequest, ColumnStage, DirectoryStates};
 pub use ncrs_ui_kit::hermes_state::{state_label, FolderRole, FolderSummary, HermesFileState};
 
 trait FolderRoleOf {
@@ -45,26 +46,6 @@ pub fn role_of(path: &Path, locations: &[FilingLocation]) -> Option<FolderRole> 
         .map(FolderRole::of)
 }
 
-/// What the index holds about the files directly in one folder.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct DirectoryStates {
-    files: HashMap<PathBuf, PathState>,
-    /// Excluded paths below the folder.
-    excluded_below: Vec<PathBuf>,
-    /// The folder itself is excluded, or one around it.
-    excluded_itself: bool,
-}
-
-impl DirectoryStates {
-    fn is_excluded(&self, path: &Path) -> bool {
-        self.excluded_itself
-            || self
-                .excluded_below
-                .iter()
-                .any(|excluded| path.starts_with(excluded))
-    }
-}
-
 #[derive(Debug, Clone, Default)]
 struct CachedFolder {
     summary: FolderSummary,
@@ -76,114 +57,6 @@ struct CachedFolder {
 struct CachedDirectory {
     states: DirectoryStates,
     stale: bool,
-}
-
-/// How much of a folder's counts one reading holds.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ColumnStage {
-    /// The states of the listed files and the direct counts of the subfolders.
-    Listing,
-    /// The counts of everything below each subfolder; slower on a deep tree.
-    Deep,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ColumnRequest {
-    /// The listing generation the request was made for; the answer is dropped
-    /// when the panel has moved on.
-    pub generation: u64,
-    pub directory: PathBuf,
-    pub subfolders: Vec<PathBuf>,
-    pub stage: ColumnStage,
-    /// [`HermesColumn::epoch`] when the request was made: a reading is dropped
-    /// when something was invalidated since.
-    pub epoch: u64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FolderReading {
-    pub path: PathBuf,
-    pub excluded: bool,
-    pub direct: Option<StatusCounts>,
-    pub deep: Option<StatusCounts>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ColumnReading {
-    pub generation: u64,
-    pub epoch: u64,
-    pub directory: PathBuf,
-    pub stage: ColumnStage,
-    /// Only in the `Listing` stage.
-    pub states: Option<DirectoryStates>,
-    pub folders: Vec<FolderReading>,
-}
-
-/// Everything one panel needs from the index, in one go.
-pub fn read_column(index: &Index, request: &ColumnRequest) -> Result<ColumnReading, IndexError> {
-    let (states, folders) = match request.stage {
-        ColumnStage::Listing => (
-            Some(read_directory(index, &request.directory)?),
-            read_folders(index, &request.subfolders, false)?,
-        ),
-        ColumnStage::Deep => (None, read_folders(index, &request.subfolders, true)?),
-    };
-    Ok(ColumnReading {
-        generation: request.generation,
-        epoch: request.epoch,
-        directory: request.directory.clone(),
-        stage: request.stage,
-        states,
-        folders,
-    })
-}
-
-fn read_directory(index: &Index, directory: &Path) -> Result<DirectoryStates, IndexError> {
-    Ok(DirectoryStates {
-        files: index
-            .document_states_in(directory)?
-            .into_iter()
-            .map(|state| (state.path.clone(), state))
-            .collect(),
-        excluded_below: index.excluded_paths_under(directory)?,
-        excluded_itself: index.is_excluded(directory)?,
-    })
-}
-
-fn read_folders(
-    index: &Index,
-    folders: &[PathBuf],
-    deep: bool,
-) -> Result<Vec<FolderReading>, IndexError> {
-    let (direct_stage, deep_stage) = if deep {
-        let both = index.status_counts_under(folders)?;
-        (
-            vec![None; folders.len()],
-            both.into_iter().map(|counts| Some(counts.deep)).collect(),
-        )
-    } else {
-        (
-            index
-                .direct_status_counts_under(folders)?
-                .into_iter()
-                .map(Some)
-                .collect(),
-            vec![None; folders.len()],
-        )
-    };
-    folders
-        .iter()
-        .zip(direct_stage)
-        .zip(deep_stage)
-        .map(|((path, direct_counts), deep_counts)| {
-            Ok(FolderReading {
-                path: path.clone(),
-                excluded: index.is_excluded(path)?,
-                direct: direct_counts,
-                deep: deep_counts,
-            })
-        })
-        .collect()
 }
 
 #[derive(Debug, Default)]
@@ -513,20 +386,6 @@ impl<'a> ColumnView<'a> {
 }
 
 #[cfg(test)]
-impl DirectoryStates {
-    pub fn sample(files: Vec<PathState>, excluded_below: Vec<PathBuf>) -> Self {
-        Self {
-            files: files
-                .into_iter()
-                .map(|state| (state.path.clone(), state))
-                .collect(),
-            excluded_below,
-            excluded_itself: false,
-        }
-    }
-}
-
-#[cfg(test)]
 impl HermesColumn {
     /// Files being read and files that failed, as a snapshot would say.
     pub fn mark_for_test(&mut self, busy: Vec<PathBuf>, errors: Vec<(PathBuf, String)>) {
@@ -554,7 +413,8 @@ mod tests {
         PathBuf::from(path.replace('/', std::path::MAIN_SEPARATOR_STR))
     }
 
-    use ncrs_index::ReviewReason;
+    use ncrs_filing::column_reading::{read_column, FolderReading};
+    use ncrs_index::{Index, ReviewReason, StatusCounts};
     use ncrs_pipeline::{
         Busy, ChangeOutcome, ChangedPath, ErrorEntry, WorkerSnapshot, MAX_CHANGED_PATHS,
     };

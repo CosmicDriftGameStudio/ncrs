@@ -11,8 +11,19 @@ use ncrs_index::{
 };
 use ncrs_intake::{plan, Location, LocationMode, PlanInput, Planning};
 
-use crate::rule_form::RuleSave;
 use crate::suggestion_work::INDEX_NOT_OPEN;
+
+/// What to write to the index.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RuleSave {
+    Create {
+        spec: RuleSpec,
+        origin: RuleOrigin,
+    },
+    Update(RuleId, RuleSpec),
+    /// The suggestion becomes a confirmed rule with these values.
+    ConfirmSuggestion(RuleId, RuleSpec),
+}
 
 /// Another confirm or a discard got to the suggestion first.
 const NO_SUCH_SUGGESTION: &str = "the suggested rule is not there any more";
@@ -104,6 +115,12 @@ pub struct RulesAccess {
     slot: IndexSlot,
     locations: Vec<Location>,
     kind_language: KindLanguage,
+}
+
+impl std::fmt::Debug for RulesAccess {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RulesAccess").finish_non_exhaustive()
+    }
 }
 
 impl RulesAccess {

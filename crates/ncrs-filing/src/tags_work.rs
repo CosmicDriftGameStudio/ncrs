@@ -6,8 +6,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use ncrs_index::{Index, IndexError, RuleSpec, TagTally};
 
-use crate::file_list_tags::TagExceptions;
 use crate::suggestion_work::INDEX_NOT_OPEN;
+use ncrs_config::file_list_tags::TagExceptions;
 
 type IndexSlot = Arc<Mutex<Option<Index>>>;
 
@@ -31,6 +31,12 @@ pub enum TagsFailure {
 #[derive(Clone)]
 pub struct TagsAccess {
     slot: IndexSlot,
+}
+
+impl std::fmt::Debug for TagsAccess {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TagsAccess").finish_non_exhaustive()
+    }
 }
 
 impl TagsAccess {

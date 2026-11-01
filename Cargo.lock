@@ -3379,11 +3379,11 @@ dependencies = [
  "ncrs-config",
  "ncrs-core",
  "ncrs-files",
+ "ncrs-filing",
  "ncrs-fs",
  "ncrs-i18n",
  "ncrs-index",
  "ncrs-intake",
- "ncrs-ocr-vision",
  "ncrs-ops",
  "ncrs-palette",
  "ncrs-pipeline",
@@ -3396,7 +3396,6 @@ dependencies = [
  "png 0.18.1",
  "rfd",
  "russh",
- "same-file",
  "serde",
  "serde_spanned 1.1.2",
  "sha2 0.10.9",
@@ -3456,6 +3455,25 @@ dependencies = [
  "ncrs-fs",
  "ncrs-i18n",
  "ncrs-ui-kit",
+]
+
+[[package]]
+name = "ncrs-filing"
+version = "0.0.0"
+dependencies = [
+ "chrono",
+ "ncrs-ai",
+ "ncrs-config",
+ "ncrs-core",
+ "ncrs-fs",
+ "ncrs-index",
+ "ncrs-intake",
+ "ncrs-ocr-vision",
+ "ncrs-pipeline",
+ "ncrs-ui-kit",
+ "objc2-foundation 0.3.2",
+ "same-file",
+ "tempfile",
 ]
 
 [[package]]

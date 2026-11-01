@@ -17,8 +17,8 @@ use ncrs_index::{
 use ncrs_intake::{plan, PlanInput, Planning};
 
 use crate::execute::{execute_with, ExecuteError, ExecutionItem, ItemOutcome, SkipReason};
-use crate::fs::transfer::{Move, Progress, Source};
 use crate::suggestion_work::INDEX_NOT_OPEN;
+use ncrs_fs::transfer::{Move, Progress, Source};
 
 type IndexSlot = Arc<Mutex<Option<Index>>>;
 
@@ -29,6 +29,12 @@ pub struct FilingAccess {
     slot: IndexSlot,
     target_root: PathBuf,
     kind_language: KindLanguage,
+}
+
+impl std::fmt::Debug for FilingAccess {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FilingAccess").finish_non_exhaustive()
+    }
 }
 
 impl FilingAccess {
@@ -237,7 +243,7 @@ mod tests {
 
     use super::*;
     use crate::execute::reconcile;
-    use crate::fs::transfer::Counting;
+    use ncrs_fs::transfer::Counting;
 
     /// A move that always has to copy, as across volumes.
     struct AcrossVolumes;

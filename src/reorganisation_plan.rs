@@ -289,7 +289,7 @@ impl ReorganisationView {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::reorganisation_work::tests::{item, sample_items};
+    use crate::reorganisation_work::fixtures::{item, sample_items};
 
     pub fn loaded_view() -> ReorganisationView {
         let mut view = ReorganisationView::new();

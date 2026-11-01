@@ -19,10 +19,10 @@ use ncrs_index::{Index, IndexError, QuerySpec, SavedQuery, SavedQueryId};
 
 pub use ncrs_index::QueryHit;
 
-use crate::fs::flat_names::target_name;
-use crate::fs::transfer::{transfer_to, Copy, Counting, OnConflict};
 use crate::review_work::amount_digits;
 use crate::suggestion_work::INDEX_NOT_OPEN;
+use ncrs_fs::flat_names::target_name;
+use ncrs_fs::transfer::{transfer_to, Copy, Counting, OnConflict};
 
 type IndexSlot = Arc<Mutex<Option<Index>>>;
 
@@ -39,6 +39,12 @@ pub struct ExportSummary {
 #[derive(Clone)]
 pub struct QueryAccess {
     slot: IndexSlot,
+}
+
+impl std::fmt::Debug for QueryAccess {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("QueryAccess").finish_non_exhaustive()
+    }
 }
 
 impl QueryAccess {
@@ -109,7 +115,7 @@ impl QueryAccess {
     }
 }
 
-impl ncrs_search::SearchIndex for QueryAccess {
+impl ncrs_index::SearchIndex for QueryAccess {
     /// Like [`QueryAccess::run`], but only the documents at or below `under`.
     fn run_under(&self, spec: &QuerySpec, under: &Path) -> Result<Vec<QueryHit>, String> {
         self.run_inside(spec, Some(under))

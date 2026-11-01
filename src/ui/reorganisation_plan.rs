@@ -639,7 +639,7 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use super::*;
-    use crate::reorganisation_work::tests::{item, sample_items};
+    use crate::reorganisation_work::fixtures::{item, sample_items};
 
     fn sentence(source: &str) -> String {
         finding_sentence(item(&sample_items(), source), Language::English)

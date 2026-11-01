@@ -77,6 +77,8 @@ ncrs-ops = { path = "crates/ncrs-ops", version = "0.0.0" }
 ncrs-palette = { path = "crates/ncrs-palette", version = "0.0.0" }
 # The settings: the settings page, the key bindings page, the theme fetch and the model pages.
 ncrs-settings = { path = "crates/ncrs-settings", version = "0.0.0" }
+# The filing logic: the filing module, the work behind the Hermes pages and the reading of the column.
+ncrs-filing = { path = "crates/ncrs-filing", version = "0.0.0" }
 # Translated UI strings, generated from strings.json.
 ncrs-i18n = { path = "crates/ncrs-i18n", version = "0.0.0" }
 # Colors, sizes and widgets the screens are built from, generic over the message type.
@@ -85,9 +87,6 @@ ncrs-ui-kit = { path = "crates/ncrs-ui-kit", version = "0.0.0" }
 ncrs-pipeline = { path = "crates/ncrs-pipeline", version = "0.0.0" }
 # Asks a provider for the fields the rules left open, including the built-in model.
 ncrs-ai = { path = "crates/ncrs-ai", version = "0.0.0" }
-# Folders that overlap are found by file identity, which holds for symlinks and
-# case-insensitive file systems where comparing paths would not.
-same-file = "1.0"
 # The config written back by the filing setup goes to a temporary file in the
 # same folder first and is then renamed over the old one.
 tempfile = "3.27"
@@ -125,11 +124,6 @@ arboard = { version = "3.6", default-features = false, features = ["image-data",
 # would need GTK, and on Windows installing the menu takes an unsafe call that
 # the app crate forbids. No features, so no GTK and no xdo.
 muda = { version = "=0.21.2", default-features = false }
-# The name of the person using the app, for the sender check of the AI, and
-# moving entries to the trash and back.
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSPathUtilities", "NSFileManager", "NSURL", "NSError"] }
-# Apple Vision as the first choice for reading scans; ocrs stays the fallback.
-ncrs-ocr-vision = { path = "crates/ncrs-ocr-vision", version = "0.0.0" }
 
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
 # Starts the system drag of files out of the window, into the Finder, Explorer
@@ -162,7 +156,7 @@ default = ["gpu-with-fallback", "local-ai"]
 
 # The built-in model provider: llama.cpp is compiled into the app. Needs cmake
 # and a C++ compiler at build time; leave it out with --no-default-features.
-local-ai = ["ncrs-ai/llama", "ncrs-settings/local-ai"]
+local-ai = ["ncrs-ai/llama", "ncrs-settings/local-ai", "ncrs-filing/local-ai"]
 
 # The macOS App Store build: inside the App Sandbox the home folder, the folder
 # grants, the keychain entry and the trash work differently. Off by default, and
@@ -199,6 +193,8 @@ ncrs-search = { path = "crates/ncrs-search", version = "0.0.0", features = ["tes
 ncrs-palette = { path = "crates/ncrs-palette", version = "0.0.0", features = ["test-support"] }
 # The fixtures of the theme fetch, for the tests of the app.
 ncrs-settings = { path = "crates/ncrs-settings", version = "0.0.0", features = ["test-support"] }
+# The fixtures of the filing module and of the reorganisation and replan work, for the tests of the app.
+ncrs-filing = { path = "crates/ncrs-filing", version = "0.0.0", features = ["test-support"] }
 # `PanelState::apply_listing`, for the tests of the panel in the app.
 ncrs-files = { path = "crates/ncrs-files", version = "0.0.0", features = ["test-support"] }
 

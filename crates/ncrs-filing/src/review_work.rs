@@ -21,8 +21,8 @@ use ncrs_intake::{
 
 use crate::execute::{execute_with, ItemOutcome, SkipReason};
 use crate::filing_work::target_of;
-use crate::fs::transfer::{Counting, Move, Source};
 use crate::suggestion_work::INDEX_NOT_OPEN;
+use ncrs_fs::transfer::{Counting, Move, Source};
 
 use ncrs_ui_kit::format::MINOR_UNITS_PER_UNIT;
 pub use ncrs_ui_kit::format::{amount_digits, amount_text};
@@ -137,6 +137,12 @@ pub struct ReviewAccess {
     slot: IndexSlot,
     target_root: PathBuf,
     kind_language: KindLanguage,
+}
+
+impl std::fmt::Debug for ReviewAccess {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ReviewAccess").finish_non_exhaustive()
+    }
 }
 
 impl ReviewAccess {
