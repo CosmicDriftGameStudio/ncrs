@@ -482,6 +482,7 @@ impl From<ncrs_hermes_ui::Message> for Message {
             Hermes::DocumentsRefiled(result) => Self::DocumentsRefiled(result),
             Hermes::ReorganisationUndone(result) => Self::ReorganisationUndone(result),
             Hermes::HermesColumn(inner) => Self::HermesColumn(inner),
+            Hermes::HermesFile(inner) => Self::HermesFile(inner),
             Hermes::ToggleFileListTags => Self::Settings(SettingsMessage::ToggleFileListTags),
         }
     }

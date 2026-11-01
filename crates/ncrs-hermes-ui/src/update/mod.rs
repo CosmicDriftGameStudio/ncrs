@@ -1,8 +1,10 @@
 //! The state changes of the Hermes pages. What reaches outside them comes back
 //! as actions. Each page has its own entry; the app routes the messages.
 
+mod column;
 mod filing_job;
 mod filing_setup;
+mod hermes_file;
 mod hermes_setup;
 mod overview;
 mod quick_fix;
@@ -12,29 +14,37 @@ mod review_list;
 mod rule_suggestions;
 mod rules;
 mod saved_queries;
+mod status;
 mod tags;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use iced::Task;
+use ncrs_config::config::FilingWriteError;
 use ncrs_filing::execute::UndoReport;
 use ncrs_filing::filing_work::FilingSummary;
 use ncrs_filing::reorganisation_work::{ExecutionSummary, PlannedItem};
 use ncrs_filing::replan_work::ReplanSummary;
+use ncrs_index::IncludeOutcome;
 use ncrs_ui_kit::focus::release_focus;
 
 use crate::action::Action;
 use crate::ctx::Ctx;
+use crate::hermes_column::FolderRole;
 use crate::message::{
-    FilingSetupMessage, HermesOverviewMessage, HermesPage, HermesSetupMessage, Message,
-    QuickFixMessage, ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage,
+    FilingSetupMessage, HermesColumnMessage, HermesOverviewMessage, HermesPage, HermesSetupMessage,
+    Message, QuickFixMessage, ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage,
     RulesMessage, SavedQueriesMessage, TagsMessage,
 };
 use crate::state::Hermes;
 use ncrs_index::RuleId;
 
+pub use self::column::{refresh_hermes_column, request_hermes_column};
 pub use self::filing_job::{run_filing_work, run_filing_work_after};
 pub use self::review_list::request_review_preview;
+pub use self::status::{
+    open_filing_status_page, request_hermes_counts, request_index_figures, update_filing_status,
+};
 
 pub type Outcome = (Task<Message>, Vec<Action>);
 
@@ -230,15 +240,15 @@ pub fn open_tags(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Outcome {
     (task, actions)
 }
 
-pub fn run_reorganisation(selection: Vec<PlannedItem>, ctx: &Ctx<'_>) -> Outcome {
+pub fn run_reorganisation(hermes: &Hermes, selection: Vec<PlannedItem>, ctx: &Ctx<'_>) -> Outcome {
     let mut actions = Vec::new();
-    reorganisation::run_selection(selection, ctx, &mut actions);
+    reorganisation::run_selection(hermes, selection, ctx, &mut actions);
     (Task::none(), actions)
 }
 
-pub fn exclude_from_hermes(paths: Vec<PathBuf>, ctx: &Ctx<'_>) -> Outcome {
+pub fn exclude_from_hermes(hermes: &Hermes, paths: Vec<PathBuf>) -> Outcome {
     let mut actions = Vec::new();
-    let task = quick_fix::exclude_from_hermes(paths, ctx, &mut actions);
+    let task = quick_fix::exclude_from_hermes(hermes, paths, &mut actions);
     (task, actions)
 }
 
@@ -252,9 +262,9 @@ pub fn reorganisation_executed(
     (task, actions)
 }
 
-pub fn undo_reorganisation(ctx: &Ctx<'_>) -> Outcome {
+pub fn undo_reorganisation(hermes: &Hermes, ctx: &Ctx<'_>) -> Outcome {
     let mut actions = Vec::new();
-    let task = reorganisation::undo(ctx, &mut actions);
+    let task = reorganisation::undo(hermes, ctx, &mut actions);
     (task, actions)
 }
 
@@ -298,4 +308,55 @@ pub fn documents_refiled(
     ctx: &Ctx<'_>,
 ) -> Outcome {
     refile::documents_refiled(hermes, result, ctx)
+}
+
+pub fn update_hermes_column(
+    hermes: &mut Hermes,
+    message: HermesColumnMessage,
+    ctx: &Ctx<'_>,
+) -> Outcome {
+    let mut actions = Vec::new();
+    let task = column::update_hermes_column(hermes, message, ctx, &mut actions);
+    (task, actions)
+}
+
+pub fn read_paths_again(hermes: &mut Hermes, paths: Vec<PathBuf>, ctx: &Ctx<'_>) -> Outcome {
+    let mut actions = Vec::new();
+    hermes_file::read_paths_again(hermes, paths, ctx, &mut actions);
+    (Task::none(), actions)
+}
+
+pub fn process_again(hermes: &mut Hermes, path: &Path, ctx: &Ctx<'_>) -> Outcome {
+    let mut actions = Vec::new();
+    hermes_file::process_again(hermes, path, ctx, &mut actions);
+    (Task::none(), actions)
+}
+
+pub fn set_folder_role(hermes: &Hermes, folder: &Path, role: FolderRole, ctx: &Ctx<'_>) -> Outcome {
+    let mut actions = Vec::new();
+    let task = hermes_file::set_folder_role(hermes, folder, role, ctx, &mut actions);
+    (task, actions)
+}
+
+pub fn role_save_failed(hermes: &Hermes, error: &FilingWriteError, ctx: &Ctx<'_>) -> Outcome {
+    let mut actions = Vec::new();
+    hermes_file::role_save_failed(hermes, error, ctx, &mut actions);
+    (Task::none(), actions)
+}
+
+pub fn toggle_hermes_exclusion(hermes: &mut Hermes, path: PathBuf, excluded: bool) -> Outcome {
+    let mut actions = Vec::new();
+    let task = hermes_file::toggle_hermes_exclusion(hermes, path, excluded, &mut actions);
+    (task, actions)
+}
+
+pub fn hermes_included(
+    hermes: &mut Hermes,
+    path: &Path,
+    result: Result<IncludeOutcome, String>,
+    ctx: &Ctx<'_>,
+) -> Outcome {
+    let mut actions = Vec::new();
+    hermes_file::hermes_included(hermes, path, result, ctx, &mut actions);
+    (Task::none(), actions)
 }

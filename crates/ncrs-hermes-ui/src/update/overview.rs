@@ -33,7 +33,10 @@ pub fn open(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Ta
     actions.push(Action::SetHermesFocus(HermesFocus::Content));
     hermes.return_to_overview = false;
     actions.push(Action::CloseContextMenu);
-    hermes.overview = Some(OverviewState::new(ctx.default_pattern, false));
+    hermes.overview = Some(OverviewState::new(
+        hermes.filing_config.default_pattern.as_deref(),
+        false,
+    ));
     actions.push(Action::ReadOcrModelsPresent);
     actions.push(Action::RefreshFilingSnapshot);
     actions.push(Action::RequestHermesCounts);
@@ -128,7 +131,10 @@ pub fn update(
             Task::none()
         }
         HermesOverviewMessage::AskStartOver => {
-            let can_ask = ctx.filing.is_some_and(FilingModule::can_start_over)
+            let can_ask = hermes
+                .filing
+                .as_ref()
+                .is_some_and(FilingModule::can_start_over)
                 && !ctx.jobs_busy
                 && !ctx.hermes_is_restarting;
             if can_ask {
@@ -212,7 +218,7 @@ pub fn update(
             }
         }
         HermesOverviewMessage::SwitchHermesOn => {
-            if ctx.filing_locations.is_empty() {
+            if hermes.filing_config.locations.is_empty() {
                 hermes.overview = None;
                 actions.push(Action::OpenHermesSetup);
                 hermes.return_to_overview = true;

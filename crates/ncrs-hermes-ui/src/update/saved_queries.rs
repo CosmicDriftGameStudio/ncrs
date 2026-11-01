@@ -38,11 +38,7 @@ pub fn update(
                     } else {
                         Task::none()
                     };
-                    Task::batch([
-                        focus,
-                        run_selected_query(hermes, ctx),
-                        run_query_counts(hermes, ctx),
-                    ])
+                    Task::batch([focus, run_selected_query(hermes), run_query_counts(hermes)])
                 }
                 Err(detail) => {
                     view.failed(detail);
@@ -70,7 +66,7 @@ pub fn update(
             if view.cursor() == before {
                 return Task::none();
             }
-            run_selected_query(hermes, ctx)
+            run_selected_query(hermes)
         }
         SavedQueriesMessage::Scrolled(delta) => {
             let Some(view) = hermes.saved_queries.as_mut() else {
@@ -81,7 +77,7 @@ pub fn update(
             if view.cursor() == before {
                 return Task::none();
             }
-            run_selected_query(hermes, ctx)
+            run_selected_query(hermes)
         }
         SavedQueriesMessage::Select(index) => {
             let Some(view) = hermes.saved_queries.as_mut() else {
@@ -92,7 +88,7 @@ pub fn update(
             if view.cursor() == before {
                 return Task::none();
             }
-            run_selected_query(hermes, ctx)
+            run_selected_query(hermes)
         }
         SavedQueriesMessage::NewSearch(spec) => {
             actions.push(Action::OpenSearchFor { spec, report: None });
@@ -150,7 +146,7 @@ pub fn update(
                 return Task::none();
             };
             let generation = hermes.saved_queries_generation;
-            let Some(access) = query_access(hermes, ctx) else {
+            let Some(access) = query_access(hermes) else {
                 return Task::none();
             };
             Task::perform(
@@ -177,7 +173,7 @@ pub fn update(
                     return Task::none();
                 }
             }
-            run_query_load(hermes, ctx)
+            run_query_load(hermes)
         }
         SavedQueriesMessage::AskDelete => {
             if let Some(view) = hermes.saved_queries.as_mut() {
@@ -200,7 +196,7 @@ pub fn update(
                 return Task::none();
             };
             let generation = hermes.saved_queries_generation;
-            let Some(access) = query_access(hermes, ctx) else {
+            let Some(access) = query_access(hermes) else {
                 return Task::none();
             };
             Task::perform(
@@ -225,7 +221,7 @@ pub fn update(
                     return Task::none();
                 }
             }
-            run_query_load(hermes, ctx)
+            run_query_load(hermes)
         }
         SavedQueriesMessage::Ran {
             generation,
@@ -318,7 +314,7 @@ pub fn open(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Ta
         SavedQueries::new(chrono::Datelike::year(&chrono::Local::now()))
             .with_kinds(ctx.kinds.clone()),
     );
-    run_query_load(hermes, ctx)
+    run_query_load(hermes)
 }
 
 /// Escape backs out of the step that is up first, then leaves the page.
@@ -333,9 +329,9 @@ fn close(hermes: &mut Hermes) -> Task<Message> {
     release_focus()
 }
 
-fn run_query_load(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Task<Message> {
+fn run_query_load(hermes: &mut Hermes) -> Task<Message> {
     let generation = hermes.saved_queries_generation;
-    let Some(access) = query_access(hermes, ctx) else {
+    let Some(access) = query_access(hermes) else {
         return Task::none();
     };
     Task::perform(
@@ -348,7 +344,7 @@ fn run_query_load(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Task<Message> {
 }
 
 /// Asks the index for the hits of the selected report.
-fn run_selected_query(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Task<Message> {
+fn run_selected_query(hermes: &mut Hermes) -> Task<Message> {
     let Some((serial, spec)) = hermes
         .saved_queries
         .as_mut()
@@ -357,7 +353,7 @@ fn run_selected_query(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Task<Message> {
         return Task::none();
     };
     let generation = hermes.saved_queries_generation;
-    let Some(access) = query_access(hermes, ctx) else {
+    let Some(access) = query_access(hermes) else {
         return Task::none();
     };
     Task::perform(
@@ -374,7 +370,7 @@ fn run_selected_query(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Task<Message> {
 }
 
 /// Counts the hits of every report for the list.
-fn run_query_counts(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Task<Message> {
+fn run_query_counts(hermes: &mut Hermes) -> Task<Message> {
     let Some(rows) = hermes
         .saved_queries
         .as_ref()
@@ -386,7 +382,7 @@ fn run_query_counts(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Task<Message> {
         return Task::none();
     }
     let generation = hermes.saved_queries_generation;
-    let Some(access) = query_access(hermes, ctx) else {
+    let Some(access) = query_access(hermes) else {
         return Task::none();
     };
     Task::perform(
@@ -398,8 +394,8 @@ fn run_query_counts(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Task<Message> {
     )
 }
 
-fn query_access(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Option<QueryAccess> {
-    let access = ctx.filing.and_then(FilingModule::query_access);
+fn query_access(hermes: &mut Hermes) -> Option<QueryAccess> {
+    let access = hermes.filing.as_ref().and_then(FilingModule::query_access);
     if access.is_none() {
         if let Some(view) = hermes.saved_queries.as_mut() {
             view.failed(INDEX_NOT_OPEN.to_owned());

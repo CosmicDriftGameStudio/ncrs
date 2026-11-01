@@ -92,7 +92,7 @@ pub fn update(
             };
             let shown = page.exception_after_toggle(ctx.file_list_tags, group, &tag);
             page.begin_change();
-            run_tags_work(hermes, ctx, move |access| access.set_shown(&tag, shown))
+            run_tags_work(hermes, move |access| access.set_shown(&tag, shown))
         }
         TagsMessage::ToggleGroup(group) => toggle_tag_group(hermes, ctx, group, actions),
         TagsMessage::SearchChanged(text) => {
@@ -123,9 +123,7 @@ pub fn update(
             else {
                 return Task::none();
             };
-            run_tags_work(hermes, ctx, move |access| {
-                access.rename(&old_name, &new_name)
-            })
+            run_tags_work(hermes, move |access| access.rename(&old_name, &new_name))
         }
         TagsMessage::AskDelete(tag) => {
             if let Some(page) = hermes.tags.as_mut() {
@@ -143,7 +141,7 @@ pub fn update(
             let Some(name) = page.begin_delete() else {
                 return Task::none();
             };
-            run_tags_work(hermes, ctx, move |access| access.delete(&name))
+            run_tags_work(hermes, move |access| access.delete(&name))
         }
     }
 }
@@ -169,9 +167,7 @@ fn toggle_tag_group(
     if let Some(open) = hermes.tags.as_mut() {
         open.begin_change();
     }
-    run_tags_work(hermes, ctx, move |access| {
-        access.clear_exceptions(&exceptional)
-    })
+    run_tags_work(hermes, move |access| access.clear_exceptions(&exceptional))
 }
 
 pub fn open(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Task<Message> {
@@ -181,7 +177,7 @@ pub fn open(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Ta
     actions.push(Action::CloseContextMenu);
     hermes.tags_generation = hermes.tags_generation.wrapping_add(1);
     hermes.tags = Some(TagsPage::new(ctx.kinds.clone()));
-    run_tags_work(hermes, ctx, TagsAccess::load)
+    run_tags_work(hermes, TagsAccess::load)
 }
 
 /// Escape backs out of the step that is up first, then leaves the page.
@@ -198,11 +194,10 @@ fn close(hermes: &mut Hermes) -> Task<Message> {
 
 fn run_tags_work(
     hermes: &mut Hermes,
-    ctx: &Ctx<'_>,
     work: impl FnOnce(&TagsAccess) -> Result<TagsLoaded, TagsFailure> + Send + 'static,
 ) -> Task<Message> {
     let generation = hermes.tags_generation;
-    let Some(access) = ctx.filing.and_then(FilingModule::tags_access) else {
+    let Some(access) = hermes.filing.as_ref().and_then(FilingModule::tags_access) else {
         if let Some(page) = hermes.tags.as_mut() {
             page.failed(TagsFailure::Other(INDEX_NOT_OPEN.to_owned()));
         }

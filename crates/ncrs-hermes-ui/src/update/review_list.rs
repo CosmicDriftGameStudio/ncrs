@@ -134,7 +134,7 @@ pub fn update(
                 return Task::none();
             };
             let generation = hermes.review_list_generation;
-            let Some(access) = review_access(hermes, ctx) else {
+            let Some(access) = review_access(hermes) else {
                 return Task::none();
             };
             Task::perform(
@@ -166,7 +166,7 @@ pub fn update(
                     return Task::none();
                 }
             }
-            run_review_load(hermes, ctx)
+            run_review_load(hermes)
         }
         ReviewListMessage::CreateRule => {
             let Some(prefill) = hermes.review_list.as_ref().and_then(ReviewList::rule_offer) else {
@@ -267,7 +267,7 @@ pub fn start_replan(
     ctx: &Ctx<'_>,
     actions: &mut Vec<Action>,
 ) -> Task<Message> {
-    let Some(access) = ctx.filing.and_then(FilingModule::replan_access) else {
+    let Some(access) = hermes.filing.as_ref().and_then(FilingModule::replan_access) else {
         actions.push(Action::ShowError(INDEX_NOT_OPEN.to_owned()));
         return Task::none();
     };
@@ -294,8 +294,8 @@ pub fn start_replan(
     Task::batch([opened, preview])
 }
 
-fn review_access(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Option<ReviewAccess> {
-    let access = ctx.filing.and_then(FilingModule::review_access);
+fn review_access(hermes: &mut Hermes) -> Option<ReviewAccess> {
+    let access = hermes.filing.as_ref().and_then(FilingModule::review_access);
     if access.is_none() {
         if let Some(view) = hermes.review_list.as_mut() {
             view.failed(INDEX_NOT_OPEN.to_owned());
@@ -312,13 +312,13 @@ pub fn open(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Ta
     hermes.review_list_generation = hermes.review_list_generation.wrapping_add(1);
     hermes.review_list = Some(
         ReviewList::new()
-            .with_default_pattern(ctx.default_pattern.map(str::to_owned))
+            .with_default_pattern(hermes.filing_config.default_pattern.clone())
             .with_kinds(ctx.kinds.clone()),
     );
     if ctx.hermes_counts_missing {
         actions.push(Action::RequestHermesCounts);
     }
-    run_review_load(hermes, ctx)
+    run_review_load(hermes)
 }
 
 /// Hands every open review to Hermes again, now that the AI can read it. Only
@@ -357,9 +357,9 @@ fn close(hermes: &mut Hermes) -> Task<Message> {
 
 /// Loads on a blocking thread: the load plans every open entry again, and the
 /// index is shared with the intake.
-pub fn run_review_load(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Task<Message> {
+pub fn run_review_load(hermes: &mut Hermes) -> Task<Message> {
     let generation = hermes.review_list_generation;
-    let Some(access) = review_access(hermes, ctx) else {
+    let Some(access) = review_access(hermes) else {
         return Task::none();
     };
     Task::perform(

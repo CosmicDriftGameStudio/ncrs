@@ -66,21 +66,21 @@ pub fn update(
                 .rules
                 .as_mut()
                 .and_then(|view| view.begin_toggle(view.cursor()));
-            run_rule_change(hermes, ctx, change)
+            run_rule_change(hermes, change)
         }
         RulesMessage::ToggleAt(index) => {
             let change = hermes
                 .rules
                 .as_mut()
                 .and_then(|view| view.begin_toggle(index));
-            run_rule_change(hermes, ctx, change)
+            run_rule_change(hermes, change)
         }
         RulesMessage::Reorder(delta) => {
             let change = hermes
                 .rules
                 .as_mut()
                 .and_then(|view| view.begin_move(delta));
-            run_rule_change(hermes, ctx, change)
+            run_rule_change(hermes, change)
         }
         RulesMessage::AskDelete => {
             if let Some(view) = hermes.rules.as_mut() {
@@ -96,14 +96,14 @@ pub fn update(
         }
         RulesMessage::ConfirmDelete => {
             let change = hermes.rules.as_mut().and_then(RulesPage::begin_delete);
-            run_rule_change(hermes, ctx, change)
+            run_rule_change(hermes, change)
         }
         RulesMessage::Changed { generation, result } => {
             if generation != hermes.rules_generation {
                 return Task::none();
             }
             match result {
-                Ok(()) => run_rules_load(hermes, ctx),
+                Ok(()) => run_rules_load(hermes),
                 Err(detail) => {
                     if let Some(view) = hermes.rules.as_mut() {
                         view.failed(detail);
@@ -125,7 +125,7 @@ pub fn update(
             Task::batch([focus_rule_form(hermes), schedule_rule_try(hermes)])
         }
         RulesMessage::Form(form_message) => update_rule_form(hermes, form_message, ctx, actions),
-        RulesMessage::TryElapsed(generation) => run_rule_try(hermes, ctx, generation),
+        RulesMessage::TryElapsed(generation) => run_rule_try(hermes, generation),
         RulesMessage::Tried { generation, result } => {
             if let Some(form) = hermes.rules.as_mut().and_then(RulesPage::form_mut) {
                 form.try_answered(generation, result);
@@ -197,7 +197,7 @@ fn schedule_rule_try(hermes: &mut Hermes) -> Task<Message> {
     )
 }
 
-fn run_rule_try(hermes: &mut Hermes, ctx: &Ctx<'_>, generation: u64) -> Task<Message> {
+fn run_rule_try(hermes: &mut Hermes, generation: u64) -> Task<Message> {
     let Some(request) = hermes
         .rules
         .as_mut()
@@ -206,7 +206,7 @@ fn run_rule_try(hermes: &mut Hermes, ctx: &Ctx<'_>, generation: u64) -> Task<Mes
     else {
         return Task::none();
     };
-    let Some(access) = ctx.filing.and_then(FilingModule::rules_access) else {
+    let Some(access) = hermes.filing.as_ref().and_then(FilingModule::rules_access) else {
         if let Some(form) = hermes.rules.as_mut().and_then(RulesPage::form_mut) {
             form.try_answered(generation, Err(INDEX_NOT_OPEN.to_owned()));
         }
@@ -233,7 +233,7 @@ fn update_rule_form(
     match message {
         RuleFormMessage::Save => {
             let save = view.begin_save();
-            run_rule_save(hermes, ctx, save)
+            run_rule_save(hermes, save)
         }
         RuleFormMessage::Cancel => {
             cancel_rule_form(hermes, ctx, actions).unwrap_or_else(Task::none)
@@ -245,7 +245,7 @@ fn update_rule_form(
             match result {
                 Ok(id) => match view.saved(id) {
                     Some(page) => go_to_page(hermes, page, ctx, actions),
-                    None => run_rules_load(hermes, ctx),
+                    None => run_rules_load(hermes),
                 },
                 Err(detail) => {
                     view.save_failed(detail);
@@ -277,7 +277,7 @@ pub fn open(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Ta
     actions.push(Action::CloseContextMenu);
     hermes.rules_generation = hermes.rules_generation.wrapping_add(1);
     hermes.rules = Some(RulesPage::new().with_kinds(Arc::clone(&ctx.kinds.catalog)));
-    run_rules_load(hermes, ctx)
+    run_rules_load(hermes)
 }
 
 /// Escape backs out of the delete question, the list of the try, a form
@@ -303,8 +303,8 @@ fn close(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Task<
     release_focus()
 }
 
-fn rules_access(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Option<RulesAccess> {
-    let access = ctx.filing.and_then(FilingModule::rules_access);
+fn rules_access(hermes: &mut Hermes) -> Option<RulesAccess> {
+    let access = hermes.filing.as_ref().and_then(FilingModule::rules_access);
     if access.is_none() {
         if let Some(view) = hermes.rules.as_mut() {
             view.failed(INDEX_NOT_OPEN.to_owned());
@@ -313,9 +313,9 @@ fn rules_access(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Option<RulesAccess> {
     access
 }
 
-fn run_rules_load(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Task<Message> {
+fn run_rules_load(hermes: &mut Hermes) -> Task<Message> {
     let generation = hermes.rules_generation;
-    let Some(access) = rules_access(hermes, ctx) else {
+    let Some(access) = rules_access(hermes) else {
         return Task::none();
     };
     Task::perform(
@@ -327,12 +327,12 @@ fn run_rules_load(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Task<Message> {
     )
 }
 
-fn run_rule_save(hermes: &mut Hermes, ctx: &Ctx<'_>, requested: Option<RuleSave>) -> Task<Message> {
+fn run_rule_save(hermes: &mut Hermes, requested: Option<RuleSave>) -> Task<Message> {
     let Some(save) = requested else {
         return Task::none();
     };
     let generation = hermes.rules_generation;
-    let Some(access) = rules_access(hermes, ctx) else {
+    let Some(access) = rules_access(hermes) else {
         if let Some(form) = hermes.rules.as_mut().and_then(RulesPage::form_mut) {
             form.saving = false;
         }
@@ -350,16 +350,12 @@ fn run_rule_save(hermes: &mut Hermes, ctx: &Ctx<'_>, requested: Option<RuleSave>
     )
 }
 
-fn run_rule_change(
-    hermes: &mut Hermes,
-    ctx: &Ctx<'_>,
-    requested: Option<RuleChange>,
-) -> Task<Message> {
+fn run_rule_change(hermes: &mut Hermes, requested: Option<RuleChange>) -> Task<Message> {
     let Some(change) = requested else {
         return Task::none();
     };
     let generation = hermes.rules_generation;
-    let Some(access) = rules_access(hermes, ctx) else {
+    let Some(access) = rules_access(hermes) else {
         return Task::none();
     };
     Task::perform(

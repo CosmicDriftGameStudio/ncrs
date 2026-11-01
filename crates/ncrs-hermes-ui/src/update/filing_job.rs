@@ -18,7 +18,7 @@ pub fn run_filing(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>)
         return;
     }
     hermes.filing_due = false;
-    let Some(access) = ctx.filing.and_then(FilingModule::filing_access) else {
+    let Some(access) = hermes.filing.as_ref().and_then(FilingModule::filing_access) else {
         return;
     };
     actions.push(Action::StartJobWithProgress(StartProgressJob {

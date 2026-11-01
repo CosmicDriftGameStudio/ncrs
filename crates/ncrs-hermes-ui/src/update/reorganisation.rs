@@ -37,7 +37,7 @@ pub fn update(
                 return Task::none();
             }
             view.begin_planning();
-            run_planning(hermes, ctx)
+            run_planning(hermes)
         }
         ReorganisationPlanMessage::Loaded { generation, result } => {
             if generation != hermes.reorganisation_generation {
@@ -118,24 +118,24 @@ pub fn open(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Ta
     actions.push(Action::CloseContextMenu);
     hermes.reorganisation_generation = hermes.reorganisation_generation.wrapping_add(1);
     hermes.reorganisation = Some(ReorganisationView::new());
-    run_planning(hermes, ctx)
+    run_planning(hermes)
 }
 
 /// The files moved, so an open plan is out of date.
-pub fn replan_if_open(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Task<Message> {
+pub fn replan_if_open(hermes: &mut Hermes) -> Task<Message> {
     let Some(view) = hermes.reorganisation.as_mut() else {
         return Task::none();
     };
     view.begin_planning();
     hermes.reorganisation_generation = hermes.reorganisation_generation.wrapping_add(1);
-    run_planning(hermes, ctx)
+    run_planning(hermes)
 }
 
 /// Plans on a blocking thread: the plan reads the whole folder tree and holds
 /// the index the intake shares.
-fn run_planning(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Task<Message> {
+fn run_planning(hermes: &mut Hermes) -> Task<Message> {
     let generation = hermes.reorganisation_generation;
-    let Some(access) = ctx.filing.and_then(FilingModule::plan_access) else {
+    let Some(access) = hermes.filing.as_ref().and_then(FilingModule::plan_access) else {
         if let Some(view) = hermes.reorganisation.as_mut() {
             view.failed(INDEX_NOT_OPEN.to_owned());
         }
@@ -152,11 +152,16 @@ fn run_planning(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Task<Message> {
 
 /// Runs the selected plan entries on the blocking pool, as one job. Escape
 /// closes the progress channel, which stops the run between two files.
-pub fn run_selection(selection: Vec<PlannedItem>, ctx: &Ctx<'_>, actions: &mut Vec<Action>) {
+pub fn run_selection(
+    hermes: &Hermes,
+    selection: Vec<PlannedItem>,
+    ctx: &Ctx<'_>,
+    actions: &mut Vec<Action>,
+) {
     if ctx.jobs_busy || selection.is_empty() {
         return;
     }
-    let Some(access) = ctx.filing.and_then(FilingModule::plan_access) else {
+    let Some(access) = hermes.filing.as_ref().and_then(FilingModule::plan_access) else {
         actions.push(Action::ShowError(INDEX_NOT_OPEN.to_owned()));
         return;
     };
@@ -210,14 +215,14 @@ pub fn executed(
         }
         Err(detail) => actions.push(Action::ShowError(detail)),
     }
-    replan_if_open(hermes, ctx)
+    replan_if_open(hermes)
 }
 
-pub fn undo(ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Task<Message> {
+pub fn undo(hermes: &Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Task<Message> {
     if ctx.jobs_busy {
         return Task::none();
     }
-    let Some(access) = ctx.filing.and_then(FilingModule::plan_access) else {
+    let Some(access) = hermes.filing.as_ref().and_then(FilingModule::plan_access) else {
         actions.push(Action::ShowError(INDEX_NOT_OPEN.to_owned()));
         return Task::none();
     };
@@ -241,7 +246,7 @@ pub fn undone(
                 .replace("{moved}", &report.undone.to_string())
                 .replace("{skipped}", &report.left.to_string());
             actions.push(Action::ShowNotice(text));
-            replan_if_open(hermes, ctx)
+            replan_if_open(hermes)
         }
         Ok(None) => {
             let text = ctx.lang.text(Msg::StatusNothingToUndo).to_owned();

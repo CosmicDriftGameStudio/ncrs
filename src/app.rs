@@ -1,7 +1,6 @@
 //! Root application: state, `update` (the only place state changes) and
 //! `view` (pure composition of UI components).
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::num::NonZeroUsize;
+use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -34,21 +33,17 @@ use crate::file_list_tags::{FileListTags, TagExceptions};
 use crate::filing::{DocumentFinder, FilingMessage, FilingModule, LocationStatus, Phase, Work};
 use crate::filing_pieces::TargetEdit;
 use crate::filing_setup::{self, FilingSetup, SetupNote};
-use crate::filing_status::{FilingStatus, SNAPSHOT_EVERY};
+use crate::filing_status::SNAPSHOT_EVERY;
 use crate::filing_work::FilingSummary;
 use crate::fs::remote::credentials::KeyringPasswords;
 use crate::fs::remote::credentials::PasswordStore;
 use crate::fs::remote::session::Pool;
 use crate::fs::remote::{KnownHostsFiles, RemotePath, ServerId};
 use crate::fs::{self, CreateDirError};
-use crate::hermes_column::{
-    role_of, ColumnRequest, ColumnStage, ColumnView, FileDetail, FolderRole, HermesColumn,
-    HermesFileState,
-};
+use crate::hermes_column::{role_of, ColumnView, FolderRole, HermesFileState};
 use crate::hermes_overview::{ModuleState, OcrFacts, OverviewFacts, OverviewState, Protection};
 use crate::hermes_setup::{
     card_is_done_at, ExistingIndex, FolderSlot, HermesSetup, PlanStep, SetupFocus, SetupOffer,
-    StartPlan,
 };
 use crate::hermes_status::HermesStatus;
 use crate::i18n::{FuturamaName, Language, Msg};
@@ -60,10 +55,10 @@ use crate::keymap::{KeyActionMessage as _, KeymapMessages as _};
 use crate::menu::Availability;
 use crate::messages::{
     AboutMessage, AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage,
-    ConflictChoice, FilingSetupMessage, FilingStatusMessage, GrantMessage, HermesColumnMessage,
-    HermesFileMessage, HermesFocus, HermesOverviewMessage, HermesPage, HermesSetupMessage,
-    HitListMessage, KeyBindingsMessage, Message, OcrModelsMessage, PanelSide, QuickFixMessage,
-    QuickOpenMessage, RemoteMessage, ReorganisationPlanMessage, ReviewListMessage, RuleFormMessage,
+    ConflictChoice, FilingSetupMessage, FilingStatusMessage, GrantMessage, HermesFileMessage,
+    HermesFocus, HermesOverviewMessage, HermesPage, HermesSetupMessage, HitListMessage,
+    KeyBindingsMessage, Message, OcrModelsMessage, PanelSide, QuickFixMessage, QuickOpenMessage,
+    RemoteMessage, ReorganisationPlanMessage, ReviewListMessage, RuleFormMessage,
     RuleSuggestionsMessage, RulesMessage, SavedQueriesMessage, SearchMessage, SettingChange,
     SettingsMessage, TagsMessage, ThemeFetchMessage, TitleBarMessage, TransferKind, TrashMessage,
 };
@@ -97,7 +92,6 @@ use crate::saved_queries::SavedQueries;
 use crate::search_filters::SearchFilters;
 use crate::search_view::{stays_on_file_system, SearchField, SearchView};
 use crate::session_state::{self, PanelRecord, SessionState, WindowSize, WriteOrder};
-use crate::suggestion_work::INDEX_NOT_OPEN;
 use crate::system_dialogs::FilePick;
 #[cfg(test)]
 use crate::tags_page::TagsPage;
@@ -143,9 +137,7 @@ use crate::ui::{conflict, dialog, fkeys, layout, panel, statusbar, theme, PanelS
 use ncrs_files::{PanelMessage, Panels};
 use ncrs_hermes_ui::SetupCard;
 pub use ncrs_i18n::fill_template;
-use ncrs_index::{
-    IncludeOutcome, KeyStore, KeyringKeyStore, KindSkip, Kinds, QuerySpec, SavedQueryId,
-};
+use ncrs_index::{KeyStore, KeyringKeyStore, KindSkip, Kinds, QuerySpec, SavedQueryId};
 use ncrs_intake::LocationMode;
 use ncrs_ops::{child_path, TransferAction, TrashAction};
 #[cfg(test)]
@@ -385,10 +377,6 @@ fn quick_open_batch(generation: u64, events: Vec<fs::search::SearchEvent>) -> Me
 }
 
 /// How long a confirmation stays in the status bar.
-/// A quarter turn per tick, so the spinner of a file being read moves once
-/// a second without a timer of its own.
-const SPINNER_STEP: f32 = std::f32::consts::FRAC_PI_2;
-/// How long to wait for more files after a dropped one. winit sends one event
 /// per file, all in one burst, so the burst becomes one transfer.
 const DROP_SETTLE: std::time::Duration = std::time::Duration::from_millis(100);
 const NOTICE_DURATION: std::time::Duration = std::time::Duration::from_secs(3);
@@ -960,29 +948,10 @@ pub struct App {
     /// The commands run from the command list this session, most recent
     /// first. Not kept across runs.
     recent_commands: Vec<KeyAction>,
-    /// The filing module, when the config switches it on.
-    filing: Option<FilingModule>,
-    /// Started once the filing module is ready; dropping it stops the workers.
-    pipeline: Option<ncrs_pipeline::Runner>,
-    /// The folder the PDF library is missing from, as of the last pipeline start.
-    pdf_library_missing: Option<PathBuf>,
-    /// What the filing status page and the status bar show of the pipeline.
-    filing_status: FilingStatus,
-    /// What the index says about the files and folders the panels show.
-    hermes_column: HermesColumn,
-    /// Reads of the column that are under way or gave up, until something
-    /// is invalidated.
-    hermes_reads: HashSet<(PathBuf, ColumnStage)>,
-    /// Files whose status bar detail is being read.
-    hermes_detail_reads: HashSet<PathBuf>,
-    /// How far the spinner of a file being read has turned, in radians.
-    hermes_spinner_angle: f32,
     /// The time the status page measures how long a worker has been busy by.
     wall_clock: Arc<dyn ncrs_pipeline::Clock>,
     /// Where the filing setup writes. `None` when the system names no place.
     config_path: Option<PathBuf>,
-    /// The filing settings of the config file, as last loaded or written.
-    filing_config: Filing,
     /// Which tags the file panels show after a file name.
     file_list_tags: FileListTags,
     /// The document kinds the config asks for, on top of the built-in ones.
@@ -999,8 +968,6 @@ pub struct App {
     /// `with_filing`. Without a store no module is started.
     filing_index_path: Option<PathBuf>,
     filing_key_store: Option<Arc<dyn KeyStore + Send + Sync>>,
-    /// What "Hermes starten" still has to do once the module gets there.
-    pending_hermes_start: Option<StartPlan>,
     /// Moves the dots of the picture on the setup card.
     hermes_flow_step: u32,
     /// Looks up a folder the setup adds, on a blocking thread. Injected so
@@ -1027,8 +994,6 @@ pub struct App {
     tag_exceptions: TagExceptions,
     /// Whether the arrow keys act on the sidebar or the page of the Hermes card.
     hermes_focus: HermesFocus,
-    /// `Snapshot::plans_made` the filing job was last asked for.
-    plans_filed_for: usize,
     /// Downloads an extension, on a blocking thread. Injected so tests need
     /// no network.
     fetch_extension: fn(&ExtensionId) -> Result<FetchedExtension, FetchError>,
@@ -1059,15 +1024,6 @@ pub struct App {
     remote_ui: ncrs_remote::Remote,
     /// The servers of `[[servers]]`, as last loaded or written.
     saved_servers: Vec<ServerEntry>,
-    /// The card opened by itself for a missing model; once per start, so a
-    /// "Cancel" is not asked again.
-    ai_model_asked: bool,
-    /// Files the user asked to read again and whose end is not yet reported.
-    reading_again: crate::reading_again::ReadingAgain,
-    /// The module is being rebuilt after an AI setting changed: its
-    /// generation and the filing config it starts with.
-    filing_restart: Option<(u64, Filing)>,
-    filing_restart_generation: u64,
     /// Downloads the AI model, on a blocking thread. Injected so tests need no
     /// network.
     download_ai_model: fn(&DownloadJob) -> Result<(), AiDownloadError>,
@@ -2687,10 +2643,10 @@ impl App {
 
     /// Replaces nothing: the caller has dropped any module and pipeline before.
     fn start_filing_module(&mut self, filing: &Filing) -> Task<Message> {
-        self.filing_config = filing.clone();
+        self.hermes.filing_config = filing.clone();
         // A new runner counts its plans from zero again; the old count would
         // keep its first plans from ever being filed.
-        self.plans_filed_for = 0;
+        self.hermes.plans_filed_for = 0;
         let Some(store) = self.filing_key_store.clone() else {
             return Task::none();
         };
@@ -2701,7 +2657,7 @@ impl App {
         };
         module.set_kind_language(self.lang.kind_language());
         module.set_kinds(Arc::clone(&self.kinds.catalog));
-        self.filing = Some(module);
+        self.hermes.filing = Some(module);
         work.map_or_else(Task::none, |started| {
             ncrs_hermes_ui::run_filing_work(started).map(Message::from)
         })
@@ -2768,7 +2724,7 @@ impl App {
 
     fn set_language(&mut self, lang: Language) {
         self.lang = lang;
-        if let Some(module) = &mut self.filing {
+        if let Some(module) = &mut self.hermes.filing {
             module.set_kind_language(lang.kind_language());
         }
         self.kinds = self.kinds.in_language(lang.kind_language());
@@ -2983,22 +2939,12 @@ impl App {
             quick_open_walk: None,
             command_palette: None,
             recent_commands: Vec::new(),
-            filing: None,
-            pipeline: None,
-            pdf_library_missing: None,
-            filing_status: FilingStatus::default(),
-            hermes_column: HermesColumn::default(),
-            hermes_reads: HashSet::new(),
-            hermes_detail_reads: HashSet::new(),
-            hermes_spinner_angle: 0.0,
             wall_clock: Arc::new(ncrs_pipeline::SystemClock),
             config_path: None,
-            filing_config: Filing::default(),
             file_list_tags: FileListTags::default(),
             kinds: Kinds::default(),
             filing_index_path: None,
             filing_key_store: None,
-            pending_hermes_start: None,
             hermes_flow_step: 0,
             settings: Settings::default(),
             hermes: ncrs_hermes_ui::Hermes::default(),
@@ -3016,17 +2962,12 @@ impl App {
             paste_staging: None,
             tag_exceptions: TagExceptions::new(),
             hermes_focus: HermesFocus::default(),
-            plans_filed_for: 0,
             fetch_extension: open_vsx::fetch_extension,
             install_theme: ncrs_settings::theme_fetch::install::install_picked_theme,
             about: None,
             find_third_party_licenses: crate::about::installed_third_party_licenses,
             app_version: env!("CARGO_PKG_VERSION"),
             download_ocr_models: download_models,
-            ai_model_asked: false,
-            reading_again: crate::reading_again::ReadingAgain::default(),
-            filing_restart: None,
-            filing_restart_generation: 0,
             download_ai_model,
             grant_dialog: false,
             sandbox: fs::SandboxAccess::detect(None),
@@ -3120,8 +3061,8 @@ impl App {
                     }
                 }),
             // Keeps the status bar's progress and the open page current.
-            if self.pipeline.is_some()
-                || self.filing_status.page_open()
+            if self.hermes.pipeline.is_some()
+                || self.hermes.filing_status.page_open()
                 || self.hermes.overview.is_some()
             {
                 iced::time::every(SNAPSHOT_EVERY)
@@ -3210,7 +3151,11 @@ impl App {
         if !self.hermes.return_to_overview
             || self.hermes.filing_setup.is_some()
             || self.hermes.hermes_setup.is_some()
-            || self.filing.as_ref().is_some_and(FilingModule::has_card)
+            || self
+                .hermes
+                .filing
+                .as_ref()
+                .is_some_and(FilingModule::has_card)
         {
             return Task::none();
         }
@@ -3256,7 +3201,8 @@ impl App {
         let applied = self.apply_unless_refused(message);
         let task = Task::batch([
             applied,
-            self.request_hermes_column(),
+            self.with_hermes(Vec::new(), ncrs_hermes_ui::request_hermes_column)
+                .map(Message::from),
             self.schedule_session_save(),
         ]);
         // A dialog that opens while a line is being typed gets the keys, not the field.
@@ -3600,8 +3546,14 @@ impl App {
             }
             Message::Settings(settings_message) => self.update_settings(settings_message),
             Message::Filing(filing_message) => self.update_filing(filing_message),
-            Message::FilingStatus(page_message) => self.update_filing_status(page_message),
-            Message::HermesColumn(column_message) => self.update_hermes_column(column_message),
+            Message::FilingStatus(page_message) => self
+                .run_hermes_flow(Vec::new(), |hermes, ctx| {
+                    ncrs_hermes_ui::update_filing_status(hermes, page_message, ctx)
+                }),
+            Message::HermesColumn(column_message) => self
+                .run_hermes_flow(Vec::new(), |hermes, ctx| {
+                    ncrs_hermes_ui::update_hermes_column(hermes, column_message, ctx)
+                }),
             Message::FilingSetup(setup_message) => self.update_filing_setup(setup_message),
             Message::HermesSetup(setup_message) => self.update_hermes_setup(setup_message),
             Message::HermesOverview(overview_message) => {
@@ -3749,14 +3701,16 @@ impl App {
     fn inquiry_paths(&self) -> Vec<PathBuf> {
         self.action_sources()
             .into_iter()
-            .filter(|path| self.hermes_column.state_of(path) == Some(HermesFileState::Inquiry))
+            .filter(|path| {
+                self.hermes.hermes_column.state_of(path) == Some(HermesFileState::Inquiry)
+            })
             .collect()
     }
 
     fn quick_fix_filed(&mut self, summary: &AcceptSummary) -> Task<Message> {
-        self.hermes_column.invalidate_all();
-        self.hermes_reads.clear();
-        self.hermes_detail_reads.clear();
+        self.hermes.hermes_column.invalidate_all();
+        self.hermes.hermes_reads.clear();
+        self.hermes.hermes_detail_reads.clear();
         let notice = match accept_notice(summary, self.lang) {
             Some(text) => self.show_notice(text),
             None => {
@@ -4138,11 +4092,11 @@ impl App {
     pub fn view(&self) -> Element<'_, Message> {
         let panel_view = |side: PanelSide| {
             let hermes_cell: Option<ncrs_files::HermesCellOf<'_>> =
-                self.hermes_active().then(|| {
+                self.hermes.is_active().then(|| {
                     let column = ColumnView::new(
-                        &self.hermes_column,
-                        &self.filing_config.locations,
-                        self.hermes_spinner_angle,
+                        &self.hermes.hermes_column,
+                        &self.hermes.filing_config.locations,
+                        self.hermes.hermes_spinner_angle,
                         &self.file_list_tags,
                         &self.tag_exceptions,
                         self.window_size.width / 2.0,
@@ -4293,6 +4247,7 @@ impl App {
         // The cards sit on the same scrim as the modals; the panels keep their
         // keys. Every modal below stacks on this base, so it stays above them.
         let module_card = self
+            .hermes
             .filing
             .as_ref()
             .filter(|module| module.has_card())
@@ -4303,6 +4258,7 @@ impl App {
                 current_folder: &self.active_panel().path,
                 home: &self.home,
                 index_is_plain: self
+                    .hermes
                     .filing
                     .as_ref()
                     .is_some_and(FilingModule::index_is_plain),
@@ -4667,7 +4623,7 @@ impl App {
             .key_bindings
             .as_ref()
             .is_some_and(KeyBindings::is_recording);
-        let filing_status = self.filing_status.page_open();
+        let filing_status = self.hermes.filing_status.page_open();
         let hermes_overview = self.hermes.overview.is_some();
         let hermes_overview_editing = self
             .hermes
@@ -4677,6 +4633,7 @@ impl App {
         let filing_setup = self.hermes.filing_setup.is_some();
         let hermes_setup = self.hermes.hermes_setup.is_some();
         let filing_card = self
+            .hermes
             .filing
             .as_ref()
             .is_some_and(FilingModule::card_can_be_dismissed);
@@ -4873,7 +4830,7 @@ impl App {
     }
 
     fn update_filing(&mut self, message: FilingMessage) -> Task<Message> {
-        let Some(module) = self.filing.as_mut() else {
+        let Some(module) = self.hermes.filing.as_mut() else {
             return Task::none();
         };
         if matches!(message, FilingMessage::CopyRecoveryKey) {
@@ -4888,10 +4845,10 @@ impl App {
         let was_changing_protection = module.is_changing_protection();
         let work = module.update(message);
         let mut pipeline_started = false;
-        if self.pipeline.is_none() && matches!(module.phase(), Phase::Ready) {
+        if self.hermes.pipeline.is_none() && matches!(module.phase(), Phase::Ready) {
             let started = module.start_pipeline().ok();
             pipeline_started = started.is_some();
-            (self.pipeline, self.pdf_library_missing) = match started {
+            (self.hermes.pipeline, self.hermes.pdf_library_missing) = match started {
                 Some((runner, missing)) => (Some(runner), missing),
                 None => (None, None),
             };
@@ -4933,7 +4890,7 @@ impl App {
         }));
         if asks_encryption
             && self.hermes.hermes_setup.is_none()
-            && self.pending_hermes_start.is_none()
+            && self.hermes.pending_hermes_start.is_none()
         {
             self.open_hermes_setup();
         }
@@ -4948,9 +4905,9 @@ impl App {
             // what an earlier run planned but did not move goes now.
             tasks.push(self.run_filing());
         }
-        if ask_for_ai_model && !self.ai_model_asked {
+        if ask_for_ai_model && !self.hermes.ai_model_asked {
             tasks.push(self.update_ai_model(AiModelMessage::Open));
-            self.ai_model_asked = self.settings.ai_model.is_some();
+            self.hermes.ai_model_asked = self.settings.ai_model.is_some();
         }
         if skipped > 0 {
             let text = fill_template(
@@ -4978,13 +4935,16 @@ impl App {
                 .as_deref()
                 .and_then(ExistingIndex::of_file),
             model_download: models_dir.is_some_and(|dir| !model_is_installed(&dir)),
-            hermes_was_off: self.hermes_is_off(),
+            hermes_was_off: self.hermes.is_off(),
         }
     }
 
     /// Opens the card with what the config lists now.
     fn open_hermes_setup(&mut self) {
-        let setup = HermesSetup::new(&self.filing_config.locations, self.hermes_setup_offer());
+        let setup = HermesSetup::new(
+            &self.hermes.filing_config.locations,
+            self.hermes_setup_offer(),
+        );
         self.dialog_focus = setup.first_focus(setup.can_start());
         self.hermes.hermes_setup = Some(setup);
     }
@@ -4992,13 +4952,14 @@ impl App {
     /// The card cannot be changed while the folders are written or the module
     /// starts and creates the index.
     fn hermes_setup_is_busy(&self) -> bool {
-        self.pending_hermes_start.is_some()
+        self.hermes.pending_hermes_start.is_some()
             || self
                 .hermes
                 .hermes_setup
                 .as_ref()
                 .is_some_and(HermesSetup::is_busy)
             || self
+                .hermes
                 .filing
                 .as_ref()
                 .is_some_and(FilingModule::is_creating_index)
@@ -5019,10 +4980,12 @@ impl App {
             focus: self.hermes_focus_order().get(self.dialog_focus).copied(),
             busy: self.hermes_setup_is_busy(),
             creating_index: self
+                .hermes
                 .filing
                 .as_ref()
                 .is_some_and(FilingModule::is_creating_index),
             creation_error: self
+                .hermes
                 .filing
                 .as_ref()
                 .and_then(FilingModule::index_creation_error),
@@ -5058,7 +5021,7 @@ impl App {
             HermesSetupMessage::Written(result) => match result {
                 Ok(filing) => self.hermes_written(filing),
                 Err(error) => {
-                    self.pending_hermes_start = None;
+                    self.hermes.pending_hermes_start = None;
                     if let Some(setup) = self.hermes.hermes_setup.as_mut() {
                         setup.stop_writing(SetupNote::SaveFailed(error));
                     }
@@ -5092,7 +5055,7 @@ impl App {
         let Some(request) = setup.start() else {
             return Task::none();
         };
-        self.pending_hermes_start = Some(request.plan);
+        self.hermes.pending_hermes_start = Some(request.plan);
         let locations = request.locations;
         let written_path = config_path.clone();
         Task::perform(
@@ -5117,32 +5080,33 @@ impl App {
         if let Some(setup) = self.hermes.hermes_setup.as_mut() {
             setup.written();
         }
-        if self.pending_hermes_start.is_none() {
+        if self.hermes.pending_hermes_start.is_none() {
             return self.apply_saved_filing(filing).1;
         }
-        let module_waits = self
-            .filing
-            .as_ref()
-            .is_some_and(|module| module.asks_encryption() && module.has_configured_locations());
-        if module_waits && self.filing_config.locations == filing.locations {
-            self.filing_config = filing;
+        let module_waits =
+            self.hermes.filing.as_ref().is_some_and(|module| {
+                module.asks_encryption() && module.has_configured_locations()
+            });
+        if module_waits && self.hermes.filing_config.locations == filing.locations {
+            self.hermes.filing_config = filing;
             return self.advance_hermes_plan();
         }
         let replaceable = self.filing_key_store.is_some()
             && self
+                .hermes
                 .filing
                 .as_ref()
                 .is_none_or(FilingModule::can_take_first_setup);
         if !replaceable {
-            self.filing_config = filing;
-            self.pending_hermes_start = None;
+            self.hermes.filing_config = filing;
+            self.hermes.pending_hermes_start = None;
             self.hermes.hermes_setup = None;
             return self.show_notice(self.saved_filing_notice(SavedFilingApplies::AtNextStart));
         }
-        self.pipeline = None;
-        self.filing = None;
+        self.hermes.pipeline = None;
+        self.hermes.filing = None;
         let task = self.start_filing_module(&filing);
-        self.refresh_filing_snapshot();
+        self.hermes.refresh_filing_snapshot(self.wall_clock.now());
         task
     }
 
@@ -5152,7 +5116,7 @@ impl App {
             return Task::none();
         }
         self.hermes.hermes_setup = None;
-        if self.filing.is_some() {
+        if self.hermes.filing.is_some() {
             self.update_filing(FilingMessage::Dismiss)
         } else {
             Task::none()
@@ -5162,8 +5126,10 @@ impl App {
     /// Takes the next step of "Hermes starten" the module's phase allows, and
     /// closes the card once the module's own cards or the work take over.
     fn advance_hermes_plan(&mut self) -> Task<Message> {
-        let (Some(mut plan), Some(module)) = (self.pending_hermes_start, self.filing.as_mut())
-        else {
+        let (Some(mut plan), Some(module)) = (
+            self.hermes.pending_hermes_start,
+            self.hermes.filing.as_mut(),
+        ) else {
             return Task::none();
         };
         let step = plan.next_step(module.phase());
@@ -5172,7 +5138,7 @@ impl App {
             PlanStep::CreateIndex { encrypted } => module.create_index_with(encrypted),
             PlanStep::Wait | PlanStep::Done { .. } | PlanStep::Abandon => None,
         };
-        self.pending_hermes_start = match step {
+        self.hermes.pending_hermes_start = match step {
             PlanStep::Done { .. } | PlanStep::Abandon => None,
             PlanStep::Wait | PlanStep::CreateIndex { .. } => Some(plan),
         };
@@ -5185,7 +5151,7 @@ impl App {
             .collect();
         if let PlanStep::Done { load_model } = step {
             // The choice was made on the card; the module does not ask again.
-            self.ai_model_asked = true;
+            self.hermes.ai_model_asked = true;
             if load_model {
                 tasks.push(self.update_ai_model(AiModelMessage::Open));
                 tasks.push(self.update_ai_model(AiModelMessage::Download));
@@ -5198,13 +5164,13 @@ impl App {
         match message {
             FilingSetupMessage::Toggle => {
                 if self.hermes.hermes_setup.take().is_some() {
-                    self.pending_hermes_start = None;
+                    self.hermes.pending_hermes_start = None;
                 } else if self.hermes.filing_setup.take().is_none() {
-                    if self.filing_config.locations.is_empty() {
+                    if self.hermes.filing_config.locations.is_empty() {
                         self.open_hermes_setup();
                     } else {
                         self.hermes.filing_setup =
-                            Some(FilingSetup::new(&self.filing_config.locations));
+                            Some(FilingSetup::new(&self.hermes.filing_config.locations));
                     }
                 }
                 Task::none()
@@ -5273,19 +5239,19 @@ impl App {
     /// One without locations, or none at all, is replaced at once.
     fn apply_saved_filing(&mut self, filing: Filing) -> (SavedFilingApplies, Task<Message>) {
         let replaceable = self.filing_key_store.is_some()
-            && self.filing.as_ref().is_none_or(|module| {
+            && self.hermes.filing.as_ref().is_none_or(|module| {
                 !module.has_configured_locations() && module.can_be_replaced()
             });
         if !replaceable {
-            self.filing_config = filing;
+            self.hermes.filing_config = filing;
             return (SavedFilingApplies::AtNextStart, Task::none());
         }
         // Dropping the runner stops it and lets go of the index before the
         // new module opens it again.
-        self.pipeline = None;
-        self.filing = None;
+        self.hermes.pipeline = None;
+        self.hermes.filing = None;
         let task = self.start_filing_module(&filing);
-        self.refresh_filing_snapshot();
+        self.hermes.refresh_filing_snapshot(self.wall_clock.now());
         (SavedFilingApplies::Now, task)
     }
 
@@ -5445,12 +5411,12 @@ impl App {
     /// The page of filing that stands in for the panels: the overview or the
     /// status.
     fn ablage_tab_is_open(&self) -> bool {
-        self.filing_status.page_open() || self.hermes.page_is_open()
+        self.hermes.filing_status.page_open() || self.hermes.page_is_open()
     }
 
     /// Closes the page of filing without a word, for a page that replaces it.
     fn close_ablage_tab(&mut self) -> Task<Message> {
-        self.filing_status.close_page();
+        self.hermes.filing_status.close_page();
         let left_overview = self.leave_hermes_overview();
         self.hermes.close_pages();
         left_overview
@@ -5578,7 +5544,7 @@ impl App {
             )
         });
         let hermes_enabled = |action| self.hermes_action_enabled(action);
-        let hermes = self.hermes_ready().then(|| HermesMenu {
+        let hermes = self.hermes.is_ready().then(|| HermesMenu {
             excluded: self.cursor_is_excluded_from_hermes(),
             is_enabled: &hermes_enabled,
         });
@@ -5628,17 +5594,19 @@ impl App {
     fn cursor_is_excluded_from_hermes(&self) -> bool {
         self.hermes_cursor_entry().is_some_and(|entry| {
             if entry.is_dir {
-                self.hermes_column
+                self.hermes
+                    .hermes_column
                     .summary_of(&entry.path)
                     .is_some_and(|summary| summary.excluded)
             } else {
-                self.hermes_column.state_of(&entry.path) == Some(HermesFileState::Excluded)
+                self.hermes.hermes_column.state_of(&entry.path) == Some(HermesFileState::Excluded)
             }
         })
     }
 
     fn inbox_location(&self) -> Option<&Path> {
-        self.filing_config
+        self.hermes
+            .filing_config
             .locations
             .iter()
             .find(|location| location.mode == LocationMode::Inbox)
@@ -5651,12 +5619,13 @@ impl App {
         let Some(entry) = self.hermes_cursor_entry() else {
             return false;
         };
-        let role_free = |role| role_of(&entry.path, &self.filing_config.locations) != Some(role);
+        let role_free =
+            |role| role_of(&entry.path, &self.hermes.filing_config.locations) != Some(role);
         let needs_locations = !matches!(
             action,
             HermesAction::SetInbox | HermesAction::SetFilingLocation | HermesAction::SetArchive
         );
-        if needs_locations && !self.hermes_active() {
+        if needs_locations && !self.hermes.is_active() {
             return false;
         }
         match action {
@@ -5666,9 +5635,11 @@ impl App {
                 .is_some_and(|inbox| !entry.path.starts_with(inbox)),
             HermesAction::ProcessAgain => {
                 !entry.is_dir
-                    && self.live_pipeline().is_some()
-                    && self.hermes_column.state_of(&entry.path) != Some(HermesFileState::Excluded)
+                    && self.hermes.live_pipeline().is_some()
+                    && self.hermes.hermes_column.state_of(&entry.path)
+                        != Some(HermesFileState::Excluded)
                     && self
+                        .hermes
                         .filing_config
                         .locations
                         .iter()
@@ -5688,7 +5659,9 @@ impl App {
         match message {
             HermesFileMessage::RoleSaved(result) => return self.hermes_role_saved(result),
             HermesFileMessage::Included { path, result } => {
-                return self.hermes_included(&path, result)
+                return self.run_hermes_flow(Vec::new(), |hermes, ctx| {
+                    ncrs_hermes_ui::hermes_included(hermes, &path, result, ctx)
+                })
             }
             HermesFileMessage::HandToInbox
             | HermesFileMessage::ProcessAgain
@@ -5698,9 +5671,9 @@ impl App {
             | HermesFileMessage::ShowInInspection => {}
         }
         let available = if matches!(message, HermesFileMessage::SetRole(_)) {
-            self.hermes_ready()
+            self.hermes.is_ready()
         } else {
-            self.hermes_active()
+            self.hermes.is_active()
         };
         if self.overlay_is_open() || self.search.open || !available {
             return Task::none();
@@ -5726,9 +5699,19 @@ impl App {
                 };
                 self.open_transfer_dialog_to(TransferKind::Move, Some(inbox))
             }
-            HermesFileMessage::ProcessAgain => self.process_again(&path),
-            HermesFileMessage::SetRole(role) if is_dir => self.set_folder_role(&path, role),
-            HermesFileMessage::ToggleExclusion => self.toggle_hermes_exclusion(path),
+            HermesFileMessage::ProcessAgain => self.run_hermes_flow(Vec::new(), |hermes, ctx| {
+                ncrs_hermes_ui::process_again(hermes, &path, ctx)
+            }),
+            HermesFileMessage::SetRole(role) if is_dir => self
+                .run_hermes_flow(Vec::new(), |hermes, ctx| {
+                    ncrs_hermes_ui::set_folder_role(hermes, &path, role, ctx)
+                }),
+            HermesFileMessage::ToggleExclusion => {
+                let excluded = self.cursor_is_excluded_from_hermes();
+                self.run_hermes_flow(Vec::new(), |hermes, _| {
+                    ncrs_hermes_ui::toggle_hermes_exclusion(hermes, path, excluded)
+                })
+            }
             HermesFileMessage::ShowInInspection => self.show_in_inspection(&path),
             HermesFileMessage::SetRole(_)
             | HermesFileMessage::ReprocessFolder
@@ -5737,157 +5720,19 @@ impl App {
         }
     }
 
-    fn process_again(&mut self, path: &Path) -> Task<Message> {
-        let since = self
-            .live_pipeline()
-            .map_or(0, |runner| runner.snapshot().changed_sequence);
-        let queued = !self
-            .hermes_column
-            .state_of(path)
-            .is_some_and(|state| state == HermesFileState::Excluded)
-            && self
-                .live_pipeline()
-                .is_some_and(|runner| runner.process_again(path));
-        let text = if queued {
-            self.invalidate_hermes_path(path);
-            self.reading_again.ask(path.to_path_buf(), since);
-            fill_template(
-                self.lang.text(Msg::StatusHermesProcessingAgain),
-                &[(
-                    "{name}",
-                    &path.file_name().map_or_else(
-                        || path.display().to_string(),
-                        |name| name.to_string_lossy().into_owned(),
-                    ),
-                )],
-            )
-        } else {
-            self.lang.text(Msg::StatusHermesNotProcessable).to_owned()
-        };
-        self.show_notice(text)
-    }
-
-    fn set_folder_role(&mut self, folder: &Path, role: FolderRole) -> Task<Message> {
-        let Some(config_path) = self.config_path.clone() else {
-            let text = self.lang.text(Msg::FilingSetupNoConfigPath).to_owned();
-            return self.show_notice(text);
-        };
-        let chosen =
-            match filing_setup::locations_with_role(&self.filing_config.locations, folder, role) {
-                Ok(chosen) => chosen,
-                Err(refused) => {
-                    let text = match refused.problem {
-                        crate::filing_setup::SetupProblem::NoDocumentFolder => self
-                            .lang
-                            .text(Msg::StatusHermesRoleNeedsFilingLocation)
-                            .to_owned(),
-                        problem => crate::ui::filing_setup::problem_sentence(
-                            problem,
-                            &refused.chosen,
-                            self.lang,
-                            &self.home,
-                        ),
-                    };
-                    self.set_status_error(&text);
-                    return Task::none();
-                }
-            };
-        let written_path = config_path.clone();
-        Task::perform(
-            tokio::task::spawn_blocking(move || {
-                filing_setup::write_locations(&written_path, &chosen)
-            }),
-            move |joined| {
-                Message::HermesFile(HermesFileMessage::RoleSaved(joined.unwrap_or_else(
-                    |join| {
-                        Err(FilingWriteError::Io {
-                            path: config_path,
-                            reason: join.to_string(),
-                        })
-                    },
-                )))
-            },
-        )
-    }
-
     fn hermes_role_saved(&mut self, result: Result<Filing, FilingWriteError>) -> Task<Message> {
         match result {
             Ok(filing) => {
                 let (applies, task) = self.apply_saved_filing(filing);
-                self.hermes_column.invalidate_all();
-                self.hermes_reads.clear();
+                self.hermes.hermes_column.invalidate_all();
+                self.hermes.hermes_reads.clear();
                 let notice = self.show_notice(self.saved_filing_notice(applies));
                 Task::batch([task, notice])
             }
-            Err(error) => {
-                let reason = crate::ui::filing_setup::write_failure_sentence(
-                    &error,
-                    &self.filing_config.locations,
-                    self.lang,
-                    &self.home,
-                );
-                let text = fill_template(
-                    self.lang.text(Msg::StatusHermesRoleFailed),
-                    &[("{reason}", &reason)],
-                );
-                self.set_status_error(&text);
-                Task::none()
-            }
+            Err(error) => self.run_hermes_flow(Vec::new(), |hermes, ctx| {
+                ncrs_hermes_ui::role_save_failed(hermes, &error, ctx)
+            }),
         }
-    }
-
-    fn toggle_hermes_exclusion(&mut self, path: PathBuf) -> Task<Message> {
-        if !self.cursor_is_excluded_from_hermes() {
-            return self.exclude_from_hermes(vec![path]);
-        }
-        let Some(access) = self.filing.as_ref().and_then(FilingModule::review_access) else {
-            self.set_status_error(INDEX_NOT_OPEN);
-            return Task::none();
-        };
-        let included = path.clone();
-        Task::perform(
-            tokio::task::spawn_blocking(move || access.include(&path)),
-            move |joined| {
-                Message::HermesFile(HermesFileMessage::Included {
-                    path: included.clone(),
-                    result: joined.unwrap_or_else(|err| Err(err.to_string())),
-                })
-            },
-        )
-    }
-
-    fn hermes_included(
-        &mut self,
-        path: &Path,
-        result: Result<IncludeOutcome, String>,
-    ) -> Task<Message> {
-        let text = match result {
-            Err(detail) => {
-                self.set_status_error(&detail);
-                return Task::none();
-            }
-            Ok(IncludeOutcome::ExcludedByAncestor(folder)) => fill_template(
-                self.lang.text(Msg::StatusHermesIncludedByFolder),
-                &[("{folder}", &folder.display().to_string())],
-            ),
-            Ok(IncludeOutcome::Included | IncludeOutcome::NotExcluded) => {
-                self.invalidate_hermes_path(path);
-                if let Some(runner) = self.live_pipeline() {
-                    runner.rescan_around(path);
-                }
-                fill_template(
-                    self.lang.text(Msg::StatusHermesIncluded),
-                    &[(
-                        "{name}",
-                        &path.file_name().map_or_else(
-                            || path.display().to_string(),
-                            |name| name.to_string_lossy().into_owned(),
-                        ),
-                    )],
-                )
-            }
-        };
-        self.show_notice(text)
     }
 
     /// Opens the Hermes card on the inspection page, at the file's error if
@@ -5898,7 +5743,7 @@ impl App {
         } else {
             self.open_filing_status()
         };
-        self.filing_status.select_error_of(path);
+        self.hermes.filing_status.select_error_of(path);
         task
     }
 
@@ -7262,8 +7107,8 @@ impl App {
     }
 
     fn run_reorganisation(&mut self, selection: Vec<PlannedItem>) -> Task<Message> {
-        self.run_hermes_flow(Vec::new(), |_, ctx| {
-            ncrs_hermes_ui::run_reorganisation(selection, ctx)
+        self.run_hermes_flow(Vec::new(), |hermes, ctx| {
+            ncrs_hermes_ui::run_reorganisation(hermes, selection, ctx)
         })
     }
 
@@ -7287,8 +7132,8 @@ impl App {
     }
 
     fn undo_reorganisation(&mut self) -> Task<Message> {
-        self.run_hermes_flow(Vec::new(), |_, ctx| {
-            ncrs_hermes_ui::undo_reorganisation(ctx)
+        self.run_hermes_flow(Vec::new(), |hermes, ctx| {
+            ncrs_hermes_ui::undo_reorganisation(hermes, ctx)
         })
     }
 
@@ -7389,11 +7234,11 @@ impl App {
     /// A panel inside an archive can be read and copied from, nothing else.
     fn apply_unless_refused(&mut self, message: Message) -> Task<Message> {
         if asks_for_hermes(&message) {
-            if self.hermes_is_restarting() {
+            if self.hermes.is_restarting() {
                 let text = self.lang.text(Msg::StatusHermesRestarting).to_owned();
                 return self.show_notice(text);
             }
-            if self.hermes_is_off() {
+            if self.hermes.is_off() {
                 return self.explain_hermes_is_off();
             }
         }
@@ -7569,6 +7414,7 @@ impl App {
             side_is_remote: self.panel(self.search.side).remote().is_some(),
             has_keys: self.search_has_keys(),
             index: self
+                .hermes
                 .filing
                 .as_ref()
                 .and_then(FilingModule::query_access)
@@ -7615,6 +7461,7 @@ impl App {
         self.search.open = true;
         let indexed = self.panel(side).remote().is_none()
             && self
+                .hermes
                 .filing
                 .as_ref()
                 .and_then(FilingModule::query_access)
@@ -8017,53 +7864,21 @@ impl App {
         })
     }
 
-    fn run_refile(&mut self) -> Task<Message> {
-        self.run_hermes_flow(Vec::new(), ncrs_hermes_ui::run_refile)
-    }
-
     fn documents_refiled(&mut self, result: Result<ReplanSummary, String>) -> Task<Message> {
         self.run_hermes_flow(Vec::new(), |hermes, ctx| {
             ncrs_hermes_ui::documents_refiled(hermes, result, ctx)
         })
     }
 
-    fn read_paths_again(&mut self, paths: Vec<PathBuf>) -> Task<Message> {
-        let since = self
-            .live_pipeline()
-            .map_or(0, |runner| runner.snapshot().changed_sequence);
-        let queued: Vec<PathBuf> = paths
-            .into_iter()
-            .filter(|path| {
-                self.live_pipeline()
-                    .is_some_and(|runner| runner.process_again(path))
-            })
-            .collect();
-        if queued.is_empty() {
-            return Task::none();
-        }
-        for path in &queued {
-            self.invalidate_hermes_path(path);
-            self.reading_again.ask(path.clone(), since);
-        }
-        let text = if queued.len() == 1 {
-            self.lang.text(Msg::StatusReviewReadAgain).to_owned()
-        } else {
-            fill_template(
-                self.lang.text(Msg::StatusReviewsReadAgain),
-                &[("{count}", &queued.len().to_string())],
-            )
-        };
-        self.show_notice(text)
-    }
-
     fn review_field_guide(&self) -> review_list_ui::FieldGuide {
         review_list_ui::FieldGuide {
             confirmed_rules: self
+                .hermes
                 .filing_status
                 .hermes_counts()
                 .map(|counts| counts.confirmed_rules),
             ai_is_ready: !matches!(
-                self.filing_status.ai(),
+                self.hermes.filing_status.ai(),
                 crate::filing::AiStatus::Off
                     | crate::filing::AiStatus::NotDownloaded
                     | crate::filing::AiStatus::Failed(_)
@@ -8086,7 +7901,8 @@ impl App {
     /// The inbox, the filing location and the archive of the config, by role.
     fn overview_folders(&self) -> hermes_overview_ui::Folders<'_> {
         let find = |mode: LocationMode, is_target: bool| {
-            self.filing_config
+            self.hermes
+                .filing_config
                 .locations
                 .iter()
                 .find(|location| {
@@ -8103,8 +7919,8 @@ impl App {
     }
 
     fn overview_facts(&self, ocr_models_present: bool) -> OverviewFacts {
-        let module = self.filing.as_ref();
-        let module_state = if self.hermes_is_restarting() {
+        let module = self.hermes.filing.as_ref();
+        let module_state = if self.hermes.is_restarting() {
             ModuleState::Starting
         } else {
             module.map_or(ModuleState::Off, |running| match running.phase() {
@@ -8112,7 +7928,7 @@ impl App {
                 phase => ModuleState::of(phase),
             })
         };
-        let at_rest = !self.jobs.is_busy() && !self.hermes_is_restarting();
+        let at_rest = !self.jobs.is_busy() && !self.hermes.is_restarting();
         let failure = match module.map(FilingModule::phase) {
             Some(Phase::Failed(reason)) => Some(reason.clone()),
             _ => None,
@@ -8120,9 +7936,9 @@ impl App {
         OverviewFacts {
             module: module_state,
             failure,
-            has_locations: !self.filing_config.locations.is_empty(),
-            counts: self.filing_status.hermes_counts().copied(),
-            ai_on: self.filing_config.ai != crate::config::AiSetting::Off,
+            has_locations: !self.hermes.filing_config.locations.is_empty(),
+            counts: self.hermes.filing_status.hermes_counts().copied(),
+            ai_on: self.hermes.filing_config.ai != crate::config::AiSetting::Off,
             ai_status: module.map(FilingModule::ai_status).unwrap_or_default(),
             ai_download: self
                 .settings
@@ -8144,7 +7960,7 @@ impl App {
 
     fn hermes_overview_view(&self) -> Option<Element<'_, Message>> {
         let state = self.hermes.overview.as_ref()?;
-        let snapshot = self.filing_status.snapshot();
+        let snapshot = self.hermes.filing_status.snapshot();
         let page = hermes_overview_ui::OverviewView {
             facts: self.overview_facts(state.ocr_models_present()),
             state,
@@ -8213,6 +8029,7 @@ impl App {
                 self.review_field_guide(),
                 review_list_ui::PreviewRoot {
                     archive: self
+                        .hermes
                         .filing_config
                         .locations
                         .iter()
@@ -8228,20 +8045,21 @@ impl App {
     }
 
     fn filing_status_page(&self) -> Option<Element<'_, Message>> {
-        if !self.filing_status.page_open() {
+        if !self.hermes.filing_status.page_open() {
             return None;
         }
         let index_open = self
+            .hermes
             .filing
             .as_ref()
             .is_some_and(|module| matches!(module.phase(), Phase::Ready));
         Some(
             filing_status_ui::view(
-                &self.filing_status,
+                &self.hermes.filing_status,
                 filing_status_ui::Setting {
-                    load: self.filing.as_ref().map(FilingModule::load),
+                    load: self.hermes.filing.as_ref().map(FilingModule::load),
                     index_open,
-                    pdf_library_missing: self.pdf_library_missing.as_deref(),
+                    pdf_library_missing: self.hermes.pdf_library_missing.as_deref(),
                 },
                 self.window_size,
                 self.hermes_badges(),
@@ -8380,7 +8198,7 @@ impl App {
                 self.update_settings(SettingsMessage::Change(SettingChange::HermesEnabled(true)))
             }
             HermesOverviewMessage::PatternWritten(Ok(config)) => {
-                self.filing_config.default_pattern = config.filing.default_pattern.clone();
+                self.hermes.filing_config.default_pattern = config.filing.default_pattern.clone();
                 Task::none()
             }
             _ => Task::none(),
@@ -8400,16 +8218,16 @@ impl App {
     /// Stops the pipeline and runs the job that encrypts or removes the index.
     /// Nothing happens while files move or the module is being rebuilt.
     fn change_protection(&mut self, begin: fn(&mut FilingModule) -> Option<Work>) -> Task<Message> {
-        if self.jobs.is_busy() || self.hermes_is_restarting() {
+        if self.jobs.is_busy() || self.hermes.is_restarting() {
             return Task::none();
         }
-        let Some(work) = self.filing.as_mut().and_then(begin) else {
+        let Some(work) = self.hermes.filing.as_mut().and_then(begin) else {
             return Task::none();
         };
-        drop(self.reading_again.give_up());
-        self.plans_filed_for = 0;
-        let pipeline = self.pipeline.take();
-        self.refresh_filing_snapshot();
+        drop(self.hermes.reading_again.give_up());
+        self.hermes.plans_filed_for = 0;
+        let pipeline = self.hermes.pipeline.take();
+        self.hermes.refresh_filing_snapshot(self.wall_clock.now());
         ncrs_hermes_ui::run_filing_work_after(pipeline, work).map(Message::from)
     }
 
@@ -8418,23 +8236,25 @@ impl App {
     fn restart_hermes_module(&mut self) -> Task<Message> {
         let can_restart = self.filing_key_store.is_some()
             && self
+                .hermes
                 .filing
                 .as_ref()
                 .is_some_and(FilingModule::can_be_replaced);
         if !can_restart {
             return Task::none();
         }
-        self.pipeline = None;
-        self.filing = None;
-        let config = self.filing_config.clone();
+        self.hermes.pipeline = None;
+        self.hermes.filing = None;
+        let config = self.hermes.filing_config.clone();
         let task = self.start_filing_module(&config);
-        self.refresh_filing_snapshot();
+        self.hermes.refresh_filing_snapshot(self.wall_clock.now());
         task
     }
 
     /// The Hermes card that is up, if any.
     fn open_hermes_page(&self) -> Option<HermesPage> {
-        self.filing_status
+        self.hermes
+            .filing_status
             .page_open()
             .then_some(HermesPage::Inspection)
             .or_else(|| self.hermes.open_page())
@@ -8455,7 +8275,7 @@ impl App {
             Some(_) => {}
         }
         self.hermes.close_pages();
-        self.filing_status.close_page();
+        self.hermes.filing_status.close_page();
         let open = self.open_filing_status();
         Task::batch([release_focus(), open])
     }
@@ -8463,13 +8283,14 @@ impl App {
     /// The counts the sidebar shows, from what the app already holds.
     fn hermes_badges(&self) -> Badges {
         let figures = self
+            .hermes
             .filing_status
             .index_figures()
             .and_then(|figures| figures.as_ref().ok())
             .and_then(|figures| usize::try_from(figures.statistics.open_reviews).ok());
         Badges {
             focus: self.hermes_focus,
-            counts: self.filing_status.hermes_counts().copied(),
+            counts: self.hermes.filing_status.hermes_counts().copied(),
             review: self
                 .hermes
                 .review_list
@@ -8493,7 +8314,7 @@ impl App {
             state,
             preset: self.theme_preset,
             vscode_theme: self.vscode_theme.as_deref(),
-            filing: &self.filing_config,
+            filing: &self.hermes.filing_config,
             servers: &self.saved_servers,
             home: &self.home,
             keys_changed: KeyAction::ALL
@@ -8544,7 +8365,7 @@ impl App {
                 .as_deref()
                 .and_then(crate::filing::ai_models_dir),
             file_list_tags: &self.file_list_tags,
-            ai_is_on: self.filing_config.ai != crate::config::AiSetting::Off,
+            ai_is_on: self.hermes.filing_config.ai != crate::config::AiSetting::Off,
             services: ncrs_settings::Services {
                 fetch_extension: self.fetch_extension,
                 install_theme: self.install_theme,
@@ -8656,7 +8477,7 @@ impl App {
                 Task::none()
             }
             Ask::RefreshAiModel => {
-                if let Some(module) = self.filing.as_ref() {
+                if let Some(module) = self.hermes.filing.as_ref() {
                     module.refresh_ai_model();
                 }
                 Task::none()
@@ -8664,20 +8485,22 @@ impl App {
         }
     }
 
-    fn hermes_ctx(&self, inquiry_paths: Vec<PathBuf>) -> ncrs_hermes_ui::Ctx<'_> {
+    fn hermes_ctx(
+        &self,
+        hermes: &ncrs_hermes_ui::Hermes,
+        inquiry_paths: Vec<PathBuf>,
+    ) -> ncrs_hermes_ui::Ctx<'_> {
         let side = self.panels.active;
         let panel = self.panel(side);
         ncrs_hermes_ui::Ctx {
             lang: self.lang,
             kinds: &self.kinds,
-            default_pattern: self.filing_config.default_pattern.as_deref(),
-            filing: self.filing.as_ref(),
-            status_page_open: self.filing_status.page_open(),
+            status_page_open: hermes.filing_status.page_open(),
             overlay_apart_from_ablage_tab_open: self
                 .overlay_apart_from_overview_and_hermes_is_open(),
             start_over_dialog_open: self.start_over_dialog,
-            hermes_is_restarting: self.hermes_is_restarting(),
-            hermes_has_open_reviews: self
+            hermes_is_restarting: hermes.is_restarting(),
+            hermes_has_open_reviews: hermes
                 .filing_status
                 .hermes_counts()
                 .is_some_and(|counts| counts.open_reviews > 0),
@@ -8686,12 +8509,12 @@ impl App {
             other_panel_path: &self.panel(side.other()).path,
             context_menu_open: self.context_menu.is_some(),
             search_open: self.search.open,
-            hermes_active: self.hermes_active(),
-            hermes_counts_missing: self.filing_status.hermes_counts().is_none(),
+            hermes_active: hermes.is_active(),
+            hermes_counts_missing: hermes.filing_status.hermes_counts().is_none(),
             jobs_busy: self.jobs.is_busy(),
-            filing_locations: &self.filing_config.locations,
             window_size: self.window_size,
             config_path: self.config_path.as_deref(),
+            home: &self.home,
             resolve_folder: self.resolve_folder,
             quick_fix_anchor: layout::cursor_row_anchor(
                 side == PanelSide::Right,
@@ -8700,6 +8523,36 @@ impl App {
                 self.window_size,
             ),
             inquiry_paths,
+            now: self.wall_clock.now(),
+            panels: [
+                self.panel_facts(PanelSide::Left),
+                self.panel_facts(PanelSide::Right),
+            ],
+            cursor_entry: Some(self.active_panel())
+                .filter(|panel| !panel.is_virtual())
+                .and_then(PanelState::selected_entry)
+                .map(|entry| entry.path.as_path()),
+        }
+    }
+
+    fn panel_facts(&self, side: PanelSide) -> ncrs_hermes_ui::ctx::PanelFacts<'_> {
+        let panel = self.panel(side);
+        ncrs_hermes_ui::ctx::PanelFacts {
+            side,
+            directory: &panel.path,
+            request_id: panel.request_id,
+            readable: !panel.loading && !panel.is_virtual(),
+            visible: panel
+                .entries
+                .iter()
+                .skip(panel.scroll_offset)
+                .take(panel.rows_in_view(self.visible_rows))
+                .map(|entry| ncrs_hermes_ui::ctx::VisibleEntry {
+                    path: &entry.path,
+                    is_dir: entry.is_dir,
+                    is_parent: entry.is_parent,
+                })
+                .collect(),
         }
     }
 
@@ -8713,7 +8566,8 @@ impl App {
         step: impl FnOnce(&mut ncrs_hermes_ui::Hermes, &ncrs_hermes_ui::Ctx<'_>) -> R,
     ) -> R {
         let mut hermes = std::mem::take(&mut self.hermes);
-        let outcome = step(&mut hermes, &self.hermes_ctx(inquiry_paths));
+        let ctx = self.hermes_ctx(&hermes, inquiry_paths);
+        let outcome = step(&mut hermes, &ctx);
         self.hermes = hermes;
         outcome
     }
@@ -8776,6 +8630,10 @@ impl App {
     fn run_hermes_action(&mut self, action: ncrs_hermes_ui::Action) -> Task<Message> {
         use ncrs_hermes_ui::Action as Ask;
         match action {
+            Ask::OpenHermesOverview => self.open_hermes_overview(),
+            Ask::OpenFilingStatus => self.open_filing_status(),
+            Ask::RevealFile(path) => self.reveal_file(&path),
+            Ask::FilingRestarted(generation) => self.filing_restarted(generation),
             Ask::CloseContextMenu => {
                 self.context_menu = None;
                 Task::none()
@@ -8790,10 +8648,16 @@ impl App {
                 self.set_status_error(&detail);
                 Task::none()
             }
-            Ask::RequestHermesCounts => self.request_hermes_counts(),
-            Ask::ReadPathsAgain(paths) => self.read_paths_again(paths),
+            Ask::RequestHermesCounts => self
+                .with_hermes(Vec::new(), |hermes, _| {
+                    ncrs_hermes_ui::request_hermes_counts(hermes)
+                })
+                .map(Message::from),
+            Ask::ReadPathsAgain(paths) => self.run_hermes_flow(Vec::new(), |hermes, ctx| {
+                ncrs_hermes_ui::read_paths_again(hermes, paths, ctx)
+            }),
             Ask::CloseStatusPage => {
-                self.filing_status.close_page();
+                self.hermes.filing_status.close_page();
                 Task::none()
             }
             Ask::GoToHermesPage(page) => self.go_to_hermes_page(page),
@@ -8802,7 +8666,7 @@ impl App {
                 Task::none()
             }
             Ask::RefreshFilingSnapshot => {
-                self.refresh_filing_snapshot();
+                self.hermes.refresh_filing_snapshot(self.wall_clock.now());
                 Task::none()
             }
             Ask::ReadOcrModelsPresent => {
@@ -9036,8 +8900,8 @@ impl App {
                 Task::none()
             }
             SettingChange::Load(load) => {
-                self.filing_config.load = load;
-                self.set_pipeline_load(load);
+                self.hermes.filing_config.load = load;
+                self.hermes.set_pipeline_load(load, self.wall_clock.now());
                 Task::none()
             }
             SettingChange::Servers(_) => self.take_over_servers(config.servers),
@@ -9116,7 +8980,7 @@ impl App {
         self.palette = config.palette;
         self.kinds = Kinds::new(config.kinds, self.lang.kind_language());
         let catalog = Arc::clone(&self.kinds.catalog);
-        if let Some(module) = &mut self.filing {
+        if let Some(module) = &mut self.hermes.filing {
             module.set_kinds(catalog);
         }
         if matches!(
@@ -9324,9 +9188,9 @@ impl App {
 
     /// Which Hermes commands on a file the command list offers.
     fn command_palette_hermes(&self) -> HermesCommands {
-        if !self.hermes_ready() {
+        if !self.hermes.is_ready() {
             HermesCommands::None
-        } else if !self.hermes_active() {
+        } else if !self.hermes.is_active() {
             HermesCommands::RolesOnly
         } else if !self.hermes_action_enabled(HermesAction::ProcessAgain) {
             HermesCommands::WithoutProcessAgain
@@ -9602,13 +9466,18 @@ impl App {
     /// The title bar chip: Hermes is on, and how fast it files. Absent while
     /// the module is off.
     fn hermes_chip(&self) -> Option<String> {
-        let snapshot = self.filing_status.snapshot();
+        let snapshot = self.hermes.filing_status.snapshot();
         let text = match snapshot.state {
             RunnerState::Off => return None,
             RunnerState::Paused => self.lang.text(Msg::TitleBarHermesPaused).to_owned(),
             RunnerState::Running | RunnerState::Idle => {
                 let busy = self.hermes_status().is_some_and(|status| status.is_busy());
-                match self.filing_status.documents_per_minute().filter(|_| busy) {
+                match self
+                    .hermes
+                    .filing_status
+                    .documents_per_minute()
+                    .filter(|_| busy)
+                {
                     Some(rate) => fill_template(
                         self.lang.text(Msg::TitleBarHermesRate),
                         &[("{rate}", &rate.to_string())],
@@ -9650,14 +9519,14 @@ impl App {
 
     fn hermes_status(&self) -> Option<HermesStatus> {
         HermesStatus::of(
-            self.filing_status.snapshot(),
-            self.filing_status.hermes_counts(),
-            self.pdf_library_missing.is_some(),
+            self.hermes.filing_status.snapshot(),
+            self.hermes.filing_status.hermes_counts(),
+            self.hermes.pdf_library_missing.is_some(),
         )
     }
 
     fn filing_badge(&self) -> Option<statusbar::FilingBadge<Message>> {
-        if self.filing_restart.is_some() {
+        if self.hermes.filing_restart.is_some() {
             return Some(statusbar::FilingBadge {
                 text: self.lang.text(Msg::StatusHermesRestarting).to_owned(),
                 failing: false,
@@ -9667,6 +9536,7 @@ impl App {
         let status = self.hermes_status()?;
         Some(statusbar::FilingBadge {
             text: self
+                .hermes
                 .reading_again
                 .line(self.lang)
                 .unwrap_or_else(|| status.line(self.lang)),
@@ -9680,30 +9550,10 @@ impl App {
     /// The full-text lookup of Hermes, when its module is ready. Without an
     /// index it answers with an error, which the box shows as no section.
     fn document_finder(&self) -> Option<DocumentFinder> {
-        self.filing.as_ref().and_then(FilingModule::document_finder)
-    }
-
-    fn hermes_ready(&self) -> bool {
-        self.filing
+        self.hermes
+            .filing
             .as_ref()
-            .is_some_and(|module| matches!(module.phase(), Phase::Ready))
-    }
-
-    fn hermes_active(&self) -> bool {
-        self.hermes_ready()
-            && self
-                .filing
-                .as_ref()
-                .is_some_and(FilingModule::has_configured_locations)
-    }
-
-    /// The module is rebuilt after a setting changed; it is not off then.
-    fn hermes_is_restarting(&self) -> bool {
-        self.filing_restart.is_some()
-    }
-
-    fn hermes_is_off(&self) -> bool {
-        self.filing.is_none() && !self.hermes_is_restarting()
+            .and_then(FilingModule::document_finder)
     }
 
     /// Sends the user to the overview, where Hermes is switched on, with the
@@ -9719,331 +9569,26 @@ impl App {
 
     /// What Hermes says about the file under the cursor of the active panel.
     fn hermes_line(&self) -> Option<String> {
-        if !self.hermes_active() {
+        if !self.hermes.is_active() {
             return None;
         }
         let entry = self.active_panel().selected_entry()?;
-        self.hermes_column.status_line(&entry.path, self.lang)
-    }
-
-    /// Takes in the pipeline's latest snapshot: what became stale is asked
-    /// for again by [`Self::request_hermes_column`] after this message.
-    fn refresh_hermes_column(&mut self) {
-        if !self.hermes_active() {
-            return;
-        }
-        let epoch = self.hermes_column.epoch();
-        self.hermes_column
-            .set_snapshot(self.filing_status.snapshot());
-        if self.hermes_column.epoch() != epoch {
-            self.hermes_reads.clear();
-            self.hermes_detail_reads.clear();
-        }
-        if self.visible_row_is_reading() {
-            self.hermes_spinner_angle =
-                (self.hermes_spinner_angle + SPINNER_STEP).rem_euclid(std::f32::consts::TAU);
-        }
-    }
-
-    fn visible_row_is_reading(&self) -> bool {
-        [PanelSide::Left, PanelSide::Right].into_iter().any(|side| {
-            let panel = self.panel(side);
-            panel
-                .entries
-                .iter()
-                .skip(panel.scroll_offset)
-                .take(panel.rows_in_view(self.visible_rows))
-                .any(|entry| {
-                    self.hermes_column.state_of(&entry.path) == Some(HermesFileState::Reading)
-                })
-        })
-    }
-
-    /// Asks for what the visible rows lack: the listing and the direct counts
-    /// first, the deep counts after. Runs after every message, so a scroll,
-    /// a resize, a cursor move or a new directory all find their data here.
-    fn request_hermes_column(&mut self) -> Task<Message> {
-        if !self.hermes_active() {
-            return Task::none();
-        }
-        let mut tasks: Vec<Task<Message>> = [PanelSide::Left, PanelSide::Right]
-            .into_iter()
-            .filter_map(|side| self.request_panel_column(side))
-            .collect();
-        tasks.extend(self.request_cursor_detail());
-        Task::batch(tasks)
-    }
-
-    fn request_panel_column(&mut self, side: PanelSide) -> Option<Task<Message>> {
-        let panel = self.panel(side);
-        if panel.loading || panel.is_virtual() {
-            return None;
-        }
-        let directory = panel.path.clone();
-        let generation = panel.request_id;
-        let visible_folders: Vec<PathBuf> = panel
-            .entries
-            .iter()
-            .skip(panel.scroll_offset)
-            .take(panel.rows_in_view(self.visible_rows))
-            .filter(|entry| entry.is_dir && !entry.is_parent)
-            .map(|entry| entry.path.clone())
-            .collect();
-        let listing_wanted = !self
+        self.hermes
             .hermes_column
-            .wanted_listings(std::slice::from_ref(&directory))
-            .is_empty();
-        let direct_wanted = self
-            .hermes_column
-            .wanted_counts(&visible_folders, ColumnStage::Listing);
-        let (stage, subfolders) = if listing_wanted || !direct_wanted.is_empty() {
-            (ColumnStage::Listing, direct_wanted)
-        } else {
-            let deep_wanted = self
-                .hermes_column
-                .wanted_counts(&visible_folders, ColumnStage::Deep);
-            if deep_wanted.is_empty() {
-                return None;
-            }
-            (ColumnStage::Deep, deep_wanted)
-        };
-        if !self.hermes_reads.insert((directory.clone(), stage)) {
-            return None;
-        }
-        let reader = self.filing.as_ref().and_then(FilingModule::column_reader)?;
-        let request = ColumnRequest {
-            generation,
-            epoch: self.hermes_column.epoch(),
-            directory: directory.clone(),
-            subfolders,
-            stage,
-        };
-        Some(Task::perform(
-            tokio::task::spawn_blocking(move || reader.read(&request)),
-            move |joined| {
-                Message::HermesColumn(HermesColumnMessage::Read {
-                    side,
-                    directory: directory.clone(),
-                    stage,
-                    result: joined.unwrap_or_else(|err| Err(err.to_string())),
-                })
-            },
-        ))
-    }
-
-    /// The review of the file under the cursor, once, when it is an inquiry.
-    fn request_cursor_detail(&mut self) -> Option<Task<Message>> {
-        if self.active_panel().is_virtual() {
-            return None;
-        }
-        let path = self.active_panel().selected_entry()?.path.clone();
-        if !self.hermes_column.wants_detail(&path) || !self.hermes_detail_reads.insert(path.clone())
-        {
-            return None;
-        }
-        let access = self.filing.as_ref()?.review_access()?;
-        let asked = path.clone();
-        Some(Task::perform(
-            tokio::task::spawn_blocking(move || access.suggestion_for(&asked)),
-            move |joined| {
-                let found = joined.unwrap_or_else(|err| Err(err.to_string()));
-                Message::HermesColumn(HermesColumnMessage::Detail {
-                    path: path.clone(),
-                    result: found.map(|review| {
-                        review.map(|(text_state, suggestion)| FileDetail {
-                            text_state,
-                            suggestion,
-                        })
-                    }),
-                })
-            },
-        ))
-    }
-
-    fn update_hermes_column(&mut self, message: HermesColumnMessage) -> Task<Message> {
-        match message {
-            HermesColumnMessage::Read {
-                side,
-                directory,
-                stage,
-                result,
-            } => {
-                let Ok(reading) = result else {
-                    // Stays in `hermes_reads`: not asked again until the next
-                    // invalidation, so a broken index is not hammered.
-                    return Task::none();
-                };
-                self.hermes_reads.remove(&(directory, stage));
-                let panel = self.panel(side);
-                if reading.generation == panel.request_id && reading.directory == panel.path {
-                    self.hermes_column.apply(reading);
-                }
-                Task::none()
-            }
-            HermesColumnMessage::Detail { path, result } => {
-                if let Ok(Some(detail)) = result {
-                    self.hermes_detail_reads.remove(&path);
-                    self.hermes_column.apply_detail(path, detail);
-                }
-                Task::none()
-            }
-            HermesColumnMessage::ReadAgainEnded { path, result } => {
-                let text = crate::reading_again::notice(
-                    self.lang,
-                    &path,
-                    &crate::reading_again::Ending::Finished,
-                    result.ok(),
-                );
-                self.show_notice(text)
-            }
-            HermesColumnMessage::Excluded { paths, result } => self.paths_excluded(&paths, result),
-        }
-    }
-
-    fn exclude_from_hermes(&mut self, paths: Vec<PathBuf>) -> Task<Message> {
-        self.run_hermes_flow(Vec::new(), |_, ctx| {
-            ncrs_hermes_ui::exclude_from_hermes(paths, ctx)
-        })
-    }
-
-    fn paths_excluded(&mut self, paths: &[PathBuf], result: Result<(), String>) -> Task<Message> {
-        if let Err(detail) = result {
-            self.set_status_error(&detail);
-            return Task::none();
-        }
-        for path in paths {
-            self.invalidate_hermes_path(path);
-        }
-        let text = fill_template(
-            self.lang.text(Msg::StatusQuickFixExcluded),
-            &[("{count}", &paths.len().to_string())],
-        );
-        self.show_notice(text)
-    }
-
-    /// The column asks again for everything that depends on `path`.
-    fn invalidate_hermes_path(&mut self, path: &Path) {
-        self.hermes_column.invalidate_path(path);
-        self.hermes_reads.clear();
-        self.hermes_detail_reads.remove(path);
-    }
-
-    fn refresh_filing_snapshot(&mut self) {
-        let snapshot = self.pipeline.as_ref().map_or_else(
-            ncrs_pipeline::Snapshot::off,
-            ncrs_pipeline::Runner::snapshot,
-        );
-        self.filing_status
-            .set_snapshot(snapshot, self.wall_clock.now());
-        self.filing_status.set_ai(
-            self.filing
-                .as_ref()
-                .map(FilingModule::ai_status)
-                .unwrap_or_default(),
-        );
-    }
-
-    /// The pipeline, unless it is stopped.
-    fn live_pipeline(&self) -> Option<&ncrs_pipeline::Runner> {
-        self.pipeline
-            .as_ref()
-            .filter(|runner| runner.snapshot().state != ncrs_pipeline::RunnerState::Off)
-    }
-
-    /// Reads the figures on the blocking pool: the intake may hold the index
-    /// for as long as it hashes a large file.
-    fn request_index_figures(&mut self) -> Task<Message> {
-        let Some(reader) = self
-            .filing
-            .as_ref()
-            .and_then(FilingModule::index_figures_reader)
-        else {
-            return Task::none();
-        };
-        self.filing_status.figures_requested();
-        Task::perform(
-            tokio::task::spawn_blocking(move || reader.read()),
-            |joined| {
-                Message::FilingStatus(FilingStatusMessage::IndexFigures(
-                    joined.unwrap_or_else(|err| Err(err.to_string())),
-                ))
-            },
-        )
-    }
-
-    /// Reads the counts of Hermes on the blocking pool, like the index
-    /// figures.
-    fn request_hermes_counts(&mut self) -> Task<Message> {
-        let Some(reader) = self
-            .filing
-            .as_ref()
-            .and_then(FilingModule::hermes_counts_reader)
-        else {
-            return Task::none();
-        };
-        self.filing_status.counts_requested();
-        Task::perform(
-            tokio::task::spawn_blocking(move || reader.read()),
-            |joined| {
-                Message::FilingStatus(FilingStatusMessage::HermesCounts(
-                    joined.unwrap_or_else(|err| Err(err.to_string())),
-                ))
-            },
-        )
-    }
-
-    /// Reports the files whose new reading has ended. Whether a finished file
-    /// waits for the user is in the index, so that is asked on the blocking
-    /// pool and the notice follows.
-    fn settle_reading_again(&mut self) -> Task<Message> {
-        if self.reading_again.is_empty() {
-            return Task::none();
-        }
-        let ended = self.reading_again.settle(self.filing_status.snapshot());
-        let tasks: Vec<Task<Message>> = ended
-            .into_iter()
-            .map(|(path, ending)| {
-                let access = self
-                    .filing
-                    .as_ref()
-                    .and_then(FilingModule::review_access)
-                    .filter(|_| ending == crate::reading_again::Ending::Finished);
-                match access {
-                    Some(review) => {
-                        let asked = path.clone();
-                        Task::perform(
-                            tokio::task::spawn_blocking(move || {
-                                review.suggestion_for(&asked).map(|found| found.is_some())
-                            }),
-                            move |joined| {
-                                Message::HermesColumn(HermesColumnMessage::ReadAgainEnded {
-                                    path: path.clone(),
-                                    result: joined.unwrap_or_else(|err| Err(err.to_string())),
-                                })
-                            },
-                        )
-                    }
-                    None => {
-                        let text = crate::reading_again::notice(self.lang, &path, &ending, None);
-                        self.show_notice(text)
-                    }
-                }
-            })
-            .collect();
-        Task::batch(tasks)
+            .status_line(&entry.path, self.lang)
     }
 
     /// The old module and runner are gone from the blocking pool: the new one
     /// starts from the config the change left.
     fn filing_restarted(&mut self, generation: u64) -> Task<Message> {
-        match self.filing_restart.take() {
+        match self.hermes.filing_restart.take() {
             Some((current, filing)) if current == generation => {
                 let task = self.start_filing_module(&filing);
-                self.refresh_filing_snapshot();
+                self.hermes.refresh_filing_snapshot(self.wall_clock.now());
                 task
             }
             other => {
-                self.filing_restart = other;
+                self.hermes.filing_restart = other;
                 Task::none()
             }
         }
@@ -10054,28 +9599,29 @@ impl App {
     /// the next start. Joining the runner's threads blocks, so both are
     /// dropped on the blocking pool.
     fn apply_ai_change(&mut self, filing: Filing) -> (SavedFilingApplies, Task<Message>) {
-        if let Some((_, pending)) = self.filing_restart.as_mut() {
-            self.filing_config = filing.clone();
+        if let Some((_, pending)) = self.hermes.filing_restart.as_mut() {
+            self.hermes.filing_config = filing.clone();
             *pending = filing;
             return (SavedFilingApplies::Now, Task::none());
         }
-        let Some(module) = self.filing.as_ref() else {
+        let Some(module) = self.hermes.filing.as_ref() else {
             return self.apply_saved_filing(filing);
         };
         let rebuildable =
             self.filing_key_store.is_some() && module.can_be_replaced() && !self.jobs.is_busy();
         if !rebuildable {
-            self.filing_config = filing;
+            self.hermes.filing_config = filing;
             return (SavedFilingApplies::AtNextStart, Task::none());
         }
-        self.filing_restart_generation = self.filing_restart_generation.wrapping_add(1);
-        let generation = self.filing_restart_generation;
-        self.filing_config = filing.clone();
-        self.filing_restart = Some((generation, filing));
-        drop(self.reading_again.give_up());
-        let pipeline = self.pipeline.take();
-        let old_module = self.filing.take();
-        self.refresh_filing_snapshot();
+        self.hermes.filing_restart_generation =
+            self.hermes.filing_restart_generation.wrapping_add(1);
+        let generation = self.hermes.filing_restart_generation;
+        self.hermes.filing_config = filing.clone();
+        self.hermes.filing_restart = Some((generation, filing));
+        drop(self.hermes.reading_again.give_up());
+        let pipeline = self.hermes.pipeline.take();
+        let old_module = self.hermes.filing.take();
+        self.hermes.refresh_filing_snapshot(self.wall_clock.now());
         let dropped = Task::perform(
             tokio::task::spawn_blocking(move || {
                 drop(pipeline);
@@ -10094,137 +9640,8 @@ impl App {
         if self.settings.page.is_some() {
             return left_settings;
         }
-        self.context_menu = None;
-        self.filing_status.open_page();
-        self.refresh_filing_snapshot();
-        Task::batch([left_settings, self.request_index_figures()])
-    }
-
-    fn set_pipeline_load(&mut self, load: Load) {
-        let Some(runner) = self.live_pipeline() else {
-            return;
-        };
-        runner.set_load(load);
-        if let Some(module) = self.filing.as_mut() {
-            module.set_load(load);
-        }
-        self.refresh_filing_snapshot();
-    }
-
-    fn update_filing_status(&mut self, message: FilingStatusMessage) -> Task<Message> {
-        match message {
-            FilingStatusMessage::Open => self.open_hermes_overview(),
-            FilingStatusMessage::Close => {
-                self.filing_status.close_page();
-                Task::none()
-            }
-            FilingStatusMessage::Toggle => match self.open_hermes_page() {
-                Some(HermesPage::Inspection) => {
-                    self.filing_status.close_page();
-                    Task::none()
-                }
-                Some(_) => self.go_to_hermes_page(HermesPage::Inspection),
-                None => self.open_filing_status(),
-            },
-            FilingStatusMessage::Restarted(generation) => self.filing_restarted(generation),
-            FilingStatusMessage::Tick => {
-                self.refresh_filing_snapshot();
-                self.refresh_hermes_column();
-                let settled = self.settle_reading_again();
-                let plans_made = self
-                    .live_pipeline()
-                    .map_or(0, |runner| runner.snapshot().plans_made);
-                let filing = if plans_made > self.plans_filed_for || self.hermes.filing_due {
-                    self.plans_filed_for = plans_made;
-                    self.run_filing()
-                } else {
-                    Task::none()
-                };
-                let refiling = self.run_refile();
-                let counts =
-                    if self.live_pipeline().is_some() && self.filing_status.tick_wants_counts() {
-                        self.request_hermes_counts()
-                    } else {
-                        Task::none()
-                    };
-                if self.filing_status.tick_wants_figures() {
-                    Task::batch([
-                        filing,
-                        refiling,
-                        counts,
-                        settled,
-                        self.request_index_figures(),
-                    ])
-                } else {
-                    Task::batch([filing, refiling, counts, settled])
-                }
-            }
-            FilingStatusMessage::TogglePause => {
-                if let Some(runner) = self.live_pipeline() {
-                    match runner.snapshot().state {
-                        ncrs_pipeline::RunnerState::Paused => runner.resume(),
-                        ncrs_pipeline::RunnerState::Running | ncrs_pipeline::RunnerState::Idle => {
-                            runner.pause();
-                        }
-                        ncrs_pipeline::RunnerState::Off => {}
-                    }
-                    self.refresh_filing_snapshot();
-                }
-                Task::none()
-            }
-            FilingStatusMessage::StepWorkers(delta) => {
-                let Some(runner) = self.live_pipeline() else {
-                    return Task::none();
-                };
-                let current = match self.filing.as_ref().map(FilingModule::load) {
-                    Some(Load::Workers(count)) => count.get(),
-                    _ => runner.snapshot().worker_target,
-                };
-                let most = std::thread::available_parallelism().map_or(1, NonZeroUsize::get);
-                let wanted = current
-                    .saturating_add_signed(isize::from(delta))
-                    .clamp(1, most);
-                if let Some(count) = NonZeroUsize::new(wanted) {
-                    self.set_pipeline_load(Load::Workers(count));
-                }
-                Task::none()
-            }
-            FilingStatusMessage::HermesCounts(counts) => {
-                self.filing_status.counts_arrived(counts);
-                Task::none()
-            }
-            FilingStatusMessage::IndexFigures(figures) => {
-                self.filing_status.figures_arrived(figures);
-                Task::none()
-            }
-            FilingStatusMessage::ErrorActivated(path) => {
-                self.filing_status.close_page();
-                self.reveal_file(&path)
-            }
-            FilingStatusMessage::MoveError(delta) => {
-                self.filing_status.move_error_selection(delta);
-                Task::none()
-            }
-            FilingStatusMessage::SelectError(position) => {
-                self.filing_status.select_error(position);
-                Task::none()
-            }
-            FilingStatusMessage::ToggleErrorChecked(path) => {
-                self.filing_status.toggle_error_checked(&path);
-                Task::none()
-            }
-            FilingStatusMessage::ToggleSelectedErrorChecked => {
-                self.filing_status.toggle_selected_error_checked();
-                Task::none()
-            }
-            FilingStatusMessage::ProcessAgain => {
-                self.read_paths_again(self.filing_status.files_to_process_again())
-            }
-            FilingStatusMessage::ToggleSteps => {
-                self.filing_status.toggle_steps();
-                Task::none()
-            }
-        }
+        let opened = self.run_hermes_flow(Vec::new(), ncrs_hermes_ui::open_filing_status_page);
+        Task::batch([left_settings, opened])
     }
 
     /// Starts an async directory read for `side`.
@@ -11691,22 +11108,12 @@ impl App {
             quick_open_walk: None,
             command_palette: None,
             recent_commands: Vec::new(),
-            filing: None,
-            pipeline: None,
-            pdf_library_missing: None,
-            filing_status: FilingStatus::default(),
-            hermes_column: HermesColumn::default(),
-            hermes_reads: HashSet::new(),
-            hermes_detail_reads: HashSet::new(),
-            hermes_spinner_angle: 0.0,
             wall_clock: Arc::new(ncrs_pipeline::SystemClock),
             config_path: None,
-            filing_config: Filing::default(),
             file_list_tags: FileListTags::default(),
             kinds: Kinds::default(),
             filing_index_path: None,
             filing_key_store: None,
-            pending_hermes_start: None,
             hermes_flow_step: 0,
             settings: Settings::default(),
             hermes: ncrs_hermes_ui::Hermes::default(),
@@ -11721,17 +11128,12 @@ impl App {
             paste_staging: None,
             tag_exceptions: TagExceptions::new(),
             hermes_focus: HermesFocus::default(),
-            plans_filed_for: 0,
             fetch_extension: |_| Err(FetchError::NoConnection("no network in tests".to_owned())),
             install_theme: |_, _| Err(FetchError::NoConfigPath),
             about: None,
             find_third_party_licenses: || None,
             app_version: env!("CARGO_PKG_VERSION"),
             download_ocr_models: |_, _| Err(DownloadError::NoDataFolder),
-            ai_model_asked: false,
-            reading_again: crate::reading_again::ReadingAgain::default(),
-            filing_restart: None,
-            filing_restart_generation: 0,
             download_ai_model: |_| Err(AiDownloadError::NoDataFolder),
             grant_dialog: false,
             sandbox: fs::SandboxAccess::inactive(),
@@ -11770,7 +11172,7 @@ impl App {
     /// running: no work, an in-memory store, no file anywhere.
     pub fn with_fixed_filing(phase: Phase) -> Self {
         let mut app = Self::with_fixed_panels();
-        app.filing = Some(FilingModule::in_phase(phase));
+        app.hermes.filing = Some(FilingModule::in_phase(phase));
         app
     }
 
@@ -11781,7 +11183,7 @@ impl App {
         let mut app = Self::with_fixed_panels();
         app.hermes.filing_setup = Some(FilingSetup::new(chosen));
         if index_is_plain {
-            app.filing = Some(FilingModule::in_phase_with_index(Phase::Ready, false));
+            app.hermes.filing = Some(FilingModule::in_phase_with_index(Phase::Ready, false));
         }
         app
     }
@@ -11790,7 +11192,7 @@ impl App {
     /// `configured`.
     pub fn with_hermes_setup(configured: &[config::FilingLocation], offer: SetupOffer) -> Self {
         let mut app = Self::with_fixed_panels();
-        app.filing_config.locations = configured.to_vec();
+        app.hermes.filing_config.locations = configured.to_vec();
         let setup = HermesSetup::new(configured, offer);
         app.dialog_focus = setup.first_focus(setup.can_start());
         app.hermes.hermes_setup = Some(setup);
@@ -11807,17 +11209,20 @@ impl App {
     ) -> Self {
         let mut app = Self::with_fixed_panels();
         let module_exists = phase.is_some();
-        app.filing = phase.map(|in_phase| FilingModule::in_phase_with_ai(in_phase, &config.ai));
+        app.hermes.filing =
+            phase.map(|in_phase| FilingModule::in_phase_with_ai(in_phase, &config.ai));
         if module_exists {
             let mut idle = ncrs_pipeline::Snapshot::off();
             idle.state = ncrs_pipeline::RunnerState::Idle;
-            app.filing_status.set_snapshot(idle, app.wall_clock.now());
+            app.hermes
+                .filing_status
+                .set_snapshot(idle, app.wall_clock.now());
         }
         if let Some(read) = counts {
-            app.filing_status.counts_arrived(Ok(read));
+            app.hermes.filing_status.counts_arrived(Ok(read));
         }
         app.hermes.overview = Some(OverviewState::new(config.default_pattern.as_deref(), false));
-        app.filing_config = config;
+        app.hermes.filing_config = config;
         app
     }
 
@@ -11833,7 +11238,8 @@ impl App {
 
     /// The module's key card was put off, so the overview shows the key as missing.
     pub fn with_missing_key_for_test(mut self) -> Self {
-        self.filing = self
+        self.hermes.filing = self
+            .hermes
             .filing
             .take()
             .map(|module| module.dismissed_over(crate::filing::KeyProblem::Missing));
@@ -11842,15 +11248,15 @@ impl App {
 
     /// An open index with or without encryption under the ready module.
     pub fn with_index_for_test(mut self, encrypted: bool) -> Self {
-        self.filing = Some(FilingModule::in_phase_with_index(Phase::Ready, encrypted));
+        self.hermes.filing = Some(FilingModule::in_phase_with_index(Phase::Ready, encrypted));
         self
     }
 
     /// The settings tab on the filing page, over a module in `phase`.
     pub fn with_hermes_settings(phase: Option<Phase>, config: config::Filing) -> Self {
         let mut app = Self::with_settings_open(crate::messages::SettingsFeature::Hermes, config);
-        app.filing =
-            phase.map(|in_phase| FilingModule::in_phase_with_ai(in_phase, &app.filing_config.ai));
+        app.hermes.filing = phase
+            .map(|in_phase| FilingModule::in_phase_with_ai(in_phase, &app.hermes.filing_config.ai));
         app
     }
 
@@ -11873,7 +11279,7 @@ impl App {
         taken_at: std::time::SystemTime,
     ) -> Self {
         let mut app = Self::with_fixed_panels();
-        app.filing_status.set_snapshot(snapshot, taken_at);
+        app.hermes.filing_status.set_snapshot(snapshot, taken_at);
         app
     }
 
@@ -11892,7 +11298,7 @@ impl App {
     /// every role on the left, files in every state on the right with the
     /// cursor on an inquiry.
     pub fn with_hermes_column_sample() -> Self {
-        use crate::hermes_column::{ColumnReading, DirectoryStates};
+        use crate::hermes_column::{ColumnReading, ColumnStage, DirectoryStates, FileDetail};
         use ncrs_filing::column_reading::FolderReading;
         use ncrs_index::{DocumentStatus, PathState, ReviewReason, StatusCounts};
 
@@ -11905,8 +11311,8 @@ impl App {
             is_target,
         };
         let mut app = Self::with_fixed_panels();
-        app.filing = Some(FilingModule::in_phase_with_locations(Phase::Ready));
-        app.filing_config.locations = vec![
+        app.hermes.filing = Some(FilingModule::in_phase_with_locations(Phase::Ready));
+        app.hermes.filing_config.locations = vec![
             location("Scans", ncrs_intake::LocationMode::Inbox, false),
             location("Filed", ncrs_intake::LocationMode::Archive, true),
             location("Archive", ncrs_intake::LocationMode::Archive, false),
@@ -11993,7 +11399,7 @@ impl App {
                 .collect(),
             vec![files_dir.join("2024-12 private diary.pdf")],
         );
-        app.hermes_column.mark_for_test(
+        app.hermes.hermes_column.mark_for_test(
             vec![files_dir.join("2025-03 scan 0412.pdf")],
             vec![(
                 files_dir.join("2025-01 damaged scan.pdf"),
@@ -12046,9 +11452,9 @@ impl App {
             },
         ];
         for reading in readings {
-            app.hermes_column.apply(reading);
+            app.hermes.hermes_column.apply(reading);
         }
-        app.hermes_column.apply_detail(
+        app.hermes.hermes_column.apply_detail(
             files_dir.join("2025-03 receipt market.pdf"),
             FileDetail {
                 text_state: crate::review_work::TextState::Read,
@@ -12116,7 +11522,7 @@ impl App {
         taken_at: std::time::SystemTime,
     ) -> Self {
         let mut app = Self::with_filing_snapshot(began, taken_at);
-        app.filing_status.set_snapshot(now, taken_at);
+        app.hermes.filing_status.set_snapshot(now, taken_at);
         app
     }
 
@@ -12126,7 +11532,7 @@ impl App {
         taken_at: std::time::SystemTime,
     ) -> Self {
         let mut app = Self::with_filing_snapshot(snapshot, taken_at);
-        app.filing_status.open_page();
+        app.hermes.filing_status.open_page();
         app
     }
 
@@ -12138,8 +11544,8 @@ impl App {
         figures: crate::filing::IndexFigures,
     ) -> Self {
         let mut app = Self::with_filing_status_page(snapshot, taken_at);
-        app.filing = Some(FilingModule::in_phase(Phase::Ready));
-        app.filing_status.figures_arrived(Ok(figures));
+        app.hermes.filing = Some(FilingModule::in_phase(Phase::Ready));
+        app.hermes.filing_status.figures_arrived(Ok(figures));
         app
     }
 
@@ -12336,7 +11742,7 @@ impl App {
     /// the config says.
     pub fn with_settings_open(feature: crate::messages::SettingsFeature, filing: Filing) -> Self {
         let mut app = Self::with_fixed_panels();
-        app.filing_config = filing;
+        app.hermes.filing_config = filing;
         let mut state = settings_ui::SettingsState::new(false, Ok(Box::default()), false);
         state.feature = feature;
         app.settings.page = Some(state);
@@ -12371,7 +11777,7 @@ impl App {
             ncrs_pipeline::Snapshot::off(),
             std::time::SystemTime::UNIX_EPOCH,
         );
-        app.filing_status.set_ai(ai);
+        app.hermes.filing_status.set_ai(ai);
         app
     }
 
@@ -12427,18 +11833,20 @@ impl App {
     fn set_idle_hermes_status(&mut self) {
         let mut idle = ncrs_pipeline::Snapshot::off();
         idle.state = ncrs_pipeline::RunnerState::Idle;
-        self.filing_status.set_snapshot(idle, self.wall_clock.now());
+        self.hermes
+            .filing_status
+            .set_snapshot(idle, self.wall_clock.now());
     }
 
     /// The counts of Hermes as the index last gave them.
     pub fn with_hermes_counts(mut self, counts: ncrs_index::HermesCounts) -> Self {
-        self.filing_status.counts_arrived(Ok(counts));
+        self.hermes.filing_status.counts_arrived(Ok(counts));
         self
     }
 
     /// The PDF library could not be loaded; `searched` is where it was looked for.
     pub fn with_pdf_library_missing(mut self, searched: PathBuf) -> Self {
-        self.pdf_library_missing = Some(searched);
+        self.hermes.pdf_library_missing = Some(searched);
         self
     }
 
@@ -12526,13 +11934,13 @@ impl App {
     /// A Hermes module that is switched on but has no index yet, so its pages
     /// open and complain instead of reading anything.
     pub fn with_starting_hermes_for_test(mut self) -> Self {
-        self.filing = Some(FilingModule::in_phase(Phase::Starting));
+        self.hermes.filing = Some(FilingModule::in_phase(Phase::Starting));
         self
     }
 
     /// A ready Hermes module without an index, so Quick Open asks for documents.
     pub fn with_ready_hermes_for_test(mut self) -> Self {
-        self.filing = Some(FilingModule::in_phase_with_index(Phase::Ready, false));
+        self.hermes.filing = Some(FilingModule::in_phase_with_index(Phase::Ready, false));
         self
     }
 
@@ -18324,8 +17732,8 @@ mod filing_tests {
 
         let (app, _task) = App::with_fixed_panels().with_filing(&off, Some(db.clone()), store);
 
-        assert!(app.filing.is_none());
-        assert!(app.pipeline.is_none());
+        assert!(app.hermes.filing.is_none());
+        assert!(app.hermes.pipeline.is_none());
         assert!(!db.exists());
         assert!(!dir.path().join("data").exists());
     }
@@ -18357,6 +17765,8 @@ mod filing_tests {
 )]
 #[cfg(test)]
 mod filing_setup_tests {
+    use std::num::NonZeroUsize;
+
     use super::*;
     use crate::config::FilingLocation;
     use crate::filing_setup::SetupProblem;
@@ -18409,7 +17819,7 @@ mod filing_setup_tests {
             None,
             Arc::new(InMemoryKeyStore::empty()),
         );
-        assert!(app.filing.is_none(), "the module is off");
+        assert!(app.hermes.filing.is_none(), "the module is off");
         app.hermes.filing_setup = Some(FilingSetup::new(&[]));
         app
     }
@@ -18421,7 +17831,7 @@ mod filing_setup_tests {
     #[test]
     fn the_setup_key_opens_the_setup_with_the_configured_locations_and_closes_it() {
         let mut app = App::with_fixed_panels();
-        app.filing_config = saved_filing();
+        app.hermes.filing_config = saved_filing();
 
         drop(app.update(setup_message(FilingSetupMessage::Toggle)));
         assert_eq!(
@@ -18605,22 +18015,32 @@ mod filing_setup_tests {
         let notice = app.notice.as_deref().unwrap();
         assert!(notice.contains("Filing is on"), "{notice}");
         assert!(notice.contains(&key), "{notice}");
-        assert!(app.filing.as_ref().unwrap().has_configured_locations());
-        assert_eq!(app.filing_config, saved_filing());
+        assert!(app
+            .hermes
+            .filing
+            .as_ref()
+            .unwrap()
+            .has_configured_locations());
+        assert_eq!(app.hermes.filing_config, saved_filing());
     }
 
     #[test]
     fn a_module_without_locations_is_replaced_and_its_runner_stopped() {
         let mut app = app_that_can_start_a_module();
-        app.filing = Some(FilingModule::in_phase(Phase::Ready));
-        app.pipeline = Some(running_pipeline());
+        app.hermes.filing = Some(FilingModule::in_phase(Phase::Ready));
+        app.hermes.pipeline = Some(running_pipeline());
 
         drop(app.update(setup_message(FilingSetupMessage::Saved(Ok(saved_filing())))));
 
         assert!(app.hermes.filing_setup.is_none());
         assert!(app.notice.as_deref().unwrap().contains("Filing is on"));
-        assert!(app.pipeline.is_none());
-        assert!(app.filing.as_ref().unwrap().has_configured_locations());
+        assert!(app.hermes.pipeline.is_none());
+        assert!(app
+            .hermes
+            .filing
+            .as_ref()
+            .unwrap()
+            .has_configured_locations());
     }
 
     fn ai_filing() -> Filing {
@@ -18633,25 +18053,32 @@ mod filing_setup_tests {
     #[tokio::test]
     async fn an_ai_change_rebuilds_the_pipeline_and_a_stale_answer_changes_nothing() {
         let mut app = app_that_can_start_a_module();
-        app.filing = Some(FilingModule::in_phase_with_locations(Phase::Ready));
-        app.pipeline = Some(running_pipeline());
+        app.hermes.filing = Some(FilingModule::in_phase_with_locations(Phase::Ready));
+        app.hermes.pipeline = Some(running_pipeline());
 
         let (applies, _task) = app.apply_ai_change(ai_filing());
 
         assert!(matches!(applies, SavedFilingApplies::Now));
-        assert!(app.pipeline.is_none() && app.filing.is_none());
-        let (generation, _) = app.filing_restart.clone().expect("a restart is pending");
+        assert!(app.hermes.pipeline.is_none() && app.hermes.filing.is_none());
+        let (generation, _) = app
+            .hermes
+            .filing_restart
+            .clone()
+            .expect("a restart is pending");
         drop(app.filing_restarted(generation.wrapping_add(1)));
-        assert!(app.filing_restart.is_some(), "a stale answer is ignored");
+        assert!(
+            app.hermes.filing_restart.is_some(),
+            "a stale answer is ignored"
+        );
         drop(app.filing_restarted(generation));
-        assert!(app.filing_restart.is_none());
+        assert!(app.hermes.filing_restart.is_none());
     }
 
     #[tokio::test]
     async fn an_ai_change_waits_for_the_next_start_while_a_job_runs() {
         let mut app = app_that_can_start_a_module();
-        app.filing = Some(FilingModule::in_phase_with_locations(Phase::Ready));
-        app.pipeline = Some(running_pipeline());
+        app.hermes.filing = Some(FilingModule::in_phase_with_locations(Phase::Ready));
+        app.hermes.pipeline = Some(running_pipeline());
         app.jobs.enqueue(jobs::Job {
             kind: jobs::JobKind::File,
             path: PathBuf::new(),
@@ -18661,25 +18088,25 @@ mod filing_setup_tests {
         let (applies, _task) = app.apply_ai_change(ai_filing());
 
         assert!(matches!(applies, SavedFilingApplies::AtNextStart));
-        assert!(app.pipeline.is_some() && app.filing.is_some());
-        assert!(app.filing_restart.is_none());
+        assert!(app.hermes.pipeline.is_some() && app.hermes.filing.is_some());
+        assert!(app.hermes.filing_restart.is_none());
     }
 
     #[test]
     fn a_new_module_files_its_first_plans_even_after_an_older_runner_made_many() {
         let mut app = app_that_can_start_a_module();
-        app.plans_filed_for = 7;
+        app.hermes.plans_filed_for = 7;
 
         drop(app.start_filing_module(&saved_filing()));
 
-        assert_eq!(app.plans_filed_for, 0);
+        assert_eq!(app.hermes.plans_filed_for, 0);
     }
 
     #[tokio::test]
     async fn a_running_module_with_locations_keeps_them_until_the_next_start() {
         let mut app = app_that_can_start_a_module();
-        app.filing = Some(FilingModule::in_phase_with_locations(Phase::Ready));
-        app.pipeline = Some(running_pipeline());
+        app.hermes.filing = Some(FilingModule::in_phase_with_locations(Phase::Ready));
+        app.hermes.pipeline = Some(running_pipeline());
 
         drop(app.update(setup_message(FilingSetupMessage::Saved(Ok(saved_filing())))));
 
@@ -18688,15 +18115,18 @@ mod filing_setup_tests {
             app.notice.as_deref(),
             Some(app.lang.text(Msg::FilingSetupSavedNextStart))
         );
-        assert!(app.pipeline.is_some());
-        assert!(matches!(app.filing.as_ref().unwrap().phase(), Phase::Ready));
-        assert_eq!(app.filing_config, saved_filing());
+        assert!(app.hermes.pipeline.is_some());
+        assert!(matches!(
+            app.hermes.filing.as_ref().unwrap().phase(),
+            Phase::Ready
+        ));
+        assert_eq!(app.hermes.filing_config, saved_filing());
     }
 
     #[test]
     fn a_module_busy_with_its_start_is_not_replaced() {
         let mut app = app_that_can_start_a_module();
-        app.filing = Some(FilingModule::in_phase(Phase::Starting));
+        app.hermes.filing = Some(FilingModule::in_phase(Phase::Starting));
 
         drop(app.update(setup_message(FilingSetupMessage::Saved(Ok(saved_filing())))));
 
@@ -18706,7 +18136,7 @@ mod filing_setup_tests {
             Some(app.lang.text(Msg::FilingSetupSavedNextStart))
         );
         assert!(matches!(
-            app.filing.as_ref().unwrap().phase(),
+            app.hermes.filing.as_ref().unwrap().phase(),
             Phase::Starting
         ));
     }
@@ -18721,8 +18151,8 @@ mod filing_setup_tests {
         )))));
 
         assert_eq!(note(&app), Some(&SetupNote::SaveFailed(failure)));
-        assert!(app.filing.is_none());
-        assert_eq!(app.filing_config, Filing::default());
+        assert!(app.hermes.filing.is_none());
+        assert_eq!(app.hermes.filing_config, Filing::default());
     }
 
     #[test]
@@ -18764,6 +18194,7 @@ mod filing_setup_tests {
 )]
 #[cfg(test)]
 mod filing_status_tests {
+    use std::num::NonZeroUsize;
     use std::time::SystemTime;
 
     use super::*;
@@ -18781,7 +18212,7 @@ mod filing_status_tests {
     /// An app whose pipeline has no steps and no folders, standing on 8 cores.
     fn app_with_empty_pipeline() -> App {
         let mut app = App::with_fixed_filing(Phase::Ready);
-        app.pipeline = Some(ncrs_pipeline::Runner::start(
+        app.hermes.pipeline = Some(ncrs_pipeline::Runner::start(
             Settings::new(Load::Gentle, NonZeroUsize::new(8).unwrap()),
             Vec::new(),
             Vec::new(),
@@ -18791,7 +18222,12 @@ mod filing_status_tests {
     }
 
     fn worker_target(app: &App) -> usize {
-        app.pipeline.as_ref().unwrap().snapshot().worker_target
+        app.hermes
+            .pipeline
+            .as_ref()
+            .unwrap()
+            .snapshot()
+            .worker_target
     }
 
     fn runtime() -> tokio::runtime::Runtime {
@@ -18806,13 +18242,13 @@ mod filing_status_tests {
 
         drop(app.update(status(FilingStatusMessage::TogglePause)));
         assert_eq!(
-            app.pipeline.as_ref().unwrap().snapshot().state,
+            app.hermes.pipeline.as_ref().unwrap().snapshot().state,
             RunnerState::Paused
         );
 
         drop(app.update(status(FilingStatusMessage::TogglePause)));
         assert_ne!(
-            app.pipeline.as_ref().unwrap().snapshot().state,
+            app.hermes.pipeline.as_ref().unwrap().snapshot().state,
             RunnerState::Paused
         );
     }
@@ -18822,13 +18258,15 @@ mod filing_status_tests {
         let mut app = app_with_empty_pipeline();
         assert_eq!(worker_target(&app), 2);
 
-        app.set_pipeline_load(Load::Full);
+        app.hermes
+            .set_pipeline_load(Load::Full, app.wall_clock.now());
         assert_eq!(worker_target(&app), 8);
-        assert_eq!(app.filing.as_ref().unwrap().load(), Load::Full);
+        assert_eq!(app.hermes.filing.as_ref().unwrap().load(), Load::Full);
 
-        app.set_pipeline_load(Load::Gentle);
+        app.hermes
+            .set_pipeline_load(Load::Gentle, app.wall_clock.now());
         assert_eq!(worker_target(&app), 2);
-        assert_eq!(app.filing.as_ref().unwrap().load(), Load::Gentle);
+        assert_eq!(app.hermes.filing.as_ref().unwrap().load(), Load::Gentle);
     }
 
     #[test]
@@ -18838,7 +18276,7 @@ mod filing_status_tests {
         drop(app.update(status(FilingStatusMessage::StepWorkers(-1))));
         assert_eq!(worker_target(&app), 1);
         assert_eq!(
-            app.filing.as_ref().unwrap().load(),
+            app.hermes.filing.as_ref().unwrap().load(),
             Load::Workers(NonZeroUsize::MIN)
         );
 
@@ -18853,8 +18291,8 @@ mod filing_status_tests {
         drop(app.update(status(FilingStatusMessage::TogglePause)));
         drop(app.update(status(FilingStatusMessage::StepWorkers(1))));
 
-        assert!(app.pipeline.is_none());
-        assert_eq!(app.filing.as_ref().unwrap().load(), Load::default());
+        assert!(app.hermes.pipeline.is_none());
+        assert_eq!(app.hermes.filing.as_ref().unwrap().load(), Load::default());
     }
 
     #[test]
@@ -18864,23 +18302,23 @@ mod filing_status_tests {
         let mut app = App::with_fixed_filing(Phase::Ready);
 
         drop(app.open_filing_status());
-        assert!(app.filing_status.figures_in_flight());
+        assert!(app.hermes.filing_status.figures_in_flight());
 
         for _ in 0..2 * INDEX_FIGURES_EVERY_TICKS {
             tick(&mut app);
         }
-        assert!(app.filing_status.figures_in_flight());
+        assert!(app.hermes.filing_status.figures_in_flight());
 
         drop(app.update(status(FilingStatusMessage::IndexFigures(Err(
             "index not open".to_owned(),
         )))));
-        assert!(!app.filing_status.figures_in_flight());
+        assert!(!app.hermes.filing_status.figures_in_flight());
         for _ in 1..INDEX_FIGURES_EVERY_TICKS {
             tick(&mut app);
-            assert!(!app.filing_status.figures_in_flight());
+            assert!(!app.hermes.filing_status.figures_in_flight());
         }
         tick(&mut app);
-        assert!(app.filing_status.figures_in_flight());
+        assert!(app.hermes.filing_status.figures_in_flight());
     }
 
     #[test]
@@ -18892,7 +18330,7 @@ mod filing_status_tests {
         for _ in 0..3 * INDEX_FIGURES_EVERY_TICKS {
             tick(&mut app);
         }
-        assert!(!app.filing_status.figures_in_flight());
+        assert!(!app.hermes.filing_status.figures_in_flight());
 
         drop(app.open_filing_status());
         drop(app.update(status(FilingStatusMessage::Close)));
@@ -18902,7 +18340,7 @@ mod filing_status_tests {
         for _ in 0..3 * INDEX_FIGURES_EVERY_TICKS {
             tick(&mut app);
         }
-        assert!(!app.filing_status.figures_in_flight());
+        assert!(!app.hermes.filing_status.figures_in_flight());
     }
 
     #[test]
@@ -18911,7 +18349,7 @@ mod filing_status_tests {
 
         drop(app.update(status(FilingStatusMessage::Open)));
 
-        assert!(!app.filing_status.page_open());
+        assert!(!app.hermes.filing_status.page_open());
     }
 
     #[test]
@@ -19011,7 +18449,7 @@ mod filing_status_tests {
             )))),
         );
 
-        assert!(!app.filing_status.page_open());
+        assert!(!app.hermes.filing_status.page_open());
         assert!(app.panel(PanelSide::Left).loading);
         assert_ne!(app.panel(PanelSide::Left).request_id, before);
     }
@@ -19033,7 +18471,7 @@ mod filing_status_tests {
 
         let mut app = App::with_filing_status_page(Snapshot::off(), SystemTime::UNIX_EPOCH);
         drop(app.update(status(FilingStatusMessage::ProcessAgain)));
-        assert!(app.filing_status.page_open());
+        assert!(app.hermes.filing_status.page_open());
     }
 }
 
@@ -23981,7 +23419,7 @@ mod hermes_roles_and_off_tests {
 
     fn ready_hermes_without_locations(config_dir: &tempfile::TempDir) -> App {
         let mut app = App::with_fixed_panels();
-        app.filing = Some(FilingModule::in_phase(Phase::Ready));
+        app.hermes.filing = Some(FilingModule::in_phase(Phase::Ready));
         let config_path = config_dir.path().join("config.toml");
         std::fs::write(&config_path, "").unwrap();
         app.config_path = Some(config_path);
@@ -24038,8 +23476,11 @@ mod hermes_roles_and_off_tests {
         )
         .await;
 
-        let [location] = app.filing_config.locations.as_slice() else {
-            panic!("one location expected: {:?}", app.filing_config.locations);
+        let [location] = app.hermes.filing_config.locations.as_slice() else {
+            panic!(
+                "one location expected: {:?}",
+                app.hermes.filing_config.locations
+            );
         };
         assert!(location.is_target);
         assert!(location.path.ends_with("Documents"));
@@ -24060,13 +23501,13 @@ mod hermes_roles_and_off_tests {
         .await;
 
         assert_eq!(app.status_error(), Some("Set a filing location first."));
-        assert!(app.filing_config.locations.is_empty());
+        assert!(app.hermes.filing_config.locations.is_empty());
     }
 
     #[test]
     fn a_hermes_command_while_hermes_is_off_opens_the_overview_with_the_reason() {
         let mut app = App::with_fixed_panels();
-        assert!(app.filing.is_none());
+        assert!(app.hermes.filing.is_none());
 
         drop(app.update(Message::ReviewList(ReviewListMessage::Open)));
 
@@ -24081,8 +23522,8 @@ mod hermes_roles_and_off_tests {
     #[test]
     fn a_hermes_command_while_hermes_restarts_says_so_and_opens_nothing() {
         let mut app = App::with_fixed_panels();
-        app.filing_restart = Some((1, Filing::default()));
-        assert!(!app.hermes_is_off());
+        app.hermes.filing_restart = Some((1, Filing::default()));
+        assert!(!app.hermes.is_off());
 
         drop(app.update(Message::ReviewList(ReviewListMessage::Open)));
 
@@ -24357,7 +23798,7 @@ mod hermes_setup_tests {
     /// the config lists the same folders.
     fn app_at_the_question(index_dir: &TempDir) -> App {
         let mut app = App::with_hermes_setup(&chosen_folders(), offer(false));
-        app.filing = Some(FilingModule::in_phase_with_locations_at(
+        app.hermes.filing = Some(FilingModule::in_phase_with_locations_at(
             asks_encryption(),
             index_dir.path().join("index.db"),
         ));
@@ -24383,7 +23824,7 @@ mod hermes_setup_tests {
             offer(false),
         );
         press_start(&mut app, &config_dir);
-        assert!(app.pending_hermes_start.is_none());
+        assert!(app.hermes.pending_hermes_start.is_none());
         assert!(!app.hermes.hermes_setup.as_ref().unwrap().is_busy());
     }
 
@@ -24399,7 +23840,7 @@ mod hermes_setup_tests {
         );
         assert!(!app.hermes.hermes_setup.as_ref().unwrap().can_start());
         press_start(&mut app, &config_dir);
-        assert!(app.pending_hermes_start.is_none());
+        assert!(app.hermes.pending_hermes_start.is_none());
     }
 
     #[test]
@@ -24410,7 +23851,7 @@ mod hermes_setup_tests {
         let setup = app.hermes.hermes_setup.as_ref().unwrap();
         assert_eq!(setup.note(), Some(&SetupNote::NoConfigPath));
         assert!(!setup.is_busy());
-        assert!(app.pending_hermes_start.is_none());
+        assert!(app.hermes.pending_hermes_start.is_none());
     }
 
     #[test]
@@ -24421,7 +23862,7 @@ mod hermes_setup_tests {
         let config_dir = TempDir::new().unwrap();
         let mut app = app_at_the_question(&index_dir);
         press_start(&mut app, &config_dir);
-        assert!(app.pending_hermes_start.is_some());
+        assert!(app.hermes.pending_hermes_start.is_some());
         assert!(app.hermes_setup_is_busy());
         assert!(!app.hermes_focus_order().contains(&SetupFocus::Start));
     }
@@ -24443,7 +23884,7 @@ mod hermes_setup_tests {
                 error,
             )))),
         );
-        assert!(app.pending_hermes_start.is_none());
+        assert!(app.hermes.pending_hermes_start.is_none());
         let setup = app.hermes.hermes_setup.as_ref().unwrap();
         assert!(matches!(setup.note(), Some(SetupNote::SaveFailed(_))));
         assert!(!setup.is_busy());
@@ -24470,7 +23911,7 @@ mod hermes_setup_tests {
             );
             assert!(
                 matches!(
-                    app.filing.as_ref().unwrap().phase(),
+                    app.hermes.filing.as_ref().unwrap().phase(),
                     Phase::AskEncryption { encrypted: chosen, busy: true, .. } if *chosen == encrypted
                 ),
                 "encrypted = {encrypted}"
@@ -24490,22 +23931,22 @@ mod hermes_setup_tests {
         let mut app = App::with_hermes_setup(&chosen_folders(), offer(false));
         let setup = app.hermes.hermes_setup.as_mut().unwrap();
         setup.choose_encrypted(false);
-        app.pending_hermes_start = Some(setup.start().unwrap().plan);
-        app.filing = Some(FilingModule::in_phase(Phase::Starting));
+        app.hermes.pending_hermes_start = Some(setup.start().unwrap().plan);
+        app.hermes.filing = Some(FilingModule::in_phase(Phase::Starting));
         drop(app.advance_hermes_plan());
         assert!(matches!(
-            app.filing.as_ref().unwrap().phase(),
+            app.hermes.filing.as_ref().unwrap().phase(),
             Phase::Starting
         ));
 
         let index_dir = TempDir::new().unwrap();
-        app.filing = Some(FilingModule::in_phase_with_locations_at(
+        app.hermes.filing = Some(FilingModule::in_phase_with_locations_at(
             asks_encryption(),
             index_dir.path().join("index.db"),
         ));
         drop(app.advance_hermes_plan());
         assert!(matches!(
-            app.filing.as_ref().unwrap().phase(),
+            app.hermes.filing.as_ref().unwrap().phase(),
             Phase::AskEncryption {
                 encrypted: false,
                 busy: true,
@@ -24518,8 +23959,8 @@ mod hermes_setup_tests {
     fn the_card_gives_way_to_the_recovery_key() {
         let mut app = App::with_hermes_setup(&chosen_folders(), offer(false));
         let setup = app.hermes.hermes_setup.as_mut().unwrap();
-        app.pending_hermes_start = Some(setup.start().unwrap().plan);
-        app.filing = Some(FilingModule::in_phase(Phase::ShowRecoveryKey {
+        app.hermes.pending_hermes_start = Some(setup.start().unwrap().plan);
+        app.hermes.filing = Some(FilingModule::in_phase(Phase::ShowRecoveryKey {
             key: FilingModule::fixed_recovery_key(),
             group: 3,
             typed: crate::filing::SecretText::default(),
@@ -24528,7 +23969,7 @@ mod hermes_setup_tests {
         drop(app.advance_hermes_plan());
         assert!(app.hermes.hermes_setup.is_none());
         assert!(
-            app.pending_hermes_start.is_some(),
+            app.hermes.pending_hermes_start.is_some(),
             "the plan waits for Ready"
         );
     }
@@ -24540,8 +23981,8 @@ mod hermes_setup_tests {
         if load_model {
             setup.toggle_load_model();
         }
-        app.pending_hermes_start = Some(setup.start().unwrap().plan);
-        app.filing = Some(FilingModule::in_phase(Phase::Ready));
+        app.hermes.pending_hermes_start = Some(setup.start().unwrap().plan);
+        app.hermes.filing = Some(FilingModule::in_phase(Phase::Ready));
         app
     }
 
@@ -24553,8 +23994,8 @@ mod hermes_setup_tests {
         let mut app = app_ready_after_start(true, &models_dir);
         drop(app.advance_hermes_plan());
         assert!(app.hermes.hermes_setup.is_none());
-        assert!(app.pending_hermes_start.is_none());
-        assert!(app.ai_model_asked);
+        assert!(app.hermes.pending_hermes_start.is_none());
+        assert!(app.hermes.ai_model_asked);
         assert!(app.settings.ai_model.as_ref().unwrap().is_downloading());
     }
 
@@ -24565,7 +24006,7 @@ mod hermes_setup_tests {
         drop(app.advance_hermes_plan());
         assert!(app.hermes.hermes_setup.is_none());
         assert!(app.settings.ai_model.is_none());
-        assert!(app.ai_model_asked, "the module must not ask again");
+        assert!(app.hermes.ai_model_asked, "the module must not ask again");
     }
 
     #[test]
@@ -24575,7 +24016,7 @@ mod hermes_setup_tests {
         drop(app.update(Message::HermesSetup(HermesSetupMessage::Later)));
         assert!(app.hermes.hermes_setup.is_none());
         assert!(matches!(
-            app.filing.as_ref().unwrap().phase(),
+            app.hermes.filing.as_ref().unwrap().phase(),
             Phase::Dismissed
         ));
     }
@@ -24637,7 +24078,7 @@ mod hermes_setup_tests {
     #[test]
     fn a_module_that_asks_for_the_encryption_opens_the_card() {
         let mut app = App::with_fixed_panels();
-        app.filing = Some(FilingModule::in_phase(asks_encryption()));
+        app.hermes.filing = Some(FilingModule::in_phase(asks_encryption()));
         drop(app.update(Message::Filing(FilingMessage::ChooseEncrypted(true))));
         assert!(app.hermes.hermes_setup.is_some());
     }
@@ -24653,8 +24094,8 @@ mod hermes_setup_tests {
         assert!(empty.hermes.hermes_setup.is_none());
 
         let mut configured = App::with_fixed_panels();
-        configured.filing_config = filing_with(chosen_folders());
-        configured.filing = Some(FilingModule::in_phase_with_locations(Phase::Ready));
+        configured.hermes.filing_config = filing_with(chosen_folders());
+        configured.hermes.filing = Some(FilingModule::in_phase_with_locations(Phase::Ready));
         drop(configured.update(Message::FilingSetup(FilingSetupMessage::Toggle)));
         assert!(
             configured.hermes.filing_setup.is_some() && configured.hermes.hermes_setup.is_none()
@@ -24784,7 +24225,7 @@ mod hermes_overview_tests {
         let written = std::fs::read_to_string(config_dir.path().join("config.toml")).unwrap();
         assert!(written.contains("{year}/{sender}/"), "{written}");
         assert_eq!(
-            app.filing_config.default_pattern.as_deref(),
+            app.hermes.filing_config.default_pattern.as_deref(),
             Some("{year}/{sender}/")
         );
 
@@ -24793,7 +24234,7 @@ mod hermes_overview_tests {
         let unchanged = std::fs::read_to_string(config_dir.path().join("config.toml")).unwrap();
         assert!(unchanged.contains("{sender}/"), "{unchanged}");
         assert_eq!(
-            app.filing_config.default_pattern.as_deref(),
+            app.hermes.filing_config.default_pattern.as_deref(),
             Some("{sender}/")
         );
         settle(&mut app, edit_target(TargetEdit::Remove(0))).await;
@@ -24816,7 +24257,7 @@ mod hermes_overview_tests {
 
         let written = std::fs::read_to_string(config_dir.path().join("config.toml")).unwrap();
         assert!(!written.contains("default_pattern"), "{written}");
-        assert_eq!(app.filing_config.default_pattern, None);
+        assert_eq!(app.hermes.filing_config.default_pattern, None);
     }
 
     #[tokio::test]
@@ -24907,7 +24348,7 @@ mod hermes_overview_tests {
     #[tokio::test]
     async fn opening_the_overview_asks_for_the_counts_and_the_answer_arrives() {
         let mut app = App::with_fixed_filing(Phase::Ready);
-        assert!(app.filing_status.hermes_counts().is_none());
+        assert!(app.hermes.filing_status.hermes_counts().is_none());
 
         let mut stream = task::into_stream(app.open_hermes_overview()).expect("a task");
         let mut reported = Vec::new();
@@ -25171,7 +24612,7 @@ mod hermes_overview_tests {
             drop(module.update(opening.run()));
         }
         let mut app = App::with_hermes_overview(None, Filing::default(), None);
-        app.filing = Some(module);
+        app.hermes.filing = Some(module);
         app.filing_index_path = Some(db.to_path_buf());
         app.filing_key_store = Some(store);
         app
@@ -25219,7 +24660,7 @@ mod hermes_overview_tests {
         )
         .await;
 
-        let module = app.filing.as_ref().unwrap();
+        let module = app.hermes.filing.as_ref().unwrap();
         assert!(matches!(module.phase(), Phase::ShowRecoveryKey { .. }));
         assert!(!ncrs_index::Index::file_is_plain(&db).unwrap());
         assert!(store.snapshot().is_some());
@@ -25243,7 +24684,7 @@ mod hermes_overview_tests {
         )
         .await;
 
-        let module = app.filing.as_ref().unwrap();
+        let module = app.hermes.filing.as_ref().unwrap();
         assert_eq!(module.phase(), &Phase::Ready);
         assert!(module.protection_note().is_some());
         assert!(ncrs_index::Index::file_is_plain(&db).unwrap());
@@ -25324,7 +24765,7 @@ mod hermes_overview_tests {
         encrypted_index_with_sidecars(&db, &store);
         let mut app =
             overview_over_index(&db, Arc::clone(&store) as Arc<dyn KeyStore + Send + Sync>);
-        app.filing_config = configured();
+        app.hermes.filing_config = configured();
 
         settle(
             &mut app,
@@ -25342,7 +24783,7 @@ mod hermes_overview_tests {
         assert!(!db.with_file_name("index.db.encrypting").exists());
         assert!(db.with_file_name("index.db.bak").exists());
         assert_eq!(store.snapshot(), None);
-        assert!(app.filing.as_ref().unwrap().asks_encryption());
+        assert!(app.hermes.filing.as_ref().unwrap().asks_encryption());
         let setup = app
             .hermes
             .hermes_setup
@@ -25367,7 +24808,7 @@ mod hermes_overview_tests {
         .await;
 
         assert!(db.exists());
-        assert_eq!(app.filing.as_ref().unwrap().phase(), &Phase::Ready);
+        assert_eq!(app.hermes.filing.as_ref().unwrap().phase(), &Phase::Ready);
     }
 
     #[tokio::test]
@@ -25389,7 +24830,7 @@ mod hermes_overview_tests {
         )
         .await;
         assert!(matches!(
-            app.filing.as_ref().unwrap().phase(),
+            app.hermes.filing.as_ref().unwrap().phase(),
             Phase::AskRecoveryKey { .. }
         ));
         assert!(app.hermes.overview.is_none());
@@ -26323,10 +25764,10 @@ mod replan_flow {
             },
         ];
         let mut app = App::with_fixed_panels();
-        app.filing = Some(FilingModule::ready_over_index_with_locations(
+        app.hermes.filing = Some(FilingModule::ready_over_index_with_locations(
             index, &locations,
         ));
-        app.filing_config = Filing {
+        app.hermes.filing_config = Filing {
             locations,
             ..Filing::default()
         };
@@ -26355,6 +25796,7 @@ mod replan_flow {
 
     fn review_open(app: &App) -> bool {
         let access = app
+            .hermes
             .filing
             .as_ref()
             .and_then(FilingModule::review_access)
@@ -26488,7 +25930,11 @@ mod replan_flow {
         assert!(fixture.document.exists());
 
         fixture.app.jobs.finish();
-        drop(fixture.app.run_refile());
+        drop(
+            fixture
+                .app
+                .run_hermes_flow(Vec::new(), ncrs_hermes_ui::run_refile),
+        );
 
         let running = fixture.app.jobs.running().unwrap();
         assert_eq!(running.kind, jobs::JobKind::File);

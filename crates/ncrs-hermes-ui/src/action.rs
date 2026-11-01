@@ -46,6 +46,15 @@ impl std::fmt::Debug for StartProgressJob {
 #[derive(Debug)]
 pub enum Action {
     CloseContextMenu,
+    /// Opens the overview, if nothing covers it.
+    OpenHermesOverview,
+    /// Opens the status page, if nothing covers it.
+    OpenFilingStatus,
+    /// Shows the file in the active panel.
+    RevealFile(PathBuf),
+    /// The module of the previous settings is gone: the one of this
+    /// generation starts now.
+    FilingRestarted(u64),
     /// Clears the error and the notice in the status bar.
     ClearStatus,
     ShowNotice(String),

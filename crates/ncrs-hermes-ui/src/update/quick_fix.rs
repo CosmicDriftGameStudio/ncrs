@@ -65,7 +65,7 @@ fn open(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Task<M
         return Task::none();
     }
     let paths = ctx.inquiry_paths.clone();
-    let found_access = ctx.filing.and_then(FilingModule::review_access);
+    let found_access = hermes.filing.as_ref().and_then(FilingModule::review_access);
     let Some(access) = found_access.filter(|_| !paths.is_empty()) else {
         let text = ctx.lang.text(Msg::StatusQuickFixNone).to_owned();
         actions.push(Action::ShowNotice(text));
@@ -126,7 +126,7 @@ fn run_entry(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> T
             Task::none()
         }
         QuickFixAction::Accept(group) | QuickFixAction::FileGroup(group) => {
-            file_group(hermes, group, ctx, actions)
+            file_group(hermes, group, actions)
         }
         QuickFixAction::Back => {
             menu.back();
@@ -141,7 +141,7 @@ fn run_entry(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> T
         QuickFixAction::Exclude => {
             let paths = menu.paths();
             hermes.quick_fix = None;
-            exclude_from_hermes(paths, ctx, actions)
+            exclude_from_hermes(hermes, paths, actions)
         }
     }
 }
@@ -149,11 +149,11 @@ fn run_entry(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> T
 /// Tells the index that Hermes leaves `paths` alone from now on; the column
 /// shows them as excluded once the index has answered.
 pub fn exclude_from_hermes(
+    hermes: &Hermes,
     paths: Vec<PathBuf>,
-    ctx: &Ctx<'_>,
     actions: &mut Vec<Action>,
 ) -> Task<Message> {
-    let Some(access) = ctx.filing.and_then(FilingModule::review_access) else {
+    let Some(access) = hermes.filing.as_ref().and_then(FilingModule::review_access) else {
         actions.push(Action::ShowError(INDEX_NOT_OPEN.to_owned()));
         return Task::none();
     };
@@ -171,17 +171,12 @@ pub fn exclude_from_hermes(
 
 /// Files the documents of a group one after the other, each through the
 /// review's own confirm: never a plain move.
-fn file_group(
-    hermes: &mut Hermes,
-    group: usize,
-    ctx: &Ctx<'_>,
-    actions: &mut Vec<Action>,
-) -> Task<Message> {
+fn file_group(hermes: &mut Hermes, group: usize, actions: &mut Vec<Action>) -> Task<Message> {
     let Some(menu) = hermes.quick_fix.take() else {
         return Task::none();
     };
     let items = menu.group_items(group);
-    let Some(access) = ctx.filing.and_then(FilingModule::review_access) else {
+    let Some(access) = hermes.filing.as_ref().and_then(FilingModule::review_access) else {
         actions.push(Action::ShowError(INDEX_NOT_OPEN.to_owned()));
         return Task::none();
     };
@@ -234,7 +229,11 @@ fn open_rule_form_from_menu(
     let Some(item) = menu.item_to_fix() else {
         return Task::none();
     };
-    let prefill = rule_prefill_of(item, ctx.default_pattern, ctx.kinds);
+    let prefill = rule_prefill_of(
+        item,
+        hermes.filing_config.default_pattern.as_deref(),
+        ctx.kinds,
+    );
     open_rule_form(
         hermes,
         RuleForm::from_document(prefill, ctx.kinds),

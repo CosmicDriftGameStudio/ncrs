@@ -38,11 +38,14 @@ pub use message::{
 };
 pub use state::Hermes;
 pub use update::{
-    documents_filed, documents_refiled, exclude_from_hermes, go_to_hermes_page, leave_overview,
-    open_overview, open_saved_queries, open_tags, reorganisation_executed, reorganisation_undone,
-    reprocess_folder, request_review_preview, run_filing, run_filing_work, run_filing_work_after,
-    run_refile, run_reorganisation, undo_reorganisation, update_filing_setup,
-    update_hermes_overview, update_hermes_setup, update_quick_fix, update_reorganisation,
-    update_review_list, update_rule_suggestions, update_rules, update_saved_queries, update_tags,
-    Outcome,
+    documents_filed, documents_refiled, exclude_from_hermes, go_to_hermes_page, hermes_included,
+    leave_overview, open_filing_status_page, open_overview, open_saved_queries, open_tags,
+    process_again, read_paths_again, refresh_hermes_column, reorganisation_executed,
+    reorganisation_undone, reprocess_folder, request_hermes_column, request_hermes_counts,
+    request_index_figures, request_review_preview, role_save_failed, run_filing, run_filing_work,
+    run_filing_work_after, run_refile, run_reorganisation, set_folder_role,
+    toggle_hermes_exclusion, undo_reorganisation, update_filing_setup, update_filing_status,
+    update_hermes_column, update_hermes_overview, update_hermes_setup, update_quick_fix,
+    update_reorganisation, update_review_list, update_rule_suggestions, update_rules,
+    update_saved_queries, update_tags, Outcome,
 };

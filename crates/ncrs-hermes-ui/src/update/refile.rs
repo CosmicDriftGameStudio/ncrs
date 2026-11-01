@@ -21,8 +21,9 @@ pub fn reprocess_folder(
     ctx: &Ctx<'_>,
     actions: &mut Vec<Action>,
 ) -> Task<Message> {
-    let inbox_roots: Vec<PathBuf> = ctx
-        .filing_locations
+    let inbox_roots: Vec<PathBuf> = hermes
+        .filing_config
+        .locations
         .iter()
         .filter(|location| location.mode == LocationMode::Inbox)
         .map(|location| location.path.clone())
@@ -66,7 +67,7 @@ pub fn run_refile(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>)
     let Some((folder, items)) = hermes.pending_refile.take() else {
         return;
     };
-    let Some(access) = ctx.filing.and_then(FilingModule::replan_access) else {
+    let Some(access) = hermes.filing.as_ref().and_then(FilingModule::replan_access) else {
         actions.push(Action::ShowError(INDEX_NOT_OPEN.to_owned()));
         return;
     };
@@ -98,7 +99,7 @@ pub fn documents_refiled(
 ) -> Outcome {
     let mut actions = vec![Action::FinishJob, Action::ClearJobProgress];
     let reload = if hermes.review_list.is_some() {
-        review_list::run_review_load(hermes, ctx)
+        review_list::run_review_load(hermes)
     } else {
         Task::none()
     };

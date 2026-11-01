@@ -30,7 +30,7 @@ pub fn update(
                 return Task::none();
             }
             view.begin_analysis();
-            run_suggestion_work(hermes, ctx, SuggestionAccess::analyse)
+            run_suggestion_work(hermes, SuggestionAccess::analyse)
         }
         RuleSuggestionsMessage::Loaded { generation, result } => {
             if generation != hermes.rule_suggestions_generation {
@@ -43,25 +43,25 @@ pub fn update(
                 Ok(rows) => view.loaded(rows),
                 Err(detail) => view.failed(detail),
             }
-            look_up_suggestion_matches(hermes, ctx)
+            look_up_suggestion_matches(hermes)
         }
         RuleSuggestionsMessage::Move(delta) => {
             if let Some(view) = hermes.rule_suggestions.as_mut() {
                 view.move_cursor(delta);
             }
-            look_up_suggestion_matches(hermes, ctx)
+            look_up_suggestion_matches(hermes)
         }
         RuleSuggestionsMessage::Scrolled(delta) => {
             if let Some(view) = hermes.rule_suggestions.as_mut() {
                 view.scroll(delta);
             }
-            look_up_suggestion_matches(hermes, ctx)
+            look_up_suggestion_matches(hermes)
         }
         RuleSuggestionsMessage::Select(index) => {
             if let Some(view) = hermes.rule_suggestions.as_mut() {
                 view.select(index);
             }
-            look_up_suggestion_matches(hermes, ctx)
+            look_up_suggestion_matches(hermes)
         }
         RuleSuggestionsMessage::Edit => {
             let Some(view) = hermes.rule_suggestions.as_ref() else {
@@ -86,7 +86,7 @@ pub fn update(
             else {
                 return Task::none();
             };
-            run_suggestion_work(hermes, ctx, move |access| access.confirm(id, &spec))
+            run_suggestion_work(hermes, move |access| access.confirm(id, &spec))
         }
         RuleSuggestionsMessage::Discard => {
             let Some(id) = hermes
@@ -96,7 +96,7 @@ pub fn update(
             else {
                 return Task::none();
             };
-            run_suggestion_work(hermes, ctx, move |access| access.discard(id))
+            run_suggestion_work(hermes, move |access| access.discard(id))
         }
         RuleSuggestionsMessage::MatchesFound { id, result } => {
             if let (Some(view), Ok(paths)) = (hermes.rule_suggestions.as_mut(), result) {
@@ -114,7 +114,7 @@ pub fn open(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Ta
     actions.push(Action::CloseContextMenu);
     hermes.rule_suggestions_generation = hermes.rule_suggestions_generation.wrapping_add(1);
     hermes.rule_suggestions = Some(RuleSuggestions::new());
-    run_suggestion_work(hermes, ctx, SuggestionAccess::analyse)
+    run_suggestion_work(hermes, SuggestionAccess::analyse)
 }
 
 fn close(hermes: &mut Hermes) -> Task<Message> {
@@ -128,11 +128,14 @@ fn close(hermes: &mut Hermes) -> Task<Message> {
 /// which may hold it while it hashes a large file.
 fn run_suggestion_work(
     hermes: &mut Hermes,
-    ctx: &Ctx<'_>,
     work: impl FnOnce(&SuggestionAccess) -> Result<Vec<SuggestedRule>, String> + Send + 'static,
 ) -> Task<Message> {
     let generation = hermes.rule_suggestions_generation;
-    let Some(access) = ctx.filing.and_then(FilingModule::suggestion_access) else {
+    let Some(access) = hermes
+        .filing
+        .as_ref()
+        .and_then(FilingModule::suggestion_access)
+    else {
         if let Some(view) = hermes.rule_suggestions.as_mut() {
             view.failed(INDEX_NOT_OPEN.to_owned());
         }
@@ -148,7 +151,7 @@ fn run_suggestion_work(
 }
 
 /// Looks up the documents of the selected suggestion, once per selection.
-fn look_up_suggestion_matches(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Task<Message> {
+fn look_up_suggestion_matches(hermes: &mut Hermes) -> Task<Message> {
     let Some((id, condition)) = hermes
         .rule_suggestions
         .as_mut()
@@ -156,7 +159,11 @@ fn look_up_suggestion_matches(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Task<Messag
     else {
         return Task::none();
     };
-    let Some(access) = ctx.filing.and_then(FilingModule::suggestion_access) else {
+    let Some(access) = hermes
+        .filing
+        .as_ref()
+        .and_then(FilingModule::suggestion_access)
+    else {
         return Task::none();
     };
     Task::perform(

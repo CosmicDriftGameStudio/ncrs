@@ -54,6 +54,7 @@ pub enum Message {
     /// `None`: there was no carried out reorganisation left to undo.
     ReorganisationUndone(Result<Option<UndoReport>, String>),
     HermesColumn(HermesColumnMessage),
+    HermesFile(HermesFileMessage),
     /// The tags page offers to show the tags in the file list: the settings
     /// switch of the same name.
     ToggleFileListTags,
