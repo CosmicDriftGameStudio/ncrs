@@ -562,6 +562,7 @@ pub mod tests {
             path: PathBuf::from(format!("archive/{name}")),
             fields: DocumentFields::default(),
             missing,
+            stamp: None,
         }
     }
 

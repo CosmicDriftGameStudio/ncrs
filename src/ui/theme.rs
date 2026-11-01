@@ -679,29 +679,6 @@ pub fn tag_button(
     }
 }
 
-/// The fold chevron of a result group: it follows the row's text colour, so it
-/// stays readable on the cursor row's fill.
-pub fn chevron_button(
-    palette: &Palette,
-    highlighted: bool,
-    tagged: bool,
-    panel_active: bool,
-) -> impl Fn(&Theme, button::Status) -> button::Style {
-    let colors = *palette;
-    move |_theme, _status| button::Style {
-        background: None,
-        text_color: if highlighted {
-            colors.cursor_text
-        } else if tagged {
-            tagged_text_color(&colors, panel_active)
-        } else {
-            colors.dim_text
-        },
-        border: Border::default(),
-        ..button::Style::default()
-    }
-}
-
 /// The "for all files" checkbox in the conflict dialog.
 pub fn dialog_checkbox(palette: &Palette) -> impl Fn(&Theme, checkbox::Status) -> checkbox::Style {
     let colors = *palette;
@@ -902,25 +879,6 @@ pub fn search_row(
             filled(tint, tagged_text_color(&colors, panel_active))
         } else {
             filled_text_only(colors.text)
-        }
-    }
-}
-
-/// A hit of the search: the cursor is a raised surface (the row draws the
-/// green bar), because a full green fill hides the chips on it.
-pub fn search_hit_row(
-    palette: &Palette,
-    cursor: bool,
-    tagged: bool,
-    panel_active: bool,
-) -> impl Fn(&Theme) -> container::Style {
-    let colors = *palette;
-    let plain = search_row(palette, false, tagged, panel_active);
-    move |theme| {
-        if cursor {
-            filled(colors.title, colors.text)
-        } else {
-            plain(theme)
         }
     }
 }

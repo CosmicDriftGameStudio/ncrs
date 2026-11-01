@@ -698,15 +698,13 @@ pub enum SearchMessage {
     Page(isize),
     First,
     Last,
-    /// Right (`true`) or Left (`false`) on the cursor's file.
-    Expand(bool),
-    /// Enter: open the file in the other panel, or the line in the editor.
+    /// Enter: open the file in the other panel.
     Activate,
     RowClicked(usize),
     /// Double click on a row.
     RowActivated(usize),
-    /// The chevron of the file at this index in the results.
-    ToggleGroup(usize),
+    /// The star of the file at this index in the results.
+    ToggleTagAt(usize),
     Scrolled(iced::mouse::ScrollDelta),
     /// The index answered the question `generation` of the filters. Dropped
     /// when the words changed meanwhile.

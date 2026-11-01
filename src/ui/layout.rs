@@ -18,6 +18,8 @@ pub const COLUMN_HEADER_HEIGHT: f32 = size::COLUMN_HEADER;
 pub const ROW_HEIGHT: f32 = 22.0;
 /// A hit list row has the name and, below it, the folder.
 pub const HIT_LIST_ROW_HEIGHT: f32 = 2.0 * ROW_HEIGHT;
+/// A search result of a content search or the index has a third line.
+pub const SEARCH_CONTENT_ROW_HEIGHT: f32 = 3.0 * ROW_HEIGHT;
 
 pub const MENU_WIDTH: f32 = 300.0;
 /// The Hermes submenu has labels with a note and a key.
@@ -84,11 +86,12 @@ pub fn search_header_height(filtered: bool) -> f32 {
     }
 }
 
-/// Number of result rows that fit into the search view: the panel's rows,
-/// less the difference between the search header and the column header.
-pub fn search_visible_rows(window: Size, filtered: bool) -> usize {
+/// Number of result rows of `row_height` that fit into the search view: the
+/// panel's room, less the difference between the search header and the column
+/// header.
+pub fn search_visible_rows(window: Size, filtered: bool, row_height: f32) -> usize {
     let header = search_header_height(filtered);
-    let rows = ((window.height - CHROME + COLUMN_HEADER_HEIGHT - header) / ROW_HEIGHT).floor();
+    let rows = ((window.height - CHROME - header) / row_height).floor();
     (rows as isize).max(1) as usize
 }
 
@@ -156,13 +159,24 @@ mod tests {
     }
 
     #[test]
-    fn the_search_view_gives_its_extra_header_the_rows_it_needs() {
+    fn the_search_view_gives_its_header_and_its_row_height_the_rows_they_need() {
         let window = Size::new(1200.0, 760.0);
-        // (634 + 22 - 156) / 22 = 22.7
-        assert_eq!(search_visible_rows(window, false), 22);
-        // (634 + 22 - 220) / 22 = 19.8
-        assert_eq!(search_visible_rows(window, true), 19);
-        assert_eq!(search_visible_rows(Size::new(1200.0, 10.0), false), 1);
+        // (634 - 156) / 44 = 10.9 and (634 - 156) / 66 = 7.2
+        assert_eq!(search_visible_rows(window, false, HIT_LIST_ROW_HEIGHT), 10);
+        assert_eq!(
+            search_visible_rows(window, false, SEARCH_CONTENT_ROW_HEIGHT),
+            7
+        );
+        // (634 - 220) / 44 = 9.4 and (634 - 220) / 66 = 6.3
+        assert_eq!(search_visible_rows(window, true, HIT_LIST_ROW_HEIGHT), 9);
+        assert_eq!(
+            search_visible_rows(window, true, SEARCH_CONTENT_ROW_HEIGHT),
+            6
+        );
+        assert_eq!(
+            search_visible_rows(Size::new(1200.0, 10.0), false, HIT_LIST_ROW_HEIGHT),
+            1
+        );
     }
 
     /// The window height the app is opened with, so the number in the startup

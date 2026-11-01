@@ -273,11 +273,16 @@ panel back; the next search starts with the same fields.
 - Hidden files are searched too; `.gitignore` is not read. Binary files and
   cloud files that are not downloaded are skipped, and the search stops after
   20,000 matching lines.
-- `↑`/`↓`, `PgUp`/`PgDn` and `Home`/`End` move through the results, `←`/`→`
-  fold and unfold a file. Typing goes to the search text, except `Space` and
-  `*`, which tag (see below).
-- `Enter` on a file shows it in the other panel. `Enter` on a line, or `F4`,
-  opens the editor at that line, see [Configuration](#configuration).
+- The results are a list of files like the panel's, with **Name**, **Size**
+  and **Modified**, and the folder below the search directory under each name.
+  A search for text adds the first matching line under it, the match underlined,
+  and how many more lines match (`+3`); the filter search puts the tags, the
+  date and the amount there.
+- `↑`/`↓`, `PgUp`/`PgDn` and `Home`/`End` move through the files. Typing goes to
+  the search text, except `Space` and `*`, which tag (see below).
+- `Enter` on a file shows it in the other panel. `F3` and `F4` view and edit it;
+  for a text search the editor opens at the first match, see
+  [Configuration](#configuration).
 - `Insert` or `Space` tags the file under the cursor and moves to the next file,
   `Shift`+`↑`/`↓` tag and move either way, `*` tags all files found and
   `Ctrl`+`*` clears the tags. `F5`, `F6` and `F8` copy, move and delete the

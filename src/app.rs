@@ -2521,8 +2521,6 @@ fn search_key(prompt: &PromptKeyState, key: &Key, key_modifiers: Modifiers) -> O
             Key::Named(Named::PageDown) => return search(SearchMessage::Page(1)),
             Key::Named(Named::Home) => return search(SearchMessage::First),
             Key::Named(Named::End) => return search(SearchMessage::Last),
-            Key::Named(Named::ArrowLeft) => return search(SearchMessage::Expand(false)),
-            Key::Named(Named::ArrowRight) => return search(SearchMessage::Expand(true)),
             Key::Named(Named::Enter) => return search(SearchMessage::Activate),
             _ => {}
         }
@@ -3559,7 +3557,11 @@ impl App {
             search: None,
             search_open: false,
             search_side: PanelSide::Left,
-            search_rows: layout::search_visible_rows(layout::INITIAL_WINDOW_SIZE, false),
+            search_rows: layout::search_visible_rows(
+                layout::INITIAL_WINDOW_SIZE,
+                false,
+                layout::HIT_LIST_ROW_HEIGHT,
+            ),
             search_generation: 0,
             search_handle: None,
             quick_open: None,
@@ -5802,7 +5804,7 @@ impl App {
     }
 
     /// What the status bar shows instead of the panel's entry while the search
-    /// has the keys: the cursor's file below the root, with `:line` on a line.
+    /// has the keys: the cursor's file below the root.
     /// Empty without a cursor, so the panel's entry does not pose as the
     /// search's.
     fn search_status(&self) -> Option<String> {
@@ -5810,14 +5812,11 @@ impl App {
             return None;
         }
         let view = self.search.as_ref()?;
-        let Some((path, line)) = view.cursor_target() else {
+        let Some((path, _)) = view.cursor_target() else {
             return Some(String::new());
         };
         let relative = path.strip_prefix(&view.root).unwrap_or(&path);
-        Some(match line {
-            Some(number) => format!("{}:{number}", relative.display()),
-            None => relative.display().to_string(),
-        })
+        Some(relative.display().to_string())
     }
 
     /// The state the key routing needs, cheap to clone.
@@ -10080,10 +10079,20 @@ impl App {
     }
 
     fn resize_search(&mut self, window: Size) {
-        self.search_rows = layout::search_visible_rows(window, self.search_filtered());
+        self.search_rows = self.search_rows_for(window);
         if let Some(view) = self.search.as_mut() {
             view.ensure_visible(self.search_rows);
         }
+    }
+
+    /// The result rows that fit in `window` at the height the search's rows
+    /// have now.
+    fn search_rows_for(&self, window: Size) -> usize {
+        let row_height = self
+            .search
+            .as_ref()
+            .map_or(layout::HIT_LIST_ROW_HEIGHT, SearchView::row_height);
+        layout::search_visible_rows(window, self.search_filtered(), row_height)
     }
 
     /// Whether the search shows its filters.
@@ -10151,7 +10160,7 @@ impl App {
         } else {
             None
         };
-        self.search_rows = layout::search_visible_rows(self.window_size, self.search_filtered());
+        self.refresh_search_rows();
         let search = self.restart_search();
         Task::batch([self.focus_search_field(), search])
     }
@@ -10231,6 +10240,7 @@ impl App {
                 task
             }
         };
+        self.refresh_search_rows();
         Task::batch([asked, walk])
     }
 
@@ -10300,6 +10310,7 @@ impl App {
             view.generation = generation;
             view.mirror_index(rows);
         }
+        self.refresh_search_rows();
         self.request_snippets()
     }
 
@@ -10634,11 +10645,11 @@ impl App {
                     Err(detail) => filters.failed(detail),
                 }
                 if view.is_filtered() {
-                    self.refresh_search_rows();
                     let shown_rows = self.search_rows;
                     if let Some(kept) = self.search.as_mut() {
                         kept.mirror_index(shown_rows);
                     }
+                    self.refresh_search_rows();
                     return self.request_snippets();
                 }
                 self.refresh_search_rows();
@@ -10731,10 +10742,6 @@ impl App {
                 view.last(rows);
                 Task::none()
             }
-            SearchMessage::Expand(expanded) => {
-                view.set_expanded(expanded, rows);
-                Task::none()
-            }
             SearchMessage::Activate => self.activate_search_cursor(),
             SearchMessage::RowClicked(index) => {
                 view.select_row(index, rows);
@@ -10744,9 +10751,10 @@ impl App {
                 view.select_row(index, rows);
                 self.activate_search_cursor()
             }
-            SearchMessage::ToggleGroup(file) => {
-                view.toggle_group(file, rows);
-                Task::none()
+            SearchMessage::ToggleTagAt(index) => {
+                view.select_row(index, rows);
+                view.tag_and_move(0, rows);
+                release_focus()
             }
             SearchMessage::Scrolled(delta) => {
                 view.scroll(delta, rows);
@@ -10755,29 +10763,20 @@ impl App {
         }
     }
 
-    /// Enter on a result: a file is shown in the other panel, a line is opened
-    /// in the editor at that line.
+    /// Enter on a result: the file is shown in the other panel.
     fn activate_search_cursor(&mut self) -> Task<Message> {
-        let Some(target) = self.open_search_view().and_then(SearchView::cursor_target) else {
+        let Some((path, _)) = self.open_search_view().and_then(SearchView::cursor_target) else {
             return Task::none();
         };
-        match target {
-            (path, Some(line)) => {
-                self.launch_external(fs::OpenKind::Edit, path, Some(line), CopyOf::Nothing);
-                Task::none()
-            }
-            (path, None) => {
-                let (Some(directory), Some(file)) = (path.parent(), path.file_name()) else {
-                    return Task::none();
-                };
-                let name = file.to_string_lossy().into_owned();
-                self.load(
-                    self.search_side.other(),
-                    directory.to_path_buf(),
-                    Some(name),
-                )
-            }
-        }
+        let (Some(directory), Some(file)) = (path.parent(), path.file_name()) else {
+            return Task::none();
+        };
+        let name = file.to_string_lossy().into_owned();
+        self.load(
+            self.search_side.other(),
+            directory.to_path_buf(),
+            Some(name),
+        )
     }
 
     /// Cmd/Ctrl+P: lists the files below the active panel's directory. Pressed
@@ -17158,7 +17157,11 @@ impl App {
             search: None,
             search_open: false,
             search_side: PanelSide::Left,
-            search_rows: layout::search_visible_rows(layout::INITIAL_WINDOW_SIZE, false),
+            search_rows: layout::search_visible_rows(
+                layout::INITIAL_WINDOW_SIZE,
+                false,
+                layout::HIT_LIST_ROW_HEIGHT,
+            ),
             search_generation: 0,
             search_handle: None,
             quick_open: None,
@@ -17749,7 +17752,12 @@ impl App {
             view.query = query.to_string();
             view.begin(1);
             for (path, lines) in files {
-                view.apply_event(SearchEvent::File { path, lines });
+                view.apply_event(SearchEvent::File {
+                    path,
+                    lines,
+                    size: 0,
+                    modified: None,
+                });
             }
             view.apply_event(SearchEvent::Finished(totals));
             view.select_row(2, self.search_rows);
@@ -17958,7 +17966,7 @@ impl App {
         app.left_panel.path = PathBuf::from("/Users/alex/Documents");
         drop(app.update(Message::OpenSearch));
         let root = app.panel(PanelSide::Left).path.clone();
-        app.search_rows = layout::search_visible_rows(app.window_size, true);
+        app.refresh_search_rows();
         let rows = app.search_rows;
         if let Some(view) = app.search.as_mut() {
             view.query = query.to_owned();
@@ -18082,6 +18090,8 @@ impl App {
             .map(|file| SearchEvent::File {
                 path: quick_open.root().join(file),
                 lines: Vec::new(),
+                size: 0,
+                modified: None,
             })
             .collect();
         events.push(SearchEvent::Finished(SearchTotals {
@@ -22747,7 +22757,6 @@ mod configured_keys_tests {
 mod search_tests {
     use super::*;
     use crate::fs::search::{LineMatch, SearchEvent};
-    use crate::search_view::SearchRow;
 
     fn route(search_open: bool, key: Key, modifiers: Modifiers) -> Option<Message> {
         let state = PromptKeyState {
@@ -22776,6 +22785,8 @@ mod search_tests {
                     ranges: std::iter::once(0..4).collect(),
                 })
                 .collect(),
+            size: 0,
+            modified: None,
         }
     }
 
@@ -22840,14 +22851,6 @@ mod search_tests {
         assert_eq!(
             route(true, named(Named::End), none),
             search(SearchMessage::Last)
-        );
-        assert_eq!(
-            route(true, named(Named::ArrowRight), none),
-            search(SearchMessage::Expand(true))
-        );
-        assert_eq!(
-            route(true, named(Named::ArrowLeft), none),
-            search(SearchMessage::Expand(false))
         );
         assert_eq!(
             route(true, named(Named::Enter), none),
@@ -22964,6 +22967,32 @@ mod search_tests {
     }
 
     #[test]
+    fn the_visible_rows_follow_the_row_height_of_the_kind_of_search() {
+        let mut app = App::with_fixed_panels();
+        drop(app.update(Message::OpenSearch));
+        let rows_of =
+            |current: &App, height| layout::search_visible_rows(current.window_size, false, height);
+        assert_eq!(
+            app.search_rows_for_test(),
+            rows_of(&app, layout::HIT_LIST_ROW_HEIGHT),
+            "file names only: two lines"
+        );
+
+        drop(app.update(Message::Search(SearchMessage::QueryChanged(
+            "x".to_string(),
+        ))));
+        let generation = app.search_for_test().unwrap().generation;
+        drop(app.update(Message::Search(SearchMessage::Debounced(generation))));
+
+        assert!(app.search_for_test().unwrap().third_line);
+        assert_eq!(
+            app.search_rows_for_test(),
+            rows_of(&app, layout::SEARCH_CONTENT_ROW_HEIGHT),
+            "matching lines: three lines"
+        );
+    }
+
+    #[test]
     fn a_pause_that_a_later_keystroke_overtook_starts_nothing() {
         let mut app = App::with_fixed_panels();
         drop(app.update(Message::OpenSearch));
@@ -23013,9 +23042,10 @@ mod search_tests {
             "not every file found"
         );
 
-        // On a line of a file, the file is the source.
+        // Without tags the file under the cursor is the source.
+        let b = PathBuf::from("/home/test/links/b.txt");
         drop(app.update(search_message(SearchMessage::Move(1))));
-        assert_eq!(app.action_sources(), std::slice::from_ref(&a));
+        assert_eq!(app.action_sources(), [b]);
 
         // Tagged files win over the cursor, in display order.
         drop(app.update(search_message(SearchMessage::Last)));
@@ -23060,7 +23090,7 @@ mod search_tests {
         drop(app.update(search_message(SearchMessage::ToggleTag)));
         let view = app.search_for_test().unwrap();
         assert!(view.is_tagged(0));
-        assert_eq!(view.cursor, Some(SearchRow::File(1)));
+        assert_eq!(view.cursor, Some(1));
 
         drop(app.update(search_message(SearchMessage::TagAll)));
         assert_eq!(app.search_for_test().unwrap().tagged.len(), 2);
@@ -23375,21 +23405,16 @@ mod search_tests {
     }
 
     #[test]
-    fn enter_on_a_line_opens_the_editor_at_that_line() {
+    fn f4_edits_the_cursors_file_at_its_first_match() {
         let launcher = Arc::new(RecordingLauncher::default());
-        let mut app = app_with_results(&[("/home/test/links/a.txt", &[7])])
+        let mut app = app_with_results(&[("/home/test/links/a.txt", &[7, 9])])
             .with_launcher(Arc::clone(&launcher) as Arc<dyn fs::Launcher>);
         app.open_programs = config::OpenPrograms {
             edit: Some(config::ProgramLine::new("editor", &["+{line}"])),
             ..config::OpenPrograms::default()
         };
-        drop(app.update(Message::Search(SearchMessage::Move(1))));
-        assert_eq!(
-            app.search_for_test().unwrap().cursor,
-            Some(SearchRow::Line(0, 0))
-        );
 
-        drop(app.update(Message::Search(SearchMessage::Activate)));
+        drop(app.update(Message::OpenExternal(fs::OpenKind::Edit)));
 
         let calls = launcher.0.lock().unwrap().clone();
         assert_eq!(calls.len(), 1);
@@ -23399,15 +23424,34 @@ mod search_tests {
     }
 
     #[test]
-    fn a_click_selects_the_row_and_the_chevron_folds_the_file() {
-        let mut app = app_with_results(&[("/home/test/links/a.txt", &[1, 2])]);
-        drop(app.update(Message::Search(SearchMessage::RowClicked(2))));
-        assert_eq!(
-            app.search_for_test().unwrap().cursor,
-            Some(SearchRow::Line(0, 1))
-        );
-        drop(app.update(Message::Search(SearchMessage::ToggleGroup(0))));
-        assert_eq!(app.search_for_test().unwrap().rows(), [SearchRow::File(0)]);
+    fn enter_shows_the_file_in_the_other_panel_and_opens_no_editor() {
+        let launcher = Arc::new(RecordingLauncher::default());
+        let mut app = app_with_results(&[("/home/test/links/a.txt", &[7])])
+            .with_launcher(Arc::clone(&launcher) as Arc<dyn fs::Launcher>);
+        let other = app.search_side.other();
+        let before = app.panel(other).request_id;
+
+        drop(app.update(Message::Search(SearchMessage::Activate)));
+
+        assert!(launcher.0.lock().unwrap().is_empty());
+        assert_ne!(app.panel(other).request_id, before);
+        assert!(app.panel(other).loading);
+    }
+
+    #[test]
+    fn a_click_selects_the_file_and_the_star_tags_it() {
+        let mut app = app_with_results(&[
+            ("/home/test/links/a.txt", &[1, 2]),
+            ("/home/test/links/b.txt", &[3]),
+        ]);
+        drop(app.update(Message::Search(SearchMessage::RowClicked(1))));
+        assert_eq!(app.search_for_test().unwrap().cursor, Some(1));
+
+        drop(app.update(Message::Search(SearchMessage::ToggleTagAt(0))));
+
+        let view = app.search_for_test().unwrap();
+        assert_eq!(view.cursor, Some(0));
+        assert!(view.is_tagged(0) && !view.is_tagged(1));
     }
 }
 
@@ -23501,6 +23545,8 @@ mod quick_open_tests {
             events: vec![crate::fs::search::SearchEvent::File {
                 path: root.join("late.txt"),
                 lines: Vec::new(),
+                size: 0,
+                modified: None,
             }],
         })));
         assert_eq!(app.quick_open_for_test().unwrap().file_count(), 0);
@@ -31783,6 +31829,8 @@ mod hit_list_tests {
                     text: "x".to_owned(),
                     ranges: std::iter::once(0..1).collect(),
                 }],
+                size: 0,
+                modified: None,
             })
             .collect();
         drop(app.update(Message::Search(SearchMessage::Events {
@@ -32036,6 +32084,30 @@ mod hit_list_tests {
         let mut hits = searched(&["same.txt", "same.txt"]);
         let target = tempfile::tempdir().unwrap();
         let sources = hits.files.clone();
+        drop(hits.app.begin_transfer(
+            TransferKind::Copy,
+            sources,
+            target.path().to_path_buf(),
+            Policy::Ask,
+        ));
+        let transfer = hits.app.transfer.clone().unwrap();
+        assert_eq!(transfer.name_in_target(0), None);
+        assert_eq!(
+            transfer.name_in_target(1),
+            Some(OsString::from("same (2).txt"))
+        );
+    }
+
+    #[tokio::test]
+    async fn f5_on_two_tagged_results_with_equal_names_numbers_the_second() {
+        let mut hits = searched(&["same.txt", "same.txt"]);
+        let marking = |message| Message::Search(message);
+        drop(hits.app.update(marking(SearchMessage::ToggleTag)));
+        drop(hits.app.update(marking(SearchMessage::ToggleTag)));
+        let sources = hits.app.action_sources();
+        assert_eq!(sources, hits.files);
+
+        let target = tempfile::tempdir().unwrap();
         drop(hits.app.begin_transfer(
             TransferKind::Copy,
             sources,

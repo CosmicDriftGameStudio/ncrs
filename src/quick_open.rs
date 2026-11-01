@@ -609,6 +609,8 @@ mod tests {
             .map(|name| SearchEvent::File {
                 path: PathBuf::from(root).join(name),
                 lines: Vec::new(),
+                size: 0,
+                modified: None,
             })
             .collect()
     }

@@ -651,6 +651,7 @@ pub mod tests {
                 ..DocumentFields::default()
             },
             missing: false,
+            stamp: None,
         }
     }
 

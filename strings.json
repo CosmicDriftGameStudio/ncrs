@@ -7837,6 +7837,12 @@
       "de": "Treffer als Liste:"
     },
     {
+      "key": "search.more_matches",
+      "context": "Behind the first matching line of a hit in the Search view: how many more lines of the same file match. {count} is that number.",
+      "en": "+{count}",
+      "de": "+{count}"
+    },
+    {
       "key": "search.open_hits_left",
       "context": "Button under the summary line of the Search view: opens the hits as a list in the left panel. The arrow points to that panel.",
       "en": "← Open left",

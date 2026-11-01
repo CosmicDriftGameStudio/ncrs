@@ -405,28 +405,13 @@ pub fn view<'a, M: Clone + 'a>(
             // the rest of the row moves the cursor. iced gives a button one
             // message and no click position, so the star has to be its own
             // button rather than a region of the row button.
-            let mut row = Row::new();
-            row = row.push(
-                button(
-                    text(if mark.tagged { "*" } else { " " })
-                        .size(font_size::FILE)
-                        .font(Font::MONOSPACE)
-                        .color(if mark.tagged {
-                            theme::tag_star_color(
-                                palette,
-                                mark.cursor && props.is_active,
-                                props.is_active,
-                            )
-                        } else {
-                            palette.dim_text
-                        })
-                        .wrapping(iced::widget::text::Wrapping::None),
-                )
-                .width(Length::Fixed(TAG_COLUMN_WIDTH))
-                .height(state.row_height())
-                .style(theme::tag_button(palette, mark.tagged))
-                .on_press(on_row_click(index, RowClick::Tag)),
-            );
+            let row = Row::new().push(tag_star(
+                mark,
+                props.is_active,
+                palette,
+                state.row_height(),
+                on_row_click(index, RowClick::Tag),
+            ));
             // A button takes only the left button, so the right press reaches
             // the area around it.
             mouse_area(file_row(
@@ -437,6 +422,7 @@ pub fn view<'a, M: Clone + 'a>(
                 |click| on_row_click(index, click),
                 row,
                 RowExtras {
+                    third_line: None,
                     hermes: hermes.map(|column| HermesCell::of(entry, column, lang, palette)),
                     hit_scope: state
                         .hit_list
@@ -453,7 +439,13 @@ pub fn view<'a, M: Clone + 'a>(
     // has to ask for the wheel itself.
     mouse_area(
         column![
-            column_header(lang, palette, state.sort, hermes.is_some(), on_sort),
+            column_header(
+                lang,
+                palette,
+                Some(state.sort),
+                hermes.is_some(),
+                move |column| Some(on_sort(column)),
+            ),
             Column::with_children(rows).height(Length::Fill),
         ]
         .apply_frame(palette),
@@ -469,24 +461,28 @@ pub fn view<'a, M: Clone + 'a>(
 fn column_header<'a, M: Clone + 'a>(
     lang: Language,
     palette: &Palette,
-    sort: SortKey,
+    sort: Option<SortKey>,
     with_hermes: bool,
-    on_sort: impl Fn(SortColumn) -> M + 'a,
+    on_sort: impl Fn(SortColumn) -> Option<M> + 'a,
 ) -> Element<'a, M> {
     let title = |column: SortColumn, msg: Msg| {
-        let arrow = match (sort.column == column, sort.descending) {
-            (false, _) => "",
-            (true, false) => " ▲",
-            (true, true) => " ▼",
+        let arrow = match sort.filter(|key| key.column == column) {
+            None => "",
+            Some(key) if key.descending => " ▼",
+            Some(_) => " ▲",
         };
-        mouse_area(
+        let label = mouse_area(
             text(format!("{}{arrow}", lang.text(msg)))
                 .size(font_size::SMALL)
                 .color(palette.dim_text)
                 .wrapping(text::Wrapping::None),
-        )
-        .interaction(iced::mouse::Interaction::Pointer)
-        .on_press(on_sort(column))
+        );
+        match on_sort(column) {
+            Some(pressed) => label
+                .interaction(iced::mouse::Interaction::Pointer)
+                .on_press(pressed),
+            None => label,
+        }
     };
     column![
         container(
@@ -525,6 +521,77 @@ fn column_header<'a, M: Clone + 'a>(
     .into()
 }
 
+/// The column titles of a list that a click does not sort.
+pub fn plain_column_header<'a, M: Clone + 'a>(lang: Language, palette: &Palette) -> Element<'a, M> {
+    column_header(lang, palette, None, false, |_| None)
+}
+
+/// The star column of a row. Its own button so a click there tags the row
+/// instead of moving the cursor.
+pub fn tag_star<'a, M: Clone + 'a>(
+    mark: Selection,
+    panel_active: bool,
+    palette: &Palette,
+    row_height: f32,
+    pressed: M,
+) -> Element<'a, M> {
+    button(
+        text(if mark.tagged { "*" } else { " " })
+            .size(font_size::FILE)
+            .font(Font::MONOSPACE)
+            .color(if mark.tagged {
+                theme::tag_star_color(palette, mark.cursor && panel_active, panel_active)
+            } else {
+                palette.dim_text
+            })
+            .wrapping(iced::widget::text::Wrapping::None),
+    )
+    .width(Length::Fixed(TAG_COLUMN_WIDTH))
+    .height(row_height)
+    .style(theme::tag_button(palette, mark.tagged))
+    .on_press(pressed)
+    .into()
+}
+
+/// A file found by a search, drawn as a row of the hit list: the name, the
+/// folder below `scope`, size and date, and optionally a third line.
+pub struct HitRow<'a, M> {
+    pub entry: FileEntry,
+    pub mark: Selection,
+    pub scope: &'a Path,
+    pub height: f32,
+    pub third_line: Option<Element<'a, M>>,
+}
+
+pub fn hit_row<'a, M: Clone + 'a>(
+    hit: HitRow<'a, M>,
+    panel_active: bool,
+    palette: &Palette,
+    on_click: impl Fn(RowClick) -> M,
+    prefix: Row<'a, M>,
+) -> Element<'a, M> {
+    let HitRow {
+        entry,
+        mark,
+        scope,
+        height,
+        third_line,
+    } = hit;
+    file_row(
+        &entry,
+        mark,
+        panel_active,
+        palette,
+        on_click,
+        prefix,
+        RowExtras {
+            hermes: None,
+            hit_scope: Some((scope, height)),
+            third_line,
+        },
+    )
+}
+
 /// What a click on a row of the panel does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RowClick {
@@ -541,6 +608,8 @@ pub enum RowClick {
 struct RowExtras<'a, M> {
     hermes: Option<HermesCell<'a, M>>,
     hit_scope: Option<(&'a Path, f32)>,
+    /// Under the folder of a hit.
+    third_line: Option<Element<'a, M>>,
 }
 
 /// One file row: the name, size and date, clickable as a whole.
@@ -548,7 +617,7 @@ struct RowExtras<'a, M> {
 /// `prefix` is the tag button, built by the caller because it needs its own
 /// message; the row itself is one button around the rest.
 fn file_row<'a, M: Clone + 'a>(
-    entry: &'a FileEntry,
+    entry: &FileEntry,
     mark: Selection,
     panel_active: bool,
     palette: &Palette,
@@ -556,7 +625,11 @@ fn file_row<'a, M: Clone + 'a>(
     prefix: Row<'a, M>,
     extras: RowExtras<'a, M>,
 ) -> Element<'a, M> {
-    let RowExtras { hermes, hit_scope } = extras;
+    let RowExtras {
+        hermes,
+        hit_scope,
+        third_line,
+    } = extras;
     // The cursor row of the active panel is the one drawn as highlighted; a
     // tagged row is marked in its own column and tinted by the row style.
     let highlighted = mark.cursor && panel_active;
@@ -625,6 +698,7 @@ fn file_row<'a, M: Clone + 'a>(
                 .color(if highlighted { color } else { palette.dim_text })
                 .wrapping(text::Wrapping::None),
         ]
+        .extend(third_line)
         .into(),
         None => name_cell.into(),
     };

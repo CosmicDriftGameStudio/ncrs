@@ -15,7 +15,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use chrono::NaiveDateTime;
-use ncrs_index::{DocumentFields, Index, IndexError, QuerySpec, SavedQuery, SavedQueryId};
+use ncrs_index::{
+    DocumentFields, FileStamp, Index, IndexError, QuerySpec, SavedQuery, SavedQueryId,
+};
 
 use crate::fs::flat_names::target_name;
 use crate::fs::transfer::{transfer_to, Copy, Counting, OnConflict};
@@ -31,6 +33,8 @@ pub struct QueryHit {
     pub fields: DocumentFields,
     /// The index knows the file is gone.
     pub missing: bool,
+    /// Size and date of the file when the index read it.
+    pub stamp: Option<FileStamp>,
 }
 
 /// What the export did.
@@ -93,6 +97,7 @@ impl QueryAccess {
                 .into_iter()
                 .map(|document| QueryHit {
                     missing: document.missing_since.is_some(),
+                    stamp: document.stamp,
                     path: document.path,
                     fields: document.fields,
                 })
@@ -396,6 +401,7 @@ mod tests {
                 tags: BTreeSet::from(["office".to_owned(), "tax".to_owned()]),
             },
             missing: false,
+            stamp: None,
         }
     }
 
