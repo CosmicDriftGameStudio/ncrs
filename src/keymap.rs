@@ -17,11 +17,11 @@ use crate::i18n::{Language, Msg};
 use crate::messages::Message;
 use crate::messages::{
     AboutMessage, AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage,
-    DocumentSearchMessage, FilingSetupMessage, FilingStatusMessage, GrantMessage,
-    HermesFileMessage, KeyBindingsMessage, OcrModelsMessage, PanelSide, QuickFixMessage,
-    QuickOpenMessage, RemoteMessage, ReorganisationPlanMessage, ReviewListMessage,
-    RuleSuggestionsMessage, RulesMessage, SavedQueriesMessage, SearchMessage, SettingsMessage,
-    ThemeFetchMessage, TransferKind, TrashMessage,
+    FilingSetupMessage, FilingStatusMessage, GrantMessage, HermesFileMessage, KeyBindingsMessage,
+    OcrModelsMessage, PanelSide, QuickFixMessage, QuickOpenMessage, RemoteMessage,
+    ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage, RulesMessage,
+    SavedQueriesMessage, SearchMessage, SettingsMessage, ThemeFetchMessage, TransferKind,
+    TrashMessage,
 };
 
 /// A key plus the modifier that must be held. A bare press has no modifier.
@@ -411,9 +411,7 @@ impl KeyAction {
             Self::HermesExclude => Message::HermesFile(HermesFileMessage::ToggleExclusion),
             Self::HermesInspect => Message::HermesFile(HermesFileMessage::ShowInInspection),
             Self::SavedQueries => Message::SavedQueries(SavedQueriesMessage::Open),
-            Self::SearchDocuments => Message::DocumentSearch(DocumentSearchMessage::Open {
-                text: String::new(),
-            }),
+            Self::SearchDocuments => Message::OpenSearch,
             Self::ReorganisationPlan => {
                 Message::ReorganisationPlan(ReorganisationPlanMessage::Open)
             }
@@ -448,6 +446,7 @@ impl KeyAction {
             Self::GrantFolderAccess => crate::fs::sandbox_active(),
             Self::DownloadOcrModels => !system_reads_scans,
             Self::OpenTrashInFinder => cfg!(target_os = "macos"),
+            Self::SearchDocuments => false,
             _ => true,
         }
     }
@@ -502,7 +501,6 @@ impl KeyAction {
             | Self::RuleSuggestions
             | Self::ReviewList
             | Self::SavedQueries
-            | Self::SearchDocuments
             | Self::FileListTagsToggle
             | Self::FileListTagsChoose
             | Self::ReorganisationPlan
@@ -531,6 +529,7 @@ impl KeyAction {
             | Self::AddFavourite
             | Self::RemoveFavourite
             | Self::Search
+            | Self::SearchDocuments
             | Self::QuickOpen
             | Self::HermesQuickFix
             | Self::HermesHandToInbox
@@ -592,7 +591,6 @@ impl KeyAction {
             | Self::RuleSuggestions
             | Self::ReviewList
             | Self::SavedQueries
-            | Self::SearchDocuments
             | Self::FileListTagsToggle
             | Self::FileListTagsChoose
             | Self::ReorganisationPlan
@@ -622,6 +620,7 @@ impl KeyAction {
             | Self::AddFavourite
             | Self::RemoveFavourite
             | Self::Search
+            | Self::SearchDocuments
             | Self::QuickOpen
             | Self::HermesQuickFix
             | Self::HermesHandToInbox

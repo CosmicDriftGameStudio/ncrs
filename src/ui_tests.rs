@@ -3275,69 +3275,245 @@ mod review_list_card {
     clippy::indexing_slicing
 )]
 #[cfg(test)]
-pub mod document_search_card {
+pub mod search_filters_card {
     use super::*;
-    use crate::document_search::tests::loaded_search;
-    use crate::document_search::{DocumentSearch, FacetValue};
     use crate::keymap::KeyAction;
-    use crate::messages::{DocumentSearchMessage, QuickOpenMessage};
+    use crate::messages::{QuickOpenMessage, SavedQueriesMessage, SearchMessage};
+    use crate::query_work::QueryHit;
+    use crate::search_filters::tests::found_hit;
+    use crate::search_filters::{Facet, FacetValue, SearchFilters};
+    use ncrs_index::{Amount, Currency};
+    use std::path::Path;
 
-    fn shows(search: DocumentSearch, label: &str) -> bool {
-        simulator(&App::with_document_search(search))
-            .find(label)
-            .is_ok()
+    const MONTHS: [u32; 4] = [1, 2, 3, 4];
+
+    fn invoices_below(root: &Path) -> Vec<QueryHit> {
+        MONTHS
+            .iter()
+            .map(|month| {
+                let mut hit = found_hit(
+                    &format!("telekom-2026-{month:02}.pdf"),
+                    Some((2026, *month, 5)),
+                    Some("Telekom"),
+                    Some("invoice"),
+                    if *month == 4 { &["paid"] } else { &[] },
+                );
+                hit.path = root.join(format!("telekom-2026-{month:02}.pdf"));
+                hit.fields.amount = Some(Amount {
+                    minor_units: 10_320,
+                    currency: Currency::new("EUR").unwrap(),
+                });
+                hit
+            })
+            .collect()
     }
 
-    /// Six documents read, the year 2025 chosen.
-    fn year_chosen() -> DocumentSearch {
-        let mut search = loaded_search();
-        search.toggle(FacetValue::Year(2025));
-        search
+    fn filters_for(root: &Path, words: &str) -> SearchFilters {
+        let mut filters = SearchFilters::new(Default::default());
+        filters.ask(words);
+        let mut hits = invoices_below(root);
+        let mut elsewhere = found_hit("other.pdf", Some((2025, 5, 1)), None, None, &[]);
+        elsewhere.path = root.join("other.pdf");
+        hits.push(elsewhere);
+        filters.ran(hits);
+        filters
+    }
+
+    /// The search over four invoices read, the kind and the year chosen.
+    pub fn app_with_filters() -> App {
+        let mut app = App::with_search_filters("telekom", |root| {
+            let mut filters = filters_for(root, "telekom");
+            filters.toggle(FacetValue::Kind("invoice".to_owned()));
+            filters.toggle(FacetValue::Year(2026));
+            filters.add_snippets(
+                MONTHS
+                    .iter()
+                    .map(|month| {
+                        (
+                            root.join(format!("telekom-2026-{month:02}.pdf")),
+                            format!("Mobile contract \u{2}Telekom\u{3} invoice {month}/2026"),
+                        )
+                    })
+                    .collect(),
+            );
+            filters
+        });
+        let rows = app.search_rows_for_test();
+        if let Some(view) = app.search_for_test_mut() {
+            view.mirror_index(rows);
+        }
+        app
+    }
+
+    fn shows(app: &App, label: &str) -> bool {
+        simulator(app).find(label).is_ok()
     }
 
     #[test]
-    fn the_page_shows_its_facets_the_count_and_the_hits() {
-        assert!(shows(year_chosen(), "2 documents · Sum 246.90 EUR"));
-        assert!(shows(year_chosen(), "2024 (2)"));
-        assert!(shows(year_chosen(), "Clear filters"));
-        assert!(shows(loaded_search(), "6 documents · Sum 740.70 EUR"));
-        assert!(!shows(loaded_search(), "Clear filters"));
-    }
+    fn the_filters_narrow_the_list_and_the_summary_counts_what_is_left() {
+        let app = app_with_filters();
 
-    #[test]
-    fn a_page_without_documents_says_so() {
-        let mut search = DocumentSearch::new(String::new(), Default::default());
-        search.ran(Vec::new());
+        let view = app.search_for_test().unwrap();
+        assert_eq!(view.results.len(), 4);
+        assert!(shows(&app, "Files: 4 · Lines: 4"));
+        assert!(shows(&app, " · Sum 412.80 EUR"));
+        assert!(shows(&app, "Save as report"));
         assert!(shows(
-            search,
-            "No documents read yet. Documents appear here once ncrs has read them from the inbox."
+            &app,
+            "Filters only apply to documents ncrs has read. Filters apply together (2026 and Invoice)."
         ));
     }
 
     #[test]
-    fn a_page_where_nothing_matches_says_so() {
-        let mut search = loaded_search();
-        search.toggle(FacetValue::Year(2023));
-        search.toggle(FacetValue::Sender("Firma A".to_owned()));
-        assert!(shows(
-            search,
-            "No document matches. Remove a filter or change the words."
-        ));
+    fn a_search_without_an_index_has_no_filters() {
+        let mut app = App::with_fixed_panels();
+        drop(app.update(Message::OpenSearch));
+
+        assert!(app.search_for_test().unwrap().filters.is_none());
+        assert!(!shows(&app, "Save as report"));
     }
 
     #[test]
-    fn the_command_list_action_opens_the_page_and_escape_closes_it() {
+    fn choosing_and_clearing_a_value_switches_between_the_index_and_the_walk() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let _inside = runtime.enter();
+        let mut app = app_with_filters();
+
+        drop(app.update(Message::Search(SearchMessage::ClearFacet(Facet::Year))));
+        assert!(app.search_for_test().unwrap().is_filtered());
+        drop(app.update(Message::Search(SearchMessage::ClearFacet(Facet::Kind))));
+        assert!(!app.search_for_test().unwrap().is_filtered());
+
+        drop(app.update(Message::Search(SearchMessage::ToggleFacet(
+            FacetValue::Year(2025),
+        ))));
+        let view = app.search_for_test().unwrap();
+        assert!(view.is_filtered());
+        assert_eq!(view.results.len(), 1);
+        assert!(view.results[0].path.ends_with("other.pdf"));
+    }
+
+    #[test]
+    fn an_answer_of_an_older_question_is_dropped() {
+        let mut app = app_with_filters();
+        let root = app.search_for_test().unwrap().root.clone();
+        let stale = app
+            .search_for_test()
+            .unwrap()
+            .filters
+            .as_ref()
+            .unwrap()
+            .generation()
+            .wrapping_sub(1);
+
+        drop(app.update(Message::Search(SearchMessage::IndexRan {
+            generation: stale,
+            result: Ok(vec![found_hit("x.pdf", None, None, None, &[])]),
+        })));
+
+        assert_eq!(app.search_for_test().unwrap().results.len(), 4);
+        assert!(app
+            .search_for_test()
+            .unwrap()
+            .results
+            .iter()
+            .all(|result| result.path.starts_with(&root)));
+    }
+
+    #[test]
+    fn a_hit_outside_the_folder_or_the_name_filter_is_left_out() {
+        let mut app = app_with_filters();
+        let rows = app.search_rows_for_test();
+        let view = app.search_for_test_mut().unwrap();
+        view.include = "*-03.pdf".to_owned();
+
+        view.mirror_index(rows);
+
+        assert_eq!(view.results.len(), 1);
+        view.include = String::new();
+        view.exclude = "*-0[12].pdf".to_owned();
+        view.mirror_index(rows);
+        assert_eq!(view.results.len(), 2);
+    }
+
+    #[test]
+    fn save_as_report_opens_the_reports_page_with_a_new_report_of_the_search() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let _inside = runtime.enter();
+        let mut app = app_with_filters().with_ready_hermes_for_test();
+
+        drop(app.update(Message::Search(SearchMessage::SaveAsReport)));
+
+        assert!(!app.search_is_open_for_test());
+        let generation = app.saved_queries_generation_for_test();
+        drop(
+            app.update(Message::SavedQueries(SavedQueriesMessage::Loaded {
+                generation,
+                result: Ok(Vec::new()),
+            })),
+        );
+        let form = app.saved_queries_for_test().unwrap().form();
+        assert_eq!(form.full_text, "telekom");
+        assert_eq!(form.year, "2026");
+        assert_eq!(form.name, "");
+    }
+
+    #[test]
+    fn nothing_is_saved_as_a_report_without_words_or_a_chosen_value() {
+        let mut app = App::with_search_filters("", |root| filters_for(root, ""));
+
+        drop(app.update(Message::Search(SearchMessage::SaveAsReport)));
+
+        assert!(app.search_is_open_for_test());
+        assert!(app.saved_queries_for_test().is_none());
+    }
+
+    #[test]
+    fn a_search_opened_from_a_report_offers_to_update_it_and_returns_to_the_reports() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let _inside = runtime.enter();
+        let mut app = App::with_search_filters("telekom", |root| {
+            let mut filters = filters_for(root, "telekom");
+            let report = crate::saved_queries::tests::stored_queries()[0].id;
+            filters.edit_report(report, &ncrs_index::QuerySpec::default());
+            filters
+        })
+        .with_ready_hermes_for_test();
+        assert!(shows(&app, "Update report"));
+        assert!(!shows(&app, "Save as report"));
+
+        drop(app.update(Message::Search(SearchMessage::ReportUpdated(Ok(())))));
+
+        assert!(!app.search_is_open_for_test());
+        assert!(app.saved_queries_for_test().is_some());
+    }
+
+    #[test]
+    fn a_report_that_could_not_be_updated_stays_on_the_search_with_the_reason() {
+        let mut app = App::with_search_filters("telekom", |root| filters_for(root, "telekom"));
+
+        drop(app.update(Message::Search(SearchMessage::ReportUpdated(Err(
+            "there is no saved query 3".to_owned(),
+        )))));
+
+        assert!(app.search_is_open_for_test());
+        assert!(shows(&app, "there is no saved query 3"));
+    }
+
+    #[test]
+    fn the_old_command_list_action_opens_the_normal_search_and_is_no_longer_offered() {
         let runtime = tokio::runtime::Runtime::new().unwrap();
         let _inside = runtime.enter();
         let mut app = App::with_fixed_panels().with_ready_hermes_for_test();
+
         drop(app.update(KeyAction::SearchDocuments.message()));
-        assert!(app.document_search_for_test().is_some());
-        drop(app.update(Message::DocumentSearch(DocumentSearchMessage::Close)));
-        assert!(app.document_search_for_test().is_none());
+
+        assert!(app.search_is_open_for_test());
+        assert!(!KeyAction::SearchDocuments.is_offered());
     }
 
     #[test]
-    fn the_last_row_of_quick_open_opens_the_page_with_the_text() {
+    fn the_last_row_of_quick_open_opens_the_search_with_the_text() {
         use crate::filing::{FoundDocument, TextSource};
         let runtime = tokio::runtime::Runtime::new().unwrap();
         let _inside = runtime.enter();
@@ -3352,101 +3528,13 @@ pub mod document_search_card {
         // One name hit, one document, then the row.
         drop(app.update(Message::QuickOpen(QuickOpenMessage::RowActivated(2))));
 
-        assert!(!app.quick_open_for_test().is_some());
-        assert_eq!(
-            app.document_search_for_test().map(DocumentSearch::text),
-            Some("config")
-        );
+        assert!(app.quick_open_for_test().is_none());
+        assert!(app.search_is_open_for_test());
+        assert_eq!(app.search_for_test().unwrap().query, "config");
     }
 
-    #[test]
-    fn save_as_report_opens_the_reports_page_with_a_new_report_of_the_search() {
-        use crate::messages::SavedQueriesMessage;
-
-        let runtime = tokio::runtime::Runtime::new().unwrap();
-        let _inside = runtime.enter();
-        let mut search = loaded_search();
-        search.set_text("rent".to_owned());
-        search.ran(crate::document_search::tests::six_hits());
-        search.toggle(FacetValue::Year(2025));
-        search.toggle(FacetValue::Sender("Firma A".to_owned()));
-        search.toggle(FacetValue::Tag("paid".to_owned()));
-        let mut app = App::with_document_search(search).with_ready_hermes_for_test();
-
-        drop(app.update(Message::DocumentSearch(DocumentSearchMessage::SaveAsReport)));
-
-        assert!(app.document_search_for_test().is_none());
-        let generation = app.saved_queries_generation_for_test();
-        drop(
-            app.update(Message::SavedQueries(SavedQueriesMessage::Loaded {
-                generation,
-                result: Ok(Vec::new()),
-            })),
-        );
-        let form = app.saved_queries_for_test().unwrap().form();
-        assert_eq!(form.full_text, "rent");
-        assert_eq!(form.year, "2025");
-        assert_eq!(form.sender, "Firma A");
-        assert_eq!(
-            form.tags,
-            std::collections::BTreeSet::from(["paid".to_owned()])
-        );
-        assert_eq!(form.name, "");
-    }
-
-    #[test]
-    fn nothing_is_saved_as_a_report_without_words_or_a_chosen_value() {
-        let mut app = App::with_document_search(loaded_search()).with_ready_hermes_for_test();
-
-        drop(app.update(Message::DocumentSearch(DocumentSearchMessage::SaveAsReport)));
-
-        assert!(app.document_search_for_test().is_some());
-        assert!(app.saved_queries_for_test().is_none());
-    }
-
-    /// The words "rent" typed, snippets under the hits, and the text of the
-    /// selected one beside the list.
-    pub fn with_snippets() -> DocumentSearch {
-        use crate::document_preview::PreviewContent;
-
-        let mut search = DocumentSearch::new("rent".to_owned(), Default::default());
-        search.ran(crate::document_search::tests::six_hits());
-        search.set_snippets(vec![
-            (
-                std::path::PathBuf::from("archive/b.pdf"),
-                "…the monthly \u{2}rent\u{3} for the office in March, due on the first".to_owned(),
-            ),
-            (
-                std::path::PathBuf::from("archive/a.pdf"),
-                "Invoice: \u{2}rent\u{3} and service charges".to_owned(),
-            ),
-            (
-                std::path::PathBuf::from("archive/c.pdf"),
-                "Notice about the \u{2}rent\u{3} increase".to_owned(),
-            ),
-        ]);
-        let excerpt = "Invoice March\n\nThe monthly rent for the office is due on the first.\nPlease pay within 14 days.";
-        let start = excerpt.find("rent").unwrap();
-        search.show_preview_for_test(PreviewContent::Text {
-            excerpt: excerpt.to_owned(),
-            truncated: false,
-            highlights: std::iter::once(start..start + 4).collect(),
-        });
-        search
-    }
-
-    #[test]
-    fn the_page_with_snippets_offers_to_save_the_search() {
-        assert!(shows(with_snippets(), "Save as report"));
-    }
-
-    fn matches_snapshot(search: DocumentSearch, name: &str) {
-        let language = if name.contains("_de") {
-            Language::German
-        } else {
-            Language::English
-        };
-        let app = App::with_document_search(search).in_language(language);
+    fn matches_snapshot(language: Language, name: &str) {
+        let app = app_with_filters().in_language(language);
         let matches = simulator(&app)
             .snapshot(&iced::Theme::Dark)
             .unwrap()
@@ -3459,32 +3547,9 @@ pub mod document_search_card {
     }
 
     #[test]
-    fn the_view_matches_its_snapshots() {
-        matches_snapshot(year_chosen(), "document_search_en");
-        matches_snapshot(year_chosen(), "document_search_de");
-        matches_snapshot(with_snippets(), "document_search_snippets_en");
-        matches_snapshot(with_snippets(), "document_search_snippets_de");
-    }
-
-    /// The recipient, the year and a tag chosen: the filters work together and
-    /// the sum is given for one currency.
-    fn recipient_and_tag_chosen() -> DocumentSearch {
-        let mut search = DocumentSearch::new(String::new(), Default::default());
-        let mut hits = crate::document_search::tests::six_hits();
-        for hit in &mut hits {
-            hit.fields.recipient = Some("Firma A GmbH".to_owned());
-        }
-        search.ran(hits);
-        search.toggle(FacetValue::Year(2025));
-        search.toggle(FacetValue::Recipient("Firma A GmbH".to_owned()));
-        search.toggle(FacetValue::Tag("paid".to_owned()));
-        search
-    }
-
-    #[test]
-    fn the_filters_with_a_recipient_and_a_tag_match_their_snapshots() {
-        matches_snapshot(recipient_and_tag_chosen(), "document_search_tags_en");
-        matches_snapshot(recipient_and_tag_chosen(), "document_search_tags_de");
+    fn the_search_with_filters_matches_its_snapshots() {
+        matches_snapshot(Language::English, "search_filters_en");
+        matches_snapshot(Language::German, "search_filters_de");
     }
 }
 

@@ -21,7 +21,6 @@ use crate::config::{
 };
 use crate::dialog::PromptKind;
 use crate::document_preview::PreviewContent;
-use crate::document_search::FacetValue;
 use crate::execute::UndoReport;
 use crate::file_list_tags::FileListTags;
 use crate::filing::{FilingMessage, IndexFigures};
@@ -50,6 +49,7 @@ use crate::review_list::FormField;
 use crate::review_work::{AcceptSummary, ConfirmOutcome, ReviewItem};
 use crate::rules_work::{RulesLoad, TryResult};
 use crate::saved_queries::{Form, QueryField};
+use crate::search_filters::{Facet, FacetValue};
 use crate::suggestion_work::SuggestedRule;
 use crate::theme_fetch::{Fetched, Installed};
 use crate::transfer_dialog::TransferDialogMessage;
@@ -400,7 +400,6 @@ pub enum Message {
     QuickFix(QuickFixMessage),
     HermesFile(HermesFileMessage),
     SavedQueries(SavedQueriesMessage),
-    DocumentSearch(DocumentSearchMessage),
     /// The sidebar of the Hermes card: closes the card that is up and opens
     /// this page.
     HermesPage(HermesPage),
@@ -707,6 +706,27 @@ pub enum SearchMessage {
     /// The chevron of the file at this index in the results.
     ToggleGroup(usize),
     Scrolled(iced::mouse::ScrollDelta),
+    /// The index answered the question `generation` of the filters. Dropped
+    /// when the words changed meanwhile.
+    IndexRan {
+        generation: u64,
+        result: Result<Vec<QueryHit>, String>,
+    },
+    /// The pieces of text around the words, by path. Dropped like `IndexRan`.
+    SnippetsLoaded {
+        generation: u64,
+        result: Result<Vec<(PathBuf, String)>, String>,
+    },
+    /// Chooses the value of a filter, or drops it when it is chosen.
+    ToggleFacet(FacetValue),
+    /// The cross of a filter: drops what is chosen of that facet.
+    ClearFacet(Facet),
+    /// Opens the Reports page with a new report asking what the search asks.
+    SaveAsReport,
+    /// Writes what the search asks over the report it was opened for.
+    UpdateReport,
+    /// The report was changed (or not): back to the Reports page.
+    ReportUpdated(Result<(), String>),
 }
 
 /// Everything the trash view and putting entries back send.
@@ -951,50 +971,8 @@ pub enum HermesPage {
     Rules,
     RuleSuggestions,
     Reorganisation,
-    Search,
     SavedQueries,
     Inspection,
-}
-
-/// Everything the document search page sends.
-#[derive(Debug, Clone, PartialEq)]
-pub enum DocumentSearchMessage {
-    /// Opens the page with the words already typed, for instance in Quick Open.
-    Open {
-        text: String,
-    },
-    Close,
-    TextChanged(String),
-    /// The index answered the search of `generation`. Dropped when the words
-    /// changed or the page was closed or opened again meanwhile.
-    Ran {
-        generation: u64,
-        result: Result<Vec<QueryHit>, String>,
-    },
-    /// The pieces of text around the words, by path. Dropped like `Ran`.
-    SnippetsLoaded {
-        generation: u64,
-        result: Result<Vec<(PathBuf, String)>, String>,
-    },
-    /// The preview of the selected document. Dropped like `Ran`.
-    PreviewLoaded {
-        generation: u64,
-        serial: u64,
-        content: PreviewContent,
-    },
-    ToggleFacet(FacetValue),
-    ClearFacets,
-    /// Opens the Reports page with a new report asking what the page asks.
-    SaveAsReport,
-    Move(isize),
-    Select(usize),
-    /// The wheel or trackpad over the list.
-    Scrolled(iced::mouse::ScrollDelta),
-    /// Shows the document under the cursor in the active panel.
-    Activate,
-    /// Left in the text field: asks the page to hand the keys to the sidebar
-    /// when the field is empty (iced does not tell where its caret is).
-    LeftInField,
 }
 
 /// Everything the saved queries page sends.

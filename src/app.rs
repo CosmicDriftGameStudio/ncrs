@@ -30,7 +30,6 @@ use crate::config::{
 use crate::context_menu::{ContextAction, ContextMenu, HermesAction, HermesMenu, InputState};
 use crate::dialog::{Prompt, PromptKind};
 use crate::document_preview;
-use crate::document_search::DocumentSearch;
 use crate::execute;
 use crate::file_list_tags::FileListTags;
 use crate::filing::{
@@ -65,12 +64,12 @@ use crate::keymap::{self, KeyAction, KeyScope, Keymap};
 use crate::menu::Availability;
 use crate::messages::{
     AboutMessage, AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage,
-    ConflictChoice, ConnectField, DocumentSearchMessage, FilingSetupMessage, FilingStatusMessage,
-    GrantMessage, HermesColumnMessage, HermesFileMessage, HermesFocus, HermesOverviewMessage,
-    HermesPage, HermesSetupMessage, KeyBindingsMessage, Message, OcrModelsMessage, PanelSide,
-    QuickFixMessage, QuickOpenMessage, RemoteMessage, ReorganisationPlanMessage, ReviewListMessage,
-    RuleFormMessage, RuleSuggestionsMessage, RulesMessage, SavedQueriesMessage, SearchMessage,
-    SettingChange, SettingsMessage, ThemeFetchMessage, TitleBarMessage, TransferKind, TrashMessage,
+    ConflictChoice, ConnectField, FilingSetupMessage, FilingStatusMessage, GrantMessage,
+    HermesColumnMessage, HermesFileMessage, HermesFocus, HermesOverviewMessage, HermesPage,
+    HermesSetupMessage, KeyBindingsMessage, Message, OcrModelsMessage, PanelSide, QuickFixMessage,
+    QuickOpenMessage, RemoteMessage, ReorganisationPlanMessage, ReviewListMessage, RuleFormMessage,
+    RuleSuggestionsMessage, RulesMessage, SavedQueriesMessage, SearchMessage, SettingChange,
+    SettingsMessage, ThemeFetchMessage, TitleBarMessage, TransferKind, TrashMessage,
 };
 #[cfg(target_os = "macos")]
 use crate::native_menu;
@@ -92,6 +91,7 @@ use crate::rule_suggestions::RuleSuggestions;
 use crate::rules_page::RulesPage;
 use crate::rules_work::{RuleChange, RulesAccess};
 use crate::saved_queries::{Form, SavedQueries};
+use crate::search_filters::SearchFilters;
 use crate::search_view::{stays_on_file_system, SearchField, SearchView};
 use crate::session_state::{self, PanelRecord, SessionState, WindowSize, WriteOrder};
 use crate::suggestion_work::{SuggestedRule, SuggestionAccess, INDEX_NOT_OPEN};
@@ -105,7 +105,6 @@ use crate::ui::command_palette as command_palette_ui;
 use crate::ui::context_menu as context_menu_view;
 use crate::ui::delete as delete_dialog_view;
 use crate::ui::dialog::FIELD_ID;
-use crate::ui::document_search as document_search_ui;
 use crate::ui::filing as filing_ui;
 use crate::ui::filing_setup as filing_setup_ui;
 use crate::ui::filing_status as filing_status_ui;
@@ -504,7 +503,6 @@ fn asks_for_hermes(message: &Message) -> bool {
             | Message::Rules(RulesMessage::Open)
             | Message::ReviewList(ReviewListMessage::Open)
             | Message::SavedQueries(SavedQueriesMessage::Open)
-            | Message::DocumentSearch(DocumentSearchMessage::Open { .. })
             | Message::ReorganisationPlan(ReorganisationPlanMessage::Open)
             | Message::UndoReorganisation
     )
@@ -527,7 +525,6 @@ fn leaves_bar_fields(message: &Message) -> bool {
             | Message::Rules(RulesMessage::Open)
             | Message::ReviewList(ReviewListMessage::Open)
             | Message::SavedQueries(SavedQueriesMessage::Open)
-            | Message::DocumentSearch(DocumentSearchMessage::Open { .. })
             | Message::HermesPage(_)
             | Message::ReorganisationPlan(ReorganisationPlanMessage::Open)
             | Message::OcrModels(OcrModelsMessage::Open)
@@ -1485,9 +1482,6 @@ pub struct App {
     saved_queries: Option<SavedQueries>,
     /// Tells the answer of the work that is current from a stale one.
     saved_queries_generation: u64,
-    document_search: Option<DocumentSearch>,
-    /// Tells the answer of the search that is current from a stale one.
-    document_search_generation: u64,
     reorganisation: Option<ReorganisationView>,
     /// Whether the arrow keys act on the sidebar or the page of the Hermes card.
     hermes_focus: HermesFocus,
@@ -1628,8 +1622,6 @@ pub struct PromptKeyState {
     pub review_list_replanning: bool,
     /// The saved queries page is up, so Enter, the arrows and Tab are its.
     pub saved_queries: bool,
-    /// The document search page is up, so Enter and the arrows are its.
-    pub document_search: bool,
     /// The overview's pattern field has the focus, so the letters are the field's.
     pub hermes_overview_editing: bool,
     /// A Hermes page is up and the arrow keys act on its sidebar.
@@ -1699,7 +1691,6 @@ impl Default for PromptKeyState {
             review_list_editing: false,
             review_list_replanning: false,
             saved_queries: false,
-            document_search: false,
             hermes_overview_editing: false,
             hermes_sidebar: false,
             reorganisation_plan: false,
@@ -1847,31 +1838,6 @@ fn saved_queries_key(
         }),
         Key::Named(Named::ArrowUp) if plain => queries(SavedQueriesMessage::Move(-1)),
         Key::Named(Named::ArrowDown) if plain => queries(SavedQueriesMessage::Move(1)),
-        _ => bound_message(&prompt.keymap, key, key_modifiers, scope)
-            .filter(|message| *message == Message::Quit)
-            .filter(|_| is_not_typed_by_text_field(key, key_modifiers)),
-    }
-}
-
-/// The document search page: the text field takes the letters; Enter shows the
-/// document under the cursor and the arrows move in the list.
-fn document_search_key(
-    prompt: &PromptKeyState,
-    key: &Key,
-    key_modifiers: Modifiers,
-    scope: KeyScope,
-) -> Option<Message> {
-    let search = |message| Some(Message::DocumentSearch(message));
-    let plain = key_modifiers.is_empty();
-    // The text field keeps Left and Right.
-    if let Some(focus) = hermes_focus_key(prompt, key, key_modifiers, !prompt.hermes_sidebar) {
-        return Some(focus);
-    }
-    match key.as_ref() {
-        Key::Named(Named::Escape) => search(DocumentSearchMessage::Close),
-        Key::Named(Named::Enter) => search(DocumentSearchMessage::Activate),
-        Key::Named(Named::ArrowUp) if plain => search(DocumentSearchMessage::Move(-1)),
-        Key::Named(Named::ArrowDown) if plain => search(DocumentSearchMessage::Move(1)),
         _ => bound_message(&prompt.keymap, key, key_modifiers, scope)
             .filter(|message| *message == Message::Quit)
             .filter(|_| is_not_typed_by_text_field(key, key_modifiers)),
@@ -2223,10 +2189,6 @@ fn keys_without_prompt(
 
     if prompt.saved_queries {
         return saved_queries_key(prompt, &key, key_modifiers, scope);
-    }
-
-    if prompt.document_search {
-        return document_search_key(prompt, &key, key_modifiers, scope);
     }
 
     // Like the command palette: the field takes the typing, the card the
@@ -2888,7 +2850,6 @@ fn repeats(message: &Message) -> bool {
             | Message::Rules(RulesMessage::Move(_))
             | Message::ReviewList(ReviewListMessage::Move(_))
             | Message::SavedQueries(SavedQueriesMessage::Move(_))
-            | Message::DocumentSearch(DocumentSearchMessage::Move(_))
             | Message::ReorganisationPlan(ReorganisationPlanMessage::Move(_))
             | Message::HermesStep(_)
             | Message::FilingStatus(FilingStatusMessage::MoveError(_))
@@ -3479,7 +3440,7 @@ impl App {
             search: None,
             search_open: false,
             search_side: PanelSide::Left,
-            search_rows: layout::search_visible_rows(layout::INITIAL_WINDOW_SIZE),
+            search_rows: layout::search_visible_rows(layout::INITIAL_WINDOW_SIZE, false),
             search_generation: 0,
             search_handle: None,
             quick_open: None,
@@ -3532,8 +3493,6 @@ impl App {
             review_list_generation: 0,
             saved_queries: None,
             saved_queries_generation: 0,
-            document_search: None,
-            document_search_generation: 0,
             reorganisation: None,
             hermes_focus: HermesFocus::default(),
             return_to_hermes_overview: false,
@@ -4324,10 +4283,6 @@ impl App {
                 Task::batch([update, self.request_review_preview()])
             }
             Message::SavedQueries(queries) => self.update_saved_queries(queries),
-            Message::DocumentSearch(search) => {
-                let update = self.update_document_search(search);
-                Task::batch([update, self.request_search_preview()])
-            }
             Message::HermesPage(page) => self.show_hermes_page(page),
             Message::HermesFocus(focus) => self.focus_hermes(focus),
             Message::HermesStep(step) => self.step_hermes_page(step),
@@ -5222,7 +5177,6 @@ impl App {
         input.rules = self.rules.is_some();
         input.review_list = self.review_list.is_some();
         input.saved_queries = self.saved_queries.is_some();
-        input.document_search = self.document_search.is_some();
         input.hermes_sidebar = state.hermes_sidebar;
         input.transfer_dialog = self.transfer_dialog.is_some();
         input.reorganisation_plan = self.reorganisation.is_some();
@@ -5633,17 +5587,6 @@ impl App {
             return Stack::with_children([root, dialog::scrim(card_element)]).into();
         }
 
-        if let Some(view) = self.document_search.as_ref() {
-            let card_element = document_search_ui::view(
-                view,
-                self.window_size,
-                self.hermes_badges(),
-                self.lang,
-                &self.palette,
-            );
-            return Stack::with_children([root, dialog::scrim(card_element)]).into();
-        }
-
         // Then the create-directory prompt, for F7.
         let Some(prompt) = self.prompt.as_ref() else {
             return root;
@@ -5773,7 +5716,6 @@ impl App {
             .as_ref()
             .is_some_and(|view| view.replan().is_some());
         let saved_queries = self.saved_queries.is_some();
-        let document_search = self.document_search.is_some();
         let hermes_sidebar =
             self.hermes_focus == HermesFocus::Sidebar && self.open_hermes_page().is_some();
         let reorganisation_plan = self.reorganisation.is_some();
@@ -5825,7 +5767,6 @@ impl App {
                 review_list_editing,
                 review_list_replanning,
                 saved_queries,
-                document_search,
                 hermes_sidebar,
                 reorganisation_plan,
                 about,
@@ -5876,7 +5817,6 @@ impl App {
                 review_list_editing,
                 review_list_replanning,
                 saved_queries,
-                document_search,
                 hermes_sidebar,
                 reorganisation_plan,
                 about,
@@ -6681,7 +6621,6 @@ impl App {
             || self.key_bindings.is_some()
             || self.theme_fetch.is_some()
             || self.saved_queries.is_some()
-            || self.document_search.is_some()
             || self.about.is_some()
             || self.ocr_models.is_some()
             || self.ai_card_is_shown()
@@ -9855,10 +9794,16 @@ impl App {
     }
 
     fn resize_search(&mut self, window: Size) {
-        self.search_rows = layout::search_visible_rows(window);
+        self.search_rows = layout::search_visible_rows(window, self.search_has_filters());
         if let Some(view) = self.search.as_mut() {
             view.ensure_visible(self.search_rows);
         }
+    }
+
+    fn search_has_filters(&self) -> bool {
+        self.search
+            .as_ref()
+            .is_some_and(|view| view.filters.is_some())
     }
 
     fn focus_search_field(&self) -> Task<Message> {
@@ -9896,13 +9841,37 @@ impl App {
         let root = self.panel(side).path.clone();
         self.search_side = side;
         self.search_open = true;
-        self.search_rows = layout::search_visible_rows(self.window_size);
-        match self.search.as_mut() {
-            Some(view) => view.root = root,
-            None => self.search = Some(SearchView::new(root)),
-        }
+        let indexed = self.panel(side).remote().is_none()
+            && self
+                .filing
+                .as_ref()
+                .and_then(FilingModule::query_access)
+                .is_some();
+        let kinds = Arc::clone(&self.kinds.catalog);
+        let view = self
+            .search
+            .get_or_insert_with(|| SearchView::new(root.clone()));
+        view.root = root;
+        view.filters = if indexed {
+            view.filters
+                .take()
+                .or_else(|| Some(SearchFilters::new(kinds)))
+        } else {
+            None
+        };
+        self.search_rows = layout::search_visible_rows(self.window_size, self.search_has_filters());
         let search = self.restart_search();
         Task::batch([self.focus_search_field(), search])
+    }
+
+    /// The search opened with the words typed in the box that asked.
+    fn open_search_with_words(&mut self, text: String) -> Task<Message> {
+        let opened = self.open_search();
+        if let Some(view) = self.search.as_mut() {
+            view.query = text;
+            view.focused = SearchField::Query;
+        }
+        Task::batch([opened, self.restart_search()])
     }
 
     fn next_search_generation(&mut self) -> u64 {
@@ -9937,11 +9906,18 @@ impl App {
     }
 
     fn start_search(&mut self, generation: u64) -> Task<Message> {
+        let asked = self.ask_index();
         let Some(view) = self.search.as_mut() else {
-            return Task::none();
+            return asked;
         };
         view.generation = generation;
-        match fs::search::compile(&view.query_for_engine()) {
+        if view.is_filtered() {
+            // The index answers; the walk would find other things.
+            self.search_handle = None;
+            view.running = true;
+            return asked;
+        }
+        let walk = match fs::search::compile(&view.query_for_engine()) {
             // Nothing to look for yet: the empty list is the answer.
             Err(fs::search::SearchError::Empty) => {
                 view.clear_results();
@@ -9962,7 +9938,99 @@ impl App {
                 self.search_handle = Some(handle.abort_on_drop());
                 task
             }
+        };
+        Task::batch([asked, walk])
+    }
+
+    /// Asks the index for the documents of the words below the folder of the
+    /// search, on a blocking thread; the filters count and narrow its answer.
+    fn ask_index(&mut self) -> Task<Message> {
+        let query_access = self.filing.as_ref().and_then(FilingModule::query_access);
+        let Some(view) = self.search.as_mut() else {
+            return Task::none();
+        };
+        let root = view.root.clone();
+        let words = view.query.clone();
+        let Some(filters) = view.filters.as_mut() else {
+            return Task::none();
+        };
+        let (generation, spec) = filters.ask(&words);
+        let Some(access) = query_access else {
+            filters.failed(INDEX_NOT_OPEN.to_owned());
+            return Task::none();
+        };
+        Task::perform(
+            tokio::task::spawn_blocking(move || access.run_under(&spec, &root)),
+            move |joined| {
+                let result = joined.unwrap_or_else(|join| Err(join.to_string()));
+                Message::Search(SearchMessage::IndexRan { generation, result })
+            },
+        )
+    }
+
+    /// Asks for the snippets of the documents shown.
+    fn request_snippets(&self) -> Task<Message> {
+        let Some(filters) = self
+            .search
+            .as_ref()
+            .filter(|view| view.is_filtered())
+            .and_then(|view| view.filters.as_ref())
+        else {
+            return Task::none();
+        };
+        let generation = filters.generation();
+        let Some((paths, words)) = filters.snippet_request() else {
+            return Task::none();
+        };
+        let Some(access) = self.filing.as_ref().and_then(FilingModule::query_access) else {
+            return Task::none();
+        };
+        Task::perform(
+            tokio::task::spawn_blocking(move || access.snippets(&paths, &words)),
+            move |joined| {
+                let result = joined.unwrap_or_else(|join| Err(join.to_string()));
+                Message::Search(SearchMessage::SnippetsLoaded { generation, result })
+            },
+        )
+    }
+
+    /// A value was chosen or cleared: the walk takes over or the index
+    /// answer is narrowed anew.
+    fn filters_changed(&mut self) -> Task<Message> {
+        if !self.search.as_ref().is_some_and(SearchView::is_filtered) {
+            return self.restart_search();
         }
+        self.search_handle = None;
+        let generation = self.next_search_generation();
+        let rows = self.search_rows;
+        if let Some(view) = self.search.as_mut() {
+            view.generation = generation;
+            view.mirror_index(rows);
+        }
+        self.request_snippets()
+    }
+
+    fn close_search(&mut self) -> Task<Message> {
+        // Late timers and batches of the stopped search find another
+        // generation and are dropped.
+        self.search_open = false;
+        self.search_handle = None;
+        let generation = self.next_search_generation();
+        if let Some(kept) = self.search.as_mut() {
+            kept.running = false;
+            kept.generation = generation;
+        }
+        release_focus()
+    }
+
+    /// The report page after the search handed its criteria over.
+    fn hand_search_to_reports(&mut self, search_form: Option<Form>) -> Task<Message> {
+        let closed = self.close_search();
+        let opened = self.open_saved_queries();
+        if let (Some(form), Some(view)) = (search_form, self.saved_queries.as_mut()) {
+            view.prefill(form);
+        }
+        Task::batch([closed, opened])
     }
 
     fn update_search(&mut self, message: SearchMessage) -> Task<Message> {
@@ -9987,6 +10055,9 @@ impl App {
         if !matches!(
             message,
             SearchMessage::Events { .. }
+                | SearchMessage::IndexRan { .. }
+                | SearchMessage::SnippetsLoaded { .. }
+                | SearchMessage::ReportUpdated(_)
                 | SearchMessage::Debounced(_)
                 | SearchMessage::Close
                 | SearchMessage::Scrolled(_)
@@ -10022,6 +10093,13 @@ impl App {
                     search,
                     operation::focus(id).chain(operation::move_cursor_to_end(id)),
                 ])
+            }
+            SearchMessage::ToggleCase
+            | SearchMessage::ToggleWholeWord
+            | SearchMessage::ToggleRegex
+                if view.is_filtered() =>
+            {
+                Task::none()
             }
             SearchMessage::ToggleCase => {
                 view.case_sensitive = !view.case_sensitive;
@@ -10070,18 +10148,90 @@ impl App {
                 }
                 Task::none()
             }
-            SearchMessage::Close => {
-                // Late timers and batches of the stopped search find another
-                // generation and are dropped.
-                view.running = false;
-                self.search_open = false;
-                self.search_handle = None;
-                let generation = self.next_search_generation();
-                if let Some(kept) = self.search.as_mut() {
-                    kept.generation = generation;
+            SearchMessage::Close => self.close_search(),
+            SearchMessage::IndexRan { generation, result } => {
+                let Some(filters) = view
+                    .filters
+                    .as_mut()
+                    .filter(|filters| filters.is_current(generation))
+                else {
+                    return Task::none();
+                };
+                match result {
+                    Ok(hits) => filters.ran(hits),
+                    Err(detail) => filters.failed(detail),
                 }
-                release_focus()
+                if view.is_filtered() {
+                    view.mirror_index(rows);
+                    return self.request_snippets();
+                }
+                Task::none()
             }
+            SearchMessage::SnippetsLoaded { generation, result } => {
+                if let (Some(filters), Ok(found)) = (
+                    view.filters
+                        .as_mut()
+                        .filter(|filters| filters.is_current(generation)),
+                    result,
+                ) {
+                    filters.add_snippets(found);
+                    if view.is_filtered() {
+                        view.mirror_index(rows);
+                    }
+                }
+                Task::none()
+            }
+            SearchMessage::ToggleFacet(value) => {
+                if let Some(filters) = view.filters.as_mut() {
+                    filters.toggle(value);
+                }
+                self.filters_changed()
+            }
+            SearchMessage::ClearFacet(facet) => {
+                if let Some(filters) = view.filters.as_mut() {
+                    filters.clear(facet);
+                }
+                self.filters_changed()
+            }
+            SearchMessage::SaveAsReport => {
+                let form = view
+                    .filters
+                    .as_ref()
+                    .filter(|filters| filters.can_save_as_report())
+                    .map(|filters| Form::of_spec(&filters.spec(), &self.kinds));
+                if form.is_none() {
+                    return Task::none();
+                }
+                self.hand_search_to_reports(form)
+            }
+            SearchMessage::UpdateReport => {
+                let Some((id, spec)) = view
+                    .filters
+                    .as_ref()
+                    .and_then(|filters| Some((filters.report()?, filters.spec())))
+                else {
+                    return Task::none();
+                };
+                let Some(access) = self.filing.as_ref().and_then(FilingModule::query_access) else {
+                    return Task::none();
+                };
+                Task::perform(
+                    tokio::task::spawn_blocking(move || access.replace_spec(id, &spec)),
+                    |joined| {
+                        let result = joined.unwrap_or_else(|join| Err(join.to_string()));
+                        Message::Search(SearchMessage::ReportUpdated(result))
+                    },
+                )
+            }
+            SearchMessage::ReportUpdated(result) => match result {
+                Ok(()) => self.hand_search_to_reports(None),
+                Err(detail) => {
+                    if let Some(filters) = view.filters.as_mut() {
+                        filters.failed(detail);
+                    }
+                    Task::none()
+                }
+            },
             SearchMessage::Move(delta) => {
                 view.move_cursor(delta, rows);
                 Task::none()
@@ -11425,215 +11575,6 @@ impl App {
         access
     }
 
-    fn update_document_search(&mut self, message: DocumentSearchMessage) -> Task<Message> {
-        match message {
-            DocumentSearchMessage::Open { text } => self.open_document_search(text),
-            DocumentSearchMessage::Close => {
-                if self.document_search.take().is_some() {
-                    release_focus()
-                } else {
-                    Task::none()
-                }
-            }
-            DocumentSearchMessage::TextChanged(text) => {
-                let Some(view) = self.document_search.as_mut() else {
-                    return Task::none();
-                };
-                self.document_search_generation = self.document_search_generation.wrapping_add(1);
-                let spec = view.set_text(text);
-                self.run_document_search(spec)
-            }
-            DocumentSearchMessage::Ran { generation, result } => {
-                if generation == self.document_search_generation {
-                    if let Some(view) = self.document_search.as_mut() {
-                        match result {
-                            Ok(hits) => view.ran(hits),
-                            Err(detail) => view.failed(detail),
-                        }
-                    }
-                    return self.request_snippets();
-                }
-                Task::none()
-            }
-            DocumentSearchMessage::SnippetsLoaded { generation, result } => {
-                if generation == self.document_search_generation {
-                    if let (Some(view), Ok(found)) = (self.document_search.as_mut(), result) {
-                        view.set_snippets(found);
-                    }
-                }
-                Task::none()
-            }
-            DocumentSearchMessage::PreviewLoaded {
-                generation,
-                serial,
-                content,
-            } => {
-                if generation == self.document_search_generation {
-                    if let Some(view) = self.document_search.as_mut() {
-                        view.preview_loaded(serial, content);
-                    }
-                }
-                Task::none()
-            }
-            DocumentSearchMessage::SaveAsReport => {
-                let Some(form) = self
-                    .document_search
-                    .as_ref()
-                    .filter(|view| view.can_save_as_report())
-                    .map(|view| Form::of_spec(&view.spec(), &self.kinds))
-                else {
-                    return Task::none();
-                };
-                self.document_search = None;
-                let opened = self.open_saved_queries();
-                if let Some(view) = self.saved_queries.as_mut() {
-                    view.prefill(form);
-                }
-                opened
-            }
-            DocumentSearchMessage::ToggleFacet(value) => {
-                if let Some(view) = self.document_search.as_mut() {
-                    view.toggle(value);
-                }
-                Task::none()
-            }
-            DocumentSearchMessage::ClearFacets => {
-                if let Some(view) = self.document_search.as_mut() {
-                    view.clear_facets();
-                }
-                Task::none()
-            }
-            DocumentSearchMessage::Move(delta) => {
-                if let Some(view) = self.document_search.as_mut() {
-                    view.move_cursor(delta);
-                }
-                Task::none()
-            }
-            DocumentSearchMessage::Select(index) => {
-                if let Some(view) = self.document_search.as_mut() {
-                    view.select(index);
-                }
-                Task::none()
-            }
-            DocumentSearchMessage::Scrolled(delta) => {
-                if let Some(view) = self.document_search.as_mut() {
-                    view.scroll(delta);
-                }
-                Task::none()
-            }
-            DocumentSearchMessage::LeftInField => {
-                let empty = self
-                    .document_search
-                    .as_ref()
-                    .is_some_and(|view| view.text().is_empty());
-                if empty && self.hermes_focus == HermesFocus::Content {
-                    self.hermes_focus = HermesFocus::Sidebar;
-                    return release_focus();
-                }
-                Task::none()
-            }
-            DocumentSearchMessage::Activate => {
-                let Some(hit) = self
-                    .document_search
-                    .as_ref()
-                    .and_then(DocumentSearch::selected)
-                    .filter(|hit| !hit.missing)
-                else {
-                    return Task::none();
-                };
-                let path = hit.path.clone();
-                self.document_search = None;
-                Task::batch([release_focus(), self.reveal_file(&path)])
-            }
-        }
-    }
-
-    /// Opens the page with the words typed so far, for the box that asked.
-    fn open_document_search(&mut self, text: String) -> Task<Message> {
-        if self.document_search.is_some() || self.blocking_overlay_is_open() {
-            return Task::none();
-        }
-        self.context_menu = None;
-        self.document_search_generation = self.document_search_generation.wrapping_add(1);
-        let mut view = DocumentSearch::new(text, Arc::clone(&self.kinds.catalog));
-        let spec = view.begin_search();
-        self.document_search = Some(view);
-        // With the sidebar holding the arrows the field must not take the keys.
-        let focus = if self.hermes_focus == HermesFocus::Sidebar {
-            Task::none()
-        } else {
-            operation::focus(document_search_ui::SEARCH_ID)
-        };
-        Task::batch([focus, self.run_document_search(spec)])
-    }
-
-    /// Asks the index for the documents of the words, on a blocking thread.
-    fn run_document_search(&mut self, spec: ncrs_index::QuerySpec) -> Task<Message> {
-        let generation = self.document_search_generation;
-        let Some(access) = self.filing.as_ref().and_then(FilingModule::query_access) else {
-            if let Some(view) = self.document_search.as_mut() {
-                view.failed(INDEX_NOT_OPEN.to_owned());
-            }
-            return Task::none();
-        };
-        Task::perform(
-            tokio::task::spawn_blocking(move || access.run(&spec)),
-            move |joined| {
-                let result = joined.unwrap_or_else(|join| Err(join.to_string()));
-                Message::DocumentSearch(DocumentSearchMessage::Ran { generation, result })
-            },
-        )
-    }
-
-    /// Asks for the snippets of the hits the words found.
-    fn request_snippets(&self) -> Task<Message> {
-        let generation = self.document_search_generation;
-        let Some((paths, words)) = self
-            .document_search
-            .as_ref()
-            .and_then(DocumentSearch::snippet_request)
-        else {
-            return Task::none();
-        };
-        let Some(access) = self.filing.as_ref().and_then(FilingModule::query_access) else {
-            return Task::none();
-        };
-        Task::perform(
-            tokio::task::spawn_blocking(move || access.snippets(&paths, &words)),
-            move |joined| {
-                let result = joined.unwrap_or_else(|join| Err(join.to_string()));
-                Message::DocumentSearch(DocumentSearchMessage::SnippetsLoaded {
-                    generation,
-                    result,
-                })
-            },
-        )
-    }
-
-    /// Makes the preview of the selected document on a blocking thread, when
-    /// the cursor has moved to another one.
-    fn request_search_preview(&mut self) -> Task<Message> {
-        let generation = self.document_search_generation;
-        let Some(request) = self
-            .document_search
-            .as_mut()
-            .and_then(DocumentSearch::preview_request)
-        else {
-            return Task::none();
-        };
-        let serial = request.serial;
-        Task::perform(
-            document_preview::load_off_thread(request.path, request.passages),
-            move |content| {
-                Message::DocumentSearch(DocumentSearchMessage::PreviewLoaded {
-                    generation,
-                    serial,
-                    content,
-                })
-            },
-        )
-    }
-
     fn open_saved_queries(&mut self) -> Task<Message> {
         if self.saved_queries.is_some() || self.blocking_overlay_is_open() {
             return Task::none();
@@ -12158,8 +12099,6 @@ impl App {
             Some(HermesPage::Inspection)
         } else if self.review_list.is_some() {
             Some(HermesPage::Review)
-        } else if self.document_search.is_some() {
-            Some(HermesPage::Search)
         } else if self.saved_queries.is_some() {
             Some(HermesPage::SavedQueries)
         } else if self.rules.is_some() {
@@ -12188,14 +12127,12 @@ impl App {
         self.rules = None;
         self.review_list = None;
         self.saved_queries = None;
-        self.document_search = None;
         self.reorganisation = None;
         let open = match page {
             HermesPage::Overview => self.open_hermes_overview(),
             HermesPage::Inspection => self.open_filing_status(),
             HermesPage::Review => self.open_review_list(),
             HermesPage::SavedQueries => self.open_saved_queries(),
-            HermesPage::Search => self.open_document_search(String::new()),
             HermesPage::Rules => self.open_rules(),
             HermesPage::RuleSuggestions => self.open_rule_suggestions(),
             HermesPage::Reorganisation => self.open_reorganisation(),
@@ -13841,7 +13778,7 @@ impl App {
         {
             let text = quick_open.query().to_owned();
             let closed = self.close_quick_open();
-            return Task::batch([closed, self.open_document_search(text)]);
+            return Task::batch([closed, self.open_search_with_words(text)]);
         }
         let Some(path) = self.quick_open.as_ref().and_then(QuickOpen::selected_path) else {
             return Task::none();
@@ -13921,12 +13858,9 @@ impl App {
             HermesPage::Overview => Message::HermesOverview(HermesOverviewMessage::Close),
             HermesPage::Inspection => Message::FilingStatus(FilingStatusMessage::Close),
             HermesPage::Review => Message::ReviewList(ReviewListMessage::Close),
-            HermesPage::Search => Message::DocumentSearch(DocumentSearchMessage::Close),
             HermesPage::SavedQueries => Message::SavedQueries(SavedQueriesMessage::Close),
             HermesPage::Rules => Message::Rules(RulesMessage::Close),
-            HermesPage::RuleSuggestions => {
-                Message::RuleSuggestions(RuleSuggestionsMessage::Close)
-            }
+            HermesPage::RuleSuggestions => Message::RuleSuggestions(RuleSuggestionsMessage::Close),
             HermesPage::Reorganisation => {
                 Message::ReorganisationPlan(ReorganisationPlanMessage::Close)
             }
@@ -16387,7 +16321,7 @@ impl App {
             search: None,
             search_open: false,
             search_side: PanelSide::Left,
-            search_rows: layout::search_visible_rows(layout::INITIAL_WINDOW_SIZE),
+            search_rows: layout::search_visible_rows(layout::INITIAL_WINDOW_SIZE, false),
             search_generation: 0,
             search_handle: None,
             quick_open: None,
@@ -16437,8 +16371,6 @@ impl App {
             review_list_generation: 0,
             saved_queries: None,
             saved_queries_generation: 0,
-            document_search: None,
-            document_search_generation: 0,
             reorganisation: None,
             hermes_focus: HermesFocus::default(),
             return_to_hermes_overview: false,
@@ -17115,6 +17047,7 @@ impl App {
     /// Fixed panels with the rules page up, in the state of `view`.
     pub fn with_rules(view: RulesPage) -> Self {
         let mut app = Self::with_fixed_panels();
+        app.set_idle_hermes_status();
         app.rules = Some(view);
         app
     }
@@ -17126,6 +17059,7 @@ impl App {
     /// Fixed panels with the rule suggestions view up, in the state of `view`.
     pub fn with_rule_suggestions(view: RuleSuggestions) -> Self {
         let mut app = Self::with_fixed_panels();
+        app.set_idle_hermes_status();
         app.rule_suggestions = Some(view);
         app
     }
@@ -17141,8 +17075,17 @@ impl App {
     /// Fixed panels with the review list up, in the state of `view`.
     pub fn with_review_list(view: ReviewList) -> Self {
         let mut app = Self::with_fixed_panels();
+        app.set_idle_hermes_status();
         app.review_list = Some(view);
         app
+    }
+
+    /// A ready, idle Hermes module, so the status line of the filing pages
+    /// shows its sentence.
+    fn set_idle_hermes_status(&mut self) {
+        let mut idle = ncrs_pipeline::Snapshot::off();
+        idle.state = ncrs_pipeline::RunnerState::Idle;
+        self.filing_status.set_snapshot(idle, self.wall_clock.now());
     }
 
     /// The counts of Hermes as the index last gave them.
@@ -17167,14 +17110,31 @@ impl App {
         self.saved_queries_generation
     }
 
-    pub fn document_search_for_test(&self) -> Option<&DocumentSearch> {
-        self.document_search.as_ref()
+    /// The search view up over `filters`, which `hits_below` builds from the
+    /// folder of the search, as if the filing had an index to ask.
+    pub fn with_search_filters(
+        query: &str,
+        hits_below: impl FnOnce(&Path) -> SearchFilters,
+    ) -> Self {
+        let mut app = Self::with_fixed_panels();
+        drop(app.update(Message::OpenSearch));
+        let root = app.panel(PanelSide::Left).path.clone();
+        app.search_rows = layout::search_visible_rows(app.window_size, true);
+        let rows = app.search_rows;
+        if let Some(view) = app.search.as_mut() {
+            view.query = query.to_owned();
+            view.filters = Some(hits_below(&root));
+            view.mirror_index(rows);
+        }
+        app
     }
 
-    pub fn with_document_search(view: DocumentSearch) -> Self {
-        let mut app = Self::with_fixed_panels();
-        app.document_search = Some(view);
-        app
+    pub fn search_rows_for_test(&self) -> usize {
+        self.search_rows
+    }
+
+    pub fn search_for_test_mut(&mut self) -> Option<&mut SearchView> {
+        self.search.as_mut()
     }
 
     pub fn saved_queries_for_test(&self) -> Option<&SavedQueries> {
@@ -17195,6 +17155,7 @@ impl App {
     /// Fixed panels with the reorganisation plan view up, in the state of `view`.
     pub fn with_reorganisation_plan(view: ReorganisationView) -> Self {
         let mut app = Self::with_fixed_panels();
+        app.set_idle_hermes_status();
         app.reorganisation = Some(view);
         app
     }

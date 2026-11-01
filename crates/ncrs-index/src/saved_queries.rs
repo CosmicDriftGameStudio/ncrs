@@ -1,20 +1,17 @@
-use std::collections::{BTreeSet, HashSet};
+use std::collections::BTreeSet;
+use std::path::Path;
 use std::sync::Arc;
 
 use chrono::{NaiveDate, Utc};
 use rusqlite::types::Value;
 use rusqlite::{params, params_from_iter, Connection, OptionalExtension as _};
 
-use crate::documents::{DocumentRow, DOCUMENT_COLUMNS};
+use crate::documents::{match_query, DocumentRow, DOCUMENT_COLUMNS};
 use crate::error::IndexError;
+use crate::hermes_column::SubtreeRange;
 use crate::index::Index;
-use crate::model::{tag_name, Document, DocumentId, QuerySpec, SavedQuery, SavedQueryId};
+use crate::model::{tag_name, Document, QuerySpec, SavedQuery, SavedQueryId};
 use crate::names::{name_id, NameTable};
-
-/// How many documents the full-text part of a query looks at, best match
-/// first. More than any one person's archive holds, so in practice it cuts
-/// nothing; it only keeps one query from reading an unbounded result.
-const FULL_TEXT_HIT_LIMIT: usize = 100_000;
 
 /// The words of a full-text criterion, or `None` when it is blank: a blank
 /// criterion asks for nothing, it does not match nothing.
@@ -209,6 +206,17 @@ impl Index {
     /// without one last) and path. Missing documents are included; the caller
     /// sees them by `missing_since`.
     pub fn run_query(&self, spec: &QuerySpec) -> Result<Vec<Document>, IndexError> {
+        self.run_query_under(spec, None)
+    }
+
+    /// Like [`Self::run_query`], and only the documents below the folder
+    /// `under`. The folder is a condition of the query like the others, so
+    /// nothing is cut before it applies.
+    pub fn run_query_under(
+        &self,
+        spec: &QuerySpec,
+        under: Option<&Path>,
+    ) -> Result<Vec<Document>, IndexError> {
         let mut conditions: Vec<String> = Vec::new();
         let mut values: Vec<Value> = Vec::new();
         if let Some(year) = spec.year {
@@ -249,12 +257,23 @@ impl Index {
             values.push(Value::Text(format!("{}-%", escape_like(&tag))));
             values.extend(other_spellings.into_iter().map(Value::Text));
         }
-        let text_hits: Option<HashSet<DocumentId>> = full_text_words(spec)
-            .map(|words| {
-                self.search_text_prefix(words, FULL_TEXT_HIT_LIMIT)
-                    .map(|ids| ids.into_iter().collect())
-            })
-            .transpose()?;
+        if let Some(words) = full_text_words(spec) {
+            let query = match_query(words, true);
+            if query.is_empty() {
+                return Ok(Vec::new());
+            }
+            conditions.push(
+                "d.id IN (SELECT rowid FROM document_text WHERE document_text MATCH ?)".to_owned(),
+            );
+            values.push(Value::Text(query));
+        }
+        if let Some(folder) = under {
+            let range = SubtreeRange::of(folder)?;
+            conditions.push("d.path >= ? AND d.path < ?".to_owned());
+            let (from, until) = range.into_bounds();
+            values.push(Value::Text(from));
+            values.push(Value::Text(until));
+        }
 
         let mut sql = DOCUMENT_COLUMNS.to_owned();
         if !conditions.is_empty() {
@@ -269,11 +288,6 @@ impl Index {
             .collect::<Result<Vec<_>, _>>()?;
         let mut documents = Vec::new();
         for row in rows {
-            if let Some(hits) = &text_hits {
-                if !hits.contains(&DocumentId::new(row.id())) {
-                    continue;
-                }
-            }
             let tags = self.document_tags(row.id())?;
             documents.push(row.into_document(tags)?);
         }
@@ -303,7 +317,7 @@ mod tests {
     use chrono::NaiveDate;
 
     use super::*;
-    use crate::model::{DocumentFields, FieldOrigin};
+    use crate::model::{DocumentFields, DocumentId, FieldOrigin};
     use crate::test_support::{encrypted_index, new_document};
 
     fn tags(names: &[&str]) -> BTreeSet<String> {
@@ -547,6 +561,34 @@ mod tests {
             ..QuerySpec::default()
         };
         assert_eq!(found(&index, &blank), vec![ids[4]]);
+    }
+
+    #[test]
+    fn a_folder_keeps_the_documents_below_it_and_the_full_text_works_inside_it() {
+        let (_dir, mut index, ids) = stocked();
+        index
+            .set_document_text(ids[0], "Rent for the office")
+            .unwrap();
+        index
+            .set_document_text(ids[1], "Rent for the office")
+            .unwrap();
+        let spec = QuerySpec {
+            full_text: Some("rent".to_owned()),
+            ..QuerySpec::default()
+        };
+        let under = |folder: &str| -> Vec<DocumentId> {
+            index
+                .run_query_under(&spec, Some(Path::new(folder)))
+                .unwrap()
+                .into_iter()
+                .map(|document| document.id)
+                .collect()
+        };
+
+        assert_eq!(under("inbox"), vec![ids[0], ids[1]]);
+        assert_eq!(under("inbox/"), vec![ids[0], ids[1]]);
+        assert!(under("inbo").is_empty());
+        assert!(under("inbox/scan-1.pdf/deeper").is_empty());
     }
 
     #[test]

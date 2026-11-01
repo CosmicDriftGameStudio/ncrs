@@ -1015,6 +1015,18 @@
       "de": "Ungültiger regulärer Ausdruck: {reason}"
     },
     {
+      "key": "search.filters_hint",
+      "context": "Dim note under the filter row of the Search view once a filter is set: filters look at the index, not at the files.",
+      "en": "Filters only apply to documents ncrs has read.",
+      "de": "Filter wirken nur auf Dokumente, die ncrs gelesen hat."
+    },
+    {
+      "key": "search.update_report",
+      "context": "Link in the summary line of the Search view when the search was opened from a report: overwrites the criteria of that report with the current search and returns to the Reports page.",
+      "en": "Update report",
+      "de": "Auswertung aktualisieren"
+    },
+    {
       "key": "quickopen.subtitle",
       "context": "Line below the title of the Quick Open box (Ctrl+P / Cmd+P), saying plainly what the box does. Takes {dir}, the name of the directory the files are listed from.",
       "en": "Go to file in {dir}",
@@ -7304,7 +7316,7 @@
     },
     {
       "key": "action.search_documents",
-      "context": "Entry of the command list and the menu that runs the key action search_documents, which opens the Hermes page that searches the text of every document Hermes has read and narrows the hits by facets. Also the title of that page and its sidebar entry.",
+      "context": "Former entry of the command list for the key action search_documents. The action is no longer offered; a key bound to it still opens the Search view.",
       "en": "Search documents",
       "de": "Dokumente durchsuchen"
     },
@@ -7315,128 +7327,38 @@
       "de": "Papierspur"
     },
     {
-      "key": "document_search.explain",
-      "context": "Line at the top of the document search page explaining what it is for.",
-      "en": "Searches the text of every document ncrs has read. Click a value below to narrow the hits, for example a year and a sender.",
-      "de": "Durchsucht den Text aller Dokumente, die ncrs gelesen hat. Klicke unten auf einen Wert, um die Treffer einzugrenzen, zum Beispiel ein Jahr und einen Absender."
-    },
-    {
-      "key": "document_search.placeholder",
-      "context": "Placeholder of the text field of the document search page.",
-      "en": "Words in the text",
-      "de": "Wörter im Text"
-    },
-    {
       "key": "document_search.facet_year",
-      "context": "Label of the row of years whose documents can be chosen to narrow the hits on the document search page.",
+      "context": "Label of the row of years whose documents can be chosen to narrow the hits on the Search view.",
       "en": "Year",
       "de": "Jahr"
     },
     {
       "key": "document_search.facet_sender",
-      "context": "Label of the row of senders that can be chosen to narrow the hits on the document search page.",
+      "context": "Label of the row of senders that can be chosen to narrow the hits on the Search view.",
       "en": "Sender",
       "de": "Absender"
     },
     {
       "key": "document_search.facet_kind",
-      "context": "Label of the row of document kinds (invoice, contract ...) that can be chosen to narrow the hits on the document search page.",
+      "context": "Label of the row of document kinds (invoice, contract ...) that can be chosen to narrow the hits on the Search view.",
       "en": "Kind",
       "de": "Art"
     },
     {
       "key": "document_search.facet_tags",
-      "context": "Label of the row of tags that can be chosen to narrow the hits on the document search page; several can be chosen and a hit must carry all of them.",
+      "context": "Label of the row of tags that can be chosen to narrow the hits on the Search view; several can be chosen and a hit must carry all of them.",
       "en": "Tags",
       "de": "Schlagworte"
     },
     {
-      "key": "document_search.count_one",
-      "context": "Result line of the document search page when exactly one document matches. {count} is the number.",
-      "en": "{count} document",
-      "de": "{count} Dokument"
-    },
-    {
-      "key": "document_search.count_other",
-      "context": "Result line of the document search page for any number of matching documents but one. {count} is the number.",
-      "en": "{count} documents",
-      "de": "{count} Dokumente"
-    },
-    {
-      "key": "document_search.more_values",
-      "context": "Dim note after the chips of a facet row when more values exist than are shown. {count} is how many are left out.",
-      "en": "+{count}",
-      "de": "+{count}"
-    },
-    {
-      "key": "document_search.clear",
-      "context": "Button of the document search page that removes every chosen facet value.",
-      "en": "Clear filters",
-      "de": "Filter löschen"
-    },
-    {
-      "key": "document_search.column_date",
-      "context": "Heading of the date column of the hit list of the document search page.",
-      "en": "Date",
-      "de": "Datum"
-    },
-    {
-      "key": "document_search.column_sender",
-      "context": "Heading of the sender column of the hit list of the document search page.",
-      "en": "Sender",
-      "de": "Absender"
-    },
-    {
-      "key": "document_search.column_amount",
-      "context": "Heading of the amount column of the hit list of the document search page.",
-      "en": "Amount",
-      "de": "Betrag"
-    },
-    {
-      "key": "document_search.missing",
-      "context": "Mark behind the name of a hit on the document search page whose file is no longer where Hermes filed it.",
-      "en": "missing",
-      "de": "fehlt"
-    },
-    {
-      "key": "document_search.searching",
-      "context": "Shown on the document search page while the index is being asked.",
-      "en": "Searching …",
-      "de": "Sucht …"
-    },
-    {
-      "key": "document_search.empty_none",
-      "context": "Shown on the document search page when Hermes has read no documents at all yet.",
-      "en": "No documents read yet. Documents appear here once ncrs has read them from the inbox.",
-      "de": "Noch keine Dokumente gelesen. Dokumente erscheinen hier, sobald ncrs sie aus dem Eingang gelesen hat."
-    },
-    {
-      "key": "document_search.empty_no_match",
-      "context": "Shown on the document search page when the words and the chosen values match no document.",
-      "en": "No document matches. Remove a filter or change the words.",
-      "de": "Kein Dokument passt. Entferne einen Filter oder ändere die Wörter."
-    },
-    {
-      "key": "document_search.close",
-      "context": "Button that closes the document search page.",
-      "en": "Close",
-      "de": "Schließen"
-    },
-    {
-      "key": "document_search.go_to_file",
-      "context": "Button of the document search page (Enter) that shows the file of the hit under the cursor in the file panel.",
-      "en": "Go to file",
-      "de": "Zur Datei"
-    },
-    {
       "key": "quick_open.all_hits",
-      "context": "Last row of the Quick Open list when documents are searched too: opens the document search page with the text typed in Quick Open.",
-      "en": "All hits in Search documents …",
-      "de": "Alle Treffer in Dokumente durchsuchen …"
+      "context": "Last row of the Quick Open list when documents are searched too: opens the Search view with the text typed in Quick Open.",
+      "en": "All hits in Search …",
+      "de": "Alle Treffer in der Suche …"
     },
     {
       "key": "document_search.save_as_report",
-      "context": "Button of the document search page that opens the Reports page with a new report asking what the page asks now: the words and the chosen values. Nothing is saved until the user saves it there.",
+      "context": "Link in the summary line of the Search view while filters of read documents apply. Opens the Reports page with a new report asking what the search asks now: the words, the folder and the chosen values. Nothing is saved until the user saves it there.",
       "en": "Save as report",
       "de": "Als Auswertung speichern"
     },
@@ -7682,25 +7604,25 @@
     },
     {
       "key": "document_search.facet_recipient",
-      "context": "Label of the row of recipients that can be chosen to narrow the hits on the document search page.",
+      "context": "Label of the row of recipients that can be chosen to narrow the hits on the Search view.",
       "en": "Recipient",
       "de": "Empfänger"
     },
     {
       "key": "document_search.sum",
-      "context": "Total of the amounts of the documents found, after the number of documents on the document search page. {amount} is the sum with its currency.",
+      "context": "Total of the amounts of the documents found, appended to the summary line of the Search view. {amount} is the sum with its currency.",
       "en": "Sum {amount}",
       "de": "Summe {amount}"
     },
     {
       "key": "document_search.filters_together",
-      "context": "Dim note on the document search page while values are chosen: they all apply at once. {values} lists the chosen values joined by the word for and.",
+      "context": "Dim note on the Search view while values are chosen: they all apply at once. {values} lists the chosen values joined by the word for and.",
       "en": "Filters apply together ({values}).",
       "de": "Filter gelten zusammen ({values})."
     },
     {
       "key": "document_search.filters_and",
-      "context": "The word between the chosen values in the note that filters apply together on the document search page.",
+      "context": "The word between the chosen values in the note that filters apply together on the Search view.",
       "en": "and",
       "de": "und"
     },

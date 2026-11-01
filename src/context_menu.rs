@@ -8,10 +8,10 @@ use crate::fs::OpenKind;
 use crate::hermes_column::FolderRole;
 use crate::i18n::Msg;
 use crate::messages::{
-    ClipboardKind, CommandLineMessage, CommandPaletteMessage, DocumentSearchMessage,
-    HermesFileMessage, KeyBindingsMessage, Message, QuickFixMessage, QuickOpenMessage,
-    ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage, RulesMessage,
-    SavedQueriesMessage, SearchMessage, SettingsMessage, ThemeFetchMessage, TransferKind,
+    ClipboardKind, CommandLineMessage, CommandPaletteMessage, HermesFileMessage,
+    KeyBindingsMessage, Message, QuickFixMessage, QuickOpenMessage, ReorganisationPlanMessage,
+    ReviewListMessage, RuleSuggestionsMessage, RulesMessage, SavedQueriesMessage, SearchMessage,
+    SettingsMessage, ThemeFetchMessage, TransferKind,
 };
 use crate::transfer_dialog::TransferDialogMessage;
 use crate::ui::layout::{
@@ -733,7 +733,6 @@ pub struct InputState {
     pub review_list: bool,
     pub saved_queries: bool,
     /// The document search page is up: same as Quick Open.
-    pub document_search: bool,
     /// The sidebar of the Hermes card has the arrows, not the page.
     pub hermes_sidebar: bool,
     /// The copy or move confirmation is up: its target field takes Escape.
@@ -753,7 +752,7 @@ impl InputState {
     /// routing never sees it, yet at the start of a field it leads to the
     /// sidebar.
     fn leaves_form_left(&self, key: &Key, modifiers: Modifiers) -> bool {
-        (self.saved_queries || self.document_search)
+        self.saved_queries
             && !self.hermes_sidebar
             && modifiers.is_empty()
             && matches!(key, Key::Named(Named::ArrowLeft))
@@ -801,10 +800,6 @@ impl InputState {
                 Message::SavedQueries(SavedQueriesMessage::Close),
             ),
             (
-                self.document_search,
-                Message::DocumentSearch(DocumentSearchMessage::Close),
-            ),
-            (
                 self.reorganisation_plan,
                 Message::ReorganisationPlan(ReorganisationPlanMessage::Close),
             ),
@@ -835,11 +830,7 @@ impl InputState {
             event::Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) => {
                 self.alt_tap.key_pressed(key);
                 if self.leaves_form_left(key, *modifiers) {
-                    return Some(if self.document_search {
-                        Message::DocumentSearch(DocumentSearchMessage::LeftInField)
-                    } else {
-                        Message::SavedQueries(SavedQueriesMessage::LeftInForm)
-                    });
+                    return Some(Message::SavedQueries(SavedQueriesMessage::LeftInForm));
                 }
                 let leaves_field = matches!(key, Key::Named(Named::Escape | Named::Tab));
                 if self.path_editing && leaves_field {
@@ -879,7 +870,6 @@ impl InputState {
                     && !self.rules
                     && !self.review_list
                     && !self.saved_queries
-                    && !self.document_search
                     && !self.transfer_dialog
                     && !self.reorganisation_plan
                     && !self.settings)

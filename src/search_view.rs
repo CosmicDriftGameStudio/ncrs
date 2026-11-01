@@ -7,8 +7,18 @@ use std::path::{Path, PathBuf};
 
 use iced::mouse::ScrollDelta;
 
-use crate::fs::search::{LineMatch, SearchError, SearchEvent, SearchQuery, SearchTotals};
+use crate::fs::search::{
+    LineMatch, PathFilter, SearchError, SearchEvent, SearchQuery, SearchTotals,
+};
+use crate::search_filters::SearchFilters;
 use crate::ui::layout::ROW_HEIGHT;
+
+/// The line number of a snippet from the index, which does not know lines;
+/// real lines count from 1.
+pub const UNNUMBERED_LINE: u64 = 0;
+
+/// Characters of a snippet kept in a result row.
+const SNIPPET_CHARS: usize = 160;
 
 /// The three text fields of the search view.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,6 +95,10 @@ pub struct SearchView {
     pub skipped: usize,
     pub totals: Option<SearchTotals>,
     pub error: Option<SearchError>,
+    /// The filters over the documents Hermes has read; there while the filing
+    /// has an index to ask. With a value chosen the index answers the search
+    /// and `results` mirror what it found.
+    pub filters: Option<SearchFilters>,
 }
 
 /// Whether the walk may leave the file system `root` is on.
@@ -120,7 +134,72 @@ impl SearchView {
             skipped: 0,
             totals: None,
             error: None,
+            filters: None,
         }
+    }
+
+    /// The index answers the search, not the walk.
+    pub fn is_filtered(&self) -> bool {
+        self.filters.as_ref().is_some_and(SearchFilters::is_active)
+    }
+
+    /// Puts what the index found, narrowed to the folder of the search and
+    /// its file name globs, in place of the results. The cursor stays on its
+    /// file when the file is still there.
+    pub fn mirror_index(&mut self, visible_rows: usize) {
+        let Some(filters) = self.filters.as_ref() else {
+            return;
+        };
+        let paths = match PathFilter::compile(&self.query_for_engine()) {
+            Ok(paths) => paths,
+            Err(error) => {
+                self.clear_results();
+                self.error = Some(error);
+                return;
+            }
+        };
+        let results: Vec<FileResult> = filters
+            .shown()
+            .filter(|hit| paths.admits_file(&hit.path))
+            .map(|hit| FileResult {
+                path: hit.path.clone(),
+                lines: filters
+                    .snippet_of(hit)
+                    .map(|snippet| {
+                        let fitted = snippet.fitted(SNIPPET_CHARS);
+                        LineMatch {
+                            number: UNNUMBERED_LINE,
+                            text: fitted.text,
+                            ranges: fitted.marks,
+                        }
+                    })
+                    .into_iter()
+                    .collect(),
+            })
+            .collect();
+        let kept_on = self
+            .cursor
+            .and_then(|row| self.results.get(row.file()))
+            .map(|result| result.path.clone());
+        let busy = filters.is_busy();
+        let matches = results.iter().map(|result| result.lines.len()).sum();
+        self.totals = Some(SearchTotals {
+            scanned: results.len(),
+            files: results.len(),
+            matches,
+            skipped: 0,
+            truncated: false,
+        });
+        self.results = results;
+        self.error = None;
+        self.running = busy;
+        self.tagged
+            .retain(|path| self.results.iter().any(|result| &result.path == path));
+        self.cursor = kept_on
+            .and_then(|path| self.results.iter().position(|result| result.path == path))
+            .or_else(|| (!self.results.is_empty()).then_some(0))
+            .map(SearchRow::File);
+        self.ensure_visible(visible_rows);
     }
 
     pub fn query_for_engine(&self) -> SearchQuery {
@@ -412,7 +491,11 @@ impl SearchView {
             SearchRow::File(file) => Some((self.results.get(file)?.path.clone(), None)),
             SearchRow::Line(file, line) => {
                 let result = self.results.get(file)?;
-                Some((result.path.clone(), Some(result.lines.get(line)?.number)))
+                let number = result.lines.get(line)?.number;
+                Some((
+                    result.path.clone(),
+                    (number != UNNUMBERED_LINE).then_some(number),
+                ))
             }
         }
     }

@@ -323,8 +323,6 @@ mod tests {
                 // The same word, in a field that asks for a piece of text.
                 | Msg::FilingPiecesNameTextPlaceholder
                 | Msg::QuickFixLoading
-                // Only a placeholder behind a plus sign.
-                | Msg::DocumentSearchMoreValues
                 | Msg::MarkerDir
                 | Msg::MarkerUp
                 | Msg::DialogMkdirLabel

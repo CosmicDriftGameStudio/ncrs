@@ -12,7 +12,6 @@ pub mod context_menu;
 pub mod delete;
 pub mod dialog;
 pub mod document_preview;
-pub mod document_search;
 pub mod filing;
 pub mod filing_pieces;
 pub mod filing_setup;

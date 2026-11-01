@@ -508,7 +508,7 @@ const SNIPPET_WORDS: i64 = 12;
 
 /// The words as an FTS5 query, each one quoted; with `prefix_last` the last one
 /// carries the prefix star. Empty when there is no word.
-fn match_query(words: &str, prefix_last: bool) -> String {
+pub fn match_query(words: &str, prefix_last: bool) -> String {
     let quoted: Vec<String> = words
         .split_whitespace()
         .map(|word| format!("\"{}\"", word.replace('"', "\"\"")))
