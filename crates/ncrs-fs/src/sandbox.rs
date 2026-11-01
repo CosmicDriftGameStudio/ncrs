@@ -69,7 +69,7 @@ impl SandboxAccess {
     }
 
     /// Not sandboxed, with checks that touch nothing.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub fn inactive() -> Self {
         Self {
             active: false,

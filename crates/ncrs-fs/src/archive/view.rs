@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use super::copy_out;
-use crate::fs::transfer::{OnConflict, Progress};
+use crate::transfer::{OnConflict, Progress};
 
 const INSTANCE_PREFIX: &str = "run-";
 const LOCK_FILE: &str = ".lock";
@@ -246,7 +246,7 @@ fn unpack_for_view<P: Progress>(
 mod tests {
     use super::super::fixtures::{scratch, write_archive, Item, ALL_FORMATS};
     use super::*;
-    use crate::fs::transfer::Counting;
+    use crate::transfer::Counting;
 
     const ANY_AGE: Duration = Duration::ZERO;
     const NEVER_OLD: Duration = Duration::from_secs(3600);

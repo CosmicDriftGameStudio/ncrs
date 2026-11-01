@@ -3,15 +3,15 @@
 use std::ffi::OsString;
 use std::time::{Duration, UNIX_EPOCH};
 
-use iced::futures::future::join_all;
+use futures::future::join_all;
 use russh_sftp::client::error::Error as SftpError;
 use russh_sftp::client::SftpSession;
 use tokio::time::{timeout, timeout_at};
 
 use super::session::{Pool, RemoteError};
 use super::{is_deceptive, RemotePath};
-use crate::fs::reader::Listing;
-use crate::fs::{sort_entries, FileEntry, ReadError, SortKey};
+use crate::reader::Listing;
+use crate::{sort_entries, FileEntry, ReadError, SortKey};
 
 /// How many links in one folder are followed to learn whether they lead to a
 /// folder. Each costs a request, and a folder of thousands of links must still

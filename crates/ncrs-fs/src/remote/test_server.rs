@@ -98,7 +98,7 @@ pub fn other_public_key_text() -> String {
 }
 
 /// What the server saw and how it misbehaves on request.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Control {
     /// "password" is recorded when a client sends one, so a test can tell that
     /// none was sent to a server it did not trust.
@@ -160,6 +160,7 @@ impl Control {
     }
 }
 
+#[derive(Debug)]
 pub struct TestServer {
     pub root: tempfile::TempDir,
     pub control: Arc<Control>,
@@ -563,6 +564,7 @@ impl russh_sftp::server::Handler for Fs {
 
 /// A server, a pool in front of it and the files for the host keys, all in a
 /// scratch folder.
+#[derive(Debug)]
 pub struct Fixture {
     pub server: Arc<TestServer>,
     pub pool: Arc<Pool>,

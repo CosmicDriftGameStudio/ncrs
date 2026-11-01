@@ -64,6 +64,7 @@ use crate::key_bindings::KeyBindings;
 use crate::keymap::{self, KeyAction, KeyScope, Keymap};
 #[cfg(any(target_os = "macos", test))]
 use crate::menu::Availability;
+use crate::messages::TransferKindJob as _;
 use crate::messages::{
     AboutMessage, AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage,
     ConflictChoice, ConnectField, FilingSetupMessage, FilingStatusMessage, GrantMessage,

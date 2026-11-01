@@ -13,7 +13,7 @@ use super::frame::{self, DialogSize, Frame};
 use super::kit::{self, Tone};
 use super::theme::{self, font_size, spacing};
 use crate::i18n::{Language, Msg};
-use crate::messages::{Message, TransferKind};
+use crate::messages::{Message, TransferKind, TransferKindJob as _};
 use crate::palette::Palette;
 use crate::transfer_dialog::{
     Policy, Refusal, TransferDialog, TransferDialogMessage, FIRST_NAMES, LISTED_NAMES,

@@ -41,7 +41,7 @@ pub struct KeyringPasswords {
 
 impl KeyringPasswords {
     pub fn new() -> Self {
-        Self::with_service(service_for(crate::fs::sandbox_active()))
+        Self::with_service(service_for(crate::sandbox_active()))
     }
 
     /// A different service name keeps tests away from the real entries.
@@ -57,7 +57,7 @@ impl KeyringPasswords {
     }
 
     fn entry(&self, server: &ServerId) -> Result<keyring::Entry, String> {
-        crate::config::forbid_user_machine_in_tests("the system keychain for SFTP passwords");
+        crate::forbid_user_machine_in_tests("the system keychain for SFTP passwords");
         let (service, account) = self.names(server);
         keyring::Entry::new(service, &account).map_err(|error| error.to_string())
     }
@@ -98,20 +98,20 @@ impl PasswordStore for KeyringPasswords {
 }
 
 /// Passwords in memory, for tests. Prints no content.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 #[derive(Default)]
 pub struct InMemoryPasswords {
     entries: std::sync::Mutex<std::collections::HashMap<ServerId, Secret>>,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl fmt::Debug for InMemoryPasswords {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("InMemoryPasswords")
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl InMemoryPasswords {
     pub fn with(server: &ServerId, password: &str) -> Self {
         let store = Self::default();
@@ -124,7 +124,7 @@ impl InMemoryPasswords {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl PasswordStore for InMemoryPasswords {
     fn get(&self, server: &ServerId) -> Result<Option<Secret>, String> {
         let entries = self

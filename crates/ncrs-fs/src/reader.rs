@@ -314,7 +314,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_path_inside_an_archive_lists_like_a_folder_with_its_parent() {
-        use crate::fs::archive::fixtures::{write_archive, Item};
+        use crate::archive::fixtures::{write_archive, Item};
         let scratch = scratch_dir("read-archive");
         let archive = scratch.path().join("box.tar.gz");
         write_archive(
@@ -336,7 +336,7 @@ mod tests {
 
     #[tokio::test]
     async fn entries_an_archive_may_not_deliver_are_reported_not_hidden() {
-        use crate::fs::archive::fixtures::{write_archive, Item};
+        use crate::archive::fixtures::{write_archive, Item};
         let scratch = scratch_dir("read-archive-left-out");
         let archive = scratch.path().join("bad.zip");
         write_archive(
@@ -352,7 +352,7 @@ mod tests {
 
     #[tokio::test]
     async fn an_encrypted_archive_is_reported_as_such_and_keeps_the_way_out() {
-        use crate::fs::archive::fixtures::ENCRYPTED_7Z;
+        use crate::archive::fixtures::ENCRYPTED_7Z;
         let scratch = scratch_dir("read-archive-encrypted");
         for (file, bytes) in ENCRYPTED_7Z {
             let archive = scratch.path().join(file);
@@ -367,7 +367,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_broken_or_missing_place_in_an_archive_keeps_only_the_way_out() {
-        use crate::fs::archive::fixtures::{write_archive, Item};
+        use crate::archive::fixtures::{write_archive, Item};
         let scratch = scratch_dir("read-archive-broken");
         let broken = scratch.path().join("broken.zip");
         std::fs::write(&broken, b"not an archive").unwrap();

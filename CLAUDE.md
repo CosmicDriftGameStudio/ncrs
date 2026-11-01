@@ -6,7 +6,8 @@ towards them (see "Migration" below). Never copy a pattern from the code that br
 ## Structure: one crate per feature
 
 - Every feature is its own crate under `crates/`, in nested TEA: its own `State`, `Message`,
-  `update(&mut State, Message, &Ctx) -> Task<Message>` and `view(&State, &Ctx) -> Element<Message>`.
+  `update(&mut State, Message, &Ctx) -> (Task<Message>, Option<Action>)` and
+  `view(&State, ViewCtx) -> Element<Message>` (`crates/ncrs-search` is the model).
   The app crate `ncrs` only wires them together (`.map(Message::Search)`), it holds no feature logic.
 - Feature crates depend on `ncrs-ui-kit`, `ncrs-core` and the backend crates (`ncrs-index`, `ncrs-intake`, …), never
   on each other. Something two features need goes into the kit, `ncrs-core` or a backend crate.
@@ -47,8 +48,8 @@ target and order, one commit per step:
 1. `ncrs-ui-kit`: `src/ui/kit.rs` and `src/ui/hermes_kit.rs` merged, plus theme, format, frame, fkeys, dialog,
    context menu widget, and one file row.
 2. `ncrs-search`
-3. `ncrs-files` (panel, columns, sorting, hit list, history) and `ncrs-ops` (copy, move, delete, trash, pack,
-   conflicts)
+3. `ncrs-fs` (backend: the filesystem layer of `src/fs`), then `ncrs-files` (panel, columns, sorting, hit list,
+   history) and `ncrs-ops` (copy, move, delete, trash, pack, conflicts) on top of it
 4. `ncrs-palette` (command palette, quick open, command line), `ncrs-settings` (settings, key bindings, config,
    themes, models), `ncrs-hermes-ui` (filing pages, review, rules, tags, overview, reorganise, reports),
    `ncrs-remote` (SFTP)

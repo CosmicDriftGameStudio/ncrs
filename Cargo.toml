@@ -66,6 +66,8 @@ ncrs-index = { path = "crates/ncrs-index", version = "0.0.0" }
 ncrs-core = { path = "crates/ncrs-core", version = "0.0.0" }
 # The search: engine, filters, view state and messages.
 ncrs-search = { path = "crates/ncrs-search", version = "0.0.0" }
+# The filesystem layer: reading folders, copying, archives, the trash, SFTP.
+ncrs-fs = { path = "crates/ncrs-fs", version = "0.0.0" }
 # Translated UI strings, generated from strings.json.
 ncrs-i18n = { path = "crates/ncrs-i18n", version = "0.0.0" }
 # Colors, sizes and widgets the screens are built from, generic over the message type.
@@ -94,38 +96,12 @@ ureq = { version = "=3.5.0", default-features = false, features = ["rustls"] }
 # Reads the downloaded .vsix in memory to pick the theme files out of it. Entries
 # are read by name with a size limit and never extracted to disk.
 zip = { version = "=9.1.2", default-features = false, features = ["deflate-flate2-zlib-rs"] }
-# Browsing archives like folders. Entries are unpacked by our own code, never
-# with tar's `unpack`, so one name rule covers every format; no default features
-# keeps the xattr dependency out.
-tar = { version = "0.4.46", default-features = false }
-# The same zlib-rs backend zip already uses, for .tar.gz.
-flate2 = { version = "1.1.10", default-features = false, features = ["zlib-rs"] }
-# .tar.zst. No default features: no legacy format support, no zdict builder.
-zstd = { version = "0.14.3", default-features = false }
-# .7z. Pure Rust and Apache-2.0, unlike 7-Zip and libarchive (LGPL).
-# LZMA, LZMA2 and the BCJ filters are always on; `deflate` reuses the zlib-rs
-# backend above. `compress` is the LZMA2 encoder for writing. No `aes256`: an
-# encrypted archive is refused, not decrypted.
-sevenz-rust2 = { version = "0.24.1", default-features = false, features = ["compress", "deflate"] }
-# The real home folder and the bookmarks that keep a folder grant in the App
-# Sandbox. Only the `sandbox` feature (the App Store build) brings it in.
-ncrs-sandbox = { path = "crates/ncrs-sandbox", version = "0.0.0", optional = true }
 # SFTP, password login only. ring as crypto backend (the default aws-lc-rs would
 # add a second C library), no `rsa` feature: the rsa crate behind it has an open
 # advisory (RUSTSEC-2023-0071), so servers that offer only RSA host keys are not
 # supported yet. Both are pinned, and russh pins ssh-key to a release candidate
 # that must match.
 russh = { version = "=0.65.0", default-features = false, features = ["ring"] }
-russh-sftp = "=3.0.1"
-# The login passwords of saved servers, one keychain entry per server; the same
-# crate and version as the index key in ncrs-index.
-keyring = "4.2"
-# Host names in known_hosts files can be hashed (`|1|salt|hash`, HMAC-SHA1).
-hmac = "0.13"
-sha1 = "0.11"
-data-encoding = "2"
-# A typed password is wiped from memory when it is dropped.
-zeroize = "1"
 # Cmd+V / Ctrl+V pastes files, an image or text from the system clipboard, and
 # "Copy files to the clipboard" puts a file list on it. "image-data" reads and
 # writes the picture; no other defaults.
@@ -143,11 +119,6 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 # a Wayland desktop that has no X11 clipboard (Cargo adds this to the feature
 # set above).
 arboard = { version = "3.6", default-features = false, features = ["image-data", "wayland-data-control"] }
-
-[target.'cfg(not(target_os = "macos"))'.dependencies]
-# The trash on Windows and Linux. macOS talks to NSFileManager itself, because
-# the crate cannot list or restore there.
-trash = "5.2.9"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # The native menu bar on macOS, built from the command list. macOS only: Linux
@@ -197,7 +168,7 @@ local-ai = ["ncrs-ai/llama"]
 # grants, the keychain entry and the trash work differently. Off by default, and
 # without the feature nothing of it is compiled in. On other systems the feature
 # builds but changes nothing, since only macOS has the sandbox.
-sandbox = ["dep:ncrs-sandbox"]
+sandbox = ["ncrs-fs/sandbox"]
 
 # Software rasterisation only: no GPU or driver needed, works on CI runners and
 # VMs, but slow on high-resolution displays.
@@ -218,10 +189,10 @@ iced_selector = "0.14"
 ncrs-intake = { path = "crates/ncrs-intake", version = "0.0.0", features = ["test-support"] }
 # The checksum of the bytes a test server hands out for the AI model download.
 sha2 = "0.10"
+# What the filesystem layer keeps for tests only: the real trash scene and the in-memory stores.
+ncrs-fs = { path = "crates/ncrs-fs", version = "0.0.0", features = ["test-support"] }
 # Hits for the snapshot tests of the search filters.
 ncrs-search = { path = "crates/ncrs-search", version = "0.0.0", features = ["test-support"] }
-# Writes the 7z archives the tests read; the release build only decodes.
-sevenz-rust2 = { version = "0.24.1", default-features = false, features = ["compress", "deflate"] }
 
 [target.'cfg(target_os = "macos")'.dev-dependencies]
 # The clipboard tests read the pasteboard the way the Finder does and give the

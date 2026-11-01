@@ -22,7 +22,7 @@ pub mod credentials;
 pub mod known_hosts;
 pub mod list;
 pub mod session;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub mod test_server;
 pub mod transfer;
 

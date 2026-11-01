@@ -13,12 +13,12 @@ use super::index::{open_tar, open_zip, tar_time, zip_error, zip_time, EntryKind}
 use super::names::{is_apple_double, safe_components};
 use super::sevenz;
 use super::{index_of, locate_in_archive, ArchiveFormat, ArchiveLocation};
-use crate::fs::transfer::{resolve_conflict, transfer, Counting, Move, OnConflict, Progress};
+use crate::transfer::{resolve_conflict, transfer, Counting, Move, OnConflict, Progress};
 
 /// How much of one file is written between two checks for a cancel. Small
 /// enough that Escape stops a huge file within a moment, never the whole file
 /// in memory.
-pub(in crate::fs::archive) const CHUNK: u64 = 1 << 20;
+pub(in crate::archive) const CHUNK: u64 = 1 << 20;
 
 /// Copies the archive entry at `source` into `target_dir`, keeping its name,
 /// and returns how many entries it wrote.

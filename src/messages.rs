@@ -1472,16 +1472,15 @@ pub enum ClipboardKind {
     Directory,
 }
 
-/// Copy or move. One message with the kind inside, so the keymap and the job
-/// queue do not each need a variant.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TransferKind {
-    Copy,
-    Move,
+pub use ncrs_core::TransferKind;
+
+/// The job queue of the app, which `ncrs-core` knows nothing about.
+pub trait TransferKindJob {
+    fn job_kind(self) -> crate::jobs::JobKind;
 }
 
-impl TransferKind {
-    pub fn job_kind(self) -> crate::jobs::JobKind {
+impl TransferKindJob for TransferKind {
+    fn job_kind(self) -> crate::jobs::JobKind {
         match self {
             TransferKind::Copy => crate::jobs::JobKind::Copy,
             TransferKind::Move => crate::jobs::JobKind::Move,

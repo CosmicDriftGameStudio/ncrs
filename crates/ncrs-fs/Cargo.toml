@@ -1,0 +1,78 @@
+[package]
+name = "ncrs-fs"
+version = "0.0.0"
+edition = "2021"
+# Same as the root package: one place decides the compiler.
+rust-version = "1.98"
+description = "The filesystem layer of ncrs: reading folders, copying, archives, the trash and SFTP. Knows nothing about the UI"
+license = "MIT"
+publish = false
+
+[dependencies]
+ncrs-core = { path = "../ncrs-core", version = "0.0.0" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+serde = { version = "1", features = ["derive"] }
+toml_edit = { version = "0.25", default-features = false, features = ["parse", "serde", "display"] }
+# Folders that overlap are found by file identity, which holds for symlinks and
+# case-insensitive file systems where comparing paths would not.
+same-file = "1.0"
+# Config and trash journal go to a temporary file in the same folder first and
+# are then renamed over the old one.
+tempfile = "3.27"
+# `join_all` of the SFTP link lookups; the same crate iced re-exports.
+futures = { version = "0.3", default-features = false, features = ["std"] }
+# Browsing and writing .zip archives.
+zip = { version = "=9.1.2", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+# Browsing archives like folders. Entries are unpacked by our own code, never
+# with tar's `unpack`, so one name rule covers every format; no default features
+# keeps the xattr dependency out.
+tar = { version = "0.4.46", default-features = false }
+# The same zlib-rs backend zip already uses, for .tar.gz.
+flate2 = { version = "1.1.10", default-features = false, features = ["zlib-rs"] }
+# .tar.zst. No default features: no legacy format support, no zdict builder.
+zstd = { version = "0.14.3", default-features = false }
+# .7z. Pure Rust and Apache-2.0, unlike 7-Zip and libarchive (LGPL).
+# LZMA, LZMA2 and the BCJ filters are always on; `deflate` reuses the zlib-rs
+# backend above. `compress` is the LZMA2 encoder for writing. No `aes256`: an
+# encrypted archive is refused, not decrypted.
+sevenz-rust2 = { version = "0.24.1", default-features = false, features = ["compress", "deflate"] }
+# The real home folder and the bookmarks that keep a folder grant in the App
+# Sandbox. Only the `sandbox` feature (the App Store build) brings it in.
+ncrs-sandbox = { path = "../ncrs-sandbox", version = "0.0.0", optional = true }
+# SFTP, password login only. ring as crypto backend (the default aws-lc-rs would
+# add a second C library), no `rsa` feature: the rsa crate behind it has an open
+# advisory (RUSTSEC-2023-0071), so servers that offer only RSA host keys are not
+# supported yet. Both are pinned, and russh pins ssh-key to a release candidate
+# that must match.
+russh = { version = "=0.65.0", default-features = false, features = ["ring"] }
+russh-sftp = "=3.0.1"
+# The login passwords of saved servers, one keychain entry per server; the same
+# crate and version as the index key in ncrs-index.
+keyring = "4.2"
+# Host names in known_hosts files can be hashed (`|1|salt|hash`, HMAC-SHA1).
+hmac = "0.13"
+sha1 = "0.11"
+data-encoding = "2"
+# A typed password is wiped from memory when it is dropped.
+zeroize = "1"
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+# The trash on Windows and Linux. macOS talks to NSFileManager itself, because
+# the crate cannot list or restore there.
+trash = "5.2.9"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# Moving entries to the trash and back.
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSPathUtilities", "NSFileManager", "NSURL", "NSError"] }
+
+[features]
+# The macOS App Store build: inside the App Sandbox the folder grants and the
+# trash work differently. On other systems the feature builds but changes nothing.
+sandbox = ["dep:ncrs-sandbox"]
+# The real-trash scene, the in-memory stores and the guards that panic in tests,
+# for the tests of the app.
+test-support = []
+
+[lints]
+workspace = true

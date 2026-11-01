@@ -17,7 +17,7 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use crate::config::{OpenPrograms, ProgramLine};
+use crate::open_programs::{OpenPrograms, ProgramLine};
 
 /// What the user wants done with the file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -366,7 +366,7 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn the_trash_opens_in_the_finder_through_open_dash_a() {
-        let trash = crate::fs::home_dir().join(".Trash");
+        let trash = crate::home_dir().join(".Trash");
         assert_eq!(
             trash_in_finder_command(),
             with("/usr/bin/open", &["-a", "Finder"], &trash)

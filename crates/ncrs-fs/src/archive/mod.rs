@@ -194,7 +194,7 @@ fn recently_used(key: &IndexKey) -> Option<Arc<ArchiveIndex>> {
     clippy::panic,
     clippy::indexing_slicing
 )]
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub mod fixtures;
 
 #[allow(
@@ -377,8 +377,8 @@ mod tests {
             let copied = copy_out(
                 &archive.join("secret.txt"),
                 &out,
-                &mut crate::fs::transfer::Counting,
-                crate::fs::transfer::OnConflict::Fail,
+                &mut crate::transfer::Counting,
+                crate::transfer::OnConflict::Fail,
             )
             .unwrap_err();
             assert_eq!(
@@ -407,8 +407,8 @@ mod tests {
             let copied = copy_out(
                 &huge.join("a.txt"),
                 &out,
-                &mut crate::fs::transfer::Counting,
-                crate::fs::transfer::OnConflict::Fail,
+                &mut crate::transfer::Counting,
+                crate::transfer::OnConflict::Fail,
             )
             .unwrap_err();
             assert_eq!(

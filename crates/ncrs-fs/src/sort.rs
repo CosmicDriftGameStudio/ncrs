@@ -119,7 +119,7 @@ mod tests {
 
     fn computed_dir(name: &str, bytes: u64) -> FileEntry {
         FileEntry {
-            folder_size: Some(crate::fs::FolderSize {
+            folder_size: Some(crate::FolderSize {
                 bytes,
                 partial: false,
             }),

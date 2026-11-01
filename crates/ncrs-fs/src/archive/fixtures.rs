@@ -23,14 +23,14 @@ pub const ENCRYPTED_7Z: [(&str, &[u8]); 2] = [
         "encrypted-content.7z",
         include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/tests/fixtures/encrypted-content.7z"
+            "/../../tests/fixtures/encrypted-content.7z"
         )),
     ),
     (
         "encrypted-header.7z",
         include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/tests/fixtures/encrypted-header.7z"
+            "/../../tests/fixtures/encrypted-header.7z"
         )),
     ),
 ];
@@ -46,14 +46,14 @@ pub const DICTIONARY_512M_7Z: [(&str, &[u8]); 2] = [
         "dictionary-512m-lzma.7z",
         include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/tests/fixtures/dictionary-512m-lzma.7z"
+            "/../../tests/fixtures/dictionary-512m-lzma.7z"
         )),
     ),
     (
         "dictionary-512m-lzma2.7z",
         include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/tests/fixtures/dictionary-512m-lzma2.7z"
+            "/../../tests/fixtures/dictionary-512m-lzma2.7z"
         )),
     ),
 ];
@@ -64,14 +64,14 @@ pub const DICTIONARY_64M_7Z: [(&str, &[u8]); 2] = [
         "dictionary-64m-lzma.7z",
         include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/tests/fixtures/dictionary-64m-lzma.7z"
+            "/../../tests/fixtures/dictionary-64m-lzma.7z"
         )),
     ),
     (
         "dictionary-64m-lzma2.7z",
         include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/tests/fixtures/dictionary-64m-lzma2.7z"
+            "/../../tests/fixtures/dictionary-64m-lzma2.7z"
         )),
     ),
 ];
@@ -81,13 +81,13 @@ pub const DICTIONARY_64M_7Z: [(&str, &[u8]); 2] = [
 /// what a real tool writes, unlike the zip writer the other fixtures use.
 pub const BSDTAR_ZIP: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/tests/fixtures/bsdtar.zip"
+    "/../../tests/fixtures/bsdtar.zip"
 ));
 
 /// The same content as [`BSDTAR_ZIP`], written by `tar --format 7zip`.
 pub const BSDTAR_7Z: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/tests/fixtures/bsdtar.7z"
+    "/../../tests/fixtures/bsdtar.7z"
 ));
 
 pub const BSDTAR_ARCHIVES: [(&str, &[u8]); 2] =

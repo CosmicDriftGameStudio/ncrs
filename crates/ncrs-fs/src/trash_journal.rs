@@ -14,7 +14,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 
 use super::delete::{RestoreError, Trash, TrashReach, TrashedItem};
-use crate::config::replace_file_atomically;
+use crate::replace_file::replace_file_atomically;
 
 const JOURNAL_VERSION: u32 = 1;
 
@@ -35,6 +35,7 @@ pub trait TrashBackend: Send + Sync {
 }
 
 /// A trash that remembers what went into it in `journal`.
+#[derive(Debug)]
 pub struct JournaledTrash<B> {
     journal: PathBuf,
     backend: B,
@@ -286,10 +287,11 @@ impl<B: TrashBackend> Trash for JournaledTrash<B> {
 
 /// A trash that is a folder, for tests: an entry "in the trash" is one that was
 /// renamed into it.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
+#[derive(Debug)]
 pub struct FolderBackend(pub PathBuf);
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl TrashBackend for FolderBackend {
     fn move_to_trash(&self, path: &Path) -> Result<PathBuf, String> {
         let name = path.file_name().ok_or("no file name")?.to_string_lossy();
