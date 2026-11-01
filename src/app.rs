@@ -4287,8 +4287,8 @@ impl App {
                     // same rule the keyboard path uses.
                     if let Some(entry) = panel.entries.get(index) {
                         if !entry.is_parent {
-                            let name = entry.name.clone();
-                            panel.selection.toggle(&name);
+                            let path = entry.path.clone();
+                            panel.selection.toggle(&path);
                         }
                     }
                 }
@@ -6732,7 +6732,7 @@ impl App {
         let on_untagged_row = panel
             .entries
             .get(index)
-            .is_some_and(|entry| !panel.selection.is_tagged(&entry.name));
+            .is_some_and(|entry| !panel.selection.is_tagged(&entry.path));
         if anchor.is_some() && on_untagged_row {
             panel.selection.clear();
         }
@@ -7395,8 +7395,8 @@ impl App {
         let panel = self.active_panel_mut();
         if let Some(entry) = panel.selected_entry() {
             if !entry.is_parent {
-                let name = entry.name.clone();
-                panel.selection.toggle(&name);
+                let path = entry.path.clone();
+                panel.selection.toggle(&path);
             }
         }
         panel.move_selection(delta, rows);
@@ -17713,10 +17713,10 @@ impl App {
 
     /// Tags the row at `index`, addressed by position the way a keypress is.
     pub fn toggle_tag_for_test(&mut self, index: usize) {
-        let Some(name) = self.left_panel.entries.get(index).map(|e| e.name.clone()) else {
+        let Some(path) = self.left_panel.entries.get(index).map(|e| e.path.clone()) else {
             return;
         };
-        self.left_panel.selection.toggle(&name);
+        self.left_panel.selection.toggle(&path);
     }
 
     pub fn tag_all_for_test(&mut self) {
@@ -17729,7 +17729,7 @@ impl App {
         self.left_panel
             .entries
             .get(index)
-            .is_some_and(|e| self.left_panel.selection.is_tagged(&e.name))
+            .is_some_and(|e| self.left_panel.selection.is_tagged(&e.path))
     }
 
     pub fn move_selection_for_test(&mut self, delta: isize) {
@@ -18166,8 +18166,9 @@ mod transfer_tests {
     async fn tagged_rows_win_over_the_cursor() {
         let mut app = app_with_files();
         app.left_panel.selected = 2;
-        app.left_panel.selection.toggle(&OsString::from("a.txt"));
-        app.left_panel.selection.toggle(&OsString::from("c.txt"));
+        let left = app.left_panel.path.clone();
+        app.left_panel.selection.toggle(&left.join("a.txt"));
+        app.left_panel.selection.toggle(&left.join("c.txt"));
 
         let _task = app.start_transfer(TransferKind::Copy);
 
@@ -18493,7 +18494,7 @@ mod mouse_tagging {
             .entries
             .get(1)
             .expect("the fixture has three files")
-            .name
+            .path
             .clone();
         assert!(
             app.left_panel.selection.is_tagged(&name),
@@ -18733,7 +18734,7 @@ mod reload_keeps_place {
     #[test]
     fn tags_survive_a_reload() {
         let mut p = panel_with(&["a", "b", "c"]);
-        p.selection.toggle(&p.entries[1].name.clone());
+        p.selection.toggle(&p.entries[1].path.clone());
 
         p.apply_listing(
             PathBuf::from("/left"),
@@ -19663,8 +19664,8 @@ mod delete_tests {
         assert_eq!(app.delete_subject(&one), "a.txt");
 
         app.delete_dialog = None;
-        app.left_panel.selection.toggle(&"a.txt".into());
-        app.left_panel.selection.toggle(&"b.txt".into());
+        app.left_panel.selection.toggle(Path::new("/left/a.txt"));
+        app.left_panel.selection.toggle(Path::new("/left/b.txt"));
         let _again = app.update(Message::Delete { permanent: true });
         let many = app.delete_dialog.clone().unwrap();
         assert_eq!(app.delete_subject(&many), "2 items\na.txt\nb.txt");
@@ -20084,8 +20085,8 @@ mod copy_to_clipboard_tests {
     fn tagged_rows_win_one_per_line_in_listing_order_without_trailing_newline() {
         let mut panel = panel();
         panel.selected = 0;
-        panel.selection.toggle(&OsString::from("alpha.txt"));
-        panel.selection.toggle(&OsString::from("zulu.txt"));
+        panel.selection.toggle(Path::new("/left/alpha.txt"));
+        panel.selection.toggle(Path::new("/left/zulu.txt"));
         assert_eq!(
             clipboard_text(&panel, ClipboardKind::Path),
             Some(ClipboardText {
@@ -28614,7 +28615,7 @@ mod window_focus_tests {
             .position(|entry| entry.name == "b.txt")
             .unwrap();
         app.left_panel.select(index, rows);
-        app.left_panel.selection.toggle(&"c.txt".into());
+        app.left_panel.selection.toggle(&dir.path().join("c.txt"));
         assert_eq!(size_of(&app, "b.txt"), 0);
 
         std::fs::write(dir.path().join("b.txt"), "edited").unwrap();
@@ -28622,7 +28623,7 @@ mod window_focus_tests {
 
         assert_eq!(size_of(&app, "b.txt"), 6);
         assert_eq!(app.left_panel.selected_entry().unwrap().name, "b.txt");
-        assert!(app.left_panel.selection.is_tagged(&"c.txt".into()));
+        assert!(app.left_panel.selection.is_tagged(&dir.path().join("c.txt")));
     }
 
     #[tokio::test]
@@ -30719,7 +30720,7 @@ mod folder_size_tests {
     async fn tagged_folders_are_measured_one_after_another_and_the_cursor_is_ignored() {
         let mut app = app_in_links();
         for name in ["alpha", "gamma", "note.txt"] {
-            app.panel_mut(SIDE).selection.toggle(&OsString::from(name));
+            app.panel_mut(SIDE).selection.toggle(&directory().join(name));
         }
         put_cursor_on(&mut app, "beta");
 
@@ -30886,7 +30887,7 @@ mod folder_size_tests {
         assert_eq!(names(&app), ["..", "alpha", "beta", "gamma", "note.txt"]);
         app.panel_mut(SIDE)
             .selection
-            .toggle(&OsString::from("gamma"));
+            .toggle(&directory().join("gamma"));
         put_cursor_on(&mut app, "beta");
         drop(app.update(Message::ComputeFolderSizes));
         let id = run_id(&app);

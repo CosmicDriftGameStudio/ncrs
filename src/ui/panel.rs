@@ -30,6 +30,16 @@ use crate::selection::{Selection, SelectionSet};
 // State
 // ---------------------------------------------------------------------------
 
+/// A flat list of search hits that stands in for the folder listing. The
+/// entries are a snapshot; `scope` is the folder the search ran in and the
+/// path the panel reports, `return_to` the folder the panel showed before.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HitList {
+    pub query: String,
+    pub scope: PathBuf,
+    pub return_to: PathBuf,
+}
+
 #[derive(Debug, Clone)]
 pub struct PanelState {
     /// Current directory.
@@ -63,6 +73,8 @@ pub struct PanelState {
     /// The archive file the panel is standing in right now; set from the
     /// listing that put it there.
     pub archive: Option<PathBuf>,
+    /// Set while the panel lists search hits instead of a folder.
+    pub hit_list: Option<HitList>,
 }
 
 impl PanelState {
@@ -81,6 +93,7 @@ impl PanelState {
             history: PanelHistory::default(),
             history_step_request: None,
             archive: None,
+            hit_list: None,
         }
     }
 
@@ -93,12 +106,61 @@ impl PanelState {
 
     /// Sorts the rows by the current key; the cursor stays on its entry.
     pub fn resort(&mut self, visible_rows: usize) {
-        let cursor_name = self.selected_entry().map(|entry| entry.name.clone());
+        let cursor_path = self.selected_entry().map(|entry| entry.path.clone());
         sort_entries(&mut self.entries, self.sort);
-        let index = cursor_name
-            .and_then(|name| self.entries.iter().position(|entry| entry.name == name))
+        let index = cursor_path
+            .and_then(|path| self.entries.iter().position(|entry| entry.path == path))
             .unwrap_or(self.selected);
         self.select(index, visible_rows);
+    }
+
+    pub fn is_hit_list(&self) -> bool {
+        self.hit_list.is_some()
+    }
+
+    /// Turns the panel into an empty hit list that is being read. The request
+    /// id moves on, so a directory read still in flight cannot replace it.
+    pub fn begin_hit_list(&mut self, list: HitList) -> u64 {
+        self.path.clone_from(&list.scope);
+        self.hit_list = Some(list);
+        self.archive = None;
+        self.entries.clear();
+        self.selection.clear();
+        self.selected = 0;
+        self.scroll_offset = 0;
+        self.scroll_remainder = 0.0;
+        self.error = None;
+        self.begin_load()
+    }
+
+    /// Leaves the hit list without a visit in the history: the panel counts as
+    /// standing in the folder it came from.
+    pub fn drop_hit_list(&mut self) -> Option<HitList> {
+        let list = self.hit_list.take()?;
+        self.path.clone_from(&list.return_to);
+        Some(list)
+    }
+
+    /// Replaces the snapshot with `entries` (freshly read), keeping the sort,
+    /// the cursor and the tags, all by full path.
+    pub fn apply_hit_entries(&mut self, mut entries: Vec<FileEntry>, visible_rows: usize) {
+        sort_entries(&mut entries, self.sort);
+        let cursor_path = self.selected_entry().map(|entry| entry.path.clone());
+        let previous_index = self.selected;
+        self.selection.retain_present(&entries);
+        self.entries = entries;
+        self.loading = false;
+        let index = cursor_path
+            .and_then(|path| self.entries.iter().position(|entry| entry.path == path))
+            .unwrap_or(previous_index);
+        self.select(index, visible_rows);
+    }
+
+    /// Takes the rows at `paths` out of the list; the files are untouched.
+    pub fn remove_hits(&mut self, paths: &[PathBuf], visible_rows: usize) {
+        self.entries.retain(|entry| !paths.contains(&entry.path));
+        self.selection.retain_present(&self.entries);
+        self.select(self.selected, visible_rows);
     }
 
     pub fn selected_entry(&self) -> Option<&FileEntry> {
@@ -968,7 +1030,7 @@ mod tests {
 #[cfg(test)]
 mod tagging_tests {
     use super::*;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     fn entry(name: &str, is_parent: bool) -> FileEntry {
         FileEntry {
@@ -993,11 +1055,11 @@ mod tagging_tests {
     #[test]
     fn tags_live_on_the_panel() {
         let mut p = panel_with(&[("..", true), ("a", false), ("b", false)]);
-        let name = p.entries[1].name.clone();
+        let name = p.entries[1].path.clone();
         p.selection.toggle(&name);
 
         assert!(p.selection.is_tagged(&name));
-        assert!(!p.selection.is_tagged(&p.entries[2].name));
+        assert!(!p.selection.is_tagged(&p.entries[2].path));
     }
 
     /// `..` is not taggable: copying a directory into itself is not a thing
@@ -1006,8 +1068,8 @@ mod tagging_tests {
     fn the_parent_entry_is_not_tagged() {
         let mut p = panel_with(&[("..", true), ("a", false)]);
         p.selection.tag_all(&p.entries);
-        assert!(!p.selection.is_tagged(&p.entries[0].name));
-        assert!(p.selection.is_tagged(&p.entries[1].name));
+        assert!(!p.selection.is_tagged(&p.entries[0].path));
+        assert!(p.selection.is_tagged(&p.entries[1].path));
     }
 
     /// The point of tags being names rather than positions: a reload that
@@ -1017,7 +1079,7 @@ mod tagging_tests {
     #[test]
     fn a_reload_keeps_the_tag_on_the_same_file() {
         let mut p = panel_with(&[("..", true), ("alpha", false), ("beta", false)]);
-        p.selection.toggle(&p.entries[2].name.clone());
+        p.selection.toggle(&p.entries[2].path.clone());
 
         // Same files, new order, one file gone.
         p.apply_listing(
@@ -1033,7 +1095,7 @@ mod tagging_tests {
         );
 
         assert!(
-            p.selection.is_tagged(&std::ffi::OsString::from("beta")),
+            p.selection.is_tagged(&Path::new("beta")),
             "the tag followed the position instead of the file"
         );
         assert_eq!(p.selection.len(), 1, "more than one row ended up tagged");
@@ -1043,7 +1105,7 @@ mod tagging_tests {
         let tagged: Vec<String> = p
             .entries
             .iter()
-            .filter(|e| p.selection.is_tagged(&e.name))
+            .filter(|e| p.selection.is_tagged(&e.path))
             .map(|e| e.name.to_string_lossy().into_owned())
             .collect();
         assert_eq!(tagged, vec!["beta".to_string()]);
@@ -1054,7 +1116,7 @@ mod tagging_tests {
     #[test]
     fn tags_for_vanished_files_are_dropped() {
         let mut p = panel_with(&[("..", true), ("a", false), ("b", false), ("c", false)]);
-        p.selection.toggle(&p.entries[3].name.clone());
+        p.selection.toggle(&p.entries[3].path.clone());
         assert_eq!(p.selection.len(), 1);
 
         p.apply_listing(
@@ -1073,7 +1135,7 @@ mod tagging_tests {
     #[test]
     fn tags_inside_the_new_listing_survive() {
         let mut p = panel_with(&[("..", true), ("a", false), ("b", false)]);
-        p.selection.toggle(&std::ffi::OsString::from("a"));
+        p.selection.toggle(Path::new("a"));
 
         p.apply_listing(
             PathBuf::from("/tmp"),
@@ -1083,7 +1145,7 @@ mod tagging_tests {
             10,
         );
 
-        assert!(p.selection.is_tagged(&std::ffi::OsString::from("a")));
+        assert!(p.selection.is_tagged(Path::new("a")));
     }
 }
 
@@ -1096,6 +1158,7 @@ mod tagging_tests {
 #[cfg(test)]
 mod sort_tests {
     use super::*;
+    use std::path::Path;
     use std::time::SystemTime;
 
     fn file(name: &str, size: u64) -> FileEntry {
@@ -1143,10 +1206,10 @@ mod sort_tests {
     #[test]
     fn tags_survive_a_sort() {
         let mut panel = loaded(5);
-        panel.selection.toggle(&"b".into());
+        panel.selection.toggle(Path::new("/d/b"));
         panel.request_sort(SortColumn::Size, 5);
         panel.request_sort(SortColumn::Size, 5);
-        assert!(panel.selection.is_tagged(&"b".into()));
+        assert!(panel.selection.is_tagged(Path::new("/d/b")));
     }
 
     #[test]

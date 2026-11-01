@@ -147,7 +147,9 @@ fn showcase_app() -> App {
     project.entries = entries_of(PROJECT_DIRECTORY, PROJECT_ROWS);
     project.selected = position_of(&project.entries, "README.md");
     for name in ["Cargo.toml", "CHANGELOG.md"] {
-        project.selection.toggle(&OsString::from(name));
+        project
+            .selection
+            .toggle(&PathBuf::from(PROJECT_DIRECTORY).join(name));
     }
 
     let downloads = app.panel_mut_for_test(PanelSide::Right);

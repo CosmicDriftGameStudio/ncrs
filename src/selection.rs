@@ -11,12 +11,14 @@
 //! not mark. The rule is the one from NC: if anything is tagged, the operation
 //! applies to the tagged rows; otherwise to the single row under the cursor.
 //!
-//! Tags are **names, not indices**. An index is a position in a list that a
+//! Tags are **paths, not indices**. An index is a position in a list that a
 //! directory read replaces wholesale, so index 3 after a reload is a different
-//! file than index 3 before it — and F8 would delete the wrong one. A name
+//! file than index 3 before it — and F8 would delete the wrong one. A path
 //! survives the reload, or the file is genuinely gone and the tag should be.
+//! Full paths rather than names, because a search-hit list holds files of
+//! many folders and two `invoice.pdf` must not share one tag.
 use std::collections::BTreeSet;
-use std::ffi::OsString;
+use std::path::{Path, PathBuf};
 
 use crate::fs::FileEntry;
 
@@ -48,14 +50,14 @@ impl Selection {
     }
 }
 
-/// Which rows of one panel a file operation applies to, addressed by name.
+/// Which rows of one panel a file operation applies to, addressed by full path.
 ///
-/// Ordering follows the name, not the row order, so `BTreeSet` is only used for
+/// Ordering follows the path, not the row order, so `BTreeSet` is only used for
 /// cheap membership and de-duplication. `ordered` gives the names back in the
 /// order the rows appear, which is what the operation and the UI both need.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SelectionSet {
-    tagged: BTreeSet<OsString>,
+    tagged: BTreeSet<PathBuf>,
 }
 
 impl SelectionSet {
@@ -74,18 +76,18 @@ impl SelectionSet {
     }
 
     /// Toggles one row, as Insert does.
-    pub fn toggle(&mut self, name: &OsString) -> bool {
-        if self.tagged.remove(name) {
+    pub fn toggle(&mut self, path: &Path) -> bool {
+        if self.tagged.remove(path) {
             false
         } else {
-            self.tagged.insert(name.clone());
+            self.tagged.insert(path.to_owned());
             true
         }
     }
 
     #[allow(dead_code)]
-    pub fn is_tagged(&self, name: &OsString) -> bool {
-        self.tagged.contains(name)
+    pub fn is_tagged(&self, path: &Path) -> bool {
+        self.tagged.contains(path)
     }
 
     /// Drops every tag. `Ctrl+*` in NC.
@@ -99,7 +101,7 @@ impl SelectionSet {
     pub fn ordered<'a>(&self, entries: &'a [FileEntry]) -> Vec<&'a FileEntry> {
         entries
             .iter()
-            .filter(|e| self.tagged.contains(&e.name))
+            .filter(|e| self.tagged.contains(&e.path))
             .collect()
     }
 
@@ -108,7 +110,7 @@ impl SelectionSet {
         Selection {
             tagged: entries
                 .get(index)
-                .is_some_and(|e| self.tagged.contains(&e.name)),
+                .is_some_and(|e| self.tagged.contains(&e.path)),
             cursor: index == cursor,
         }
     }
@@ -130,10 +132,8 @@ impl SelectionSet {
         if self.tagged.is_empty() {
             return;
         }
-        // BUG: verhaelt sich wie Index-Tagging — ein Tag "ueberlebt", solange
-        // die neue Liste lang genug ist, egal welcher Name dort steht.
         self.tagged
-            .retain(|name| entries.iter().any(|e| &e.name == name));
+            .retain(|path| entries.iter().any(|e| &e.path == path));
     }
 
     /// Tags every row in `entries`, as `*` does. The `..` entry is never
@@ -143,7 +143,7 @@ impl SelectionSet {
         self.tagged.clear();
         for entry in entries {
             if !entry.is_parent {
-                self.tagged.insert(entry.name.clone());
+                self.tagged.insert(entry.path.clone());
             }
         }
     }
@@ -160,7 +160,7 @@ impl SelectionSet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
+    use std::ffi::OsString;
 
     fn entry(name: &str, is_parent: bool) -> FileEntry {
         FileEntry {
@@ -187,11 +187,11 @@ mod tests {
     #[test]
     fn toggling_adds_then_removes() {
         let mut set = SelectionSet::new();
-        let name = OsString::from("beta");
-        assert!(set.toggle(&name), "first toggle tags the row");
-        assert!(set.is_tagged(&name));
-        assert!(!set.toggle(&name), "second toggle untags it");
-        assert!(!set.is_tagged(&name));
+        let name = Path::new("beta");
+        assert!(set.toggle(name), "first toggle tags the row");
+        assert!(set.is_tagged(name));
+        assert!(!set.toggle(name), "second toggle untags it");
+        assert!(!set.is_tagged(name));
         assert!(set.is_empty());
     }
 
@@ -201,8 +201,8 @@ mod tests {
     fn tags_take_precedence_over_the_cursor() {
         let entries = listing();
         let mut set = SelectionSet::new();
-        set.toggle(&OsString::from("alpha"));
-        set.toggle(&OsString::from("beta"));
+        set.toggle(Path::new("alpha"));
+        set.toggle(Path::new("beta"));
 
         let cursor_row = set.state_of(3, &entries, 3);
         assert!(
@@ -230,7 +230,7 @@ mod tests {
     fn a_row_can_be_both_tagged_and_the_cursor() {
         let entries = listing();
         let mut set = SelectionSet::new();
-        set.toggle(&OsString::from("beta"));
+        set.toggle(Path::new("beta"));
         let state = set.state_of(2, &entries, 2);
         assert!(state.tagged && state.cursor);
         assert!(state.in_operation(true));
@@ -242,7 +242,7 @@ mod tests {
     #[test]
     fn a_tag_survives_a_reordered_reload() {
         let mut set = SelectionSet::new();
-        set.toggle(&OsString::from("beta"));
+        set.toggle(Path::new("beta"));
 
         // Same files, different order, one new file.
         let reloaded = vec![
@@ -253,7 +253,7 @@ mod tests {
         ];
         set.retain_present(&reloaded);
 
-        assert!(set.is_tagged(&OsString::from("beta")), "the tag was lost");
+        assert!(set.is_tagged(Path::new("beta")), "the tag was lost");
         let tagged_rows: Vec<&str> = set
             .ordered(&reloaded)
             .iter()
@@ -271,8 +271,8 @@ mod tests {
     #[test]
     fn a_tag_for_a_vanished_file_is_dropped() {
         let mut set = SelectionSet::new();
-        set.toggle(&OsString::from("beta"));
-        set.toggle(&OsString::from("gone"));
+        set.toggle(Path::new("beta"));
+        set.toggle(Path::new("gone"));
 
         // "beta" is still there, "gone" is not.
         let reloaded = vec![
@@ -283,10 +283,10 @@ mod tests {
         set.retain_present(&reloaded);
 
         assert!(
-            !set.is_tagged(&OsString::from("gone")),
+            !set.is_tagged(Path::new("gone")),
             "a tag for a file that no longer exists survived"
         );
-        assert!(set.is_tagged(&OsString::from("beta")));
+        assert!(set.is_tagged(Path::new("beta")));
     }
 
     /// A name replaced by a different file of the same name keeps the tag. That
@@ -295,12 +295,12 @@ mod tests {
     #[test]
     fn a_recreated_file_keeps_the_tag() {
         let mut set = SelectionSet::new();
-        set.toggle(&OsString::from("beta"));
+        set.toggle(Path::new("beta"));
 
         let reloaded = vec![entry("..", true), entry("beta", false)];
         set.retain_present(&reloaded);
 
-        assert!(set.is_tagged(&OsString::from("beta")));
+        assert!(set.is_tagged(Path::new("beta")));
     }
 
     /// Tagging everything skips `..`: copying the parent into a child of itself
