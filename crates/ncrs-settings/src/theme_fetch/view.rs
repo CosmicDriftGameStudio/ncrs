@@ -5,17 +5,19 @@ use iced::widget::text::Wrapping;
 use iced::widget::{column, container, row, text, Column};
 use iced::{alignment, Element, Length, Size};
 
-use super::format;
-use super::frame::{self, DialogSize, Frame, KeyHints};
-use super::kit::{self, dim, error_line, one_line, paragraph, Tone};
-use super::theme::{font_size, size, spacing};
-use crate::app::fill_template;
-use crate::i18n::{Language, Msg};
-use crate::messages::{Message, ThemeFetchMessage};
+use crate::message::ThemeFetchMessage;
+use ncrs_i18n::fill_template;
+use ncrs_i18n::{Language, Msg};
+use ncrs_ui_kit::format;
+use ncrs_ui_kit::frame::{self, DialogSize, Frame, KeyHints};
+use ncrs_ui_kit::kit::{self, dim, error_line, one_line, paragraph, Tone};
+use ncrs_ui_kit::theme::{font_size, size, spacing};
+
+type Message = ThemeFetchMessage;
 use crate::open_vsx::FetchError;
-use crate::palette::Palette;
 use crate::theme_fetch::{Stage, ThemeFetch};
 use crate::vsix::Brightness;
+use ncrs_ui_kit::palette::Palette;
 
 pub const FIELD_ID: &str = "theme-fetch-field";
 
@@ -26,10 +28,6 @@ pub const VISIBLE_THEMES: usize = 10;
 const THEME_MARKER_CHARS: usize = 8;
 
 const SIZE: DialogSize = DialogSize::Medium;
-
-fn to_message(message: ThemeFetchMessage) -> Message {
-    Message::ThemeFetch(message)
-}
 
 pub fn view<'a>(
     card: &'a ThemeFetch,
@@ -87,7 +85,7 @@ pub fn view<'a>(
         palette,
     )
     .buttons(footer_buttons(card, lang, palette))
-    .on_close(to_message(ThemeFetchMessage::Close))
+    .on_close(ThemeFetchMessage::Close)
     // Choosing, Enter takes the highlighted theme: the content defines it.
     .hints(KeyHints {
         enter: !choosing,
@@ -102,8 +100,8 @@ fn field<'a>(card: &'a ThemeFetch, lang: Language, palette: &Palette) -> Element
         lang.text(Msg::ThemeFetchPlaceholder),
         card.text(),
         FIELD_ID,
-        typing.then_some(|text| to_message(ThemeFetchMessage::TextChanged(text))),
-        to_message(ThemeFetchMessage::Activate),
+        typing.then_some(ThemeFetchMessage::TextChanged),
+        ThemeFetchMessage::Activate,
         palette,
     )
 }
@@ -158,7 +156,7 @@ fn theme_list<'a>(
             .align_y(alignment::Vertical::Center);
             kit::list_row(
                 content.into(),
-                to_message(ThemeFetchMessage::Pick(index)),
+                ThemeFetchMessage::Pick(index),
                 selected,
                 true,
                 palette,
@@ -177,9 +175,9 @@ fn footer_buttons<'a>(
 ) -> Vec<Element<'a, Message>> {
     let action = |label: &'a str, on_press: Option<ThemeFetchMessage>, primary: bool| {
         if primary {
-            kit::enter_button(label, on_press.map(to_message), Tone::Primary, palette)
+            kit::enter_button(label, on_press, Tone::Primary, palette)
         } else {
-            kit::button(label, on_press.map(to_message), Tone::Secondary, palette)
+            kit::button(label, on_press, Tone::Secondary, palette)
         }
     };
     let mut items = vec![action(

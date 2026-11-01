@@ -12,6 +12,7 @@ use ncrs_intake::LocationMode;
 
 use crate::config::{self, Filing, FilingLocation, FilingRuleViolation, FilingWriteError};
 use crate::hermes_column::FolderRole;
+pub use ncrs_ui_kit::format::shown_path;
 
 /// What the card says about the last thing the user did.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -351,16 +352,6 @@ pub fn write_locations(
         })
         .collect();
     config::write_filing_locations(config_path, &canonical).map(|config| config.filing)
-}
-
-/// `~` for the home directory and what lies below it, so the card shows
-/// short paths.
-pub fn shown_path(path: &Path, home: &Path) -> String {
-    match path.strip_prefix(home) {
-        Ok(rest) if rest.as_os_str().is_empty() => "~".to_owned(),
-        Ok(rest) => format!("~{}{}", std::path::MAIN_SEPARATOR, rest.display()),
-        Err(_) => path.display().to_string(),
-    }
 }
 
 // reason: a failing assertion is the signal in a test

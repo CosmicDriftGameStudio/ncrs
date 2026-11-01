@@ -6,16 +6,18 @@ use iced::widget::text::Wrapping;
 use iced::widget::{column, container, mouse_area, row, text, Row as WidgetRow};
 use iced::{alignment, Element, Length, Size};
 
-use super::format;
-use super::frame::{self, DialogSize, Frame, PageHint};
-use super::kit::{self, ListView, Tone};
-use super::theme::{font_size, size, spacing};
-use crate::app::fill_template;
-use crate::i18n::{FuturamaName, Language, Msg};
 use crate::key_bindings::{KeyBindings, Mode, Notice, Row, VISIBLE_ROWS};
-use crate::keymap::{binding_label, Binding, KeyRefusal, MAX_KEYS_PER_ACTION};
-use crate::messages::{KeyBindingsMessage, Message};
-use crate::palette::Palette;
+use crate::message::KeyBindingsMessage;
+use ncrs_config::keymap::{binding_label, Binding, KeyRefusal, MAX_KEYS_PER_ACTION};
+use ncrs_i18n::fill_template;
+use ncrs_i18n::{FuturamaName, Language, Msg};
+use ncrs_ui_kit::format;
+use ncrs_ui_kit::frame::{self, DialogSize, Frame, PageHint};
+use ncrs_ui_kit::kit::{self, ListView, Tone};
+use ncrs_ui_kit::theme::{font_size, size, spacing};
+
+type Message = KeyBindingsMessage;
+use ncrs_ui_kit::palette::Palette;
 
 pub const SEARCH_FIELD_ID: &str = "key-bindings-query";
 
@@ -42,10 +44,6 @@ const HINTS: &[PageHint] = &[
     },
 ];
 
-fn to_dialog(message: KeyBindingsMessage) -> Message {
-    Message::KeyBindings(message)
-}
-
 fn label_of(binding: &Binding) -> String {
     binding_label(binding).unwrap_or_default()
 }
@@ -60,8 +58,8 @@ pub fn view<'a>(
         lang.text(Msg::KeyBindingsSearchPlaceholder),
         dialog.query(),
         SEARCH_FIELD_ID,
-        Some(|query| to_dialog(KeyBindingsMessage::SearchChanged(query))),
-        to_dialog(KeyBindingsMessage::Record),
+        Some(KeyBindingsMessage::SearchChanged),
+        KeyBindingsMessage::Record,
         palette,
     );
     let offset = dialog.offset();
@@ -81,7 +79,7 @@ pub fn view<'a>(
             visible: VISIBLE_ROWS,
             offset,
         },
-        |delta| to_dialog(KeyBindingsMessage::Scrolled(delta)),
+        KeyBindingsMessage::Scrolled,
         palette,
     );
     let mut content = column![field, list].spacing(spacing::M);
@@ -98,7 +96,7 @@ pub fn view<'a>(
         palette,
     )
     .title_theme(lang.futurama_name(FuturamaName::KeyBindingsTitle))
-    .on_close(to_dialog(KeyBindingsMessage::Close))
+    .on_close(KeyBindingsMessage::Close)
     .buttons(buttons(dialog, lang, palette));
     match dialog.mode() {
         Mode::Recording { .. } => frame.footer_note(lang.text(Msg::KeyBindingsRecordingNote)),
@@ -214,10 +212,10 @@ fn action_row<'a>(
     .align_y(alignment::Vertical::Center);
     kit::list_row(
         content.into(),
-        to_dialog(KeyBindingsMessage::Select {
+        KeyBindingsMessage::Select {
             row: index,
             key: None,
-        }),
+        },
         selected,
         true,
         palette,
@@ -244,10 +242,10 @@ fn key_caps<'a>(
             kit::key_cap_in_row(label, selected, palette)
         };
         mouse_area(drawn)
-            .on_press(to_dialog(KeyBindingsMessage::Select {
+            .on_press(KeyBindingsMessage::Select {
                 row: index,
                 key: Some(slot),
-            }))
+            })
             .into()
     };
     let prompt = || -> Element<'a, Message> {
@@ -354,20 +352,10 @@ fn buttons<'a>(
     palette: &Palette,
 ) -> Vec<Element<'a, Message>> {
     let button = |msg: Msg, message: Option<KeyBindingsMessage>| {
-        kit::button(
-            lang.text(msg),
-            message.map(to_dialog),
-            Tone::Secondary,
-            palette,
-        )
+        kit::button(lang.text(msg), message, Tone::Secondary, palette)
     };
     let enter = |msg: Msg, message: KeyBindingsMessage| {
-        kit::enter_button(
-            lang.text(msg),
-            Some(to_dialog(message)),
-            Tone::Primary,
-            palette,
-        )
+        kit::enter_button(lang.text(msg), Some(message), Tone::Primary, palette)
     };
     match dialog.mode() {
         Mode::Browsing => {
@@ -386,7 +374,7 @@ fn buttons<'a>(
                 ),
                 kit::enter_button(
                     lang.text(Msg::KeyBindingsChangeKey),
-                    has_selection.then_some(to_dialog(KeyBindingsMessage::Record)),
+                    has_selection.then_some(KeyBindingsMessage::Record),
                     Tone::Primary,
                     palette,
                 ),
@@ -411,50 +399,4 @@ fn buttons<'a>(
 // lint is meant for the production paths.
 #[allow(clippy::unwrap_used)]
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_theme_name_with_room_shows_whole() {
-        assert_eq!(
-            fitted_theme_name("Copy", "Teleporter", None, 400.0).as_deref(),
-            Some("Teleporter")
-        );
-    }
-
-    #[test]
-    fn a_theme_name_without_room_is_cut_with_an_ellipsis() {
-        let label = "Unmark all";
-        let theme_name = "Remove every stamp from the crates";
-        let width = format::estimated_width(label, font_size::ROW)
-            + spacing::S
-            + format::estimated_width("Remove every", font_size::ROW);
-        let fitted = fitted_theme_name(label, theme_name, None, width).unwrap();
-        assert!(fitted.ends_with('…'), "{fitted}");
-        assert!(theme_name.starts_with(fitted.trim_end_matches('…')));
-    }
-
-    #[test]
-    fn a_theme_name_that_would_show_only_a_stub_is_left_out() {
-        let label = "Mark the row or remove its mark";
-        let width = format::estimated_width(label, font_size::ROW) + 20.0;
-        assert_eq!(fitted_theme_name(label, "Stamp", None, width), None);
-    }
-
-    #[test]
-    fn the_changed_mark_takes_its_room_before_the_theme_name() {
-        let label = "Copy";
-        let width = format::estimated_width(label, font_size::ROW)
-            + spacing::S
-            + format::estimated_width("Teleporter", font_size::ROW)
-            + 1.0;
-        assert_eq!(
-            fitted_theme_name(label, "Teleporter", None, width).as_deref(),
-            Some("Teleporter")
-        );
-        assert_ne!(
-            fitted_theme_name(label, "Teleporter", Some("changed"), width).as_deref(),
-            Some("Teleporter")
-        );
-    }
-}
+mod tests;

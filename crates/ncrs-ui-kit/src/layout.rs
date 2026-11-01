@@ -24,6 +24,13 @@ pub const SEARCH_CONTENT_ROW_HEIGHT: f32 = 3.0 * ROW_HEIGHT;
 /// row instead of moving the cursor.
 pub const TAG_COLUMN_WIDTH: f32 = 22.0;
 
+/// The feature list on the left of the settings tab.
+pub const SETTINGS_NAV_WIDTH: f32 = 232.0;
+/// The page of the settings tab does not grow wider than this.
+pub const SETTINGS_PAGE_MAX_WIDTH: f32 = 760.0;
+/// Control column of a setting whose control is a row of options.
+pub const SETTINGS_WIDE_CONTROL_WIDTH: f32 = 460.0;
+
 pub const SIZE_COLUMN_WIDTH: f32 = 90.0;
 pub const DATE_COLUMN_WIDTH: f32 = 150.0;
 /// The Hermes status column, after the date: an icon for a file, a summary

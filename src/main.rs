@@ -12,7 +12,6 @@ mod screenshot_tests;
 mod ui_tests;
 
 mod about;
-mod ai_model;
 mod app;
 mod backend;
 mod clipboard_paste;
@@ -43,7 +42,6 @@ mod hermes_setup;
 mod hermes_status;
 pub use ncrs_i18n as i18n;
 mod jobs;
-mod key_bindings;
 mod keymap;
 pub use ncrs_ui_kit::list_window;
 #[cfg(any(target_os = "macos", test))]
@@ -51,8 +49,6 @@ mod menu;
 mod messages;
 #[cfg(target_os = "macos")]
 mod native_menu;
-mod ocr_models;
-mod open_vsx;
 pub use ncrs_config::palette;
 pub use ncrs_files::panel_drag;
 mod query_work;
@@ -77,12 +73,11 @@ mod session_state;
 mod suggestion_work;
 mod tags_page;
 mod tags_work;
-mod theme_fetch;
 pub use ncrs_ops::transfer as transfer_dialog;
 pub use ncrs_ops::trash as trash_view;
+pub use ncrs_settings::{ai_model, key_bindings, ocr_models, open_vsx, theme_fetch, vsix};
 mod ui;
 pub use ncrs_config::vscode_theme;
-mod vsix;
 
 use app::App;
 use std::env;

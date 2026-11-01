@@ -1,4 +1,5 @@
 //! Presentation helpers for sizes and dates.
+use std::path::Path;
 use std::time::SystemTime;
 
 use chrono::{DateTime, Local};
@@ -306,6 +307,16 @@ pub fn fit_middle(text: &str, width_px: f32, font_size: f32) -> String {
         .collect();
     tail.reverse();
     format!("{head}{ELLIPSIS}{}", tail.into_iter().collect::<String>())
+}
+
+/// `~` for the home directory and what lies below it, so the card shows
+/// short paths.
+pub fn shown_path(path: &Path, home: &Path) -> String {
+    match path.strip_prefix(home) {
+        Ok(rest) if rest.as_os_str().is_empty() => "~".to_owned(),
+        Ok(rest) => format!("~{}{}", std::path::MAIN_SEPARATOR, rest.display()),
+        Err(_) => path.display().to_string(),
+    }
 }
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the

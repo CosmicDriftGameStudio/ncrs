@@ -3374,7 +3374,6 @@ dependencies = [
  "iced_test",
  "ignore",
  "image",
- "jsonc-parser",
  "muda",
  "ncrs-ai",
  "ncrs-config",
@@ -3389,6 +3388,7 @@ dependencies = [
  "ncrs-palette",
  "ncrs-pipeline",
  "ncrs-search",
+ "ncrs-settings",
  "ncrs-ui-kit",
  "objc2 0.6.5",
  "objc2-app-kit 0.3.2",
@@ -3404,8 +3404,6 @@ dependencies = [
  "tokio",
  "toml_edit 0.25.17+spec-1.1.0",
  "unicode-normalization",
- "ureq",
- "zip",
 ]
 
 [[package]]
@@ -3606,6 +3604,27 @@ dependencies = [
  "tempfile",
  "tokio",
  "unicode-normalization",
+]
+
+[[package]]
+name = "ncrs-settings"
+version = "0.0.0"
+dependencies = [
+ "iced",
+ "jsonc-parser",
+ "ncrs-ai",
+ "ncrs-config",
+ "ncrs-fs",
+ "ncrs-i18n",
+ "ncrs-index",
+ "ncrs-intake",
+ "ncrs-pipeline",
+ "ncrs-ui-kit",
+ "serde_spanned 1.1.2",
+ "sha2 0.10.9",
+ "tempfile",
+ "ureq",
+ "zip",
 ]
 
 [[package]]

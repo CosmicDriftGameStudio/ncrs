@@ -2513,7 +2513,7 @@ mod theme_fetch_card {
     use super::*;
     use crate::messages::ThemeFetchMessage;
     use crate::open_vsx::FetchError;
-    use crate::theme_fetch::tests::fetched;
+    use crate::theme_fetch::fixtures::fetched;
     use crate::theme_fetch::{Fetched, ThemeFetch};
     use crate::vsix::Brightness;
 
@@ -6373,9 +6373,7 @@ mod settings_tab {
         let app = App::with_settings_open(SettingsFeature::Hermes, hermes_config());
         assert_eq!(
             messages_after_click(&app, "Open").last(),
-            Some(&Message::FilingStatus(
-                crate::messages::FilingStatusMessage::Open
-            ))
+            Some(&Message::Settings(SettingsMessage::OpenFilingStatus))
         );
     }
 }
@@ -6716,7 +6714,7 @@ mod connect_dialog {
 #[cfg(test)]
 mod servers_page {
     use super::*;
-    use crate::messages::{RemoteMessage, SettingChange, SettingsFeature, SettingsMessage};
+    use crate::messages::{SettingChange, SettingsFeature, SettingsMessage};
     use std::path::PathBuf;
 
     fn page(source: &str) -> App {
@@ -6753,9 +6751,9 @@ mod servers_page {
         let app = page(TWO);
         assert_eq!(
             messages_after_click(&app, "Connect"),
-            [Message::Remote(RemoteMessage::OpenServer(PathBuf::from(
-                "sftp://marc@files.example.org/srv"
-            )))]
+            [Message::Settings(SettingsMessage::OpenServer(
+                PathBuf::from("sftp://marc@files.example.org/srv")
+            ))]
         );
         let sent = messages_after_click(&app, "Remove");
         let [Message::Settings(SettingsMessage::Change(SettingChange::Servers(rest)))] =
@@ -6773,7 +6771,7 @@ mod servers_page {
         simulator(&app).find("No saved servers").unwrap();
         assert_eq!(
             messages_after_click(&app, "Add…"),
-            [Message::Remote(RemoteMessage::OpenAdd)]
+            [Message::Settings(SettingsMessage::OpenServerAdd)]
         );
     }
 
@@ -6930,7 +6928,7 @@ mod hermes_overview_page {
 
     use super::*;
     use crate::config::{AiSetting, Filing, FilingLocation};
-    use crate::messages::HermesOverviewMessage;
+    use crate::messages::{HermesOverviewMessage, SettingsMessage};
 
     fn configured() -> Filing {
         let at = |path: &str, mode, is_target| FilingLocation {
@@ -7083,7 +7081,7 @@ mod hermes_overview_page {
             App::with_hermes_settings(Some(Phase::Ready), configured()).with_missing_key_for_test();
         assert_eq!(
             clicks(&missing, "Start over …"),
-            [overview_message(HermesOverviewMessage::AskStartOver)]
+            [Message::Settings(SettingsMessage::Protection(2))]
         );
         let asking = App::with_hermes_settings(Some(Phase::Ready), configured())
             .with_start_over_question_for_test();

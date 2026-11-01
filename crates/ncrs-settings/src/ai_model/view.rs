@@ -7,17 +7,19 @@ use iced::widget::{column, text};
 use iced::{Element, Size};
 use ncrs_ai::LOCAL_MODEL;
 
-use super::format;
-use super::frame::{self, DialogSize, Frame, KeyHints};
-use super::kit::{self, dim, error_line, one_line, paragraph, Tone};
-use super::theme::{font_size, spacing};
 use crate::ai_model::{
     AiModelCard, DownloadError, InstallOutcome, AI_MODEL_HOST, AI_MODEL_LICENSE, AI_MODEL_PROJECT,
 };
-use crate::app::fill_template;
-use crate::i18n::{Language, Msg};
-use crate::messages::{AiModelMessage, Message};
-use crate::palette::Palette;
+use crate::message::AiModelMessage;
+use ncrs_i18n::fill_template;
+use ncrs_i18n::{Language, Msg};
+use ncrs_ui_kit::format;
+use ncrs_ui_kit::frame::{self, DialogSize, Frame, KeyHints};
+use ncrs_ui_kit::kit::{self, dim, error_line, one_line, paragraph, Tone};
+use ncrs_ui_kit::theme::{font_size, spacing};
+
+type Message = AiModelMessage;
+use ncrs_ui_kit::palette::Palette;
 
 const SIZE: DialogSize = DialogSize::Medium;
 
@@ -131,11 +133,11 @@ pub fn view<'a>(
         )
         .buttons(vec![kit::button(
             lang.text(Msg::DialogClose),
-            Some(Message::AiModel(AiModelMessage::Close)),
+            Some(AiModelMessage::Close),
             Tone::filled_if(focus == CANCEL_FOCUS),
             palette,
         )])
-        .on_close(Message::AiModel(AiModelMessage::Close))
+        .on_close(AiModelMessage::Close)
         .hints(KeyHints {
             enter: false,
             tab: false,
@@ -145,18 +147,12 @@ pub fn view<'a>(
     let (action_label, action) = if card.is_downloading() {
         (
             Msg::AiModelStop,
-            (!card.is_stopping()).then_some(Message::AiModel(AiModelMessage::Stop)),
+            (!card.is_stopping()).then_some(AiModelMessage::Stop),
         )
     } else if card.continues() {
-        (
-            Msg::AiModelContinue,
-            Some(Message::AiModel(AiModelMessage::Download)),
-        )
+        (Msg::AiModelContinue, Some(AiModelMessage::Download))
     } else {
-        (
-            Msg::AiModelDownload,
-            Some(Message::AiModel(AiModelMessage::Download)),
-        )
+        (Msg::AiModelDownload, Some(AiModelMessage::Download))
     };
     let action_button = kit::button(
         lang.text(action_label),
@@ -170,7 +166,7 @@ pub fn view<'a>(
         vec![
             kit::button(
                 lang.text(Msg::DialogCancel),
-                Some(Message::AiModel(AiModelMessage::Close)),
+                Some(AiModelMessage::Close),
                 Tone::filled_if(focus == CANCEL_FOCUS),
                 palette,
             ),
@@ -186,7 +182,7 @@ pub fn view<'a>(
         palette,
     )
     .buttons(buttons)
-    .on_close(Message::AiModel(AiModelMessage::Close))
+    .on_close(AiModelMessage::Close)
     // Enter presses the focused button, which starts on Cancel.
     .hints(KeyHints {
         enter: false,
@@ -196,13 +192,13 @@ pub fn view<'a>(
 }
 
 /// The bar of a download and the line of figures under it.
-pub fn progress<'a>(
+pub fn progress<'a, M: Clone + 'a>(
     received: u64,
     total: u64,
     line: Msg,
     lang: Language,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, M> {
     let (done, all, percent) = format::download_figures(received, total);
     let fraction = if total == 0 {
         0.0
@@ -238,7 +234,7 @@ pub fn done_card<'a>(
 ) -> Element<'a, Message> {
     let mut buttons = vec![kit::button(
         lang.text(Msg::DialogDone),
-        Some(Message::AiModel(AiModelMessage::Close)),
+        Some(AiModelMessage::Close),
         Tone::filled_if(focus == CANCEL_FOCUS),
         palette,
     )];
@@ -259,7 +255,7 @@ pub fn done_card<'a>(
         palette,
     )
     .buttons(buttons)
-    .on_close(Message::AiModel(AiModelMessage::Close))
+    .on_close(AiModelMessage::Close)
     .hints(KeyHints {
         enter: false,
         tab: true,
@@ -281,10 +277,8 @@ fn finished_view<'a>(
         InstallOutcome::InUse => Msg::AiModelInUse,
         InstallOutcome::StillOff => Msg::AiModelStillOff,
     };
-    let second = (outcome == InstallOutcome::StillOff).then_some((
-        Msg::AiModelTurnOn,
-        Message::AiModel(AiModelMessage::ShowAiSetting),
-    ));
+    let second = (outcome == InstallOutcome::StillOff)
+        .then_some((Msg::AiModelTurnOn, AiModelMessage::ShowAiSetting));
     done_card(
         paragraph(lang.text(sentence), palette),
         second,

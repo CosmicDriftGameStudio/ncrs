@@ -5174,7 +5174,11 @@ impl App {
                 self.lang,
                 &self.palette,
             );
-            return Stack::with_children([root, dialog::scrim(card_element)]).into();
+            return Stack::with_children([
+                root,
+                dialog::scrim(card_element.map(Message::OcrModels)),
+            ])
+            .into();
         }
 
         if let Some(card) = self.ai_model.as_ref().filter(|_| !self.ai_card_hidden) {
@@ -5185,7 +5189,8 @@ impl App {
                 self.lang,
                 &self.palette,
             );
-            return Stack::with_children([root, dialog::scrim(card_element)]).into();
+            return Stack::with_children([root, dialog::scrim(card_element.map(Message::AiModel))])
+                .into();
         }
 
         if self.start_over_dialog {
@@ -5257,7 +5262,11 @@ impl App {
         if let Some(shortcuts) = self.key_bindings.as_ref() {
             let dialog_element =
                 key_bindings_ui::view(shortcuts, self.window_size, self.lang, &self.palette);
-            return Stack::with_children([root, dialog::scrim(dialog_element)]).into();
+            return Stack::with_children([
+                root,
+                dialog::scrim(dialog_element.map(Message::KeyBindings)),
+            ])
+            .into();
         }
 
         if let Some(command_palette) = self.command_palette.as_ref() {
@@ -5273,7 +5282,11 @@ impl App {
         if let Some(card) = self.theme_fetch.as_ref() {
             let card_element =
                 theme_fetch_ui::view(card, self.window_size, self.lang, &self.palette);
-            return Stack::with_children([root, dialog::scrim(card_element)]).into();
+            return Stack::with_children([
+                root,
+                dialog::scrim(card_element.map(Message::ThemeFetch)),
+            ])
+            .into();
         }
 
         // Then the create-directory prompt, for F7.
@@ -12354,9 +12367,28 @@ impl App {
                 .iter()
                 .filter(|&&action| !self.keymap.has_built_in_keys(action))
                 .count(),
-            protection: Some(self.overview_facts(state.ocr_models_present)),
+            protection: Some(self.protection_panel(&self.overview_facts(state.ocr_models_present))),
             lang: self.lang,
             palette: &self.palette,
+        }
+    }
+
+    /// The protection of the index as the settings page shows it.
+    fn protection_panel(&self, facts: &OverviewFacts) -> settings_ui::ProtectionPanel {
+        let text = hermes_overview_ui::protection_text(facts, self.lang);
+        settings_ui::ProtectionPanel {
+            state: text.state.unwrap_or_default().to_owned(),
+            good: text.good,
+            sentence: text.sentence.to_owned(),
+            failure: text.failure,
+            buttons: hermes_overview_ui::protection_actions(facts)
+                .into_iter()
+                .map(|action| settings_ui::ProtectionButton {
+                    label: action.label,
+                    enabled: action.enabled,
+                    primary: action.primary,
+                })
+                .collect(),
         }
     }
 
@@ -12364,14 +12396,15 @@ impl App {
         &'a self,
         state: &'a settings_ui::SettingsState,
     ) -> Container<'a, Message> {
-        let page = settings_ui::view(&self.settings_view(state));
+        let page = settings_ui::view(&self.settings_view(state)).map(Message::Settings);
         let bar = settings_ui::status_bar(&settings_ui::StatusBar {
             changed: state.changed,
             failure: self.settings_failure.as_deref(),
             notice: self.notice.as_deref(),
             lang: self.lang,
             palette: &self.palette,
-        });
+        })
+        .map(Message::Settings);
         container(column![page, bar])
             .width(Length::Fill)
             .height(Length::Fill)
@@ -12442,6 +12475,30 @@ impl App {
             SettingsMessage::ThemeFilePicked(Some(path)) => self.theme_file_picked(&path),
             SettingsMessage::ProgramPicked { path: None, .. }
             | SettingsMessage::ThemeFilePicked(None) => Task::none(),
+            SettingsMessage::OpenThemeFetch => self.update_theme_fetch(ThemeFetchMessage::Open),
+            SettingsMessage::OpenKeyBindings => self.update_key_bindings(KeyBindingsMessage::Open),
+            SettingsMessage::OpenOcrModels => self.update_ocr_models(OcrModelsMessage::Open),
+            SettingsMessage::OpenServerAdd => self.update(Message::Remote(RemoteMessage::OpenAdd)),
+            SettingsMessage::OpenServer(url) => {
+                self.update(Message::Remote(RemoteMessage::OpenServer(url)))
+            }
+            SettingsMessage::OpenFilingStatus => {
+                self.update(Message::FilingStatus(FilingStatusMessage::Open))
+            }
+            SettingsMessage::Protection(position) => {
+                let facts = self.overview_facts(
+                    self.settings
+                        .as_ref()
+                        .is_some_and(|state| state.ocr_models_present),
+                );
+                match hermes_overview_ui::protection_actions(&facts)
+                    .into_iter()
+                    .nth(position)
+                {
+                    Some(action) => self.update(Message::HermesOverview(action.message)),
+                    None => Task::none(),
+                }
+            }
             SettingsMessage::Change(change) => self.write_setting(change),
             SettingsMessage::Written { change, result } => self.setting_written(change, result),
         }
@@ -23861,7 +23918,7 @@ mod command_palette_tests {
 mod theme_fetch_tests {
     use super::*;
     use crate::palette::ThemePreset;
-    use crate::vsix::tests::{manifest, package, THEME_JSON};
+    use crate::vsix::fixtures::{manifest, package, THEME_JSON};
 
     const CONFIG: &str = "/example/config.toml";
 

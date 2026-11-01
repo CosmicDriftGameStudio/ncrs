@@ -6,16 +6,18 @@ use iced::widget::text::Wrapping;
 use iced::widget::{column, text};
 use iced::{Element, Size};
 
-use super::format;
-use super::frame::{self, DialogSize, Frame, KeyHints};
-use super::kit::{self, error_line, paragraph, Tone};
-use super::theme::{font_size, spacing};
-use crate::app::fill_template;
-use crate::i18n::{Language, Msg};
-use crate::messages::{Message, OcrModelsMessage};
+use crate::message::OcrModelsMessage;
+use ncrs_i18n::fill_template;
+use ncrs_i18n::{Language, Msg};
+use ncrs_ui_kit::format;
+use ncrs_ui_kit::frame::{self, DialogSize, Frame, KeyHints};
+use ncrs_ui_kit::kit::{self, error_line, paragraph, Tone};
+use ncrs_ui_kit::theme::{font_size, spacing};
+
+type Message = OcrModelsMessage;
 use crate::ocr_models::{DownloadError, OcrModelsCard};
-use crate::palette::Palette;
 use ncrs_intake::{OCR_MODELS_HOST, OCR_MODELS_PROJECT, OCR_MODEL_FILES};
+use ncrs_ui_kit::palette::Palette;
 
 const SIZE: DialogSize = DialogSize::Medium;
 
@@ -102,7 +104,7 @@ pub fn view<'a>(
                 .color(palette.dim_text),
         );
         if let Some((received, total)) = card.progress() {
-            body = body.push(super::ai_model::progress(
+            body = body.push(crate::ai_model::view::progress(
                 received,
                 total,
                 Msg::OcrModelsProgress,
@@ -118,9 +120,8 @@ pub fn view<'a>(
     if card.is_installed() {
         return single_button_card(body.into(), Msg::DialogClose, focus, window, lang, palette);
     }
-    let download =
-        (!card.is_downloading()).then_some(Message::OcrModels(OcrModelsMessage::Download));
-    let cancel = (!card.is_downloading()).then_some(Message::OcrModels(OcrModelsMessage::Close));
+    let download = (!card.is_downloading()).then_some(OcrModelsMessage::Download);
+    let cancel = (!card.is_downloading()).then_some(OcrModelsMessage::Close);
     Frame::new(
         lang.text(Msg::OcrModelsTitle),
         body,
@@ -143,7 +144,7 @@ pub fn view<'a>(
             palette,
         ),
     ])
-    .on_close(Message::OcrModels(OcrModelsMessage::Close))
+    .on_close(OcrModelsMessage::Close)
     // Enter presses the focused button, which starts on Cancel.
     .hints(KeyHints {
         enter: false,
@@ -170,11 +171,11 @@ fn single_button_card<'a>(
     )
     .buttons(vec![kit::button(
         lang.text(label),
-        Some(Message::OcrModels(OcrModelsMessage::Close)),
+        Some(OcrModelsMessage::Close),
         Tone::filled_if(focus == CANCEL_FOCUS),
         palette,
     )])
-    .on_close(Message::OcrModels(OcrModelsMessage::Close))
+    .on_close(OcrModelsMessage::Close)
     .hints(KeyHints {
         enter: false,
         tab: false,

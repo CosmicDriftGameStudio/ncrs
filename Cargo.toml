@@ -75,6 +75,8 @@ ncrs-fs = { path = "crates/ncrs-fs", version = "0.0.0" }
 ncrs-ops = { path = "crates/ncrs-ops", version = "0.0.0" }
 # The command line, Quick Open and the messages of the command list.
 ncrs-palette = { path = "crates/ncrs-palette", version = "0.0.0" }
+# The settings: the settings page, the key bindings page, the theme fetch and the model pages.
+ncrs-settings = { path = "crates/ncrs-settings", version = "0.0.0" }
 # Translated UI strings, generated from strings.json.
 ncrs-i18n = { path = "crates/ncrs-i18n", version = "0.0.0" }
 # Colors, sizes and widgets the screens are built from, generic over the message type.
@@ -94,15 +96,6 @@ tempfile = "3.27"
 # own fallback), so Linux needs neither GTK nor an async runtime. "wayland" only
 # serves a parent window, and the dialog is opened without one.
 rfd = { version = "=0.17.2", default-features = false, features = ["xdg-portal"] }
-# Reads the VS Code theme files named by `vscode` in `[theme]`: JSON with
-# comments and trailing commas. No features, so no dependencies.
-jsonc-parser = { version = "=0.34.0", default-features = false }
-# Downloads a VS Code color theme from Open VSX, only when the user asks for it
-# in the command palette. Blocking and HTTPS only (rustls), run off the UI thread.
-ureq = { version = "=3.5.0", default-features = false, features = ["rustls"] }
-# Reads the downloaded .vsix in memory to pick the theme files out of it. Entries
-# are read by name with a size limit and never extracted to disk.
-zip = { version = "=9.1.2", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 # SFTP, password login only. ring as crypto backend (the default aws-lc-rs would
 # add a second C library), no `rsa` feature: the rsa crate behind it has an open
 # advisory (RUSTSEC-2023-0071), so servers that offer only RSA host keys are not
@@ -169,7 +162,7 @@ default = ["gpu-with-fallback", "local-ai"]
 
 # The built-in model provider: llama.cpp is compiled into the app. Needs cmake
 # and a C++ compiler at build time; leave it out with --no-default-features.
-local-ai = ["ncrs-ai/llama"]
+local-ai = ["ncrs-ai/llama", "ncrs-settings/local-ai"]
 
 # The macOS App Store build: inside the App Sandbox the home folder, the folder
 # grants, the keychain entry and the trash work differently. Off by default, and
@@ -204,6 +197,8 @@ ncrs-config = { path = "crates/ncrs-config", version = "0.0.0", features = ["tes
 ncrs-search = { path = "crates/ncrs-search", version = "0.0.0", features = ["test-support"] }
 # The state of the documents section of Quick Open, for the tests of the app.
 ncrs-palette = { path = "crates/ncrs-palette", version = "0.0.0", features = ["test-support"] }
+# The fixtures of the theme fetch, for the tests of the app.
+ncrs-settings = { path = "crates/ncrs-settings", version = "0.0.0", features = ["test-support"] }
 # `PanelState::apply_listing`, for the tests of the panel in the app.
 ncrs-files = { path = "crates/ncrs-files", version = "0.0.0", features = ["test-support"] }
 
