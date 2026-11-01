@@ -14,11 +14,12 @@ The architecture follows the principles of editors like Zed: async I/O, message-
 state, pure views, and a strict separation between UI components, filesystem layer and
 application state.
 
-This is a **work in progress**. The dual-panel navigator, the file operations and
-localization with per-string translator context work, and there is a
-[config file](#configuration) with programs and keys. Archive support, network mounts
-and theming are planned but not built — see [ROADMAP.md](ROADMAP.md)
-for the state, the licensing audit and the reasoning behind the order.
+The dual-panel navigator, the file operations, archives, SFTP servers, color
+themes and localization with per-string translator context work, and there is a
+[config file](#configuration) with programs and keys. [Filing](#filing), which
+reads PDFs and scans and files them by your rules, is a beta. See
+[ROADMAP.md](ROADMAP.md) for the state, the licensing audit and the reasoning
+behind the order.
 
 ## Install
 
@@ -157,7 +158,12 @@ The same window in German, switched with F9.
   cloud storage folders such as Google Drive, OneDrive or Dropbox (macOS), mounted volumes or
   drive letters, the same places as in the Finder sidebar; see [Drives on macOS](#drives-on-macos)
 - Search in file names and contents below a directory, in the panel, the way
-  VS Code does it: see [Search](#search)
+  VS Code does it, with filters for the documents ncrs has read: see [Search](#search)
+- Filing (beta): put PDFs and scans in an inbox, and ncrs reads them, recognises
+  sender, date and amount and files them where your rules say. Everything stays
+  on this computer. See [Filing](#filing)
+- File lists show the tags of a document ncrs has read after its name (at most 3
+  per file, then "+1"); the Tags page of the filing chooses which
 - Dropping files from the Finder, Explorer or another file manager onto the window copies them
   into the active panel, with the same conflict questions as `F5`; the panel is outlined while
   the files are over the window. A drop always copies (move with `F6`). On Wayland the window
@@ -229,8 +235,12 @@ The defaults. Most of them can be changed in the keyboard shortcuts dialog (`Cmd
 | `Alt`+`F7` / `Cmd`+`Shift`+`F` (`Ctrl`+`Shift`+`F` on Linux and Windows) | Search below the directory of the active panel; pressed again, it moves to the next field. See [Search](#search) |
 | `F1` / `Cmd`+`Shift`+`P` / `Ctrl`+`Shift`+`P` | Lab (command palette): lists the actions that work where you are, with their keys; type to filter, `↑`/`↓` move, `Enter` runs, `Esc` closes |
 | `Cmd`+`P` / `Ctrl`+`P` | Quick Open: jump to a file by a few letters of its path. See [Quick Open](#quick-open) |
-| `Cmd`+`Shift`+`D` / `Ctrl`+`Shift`+`D`, or click the filing progress in the status bar | Status and errors, the filing status page (filing module on): what the page is for, pipeline state, load, workers, index figures and the last errors. `P` pauses or resumes, `1`/`2`/`3` set the load gentle / balanced / full for this session, `+`/`-` change the worker count, `↑`/`↓` and `Enter` show the file of an error, `Esc` closes |
+| `Cmd`+`Shift`+`D` / `Ctrl`+`Shift`+`D` | The filing tab on its Overview page (filing module on); pressed again, back to the panels. See [Filing](#filing) |
+| Status and errors in the filing sidebar | The filing status page: what the page is for, pipeline state, load, workers, index figures and the last errors. `P` pauses or resumes, `1`/`2`/`3` set the load gentle / balanced / full for this session, `+`/`-` change the worker count, `↑`/`↓` and `Enter` show the file of an error, `Esc` closes |
 | `Cmd`+`Shift`+`L` / `Ctrl`+`Shift`+`L` | Filing folders: choose the inbox and document folders and save them to the config file. See [Filing](#filing). `Esc` closes |
+| `Cmd`+`Shift`+`V` / `B` / `R` / `I` / `A` (`Ctrl`+`Shift` on Linux and Windows) | The filing pages Review, Rules, Rule suggestions, Sort again and Reports. See [Filing](#filing) |
+| `Cmd`+`.` / `Ctrl`+`.` | Quick fix for a review item: the fixes for the document under the cursor |
+| `Cmd`+`Shift`+`H` / `Ctrl`+`Shift`+`H` | Process again: runs the file under the cursor through the filing steps again |
 | `Backspace`        | Go to parent directory                   |
 | `Tab`              | Switch active panel                      |
 | `F9`               | Switch language for this session (start: `lang`) |
@@ -274,6 +284,18 @@ panel back; the next search starts with the same fields.
   `Ctrl`+`*` clears the tags. `F5`, `F6` and `F8` copy, move and delete the
   tagged files, else the file under the cursor.
 
+![The search with filters for documents](docs/screenshots/search-filters.png)
+
+With [filing](#filing) on, and not on a server, the search has five filters
+below the fields: **Tags**, **Kind**, **Year**, **Sender** and **Recipient**.
+Filters only apply to documents ncrs has read. With a filter set, the search
+lists the documents below the search directory that match, each with its tags,
+date and amount and the piece of its text around the words. Filters apply
+together, and the summary line adds the sum of the amounts when all of them
+are in one currency. **Save as report** opens the Reports page of the filing
+with the words and filters filled in, so the report only needs a name; a
+report opened in the search shows **Update report** instead.
+
 ## Quick Open
 
 Quick Open: `Cmd`+`P` (`Ctrl`+`P` on Linux and Windows) opens a box over the panels, as in
@@ -282,7 +304,9 @@ matching characters highlighted: `cfgrs` finds `src/config.rs`. It lists the
 files below the active panel's directory, hidden ones too and without following
 links, up to 250,000 files (the status line says when it stopped there).
 `↑`/`↓` pick a hit, `Enter` (or a click) shows its directory in the active panel
-with the cursor on the file, and `Esc` closes the box.
+with the cursor on the file, and `Esc` closes the box. With filing on, a
+**Documents** section below lists the documents ncrs has read whose text
+contains what you typed.
 
 ## Drives on macOS
 
@@ -467,8 +491,16 @@ Actions: `quit`, `open`, `go_up`, `switch_panel`, `switch_language`,
 `copy_path`, `copy_name`, `copy_files`, `paste`, `trash`, `restore_last_deletion`, `open_trash_in_finder`, `drive_menu_left`, `drive_menu_right`,
 `history_back`, `history_forward`, `add_favourite`, `remove_favourite`, `favourites`,
 `sort_by_name`, `sort_by_modified`, `sort_by_size`, `compute_folder_sizes`, `context_menu`, `search`, `quick_open`, `command_line`, `command_palette`, `search_case`,
-`search_whole_word`, `search_regex`, `filing_status`, `filing_setup`, `key_bindings`. Their
-default keys are in [Keyboard shortcuts](#keyboard-shortcuts).
+`search_whole_word`, `search_regex`, `filing_status`, `filing_setup`, `key_bindings`,
+`settings`, `about`, `fetch_theme`, `download_ocr_models`, `download_ai_model`,
+`grant_folder_access`, `connect_server`, `disconnect_server`,
+`file_list_tags_toggle`, `file_list_tags_choose`, and for the filing `rules`,
+`rule_suggestions`, `review_list`, `saved_queries`, `reorganisation_plan`,
+`undo_reorganisation`, `hermes_quick_fix`, `hermes_hand_to_inbox`,
+`hermes_process_again`, `hermes_reprocess_folder`, `hermes_set_inbox`,
+`hermes_set_filing_location`, `hermes_set_archive`, `hermes_exclude`,
+`hermes_inspect`. Their default keys are in [Keyboard shortcuts](#keyboard-shortcuts)
+and, for the filing pages, in [Filing](#filing).
 
 ### Colors
 
@@ -655,15 +687,31 @@ beside them:
 | Review / Rückfragen | Pending / Wiedervorlage |
 | Rules / Regeln | Bureaucratic Regulations / Bürokratische Vorschriften |
 | Rule suggestions / Regelvorschläge | Requisitions / Anträge |
-| Search documents / Dokumente durchsuchen | Paper trail / Papierspur |
+| Sort again / Neu sortieren | Inventory / Inventur |
+| Reports / Auswertungen | Inquiries / Anforderungen |
 | Gentle / Schonend (`gentle`) | By the book / Dienst nach Vorschrift |
 | Balanced / Ausgewogen (`balanced`) | Business as usual / Normalbetrieb |
 | Full / Volle Last (`full`) | Grade 36 / Grad 36 |
 
-![The document search of the Filing module](docs/screenshots/filing.png)
+**The filing tab.** The filing has its pages in one tab with a sidebar, in
+this order. `Cmd`+`Shift` with the letter opens a page (`Ctrl`+`Shift` on
+Linux and Windows); the name in `[keys]` changes the key.
 
-The document search: the words typed, the facets to narrow the hits, a snippet
-under each hit and the text of the selected document beside the list.
+| Page | Key | `[keys]` | What it is for |
+| --- | --- | --- | --- |
+| Overview | `D` | `filing_status` | State, folders, text recognition, the AI model and the default target for documents no rule covers |
+| Review | `V` | `review_list` | Documents that no confirmed rule could file, with a preview, where each field came from and the target path. Nothing is filed before you confirm |
+| Rules | `B` | `rules` | Rules, checked from top to bottom; the first that matches files the document |
+| Rule suggestions | `R` | `rule_suggestions` | Rules suggested from how your documents are already filed, with the reason. A suggestion does nothing until you confirm it |
+| Sort again | `I` | `reorganisation_plan` | Checks the folders you already filed into and suggests moves and renames. Nothing moves before you run the selected steps; `U` (`undo_reorganisation`) moves the last run back |
+| Reports | `A` | `saved_queries` | Saved searches for recurring questions, with their sum. Exporting copies the hits into a folder; the originals stay unchanged |
+| Tags | | `file_list_tags_choose` | All tags in one place. A tick shows the tag in the file tree behind the file name |
+| Status and errors | | | What the filing is doing right now: the state of the pipeline, the load, the index figures and the latest errors |
+
+![The Review page of the filing tab](docs/screenshots/filing.png)
+
+Review: documents that no confirmed rule could file. Nothing is filed before
+you confirm.
 
 **Setup.** `Cmd`+`Shift`+`L` (`Ctrl`+`Shift`+`L` on Linux and Windows,
 `filing_setup` in `[keys]`) opens the setup, also from the command palette
@@ -749,18 +797,17 @@ counts as a hit when nothing is found for it.
 | Field | Hits of 26 | Hit rate |
 | --- | --- | --- |
 | sender | 26 | 100% |
-| kind | 23 | 88% |
+| kind | 24 | 92% |
 | date | 22 | 84% |
 | number | 21 | 80% |
 | amount | 22 | 84% |
 
-Planned: 19. No rule: 3. Unconfirmed rule: 1. Conflicts (several confirmed
-rules match with different results, so the document goes to review): 0.
-A field missing: 3. Wrong assignments (a rule chosen, but the kind not the
-expected one): 0. Without the negated conditions that keep the rules
-apart (the general invoice rule excludes the IBAN of the energy supplier, the
-contract rule excludes invoices, the letter rule excludes cancellations), 4
-documents end in a conflict.
+Planned: 19. No rule: 3. Unconfirmed rule: 1. A field missing: 3 (date 1,
+amount 2). Wrong assignments (a rule chosen, but the kind not the expected
+one): 0. The rules are checked from top to bottom and the first that matches
+files the document; negated conditions keep the rules apart all the same: the general invoice rule excludes the IBAN of
+the energy supplier, the contract rule excludes invoices, the letter rule
+excludes cancellations.
 
 **The AI only fills what the rules leave open.** It is asked for empty fields
 only, and a value it returns for a field the rules already filled is ignored,

@@ -19,6 +19,8 @@ use crate::messages::{Message, PanelSide};
 const OUTPUT_DIRECTORY: &str = "docs/screenshots";
 const WINDOW_SIZE: iced::Size = iced::Size::new(1280.0, 640.0);
 const VISIBLE_ROWS: usize = 17;
+/// Taller than the panel shots, so the review form fits without scrolling.
+const FILING_WINDOW_SIZE: iced::Size = iced::Size::new(1280.0, 800.0);
 const STORE_DIRECTORY: &str = "docs/store-screenshots";
 /// 16:10 as the Mac App Store requires; rendered at 2x it is 2560×1600.
 const STORE_WINDOW_SIZE: iced::Size = iced::Size::new(1280.0, 800.0);
@@ -258,8 +260,11 @@ mod tests {
         search.show_search_results_for_test("hello", showcase_search_results());
         write_screenshot(&search, "search.png");
 
-        let filing = crate::ui_tests::search_filters_card::app_with_filters();
-        write_screenshot(&filing, "filing.png");
+        let search_filters = crate::ui_tests::search_filters_card::app_with_filters();
+        write_screenshot(&search_filters, "search-filters.png");
+
+        let filing = App::with_review_list(crate::review_list::tests::loaded_list());
+        write_screenshot_to(&filing, OUTPUT_DIRECTORY, FILING_WINDOW_SIZE, "filing.png");
     }
 
     #[test]

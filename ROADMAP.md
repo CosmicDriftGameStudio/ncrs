@@ -492,7 +492,7 @@ Größen sind Schätzungen (S bis ein Tag, M zwei bis vier Tage, L eine Woche un
 | 0.9.0 | Schreiben und Versprechen | K6 Archive schreiben, T17 (#127) ✅ · V1 Config versioniert (#128) ✅ · V2 Index-Migration (#129) ✅ · V3 100k-Dateien-Messung (#130) ✅ · V4 Lizenzen für den Store (#131), darin About-Dialog mit den Drittlizenzen (#149) ✅ · H1 Hermes als Beta (#132) ✅ · Homebrew-Tap aus dem Release (#191) ✅ |
 | 1.0.0 | App Store | A1 Sandbox-Build (#133) ✅ · A2 App Store Connect (#134) ✅ · A3 Store-Auftritt (#135) · A4 Review und Release (#136) · App-Icon in den Dracula-Farben (#190) ✅ |
 | 1.1.0 | Drag & Drop, Einfügen | Dateien ins Panel ziehen (#159) ✅ · zwischen Panels und hinaus ziehen (#160) ✅ · Einfügen aus der Zwischenablage (#161) ✅ · Papierkorb anzeigen und wiederherstellen (#206) ✅ · Cosmic-Primärfarbe (#203) ✅ · AppleDouble in Archiven (#204) ✅ · Theme-Include in der Sandbox (#205) ✅ |
-| 1.2.0 | Hermes verständlich und treffsicher | Tracker #164: Futurama als Sprachvariante, Erkennung messen, Bedingungssprache, Regel-Seite, Live try, eigene Steuerkontexte, Wiedervorlage mit Vorschau, Auswertungen, Hermes-Suche |
+| 1.2.0 | Hermes verständlich und treffsicher | Tracker #164: Futurama als Sprachvariante, Erkennung messen, Bedingungssprache, Regel-Seite, Live try, Schlagworte statt Steuerkontexte (#234), Wiedervorlage mit Vorschau, Auswertungen, Suchfilter für Dokumente, Ablage als Tab (#236); dazu Ordnergrößen (#212), Papierkorb im App-Store-Build (#215), apt/dnf-Repositories |
 
 Abhängigkeiten: S1 vor K3, K4 und A0 · K3 vor K2, A0 und V1 · K5 vor K6 · V2 vor H1 ·
 A0, K4, K6, E1 und E2 vor A1 · A1 vor A2 und A3 · alles vor A4. winget und AUR laufen nebenher
