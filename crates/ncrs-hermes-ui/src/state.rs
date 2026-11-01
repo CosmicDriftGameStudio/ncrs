@@ -1,3 +1,5 @@
+use crate::filing_setup::FilingSetup;
+use crate::hermes_setup::HermesSetup;
 use crate::message::HermesPage;
 use crate::quick_fix::QuickFix;
 use crate::reorganisation_plan::ReorganisationView;
@@ -12,6 +14,10 @@ use crate::tags_page::TagsPage;
 /// closed and opened again is not taken for the answer of the new one.
 #[derive(Debug, Default)]
 pub struct Hermes {
+    /// The card that lists the folders Hermes works on.
+    pub filing_setup: Option<FilingSetup>,
+    /// The card that sets Hermes up the first time.
+    pub hermes_setup: Option<HermesSetup>,
     pub review_list: Option<ReviewList>,
     pub review_list_generation: u64,
     /// The fixes for an inquiry; at most one of it and the context menu.

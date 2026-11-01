@@ -26,8 +26,6 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 # The preview decodes pictures itself, with limits on size and memory, and
 # scales them down before iced sees them.
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "tiff"] }
-# The system folder dialog of the filing setup. Linux goes through the desktop portal.
-rfd = { version = "=0.17.2", default-features = false, features = ["xdg-portal"] }
 # The preview is decoded on the blocking pool.
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
 

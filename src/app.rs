@@ -36,7 +36,7 @@ use crate::filing::{
     DocumentFinder, FilingMessage, FilingModule, LocationStatus, Phase, Work, WorkOutcome,
 };
 use crate::filing_pieces::TargetEdit;
-use crate::filing_setup::{self, FilePick, FilingSetup, SetupNote};
+use crate::filing_setup::{self, FilingSetup, SetupNote};
 use crate::filing_status::{FilingStatus, SNAPSHOT_EVERY};
 use crate::filing_work::FilingSummary;
 use crate::fs::remote::credentials::KeyringPasswords;
@@ -106,6 +106,7 @@ use crate::search_filters::SearchFilters;
 use crate::search_view::{stays_on_file_system, SearchField, SearchView};
 use crate::session_state::{self, PanelRecord, SessionState, WindowSize, WriteOrder};
 use crate::suggestion_work::INDEX_NOT_OPEN;
+use crate::system_dialogs::FilePick;
 #[cfg(test)]
 use crate::tags_page::TagsPage;
 #[cfg(test)]
@@ -148,6 +149,7 @@ use crate::ui::trash as trash_ui;
 use crate::ui::volumes::{self as volumes_view, FavouriteRow, ServerRow};
 use crate::ui::{conflict, dialog, fkeys, layout, panel, statusbar, theme, PanelState};
 use ncrs_files::{PanelMessage, Panels};
+use ncrs_hermes_ui::SetupCard;
 pub use ncrs_i18n::fill_template;
 use ncrs_index::{
     IncludeOutcome, KeyStore, KeyringKeyStore, KindSkip, Kinds, QuerySpec, SavedQueryId,
@@ -1234,10 +1236,6 @@ pub struct App {
     /// `with_filing`. Without a store no module is started.
     filing_index_path: Option<PathBuf>,
     filing_key_store: Option<Arc<dyn KeyStore + Send + Sync>>,
-    /// The filing setup card, while it is up.
-    filing_setup: Option<FilingSetup>,
-    /// The first-time setup of Hermes, while its card is up.
-    hermes_setup: Option<HermesSetup>,
     /// What "Hermes starten" still has to do once the module gets there.
     pending_hermes_start: Option<StartPlan>,
     /// Moves the dots of the picture on the setup card.
@@ -3269,8 +3267,6 @@ impl App {
             kinds: Kinds::default(),
             filing_index_path: None,
             filing_key_store: None,
-            filing_setup: None,
-            hermes_setup: None,
             pending_hermes_start: None,
             hermes_flow_step: 0,
             settings: Settings::default(),
@@ -3278,8 +3274,8 @@ impl App {
             theme_preset: ThemePreset::DEFAULT,
             vscode_theme: None,
             resolve_folder: filing_setup::resolve_folder,
-            pick_folder: filing_setup::pick_folder_with_system_dialog,
-            pick_file: filing_setup::pick_file_with_system_dialog,
+            pick_folder: crate::system_dialogs::pick_folder_with_system_dialog,
+            pick_file: crate::system_dialogs::pick_file_with_system_dialog,
             read_clipboard: read_clipboard_off_the_ui_thread,
             write_clipboard_files: {
                 let mut writer = FileListWriter::default();
@@ -3486,8 +3482,8 @@ impl App {
 
     fn return_to_overview_when_its_card_is_gone(&mut self) -> Task<Message> {
         if !self.return_to_hermes_overview
-            || self.filing_setup.is_some()
-            || self.hermes_setup.is_some()
+            || self.hermes.filing_setup.is_some()
+            || self.hermes.hermes_setup.is_some()
             || self.filing.as_ref().is_some_and(FilingModule::has_card)
         {
             return Task::none();
@@ -4262,7 +4258,7 @@ impl App {
 
     /// Settings and the filing setup replace the panel area; an overlay covers it.
     fn command_line_is_blocked(&self) -> bool {
-        self.overlay_is_open() || self.settings.page.is_some() || self.filing_setup.is_some()
+        self.overlay_is_open() || self.settings.page.is_some() || self.hermes.filing_setup.is_some()
     }
 
     /// A shell command ended: its report goes to the status bar and both panels
@@ -4458,7 +4454,7 @@ impl App {
         input.transfer_dialog = self.transfer_dialog.is_some();
         input.reorganisation_plan = self.hermes.reorganisation.is_some();
         input.settings = self.settings.page.is_some()
-            && self.filing_setup.is_none()
+            && self.hermes.filing_setup.is_none()
             && !self.blocking_overlay_is_open();
         drop(input);
         // `get` rather than `get_or_init`: the cell is created by the
@@ -4640,7 +4636,7 @@ impl App {
             .filter(|module| module.has_card())
             .and_then(|module| filing_ui::view(module, self.window_size, self.lang, &self.palette))
             .map(|card| card.map(Message::from));
-        let setup_card = self.filing_setup.as_ref().map(|setup| {
+        let setup_card = self.hermes.filing_setup.as_ref().map(|setup| {
             let context = filing_setup_ui::SetupContext {
                 current_folder: &self.active_panel().path,
                 home: &self.home,
@@ -5014,8 +5010,8 @@ impl App {
             .hermes_overview
             .as_ref()
             .is_some_and(OverviewState::is_editing);
-        let filing_setup = self.filing_setup.is_some();
-        let hermes_setup = self.hermes_setup.is_some();
+        let filing_setup = self.hermes.filing_setup.is_some();
+        let hermes_setup = self.hermes.hermes_setup.is_some();
         let filing_card = self
             .filing
             .as_ref()
@@ -5268,7 +5264,10 @@ impl App {
                 },
             )
         }));
-        if asks_encryption && self.hermes_setup.is_none() && self.pending_hermes_start.is_none() {
+        if asks_encryption
+            && self.hermes.hermes_setup.is_none()
+            && self.pending_hermes_start.is_none()
+        {
             self.open_hermes_setup();
         }
         if protection_change_wants_a_card && self.hermes_overview.is_some() {
@@ -5298,7 +5297,7 @@ impl App {
 
     /// The dots move only while the picture is on screen.
     fn hermes_flow_is_visible(&self) -> bool {
-        self.hermes_setup.is_some() || self.hermes_overview.is_some()
+        self.hermes.hermes_setup.is_some() || self.hermes_overview.is_some()
     }
 
     fn hermes_setup_offer(&self) -> SetupOffer {
@@ -5320,14 +5319,18 @@ impl App {
     fn open_hermes_setup(&mut self) {
         let setup = HermesSetup::new(&self.filing_config.locations, self.hermes_setup_offer());
         self.dialog_focus = setup.first_focus(setup.can_start());
-        self.hermes_setup = Some(setup);
+        self.hermes.hermes_setup = Some(setup);
     }
 
     /// The card cannot be changed while the folders are written or the module
     /// starts and creates the index.
     fn hermes_setup_is_busy(&self) -> bool {
         self.pending_hermes_start.is_some()
-            || self.hermes_setup.as_ref().is_some_and(HermesSetup::is_busy)
+            || self
+                .hermes
+                .hermes_setup
+                .as_ref()
+                .is_some_and(HermesSetup::is_busy)
             || self
                 .filing
                 .as_ref()
@@ -5335,14 +5338,15 @@ impl App {
     }
 
     fn hermes_focus_order(&self) -> Vec<SetupFocus> {
-        self.hermes_setup
+        self.hermes
+            .hermes_setup
             .as_ref()
             .map(|setup| setup.focus_order(setup.can_start() && !self.hermes_setup_is_busy()))
             .unwrap_or_default()
     }
 
     fn hermes_setup_view(&self) -> Option<Element<'_, Message>> {
-        let setup = self.hermes_setup.as_ref()?;
+        let setup = self.hermes.hermes_setup.as_ref()?;
         let card = hermes_setup_ui::SetupView {
             setup,
             focus: self.hermes_focus_order().get(self.dialog_focus).copied(),
@@ -5383,98 +5387,35 @@ impl App {
 
     fn update_hermes_setup(&mut self, message: HermesSetupMessage) -> Task<Message> {
         match message {
-            HermesSetupMessage::PickFolder(slot) => {
-                let Some(setup) = self.hermes_setup.as_mut() else {
-                    return Task::none();
-                };
-                if !setup.start_picking(slot) {
-                    return Task::none();
-                }
-                (self.pick_folder)(&self.active_panel().path).map(move |folder| {
-                    Message::HermesSetup(HermesSetupMessage::FolderPicked { slot, folder })
-                })
-            }
-            HermesSetupMessage::FolderPicked { slot, folder } => match folder {
-                Some(picked) => {
-                    let granted = self.grant_chosen_folder(&picked, |granted_folder, result| {
-                        Message::HermesSetup(HermesSetupMessage::Granted {
-                            folder: granted_folder,
-                            result,
-                        })
-                    });
-                    Task::batch([granted, self.resolve_hermes_folder(slot, picked)])
-                }
-                None => {
-                    if let Some(setup) = self.hermes_setup.as_mut() {
-                        setup.cancel_picking();
-                    }
-                    Task::none()
-                }
-            },
-            HermesSetupMessage::Granted { folder, result } => {
-                if let (Some(setup), Err(reason)) = (self.hermes_setup.as_mut(), result) {
-                    setup.show_note(SetupNote::GrantFailed { folder, reason });
-                }
-                Task::none()
-            }
-            HermesSetupMessage::Resolved {
-                slot,
-                folder,
-                resolved,
-            } => {
-                if let Some(setup) = self.hermes_setup.as_mut() {
-                    setup.finish_picking(slot, folder, resolved);
-                }
-                Task::none()
-            }
-            HermesSetupMessage::ChooseEncrypted(encrypted) => {
-                if let Some(setup) = self.hermes_setup.as_mut() {
-                    setup.choose_encrypted(encrypted);
-                }
-                Task::none()
-            }
-            HermesSetupMessage::ToggleLoadModel => {
-                if let Some(setup) = self.hermes_setup.as_mut() {
-                    setup.toggle_load_model();
-                }
-                Task::none()
-            }
             HermesSetupMessage::Start => self.start_hermes_setup(),
             HermesSetupMessage::Written(result) => match result {
                 Ok(filing) => self.hermes_written(filing),
                 Err(error) => {
                     self.pending_hermes_start = None;
-                    if let Some(setup) = self.hermes_setup.as_mut() {
+                    if let Some(setup) = self.hermes.hermes_setup.as_mut() {
                         setup.stop_writing(SetupNote::SaveFailed(error));
                     }
                     Task::none()
                 }
             },
             HermesSetupMessage::Later => self.hermes_later(),
+            card_message @ (HermesSetupMessage::PickFolder(_)
+            | HermesSetupMessage::FolderPicked { .. }
+            | HermesSetupMessage::Granted { .. }
+            | HermesSetupMessage::Resolved { .. }
+            | HermesSetupMessage::ChooseEncrypted(_)
+            | HermesSetupMessage::ToggleLoadModel) => {
+                let outcome = self.with_hermes(Vec::new(), |hermes, ctx| {
+                    ncrs_hermes_ui::update_hermes_setup(hermes, card_message, ctx)
+                });
+                self.run_hermes_outcome(outcome)
+            }
         }
-    }
-
-    /// Looks up `folder` on a blocking thread; the answer is a `Resolved`.
-    fn resolve_hermes_folder(&self, slot: FolderSlot, folder: PathBuf) -> Task<Message> {
-        let resolve_folder = self.resolve_folder;
-        Task::perform(
-            tokio::task::spawn_blocking({
-                let looked_up = folder.clone();
-                move || resolve_folder(&looked_up)
-            }),
-            move |joined| {
-                Message::HermesSetup(HermesSetupMessage::Resolved {
-                    slot,
-                    folder,
-                    resolved: joined.unwrap_or_else(|join| Err(join.to_string())),
-                })
-            },
-        )
     }
 
     fn start_hermes_setup(&mut self) -> Task<Message> {
         let configured_path = self.config_path.clone();
-        let Some(setup) = self.hermes_setup.as_mut() else {
+        let Some(setup) = self.hermes.hermes_setup.as_mut() else {
             return Task::none();
         };
         let Some(config_path) = configured_path else {
@@ -5506,7 +5447,7 @@ impl App {
     /// on the same locations creates the index; any other is started again on
     /// the new ones and gets there by itself.
     fn hermes_written(&mut self, filing: Filing) -> Task<Message> {
-        if let Some(setup) = self.hermes_setup.as_mut() {
+        if let Some(setup) = self.hermes.hermes_setup.as_mut() {
             setup.written();
         }
         if self.pending_hermes_start.is_none() {
@@ -5528,7 +5469,7 @@ impl App {
         if !replaceable {
             self.filing_config = filing;
             self.pending_hermes_start = None;
-            self.hermes_setup = None;
+            self.hermes.hermes_setup = None;
             return self.show_notice(self.saved_filing_notice(SavedFilingApplies::AtNextStart));
         }
         self.pipeline = None;
@@ -5543,7 +5484,7 @@ impl App {
         if self.hermes_setup_is_busy() {
             return Task::none();
         }
-        self.hermes_setup = None;
+        self.hermes.hermes_setup = None;
         if self.filing.is_some() {
             self.update_filing(FilingMessage::Dismiss)
         } else {
@@ -5569,7 +5510,7 @@ impl App {
             PlanStep::Wait | PlanStep::CreateIndex { .. } => Some(plan),
         };
         if card_is_done {
-            self.hermes_setup = None;
+            self.hermes.hermes_setup = None;
         }
         let mut tasks: Vec<Task<Message>> = creation.map(run_filing_work).into_iter().collect();
         if let PlanStep::Done { load_model } = step {
@@ -5586,124 +5527,17 @@ impl App {
     fn update_filing_setup(&mut self, message: FilingSetupMessage) -> Task<Message> {
         match message {
             FilingSetupMessage::Toggle => {
-                if self.hermes_setup.take().is_some() {
+                if self.hermes.hermes_setup.take().is_some() {
                     self.pending_hermes_start = None;
-                } else if self.filing_setup.take().is_none() {
+                } else if self.hermes.filing_setup.take().is_none() {
                     if self.filing_config.locations.is_empty() {
                         self.open_hermes_setup();
                     } else {
-                        self.filing_setup = Some(FilingSetup::new(&self.filing_config.locations));
+                        self.hermes.filing_setup =
+                            Some(FilingSetup::new(&self.filing_config.locations));
                     }
                 }
                 Task::none()
-            }
-            FilingSetupMessage::Close => {
-                self.filing_setup = None;
-                Task::none()
-            }
-            FilingSetupMessage::PickFolder(mode) => {
-                let Some(setup) = self.filing_setup.as_mut() else {
-                    return Task::none();
-                };
-                if !setup.start_adding() {
-                    return Task::none();
-                }
-                (self.pick_folder)(&self.active_panel().path).map(move |folder| {
-                    Message::FilingSetup(FilingSetupMessage::FolderPicked { mode, folder })
-                })
-            }
-            FilingSetupMessage::FolderPicked { mode, folder } => {
-                let Some(setup) = self.filing_setup.as_mut() else {
-                    return Task::none();
-                };
-                match folder {
-                    Some(picked) => {
-                        let granted =
-                            self.grant_chosen_folder(&picked, |granted_folder, result| {
-                                Message::FilingSetup(FilingSetupMessage::Granted {
-                                    folder: granted_folder,
-                                    result,
-                                })
-                            });
-                        Task::batch([granted, self.resolve_setup_folder(mode, picked)])
-                    }
-                    None => {
-                        setup.cancel_adding();
-                        Task::none()
-                    }
-                }
-            }
-            FilingSetupMessage::AddPanelFolder(mode) => {
-                let Some(setup) = self.filing_setup.as_mut() else {
-                    return Task::none();
-                };
-                if !setup.start_adding() {
-                    return Task::none();
-                }
-                let folder = self.active_panel().path.clone();
-                self.resolve_setup_folder(mode, folder)
-            }
-            FilingSetupMessage::Granted { folder, result } => {
-                if let (Some(setup), Err(reason)) = (self.filing_setup.as_mut(), result) {
-                    setup.show_note(SetupNote::GrantFailed { folder, reason });
-                }
-                Task::none()
-            }
-            FilingSetupMessage::Added {
-                mode,
-                folder,
-                resolved,
-            } => {
-                if let Some(setup) = self.filing_setup.as_mut() {
-                    setup.finish_adding(mode, folder, resolved);
-                }
-                Task::none()
-            }
-            FilingSetupMessage::SetTarget(index) => {
-                if let Some(setup) = self.filing_setup.as_mut() {
-                    setup.set_target(index);
-                }
-                Task::none()
-            }
-            FilingSetupMessage::ToggleImages(index) => {
-                if let Some(setup) = self.filing_setup.as_mut() {
-                    setup.toggle_images(index);
-                }
-                Task::none()
-            }
-            FilingSetupMessage::Remove(index) => {
-                if let Some(setup) = self.filing_setup.as_mut() {
-                    setup.remove(index);
-                }
-                Task::none()
-            }
-            FilingSetupMessage::Save => {
-                let Some(setup) = self.filing_setup.as_mut() else {
-                    return Task::none();
-                };
-                let Some(config_path) = self.config_path.clone() else {
-                    setup.refuse_saving(SetupNote::NoConfigPath);
-                    return Task::none();
-                };
-                let Some(chosen) = setup.start_saving() else {
-                    return Task::none();
-                };
-                let written_path = config_path.clone();
-                Task::perform(
-                    tokio::task::spawn_blocking(move || {
-                        filing_setup::write_locations(&written_path, &chosen)
-                    }),
-                    move |joined| {
-                        Message::FilingSetup(FilingSetupMessage::Saved(joined.unwrap_or_else(
-                            |join| {
-                                Err(FilingWriteError::Io {
-                                    path: config_path,
-                                    reason: join.to_string(),
-                                })
-                            },
-                        )))
-                    },
-                )
             }
             FilingSetupMessage::Saved(result) => {
                 // The file is written even when the card was closed meanwhile,
@@ -5711,37 +5545,34 @@ impl App {
                 match result {
                     Ok(filing) => {
                         let (applies, task) = self.apply_saved_filing(filing);
-                        self.filing_setup = None;
+                        self.hermes.filing_setup = None;
                         let notice = self.show_notice(self.saved_filing_notice(applies));
                         Task::batch([task, notice])
                     }
                     Err(error) => {
-                        if let Some(setup) = self.filing_setup.as_mut() {
+                        if let Some(setup) = self.hermes.filing_setup.as_mut() {
                             setup.finish_saving(SetupNote::SaveFailed(error));
                         }
                         Task::none()
                     }
                 }
             }
+            card_message @ (FilingSetupMessage::Close
+            | FilingSetupMessage::PickFolder(_)
+            | FilingSetupMessage::FolderPicked { .. }
+            | FilingSetupMessage::AddPanelFolder(_)
+            | FilingSetupMessage::Added { .. }
+            | FilingSetupMessage::SetTarget(_)
+            | FilingSetupMessage::ToggleImages(_)
+            | FilingSetupMessage::Remove(_)
+            | FilingSetupMessage::Save
+            | FilingSetupMessage::Granted { .. }) => {
+                let outcome = self.with_hermes(Vec::new(), |hermes, ctx| {
+                    ncrs_hermes_ui::update_filing_setup(hermes, card_message, ctx)
+                });
+                self.run_hermes_outcome(outcome)
+            }
         }
-    }
-
-    /// Looks up `folder` on a blocking thread; the answer is an `Added`.
-    fn resolve_setup_folder(&self, mode: LocationMode, folder: PathBuf) -> Task<Message> {
-        let resolve_folder = self.resolve_folder;
-        Task::perform(
-            tokio::task::spawn_blocking({
-                let looked_up = folder.clone();
-                move || resolve_folder(&looked_up)
-            }),
-            move |joined| {
-                Message::FilingSetup(FilingSetupMessage::Added {
-                    mode,
-                    folder,
-                    resolved: joined.unwrap_or_else(|join| Err(join.to_string())),
-                })
-            },
-        )
     }
 
     fn saved_filing_notice(&self, applies: SavedFilingApplies) -> String {
@@ -5815,7 +5646,7 @@ impl App {
     }
 
     fn dialog_button_count(&self) -> usize {
-        if self.hermes_setup.is_some() {
+        if self.hermes.hermes_setup.is_some() {
             self.hermes_focus_order().len()
         } else if self.about.is_some() {
             3
@@ -5853,7 +5684,7 @@ impl App {
 
     /// Enter in a button dialog: whatever the focused button does.
     fn activate_dialog_button(&mut self) -> Task<Message> {
-        if self.hermes_setup.is_some() {
+        if self.hermes.hermes_setup.is_some() {
             return self.activate_hermes_focus();
         }
         if self.start_over_dialog {
@@ -5960,7 +5791,9 @@ impl App {
 
     /// What the overview itself may open on top of it: the model cards.
     fn overlay_apart_from_overview_is_open(&self) -> bool {
-        self.overlay_apart_from_overview_and_hermes_is_open() || self.hermes.quick_fix.is_some()
+        self.overlay_apart_from_overview_and_hermes_is_open()
+            || self.hermes.quick_fix.is_some()
+            || self.hermes.hermes_setup.is_some()
     }
 
     fn overlay_apart_from_overview_and_hermes_is_open(&self) -> bool {
@@ -5980,7 +5813,6 @@ impl App {
             || self.settings.ai_card_is_shown()
             || self.grant_dialog
             || self.connect_dialog.is_some()
-            || self.hermes_setup.is_some()
     }
 
     /// Whether the context menu entry can do something for the current
@@ -9933,7 +9765,7 @@ impl App {
     }
 
     fn card_covers_overview(&self) -> bool {
-        self.filing_setup.is_some() || self.hermes_setup.is_some()
+        self.hermes.filing_setup.is_some() || self.hermes.hermes_setup.is_some()
     }
 
     fn commit_overview_pattern(&mut self) -> Task<Message> {
@@ -10420,6 +10252,8 @@ impl App {
             hermes_counts_missing: self.filing_status.hermes_counts().is_none(),
             refile_pending: self.pending_refile.is_some(),
             window_size: self.window_size,
+            config_path: self.config_path.as_deref(),
+            resolve_folder: self.resolve_folder,
             quick_fix_anchor: layout::cursor_row_anchor(
                 side == PanelSide::Right,
                 panel.selected.saturating_sub(panel.scroll_offset),
@@ -10488,6 +10322,29 @@ impl App {
             Ask::OpenSearchFor { spec, report } => self.open_search_for(&spec, report),
             Ask::PickExportFolder(start_in) => (self.pick_folder)(&start_in)
                 .map(|folder| Message::SavedQueries(SavedQueriesMessage::FolderPicked(folder))),
+            Ask::PickFolder(card) => {
+                let start_in = self.active_panel().path.clone();
+                (self.pick_folder)(&start_in).map(move |folder| match card {
+                    SetupCard::Filing(mode) => {
+                        Message::FilingSetup(FilingSetupMessage::FolderPicked { mode, folder })
+                    }
+                    SetupCard::Hermes(slot) => {
+                        Message::HermesSetup(HermesSetupMessage::FolderPicked { slot, folder })
+                    }
+                })
+            }
+            Ask::GrantFolder { card, folder } => {
+                self.grant_chosen_folder(&folder, move |granted_folder, result| match card {
+                    SetupCard::Filing(_) => Message::FilingSetup(FilingSetupMessage::Granted {
+                        folder: granted_folder,
+                        result,
+                    }),
+                    SetupCard::Hermes(_) => Message::HermesSetup(HermesSetupMessage::Granted {
+                        folder: granted_folder,
+                        result,
+                    }),
+                })
+            }
             Ask::ExcludeFromHermes(paths) => self.exclude_from_hermes(paths),
             Ask::Refile { scope, items } => self.confirm_replan(scope, items),
             Ask::QuickFixFiled(summary) => self.quick_fix_filed(&summary),
@@ -13774,8 +13631,6 @@ impl App {
             kinds: Kinds::default(),
             filing_index_path: None,
             filing_key_store: None,
-            filing_setup: None,
-            hermes_setup: None,
             pending_hermes_start: None,
             hermes_flow_step: 0,
             settings: Settings::default(),
@@ -13854,7 +13709,7 @@ impl App {
     /// index.
     pub fn with_filing_setup(chosen: &[config::FilingLocation], index_is_plain: bool) -> Self {
         let mut app = Self::with_fixed_panels();
-        app.filing_setup = Some(FilingSetup::new(chosen));
+        app.hermes.filing_setup = Some(FilingSetup::new(chosen));
         if index_is_plain {
             app.filing = Some(FilingModule::in_phase_with_index(Phase::Ready, false));
         }
@@ -13868,7 +13723,7 @@ impl App {
         app.filing_config.locations = configured.to_vec();
         let setup = HermesSetup::new(configured, offer);
         app.dialog_focus = setup.first_focus(setup.can_start());
-        app.hermes_setup = Some(setup);
+        app.hermes.hermes_setup = Some(setup);
         app
     }
 
@@ -20454,12 +20309,12 @@ mod filing_setup_tests {
             Arc::new(InMemoryKeyStore::empty()),
         );
         assert!(app.filing.is_none(), "the module is off");
-        app.filing_setup = Some(FilingSetup::new(&[]));
+        app.hermes.filing_setup = Some(FilingSetup::new(&[]));
         app
     }
 
     fn note(app: &App) -> Option<&SetupNote> {
-        app.filing_setup.as_ref().and_then(FilingSetup::note)
+        app.hermes.filing_setup.as_ref().and_then(FilingSetup::note)
     }
 
     #[test]
@@ -20469,12 +20324,12 @@ mod filing_setup_tests {
 
         drop(app.update(setup_message(FilingSetupMessage::Toggle)));
         assert_eq!(
-            app.filing_setup.as_ref().unwrap().chosen(),
+            app.hermes.filing_setup.as_ref().unwrap().chosen(),
             saved_filing().locations
         );
 
         drop(app.update(setup_message(FilingSetupMessage::Toggle)));
-        assert!(app.filing_setup.is_none());
+        assert!(app.hermes.filing_setup.is_none());
     }
 
     #[test]
@@ -20488,7 +20343,7 @@ mod filing_setup_tests {
         assert_eq!(escape, Some(setup_message(FilingSetupMessage::Close)));
 
         drop(app.update(escape.unwrap()));
-        assert!(app.filing_setup.is_none());
+        assert!(app.hermes.filing_setup.is_none());
         assert_eq!(
             route_key(
                 &app.prompt_key_state(),
@@ -20507,7 +20362,7 @@ mod filing_setup_tests {
 
     fn pick(app: &mut App, mode: LocationMode, path: &str) {
         drop(app.update(setup_message(FilingSetupMessage::PickFolder(mode))));
-        assert!(app.filing_setup.as_ref().unwrap().is_busy());
+        assert!(app.hermes.filing_setup.as_ref().unwrap().is_busy());
         let folder = PathBuf::from(path);
         drop(app.update(setup_message(FilingSetupMessage::FolderPicked {
             mode,
@@ -20518,7 +20373,7 @@ mod filing_setup_tests {
             folder: folder.clone(),
             resolved: Ok(folder),
         })));
-        assert!(!app.filing_setup.as_ref().unwrap().is_busy());
+        assert!(!app.hermes.filing_setup.as_ref().unwrap().is_busy());
     }
 
     #[test]
@@ -20541,7 +20396,7 @@ mod filing_setup_tests {
             "/home/test/Documents/Old-2019",
         );
 
-        let setup = app.filing_setup.as_ref().unwrap();
+        let setup = app.hermes.filing_setup.as_ref().unwrap();
         let count = |mode| setup.chosen().iter().filter(|l| l.mode == mode).count();
         assert_eq!(count(LocationMode::Inbox), 2);
         assert_eq!(count(LocationMode::Archive), 2);
@@ -20554,7 +20409,7 @@ mod filing_setup_tests {
             .position(|l| l.path == Path::new("/home/test/Documents/Filed"))
             .unwrap();
         drop(app.update(setup_message(FilingSetupMessage::SetTarget(filed))));
-        assert!(app.filing_setup.as_ref().unwrap().can_save());
+        assert!(app.hermes.filing_setup.as_ref().unwrap().can_save());
     }
 
     #[test]
@@ -20564,13 +20419,13 @@ mod filing_setup_tests {
         drop(app.update(setup_message(FilingSetupMessage::PickFolder(
             LocationMode::Inbox,
         ))));
-        assert!(app.filing_setup.as_ref().unwrap().is_busy());
+        assert!(app.hermes.filing_setup.as_ref().unwrap().is_busy());
         drop(app.update(setup_message(FilingSetupMessage::FolderPicked {
             mode: LocationMode::Inbox,
             folder: None,
         })));
 
-        let setup = app.filing_setup.as_ref().unwrap();
+        let setup = app.hermes.filing_setup.as_ref().unwrap();
         assert!(!setup.is_busy());
         assert!(setup.chosen().is_empty());
     }
@@ -20592,7 +20447,7 @@ mod filing_setup_tests {
             "/home/test/Documents/Filed",
         );
 
-        assert_eq!(app.filing_setup.as_ref().unwrap().chosen().len(), 1);
+        assert_eq!(app.hermes.filing_setup.as_ref().unwrap().chosen().len(), 1);
         assert_eq!(
             note(&app),
             Some(&SetupNote::AlreadyAdded {
@@ -20611,14 +20466,14 @@ mod filing_setup_tests {
         drop(app.update(setup_message(FilingSetupMessage::AddPanelFolder(
             LocationMode::Archive,
         ))));
-        assert!(app.filing_setup.as_ref().unwrap().is_busy());
+        assert!(app.hermes.filing_setup.as_ref().unwrap().is_busy());
 
         drop(app.update(setup_message(FilingSetupMessage::Added {
             mode: LocationMode::Archive,
             folder: folder.clone(),
             resolved: Ok(folder.clone()),
         })));
-        let setup = app.filing_setup.as_ref().unwrap();
+        let setup = app.hermes.filing_setup.as_ref().unwrap();
         assert!(!setup.is_busy());
         assert_eq!(setup.chosen().len(), 1);
         assert_eq!(setup.chosen()[0].path, folder);
@@ -20632,7 +20487,7 @@ mod filing_setup_tests {
         drop(app.update(setup_message(FilingSetupMessage::Save)));
 
         assert_eq!(note(&app), Some(&SetupNote::NoConfigPath));
-        assert!(!app.filing_setup.as_ref().unwrap().is_busy());
+        assert!(!app.hermes.filing_setup.as_ref().unwrap().is_busy());
     }
 
     #[test]
@@ -20641,7 +20496,7 @@ mod filing_setup_tests {
 
         drop(app.update(setup_message(FilingSetupMessage::Saved(Ok(saved_filing())))));
 
-        assert!(app.filing_setup.is_none(), "saving closes the card");
+        assert!(app.hermes.filing_setup.is_none(), "saving closes the card");
         let key = app
             .keymap
             .shortcut_label(&Message::FilingStatus(FilingStatusMessage::Toggle))
@@ -20661,7 +20516,7 @@ mod filing_setup_tests {
 
         drop(app.update(setup_message(FilingSetupMessage::Saved(Ok(saved_filing())))));
 
-        assert!(app.filing_setup.is_none());
+        assert!(app.hermes.filing_setup.is_none());
         assert!(app.notice.as_deref().unwrap().contains("Filing is on"));
         assert!(app.pipeline.is_none());
         assert!(app.filing.as_ref().unwrap().has_configured_locations());
@@ -20727,7 +20582,7 @@ mod filing_setup_tests {
 
         drop(app.update(setup_message(FilingSetupMessage::Saved(Ok(saved_filing())))));
 
-        assert!(app.filing_setup.is_none());
+        assert!(app.hermes.filing_setup.is_none());
         assert_eq!(
             app.notice.as_deref(),
             Some(app.lang.text(Msg::FilingSetupSavedNextStart))
@@ -20744,7 +20599,7 @@ mod filing_setup_tests {
 
         drop(app.update(setup_message(FilingSetupMessage::Saved(Ok(saved_filing())))));
 
-        assert!(app.filing_setup.is_none());
+        assert!(app.hermes.filing_setup.is_none());
         assert_eq!(
             app.notice.as_deref(),
             Some(app.lang.text(Msg::FilingSetupSavedNextStart))
@@ -20784,16 +20639,18 @@ mod filing_setup_tests {
         };
         let (empty, _empty_start) =
             App::with_fixed_panels().with_filing(&without_locations, None, store());
-        assert!(empty.hermes_setup.is_some());
-        assert!(empty.filing_setup.is_none());
+        assert!(empty.hermes.hermes_setup.is_some());
+        assert!(empty.hermes.filing_setup.is_none());
 
         let (configured, _configured_start) =
             App::with_fixed_panels().with_filing(&saved_filing(), None, store());
-        assert!(configured.filing_setup.is_none() && configured.hermes_setup.is_none());
+        assert!(
+            configured.hermes.filing_setup.is_none() && configured.hermes.hermes_setup.is_none()
+        );
 
         let (off, _off_start) =
             App::with_fixed_panels().with_filing(&Filing::default(), None, store());
-        assert!(off.filing_setup.is_none() && off.hermes_setup.is_none());
+        assert!(off.hermes.filing_setup.is_none() && off.hermes.hermes_setup.is_none());
     }
 }
 
@@ -26398,7 +26255,7 @@ mod hermes_setup_tests {
         );
         press_start(&mut app, &config_dir);
         assert!(app.pending_hermes_start.is_none());
-        assert!(!app.hermes_setup.as_ref().unwrap().is_busy());
+        assert!(!app.hermes.hermes_setup.as_ref().unwrap().is_busy());
     }
 
     #[test]
@@ -26411,7 +26268,7 @@ mod hermes_setup_tests {
             ],
             offer(false),
         );
-        assert!(!app.hermes_setup.as_ref().unwrap().can_start());
+        assert!(!app.hermes.hermes_setup.as_ref().unwrap().can_start());
         press_start(&mut app, &config_dir);
         assert!(app.pending_hermes_start.is_none());
     }
@@ -26421,7 +26278,7 @@ mod hermes_setup_tests {
         let index_dir = TempDir::new().unwrap();
         let mut app = app_at_the_question(&index_dir);
         drop(app.update(Message::HermesSetup(HermesSetupMessage::Start)));
-        let setup = app.hermes_setup.as_ref().unwrap();
+        let setup = app.hermes.hermes_setup.as_ref().unwrap();
         assert_eq!(setup.note(), Some(&SetupNote::NoConfigPath));
         assert!(!setup.is_busy());
         assert!(app.pending_hermes_start.is_none());
@@ -26458,7 +26315,7 @@ mod hermes_setup_tests {
             )))),
         );
         assert!(app.pending_hermes_start.is_none());
-        let setup = app.hermes_setup.as_ref().unwrap();
+        let setup = app.hermes.hermes_setup.as_ref().unwrap();
         assert!(matches!(setup.note(), Some(SetupNote::SaveFailed(_))));
         assert!(!setup.is_busy());
     }
@@ -26489,7 +26346,10 @@ mod hermes_setup_tests {
                 ),
                 "encrypted = {encrypted}"
             );
-            assert!(app.hermes_setup.is_some(), "the card stays while it works");
+            assert!(
+                app.hermes.hermes_setup.is_some(),
+                "the card stays while it works"
+            );
             assert!(app.hermes_setup_is_busy());
         }
     }
@@ -26499,7 +26359,7 @@ mod hermes_setup_tests {
         let runtime = runtime();
         let _entered = runtime.enter();
         let mut app = App::with_hermes_setup(&chosen_folders(), offer(false));
-        let setup = app.hermes_setup.as_mut().unwrap();
+        let setup = app.hermes.hermes_setup.as_mut().unwrap();
         setup.choose_encrypted(false);
         app.pending_hermes_start = Some(setup.start().unwrap().plan);
         app.filing = Some(FilingModule::in_phase(Phase::Starting));
@@ -26528,7 +26388,7 @@ mod hermes_setup_tests {
     #[test]
     fn the_card_gives_way_to_the_recovery_key() {
         let mut app = App::with_hermes_setup(&chosen_folders(), offer(false));
-        let setup = app.hermes_setup.as_mut().unwrap();
+        let setup = app.hermes.hermes_setup.as_mut().unwrap();
         app.pending_hermes_start = Some(setup.start().unwrap().plan);
         app.filing = Some(FilingModule::in_phase(Phase::ShowRecoveryKey {
             key: FilingModule::fixed_recovery_key(),
@@ -26537,7 +26397,7 @@ mod hermes_setup_tests {
             mismatch: false,
         }));
         drop(app.advance_hermes_plan());
-        assert!(app.hermes_setup.is_none());
+        assert!(app.hermes.hermes_setup.is_none());
         assert!(
             app.pending_hermes_start.is_some(),
             "the plan waits for Ready"
@@ -26547,7 +26407,7 @@ mod hermes_setup_tests {
     fn app_ready_after_start(load_model: bool, models_dir: &TempDir) -> App {
         let mut app = App::with_hermes_setup(&chosen_folders(), offer(true));
         app.filing_index_path = Some(models_dir.path().join("index.db"));
-        let setup = app.hermes_setup.as_mut().unwrap();
+        let setup = app.hermes.hermes_setup.as_mut().unwrap();
         if load_model {
             setup.toggle_load_model();
         }
@@ -26563,7 +26423,7 @@ mod hermes_setup_tests {
         let models_dir = TempDir::new().unwrap();
         let mut app = app_ready_after_start(true, &models_dir);
         drop(app.advance_hermes_plan());
-        assert!(app.hermes_setup.is_none());
+        assert!(app.hermes.hermes_setup.is_none());
         assert!(app.pending_hermes_start.is_none());
         assert!(app.ai_model_asked);
         assert!(app.settings.ai_model.as_ref().unwrap().is_downloading());
@@ -26574,7 +26434,7 @@ mod hermes_setup_tests {
         let models_dir = TempDir::new().unwrap();
         let mut app = app_ready_after_start(false, &models_dir);
         drop(app.advance_hermes_plan());
-        assert!(app.hermes_setup.is_none());
+        assert!(app.hermes.hermes_setup.is_none());
         assert!(app.settings.ai_model.is_none());
         assert!(app.ai_model_asked, "the module must not ask again");
     }
@@ -26584,7 +26444,7 @@ mod hermes_setup_tests {
         let index_dir = TempDir::new().unwrap();
         let mut app = app_at_the_question(&index_dir);
         drop(app.update(Message::HermesSetup(HermesSetupMessage::Later)));
-        assert!(app.hermes_setup.is_none());
+        assert!(app.hermes.hermes_setup.is_none());
         assert!(matches!(
             app.filing.as_ref().unwrap().phase(),
             Phase::Dismissed
@@ -26613,7 +26473,7 @@ mod hermes_setup_tests {
         );
         drop(app.update(Message::DialogActivate));
         assert_eq!(
-            app.hermes_setup.as_ref().unwrap().note(),
+            app.hermes.hermes_setup.as_ref().unwrap().note(),
             Some(&SetupNote::NoConfigPath),
             "Start was pressed, and the test app has no config file"
         );
@@ -26637,11 +26497,11 @@ mod hermes_setup_tests {
     fn the_flow_moves_only_while_the_card_is_visible() {
         let mut app = App::with_fixed_panels();
         assert!(!app.hermes_flow_is_visible());
-        app.hermes_setup = Some(HermesSetup::new(&[], offer(false)));
+        app.hermes.hermes_setup = Some(HermesSetup::new(&[], offer(false)));
         assert!(app.hermes_flow_is_visible());
         drop(app.update(Message::HermesFlowTick));
         assert_eq!(app.hermes_flow_step, 1);
-        app.hermes_setup = None;
+        app.hermes.hermes_setup = None;
         assert!(!app.hermes_flow_is_visible());
     }
 
@@ -26650,7 +26510,7 @@ mod hermes_setup_tests {
         let mut app = App::with_fixed_panels();
         app.filing = Some(FilingModule::in_phase(asks_encryption()));
         drop(app.update(Message::Filing(FilingMessage::ChooseEncrypted(true))));
-        assert!(app.hermes_setup.is_some());
+        assert!(app.hermes.hermes_setup.is_some());
     }
 
     #[test]
@@ -26659,15 +26519,17 @@ mod hermes_setup_tests {
         let _entered = runtime.enter();
         let mut empty = App::with_fixed_panels();
         drop(empty.update(Message::FilingSetup(FilingSetupMessage::Toggle)));
-        assert!(empty.hermes_setup.is_some() && empty.filing_setup.is_none());
+        assert!(empty.hermes.hermes_setup.is_some() && empty.hermes.filing_setup.is_none());
         drop(empty.update(Message::FilingSetup(FilingSetupMessage::Toggle)));
-        assert!(empty.hermes_setup.is_none());
+        assert!(empty.hermes.hermes_setup.is_none());
 
         let mut configured = App::with_fixed_panels();
         configured.filing_config = filing_with(chosen_folders());
         configured.filing = Some(FilingModule::in_phase_with_locations(Phase::Ready));
         drop(configured.update(Message::FilingSetup(FilingSetupMessage::Toggle)));
-        assert!(configured.filing_setup.is_some() && configured.hermes_setup.is_none());
+        assert!(
+            configured.hermes.filing_setup.is_some() && configured.hermes.hermes_setup.is_none()
+        );
     }
 }
 
@@ -26839,7 +26701,7 @@ mod hermes_overview_tests {
         .await;
 
         assert!(app.hermes_overview.is_none());
-        assert!(app.filing_setup.is_some());
+        assert!(app.hermes.filing_setup.is_some());
     }
 
     #[tokio::test]
@@ -26874,11 +26736,11 @@ mod hermes_overview_tests {
         drop(app.update(Message::HermesOverview(
             HermesOverviewMessage::ChangeFolders,
         )));
-        assert!(app.filing_setup.is_some());
+        assert!(app.hermes.filing_setup.is_some());
         assert!(app.hermes_overview.is_none());
 
         drop(app.update(Message::FilingSetup(FilingSetupMessage::Close)));
-        assert!(app.filing_setup.is_none());
+        assert!(app.hermes.filing_setup.is_none());
         assert!(app.hermes_overview.is_some());
     }
 
@@ -26889,7 +26751,7 @@ mod hermes_overview_tests {
         drop(app.update(Message::HermesOverview(
             HermesOverviewMessage::ContinueSetup,
         )));
-        assert!(app.hermes_setup.is_some());
+        assert!(app.hermes.hermes_setup.is_some());
         assert!(app.hermes_overview.is_none());
 
         drop(app.update(Message::HermesSetup(HermesSetupMessage::Later)));
@@ -26910,7 +26772,7 @@ mod hermes_overview_tests {
         )
         .await;
 
-        assert!(app.hermes_setup.is_some());
+        assert!(app.hermes.hermes_setup.is_some());
     }
 
     #[tokio::test]
@@ -27065,7 +26927,7 @@ mod hermes_overview_tests {
         .await;
 
         assert!(matches!(
-            app.hermes_setup.as_ref().unwrap().note(),
+            app.hermes.hermes_setup.as_ref().unwrap().note(),
             Some(SetupNote::GrantFailed { folder, reason })
                 if *folder == picked && reason == "bookmark refused"
         ));
@@ -27095,7 +26957,7 @@ mod hermes_overview_tests {
         )
         .await;
         assert!(matches!(
-            refused.filing_setup.as_ref().unwrap().note(),
+            refused.hermes.filing_setup.as_ref().unwrap().note(),
             Some(SetupNote::GrantFailed { .. })
         ));
     }
@@ -27297,7 +27159,7 @@ mod hermes_overview_tests {
         assert!(!app.start_over_dialog);
         assert!(db.exists() && db.with_file_name("index.db.encrypting").exists());
         assert!(store.snapshot().is_some());
-        assert!(app.hermes_setup.is_none());
+        assert!(app.hermes.hermes_setup.is_none());
 
         settle(
             &mut app,
@@ -27352,7 +27214,11 @@ mod hermes_overview_tests {
         assert!(db.with_file_name("index.db.bak").exists());
         assert_eq!(store.snapshot(), None);
         assert!(app.filing.as_ref().unwrap().asks_encryption());
-        let setup = app.hermes_setup.as_ref().expect("the setup card opens");
+        let setup = app
+            .hermes
+            .hermes_setup
+            .as_ref()
+            .expect("the setup card opens");
         assert!(setup.can_start(), "the folders are still filled in");
         assert!(app.hermes_overview.is_none());
         assert!(app.return_to_hermes_overview);

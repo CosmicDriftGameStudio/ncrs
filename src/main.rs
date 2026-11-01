@@ -53,6 +53,7 @@ mod search_filters;
 mod search_view;
 pub use ncrs_core::selection;
 mod session_state;
+mod system_dialogs;
 pub use ncrs_ops::transfer as transfer_dialog;
 pub use ncrs_ops::trash as trash_view;
 pub use ncrs_settings::{ai_model, key_bindings, ocr_models, open_vsx, theme_fetch, vsix};

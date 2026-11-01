@@ -32,6 +32,9 @@ pub struct Ctx<'a> {
     /// Documents confirmed to be filed again are waiting for a free queue.
     pub refile_pending: bool,
     pub window_size: Size,
+    pub config_path: Option<&'a Path>,
+    /// Blocking; the app swaps it in its tests.
+    pub resolve_folder: fn(&Path) -> Result<PathBuf, String>,
     pub active_panel_path: &'a Path,
     pub other_panel_path: &'a Path,
     /// Where the quick-fix menu opens: under the cursor row of the active panel.

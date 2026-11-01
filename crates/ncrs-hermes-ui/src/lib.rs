@@ -28,7 +28,7 @@ pub mod tags_page;
 pub mod ui;
 pub mod update;
 
-pub use action::Action;
+pub use action::{Action, SetupCard};
 pub use ctx::Ctx;
 pub use message::{
     FilingSetupMessage, FilingStatusMessage, HermesColumnMessage, HermesFileMessage, HermesFocus,
@@ -40,6 +40,7 @@ pub use state::Hermes;
 pub use update::{
     open_reorganisation, open_review_list, open_rule_suggestions, open_rules, open_saved_queries,
     open_tags, replan_reorganisation_if_open, request_review_preview, run_review_load,
-    start_replan, update_quick_fix, update_reorganisation, update_review_list,
-    update_rule_suggestions, update_rules, update_saved_queries, update_tags, Outcome,
+    start_replan, update_filing_setup, update_hermes_setup, update_quick_fix,
+    update_reorganisation, update_review_list, update_rule_suggestions, update_rules,
+    update_saved_queries, update_tags, Outcome,
 };

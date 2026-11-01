@@ -1,6 +1,8 @@
 //! The state changes of the Hermes pages. What reaches outside them comes back
 //! as actions. Each page has its own entry; the app routes the messages.
 
+mod filing_setup;
+mod hermes_setup;
 mod quick_fix;
 mod reorganisation;
 mod review_list;
@@ -16,8 +18,9 @@ use ncrs_ui_kit::focus::release_focus;
 use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::message::{
-    HermesPage, Message, QuickFixMessage, ReorganisationPlanMessage, ReviewListMessage,
-    RuleSuggestionsMessage, RulesMessage, SavedQueriesMessage, TagsMessage,
+    FilingSetupMessage, HermesPage, HermesSetupMessage, Message, QuickFixMessage,
+    ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage, RulesMessage,
+    SavedQueriesMessage, TagsMessage,
 };
 use crate::state::Hermes;
 use ncrs_index::RuleId;
@@ -26,12 +29,14 @@ pub use self::review_list::{request_review_preview, run_review_load};
 
 pub type Outcome = (Task<Message>, Vec<Action>);
 
-/// The pages and the menu of the Hermes state count, as they are now.
+/// The pages, the menu and the setup card of the Hermes state count, as they
+/// are now.
 fn blocking_overlay_is_open(hermes: &Hermes, ctx: &Ctx<'_>) -> bool {
     ctx.ablage_tab_apart_from_hermes_open
         || ctx.overlay_apart_from_ablage_tab_open
         || hermes.page_is_open()
         || hermes.quick_fix.is_some()
+        || hermes.hermes_setup.is_some()
 }
 
 /// The Hermes page that is up, in the order the sidebar knows them.
@@ -145,6 +150,26 @@ pub fn update_saved_queries(
 ) -> Outcome {
     let mut actions = Vec::new();
     let task = saved_queries::update(hermes, message, ctx, &mut actions);
+    (task, actions)
+}
+
+pub fn update_filing_setup(
+    hermes: &mut Hermes,
+    message: FilingSetupMessage,
+    ctx: &Ctx<'_>,
+) -> Outcome {
+    let mut actions = Vec::new();
+    let task = filing_setup::update(hermes, message, ctx, &mut actions);
+    (task, actions)
+}
+
+pub fn update_hermes_setup(
+    hermes: &mut Hermes,
+    message: HermesSetupMessage,
+    ctx: &Ctx<'_>,
+) -> Outcome {
+    let mut actions = Vec::new();
+    let task = hermes_setup::update(hermes, message, ctx, &mut actions);
     (task, actions)
 }
 
