@@ -44,6 +44,28 @@ pub fn pack<P: Progress>(
     archive: &Path,
     progress: &mut P,
 ) -> io::Result<WriteReport> {
+    let mut report = WriteReport::default();
+    let items = named_by_file_name(sources, &mut report)?;
+    pack_planned(&items, archive, progress, report)
+}
+
+/// Like [`pack`], but every source gets the entry name it is paired with:
+/// `/`-joined components, each one passing [`safe_components`]. Folders the
+/// names run through are written as entries of their own.
+pub fn pack_named<P: Progress>(
+    items: &[(PathBuf, String)],
+    archive: &Path,
+    progress: &mut P,
+) -> io::Result<WriteReport> {
+    pack_planned(items, archive, progress, WriteReport::default())
+}
+
+fn pack_planned<P: Progress>(
+    items: &[(PathBuf, String)],
+    archive: &Path,
+    progress: &mut P,
+    mut report: WriteReport,
+) -> io::Result<WriteReport> {
     refuse_nested_or_remote(archive)?;
     let format = format_of(archive)?;
     if std::fs::symlink_metadata(archive).is_ok() {
@@ -53,13 +75,26 @@ pub fn pack<P: Progress>(
         ));
     }
     let parent = parent_of(archive)?;
-    let mut report = WriteReport::default();
-    let planned = plan_sources(sources, &mut report, progress)?;
+    let planned = plan_named(items, &mut report, progress)?;
     let mut job = Job::new(progress, planned.len());
 
     let temp = new_temp(parent)?;
     let mut sink = Sink::create(format, temp.as_file().try_clone()?)?;
+    let mut folders: HashSet<String> = HashSet::new();
     for item in &planned {
+        let mut prefix = String::new();
+        for part in item.name.split('/').take(item.name.matches('/').count()) {
+            if !prefix.is_empty() {
+                prefix.push('/');
+            }
+            prefix.push_str(part);
+            if folders.insert(prefix.clone()) {
+                sink.dir(&prefix, None, None)?;
+            }
+        }
+        if item.meta.is_dir() {
+            folders.insert(item.name.clone());
+        }
         job.write_planned(&mut sink, item, &[])?;
     }
     report.entries = job.done;
@@ -83,7 +118,8 @@ pub fn add<P: Progress>(
         return Err(not_found("the folder is not in the archive"));
     }
     let mut report = WriteReport::default();
-    let mut planned = plan_sources(sources, &mut report, progress)?;
+    let items = named_by_file_name(sources, &mut report)?;
+    let mut planned = plan_named(&items, &mut report, progress)?;
 
     let mut exists_already = |item: &Planned| {
         let top = item.name.split('/').next().unwrap_or_default();
@@ -442,28 +478,50 @@ struct Planned {
     mode: Option<u32>,
 }
 
-fn plan_sources(
+/// Pairs every source with its file name. A name that is not UTF-8 is counted
+/// as skipped, a source without a name is an error.
+fn named_by_file_name(
     sources: &[PathBuf],
+    report: &mut WriteReport,
+) -> io::Result<Vec<(PathBuf, String)>> {
+    let mut items = Vec::new();
+    for source in sources {
+        let Some(os_name) = source.file_name() else {
+            return Err(invalid(format!("{} has no name", source.display())));
+        };
+        match os_name.to_str() {
+            Some(name) => items.push((source.clone(), name.to_owned())),
+            None => report.skipped += 1,
+        }
+    }
+    Ok(items)
+}
+
+fn plan_named(
+    items: &[(PathBuf, String)],
     report: &mut WriteReport,
     progress: &mut dyn Progress,
 ) -> io::Result<Vec<Planned>> {
     let mut planned = Vec::new();
     let mut tops = HashSet::new();
-    for source in sources {
+    let mut parents: HashSet<String> = HashSet::new();
+    for (source, name) in items {
         refuse_nested_or_remote(source)?;
-        let Some(os_name) = source.file_name() else {
-            return Err(invalid(format!("{} has no name", source.display())));
-        };
-        let Some(name) = os_name.to_str() else {
-            report.skipped += 1;
-            continue;
-        };
-        if safe_components(name).as_deref() != Some(&[name.to_owned()]) {
+        let clean = safe_components(name).filter(|parts| !parts.is_empty() && parts.join("/") == *name);
+        if clean.is_none() {
             return Err(invalid(format!("{name} cannot be a name in an archive")));
         }
-        if !tops.insert(name.to_owned()) {
+        let ancestors: Vec<String> = name
+            .match_indices('/')
+            .map(|(at, _)| name.split_at(at).0.to_owned())
+            .collect();
+        if !tops.insert(name.to_owned())
+            || parents.contains(name)
+            || ancestors.iter().any(|ancestor| tops.contains(ancestor))
+        {
             return Err(invalid(format!("two sources are named {name}")));
         }
+        parents.extend(ancestors);
         let mut pending = vec![(source.clone(), name.to_owned())];
         while let Some((path, archive_name)) = pending.pop() {
             progress.keep_going()?;
@@ -1176,6 +1234,99 @@ mod tests {
         .unwrap_err();
         assert_eq!(err_5.kind(), io::ErrorKind::InvalidInput);
         assert!(leftovers(dir.path()).is_empty());
+    }
+
+    fn two_invoices(dir: &Path) -> Vec<PathBuf> {
+        let one = dir.join("firma");
+        let two = dir.join("privat");
+        std::fs::create_dir_all(&one).unwrap();
+        std::fs::create_dir_all(&two).unwrap();
+        std::fs::write(one.join("invoice.pdf"), b"from firma").unwrap();
+        std::fs::write(two.join("invoice.pdf"), b"from privat").unwrap();
+        vec![one.join("invoice.pdf"), two.join("invoice.pdf")]
+    }
+
+    #[test]
+    fn pack_named_writes_flat_numbered_names_with_the_right_contents() {
+        let dir = scratch("pack-named-flat");
+        let sources = two_invoices(dir.path());
+        let names = crate::fs::flat_names::flat_names(&sources);
+        let items: Vec<(PathBuf, String)> = sources
+            .into_iter()
+            .zip(names)
+            .map(|(path, name)| (path, name.unwrap().to_string_lossy().into_owned()))
+            .collect();
+        assert!(items.iter().all(|(_, name)| !name.contains('/')));
+        for extension in ["zip", "tar", "tar.gz", "tar.zst", "7z"] {
+            let archive = dir.path().join(format!("flat.{extension}"));
+            pack_named(&items, &archive, &mut Counting).unwrap();
+            assert_eq!(
+                names_in_file(&archive),
+                ["invoice (2).pdf", "invoice.pdf"],
+                "{extension}"
+            );
+            assert_eq!(bytes_of(&archive, &["invoice.pdf"]), b"from firma");
+            assert_eq!(bytes_of(&archive, &["invoice (2).pdf"]), b"from privat");
+        }
+    }
+
+    #[test]
+    fn pack_named_nested_names_read_back_as_folders() {
+        let dir = scratch("pack-named-nested");
+        let sources = two_invoices(dir.path());
+        let items = vec![
+            (sources[0].clone(), "firma/invoice.pdf".to_owned()),
+            (sources[1].clone(), "privat/2024/invoice.pdf".to_owned()),
+        ];
+        for extension in ["zip", "tar", "7z"] {
+            let archive = dir.path().join(format!("nested.{extension}"));
+            pack_named(&items, &archive, &mut Counting).unwrap();
+            assert_eq!(listing(&archive, &[]), ["firma/", "privat/"], "{extension}");
+            assert_eq!(listing(&archive, &["privat"]), ["2024/"]);
+            assert_eq!(listing(&archive, &["privat", "2024"]), ["invoice.pdf"]);
+            assert_eq!(
+                bytes_of(&archive, &["privat", "2024", "invoice.pdf"]),
+                b"from privat"
+            );
+        }
+    }
+
+    #[test]
+    fn pack_named_refuses_unsafe_empty_and_clashing_names_without_an_archive() {
+        let dir = scratch("pack-named-refuse");
+        let sources = two_invoices(dir.path());
+        let source = sources[0].clone();
+        for bad in ["../x.pdf", "/abs.pdf", "", "a//b.pdf", "a/../b.pdf", "./x.pdf"] {
+            let archive = dir.path().join("bad.zip");
+            let err = pack_named(&[(source.clone(), bad.to_owned())], &archive, &mut Counting)
+                .unwrap_err();
+            assert_eq!(err.kind(), io::ErrorKind::InvalidInput, "{bad:?}");
+            assert!(!archive.exists(), "{bad:?}");
+        }
+        let archive = dir.path().join("twice.zip");
+        let clash = vec![
+            (sources[0].clone(), "same.pdf".to_owned()),
+            (sources[1].clone(), "same.pdf".to_owned()),
+        ];
+        assert!(pack_named(&clash, &archive, &mut Counting).is_err());
+        let file_and_folder = vec![
+            (sources[0].clone(), "a".to_owned()),
+            (sources[1].clone(), "a/b.pdf".to_owned()),
+        ];
+        assert!(pack_named(&file_and_folder, &archive, &mut Counting).is_err());
+        assert!(!archive.exists());
+        assert!(leftovers(dir.path()).is_empty());
+    }
+
+    #[test]
+    fn pack_named_keeps_folder_sources_below_their_entry_name() {
+        let dir = scratch("pack-named-folder");
+        let tree = make_tree(dir.path());
+        let archive = dir.path().join("tree.zip");
+        pack_named(&[(tree.clone(), "docs/kept".to_owned())], &archive, &mut Counting).unwrap();
+        let names = names_in_file(&archive);
+        assert!(names.contains(&"docs".to_owned()) && names.contains(&"docs/kept".to_owned()));
+        assert!(names.iter().all(|name| name.starts_with("docs")));
     }
 
     #[test]
