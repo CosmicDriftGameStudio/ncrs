@@ -436,11 +436,13 @@ pub fn view<'a, M: Clone + 'a>(
                 palette,
                 |click| on_row_click(index, click),
                 row,
-                hermes.map(|column| HermesCell::of(entry, column, lang, palette)),
-                state
-                    .hit_list
-                    .as_ref()
-                    .map(|list| (list.scope.as_path(), state.row_height())),
+                RowExtras {
+                    hermes: hermes.map(|column| HermesCell::of(entry, column, lang, palette)),
+                    hit_scope: state
+                        .hit_list
+                        .as_ref()
+                        .map(|list| (list.scope.as_path(), state.row_height())),
+                },
             ))
             .on_right_press(on_row_context(index))
             .into()
@@ -534,6 +536,13 @@ pub enum RowClick {
     Open,
 }
 
+/// What only some rows have: the filing cell, and for a hit list the folder
+/// the scope is measured from with the row height.
+struct RowExtras<'a, M> {
+    hermes: Option<HermesCell<'a, M>>,
+    hit_scope: Option<(&'a Path, f32)>,
+}
+
 /// One file row: the name, size and date, clickable as a whole.
 ///
 /// `prefix` is the tag button, built by the caller because it needs its own
@@ -545,9 +554,9 @@ fn file_row<'a, M: Clone + 'a>(
     palette: &Palette,
     on_click: impl Fn(RowClick) -> M,
     prefix: Row<'a, M>,
-    hermes: Option<HermesCell<'a, M>>,
-    hit_scope: Option<(&Path, f32)>,
+    extras: RowExtras<'a, M>,
 ) -> Element<'a, M> {
+    let RowExtras { hermes, hit_scope } = extras;
     // The cursor row of the active panel is the one drawn as highlighted; a
     // tagged row is marked in its own column and tinted by the row style.
     let highlighted = mark.cursor && panel_active;
@@ -1132,7 +1141,7 @@ mod tagging_tests {
         );
 
         assert!(
-            p.selection.is_tagged(&Path::new("beta")),
+            p.selection.is_tagged(Path::new("beta")),
             "the tag followed the position instead of the file"
         );
         assert_eq!(p.selection.len(), 1, "more than one row ended up tagged");

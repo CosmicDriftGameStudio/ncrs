@@ -1204,6 +1204,9 @@ impl Keymap {
 /// Slots in the function key bar: F1 to F10.
 pub const FUNCTION_KEY_COUNT: usize = 10;
 
+/// The slot of F7, which makes a folder.
+pub const NEW_FOLDER_SLOT: usize = 6;
+
 /// A key spelled for this platform: `F5`, `⇧F8`, `⌥⌘C` on a Mac,
 /// `Ctrl+Alt+C` elsewhere. `None` for a key that has no printable name.
 pub fn binding_label(binding: &Binding) -> Option<String> {

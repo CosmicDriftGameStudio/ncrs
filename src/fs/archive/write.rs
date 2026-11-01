@@ -1316,12 +1316,12 @@ mod tests {
             (sources[0].clone(), "same.pdf".to_owned()),
             (sources[1].clone(), "same.pdf".to_owned()),
         ];
-        assert!(pack_named(&clash, &archive, &mut Counting).is_err());
+        pack_named(&clash, &archive, &mut Counting).unwrap_err();
         let file_and_folder = vec![
             (sources[0].clone(), "a".to_owned()),
             (sources[1].clone(), "a/b.pdf".to_owned()),
         ];
-        assert!(pack_named(&file_and_folder, &archive, &mut Counting).is_err());
+        pack_named(&file_and_folder, &archive, &mut Counting).unwrap_err();
         assert!(!archive.exists());
         assert!(leftovers(dir.path()).is_empty());
     }

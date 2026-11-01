@@ -469,16 +469,17 @@ edit = "F3"
 - One key, two actions in one area is an error, also when the other action only
   has the key by default: say what the other action gets instead, or `[]`. The
   panel and the search count apart. `search_case`, `search_whole_word`,
-  `search_regex`, `open_hits_left` and `open_hits_right` work only in the search; `quit`, `search`, `view`, `edit`,
-  `copy`, `move`, `delete`, `delete_permanently`, `abort_job`, `switch_language`,
-  `switch_panel` and the tag actions in both; the rest only in the panel.
-  `primary+q` and `ctrl+q` are the same key on Linux and Windows, so a file can
-  be fine on a Mac and conflict elsewhere. Keys that became defaults later give
-  way to a binding of your own instead: `F2` (`command_line`), `Shift+F4`
-  (`new_file`), the history keys (`history_back`, `history_forward`),
-  `primary+d` (`add_favourite`), `primary+k` (`key_bindings`), `primary+c`
-  (`copy_files`) and `primary+z` (`restore_last_deletion`). The action keeps its other keys and the
-  command list.
+  `search_regex`, `open_hits_left` and `open_hits_right` work only in the
+  search; `quit`, `search`, `view`, `edit`, `copy`, `move`, `delete`,
+  `delete_permanently`, `abort_job`, `switch_language`, `switch_panel` and the
+  tag actions in both; the rest only in the panel. `primary+q` and `ctrl+q` are
+  the same key on Linux and Windows, so a file can be fine on a Mac and
+  conflict elsewhere. Keys that became defaults later give way to a binding of
+  your own instead: `F2` (`command_line`), `Shift+F4` (`new_file`), the history
+  keys (`history_back`, `history_forward`), `primary+d` (`add_favourite`),
+  `primary+k` (`key_bindings`), `primary+c` (`copy_files`) and `primary+z`
+  (`restore_last_deletion`). The action keeps its other keys and the command
+  list.
 - Not allowed: `Escape` (it closes dialogs and menus and stops jobs); letters and
   digits without `ctrl`, `alt`, `cmd` or `primary`, because they jump to a file
   name; `shift` with a character that is not a letter (`shift+8` arrives as `*`,

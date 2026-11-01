@@ -7885,12 +7885,6 @@
       "de": "zurück zur Suche"
     },
     {
-      "key": "hit_list.folder_name",
-      "context": "Shown in the status bar instead of the folder name while the active panel lists search hits.",
-      "en": "Search result",
-      "de": "Suchergebnis"
-    },
-    {
       "key": "status.hit_list_not_a_folder",
       "context": "Error in the status bar when files are copied, moved or dropped onto a panel that shows search hits as a list instead of a folder.",
       "en": "The search result is a list, not a folder. Open a folder on that side first.",

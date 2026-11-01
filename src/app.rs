@@ -4152,12 +4152,7 @@ impl App {
                 }
                 Task::none()
             }
-            Message::PromptToggleKeepFolders => {
-                if let Some(prompt) = self.prompt.as_mut().filter(|prompt| !prompt.busy()) {
-                    prompt.toggle_keep_folders();
-                }
-                Task::none()
-            }
+            Message::PromptToggleKeepFolders => self.toggle_keep_folders(),
             // Its own arm, not an early return: starting the job changes what the
             // keys mean, and the routing state is published after the match.
             Message::PromptSubmit if self.valid_prompt_has_its_own_job() => self.start_prompt_job(),
@@ -5443,14 +5438,7 @@ impl App {
                     lang: self.lang,
                     palette: &self.palette,
                 }),
-                fkeys::view(
-                    if self.search_has_keys() {
-                        &self.search_function_keys
-                    } else {
-                        &self.function_keys
-                    },
-                    &self.palette,
-                ),
+                fkeys::view(&self.function_key_bar(), &self.palette,),
                 statusbar::view(
                     self.active_panel(),
                     self.lang,
@@ -5774,6 +5762,21 @@ impl App {
 
     /// What the bar's path field says while the active panel is a hit list:
     /// the query, where it ran and how many files it left, with the way back.
+    /// The keys the bar shows: the search's while it has the keys, else the
+    /// panels'. A hit list is no folder, so F7 (new folder) is left out.
+    fn function_key_bar(&self) -> [Option<&'static str>; keymap::FUNCTION_KEY_COUNT] {
+        if self.search_has_keys() {
+            return self.search_function_keys;
+        }
+        let mut keys = self.function_keys;
+        if self.active_panel().is_hit_list() {
+            if let Some(slot) = keys.get_mut(keymap::NEW_FOLDER_SLOT) {
+                *slot = None;
+            }
+        }
+        keys
+    }
+
     fn hit_line(&self) -> Option<statusbar::HitLine> {
         let panel = self.active_panel();
         let list = panel.hit_list.as_ref()?;
@@ -8416,6 +8419,13 @@ impl App {
         operation::focus(FIELD_ID)
     }
 
+    fn toggle_keep_folders(&mut self) -> Task<Message> {
+        if let Some(prompt) = self.prompt.as_mut().filter(|prompt| !prompt.busy()) {
+            prompt.toggle_keep_folders();
+        }
+        Task::none()
+    }
+
     /// Enter in the pack prompt, once its name passed `Prompt::validate`: the
     /// prompt closes and one job writes the archive.
     fn start_pack(&mut self) -> Task<Message> {
@@ -9424,7 +9434,7 @@ impl App {
             .and_then(|pending| pending.transfer.name_in_target(pending.index));
         renamed
             .as_deref()
-            .or_else(|| path.and_then(|source| source.file_name()))
+            .or_else(|| path?.file_name())
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_default()
     }
@@ -18369,6 +18379,7 @@ impl App {
     /// open them as a list are enabled, for the snapshot tests.
     pub fn with_fixed_search_hits() -> Self {
         let mut app = Self::with_fixed_panels();
+        app.left_panel.path = fixed_hit_scope();
         app.show_search_results_for_test("Telekom", fixed_hit_search_results());
         app
     }
@@ -18401,15 +18412,13 @@ impl App {
     pub fn with_fixed_hit_list_pack() -> Self {
         let mut app = Self::with_fixed_hit_list();
         let scope = fixed_hit_scope();
-        app.prompt = Some(Prompt::pack_hits(
-            scope.clone(),
-            vec![
-                scope.join("Telekom/2024/invoice.pdf"),
-                scope.join("Telekom/2025/invoice.pdf"),
-            ],
-            scope,
-            "Telekom.zip",
-        ));
+        let panel = app.panel_mut(PanelSide::Left);
+        for year in ["2024", "2025"] {
+            panel
+                .selection
+                .toggle(&scope.join(format!("Telekom/{year}/invoice.pdf")));
+        }
+        drop(app.open_pack_prompt());
         app
     }
 
@@ -31940,11 +31949,9 @@ mod hit_list_tests {
     fn a_refresh_drops_vanished_rows_and_keeps_cursor_and_tags_by_path() {
         let mut hits = opened(&["a.txt", "b.txt", "c.txt"], PanelSide::Left);
         let kept = hits.app.panel(PanelSide::Left).entries[2].path.clone();
-        {
-            let panel = hits.app.panel_mut(PanelSide::Left);
-            panel.selection.toggle(&kept);
-            panel.selected = 2;
-        }
+        let cursor_panel = hits.app.panel_mut(PanelSide::Left);
+        cursor_panel.selection.toggle(&kept);
+        cursor_panel.selected = 2;
         std::fs::remove_file(&hits.files[0]).unwrap();
         let scope = hits.app.panel(PanelSide::Left).path.clone();
         drop(hits.app.load(PanelSide::Left, scope, None));
@@ -32166,5 +32173,30 @@ mod hit_list_tests {
     #[test]
     fn a_list_has_no_status_line_outside_a_list() {
         assert!(App::with_fixed_panels().hit_line().is_none());
+    }
+
+    #[test]
+    fn a_tagged_row_of_a_list_is_marked() {
+        let mut hits = opened(&["a.txt", "b.txt"], PanelSide::Left);
+        let panel = hits.app.panel_mut(PanelSide::Left);
+        let tagged = panel.entries[1].path.clone();
+        panel.selection.toggle(&tagged);
+        let marks: Vec<bool> = (0..panel.entries.len())
+            .map(|index| {
+                panel
+                    .selection
+                    .state_of(index, &panel.entries, panel.selected)
+                    .tagged
+            })
+            .collect();
+        assert_eq!(marks, [false, true]);
+    }
+
+    #[test]
+    fn the_key_bar_of_a_list_leaves_out_new_folder() {
+        let mut hits = opened(&["a.txt"], PanelSide::Left);
+        assert!(hits.app.function_key_bar()[keymap::NEW_FOLDER_SLOT].is_none());
+        hits.app.panel_mut(PanelSide::Left).hit_list = None;
+        assert!(hits.app.function_key_bar()[keymap::NEW_FOLDER_SLOT].is_some());
     }
 }

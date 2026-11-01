@@ -47,19 +47,20 @@ pub fn flat_names(sources: &[PathBuf]) -> Vec<Option<OsString>> {
             .map(|source| source.file_name().map(OsStr::to_owned))
             .collect();
     }
-    let mut order: Vec<usize> = (0..sources.len()).collect();
-    order.sort_by(|&a, &b| sources[a].cmp(&sources[b]));
+    let mut order: Vec<(usize, &PathBuf)> = sources.iter().enumerate().collect();
+    order.sort_by(|a, b| a.1.cmp(b.1));
     let mut taken = HashSet::new();
     let mut names: Vec<Option<OsString>> = vec![None; sources.len()];
-    let mut seen = HashMap::new();
-    let (firsts, others): (Vec<usize>, Vec<usize>) = order.into_iter().partition(|&index| {
-        sources[index].file_name().is_some_and(|name| {
-            seen.insert(name.to_string_lossy().to_lowercase(), ())
-                .is_none()
-        })
+    let mut seen = HashSet::new();
+    let (firsts, others): (Vec<_>, Vec<_>) = order.into_iter().partition(|(_, source)| {
+        source
+            .file_name()
+            .is_some_and(|name| seen.insert(name.to_string_lossy().to_lowercase()))
     });
-    for index in firsts.into_iter().chain(others) {
-        names[index] = target_name(&sources[index], &mut taken);
+    for (index, source) in firsts.into_iter().chain(others) {
+        if let Some(slot) = names.get_mut(index) {
+            *slot = target_name(source, &mut taken);
+        }
     }
     names
 }
