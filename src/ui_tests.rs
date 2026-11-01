@@ -3862,8 +3862,42 @@ mod tags_card {
         simulator(&App::with_tags(page)).find(label).is_ok()
     }
 
+    fn counted(tags: &[(&str, u64)]) -> Vec<(String, u64)> {
+        tags.iter()
+            .map(|(tag, count)| ((*tag).to_owned(), *count))
+            .collect()
+    }
+
+    /// The tags and counts of the design board.
+    fn board_page() -> TagsPage {
+        let mut page = TagsPage::new(ncrs_index::Kinds::built_in(
+            ncrs_index::KindLanguage::English,
+        ));
+        let mut senders = counted(&[("telekom", 48), ("stadtwerke-musterhausen", 24)]);
+        senders.extend((1..=38).map(|n| (format!("absender-{n}"), 1)));
+        page.loaded(TagsLoaded {
+            tally: ncrs_index::TagTally {
+                own: counted(&[("steuer", 23), ("offen", 3), ("privat", 8)]),
+                kind: counted(&[("invoice", 412), ("contract", 31), ("notice", 12)]),
+                sender: senders,
+                recipient: counted(&[("firma-a-gmbh", 9), ("max-muster", 4)]),
+                year: counted(&[
+                    ("2026", 40),
+                    ("2025", 61),
+                    ("2024", 58),
+                    ("2023", 44),
+                    ("2022", 30),
+                    ("2021", 12),
+                ]),
+            },
+            exceptions: TagExceptions::from([("notice".to_owned(), false)]),
+        });
+        page.select(1);
+        page
+    }
+
     fn with_sender_group_open() -> TagsPage {
-        let mut page = loaded_page();
+        let mut page = board_page();
         page.toggle_open(crate::file_list_tags::TagGroup::Sender);
         page
     }
@@ -3907,7 +3941,7 @@ mod tags_card {
             "Documents",
             "steuer",
             "invoice",
-            "… and 2 more",
+            "… and 38 more",
         ] {
             assert!(shows(with_sender_group_open(), label), "{label}");
         }
@@ -3921,7 +3955,7 @@ mod tags_card {
             "Schlagworte",
             "Schlagwort suchen",
             "Dokumente",
-            "… und 2 weitere",
+            "… und 38 weitere",
         ] {
             assert!(sim.find(label).is_ok(), "{label}");
         }
