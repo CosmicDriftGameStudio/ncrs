@@ -12,8 +12,8 @@ use super::layout::{TITLE_BAR_HEIGHT, TRAFFIC_LIGHTS_INSET};
 use super::theme::{self, font_size, size, spacing};
 use crate::i18n::{Language, Msg};
 use crate::messages::{
-    CommandPaletteMessage, FilingStatusMessage, Message, PanelSide, ResizeEdge, SettingsMessage,
-    TitleBarMessage,
+    CommandPaletteMessage, FilingStatusMessage, HitListMessage, Message, PanelSide, ResizeEdge,
+    SettingsMessage, TitleBarMessage,
 };
 use crate::palette::Palette;
 
@@ -23,6 +23,8 @@ pub const HERMES_CHIP_ID: &str = "title-hermes-chip";
 pub const SETTINGS_TAB_ID: &str = "title-tab-settings";
 pub const ABLAGE_TAB_ID: &str = "title-tab-ablage";
 const CLOSE_CROSS: &str = "×";
+/// Characters of room the cross of a hit list tab takes from its title.
+const CROSS_CHARS: usize = 3;
 
 /// The macOS window has its own buttons (the traffic lights); the others get
 /// ours.
@@ -58,6 +60,8 @@ pub enum TabTitle<'a> {
     Search(String),
     /// The trash view stands in for the panel; its title is already worded.
     Trash(String),
+    /// A hit list stands in for the panel; the tab has a cross that closes it.
+    HitList(String),
 }
 
 pub use crate::hermes_status::Tone as HermesTone;
@@ -141,30 +145,43 @@ pub fn view<'a>(bar: &TitleBar<'a>) -> Element<'a, Message> {
     let chars = tab_chars();
 
     let tab = |tab: &Tab<'a>, id: &'static str, letter_of: Msg| -> Element<'a, Message> {
+        let closable = matches!(tab.title, TabTitle::HitList(_));
+        let label_chars = if closable {
+            chars.saturating_sub(CROSS_CHARS)
+        } else {
+            chars
+        };
         let label = match &tab.title {
             TabTitle::Path { path, loading } => tab_label(path, bar.home, *loading, chars),
-            TabTitle::Search(title) | TabTitle::Trash(title) => ellipsize_middle(title, chars),
+            TabTitle::Search(title) | TabTitle::Trash(title) | TabTitle::HitList(title) => {
+                ellipsize_middle(title, label_chars)
+            }
         };
         let letter: String = lang.text(letter_of).chars().take(1).collect();
-        let content = button(
-            row![
-                text(label)
-                    .size(font_size::FILE)
-                    .font(Font::MONOSPACE)
-                    .width(Length::Fill)
-                    .wrapping(text::Wrapping::None),
-                text(letter).size(font_size::SMALL).color(palette.dim_text),
-            ]
-            .spacing(TAB_GAP)
-            .height(Length::Fill)
-            .align_y(alignment::Vertical::Center),
-        )
-        .on_press(Message::ActivatePanel(tab.side))
-        .padding([0.0, TAB_PADDING_X])
-        .width(Length::Fill)
+        let mut label_row = row![text(label)
+            .size(font_size::FILE)
+            .font(Font::MONOSPACE)
+            .width(Length::Fill)
+            .wrapping(text::Wrapping::None)]
+        .spacing(TAB_GAP)
         .height(Length::Fill)
-        .clip(true)
-        .style(theme::title_tab(palette, tab.active));
+        .align_y(alignment::Vertical::Center);
+        if closable {
+            label_row = label_row.push(
+                button(text(CLOSE_CROSS).size(font_size::FILE))
+                    .on_press(Message::HitList(HitListMessage::Close(tab.side)))
+                    .padding([0.0, spacing::XS])
+                    .style(theme::close_button(palette)),
+            );
+        }
+        let content =
+            button(label_row.push(text(letter).size(font_size::SMALL).color(palette.dim_text)))
+                .on_press(Message::ActivatePanel(tab.side))
+                .padding([0.0, TAB_PADDING_X])
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .clip(true)
+                .style(theme::title_tab(palette, tab.active));
         let top_line = if tab.active {
             palette.accent
         } else {

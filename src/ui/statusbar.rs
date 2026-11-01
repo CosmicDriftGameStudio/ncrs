@@ -1,5 +1,5 @@
 //! Bottom bar: active path, selected entry info, or the last error.
-use iced::widget::{button, column, container, row, text, text_input, tooltip, Stack};
+use iced::widget::{button, column, container, row, text, text_input, tooltip, Space, Stack};
 use iced::{alignment, Element, Font, Length, Padding};
 
 use super::format;
@@ -20,7 +20,21 @@ pub struct PathBar<'a, M> {
     pub on_input: fn(String) -> M,
     pub on_submit: M,
     pub on_copy: M,
+    /// Set for a hit list: the bar then reads the search instead of a path
+    /// and cannot be edited.
+    pub hit_line: Option<HitLine>,
 }
+
+/// The line a hit list puts where the path stands, with the way back.
+pub struct HitLine {
+    pub text: String,
+    pub back_key: String,
+    pub back_label: String,
+}
+
+/// Room for the key and the words of the way back, next to the line.
+const HIT_HINT_WIDTH: f32 = 150.0;
+const HIT_LINE_MAX_WIDTH: f32 = 900.0;
 
 /// Room left and right of each field of the bar.
 const FIELD_PADDING_X: f32 = 10.0;
@@ -65,6 +79,30 @@ fn path_bar<'a, M: Clone + 'a>(
     palette: &Palette,
     bar: PathBar<'a, M>,
 ) -> Element<'a, M> {
+    if let Some(hit) = bar.hit_line {
+        let cap = container(
+            text(hit.back_key)
+                .size(font_size::KEY_CAP)
+                .wrapping(text::Wrapping::None),
+        )
+        .padding([0.0, spacing::XS - 1.0])
+        .style(theme::key_cap(palette, false));
+        return row![
+            text(hit.text)
+                .size(font_size::FILE)
+                .font(Font::MONOSPACE)
+                .wrapping(text::Wrapping::None),
+            Space::new().width(Length::Fill),
+            cap,
+            text(hit.back_label)
+                .size(font_size::SMALL)
+                .color(palette.dim_text)
+                .wrapping(text::Wrapping::None),
+        ]
+        .spacing(spacing::XS)
+        .align_y(alignment::Vertical::Center)
+        .into();
+    }
     // Always a text field: a click puts the caret where it landed, and what it
     // shows is the panel's path until the user types something else.
     let shown = bar
@@ -175,13 +213,18 @@ pub fn view<'a, M: Clone + 'a>(
         notice,
         hermes_line,
     } = activity;
-    let path_chars = path_bar_input.editing.map_or_else(
-        || panel.path.display().to_string().chars().count(),
-        |typed| typed.chars().count(),
-    );
-    let path_width = (path_chars as f32 * font_size::FILE * GLYPH_WIDTH_PER_SIZE
-        + PATH_EXTRA_WIDTH)
-        .clamp(PATH_MIN_WIDTH, PATH_MAX_WIDTH);
+    let path_chars = match (&path_bar_input.hit_line, path_bar_input.editing) {
+        (Some(hit), _) => hit.text.chars().count(),
+        (None, Some(typed)) => typed.chars().count(),
+        (None, None) => panel.path.display().to_string().chars().count(),
+    };
+    let path_width = if path_bar_input.hit_line.is_some() {
+        (path_chars as f32 * font_size::FILE * GLYPH_WIDTH_PER_SIZE + HIT_HINT_WIDTH)
+            .min(HIT_LINE_MAX_WIDTH)
+    } else {
+        (path_chars as f32 * font_size::FILE * GLYPH_WIDTH_PER_SIZE + PATH_EXTRA_WIDTH)
+            .clamp(PATH_MIN_WIDTH, PATH_MAX_WIDTH)
+    };
     let path = path_bar(panel, lang, palette, path_bar_input);
 
     let details: Element<'a, M> = if let Some(last_failure) = failure {

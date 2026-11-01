@@ -15,7 +15,7 @@ use crate::app::{fill_template, search_toggle_for_press};
 use crate::fs::search::{LineMatch, SearchError};
 use crate::i18n::{FuturamaName, Language, Msg};
 use crate::keymap::Keymap;
-use crate::messages::{Message, SearchMessage};
+use crate::messages::{Message, PanelSide, SearchMessage};
 use crate::palette::Palette;
 use crate::query_work::QueryHit;
 use crate::review_work::amount_text;
@@ -266,12 +266,40 @@ fn header<'a>(
         }
         None => fields = fields.push(status),
     }
+    fields = fields.push(hit_list_row(search, lang, palette));
     container(fields)
         .padding([2.0, spacing::CELL_PADDING_X])
         .height(height)
         .width(Length::Fill)
         .clip(true)
         .into()
+}
+
+/// The hits as a list in one of the panels; nothing to open without hits.
+fn hit_list_row<'a>(
+    search: &SearchView,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let open = |label: Msg, side: PanelSide| {
+        hermes_kit::secondary(
+            lang.text(label),
+            (!search.results.is_empty()).then(|| to_search(SearchMessage::OpenHitList(side))),
+            palette,
+        )
+    };
+    row![
+        text(lang.text(Msg::SearchHitsAsListLabel))
+            .size(font_size::COLUMN_HEADER)
+            .color(palette.dim_text)
+            .wrapping(Wrapping::None),
+        open(Msg::SearchOpenHitsLeft, PanelSide::Left),
+        open(Msg::SearchOpenHitsRight, PanelSide::Right),
+    ]
+    .spacing(hermes_kit::GAP_S)
+    .align_y(alignment::Vertical::Center)
+    .height(layout::SEARCH_HIT_ROW_HEIGHT)
+    .into()
 }
 
 /// A filter of the row: what it is called, what is chosen and what it offers.

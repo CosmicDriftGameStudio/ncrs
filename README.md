@@ -283,6 +283,16 @@ panel back; the next search starts with the same fields.
   `Shift`+`↑`/`↓` tag and move either way, `*` tags all files found and
   `Ctrl`+`*` clears the tags. `F5`, `F6` and `F8` copy, move and delete the
   tagged files, else the file under the cursor.
+- **Hits as list:** **← Open left** and **Open right →** show the found files as
+  a list in a panel, one row per file with its folder below the name; both are
+  disabled while nothing is found. The tab reads "Search result: …" and has a
+  cross to close it; `Esc` goes back to the search with its fields. In the
+  list, everything that works on files works (copy, move, pack, delete); the
+  context menu adds **Show on the other side** and **Remove from list** (the
+  file itself stays). Files with equal names from different folders are
+  numbered when copied or packed (`invoice.pdf`, `invoice (2).pdf`), and the
+  dialog lists them. Packing offers **Keep folders** to keep the folders below
+  the search directory in the archive.
 
 ![The search with filters for documents](docs/screenshots/search-filters.png)
 

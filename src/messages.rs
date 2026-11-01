@@ -288,6 +288,8 @@ pub enum Message {
     PackPrompt,
     /// A keystroke went to the open prompt.
     PromptInput(String),
+    /// The "Keep folders" box of the pack prompt for a hit list was clicked.
+    PromptToggleKeepFolders,
     /// The user confirmed the prompt.
     PromptSubmit,
     /// The user dismissed the prompt.

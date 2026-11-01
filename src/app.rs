@@ -170,13 +170,19 @@ fn suggested_archive_name(sources: &[PathBuf]) -> String {
     )
 }
 
-/// What a panel inside an archive refuses: everything that would change or
-/// hand over the files in it except deleting and copying into it (both
-/// rewrite the archive), anything that takes the panel's path or selection
-/// into the config or to Hermes, and an archive inside an archive. Viewing is
-/// allowed: it works on a copy, see `open_external`.
-/// Keys, the command list and the context menu all end up here; the lists of
-/// what may run are `allowed_in_archive` on the three action enums.
+/// The archive name a hit list suggests: its query, when that is one plain
+/// file name on every platform.
+fn hit_archive_name(query: &str) -> Option<String> {
+    let query = query.trim();
+    let forbidden = |c: char| c.is_control() || "<>:\"/\\|?*".contains(c);
+    let plain = !query.chars().any(forbidden)
+        && matches!(
+            fs::archive::safe_components(query).as_deref(),
+            Some([only]) if only == query
+        );
+    plain.then(|| format!("{query}.zip"))
+}
+
 /// Reads the files of a hit list off the UI thread. A file that is gone is
 /// left out.
 fn read_hit_files(side: PanelSide, request_id: u64, paths: Vec<PathBuf>) -> Task<Message> {
@@ -210,9 +216,17 @@ fn is_not_offered_in_hit_list(message: &Message) -> bool {
             | Message::CreateFilePrompt
             | Message::Paste
             | Message::ComputeFolderSizes
+            | Message::PathFieldInput(_)
     )
 }
 
+/// What a panel inside an archive refuses: everything that would change or
+/// hand over the files in it except deleting and copying into it (both
+/// rewrite the archive), anything that takes the panel's path or selection
+/// into the config or to Hermes, and an archive inside an archive. Viewing is
+/// allowed: it works on a copy, see `open_external`.
+/// Keys, the command list and the context menu all end up here; the lists of
+/// what may run are `allowed_in_archive` on the three action enums.
 fn archive_refusal(panel: &PanelState, message: &Message) -> Option<Msg> {
     panel.archive.as_ref()?;
     match message {
@@ -4138,6 +4152,12 @@ impl App {
                 }
                 Task::none()
             }
+            Message::PromptToggleKeepFolders => {
+                if let Some(prompt) = self.prompt.as_mut().filter(|prompt| !prompt.busy()) {
+                    prompt.toggle_keep_folders();
+                }
+                Task::none()
+            }
             // Its own arm, not an early return: starting the job changes what the
             // keys mean, and the routing state is published after the match.
             Message::PromptSubmit if self.valid_prompt_has_its_own_job() => self.start_prompt_job(),
@@ -4251,12 +4271,14 @@ impl App {
                 Task::none()
             }
             Message::PageUp => {
+                let page = self.visible_rows_of(self.active_panel);
                 self.active_panel_mut()
-                    .move_selection(-(rows as isize), rows);
+                    .move_selection(-(page as isize), rows);
                 Task::none()
             }
             Message::PageDown => {
-                self.active_panel_mut().move_selection(rows as isize, rows);
+                let page = self.visible_rows_of(self.active_panel);
+                self.active_panel_mut().move_selection(page as isize, rows);
                 Task::none()
             }
             Message::SelectFirst => {
@@ -4654,6 +4676,7 @@ impl App {
         let anchor = layout::cursor_row_anchor(
             side == PanelSide::Right,
             panel.selected.saturating_sub(panel.scroll_offset),
+            panel.row_height(),
             self.window_size,
         );
         self.job_error = None;
@@ -5460,6 +5483,7 @@ impl App {
                         on_input: Message::PathFieldInput,
                         on_submit: Message::PathFieldSubmit,
                         on_copy: Message::CopyToClipboard(ClipboardKind::Directory),
+                        hit_line: self.hit_line(),
                     },
                 ),
             ])
@@ -5746,6 +5770,32 @@ impl App {
     /// The error the status line shows: a job's, else the config's.
     pub fn status_error(&self) -> Option<&str> {
         self.job_error.as_deref().or(self.config_error.as_deref())
+    }
+
+    /// What the bar's path field says while the active panel is a hit list:
+    /// the query, where it ran and how many files it left, with the way back.
+    fn hit_line(&self) -> Option<statusbar::HitLine> {
+        let panel = self.active_panel();
+        let list = panel.hit_list.as_ref()?;
+        let count = panel.entries.len();
+        let template = self.lang.text(if count == 1 {
+            Msg::HitListPathBarOne
+        } else {
+            Msg::HitListPathBarMany
+        });
+        let scope = titlebar::tab_label(&list.scope, &self.home, false, usize::MAX);
+        Some(statusbar::HitLine {
+            text: fill_template(
+                template,
+                &[
+                    ("{query}", &list.query),
+                    ("{scope}", &scope),
+                    ("{count}", &count.to_string()),
+                ],
+            ),
+            back_key: "Esc".to_owned(),
+            back_label: self.lang.text(Msg::HitListBackHint).to_owned(),
+        })
     }
 
     /// What the status bar shows instead of the panel's entry while the search
@@ -6808,6 +6858,7 @@ impl App {
                 cursor_panel
                     .selected
                     .saturating_sub(cursor_panel.scroll_offset),
+                cursor_panel.row_height(),
                 window,
             )
         });
@@ -8348,9 +8399,19 @@ impl App {
         }
         self.job_error = None;
         self.notice = None;
-        let name = suggested_archive_name(&sources);
         let target = self.panel(target_side).path.clone();
-        self.prompt = Some(Prompt::pack(target, sources, &name));
+        let hit_list = self.panel(source_side).hit_list.as_ref();
+        self.prompt = Some(match hit_list {
+            Some(list) => {
+                let name = hit_archive_name(&list.query)
+                    .unwrap_or_else(|| suggested_archive_name(&sources));
+                Prompt::pack_hits(target, sources, list.scope.clone(), &name)
+            }
+            None => {
+                let name = suggested_archive_name(&sources);
+                Prompt::pack(target, sources, &name)
+            }
+        });
         self.prompt_side = Some(target_side);
         operation::focus(FIELD_ID)
     }
@@ -8378,20 +8439,10 @@ impl App {
             what: ArchiveWriteKind::Pack { name, folder },
         };
         let packed = archive.clone();
-        let numbered: Option<Vec<(PathBuf, String)>> =
-            fs::flat_names::from_several_folders(&sources).then(|| {
-                fs::flat_names::flat_names(&sources)
-                    .into_iter()
-                    .zip(&sources)
-                    .map(|(name, source)| {
-                        let name = name.or_else(|| source.file_name().map(OsString::from));
-                        (
-                            source.clone(),
-                            name.unwrap_or_default().to_string_lossy().into_owned(),
-                        )
-                    })
-                    .collect()
-            });
+        let keep_under = prompt.kept_folders_under().map(Path::to_path_buf);
+        let numbered: Option<Vec<(PathBuf, String)>> = (keep_under.is_some()
+            || fs::flat_names::from_several_folders(&sources))
+        .then(|| fs::flat_names::archive_names(&sources, keep_under.as_deref()));
         self.start_archive_write(
             jobs::JobKind::Pack,
             archive,
@@ -8803,8 +8854,14 @@ impl App {
                 .session(place.server())
                 .map(|session| session.home().to_owned())
         });
+        let hit_scope = self
+            .panel(self.source_side())
+            .hit_list
+            .as_ref()
+            .map(|list| list.scope.clone());
         let dialog = TransferDialog::new(self.transfer_dialogs_opened, kind, sources, base)
-            .with_remote_home(remote_home);
+            .with_remote_home(remote_home)
+            .with_hit_scope(hit_scope);
         let scan = scan_task(&dialog);
         let conflicts = conflicts_task(&dialog);
         self.transfer_dialog = Some(dialog);
@@ -9893,6 +9950,11 @@ impl App {
         } else {
             self.active_panel
         }
+    }
+
+    /// Rows a page of this panel moves by: a hit list fits fewer, taller rows.
+    fn visible_rows_of(&self, side: PanelSide) -> usize {
+        self.panel(side).rows_in_view(self.visible_rows)
     }
 
     fn apply_window_size(&mut self, size: Size) {
@@ -14499,6 +14561,17 @@ impl App {
     fn title_bar_view(&self) -> Element<'_, Message> {
         let tab = |side: PanelSide| {
             let title = match self.search.as_ref() {
+                _ if self.panel(side).is_hit_list() => {
+                    let query = self
+                        .panel(side)
+                        .hit_list
+                        .as_ref()
+                        .map_or("", |list| list.query.as_str());
+                    titlebar::TabTitle::HitList(fill_template(
+                        self.lang.text(Msg::HitListTab),
+                        &[("{query}", query)],
+                    ))
+                }
                 Some(search) if self.search_open && side == self.search_side => {
                     titlebar::TabTitle::Search(search_ui::title(search, self.lang))
                 }
@@ -14732,7 +14805,7 @@ impl App {
                 .entries
                 .iter()
                 .skip(panel.scroll_offset)
-                .take(self.visible_rows)
+                .take(panel.rows_in_view(self.visible_rows))
                 .any(|entry| {
                     self.hermes_column.state_of(&entry.path) == Some(HermesFileState::Reading)
                 })
@@ -14765,7 +14838,7 @@ impl App {
             .entries
             .iter()
             .skip(panel.scroll_offset)
-            .take(self.visible_rows)
+            .take(panel.rows_in_view(self.visible_rows))
             .filter(|entry| entry.is_dir && !entry.is_parent)
             .map(|entry| entry.path.clone())
             .collect();
@@ -16931,6 +17004,58 @@ fn fixed_search_results(root: &Path) -> Vec<(PathBuf, Vec<crate::fs::search::Lin
 }
 
 #[cfg(test)]
+fn fixed_hit_scope() -> PathBuf {
+    PathBuf::from("/Users/alex/Documents")
+}
+
+/// Paths below the scope, with fixed sizes and local-time dates, so the rows
+/// print the same text in every time zone.
+#[cfg(test)]
+fn fixed_hit_entries() -> Vec<fs::FileEntry> {
+    use chrono::{Local, TimeZone as _};
+    let scope = fixed_hit_scope();
+    let hit =
+        |relative: &str, size: u64, (year, month, day, hour, minute): (i32, u32, u32, u32, u32)| {
+            let path = scope.join(relative);
+            fs::FileEntry {
+                name: path.file_name().map(OsString::from).unwrap_or_default(),
+                path,
+                is_dir: false,
+                is_symlink: false,
+                is_parent: false,
+                size,
+                modified: Local
+                    .with_ymd_and_hms(year, month, day, hour, minute, 0)
+                    .single()
+                    .map(std::time::SystemTime::from),
+                folder_size: None,
+            }
+        };
+    vec![
+        hit("Telekom/2024/invoice.pdf", 184_320, (2024, 11, 4, 9, 12)),
+        hit("Telekom/2025/invoice.pdf", 201_728, (2025, 11, 3, 8, 47)),
+        hit("Telekom/contract-dsl.pdf", 1_153_433, (2023, 2, 17, 14, 5)),
+        hit("Telekom-mobile-notes.txt", 2_048, (2026, 5, 6, 18, 44)),
+    ]
+}
+
+#[cfg(test)]
+fn fixed_hit_search_results() -> Vec<(PathBuf, Vec<crate::fs::search::LineMatch>)> {
+    use crate::fs::search::LineMatch;
+    fixed_hit_entries()
+        .into_iter()
+        .map(|entry| {
+            let line = LineMatch {
+                number: 1,
+                text: "Customer account with Telekom".to_owned(),
+                ranges: std::iter::once(22..29).collect(),
+            };
+            (entry.path, vec![line])
+        })
+        .collect()
+}
+
+#[cfg(test)]
 // Test-only constructors and helpers. One block rather than four: they were
 // appended as tests were written, and a reader had to hunt for them.
 impl App {
@@ -17445,6 +17570,7 @@ impl App {
             app.right_panel
                 .selected
                 .saturating_sub(app.right_panel.scroll_offset),
+            layout::ROW_HEIGHT,
             app.window_size,
         );
         let mut menu = QuickFix::new(anchor, app.window_size);
@@ -18237,6 +18363,54 @@ impl App {
         }));
         dialog.set_conflicts(dialog.edit(), 3);
         self.transfer_dialog = Some(dialog);
+    }
+
+    /// The search view with four fixed hits for "Telekom", so the buttons that
+    /// open them as a list are enabled, for the snapshot tests.
+    pub fn with_fixed_search_hits() -> Self {
+        let mut app = Self::with_fixed_panels();
+        app.show_search_results_for_test("Telekom", fixed_hit_search_results());
+        app
+    }
+
+    /// The left panel as a hit list of the four fixed Telekom files, for the
+    /// snapshot tests. Nothing is read from disk.
+    pub fn with_fixed_hit_list() -> Self {
+        let mut app = Self::with_fixed_panels();
+        let rows = app.visible_rows;
+        let scope = fixed_hit_scope();
+        let panel = app.panel_mut(PanelSide::Left);
+        let return_to = panel.path.clone();
+        panel.begin_hit_list(HitList {
+            query: "Telekom".to_owned(),
+            scope,
+            return_to,
+        });
+        panel.apply_hit_entries(fixed_hit_entries(), rows);
+        app
+    }
+
+    /// The hit list with its context menu open on the second row.
+    pub fn with_fixed_hit_list_menu() -> Self {
+        let mut app = Self::with_fixed_hit_list();
+        app.open_context_menu(PanelSide::Left, 1, Some(Point::new(260.0, 120.0)));
+        app
+    }
+
+    /// The pack prompt for the two `invoice.pdf` of the fixed hit list.
+    pub fn with_fixed_hit_list_pack() -> Self {
+        let mut app = Self::with_fixed_hit_list();
+        let scope = fixed_hit_scope();
+        app.prompt = Some(Prompt::pack_hits(
+            scope.clone(),
+            vec![
+                scope.join("Telekom/2024/invoice.pdf"),
+                scope.join("Telekom/2025/invoice.pdf"),
+            ],
+            scope,
+            "Telekom.zip",
+        ));
+        app
     }
 
     /// Puts the left panel inside a fixed archive and asks for a move there,
@@ -20856,7 +21030,7 @@ mod context_menu_tests {
         drop(app.update(Message::ContextMenuKey));
 
         let menu = app.context_menu_for_test().unwrap();
-        let anchor = layout::cursor_row_anchor(true, 2, app.window_size);
+        let anchor = layout::cursor_row_anchor(true, 2, layout::ROW_HEIGHT, app.window_size);
         assert_eq!(menu.origin(), anchor);
         assert_eq!(app.active_panel_side_for_test(), PanelSide::Right);
         assert_eq!(app.panel(PanelSide::Right).selected, 2);
@@ -31858,5 +32032,110 @@ mod hit_list_tests {
             hits.app.job_error.clone().unwrap(),
             hits.app.lang.text(Msg::StatusNumberingNeedsFolder)
         );
+    }
+
+    #[test]
+    fn a_cursor_past_half_the_rows_stays_in_view_in_a_list() {
+        let names: Vec<String> = (0..10).map(|n| format!("f{n}.txt")).collect();
+        let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+        let mut hits = opened(&refs, PanelSide::Left);
+        let rows = hits.app.visible_rows_of(PanelSide::Left);
+        assert_eq!(rows, hits.app.visible_rows / 2);
+        let folder_rows = hits.app.visible_rows;
+        let panel = hits.app.panel_mut(PanelSide::Left);
+        panel.select(rows + 1, folder_rows);
+        assert!(panel.scroll_offset <= panel.selected);
+        assert!(panel.selected < panel.scroll_offset + rows);
+    }
+
+    #[test]
+    fn the_archive_name_comes_from_a_plain_query_only() {
+        assert_eq!(
+            hit_archive_name(" invoice "),
+            Some("invoice.zip".to_owned())
+        );
+        assert_eq!(hit_archive_name("rech.*nung"), None);
+        assert_eq!(hit_archive_name("a/b"), None);
+        assert_eq!(hit_archive_name(".."), None);
+        assert_eq!(hit_archive_name(""), None);
+    }
+
+    fn pack_prompt_of(hits: &mut Hits) {
+        for file in hits.files.clone() {
+            hits.app.panel_mut(PanelSide::Left).selection.toggle(&file);
+        }
+        drop(hits.app.open_pack_prompt());
+    }
+
+    #[test]
+    fn the_pack_prompt_of_a_list_suggests_the_query_and_lists_equal_names() {
+        let mut hits = opened(&["same.txt", "same.txt"], PanelSide::Left);
+        pack_prompt_of(&mut hits);
+        let prompt = hits.app.prompt.as_ref().unwrap();
+        assert!(prompt.name().ends_with("/needle.zip"));
+        let pack = prompt.hits().unwrap();
+        assert!(!pack.keep_folders);
+        assert_eq!(pack.numbered.len(), 2);
+    }
+
+    #[test]
+    fn a_query_that_is_no_file_name_falls_back_to_the_folder_name() {
+        let mut hits = opened(&["a.txt", "b.txt"], PanelSide::Left);
+        hits.app
+            .panel_mut(PanelSide::Left)
+            .hit_list
+            .as_mut()
+            .unwrap()
+            .query = "rech.*nung".to_owned();
+        pack_prompt_of(&mut hits);
+        let name = hits.app.prompt.as_ref().unwrap().name().to_owned();
+        assert!(name.ends_with(&format!("/{}", suggested_archive_name(&hits.files))));
+    }
+
+    #[test]
+    fn keep_folders_toggles_in_the_prompt_and_is_off_at_first() {
+        let mut hits = opened(&["a.txt", "b.txt"], PanelSide::Left);
+        pack_prompt_of(&mut hits);
+        drop(hits.app.update(Message::PromptToggleKeepFolders));
+        let prompt = hits.app.prompt.as_ref().unwrap();
+        assert!(prompt.hits().unwrap().keep_folders);
+        assert_eq!(
+            prompt.kept_folders_under(),
+            Some(
+                hits.app
+                    .panel(PanelSide::Left)
+                    .hit_list
+                    .as_ref()
+                    .unwrap()
+                    .scope
+                    .as_path()
+            )
+        );
+        drop(hits.app.update(Message::PromptToggleKeepFolders));
+        assert!(hits
+            .app
+            .prompt
+            .as_ref()
+            .unwrap()
+            .kept_folders_under()
+            .is_none());
+    }
+
+    #[test]
+    fn the_status_line_of_a_list_counts_its_files() {
+        let mut hits = opened(&["a.txt", "b.txt"], PanelSide::Left);
+        let many = hits.app.hit_line().unwrap();
+        assert!(many.text.contains("needle") && many.text.contains("2"));
+        assert_eq!(many.back_key, "Esc");
+        let gone = hits.files[1].clone();
+        hits.app.panel_mut(PanelSide::Left).remove_hits(&[gone], 12);
+        let one = hits.app.hit_line().unwrap();
+        assert_ne!(one.text, many.text);
+        assert!(one.text.contains('1'));
+    }
+
+    #[test]
+    fn a_list_has_no_status_line_outside_a_list() {
+        assert!(App::with_fixed_panels().hit_line().is_none());
     }
 }

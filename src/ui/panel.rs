@@ -1,7 +1,7 @@
 //! File panel: the state type ([`PanelState`]) and a pure view function
 //! ([`view`]). The component owns no state; it lives in the app state and is
 //! only mutated from `App::update`.
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use iced::mouse::ScrollDelta;
 use iced::widget::{button, column, container, mouse_area, row, text, tooltip, Column, Row, Space};
@@ -10,8 +10,8 @@ use iced::{alignment, Element, Font, Length};
 use super::format;
 use super::kit::{self, Icon};
 use super::layout::{
-    COLUMN_HEADER_HEIGHT, DATE_COLUMN_WIDTH, HERMES_COLUMN_WIDTH, ROW_HEIGHT, SIZE_COLUMN_WIDTH,
-    TAG_COLUMN_WIDTH,
+    self, COLUMN_HEADER_HEIGHT, DATE_COLUMN_WIDTH, HERMES_COLUMN_WIDTH, HIT_LIST_ROW_HEIGHT,
+    ROW_HEIGHT, SIZE_COLUMN_WIDTH, TAG_COLUMN_WIDTH,
 };
 use super::panel_history::PanelHistory;
 use super::theme::{self, font_size, size, spacing};
@@ -116,6 +116,26 @@ impl PanelState {
 
     pub fn is_hit_list(&self) -> bool {
         self.hit_list.is_some()
+    }
+
+    /// Height of one row: a hit list shows the folder below the name.
+    pub fn row_height(&self) -> f32 {
+        if self.is_hit_list() {
+            HIT_LIST_ROW_HEIGHT
+        } else {
+            ROW_HEIGHT
+        }
+    }
+
+    /// Rows this panel shows where a folder shows `folder_rows`. Every method
+    /// that takes `visible_rows` expects the folder count and narrows it here,
+    /// so a caller cannot forget the taller rows of a hit list.
+    pub fn rows_in_view(&self, folder_rows: usize) -> usize {
+        if self.is_hit_list() {
+            layout::hit_list_rows(folder_rows)
+        } else {
+            folder_rows.max(1)
+        }
     }
 
     /// Turns the panel into an empty hit list that is being read. The request
@@ -290,7 +310,7 @@ impl PanelState {
     pub fn scroll(&mut self, delta: ScrollDelta, visible_rows: usize) {
         let rows_down = match delta {
             ScrollDelta::Lines { y, .. } => -y,
-            ScrollDelta::Pixels { y, .. } => -y / ROW_HEIGHT,
+            ScrollDelta::Pixels { y, .. } => -y / self.row_height(),
         } + self.scroll_remainder;
         let whole = rows_down.trunc();
         self.scroll_remainder = rows_down - whole;
@@ -298,7 +318,7 @@ impl PanelState {
     }
 
     fn scroll_rows(&mut self, rows_down: isize, visible_rows: usize) {
-        let rows = visible_rows.max(1);
+        let rows = self.rows_in_view(visible_rows);
         let max_offset = self.entries.len().saturating_sub(rows);
         self.scroll_offset = self
             .scroll_offset
@@ -319,7 +339,7 @@ impl PanelState {
 
     /// Adjusts `scroll_offset` so the selected row is visible.
     pub fn ensure_visible(&mut self, visible_rows: usize) {
-        let rows = visible_rows.max(1);
+        let rows = self.rows_in_view(visible_rows);
         if self.selected < self.scroll_offset {
             self.scroll_offset = self.selected;
         } else if self.selected >= self.scroll_offset + rows {
@@ -376,7 +396,7 @@ pub fn view<'a, M: Clone + 'a>(
         .iter()
         .enumerate()
         .skip(state.scroll_offset)
-        .take(props.visible_rows)
+        .take(state.rows_in_view(props.visible_rows))
         .map(|(index, entry)| {
             let mark = state
                 .selection
@@ -403,7 +423,7 @@ pub fn view<'a, M: Clone + 'a>(
                         .wrapping(iced::widget::text::Wrapping::None),
                 )
                 .width(Length::Fixed(TAG_COLUMN_WIDTH))
-                .height(ROW_HEIGHT)
+                .height(state.row_height())
                 .style(theme::tag_button(palette, mark.tagged))
                 .on_press(on_row_click(index, RowClick::Tag)),
             );
@@ -417,6 +437,10 @@ pub fn view<'a, M: Clone + 'a>(
                 |click| on_row_click(index, click),
                 row,
                 hermes.map(|column| HermesCell::of(entry, column, lang, palette)),
+                state
+                    .hit_list
+                    .as_ref()
+                    .map(|list| (list.scope.as_path(), state.row_height())),
             ))
             .on_right_press(on_row_context(index))
             .into()
@@ -522,6 +546,7 @@ fn file_row<'a, M: Clone + 'a>(
     on_click: impl Fn(RowClick) -> M,
     prefix: Row<'a, M>,
     hermes: Option<HermesCell<'a, M>>,
+    hit_scope: Option<(&Path, f32)>,
 ) -> Element<'a, M> {
     // The cursor row of the active panel is the one drawn as highlighted; a
     // tagged row is marked in its own column and tinted by the row style.
@@ -582,9 +607,21 @@ fn file_row<'a, M: Clone + 'a>(
         )
         .spacing(spacing::XS)
         .align_y(alignment::Vertical::Center);
+    let name_column: Element<'a, M> = match hit_scope {
+        Some((scope, _)) => column![
+            name_cell,
+            text(format::folder_below(&entry.path, scope))
+                .size(font_size::SMALL)
+                .font(Font::MONOSPACE)
+                .color(if highlighted { color } else { palette.dim_text })
+                .wrapping(text::Wrapping::None),
+        ]
+        .into(),
+        None => name_cell.into(),
+    };
     let mut content = row![
         prefix,
-        container(name_cell).width(Length::Fill).clip(true),
+        container(name_column).width(Length::Fill).clip(true),
         cell(format::entry_size(entry))
             .width(SIZE_COLUMN_WIDTH)
             .align_x(alignment::Horizontal::Right),
@@ -604,7 +641,7 @@ fn file_row<'a, M: Clone + 'a>(
         .on_double_click(on_click(RowClick::Open));
     button(clicks)
         .padding([0.0, spacing::CELL_PADDING_X])
-        .height(ROW_HEIGHT)
+        .height(hit_scope.map_or(ROW_HEIGHT, |(_, height)| height))
         .width(Length::Fill)
         .style(theme::row(palette, mark.tagged, mark.cursor, panel_active))
         .into()

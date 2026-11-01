@@ -7,6 +7,7 @@ use iced::widget::text::Wrapping;
 use iced::widget::{column, container, row, scrollable, text, Column, Row};
 use iced::{alignment, Element, Font, Length, Size};
 
+use super::dialog as dialog_ui;
 use super::format;
 use super::frame::{self, DialogSize, Frame};
 use super::kit::{self, Tone};
@@ -286,6 +287,16 @@ pub fn confirm<'a>(
     });
     if let Some(count) = dialog.conflicts().filter(|count| *count > 0) {
         content = content.push(conflict_warning(count, lang, palette));
+    }
+    let hint = dialog_ui::numbered_hint(
+        lang.text(Msg::HintNumberedInTarget),
+        dialog.numbered(),
+        dialog.hit_scope(),
+        lang,
+        palette,
+    );
+    if !hint.is_empty() {
+        content = content.push(Column::with_children(hint).spacing(spacing::LINE_GAP));
     }
 
     let label = lang.text(Msg::TransferTarget);

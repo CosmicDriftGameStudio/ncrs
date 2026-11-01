@@ -16,6 +16,8 @@ pub const TITLE_BAR_HEIGHT: f32 = size::TITLE_BAR;
 pub const TRAFFIC_LIGHTS_INSET: f32 = 78.0;
 pub const COLUMN_HEADER_HEIGHT: f32 = size::COLUMN_HEADER;
 pub const ROW_HEIGHT: f32 = 22.0;
+/// A hit list row has the name and, below it, the folder.
+pub const HIT_LIST_ROW_HEIGHT: f32 = 2.0 * ROW_HEIGHT;
 
 pub const MENU_WIDTH: f32 = 300.0;
 /// The Hermes submenu has labels with a note and a key.
@@ -59,9 +61,16 @@ pub fn visible_rows(window: Size) -> usize {
     (rows as isize).max(1) as usize
 }
 
+/// Rows of a hit list that fit where `normal_rows` folder rows fit.
+pub fn hit_list_rows(normal_rows: usize) -> usize {
+    (normal_rows / 2).max(1)
+}
+
 /// The three fields and the summary line of the search view, above the result
 /// rows. Fixed, like the column header it replaces.
-pub const SEARCH_HEADER_HEIGHT: f32 = 124.0;
+pub const SEARCH_HEADER_HEIGHT: f32 = 124.0 + SEARCH_HIT_ROW_HEIGHT + 4.0;
+/// The row that opens the hits as a list, below the summary line.
+pub const SEARCH_HIT_ROW_HEIGHT: f32 = 28.0;
 /// What the filter row, its hint and the taller summary row add to the header.
 pub const SEARCH_FILTER_EXTRA_HEIGHT: f32 = 64.0;
 
@@ -93,7 +102,12 @@ pub fn trash_visible_rows(window: Size) -> usize {
 /// opened from the keyboard: just below the row, a little into the name column.
 ///
 /// `row_in_view` is the row's position counted from the first visible row.
-pub fn cursor_row_anchor(right_panel: bool, row_in_view: usize, window: Size) -> Point {
+pub fn cursor_row_anchor(
+    right_panel: bool,
+    row_in_view: usize,
+    row_height: f32,
+    window: Size,
+) -> Point {
     let panel_width = (window.width - spacing::BORDER_WIDTH) / 2.0;
     let panel_left = if right_panel {
         panel_width + spacing::BORDER_WIDTH
@@ -103,7 +117,7 @@ pub fn cursor_row_anchor(right_panel: bool, row_in_view: usize, window: Size) ->
     let rows_top = TITLE_BAR_HEIGHT + COLUMN_HEADER_HEIGHT;
     Point::new(
         panel_left + 3.0 * TAG_COLUMN_WIDTH,
-        rows_top + (row_in_view + 1) as f32 * ROW_HEIGHT,
+        rows_top + (row_in_view + 1) as f32 * row_height,
     )
 }
 
@@ -144,10 +158,10 @@ mod tests {
     #[test]
     fn the_search_view_gives_its_extra_header_the_rows_it_needs() {
         let window = Size::new(1200.0, 760.0);
-        // (634 + 22 - 124) / 22 = 24.2
-        assert_eq!(search_visible_rows(window, false), 24);
-        // (634 + 22 - 188) / 22 = 21.3
-        assert_eq!(search_visible_rows(window, true), 21);
+        // (634 + 22 - 156) / 22 = 22.7
+        assert_eq!(search_visible_rows(window, false), 22);
+        // (634 + 22 - 220) / 22 = 19.8
+        assert_eq!(search_visible_rows(window, true), 19);
         assert_eq!(search_visible_rows(Size::new(1200.0, 10.0), false), 1);
     }
 
@@ -192,13 +206,13 @@ mod tests {
     #[test]
     fn the_keyboard_anchor_is_below_the_row_in_the_right_panel() {
         let window = Size::new(1200.0, 760.0);
-        let left = cursor_row_anchor(false, 0, window);
-        let right = cursor_row_anchor(true, 0, window);
+        let left = cursor_row_anchor(false, 0, ROW_HEIGHT, window);
+        let right = cursor_row_anchor(true, 0, ROW_HEIGHT, window);
         let first_row_top = TITLE_BAR_HEIGHT + COLUMN_HEADER_HEIGHT;
         assert_eq!(left.y, first_row_top + ROW_HEIGHT);
         assert!(right.x > window.width / 2.0);
         assert_eq!(
-            cursor_row_anchor(false, 2, window).y,
+            cursor_row_anchor(false, 2, ROW_HEIGHT, window).y,
             left.y + 2.0 * ROW_HEIGHT
         );
     }
