@@ -287,6 +287,9 @@ panel back; the next search starts with the same fields.
   `Shift`+`↑`/`↓` tag and move either way, `*` tags all files found and
   `Ctrl`+`*` clears the tags. `F5`, `F6` and `F8` copy, move and delete the
   tagged files, else the file under the cursor.
+- A right click on a file opens the context menu with **Show on the other
+  side**, which opens the file's folder in the other panel with the cursor on
+  the file.
 - **Hits as list:** **← Open left** and **Open right →** show the found files as
   a list in a panel, one row per file with its folder below the name; both are
   disabled while nothing is found. The tab reads "Search result: …" and has a
