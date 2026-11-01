@@ -24,10 +24,12 @@ use crate::filing_work::target_of;
 use crate::fs::transfer::{Counting, Move, Source};
 use crate::suggestion_work::INDEX_NOT_OPEN;
 
+use ncrs_ui_kit::format::MINOR_UNITS_PER_UNIT;
+pub use ncrs_ui_kit::format::{amount_digits, amount_text};
+
 type IndexSlot = Arc<Mutex<Option<Index>>>;
 
 pub const PATTERN_DOES_NOT_FIT: &str = "the pattern does not fit the fields";
-const MINOR_UNITS_PER_UNIT: i64 = 100;
 const MINOR_DIGITS: usize = 2;
 /// The passages of a document that led to a field or a rule: how many, and how
 /// long each may be.
@@ -558,23 +560,6 @@ pub fn parse_amount(typed: &str) -> Result<Option<Amount>, FieldError> {
         minor_units: if negative { -magnitude } else { magnitude },
         currency,
     }))
-}
-
-/// The amount as the field shows it, parseable by [`parse_amount`].
-pub fn amount_text(amount: &Amount) -> String {
-    format!("{} {}", amount_digits(amount), amount.currency.as_str())
-}
-
-/// The number of an amount without its currency, with two decimals.
-pub fn amount_digits(amount: &Amount) -> String {
-    let magnitude = amount.minor_units.unsigned_abs();
-    let unit = MINOR_UNITS_PER_UNIT.unsigned_abs();
-    let sign = if amount.minor_units < 0 { "-" } else { "" };
-    format!(
-        "{sign}{}.{:02}",
-        magnitude.div_euclid(unit),
-        magnitude.rem_euclid(unit)
-    )
 }
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the

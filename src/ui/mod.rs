@@ -35,7 +35,6 @@ pub mod review_list;
 pub mod rule_suggestions;
 pub mod rules;
 pub mod saved_queries;
-pub mod search;
 pub mod settings;
 pub mod statusbar;
 pub mod tags;
@@ -45,5 +44,5 @@ pub mod transfer;
 pub mod trash;
 pub mod volumes;
 
-pub use ncrs_ui_kit::{fkeys, format, frame, hermes_kit, key_intercept, kit, theme};
+pub use ncrs_ui_kit::{fkeys, format, frame, hermes_kit, kit, theme};
 pub use panel::{PanelProps, PanelState};

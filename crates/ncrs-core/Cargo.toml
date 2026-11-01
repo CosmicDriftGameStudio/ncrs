@@ -8,5 +8,9 @@ description = "Plain data types several ncrs features share: file entries and se
 license = "MIT"
 publish = false
 
+[dependencies]
+# The side is read from and written to the config.
+serde = { version = "1", features = ["derive"] }
+
 [lints]
 workspace = true

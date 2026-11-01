@@ -23,7 +23,7 @@ use ncrs_intake::{
 
 type IndexSlot = Arc<Mutex<Option<Index>>>;
 
-pub const INDEX_NOT_OPEN: &str = "index not open";
+pub use ncrs_core::INDEX_NOT_OPEN;
 
 /// A rule the analysis suggested and the user has not decided on.
 #[derive(Debug, Clone, PartialEq)]

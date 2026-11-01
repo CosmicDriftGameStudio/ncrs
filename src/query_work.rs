@@ -15,9 +15,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use chrono::NaiveDateTime;
-use ncrs_index::{
-    DocumentFields, FileStamp, Index, IndexError, QuerySpec, SavedQuery, SavedQueryId,
-};
+use ncrs_index::{Index, IndexError, QuerySpec, SavedQuery, SavedQueryId};
+
+pub use ncrs_index::QueryHit;
 
 use crate::fs::flat_names::target_name;
 use crate::fs::transfer::{transfer_to, Copy, Counting, OnConflict};
@@ -25,17 +25,6 @@ use crate::review_work::amount_digits;
 use crate::suggestion_work::INDEX_NOT_OPEN;
 
 type IndexSlot = Arc<Mutex<Option<Index>>>;
-
-/// One document a query found.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct QueryHit {
-    pub path: PathBuf,
-    pub fields: DocumentFields,
-    /// The index knows the file is gone.
-    pub missing: bool,
-    /// Size and date of the file when the index read it.
-    pub stamp: Option<FileStamp>,
-}
 
 /// What the export did.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -85,11 +74,6 @@ impl QueryAccess {
         self.run_inside(spec, None)
     }
 
-    /// Like [`Self::run`], but only the documents at or below `under`.
-    pub fn run_under(&self, spec: &QuerySpec, under: &Path) -> Result<Vec<QueryHit>, String> {
-        self.run_inside(spec, Some(under))
-    }
-
     fn run_inside(&self, spec: &QuerySpec, under: Option<&Path>) -> Result<Vec<QueryHit>, String> {
         self.with_index(|index| {
             Ok(index
@@ -115,26 +99,26 @@ impl QueryAccess {
         })
     }
 
-    /// Overwrites the criteria of the query `id` and keeps its name.
-    pub fn replace_spec(&self, id: SavedQueryId, spec: &QuerySpec) -> Result<(), String> {
-        self.with_index(|index| {
-            let saved = index
-                .saved_queries()?
-                .into_iter()
-                .find(|query| query.id == id)
-                .ok_or(IndexError::SavedQueryNotFound(id))?;
-            index.update_saved_query(id, &saved.name, spec)
-        })
+    fn with_index<T>(
+        &self,
+        work: impl FnOnce(&mut Index) -> Result<T, IndexError>,
+    ) -> Result<T, String> {
+        let mut guard = self.slot.lock().unwrap_or_else(PoisonError::into_inner);
+        let index = guard.as_mut().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
+        work(index).map_err(|err| err.to_string())
+    }
+}
+
+impl ncrs_search::SearchIndex for QueryAccess {
+    /// Like [`QueryAccess::run`], but only the documents at or below `under`.
+    fn run_under(&self, spec: &QuerySpec, under: &Path) -> Result<Vec<QueryHit>, String> {
+        self.run_inside(spec, Some(under))
     }
 
     /// The pieces of text around `words` of the documents at `paths`, marked
     /// as [`Index::text_snippets`] does. A path the index does not know or the
     /// words do not match has none.
-    pub fn snippets(
-        &self,
-        paths: &[PathBuf],
-        words: &str,
-    ) -> Result<Vec<(PathBuf, String)>, String> {
+    fn snippets(&self, paths: &[PathBuf], words: &str) -> Result<Vec<(PathBuf, String)>, String> {
         self.with_index(|index| {
             let mut ids = Vec::new();
             let mut paths_of = Vec::new();
@@ -155,13 +139,16 @@ impl QueryAccess {
         })
     }
 
-    fn with_index<T>(
-        &self,
-        work: impl FnOnce(&mut Index) -> Result<T, IndexError>,
-    ) -> Result<T, String> {
-        let mut guard = self.slot.lock().unwrap_or_else(PoisonError::into_inner);
-        let index = guard.as_mut().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
-        work(index).map_err(|err| err.to_string())
+    /// Overwrites the criteria of the query `id` and keeps its name.
+    fn replace_spec(&self, id: SavedQueryId, spec: &QuerySpec) -> Result<(), String> {
+        self.with_index(|index| {
+            let saved = index
+                .saved_queries()?
+                .into_iter()
+                .find(|query| query.id == id)
+                .ok_or(IndexError::SavedQueryNotFound(id))?;
+            index.update_saved_query(id, &saved.name, spec)
+        })
     }
 }
 
@@ -370,7 +357,7 @@ mod tests {
     use std::collections::BTreeSet;
 
     use chrono::{NaiveDate, NaiveDateTime};
-    use ncrs_index::{Amount, Currency};
+    use ncrs_index::{Amount, Currency, DocumentFields};
     use tempfile::TempDir;
 
     use super::*;

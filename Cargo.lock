@@ -3388,6 +3388,7 @@ dependencies = [
  "ncrs-ocr-vision",
  "ncrs-pipeline",
  "ncrs-sandbox",
+ "ncrs-search",
  "ncrs-ui-kit",
  "nucleo-matcher",
  "objc2 0.6.5",
@@ -3432,6 +3433,9 @@ dependencies = [
 [[package]]
 name = "ncrs-core"
 version = "0.0.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "ncrs-i18n"
@@ -3505,6 +3509,26 @@ dependencies = [
  "objc2 0.6.5",
  "objc2-foundation 0.3.2",
  "tempfile",
+]
+
+[[package]]
+name = "ncrs-search"
+version = "0.0.0"
+dependencies = [
+ "chrono",
+ "globset",
+ "grep-matcher",
+ "grep-regex",
+ "grep-searcher",
+ "iced",
+ "ignore",
+ "ncrs-core",
+ "ncrs-i18n",
+ "ncrs-index",
+ "ncrs-ui-kit",
+ "tempfile",
+ "tokio",
+ "unicode-normalization",
 ]
 
 [[package]]

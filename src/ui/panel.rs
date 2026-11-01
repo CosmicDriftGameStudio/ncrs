@@ -22,7 +22,7 @@ use crate::palette::Palette;
 use crate::selection::SelectionSet;
 
 pub use ncrs_ui_kit::file_row::{
-    file_row, hit_row, tag_star, HermesCell, HermesContent, HitRow, RowClick, RowExtras,
+    file_row, tag_star, HermesCell, HermesContent, RowClick, RowExtras,
 };
 
 // ---------------------------------------------------------------------------

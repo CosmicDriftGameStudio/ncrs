@@ -1,28 +1,29 @@
 //! The search view that stands in for a panel: title, fields, summary line and
 //! the result rows. Pure view over [`SearchView`]; every click becomes a
 //! [`SearchMessage`].
+use std::rc::Rc;
+
 use iced::widget::text::{Span, Wrapping};
 use iced::widget::{button, column, container, mouse_area, rich_text, row, span, text, text_input};
 use iced::widget::{tooltip, Column, Row};
 use iced::{alignment, Element, Font, Length};
 
-use super::format;
-use super::hermes_kit::{self, ChipKind, MenuItem};
-use super::key_intercept::key_intercept;
-use super::layout;
-use super::panel::{self, HitRow, RowClick};
-use super::theme::{self, font_size, spacing};
-use crate::app::{fill_template, search_toggle_for_press};
-use crate::fs::search::{LineMatch, SearchError};
-use crate::i18n::{FuturamaName, Language, Msg};
-use crate::keymap::Keymap;
-use crate::messages::{Message, PanelSide, SearchMessage};
-use crate::palette::Palette;
-use crate::query_work::QueryHit;
-use crate::review_work::amount_text;
-use crate::search_filters::{Facet, FacetValue, SearchFilters};
-use crate::search_view::{FileResult, SearchField, SearchView};
-use crate::selection::Selection;
+use ncrs_core::{PanelSide, Selection};
+use ncrs_i18n::{fill_template, FuturamaName, Language, Msg};
+use ncrs_index::QueryHit;
+use ncrs_ui_kit::file_row::{hit_row, tag_star, HitRow, RowClick};
+use ncrs_ui_kit::format::{self, amount_text};
+use ncrs_ui_kit::hermes_kit::{self, ChipKind, MenuItem};
+use ncrs_ui_kit::key_intercept::key_intercept;
+use ncrs_ui_kit::layout;
+use ncrs_ui_kit::palette::Palette;
+use ncrs_ui_kit::theme::{self, font_size, spacing};
+
+use crate::ctx::{TogglePress, ToggleShortcuts, ViewCtx};
+use crate::engine::{LineMatch, SearchError};
+use crate::filters::{Facet, FacetValue, SearchFilters};
+use crate::message::SearchMessage;
+use crate::view_state::{FileResult, SearchField, SearchView};
 
 pub const QUERY_ID: &str = "search-query";
 pub const INCLUDE_ID: &str = "search-include";
@@ -39,43 +40,29 @@ pub fn field_id(field: SearchField) -> &'static str {
 const FIELD_ROW_HEIGHT: f32 = 28.0;
 const TOGGLE_WIDTH: f32 = 28.0;
 
-fn to_search(message: SearchMessage) -> Message {
-    Message::Search(message)
-}
-
-/// The keys of the three toggles as the keymap spells them, for the tooltips.
-/// `None` for a toggle without a key.
-#[derive(Debug, Clone, Default)]
-pub struct ToggleShortcuts {
-    pub case: Option<String>,
-    pub whole_word: Option<String>,
-    pub regex: Option<String>,
-}
-
-/// The space the search has in its panel.
-#[derive(Debug, Clone, Copy)]
-pub struct Room {
-    pub visible_rows: usize,
-}
-
+/// The search view of `search`, with `visible_rows` result rows.
 pub fn view<'a>(
     search: &'a SearchView,
-    room: Room,
-    is_active: bool,
-    lang: Language,
-    palette: &Palette,
-    keymap: &'a Keymap,
-    shortcuts: &ToggleShortcuts,
-) -> Element<'a, Message> {
+    visible_rows: usize,
+    ctx: ViewCtx<'a>,
+) -> Element<'a, SearchMessage> {
+    let ViewCtx {
+        lang,
+        palette,
+        is_active,
+        shortcuts,
+        toggle_for_press,
+        column_header,
+    } = ctx;
     let rows = search
         .results
         .iter()
         .enumerate()
         .skip(search.scroll_offset)
-        .take(room.visible_rows)
+        .take(visible_rows)
         .filter_map(|(index, result)| result_row(search, result, index, is_active, lang, palette));
 
-    let body: Element<'a, Message> = if search.results.is_empty() {
+    let body: Element<'a, SearchMessage> = if search.results.is_empty() {
         container(
             text(empty_text(search, lang))
                 .size(font_size::ROW)
@@ -88,8 +75,8 @@ pub fn view<'a>(
     };
 
     let framed = column![
-        header(search, lang, palette, keymap, shortcuts),
-        panel::plain_column_header(lang, palette),
+        header(search, lang, palette, &toggle_for_press, &shortcuts),
+        column_header,
         container(body).height(Length::Fill).width(Length::Fill),
     ];
     mouse_area(
@@ -98,7 +85,7 @@ pub fn view<'a>(
             .height(Length::Fill)
             .style(theme::panel(palette)),
     )
-    .on_scroll(|delta| to_search(SearchMessage::Scrolled(delta)))
+    .on_scroll(SearchMessage::Scrolled)
     .into()
 }
 
@@ -118,27 +105,26 @@ fn header<'a>(
     search: &'a SearchView,
     lang: Language,
     palette: &Palette,
-    keymap: &'a Keymap,
+    toggle_for_press: &TogglePress<'a>,
     shortcuts: &ToggleShortcuts,
-) -> Element<'a, Message> {
+) -> Element<'a, SearchMessage> {
     // Wrapped so the toggle keys act in the field: it would type their
     // character (Option+C is a "ç" on a Mac) before any key routing sees them.
     let field = |placeholder: &'a str,
                  value: &'a str,
                  id: &'static str,
                  changed: fn(String) -> SearchMessage| {
+        let press = Rc::clone(toggle_for_press);
         key_intercept(
             text_input(placeholder, value)
                 .id(id)
-                .on_input(move |text| to_search(changed(text)))
-                .on_submit(to_search(SearchMessage::Activate))
+                .on_input(changed)
+                .on_submit(SearchMessage::Activate)
                 .size(font_size::ROW)
                 .padding([3.0, 6.0])
                 .style(theme::search_input(palette))
                 .width(Length::Fill),
-            move |key, physical_key, modifiers| {
-                search_toggle_for_press(keymap, key.clone(), physical_key, modifiers).map(to_search)
-            },
+            move |key, physical_key, modifiers| press(key.clone(), physical_key, modifiers),
         )
     };
     // The index answers a search with filters; its words ignore these.
@@ -170,7 +156,7 @@ fn header<'a>(
                 }
                 style
             })
-            .on_press_maybe((!toggles_disabled).then(|| to_search(message))),
+            .on_press_maybe((!toggles_disabled).then_some(message)),
             container(text(tip_text).size(font_size::COLUMN_HEADER))
                 .padding(4.0)
                 .style(theme::menu(palette)),
@@ -178,7 +164,7 @@ fn header<'a>(
         )
     };
     let label_width = label_column_width(lang);
-    let labelled = |label: Msg, input: Element<'a, Message>| {
+    let labelled = |label: Msg, input: Element<'a, SearchMessage>| {
         row![
             text(lang.text(label))
                 .size(font_size::COLUMN_HEADER)
@@ -270,11 +256,11 @@ fn hit_list_row<'a>(
     search: &SearchView,
     lang: Language,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, SearchMessage> {
     let open = |label: Msg, side: PanelSide| {
         hermes_kit::secondary(
             lang.text(label),
-            (!search.results.is_empty()).then(|| to_search(SearchMessage::OpenHitList(side))),
+            (!search.results.is_empty()).then_some(SearchMessage::OpenHitList(side)),
             palette,
         )
     };
@@ -298,7 +284,7 @@ struct FilterControl {
     label: Msg,
     facet: Facet,
     chosen: Option<String>,
-    items: Vec<MenuItem<Message>>,
+    items: Vec<MenuItem<SearchMessage>>,
 }
 
 fn filter_controls(filters: &SearchFilters, lang: Language) -> Vec<FilterControl> {
@@ -313,7 +299,7 @@ fn filter_controls(filters: &SearchFilters, lang: Language) -> Vec<FilterControl
         };
         MenuItem::new(
             format!("{mark}{label} ({count})"),
-            to_search(SearchMessage::ToggleFacet(value)),
+            SearchMessage::ToggleFacet(value),
         )
     };
     let chosen_tags = (!selection.tags.is_empty()).then(|| {
@@ -400,14 +386,14 @@ fn filter_row<'a>(
     filters: &'a SearchFilters,
     lang: Language,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, SearchMessage> {
     Row::with_children(filter_controls(filters, lang).into_iter().map(|control| {
         hermes_kit::filter(
             lang.text(control.label),
             control.chosen.as_deref(),
             &control.items,
             Length::FillPortion(1),
-            to_search(SearchMessage::ClearFacet(control.facet)),
+            SearchMessage::ClearFacet(control.facet),
             palette,
         )
     }))
@@ -432,7 +418,7 @@ fn filter_hint<'a>(
     filters: &SearchFilters,
     lang: Language,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, SearchMessage> {
     let selection = filters.selection();
     if selection.is_empty() {
         return hermes_kit::hint(String::new(), palette);
@@ -473,7 +459,7 @@ fn summary_row<'a>(
     status: iced::widget::Text<'a>,
     lang: Language,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, SearchMessage> {
     let mut line = row![status].align_y(alignment::Vertical::Center);
     if search.is_filtered() && !search.running {
         if let Some(total) = filters.total_amount() {
@@ -497,11 +483,7 @@ fn summary_row<'a>(
             .then_some((Msg::DocumentSearchSaveAsReport, SearchMessage::SaveAsReport)),
     };
     if let Some((label, message)) = link {
-        line = line.push(hermes_kit::link(
-            lang.text(label),
-            Some(to_search(message)),
-            palette,
-        ));
+        line = line.push(hermes_kit::link(lang.text(label), Some(message), palette));
     }
     container(line)
         .height(hermes_kit::CONTROL_HEIGHT)
@@ -593,7 +575,7 @@ fn result_row<'a>(
     panel_active: bool,
     lang: Language,
     palette: &Palette,
-) -> Option<Element<'a, Message>> {
+) -> Option<Element<'a, SearchMessage>> {
     let mark = Selection {
         tagged: search.is_tagged(index),
         cursor: search.cursor == Some(index),
@@ -603,30 +585,28 @@ fn result_row<'a>(
         .third_line
         .then(|| third_line(search, result, mark.cursor && panel_active, lang, palette))
         .flatten();
-    let prefix = Row::new().push(panel::tag_star(
+    let prefix = Row::new().push(tag_star(
         mark,
         panel_active,
         palette,
         height,
-        to_search(SearchMessage::ToggleTagAt(index)),
+        SearchMessage::ToggleTagAt(index),
     ));
-    Some(panel::hit_row(
+    Some(hit_row(
         HitRow {
             entry: result.entry()?,
             mark,
             scope: &search.root,
             height,
             third_line,
-            on_context: Some(to_search(SearchMessage::ContextAt(index))),
+            on_context: Some(SearchMessage::ContextAt(index)),
         },
         panel_active,
         palette,
-        |click| {
-            to_search(match click {
-                RowClick::Tag => SearchMessage::ToggleTagAt(index),
-                RowClick::Cursor => SearchMessage::RowClicked(index),
-                RowClick::Open => SearchMessage::RowActivated(index),
-            })
+        |click| match click {
+            RowClick::Tag => SearchMessage::ToggleTagAt(index),
+            RowClick::Cursor => SearchMessage::RowClicked(index),
+            RowClick::Open => SearchMessage::RowActivated(index),
         },
         prefix,
     ))
@@ -640,7 +620,7 @@ fn third_line<'a>(
     highlighted: bool,
     lang: Language,
     palette: &Palette,
-) -> Option<Element<'a, Message>> {
+) -> Option<Element<'a, SearchMessage>> {
     let dim = if highlighted {
         palette.cursor_text
     } else {
@@ -693,7 +673,7 @@ fn index_details<'a>(
     dim: iced::Color,
     lang: Language,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, SearchMessage> {
     let kinds = filters.kinds();
     let fields = &hit.fields;
     let own = fields.own_tags();
@@ -775,7 +755,6 @@ fn match_spans<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fs::search::LineMatch;
 
     fn result_with(lines: usize) -> FileResult {
         FileResult {

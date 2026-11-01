@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::OsString;
 use std::num::NonZeroUsize;
 use std::path::{Component, Path, PathBuf};
+use std::rc::Rc;
 
 use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -129,7 +130,6 @@ use crate::ui::review_list as review_list_ui;
 use crate::ui::rule_suggestions as rule_suggestions_ui;
 use crate::ui::rules as rules_ui;
 use crate::ui::saved_queries as saved_queries_ui;
-use crate::ui::search as search_ui;
 use crate::ui::settings as settings_ui;
 use crate::ui::tags as tags_ui;
 use crate::ui::theme_fetch as theme_fetch_ui;
@@ -144,16 +144,11 @@ use ncrs_index::{
 };
 use ncrs_intake::LocationMode;
 use ncrs_pipeline::{Load, RunnerState};
+use ncrs_search::search_events;
 use tokio::sync::mpsc;
 
-/// How long the search view waits for the next keystroke before it searches.
 /// How often the bar of a model download reads the byte counter.
 const DOWNLOAD_BAR_EVERY: std::time::Duration = std::time::Duration::from_millis(250);
-const SEARCH_DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(250);
-
-/// The most events one message carries, so a search that finds thousands of
-/// files does not make thousands of updates.
-const SEARCH_BATCH: usize = 256;
 
 /// The name a new archive starts with: the entry's own name for one, the name
 /// of the folder they are in for several.
@@ -342,10 +337,6 @@ fn archive_file_place(archive: &Path) -> Option<(&Path, String)> {
     Some((archive.parent()?, archive.file_name()?.to_str()?.to_owned()))
 }
 
-fn search_batch(generation: u64, events: Vec<fs::search::SearchEvent>) -> Message {
-    Message::Search(SearchMessage::Events { generation, events })
-}
-
 fn document_search_task(request: DocumentRequest, finder: DocumentFinder) -> Task<Message> {
     let DocumentRequest {
         walk_generation,
@@ -370,28 +361,6 @@ fn document_search_task(request: DocumentRequest, finder: DocumentFinder) -> Tas
 
 fn quick_open_batch(generation: u64, events: Vec<fs::search::SearchEvent>) -> Message {
     Message::QuickOpen(QuickOpenMessage::Events { generation, events })
-}
-
-/// The messages of one search, in batches. Ends when the engine is done or the
-/// task is aborted.
-///
-/// The engine is started inside the stream: it spawns onto the blocking pool,
-/// which needs the runtime a task runs in, and `update` does not run in one.
-fn search_events(
-    compiled: fs::search::CompiledSearch,
-    generation: u64,
-    to_message: fn(u64, Vec<fs::search::SearchEvent>) -> Message,
-) -> impl futures::Stream<Item = Message> + Send + 'static {
-    use futures::StreamExt as _;
-    futures::stream::once(async move { fs::search::spawn(compiled) })
-        .map(move |receiver| {
-            futures::stream::unfold(receiver, move |mut open| async move {
-                let mut events = Vec::new();
-                let received = open.recv_many(&mut events, SEARCH_BATCH).await;
-                (received > 0).then(|| (to_message(generation, events), open))
-            })
-        })
-        .flatten()
 }
 
 /// How long a confirmation stays in the status bar.
@@ -1441,21 +1410,8 @@ pub struct App {
     /// Where the drive menu gets its list. Injected so tests offer their own
     /// directories instead of the machine's disks.
     list_volumes: Arc<dyn Fn() -> Vec<fs::Volume> + Send + Sync>,
-    /// The search view. Kept when it is closed, so reopening shows the last
-    /// results and fields again.
-    search: Option<SearchView>,
-    /// Whether the search view is up, in place of the panel on `search_side`.
-    search_open: bool,
-    search_side: PanelSide,
-    /// Result rows that fit into the search view.
-    search_rows: usize,
-    /// Counts the searches started, so a late timer or batch can tell it is
-    /// not the latest. Never reset: a closed view must not accept the events
-    /// of a search it abandoned.
-    search_generation: u64,
-    /// Stops the running search when dropped, which also drops the receiver
-    /// the engine's worker sends into.
-    search_handle: Option<iced::task::Handle>,
+    /// The search: its view, which is kept when it is closed, and its run.
+    search: ncrs_search::Search,
     /// Quick Open (Cmd/Ctrl+P), while its box is up.
     quick_open: Option<QuickOpen>,
     /// Counts the walks started, so the late batches of a closed one are dropped.
@@ -3556,16 +3512,7 @@ impl App {
             session_writes: Arc::default(),
             input: Arc::default(),
             list_volumes: Arc::new(fs::list_volumes),
-            search: None,
-            search_open: false,
-            search_side: PanelSide::Left,
-            search_rows: layout::search_visible_rows(
-                layout::INITIAL_WINDOW_SIZE,
-                false,
-                layout::HIT_LIST_ROW_HEIGHT,
-            ),
-            search_generation: 0,
-            search_handle: None,
+            search: ncrs_search::Search::new(layout::INITIAL_WINDOW_SIZE),
             quick_open: None,
             quick_open_walk_generation: 0,
             quick_open_walk: None,
@@ -4661,7 +4608,7 @@ impl App {
     /// Cmd+.: opens the menu on the inquiries of the active panel, and looks up
     /// their reviews on a blocking thread. Says so when there are none.
     fn open_quick_fix(&mut self) -> Task<Message> {
-        if self.overlay_is_open() || self.search_open || !self.hermes_active() {
+        if self.overlay_is_open() || self.search.open || !self.hermes_active() {
             return Task::none();
         }
         let paths = self.inquiry_paths();
@@ -5373,19 +5320,26 @@ impl App {
             )
         };
 
-        let side_view_plain = |side: PanelSide| match self.search.as_ref() {
+        let side_view_plain = |side: PanelSide| match self.search.view.as_ref() {
             _ if self.trash_view.is_some() && side == self.trash_side => self.trash_panel(side),
-            Some(search) if self.search_open && side == self.search_side => search_ui::view(
-                search,
-                search_ui::Room {
-                    visible_rows: self.search_rows,
-                },
-                self.active_panel == side,
-                self.lang,
-                &self.palette,
-                &self.keymap,
-                &self.toggle_shortcuts(),
-            ),
+            Some(search) if self.search.open && side == self.search.side => {
+                let keymap = &self.keymap;
+                ncrs_search::view(
+                    search,
+                    self.search.rows,
+                    ncrs_search::ViewCtx {
+                        lang: self.lang,
+                        palette: &self.palette,
+                        is_active: self.active_panel == side,
+                        shortcuts: self.toggle_shortcuts(),
+                        toggle_for_press: Rc::new(move |key, physical_key, modifiers| {
+                            search_toggle_for_press(keymap, key, physical_key, modifiers)
+                        }),
+                        column_header: panel::plain_column_header(self.lang, &self.palette),
+                    },
+                )
+                .map(Message::Search)
+            }
             _ => panel_view(side),
         };
 
@@ -5813,7 +5767,7 @@ impl App {
         if !self.search_has_keys() {
             return None;
         }
-        let view = self.search.as_ref()?;
+        let view = self.search.view.as_ref()?;
         let Some((path, _)) = view.cursor_target() else {
             return Some(String::new());
         };
@@ -6872,7 +6826,7 @@ impl App {
     /// one, below that row. The cursor goes to the row; tags stay, so the menu
     /// acts on them as F5 and F8 do.
     fn open_context_menu(&mut self, side: PanelSide, index: usize, anchor: Option<Point>) {
-        if self.blocking_overlay_is_open() || (self.search_open && side == self.search_side) {
+        if self.blocking_overlay_is_open() || (self.search.open && side == self.search.side) {
             return;
         }
         // An open menu is replaced by a right click and left alone by the keys.
@@ -7031,7 +6985,7 @@ impl App {
         } else {
             self.hermes_active()
         };
-        if self.overlay_is_open() || self.search_open || !available {
+        if self.overlay_is_open() || self.search.open || !available {
             return Task::none();
         }
         let cursor = self
@@ -7828,7 +7782,7 @@ impl App {
         self.context_menu = None;
         self.job_error = None;
         self.notice = None;
-        let closed_search = if self.search_open && self.search_side == side {
+        let closed_search = if self.search.open && self.search.side == side {
             self.update_search(SearchMessage::Close)
         } else {
             Task::none()
@@ -9969,9 +9923,9 @@ impl App {
         self.load(side, parent, came_from)
     }
 
-    fn toggle_shortcuts(&self) -> search_ui::ToggleShortcuts {
+    fn toggle_shortcuts(&self) -> ncrs_search::ToggleShortcuts {
         let label = |toggle| self.keymap.shortcut_label(&Message::Search(toggle));
-        search_ui::ToggleShortcuts {
+        ncrs_search::ToggleShortcuts {
             case: label(SearchMessage::ToggleCase),
             whole_word: label(SearchMessage::ToggleWholeWord),
             regex: label(SearchMessage::ToggleRegex),
@@ -9980,7 +9934,7 @@ impl App {
 
     /// The search view, while it is up.
     fn open_search_view(&self) -> Option<&SearchView> {
-        self.search.as_ref().filter(|_| self.search_has_keys())
+        self.search.view.as_ref().filter(|_| self.search_has_keys())
     }
 
     /// The search view is up and its panel is the active one: the keys and the
@@ -9993,14 +9947,14 @@ impl App {
     }
 
     fn search_has_keys(&self) -> bool {
-        self.search_open && self.active_panel == self.search_side
+        self.search.open && self.active_panel == self.search.side
     }
 
     /// The panel that file actions take their files from: the one the search
     /// view stands in for, else the active one.
     fn source_side(&self) -> PanelSide {
         if self.search_has_keys() {
-            self.search_side
+            self.search.side
         } else if self.trash_has_keys() {
             self.trash_side
         } else {
@@ -10017,7 +9971,7 @@ impl App {
         self.window_size = size;
         self.resize_command_palette(size);
         self.visible_rows = layout::visible_rows(size);
-        self.resize_search(size);
+        self.search.resize(size);
         self.left_panel.ensure_visible(self.visible_rows);
         self.right_panel.ensure_visible(self.visible_rows);
     }
@@ -10125,40 +10079,27 @@ impl App {
         Some((self.state_path.clone()?, self.session_scheduled.clone()))
     }
 
-    fn resize_search(&mut self, window: Size) {
-        self.search_rows = self.search_rows_for(window);
-        if let Some(view) = self.search.as_mut() {
-            view.ensure_visible(self.search_rows);
+    /// What the search reads from the app.
+    fn search_ctx(&self) -> ncrs_search::Ctx {
+        ncrs_search::Ctx {
+            window_size: self.window_size,
+            side_is_remote: self.panel(self.search.side).remote().is_some(),
+            has_keys: self.search_has_keys(),
+            index: self
+                .filing
+                .as_ref()
+                .and_then(FilingModule::query_access)
+                .map(|access| Arc::new(access) as Arc<dyn ncrs_search::SearchIndex>),
         }
-    }
-
-    /// The result rows that fit in `window` at the height the search's rows
-    /// have now.
-    fn search_rows_for(&self, window: Size) -> usize {
-        let row_height = self
-            .search
-            .as_ref()
-            .map_or(layout::HIT_LIST_ROW_HEIGHT, SearchView::row_height);
-        layout::search_visible_rows(window, self.search_filtered(), row_height)
-    }
-
-    /// Whether the search shows its filters.
-    fn search_filtered(&self) -> bool {
-        self.search
-            .as_ref()
-            .is_some_and(|view| view.filters.is_some())
     }
 
     /// The rows of the search after its filters changed what they offer.
     fn refresh_search_rows(&mut self) {
-        self.resize_search(self.window_size);
+        self.search.resize(self.window_size);
     }
 
     fn focus_search_field(&self) -> Task<Message> {
-        let id = self.search.as_ref().map_or(search_ui::QUERY_ID, |view| {
-            search_ui::field_id(view.focused)
-        });
-        operation::focus(id).chain(operation::select_all(id))
+        self.search.focus_field()
     }
 
     /// Shows the search view in place of the active panel, below that panel's
@@ -10169,13 +10110,13 @@ impl App {
         if self.blocking_overlay_is_open() {
             return Task::none();
         }
-        if self.search_open {
+        if self.search.open {
             if self.search_has_keys() {
-                if let Some(view) = self.search.as_mut() {
+                if let Some(view) = self.search.view.as_mut() {
                     view.focused = view.focused.next();
                 }
             } else {
-                self.active_panel = self.search_side;
+                self.active_panel = self.search.side;
             }
             return self.focus_search_field();
         }
@@ -10187,8 +10128,8 @@ impl App {
             self.close_trash();
         }
         let root = self.panel(side).path.clone();
-        self.search_side = side;
-        self.search_open = true;
+        self.search.side = side;
+        self.search.open = true;
         let indexed = self.panel(side).remote().is_none()
             && self
                 .filing
@@ -10198,6 +10139,7 @@ impl App {
         let kinds = Arc::clone(&self.kinds.catalog);
         let view = self
             .search
+            .view
             .get_or_insert_with(|| SearchView::new(root.clone()));
         view.root = root;
         view.filters = if indexed {
@@ -10215,150 +10157,17 @@ impl App {
     /// The search opened with the words typed in the box that asked.
     fn open_search_with_words(&mut self, text: String) -> Task<Message> {
         let opened = self.open_search();
-        if let Some(view) = self.search.as_mut() {
+        if let Some(view) = self.search.view.as_mut() {
             view.query = text;
             view.focused = SearchField::Query;
         }
         Task::batch([opened, self.restart_search()])
     }
 
-    fn next_search_generation(&mut self) -> u64 {
-        self.search_generation = self.search_generation.wrapping_add(1);
-        self.search_generation
-    }
-
-    /// Searches again once the typing pauses; the running search stops now.
-    fn schedule_search(&mut self) -> Task<Message> {
-        self.search_handle = None;
-        let generation = self.next_search_generation();
-        if let Some(view) = self.search.as_mut() {
-            view.generation = generation;
-            view.running = false;
-        }
-        Task::perform(
-            async { tokio::time::sleep(SEARCH_DEBOUNCE).await },
-            move |()| Message::Search(SearchMessage::Debounced(generation)),
-        )
-    }
-
     /// Searches again now, for when the files changed under the results.
     fn restart_search(&mut self) -> Task<Message> {
-        // The search walks the disk of this computer; a panel on a server has
-        // nothing for it to walk.
-        if !self.search_open || self.panel(self.search_side).remote().is_some() {
-            return Task::none();
-        }
-        self.search_handle = None;
-        let generation = self.next_search_generation();
-        self.start_search(generation)
-    }
-
-    fn start_search(&mut self, generation: u64) -> Task<Message> {
-        let asked = self.ask_index();
-        let Some(view) = self.search.as_mut() else {
-            return asked;
-        };
-        view.generation = generation;
-        if view.is_filtered() {
-            // The index answers; the walk would find other things.
-            self.search_handle = None;
-            view.running = true;
-            return asked;
-        }
-        let walk = match fs::search::compile(&view.query_for_engine()) {
-            // Nothing to look for yet: the empty list is the answer.
-            Err(fs::search::SearchError::Empty) => {
-                view.clear_results();
-                Task::none()
-            }
-            Err(error) => {
-                view.clear_results();
-                view.error = Some(error);
-                Task::none()
-            }
-            Ok(compiled) => {
-                view.begin(generation);
-                let (task, handle) = Task::run(
-                    search_events(compiled, generation, search_batch),
-                    std::convert::identity,
-                )
-                .abortable();
-                self.search_handle = Some(handle.abort_on_drop());
-                task
-            }
-        };
-        self.refresh_search_rows();
-        Task::batch([asked, walk])
-    }
-
-    /// Asks the index for the documents of the words below the folder of the
-    /// search, on a blocking thread; the filters count and narrow its answer.
-    fn ask_index(&mut self) -> Task<Message> {
-        let query_access = self.filing.as_ref().and_then(FilingModule::query_access);
-        let Some(view) = self.search.as_mut() else {
-            return Task::none();
-        };
-        let root = view.root.clone();
-        let words = view.query.clone();
-        let Some(filters) = view.filters.as_mut() else {
-            return Task::none();
-        };
-        let (generation, spec) = filters.ask(&words);
-        let Some(access) = query_access else {
-            filters.failed(INDEX_NOT_OPEN.to_owned());
-            return Task::none();
-        };
-        Task::perform(
-            tokio::task::spawn_blocking(move || access.run_under(&spec, &root)),
-            move |joined| {
-                let result = joined.unwrap_or_else(|join| Err(join.to_string()));
-                Message::Search(SearchMessage::IndexRan { generation, result })
-            },
-        )
-    }
-
-    /// Asks for the snippets of the documents shown.
-    fn request_snippets(&self) -> Task<Message> {
-        let Some(filters) = self
-            .search
-            .as_ref()
-            .filter(|view| view.is_filtered())
-            .and_then(|view| view.filters.as_ref())
-        else {
-            return Task::none();
-        };
-        let generation = filters.generation();
-        let Some((paths, words)) = filters.snippet_request() else {
-            return Task::none();
-        };
-        let Some(access) = self.filing.as_ref().and_then(FilingModule::query_access) else {
-            return Task::none();
-        };
-        Task::perform(
-            tokio::task::spawn_blocking(move || access.snippets(&paths, &words)),
-            move |joined| {
-                let result = joined.unwrap_or_else(|join| Err(join.to_string()));
-                Message::Search(SearchMessage::SnippetsLoaded { generation, result })
-            },
-        )
-    }
-
-    /// A value was chosen or cleared: the walk takes over or the index
-    /// answer is narrowed anew.
-    fn filters_changed(&mut self) -> Task<Message> {
-        self.refresh_search_rows();
-        if !self.search.as_ref().is_some_and(SearchView::is_filtered) {
-            return self.restart_search();
-        }
-        self.search_handle = None;
-        let generation = self.next_search_generation();
-        let rows = self.search_rows;
-        if let Some(view) = self.search.as_mut() {
-            view.generation = generation;
-            view.mirror_index(rows);
-        }
-        self.refresh_search_rows();
-        self.request_snippets()
+        let ctx = self.search_ctx();
+        self.search.restart(&ctx).map(Message::Search)
     }
 
     /// Lists the hits of the search in the panel on `target`. The files are
@@ -10373,7 +10182,7 @@ impl App {
         let paths: Vec<PathBuf> = view.results.iter().map(|file| file.path.clone()).collect();
         let query = view.query.trim().to_owned();
         let scope = view.root.clone();
-        let origin = self.search_side;
+        let origin = self.search.side;
         self.context_menu = None;
         self.job_error = None;
         self.notice = None;
@@ -10463,15 +10272,15 @@ impl App {
         };
         self.context_menu = None;
         let load = self.load(side, list.return_to, None);
-        if !search || self.search.is_none() {
+        if !search || self.search.view.is_none() {
             return load;
         }
-        if self.search_open {
-            self.active_panel = self.search_side;
+        if self.search.open {
+            self.active_panel = self.search.side;
             return load;
         }
-        self.search_open = true;
-        self.active_panel = self.search_side;
+        self.search.open = true;
+        self.active_panel = self.search.side;
         self.refresh_search_rows();
         let restarted = self.restart_search();
         Task::batch([load, restarted, self.focus_search_field()])
@@ -10499,7 +10308,7 @@ impl App {
             return Task::none();
         };
         let other = side.other();
-        let closed = if self.search_open && self.search_side == other {
+        let closed = if self.search.open && self.search.side == other {
             self.close_search()
         } else {
             Task::none()
@@ -10514,19 +10323,7 @@ impl App {
     }
 
     fn close_search(&mut self) -> Task<Message> {
-        // Late timers and batches of the stopped search find another
-        // generation and are dropped.
-        self.search_open = false;
-        self.search_handle = None;
-        let generation = self.next_search_generation();
-        if let Some(kept) = self.search.as_mut() {
-            kept.running = false;
-            kept.generation = generation;
-            if let Some(filters) = kept.filters.as_mut() {
-                filters.leave_report();
-            }
-        }
-        release_focus()
+        self.search.close().map(Message::Search)
     }
 
     /// The report page after the search handed its criteria over.
@@ -10553,7 +10350,7 @@ impl App {
     fn open_search_for(&mut self, spec: &QuerySpec, report: Option<SavedQueryId>) -> Task<Message> {
         self.saved_queries = None;
         let opened = self.open_search();
-        if let Some(view) = self.search.as_mut() {
+        if let Some(view) = self.search.view.as_mut() {
             view.query = spec.full_text.clone().unwrap_or_default();
             view.focused = SearchField::Query;
             if let Some(filters) = view.filters.as_mut() {
@@ -10568,259 +10365,41 @@ impl App {
     }
 
     fn update_search(&mut self, message: SearchMessage) -> Task<Message> {
-        if !self.search_open {
+        if !self.search.open {
             return Task::none();
         }
-        // Tagging comes from the keys only, and the keys are the panel's when
-        // the other one is active. The toggles are not guarded the same way: a
-        // click on one has to work from the other panel and activates this one.
-        if matches!(
-            message,
-            SearchMessage::ToggleTag
-                | SearchMessage::TagMove(_)
-                | SearchMessage::TagAll
-                | SearchMessage::ClearTags
-        ) && !self.search_has_keys()
+        let ctx = self.search_ctx();
+        // Using the view makes its panel the active one, unless the keys it
+        // asks for are not its own.
+        if ncrs_search::activates_panel(&message)
+            && !(ncrs_search::needs_keys(&message) && !ctx.has_keys)
         {
-            return Task::none();
+            self.active_panel = self.search.side;
         }
-        // Using the view makes its panel the active one; what runs by itself
-        // does not.
-        if !matches!(
-            message,
-            SearchMessage::Events { .. }
-                | SearchMessage::IndexRan { .. }
-                | SearchMessage::SnippetsLoaded { .. }
-                | SearchMessage::ReportUpdated(_)
-                | SearchMessage::Debounced(_)
-                | SearchMessage::Close
-                | SearchMessage::Scrolled(_)
-        ) {
-            self.active_panel = self.search_side;
+        let (task, asked) = ncrs_search::update(&mut self.search, message, &ctx);
+        let mapped = task.map(Message::Search);
+        match asked {
+            Some(action) => Task::batch([mapped, self.run_search_action(action)]),
+            None => mapped,
         }
-        let rows = self.search_rows;
-        let Some(view) = self.search.as_mut() else {
-            return Task::none();
-        };
-        match message {
-            SearchMessage::QueryChanged(text) => {
-                view.query = text;
-                view.focused = SearchField::Query;
-                self.schedule_search()
-            }
-            SearchMessage::IncludeChanged(text) => {
-                view.include = text;
-                view.focused = SearchField::Include;
-                self.schedule_search()
-            }
-            SearchMessage::ExcludeChanged(text) => {
-                view.exclude = text;
-                view.focused = SearchField::Exclude;
-                self.schedule_search()
-            }
-            SearchMessage::AppendToQuery(typed) => {
-                view.query.push_str(&typed);
-                view.focused = SearchField::Query;
-                let search = self.schedule_search();
-                let id = search_ui::QUERY_ID;
-                Task::batch([
-                    search,
-                    operation::focus(id).chain(operation::move_cursor_to_end(id)),
-                ])
-            }
-            SearchMessage::ToggleCase
-            | SearchMessage::ToggleWholeWord
-            | SearchMessage::ToggleRegex
-                if view.is_filtered() =>
-            {
-                Task::none()
-            }
-            SearchMessage::ToggleCase => {
-                view.case_sensitive = !view.case_sensitive;
-                self.schedule_search()
-            }
-            SearchMessage::ToggleWholeWord => {
-                view.whole_word = !view.whole_word;
-                self.schedule_search()
-            }
-            SearchMessage::ToggleRegex => {
-                view.regex = !view.regex;
-                self.schedule_search()
-            }
-            SearchMessage::ToggleTag => {
-                view.tag_and_move(1, rows);
-                Task::none()
-            }
-            SearchMessage::TagMove(delta) => {
-                view.tag_and_move(delta, rows);
-                Task::none()
-            }
-            SearchMessage::TagAll => {
-                view.tag_all();
-                Task::none()
-            }
-            SearchMessage::ClearTags => {
-                view.tagged.clear();
-                Task::none()
-            }
-            SearchMessage::Debounced(generation) => {
-                if generation == view.generation {
-                    self.start_search(generation)
-                } else {
-                    Task::none()
-                }
-            }
-            SearchMessage::Events { generation, events } => {
-                if generation == view.generation {
-                    for event in events {
-                        view.apply_event(event);
-                    }
-                    view.ensure_visible(rows);
-                    if !view.running {
-                        self.search_handle = None;
-                    }
-                }
-                Task::none()
-            }
-            SearchMessage::Close => self.close_search(),
-            SearchMessage::OpenHitList(side) => self.open_hit_list(side),
-            SearchMessage::IndexRan { generation, result } => {
-                let Some(filters) = view
-                    .filters
-                    .as_mut()
-                    .filter(|filters| filters.is_current(generation))
-                else {
-                    return Task::none();
-                };
-                match result {
-                    Ok(hits) => filters.ran(hits),
-                    Err(detail) => filters.failed(detail),
-                }
-                if view.is_filtered() {
-                    let shown_rows = self.search_rows;
-                    if let Some(kept) = self.search.as_mut() {
-                        kept.mirror_index(shown_rows);
-                    }
-                    self.refresh_search_rows();
-                    return self.request_snippets();
-                }
-                self.refresh_search_rows();
-                Task::none()
-            }
-            SearchMessage::SnippetsLoaded { generation, result } => {
-                if let (Some(filters), Ok(found)) = (
-                    view.filters
-                        .as_mut()
-                        .filter(|filters| filters.is_current(generation)),
-                    result,
-                ) {
-                    filters.add_snippets(found);
-                    if view.is_filtered() {
-                        view.mirror_index(rows);
-                    }
-                }
-                Task::none()
-            }
-            SearchMessage::ToggleFacet(value) => {
-                if let Some(filters) = view.filters.as_mut() {
-                    filters.toggle(value);
-                }
-                self.filters_changed()
-            }
-            SearchMessage::ClearFacet(facet) => {
-                if let Some(filters) = view.filters.as_mut() {
-                    filters.clear(facet);
-                }
-                self.filters_changed()
-            }
-            SearchMessage::SaveAsReport => {
-                let form = view
-                    .filters
-                    .as_ref()
-                    .filter(|filters| filters.can_save_as_report())
-                    .map(|filters| Draft {
-                        name: String::new(),
-                        spec: filters.spec(),
-                    });
-                if form.is_none() {
-                    return Task::none();
-                }
-                self.hand_search_to_reports(form, None)
-            }
-            SearchMessage::UpdateReport => {
-                let Some((id, spec)) = view
-                    .filters
-                    .as_ref()
-                    .and_then(|filters| Some((filters.report()?, filters.spec())))
-                else {
-                    return Task::none();
-                };
-                let Some(access) = self.filing.as_ref().and_then(FilingModule::query_access) else {
-                    return Task::none();
-                };
-                Task::perform(
-                    tokio::task::spawn_blocking(move || access.replace_spec(id, &spec)),
-                    |joined| {
-                        let result = joined.unwrap_or_else(|join| Err(join.to_string()));
-                        Message::Search(SearchMessage::ReportUpdated(result))
-                    },
-                )
-            }
-            SearchMessage::ReportUpdated(result) => match result {
-                Ok(()) => {
-                    let report = view.filters.as_ref().and_then(SearchFilters::report);
-                    self.hand_search_to_reports(None, report)
-                }
-                Err(detail) => {
-                    if let Some(filters) = view.filters.as_mut() {
-                        filters.failed(detail);
-                    }
-                    Task::none()
-                }
-            },
-            SearchMessage::Move(delta) => {
-                view.move_cursor(delta, rows);
-                Task::none()
-            }
-            SearchMessage::Page(direction) => {
-                view.page(direction, rows);
-                Task::none()
-            }
-            SearchMessage::First => {
-                view.first(rows);
-                Task::none()
-            }
-            SearchMessage::Last => {
-                view.last(rows);
-                Task::none()
-            }
-            SearchMessage::Activate => self.activate_search_cursor(),
-            SearchMessage::RowClicked(index) => {
-                view.select_row(index, rows);
-                release_focus()
-            }
-            SearchMessage::RowActivated(index) => {
-                view.select_row(index, rows);
-                self.activate_search_cursor()
-            }
-            SearchMessage::ToggleTagAt(index) => {
-                view.select_row(index, rows);
-                view.tag_and_move(0, rows);
-                release_focus()
-            }
-            SearchMessage::ContextAt(index) => {
-                // As in the panel: a click outside the tags drops them, so the
-                // menu cannot act on files the user did not point at.
-                if !view.is_tagged(index) {
-                    view.tagged.clear();
-                }
-                view.select_row(index, rows);
+    }
+
+    /// What the search asked for because it reaches outside the search.
+    fn run_search_action(&mut self, action: ncrs_search::Action) -> Task<Message> {
+        match action {
+            ncrs_search::Action::Close => self.close_search(),
+            ncrs_search::Action::OpenHitList(side) => self.open_hit_list(side),
+            ncrs_search::Action::ActivateCursor => self.activate_search_cursor(),
+            ncrs_search::Action::OpenContextMenu => {
                 self.open_search_context_menu();
                 Task::none()
             }
-            SearchMessage::Scrolled(delta) => {
-                view.scroll(delta, rows);
-                Task::none()
+            ncrs_search::Action::HandToReports { unsaved, report } => {
+                let draft = unsaved.map(|spec| Draft {
+                    name: String::new(),
+                    spec,
+                });
+                self.hand_search_to_reports(draft, report)
             }
         }
     }
@@ -10835,7 +10414,7 @@ impl App {
         };
         let name = file.to_string_lossy().into_owned();
         self.load(
-            self.search_side.other(),
+            self.search.side.other(),
             directory.to_path_buf(),
             Some(name),
         )
@@ -14631,7 +14210,7 @@ impl App {
 
     fn title_bar_view(&self) -> Element<'_, Message> {
         let tab = |side: PanelSide| {
-            let title = match self.search.as_ref() {
+            let title = match self.search.view.as_ref() {
                 _ if self.panel(side).is_hit_list() => {
                     let query = self
                         .panel(side)
@@ -14643,8 +14222,8 @@ impl App {
                         &[("{query}", query)],
                     ))
                 }
-                Some(search) if self.search_open && side == self.search_side => {
-                    titlebar::TabTitle::Search(search_ui::title(search, self.lang))
+                Some(search) if self.search.open && side == self.search.side => {
+                    titlebar::TabTitle::Search(ncrs_search::title(search, self.lang))
                 }
                 _ => match self.trash_view.as_ref() {
                     Some(view) if side == self.trash_side => titlebar::TabTitle::Trash(
@@ -17225,16 +16804,7 @@ impl App {
             session_writes: Arc::default(),
             input: Arc::default(),
             list_volumes: Arc::new(fs::list_volumes),
-            search: None,
-            search_open: false,
-            search_side: PanelSide::Left,
-            search_rows: layout::search_visible_rows(
-                layout::INITIAL_WINDOW_SIZE,
-                false,
-                layout::HIT_LIST_ROW_HEIGHT,
-            ),
-            search_generation: 0,
-            search_handle: None,
+            search: ncrs_search::Search::new(layout::INITIAL_WINDOW_SIZE),
             quick_open: None,
             quick_open_walk_generation: 0,
             quick_open_walk: None,
@@ -17797,7 +17367,7 @@ impl App {
         let root = app.panel(PanelSide::Left).path.clone();
         app.show_search_results_for_test("hello", fixed_search_results(&root));
         // One tagged file next to the cursor, so the reference shows the tint.
-        if let Some(view) = app.search.as_mut() {
+        if let Some(view) = app.search.view.as_mut() {
             view.tagged.insert(root.join("notes.txt"));
         }
         app
@@ -17819,7 +17389,7 @@ impl App {
             skipped: 0,
             truncated: false,
         };
-        if let Some(view) = self.search.as_mut() {
+        if let Some(view) = self.search.view.as_mut() {
             view.query = query.to_string();
             view.begin(1);
             for (entry, lines) in files {
@@ -17831,16 +17401,16 @@ impl App {
                 });
             }
             view.apply_event(SearchEvent::Finished(totals));
-            view.select_row(2, self.search_rows);
+            view.select_row(2, self.search.rows);
         }
     }
 
     pub fn search_for_test(&self) -> Option<&SearchView> {
-        self.search.as_ref()
+        self.search.view.as_ref()
     }
 
     pub fn search_is_open_for_test(&self) -> bool {
-        self.search_open
+        self.search.open
     }
 
     pub fn settings_for_test(&self) -> Option<&settings_ui::SettingsState> {
@@ -18038,8 +17608,8 @@ impl App {
         drop(app.update(Message::OpenSearch));
         let root = app.panel(PanelSide::Left).path.clone();
         app.refresh_search_rows();
-        let rows = app.search_rows;
-        if let Some(view) = app.search.as_mut() {
+        let rows = app.search.rows;
+        if let Some(view) = app.search.view.as_mut() {
             view.query = query.to_owned();
             view.filters = Some(hits_below(&root));
             view.mirror_index(rows);
@@ -18048,11 +17618,11 @@ impl App {
     }
 
     pub fn search_rows_for_test(&self) -> usize {
-        self.search_rows
+        self.search.rows
     }
 
     pub fn search_for_test_mut(&mut self) -> Option<&mut SearchView> {
-        self.search.as_mut()
+        self.search.view.as_mut()
     }
 
     pub fn tags_for_test(&self) -> Option<&TagsPage> {
@@ -23507,7 +23077,7 @@ mod search_tests {
         let launcher = Arc::new(RecordingLauncher::default());
         let mut app = app_with_results(&[("/home/test/links/a.txt", &[7])])
             .with_launcher(Arc::clone(&launcher) as Arc<dyn fs::Launcher>);
-        let other = app.search_side.other();
+        let other = app.search.side.other();
         let before = app.panel(other).request_id;
 
         drop(app.update(Message::Search(SearchMessage::Activate)));
@@ -23596,7 +23166,7 @@ mod search_tests {
     #[test]
     fn open_in_the_menu_shows_the_file_in_the_other_panel() {
         let mut app = app_with_two_results();
-        let other = app.search_side.other();
+        let other = app.search.side.other();
         let before = app.panel(other).request_id;
         drop(app.update(Message::Search(SearchMessage::ContextAt(0))));
         assert_eq!(
@@ -23613,7 +23183,7 @@ mod search_tests {
     #[test]
     fn show_on_the_other_side_loads_the_results_folder_and_keeps_the_search() {
         let mut app = app_with_two_results();
-        let other = app.search_side.other();
+        let other = app.search.side.other();
         drop(app.update(Message::Search(SearchMessage::ContextAt(1))));
 
         drop(app.update(Message::HitList(HitListMessage::ShowOnOtherSide)));
@@ -32033,7 +31603,7 @@ mod hit_list_tests {
             generation,
             events,
         })));
-        app.search.as_mut().unwrap().query = "needle".to_owned();
+        app.search.view.as_mut().unwrap().query = "needle".to_owned();
         Hits { app, folder, files }
     }
 
@@ -32065,7 +31635,7 @@ mod hit_list_tests {
     fn opening_on_the_search_side_closes_the_search_and_lists_the_files() {
         let hits = opened(&["a.txt", "b.txt"], PanelSide::Left);
         let panel = hits.app.panel(PanelSide::Left);
-        assert!(!hits.app.search_open);
+        assert!(!hits.app.search.open);
         assert!(panel.is_hit_list() && !panel.is_virtual() && !panel.loading);
         assert_eq!(panel.entries.len(), 2);
         assert!(panel.entries.iter().all(|entry| !entry.is_parent));
@@ -32079,7 +31649,7 @@ mod hit_list_tests {
     #[test]
     fn opening_on_the_other_side_keeps_the_search_and_activates_the_list() {
         let hits = opened(&["a.txt"], PanelSide::Right);
-        assert!(hits.app.search_open);
+        assert!(hits.app.search.open);
         assert_eq!(hits.app.active_panel, PanelSide::Right);
         assert!(hits.app.panel(PanelSide::Right).is_hit_list());
         assert!(!hits.app.panel(PanelSide::Left).is_hit_list());
@@ -32093,7 +31663,7 @@ mod hit_list_tests {
             PanelSide::Right,
         ))));
         assert!(!app.panel(PanelSide::Right).is_hit_list());
-        assert!(app.search_open);
+        assert!(app.search.open);
     }
 
     #[test]
@@ -32150,7 +31720,7 @@ mod hit_list_tests {
         let panel = hits.app.panel(PanelSide::Left);
         assert!(!panel.is_hit_list());
         assert_eq!(panel.path, PathBuf::from("/home/test/links"));
-        assert!(hits.app.search_open && hits.app.search_side == PanelSide::Left);
+        assert!(hits.app.search.open && hits.app.search.side == PanelSide::Left);
         assert_eq!(hits.app.search_for_test().unwrap().query, "needle");
         assert!(panel.history.back().is_empty());
     }
@@ -32163,7 +31733,7 @@ mod hit_list_tests {
                 .update(Message::HitList(HitListMessage::Close(PanelSide::Left))),
         );
         assert!(!hits.app.panel(PanelSide::Left).is_hit_list());
-        assert!(!hits.app.search_open);
+        assert!(!hits.app.search.open);
     }
 
     #[test]
@@ -32268,7 +31838,7 @@ mod hit_list_tests {
             .panel_mut(PanelSide::Left)
             .apply_listing(folder, vec![entry], None, None, 12);
         hits.app.active_panel = PanelSide::Left;
-        hits.app.search_open = false;
+        hits.app.search.open = false;
         drop(hits.app.open_transfer_dialog_to(TransferKind::Copy, None));
         assert!(hits.app.transfer_dialog.is_none());
         let shown = hits.app.job_error.clone().unwrap();

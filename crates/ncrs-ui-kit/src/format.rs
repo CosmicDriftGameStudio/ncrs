@@ -4,6 +4,27 @@ use std::time::SystemTime;
 use chrono::{DateTime, Local};
 use ncrs_core::FileEntry;
 use ncrs_i18n::Msg;
+use ncrs_index::Amount;
+
+/// How many minor units (cents) make one unit of an amount.
+pub const MINOR_UNITS_PER_UNIT: i64 = 100;
+
+/// The amount as the field shows it, parseable by the review's `parse_amount`.
+pub fn amount_text(amount: &Amount) -> String {
+    format!("{} {}", amount_digits(amount), amount.currency.as_str())
+}
+
+/// The number of an amount without its currency, with two decimals.
+pub fn amount_digits(amount: &Amount) -> String {
+    let magnitude = amount.minor_units.unsigned_abs();
+    let unit = MINOR_UNITS_PER_UNIT.unsigned_abs();
+    let sign = if amount.minor_units < 0 { "-" } else { "" };
+    format!(
+        "{sign}{}.{:02}",
+        magnitude.div_euclid(unit),
+        magnitude.rem_euclid(unit)
+    )
+}
 
 /// Appended to a computed folder size that missed unreadable parts. Untranslated
 /// like the markers.

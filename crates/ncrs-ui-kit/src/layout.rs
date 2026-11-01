@@ -13,6 +13,10 @@ pub const FUNCTION_KEY_COUNT: usize = 10;
 /// A row of a file list. Fixed, so the number of visible rows follows from the
 /// window height.
 pub const ROW_HEIGHT: f32 = 22.0;
+/// A hit list row has the name and, below it, the folder.
+pub const HIT_LIST_ROW_HEIGHT: f32 = 2.0 * ROW_HEIGHT;
+/// A search result of a content search or the index has a third line.
+pub const SEARCH_CONTENT_ROW_HEIGHT: f32 = 3.0 * ROW_HEIGHT;
 
 /// The star column, left of the name. Its own button so a click there tags the
 /// row instead of moving the cursor.
@@ -26,3 +30,40 @@ pub const HERMES_COLUMN_WIDTH: f32 = 124.0;
 
 /// Space between the date and the Hermes column.
 pub const HERMES_CELL_GAP: f32 = 12.0;
+
+/// Vertical space the panel chrome occupies: everything above and below the
+/// file rows.
+///
+/// Single source of truth. The view functions use the same constants when they
+/// lay out, and the visible rows use this sum, so a change to any of them moves
+/// both sides together. Adding a header without adding it here would silently
+/// shorten the list.
+pub const CHROME: f32 =
+    size::STATUS_BAR + FKEYBAR_HEIGHT + size::COMMAND_LINE + size::TITLE_BAR + size::COLUMN_HEADER;
+
+/// The three fields and the summary line of the search view, above the result
+/// rows. Fixed, like the column header it replaces.
+pub const SEARCH_HEADER_HEIGHT: f32 = 124.0 + SEARCH_HIT_ROW_HEIGHT + 4.0;
+/// The row that opens the hits as a list, below the summary line.
+pub const SEARCH_HIT_ROW_HEIGHT: f32 = 28.0;
+/// What the filter row, its hint and the taller summary row add to the header.
+pub const SEARCH_FILTER_EXTRA_HEIGHT: f32 = 64.0;
+
+/// The height of the search header: with filters, their row, hint and the
+/// taller summary row come on top.
+pub fn search_header_height(filtered: bool) -> f32 {
+    if filtered {
+        SEARCH_HEADER_HEIGHT + SEARCH_FILTER_EXTRA_HEIGHT
+    } else {
+        SEARCH_HEADER_HEIGHT
+    }
+}
+
+/// Number of result rows of `row_height` that fit into the search view: the
+/// panel's room, less the difference between the search header and the column
+/// header.
+pub fn search_visible_rows(window: Size, filtered: bool, row_height: f32) -> usize {
+    let header = search_header_height(filtered);
+    let rows = ((window.height - CHROME - header) / row_height).floor();
+    (rows as isize).max(1) as usize
+}

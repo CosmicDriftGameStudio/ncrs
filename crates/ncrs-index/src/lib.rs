@@ -16,6 +16,7 @@ mod migrations;
 mod model;
 mod names;
 mod profile;
+mod query_hit;
 mod regex_limits;
 mod reorganisation;
 mod review;
@@ -45,5 +46,6 @@ pub use model::{
     RuleSuggestion, SavedQuery, SavedQueryId, SenderAlias, SenderAliasId, SenderAliasKind,
     SenderAliasState, SenderAliases, StatusCounts, SubtreePattern,
 };
+pub use query_hit::QueryHit;
 pub use regex_limits::compile_bounded_regex;
 pub use tags::TagTally;
