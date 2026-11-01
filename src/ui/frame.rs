@@ -118,9 +118,6 @@ pub fn chars_that_fit(width: f32) -> usize {
     (width / AVERAGE_GLYPH_WIDTH).floor().max(1.0) as usize
 }
 
-/// What a sidebar takes of the width of a line: the column and its border.
-pub const SIDEBAR_ROOM: f32 = size::SIDEBAR_WIDTH + spacing::BORDER_WIDTH;
-
 /// The width of a line of content: the frame less its border, its padding and
 /// the room the scrollbar keeps. A sidebar takes
 /// [`size::SIDEBAR_WIDTH`] and its line more: pass them as `reserved` to
@@ -208,13 +205,6 @@ impl<'a> Frame<'a> {
     /// A line of explanation, dimmed after the title like the second name.
     pub fn subtitle(mut self, subtitle: impl Into<String>) -> Self {
         self.subtitle = Some(subtitle.into());
-        self
-    }
-
-    /// A column left of the content, [`size::SIDEBAR_WIDTH`] wide.
-    pub fn sidebar(mut self, sidebar: impl Into<Element<'a, Message>>) -> Self {
-        self.sidebar = Some(sidebar.into());
-        self.sidebar_keys = true;
         self
     }
 

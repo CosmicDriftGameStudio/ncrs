@@ -517,9 +517,15 @@ impl SearchFilters {
         self.report
     }
 
-    #[cfg(test)]
+    /// Starts from the criteria of `report`: the search changes that one.
     pub fn edit_report(&mut self, report: SavedQueryId, spec: &QuerySpec) {
+        self.start_from(spec);
         self.report = Some(report);
+    }
+
+    /// Starts from `spec` as a search of its own.
+    pub fn start_from(&mut self, spec: &QuerySpec) {
+        self.report = None;
         self.selection = FacetSelection {
             year: spec.year,
             sender: spec.sender.clone(),
@@ -528,6 +534,11 @@ impl SearchFilters {
             tags: spec.tags.clone(),
         };
         self.refilter();
+    }
+
+    /// The search no longer changes a report.
+    pub fn leave_report(&mut self) {
+        self.report = None;
     }
 
     /// The paths of the hits shown that have no snippet yet, and the words to

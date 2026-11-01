@@ -149,7 +149,7 @@ impl RulesPage {
 
     /// The form holds changes that are neither saved nor cancelled.
     pub fn has_unsaved_changes(&self) -> bool {
-        self.form.as_ref().is_some_and(RuleForm::is_changed)
+        self.form.as_ref().is_some_and(RuleForm::is_edited)
     }
 
     /// The list takes no change while a change runs or while the form holds
@@ -734,7 +734,7 @@ pub mod tests {
         let mut page = page();
         page.begin_new();
         assert!(page.has_unlisted_form());
-        assert!(page.has_unsaved_changes());
+        assert!(!page.has_unsaved_changes());
 
         assert!(page.cancel_form());
         page.select(1);
@@ -776,6 +776,23 @@ pub mod tests {
         assert!(!page.has_unsaved_changes());
         page.move_cursor(1);
         assert_eq!(page.cursor(), 1);
+    }
+
+    #[test]
+    fn a_new_form_locks_the_list_once_something_was_typed_into_it() {
+        let mut page = page();
+        page.begin_new();
+        page.form_mut()
+            .unwrap()
+            .update(crate::messages::RuleFormMessage::Name(
+                "Contract".to_owned(),
+            ));
+        assert!(page.has_unsaved_changes());
+
+        page.select(1);
+
+        assert!(page.has_unlisted_form());
+        assert_eq!(page.cursor(), 0);
     }
 
     #[test]

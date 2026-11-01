@@ -2,6 +2,7 @@
 //! rows can be derived from the window height (used for scrolling).
 use iced::{Point, Size};
 
+use super::hermes_kit;
 use super::theme::{size, spacing};
 
 pub const INITIAL_WINDOW_SIZE: Size = Size::new(1200.0, 760.0);
@@ -65,14 +66,28 @@ pub const SEARCH_HEADER_HEIGHT: f32 = 124.0;
 /// What the filter row, its hint and the taller summary row add to the header.
 pub const SEARCH_FILTER_EXTRA_HEIGHT: f32 = 64.0;
 
+/// The height of the search header: with filters, the lines they take.
+pub fn search_header_height(filter_lines: Option<usize>) -> f32 {
+    match filter_lines {
+        None => SEARCH_HEADER_HEIGHT,
+        Some(lines) => {
+            let extra_lines = lines.saturating_sub(1) as f32;
+            SEARCH_HEADER_HEIGHT
+                + SEARCH_FILTER_EXTRA_HEIGHT
+                + extra_lines * (hermes_kit::CONTROL_HEIGHT + hermes_kit::GAP_S)
+        }
+    }
+}
+
+/// The width of a panel: the window is shared by two.
+pub fn panel_width(window: Size) -> f32 {
+    window.width / 2.0
+}
+
 /// Number of result rows that fit into the search view: the panel's rows,
 /// less the difference between the search header and the column header.
-pub fn search_visible_rows(window: Size, with_filters: bool) -> usize {
-    let header = if with_filters {
-        SEARCH_HEADER_HEIGHT + SEARCH_FILTER_EXTRA_HEIGHT
-    } else {
-        SEARCH_HEADER_HEIGHT
-    };
+pub fn search_visible_rows(window: Size, filter_lines: Option<usize>) -> usize {
+    let header = search_header_height(filter_lines);
     let rows = ((window.height - CHROME + COLUMN_HEADER_HEIGHT - header) / ROW_HEIGHT).floor();
     (rows as isize).max(1) as usize
 }
@@ -139,10 +154,12 @@ mod tests {
     fn the_search_view_gives_its_extra_header_the_rows_it_needs() {
         let window = Size::new(1200.0, 760.0);
         // (634 + 22 - 124) / 22 = 24.2
-        assert_eq!(search_visible_rows(window, false), 24);
+        assert_eq!(search_visible_rows(window, None), 24);
         // (634 + 22 - 188) / 22 = 21.3
-        assert_eq!(search_visible_rows(window, true), 21);
-        assert_eq!(search_visible_rows(Size::new(1200.0, 10.0), false), 1);
+        assert_eq!(search_visible_rows(window, Some(1)), 21);
+        // Each further line of filters takes 28 + 8: (634 + 22 - 224) / 22 = 19.6
+        assert_eq!(search_visible_rows(window, Some(2)), 19);
+        assert_eq!(search_visible_rows(Size::new(1200.0, 10.0), None), 1);
     }
 
     /// The window height the app is opened with, so the number in the startup

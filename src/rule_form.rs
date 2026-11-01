@@ -72,6 +72,8 @@ pub struct RuleForm {
     pub tag_input_open: bool,
     pub filing: TargetEditor,
     pub saving: bool,
+    /// What the form described when it was opened; set by `started`.
+    pub initial: Option<RuleSpec>,
     /// The index refused the rule; the technical detail stays English.
     pub failure: Option<String>,
     /// The documents the rule as it stands in the form would match.
@@ -107,6 +109,7 @@ impl RuleForm {
             RuleConditions::all_of(vec![Condition::new(ConditionKind::Tag, "")]),
             NEW_RULE_PATTERN,
         )
+        .started()
     }
 
     pub fn edit(rule: &Rule) -> Self {
@@ -146,7 +149,7 @@ impl RuleForm {
         form.kept_kind =
             Some(kinds.catalog.stored_kind(&prefill.kind)).filter(|kind| !kind.is_empty());
         form.tags = prefill.tags;
-        form
+        form.started()
     }
 
     fn of(target: RuleFormTarget, conditions: RuleConditions, pattern: &str) -> Self {
@@ -160,6 +163,7 @@ impl RuleForm {
             tag_input_open: false,
             filing: TargetEditor::new(pattern),
             saving: false,
+            initial: None,
             failure: None,
             live_try: TryState {
                 generation: 0,
@@ -174,7 +178,13 @@ impl RuleForm {
         form.name = spec.name.clone().unwrap_or_default();
         form.kept_kind = spec.kind.clone();
         form.tags = spec.tags.clone();
-        form
+        form.started()
+    }
+
+    /// Remembers what the form describes now, to tell later whether it was edited.
+    fn started(mut self) -> Self {
+        self.initial = Some(self.form_spec());
+        self
     }
 
     /// Applies the messages that change a field; the others are the page's.
@@ -295,6 +305,14 @@ impl RuleForm {
             | RuleFormTarget::FromDocument
             | RuleFormTarget::FromSuggestion(_) => true,
         }
+    }
+
+    /// Whether the form describes something else than when it was opened,
+    /// also for a rule that does not exist yet.
+    pub fn is_edited(&self) -> bool {
+        self.initial
+            .as_ref()
+            .is_some_and(|initial| self.form_spec() != *initial)
     }
 
     pub fn is_valid(&self) -> bool {

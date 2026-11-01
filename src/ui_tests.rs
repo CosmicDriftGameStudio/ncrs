@@ -3452,10 +3452,10 @@ pub mod search_filters_card {
                 result: Ok(Vec::new()),
             })),
         );
-        let form = app.saved_queries_for_test().unwrap().form();
-        assert_eq!(form.full_text, "telekom");
-        assert_eq!(form.year, "2026");
-        assert_eq!(form.name, "");
+        let draft = app.saved_queries_for_test().unwrap().unsaved().unwrap();
+        assert_eq!(draft.spec.full_text.as_deref(), Some("telekom"));
+        assert_eq!(draft.spec.year, Some(2026));
+        assert_eq!(draft.name, "");
     }
 
     #[test]
@@ -3568,7 +3568,7 @@ mod saved_queries_card {
     use super::*;
     use crate::messages::{HermesPage, SavedQueriesMessage};
     use crate::saved_queries::tests::{hit, loaded_list, THIS_YEAR};
-    use crate::saved_queries::SavedQueries;
+    use crate::saved_queries::{Draft, SavedQueries};
 
     fn queries_message(message: SavedQueriesMessage) -> Message {
         Message::SavedQueries(message)
@@ -3583,21 +3583,25 @@ mod saved_queries_card {
     /// The first query selected and run: two files to copy, one missing.
     fn after_run() -> SavedQueries {
         let mut list = loaded_list();
-        list.select(0);
-        list.begin_run().expect("a spec");
+        let (serial, _) = list.begin_run().expect("a spec");
         let priced = |name: &str, missing: bool, minor_units: i64| {
             let mut found = hit(name, missing);
+            found.fields.sender = Some("Company A".to_owned());
+            found.fields.date = chrono::NaiveDate::from_ymd_opt(2024, 3, 9);
             found.fields.amount = Some(ncrs_index::Amount {
                 minor_units,
                 currency: ncrs_index::Currency::new("EUR").expect("a currency"),
             });
             found
         };
-        list.ran(vec![
-            priced("invoice-1.pdf", false, 123_450),
-            hit("invoice-2.pdf", false),
-            priced("invoice-3.pdf", true, 5_000),
-        ]);
+        list.ran(
+            serial,
+            vec![
+                priced("invoice-1.pdf", false, 123_450),
+                hit("invoice-2.pdf", false),
+                priced("invoice-3.pdf", true, 5_000),
+            ],
+        );
         list
     }
 
@@ -3608,20 +3612,20 @@ mod saved_queries_card {
     }
 
     #[test]
-    fn the_page_shows_the_queries_the_form_and_the_buttons() {
+    fn the_page_shows_the_reports_their_criteria_and_the_result() {
         for label in [
             "Reports",
             "Company A 2024",
             "Taxes 2023",
-            "Year",
-            "Full text",
-            "New",
-            "Save",
-            "Delete",
-            "Run",
-            "Close",
+            "Criteria",
+            "Edit in search",
+            "RESULT",
+            "Hits",
+            "View list",
+            "Open in search",
+            "Export …",
         ] {
-            assert!(shows(loaded_list(), label), "{label}");
+            assert!(shows(after_run(), label), "{label}");
         }
     }
 
@@ -3629,27 +3633,13 @@ mod saved_queries_card {
     fn an_empty_list_says_so() {
         assert!(shows(
             empty_list(),
-            "No reports yet. Start from a template or fill in the form and save."
+            "No reports yet. Choose New to start a search and save it as a report."
         ));
     }
 
     fn empty_list() -> SavedQueries {
         let mut list = SavedQueries::new(THIS_YEAR);
         list.loaded(Vec::new());
-        list
-    }
-
-    #[test]
-    fn the_templates_are_offered_until_a_report_is_selected() {
-        for label in ["Start from a template:", "Contracts", "Open invoices"] {
-            assert!(shows(empty_list(), label), "{label}");
-        }
-        assert!(!shows(loaded_list_selected(), "Start from a template:"));
-    }
-
-    fn loaded_list_selected() -> SavedQueries {
-        let mut list = loaded_list();
-        list.select(0);
         list
     }
 
@@ -3666,39 +3656,30 @@ mod saved_queries_card {
     }
 
     #[test]
-    fn clicking_run_asks_the_index() {
-        let mut list = loaded_list();
-        list.select(0);
-        let app = App::with_saved_queries(list);
-        let mut sim = simulator(&app);
-        sim.click("Run").expect("the button");
-
-        assert_eq!(
-            sim.into_messages().collect::<Vec<_>>(),
-            [queries_message(SavedQueriesMessage::Run)]
-        );
-    }
-
-    #[test]
-    fn a_run_shows_its_figures_and_the_list_toggles() {
-        for label in ["Hits", "file missing", "View list", "Export …"] {
-            assert!(shows(after_run(), label), "{label}");
-        }
+    fn the_links_and_the_secondary_button_hand_the_report_to_the_search() {
         let app = App::with_saved_queries(after_run());
-        let mut sim = simulator(&app);
-        sim.click("View list").expect("the toggle");
-
-        assert_eq!(
-            sim.into_messages().collect::<Vec<_>>(),
-            [queries_message(SavedQueriesMessage::ToggleHits)]
-        );
+        for (label, message) in [
+            ("Edit in search", SavedQueriesMessage::EditInSearch),
+            ("Open in search", SavedQueriesMessage::OpenInSearch),
+            ("View list", SavedQueriesMessage::ToggleMissing),
+            ("Export …", SavedQueriesMessage::StartExport),
+        ] {
+            let mut sim = simulator(&app);
+            sim.click(label).expect(label);
+            assert_eq!(
+                sim.into_messages().collect::<Vec<_>>(),
+                [queries_message(message)],
+                "{label}"
+            );
+        }
     }
 
     #[test]
     fn the_export_step_says_what_happens_before_anything_is_copied() {
         for label in [
-            "Target folder: /Archive/Export",
-            "Files to copy: 2",
+            "Target folder",
+            "/Archive/Export",
+            "Files to copy",
             "Copies only; moves and deletes nothing. Existing files stay untouched.",
             "Choose folder …",
             "Cancel",
@@ -3740,6 +3721,7 @@ mod saved_queries_card {
         for label in [
             "Auswertungen",
             "Abbrechen",
+            "Zielordner",
             "Ordner wählen …",
             "Kopiert nur, verschiebt und löscht nichts. Vorhandene Dateien bleiben unangetastet.",
         ] {
@@ -3795,23 +3777,62 @@ mod saved_queries_card {
         matches_snapshot(empty_list(), "saved_queries_empty_de");
     }
 
-    /// A new report from the template for open invoices, one more tag typed.
-    fn with_tag_chips(language: Language) -> SavedQueries {
-        use crate::saved_queries::{QueryField, ReportTemplate};
-
-        let mut list = empty_list();
-        list.use_template(
-            ReportTemplate::OpenInvoices.form(language, &ncrs_index::KindCatalog::built_in()),
-        );
-        list.set_text(QueryField::Tags, "firma-a".to_owned());
-        list.add_tags();
+    /// A search handed over to be saved: a row without a stored report.
+    fn unsaved_list() -> SavedQueries {
+        let mut list = SavedQueries::new(THIS_YEAR);
+        list.prefill(Draft {
+            name: String::new(),
+            spec: ncrs_index::QuerySpec {
+                year: Some(THIS_YEAR),
+                full_text: Some("telekom".to_owned()),
+                ..ncrs_index::QuerySpec::default()
+            },
+        });
+        list.loaded(crate::saved_queries::tests::stored_queries());
+        let (serial, _) = list.begin_run().expect("a spec");
+        list.ran(serial, vec![hit("invoice-1.pdf", false)]);
         list
     }
 
     #[test]
-    fn the_tags_of_a_report_match_their_snapshots() {
-        matches_snapshot(with_tag_chips(Language::English), "saved_queries_tags_en");
-        matches_snapshot(with_tag_chips(Language::German), "saved_queries_tags_de");
+    fn a_search_handed_over_is_an_unsaved_row_with_a_save_button() {
+        assert!(shows(unsaved_list(), "New report"));
+        let app = App::with_saved_queries(unsaved_list());
+        let mut sim = simulator(&app);
+        sim.click("Save").expect("the primary button");
+        assert_eq!(
+            sim.into_messages().collect::<Vec<_>>(),
+            [queries_message(SavedQueriesMessage::Save)]
+        );
+    }
+
+    #[test]
+    fn editing_in_the_search_binds_the_report_and_opening_does_not() {
+        let runtime = tokio::runtime::Runtime::new().expect("a runtime");
+        let _inside = runtime.enter();
+        let first = crate::saved_queries::tests::stored_queries()[0].id;
+        for (message, bound) in [
+            (SavedQueriesMessage::EditInSearch, Some(first)),
+            (SavedQueriesMessage::OpenInSearch, None),
+        ] {
+            let mut app = App::with_saved_queries(loaded_list()).with_ready_hermes_for_test();
+
+            drop(app.update(queries_message(message)));
+
+            assert!(app.search_is_open_for_test());
+            assert!(app.saved_queries_for_test().is_none());
+            let filters = app
+                .search_for_test()
+                .and_then(|view| view.filters.as_ref())
+                .expect("the filters of an indexed search");
+            assert_eq!(filters.report(), bound);
+            assert_eq!(filters.selection().year, Some(2024));
+        }
+    }
+
+    #[test]
+    fn the_unsaved_row_matches_its_snapshot() {
+        matches_snapshot(unsaved_list(), "saved_queries_unsaved_de");
     }
 }
 

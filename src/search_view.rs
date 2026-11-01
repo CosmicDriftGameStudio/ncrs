@@ -17,6 +17,10 @@ use crate::ui::layout::ROW_HEIGHT;
 /// real lines count from 1.
 pub const UNNUMBERED_LINE: u64 = 0;
 
+/// Most documents of the index shown at once, after the folder and the file
+/// name globs applied. Keeps one answer from filling the memory.
+pub const INDEX_HIT_LIMIT: usize = 100_000;
+
 /// Characters of a snippet kept in a result row.
 const SNIPPET_CHARS: usize = 160;
 
@@ -99,6 +103,8 @@ pub struct SearchView {
     /// has an index to ask. With a value chosen the index answers the search
     /// and `results` mirror what it found.
     pub filters: Option<SearchFilters>,
+    /// Documents of the index left out of `results` by `INDEX_HIT_LIMIT`.
+    pub not_shown: usize,
 }
 
 /// Whether the walk may leave the file system `root` is on.
@@ -135,6 +141,7 @@ impl SearchView {
             totals: None,
             error: None,
             filters: None,
+            not_shown: 0,
         }
     }
 
@@ -147,6 +154,10 @@ impl SearchView {
     /// its file name globs, in place of the results. The cursor stays on its
     /// file when the file is still there.
     pub fn mirror_index(&mut self, visible_rows: usize) {
+        self.mirror_index_within(visible_rows, INDEX_HIT_LIMIT);
+    }
+
+    fn mirror_index_within(&mut self, visible_rows: usize, limit: usize) {
         let Some(filters) = self.filters.as_ref() else {
             return;
         };
@@ -158,9 +169,10 @@ impl SearchView {
                 return;
             }
         };
-        let results: Vec<FileResult> = filters
-            .shown()
-            .filter(|hit| paths.admits_file(&hit.path))
+        let mut admitted = filters.shown().filter(|hit| paths.admits_file(&hit.path));
+        let results: Vec<FileResult> = admitted
+            .by_ref()
+            .take(limit)
             .map(|hit| FileResult {
                 path: hit.path.clone(),
                 lines: filters
@@ -177,6 +189,7 @@ impl SearchView {
                     .collect(),
             })
             .collect();
+        let not_shown = admitted.count();
         let kept_on = self
             .cursor
             .and_then(|row| self.results.get(row.file()))
@@ -191,6 +204,7 @@ impl SearchView {
             truncated: false,
         });
         self.results = results;
+        self.not_shown = not_shown;
         self.error = None;
         self.running = busy;
         self.tagged
@@ -368,6 +382,7 @@ impl SearchView {
         self.scanned = 0;
         self.skipped = 0;
         self.totals = None;
+        self.not_shown = 0;
         self.error = None;
     }
 
@@ -802,6 +817,18 @@ mod tests {
         assert_eq!(view.scroll_offset, 15, "half a row does not move yet");
         view.scroll(ScrollDelta::Pixels { x: 0.0, y: 11.0 }, 5);
         assert_eq!(view.scroll_offset, 14);
+    }
+
+    #[test]
+    fn the_index_answer_is_cut_at_the_limit_and_the_rest_is_counted() {
+        let mut view = SearchView::new(PathBuf::from("archive"));
+        view.filters = Some(crate::search_filters::tests::loaded_search());
+
+        view.mirror_index_within(10, 2);
+
+        assert_eq!((view.results.len(), view.not_shown), (2, 4));
+        view.mirror_index_within(10, 10);
+        assert_eq!((view.results.len(), view.not_shown), (6, 0));
     }
 
     #[test]

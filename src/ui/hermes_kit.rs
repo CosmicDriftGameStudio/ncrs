@@ -8,8 +8,8 @@ use iced::mouse::ScrollDelta;
 use iced::widget::text::LineHeight;
 use iced::widget::text::Wrapping;
 use iced::widget::{
-    button, column, container, mouse_area, pick_list, row, scrollable, text, text_input, Column,
-    Row, Space,
+    button, column, container, mouse_area, pick_list, row, scrollable, stack, text, text_input,
+    Column, Row, Space,
 };
 use iced::{alignment, Background, Border, Color, Element, Font, Length, Padding, Pixels, Theme};
 
@@ -59,6 +59,8 @@ const KEY_HINT_ALPHA: f32 = 0.7;
 const ELLIPSIS: &str = "…";
 const REMOVE: &str = "×";
 const FILTER_ARROW_ROOM: f32 = 20.0;
+const FILTER_BORDER: f32 = 1.0;
+const FILTER_CLEAR_ROOM: f32 = 16.0;
 const SEPARATOR_HEIGHT: f32 = 1.0;
 
 fn semibold() -> Font {
@@ -513,6 +515,8 @@ pub enum MenuLook {
     Icon,
     /// The "+ add …" button at the end of a row of pieces.
     PieceAdd,
+    /// A button of the page header that shows its caption and opens the list.
+    Button,
 }
 
 #[derive(Debug, Clone)]
@@ -565,6 +569,10 @@ fn pick_style(
         style.background = Background::Color(colors.background);
         match look {
             MenuLook::Icon => style.text_color = colors.text,
+            MenuLook::Button => {
+                style.text_color = colors.text;
+                style.placeholder_color = colors.text;
+            }
             MenuLook::PieceAdd => {
                 style.placeholder_color = colors.accent;
                 style.border.color = if matches!(status, pick_list::Status::Active) {
@@ -595,6 +603,7 @@ pub fn menu_button<'a>(
     let (width, pad_x, pad_y) = match look {
         MenuLook::Icon => (CONTROL_HEIGHT, ICON_PAD_X, CONTROL_PAD_Y),
         MenuLook::PieceAdd => (widest + 2.0 * MENU_PAD_X, MENU_PAD_X, PIECE_PAD_Y + 2.0),
+        MenuLook::Button => (widest + 2.0 * MENU_PAD_X, MENU_PAD_X, CONTROL_PAD_Y),
     };
     let shown = if look == MenuLook::Icon {
         ELLIPSIS
@@ -943,9 +952,40 @@ pub fn chip<'a>(
         .into()
 }
 
-/// A filter of 28 px: its name with an arrow while nothing is chosen; with a
-/// value chosen the name and the value in the success colour, and a cross
-/// that clears it. `items` are the values to choose from.
+fn filter_caption(label: &str, chosen: Option<&str>) -> String {
+    match chosen {
+        Some(value) => format!("{label}: {value}"),
+        None => label.to_owned(),
+    }
+}
+
+/// The widest of the caption and the entries of the menu.
+fn filter_content_width(label: &str, chosen: Option<&str>, items: &[MenuItem]) -> f32 {
+    items
+        .iter()
+        .map(|item| format::estimated_width(&menu_row_text(item), TEXT_BODY))
+        .chain([format::estimated_width(
+            &filter_caption(label, chosen),
+            TEXT_BODY,
+        )])
+        .fold(0.0, f32::max)
+}
+
+/// How wide `filter` is, for fitting filters into a line.
+pub fn filter_width(label: &str, chosen: Option<&str>, items: &[MenuItem]) -> f32 {
+    let room = if chosen.is_some() {
+        FILTER_CLEAR_ROOM + 2.0 * FILTER_BORDER
+    } else {
+        FILTER_ARROW_ROOM
+    };
+    filter_content_width(label, chosen, items) + 2.0 * MENU_PAD_X + room
+}
+
+/// A filter of 28 px: its name with an arrow while nothing is chosen, dimmed
+/// and without a menu while there is nothing to choose from. With a value
+/// chosen it is framed in the success colour on a quiet fill: the name
+/// dimmed, the value, and inside the frame a cross that clears it. `items`
+/// are the values to choose from.
 pub fn filter<'a>(
     label: &str,
     chosen: Option<&str>,
@@ -954,50 +994,117 @@ pub fn filter<'a>(
     palette: &Palette,
 ) -> Element<'a, Message> {
     let choices = entries(items);
-    let caption = match chosen {
-        Some(value) => format!("{label}: {value}"),
-        None => label.to_owned(),
-    };
-    let widest = choices
-        .iter()
-        .map(|choice| format::estimated_width(&choice.label, TEXT_BODY))
-        .chain([format::estimated_width(&caption, TEXT_BODY)])
-        .fold(0.0, f32::max);
-    let is_set = chosen.is_some();
+    let caption = filter_caption(label, chosen);
+    let widest = filter_content_width(label, chosen, items);
     let colors = *palette;
-    let base = theme::dropdown_field(palette);
-    let field = pick_list(choices, None::<Entry>, |choice| choice.message)
-        .placeholder(caption)
-        .handle(if is_set {
-            pick_list::Handle::None
-        } else {
-            pick_list::Handle::default()
-        })
-        .width(Length::Fixed(
-            widest + 2.0 * MENU_PAD_X + if is_set { 0.0 } else { FILTER_ARROW_ROOM },
-        ))
-        .padding([CONTROL_PAD_Y, MENU_PAD_X])
+    let Some(value) = chosen else {
+        if choices.is_empty() {
+            return filter_without_values(label, widest, palette);
+        }
+        let base = theme::dropdown_field(palette);
+        return pick_list(choices, None::<Entry>, |choice| choice.message)
+            .placeholder(caption)
+            .width(Length::Fixed(widest + 2.0 * MENU_PAD_X + FILTER_ARROW_ROOM))
+            .padding([CONTROL_PAD_Y, MENU_PAD_X])
+            .text_size(TEXT_BODY)
+            .text_line_height(LineHeight::Absolute(Pixels(BODY_LINE)))
+            .style(move |theme, status| {
+                let mut style = base(theme, status);
+                style.background = Background::Color(colors.background);
+                style
+            })
+            .menu_style(theme::dropdown_menu(palette))
+            .into();
+    };
+    let inner_pad_y = CONTROL_PAD_Y - FILTER_BORDER;
+    let width = widest + 2.0 * MENU_PAD_X;
+    let shown = container(
+        Row::new()
+            .push(body(format!("{label}:"), colors.dim_text))
+            .push(body(value.to_owned(), colors.text))
+            .spacing(GAP_XS),
+    )
+    .padding([inner_pad_y, MENU_PAD_X])
+    .width(width);
+    let opener = pick_list(choices, None::<Entry>, |choice| choice.message)
+        .handle(pick_list::Handle::None)
+        .width(Length::Fixed(width))
+        .padding([inner_pad_y, MENU_PAD_X])
         .text_size(TEXT_BODY)
         .text_line_height(LineHeight::Absolute(Pixels(BODY_LINE)))
-        .style(move |theme, status| {
-            let mut style = base(theme, status);
-            style.background = Background::Color(colors.background);
-            if is_set {
-                style.background = Background::Color(colors.cursor);
-                style.placeholder_color = colors.cursor_text;
-                style.border.color = colors.success;
-            }
-            style
+        .style(move |_, _| pick_list::Style {
+            text_color: Color::TRANSPARENT,
+            placeholder_color: Color::TRANSPARENT,
+            handle_color: Color::TRANSPARENT,
+            background: Background::Color(Color::TRANSPARENT),
+            border: Border::default(),
         })
         .menu_style(theme::dropdown_menu(palette));
-    let mut line = Row::new()
-        .push(field)
-        .spacing(GAP_XS)
-        .align_y(alignment::Vertical::Center);
-    if is_set {
-        line = line.push(remove_button(on_clear, colors.success, palette));
-    }
-    line.into()
+    chosen_frame(
+        Row::new()
+            .push(stack![shown, opener])
+            .push(remove_button(on_clear, colors.dim_text, palette))
+            .into(),
+        palette,
+    )
+}
+
+/// A chosen value in its frame: the success colour on a quiet fill.
+fn chosen_frame<'a>(content: Element<'a, Message>, palette: &Palette) -> Element<'a, Message> {
+    let colors = *palette;
+    container(content)
+        .height(CONTROL_HEIGHT)
+        .align_y(alignment::Vertical::Center)
+        .style(move |_| container::Style {
+            background: Some(Background::Color(colors.title)),
+            border: Border {
+                color: colors.success,
+                width: FILTER_BORDER,
+                radius: theme::radius::CONTROL.into(),
+            },
+            ..container::Style::default()
+        })
+        .into()
+}
+
+/// A filter that is only shown: the name dimmed, the value, no menu and no
+/// cross.
+pub fn criterion<'a>(label: &str, value: &str, palette: &Palette) -> Element<'a, Message> {
+    chosen_frame(
+        container(
+            Row::new()
+                .push(body(format!("{label}:"), palette.dim_text))
+                .push(body(value.to_owned(), palette.text))
+                .spacing(GAP_XS),
+        )
+        .padding([CONTROL_PAD_Y - FILTER_BORDER, MENU_PAD_X])
+        .into(),
+        palette,
+    )
+}
+
+/// The filter of a facet the documents have no value for: the name and the
+/// arrow of an open one, dimmed, and nothing to open.
+fn filter_without_values<'a>(label: &str, widest: f32, palette: &Palette) -> Element<'a, Message> {
+    let colors = *palette;
+    container(
+        Row::new()
+            .push(body(label.to_owned(), colors.dim_text))
+            .push(Space::new().width(Length::Fill))
+            .push(body("▾".to_owned(), colors.dim_text)),
+    )
+    .padding([CONTROL_PAD_Y - FILTER_BORDER, MENU_PAD_X])
+    .width(widest + 2.0 * MENU_PAD_X + FILTER_ARROW_ROOM)
+    .height(CONTROL_HEIGHT)
+    .style(move |_| container::Style {
+        border: Border {
+            color: colors.border.scale_alpha(DISABLED_OPACITY),
+            width: FILTER_BORDER,
+            radius: theme::radius::CONTROL.into(),
+        },
+        ..container::Style::default()
+    })
+    .into()
 }
 
 /// A piece of a path or a file name, 24 px, with a cross where it can go.

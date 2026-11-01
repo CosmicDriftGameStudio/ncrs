@@ -99,6 +99,16 @@ impl QueryAccess {
         })
     }
 
+    /// How many documents each of the queries finds.
+    pub fn counts(&self, queries: &[SavedQuery]) -> Result<Vec<(SavedQueryId, usize)>, String> {
+        self.with_index(|index| {
+            queries
+                .iter()
+                .map(|query| Ok((query.id, index.run_query_under(&query.spec, None)?.len())))
+                .collect()
+        })
+    }
+
     /// Overwrites the criteria of the query `id` and keeps its name.
     pub fn replace_spec(&self, id: SavedQueryId, spec: &QuerySpec) -> Result<(), String> {
         self.with_index(|index| {

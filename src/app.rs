@@ -90,7 +90,7 @@ use crate::rule_form::{RuleForm, RuleSave, TRY_DEBOUNCE};
 use crate::rule_suggestions::RuleSuggestions;
 use crate::rules_page::RulesPage;
 use crate::rules_work::{RuleChange, RulesAccess};
-use crate::saved_queries::{Form, SavedQueries};
+use crate::saved_queries::{Draft, SavedQueries};
 use crate::search_filters::SearchFilters;
 use crate::search_view::{stays_on_file_system, SearchField, SearchView};
 use crate::session_state::{self, PanelRecord, SessionState, WindowSize, WriteOrder};
@@ -132,7 +132,9 @@ use crate::ui::transfer as transfer_ui;
 use crate::ui::trash as trash_ui;
 use crate::ui::volumes::{self as volumes_view, FavouriteRow, ServerRow};
 use crate::ui::{conflict, dialog, fkeys, layout, panel, statusbar, theme, PanelProps, PanelState};
-use ncrs_index::{IncludeOutcome, KeyStore, KeyringKeyStore, KindSkip, Kinds, RuleId};
+use ncrs_index::{
+    IncludeOutcome, KeyStore, KeyringKeyStore, KindSkip, Kinds, QuerySpec, RuleId, SavedQueryId,
+};
 use ncrs_intake::LocationMode;
 use ncrs_pipeline::{Load, RunnerState};
 use tokio::sync::mpsc;
@@ -1815,9 +1817,10 @@ fn review_list_key(
     }
 }
 
-/// The saved queries page is a card: the form is always up, so the fields take
-/// the letters; Enter runs (or exports, when that step is up), the arrows move
-/// in the list and Tab goes from field to field.
+/// The reports page: the arrows move in the list, Enter answers the step that
+/// is up or else saves a changed name or starts the export, `n` opens a new
+/// search and Delete asks to delete the report. The name field takes the keys
+/// it types.
 fn saved_queries_key(
     prompt: &PromptKeyState,
     key: &Key,
@@ -1826,16 +1829,16 @@ fn saved_queries_key(
 ) -> Option<Message> {
     let queries = |message| Some(Message::SavedQueries(message));
     let plain = key_modifiers.is_empty();
-    // The form is always up, so its text fields keep Left and Right.
-    if let Some(focus) = hermes_focus_key(prompt, key, key_modifiers, !prompt.hermes_sidebar) {
+    if let Some(focus) = hermes_focus_key(prompt, key, key_modifiers, false) {
         return Some(focus);
     }
     match key.as_ref() {
         Key::Named(Named::Escape) => queries(SavedQueriesMessage::Close),
-        Key::Named(Named::Enter) => queries(SavedQueriesMessage::Run),
-        Key::Named(Named::Tab) => queries(SavedQueriesMessage::FocusField {
-            backwards: key_modifiers.shift(),
-        }),
+        Key::Named(Named::Enter) if plain => queries(SavedQueriesMessage::Confirm),
+        Key::Character("n") if plain => {
+            queries(SavedQueriesMessage::NewSearch(QuerySpec::default()))
+        }
+        Key::Named(Named::Delete) if plain => queries(SavedQueriesMessage::AskDelete),
         Key::Named(Named::ArrowUp) if plain => queries(SavedQueriesMessage::Move(-1)),
         Key::Named(Named::ArrowDown) if plain => queries(SavedQueriesMessage::Move(1)),
         _ => bound_message(&prompt.keymap, key, key_modifiers, scope)
@@ -3440,7 +3443,7 @@ impl App {
             search: None,
             search_open: false,
             search_side: PanelSide::Left,
-            search_rows: layout::search_visible_rows(layout::INITIAL_WINDOW_SIZE, false),
+            search_rows: layout::search_visible_rows(layout::INITIAL_WINDOW_SIZE, None),
             search_generation: 0,
             search_handle: None,
             quick_open: None,
@@ -5243,7 +5246,10 @@ impl App {
             _ if self.trash_view.is_some() && side == self.trash_side => self.trash_panel(side),
             Some(search) if self.search_open && side == self.search_side => search_ui::view(
                 search,
-                self.search_rows,
+                search_ui::Room {
+                    visible_rows: self.search_rows,
+                    panel_width: layout::panel_width(self.window_size),
+                },
                 self.active_panel == side,
                 self.lang,
                 &self.palette,
@@ -5573,17 +5579,6 @@ impl App {
         if let Some(card) = self.theme_fetch.as_ref() {
             let card_element =
                 theme_fetch_ui::view(card, self.window_size, self.lang, &self.palette);
-            return Stack::with_children([root, dialog::scrim(card_element)]).into();
-        }
-
-        if let Some(view) = self.saved_queries.as_ref() {
-            let card_element = saved_queries_ui::view(
-                view,
-                self.window_size,
-                self.hermes_badges(),
-                self.lang,
-                &self.palette,
-            );
             return Stack::with_children([root, dialog::scrim(card_element)]).into();
         }
 
@@ -6593,6 +6588,7 @@ impl App {
             || self.rule_suggestions.is_some()
             || self.review_list.is_some()
             || self.rules.is_some()
+            || self.saved_queries.is_some()
             || self.reorganisation.is_some()
     }
 
@@ -6602,6 +6598,7 @@ impl App {
         self.rule_suggestions = None;
         self.review_list = None;
         self.rules = None;
+        self.saved_queries = None;
         self.reorganisation = None;
         self.leave_hermes_overview()
     }
@@ -6620,7 +6617,6 @@ impl App {
             || self.command_palette.is_some()
             || self.key_bindings.is_some()
             || self.theme_fetch.is_some()
-            || self.saved_queries.is_some()
             || self.about.is_some()
             || self.ocr_models.is_some()
             || self.ai_card_is_shown()
@@ -9794,16 +9790,25 @@ impl App {
     }
 
     fn resize_search(&mut self, window: Size) {
-        self.search_rows = layout::search_visible_rows(window, self.search_has_filters());
+        self.search_rows = layout::search_visible_rows(window, self.search_filter_lines(window));
         if let Some(view) = self.search.as_mut() {
             view.ensure_visible(self.search_rows);
         }
     }
 
-    fn search_has_filters(&self) -> bool {
-        self.search
-            .as_ref()
-            .is_some_and(|view| view.filters.is_some())
+    /// The lines the filters of the search take at this window size.
+    fn search_filter_lines(&self, window: Size) -> Option<usize> {
+        let filters = self.search.as_ref()?.filters.as_ref()?;
+        Some(search_ui::filter_lines(
+            filters,
+            self.lang,
+            layout::panel_width(window),
+        ))
+    }
+
+    /// The rows of the search after its filters changed what they offer.
+    fn refresh_search_rows(&mut self) {
+        self.resize_search(self.window_size);
     }
 
     fn focus_search_field(&self) -> Task<Message> {
@@ -9859,7 +9864,10 @@ impl App {
         } else {
             None
         };
-        self.search_rows = layout::search_visible_rows(self.window_size, self.search_has_filters());
+        self.search_rows = layout::search_visible_rows(
+            self.window_size,
+            self.search_filter_lines(self.window_size),
+        );
         let search = self.restart_search();
         Task::batch([self.focus_search_field(), search])
     }
@@ -9997,6 +10005,7 @@ impl App {
     /// A value was chosen or cleared: the walk takes over or the index
     /// answer is narrowed anew.
     fn filters_changed(&mut self) -> Task<Message> {
+        self.refresh_search_rows();
         if !self.search.as_ref().is_some_and(SearchView::is_filtered) {
             return self.restart_search();
         }
@@ -10019,18 +10028,49 @@ impl App {
         if let Some(kept) = self.search.as_mut() {
             kept.running = false;
             kept.generation = generation;
+            if let Some(filters) = kept.filters.as_mut() {
+                filters.leave_report();
+            }
         }
         release_focus()
     }
 
     /// The report page after the search handed its criteria over.
-    fn hand_search_to_reports(&mut self, search_form: Option<Form>) -> Task<Message> {
+    fn hand_search_to_reports(
+        &mut self,
+        unsaved: Option<Draft>,
+        report: Option<SavedQueryId>,
+    ) -> Task<Message> {
         let closed = self.close_search();
         let opened = self.open_saved_queries();
-        if let (Some(form), Some(view)) = (search_form, self.saved_queries.as_mut()) {
-            view.prefill(form);
+        if let Some(view) = self.saved_queries.as_mut() {
+            if let Some(draft) = unsaved {
+                view.prefill(draft);
+            }
+            if let Some(id) = report {
+                view.select_when_loaded(id);
+            }
         }
         Task::batch([closed, opened])
+    }
+
+    /// The search opened on `spec`, in place of the reports page. With a
+    /// `report` the search changes that one.
+    fn open_search_for(&mut self, spec: &QuerySpec, report: Option<SavedQueryId>) -> Task<Message> {
+        self.saved_queries = None;
+        let opened = self.open_search();
+        if let Some(view) = self.search.as_mut() {
+            view.query = spec.full_text.clone().unwrap_or_default();
+            view.focused = SearchField::Query;
+            if let Some(filters) = view.filters.as_mut() {
+                match report {
+                    Some(id) => filters.edit_report(id, spec),
+                    None => filters.start_from(spec),
+                }
+            }
+        }
+        self.refresh_search_rows();
+        Task::batch([opened, self.restart_search()])
     }
 
     fn update_search(&mut self, message: SearchMessage) -> Task<Message> {
@@ -10162,9 +10202,14 @@ impl App {
                     Err(detail) => filters.failed(detail),
                 }
                 if view.is_filtered() {
-                    view.mirror_index(rows);
+                    self.refresh_search_rows();
+                    let shown_rows = self.search_rows;
+                    if let Some(kept) = self.search.as_mut() {
+                        kept.mirror_index(shown_rows);
+                    }
                     return self.request_snippets();
                 }
+                self.refresh_search_rows();
                 Task::none()
             }
             SearchMessage::SnippetsLoaded { generation, result } => {
@@ -10198,11 +10243,14 @@ impl App {
                     .filters
                     .as_ref()
                     .filter(|filters| filters.can_save_as_report())
-                    .map(|filters| Form::of_spec(&filters.spec(), &self.kinds));
+                    .map(|filters| Draft {
+                        name: String::new(),
+                        spec: filters.spec(),
+                    });
                 if form.is_none() {
                     return Task::none();
                 }
-                self.hand_search_to_reports(form)
+                self.hand_search_to_reports(form, None)
             }
             SearchMessage::UpdateReport => {
                 let Some((id, spec)) = view
@@ -10224,7 +10272,10 @@ impl App {
                 )
             }
             SearchMessage::ReportUpdated(result) => match result {
-                Ok(()) => self.hand_search_to_reports(None),
+                Ok(()) => {
+                    let report = view.filters.as_ref().and_then(SearchFilters::report);
+                    self.hand_search_to_reports(None, report)
+                }
                 Err(detail) => {
                     if let Some(filters) = view.filters.as_mut() {
                         filters.failed(detail);
@@ -11291,16 +11342,34 @@ impl App {
             SavedQueriesMessage::Open => self.open_saved_queries(),
             SavedQueriesMessage::Close => self.close_saved_queries(),
             SavedQueriesMessage::Loaded { generation, result } => {
+                if generation != self.saved_queries_generation {
+                    return Task::none();
+                }
+                let Some(view) = self.saved_queries.as_mut() else {
+                    return Task::none();
+                };
+                match result {
+                    Ok(rows) => {
+                        let prefilled = view.is_prefilled();
+                        view.loaded(rows);
+                        let focus = if prefilled {
+                            operation::focus(saved_queries_ui::NAME_ID)
+                        } else {
+                            Task::none()
+                        };
+                        Task::batch([focus, self.run_selected_query(), self.run_query_counts()])
+                    }
+                    Err(detail) => {
+                        view.failed(detail);
+                        Task::none()
+                    }
+                }
+            }
+            SavedQueriesMessage::Counted { generation, result } => {
                 if generation == self.saved_queries_generation {
                     if let Some(view) = self.saved_queries.as_mut() {
                         match result {
-                            Ok(rows) => {
-                                let prefilled = view.is_prefilled();
-                                view.loaded(rows);
-                                if prefilled {
-                                    return operation::focus(saved_queries_ui::NAME_ID);
-                                }
-                            }
+                            Ok(counts) => view.counted(counts),
                             Err(detail) => view.failed(detail),
                         }
                     }
@@ -11308,73 +11377,79 @@ impl App {
                 Task::none()
             }
             SavedQueriesMessage::Move(delta) => {
-                if let Some(view) = self.saved_queries.as_mut() {
-                    view.move_cursor(delta);
+                let Some(view) = self.saved_queries.as_mut() else {
+                    return Task::none();
+                };
+                let before = view.cursor();
+                view.move_cursor(delta);
+                if view.cursor() == before {
+                    return Task::none();
                 }
-                Task::none()
+                self.run_selected_query()
             }
             SavedQueriesMessage::Scrolled(delta) => {
-                if let Some(view) = self.saved_queries.as_mut() {
-                    view.scroll(delta);
+                let Some(view) = self.saved_queries.as_mut() else {
+                    return Task::none();
+                };
+                let before = view.cursor();
+                view.scroll(delta);
+                if view.cursor() == before {
+                    return Task::none();
                 }
-                Task::none()
+                self.run_selected_query()
             }
             SavedQueriesMessage::Select(index) => {
+                let Some(view) = self.saved_queries.as_mut() else {
+                    return Task::none();
+                };
+                let before = view.cursor();
+                view.select(index);
+                if view.cursor() == before {
+                    return Task::none();
+                }
+                self.run_selected_query()
+            }
+            SavedQueriesMessage::NewSearch(spec) => self.open_search_for(&spec, None),
+            SavedQueriesMessage::EditInSearch => {
+                let Some(view) = self.saved_queries.as_ref() else {
+                    return Task::none();
+                };
+                let Some(spec) = view.selected_spec().cloned() else {
+                    return Task::none();
+                };
+                let report = view.selected().map(|query| query.id);
+                self.open_search_for(&spec, report)
+            }
+            SavedQueriesMessage::OpenInSearch => {
+                let Some(spec) = self
+                    .saved_queries
+                    .as_ref()
+                    .and_then(|view| view.selected_spec().cloned())
+                else {
+                    return Task::none();
+                };
+                self.open_search_for(&spec, None)
+            }
+            SavedQueriesMessage::NameChanged(name) => {
                 if let Some(view) = self.saved_queries.as_mut() {
-                    view.select(index);
+                    view.set_name(name);
                 }
                 Task::none()
             }
-            SavedQueriesMessage::New => {
-                if let Some(view) = self.saved_queries.as_mut() {
-                    view.start_new();
-                }
-                Task::none()
-            }
-            SavedQueriesMessage::UseTemplate(form) => {
-                if let Some(view) = self.saved_queries.as_mut() {
-                    view.use_template(form);
-                }
-                Task::none()
-            }
-            SavedQueriesMessage::FieldChanged(field, text) => {
-                if let Some(view) = self.saved_queries.as_mut() {
-                    view.set_text(field, text);
-                }
-                Task::none()
-            }
-            SavedQueriesMessage::AddTag => {
-                if let Some(view) = self.saved_queries.as_mut() {
-                    view.add_tags();
-                }
-                Task::none()
-            }
-            SavedQueriesMessage::RemoveTag(tag) => {
-                if let Some(view) = self.saved_queries.as_mut() {
-                    view.remove_tag(&tag);
-                }
-                Task::none()
-            }
-            SavedQueriesMessage::LeftInForm => {
-                iced::advanced::widget::operate(saved_queries_ui::focused_field())
-                    .map(|field| Message::SavedQueries(SavedQueriesMessage::LeftChecked(field)))
-            }
-            SavedQueriesMessage::LeftChecked(field) => {
-                let empty = self.saved_queries.as_ref().is_some_and(|view| {
-                    field.is_none_or(|focused| view.form().text(focused).is_empty())
-                });
-                if empty && self.hermes_focus == HermesFocus::Content {
-                    self.hermes_focus = HermesFocus::Sidebar;
-                    return release_focus();
-                }
-                Task::none()
-            }
-            SavedQueriesMessage::FocusField { backwards } => {
-                if backwards {
-                    operation::focus_previous()
+            SavedQueriesMessage::Confirm => {
+                let Some(view) = self.saved_queries.as_ref() else {
+                    return Task::none();
+                };
+                let next = if view.export_step().is_some() {
+                    SavedQueriesMessage::Export
+                } else if view.is_confirming_delete() {
+                    SavedQueriesMessage::ConfirmDelete
+                } else if view.unsaved().is_some() || view.name_is_changed() {
+                    SavedQueriesMessage::Save
                 } else {
-                    operation::focus_next()
-                }
+                    SavedQueriesMessage::StartExport
+                };
+                self.update_saved_queries(next)
             }
             SavedQueriesMessage::Save => {
                 let Some(request) = self
@@ -11462,46 +11537,24 @@ impl App {
                 }
                 self.run_query_load()
             }
-            SavedQueriesMessage::Run => {
-                let Some(view) = self.saved_queries.as_mut() else {
-                    return Task::none();
-                };
-                // Enter answers the step that is up, not the form behind it.
-                if view.export_step().is_some() {
-                    return self.update_saved_queries(SavedQueriesMessage::Export);
-                }
-                if view.is_confirming_delete() {
-                    return Task::none();
-                }
-                let Some(spec) = view.begin_run() else {
-                    return Task::none();
-                };
-                let generation = self.saved_queries_generation;
-                let Some(access) = self.query_access() else {
-                    return Task::none();
-                };
-                Task::perform(
-                    tokio::task::spawn_blocking(move || access.run(&spec)),
-                    move |joined| {
-                        let result = joined.unwrap_or_else(|join| Err(join.to_string()));
-                        Message::SavedQueries(SavedQueriesMessage::Ran { generation, result })
-                    },
-                )
-            }
-            SavedQueriesMessage::Ran { generation, result } => {
+            SavedQueriesMessage::Ran {
+                generation,
+                serial,
+                result,
+            } => {
                 if generation == self.saved_queries_generation {
                     if let Some(view) = self.saved_queries.as_mut() {
                         match result {
-                            Ok(hits) => view.ran(hits),
+                            Ok(hits) => view.ran(serial, hits),
                             Err(detail) => view.failed(detail),
                         }
                     }
                 }
                 Task::none()
             }
-            SavedQueriesMessage::ToggleHits => {
+            SavedQueriesMessage::ToggleMissing => {
                 if let Some(view) = self.saved_queries.as_mut() {
-                    view.toggle_hits();
+                    view.toggle_missing();
                 }
                 Task::none()
             }
@@ -11563,6 +11616,53 @@ impl App {
                 Task::none()
             }
         }
+    }
+
+    /// Asks the index for the hits of the selected report.
+    fn run_selected_query(&mut self) -> Task<Message> {
+        let Some((serial, spec)) = self
+            .saved_queries
+            .as_mut()
+            .and_then(SavedQueries::begin_run)
+        else {
+            return Task::none();
+        };
+        let generation = self.saved_queries_generation;
+        let Some(access) = self.query_access() else {
+            return Task::none();
+        };
+        Task::perform(
+            tokio::task::spawn_blocking(move || access.run(&spec)),
+            move |joined| {
+                let result = joined.unwrap_or_else(|join| Err(join.to_string()));
+                Message::SavedQueries(SavedQueriesMessage::Ran {
+                    generation,
+                    serial,
+                    result,
+                })
+            },
+        )
+    }
+
+    /// Counts the hits of every report for the list.
+    fn run_query_counts(&mut self) -> Task<Message> {
+        let Some(rows) = self.saved_queries.as_ref().map(|view| view.rows().to_vec()) else {
+            return Task::none();
+        };
+        if rows.is_empty() {
+            return Task::none();
+        }
+        let generation = self.saved_queries_generation;
+        let Some(access) = self.query_access() else {
+            return Task::none();
+        };
+        Task::perform(
+            tokio::task::spawn_blocking(move || access.counts(&rows)),
+            move |joined| {
+                let result = joined.unwrap_or_else(|join| Err(join.to_string()));
+                Message::SavedQueries(SavedQueriesMessage::Counted { generation, result })
+            },
+        )
     }
 
     fn query_access(&mut self) -> Option<QueryAccess> {
@@ -11718,6 +11818,16 @@ impl App {
         ))
     }
 
+    fn saved_queries_view(&self) -> Option<Element<'_, Message>> {
+        let state = self.saved_queries.as_ref()?;
+        Some(saved_queries_ui::view(
+            state,
+            self.hermes_badges(),
+            self.lang,
+            &self.palette,
+        ))
+    }
+
     fn review_list_view(&self) -> Option<Element<'_, Message>> {
         let state = self.review_list.as_ref()?;
         Some(review_list_ui::view(
@@ -11789,6 +11899,15 @@ impl App {
                     (self.lang.text(Msg::HermesKitKeySpace), Msg::RulesHintToggle),
                     ("Alt ↑↓", Msg::RulesHintOrder),
                     ("Del", Msg::RulesHintDelete),
+                ],
+            )
+        } else if let Some(page) = self.saved_queries_view() {
+            (
+                page,
+                vec![
+                    ("↑↓", Msg::HermesKitHintSelect),
+                    ("N", Msg::RulesHintNew),
+                    ("Esc", Msg::DialogClose),
                 ],
             )
         } else if let Some(page) = self.reorganisation_view() {
@@ -16321,7 +16440,7 @@ impl App {
             search: None,
             search_open: false,
             search_side: PanelSide::Left,
-            search_rows: layout::search_visible_rows(layout::INITIAL_WINDOW_SIZE, false),
+            search_rows: layout::search_visible_rows(layout::INITIAL_WINDOW_SIZE, None),
             search_generation: 0,
             search_handle: None,
             quick_open: None,
@@ -17119,7 +17238,7 @@ impl App {
         let mut app = Self::with_fixed_panels();
         drop(app.update(Message::OpenSearch));
         let root = app.panel(PanelSide::Left).path.clone();
-        app.search_rows = layout::search_visible_rows(app.window_size, true);
+        app.search_rows = layout::search_visible_rows(app.window_size, Some(1));
         let rows = app.search_rows;
         if let Some(view) = app.search.as_mut() {
             view.query = query.to_owned();
@@ -24783,37 +24902,6 @@ mod settings_tab_tests {
             app.settings.as_ref().unwrap().feature,
             SettingsFeature::Hermes
         );
-    }
-
-    #[test]
-    fn left_in_an_empty_form_field_goes_to_the_sidebar_and_in_a_filled_one_does_not() {
-        let mut view = crate::saved_queries::tests::loaded_list();
-        view.set_text(crate::saved_queries::QueryField::Kind, String::new());
-        view.set_text(crate::saved_queries::QueryField::Year, "2025".to_owned());
-        let mut app = App::with_saved_queries(view).with_hermes_focus(HermesFocus::Content);
-
-        drop(
-            app.update(Message::SavedQueries(SavedQueriesMessage::LeftChecked(
-                Some(crate::saved_queries::QueryField::Year),
-            ))),
-        );
-        assert_eq!(app.hermes_focus, HermesFocus::Content);
-
-        drop(
-            app.update(Message::SavedQueries(SavedQueriesMessage::LeftChecked(
-                Some(crate::saved_queries::QueryField::Kind),
-            ))),
-        );
-        assert_eq!(app.hermes_focus, HermesFocus::Sidebar);
-
-        let mut unfocused = App::with_saved_queries(crate::saved_queries::tests::loaded_list())
-            .with_hermes_focus(HermesFocus::Content);
-        drop(
-            unfocused.update(Message::SavedQueries(SavedQueriesMessage::LeftChecked(
-                None,
-            ))),
-        );
-        assert_eq!(unfocused.hermes_focus, HermesFocus::Sidebar);
     }
 }
 

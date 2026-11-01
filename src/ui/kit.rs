@@ -412,48 +412,9 @@ pub fn divider<'a>(palette: &Palette) -> Element<'a, Message> {
 }
 
 /// One setting: its name, the name of the theme it belongs to and a
-/// description on the left, the control in a column of fixed width on the
-/// right.
-pub fn form_row<'a>(
-    label: &str,
-    theme_name: Option<&str>,
-    description: Option<&str>,
-    control: Element<'a, Message>,
-    palette: &Palette,
-) -> Element<'a, Message> {
-    form_row_wide(
-        label,
-        theme_name,
-        description,
-        control,
-        size::CONTROL_WIDTH,
-        palette,
-    )
-}
-
-/// Like [`form_row`], with a control column of `control_width`, for a control
-/// that does not fit the usual one.
-pub fn form_row_wide<'a>(
-    label: &str,
-    theme_name: Option<&str>,
-    description: Option<&str>,
-    control: Element<'a, Message>,
-    control_width: f32,
-    palette: &Palette,
-) -> Element<'a, Message> {
-    form_row_with_problem(
-        label,
-        theme_name,
-        description,
-        None,
-        control,
-        control_width,
-        palette,
-    )
-}
-
-/// [`form_row_wide`] with what is wrong with the value in the error color
-/// under the description.
+/// description on the left, the control in a column of `control_width` on the
+/// right, with what is wrong with the value in the error color under the
+/// description.
 pub fn form_row_with_problem<'a>(
     label: &str,
     theme_name: Option<&str>,
