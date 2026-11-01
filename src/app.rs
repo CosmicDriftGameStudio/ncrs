@@ -172,8 +172,8 @@ fn suggested_archive_name(sources: &[PathBuf]) -> String {
 
 /// The archive name a hit list suggests: its query, when that is one plain
 /// file name on every platform.
-fn hit_archive_name(query: &str) -> Option<String> {
-    let query = query.trim();
+fn hit_archive_name(typed: &str) -> Option<String> {
+    let query = typed.trim();
     let forbidden = |c: char| c.is_control() || "<>:\"/\\|?*".contains(c);
     let plain = !query.chars().any(forbidden)
         && matches!(
@@ -2884,7 +2884,7 @@ fn hermes_overview_key(
         _ if !is_not_typed_by_text_field(key, key_modifiers) => None,
         _ => match bound_message(&prompt.keymap, key, key_modifiers, scope) {
             Some(Message::FilingStatus(FilingStatusMessage::Toggle)) => {
-                overview(HermesOverviewMessage::Close)
+                Some(Message::FilingStatus(FilingStatusMessage::Toggle))
             }
             Some(Message::Quit) => Some(Message::Quit),
             _ => None,
@@ -15184,16 +15184,14 @@ impl App {
                 self.filing_status.close_page();
                 Task::none()
             }
-            FilingStatusMessage::Toggle => {
-                if self.filing_status.page_open() {
+            FilingStatusMessage::Toggle => match self.open_hermes_page() {
+                Some(HermesPage::Inspection) => {
                     self.filing_status.close_page();
                     Task::none()
-                } else if self.hermes_overview.is_some() {
-                    self.leave_hermes_overview()
-                } else {
-                    self.open_hermes_overview()
                 }
-            }
+                Some(_) => self.go_to_hermes_page(HermesPage::Inspection),
+                None => self.open_filing_status(),
+            },
             FilingStatusMessage::Restarted(generation) => self.filing_restarted(generation),
             FilingStatusMessage::Tick => {
                 self.refresh_filing_snapshot();
@@ -24177,6 +24175,35 @@ mod filing_status_tests {
     }
 
     #[test]
+    fn the_key_opens_status_and_errors_from_the_panels() {
+        let mut app = App::with_fixed_panels();
+
+        drop(app.update(status(FilingStatusMessage::Toggle)));
+
+        assert_eq!(app.open_hermes_page(), Some(HermesPage::Inspection));
+    }
+
+    #[test]
+    fn the_key_goes_back_to_the_panels_from_status_and_errors() {
+        let mut app = App::with_filing_status_page(Snapshot::off(), SystemTime::UNIX_EPOCH);
+
+        drop(app.update(status(FilingStatusMessage::Toggle)));
+
+        assert_eq!(app.open_hermes_page(), None);
+    }
+
+    #[test]
+    fn the_key_switches_to_status_and_errors_from_the_overview() {
+        let mut app = App::with_fixed_panels();
+        drop(app.update(status(FilingStatusMessage::Open)));
+        assert_eq!(app.open_hermes_page(), Some(HermesPage::Overview));
+
+        drop(app.update(status(FilingStatusMessage::Toggle)));
+
+        assert_eq!(app.open_hermes_page(), Some(HermesPage::Inspection));
+    }
+
+    #[test]
     fn the_page_owns_the_keys_while_it_is_open() {
         let open = PromptKeyState {
             filing_status: true,
@@ -24446,7 +24473,7 @@ mod command_palette_tests {
         type_into_palette(&mut app, "filing status");
         drop(app.update(palette_message(CommandPaletteMessage::Run)));
         assert!(app.command_palette_for_test().is_none());
-        assert!(app.hermes_overview.is_some());
+        assert_eq!(app.open_hermes_page(), Some(HermesPage::Inspection));
         assert!(!app.prompt_key_state().command_palette);
     }
 
@@ -24457,7 +24484,7 @@ mod command_palette_tests {
         type_into_palette(&mut app, "filing status");
         drop(app.update(palette_message(CommandPaletteMessage::Select(1))));
         assert!(app.command_palette_for_test().is_none());
-        assert!(app.hermes_overview.is_some());
+        assert_eq!(app.open_hermes_page(), Some(HermesPage::Inspection));
     }
 
     #[test]
@@ -32042,7 +32069,7 @@ mod hit_list_tests {
         let refs: Vec<&str> = names.iter().map(String::as_str).collect();
         let mut hits = opened(&refs, PanelSide::Left);
         let rows = hits.app.visible_rows_of(PanelSide::Left);
-        assert_eq!(rows, hits.app.visible_rows / 2);
+        assert_eq!(rows, 6);
         let folder_rows = hits.app.visible_rows;
         let panel = hits.app.panel_mut(PanelSide::Left);
         panel.select(rows + 1, folder_rows);

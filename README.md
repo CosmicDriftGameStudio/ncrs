@@ -235,8 +235,7 @@ The defaults. Most of them can be changed in the keyboard shortcuts dialog (`Cmd
 | `Alt`+`F7` / `Cmd`+`Shift`+`F` (`Ctrl`+`Shift`+`F` on Linux and Windows) | Search below the directory of the active panel; pressed again, it moves to the next field. See [Search](#search) |
 | `F1` / `Cmd`+`Shift`+`P` / `Ctrl`+`Shift`+`P` | Lab (command palette): lists the actions that work where you are, with their keys; type to filter, `↑`/`↓` move, `Enter` runs, `Esc` closes |
 | `Cmd`+`P` / `Ctrl`+`P` | Quick Open: jump to a file by a few letters of its path. See [Quick Open](#quick-open) |
-| `Cmd`+`Shift`+`D` / `Ctrl`+`Shift`+`D` | The filing tab on its Overview page (filing module on); pressed again, back to the panels. See [Filing](#filing) |
-| Status and errors in the filing sidebar | The filing status page: what the page is for, pipeline state, load, workers, index figures and the last errors. `P` pauses or resumes, `1`/`2`/`3` set the load gentle / balanced / full for this session, `+`/`-` change the worker count, `↑`/`↓` and `Enter` show the file of an error, `Esc` closes |
+| `Cmd`+`Shift`+`D` / `Ctrl`+`Shift`+`D` | Status and errors in the filing tab (filing module on): what the page is for, pipeline state, load, workers, index figures and the last errors. `P` pauses or resumes, `1`/`2`/`3` set the load gentle / balanced / full for this session, `+`/`-` change the worker count, `↑`/`↓` and `Enter` show the file of an error, `Esc` or the key again goes back to the panels. See [Filing](#filing) |
 | `Cmd`+`Shift`+`L` / `Ctrl`+`Shift`+`L` | Filing folders: choose the inbox and document folders and save them to the config file. See [Filing](#filing). `Esc` closes |
 | `Cmd`+`Shift`+`V` / `B` / `R` / `I` / `A` (`Ctrl`+`Shift` on Linux and Windows) | The filing pages Review, Rules, Rule suggestions, Sort again and Reports. See [Filing](#filing) |
 | `Cmd`+`.` / `Ctrl`+`.` | Quick fix for a review item: the fixes for the document under the cursor |
@@ -709,14 +708,14 @@ Linux and Windows); the name in `[keys]` changes the key.
 
 | Page | Key | `[keys]` | What it is for |
 | --- | --- | --- | --- |
-| Overview | `D` | `filing_status` | State, folders, text recognition, the AI model and the default target for documents no rule covers |
+| Overview | | | State, folders, text recognition, the AI model and the default target for documents no rule covers |
 | Review | `V` | `review_list` | Documents that no confirmed rule could file, with a preview, where each field came from and the target path. Nothing is filed before you confirm |
 | Rules | `B` | `rules` | Rules, checked from top to bottom; the first that matches files the document |
 | Rule suggestions | `R` | `rule_suggestions` | Rules suggested from how your documents are already filed, with the reason. A suggestion does nothing until you confirm it |
 | Sort again | `I` | `reorganisation_plan` | Checks the folders you already filed into and suggests moves and renames. Nothing moves before you run the selected steps; `U` (`undo_reorganisation`) moves the last run back |
 | Reports | `A` | `saved_queries` | Saved searches for recurring questions, with their sum. Exporting copies the hits into a folder; the originals stay unchanged |
 | Tags | | `file_list_tags_choose` | All tags in one place. A tick shows the tag in the file tree behind the file name |
-| Status and errors | | | What the filing is doing right now: the state of the pipeline, the load, the index figures and the latest errors |
+| Status and errors | `D` | `filing_status` | What the filing is doing right now: the state of the pipeline, the load, the index figures and the latest errors |
 
 ![The Review page of the filing tab](docs/screenshots/filing.png)
 
