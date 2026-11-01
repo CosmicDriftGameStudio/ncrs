@@ -11,8 +11,6 @@ use iced::widget::text::Wrapping;
 use iced::widget::{button, column, container, row, scrollable, text, Column, Row};
 use iced::{alignment, Color, Element, Font, Length, Padding};
 
-use ncrs_index::tag_name;
-
 use super::format::ellipsize_middle;
 use super::frame::{SCROLLBAR_MARGIN, SCROLLBAR_WIDTH};
 use super::hermes_overview;
@@ -26,7 +24,7 @@ use crate::config::{
     check_ai_endpoint, AiEndpointProblem, AiProviderChoice, AiProviderName, AiSection, Config,
     ConfigError, Filing, OwnDetail, ProgramLine, ProgramLineProblem, ServerEntry,
 };
-use crate::file_list_tags::{FileListTags, TagGroup};
+use crate::file_list_tags::FileListTags;
 use crate::filing_setup::shown_path;
 use crate::fs::OpenKind;
 use crate::hermes_overview::OverviewFacts;
@@ -57,7 +55,6 @@ const MODEL_FIELD_ID: &str = "settings-ai-model";
 const OWN_NAMES_FIELD_ID: &str = "settings-own-names";
 const OWN_IBANS_FIELD_ID: &str = "settings-own-ibans";
 const OWN_TAX_IDS_FIELD_ID: &str = "settings-own-tax-ids";
-const FILE_TAGS_ONLY_FIELD_ID: &str = "settings-file-tags-only";
 const SWATCH_SIZE: f32 = 16.0;
 
 /// How many characters of the theme file name fit beside its button.
@@ -202,7 +199,7 @@ impl SettingsState {
                 .unwrap_or_default(),
             SettingField::AiEndpoint => ai_text(ai.and_then(|section| section.endpoint.as_ref())),
             SettingField::AiModel => ai_text(ai.and_then(|section| section.model.as_ref())),
-            SettingField::Own(_) | SettingField::FileListOnly => String::new(),
+            SettingField::Own(_) => String::new(),
         }
     }
 
@@ -253,14 +250,6 @@ impl SettingsState {
                 }
                 own_detail_change(detail, entry, self.own_entries(detail))
             }
-            SettingField::FileListOnly => {
-                let change = file_list_only_change(text.trim(), self.file_list_tags());
-                if change.is_none() {
-                    self.drafts.remove(&field);
-                    return None;
-                }
-                change.ok_or((field, FieldProblem::Needed))
-            }
         };
         match checked {
             Ok(change) => Some(change),
@@ -306,10 +295,7 @@ impl SettingsState {
             SettingField::AiEndpoint | SettingField::AiModel => {
                 self.provider() == AiProviderName::Http
             }
-            SettingField::Program(_)
-            | SettingField::Color(_)
-            | SettingField::Own(_)
-            | SettingField::FileListOnly => true,
+            SettingField::Program(_) | SettingField::Color(_) | SettingField::Own(_) => true,
         }
     }
 
@@ -417,9 +403,9 @@ fn fields_of(change: &SettingChange) -> Vec<SettingField> {
         | SettingChange::Load(_)
         | SettingChange::AiEnabled(_)
         | SettingChange::VscodeTheme(_)
-        | SettingChange::Servers(_) => Vec::new(),
+        | SettingChange::Servers(_)
+        | SettingChange::FileListTags(_) => Vec::new(),
         SettingChange::OwnDetails { detail, .. } => vec![SettingField::Own(*detail)],
-        SettingChange::FileListTags(_) => vec![SettingField::FileListOnly],
     }
 }
 
@@ -457,17 +443,6 @@ fn own_detail_change(detail: OwnDetail, entry: &str, mut entries: Vec<String>) -
         entries.push(entry.to_owned());
     }
     Ok(SettingChange::OwnDetails { detail, entries })
-}
-
-/// The tags typed, comma separated, join those that are listed already.
-fn file_list_only_change(typed: &str, mut tags: FileListTags) -> Option<SettingChange> {
-    let before = tags.only.len();
-    for entry in typed.split(',').map(tag_name) {
-        if !entry.is_empty() && !tags.only.contains(&entry) {
-            tags.only.push(entry);
-        }
-    }
-    (tags.only.len() > before).then_some(SettingChange::FileListTags(tags))
 }
 
 fn threads_change(text: &str) -> Checked {
@@ -774,28 +749,17 @@ fn look_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
                 .collect(),
         },
         Group {
-            intro: Some(lang.text(Msg::SettingsGroupFileTagsIntro).to_owned()),
+            intro: None,
             advanced: false,
-            title: lang.text(Msg::SettingsGroupFileTags).to_owned(),
+            title: String::new(),
             rows: file_tags_rows(view),
         },
     ]
 }
 
-fn tag_group_label(group: TagGroup) -> Msg {
-    match group {
-        TagGroup::Kind => Msg::SettingsFileTagsKind,
-        TagGroup::Recipient => Msg::SettingsFileTagsRecipient,
-        TagGroup::Sender => Msg::SettingsFileTagsSender,
-        TagGroup::Year => Msg::SettingsFileTagsYear,
-        TagGroup::Own => Msg::SettingsFileTagsOwn,
-    }
-}
-
-/// The switch, the groups of tags and the tags that alone are shown.
+/// The switch, and the way to the page that chooses the tags.
 fn file_tags_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
     let lang = view.lang;
-    let palette = view.palette;
     let current = view.state.file_list_tags();
     let switched = FileListTags {
         show: !current.show,
@@ -807,74 +771,18 @@ fn file_tags_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
         switch(current.show, SettingChange::FileListTags(switched), view),
         lang,
     );
-
-    let checks: Vec<Element<'a, Message>> = TagGroup::ALL
-        .into_iter()
-        .map(|group| {
-            let on = current.has_group(group);
-            row![
-                kit::checkbox(
-                    if on { Check::On } else { Check::Off },
-                    Some(change(SettingChange::FileListTags(
-                        current.with_group(group, !on)
-                    ))),
-                    palette,
-                ),
-                status_text(lang.text(tag_group_label(group)).to_owned(), palette.text),
-            ]
-            .spacing(spacing::S)
-            .align_y(alignment::Vertical::Center)
-            .into()
-        })
-        .collect();
-    let mut which_row = simple_row(
-        Msg::SettingsRowFileTagsWhich,
-        None,
-        Column::with_children(checks).spacing(spacing::XS).into(),
+    let open_row = simple_row(
+        Msg::SettingsRowFileTagsOpen,
+        Some(Msg::SettingsRowFileTagsOpenNote),
+        kit::button(
+            lang.text(Msg::SettingsHermesOpenButton),
+            Some(settings_message(SettingsMessage::ChooseFileListTags)),
+            Tone::Secondary,
+            view.palette,
+        ),
         lang,
     );
-    which_row.control_width = Some(SETTINGS_WIDE_CONTROL_WIDTH);
-
-    let chips: Vec<Element<'a, Message>> = current
-        .only
-        .iter()
-        .map(|entry| {
-            let remaining = FileListTags {
-                only: current
-                    .only
-                    .iter()
-                    .filter(|other| *other != entry)
-                    .cloned()
-                    .collect(),
-                ..current.clone()
-            };
-            kit::removable_chip(
-                entry,
-                change(SettingChange::FileListTags(remaining)),
-                palette,
-            )
-        })
-        .collect();
-    let field = SettingField::FileListOnly;
-    let input = setting_field(field, FILE_TAGS_ONLY_FIELD_ID, "", true, view);
-    let control: Element<'a, Message> = if chips.is_empty() {
-        input
-    } else {
-        column![Row::with_children(chips).spacing(spacing::XS).wrap(), input]
-            .spacing(spacing::XS)
-            .into()
-    };
-    let only_row = SettingRow {
-        problem: field_problem(field, view),
-        control_width: Some(SETTINGS_WIDE_CONTROL_WIDTH),
-        ..simple_row(
-            Msg::SettingsRowFileTagsOnly,
-            Some(Msg::SettingsRowFileTagsOnlyNote),
-            control,
-            lang,
-        )
-    };
-    vec![show_row, which_row, only_row]
+    vec![show_row, open_row]
 }
 
 fn vscode_row<'a>(view: &SettingsView<'a>) -> SettingRow<'a> {

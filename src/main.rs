@@ -75,6 +75,8 @@ mod search_view;
 mod selection;
 mod session_state;
 mod suggestion_work;
+mod tags_page;
+mod tags_work;
 mod theme_fetch;
 mod transfer_dialog;
 mod trash_view;

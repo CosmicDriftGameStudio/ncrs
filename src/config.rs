@@ -18,7 +18,7 @@ use std::ops::Range;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
-use ncrs_index::{iban_is_valid, tag_name, CustomKind, KindCatalog, KindSkip};
+use ncrs_index::{iban_is_valid, CustomKind, KindCatalog, KindSkip};
 use ncrs_intake::{pattern_is_valid, LocationMode};
 use ncrs_pipeline::Load;
 use serde::de::{Deserializer, Error as _, MapAccess, SeqAccess, Visitor};
@@ -137,10 +137,10 @@ pub struct FileListTagsSection {
     /// Checked by `resolve_file_list_tags`: a name that is no group is dropped.
     #[serde(default)]
     pub groups: Option<Vec<String>>,
-    /// Checked by `resolve_file_list_tags`: spelled like a tag, empty ones
-    /// dropped.
-    #[serde(default)]
-    pub only: Vec<String>,
+    /// Older files list tag names here; they live in the index now, so the
+    /// key is accepted, whatever it holds, and never written.
+    #[serde(default, rename = "only")]
+    pub _only: Option<serde::de::IgnoredAny>,
 }
 
 /// One `[[servers]]` entry, unchecked. The password is not part of it: it is
@@ -1198,16 +1198,9 @@ fn resolve_file_list_tags(section: &FileListTagsSection) -> FileListTags {
             .filter(|group| names.iter().any(|name| name.trim() == group.name()))
             .collect()
     });
-    let mut only: Vec<String> = Vec::new();
-    for entry in section.only.iter().map(|entry| tag_name(entry)) {
-        if !entry.is_empty() && !only.contains(&entry) {
-            only.push(entry);
-        }
-    }
     FileListTags {
         show: section.show.unwrap_or(defaults.show),
         groups,
-        only,
     }
 }
 
@@ -1731,7 +1724,7 @@ fn own_detail_setting(detail: OwnDetail, entries: &[String]) -> Setting {
     }
 }
 
-fn file_list_tags_settings(tags: &FileListTags) -> [Setting; 3] {
+fn file_list_tags_settings(tags: &FileListTags) -> [Setting; 2] {
     let list = |entries: Vec<&str>| toml_edit::Value::Array(entries.into_iter().collect());
     [
         Setting {
@@ -1743,11 +1736,6 @@ fn file_list_tags_settings(tags: &FileListTags) -> [Setting; 3] {
             tables: &[FILE_LIST_TAGS_TABLE],
             key: "groups",
             value: Some(list(tags.groups.iter().map(|group| group.name()).collect())),
-        },
-        Setting {
-            tables: &[FILE_LIST_TAGS_TABLE],
-            key: "only",
-            value: Some(list(tags.only.iter().map(String::as_str).collect())),
         },
     ]
 }
@@ -2661,13 +2649,11 @@ mod tests {
         let default = from_text("version = 1\n").unwrap().file_list_tags;
         assert!(default.show);
         assert_eq!(default.groups, [TagGroup::Kind, TagGroup::Own]);
-        assert!(default.only.is_empty());
 
         let text = "[file_list_tags]\nshow = false\ngroups = [\"year\", \"nope\", \"sender\"]\nonly = [\" Firma A \", \"\", \"firma-a\"]\n";
         let read = from_text(text).unwrap().file_list_tags;
         assert!(!read.show);
         assert_eq!(read.groups, [TagGroup::Sender, TagGroup::Year]);
-        assert_eq!(read.only, ["firma-a"]);
         assert!(from_text("[file_list_tags]\ngroups = []\n")
             .unwrap()
             .file_list_tags
@@ -2684,7 +2670,6 @@ mod tests {
         let setting = FileListTags {
             show: false,
             groups: vec![TagGroup::Recipient, TagGroup::Own],
-            only: vec!["steuer".to_owned()],
         };
 
         let written = write_file_list_tags(&path, &setting).unwrap();
@@ -2693,6 +2678,28 @@ mod tests {
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("# my note"));
         assert!(text.contains("[file_list_tags]"));
+        assert!(!text.contains("only"));
+    }
+
+    #[test]
+    fn an_old_file_with_the_only_key_loads_and_the_key_is_not_written_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            "version = 1\n[file_list_tags]\nshow = false\nonly = [\"steuer\"]\n",
+        )
+        .unwrap();
+        assert!(
+            !from_text(&std::fs::read_to_string(&path).unwrap())
+                .unwrap()
+                .file_list_tags
+                .show
+        );
+
+        let written = write_file_list_tags(&path, &FileListTags::default()).unwrap();
+
+        assert!(written.file_list_tags.show);
     }
 
     const VALID_IBAN: &str = "DE89 3704 0044 0532 0130 00";

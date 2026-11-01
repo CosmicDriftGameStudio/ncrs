@@ -753,6 +753,8 @@ pub fn error_line<'a, M: 'a>(
             .wrapping(Wrapping::Word),
     ]
     .spacing(GAP_S)
+    // The bar fills its height, which would otherwise make the row take all free room.
+    .height(Length::Shrink)
     .into()
 }
 

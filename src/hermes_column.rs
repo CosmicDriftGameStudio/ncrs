@@ -15,7 +15,7 @@ use ncrs_pipeline::{Snapshot, Task};
 
 use crate::app::fill_template;
 use crate::config::FilingLocation;
-use crate::file_list_tags::{shown_tags, FileListTags, ShownTags};
+use crate::file_list_tags::{shown_tags, FileListTags, ShownTags, TagExceptions};
 use crate::i18n::{Language, Msg};
 use crate::review_work::TextState;
 use crate::ui::format;
@@ -565,6 +565,8 @@ pub struct ColumnView<'a> {
     angle: f32,
     /// Which tags follow a file name.
     tags: &'a FileListTags,
+    /// The tags that differ from the default of their group.
+    exceptions: &'a TagExceptions,
     /// The width of one panel, to see how much of a name is left.
     panel_width: f32,
     kinds: &'a Kinds,
@@ -576,6 +578,7 @@ impl<'a> ColumnView<'a> {
         locations: &'a [FilingLocation],
         angle: f32,
         tags: &'a FileListTags,
+        exceptions: &'a TagExceptions,
         panel_width: f32,
         kinds: &'a Kinds,
     ) -> Self {
@@ -584,6 +587,7 @@ impl<'a> ColumnView<'a> {
             locations,
             angle,
             tags,
+            exceptions,
             panel_width,
             kinds,
         }
@@ -599,7 +603,7 @@ impl<'a> ColumnView<'a> {
         self.column
             .tags_of(path)
             .map_or_else(ShownTags::default, |tags| {
-                shown_tags(tags, self.tags, self.kinds)
+                shown_tags(tags, self.tags, self.exceptions, self.kinds)
             })
     }
 

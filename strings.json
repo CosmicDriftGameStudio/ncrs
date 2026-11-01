@@ -397,12 +397,6 @@
       "de": "Entpacke…"
     },
     {
-      "key": "job.create_dir",
-      "context": "Status bar while a directory is being created. Same shape as job.copy.",
-      "en": "Creating…",
-      "de": "Erstelle…"
-    },
-    {
       "key": "job.progress",
       "context": "Progress counter in the status bar while a job runs. Shows done and total. Keep the punctuation minimal; the numbers are what matter.",
       "en": "{done} of {total}",
@@ -1514,7 +1508,7 @@
     },
     {
       "key": "action.file_list_tags_choose",
-      "context": "Entry of the command palette that runs the key action file_list_tags_choose. Opens the settings where the user chooses which tags the file lists show.",
+      "context": "Entry of the command palette that runs the key action file_list_tags_choose. Opens the tags page of Hermes, where the user chooses which tags the file lists show.",
       "en": "Choose tags in the file list …",
       "de": "Schlagworte in der Dateiliste wählen …"
     },
@@ -3823,6 +3817,12 @@
       "de": "Anforderungen"
     },
     {
+      "key": "action.tags",
+      "context": "Title of the tags page of Hermes (all tags in one place, with the choice which of them the file lists show) and its entry in the sidebar.",
+      "en": "Tags",
+      "de": "Schlagworte"
+    },
+    {
       "key": "saved_queries.explain",
       "context": "Explanation under the title of the reports page.",
       "en": "Saved searches for recurring questions. Exporting copies the hits into a folder; the originals stay unchanged.",
@@ -4349,12 +4349,6 @@
       "context": "Value of the AI provider setting when the model runs on a server named in the file.",
       "en": "Own server",
       "de": "Eigener Server"
-    },
-    {
-      "key": "settings.row_ai_model",
-      "context": "Name of the setting on the filing page that shows the AI model and whether it is there.",
-      "en": "Model",
-      "de": "Modell"
     },
     {
       "key": "settings.saved_next_start",
@@ -5533,12 +5527,6 @@
       "de": "Taste hinzufügen"
     },
     {
-      "key": "key_bindings.remove_key",
-      "context": "Button in the keyboard shortcuts dialog that removes the focused key of the selected action.",
-      "en": "Remove key",
-      "de": "Taste entfernen"
-    },
-    {
       "key": "key_bindings.change_key",
       "context": "Button in the keyboard shortcuts dialog that records a new key in place of the focused one.",
       "en": "Change key",
@@ -5585,12 +5573,6 @@
       "context": "Error in the keyboard shortcuts dialog when the change could not be saved to the config file. {reason} is the explanation.",
       "en": "Not saved: {reason}",
       "de": "Nicht gespeichert: {reason}"
-    },
-    {
-      "key": "key_bindings.hint_change",
-      "context": "Verb next to the Enter key in the footer hints of the keyboard shortcuts dialog: records a new key for the focused one. One word.",
-      "en": "change",
-      "de": "ändern"
     },
     {
       "key": "key_bindings.hint_remove",
@@ -7057,6 +7039,96 @@
       "de": "Die Regeln konnten nicht gelesen oder geändert werden: {detail}"
     },
     {
+      "key": "tags.explain",
+      "context": "Explanation under the title of the tags page: what the page is for and what a tick does.",
+      "en": "All tags in one place. A tick shows the tag in the file tree behind the file name.",
+      "de": "Alle Schlagworte an einem Ort. Ein Haken zeigt das Schlagwort im Dateibaum hinter dem Dateinamen."
+    },
+    {
+      "key": "tags.search_placeholder",
+      "context": "Placeholder of the search field in the header of the tags page; the table shows the tags that match.",
+      "en": "Search tags",
+      "de": "Schlagwort suchen"
+    },
+    {
+      "key": "tags.show_hint",
+      "context": "Note under the switch on the tags page that turns the tags after the file names on or off.",
+      "en": "At most 3 per file, then “+1”. Applies to both file lists.",
+      "de": "Höchstens 3 pro Datei, dann „+1“. Gilt für beide Dateilisten."
+    },
+    {
+      "key": "tags.column_shown",
+      "context": "Header of the column of ticks in the table of the tags page: the tick shows the tag in the file tree. Lower case, a few words.",
+      "en": "show in file tree",
+      "de": "im Dateibaum anzeigen"
+    },
+    {
+      "key": "tags.column_documents",
+      "context": "Header of the column with the number of documents per tag in the table of the tags page. One word, plural noun.",
+      "en": "Documents",
+      "de": "Dokumente"
+    },
+    {
+      "key": "tags.more",
+      "context": "Link behind a long group of tags on the tags page that unfolds the rest of the group. {count} is the number of tags that are not shown yet.",
+      "en": "… and {count} more",
+      "de": "… und {count} weitere"
+    },
+    {
+      "key": "tags.menu_rename",
+      "context": "Entry of the menu on a row of an own tag on the tags page: renames the tag everywhere it is set.",
+      "en": "Rename …",
+      "de": "Umbenennen …"
+    },
+    {
+      "key": "tags.delete_question",
+      "context": "Question on the tags page before an own tag is removed from all documents. {tag} is the tag.",
+      "en": "Remove the tag ‘{tag}’ from all documents? The documents stay as they are.",
+      "de": "Das Schlagwort ‚{tag}‘ von allen Dokumenten entfernen? Die Dokumente bleiben unverändert."
+    },
+    {
+      "key": "tags.delete_confirm",
+      "context": "Button on the tags page that answers the delete question with yes: removes the own tag.",
+      "en": "Delete tag",
+      "de": "Schlagwort löschen"
+    },
+    {
+      "key": "tags.in_use",
+      "context": "Error on the tags page: an own tag cannot be deleted because rules ask for it. {tag} is the tag, {rules} the names of the rules.",
+      "en": "‘{tag}’ is a condition of these rules and stays: {rules}. Change the rules first.",
+      "de": "‚{tag}‘ ist Bedingung dieser Regeln und bleibt deshalb: {rules}. Ändere zuerst die Regeln."
+    },
+    {
+      "key": "tags.problem_failed",
+      "context": "Error on the tags page when the work on the index failed. {detail} is the technical reason and stays English.",
+      "en": "The tags could not be changed: {detail}",
+      "de": "Die Schlagworte ließen sich nicht ändern: {detail}"
+    },
+    {
+      "key": "tags.loading",
+      "context": "Sentence in the middle of the tags page while the tags are read from the index.",
+      "en": "Reading the tags …",
+      "de": "Schlagworte werden gelesen …"
+    },
+    {
+      "key": "tags.empty",
+      "context": "Sentence in the middle of the tags page when the index has no tags yet.",
+      "en": "There are no tags yet. They appear once Hermes has read the first documents.",
+      "de": "Es gibt noch keine Schlagworte. Sie entstehen, sobald Hermes die ersten Dokumente gelesen hat."
+    },
+    {
+      "key": "tags.no_match",
+      "context": "Sentence in the table of the tags page when the search finds no tag.",
+      "en": "No tag matches.",
+      "de": "Kein Schlagwort passt."
+    },
+    {
+      "key": "tags.saved_note",
+      "context": "Note at the left of the action bar of the tags page: a change is stored at once, there is nothing to save.",
+      "en": "Saved at once.",
+      "de": "Wird sofort gespeichert."
+    },
+    {
       "key": "rules.new",
       "context": "Button of the rules page: opens the form for a new rule.",
       "en": "New rule",
@@ -7597,14 +7669,14 @@
       "de": "und"
     },
     {
-      "key": "settings.group_file_tags",
-      "context": "Title of the group on the appearance page of the settings tab that sets which tags follow a file name in the file lists.",
+      "key": "settings.row_file_tags_open",
+      "context": "Label of the row in Settings > Look whose button opens the tags page of Hermes, where the user chooses which tags the file lists show.",
       "en": "Tags in the file list",
       "de": "Schlagworte in der Dateiliste"
     },
     {
-      "key": "settings.group_file_tags_intro",
-      "context": "Sentence under the title of the group that sets the tags shown in the file lists.",
+      "key": "settings.row_file_tags_open_note",
+      "context": "Note under the row that opens the tags page. Says what the tags in the file lists are.",
       "en": "Shows the tags of read documents after the file name.",
       "de": "Zeigt hinter dem Dateinamen die Schlagworte gelesener Dokumente."
     },
@@ -7613,12 +7685,6 @@
       "context": "Label of the on/off switch for the tags in the file lists on the settings tab.",
       "en": "Show tags",
       "de": "Schlagworte anzeigen"
-    },
-    {
-      "key": "settings.row_file_tags_which",
-      "context": "Label of the row with one checkbox per kind of tag shown in the file lists on the settings tab.",
-      "en": "Which tags?",
-      "de": "Welche Schlagworte?"
     },
     {
       "key": "settings.file_tags_kind",
@@ -7649,18 +7715,6 @@
       "context": "Checkbox for the tags the user set themselves, shown in the file lists.",
       "en": "Own tags",
       "de": "Eigene Schlagworte"
-    },
-    {
-      "key": "settings.row_file_tags_only",
-      "context": "Label of the field on the settings tab where tags are typed that alone are shown in the file lists.",
-      "en": "Only show these",
-      "de": "Nur diese zeigen"
-    },
-    {
-      "key": "settings.row_file_tags_only_note",
-      "context": "Note under the field of the tags that alone are shown in the file lists.",
-      "en": "At most 3 per file, then “+1”. Saved at once. Applies to both file lists.",
-      "de": "Höchstens 3 pro Datei, dann „+1“. Wird sofort gespeichert. Gilt für beide Dateilisten."
     },
     {
       "key": "hermes_overview.section_state",

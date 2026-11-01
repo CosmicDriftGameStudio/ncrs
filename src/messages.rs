@@ -22,7 +22,7 @@ use crate::config::{
 use crate::dialog::PromptKind;
 use crate::document_preview::PreviewContent;
 use crate::execute::UndoReport;
-use crate::file_list_tags::FileListTags;
+use crate::file_list_tags::{FileListTags, TagExceptions, TagGroup};
 use crate::filing::{FilingMessage, IndexFigures};
 use crate::filing_pieces::TargetEdit;
 use crate::filing_work::FilingSummary;
@@ -50,6 +50,7 @@ use crate::review_work::{AcceptSummary, ConfirmOutcome, ReviewItem};
 use crate::rules_work::{RulesLoad, TryResult};
 use crate::search_filters::{Facet, FacetValue};
 use crate::suggestion_work::SuggestedRule;
+use crate::tags_work::{TagsFailure, TagsLoaded};
 use crate::theme_fetch::{Fetched, Installed};
 use crate::transfer_dialog::TransferDialogMessage;
 
@@ -399,6 +400,7 @@ pub enum Message {
     QuickFix(QuickFixMessage),
     HermesFile(HermesFileMessage),
     SavedQueries(SavedQueriesMessage),
+    Tags(TagsMessage),
     /// The sidebar of the Hermes card: closes the card that is up and opens
     /// this page.
     HermesPage(HermesPage),
@@ -534,8 +536,6 @@ pub enum SettingField {
     AiModel,
     /// Where an entry for one of the own details is typed.
     Own(OwnDetail),
-    /// Where a tag is typed that the file lists show alone.
-    FileListOnly,
 }
 
 /// Everything the settings tab sends.
@@ -545,7 +545,7 @@ pub enum SettingsMessage {
     Toggle,
     /// Switches the tags after the names in the file lists on or off.
     ToggleFileListTags,
-    /// Opens the settings at the choice of those tags.
+    /// Opens the tags page of the Ablage.
     ChooseFileListTags,
     Close,
     /// Folds the technical rows of a page open or shut.
@@ -971,6 +971,7 @@ pub enum HermesPage {
     RuleSuggestions,
     Reorganisation,
     SavedQueries,
+    Tags,
     Inspection,
 }
 
@@ -1040,6 +1041,47 @@ pub enum SavedQueriesMessage {
         generation: u64,
         result: Result<ExportSummary, String>,
     },
+}
+
+/// Everything the tags page sends.
+#[derive(Debug, Clone, PartialEq)]
+pub enum TagsMessage {
+    /// Escape backs out of the step that is up first, then leaves the page.
+    Close,
+    /// The work of the generation is done, with what the page shows now.
+    /// Dropped when the page was closed or opened again meanwhile.
+    Done {
+        generation: u64,
+        result: Result<TagsLoaded, TagsFailure>,
+    },
+    /// The tags the file list shows against their group, read when the index
+    /// opens.
+    ExceptionsRead(Result<TagExceptions, String>),
+    Scrolled(iced::mouse::ScrollDelta),
+    Move(isize),
+    /// A click on the row at this position.
+    Select(usize),
+    /// Space: switches the tag or the group under the cursor, or unfolds the
+    /// rest of a long group.
+    ToggleSelected,
+    /// Folds a group shut or open.
+    ToggleOpen(TagGroup),
+    /// The link behind a long group.
+    Unfold(TagGroup),
+    ToggleTag {
+        group: TagGroup,
+        tag: String,
+    },
+    ToggleGroup(TagGroup),
+    SearchChanged(String),
+    StartRename(String),
+    RenameChanged(String),
+    /// Enter in the field of the new name.
+    ConfirmRename,
+    AskDelete(String),
+    /// Enter: answers the delete question, or else switches the row under
+    /// the cursor.
+    ConfirmDelete,
 }
 
 /// What the Hermes commands do with the file under the cursor of the active

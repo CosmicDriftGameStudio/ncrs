@@ -3845,6 +3845,202 @@ mod saved_queries_card {
     clippy::indexing_slicing
 )]
 #[cfg(test)]
+mod tags_card {
+    use std::collections::BTreeSet;
+
+    use ncrs_index::{Condition, ConditionKind, RuleConditions, RuleSpec};
+
+    use super::*;
+    use crate::config::Filing;
+    use crate::file_list_tags::TagExceptions;
+    use crate::messages::{HermesPage, SettingsFeature, SettingsMessage, TagsMessage};
+    use crate::tags_page::tests::loaded_page;
+    use crate::tags_page::TagsPage;
+    use crate::tags_work::{TagsFailure, TagsLoaded};
+
+    fn shows(page: TagsPage, label: &str) -> bool {
+        simulator(&App::with_tags(page)).find(label).is_ok()
+    }
+
+    fn with_sender_group_open() -> TagsPage {
+        let mut page = loaded_page();
+        page.toggle_open(crate::file_list_tags::TagGroup::Sender);
+        page
+    }
+
+    fn renaming() -> TagsPage {
+        let mut page = with_sender_group_open();
+        page.start_rename("steuer".to_owned());
+        page
+    }
+
+    fn refused_delete() -> TagsPage {
+        let mut page = with_sender_group_open();
+        page.ask_delete("steuer".to_owned());
+        assert_eq!(page.begin_delete().as_deref(), Some("steuer"));
+        page.failed(TagsFailure::InUse(vec![RuleSpec {
+            name: None,
+            conditions: RuleConditions::all_of(vec![Condition::new(
+                ConditionKind::Sender,
+                "Company A",
+            )]),
+            extract_number: None,
+            extract_date: None,
+            extract_amount: None,
+            kind: Some("Invoice".to_owned()),
+            tags: BTreeSet::from(["steuer".to_owned()]),
+            filing_pattern: "{year}/{sender}".to_owned(),
+            confirmed: true,
+            enabled: true,
+        }]));
+        page
+    }
+
+    #[test]
+    fn the_page_shows_the_explanation_the_switch_and_the_tags() {
+        for label in [
+            "Tags",
+            "All tags in one place. A tick shows the tag in the file tree behind the file name.",
+            "Show tags",
+            "At most 3 per file, then “+1”. Applies to both file lists.",
+            "show in file tree",
+            "Documents",
+            "steuer",
+            "invoice",
+            "… and 2 more",
+        ] {
+            assert!(shows(with_sender_group_open(), label), "{label}");
+        }
+    }
+
+    #[test]
+    fn the_german_page_uses_the_plain_words() {
+        let app = App::with_tags(with_sender_group_open()).in_language(Language::German);
+        let mut sim = simulator(&app);
+        for label in [
+            "Schlagworte",
+            "Schlagwort suchen",
+            "Dokumente",
+            "… und 2 weitere",
+        ] {
+            assert!(sim.find(label).is_ok(), "{label}");
+        }
+    }
+
+    #[test]
+    fn a_search_that_finds_nothing_says_so() {
+        let mut page = loaded_page();
+        page.set_search("nothing like it".to_owned());
+        assert!(shows(page, "No tag matches."));
+    }
+
+    #[test]
+    fn the_delete_question_has_its_button_and_a_refused_delete_names_the_rules() {
+        assert!(renaming().is_editing());
+        let mut asking = loaded_page();
+        asking.ask_delete("steuer".to_owned());
+        assert!(shows(asking, "Delete tag"));
+        assert!(shows(
+            refused_delete(),
+            "‘steuer’ is a condition of these rules and stays: If the sender is “Company A” → Invoice …. Change the rules first."
+        ));
+    }
+
+    #[test]
+    fn a_sidebar_click_opens_the_page_and_closes_the_other() {
+        let mut app = App::with_saved_queries(crate::saved_queries::tests::loaded_list());
+        let _ = app.update(Message::HermesPage(HermesPage::Tags));
+        assert!(app.saved_queries_for_test().is_none());
+        assert!(app.tags_for_test().is_some());
+    }
+
+    #[test]
+    fn escape_backs_out_of_the_step_first() {
+        let mut app = App::with_tags(renaming());
+        let _ = app.update(Message::Tags(TagsMessage::Close));
+        assert!(app
+            .tags_for_test()
+            .is_some_and(|page| page.step().is_none()));
+        let _ = app.update(Message::Tags(TagsMessage::Close));
+        assert!(app.tags_for_test().is_none());
+    }
+
+    #[test]
+    fn the_work_done_sets_the_exceptions_the_file_list_follows() {
+        let mut app = App::with_tags(loaded_page());
+        let generation = app.tags_generation_for_test();
+        let loaded = |exceptions: TagExceptions| TagsLoaded {
+            exceptions,
+            ..TagsLoaded::default()
+        };
+        let _ = app.update(Message::Tags(TagsMessage::Done {
+            generation: generation.wrapping_add(1),
+            result: Ok(loaded(TagExceptions::from([("old".to_owned(), true)]))),
+        }));
+        assert!(app.tag_exceptions_for_test().is_empty(), "a stale answer");
+
+        let _ = app.update(Message::Tags(TagsMessage::Done {
+            generation,
+            result: Ok(loaded(TagExceptions::from([("steuer".to_owned(), false)]))),
+        }));
+        assert_eq!(
+            app.tag_exceptions_for_test(),
+            &TagExceptions::from([("steuer".to_owned(), false)])
+        );
+    }
+
+    #[test]
+    fn the_settings_button_leaves_the_settings_for_the_page() {
+        let mut app = App::with_settings_open(SettingsFeature::Look, Filing::default());
+        let _ = app.update(Message::Settings(SettingsMessage::ChooseFileListTags));
+        assert!(app.tags_for_test().is_some());
+        assert!(app.settings_for_test().is_none());
+    }
+
+    #[test]
+    fn the_look_page_has_the_row_with_the_button_and_not_the_removed_ones() {
+        let app = App::with_settings_open(SettingsFeature::Look, Filing::default());
+        let mut sim = simulator(&app);
+        assert!(sim.find("Tags in the file list").is_ok(), "new row");
+        assert!(sim.find("Which tags?").is_err(), "removed group");
+        assert!(sim.find("Only show these").is_err(), "removed row");
+    }
+
+    fn matches_snapshot(page: TagsPage, name: &str) {
+        let language = if name.ends_with("_de") {
+            Language::German
+        } else {
+            Language::English
+        };
+        let app = App::with_tags(page).in_language(language);
+        let matches = simulator(&app)
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image(format!("tests/snapshots/{name}.png"))
+            .expect("snapshot comparison");
+        assert!(
+            matches,
+            "the view does not match tests/snapshots/{name}.png"
+        );
+    }
+
+    #[test]
+    fn the_view_matches_its_snapshots() {
+        for suffix in ["en", "de"] {
+            matches_snapshot(with_sender_group_open(), &format!("hermes_tags_{suffix}"));
+            matches_snapshot(renaming(), &format!("hermes_tags_rename_{suffix}"));
+            matches_snapshot(refused_delete(), &format!("hermes_tags_in_use_{suffix}"));
+        }
+    }
+}
+
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
 mod rules_card {
     use std::collections::BTreeSet;
 
@@ -5891,11 +6087,10 @@ mod settings_tab {
     }
 
     #[test]
-    fn the_tags_in_the_file_list_match_their_snapshots() {
+    fn the_tags_row_of_the_appearance_page_matches_its_snapshots() {
         let scrolled_snapshot = |language: Language, name: &str| {
-            let mut app = App::with_settings_open(SettingsFeature::Look, Filing::default())
+            let app = App::with_settings_open(SettingsFeature::Look, Filing::default())
                 .in_language(language);
-            drop(app.update(Message::Settings(SettingsMessage::ChooseFileListTags)));
             let mut sim = simulator(&app);
             sim.point_at(iced::Point::new(700.0, 400.0));
             let _statuses = sim.simulate([iced::Event::Mouse(iced::mouse::Event::WheelScrolled {

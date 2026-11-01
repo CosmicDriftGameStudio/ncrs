@@ -30,19 +30,21 @@ impl Badges {
             | HermesPage::Inspection
             | HermesPage::Reorganisation
             | HermesPage::SavedQueries
+            | HermesPage::Tags
             | HermesPage::Rules => None,
         }
         .filter(|count| *count > 0)
     }
 }
 
-pub const PAGES: [HermesPage; 7] = [
+pub const PAGES: [HermesPage; 8] = [
     HermesPage::Overview,
     HermesPage::Review,
     HermesPage::Rules,
     HermesPage::RuleSuggestions,
     HermesPage::Reorganisation,
     HermesPage::SavedQueries,
+    HermesPage::Tags,
     HermesPage::Inspection,
 ];
 
@@ -55,6 +57,7 @@ fn name(page: HermesPage) -> Msg {
         HermesPage::Rules => Msg::ActionRules,
         HermesPage::RuleSuggestions => Msg::ActionRuleSuggestions,
         HermesPage::SavedQueries => Msg::ActionSavedQueries,
+        HermesPage::Tags => Msg::ActionTags,
         HermesPage::Reorganisation => Msg::ActionReorganisationPlan,
     }
 }

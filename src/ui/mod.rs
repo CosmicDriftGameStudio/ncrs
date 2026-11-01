@@ -44,6 +44,7 @@ pub mod saved_queries;
 pub mod search;
 pub mod settings;
 pub mod statusbar;
+pub mod tags;
 pub mod theme;
 pub mod theme_fetch;
 pub mod titlebar;
