@@ -7,17 +7,17 @@ use iced::widget::text::Wrapping;
 use iced::widget::{column, container, row, scrollable, text, Column, Row};
 use iced::{alignment, Element, Font, Length, Size};
 
-use super::dialog as dialog_ui;
-use super::format;
-use super::frame::{self, DialogSize, Frame};
-use super::kit::{self, Tone};
-use super::theme::{self, font_size, spacing};
-use crate::i18n::{Language, Msg};
-use crate::messages::{Message, TransferKind, TransferKindJob as _};
-use crate::palette::Palette;
-use crate::transfer_dialog::{
-    Policy, Refusal, TransferDialog, TransferDialogMessage, FIRST_NAMES, LISTED_NAMES,
-};
+use ncrs_core::TransferKind;
+use ncrs_i18n::{Language, Msg};
+use ncrs_ui_kit::format;
+use ncrs_ui_kit::frame::{self, DialogSize, Frame};
+use ncrs_ui_kit::kit::{self, Tone};
+use ncrs_ui_kit::numbered_hint::numbered_hint;
+use ncrs_ui_kit::palette::Palette;
+use ncrs_ui_kit::theme::{self, font_size, spacing};
+
+use super::{Policy, Refusal, TransferDialog, FIRST_NAMES, LISTED_NAMES};
+use crate::message::{OpsMessage, TransferDialogMessage};
 
 const SIZE: DialogSize = DialogSize::Medium;
 
@@ -33,8 +33,8 @@ const LABEL_WIDTH: f32 = 140.0;
 /// The height of the list of all names, which scrolls inside the dialog.
 const LIST_HEIGHT: f32 = 160.0;
 
-fn send(message: TransferDialogMessage) -> Message {
-    Message::TransferDialog(message)
+fn send(message: TransferDialogMessage) -> OpsMessage {
+    OpsMessage::TransferDialog(message)
 }
 
 fn title(kind: TransferKind, lang: Language) -> &'static str {
@@ -69,7 +69,7 @@ fn policy_text(policy: Policy, lang: Language) -> &'static str {
     })
 }
 
-fn mono_name<'a>(name: String, palette: &Palette) -> Element<'a, Message> {
+fn mono_name<'a>(name: String, palette: &Palette) -> Element<'a, OpsMessage> {
     text(name)
         .font(Font::MONOSPACE)
         .size(font_size::FILE)
@@ -78,7 +78,7 @@ fn mono_name<'a>(name: String, palette: &Palette) -> Element<'a, Message> {
         .into()
 }
 
-fn plain_dim<'a>(content: String, palette: &Palette) -> Element<'a, Message> {
+fn plain_dim<'a>(content: String, palette: &Palette) -> Element<'a, OpsMessage> {
     text(content)
         .size(font_size::BODY)
         .color(palette.dim_text)
@@ -114,7 +114,7 @@ fn figures<'a>(
     line_chars: usize,
     lang: Language,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, OpsMessage> {
     let scan = dialog.scan();
     // Nothing is counted on a server: the figures are not coming.
     let missing = if dialog.counts_unknown() {
@@ -164,7 +164,7 @@ fn first_names<'a>(
     line_chars: usize,
     lang: Language,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, OpsMessage> {
     let template = lang.text(Msg::TransferFirstNames);
     let (head, tail) = template.split_once("{names}").unwrap_or(("", template));
     let count = left_out.to_string();
@@ -186,8 +186,8 @@ fn name_list<'a>(
     line_chars: usize,
     lang: Language,
     palette: &Palette,
-) -> Element<'a, Message> {
-    let mut lines: Column<'a, Message> = Column::new().spacing(spacing::XS / 2.0);
+) -> Element<'a, OpsMessage> {
+    let mut lines: Column<'a, OpsMessage> = Column::new().spacing(spacing::XS / 2.0);
     for name in dialog.names().take(LISTED_NAMES) {
         lines = lines.push(mono_name(
             format::ellipsize_middle(&name, line_chars),
@@ -213,7 +213,7 @@ fn names_directly<'a>(
     dialog: &TransferDialog,
     line_chars: usize,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, OpsMessage> {
     let lines = Column::with_children(dialog.names().map(|name| {
         mono_name(
             format::ellipsize_middle(&name, line_chars.saturating_sub(4)),
@@ -228,7 +228,11 @@ fn names_directly<'a>(
         .into()
 }
 
-fn conflict_warning<'a>(count: usize, lang: Language, palette: &Palette) -> Element<'a, Message> {
+fn conflict_warning<'a>(
+    count: usize,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, OpsMessage> {
     let text = if count == 1 {
         lang.text(Msg::TransferConflictsOne).to_string()
     } else {
@@ -244,7 +248,7 @@ pub fn confirm<'a>(
     window: Size,
     lang: Language,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, OpsMessage> {
     let kind = dialog.kind();
     let line_chars = frame::content_chars(SIZE, window, 0.0);
 
@@ -258,7 +262,7 @@ pub fn confirm<'a>(
             send(TransferDialogMessage::SetKind(TransferKind::Move)),
         ),
     ];
-    let kind_options: Vec<(&str, Message)> = kinds
+    let kind_options: Vec<(&str, OpsMessage)> = kinds
         .iter()
         .map(|(label, message)| (label.as_str(), message.clone()))
         .collect();
@@ -288,7 +292,7 @@ pub fn confirm<'a>(
     if let Some(count) = dialog.conflicts().filter(|count| *count > 0) {
         content = content.push(conflict_warning(count, lang, palette));
     }
-    let hint = dialog_ui::numbered_hint(
+    let hint = numbered_hint(
         lang.text(Msg::HintNumberedInTarget),
         dialog.numbered(),
         dialog.hit_scope(),
@@ -321,7 +325,7 @@ pub fn confirm<'a>(
         .iter()
         .map(|policy| policy_text(*policy, lang))
         .collect();
-    let policy_options: Vec<(&str, Message)> = Policy::ALL
+    let policy_options: Vec<(&str, OpsMessage)> = Policy::ALL
         .iter()
         .zip(&policy_labels)
         .map(|(policy, text)| (*text, send(TransferDialogMessage::SetPolicy(*policy))))
@@ -361,6 +365,7 @@ pub fn confirm<'a>(
 }
 
 /// What the progress mask shows of the running transfer.
+#[derive(Debug)]
 pub struct Progress<'a> {
     pub kind: TransferKind,
     pub target: &'a Path,
@@ -374,7 +379,7 @@ pub fn progress<'a>(
     window: Size,
     lang: Language,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, OpsMessage> {
     let line_chars = frame::content_chars(SIZE, window, 0.0);
     let target = format::ellipsize_middle(
         &shown.target.display().to_string(),
@@ -396,7 +401,10 @@ pub fn progress<'a>(
     .spacing(spacing::LINE_GAP);
 
     Frame::new(
-        lang.text(shown.kind.job_kind().label()),
+        lang.text(match shown.kind {
+            TransferKind::Copy => Msg::JobCopy,
+            TransferKind::Move => Msg::JobMove,
+        }),
         content,
         SIZE,
         window,
@@ -417,7 +425,7 @@ pub fn progress<'a>(
         ),
         kit::button(
             lang.text(Msg::JobAbort),
-            Some(Message::AbortJob),
+            Some(OpsMessage::AbortJob),
             Tone::Secondary,
             palette,
         ),

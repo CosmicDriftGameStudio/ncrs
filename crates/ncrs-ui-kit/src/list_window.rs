@@ -4,7 +4,7 @@
 
 use iced::mouse::ScrollDelta;
 
-use crate::ui::layout::ROW_HEIGHT;
+use crate::layout::ROW_HEIGHT;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct ListWindow {

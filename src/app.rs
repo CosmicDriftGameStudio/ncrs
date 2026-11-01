@@ -145,6 +145,7 @@ use ncrs_index::{
     IncludeOutcome, KeyStore, KeyringKeyStore, KindSkip, Kinds, QuerySpec, RuleId, SavedQueryId,
 };
 use ncrs_intake::LocationMode;
+use ncrs_ops::{TransferAction, TrashAction};
 use ncrs_pipeline::{Load, RunnerState};
 use ncrs_search::search_events;
 use tokio::sync::mpsc;
@@ -5242,7 +5243,8 @@ impl App {
                 self.window_size,
                 self.lang,
                 &self.palette,
-            );
+            )
+            .map(Message::from);
             return Stack::with_children([root, dialog::scrim(dialog_element)]).into();
         }
 
@@ -5320,20 +5322,22 @@ impl App {
                 self.conflict_all,
                 self.dialog_focus,
                 self.window_size,
-                Message::TransferConflict,
-            );
+            )
+            .map(Message::from);
             return Stack::with_children([root, dialog::scrim(conflict_element)]).into();
         }
 
         if let Some(confirm) = self.transfer_dialog.as_ref() {
             let confirm_element =
-                transfer_ui::confirm(confirm, self.window_size, self.lang, &self.palette);
+                transfer_ui::confirm(confirm, self.window_size, self.lang, &self.palette)
+                    .map(Message::from);
             return Stack::with_children([root, dialog::scrim(confirm_element)]).into();
         }
 
         if let Some(running) = self.progress_mask() {
             let progress_element =
-                transfer_ui::progress(&running, self.window_size, self.lang, &self.palette);
+                transfer_ui::progress(&running, self.window_size, self.lang, &self.palette)
+                    .map(Message::from);
             return Stack::with_children([root, dialog::scrim(progress_element)]).into();
         }
 
@@ -7336,65 +7340,30 @@ impl App {
     // --- the trash ---
 
     fn update_trash(&mut self, message: TrashMessage) -> Task<Message> {
-        let rows = self.trash_rows();
-        match message {
-            TrashMessage::Open => self.open_trash_on(self.source_side()),
-            TrashMessage::Listed { generation, result } => {
-                if generation == self.trash_generation {
-                    if let Some(view) = self.trash_view.as_mut() {
-                        view.set_items(result, rows);
-                    }
-                }
-                Task::none()
-            }
-            TrashMessage::Close => {
+        let ctx = ncrs_ops::Ctx {
+            trash_rows: self.trash_rows(),
+            trash_generation: self.trash_generation,
+        };
+        let Some(action) = ncrs_ops::update_trash(self.trash_view.as_mut(), message, &ctx) else {
+            return Task::none();
+        };
+        match action {
+            TrashAction::Open => self.open_trash_on(self.source_side()),
+            TrashAction::Close => {
                 self.close_trash();
                 release_focus()
             }
-            TrashMessage::Restore => {
-                let items = self
-                    .trash_view
-                    .as_ref()
-                    .map(TrashView::action_items)
-                    .unwrap_or_default();
-                self.start_restore(items)
-            }
-            TrashMessage::RestoreRowDone {
+            TrashAction::Restore(items) => self.start_restore(items),
+            TrashAction::RestoreRowDone {
                 result,
                 index,
                 generation,
             } => self.restore_row_done(result, index, generation),
-            TrashMessage::RestoreLast => self.restore_last_deletion(),
-            TrashMessage::LastListed { generation, result } => {
+            TrashAction::RestoreLast => self.restore_last_deletion(),
+            TrashAction::LastListed { generation, result } => {
                 self.restore_listed_deletion(generation, result)
             }
-            TrashMessage::OpenInFinder => self.open_trash_in_finder(),
-            view_message => {
-                let Some(view) = self.trash_view.as_mut() else {
-                    return Task::none();
-                };
-                match view_message {
-                    TrashMessage::Move(delta) => view.move_cursor(delta, rows),
-                    TrashMessage::Page(direction) => view.page(direction, rows),
-                    TrashMessage::First => view.first(rows),
-                    TrashMessage::Last => view.last(rows),
-                    TrashMessage::ToggleTag => view.toggle_tag(),
-                    TrashMessage::TagMove(delta) => view.tag_and_move(delta, rows),
-                    TrashMessage::TagAll => view.tag_all(),
-                    TrashMessage::ClearTags => view.clear_tags(),
-                    TrashMessage::RowClicked(index) => view.select(index, rows),
-                    TrashMessage::Scrolled(delta) => view.scroll(delta, rows),
-                    TrashMessage::Open
-                    | TrashMessage::Listed { .. }
-                    | TrashMessage::Close
-                    | TrashMessage::Restore
-                    | TrashMessage::RestoreRowDone { .. }
-                    | TrashMessage::RestoreLast
-                    | TrashMessage::LastListed { .. }
-                    | TrashMessage::OpenInFinder => {}
-                }
-                Task::none()
-            }
+            TrashAction::OpenInFinder => self.open_trash_in_finder(),
         }
     }
 
@@ -7481,6 +7450,7 @@ impl App {
                 .keymap
                 .shortcut_label(&KeyAction::OpenTrashInFinder.message()),
         })
+        .map(Message::from)
     }
 
     /// Whether a restore may start: nothing else holds the queue or the keys.
@@ -8517,70 +8487,22 @@ impl App {
     }
 
     fn update_transfer_dialog(&mut self, message: TransferDialogMessage) -> Task<Message> {
-        match message {
-            TransferDialogMessage::Scanned { dialog, scan } => {
-                if let Some(open) = self.transfer_dialog.as_mut().filter(|d| d.id() == dialog) {
-                    open.set_scan(scan);
-                }
-                Task::none()
-            }
-            TransferDialogMessage::ConflictsCounted {
-                dialog,
-                edit,
-                count,
-            } => {
-                if let Some(open) = self.transfer_dialog.as_mut().filter(|d| d.id() == dialog) {
-                    open.set_conflicts(edit, count);
-                }
-                Task::none()
-            }
-            TransferDialogMessage::TargetInput(typed) => {
-                let Some(open) = self.transfer_dialog.as_mut() else {
-                    return Task::none();
-                };
-                open.type_target(typed);
-                conflicts_task(open)
-            }
-            TransferDialogMessage::SetKind(kind) => {
-                if let Some(open) = self.transfer_dialog.as_mut() {
-                    open.set_kind(kind);
-                }
-                Task::none()
-            }
-            TransferDialogMessage::ToggleKind => {
-                if let Some(open) = self.transfer_dialog.as_mut() {
-                    open.set_kind(match open.kind() {
-                        TransferKind::Copy => TransferKind::Move,
-                        TransferKind::Move => TransferKind::Copy,
-                    });
-                }
-                Task::none()
-            }
-            TransferDialogMessage::SetPolicy(policy) => {
-                if let Some(open) = self.transfer_dialog.as_mut() {
-                    open.set_policy(policy);
-                }
-                Task::none()
-            }
-            TransferDialogMessage::ToggleList => {
-                if let Some(open) = self.transfer_dialog.as_mut() {
-                    open.toggle_list();
-                }
-                Task::none()
-            }
-            TransferDialogMessage::Cancel => {
-                if self.transfer_dialog.take().is_some() {
-                    release_focus()
-                } else {
-                    Task::none()
-                }
-            }
-            TransferDialogMessage::Confirm => self.confirm_transfer(),
-            TransferDialogMessage::Background => {
+        let Some(action) = ncrs_ops::update_transfer_dialog(&mut self.transfer_dialog, message)
+        else {
+            return Task::none();
+        };
+        match action {
+            TransferAction::CountConflicts => self
+                .transfer_dialog
+                .as_ref()
+                .map_or_else(Task::none, conflicts_task),
+            TransferAction::Closed => release_focus(),
+            TransferAction::Confirm => self.confirm_transfer(),
+            TransferAction::HideProgress => {
                 self.transfer_mask_visible = false;
                 Task::none()
             }
-            TransferDialogMessage::ShowProgress => {
+            TransferAction::ShowProgress => {
                 self.transfer_mask_visible = self.transfer.is_some();
                 Task::none()
             }

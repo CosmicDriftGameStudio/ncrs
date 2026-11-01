@@ -8,13 +8,14 @@ use iced::widget::text::Wrapping;
 use iced::widget::{column, text, Column};
 use iced::{Element, Size};
 
-use super::format;
-use super::frame::{self, DialogSize, Frame, KeyHints};
-use super::kit::{self, Tone};
-use super::theme::{font_size, spacing};
-use crate::i18n::{FuturamaName, Language, Msg};
-use crate::messages::Message;
-use crate::palette::Palette;
+use ncrs_i18n::{FuturamaName, Language, Msg};
+use ncrs_ui_kit::format;
+use ncrs_ui_kit::frame::{self, DialogSize, Frame, KeyHints};
+use ncrs_ui_kit::kit::{self, Tone};
+use ncrs_ui_kit::palette::Palette;
+use ncrs_ui_kit::theme::{font_size, spacing};
+
+use crate::message::OpsMessage;
 
 const SIZE: DialogSize = DialogSize::Medium;
 
@@ -43,7 +44,7 @@ pub fn view<'a>(
     window: Size,
     lang: Language,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, OpsMessage> {
     let (title, confirm_label) = if permanent {
         (
             lang.text(Msg::DeleteTitlePermanent),
@@ -82,14 +83,14 @@ pub fn view<'a>(
             if focus == CANCEL_FOCUS && !permanent {
                 kit::enter_button(
                     lang.text(Msg::DialogCancel),
-                    Some(Message::DeleteCancel),
+                    Some(OpsMessage::DeleteCancel),
                     Tone::Primary,
                     palette,
                 )
             } else {
                 kit::button(
                     lang.text(Msg::DialogCancel),
-                    Some(Message::DeleteCancel),
+                    Some(OpsMessage::DeleteCancel),
                     Tone::filled_if(focus == CANCEL_FOCUS),
                     palette,
                 )
@@ -97,20 +98,20 @@ pub fn view<'a>(
             if focus == CONFIRM_FOCUS && !permanent {
                 kit::enter_button(
                     confirm_label,
-                    Some(Message::DeleteConfirm),
+                    Some(OpsMessage::DeleteConfirm),
                     Tone::Danger,
                     palette,
                 )
             } else {
                 kit::button(
                     confirm_label,
-                    Some(Message::DeleteConfirm),
+                    Some(OpsMessage::DeleteConfirm),
                     Tone::Danger,
                     palette,
                 )
             },
         ])
-        .on_close(Message::DeleteCancel)
+        .on_close(OpsMessage::DeleteCancel)
         // The permanent dialog starts on Cancel, so Enter does not confirm.
         .hints(KeyHints {
             enter: !permanent,

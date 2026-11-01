@@ -3384,6 +3384,7 @@ dependencies = [
  "ncrs-index",
  "ncrs-intake",
  "ncrs-ocr-vision",
+ "ncrs-ops",
  "ncrs-pipeline",
  "ncrs-search",
  "ncrs-ui-kit",
@@ -3517,6 +3518,18 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "objc2-vision",
  "png 0.18.1",
+ "tempfile",
+]
+
+[[package]]
+name = "ncrs-ops"
+version = "0.0.0"
+dependencies = [
+ "iced",
+ "ncrs-core",
+ "ncrs-fs",
+ "ncrs-i18n",
+ "ncrs-ui-kit",
  "tempfile",
 ]
 

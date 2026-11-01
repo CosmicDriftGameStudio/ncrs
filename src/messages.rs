@@ -30,7 +30,6 @@ use crate::fs::remote::{RemotePath, Secret, ServerId};
 use crate::fs::search::SearchEvent;
 use crate::fs::{CreateDirError, OpenKind};
 use crate::fs::{Destination, PathProblem};
-use crate::fs::{RestoreError, TrashedItem};
 use crate::hermes_column::{ColumnReading, ColumnStage, FileDetail, FolderRole};
 use crate::hermes_setup::FolderSlot;
 use crate::i18n::Language;
@@ -50,10 +49,10 @@ use crate::rules_work::{RulesLoad, TryResult};
 use crate::suggestion_work::SuggestedRule;
 use crate::tags_work::{TagsFailure, TagsLoaded};
 use crate::theme_fetch::{Fetched, Installed};
-use crate::transfer_dialog::TransferDialogMessage;
 pub use ncrs_core::PanelSide;
 pub use ncrs_files::hit_list::HitListMessage;
 pub use ncrs_files::message::PanelMessage;
+pub use ncrs_ops::{ConflictChoice, OpsMessage, TransferDialogMessage, TrashMessage};
 pub use ncrs_search::message::SearchMessage;
 
 /// PartialEq so bindings can be compared; Eq is not derivable because
@@ -572,45 +571,6 @@ impl ResizeEdge {
             Self::SouthWest => Direction::SouthWest,
         }
     }
-}
-
-/// Everything the trash view and putting entries back send.
-#[derive(Debug, Clone, PartialEq)]
-pub enum TrashMessage {
-    /// Show the trash in place of the active panel.
-    Open,
-    /// What reading the trash gave. Dropped when `generation` is not the
-    /// latest read's.
-    Listed {
-        generation: u64,
-        result: Result<Vec<TrashedItem>, String>,
-    },
-    Close,
-    Move(isize),
-    Page(isize),
-    First,
-    Last,
-    ToggleTag,
-    TagMove(isize),
-    TagAll,
-    ClearTags,
-    RowClicked(usize),
-    Scrolled(iced::mouse::ScrollDelta),
-    /// Put back the tagged rows, else the cursor row.
-    Restore,
-    RestoreRowDone {
-        result: Result<(), RestoreError>,
-        index: usize,
-        generation: u64,
-    },
-    /// Put back what the latest F8 moved to the trash.
-    RestoreLast,
-    /// The entries of the trash that the latest deletion put there.
-    LastListed {
-        generation: u64,
-        result: Result<Vec<TrashedItem>, String>,
-    },
-    OpenInFinder,
 }
 
 /// Everything the filing status page sends.
@@ -1393,49 +1353,16 @@ impl TransferKindJob for TransferKind {
     }
 }
 
-/// What to do about a name that is already taken.
-///
-/// The "All" options are the point: answering the same question per file turns
-/// five files into five dialogs and fifty thousand into an afternoon.
-///
-/// The two `All` variants are what the single-file answers become when "for all
-/// files" is ticked; see `App::answer_conflict`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConflictChoice {
-    AllOverwrite,
-    AllKeep,
-    ThisOverwrite,
-    ThisKeep,
-    Cancel,
-}
-
-impl ConflictChoice {
-    /// What to do with this one file.
-    pub fn conflict(self) -> crate::fs::transfer::OnConflict {
-        match self {
-            ConflictChoice::AllOverwrite | ConflictChoice::ThisOverwrite => {
-                crate::fs::transfer::OnConflict::Overwrite
-            }
-            // Cancel never reaches the filesystem; `Fail` is the rule that
-            // would refuse rather than touch anything.
-            ConflictChoice::AllKeep | ConflictChoice::ThisKeep => {
-                crate::fs::transfer::OnConflict::Skip
-            }
-            ConflictChoice::Cancel => crate::fs::transfer::OnConflict::Fail,
+impl From<OpsMessage> for Message {
+    fn from(ops: OpsMessage) -> Self {
+        match ops {
+            OpsMessage::TransferDialog(dialog) => Self::TransferDialog(dialog),
+            OpsMessage::TransferConflict(choice) => Self::TransferConflict(choice),
+            OpsMessage::ToggleConflictAll => Self::ToggleConflictAll,
+            OpsMessage::DeleteCancel => Self::DeleteCancel,
+            OpsMessage::DeleteConfirm => Self::DeleteConfirm,
+            OpsMessage::AbortJob => Self::AbortJob,
+            OpsMessage::Trash(trash) => Self::Trash(trash),
         }
-    }
-
-    /// The same answer, applied to every later conflict too.
-    pub fn for_all(self) -> Self {
-        match self {
-            ConflictChoice::ThisOverwrite => ConflictChoice::AllOverwrite,
-            ConflictChoice::ThisKeep => ConflictChoice::AllKeep,
-            other => other,
-        }
-    }
-
-    /// Whether the answer also settles every later one.
-    pub fn applies_to_all(self) -> bool {
-        matches!(self, ConflictChoice::AllOverwrite | ConflictChoice::AllKeep)
     }
 }

@@ -7,17 +7,17 @@ use iced::widget::text::Wrapping;
 use iced::widget::{column, container, mouse_area, row, text, Space};
 use iced::{alignment, Color, Element, Length};
 
-use super::format;
-use super::frame::chars_that_fit;
-use super::kit::{scroll_list, Columns, ListView};
-use super::layout::{ROW_HEIGHT, TAG_COLUMN_WIDTH};
-use super::theme::{self, font_size, spacing};
-use crate::app::fill_template;
-use crate::fs::TrashReach;
-use crate::i18n::{Language, Msg};
-use crate::messages::{Message, TrashMessage};
-use crate::palette::Palette;
-use crate::trash_view::TrashView;
+use ncrs_fs::TrashReach;
+use ncrs_i18n::{fill_template, Language, Msg};
+use ncrs_ui_kit::format;
+use ncrs_ui_kit::frame::chars_that_fit;
+use ncrs_ui_kit::kit::{scroll_list, Columns, ListView};
+use ncrs_ui_kit::layout::{ROW_HEIGHT, TAG_COLUMN_WIDTH};
+use ncrs_ui_kit::palette::Palette;
+use ncrs_ui_kit::theme::{self, font_size, spacing};
+
+use super::TrashView;
+use crate::message::{OpsMessage, TrashMessage};
 
 /// Name, original folder, deletion time.
 const PORTIONS: [u16; 3] = [4, 5, 3];
@@ -42,6 +42,7 @@ fn deleted_text(deleted_at: i64) -> String {
     format::time(Some(SystemTime::UNIX_EPOCH + Duration::from_secs(seconds)))
 }
 
+#[derive(Debug)]
 pub struct Props<'a> {
     pub view: &'a TrashView,
     pub visible_rows: usize,
@@ -53,7 +54,7 @@ pub struct Props<'a> {
     pub finder_key: Option<String>,
 }
 
-pub fn view<'a>(props: Props<'a>) -> Element<'a, Message> {
+pub fn view<'a>(props: Props<'a>) -> Element<'a, OpsMessage> {
     let Props {
         view,
         visible_rows,
@@ -85,7 +86,7 @@ pub fn view<'a>(props: Props<'a>) -> Element<'a, Message> {
     ];
 
     let offset = view.window.offset(view.items.len(), visible_rows);
-    let rows: Vec<Element<'a, Message>> = view
+    let rows: Vec<Element<'a, OpsMessage>> = view
         .items
         .iter()
         .enumerate()
@@ -117,7 +118,7 @@ pub fn view<'a>(props: Props<'a>) -> Element<'a, Message> {
         })
         .collect();
 
-    let body: Element<'a, Message> = match status_text(view, lang, palette) {
+    let body: Element<'a, OpsMessage> = match status_text(view, lang, palette) {
         Some((shown, color)) => container(text(shown).size(font_size::ROW).color(color))
             .padding(spacing::CELL_PADDING_X)
             .into(),
@@ -129,7 +130,7 @@ pub fn view<'a>(props: Props<'a>) -> Element<'a, Message> {
                 visible: visible_rows,
                 offset,
             },
-            |delta| Message::Trash(TrashMessage::Scrolled(delta)),
+            |delta| OpsMessage::Trash(TrashMessage::Scrolled(delta)),
             palette,
         ),
     };
@@ -197,7 +198,7 @@ fn entry_row<'a>(
     cells: [String; 3],
     marks: RowMarks,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, OpsMessage> {
     let RowMarks {
         highlighted,
         tagged,
@@ -245,6 +246,6 @@ fn entry_row<'a>(
             panel_active,
         )),
     )
-    .on_press(Message::Trash(TrashMessage::RowClicked(index)))
+    .on_press(OpsMessage::Trash(TrashMessage::RowClicked(index)))
     .into()
 }

@@ -8,15 +8,20 @@
 use iced::widget::{checkbox, column, Row};
 use iced::{alignment, Element, Size};
 
-use super::format;
-use super::frame::{self, DialogSize, Frame, KeyHints};
-use super::kit::{self, one_line, paragraph, Tone};
-use super::theme::{self, spacing};
-use crate::i18n::{Language, Msg};
-use crate::messages::{ConflictChoice, Message};
-use crate::palette::Palette;
+use ncrs_i18n::{Language, Msg};
+use ncrs_ui_kit::format;
+use ncrs_ui_kit::frame::{self, DialogSize, Frame, KeyHints};
+use ncrs_ui_kit::kit::{self, one_line, paragraph, Tone};
+use ncrs_ui_kit::palette::Palette;
+use ncrs_ui_kit::theme::{self, spacing};
+
+use crate::message::{ConflictChoice, OpsMessage};
 
 const SIZE: DialogSize = DialogSize::Medium;
+
+const fn choice_message(choice: ConflictChoice) -> OpsMessage {
+    OpsMessage::TransferConflict(choice)
+}
 
 /// The buttons from left to right, the focus numbers they have.
 pub const CANCEL_FOCUS: usize = 0;
@@ -41,8 +46,7 @@ pub fn view<'a>(
     all: bool,
     focus: usize,
     window: Size,
-    on_choice: impl Fn(ConflictChoice) -> Message + 'a,
-) -> Element<'a, Message> {
+) -> Element<'a, OpsMessage> {
     let subject = one_line(
         format::ellipsize_end(
             &lang.text(Msg::ConflictName).replace("{name}", name),
@@ -55,7 +59,7 @@ pub fn view<'a>(
     // and the tick has to survive the dialog being rebuilt every frame.
     let all_row = Row::with_children([
         checkbox(all)
-            .on_toggle(|_| Message::ToggleConflictAll)
+            .on_toggle(|_| OpsMessage::ToggleConflictAll)
             .style(theme::dialog_checkbox(palette))
             .into(),
         paragraph(lang.text(Msg::ConflictApplyAll), palette),
@@ -66,9 +70,19 @@ pub fn view<'a>(
     let choice_button = |label: Msg, choice: ConflictChoice, button_focus: usize| {
         let tone = Tone::filled_if(focus == button_focus);
         if focus == button_focus {
-            kit::enter_button(lang.text(label), Some(on_choice(choice)), tone, palette)
+            kit::enter_button(
+                lang.text(label),
+                Some(choice_message(choice)),
+                tone,
+                palette,
+            )
         } else {
-            kit::button(lang.text(label), Some(on_choice(choice)), tone, palette)
+            kit::button(
+                lang.text(label),
+                Some(choice_message(choice)),
+                tone,
+                palette,
+            )
         }
     };
 
@@ -91,7 +105,7 @@ pub fn view<'a>(
         ),
     ])
     // Esc answers "keep", the no that loses no data; the cross does the same.
-    .on_close(on_choice(ConflictChoice::ThisKeep))
+    .on_close(choice_message(ConflictChoice::ThisKeep))
     .hints(KeyHints {
         enter: true,
         tab: true,

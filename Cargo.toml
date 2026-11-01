@@ -70,6 +70,8 @@ ncrs-search = { path = "crates/ncrs-search", version = "0.0.0" }
 ncrs-files = { path = "crates/ncrs-files", version = "0.0.0" }
 # The filesystem layer: reading folders, copying, archives, the trash, SFTP.
 ncrs-fs = { path = "crates/ncrs-fs", version = "0.0.0" }
+# The file operations: the copy and move dialog, the conflict and delete dialogs and the trash view.
+ncrs-ops = { path = "crates/ncrs-ops", version = "0.0.0" }
 # Translated UI strings, generated from strings.json.
 ncrs-i18n = { path = "crates/ncrs-i18n", version = "0.0.0" }
 # Colors, sizes and widgets the screens are built from, generic over the message type.

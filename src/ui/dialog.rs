@@ -3,23 +3,19 @@
 //! Pure function, like every other component here: it takes the prompt state
 //! and the language and returns an `Element`. It never mutates anything.
 
-use std::ffi::OsString;
-use std::path::{Path, PathBuf};
+use iced::widget::{column, container, row};
+use iced::{alignment, Background, Element, Length, Size};
 
-use iced::widget::text::Wrapping;
-use iced::widget::{column, container, row, text};
-use iced::{alignment, Background, Element, Font, Length, Size};
-
-use super::format;
 use super::frame::{DialogSize, Frame, KeyHints};
 use super::hermes_kit;
 use super::kit::{self, Check, Tone};
-use super::theme::{self, font_size, spacing};
+use super::theme::{self, spacing};
 use crate::app::fill_template;
 use crate::dialog::{Prompt, PromptKind};
 use crate::i18n::{Language, Msg};
 use crate::messages::Message;
 use crate::palette::Palette;
+use ncrs_ui_kit::numbered_hint::numbered_hint;
 
 /// The text field carries an id, because `TextInput::id` exists and
 /// `iced_selector` can find it. The buttons do not — see the note where they
@@ -151,64 +147,6 @@ fn keep_folders_row<'a>(keep: bool, lang: Language, palette: &Palette) -> Elemen
     .align_y(alignment::Vertical::Center)
     .into()
 }
-
-/// The lines under a dialog that renames files with equal names: the sentence,
-/// then every renamed file with the folder it comes from, at most
-/// `HINT_LINES` of them. Nothing when no name is shared.
-pub fn numbered_hint<'a>(
-    sentence: &str,
-    members: &[(PathBuf, OsString)],
-    scope: Option<&Path>,
-    lang: Language,
-    palette: &Palette,
-) -> Vec<Element<'a, Message>> {
-    if members.is_empty() {
-        return Vec::new();
-    }
-    let mut lines: Vec<Element<'a, Message>> = vec![kit::dim(
-        fill_template(sentence, &[("{count}", &members.len().to_string())]),
-        palette,
-    )];
-    for (source, name) in members.iter().take(HINT_LINES) {
-        let folder = match scope {
-            Some(root) => format::folder_below(source, root),
-            None => source
-                .parent()
-                .map_or_else(String::new, |parent| parent.to_string_lossy().into_owned()),
-        };
-        lines.push(
-            row![
-                text(name.to_string_lossy().into_owned())
-                    .size(font_size::FILE)
-                    .font(Font::MONOSPACE)
-                    .wrapping(Wrapping::None),
-                text(fill_template(
-                    lang.text(Msg::HintNumberedFrom),
-                    &[("{folder}", &folder)],
-                ))
-                .size(font_size::SMALL)
-                .color(palette.dim_text)
-                .wrapping(Wrapping::None),
-            ]
-            .spacing(spacing::LINE_GAP)
-            .align_y(alignment::Vertical::Center)
-            .into(),
-        );
-    }
-    if members.len() > HINT_LINES {
-        lines.push(kit::dim(
-            fill_template(
-                lang.text(Msg::TransferListMore),
-                &[("{count}", &(members.len() - HINT_LINES).to_string())],
-            ),
-            palette,
-        ));
-    }
-    lines
-}
-
-/// Renamed files a dialog lists before it says how many more there are.
-const HINT_LINES: usize = 6;
 
 /// Maps a validation reason to its message, or `None` for a message the fs
 /// layer already wrote in full.
