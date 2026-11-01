@@ -207,13 +207,15 @@ fn file_name_pieces<'a>(editor: &TargetEditor, host: &TargetHost<'_>) -> Element
             .collect(),
         FileName::Own(_) => vec![editor.target.file_name_in_words(lang)],
     };
-    let last_one = labels.len() == 1 && matches!(editor.target.file_name, FileName::Pieces(_));
     let pieces = labels
         .iter()
         .enumerate()
         .map(|(position, label)| {
-            let remove = (!last_one).then(|| wrap(TargetEdit::RemoveNamePiece(position)));
-            kit::piece(label, remove, palette)
+            kit::piece(
+                label,
+                Some(wrap(TargetEdit::RemoveNamePiece(position))),
+                palette,
+            )
         })
         .collect();
     let add = (!matches!(editor.target.file_name, FileName::Own(_))).then(|| {

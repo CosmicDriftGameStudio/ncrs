@@ -8,13 +8,16 @@ use iced::mouse::ScrollDelta;
 use iced::widget::text::LineHeight;
 use iced::widget::text::Wrapping;
 use iced::widget::{
-    button, column, container, mouse_area, pick_list, row, scrollable, stack, text, text_input,
-    Column, Row, Space,
+    button, column, container, mouse_area, opaque, pick_list, row, scrollable, stack, text,
+    text_input, Column, Row, Space,
 };
-use iced::{alignment, Background, Border, Color, Element, Font, Length, Padding, Pixels, Theme};
+use iced::{
+    alignment, Background, Border, Color, Element, Font, Length, Padding, Pixels, Size, Theme,
+};
 
 use super::format;
 use super::kit::{self, Check};
+use super::menu_button::{Entry, MenuButton};
 use super::theme::{self, DISABLED_OPACITY};
 use crate::i18n::{Language, Msg};
 use crate::messages::Message;
@@ -58,9 +61,7 @@ const MENU_PAD_X: f32 = 8.0;
 const KEY_HINT_ALPHA: f32 = 0.7;
 const ELLIPSIS: &str = "…";
 const REMOVE: &str = "×";
-const FILTER_ARROW_ROOM: f32 = 20.0;
 const FILTER_BORDER: f32 = 1.0;
-const FILTER_CLEAR_ROOM: f32 = 16.0;
 const SEPARATOR_HEIGHT: f32 = 1.0;
 
 fn semibold() -> Font {
@@ -101,7 +102,7 @@ fn fill_style(color: Color) -> impl Fn(&Theme) -> container::Style {
     }
 }
 
-fn bar<'a, M: 'a>(color: Color) -> Element<'a, M> {
+pub fn bar<'a, M: 'a>(color: Color) -> Element<'a, M> {
     container(Space::new())
         .width(SELECTION_BAR)
         .height(Length::Fill)
@@ -519,25 +520,6 @@ pub enum MenuLook {
     Button,
 }
 
-#[derive(Debug, Clone)]
-struct Entry {
-    label: String,
-    position: usize,
-    message: Message,
-}
-
-impl PartialEq for Entry {
-    fn eq(&self, other: &Self) -> bool {
-        self.position == other.position
-    }
-}
-
-impl std::fmt::Display for Entry {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.label)
-    }
-}
-
 /// The text of a menu row: the label, and the key behind it.
 fn menu_row_text(item: &MenuItem) -> String {
     match &item.key_hint {
@@ -600,29 +582,32 @@ pub fn menu_button<'a>(
         .map(|choice| format::estimated_width(&choice.label, TEXT_BODY))
         .chain([format::estimated_width(caption, TEXT_BODY)])
         .fold(0.0, f32::max);
-    let (width, pad_x, pad_y) = match look {
+    let caption_width = format::estimated_width(caption, TEXT_BODY);
+    let (look_width, pad_x, pad_y) = match look {
         MenuLook::Icon => (CONTROL_HEIGHT, ICON_PAD_X, CONTROL_PAD_Y),
         MenuLook::PieceAdd => (widest + 2.0 * MENU_PAD_X, MENU_PAD_X, PIECE_PAD_Y + 2.0),
-        MenuLook::Button => (widest + 2.0 * MENU_PAD_X, MENU_PAD_X, CONTROL_PAD_Y),
+        MenuLook::Button => (caption_width + 2.0 * MENU_PAD_X, MENU_PAD_X, CONTROL_PAD_Y),
     };
     let shown = if look == MenuLook::Icon {
         ELLIPSIS
     } else {
         caption
     };
-    pick_list(choices, None::<Entry>, |choice| choice.message)
-        .placeholder(shown.to_owned())
-        .handle(pick_list::Handle::None)
-        .width(match look {
-            MenuLook::Icon => Length::Fixed(width),
-            _ => Length::Fixed(width.max(CONTROL_HEIGHT)),
-        })
-        .padding([pad_y, pad_x])
-        .text_size(TEXT_BODY)
-        .text_line_height(LineHeight::Absolute(Pixels(BODY_LINE)))
-        .style(pick_style(palette, look))
-        .menu_style(theme::dropdown_menu(palette))
-        .into()
+    let height = BODY_LINE + 2.0 * pad_y;
+    let width = match look {
+        MenuLook::Icon => look_width,
+        _ => look_width.max(CONTROL_HEIGHT),
+    };
+    MenuButton::new(
+        choices,
+        shown.to_owned(),
+        Size::new(width, height),
+        Padding::from([pad_y, pad_x]),
+        TEXT_BODY,
+        pick_style(palette, look),
+        theme::dropdown_menu(palette),
+    )
+    .into()
 }
 
 // ---------------------------------------------------------------------
@@ -961,52 +946,31 @@ fn filter_caption(label: &str, chosen: Option<&str>) -> String {
     }
 }
 
-/// The widest of the caption and the entries of the menu.
-fn filter_content_width(label: &str, chosen: Option<&str>, items: &[MenuItem]) -> f32 {
-    items
-        .iter()
-        .map(|item| format::estimated_width(&menu_row_text(item), TEXT_BODY))
-        .chain([format::estimated_width(
-            &filter_caption(label, chosen),
-            TEXT_BODY,
-        )])
-        .fold(0.0, f32::max)
-}
-
-/// How wide `filter` is, for fitting filters into a line.
-pub fn filter_width(label: &str, chosen: Option<&str>, items: &[MenuItem]) -> f32 {
-    let room = if chosen.is_some() {
-        FILTER_CLEAR_ROOM + 2.0 * FILTER_BORDER
-    } else {
-        FILTER_ARROW_ROOM
-    };
-    filter_content_width(label, chosen, items) + 2.0 * MENU_PAD_X + room
-}
-
 /// A filter of 28 px: its name with an arrow while nothing is chosen, dimmed
 /// and without a menu while there is nothing to choose from. With a value
 /// chosen it is framed in the success colour on a quiet fill: the name
 /// dimmed, the value, and inside the frame a cross that clears it. `items`
-/// are the values to choose from.
+/// are the values to choose from; `width` is the same for every filter of a
+/// row.
 pub fn filter<'a>(
     label: &str,
     chosen: Option<&str>,
     items: &[MenuItem],
+    width: Length,
     on_clear: Message,
     palette: &Palette,
 ) -> Element<'a, Message> {
     let choices = entries(items);
     let caption = filter_caption(label, chosen);
-    let widest = filter_content_width(label, chosen, items);
     let colors = *palette;
     let Some(value) = chosen else {
         if choices.is_empty() {
-            return filter_without_values(label, widest, palette);
+            return filter_without_values(&caption, width, palette);
         }
         let base = theme::dropdown_field(palette);
         return pick_list(choices, None::<Entry>, |choice| choice.message)
             .placeholder(caption)
-            .width(Length::Fixed(widest + 2.0 * MENU_PAD_X + FILTER_ARROW_ROOM))
+            .width(width)
             .padding([CONTROL_PAD_Y, MENU_PAD_X])
             .text_size(TEXT_BODY)
             .text_line_height(LineHeight::Absolute(Pixels(BODY_LINE)))
@@ -1019,7 +983,6 @@ pub fn filter<'a>(
             .into();
     };
     let inner_pad_y = CONTROL_PAD_Y - FILTER_BORDER;
-    let width = widest + 2.0 * MENU_PAD_X;
     let shown = container(
         Row::new()
             .push(body(format!("{label}:"), colors.dim_text))
@@ -1027,10 +990,10 @@ pub fn filter<'a>(
             .spacing(GAP_XS),
     )
     .padding([inner_pad_y, MENU_PAD_X])
-    .width(width);
+    .width(Length::Fill);
     let opener = pick_list(choices, None::<Entry>, |choice| choice.message)
         .handle(pick_list::Handle::None)
-        .width(Length::Fixed(width))
+        .width(Length::Fill)
         .padding([inner_pad_y, MENU_PAD_X])
         .text_size(TEXT_BODY)
         .text_line_height(LineHeight::Absolute(Pixels(BODY_LINE)))
@@ -1044,17 +1007,24 @@ pub fn filter<'a>(
         .menu_style(theme::dropdown_menu(palette));
     chosen_frame(
         Row::new()
-            .push(stack![shown, opener])
+            .push(stack![shown, opener].width(Length::Fill))
             .push(remove_button(on_clear, colors.dim_text, palette))
+            .width(Length::Fill)
             .into(),
+        width,
         palette,
     )
 }
 
 /// A chosen value in its frame: the success colour on a quiet fill.
-fn chosen_frame<'a>(content: Element<'a, Message>, palette: &Palette) -> Element<'a, Message> {
+fn chosen_frame<'a>(
+    content: Element<'a, Message>,
+    width: Length,
+    palette: &Palette,
+) -> Element<'a, Message> {
     let colors = *palette;
     container(content)
+        .width(width)
         .height(CONTROL_HEIGHT)
         .align_y(alignment::Vertical::Center)
         .style(move |_| container::Style {
@@ -1081,31 +1051,38 @@ pub fn criterion<'a>(label: &str, value: &str, palette: &Palette) -> Element<'a,
         )
         .padding([CONTROL_PAD_Y - FILTER_BORDER, MENU_PAD_X])
         .into(),
+        Length::Shrink,
         palette,
     )
 }
 
-/// The filter of a facet the documents have no value for: the name and the
-/// arrow of an open one, dimmed, and nothing to open.
-fn filter_without_values<'a>(label: &str, widest: f32, palette: &Palette) -> Element<'a, Message> {
+/// The filter of a facet the documents have no value for: built like an open
+/// one, dimmed, and nothing to open.
+fn filter_without_values<'a>(
+    caption: &str,
+    width: Length,
+    palette: &Palette,
+) -> Element<'a, Message> {
     let colors = *palette;
-    container(
-        Row::new()
-            .push(body(label.to_owned(), colors.dim_text))
-            .push(Space::new().width(Length::Fill))
-            .push(body("▾".to_owned(), colors.dim_text)),
-    )
-    .padding([CONTROL_PAD_Y - FILTER_BORDER, MENU_PAD_X])
-    .width(widest + 2.0 * MENU_PAD_X + FILTER_ARROW_ROOM)
-    .height(CONTROL_HEIGHT)
-    .style(move |_| container::Style {
-        border: Border {
-            color: colors.border.scale_alpha(DISABLED_OPACITY),
-            width: FILTER_BORDER,
-            radius: theme::radius::CONTROL.into(),
-        },
-        ..container::Style::default()
-    })
+    let base = theme::dropdown_field(palette);
+    let dimmed = pick_list(Vec::<Entry>::new(), None::<Entry>, |choice| choice.message)
+        .placeholder(caption.to_owned())
+        .width(width)
+        .padding([CONTROL_PAD_Y, MENU_PAD_X])
+        .text_size(TEXT_BODY)
+        .text_line_height(LineHeight::Absolute(Pixels(BODY_LINE)))
+        .style(move |theme, _| {
+            let mut style = base(theme, pick_list::Status::Active);
+            style.background = Background::Color(colors.background);
+            style.placeholder_color = colors.dim_text;
+            style.handle_color = colors.dim_text;
+            style.border.color = colors.border.scale_alpha(DISABLED_OPACITY);
+            style
+        });
+    stack![
+        dimmed,
+        opaque(Space::new().width(width).height(CONTROL_HEIGHT))
+    ]
     .into()
 }
 
