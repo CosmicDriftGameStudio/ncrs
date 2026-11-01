@@ -23640,6 +23640,33 @@ mod search_tests {
         assert_eq!(app.active_panel, other);
         assert!(app.search_is_open_for_test());
     }
+
+    #[test]
+    fn trash_in_the_menu_deletes_the_result_under_the_pointer_not_the_panel_row() {
+        let mut app = app_with_two_results();
+        drop(app.update(Message::Search(SearchMessage::ContextAt(1))));
+        let trash = app
+            .context_menu_for_test()
+            .unwrap()
+            .entries()
+            .iter()
+            .position(|entry| {
+                matches!(
+                    entry,
+                    crate::context_menu::MenuEntry::Item {
+                        action: ContextAction::Trash,
+                        ..
+                    }
+                )
+            })
+            .unwrap();
+
+        drop(app.update(Message::ContextMenuClick(trash)));
+
+        let sources = &app.delete_dialog.as_ref().unwrap().sources;
+        let names: Vec<_> = sources.iter().filter_map(|path| path.file_name()).collect();
+        assert_eq!(names, [std::ffi::OsStr::new("b.txt")]);
+    }
 }
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
