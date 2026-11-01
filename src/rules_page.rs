@@ -147,9 +147,15 @@ impl RulesPage {
         })
     }
 
-    /// The list takes no change while a change runs.
+    /// The form holds changes that are neither saved nor cancelled.
+    pub fn has_unsaved_changes(&self) -> bool {
+        self.form.as_ref().is_some_and(RuleForm::is_changed)
+    }
+
+    /// The list takes no change while a change runs or while the form holds
+    /// unsaved changes: another rule, a new rule or a reload would drop them.
     fn list_is_locked(&self) -> bool {
-        self.busy
+        self.busy || self.has_unsaved_changes()
     }
 
     /// Shows the form of the rule under the cursor and drops what was typed.
@@ -188,7 +194,7 @@ impl RulesPage {
 
     /// Enter in the list: the keys go to the fields of the selected rule.
     pub fn begin_edit(&mut self) {
-        if self.list_is_locked() {
+        if self.busy {
             return;
         }
         if self.form.is_none() {
@@ -214,7 +220,8 @@ impl RulesPage {
 
     /// The write is done: the form closes. The caller loads the list again,
     /// or goes back to the page the form came from.
-    pub fn saved(&mut self) -> Option<HermesPage> {
+    pub fn saved(&mut self, id: RuleId) -> Option<HermesPage> {
+        self.select_on_load = Some(id);
         self.form = None;
         self.editing = false;
         self.try_list_open = false;
@@ -554,8 +561,8 @@ pub mod tests {
         page.loaded(RulesLoad::default());
 
         assert!(page.form().is_some());
-        assert_eq!(page.saved(), Some(HermesPage::Review));
-        assert_eq!(page.saved(), None);
+        assert_eq!(page.saved(rule_id(1)), Some(HermesPage::Review));
+        assert_eq!(page.saved(rule_id(1)), None);
     }
 
     #[test]
@@ -723,24 +730,66 @@ pub mod tests {
     }
 
     #[test]
-    fn selecting_a_rule_drops_a_new_form_and_shows_the_form_of_the_rule() {
+    fn cancelling_a_new_form_frees_the_selection() {
         let mut page = page();
         page.begin_new();
         assert!(page.has_unlisted_form());
+        assert!(page.has_unsaved_changes());
 
-        page.select(0);
+        assert!(page.cancel_form());
+        page.select(1);
 
         assert!(!page.has_unlisted_form());
-        assert_eq!(page.cursor(), 0);
+        assert_eq!(page.cursor(), 1);
         assert!(!page.is_editing());
         assert!(matches!(
             page.form().unwrap().target,
             crate::rule_form::RuleFormTarget::Edit(_)
         ));
+    }
+
+    #[test]
+    fn unsaved_changes_lock_every_change_of_the_selection_until_they_are_cancelled() {
+        let mut page = page();
+        page.form_mut()
+            .unwrap()
+            .update(crate::messages::RuleFormMessage::Name(
+                "Contract".to_owned(),
+            ));
+        assert!(page.has_unsaved_changes());
+
+        page.move_cursor(1);
+        page.select(2);
         page.begin_new();
+        page.ask_delete();
+        assert_eq!(page.begin_toggle(1), None);
+        assert_eq!(page.begin_toggle(0), None);
+        assert_eq!(page.begin_move(1), None);
+
+        assert_eq!(page.cursor(), 0);
+        assert!(!page.has_unlisted_form());
+        assert!(!page.is_confirming_delete());
+        assert!(!page.is_busy());
+        assert_eq!(page.form().unwrap().name, "Contract");
+
+        assert!(page.cancel_form());
+        assert!(!page.has_unsaved_changes());
         page.move_cursor(1);
         assert_eq!(page.cursor(), 1);
-        assert!(!page.has_unlisted_form());
+    }
+
+    #[test]
+    fn a_new_rule_that_was_saved_is_the_selected_one_after_the_load() {
+        let mut page = page();
+        page.begin_new();
+
+        page.saved(rule_id(4));
+        page.loaded(RulesLoad {
+            rules: vec![listed(1, 0), listed(2, 2), listed(3, 3), listed(4, 4)],
+        });
+
+        assert_eq!(page.selected().map(|row| row.rule.id), Some(rule_id(4)));
+        assert!(!page.has_unsaved_changes());
     }
 
     #[test]
@@ -798,8 +847,8 @@ pub mod tests {
                 0,
                 "telekom".to_owned(),
             )));
-        access.save(page.begin_save().unwrap()).unwrap();
-        page.saved();
+        let created = access.save(page.begin_save().unwrap()).unwrap();
+        page.saved(created);
         page.loaded(access.load().unwrap());
 
         assert!(!page.has_unlisted_form());
@@ -814,8 +863,8 @@ pub mod tests {
         page.form_mut()
             .unwrap()
             .update(RuleFormMessage::Target(TargetEdit::Remove(1)));
-        access.save(page.begin_save().unwrap()).unwrap();
-        page.saved();
+        let changed = access.save(page.begin_save().unwrap()).unwrap();
+        page.saved(changed);
         page.loaded(access.load().unwrap());
 
         assert_eq!(page.rows().len(), 1);

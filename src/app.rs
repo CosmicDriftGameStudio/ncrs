@@ -10466,7 +10466,7 @@ impl App {
                     return Task::none();
                 }
                 match result {
-                    Ok(()) => match view.saved() {
+                    Ok(id) => match view.saved(id) {
                         Some(page) => self.go_to_hermes_page(page),
                         None => self.run_rules_load(),
                     },
@@ -13907,16 +13907,29 @@ impl App {
     fn page_tab(&self) -> Option<titlebar::PageTab> {
         if self.settings.is_some() {
             Some(titlebar::PageTab::Settings)
-        } else if self.hermes_overview.is_some() {
-            Some(titlebar::PageTab::Filing {
-                close: Box::new(Message::HermesOverview(HermesOverviewMessage::Close)),
-            })
-        } else if self.filing_status.page_open() {
-            Some(titlebar::PageTab::Filing {
-                close: Box::new(Message::FilingStatus(FilingStatusMessage::Close)),
-            })
         } else {
-            None
+            self.open_hermes_page()
+                .map(|page| titlebar::PageTab::Filing {
+                    close: Box::new(Self::close_message_of(page)),
+                })
+        }
+    }
+
+    /// What Escape sends on the top level of the page of filing.
+    fn close_message_of(page: HermesPage) -> Message {
+        match page {
+            HermesPage::Overview => Message::HermesOverview(HermesOverviewMessage::Close),
+            HermesPage::Inspection => Message::FilingStatus(FilingStatusMessage::Close),
+            HermesPage::Review => Message::ReviewList(ReviewListMessage::Close),
+            HermesPage::Search => Message::DocumentSearch(DocumentSearchMessage::Close),
+            HermesPage::SavedQueries => Message::SavedQueries(SavedQueriesMessage::Close),
+            HermesPage::Rules => Message::Rules(RulesMessage::Close),
+            HermesPage::RuleSuggestions => {
+                Message::RuleSuggestions(RuleSuggestionsMessage::Close)
+            }
+            HermesPage::Reorganisation => {
+                Message::ReorganisationPlan(ReorganisationPlanMessage::Close)
+            }
         }
     }
 

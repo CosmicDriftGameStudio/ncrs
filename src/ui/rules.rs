@@ -12,7 +12,9 @@ use super::condition_editor::{
 use super::filing_pieces::{target_view, ExampleLine, TargetHost};
 use super::format;
 use super::hermes::{self, Badges};
-use super::hermes_kit::{self as page_kit, ChipKind, MenuItem, MenuLook, RowTwo, GAP_S, GAP_XS};
+use super::hermes_kit::{
+    self as page_kit, ChipKind, MenuItem, MenuLook, RowTwo, GAP_M, GAP_S, GAP_XS,
+};
 use super::kit::{self, Check};
 use super::review_list::reason_text;
 use crate::app::fill_template;
@@ -112,7 +114,7 @@ fn header<'a>(state: &RulesPage, lang: Language, palette: &Palette) -> Element<'
     }
     let mut actions = vec![page_kit::secondary(
         lang.text(Msg::RulesNew),
-        (!state.is_busy()).then(|| send(RulesMessage::New)),
+        (!state.is_busy() && !state.has_unsaved_changes()).then(|| send(RulesMessage::New)),
         palette,
     )];
     if !items.is_empty() {
@@ -474,8 +476,19 @@ fn action_bar<'a>(state: &RulesPage, lang: Language, palette: &Palette) -> Eleme
             Msg::RulesFormSave
         }
     });
+    let left: Element<'a, Message> = if state.has_unsaved_changes() {
+        row![
+            page_kit::hint(lang.text(Msg::RulesUnsavedChanges), palette),
+            try_summary(form, lang, palette),
+        ]
+        .spacing(GAP_M)
+        .align_y(alignment::Vertical::Center)
+        .into()
+    } else {
+        try_summary(form, lang, palette)
+    };
     page_kit::action_bar_with(
-        try_summary(form, lang, palette),
+        left,
         vec![
             page_kit::secondary(
                 lang.text(Msg::RulesFormCancel),
