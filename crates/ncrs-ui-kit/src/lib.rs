@@ -2,6 +2,7 @@
 //! rows, buttons, inputs, menus and dialog frames. Generic over the message
 //! type, so a feature crate maps them into its own messages.
 
+pub mod column_header;
 pub mod file_row;
 pub mod fkeys;
 pub mod focus;

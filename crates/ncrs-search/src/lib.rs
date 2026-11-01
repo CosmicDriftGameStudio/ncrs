@@ -16,6 +16,6 @@ pub mod view_state;
 pub use action::Action;
 pub use ctx::{Ctx, SearchIndex, TogglePress, ToggleShortcuts, ViewCtx};
 pub use message::SearchMessage;
-pub use state::{release_focus, search_events, Search};
+pub use state::{search_events, Search};
 pub use update::{activates_panel, needs_keys, update};
 pub use view::{field_id, title, view, QUERY_ID};

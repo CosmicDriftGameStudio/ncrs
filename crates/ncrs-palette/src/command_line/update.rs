@@ -4,12 +4,12 @@
 use iced::widget::operation;
 use iced::Task;
 use ncrs_i18n::{fill_template, Msg};
+use ncrs_ui_kit::focus::release_focus;
 
 use super::action::CommandLineAction;
 use super::ctx::CommandLineCtx;
 use super::view::COMMAND_LINE_ID;
 use super::{parse, run, CommandLine, ShellOutcome, Submission};
-use crate::focus::release_focus;
 use crate::message::CommandLineMessage;
 
 type Outcome = (Task<CommandLineMessage>, Option<CommandLineAction>);

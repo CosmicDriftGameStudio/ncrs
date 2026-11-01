@@ -148,6 +148,13 @@ impl Keymap {
         &self.bindings
     }
 
+    /// The first key of `action`, spelled for this platform: `F5`, `⇧F8`,
+    /// `⌥⌘C` on a Mac, `Ctrl+Alt+C` elsewhere. `None` for an action no key
+    /// triggers.
+    pub fn shortcut_label_of(&self, action: KeyAction) -> Option<String> {
+        self.bindings_of(action).next().and_then(binding_label)
+    }
+
     /// The action a key press triggers, among the actions that work in `scope`.
     pub fn action_for(
         &self,
@@ -219,7 +226,7 @@ impl Keymap {
     }
 }
 
-pub use ncrs_ui_kit::layout::FUNCTION_KEY_COUNT;
+pub use ncrs_core::FUNCTION_KEY_COUNT;
 
 /// The slot of F7, which makes a folder.
 pub const NEW_FOLDER_SLOT: usize = 6;

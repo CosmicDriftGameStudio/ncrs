@@ -19,7 +19,6 @@ mod clipboard_paste;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod clipboard_system_tests;
 mod command_line;
-mod command_palette;
 pub use ncrs_config::commands;
 mod condition_editor;
 pub use ncrs_config::config;

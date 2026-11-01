@@ -6,10 +6,10 @@ use iced::{Element, Length};
 use ncrs_ui_kit::file_row::{file_row, tag_star, RowClick, RowExtras};
 use ncrs_ui_kit::theme;
 
-use crate::column_header::column_header;
 use crate::ctx::ViewCtx;
 use crate::message::PanelMessage;
 use crate::panel::PanelState;
+use ncrs_ui_kit::column_header::column_header;
 
 /// Renders one panel.
 ///

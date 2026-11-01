@@ -5,21 +5,16 @@ use iced::widget::text::Wrapping;
 use iced::widget::{container, row, text};
 use iced::{alignment, Element, Length, Size};
 
-use super::frame;
-use super::kit;
-use super::layout::ROW_HEIGHT;
-use super::picker;
-use super::theme::{font_size, spacing};
-use crate::command_palette::{CommandPalette, Entry, Header, Hit, Row, MIN_VISIBLE_ROWS};
-use crate::i18n::{FuturamaName, Language, Msg};
-use crate::messages::{CommandPaletteMessage, Message};
-use crate::palette::Palette;
+use ncrs_i18n::{FuturamaName, Language, Msg};
+use ncrs_ui_kit::layout::ROW_HEIGHT;
+use ncrs_ui_kit::palette::Palette;
+use ncrs_ui_kit::theme::{font_size, spacing};
+use ncrs_ui_kit::{frame, kit, picker};
+
+use super::{CommandPalette, Entry, Header, Hit, Row, MIN_VISIBLE_ROWS};
+use crate::message::CommandPaletteMessage;
 
 pub const COMMAND_PALETTE_ID: &str = "command-palette-query";
-
-fn to_palette(message: CommandPaletteMessage) -> Message {
-    Message::CommandPalette(message)
-}
 
 /// What the frame, the field and the status line take of the frame's height,
 /// measured; the rest is the list.
@@ -40,13 +35,13 @@ pub fn view<'a>(
     window: Size,
     lang: Language,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, CommandPaletteMessage> {
     let field = kit::text_field(
         lang.text(Msg::CommandPalettePlaceholder),
         command_palette.query(),
         COMMAND_PALETTE_ID,
-        Some(|text| to_palette(CommandPaletteMessage::QueryChanged(text))),
-        to_palette(CommandPaletteMessage::Run),
+        Some(CommandPaletteMessage::QueryChanged),
+        CommandPaletteMessage::Run,
         palette,
     );
 
@@ -64,7 +59,7 @@ pub fn view<'a>(
                 let selected = index == command_palette.cursor();
                 Some(kit::list_row(
                     command_row(entry, hit, selected, window, palette),
-                    to_palette(CommandPaletteMessage::Select(index)),
+                    CommandPaletteMessage::Select(index),
                     selected,
                     true,
                     palette,
@@ -87,7 +82,7 @@ pub fn view<'a>(
             field,
             status: status.to_owned(),
             rows: rows.collect(),
-            on_close: to_palette(CommandPaletteMessage::Close),
+            on_close: CommandPaletteMessage::Close,
         },
         window,
         lang,
@@ -109,7 +104,7 @@ fn command_row<'a>(
     selected: bool,
     window: Size,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, CommandPaletteMessage> {
     let shortcut_color = if selected {
         palette.cursor_text
     } else {
@@ -146,7 +141,7 @@ fn command_row<'a>(
 }
 
 /// A group heading, which is not a place for the cursor.
-fn header_row<'a>(header: &Header, palette: &Palette) -> Element<'a, Message> {
+fn header_row<'a>(header: &Header, palette: &Palette) -> Element<'a, CommandPaletteMessage> {
     let mut line = row![text(header.label.to_uppercase())
         .size(font_size::COLUMN_HEADER)
         .color(palette.dim_text)

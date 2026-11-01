@@ -1,14 +1,15 @@
 //! The column titles above the rows of a file list.
 use iced::widget::{column, container, mouse_area, row, text};
 use iced::{alignment, Element, Length};
-use ncrs_fs::{SortColumn, SortKey};
+use ncrs_core::{SortColumn, SortKey};
 use ncrs_i18n::{Language, Msg};
-use ncrs_ui_kit::layout::{
+
+use crate::layout::{
     COLUMN_HEADER_HEIGHT, DATE_COLUMN_WIDTH, HERMES_CELL_GAP, HERMES_COLUMN_WIDTH,
     SIZE_COLUMN_WIDTH, TAG_COLUMN_WIDTH,
 };
-use ncrs_ui_kit::palette::Palette;
-use ncrs_ui_kit::theme::{self, font_size, spacing};
+use crate::palette::Palette;
+use crate::theme::{self, font_size, spacing};
 
 /// The column titles, each a click target that sorts by its column; the sorted
 /// one carries an arrow for the direction.

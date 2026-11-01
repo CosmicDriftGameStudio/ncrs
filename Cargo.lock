@@ -3427,6 +3427,7 @@ dependencies = [
  "iced",
  "jsonc-parser",
  "ncrs-ai",
+ "ncrs-core",
  "ncrs-fs",
  "ncrs-i18n",
  "ncrs-index",
@@ -3556,6 +3557,7 @@ name = "ncrs-palette"
 version = "0.0.0"
 dependencies = [
  "iced",
+ "ncrs-config",
  "ncrs-core",
  "ncrs-fs",
  "ncrs-i18n",

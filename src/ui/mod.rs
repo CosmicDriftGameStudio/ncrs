@@ -4,7 +4,6 @@
 
 pub mod about;
 pub use ncrs_palette::command_line::view as command_line;
-pub mod command_palette;
 pub mod condition_editor;
 pub mod context_menu;
 pub mod dialog;

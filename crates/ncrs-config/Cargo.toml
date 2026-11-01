@@ -12,6 +12,7 @@ publish = false
 # Keys and colors only: no renderer or window system, the app picks them.
 iced = { version = "0.14", default-features = false }
 ncrs-ai = { path = "../ncrs-ai", version = "0.0.0" }
+ncrs-core = { path = "../ncrs-core", version = "0.0.0" }
 ncrs-fs = { path = "../ncrs-fs", version = "0.0.0" }
 ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
 ncrs-index = { path = "../ncrs-index", version = "0.0.0" }

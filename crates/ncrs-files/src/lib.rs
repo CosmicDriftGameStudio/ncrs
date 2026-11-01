@@ -1,9 +1,8 @@
 //! The file panels: their state, the messages they send, `update` and `view`,
-//! the column header, the folders they were in, the drag between the panels
+//! the folders they were in, the drag between the panels
 //! and the list of search hits a panel can show.
 
 pub mod action;
-pub mod column_header;
 pub mod ctx;
 pub mod hit_list;
 pub mod message;

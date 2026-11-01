@@ -2384,13 +2384,13 @@ mod command_palette {
             .rows()
             .iter()
             .position(|row| match row {
-                crate::command_palette::Row::Hit(hit) => {
+                ncrs_palette::command_list::Row::Hit(hit) => {
                     palette
                         .entry(hit)
-                        .and_then(crate::command_palette::Entry::command)
+                        .and_then(ncrs_palette::command_list::Entry::command)
                         == Some(crate::keymap::KeyAction::SwitchLanguage)
                 }
-                crate::command_palette::Row::Header(_) => false,
+                ncrs_palette::command_list::Row::Header(_) => false,
             })
             .expect("Switch language is listed");
         let mut sim = simulator(&app);

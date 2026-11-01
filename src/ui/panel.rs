@@ -8,7 +8,6 @@ use crate::hermes_column::ColumnView;
 use crate::i18n::Language;
 use crate::palette::Palette;
 
-pub use ncrs_files::column_header::plain_column_header;
 pub use ncrs_files::hit_list::HitList;
 pub use ncrs_files::panel::PanelState;
 

@@ -11,6 +11,7 @@ use iced::{alignment, Element, Font, Length};
 use ncrs_core::{PanelSide, Selection};
 use ncrs_i18n::{fill_template, FuturamaName, Language, Msg};
 use ncrs_index::QueryHit;
+use ncrs_ui_kit::column_header::column_header;
 use ncrs_ui_kit::file_row::{hit_row, tag_star, HitRow, RowClick};
 use ncrs_ui_kit::format::{self, amount_text};
 use ncrs_ui_kit::hermes_kit::{self, ChipKind, MenuItem};
@@ -52,7 +53,6 @@ pub fn view<'a>(
         is_active,
         shortcuts,
         toggle_for_press,
-        column_header,
     } = ctx;
     let rows = search
         .results
@@ -76,7 +76,7 @@ pub fn view<'a>(
 
     let framed = column![
         header(search, lang, palette, &toggle_for_press, &shortcuts),
-        column_header,
+        column_header(lang, palette, None, false, |_| None),
         container(body).height(Length::Fill).width(Length::Fill),
     ];
     mouse_area(

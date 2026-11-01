@@ -24,6 +24,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, TryLockError};
 use std::thread;
 
+use ncrs_core::INDEX_NOT_OPEN;
 use ncrs_index::{
     HermesCounts, Index, IndexError, IndexStatistics, KeyStore, KindCatalog, KindLanguage,
     RecoveryKey,
@@ -55,8 +56,6 @@ pub const NO_DATA_DIRECTORY: &str = "no data directory";
 
 type SharedStore = Arc<dyn KeyStore + Send + Sync>;
 type IndexSlot = Arc<Mutex<Option<Index>>>;
-
-const INDEX_NOT_OPEN: &str = "index not open";
 
 // ---------------------------------------------------------------------------
 // Locations

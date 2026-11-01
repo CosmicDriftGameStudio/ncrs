@@ -1,11 +1,12 @@
 use iced::widget::operation;
 use iced::Task;
+use ncrs_ui_kit::focus::release_focus;
 
 use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::filters::SearchFilters;
 use crate::message::SearchMessage;
-use crate::state::{release_focus, Search};
+use crate::state::Search;
 use crate::view::QUERY_ID;
 use crate::view_state::SearchField;
 

@@ -23,7 +23,6 @@ use crate::ai_model::{
 };
 use crate::clipboard_paste::{self, FileListWriter, PastedContent};
 use crate::command_line::{self, CommandLine, CommandLineAction, CommandLineCtx};
-use crate::command_palette::{CommandPalette, Target, RECENT_LIMIT};
 use crate::config::ServerEntry;
 use crate::config::{
     self, Config, ConfigError, ContrastWarning, Filing, FilingWriteError, KindWarning,
@@ -115,7 +114,6 @@ use crate::trash_view::TrashView;
 use crate::ui::about as about_ui;
 use crate::ui::ai_model as ai_model_ui;
 use crate::ui::command_line as command_line_ui;
-use crate::ui::command_palette as command_palette_ui;
 use crate::ui::context_menu as context_menu_view;
 use crate::ui::delete as delete_dialog_view;
 use crate::ui::dialog::FIELD_ID;
@@ -154,6 +152,10 @@ use ncrs_index::{
 };
 use ncrs_intake::LocationMode;
 use ncrs_ops::{TransferAction, TrashAction};
+use ncrs_palette::command_list::{
+    self, view as command_palette_ui, CommandPalette, CommandPaletteAction, CommandPaletteCtx,
+    HermesCommands, RECENT_LIMIT,
+};
 use ncrs_pipeline::{Load, RunnerState};
 use ncrs_search::search_events;
 #[cfg(test)]
@@ -161,6 +163,7 @@ use ncrs_settings::theme_fetch::install::download_theme;
 #[cfg(test)]
 use ncrs_settings::theme_file::{copy_picked_theme_file, theme_file_entry, IncludeProblem};
 use ncrs_settings::Settings;
+use ncrs_ui_kit::focus::release_focus;
 use tokio::sync::mpsc;
 
 /// How often the bar of a model download reads the byte counter.
@@ -571,12 +574,6 @@ fn update_title_bar(message: TitleBarMessage) -> Task<Message> {
             window.and_then(move |id| iced::window::drag_resize(id, edge.direction()))
         }
     }
-}
-
-/// Takes the keyboard focus from the path field, so the keys go to the panels
-/// again once the editing is over.
-fn release_focus() -> Task<Message> {
-    iced::advanced::widget::operate(iced::advanced::widget::operation::focusable::unfocus())
 }
 
 /// The folders of one directory still to be measured, one walk at a time.
@@ -4741,7 +4738,6 @@ impl App {
                         toggle_for_press: Rc::new(move |key, physical_key, modifiers| {
                             search_toggle_for_press(keymap, key, physical_key, modifiers)
                         }),
-                        column_header: panel::plain_column_header(self.lang, &self.palette),
                     },
                 )
                 .map(Message::Search)
@@ -5075,7 +5071,8 @@ impl App {
                 self.window_size,
                 self.lang,
                 &self.palette,
-            );
+            )
+            .map(Message::CommandPalette);
             return Stack::with_children([root, dialog::scrim(box_element)]).into();
         }
 
@@ -12498,30 +12495,25 @@ impl App {
     }
 
     /// Cmd/Ctrl+Shift+P: lists the actions that work where the keys are now.
-    /// Pressed while the box is up, it only gives the field the focus again.
     fn open_command_palette(&mut self) -> Task<Message> {
-        let focus = operation::focus(command_palette_ui::COMMAND_PALETTE_ID);
-        if self.command_palette.is_some() {
-            return focus;
-        }
-        if self.blocking_overlay_is_open() {
-            return Task::none();
-        }
-        self.context_menu = None;
-        let scope = if self.search_has_keys() {
-            KeyScope::Search
-        } else {
-            KeyScope::Panel
-        };
-        let mut palette =
-            CommandPalette::new(scope, self.lang, &self.keymap, &self.recent_commands);
+        self.update_command_palette(CommandPaletteMessage::Toggle)
+    }
+
+    /// Which Hermes commands on a file the command list offers.
+    fn command_palette_hermes(&self) -> HermesCommands {
         if !self.hermes_ready() {
-            palette = palette.without_hermes_file_commands();
+            HermesCommands::None
         } else if !self.hermes_active() {
-            palette = palette.without_hermes_location_commands();
+            HermesCommands::RolesOnly
         } else if !self.hermes_action_enabled(HermesAction::ProcessAgain) {
-            palette = palette.without_command(KeyAction::HermesProcessAgain);
+            HermesCommands::WithoutProcessAgain
+        } else {
+            HermesCommands::All
         }
+    }
+
+    /// The settings pages and settings the command list finds by a query.
+    fn command_palette_settings_targets(&self) -> Vec<ncrs_config::SettingsTarget> {
         let fresh;
         let state = match &self.settings.page {
             Some(open) => open,
@@ -12530,10 +12522,7 @@ impl App {
                 &fresh
             }
         };
-        palette = palette.with_settings(settings_ui::search_targets(&self.settings_view(state)));
-        palette.set_visible_rows(command_palette_ui::visible_rows(self.window_size));
-        self.command_palette = Some(palette);
-        focus
+        settings_ui::search_targets(&self.settings_view(state))
     }
 
     fn resize_command_palette(&mut self, window: Size) {
@@ -12551,43 +12540,46 @@ impl App {
     }
 
     fn update_command_palette(&mut self, message: CommandPaletteMessage) -> Task<Message> {
-        match message {
-            CommandPaletteMessage::Toggle => return self.open_command_palette(),
-            CommandPaletteMessage::Close => return self.close_command_palette(),
-            _ => {}
-        }
-        let Some(palette) = self.command_palette.as_mut() else {
-            return Task::none();
+        let opening =
+            matches!(message, CommandPaletteMessage::Toggle) && self.command_palette.is_none();
+        let blocked = opening && self.blocking_overlay_is_open();
+        let (hermes, settings_targets) = if opening && !blocked {
+            (
+                self.command_palette_hermes(),
+                self.command_palette_settings_targets(),
+            )
+        } else {
+            (HermesCommands::All, Vec::new())
         };
-        match message {
-            CommandPaletteMessage::QueryChanged(text) => palette.set_query(text),
-            CommandPaletteMessage::Move(delta) => palette.move_cursor(delta),
-            CommandPaletteMessage::Select(index) => {
-                palette.select(index);
-                return self.run_command_palette();
+        let scope = if self.search_has_keys() {
+            KeyScope::Search
+        } else {
+            KeyScope::Panel
+        };
+        let ctx = CommandPaletteCtx {
+            lang: self.lang,
+            keymap: &self.keymap,
+            recent: &self.recent_commands,
+            window: self.window_size,
+            blocked,
+            scope,
+            hermes,
+            settings_targets,
+        };
+        let (inner, action) = command_list::update(&mut self.command_palette, message, &ctx);
+        let task = inner.map(Message::CommandPalette);
+        match action {
+            None => task,
+            Some(CommandPaletteAction::CloseContextMenu) => {
+                self.context_menu = None;
+                task
             }
-            CommandPaletteMessage::Run => return self.run_command_palette(),
-            CommandPaletteMessage::Toggle | CommandPaletteMessage::Close => {}
-        }
-        Task::none()
-    }
-
-    /// Closes the palette, then does what its key would. The closing task
-    /// comes first and is chained, not batched: a prompt the action opens
-    /// takes the focus after the palette gave it up.
-    fn run_command_palette(&mut self) -> Task<Message> {
-        let Some(target) = self
-            .command_palette
-            .as_ref()
-            .and_then(CommandPalette::selected_target)
-        else {
-            return Task::none();
-        };
-        let closed = self.close_command_palette();
-        match target {
-            Target::Command(action) => closed.chain(self.run_command(action)),
-            Target::Setting { feature, row } => {
-                Task::batch([closed, self.show_setting(feature, row)])
+            // The closing task comes first and is chained, not batched: a
+            // prompt the action opens takes the focus after the list gave it
+            // up.
+            Some(CommandPaletteAction::Run(command)) => task.chain(self.run_command(command)),
+            Some(CommandPaletteAction::ShowSetting { feature, row }) => {
+                Task::batch([task, self.show_setting(feature, row)])
             }
         }
     }
@@ -22891,8 +22883,8 @@ mod command_palette_tests {
             .skip(1)
             .take(2)
             .filter_map(|row| match row {
-                crate::command_palette::Row::Hit(hit) => palette.entry(hit),
-                crate::command_palette::Row::Header(_) => None,
+                ncrs_palette::command_list::Row::Hit(hit) => palette.entry(hit),
+                ncrs_palette::command_list::Row::Header(_) => None,
             })
             .filter_map(|entry| entry.command())
             .collect();
@@ -22902,7 +22894,9 @@ mod command_palette_tests {
         );
         assert_eq!(
             palette.selected_target(),
-            Some(Target::Command(keymap::KeyAction::SwitchPanel))
+            Some(ncrs_palette::command_list::Target::Command(
+                keymap::KeyAction::SwitchPanel
+            ))
         );
     }
 
@@ -25097,7 +25091,7 @@ mod quick_open_documents_tests {
         assert_eq!(palette.query(), "language");
         assert!(palette.hits().any(|hit| matches!(
             palette.entry(hit).map(|entry| &entry.target),
-            Some(crate::command_palette::Target::Setting { .. })
+            Some(ncrs_palette::command_list::Target::Setting { .. })
         )));
     }
 }

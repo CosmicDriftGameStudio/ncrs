@@ -6,6 +6,7 @@ use std::time::Duration;
 use iced::widget::operation;
 use iced::{Size, Task};
 use ncrs_core::PanelSide;
+use ncrs_ui_kit::focus::release_focus;
 use ncrs_ui_kit::layout::{self, HIT_LIST_ROW_HEIGHT};
 
 use crate::ctx::Ctx;
@@ -37,12 +38,6 @@ pub struct Search {
     /// Stops the running search when dropped, which also drops the receiver
     /// of a search it abandoned.
     pub handle: Option<iced::task::Handle>,
-}
-
-/// Takes the keyboard focus from the field that has it, so the keys go to the
-/// panels again.
-pub fn release_focus<T: Send + 'static>() -> Task<T> {
-    iced::advanced::widget::operate(iced::advanced::widget::operation::focusable::unfocus())
 }
 
 /// The messages of one search, in batches. Ends when the engine is done or the

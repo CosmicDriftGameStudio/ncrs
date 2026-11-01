@@ -5,7 +5,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use iced::keyboard::{key::Physical, Key, Modifiers};
-use iced::{Element, Size};
+use iced::Size;
 use ncrs_i18n::Language;
 use ncrs_index::{QueryHit, QuerySpec, SavedQueryId};
 use ncrs_ui_kit::palette::Palette;
@@ -70,8 +70,6 @@ pub struct ViewCtx<'a> {
     /// The toggle a press is bound to, so the fields claim it before they
     /// type its character.
     pub toggle_for_press: TogglePress<'a>,
-    /// The column titles of a file list that a click does not sort.
-    pub column_header: Element<'a, SearchMessage>,
 }
 
 impl std::fmt::Debug for ViewCtx<'_> {

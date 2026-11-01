@@ -9,8 +9,7 @@ pub const FKEYBAR_HEIGHT: f32 = size::FKEY_BAR;
 
 pub const COLUMN_HEADER_HEIGHT: f32 = size::COLUMN_HEADER;
 
-/// Slots in the function key bar: F1 to F10.
-pub const FUNCTION_KEY_COUNT: usize = 10;
+pub use ncrs_core::FUNCTION_KEY_COUNT;
 
 /// A row of a file list. Fixed, so the number of visible rows follows from the
 /// window height.
