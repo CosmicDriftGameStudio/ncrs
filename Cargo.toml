@@ -180,7 +180,7 @@ iced_selector = "0.14"
 # A one-page PDF for the tests of the document preview.
 ncrs-intake = { path = "crates/ncrs-intake", version = "0.0.0", features = ["test-support"] }
 # The checksum of the bytes a test server hands out for the AI model download.
-sha2 = "0.10"
+sha2 = "0.11"
 # What the filesystem layer keeps for tests only: the real trash scene and the in-memory stores.
 ncrs-fs = { path = "crates/ncrs-fs", version = "0.0.0", features = ["test-support"] }
 # `config::from_text` and the key action lists, for the tests of the app.
