@@ -2855,7 +2855,7 @@ mod review_list_card {
         let mut saved = opened();
         let _ = saved.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Saved {
             generation: 1,
-            result: Ok(()),
+            result: Ok(crate::rules_page::tests::rule_id(1)),
         })));
         assert!(saved.rules_for_test().is_none());
         assert!(saved.review_list_for_test().is_some());
@@ -4487,7 +4487,7 @@ mod rule_suggestions_card {
 
         let _ = app.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Saved {
             generation: 1,
-            result: Ok(()),
+            result: Ok(crate::rules_page::tests::rule_id(1)),
         })));
 
         assert!(app.rules_for_test().is_none());

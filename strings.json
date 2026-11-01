@@ -7841,6 +7841,12 @@
       "context": "Name of the space bar on the key cap in the status line of a filing page. Only the name, the verb is drawn next to it.",
       "en": "Space",
       "de": "Leertaste"
+    },
+    {
+      "key": "rules.unsaved_changes",
+      "context": "Action bar of the rules page while the form holds changes that are not saved; the selection is locked until they are saved or cancelled.",
+      "en": "Unsaved changes",
+      "de": "Ungespeicherte Änderungen"
     }
   ]
 }

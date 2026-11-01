@@ -234,20 +234,16 @@ impl RulesAccess {
     }
 
     /// Index refusals, such as a regex that does not compile, come back as
-    /// the text of the error.
-    pub fn save(&self, save: RuleSave) -> Result<(), String> {
-        let done = self.with_index(|index| match save {
-            RuleSave::Create { spec, origin } => {
-                index.create_rule_from(&spec, origin).map(|_| true)
-            }
-            RuleSave::Update(id, spec) => index.update_rule(id, &spec).map(|()| true),
-            RuleSave::ConfirmSuggestion(id, spec) => index.confirm_suggested_rule(id, &spec),
+    /// the text of the error. The rule that was made or changed comes back.
+    pub fn save(&self, save: RuleSave) -> Result<RuleId, String> {
+        let saved = self.with_index(|index| match save {
+            RuleSave::Create { spec, origin } => index.create_rule_from(&spec, origin).map(Some),
+            RuleSave::Update(id, spec) => index.update_rule(id, &spec).map(|()| Some(id)),
+            RuleSave::ConfirmSuggestion(id, spec) => index
+                .confirm_suggested_rule(id, &spec)
+                .map(|done| done.then_some(id)),
         })?;
-        if done {
-            Ok(())
-        } else {
-            Err(NO_SUCH_SUGGESTION.to_owned())
-        }
+        saved.ok_or_else(|| NO_SUCH_SUGGESTION.to_owned())
     }
 
     fn with_index<T>(

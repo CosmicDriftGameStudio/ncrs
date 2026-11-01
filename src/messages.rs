@@ -1235,7 +1235,7 @@ pub enum RuleFormMessage {
     /// or opened again meanwhile.
     Saved {
         generation: u64,
-        result: Result<(), String>,
+        result: Result<RuleId, String>,
     },
 }
 
