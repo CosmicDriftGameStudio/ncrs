@@ -16849,11 +16849,9 @@ impl App {
     }
 
     /// Fixed panels with the first-time setup of Hermes up, prefilled from
-    /// `configured`, in the Dracula look the card is made for.
+    /// `configured`.
     pub fn with_hermes_setup(configured: &[config::FilingLocation], offer: SetupOffer) -> Self {
         let mut app = Self::with_fixed_panels();
-        app.palette = ThemePreset::Dracula.palette();
-        app.theme_preset = ThemePreset::Dracula;
         app.filing_config.locations = configured.to_vec();
         let setup = HermesSetup::new(configured, offer);
         app.dialog_focus = setup.first_focus(setup.can_start());
@@ -16861,7 +16859,7 @@ impl App {
         app
     }
 
-    /// Fixed panels with the Hermes overview up in the Dracula look, over a
+    /// Fixed panels with the Hermes overview up, over a
     /// module of `phase` (`None`: Hermes is off), the `config` and the
     /// `counts` read from the index.
     pub fn with_hermes_overview(
@@ -16870,8 +16868,6 @@ impl App {
         counts: Option<ncrs_index::HermesCounts>,
     ) -> Self {
         let mut app = Self::with_fixed_panels();
-        app.palette = ThemePreset::Dracula.palette();
-        app.theme_preset = ThemePreset::Dracula;
         let module_exists = phase.is_some();
         app.filing = phase.map(|in_phase| FilingModule::in_phase_with_ai(in_phase, &config.ai));
         if module_exists {
