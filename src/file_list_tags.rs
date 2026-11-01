@@ -5,6 +5,8 @@ use std::collections::BTreeMap;
 
 use ncrs_index::{tag_name, FileTags, Kinds};
 
+pub use ncrs_ui_kit::tags::{FileChip, ShownTags};
+
 /// Most chips after one name; the rest is counted.
 pub const MOST_CHIPS: usize = 3;
 
@@ -78,22 +80,6 @@ impl FileListTags {
             ..self.clone()
         }
     }
-}
-
-/// One chip after a file name.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FileChip {
-    pub tag: String,
-    /// The user set it; the others were read from the document.
-    pub own: bool,
-}
-
-/// What follows a file name: at most [`MOST_CHIPS`] chips and how many more
-/// there are.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct ShownTags {
-    pub chips: Vec<FileChip>,
-    pub more: usize,
 }
 
 fn worded(group: TagGroup, tag: &str, kinds: &Kinds) -> String {

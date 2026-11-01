@@ -154,7 +154,7 @@ fn list<'a>(state: &RulesPage, lang: Language, palette: &Palette) -> Element<'a,
     page_kit::list_pane(rows, |delta| send(RulesMessage::Scrolled(delta)), palette)
 }
 
-fn unlisted_row(form: &RuleForm, lang: Language) -> RowTwo {
+fn unlisted_row(form: &RuleForm, lang: Language) -> RowTwo<Message> {
     let name = form.name.trim();
     RowTwo {
         primary: if name.is_empty() {
@@ -174,7 +174,12 @@ fn unlisted_row(form: &RuleForm, lang: Language) -> RowTwo {
     }
 }
 
-fn rule_row(index: usize, listed: &ListedRule, lang: Language, kinds: &KindCatalog) -> RowTwo {
+fn rule_row(
+    index: usize,
+    listed: &ListedRule,
+    lang: Language,
+    kinds: &KindCatalog,
+) -> RowTwo<Message> {
     let spec = &listed.rule.spec;
     let sentence = rule_sentence(spec, lang, kinds);
     let named = spec.name.as_deref().filter(|name| !name.is_empty());

@@ -6,9 +6,8 @@
 use iced::widget::{column, container, row, text, Row};
 use iced::{alignment, Element, Length};
 
-use super::layout::FKEYBAR_HEIGHT;
+use super::layout::{FKEYBAR_HEIGHT, FUNCTION_KEY_COUNT};
 use super::theme::{self, font_size, spacing};
-use crate::keymap::FUNCTION_KEY_COUNT;
 use crate::palette::Palette;
 
 const HINT_GAP: f32 = 14.0;

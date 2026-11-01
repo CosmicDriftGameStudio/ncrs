@@ -4,7 +4,7 @@ use iced::widget::overlay::menu;
 use iced::widget::{button, checkbox, container, pick_list, text_input, Space};
 use iced::{Background, Border, Color, Element, Length, Theme};
 
-use crate::hermes_column::{FolderRole, HermesFileState};
+use crate::hermes_state::{FolderRole, HermesFileState};
 use crate::palette::Palette;
 
 /// Behind a modal dialog: darkens the panels without hiding them. Not part of

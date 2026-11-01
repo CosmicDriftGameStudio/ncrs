@@ -1201,8 +1201,7 @@ impl Keymap {
     }
 }
 
-/// Slots in the function key bar: F1 to F10.
-pub const FUNCTION_KEY_COUNT: usize = 10;
+pub use ncrs_ui_kit::layout::FUNCTION_KEY_COUNT;
 
 /// The slot of F7, which makes a folder.
 pub const NEW_FOLDER_SLOT: usize = 6;

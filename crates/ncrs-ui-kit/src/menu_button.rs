@@ -17,23 +17,21 @@ use iced::{
     Vector,
 };
 
-use crate::messages::Message;
-
 /// One row of the list and what picking it sends.
 #[derive(Debug, Clone)]
-pub struct Entry {
+pub struct Entry<M> {
     pub label: String,
     pub position: usize,
-    pub message: Message,
+    pub message: M,
 }
 
-impl PartialEq for Entry {
+impl<M> PartialEq for Entry<M> {
     fn eq(&self, other: &Self) -> bool {
         self.position == other.position
     }
 }
 
-impl std::fmt::Display for Entry {
+impl<M> std::fmt::Display for Entry<M> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.label)
     }
@@ -67,8 +65,8 @@ struct State {
     last_status: Option<pick_list::Status>,
 }
 
-pub struct MenuButton<'a> {
-    entries: Vec<Entry>,
+pub struct MenuButton<'a, M> {
+    entries: Vec<Entry<M>>,
     caption: String,
     width: f32,
     height: f32,
@@ -78,7 +76,7 @@ pub struct MenuButton<'a> {
     menu_class: <Theme as menu::Catalog>::Class<'a>,
 }
 
-impl std::fmt::Debug for MenuButton<'_> {
+impl<M> std::fmt::Debug for MenuButton<'_, M> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MenuButton")
             .field("caption", &self.caption)
@@ -86,9 +84,9 @@ impl std::fmt::Debug for MenuButton<'_> {
     }
 }
 
-impl<'a> MenuButton<'a> {
+impl<'a, M> MenuButton<'a, M> {
     pub fn new(
-        entries: Vec<Entry>,
+        entries: Vec<Entry<M>>,
         caption: String,
         size: Size,
         padding: Padding,
@@ -125,7 +123,7 @@ fn text_width(renderer: &Renderer, content: &str, size: f32) -> f32 {
     .width
 }
 
-impl Widget<Message, Theme, Renderer> for MenuButton<'_> {
+impl<M: Clone> Widget<M, Theme, Renderer> for MenuButton<'_, M> {
     fn tag(&self) -> tree::Tag {
         tree::Tag::of::<State>()
     }
@@ -169,7 +167,7 @@ impl Widget<Message, Theme, Renderer> for MenuButton<'_> {
         cursor: mouse::Cursor,
         _renderer: &Renderer,
         _clipboard: &mut dyn Clipboard,
-        shell: &mut Shell<'_, Message>,
+        shell: &mut Shell<'_, M>,
         _viewport: &Rectangle,
     ) {
         let state = tree.state.downcast_mut::<State>();
@@ -278,7 +276,7 @@ impl Widget<Message, Theme, Renderer> for MenuButton<'_> {
         renderer: &Renderer,
         viewport: &Rectangle,
         translation: Vector,
-    ) -> Option<overlay::Element<'b, Message, Theme, Renderer>> {
+    ) -> Option<overlay::Element<'b, M, Theme, Renderer>> {
         let state = tree.state.downcast_mut::<State>();
         if !state.is_open {
             return None;
@@ -289,7 +287,7 @@ impl Widget<Message, Theme, Renderer> for MenuButton<'_> {
             &mut state.menu,
             &self.entries,
             &mut state.hovered_option,
-            |entry: Entry| {
+            |entry: Entry<M>| {
                 state.is_open = false;
                 entry.message
             },
@@ -317,13 +315,13 @@ impl Widget<Message, Theme, Renderer> for MenuButton<'_> {
     }
 }
 
-struct AnchoredList<'a> {
-    inner: overlay::Element<'a, Message, Theme, Renderer>,
+struct AnchoredList<'a, M> {
+    inner: overlay::Element<'a, M, Theme, Renderer>,
     button_left: f32,
     button_width: f32,
 }
 
-impl overlay::Overlay<Message, Theme, Renderer> for AnchoredList<'_> {
+impl<M> overlay::Overlay<M, Theme, Renderer> for AnchoredList<'_, M> {
     fn layout(&mut self, renderer: &Renderer, bounds: Size) -> layout::Node {
         let node = self.inner.as_overlay_mut().layout(renderer, bounds);
         let left = list_left(
@@ -356,7 +354,7 @@ impl overlay::Overlay<Message, Theme, Renderer> for AnchoredList<'_> {
         cursor: mouse::Cursor,
         renderer: &Renderer,
         clipboard: &mut dyn Clipboard,
-        shell: &mut Shell<'_, Message>,
+        shell: &mut Shell<'_, M>,
     ) {
         self.inner
             .as_overlay_mut()
@@ -375,8 +373,8 @@ impl overlay::Overlay<Message, Theme, Renderer> for AnchoredList<'_> {
     }
 }
 
-impl<'a> From<MenuButton<'a>> for Element<'a, Message> {
-    fn from(button: MenuButton<'a>) -> Self {
+impl<'a, M: Clone + 'a> From<MenuButton<'a, M>> for Element<'a, M> {
+    fn from(button: MenuButton<'a, M>) -> Self {
         Element::new(button)
     }
 }

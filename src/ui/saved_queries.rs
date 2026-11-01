@@ -178,7 +178,7 @@ fn list<'a>(state: &SavedQueries, lang: Language, palette: &Palette) -> Element<
     )
 }
 
-fn unsaved_row(draft: &Draft, lang: Language, kinds: &KindCatalog) -> RowTwo {
+fn unsaved_row(draft: &Draft, lang: Language, kinds: &KindCatalog) -> RowTwo<Message> {
     let name = draft.name.trim();
     RowTwo {
         primary: if name.is_empty() {

@@ -1,0 +1,22 @@
+[package]
+name = "ncrs-ui-kit"
+version = "0.0.0"
+edition = "2021"
+# Same as the root package: one place decides the compiler.
+rust-version = "1.98"
+description = "Colors, sizes and widgets every ncrs screen is built from, generic over the message type"
+license = "MIT"
+publish = false
+
+[dependencies]
+# Same version as the app. No default features and none of the renderer, font
+# or window-system features: the app picks the backend. iced refuses to build
+# without an executor, so "tokio" stays on, as in the app.
+iced = { version = "0.14", default-features = false, features = ["tokio", "advanced", "svg"] }
+ncrs-core = { path = "../ncrs-core", version = "0.0.0" }
+ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
+ncrs-index = { path = "../ncrs-index", version = "0.0.0" }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+
+[lints]
+workspace = true

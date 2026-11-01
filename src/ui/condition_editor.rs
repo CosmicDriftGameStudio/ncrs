@@ -97,7 +97,7 @@ fn condition_row<'a>(
         palette,
     } = *host;
     let choices = editor.kind_choices(index);
-    let kinds: Vec<MenuItem> = choices
+    let kinds: Vec<MenuItem<Message>> = choices
         .iter()
         .map(|&kind| {
             MenuItem::new(
@@ -138,7 +138,7 @@ fn condition_row<'a>(
             (lang.text(Msg::ConditionEditorHas), false),
             (lang.text(Msg::ConditionEditorHasNot), true),
         ];
-        let operators: Vec<MenuItem> = has
+        let operators: Vec<MenuItem<Message>> = has
             .iter()
             .map(|&(label, negated)| {
                 MenuItem::new(label, wrap(ConditionEdit::Negated(index, negated)))

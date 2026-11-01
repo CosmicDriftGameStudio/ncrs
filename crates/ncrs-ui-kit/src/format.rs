@@ -2,9 +2,34 @@
 use std::time::SystemTime;
 
 use chrono::{DateTime, Local};
+use ncrs_core::FileEntry;
+use ncrs_i18n::Msg;
 
-use crate::fs::FileEntry;
-use crate::i18n::Msg;
+/// Appended to a computed folder size that missed unreadable parts. Untranslated
+/// like the markers.
+const PARTIAL_SIZE_MARK: char = '+';
+
+/// Size column text: `<UP>` / `<DIR>` for directories (the computed size once
+/// there is one), size otherwise.
+///
+/// The markers are a Norton Commander convention and are deliberately not
+/// translated, so this takes no `Language`.
+pub fn entry_size(entry: &FileEntry) -> String {
+    if entry.is_parent {
+        Msg::MarkerUp.text().into()
+    } else if let (true, Some(computed)) = (entry.is_dir, entry.folder_size) {
+        let text = size(computed.bytes);
+        if computed.partial {
+            format!("{text}{PARTIAL_SIZE_MARK}")
+        } else {
+            text
+        }
+    } else if entry.is_dir {
+        Msg::MarkerDir.text().into()
+    } else {
+        size(entry.size)
+    }
+}
 
 /// Whole megabytes (1 MB = 1,000,000 bytes), rounded: the one unit and rounding
 /// of a download and of the model that is downloaded.
@@ -51,32 +76,6 @@ pub fn size(bytes: u64) -> String {
     // loop cannot turn a file size into a panic.
     let label = UNITS.get(unit).copied().unwrap_or("?");
     format!("{value:.1} {label}")
-}
-
-/// Appended to a computed folder size that missed unreadable parts. Untranslated
-/// like the markers.
-const PARTIAL_SIZE_MARK: char = '+';
-
-/// Size column text: `<UP>` / `<DIR>` for directories (the computed size once
-/// there is one), size otherwise.
-///
-/// The markers are a Norton Commander convention and are deliberately not
-/// translated, so this takes no `Language`.
-pub fn entry_size(entry: &FileEntry) -> String {
-    if entry.is_parent {
-        Msg::MarkerUp.text().into()
-    } else if let (true, Some(computed)) = (entry.is_dir, entry.folder_size) {
-        let text = size(computed.bytes);
-        if computed.partial {
-            format!("{text}{PARTIAL_SIZE_MARK}")
-        } else {
-            text
-        }
-    } else if entry.is_dir {
-        Msg::MarkerDir.text().into()
-    } else {
-        size(entry.size)
-    }
 }
 
 /// The folder of `path` as a hit list shows it below the name: relative to
@@ -321,25 +320,6 @@ mod tests {
     }
 
     #[test]
-    fn a_computed_folder_shows_its_size_and_marks_a_partial_one() {
-        let folder = |folder_size| FileEntry {
-            name: "d".into(),
-            path: "d".into(),
-            is_dir: true,
-            is_symlink: false,
-            is_parent: false,
-            size: 0,
-            modified: None,
-            folder_size,
-        };
-        let computed = |bytes, partial| Some(crate::fs::FolderSize { bytes, partial });
-
-        assert_eq!(entry_size(&folder(None)), Msg::MarkerDir.text());
-        assert_eq!(entry_size(&folder(computed(1536, false))), "1.5 KB");
-        assert_eq!(entry_size(&folder(computed(1536, true))), "1.5 KB+");
-    }
-
-    #[test]
     fn formats_sizes() {
         assert_eq!(size(0), "0 B");
         assert_eq!(size(1023), "1023 B");
@@ -437,5 +417,24 @@ mod tests {
             "{cut}"
         );
         assert_eq!(fit_middle(LONG_PATH, 3.0, BODY), "");
+    }
+
+    #[test]
+    fn a_computed_folder_shows_its_size_and_marks_a_partial_one() {
+        let folder = |folder_size| FileEntry {
+            name: "d".into(),
+            path: "d".into(),
+            is_dir: true,
+            is_symlink: false,
+            is_parent: false,
+            size: 0,
+            modified: None,
+            folder_size,
+        };
+        let computed = |bytes, partial| Some(ncrs_core::FolderSize { bytes, partial });
+
+        assert_eq!(entry_size(&folder(None)), Msg::MarkerDir.text());
+        assert_eq!(entry_size(&folder(computed(1536, false))), "1.5 KB");
+        assert_eq!(entry_size(&folder(computed(1536, true))), "1.5 KB+");
     }
 }

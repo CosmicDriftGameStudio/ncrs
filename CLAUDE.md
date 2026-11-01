@@ -8,8 +8,13 @@ towards them (see "Migration" below). Never copy a pattern from the code that br
 - Every feature is its own crate under `crates/`, in nested TEA: its own `State`, `Message`,
   `update(&mut State, Message, &Ctx) -> Task<Message>` and `view(&State, &Ctx) -> Element<Message>`.
   The app crate `ncrs` only wires them together (`.map(Message::Search)`), it holds no feature logic.
-- Feature crates depend on `ncrs-ui-kit` and the backend crates (`ncrs-index`, `ncrs-intake`, …), never on each
-  other. Something two features need goes into the kit or a backend crate.
+- Feature crates depend on `ncrs-ui-kit`, `ncrs-core` and the backend crates (`ncrs-index`, `ncrs-intake`, …), never
+  on each other. Something two features need goes into the kit, `ncrs-core` or a backend crate.
+- `ncrs-core` holds only plain data types several features share (`FileEntry`, `Selection`, `PanelSide`, …), no
+  logic and nothing that changes often: every change to it rebuilds every feature.
+- A feature gets what it needs from the app through its `Ctx` (data, resolved key bindings) and asks the app for
+  anything outside itself (open a panel, show a file) by returning an `Action` from `update`, never by reaching
+  into app state.
 - No file over about 1,000 lines. A file that grows past it is split before anything is added.
 
 ## UI: only from the kit

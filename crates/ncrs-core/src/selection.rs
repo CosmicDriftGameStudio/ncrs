@@ -20,7 +20,7 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use crate::fs::FileEntry;
+use crate::entry::FileEntry;
 
 /// A row's selection state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

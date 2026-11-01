@@ -1,4 +1,4 @@
-//! Generates `src/i18n/lang/{en,de}.rs` from `strings.json`.
+//! Generates the string modules included by `src/lib.rs` from `strings.json`.
 //!
 //! The JSON file is the source of truth: it holds the value, the stable key and
 //! the translator context together, so they cannot drift apart. Run
@@ -27,7 +27,7 @@ use std::fs;
 use std::path::Path;
 
 const OUT_DIR: &str = "OUT_DIR";
-const INPUT: &str = "strings.json";
+const INPUT: &str = "../../strings.json";
 
 struct Entry {
     key: String,

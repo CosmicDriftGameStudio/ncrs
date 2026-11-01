@@ -13,9 +13,8 @@ use iced::{alignment, Element, Length, Padding, Size};
 
 use super::kit;
 use super::theme::{self, font_size, size, spacing};
-use crate::i18n::{Language, Msg};
-use crate::messages::Message;
 use crate::palette::Palette;
+use ncrs_i18n::{Language, Msg};
 
 /// Lets a test find the frame and read its bounds.
 pub const FRAME_ID: &str = "dialog-frame";
@@ -34,7 +33,7 @@ const WINDOW_MARGIN: f32 = 24.0;
 /// pixels into a number of characters for text that must stay on one line.
 /// Measured on German running text and paths in the UI font at 12 px: 5.6 to
 /// 5.9 px per glyph; a little more, so capitals do not overflow.
-pub(in crate::ui) const AVERAGE_GLYPH_WIDTH: f32 = 6.0;
+pub const AVERAGE_GLYPH_WIDTH: f32 = 6.0;
 
 /// Average width of a glyph of a key cap, at its 10 px.
 const KEY_CAP_GLYPH_WIDTH: f32 = 6.0;
@@ -44,8 +43,8 @@ const KEY_CAP_GLYPH_WIDTH: f32 = 6.0;
 /// [`SCROLLBAR_WIDTH`] plus its margin on both sides.
 const SCROLLBAR_ROOM: f32 = 22.0;
 
-pub(in crate::ui) const SCROLLBAR_WIDTH: f32 = 6.0;
-pub(in crate::ui) const SCROLLBAR_MARGIN: f32 = 2.0;
+pub const SCROLLBAR_WIDTH: f32 = 6.0;
+pub const SCROLLBAR_MARGIN: f32 = 2.0;
 
 /// The border of the frame on each side.
 const FRAME_BORDER: f32 = 2.0 * spacing::BORDER_WIDTH;
@@ -149,15 +148,15 @@ pub struct PageHint {
     pub verb: Msg,
 }
 
-pub struct Frame<'a> {
+pub struct Frame<'a, M> {
     title: String,
     title_theme: Option<String>,
     subtitle: Option<String>,
-    content: Element<'a, Message>,
-    sidebar: Option<Element<'a, Message>>,
+    content: Element<'a, M>,
+    sidebar: Option<Element<'a, M>>,
     footer_note: Option<String>,
-    buttons: Vec<Element<'a, Message>>,
-    on_close: Option<Message>,
+    buttons: Vec<Element<'a, M>>,
+    on_close: Option<M>,
     size: DialogSize,
     window: Size,
     hints: KeyHints,
@@ -168,10 +167,18 @@ pub struct Frame<'a> {
     palette: Palette,
 }
 
-impl<'a> Frame<'a> {
+impl<M> std::fmt::Debug for Frame<'_, M> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Frame")
+            .field("title", &self.title)
+            .finish_non_exhaustive()
+    }
+}
+
+impl<'a, M: Clone + 'a> Frame<'a, M> {
     pub fn new(
         title: impl Into<String>,
-        content: impl Into<Element<'a, Message>>,
+        content: impl Into<Element<'a, M>>,
         size: DialogSize,
         window: Size,
         lang: Language,
@@ -215,13 +222,13 @@ impl<'a> Frame<'a> {
     }
 
     /// Secondary buttons first, the primary one last: it ends up rightmost.
-    pub fn buttons(mut self, buttons: Vec<Element<'a, Message>>) -> Self {
+    pub fn buttons(mut self, buttons: Vec<Element<'a, M>>) -> Self {
         self.buttons = buttons;
         self
     }
 
     /// What the close cross sends, which has to be what Esc does.
-    pub fn on_close(mut self, message: Message) -> Self {
+    pub fn on_close(mut self, message: M) -> Self {
         self.on_close = Some(message);
         self
     }
@@ -238,7 +245,7 @@ impl<'a> Frame<'a> {
         self
     }
 
-    fn header(&self) -> Element<'a, Message> {
+    fn header(&self) -> Element<'a, M> {
         let palette = self.palette;
         let mut title = row![text(self.title.clone())
             .size(font_size::HEADER)
@@ -276,9 +283,9 @@ impl<'a> Frame<'a> {
         header.into()
     }
 
-    fn footer(&mut self) -> Element<'a, Message> {
+    fn footer(&mut self) -> Element<'a, M> {
         let palette = self.palette;
-        let left: Element<'a, Message> = match self.footer_note.take() {
+        let left: Element<'a, M> = match self.footer_note.take() {
             Some(note) => text(note)
                 .size(font_size::BODY)
                 .color(palette.dim_text)
@@ -327,7 +334,7 @@ impl<'a> Frame<'a> {
         .into()
     }
 
-    pub fn into_element(mut self) -> Element<'a, Message> {
+    pub fn into_element(mut self) -> Element<'a, M> {
         let palette = self.palette;
         let outer = frame_size(self.size, self.window);
         let grows = self.size.grows_with_content();
@@ -354,7 +361,7 @@ impl<'a> Frame<'a> {
         .width(Length::Fill)
         .height(if grows { Length::Shrink } else { Length::Fill });
 
-        let middle: Element<'a, Message> = match self.sidebar {
+        let middle: Element<'a, M> = match self.sidebar {
             Some(sidebar) => row![
                 container(sidebar)
                     .width(size::SIDEBAR_WIDTH)
@@ -370,7 +377,7 @@ impl<'a> Frame<'a> {
             .into(),
             None => page.into(),
         };
-        let body: Element<'a, Message> = if grows {
+        let body: Element<'a, M> = if grows {
             container(middle)
                 .max_height((outer.height - VERTICAL_CHROME).max(0.0))
                 .into()
@@ -456,7 +463,7 @@ fn hints_that_fit<'h>(
 
 /// The one wording of the keys, the same in every dialog, as many as fit into
 /// `room` pixels.
-fn key_hint_row<'a>(
+fn key_hint_row<'a, M: Clone + 'a>(
     hints: KeyHints,
     page: &[PageHint],
     closable: bool,
@@ -464,7 +471,7 @@ fn key_hint_row<'a>(
     lang: Language,
     room: f32,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, M> {
     let worded: Vec<(&'static str, &'static str)> = key_hints(hints, page, closable, sidebar_keys)
         .into_iter()
         .map(|(key, verb)| (key, lang.text(verb)))
@@ -497,7 +504,7 @@ fn key_hint_row<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ui::layout::INITIAL_WINDOW_SIZE;
+    use crate::layout::INITIAL_WINDOW_SIZE;
 
     fn sized(size: DialogSize, window: Size) -> (f32, f32) {
         let framed = frame_size(size, window);

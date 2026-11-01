@@ -3381,11 +3381,14 @@ dependencies = [
  "keyring",
  "muda",
  "ncrs-ai",
+ "ncrs-core",
+ "ncrs-i18n",
  "ncrs-index",
  "ncrs-intake",
  "ncrs-ocr-vision",
  "ncrs-pipeline",
  "ncrs-sandbox",
+ "ncrs-ui-kit",
  "nucleo-matcher",
  "objc2 0.6.5",
  "objc2-app-kit 0.3.2",
@@ -3424,6 +3427,17 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "ureq",
+]
+
+[[package]]
+name = "ncrs-core"
+version = "0.0.0"
+
+[[package]]
+name = "ncrs-i18n"
+version = "0.0.0"
+dependencies = [
+ "ncrs-index",
 ]
 
 [[package]]
@@ -3491,6 +3505,17 @@ dependencies = [
  "objc2 0.6.5",
  "objc2-foundation 0.3.2",
  "tempfile",
+]
+
+[[package]]
+name = "ncrs-ui-kit"
+version = "0.0.0"
+dependencies = [
+ "chrono",
+ "iced",
+ "ncrs-core",
+ "ncrs-i18n",
+ "ncrs-index",
 ]
 
 [[package]]

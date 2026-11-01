@@ -4,10 +4,12 @@ use iced::{Point, Size};
 
 use super::theme::{size, spacing};
 
-pub const INITIAL_WINDOW_SIZE: Size = Size::new(1200.0, 760.0);
+pub use ncrs_ui_kit::layout::{
+    DATE_COLUMN_WIDTH, FKEYBAR_HEIGHT, HERMES_CELL_GAP, HERMES_COLUMN_WIDTH, INITIAL_WINDOW_SIZE,
+    ROW_HEIGHT, SIZE_COLUMN_WIDTH, TAG_COLUMN_WIDTH,
+};
 
 pub const STATUSBAR_HEIGHT: f32 = size::STATUS_BAR;
-pub const FKEYBAR_HEIGHT: f32 = size::FKEY_BAR;
 pub const COMMAND_LINE_HEIGHT: f32 = size::COMMAND_LINE;
 /// The row across the window top that holds the path tabs, the Hermes chip and
 /// the Lab button (and the window buttons where the system draws none).
@@ -15,7 +17,6 @@ pub const TITLE_BAR_HEIGHT: f32 = size::TITLE_BAR;
 /// Where the row starts on macOS: the traffic lights are drawn over its left end.
 pub const TRAFFIC_LIGHTS_INSET: f32 = 78.0;
 pub const COLUMN_HEADER_HEIGHT: f32 = size::COLUMN_HEADER;
-pub const ROW_HEIGHT: f32 = 22.0;
 /// A hit list row has the name and, below it, the folder.
 pub const HIT_LIST_ROW_HEIGHT: f32 = 2.0 * ROW_HEIGHT;
 /// A search result of a content search or the index has a third line.
@@ -31,16 +32,6 @@ pub const MENU_PADDING: f32 = 4.0;
 /// two-line header above its entries.
 pub const QUICK_FIX_WIDTH: f32 = 480.0;
 pub const QUICK_FIX_HEADER_HEIGHT: f32 = 44.0;
-
-/// The star column, left of the name. Its own button so a click there tags the
-/// row instead of moving the cursor.
-pub const TAG_COLUMN_WIDTH: f32 = 22.0;
-
-pub const SIZE_COLUMN_WIDTH: f32 = 90.0;
-pub const DATE_COLUMN_WIDTH: f32 = 150.0;
-/// The Hermes status column, after the date: an icon for a file, a summary
-/// of icons and counts for a folder.
-pub const HERMES_COLUMN_WIDTH: f32 = 124.0;
 
 /// Vertical space the panel chrome occupies: everything above and below the
 /// file rows.

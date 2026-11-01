@@ -3,13 +3,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-/// What a walk found under one folder.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FolderSize {
-    pub bytes: u64,
-    /// Something below the folder could not be read, so `bytes` is a lower bound.
-    pub partial: bool,
-}
+use ncrs_core::FolderSize;
 
 /// Hard links are counted once per walk, symlinks are never followed (a link
 /// counts its own size). `None` when `cancel` was set. Blocking.

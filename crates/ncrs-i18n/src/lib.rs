@@ -223,6 +223,26 @@ impl fmt::Display for Language {
     }
 }
 
+/// `template` with each placeholder name in `values` replaced by its value.
+pub fn fill_template(template: &str, values: &[(&str, &str)]) -> String {
+    let mut filled = String::with_capacity(template.len());
+    let mut rest = template;
+    while !rest.is_empty() {
+        let placeholder = values
+            .iter()
+            .find_map(|(name, value)| rest.strip_prefix(name).map(|after| (value, after)));
+        if let Some((value, after)) = placeholder {
+            filled.push_str(value);
+            rest = after;
+        } else {
+            let mut chars = rest.chars();
+            filled.extend(chars.next());
+            rest = chars.as_str();
+        }
+    }
+    filled
+}
+
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
 #[allow(

@@ -29,7 +29,9 @@ use crate::file_list_tags::{FileListTags, TagGroup};
 use crate::fs::OpenKind;
 use crate::i18n::Language;
 use crate::keymap::{KeyAction, Keymap};
-use crate::palette::{ColorRole, Palette, ThemePreset, PRESET_KEY, VSCODE_KEY};
+use crate::palette::{
+    ColorRole, Palette, PaletteFromSection as _, ThemePreset, PRESET_KEY, VSCODE_KEY,
+};
 use crate::vscode_theme::VscodeTheme;
 
 const FIRST_VERSION: u32 = 1;

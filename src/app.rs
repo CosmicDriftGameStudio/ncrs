@@ -138,6 +138,7 @@ use crate::ui::transfer as transfer_ui;
 use crate::ui::trash as trash_ui;
 use crate::ui::volumes::{self as volumes_view, FavouriteRow, ServerRow};
 use crate::ui::{conflict, dialog, fkeys, layout, panel, statusbar, theme, PanelProps, PanelState};
+pub use ncrs_i18n::fill_template;
 use ncrs_index::{
     IncludeOutcome, KeyStore, KeyringKeyStore, KindSkip, Kinds, QuerySpec, RuleId, SavedQueryId,
 };
@@ -2683,25 +2684,6 @@ fn accept_notice(summary: &AcceptSummary, lang: Language) -> Option<String> {
             ],
         )),
     }
-}
-
-pub fn fill_template(template: &str, values: &[(&str, &str)]) -> String {
-    let mut filled = String::with_capacity(template.len());
-    let mut rest = template;
-    while !rest.is_empty() {
-        let placeholder = values
-            .iter()
-            .find_map(|(name, value)| rest.strip_prefix(name).map(|after| (value, after)));
-        if let Some((value, after)) = placeholder {
-            filled.push_str(value);
-            rest = after;
-        } else {
-            let mut chars = rest.chars();
-            filled.extend(chars.next());
-            rest = chars.as_str();
-        }
-    }
-    filled
 }
 
 /// A function key, or a chord with Super or Ctrl (without Alt): nothing a

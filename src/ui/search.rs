@@ -298,7 +298,7 @@ struct FilterControl {
     label: Msg,
     facet: Facet,
     chosen: Option<String>,
-    items: Vec<MenuItem>,
+    items: Vec<MenuItem<Message>>,
 }
 
 fn filter_controls(filters: &SearchFilters, lang: Language) -> Vec<FilterControl> {

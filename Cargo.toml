@@ -62,6 +62,12 @@ nucleo-matcher = "0.3.1"
 ncrs-intake = { path = "crates/ncrs-intake", version = "0.0.0" }
 # The filing module opens the index and holds its key in the credential store.
 ncrs-index = { path = "crates/ncrs-index", version = "0.0.0" }
+# Plain data types several features share: file entries and selections.
+ncrs-core = { path = "crates/ncrs-core", version = "0.0.0" }
+# Translated UI strings, generated from strings.json.
+ncrs-i18n = { path = "crates/ncrs-i18n", version = "0.0.0" }
+# Colors, sizes and widgets the screens are built from, generic over the message type.
+ncrs-ui-kit = { path = "crates/ncrs-ui-kit", version = "0.0.0" }
 # Runs the processing steps on a pool of worker threads whose size follows the load setting.
 ncrs-pipeline = { path = "crates/ncrs-pipeline", version = "0.0.0" }
 # Asks a provider for the fields the rules left open, including the built-in model.

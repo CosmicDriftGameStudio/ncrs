@@ -175,7 +175,7 @@ fn folder_pieces<'a>(editor: &TargetEditor, host: &TargetHost<'_>) -> Element<'a
             )
         })
         .collect();
-    let mut items: Vec<MenuItem> = OFFERED_FIELDS
+    let mut items: Vec<MenuItem<Message>> = OFFERED_FIELDS
         .into_iter()
         .map(|field| MenuItem::new(field.name(lang), wrap(TargetEdit::AddField(field))))
         .collect();
@@ -219,7 +219,7 @@ fn file_name_pieces<'a>(editor: &TargetEditor, host: &TargetHost<'_>) -> Element
         })
         .collect();
     let add = (!matches!(editor.target.file_name, FileName::Own(_))).then(|| {
-        let mut items: Vec<MenuItem> = FileNameField::ALL
+        let mut items: Vec<MenuItem<Message>> = FileNameField::ALL
             .into_iter()
             .map(|field| MenuItem::new(field.name(lang), wrap(TargetEdit::AddNameField(field))))
             .collect();

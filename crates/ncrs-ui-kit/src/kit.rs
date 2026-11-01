@@ -20,9 +20,8 @@ use std::sync::LazyLock;
 use super::format;
 use super::frame::{AVERAGE_GLYPH_WIDTH, SCROLLBAR_MARGIN, SCROLLBAR_WIDTH};
 use super::theme::{self, font_size, size, spacing, DISABLED_OPACITY};
-use crate::i18n::Msg;
-use crate::messages::Message;
 use crate::palette::Palette;
+use ncrs_i18n::Msg;
 
 pub fn condition_kind_name(kind: ConditionKind) -> Msg {
     match kind {
@@ -99,14 +98,16 @@ impl Icon {
 
     const fn bytes(self) -> &'static [u8] {
         match self {
-            Self::Clock => include_bytes!("../../assets/icons/clock.svg"),
-            Self::Loader => include_bytes!("../../assets/icons/loader-circle.svg"),
-            Self::CircleCheck => include_bytes!("../../assets/icons/circle-check.svg"),
-            Self::CircleHelp => include_bytes!("../../assets/icons/circle-question-mark.svg"),
-            Self::TriangleAlert => include_bytes!("../../assets/icons/triangle-alert.svg"),
-            Self::Ban => include_bytes!("../../assets/icons/ban.svg"),
-            Self::ChevronRight => include_bytes!("../../assets/icons/chevron-right.svg"),
-            Self::CircleArrowRight => include_bytes!("../../assets/icons/circle-arrow-right.svg"),
+            Self::Clock => include_bytes!("../../../assets/icons/clock.svg"),
+            Self::Loader => include_bytes!("../../../assets/icons/loader-circle.svg"),
+            Self::CircleCheck => include_bytes!("../../../assets/icons/circle-check.svg"),
+            Self::CircleHelp => include_bytes!("../../../assets/icons/circle-question-mark.svg"),
+            Self::TriangleAlert => include_bytes!("../../../assets/icons/triangle-alert.svg"),
+            Self::Ban => include_bytes!("../../../assets/icons/ban.svg"),
+            Self::ChevronRight => include_bytes!("../../../assets/icons/chevron-right.svg"),
+            Self::CircleArrowRight => {
+                include_bytes!("../../../assets/icons/circle-arrow-right.svg")
+            }
         }
     }
 
@@ -139,11 +140,11 @@ pub fn icon_rotated<'a, M: 'a>(icon: Icon, color: Color, radians: f32) -> Elemen
 
 /// A chip the user can take away again: the label and a cross. The chip
 /// has an accent outline.
-pub fn removable_chip<'a>(
+pub fn removable_chip<'a, M: Clone + 'a>(
     label: &str,
-    on_remove: Message,
+    on_remove: M,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, M> {
     let cross = widget_button(text("×").size(font_size::SMALL))
         .padding([0.0, spacing::XS])
         .on_press(on_remove)
@@ -164,23 +165,23 @@ pub fn removable_chip<'a>(
 }
 
 /// A key as a small outlined cap.
-pub fn key_cap<'a>(label: &str, palette: &Palette) -> Element<'a, Message> {
+pub fn key_cap<'a, M: Clone + 'a>(label: &str, palette: &Palette) -> Element<'a, M> {
     cap(label, false, palette)
 }
 
 /// A key cap in a menu row; on the highlighted (filled) row it is drawn in
 /// the highlight's text color so it stays readable.
-pub fn key_cap_in_row<'a>(
+pub fn key_cap_in_row<'a, M: Clone + 'a>(
     label: &str,
     highlighted: bool,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, M> {
     cap(label, highlighted, palette)
 }
 
 /// The one key cap of a highlighted row that an edit acts on: filled in the
 /// highlight's text color, so it stands out from the outlined caps beside it.
-pub fn key_cap_focused<'a>(label: &str, palette: &Palette) -> Element<'a, Message> {
+pub fn key_cap_focused<'a, M: Clone + 'a>(label: &str, palette: &Palette) -> Element<'a, M> {
     let base = theme::key_cap(palette, true);
     let (fill, ink) = (palette.cursor_text, palette.cursor);
     container(
@@ -198,7 +199,7 @@ pub fn key_cap_focused<'a>(label: &str, palette: &Palette) -> Element<'a, Messag
     .into()
 }
 
-fn cap<'a>(label: &str, on_fill: bool, palette: &Palette) -> Element<'a, Message> {
+fn cap<'a, M: Clone + 'a>(label: &str, on_fill: bool, palette: &Palette) -> Element<'a, M> {
     let base = theme::key_cap(palette, on_fill);
     container(
         text(label.to_owned())
@@ -248,19 +249,19 @@ fn tone_style(
     }
 }
 
-fn label_text<'a>(label: &str) -> Element<'a, Message> {
+fn label_text<'a, M: Clone + 'a>(label: &str) -> Element<'a, M> {
     text(label.to_owned())
         .size(font_size::BODY)
         .wrapping(Wrapping::None)
         .into()
 }
 
-fn sized_button<'a>(
-    content: Element<'a, Message>,
-    on_press: Option<Message>,
+fn sized_button<'a, M: Clone + 'a>(
+    content: Element<'a, M>,
+    on_press: Option<M>,
     tone: Tone,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, M> {
     widget_button(container(content).center_y(Length::Fill))
         .padding([0.0, BUTTON_PADDING_X])
         .height(size::BUTTON)
@@ -270,22 +271,22 @@ fn sized_button<'a>(
 }
 
 /// A button of 24 px. `on_press` of `None` disables it.
-pub fn button<'a>(
+pub fn button<'a, M: Clone + 'a>(
     label: &str,
-    on_press: Option<Message>,
+    on_press: Option<M>,
     tone: Tone,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, M> {
     sized_button(label_text(label), on_press, tone, palette)
 }
 
 /// Like [`button`], with a small Enter cap: the button Enter presses.
-pub fn enter_button<'a>(
+pub fn enter_button<'a, M: Clone + 'a>(
     label: &str,
-    on_press: Option<Message>,
+    on_press: Option<M>,
     tone: Tone,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, M> {
     let content = row![
         label_text(label),
         cap(ENTER_KEY, on_press.is_some(), palette)
@@ -299,7 +300,7 @@ pub fn enter_button<'a>(
 pub const ENTER_KEY: &str = "↵";
 
 /// A dimmed line of text.
-pub fn dim<'a>(content: impl IntoFragment<'a>, palette: &Palette) -> Element<'a, Message> {
+pub fn dim<'a, M: Clone + 'a>(content: impl IntoFragment<'a>, palette: &Palette) -> Element<'a, M> {
     text(content)
         .size(font_size::BODY)
         .color(palette.dim_text)
@@ -308,7 +309,7 @@ pub fn dim<'a>(content: impl IntoFragment<'a>, palette: &Palette) -> Element<'a,
 }
 
 /// Text that stays on one line; the caller has cut it to fit.
-pub fn one_line<'a>(content: String, palette: &Palette) -> Element<'a, Message> {
+pub fn one_line<'a, M: Clone + 'a>(content: String, palette: &Palette) -> Element<'a, M> {
     text(content)
         .size(font_size::BODY)
         .color(palette.text)
@@ -317,7 +318,10 @@ pub fn one_line<'a>(content: String, palette: &Palette) -> Element<'a, Message> 
 }
 
 /// Running text.
-pub fn paragraph<'a>(content: impl IntoFragment<'a>, palette: &Palette) -> Element<'a, Message> {
+pub fn paragraph<'a, M: Clone + 'a>(
+    content: impl IntoFragment<'a>,
+    palette: &Palette,
+) -> Element<'a, M> {
     text(content)
         .size(font_size::BODY)
         .color(palette.text)
@@ -325,7 +329,10 @@ pub fn paragraph<'a>(content: impl IntoFragment<'a>, palette: &Palette) -> Eleme
         .into()
 }
 
-pub fn error_line<'a>(content: impl IntoFragment<'a>, palette: &Palette) -> Element<'a, Message> {
+pub fn error_line<'a, M: Clone + 'a>(
+    content: impl IntoFragment<'a>,
+    palette: &Palette,
+) -> Element<'a, M> {
     text(content)
         .size(font_size::BODY)
         .color(palette.error)
@@ -335,7 +342,10 @@ pub fn error_line<'a>(content: impl IntoFragment<'a>, palette: &Palette) -> Elem
 
 /// A notice that is neither an error nor plain text: an outlined box with its
 /// line in the accent color, like the warning that a name is taken.
-pub fn warning_box<'a>(content: impl IntoFragment<'a>, palette: &Palette) -> Element<'a, Message> {
+pub fn warning_box<'a, M: Clone + 'a>(
+    content: impl IntoFragment<'a>,
+    palette: &Palette,
+) -> Element<'a, M> {
     container(
         text(content)
             .size(font_size::BODY)
@@ -349,7 +359,7 @@ pub fn warning_box<'a>(content: impl IntoFragment<'a>, palette: &Palette) -> Ele
 }
 
 /// How far a job is, `0.0` to `1.0`, as a thin bar.
-pub fn progress_bar<'a>(fraction: f32, palette: &Palette) -> Element<'a, Message> {
+pub fn progress_bar<'a, M: Clone + 'a>(fraction: f32, palette: &Palette) -> Element<'a, M> {
     iced::widget::progress_bar(0.0..=1.0, fraction.clamp(0.0, 1.0))
         .length(Length::Fill)
         .girth(PROGRESS_GIRTH)
@@ -361,16 +371,16 @@ pub fn progress_bar<'a>(fraction: f32, palette: &Palette) -> Element<'a, Message
 const PROGRESS_GIRTH: f32 = 4.0;
 
 /// Lines of one block, one gap apart.
-pub fn stack<'a>(lines: impl IntoIterator<Item = Element<'a, Message>>) -> Column<'a, Message> {
+pub fn stack<'a, M: Clone + 'a>(lines: impl IntoIterator<Item = Element<'a, M>>) -> Column<'a, M> {
     Column::with_children(lines).spacing(spacing::LINE_GAP)
 }
 
 /// A dimmed heading above its content, set off from what comes before it.
-pub fn section<'a>(
+pub fn section<'a, M: Clone + 'a>(
     heading: &str,
-    content: impl Into<Element<'a, Message>>,
+    content: impl Into<Element<'a, M>>,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, M> {
     container(heading_block(heading, content.into(), palette))
         .padding(iced::Padding {
             top: spacing::SECTION_LEAD,
@@ -380,26 +390,26 @@ pub fn section<'a>(
 }
 
 /// A section at the top of a page, which has its room above already.
-pub fn first_section<'a>(
+pub fn first_section<'a, M: Clone + 'a>(
     heading: &str,
-    content: impl Into<Element<'a, Message>>,
+    content: impl Into<Element<'a, M>>,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, M> {
     heading_block(heading, content.into(), palette)
 }
 
-fn heading_block<'a>(
+fn heading_block<'a, M: Clone + 'a>(
     heading: &str,
-    content: Element<'a, Message>,
+    content: Element<'a, M>,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, M> {
     column![dim(heading.to_owned(), palette), content]
         .spacing(spacing::S)
         .into()
 }
 
 /// A line across the width of its parent.
-pub fn divider<'a>(palette: &Palette) -> Element<'a, Message> {
+pub fn divider<'a, M: Clone + 'a>(palette: &Palette) -> Element<'a, M> {
     let color = palette.border_inactive;
     rule::horizontal(spacing::BORDER_WIDTH)
         .style(move |_theme| rule::Style {
@@ -415,15 +425,15 @@ pub fn divider<'a>(palette: &Palette) -> Element<'a, Message> {
 /// description on the left, the control in a column of `control_width` on the
 /// right, with what is wrong with the value in the error color under the
 /// description.
-pub fn form_row_with_problem<'a>(
+pub fn form_row_with_problem<'a, M: Clone + 'a>(
     label: &str,
     theme_name: Option<&str>,
     description: Option<&str>,
     problem: Option<&str>,
-    control: Element<'a, Message>,
+    control: Element<'a, M>,
     control_width: f32,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, M> {
     let mut names = Row::new()
         .push(paragraph(label.to_owned(), palette))
         .spacing(spacing::S);
@@ -454,14 +464,14 @@ pub fn form_row_with_problem<'a>(
 
 /// A single-line text field of 24 px. Without `on_input` it takes no typing:
 /// it is shown disabled.
-pub fn text_field<'a>(
+pub fn text_field<'a, M: Clone + 'a>(
     placeholder: &str,
     value: &str,
     id: &'static str,
-    on_input: Option<impl Fn(String) -> Message + 'a>,
-    on_submit: Message,
+    on_input: Option<impl Fn(String) -> M + 'a>,
+    on_submit: M,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, M> {
     field_in(
         placeholder,
         value,
@@ -474,14 +484,14 @@ pub fn text_field<'a>(
 }
 
 /// A text field that shows dots instead of what is typed, for a password.
-pub fn secret_field<'a>(
+pub fn secret_field<'a, M: Clone + 'a>(
     placeholder: &str,
     value: &str,
     id: &'static str,
-    on_input: Option<impl Fn(String) -> Message + 'a>,
-    on_submit: Message,
+    on_input: Option<impl Fn(String) -> M + 'a>,
+    on_submit: M,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, M> {
     field_in(
         placeholder,
         value,
@@ -494,14 +504,14 @@ pub fn secret_field<'a>(
 }
 
 /// A text field for a path or a name, set in the monospace font.
-pub fn mono_text_field<'a>(
+pub fn mono_text_field<'a, M: Clone + 'a>(
     placeholder: &str,
     value: &str,
     id: &'static str,
-    on_input: Option<impl Fn(String) -> Message + 'a>,
-    on_submit: Message,
+    on_input: Option<impl Fn(String) -> M + 'a>,
+    on_submit: M,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, M> {
     field_in(
         placeholder,
         value,
@@ -523,15 +533,15 @@ enum Look {
     Secret,
 }
 
-fn field_in<'a>(
+fn field_in<'a, M: Clone + 'a>(
     placeholder: &str,
     value: &str,
     id: &'static str,
-    on_input: Option<impl Fn(String) -> Message + 'a>,
-    on_submit: Message,
+    on_input: Option<impl Fn(String) -> M + 'a>,
+    on_submit: M,
     look: Look,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, M> {
     let plain = text_input(placeholder, value)
         .id(id)
         .secure(matches!(look, Look::Secret));
@@ -555,25 +565,25 @@ fn field_in<'a>(
 /// One row of a list; a click sends `on_press`. The row under the cursor is
 /// filled while the list has the keyboard focus (`focused`), else only
 /// outlined.
-pub fn list_row<'a>(
-    content: Element<'a, Message>,
-    on_press: Message,
+pub fn list_row<'a, M: Clone + 'a>(
+    content: Element<'a, M>,
+    on_press: M,
     selected: bool,
     focused: bool,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, M> {
     list_row_of_height(content, on_press, selected, focused, size::ROW, palette)
 }
 
 /// [`list_row`] for rows of more than one line.
-pub fn list_row_of_height<'a>(
-    content: Element<'a, Message>,
-    on_press: Message,
+pub fn list_row_of_height<'a, M: Clone + 'a>(
+    content: Element<'a, M>,
+    on_press: M,
     selected: bool,
     focused: bool,
     row_height: f32,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, M> {
     widget_button(content)
         .on_press(on_press)
         .width(Length::Fill)
@@ -589,6 +599,7 @@ pub const SCROLL_LANE: f32 = SCROLLBAR_WIDTH + SCROLLBAR_MARGIN;
 /// The columns of a table of text that must stay on one line: each takes a
 /// share of the line, and a cell is cut to the pixels its column holds. The
 /// width of a text is estimated, see [`format::estimated_width`].
+#[derive(Debug)]
 pub struct Columns<'p> {
     /// The relative widths of the columns.
     pub portions: &'p [u16],
@@ -616,7 +627,12 @@ impl Columns<'_> {
     }
 
     /// The text of column `index`, cut at the end where it is too long.
-    pub fn cell<'a>(&self, index: usize, content: &str, color: Color) -> Element<'a, Message> {
+    pub fn cell<'a, M: Clone + 'a>(
+        &self,
+        index: usize,
+        content: &str,
+        color: Color,
+    ) -> Element<'a, M> {
         self.cell_of(
             index,
             format::fit_end(content, self.text_width(index), font_size::BODY),
@@ -624,17 +640,22 @@ impl Columns<'_> {
         )
     }
 
-    fn cell_of<'a>(&self, index: usize, shown: String, color: Color) -> Element<'a, Message> {
+    fn cell_of<'a, M: Clone + 'a>(
+        &self,
+        index: usize,
+        shown: String,
+        color: Color,
+    ) -> Element<'a, M> {
         self.aligned_cell_of(index, shown, color, alignment::Horizontal::Left)
     }
 
-    fn aligned_cell_of<'a>(
+    fn aligned_cell_of<'a, M: Clone + 'a>(
         &self,
         index: usize,
         shown: String,
         color: Color,
         align: alignment::Horizontal,
-    ) -> Element<'a, Message> {
+    ) -> Element<'a, M> {
         let portion = self.portions.get(index).copied().unwrap_or(1);
         container(
             text(shown)
@@ -654,7 +675,7 @@ impl Columns<'_> {
 
     /// The dimmed titles of the columns, one text line high: nothing selects
     /// them, so they need no list row height and stay close to the heading.
-    pub fn header<'a>(&self, labels: &[&str], palette: &Palette) -> Element<'a, Message> {
+    pub fn header<'a, M: Clone + 'a>(&self, labels: &[&str], palette: &Palette) -> Element<'a, M> {
         let dimmed: Vec<(&str, Color)> = labels
             .iter()
             .map(|label| (*label, palette.dim_text))
@@ -663,29 +684,33 @@ impl Columns<'_> {
     }
 
     /// One row of the table, every cell in `color`.
-    pub fn row<'a>(&self, cells: &[&str], color: Color) -> Element<'a, Message> {
+    pub fn row<'a, M: Clone + 'a>(&self, cells: &[&str], color: Color) -> Element<'a, M> {
         let colored: Vec<(&str, Color)> = cells.iter().map(|cell| (*cell, color)).collect();
         self.row_colored(&colored)
     }
 
     /// One row of the table, each cell in its own color.
-    pub fn row_colored<'a>(&self, cells: &[(&str, Color)]) -> Element<'a, Message> {
+    pub fn row_colored<'a, M: Clone + 'a>(&self, cells: &[(&str, Color)]) -> Element<'a, M> {
         self.line(cells, alignment::Horizontal::Left, size::ROW.into())
     }
 
     /// One row of the table, every cell in `color`, the last column set
     /// against its right edge: a column of times or amounts.
-    pub fn row_last_right<'a>(&self, cells: &[&str], color: Color) -> Element<'a, Message> {
+    pub fn row_last_right<'a, M: Clone + 'a>(
+        &self,
+        cells: &[&str],
+        color: Color,
+    ) -> Element<'a, M> {
         let colored: Vec<(&str, Color)> = cells.iter().map(|cell| (*cell, color)).collect();
         self.line(&colored, alignment::Horizontal::Right, size::ROW.into())
     }
 
-    fn line<'a>(
+    fn line<'a, M: Clone + 'a>(
         &self,
         cells: &[(&str, Color)],
         last: alignment::Horizontal,
         height: Length,
-    ) -> Element<'a, Message> {
+    ) -> Element<'a, M> {
         let missing = self.portions.len().saturating_sub(cells.len());
         let last_index = self.portions.len().saturating_sub(1);
         let shown = cells
@@ -732,26 +757,26 @@ fn thumb_extent(len: usize, visible: usize, offset: usize, track: f32) -> (f32, 
 /// shown, and right of them a bar that shows where the window is. The wheel
 /// over the rows (not over the header or the rest of the page) sends
 /// `on_scroll`.
-pub fn scroll_list<'a>(
-    header: Element<'a, Message>,
-    rows: Vec<Element<'a, Message>>,
+pub fn scroll_list<'a, M: Clone + 'a>(
+    header: Element<'a, M>,
+    rows: Vec<Element<'a, M>>,
     window: ListView,
-    on_scroll: impl Fn(ScrollDelta) -> Message + 'a,
+    on_scroll: impl Fn(ScrollDelta) -> M + 'a,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, M> {
     scroll_list_of_height(header, rows, window, size::ROW, on_scroll, palette)
 }
 
 /// [`scroll_list`] for rows of `row_height` pixels, as made by
 /// [`list_row_of_height`].
-pub fn scroll_list_of_height<'a>(
-    header: Element<'a, Message>,
-    rows: Vec<Element<'a, Message>>,
+pub fn scroll_list_of_height<'a, M: Clone + 'a>(
+    header: Element<'a, M>,
+    rows: Vec<Element<'a, M>>,
     window: ListView,
     row_height: f32,
-    on_scroll: impl Fn(ScrollDelta) -> Message + 'a,
+    on_scroll: impl Fn(ScrollDelta) -> M + 'a,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, M> {
     let shown = rows.len();
     let track = row_height * shown as f32;
     let list = mouse_area(
@@ -812,12 +837,12 @@ pub struct ListView {
 }
 
 /// A group of buttons of which one is on, like the load setting of Hermes.
-pub fn segmented<'a>(
-    options: &[(&str, Message)],
+pub fn segmented<'a, M: Clone + 'a>(
+    options: &[(&str, M)],
     selected: usize,
     enabled: bool,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, M> {
     let buttons = options.iter().enumerate().map(|(index, (label, message))| {
         widget_button(container(label_text(label)).center_y(Length::Fill))
             .padding([0.0, BUTTON_PADDING_X])
@@ -846,11 +871,11 @@ const CHECKBOX_SIDE: f32 = 14.0;
 
 /// A checkbox without a label. `on_toggle` of `None` leaves the clicking to
 /// the widget around it, like a list row.
-pub fn checkbox<'a>(
+pub fn checkbox<'a, M: Clone + 'a>(
     state: Check,
-    on_toggle: Option<Message>,
+    on_toggle: Option<M>,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, M> {
     let mut boxed = widget_checkbox(state != Check::Off)
         .size(CHECKBOX_SIDE)
         .style(theme::dialog_checkbox(palette));
@@ -869,9 +894,9 @@ pub fn checkbox<'a>(
     boxed.into()
 }
 
-fn figure_cells<'a>(figures: &[(&str, String)], palette: &Palette) -> Row<'a, Message> {
+fn figure_cells<'a, M: Clone + 'a>(figures: &[(&str, String)], palette: &Palette) -> Row<'a, M> {
     let cells = figures.iter().map(|(label, value)| {
-        let shown: Element<'a, Message> = if value.chars().any(|c| c.is_ascii_digit()) {
+        let shown: Element<'a, M> = if value.chars().any(|c| c.is_ascii_digit()) {
             text(value.clone())
                 .size(font_size::FIGURE)
                 .color(palette.text)
@@ -891,15 +916,15 @@ fn figure_cells<'a>(figures: &[(&str, String)], palette: &Palette) -> Row<'a, Me
 
 /// The size of a selection in a few numbers, with a button that shows or hides
 /// the list behind them; `note` goes between the two, set off by a divider.
-pub fn count_summary<'a>(
+pub fn count_summary<'a, M: Clone + 'a>(
     figures: &[(&str, String)],
-    note: Option<Element<'a, Message>>,
+    note: Option<Element<'a, M>>,
     expanded: bool,
-    on_toggle: Message,
+    on_toggle: M,
     show_label: &str,
     hide_label: &str,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, M> {
     let (chevron, label) = if expanded {
         ("v", hide_label)
     } else {

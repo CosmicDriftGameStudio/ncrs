@@ -1,0 +1,15 @@
+[package]
+name = "ncrs-i18n"
+version = "0.0.0"
+edition = "2021"
+# Same as the root package: one place decides the compiler.
+rust-version = "1.98"
+description = "Translated UI strings with per-string translator context, generated from strings.json"
+license = "MIT"
+publish = false
+
+[dependencies]
+ncrs-index = { path = "../ncrs-index", version = "0.0.0" }
+
+[lints]
+workspace = true

@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use super::FolderSize;
+use crate::folder_size::FolderSize;
 
 /// A single row in a directory listing.
 #[derive(Debug, Clone, PartialEq, Eq)]

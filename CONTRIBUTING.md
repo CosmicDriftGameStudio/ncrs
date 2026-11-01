@@ -23,7 +23,7 @@ can be agreed before the work is done.
 - Comments explain *why*, never *what*. If a line needs a comment to say what
   it does, the line is wrong.
 - User-facing text belongs in `strings.json` together with its translator
-  context, never inline. `build.rs` enforces the context; the tests enforce the
+  context, never inline. `crates/ncrs-i18n/build.rs` enforces the context; the tests enforce the
   translations.
 - Everything that touches the filesystem runs on tokio's blocking pool, and
   long operations must be cancellable.
