@@ -408,7 +408,7 @@ impl ContextMenu {
         is_enabled: impl Fn(ContextAction) -> bool,
         hermes: Option<HermesMenu<'_>>,
     ) -> Self {
-        Self::of_groups(&GROUPS, anchor, window, is_enabled, hermes)
+        Self::of_groups(&GROUPS, &[], anchor, window, is_enabled, hermes)
     }
 
     /// The menu of a row of a search-hit list.
@@ -418,11 +418,29 @@ impl ContextMenu {
         is_enabled: impl Fn(ContextAction) -> bool,
         hermes: Option<HermesMenu<'_>>,
     ) -> Self {
-        Self::of_groups(&HIT_LIST_GROUPS, anchor, window, is_enabled, hermes)
+        Self::of_groups(&HIT_LIST_GROUPS, &[], anchor, window, is_enabled, hermes)
+    }
+
+    /// The menu of a row of the search results: the hit list's, without
+    /// taking the file off the list, since a new search rebuilds the results.
+    pub fn for_search_results(
+        anchor: Point,
+        window: Size,
+        is_enabled: impl Fn(ContextAction) -> bool,
+    ) -> Self {
+        Self::of_groups(
+            &HIT_LIST_GROUPS,
+            &[ContextAction::RemoveFromList],
+            anchor,
+            window,
+            is_enabled,
+            None,
+        )
     }
 
     fn of_groups(
         groups: &[&[ContextAction]],
+        left_out: &[ContextAction],
         anchor: Point,
         window: Size,
         is_enabled: impl Fn(ContextAction) -> bool,
@@ -433,10 +451,15 @@ impl ContextMenu {
             if group_index > 0 {
                 entries.push(MenuEntry::Separator);
             }
-            entries.extend(group.iter().map(|&action| MenuEntry::Item {
-                action,
-                enabled: is_enabled(action),
-            }));
+            entries.extend(
+                group
+                    .iter()
+                    .filter(|action| !left_out.contains(action))
+                    .map(|&action| MenuEntry::Item {
+                        action,
+                        enabled: is_enabled(action),
+                    }),
+            );
         }
         let submenu = hermes.map(|menu| {
             entries.push(MenuEntry::Separator);

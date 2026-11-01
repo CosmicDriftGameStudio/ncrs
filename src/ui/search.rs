@@ -617,6 +617,7 @@ fn result_row<'a>(
             scope: &search.root,
             height,
             third_line,
+            on_context: Some(to_search(SearchMessage::ContextAt(index))),
         },
         panel_active,
         palette,

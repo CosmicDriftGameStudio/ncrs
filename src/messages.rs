@@ -705,6 +705,8 @@ pub enum SearchMessage {
     RowActivated(usize),
     /// The star of the file at this index in the results.
     ToggleTagAt(usize),
+    /// A right click on the file at this index: the context menu at the pointer.
+    ContextAt(usize),
     Scrolled(iced::mouse::ScrollDelta),
     /// The index answered the question `generation` of the filters. Dropped
     /// when the words changed meanwhile.

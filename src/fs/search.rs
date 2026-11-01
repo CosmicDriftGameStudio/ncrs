@@ -677,7 +677,10 @@ pub fn run_blocking(compiled: CompiledSearch, sender: mpsc::Sender<SearchEvent>)
 
             worker_shared.files.fetch_add(1, Ordering::Relaxed);
             // The walker's own path: the NFC and lossy forms are for comparing only.
-            let metadata = entry.metadata().ok();
+            // Through links, like the panel's rows, else a link shows its own size.
+            let metadata = std::fs::metadata(entry.path())
+                .or_else(|_| entry.metadata())
+                .ok();
             let event = SearchEvent::File {
                 path: entry.path().to_path_buf(),
                 lines,
@@ -1153,6 +1156,21 @@ mod tests {
         };
         assert_eq!(size, 12);
         assert!(modified.is_some());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_found_symlink_carries_the_size_of_its_target() {
+        let dir = tree();
+        write(dir.path(), "target.txt", "hit");
+        std::os::unix::fs::symlink(dir.path().join("target.txt"), dir.path().join("link.txt"))
+            .unwrap();
+        let (sender, mut receiver) = mpsc::channel(100);
+        let _ = run_blocking(compile(&name_query(&dir, "link.txt")).unwrap(), sender);
+        let Some(SearchEvent::File { size, .. }) = receiver.try_recv().ok() else {
+            panic!("no file found");
+        };
+        assert_eq!(size, 3);
     }
 
     #[cfg(target_os = "linux")]

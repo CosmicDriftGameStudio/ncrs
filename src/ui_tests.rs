@@ -7159,6 +7159,11 @@ mod hermes_overview_page {
         }
 
         #[test]
+        fn the_search_context_menu_matches_its_snapshots() {
+            both_languages(App::with_fixed_search_hits_menu, "search_context_menu");
+        }
+
+        #[test]
         fn the_pack_prompt_of_a_hit_list_matches_its_snapshots() {
             both_languages(App::with_fixed_hit_list_pack, "hit_list_pack");
         }

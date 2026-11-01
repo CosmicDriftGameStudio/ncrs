@@ -561,6 +561,8 @@ pub struct HitRow<'a, M> {
     pub scope: &'a Path,
     pub height: f32,
     pub third_line: Option<Element<'a, M>>,
+    /// What a right click on the row sends.
+    pub on_context: Option<M>,
 }
 
 pub fn hit_row<'a, M: Clone + 'a>(
@@ -576,8 +578,9 @@ pub fn hit_row<'a, M: Clone + 'a>(
         scope,
         height,
         third_line,
+        on_context,
     } = hit;
-    file_row(
+    let row = file_row(
         &entry,
         mark,
         panel_active,
@@ -589,7 +592,11 @@ pub fn hit_row<'a, M: Clone + 'a>(
             hit_scope: Some((scope, height)),
             third_line,
         },
-    )
+    );
+    match on_context {
+        Some(message) => mouse_area(row).on_right_press(message).into(),
+        None => row,
+    }
 }
 
 /// What a click on a row of the panel does.

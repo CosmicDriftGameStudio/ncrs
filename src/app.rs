@@ -3026,6 +3026,26 @@ struct ClipboardText {
     count: usize,
 }
 
+/// The path or the name of each of `files`, one per line, for the results of
+/// the search, which are not rows of a panel.
+fn clipboard_text_of_files(files: &[PathBuf], kind: ClipboardKind) -> Option<ClipboardText> {
+    let lines: Vec<String> = files
+        .iter()
+        .map(|path| match kind {
+            ClipboardKind::Name => path
+                .file_name()
+                .unwrap_or(path.as_os_str())
+                .to_string_lossy()
+                .into_owned(),
+            ClipboardKind::Path | ClipboardKind::Directory => path.to_string_lossy().into_owned(),
+        })
+        .collect();
+    (!lines.is_empty()).then(|| ClipboardText {
+        count: lines.len(),
+        text: lines.join("\n"),
+    })
+}
+
 /// The tagged rows, else the cursor row, one per line in listing order. On `..`
 /// without tags the directory of the panel itself; the root has no file name,
 /// so its path is its name. Paths are joined, not canonicalised.
@@ -6025,7 +6045,13 @@ impl App {
         if self.overlay_is_open() {
             return Task::none();
         }
-        let Some(copied) = clipboard_text(self.active_panel(), kind) else {
+        let from_results = self
+            .open_search_view()
+            .filter(|_| kind != ClipboardKind::Directory)
+            .map(|search| clipboard_text_of_files(&search.action_files(), kind));
+        let Some(copied) =
+            from_results.unwrap_or_else(|| clipboard_text(self.active_panel(), kind))
+        else {
             return Task::none();
         };
         self.job_error = None;
@@ -6806,6 +6832,23 @@ impl App {
     /// Whether the context menu entry can do something for the current
     /// cursor row and tags.
     fn context_action_enabled(&self, action: ContextAction) -> bool {
+        if let Some(search) = self.open_search_view() {
+            let has_cursor = search.cursor_target().is_some();
+            return match action {
+                ContextAction::Open
+                | ContextAction::View
+                | ContextAction::Edit
+                | ContextAction::ShowOnOtherSide => has_cursor,
+                ContextAction::Copy
+                | ContextAction::Move
+                | ContextAction::Trash
+                | ContextAction::DeletePermanently => !self.action_sources().is_empty(),
+                ContextAction::CopyPath | ContextAction::CopyName => has_cursor,
+                ContextAction::NewFolder
+                | ContextAction::ComputeFolderSizes
+                | ContextAction::RemoveFromList => false,
+            };
+        }
         let panel = self.active_panel();
         let cursor_row = panel.selected_entry();
         match action {
@@ -6824,6 +6867,23 @@ impl App {
             ContextAction::ShowOnOtherSide => cursor_row.is_some(),
             ContextAction::RemoveFromList => cursor_row.is_some(),
         }
+    }
+
+    /// The menu of the search results at the pointer, for the file the cursor
+    /// is on or the tagged ones.
+    fn open_search_context_menu(&mut self) {
+        if self.blocking_overlay_is_open() || !self.search_has_keys() {
+            return;
+        }
+        self.job_error = None;
+        self.notice = None;
+        let pointer = self.input.lock().pointer;
+        let is_enabled = |action| self.context_action_enabled(action);
+        self.context_menu = Some(ContextMenu::for_search_results(
+            pointer,
+            self.window_size,
+            is_enabled,
+        ));
     }
 
     /// Opens the context menu on row `index` of `side`, at `anchor` or, without
@@ -6888,13 +6948,18 @@ impl App {
             open.open_submenu();
             return Task::none();
         }
+        let from_search = self.search_has_keys();
         let Some(menu) = self.context_menu.take() else {
             return Task::none();
         };
         let chosen = if menu.submenu_is_open() {
             menu.selected_hermes_action().map(HermesAction::message)
         } else {
-            menu.selected_action().map(ContextAction::message)
+            menu.selected_action().map(|action| match action {
+                // Enter on a result shows it in the other panel.
+                ContextAction::Open if from_search => Message::Search(SearchMessage::Activate),
+                other => other.message(),
+            })
         };
         chosen.map_or_else(Task::none, |message| self.update(message))
     }
@@ -10434,14 +10499,19 @@ impl App {
     /// list stays.
     fn show_hit_on_other_side(&mut self) -> Task<Message> {
         let side = self.active_panel;
-        let Some(entry) = self.panel(side).selected_entry() else {
+        let target = match self.open_search_view() {
+            Some(search) => search.cursor_target().map(|(path, _)| path),
+            None => self
+                .panel(side)
+                .selected_entry()
+                .map(|entry| entry.path.clone()),
+        };
+        let Some(path) = target else {
             return Task::none();
         };
         let (Some(folder), Some(name)) = (
-            entry.path.parent().map(PathBuf::from),
-            entry
-                .path
-                .file_name()
+            path.parent().map(PathBuf::from),
+            path.file_name()
                 .map(|name| name.to_string_lossy().into_owned()),
         ) else {
             return Task::none();
@@ -10755,6 +10825,16 @@ impl App {
                 view.select_row(index, rows);
                 view.tag_and_move(0, rows);
                 release_focus()
+            }
+            SearchMessage::ContextAt(index) => {
+                // As in the panel: a click outside the tags drops them, so the
+                // menu cannot act on files the user did not point at.
+                if !view.is_tagged(index) {
+                    view.tagged.clear();
+                }
+                view.select_row(index, rows);
+                self.open_search_context_menu();
+                Task::none()
             }
             SearchMessage::Scrolled(delta) => {
                 view.scroll(delta, rows);
@@ -18427,6 +18507,14 @@ impl App {
         app
     }
 
+    /// The search results with the context menu open on the third row.
+    pub fn with_fixed_search_hits_menu() -> Self {
+        let mut app = Self::with_fixed_search_hits();
+        app.set_pointer_for_test(Point::new(260.0, 140.0));
+        drop(app.update(Message::Search(SearchMessage::ContextAt(2))));
+        app
+    }
+
     /// The pack prompt for the two `invoice.pdf` of the fixed hit list.
     pub fn with_fixed_hit_list_pack() -> Self {
         let mut app = Self::with_fixed_hit_list();
@@ -23461,6 +23549,96 @@ mod search_tests {
         let view = app.search_for_test().unwrap();
         assert_eq!(view.cursor, Some(0));
         assert!(view.is_tagged(0) && !view.is_tagged(1));
+    }
+
+    fn menu_actions(app: &App) -> Vec<ContextAction> {
+        app.context_menu_for_test()
+            .unwrap()
+            .entries()
+            .iter()
+            .filter_map(|entry| match entry {
+                crate::context_menu::MenuEntry::Item { action, .. } => Some(*action),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn app_with_two_results() -> App {
+        app_with_results(&[
+            ("/home/test/links/a.txt", &[1]),
+            ("/home/test/links/sub/b.txt", &[3]),
+        ])
+    }
+
+    #[test]
+    fn a_right_click_opens_the_hit_list_menu_without_remove_from_list() {
+        let mut app = app_with_two_results();
+        app.set_pointer_for_test(Point::new(200.0, 150.0));
+
+        drop(app.update(Message::Search(SearchMessage::ContextAt(1))));
+
+        assert_eq!(app.search_for_test().unwrap().cursor, Some(1));
+        let actions = menu_actions(&app);
+        for expected in [
+            ContextAction::Open,
+            ContextAction::View,
+            ContextAction::Edit,
+            ContextAction::Copy,
+            ContextAction::Move,
+            ContextAction::ShowOnOtherSide,
+            ContextAction::CopyPath,
+            ContextAction::CopyName,
+            ContextAction::Trash,
+            ContextAction::DeletePermanently,
+        ] {
+            assert!(actions.contains(&expected), "{expected:?} is missing");
+        }
+        assert!(!actions.contains(&ContextAction::RemoveFromList));
+        assert!(!actions.contains(&ContextAction::NewFolder));
+    }
+
+    #[test]
+    fn a_right_click_outside_the_tags_drops_them_and_on_a_tagged_file_keeps_them() {
+        let mut app = app_with_two_results();
+        drop(app.update(Message::Search(SearchMessage::ToggleTagAt(0))));
+
+        drop(app.update(Message::Search(SearchMessage::ContextAt(0))));
+        assert!(app.search_for_test().unwrap().is_tagged(0));
+
+        drop(app.update(Message::Search(SearchMessage::ContextAt(1))));
+        let view = app.search_for_test().unwrap();
+        assert!(!view.is_tagged(0) && !view.is_tagged(1));
+        assert_eq!(view.cursor, Some(1));
+    }
+
+    #[test]
+    fn open_in_the_menu_shows_the_file_in_the_other_panel() {
+        let mut app = app_with_two_results();
+        let other = app.search_side.other();
+        let before = app.panel(other).request_id;
+        drop(app.update(Message::Search(SearchMessage::ContextAt(0))));
+        assert_eq!(
+            app.context_menu_selected_action(),
+            Some(ContextAction::Open)
+        );
+
+        drop(app.update(Message::ContextMenuActivate));
+
+        assert!(!app.context_menu_is_open());
+        assert_ne!(app.panel(other).request_id, before);
+    }
+
+    #[test]
+    fn show_on_the_other_side_loads_the_results_folder_and_keeps_the_search() {
+        let mut app = app_with_two_results();
+        let other = app.search_side.other();
+        drop(app.update(Message::Search(SearchMessage::ContextAt(1))));
+
+        drop(app.update(Message::HitList(HitListMessage::ShowOnOtherSide)));
+
+        assert!(app.panel(other).loading);
+        assert_eq!(app.active_panel, other);
+        assert!(app.search_is_open_for_test());
     }
 }
 
