@@ -65,6 +65,10 @@ All notable changes to this project are documented here. The format follows
 - Signed package repositories for apt, dnf and zypper; see the README.
 - Futurama language variants `en-futurama` and `de-futurama`, switched on with
   "Futurama names" in the language settings.
+- Search hits open as a list in the left or right panel ("Hits as list"), where
+  they can be copied, moved, packed and deleted together. Files with equal
+  names from different folders are numbered (`invoice.pdf`, `invoice (2).pdf`);
+  packing can keep the folders below the search directory.
 
 ### Changed
 
