@@ -214,7 +214,15 @@ pub fn open_without_following(path: &Path) -> io::Result<File> {
 
 fn hash_open(file: &mut File, path: &Path) -> Result<ContentHash, IntakeError> {
     let mut hasher = Sha256::new();
-    io::copy(file, &mut hasher).map_err(IntakeError::io(path))?;
+    let mut chunk: [u8; 64 * 1024] = [0; 64 * 1024];
+    loop {
+        match io::Read::read(file, &mut chunk) {
+            Ok(0) => break,
+            Ok(read) => hasher.update(chunk.get(..read).unwrap_or_default()),
+            Err(err) if err.kind() == io::ErrorKind::Interrupted => {}
+            Err(err) => return Err(IntakeError::io(path)(err)),
+        }
+    }
     Ok(ContentHash(hasher.finalize().into()))
 }
 
@@ -364,4 +372,27 @@ fn insert_new(
         index.set_document_status(id, DocumentStatus::Filed)?;
     }
     Ok(Outcome::New(id))
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_content_hash_is_the_sha256_of_the_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("abc.txt");
+        fs::write(&path, b"abc").unwrap();
+        let hex: String = hash_path(&path)
+            .unwrap()
+            .0
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        assert_eq!(
+            hex,
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
 }

@@ -182,8 +182,8 @@ fn text_of_xml(xml: &[u8], package: Package, max_bytes: usize) -> Result<String,
         match event {
             Event::Start(start) => {
                 match (package, start.local_name().as_ref()) {
-                    (Package::Docx, b"t") | (Package::Odt, b"p" | b"h") => in_text += 1,
-                    (Package::Docx, b"r") => in_run += 1,
+                    (Package::Docx, "t") | (Package::Odt, "p" | "h") => in_text += 1,
+                    (Package::Docx, "r") => in_run += 1,
                     _ => {}
                 }
                 push_break(&start, package, in_text, in_run, &mut out);
@@ -195,20 +195,20 @@ fn text_of_xml(xml: &[u8], package: Package, max_bytes: usize) -> Result<String,
                 push_break(&empty, package, in_text, in_run, &mut out);
             }
             Event::End(end) => match (package, end.local_name().as_ref()) {
-                (Package::Docx, b"t") => in_text = in_text.saturating_sub(1),
-                (Package::Docx, b"r") => in_run = in_run.saturating_sub(1),
-                (Package::Docx, b"p") => out.push('\n'),
-                (Package::Odt, b"p" | b"h") => {
+                (Package::Docx, "t") => in_text = in_text.saturating_sub(1),
+                (Package::Docx, "r") => in_run = in_run.saturating_sub(1),
+                (Package::Docx, "p") => out.push('\n'),
+                (Package::Odt, "p" | "h") => {
                     in_text = in_text.saturating_sub(1);
                     out.push('\n');
                 }
                 _ => {}
             },
             Event::Text(text) if in_text > 0 => {
-                out.push_str(&text.decode().map_err(|err| err.to_string())?);
+                out.push_str(&text.xml10_content());
             }
             Event::CData(data) if in_text > 0 => {
-                out.push_str(&data.decode().map_err(|err| err.to_string())?);
+                out.push_str(&data.xml10_content());
             }
             Event::GeneralRef(reference) if in_text > 0 => push_reference(&reference, &mut out)?,
             Event::Eof => break,
@@ -226,7 +226,7 @@ fn text_of_xml(xml: &[u8], package: Package, max_bytes: usize) -> Result<String,
 fn is_paragraph(element: &BytesStart<'_>, package: Package) -> bool {
     matches!(
         (package, element.local_name().as_ref()),
-        (Package::Docx, b"p") | (Package::Odt, b"p" | b"h")
+        (Package::Docx, "p") | (Package::Odt, "p" | "h")
     )
 }
 
@@ -239,11 +239,11 @@ fn push_break(
     out: &mut String,
 ) {
     match (package, element.local_name().as_ref()) {
-        (Package::Docx, b"tab") if in_run > 0 => out.push('\t'),
-        (Package::Docx, b"br" | b"cr") if in_run > 0 => out.push('\n'),
-        (Package::Odt, b"tab") if in_text > 0 => out.push('\t'),
-        (Package::Odt, b"line-break") if in_text > 0 => out.push('\n'),
-        (Package::Odt, b"s") if in_text > 0 => out.push(' '),
+        (Package::Docx, "tab") if in_run > 0 => out.push('\t'),
+        (Package::Docx, "br" | "cr") if in_run > 0 => out.push('\n'),
+        (Package::Odt, "tab") if in_text > 0 => out.push('\t'),
+        (Package::Odt, "line-break") if in_text > 0 => out.push('\n'),
+        (Package::Odt, "s") if in_text > 0 => out.push(' '),
         _ => {}
     }
 }
@@ -259,11 +259,11 @@ fn push_reference(reference: &BytesRef<'_>, out: &mut String) -> Result<(), Stri
         return Ok(());
     }
     match &**reference {
-        b"amp" => out.push('&'),
-        b"lt" => out.push('<'),
-        b"gt" => out.push('>'),
-        b"quot" => out.push('"'),
-        b"apos" => out.push('\''),
+        "amp" => out.push('&'),
+        "lt" => out.push('<'),
+        "gt" => out.push('>'),
+        "quot" => out.push('"'),
+        "apos" => out.push('\''),
         _ => {}
     }
     Ok(())
