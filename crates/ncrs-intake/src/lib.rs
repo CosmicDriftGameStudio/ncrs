@@ -25,6 +25,7 @@ mod sanitise;
 mod scan;
 mod sender_detection;
 mod stability;
+mod structure;
 mod take_in;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_archive;
@@ -80,6 +81,10 @@ pub use sender_detection::{
     detect_sender, AliasOffer, DetectedSender, OwnIdentifiers, SenderDetection, SenderSource,
 };
 pub use stability::{StabilityTracker, STABLE_AFTER};
+pub use structure::{
+    learn_structure, Area, Branch, DateFormat, Level, LocationStructure, NamePart, NameScheme,
+    Placeholder, PlaceholderKind, PlaceholderLabel, StructureDocument, UnorderedFolder,
+};
 pub use take_in::{
     has_symlink_ancestor_under, hash_path, open_without_following, take_in, Outcome,
 };

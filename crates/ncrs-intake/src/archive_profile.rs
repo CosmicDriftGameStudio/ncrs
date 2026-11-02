@@ -3,13 +3,14 @@
 //! touches a file or the index, and no AI is involved.
 //!
 //! A learned pattern uses the placeholder syntax of the filing rules:
-//! `{year}`, `{month}`, `{date}`, `{number}`, plus `{folder}` for a folder
-//! level that varies (a sender or category) and `{name}` for the free part of
-//! a file name. Everything else is a constant. File extensions are not part of
-//! a pattern; the proposal adds one.
+//! `{year}`, `{month}`, `{date}` (or `{day}.{month}.{year}`, `{year}{month}{day}`
+//! for the other date formats), `{number}`, plus `{name}` for the free part of
+//! a file name. Every folder besides years and months is a constant, so each
+//! concrete folder is a subtree of its own. File extensions are not part of a
+//! pattern; the proposal adds one.
 
 use std::cmp::Reverse;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::path::{Component, PathBuf};
 use std::sync::OnceLock;
 
@@ -21,10 +22,12 @@ use crate::extract::parse_date;
 use crate::filing_plan::render_pattern;
 use crate::sanitise::is_plain_literal;
 
-/// A folder name must occur this often at one place before it counts as a
-/// constant rather than a varying sender, and a word of a file name before it
-/// counts as a recurring part rather than free text.
+/// A word of a file name must occur this often before it counts as a
+/// recurring part rather than free text; a subtree needs as many documents
+/// before it has a pattern.
 const MIN_RECURRING: usize = 3;
+/// A pattern is only learned when this share of the subtree follows it.
+const MIN_FOLLOWING_PERCENT: usize = 60;
 const FIRST_YEAR: i32 = 1900;
 const LAST_YEAR: i32 = 2099;
 
@@ -40,21 +43,28 @@ pub struct ArchiveDocument {
 enum FolderToken {
     Year,
     Month,
-    Folder,
     Literal(String),
 }
 
+/// `2024-03-01`, `01.03.2024` and `20240301`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DateFormat {
+    Iso,
+    Dotted,
+    Compact,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum NameToken {
-    Date,
-    Number,
+pub(in crate) enum NameToken {
+    Date(DateFormat),
+    Number(String),
     Separator(char),
     Word(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Piece {
-    Date,
+    Date(DateFormat),
     Number,
     Name,
     Separator(char),
@@ -64,6 +74,7 @@ enum Piece {
 #[derive(Clone)]
 struct Parsed {
     folders: Vec<String>,
+    tokens: Vec<FolderToken>,
     name: Vec<NameToken>,
     date: Option<NaiveDate>,
 }
@@ -74,15 +85,7 @@ struct Parsed {
 /// whose year folder disagrees with its known date does not follow it.
 pub fn learn_archive(documents: &[ArchiveDocument]) -> Vec<SubtreePattern> {
     let parsed: Vec<Parsed> = documents.iter().filter_map(parse_document).collect();
-    let folder_tokens = abstract_folders(&parsed);
-
-    let mut groups: BTreeMap<(&[FolderToken], String), Vec<usize>> = BTreeMap::new();
-    for (index, (document, folders)) in parsed.iter().zip(&folder_tokens).enumerate() {
-        groups
-            .entry((folders.as_slice(), shape(&document.name)))
-            .or_default()
-            .push(index);
-    }
+    let groups = group_by_shape(&parsed);
 
     // Per subtree: pattern -> (documents that follow it, whether it has structure).
     let mut subtrees: BTreeMap<String, SubtreeTally> = BTreeMap::new();
@@ -101,6 +104,11 @@ pub fn learn_archive(documents: &[ArchiveDocument]) -> Vec<SubtreePattern> {
             .count();
         let tally = subtrees.entry(subtree_of(folders)).or_default();
         tally.total += members.len();
+        tally.unsafe_folders |= members.iter().any(|&member| {
+            parsed
+                .get(member)
+                .is_some_and(|document| !folders_are_safe(document))
+        });
         let entry = tally.patterns.entry(pattern).or_insert((0, structured));
         entry.0 += followers;
     }
@@ -112,8 +120,16 @@ pub fn learn_archive(documents: &[ArchiveDocument]) -> Vec<SubtreePattern> {
                 .patterns
                 .into_iter()
                 .max_by_key(|(pattern, (followers, _))| (*followers, Reverse(pattern.clone())));
+            let enough_documents = tally.total >= MIN_RECURRING;
             let (pattern, following) = match dominant {
-                Some((pattern, (followers, true))) if followers > 0 => (Some(pattern), followers),
+                Some((pattern, (followers, true)))
+                    if followers > 0
+                        && enough_documents
+                        && !tally.unsafe_folders
+                        && followers * 100 >= tally.total * MIN_FOLLOWING_PERCENT =>
+                {
+                    (Some(pattern), followers)
+                }
                 _ => (None, 0),
             };
             SubtreePattern {
@@ -130,17 +146,9 @@ pub fn learn_archive(documents: &[ArchiveDocument]) -> Vec<SubtreePattern> {
 /// for a path that cannot be a document of the location. The same assignment
 /// `learn_archive` counts with.
 pub fn subtree_per_document(documents: &[ArchiveDocument]) -> Vec<Option<String>> {
-    let parsed: Vec<Option<Parsed>> = documents.iter().map(parse_document).collect();
-    let present: Vec<Parsed> = parsed.iter().flatten().cloned().collect();
-    let mut folders = abstract_folders(&present).into_iter();
-    parsed
+    documents
         .iter()
-        .map(|document| {
-            document
-                .as_ref()
-                .and_then(|_| folders.next())
-                .map(|tokens| subtree_of(&tokens))
-        })
+        .map(|document| parse_document(document).map(|parsed| subtree_of(&parsed.tokens)))
         .collect()
 }
 
@@ -159,14 +167,7 @@ pub struct DocumentPattern {
 pub fn pattern_per_document(documents: &[ArchiveDocument]) -> Vec<Option<DocumentPattern>> {
     let parsed: Vec<Option<Parsed>> = documents.iter().map(parse_document).collect();
     let present: Vec<Parsed> = parsed.iter().flatten().cloned().collect();
-    let folder_tokens = abstract_folders(&present);
-    let mut groups: BTreeMap<(&[FolderToken], String), Vec<usize>> = BTreeMap::new();
-    for (index, (document, folders)) in present.iter().zip(&folder_tokens).enumerate() {
-        groups
-            .entry((folders.as_slice(), shape(&document.name)))
-            .or_default()
-            .push(index);
-    }
+    let groups = group_by_shape(&present);
     let mut own: Vec<Option<DocumentPattern>> = vec![None; present.len()];
     for ((folders, _shape), members) in &groups {
         let found = DocumentPattern {
@@ -189,9 +190,22 @@ pub fn pattern_per_document(documents: &[ArchiveDocument]) -> Vec<Option<Documen
         .collect()
 }
 
+/// Documents of the same folder tokens and file name shape.
+fn group_by_shape(parsed: &[Parsed]) -> BTreeMap<(&[FolderToken], String), Vec<usize>> {
+    let mut groups: BTreeMap<(&[FolderToken], String), Vec<usize>> = BTreeMap::new();
+    for (index, document) in parsed.iter().enumerate() {
+        groups
+            .entry((document.tokens.as_slice(), shape(&document.name)))
+            .or_default()
+            .push(index);
+    }
+    groups
+}
+
 #[derive(Default)]
 struct SubtreeTally {
     total: usize,
+    unsafe_folders: bool,
     patterns: BTreeMap<String, (usize, bool)>,
 }
 
@@ -238,6 +252,7 @@ fn parse_document(document: &ArchiveDocument) -> Option<Parsed> {
         }
     }
     Some(Parsed {
+        tokens: folder_tokens(&folders),
         folders,
         name: name_tokens(&file_stem?),
         date: document.date,
@@ -267,7 +282,7 @@ pub fn year_of(folder: &str) -> Option<i32> {
         .filter(|year| (FIRST_YEAR..=LAST_YEAR).contains(year))
 }
 
-fn is_month(folder: &str) -> bool {
+pub(in crate) fn is_month(folder: &str) -> bool {
     folder.len() == 2
         && folder
             .parse::<u32>()
@@ -275,70 +290,44 @@ fn is_month(folder: &str) -> bool {
 }
 
 /// A folder name that cannot be a constant piece of a pattern.
-fn is_pattern_safe(name: &str) -> bool {
+pub(in crate) fn is_pattern_safe(name: &str) -> bool {
     is_plain_literal(name) && !name.contains(['{', '}'])
 }
 
-/// Folder levels as years, months, constants and varying names. Level by
-/// level, so that a varying level merges the paths below it.
-fn abstract_folders(parsed: &[Parsed]) -> Vec<Vec<FolderToken>> {
-    let mut tokens: Vec<Vec<FolderToken>> = vec![Vec::new(); parsed.len()];
-    let depth = parsed
-        .iter()
-        .map(|doc| doc.folders.len())
-        .max()
-        .unwrap_or(0);
-    for level in 0..depth {
-        let mut names_at: BTreeMap<Vec<FolderToken>, BTreeSet<&str>> = BTreeMap::new();
-        for (document, prefix) in parsed.iter().zip(&tokens) {
-            if let Some(name) = document.folders.get(level) {
-                if classify_date_folder(name, prefix.last()).is_none() {
-                    names_at.entry(prefix.clone()).or_default().insert(name);
-                }
-            }
-        }
-        for (document, prefix) in parsed.iter().zip(tokens.iter_mut()) {
-            let Some(name) = document.folders.get(level) else {
-                continue;
-            };
-            let token = classify_date_folder(name, prefix.last()).unwrap_or_else(|| {
-                let varies = names_at
-                    .get(prefix)
-                    .is_some_and(|names| names.len() >= MIN_RECURRING);
-                if varies || !is_pattern_safe(name) {
-                    FolderToken::Folder
-                } else {
-                    FolderToken::Literal(name.clone())
-                }
-            });
-            prefix.push(token);
-        }
+/// Years and months are placeholders, every other folder a constant. A month
+/// is only a month right below a year.
+fn folder_tokens(folders: &[String]) -> Vec<FolderToken> {
+    let mut tokens: Vec<FolderToken> = Vec::new();
+    for name in folders {
+        let token = if year_of(name).is_some() {
+            FolderToken::Year
+        } else if tokens.last() == Some(&FolderToken::Year) && is_month(name) {
+            FolderToken::Month
+        } else {
+            FolderToken::Literal(name.clone())
+        };
+        tokens.push(token);
     }
     tokens
 }
 
-/// A month is only a month right below a year.
-fn classify_date_folder(name: &str, previous: Option<&FolderToken>) -> Option<FolderToken> {
-    if year_of(name).is_some() {
-        Some(FolderToken::Year)
-    } else if previous == Some(&FolderToken::Year) && is_month(name) {
-        Some(FolderToken::Month)
-    } else {
-        None
-    }
+fn folders_are_safe(document: &Parsed) -> bool {
+    document
+        .tokens
+        .iter()
+        .all(|token| !matches!(token, FolderToken::Literal(name) if !is_pattern_safe(name)))
 }
 
-/// The constant folders of the path, joined by `/`; years, months and varying
-/// levels are skipped. A constant path is a subtree of its own: if sibling
-/// folders (`Insurance/Company A`, `Insurance/Agency B`) shared one, their
-/// patterns would compete and the smaller folder's documents would look like
-/// outliers.
+/// The folders of the path, joined by `/`; years and months are skipped. A
+/// concrete folder is a subtree of its own: if sibling folders
+/// (`Insurance/Company A`, `Insurance/Agency B`) shared one, their patterns
+/// would compete and the smaller folder's documents would look like outliers.
 fn subtree_of(folders: &[FolderToken]) -> String {
     folders
         .iter()
         .filter_map(|token| match token {
             FolderToken::Literal(name) => Some(name.as_str()),
-            FolderToken::Year | FolderToken::Month | FolderToken::Folder => None,
+            FolderToken::Year | FolderToken::Month => None,
         })
         .collect::<Vec<_>>()
         .join("/")
@@ -350,8 +339,8 @@ fn date_regex() -> Option<&'static Regex> {
         .as_ref()
 }
 
-/// `2024-03-01`, `01.03.2024` or `20240301` as a date.
-fn date_in(stem: &str) -> Option<(usize, usize)> {
+/// `2024-03-01`, `01.03.2024` or `20240301` as a date, with its position.
+fn date_in(stem: &str) -> Option<(usize, usize, DateFormat)> {
     let bytes = stem.as_bytes();
     date_regex()?.find_iter(stem).find_map(|found| {
         let digit_before = found
@@ -368,22 +357,34 @@ fn date_in(stem: &str) -> Option<(usize, usize)> {
             _ => text.to_owned(),
         };
         (!digit_before && !digit_after && parse_date(&normalised).is_some())
-            .then_some((found.start(), found.end()))
+            .then(|| (found.start(), found.end(), date_format_of(text)))
     })
 }
 
-fn name_tokens(stem: &str) -> Vec<NameToken> {
+fn date_format_of(text: &str) -> DateFormat {
+    if text.contains('-') {
+        DateFormat::Iso
+    } else if text.contains('.') {
+        DateFormat::Dotted
+    } else {
+        DateFormat::Compact
+    }
+}
+
+/// The words, numbers, separators and the date of a file name without its
+/// extension. `.` separates names, but not inside a date.
+pub(in crate) fn name_tokens(stem: &str) -> Vec<NameToken> {
     let (before, date, after) = match date_in(stem) {
-        Some((start, end)) => (
+        Some((start, end, format)) => (
             stem.get(..start).unwrap_or_default(),
-            true,
+            Some(format),
             stem.get(end..).unwrap_or_default(),
         ),
-        None => (stem, false, ""),
+        None => (stem, None, ""),
     };
     let mut tokens = words_of(before);
-    if date {
-        tokens.push(NameToken::Date);
+    if let Some(format) = date {
+        tokens.push(NameToken::Date(format));
     }
     tokens.extend(words_of(after));
     tokens
@@ -398,13 +399,13 @@ fn words_of(text: &str) -> Vec<NameToken> {
         }
         let finished = std::mem::take(pending);
         found.push(if finished.bytes().all(|byte| byte.is_ascii_digit()) {
-            NameToken::Number
+            NameToken::Number(finished)
         } else {
             NameToken::Word(finished)
         });
     };
     for character in text.chars() {
-        if matches!(character, '_' | '-' | ' ') {
+        if matches!(character, '_' | '-' | ' ' | '.') {
             flush(&mut word, &mut tokens);
             tokens.push(NameToken::Separator(character));
         } else {
@@ -416,12 +417,14 @@ fn words_of(text: &str) -> Vec<NameToken> {
 }
 
 /// The structure of a file name with the words masked.
-fn shape(tokens: &[NameToken]) -> String {
+pub(in crate) fn shape(tokens: &[NameToken]) -> String {
     tokens
         .iter()
         .map(|token| match token {
-            NameToken::Date => "\u{1}".to_owned(),
-            NameToken::Number => "\u{2}".to_owned(),
+            NameToken::Date(DateFormat::Iso) => "\u{1}".to_owned(),
+            NameToken::Date(DateFormat::Dotted) => "\u{4}".to_owned(),
+            NameToken::Date(DateFormat::Compact) => "\u{5}".to_owned(),
+            NameToken::Number(_) => "\u{2}".to_owned(),
             NameToken::Word(_) => "\u{3}".to_owned(),
             NameToken::Separator(character) => character.to_string(),
         })
@@ -439,8 +442,8 @@ fn name_pieces(parsed: &[Parsed], members: &[usize]) -> Vec<Piece> {
         .iter()
         .enumerate()
         .map(|(position, token)| match token {
-            NameToken::Date => Piece::Date,
-            NameToken::Number => Piece::Number,
+            NameToken::Date(format) => Piece::Date(*format),
+            NameToken::Number(_) => Piece::Number,
             NameToken::Separator(character) => Piece::Separator(*character),
             NameToken::Word(word) => {
                 let same_everywhere = members.iter().all(|&member| {
@@ -491,14 +494,15 @@ fn pattern_text(folders: &[FolderToken], pieces: &[Piece]) -> String {
         .map(|token| match token {
             FolderToken::Year => "{year}".to_owned(),
             FolderToken::Month => "{month}".to_owned(),
-            FolderToken::Folder => "{folder}".to_owned(),
             FolderToken::Literal(name) => name.clone(),
         })
         .collect();
     let file_name: String = pieces
         .iter()
         .map(|piece| match piece {
-            Piece::Date => "{date}".to_owned(),
+            Piece::Date(DateFormat::Iso) => "{date}".to_owned(),
+            Piece::Date(DateFormat::Dotted) => "{day}.{month}.{year}".to_owned(),
+            Piece::Date(DateFormat::Compact) => "{year}{month}{day}".to_owned(),
             Piece::Number => "{number}".to_owned(),
             Piece::Name => "{name}".to_owned(),
             Piece::Separator(character) => character.to_string(),
@@ -568,15 +572,30 @@ mod tests {
     fn a_year_and_category_tree_yields_the_pattern_and_the_count() {
         let learned = learn_archive(&year_category_tree());
 
+        let patterns: Vec<_> = learned
+            .iter()
+            .map(|entry| (entry.subtree.as_str(), entry.pattern.as_deref()))
+            .collect();
         assert_eq!(
-            learned,
-            [SubtreePattern {
-                subtree: "Insurance".to_owned(),
-                pattern: Some("{year}/Insurance/{folder}/{date}_{name}".to_owned()),
-                documents: 12,
-                total: 12,
-            }]
+            patterns,
+            [
+                (
+                    "Insurance/Agency B",
+                    Some("{year}/Insurance/Agency B/{date}_{name}")
+                ),
+                (
+                    "Insurance/Company A",
+                    Some("{year}/Insurance/Company A/{date}_{name}")
+                ),
+                (
+                    "Insurance/Company C",
+                    Some("{year}/Insurance/Company C/{date}_{name}")
+                ),
+            ]
         );
+        assert!(learned
+            .iter()
+            .all(|entry| (entry.documents, entry.total) == (4, 4)));
     }
 
     #[test]
@@ -624,16 +643,90 @@ mod tests {
     }
 
     #[test]
-    fn mixed_date_formats_are_recognised() {
+    fn each_date_format_keeps_its_placeholders() {
+        let learned = learn_archive(&documents(&[
+            "Iso/2024-03-01_a.pdf",
+            "Iso/2024-03-02_b.pdf",
+            "Iso/2024-03-03_c.pdf",
+            "Compact/20240301_a.pdf",
+            "Compact/20240302_b.pdf",
+            "Compact/20240303_c.pdf",
+            "Dotted/01.03.2024_a.pdf",
+            "Dotted/02.03.2024_b.pdf",
+            "Dotted/03.03.2024_c.pdf",
+        ]));
+
+        let patterns: Vec<_> = ["Iso", "Compact", "Dotted"]
+            .map(|subtree| only(&learned, subtree).pattern)
+            .into();
+        assert_eq!(
+            patterns,
+            [
+                Some("Iso/{date}_{name}".to_owned()),
+                Some("Compact/{year}{month}{day}_{name}".to_owned()),
+                Some("Dotted/{day}.{month}.{year}_{name}".to_owned()),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_mix_of_date_formats_is_no_common_structure() {
         let learned = learn_archive(&documents(&[
             "Taxes/2024-03-01_receipt.pdf",
             "Taxes/20240302_letter.pdf",
             "Taxes/03.03.2024_notice.pdf",
         ]));
 
-        let taxes = only(&learned, "Taxes");
-        assert_eq!(taxes.pattern.as_deref(), Some("Taxes/{date}_{name}"));
-        assert_eq!((taxes.documents, taxes.total), (3, 3));
+        assert_eq!(only(&learned, "Taxes").pattern, None);
+    }
+
+    #[test]
+    fn a_dot_separates_the_parts_of_a_name_but_not_a_date() {
+        let learned = learn_archive(&documents(&[
+            "Taxes/Receipt.01.03.2024.a.pdf",
+            "Taxes/Receipt.02.03.2024.b.pdf",
+            "Taxes/Receipt.03.03.2024.c.pdf",
+        ]));
+
+        assert_eq!(
+            only(&learned, "Taxes").pattern.as_deref(),
+            Some("Taxes/Receipt.{day}.{month}.{year}.{name}")
+        );
+    }
+
+    #[test]
+    fn a_subtree_with_fewer_than_three_documents_has_no_pattern() {
+        let learned = learn_archive(&documents(&[
+            "Taxes/2024-03-01_a.pdf",
+            "Taxes/2024-03-02_b.pdf",
+        ]));
+
+        assert_eq!(only(&learned, "Taxes").pattern, None);
+    }
+
+    #[test]
+    fn a_pattern_followed_by_under_sixty_percent_is_not_learned() {
+        let learned = learn_archive(&documents(&[
+            "Taxes/2024-03-01_a.pdf",
+            "Taxes/2024-03-02_b.pdf",
+            "Taxes/2024-03-03_c.pdf",
+            "Taxes/notes.pdf",
+            "Taxes/memo.pdf",
+            "Taxes/memo2.pdf",
+        ]));
+
+        assert_eq!(only(&learned, "Taxes").pattern, None);
+    }
+
+    #[test]
+    fn a_folder_that_cannot_be_a_constant_leaves_its_subtree_without_a_pattern() {
+        let learned = learn_archive(&documents(&[
+            "Taxes {2024}/2024-03-01_a.pdf",
+            "Taxes {2024}/2024-03-02_b.pdf",
+            "Taxes {2024}/2024-03-03_c.pdf",
+        ]));
+
+        assert_eq!(only(&learned, "Taxes {2024}").pattern, None);
     }
 
     #[test]
@@ -684,7 +777,7 @@ mod tests {
                 total: 3,
             }
         );
-        assert!(only(&learned, "Insurance").pattern.is_some());
+        assert!(only(&learned, "Insurance/Company A").pattern.is_some());
     }
 
     #[test]
@@ -722,8 +815,43 @@ mod tests {
         assert!(learned.is_empty());
     }
 
+    fn archive_profile() -> Vec<SubtreePattern> {
+        let documents: Vec<ArchiveDocument> = crate::test_archive::test_archive()
+            .archive
+            .iter()
+            .map(|file| ArchiveDocument {
+                relative_path: file.relative_path.clone(),
+                date: file.date,
+            })
+            .collect();
+        learn_archive(&documents)
+    }
+
+    #[test]
+    fn the_test_archive_is_learned_per_concrete_folder() {
+        let learned = archive_profile();
+
+        assert!(learned.iter().all(|entry| !entry.subtree.is_empty()));
+        assert!(learned
+            .iter()
+            .filter_map(|entry| entry.pattern.as_deref())
+            .all(|pattern| !pattern.contains("{folder}")));
+        assert_eq!(
+            only(&learned, "Bank/Sparkasse Chemnitz/Kontoauszüge")
+                .pattern
+                .as_deref(),
+            Some("Bank/Sparkasse Chemnitz/Kontoauszüge/{year}/Kontoauszug_{date}")
+        );
+        assert_eq!(
+            only(&learned, "Bank/DKB/Kreditkarte").pattern.as_deref(),
+            Some("Bank/DKB/Kreditkarte/{year}/Kreditkartenabrechnung {day}.{month}.{year}")
+        );
+        assert_eq!(only(&learned, "Scans").pattern, None);
+        assert_eq!(only(&learned, "Downloads alt").pattern, None);
+    }
+
     fn insurance_pattern() -> SubtreePattern {
-        only(&learn_archive(&year_category_tree()), "Insurance")
+        only(&learn_archive(&year_category_tree()), "Insurance/Company A")
     }
 
     fn fields(sender: &str, kind: &str) -> DocumentFields {
@@ -742,7 +870,7 @@ mod tests {
         assert_eq!(
             target,
             Some(PathBuf::from(
-                "2025/Insurance/Agency D/2025-06-09_premium.pdf"
+                "2025/Insurance/Company A/2025-06-09_premium.pdf"
             ))
         );
     }
@@ -772,7 +900,10 @@ mod tests {
 
     #[test]
     fn a_value_with_separators_or_parent_references_cannot_leave_the_location() {
-        let pattern = insurance_pattern();
+        let pattern = SubtreePattern {
+            pattern: Some("{year}/Insurance/{sender}/{date}_{name}".to_owned()),
+            ..insurance_pattern()
+        };
         for hostile in ["../../etc", "a/../../b", "..\\..\\c", "/", "..", "x/y"] {
             let target = propose_target(&pattern, &fields(hostile, hostile), "pdf");
             if let Some(path) = target {

@@ -9,8 +9,8 @@ use ncrs_index::{
 };
 use ncrs_intake::test_archive::{test_archive, TestFile, OWN_NAME};
 use ncrs_intake::{
-    detect_fields, learn_archive, plan_reorganisation, ArchiveDocument, OwnNames, PlanFile,
-    ReorganisationInput, DUPLICATES_FOLDER,
+    detect_fields, learn_archive, learn_structure, plan_reorganisation, ArchiveDocument, OwnNames,
+    PlanFile, ReorganisationInput, StructureDocument, DUPLICATES_FOLDER,
 };
 use sha2::{Digest as _, Sha256};
 
@@ -53,6 +53,38 @@ fn field_counts(files: &[TestFile]) -> FieldCounts {
     counts
 }
 
+fn structure_documents(files: &[TestFile]) -> Vec<StructureDocument> {
+    let aliases = SenderAliases::default();
+    let catalog = KindCatalog::built_in();
+    let names = [OWN_NAME.to_owned()];
+    let own = OwnNames {
+        names: &names,
+        ibans: &[],
+        tax_ids: &[],
+    };
+    files
+        .iter()
+        .map(|file| {
+            let found = file.text().map(|text| {
+                detect_fields(
+                    text,
+                    &DocumentFields::default(),
+                    &aliases,
+                    &[],
+                    &own,
+                    &catalog,
+                )
+            });
+            StructureDocument {
+                relative_path: file.relative_path.clone(),
+                date: found.as_ref().and_then(|fields| fields.date).or(file.date),
+                sender: found.as_ref().and_then(|fields| fields.sender.clone()),
+                kind: found.and_then(|fields| fields.kind),
+            }
+        })
+        .collect()
+}
+
 fn count_photos(files: &[TestFile]) -> usize {
     files.iter().filter(|file| file.text().is_none()).count()
 }
@@ -75,18 +107,29 @@ fn main() {
         })
         .collect();
     let profile = learn_archive(&documents);
-    println!("== AREAS: {} subtrees learned", profile.len());
-    for area in &profile {
-        println!(
-            "  [{}] {} follows {}/{}",
-            area.subtree,
-            area.pattern.as_deref().unwrap_or("-"),
-            area.documents,
-            area.total
-        );
-    }
-
     let fields = field_counts(&archive.archive);
+    let structure = learn_structure(
+        &structure_documents(&archive.archive),
+        &KindCatalog::built_in(),
+    );
+    println!(
+        "== AREAS: {} areas, {} unordered folders",
+        structure.areas.len(),
+        structure.unordered.len()
+    );
+    for line in structure.describe() {
+        println!("  {line}");
+    }
+    println!(
+        "== PROFILE: {} subtrees, {} with a pattern, {} documents follow",
+        profile.len(),
+        profile
+            .iter()
+            .filter(|entry| entry.pattern.is_some())
+            .count(),
+        profile.iter().map(|entry| entry.documents).sum::<u32>()
+    );
+
     println!(
         "== FIELDS (archive texts): sender {}, recipient {}, kind {}, date {} of {texts}",
         fields.sender, fields.recipient, fields.kind, fields.date
