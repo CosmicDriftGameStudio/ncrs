@@ -672,11 +672,13 @@ mod tests {
         let setup = Setup::new();
         let read = setup.in_review("invoice.pdf");
         let empty = setup.in_review("blank.pdf");
-        let image = setup.in_review("photo.jpg");
+        let image = setup.in_review("photo.heic");
         let never_read = setup.in_review("never.pdf");
+        let readable_photo = setup.in_review("receipt.jpg");
         setup.with_index(|index| {
             index.set_document_text(empty, "").unwrap();
             index.set_document_text(image, "").unwrap();
+            index.set_document_text(readable_photo, "").unwrap();
             index
                 .connection()
                 .execute(
@@ -702,6 +704,7 @@ mod tests {
                 (empty, TextState::NoneFound),
                 (image, TextState::NotReadable),
                 (never_read, TextState::NoneFound),
+                (readable_photo, TextState::NoneFound),
             ]
         );
     }
