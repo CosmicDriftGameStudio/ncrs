@@ -58,6 +58,57 @@ pub enum ChipReply {
     SwitchToMove,
 }
 
+impl ChipReply {
+    /// Whether handling the reply writes files, trash, rules or settings, or
+    /// settles what a later filing run does. A typed answer never runs such a
+    /// reply on its own.
+    pub fn changes_something(&self) -> bool {
+        match self {
+            Self::KeepYes
+            | Self::FineAsIs
+            | Self::ToTrash
+            | Self::FileAll
+            | Self::GroupArea(_)
+            | Self::NamesNumbered
+            | Self::PutBack
+            | Self::Undo => true,
+            Self::Cancel
+            | Self::Folder(_)
+            | Self::PickFolder
+            | Self::Setup
+            | Self::ReadAnyway
+            | Self::WantChange
+            | Self::ShowAll
+            | Self::ScopeAll
+            | Self::ScopeOnly(_)
+            | Self::LeaveThem
+            | Self::Later
+            | Self::Once
+            | Self::Always
+            | Self::ModeCopy
+            | Self::ModeMove
+            | Self::ShowMore
+            | Self::GroupNewFolder
+            | Self::GroupLeave
+            | Self::SinglesShow
+            | Self::SinglesLeave
+            | Self::NamesLeave
+            | Self::UnsureChoice { .. }
+            | Self::OpenSearch
+            | Self::IntentSearch
+            | Self::IntentTidy
+            | Self::IntentStructure
+            | Self::IntentUndo
+            | Self::DownloadModel
+            | Self::ConfirmTidy
+            | Self::ConfirmChange
+            | Self::OtherTarget
+            | Self::SwitchToCopy
+            | Self::SwitchToMove => false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Chip {
     pub label: String,

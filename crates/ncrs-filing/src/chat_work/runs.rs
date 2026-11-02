@@ -194,10 +194,19 @@ pub fn last_run(access: &ChatAccess) -> Result<Option<RunSummary>, String> {
 pub fn undo(access: &ChatAccess, batch: BatchId) -> Result<UndoReport, String> {
     access.with_index(|index| {
         let items = index.journal_items(batch).map_err(|err| err.to_string())?;
-        // The source folder of the run is added by the undo itself.
-        let roots: Vec<PathBuf> = common_parent(items.iter().map(|item| item.to.as_path()))
-            .into_iter()
-            .collect();
+        // The recorded source and target folders are added by the undo
+        // itself; older runs fall back on the parent the targets share.
+        let has_target = index
+            .batch_info(batch)
+            .map_err(|err| err.to_string())?
+            .is_some_and(|info| info.target_root.is_some());
+        let roots: Vec<PathBuf> = if has_target {
+            Vec::new()
+        } else {
+            common_parent(items.iter().map(|item| item.to.as_path()))
+                .into_iter()
+                .collect()
+        };
         execute::undo_with_trash(index, batch, &roots, Some(&*access.trash))
             .map_err(|err| err.to_string())
     })

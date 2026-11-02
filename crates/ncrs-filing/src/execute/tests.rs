@@ -350,9 +350,11 @@ fn reconcile_finishes_a_copy_that_was_made_but_whose_source_was_not_removed() {
     let (batch, _) = pending(&setup, &item);
     fs::create_dir_all(item.to.parent().unwrap()).unwrap();
     fs::copy(&item.from, &item.to).unwrap();
-    let staging = item
-        .to
-        .with_file_name(format!("{}1-1", partial_prefix(&item.to)));
+    let staging = item.to.with_file_name(format!(
+        "{}{}-1",
+        partial_prefix(&item.to),
+        std::process::id()
+    ));
     fs::write(&staging, "half").unwrap();
 
     reconcile(&setup.index).unwrap();

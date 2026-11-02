@@ -161,7 +161,10 @@ fn every_intent_is_read() {
     );
     assert_eq!(parse(r#"{"intent":"undo"}"#), Ok(ChatIntent::Undo));
     assert_eq!(
-        parse(r#"{"intent":"search","sender":"DKB","year_from":2020,"amount_min":12.5}"#),
+        parse_chat_reply(
+            r#"{"intent":"search","sender":"DKB","year_from":2020,"amount_min":12.5}"#,
+            &turn("dkb ab 2020 über 12,50 euro")
+        ),
         Ok(ChatIntent::Search(SearchQuery {
             sender: Some("DKB".to_owned()),
             year_from: Some(2020),
@@ -220,10 +223,31 @@ fn amounts_of_zero_or_less_and_bad_years_are_no_values() {
     };
 
     assert_eq!(query, SearchQuery::default());
-    let Ok(ChatIntent::Search(rounded)) = parse(r#"{"intent":"search","amount_min":0.005}"#) else {
+    let Ok(ChatIntent::Search(rounded)) = parse_chat_reply(
+        r#"{"intent":"search","amount_min":0.005}"#,
+        &turn("ab 0,01 euro"),
+    ) else {
         panic!("a search");
     };
     assert_eq!(rounded.amount_min_cents, Some(1));
+}
+
+#[test]
+fn an_amount_the_typed_sentence_does_not_contain_is_dropped() {
+    let raw = r#"{"intent":"search","amount_min":500,"amount_max":1000}"#;
+    let amounts = |typed: &str| {
+        let Ok(ChatIntent::Search(query)) = parse_chat_reply(raw, &turn(typed)) else {
+            panic!("a search");
+        };
+        (query.amount_min_cents, query.amount_max_cents)
+    };
+
+    assert_eq!(amounts("alle rechnungen"), (None, None));
+    assert_eq!(amounts("rechnungen über 500 euro"), (Some(50_000), None));
+    assert_eq!(
+        amounts("zwischen 500 und 1.000 euro"),
+        (Some(50_000), Some(100_000))
+    );
 }
 
 #[test]

@@ -46,6 +46,9 @@ struct FileIdentity {
     modified: Option<SystemTime>,
     #[cfg(unix)]
     device_and_inode: (u64, u64),
+    /// Set by the system on every write, and not by resetting the mtime.
+    #[cfg(unix)]
+    changed: (i64, i64),
     #[cfg(windows)]
     created: u64,
 }
@@ -59,6 +62,11 @@ impl FileIdentity {
             device_and_inode: {
                 use std::os::unix::fs::MetadataExt as _;
                 (metadata.dev(), metadata.ino())
+            },
+            #[cfg(unix)]
+            changed: {
+                use std::os::unix::fs::MetadataExt as _;
+                (metadata.ctime(), metadata.ctime_nsec())
             },
             #[cfg(windows)]
             created: {
@@ -219,6 +227,13 @@ impl PartialDownload {
             }
         };
         fs::create_dir_all(dir).map_err(write_failed(dir))?;
+        let folder = fs::symlink_metadata(dir).map_err(write_failed(dir))?;
+        if !folder.is_dir() {
+            return Err(ModelFileError::WriteFailed {
+                path: dir.to_path_buf(),
+                reason: "the model folder is a link, not a folder".to_owned(),
+            });
+        }
         let keep = match fs::symlink_metadata(&part_path) {
             Ok(metadata) if metadata.is_file() && metadata.len() <= pin.size => true,
             Ok(metadata) if metadata.is_dir() => return Err(ModelFileError::NotARegularFile),
@@ -472,6 +487,43 @@ mod tests {
 
         assert_eq!(fs::read(&victim).unwrap(), b"keep me");
         assert_eq!(fs::read(dir.path().join("model.gguf")).unwrap(), BYTES);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_model_folder_that_is_a_link_is_refused() {
+        let dir = TempDir::new().unwrap();
+        let real = dir.path().join("real");
+        fs::create_dir(&real).unwrap();
+        let link = dir.path().join("ai-models");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+
+        let opened = PartialDownload::open(&link, &pin_of(BYTES));
+
+        assert!(matches!(opened, Err(ModelFileError::WriteFailed { .. })));
+        assert_eq!(fs::read_dir(&real).unwrap().count(), 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_rewrite_in_place_with_the_mtime_put_back_is_hashed_again() {
+        let dir = TempDir::new().unwrap();
+        let path = write(&dir, b"model bytes");
+        let pin = pin_of(b"model bytes");
+        let modified = fs::metadata(&path).unwrap().modified().unwrap();
+        assert_eq!(verify_model_file(&path, &pin), Ok(()));
+
+        // The change time of some file systems only moves every few
+        // milliseconds.
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        let file = OpenOptions::new().write(true).open(&path).unwrap();
+        (&file).write_all(b"model BYTES").unwrap();
+        file.set_modified(modified).unwrap();
+
+        assert_eq!(
+            verify_model_file(&path, &pin),
+            Err(AiError::Model("the model file is not the expected one"))
+        );
     }
 
     #[test]

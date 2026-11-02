@@ -170,6 +170,11 @@ pub fn execute_run<P: Progress>(
     let source = remember_source_root(places.source)?;
     let batch = index.begin_named_batch(kind, name, transfer)?;
     index.set_batch_source_root(batch, &source)?;
+    // A target not made yet has nothing to resolve; the undo then falls back
+    // on the places in the journal.
+    if let Ok(target) = remember_source_root(places.target) {
+        index.set_batch_target_root(batch, &target)?;
+    }
     let checked = Places {
         target: places.target,
         source: Some(places.source),
@@ -482,15 +487,17 @@ fn skip_pending(
     Ok(ItemOutcome::Skipped(reason))
 }
 
-/// Whether `name` is a hidden copy this app made next to `to`:
-/// `<prefix><process id>-<counter>`, nothing else.
+/// Whether `name` is a hidden copy this process made next to `to`:
+/// `<prefix><this process id>-<counter>`, nothing else. A copy of another
+/// process may still be written to.
 fn is_staging_name(name: &str, prefix: &str) -> bool {
+    let own_process = std::process::id().to_string();
     name.strip_prefix(prefix)
         .and_then(|rest| rest.split_once('-'))
         .is_some_and(|(process, counter)| {
             let digits =
                 |part: &str| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit());
-            digits(process) && digits(counter)
+            process == own_process && digits(counter)
         })
 }
 
@@ -637,9 +644,11 @@ pub fn undo_with_trash(
         .as_ref()
         .map_or(Transfer::Move, |found| found.transfer);
     let mut all_roots = roots.to_vec();
-    if let Some(source) = recorded.and_then(|found| found.source_root) {
-        refuse_swapped_root(&source)?;
-        all_roots.push(source.given);
+    if let Some(found) = recorded {
+        for recorded_root in [found.source_root, found.target_root].into_iter().flatten() {
+            refuse_swapped_root(&recorded_root)?;
+            all_roots.push(recorded_root.given);
+        }
     }
     let mut report = UndoReport::default();
     let items = index.journal_items(batch)?;
@@ -651,7 +660,7 @@ pub fn undo_with_trash(
         let undone = match transfer {
             Transfer::Move => undo_item(index, item, &all_roots)?,
             Transfer::Copy => undo_copy_item(item, &all_roots),
-            Transfer::Trash => trash::undo_trash_item(item, trash),
+            Transfer::Trash => trash::undo_trash_item(item, trash, &all_roots),
         };
         match undone {
             None => {

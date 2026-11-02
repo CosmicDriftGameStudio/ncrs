@@ -154,6 +154,10 @@ pub fn model_ready(state: &mut State, ctx: &Ctx) -> Option<Action> {
 fn act_on(state: &mut State, ctx: &Ctx, intent: ChatIntent, asked: &Asked) -> Option<Action> {
     match intent {
         ChatIntent::Answer { choice } => match asked.chips.get(choice) {
+            Some(answer) if answer.reply.changes_something() => {
+                confirm_typed_choice(state, ctx, answer.clone());
+                None
+            }
             Some(answer) => handle_reply(state, ctx, answer.reply.clone()),
             None => {
                 fallback(state, ctx);
@@ -204,6 +208,17 @@ fn act_on(state: &mut State, ctx: &Ctx, intent: ChatIntent, asked: &Asked) -> Op
             None
         }
     }
+}
+
+/// Document text reaches the model, so a typed answer never does a change on
+/// its own: the user taps the option to confirm it.
+fn confirm_typed_choice(state: &mut State, ctx: &Ctx, answer: Chip) {
+    let sentence = fill(
+        ctx.lang,
+        Msg::HermesChatTypedChoiceConfirm,
+        &[("choice", &answer.label)],
+    );
+    say(state, sentence, vec![answer, cancel_chip(ctx)]);
 }
 
 /// The name of an order Hermes cannot do yet, `None` for the one it can.

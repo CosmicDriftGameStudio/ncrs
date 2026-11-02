@@ -188,10 +188,13 @@ fn a_settle_removes_only_the_staging_file_of_the_transfer() {
     fs::copy(&item.from, &item.to).unwrap();
     let prefix = partial_prefix(&item.to);
     let beside = |name: String| item.to.with_file_name(name);
-    let staging = beside(format!("{prefix}4242-3"));
+    let own = std::process::id();
+    let staging = beside(format!("{prefix}{own}-3"));
     let foreign_file = beside(format!("{prefix}notes"));
-    let foreign_folder = beside(format!("{prefix}4242-4"));
+    let foreign_folder = beside(format!("{prefix}{own}-4"));
     let other_name = beside(".ncrs-partial-b.pdf-1-1".to_owned());
+    let other_process = beside(format!("{prefix}{}-5", own.wrapping_add(1)));
+    fs::write(&other_process, "half, written by another process").unwrap();
     fs::write(&staging, "half").unwrap();
     fs::write(&foreign_file, "mine").unwrap();
     fs::create_dir(&foreign_folder).unwrap();
@@ -204,6 +207,30 @@ fn a_settle_removes_only_the_staging_file_of_the_transfer() {
     assert!(foreign_file.exists());
     assert!(foreign_folder.join("keep.txt").exists());
     assert!(other_name.exists());
+    assert!(other_process.exists(), "another process may still write it");
+}
+
+#[test]
+fn the_recorded_target_folder_is_checked_by_the_undo() {
+    let place = Place::new();
+    let item = place.item("a.pdf", "alpha");
+    let report = place.run(Transfer::Move, std::slice::from_ref(&item));
+    let info = place.index.batch_info(report.batch).unwrap().unwrap();
+    let recorded = info.target_root.unwrap();
+    assert_eq!(recorded.given, place.target);
+    assert_eq!(recorded.resolved, fs::canonicalize(&place.target).unwrap());
+
+    #[cfg(unix)]
+    {
+        let outside = place.outside();
+        fs::rename(&place.target, place.dir.path().join("moved-away")).unwrap();
+        std::os::unix::fs::symlink(&outside, &place.target).unwrap();
+
+        let refused = undo(&place.index, report.batch, &[]);
+
+        assert!(matches!(refused, Err(ExecuteError::Io { .. })));
+        assert_eq!(place.states(report.batch), [JournalState::Moved]);
+    }
 }
 
 mod trash_entries {
@@ -281,5 +308,100 @@ mod trash_entries {
 
         assert_eq!(undone, UndoReport { undone: 0, left: 1 });
         assert!(!path.exists());
+    }
+
+    fn journaled_trash_item(place: &Place, from: &Path, to: &Path, hash: ContentHash) -> BatchId {
+        let batch = place
+            .index
+            .begin_named_batch(BatchKind::Hermes, "Cleared", Transfer::Trash)
+            .unwrap();
+        let item = ExecutionItem {
+            from: from.to_path_buf(),
+            to: to.to_path_buf(),
+            expected_hash: hash,
+            document_id: None,
+            duplicate: false,
+        };
+        place
+            .index
+            .add_journal_item(batch, &journal_entry(&item, JournalState::Moved, None))
+            .unwrap();
+        batch
+    }
+
+    #[test]
+    fn an_entry_that_is_gone_is_not_put_back() {
+        let place = Place::new();
+        let bin = bin(&place);
+        let path = place.source.join("a.pdf");
+        fs::write(&path, "alpha").unwrap();
+        let hash = hash_path(&path).unwrap();
+        bin.trash(&path).unwrap();
+        let entry = bin.list().unwrap().remove(0);
+        fs::remove_file(&entry.key).unwrap();
+        let batch = journaled_trash_item(&place, &path, Path::new(&entry.key), hash);
+
+        let undone = undo_with_trash(&place.index, batch, &[], Some(&bin)).unwrap();
+
+        assert_eq!(undone, UndoReport { undone: 0, left: 1 });
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn a_later_deletion_from_the_same_place_is_not_put_back() {
+        let place = Place::new();
+        let bin = bin(&place);
+        let path = place.source.join("a.pdf");
+        fs::write(&path, "alpha").unwrap();
+        let hash = hash_path(&path).unwrap();
+        bin.trash(&path).unwrap();
+        fs::write(&path, "something else, deleted later").unwrap();
+        bin.trash(&path).unwrap();
+        let batch = journaled_trash_item(&place, &path, &path, hash);
+
+        let undone = undo_with_trash(&place.index, batch, &[], Some(&bin)).unwrap();
+
+        assert_eq!(undone, UndoReport { undone: 0, left: 1 });
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn an_entry_of_another_original_place_is_not_put_back() {
+        let place = Place::new();
+        let bin = bin(&place);
+        let other = place.source.join("other.pdf");
+        fs::write(&other, "alpha").unwrap();
+        let hash = hash_path(&other).unwrap();
+        bin.trash(&other).unwrap();
+        let entry = bin.list().unwrap().remove(0);
+        let planned = place.source.join("a.pdf");
+        let batch = journaled_trash_item(&place, &planned, Path::new(&entry.key), hash);
+
+        let undone = undo_with_trash(&place.index, batch, &[], Some(&bin)).unwrap();
+
+        assert_eq!(undone, UndoReport { undone: 0, left: 1 });
+        assert!(!other.exists() && !planned.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_trash_undo_does_not_put_a_file_back_through_a_link() {
+        let place = Place::new();
+        let bin = bin(&place);
+        let outside = place.outside();
+        std::os::unix::fs::symlink(&outside, place.source.join("sub")).unwrap();
+        let planned = place.source.join("sub").join("a.pdf");
+        let batch = journaled_trash_item(&place, &planned, &planned, ContentHash([0; 32]));
+
+        let undone = undo_with_trash(
+            &place.index,
+            batch,
+            std::slice::from_ref(&place.source),
+            Some(&bin),
+        )
+        .unwrap();
+
+        assert_eq!(undone, UndoReport { undone: 0, left: 1 });
+        assert_eq!(entries_in(&outside), 0);
     }
 }

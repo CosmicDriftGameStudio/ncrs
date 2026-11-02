@@ -8161,6 +8161,12 @@
       "de": "Abbrechen"
     },
     {
+      "key": "hermes_chat.typed_choice_confirm",
+      "context": "Hermes chat (F2): The user typed an answer, and Hermes asks them to confirm the option it understood by tapping it. {choice} is the label of that option.",
+      "en": "Did you mean “{choice}”?",
+      "de": "Meinst du „{choice}“?"
+    },
+    {
       "key": "hermes_chat.not_a_folder",
       "context": "Hermes chat (F2): Hermes says this when a typed path does not exist or is not a folder. {path} is what the user typed.",
       "en": "I can't find {path}.",

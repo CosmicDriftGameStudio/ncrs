@@ -81,9 +81,11 @@ pub struct BatchInfo {
     pub finished_at: Option<i64>,
     pub undone_at: Option<i64>,
     pub source_root: Option<SourceRoot>,
+    /// `None` for a run that did not record one.
+    pub target_root: Option<SourceRoot>,
 }
 
-/// The folder a run took its files from.
+/// The folder a run took its files from, or put them in.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceRoot {
     /// The spelling the journal's paths start with.
@@ -232,7 +234,7 @@ impl Index {
             .connection()
             .query_row(
                 "SELECT kind, name, transfer, started_at, finished_at, undone_at,
-                        source_root, source_resolved
+                        source_root, source_resolved, target_root, target_resolved
                  FROM execution_batch WHERE id = ?1",
                 [batch.get()],
                 |row| {
@@ -245,6 +247,8 @@ impl Index {
                         row.get::<_, Option<i64>>(5)?,
                         row.get::<_, Option<String>>(6)?,
                         row.get::<_, Option<String>>(7)?,
+                        row.get::<_, Option<String>>(8)?,
+                        row.get::<_, Option<String>>(9)?,
                     ))
                 },
             )
@@ -260,7 +264,15 @@ impl Index {
                     undone_at,
                     source_root,
                     source_resolved,
+                    target_root,
+                    target_resolved,
                 )| {
+                    let root_of = |written: Option<String>, canonical: Option<String>| {
+                        written.zip(canonical).map(|(given, resolved)| SourceRoot {
+                            given: PathBuf::from(given),
+                            resolved: PathBuf::from(resolved),
+                        })
+                    };
                     Ok(BatchInfo {
                         kind: BatchKind::parse(&kind)?,
                         name,
@@ -268,12 +280,8 @@ impl Index {
                         started_at,
                         finished_at,
                         undone_at,
-                        source_root: source_root.zip(source_resolved).map(|(given, resolved)| {
-                            SourceRoot {
-                                given: PathBuf::from(given),
-                                resolved: PathBuf::from(resolved),
-                            }
-                        }),
+                        source_root: root_of(source_root, source_resolved),
+                        target_root: root_of(target_root, target_resolved),
                     })
                 },
             )
@@ -289,6 +297,19 @@ impl Index {
         self.connection().execute(
             "UPDATE execution_batch SET source_root = ?2, source_resolved = ?3 WHERE id = ?1",
             params![batch.get(), utf8(&source.given)?, utf8(&source.resolved)?],
+        )?;
+        Ok(())
+    }
+
+    /// Records the folder the run puts its files in.
+    pub fn set_batch_target_root(
+        &self,
+        batch: BatchId,
+        target: &SourceRoot,
+    ) -> Result<(), IndexError> {
+        self.connection().execute(
+            "UPDATE execution_batch SET target_root = ?2, target_resolved = ?3 WHERE id = ?1",
+            params![batch.get(), utf8(&target.given)?, utf8(&target.resolved)?],
         )?;
         Ok(())
     }

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use jsonc_parser::{parse_to_value, JsonObject, JsonValue, ParseOptions};
-use ncrs_index::{DocumentFields, Field, KindCatalog};
+use ncrs_index::{Currency, DocumentFields, Field, KindCatalog};
 use ncrs_intake::{parse_amount, parse_date, AI_FIELD_ORDER};
 
 use crate::error::AiError;
@@ -192,9 +192,15 @@ fn amount_is_in(text: &str, found: &ExtractedField) -> bool {
     let Some(amount) = parse_amount(&found.value, None) else {
         return false;
     };
+    text_has_minor_units(text, amount.minor_units, &amount.currency)
+}
+
+/// Whether some number written in `text` is `minor_units`, read as `currency`
+/// when the number names none.
+pub fn text_has_minor_units(text: &str, minor_units: i64, currency: &Currency) -> bool {
     number_tokens(text).any(|token| {
-        parse_amount(token, Some(amount.currency.clone()))
-            .is_some_and(|read| read.minor_units == amount.minor_units)
+        parse_amount(token, Some(currency.clone()))
+            .is_some_and(|read| read.minor_units == minor_units)
     })
 }
 
@@ -397,7 +403,7 @@ mod tests {
         let schema = output_schema(&[Field::Kind], &kinds).pretty();
 
         assert!(schema.contains(
-            "one of: invoice, credit_note, reminder, contract, notice, receipt, letter, insurance, quote, delivery_note, termination, payslip, or another short word"
+            "one of: invoice, credit_note, reminder, contract, notice, receipt, letter, insurance, quote, delivery_note, termination, bank_statement, payslip, or another short word"
         ));
     }
 

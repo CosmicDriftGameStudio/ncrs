@@ -11,7 +11,10 @@ CREATE TABLE execution_batch_new (
     -- The folder the run took its files from, as given and as the system
     -- resolved it then; an undo checks the way back against them.
     source_root TEXT,
-    source_resolved TEXT
+    source_resolved TEXT,
+    -- The folder the run put its files in, recorded the same way.
+    target_root TEXT,
+    target_resolved TEXT
 );
 INSERT INTO execution_batch_new (id, kind, started_at, finished_at, undone_at)
 SELECT id, kind, started_at, finished_at, undone_at FROM execution_batch;

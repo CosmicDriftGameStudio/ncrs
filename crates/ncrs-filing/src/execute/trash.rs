@@ -11,7 +11,8 @@ use ncrs_index::{
 use ncrs_intake::{has_symlink_ancestor_under, hash_path};
 
 use super::{
-    has_hash, is_below, is_not_found, remember_source_root, ExecuteError, ItemOutcome, SkipReason,
+    has_hash, is_below, is_not_found, leaves_its_location, remember_source_root, ExecuteError,
+    ItemOutcome, SkipReason,
 };
 
 /// A file to put in the trash, and the file that makes it redundant.
@@ -178,7 +179,14 @@ pub fn settle_trash(
 
 /// Puts the entry back that the journal recorded. When the key is unknown
 /// (`to` is still the old place) the newest entry from that place is taken.
-pub fn undo_trash_item(item: &JournalItem, bin: Option<&dyn Trash>) -> Option<SkipReason> {
+pub fn undo_trash_item(
+    item: &JournalItem,
+    bin: Option<&dyn Trash>,
+    roots: &[PathBuf],
+) -> Option<SkipReason> {
+    if let Some(reason) = leaves_its_location(roots, item) {
+        return Some(reason);
+    }
     let Some(trash) = bin else {
         return Some(SkipReason::Failed(
             "no trash to put it back from".to_owned(),
@@ -197,8 +205,17 @@ pub fn undo_trash_item(item: &JournalItem, bin: Option<&dyn Trash>) -> Option<Sk
     let Some(found) = wanted else {
         return Some(SkipReason::SourceMissing);
     };
-    // A file this run did not trash is never put back in its place.
-    if trashed_file_of(&found.key).is_some_and(|held| !has_hash(&held, item.hash)) {
+    // A file this run did not trash is never put back in its place. An entry
+    // the trash keeps unreadable (Windows) is only trusted under the exact key
+    // the journal recorded, never as the newest entry from that place.
+    if found.original != item.from {
+        return Some(SkipReason::SourceChanged);
+    }
+    let held_matches = match trashed_file_of(&found.key) {
+        Some(held) => has_hash(&held, item.hash),
+        None => key_known,
+    };
+    if !held_matches {
         return Some(SkipReason::SourceChanged);
     }
     match trash.restore(found) {

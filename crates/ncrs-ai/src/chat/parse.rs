@@ -3,10 +3,11 @@
 //! build without the grammar (a fake, a future provider) must not widen them.
 
 use jsonc_parser::{parse_to_value, JsonObject, JsonValue, ParseOptions};
+use ncrs_index::Currency;
 
 use super::intent::{ChatIntent, Order, QuestionKind, Schedule, Transfer};
 use super::turn::{ChatTurn, SearchQuery};
-use crate::contract::clean_value;
+use crate::contract::{clean_value, text_has_minor_units};
 use crate::error::AiError;
 
 const MAX_FIELD_CHARS: usize = 80;
@@ -42,8 +43,8 @@ pub fn parse_chat_reply(raw: &str, turn: &ChatTurn) -> Result<ChatIntent, AiErro
             kind: text(&reply, "kind"),
             year_from: year(&reply, "year_from"),
             year_to: year(&reply, "year_to"),
-            amount_min_cents: cents(&reply, "amount_min"),
-            amount_max_cents: cents(&reply, "amount_max"),
+            amount_min_cents: cents(&reply, "amount_min", &turn.message),
+            amount_max_cents: cents(&reply, "amount_max", &turn.message),
             text: text(&reply, "text"),
         })),
         "ask_content" => Ok(ChatIntent::AskContent {
@@ -97,11 +98,15 @@ fn year(reply: &JsonObject<'_>, key: &str) -> Option<u16> {
     YEARS.contains(&year).then_some(year)
 }
 
-/// Half away from zero; zero or less is no amount.
-fn cents(reply: &JsonObject<'_>, key: &str) -> Option<i64> {
+/// Half away from zero; zero or less is no amount. An amount the typed
+/// sentence does not contain is dropped: a model invents numbers.
+fn cents(reply: &JsonObject<'_>, key: &str, typed: &str) -> Option<i64> {
     let value = reply.get_number(key)?.parse::<f64>().ok()?;
     let rounded = (value * 100.0).round();
-    (1.0..1e15).contains(&rounded).then_some(rounded as i64)
+    let cents = (1.0..1e15).contains(&rounded).then_some(rounded as i64)?;
+    // The sentence names no currency; any one reads its numbers the same.
+    let currency = Currency::new("EUR")?;
+    text_has_minor_units(typed, cents, &currency).then_some(cents)
 }
 
 fn enum_of<T>(reply: &JsonObject<'_>, key: &str, read: fn(&str) -> Option<T>) -> Option<T> {

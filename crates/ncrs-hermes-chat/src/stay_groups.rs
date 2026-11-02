@@ -7,6 +7,7 @@ use std::path::{Component, Path, PathBuf};
 
 use ncrs_filing::chat_work::{ChatWork, GroupKey, StayGroup, TrialOutcome};
 use ncrs_i18n::Msg;
+use ncrs_intake::is_windows_device_name;
 
 use crate::action::Action;
 use crate::ctx::Ctx;
@@ -194,12 +195,17 @@ pub fn new_folder(state: &mut State, ctx: &Ctx) {
     );
 }
 
-/// One plain folder name: not empty, no separators, nothing that climbs out.
+/// One plain folder name: not empty, no separators, nothing that climbs out,
+/// no name Windows reads as a device.
 fn plain_folder_name(typed: &str) -> Option<String> {
     let name = typed.trim();
     let mut parts = Path::new(name).components();
     match (parts.next(), parts.next()) {
-        (Some(Component::Normal(_)), None) if !name.contains(['/', '\\']) => Some(name.to_owned()),
+        (Some(Component::Normal(_)), None)
+            if !name.contains(['/', '\\']) && !is_windows_device_name(name) =>
+        {
+            Some(name.to_owned())
+        }
         _ => None,
     }
 }
@@ -381,4 +387,26 @@ pub fn names_numbered(state: &mut State, ctx: &Ctx) {
 pub fn names_leave(state: &mut State, ctx: &Ctx) {
     state.session.groups.names_done = true;
     ask_next(state, ctx);
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests {
+    use super::plain_folder_name;
+
+    #[test]
+    fn a_folder_name_is_one_plain_name() {
+        assert_eq!(plain_folder_name("  Steuer ").as_deref(), Some("Steuer"));
+        for refused in ["", "..", "a/b", "a\\b", "/abs"] {
+            assert_eq!(plain_folder_name(refused), None, "{refused:?}");
+        }
+    }
+
+    #[test]
+    fn a_windows_device_name_is_refused_like_a_climb() {
+        for device in ["CON", "nul", "Aux.txt", "COM1", "lpt9"] {
+            assert_eq!(plain_folder_name(device), None, "{device}");
+        }
+        assert_eq!(plain_folder_name("Console").as_deref(), Some("Console"));
+    }
 }

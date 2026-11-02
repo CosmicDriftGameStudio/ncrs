@@ -374,6 +374,49 @@ mod tests {
     }
 
     #[test]
+    fn a_typed_answer_to_trash_changes_nothing_until_the_chip_is_pressed() {
+        let mut talk = archive_talk();
+        talk.send(Message::Open);
+        talk.press(&ChipReply::Folder(archive(&talk)));
+        talk.press(&ChipReply::KeepYes);
+        talk.press(&ChipReply::Folder(talk.path("inbox")));
+        talk.press(&ChipReply::Once);
+        talk.press(&ChipReply::ModeMove);
+        talk.leave_stay_questions();
+        talk.press(&ChipReply::FileAll);
+        let trash_label = talk
+            .state
+            .chips()
+            .iter()
+            .find(|chip| chip.reply == ChipReply::ToTrash)
+            .unwrap()
+            .label
+            .clone();
+        let filed = talk.files();
+
+        talk.type_text_understood(
+            "ja, weg damit",
+            &format!(r#"{{"intent":"answer","choice":"{trash_label}"}}"#),
+        );
+        assert_eq!(
+            talk.last_texts(),
+            vec![say(
+                Msg::HermesChatTypedChoiceConfirm,
+                &[("choice", &trash_label)]
+            )]
+        );
+        assert_eq!(
+            talk.labels(),
+            [trash_label, say(Msg::HermesChatCancel, &[])]
+        );
+        assert_eq!(talk.files(), filed, "a typed answer trashes nothing");
+
+        talk.press(&ChipReply::ToTrash);
+        assert_eq!(talk.files().len(), filed.len() - DUPLICATES);
+        assert_eq!(talk.model.turns().len(), 1, "the chip never asks the model");
+    }
+
+    #[test]
     fn staying_groups_are_asked_about_and_the_answers_become_rules() {
         let mut talk = archive_talk();
         let before = talk.files();
@@ -443,6 +486,15 @@ mod tests {
             "das kommt alles zu steuer",
             &format!(r#"{{"intent":"answer","choice":"{steuer}"}}"#),
         );
+        assert_eq!(
+            talk.last_texts(),
+            vec![say(
+                Msg::HermesChatTypedChoiceConfirm,
+                &[("choice", &steuer)]
+            )]
+        );
+        assert_eq!(talk.plan().filed, 92, "a typed answer files nothing yet");
+        talk.press(&ChipReply::GroupArea(steuer.clone()));
         let after_second = talk.plan().clone();
         assert_eq!((after_second.filed, after_second.stays), (119, 181));
         assert_eq!(

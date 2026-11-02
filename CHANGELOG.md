@@ -73,11 +73,21 @@ All notable changes to this project are documented here. The format follows
   ordered, shows a trial run of what it would file and files only after you
   confirm. It can also trash duplicates, and the last run can be undone. `Esc`
   closes it.
+- Hermes understands typed sentences with the built-in AI model, on this
+  computer. It confirms every action before it runs. Without the model it
+  offers the download in the chat.
+- For the files a trial run leaves where they are, Hermes asks where each
+  larger group belongs (by sender, then by kind). Each answer becomes a rule
+  that later runs keep and that the Rules page can take back.
+- Status and errors shows whether the AI model computes on the graphics card
+  or the processor.
 
 ### Changed
 
 - The command line moved from `F2` to `Shift`+`F2`; `F2` opens the Hermes chat.
   A `copy = "F2"` of your own keeps working.
+- The built-in AI model is now Qwen3 4B (about 2.5 GB, one download) instead
+  of Qwen3 0.6B. It also reads the fields of documents.
 - The index schema is now 23; the index is migrated on the first start and
   keeps its documents.
 - English and German show plain names only ("Filing", "Review", "Status and
