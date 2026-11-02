@@ -361,6 +361,8 @@ mod tests {
                 | Msg::ShortcutHermesChat
                 | Msg::HermesChatFolderDownloads
                 | Msg::HermesChatWhenDate
+                // Only placeholders, an arrow and a question mark.
+                | Msg::HermesChatConfirmTidyTo
                 | Msg::HermesChatTrialUnsureOne
                 // Names of color schemes.
                 | Msg::SettingsPresetCosmic
