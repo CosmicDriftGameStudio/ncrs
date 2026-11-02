@@ -163,6 +163,24 @@ impl Talk {
         });
     }
 
+    /// Leaves every question about the staying files as it is, up to the
+    /// offer to file. These presses are not counted in `entries`.
+    pub fn leave_stay_questions(&mut self) {
+        let leaving = [
+            ChipReply::GroupLeave,
+            ChipReply::SinglesLeave,
+            ChipReply::NamesLeave,
+        ];
+        let counted = self.entries;
+        while let Some(reply) = leaving
+            .iter()
+            .find(|reply| self.state.chips().iter().any(|chip| &chip.reply == *reply))
+        {
+            self.press(&reply.clone());
+        }
+        self.entries = counted;
+    }
+
     pub fn type_text(&mut self, typed: &str) {
         self.entries += 1;
         self.send(Message::InputChanged(typed.to_owned()));

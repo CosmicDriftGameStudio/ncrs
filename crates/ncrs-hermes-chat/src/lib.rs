@@ -8,6 +8,7 @@ pub mod ctx;
 pub mod keys;
 pub mod message;
 mod state;
+mod stay_groups;
 mod update;
 mod view;
 

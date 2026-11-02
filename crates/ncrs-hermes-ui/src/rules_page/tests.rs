@@ -451,7 +451,7 @@ fn every_kind_has_a_sentence_in_both_languages_with_and_without_negation() {
                     value: "VALUE".to_owned(),
                     negated,
                 };
-                let sentence = condition_sentence(&condition, lang);
+                let sentence = condition_sentence(&condition, lang, &KindCatalog::built_in());
                 assert!(sentence.contains("VALUE"), "{kind:?} {negated}: {sentence}");
                 assert!(!sentence.contains("{value}"), "{sentence}");
             }

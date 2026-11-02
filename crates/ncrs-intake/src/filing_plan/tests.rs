@@ -325,6 +325,34 @@ fn a_regex_rule_matches_and_sender_is_compared_without_case() {
 }
 
 #[test]
+fn a_kind_condition_holds_for_its_kind_in_any_spelling_and_for_no_other() {
+    let mut by_kind = spec("{year}/{number}");
+    by_kind.conditions =
+        RuleConditions::all_of(vec![Condition::new(ConditionKind::Kind, "invoice")]);
+    let dated = |kind: Option<&str>| DocumentFields {
+        kind: kind.map(str::to_owned),
+        date: NaiveDate::from_ymd_opt(2026, 3, 1),
+        number: Some("4711".to_owned()),
+        ..DocumentFields::default()
+    };
+
+    assert!(matches!(
+        plan_for(by_kind.clone(), TEXT, &dated(Some("invoice"))),
+        Planning::Plan(_)
+    ));
+    assert!(matches!(
+        plan_for(by_kind.clone(), TEXT, &dated(Some("Invoice"))),
+        Planning::Plan(_)
+    ));
+    for other in [Some("contract"), None] {
+        assert_eq!(
+            reason(&plan_for(by_kind.clone(), TEXT, &dated(other))),
+            ReviewReason::NoMatchingRule
+        );
+    }
+}
+
+#[test]
 fn an_invalid_or_too_large_regex_does_not_match_and_does_not_panic() {
     let known = DocumentFields::default();
     for source in ["(unclosed", "(a{1000}){1000}{1000}", r"\p{L}{1000}{1000}"] {

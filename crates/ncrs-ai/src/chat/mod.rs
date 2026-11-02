@@ -5,12 +5,14 @@
 //! scripted one.
 
 #[cfg(test)]
-pub(crate) mod eval;
+mod eval;
 mod grammar;
 mod intent;
 mod parse;
 #[cfg(all(test, feature = "llama"))]
-pub(crate) mod scoring;
+mod live;
+#[cfg(all(test, feature = "llama"))]
+mod scoring;
 mod turn;
 
 #[cfg(test)]

@@ -633,7 +633,9 @@ fn a_part_that_is_already_complete_is_checked_and_put_in_place_without_a_request
 
 #[cfg(feature = "local-ai")]
 fn lazy_model_stays_not_downloaded(dir: &Path) {
-    use ncrs_ai::{ExtractionRequest, LazyLocalModel, LocalModelStatus, Provider as _};
+    use ncrs_ai::{
+        ChatModel as _, ExtractionRequest, LazyLocalModel, LocalModelStatus, Provider as _,
+    };
     use std::num::NonZeroU32;
 
     let lazy = LazyLocalModel::new(

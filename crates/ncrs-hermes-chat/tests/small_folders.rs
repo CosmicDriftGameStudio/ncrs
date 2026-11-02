@@ -175,10 +175,12 @@ mod tests {
         talk.open();
         tidy_until_trial(&mut talk, &ChipReply::ModeCopy);
         assert_eq!(talk.plan().entries.len(), 25);
+        // The junk has no sender and no kind: 23 single pieces are asked about.
         assert_eq!(
             talk.last_texts(),
-            vec![say(Msg::HermesChatTrialIntro, &[("count", "10")])]
+            vec![say(Msg::HermesChatSinglePieces, &[("count", "23")])]
         );
+        talk.leave_stay_questions();
         for expected in ["10", "5"] {
             talk.press(&ChipReply::ShowMore);
             assert_eq!(

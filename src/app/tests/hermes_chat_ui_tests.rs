@@ -47,6 +47,7 @@ fn ready(lang: Language) -> Ctx {
         home: PathBuf::from("/home/test"),
         targets: vec![PathBuf::from("/home/test/Documents/Archive")],
         sources: vec![PathBuf::from("/home/test/Downloads")],
+        model: None,
         now: chrono::Local
             .with_ymd_and_hms(2026, 11, 2, 12, 0, 0)
             .unwrap(),
@@ -251,9 +252,34 @@ fn trial_scene(lang: Language) -> App {
     app
 }
 
+fn group_scene() -> App {
+    let (mut app, _) = opened(Language::German);
+    user_says(&mut app, "Räum Inbox auf");
+    hermes_says(
+        &mut app,
+        vec![Part::Text(
+            "37 Dateien von Vodafone GmbH, z. B. Dokument (100).pdf, Dokument (14).pdf, \
+             Dokument (16).pdf. Wohin damit?"
+                .to_owned(),
+        )],
+        vec![
+            chip("Bank", ChipReply::GroupArea("Bank".to_owned()), false),
+            chip("Steuer", ChipReply::GroupArea("Steuer".to_owned()), false),
+            chip(
+                "Versicherung",
+                ChipReply::GroupArea("Versicherung".to_owned()),
+                false,
+            ),
+            chip("Neuer Ordner …", ChipReply::GroupNewFolder, false),
+            chip("Liegen lassen", ChipReply::GroupLeave, false),
+        ],
+    );
+    app
+}
+
 fn undo_scene() -> App {
     let (mut app, ctx) = opened(Language::German);
-    type_and_submit(&mut app, &ctx, "Mach das rückgängig");
+    user_says(&mut app, "Mach das rückgängig");
     let folder = tempfile::tempdir().unwrap();
     let index = Index::create_plain(&folder.path().join("index.db")).unwrap();
     let summary = RunSummary {
@@ -313,6 +339,11 @@ fn the_change_preview_matches_its_snapshot() {
 fn the_trial_with_an_unsure_row_matches_its_snapshots() {
     matches_snapshot(&trial_scene(Language::German), "hermes_chat_trial_de");
     matches_snapshot(&trial_scene(Language::English), "hermes_chat_trial_en");
+}
+
+#[test]
+fn the_question_about_a_group_of_staying_files_matches_its_snapshot() {
+    matches_snapshot(&group_scene(), "hermes_chat_group_de");
 }
 
 #[test]

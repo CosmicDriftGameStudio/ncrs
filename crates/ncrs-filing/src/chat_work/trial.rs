@@ -4,10 +4,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use ncrs_index::{ContentHash, Field, Kinds};
-use ncrs_intake::{render_pattern_in, NeighbourIndex, OwnNames};
+use ncrs_index::{ContentHash, DocumentFields, Field, Kinds, Rule, SenderAliases};
+use ncrs_intake::{
+    plan, render_pattern_in, NeighbourIndex, OwnNames, PlanFile, PlanInput, Planning,
+};
 
 use super::change::{apply_changes, OrderChange};
+use super::groups::{stay_groups, AnsweredGroups, StayGroups};
 use super::{ChatAccess, FolderReading};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,7 +44,13 @@ pub struct TrialEntry {
     pub from: PathBuf,
     pub name: String,
     pub hash: ContentHash,
+    pub fields: DocumentFields,
     pub outcome: TrialOutcome,
+    /// Relative to the target: the folder the neighbours pointed to, where
+    /// there was one.
+    pub neighbour: Option<PathBuf>,
+    /// Relative to the target: where the file would go when its name is taken.
+    pub wanted: Option<PathBuf>,
 }
 
 /// In the order the chat shows them: one filed file per area, the unsure
@@ -58,6 +67,8 @@ pub struct TrialPlan {
     /// Paths below the target that are in use: what lies there and what the
     /// filed entries claim.
     pub taken: BTreeSet<PathBuf>,
+    /// The staying files, grouped for the questions.
+    pub groups: StayGroups,
 }
 
 impl TrialPlan {
@@ -82,8 +93,10 @@ pub fn trial(
     source: &FolderReading,
     target: &FolderReading,
     changes: &[OrderChange],
+    answered: &AnsweredGroups,
 ) -> Result<TrialPlan, String> {
     let kinds = access.kinds()?;
+    let (rules, aliases) = access.rules_and_aliases()?;
     let own = OwnNames {
         names: &access.own.names,
         ibans: &access.own.ibans,
@@ -103,16 +116,28 @@ pub fn trial(
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let outcome = if let Some(at) = target.hashes.get(&file.hash) {
-            TrialOutcome::AlreadyThere { at: at.clone() }
+        let mut decided = Decided::outcome(TrialOutcome::Stays(StayReason::NoNeighbours));
+        if let Some(at) = target.hashes.get(&file.hash) {
+            decided.outcome = TrialOutcome::AlreadyThere { at: at.clone() };
         } else {
-            decide(&neighbours, &kinds, file, &name, changes, &mut taken)
-        };
+            let ctx = Deciding {
+                rules: &rules,
+                aliases: &aliases,
+                neighbours: &neighbours,
+                kinds: &kinds,
+                changes,
+                source_root: &source.root,
+            };
+            decided = decide(&ctx, file, &name, &mut taken);
+        }
         entries.push(TrialEntry {
             from: source.root.join(&file.relative_path),
             name,
             hash: file.hash,
-            outcome,
+            fields: file.fields.clone(),
+            outcome: decided.outcome,
+            neighbour: decided.neighbour,
+            wanted: decided.wanted,
         });
     }
 
@@ -126,7 +151,7 @@ pub fn trial(
     let unsure = count(|outcome| matches!(outcome, TrialOutcome::Unsure { .. }));
     let already_there = count(|outcome| matches!(outcome, TrialOutcome::AlreadyThere { .. }));
     let stays = count(|outcome| matches!(outcome, TrialOutcome::Stays(_)));
-    Ok(TrialPlan {
+    let mut plan = TrialPlan {
         source_root: source.root.clone(),
         target_root: target.root.clone(),
         entries: in_sample_order(entries),
@@ -135,53 +160,122 @@ pub fn trial(
         already_there,
         stays,
         taken,
-    })
+        groups: StayGroups::default(),
+    };
+    plan.groups = stay_groups(&plan, &kinds, &aliases, target, answered);
+    Ok(plan)
 }
 
+struct Deciding<'a> {
+    rules: &'a [Rule],
+    aliases: &'a SenderAliases,
+    neighbours: &'a NeighbourIndex,
+    kinds: &'a Kinds,
+    changes: &'a [OrderChange],
+    source_root: &'a Path,
+}
+
+struct Decided {
+    outcome: TrialOutcome,
+    neighbour: Option<PathBuf>,
+    wanted: Option<PathBuf>,
+}
+
+impl Decided {
+    fn outcome(outcome: TrialOutcome) -> Self {
+        Self {
+            outcome,
+            neighbour: None,
+            wanted: None,
+        }
+    }
+
+    fn filed_or_taken(to: PathBuf, taken: &mut BTreeSet<PathBuf>) -> Self {
+        if taken.insert(to.clone()) {
+            Self::outcome(TrialOutcome::Filed { to })
+        } else {
+            Self {
+                outcome: TrialOutcome::Stays(StayReason::NameTaken),
+                neighbour: None,
+                wanted: Some(to),
+            }
+        }
+    }
+}
+
+/// A stored rule that matches decides first; without one the neighbours do.
 fn decide(
-    neighbours: &NeighbourIndex,
-    kinds: &Kinds,
-    file: &ncrs_intake::PlanFile,
+    ctx: &Deciding<'_>,
+    file: &PlanFile,
     name: &str,
-    changes: &[OrderChange],
     taken: &mut BTreeSet<PathBuf>,
-) -> TrialOutcome {
-    let Some(placement) = neighbours.place(&file.fields, file.text.as_deref()) else {
-        return TrialOutcome::Stays(StayReason::NoNeighbours);
+) -> Decided {
+    let text = file.text.as_deref().unwrap_or_default();
+    let absolute = ctx.source_root.join(&file.relative_path);
+    let planning = plan(
+        ctx.rules,
+        &PlanInput {
+            text,
+            fields: &file.fields,
+            path: Some(&absolute),
+            sender_aliases: ctx.aliases,
+            manual_fields: &[],
+            kinds: ctx.kinds,
+        },
+    );
+    if let Planning::Plan(filing) = planning {
+        let to = apply_changes(
+            with_extension_of(filing.relative_path, name),
+            file.fields.date,
+            file.fields.kind.as_deref(),
+            ctx.changes,
+        );
+        return Decided::filed_or_taken(to, taken);
+    }
+    let Some(placement) = ctx.neighbours.place(&file.fields, file.text.as_deref()) else {
+        return Decided::outcome(TrialOutcome::Stays(StayReason::NoNeighbours));
     };
     if !placement.is_sure() {
         let mut choices = vec![placement.folder];
         choices.extend(placement.runner_up);
-        return TrialOutcome::Unsure {
+        return Decided::outcome(TrialOutcome::Unsure {
             choices,
             kind_label: file
                 .fields
                 .kind
                 .as_deref()
-                .map(|kind| kinds.kind_word(kind).into_owned()),
-        };
+                .map(|kind| ctx.kinds.kind_word(kind).into_owned()),
+        });
     }
     if let Some(field) = placement.missing {
-        return TrialOutcome::Stays(StayReason::MissingField(field));
+        return Decided {
+            outcome: TrialOutcome::Stays(StayReason::MissingField(field)),
+            neighbour: Some(placement.folder),
+            wanted: None,
+        };
     }
     let Some(rendered) = placement
         .pattern
         .as_deref()
-        .and_then(|pattern| render_pattern_in(pattern, &file.fields, kinds))
+        .and_then(|pattern| render_pattern_in(pattern, &file.fields, ctx.kinds))
     else {
-        return TrialOutcome::Stays(StayReason::NoPattern);
+        return Decided {
+            outcome: TrialOutcome::Stays(StayReason::NoPattern),
+            neighbour: Some(placement.folder),
+            wanted: None,
+        };
     };
     let to = apply_changes(
         with_extension_of(rendered, name),
         file.fields.date,
         file.fields.kind.as_deref(),
-        changes,
+        ctx.changes,
     );
-    if taken.insert(to.clone()) {
-        TrialOutcome::Filed { to }
-    } else {
-        TrialOutcome::Stays(StayReason::NameTaken)
+    let mut decided = Decided::filed_or_taken(to, taken);
+    if decided.wanted.is_some() {
+        decided.neighbour = Some(placement.folder);
     }
+    decided
 }
 
 fn first_segment(to: &Path) -> String {

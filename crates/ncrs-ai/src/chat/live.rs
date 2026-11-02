@@ -1,21 +1,24 @@
 //! The chat against the real model, through the same path the app uses.
 
+#![cfg(test)]
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
-    clippy::indexing_slicing
+    clippy::indexing_slicing,
+    clippy::use_debug,
+    clippy::integer_division
 )]
 
 use std::num::NonZeroU32;
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
-use super::tests::models_dir;
-use super::LazyLocalModel;
-use crate::chat::eval::{rows, HOLDOUT_ROWS, MAIN_ROWS};
-use crate::chat::scoring::score;
-use crate::chat::{ChatIntent, ChatModel, ChatTurn};
+use super::eval::{rows, HOLDOUT_ROWS, MAIN_ROWS};
+use super::scoring::score;
+use super::{ChatIntent, ChatModel as _, ChatTurn};
+use crate::local::models_dir;
+use crate::LazyLocalModel;
 use crate::model_file::LOCAL_MODEL;
 use crate::status::LocalModelStatus;
 
@@ -59,8 +62,8 @@ fn with_model_chat_eval_meets_the_measured_rates() {
     // The first query warms up the compute graphs; it is not counted.
     model.understand(&all[0].turn()).unwrap();
 
-    let (mut intent_ok, mut full_ok) = (0_usize, 0_usize);
-    let (mut total_ms, mut max_ms) = (0_u128, 0_u128);
+    let (mut intent_ok, mut full_ok): (usize, usize) = (0, 0);
+    let (mut total_ms, mut max_ms): (u128, u128) = (0, 0);
     for row in &all {
         let started = Instant::now();
         let answer = model.understand(&row.turn());

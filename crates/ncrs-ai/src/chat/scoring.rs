@@ -12,9 +12,9 @@ pub enum Got {
 /// The name of the intent and its fields as the rows spell them.
 pub fn describe(intent: &ChatIntent, turn: &ChatTurn) -> (&'static str, Vec<(&'static str, Got)>) {
     let mut fields: Vec<(&'static str, Got)> = Vec::new();
-    let mut text = |key: &'static str, value: &Option<String>| {
-        if let Some(value) = value {
-            fields.push((key, Got::Text(value.clone())));
+    let mut text = |key: &'static str, word: &Option<String>| {
+        if let Some(present) = word {
+            fields.push((key, Got::Text(present.clone())));
         }
     };
     match intent {
@@ -28,14 +28,14 @@ pub fn describe(intent: &ChatIntent, turn: &ChatTurn) -> (&'static str, Vec<(&'s
             text("target", target);
             text(
                 "schedule",
-                &schedule.map(|schedule| match schedule {
+                &schedule.map(|said| match said {
                     Schedule::Once => "once".to_owned(),
                     Schedule::Always => "always".to_owned(),
                 }),
             );
             text(
                 "transfer",
-                &transfer.map(|transfer| match transfer {
+                &transfer.map(|said| match said {
                     Transfer::Copy => "copy".to_owned(),
                     Transfer::Move => "move".to_owned(),
                 }),
@@ -45,14 +45,14 @@ pub fn describe(intent: &ChatIntent, turn: &ChatTurn) -> (&'static str, Vec<(&'s
         ChatIntent::ChangeStructure { area, scope, order } => {
             text("area", &Some(area.clone()));
             text("scope", scope);
-            let order = match order {
+            let order_word = match order {
                 Order::ByMonth => "by_month",
                 Order::ByYear => "by_year",
                 Order::BySender => "by_sender",
                 Order::ByKind => "by_kind",
                 Order::Flat => "flat",
             };
-            text("order", &Some(order.to_owned()));
+            text("order", &Some(order_word.to_owned()));
             ("change_structure", fields)
         }
         ChatIntent::Undo => ("undo", fields),
@@ -72,9 +72,9 @@ pub fn describe(intent: &ChatIntent, turn: &ChatTurn) -> (&'static str, Vec<(&'s
                     query.amount_max_cents.map(|c| c as f64 / 100.0),
                 ),
             ];
-            for (key, value) in numbers {
-                if let Some(value) = value {
-                    fields.push((key, Got::Number(value)));
+            for (key, number) in numbers {
+                if let Some(found) = number {
+                    fields.push((key, Got::Number(found)));
                 }
             }
             ("search", fields)
@@ -133,19 +133,19 @@ pub fn score(row: &EvalRow, intent: &ChatIntent) -> (bool, bool) {
         return (false, false);
     }
     let all_match = row.expected.iter().all(|(key, expect)| {
-        let got = fields
+        let found = fields
             .iter()
             .find(|(field, _)| field == key)
-            .map(|(_, got)| got);
-        match (expect, got) {
-            (Expect::Text(wanted), Some(Got::Text(got))) => {
+            .map(|(_, value)| value);
+        match (expect, found) {
+            (Expect::Text(wanted), Some(Got::Text(said))) => {
                 if is_exact_field(key) {
-                    wanted.iter().any(|want| normalise(want) == normalise(got))
+                    wanted.iter().any(|want| normalise(want) == normalise(said))
                 } else {
-                    wanted.iter().any(|want| text_matches(want, got))
+                    wanted.iter().any(|want| text_matches(want, said))
                 }
             }
-            (Expect::Number(want), Some(Got::Number(got))) => (got - want).abs() < 0.005,
+            (Expect::Number(want), Some(Got::Number(said))) => (said - want).abs() < 0.005,
             _ => false,
         }
     });
@@ -172,26 +172,30 @@ pub fn normalise(text: &str) -> String {
         .collect()
 }
 
-pub fn edit_distance(a: &str, b: &str) -> usize {
-    let a: Vec<char> = a.chars().collect();
-    let b: Vec<char> = b.chars().collect();
-    let mut row: Vec<usize> = (0..=b.len()).collect();
-    for (i, ca) in a.iter().enumerate() {
-        let mut previous = row[0];
-        row[0] = i + 1;
-        for (j, cb) in b.iter().enumerate() {
-            let current = row[j + 1];
-            row[j + 1] = (previous + usize::from(ca != cb))
-                .min(row[j] + 1)
-                .min(current + 1);
-            previous = current;
+pub fn edit_distance(first: &str, second: &str) -> usize {
+    let across: Vec<char> = second.chars().collect();
+    let mut row: Vec<usize> = (0..=across.len()).collect();
+    for (i, down) in first.chars().enumerate() {
+        let mut diagonal = i;
+        let mut left = i + 1;
+        for (cell, &letter) in row.iter_mut().skip(1).zip(&across) {
+            let above = *cell;
+            let cost = (diagonal + usize::from(down != letter))
+                .min(left + 1)
+                .min(above + 1);
+            *cell = cost;
+            left = cost;
+            diagonal = above;
+        }
+        if let Some(edge) = row.first_mut() {
+            *edge = i + 1;
         }
     }
-    row[b.len()]
+    row.last().copied().unwrap_or_default()
 }
 
-pub fn text_matches(want: &str, got: &str) -> bool {
-    let (want, got) = (normalise(want), normalise(got));
+pub fn text_matches(wanted: &str, said: &str) -> bool {
+    let (want, got) = (normalise(wanted), normalise(said));
     if want.is_empty() || got.is_empty() {
         return false;
     }

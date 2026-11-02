@@ -232,14 +232,78 @@ fn source_reading() -> FolderReading {
 }
 
 fn trial(setup: &Setup, changes: Vec<OrderChange>) -> TrialPlan {
+    trial_of(setup, source_reading(), changes, AnsweredGroups::default())
+}
+
+fn trial_of(
+    setup: &Setup,
+    source: FolderReading,
+    changes: Vec<OrderChange>,
+    answered: AnsweredGroups,
+) -> TrialPlan {
     match setup.access.run(ChatWork::Trial {
-        source: Arc::new(source_reading()),
+        source: Arc::new(source),
         target: Arc::new(target_reading()),
         changes,
+        answered,
     }) {
         ChatResult::Trial(plan) => plan.unwrap(),
         other => panic!("{other:?}"),
     }
+}
+
+fn save_group_rule(setup: &Setup, key: GroupKey, label: &str, area: &str) {
+    match setup.access.run(ChatWork::SaveGroupRule {
+        target: Arc::new(target_reading()),
+        key,
+        label: label.to_owned(),
+        area: area.to_owned(),
+    }) {
+        ChatResult::RuleSaved(saved) => assert_eq!(saved.unwrap(), label),
+        other => panic!("{other:?}"),
+    }
+}
+
+fn staying(name: &str, sender: Option<&str>, kind: Option<&str>) -> TrialEntry {
+    TrialEntry {
+        from: PathBuf::from("/inbox").join(name),
+        name: name.to_owned(),
+        hash: ContentHash([7; 32]),
+        fields: DocumentFields {
+            sender: sender.map(str::to_owned),
+            kind: kind.map(str::to_owned),
+            ..DocumentFields::default()
+        },
+        outcome: TrialOutcome::Stays(StayReason::NoNeighbours),
+        neighbour: None,
+        wanted: None,
+    }
+}
+
+fn plan_of(entries: Vec<TrialEntry>) -> TrialPlan {
+    TrialPlan {
+        source_root: PathBuf::from("/inbox"),
+        target_root: PathBuf::from("/archive"),
+        stays: entries.len(),
+        entries,
+        filed: 0,
+        unsure: 0,
+        already_there: 0,
+        taken: std::collections::BTreeSet::new(),
+        groups: StayGroups::default(),
+    }
+}
+
+fn grouped(plan: &TrialPlan, answered: &AnsweredGroups) -> StayGroups {
+    let setup = Setup::new();
+    let kinds = setup.access.kinds().unwrap();
+    stay_groups(
+        plan,
+        &kinds,
+        &SenderAliases::default(),
+        &target_reading(),
+        answered,
+    )
 }
 
 fn outcome<'a>(plan: &'a TrialPlan, name: &str) -> &'a TrialOutcome {
@@ -588,4 +652,193 @@ fn duplicates_go_to_the_trash_and_come_back_with_the_undo() {
     };
     assert_eq!(undone.unwrap().undone, 1);
     assert_eq!(fs::read_to_string(copy).unwrap(), "same");
+}
+
+fn source_with_staying_files() -> FolderReading {
+    let sender =
+        |path: &str, seed: u8, name: &str| plan_file(path, seed, Some(name), date(2022, 7, 4));
+    let mut no_kind = plan_file("neither.pdf", 120, None, date(2022, 7, 4));
+    no_kind.fields.kind = None;
+    reading(
+        "/inbox",
+        vec![
+            sender("g1.pdf", 110, "Gamma AG"),
+            sender("g2.pdf", 111, "Gamma AG"),
+            sender("g3.pdf", 112, "gamma ag"),
+            sender("d1.pdf", 113, "Delta AG"),
+            sender("d2.pdf", 114, "Delta AG"),
+            plan_file("k1.pdf", 115, None, date(2022, 7, 4)),
+            plan_file("k2.pdf", 116, None, date(2022, 7, 4)),
+            plan_file("k3.pdf", 117, None, date(2022, 7, 4)),
+            plan_file("k4.pdf", 118, None, date(2022, 7, 4)),
+            sender("solo.pdf", 119, "Solo KG"),
+            no_kind,
+        ],
+    )
+}
+
+#[test]
+fn staying_files_are_grouped_largest_first_sender_before_kind() {
+    let plan = trial_of(
+        &Setup::new(),
+        source_with_staying_files(),
+        Vec::new(),
+        AnsweredGroups::default(),
+    );
+    let groups = &plan.groups;
+    let asked: Vec<(&GroupKey, usize)> = groups
+        .asked
+        .iter()
+        .map(|group| (&group.key, group.count()))
+        .collect();
+    assert_eq!(
+        asked,
+        [
+            (&GroupKey::Kind("invoice".to_owned()), 4),
+            (&GroupKey::Sender("gamma ag".to_owned()), 3),
+            (&GroupKey::Sender("delta ag".to_owned()), 2),
+        ]
+    );
+    assert_eq!(groups.asked[0].label, "Invoice");
+    assert_eq!(groups.asked[1].label, "Gamma AG");
+    assert_eq!(groups.asked[1].examples.len(), 3);
+    assert_eq!(groups.groups, 3);
+    // One sender seen once and one file with neither sender nor kind.
+    assert_eq!(groups.single_pieces, 2);
+    assert_eq!(groups.rest.len(), 2);
+    // No neighbours point anywhere, so the largest areas are offered.
+    assert_eq!(groups.asked[1].areas, ["Alfa", "Firma", "Privat"]);
+}
+
+#[test]
+fn the_neighbour_folder_of_a_file_without_a_pattern_comes_first_in_the_areas() {
+    let mut entries = vec![
+        staying("p1.pdf", Some("Pi AG"), None),
+        staying("p2.pdf", Some("Pi AG"), None),
+    ];
+    for entry in &mut entries {
+        entry.outcome = TrialOutcome::Stays(StayReason::NoPattern);
+        entry.neighbour = Some(PathBuf::from("Privat/Beta"));
+    }
+    let groups = grouped(&plan_of(entries), &AnsweredGroups::default());
+    assert_eq!(groups.asked[0].areas, ["Privat", "Alfa", "Firma"]);
+}
+
+#[test]
+fn at_most_six_groups_are_asked_and_answered_ones_are_not_asked_again() {
+    let entries: Vec<TrialEntry> = (0..8)
+        .flat_map(|group| {
+            (0..2).map(move |piece| {
+                staying(
+                    &format!("{group}-{piece}.pdf"),
+                    Some(&format!("Sender {group}")),
+                    None,
+                )
+            })
+        })
+        .collect();
+    let plan = plan_of(entries);
+    assert_eq!(MAX_GROUP_QUESTIONS, 6);
+    let groups = grouped(&plan, &AnsweredGroups::default());
+    assert_eq!(
+        (groups.groups, groups.asked.len(), groups.rest.len()),
+        (8, 6, 4)
+    );
+    assert_eq!(groups.single_pieces, 0);
+
+    let answered = AnsweredGroups {
+        questions: 2,
+        left: vec![GroupKey::Sender("sender 0".to_owned())],
+    };
+    let later = grouped(&plan, &answered);
+    assert_eq!(later.asked.len(), 4);
+    assert!(later
+        .asked
+        .iter()
+        .all(|group| group.key != GroupKey::Sender("sender 0".to_owned())));
+    // The left group is not asked, and its files are not "rest" either.
+    assert_eq!(later.rest.len(), 6);
+}
+
+#[test]
+fn a_taken_name_gets_the_next_free_number_that_the_plan_does_not_use() {
+    let plan = trial(&Setup::new(), Vec::new());
+    let taken = &plan.groups.name_taken;
+    assert_eq!(taken.len(), 1);
+    assert_eq!(taken[0].name, "a2.pdf");
+    assert_eq!(
+        taken[0].suggested,
+        PathBuf::from("Alfa/2022/2022-07-04 Alfa Rechnung (2).pdf")
+    );
+    assert!(!plan.taken.contains(&taken[0].suggested));
+
+    let mut used = std::collections::BTreeSet::from([
+        PathBuf::from("Alfa/x.pdf"),
+        PathBuf::from("Alfa/x (2).pdf"),
+        PathBuf::from("Alfa/X (3).pdf"),
+    ]);
+    assert_eq!(
+        numbered_name(Path::new("Alfa/x.pdf"), &mut used),
+        PathBuf::from("Alfa/x (4).pdf")
+    );
+    assert_eq!(
+        numbered_name(Path::new("Alfa/x.pdf"), &mut used),
+        PathBuf::from("Alfa/x (5).pdf")
+    );
+}
+
+#[test]
+fn the_trial_applies_a_stored_rule_before_the_neighbours() {
+    let setup = Setup::new();
+    let before = trial(&setup, Vec::new());
+    assert_eq!(
+        outcome(&before, "nobody.pdf"),
+        &TrialOutcome::Stays(StayReason::NoNeighbours)
+    );
+    save_group_rule(
+        &setup,
+        GroupKey::Sender("unknown kg".to_owned()),
+        "Unknown KG",
+        "Zeta",
+    );
+    let after = trial(&setup, Vec::new());
+    assert_eq!(
+        outcome(&after, "nobody.pdf"),
+        &TrialOutcome::Filed {
+            to: PathBuf::from("Zeta/2022-07-04_Unknown-KG.pdf")
+        }
+    );
+    assert_eq!(after.filed, before.filed + 1);
+    assert!(after
+        .taken
+        .contains(Path::new("Zeta/2022-07-04_Unknown-KG.pdf")));
+    // The other files are decided as before.
+    assert_eq!(outcome(&after, "a1.pdf"), outcome(&before, "a1.pdf"));
+}
+
+#[test]
+fn a_kind_condition_matches_only_its_kind() {
+    let setup = Setup::new();
+    let mut contract = plan_file("contract.pdf", 131, None, date(2022, 7, 4));
+    contract.fields.kind = Some("contract".to_owned());
+    let invoice = plan_file("invoice.pdf", 130, None, date(2022, 7, 4));
+    let source = || reading("/inbox", vec![invoice.clone(), contract.clone()]);
+    save_group_rule(
+        &setup,
+        GroupKey::Kind("invoice".to_owned()),
+        "Invoice",
+        "Kay",
+    );
+
+    let plan = trial_of(&setup, source(), Vec::new(), AnsweredGroups::default());
+    assert_eq!(
+        outcome(&plan, "invoice.pdf"),
+        &TrialOutcome::Filed {
+            to: PathBuf::from("Kay/2022-07-04.pdf")
+        }
+    );
+    assert_eq!(
+        outcome(&plan, "contract.pdf"),
+        &TrialOutcome::Stays(StayReason::NoNeighbours)
+    );
 }

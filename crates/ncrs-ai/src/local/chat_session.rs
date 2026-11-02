@@ -17,7 +17,7 @@ const TURN_TOKENS: usize = 1024;
 /// An intent is a short JSON object.
 const MAX_REPLY_TOKENS: usize = 160;
 
-pub(super) struct ChatSession<'model> {
+pub struct ChatSession<'model> {
     model: &'model LocalModel,
     context: LlamaContext<'model>,
     batch: LlamaBatch<'static>,
@@ -27,7 +27,7 @@ pub(super) struct ChatSession<'model> {
 }
 
 impl<'model> ChatSession<'model> {
-    pub(super) fn new(model: &'model LocalModel) -> Result<Self, AiError> {
+    pub fn new(model: &'model LocalModel) -> Result<Self, AiError> {
         let vocab = model.model.vocab();
         let prefix_text =
             format!("<|im_start|>system\n{CHAT_SYSTEM_PROMPT}<|im_end|>\n<|im_start|>user\n");
@@ -59,7 +59,7 @@ impl<'model> ChatSession<'model> {
         })
     }
 
-    pub(super) fn understand(&mut self, turn: &ChatTurn) -> Result<ChatIntent, AiError> {
+    pub fn understand(&mut self, turn: &ChatTurn) -> Result<ChatIntent, AiError> {
         let message = chat_user_message(turn)?;
         let vocab = self.model.model.vocab();
         // The message is the user's text: special tokens in it stay plain

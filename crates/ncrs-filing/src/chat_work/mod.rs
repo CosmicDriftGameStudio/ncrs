@@ -10,11 +10,12 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use ncrs_core::INDEX_NOT_OPEN;
 use ncrs_fs::Trash;
-use ncrs_index::{BatchId, Index, KindLanguage, Kinds};
+use ncrs_index::{BatchId, Index, KindLanguage, Kinds, Rule, RuleOrigin, SenderAliases};
 use ncrs_intake::TextChain;
 use ncrs_pipeline::OwnDetails;
 
 mod change;
+mod groups;
 mod reading;
 mod runs;
 mod trial;
@@ -24,6 +25,10 @@ mod words;
 mod tests;
 
 pub use change::{ChangePreview, OrderChange, Scope, TimeUnit};
+pub use groups::{
+    area_pattern, group_rule, numbered_name, stay_groups, AnsweredGroups, GroupKey, NameTaken,
+    StayGroup, StayGroups, MAX_GROUP_QUESTIONS,
+};
 pub use reading::{FolderReading, ReadError, FILE_LIMIT};
 pub use runs::{RunItem, RunPlan, RunReport, RunSummary};
 pub use trial::{StayReason, TrialEntry, TrialOutcome, TrialPlan};
@@ -43,6 +48,13 @@ pub enum ChatWork {
         source: Arc<FolderReading>,
         target: Arc<FolderReading>,
         changes: Vec<OrderChange>,
+        answered: AnsweredGroups,
+    },
+    SaveGroupRule {
+        target: Arc<FolderReading>,
+        key: GroupKey,
+        label: String,
+        area: String,
     },
     PreviewChange {
         reading: Arc<FolderReading>,
@@ -67,6 +79,8 @@ pub enum ChatWork {
 pub enum ChatResult {
     Read(Result<Arc<FolderReading>, ReadError>),
     Trial(Result<TrialPlan, String>),
+    /// The name of the rule that was stored.
+    RuleSaved(Result<String, String>),
     Preview(Option<ChangePreview>),
     Filed(Result<RunReport, String>),
     Trashed(Result<TrashReport, String>),
@@ -127,7 +141,14 @@ impl ChatAccess {
                 source,
                 target,
                 changes,
-            } => ChatResult::Trial(trial::trial(self, &source, &target, &changes)),
+                answered,
+            } => ChatResult::Trial(trial::trial(self, &source, &target, &changes, &answered)),
+            ChatWork::SaveGroupRule {
+                target,
+                key,
+                label,
+                area,
+            } => ChatResult::RuleSaved(self.save_group_rule(&target, &key, &label, &area)),
             ChatWork::PreviewChange {
                 reading,
                 kind_word,
@@ -149,6 +170,44 @@ impl ChatAccess {
     fn with_index<T>(&self, work: impl FnOnce(&Index) -> Result<T, String>) -> Result<T, String> {
         let guard = self.slot.lock().unwrap_or_else(PoisonError::into_inner);
         let index = guard.as_ref().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
+        work(index)
+    }
+
+    fn rules_and_aliases(&self) -> Result<(Vec<Rule>, SenderAliases), String> {
+        self.with_index(|index| {
+            let rules = index.rules().map_err(|err| err.to_string())?;
+            let aliases = index
+                .confirmed_sender_aliases()
+                .map_err(|err| err.to_string())?;
+            Ok((rules, aliases))
+        })
+    }
+
+    /// Stores a confirmed rule that files the group below `area`; the name of
+    /// the rule is the label of the group.
+    fn save_group_rule(
+        &self,
+        target: &FolderReading,
+        key: &GroupKey,
+        label: &str,
+        area: &str,
+    ) -> Result<String, String> {
+        let spec = group_rule(key, label, area, target)?;
+        let name = label.to_owned();
+        self.with_index_mut(|index| {
+            index
+                .create_rule_from(&spec, RuleOrigin::Hand)
+                .map_err(|err| err.to_string())
+        })?;
+        Ok(name)
+    }
+
+    fn with_index_mut<T>(
+        &self,
+        work: impl FnOnce(&mut Index) -> Result<T, String>,
+    ) -> Result<T, String> {
+        let mut guard = self.slot.lock().unwrap_or_else(PoisonError::into_inner);
+        let index = guard.as_mut().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
         work(index)
     }
 

@@ -35,9 +35,9 @@ mod worker;
 pub use lazy::LazyLocalModel;
 
 #[cfg(test)]
-mod chat_eval;
-#[cfg(test)]
 mod tests;
+#[cfg(test)]
+pub use tests::models_dir;
 
 /// What the reply may take: a handful of short fields.
 const MAX_NEW_TOKENS: usize = 256;
@@ -169,9 +169,9 @@ impl LocalModel {
         max_new_tokens: usize,
     ) -> Result<String, AiError> {
         let vocab = self.model.vocab();
-        let grammar = LlamaSampler::grammar(&self.model, grammar, "root")
+        let constraint = LlamaSampler::grammar(&self.model, grammar, "root")
             .map_err(|_refused| AiError::Model("llama.cpp refused the reply grammar"))?;
-        let mut sampler = LlamaSampler::chain_simple([grammar, LlamaSampler::greedy()]);
+        let mut sampler = LlamaSampler::chain_simple([constraint, LlamaSampler::greedy()]);
 
         let mut reply = Vec::new();
         for _ in 0..max_new_tokens {

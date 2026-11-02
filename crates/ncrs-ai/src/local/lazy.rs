@@ -34,7 +34,7 @@ impl LazyLocalModel {
         Self::with_idle_unload(path, pin, threads, context_tokens, IDLE_UNLOAD)
     }
 
-    pub(super) fn with_idle_unload(
+    pub fn with_idle_unload(
         path: PathBuf,
         pin: ModelPin,
         threads: NonZeroU32,
@@ -69,17 +69,6 @@ impl LazyLocalModel {
         let created = Arc::new(Self::new(path.clone(), pin, threads, context_tokens));
         registry.insert(path, Arc::downgrade(&created));
         created
-    }
-
-    /// Looks for the file again after a download.
-    pub fn refresh(&self) {
-        self.shared.refresh();
-    }
-
-    /// Reads a snapshot only, never the disk and never the worker. While the
-    /// model is being loaded, or asleep, it reports `NotLoadedYet`.
-    pub fn status(&self) -> LocalModelStatus {
-        self.shared.status()
     }
 
     fn ensure_worker(&self) -> Result<(), AiError> {
@@ -133,11 +122,14 @@ impl ChatModel for LazyLocalModel {
         })
     }
 
+    /// Reads a snapshot only, never the disk and never the worker. While the
+    /// model is being loaded, or asleep, it reports `NotLoadedYet`.
     fn status(&self) -> LocalModelStatus {
-        Self::status(self)
+        self.shared.status()
     }
 
+    /// Looks for the file again after a download.
     fn refresh(&self) {
-        Self::refresh(self);
+        self.shared.refresh();
     }
 }

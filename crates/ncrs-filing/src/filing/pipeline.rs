@@ -46,7 +46,7 @@ impl FilingModule {
         match &self.ai {
             AiWiring::Off => AiStatus::Off,
             #[cfg(feature = "local-ai")]
-            AiWiring::Local(model) => match model.status() {
+            AiWiring::Local(model) => match ncrs_ai::ChatModel::status(model.as_ref()) {
                 ncrs_ai::LocalModelStatus::NotDownloaded => AiStatus::NotDownloaded,
                 ncrs_ai::LocalModelStatus::NotLoadedYet => AiStatus::NotLoadedYet,
                 ncrs_ai::LocalModelStatus::Loaded {
@@ -70,7 +70,7 @@ impl FilingModule {
     pub fn refresh_ai_model(&self) {
         #[cfg(feature = "local-ai")]
         if let AiWiring::Local(model) = &self.ai {
-            model.refresh();
+            ncrs_ai::ChatModel::refresh(model.as_ref());
         }
     }
 }

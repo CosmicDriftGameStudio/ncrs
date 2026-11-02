@@ -7609,6 +7609,24 @@
       "de": "Schlagwort"
     },
     {
+      "key": "condition_kind.kind",
+      "context": "Kind of a condition: the kind of the document (invoice, bank statement, …) is the value.",
+      "en": "Document kind",
+      "de": "Dokumentart"
+    },
+    {
+      "key": "rules.sentence_kind",
+      "context": "Condition in a rule sentence on the rules page: the document is of a kind. Takes the kind as a word. Reads after “If” or after “and” / “or”.",
+      "en": "the document is a “{value}”",
+      "de": "das Dokument die Art „{value}“ hat"
+    },
+    {
+      "key": "rules.sentence_kind_not",
+      "context": "Condition in a rule sentence on the rules page: the document is not of a kind. Takes the kind as a word. Reads after “If” or after “and” / “or”.",
+      "en": "the document is not a “{value}”",
+      "de": "das Dokument die Art „{value}“ nicht hat"
+    },
+    {
       "key": "rules.sentence_tag",
       "context": "Condition in a rule sentence on the rules page: the document has a tag. Takes the value. Reads after “If” or after “and” / “or”.",
       "en": "the document has the tag “{value}”",
@@ -8459,6 +8477,78 @@
       "context": "Hermes chat (F2): Answer button: leave the files where they are.",
       "en": "Leave them",
       "de": "Liegen lassen"
+    },
+    {
+      "key": "hermes_chat.group_where",
+      "context": "Hermes chat (F2): Hermes asks where a group of files from one sender goes. {count} is the number of files, {label} the sender name, {examples} up to three file names separated by commas.",
+      "en": "{count} files from {label}, e.g. {examples}. Where should they go?",
+      "de": "{count} Dateien von {label}, z. B. {examples}. Wohin damit?"
+    },
+    {
+      "key": "hermes_chat.group_where_kind",
+      "context": "Hermes chat (F2): Hermes asks where a group of files of one kind of document goes, files that have no known sender. {count} is the number of files, {kind} the kind of document (for example invoice), {examples} up to three file names separated by commas.",
+      "en": "{count} {kind} documents, e.g. {examples}. Where should they go?",
+      "de": "{count} {kind}-Dokumente, z. B. {examples}. Wohin damit?"
+    },
+    {
+      "key": "hermes_chat.new_folder",
+      "context": "Hermes chat (F2): Answer button: put the group into a new folder that the user names next.",
+      "en": "New folder …",
+      "de": "Neuer Ordner …"
+    },
+    {
+      "key": "hermes_chat.new_folder_name",
+      "context": "Hermes chat (F2): Hermes asks for the name of the new folder. The next thing the user types is the name.",
+      "en": "What should the folder be called?",
+      "de": "Wie soll der Ordner heißen?"
+    },
+    {
+      "key": "hermes_chat.folder_name_bad",
+      "context": "Hermes chat (F2): The folder name the user typed cannot be used: it is empty, has a slash or points outside the archive.",
+      "en": "That name does not work as a folder name. Please use a plain name without slashes.",
+      "de": "Das geht nicht als Ordnername. Bitte nimm einen einfachen Namen ohne Schrägstriche."
+    },
+    {
+      "key": "hermes_chat.single_pieces",
+      "context": "Hermes chat (F2): Hermes says how many files are left that belong to no group and asks what to do. {count} is the number of files.",
+      "en": "{count} more single pieces",
+      "de": "{count} weitere Einzelstücke"
+    },
+    {
+      "key": "hermes_chat.show_singly",
+      "context": "Hermes chat (F2): Answer button: list the single pieces one by one.",
+      "en": "Show them one by one",
+      "de": "Einzeln zeigen"
+    },
+    {
+      "key": "hermes_chat.name_taken",
+      "context": "Hermes chat (F2): Hermes says some files cannot be filed because a file of that name is already in the folder. {count} is the number of files, {name} the name of one file, {suggested} the free name with a number that Hermes proposes.",
+      "en": "{count} files: name already taken, e.g. {name} → {suggested}",
+      "de": "{count} Dateien: Name schon vergeben, z. B. {name} → {suggested}"
+    },
+    {
+      "key": "hermes_chat.file_numbered",
+      "context": "Hermes chat (F2): Answer button: file the files whose name is taken with a number added to the name.",
+      "en": "File with a number",
+      "de": "Mit Nummer ablegen"
+    },
+    {
+      "key": "hermes_chat.rule_saved",
+      "context": "Hermes chat (F2): Hermes tells that it stored a filing rule for a group. {name} is the name of the rule. The user can take the rule back on the rules page. **Double asterisks** mark bold text.",
+      "en": "I saved the rule **{name}**. You can take it back under Rules.",
+      "de": "Ich habe die Regel **{name}** gespeichert. Unter „Regeln“ kannst du sie wieder entfernen."
+    },
+    {
+      "key": "hermes_chat.stays_only",
+      "context": "Hermes chat (F2): Hermes reports a trial run in which no file could be placed yet. {count} is the number of files that stay where they are.",
+      "en": "None of the {count} files could be placed so far.",
+      "de": "Bisher konnte ich keine der {count} Dateien zuordnen."
+    },
+    {
+      "key": "hermes_chat.groups_done",
+      "context": "Hermes chat (F2): Hermes has asked everything and offers to file now. {count} is the number of files that will be filed.",
+      "en": "That was everything I wanted to ask. {count} files are ready to be filed.",
+      "de": "Das war alles, was ich fragen wollte. {count} Dateien sind bereit zum Ablegen."
     },
     {
       "key": "hermes_chat.trashed",

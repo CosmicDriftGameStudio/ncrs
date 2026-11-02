@@ -4,7 +4,8 @@ use std::sync::Arc;
 
 use ncrs_ai::{ChatTurn, Schedule};
 use ncrs_filing::chat_work::{
-    ChangePreview, ChatWork, FolderReading, OrderChange, RunSummary, TrashItem, TrialPlan,
+    AnsweredGroups, ChangePreview, ChatWork, FolderReading, OrderChange, RunSummary, TrashItem,
+    TrialPlan,
 };
 use ncrs_index::Transfer;
 
@@ -30,7 +31,18 @@ pub enum ChipReply {
     ModeMove,
     FileAll,
     ShowMore,
-    UnsureChoice { entry: usize, choice: usize },
+    /// Files the group in question below this first-level folder.
+    GroupArea(String),
+    GroupNewFolder,
+    GroupLeave,
+    SinglesShow,
+    SinglesLeave,
+    NamesNumbered,
+    NamesLeave,
+    UnsureChoice {
+        entry: usize,
+        choice: usize,
+    },
     PutBack,
     Undo,
     OpenSearch,
@@ -144,6 +156,8 @@ pub enum Step {
     Once,
     Mode,
     Trial,
+    /// The next typed text is the name of a new folder, not for the model.
+    GroupFolderName,
     AfterRun,
     UndoAsk,
 }
@@ -167,6 +181,20 @@ pub struct TrialSession {
     pub plan: TrialPlan,
     pub resolved: BTreeMap<usize, PathBuf>,
     pub shown: usize,
+}
+
+/// Where the questions about the staying files stand.
+#[derive(Debug, Default)]
+pub struct GroupFlow {
+    pub answered: AnsweredGroups,
+    /// The unsure files the user decided, as source path and chosen folder,
+    /// to carry over when the trial runs again.
+    pub carried: Vec<(PathBuf, PathBuf)>,
+    /// The rule stored last, announced with the next trial.
+    pub fresh_rule: Option<String>,
+    pub singles_done: bool,
+    pub singles_shown: usize,
+    pub names_done: bool,
 }
 
 /// Duplicates the chat offers to trash.
@@ -225,6 +253,7 @@ pub struct Session {
     /// The folder the running read is for.
     pub requested: PathBuf,
     pub trial: Option<TrialSession>,
+    pub groups: GroupFlow,
     pub offer: Option<Offer>,
     pub last_run: Option<RunSummary>,
     /// A typed folder waiting for a yes, and the step it was typed in.

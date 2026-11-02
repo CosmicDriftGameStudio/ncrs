@@ -10,9 +10,9 @@ use ncrs_ui_kit::hermes_state::FolderRole;
 use crate::action::Action;
 use crate::ctx::{Availability, Ctx};
 use crate::message::Message;
-use crate::state::{Asked, Chip, ChipReply, Entry, Part, State, Step};
+use crate::state::{Asked, Chip, ChipReply, Entry, GroupFlow, Part, State, Step};
 use crate::texts::{fill, folder_name, text};
-use crate::{learn, tidy, understand, undo};
+use crate::{learn, stay_groups, tidy, understand, undo};
 
 pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> (Task<Message>, Option<Action>) {
     let action = route(state, message, ctx);
@@ -132,6 +132,7 @@ fn handle_done(state: &mut State, ctx: &Ctx, result: ChatResult) -> Option<Actio
         ChatResult::Read(read) => learn::read_done(state, ctx, read),
         ChatResult::Preview(preview) => learn::preview_done(state, ctx, preview),
         ChatResult::Trial(trial) => tidy::trial_done(state, ctx, trial),
+        ChatResult::RuleSaved(saved) => stay_groups::rule_saved(state, ctx, saved),
         ChatResult::Filed(filed) => tidy::filed_done(state, ctx, filed),
         ChatResult::Trashed(trashed) => tidy::trashed_done(state, ctx, trashed),
         ChatResult::LastRun(last) => undo::last_run_done(state, ctx, last),
@@ -406,6 +407,9 @@ pub fn folder_answer(state: &mut State, ctx: &Ctx, path: PathBuf, typed: bool) -
 /// Only a typed path while a folder is asked for is taken literally; every
 /// other sentence goes to the model.
 fn handle_text(state: &mut State, ctx: &Ctx, typed: &str, asked: Asked) -> Option<Action> {
+    if state.step == Step::GroupFolderName {
+        return stay_groups::folder_named(state, ctx, typed);
+    }
     let looks_like_path = typed.starts_with('/') || typed.starts_with('~');
     if expects_folder(state.step) && looks_like_path {
         return folder_answer(state, ctx, expand_home(ctx, Path::new(typed)), true);
@@ -535,6 +539,13 @@ pub fn handle_reply(state: &mut State, ctx: &Ctx, reply: ChipReply) -> Option<Ac
         ChipReply::ModeMove => tidy::mode(state, ctx, ncrs_index::Transfer::Move),
         ChipReply::FileAll => tidy::file_all(state, ctx),
         ChipReply::ShowMore => tidy::show_more(state, ctx),
+        ChipReply::GroupArea(area) => stay_groups::area_chosen(state, ctx, area),
+        ChipReply::GroupNewFolder => stay_groups::new_folder(state, ctx),
+        ChipReply::GroupLeave => stay_groups::leave_group(state, ctx),
+        ChipReply::SinglesShow => stay_groups::singles_show(state, ctx),
+        ChipReply::SinglesLeave => stay_groups::singles_leave(state, ctx),
+        ChipReply::NamesNumbered => stay_groups::names_numbered(state, ctx),
+        ChipReply::NamesLeave => stay_groups::names_leave(state, ctx),
         ChipReply::UnsureChoice { entry, choice } => tidy::unsure(state, ctx, entry, choice),
         ChipReply::PutBack => undo::put_back(state, ctx),
         ChipReply::Undo | ChipReply::IntentUndo => undo::ask(state, ctx),
@@ -552,6 +563,7 @@ pub fn handle_reply(state: &mut State, ctx: &Ctx, reply: ChipReply) -> Option<Ac
 pub fn cancel(state: &mut State, ctx: &Ctx) {
     state.session.tidy = None;
     state.session.trial = None;
+    state.session.groups = GroupFlow::default();
     state.session.pending_change = None;
     state.session.offer = None;
     state.session.resume_tidy = false;

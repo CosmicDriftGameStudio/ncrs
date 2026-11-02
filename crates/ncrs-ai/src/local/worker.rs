@@ -12,28 +12,28 @@ use std::time::{Duration, Instant, SystemTime};
 use super::chat_session::ChatSession;
 use super::{LocalModel, LocalModelConfig};
 use crate::chat::{ChatIntent, ChatTurn};
-use crate::contract::{Extraction, ExtractionRequest, Provider};
+use crate::contract::{Extraction, ExtractionRequest, Provider as _};
 use crate::error::AiError;
 use crate::model_file::ModelPin;
 use crate::status::LocalModelStatus;
 
 /// How long the model stays in memory with nothing to do.
-pub(super) const IDLE_UNLOAD: Duration = Duration::from_secs(5 * 60);
+pub const IDLE_UNLOAD: Duration = Duration::from_secs(5 * 60);
 
 #[derive(Debug)]
-pub(super) struct ExtractJob {
-    pub(super) request: ExtractionRequest,
-    pub(super) reply: Sender<Result<Extraction, AiError>>,
+pub struct ExtractJob {
+    pub request: ExtractionRequest,
+    pub reply: Sender<Result<Extraction, AiError>>,
 }
 
 #[derive(Debug)]
-pub(super) struct ChatJob {
-    pub(super) turn: ChatTurn,
-    pub(super) reply: Sender<Result<ChatIntent, AiError>>,
+pub struct ChatJob {
+    pub turn: ChatTurn,
+    pub reply: Sender<Result<ChatIntent, AiError>>,
 }
 
 #[derive(Debug)]
-pub(super) enum Job {
+pub enum Job {
     Chat(ChatJob),
     Extract(ExtractJob),
 }
@@ -52,21 +52,21 @@ impl Job {
 /// A person is typing in the chat, a document waits in the pipeline: the
 /// person goes first.
 #[derive(Debug, Default)]
-pub(super) struct Queue {
+pub struct Queue {
     chat: VecDeque<ChatJob>,
     extract: VecDeque<ExtractJob>,
     closed: bool,
 }
 
 impl Queue {
-    pub(super) fn push(&mut self, job: Job) {
+    pub fn push(&mut self, job: Job) {
         match job {
-            Job::Chat(job) => self.chat.push_back(job),
-            Job::Extract(job) => self.extract.push_back(job),
+            Job::Chat(chat) => self.chat.push_back(chat),
+            Job::Extract(extract) => self.extract.push_back(extract),
         }
     }
 
-    pub(super) fn pop(&mut self) -> Option<Job> {
+    pub fn pop(&mut self) -> Option<Job> {
         self.chat
             .pop_front()
             .map(Job::Chat)
@@ -92,19 +92,19 @@ impl FileStamp {
     }
 }
 
-pub(super) fn file_is_there(path: &Path) -> bool {
+pub fn file_is_there(path: &Path) -> bool {
     FileStamp::of(path).is_some()
 }
 
 enum Waited {
-    Job(Job),
+    Job(Box<Job>),
     Idle,
     Closed,
 }
 
 /// What the callers and the worker thread share.
 #[derive(Debug)]
-pub(super) struct Shared {
+pub struct Shared {
     queue: Mutex<Queue>,
     wake: Condvar,
     status: Mutex<LocalModelStatus>,
@@ -120,7 +120,7 @@ fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 }
 
 impl Shared {
-    pub(super) fn new(
+    pub fn new(
         path: PathBuf,
         pin: ModelPin,
         threads: NonZeroU32,
@@ -145,7 +145,7 @@ impl Shared {
     }
 
     /// A snapshot; never waits for the worker.
-    pub(super) fn status(&self) -> LocalModelStatus {
+    pub fn status(&self) -> LocalModelStatus {
         locked(&self.status).clone()
     }
 
@@ -154,7 +154,7 @@ impl Shared {
     }
 
     /// Looks for the file again after a download.
-    pub(super) fn refresh(&self) {
+    pub fn refresh(&self) {
         let mut status = locked(&self.status);
         if *status == LocalModelStatus::NotDownloaded && file_is_there(&self.path) {
             *status = LocalModelStatus::NotLoadedYet;
@@ -162,38 +162,38 @@ impl Shared {
     }
 
     /// Used at the next load.
-    pub(super) fn set_threads(&self, threads: NonZeroU32) {
+    pub fn set_threads(&self, threads: NonZeroU32) {
         *locked(&self.threads) = threads;
     }
 
-    pub(super) fn submit(&self, job: Job) {
+    pub fn submit(&self, job: Job) {
         locked(&self.queue).push(job);
         self.wake.notify_one();
     }
 
     /// The worker stops, and with it the model leaves the memory.
-    pub(super) fn close(&self) {
+    pub fn close(&self) {
         locked(&self.queue).closed = true;
         self.wake.notify_all();
     }
 
     fn wait_for_job(&self, idle: Option<Duration>) -> Waited {
-        let deadline = idle.map(|idle| Instant::now() + idle);
+        let deadline = idle.map(|span| Instant::now() + span);
         let mut queue = locked(&self.queue);
         loop {
             if queue.closed {
                 return Waited::Closed;
             }
             if let Some(job) = queue.pop() {
-                return Waited::Job(job);
+                return Waited::Job(Box::new(job));
             }
             queue = match deadline {
                 None => self
                     .wake
                     .wait(queue)
                     .unwrap_or_else(PoisonError::into_inner),
-                Some(deadline) => {
-                    let left = deadline.saturating_duration_since(Instant::now());
+                Some(limit) => {
+                    let left = limit.saturating_duration_since(Instant::now());
                     if left.is_zero() {
                         return Waited::Idle;
                     }
@@ -249,12 +249,13 @@ impl Shared {
 
 /// The body of the worker thread: asleep until a job comes, load, serve until
 /// nothing came for `idle_unload`, let go of the model, sleep again.
-pub(super) fn run(shared: &Shared) {
+pub fn run(shared: &Shared) {
     let mut failed = None;
     loop {
-        let Waited::Job(first) = shared.wait_for_job(None) else {
+        let Waited::Job(boxed) = shared.wait_for_job(None) else {
             return;
         };
+        let first = *boxed;
         match shared.load(&mut failed) {
             Ok(model) => {
                 let closed = serve_until_idle(shared, &model, first);
@@ -278,16 +279,16 @@ fn serve_until_idle(shared: &Shared, model: &LocalModel, first: Job) -> bool {
         let job = match next.take() {
             Some(job) => job,
             None => match shared.wait_for_job(Some(shared.idle_unload)) {
-                Waited::Job(job) => job,
+                Waited::Job(job) => *job,
                 Waited::Idle => return false,
                 Waited::Closed => return true,
             },
         };
         match job {
-            Job::Extract(job) => drop(job.reply.send(model.extract(&job.request))),
-            Job::Chat(job) => {
-                let answer = chat_answer(model, &mut chat, &job.turn);
-                drop(job.reply.send(answer));
+            Job::Extract(extract) => drop(extract.reply.send(model.extract(&extract.request))),
+            Job::Chat(request) => {
+                let answer = chat_answer(model, &mut chat, &request.turn);
+                drop(request.reply.send(answer));
             }
         }
     }
@@ -302,7 +303,7 @@ fn chat_answer<'model>(
         *session = Some(ChatSession::new(model)?);
     }
     match session {
-        Some(session) => session.understand(turn),
+        Some(active) => active.understand(turn),
         None => Err(AiError::Model("the chat could not start")),
     }
 }
@@ -352,8 +353,8 @@ mod queue_tests {
         let mut order = Vec::new();
         while let Some(job) = queue.pop() {
             order.push(match job {
-                Job::Chat(job) => job.turn.message,
-                Job::Extract(job) => job.request.text,
+                Job::Chat(chat) => chat.turn.message,
+                Job::Extract(extract) => extract.request.text,
             });
         }
 

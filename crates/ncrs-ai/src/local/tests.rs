@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::time::SystemTime;
 
+use crate::chat::ChatModel as _;
 use crate::status::LocalModelStatus;
 
 use ncrs_index::{DocumentFields, Field};
@@ -21,7 +22,7 @@ use crate::model_file::LOCAL_MODEL;
 
 const MODELS_DIR_VARIABLE: &str = "NCRS_AI_MODELS_DIR";
 
-pub(super) fn models_dir() -> PathBuf {
+pub fn models_dir() -> PathBuf {
     std::env::var_os(MODELS_DIR_VARIABLE).map_or_else(
         || Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/ai-models"),
         PathBuf::from,

@@ -20,7 +20,7 @@ mod tests {
 
     use crate::common::{count, say, Talk};
     use chrono::NaiveDate;
-    use ncrs_filing::chat_work::{TrialOutcome, TrialPlan};
+    use ncrs_filing::chat_work::{StayGroups, TrialOutcome, TrialPlan};
     use ncrs_hermes_chat::{ChipReply, Entry, FileCard, Message, Part};
     use ncrs_i18n::Msg;
     use ncrs_index::{KindLanguage, Kinds};
@@ -64,6 +64,7 @@ mod tests {
         talk.press(&ChipReply::ConfirmTidy);
         talk.press(&ChipReply::Once);
         talk.press(transfer);
+        talk.leave_stay_questions();
     }
 
     /// What the trial of the inbox against the archive finds, measured on the test
@@ -170,6 +171,7 @@ mod tests {
         );
         talk.press(&ChipReply::Once);
         talk.press(&ChipReply::ModeMove);
+        talk.leave_stay_questions();
         let plan = talk.plan();
         assert_eq!(
             (plan.filed, plan.unsure, plan.already_there, plan.stays),
@@ -337,6 +339,269 @@ mod tests {
         // Nothing was filed, so there is nothing to put back.
         talk.type_text_understood("mach das rückgängig", r#"{"intent":"undo"}"#);
         assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatUndoNone, &[])]);
+    }
+
+    /// The numbers of the test archive: five groups, 135 files in them, 105
+    /// single pieces and four taken names make the 244 that stay.
+    fn assert_first_groups(groups: &StayGroups) {
+        assert_eq!(groups.groups, 5);
+        assert_eq!(groups.asked.len(), 5);
+        let sizes: Vec<usize> = groups.asked.iter().map(|group| group.count()).collect();
+        assert_eq!(sizes, [37, 27, 26, 25, 20]);
+        assert_eq!(groups.files_in_first(5), 135);
+        assert_eq!(groups.single_pieces, 105);
+        assert_eq!(groups.name_taken.len(), 4);
+        assert_eq!(
+            groups.asked.len() + groups.rest.len() + groups.name_taken.len(),
+            5 + 105 + 4
+        );
+    }
+
+    fn stored_rules(talk: &Talk) -> Vec<(Option<String>, String, bool, bool)> {
+        let guard = talk.index.lock().unwrap();
+        let rules = guard.as_ref().unwrap().rules().unwrap();
+        rules
+            .into_iter()
+            .map(|rule| {
+                (
+                    rule.spec.name,
+                    rule.spec.filing_pattern,
+                    rule.spec.confirmed,
+                    rule.spec.enabled,
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn staying_groups_are_asked_about_and_the_answers_become_rules() {
+        let mut talk = archive_talk();
+        let before = talk.files();
+        talk.send(Message::Open);
+        talk.type_text_understood(
+            "Räum Inbox auf",
+            r#"{"intent":"tidy_folder","source":"Inbox"}"#,
+        );
+        talk.press(&ChipReply::ConfirmTidy);
+        talk.press(&ChipReply::Once);
+        talk.press(&ChipReply::ModeMove);
+
+        let groups = talk.plan().groups.clone();
+        println!(
+            "stay groups: groups {} first5_files {} single_pieces {}",
+            groups.groups,
+            groups.files_in_first(5),
+            groups.single_pieces
+        );
+        assert_first_groups(&groups);
+
+        // The first question: the largest group, the offered areas, the way out.
+        let vodafone = &groups.asked[0];
+        assert_eq!(
+            talk.last_texts(),
+            vec![say(
+                Msg::HermesChatGroupWhere,
+                &[
+                    ("count", &count(vodafone.count())),
+                    ("label", &vodafone.label),
+                    ("examples", &vodafone.examples.join(", ")),
+                ]
+            )]
+        );
+        let labels = talk.labels();
+        assert_eq!(
+            labels[..3],
+            vodafone.areas[..],
+            "the offered areas come first"
+        );
+        assert_eq!(
+            labels[3..],
+            [
+                say(Msg::HermesChatNewFolder, &[]),
+                say(Msg::HermesChatLeaveThem, &[])
+            ]
+        );
+
+        // The first group goes to an area chip.
+        talk.press(&ChipReply::GroupArea(vodafone.areas[0].clone()));
+        let after_first = talk.plan().clone();
+        assert_eq!(after_first.filed, 92, "the rule files the group at once");
+        assert_eq!(talk.files(), before, "asking and the trial move nothing");
+        let sentence = talk.last_texts();
+        assert!(
+            sentence[0].starts_with("27 Dateien von Finanzamt Chemnitz-Süd"),
+            "the next group is asked about: {sentence:?}"
+        );
+        assert_eq!(after_first.groups.asked.len(), 4);
+
+        // The second group is answered in words: the model names the chip.
+        let finanzamt = &after_first.groups.asked[0];
+        assert_eq!(finanzamt.label, "Finanzamt Chemnitz-Süd");
+        let steuer = finanzamt.areas[0].clone();
+        assert_eq!(steuer, "Steuer");
+        talk.type_text_understood(
+            "das kommt alles zu steuer",
+            &format!(r#"{{"intent":"answer","choice":"{steuer}"}}"#),
+        );
+        let after_second = talk.plan().clone();
+        assert_eq!((after_second.filed, after_second.stays), (119, 181));
+        assert_eq!(
+            stay_reasons(&after_second),
+            BTreeMap::from([
+                ("NameTaken".to_owned(), 5),
+                ("NoNeighbours".to_owned(), 130),
+                ("NoPattern".to_owned(), 46),
+            ])
+        );
+        assert_eq!(after_second.groups.asked.len(), 3);
+        assert!(after_second.filed > after_first.filed);
+        assert_eq!(after_second.entries.len(), INBOX_FILES);
+
+        // The rules are stored, confirmed, named after the groups.
+        assert_eq!(
+            stored_rules(&talk),
+            [
+                (
+                    Some("Vodafone GmbH".to_owned()),
+                    "Bank/".to_owned(),
+                    true,
+                    true
+                ),
+                (
+                    Some("Finanzamt Chemnitz-Süd".to_owned()),
+                    "Steuer/".to_owned(),
+                    true,
+                    true
+                ),
+            ]
+        );
+
+        // The rest is left as it is; then everything the trial filed is filed.
+        talk.leave_stay_questions();
+        let ready = after_second.filed;
+        assert_eq!(
+            talk.state.chips()[0].label,
+            say(Msg::HermesChatFileAll, &[("count", &count(ready))])
+        );
+        talk.press(&ChipReply::FileAll);
+        let filed = talk.files();
+        let inbox_left = filed
+            .keys()
+            .filter(|path| path.starts_with("inbox/"))
+            .count();
+        assert_eq!(inbox_left, INBOX_FILES - ready);
+        assert!(
+            filed
+                .keys()
+                .any(|path| path.starts_with("archive/Bank/20")
+                    && path.ends_with("Vodafone-GmbH.pdf"))
+        );
+
+        talk.type_text_understood("mach das rückgängig", r#"{"intent":"undo"}"#);
+        talk.press(&ChipReply::PutBack);
+        assert_eq!(talk.files(), before, "undo puts everything back");
+        assert_eq!(
+            talk.index
+                .lock()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .rules()
+                .unwrap()
+                .len(),
+            2,
+            "the rules stay: they are taken back on the rules page"
+        );
+    }
+
+    #[test]
+    fn a_new_folder_is_named_in_the_chat_and_taken_names_are_numbered() {
+        let mut talk = archive_talk();
+        let before = talk.files();
+        talk.send(Message::Open);
+        talk.type_text_understood(
+            "Räum Inbox auf",
+            r#"{"intent":"tidy_folder","source":"Inbox"}"#,
+        );
+        talk.press(&ChipReply::ConfirmTidy);
+        talk.press(&ChipReply::Once);
+        talk.press(&ChipReply::ModeMove);
+
+        talk.press(&ChipReply::GroupNewFolder);
+        assert_eq!(
+            talk.last_texts(),
+            vec![say(Msg::HermesChatNewFolderName, &[])]
+        );
+        // The name does not go through the model: none is scripted.
+        for bad in ["../Heim", "a/b", ".."] {
+            talk.type_text(bad);
+            assert_eq!(
+                talk.last_texts(),
+                vec![say(Msg::HermesChatFolderNameBad, &[])]
+            );
+        }
+        talk.type_text("Handy");
+        assert!(talk.plan().filed > FILED);
+        assert!(talk.plan().entries.iter().any(
+            |entry| matches!(&entry.outcome, TrialOutcome::Filed { to } if to.starts_with("Handy"))
+        ));
+        assert!(!talk
+            .files()
+            .keys()
+            .any(|path| path.starts_with("archive/Handy")));
+
+        // The groups left, then the single pieces shown ten at a time.
+        while talk
+            .state
+            .chips()
+            .iter()
+            .any(|chip| chip.reply == ChipReply::GroupLeave)
+        {
+            talk.press(&ChipReply::GroupLeave);
+        }
+        let pieces = talk.plan().groups.rest.len();
+        assert_eq!(
+            talk.last_texts(),
+            vec![say(
+                Msg::HermesChatSinglePieces,
+                &[("count", &count(pieces))]
+            )]
+        );
+        talk.press(&ChipReply::SinglesShow);
+        let Some(Part::Trial(card)) = talk.last_parts().get(1) else {
+            panic!("{:?}", talk.last_parts())
+        };
+        assert_eq!(card.rows.len(), 10);
+        talk.press(&ChipReply::SinglesLeave);
+
+        // Taken names are filed with a number; no rule is stored for that.
+        let taken = talk.plan().groups.name_taken.clone();
+        assert!(!taken.is_empty());
+        let filed_before = talk.plan().filed;
+        talk.press(&ChipReply::NamesNumbered);
+        assert_eq!(talk.plan().filed, filed_before + taken.len());
+        assert!(taken.iter().all(|name| !talk.plan().taken.is_empty()
+            && talk.plan().entries[name.entry].outcome
+                == TrialOutcome::Filed {
+                    to: name.suggested.clone()
+                }));
+        let rule_count = talk
+            .index
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .rules()
+            .unwrap()
+            .len();
+        assert_eq!(rule_count, 1);
+
+        talk.press(&ChipReply::FileAll);
+        let filed = talk.files();
+        assert!(filed.keys().any(|path| path.starts_with("archive/Handy/")));
+        talk.type_text_understood("mach das rückgängig", r#"{"intent":"undo"}"#);
+        talk.press(&ChipReply::PutBack);
+        assert_eq!(talk.files(), before);
     }
 
     fn statement_word() -> String {

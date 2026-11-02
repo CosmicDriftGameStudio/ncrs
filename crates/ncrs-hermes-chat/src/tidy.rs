@@ -5,22 +5,22 @@ use std::sync::Arc;
 
 use ncrs_ai::Schedule;
 use ncrs_filing::chat_work::{
-    ChatWork, FolderReading, RunItem, RunPlan, RunReport, StayReason, TrashItem, TrashReport,
-    TrialOutcome, TrialPlan,
+    AnsweredGroups, ChatWork, FolderReading, RunItem, RunPlan, RunReport, StayReason, TrashItem,
+    TrashReport, TrialOutcome, TrialPlan,
 };
 use ncrs_i18n::Msg;
 use ncrs_index::Transfer;
 
 use crate::ctx::Ctx;
 use crate::state::{
-    Chip, ChipReply, Entry, Offer, Part, ReadFor, RowOutcome, State, Step, Tidy, TrialCard,
-    TrialRow, TrialSession,
+    Chip, ChipReply, Entry, GroupFlow, Offer, Part, ReadFor, RowOutcome, State, Step, Tidy,
+    TrialCard, TrialRow, TrialSession,
 };
 use crate::texts::{field_label, fill, folder_name, number, segments, text};
 use crate::update::{access, ask_chips, cancel_chip, chip, chip_labelled, hermes, say, work};
-use crate::{learn, texts};
+use crate::{learn, stay_groups, texts};
 
-const PAGE: usize = 10;
+pub const PAGE: usize = 10;
 
 fn targets(state: &State, ctx: &Ctx) -> Vec<PathBuf> {
     let mut found: Vec<PathBuf> = Vec::new();
@@ -214,6 +214,7 @@ pub fn mode(state: &mut State, ctx: &Ctx, transfer: Transfer) {
     };
     tidy.transfer = Some(transfer);
     state.session.proposal = None;
+    state.session.groups = GroupFlow::default();
     let (Some(source), Some(target)) = (
         state.session.readings.get(&tidy.source).cloned(),
         tidy.target
@@ -230,16 +231,17 @@ pub fn mode(state: &mut State, ctx: &Ctx, transfer: Transfer) {
             source,
             target,
             changes: state.session.changes.clone(),
+            answered: AnsweredGroups::default(),
         },
         Some(text(ctx.lang, Msg::HermesChatWorkingTrial)),
     );
 }
 
-fn filed_count(trial: &TrialSession) -> usize {
+pub fn filed_count(trial: &TrialSession) -> usize {
     trial.plan.filed + trial.resolved.len()
 }
 
-fn trial_chips(ctx: &Ctx, trial: &TrialSession) -> Vec<Chip> {
+pub fn trial_chips(ctx: &Ctx, trial: &TrialSession) -> Vec<Chip> {
     vec![
         chip_labelled(
             fill(
@@ -255,7 +257,7 @@ fn trial_chips(ctx: &Ctx, trial: &TrialSession) -> Vec<Chip> {
     ]
 }
 
-fn row_of(ctx: &Ctx, trial: &TrialSession, position: usize) -> Option<TrialRow> {
+pub fn row_of(ctx: &Ctx, trial: &TrialSession, position: usize) -> Option<TrialRow> {
     let entry = trial.plan.entries.get(position)?;
     let outcome = match &entry.outcome {
         TrialOutcome::Filed { to } => RowOutcome::Filed {
@@ -338,10 +340,26 @@ fn row_of(ctx: &Ctx, trial: &TrialSession, position: usize) -> Option<TrialRow> 
 }
 
 fn page_card(state: &State, ctx: &Ctx, from: usize, to: usize) -> Option<TrialCard> {
+    let left = state
+        .session
+        .trial
+        .as_ref()?
+        .plan
+        .entries
+        .len()
+        .saturating_sub(to);
+    card_of(state, ctx, (from..to).collect(), left)
+}
+
+/// A card with the rows of these positions in the plan; `left` is how many
+/// more the user can still ask for.
+pub fn card_of(state: &State, ctx: &Ctx, positions: Vec<usize>, left: usize) -> Option<TrialCard> {
     let trial = state.session.trial.as_ref()?;
     let transfer = state.session.tidy.as_ref()?.transfer?;
-    let rows: Vec<TrialRow> = (from..to).filter_map(|at| row_of(ctx, trial, at)).collect();
-    let left = trial.plan.entries.len().saturating_sub(to);
+    let rows: Vec<TrialRow> = positions
+        .into_iter()
+        .filter_map(|at| row_of(ctx, trial, at))
+        .collect();
     Some(TrialCard {
         header: text(
             ctx.lang,
@@ -377,43 +395,79 @@ pub fn trial_done(state: &mut State, ctx: &Ctx, result: Result<TrialPlan, String
     };
     let total = plan.entries.len();
     let shown = total.min(PAGE);
+    let carried = std::mem::take(&mut state.session.groups.carried);
+    let resolved = carried
+        .into_iter()
+        .filter_map(|(from, folder)| {
+            let (position, entry) = plan
+                .entries
+                .iter()
+                .enumerate()
+                .find(|(_, entry)| entry.from == from)?;
+            matches!(&entry.outcome, TrialOutcome::Unsure { choices, .. } if choices.contains(&folder))
+                .then_some((position, folder))
+        })
+        .collect();
     state.session.trial = Some(TrialSession {
         plan,
-        resolved: Default::default(),
+        resolved,
         shown,
     });
     state.step = Step::Trial;
+    let lead: Vec<Part> = state
+        .session
+        .groups
+        .fresh_rule
+        .take()
+        .map(|name| Part::Text(fill(ctx.lang, Msg::HermesChatRuleSaved, &[("name", &name)])))
+        .into_iter()
+        .collect();
     let Some(trial) = state.session.trial.as_ref() else {
         return;
     };
+    let open_questions = stay_groups::has_open_questions(state);
     if filed_count(trial) == 0 && trial.plan.unsure == 0 {
-        say(
-            state,
-            fill(
-                ctx.lang,
-                Msg::HermesChatNothingToFile,
-                &[("stays", &number(total))],
-            ),
-            vec![cancel_chip(ctx)],
-        );
+        if !open_questions {
+            say(
+                state,
+                fill(
+                    ctx.lang,
+                    Msg::HermesChatNothingToFile,
+                    &[("stays", &number(total))],
+                ),
+                vec![cancel_chip(ctx)],
+            );
+            return;
+        }
+        let mut parts = lead;
+        parts.push(Part::Text(fill(
+            ctx.lang,
+            Msg::HermesChatStaysOnly,
+            &[("count", &number(total))],
+        )));
+        hermes(state, parts, Vec::new());
+        stay_groups::ask_next(state, ctx);
         return;
     }
-    let chips = trial_chips(ctx, trial);
+    let chips = if open_questions {
+        Vec::new()
+    } else {
+        trial_chips(ctx, trial)
+    };
     let Some(card) = page_card(state, ctx, 0, shown) else {
         return;
     };
-    hermes(
-        state,
-        vec![
-            Part::Text(fill(
-                ctx.lang,
-                Msg::HermesChatTrialIntro,
-                &[("count", &number(shown))],
-            )),
-            Part::Trial(card),
-        ],
-        chips,
-    );
+    let mut parts = lead;
+    parts.push(Part::Text(fill(
+        ctx.lang,
+        Msg::HermesChatTrialIntro,
+        &[("count", &number(shown))],
+    )));
+    parts.push(Part::Trial(card));
+    hermes(state, parts, chips);
+    if open_questions {
+        stay_groups::ask_next(state, ctx);
+    }
 }
 
 pub fn show_more(state: &mut State, ctx: &Ctx) {
@@ -566,6 +620,7 @@ pub fn filed_done(state: &mut State, ctx: &Ctx, result: Result<RunReport, String
         .get(&tidy.source)
         .map_or(0, |reading| reading.files.len());
     state.session.readings.clear();
+    state.session.groups = GroupFlow::default();
     let mut parts = vec![Part::Text(fill(
         ctx.lang,
         Msg::HermesChatFiled,
