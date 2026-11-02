@@ -59,7 +59,7 @@ pub fn ask(state: &mut State, ctx: &Ctx, typed: &str, asked: Asked) -> Option<Ac
                 fill(
                     ctx.lang,
                     Msg::HermesChatModelMissing,
-                    &[("size", &format::size(LOCAL_MODEL.size))],
+                    &[("size", &format::megabytes(LOCAL_MODEL.size))],
                 ),
                 vec![
                     chip(

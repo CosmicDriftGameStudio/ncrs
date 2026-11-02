@@ -433,6 +433,14 @@ mod hermes_chat_ui_tests;
     clippy::indexing_slicing
 )]
 #[cfg(test)]
+mod ai_status_ui_tests;
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
 mod hit_list_tests;
 #[allow(
     clippy::unwrap_used,

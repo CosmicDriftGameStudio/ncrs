@@ -242,6 +242,8 @@ jobs:
       - name: Chat evaluation with the local AI model (Windows)
         if: runner.os == 'Windows'
         run: |
+          # cargo writes its progress to stderr; the exit code decides below.
+          $ErrorActionPreference = 'Continue'
           cargo test -p ncrs-ai --features llama with_model_chat_eval -- --ignored --show-output 2>&1 | Tee-Object -FilePath ai-tests.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (-not (Select-String -Path ai-tests.log -Pattern 'chat eval:' -Quiet)) { exit 1 }

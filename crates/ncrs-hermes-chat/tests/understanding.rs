@@ -133,7 +133,7 @@ mod tests {
             talk.last_texts(),
             vec![say(
                 Msg::HermesChatModelMissing,
-                &[("size", &format::size(LOCAL_MODEL.size))]
+                &[("size", &format::megabytes(LOCAL_MODEL.size))]
             )]
         );
         assert_eq!(

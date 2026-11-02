@@ -8936,7 +8936,7 @@
     },
     {
       "key": "hermes_chat.model_missing",
-      "context": "Hermes chat (F2): Hermes explains it needs its local language model to understand typed sentences and offers to download it. {size} is the download size, for example '2.5 GB'. A button to download follows.",
+      "context": "Hermes chat (F2): Hermes explains it needs its local language model to understand typed sentences and offers to download it. {size} is the download size, for example '2497 MB'. A button to download follows.",
       "en": "To understand sentences I need my language model ({size}, one time, stays on this computer). Shall I download it?",
       "de": "Um Sätze zu verstehen, brauche ich mein Sprachmodell ({size}, einmalig, bleibt auf diesem Rechner). Soll ich es laden?"
     },
