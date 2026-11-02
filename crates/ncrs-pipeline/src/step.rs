@@ -22,6 +22,9 @@ pub struct Item {
     /// A person asked to run the file again: a known file does not stop at
     /// the intake step as unchanged.
     pub force: bool,
+    /// Set by the intake step when the stored text of an unchanged document
+    /// can be used as it is.
+    pub stored_text_is_current: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

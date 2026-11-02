@@ -4,12 +4,12 @@ use std::time::SystemTime;
 
 use ncrs_ai::Provider;
 use ncrs_index::{
-    DocumentStatus, Field, FieldOrigin, IndexError, KindLanguage, Kinds, ReviewReason,
+    DocumentId, DocumentStatus, Field, FieldOrigin, IndexError, KindLanguage, Kinds, ReviewReason,
 };
 use ncrs_intake::text_is_readable;
 use ncrs_intake::{
-    detect_recipient, detect_sender, kind_from_heading, plan, OwnIdentifiers, PlanInput, Planning,
-    StabilityTracker, TextChain, TextError,
+    detect_fields, plan, OwnNames, PlanInput, Planning, StabilityTracker, TextChain, TextError,
+    FIELDS_READ_VERSION,
 };
 use ncrs_intake::{settle_location, take_in, IntakeError, Location, LocationMode, Outcome};
 
@@ -102,7 +102,11 @@ impl Step for IntakeStep {
                         .document(id)?
                         .is_some_and(|document| document.status == DocumentStatus::New),
                     LocationMode::Archive => {
-                        text_is_readable(&item.path) && !index.has_document_text_row(id)?
+                        let has_text = index.has_document_text_row(id)?;
+                        let continues = text_is_readable(&item.path)
+                            && (!has_text || index.fields_read_version(id)? < FIELDS_READ_VERSION);
+                        item.stored_text_is_current = continues && has_text;
+                        continues
                     }
                 },
                 _ => false,
@@ -164,6 +168,13 @@ impl Step for TextStep {
         let id = item
             .document
             .ok_or_else(|| "the file has no document".to_owned())?;
+        if item.stored_text_is_current {
+            item.text = with_index_value(self.index.as_ref(), |index| index.document_text(id))
+                .ok_or_else(|| NO_INDEX.to_owned())?
+                .map_err(|err| err.to_string())?
+                .filter(|text| !text.is_empty());
+            return Ok(StepOutcome::Continue);
+        }
         item.text = match self.chain.extract(&item.path) {
             Ok(text) => text,
             Err(TextError::LibraryMissing { .. }) => return Ok(StepOutcome::Unchanged),
@@ -189,19 +200,60 @@ struct RulesStep {
     own: OwnDetails,
 }
 
+impl RulesStep {
+    fn own_names(&self) -> OwnNames<'_> {
+        OwnNames {
+            names: &self.own.names,
+            ibans: &self.own.ibans,
+            tax_ids: &self.own.tax_ids,
+        }
+    }
+
+    /// Fills the empty fields of an archive document and notes which version
+    /// of the detection read it. Never plans, never changes the status and
+    /// offers no aliases: a whole archive would flood the alias list.
+    fn read_archive_fields(&self, id: DocumentId, text: &str) -> Result<StepOutcome, String> {
+        with_index_value(self.index.as_ref(), |index| {
+            let Some(document) = index.document(id)? else {
+                return Ok(());
+            };
+            let detected = detect_fields(
+                text,
+                &document.fields,
+                &index.confirmed_sender_aliases()?,
+                &index.sender_names()?,
+                &self.own_names(),
+                index.kinds(),
+            );
+            let filled = detected.fill(&document.fields);
+            if filled != document.fields {
+                index.set_document_fields(id, &filled, |field| match field {
+                    Field::Recipient => FieldOrigin::AddressBlock,
+                    Field::Kind => FieldOrigin::Heading,
+                    _ => FieldOrigin::Rule(None),
+                })?;
+            }
+            index.set_fields_read_version(id, FIELDS_READ_VERSION)
+        })
+        .ok_or_else(|| NO_INDEX.to_owned())?
+        .map_err(|err| err.to_string())?;
+        Ok(StepOutcome::Continue)
+    }
+}
+
 impl Step for RulesStep {
     fn name(&self) -> &'static str {
         "rules"
     }
 
     fn run(&self, item: &mut Item, _now: SystemTime) -> Result<StepOutcome, String> {
-        if item.location.mode == LocationMode::Archive {
-            return Ok(StepOutcome::Continue);
-        }
         let id = item
             .document
             .ok_or_else(|| "the file has no document".to_owned())?;
         let text = item.text.as_deref().unwrap_or_default();
+        if item.location.mode == LocationMode::Archive {
+            return self.read_archive_fields(id, text);
+        }
         let planning = with_index_value(self.index.as_ref(), |index| {
             let Some(document) = index.document(id)? else {
                 return Ok(None);
@@ -213,49 +265,18 @@ impl Step for RulesStep {
             }
             let rules = index.rules()?;
             let aliases = index.confirmed_sender_aliases()?;
-            let detected_recipient = document
-                .fields
-                .recipient
-                .is_none()
-                .then(|| detect_recipient(text))
-                .flatten();
-            let detected_kind = document
-                .fields
-                .kind
-                .is_none()
-                .then(|| kind_from_heading(text, index.kinds()))
-                .flatten();
-            let detection = if document.fields.sender.is_none() {
-                let own = OwnIdentifiers::new(
-                    self.own.names.iter().map(String::as_str).chain(
-                        detected_recipient
-                            .as_deref()
-                            .or(document.fields.recipient.as_deref()),
-                    ),
-                    self.own.ibans.iter().map(String::as_str),
-                    self.own.tax_ids.iter().map(String::as_str),
-                );
-                Some(detect_sender(text, &aliases, &index.sender_names()?, &own))
-            } else {
-                None
-            };
-            let detected_name = detection
-                .as_ref()
-                .and_then(|found| found.sender.as_ref())
-                .map(|sender| sender.name.clone());
-            let mut known = document.fields.clone();
-            if detected_name.is_some() {
-                known.sender.clone_from(&detected_name);
-            }
-            if detected_recipient.is_some() {
-                known.recipient.clone_from(&detected_recipient);
-            }
-            if detected_kind.is_some() {
-                known.kind.clone_from(&detected_kind);
-            }
+            let detected = detect_fields(
+                text,
+                &document.fields,
+                &aliases,
+                &index.sender_names()?,
+                &self.own_names(),
+                index.kinds(),
+            );
+            let known = detected.fill(&document.fields);
             // Offered even when the plan ends in review: the user confirms
             // them from the alias list, not from this document.
-            for offer in detection.iter().flat_map(|found| &found.offers) {
+            for offer in &detected.offers {
                 index.offer_sender_alias(&offer.sender, offer.kind, &offer.value)?;
             }
             let manual_fields = index.field_origins(id)?.manual_fields();
@@ -281,13 +302,16 @@ impl Step for RulesStep {
                 ),
             };
             if *found != document.fields {
-                let sender_was_detected = detected_name.is_some();
+                let sender_was_detected = detected.sender.is_some();
                 index.set_document_fields(id, found, |field| match field {
                     Field::Sender if sender_was_detected => FieldOrigin::Rule(None),
-                    Field::Recipient if found.recipient == detected_recipient => {
+                    Field::Recipient if found.recipient == detected.recipient => {
                         FieldOrigin::AddressBlock
                     }
-                    Field::Kind if found.kind == detected_kind => FieldOrigin::Heading,
+                    Field::Kind if found.kind == detected.kind => FieldOrigin::Heading,
+                    Field::Date if found.date.is_some() && found.date == detected.date => {
+                        FieldOrigin::Rule(None)
+                    }
                     _ => rule_origin.clone(),
                 })?;
             }

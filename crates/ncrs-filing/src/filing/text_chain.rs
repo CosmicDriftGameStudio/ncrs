@@ -29,6 +29,7 @@ pub(in crate::filing) fn shipped_text_chain(
         chain
             .with_source(PlainText)
             .with_source(OfficeText)
+            .with_source(ImageFileText)
             .with_image_source(shipped_image_source(ocr_models_dir)),
         library_missing_from,
     )

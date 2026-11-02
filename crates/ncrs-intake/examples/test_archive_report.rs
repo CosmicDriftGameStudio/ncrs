@@ -3,11 +3,14 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-use ncrs_index::{ContentHash, FindingKind, KindCatalog, KindLanguage, Kinds, PlanOutcome, SenderAliases};
+use ncrs_index::{
+    ContentHash, DocumentFields, FindingKind, KindCatalog, KindLanguage, Kinds, PlanOutcome,
+    SenderAliases,
+};
 use ncrs_intake::test_archive::{test_archive, TestFile, OWN_NAME};
 use ncrs_intake::{
-    detect_recipient, detect_sender, kind_from_heading, learn_archive, plan_reorganisation,
-    ArchiveDocument, OwnIdentifiers, PlanFile, ReorganisationInput, DUPLICATES_FOLDER,
+    detect_fields, learn_archive, plan_reorganisation, ArchiveDocument, OwnNames, PlanFile,
+    ReorganisationInput, DUPLICATES_FOLDER,
 };
 use sha2::{Digest as _, Sha256};
 
@@ -15,26 +18,37 @@ struct FieldCounts {
     sender: usize,
     recipient: usize,
     kind: usize,
+    date: usize,
 }
 
 fn field_counts(files: &[TestFile]) -> FieldCounts {
     let aliases = SenderAliases::default();
     let catalog = KindCatalog::built_in();
+    let names = [OWN_NAME.to_owned()];
+    let own = OwnNames {
+        names: &names,
+        ibans: &[],
+        tax_ids: &[],
+    };
     let mut counts = FieldCounts {
         sender: 0,
         recipient: 0,
         kind: 0,
+        date: 0,
     };
     for text in files.iter().filter_map(TestFile::text) {
-        let recipient = detect_recipient(text);
-        let own = OwnIdentifiers::new(
-            std::iter::once(OWN_NAME).chain(recipient.as_deref()),
-            [],
-            [],
+        let found = detect_fields(
+            text,
+            &DocumentFields::default(),
+            &aliases,
+            &[],
+            &own,
+            &catalog,
         );
-        counts.sender += usize::from(detect_sender(text, &aliases, &[], &own).sender.is_some());
-        counts.recipient += usize::from(recipient.is_some());
-        counts.kind += usize::from(kind_from_heading(text, &catalog).is_some());
+        counts.sender += usize::from(found.sender.is_some());
+        counts.recipient += usize::from(found.recipient.is_some());
+        counts.kind += usize::from(found.kind.is_some());
+        counts.date += usize::from(found.date.is_some());
     }
     counts
 }
@@ -74,14 +88,14 @@ fn main() {
 
     let fields = field_counts(&archive.archive);
     println!(
-        "== FIELDS (archive texts): sender {}, recipient {}, kind {} of {texts}",
-        fields.sender, fields.recipient, fields.kind
+        "== FIELDS (archive texts): sender {}, recipient {}, kind {}, date {} of {texts}",
+        fields.sender, fields.recipient, fields.kind, fields.date
     );
 
     let plan_files: Vec<PlanFile> = archive
         .archive
         .iter()
-        .zip(0_i64..)
+        .zip(0..)
         .map(|(file, recorded_at)| PlanFile {
             relative_path: file.relative_path.clone(),
             hash: ContentHash(Sha256::digest(file.bytes()).into()),
@@ -142,11 +156,12 @@ fn main() {
 
     let inbox = field_counts(&archive.inbox);
     println!(
-        "== INBOX: {} files, {} photos; sender {}, recipient {}, kind {}; with target path: 0",
+        "== INBOX: {} files, {} photos; sender {}, recipient {}, kind {}, date {}; with target path: 0",
         archive.inbox.len(),
         count_photos(&archive.inbox),
         inbox.sender,
         inbox.recipient,
-        inbox.kind
+        inbox.kind,
+        inbox.date
     );
 }

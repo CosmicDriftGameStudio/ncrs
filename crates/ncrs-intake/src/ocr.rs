@@ -344,6 +344,7 @@ mod tests {
 
     use super::*;
     use crate::test_support::{pdf_text, rendered_pages, text_pdf, write};
+    use crate::text::TextChain;
 
     const MODELS_DIR_VARIABLE: &str = "NCRS_OCR_MODELS_DIR";
 
@@ -387,6 +388,21 @@ mod tests {
         for word in ["invoice", "4711", "company"] {
             assert!(lower.contains(word), "{word} missing in {text:?}");
         }
+    }
+
+    #[test]
+    fn an_image_file_is_read_by_the_chain() {
+        let dir = TempDir::new().unwrap();
+        let pdf = write(&dir, "invoice.pdf", &text_pdf("Invoice 4711 Company A"));
+        let page = rendered_pages(&pdf_text(), &pdf).remove(0);
+        let grey = image::GrayImage::from_raw(page.width, page.height, page.pixels).unwrap();
+        let path = dir.path().join("photo.png");
+        grey.save(&path).unwrap();
+        let chain = TextChain::new()
+            .with_source(crate::ImageFileText)
+            .with_image_source(engine());
+        let text = chain.extract(&path).unwrap().expect("text");
+        assert!(text.contains("4711"), "4711 missing in {text:?}");
     }
 
     #[test]

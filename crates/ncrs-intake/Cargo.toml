@@ -38,6 +38,9 @@ rten = { version = "=0.26.0", default-features = false, features = ["onnx_format
 # limits. Both are already in the lock; no features, so no extra dependencies.
 zip = { version = "=9.1.2", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 quick-xml = { version = "=0.42.0", default-features = false }
+# Decodes photos and scans (jpeg, png, tiff) into the page image OCR reads. Same
+# features as the root package: no other formats are built.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "tiff"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 tempfile = { version = "3.27", optional = true }
 

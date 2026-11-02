@@ -389,6 +389,7 @@ mod tests {
                 review: None,
                 plan: None,
                 force: false,
+                stored_text_is_current: false,
             }
         }
 

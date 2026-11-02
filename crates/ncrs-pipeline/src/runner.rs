@@ -393,6 +393,7 @@ impl State {
                 review: None,
                 plan: None,
                 force: false,
+                stored_text_is_current: false,
             },
             batch,
             fingerprint,
@@ -420,6 +421,7 @@ impl State {
                 review: None,
                 plan: None,
                 force: true,
+                stored_text_is_current: false,
             },
             batch: None,
             fingerprint: None,
@@ -2798,4 +2800,7 @@ mod tests {
             Arc::new(FixedClock),
         ));
     }
+
+    #[path = "runner_archive_tests.rs"]
+    mod archive_fields;
 }

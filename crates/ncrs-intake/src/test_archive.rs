@@ -174,9 +174,9 @@ struct Builder {
 
 impl Builder {
     fn random_date(&mut self, year: i32, month: Option<u32>) -> NaiveDate {
-        let month = month.unwrap_or_else(|| self.rng.range_inclusive(1, 12));
+        let chosen = month.unwrap_or_else(|| self.rng.range_inclusive(1, 12));
         let day = self.rng.range_inclusive(1, 28);
-        date_of(year, month, day)
+        date_of(year, chosen, day)
     }
 
     fn random_year(&mut self) -> i32 {
@@ -220,8 +220,8 @@ impl Builder {
 
     fn photo(&mut self) -> Vec<u8> {
         let mut bytes = vec![0xFF, 0xD8, 0xFF];
-        for _ in 0..8 {
-            bytes.extend(self.rng.next_u64().to_le_bytes());
+        for _ in 0..64 {
+            bytes.push(u8::try_from(self.rng.below(256)).unwrap_or_default());
         }
         bytes
     }
@@ -245,15 +245,13 @@ impl Builder {
                     "Sparkasse Chemnitz",
                     "Moritzhof 1, 09111 Chemnitz",
                     "Kontoauszug",
-                    &format!(
+                    format!(
                         "Kontoauszug Nr. {month} / {year}\nIBAN DE12 8705 0000 0712 3456 78\nAlter Kontostand 1.234,56 EUR"
                     ),
                 )
                 .extra("Kundennummer: 4711002");
                 self.add_letter(
-                    &format!(
-                        "Bank/Sparkasse Chemnitz/Kontoauszüge/{year}/Kontoauszug_{date}.pdf"
-                    ),
+                    &format!("Bank/Sparkasse Chemnitz/Kontoauszüge/{year}/Kontoauszug_{date}.pdf"),
                     &letter,
                     date,
                 );
@@ -267,10 +265,12 @@ impl Builder {
                     "Scalable Capital GmbH",
                     "Seitzstraße 8e, 80538 München",
                     "Wertpapierabrechnung Kauf",
-                    &format!("Auftragsnummer {order}\nDepot 0815-4711\nKurswert 500,00 EUR"),
+                    format!("Auftragsnummer {order}\nDepot 0815-4711\nKurswert 500,00 EUR"),
                 );
                 self.add_letter(
-                    &format!("Bank/Scalable Capital/{year}/Wertpapierabrechnung_{date}_{order}.pdf"),
+                    &format!(
+                        "Bank/Scalable Capital/{year}/Wertpapierabrechnung_{date}_{order}.pdf"
+                    ),
                     &letter,
                     date,
                 );
@@ -338,7 +338,7 @@ impl Builder {
                         sender,
                         "Hauptstraße 3, 09111 Chemnitz",
                         document,
-                        &format!(
+                        format!(
                             "Darlehensnummer {loan}\nObjekt {object}\nBitte unterschrieben zurücksenden."
                         ),
                     );
@@ -363,30 +363,30 @@ impl Builder {
             "Kita Sonnenschein",
         ];
         for year in YEARS {
-            let date = self.random_date(if year < 2024 { year + 1 } else { 2024 }, None);
-            let letter = Letter::new(
+            let notice_date = self.random_date(if year < 2024 { year + 1 } else { 2024 }, None);
+            let notice = Letter::new(
                 "Finanzamt Chemnitz-Süd",
                 "Paul-Bertz-Str. 1, 09120 Chemnitz",
-                &format!("Bescheid für {year} über Einkommensteuer"),
+                format!("Bescheid für {year} über Einkommensteuer"),
                 "Steuernummer 215/123/45678\nFestgesetzt werden 1.234 EUR",
             );
             self.add_letter(
                 &format!("Steuer/{year}/Bescheid/Einkommensteuerbescheid {year}.pdf"),
-                &letter,
-                date,
+                &notice,
+                notice_date,
             );
-            let date = self.random_date(year, None);
+            let protocol_date = self.random_date(year, None);
             let ticket = self.rng.range_inclusive(100_000_000, 999_999_999);
-            let letter = Letter::new(
+            let protocol = Letter::new(
                 "ELSTER",
                 "Bayerisches Landesamt für Steuern",
                 "Übertragungsprotokoll",
-                &format!("Transferticket et{ticket}"),
+                format!("Transferticket et{ticket}"),
             );
             self.add_letter(
                 &format!("Steuer/{year}/Erklärung/ELSTER_Übertragungsprotokoll.pdf"),
-                &letter,
-                date,
+                &protocol,
+                protocol_date,
             );
             for number in 1..=25 {
                 let date = self.random_date(year, None);
@@ -398,7 +398,7 @@ impl Builder {
                     sender,
                     "Am Markt 1, 09111 Chemnitz",
                     kind,
-                    &format!("Rechnungsnummer R-{invoice}\nBetrag {amount},00 EUR"),
+                    format!("Rechnungsnummer R-{invoice}\nBetrag {amount},00 EUR"),
                 );
                 self.add_letter(
                     &format!("Steuer/{year}/Belege/{kind}_{number:02}.pdf"),
@@ -413,21 +413,32 @@ impl Builder {
         const INSURERS: [(&str, &str, [usize; 3]); 4] = [
             ("Allianz", "Allianz Versicherungs-AG", [18, 17, 16]),
             ("HUK-Coburg", "HUK-COBURG", [17, 18, 16]),
-            ("Kranich Versicherung", "Kranich Versicherung AG", [17, 16, 18]),
+            (
+                "Kranich Versicherung",
+                "Kranich Versicherung AG",
+                [17, 16, 18],
+            ),
             ("ERGO", "ERGO Versicherung AG", [17, 17, 16]),
         ];
         for (folder, name, counts) in INSURERS {
             let policy = self.rng.range_inclusive(100_000_000, 999_999_999);
-            for (area, count) in ["Vertrag", "Beitragsrechnung", "Schaden"].into_iter().zip(counts) {
+            for (area, count) in ["Vertrag", "Beitragsrechnung", "Schaden"]
+                .into_iter()
+                .zip(counts)
+            {
                 for number in 1..=count {
                     let year = self.random_year();
                     let date = self.random_date(year, None);
-                    let heading = if area == "Vertrag" { "Versicherungsschein" } else { area };
+                    let heading = if area == "Vertrag" {
+                        "Versicherungsschein"
+                    } else {
+                        area
+                    };
                     let letter = Letter::new(
                         name,
                         "Königinstraße 28, 80802 München",
                         heading,
-                        &format!("Versicherungsnummer {policy}\nBeitrag 45,90 EUR"),
+                        format!("Versicherungsnummer {policy}\nBeitrag 45,90 EUR"),
                     );
                     self.add_letter(
                         &format!("Versicherung/{folder}/{area}/{year} {area} {number}.pdf"),
@@ -461,13 +472,17 @@ impl Builder {
                             break (date, relative);
                         }
                     };
-                    let heading = if area == "Kfz-Steuer" { "Kraftfahrzeugsteuerbescheid" } else { "Rechnung" };
+                    let heading = if area == "Kfz-Steuer" {
+                        "Kraftfahrzeugsteuerbescheid"
+                    } else {
+                        "Rechnung"
+                    };
                     let chassis = self.rng.range_inclusive(100_000, 999_999);
                     let letter = Letter::new(
                         sender,
                         "Zwickauer Str. 100, 09116 Chemnitz",
                         heading,
-                        &format!("Kennzeichen {plate}\nFahrgestellnummer WVWZZZ1KZ{chassis}"),
+                        format!("Kennzeichen {plate}\nFahrgestellnummer WVWZZZ1KZ{chassis}"),
                     );
                     self.add_letter(&relative, &letter, date);
                 }
@@ -479,8 +494,8 @@ impl Builder {
         const TRADES: [&str; 3] = ["Heizung", "Elektro", "Fenster"];
         const CRAFTSMEN: [&str; 3] = ["Heizung Schulze", "Elektro Lange GmbH", "Fensterbau Roth"];
         for year in YEARS {
-            let date = self.random_date(year, None);
-            let letter = Letter::new(
+            let statement_date = self.random_date(year, None);
+            let statement = Letter::new(
                 "Hausverwaltung Meyer & Co. KG",
                 "Brühl 5, 09111 Chemnitz",
                 "Betriebskostenabrechnung",
@@ -488,16 +503,16 @@ impl Builder {
             );
             self.add_letter(
                 &format!("Wohnung/Andrestr/Nebenkosten/{year}/Nebenkostenabrechnung_{year}.pdf"),
-                &letter,
-                date,
+                &statement,
+                statement_date,
             );
             for _ in 0..6 {
                 let (date, relative) = loop {
-                    let date = self.random_date(year, None);
+                    let candidate = self.random_date(year, None);
                     let trade = *self.rng.choose(&TRADES);
-                    let relative = format!("Wohnung/Andrestr/Handwerker/{date}_{trade}.pdf");
+                    let relative = format!("Wohnung/Andrestr/Handwerker/{candidate}_{trade}.pdf");
                     if self.is_free(&relative) {
-                        break (date, relative);
+                        break (candidate, relative);
                     }
                 };
                 let craftsman = *self.rng.choose(&CRAFTSMEN);
@@ -506,7 +521,7 @@ impl Builder {
                     craftsman,
                     "Werkstr. 2, 09117 Chemnitz",
                     "Rechnung",
-                    &format!("Rechnungsnummer {invoice}"),
+                    format!("Rechnungsnummer {invoice}"),
                 );
                 self.add_letter(&relative, &letter, date);
             }
@@ -519,7 +534,11 @@ impl Builder {
                 document,
                 "Objekt Andrestr. 12",
             );
-            self.add_letter(&format!("Wohnung/Andrestr/Mietvertrag/{document}.pdf"), &letter, date);
+            self.add_letter(
+                &format!("Wohnung/Andrestr/Mietvertrag/{document}.pdf"),
+                &letter,
+                date,
+            );
         }
     }
 
@@ -550,12 +569,17 @@ impl Builder {
                 let (date, relative) = loop {
                     let year = self.random_year();
                     let date = self.random_date(year, None);
-                    let relative = format!("Gesundheit/{doctor}/Rechnung_{}.pdf", date.format("%Y%m%d"));
+                    let relative =
+                        format!("Gesundheit/{doctor}/Rechnung_{}.pdf", date.format("%Y%m%d"));
                     if self.is_free(&relative) {
                         break (date, relative);
                     }
                 };
-                let heading = if doctor.contains("TK") { "Mitteilung" } else { "Rechnung" };
+                let heading = if doctor.contains("TK") {
+                    "Mitteilung"
+                } else {
+                    "Rechnung"
+                };
                 let letter = Letter::new(
                     sender,
                     "Markt 3, 09111 Chemnitz",
@@ -584,7 +608,7 @@ impl Builder {
                         sender,
                         "Parkstr. 1, 09111 Chemnitz",
                         topic,
-                        &format!("Kind {child} Beispiel"),
+                        format!("Kind {child} Beispiel"),
                     );
                     self.add_letter(
                         &format!("Kinder/{child}/{area}/{child}_{topic}_{year}_{number}.pdf"),
@@ -609,7 +633,12 @@ impl Builder {
             let date = self.random_date(year, None);
             let sender = *self.rng.choose(&SENDERS);
             let heading = *self.rng.choose(&HEADINGS);
-            let letter = Letter::new(sender, "Postfach 1, 09111 Chemnitz", heading, "Aktenzeichen 12/345");
+            let letter = Letter::new(
+                sender,
+                "Postfach 1, 09111 Chemnitz",
+                heading,
+                "Aktenzeichen 12/345",
+            );
             self.add_letter(&format!("Scans/scan{number:04}.pdf"), &letter, date);
         }
         for number in 1..=120 {
@@ -627,7 +656,13 @@ impl Builder {
                 let belongs = path.starts_with("Versicherung")
                     || path.starts_with("Gesundheit")
                     || path.starts_with("Wohnung/Andrestr/Handwerker");
-                belongs.then(|| Some((file.relative_path.clone(), file.text()?.to_owned(), file.date)))?
+                belongs.then(|| {
+                    Some((
+                        file.relative_path.clone(),
+                        file.text()?.to_owned(),
+                        file.date,
+                    ))
+                })?
             })
             .collect();
         let mut written = 0;
@@ -649,40 +684,96 @@ impl Builder {
                 written += 1;
             }
         }
-        assert_eq!(written, FILING_COPIES, "not enough sources for the filing copies");
+        assert_eq!(
+            written, FILING_COPIES,
+            "not enough sources for the filing copies"
+        );
 
-        let pool: Vec<(PathBuf, String, Option<NaiveDate>)> = self
+        let all_texts: Vec<(PathBuf, String, Option<NaiveDate>)> = self
             .files
             .iter()
-            .filter_map(|file| Some((file.relative_path.clone(), file.text()?.to_owned(), file.date)))
+            .filter_map(|file| {
+                Some((
+                    file.relative_path.clone(),
+                    file.text()?.to_owned(),
+                    file.date,
+                ))
+            })
             .collect();
-        let mut written = 0;
-        for index in self.rng.sample(pool.len(), pool.len()) {
-            if written == DOWNLOAD_COPIES {
+        let mut downloads_written = 0;
+        for index in self.rng.sample(all_texts.len(), all_texts.len()) {
+            if downloads_written == DOWNLOAD_COPIES {
                 break;
             }
-            let (path, text, date) = &pool[index];
+            let (path, text, date) = &all_texts[index];
             let relative = format!("Downloads alt/{}", file_name(path));
             if self.is_free(&relative) {
                 self.add(&relative, text.clone(), *date);
-                written += 1;
+                downloads_written += 1;
             }
         }
-        assert_eq!(written, DOWNLOAD_COPIES, "not enough sources for the download copies");
+        assert_eq!(
+            downloads_written, DOWNLOAD_COPIES,
+            "not enough sources for the download copies"
+        );
     }
 
     fn inbox(&mut self) -> Vec<TestFile> {
         const LETTERS: [(&str, &str, &str, &str); 8] = [
-            ("Sparkasse Chemnitz", "Moritzhof 1, 09111 Chemnitz", "Kontoauszug", "IBAN DE12 8705 0000 0712 3456 78\nKundennummer: 4711002"),
-            ("Allianz Versicherungs-AG", "Königinstraße 28, 80802 München", "Beitragsrechnung", "Versicherungsnummer 123456789"),
-            ("Autohaus Süd GmbH", "Zwickauer Str. 100, 09116 Chemnitz", "Rechnung", "Kennzeichen C-AB 123"),
-            ("Finanzamt Chemnitz-Süd", "Paul-Bertz-Str. 1, 09120 Chemnitz", "Bescheid für 2024 über Einkommensteuer", "Steuernummer 215/123/45678"),
-            ("Cosmicdrift GmbH", "Str. der Nationen 1, 09111 Chemnitz", "Entgeltabrechnung", "Personalnummer 00042"),
-            ("Interhyp AG", "Domagkstr. 34, 80807 München", "Darlehensvertrag", "Darlehensnummer 595610814\nObjekt Chemnitz-Andrestr. 12"),
-            ("Praxis Dr. Schmidt", "Markt 3, 09111 Chemnitz", "Rechnung", "Patient Marc Beispiel"),
-            ("Vodafone GmbH", "Ferdinand-Braun-Platz 1, 40549 Düsseldorf", "Ihre Rechnung", "Kundennummer 112233445\nRechnungsnummer 9988776655"),
+            (
+                "Sparkasse Chemnitz",
+                "Moritzhof 1, 09111 Chemnitz",
+                "Kontoauszug",
+                "IBAN DE12 8705 0000 0712 3456 78\nKundennummer: 4711002",
+            ),
+            (
+                "Allianz Versicherungs-AG",
+                "Königinstraße 28, 80802 München",
+                "Beitragsrechnung",
+                "Versicherungsnummer 123456789",
+            ),
+            (
+                "Autohaus Süd GmbH",
+                "Zwickauer Str. 100, 09116 Chemnitz",
+                "Rechnung",
+                "Kennzeichen C-AB 123",
+            ),
+            (
+                "Finanzamt Chemnitz-Süd",
+                "Paul-Bertz-Str. 1, 09120 Chemnitz",
+                "Bescheid für 2024 über Einkommensteuer",
+                "Steuernummer 215/123/45678",
+            ),
+            (
+                "Cosmicdrift GmbH",
+                "Str. der Nationen 1, 09111 Chemnitz",
+                "Entgeltabrechnung",
+                "Personalnummer 00042",
+            ),
+            (
+                "Interhyp AG",
+                "Domagkstr. 34, 80807 München",
+                "Darlehensvertrag",
+                "Darlehensnummer 595610814\nObjekt Chemnitz-Andrestr. 12",
+            ),
+            (
+                "Praxis Dr. Schmidt",
+                "Markt 3, 09111 Chemnitz",
+                "Rechnung",
+                "Patient Marc Beispiel",
+            ),
+            (
+                "Vodafone GmbH",
+                "Ferdinand-Braun-Platz 1, 40549 Düsseldorf",
+                "Ihre Rechnung",
+                "Kundennummer 112233445\nRechnungsnummer 9988776655",
+            ),
         ];
-        let photo_indices: HashSet<usize> = self.rng.sample(INBOX_FILES, INBOX_PHOTOS).into_iter().collect();
+        let photo_indices: HashSet<usize> = self
+            .rng
+            .sample(INBOX_FILES, INBOX_PHOTOS)
+            .into_iter()
+            .collect();
         let mut inbox = Vec::new();
         for index in 0..INBOX_FILES {
             let number = index + 1;
@@ -803,10 +894,18 @@ mod tests {
         let photos = archive
             .inbox
             .iter()
-            .filter(|file| file.relative_path.extension().is_some_and(|ext| ext == "jpg"))
+            .filter(|file| {
+                file.relative_path
+                    .extension()
+                    .is_some_and(|ext| ext == "jpg")
+            })
             .count();
         assert_eq!(photos, 72);
-        let texts = archive.inbox.iter().filter(|file| file.text().is_some()).count();
+        let texts = archive
+            .inbox
+            .iter()
+            .filter(|file| file.text().is_some())
+            .count();
         assert_eq!(texts, 228);
     }
 
@@ -852,6 +951,11 @@ mod tests {
             std::fs::read(root.path().join("archive").join(&first.relative_path)).unwrap(),
             first.bytes()
         );
-        assert_eq!(std::fs::read_dir(root.path().join("inbox")).unwrap().count(), 300);
+        assert_eq!(
+            std::fs::read_dir(root.path().join("inbox"))
+                .unwrap()
+                .count(),
+            300
+        );
     }
 }

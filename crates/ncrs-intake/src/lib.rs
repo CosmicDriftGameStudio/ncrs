@@ -5,10 +5,13 @@
 mod archive_profile;
 mod classify;
 mod conditions;
+mod date_detection;
 mod default_pattern;
 mod error;
 mod extract;
+mod field_detection;
 mod filing_plan;
+mod image_text;
 mod location;
 mod ocr;
 mod office;
@@ -36,6 +39,7 @@ pub use archive_profile::{
 };
 pub use classify::{classify, is_image_file, text_is_readable, Skip};
 pub use conditions::{condition_match_ranges, word_condition_holds, MAX_MATCH_RANGES};
+pub use date_detection::detect_letter_date;
 pub use default_pattern::{
     choose_pattern, default_pattern_for, pattern_without_tax_context, upgraded_pattern,
     ChosenPattern, PatternSource, DEFAULT_PATTERNS, FALLBACK_PATTERN,
@@ -44,11 +48,13 @@ pub use error::IntakeError;
 pub use extract::{
     extract_amount, extract_date, extract_number, parse_amount, parse_currency, parse_date,
 };
+pub use field_detection::{detect_fields, DetectedFields, OwnNames, FIELDS_READ_VERSION};
 pub use filing_plan::{
     contains_condition_holds, missing_field, pattern_is_valid, plan, render_pattern,
     render_pattern_in, render_pattern_parts, unknown_placeholder, FilingPlan, PatternPart,
     PlanInput, Planning, AI_FIELD_ORDER, FIELD_ORDER, FILING_PLACEHOLDERS,
 };
+pub use image_text::ImageFileText;
 pub use location::{Location, LocationMode};
 pub use ocr::{
     install_model, verify_model_bytes, LazyOcrText, OcrModelError, OcrModelFile, OcrText,
