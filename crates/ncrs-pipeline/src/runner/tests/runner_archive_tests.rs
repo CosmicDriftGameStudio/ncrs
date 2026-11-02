@@ -1,6 +1,7 @@
 //! Reading the fields of a whole archive: letters get their fields and their
 //! date, photos are read without text, nothing is planned or reviewed.
 
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ncrs_index::{DocumentFields, DocumentId, Field, FieldOrigin};
@@ -31,17 +32,30 @@ impl TextSource for FileAsText {
     }
 }
 
-/// Every eighth file of the test archive, without the inbox: every area,
-/// photos and copies, small enough for a scan within the runner's hang guard
-/// on a slow machine.
+/// The first files of every area of the test archive, without the inbox:
+/// letters, photos and copies, few enough for a scan within the runner's hang
+/// guard on a slow machine (a CI runner on Windows takes about half a second
+/// per file). The whole archive is checked without the runner in ncrs-intake.
 fn sampled_archive() -> TestArchive {
-    const SAMPLE_STEP: usize = 8;
+    const FILES_PER_AREA: usize = 2;
+    let mut per_area: BTreeMap<PathBuf, usize> = BTreeMap::new();
+    let archive = test_archive()
+        .archive
+        .into_iter()
+        .filter(|file| {
+            let area = file
+                .relative_path
+                .components()
+                .next()
+                .map(|component| PathBuf::from(component.as_os_str()))
+                .unwrap_or_default();
+            let taken = per_area.entry(area).or_default();
+            *taken += 1;
+            *taken <= FILES_PER_AREA
+        })
+        .collect();
     TestArchive {
-        archive: test_archive()
-            .archive
-            .into_iter()
-            .step_by(SAMPLE_STEP)
-            .collect(),
+        archive,
         inbox: Vec::new(),
     }
 }
