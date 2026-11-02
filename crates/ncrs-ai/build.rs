@@ -3,6 +3,9 @@
 //! clang's runtime library, and rustc links with `-nodefaultlibs`, so the
 //! library is named here. Without it a build with a deployment target (as in
 //! the release builds) fails to link.
+//!
+//! It also names the one condition under which llama.cpp is built with
+//! dynamic backends (`dynamic_backends`), so the code does not repeat it.
 
 use std::env;
 use std::path::PathBuf;
@@ -10,7 +13,15 @@ use std::process::Command;
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rustc-check-cfg=cfg(dynamic_backends)");
     let with_llama = env::var_os("CARGO_FEATURE_LLAMA").is_some();
+    // The target-specific dependency block of Cargo.toml has the same condition.
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+    let vulkan_target = target_os == "windows" || (target_os == "linux" && target_arch == "x86_64");
+    if with_llama && vulkan_target {
+        println!("cargo:rustc-cfg=dynamic_backends");
+    }
     let for_apple = env::var("CARGO_CFG_TARGET_VENDOR").is_ok_and(|vendor| vendor == "apple");
     if !(with_llama && for_apple) {
         return;

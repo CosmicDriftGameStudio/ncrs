@@ -29,6 +29,34 @@ contents:
     dst: /usr/lib/ncrs/libpdfium.so
     file_info:
       mode: 0644
+# llama:begin
+  # The Hermes model: llama.cpp as shared libraries and its backends (the CPU
+  # variants and Vulkan) as modules in backends/, both next to the executable.
+  - src: ${NCRS_STAGE}/libllama.so
+    expand: true
+    dst: /usr/lib/ncrs/libllama.so
+    file_info:
+      mode: 0644
+  - src: ${NCRS_STAGE}/libggml.so
+    expand: true
+    dst: /usr/lib/ncrs/libggml.so
+    file_info:
+      mode: 0644
+  - src: ${NCRS_STAGE}/libggml-base.so
+    expand: true
+    dst: /usr/lib/ncrs/libggml-base.so
+    file_info:
+      mode: 0644
+  - src: ${NCRS_STAGE}/libllama-common.so
+    expand: true
+    dst: /usr/lib/ncrs/libllama-common.so
+    file_info:
+      mode: 0644
+  - src: ${NCRS_STAGE}/backends
+    expand: true
+    dst: /usr/lib/ncrs/backends
+    type: tree
+# llama:end
   - src: /usr/lib/ncrs/ncrs
     dst: /usr/bin/ncrs
     type: symlink
@@ -59,7 +87,8 @@ contents:
 # The keyring speaks D-Bus in pure Rust (zbus) and needs only a running Secret
 # Service, hence the suggested gnome-keyring.
 # The graphics libraries are only recommended: the renderer falls back to
-# tiny-skia when Vulkan and EGL are missing. Capabilities (sonames) instead of
+# tiny-skia when Vulkan and EGL are missing, and the Hermes model runs on the
+# CPU without the Vulkan loader. Capabilities (sonames) instead of
 # package names in the rpm, so Fedora and openSUSE both resolve them.
 overrides:
   deb:

@@ -133,6 +133,38 @@ jobs:
           rustup toolchain install stable --profile minimal --component rustfmt,clippy
           rustup default stable
 
+      # llama.cpp is built with Vulkan on Linux x86_64 and Windows, see
+      # crates/ncrs-ai/Cargo.toml.
+      - name: Install the Vulkan build dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libvulkan-dev glslc spirv-headers
+
+      - name: Install the Vulkan SDK (Windows)
+        if: runner.os == 'Windows'
+        uses: jakoch/install-vulkan-sdk-action@d17de7e2f5e50efb5d2123efed18497d3c58c533 # v1.7.0
+        with:
+          install_runtime: false
+          cache: true
+          stripdown: true
+
+      # The Visual Studio generator fails on the vulkan-shaders-gen
+      # ExternalProject of ggml; Ninja in the MSVC environment does not. The
+      # default shell (pwsh) stays for cargo: the vendored OpenSSL needs it.
+      - name: MSVC environment (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+
+      - name: Ninja (Windows)
+        if: runner.os == 'Windows'
+        uses: seanmiddleditch/gha-setup-ninja@3b1f8f94a2f8254bd26914c4ab9474d4f0015f67 # v6
+
+      - name: Use Ninja for CMake (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: echo "CMAKE_GENERATOR=Ninja" >> "$GITHUB_ENV"
+
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -329,6 +361,37 @@ jobs:
             pkg-config libxkbcommon-dev libwayland-dev libx11-dev libfontconfig1-dev \
             cmake libclang-dev rpm
 
+      # llama.cpp is built with Vulkan for x86_64 Linux and Windows (see
+      # crates/ncrs-ai/Cargo.toml); aarch64 Linux and macOS keep the static
+      # build.
+      - name: Install the Vulkan build dependencies (x86_64 Linux)
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: sudo apt-get install -y libvulkan-dev glslc spirv-headers
+
+      - name: Install the Vulkan SDK (Windows)
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        uses: jakoch/install-vulkan-sdk-action@d17de7e2f5e50efb5d2123efed18497d3c58c533 # v1.7.0
+        with:
+          install_runtime: false
+          cache: true
+          stripdown: true
+
+      # The Visual Studio generator fails on the vulkan-shaders-gen
+      # ExternalProject of ggml; Ninja in the MSVC environment does not. The
+      # default shell (pwsh) stays for cargo: the vendored OpenSSL needs it.
+      - name: MSVC environment (Windows)
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+
+      - name: Ninja (Windows)
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        uses: seanmiddleditch/gha-setup-ninja@3b1f8f94a2f8254bd26914c4ab9474d4f0015f67 # v6
+
+      - name: Use Ninja for CMake (Windows)
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        shell: bash
+        run: echo "CMAKE_GENERATOR=Ninja" >> "$GITHUB_ENV"
+
       # Only main saves.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
@@ -366,13 +429,64 @@ jobs:
         shell: bash
         run: scripts/fetch-pdfium.sh ${{ matrix.target }} target/pdfium
 
+      # x86_64 Linux and Windows ship the llama.cpp libraries and backend
+      # modules next to the binary; the folder is where the build left them.
       - name: Package
         shell: bash
         run: |
           binary=target/${{ matrix.target }}/release/ncrs
           if [ "${{ runner.os }}" = Windows ]; then binary="$binary.exe"; fi
+          llama=()
+          case "${{ matrix.target }}" in
+            x86_64-unknown-linux-gnu | x86_64-pc-windows-msvc)
+              llama=(--llama "$(scripts/llama-runtime-dir.sh ${{ matrix.target }})")
+              ;;
+          esac
           scripts/package.sh archive ${{ matrix.target }} "$binary" target/pdfium . \
-            --licenses THIRD_PARTY_LICENSES.html
+            --licenses THIRD_PARTY_LICENSES.html "${llama[@]}"
+
+      # Only restores, never saves: the check job owns the cache.
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        with:
+          path: .ai-models
+          key: ai-model-7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5
+
+      - name: Fetch the AI model for the start test
+        if: matrix.target == 'x86_64-unknown-linux-gnu' || matrix.target == 'x86_64-pc-windows-msvc'
+        shell: bash
+        run: bash scripts/fetch-ai-model.sh .ai-models
+
+      # The archive unpacked outside cargo, as a user has it: the binary finds
+      # the libraries (rpath) and the backend modules next to itself, and the
+      # model answers. The runner has no GPU, so the compute must be the CPU
+      # fallback. There is no time limit; the log shows the times.
+      - name: Start the packaged app (x86_64 Linux)
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        shell: bash
+        run: |
+          set -o pipefail
+          unpacked=$(mktemp -d)
+          tar -xzf ncrs-x86_64-unknown-linux-gnu.tar.gz -C "$unpacked"
+          "$unpacked/ncrs-x86_64-unknown-linux-gnu/ncrs" --check-ai "$PWD/.ai-models" 2>&1 | tee check-ai.log
+          grep -qx 'ai compute: CPU' check-ai.log
+
+      # Out-String: the binary may not be attached to a console, and then
+      # nothing reaches the pipeline otherwise.
+      - name: Start the packaged app (Windows)
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        shell: pwsh
+        run: |
+          # Errors of the binary arrive on stderr; the exit code decides below.
+          $ErrorActionPreference = 'Continue'
+          $unpacked = Join-Path $env:RUNNER_TEMP 'ncrs-unpacked'
+          Expand-Archive -Path ncrs-x86_64-pc-windows-msvc.zip -DestinationPath $unpacked
+          $exe = Join-Path $unpacked 'ncrs-x86_64-pc-windows-msvc\ncrs.exe'
+          $output = (& $exe --check-ai (Join-Path $env:GITHUB_WORKSPACE '.ai-models') 2>&1 | Out-String)
+          $code = $LASTEXITCODE
+          Write-Host $output
+          if ($code -ne 0) { throw "ncrs --check-ai exited with $code" }
+          if ($output -notmatch '(?m)^ai compute: CPU\s*$') { throw 'the model did not run on the CPU fallback' }
 
       # From the staged archive above, so the packages hold the very binary,
       # library and licenses of the tarball. They are named
@@ -507,6 +621,7 @@ jobs:
       - name: Install and start
         env:
           PACKAGE: ncrs-${{ matrix.target }}.${{ matrix.extension }}
+          TARGET: ${{ matrix.target }}
           INSTALL: ${{ matrix.install }}
           VALIDATE: ${{ matrix.validate }}
         run: |
@@ -515,12 +630,21 @@ jobs:
           # The binary resolves symlinks before it looks for libpdfium.so, so
           # the check follows /usr/bin/ncrs the same way.
           docker run --rm --volume "$PWD/packages:/packages:ro" --workdir /packages \
-            --env INSTALL --env VALIDATE --env VERSION="$version" \
+            --env INSTALL --env VALIDATE --env TARGET --env VERSION="$version" \
             "${{ matrix.image }}" bash -euc '
               export DEBIAN_FRONTEND=noninteractive
               eval "$INSTALL"
               ncrs --version | grep -F "ncrs $VERSION "
-              test -f "$(dirname "$(readlink -f "$(command -v ncrs)")")/libpdfium.so"
+              real_folder="$(dirname "$(readlink -f "$(command -v ncrs)")")"
+              test -f "$real_folder/libpdfium.so"
+              # The image has no Vulkan loader; the version above already shows
+              # that the binary finds the llama.cpp libraries (exit 127 if not).
+              if [ "$TARGET" = x86_64-unknown-linux-gnu ]; then
+                for file in libllama.so libggml.so libggml-base.so libllama-common.so backends/libggml-vulkan.so; do
+                  test -f "$real_folder/$file"
+                done
+                ls "$real_folder"/backends/libggml-cpu-*.so
+              fi
               test -f /usr/share/applications/ncrs.desktop
               test -f /usr/share/icons/hicolor/256x256/apps/ncrs.png
               eval "$VALIDATE"
@@ -628,7 +752,11 @@ jobs:
               su builder -c "cd ~/pkg && makepkg --printsrcinfo | diff -u .SRCINFO - && makepkg --noconfirm"
               pacman -U --noconfirm /home/builder/pkg/ncrs-bin-*.pkg.tar.*
               ncrs --version | grep -F "ncrs $VERSION "
-              test -f "$(dirname "$(readlink -f "$(command -v ncrs)")")/libpdfium.so"
+              real_folder="$(dirname "$(readlink -f "$(command -v ncrs)")")"
+              test -f "$real_folder/libpdfium.so"
+              # x86_64 only here: the llama.cpp libraries and backend modules.
+              test -f "$real_folder/libllama.so"
+              test -f "$real_folder/backends/libggml-vulkan.so"
               test -f /usr/share/applications/ncrs.desktop
               test -f /usr/share/icons/hicolor/256x256/apps/ncrs.png
               test -f /usr/share/licenses/ncrs-bin/LICENSE
@@ -716,29 +844,33 @@ jobs:
       - name: Start the installed ncrs
         shell: pwsh
         run: |
-          # winget puts its Links folder on the user PATH, which this step
-          # does not see yet.
+          # winget changes the user PATH, which this step does not see yet:
+          # its Links folder holds a link to the executable, and with
+          # ArchiveBinariesDependOnPath (the manifest sets it, so the DLLs next
+          # to the executable are found) the package folder itself is on PATH.
           $links = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links'
-          $env:Path = "$links;" + $env:Path
-          $link = Join-Path $links 'ncrs.exe'
-          if (-not (Test-Path $link)) { throw "no $link after the install" }
+          $env:Path = "$links;" + [Environment]::GetEnvironmentVariable('Path', 'User') + ';' + $env:Path
+          $found = Get-Command ncrs.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $found) { throw 'ncrs.exe is not on the PATH after the install' }
+          $exe = $found.Source
 
           # Out-String: the binary may not be attached to a console, and then
           # nothing reaches the pipeline otherwise.
-          $version = (& $link --version | Out-String)
+          $version = (& $exe --version | Out-String)
           if ($version -notlike "ncrs $env:RELEASE_VERSION *") {
             throw "unexpected --version output: $version"
           }
 
-          # The link is what winget starts; pdfium is looked up next to the
-          # real executable behind it.
-          $item = Get-Item $link
-          if (-not $item.LinkTarget) { throw "$link is not a link" }
-          # winget writes an absolute target; GetFullPath keeps it and would
-          # also resolve a relative one against the Links folder.
-          $target = [System.IO.Path]::GetFullPath(($item.LinkTarget | Select-Object -First 1), (Split-Path $link))
-          $folder = Split-Path $target
-          if (-not (Test-Path (Join-Path $folder 'pdfium.dll'))) { throw "no pdfium.dll next to $target" }
+          # pdfium is looked up next to the real executable, behind the link
+          # if there is one.
+          $item = Get-Item $exe
+          if ($item.LinkTarget) {
+            # winget writes an absolute target; GetFullPath keeps it and would
+            # also resolve a relative one against the Links folder.
+            $exe = [System.IO.Path]::GetFullPath(($item.LinkTarget | Select-Object -First 1), (Split-Path $exe))
+          }
+          $folder = Split-Path $exe
+          if (-not (Test-Path (Join-Path $folder 'pdfium.dll'))) { throw "no pdfium.dll next to $exe" }
           # A data folder would make ncrs portable, and winget would delete it
           # on the next upgrade.
-          if (Test-Path (Join-Path $folder 'data')) { throw "unexpected data folder next to $target" }
+          if (Test-Path (Join-Path $folder 'data')) { throw "unexpected data folder next to $exe" }

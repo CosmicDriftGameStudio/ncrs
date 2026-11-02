@@ -769,6 +769,73 @@ mod trash_runs {
         );
     }
 
+    /// One item in the trash whose entry the app cannot read as a file (as in
+    /// the Windows trash), and the journal item that recorded it.
+    fn trashed_with_unreadable_entry(setup: &Setup, bin: &Bin) -> (TrashItem, JournalItem) {
+        let (item, _) = duplicate(setup, "a.pdf", "alpha");
+        trash_run(
+            &setup.index,
+            "Cleared",
+            &setup.root,
+            std::slice::from_ref(&item),
+            &bin.trash,
+        )
+        .unwrap();
+        let held = bin.trash.list().unwrap().remove(0).key;
+        fs::remove_file(&held).unwrap();
+        fs::create_dir(&held).unwrap();
+        let journaled = setup
+            .index
+            .journal_items(last_batch(setup))
+            .unwrap()
+            .remove(0);
+        assert_eq!(journaled.to, PathBuf::from(&held), "the key is recorded");
+        (item, journaled)
+    }
+
+    #[test]
+    fn an_entry_that_cannot_be_read_is_put_back_under_the_recorded_key() {
+        let setup = Setup::new();
+        let bin = bin(&setup);
+        let (item, _) = trashed_with_unreadable_entry(&setup, &bin);
+
+        let undone = undo_with_trash(
+            &setup.index,
+            last_batch(&setup),
+            std::slice::from_ref(&setup.root),
+            Some(&bin.trash),
+        )
+        .unwrap();
+
+        assert_eq!(undone, UndoReport { undone: 1, left: 0 });
+        assert!(item.path.exists());
+        assert!(bin.trash.list().unwrap().is_empty());
+    }
+
+    #[test]
+    fn an_entry_that_cannot_be_read_is_not_the_newest_one_from_that_place() {
+        let setup = Setup::new();
+        let bin = bin(&setup);
+        let (item, journaled) = trashed_with_unreadable_entry(&setup, &bin);
+        let batch = last_batch(&setup);
+        setup
+            .index
+            .set_journal_target(batch, journaled.seq, &item.path)
+            .unwrap();
+
+        let undone = undo_with_trash(
+            &setup.index,
+            batch,
+            std::slice::from_ref(&setup.root),
+            Some(&bin.trash),
+        )
+        .unwrap();
+
+        assert_eq!(undone, UndoReport { undone: 0, left: 1 });
+        assert!(!item.path.exists());
+        assert_eq!(bin.trash.list().unwrap().len(), 1);
+    }
+
     #[test]
     fn reconcile_takes_a_trashed_item_as_done_and_an_untouched_one_as_interrupted() {
         let setup = Setup::new();

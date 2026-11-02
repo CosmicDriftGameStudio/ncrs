@@ -149,6 +149,10 @@ ncrs - a dual-panel file manager inspired by Norton Commander
 
 USAGE:
     ncrs
+    ncrs --check-ai <models-dir>
+        Loads the Hermes model from <models-dir> without opening a window,
+        prints the compute devices, GPU or CPU and the time of three
+        sentences, and exits 0 if all went well, 1 if not.
 
 KEYS (the defaults; [keys] in the config file changes them):
     up/down    move selection      Tab       switch panel
@@ -214,6 +218,41 @@ DELETE:
 Run ncrs without arguments; a GUI application with no arguments and no
 files to open.";
 
+/// `ncrs --check-ai <models-dir>`: developer and CI output in English, not UI
+/// text, so it is not in strings.json. Returns the exit code.
+#[cfg(feature = "local-ai")]
+fn check_ai(models_dir: Option<std::ffi::OsString>) -> i32 {
+    let Some(models_dir) = models_dir else {
+        eprintln!("ncrs: --check-ai needs the folder with the model");
+        return 2;
+    };
+    match ncrs_ai::check_local_model(std::path::Path::new(&models_dir)) {
+        Ok(check) => {
+            for device in &check.devices {
+                println!("ai device: {device}");
+            }
+            match &check.compute {
+                ncrs_ai::Compute::Cpu => println!("ai compute: CPU"),
+                ncrs_ai::Compute::Gpu(device) => println!("ai compute: GPU {device}"),
+            }
+            for (number, time) in check.sentence_times.iter().enumerate() {
+                println!("ai sentence {} {} ms", number + 1, time.as_millis());
+            }
+            0
+        }
+        Err(error) => {
+            eprintln!("ncrs: the AI check failed: {error}");
+            1
+        }
+    }
+}
+
+#[cfg(not(feature = "local-ai"))]
+fn check_ai(_models_dir: Option<std::ffi::OsString>) -> i32 {
+    eprintln!("ncrs: this build has no built-in AI model (feature local-ai)");
+    2
+}
+
 fn main() -> iced::Result {
     match env::args().nth(1).as_deref() {
         Some("-V" | "--version") => {
@@ -228,6 +267,7 @@ fn main() -> iced::Result {
             println!("{HELP}");
             return Ok(());
         }
+        Some("--check-ai") => std::process::exit(check_ai(env::args_os().nth(2))),
         Some(other) => {
             eprintln!("ncrs: unknown option: {other}");
             eprintln!("try 'ncrs --help'");

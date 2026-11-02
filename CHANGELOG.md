@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- On Windows and x86_64 Linux the built-in AI model uses a Vulkan GPU if a
+  driver is present and the CPU otherwise; Status and errors shows which.
+  `ncrs --check-ai <folder>` loads the model from a folder and reports the
+  device and the time of three sentences.
 - Filing is a tab of its own. A sidebar lists its pages: Overview, Review,
   Rules, Rule suggestions, Sort again, Reports, Tags and Status and errors.
   The tab stays open while you switch pages.

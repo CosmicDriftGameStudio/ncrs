@@ -35,7 +35,7 @@ pub use http::{
     Secret, MAX_REPLY_BYTES,
 };
 #[cfg(feature = "llama")]
-pub use local::{LazyLocalModel, LocalModel, LocalModelConfig};
+pub use local::{check_local_model, LazyLocalModel, LocalCheck, LocalModel, LocalModelConfig};
 pub use model_file::{
     has_partial_download, verify_model_file, ModelFileError, ModelPin, PartialDownload,
     LOCAL_MODEL, LOCAL_MODEL_FOLDER,

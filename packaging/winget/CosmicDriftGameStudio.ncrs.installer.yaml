@@ -4,6 +4,10 @@ PackageIdentifier: CosmicDriftGameStudio.ncrs
 PackageVersion: @VERSION@
 InstallerType: zip
 NestedInstallerType: portable
+# ncrs.exe needs the DLLs next to it (llama.dll and the ggml ones). Without this
+# winget starts it through a symlink in its Links folder, and Windows looks for
+# the implicitly linked DLLs in the folder of the link.
+ArchiveBinariesDependOnPath: true
 NestedInstallerFiles:
   - RelativeFilePath: ncrs-x86_64-pc-windows-msvc\ncrs.exe
     PortableCommandAlias: ncrs

@@ -778,7 +778,10 @@ threads = 4
   is fetched before you press the button. The command palette entry "Download
   AI model…" (`download_ai_model` in `[keys]`, no key by default) opens the card
   at any time. An interrupted download continues where it stopped, and the file
-  is checked against its size and checksum before it is used.
+  is checked against its size and checksum before it is used. On Windows and
+  x86_64 Linux the model runs on a Vulkan GPU if a driver is present and on the
+  CPU otherwise; macOS uses Metal and aarch64 Linux the CPU. The row "AI model"
+  in Status and errors says which ("runs on" the GPU's name or CPU).
 - `http` sends text to the server at `endpoint`, which must be on this machine
   for now (`localhost`, `127.0.0.1` or `::1`); `endpoint` and `model` are
   required and `threads` is not allowed. Without a consent given for that
@@ -1118,6 +1121,9 @@ The default build compiles llama.cpp for the built-in AI model, so it needs
 bindings) on every system: Xcode's command line tools and `brew install cmake` on
 macOS, Visual Studio's C++ tools, LLVM and cmake on Windows. A build without the
 model needs none of them: `cargo build --no-default-features --features gpu-with-fallback`.
+On Windows and x86_64 Linux llama.cpp is built with Vulkan: Linux also needs
+`libvulkan-dev glslc spirv-headers`, Windows the Vulkan SDK, Ninja and the MSVC
+environment with `CMAKE_GENERATOR=Ninja`.
 
 ## Architecture
 

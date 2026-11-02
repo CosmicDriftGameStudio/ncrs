@@ -12,6 +12,7 @@ use std::sync::OnceLock;
 
 use llama_cpp_2::context::params::LlamaContextParams;
 use llama_cpp_2::context::LlamaContext;
+use llama_cpp_2::list_llama_ggml_backend_devices;
 use llama_cpp_2::llama_backend::LlamaBackend;
 use llama_cpp_2::llama_batch::LlamaBatch;
 use llama_cpp_2::model::params::LlamaModelParams;
@@ -19,7 +20,6 @@ use llama_cpp_2::model::LlamaModel;
 use llama_cpp_2::sampling::LlamaSampler;
 use llama_cpp_2::token::LlamaToken;
 use llama_cpp_2::vocab::LlamaVocab;
-use llama_cpp_2::{list_llama_ggml_backend_devices, LlamaBackendDeviceType};
 
 use crate::contract::{parse_reply, Extraction, ExtractionRequest, Provider};
 use crate::error::AiError;
@@ -28,10 +28,13 @@ use crate::model_file::{verify_model_file, ModelPin};
 use crate::prompt::{user_message_prefix, user_message_suffix, SYSTEM_PROMPT};
 use crate::status::Compute;
 
+mod backends;
 mod chat_session;
+mod check;
 mod lazy;
 mod worker;
 
+pub use check::{check_local_model, LocalCheck};
 pub use lazy::LazyLocalModel;
 
 #[cfg(test)]
@@ -54,19 +57,20 @@ pub struct LocalModelConfig {
 }
 
 /// The runtime exists once per process: a second `init` is an error, and the
-/// stored `None` keeps that failure from being retried. The one place that
-/// starts a compute backend, so a GPU backend is added here.
+/// stored failure keeps it from being retried. The one place that loads the
+/// compute backends and starts the runtime.
 fn backend() -> Result<&'static LlamaBackend, AiError> {
-    static BACKEND: OnceLock<Option<LlamaBackend>> = OnceLock::new();
+    static BACKEND: OnceLock<Result<LlamaBackend, &'static str>> = OnceLock::new();
     BACKEND
         .get_or_init(|| {
-            LlamaBackend::init().ok().map(|mut backend| {
-                backend.void_logs();
-                backend
-            })
+            backends::load_modules()?;
+            let mut backend =
+                LlamaBackend::init().map_err(|_refused| "the model runtime could not start")?;
+            backend.void_logs();
+            Ok(backend)
         })
         .as_ref()
-        .ok_or(AiError::Model("the model runtime could not start"))
+        .map_err(|reason| AiError::Model(reason))
 }
 
 #[derive(Debug)]
@@ -84,19 +88,12 @@ impl LocalModel {
     pub fn load(config: LocalModelConfig, pin: &ModelPin) -> Result<Self, AiError> {
         verify_model_file(&config.path, pin)?;
         let backend = backend()?;
-        let refused = |_err| AiError::Model("llama.cpp could not load the model file");
-        // llama.cpp's default puts every layer on the GPU backend if the build
-        // has one (Metal on Apple silicon); if that fails, the CPU still works.
-        let (model, compute) =
-            match LlamaModel::load_from_file(backend, &config.path, &LlamaModelParams::default()) {
-                Ok(model) => (model, gpu_in_use()),
-                Err(_gpu_refused) => {
-                    let params = LlamaModelParams::default().with_n_gpu_layers(0);
-                    let model = LlamaModel::load_from_file(backend, &config.path, &params)
-                        .map_err(refused)?;
-                    (model, Compute::Cpu)
-                }
-            };
+        let (model, compute) = match gpu_attempt() {
+            Some((params, device)) => LlamaModel::load_from_file(backend, &config.path, &params)
+                .map(|model| (model, Compute::Gpu(device)))
+                .or_else(|_gpu_refused| load_on_cpu(backend, &config.path))?,
+            None => load_on_cpu(backend, &config.path)?,
+        };
         Ok(Self {
             model,
             name: pin.name.to_owned(),
@@ -196,18 +193,38 @@ fn decoding_failed(_err: impl std::error::Error) -> AiError {
     AiError::Model("the model could not read the document")
 }
 
-/// The first graphics device of the runtime: where the layers run when the
-/// model was loaded with the default parameters.
-fn gpu_in_use() -> Compute {
-    list_llama_ggml_backend_devices()
-        .into_iter()
-        .find(|device| {
-            matches!(
-                device.device_type,
-                LlamaBackendDeviceType::Gpu | LlamaBackendDeviceType::IntegratedGpu
-            )
-        })
-        .map_or(Compute::Cpu, |device| Compute::Gpu(device.description))
+/// The parameters for the first load and the GPU they use, or none when
+/// there is no hardware GPU. Every layer goes to the GPU backend; a software
+/// rasteriser listed next to a real GPU is left out.
+fn gpu_attempt() -> Option<(LlamaModelParams, String)> {
+    let devices = list_llama_ggml_backend_devices();
+    let hardware: Vec<_> = devices
+        .iter()
+        .filter(|device| backends::is_hardware_gpu(device.device_type, &device.description))
+        .collect();
+    let first = hardware.first()?;
+    let with_software = devices
+        .iter()
+        .filter(|device| backends::is_gpu_type(device.device_type))
+        .count()
+        > hardware.len();
+    let params = if with_software {
+        let indices: Vec<usize> = hardware.iter().map(|device| device.index).collect();
+        LlamaModelParams::default().with_devices(&indices).ok()?
+    } else {
+        LlamaModelParams::default()
+    };
+    Some((params, first.description.clone()))
+}
+
+fn load_on_cpu(
+    backend: &LlamaBackend,
+    path: &std::path::Path,
+) -> Result<(LlamaModel, Compute), AiError> {
+    let params = LlamaModelParams::default().with_n_gpu_layers(0);
+    LlamaModel::load_from_file(backend, path, &params)
+        .map(|model| (model, Compute::Cpu))
+        .map_err(|_refused| AiError::Model("llama.cpp could not load the model file"))
 }
 
 /// Feeds `tokens` to the context starting at `first_position`, in batches.
