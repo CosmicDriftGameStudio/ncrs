@@ -24,6 +24,8 @@ mod sender_detection;
 mod stability;
 mod take_in;
 #[cfg(any(test, feature = "test-support"))]
+pub mod test_archive;
+#[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 mod text;
 mod watcher;
