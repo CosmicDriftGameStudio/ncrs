@@ -106,13 +106,15 @@ fn nothing_is_moved_into_a_duplicates_folder_and_every_download_copy_is_noted() 
 }
 
 #[test]
-fn copies_filed_under_the_tax_year_are_no_duplicates() {
+fn copies_in_ordered_folders_are_no_duplicates() {
     let items = plan_of_the_test_archive();
 
     let copies: Vec<&PlanItem> = items
         .iter()
         .filter(|item| {
-            item.source.starts_with("Steuer") && item.source.to_string_lossy().contains("Belege")
+            let tax_receipt = item.source.starts_with("Steuer")
+                && item.source.to_string_lossy().contains("Belege");
+            tax_receipt || item.source.starts_with("Bank/Finanzierung")
         })
         .filter(|item| {
             item.findings

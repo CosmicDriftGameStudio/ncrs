@@ -143,6 +143,11 @@ fn a_whole_archive_gets_fields_and_dates_without_plans_or_reviews() {
     );
     let tally = index.tag_tally().unwrap();
     assert!(!tally.kind.is_empty() && !tally.sender.is_empty() && !tally.year.is_empty());
+    assert!(!tally.recipient.is_empty());
+    assert!(
+        tally.own.is_empty(),
+        "reading an archive sets no tag of the user"
+    );
 }
 
 #[test]

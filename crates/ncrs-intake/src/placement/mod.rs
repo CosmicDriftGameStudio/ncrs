@@ -299,7 +299,7 @@ impl NeighbourIndex {
             .collect();
         let pattern = self
             .followed_pattern(&agreeing)
-            .filter(|_| !other_kind_than_neighbours(fields, &agreeing));
+            .filter(|_| kind_allows_pattern(&signal, fields, &agreeing));
         let missing = pattern
             .as_deref()
             .and_then(|followed| missing_field(followed, fields));
@@ -335,23 +335,36 @@ impl NeighbourIndex {
     }
 }
 
-/// A number or an account is shared by documents of several kinds; a
-/// document of another kind than those lying there does not take their name.
-fn other_kind_than_neighbours(fields: &DocumentFields, neighbours: &[&Neighbour]) -> bool {
-    let Some(kind) = fields.kind.as_deref() else {
-        return false;
-    };
+/// A number or an account is shared by documents of several kinds, so the
+/// name of the folder is not offered to a document of another kind than the
+/// one lying there. Of the same sender alone, only to a document of that kind.
+fn kind_allows_pattern(
+    signal: &Signal,
+    fields: &DocumentFields,
+    neighbours: &[&Neighbour],
+) -> bool {
+    let common = most_common_kind(neighbours);
+    let kind = fields.kind.as_deref().map(str::to_lowercase);
+    match signal {
+        Signal::SameSender => kind.is_some() && kind == common,
+        Signal::SameNumber { .. } | Signal::SameIban | Signal::SameSenderAndKind => {
+            kind.is_none() || common.is_none() || kind == common
+        }
+    }
+}
+
+fn most_common_kind(neighbours: &[&Neighbour]) -> Option<String> {
     let mut per_kind: BTreeMap<String, usize> = BTreeMap::new();
-    for neighbour_kind in neighbours
+    for kind in neighbours
         .iter()
         .filter_map(|neighbour| neighbour.kind.as_deref())
     {
-        *per_kind.entry(neighbour_kind.to_lowercase()).or_default() += 1;
+        *per_kind.entry(kind.to_lowercase()).or_default() += 1;
     }
     per_kind
         .into_iter()
         .max_by_key(|(name, count)| (*count, Reverse(name.clone())))
-        .is_some_and(|(common, _)| common != kind.to_lowercase())
+        .map(|(name, _)| name)
 }
 
 fn features_of(

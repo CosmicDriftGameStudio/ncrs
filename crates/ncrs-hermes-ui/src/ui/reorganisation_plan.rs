@@ -176,7 +176,7 @@ fn action_text(planned: &PlannedItem, lang: Language) -> String {
 /// A path as parts for [`page_kit::path`]: the folders and the name that are
 /// not the ones of `other` at the same place, counted from the start or from
 /// the end, are in the accent. From the end too, so that a folder put in front
-/// (`duplicates/`) does not mark the whole path.
+/// (`Archive/`) does not mark the whole path.
 fn path_parts(path: &Path, other: Option<&Path>) -> Vec<(String, bool)> {
     let names = |from: &Path| -> Vec<String> {
         from.components()
@@ -820,14 +820,14 @@ mod tests {
     #[test]
     fn only_the_parts_that_differ_are_marked() {
         let current = Path::new("Misc").join("a.pdf");
-        let copy = Path::new("duplicates").join("Misc").join("a.pdf");
+        let copy = Path::new("Archive").join("Misc").join("a.pdf");
         let moved = Path::new("Taxes").join("2024").join("a.pdf");
         let filed = Path::new("Insurance").join("2024").join("a.pdf");
 
         assert_eq!(
             path_parts(&copy, Some(&current)),
             vec![
-                ("duplicates/".to_owned(), true),
+                ("Archive/".to_owned(), true),
                 ("Misc/a.pdf".to_owned(), false)
             ]
         );

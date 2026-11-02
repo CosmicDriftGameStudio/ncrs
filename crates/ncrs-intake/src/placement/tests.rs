@@ -6,11 +6,12 @@
 )]
 
 use chrono::NaiveDate;
-use ncrs_index::{ContentHash, KindCatalog, SenderAliases};
+use ncrs_index::{ContentHash, KindCatalog, KindLanguage, Kinds, SenderAliases};
 use sha2::{Digest as _, Sha256};
 
 use super::*;
 use crate::field_detection::detect_fields;
+use crate::filing_plan::render_pattern_in;
 use crate::reorganisation_plan::location_structure;
 use crate::structure::UnorderedFolder;
 use crate::test_archive::{test_archive, TestFile, OWN_NAME};
@@ -539,6 +540,39 @@ fn on_the_test_archive_a_bank_statement_is_placed_by_its_statements_with_their_p
     );
     assert!(placement.is_sure(), "{placement:?}");
     assert!(placement.pattern.is_some(), "{placement:?}");
+}
+
+#[test]
+fn on_the_test_archive_every_sure_placement_by_number_with_a_pattern_renders_a_path() {
+    let (files, inbox) = archive_files();
+    let structure = location_structure(&files, &KindCatalog::built_in());
+    let neighbours = NeighbourIndex::new(&files, &no_own(), &structure);
+    let kinds = Kinds::built_in(KindLanguage::English);
+    let mut with_pattern = 0;
+
+    for file in &inbox {
+        let Some(text) = file.text() else {
+            continue;
+        };
+        let fields = archive_fields(text);
+        let Some(placement) = neighbours.place(&fields, Some(text)) else {
+            continue;
+        };
+        let by_number = matches!(placement.signal, Signal::SameNumber { .. });
+        let Some(pattern) = placement.pattern.as_deref() else {
+            continue;
+        };
+        if !by_number || !placement.is_sure() || placement.missing.is_some() {
+            continue;
+        }
+        with_pattern += 1;
+        assert!(
+            render_pattern_in(pattern, &fields, &kinds).is_some(),
+            "{pattern} for {:?}",
+            file.relative_path
+        );
+    }
+    assert!(with_pattern > 0);
 }
 
 #[test]

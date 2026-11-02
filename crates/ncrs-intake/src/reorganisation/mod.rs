@@ -289,19 +289,17 @@ fn year_fix(file: &PlanFile) -> Option<(i32, i32, PathBuf)> {
     Some((folder_year, date_year, fixed))
 }
 
-/// A notice dated after its folder's year is normal when its name or text
-/// names that year.
+/// A notice dated after its folder's year is normal when its name names that
+/// year.
 fn mentions_year(file: &PlanFile, year: i32) -> bool {
     let wanted = format!("{year:04}");
-    let is_year = |text: &str| {
-        text.split(|character: char| !character.is_alphanumeric())
-            .any(|token| token == wanted)
-    };
     file.relative_path
         .file_stem()
         .and_then(|stem| stem.to_str())
-        .is_some_and(is_year)
-        || file.text.as_deref().is_some_and(is_year)
+        .is_some_and(|stem| {
+            stem.split(|character: char| !character.is_alphanumeric())
+                .any(|token| token == wanted)
+        })
 }
 
 /// For every surplus copy lying in an unordered folder, the index of the copy
