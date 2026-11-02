@@ -468,7 +468,9 @@ jobs:
           set -o pipefail
           unpacked=$(mktemp -d)
           tar -xzf ncrs-x86_64-unknown-linux-gnu.tar.gz -C "$unpacked"
-          readelf -d "$unpacked/ncrs-x86_64-unknown-linux-gnu/ncrs" | grep -E 'NEEDED|R(UN)?PATH'
+          for elf in ncrs libllama.so.0; do
+            readelf -d "$unpacked/ncrs-x86_64-unknown-linux-gnu/$elf" | grep -E 'NEEDED|R(UN)?PATH'
+          done
           # A clean container: no Vulkan loader, as on a bare machine.
           docker run --rm -v "$unpacked:/app:ro" -v "$PWD/.ai-models:/models:ro" ubuntu:24.04 bash -euc '
             echo "vulkan loaders: $(ldconfig -p | grep -c libvulkan || true)"
@@ -486,6 +488,9 @@ jobs:
           $unpacked = Join-Path $env:RUNNER_TEMP 'ncrs-unpacked'
           Expand-Archive -Path ncrs-x86_64-pc-windows-msvc.zip -DestinationPath $unpacked
           $exe = Join-Path $unpacked 'ncrs-x86_64-pc-windows-msvc\ncrs.exe'
+          # Without the SDK on PATH, as on a user's machine: only a driver's
+          # loader in System32 can be found.
+          $env:Path = ($env:Path -split ';' | Where-Object { $_ -notmatch 'VulkanSDK' }) -join ';'
           where.exe vulkan-1.dll 2>&1 | Out-String | Write-Host
           (Get-ChildItem (Split-Path $exe)).Name | Write-Host
           (Get-ChildItem (Join-Path (Split-Path $exe) 'backends')).Name | Write-Host
