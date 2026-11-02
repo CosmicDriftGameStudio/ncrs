@@ -18,6 +18,16 @@ pub fn view<'a, M: 'a>(
     labels: &[Option<&'a str>; FUNCTION_KEY_COUNT],
     palette: &Palette,
 ) -> Element<'a, M> {
+    view_marked(labels, None, palette)
+}
+
+/// [`view`] with the key at slot `marked` (0 for F1) drawn on the cursor
+/// colour, for the key whose screen is up.
+pub fn view_marked<'a, M: 'a>(
+    labels: &[Option<&'a str>; FUNCTION_KEY_COUNT],
+    marked: Option<usize>,
+    palette: &Palette,
+) -> Element<'a, M> {
     let hints = labels
         .iter()
         .enumerate()
@@ -29,12 +39,16 @@ pub fn view<'a, M: 'a>(
                     .wrapping(text::Wrapping::None),
             )
             .padding([0.0, spacing::XS - 1.0])
-            .style(theme::key_cap(palette, false));
+            .style(marked_cap(palette, marked == Some(index)));
             let hint: Element<'a, M> = row![
                 cap,
                 text(label)
                     .size(font_size::SMALL)
-                    .color(palette.dim_text)
+                    .color(if marked == Some(index) {
+                        palette.text
+                    } else {
+                        palette.dim_text
+                    })
                     .wrapping(text::Wrapping::None)
             ]
             .spacing(CAP_GAP)
@@ -54,4 +68,16 @@ pub fn view<'a, M: 'a>(
     ]
     .height(FKEYBAR_HEIGHT)
     .into()
+}
+
+fn marked_cap(palette: &Palette, marked: bool) -> impl Fn(&iced::Theme) -> container::Style {
+    let plain = theme::key_cap(palette, marked);
+    let fill = palette.cursor;
+    move |theme| {
+        let mut style = plain(theme);
+        if marked {
+            style.background = Some(fill.into());
+        }
+        style
+    }
 }

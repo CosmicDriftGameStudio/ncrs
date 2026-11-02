@@ -29,6 +29,24 @@ impl FilingModule {
             .map(|access| access.with_kind_language(self.own.kind_language))
     }
 
+    /// The handle of the Hermes chat: it reads folders and files into any
+    /// folder, so the module being `Ready` is enough.
+    pub fn chat_access(&self, trash: Arc<dyn ncrs_fs::Trash>) -> Option<ChatAccess> {
+        if !matches!(self.phase, Phase::Ready) {
+            return None;
+        }
+        let chain = self.chat_text_chain.get_or_init(|| {
+            let (chain, _library_missing) = shipped_text_chain(
+                ocr_models_dir(&self.db_path).unwrap_or_else(|| PathBuf::from(OCR_MODELS_FOLDER)),
+            );
+            Arc::new(chain)
+        });
+        Some(
+            ChatAccess::new(Arc::clone(&self.index), Arc::clone(chain), trash)
+                .with_own(self.own.clone()),
+        )
+    }
+
     /// Takes the document kinds of a (re)loaded config; an open index uses
     /// them from now on, a pipeline already running keeps the ones it started with.
     pub fn set_kinds(&mut self, kinds: Arc<KindCatalog>) {

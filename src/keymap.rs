@@ -13,11 +13,11 @@ use crate::messages::Message;
 use crate::messages::PanelMessage;
 use crate::messages::{
     AboutMessage, AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage,
-    FilingSetupMessage, FilingStatusMessage, GrantMessage, HermesFileMessage, KeyBindingsMessage,
-    OcrModelsMessage, PanelSide, QuickFixMessage, QuickOpenMessage, RemoteMessage,
-    ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage, RulesMessage,
-    SavedQueriesMessage, SearchMessage, SettingsMessage, ThemeFetchMessage, TransferKind,
-    TrashMessage,
+    FilingSetupMessage, FilingStatusMessage, GrantMessage, HermesChatMessage, HermesFileMessage,
+    KeyBindingsMessage, OcrModelsMessage, PanelSide, QuickFixMessage, QuickOpenMessage,
+    RemoteMessage, ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage,
+    RulesMessage, SavedQueriesMessage, SearchMessage, SettingsMessage, ThemeFetchMessage,
+    TransferKind, TrashMessage,
 };
 use ncrs_fs::SortColumn;
 
@@ -79,6 +79,7 @@ impl KeyActionMessage for KeyAction {
             Self::Search => Message::OpenSearch,
             Self::QuickOpen => Message::QuickOpen(QuickOpenMessage::Open),
             Self::CommandLine => Message::CommandLine(CommandLineMessage::Focus),
+            Self::HermesChat => Message::HermesChat(HermesChatMessage::Open),
             Self::CommandPalette => Message::CommandPalette(CommandPaletteMessage::Toggle),
             Self::FilingStatus => Message::FilingStatus(FilingStatusMessage::Toggle),
             Self::FilingSetup => Message::FilingSetup(FilingSetupMessage::Toggle),
@@ -370,13 +371,16 @@ mod tests {
             map_key(Key::Named(Named::F2), Modifiers::ALT),
             Some(Message::VolumeMenu(PanelSide::Right))
         );
-        assert_eq!(map_key(Key::Named(Named::F2), Modifiers::SHIFT), None);
     }
 
     #[test]
-    fn bare_f2_focuses_the_command_line_in_the_panel_and_not_in_the_search() {
+    fn bare_f2_opens_hermes_and_shift_f2_focuses_the_command_line_in_the_panel_only() {
         assert_eq!(
             map_key(Key::Named(Named::F2), Modifiers::default()),
+            Some(Message::HermesChat(HermesChatMessage::Open))
+        );
+        assert_eq!(
+            map_key(Key::Named(Named::F2), Modifiers::SHIFT),
             Some(Message::CommandLine(CommandLineMessage::Focus))
         );
         assert_eq!(
@@ -387,8 +391,8 @@ mod tests {
             ),
             None
         );
-        assert_eq!(function_keys(Language::English)[1], Some("Cmd line"));
-        assert_eq!(function_keys(Language::German)[1], Some("Kommando"));
+        assert_eq!(function_keys(Language::English)[1], Some("Hermes"));
+        assert_eq!(function_keys(Language::German)[1], Some("Hermes"));
     }
 
     #[test]
@@ -402,9 +406,9 @@ mod tests {
             ),
             Some(Message::Transfer(TransferKind::Copy))
         );
-        assert_eq!(keymap.bindings_of(KeyAction::CommandLine).count(), 0);
+        assert_eq!(keymap.bindings_of(KeyAction::HermesChat).count(), 0);
         assert_eq!(
-            keymap.shortcut_label(&KeyAction::CommandLine.message()),
+            keymap.shortcut_label(&KeyAction::HermesChat.message()),
             None
         );
         assert_eq!(

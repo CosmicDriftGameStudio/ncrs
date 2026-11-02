@@ -41,6 +41,7 @@ impl FilingModule {
             protection_note: None,
             dismissed_key_problem: None,
             kinds: Arc::default(),
+            chat_text_chain: OnceLock::new(),
         };
         if db_path.is_none() {
             module.phase = Phase::Failed(NO_DATA_DIRECTORY.to_owned());

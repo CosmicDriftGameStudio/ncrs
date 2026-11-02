@@ -97,12 +97,14 @@ pub fn bar<'a, M: 'a>(color: Color) -> Element<'a, M> {
 }
 
 mod buttons;
+mod chat;
 mod chips;
 mod forms;
 mod lists;
 mod page;
 
 pub use buttons::*;
+pub use chat::*;
 pub use chips::*;
 pub use forms::*;
 pub use lists::*;

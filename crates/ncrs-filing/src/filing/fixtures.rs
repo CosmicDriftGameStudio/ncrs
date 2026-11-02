@@ -22,6 +22,7 @@ impl FilingModule {
             protection_note: None,
             dismissed_key_problem: None,
             kinds: Arc::default(),
+            chat_text_chain: OnceLock::new(),
             ai: AiWiring::Off,
             own: OwnDetails::default(),
         }

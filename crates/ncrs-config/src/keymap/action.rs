@@ -79,6 +79,7 @@ key_actions! {
     Search => "search",
     QuickOpen => "quick_open",
     CommandLine => "command_line",
+    HermesChat => "hermes_chat",
     CommandPalette => "command_palette",
     FilingStatus => "filing_status",
     FilingSetup => "filing_setup",
@@ -195,6 +196,7 @@ impl KeyAction {
             | Self::Pack
             | Self::QuickOpen
             | Self::CommandLine
+            | Self::HermesChat
             | Self::FilingStatus
             | Self::FilingSetup
             | Self::Rules
@@ -261,6 +263,7 @@ impl KeyAction {
         matches!(
             self,
             Self::CommandLine
+                | Self::HermesChat
                 | Self::NewFile
                 | Self::HistoryBack
                 | Self::HistoryForward
@@ -358,6 +361,7 @@ impl KeyAction {
             | Self::First
             | Self::Last
             | Self::CommandLine
+            | Self::HermesChat
             | Self::CommandPalette
             | Self::FilingStatus
             | Self::FilingSetup
@@ -418,6 +422,7 @@ impl KeyAction {
         match self {
             Self::CommandLine => false,
             Self::Quit
+            | Self::HermesChat
             | Self::GoUp
             | Self::Open
             | Self::SwitchPanel
@@ -516,7 +521,7 @@ impl KeyAction {
             Self::Move => Some(Msg::ShortcutMove),
             Self::Delete => Some(Msg::ShortcutDelete),
             Self::Mkdir => Some(Msg::ShortcutMkdir),
-            Self::CommandLine => Some(Msg::ShortcutCommandLine),
+            Self::HermesChat => Some(Msg::ShortcutHermesChat),
             _ => None,
         }
     }

@@ -65,6 +65,8 @@ ncrs-index = { path = "crates/ncrs-index", version = "0.0.0" }
 ncrs-core = { path = "crates/ncrs-core", version = "0.0.0" }
 # The search: engine, filters, view state and messages.
 ncrs-search = { path = "crates/ncrs-search", version = "0.0.0" }
+# The Hermes chat on F2: its state machine and view.
+ncrs-hermes-chat = { path = "crates/ncrs-hermes-chat", version = "0.0.0" }
 # The file panel: its state, column header, history, the drag between panels and the hit list.
 ncrs-files = { path = "crates/ncrs-files", version = "0.0.0" }
 # The config file, the key bindings, the theme and the command list.
@@ -187,6 +189,7 @@ ncrs-fs = { path = "crates/ncrs-fs", version = "0.0.0", features = ["test-suppor
 ncrs-config = { path = "crates/ncrs-config", version = "0.0.0", features = ["test-support"] }
 # Hits for the snapshot tests of the search filters.
 ncrs-search = { path = "crates/ncrs-search", version = "0.0.0", features = ["test-support"] }
+# The scenes of the chat for the snapshot tests of the app.
 # The state of the documents section of Quick Open, for the tests of the app.
 ncrs-palette = { path = "crates/ncrs-palette", version = "0.0.0", features = ["test-support"] }
 # The fixtures of the theme fetch, for the tests of the app.
