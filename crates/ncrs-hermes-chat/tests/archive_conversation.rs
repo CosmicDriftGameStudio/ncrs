@@ -20,9 +20,10 @@ mod tests {
 
     use crate::common::{count, say, Talk};
     use chrono::NaiveDate;
-    use ncrs_filing::chat_work::TrialOutcome;
+    use ncrs_filing::chat_work::{TrialOutcome, TrialPlan};
     use ncrs_hermes_chat::{ChipReply, Entry, FileCard, Message, Part};
     use ncrs_i18n::Msg;
+    use ncrs_index::{KindLanguage, Kinds};
     use ncrs_intake::test_archive::test_archive;
 
     const UNDATED: (i32, u32, u32) = (2021, 6, 15);
@@ -56,7 +57,11 @@ mod tests {
     }
 
     fn tidy_inbox_until_trial(talk: &mut Talk, transfer: &ChipReply) {
-        talk.type_text("Räum Inbox auf");
+        talk.type_text_understood(
+            "Räum Inbox auf",
+            r#"{"intent":"tidy_folder","source":"Inbox"}"#,
+        );
+        talk.press(&ChipReply::ConfirmTidy);
         talk.press(&ChipReply::Once);
         talk.press(transfer);
     }
@@ -88,6 +93,32 @@ mod tests {
         assert_eq!(card.unordered.as_ref().map(|row| row.documents), Some(190));
     }
 
+    fn hermes_texts(talk: &Talk) -> Vec<String> {
+        talk.state
+            .thread()
+            .iter()
+            .filter_map(|entry| match entry {
+                Entry::Hermes { parts, .. } => Some(parts.clone()),
+                _ => None,
+            })
+            .flatten()
+            .filter_map(|part| match part {
+                Part::Text(text) => Some(text),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn stay_reasons(plan: &TrialPlan) -> BTreeMap<String, usize> {
+        let mut reasons = BTreeMap::new();
+        for entry in &plan.entries {
+            if let TrialOutcome::Stays(reason) = &entry.outcome {
+                *reasons.entry(format!("{reason:?}")).or_insert(0) += 1;
+            }
+        }
+        reasons
+    }
+
     #[test]
     fn conversations_one_two_and_undo_on_the_test_archive() {
         let mut talk = archive_talk();
@@ -111,53 +142,22 @@ mod tests {
 
         talk.press(&ChipReply::KeepYes);
         assert!(talk.actions.is_empty(), "the archive is a target already");
+        // The duplicates of the archive wait for the first filing.
         assert_eq!(
-            talk.last_texts()[1],
-            say(
-                Msg::HermesChatDuplicatesOffer,
-                &[
-                    ("names", "Downloads alt, Scans"),
-                    ("count", &count(DUPLICATES))
-                ]
-            )
+            talk.last_texts(),
+            vec![
+                say(Msg::HermesChatKept, &[("folder", "archive")]),
+                say(Msg::HermesChatAskSource, &[]),
+            ]
         );
-        talk.press(&ChipReply::ToTrash);
-        let Some(Entry::Hermes {
-            parts: trashed_parts,
-            ..
-        }) = talk.state.thread().iter().rev().nth(1)
-        else {
-            panic!()
-        };
-        assert_eq!(
-            trashed_parts[0],
-            Part::Text(say(
-                Msg::HermesChatTrashed,
-                &[("count", &count(DUPLICATES))]
-            ))
-        );
-        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatAskSource, &[])]);
-        let after_trash = talk.files();
-        assert_eq!(after_trash.len(), before.len() - DUPLICATES);
+        assert_eq!(talk.files(), before);
 
         // Conversation 2: the source from Hermes' question, one target, so no
         // question where to; then once, moving.
         talk.press(&ChipReply::Folder(talk.path("inbox")));
         assert_eq!(
-            talk.state
-                .thread()
-                .iter()
-                .filter_map(|entry| match entry {
-                    Entry::Hermes {
-                        parts: all_parts, ..
-                    } => Some(all_parts.clone()),
-                    _ => None,
-                })
-                .flatten()
-                .filter_map(|part| match part {
-                    Part::Text(text) => Some(text),
-                    _ => None,
-                })
+            hermes_texts(&talk)
+                .into_iter()
                 .find(|text| text.starts_with("Gern!")),
             Some(say(
                 Msg::HermesChatSourceSummaryOneTarget,
@@ -175,12 +175,7 @@ mod tests {
             (plan.filed, plan.unsure, plan.already_there, plan.stays),
             (FILED, UNSURE, ALREADY_THERE, STAYS)
         );
-        let mut reasons = BTreeMap::new();
-        for entry in &plan.entries {
-            if let ncrs_filing::chat_work::TrialOutcome::Stays(reason) = &entry.outcome {
-                *reasons.entry(format!("{reason:?}")).or_insert(0) += 1;
-            }
-        }
+        let reasons = stay_reasons(plan);
         // Of the 60 files the intake report gives a path, four collide by name.
         assert_eq!(
             reasons,
@@ -191,15 +186,14 @@ mod tests {
             ])
         );
         assert_eq!(plan.entries.len(), INBOX_FILES);
-        assert_eq!(talk.files(), after_trash, "the trial moves nothing");
+        assert_eq!(talk.files(), before, "the trial moves nothing");
         let file_all = say(Msg::HermesChatFileAll, &[("count", &count(FILED))]);
         assert_eq!(talk.state.chips()[0].label, file_all);
 
         talk.press(&ChipReply::FileAll);
-        // Folder, keep, trash the duplicates, source, once, move, file: seven
-        // entries of the user from Open to the first filed file. Six when the
-        // archive has no duplicates to offer.
-        assert_eq!(talk.entries, 7);
+        // Folder, keep, source, once, move, file: six entries of the user from
+        // Open to the first filed file.
+        assert_eq!(talk.entries, 6);
         assert_eq!(
             talk.last_texts()[0],
             say(
@@ -217,25 +211,38 @@ mod tests {
             .filter(|path| path.starts_with("inbox/"))
             .count();
         assert_eq!(inbox_left, INBOX_FILES - FILED);
-        assert_eq!(filed.len(), after_trash.len());
+        assert_eq!(filed.len(), before.len());
 
-        // Undo the filing, then the trash run.
-        talk.press(&ChipReply::Undo);
+        // The duplicates of the archive are offered with the first filing.
         assert_eq!(
-            talk.last_texts(),
-            vec![say(
-                Msg::HermesChatUndoAskMove,
+            talk.last_texts()[1],
+            say(
+                Msg::HermesChatDuplicatesOffer,
                 &[
-                    ("name", &say(Msg::HermesChatRunName, &[("folder", "inbox")])),
-                    ("count", &count(FILED)),
-                    ("when", &talk.last_run_when()),
-                    ("folder", "inbox"),
+                    ("names", "Downloads alt, Scans"),
+                    ("count", &count(DUPLICATES))
                 ]
-            )]
+            )
         );
-        talk.press(&ChipReply::PutBack);
-        assert_eq!(talk.files(), after_trash);
-        talk.type_text("mach das rückgängig");
+        talk.press(&ChipReply::ToTrash);
+        let Some(Entry::Hermes {
+            parts: trashed_parts,
+            ..
+        }) = talk.state.thread().last()
+        else {
+            panic!()
+        };
+        assert_eq!(
+            trashed_parts[0],
+            Part::Text(say(
+                Msg::HermesChatTrashed,
+                &[("count", &count(DUPLICATES))]
+            ))
+        );
+        assert_eq!(talk.files().len(), filed.len() - DUPLICATES);
+
+        // Undo the trash run first, it is the newest, then the filing.
+        talk.press(&ChipReply::Undo);
         assert_eq!(
             talk.last_texts(),
             vec![say(
@@ -256,6 +263,21 @@ mod tests {
             talk.last_texts(),
             vec![say(Msg::HermesChatUndone, &[("count", &count(DUPLICATES))])]
         );
+        assert_eq!(talk.files(), filed);
+        talk.type_text_understood("mach das rückgängig", r#"{"intent":"undo"}"#);
+        assert_eq!(
+            talk.last_texts(),
+            vec![say(
+                Msg::HermesChatUndoAskMove,
+                &[
+                    ("name", &say(Msg::HermesChatRunName, &[("folder", "inbox")])),
+                    ("count", &count(FILED)),
+                    ("when", &talk.last_run_when()),
+                    ("folder", "inbox"),
+                ]
+            )]
+        );
+        talk.press(&ChipReply::PutBack);
         assert_eq!(talk.files(), before);
     }
 
@@ -286,7 +308,7 @@ mod tests {
         );
         assert_eq!(talk.files(), copied, "nothing is copied twice");
 
-        talk.type_text("mach das rückgängig");
+        talk.type_text_understood("mach das rückgängig", r#"{"intent":"undo"}"#);
         assert!(talk.last_texts()[0].contains(&format!("**{filed} Dateien** kopiert")));
         talk.press(&ChipReply::PutBack);
         assert_eq!(talk.files(), before);
@@ -301,70 +323,104 @@ mod tests {
         assert!(talk.plan().filed > 0);
         assert_eq!(talk.files(), before, "a trial moves nothing");
 
-        talk.type_text("abbrechen");
+        talk.type_text_understood(
+            "abbrechen",
+            &format!(
+                r#"{{"intent":"answer","choice":"{}"}}"#,
+                say(Msg::HermesChatCancel, &[])
+            ),
+        );
         assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatCancelled, &[])]);
         assert!(talk.state.chips().is_empty());
         assert_eq!(talk.files(), before);
 
         // Nothing was filed, so there is nothing to put back.
-        talk.type_text("mach das rückgängig");
+        talk.type_text_understood("mach das rückgängig", r#"{"intent":"undo"}"#);
         assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatUndoNone, &[])]);
     }
 
-    #[test]
-    fn bank_statements_by_month_change_the_trial_of_the_session() {
-        let mut talk = archive_talk();
+    fn statement_word() -> String {
+        Kinds::built_in(KindLanguage::default())
+            .kind_word("bank_statement")
+            .into_owned()
+    }
+
+    /// "Kontoauszüge lieber nach Monat" on the archive up to the question which
+    /// banks.
+    fn ask_statements_by_month(talk: &mut Talk) {
         talk.send(Message::Open);
-        talk.press(&ChipReply::Folder(archive(&talk)));
+        talk.press(&ChipReply::Folder(archive(talk)));
         talk.press(&ChipReply::WantChange);
         assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatAskChange, &[])]);
-        talk.type_text("Kontoauszüge lieber nach Monat");
+        talk.type_text_understood(
+            "Kontoauszüge lieber nach Monat",
+            r#"{"intent":"change_structure","area":"Kontoauszüge","order":"by_month"}"#,
+        );
 
-        // Only the Sparkasse folder is a Kontoauszüge branch, so no question
-        // which banks: the change is applied at once.
-        let segments: Vec<String> = ["Bank", "Sparkasse Chemnitz", "Kontoauszüge", "2024", "12"]
-            .into_iter()
-            .map(str::to_owned)
-            .chain(["Kontoauszug_2024-12-28.pdf".to_owned()])
-            .collect();
+        let segments: Vec<String> = [
+            "Bank",
+            "Sparkasse Chemnitz",
+            "Kontoauszüge",
+            "2024",
+            "12",
+            "Kontoauszug_2024-12-28.pdf",
+        ]
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+        let banks = say(Msg::HermesChatPluralBank, &[]);
         assert_eq!(
             talk.last_parts(),
             [
                 Part::Text(say(
                     Msg::HermesChatChangePreview,
-                    &[("kind", "Kontoauszüge")]
+                    &[("kind", &statement_word())]
                 )),
                 Part::File(FileCard {
                     segments,
                     highlighted: Some(4)
                 }),
-                Part::Text(say(Msg::HermesChatChangeDone, &[])),
-                Part::Text(say(Msg::HermesChatAnythingElse, &[])),
+                Part::Text(say(Msg::HermesChatChangeScope, &[("plural", &banks)])),
             ]
         );
-        assert_eq!(talk.labels(), vec![say(Msg::HermesChatFineAsIs, &[])]);
+        let labels = talk.labels();
+        assert_eq!(
+            labels[0],
+            say(Msg::HermesChatScopeAll, &[("plural", &banks)])
+        );
+        assert!(
+            labels.contains(&say(
+                Msg::HermesChatScopeOnly,
+                &[("value", "Sparkasse Chemnitz")]
+            )),
+            "{labels:?}"
+        );
+    }
 
+    /// Files the inbox against the archive after the change and checks which
+    /// documents got a month folder.
+    fn trial_after_change(talk: &mut Talk) -> Vec<PathBuf> {
         talk.press(&ChipReply::FineAsIs);
-        talk.press(&ChipReply::LeaveThem);
         talk.press(&ChipReply::Folder(talk.path("inbox")));
         talk.press(&ChipReply::Once);
         talk.press(&ChipReply::ModeMove);
-
-        let statements: Vec<_> = talk
-            .plan()
+        talk.plan()
             .entries
             .iter()
             .filter_map(|entry| match &entry.outcome {
-                TrialOutcome::Filed { to }
-                    if to.starts_with("Bank/Sparkasse Chemnitz/Kontoauszüge") =>
-                {
-                    Some(to.clone())
-                }
+                TrialOutcome::Filed { to } => Some(to.clone()),
                 _ => None,
             })
+            .collect()
+    }
+
+    fn assert_sparkasse_has_months(filed: &[PathBuf]) {
+        let statements: Vec<_> = filed
+            .iter()
+            .filter(|to| to.starts_with("Bank/Sparkasse Chemnitz/Kontoauszüge"))
             .collect();
         assert_eq!(statements.len(), MONTHLY_STATEMENTS);
-        for to in &statements {
+        for to in statements {
             let parts: Vec<_> = to.iter().map(|part| part.to_string_lossy()).collect();
             let (year, month) = (&parts[3], &parts[4]);
             assert!(year.len() == 4 && month.len() == 2, "{to:?}");
@@ -373,5 +429,55 @@ mod tests {
                 "the month folder is the month of the date in the name: {to:?}"
             );
         }
+    }
+
+    fn assert_others_keep_their_path(filed: &[PathBuf]) {
+        let others: Vec<_> = filed
+            .iter()
+            .filter(|to| !to.starts_with("Bank/Sparkasse Chemnitz/Kontoauszüge"))
+            .collect();
+        assert!(!others.is_empty());
+        for to in others {
+            let parts: Vec<_> = to.iter().map(|part| part.to_string_lossy()).collect();
+            assert!(
+                parts.get(3).is_none_or(|part| part.len() != 2),
+                "no month folder outside the statements: {to:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn bank_statements_by_month_for_all_banks_change_the_trial_of_the_session() {
+        let mut talk = archive_talk();
+        ask_statements_by_month(&mut talk);
+        assert!(
+            talk.state.session.changes.is_empty(),
+            "nothing before the press"
+        );
+        talk.press(&ChipReply::ScopeAll);
+        assert_eq!(
+            talk.last_texts(),
+            vec![
+                say(Msg::HermesChatChangeDone, &[]),
+                say(Msg::HermesChatAnythingElse, &[]),
+            ]
+        );
+        let filed = trial_after_change(&mut talk);
+        assert_sparkasse_has_months(&filed);
+        assert_others_keep_their_path(&filed);
+    }
+
+    #[test]
+    fn bank_statements_by_month_for_one_bank_change_only_that_bank() {
+        let mut talk = archive_talk();
+        ask_statements_by_month(&mut talk);
+        talk.press(&ChipReply::ScopeOnly("Sparkasse Chemnitz".to_owned()));
+        assert_eq!(
+            talk.state.session.changes[0].only,
+            Some((1, "Sparkasse Chemnitz".to_owned()))
+        );
+        let filed = trial_after_change(&mut talk);
+        assert_sparkasse_has_months(&filed);
+        assert_others_keep_their_path(&filed);
     }
 }

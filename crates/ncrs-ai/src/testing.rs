@@ -81,6 +81,14 @@ impl ScriptedChatModel {
         }
     }
 
+    /// Another raw reply, after those already scripted.
+    pub fn push_reply(&self, reply: Result<&str, AiError>) {
+        self.replies
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push_back(reply.map(str::to_owned));
+    }
+
     /// The turns it was asked, in order.
     pub fn turns(&self) -> Vec<ChatTurn> {
         self.turns

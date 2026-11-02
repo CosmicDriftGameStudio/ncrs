@@ -313,31 +313,62 @@ fn a_month_folder_goes_in_after_the_year_with_or_without_only() {
         year_depth: 1,
         unit: TimeUnit::Month,
         only,
+        kind_names: Vec::new(),
     };
     let to = || PathBuf::from("Alfa/2022/2022-07-04 Alfa Rechnung.pdf");
     let when = Some(date(2022, 7, 4));
     assert_eq!(
-        change::apply_changes(to(), when, &[change(None)]),
+        change::apply_changes(to(), when, None, &[change(None)]),
         PathBuf::from("Alfa/2022/07/2022-07-04 Alfa Rechnung.pdf")
     );
     assert_eq!(
-        change::apply_changes(to(), when, &[change(Some((0, "Alfa".to_owned())))]),
+        change::apply_changes(to(), when, None, &[change(Some((0, "Alfa".to_owned())))]),
         PathBuf::from("Alfa/2022/07/2022-07-04 Alfa Rechnung.pdf")
     );
     assert_eq!(
-        change::apply_changes(to(), when, &[change(Some((0, "Beta".to_owned())))]),
+        change::apply_changes(to(), when, None, &[change(Some((0, "Beta".to_owned())))]),
         to()
     );
-    assert_eq!(change::apply_changes(to(), None, &[change(None)]), to());
+    assert_eq!(
+        change::apply_changes(to(), None, None, &[change(None)]),
+        to()
+    );
     let other_area = PathBuf::from("Beta/2022/x.pdf");
     assert_eq!(
-        change::apply_changes(other_area.clone(), when, &[change(None)]),
+        change::apply_changes(other_area.clone(), when, None, &[change(None)]),
         other_area
     );
     let no_year = PathBuf::from("Alfa/Misc/x.pdf");
     assert_eq!(
-        change::apply_changes(no_year.clone(), when, &[change(None)]),
+        change::apply_changes(no_year.clone(), when, None, &[change(None)]),
         no_year
+    );
+}
+
+#[test]
+fn a_change_only_touches_documents_of_its_kind_or_in_a_folder_that_names_it() {
+    let change = OrderChange {
+        area: PathBuf::from("Bank"),
+        year_depth: 3,
+        unit: TimeUnit::Month,
+        only: None,
+        kind_names: vec!["bank_statement".to_owned(), "Kontoauszüge".to_owned()],
+    };
+    let when = Some(date(2022, 7, 4));
+    let in_folder = PathBuf::from("Bank/Sparkasse/Kontoauszüge/2022/a.pdf");
+    let card = PathBuf::from("Bank/DKB/Kreditkarte/2022/b.pdf");
+    let apply = |to: &PathBuf, kind| {
+        change::apply_changes(to.clone(), when, kind, std::slice::from_ref(&change))
+    };
+    assert_eq!(
+        apply(&in_folder, None),
+        PathBuf::from("Bank/Sparkasse/Kontoauszüge/2022/07/a.pdf")
+    );
+    assert_eq!(apply(&card, None), card);
+    assert_eq!(apply(&card, Some("invoice")), card);
+    assert_eq!(
+        apply(&card, Some("Kontoauszug")),
+        PathBuf::from("Bank/DKB/Kreditkarte/2022/07/b.pdf")
     );
 }
 
@@ -348,6 +379,7 @@ fn the_trial_applies_the_order_change_to_the_filed_names() {
         year_depth: 1,
         unit: TimeUnit::Month,
         only: None,
+        kind_names: Vec::new(),
     };
     let plan = trial(&Setup::new(), vec![change]);
     assert_eq!(

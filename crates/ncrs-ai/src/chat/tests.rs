@@ -91,7 +91,7 @@ fn amounts_are_written_whole_or_with_the_cents_they_need() {
 
 #[test]
 fn an_empty_message_is_refused_and_control_characters_are_removed() {
-    assert!(chat_user_message(&turn("  \n\t ")).is_err());
+    chat_user_message(&turn("  \n\t ")).unwrap_err();
     assert!(chat_user_message(&turn("a\u{7}b"))
         .unwrap()
         .ends_with("Message: ab"));
@@ -206,9 +206,9 @@ fn an_answer_is_the_index_of_the_option_it_names() {
         parse_chat_reply(r#"{"intent":"answer","choice":"später"}"#, &asked),
         Ok(ChatIntent::Answer { choice: 2 })
     );
-    assert!(parse_chat_reply(r#"{"intent":"answer","choice":"vielleicht"}"#, &asked).is_err());
-    assert!(parse_chat_reply(r#"{"intent":"answer","choice":"JA"}"#, &asked).is_err());
-    assert!(parse(r#"{"intent":"answer","choice":"ja"}"#).is_err());
+    parse_chat_reply(r#"{"intent":"answer","choice":"vielleicht"}"#, &asked).unwrap_err();
+    parse_chat_reply(r#"{"intent":"answer","choice":"JA"}"#, &asked).unwrap_err();
+    parse(r#"{"intent":"answer","choice":"ja"}"#).unwrap_err();
 }
 
 #[test]
@@ -251,7 +251,7 @@ fn a_missing_required_field_or_an_unknown_intent_is_an_error() {
         r#"{"intent":"ask_content"}"#,
         r#"{"intent":"delete_everything"}"#,
         r#"{"sender":"A"}"#,
-        r#"[1]"#,
+        "[1]",
         "nonsense",
     ] {
         assert!(parse(raw).is_err(), "{raw}");

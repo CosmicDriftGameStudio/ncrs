@@ -3502,6 +3502,7 @@ version = "0.0.0"
 dependencies = [
  "chrono",
  "iced",
+ "ncrs-ai",
  "ncrs-core",
  "ncrs-filing",
  "ncrs-fs",

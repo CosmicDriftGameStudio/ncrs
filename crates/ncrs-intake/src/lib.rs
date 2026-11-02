@@ -83,8 +83,8 @@ pub use sender_detection::{
 };
 pub use stability::{StabilityTracker, STABLE_AFTER};
 pub use structure::{
-    learn_structure, Area, Branch, DateFormat, Level, LocationStructure, NamePart, NameScheme,
-    Placeholder, PlaceholderKind, PlaceholderLabel, StructureDocument, UnorderedFolder,
+    folder_label, learn_structure, Area, Branch, DateFormat, Level, LocationStructure, NamePart,
+    NameScheme, Placeholder, PlaceholderKind, PlaceholderLabel, StructureDocument, UnorderedFolder,
 };
 pub use take_in::{
     has_symlink_ancestor_under, hash_path, open_without_following, take_in, Outcome,

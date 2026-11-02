@@ -8811,8 +8811,8 @@
     {
       "key": "hermes_chat.fallback",
       "context": "Hermes chat (F2): Hermes says it did not understand the text. Buttons with things it can do follow.",
-      "en": "I don't understand that without an AI model. What would you like to do?",
-      "de": "Das verstehe ich ohne KI-Modell nicht. Was hast du vor?"
+      "en": "I did not get that. What would you like to do?",
+      "de": "Das habe ich nicht verstanden. Was möchtest du tun?"
     },
     {
       "key": "hermes_chat.intent_search",
@@ -8837,6 +8837,108 @@
       "context": "Hermes chat (F2): Button offering to undo the last run when Hermes did not understand.",
       "en": "Undo",
       "de": "Rückgängig"
+    },
+    {
+      "key": "hermes_chat.model_missing",
+      "context": "Hermes chat (F2): Hermes explains it needs its local language model to understand typed sentences and offers to download it. {size} is the download size, for example '2.5 GB'. A button to download follows.",
+      "en": "To understand sentences I need my language model ({size}, one time, stays on this computer). Shall I download it?",
+      "de": "Um Sätze zu verstehen, brauche ich mein Sprachmodell ({size}, einmalig, bleibt auf diesem Rechner). Soll ich es laden?"
+    },
+    {
+      "key": "hermes_chat.model_download",
+      "context": "Hermes chat (F2): Primary button that starts the download of the language model.",
+      "en": "Download the model",
+      "de": "Modell laden"
+    },
+    {
+      "key": "hermes_chat.model_failed",
+      "context": "Hermes chat (F2): Hermes says its language model cannot run. {reason} is a short technical reason. Buttons with things it can do follow.",
+      "en": "My language model doesn't start: {reason}. What would you like to do?",
+      "de": "Mein Sprachmodell startet nicht: {reason}. Was möchtest du tun?"
+    },
+    {
+      "key": "hermes_chat.thinking",
+      "context": "Hermes chat (F2): Line shown while the language model works on a typed sentence.",
+      "en": "Hermes is thinking …",
+      "de": "Hermes denkt …"
+    },
+    {
+      "key": "hermes_chat.waking",
+      "context": "Hermes chat (F2): Line shown while the language model is loaded into memory before it can work on a typed sentence; this takes a few seconds.",
+      "en": "Hermes is waking up …",
+      "de": "Hermes wacht auf …"
+    },
+    {
+      "key": "hermes_chat.confirm_tidy_to",
+      "context": "Hermes chat (F2): Hermes asks to confirm a tidy-up it understood from a sentence. {source} is the folder to tidy up, {target} the folder the files go to, {mode} is empty or one of the two phrases for copying or moving that start with a comma. The question ends with a question mark.",
+      "en": "{source} → {target}{mode}?",
+      "de": "{source} → {target}{mode}?"
+    },
+    {
+      "key": "hermes_chat.confirm_tidy",
+      "context": "Hermes chat (F2): Hermes asks to confirm a tidy-up it understood from a sentence when no target folder was named. {source} is the folder to tidy up, {mode} is empty or one of the two phrases for copying or moving that start with a comma.",
+      "en": "Tidy up {source}{mode}?",
+      "de": "{source} aufräumen{mode}?"
+    },
+    {
+      "key": "hermes_chat.confirm_move",
+      "context": "Hermes chat (F2): Added to the tidy-up confirmation when the user said the files shall be moved. Starts with a comma and a space.",
+      "en": ", move",
+      "de": ", verschieben"
+    },
+    {
+      "key": "hermes_chat.confirm_copy",
+      "context": "Hermes chat (F2): Added to the tidy-up confirmation when the user said the files shall be copied. Starts with a comma and a space.",
+      "en": ", copy",
+      "de": ", kopieren"
+    },
+    {
+      "key": "hermes_chat.confirm_yes",
+      "context": "Hermes chat (F2): Primary button that confirms what Hermes understood. Nothing is moved by it; a trial run comes first.",
+      "en": "Yes",
+      "de": "Ja"
+    },
+    {
+      "key": "hermes_chat.other_target",
+      "context": "Hermes chat (F2): Button under the tidy-up confirmation: choose another folder to file into.",
+      "en": "Another target",
+      "de": "Anderes Ziel"
+    },
+    {
+      "key": "hermes_chat.ask_other_target",
+      "context": "Hermes chat (F2): Hermes asks which folder the files shall go to instead. Folder buttons follow.",
+      "en": "Which folder shall they go to?",
+      "de": "In welchen Ordner sollen sie?"
+    },
+    {
+      "key": "hermes_chat.order_not_yet",
+      "context": "Hermes chat (F2): Hermes says it cannot change the order of folders in the way the user asked. {order} is the wanted order from the next entries, capitalised, for example 'By year'.",
+      "en": "{order} I can't do yet, only by month.",
+      "de": "{order} kann ich noch nicht, nur nach Monat."
+    },
+    {
+      "key": "hermes_chat.order_year",
+      "context": "Hermes chat (F2): Wanted order of the folders, capitalised, at the start of a sentence.",
+      "en": "By year",
+      "de": "Nach Jahr"
+    },
+    {
+      "key": "hermes_chat.order_sender",
+      "context": "Hermes chat (F2): Wanted order of the folders, capitalised, at the start of a sentence.",
+      "en": "By sender",
+      "de": "Nach Absender"
+    },
+    {
+      "key": "hermes_chat.order_kind",
+      "context": "Hermes chat (F2): Wanted order of the folders, capitalised, at the start of a sentence.",
+      "en": "By kind of document",
+      "de": "Nach Art"
+    },
+    {
+      "key": "hermes_chat.order_flat",
+      "context": "Hermes chat (F2): Wanted order of the folders, capitalised, at the start of a sentence: no subfolders at all.",
+      "en": "Without subfolders",
+      "de": "Ohne Unterordner"
     }
   ]
 }

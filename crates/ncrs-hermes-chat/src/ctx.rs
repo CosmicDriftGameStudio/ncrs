@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
+use std::sync::Arc;
+
 use chrono::{DateTime, Local};
+use ncrs_ai::ChatModel;
 use ncrs_filing::chat_work::ChatAccess;
 use ncrs_i18n::Language;
 
@@ -23,4 +26,6 @@ pub struct Ctx {
     /// Folders where new files arrive.
     pub sources: Vec<PathBuf>,
     pub now: DateTime<Local>,
+    /// `None` in a build without the local language model.
+    pub model: Option<Arc<dyn ChatModel>>,
 }

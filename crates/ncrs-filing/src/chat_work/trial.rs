@@ -171,7 +171,12 @@ fn decide(
     else {
         return TrialOutcome::Stays(StayReason::NoPattern);
     };
-    let to = apply_changes(with_extension_of(rendered, name), file.fields.date, changes);
+    let to = apply_changes(
+        with_extension_of(rendered, name),
+        file.fields.date,
+        file.fields.kind.as_deref(),
+        changes,
+    );
     if taken.insert(to.clone()) {
         TrialOutcome::Filed { to }
     } else {

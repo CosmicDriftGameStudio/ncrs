@@ -18,6 +18,7 @@ mod types;
 #[cfg(test)]
 mod tests;
 
+pub use branches::folder_label;
 pub use learn::learn_structure;
 pub use types::{
     Area, Branch, DateFormat, Level, LocationStructure, NamePart, NameScheme, Placeholder,

@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use ncrs_ai::Schedule;
 use ncrs_filing::chat_work::{
     ChatWork, FolderReading, RunItem, RunPlan, RunReport, StayReason, TrashItem, TrashReport,
     TrialOutcome, TrialPlan,
@@ -36,6 +37,7 @@ pub fn begin(state: &mut State, ctx: &Ctx, source: PathBuf) {
         .iter()
         .any(|target| source.starts_with(target));
     if is_target {
+        state.session.proposal = None;
         state.step = Step::Idle;
         say(
             state,
@@ -61,12 +63,23 @@ pub fn source_read(state: &mut State, ctx: &Ctx, reading: &Arc<FolderReading>) {
     let folder = folder_name(ctx, &reading.root);
     if reading.files.is_empty() {
         state.session.tidy = None;
+        state.session.proposal = None;
         state.step = Step::Idle;
         say(
             state,
             fill(ctx.lang, Msg::HermesChatReadEmpty, &[("folder", &folder)]),
             Vec::new(),
         );
+        return;
+    }
+    if let Some(target) = state
+        .session
+        .proposal
+        .as_ref()
+        .and_then(|proposal| proposal.target.clone())
+    {
+        state.step = Step::Target;
+        crate::update::folder_answer(state, ctx, target, true);
         return;
     }
     let candidates = targets(state, ctx);
@@ -137,6 +150,15 @@ pub fn target_read(state: &mut State, ctx: &Ctx) {
     let Some(tidy) = state.session.tidy.as_ref() else {
         return;
     };
+    if let Some(schedule) = state
+        .session
+        .proposal
+        .as_ref()
+        .and_then(|proposal| proposal.schedule)
+    {
+        once(state, ctx, schedule == Schedule::Always);
+        return;
+    }
     let folder = folder_name(ctx, &tidy.source);
     state.step = Step::Once;
     say(
@@ -154,9 +176,21 @@ pub fn once(state: &mut State, ctx: &Ctx, always: bool) {
         return;
     };
     let folder = folder_name(ctx, &tidy.source);
+    let said = state
+        .session
+        .proposal
+        .as_ref()
+        .and_then(|proposal| proposal.transfer);
     let mut parts = Vec::new();
     if always {
         parts.push(Part::Text(text(ctx.lang, Msg::HermesChatAlwaysNotYet)));
+    }
+    if let Some(transfer) = said {
+        if !parts.is_empty() {
+            hermes(state, parts, Vec::new());
+        }
+        mode(state, ctx, transfer);
+        return;
     }
     parts.push(Part::Text(fill(
         ctx.lang,
@@ -179,6 +213,7 @@ pub fn mode(state: &mut State, ctx: &Ctx, transfer: Transfer) {
         return;
     };
     tidy.transfer = Some(transfer);
+    state.session.proposal = None;
     let (Some(source), Some(target)) = (
         state.session.readings.get(&tidy.source).cloned(),
         tidy.target
@@ -593,9 +628,51 @@ pub fn filed_done(state: &mut State, ctx: &Ctx, result: Result<RunReport, String
             ));
         }
     }
+    if chips.is_empty() {
+        if let Some((part, offered)) = archive_offer(state, ctx) {
+            parts.push(part);
+            chips = offered;
+        }
+    }
     chips.push(chip(ctx, Msg::HermesChatUndo, ChipReply::Undo, false));
     state.step = Step::AfterRun;
     hermes(state, parts, chips);
+}
+
+/// The duplicates of the folder learned first, offered once after the first
+/// filing: the sentence and the buttons.
+fn archive_offer(state: &mut State, ctx: &Ctx) -> Option<(Part, Vec<Chip>)> {
+    let offer = state.session.archive_duplicates.take()?;
+    state.session.archive_offered = true;
+    let mut names: Vec<String> = Vec::new();
+    for item in &offer.items {
+        let top = item
+            .path
+            .strip_prefix(&offer.root)
+            .ok()
+            .and_then(|relative| relative.iter().next())
+            .map(|segment| segment.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        if !top.is_empty() && !names.contains(&top) {
+            names.push(top);
+        }
+    }
+    let sentence = fill(
+        ctx.lang,
+        Msg::HermesChatDuplicatesOffer,
+        &[
+            ("names", &names.join(", ")),
+            ("count", &number(offer.items.len())),
+        ],
+    );
+    state.session.offer = Some(offer);
+    Some((
+        Part::Text(sentence),
+        vec![
+            chip(ctx, Msg::HermesChatToTrash, ChipReply::ToTrash, true),
+            chip(ctx, Msg::HermesChatLeaveThem, ChipReply::LeaveThem, false),
+        ],
+    ))
 }
 
 pub fn trash_offer(state: &mut State, ctx: &Ctx, yes: bool) {
@@ -614,12 +691,16 @@ pub fn trash_offer(state: &mut State, ctx: &Ctx, yes: bool) {
         );
         return;
     }
-    let chips = if state.step == Step::AfterRun {
-        vec![chip(ctx, Msg::HermesChatUndo, ChipReply::Undo, false)]
-    } else {
-        Vec::new()
-    };
-    say(state, text(ctx.lang, Msg::HermesChatLeft), chips);
+    let mut parts = vec![Part::Text(text(ctx.lang, Msg::HermesChatLeft))];
+    let mut chips = Vec::new();
+    if let Some((part, offered)) = archive_offer(state, ctx) {
+        parts.push(part);
+        chips = offered;
+    }
+    if state.step == Step::AfterRun {
+        chips.push(chip(ctx, Msg::HermesChatUndo, ChipReply::Undo, false));
+    }
+    hermes(state, parts, chips);
 }
 
 pub fn trashed_done(state: &mut State, ctx: &Ctx, result: Result<TrashReport, String>) {
@@ -647,14 +728,11 @@ pub fn trashed_done(state: &mut State, ctx: &Ctx, result: Result<TrashReport, St
             &[("skipped", &number(report.skipped))],
         )));
     }
-    if state.step == Step::Duplicates {
-        hermes(state, parts, Vec::new());
-        learn::after_duplicates(state, ctx);
-    } else {
-        hermes(
-            state,
-            parts,
-            vec![chip(ctx, Msg::HermesChatUndo, ChipReply::Undo, false)],
-        );
+    let mut chips = Vec::new();
+    if let Some((part, offered)) = archive_offer(state, ctx) {
+        parts.push(part);
+        chips = offered;
     }
+    chips.push(chip(ctx, Msg::HermesChatUndo, ChipReply::Undo, false));
+    hermes(state, parts, chips);
 }

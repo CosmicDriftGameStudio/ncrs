@@ -65,16 +65,16 @@ fn without_control(text: &str) -> String {
 /// Compact, keys in a fixed order, absent keys left out.
 pub fn search_json(query: &SearchQuery) -> String {
     let mut parts: Vec<String> = Vec::new();
-    let mut text_entry = |key: &str, value: &Option<String>| {
-        if let Some(value) = value {
-            parts.push(format!("\"{key}\":{}", json_string(value)));
+    let mut text_entry = |key: &str, entry: &Option<String>| {
+        if let Some(text) = entry {
+            parts.push(format!("\"{key}\":{}", json_string(text)));
         }
     };
     text_entry("sender", &query.sender);
     text_entry("kind", &query.kind);
-    let mut number_entry = |key: &str, value: Option<String>| {
-        if let Some(value) = value {
-            parts.push(format!("\"{key}\":{value}"));
+    let mut number_entry = |key: &str, entry: Option<String>| {
+        if let Some(number) = entry {
+            parts.push(format!("\"{key}\":{number}"));
         }
     };
     number_entry("year_from", query.year_from.map(|year| year.to_string()));
@@ -89,10 +89,10 @@ pub fn search_json(query: &SearchQuery) -> String {
 
 /// `100` when whole, else `12.5` or `12.34`.
 fn amount_json(cents: i64) -> String {
-    let (whole, rest) = (cents / 100, cents % 100);
-    match (rest, rest % 10) {
+    let (whole, rest) = (cents.div_euclid(100), cents.rem_euclid(100));
+    match (rest, rest.rem_euclid(10)) {
         (0, _) => whole.to_string(),
-        (_, 0) => format!("{whole}.{}", rest / 10),
+        (_, 0) => format!("{whole}.{}", rest.div_euclid(10)),
         _ => format!("{whole}.{rest:02}"),
     }
 }

@@ -71,7 +71,7 @@ pub fn parse_chat_reply(raw: &str, turn: &ChatTurn) -> Result<ChatIntent, AiErro
                 .iter()
                 .flat_map(|question| &question.options)
                 .position(|option| option == choice.as_ref())
-                .map(|choice| ChatIntent::Answer { choice })
+                .map(|index| ChatIntent::Answer { choice: index })
                 .ok_or(AiError::BadReply("the choice is not one of the options"))
         }
         "other" => Ok(ChatIntent::Other),

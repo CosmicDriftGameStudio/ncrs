@@ -1,6 +1,13 @@
 //! The measured sentences and how a result is scored, shared by the tests
 //! that run them against the real model and the ones that check the format.
 
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+
 use jsonc_parser::{parse_to_value, JsonValue, ParseOptions};
 
 use super::turn::{ChatQuestion, ChatTurn, SearchQuery};

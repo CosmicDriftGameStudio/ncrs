@@ -7,7 +7,9 @@ use std::path::{Component, Path, PathBuf};
 
 use chrono::{Datelike as _, NaiveDate};
 use ncrs_index::{KindEntry, Kinds};
-use ncrs_intake::{Area, Branch, Level, NamePart, PlaceholderKind, PlaceholderLabel, PlanFile};
+use ncrs_intake::{
+    folder_label, Area, Branch, Level, NamePart, PlaceholderKind, PlaceholderLabel, PlanFile,
+};
 
 use super::{same_word, FolderReading};
 
@@ -28,6 +30,9 @@ pub struct OrderChange {
     pub unit: TimeUnit,
     /// Only files with this folder name at this depth.
     pub only: Option<(usize, String)>,
+    /// Every spelling that names the kind the change is for: the catalog ID
+    /// and words of a known kind, else the word as typed. Empty: any kind.
+    pub kind_names: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -67,9 +72,26 @@ fn month_folder(date: NaiveDate) -> String {
     format!("{:02}", date.month())
 }
 
+fn is_of_kind(change: &OrderChange, kind: Option<&str>, folders: &[String]) -> bool {
+    change.kind_names.is_empty()
+        || kind.is_some_and(|stored| change.kind_names.iter().any(|name| same_word(name, stored)))
+        || folders.iter().any(|folder| {
+            change
+                .kind_names
+                .iter()
+                .any(|name| names_the_kind(name, folder))
+        })
+}
+
 /// Puts the month folder into `to` for every change that applies. Without a
-/// date there is nothing to put.
-pub fn apply_changes(to: PathBuf, dated: Option<NaiveDate>, changes: &[OrderChange]) -> PathBuf {
+/// date there is nothing to put. A change only touches documents of its
+/// kind, or those in a folder that names it.
+pub fn apply_changes(
+    to: PathBuf,
+    dated: Option<NaiveDate>,
+    kind: Option<&str>,
+    changes: &[OrderChange],
+) -> PathBuf {
     let Some(date) = dated else {
         return to;
     };
@@ -84,7 +106,12 @@ pub fn apply_changes(to: PathBuf, dated: Option<NaiveDate>, changes: &[OrderChan
             .only
             .as_ref()
             .is_none_or(|(depth, value)| parts.get(*depth).is_some_and(|part| part == value));
-        if current.starts_with(&change.area) && year_is_folder && allowed {
+        let folders = parts.split_last().map_or(&[][..], |(_, folders)| folders);
+        if current.starts_with(&change.area)
+            && year_is_folder
+            && allowed
+            && is_of_kind(change, kind, folders)
+        {
             parts.insert(change.year_depth + 1, month_folder(date));
         }
     }
@@ -248,20 +275,48 @@ pub fn preview(
         .chain(literal_start)
         .collect();
 
+    let kind_names = match entry {
+        Some(found) => {
+            let mut names = vec![
+                found.id().to_owned(),
+                found.word(ncrs_index::KindLanguage::German).to_owned(),
+                found.word(ncrs_index::KindLanguage::English).to_owned(),
+                kind_word.to_owned(),
+            ];
+            names.dedup();
+            names
+        }
+        None => vec![kind_word.to_owned()],
+    };
+    let (change_area, scope) = match scope_of(&chosen, &parts_of_documents(&chosen)) {
+        Some(scope) => (area, Some(scope)),
+        None => match area_scope(
+            &chosen.area.folder,
+            &reading.files,
+            &parts_of,
+            &kind_names,
+            &of_kind,
+        ) {
+            Some(scope) => (PathBuf::from(&chosen.area.folder), Some(scope)),
+            None => (area, None),
+        },
+    };
+
     Some(ChangePreview {
         kind_label: entry.map_or_else(
             || kind_word.to_owned(),
             |found| found.word(kinds.language).to_owned(),
         ),
         change: OrderChange {
-            area,
+            area: change_area,
             year_depth,
             unit,
             only: None,
+            kind_names,
         },
         example,
         highlighted: year_depth + 1,
-        scope: scope_of(&chosen, &parts_of_documents(&chosen)),
+        scope,
     })
 }
 
@@ -296,5 +351,57 @@ fn scope_of(candidate: &Candidate<'_>, parts: &[Vec<String>]) -> Option<Scope> {
                 .map(|(name, _)| name.to_owned())
                 .collect(),
         })
+    })
+}
+
+/// The first-level folders of the area when the branch has no placeholder to
+/// ask about: those that hold documents of the kind or lie in a folder that
+/// names it, most files first; when that is fewer than two, all of them.
+/// Year folders are no scope.
+fn area_scope(
+    area_folder: &str,
+    files: &[PlanFile],
+    parts_of: &[Vec<String>],
+    kind_names: &[String],
+    of_kind: &dyn Fn(&PlanFile) -> bool,
+) -> Option<Scope> {
+    let below_area = |parts: &Vec<String>| {
+        (parts.first().map(String::as_str) == Some(area_folder) && parts.len() >= 3)
+            .then(|| parts.get(1).cloned())
+            .flatten()
+            .filter(|first| !is_year_folder(first))
+    };
+    let names_kind = |parts: &[String]| {
+        parts
+            .iter()
+            .skip(1)
+            .take(parts.len().saturating_sub(2))
+            .any(|folder| kind_names.iter().any(|name| names_the_kind(name, folder)))
+    };
+    let mut of_the_kind: BTreeMap<String, usize> = BTreeMap::new();
+    let mut all: BTreeMap<String, usize> = BTreeMap::new();
+    for (file, parts) in files.iter().zip(parts_of) {
+        let Some(first) = below_area(parts) else {
+            continue;
+        };
+        *all.entry(first.clone()).or_default() += 1;
+        if of_kind(file) || names_kind(parts) {
+            *of_the_kind.entry(first).or_default() += 1;
+        }
+    }
+    let counted = if of_the_kind.len() >= 2 {
+        of_the_kind
+    } else {
+        all
+    };
+    if counted.len() < 2 {
+        return None;
+    }
+    let mut values: Vec<(String, usize)> = counted.into_iter().collect();
+    values.sort_by_key(|(name, count)| (Reverse(*count), name.clone()));
+    Some(Scope {
+        label: folder_label(area_folder),
+        depth: 1,
+        values: values.into_iter().map(|(name, _)| name).collect(),
     })
 }

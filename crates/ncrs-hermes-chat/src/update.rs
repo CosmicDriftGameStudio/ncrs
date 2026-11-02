@@ -10,9 +10,9 @@ use ncrs_ui_kit::hermes_state::FolderRole;
 use crate::action::Action;
 use crate::ctx::{Availability, Ctx};
 use crate::message::Message;
-use crate::state::{Chip, ChipReply, Entry, Part, State, Step};
+use crate::state::{Asked, Chip, ChipReply, Entry, Part, State, Step};
 use crate::texts::{fill, folder_name, text};
-use crate::{learn, tidy, undo};
+use crate::{learn, tidy, understand, undo};
 
 pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> (Task<Message>, Option<Action>) {
     let action = route(state, message, ctx);
@@ -38,17 +38,18 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
         }
         Message::Submit => {
             let typed = std::mem::take(&mut state.input).trim().to_owned();
-            if typed.is_empty() || state.pending.is_some() {
+            if typed.is_empty() || is_busy(state) {
                 return None;
             }
+            let asked = understand::asked(state);
             user(state, typed.clone());
             if !is_ready(state, ctx) {
                 return None;
             }
-            handle_text(state, ctx, &typed)
+            handle_text(state, ctx, &typed, asked)
         }
         Message::ChipPressed { label, reply } => {
-            if state.pending.is_some() {
+            if is_busy(state) {
                 return None;
             }
             let bubble = bubble_text(state, &label, &reply);
@@ -73,20 +74,31 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
         }
         Message::FolderPicked(picked) => {
             let path = picked?;
-            if state.pending.is_some() {
+            if is_busy(state) {
                 return None;
             }
             user(state, path.to_string_lossy().into_owned());
             folder_answer(state, ctx, path, false)
         }
+        Message::Understood(result) => understand::understood(state, ctx, result),
+        Message::ModelReady => understand::model_ready(state, ctx),
     }
 }
 
-fn text_with(ctx: &Ctx, msg: Msg, values: &[(&str, &str)]) -> String {
+/// Work or the model is running; typing and buttons wait for it.
+fn is_busy(state: &State) -> bool {
+    state.pending.is_some() || state.thinking.is_some()
+}
+
+pub fn text_with(ctx: &Ctx, msg: Msg, values: &[(&str, &str)]) -> String {
     fill(ctx.lang, msg, values)
 }
 
 fn launch(state: &mut State, ctx: &Ctx) -> Task<Message> {
+    Task::batch([launch_work(state, ctx), understand::launch(state, ctx)])
+}
+
+fn launch_work(state: &mut State, ctx: &Ctx) -> Task<Message> {
     if !std::mem::take(&mut state.fresh) {
         return Task::none();
     }
@@ -106,6 +118,10 @@ fn launch(state: &mut State, ctx: &Ctx) -> Task<Message> {
 
 fn finish_work(state: &mut State) {
     state.pending = None;
+    drop_working(state);
+}
+
+pub fn drop_working(state: &mut State) {
     state
         .thread
         .retain(|entry| !matches!(entry, Entry::Working(_)));
@@ -291,7 +307,7 @@ fn greet(state: &mut State, ctx: &Ctx) {
 fn expects_folder(step: Step) -> bool {
     matches!(
         step,
-        Step::ReadFolder | Step::Source | Step::TidyFolder | Step::Target
+        Step::ReadFolder | Step::Source | Step::TidyFolder | Step::Target | Step::OtherTarget
     )
 }
 
@@ -342,7 +358,7 @@ pub fn resolve_folder_name(state: &State, ctx: &Ctx, name: &str) -> Option<PathB
 }
 
 pub fn folder_answer(state: &mut State, ctx: &Ctx, path: PathBuf, typed: bool) -> Option<Action> {
-    if typed && !is_known(state, ctx, &path) {
+    if typed && state.step != Step::OtherTarget && !is_known(state, ctx, &path) {
         let shown = path.to_string_lossy().into_owned();
         state.session.confirm = Some((path, state.step));
         state.step = Step::ConfirmUnknown;
@@ -377,19 +393,24 @@ pub fn folder_answer(state: &mut State, ctx: &Ctx, path: PathBuf, typed: bool) -
             tidy::choose_target(state, ctx, path);
             None
         }
+        Step::OtherTarget => {
+            understand::other_target(state, ctx, path);
+            None
+        }
         _ => None,
     }
 }
 
 // What the user said or pressed.
 
-fn handle_text(state: &mut State, ctx: &Ctx, typed: &str) -> Option<Action> {
+/// Only a typed path while a folder is asked for is taken literally; every
+/// other sentence goes to the model.
+fn handle_text(state: &mut State, ctx: &Ctx, typed: &str, asked: Asked) -> Option<Action> {
     let looks_like_path = typed.starts_with('/') || typed.starts_with('~');
     if expects_folder(state.step) && looks_like_path {
         return folder_answer(state, ctx, expand_home(ctx, Path::new(typed)), true);
     }
-    fallback(state, ctx);
-    None
+    understand::ask(state, ctx, typed, asked)
 }
 
 fn ask_tidy_folder(state: &mut State, ctx: &Ctx, folder: Option<PathBuf>) -> Option<Action> {
@@ -419,7 +440,7 @@ fn ask_read_folder(state: &mut State, ctx: &Ctx, folder: Option<PathBuf>) -> Opt
     folder_answer(state, ctx, path, true)
 }
 
-fn search_not_yet(state: &mut State, ctx: &Ctx) {
+pub fn search_not_yet(state: &mut State, ctx: &Ctx) {
     say(
         state,
         text(ctx.lang, Msg::HermesChatSearchNotYet),
@@ -432,7 +453,7 @@ fn search_not_yet(state: &mut State, ctx: &Ctx) {
     );
 }
 
-fn explain_not_yet(state: &mut State, ctx: &Ctx) {
+pub fn explain_not_yet(state: &mut State, ctx: &Ctx) {
     say(
         state,
         text(ctx.lang, Msg::HermesChatExplainNotYet),
@@ -440,7 +461,7 @@ fn explain_not_yet(state: &mut State, ctx: &Ctx) {
     );
 }
 
-fn batch_not_yet(state: &mut State, ctx: &Ctx) {
+pub fn batch_not_yet(state: &mut State, ctx: &Ctx) {
     say(
         state,
         text(ctx.lang, Msg::HermesChatBatchNotYet),
@@ -448,30 +469,34 @@ fn batch_not_yet(state: &mut State, ctx: &Ctx) {
     );
 }
 
-fn fallback(state: &mut State, ctx: &Ctx) {
+pub fn fallback(state: &mut State, ctx: &Ctx) {
     say(
         state,
         text(ctx.lang, Msg::HermesChatFallback),
-        vec![
-            chip(
-                ctx,
-                Msg::HermesChatIntentSearch,
-                ChipReply::IntentSearch,
-                false,
-            ),
-            chip(ctx, Msg::HermesChatIntentTidy, ChipReply::IntentTidy, false),
-            chip(
-                ctx,
-                Msg::HermesChatIntentStructure,
-                ChipReply::IntentStructure,
-                false,
-            ),
-            chip(ctx, Msg::HermesChatIntentUndo, ChipReply::IntentUndo, false),
-        ],
+        fallback_chips(ctx),
     );
 }
 
-fn handle_reply(state: &mut State, ctx: &Ctx, reply: ChipReply) -> Option<Action> {
+pub fn fallback_chips(ctx: &Ctx) -> Vec<Chip> {
+    vec![
+        chip(
+            ctx,
+            Msg::HermesChatIntentSearch,
+            ChipReply::IntentSearch,
+            false,
+        ),
+        chip(ctx, Msg::HermesChatIntentTidy, ChipReply::IntentTidy, false),
+        chip(
+            ctx,
+            Msg::HermesChatIntentStructure,
+            ChipReply::IntentStructure,
+            false,
+        ),
+        chip(ctx, Msg::HermesChatIntentUndo, ChipReply::IntentUndo, false),
+    ]
+}
+
+pub fn handle_reply(state: &mut State, ctx: &Ctx, reply: ChipReply) -> Option<Action> {
     match reply {
         ChipReply::Cancel => cancel(state, ctx),
         ChipReply::Folder(path) => return folder_answer(state, ctx, path, false),
@@ -489,18 +514,23 @@ fn handle_reply(state: &mut State, ctx: &Ctx, reply: ChipReply) -> Option<Action
         ChipReply::ScopeAll => learn::scope(state, ctx, None),
         ChipReply::ScopeOnly(value) => learn::scope(state, ctx, Some(value)),
         ChipReply::ToTrash => tidy::trash_offer(state, ctx, true),
-        ChipReply::LeaveThem => {
-            tidy::trash_offer(state, ctx, false);
-            if state.step == Step::Duplicates {
-                learn::after_duplicates(state, ctx);
-            }
-        }
+        ChipReply::LeaveThem => tidy::trash_offer(state, ctx, false),
         ChipReply::Later => {
             say(state, text(ctx.lang, Msg::HermesChatLaterReply), Vec::new());
             state.step = Step::Idle;
         }
         ChipReply::Once => tidy::once(state, ctx, false),
         ChipReply::Always => tidy::once(state, ctx, true),
+        ChipReply::DownloadModel => return Some(Action::DownloadModel),
+        ChipReply::ConfirmTidy => return understand::confirm_tidy_yes(state, ctx),
+        ChipReply::ConfirmChange => learn::confirm_change(state, ctx),
+        ChipReply::OtherTarget => understand::ask_other_target(state, ctx),
+        ChipReply::SwitchToCopy => {
+            understand::switch_transfer(state, ctx, ncrs_index::Transfer::Copy)
+        }
+        ChipReply::SwitchToMove => {
+            understand::switch_transfer(state, ctx, ncrs_index::Transfer::Move)
+        }
         ChipReply::ModeCopy => tidy::mode(state, ctx, ncrs_index::Transfer::Copy),
         ChipReply::ModeMove => tidy::mode(state, ctx, ncrs_index::Transfer::Move),
         ChipReply::FileAll => tidy::file_all(state, ctx),
@@ -526,6 +556,8 @@ pub fn cancel(state: &mut State, ctx: &Ctx) {
     state.session.offer = None;
     state.session.resume_tidy = false;
     state.session.confirm = None;
+    state.session.proposal = None;
+    state.session.change_scope = None;
     state.step = Step::Idle;
     say(state, text(ctx.lang, Msg::HermesChatCancelled), Vec::new());
 }

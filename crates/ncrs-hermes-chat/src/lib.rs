@@ -1,6 +1,7 @@
 //! The Hermes chat: the conversation that reads folders, tidies them and
-//! undoes its runs. A state machine on fixed sentences, no model; the work
-//! that blocks runs through `ncrs_filing::chat_work`.
+//! undoes its runs. A state machine on fixed sentences; typed sentences go
+//! to the local language model, which only names what the user wants. The
+//! work that blocks runs through `ncrs_filing::chat_work`.
 
 pub mod action;
 pub mod ctx;
@@ -13,6 +14,7 @@ mod view;
 mod learn;
 mod texts;
 mod tidy;
+mod understand;
 mod undo;
 
 pub use action::Action;

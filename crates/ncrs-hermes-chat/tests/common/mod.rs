@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use chrono::{Local, TimeZone as _};
+use ncrs_ai::{ChatModel, Compute, LocalModelStatus, ScriptedChatModel};
 use ncrs_filing::chat_work::{ChatAccess, TrialPlan};
 use ncrs_fs::{FolderBackend, JournaledTrash};
 use ncrs_hermes_chat::{update, Action, Availability, ChipReply, Ctx, Entry, Message, Part, State};
@@ -56,6 +57,10 @@ pub struct Talk {
     /// Entries of the user: chips pressed and answers typed.
     pub entries: usize,
     pub index: Arc<Mutex<Option<Index>>>,
+    /// The scripted model behind `ctx.model`.
+    pub model: Arc<ScriptedChatModel>,
+    /// The line shown while the model worked on the last typed sentence.
+    pub working: Option<String>,
 }
 
 impl Talk {
@@ -75,6 +80,14 @@ impl Talk {
             names: vec![OWN_NAME.to_owned()],
             ..OwnDetails::default()
         });
+        let model = Arc::new(ScriptedChatModel::new(
+            LocalModelStatus::Loaded {
+                name: "test".to_owned(),
+                memory_bytes: 0,
+                compute: Compute::Cpu,
+            },
+            [],
+        ));
         let below = |names: &[&str]| names.iter().map(|name| dir.path().join(name)).collect();
         let ctx = Ctx {
             lang: LANG,
@@ -84,6 +97,7 @@ impl Talk {
             sources: below(sources),
             // Long after any run of the test, so a run is never "today".
             now: Local.with_ymd_and_hms(2031, 1, 1, 12, 0, 0).unwrap(),
+            model: Some(Arc::clone(&model) as Arc<dyn ChatModel>),
         };
         Self {
             dir,
@@ -93,6 +107,8 @@ impl Talk {
             actions: Vec::new(),
             entries: 0,
             index: slot,
+            model,
+            working: None,
         }
     }
 
@@ -108,15 +124,27 @@ impl Talk {
 
     /// One message, then the work it asks for, run here instead of on a thread.
     pub fn send(&mut self, first: Message) {
-        let mut next = Some(first);
+        let next = self.step(first);
+        self.settle(next);
+    }
+
+    fn step(&mut self, message: Message) -> Option<Message> {
+        let (_task, action) = update(&mut self.state, message, &self.ctx);
+        self.actions.extend(action);
+        if let Some(work) = self.state.pending_work().cloned() {
+            return Some(Message::Done(Box::new(self.access.run(work))));
+        }
+        let turn = self.state.pending_turn().cloned()?;
+        Some(Message::Understood(
+            self.model
+                .understand(&turn)
+                .map_err(|error| error.to_string()),
+        ))
+    }
+
+    fn settle(&mut self, mut next: Option<Message>) {
         while let Some(message) = next.take() {
-            let (_task, action) = update(&mut self.state, message, &self.ctx);
-            self.actions.extend(action);
-            next = self
-                .state
-                .pending_work()
-                .cloned()
-                .map(|work| Message::Done(Box::new(self.access.run(work))));
+            next = self.step(message);
         }
     }
 
@@ -139,6 +167,20 @@ impl Talk {
         self.entries += 1;
         self.send(Message::InputChanged(typed.to_owned()));
         self.send(Message::Submit);
+    }
+
+    /// A sentence the model understands as `reply`; the model line shows
+    /// while it works.
+    pub fn type_text_understood(&mut self, typed: &str, reply: &str) {
+        self.model.push_reply(Ok(reply));
+        self.entries += 1;
+        self.send(Message::InputChanged(typed.to_owned()));
+        let next = self.step(Message::Submit);
+        let Some(Entry::Working(line)) = self.state.thread().last() else {
+            panic!("{:?}", self.state.thread().last());
+        };
+        self.working = Some(line.clone());
+        self.settle(next);
     }
 
     pub fn open(&mut self) {

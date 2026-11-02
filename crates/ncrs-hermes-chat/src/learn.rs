@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use ncrs_filing::chat_work::{
-    ChangePreview, ChatWork, FolderReading, OrderChange, ReadError, TimeUnit,
+    same_word, ChangePreview, ChatWork, FolderReading, OrderChange, ReadError, TimeUnit,
 };
 use ncrs_i18n::Msg;
 use ncrs_ui_kit::hermes_state::FolderRole;
@@ -175,8 +175,8 @@ pub fn want_change(state: &mut State, ctx: &Ctx) {
     say(state, text(ctx.lang, Msg::HermesChatAskChange), Vec::new());
 }
 
-/// The order is kept: the folder becomes a filing location, duplicates are
-/// offered, and the talk moves on.
+/// The order is kept: the folder becomes a filing location, its duplicates
+/// wait for the first filing, and the talk moves on.
 pub fn keep(state: &mut State, ctx: &Ctx) -> Option<Action> {
     let reading = state.session.learning.clone()?;
     let folder = reading.root.clone();
@@ -195,43 +195,16 @@ pub fn keep(state: &mut State, ctx: &Ctx) -> Option<Action> {
         &[("folder", &shown)],
     ))];
     let can_trash = access(ctx).is_some_and(|access| access.trash_can_restore());
-    if can_trash && !reading.duplicates.is_empty() {
-        let mut names: Vec<String> = Vec::new();
-        for item in &reading.duplicates {
-            let top = item
-                .path
-                .strip_prefix(&reading.root)
-                .ok()
-                .and_then(|relative| relative.iter().next())
-                .map(|segment| segment.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            if !top.is_empty() && !names.contains(&top) {
-                names.push(top);
-            }
-        }
-        parts.push(Part::Text(fill(
-            ctx.lang,
-            Msg::HermesChatDuplicatesOffer,
-            &[
-                ("names", &names.join(", ")),
-                ("count", &number(reading.duplicates.len())),
-            ],
-        )));
-        state.session.offer = Some(Offer {
+    if can_trash
+        && !reading.duplicates.is_empty()
+        && !state.session.archive_offered
+        && state.session.archive_duplicates.is_none()
+    {
+        state.session.archive_duplicates = Some(Offer {
             name: fill(ctx.lang, Msg::HermesChatTrashRunName, &[("folder", &shown)]),
             root: reading.root.clone(),
             items: reading.duplicates.clone(),
         });
-        state.step = Step::Duplicates;
-        hermes(
-            state,
-            parts,
-            vec![
-                chip(ctx, Msg::HermesChatToTrash, ChipReply::ToTrash, true),
-                chip(ctx, Msg::HermesChatLeaveThem, ChipReply::LeaveThem, false),
-            ],
-        );
-        return role;
     }
     if state.session.resume_tidy {
         hermes(state, parts, Vec::new());
@@ -242,16 +215,6 @@ pub fn keep(state: &mut State, ctx: &Ctx) -> Option<Action> {
         hermes(state, parts, source_chips(state, ctx));
     }
     role
-}
-
-pub fn after_duplicates(state: &mut State, ctx: &Ctx) {
-    if state.session.resume_tidy {
-        tidy::resume(state, ctx);
-    } else {
-        state.step = Step::Source;
-        let chips = source_chips(state, ctx);
-        say(state, text(ctx.lang, Msg::HermesChatAskSource), chips);
-    }
 }
 
 pub fn change_order(state: &mut State, ctx: &Ctx, kind_word: String, unit: TimeUnit) {
@@ -278,7 +241,8 @@ pub fn change_order(state: &mut State, ctx: &Ctx, kind_word: String, unit: TimeU
 }
 
 pub fn preview_done(state: &mut State, ctx: &Ctx, computed: Option<ChangePreview>) {
-    let Some(preview) = computed else {
+    let wanted = state.session.change_scope.take();
+    let Some(mut preview) = computed else {
         state.step = Step::AfterChange;
         let word = state.session.change_word.clone();
         say(
@@ -305,9 +269,21 @@ pub fn preview_done(state: &mut State, ctx: &Ctx, computed: Option<ChangePreview
         }),
     ];
     let Some(scope) = preview.scope.clone() else {
-        apply(state, ctx, parts, preview.change);
+        confirm(state, ctx, parts, preview);
         return;
     };
+    let said = wanted.and_then(|word| {
+        scope
+            .values
+            .iter()
+            .find(|value| same_word(&word, value))
+            .cloned()
+    });
+    if let Some(value) = said {
+        preview.change.only = Some((scope.depth, value));
+        confirm(state, ctx, parts, preview);
+        return;
+    }
     let plural = plural_text(ctx.lang, scope.label);
     parts.push(Part::Text(fill(
         ctx.lang,
@@ -330,6 +306,32 @@ pub fn preview_done(state: &mut State, ctx: &Ctx, computed: Option<ChangePreview
     state.session.pending_change = Some(preview);
     state.step = Step::Scope;
     hermes(state, parts, chips);
+}
+
+/// The preview is the question; the yes applies the change.
+fn confirm(state: &mut State, ctx: &Ctx, parts: Vec<Part>, preview: ChangePreview) {
+    state.session.pending_change = Some(preview);
+    state.step = Step::ConfirmChange;
+    hermes(
+        state,
+        parts,
+        vec![
+            chip(
+                ctx,
+                Msg::HermesChatConfirmYes,
+                ChipReply::ConfirmChange,
+                true,
+            ),
+            cancel_chip(ctx),
+        ],
+    );
+}
+
+pub fn confirm_change(state: &mut State, ctx: &Ctx) {
+    let Some(preview) = state.session.pending_change.take() else {
+        return;
+    };
+    apply(state, ctx, Vec::new(), preview.change);
 }
 
 pub fn scope(state: &mut State, ctx: &Ctx, only: Option<String>) {

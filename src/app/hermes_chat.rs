@@ -53,6 +53,7 @@ impl App {
                 .map(|location| location.path.clone())
                 .collect(),
             now: chrono::Local::now(),
+            model: None,
         }
     }
 
@@ -71,6 +72,8 @@ impl App {
                 (self.pick_folder)(&start_in)
                     .map(|folder| Message::HermesChat(HermesChatMessage::FolderPicked(folder)))
             }
+            // No model is passed to the chat yet, so it never asks for this.
+            ncrs_hermes_chat::Action::DownloadModel => Task::none(),
             ncrs_hermes_chat::Action::OpenSearch => {
                 self.hermes_chat.open = false;
                 self.open_search()

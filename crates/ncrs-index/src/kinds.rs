@@ -22,7 +22,7 @@ struct BuiltIn {
     synonyms: &'static [&'static str],
 }
 
-const BUILT_IN: [BuiltIn; 11] = [
+const BUILT_IN: [BuiltIn; 12] = [
     BuiltIn {
         id: "invoice",
         english: "Invoice",
@@ -88,6 +88,12 @@ const BUILT_IN: [BuiltIn; 11] = [
         english: "Termination",
         german: "Kündigung",
         synonyms: &[],
+    },
+    BuiltIn {
+        id: "bank_statement",
+        english: "Bank statement",
+        german: "Kontoauszug",
+        synonyms: &["Kontoauszüge", "Bank statements", "Statement of account"],
     },
 ];
 
@@ -542,6 +548,11 @@ mod tests {
             ("Lieferschein", "delivery_note"),
             ("delivery-note", "delivery_note"),
             ("Kündigung", "termination"),
+            ("Kontoauszug", "bank_statement"),
+            ("Kontoauszüge", "bank_statement"),
+            ("bank statement", "bank_statement"),
+            ("Bank statements", "bank_statement"),
+            ("statement of account", "bank_statement"),
         ] {
             assert_eq!(id_of(&catalog, text).as_deref(), Some(id), "{text}");
         }
@@ -563,6 +574,8 @@ mod tests {
         assert_eq!(german.catalog.stored_kind("Rechnung"), "invoice");
         assert_eq!(german.catalog.stored_kind("Credit note"), "credit_note");
         assert_eq!(german.kind_word("invoice"), "Rechnung");
+        assert_eq!(german.kind_word("bank_statement"), "Kontoauszug");
+        assert_eq!(english.kind_word("Kontoauszüge"), "Bank statement");
         assert_eq!(english.kind_word("Rechnung"), "Invoice");
         assert_eq!(german.kind_tag_word("credit-note"), "gutschrift");
         assert_eq!(german.kind_tag_word("firma-a"), "firma-a");

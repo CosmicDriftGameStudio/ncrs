@@ -318,6 +318,12 @@ fn follows_date(years: &[Candidate<'_>]) -> bool {
     in_own_year * 2 > dated
 }
 
+/// The label folders directly below the folder `ancestor` get ("Bank" gives
+/// banks), `Subfolder` when the name says nothing.
+pub fn folder_label(ancestor: &str) -> PlaceholderLabel {
+    label_of(PlaceholderKind::Subfolder, ancestor)
+}
+
 fn label_of(kind: PlaceholderKind, ancestor: &str) -> PlaceholderLabel {
     let from_ancestor = || {
         let lowered = ancestor.to_lowercase();

@@ -14,4 +14,7 @@ pub enum Action {
         role: FolderRole,
     },
     OpenFilingSetup,
+    /// Opens the download of the language model; `Message::ModelReady`
+    /// follows when it is there.
+    DownloadModel,
 }

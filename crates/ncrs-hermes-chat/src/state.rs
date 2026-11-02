@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use ncrs_ai::{ChatTurn, Schedule};
 use ncrs_filing::chat_work::{
     ChangePreview, ChatWork, FolderReading, OrderChange, RunSummary, TrashItem, TrialPlan,
 };
@@ -37,6 +38,12 @@ pub enum ChipReply {
     IntentTidy,
     IntentStructure,
     IntentUndo,
+    DownloadModel,
+    ConfirmTidy,
+    ConfirmChange,
+    OtherTarget,
+    SwitchToCopy,
+    SwitchToMove,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -127,8 +134,10 @@ pub enum Step {
     Keep,
     Change,
     Scope,
+    ConfirmChange,
     AfterChange,
-    Duplicates,
+    ConfirmTidy,
+    OtherTarget,
     Source,
     TidyFolder,
     Target,
@@ -168,6 +177,38 @@ pub struct Offer {
     pub items: Vec<TrashItem>,
 }
 
+/// What the chat understood from a sentence and now waits for a yes to.
+#[derive(Debug, Clone)]
+pub struct Proposal {
+    pub source: PathBuf,
+    pub target: Option<PathBuf>,
+    pub schedule: Option<Schedule>,
+    /// Only set when the user said it.
+    pub transfer: Option<Transfer>,
+}
+
+/// The question the user answered by typing: its text and its buttons, which
+/// the next bubble of the user clears.
+#[derive(Debug, Clone, Default)]
+pub struct Asked {
+    pub question: Option<String>,
+    pub chips: Vec<Chip>,
+}
+
+/// A sentence waiting for the language model to be downloaded.
+#[derive(Debug, Clone)]
+pub struct Unsent {
+    pub message: String,
+    pub asked: Asked,
+}
+
+/// The sentence the language model works on.
+#[derive(Debug, Clone)]
+pub struct Thinking {
+    pub turn: ChatTurn,
+    pub asked: Asked,
+}
+
 #[derive(Debug, Default)]
 pub struct Session {
     pub readings: HashMap<PathBuf, Arc<FolderReading>>,
@@ -188,6 +229,14 @@ pub struct Session {
     pub last_run: Option<RunSummary>,
     /// A typed folder waiting for a yes, and the step it was typed in.
     pub confirm: Option<(PathBuf, Step)>,
+    pub proposal: Option<Proposal>,
+    /// What the model said about the scope of a change, for the preview.
+    pub change_scope: Option<String>,
+    pub unsent: Option<Unsent>,
+    /// The duplicates of the folder learned first, offered after the first
+    /// filing, once.
+    pub archive_duplicates: Option<Offer>,
+    pub archive_offered: bool,
 }
 
 #[derive(Debug)]
@@ -198,6 +247,9 @@ pub struct State {
     pub pending: Option<ChatWork>,
     /// Work set during this `update` that no task runs yet.
     pub fresh: bool,
+    pub thinking: Option<Thinking>,
+    /// The turn set during this `update` that no task runs yet.
+    pub fresh_turn: bool,
     pub step: Step,
     pub session: Session,
 }
@@ -210,6 +262,8 @@ impl Default for State {
             thread: Vec::new(),
             pending: None,
             fresh: false,
+            thinking: None,
+            fresh_turn: false,
             step: Step::Idle,
             session: Session::default(),
         }
@@ -224,6 +278,12 @@ impl State {
     /// The work the chat waits for; the app runs it on a blocking thread.
     pub fn pending_work(&self) -> Option<&ChatWork> {
         self.pending.as_ref()
+    }
+
+    /// The turn the language model waits for; the app asks the model on a
+    /// blocking thread.
+    pub fn pending_turn(&self) -> Option<&ChatTurn> {
+        self.thinking.as_ref().map(|thinking| &thinking.turn)
     }
 
     /// The plan of the trial that is on screen.

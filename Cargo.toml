@@ -189,7 +189,6 @@ ncrs-fs = { path = "crates/ncrs-fs", version = "0.0.0", features = ["test-suppor
 ncrs-config = { path = "crates/ncrs-config", version = "0.0.0", features = ["test-support"] }
 # Hits for the snapshot tests of the search filters.
 ncrs-search = { path = "crates/ncrs-search", version = "0.0.0", features = ["test-support"] }
-# The scenes of the chat for the snapshot tests of the app.
 # The state of the documents section of Quick Open, for the tests of the app.
 ncrs-palette = { path = "crates/ncrs-palette", version = "0.0.0", features = ["test-support"] }
 # The fixtures of the theme fetch, for the tests of the app.

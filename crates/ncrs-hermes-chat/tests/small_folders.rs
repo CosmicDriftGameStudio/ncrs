@@ -57,8 +57,15 @@ mod tests {
         talk
     }
 
+    const TIDY_INBOX: &str = r#"{"intent":"tidy_folder","source":"Inbox"}"#;
+
+    fn tidy_until_once(talk: &mut Talk) {
+        talk.type_text_understood("Räum Inbox auf", TIDY_INBOX);
+        talk.press(&ChipReply::ConfirmTidy);
+    }
+
     fn tidy_until_trial(talk: &mut Talk, transfer: &ChipReply) {
-        talk.type_text("Räum Inbox auf");
+        tidy_until_once(talk);
         talk.press(&ChipReply::Once);
         talk.press(transfer);
     }
@@ -216,7 +223,7 @@ mod tests {
     #[test]
     fn always_says_it_cannot_yet_and_goes_on_with_the_mode() {
         let mut talk = small_talk();
-        talk.type_text("Räum Inbox auf");
+        tidy_until_once(&mut talk);
         talk.press(&ChipReply::Always);
         assert_eq!(
             talk.last_texts(),
@@ -251,7 +258,10 @@ mod tests {
         let mut talk = small_talk();
         let before = talk.files();
 
-        talk.type_text("such meine Rechnung");
+        talk.type_text_understood(
+            "such meine Rechnung",
+            r#"{"intent":"search","text":"Rechnung"}"#,
+        );
         assert_eq!(
             talk.last_texts(),
             vec![say(Msg::HermesChatSearchNotYet, &[])]
@@ -259,7 +269,7 @@ mod tests {
         talk.press(&ChipReply::OpenSearch);
         assert_eq!(talk.actions, vec![Action::OpenSearch]);
 
-        talk.type_text("hmmmm wie geht das");
+        talk.type_text_understood("hmmmm wie geht das", r#"{"intent":"other"}"#);
         assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatFallback, &[])]);
         assert_eq!(
             talk.labels(),
@@ -297,14 +307,22 @@ mod tests {
     fn a_source_inside_a_target_is_not_tidied_into_itself() {
         let mut talk = small_talk();
         let archive = talk.path("archive");
-        talk.type_text(&format!("Räum {} auf", archive.display()));
+        let tidy = |path: &std::path::Path| {
+            format!(
+                r#"{{"intent":"tidy_folder","source":"{}"}}"#,
+                path.display()
+            )
+        };
+        talk.type_text_understood(&format!("Räum {} auf", archive.display()), &tidy(&archive));
+        talk.press(&ChipReply::ConfirmTidy);
         assert_eq!(
             talk.last_texts(),
             vec![say(Msg::HermesChatSourceIsTarget, &[("folder", "archive")])]
         );
 
         let inside = archive.join("Alfa");
-        talk.type_text(&format!("Räum {} auf", inside.display()));
+        talk.type_text_understood(&format!("Räum {} auf", inside.display()), &tidy(&inside));
+        talk.press(&ChipReply::ConfirmTidy);
         assert_eq!(
             talk.last_texts(),
             vec![say(
@@ -325,7 +343,8 @@ mod tests {
         let mut talk = small_talk();
         talk.write("elsewhere/x.txt", "x");
         let elsewhere = talk.path("elsewhere");
-        talk.type_text(&format!("Lies {} ein", elsewhere.display()));
+        talk.open();
+        talk.type_text(&elsewhere.to_string_lossy());
         assert_eq!(
             talk.last_texts(),
             vec![say(
