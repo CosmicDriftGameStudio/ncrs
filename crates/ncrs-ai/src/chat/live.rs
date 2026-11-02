@@ -18,9 +18,9 @@ use super::eval::{rows, HOLDOUT_ROWS, MAIN_ROWS};
 use super::scoring::score;
 use super::{ChatIntent, ChatModel as _, ChatTurn};
 use crate::local::models_dir;
-use crate::LazyLocalModel;
 use crate::model_file::LOCAL_MODEL;
 use crate::status::LocalModelStatus;
+use crate::LazyLocalModel;
 
 const THREADS: u32 = 4;
 const CONTEXT_TOKENS: u32 = 4096;
@@ -70,17 +70,24 @@ fn with_model_chat_eval_meets_the_measured_rates() {
         let millis = started.elapsed().as_millis();
         total_ms += millis;
         max_ms = max_ms.max(millis);
+        let mut hit = false;
         match &answer {
             Ok(intent) => {
                 let (same_intent, same_fields) = score(row, intent);
                 intent_ok += usize::from(same_intent);
                 full_ok += usize::from(same_fields);
+                hit = same_fields;
                 if !same_fields {
                     println!("miss {} expected {} got {intent:?}", row.id, row.intent);
                 }
             }
             Err(error) => println!("miss {} expected {} error {error}", row.id, row.intent),
         }
+        println!(
+            "sentence {} {millis} ms {}",
+            row.id,
+            if hit { "ok" } else { "miss" }
+        );
     }
     let count = all.len();
     let compute = match model.status() {

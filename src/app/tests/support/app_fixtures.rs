@@ -58,6 +58,7 @@ impl App {
             list_volumes: Arc::new(fs::list_volumes),
             search: ncrs_search::Search::new(layout::INITIAL_WINDOW_SIZE),
             hermes_chat: ncrs_hermes_chat::State::default(),
+            chat_model: None,
             quick_open: None,
             quick_open_walk_generation: 0,
             quick_open_walk: None,

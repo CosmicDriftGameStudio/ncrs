@@ -528,11 +528,13 @@ impl App {
                 self.dialog_focus = focus;
                 Task::none()
             }
-            Ask::OpenAiModelCard => {
-                let opened = self.update_ai_model(AiModelMessage::Open);
-                self.hermes.ai_model_asked = self.settings.ai_model.is_some();
-                opened
-            }
+            Ask::OpenAiModelCard => self.open_ai_model_card(),
         }
+    }
+
+    pub(in crate::app) fn open_ai_model_card(&mut self) -> Task<Message> {
+        let opened = self.update_ai_model(AiModelMessage::Open);
+        self.hermes.ai_model_asked = self.settings.ai_model.is_some();
+        opened
     }
 }

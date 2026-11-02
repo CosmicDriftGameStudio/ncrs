@@ -173,21 +173,22 @@ jobs:
           scripts/fetch-ocr-models.sh target/ocr-models
           echo "NCRS_OCR_MODELS_DIR=$GITHUB_WORKSPACE/target/ocr-models" >> "$GITHUB_ENV"
 
-      # The tests of the built-in AI model need its file (640 MB). They run on
-      # Linux only: the file would take 640 MB of cache per operating system,
-      # llama.cpp still compiles everywhere with the default features, and on
-      # the macOS runner the same three tests take about 15 minutes instead of
-      # five. The cache key is the pinned checksum, so a new pin means a new
-      # download; the script checks size and checksum on a hit as well. The
-      # folder sits outside target/ because rust-cache prunes and saves that.
+      # The tests of the built-in AI model (Qwen3 4B) need its file (about
+      # 2.5 GB). Only Linux caches it: the cache budget of the repository cannot
+      # hold 2.5 GB per operating system. Windows downloads it on every run for
+      # the chat evaluation alone; macOS skips the model, llama.cpp still
+      # compiles there with the default features. The cache key is the pinned
+      # checksum, so a new pin means a new download; the script checks size and
+      # checksum on a hit as well. The folder sits outside target/ because
+      # rust-cache prunes and saves that.
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: runner.os == 'Linux'
         with:
           path: .ai-models
-          key: ai-model-9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031
+          key: ai-model-7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5
 
       - name: Fetch the AI model for the tests
-        if: runner.os == 'Linux'
+        if: runner.os != 'macOS'
         shell: bash
         run: |
           bash scripts/fetch-ai-model.sh .ai-models
@@ -222,15 +223,28 @@ jobs:
         run: cargo test -p ncrs -p ncrs-fs --features ncrs/sandbox -- --skip ui_tests
 
       # These tests are ignored above because they need the model file. The
-      # log is checked for the count: a wrong filter or a missing feature would
-      # run no test and still pass.
+      # log is checked for the count (five `with_model_` tests) and for the
+      # line of the chat evaluation: a wrong filter or a missing feature would
+      # run no test and still pass. --show-output puts the time of every
+      # sentence and the compute (GPU or CPU) into the log.
       - name: Tests with the local AI model
         if: runner.os == 'Linux'
         shell: bash
         run: |
           set -o pipefail
-          cargo test -p ncrs-ai --features llama with_model_ -- --ignored 2>&1 | tee ai-tests.log
-          grep -q 'test result: ok. 3 passed' ai-tests.log
+          cargo test -p ncrs-ai --features llama with_model_ -- --ignored --show-output 2>&1 | tee ai-tests.log
+          grep -q 'test result: ok. 5 passed' ai-tests.log
+          grep -q 'chat eval:' ai-tests.log
+
+      # The chat evaluation alone on Windows, to see the speed there. The
+      # default shell (pwsh) builds it, because the vendored OpenSSL needs that
+      # one. No time limit fails the test; the log shows the times.
+      - name: Chat evaluation with the local AI model (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cargo test -p ncrs-ai --features llama with_model_chat_eval -- --ignored --show-output 2>&1 | Tee-Object -FilePath ai-tests.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Select-String -Path ai-tests.log -Pattern 'chat eval:' -Quiet)) { exit 1 }
 
       # The snapshot tests run only here, where the reference images in
       # tests/snapshots/ were produced. They are skipped above so a font

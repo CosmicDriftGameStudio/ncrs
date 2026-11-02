@@ -14,6 +14,7 @@ impl App {
         } else if !self.hermes_chat.open {
             return Task::none();
         }
+        self.ensure_chat_model();
         let ctx = self.hermes_chat_ctx();
         let (task, asked) = ncrs_hermes_chat::update(&mut self.hermes_chat, message, &ctx);
         let mapped = task.map(Message::HermesChat);
@@ -27,6 +28,24 @@ impl App {
             None => Task::batch([mapped, focus]),
         }
     }
+
+    #[cfg(feature = "local-ai")]
+    fn ensure_chat_model(&mut self) {
+        if self.chat_model.is_some() {
+            return;
+        }
+        let Some(index_path) = self.hermes.index_path.as_deref() else {
+            return;
+        };
+        let threads = match self.hermes.filing_config.ai {
+            crate::config::AiSetting::Local { threads } => threads,
+            _ => None,
+        };
+        self.chat_model = Some(crate::filing::shared_local_model(index_path, threads));
+    }
+
+    #[cfg(not(feature = "local-ai"))]
+    fn ensure_chat_model(&mut self) {}
 
     fn hermes_chat_ctx(&self) -> ncrs_hermes_chat::Ctx {
         let availability = match self.hermes.filing.as_ref() {
@@ -53,7 +72,7 @@ impl App {
                 .map(|location| location.path.clone())
                 .collect(),
             now: chrono::Local::now(),
-            model: None,
+            model: self.chat_model.clone(),
         }
     }
 
@@ -72,8 +91,7 @@ impl App {
                 (self.pick_folder)(&start_in)
                     .map(|folder| Message::HermesChat(HermesChatMessage::FolderPicked(folder)))
             }
-            // No model is passed to the chat yet, so it never asks for this.
-            ncrs_hermes_chat::Action::DownloadModel => Task::none(),
+            ncrs_hermes_chat::Action::DownloadModel => self.open_ai_model_card(),
             ncrs_hermes_chat::Action::OpenSearch => {
                 self.hermes_chat.open = false;
                 self.open_search()

@@ -9,11 +9,11 @@
 # Usage: scripts/fetch-ai-model.sh <dest-dir>
 set -euo pipefail
 
-NAME="Qwen3-0.6B-Q8_0.gguf"
+NAME="Qwen3-4B-Q4_K_M.gguf"
 # Pinned to a revision of the Hugging Face repository, so the file cannot change.
-URL="https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/resolve/23749fefcc72300e3a2ad315e1317431b06b590a/$NAME"
-SIZE=639446688
-SHA256="9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031"
+URL="https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/bc640142c66e1fdd12af0bd68f40445458f3869b/$NAME"
+SIZE=2497280256
+SHA256="7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5"
 
 if [ "$#" -ne 1 ]; then
   echo "usage: $0 <dest-dir>" >&2

@@ -6,6 +6,7 @@ use std::time::{Duration, SystemTime};
 
 use iced::widget::{column, container, row, scrollable, Column};
 use iced::{Element, Length, Padding, Size};
+use ncrs_ai::Compute;
 use ncrs_index::HermesCounts;
 use ncrs_pipeline::{Load, RunnerState, Task, WorkerSnapshot};
 
@@ -426,7 +427,7 @@ fn pipeline_rows<'a>(
     if let Some(ai) = ai_value(status.ai(), lang) {
         rows.push(page_kit::form_row(
             lang.text(Msg::FilingStatusAiLabel),
-            page_kit::value(ai, palette),
+            page_kit::sentence(ai, palette),
             None,
             palette,
         ));
@@ -517,10 +518,24 @@ fn ai_value(ai: &AiStatus, lang: Language) -> Option<String> {
         AiStatus::Off => return None,
         AiStatus::NotDownloaded => lang.text(Msg::FilingStatusAiNotDownloaded).to_owned(),
         AiStatus::NotLoadedYet => lang.text(Msg::FilingStatusAiNotLoaded).to_owned(),
-        AiStatus::Loaded { name, memory_bytes } => fill_template(
-            lang.text(Msg::FilingStatusAiLoaded),
-            &[("{name}", name), ("{memory}", &format::size(*memory_bytes))],
-        ),
+        AiStatus::Loaded {
+            name,
+            memory_bytes,
+            compute,
+        } => {
+            let computes_on = match compute {
+                Compute::Gpu(device) => device.as_str(),
+                Compute::Cpu => lang.text(Msg::FilingStatusAiComputeCpu),
+            };
+            fill_template(
+                lang.text(Msg::FilingStatusAiLoaded),
+                &[
+                    ("{name}", name),
+                    ("{memory}", &format::size(*memory_bytes)),
+                    ("{compute}", computes_on),
+                ],
+            )
+        }
         AiStatus::Failed(reason) => fill_template(
             lang.text(Msg::FilingStatusAiFailed),
             &[("{reason}", reason)],

@@ -1712,7 +1712,7 @@
     },
     {
       "key": "hermes_setup.optional_model",
-      "context": "Card of the first-time setup of Hermes (the document filing). Line about the optional AI model. Takes the download size, for example 639 MB.",
+      "context": "Card of the first-time setup of Hermes (the document filing). Line about the optional AI model. Takes the download size, for example 2497 MB.",
       "en": "Optional: With the AI model ({size}, runs locally) ncrs also fills in fields for which there is no rule yet. Works later too.",
       "de": "Optional: Mit dem KI-Modell ({size}, läuft lokal) füllt ncrs auch Felder aus, für die es noch keine Regel gibt. Geht auch später."
     },
@@ -3332,7 +3332,7 @@
     },
     {
       "key": "ai_model.file",
-      "context": "Line in the AI model card naming the model file and its size. Takes the file name and the size with its unit, for example 639 MB.",
+      "context": "Line in the AI model card naming the model file and its size. Takes the file name and the size with its unit, for example 2497 MB.",
       "en": "{name}: {size}",
       "de": "{name} ({size})"
     },
@@ -3351,8 +3351,8 @@
     {
       "key": "ai_model.source",
       "context": "Line in the AI model card saying whose model this is. Takes the address of the model page, shown as plain text.",
-      "en": "The model is Qwen3 0.6B by the Qwen team: {project}",
-      "de": "Das Modell ist Qwen3 0.6B des Qwen-Teams: {project}"
+      "en": "The model is Qwen3 4B by the Qwen team: {project}",
+      "de": "Das Modell ist Qwen3 4B des Qwen-Teams: {project}"
     },
     {
       "key": "ai_model.target",
@@ -3476,9 +3476,15 @@
     },
     {
       "key": "filing_status.ai_loaded",
-      "context": "Value of the AI model row on the filing status page when the model is in memory. Takes the file name and the memory it uses with its unit, for example 700 MB.",
-      "en": "{name} · {memory} in memory",
-      "de": "{name} · {memory} im Speicher"
+      "context": "Value of the AI model row on the filing status page when the model is in memory. Takes the file name, the memory it uses with its unit (for example 2.5 GB) and what it computes on: the name of the graphics device, or the word for the processor.",
+      "en": "{name} · {memory} in memory · runs on {compute}",
+      "de": "{name} · {memory} im Speicher · rechnet auf {compute}"
+    },
+    {
+      "key": "filing_status.ai_compute_cpu",
+      "context": "Part of the AI model row on the filing status page: the model computes on the processor, not on a graphics card. Follows the words 'runs on'.",
+      "en": "CPU",
+      "de": "dem Prozessor (CPU)"
     },
     {
       "key": "filing_status.ai_failed",
@@ -6194,7 +6200,7 @@
     },
     {
       "key": "hermes_overview.tile_ai_load",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Button of the AI tile that opens the download of the model and starts it. {size} is the download size, for example 639 MB.",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Button of the AI tile that opens the download of the model and starts it. {size} is the download size, for example 2497 MB.",
       "en": "Load · {size}",
       "de": "Laden · {size}"
     },

@@ -195,6 +195,8 @@ ncrs-palette = { path = "crates/ncrs-palette", version = "0.0.0", features = ["t
 ncrs-settings = { path = "crates/ncrs-settings", version = "0.0.0", features = ["test-support"] }
 # `ConnectDialog::then`, for the tests of the app.
 ncrs-remote = { path = "crates/ncrs-remote", version = "0.0.0", features = ["test-support"] }
+# `ScriptedChatModel`, for the snapshots of the Hermes chat.
+ncrs-ai = { path = "crates/ncrs-ai", version = "0.0.0", features = ["testing"] }
 # The fixtures of the filing module and of the reorganisation and replan work, for the tests of the app.
 ncrs-filing = { path = "crates/ncrs-filing", version = "0.0.0", features = ["test-support"] }
 ncrs-hermes-ui = { path = "crates/ncrs-hermes-ui", version = "0.0.0", features = ["test-support"] }

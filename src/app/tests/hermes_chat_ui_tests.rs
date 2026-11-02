@@ -2,6 +2,7 @@ use std::sync::Mutex;
 
 use chrono::TimeZone as _;
 use iced_test::Simulator;
+use ncrs_ai::{ChatIntent, Compute, LocalModelStatus, ScriptedChatModel};
 use ncrs_filing::chat_work::{ChatAccess, ChatResult, RunSummary};
 use ncrs_hermes_chat::{
     AreaRow, AreasCard, Availability, Chip, ChipReply, Ctx, Entry, FileCard, Part, RowOutcome,
@@ -307,6 +308,80 @@ fn fallback_scene() -> App {
     app
 }
 
+fn with_model(status: LocalModelStatus) -> (App, Ctx) {
+    let (app, mut ctx) = opened(Language::German);
+    ctx.model = Some(Arc::new(ScriptedChatModel::new(status, [])));
+    (app, ctx)
+}
+
+fn tidy_confirmation_scene() -> App {
+    let (mut app, ctx) = with_model(LocalModelStatus::Loaded {
+        name: "Qwen3-4B-Q4_K_M.gguf".to_owned(),
+        memory_bytes: 2_700_000_000,
+        compute: Compute::Cpu,
+    });
+    type_and_submit(&mut app, &ctx, "räum Downloads auf");
+    send(
+        &mut app,
+        &ctx,
+        HermesChatMessage::Understood(Ok(ChatIntent::TidyFolder {
+            source: "Downloads".to_owned(),
+            target: None,
+            schedule: None,
+            transfer: None,
+        })),
+    );
+    app
+}
+
+fn thinking_scene() -> App {
+    let (mut app, ctx) = with_model(LocalModelStatus::Loaded {
+        name: "Qwen3-4B-Q4_K_M.gguf".to_owned(),
+        memory_bytes: 2_700_000_000,
+        compute: Compute::Cpu,
+    });
+    type_and_submit(&mut app, &ctx, "räum Downloads auf");
+    app
+}
+
+fn waking_scene() -> App {
+    let (mut app, ctx) = with_model(LocalModelStatus::NotLoadedYet);
+    type_and_submit(&mut app, &ctx, "räum Downloads auf");
+    app
+}
+
+fn download_offer_scene() -> App {
+    let (mut app, ctx) = with_model(LocalModelStatus::NotDownloaded);
+    type_and_submit(&mut app, &ctx, "räum Downloads auf");
+    app
+}
+
+fn scope_scene() -> App {
+    let (mut app, _) = opened(Language::German);
+    user_says(&mut app, "Kontoauszüge lieber nach Monat");
+    hermes_says(
+        &mut app,
+        vec![
+            Part::Text("Klar. Dann sieht ein Kontoauszug so aus:".to_owned()),
+            Part::File(FileCard {
+                segments: segments(&["Archiv", "Kontoauszüge", "Sparkasse", "11", "Auszug.pdf"]),
+                highlighted: Some(3),
+            }),
+            Part::Text("Für alle Banken?".to_owned()),
+        ],
+        vec![
+            chip("Alle Banken", ChipReply::ScopeAll, true),
+            chip(
+                "Nur Sparkasse",
+                ChipReply::ScopeOnly("Sparkasse".to_owned()),
+                false,
+            ),
+            chip("Abbrechen", ChipReply::Cancel, false),
+        ],
+    );
+    app
+}
+
 fn needs_setup_scene() -> App {
     let mut app = App::with_fixed_panels().in_language(Language::German);
     let mut ctx = ready(Language::German);
@@ -359,6 +434,31 @@ fn the_fallback_matches_its_snapshot() {
 #[test]
 fn the_setup_hint_matches_its_snapshot() {
     matches_snapshot(&needs_setup_scene(), "hermes_chat_needs_setup_de");
+}
+
+#[test]
+fn the_tidy_confirmation_matches_its_snapshot() {
+    matches_snapshot(&tidy_confirmation_scene(), "hermes_chat_confirm_tidy_de");
+}
+
+#[test]
+fn the_thinking_line_matches_its_snapshot() {
+    matches_snapshot(&thinking_scene(), "hermes_chat_thinking_de");
+}
+
+#[test]
+fn the_waking_line_matches_its_snapshot() {
+    matches_snapshot(&waking_scene(), "hermes_chat_waking_de");
+}
+
+#[test]
+fn the_download_offer_matches_its_snapshot() {
+    matches_snapshot(&download_offer_scene(), "hermes_chat_download_offer_de");
+}
+
+#[test]
+fn the_question_for_which_banks_matches_its_snapshot() {
+    matches_snapshot(&scope_scene(), "hermes_chat_scope_de");
 }
 
 fn open_chat() -> App {

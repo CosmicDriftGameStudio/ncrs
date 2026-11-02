@@ -8,9 +8,9 @@
 mod eval;
 mod grammar;
 mod intent;
-mod parse;
 #[cfg(all(test, feature = "llama"))]
 mod live;
+mod parse;
 #[cfg(all(test, feature = "llama"))]
 mod scoring;
 mod turn;
