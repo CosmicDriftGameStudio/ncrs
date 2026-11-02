@@ -75,6 +75,13 @@ fn keys_without_prompt(
         return transfer_overlay_key(prompt, &key, key_modifiers, scope);
     }
 
+    // The chat's field takes the typing and Enter; Escape is `InputState`'s
+    // there and here. Of the bindings only quitting reaches past the chat, and
+    // no other function key reaches the panels behind it.
+    if prompt.hermes_chat {
+        return hermes_chat_key(prompt, &key, key_modifiers, scope);
+    }
+
     // The field takes the typing and Enter; Escape is `InputState`'s there and
     // here, so it closes the palette with a job running too. The arrows are the
     // entries'. Of the bindings only quitting reaches past it.
@@ -236,6 +243,25 @@ fn keys_without_prompt(
     }
     bound_message(&prompt.keymap, &key, key_modifiers, scope)
         .or_else(|| type_ahead_message(&key, key_modifiers))
+}
+
+fn hermes_chat_key(
+    prompt: &PromptKeyState,
+    key: &Key,
+    key_modifiers: Modifiers,
+    scope: KeyScope,
+) -> Option<Message> {
+    let quit = || {
+        bound_message(&prompt.keymap, key, key_modifiers, scope)
+            .filter(|message| *message == Message::Quit)
+            .filter(|_| is_not_typed_by_text_field(key, key_modifiers))
+    };
+    match ncrs_hermes_chat::chat_key(key, key_modifiers) {
+        ncrs_hermes_chat::ChatKey::Close => Some(Message::HermesChat(HermesChatMessage::Close)),
+        ncrs_hermes_chat::ChatKey::CloseToCommandLine => Some(Message::HermesChatToCommandLine),
+        ncrs_hermes_chat::ChatKey::Pass | ncrs_hermes_chat::ChatKey::Type => quit(),
+        ncrs_hermes_chat::ChatKey::Swallow => None,
+    }
 }
 
 /// The binding a press hits, with the Shift rules of the panels: see the

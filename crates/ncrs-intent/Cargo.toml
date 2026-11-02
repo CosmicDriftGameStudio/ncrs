@@ -1,0 +1,12 @@
+[package]
+name = "ncrs-intent"
+version = "0.0.0"
+edition = "2021"
+# Same as the root package: one place decides the compiler.
+rust-version = "1.98"
+description = "What a short German or English sentence asks of Hermes: fixed word lists, no model"
+license = "MIT"
+publish = false
+
+[lints]
+workspace = true

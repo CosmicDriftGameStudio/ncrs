@@ -46,7 +46,7 @@ fn sub_destination() -> Result<fs::Destination, fs::PathProblem> {
 }
 
 #[test]
-fn without_the_focus_letters_stay_type_ahead_and_f2_focuses() {
+fn without_the_focus_letters_stay_type_ahead_and_shift_f2_focuses() {
     let idle = PromptKeyState::default();
     let typed = route_key(&idle, Key::Character("l".into()), NONE);
     assert_eq!(
@@ -54,7 +54,7 @@ fn without_the_focus_letters_stay_type_ahead_and_f2_focuses() {
         Some(Message::Panel(PanelMessage::TypeAhead("l".into())))
     );
     assert_eq!(
-        route_key(&idle, Key::Named(Named::F2), NONE),
+        route_key(&idle, Key::Named(Named::F2), Modifiers::SHIFT),
         line(CommandLineMessage::Focus)
     );
 }
@@ -82,7 +82,7 @@ fn with_the_focus_only_history_leaving_and_quitting_get_through() {
         line(CommandLineMessage::Leave)
     );
     assert_eq!(
-        route(Key::Named(Named::F2), NONE),
+        route(Key::Named(Named::F2), Modifiers::SHIFT),
         line(CommandLineMessage::Leave)
     );
     let quit_chord = if cfg!(target_os = "macos") {
@@ -306,8 +306,9 @@ fn an_overlay_that_opens_while_focused_takes_the_focus_away() {
 }
 
 #[test]
-fn f2_is_a_command_and_labels_the_second_slot() {
+fn f2_asks_hermes_and_labels_the_second_slot_while_the_command_line_is_a_command() {
     assert!(command_of(KeyAction::CommandLine).is_some());
+    assert!(command_of(KeyAction::HermesChat).is_some());
     let app = App::with_fixed_panels();
-    assert_eq!(app.function_keys[1], Some("Cmd line"));
+    assert_eq!(app.function_keys[1], Some("Hermes"));
 }

@@ -28,6 +28,7 @@ pub const MIGRATIONS: &[&str] = &[
     include_str!("migrations/020_tags_instead_of_tax_contexts.sql"),
     include_str!("migrations/021_file_list_tag.sql"),
     include_str!("migrations/022_fields_read_version.sql"),
+    include_str!("migrations/023_named_runs.sql"),
 ];
 
 /// All pending steps run in one transaction together with the bump of
@@ -149,5 +150,41 @@ mod tests {
 
         assert!(table_exists(&conn, "a") && table_exists(&conn, "b"));
         assert_eq!(version(&conn), 2);
+    }
+
+    #[test]
+    fn batches_written_before_named_runs_keep_their_items_and_read_as_moves() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let (_, before) = MIGRATIONS.split_last().unwrap();
+        run_migrations(&mut conn, before).unwrap();
+        conn.execute_batch(
+            "INSERT INTO execution_batch (kind, started_at, finished_at) VALUES ('filing', 5, 6);
+             INSERT INTO execution_item (batch_id, seq, from_path, to_path, hash, duplicate, state)
+             VALUES (1, 0, '/a', '/b', x'00', 0, 'moved');",
+        )
+        .unwrap();
+
+        run_migrations(&mut conn, MIGRATIONS).unwrap();
+
+        let (kind, name, transfer, finished): (String, Option<String>, String, Option<i64>) = conn
+            .query_row(
+                "SELECT kind, name, transfer, finished_at FROM execution_batch WHERE id = 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            (kind.as_str(), name, transfer.as_str(), finished),
+            ("filing", None, "move", Some(6))
+        );
+        let items: i64 = conn
+            .query_row("SELECT count(*) FROM execution_item", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(items, 1);
+        conn.execute(
+            "INSERT INTO execution_batch (kind, started_at, transfer) VALUES ('hermes', 7, 'trash')",
+            [],
+        )
+        .unwrap();
     }
 }

@@ -185,6 +185,7 @@ pub fn command_of(action: KeyAction) -> Option<Command> {
         KeyAction::RemoveFavourite => Command::plain(action, Go, Msg::ActionRemoveFavourite),
         KeyAction::Favourites => Command::plain(action, Go, Msg::ActionFavourites),
         KeyAction::CommandLine => Command::plain(action, Go, Msg::ActionCommandLine),
+        KeyAction::HermesChat => Command::plain(action, Go, Msg::ActionHermesChat),
         KeyAction::QuickOpen => Command::themed(
             action,
             Go,

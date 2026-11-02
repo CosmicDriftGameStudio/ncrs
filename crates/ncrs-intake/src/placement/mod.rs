@@ -115,6 +115,9 @@ pub struct Placement {
     pub pattern: Option<String>,
     /// The field `pattern` needs and the document lacks.
     pub missing: Option<Field>,
+    /// For an unsure placement, the folder with the next most similar
+    /// documents; ties go to the path that sorts first.
+    pub runner_up: Option<PathBuf>,
 }
 
 impl Placement {
@@ -282,7 +285,7 @@ impl NeighbourIndex {
     fn settle(&self, signal: Signal, group: &[&Neighbour], fields: &DocumentFields) -> Placement {
         let similar = count(group.len());
         let Some(folder) = shared_folder(group) else {
-            let (folder, agreeing) = busiest_folder(group);
+            let (folder, agreeing, runner_up) = busiest_folders(group);
             return Placement {
                 folder,
                 signal,
@@ -290,6 +293,7 @@ impl NeighbourIndex {
                 similar,
                 pattern: None,
                 missing: None,
+                runner_up,
             };
         };
         let agreeing: Vec<&Neighbour> = group
@@ -310,6 +314,7 @@ impl NeighbourIndex {
             similar,
             pattern,
             missing,
+            runner_up: None,
         }
     }
 
@@ -406,17 +411,25 @@ fn shared_folder(group: &[&Neighbour]) -> Option<PathBuf> {
         .map(|(folder, _)| folder)
 }
 
-fn busiest_folder(group: &[&Neighbour]) -> (PathBuf, usize) {
+/// The folder with most of the group, how many it holds, and the second one.
+fn busiest_folders(group: &[&Neighbour]) -> (PathBuf, usize, Option<PathBuf>) {
     let mut per_folder: BTreeMap<&Path, usize> = BTreeMap::new();
     for neighbour in group {
         *per_folder.entry(neighbour.folder.as_path()).or_default() += 1;
     }
-    per_folder
-        .into_iter()
-        .max_by_key(|(folder, documents)| (*documents, Reverse(*folder)))
+    let mut ranked: Vec<(&Path, usize)> = per_folder.into_iter().collect();
+    ranked.sort_by_key(|(folder, documents)| (Reverse(*documents), *folder));
+    let mut folders = ranked.into_iter();
+    let (busiest, documents) = folders
+        .next()
         .map_or_else(Default::default, |(folder, documents)| {
             (folder.to_path_buf(), documents)
-        })
+        });
+    (
+        busiest,
+        documents,
+        folders.next().map(|(folder, _)| folder.to_path_buf()),
+    )
 }
 
 #[cfg(test)]

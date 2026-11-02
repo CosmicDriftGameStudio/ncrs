@@ -65,12 +65,12 @@ use crate::keymap::{KeyActionMessage as _, KeymapMessages as _};
 use crate::menu::Availability;
 use crate::messages::{
     AboutMessage, AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage,
-    ConflictChoice, FilingSetupMessage, FilingStatusMessage, GrantMessage, HermesFileMessage,
-    HermesFocus, HermesOverviewMessage, HermesPage, HermesSetupMessage, HitListMessage,
-    KeyBindingsMessage, Message, OcrModelsMessage, PanelSide, QuickFixMessage, QuickOpenMessage,
-    RemoteMessage, ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage,
-    RulesMessage, SavedQueriesMessage, SearchMessage, SettingChange, SettingsMessage, TagsMessage,
-    ThemeFetchMessage, TitleBarMessage, TransferKind, TrashMessage,
+    ConflictChoice, FilingSetupMessage, FilingStatusMessage, GrantMessage, HermesChatMessage,
+    HermesFileMessage, HermesFocus, HermesOverviewMessage, HermesPage, HermesSetupMessage,
+    HitListMessage, KeyBindingsMessage, Message, OcrModelsMessage, PanelSide, QuickFixMessage,
+    QuickOpenMessage, RemoteMessage, ReorganisationPlanMessage, ReviewListMessage,
+    RuleSuggestionsMessage, RulesMessage, SavedQueriesMessage, SearchMessage, SettingChange,
+    SettingsMessage, TagsMessage, ThemeFetchMessage, TitleBarMessage, TransferKind, TrashMessage,
 };
 #[cfg(target_os = "macos")]
 use crate::native_menu;
@@ -189,6 +189,7 @@ mod bars;
 mod context_menu;
 mod dialogs;
 mod hermes;
+mod hermes_chat;
 mod hermes_pages;
 mod keys;
 mod ops;
@@ -349,6 +350,8 @@ pub struct App {
     list_volumes: Arc<dyn Fn() -> Vec<fs::Volume> + Send + Sync>,
     /// The search: its view, which is kept when it is closed, and its run.
     search: ncrs_search::Search,
+    /// The Hermes chat (F2): its thread is kept when it is closed.
+    hermes_chat: ncrs_hermes_chat::State,
     /// Quick Open (Cmd/Ctrl+P), while its box is up.
     quick_open: Option<QuickOpen>,
     /// Counts the walks started, so the late batches of a closed one are dropped.
@@ -463,6 +466,8 @@ pub struct PromptKeyState {
     pub command_line: bool,
     /// The search view is up, so the cursor keys move in its results.
     pub search: bool,
+    /// The Hermes chat is up: its field types, Escape and F2 close it.
+    pub hermes_chat: bool,
     /// The trash view is up, so the cursor keys move in its rows and Enter
     /// restores.
     pub trash: bool,
@@ -557,6 +562,7 @@ impl Default for PromptKeyState {
             path_editing: false,
             command_line: false,
             search: false,
+            hermes_chat: false,
             trash: false,
             hit_list: false,
             quick_open: false,

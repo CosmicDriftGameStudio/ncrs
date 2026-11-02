@@ -81,7 +81,7 @@ fn the_bar_shows_the_function_keys_and_nothing_else() {
         en,
         [
             Some("Commands"),
-            Some("Cmd line"),
+            Some("Hermes"),
             Some("View"),
             Some("Edit"),
             Some("Copy"),

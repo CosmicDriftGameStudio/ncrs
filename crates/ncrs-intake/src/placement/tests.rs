@@ -281,7 +281,32 @@ fn a_sender_split_five_to_five_is_unsure() {
     assert!(!placement.is_sure());
     assert_eq!((placement.agreeing, placement.similar), (5, 10));
     assert_eq!(placement.folder, Path::new("Alpha"));
+    assert_eq!(placement.runner_up.as_deref(), Some(Path::new("Beta")));
     assert_eq!(placement.pattern, None);
+}
+
+#[test]
+fn only_an_unsure_placement_has_a_runner_up_and_it_is_the_second_busiest_folder() {
+    let firma = fields(Some("Firma"), None);
+    let mut documents = filed("Alpha", 1..4, &firma, None);
+    documents.extend(filed("Gamma", 4..7, &firma, None));
+    documents.extend(filed("Beta", 7..9, &firma, None));
+    let unsure = place(&documents, &ordered(), &firma, None).unwrap();
+
+    assert!(!unsure.is_sure());
+    assert_eq!(unsure.folder, Path::new("Alpha"));
+    assert_eq!(unsure.runner_up.as_deref(), Some(Path::new("Gamma")));
+
+    let sure = place(
+        &filed("Alpha", 1..6, &firma, None),
+        &ordered(),
+        &firma,
+        None,
+    )
+    .unwrap();
+
+    assert!(sure.is_sure());
+    assert_eq!(sure.runner_up, None);
 }
 
 #[test]

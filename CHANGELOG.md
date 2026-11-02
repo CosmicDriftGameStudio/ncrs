@@ -69,10 +69,16 @@ All notable changes to this project are documented here. The format follows
   they can be copied, moved, packed and deleted together. Files with equal
   names from different folders are numbered (`invoice.pdf`, `invoice (2).pdf`);
   packing can keep the folders below the search directory.
+- The Hermes chat (`F2`, Beta): tell Hermes a folder and it reads how it is
+  ordered, shows a trial run of what it would file and files only after you
+  confirm. It can also trash duplicates, and the last run can be undone. `Esc`
+  closes it.
 
 ### Changed
 
-- The index schema is now 21; the index is migrated on the first start and
+- The command line moved from `F2` to `Shift`+`F2`; `F2` opens the Hermes chat.
+  A `copy = "F2"` of your own keeps working.
+- The index schema is now 23; the index is migrated on the first start and
   keeps its documents.
 - English and German show plain names only ("Filing", "Review", "Status and
   errors", load "Gentle", "Balanced", "Full"). The Futurama names appear only

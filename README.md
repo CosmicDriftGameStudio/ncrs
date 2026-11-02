@@ -218,7 +218,8 @@ The defaults. Most of them can be changed in the keyboard shortcuts dialog (`Cmd
 | `Option`+`Cmd`+`C` / `Ctrl`+`Alt`+`C` | Copy the path of the tagged rows (else the cursor row) to the clipboard |
 | `Ctrl`+`Cmd`+`C` / `Ctrl`+`Shift`+`C` | Copy the name of the tagged rows (else the cursor row) to the clipboard |
 | Click the path in the status bar | Edit the path (`Enter` goes there, `~` is home, `Esc` puts the current path back); the icon beside it copies the folder path |
-| `F2`               | Focus the command line below the panels: `cd` changes the active panel's folder, any other command runs in the shell in that folder (the status bar shows its exit status; its output is not shown). `↑`/`↓` walk the commands of this session, `Esc` or `F2` goes back to the panels |
+| `F2`               | Open the Hermes chat (Beta): tell Hermes a folder and it reads how it is ordered, shows a trial run and files only after you confirm; the last run can be undone; `Esc` closes it |
+| `Shift`+`F2`       | Focus the command line below the panels: `cd` changes the active panel's folder, any other command runs in the shell in that folder (the status bar shows its exit status; its output is not shown). `↑`/`↓` walk the commands of this session, `Esc` or `Shift`+`F2` goes back to the panels |
 | `F3` / `F4`        | View / edit the file under the cursor in an external program (programs configurable, see [Configuration](#configuration)) |
 | `F5` / `F6`        | Copy / move to the other panel          |
 | `Alt`+`F5`         | Pack the tagged rows (else the cursor row) into a new archive in the other panel's folder; asks for the name (ends in `.zip`, `.tar`, `.tar.gz`, `.tgz`, `.tar.zst`, `.tzst` or `.7z`) |
@@ -483,7 +484,7 @@ edit = "F3"
   tag actions in both; the rest only in the panel. `primary+q` and `ctrl+q` are
   the same key on Linux and Windows, so a file can be fine on a Mac and
   conflict elsewhere. Keys that became defaults later give way to a binding of
-  your own instead: `F2` (`command_line`), `Shift+F4` (`new_file`), the history
+  your own instead: `F2` (`hermes_chat`), `Shift+F2` (`command_line`), `Shift+F4` (`new_file`), the history
   keys (`history_back`, `history_forward`), `primary+d` (`add_favourite`),
   `primary+k` (`key_bindings`), `primary+c` (`copy_files`) and `primary+z`
   (`restore_last_deletion`). The action keeps its other keys and the command

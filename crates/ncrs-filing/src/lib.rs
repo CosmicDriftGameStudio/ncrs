@@ -3,6 +3,7 @@
 //! reorganisation pages, and the reading of the Hermes column. Knows nothing
 //! about the UI.
 
+pub mod chat_work;
 pub mod column_reading;
 pub mod execute;
 pub mod filing;
