@@ -52,12 +52,12 @@ pub(in crate::filing) fn wire_ai(setting: &AiSetting, db_path: &Path) -> AiWirin
         AiSetting::Local { threads } => {
             let folder = ai_models_dir(db_path)
                 .unwrap_or_else(|| PathBuf::from(ncrs_ai::LOCAL_MODEL_FOLDER));
-            AiWiring::Local(Arc::new(ncrs_ai::LazyLocalModel::new(
+            AiWiring::Local(ncrs_ai::LazyLocalModel::shared(
                 folder.join(ncrs_ai::LOCAL_MODEL.name),
                 ncrs_ai::LOCAL_MODEL,
                 local_threads(*threads),
                 AI_CONTEXT_TOKENS,
-            )))
+            ))
         }
         #[cfg(not(feature = "local-ai"))]
         AiSetting::Local { .. } => {

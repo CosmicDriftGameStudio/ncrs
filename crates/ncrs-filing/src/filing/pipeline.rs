@@ -49,9 +49,9 @@ impl FilingModule {
             AiWiring::Local(model) => match model.status() {
                 ncrs_ai::LocalModelStatus::NotDownloaded => AiStatus::NotDownloaded,
                 ncrs_ai::LocalModelStatus::NotLoadedYet => AiStatus::NotLoadedYet,
-                ncrs_ai::LocalModelStatus::Loaded { name, memory_bytes } => {
-                    AiStatus::Loaded { name, memory_bytes }
-                }
+                ncrs_ai::LocalModelStatus::Loaded {
+                    name, memory_bytes, ..
+                } => AiStatus::Loaded { name, memory_bytes },
                 ncrs_ai::LocalModelStatus::Failed(reason) => AiStatus::Failed(reason),
             },
             AiWiring::Http { origin, model, .. } => AiStatus::Http {

@@ -2,6 +2,7 @@
 //! A provider answers with fields only: there is no type through which it
 //! could ask for anything else, and what it returns is checked before use.
 
+mod chat;
 mod consent;
 mod contract;
 mod error;
@@ -14,9 +15,15 @@ pub use json::Json;
 mod local;
 mod model_file;
 mod prompt;
+mod status;
 #[cfg(any(test, feature = "testing"))]
 mod testing;
 
+pub use chat::{
+    chat_grammar, chat_user_message, parse_chat_reply, search_json, ChatIntent, ChatModel,
+    ChatQuestion, ChatTurn, Order, QuestionKind, Schedule, SearchQuery, Transfer,
+    CHAT_SYSTEM_PROMPT,
+};
 pub use consent::{ConsentLedger, NoConsentGiven, OutgoingPreview};
 pub use contract::{
     output_schema, parse_reply, ExtractedField, Extraction, ExtractionRequest, Provider, CONFIDENT,
@@ -28,10 +35,11 @@ pub use http::{
     Secret, MAX_REPLY_BYTES,
 };
 #[cfg(feature = "llama")]
-pub use local::{LazyLocalModel, LocalModel, LocalModelConfig, LocalModelStatus};
+pub use local::{LazyLocalModel, LocalModel, LocalModelConfig};
 pub use model_file::{
     has_partial_download, verify_model_file, ModelFileError, ModelPin, PartialDownload,
     LOCAL_MODEL, LOCAL_MODEL_FOLDER,
 };
+pub use status::{Compute, LocalModelStatus};
 #[cfg(any(test, feature = "testing"))]
-pub use testing::FakeProvider;
+pub use testing::{FakeProvider, ScriptedChatModel};

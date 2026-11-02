@@ -1,0 +1,319 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+
+use super::eval::{rows, search_of_json, Expect, HOLDOUT_ROWS, MAIN_ROWS};
+use super::*;
+use crate::error::AiError;
+
+fn turn(message: &str) -> ChatTurn {
+    ChatTurn {
+        message: message.to_owned(),
+        question: None,
+        previous_search: None,
+    }
+}
+
+fn question(text: &str, options: &[&str]) -> Option<ChatQuestion> {
+    Some(ChatQuestion {
+        text: text.to_owned(),
+        options: options.iter().map(|option| (*option).to_owned()).collect(),
+    })
+}
+
+fn parse(raw: &str) -> Result<ChatIntent, AiError> {
+    parse_chat_reply(raw, &turn("x"))
+}
+
+#[test]
+fn the_user_message_without_context() {
+    assert_eq!(
+        chat_user_message(&turn("räum meine downloads auf")).unwrap(),
+        "Hermes' last question: none\nPrevious search: none\nMessage: räum meine downloads auf"
+    );
+}
+
+#[test]
+fn the_user_message_with_a_question_and_options() {
+    let asked = ChatTurn {
+        question: question("Soll ich das so umsetzen?", &["ja", "nein"]),
+        ..turn("ja bitte")
+    };
+
+    assert_eq!(
+        chat_user_message(&asked).unwrap(),
+        "Hermes' last question: Soll ich das so umsetzen? Options: ja | nein\n\
+         Previous search: none\nMessage: ja bitte"
+    );
+}
+
+#[test]
+fn the_user_message_carries_the_previous_search_as_compact_json() {
+    let asked = ChatTurn {
+        previous_search: Some(SearchQuery {
+            sender: Some("Finanzamt Chemnitz-Süd".to_owned()),
+            year_from: Some(2016),
+            ..SearchQuery::default()
+        }),
+        ..turn("nur bescheide")
+    };
+
+    assert_eq!(
+        chat_user_message(&asked).unwrap(),
+        "Hermes' last question: none\n\
+         Previous search: {\"sender\":\"Finanzamt Chemnitz-Süd\",\"year_from\":2016}\n\
+         Message: nur bescheide"
+    );
+}
+
+#[test]
+fn amounts_are_written_whole_or_with_the_cents_they_need() {
+    let query = SearchQuery {
+        amount_min_cents: Some(10_000),
+        amount_max_cents: Some(1_250),
+        text: Some("a \"b\" \\ c".to_owned()),
+        ..SearchQuery::default()
+    };
+
+    assert_eq!(
+        search_json(&query),
+        "{\"amount_min\":100,\"amount_max\":12.5,\"text\":\"a \\\"b\\\" \\\\ c\"}"
+    );
+    let cents = SearchQuery {
+        amount_min_cents: Some(1_234),
+        ..SearchQuery::default()
+    };
+    assert_eq!(search_json(&cents), "{\"amount_min\":12.34}");
+}
+
+#[test]
+fn an_empty_message_is_refused_and_control_characters_are_removed() {
+    assert!(chat_user_message(&turn("  \n\t ")).is_err());
+    assert!(chat_user_message(&turn("a\u{7}b"))
+        .unwrap()
+        .ends_with("Message: ab"));
+}
+
+#[test]
+fn the_grammar_without_options_has_no_answer() {
+    let grammar = chat_grammar(&turn("x"));
+
+    assert!(grammar
+        .starts_with("root ::= tidy | change | undo | search | ask | explain | bulk | other\n"));
+    assert!(!grammar.contains("answer"));
+    assert!(grammar.contains("other ::="));
+}
+
+#[test]
+fn the_grammar_with_options_has_an_answer_of_exactly_those() {
+    let asked = ChatTurn {
+        question: question("?", &["ja", "nein"]),
+        ..turn("x")
+    };
+
+    let grammar = chat_grammar(&asked);
+
+    assert!(grammar.starts_with(
+        "root ::= tidy | change | undo | search | ask | explain | bulk | other | answer\n\
+         choice ::= \"\\\"ja\\\"\" | \"\\\"nein\\\"\"\n\
+         answer ::= \"{\\\"intent\\\":\\\"answer\\\",\\\"choice\\\":\" choice \"}\"\n"
+    ));
+}
+
+#[test]
+fn options_the_grammar_cannot_spell_are_left_out() {
+    let asked = ChatTurn {
+        question: question("?", &["ja", "say \"x\"", "back\\slash", "tab\there", ""]),
+        ..turn("x")
+    };
+    let only_bad = ChatTurn {
+        question: question("?", &["say \"x\""]),
+        ..turn("x")
+    };
+
+    assert!(chat_grammar(&asked).contains("choice ::= \"\\\"ja\\\"\"\nanswer"));
+    assert!(!chat_grammar(&only_bad).contains("answer"));
+}
+
+#[test]
+fn every_intent_is_read() {
+    assert_eq!(
+        parse(
+            r#"{"intent":"tidy_folder","source":"Downloads","target":"Archiv","schedule":"always","transfer":"move"}"#
+        ),
+        Ok(ChatIntent::TidyFolder {
+            source: "Downloads".to_owned(),
+            target: Some("Archiv".to_owned()),
+            schedule: Some(Schedule::Always),
+            transfer: Some(Transfer::Move),
+        })
+    );
+    assert_eq!(
+        parse(r#"{"intent":"change_structure","area":"Konto","scope":"2020","order":"by_month"}"#),
+        Ok(ChatIntent::ChangeStructure {
+            area: "Konto".to_owned(),
+            scope: Some("2020".to_owned()),
+            order: Order::ByMonth,
+        })
+    );
+    assert_eq!(parse(r#"{"intent":"undo"}"#), Ok(ChatIntent::Undo));
+    assert_eq!(
+        parse(r#"{"intent":"search","sender":"DKB","year_from":2020,"amount_min":12.5}"#),
+        Ok(ChatIntent::Search(SearchQuery {
+            sender: Some("DKB".to_owned()),
+            year_from: Some(2020),
+            amount_min_cents: Some(1_250),
+            ..SearchQuery::default()
+        }))
+    );
+    assert_eq!(
+        parse(r#"{"intent":"ask_content","question_kind":"sum","kind":"Rechnung"}"#),
+        Ok(ChatIntent::AskContent {
+            question_kind: QuestionKind::Sum,
+            sender: None,
+            kind: Some("Rechnung".to_owned()),
+        })
+    );
+    assert_eq!(
+        parse(r#"{"intent":"explain","file":"a.pdf"}"#),
+        Ok(ChatIntent::Explain {
+            file: "a.pdf".to_owned()
+        })
+    );
+    assert_eq!(
+        parse(r#"{"intent":"bulk_move","filter_year":2019,"target":"Alt"}"#),
+        Ok(ChatIntent::BulkMove {
+            filter_kind: None,
+            filter_sender: None,
+            filter_year: Some(2019),
+            target: "Alt".to_owned(),
+        })
+    );
+    assert_eq!(parse(r#"{"intent":"other","x":1}"#), Ok(ChatIntent::Other));
+}
+
+#[test]
+fn an_answer_is_the_index_of_the_option_it_names() {
+    let asked = ChatTurn {
+        question: question("?", &["ja", "nein", "später"]),
+        ..turn("x")
+    };
+
+    assert_eq!(
+        parse_chat_reply(r#"{"intent":"answer","choice":"später"}"#, &asked),
+        Ok(ChatIntent::Answer { choice: 2 })
+    );
+    assert!(parse_chat_reply(r#"{"intent":"answer","choice":"vielleicht"}"#, &asked).is_err());
+    assert!(parse_chat_reply(r#"{"intent":"answer","choice":"JA"}"#, &asked).is_err());
+    assert!(parse(r#"{"intent":"answer","choice":"ja"}"#).is_err());
+}
+
+#[test]
+fn amounts_of_zero_or_less_and_bad_years_are_no_values() {
+    let Ok(ChatIntent::Search(query)) = parse(
+        r#"{"intent":"search","year_from":999,"year_to":3000,"amount_min":0,"amount_max":-5}"#,
+    ) else {
+        panic!("a search");
+    };
+
+    assert_eq!(query, SearchQuery::default());
+    let Ok(ChatIntent::Search(rounded)) = parse(r#"{"intent":"search","amount_min":0.005}"#) else {
+        panic!("a search");
+    };
+    assert_eq!(rounded.amount_min_cents, Some(1));
+}
+
+#[test]
+fn strings_are_cleaned_and_a_long_one_is_no_value() {
+    let long = "x".repeat(81);
+    let raw = format!(r#"{{"intent":"search","sender":"A\u0007B","kind":"{long}"}}"#);
+
+    let Ok(ChatIntent::Search(query)) = parse(&raw) else {
+        panic!("a search");
+    };
+
+    assert_eq!(query.sender.as_deref(), Some("AB"));
+    assert_eq!(query.kind, None);
+}
+
+#[test]
+fn a_missing_required_field_or_an_unknown_intent_is_an_error() {
+    for raw in [
+        r#"{"intent":"tidy_folder"}"#,
+        r#"{"intent":"change_structure","area":"A"}"#,
+        r#"{"intent":"change_structure","order":"flat"}"#,
+        r#"{"intent":"change_structure","area":"A","order":"sideways"}"#,
+        r#"{"intent":"explain"}"#,
+        r#"{"intent":"bulk_move"}"#,
+        r#"{"intent":"ask_content"}"#,
+        r#"{"intent":"delete_everything"}"#,
+        r#"{"sender":"A"}"#,
+        r#"[1]"#,
+        "nonsense",
+    ] {
+        assert!(parse(raw).is_err(), "{raw}");
+    }
+}
+
+#[test]
+fn the_previous_search_of_every_row_is_written_back_unchanged() {
+    let mut checked = 0;
+    for row in rows(MAIN_ROWS).iter().chain(&rows(HOLDOUT_ROWS)) {
+        if let Some(json) = &row.previous_search {
+            assert_eq!(&search_json(&search_of_json(json)), json, "row {}", row.id);
+            checked += 1;
+        }
+    }
+    assert!(checked > 0);
+}
+
+#[test]
+fn the_rows_are_all_there_and_make_turns() {
+    let all: Vec<_> = rows(MAIN_ROWS)
+        .into_iter()
+        .chain(rows(HOLDOUT_ROWS))
+        .collect();
+
+    assert_eq!(all.len(), 160);
+    for row in &all {
+        let turn = row.turn();
+        assert_eq!(turn.message, row.text);
+        assert_eq!(
+            turn.question.map(|q| q.options),
+            row.question.as_ref().map(|_| row.options.clone())
+        );
+        assert!(!row.intent.is_empty(), "row {}", row.id);
+        for (key, expect) in &row.expected {
+            let usable = match expect {
+                Expect::Text(any_of) => !any_of.is_empty(),
+                Expect::Number(number) => number.is_finite(),
+            };
+            assert!(usable, "row {} {key}", row.id);
+        }
+    }
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn a_scripted_model_replies_through_the_real_parser_and_runs_dry() {
+    use crate::status::LocalModelStatus;
+    use crate::testing::ScriptedChatModel;
+
+    let model = ScriptedChatModel::new(
+        LocalModelStatus::NotLoadedYet,
+        [Ok(r#"{"intent":"undo"}"#), Err(AiError::Model("down"))],
+    );
+
+    assert_eq!(model.understand(&turn("a")), Ok(ChatIntent::Undo));
+    assert_eq!(model.understand(&turn("b")), Err(AiError::Model("down")));
+    assert_eq!(
+        model.understand(&turn("c")),
+        Err(AiError::Model("no scripted reply"))
+    );
+    assert_eq!(model.turns().len(), 3);
+    model.refresh();
+    assert_eq!(model.refresh_count(), 1);
+}

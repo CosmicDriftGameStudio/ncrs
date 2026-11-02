@@ -1,0 +1,40 @@
+{"id": 1, "lang": "de", "intent": "tidy_folder", "text": "mal bitte den ordner Bilder entrümpeln", "expected": {"source": "Bilder"}}
+{"id": 2, "lang": "de", "intent": "tidy_folder", "text": "alles aus Eingang jeden tag automatisch nach Ablage kopieren", "expected": {"source": "Eingang", "target": "Ablage", "schedule": "always", "transfer": "copy"}}
+{"id": 3, "lang": "de", "intent": "tidy_folder", "text": "wirf mal ne ordnung in meine dokumente rein, aber nur heute", "expected": {"source": "Dokumente", "schedule": "once"}}
+{"id": 4, "lang": "de", "intent": "tidy_folder", "text": "sortiere projekte nach archiv/projekte, verschieben", "expected": {"source": "Projekte", "target": "archiv/projekte", "transfer": "move"}}
+{"id": 5, "lang": "en", "intent": "tidy_folder", "text": "clean up the folder old stuff and copy it to backup, just now", "expected": {"source": "Old stuff", "target": "Backup", "transfer": "copy", "schedule": "once"}}
+{"id": 6, "lang": "de", "intent": "change_structure", "text": "kinder: kita nach jahr ablegen", "expected": {"area": "Kinder", "scope": "Kita", "order": "by_year"}}
+{"id": 7, "lang": "de", "intent": "change_structure", "text": "gehalt lieber flach, ohne jahresordner", "expected": {"area": "Gehalt|Arbeit", "order": "flat"}}
+{"id": 8, "lang": "de", "intent": "change_structure", "text": "versicherungen nach art statt absender", "expected": {"area": "Versicherung", "order": "by_kind"}}
+{"id": 9, "lang": "en", "intent": "change_structure", "text": "can you sort health by sender", "expected": {"area": "Health|Gesundheit", "order": "by_sender"}}
+{"id": 10, "lang": "de", "intent": "undo", "text": "ne doch nicht, rückgängig bitte", "expected": {}}
+{"id": 11, "lang": "de", "intent": "undo", "text": "zurück auf anfang", "expected": {}}
+{"id": 12, "lang": "en", "intent": "undo", "text": "revert that please", "expected": {}}
+{"id": 13, "lang": "de", "intent": "search", "text": "briefe vom notar dr weber", "expected": {"sender": "Notar Dr. Weber", "kind": "Brief"}}
+{"id": 14, "lang": "de", "intent": "search", "text": "interhyp unterlagen ab 2021", "expected": {"sender": "Interhyp AG", "year_from": 2021}}
+{"id": 15, "lang": "de", "intent": "search", "text": "kita rechnungen 2019 bis 2022 unter 200 euro", "expected": {"sender": "Kita Sonnenschein", "kind": "Rechnung", "year_from": 2019, "year_to": 2022, "amount_max": 200}}
+{"id": 16, "lang": "en", "intent": "search", "text": "show me everything from amazon over 50 euro", "expected": {"sender": "Amazon", "amount_min": 50}}
+{"id": 17, "lang": "en", "intent": "search", "text": "elster protocols 2020", "expected": {"sender": "ELSTER", "kind": "Protocol|Übertragungsprotokoll", "year_from": 2020, "year_to": 2020}}
+{"id": 18, "lang": "de", "intent": "search", "text": "nur die von 2022", "expected": {"sender": "Allianz", "year_from": 2022, "year_to": 2022}, "previous_search": "{\"sender\":\"Allianz\"}", "was_refine": true}
+{"id": 19, "lang": "de", "intent": "search", "text": "und bis maximal 300 euro", "expected": {"kind": "Rechnung", "year_from": 2020, "amount_max": 300}, "previous_search": "{\"kind\":\"Rechnung\",\"year_from\":2020}", "was_refine": true}
+{"id": 20, "lang": "de", "intent": "search", "text": "jetzt nur 2019 und 2020", "expected": {"sender": "Sparkasse Chemnitz", "kind": "Kontoauszug", "year_from": 2019, "year_to": 2020}, "previous_search": "{\"sender\":\"Sparkasse Chemnitz\",\"kind\":\"Kontoauszug\"}", "was_refine": true}
+{"id": 21, "lang": "de", "intent": "ask_content", "text": "wieviel kostet mich die hausverwaltung meyer insgesamt", "expected": {"question_kind": "sum", "sender": "Hausverwaltung Meyer"}}
+{"id": 22, "lang": "de", "intent": "ask_content", "text": "wann ist die frist für die steuererklärung", "expected": {"question_kind": "deadline", "kind": "Steuererklärung"}}
+{"id": 23, "lang": "de", "intent": "ask_content", "text": "welche kundennummer hab ich bei der dkb", "expected": {"question_kind": "number", "sender": "DKB"}}
+{"id": 24, "lang": "en", "intent": "ask_content", "text": "what date is my contract with cosmicdrift", "expected": {"question_kind": "date", "sender": "Cosmicdrift"}}
+{"id": 25, "lang": "de", "intent": "explain", "text": "wieso steckt scan0200 im ordner bank", "expected": {"file": "scan0200"}}
+{"id": 26, "lang": "de", "intent": "explain", "text": "warum is die datei Zeugnis_Lena.pdf in kinder gelandet", "expected": {"file": "Zeugnis_Lena.pdf"}}
+{"id": 27, "lang": "de", "intent": "explain", "text": "weshalb liegt Bescheid_2019.pdf im archiv", "expected": {"file": "Bescheid_2019.pdf"}}
+{"id": 28, "lang": "de", "intent": "bulk_move", "text": "pack alles von amazon aus 2022 in steuer/2022/belege", "expected": {"filter_sender": "Amazon", "filter_year": 2022, "target": "Steuer/2022/Belege"}}
+{"id": 29, "lang": "de", "intent": "bulk_move", "text": "alle spendenquittungen nach steuer/spenden", "expected": {"filter_kind": "Spendenquittung", "target": "Steuer/Spenden"}}
+{"id": 30, "lang": "de", "intent": "bulk_move", "text": "alle schreiben von der kita sonnenschein nach kinder/kita", "expected": {"filter_sender": "Kita Sonnenschein", "target": "Kinder/Kita"}}
+{"id": 31, "lang": "en", "intent": "bulk_move", "text": "move all invoices from 2018 into archive/2018", "expected": {"filter_kind": "Invoice|Rechnung", "filter_year": 2018, "target": "archive/2018"}}
+{"id": 32, "lang": "de", "intent": "answer", "text": "ja klar alles", "expected": {"choice": "ja, mit Unterordnern"}, "question": "Soll ich auch die Unterordner mitnehmen?", "options": ["ja, mit Unterordnern", "nein, nur den Ordner"]}
+{"id": 33, "lang": "de", "intent": "answer", "text": "nur den hauptordner", "expected": {"choice": "nein, nur den Ordner"}, "question": "Soll ich auch die Unterordner mitnehmen?", "options": ["ja, mit Unterordnern", "nein, nur den Ordner"]}
+{"id": 34, "lang": "de", "intent": "answer", "text": "weg damit, papierkorb", "expected": {"choice": "Papierkorb"}, "question": "Wohin damit?", "options": ["Archiv", "Papierkorb", "Dokumente"]}
+{"id": 35, "lang": "de", "intent": "answer", "text": "in die dokumente", "expected": {"choice": "Dokumente"}, "question": "Wohin damit?", "options": ["Archiv", "Papierkorb", "Dokumente"]}
+{"id": 36, "lang": "de", "intent": "answer", "text": "ja merk dir das", "expected": {"choice": "ja"}, "question": "Soll ich mir das merken?", "options": ["ja", "nein"]}
+{"id": 37, "lang": "en", "intent": "answer", "text": "keep the originals", "expected": {"choice": "copy"}, "question": "Copy or move?", "options": ["copy", "move"]}
+{"id": 38, "lang": "de", "intent": "other", "text": "sudo apt update", "expected": {}}
+{"id": 39, "lang": "de", "intent": "other", "text": "wie alt ist die erde", "expected": {}}
+{"id": 40, "lang": "de", "intent": "other", "text": "hdhsjsk", "expected": {}}
