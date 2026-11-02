@@ -1,4 +1,4 @@
-use rusqlite::params;
+use rusqlite::{params, OptionalExtension as _};
 
 use crate::error::IndexError;
 use crate::index::Index;
@@ -15,6 +15,34 @@ impl Index {
             |row| row.get(0),
         )?;
         Ok(found)
+    }
+
+    /// The version of the field detection that last read the document; 0 when
+    /// none has.
+    pub fn fields_read_version(&self, id: DocumentId) -> Result<u32, IndexError> {
+        self.connection()
+            .query_row(
+                "SELECT fields_read_version FROM document WHERE id = ?1",
+                [id.get()],
+                |row| row.get(0),
+            )
+            .optional()?
+            .ok_or(IndexError::DocumentNotFound(id))
+    }
+
+    pub fn set_fields_read_version(
+        &mut self,
+        id: DocumentId,
+        version: u32,
+    ) -> Result<(), IndexError> {
+        let changed = self.connection().execute(
+            "UPDATE document SET fields_read_version = ?2 WHERE id = ?1",
+            params![id.get(), version],
+        )?;
+        if changed == 0 {
+            return Err(IndexError::DocumentNotFound(id));
+        }
+        Ok(())
     }
 
     /// Counts for the display of the automatic filing. Documents that are
@@ -108,6 +136,20 @@ mod tests {
         index.set_document_text(empty, "").unwrap();
         assert!(!index.has_document_text_row(none).unwrap());
         assert!(index.has_document_text_row(empty).unwrap());
+    }
+
+    #[test]
+    fn the_fields_read_version_starts_at_zero_and_is_stored() {
+        let (_dir, mut index) = plain_index();
+        let id = index.insert_document(&new_document(1)).unwrap();
+        assert_eq!(index.fields_read_version(id).unwrap(), 0);
+        index.set_fields_read_version(id, 3).unwrap();
+        assert_eq!(index.fields_read_version(id).unwrap(), 3);
+        let missing = DocumentId::new(id.get() + 100);
+        assert!(matches!(
+            index.fields_read_version(missing),
+            Err(IndexError::DocumentNotFound(_))
+        ));
     }
 
     #[test]

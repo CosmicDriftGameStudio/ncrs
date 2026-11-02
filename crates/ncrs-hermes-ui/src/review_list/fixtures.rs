@@ -53,6 +53,7 @@ pub fn item(
         proposed_pattern: Some("{sender}/{date}_{kind}".to_owned()),
         origins: ncrs_index::FieldOrigins::default(),
         passages: Vec::new(),
+        placement: None,
     }
 }
 

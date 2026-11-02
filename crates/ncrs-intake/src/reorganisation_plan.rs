@@ -5,12 +5,13 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use ncrs_index::{Index, KindLanguage, Kinds, ReorganisationPlan};
+use ncrs_index::{Index, KindCatalog, KindLanguage, Kinds, ReorganisationPlan};
 use walkdir::WalkDir;
 
 use crate::archive_profile::{learn_archive, ArchiveDocument};
 use crate::error::IntakeError;
 use crate::reorganisation::{plan_reorganisation, PlanFile, PlanRule, ReorganisationInput};
+use crate::structure::{learn_structure, LocationStructure, StructureDocument};
 
 /// Plans the reorganisation of the archive location at `root` (the folder as
 /// the intake sees it, which is how the index stores the paths below it) and
@@ -22,7 +23,7 @@ pub fn plan_location(
     root: &Path,
     language: KindLanguage,
 ) -> Result<ReorganisationPlan, IntakeError> {
-    let files = plan_files(index, root)?;
+    let files = location_documents(index, root)?;
     let documents: Vec<ArchiveDocument> = files
         .iter()
         .map(|file| ArchiveDocument {
@@ -34,9 +35,11 @@ pub fn plan_location(
     let rules = plan_rules(index)?;
     let existing = existing_paths(root)?;
     let kinds = Kinds::new(Arc::clone(index.kinds()), language);
+    let unordered = location_structure(&files, &kinds.catalog);
     let items = plan_reorganisation(&ReorganisationInput {
         files: &files,
         profile: &profile,
+        unordered: &unordered,
         rules: &rules,
         existing: &existing,
         kinds: &kinds,
@@ -47,7 +50,24 @@ pub fn plan_location(
         .ok_or_else(|| IntakeError::io(root)(std::io::Error::other("the plan was not stored")))
 }
 
-fn plan_files(index: &Index, root: &Path) -> Result<Vec<PlanFile>, IntakeError> {
+/// The structure the documents of a location are laid out in, learned from
+/// their fields as they are now.
+pub fn location_structure(files: &[PlanFile], kinds: &KindCatalog) -> LocationStructure {
+    let documents: Vec<StructureDocument> = files
+        .iter()
+        .map(|file| StructureDocument {
+            relative_path: file.relative_path.clone(),
+            date: file.fields.date,
+            sender: file.fields.sender.clone(),
+            kind: file.fields.kind.clone(),
+        })
+        .collect();
+    learn_structure(&documents, kinds)
+}
+
+/// Every document below `root` with its fields and text, and each of its
+/// known copies as a file of its own.
+pub fn location_documents(index: &Index, root: &Path) -> Result<Vec<PlanFile>, IntakeError> {
     let mut files = Vec::new();
     for (id, path) in index.documents_under(root)? {
         let (Some(document), Ok(relative)) = (index.document(id)?, path.strip_prefix(root)) else {
@@ -124,7 +144,7 @@ mod tests {
 
     use super::*;
     use crate::location::{Location, LocationMode};
-    use crate::reorganisation::{DUPLICATES_FOLDER, FINDING_PRIORITY};
+    use crate::reorganisation::FINDING_PRIORITY;
     use crate::sanitise::stays_below;
 
     struct Archive {
@@ -462,7 +482,7 @@ mod tests {
     }
 
     #[test]
-    fn the_copy_that_fits_its_folder_stays_and_the_other_moves_below_duplicates() {
+    fn a_copy_in_an_unordered_folder_is_noted_and_the_copy_in_an_ordered_folder_stays() {
         let mut archive = insurance_archive();
         let original = archive.add(
             "Insurance/2024/2024-04-01_invoice.pdf",
@@ -482,34 +502,35 @@ mod tests {
 
         let plan = archive.plan();
 
-        let moved: Vec<(&String, &PlanItem)> = plan
+        let noted: Vec<(&String, &PlanItem)> = plan
             .iter()
             .filter(|(_, item)| item.findings[0].kind() == FindingKind::Duplicate)
             .collect();
-        assert_eq!(moved.len(), 2, "{plan:?}");
-        for (source, item) in moved {
-            assert_eq!(
-                item.findings[0],
-                Finding::Duplicate {
-                    keeper: PathBuf::from("Insurance/2024/2024-04-01_invoice.pdf")
-                }
-            );
-            assert_eq!(
-                item.outcome,
-                PlanOutcome::Move {
-                    target: Path::new(DUPLICATES_FOLDER).join(source)
-                }
-            );
-            assert_eq!(
-                item.hash,
-                archive.index.document(original).unwrap().unwrap().hash
-            );
-        }
+        assert_eq!(noted.len(), 1, "{plan:?}");
+        let (source, item) = noted[0];
+        assert_eq!(source, "Inbox Leftovers/2024-04-01_invoice.pdf");
+        assert_eq!(
+            item.findings[0],
+            Finding::Duplicate {
+                keeper: PathBuf::from("Insurance/2024/2024-04-01_invoice.pdf")
+            }
+        );
+        assert_eq!(
+            item.outcome,
+            PlanOutcome::NoAction(NoActionReason::DuplicateCopy)
+        );
+        assert_eq!(
+            item.hash,
+            archive.index.document(original).unwrap().unwrap().hash
+        );
         assert!(!plan.contains_key("Insurance/2024/2024-04-01_invoice.pdf"));
+        assert!(plan
+            .get("Insurance/2023/scan.pdf")
+            .is_none_or(|other| !only_findings(other).contains(&FindingKind::Duplicate)));
     }
 
     #[test]
-    fn of_equally_fitting_copies_the_one_seen_first_stays() {
+    fn copies_that_all_lie_in_ordered_folders_stay() {
         let mut archive = insurance_archive();
         let first = archive.add(
             "Insurance/2024/2024-04-01_invoice.pdf",
@@ -524,9 +545,31 @@ mod tests {
 
         let plan = archive.plan();
 
-        let item = &plan["Insurance/2024/copy of 2024-04-01_invoice.pdf"];
-        assert_eq!(only_findings(item)[0], FindingKind::Duplicate);
-        assert!(!plan.contains_key("Insurance/2024/2024-04-01_invoice.pdf"));
+        for item in plan.values() {
+            assert!(!only_findings(item).contains(&FindingKind::Duplicate));
+        }
+    }
+
+    #[test]
+    fn when_all_copies_are_unordered_the_one_seen_first_stays() {
+        let mut archive = insurance_archive();
+        let first = archive.add("Misc/a.pdf", None, "Loose letter");
+        archive.add_copy(first, "Junk/b.pdf", "Misc/a.pdf");
+
+        let plan = archive.plan();
+
+        let item = &plan["Junk/b.pdf"];
+        assert_eq!(
+            item.findings[0],
+            Finding::Duplicate {
+                keeper: PathBuf::from("Misc/a.pdf")
+            }
+        );
+        assert_eq!(
+            item.outcome,
+            PlanOutcome::NoAction(NoActionReason::DuplicateCopy)
+        );
+        assert!(!plan.contains_key("Misc/a.pdf"));
     }
 
     #[test]
@@ -557,11 +600,11 @@ mod tests {
                 "{item:?}"
             );
         }
-        let moved = plan
+        let noted = plan
             .values()
             .filter(|item| item.findings[0].kind() == FindingKind::Duplicate)
             .count();
-        assert_eq!(moved, 1);
+        assert_eq!(noted, 1);
         assert!(archive.root.join("Misc/2024-04-01_invoice.pdf").is_file());
         assert!(archive
             .root
@@ -656,19 +699,24 @@ mod tests {
 
     #[test]
     fn a_source_path_that_leaves_the_location_gets_a_conflict_without_a_target() {
-        let hash = ContentHash([7; 32]);
-        let file = |path: &str, recorded_at| PlanFile {
-            relative_path: PathBuf::from(path),
-            hash,
-            fields: DocumentFields::default(),
+        let files = [PlanFile {
+            relative_path: PathBuf::from("../2022/x.pdf"),
+            hash: ContentHash([7; 32]),
+            fields: DocumentFields {
+                date: day(2024, 1, 1),
+                ..DocumentFields::default()
+            },
             text: None,
-            recorded_at,
-        };
-        let files = [file("a/x.pdf", 1), file("../elsewhere/x.pdf", 2)];
+            recorded_at: 1,
+        }];
 
         let items = plan_reorganisation(&ReorganisationInput {
             files: &files,
             profile: &[],
+            unordered: &LocationStructure {
+                areas: Vec::new(),
+                unordered: Vec::new(),
+            },
             rules: &[],
             existing: &BTreeSet::new(),
             kinds: &Kinds::built_in(KindLanguage::English),
@@ -710,27 +758,20 @@ mod tests {
         );
         archive.add_copy(
             original,
-            "Insurance/2023/scan.pdf",
+            "Inbox Leftovers/scan.pdf",
             "Insurance/2024/2024-04-01_invoice.pdf",
         );
-        // The original is misplaced by the rule too, the copy has all four.
+        // The original is misplaced by the rule too, the copy is noted as a copy first.
         let plan = archive.plan();
 
-        let copy = &plan["Insurance/2023/scan.pdf"];
+        let copy = &plan["Inbox Leftovers/scan.pdf"];
         assert_eq!(
             only_findings(copy),
-            [
-                FindingKind::Duplicate,
-                FindingKind::Misplaced,
-                FindingKind::YearMismatch,
-                FindingKind::NameOutlier,
-            ]
+            [FindingKind::Duplicate, FindingKind::Misplaced]
         );
         assert_eq!(
             copy.outcome,
-            PlanOutcome::Move {
-                target: PathBuf::from("duplicates/Insurance/2023/scan.pdf")
-            }
+            PlanOutcome::NoAction(NoActionReason::DuplicateCopy)
         );
         let kept = &plan["Insurance/2024/2024-04-01_invoice.pdf"];
         assert_eq!(only_findings(kept), [FindingKind::Misplaced]);

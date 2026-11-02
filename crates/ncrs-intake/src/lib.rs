@@ -5,13 +5,17 @@
 mod archive_profile;
 mod classify;
 mod conditions;
+mod date_detection;
 mod default_pattern;
 mod error;
 mod extract;
+mod field_detection;
 mod filing_plan;
+mod image_text;
 mod location;
 mod ocr;
 mod office;
+mod placement;
 mod recipient_detection;
 #[cfg(any(test, feature = "test-support"))]
 pub mod recognition;
@@ -22,7 +26,10 @@ mod sanitise;
 mod scan;
 mod sender_detection;
 mod stability;
+mod structure;
 mod take_in;
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_archive;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 mod text;
@@ -34,6 +41,7 @@ pub use archive_profile::{
 };
 pub use classify::{classify, is_image_file, text_is_readable, Skip};
 pub use conditions::{condition_match_ranges, word_condition_holds, MAX_MATCH_RANGES};
+pub use date_detection::detect_letter_date;
 pub use default_pattern::{
     choose_pattern, default_pattern_for, pattern_without_tax_context, upgraded_pattern,
     ChosenPattern, PatternSource, DEFAULT_PATTERNS, FALLBACK_PATTERN,
@@ -42,23 +50,25 @@ pub use error::IntakeError;
 pub use extract::{
     extract_amount, extract_date, extract_number, parse_amount, parse_currency, parse_date,
 };
+pub use field_detection::{detect_fields, DetectedFields, OwnNames, FIELDS_READ_VERSION};
 pub use filing_plan::{
     contains_condition_holds, missing_field, pattern_is_valid, plan, render_pattern,
     render_pattern_in, render_pattern_parts, unknown_placeholder, FilingPlan, PatternPart,
     PlanInput, Planning, AI_FIELD_ORDER, FIELD_ORDER, FILING_PLACEHOLDERS,
 };
+pub use image_text::ImageFileText;
 pub use location::{Location, LocationMode};
 pub use ocr::{
     install_model, verify_model_bytes, LazyOcrText, OcrModelError, OcrModelFile, OcrText,
     OCR_MODELS_FOLDER, OCR_MODELS_HOST, OCR_MODELS_PROJECT, OCR_MODEL_FILES,
 };
 pub use office::{extract_text_from_bytes, OfficeText, PlainText};
+pub use placement::{NeighbourIndex, Placement, Signal};
 pub use recipient_detection::{detect_recipient, kind_from_heading};
 pub use reorganisation::{
-    plan_reorganisation, PlanFile, PlanRule, ReorganisationInput, DUPLICATES_FOLDER,
-    FINDING_PRIORITY,
+    plan_reorganisation, PlanFile, PlanRule, ReorganisationInput, FINDING_PRIORITY,
 };
-pub use reorganisation_plan::plan_location;
+pub use reorganisation_plan::{location_documents, location_structure, plan_location};
 pub use rule_suggestions::{
     suggest_rules, ArchiveText, RuleCandidate, MAX_CANDIDATES_PER_FOLDER, MAX_PHRASE_WORDS,
     MAX_SHARE_ELSEWHERE_PERCENT, MIN_FOLDER_DOCUMENTS, MIN_PHRASE_CHARS,
@@ -72,6 +82,10 @@ pub use sender_detection::{
     detect_sender, AliasOffer, DetectedSender, OwnIdentifiers, SenderDetection, SenderSource,
 };
 pub use stability::{StabilityTracker, STABLE_AFTER};
+pub use structure::{
+    learn_structure, Area, Branch, DateFormat, Level, LocationStructure, NamePart, NameScheme,
+    Placeholder, PlaceholderKind, PlaceholderLabel, StructureDocument, UnorderedFolder,
+};
 pub use take_in::{
     has_symlink_ancestor_under, hash_path, open_without_following, take_in, Outcome,
 };

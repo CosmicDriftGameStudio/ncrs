@@ -8,7 +8,7 @@ use std::path::Path;
 
 use iced::mouse::ScrollDelta;
 
-use ncrs_index::{Finding, PlanOutcome};
+use ncrs_index::{Finding, NoActionReason, PlanOutcome};
 
 use ncrs_filing::reorganisation_work::{deciding_finding, PlannedItem};
 use ncrs_ui_kit::list_window::ListWindow;
@@ -35,7 +35,10 @@ impl Group {
 
     pub fn of(planned: &PlannedItem) -> Self {
         if target(planned).is_none() {
-            return Self::Blocked;
+            return match planned.item.outcome {
+                PlanOutcome::NoAction(NoActionReason::DuplicateCopy) => Self::Duplicate,
+                _ => Self::Blocked,
+            };
         }
         match deciding_finding(&planned.item) {
             Some(Finding::Duplicate { .. }) => Self::Duplicate,
@@ -213,7 +216,10 @@ impl ReorganisationView {
 
     /// How many entries cannot be run.
     pub fn blocked_count(&self) -> usize {
-        self.rows.len().saturating_sub(self.runnable_count())
+        self.rows
+            .iter()
+            .filter(|planned| Group::of(planned) == Group::Blocked)
+            .count()
     }
 
     /// Selects or deselects what the line stands for: an entry, or every entry
@@ -380,7 +386,6 @@ mod tests {
 
         let selected = |source: &str| view.is_selected(position(&view, source));
 
-        assert!(selected("Misc/2024-04-01_invoice.pdf"));
         assert!(selected("Insurance/2024/2024-07-01_invoice.pdf"));
         assert!(selected("Insurance/2023/2024-05-01_invoice.pdf"));
         assert!(selected("Insurance/2024/scan 0042.pdf"));
@@ -393,6 +398,10 @@ mod tests {
             "conflict"
         );
         assert!(!selected("Insurance/2024/IMG_7.pdf"), "no action");
+        assert!(
+            !selected("Misc/2024-04-01_invoice.pdf"),
+            "a copy only to clear"
+        );
     }
 
     #[test]
@@ -442,7 +451,7 @@ mod tests {
 
         let handed = view.selection();
 
-        assert_eq!(handed.len(), 4);
+        assert_eq!(handed.len(), 3);
         assert!(handed.iter().all(|planned| target(planned).is_some()));
         for group in Group::ALL {
             let Some(header) = header_of_or_none(&view, group) else {
@@ -489,8 +498,8 @@ mod tests {
     fn the_counts_tell_what_can_and_cannot_run() {
         let view = loaded_view();
 
-        assert_eq!(view.selected_count(), 4);
-        assert_eq!(view.runnable_count(), 5);
+        assert_eq!(view.selected_count(), 3);
+        assert_eq!(view.runnable_count(), 4);
         assert_eq!(view.blocked_count(), 2);
     }
 

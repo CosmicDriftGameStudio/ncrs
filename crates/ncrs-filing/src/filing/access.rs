@@ -66,7 +66,8 @@ impl FilingModule {
         let root = self.target_root()?;
         Some(
             ReviewAccess::new(Arc::clone(&self.index), root)
-                .with_kind_language(self.own.kind_language),
+                .with_kind_language(self.own.kind_language)
+                .with_own(self.own.clone()),
         )
     }
 

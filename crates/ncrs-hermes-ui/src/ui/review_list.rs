@@ -11,7 +11,7 @@ use std::path::Path;
 use iced::widget::{column, container, Column, Row};
 use iced::{alignment, Element};
 use ncrs_index::{DocumentFields, Field, FieldOrigin, ReviewReason};
-use ncrs_intake::{PatternPart, PatternSource};
+use ncrs_intake::{PatternPart, PatternSource, Placement, Signal};
 
 use super::document_preview;
 use super::filing_pieces::{target_view, ExampleLine, TargetHost};
@@ -194,7 +194,7 @@ fn action_bar<'a>(state: &ReviewList, lang: Language, palette: &Palette) -> Elem
 }
 
 /// Why a document is here, before it is put into words.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum Cause {
     NoRule,
     NoText,
@@ -205,6 +205,8 @@ enum Cause {
     TargetExists,
     MissingField(Field),
     LowConfidence(Field),
+    /// No rule files it, but documents like it lie together somewhere.
+    Placed(Placement),
 }
 
 impl Cause {
@@ -225,6 +227,9 @@ impl Cause {
     /// The cause of a row: where the pattern comes from and whether anything
     /// was recognised refine "no rule matches"; every other reason stays.
     fn of_row(item: &ReviewItem, source: Option<PatternSource>) -> Self {
+        if let (ReviewReason::NoMatchingRule, Some(placement)) = (item.reason, &item.placement) {
+            return Self::Placed(placement.clone());
+        }
         match (item.reason, item.text_state, source) {
             (ReviewReason::NoMatchingRule, _, Some(PatternSource::Default)) => Self::DefaultPattern,
             (ReviewReason::NoMatchingRule, TextState::Read, None)
@@ -237,7 +242,7 @@ impl Cause {
     }
 
     /// The sentence, the field a cause names spelled out.
-    fn long_text(self, lang: Language) -> String {
+    fn long_text(&self, lang: Language) -> String {
         let message = match self {
             Self::NoRule => Msg::ReviewListReasonNoRule,
             Self::NoText => Msg::ReviewListReasonNoText,
@@ -247,13 +252,56 @@ impl Cause {
             Self::Unconfirmed => Msg::ReviewListReasonUnconfirmed,
             Self::TargetExists => Msg::ReviewListReasonTargetExists,
             Self::MissingField(field) => {
-                return named(Msg::ReviewListReasonMissingField, field, lang)
+                return named(Msg::ReviewListReasonMissingField, *field, lang)
             }
             Self::LowConfidence(field) => {
-                return named(Msg::ReviewListReasonLowConfidence, field, lang)
+                return named(Msg::ReviewListReasonLowConfidence, *field, lang)
             }
+            Self::Placed(placement) => return placed_text(placement, lang),
         };
         lang.text(message).to_owned()
+    }
+}
+
+/// Where documents like this one lie, and how sure that is.
+fn placed_text(placement: &Placement, lang: Language) -> String {
+    let folder = placement.folder.display().to_string();
+    let count = placement.agreeing.to_string();
+    if !placement.is_sure() {
+        return fill_template(
+            lang.text(Msg::ReviewListNeighboursUnsure),
+            &[
+                ("{agreeing}", &count),
+                ("{similar}", &placement.similar.to_string()),
+                ("{folder}", &folder),
+            ],
+        );
+    }
+    if let Some(field) = placement.missing {
+        return fill_template(
+            lang.text(Msg::ReviewListNeighboursMissingField),
+            &[
+                ("{folder}", &folder),
+                ("{field}", lang.text(field_name(field))),
+            ],
+        );
+    }
+    let slots = [("{count}", count.as_str()), ("{folder}", folder.as_str())];
+    match &placement.signal {
+        Signal::SameNumber { label, value } => fill_template(
+            lang.text(Msg::ReviewListNeighboursSameNumber),
+            &[
+                ("{label}", label.as_str()),
+                ("{value}", value.as_str()),
+                ("{count}", count.as_str()),
+                ("{folder}", folder.as_str()),
+            ],
+        ),
+        Signal::SameIban => fill_template(lang.text(Msg::ReviewListNeighboursSameIban), &slots),
+        Signal::SameSenderAndKind => {
+            fill_template(lang.text(Msg::ReviewListNeighboursSameSenderKind), &slots)
+        }
+        Signal::SameSender => fill_template(lang.text(Msg::ReviewListNeighboursSameSender), &slots),
     }
 }
 

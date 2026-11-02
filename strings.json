@@ -3032,7 +3032,7 @@
     },
     {
       "key": "reorganisation_plan.group_duplicate",
-      "context": "Heading of the group of plan entries that are copies of a file kept elsewhere; the plan moves such a copy into a separate folder and never deletes it.",
+      "context": "Heading of the group of plan entries that are copies of a file kept elsewhere in an ordered folder; the copies lie in unsorted folders and nothing is moved or deleted.",
       "en": "Duplicates",
       "de": "Duplikate"
     },
@@ -3069,8 +3069,8 @@
     {
       "key": "reorganisation_plan.group_explain_duplicate",
       "context": "Explanation under the heading of the group of copies in the detail of the reorganisation plan view.",
-      "en": "Copies of a file that stays where it is. The plan moves each copy into the folder ‘duplicates’ and deletes nothing.",
-      "de": "Kopien einer Datei, die an ihrem Platz bleibt. Der Plan verschiebt jede Kopie in den Ordner ‘duplicates’ und löscht nichts."
+      "en": "Copies of a file that stays where it is. They lie in unsorted folders and can be cleared; the plan moves and deletes nothing.",
+      "de": "Kopien einer Datei, die an ihrem Platz bleibt. Sie liegen in unsortierten Ordnern und können weg; der Plan verschiebt und löscht nichts."
     },
     {
       "key": "reorganisation_plan.group_explain_misplaced",
@@ -3143,6 +3143,12 @@
       "context": "Reason of a plan entry that is a copy. Takes the path of the copy that stays where it is.",
       "en": "Copy of {keeper}",
       "de": "Kopie von {keeper}"
+    },
+    {
+      "key": "reorganisation_plan.reason_duplicate_copy",
+      "context": "Reason of a plan entry that is a copy lying in an unsorted folder; nothing is moved. Takes the path of the copy that stays in the ordered archive.",
+      "en": "Copy of {keeper}; can be cleared",
+      "de": "Kopie von {keeper}; kann weg"
     },
     {
       "key": "reorganisation_plan.reason_misplaced",
@@ -3227,6 +3233,12 @@
       "context": "Sentence under the plan list explaining an entry that is a copy. The copy is moved aside, never deleted. Takes the path of the file that stays and the path the copy would get.",
       "en": "Same content as {keeper}, which stays; this copy moves to {target}.",
       "de": "Gleicher Inhalt wie {keeper}, das bleibt; diese Kopie wandert nach {target}."
+    },
+    {
+      "key": "reorganisation_plan.finding_duplicate_copy",
+      "context": "Sentence under the plan list explaining an entry that is a copy in an unsorted folder. Nothing is moved; the user can clear the copy. Takes the path of the file that stays.",
+      "en": "Same content as {keeper}, which stays. This copy lies in an unsorted folder and can be cleared.",
+      "de": "Gleicher Inhalt wie {keeper}, das bleibt. Diese Kopie liegt in einem unsortierten Ordner und kann weg."
     },
     {
       "key": "reorganisation_plan.finding_name",
@@ -3593,6 +3605,42 @@
       "context": "Review reason in the review list: a field was read with low confidence. Takes the field name.",
       "en": "{field} uncertain",
       "de": "{field} unsicher"
+    },
+    {
+      "key": "review_list.neighbours_same_number",
+      "context": "Review reason in the review list: the document has the same labelled number as documents already filed. Takes the label of the number as printed on the letter, its value, how many documents share it and the folder they lie in.",
+      "en": "{label} {value}, like {count} documents in {folder}",
+      "de": "{label} {value} wie bei {count} Dokumenten in {folder}"
+    },
+    {
+      "key": "review_list.neighbours_same_iban",
+      "context": "Review reason in the review list: the document names the same bank account as documents already filed. Takes how many documents and the folder they lie in.",
+      "en": "Same IBAN as {count} documents in {folder}",
+      "de": "Gleiche IBAN wie {count} Dokumente in {folder}"
+    },
+    {
+      "key": "review_list.neighbours_same_sender_kind",
+      "context": "Review reason in the review list: documents of the same sender and kind are already filed together. Takes how many documents and the folder they lie in.",
+      "en": "{count} documents of this sender and kind lie in {folder}",
+      "de": "{count} Dokumente dieses Absenders und dieser Art liegen in {folder}"
+    },
+    {
+      "key": "review_list.neighbours_same_sender",
+      "context": "Review reason in the review list: documents of the same sender are already filed together. Takes how many documents and the folder they lie in.",
+      "en": "{count} documents of this sender lie in {folder}",
+      "de": "{count} Dokumente dieses Absenders liegen in {folder}"
+    },
+    {
+      "key": "review_list.neighbours_missing_field",
+      "context": "Review reason in the review list: similar documents lie in a folder, but the document lacks a field the naming pattern of that folder needs. Takes the folder and the field name.",
+      "en": "Belongs in {folder}, but the {field} is missing",
+      "de": "Gehört nach {folder}, aber {field} fehlt"
+    },
+    {
+      "key": "review_list.neighbours_unsure",
+      "context": "Review reason in the review list: similar documents are filed in several folders, so there is no sure place. Takes how many of the similar documents lie in the most likely folder, how many there are, and that folder.",
+      "en": "Similar documents are split: {agreeing} of {similar} in {folder}",
+      "de": "Ähnliche Dokumente sind verteilt: {agreeing} von {similar} in {folder}"
     },
     {
       "key": "document_preview.loading",

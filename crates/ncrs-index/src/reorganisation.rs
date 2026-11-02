@@ -188,9 +188,7 @@ mod tests {
                         pattern: "{date}_{name}".to_owned(),
                     },
                 ],
-                PlanOutcome::Move {
-                    target: PathBuf::from("duplicates/b/Company A.pdf"),
-                },
+                PlanOutcome::NoAction(NoActionReason::DuplicateCopy),
             ),
             item(
                 "a/x.pdf",

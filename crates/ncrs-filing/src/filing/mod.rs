@@ -32,8 +32,8 @@ use ncrs_index::{
 #[cfg(target_os = "macos")]
 use ncrs_intake::ImageTextWithFallback;
 use ncrs_intake::{
-    ImageTextSource, LazyOcrText, Location, LocationMode, OfficeText, PdfText, PdfUnavailable,
-    PlainText, TextChain, TextError, OCR_MODELS_FOLDER,
+    ImageFileText, ImageTextSource, LazyOcrText, Location, LocationMode, OfficeText, PdfText,
+    PdfUnavailable, PlainText, TextChain, TextError, OCR_MODELS_FOLDER,
 };
 use ncrs_pipeline::{intake_steps, IndexAccess, Load, OwnDetails, Runner, Settings, SystemClock};
 

@@ -4,6 +4,8 @@ use std::path::{Component, Path};
 use crate::location::Location;
 
 const DOCUMENT_EXTENSIONS: [&str; 5] = ["pdf", "docx", "odt", "txt", "md"];
+/// The image formats the image file source decodes; heic is not among them.
+const DECODABLE_IMAGE_EXTENSIONS: [&str; 5] = ["jpg", "jpeg", "png", "tif", "tiff"];
 const IMAGE_EXTENSIONS: [&str; 6] = ["jpg", "jpeg", "png", "heic", "tif", "tiff"];
 const TEMPORARY_SUFFIXES: [&str; 3] = [".part", ".crdownload", ".tmp"];
 
@@ -81,9 +83,12 @@ pub fn is_image_file(path: &Path) -> bool {
     IMAGE_EXTENSIONS.contains(&lowercase_extension(path).as_str())
 }
 
-/// Whether the text chain can read files of this kind. Images it cannot.
+/// Whether the text chain can read files of this kind: documents, and images
+/// it can decode for OCR (not heic).
 pub fn text_is_readable(path: &Path) -> bool {
-    DOCUMENT_EXTENSIONS.contains(&lowercase_extension(path).as_str())
+    let extension = lowercase_extension(path);
+    DOCUMENT_EXTENSIONS.contains(&extension.as_str())
+        || DECODABLE_IMAGE_EXTENSIONS.contains(&extension.as_str())
 }
 
 #[cfg(test)]
@@ -100,11 +105,14 @@ mod tests {
     use crate::location::LocationMode;
 
     #[test]
-    fn documents_are_readable_as_text_and_images_are_not() {
-        for readable in ["a.pdf", "a.PDF", "a.docx", "a.odt", "a.txt", "a.md"] {
+    fn documents_and_decodable_images_are_readable_and_heic_is_not() {
+        for readable in [
+            "a.pdf", "a.PDF", "a.docx", "a.odt", "a.txt", "a.md", "a.jpg", "a.JPEG", "a.png",
+            "a.tif", "a.tiff",
+        ] {
             assert!(text_is_readable(Path::new(readable)), "{readable}");
         }
-        for unreadable in ["a.jpg", "a.png", "a.heic", "a.tif", "a", "a.xyz"] {
+        for unreadable in ["a.heic", "a", "a.xyz"] {
             assert!(!text_is_readable(Path::new(unreadable)), "{unreadable}");
         }
     }

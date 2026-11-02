@@ -27,6 +27,7 @@ pub const MIGRATIONS: &[&str] = &[
     include_str!("migrations/019_saved_query_sender.sql"),
     include_str!("migrations/020_tags_instead_of_tax_contexts.sql"),
     include_str!("migrations/021_file_list_tag.sql"),
+    include_str!("migrations/022_fields_read_version.sql"),
 ];
 
 /// All pending steps run in one transaction together with the bump of

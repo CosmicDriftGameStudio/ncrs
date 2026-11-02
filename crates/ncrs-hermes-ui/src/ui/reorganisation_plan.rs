@@ -176,7 +176,7 @@ fn action_text(planned: &PlannedItem, lang: Language) -> String {
 /// A path as parts for [`page_kit::path`]: the folders and the name that are
 /// not the ones of `other` at the same place, counted from the start or from
 /// the end, are in the accent. From the end too, so that a folder put in front
-/// (`duplicates/`) does not mark the whole path.
+/// (`Archive/`) does not mark the whole path.
 fn path_parts(path: &Path, other: Option<&Path>) -> Vec<(String, bool)> {
     let names = |from: &Path| -> Vec<String> {
         from.components()
@@ -224,6 +224,15 @@ pub fn reason_text(planned: &PlannedItem, lang: Language) -> String {
                 ConflictReason::TargetLeavesLocation => Msg::ReorganisationPlanReasonTargetLeaves,
             })
             .to_owned(),
+        PlanOutcome::NoAction(NoActionReason::DuplicateCopy) => {
+            match deciding_finding(&planned.item) {
+                Some(Finding::Duplicate { keeper }) => fill_template(
+                    lang.text(Msg::ReorganisationPlanReasonDuplicateCopy),
+                    &[("{keeper}", &keeper.display().to_string())],
+                ),
+                _ => String::new(),
+            }
+        }
         PlanOutcome::NoAction(_) => lang
             .text(Msg::ReorganisationPlanReasonMissingFields)
             .to_owned(),
@@ -282,6 +291,15 @@ pub fn finding_sentence(planned: &PlannedItem, lang: Language) -> String {
         PlanOutcome::NoAction(NoActionReason::MissingFields) => lang
             .text(Msg::ReorganisationPlanFindingMissingFields)
             .to_owned(),
+        PlanOutcome::NoAction(NoActionReason::DuplicateCopy) => {
+            match deciding_finding(&planned.item) {
+                Some(Finding::Duplicate { keeper }) => fill_template(
+                    lang.text(Msg::ReorganisationPlanFindingDuplicateCopy),
+                    &[("{keeper}", &keeper.display().to_string())],
+                ),
+                _ => String::new(),
+            }
+        }
         PlanOutcome::Move { .. } | PlanOutcome::Rename { .. } => {
             match deciding_finding(&planned.item) {
                 Some(Finding::Duplicate { keeper }) => fill_template(
@@ -694,20 +712,20 @@ mod tests {
     }
 
     #[test]
-    fn a_copy_names_the_file_that_stays_and_where_the_copy_goes() {
+    fn a_copy_in_an_unsorted_folder_names_the_file_that_stays_and_can_be_cleared() {
         let planned = item(&sample_items(), "Misc/2024-04-01_invoice.pdf").clone();
-        let target = proposed_text(&planned);
 
-        let sentence = finding_sentence(&planned, Language::English);
-
-        assert!(
-            sentence
-                .starts_with("Same content as Insurance/2024/2024-04-01_invoice.pdf, which stays;"),
-            "{sentence}"
+        assert_eq!(
+            finding_sentence(&planned, Language::English),
+            "Same content as Insurance/2024/2024-04-01_invoice.pdf, which stays. This copy lies in an unsorted folder and can be cleared."
         );
-        assert!(
-            sentence.ends_with(&format!("this copy moves to {target}.")),
-            "{sentence}"
+        assert_eq!(
+            reason_text(&planned, Language::English),
+            "Copy of Insurance/2024/2024-04-01_invoice.pdf; can be cleared"
+        );
+        assert_eq!(
+            reason_text(&planned, Language::German),
+            "Kopie von Insurance/2024/2024-04-01_invoice.pdf; kann weg"
         );
     }
 
@@ -802,14 +820,14 @@ mod tests {
     #[test]
     fn only_the_parts_that_differ_are_marked() {
         let current = Path::new("Misc").join("a.pdf");
-        let copy = Path::new("duplicates").join("Misc").join("a.pdf");
+        let copy = Path::new("Archive").join("Misc").join("a.pdf");
         let moved = Path::new("Taxes").join("2024").join("a.pdf");
         let filed = Path::new("Insurance").join("2024").join("a.pdf");
 
         assert_eq!(
             path_parts(&copy, Some(&current)),
             vec![
-                ("duplicates/".to_owned(), true),
+                ("Archive/".to_owned(), true),
                 ("Misc/a.pdf".to_owned(), false)
             ]
         );
