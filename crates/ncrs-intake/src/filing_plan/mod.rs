@@ -318,7 +318,7 @@ pub fn render_pattern_in(source: &str, fields: &DocumentFields, kinds: &Kinds) -
 
 /// [`render_pattern_in`] with `extension` appended to the file name, and only
 /// when every placeholder of the pattern has a value: no partial names.
-pub(crate) fn render_complete_pattern(
+pub fn render_complete_pattern(
     source: &str,
     fields: &DocumentFields,
     kinds: &Kinds,

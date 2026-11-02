@@ -67,11 +67,7 @@ struct Step<'a> {
 }
 
 /// The branches below the merged folders `pool` of the area `area_folder`.
-pub(super) fn expand<'a>(
-    pool: &[&'a Node<'a>],
-    kinds: &KindCatalog,
-    area_folder: &str,
-) -> Vec<Branch> {
+pub fn expand<'a>(pool: &[&'a Node<'a>], kinds: &KindCatalog, area_folder: &str) -> Vec<Branch> {
     let trail = Trail {
         ancestor: area_folder.to_owned(),
         used: Vec::new(),

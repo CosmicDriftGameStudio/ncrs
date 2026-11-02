@@ -55,7 +55,7 @@ pub enum DateFormat {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum NameToken {
+pub enum NameToken {
     Date(DateFormat),
     Number(String),
     Separator(char),
@@ -283,7 +283,7 @@ pub fn year_of(folder: &str) -> Option<i32> {
         .filter(|year| (FIRST_YEAR..=LAST_YEAR).contains(year))
 }
 
-pub(crate) fn is_month(folder: &str) -> bool {
+pub fn is_month(folder: &str) -> bool {
     folder.len() == 2
         && folder
             .parse::<u32>()
@@ -291,7 +291,7 @@ pub(crate) fn is_month(folder: &str) -> bool {
 }
 
 /// A folder name that cannot be a constant piece of a pattern.
-pub(crate) fn is_pattern_safe(name: &str) -> bool {
+pub fn is_pattern_safe(name: &str) -> bool {
     is_plain_literal(name) && !name.contains(['{', '}'])
 }
 
@@ -374,7 +374,7 @@ fn date_format_of(text: &str) -> DateFormat {
 
 /// The words, numbers, separators and the date of a file name without its
 /// extension. `.` separates names, but not inside a date.
-pub(crate) fn name_tokens(stem: &str) -> Vec<NameToken> {
+pub fn name_tokens(stem: &str) -> Vec<NameToken> {
     let (before, date, after) = match date_in(stem) {
         Some((start, end, format)) => (
             stem.get(..start).unwrap_or_default(),
@@ -418,7 +418,7 @@ fn words_of(text: &str) -> Vec<NameToken> {
 }
 
 /// The structure of a file name with the words masked.
-pub(crate) fn shape(tokens: &[NameToken]) -> String {
+pub fn shape(tokens: &[NameToken]) -> String {
     tokens
         .iter()
         .map(|token| match token {

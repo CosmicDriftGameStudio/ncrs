@@ -115,7 +115,7 @@ pub struct ChangedPath {
 /// has seen asks for what came after; it learns from the floor when entries it
 /// never saw were dropped.
 #[derive(Debug, Default)]
-pub(super) struct ChangeLog {
+pub struct ChangeLog {
     pub entries: VecDeque<ChangedPath>,
     pub latest: u64,
     /// The highest sequence that was dropped, 0 while nothing was.

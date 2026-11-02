@@ -6,7 +6,7 @@ use super::types::StructureDocument;
 use crate::archive_profile::{is_month, name_tokens, year_of, NameToken};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum FolderType {
+pub enum FolderType {
     Year,
     Month,
     Date,
@@ -51,7 +51,7 @@ const MONTH_NAMES: [&str; 23] = [
 ];
 
 /// What a folder name is, judged from the documents below the folder.
-pub(super) fn folder_type(
+pub fn folder_type(
     name: &str,
     documents: &[&StructureDocument],
     below_year: bool,

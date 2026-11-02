@@ -98,7 +98,7 @@ fn a_watcher_error_rescans_the_location_for_missed_files() {
 }
 
 #[derive(Debug)]
-pub(super) struct FixedText(pub Result<Extracted, TextError>);
+pub struct FixedText(pub Result<Extracted, TextError>);
 
 impl TextSource for FixedText {
     fn extract(&self, _path: &Path) -> Result<Extracted, TextError> {
@@ -171,7 +171,7 @@ fn a_known_file_processed_again_passes_the_text_step_again() {
     assert_eq!(index.open_reviews().unwrap().len(), 1);
 }
 
-pub(super) fn first_document_status(fixture: &IndexFixture, location: &Location) -> DocumentStatus {
+pub fn first_document_status(fixture: &IndexFixture, location: &Location) -> DocumentStatus {
     let index = fixture.index.lock().unwrap();
     let id = index.documents_under(&location.path).unwrap()[0].0;
     index.document(id).unwrap().unwrap().status
@@ -185,7 +185,7 @@ fn mark_first_document_filed(fixture: &IndexFixture, location: &Location) {
         .unwrap();
 }
 
-pub(super) fn reviewed_once(
+pub fn reviewed_once(
     location: &Location,
     fixture: &IndexFixture,
     reads: &Arc<AtomicUsize>,
@@ -442,11 +442,7 @@ impl TextSource for SwitchableText {
     }
 }
 
-pub(super) fn archive_scan(
-    fixture: &IndexFixture,
-    archive: &Location,
-    chain: TextChain,
-) -> Snapshot {
+pub fn archive_scan(fixture: &IndexFixture, archive: &Location, chain: TextChain) -> Snapshot {
     let runner = Runner::start(
         settings(workers(1)),
         fixture.steps_reading(chain),

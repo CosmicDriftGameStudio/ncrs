@@ -9,10 +9,10 @@ use crate::archive_profile::{is_pattern_safe, shape, year_of, NameToken};
 const MIN_FILES: usize = 3;
 const MIN_FOLLOWING_PERCENT: usize = 60;
 /// Letters of this many senders under counting names are a dump.
-pub(super) const MIN_SENDERS_OF_A_DUMP: usize = 2;
+pub const MIN_SENDERS_OF_A_DUMP: usize = 2;
 
 /// The name scheme most of the files follow and how many do.
-pub(super) fn learn_scheme(files: &[&NodeFile<'_>]) -> (Option<NameScheme>, usize) {
+pub fn learn_scheme(files: &[&NodeFile<'_>]) -> (Option<NameScheme>, usize) {
     let Some(members) = dominant_group(files) else {
         return (None, 0);
     };
@@ -67,7 +67,7 @@ fn dominant_group<'f, 'a>(files: &[&'f NodeFile<'a>]) -> Option<Vec<&'f NodeFile
 }
 
 /// The shape of file name most of the files have, to compare folders.
-pub(super) fn dominant_shape(files: &[&NodeFile<'_>]) -> Option<String> {
+pub fn dominant_shape(files: &[&NodeFile<'_>]) -> Option<String> {
     let members = dominant_group(files)?;
     members.first().map(|first| shape(&first.tokens))
 }
