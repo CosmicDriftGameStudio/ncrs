@@ -312,7 +312,7 @@ mod tests {
         let tidy = |path: &std::path::Path| {
             format!(
                 r#"{{"intent":"tidy_folder","source":"{}"}}"#,
-                path.display()
+                path.display().to_string().replace('\\', "\\\\")
             )
         };
         talk.type_text_understood(&format!("Räum {} auf", archive.display()), &tidy(&archive));

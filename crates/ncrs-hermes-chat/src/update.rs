@@ -344,7 +344,7 @@ pub fn resolve_folder_name(state: &State, ctx: &Ctx, name: &str) -> Option<PathB
     if path.components().any(|part| part == Component::ParentDir) {
         return None;
     }
-    if name.starts_with('/') || name.starts_with('~') {
+    if looks_like_typed_path(name) {
         return Some(expand_home(ctx, path));
     }
     if let Some(found) = known_folder(state, ctx, name) {
@@ -404,14 +404,19 @@ pub fn folder_answer(state: &mut State, ctx: &Ctx, path: PathBuf, typed: bool) -
 
 // What the user said or pressed.
 
+/// A path written out: from the root, from home, or absolute in the
+/// platform's own form (`C:\…` and `\\server\share` on Windows).
+fn looks_like_typed_path(text: &str) -> bool {
+    text.starts_with('/') || text.starts_with('~') || Path::new(text).is_absolute()
+}
+
 /// Only a typed path while a folder is asked for is taken literally; every
 /// other sentence goes to the model.
 fn handle_text(state: &mut State, ctx: &Ctx, typed: &str, asked: Asked) -> Option<Action> {
     if state.step == Step::GroupFolderName {
         return stay_groups::folder_named(state, ctx, typed);
     }
-    let looks_like_path = typed.starts_with('/') || typed.starts_with('~');
-    if expects_folder(state.step) && looks_like_path {
+    if expects_folder(state.step) && looks_like_typed_path(typed) {
         return folder_answer(state, ctx, expand_home(ctx, Path::new(typed)), true);
     }
     understand::ask(state, ctx, typed, asked)

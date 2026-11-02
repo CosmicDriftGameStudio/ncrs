@@ -254,6 +254,14 @@ jobs:
         if: runner.os == 'macOS'
         run: cargo test -p ncrs -p ncrs-fs --features ncrs/sandbox -- --skip ui_tests
 
+      # llama-cpp-sys-2 hard-links its `lib*.so` symlinks into target/debug and
+      # deps, where they dangle. Its next build in the same target folder sees
+      # them as missing and fails on hard_link with AlreadyExists, so the
+      # dangling links go before the build with the `llama` feature.
+      - name: Remove dangling llama.cpp links (Linux)
+        if: runner.os == 'Linux'
+        run: find target/debug -maxdepth 2 -name 'lib*.so*' -xtype l -delete
+
       # These tests are ignored above because they need the model file. The
       # log is checked for the count (five `with_model_` tests) and for the
       # line of the chat evaluation: a wrong filter or a missing feature would
