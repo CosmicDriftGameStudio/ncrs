@@ -129,7 +129,7 @@ try {
     $srcDir = $src.DirectoryName
     $backendsSrc = Join-Path $srcDir 'backends'
     if (Test-Path $backendsSrc) {
-        foreach ($dll in 'llama.dll', 'ggml.dll', 'ggml-base.dll', 'llama-common.dll') {
+        foreach ($dll in 'llama.dll', 'ggml.dll', 'ggml-base.dll') {
             $dllSrc = Join-Path $srcDir $dll
             if (-not (Test-Path $dllSrc)) {
                 Write-Error "archive has a backends folder but no $dll"

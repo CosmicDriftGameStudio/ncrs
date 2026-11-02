@@ -169,6 +169,15 @@ jobs:
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
+      # llama-cpp-sys-2 hard-links its `lib*.so` symlinks into target/debug and
+      # deps, where they dangle. A later build of it in the same target folder
+      # sees them as missing and fails on hard_link with AlreadyExists. They
+      # can come from the cache and from the plain test build before the one
+      # with the `llama` feature, so they go at both points.
+      - name: Remove dangling llama.cpp links from the cache (Linux)
+        if: runner.os == 'Linux'
+        run: '[ ! -d target/debug ] || find target/debug -maxdepth 2 -name "lib*.so*" -xtype l -delete'
+
       # Linux only: the check reads Cargo.lock and the policy files, which do
       # not differ per operating system.
       - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
@@ -254,10 +263,7 @@ jobs:
         if: runner.os == 'macOS'
         run: cargo test -p ncrs -p ncrs-fs --features ncrs/sandbox -- --skip ui_tests
 
-      # llama-cpp-sys-2 hard-links its `lib*.so` symlinks into target/debug and
-      # deps, where they dangle. Its next build in the same target folder sees
-      # them as missing and fails on hard_link with AlreadyExists, so the
-      # dangling links go before the build with the `llama` feature.
+      # See the step after rust-cache: the test build above left them again.
       - name: Remove dangling llama.cpp links (Linux)
         if: runner.os == 'Linux'
         run: find target/debug -maxdepth 2 -name 'lib*.so*' -xtype l -delete
@@ -412,6 +418,11 @@ jobs:
         with:
           shared-key: target-${{ matrix.target }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      # The dangling llama.cpp links of the tests job, here from the cache.
+      - name: Remove dangling llama.cpp links from the cache (x86_64 Linux)
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: '[ ! -d target/x86_64-unknown-linux-gnu/release ] || find target/x86_64-unknown-linux-gnu/release -maxdepth 2 -name "lib*.so*" -xtype l -delete'
 
       # aarch64 Linux is cross-compiled on the x86_64 runner.
       - name: Add cross linker for aarch64 Linux

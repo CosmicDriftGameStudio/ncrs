@@ -120,10 +120,10 @@ list_zip() {
 llama_libraries_for() {
   case "$1" in
     # The sonames the linker recorded: the binary and the modules NEED these
-    # names, not the unversioned libllama.so. Not libllama-common.so.0: the
-    # binary does not link it, and it would pull in OpenSSL.
+    # names, not the unversioned libllama.so. Not llama-common (.so.0 or
+    # .dll): nothing shipped links it, and it would pull in OpenSSL.
     x86_64-unknown-linux-gnu) printf '%s\n' libllama.so.0 libggml.so.0 libggml-base.so.0 ;;
-    *-windows-*) printf '%s\n' llama.dll ggml.dll ggml-base.dll llama-common.dll ;;
+    *-windows-*) printf '%s\n' llama.dll ggml.dll ggml-base.dll ;;
   esac
 }
 
