@@ -33,7 +33,7 @@ regex = "1.13"
 # models are not part of the app; see scripts/fetch-ocr-models.sh. They are
 # the `.onnx` files, so only that loader is built (no `.rten` flatbuffers).
 ocrs = { version = "=0.13.1", default-features = false, features = ["onnx"] }
-rten = { version = "=0.26.0", default-features = false, features = ["onnx_format"] }
+rten = { version = "=0.27.0", default-features = false, features = ["onnx_format"] }
 # Text of .docx and .odt: the zip package and its XML, read in memory with size
 # limits. Both are already in the lock; no features, so no extra dependencies.
 zip = { version = "=9.1.2", default-features = false, features = ["deflate-flate2-zlib-rs"] }
