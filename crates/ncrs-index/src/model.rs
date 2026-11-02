@@ -1094,18 +1094,23 @@ impl ConflictReason {
 pub enum NoActionReason {
     /// The fields the folder's pattern needs for a name are not known.
     MissingFields,
+    /// A surplus copy lying in an unordered folder: nothing is moved, the
+    /// user decides about the copy.
+    DuplicateCopy,
 }
 
 impl NoActionReason {
     pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::MissingFields => "missing_fields",
+            Self::DuplicateCopy => "duplicate_copy",
         }
     }
 
     fn parse(value: &str) -> Result<Self, IndexError> {
         match value {
             "missing_fields" => Ok(Self::MissingFields),
+            "duplicate_copy" => Ok(Self::DuplicateCopy),
             other => Err(corrupt("reorganisation_item.detail", other)),
         }
     }

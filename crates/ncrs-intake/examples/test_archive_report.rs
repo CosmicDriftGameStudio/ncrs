@@ -4,13 +4,13 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use ncrs_index::{
-    ContentHash, DocumentFields, FindingKind, KindCatalog, KindLanguage, Kinds, PlanOutcome,
-    SenderAliases,
+    ContentHash, DocumentFields, FindingKind, KindCatalog, KindLanguage, Kinds, NoActionReason,
+    PlanOutcome, SenderAliases,
 };
 use ncrs_intake::test_archive::{test_archive, TestFile, OWN_NAME};
 use ncrs_intake::{
-    detect_fields, learn_archive, learn_structure, plan_reorganisation, ArchiveDocument, OwnNames,
-    PlanFile, ReorganisationInput, StructureDocument, DUPLICATES_FOLDER,
+    detect_fields, learn_archive, location_structure, plan_reorganisation, render_pattern_in,
+    ArchiveDocument, NeighbourIndex, OwnNames, PlanFile, ReorganisationInput,
 };
 use sha2::{Digest as _, Sha256};
 
@@ -21,15 +21,19 @@ struct FieldCounts {
     date: usize,
 }
 
+fn own_names(names: &[String]) -> OwnNames<'_> {
+    OwnNames {
+        names,
+        ibans: &[],
+        tax_ids: &[],
+    }
+}
+
 fn field_counts(files: &[TestFile]) -> FieldCounts {
     let aliases = SenderAliases::default();
     let catalog = KindCatalog::built_in();
     let names = [OWN_NAME.to_owned()];
-    let own = OwnNames {
-        names: &names,
-        ibans: &[],
-        tax_ids: &[],
-    };
+    let own = own_names(&names);
     let mut counts = FieldCounts {
         sender: 0,
         recipient: 0,
@@ -53,40 +57,39 @@ fn field_counts(files: &[TestFile]) -> FieldCounts {
     counts
 }
 
-fn structure_documents(files: &[TestFile]) -> Vec<StructureDocument> {
-    let aliases = SenderAliases::default();
-    let catalog = KindCatalog::built_in();
+/// The fields the pipeline would store for the file: what the letter says,
+/// and the date the test archive wrote into it when the letter has none.
+fn detected_fields(file: &TestFile) -> DocumentFields {
     let names = [OWN_NAME.to_owned()];
-    let own = OwnNames {
-        names: &names,
-        ibans: &[],
-        tax_ids: &[],
-    };
-    files
-        .iter()
-        .map(|file| {
-            let found = file.text().map(|text| {
-                detect_fields(
-                    text,
-                    &DocumentFields::default(),
-                    &aliases,
-                    &[],
-                    &own,
-                    &catalog,
-                )
-            });
-            StructureDocument {
-                relative_path: file.relative_path.clone(),
-                date: found.as_ref().and_then(|fields| fields.date).or(file.date),
-                sender: found.as_ref().and_then(|fields| fields.sender.clone()),
-                kind: found.and_then(|fields| fields.kind),
-            }
-        })
-        .collect()
+    let found = file.text().map(|text| {
+        detect_fields(
+            text,
+            &DocumentFields::default(),
+            &SenderAliases::default(),
+            &[],
+            &own_names(&names),
+            &KindCatalog::built_in(),
+        )
+    });
+    DocumentFields {
+        date: found.as_ref().and_then(|fields| fields.date).or(file.date),
+        sender: found.as_ref().and_then(|fields| fields.sender.clone()),
+        kind: found.and_then(|fields| fields.kind),
+        ..DocumentFields::default()
+    }
 }
 
 fn count_photos(files: &[TestFile]) -> usize {
     files.iter().filter(|file| file.text().is_none()).count()
+}
+
+#[derive(Default)]
+struct PlacementCounts {
+    with_target: usize,
+    sure_without_pattern: usize,
+    unsure: usize,
+    missing_field: usize,
+    no_neighbours: usize,
 }
 
 fn main() {
@@ -108,10 +111,20 @@ fn main() {
         .collect();
     let profile = learn_archive(&documents);
     let fields = field_counts(&archive.archive);
-    let structure = learn_structure(
-        &structure_documents(&archive.archive),
-        &KindCatalog::built_in(),
-    );
+    let catalog = KindCatalog::built_in();
+    let plan_files: Vec<PlanFile> = archive
+        .archive
+        .iter()
+        .zip(0..)
+        .map(|(file, recorded_at)| PlanFile {
+            relative_path: file.relative_path.clone(),
+            hash: ContentHash(Sha256::digest(file.bytes()).into()),
+            fields: detected_fields(file),
+            text: file.text().map(str::to_owned),
+            recorded_at,
+        })
+        .collect();
+    let structure = location_structure(&plan_files, &catalog);
     println!(
         "== AREAS: {} areas, {} unordered folders",
         structure.areas.len(),
@@ -135,36 +148,20 @@ fn main() {
         fields.sender, fields.recipient, fields.kind, fields.date
     );
 
-    let plan_files: Vec<PlanFile> = archive
-        .archive
-        .iter()
-        .zip(0..)
-        .map(|(file, recorded_at)| PlanFile {
-            relative_path: file.relative_path.clone(),
-            hash: ContentHash(Sha256::digest(file.bytes()).into()),
-            fields: Default::default(),
-            text: file.text().map(str::to_owned),
-            recorded_at,
-        })
-        .collect();
     let existing: BTreeSet<PathBuf> = archive
         .archive
         .iter()
         .map(|file| file.relative_path.clone())
         .collect();
+    let kinds = Kinds::built_in(KindLanguage::English);
     let items = plan_reorganisation(&ReorganisationInput {
         files: &plan_files,
         profile: &profile,
+        unordered: &structure,
         rules: &[],
         existing: &existing,
-        kinds: &Kinds::built_in(KindLanguage::English),
+        kinds: &kinds,
     });
-    let moved_to_duplicates = items
-        .iter()
-        .filter(|item| {
-            matches!(&item.outcome, PlanOutcome::Move { target } if target.starts_with(DUPLICATES_FOLDER))
-        })
-        .count();
     let by_finding: Vec<String> = [
         FindingKind::Duplicate,
         FindingKind::Misplaced,
@@ -188,23 +185,54 @@ fn main() {
             .count()
     };
     println!(
-        "== SORT AGAIN: {} items; duplicates moved into {DUPLICATES_FOLDER}/: {moved_to_duplicates}; by finding: {}; by outcome: move={} rename={} conflict={} no_action={}",
+        "== SORT AGAIN: {} items; by finding: {}; by outcome: move={} rename={} conflict={} no_action={} duplicate_copy={}",
         items.len(),
         by_finding.join(" "),
         outcome_count(|outcome| matches!(outcome, PlanOutcome::Move { .. })),
         outcome_count(|outcome| matches!(outcome, PlanOutcome::Rename { .. })),
         outcome_count(|outcome| matches!(outcome, PlanOutcome::Conflict { .. })),
         outcome_count(|outcome| matches!(outcome, PlanOutcome::NoAction(_))),
+        outcome_count(|outcome| matches!(
+            outcome,
+            PlanOutcome::NoAction(NoActionReason::DuplicateCopy)
+        )),
     );
 
+    let names = [OWN_NAME.to_owned()];
+    let neighbours = NeighbourIndex::new(&plan_files, &own_names(&names), &structure);
+    let mut placements = PlacementCounts::default();
+    for file in &archive.inbox {
+        let inbox_fields = detected_fields(file);
+        match neighbours.place(&inbox_fields, file.text()) {
+            None => placements.no_neighbours += 1,
+            Some(placement) if !placement.is_sure() => placements.unsure += 1,
+            Some(placement) if placement.missing.is_some() => placements.missing_field += 1,
+            Some(placement) => {
+                let rendered = placement
+                    .pattern
+                    .as_deref()
+                    .and_then(|pattern| render_pattern_in(pattern, &inbox_fields, &kinds));
+                if rendered.is_some() {
+                    placements.with_target += 1;
+                } else {
+                    placements.sure_without_pattern += 1;
+                }
+            }
+        }
+    }
     let inbox = field_counts(&archive.inbox);
     println!(
-        "== INBOX: {} files, {} photos; sender {}, recipient {}, kind {}, date {}; with target path: 0",
+        "== INBOX: {} files, {} photos; sender {}, recipient {}, kind {}, date {}; with target path: {}, sure without pattern: {}, unsure: {}, missing field: {}, no neighbours: {}",
         archive.inbox.len(),
         count_photos(&archive.inbox),
         inbox.sender,
         inbox.recipient,
         inbox.kind,
-        inbox.date
+        inbox.date,
+        placements.with_target,
+        placements.sure_without_pattern,
+        placements.unsure,
+        placements.missing_field,
+        placements.no_neighbours,
     );
 }

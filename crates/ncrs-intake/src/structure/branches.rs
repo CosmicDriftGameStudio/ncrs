@@ -67,7 +67,7 @@ struct Step<'a> {
 }
 
 /// The branches below the merged folders `pool` of the area `area_folder`.
-pub(in super) fn expand<'a>(
+pub(super) fn expand<'a>(
     pool: &[&'a Node<'a>],
     kinds: &KindCatalog,
     area_folder: &str,

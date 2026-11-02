@@ -5,7 +5,7 @@ use super::types::StructureDocument;
 use crate::archive_profile::{name_tokens, NameToken};
 
 /// A file with its name split into tokens.
-pub(in super) struct NodeFile<'a> {
+pub(super) struct NodeFile<'a> {
     pub tokens: Vec<NameToken>,
     pub document: &'a StructureDocument,
 }
@@ -33,7 +33,7 @@ impl<'a> NodeFile<'a> {
 }
 
 /// A folder with everything below it.
-pub(in super) struct Node<'a> {
+pub(super) struct Node<'a> {
     pub children: BTreeMap<String, Node<'a>>,
     pub files: Vec<NodeFile<'a>>,
     /// Every document below, including those of the subfolders.

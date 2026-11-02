@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-use ncrs_index::{Condition, ConditionKind, PlanOutcome};
+use ncrs_index::{Condition, ConditionKind, NoActionReason, PlanOutcome};
 
 use super::fixtures::*;
 use super::*;
@@ -12,7 +12,7 @@ fn the_plan_has_an_entry_of_every_kind_and_a_target_for_the_ones_that_can_run() 
 
     assert!(matches!(
         item(&items, "Misc/2024-04-01_invoice.pdf").item.outcome,
-        PlanOutcome::Move { .. }
+        PlanOutcome::NoAction(NoActionReason::DuplicateCopy)
     ));
     assert!(matches!(
         item(&items, "Insurance/2023/2024-05-01_invoice.pdf")
@@ -164,7 +164,7 @@ fn undoing_an_executed_plan_entry_puts_the_file_back() {
     let items = access.plan().unwrap();
     let entries = [
         item(&items, "Insurance/2023/2024-05-01_invoice.pdf").clone(),
-        item(&items, "Misc/2024-04-01_invoice.pdf").clone(),
+        item(&items, "Insurance/2024/scan 0042.pdf").clone(),
     ];
     let before = archive.snapshot();
 

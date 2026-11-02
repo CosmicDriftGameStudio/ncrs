@@ -7,8 +7,7 @@
 //! never acted on.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::ffi::OsStr;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use chrono::Datelike as _;
 use ncrs_index::{
@@ -22,10 +21,7 @@ use crate::archive_profile::{
 use crate::filing_plan::{plan, PlanInput, Planning};
 use crate::rule_suggestions::evidence_meets_thresholds;
 use crate::sanitise::stays_below;
-
-/// Where the copies of a duplicate go, at the root of the location, below
-/// their original relative path so that copies with the same name differ.
-pub const DUPLICATES_FOLDER: &str = "duplicates";
+use crate::structure::LocationStructure;
 
 /// When several findings apply to a file, the first of these decides the
 /// action. All of them are stored with the item.
@@ -62,6 +58,9 @@ pub struct ReorganisationInput<'a> {
     pub files: &'a [PlanFile],
     /// As `learn_archive` returns it for these files.
     pub profile: &'a [SubtreePattern],
+    /// As `learn_structure` returns it for these files: a copy lying in an
+    /// unordered folder is the one that can go.
+    pub unordered: &'a LocationStructure,
     pub rules: &'a [PlanRule],
     /// Everything that is on disk below the location, as relative paths. A
     /// target in here is a conflict.
@@ -88,15 +87,9 @@ struct Resolved {
     proposal: Proposal,
 }
 
-/// One item per file with at least one finding, sorted by source. Files
-/// already below `DUPLICATES_FOLDER` are left out: they are where a plan put
-/// them.
+/// One item per file with at least one finding, sorted by source.
 pub fn plan_reorganisation(input: &ReorganisationInput<'_>) -> Vec<PlanItem> {
-    let mut files: Vec<&PlanFile> = input
-        .files
-        .iter()
-        .filter(|file| !is_in_duplicates_folder(&file.relative_path))
-        .collect();
+    let mut files: Vec<&PlanFile> = input.files.iter().collect();
     files.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
 
     let documents: Vec<ArchiveDocument> = files
@@ -109,6 +102,7 @@ pub fn plan_reorganisation(input: &ReorganisationInput<'_>) -> Vec<PlanItem> {
     let patterns = pattern_per_document(&documents);
     let context = Context {
         profile: input.profile,
+        unordered: input.unordered,
         eligible: eligible_rules(input.rules, files.len()),
         files: &files,
         patterns: &patterns,
@@ -119,7 +113,7 @@ pub fn plan_reorganisation(input: &ReorganisationInput<'_>) -> Vec<PlanItem> {
     let mut resolved = Vec::new();
     for (index, file) in files.iter().enumerate() {
         let mut candidates = Vec::new();
-        candidates.extend(context.duplicate(file, keepers.get(&index)));
+        candidates.extend(context.duplicate(keepers.get(&index)));
         candidates.extend(context.misplaced(file));
         candidates.extend(context.year_mismatch(file));
         candidates.extend(context.name_outlier(file, index));
@@ -132,11 +126,6 @@ pub fn plan_reorganisation(input: &ReorganisationInput<'_>) -> Vec<PlanItem> {
         }
     }
     outcomes(&resolved, &files, input.existing)
-}
-
-fn is_in_duplicates_folder(relative: &Path) -> bool {
-    relative.components().next() == Some(Component::Normal(OsStr::new(DUPLICATES_FOLDER)))
-        && relative.components().count() > 1
 }
 
 /// All findings, and the proposal of the one with the highest priority.
@@ -159,6 +148,7 @@ fn priority_of(kind: FindingKind) -> usize {
 
 struct Context<'a> {
     profile: &'a [SubtreePattern],
+    unordered: &'a LocationStructure,
     eligible: Vec<Rule>,
     files: &'a [&'a PlanFile],
     patterns: &'a [Option<DocumentPattern>],
@@ -205,13 +195,13 @@ impl Context<'_> {
         (file_name_pattern(&own.pattern) != expected).then(|| (learned, expected.to_owned()))
     }
 
-    fn duplicate(&self, file: &PlanFile, keeper_index: Option<&usize>) -> Option<Candidate> {
+    fn duplicate(&self, keeper_index: Option<&usize>) -> Option<Candidate> {
         let keeper = self.files.get(*keeper_index?)?;
         Some(Candidate {
             finding: Finding::Duplicate {
                 keeper: keeper.relative_path.clone(),
             },
-            proposal: Proposal::Move(Path::new(DUPLICATES_FOLDER).join(&file.relative_path)),
+            proposal: Proposal::NoAction(NoActionReason::DuplicateCopy),
         })
     }
 
@@ -254,7 +244,7 @@ impl Context<'_> {
             .extension()
             .and_then(|extension| extension.to_str())
             .unwrap_or_default();
-        let renamed = propose_target(learned, &file.fields, extension)
+        let renamed = propose_target(learned, &file.fields, self.kinds, extension)
             .and_then(|rendered| rendered.file_name().map(ToOwned::to_owned))
             .map(|name| file.relative_path.with_file_name(name));
         let proposal = match renamed {
@@ -283,6 +273,9 @@ fn year_fix(file: &PlanFile) -> Option<(i32, i32, PathBuf)> {
         .components()
         .filter_map(|component| year_of(component.as_os_str().to_str()?))
         .find(|&year| year != date_year)?;
+    if mentions_year(file, folder_year) {
+        return None;
+    }
     let mut fixed = PathBuf::new();
     for component in folders.components() {
         let is_year = component.as_os_str().to_str().and_then(year_of).is_some();
@@ -296,10 +289,27 @@ fn year_fix(file: &PlanFile) -> Option<(i32, i32, PathBuf)> {
     Some((folder_year, date_year, fixed))
 }
 
-/// For every file that is a surplus copy, the index of the copy that stays.
-/// The copy that fits its folder (its name follows the learned pattern and
-/// its year folder is its date's year) stays; of several, or when none fits,
-/// the one the index saw first, then the first path.
+/// A notice dated after its folder's year is normal when its name or text
+/// names that year.
+fn mentions_year(file: &PlanFile, year: i32) -> bool {
+    let wanted = format!("{year:04}");
+    let is_year = |text: &str| {
+        text.split(|character: char| !character.is_alphanumeric())
+            .any(|token| token == wanted)
+    };
+    file.relative_path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .is_some_and(is_year)
+        || file.text.as_deref().is_some_and(is_year)
+}
+
+/// For every surplus copy lying in an unordered folder, the index of the copy
+/// that stays. Copies in ordered folders stay and have no entry. The keeper is
+/// one of them; when all copies are unordered, one of those. Of several, the
+/// one that fits its folder (its name follows the learned pattern and its year
+/// folder is its date's year), then the one the index saw first, then the
+/// first path.
 fn duplicate_keepers(context: &Context<'_>) -> BTreeMap<usize, usize> {
     let mut groups: BTreeMap<[u8; 32], Vec<usize>> = BTreeMap::new();
     for (index, file) in context.files.iter().enumerate() {
@@ -314,9 +324,25 @@ fn duplicate_keepers(context: &Context<'_>) -> BTreeMap<usize, usize> {
                     .get(*index)
                     .is_some_and(|file| year_fix(file).is_none())
         };
-        let fitting: Vec<usize> = members.iter().copied().filter(fits).collect();
-        let pool = if fitting.is_empty() {
+        let is_unordered = |index: &usize| {
+            context
+                .files
+                .get(*index)
+                .is_some_and(|file| context.unordered.is_unordered(&file.relative_path))
+        };
+        let ordered: Vec<usize> = members
+            .iter()
+            .copied()
+            .filter(|index| !is_unordered(index))
+            .collect();
+        let candidates = if ordered.is_empty() {
             members.clone()
+        } else {
+            ordered
+        };
+        let fitting: Vec<usize> = candidates.iter().copied().filter(fits).collect();
+        let pool = if fitting.is_empty() {
+            candidates
         } else {
             fitting
         };
@@ -329,7 +355,10 @@ fn duplicate_keepers(context: &Context<'_>) -> BTreeMap<usize, usize> {
         let Some(keeper) = pool.into_iter().min_by_key(seniority) else {
             continue;
         };
-        for &member in members.iter().filter(|&&member| member != keeper) {
+        let surplus = members
+            .iter()
+            .filter(|&&member| member != keeper && is_unordered(&member));
+        for &member in surplus {
             keepers.insert(member, keeper);
         }
     }
@@ -402,3 +431,6 @@ fn proposed_target(proposal: &Proposal) -> Option<&PathBuf> {
 fn key_of(path: &Path) -> String {
     path.to_string_lossy().to_lowercase()
 }
+
+#[cfg(test)]
+mod archive_tests;

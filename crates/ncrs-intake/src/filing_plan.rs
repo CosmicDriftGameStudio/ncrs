@@ -316,6 +316,33 @@ pub fn render_pattern_in(source: &str, fields: &DocumentFields, kinds: &Kinds) -
         .filter(|path| stays_below(path))
 }
 
+/// [`render_pattern_in`] with `extension` appended to the file name, and only
+/// when every placeholder of the pattern has a value: no partial names.
+pub(crate) fn render_complete_pattern(
+    source: &str,
+    fields: &DocumentFields,
+    kinds: &Kinds,
+    extension: &str,
+) -> Option<PathBuf> {
+    let pattern = Pattern::parse(source)?;
+    let every_value_known = pattern
+        .components
+        .iter()
+        .flatten()
+        .all(|token| match token {
+            Token::Placeholder(placeholder) => placeholder.value(fields, Some(kinds)).is_some(),
+            Token::Literal(_) => true,
+        });
+    if !every_value_known {
+        return None;
+    }
+    let rendered = pattern
+        .render(fields, Some(kinds))
+        .filter(|path| stays_below(path))?;
+    let name = rendered.file_name()?.to_str()?;
+    Some(rendered.with_file_name(format!("{name}.{extension}")))
+}
+
 /// A piece of a rendered filing path: the folder separators and the literal
 /// text of the pattern have no field, a value filled in has the field it is
 /// from.

@@ -188,7 +188,7 @@ impl Identifiers {
     }
 }
 
-fn found_ibans(text: &str) -> Vec<String> {
+pub(crate) fn found_ibans(text: &str) -> Vec<String> {
     IBAN.iter()
         .flat_map(|regex| regex.find_iter(text))
         .map(|found| found.as_str())

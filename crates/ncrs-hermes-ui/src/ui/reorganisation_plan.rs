@@ -224,6 +224,15 @@ pub fn reason_text(planned: &PlannedItem, lang: Language) -> String {
                 ConflictReason::TargetLeavesLocation => Msg::ReorganisationPlanReasonTargetLeaves,
             })
             .to_owned(),
+        PlanOutcome::NoAction(NoActionReason::DuplicateCopy) => {
+            match deciding_finding(&planned.item) {
+                Some(Finding::Duplicate { keeper }) => fill_template(
+                    lang.text(Msg::ReorganisationPlanReasonDuplicateCopy),
+                    &[("{keeper}", &keeper.display().to_string())],
+                ),
+                _ => String::new(),
+            }
+        }
         PlanOutcome::NoAction(_) => lang
             .text(Msg::ReorganisationPlanReasonMissingFields)
             .to_owned(),
@@ -282,6 +291,15 @@ pub fn finding_sentence(planned: &PlannedItem, lang: Language) -> String {
         PlanOutcome::NoAction(NoActionReason::MissingFields) => lang
             .text(Msg::ReorganisationPlanFindingMissingFields)
             .to_owned(),
+        PlanOutcome::NoAction(NoActionReason::DuplicateCopy) => {
+            match deciding_finding(&planned.item) {
+                Some(Finding::Duplicate { keeper }) => fill_template(
+                    lang.text(Msg::ReorganisationPlanFindingDuplicateCopy),
+                    &[("{keeper}", &keeper.display().to_string())],
+                ),
+                _ => String::new(),
+            }
+        }
         PlanOutcome::Move { .. } | PlanOutcome::Rename { .. } => {
             match deciding_finding(&planned.item) {
                 Some(Finding::Duplicate { keeper }) => fill_template(
@@ -694,20 +712,20 @@ mod tests {
     }
 
     #[test]
-    fn a_copy_names_the_file_that_stays_and_where_the_copy_goes() {
+    fn a_copy_in_an_unsorted_folder_names_the_file_that_stays_and_can_be_cleared() {
         let planned = item(&sample_items(), "Misc/2024-04-01_invoice.pdf").clone();
-        let target = proposed_text(&planned);
 
-        let sentence = finding_sentence(&planned, Language::English);
-
-        assert!(
-            sentence
-                .starts_with("Same content as Insurance/2024/2024-04-01_invoice.pdf, which stays;"),
-            "{sentence}"
+        assert_eq!(
+            finding_sentence(&planned, Language::English),
+            "Same content as Insurance/2024/2024-04-01_invoice.pdf, which stays. This copy lies in an unsorted folder and can be cleared."
         );
-        assert!(
-            sentence.ends_with(&format!("this copy moves to {target}.")),
-            "{sentence}"
+        assert_eq!(
+            reason_text(&planned, Language::English),
+            "Copy of Insurance/2024/2024-04-01_invoice.pdf; can be cleared"
+        );
+        assert_eq!(
+            reason_text(&planned, Language::German),
+            "Kopie von Insurance/2024/2024-04-01_invoice.pdf; kann weg"
         );
     }
 

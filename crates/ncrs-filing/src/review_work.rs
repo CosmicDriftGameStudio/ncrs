@@ -16,8 +16,10 @@ use ncrs_index::{
     KindCatalog, KindLanguage, Kinds, ReviewEntryId, ReviewReason, Rule, RuleId, SenderAliases,
 };
 use ncrs_intake::{
-    condition_match_ranges, plan, render_pattern_in, text_is_readable, PlanInput, Planning,
+    condition_match_ranges, location_documents, location_structure, plan, render_pattern_in,
+    text_is_readable, NeighbourIndex, OwnNames, Placement, PlanInput, Planning,
 };
+use ncrs_pipeline::OwnDetails;
 
 use crate::execute::{execute_with, ItemOutcome, SkipReason};
 use crate::filing_work::target_of;
@@ -74,6 +76,8 @@ pub struct ReviewItem {
     /// The pieces of the text that led to a field or to the rules concerned,
     /// to mark them in the preview.
     pub passages: Vec<String>,
+    /// Where documents like this one lie, when the archive says anything.
+    pub placement: Option<Placement>,
 }
 
 impl ReviewItem {
@@ -137,6 +141,7 @@ pub struct ReviewAccess {
     slot: IndexSlot,
     target_root: PathBuf,
     kind_language: KindLanguage,
+    own: OwnDetails,
 }
 
 impl std::fmt::Debug for ReviewAccess {
@@ -151,6 +156,7 @@ impl ReviewAccess {
             slot,
             target_root,
             kind_language: KindLanguage::default(),
+            own: OwnDetails::default(),
         }
     }
 
@@ -161,18 +167,42 @@ impl ReviewAccess {
         }
     }
 
+    /// What is the user's own and so never says where a document belongs.
+    pub fn with_own(self, own: OwnDetails) -> Self {
+        Self { own, ..self }
+    }
+
     pub fn load(&self) -> Result<Vec<ReviewItem>, String> {
-        self.with_index(|index| load(index, self.kind_language))
+        self.with_index_text(|index| {
+            let neighbours = self.neighbours(index)?;
+            load_matching(index, |_path| true, self.kind_language, Some(&neighbours))
+                .map_err(|err| err.to_string())
+        })
+    }
+
+    fn neighbours(&self, index: &Index) -> Result<NeighbourIndex, String> {
+        let documents =
+            location_documents(index, &self.target_root).map_err(|err| err.to_string())?;
+        let structure = location_structure(&documents, index.kinds());
+        let own = OwnNames {
+            names: &self.own.names,
+            ibans: &self.own.ibans,
+            tax_ids: &self.own.tax_ids,
+        };
+        Ok(NeighbourIndex::new(&documents, &own, &structure))
     }
 
     /// The open reviews of these files, in the order the index lists them.
     pub fn items_for(&self, paths: &[PathBuf]) -> Result<Vec<ReviewItem>, String> {
-        self.with_index(|index| {
+        self.with_index_text(|index| {
+            let neighbours = self.neighbours(index)?;
             load_matching(
                 index,
                 |path| paths.iter().any(|wanted| wanted == path),
                 self.kind_language,
+                Some(&neighbours),
             )
+            .map_err(|err| err.to_string())
         })
     }
 
@@ -231,6 +261,15 @@ impl ReviewAccess {
         )
     }
 
+    fn with_index_text<T>(
+        &self,
+        work: impl FnOnce(&mut Index) -> Result<T, String>,
+    ) -> Result<T, String> {
+        let mut guard = self.slot.lock().unwrap_or_else(PoisonError::into_inner);
+        let index = guard.as_mut().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
+        work(index)
+    }
+
     fn with_index<T>(
         &self,
         work: impl FnOnce(&mut Index) -> Result<T, IndexError>,
@@ -241,14 +280,11 @@ impl ReviewAccess {
     }
 }
 
-fn load(index: &Index, kind_language: KindLanguage) -> Result<Vec<ReviewItem>, IndexError> {
-    load_matching(index, |_path| true, kind_language)
-}
-
 fn load_matching(
     index: &Index,
     wanted: impl Fn(&Path) -> bool,
     kind_language: KindLanguage,
+    neighbours: Option<&NeighbourIndex>,
 ) -> Result<Vec<ReviewItem>, IndexError> {
     let rules = index.rules()?;
     let sender_aliases = index.confirmed_sender_aliases()?;
@@ -267,6 +303,7 @@ fn load_matching(
             &entry,
             document,
             kind_language,
+            neighbours,
         )?);
     }
     Ok(items)
@@ -279,6 +316,7 @@ fn review_item(
     entry: &ncrs_index::ReviewEntry,
     document: ncrs_index::Document,
     kind_language: KindLanguage,
+    neighbours: Option<&NeighbourIndex>,
 ) -> Result<ReviewItem, IndexError> {
     let stored_text = index.document_text(document.id)?;
     let text = stored_text.clone().unwrap_or_default();
@@ -318,6 +356,9 @@ fn review_item(
         None => origins,
     };
     let passages = passages_of(rules, &effective_origins, nearest_rule, &fields, &text);
+    let placement = neighbours.and_then(|known| known.place(&fields, stored_text.as_deref()));
+    let rule_or_placement_pattern =
+        proposed_pattern.or_else(|| placement_pattern(placement.as_ref()?, &fields, &kinds));
     Ok(ReviewItem {
         entry: entry.id,
         document_id: document.id,
@@ -325,10 +366,26 @@ fn review_item(
         path: document.path,
         reason: entry.reason,
         fields,
-        proposed_pattern,
+        proposed_pattern: rule_or_placement_pattern,
         origins: effective_origins,
         passages,
+        placement,
     })
+}
+
+/// The pattern of the folder where similar documents lie, when that is sure
+/// and it renders for these fields.
+fn placement_pattern(
+    placement: &Placement,
+    fields: &DocumentFields,
+    kinds: &Kinds,
+) -> Option<String> {
+    if !placement.is_sure() || placement.missing.is_some() {
+        return None;
+    }
+    let pattern = placement.pattern.as_deref()?;
+    render_pattern_in(pattern, fields, kinds)?;
+    Some(pattern.to_owned())
 }
 
 /// The stored origins, but a field only the closest rule filled in (its
@@ -444,6 +501,7 @@ fn suggestion_for(
             &entry,
             document,
             kind_language,
+            None,
         )?;
         let kinds = Kinds::new(Arc::clone(index.kinds()), kind_language);
         let target = item
@@ -568,428 +626,5 @@ pub fn parse_amount(typed: &str) -> Result<Option<Amount>, FieldError> {
     }))
 }
 
-// A failing assertion in a test is the signal, so `unwrap` belongs here; the
-// lint is meant for the production paths.
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
-mod tests {
-    use std::collections::BTreeSet;
-    use std::fs;
-
-    use chrono::{TimeZone as _, Utc};
-    use ncrs_index::{
-        Condition, ConditionKind, DocumentSource, NewDocument, RuleConditions, RuleSpec,
-    };
-    use ncrs_intake::hash_path;
-    use tempfile::TempDir;
-
-    use super::*;
-    use crate::filing_work::file_planned;
-
-    struct Setup {
-        _dir: TempDir,
-        inbox: PathBuf,
-        archive: PathBuf,
-        slot: IndexSlot,
-    }
-
-    impl Setup {
-        fn new() -> Self {
-            let dir = tempfile::tempdir().unwrap();
-            let inbox = dir.path().join("inbox");
-            let archive = dir.path().join("archive");
-            fs::create_dir_all(&inbox).unwrap();
-            fs::create_dir_all(&archive).unwrap();
-            let index = Index::create_plain(&dir.path().join("index.db")).unwrap();
-            Self {
-                _dir: dir,
-                inbox,
-                archive,
-                slot: Arc::new(Mutex::new(Some(index))),
-            }
-        }
-
-        fn access(&self) -> ReviewAccess {
-            ReviewAccess::new(Arc::clone(&self.slot), self.archive.clone())
-        }
-
-        fn with_index<T>(&self, work: impl FnOnce(&mut Index) -> T) -> T {
-            let mut guard = self.slot.lock().unwrap();
-            work(guard.as_mut().unwrap())
-        }
-
-        /// An inbox file in `status`; in review when no rule placed it.
-        fn document(&self, name: &str, status: DocumentStatus) -> DocumentId {
-            let path = self.inbox.join(name);
-            fs::write(&path, format!("content of {name}")).unwrap();
-            let metadata = fs::metadata(&path).unwrap();
-            self.with_index(|index| {
-                let id = index
-                    .insert_document(&NewDocument {
-                        hash: hash_path(&path).unwrap(),
-                        path: path.clone(),
-                        source: DocumentSource::Inbox,
-                        received_at: Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap(),
-                        stamp: Some(ncrs_index::FileStamp {
-                            size: metadata.len(),
-                            mtime: metadata.modified().unwrap(),
-                        }),
-                    })
-                    .unwrap();
-                index.set_document_text(id, "Invoice").unwrap();
-                index.set_document_status(id, status).unwrap();
-                id
-            })
-        }
-
-        fn in_review(&self, name: &str) -> DocumentId {
-            let id = self.document(name, DocumentStatus::InReview);
-            self.with_index(|index| index.add_review(id, ReviewReason::NoMatchingRule))
-                .unwrap();
-            id
-        }
-
-        fn fields(sender: &str) -> DocumentFields {
-            DocumentFields {
-                sender: Some(sender.to_owned()),
-                kind: Some("invoice".to_owned()),
-                ..DocumentFields::default()
-            }
-        }
-    }
-
-    fn first(access: &ReviewAccess) -> ReviewItem {
-        access.load().unwrap().remove(0)
-    }
-
-    #[test]
-    fn the_text_state_tells_images_from_empty_from_read_text() {
-        let setup = Setup::new();
-        let read = setup.in_review("invoice.pdf");
-        let empty = setup.in_review("blank.pdf");
-        let image = setup.in_review("photo.heic");
-        let never_read = setup.in_review("never.pdf");
-        let readable_photo = setup.in_review("receipt.jpg");
-        setup.with_index(|index| {
-            index.set_document_text(empty, "").unwrap();
-            index.set_document_text(image, "").unwrap();
-            index.set_document_text(readable_photo, "").unwrap();
-            index
-                .connection()
-                .execute(
-                    "DELETE FROM document_text
-                     WHERE rowid = (SELECT id FROM document WHERE path LIKE '%never.pdf')",
-                    [],
-                )
-                .unwrap();
-        });
-
-        let states: Vec<(DocumentId, TextState)> = setup
-            .access()
-            .load()
-            .unwrap()
-            .into_iter()
-            .map(|item| (item.document_id, item.text_state))
-            .collect();
-
-        assert_eq!(
-            states,
-            vec![
-                (read, TextState::Read),
-                (empty, TextState::NoneFound),
-                (image, TextState::NotReadable),
-                (never_read, TextState::NoneFound),
-                (readable_photo, TextState::NoneFound),
-            ]
-        );
-    }
-
-    #[test]
-    fn a_document_no_rule_filed_is_listed_with_its_reason() {
-        let setup = Setup::new();
-        let id = setup.in_review("scan.pdf");
-
-        let item = first(&setup.access());
-
-        assert_eq!(item.document_id, id);
-        assert_eq!(item.reason, ReviewReason::NoMatchingRule);
-        assert_eq!(item.proposed_pattern, None);
-    }
-
-    #[test]
-    fn confirming_with_changed_fields_files_the_document_where_the_pattern_says() {
-        let setup = Setup::new();
-        setup.in_review("scan.pdf");
-        let access = setup.access();
-        let item = first(&access);
-
-        let outcome = access
-            .confirm(
-                item.entry,
-                item.document_id,
-                &Setup::fields("Company A"),
-                "{sender}/{kind}",
-            )
-            .unwrap();
-
-        assert_eq!(
-            outcome,
-            ConfirmOutcome::Filed {
-                relative_path: PathBuf::from("Company A/Invoice.pdf")
-            }
-        );
-        let target = setup.archive.join("Company A").join("Invoice.pdf");
-        assert_eq!(fs::read_to_string(target).unwrap(), "content of scan.pdf");
-        assert!(!setup.inbox.join("scan.pdf").exists());
-        setup.with_index(|index| {
-            let document = index.document(item.document_id).unwrap().unwrap();
-            assert_eq!(document.status, DocumentStatus::Filed);
-            assert_eq!(document.fields.sender.as_deref(), Some("Company A"));
-            assert!(index.open_reviews().unwrap().is_empty());
-            let origins = index.field_origins(item.document_id).unwrap();
-            for field in [ncrs_index::Field::Sender, ncrs_index::Field::Kind] {
-                assert_eq!(origins.of(field), FieldOrigin::Manual, "{field:?}");
-            }
-            assert_eq!(origins.of(ncrs_index::Field::Date), FieldOrigin::Unknown);
-        });
-    }
-
-    #[test]
-    fn a_rule_for_the_sender_files_the_next_document_without_a_review() {
-        let setup = Setup::new();
-        setup.with_index(|index| {
-            let spec = RuleSpec {
-                name: None,
-                conditions: RuleConditions::all_of(vec![Condition::new(
-                    ConditionKind::Sender,
-                    "Company A",
-                )]),
-                extract_number: None,
-                extract_date: None,
-                extract_amount: None,
-                kind: Some("invoice".to_owned()),
-                tags: BTreeSet::new(),
-                filing_pattern: "{sender}/{kind}".to_owned(),
-                confirmed: true,
-                enabled: true,
-            };
-            index
-                .create_rule_from(&spec, ncrs_index::RuleOrigin::Filing)
-                .unwrap();
-        });
-        let next = setup.document("next.pdf", DocumentStatus::Planned);
-        setup.with_index(|index| {
-            index
-                .set_document_fields(next, &Setup::fields("Company A"), |_| FieldOrigin::Unknown)
-                .unwrap();
-        });
-
-        let summary = setup.with_index(|index| {
-            file_planned(
-                index,
-                &setup.archive,
-                &mut Counting,
-                &Move,
-                KindLanguage::English,
-            )
-            .unwrap()
-        });
-
-        assert_eq!(summary.filed, 1);
-        assert_eq!(summary.reviewed, 0);
-        assert!(setup.archive.join("Company A").join("Invoice.pdf").exists());
-        setup.with_index(|index| assert!(index.open_reviews().unwrap().is_empty()));
-    }
-
-    #[test]
-    fn a_taken_place_keeps_the_entry_open_and_the_target_unchanged() {
-        let setup = Setup::new();
-        setup.in_review("scan.pdf");
-        let taken = setup.archive.join("Company A").join("Invoice.pdf");
-        fs::create_dir_all(taken.parent().unwrap()).unwrap();
-        fs::write(&taken, "the other file").unwrap();
-        let access = setup.access();
-        let item = first(&access);
-
-        let outcome = access
-            .confirm(
-                item.entry,
-                item.document_id,
-                &Setup::fields("Company A"),
-                "{sender}/{kind}",
-            )
-            .unwrap();
-
-        assert_eq!(outcome, ConfirmOutcome::TargetExists);
-        assert_eq!(fs::read_to_string(&taken).unwrap(), "the other file");
-        assert!(setup.inbox.join("scan.pdf").exists());
-        assert_eq!(access.load().unwrap().len(), 1);
-    }
-
-    #[test]
-    fn a_pattern_that_cannot_be_rendered_moves_nothing() {
-        let setup = Setup::new();
-        setup.in_review("scan.pdf");
-        let access = setup.access();
-        let item = first(&access);
-
-        for pattern in ["{nonsense}", "{date}/{kind}", "../{kind}", ""] {
-            let result = access.confirm(
-                item.entry,
-                item.document_id,
-                &Setup::fields("Company A"),
-                pattern,
-            );
-
-            assert_eq!(result, Err(PATTERN_DOES_NOT_FIT.to_owned()), "{pattern}");
-        }
-        assert!(setup.inbox.join("scan.pdf").exists());
-        assert_eq!(access.load().unwrap().len(), 1);
-    }
-
-    #[test]
-    fn a_file_that_vanished_goes_back_to_the_pipeline() {
-        let setup = Setup::new();
-        setup.in_review("scan.pdf");
-        let access = setup.access();
-        let item = first(&access);
-        fs::remove_file(setup.inbox.join("scan.pdf")).unwrap();
-
-        let outcome = access
-            .confirm(
-                item.entry,
-                item.document_id,
-                &Setup::fields("Company A"),
-                "{sender}/{kind}",
-            )
-            .unwrap();
-
-        assert_eq!(outcome, ConfirmOutcome::Requeued);
-        setup.with_index(|index| {
-            let document = index.document(item.document_id).unwrap().unwrap();
-            assert_eq!(document.status, DocumentStatus::New);
-            assert!(index.open_reviews().unwrap().is_empty());
-        });
-    }
-
-    #[test]
-    fn a_rule_that_matches_the_text_gives_its_passages_and_the_fields_it_filled() {
-        let setup = Setup::new();
-        let document = setup.in_review("rule.pdf");
-        let rule = setup.with_index(|index| {
-            index
-                .set_document_text(document, "Invoice 4711\nfrom COMPANY A Ltd")
-                .unwrap();
-            let spec = RuleSpec {
-                name: None,
-                conditions: RuleConditions::all_of(vec![
-                    Condition::new(ConditionKind::Substring, "company a"),
-                    Condition::not(ConditionKind::Substring, "agency"),
-                ]),
-                extract_number: None,
-                extract_date: None,
-                extract_amount: None,
-                kind: Some("invoice".to_owned()),
-                tags: BTreeSet::new(),
-                filing_pattern: "{kind}".to_owned(),
-                confirmed: false,
-                enabled: true,
-            };
-            index
-                .create_rule_from(&spec, ncrs_index::RuleOrigin::Filing)
-                .unwrap()
-        });
-
-        let item = first(&setup.access());
-
-        assert_eq!(item.passages, ["COMPANY A"]);
-        assert_eq!(item.origins.of(Field::Kind), FieldOrigin::Rule(Some(rule)));
-        assert_eq!(item.origins.of(Field::Sender), FieldOrigin::Unknown);
-    }
-
-    #[test]
-    fn the_sender_the_ai_read_is_a_passage_where_it_stands_in_the_text() {
-        let setup = Setup::new();
-        let document = setup.in_review("ai.pdf");
-        setup.with_index(|index| {
-            index
-                .set_document_text(document, "Invoice 4711\nCompany A Ltd")
-                .unwrap();
-            index
-                .set_document_fields(document, &Setup::fields("Company A"), |field| match field {
-                    Field::Sender => FieldOrigin::Ai {
-                        confidence_percent: 82,
-                    },
-                    _ => FieldOrigin::Manual,
-                })
-                .unwrap();
-        });
-
-        let item = first(&setup.access());
-
-        assert_eq!(item.passages, ["Company A"]);
-        assert_eq!(
-            item.origins.of(Field::Sender),
-            FieldOrigin::Ai {
-                confidence_percent: 82
-            }
-        );
-    }
-
-    #[test]
-    fn dates_are_iso_and_empty_is_none() {
-        assert_eq!(parse_date(""), Ok(None));
-        assert_eq!(
-            parse_date(" 2024-03-09 "),
-            Ok(NaiveDate::from_ymd_opt(2024, 3, 9))
-        );
-        for bad in ["09.03.2024", "2024-13-01", "yesterday"] {
-            assert_eq!(parse_date(bad), Err(FieldError::Date), "{bad}");
-        }
-    }
-
-    #[test]
-    fn amounts_take_a_point_or_a_comma_and_a_currency() {
-        let eur = |minor_units| {
-            Ok(Some(Amount {
-                minor_units,
-                currency: Currency::new("EUR").unwrap(),
-            }))
-        };
-
-        assert_eq!(parse_amount(""), Ok(None));
-        assert_eq!(parse_amount("12.34 EUR"), eur(1234));
-        assert_eq!(parse_amount("12,34 eur"), eur(1234));
-        assert_eq!(parse_amount("12 EUR"), eur(1200));
-        assert_eq!(parse_amount("0.5 EUR"), eur(50));
-        assert_eq!(parse_amount("-3.05 EUR"), eur(-305));
-        for bad in [
-            "12.34",
-            "EUR",
-            "12.345 EUR",
-            "1x EUR",
-            "12 EURO",
-            "12 EUR now",
-            ".5 EUR",
-        ] {
-            assert_eq!(parse_amount(bad), Err(FieldError::Amount), "{bad}");
-        }
-        assert_eq!(
-            parse_amount("99999999999999999999 EUR"),
-            Err(FieldError::Amount)
-        );
-    }
-
-    #[test]
-    fn an_amount_shown_is_an_amount_that_parses() {
-        let amount = parse_amount("-7,05 EUR").unwrap().unwrap();
-
-        assert_eq!(amount_text(&amount), "-7.05 EUR");
-        assert_eq!(parse_amount(&amount_text(&amount)), Ok(Some(amount)));
-    }
-}
+mod tests;

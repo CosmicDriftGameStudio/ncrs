@@ -15,11 +15,11 @@ use std::path::{Component, PathBuf};
 use std::sync::OnceLock;
 
 use chrono::{Datelike as _, NaiveDate};
-use ncrs_index::{DocumentFields, SubtreePattern};
+use ncrs_index::{DocumentFields, Kinds, SubtreePattern};
 use regex::Regex;
 
 use crate::extract::parse_date;
-use crate::filing_plan::render_pattern;
+use crate::filing_plan::render_complete_pattern;
 use crate::sanitise::is_plain_literal;
 
 /// A word of a file name must occur this often before it counts as a
@@ -55,7 +55,7 @@ pub enum DateFormat {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(in crate) enum NameToken {
+pub(crate) enum NameToken {
     Date(DateFormat),
     Number(String),
     Separator(char),
@@ -216,6 +216,7 @@ struct SubtreeTally {
 pub fn propose_target(
     subtree: &SubtreePattern,
     fields: &DocumentFields,
+    kinds: &Kinds,
     extension: &str,
 ) -> Option<PathBuf> {
     let pattern = subtree.pattern.as_deref()?;
@@ -226,7 +227,7 @@ pub fn propose_target(
     if !plain_extension {
         return None;
     }
-    render_pattern(&format!("{pattern}.{extension}"), fields)
+    render_complete_pattern(pattern, fields, kinds, extension)
 }
 
 fn parse_document(document: &ArchiveDocument) -> Option<Parsed> {
@@ -282,7 +283,7 @@ pub fn year_of(folder: &str) -> Option<i32> {
         .filter(|year| (FIRST_YEAR..=LAST_YEAR).contains(year))
 }
 
-pub(in crate) fn is_month(folder: &str) -> bool {
+pub(crate) fn is_month(folder: &str) -> bool {
     folder.len() == 2
         && folder
             .parse::<u32>()
@@ -290,7 +291,7 @@ pub(in crate) fn is_month(folder: &str) -> bool {
 }
 
 /// A folder name that cannot be a constant piece of a pattern.
-pub(in crate) fn is_pattern_safe(name: &str) -> bool {
+pub(crate) fn is_pattern_safe(name: &str) -> bool {
     is_plain_literal(name) && !name.contains(['{', '}'])
 }
 
@@ -373,7 +374,7 @@ fn date_format_of(text: &str) -> DateFormat {
 
 /// The words, numbers, separators and the date of a file name without its
 /// extension. `.` separates names, but not inside a date.
-pub(in crate) fn name_tokens(stem: &str) -> Vec<NameToken> {
+pub(crate) fn name_tokens(stem: &str) -> Vec<NameToken> {
     let (before, date, after) = match date_in(stem) {
         Some((start, end, format)) => (
             stem.get(..start).unwrap_or_default(),
@@ -417,7 +418,7 @@ fn words_of(text: &str) -> Vec<NameToken> {
 }
 
 /// The structure of a file name with the words masked.
-pub(in crate) fn shape(tokens: &[NameToken]) -> String {
+pub(crate) fn shape(tokens: &[NameToken]) -> String {
     tokens
         .iter()
         .map(|token| match token {
@@ -527,6 +528,7 @@ fn pattern_text(folders: &[FolderToken], pieces: &[Piece]) -> String {
 mod tests {
     use super::*;
     use crate::sanitise::stays_below;
+    use ncrs_index::KindLanguage;
 
     fn document(path: &str) -> ArchiveDocument {
         ArchiveDocument {
@@ -854,6 +856,10 @@ mod tests {
         only(&learn_archive(&year_category_tree()), "Insurance/Company A")
     }
 
+    fn english() -> Kinds {
+        Kinds::built_in(KindLanguage::English)
+    }
+
     fn fields(sender: &str, kind: &str) -> DocumentFields {
         DocumentFields {
             sender: Some(sender.to_owned()),
@@ -865,7 +871,12 @@ mod tests {
 
     #[test]
     fn the_target_for_a_new_document_follows_the_pattern() {
-        let target = propose_target(&insurance_pattern(), &fields("Agency D", "premium"), "pdf");
+        let target = propose_target(
+            &insurance_pattern(),
+            &fields("Agency D", "premium"),
+            &english(),
+            "pdf",
+        );
 
         assert_eq!(
             target,
@@ -888,12 +899,22 @@ mod tests {
         };
 
         assert_eq!(
-            propose_target(&no_pattern, &fields("Agency D", "premium"), "pdf"),
+            propose_target(
+                &no_pattern,
+                &fields("Agency D", "premium"),
+                &english(),
+                "pdf"
+            ),
             None
         );
-        assert_eq!(propose_target(&pattern, &no_date, "pdf"), None);
+        assert_eq!(propose_target(&pattern, &no_date, &english(), "pdf"), None);
         assert_eq!(
-            propose_target(&pattern, &fields("Agency D", "premium"), "pdf/../x"),
+            propose_target(
+                &pattern,
+                &fields("Agency D", "premium"),
+                &english(),
+                "pdf/../x"
+            ),
             None
         );
     }
@@ -905,7 +926,7 @@ mod tests {
             ..insurance_pattern()
         };
         for hostile in ["../../etc", "a/../../b", "..\\..\\c", "/", "..", "x/y"] {
-            let target = propose_target(&pattern, &fields(hostile, hostile), "pdf");
+            let target = propose_target(&pattern, &fields(hostile, hostile), &english(), "pdf");
             if let Some(path) = target {
                 assert!(stays_below(&path), "{hostile}: {path:?}");
                 assert!(path.starts_with("2025/Insurance"), "{hostile}: {path:?}");
@@ -913,9 +934,31 @@ mod tests {
             }
         }
         assert_eq!(
-            propose_target(&pattern, &fields("..", "/"), "pdf"),
+            propose_target(&pattern, &fields("..", "/"), &english(), "pdf"),
             None,
             "values of only dots or separators count as missing"
+        );
+    }
+
+    #[test]
+    fn a_name_needs_all_its_pieces_and_keeps_its_extension() {
+        let pattern = SubtreePattern {
+            pattern: Some("Bills/{name}_{number}".to_owned()),
+            ..insurance_pattern()
+        };
+        let without_number = fields("Agency D", "premium");
+        let with_number = DocumentFields {
+            number: Some("4711".to_owned()),
+            ..without_number.clone()
+        };
+
+        assert_eq!(
+            propose_target(&pattern, &without_number, &english(), "pdf"),
+            None
+        );
+        assert_eq!(
+            propose_target(&pattern, &with_number, &english(), "pdf"),
+            Some(PathBuf::from("Bills/premium_4711.pdf"))
         );
     }
 }

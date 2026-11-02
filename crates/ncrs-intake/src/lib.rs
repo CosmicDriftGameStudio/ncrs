@@ -15,6 +15,7 @@ mod image_text;
 mod location;
 mod ocr;
 mod office;
+mod placement;
 mod recipient_detection;
 #[cfg(any(test, feature = "test-support"))]
 pub mod recognition;
@@ -62,12 +63,12 @@ pub use ocr::{
     OCR_MODELS_FOLDER, OCR_MODELS_HOST, OCR_MODELS_PROJECT, OCR_MODEL_FILES,
 };
 pub use office::{extract_text_from_bytes, OfficeText, PlainText};
+pub use placement::{NeighbourIndex, Placement, Signal};
 pub use recipient_detection::{detect_recipient, kind_from_heading};
 pub use reorganisation::{
-    plan_reorganisation, PlanFile, PlanRule, ReorganisationInput, DUPLICATES_FOLDER,
-    FINDING_PRIORITY,
+    plan_reorganisation, PlanFile, PlanRule, ReorganisationInput, FINDING_PRIORITY,
 };
-pub use reorganisation_plan::plan_location;
+pub use reorganisation_plan::{location_documents, location_structure, plan_location};
 pub use rule_suggestions::{
     suggest_rules, ArchiveText, RuleCandidate, MAX_CANDIDATES_PER_FOLDER, MAX_PHRASE_WORDS,
     MAX_SHARE_ELSEWHERE_PERCENT, MIN_FOLDER_DOCUMENTS, MIN_PHRASE_CHARS,
