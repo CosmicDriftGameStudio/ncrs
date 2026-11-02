@@ -36,6 +36,7 @@ impl Place {
         }
     }
 
+    #[cfg(unix)]
     fn outside(&self) -> PathBuf {
         let outside = self.dir.path().join("outside");
         fs::create_dir_all(&outside).unwrap();
@@ -71,6 +72,7 @@ impl Place {
         .unwrap()
     }
 
+    #[cfg(unix)]
     fn states(&self, batch: BatchId) -> Vec<JournalState> {
         self.index
             .journal_items(batch)
@@ -81,6 +83,7 @@ impl Place {
     }
 }
 
+#[cfg(unix)]
 fn entries_in(folder: &Path) -> usize {
     fs::read_dir(folder).unwrap().count()
 }
