@@ -47,11 +47,6 @@ contents:
     dst: /usr/lib/ncrs/libggml-base.so.0
     file_info:
       mode: 0644
-  - src: ${NCRS_STAGE}/libllama-common.so.0
-    expand: true
-    dst: /usr/lib/ncrs/libllama-common.so.0
-    file_info:
-      mode: 0644
   - src: ${NCRS_STAGE}/backends
     expand: true
     dst: /usr/lib/ncrs/backends

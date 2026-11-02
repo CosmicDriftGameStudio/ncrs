@@ -169,7 +169,7 @@ installed_what="$BIN_DIR/$BIN_NAME and $BIN_DIR/$LIB_NAME"
 # modules in backends/. Archives without backends/ (macOS, aarch64) link it in.
 backends_src="$(dirname "$src")/backends"
 if [ -d "$backends_src" ]; then
-    for llama_lib in libllama.so.0 libggml.so.0 libggml-base.so.0 libllama-common.so.0; do
+    for llama_lib in libllama.so.0 libggml.so.0 libggml-base.so.0; do
         [ -f "$(dirname "$src")/$llama_lib" ] \
             || fail "archive has a backends folder but no $llama_lib"
         cp "$(dirname "$src")/$llama_lib" "$BIN_DIR/.$llama_lib.new"

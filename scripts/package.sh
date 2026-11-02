@@ -25,7 +25,7 @@
 # profile equal to <profile> and every <arch> in the executable and the library.
 #
 # <dir> of --llama is the llama.cpp runtime (scripts/llama-runtime-dir.sh): the
-# four shared libraries (in lib/ on Linux, bin/ on Windows) and backends/. Windows and x86_64 Linux archives need it
+# shared libraries (in lib/ on Linux, bin/ on Windows) and backends/. Windows and x86_64 Linux archives need it
 # and carry the libraries next to the binary and the backends/ folder; the other
 # targets link llama.cpp in and must not get it.
 #
@@ -120,8 +120,9 @@ list_zip() {
 llama_libraries_for() {
   case "$1" in
     # The sonames the linker recorded: the binary and the modules NEED these
-    # names, not the unversioned libllama.so.
-    x86_64-unknown-linux-gnu) printf '%s\n' libllama.so.0 libggml.so.0 libggml-base.so.0 libllama-common.so.0 ;;
+    # names, not the unversioned libllama.so. Not libllama-common.so.0: the
+    # binary does not link it, and it would pull in OpenSSL.
+    x86_64-unknown-linux-gnu) printf '%s\n' libllama.so.0 libggml.so.0 libggml-base.so.0 ;;
     *-windows-*) printf '%s\n' llama.dll ggml.dll ggml-base.dll llama-common.dll ;;
   esac
 }

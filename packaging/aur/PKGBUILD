@@ -32,7 +32,7 @@ package() {
   # The x86_64 build runs the Hermes model through backend modules next to the
   # executable; the aarch64 build has them built in and ships none.
   if [ -f libllama.so.0 ]; then
-    install -Dm644 libllama.so.0 libggml.so.0 libggml-base.so.0 libllama-common.so.0 -t "$pkgdir/usr/lib/ncrs"
+    install -Dm644 libllama.so.0 libggml.so.0 libggml-base.so.0 -t "$pkgdir/usr/lib/ncrs"
     find backends -type f -exec install -Dm644 {} "$pkgdir/usr/lib/ncrs/{}" \;
   fi
   install -d "$pkgdir/usr/bin"

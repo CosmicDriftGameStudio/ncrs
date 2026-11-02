@@ -392,6 +392,13 @@ jobs:
         shell: bash
         run: echo "CMAKE_GENERATOR=Ninja" >> "$GITHUB_ENV"
 
+      # The target triple in the path pushes ggml's vulkan-shaders-gen
+      # try-compile below target/ past MAX_PATH (260), where cl.exe fails.
+      - name: Short target folder (Windows)
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        shell: bash
+        run: echo "CARGO_TARGET_DIR=D:/t" >> "$GITHUB_ENV"
+
       # Only main saves.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
@@ -434,7 +441,7 @@ jobs:
       - name: Package
         shell: bash
         run: |
-          binary=target/${{ matrix.target }}/release/ncrs
+          binary=${CARGO_TARGET_DIR:-target}/${{ matrix.target }}/release/ncrs
           if [ "${{ runner.os }}" = Windows ]; then binary="$binary.exe"; fi
           llama=()
           case "${{ matrix.target }}" in
@@ -652,7 +659,7 @@ jobs:
               # The image has no Vulkan loader; the version above already shows
               # that the binary finds the llama.cpp libraries (exit 127 if not).
               if [ "$TARGET" = x86_64-unknown-linux-gnu ]; then
-                for file in libllama.so.0 libggml.so.0 libggml-base.so.0 libllama-common.so.0 backends/libggml-vulkan.so; do
+                for file in libllama.so.0 libggml.so.0 libggml-base.so.0 backends/libggml-vulkan.so; do
                   test -f "$real_folder/$file"
                 done
                 ls "$real_folder"/backends/libggml-cpu-*.so
