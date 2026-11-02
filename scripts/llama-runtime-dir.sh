@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Prints the folder with the llama.cpp runtime of a release build: the shared
-# libraries and the backends/ folder that llama-cpp-sys-2 leaves in its OUT_DIR
+# libraries (lib/ on Linux, bin/ on Windows) and the backends/ folder that
+# llama-cpp-sys-2 leaves in its OUT_DIR
 # (target/<triple>/release/build/llama-cpp-sys-2-<hash>/out). `package.sh
 # archive --llama` takes it for Windows and x86_64 Linux.
 #
@@ -18,12 +19,12 @@ triple="$1"
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 build_root="${CARGO_TARGET_DIR:-$repo_root/target}/$triple/release/build"
 
-# A checksum over the libraries beside backends/ and everything in backends/;
-# the rest of OUT_DIR is the CMake build tree.
+# A checksum over the shared libraries (lib/*.so*, bin/*.dll) and everything in
+# backends/; the rest of OUT_DIR is the CMake build tree.
 digest_of() {
   local sum=sha256sum
   command -v sha256sum >/dev/null 2>&1 || sum="shasum -a 256"
-  (cd "$1" && { find . -maxdepth 1 -type f; find ./backends -type f; } | LC_ALL=C sort | while read -r file; do
+  (cd "$1" && { find ./lib -name '*.so*' 2>/dev/null; find ./bin -name '*.dll' 2>/dev/null; find ./backends -type f; } | LC_ALL=C sort | while read -r file; do
     $sum "$file"
   done | $sum | cut -d' ' -f1)
 }

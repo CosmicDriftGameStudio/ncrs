@@ -25,7 +25,7 @@
 # profile equal to <profile> and every <arch> in the executable and the library.
 #
 # <dir> of --llama is the llama.cpp runtime (scripts/llama-runtime-dir.sh): the
-# four shared libraries and backends/. Windows and x86_64 Linux archives need it
+# four shared libraries (in lib/ on Linux, bin/ on Windows) and backends/. Windows and x86_64 Linux archives need it
 # and carry the libraries next to the binary and the backends/ folder; the other
 # targets link llama.cpp in and must not get it.
 #
@@ -119,8 +119,18 @@ list_zip() {
 # the targets that build it with dynamic backends (see crates/ncrs-ai/build.rs).
 llama_libraries_for() {
   case "$1" in
-    x86_64-unknown-linux-gnu) printf '%s\n' libllama.so libggml.so libggml-base.so libllama-common.so ;;
+    # The sonames the linker recorded: the binary and the modules NEED these
+    # names, not the unversioned libllama.so.
+    x86_64-unknown-linux-gnu) printf '%s\n' libllama.so.0 libggml.so.0 libggml-base.so.0 libllama-common.so.0 ;;
     *-windows-*) printf '%s\n' llama.dll ggml.dll ggml-base.dll llama-common.dll ;;
+  esac
+}
+
+# The subfolder of the llama-cpp-sys-2 OUT_DIR that holds those libraries.
+llama_library_subdir_for() {
+  case "$1" in
+    *-windows-*) echo bin ;;
+    *) echo lib ;;
   esac
 }
 
@@ -215,11 +225,14 @@ package_archive() {
     expected+=(THIRD_PARTY_LICENSES.html)
   fi
   if [ -n "$llama" ]; then
-    local llama_library backend
+    local llama_library backend llama_subdir
+    llama_subdir="$(llama_library_subdir_for "$triple")"
     for llama_library in $llama_libraries; do
-      [ -f "$llama/$llama_library" ] \
-        || { echo "error: no $llama_library in $llama" >&2; ls -l "$llama" >&2; exit 1; }
-      cp -L "$llama/$llama_library" "$stage/$llama_library"
+      # -L: the file in lib/ is a symlink chain; the stage holds a regular file
+      # under the soname.
+      [ -f "$llama/$llama_subdir/$llama_library" ] \
+        || { echo "error: no $llama_library in $llama/$llama_subdir" >&2; ls -l "$llama/$llama_subdir" >&2; exit 1; }
+      cp -L "$llama/$llama_subdir/$llama_library" "$stage/$llama_library"
       expected+=("$llama_library")
     done
     [ -f "$llama/backends/$(llama_vulkan_module_for "$triple")" ] \
@@ -548,6 +561,7 @@ package_linux() {
   # the aarch64 one does not.
   local config format built
   config="$(mktemp)"
+  trap 'rm -f "${config:-}"' RETURN
   if [ "$arch" = amd64 ]; then
     grep -v '^# llama:' "$repo_root/packaging/linux/nfpm.yaml" > "$config"
   else
@@ -587,7 +601,6 @@ package_linux() {
   else
     echo "(no rpm here; ncrs-$triple.rpm is not listed)"
   fi
-  rm -f "$config"
 }
 
 # Lists a package's files and fails when one of the expected paths is not in it.

@@ -12,14 +12,17 @@ use llama_cpp_2::LlamaBackendDeviceType;
 /// Running the model on it is slower than the CPU backends.
 const SOFTWARE_RASTERISERS: [&str; 2] = ["llvmpipe", "lavapipe"];
 
-pub(super) fn is_gpu_type(device_type: LlamaBackendDeviceType) -> bool {
+pub(in crate::local) fn is_gpu_type(device_type: LlamaBackendDeviceType) -> bool {
     matches!(
         device_type,
         LlamaBackendDeviceType::Gpu | LlamaBackendDeviceType::IntegratedGpu
     )
 }
 
-pub(super) fn is_hardware_gpu(device_type: LlamaBackendDeviceType, description: &str) -> bool {
+pub(in crate::local) fn is_hardware_gpu(
+    device_type: LlamaBackendDeviceType,
+    description: &str,
+) -> bool {
     let lowercase = description.to_lowercase();
     is_gpu_type(device_type)
         && !SOFTWARE_RASTERISERS
@@ -27,7 +30,7 @@ pub(super) fn is_hardware_gpu(device_type: LlamaBackendDeviceType, description: 
             .any(|software| lowercase.contains(software))
 }
 
-pub(super) fn device_type_name(device_type: LlamaBackendDeviceType) -> &'static str {
+pub(in crate::local) fn device_type_name(device_type: LlamaBackendDeviceType) -> &'static str {
     match device_type {
         LlamaBackendDeviceType::Cpu => "cpu",
         LlamaBackendDeviceType::Accelerator => "accelerator",
@@ -39,7 +42,7 @@ pub(super) fn device_type_name(device_type: LlamaBackendDeviceType) -> &'static 
 
 /// Loads the backend modules; the error is the reason the runtime cannot start.
 #[cfg(dynamic_backends)]
-pub(super) fn load_modules() -> Result<(), &'static str> {
+pub(in crate::local) fn load_modules() -> Result<(), &'static str> {
     let Some(folder) = modules_folder() else {
         return Err("the folder of the compute backends was not found");
     };
@@ -48,6 +51,8 @@ pub(super) fn load_modules() -> Result<(), &'static str> {
         return Err("the folder of the compute backends has no usable name");
     }
     llama_cpp_2::llama_backend::load_backends_from_path(&folder);
+    // Load-bearing: with no devices, llama.cpp's `ggml_backend_load_all()` would
+    // search the baked-in build dir and the current dir for modules.
     if llama_cpp_2::list_llama_ggml_backend_devices().is_empty() {
         return Err("no compute backend was found next to the app");
     }
@@ -55,7 +60,7 @@ pub(super) fn load_modules() -> Result<(), &'static str> {
 }
 
 #[cfg(not(dynamic_backends))]
-pub(super) fn load_modules() -> Result<(), &'static str> {
+pub(in crate::local) fn load_modules() -> Result<(), &'static str> {
     Ok(())
 }
 
@@ -66,9 +71,18 @@ pub(super) fn load_modules() -> Result<(), &'static str> {
 /// to it.
 #[cfg(dynamic_backends)]
 fn modules_folder() -> Option<std::path::PathBuf> {
+    // Linux resolves the /usr/bin/ncrs symlink to the folder that holds the
+    // modules. Windows has no such link; canonicalize would only add a `\\?\`
+    // prefix to the path handed to llama.cpp's C loader.
     let beside_executable = std::env::current_exe()
         .ok()
-        .and_then(|executable| executable.canonicalize().ok())
+        .and_then(|executable| {
+            if cfg!(windows) {
+                Some(executable)
+            } else {
+                executable.canonicalize().ok()
+            }
+        })
         .and_then(|executable| folder_beside(&executable));
     match beside_executable {
         Some(folder) if !cfg!(debug_assertions) || folder.is_dir() => Some(folder),

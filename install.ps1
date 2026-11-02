@@ -122,7 +122,30 @@ try {
     New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
     Copy-Item $src.FullName (Join-Path $BinDir $BinName) -Force
     Copy-Item $libSrc.FullName (Join-Path $BinDir $LibName) -Force
-    Write-Info "installed $(Join-Path $BinDir $BinName) and $(Join-Path $BinDir $LibName)"
+    $installed = "$(Join-Path $BinDir $BinName) and $(Join-Path $BinDir $LibName)"
+
+    # The local AI model: llama.cpp DLLs next to the executable and its backend
+    # modules in backends\. Archives without backends\ (aarch64) link it in.
+    $srcDir = $src.DirectoryName
+    $backendsSrc = Join-Path $srcDir 'backends'
+    if (Test-Path $backendsSrc) {
+        foreach ($dll in 'llama.dll', 'ggml.dll', 'ggml-base.dll', 'llama-common.dll') {
+            $dllSrc = Join-Path $srcDir $dll
+            if (-not (Test-Path $dllSrc)) {
+                Write-Error "archive has a backends folder but no $dll"
+                return
+            }
+            Copy-Item $dllSrc (Join-Path $BinDir $dll) -Force
+        }
+        $backendsNew = Join-Path $BinDir 'backends.new'
+        $backendsDst = Join-Path $BinDir 'backends'
+        Remove-Item -Recurse -Force $backendsNew -ErrorAction SilentlyContinue
+        Copy-Item $backendsSrc $backendsNew -Recurse -Force
+        Remove-Item -Recurse -Force $backendsDst -ErrorAction SilentlyContinue
+        Move-Item $backendsNew $backendsDst
+        $installed += ", the llama.cpp libraries and $backendsDst"
+    }
+    Write-Info "installed $installed"
 }
 finally {
     Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue

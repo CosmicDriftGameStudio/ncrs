@@ -152,7 +152,8 @@ USAGE:
     ncrs --check-ai <models-dir>
         Loads the Hermes model from <models-dir> without opening a window,
         prints the compute devices, GPU or CPU and the time of three
-        sentences, and exits 0 if all went well, 1 if not.
+        sentences, and exits 0 if all went well, 1 if not, 2 on a usage
+        error.
 
 KEYS (the defaults; [keys] in the config file changes them):
     up/down    move selection      Tab       switch panel
@@ -221,8 +222,8 @@ files to open.";
 /// `ncrs --check-ai <models-dir>`: developer and CI output in English, not UI
 /// text, so it is not in strings.json. Returns the exit code.
 #[cfg(feature = "local-ai")]
-fn check_ai(models_dir: Option<std::ffi::OsString>) -> i32 {
-    let Some(models_dir) = models_dir else {
+fn check_ai(models_dir_argument: Option<std::ffi::OsString>) -> i32 {
+    let Some(models_dir) = models_dir_argument else {
         eprintln!("ncrs: --check-ai needs the folder with the model");
         return 2;
     };

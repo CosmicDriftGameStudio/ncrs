@@ -32,24 +32,24 @@ contents:
 # llama:begin
   # The Hermes model: llama.cpp as shared libraries and its backends (the CPU
   # variants and Vulkan) as modules in backends/, both next to the executable.
-  - src: ${NCRS_STAGE}/libllama.so
+  - src: ${NCRS_STAGE}/libllama.so.0
     expand: true
-    dst: /usr/lib/ncrs/libllama.so
+    dst: /usr/lib/ncrs/libllama.so.0
     file_info:
       mode: 0644
-  - src: ${NCRS_STAGE}/libggml.so
+  - src: ${NCRS_STAGE}/libggml.so.0
     expand: true
-    dst: /usr/lib/ncrs/libggml.so
+    dst: /usr/lib/ncrs/libggml.so.0
     file_info:
       mode: 0644
-  - src: ${NCRS_STAGE}/libggml-base.so
+  - src: ${NCRS_STAGE}/libggml-base.so.0
     expand: true
-    dst: /usr/lib/ncrs/libggml-base.so
+    dst: /usr/lib/ncrs/libggml-base.so.0
     file_info:
       mode: 0644
-  - src: ${NCRS_STAGE}/libllama-common.so
+  - src: ${NCRS_STAGE}/libllama-common.so.0
     expand: true
-    dst: /usr/lib/ncrs/libllama-common.so
+    dst: /usr/lib/ncrs/libllama-common.so.0
     file_info:
       mode: 0644
   - src: ${NCRS_STAGE}/backends

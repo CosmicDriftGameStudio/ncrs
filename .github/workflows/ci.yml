@@ -468,7 +468,11 @@ jobs:
           set -o pipefail
           unpacked=$(mktemp -d)
           tar -xzf ncrs-x86_64-unknown-linux-gnu.tar.gz -C "$unpacked"
-          "$unpacked/ncrs-x86_64-unknown-linux-gnu/ncrs" --check-ai "$PWD/.ai-models" 2>&1 | tee check-ai.log
+          readelf -d "$unpacked/ncrs-x86_64-unknown-linux-gnu/ncrs" | grep -E 'NEEDED|R(UN)?PATH'
+          # A clean container: no Vulkan loader, as on a bare machine.
+          docker run --rm -v "$unpacked:/app:ro" -v "$PWD/.ai-models:/models:ro" ubuntu:24.04 bash -euc '
+            echo "vulkan loaders: $(ldconfig -p | grep -c libvulkan || true)"
+            /app/ncrs-x86_64-unknown-linux-gnu/ncrs --check-ai /models' 2>&1 | tee check-ai.log
           grep -qx 'ai compute: CPU' check-ai.log
 
       # Out-String: the binary may not be attached to a console, and then
@@ -482,6 +486,9 @@ jobs:
           $unpacked = Join-Path $env:RUNNER_TEMP 'ncrs-unpacked'
           Expand-Archive -Path ncrs-x86_64-pc-windows-msvc.zip -DestinationPath $unpacked
           $exe = Join-Path $unpacked 'ncrs-x86_64-pc-windows-msvc\ncrs.exe'
+          where.exe vulkan-1.dll 2>&1 | Out-String | Write-Host
+          (Get-ChildItem (Split-Path $exe)).Name | Write-Host
+          (Get-ChildItem (Join-Path (Split-Path $exe) 'backends')).Name | Write-Host
           $output = (& $exe --check-ai (Join-Path $env:GITHUB_WORKSPACE '.ai-models') 2>&1 | Out-String)
           $code = $LASTEXITCODE
           Write-Host $output
@@ -640,7 +647,7 @@ jobs:
               # The image has no Vulkan loader; the version above already shows
               # that the binary finds the llama.cpp libraries (exit 127 if not).
               if [ "$TARGET" = x86_64-unknown-linux-gnu ]; then
-                for file in libllama.so libggml.so libggml-base.so libllama-common.so backends/libggml-vulkan.so; do
+                for file in libllama.so.0 libggml.so.0 libggml-base.so.0 libllama-common.so.0 backends/libggml-vulkan.so; do
                   test -f "$real_folder/$file"
                 done
                 ls "$real_folder"/backends/libggml-cpu-*.so
@@ -755,7 +762,7 @@ jobs:
               real_folder="$(dirname "$(readlink -f "$(command -v ncrs)")")"
               test -f "$real_folder/libpdfium.so"
               # x86_64 only here: the llama.cpp libraries and backend modules.
-              test -f "$real_folder/libllama.so"
+              test -f "$real_folder/libllama.so.0"
               test -f "$real_folder/backends/libggml-vulkan.so"
               test -f /usr/share/applications/ncrs.desktop
               test -f /usr/share/icons/hicolor/256x256/apps/ncrs.png
