@@ -495,12 +495,19 @@ jobs:
           $unpacked = Join-Path $env:RUNNER_TEMP 'ncrs-unpacked'
           Expand-Archive -Path ncrs-x86_64-pc-windows-msvc.zip -DestinationPath $unpacked
           $exe = Join-Path $unpacked 'ncrs-x86_64-pc-windows-msvc\ncrs.exe'
-          # Without the SDK on PATH, as on a user's machine: only a driver's
-          # loader in System32 can be found.
-          $env:Path = ($env:Path -split ';' | Where-Object { $_ -notmatch 'VulkanSDK' }) -join ';'
+          $dir = Split-Path $exe
+          (Get-ChildItem $dir).Name | Write-Host
+          (Get-ChildItem (Join-Path $dir 'backends')).Name | Write-Host
+          # What each shipped file imports, to compare against a bare Windows.
+          $shipped = @($exe) + (Get-ChildItem $dir -Filter *.dll).FullName + (Get-ChildItem (Join-Path $dir 'backends') -Filter *.dll).FullName
+          foreach ($file in $shipped) {
+            Write-Host "== $file"
+            dumpbin /nologo /dependents $file | Select-String '\.dll' | Out-String | Write-Host
+          }
+          # Only Windows' own folders on PATH, as on a user's machine: no Vulkan
+          # SDK, OpenSSL or build tools. A Vulkan loader only from a driver.
+          $env:Path = "$env:SystemRoot\System32;$env:SystemRoot"
           where.exe vulkan-1.dll 2>&1 | Out-String | Write-Host
-          (Get-ChildItem (Split-Path $exe)).Name | Write-Host
-          (Get-ChildItem (Join-Path (Split-Path $exe) 'backends')).Name | Write-Host
           $output = (& $exe --check-ai (Join-Path $env:GITHUB_WORKSPACE '.ai-models') 2>&1 | Out-String)
           $code = $LASTEXITCODE
           Write-Host $output
