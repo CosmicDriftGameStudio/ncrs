@@ -146,7 +146,8 @@ mod tests {
 
         talk.press(&ChipReply::FileAll);
         let files = talk.files();
-        assert!(files.contains_key(&format!("archive/{}/neu_beta.pdf", picked.label)));
+        let chosen_folder = picked.label.replace('\\', "/");
+        assert!(files.contains_key(&format!("archive/{chosen_folder}/neu_beta.pdf")));
         assert!(!files.contains_key("inbox/neu_beta.pdf"));
         assert!(!files.contains_key("inbox/neu_alfa.pdf"));
         assert_eq!(

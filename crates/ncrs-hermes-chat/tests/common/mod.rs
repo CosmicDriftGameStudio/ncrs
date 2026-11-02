@@ -234,7 +234,11 @@ pub fn listing(root: &Path) -> BTreeMap<String, String> {
                 let digest = Sha256::digest(fs::read(&path).unwrap());
                 let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
                 let relative = path.strip_prefix(base).unwrap();
-                found.insert(relative.to_string_lossy().into_owned(), hex);
+                let slashed: Vec<String> = relative
+                    .components()
+                    .map(|part| part.as_os_str().to_string_lossy().into_owned())
+                    .collect();
+                found.insert(slashed.join("/"), hex);
             }
         }
     }
