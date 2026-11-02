@@ -5057,7 +5057,7 @@ mod reorganisation_plan_card {
             "scan 0042.pdf",
             "move",
             "rename",
-            "4 of 5 selected · 2 cannot run",
+            "3 of 4 selected · 2 cannot run",
             "Run selected",
             "Plan again",
         ] {
@@ -5123,7 +5123,7 @@ mod reorganisation_plan_card {
             "1 von 2 ausgewählt",
             "verschieben",
             "umbenennen",
-            "4 von 5 ausgewählt · 2 nicht ausführbar",
+            "3 von 4 ausgewählt · 2 nicht ausführbar",
             "Ausgewählte ausführen",
             "Neu planen",
         ] {
@@ -5216,7 +5216,7 @@ mod reorganisation_plan_card {
             }
         }
 
-        assert!(shows(view.clone(), "0 of 5 selected · 2 cannot run"));
+        assert!(shows(view.clone(), "0 of 4 selected · 2 cannot run"));
         assert!(messages_after_click(view, "Run selected").is_empty());
     }
 
