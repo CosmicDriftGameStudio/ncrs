@@ -401,6 +401,14 @@ mod hermes_setup_tests;
     clippy::indexing_slicing
 )]
 #[cfg(test)]
+mod ai_status_ui_tests;
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
 mod clipboard_tests;
 #[allow(
     clippy::unwrap_used,
@@ -426,14 +434,6 @@ mod folder_size_tests;
 )]
 #[cfg(test)]
 mod hermes_chat_ui_tests;
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-#[cfg(test)]
-mod ai_status_ui_tests;
 #[allow(
     clippy::unwrap_used,
     clippy::expect_used,
