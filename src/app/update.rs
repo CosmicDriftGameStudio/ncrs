@@ -183,7 +183,8 @@ impl App {
             self.hermes_focus = HermesFocus::Content;
         }
         let back = self.return_to_overview_when_its_card_is_gone();
-        Task::batch([task, back])
+        let chat = self.tell_chat_hermes_is_ready();
+        Task::batch([task, back, chat])
     }
 
     fn return_to_overview_when_its_card_is_gone(&mut self) -> Task<Message> {

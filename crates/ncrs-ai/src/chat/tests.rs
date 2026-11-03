@@ -309,7 +309,7 @@ fn the_rows_are_all_there_and_make_turns() {
         .chain(rows(HOLDOUT_ROWS))
         .collect();
 
-    assert_eq!(all.len(), 166);
+    assert_eq!(all.len(), 174);
     for row in &all {
         let turn = row.turn();
         assert_eq!(turn.message, row.text);

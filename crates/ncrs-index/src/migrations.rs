@@ -29,6 +29,7 @@ pub const MIGRATIONS: &[&str] = &[
     include_str!("migrations/021_file_list_tag.sql"),
     include_str!("migrations/022_fields_read_version.sql"),
     include_str!("migrations/023_named_runs.sql"),
+    include_str!("migrations/024_ai_asked.sql"),
 ];
 
 /// All pending steps run in one transaction together with the bump of

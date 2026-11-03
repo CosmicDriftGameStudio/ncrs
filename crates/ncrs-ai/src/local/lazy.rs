@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 use std::num::NonZeroU32;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Sender};
 use std::sync::{Arc, Mutex, OnceLock, PoisonError, Weak};
 use std::thread::{Builder, JoinHandle};
@@ -102,6 +102,13 @@ impl Drop for LazyLocalModel {
 }
 
 impl Provider for LazyLocalModel {
+    fn can_answer(&self, _source: &Path) -> bool {
+        !matches!(
+            self.status(),
+            LocalModelStatus::NotDownloaded | LocalModelStatus::Failed(_)
+        )
+    }
+
     fn extract(&self, request: &ExtractionRequest) -> Result<Extraction, AiError> {
         self.ask(|reply| {
             Job::Extract(ExtractJob {

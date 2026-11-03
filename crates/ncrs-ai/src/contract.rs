@@ -1,5 +1,5 @@
 use std::fmt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use jsonc_parser::{parse_to_value, JsonObject, JsonValue, ParseOptions};
@@ -107,6 +107,13 @@ pub struct Extraction {
 /// express an action, so nothing it says can move, delete or run anything.
 pub trait Provider: Send + Sync + fmt::Debug {
     fn extract(&self, request: &ExtractionRequest) -> Result<Extraction, AiError>;
+
+    /// True when a request for a document from `source` can get an answer now.
+    /// A provider that first needs a download or the user's consent says
+    /// false, so the pipeline does not ask for the whole archive at every start.
+    fn can_answer(&self, _source: &Path) -> bool {
+        true
+    }
 }
 
 /// The JSON schema of the reply: an object with one optional property per

@@ -41,6 +41,16 @@ impl Index {
         Self::create_encrypted_with_migrations(db_path, store, MIGRATIONS)
     }
 
+    /// A consistent copy of an unencrypted index as a new plain file, made
+    /// while the index is in use. The target must not exist.
+    pub fn save_plain_copy(&self, target: &Path) -> Result<(), IndexError> {
+        let text = target
+            .to_str()
+            .ok_or_else(|| IndexError::NonUtf8Path(target.to_path_buf()))?;
+        self.connection().execute("VACUUM INTO ?1", [text])?;
+        Ok(())
+    }
+
     pub fn create_plain(db_path: &Path) -> Result<Self, IndexError> {
         Self::create_plain_with_migrations(db_path, MIGRATIONS)
     }
@@ -1373,7 +1383,7 @@ mod tests {
 
         let index = Index::open(&path, &InMemoryKeyStore::empty()).unwrap();
 
-        assert_eq!(user_version(&index), 23);
+        assert_eq!(user_version(&index), 24);
         assert!(index.file_list_tag_exceptions().unwrap().is_empty());
         index.set_file_list_tag("steuer", Some(false)).unwrap();
         assert_eq!(index.file_list_tag_exceptions().unwrap().len(), 1);
@@ -1390,7 +1400,7 @@ mod tests {
         let (_dir, index) = migrated_from_19();
 
         assert_eq!(user_version(&index), latest_version());
-        assert_eq!(user_version(&index), 23);
+        assert_eq!(user_version(&index), 24);
         let violations = index
             .conn
             .prepare("PRAGMA foreign_key_check")

@@ -4,6 +4,7 @@
 
 use std::fmt;
 use std::net::IpAddr;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -224,11 +225,21 @@ impl OpenAiCompatible {
     }
 }
 
+impl OpenAiCompatible {
+    fn may_send(&self, source: &Path) -> bool {
+        self.endpoint.local || self.ledger.granted(&self.endpoint.origin, source)
+    }
+}
+
 impl Provider for OpenAiCompatible {
+    fn can_answer(&self, source: &Path) -> bool {
+        self.may_send(source)
+    }
+
     fn extract(&self, request: &ExtractionRequest) -> Result<Extraction, AiError> {
         // First, before an agent or a request exists: without consent nothing
         // is sent.
-        if !self.endpoint.local && !self.ledger.granted(&self.endpoint.origin, &request.source) {
+        if !self.may_send(&request.source) {
             return Err(AiError::ConsentRequired(self.preview(request)));
         }
         let reply = self.post(&self.request_body(request).pretty())?;

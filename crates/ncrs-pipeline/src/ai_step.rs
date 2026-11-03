@@ -6,16 +6,16 @@ use ncrs_index::{
     Document, DocumentFields, DocumentStatus, Field, FieldOrigin, IndexError, KindCatalog,
     KindLanguage, Kinds, ReviewReason,
 };
-use ncrs_intake::{
-    plan, relative_to_location, LocationMode, PlanInput, Planning, AI_FIELD_ORDER, FIELD_ORDER,
-};
+use ncrs_intake::{plan, relative_to_location, PlanInput, Planning, AI_FIELD_ORDER, FIELD_ORDER};
 
 use crate::step::{with_index_value, IndexAccess, Item, Step, StepOutcome};
 use crate::steps::NO_INDEX;
 
-/// Asks the provider for the fields the rules left open, for inbox documents
-/// the rules could not place. What comes back is only ever field values:
-/// written where the field is empty, or sent to the review list.
+/// Asks the provider for the fields the rules left open: for documents the
+/// rules could not place, and for documents nobody plans, whose sender or kind
+/// is empty. What comes back is only ever field values: written where the
+/// field is empty, or sent to the review list. A document nobody plans is
+/// asked once; the index remembers it.
 #[derive(Debug)]
 pub struct AiStep {
     index: Arc<dyn IndexAccess>,
@@ -41,8 +41,13 @@ impl AiStep {
         }
     }
 
-    /// The new document and the kinds the index knows.
-    fn document(&self, item: &Item) -> Result<Option<(Document, Arc<KindCatalog>)>, String> {
+    /// The document and the kinds the index knows; a document being planned
+    /// must still be new.
+    fn document(
+        &self,
+        item: &Item,
+        must_be_new: bool,
+    ) -> Result<Option<(Document, Arc<KindCatalog>)>, String> {
         let id = item
             .document
             .ok_or_else(|| "the file has no document".to_owned())?;
@@ -54,8 +59,17 @@ impl AiStep {
         .ok_or_else(|| NO_INDEX.to_owned())?
         .map_err(|err| err.to_string())?;
         Ok(document
-            .filter(|found| found.status == DocumentStatus::New)
+            .filter(|found| !must_be_new || found.status == DocumentStatus::New)
             .map(|found| (found, kinds)))
+    }
+
+    fn remember_asked(&self, item: &Item) -> Result<(), String> {
+        let id = item
+            .document
+            .ok_or_else(|| "the file has no document".to_owned())?;
+        with_index_value(self.index.as_ref(), |index| index.set_ai_asked(id))
+            .ok_or_else(|| NO_INDEX.to_owned())?
+            .map_err(|err| err.to_string())
     }
 }
 
@@ -121,23 +135,32 @@ impl Step for AiStep {
     }
 
     fn run(&self, item: &mut Item, _now: SystemTime) -> Result<StepOutcome, String> {
-        let Some(reason) = item.review.filter(|&reason| wants_fields(reason)) else {
-            return Ok(StepOutcome::Continue);
-        };
-        let Some(text) = item.text.as_deref() else {
-            return Ok(StepOutcome::Continue);
-        };
-        if item.location.mode == LocationMode::Archive {
+        let review_reason = item.review.filter(|&reason| wants_fields(reason));
+        let fields_only = item.review.is_none() && item.plan.is_none();
+        if review_reason.is_none() && !fields_only {
             return Ok(StepOutcome::Continue);
         }
-        let Some((document, kinds)) = self.document(item)? else {
+        let Some(text) = item.text.as_deref() else {
+            if fields_only {
+                self.remember_asked(item)?;
+            }
+            return Ok(StepOutcome::Continue);
+        };
+        let Some((document, kinds)) = self.document(item, review_reason.is_some())? else {
             return Ok(StepOutcome::Continue);
         };
         // The recipient alone is no reason to send the text anywhere.
-        let anything_open = FIELD_ORDER
-            .into_iter()
-            .any(|field| is_open(&document.fields, field));
+        let anything_open = if fields_only {
+            is_open(&document.fields, Field::Sender) || is_open(&document.fields, Field::Kind)
+        } else {
+            FIELD_ORDER
+                .into_iter()
+                .any(|field| is_open(&document.fields, field))
+        };
         if !anything_open {
+            if fields_only {
+                self.remember_asked(item)?;
+            }
             return Ok(StepOutcome::Continue);
         }
         let open_fields: Vec<Field> = AI_FIELD_ORDER
@@ -176,8 +199,14 @@ impl Step for AiStep {
         let least_sure = FIELD_ORDER
             .into_iter()
             .find(|&field| unsure.iter().any(|found| found.field == field));
-        let plan_again = matches!(reason, ReviewReason::MissingField(_)) && least_sure.is_none();
-        let planning = self.write_and_plan(item, &confident, plan_again)?;
+        let plan_again =
+            matches!(review_reason, Some(ReviewReason::MissingField(_))) && least_sure.is_none();
+        let planning =
+            self.write_and_plan(item, &confident, plan_again, review_reason.is_some())?;
+        if fields_only {
+            self.remember_asked(item)?;
+            return Ok(StepOutcome::Continue);
+        }
 
         if let Some(field) = least_sure {
             item.review = Some(ReviewReason::LowConfidence(field));
@@ -217,6 +246,7 @@ impl AiStep {
         item: &Item,
         confident: &[&ExtractedField],
         plan_again: bool,
+        must_be_new: bool,
     ) -> Result<Option<Planning>, String> {
         let id = item
             .document
@@ -226,7 +256,7 @@ impl AiStep {
             let Some(current) = index.document(id)? else {
                 return Ok(None);
             };
-            if current.status != DocumentStatus::New {
+            if must_be_new && current.status != DocumentStatus::New {
                 return Ok(None);
             }
             let known_before = current.fields.clone();
@@ -312,7 +342,7 @@ mod tests {
         Condition, ConditionKind, ContentHash, DocumentId, DocumentSource, Index, NewDocument,
         RuleConditions, RuleSpec,
     };
-    use ncrs_intake::{stays_below, Location, TextChain};
+    use ncrs_intake::{stays_below, Location, LocationMode, TextChain};
     use tempfile::TempDir;
 
     use super::*;
@@ -910,12 +940,82 @@ mod tests {
         without_text.review = Some(ReviewReason::NoMatchingRule);
         without_text.text = None;
         run(&steps, AI, &mut without_text);
-        let mut archived = fixture.item(document, INVOICE_TEXT);
-        archived.review = Some(ReviewReason::NoMatchingRule);
-        archived.location.mode = LocationMode::Archive;
-        run(&steps, AI, &mut archived);
+        let mut under_review_by_rule = fixture.item(document, INVOICE_TEXT);
+        under_review_by_rule.review = Some(ReviewReason::UnconfirmedRule);
+        run(&steps, AI, &mut under_review_by_rule);
 
         assert_eq!(unconfirmed.review, Some(ReviewReason::UnconfirmedRule));
         assert!(provider.requests().is_empty());
+    }
+
+    fn set_status(fixture: &Fixture, document: DocumentId, status: DocumentStatus) {
+        fixture
+            .index
+            .lock()
+            .unwrap()
+            .set_document_status(document, status)
+            .unwrap();
+    }
+
+    #[test]
+    fn a_document_in_any_location_kind_is_asked_once_for_its_empty_sender() {
+        for mode in [LocationMode::Inbox, LocationMode::Archive] {
+            let fixture = Fixture::new();
+            let provider = Arc::new(reply("0.95"));
+            let steps = fixture.steps(&provider);
+            let document = fixture.add_document(1);
+            set_status(&fixture, document, DocumentStatus::Filed);
+            let mut item = fixture.item(document, INVOICE_TEXT);
+            item.location.mode = mode;
+
+            assert_eq!(run(&steps, AI, &mut item), StepOutcome::Continue);
+            let fields = fixture.fields(document);
+            assert_eq!(fields.sender.as_deref(), Some("Agency B"));
+            assert_eq!(item.review, None);
+            assert!(item.plan.is_none());
+            assert!(fixture.index.lock().unwrap().ai_asked(document).unwrap());
+            assert_eq!(provider.requests().len(), 1);
+        }
+    }
+
+    #[test]
+    fn a_document_the_ai_found_nothing_in_is_remembered_as_asked() {
+        let fixture = Fixture::new();
+        let provider = Arc::new(reply("0.2"));
+        let steps = fixture.steps(&provider);
+        let document = fixture.add_document(1);
+        set_status(&fixture, document, DocumentStatus::Filed);
+        let mut item = fixture.item(document, INVOICE_TEXT);
+
+        run(&steps, AI, &mut item);
+
+        assert_eq!(fixture.fields(document).sender, None);
+        assert!(fixture.index.lock().unwrap().ai_asked(document).unwrap());
+    }
+
+    #[test]
+    fn a_document_with_sender_and_kind_is_not_asked() {
+        let fixture = Fixture::new();
+        let provider = Arc::new(reply("0.95"));
+        let steps = fixture.steps(&provider);
+        let document = fixture.add_document(1);
+        set_status(&fixture, document, DocumentStatus::Filed);
+        {
+            let mut index = fixture.index.lock().unwrap();
+            let fields = DocumentFields {
+                sender: Some("Company A".to_owned()),
+                kind: Some("invoice".to_owned()),
+                ..DocumentFields::default()
+            };
+            index
+                .set_document_fields(document, &fields, |_| FieldOrigin::Unknown)
+                .unwrap();
+        }
+        let mut item = fixture.item(document, INVOICE_TEXT);
+
+        run(&steps, AI, &mut item);
+
+        assert!(provider.requests().is_empty());
+        assert!(fixture.index.lock().unwrap().ai_asked(document).unwrap());
     }
 }

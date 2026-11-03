@@ -113,6 +113,19 @@ fn a_missing_model_file_is_an_error_at_once_and_the_status_says_so() {
 }
 
 #[test]
+fn a_model_that_is_not_downloaded_cannot_answer_and_one_that_is_there_can() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let path = dir.path().join("test.gguf");
+    let lazy = lazy_with_pin_of(path.clone(), b"model bytes");
+    assert!(!lazy.can_answer(dir.path()));
+
+    fs::write(&path, b"MODEL BYTES").unwrap();
+    lazy.refresh();
+
+    assert!(lazy.can_answer(dir.path()));
+}
+
+#[test]
 fn a_file_that_arrives_later_is_looked_at_again() {
     let dir = tempfile::TempDir::new().unwrap();
     let path = dir.path().join("test.gguf");

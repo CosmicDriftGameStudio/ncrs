@@ -206,6 +206,23 @@ impl State {
         true
     }
 
+    /// A file that just arrived goes before the stock a scan found, so a slow
+    /// step over a whole archive does not hold it back.
+    fn queue_arrival(
+        &mut self,
+        location: &Location,
+        path: &Path,
+        fingerprint: Option<Fingerprint>,
+    ) -> bool {
+        let queued = self.queue_first_step(location, path, None, fingerprint);
+        if queued {
+            if let Some(arrival) = self.first_step.pop_back() {
+                self.first_step.push_front(arrival);
+            }
+        }
+        queued
+    }
+
     fn queue_again(&mut self, location: &Location, path: &Path) {
         if !self.waiting_first.insert(path.to_path_buf()) {
             if let Some(queued) = self
@@ -632,7 +649,7 @@ impl Shared {
                     !state.stopping
                         && state.watcher.is_some()
                         && !state.is_repeated_report(&path, fingerprint)
-                        && state.queue_first_step(location, &path, None, fingerprint)
+                        && state.queue_arrival(location, &path, fingerprint)
                 });
                 if queued {
                     self.work_ready.notify_one();

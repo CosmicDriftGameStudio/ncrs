@@ -192,6 +192,8 @@ impl Areas {
     }
 }
 
+/// A sender, or a kind the catalog knows: a kind the model made up is no
+/// group, because no rule can match it.
 fn grouped_by(
     entry: &TrialEntry,
     kinds: &Kinds,
@@ -212,7 +214,7 @@ fn grouped_by(
         .kind
         .as_deref()
         .map(str::trim)
-        .filter(|kind| !kind.is_empty())?;
+        .filter(|kind| kinds.catalog.resolve(kind).is_some())?;
     Some((
         GroupKey::Kind(kinds.catalog.kind_key(kind)),
         kinds.kind_word(kind).into_owned(),

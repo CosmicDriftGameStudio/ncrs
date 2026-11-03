@@ -68,16 +68,16 @@ use crate::messages::{Message, PanelMessage, PanelSide};
 /// produce, so it has to outlive every step. It runs on the tokio executor the
 /// app itself uses, which is what makes a `spawn_blocking` copy run for real
 /// rather than being simulated.
-struct Session<P: iced::Program> {
-    app: App,
+pub(crate) struct Session<P: iced::Program> {
+    pub(crate) app: App,
     /// The program under test — the one `main` builds, so a test cannot pass
     /// while the binary is wired differently.
     program: P,
-    runtime: Runtime<iced::executor::Default, mpsc::UnboundedSender<Outcome>, Outcome>,
+    pub(crate) runtime: Runtime<iced::executor::Default, mpsc::UnboundedSender<Outcome>, Outcome>,
     /// What comes back from tasks and subscriptions.
-    actions: mpsc::UnboundedReceiver<Outcome>,
+    pub(crate) actions: mpsc::UnboundedReceiver<Outcome>,
     /// How many tasks have been started and not yet reported finished.
-    in_flight: usize,
+    pub(crate) in_flight: usize,
     /// The app's subscriptions, held open so a test can poll them directly.
     ///
     /// Each is the app's own `Subscription`, built by `App::subscription` and
@@ -120,7 +120,7 @@ impl iced_test::core::Clipboard for TestClipboard {
 
 impl<P: iced::Program<State = App, Message = Message> + 'static> Session<P> {
     /// Boots the app and runs the initial directory loads.
-    fn boot(program: P) -> Self {
+    pub(crate) fn boot(program: P) -> Self {
         let executor = iced::executor::Default::new().expect("the tokio executor");
         let (action_tx, actions) = mpsc::unbounded();
         let mut runtime = Runtime::new(executor, action_tx);
@@ -162,6 +162,8 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Session<P> {
     fn resubscribe(&mut self) {
         let subscription = self.runtime.enter(|| self.program.subscription(&self.app));
         let recipes = subscription::into_recipes(subscription);
+        // A timer recipe (`time::every`) needs the tokio context to be built.
+        let runtime = &self.runtime;
         self.subscriptions = recipes
             .into_iter()
             .map(|recipe| {
@@ -171,7 +173,7 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Session<P> {
                 // `keyboard::listen` yield nothing ever again.
                 SubscriptionStream {
                     input: tx,
-                    stream: recipe.stream(rx.boxed()),
+                    stream: runtime.enter(|| recipe.stream(rx.boxed())),
                 }
             })
             .collect();
@@ -265,7 +267,7 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Session<P> {
     }
 
     /// Presses and releases one key, then runs everything that follows.
-    fn press(&mut self, key: Key) {
+    pub(crate) fn press(&mut self, key: Key) {
         self.key_event(key, Modifiers::default());
     }
 
@@ -274,7 +276,7 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Session<P> {
         self.key_event(key, modifiers);
     }
 
-    fn type_text(&mut self, text: &str) {
+    pub(crate) fn type_text(&mut self, text: &str) {
         for c in text.chars() {
             self.press(Key::Character(c.to_string().into()));
         }
@@ -315,7 +317,7 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Session<P> {
         });
     }
 
-    fn press_raw(&mut self, event: keyboard::Event) {
+    pub(crate) fn press_raw(&mut self, event: keyboard::Event) {
         self.broadcast(SubEvent::Interaction {
             window: self.window,
             event: iced_test::core::Event::Keyboard(event),
@@ -362,7 +364,7 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Session<P> {
     /// Runs `update` for `message` but holds back the task it returns, so the
     /// work it would start has not begun. Lets a test act while a job is
     /// certainly still in flight.
-    fn send_held(&mut self, message: Message) -> Task<Message> {
+    pub(crate) fn send_held(&mut self, message: Message) -> Task<Message> {
         let program = &self.program;
         let task = self
             .runtime
@@ -372,7 +374,7 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Session<P> {
     }
 
     /// Delivers a message with no keyboard event behind it.
-    fn send(&mut self, message: Message) {
+    pub(crate) fn send(&mut self, message: Message) {
         let program = &self.program;
         let task = self
             .runtime
@@ -383,7 +385,7 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Session<P> {
     }
 
     /// Starts `task`, and lets `settle` wait for it.
-    fn drive(&mut self, task: Task<Message>) {
+    pub(crate) fn drive(&mut self, task: Task<Message>) {
         let Some(stream) = task::into_stream(task) else {
             return;
         };
@@ -431,7 +433,7 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Session<P> {
     /// the subscription streams: a key press only turns into a message when its
     /// stream is polled. So each wait goes through `block_on`, and the wait ends
     /// when the action arrives rather than after a fixed delay.
-    fn settle(&mut self) {
+    pub(crate) fn settle(&mut self) {
         loop {
             // Wait for the next thing to happen, or notice that nothing has.
             let outcome = self.next_outcome();
@@ -479,7 +481,7 @@ struct SubscriptionStream {
 ///
 /// A wrapper rather than the app's own `Message`, because "this task is done"
 /// is not something the app should have to know about.
-enum Outcome {
+pub(crate) enum Outcome {
     Message(Message),
     /// A widget operation, such as focusing a field.
     Widget(Box<dyn iced_test::core::widget::Operation>),

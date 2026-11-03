@@ -506,6 +506,41 @@ impl App {
         self
     }
 
+    /// Replaces the folder picker, so a protocol run answers it without a dialog.
+    pub fn with_folder_picker(mut self, pick: fn(&Path) -> Task<Option<PathBuf>>) -> Self {
+        self.pick_folder = pick;
+        self
+    }
+
+    /// The state of the Hermes chat, for the protocol run that drives it.
+    pub fn hermes_chat_for_test(&self) -> &ncrs_hermes_chat::State {
+        &self.hermes_chat
+    }
+
+    /// The same, writable: the protocol run clears the readings to measure a
+    /// cold read again.
+    pub fn hermes_chat_mut_for_test(&mut self) -> &mut ncrs_hermes_chat::State {
+        &mut self.hermes_chat
+    }
+
+    /// Starts the filing module of an app that is already running (the
+    /// protocol run needs the tokio context of its session for it).
+    pub fn start_filing_for_test(
+        &mut self,
+        filing: &crate::config::Filing,
+        db_path: Option<PathBuf>,
+        store: Arc<dyn ncrs_index::KeyStore + Send + Sync>,
+    ) -> Task<Message> {
+        self.hermes.index_path = db_path;
+        self.hermes.key_store = Some(ncrs_hermes_ui::KeyStoreHandle(store));
+        self.start_filing_module(filing)
+    }
+
+    /// The filing module, for the protocol run that waits for its start.
+    pub fn filing_module_for_test(&self) -> Option<&FilingModule> {
+        self.hermes.filing.as_ref()
+    }
+
     /// Starts a transfer of what F5 would offer, to the other panel and asking
     /// per conflict, without the confirmation. For the tests of what happens
     /// once a transfer runs, which have no real folders to confirm against.

@@ -25,7 +25,10 @@ mod words;
 #[cfg(test)]
 mod tests;
 
-pub use change::{already_ordered, branch_example, ChangeOrder, ChangePreview, OrderChange, Scope};
+pub use change::{
+    already_ordered, area_lacks_fields, branch_example, names_known_kind, ChangeOrder,
+    ChangePreview, OrderChange, Scope,
+};
 pub use groups::{
     area_pattern, group_rule, numbered_name, stay_groups, AnsweredGroups, GroupKey, NameTaken,
     RuleSaveFailure, StayGroup, StayGroups, MAX_GROUP_QUESTIONS,
@@ -34,7 +37,7 @@ pub use pattern::{
     pattern_choices, PatternChoice, PatternLevel, PatternPreview, PatternSpec, PatternTarget,
     OFFERED_PATTERNS,
 };
-pub use reading::{FolderReading, ReadError, FILE_LIMIT};
+pub use reading::{AiCoverage, FolderReading, ReadError, ReadProgress, FILE_LIMIT};
 pub use runs::{RunItem, RunPlan, RunReport, RunSummary};
 pub use trial::{StayReason, TrialEntry, TrialOutcome, TrialPlan};
 pub use words::{normalize_word, same_word, word_within};
@@ -48,6 +51,7 @@ type IndexSlot = Arc<Mutex<Option<Index>>>;
 pub enum ChatWork {
     Read {
         folder: std::path::PathBuf,
+        progress: Arc<ReadProgress>,
     },
     Trial {
         source: Arc<FolderReading>,
@@ -117,6 +121,10 @@ impl fmt::Debug for ChatAccess {
 }
 
 impl ChatAccess {
+    pub fn kind_language(&self) -> KindLanguage {
+        self.own.kind_language
+    }
+
     pub fn new(slot: IndexSlot, text_chain: Arc<TextChain>, trash: Arc<dyn Trash>) -> Self {
         Self {
             slot,
@@ -146,8 +154,8 @@ impl ChatAccess {
 
     pub fn run(&self, work: ChatWork) -> ChatResult {
         match work {
-            ChatWork::Read { folder } => {
-                ChatResult::Read(reading::read_folder(self, &folder).map(Arc::new))
+            ChatWork::Read { folder, progress } => {
+                ChatResult::Read(reading::read_folder(self, &folder, &progress).map(Arc::new))
             }
             ChatWork::Trial {
                 source,

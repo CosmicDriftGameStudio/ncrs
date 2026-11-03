@@ -331,6 +331,7 @@ mod tests {
         };
         let reading = FolderReading {
             patterns: Vec::new(),
+            ai: Default::default(),
             root: "Downloads".into(),
             files: Vec::new(),
             photos: 0,

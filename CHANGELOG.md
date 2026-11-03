@@ -85,6 +85,20 @@ All notable changes to this project are documented here. The format follows
   that later runs keep and that the Rules page can take back.
 - Status and errors shows whether the AI model computes on the graphics card
   or the processor.
+- The Hermes chat greets at once while the filing module is still starting;
+  what you type or press waits and runs as soon as it is ready. While Hermes
+  reads a folder, its line counts the files found and read, and a folder it
+  has indexed before is read in seconds: files with the same size and date
+  are not opened again. Results arrive even if the chat was closed meanwhile.
+- Every Hermes answer ends with buttons, also after an error, an undo or a
+  cancel. A folder that is not there (ejected drive) says so and offers
+  another one. "Insurance by sender" or "Bank by month" show a preview for
+  the whole area; a new order for the whole folder is named as something
+  Hermes cannot do yet.
+- Scanned pages are cut to their content and enlarged before text
+  recognition, so a letter scanned small on a large page is read correctly.
+- The AI reads the fields of every indexed document once, new arrivals first,
+  and the chat says how many documents it has understood so far.
 
 ### Changed
 

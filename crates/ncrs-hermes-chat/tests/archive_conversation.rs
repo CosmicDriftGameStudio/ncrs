@@ -338,7 +338,13 @@ mod tests {
             ),
         );
         assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatCancelled, &[])]);
-        assert!(talk.state.chips().is_empty());
+        assert!(talk.state.chips().iter().all(|chip| matches!(
+            chip.reply,
+            ChipReply::IntentSearch
+                | ChipReply::IntentTidy
+                | ChipReply::IntentStructure
+                | ChipReply::IntentUndo
+        )));
         assert_eq!(talk.files(), before);
 
         // Nothing was filed, so there is nothing to put back.

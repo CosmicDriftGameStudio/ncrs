@@ -8137,10 +8137,34 @@
       "de": "Einrichten"
     },
     {
-      "key": "hermes_chat.starting",
-      "context": "Hermes chat (F2): Hermes says this while the filing module is still starting up and cannot work yet.",
-      "en": "I'm still starting. Try again in a moment.",
-      "de": "Ich starte noch. Versuch es gleich noch einmal."
+      "key": "hermes_chat.starting_wait",
+      "context": "Hermes chat (F2): working line while the user's message or button press waits for the filing module to finish starting. It runs as soon as Hermes is ready.",
+      "en": "One moment, I'm still starting …",
+      "de": "Einen Moment, ich starte noch …"
+    },
+    {
+      "key": "hermes_chat.not_ready_yet",
+      "context": "Hermes chat (F2): Hermes says this when work was asked for but the filing module is not available (any more). Buttons follow.",
+      "en": "Hermes isn't ready yet. Try again in a moment.",
+      "de": "Hermes ist noch nicht bereit. Versuch es gleich noch einmal."
+    },
+    {
+      "key": "hermes_chat.working_reading_found",
+      "context": "Hermes chat (F2): working line while Hermes walks through a folder and counts the files. {folder} is the folder name, {found} the number of files found so far. Animated dots follow.",
+      "en": "Looking at {folder} … {found} files found",
+      "de": "Ich sehe mir {folder} an … {found} Dateien gefunden"
+    },
+    {
+      "key": "hermes_chat.working_reading_progress",
+      "context": "Hermes chat (F2): working line while Hermes reads the files of a folder. {folder} is the folder name, {done} the files read so far, {total} all files. Animated dots follow.",
+      "en": "Reading {folder} … {done} of {total} files",
+      "de": "Ich lese {folder} … {done} von {total} Dateien"
+    },
+    {
+      "key": "hermes_chat.folder_gone",
+      "context": "Hermes chat (F2): Hermes says this when a folder it should read does not exist (deleted, or its drive was ejected). {path} is the folder path. Buttons follow.",
+      "en": "{path} isn't reachable right now. Is the drive still connected?",
+      "de": "{path} ist gerade nicht erreichbar. Ist das Laufwerk noch da?"
     },
     {
       "key": "hermes_chat.greeting",
@@ -9251,6 +9275,24 @@
       "context": "Hermes chat (F2): the user asked for an order the chosen area has already. {area} is the folder name. Buttons with things Hermes can do follow.",
       "en": "{area} is already ordered that way.",
       "de": "{area} ist schon so geordnet."
+    },
+    {
+      "key": "hermes_chat.not_yet_propose",
+      "context": "Hermes chat (F2): the user asked for a new order for the whole folder (for example 'make a suggestion'), which Hermes cannot do yet; it names what it can do instead. Buttons with things Hermes can do follow.",
+      "en": "I can't propose a new order for the whole folder yet. I can order one area by month, year, sender or kind, or tidy up a folder.",
+      "de": "Eine neue Ordnung für den ganzen Ordner vorschlagen kann ich noch nicht. Ich kann einen Bereich nach Monat, Jahr, Absender oder Art ordnen oder einen Ordner aufräumen."
+    },
+    {
+      "key": "hermes_chat.change_needs_fields",
+      "context": "Hermes chat (F2): the user asked to change the order of an area, but Hermes does not know the field the new order sorts by (for example the sender) for any document in that area yet, because it has not read them. {area} is the folder name of the area. Buttons with things Hermes can do follow.",
+      "en": "I don't know enough about the documents in \u201c{area}\u201d yet to show that, because I have not read them all. Try again once I am further along.",
+      "de": "Zu den Dokumenten in \u201e{area}\u201c weiß ich noch nicht genug, um das zu zeigen, weil ich sie noch nicht alle gelesen habe. Versuch es später noch einmal."
+    },
+    {
+      "key": "hermes_chat.reading_ai_progress",
+      "context": "Hermes chat (F2): one line under the card of the areas Hermes read in a folder, shown while the AI has not yet understood every document with a text. {done} is how many it understood, {total} how many documents have a text. The rest continues in the background.",
+      "en": "{done} of {total} documents understood, the rest continues in the background.",
+      "de": "{done} von {total} Dokumenten verstanden, der Rest läuft im Hintergrund."
     }
   ]
 }

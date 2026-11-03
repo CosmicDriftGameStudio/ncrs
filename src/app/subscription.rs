@@ -1,5 +1,8 @@
 use crate::app::*;
 
+/// How often the working line of the chat moves and recounts.
+const HERMES_CHAT_TICK_EVERY: std::time::Duration = std::time::Duration::from_millis(250);
+
 #[cfg(target_os = "macos")]
 fn native_menu_events() -> Subscription<Message> {
     native_menu::events()
@@ -110,6 +113,12 @@ impl App {
             // thread fills; nothing else wakes the view.
             if self.hermes_flow_is_visible() {
                 iced::time::every(hermes_flow::STEP_INTERVAL).map(|_| Message::HermesFlowTick)
+            } else {
+                Subscription::none()
+            },
+            if self.hermes_chat_is_working() {
+                iced::time::every(HERMES_CHAT_TICK_EVERY)
+                    .map(|_| Message::HermesChat(HermesChatMessage::WorkTick))
             } else {
                 Subscription::none()
             },

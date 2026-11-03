@@ -11,7 +11,7 @@ impl App {
                 return Task::none();
             }
             self.panels.context_menu = None;
-        } else if !self.hermes_chat.open {
+        } else if !self.hermes_chat.open && !message.is_work_result() {
             return Task::none();
         }
         self.ensure_chat_model();
@@ -27,6 +27,31 @@ impl App {
             Some(action) => Task::batch([mapped, focus, self.run_hermes_chat_action(action)]),
             None => Task::batch([mapped, focus]),
         }
+    }
+
+    /// The greeting or sentence that waited for Hermes' start follows once
+    /// it is ready; a closed chat gets it when it is opened.
+    pub(in crate::app) fn tell_chat_hermes_is_ready(&mut self) -> Task<Message> {
+        if self.hermes_chat.open
+            && self.hermes_chat.waiting_for_hermes
+            && !matches!(
+                self.chat_availability(),
+                ncrs_hermes_chat::Availability::Starting
+            )
+        {
+            return self.update_hermes_chat(HermesChatMessage::HermesReady);
+        }
+        Task::none()
+    }
+
+    /// The open chat has work or the model running, or waits for Hermes to
+    /// start: its line moves.
+    pub(in crate::app) fn hermes_chat_is_working(&self) -> bool {
+        let chat = &self.hermes_chat;
+        chat.open
+            && (chat.pending_work().is_some()
+                || chat.pending_turn().is_some()
+                || chat.waits_for_hermes())
     }
 
     #[cfg(feature = "local-ai")]
@@ -55,15 +80,21 @@ impl App {
         self.hermes.filing_config.ai != crate::config::AiSetting::Off
     }
 
-    pub(in crate::app) fn hermes_chat_ctx(&self) -> ncrs_hermes_chat::Ctx {
-        let availability = match self.hermes.filing.as_ref() {
+    fn chat_availability(&self) -> ncrs_hermes_chat::Availability {
+        match self.hermes.filing.as_ref() {
             None => ncrs_hermes_chat::Availability::Starting,
             Some(module) => match module.chat_access(Arc::clone(&self.trash)) {
                 Some(access) => ncrs_hermes_chat::Availability::Ready(access),
-                None if self.hermes.is_restarting() => ncrs_hermes_chat::Availability::Starting,
+                None if self.hermes.is_restarting() || module.is_starting() => {
+                    ncrs_hermes_chat::Availability::Starting
+                }
                 None => ncrs_hermes_chat::Availability::NeedsSetup,
             },
-        };
+        }
+    }
+
+    pub(in crate::app) fn hermes_chat_ctx(&self) -> ncrs_hermes_chat::Ctx {
+        let availability = self.chat_availability();
         let locations = &self.hermes.filing_config.locations;
         ncrs_hermes_chat::Ctx {
             lang: self.lang,

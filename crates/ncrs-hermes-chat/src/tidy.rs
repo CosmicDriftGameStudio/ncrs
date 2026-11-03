@@ -49,7 +49,7 @@ pub fn begin(state: &mut State, ctx: &Ctx, source: PathBuf) {
                 Msg::HermesChatSourceIsTarget,
                 &[("folder", &folder_name(ctx, &source))],
             ),
-            Vec::new(),
+            crate::update::lost_folder_chips(ctx),
         );
         return;
     }
@@ -73,7 +73,7 @@ pub fn source_read(state: &mut State, ctx: &Ctx, reading: &Arc<FolderReading>) {
         say(
             state,
             fill(ctx.lang, Msg::HermesChatReadEmpty, &[("folder", &folder)]),
-            Vec::new(),
+            crate::update::lost_folder_chips(ctx),
         );
         return;
     }
@@ -409,7 +409,7 @@ pub fn trial_done(state: &mut State, ctx: &Ctx, result: Result<TrialPlan, String
             say(
                 state,
                 fill(ctx.lang, Msg::HermesChatReadFailed, &[("reason", &reason)]),
-                Vec::new(),
+                crate::update::fallback_chips(ctx),
             );
             return;
         }
@@ -633,7 +633,7 @@ pub fn filed_done(state: &mut State, ctx: &Ctx, result: Result<RunReport, String
             say(
                 state,
                 fill(ctx.lang, Msg::HermesChatReadFailed, &[("reason", &reason)]),
-                Vec::new(),
+                crate::update::fallback_chips(ctx),
             );
             return;
         }
@@ -791,7 +791,7 @@ pub fn trashed_done(state: &mut State, ctx: &Ctx, result: Result<TrashReport, St
             say(
                 state,
                 fill(ctx.lang, Msg::HermesChatReadFailed, &[("reason", &reason)]),
-                Vec::new(),
+                crate::update::fallback_chips(ctx),
             );
             return;
         }

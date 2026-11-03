@@ -124,3 +124,7 @@
 {"id": 124, "lang": "de", "intent": "smalltalk", "text": "hallo", "expected": {}}
 {"id": 125, "lang": "de", "intent": "smalltalk", "text": "was kannst du?", "expected": {}}
 {"id": 126, "lang": "de", "intent": "leave_as_is", "text": "lass einfach alles so wie es ist", "expected": {}}
+{"id": 127, "lang": "de", "intent": "other", "text": "Mach mal einen Vorschlag, im Root sollten die Themen stehen", "expected": {}}
+{"id": 128, "lang": "en", "intent": "other", "text": "Make a suggestion, the topics should be at the root", "expected": {}}
+{"id": 129, "lang": "de", "intent": "change_structure", "text": "Versicherung nach Anbieter", "expected": {"area": "Versicherung", "order": "by_sender"}}
+{"id": 130, "lang": "en", "intent": "change_structure", "text": "Insurance by sender", "expected": {"area": "Insurance", "order": "by_sender"}}

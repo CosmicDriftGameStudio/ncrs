@@ -22,6 +22,7 @@ mod texts;
 mod tidy;
 mod understand;
 mod undo;
+mod working;
 
 pub use action::Action;
 pub use ctx::{Availability, Ctx};

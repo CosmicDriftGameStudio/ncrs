@@ -1,3 +1,5 @@
+use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, PoisonError};
 
 use std::collections::VecDeque;
@@ -14,6 +16,7 @@ use crate::status::LocalModelStatus;
 pub struct FakeProvider {
     outcome: Result<String, AiError>,
     asked: Mutex<Vec<ExtractionRequest>>,
+    answers_now: AtomicBool,
 }
 
 impl FakeProvider {
@@ -29,7 +32,14 @@ impl FakeProvider {
         Self {
             outcome,
             asked: Mutex::new(Vec::new()),
+            answers_now: AtomicBool::new(true),
         }
+    }
+
+    /// Whether the provider can answer now, as a provider does that still
+    /// waits for a download or for consent.
+    pub fn set_answers_now(&self, answers_now: bool) {
+        self.answers_now.store(answers_now, Ordering::Relaxed);
     }
 
     pub fn requests(&self) -> Vec<ExtractionRequest> {
@@ -41,6 +51,10 @@ impl FakeProvider {
 }
 
 impl Provider for FakeProvider {
+    fn can_answer(&self, _source: &Path) -> bool {
+        self.answers_now.load(Ordering::Relaxed)
+    }
+
     fn extract(&self, request: &ExtractionRequest) -> Result<Extraction, AiError> {
         self.asked
             .lock()

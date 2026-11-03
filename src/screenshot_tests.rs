@@ -212,7 +212,7 @@ fn write_screenshot(app: &App, file_name: &str) {
     write_screenshot_to(app, OUTPUT_DIRECTORY, WINDOW_SIZE, file_name);
 }
 
-fn write_screenshot_to(app: &App, directory: &str, size: iced::Size, file_name: &str) {
+pub(crate) fn write_screenshot_to(app: &App, directory: &str, size: iced::Size, file_name: &str) {
     let scratch = tempfile::tempdir().expect("scratch directory");
     let mut simulator = Simulator::with_size(iced::Settings::default(), size, app.view());
     simulator

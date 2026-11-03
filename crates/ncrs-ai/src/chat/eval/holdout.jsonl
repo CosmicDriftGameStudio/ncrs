@@ -38,3 +38,7 @@
 {"id": 38, "lang": "de", "intent": "other", "text": "sudo apt update", "expected": {}}
 {"id": 39, "lang": "de", "intent": "other", "text": "wie alt ist die erde", "expected": {}}
 {"id": 40, "lang": "de", "intent": "other", "text": "hdhsjsk", "expected": {}}
+{"id": 41, "lang": "de", "intent": "other", "text": "kannst du mir eine bessere ordnung für alles vorschlagen", "expected": {}}
+{"id": 42, "lang": "en", "intent": "other", "text": "propose a better order for everything", "expected": {}}
+{"id": 43, "lang": "de", "intent": "change_structure", "text": "krankenkasse nach anbieter ordnen", "expected": {"area": "Krankenkasse", "order": "by_sender"}}
+{"id": 44, "lang": "en", "intent": "change_structure", "text": "bank statements by sender", "expected": {"area": "Bank statements|Bank", "order": "by_sender"}}

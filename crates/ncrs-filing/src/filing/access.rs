@@ -30,6 +30,15 @@ impl FilingModule {
             .map(|access| access.with_kind_language(self.own.kind_language))
     }
 
+    /// The module is busy with its start (opening, questions, conversion),
+    /// not failed or dismissed.
+    pub fn is_starting(&self) -> bool {
+        !matches!(
+            self.phase,
+            Phase::Ready | Phase::Failed(_) | Phase::Dismissed
+        )
+    }
+
     /// The handle of the Hermes chat: it reads folders and files into any
     /// folder, so the module being `Ready` is enough.
     pub fn chat_access(&self, trash: Arc<dyn ncrs_fs::Trash>) -> Option<ChatAccess> {

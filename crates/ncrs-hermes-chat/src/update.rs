@@ -10,7 +10,7 @@ use ncrs_ui_kit::hermes_state::FolderRole;
 use crate::action::Action;
 use crate::ctx::{Availability, Ctx};
 use crate::message::Message;
-use crate::state::{Asked, Chip, ChipReply, Entry, GroupFlow, Part, State, Step};
+use crate::state::{Asked, Chip, ChipReply, Entry, GroupFlow, Part, State, Step, Unsent};
 use crate::texts::{fill, folder_name, text};
 use crate::{learn, named_folders, patterns, photos, stay_groups, tidy, understand, undo};
 
@@ -25,8 +25,10 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
             state.open = true;
             if state.thread.is_empty() {
                 open_thread(state, ctx);
+                None
+            } else {
+                understand::hermes_ready(state, ctx)
             }
-            None
         }
         Message::Close => {
             state.open = false;
@@ -43,7 +45,11 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
             }
             let asked = understand::asked(state);
             user(state, typed.clone());
-            if !is_ready(state, ctx) {
+            let unsent = Unsent {
+                message: typed.clone(),
+                asked: asked.clone(),
+            };
+            if hold_until_ready(state, ctx, Held::Sentence(unsent)) {
                 return None;
             }
             handle_text(state, ctx, &typed, asked)
@@ -54,7 +60,8 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
             }
             let bubble = bubble_text(state, &label, &reply);
             user(state, bubble);
-            if !is_ready(state, ctx) && reply != ChipReply::Setup {
+            if !reply.needs_no_hermes() && hold_until_ready(state, ctx, Held::Reply(reply.clone()))
+            {
                 return None;
             }
             handle_reply(state, ctx, reply)
@@ -68,7 +75,7 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
             say(
                 state,
                 text_with(ctx, Msg::HermesChatReadFailed, &[("reason", &reason)]),
-                Vec::new(),
+                fallback_chips(ctx),
             );
             None
         }
@@ -78,6 +85,9 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
                 return None;
             }
             user(state, path.to_string_lossy().into_owned());
+            if hold_until_ready(state, ctx, Held::Reply(ChipReply::Folder(path.clone()))) {
+                return None;
+            }
             folder_answer(state, ctx, path, false)
         }
         Message::TypedFolderResolved {
@@ -92,12 +102,19 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
         Message::Understood(result) => understand::understood(state, ctx, result),
         Message::ModelReady => understand::model_ready(state, ctx),
         Message::AiTurnedOn => understand::ai_turned_on(state, ctx),
+        Message::HermesReady => understand::hermes_ready(state, ctx),
+        Message::WorkTick => {
+            crate::working::tick(state, ctx);
+            None
+        }
     }
 }
 
-/// Work or the model is running; typing and buttons wait for it.
+/// Work or the model is running, or something waits for Hermes to start;
+/// typing and buttons wait for it.
 fn is_busy(state: &State) -> bool {
-    state.pending.is_some()
+    state.waits_for_hermes()
+        || state.pending.is_some()
         || state.thinking.is_some()
         || state.resolving.is_some()
         || state.naming.is_some()
@@ -120,8 +137,17 @@ fn launch_work(state: &mut State, ctx: &Ctx) -> Task<Message> {
     if !std::mem::take(&mut state.fresh) {
         return Task::none();
     }
-    let (Some(work), Availability::Ready(ready)) = (state.pending.clone(), &ctx.availability)
-    else {
+    let Some(work) = state.pending.clone() else {
+        return Task::none();
+    };
+    // Hermes went away between the question and the start: end the wait.
+    let Availability::Ready(ready) = &ctx.availability else {
+        finish_work(state);
+        say(
+            state,
+            text(ctx.lang, Msg::HermesChatNotReadyYet),
+            fallback_chips(ctx),
+        );
         return Task::none();
     };
     let access = ready.clone();
@@ -174,7 +200,7 @@ fn typed_folder_resolved(
                 Msg::HermesChatNotAFolder,
                 &[("path", &typed.to_string_lossy())],
             ),
-            Vec::new(),
+            lost_folder_chips(ctx),
         ),
         Ok(real) => {
             let shown = real.display().to_string();
@@ -228,22 +254,41 @@ pub fn access(ctx: &Ctx) -> Option<&ChatAccess> {
     }
 }
 
-fn is_ready(state: &mut State, ctx: &Ctx) -> bool {
+/// What the user said or pressed that cannot run before Hermes is there.
+enum Held {
+    Sentence(Unsent),
+    Reply(ChipReply),
+}
+
+/// True when Hermes is not ready and has answered for it: while it starts, the
+/// input waits in the chat; without a setup, the setup is offered.
+fn hold_until_ready(state: &mut State, ctx: &Ctx, held: Held) -> bool {
     match &ctx.availability {
-        Availability::Ready(_) => true,
+        Availability::Ready(_) => false,
         Availability::Starting => {
-            say(state, text(ctx.lang, Msg::HermesChatStarting), Vec::new());
-            false
+            state.waiting_for_hermes = true;
+            match held {
+                Held::Sentence(unsent) => state.session.unsent = Some(unsent),
+                Held::Reply(reply) => state.session.unsent_reply = Some(reply),
+            }
+            state
+                .thread
+                .push(Entry::Working(text(ctx.lang, Msg::HermesChatStartingWait)));
+            true
         }
         Availability::NeedsSetup => {
-            say(
-                state,
-                text(ctx.lang, Msg::HermesChatNeedsSetup),
-                vec![chip(ctx, Msg::HermesChatSetup, ChipReply::Setup, true)],
-            );
-            false
+            say_needs_setup(state, ctx);
+            true
         }
     }
+}
+
+pub(crate) fn say_needs_setup(state: &mut State, ctx: &Ctx) {
+    say(
+        state,
+        text(ctx.lang, Msg::HermesChatNeedsSetup),
+        vec![chip(ctx, Msg::HermesChatSetup, ChipReply::Setup, true)],
+    );
 }
 
 pub fn chip(ctx: &Ctx, msg: Msg, reply: ChipReply, primary: bool) -> Chip {
@@ -401,8 +446,17 @@ pub fn source_chips(state: &State, ctx: &Ctx) -> Vec<Chip> {
 /// The first bubble: the greeting, or why Hermes cannot understand sentences
 /// yet. The greeting follows once the AI and the model are there.
 pub fn open_thread(state: &mut State, ctx: &Ctx) {
-    if !is_ready(state, ctx) {
-        return;
+    match ctx.availability {
+        Availability::NeedsSetup => {
+            say_needs_setup(state, ctx);
+            return;
+        }
+        Availability::Starting => {
+            state.waiting_for_hermes = true;
+            greet(state, ctx);
+            return;
+        }
+        Availability::Ready(_) => {}
     }
     if understand::gate(state, ctx, None) == understand::Gate::Said {
         state.greeting_owed = true;
@@ -501,8 +555,8 @@ pub fn looks_like_typed_path(text: &str) -> bool {
     text.starts_with('/') || text.starts_with('~') || Path::new(text).is_absolute()
 }
 
-/// Only a typed path while a folder is asked for is taken literally; every
-/// other sentence goes to the model.
+/// A typed path is taken literally while a folder is asked for, and anywhere
+/// when it is an existing folder; every other sentence goes to the model.
 fn handle_text(state: &mut State, ctx: &Ctx, typed: &str, asked: Asked) -> Option<Action> {
     if state.step == Step::GroupFolderName {
         return stay_groups::folder_named(state, ctx, typed);
@@ -511,6 +565,13 @@ fn handle_text(state: &mut State, ctx: &Ctx, typed: &str, asked: Asked) -> Optio
         state.resolving = Some((expand_home(ctx, Path::new(typed)), state.step));
         state.fresh_resolve = true;
         return None;
+    }
+    if looks_like_typed_path(typed) {
+        let folder = expand_home(ctx, Path::new(typed));
+        if folder.is_dir() {
+            state.step = Step::Greeting;
+            return folder_answer(state, ctx, folder, true);
+        }
     }
     understand::ask(state, ctx, typed, asked)
 }
@@ -559,7 +620,7 @@ pub fn explain_not_yet(state: &mut State, ctx: &Ctx) {
     say(
         state,
         text(ctx.lang, Msg::HermesChatExplainNotYet),
-        Vec::new(),
+        fallback_chips(ctx),
     );
 }
 
@@ -598,6 +659,18 @@ pub fn fallback_chips(ctx: &Ctx) -> Vec<Chip> {
     ]
 }
 
+/// A folder that cannot be read: another one, or one of the ways on.
+pub fn lost_folder_chips(ctx: &Ctx) -> Vec<Chip> {
+    let mut chips = vec![chip(
+        ctx,
+        Msg::HermesChatOtherFolder,
+        ChipReply::PickFolder,
+        true,
+    )];
+    chips.extend(fallback_chips(ctx));
+    chips
+}
+
 pub fn handle_reply(state: &mut State, ctx: &Ctx, reply: ChipReply) -> Option<Action> {
     match reply {
         ChipReply::Cancel => cancel(state, ctx),
@@ -619,7 +692,11 @@ pub fn handle_reply(state: &mut State, ctx: &Ctx, reply: ChipReply) -> Option<Ac
         ChipReply::ToTrash => tidy::trash_offer(state, ctx, true),
         ChipReply::LeaveThem => tidy::trash_offer(state, ctx, false),
         ChipReply::Later => {
-            say(state, text(ctx.lang, Msg::HermesChatLaterReply), Vec::new());
+            say(
+                state,
+                text(ctx.lang, Msg::HermesChatLaterReply),
+                fallback_chips(ctx),
+            );
             state.step = Step::Idle;
         }
         ChipReply::Once => tidy::once(state, ctx, false),
@@ -690,5 +767,9 @@ pub fn cancel(state: &mut State, ctx: &Ctx) {
     state.session.proposal = None;
     state.session.change_scope = None;
     state.step = Step::Idle;
-    say(state, text(ctx.lang, Msg::HermesChatCancelled), Vec::new());
+    say(
+        state,
+        text(ctx.lang, Msg::HermesChatCancelled),
+        fallback_chips(ctx),
+    );
 }

@@ -262,7 +262,7 @@ pub fn run_done(state: &mut State, ctx: &Ctx, result: Result<RunReport, String>)
             say(
                 state,
                 fill(ctx.lang, Msg::HermesChatReadFailed, &[("reason", &reason)]),
-                Vec::new(),
+                crate::update::fallback_chips(ctx),
             );
         }
     }
@@ -279,7 +279,7 @@ fn summary(state: &mut State, ctx: &Ctx) {
         say(
             state,
             crate::texts::text(ctx.lang, Msg::HermesChatDecideNothing),
-            Vec::new(),
+            crate::update::fallback_chips(ctx),
         );
         return;
     }

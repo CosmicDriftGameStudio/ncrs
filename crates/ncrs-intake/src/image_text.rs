@@ -8,6 +8,7 @@ use std::path::Path;
 use image::imageops::{self, FilterType};
 use image::{DynamicImage, ImageDecoder as _, ImageReader, Limits};
 
+use crate::page_trim::trim_to_content;
 use crate::text::{Extracted, PageImage, TextError, TextSource, MAX_SCAN_SIDE_PIXELS};
 
 const EXTENSIONS: [&str; 5] = ["jpg", "jpeg", "png", "tif", "tiff"];
@@ -60,11 +61,11 @@ fn decode_page(bytes: Vec<u8>) -> Option<PageImage> {
             FilterType::Triangle,
         );
     }
-    Some(PageImage {
+    Some(trim_to_content(PageImage {
         width: grey.width(),
         height: grey.height(),
         pixels: grey.into_raw(),
-    })
+    }))
 }
 
 impl TextSource for ImageFileText {
@@ -121,6 +122,21 @@ mod tests {
         bytes
     }
 
+    /// Ink along all four edges, so trimming leaves the size alone.
+    fn png_with_ink_on_every_edge(width: u32, height: u32) -> Vec<u8> {
+        let mut picture = GrayImage::from_pixel(width, height, Luma([255]));
+        for (x, y, pixel) in picture.enumerate_pixels_mut() {
+            if x < 8 || y < 8 || x >= width - 8 || y >= height - 8 {
+                *pixel = Luma([0]);
+            }
+        }
+        let mut bytes = Vec::new();
+        picture
+            .write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::Png)
+            .unwrap();
+        bytes
+    }
+
     fn pages(path: &Path) -> Vec<PageImage> {
         match ImageFileText.extract(path).unwrap() {
             Extracted::PageImages(pages) => pages,
@@ -135,16 +151,18 @@ mod tests {
         let found = pages(&path);
         assert_eq!(found.len(), 1);
         let page = &found[0];
-        assert_eq!((page.width, page.height), (40, 20));
-        let at = |x: usize, y: usize| page.pixels[y * 40 + x];
-        assert_eq!(at(12, 3), 0);
-        assert_eq!(at(30, 15), 255);
+        // The block and its margin fill the whole 40 x 20 picture, which is
+        // then scaled up four times.
+        assert_eq!((page.width, page.height), (160, 80));
+        let at = |x: usize, y: usize| page.pixels[y * 160 + x];
+        assert_eq!(at(12 * 4 + 2, 3 * 4 + 2), 0);
+        assert_eq!(at(30 * 4, 15 * 4), 255);
     }
 
     #[test]
     fn a_page_wider_than_the_cap_is_scaled_down() {
         let dir = TempDir::new().unwrap();
-        let path = write(&dir, "wide.png", &png_with_dark_block(5000, 100));
+        let path = write(&dir, "wide.png", &png_with_ink_on_every_edge(5000, 100));
         let page = &pages(&path)[0];
         assert_eq!((page.width, page.height), (4000, 80));
         assert_eq!(page.pixels.len(), 4000 * 80);

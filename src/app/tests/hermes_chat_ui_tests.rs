@@ -683,6 +683,7 @@ fn read_downloads() -> Arc<ncrs_filing::chat_work::FolderReading> {
     };
     Arc::new(ncrs_filing::chat_work::FolderReading {
         patterns: Vec::new(),
+        ai: Default::default(),
         root: PathBuf::from("/home/test/Downloads"),
         files: vec![file("Taxes/a.pdf"), file("Misc/b.pdf"), file("c.pdf")],
         photos: 0,
@@ -830,4 +831,35 @@ fn an_english_chat_shows_no_german_text_from_the_greeting_to_the_download_offer(
         screen.find(Language::English.text(header)).unwrap();
         screen.find(Language::German.text(header)).unwrap_err();
     }
+}
+
+#[test]
+fn work_finishing_while_the_chat_is_closed_still_ends_the_wait() {
+    let mut app = App::with_fixed_panels()
+        .in_language(Language::German)
+        .with_ready_hermes_for_test();
+    drop(app.update(Message::HermesChat(HermesChatMessage::Open)));
+    drop(
+        app.update(Message::HermesChat(HermesChatMessage::ChipPressed {
+            label: "Ablage".to_owned(),
+            reply: ncrs_hermes_chat::ChipReply::IntentUndo,
+        })),
+    );
+    assert!(app.hermes_chat.pending_work().is_some());
+
+    drop(app.update(Message::HermesChat(HermesChatMessage::Close)));
+    drop(app.update(Message::HermesChat(HermesChatMessage::Failed(
+        "volume gone".to_owned(),
+    ))));
+    assert!(app.hermes_chat.pending_work().is_none());
+
+    drop(app.update(Message::HermesChat(HermesChatMessage::Open)));
+    let before = app.hermes_chat.thread().len();
+    drop(
+        app.update(Message::HermesChat(HermesChatMessage::InputChanged(
+            "hallo".to_owned(),
+        ))),
+    );
+    drop(app.update(Message::HermesChat(HermesChatMessage::Submit)));
+    assert!(app.hermes_chat.thread().len() > before);
 }
