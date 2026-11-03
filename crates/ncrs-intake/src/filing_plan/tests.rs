@@ -40,6 +40,15 @@ fn a_pattern_is_valid_when_it_can_be_parsed() {
 }
 
 #[test]
+fn a_component_that_is_only_a_windows_device_name_is_not_a_valid_pattern() {
+    for pattern in ["CON", "{year}/nul.txt", "Com1/", "{year}/LPT9.pdf"] {
+        assert!(!pattern_is_valid(pattern), "{pattern}");
+    }
+    assert!(pattern_is_valid("{year}/CON{number}.pdf"));
+    assert!(pattern_is_valid("{year}/Console"));
+}
+
+#[test]
 fn a_contains_condition_ignores_case_and_an_empty_one_never_holds() {
     assert!(contains_condition_holds(
         "invoice from company a ltd",
@@ -450,6 +459,31 @@ fn a_condition_that_cannot_be_evaluated_blocks_the_rule_even_under_not_and_any_o
             "{condition:?}"
         );
     }
+}
+
+#[test]
+fn a_negated_sender_condition_blocks_the_rule_while_no_sender_is_known() {
+    let rule = |condition: Condition| with_conditions(Combinator::AllOf, vec![condition]);
+    let no_sender = DocumentFields::default();
+    let other_sender = DocumentFields {
+        sender: Some("Company A".to_owned()),
+        ..DocumentFields::default()
+    };
+    let negated = Condition::not(ConditionKind::Sender, "Agency B");
+    let blocked = |spec: RuleSpec, fields: &DocumentFields| {
+        matches!(
+            plan_for(spec, TEXT, fields),
+            Planning::Review {
+                reason: ReviewReason::NoMatchingRule,
+                ..
+            }
+        )
+    };
+
+    assert!(blocked(rule(negated.clone()), &no_sender));
+    assert!(!blocked(rule(negated), &other_sender));
+    let plain = Condition::new(ConditionKind::Sender, "Agency B");
+    assert!(blocked(rule(plain), &no_sender));
 }
 
 #[test]

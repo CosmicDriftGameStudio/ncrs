@@ -15,7 +15,7 @@ use ncrs_intake::{relative_to_location, text_is_readable};
 use ncrs_intake::{settle_location, take_in, IntakeError, Location, LocationMode, Outcome};
 
 use crate::ai_step::AiStep;
-use crate::step::{resolve_reviews_of, with_index_value, IndexAccess, Item, Step, StepOutcome};
+use crate::step::{with_index_value, IndexAccess, Item, Step, StepOutcome};
 
 pub const NO_INDEX: &str = "index not open";
 
@@ -335,8 +335,7 @@ impl Step for RulesStep {
                 })?;
             }
             if matches!(planning, Planning::Plan(_)) {
-                index.set_document_status(id, DocumentStatus::Planned)?;
-                resolve_reviews_of(index, id)?;
+                index.place_document(id)?;
             }
             Ok::<_, IndexError>(Some(planning))
         })

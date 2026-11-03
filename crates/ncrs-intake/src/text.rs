@@ -519,7 +519,8 @@ const LIBRARY_DIR_VARIABLE: &str = "NCRS_PDFIUM_DIR";
 /// builds add `NCRS_PDFIUM_DIR` and the folder the fetch script fills; release
 /// builds read no environment variable, so nobody can make them load another
 /// library. When the executable was started through a symlink, as winget does,
-/// the folder of the real file follows the link's folder.
+/// the folder of the real file comes first: the link's folder is shared and
+/// writable by the user, so a foreign library there must not win.
 pub fn pdfium_library_candidates() -> Vec<PathBuf> {
     let executable = std::env::current_exe().ok();
     let executable_dir = executable
@@ -528,9 +529,25 @@ pub fn pdfium_library_candidates() -> Vec<PathBuf> {
         .map(Path::to_path_buf);
     let resolved_dir = executable
         .and_then(|path| std::fs::canonicalize(path).ok())
-        .and_then(|path| path.parent().map(Path::to_path_buf));
+        .and_then(|path| path.parent().map(Path::to_path_buf))
+        .map(without_verbatim_prefix);
     let development = cfg!(debug_assertions).then(|| std::env::var_os(LIBRARY_DIR_VARIABLE));
     candidates_in(executable_dir, resolved_dir, development)
+}
+
+/// `canonicalize` returns `\\?\C:\...` on Windows, `current_exe` plain `C:\...`;
+/// without this the same folder would count as two.
+fn without_verbatim_prefix(dir: PathBuf) -> PathBuf {
+    let plain = dir.to_str().and_then(|text| {
+        let rest = text.strip_prefix(r"\\?\")?;
+        let mut chars = rest.chars();
+        let is_drive = chars
+            .next()
+            .is_some_and(|letter| letter.is_ascii_alphabetic())
+            && chars.next() == Some(':');
+        is_drive.then(|| PathBuf::from(rest))
+    });
+    plain.unwrap_or(dir)
 }
 
 /// `development` is `None` in release builds, otherwise the value of the
@@ -541,9 +558,9 @@ fn candidates_in(
     development: Option<Option<std::ffi::OsString>>,
 ) -> Vec<PathBuf> {
     let mut candidates = Vec::new();
-    let different_resolved =
-        resolved_dir.filter(|resolved| Some(resolved) != executable_dir.as_ref());
-    for dir in executable_dir.into_iter().chain(different_resolved) {
+    let different_executable =
+        executable_dir.filter(|executable| Some(executable) != resolved_dir.as_ref());
+    for dir in resolved_dir.into_iter().chain(different_executable) {
         if cfg!(target_os = "macos") {
             candidates.push(dir.clone());
             candidates.push(dir.join("..").join("Frameworks"));
@@ -836,20 +853,36 @@ mod tests {
     }
 
     #[test]
-    fn a_symlinked_launch_tries_the_link_folder_first_and_the_real_one_second() {
+    fn a_symlinked_launch_tries_the_real_folder_first_and_the_link_one_second() {
         let link_dir = PathBuf::from("/links");
         let real_dir = PathBuf::from("/packages/ncrs");
         let candidates = candidates_in(Some(link_dir.clone()), Some(real_dir.clone()), None);
         let link_at = candidates.iter().position(|dir| *dir == link_dir).unwrap();
         let real_at = candidates.iter().position(|dir| *dir == real_dir).unwrap();
-        assert_eq!(link_at, 0);
-        assert!(link_at < real_at);
+        assert_eq!(real_at, 0);
+        assert!(real_at < link_at);
         if cfg!(target_os = "macos") {
             assert!(candidates.contains(&real_dir.join("..").join("Frameworks")));
         }
 
         let same = candidates_in(Some(link_dir.clone()), Some(link_dir.clone()), None);
         assert_eq!(same, candidates_in(Some(link_dir), None, None));
+    }
+
+    #[test]
+    fn a_verbatim_windows_prefix_is_dropped_so_the_same_folder_counts_once() {
+        let plain = PathBuf::from(r"C:\app");
+        let verbatim = PathBuf::from(r"\\?\C:\app");
+        assert_eq!(without_verbatim_prefix(verbatim.clone()), plain);
+        assert_eq!(without_verbatim_prefix(plain.clone()), plain);
+        let network = PathBuf::from(r"\\?\UNC\server\share");
+        assert_eq!(without_verbatim_prefix(network.clone()), network);
+        let same = candidates_in(
+            Some(plain.clone()),
+            Some(without_verbatim_prefix(verbatim)),
+            None,
+        );
+        assert_eq!(same, candidates_in(Some(plain), None, None));
     }
 
     #[test]

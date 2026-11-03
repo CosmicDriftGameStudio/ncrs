@@ -236,6 +236,7 @@ fn duplicates_of(
         profile: &profile,
         unordered: structure,
         rules: &[],
+        sender_aliases: &SenderAliases::default(),
         existing: &existing,
         kinds,
     })

@@ -27,7 +27,7 @@ use crate::conditions::{
     SearchText,
 };
 use crate::extract::{compile, extract_amount, extract_date, extract_number};
-use crate::sanitise::{is_plain_literal, sanitise_value, stays_below};
+use crate::sanitise::{is_plain_literal, is_windows_device_name, sanitise_value, stays_below};
 
 /// What is known about a document before the rules run.
 #[derive(Debug, Clone, Copy)]
@@ -217,11 +217,17 @@ fn condition_outcome(
         ConditionKind::Kind => input.fields.kind.as_deref().is_some_and(|kind| {
             input.kinds.catalog.kind_key(kind) == input.kinds.catalog.kind_key(&condition.value)
         }),
-        ConditionKind::Sender => input.fields.sender.as_deref().is_some_and(|sender| {
-            let aliases = input.sender_aliases;
-            aliases.canonical_sender(sender).to_lowercase()
-                == aliases.canonical_sender(&condition.value).to_lowercase()
-        }),
+        ConditionKind::Sender => match input.fields.sender.as_deref() {
+            Some(sender) => {
+                let aliases = input.sender_aliases;
+                aliases.canonical_sender(sender).to_lowercase()
+                    == aliases.canonical_sender(&condition.value).to_lowercase()
+            }
+            // Without a sender "not sender X" cannot be told, while "sender X"
+            // simply does not hold.
+            None if condition.negated => return None,
+            None => false,
+        },
     };
     Some(holds != condition.negated)
 }
@@ -537,7 +543,8 @@ impl Pattern {
     /// `None` for a pattern that cannot be rendered on its own: an unknown
     /// placeholder, a stray brace, an empty component (which includes an
     /// absolute path), a component of only dots, or a literal with a control
-    /// or Windows-reserved character (which includes a drive prefix).
+    /// or Windows-reserved character (which includes a drive prefix), or a component
+    /// that is only a Windows device name such as `CON.pdf`.
     /// Both `/` and `\` separate components.
     fn parse(source: &str) -> Option<Self> {
         let unified = source.replace('\\', "/");
@@ -579,7 +586,8 @@ impl Pattern {
             Token::Literal(literal) => is_plain_literal(literal),
             Token::Placeholder(_) => true,
         });
-        (!only_dots && plain).then_some(tokens)
+        let is_device = matches!(tokens.as_slice(), [Token::Literal(literal)] if is_windows_device_name(literal));
+        (!only_dots && plain && !is_device).then_some(tokens)
     }
 
     /// The components that are folders: all of them when the file name is made

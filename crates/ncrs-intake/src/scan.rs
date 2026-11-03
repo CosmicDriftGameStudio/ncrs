@@ -76,8 +76,11 @@ pub enum Found<'path> {
     File(&'path Path),
     /// A hidden file or folder below the root; a hidden folder is not entered.
     Hidden,
-    /// An entry that could not be read.
-    Unreadable(&'path Path),
+    /// An entry that could not be read, with the reason the walk gave.
+    Unreadable {
+        path: &'path Path,
+        message: &'path str,
+    },
 }
 
 /// Walks the location once, without following links, in file name order. Only
@@ -96,7 +99,13 @@ pub fn walk_location(
             Ok(found) => found,
             Err(err) => {
                 let path = err.path().unwrap_or(&location.path);
-                if visit(Found::Unreadable(path)).is_break() {
+                let message = err.to_string();
+                if visit(Found::Unreadable {
+                    path,
+                    message: &message,
+                })
+                .is_break()
+                {
                     return Ok(());
                 }
                 continue;
@@ -135,7 +144,7 @@ pub fn scan_location(
                 Err(_failed) => report.count_error(path),
             },
             Found::Hidden => report.count_skip(Skip::Hidden),
-            Found::Unreadable(path) => report.count_error(path),
+            Found::Unreadable { path, .. } => report.count_error(path),
         }
         ControlFlow::Continue(())
     })?;
