@@ -281,6 +281,18 @@ mod tests {
     }
 
     #[test]
+    fn teal_tagged_rows_follow_the_text_directory_and_accent_roles() {
+        let config = load_text(
+            "[open]\n\n[theme]\npreset = \"default\"\ntext = \"#ff8800\"\ndirectory = \"#00ff88\"\naccent = \"#8800ff\"\n",
+        );
+        let p = config.palette;
+        assert_eq!(p.text, Color::from_rgb8(0xff, 0x88, 0x00));
+        assert_eq!(p.tagged_text, p.text);
+        assert_eq!(p.tagged_directory, p.directory);
+        assert_eq!(p.tagged_mark, p.accent);
+    }
+
+    #[test]
     fn a_light_panel_under_the_default_colors_is_reported_but_kept() {
         let config = load_text("[open]\n\n[theme]\npanel = \"#f4f0ff\"\npreset = \"cosmic\"\n");
         assert_eq!(config.palette.panel, Color::from_rgb8(0xF4, 0xF0, 0xFF));

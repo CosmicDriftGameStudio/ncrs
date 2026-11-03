@@ -452,6 +452,24 @@ fn typing_forgets_the_count_and_the_refusal_and_drops_late_counts() {
 }
 
 #[test]
+fn typing_stops_the_count_for_the_text_before_and_leaves_the_scan_running() {
+    let mut dialog = TransferDialog::new(
+        1,
+        TransferKind::Copy,
+        vec![PathBuf::from("/a/b")],
+        PathBuf::from("/other"),
+    );
+    let counting = dialog.conflicts_stop_flag();
+    let scanning = dialog.stop_flag();
+
+    dialog.type_target("/elsewhere".to_string());
+
+    assert!(counting.load(Ordering::Relaxed));
+    assert!(!scanning.load(Ordering::Relaxed));
+    assert!(!dialog.conflicts_stop_flag().load(Ordering::Relaxed));
+}
+
+#[test]
 fn dropping_the_dialog_stops_the_background_work() {
     let dialog = TransferDialog::new(
         1,

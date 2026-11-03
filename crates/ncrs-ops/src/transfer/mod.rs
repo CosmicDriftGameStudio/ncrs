@@ -319,6 +319,9 @@ pub struct TransferDialog {
     refusal: Option<Refusal>,
     /// Set when the dialog goes away, which stops the scan and the count.
     stop_background: Arc<AtomicBool>,
+    /// Set when the target is typed again, which stops the count for the
+    /// text before.
+    stop_conflicts: Arc<AtomicBool>,
     /// Sources that share a name, with the name each gets in the target.
     numbered: Vec<(PathBuf, OsString)>,
     /// The folder of the hit list the sources come from, if they do.
@@ -328,6 +331,7 @@ pub struct TransferDialog {
 impl Drop for TransferDialog {
     fn drop(&mut self) {
         self.stop_background.store(true, Ordering::Relaxed);
+        self.stop_conflicts.store(true, Ordering::Relaxed);
     }
 }
 
@@ -350,6 +354,7 @@ impl TransferDialog {
             list_open: false,
             refusal: None,
             stop_background: Arc::new(AtomicBool::new(false)),
+            stop_conflicts: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -477,6 +482,8 @@ impl TransferDialog {
     /// refusal of the old text no longer hold.
     pub fn type_target(&mut self, text: String) {
         self.target = text;
+        self.stop_conflicts.store(true, Ordering::Relaxed);
+        self.stop_conflicts = Arc::new(AtomicBool::new(false));
         self.edit = self.edit.wrapping_add(1);
         self.conflicts = None;
         self.refusal = None;
@@ -485,6 +492,11 @@ impl TransferDialog {
     /// The flag the background work polls.
     pub fn stop_flag(&self) -> Arc<AtomicBool> {
         Arc::clone(&self.stop_background)
+    }
+
+    /// The flag the count of conflicts for the current target text polls.
+    pub fn conflicts_stop_flag(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.stop_conflicts)
     }
 
     /// Whether the names are listed one by one rather than summed up.

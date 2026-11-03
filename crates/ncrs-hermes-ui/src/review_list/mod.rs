@@ -396,6 +396,10 @@ impl ReviewList {
         }
     }
 
+    pub fn preview_is_waiting_for(&self, serial: u64) -> bool {
+        self.document_preview.is_waiting_for(serial)
+    }
+
     pub fn preview_loaded(&mut self, serial: u64, content: PreviewContent) {
         self.document_preview.loaded(serial, content);
     }

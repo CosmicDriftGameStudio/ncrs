@@ -157,7 +157,7 @@ impl VscodeTheme {
     /// value the palette has.
     pub fn apply(&self, palette: &mut Palette) {
         let preset_background = palette.background;
-        let preset_title_text = palette.title_text;
+        let preset = palette.clone();
         let panel = self
             .first(&[PANEL_KEY])
             .map_or(palette.panel, |color| over(color, preset_background));
@@ -175,8 +175,11 @@ impl VscodeTheme {
             applied.push(*role);
         }
 
-        // `set` gave the title bars the text color of the cursor row.
-        palette.title_text = preset_title_text;
+        // `set` gave the title bars the text color of the cursor row; only a
+        // preset whose title text follows that color keeps it.
+        if preset.title_text != preset.cursor_text || !applied.contains(&ColorRole::CursorText) {
+            palette.title_text = preset.title_text;
+        }
         if let Some(color) = self.first(&[TITLE_TEXT_KEY]) {
             palette.title_text = over(color, palette.title);
         } else if applied.contains(&ColorRole::Bar) {
@@ -187,6 +190,19 @@ impl VscodeTheme {
             palette.tagged_directory =
                 most_readable(palette.tagged, [palette.directory, palette.background]);
             palette.tagged_mark = palette.tagged_text;
+        } else {
+            // Slots that follow their role in the preset (Teal, Classic) keep following it.
+            if preset.tagged_text == preset.text && applied.contains(&ColorRole::Text) {
+                palette.tagged_text = palette.text;
+            }
+            if preset.tagged_directory == preset.directory
+                && applied.contains(&ColorRole::Directory)
+            {
+                palette.tagged_directory = palette.directory;
+            }
+            if preset.tagged_mark == preset.accent && applied.contains(&ColorRole::Accent) {
+                palette.tagged_mark = palette.accent;
+            }
         }
     }
 }
@@ -527,6 +543,22 @@ mod tests {
         let bytes = write(&dir, "bytes.json", "");
         std::fs::write(&bytes, [b'{', 0xFF, 0xFE]).unwrap();
         assert!(VscodeTheme::load(&bytes).problem.unwrap().contains("UTF-8"));
+    }
+
+    #[test]
+    fn teal_tagged_rows_and_title_follow_the_roles_a_file_sets() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write(
+            &dir,
+            "theme.json",
+            r##"{"colors": {"editor.foreground": "#ff8800", "list.activeSelectionForeground": "#00ff88"}}"##,
+        );
+        let theme = VscodeTheme::load(&path);
+        let mut palette = ThemePreset::Teal.palette();
+        theme.apply(&mut palette);
+        assert_eq!(palette.tagged_text, palette.text);
+        assert_eq!(palette.title_text, palette.cursor_text);
+        assert_eq!(palette.cursor_text, rgb(0x00FF88));
     }
 
     #[test]

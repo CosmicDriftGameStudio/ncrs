@@ -39,7 +39,7 @@ pub fn conflicts_task(dialog: &TransferDialog) -> Task<TransferDialogMessage> {
     if dialog.involves_server() {
         return Task::none();
     }
-    let (id, edit, stop) = (dialog.id(), dialog.edit(), dialog.stop_flag());
+    let (id, edit, stop) = (dialog.id(), dialog.edit(), dialog.conflicts_stop_flag());
     let (sources, target) = (dialog.sources().to_vec(), dialog.target_path());
     Task::perform(
         tokio::task::spawn_blocking(move || transfer::count_conflicts(&sources, &target, &stop)),

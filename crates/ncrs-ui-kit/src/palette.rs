@@ -391,20 +391,30 @@ impl Palette {
     /// Dracula) would turn unreadable when a role moves the fill or the color
     /// the slot used to follow. Then the slot takes the more readable of its
     /// value before the roles and the color it used to follow. Teal and Classic
-    /// never differ from that color and stay as they are.
+    /// never differ from that color: their slots follow the role.
     pub fn keep_readable(&mut self, preset: &Palette, before: &Palette, set: &[ColorRole]) {
         let touched = |a: ColorRole, b: ColorRole| set.contains(&a) || set.contains(&b);
-        if preset.tagged_text != preset.text && touched(ColorRole::Tagged, ColorRole::Text) {
-            self.tagged_text = most_readable(self.tagged, [before.tagged_text, self.text]);
+        if preset.tagged_text != preset.text {
+            if touched(ColorRole::Tagged, ColorRole::Text) {
+                self.tagged_text = most_readable(self.tagged, [before.tagged_text, self.text]);
+            }
+        } else if set.contains(&ColorRole::Text) {
+            self.tagged_text = self.text;
         }
-        if preset.tagged_directory != preset.directory
-            && touched(ColorRole::Tagged, ColorRole::Directory)
-        {
-            self.tagged_directory =
-                most_readable(self.tagged, [before.tagged_directory, self.directory]);
+        if preset.tagged_directory != preset.directory {
+            if touched(ColorRole::Tagged, ColorRole::Directory) {
+                self.tagged_directory =
+                    most_readable(self.tagged, [before.tagged_directory, self.directory]);
+            }
+        } else if set.contains(&ColorRole::Directory) {
+            self.tagged_directory = self.directory;
         }
-        if preset.tagged_mark != preset.accent && touched(ColorRole::Tagged, ColorRole::Accent) {
-            self.tagged_mark = most_readable(self.tagged, [before.tagged_mark, self.accent]);
+        if preset.tagged_mark != preset.accent {
+            if touched(ColorRole::Tagged, ColorRole::Accent) {
+                self.tagged_mark = most_readable(self.tagged, [before.tagged_mark, self.accent]);
+            }
+        } else if set.contains(&ColorRole::Accent) {
+            self.tagged_mark = self.accent;
         }
         if preset.title_text != preset.cursor_text && touched(ColorRole::Bar, ColorRole::CursorText)
         {

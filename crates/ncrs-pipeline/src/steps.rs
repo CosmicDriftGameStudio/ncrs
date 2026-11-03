@@ -7,11 +7,11 @@ use ncrs_ai::Provider;
 use ncrs_index::{
     DocumentId, DocumentStatus, Field, FieldOrigin, IndexError, KindLanguage, Kinds, ReviewReason,
 };
-use ncrs_intake::text_is_readable;
 use ncrs_intake::{
     detect_fields, plan, OwnNames, PlanInput, Planning, StabilityTracker, TextChain, TextError,
     FIELDS_READ_VERSION,
 };
+use ncrs_intake::{relative_to_location, text_is_readable};
 use ncrs_intake::{settle_location, take_in, IntakeError, Location, LocationMode, Outcome};
 
 use crate::ai_step::AiStep;
@@ -69,9 +69,7 @@ pub fn intake_steps(
 /// Folder conditions look at every component of the path, so the part above
 /// the location's root must not take part.
 pub(crate) fn location_relative(item: &Item) -> &Path {
-    item.path
-        .strip_prefix(&item.location.path)
-        .unwrap_or(&item.path)
+    relative_to_location(&item.path, std::slice::from_ref(&item.location.path))
 }
 
 /// Takes the file into the index, once it has held still.

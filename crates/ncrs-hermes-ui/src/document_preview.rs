@@ -23,6 +23,8 @@ const MAX_IMAGE_ALLOC_BYTES: u64 = 256 << 20;
 /// A text excerpt ends at the first of these limits.
 const EXCERPT_LINES: usize = 40;
 const EXCERPT_CHARS: usize = 4000;
+/// How long the cursor must rest on a document before its preview is made.
+pub const PREVIEW_REST: Duration = Duration::from_millis(150);
 /// How long the work may take before the preview gives up on it.
 pub const PREVIEW_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -114,6 +116,11 @@ impl DocumentPreview {
             serial: self.serial,
             passages: passages.to_vec(),
         })
+    }
+
+    /// The request `serial` is the latest and its answer is still awaited.
+    pub fn is_waiting_for(&self, serial: u64) -> bool {
+        self.path.is_some() && serial == self.serial && self.content.is_none()
     }
 
     /// The answer of the work. One for an older request is dropped.

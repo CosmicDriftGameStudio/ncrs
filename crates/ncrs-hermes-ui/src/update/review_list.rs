@@ -10,7 +10,7 @@ use super::blocking_overlay_is_open;
 use super::rules::open_rule_form;
 use crate::action::Action;
 use crate::ctx::Ctx;
-use crate::document_preview;
+use crate::document_preview::{self, PreviewRequest};
 use crate::filing_pieces::TargetEdit;
 use crate::message::{HermesPage, Message, ReviewListMessage};
 use crate::review_list::ReviewList;
@@ -219,6 +219,21 @@ pub fn update(
             }
             Task::none()
         }
+        ReviewListMessage::PreviewDue {
+            generation,
+            request,
+        } => {
+            let wanted = generation == hermes.review_list_generation
+                && hermes
+                    .review_list
+                    .as_ref()
+                    .is_some_and(|view| view.preview_is_waiting_for(request.serial));
+            if wanted {
+                load_preview(generation, request)
+            } else {
+                Task::none()
+            }
+        }
         ReviewListMessage::PreviewLoaded {
             generation,
             serial,
@@ -245,6 +260,18 @@ pub fn request_review_preview(hermes: &mut Hermes) -> Task<Message> {
     else {
         return Task::none();
     };
+    Task::perform(
+        async { tokio::time::sleep(document_preview::PREVIEW_REST).await },
+        move |()| {
+            Message::ReviewList(ReviewListMessage::PreviewDue {
+                generation,
+                request,
+            })
+        },
+    )
+}
+
+fn load_preview(generation: u64, request: PreviewRequest) -> Task<Message> {
     let serial = request.serial;
     Task::perform(
         document_preview::load_off_thread(request.path, request.passages),

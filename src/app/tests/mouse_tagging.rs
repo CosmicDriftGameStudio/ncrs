@@ -323,3 +323,36 @@ fn clicking_a_row_activates_its_panel() {
 
     assert_eq!(app.panels.active, PanelSide::Right);
 }
+
+#[tokio::test]
+async fn a_command_press_on_a_tagged_row_keeps_it_tagged_when_it_turns_into_a_drag() {
+    let mut app = app_with_files();
+    for name in ["f0.txt", "f1.txt"] {
+        app.panels
+            .left
+            .selection
+            .toggle(&PathBuf::from("/left").join(name));
+    }
+    drop(app.update(Message::ModifiersChanged(Modifiers::COMMAND)));
+    press_row_one(&mut app);
+
+    feed(&mut app, pointer_at(70.0, 50.0));
+    drop(app.update(Message::Panel(PanelMessage::PanelEntered(PanelSide::Right))));
+    feed(&mut app, left_released());
+
+    let dialog = app.ops.transfer_dialog.as_ref().expect("the dialog opens");
+    assert!(dialog.sources().contains(&PathBuf::from("/left/f1.txt")));
+    assert_eq!(dialog.sources().len(), 2);
+}
+
+#[test]
+fn a_command_click_without_movement_tags_the_row_when_the_button_comes_up() {
+    let mut app = app_with_files();
+    drop(app.update(Message::ModifiersChanged(Modifiers::COMMAND)));
+    press_row_one(&mut app);
+    assert!(!app.panels.left.selection.any_tagged());
+
+    feed(&mut app, left_released());
+
+    assert!(app.panels.left.selection.any_tagged());
+}
