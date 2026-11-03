@@ -140,6 +140,36 @@ fn the_arrows_move_and_the_other_bindings_are_dead_while_it_is_open() {
 }
 
 #[test]
+fn the_chord_with_the_palette_open_gives_its_field_the_focus_again() {
+    let mut app = App::with_fixed_panels();
+    open_palette(&mut app);
+    assert_eq!(
+        route(&app, Key::Character("p".into()), chord()),
+        Some(palette_message(CommandPaletteMessage::Toggle))
+    );
+}
+
+#[test]
+fn over_the_search_the_palette_still_takes_the_arrows_and_enter() {
+    let mut app = App::with_fixed_search();
+    open_palette(&mut app);
+    let none = Modifiers::default();
+    for (key, expected) in [
+        (Named::ArrowDown, CommandPaletteMessage::Move(1)),
+        (Named::ArrowUp, CommandPaletteMessage::Move(-1)),
+        (Named::Enter, CommandPaletteMessage::Run),
+        (Named::Escape, CommandPaletteMessage::Close),
+    ] {
+        assert_eq!(
+            route(&app, Key::Named(key), none),
+            Some(palette_message(expected)),
+            "{key:?}"
+        );
+    }
+    assert_eq!(route(&app, Key::Character("q".into()), none), None);
+}
+
+#[test]
 fn f8_with_the_palette_open_opens_no_delete_dialog() {
     let mut app = App::with_fixed_panels();
     open_palette(&mut app);

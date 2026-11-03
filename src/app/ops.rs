@@ -154,6 +154,7 @@ impl App {
                 Task::none()
             }
             Ask::ReloadSourceThenTarget => {
+                self.panels.folder_sizes.clear();
                 let source_side = self.source_side();
                 let sides = [source_side, source_side.other()];
                 Task::batch(sides.map(|each| {
@@ -162,6 +163,7 @@ impl App {
                 }))
             }
             Ask::ReloadPanelsSelecting { folder, name } => {
+                self.panels.folder_sizes.clear();
                 let tasks = [PanelSide::Left, PanelSide::Right].map(|each| {
                     let path = self.panel(each).path.clone();
                     let select = (path == folder).then(|| name.clone());
@@ -186,6 +188,7 @@ impl App {
                 Task::none()
             }
             Ask::ReloadPanels => {
+                self.panels.folder_sizes.clear();
                 let tasks = [PanelSide::Left, PanelSide::Right].map(|each| {
                     let path = self.panel(each).path.clone();
                     self.load(each, path, None)

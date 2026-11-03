@@ -84,7 +84,8 @@ fn keys_without_prompt(
 
     // The field takes the typing and Enter; Escape is `InputState`'s there and
     // here, so it closes the palette with a job running too. The arrows are the
-    // entries'. Of the bindings only quitting reaches past it.
+    // entries'. Of the bindings only quitting and the palette's own chord (which
+    // gives the field the focus back) reach past it.
     if prompt.command_palette {
         return match key.as_ref() {
             Key::Named(Named::Escape) => {
@@ -98,7 +99,12 @@ fn keys_without_prompt(
                 Some(Message::CommandPalette(CommandPaletteMessage::Move(1)))
             }
             _ => bound_message(&prompt.keymap, &key, key_modifiers, scope)
-                .filter(|message| *message == Message::Quit)
+                .filter(|message| {
+                    matches!(
+                        message,
+                        Message::Quit | Message::CommandPalette(CommandPaletteMessage::Toggle)
+                    )
+                })
                 .filter(|_| is_not_typed_by_text_field(&key, key_modifiers)),
         };
     }

@@ -42,6 +42,8 @@ pub struct Hermes {
     pub quick_fix_generation: u64,
     pub reorganisation: Option<ReorganisationView>,
     pub reorganisation_generation: u64,
+    /// The undo of the last reorganisation runs; a second one would undo the run before it.
+    pub reorganisation_undo_running: bool,
     pub rule_suggestions: Option<RuleSuggestions>,
     pub rule_suggestions_generation: u64,
     pub rules: Option<RulesPage>,

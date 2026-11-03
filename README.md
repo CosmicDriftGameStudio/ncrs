@@ -1072,7 +1072,7 @@ What the columns are, and what they leave out:
   responsive meanwhile: the panel keeps the old listing, marked as loading,
   until the new one arrives.
 - **Hand to panel** is what happens when the listing arrives: tags kept,
-  cursor placed.
+  cursor placed, and the previous listing released.
 - **Build view** and the key columns are the widget tree `view` returns,
   rebuilt on every key press. Only the visible rows are built, so the cost
   does not grow with the directory. Rasterising that tree on the GPU or CPU

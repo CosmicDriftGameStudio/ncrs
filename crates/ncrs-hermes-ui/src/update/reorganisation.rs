@@ -218,14 +218,15 @@ pub fn executed(
     replan_if_open(hermes)
 }
 
-pub fn undo(hermes: &Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Task<Message> {
-    if ctx.jobs_busy {
+pub fn undo(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Task<Message> {
+    if ctx.jobs_busy || hermes.reorganisation_undo_running {
         return Task::none();
     }
     let Some(access) = hermes.filing.as_ref().and_then(FilingModule::plan_access) else {
         actions.push(Action::ShowError(INDEX_NOT_OPEN.to_owned()));
         return Task::none();
     };
+    hermes.reorganisation_undo_running = true;
     Task::perform(
         tokio::task::spawn_blocking(move || access.undo_last()),
         |joined| Message::ReorganisationUndone(joined.unwrap_or_else(|join| Err(join.to_string()))),
@@ -238,6 +239,7 @@ pub fn undone(
     ctx: &Ctx<'_>,
     actions: &mut Vec<Action>,
 ) -> Task<Message> {
+    hermes.reorganisation_undo_running = false;
     match result {
         Ok(Some(report)) => {
             let text = ctx

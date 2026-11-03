@@ -723,3 +723,13 @@ async fn a_dismissed_key_card_shows_as_a_missing_key_on_the_overview() {
     ));
     assert!(app.hermes.overview.is_none());
 }
+
+#[test]
+fn the_sidebar_focus_does_not_outlive_the_card() {
+    let mut app = App::with_fixed_panels().with_hermes_focus(HermesFocus::Sidebar);
+    assert!(app.open_hermes_page().is_none());
+
+    drop(app.update(Message::NoticeExpired(0)));
+
+    assert_eq!(app.hermes_focus, HermesFocus::Content);
+}

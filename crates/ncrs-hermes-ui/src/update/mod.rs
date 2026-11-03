@@ -266,7 +266,7 @@ pub fn reorganisation_executed(
     (task, actions)
 }
 
-pub fn undo_reorganisation(hermes: &Hermes, ctx: &Ctx<'_>) -> Outcome {
+pub fn undo_reorganisation(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Outcome {
     let mut actions = Vec::new();
     let task = reorganisation::undo(hermes, ctx, &mut actions);
     (task, actions)

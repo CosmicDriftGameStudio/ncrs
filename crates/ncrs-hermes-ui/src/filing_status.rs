@@ -221,7 +221,6 @@ impl FilingStatus {
         self.index_figures.as_ref()
     }
 
-    #[cfg(any(test, feature = "test-support"))]
     pub fn figures_in_flight(&self) -> bool {
         self.figures_in_flight
     }
