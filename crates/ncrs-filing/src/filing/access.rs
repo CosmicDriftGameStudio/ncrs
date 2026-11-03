@@ -21,6 +21,7 @@ impl FilingModule {
     /// `Ready`, and over the archive locations that can be reached.
     pub fn suggestion_access(&self) -> Option<SuggestionAccess> {
         self.archive_handle(SuggestionAccess::new)
+            .map(|access| access.with_own(self.own.clone()))
     }
 
     /// The handle of the reorganisation plan view, on the same terms.
@@ -74,6 +75,7 @@ impl FilingModule {
         let root = self.target_root()?;
         Some(
             FilingAccess::new(Arc::clone(&self.index), root)
+                .with_location_roots(self.location_roots())
                 .with_kind_language(self.own.kind_language),
         )
     }
@@ -84,6 +86,7 @@ impl FilingModule {
         let root = self.target_root()?;
         Some(
             ReviewAccess::new(Arc::clone(&self.index), root)
+                .with_location_roots(self.location_roots())
                 .with_kind_language(self.own.kind_language)
                 .with_own(self.own.clone()),
         )
@@ -127,6 +130,12 @@ impl FilingModule {
             )
             .with_kind_language(self.own.kind_language)
         })
+    }
+
+    fn location_roots(&self) -> Vec<PathBuf> {
+        self.reachable_locations()
+            .map(|location| location.path.clone())
+            .collect()
     }
 
     fn target_root(&self) -> Option<PathBuf> {

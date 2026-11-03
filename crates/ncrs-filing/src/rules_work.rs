@@ -167,10 +167,13 @@ impl RulesAccess {
                         continue;
                     };
                     let manual_fields = index.field_origins(id)?.manual_fields();
+                    let path = absolute
+                        .strip_prefix(&location.path)
+                        .map_or_else(|_| absolute.clone(), std::path::Path::to_path_buf);
                     let input = PlanInput {
                         text: &text,
                         fields: &document.fields,
-                        path: Some(&absolute),
+                        path: Some(&path),
                         sender_aliases: &aliases,
                         manual_fields: &manual_fields,
                         kinds: &kinds,
@@ -180,9 +183,6 @@ impl RulesAccess {
                     if !matching.contains(&candidate_id) {
                         continue;
                     }
-                    let path = absolute
-                        .strip_prefix(&location.path)
-                        .map_or_else(|_| absolute.clone(), std::path::Path::to_path_buf);
                     let archived = location.mode == LocationMode::Archive;
                     let now = if archived {
                         TryOutcome::Lies(path.clone())

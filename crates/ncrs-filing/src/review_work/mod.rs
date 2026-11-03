@@ -16,8 +16,8 @@ use ncrs_index::{
     KindCatalog, KindLanguage, Kinds, ReviewEntryId, ReviewReason, Rule, RuleId, SenderAliases,
 };
 use ncrs_intake::{
-    condition_match_ranges, location_documents, location_structure, plan, render_pattern_in,
-    text_is_readable, NeighbourIndex, OwnNames, Placement, PlanInput, Planning,
+    condition_match_ranges, location_documents, location_structure, plan, relative_to_location,
+    render_pattern_in, text_is_readable, NeighbourIndex, OwnNames, Placement, PlanInput, Planning,
 };
 use ncrs_pipeline::OwnDetails;
 
@@ -140,6 +140,7 @@ pub enum ConfirmOutcome {
 pub struct ReviewAccess {
     slot: IndexSlot,
     target_root: PathBuf,
+    location_roots: Vec<PathBuf>,
     kind_language: KindLanguage,
     own: OwnDetails,
 }
@@ -155,8 +156,17 @@ impl ReviewAccess {
         Self {
             slot,
             target_root,
+            location_roots: Vec::new(),
             kind_language: KindLanguage::default(),
             own: OwnDetails::default(),
+        }
+    }
+
+    /// The roots of the locations: the rules see a path relative to its root.
+    pub fn with_location_roots(self, location_roots: Vec<PathBuf>) -> Self {
+        Self {
+            location_roots,
+            ..self
         }
     }
 
@@ -175,8 +185,14 @@ impl ReviewAccess {
     pub fn load(&self) -> Result<Vec<ReviewItem>, String> {
         self.with_index_text(|index| {
             let neighbours = self.neighbours(index)?;
-            load_matching(index, |_path| true, self.kind_language, Some(&neighbours))
-                .map_err(|err| err.to_string())
+            load_matching(
+                index,
+                |_path| true,
+                &self.location_roots,
+                self.kind_language,
+                Some(&neighbours),
+            )
+            .map_err(|err| err.to_string())
         })
     }
 
@@ -199,6 +215,7 @@ impl ReviewAccess {
             load_matching(
                 index,
                 |path| paths.iter().any(|wanted| wanted == path),
+                &self.location_roots,
                 self.kind_language,
                 Some(&neighbours),
             )
@@ -236,7 +253,9 @@ impl ReviewAccess {
         &self,
         path: &Path,
     ) -> Result<Option<(TextState, Option<PathBuf>)>, String> {
-        self.with_index(|index| suggestion_for(index, path, self.kind_language))
+        self.with_index(|index| {
+            suggestion_for(index, path, &self.location_roots, self.kind_language)
+        })
     }
 
     /// Files the document under `pattern` with `fields`, and settles its
@@ -283,6 +302,7 @@ impl ReviewAccess {
 fn load_matching(
     index: &Index,
     wanted: impl Fn(&Path) -> bool,
+    location_roots: &[PathBuf],
     kind_language: KindLanguage,
     neighbours: Option<&NeighbourIndex>,
 ) -> Result<Vec<ReviewItem>, IndexError> {
@@ -302,6 +322,7 @@ fn load_matching(
             &sender_aliases,
             &entry,
             document,
+            location_roots,
             kind_language,
             neighbours,
         )?);
@@ -315,6 +336,7 @@ fn review_item(
     sender_aliases: &SenderAliases,
     entry: &ncrs_index::ReviewEntry,
     document: ncrs_index::Document,
+    location_roots: &[PathBuf],
     kind_language: KindLanguage,
     neighbours: Option<&NeighbourIndex>,
 ) -> Result<ReviewItem, IndexError> {
@@ -328,7 +350,7 @@ fn review_item(
         &PlanInput {
             text: &text,
             fields: &document.fields,
-            path: Some(&document.path),
+            path: Some(relative_to_location(&document.path, location_roots)),
             sender_aliases,
             manual_fields: &manual_fields,
             kinds: &kinds,
@@ -483,33 +505,32 @@ fn passages_of(
 fn suggestion_for(
     index: &Index,
     path: &Path,
+    location_roots: &[PathBuf],
     kind_language: KindLanguage,
 ) -> Result<Option<(TextState, Option<PathBuf>)>, IndexError> {
+    let Some(document) = index.document_by_path(path)? else {
+        return Ok(None);
+    };
+    let Some(entry) = index.open_review_of(document.id)? else {
+        return Ok(None);
+    };
     let rules = index.rules()?;
     let sender_aliases = index.confirmed_sender_aliases()?;
-    for entry in index.open_reviews()? {
-        let Some(document) = index.document(entry.document_id)? else {
-            continue;
-        };
-        if document.path != path {
-            continue;
-        }
-        let item = review_item(
-            index,
-            &rules,
-            &sender_aliases,
-            &entry,
-            document,
-            kind_language,
-            None,
-        )?;
-        let kinds = Kinds::new(Arc::clone(index.kinds()), kind_language);
-        let target = item
-            .proposed_pattern
-            .and_then(|pattern| render_pattern_in(&pattern, &item.fields, &kinds));
-        return Ok(Some((item.text_state, target)));
-    }
-    Ok(None)
+    let item = review_item(
+        index,
+        &rules,
+        &sender_aliases,
+        &entry,
+        document,
+        location_roots,
+        kind_language,
+        None,
+    )?;
+    let kinds = Kinds::new(Arc::clone(index.kinds()), kind_language);
+    let target = item
+        .proposed_pattern
+        .and_then(|pattern| render_pattern_in(&pattern, &item.fields, &kinds));
+    Ok(Some((item.text_state, target)))
 }
 
 fn confirm<S: Source>(

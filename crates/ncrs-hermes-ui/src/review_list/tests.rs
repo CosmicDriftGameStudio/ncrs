@@ -341,12 +341,15 @@ fn no_rule_is_offered_for_a_document_without_a_sender() {
 #[test]
 fn a_taken_place_is_reported_and_the_entry_stays() {
     let mut list = loaded_list();
+    list.set_pattern("Typed/{date}".to_owned());
     list.begin_confirm().unwrap();
 
     list.confirmed(ConfirmOutcome::TargetExists);
     list.loaded(list.rows().to_vec());
 
     assert_eq!(list.rows().len(), 2);
+    assert_eq!(list.problem(), Some(&Problem::TargetExists));
+    assert_eq!(list.form().pattern, "Typed/{date}");
     assert_eq!(list.filed(), None);
 }
 

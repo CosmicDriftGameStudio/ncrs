@@ -62,12 +62,28 @@ impl Index {
 
     /// Oldest first.
     pub fn open_reviews(&self) -> Result<Vec<ReviewEntry>, IndexError> {
-        let mut statement = self.connection().prepare(
+        self.open_reviews_where("", [])
+    }
+
+    /// The open review of one document, if it has one.
+    pub fn open_review_of(&self, document: DocumentId) -> Result<Option<ReviewEntry>, IndexError> {
+        Ok(self
+            .open_reviews_where("AND document_id = ?1", [document.get()])?
+            .into_iter()
+            .next())
+    }
+
+    fn open_reviews_where(
+        &self,
+        filter: &str,
+        values: impl rusqlite::Params,
+    ) -> Result<Vec<ReviewEntry>, IndexError> {
+        let mut statement = self.connection().prepare(&format!(
             "SELECT id, document_id, reason, field, created_at, resolved_at
-             FROM review_entry WHERE resolved_at IS NULL ORDER BY created_at, id",
-        )?;
+             FROM review_entry WHERE resolved_at IS NULL {filter} ORDER BY created_at, id"
+        ))?;
         let rows = statement
-            .query_map([], |row| {
+            .query_map(values, |row| {
                 Ok((
                     row.get::<_, i64>(0)?,
                     row.get::<_, i64>(1)?,
@@ -108,6 +124,26 @@ impl Index {
 mod tests {
     use super::*;
     use crate::test_support::{encrypted_index, new_document};
+
+    #[test]
+    fn the_open_review_of_one_document_is_found_without_the_others() {
+        let (_dir, mut index) = encrypted_index();
+        let first = index.insert_document(&new_document(1)).unwrap();
+        let second = index.insert_document(&new_document(2)).unwrap();
+        let entry = index
+            .add_review(first, ReviewReason::NoMatchingRule)
+            .unwrap();
+        index
+            .add_review(second, ReviewReason::NoMatchingRule)
+            .unwrap();
+
+        assert_eq!(
+            index.open_review_of(first).unwrap().map(|e| e.id),
+            Some(entry)
+        );
+        index.resolve_review(entry).unwrap();
+        assert_eq!(index.open_review_of(first).unwrap(), None);
+    }
 
     #[test]
     fn review_opens_resolves_and_blocks_a_second_open_entry() {

@@ -217,6 +217,55 @@ impl Index {
         spec: &QuerySpec,
         under: Option<&Path>,
     ) -> Result<Vec<Document>, IndexError> {
+        let Some((conditions, values)) = self.query_filter(spec, under)? else {
+            return Ok(Vec::new());
+        };
+        let mut sql = DOCUMENT_COLUMNS.to_owned();
+        if !conditions.is_empty() {
+            sql.push_str(" WHERE ");
+            sql.push_str(&conditions.join(" AND "));
+        }
+        sql.push_str(" ORDER BY d.document_date IS NULL, d.document_date, d.path, d.id");
+
+        let mut statement = self.connection().prepare(&sql)?;
+        let rows = statement
+            .query_map(params_from_iter(values), DocumentRow::read)?
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut documents = Vec::new();
+        for row in rows {
+            let tags = self.document_tags(row.id())?;
+            documents.push(row.into_document(tags)?);
+        }
+        Ok(documents)
+    }
+
+    /// How many documents [`Self::run_query`] would return, counted by the
+    /// database without reading the documents.
+    pub fn count_query(&self, spec: &QuerySpec) -> Result<usize, IndexError> {
+        let Some((conditions, values)) = self.query_filter(spec, None)? else {
+            return Ok(0);
+        };
+        let mut sql = "SELECT count(*) FROM document d
+            LEFT JOIN sender s ON s.id = d.sender_id
+            LEFT JOIN document_kind k ON k.id = d.kind_id"
+            .to_owned();
+        if !conditions.is_empty() {
+            sql.push_str(" WHERE ");
+            sql.push_str(&conditions.join(" AND "));
+        }
+        let count: i64 = self
+            .connection()
+            .query_row(&sql, params_from_iter(values), |row| row.get(0))?;
+        Ok(usize::try_from(count).unwrap_or_default())
+    }
+
+    /// The WHERE conditions of a query and their values; `None` when no
+    /// document can fit.
+    fn query_filter(
+        &self,
+        spec: &QuerySpec,
+        under: Option<&Path>,
+    ) -> Result<Option<(Vec<String>, Vec<Value>)>, IndexError> {
         let mut conditions: Vec<String> = Vec::new();
         let mut values: Vec<Value> = Vec::new();
         if let Some(year) = spec.year {
@@ -224,7 +273,7 @@ impl Index {
                 NaiveDate::from_ymd_opt(year, 1, 1),
                 NaiveDate::from_ymd_opt(year.saturating_add(1), 1, 1),
             ) else {
-                return Ok(Vec::new());
+                return Ok(None);
             };
             conditions.push("d.document_date >= ? AND d.document_date < ?".to_owned());
             values.push(Value::Text(from.to_string()));
@@ -260,7 +309,7 @@ impl Index {
         if let Some(words) = full_text_words(spec) {
             let query = match_query(words, true);
             if query.is_empty() {
-                return Ok(Vec::new());
+                return Ok(None);
             }
             conditions.push(
                 "d.id IN (SELECT rowid FROM document_text WHERE document_text MATCH ?)".to_owned(),
@@ -274,24 +323,7 @@ impl Index {
             values.push(Value::Text(from));
             values.push(Value::Text(until));
         }
-
-        let mut sql = DOCUMENT_COLUMNS.to_owned();
-        if !conditions.is_empty() {
-            sql.push_str(" WHERE ");
-            sql.push_str(&conditions.join(" AND "));
-        }
-        sql.push_str(" ORDER BY d.document_date IS NULL, d.document_date, d.path, d.id");
-
-        let mut statement = self.connection().prepare(&sql)?;
-        let rows = statement
-            .query_map(params_from_iter(values), DocumentRow::read)?
-            .collect::<Result<Vec<_>, _>>()?;
-        let mut documents = Vec::new();
-        for row in rows {
-            let tags = self.document_tags(row.id())?;
-            documents.push(row.into_document(tags)?);
-        }
-        Ok(documents)
+        Ok(Some((conditions, values)))
     }
 
     fn saved_query_tags(&self, id: i64) -> Result<BTreeSet<String>, IndexError> {
@@ -371,6 +403,34 @@ mod tests {
             .into_iter()
             .map(|document| document.id)
             .collect()
+    }
+
+    #[test]
+    fn counting_a_query_agrees_with_running_it() {
+        let (_dir, index, _ids) = stocked();
+        let specs = [
+            QuerySpec::default(),
+            QuerySpec {
+                year: Some(2024),
+                ..QuerySpec::default()
+            },
+            QuerySpec {
+                kind: Some("Invoice".to_owned()),
+                tags: tags(&["office"]),
+                ..QuerySpec::default()
+            },
+            QuerySpec {
+                year: Some(1900),
+                ..QuerySpec::default()
+            },
+        ];
+        for spec in &specs {
+            assert_eq!(
+                index.count_query(spec).unwrap(),
+                index.run_query(spec).unwrap().len()
+            );
+        }
+        assert!(index.count_query(&specs[1]).unwrap() > 0);
     }
 
     #[test]

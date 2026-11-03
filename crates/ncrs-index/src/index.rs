@@ -175,9 +175,17 @@ impl Index {
     ) -> Result<(Self, RecoveryKey), IndexError> {
         require_no_file(db_path)?;
         let key = key_for_new_database(store)?;
-        let mut conn = Connection::open(db_path)?;
-        unlock(&conn, &key)?;
-        write_header_and_migrate(&mut conn, migrations)?;
+        let conn = Connection::open(db_path)
+            .map_err(IndexError::from)
+            .and_then(|conn| {
+                unlock(&conn, &key)?;
+                Ok(conn)
+            })
+            .and_then(|mut conn| {
+                write_header_and_migrate(&mut conn, migrations)?;
+                Ok(conn)
+            })
+            .map_err(|err| discard_half_created(db_path, err))?;
         let recovery_key = key.recovery_key();
         Ok((
             Self {
@@ -194,8 +202,13 @@ impl Index {
         migrations: &[&str],
     ) -> Result<Self, IndexError> {
         require_no_file(db_path)?;
-        let mut conn = Connection::open(db_path)?;
-        write_header_and_migrate(&mut conn, migrations)?;
+        let conn = Connection::open(db_path)
+            .map_err(IndexError::from)
+            .and_then(|mut conn| {
+                write_header_and_migrate(&mut conn, migrations)?;
+                Ok(conn)
+            })
+            .map_err(|err| discard_half_created(db_path, err))?;
         Ok(Self {
             conn,
             encrypted: false,
@@ -301,6 +314,20 @@ fn path_with_suffix(db_path: &Path, suffix: &str) -> Result<PathBuf, IndexError>
         .to_os_string();
     name.push(suffix);
     Ok(db_path.with_file_name(name))
+}
+
+/// A creation that failed after the file appeared leaves nothing behind, so
+/// the next try is not stopped by `AlreadyExists` and no key-less or
+/// half-migrated file is mistaken for a database. The caller's connection is
+/// already dropped; the original error is kept.
+fn discard_half_created(db_path: &Path, err: IndexError) -> IndexError {
+    let sidecars = SIDECAR_SUFFIXES
+        .iter()
+        .filter_map(|suffix| path_with_suffix(db_path, suffix).ok());
+    for path in std::iter::once(db_path.to_path_buf()).chain(sidecars) {
+        let _best_effort = remove_file_if_present(&path);
+    }
+    err
 }
 
 fn remove_file_if_present(path: &Path) -> Result<(), IndexError> {
@@ -794,6 +821,23 @@ mod tests {
         assert_eq!(user_version(&index), 1);
         assert!(table_exists(&index, "a"));
         assert!(!table_exists(&index, "b"));
+    }
+
+    #[test]
+    fn a_failed_creation_leaves_no_file_and_the_next_try_works() {
+        let dir = TempDir::new().unwrap();
+        let path = db_in(&dir);
+        let store = InMemoryKeyStore::empty();
+
+        let broken = ["CREATE TABLE b (id INTEGER); THIS IS NOT SQL;"];
+        Index::create_encrypted_with_migrations(&path, &store, &broken).unwrap_err();
+        assert!(!path.exists());
+
+        Index::create_encrypted_with_migrations(&path, &store, &[TABLE_A]).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        Index::create_plain_with_migrations(&path, &broken).unwrap_err();
+        assert!(!path.exists());
+        Index::create_plain_with_migrations(&path, &[TABLE_A]).unwrap();
     }
 
     #[test]

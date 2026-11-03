@@ -271,6 +271,7 @@ fn a_rule_for_the_sender_files_the_next_document_without_a_review() {
         file_planned(
             index,
             &setup.archive,
+            &[],
             &mut Counting,
             &Move,
             KindLanguage::English,

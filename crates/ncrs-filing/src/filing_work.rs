@@ -14,7 +14,7 @@ use ncrs_index::{
     BatchKind, Document, DocumentStatus, FieldOrigin, Index, IndexError, KindLanguage, Kinds,
     ReviewReason, Rule, SenderAliases,
 };
-use ncrs_intake::{plan, PlanInput, Planning};
+use ncrs_intake::{plan, relative_to_location, PlanInput, Planning};
 
 use crate::execute::{execute_with, ExecuteError, ExecutionItem, ItemOutcome, SkipReason};
 use crate::suggestion_work::INDEX_NOT_OPEN;
@@ -28,6 +28,7 @@ type IndexSlot = Arc<Mutex<Option<Index>>>;
 pub struct FilingAccess {
     slot: IndexSlot,
     target_root: PathBuf,
+    location_roots: Vec<PathBuf>,
     kind_language: KindLanguage,
 }
 
@@ -42,7 +43,16 @@ impl FilingAccess {
         Self {
             slot,
             target_root,
+            location_roots: Vec::new(),
             kind_language: KindLanguage::default(),
+        }
+    }
+
+    /// The roots of the locations: the rules see a path relative to its root.
+    pub fn with_location_roots(self, location_roots: Vec<PathBuf>) -> Self {
+        Self {
+            location_roots,
+            ..self
         }
     }
 
@@ -59,6 +69,7 @@ impl FilingAccess {
         file_planned(
             index,
             &self.target_root,
+            &self.location_roots,
             progress,
             &Move,
             self.kind_language,
@@ -105,6 +116,7 @@ fn decide(
     rules: &[Rule],
     sender_aliases: &SenderAliases,
     root: &Path,
+    location_roots: &[PathBuf],
     document: &Document,
     kind_language: KindLanguage,
 ) -> Result<Decision, IndexError> {
@@ -116,7 +128,7 @@ fn decide(
         &PlanInput {
             text: &text,
             fields: &document.fields,
-            path: Some(&document.path),
+            path: Some(relative_to_location(&document.path, location_roots)),
             sender_aliases,
             manual_fields: &manual_fields,
             kinds: &kinds,
@@ -164,6 +176,7 @@ pub fn send_to_review(
 pub fn file_planned<P: Progress, S: Source>(
     index: &mut Index,
     root: &Path,
+    location_roots: &[PathBuf],
     progress: &mut P,
     effect: &S,
     kind_language: KindLanguage,
@@ -186,6 +199,7 @@ pub fn file_planned<P: Progress, S: Source>(
             &rules,
             &sender_aliases,
             root,
+            location_roots,
             &document,
             kind_language,
         )? {
@@ -269,6 +283,10 @@ mod tests {
 
     impl Setup {
         fn new() -> Self {
+            Self::with_extra_conditions(|_| Vec::new())
+        }
+
+        fn with_extra_conditions(extra: impl FnOnce(&Path) -> Vec<Condition>) -> Self {
             let dir = tempfile::tempdir().unwrap();
             let inbox = dir.path().join("inbox");
             let archive = dir.path().join("archive");
@@ -278,10 +296,11 @@ mod tests {
             index
                 .create_rule(&RuleSpec {
                     name: None,
-                    conditions: RuleConditions::all_of(vec![Condition::new(
-                        ConditionKind::Substring,
-                        "company a",
-                    )]),
+                    conditions: RuleConditions::all_of(
+                        std::iter::once(Condition::new(ConditionKind::Substring, "company a"))
+                            .chain(extra(dir.path()))
+                            .collect(),
+                    ),
                     extract_number: None,
                     extract_date: None,
                     extract_amount: None,
@@ -331,6 +350,7 @@ mod tests {
             file_planned(
                 &mut self.index,
                 &self.archive,
+                &[self.inbox.clone()],
                 &mut Counting,
                 effect,
                 KindLanguage::English,
@@ -385,6 +405,42 @@ mod tests {
                 .map(|d| d.id),
             Some(document.id)
         );
+    }
+
+    #[test]
+    fn a_folder_above_the_inbox_takes_no_part_in_a_folder_condition() {
+        let above = |dir: &Path| {
+            let name = dir.file_name().unwrap().to_string_lossy().into_owned();
+            vec![Condition::not(ConditionKind::Folder, &name)]
+        };
+        let mut setup = Setup::with_extra_conditions(above);
+        let document = setup.planned("scan 1.pdf", "Invoice from Company A");
+
+        let unrooted = file_planned(
+            &mut setup.index,
+            &setup.archive,
+            &[],
+            &mut Counting,
+            &Move,
+            KindLanguage::English,
+        )
+        .unwrap();
+        assert_eq!(unrooted.reviewed, 1);
+
+        setup
+            .index
+            .set_document_status(document.id, DocumentStatus::Planned)
+            .unwrap();
+        let rooted = file_planned(
+            &mut setup.index,
+            &setup.archive,
+            std::slice::from_ref(&setup.inbox),
+            &mut Counting,
+            &Move,
+            KindLanguage::English,
+        )
+        .unwrap();
+        assert_eq!(rooted.filed, 1);
     }
 
     #[test]
