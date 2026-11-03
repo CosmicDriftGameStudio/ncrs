@@ -587,11 +587,15 @@ impl ReviewList {
     }
 
     /// The wheel moves the window; the entry under the cursor follows it when
-    /// the cursor would leave the window.
+    /// the cursor would leave the window. While an entry is being edited or the
+    /// list is busy the cursor stays put, so no input is dropped.
     pub fn scroll(&mut self, delta: ScrollDelta) {
         let mut cursor = self.cursor;
         self.window
             .scroll(delta, self.rows.len(), VISIBLE_ROWS, &mut cursor);
+        if self.editing || self.busy {
+            return;
+        }
         self.select(cursor);
     }
 

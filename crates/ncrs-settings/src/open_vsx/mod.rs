@@ -105,6 +105,14 @@ fn is_valid_part(part: &str) -> bool {
         && characters.all(|next| next.is_ascii_alphanumeric() || next == '_' || next == '-')
 }
 
+/// A fixed, stable 32-bit hash: it only tells links apart in a file name, so
+/// it must give the same value in every build.
+fn fnv1a(bytes: &[u8]) -> u32 {
+    bytes.iter().fold(0x811c_9dc5, |hash, byte| {
+        (hash ^ u32::from(*byte)).wrapping_mul(0x0100_0193)
+    })
+}
+
 /// A direct link to a VS Code theme file: `https` only, no user info, no port
 /// but 443, and a name that ends in `.json` or `.jsonc`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -143,17 +151,23 @@ impl ThemeFileUrl {
         if !(lower.ends_with(".json") || lower.ends_with(".jsonc")) || last.starts_with('.') {
             return None;
         }
-        let file_name: String = format!("{host}-{last}")
-            .chars()
-            .map(|ch| {
-                if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_') {
-                    ch
-                } else {
-                    '_'
-                }
-            })
-            .take(MAX_THEME_FILE_NAME)
-            .collect();
+        let (stem, extension) = last.rsplit_once('.')?;
+        let safe = |text: &str| -> String {
+            text.chars()
+                .map(|ch| {
+                    if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_') {
+                        ch
+                    } else {
+                        '_'
+                    }
+                })
+                .collect()
+        };
+        let tag = format!("{:08x}", fnv1a(url.as_bytes()));
+        let ending = format!("-{tag}.{}", safe(extension));
+        let room = MAX_THEME_FILE_NAME.saturating_sub(ending.len());
+        let name: String = safe(&format!("{host}-{stem}")).chars().take(room).collect();
+        let file_name = format!("{name}{ending}");
         Some(Self {
             url: url.to_owned(),
             file_name,
@@ -161,7 +175,8 @@ impl ThemeFileUrl {
     }
 
     /// The name the file gets on disk: host and file name of the link, reduced
-    /// to `[A-Za-z0-9._-]`.
+    /// to `[A-Za-z0-9._-]`, with a short hash of the whole link before the
+    /// ending so two links that share host and file name stay apart.
     pub fn file_name(&self) -> &str {
         &self.file_name
     }
@@ -393,6 +408,68 @@ fn check_https_target(url: &str) -> Result<(), FetchError> {
     Ok(())
 }
 
+/// What to do with one answer of a download.
+#[derive(Debug, PartialEq, Eq)]
+enum Hop {
+    Follow(String),
+    Body,
+}
+
+/// Decides what a status and `Location` header mean at redirect number `hop`.
+/// A relative `Location` is resolved against `current` before it is checked.
+fn next_hop(
+    current: &str,
+    status: u16,
+    location: Option<&str>,
+    hop: usize,
+    check_target: fn(&str) -> Result<(), FetchError>,
+) -> Result<Hop, FetchError> {
+    if REDIRECT_STATUSES.contains(&status) {
+        if hop >= MAX_REDIRECTS {
+            return Err(FetchError::TooManyRedirects);
+        }
+        let target = resolve_location(current, location.unwrap_or_default());
+        check_target(&target)?;
+        return Ok(Hop::Follow(target));
+    }
+    if status != 200 {
+        return Err(FetchError::Status(status));
+    }
+    Ok(Hop::Body)
+}
+
+/// RFC 9110 lets `Location` be a relative reference: scheme-relative,
+/// absolute path, or relative to the folder of the current URL.
+fn resolve_location(current: &str, location: &str) -> String {
+    if location.contains("://") || location.is_empty() {
+        return location.to_owned();
+    }
+    if location.starts_with("//") {
+        return format!("https:{location}");
+    }
+    let Some(after_scheme) = current.strip_prefix("https://") else {
+        return location.to_owned();
+    };
+    let authority_end = after_scheme
+        .find(['/', '?', '#'])
+        .unwrap_or(after_scheme.len());
+    let origin = format!(
+        "https://{}",
+        after_scheme.get(..authority_end).unwrap_or_default()
+    );
+    if location.starts_with('/') {
+        return format!("{origin}{location}");
+    }
+    let path = after_scheme
+        .get(authority_end..)
+        .unwrap_or_default()
+        .split(['?', '#'])
+        .next()
+        .unwrap_or_default();
+    let folder = path.rsplit_once('/').map_or("", |(folder, _file)| folder);
+    format!("{origin}{folder}/{location}")
+}
+
 fn download(
     agent: &ureq::Agent,
     first_url: &str,
@@ -402,31 +479,24 @@ fn download(
     let mut url = first_url.to_owned();
     for hop in 0..=MAX_REDIRECTS {
         let mut response = agent.get(&url).call().map_err(network_error)?;
+        let location = response
+            .headers()
+            .get("location")
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned);
         let status = response.status().as_u16();
-        if REDIRECT_STATUSES.contains(&status) {
-            if hop == MAX_REDIRECTS {
-                return Err(FetchError::TooManyRedirects);
+        match next_hop(&url, status, location.as_deref(), hop, check_target)? {
+            Hop::Follow(target) => url = target,
+            Hop::Body => {
+                check_declared_size(response.body().content_length(), limit)?;
+                return response
+                    .body_mut()
+                    .with_config()
+                    .limit(limit)
+                    .read_to_vec()
+                    .map_err(network_error);
             }
-            let target = response
-                .headers()
-                .get("location")
-                .and_then(|value| value.to_str().ok())
-                .unwrap_or_default()
-                .to_owned();
-            check_target(&target)?;
-            url = target;
-            continue;
         }
-        if status != 200 {
-            return Err(FetchError::Status(status));
-        }
-        check_declared_size(response.body().content_length(), limit)?;
-        return response
-            .body_mut()
-            .with_config()
-            .limit(limit)
-            .read_to_vec()
-            .map_err(network_error);
     }
     Err(FetchError::TooManyRedirects)
 }

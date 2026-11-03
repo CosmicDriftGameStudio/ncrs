@@ -93,7 +93,10 @@ fn a_link_to_a_theme_file_is_told_from_an_extension_id() {
     let Some(ThemeSource::File(file)) = ThemeSource::parse(link) else {
         panic!("a theme file link");
     };
-    assert_eq!(file.file_name(), "raw.githubusercontent.com-dark.json");
+    assert!(file
+        .file_name()
+        .starts_with("raw.githubusercontent.com-dark-"));
+    assert!(file.file_name().ends_with(".json"));
     assert!(matches!(
         ThemeSource::parse("example.dark-themes"),
         Some(ThemeSource::Extension(_))
@@ -128,7 +131,108 @@ fn only_https_links_to_json_files_without_user_info_are_theme_files() {
 #[test]
 fn the_file_name_on_disk_holds_no_separator() {
     let link = ThemeFileUrl::parse("https://example.com/a/b%2F..%5Cc.json").unwrap();
-    assert_eq!(link.file_name(), "example.com-b_2F.._5Cc.json");
+    assert!(link.file_name().starts_with("example.com-b_2F.._5Cc-"));
+    assert!(link.file_name().ends_with(".json"));
+    assert!(link
+        .file_name()
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_')));
+}
+
+#[test]
+fn a_long_link_keeps_its_ending() {
+    let link = format!(
+        "https://{}.example.com/{}.jsonc",
+        "h".repeat(60),
+        "n".repeat(200)
+    );
+    let parsed = ThemeFileUrl::parse(&link).unwrap();
+    assert!(parsed.file_name().ends_with(".jsonc"));
+    assert!(parsed.file_name().len() <= MAX_THEME_FILE_NAME);
+}
+
+#[test]
+fn two_links_with_the_same_host_and_file_name_get_different_files() {
+    let first =
+        ThemeFileUrl::parse("https://raw.githubusercontent.com/a/x/main/dark.json").unwrap();
+    let second =
+        ThemeFileUrl::parse("https://raw.githubusercontent.com/b/y/main/dark.json").unwrap();
+    assert_ne!(first.file_name(), second.file_name());
+}
+
+fn hop(status: u16, location: Option<&str>, hop: usize) -> Result<Hop, FetchError> {
+    next_hop(
+        "https://open-vsx.org/api/a/b/1/file/a.vsix",
+        status,
+        location,
+        hop,
+        check_download_host,
+    )
+}
+
+#[test]
+fn a_redirect_to_a_listed_host_is_followed() {
+    assert_eq!(
+        hop(302, Some("https://openvsx.eclipsecontent.org/x.vsix"), 0),
+        Ok(Hop::Follow(
+            "https://openvsx.eclipsecontent.org/x.vsix".to_owned()
+        ))
+    );
+}
+
+#[test]
+fn a_redirect_to_a_foreign_host_or_without_location_is_refused() {
+    assert!(matches!(
+        hop(302, Some("https://evil.example/x.vsix"), 0),
+        Err(FetchError::DownloadRefused { .. })
+    ));
+    assert!(matches!(
+        hop(301, None, 0),
+        Err(FetchError::DownloadRefused { .. })
+    ));
+}
+
+#[test]
+fn the_fourth_redirect_is_too_many() {
+    let location = Some("https://open-vsx.org/x");
+    assert!(hop(302, location, MAX_REDIRECTS - 1).is_ok());
+    assert_eq!(
+        hop(302, location, MAX_REDIRECTS),
+        Err(FetchError::TooManyRedirects)
+    );
+}
+
+#[test]
+fn a_status_other_than_200_ends_the_download() {
+    assert_eq!(hop(200, None, 0), Ok(Hop::Body));
+    assert_eq!(hop(500, None, 0), Err(FetchError::Status(500)));
+    assert_eq!(hop(404, None, 0), Err(FetchError::Status(404)));
+}
+
+#[test]
+fn a_relative_location_is_resolved_against_the_current_link() {
+    assert_eq!(
+        hop(302, Some("/x.vsix"), 0),
+        Ok(Hop::Follow("https://open-vsx.org/x.vsix".to_owned()))
+    );
+    assert_eq!(
+        resolve_location("https://example.com/a/b/c.json?x=1", "d.json"),
+        "https://example.com/a/b/d.json"
+    );
+    assert_eq!(
+        resolve_location("https://example.com/a/c.json", "//cdn.example.com/y.json"),
+        "https://cdn.example.com/y.json"
+    );
+    assert_eq!(
+        next_hop(
+            "https://example.com/a",
+            302,
+            Some("/raw/t.json"),
+            0,
+            check_https_target
+        ),
+        Ok(Hop::Follow("https://example.com/raw/t.json".to_owned()))
+    );
 }
 
 #[test]

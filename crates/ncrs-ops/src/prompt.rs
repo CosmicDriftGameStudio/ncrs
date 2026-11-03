@@ -207,8 +207,18 @@ impl Prompt {
         if !archive::is_archive_name(file_name) {
             return Err("archive_extension");
         }
-        if !target.parent().is_some_and(std::path::Path::is_dir) {
+        let Some(target_folder) = target.parent().filter(|folder| folder.is_dir()) else {
             return Err("archive_folder_missing");
+        };
+        let target_folder = target_folder
+            .canonicalize()
+            .unwrap_or_else(|_| target_folder.to_path_buf());
+        let inside_source = self.sources.iter().any(|source| {
+            let source = source.canonicalize().unwrap_or_else(|_| source.clone());
+            target_folder.starts_with(source)
+        });
+        if inside_source {
+            return Err("archive_inside_source");
         }
         if std::fs::symlink_metadata(&target).is_ok() {
             return Err("archive_exists");
@@ -331,6 +341,21 @@ mod tests {
             pack_prompt_in(folder.path(), "..").validate(),
             Err("reserved_name")
         );
+    }
+
+    #[test]
+    fn a_pack_target_inside_a_packed_folder_is_rejected() {
+        let folder = tempfile::tempdir().unwrap();
+        let packed = folder.path().join("fotos");
+        std::fs::create_dir_all(packed.join("deep")).unwrap();
+        let mut prompt = Prompt::pack(folder.path().to_path_buf(), vec![packed.clone()], "x.zip");
+        assert_eq!(prompt.validate(), Ok(()));
+
+        prompt.set_name(packed.join("fotos.zip").to_string_lossy().into_owned());
+        assert_eq!(prompt.validate(), Err("archive_inside_source"));
+
+        prompt.set_name("fotos/deep/../fotos.zip".to_string());
+        assert_eq!(prompt.validate(), Err("archive_inside_source"));
     }
 
     #[test]

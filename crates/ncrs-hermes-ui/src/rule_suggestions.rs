@@ -134,11 +134,15 @@ impl RuleSuggestions {
         self.select(self.cursor.saturating_add_signed(delta).min(last));
     }
 
-    /// The wheel moves the window; the cursor follows it when it would leave.
+    /// The wheel moves the window; the cursor follows it when it would leave,
+    /// except while the list is busy.
     pub fn scroll(&mut self, delta: ScrollDelta) {
         let mut cursor = self.cursor;
         self.window
             .scroll(delta, self.rows.len(), VISIBLE_ROWS, &mut cursor);
+        if self.busy {
+            return;
+        }
         self.select(cursor);
     }
 
@@ -429,5 +433,21 @@ mod tests {
             view.problem(),
             Some(&Problem::Failed("index not open".to_owned()))
         );
+    }
+
+    #[test]
+    fn scrolling_a_busy_list_leaves_the_cursor_alone() {
+        let [one, _, _] = rule_ids();
+        let mut view = RuleSuggestions::new();
+        view.loaded(
+            (0..40)
+                .map(|_| suggestion(one, "name", "Letters"))
+                .collect(),
+        );
+        view.begin_analysis();
+
+        view.scroll(ScrollDelta::Lines { x: 0.0, y: -30.0 });
+
+        assert_eq!(view.cursor(), 0);
     }
 }

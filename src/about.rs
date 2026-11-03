@@ -10,11 +10,13 @@ const LICENSES_FILE: &str = "THIRD_PARTY_LICENSES.html";
 
 /// Where each packaging puts the licence file, relative to the executable's
 /// folder: next to it (archives), in the app bundle's `Resources`, and under
-/// `share/doc/ncrs` of a prefix (deb, rpm, brew).
-const LICENSES_LOCATIONS: [&str; 3] = [
+/// `share/doc/ncrs` of a prefix (brew, and deb and rpm, whose real executable is
+/// `/usr/lib/ncrs/ncrs` behind the `/usr/bin/ncrs` symlink).
+const LICENSES_LOCATIONS: [&str; 4] = [
     LICENSES_FILE,
     "../Resources/THIRD_PARTY_LICENSES.html",
     "../share/doc/ncrs/THIRD_PARTY_LICENSES.html",
+    "../../share/doc/ncrs/THIRD_PARTY_LICENSES.html",
 ];
 
 pub fn third_party_licenses_candidates(exe: &Path) -> Vec<PathBuf> {
@@ -101,6 +103,15 @@ mod tests {
         let found = third_party_licenses_path(
             Path::new("/usr/bin/ncrs"),
             only("/usr/bin/../share/doc/ncrs/THIRD_PARTY_LICENSES.html"),
+        );
+        assert!(found.is_some());
+    }
+
+    #[test]
+    fn a_file_under_share_doc_is_found_from_the_resolved_deb_executable() {
+        let found = third_party_licenses_path(
+            Path::new("/usr/lib/ncrs/ncrs"),
+            only("/usr/lib/ncrs/../../share/doc/ncrs/THIRD_PARTY_LICENSES.html"),
         );
         assert!(found.is_some());
     }
