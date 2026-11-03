@@ -97,7 +97,9 @@ impl App {
         .height(Length::Fill);
 
         let below_title_bar =
-            if let Some(state) = self.settings.page.as_ref() {
+            if self.hermes_chat.open {
+                self.hermes_chat_area()
+            } else if let Some(state) = self.settings.page.as_ref() {
                 self.settings_area(state)
             } else if let Some(area) = self.ablage_area() {
                 area

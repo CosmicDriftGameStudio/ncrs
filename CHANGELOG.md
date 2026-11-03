@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- On Windows and x86_64 Linux the built-in AI model uses a Vulkan GPU if a
+  driver is present and the CPU otherwise; Status and errors shows which.
+  `ncrs --check-ai <folder>` loads the model from a folder and reports the
+  device and the time of three sentences.
 - Filing is a tab of its own. A sidebar lists its pages: Overview, Review,
   Rules, Rule suggestions, Sort again, Reports, Tags and Status and errors.
   The tab stays open while you switch pages.
@@ -69,10 +73,26 @@ All notable changes to this project are documented here. The format follows
   they can be copied, moved, packed and deleted together. Files with equal
   names from different folders are numbered (`invoice.pdf`, `invoice (2).pdf`);
   packing can keep the folders below the search directory.
+- The Hermes chat (`F2`, Beta): tell Hermes a folder and it reads how it is
+  ordered, shows a trial run of what it would file and files only after you
+  confirm. It can also trash duplicates, and the last run can be undone. `Esc`
+  closes it.
+- Hermes understands typed sentences with the built-in AI model, on this
+  computer. It confirms every action before it runs. Without the model it
+  offers the download in the chat.
+- For the files a trial run leaves where they are, Hermes asks where each
+  larger group belongs (by sender, then by kind). Each answer becomes a rule
+  that later runs keep and that the Rules page can take back.
+- Status and errors shows whether the AI model computes on the graphics card
+  or the processor.
 
 ### Changed
 
-- The index schema is now 21; the index is migrated on the first start and
+- The command line moved from `F2` to `Shift`+`F2`; `F2` opens the Hermes chat.
+  A `copy = "F2"` of your own keeps working.
+- The built-in AI model is now Qwen3 4B (about 2.5 GB, one download) instead
+  of Qwen3 0.6B. It also reads the fields of documents.
+- The index schema is now 23; the index is migrated on the first start and
   keeps its documents.
 - English and German show plain names only ("Filing", "Review", "Status and
   errors", load "Gentle", "Balanced", "Full"). The Futurama names appear only

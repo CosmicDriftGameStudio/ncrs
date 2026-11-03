@@ -6,9 +6,10 @@ use iced::{event, mouse, window, Point};
 
 use crate::messages::PanelMessage;
 use crate::messages::{
-    CommandLineMessage, CommandPaletteMessage, KeyBindingsMessage, Message, QuickOpenMessage,
-    ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage, RulesMessage,
-    SavedQueriesMessage, SearchMessage, SettingsMessage, TagsMessage, ThemeFetchMessage,
+    CommandLineMessage, CommandPaletteMessage, HermesChatMessage, KeyBindingsMessage, Message,
+    QuickOpenMessage, ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage,
+    RulesMessage, SavedQueriesMessage, SearchMessage, SettingsMessage, TagsMessage,
+    ThemeFetchMessage,
 };
 use crate::transfer_dialog::TransferDialogMessage;
 
@@ -65,6 +66,8 @@ pub struct InputState {
     /// The search view is up and nothing is on top of it: Escape closes it,
     /// and an Option tap opens no menu on the panel it hides.
     pub search_open: bool,
+    /// The Hermes chat is up: its field captures Escape, which closes it.
+    pub hermes_chat: bool,
     /// A job is running, so Escape stops it before it closes the search.
     pub job_running: bool,
     /// Quick Open is up: Escape closes it, even with a job running, and an
@@ -108,6 +111,10 @@ impl InputState {
             return None;
         }
         [
+            (
+                self.hermes_chat,
+                Message::HermesChat(HermesChatMessage::Close),
+            ),
             (
                 self.command_line,
                 Message::CommandLine(CommandLineMessage::Leave),
@@ -203,6 +210,7 @@ impl InputState {
                     && !self.path_editing
                     && !self.command_line
                     && !self.search_open
+                    && !self.hermes_chat
                     && !self.quick_open
                     && !self.command_palette
                     && !self.key_bindings

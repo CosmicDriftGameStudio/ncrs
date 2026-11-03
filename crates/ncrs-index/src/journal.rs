@@ -20,6 +20,8 @@ fn utf8(path: &Path) -> Result<&str, IndexError> {
 pub enum BatchKind {
     Reorganisation,
     Filing,
+    /// A run the chat started.
+    Hermes,
 }
 
 impl BatchKind {
@@ -27,6 +29,7 @@ impl BatchKind {
         match self {
             Self::Reorganisation => "reorganisation",
             Self::Filing => "filing",
+            Self::Hermes => "hermes",
         }
     }
 
@@ -34,9 +37,61 @@ impl BatchKind {
         match value {
             "reorganisation" => Ok(Self::Reorganisation),
             "filing" => Ok(Self::Filing),
+            "hermes" => Ok(Self::Hermes),
             other => Err(corrupt("execution_batch.kind", other)),
         }
     }
+}
+
+/// What a batch does with its files.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Transfer {
+    Move,
+    Copy,
+    Trash,
+}
+
+impl Transfer {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Move => "move",
+            Self::Copy => "copy",
+            Self::Trash => "trash",
+        }
+    }
+
+    fn parse(value: &str) -> Result<Self, IndexError> {
+        match value {
+            "move" => Ok(Self::Move),
+            "copy" => Ok(Self::Copy),
+            "trash" => Ok(Self::Trash),
+            other => Err(corrupt("execution_batch.transfer", other)),
+        }
+    }
+}
+
+/// What the journal knows about a batch as a whole.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BatchInfo {
+    pub kind: BatchKind,
+    pub name: Option<String>,
+    pub transfer: Transfer,
+    /// Unix seconds.
+    pub started_at: i64,
+    pub finished_at: Option<i64>,
+    pub undone_at: Option<i64>,
+    pub source_root: Option<SourceRoot>,
+    /// `None` for a run that did not record one.
+    pub target_root: Option<SourceRoot>,
+}
+
+/// The folder a run took its files from, or put them in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceRoot {
+    /// The spelling the journal's paths start with.
+    pub given: PathBuf,
+    /// The same folder with its links resolved when the run started.
+    pub resolved: PathBuf,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -143,11 +198,124 @@ fn read_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Row> {
 
 impl Index {
     pub fn begin_batch(&self, kind: BatchKind) -> Result<BatchId, IndexError> {
+        self.insert_batch(kind, None, Transfer::Move)
+    }
+
+    pub fn begin_named_batch(
+        &self,
+        kind: BatchKind,
+        name: &str,
+        transfer: Transfer,
+    ) -> Result<BatchId, IndexError> {
+        self.insert_batch(kind, Some(name), transfer)
+    }
+
+    fn insert_batch(
+        &self,
+        kind: BatchKind,
+        name: Option<&str>,
+        transfer: Transfer,
+    ) -> Result<BatchId, IndexError> {
         self.connection().execute(
-            "INSERT INTO execution_batch (kind, started_at) VALUES (?1, ?2)",
-            params![kind.as_str(), Utc::now().timestamp()],
+            "INSERT INTO execution_batch (kind, started_at, name, transfer)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![
+                kind.as_str(),
+                Utc::now().timestamp(),
+                name,
+                transfer.as_str()
+            ],
         )?;
         Ok(BatchId::new(self.connection().last_insert_rowid()))
+    }
+
+    pub fn batch_info(&self, batch: BatchId) -> Result<Option<BatchInfo>, IndexError> {
+        let found = self
+            .connection()
+            .query_row(
+                "SELECT kind, name, transfer, started_at, finished_at, undone_at,
+                        source_root, source_resolved, target_root, target_resolved
+                 FROM execution_batch WHERE id = ?1",
+                [batch.get()],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, i64>(3)?,
+                        row.get::<_, Option<i64>>(4)?,
+                        row.get::<_, Option<i64>>(5)?,
+                        row.get::<_, Option<String>>(6)?,
+                        row.get::<_, Option<String>>(7)?,
+                        row.get::<_, Option<String>>(8)?,
+                        row.get::<_, Option<String>>(9)?,
+                    ))
+                },
+            )
+            .optional()?;
+        found
+            .map(
+                |(
+                    kind,
+                    name,
+                    transfer,
+                    started_at,
+                    finished_at,
+                    undone_at,
+                    source_root,
+                    source_resolved,
+                    target_root,
+                    target_resolved,
+                )| {
+                    let root_of = |written: Option<String>, canonical: Option<String>| {
+                        written.zip(canonical).map(|(given, resolved)| SourceRoot {
+                            given: PathBuf::from(given),
+                            resolved: PathBuf::from(resolved),
+                        })
+                    };
+                    Ok(BatchInfo {
+                        kind: BatchKind::parse(&kind)?,
+                        name,
+                        transfer: Transfer::parse(&transfer)?,
+                        started_at,
+                        finished_at,
+                        undone_at,
+                        source_root: root_of(source_root, source_resolved),
+                        target_root: root_of(target_root, target_resolved),
+                    })
+                },
+            )
+            .transpose()
+    }
+
+    /// Records the folder the run takes its files from.
+    pub fn set_batch_source_root(
+        &self,
+        batch: BatchId,
+        source: &SourceRoot,
+    ) -> Result<(), IndexError> {
+        self.connection().execute(
+            "UPDATE execution_batch SET source_root = ?2, source_resolved = ?3 WHERE id = ?1",
+            params![batch.get(), utf8(&source.given)?, utf8(&source.resolved)?],
+        )?;
+        Ok(())
+    }
+
+    /// Records the folder the run puts its files in.
+    pub fn set_batch_target_root(
+        &self,
+        batch: BatchId,
+        target: &SourceRoot,
+    ) -> Result<(), IndexError> {
+        self.connection().execute(
+            "UPDATE execution_batch SET target_root = ?2, target_resolved = ?3 WHERE id = ?1",
+            params![batch.get(), utf8(&target.given)?, utf8(&target.resolved)?],
+        )?;
+        Ok(())
+    }
+
+    pub fn batch_transfer(&self, batch: BatchId) -> Result<Option<Transfer>, IndexError> {
+        Ok(self.batch_info(batch)?.map(|info| info.transfer))
     }
 
     /// Appends an item to the batch and returns its position.
@@ -191,6 +359,20 @@ impl Index {
             "UPDATE execution_item SET state = ?3, reason = ?4
              WHERE batch_id = ?1 AND seq = ?2",
             params![batch.get(), seq, state.as_str(), reason],
+        )?;
+        Ok(())
+    }
+
+    /// Replaces where the item went; a trash batch records the trash's own key.
+    pub fn set_journal_target(
+        &self,
+        batch: BatchId,
+        seq: u32,
+        to: &Path,
+    ) -> Result<(), IndexError> {
+        self.connection().execute(
+            "UPDATE execution_item SET to_path = ?3 WHERE batch_id = ?1 AND seq = ?2",
+            params![batch.get(), seq, utf8(to)?],
         )?;
         Ok(())
     }
@@ -397,6 +579,40 @@ mod tests {
         assert_eq!(
             index.last_undoable_batch(BatchKind::Filing).unwrap(),
             Some(other_kind)
+        );
+    }
+
+    #[test]
+    fn name_and_transfer_round_trip_and_a_plain_batch_reads_back_as_a_move() {
+        let (_dir, index) = encrypted_index();
+        let named = index
+            .begin_named_batch(BatchKind::Hermes, "Tidy up Downloads", Transfer::Copy)
+            .unwrap();
+        let plain = index.begin_batch(BatchKind::Filing).unwrap();
+        let seq = index
+            .add_journal_item(named, &pending("/a/x", "/b/x", 1))
+            .unwrap();
+        index
+            .set_journal_state(named, seq, JournalState::Moved, None)
+            .unwrap();
+        index.finish_batch(named).unwrap();
+
+        let info = index.batch_info(named).unwrap().unwrap();
+        assert_eq!(
+            (info.kind, info.name.as_deref(), info.transfer),
+            (BatchKind::Hermes, Some("Tidy up Downloads"), Transfer::Copy)
+        );
+        assert!(info.finished_at.is_some() && info.undone_at.is_none());
+        let plain_info = index.batch_info(plain).unwrap().unwrap();
+        assert_eq!(
+            (plain_info.name, plain_info.transfer),
+            (None, Transfer::Move)
+        );
+        assert_eq!(index.batch_transfer(named).unwrap(), Some(Transfer::Copy));
+        assert_eq!(index.batch_info(BatchId::new(999)).unwrap(), None);
+        assert_eq!(
+            index.last_undoable_batch(BatchKind::Hermes).unwrap(),
+            Some(named)
         );
     }
 

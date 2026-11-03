@@ -379,23 +379,34 @@ fn condition_template(kind: ConditionKind, negated: bool) -> Msg {
         (ConditionKind::Folder, true) => Msg::RulesSentenceFolderNot,
         (ConditionKind::Tag, false) => Msg::RulesSentenceTag,
         (ConditionKind::Tag, true) => Msg::RulesSentenceTagNot,
+        (ConditionKind::Kind, false) => Msg::RulesSentenceKind,
+        (ConditionKind::Kind, true) => Msg::RulesSentenceKindNot,
     }
 }
 
-fn condition_sentence(condition: &Condition, lang: Language) -> String {
+fn condition_sentence(condition: &Condition, lang: Language, kinds: &KindCatalog) -> String {
+    let value = match condition.kind {
+        ConditionKind::Kind => lang.kind_label(kinds, &condition.value),
+        _ => std::borrow::Cow::Borrowed(condition.value.as_str()),
+    };
     fill_template(
         lang.text(condition_template(condition.kind, condition.negated)),
-        &[("{value}", &condition.value)],
+        &[("{value}", &value)],
     )
 }
 
 /// One condition in the sentence; a tag reads as the bare tag.
-pub fn sentence_part(condition: &Condition, first: bool, lang: Language) -> (bool, String) {
+pub fn sentence_part(
+    condition: &Condition,
+    first: bool,
+    lang: Language,
+    kinds: &KindCatalog,
+) -> (bool, String) {
     let bare_tag = condition.kind == ConditionKind::Tag && (!condition.negated || !first);
     if bare_tag {
         (condition.negated, condition.value.clone())
     } else {
-        (false, condition_sentence(condition, lang))
+        (false, condition_sentence(condition, lang, kinds))
     }
 }
 
@@ -405,7 +416,7 @@ pub fn rule_sentence(spec: &RuleSpec, lang: Language, kinds: &KindCatalog) -> St
     let combinator = spec.conditions.combinator;
     let mut conditions = String::new();
     for (position, condition) in spec.conditions.list.iter().enumerate() {
-        let (not_joiner, text) = sentence_part(condition, position == 0, lang);
+        let (not_joiner, text) = sentence_part(condition, position == 0, lang, kinds);
         if position > 0 {
             conditions.push(' ');
             conditions.push_str(lang.text(match (combinator, not_joiner) {

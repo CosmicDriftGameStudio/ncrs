@@ -189,7 +189,8 @@ pub fn condition_match_ranges(condition: &Condition, text: &str) -> Vec<Range<us
         ConditionKind::Sender
         | ConditionKind::Recipient
         | ConditionKind::Folder
-        | ConditionKind::Tag => Vec::new(),
+        | ConditionKind::Tag
+        | ConditionKind::Kind => Vec::new(),
     };
     ranges.truncate(MAX_MATCH_RANGES);
     ranges

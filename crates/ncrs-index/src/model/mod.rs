@@ -635,10 +635,12 @@ pub enum ConditionKind {
     Folder,
     /// The document has a tag (own or automatic) that is this one or below it.
     Tag,
+    /// The kind field of the document is this kind; the value is the kind key.
+    Kind,
 }
 
 impl ConditionKind {
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 11] = [
         Self::Substring,
         Self::Word,
         Self::Regex,
@@ -649,6 +651,7 @@ impl ConditionKind {
         Self::Recipient,
         Self::Folder,
         Self::Tag,
+        Self::Kind,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -663,6 +666,7 @@ impl ConditionKind {
             Self::Recipient => "recipient",
             Self::Folder => "folder",
             Self::Tag => "tag",
+            Self::Kind => "kind",
         }
     }
 
@@ -678,6 +682,7 @@ impl ConditionKind {
             "recipient" => Ok(Self::Recipient),
             "folder" => Ok(Self::Folder),
             "tag" => Ok(Self::Tag),
+            "kind" => Ok(Self::Kind),
             other => Err(corrupt("rule_condition.kind", other)),
         }
     }

@@ -232,7 +232,7 @@ impl Provider for OpenAiCompatible {
             return Err(AiError::ConsentRequired(self.preview(request)));
         }
         let reply = self.post(&self.request_body(request).pretty())?;
-        parse_reply(&message_content(&reply)?, &request.open_fields)
+        parse_reply(&message_content(&reply)?, request)
     }
 }
 

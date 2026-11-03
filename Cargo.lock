@@ -3368,6 +3368,7 @@ dependencies = [
  "ncrs-files",
  "ncrs-filing",
  "ncrs-fs",
+ "ncrs-hermes-chat",
  "ncrs-hermes-ui",
  "ncrs-i18n",
  "ncrs-index",
@@ -3493,6 +3494,26 @@ dependencies = [
  "zeroize",
  "zip",
  "zstd",
+]
+
+[[package]]
+name = "ncrs-hermes-chat"
+version = "0.0.0"
+dependencies = [
+ "chrono",
+ "iced",
+ "ncrs-ai",
+ "ncrs-core",
+ "ncrs-filing",
+ "ncrs-fs",
+ "ncrs-i18n",
+ "ncrs-index",
+ "ncrs-intake",
+ "ncrs-pipeline",
+ "ncrs-ui-kit",
+ "sha2 0.11.1",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]

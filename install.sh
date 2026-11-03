@@ -163,7 +163,26 @@ mv "$BIN_DIR/.$BIN_NAME.new" "$BIN_DIR/$BIN_NAME"
 cp "$lib_src" "$BIN_DIR/.$LIB_NAME.new"
 mv "$BIN_DIR/.$LIB_NAME.new" "$BIN_DIR/$LIB_NAME"
 
-info "installed $BIN_DIR/$BIN_NAME and $BIN_DIR/$LIB_NAME"
+installed_what="$BIN_DIR/$BIN_NAME and $BIN_DIR/$LIB_NAME"
+
+# The local AI model: llama.cpp libraries next to the binary and its backend
+# modules in backends/. Archives without backends/ (macOS, aarch64) link it in.
+backends_src="$(dirname "$src")/backends"
+if [ -d "$backends_src" ]; then
+    for llama_lib in libllama.so.0 libggml.so.0 libggml-base.so.0; do
+        [ -f "$(dirname "$src")/$llama_lib" ] \
+            || fail "archive has a backends folder but no $llama_lib"
+        cp "$(dirname "$src")/$llama_lib" "$BIN_DIR/.$llama_lib.new"
+        mv "$BIN_DIR/.$llama_lib.new" "$BIN_DIR/$llama_lib"
+    done
+    rm -rf "$BIN_DIR/.backends.new"
+    cp -R "$backends_src" "$BIN_DIR/.backends.new"
+    rm -rf "$BIN_DIR/backends"
+    mv "$BIN_DIR/.backends.new" "$BIN_DIR/backends"
+    installed_what="$installed_what, the llama.cpp libraries and $BIN_DIR/backends"
+fi
+
+info "installed $installed_what"
 
 # --- PATH hint --------------------------------------------------------------
 

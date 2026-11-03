@@ -2,9 +2,9 @@
 //! contexts of the Hermes settings share it. No widgets; the view is
 //! `ui::condition_editor`.
 
-use ncrs_index::{
-    compile_bounded_regex, iban_is_valid, Combinator, Condition, ConditionKind, RuleConditions,
-};
+use ncrs_index::{Combinator, Condition, ConditionKind, RuleConditions};
+
+pub use ncrs_intake::ConditionProblem;
 
 /// The value fields need fixed ids, so the list has a cap.
 pub const MAX_CONDITION_ROWS: usize = 12;
@@ -42,15 +42,6 @@ pub enum ConditionEdit {
     Remove(usize),
     Add,
     Combinator(Combinator),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ConditionProblem {
-    Empty,
-    /// The reason the regular expression does not compile, on one line.
-    InvalidRegex(String),
-    /// The checksum of the IBAN does not match.
-    InvalidIban,
 }
 
 impl ConditionEditor {
@@ -158,32 +149,10 @@ impl ConditionEditor {
     }
 }
 
+/// The empty value is reported only once a save was tried.
 fn row_problem(row: &Condition, report_empty: bool) -> Option<ConditionProblem> {
-    let value = row.value.trim();
-    if value.is_empty() {
-        return report_empty.then_some(ConditionProblem::Empty);
-    }
-    match row.kind {
-        ConditionKind::Regex => compile_bounded_regex(value)
-            .err()
-            .map(|err| ConditionProblem::InvalidRegex(reason_of(&err.to_string()))),
-        ConditionKind::Iban => (!iban_is_valid(value)).then_some(ConditionProblem::InvalidIban),
-        _ => None,
-    }
-}
-
-/// The multi-line message of the regex crate names the reason on its last
-/// line: `error: unclosed group`.
-fn reason_of(message: &str) -> String {
-    let last = message
-        .lines()
-        .rfind(|line| !line.trim().is_empty())
-        .unwrap_or_default()
-        .trim();
-    last.strip_prefix("error:")
-        .unwrap_or(last)
-        .trim()
-        .to_owned()
+    ncrs_intake::condition_problem(row)
+        .filter(|problem| report_empty || *problem != ConditionProblem::Empty)
 }
 
 #[cfg(test)]

@@ -182,7 +182,7 @@ impl App {
                 if let Some(module) = self.hermes.filing.as_ref() {
                     module.refresh_ai_model();
                 }
-                Task::none()
+                self.update_hermes_chat(HermesChatMessage::ModelReady)
             }
         }
     }

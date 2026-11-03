@@ -34,6 +34,7 @@ pub enum AiStatus {
     Loaded {
         name: String,
         memory_bytes: u64,
+        compute: ncrs_ai::Compute,
     },
     #[cfg_attr(not(feature = "local-ai"), allow(dead_code))]
     Failed(&'static str),
@@ -49,16 +50,7 @@ pub(in crate::filing) fn wire_ai(setting: &AiSetting, db_path: &Path) -> AiWirin
     match setting {
         AiSetting::Off => AiWiring::Off,
         #[cfg(feature = "local-ai")]
-        AiSetting::Local { threads } => {
-            let folder = ai_models_dir(db_path)
-                .unwrap_or_else(|| PathBuf::from(ncrs_ai::LOCAL_MODEL_FOLDER));
-            AiWiring::Local(Arc::new(ncrs_ai::LazyLocalModel::new(
-                folder.join(ncrs_ai::LOCAL_MODEL.name),
-                ncrs_ai::LOCAL_MODEL,
-                local_threads(*threads),
-                AI_CONTEXT_TOKENS,
-            )))
-        }
+        AiSetting::Local { threads } => AiWiring::Local(shared_local_model(db_path, *threads)),
         #[cfg(not(feature = "local-ai"))]
         AiSetting::Local { .. } => {
             let _ = db_path;
@@ -86,6 +78,23 @@ pub(in crate::filing) fn wire_ai(setting: &AiSetting, db_path: &Path) -> AiWirin
             }
         }
     }
+}
+
+/// The local model of this index. The path keys the instance, so the fields
+/// and the chat share it and the model is loaded once.
+#[cfg(feature = "local-ai")]
+pub fn shared_local_model(
+    db_path: &Path,
+    threads: Option<NonZeroU32>,
+) -> Arc<ncrs_ai::LazyLocalModel> {
+    let folder =
+        ai_models_dir(db_path).unwrap_or_else(|| PathBuf::from(ncrs_ai::LOCAL_MODEL_FOLDER));
+    ncrs_ai::LazyLocalModel::shared(
+        folder.join(ncrs_ai::LOCAL_MODEL.name),
+        ncrs_ai::LOCAL_MODEL,
+        local_threads(threads),
+        AI_CONTEXT_TOKENS,
+    )
 }
 
 /// The configured count, or half the logical cores: the model should not take

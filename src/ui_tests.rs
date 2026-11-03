@@ -6045,7 +6045,13 @@ mod ai_model_card {
 
     #[test]
     fn a_running_download_shows_its_bar_and_the_figures_and_only_stop() {
-        assert!(shows(downloading(), "312 / 639 MB · 49 %"));
+        assert!(shows(
+            downloading(),
+            &format!(
+                "312 / {} · 12 %",
+                crate::ui::format::megabytes(ncrs_ai::LOCAL_MODEL.size)
+            )
+        ));
         assert!(!shows(downloading(), "Download"));
         matches_card_snapshot(downloading(), Language::English, "ai_model_downloading_en");
         matches_card_snapshot(downloading(), Language::German, "ai_model_downloading_de");
@@ -6094,47 +6100,6 @@ mod ai_model_card {
             "ai_model_installed_en",
         );
         matches_card_snapshot(installed, Language::German, "ai_model_installed_de");
-    }
-}
-
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-#[cfg(test)]
-mod ai_status_row {
-    use super::*;
-    use crate::filing::AiStatus;
-
-    fn shows(ai: AiStatus, label: &str) -> bool {
-        simulator(&App::with_filing_status_ai(ai))
-            .find(label)
-            .is_ok()
-    }
-
-    #[test]
-    fn the_row_is_not_there_while_the_ai_is_off() {
-        assert!(!shows(AiStatus::Off, "AI model"));
-    }
-
-    #[test]
-    fn the_row_names_the_state_of_the_model() {
-        assert!(shows(AiStatus::NotDownloaded, "AI model"));
-        assert!(shows(AiStatus::NotDownloaded, "not downloaded"));
-        assert!(shows(AiStatus::NotLoadedYet, "not loaded yet"));
-        assert!(shows(
-            AiStatus::Failed("the file is damaged"),
-            "failed: the file is damaged"
-        ));
-        assert!(shows(
-            AiStatus::Http {
-                origin: "http://localhost:8080".to_owned(),
-                model: "qwen".to_owned()
-            },
-            "qwen at http://localhost:8080"
-        ));
     }
 }
 
@@ -6910,7 +6875,10 @@ mod hermes_setup_card {
 
     #[test]
     fn the_model_line_names_its_size_in_whole_decimal_megabytes() {
-        assert_eq!(crate::ui::hermes_setup::model_size_label(), "639 MB");
+        assert_eq!(
+            crate::ui::hermes_setup::model_size_label(),
+            crate::ui::format::megabytes(ncrs_ai::LOCAL_MODEL.size)
+        );
     }
 
     #[test]
@@ -7051,7 +7019,13 @@ mod hermes_overview_page {
             [overview_message(HermesOverviewMessage::LoadOcrModels)]
         );
         assert_eq!(
-            clicks(&app, "Load · 639 MB"),
+            clicks(
+                &app,
+                &format!(
+                    "Load · {}",
+                    crate::ui::format::megabytes(ncrs_ai::LOCAL_MODEL.size)
+                )
+            ),
             [overview_message(HermesOverviewMessage::LoadAiModel)]
         );
         assert_eq!(

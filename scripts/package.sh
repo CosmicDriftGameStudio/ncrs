@@ -4,7 +4,7 @@
 # One place, so the PR build, the release build and the signing step cannot
 # drift apart. Runs on macOS, Linux and Windows (git-bash).
 #
-#   package.sh archive <triple> <binary> <pdfium-dir> <out-dir> [--licenses <file>]
+#   package.sh archive <triple> <binary> <pdfium-dir> <out-dir> [--licenses <file>] [--llama <dir>]
 #   package.sh app <dir-with-binary-and-lib> <version> <min-macos> <out-dir> [--licenses <file>]
 #   package.sh sandbox-app <dir-with-binary-and-lib> <sandbox-binary> <version> <min-macos> <out-dir> [--licenses <file>]
 #   package.sh check-sandbox <app> sandboxed|plain
@@ -23,6 +23,11 @@
 # sandbox ones plus application and team identifier) to sign the bundle with.
 # check-store verifies the signed result: bundle ID, entitlements, the embedded
 # profile equal to <profile> and every <arch> in the executable and the library.
+#
+# <dir> of --llama is the llama.cpp runtime (scripts/llama-runtime-dir.sh): the
+# shared libraries (in lib/ on Linux, bin/ on Windows) and backends/. Windows and x86_64 Linux archives need it
+# and carry the libraries next to the binary and the backends/ folder; the other
+# targets link llama.cpp in and must not get it.
 #
 # <pdfium-dir> is what scripts/fetch-pdfium.sh unpacked. archive and app end
 # with a layout check that lists the result and fails when the binary or the
@@ -110,6 +115,34 @@ list_zip() {
   fi
 }
 
+# The shared libraries of llama.cpp that the binary needs, one per line, for
+# the targets that build it with dynamic backends (see crates/ncrs-ai/build.rs).
+llama_libraries_for() {
+  case "$1" in
+    # The sonames the linker recorded: the binary and the modules NEED these
+    # names, not the unversioned libllama.so. Not llama-common (.so.0 or
+    # .dll): nothing shipped links it, and it would pull in OpenSSL.
+    x86_64-unknown-linux-gnu) printf '%s\n' libllama.so.0 libggml.so.0 libggml-base.so.0 ;;
+    *-windows-*) printf '%s\n' llama.dll ggml.dll ggml-base.dll ;;
+  esac
+}
+
+# The subfolder of the llama-cpp-sys-2 OUT_DIR that holds those libraries.
+llama_library_subdir_for() {
+  case "$1" in
+    *-windows-*) echo bin ;;
+    *) echo lib ;;
+  esac
+}
+
+# The Vulkan module in backends/, which must be there for the targets above.
+llama_vulkan_module_for() {
+  case "$1" in
+    *-windows-*) echo ggml-vulkan.dll ;;
+    *) echo libggml-vulkan.so ;;
+  esac
+}
+
 parse_licenses_option() {
   licenses=""
   if [ "$#" -eq 0 ]; then
@@ -129,7 +162,27 @@ package_archive() {
   mkdir -p "$4"
   out_dir="$(absolute "$4")"
   shift 4
-  parse_licenses_option "$@"
+  licenses=""
+  local llama=""
+  while [ "$#" -gt 0 ]; do
+    [ "$#" -ge 2 ] || usage
+    case "$1" in
+      --licenses) licenses="$(absolute "$2")" ;;
+      --llama) llama="$(absolute "$2")" ;;
+      *) usage ;;
+    esac
+    shift 2
+  done
+  local llama_libraries
+  llama_libraries="$(llama_libraries_for "$triple")"
+  if [ -n "$llama_libraries" ] && [ -z "$llama" ]; then
+    echo "error: $triple needs --llama <dir> (scripts/llama-runtime-dir.sh $triple)" >&2
+    exit 2
+  fi
+  if [ -z "$llama_libraries" ] && [ -n "$llama" ]; then
+    echo "error: $triple links llama.cpp in; --llama does not apply" >&2
+    exit 2
+  fi
 
   local library_name library_subdir
   read -r library_name library_subdir <<<"$(library_for "$triple")"
@@ -172,6 +225,33 @@ package_archive() {
     cp "$licenses" "$stage/THIRD_PARTY_LICENSES.html"
     expected+=(THIRD_PARTY_LICENSES.html)
   fi
+  if [ -n "$llama" ]; then
+    local llama_library backend llama_subdir
+    llama_subdir="$(llama_library_subdir_for "$triple")"
+    for llama_library in $llama_libraries; do
+      # -L: the file in lib/ is a symlink chain; the stage holds a regular file
+      # under the soname.
+      [ -f "$llama/$llama_subdir/$llama_library" ] \
+        || { echo "error: no $llama_library in $llama/$llama_subdir" >&2; ls -l "$llama/$llama_subdir" >&2; exit 1; }
+      cp -L "$llama/$llama_subdir/$llama_library" "$stage/$llama_library"
+      expected+=("$llama_library")
+    done
+    [ -f "$llama/backends/$(llama_vulkan_module_for "$triple")" ] \
+      || { echo "error: no $(llama_vulkan_module_for "$triple") in $llama/backends" >&2; ls -l "$llama/backends" >&2; exit 1; }
+    mkdir -p "$stage/backends"
+    cp -RL "$llama/backends/." "$stage/backends/"
+    for backend in "$stage"/backends/*; do
+      [ -f "$backend" ] || { echo "error: $backend is not a file" >&2; exit 1; }
+      expected+=("backends/$(basename "$backend")")
+    done
+    case "$triple" in
+      *-linux-*)
+        # Libraries and modules are data for the loader, not programs.
+        for llama_library in $llama_libraries; do chmod 0644 "$stage/$llama_library"; done
+        chmod 0644 "$stage"/backends/*
+        ;;
+    esac
+  fi
 
   case "$triple" in
     *-windows-*)
@@ -190,6 +270,7 @@ package_archive() {
       list_zip "$out_dir/$name.zip"
       echo "archive $name-portable.zip:"
       list_zip "$out_dir/$name-portable.zip"
+      [ -z "$llama" ] || ls -l "$out_dir/$name.zip" "$out_dir/$name-portable.zip"
       ;;
     *)
       tar -czf "$out_dir/$name.tar.gz" -C "$out_dir" "$name"
@@ -203,6 +284,7 @@ package_archive() {
         echo "$listing" | grep -qx "$name/$path" \
           || { echo "error: $name.tar.gz does not contain $path" >&2; exit 1; }
       done
+      [ -z "$llama" ] || { ls -l "$out_dir/$name.tar.gz"; du -h "$out_dir/$name.tar.gz"; }
       ;;
   esac
 }
@@ -410,17 +492,38 @@ package_linux() {
     [ -e "$stage/$path" ] || { echo "error: no $path in $stage" >&2; exit 1; }
   done
 
+  # The x86_64 build runs the Hermes model with llama.cpp as shared libraries
+  # and backend modules next to the binary; the aarch64 build links it in.
+  local llama_libraries=() backends=()
+  if [ "$arch" = amd64 ]; then
+    mapfile -t llama_libraries < <(llama_libraries_for "$triple")
+    for path in "${llama_libraries[@]}" backends/"$(llama_vulkan_module_for "$triple")"; do
+      [ -f "$stage/$path" ] || { echo "error: no $path in $stage" >&2; exit 1; }
+    done
+    mapfile -t backends < <(cd "$stage/backends" && find . -type f | sed 's|^\./||' | LC_ALL=C sort)
+    [ "${#backends[@]}" -gt 1 ] || { echo "error: no CPU backend modules in $stage/backends" >&2; exit 1; }
+  fi
+
   # What the dynamic loader needs before main() runs. Anything outside this
   # list has to be declared as a dependency below on purpose, so a new
-  # link-time library cannot slip into the package unnoticed.
-  local allowed=" libc.so.6 libm.so.6 libgcc_s.so.1 libstdc++.so.6 libpthread.so.0 libdl.so.2 ld-linux-x86-64.so.2 ld-linux-aarch64.so.1 "
-  local file soname unexpected=0
-  for file in "$binary" "$library"; do
+  # link-time library cannot slip into the package unnoticed. The bundled
+  # libraries of llama.cpp are allowed because they are in the package.
+  local allowed=" libc.so.6 libm.so.6 libgcc_s.so.1 libstdc++.so.6 libpthread.so.0 libdl.so.2 ld-linux-x86-64.so.2 ld-linux-aarch64.so.1 ${llama_libraries[*]} "
+  local elf_files=("$binary" "$library") file soname unexpected=0 file_allowed
+  for path in "${llama_libraries[@]}"; do elf_files+=("$stage/$path"); done
+  for path in "${backends[@]}"; do elf_files+=("$stage/backends/$path"); done
+  for file in "${elf_files[@]}"; do
+    file_allowed="$allowed"
+    # The Vulkan module opens the loader with dlopen and fails to load without
+    # it, which leaves the CPU backends: a soft dependency (recommends below).
+    case "$file" in
+      */backends/libggml-vulkan.so) file_allowed+="libvulkan.so.1 " ;;
+    esac
     for soname in $(needed_sonames "$file"); do
-      case "$allowed" in
+      case "$file_allowed" in
         *" $soname "*) ;;
         *)
-          echo "error: $(basename "$file") links $soname, which linux-packages does not declare." >&2
+          echo "error: ${file#"$stage"/} links $soname, which linux-packages does not declare." >&2
           echo "       Add it to the allowlist in scripts/package.sh and to the dependencies in packaging/linux/nfpm.yaml." >&2
           unexpected=1
           ;;
@@ -432,10 +535,10 @@ package_linux() {
   # The lowest glibc / libstdc++ / libgcc the binaries run on is whatever they
   # were linked against, so it is read from them, not written down.
   local glibc glibcxx cxxabi gcc
-  glibc="$(highest_symbol_version GLIBC "$binary" "$library")"
-  glibcxx="$(highest_symbol_version GLIBCXX "$binary" "$library")"
-  cxxabi="$(highest_symbol_version CXXABI "$binary" "$library")"
-  gcc="$(highest_symbol_version GCC "$binary" "$library")"
+  glibc="$(highest_symbol_version GLIBC "${elf_files[@]}")"
+  glibcxx="$(highest_symbol_version GLIBCXX "${elf_files[@]}")"
+  cxxabi="$(highest_symbol_version CXXABI "${elf_files[@]}")"
+  gcc="$(highest_symbol_version GCC "${elf_files[@]}")"
   [ -n "$glibc" ] || { echo "error: no GLIBC_ symbol versions found in $binary" >&2; exit 1; }
   echo "minimum versions: glibc ${glibc}, GLIBCXX ${glibcxx:-none}, CXXABI ${cxxabi:-none}, GCC ${gcc:-none}"
 
@@ -455,7 +558,16 @@ package_linux() {
   NCRS_RPM_LIBGCC="$(rpm_capability libgcc_s.so.1 "${gcc:+GCC_$gcc}")"
   export NCRS_RPM_LIBC NCRS_RPM_LIBSTDCXX NCRS_RPM_CXXABI NCRS_RPM_LIBGCC
 
-  local config="$repo_root/packaging/linux/nfpm.yaml" format built
+  # The lines between the llama markers install what the x86_64 stage has and
+  # the aarch64 one does not.
+  local config format built
+  config="$(mktemp)"
+  trap 'rm -f "${config:-}"' RETURN
+  if [ "$arch" = amd64 ]; then
+    grep -v '^# llama:' "$repo_root/packaging/linux/nfpm.yaml" > "$config"
+  else
+    sed '/^# llama:begin/,/^# llama:end/d' "$repo_root/packaging/linux/nfpm.yaml" > "$config"
+  fi
   for format in deb rpm; do
     built="$out_dir/ncrs-$triple.$format"
     rm -f "$built"
@@ -469,6 +581,8 @@ package_linux() {
     usr/share/doc/ncrs/LICENSE usr/share/doc/ncrs/README.md
     usr/share/doc/ncrs/THIRD_PARTY_LICENSES.html usr/share/doc/ncrs/licenses/pdfium/LICENSE
   )
+  for path in "${llama_libraries[@]}"; do expected+=("usr/lib/ncrs/$path"); done
+  for path in "${backends[@]}"; do expected+=("usr/lib/ncrs/backends/$path"); done
   local icon_size
   for icon_size in $ICON_SIZES; do
     expected+=("usr/share/icons/hicolor/${icon_size}x${icon_size}/apps/ncrs.png")

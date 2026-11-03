@@ -21,7 +21,7 @@ use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::str::FromStr as _;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError, TryLockError};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError, TryLockError};
 use std::thread;
 
 use ncrs_core::INDEX_NOT_OPEN;
@@ -37,6 +37,7 @@ use ncrs_intake::{
 };
 use ncrs_pipeline::{intake_steps, IndexAccess, Load, OwnDetails, Runner, Settings, SystemClock};
 
+use crate::chat_work::ChatAccess;
 use crate::column_reading::{read_column, ColumnReading, ColumnRequest};
 use crate::filing_work::FilingAccess;
 use crate::query_work::QueryAccess;
@@ -57,6 +58,8 @@ pub const NO_DATA_DIRECTORY: &str = "no data directory";
 type SharedStore = Arc<dyn KeyStore + Send + Sync>;
 type IndexSlot = Arc<Mutex<Option<Index>>>;
 
+#[cfg(feature = "local-ai")]
+pub use ai::shared_local_model;
 pub use ai::AiStatus;
 use ai::{wire_ai, AiWiring};
 use index_ops::{apply_key, create_index, encrypt_index, open_existing, start_over};
@@ -149,6 +152,9 @@ pub struct FilingModule {
     /// The document kinds the config asks for; every index of this module
     /// gets them as soon as it is open.
     kinds: Arc<KindCatalog>,
+    /// Built when the chat first needs it; the models are only loaded when a
+    /// scan has to be read.
+    chat_text_chain: OnceLock<Arc<TextChain>>,
 }
 
 impl fmt::Debug for FilingModule {

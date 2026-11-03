@@ -218,7 +218,8 @@ The defaults. Most of them can be changed in the keyboard shortcuts dialog (`Cmd
 | `Option`+`Cmd`+`C` / `Ctrl`+`Alt`+`C` | Copy the path of the tagged rows (else the cursor row) to the clipboard |
 | `Ctrl`+`Cmd`+`C` / `Ctrl`+`Shift`+`C` | Copy the name of the tagged rows (else the cursor row) to the clipboard |
 | Click the path in the status bar | Edit the path (`Enter` goes there, `~` is home, `Esc` puts the current path back); the icon beside it copies the folder path |
-| `F2`               | Focus the command line below the panels: `cd` changes the active panel's folder, any other command runs in the shell in that folder (the status bar shows its exit status; its output is not shown). `↑`/`↓` walk the commands of this session, `Esc` or `F2` goes back to the panels |
+| `F2`               | Open the Hermes chat (Beta): tell Hermes a folder and it reads how it is ordered, shows a trial run and files only after you confirm; the last run can be undone; `Esc` closes it |
+| `Shift`+`F2`       | Focus the command line below the panels: `cd` changes the active panel's folder, any other command runs in the shell in that folder (the status bar shows its exit status; its output is not shown). `↑`/`↓` walk the commands of this session, `Esc` or `Shift`+`F2` goes back to the panels |
 | `F3` / `F4`        | View / edit the file under the cursor in an external program (programs configurable, see [Configuration](#configuration)) |
 | `F5` / `F6`        | Copy / move to the other panel          |
 | `Alt`+`F5`         | Pack the tagged rows (else the cursor row) into a new archive in the other panel's folder; asks for the name (ends in `.zip`, `.tar`, `.tar.gz`, `.tgz`, `.tar.zst`, `.tzst` or `.7z`) |
@@ -483,7 +484,7 @@ edit = "F3"
   tag actions in both; the rest only in the panel. `primary+q` and `ctrl+q` are
   the same key on Linux and Windows, so a file can be fine on a Mac and
   conflict elsewhere. Keys that became defaults later give way to a binding of
-  your own instead: `F2` (`command_line`), `Shift+F4` (`new_file`), the history
+  your own instead: `F2` (`hermes_chat`), `Shift+F2` (`command_line`), `Shift+F4` (`new_file`), the history
   keys (`history_back`, `history_forward`), `primary+d` (`add_favourite`),
   `primary+k` (`key_bindings`), `primary+c` (`copy_files`) and `primary+z`
   (`restore_last_deletion`). The action keeps its other keys and the command
@@ -771,13 +772,16 @@ threads = 4
 # model = "qwen3"
 ```
 
-- `local` uses Qwen3 0.6B (Apache-2.0), one file of about 610 MB that is not
+- `local` uses Qwen3 4B (Apache-2.0), one file of about 2.5 GB that is not
   part of ncrs. When it is missing, ncrs asks once per start whether to download
   it; the card shows host, file, size, checksum and folder first, and nothing
   is fetched before you press the button. The command palette entry "Download
   AI model…" (`download_ai_model` in `[keys]`, no key by default) opens the card
   at any time. An interrupted download continues where it stopped, and the file
-  is checked against its size and checksum before it is used.
+  is checked against its size and checksum before it is used. On Windows and
+  x86_64 Linux the model runs on a Vulkan GPU if a driver is present and on the
+  CPU otherwise; macOS uses Metal and aarch64 Linux the CPU. The row "AI model"
+  in Status and errors says which ("runs on" the GPU's name or CPU).
 - `http` sends text to the server at `endpoint`, which must be on this machine
   for now (`localhost`, `127.0.0.1` or `::1`); `endpoint` and `model` are
   required and `threads` is not allowed. Without a consent given for that
@@ -1117,6 +1121,9 @@ The default build compiles llama.cpp for the built-in AI model, so it needs
 bindings) on every system: Xcode's command line tools and `brew install cmake` on
 macOS, Visual Studio's C++ tools, LLVM and cmake on Windows. A build without the
 model needs none of them: `cargo build --no-default-features --features gpu-with-fallback`.
+On Windows and x86_64 Linux llama.cpp is built with Vulkan: Linux also needs
+`libvulkan-dev glslc spirv-headers`, Windows the Vulkan SDK, Ninja and the MSVC
+environment with `CMAKE_GENERATOR=Ninja`.
 
 ## Architecture
 
@@ -1289,7 +1296,7 @@ the Mac App Store; `deny.toml` explains how `cargo deny` enforces it.
 | --- | --- | --- |
 | pdfium, the PDF library next to the binary ([pdfium-binaries](https://github.com/bblanchon/pdfium-binaries) build) | BSD-3-Clause; the build itself MIT; bundled components such as FreeType, ICU, libjpeg-turbo and zlib under their own permissive licenses | `licenses/pdfium/` in the archive, `Contents/Resources/licenses/pdfium/` in the macOS app |
 | OCR models (`text-detection.onnx`, `text-recognition.onnx`), downloaded only after asking | CC-BY-SA-4.0 ([ocrs-models](https://github.com/robertknight/ocrs-models), trained on HierText) | not shipped; fetched from the ocrs project |
-| Local AI model `Qwen3-0.6B-Q8_0.gguf`, downloaded only after asking | Apache-2.0 ([Qwen/Qwen3-0.6B-GGUF](https://huggingface.co/Qwen/Qwen3-0.6B-GGUF)) | not shipped; fetched from Hugging Face |
+| Local AI model `Qwen3-4B-Q4_K_M.gguf`, downloaded only after asking | Apache-2.0 ([Qwen/Qwen3-4B-GGUF](https://huggingface.co/Qwen/Qwen3-4B-GGUF)) | not shipped; fetched from Hugging Face |
 
 ## Contributing, security, changes
 

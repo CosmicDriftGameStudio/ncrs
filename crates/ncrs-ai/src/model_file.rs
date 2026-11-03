@@ -2,11 +2,14 @@
 //! behind the `llama` feature: a build without the runtime still has to know
 //! which file to download and how to check it.
 
+use std::collections::HashMap;
 use std::fmt;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Seek as _, SeekFrom, Write as _};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, OnceLock, PoisonError};
+use std::time::SystemTime;
 
 use sha2::{Digest as _, Sha256};
 
@@ -22,21 +25,74 @@ pub struct ModelPin {
     pub url: &'static str,
 }
 
-/// Qwen3 0.6B (Apache-2.0), 8-bit, at a fixed revision of its Hugging Face
-/// repository. scripts/fetch-ai-model.sh carries the same values; change both
-/// together.
+/// Qwen3 4B (Apache-2.0), 4-bit (Q4_K_M, about 2.5 GB), at a fixed revision of
+/// its Hugging Face repository. scripts/fetch-ai-model.sh carries the same
+/// values; change both together.
 pub const LOCAL_MODEL: ModelPin = ModelPin {
-    name: "Qwen3-0.6B-Q8_0.gguf",
-    size: 639_446_688,
-    sha256: "9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031",
-    url: "https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/resolve/23749fefcc72300e3a2ad315e1317431b06b590a/Qwen3-0.6B-Q8_0.gguf",
+    name: "Qwen3-4B-Q4_K_M.gguf",
+    size: 2_497_280_256,
+    sha256: "7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5",
+    url: "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/bc640142c66e1fdd12af0bd68f40445458f3869b/Qwen3-4B-Q4_K_M.gguf",
 };
 
 /// The folder inside the data folder that holds the model.
 pub const LOCAL_MODEL_FOLDER: &str = "ai-models";
 
+/// What tells a file from another one on the same path: if none of this
+/// changed, the bytes that were verified are still the bytes there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FileIdentity {
+    len: u64,
+    modified: Option<SystemTime>,
+    #[cfg(unix)]
+    device_and_inode: (u64, u64),
+    /// Set by the system on every write, and not by resetting the mtime.
+    #[cfg(unix)]
+    changed: (i64, i64),
+    #[cfg(windows)]
+    created: u64,
+}
+
+impl FileIdentity {
+    fn of(metadata: &fs::Metadata) -> Self {
+        Self {
+            len: metadata.len(),
+            modified: metadata.modified().ok(),
+            #[cfg(unix)]
+            device_and_inode: {
+                use std::os::unix::fs::MetadataExt as _;
+                (metadata.dev(), metadata.ino())
+            },
+            #[cfg(unix)]
+            changed: {
+                use std::os::unix::fs::MetadataExt as _;
+                (metadata.ctime(), metadata.ctime_nsec())
+            },
+            #[cfg(windows)]
+            created: {
+                use std::os::windows::fs::MetadataExt as _;
+                metadata.creation_time()
+            },
+        }
+    }
+}
+
+/// Files whose checksum matched in this process, with the identity they had.
+/// Hashing 2.5 GB takes seconds, and the model is checked at every load.
+fn verified_files() -> &'static Mutex<HashMap<PathBuf, FileIdentity>> {
+    static VERIFIED: OnceLock<Mutex<HashMap<PathBuf, FileIdentity>>> = OnceLock::new();
+    VERIFIED.get_or_init(Mutex::default)
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Per thread, so tests that run side by side do not count each other.
+    static HASHED_FILES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 /// Checks that `path` is a regular file (not a link) with the size and the
-/// checksum of `pin`. The file is hashed as a stream, never held in memory.
+/// checksum of `pin`. The file is hashed as a stream, never held in memory,
+/// and only when it is not the file already verified at this path.
 pub fn verify_model_file(path: &Path, pin: &ModelPin) -> Result<(), AiError> {
     let metadata = fs::symlink_metadata(path)
         .map_err(|_unreadable| AiError::Model("the model file is not there"))?;
@@ -46,6 +102,26 @@ pub fn verify_model_file(path: &Path, pin: &ModelPin) -> Result<(), AiError> {
     if metadata.len() != pin.size {
         return Err(AiError::Model("the model file has the wrong size"));
     }
+    let identity = FileIdentity::of(&metadata);
+    let known = verified_files()
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(path)
+        == Some(&identity);
+    if known {
+        return Ok(());
+    }
+    hash_matches(path, pin)?;
+    verified_files()
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .insert(path.to_path_buf(), identity);
+    Ok(())
+}
+
+fn hash_matches(path: &Path, pin: &ModelPin) -> Result<(), AiError> {
+    #[cfg(test)]
+    HASHED_FILES.with(|count| count.set(count.get() + 1));
     let unreadable = |_err: std::io::Error| AiError::Model("the model file could not be read");
     let mut file = File::open(path).map_err(unreadable)?;
     let mut hasher = Sha256::new();
@@ -151,6 +227,13 @@ impl PartialDownload {
             }
         };
         fs::create_dir_all(dir).map_err(write_failed(dir))?;
+        let folder = fs::symlink_metadata(dir).map_err(write_failed(dir))?;
+        if !folder.is_dir() {
+            return Err(ModelFileError::WriteFailed {
+                path: dir.to_path_buf(),
+                reason: "the model folder is a link, not a folder".to_owned(),
+            });
+        }
         let keep = match fs::symlink_metadata(&part_path) {
             Ok(metadata) if metadata.is_file() && metadata.len() <= pin.size => true,
             Ok(metadata) if metadata.is_dir() => return Err(ModelFileError::NotARegularFile),
@@ -406,6 +489,43 @@ mod tests {
         assert_eq!(fs::read(dir.path().join("model.gguf")).unwrap(), BYTES);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn a_model_folder_that_is_a_link_is_refused() {
+        let dir = TempDir::new().unwrap();
+        let real = dir.path().join("real");
+        fs::create_dir(&real).unwrap();
+        let link = dir.path().join("ai-models");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+
+        let opened = PartialDownload::open(&link, &pin_of(BYTES));
+
+        assert!(matches!(opened, Err(ModelFileError::WriteFailed { .. })));
+        assert_eq!(fs::read_dir(&real).unwrap().count(), 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_rewrite_in_place_with_the_mtime_put_back_is_hashed_again() {
+        let dir = TempDir::new().unwrap();
+        let path = write(&dir, b"model bytes");
+        let pin = pin_of(b"model bytes");
+        let modified = fs::metadata(&path).unwrap().modified().unwrap();
+        assert_eq!(verify_model_file(&path, &pin), Ok(()));
+
+        // The change time of some file systems only moves every few
+        // milliseconds.
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        let file = OpenOptions::new().write(true).open(&path).unwrap();
+        (&file).write_all(b"model BYTES").unwrap();
+        file.set_modified(modified).unwrap();
+
+        assert_eq!(
+            verify_model_file(&path, &pin),
+            Err(AiError::Model("the model file is not the expected one"))
+        );
+    }
+
     #[test]
     fn a_part_longer_than_the_pin_is_dropped() {
         let dir = TempDir::new().unwrap();
@@ -476,5 +596,34 @@ mod tests {
         assert_eq!(LOCAL_MODEL.sha256.len(), 64);
         assert!(LOCAL_MODEL.sha256.bytes().all(|b| b.is_ascii_hexdigit()));
         assert!(LOCAL_MODEL.url.ends_with(LOCAL_MODEL.name));
+    }
+
+    fn hashed_so_far() -> usize {
+        HASHED_FILES.with(std::cell::Cell::get)
+    }
+
+    #[test]
+    fn a_verified_file_is_hashed_once_and_a_changed_one_again() {
+        let dir = TempDir::new().unwrap();
+        let path = write(&dir, b"model bytes");
+        let pin = pin_of(b"model bytes");
+        let before = hashed_so_far();
+
+        assert_eq!(verify_model_file(&path, &pin), Ok(()));
+        assert_eq!(verify_model_file(&path, &pin), Ok(()));
+        assert_eq!(hashed_so_far() - before, 1);
+
+        let changed = OpenOptions::new().write(true).open(&path).unwrap();
+        changed.set_len(0).unwrap();
+        fs::write(&path, b"MODEL BYTES").unwrap();
+        let later = fs::OpenOptions::new().write(true).open(&path).unwrap();
+        later
+            .set_modified(SystemTime::now() + std::time::Duration::from_secs(5))
+            .unwrap();
+        assert_eq!(
+            verify_model_file(&path, &pin),
+            Err(AiError::Model("the model file is not the expected one"))
+        );
+        assert_eq!(hashed_so_far() - before, 2);
     }
 }

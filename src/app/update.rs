@@ -119,6 +119,7 @@ fn leaves_bar_fields(message: &Message) -> bool {
             | Message::Panel(PanelMessage::RowActivated { .. })
             | Message::Transfer(_)
             | Message::OpenSearch
+            | Message::HermesChat(HermesChatMessage::Open)
             | Message::QuickOpen(QuickOpenMessage::Open)
             | Message::CommandPalette(CommandPaletteMessage::Toggle)
             | Message::KeyBindings(KeyBindingsMessage::Open)
@@ -581,6 +582,8 @@ impl App {
             },
             Message::OpenSearch => self.open_search(),
             Message::Search(search) => self.update_search(search),
+            Message::HermesChat(chat) => self.update_hermes_chat(chat),
+            Message::HermesChatToCommandLine => self.hermes_chat_to_command_line(),
             Message::QuickOpen(quick_open) => self.update_quick_open(quick_open),
             Message::CommandPalette(command_palette) => {
                 self.update_command_palette(command_palette)

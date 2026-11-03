@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use jsonc_parser::{parse_to_value, JsonObject, JsonValue, ParseOptions};
-use ncrs_index::{DocumentFields, Field, KindCatalog};
+use ncrs_index::{Currency, DocumentFields, Field, KindCatalog};
 use ncrs_intake::{parse_amount, parse_date, AI_FIELD_ORDER};
 
 use crate::error::AiError;
@@ -41,7 +41,8 @@ pub struct ExtractedField {
 
 impl ExtractedField {
     /// `None` when the value is empty after cleaning, the confidence is
-    /// outside 0.0..=1.0, or the value does not read as the type of the field.
+    /// outside 0.0..=1.0, or the value does not read as the type of the field
+    /// (an amount of zero or less is no amount).
     pub fn new(field: Field, value: &str, confidence: f32) -> Option<Self> {
         if !(0.0..=1.0).contains(&confidence) {
             return None;
@@ -49,7 +50,9 @@ impl ExtractedField {
         let cleaned = clean_value(value)?;
         let reads_as_field = match field {
             Field::Date => parse_date(&cleaned).is_some(),
-            Field::Amount => parse_amount(&cleaned, None).is_some(),
+            Field::Amount => {
+                parse_amount(&cleaned, None).is_some_and(|amount| amount.minor_units > 0)
+            }
             Field::Sender | Field::Recipient | Field::Kind | Field::Number => true,
         };
         reads_as_field.then_some(Self {
@@ -167,8 +170,9 @@ fn kind_hint(kinds: &KindCatalog) -> String {
 
 /// Lenient in shape, strict in effect: unknown keys, fields that were not
 /// asked for and fields with a bad value or confidence are dropped, not an
-/// error. Only a reply that is not a JSON object is.
-pub fn parse_reply(raw: &str, open_fields: &[Field]) -> Result<Extraction, AiError> {
+/// error. An amount the text of the document does not contain is dropped too:
+/// a model invents numbers. Only a reply that is not a JSON object is an error.
+pub fn parse_reply(raw: &str, request: &ExtractionRequest) -> Result<Extraction, AiError> {
     let parsed = parse_to_value(raw, &ParseOptions::default())
         .map_err(|_syntax| AiError::BadReply("not valid JSON"))?;
     let Some(JsonValue::Object(reply)) = parsed else {
@@ -176,10 +180,48 @@ pub fn parse_reply(raw: &str, open_fields: &[Field]) -> Result<Extraction, AiErr
     };
     let fields = AI_FIELD_ORDER
         .into_iter()
-        .filter(|field| open_fields.contains(field))
+        .filter(|field| request.open_fields.contains(field))
         .filter_map(|field| field_of(&reply, field))
+        .filter(|found| found.field != Field::Amount || amount_is_in(&request.text, found))
         .collect();
     Ok(Extraction { fields })
+}
+
+/// Whether some number written in `text` is the amount `found` names.
+fn amount_is_in(text: &str, found: &ExtractedField) -> bool {
+    let Some(amount) = parse_amount(&found.value, None) else {
+        return false;
+    };
+    text_has_minor_units(text, amount.minor_units, &amount.currency)
+}
+
+/// Whether some number written in `text` is `minor_units`, read as `currency`
+/// when the number names none.
+pub fn text_has_minor_units(text: &str, minor_units: i64, currency: &Currency) -> bool {
+    number_tokens(text).any(|token| {
+        parse_amount(token, Some(currency.clone()))
+            .is_some_and(|read| read.minor_units == minor_units)
+    })
+}
+
+/// Maximal runs of digits with `.` or `,` between them.
+fn number_tokens(text: &str) -> impl Iterator<Item = &str> {
+    let mut rest = text;
+    std::iter::from_fn(move || {
+        let start = rest.find(|character: char| character.is_ascii_digit())?;
+        let from_start = rest.get(start..)?;
+        let mut end = 0;
+        for (index, character) in from_start.char_indices() {
+            if character.is_ascii_digit() {
+                end = index + character.len_utf8();
+            } else if !matches!(character, '.' | ',') {
+                break;
+            }
+        }
+        let token = from_start.get(..end)?;
+        rest = from_start.get(end..)?;
+        Some(token)
+    })
 }
 
 fn field_of(reply: &JsonObject<'_>, field: Field) -> Option<ExtractedField> {
@@ -203,8 +245,27 @@ mod tests {
 
     const ALL: [Field; 6] = AI_FIELD_ORDER;
 
+    fn request(text: &str, open_fields: &[Field]) -> ExtractionRequest {
+        ExtractionRequest {
+            text: text.to_owned(),
+            open_fields: open_fields.to_vec(),
+            known: DocumentFields::default(),
+            source: PathBuf::new(),
+            kinds: Arc::default(),
+        }
+    }
+
     fn parse(raw: &str, open: &[Field]) -> Extraction {
-        parse_reply(raw, open).unwrap()
+        parse_reply(raw, &request("Total 12.50 EUR, 1.234,50 EUR", open)).unwrap()
+    }
+
+    fn amounts_in(text: &str, reply: &str) -> Vec<String> {
+        parse_reply(reply, &request(text, &[Field::Amount]))
+            .unwrap()
+            .fields
+            .into_iter()
+            .map(|found| found.value)
+            .collect()
     }
 
     #[test]
@@ -300,11 +361,11 @@ mod tests {
     #[test]
     fn a_reply_that_is_not_an_object_is_an_error() {
         assert!(matches!(
-            parse_reply("[1, 2]", &ALL),
+            parse_reply("[1, 2]", &request("", &ALL)),
             Err(AiError::BadReply(_))
         ));
         assert!(matches!(
-            parse_reply("sure, here you go", &ALL),
+            parse_reply("sure, here you go", &request("", &ALL)),
             Err(AiError::BadReply(_))
         ));
     }
@@ -342,7 +403,7 @@ mod tests {
         let schema = output_schema(&[Field::Kind], &kinds).pretty();
 
         assert!(schema.contains(
-            "one of: invoice, credit_note, reminder, contract, notice, receipt, letter, insurance, quote, delivery_note, termination, payslip, or another short word"
+            "one of: invoice, credit_note, reminder, contract, notice, receipt, letter, insurance, quote, delivery_note, termination, bank_statement, payslip, or another short word"
         ));
     }
 
@@ -359,5 +420,29 @@ mod tests {
 
         assert!(found.fill(&mut fields, &kinds));
         assert_eq!(fields.kind.as_deref(), Some("payslip"));
+    }
+
+    #[test]
+    fn an_amount_of_zero_or_less_is_no_amount() {
+        assert!(ExtractedField::new(Field::Amount, "0.00 EUR", 0.9).is_none());
+        assert!(ExtractedField::new(Field::Amount, "-5.00 EUR", 0.9).is_none());
+        assert!(ExtractedField::new(Field::Amount, "5.00 EUR", 0.9).is_some());
+    }
+
+    #[test]
+    fn an_amount_the_text_does_not_contain_is_dropped() {
+        let reply = r#"{"amount": {"value": "99.00 EUR", "confidence": 0.9}}"#;
+
+        assert!(amounts_in("Total 12.50 EUR", reply).is_empty());
+        assert_eq!(amounts_in("Total 99,00 EUR", reply), vec!["99.00 EUR"]);
+    }
+
+    #[test]
+    fn an_amount_is_found_in_the_text_whatever_its_notation() {
+        let german = r#"{"amount": {"value": "1234.56 EUR", "confidence": 0.9}}"#;
+        let symbol = r#"{"amount": {"value": "12.50 EUR", "confidence": 0.9}}"#;
+
+        assert_eq!(amounts_in("Summe 1.234,56 EUR", german).len(), 1);
+        assert_eq!(amounts_in("12,50 €", symbol).len(), 1);
     }
 }

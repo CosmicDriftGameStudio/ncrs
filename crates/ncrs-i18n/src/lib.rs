@@ -356,6 +356,12 @@ mod tests {
                 | Msg::SearchMoreMatches
                 // The loanword, the same in both languages.
                 | Msg::HermesBeta
+                // The name, the same word and a bare placeholder pair, in both languages.
+                | Msg::HermesChatTitle
+                | Msg::ShortcutHermesChat
+                | Msg::HermesChatFolderDownloads
+                | Msg::HermesChatWhenDate
+                | Msg::HermesChatTrialUnsureOne
                 // Names of color schemes.
                 | Msg::SettingsPresetCosmic
                 | Msg::SettingsPresetDracula

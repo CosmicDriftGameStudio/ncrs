@@ -166,8 +166,13 @@ pub fn default_bindings() -> Vec<(KeyAction, Binding)> {
             Binding::with_modifiers(Character("p".into()), Modifiers::COMMAND),
         ),
         // F2 was Norton Commander's user menu, the key that ran user commands;
-        // Alt+F2 stays the right drive menu.
-        (A::CommandLine, Binding::key(KeyNamed(F2))),
+        // here it asks Hermes for help. Alt+F2 stays the right drive menu, the
+        // command line is on Shift+F2.
+        (A::HermesChat, Binding::key(KeyNamed(F2))),
+        (
+            A::CommandLine,
+            Binding::with_modifiers(KeyNamed(F2), Modifiers::SHIFT),
+        ),
         // VS Code's Command Palette; F1 opens it there too.
         (
             A::CommandPalette,

@@ -1,0 +1,120 @@
+{"id": 1, "lang": "de", "intent": "tidy_folder", "text": "räum meine downloads auf", "expected": {"source": "Downloads"}, "question": "Soll ich das so umsetzen?", "options": ["ja", "nein"]}
+{"id": 2, "lang": "de", "intent": "tidy_folder", "text": "sortier den scans ordner in dokumente, originale behalten", "expected": {"source": "Scans", "target": "Dokumente", "transfer": "copy"}}
+{"id": 3, "lang": "de", "intent": "tidy_folder", "text": "kannst du den schreibtisch aufräumen", "expected": {"source": "Schreibtisch"}}
+{"id": 4, "lang": "de", "intent": "tidy_folder", "text": "eingang sortiern bitte, aber nur dieses mal", "expected": {"source": "Eingang", "schedule": "once"}}
+{"id": 5, "lang": "de", "intent": "tidy_folder", "text": "downloads immer automatisch aufräumen und nach archiv verschieben", "expected": {"source": "Downloads", "target": "Archiv", "schedule": "always", "transfer": "move"}}
+{"id": 6, "lang": "de", "intent": "tidy_folder", "text": "sortier mal den ordner Scans nach Dokumente rein", "expected": {"source": "Scans", "target": "Dokumente"}}
+{"id": 7, "lang": "de", "intent": "tidy_folder", "text": "ordne die dateien auf dem desktop, kopier sie ins archiv", "expected": {"source": "Desktop", "target": "Archiv", "transfer": "copy"}}
+{"id": 8, "lang": "de", "intent": "tidy_folder", "text": "mach den posteingang sauber, immer wenn was neues kommt", "expected": {"source": "Posteingang", "schedule": "always"}}
+{"id": 9, "lang": "de", "intent": "tidy_folder", "text": "bitte den ordner Rechnungen2023 aufräumen, einmalig", "expected": {"source": "Rechnungen2023", "schedule": "once"}}
+{"id": 10, "lang": "de", "intent": "tidy_folder", "text": "verschieb alles aus downloads nach privat/dokumente", "expected": {"source": "Downloads", "target": "privat/dokumente", "transfer": "move"}}
+{"id": 11, "lang": "de", "intent": "tidy_folder", "text": "ordner fotos bitte aufräumen, wie immer automatisch", "expected": {"source": "Fotos", "schedule": "always"}}
+{"id": 12, "lang": "de", "intent": "tidy_folder", "text": "kram im eingang sortieren", "expected": {"source": "Eingang"}}
+{"id": 13, "lang": "en", "intent": "tidy_folder", "text": "tidy my downloads", "expected": {"source": "Downloads"}}
+{"id": 14, "lang": "en", "intent": "tidy_folder", "text": "sort the scans folder into documents but keep the originals", "expected": {"source": "Scans", "target": "Documents|Dokumente", "transfer": "copy"}}
+{"id": 15, "lang": "de", "intent": "change_structure", "text": "kontoauszüge lieber nach monat", "expected": {"area": "Kontoauszüge", "order": "by_month"}}
+{"id": 16, "lang": "de", "intent": "change_structure", "text": "steuer sortiert nach jahr bitte", "expected": {"area": "Steuer", "order": "by_year"}, "question": "Nur jetzt oder immer?", "options": ["nur jetzt", "immer"]}
+{"id": 17, "lang": "de", "intent": "change_structure", "text": "die versicherungspost nach absender statt nach jahr", "expected": {"area": "Versicherung", "order": "by_sender"}}
+{"id": 18, "lang": "de", "intent": "change_structure", "text": "bei bank alles in einen ordner, ohne unterordner", "expected": {"area": "Bank", "order": "flat"}}
+{"id": 19, "lang": "de", "intent": "change_structure", "text": "kfz sachen nach art sortieren", "expected": {"area": "Auto|Kfz", "order": "by_kind"}}
+{"id": 20, "lang": "de", "intent": "change_structure", "text": "bei der bank nur die sparkasse chemnitz nach monat ablegen", "expected": {"area": "Bank", "scope": "Sparkasse Chemnitz", "order": "by_month"}}
+{"id": 21, "lang": "de", "intent": "change_structure", "text": "wohnung: nebenkosten nach jahr", "expected": {"area": "Wohnung", "scope": "Nebenkosten", "order": "by_year"}}
+{"id": 22, "lang": "de", "intent": "change_structure", "text": "auto ordner bitte flach, nicht nach jahr", "expected": {"area": "Auto", "order": "flat"}}
+{"id": 23, "lang": "de", "intent": "change_structure", "text": "gesundheit nach absender, also arzt für arzt", "expected": {"area": "Gesundheit", "order": "by_sender"}}
+{"id": 24, "lang": "en", "intent": "change_structure", "text": "put the tax folder by year", "expected": {"area": "Tax|Steuer", "order": "by_year"}}
+{"id": 25, "lang": "en", "intent": "change_structure", "text": "bank statements should be sorted by month", "expected": {"area": "Bank statements|Kontoauszüge|Bank", "order": "by_month"}}
+{"id": 26, "lang": "de", "intent": "undo", "text": "mach das rückgängig", "expected": {}}
+{"id": 27, "lang": "de", "intent": "undo", "text": "ups, zurück", "expected": {}, "question": "Soll ich das so umsetzen?", "options": ["ja", "nein"]}
+{"id": 28, "lang": "de", "intent": "undo", "text": "nee das war falsch, bitte zurücksetzen", "expected": {}}
+{"id": 29, "lang": "de", "intent": "undo", "text": "stopp, alles wie vorher", "expected": {}}
+{"id": 30, "lang": "de", "intent": "undo", "text": "das wollt ich so nicht, zurück damit", "expected": {}}
+{"id": 31, "lang": "de", "intent": "undo", "text": "rückgängig", "expected": {}}
+{"id": 32, "lang": "en", "intent": "undo", "text": "undo that", "expected": {}}
+{"id": 33, "lang": "en", "intent": "undo", "text": "oops put everything back", "expected": {}}
+{"id": 34, "lang": "de", "intent": "search", "text": "wo ist die rechnung von kalle klamrot", "expected": {"sender": "Kalle Klamroth", "kind": "Rechnung"}}
+{"id": 35, "lang": "de", "intent": "search", "text": "zeig mir alle briefe von der sparkasse chemnitz", "expected": {"sender": "Sparkasse Chemnitz", "kind": "Brief"}}
+{"id": 36, "lang": "de", "intent": "search", "text": "huk coburg versicherungsschein 2022", "expected": {"sender": "HUK-Coburg", "kind": "Versicherungsschein", "year_from": 2022, "year_to": 2022}, "question": "Kopieren oder verschieben?", "options": ["kopieren", "verschieben"]}
+{"id": 37, "lang": "de", "intent": "search", "text": "steuerbescheide von 2019 bis 2021", "expected": {"kind": "Steuerbescheid", "year_from": 2019, "year_to": 2021}}
+{"id": 38, "lang": "de", "intent": "search", "text": "rechnungen über 500 euro", "expected": {"kind": "Rechnung", "amount_min": 500}}
+{"id": 39, "lang": "de", "intent": "search", "text": "alles vom finanzamt chemnitz süd", "expected": {"sender": "Finanzamt Chemnitz-Süd"}}
+{"id": 40, "lang": "de", "intent": "search", "text": "kfz versicherung allianz seit 2020", "expected": {"sender": "Allianz", "year_from": 2020, "text": "kfz"}}
+{"id": 41, "lang": "de", "intent": "search", "text": "dkb kreditkartenabrechnung zwischen 100 und 300 euro", "expected": {"sender": "DKB", "kind": "Kreditkartenabrechnung", "amount_min": 100, "amount_max": 300}}
+{"id": 42, "lang": "de", "intent": "search", "text": "alles wo mietvertrag drin steht", "expected": {"text": "Mietvertrag"}}
+{"id": 43, "lang": "de", "intent": "search", "text": "gehaltsabrechnung 2023", "expected": {"kind": "Gehaltsabrechnung", "year_from": 2023, "year_to": 2023}}
+{"id": 44, "lang": "de", "intent": "search", "text": "scalable capital abrechnungen unter 1000 euro", "expected": {"sender": "Scalable Capital", "kind": "Abrechnung", "amount_max": 1000}}
+{"id": 45, "lang": "de", "intent": "search", "text": "wo is der brief vom zahnarzt müller", "expected": {"sender": "Zahnarzt Dr. Müller|Zahnarzt Müller", "kind": "Brief"}}
+{"id": 46, "lang": "de", "intent": "search", "text": "techniker krankenkasse rechnungen bis 2019", "expected": {"sender": "Techniker Krankenkasse", "kind": "Rechnung", "year_to": 2019}}
+{"id": 47, "lang": "en", "intent": "search", "text": "find the invoice from Kalle Klamroth", "expected": {"sender": "Kalle Klamroth", "kind": "Invoice|Rechnung"}}
+{"id": 48, "lang": "en", "intent": "search", "text": "bank statements from sparkasse chemnitz 2021", "expected": {"sender": "Sparkasse Chemnitz", "kind": "Bank statement|Kontoauszug", "year_from": 2021, "year_to": 2021}}
+{"id": 49, "lang": "en", "intent": "search", "text": "anything from huk-coburg over 200 euro", "expected": {"sender": "HUK-Coburg", "amount_min": 200}}
+{"id": 50, "lang": "de", "intent": "search", "text": "nur 2024 über 100 euro", "expected": {"sender": "Sparkasse Chemnitz", "year_from": 2024, "year_to": 2024, "amount_min": 100}, "was_refine": true, "previous_search": "{\"sender\":\"Sparkasse Chemnitz\"}"}
+{"id": 51, "lang": "de", "intent": "search", "text": "und jetzt nur die rechnungen", "expected": {"sender": "Allianz", "kind": "Rechnung"}, "was_refine": true, "previous_search": "{\"sender\":\"Allianz\"}"}
+{"id": 52, "lang": "de", "intent": "search", "text": "enger: zwischen 2020 und 2022", "expected": {"kind": "Kontoauszug", "year_from": 2020, "year_to": 2022}, "was_refine": true, "previous_search": "{\"kind\":\"Kontoauszug\"}"}
+{"id": 53, "lang": "de", "intent": "search", "text": "unter 50 euro bitte", "expected": {"sender": "DKB", "kind": "Rechnung", "amount_max": 50}, "was_refine": true, "previous_search": "{\"sender\":\"DKB\",\"kind\":\"Rechnung\"}"}
+{"id": 54, "lang": "de", "intent": "search", "text": "nur kontoauszüge davon", "expected": {"sender": "Sparkasse Chemnitz", "kind": "Kontoauszug"}, "was_refine": true, "previous_search": "{\"sender\":\"Sparkasse Chemnitz\"}"}
+{"id": 55, "lang": "de", "intent": "search", "text": "ab 2021 und mindestens 250 euro", "expected": {"sender": "HUK-Coburg", "year_from": 2021, "amount_min": 250}, "was_refine": true, "previous_search": "{\"sender\":\"HUK-Coburg\"}"}
+{"id": 56, "lang": "de", "intent": "search", "text": "nur die aus 2018", "expected": {"kind": "Rechnung", "year_from": 2018, "year_to": 2018}, "was_refine": true, "previous_search": "{\"kind\":\"Rechnung\"}"}
+{"id": 57, "lang": "de", "intent": "search", "text": "und nur bis 2020", "expected": {"sender": "Finanzamt Chemnitz-Süd", "year_from": 2016, "year_to": 2020}, "was_refine": true, "previous_search": "{\"sender\":\"Finanzamt Chemnitz-Süd\",\"year_from\":2016}"}
+{"id": 58, "lang": "en", "intent": "search", "text": "just the invoices over 80 euros", "expected": {"sender": "Scalable Capital", "kind": "Invoice|Rechnung", "amount_min": 80}, "was_refine": true, "previous_search": "{\"sender\":\"Scalable Capital\"}"}
+{"id": 59, "lang": "de", "intent": "ask_content", "text": "wie viel hab ich ihm insgesamt bezahlt", "expected": {"question_kind": "sum"}}
+{"id": 60, "lang": "de", "intent": "ask_content", "text": "wann läuft die kfz versicherung aus", "expected": {"question_kind": "deadline", "kind": "Kfz-Versicherung|Versicherung"}}
+{"id": 61, "lang": "de", "intent": "ask_content", "text": "was ist meine kundennummer bei der sparkasse chemnitz", "expected": {"question_kind": "number", "sender": "Sparkasse Chemnitz"}}
+{"id": 62, "lang": "de", "intent": "ask_content", "text": "wie viel hab ich insgesamt an die huk coburg gezahlt", "expected": {"question_kind": "sum", "sender": "HUK-Coburg"}}
+{"id": 63, "lang": "de", "intent": "ask_content", "text": "bis wann muss ich den einspruch beim finanzamt einlegen", "expected": {"question_kind": "deadline", "sender": "Finanzamt"}}
+{"id": 64, "lang": "de", "intent": "ask_content", "text": "wann hab ich den mietvertrag unterschrieben", "expected": {"question_kind": "date", "kind": "Mietvertrag"}}
+{"id": 65, "lang": "de", "intent": "ask_content", "text": "welche policennummer hab ich bei der allianz", "expected": {"question_kind": "number", "sender": "Allianz"}}
+{"id": 66, "lang": "de", "intent": "ask_content", "text": "wann kam der letzte kontoauszug", "expected": {"question_kind": "date", "kind": "Kontoauszug"}, "question": "Kopieren oder verschieben?", "options": ["kopieren", "verschieben"]}
+{"id": 67, "lang": "de", "intent": "ask_content", "text": "wie hoch ist die summe aller rechnungen von malerbetrieb kunze", "expected": {"question_kind": "sum", "kind": "Rechnung", "sender": "Malerbetrieb Kunze"}}
+{"id": 68, "lang": "de", "intent": "ask_content", "text": "bis wann muss die betriebskostenabrechnung bezahlt werden", "expected": {"question_kind": "deadline", "kind": "Betriebskostenabrechnung"}}
+{"id": 69, "lang": "en", "intent": "ask_content", "text": "how much did i pay to dkb in total", "expected": {"question_kind": "sum", "sender": "DKB"}}
+{"id": 70, "lang": "en", "intent": "ask_content", "text": "when does my allianz policy expire", "expected": {"question_kind": "deadline", "sender": "Allianz"}}
+{"id": 71, "lang": "de", "intent": "explain", "text": "warum liegt scan0042 da?", "expected": {"file": "scan0042"}}
+{"id": 72, "lang": "de", "intent": "explain", "text": "wieso ist Kontoauszug_2021-03-28.pdf im ordner steuer", "expected": {"file": "Kontoauszug_2021-03-28.pdf"}}
+{"id": 73, "lang": "de", "intent": "explain", "text": "warum hast du die datei perso1.pdf dahin gelegt", "expected": {"file": "perso1.pdf"}}
+{"id": 74, "lang": "de", "intent": "explain", "text": "erklär mir mal wo scan0107 hingekommen is", "expected": {"file": "scan0107"}}
+{"id": 75, "lang": "de", "intent": "explain", "text": "wieso wurde Mietvertrag.pdf verschoben", "expected": {"file": "Mietvertrag.pdf"}}
+{"id": 76, "lang": "de", "intent": "explain", "text": "wieso is scan0015 im ordner auto?", "expected": {"file": "scan0015"}}
+{"id": 77, "lang": "de", "intent": "explain", "text": "warum ist scan0099 in steuer gelandet", "expected": {"file": "scan0099"}}
+{"id": 78, "lang": "en", "intent": "explain", "text": "why is scan0042 in that folder", "expected": {"file": "scan0042"}}
+{"id": 79, "lang": "de", "intent": "bulk_move", "text": "verschieb alle steuersachen von 2021 nach steuer/2021", "expected": {"filter_kind": "Steuer|Steuersachen", "filter_year": 2021, "target": "steuer/2021"}}
+{"id": 80, "lang": "de", "intent": "bulk_move", "text": "alle rechnungen von kalle klamroth nach wohnung/handwerker", "expected": {"filter_kind": "Rechnung", "filter_sender": "Kalle Klamroth", "target": "Wohnung/Handwerker"}}
+{"id": 81, "lang": "de", "intent": "bulk_move", "text": "pack alle kontoauszüge von 2020 in bank/archiv", "expected": {"filter_kind": "Kontoauszug", "filter_year": 2020, "target": "Bank/Archiv"}}
+{"id": 82, "lang": "de", "intent": "bulk_move", "text": "alles von der huk-coburg bitte in versicherung/auto", "expected": {"filter_sender": "HUK-Coburg", "target": "Versicherung/Auto"}}
+{"id": 83, "lang": "de", "intent": "bulk_move", "text": "verschiebe sämtliche gehaltsabrechnungen nach arbeit/gehalt", "expected": {"filter_kind": "Gehaltsabrechnung", "target": "Arbeit/Gehalt"}}
+{"id": 84, "lang": "de", "intent": "bulk_move", "text": "alle briefe vom finanzamt chemnitz süd aus 2019 nach steuer/2019", "expected": {"filter_sender": "Finanzamt Chemnitz-Süd", "filter_year": 2019, "target": "Steuer/2019"}}
+{"id": 85, "lang": "de", "intent": "bulk_move", "text": "alles aus 2016 ins archiv", "expected": {"filter_year": 2016, "target": "Archiv"}}
+{"id": 86, "lang": "de", "intent": "bulk_move", "text": "die dkb abrechnungen nach bank/dkb schieben", "expected": {"filter_sender": "DKB", "filter_kind": "Abrechnung", "target": "Bank/DKB"}}
+{"id": 87, "lang": "de", "intent": "bulk_move", "text": "verschieb alle zeugnisse nach kinder/schule", "expected": {"filter_kind": "Zeugnis", "target": "Kinder/Schule"}}
+{"id": 88, "lang": "de", "intent": "bulk_move", "text": "dateien von allianz aus 2022 nach versicherung/allianz/2022", "expected": {"filter_sender": "Allianz", "filter_year": 2022, "target": "Versicherung/Allianz/2022"}}
+{"id": 89, "lang": "de", "intent": "bulk_move", "text": "alle belege 2023 nach steuer/2023", "expected": {"filter_kind": "Beleg", "filter_year": 2023, "target": "Steuer/2023"}}
+{"id": 90, "lang": "en", "intent": "bulk_move", "text": "move all tax stuff from 2020 to tax/2020", "expected": {"filter_kind": "Tax", "filter_year": 2020, "target": "tax/2020"}}
+{"id": 91, "lang": "de", "intent": "answer", "text": "nur dies mal", "expected": {"choice": "nur jetzt"}, "question": "Nur jetzt oder immer?", "options": ["nur jetzt", "immer"]}
+{"id": 92, "lang": "de", "intent": "answer", "text": "immer bitte", "expected": {"choice": "immer"}, "question": "Nur jetzt oder immer?", "options": ["nur jetzt", "immer"]}
+{"id": 93, "lang": "de", "intent": "answer", "text": "ne jedes mal", "expected": {"choice": "immer"}, "question": "Nur jetzt oder immer?", "options": ["nur jetzt", "immer"]}
+{"id": 94, "lang": "de", "intent": "answer", "text": "erstmal nur jetzt", "expected": {"choice": "nur jetzt"}, "question": "Nur jetzt oder immer?", "options": ["nur jetzt", "immer"]}
+{"id": 95, "lang": "de", "intent": "answer", "text": "kopier sie lieber", "expected": {"choice": "kopieren"}, "question": "Kopieren oder verschieben?", "options": ["kopieren", "verschieben"]}
+{"id": 96, "lang": "de", "intent": "answer", "text": "ne verschieb se", "expected": {"choice": "verschieben"}, "question": "Kopieren oder verschieben?", "options": ["kopieren", "verschieben"]}
+{"id": 97, "lang": "de", "intent": "answer", "text": "original soll bleiben", "expected": {"choice": "kopieren"}, "question": "Kopieren oder verschieben?", "options": ["kopieren", "verschieben"]}
+{"id": 98, "lang": "de", "intent": "answer", "text": "das von 2022", "expected": {"choice": "Steuer/2022"}, "question": "In welchen Ordner soll ich die Steuerbelege legen?", "options": ["Steuer/2021", "Steuer/2022", "Steuer/2023"]}
+{"id": 99, "lang": "de", "intent": "answer", "text": "die mittlere", "expected": {"choice": "Steuer/2022"}, "question": "In welchen Ordner soll ich die Steuerbelege legen?", "options": ["Steuer/2021", "Steuer/2022", "Steuer/2023"]}
+{"id": 100, "lang": "de", "intent": "answer", "text": "2023 natürlich", "expected": {"choice": "Steuer/2023"}, "question": "In welchen Ordner soll ich die Steuerbelege legen?", "options": ["Steuer/2021", "Steuer/2022", "Steuer/2023"]}
+{"id": 101, "lang": "de", "intent": "answer", "text": "jo mach", "expected": {"choice": "ja"}, "question": "Soll ich das so umsetzen?", "options": ["ja", "nein"]}
+{"id": 102, "lang": "de", "intent": "answer", "text": "lieber nich", "expected": {"choice": "nein"}, "question": "Soll ich das so umsetzen?", "options": ["ja", "nein"]}
+{"id": 103, "lang": "de", "intent": "answer", "text": "nö stopp", "expected": {"choice": "nein"}, "question": "Soll ich das so umsetzen?", "options": ["ja", "nein"]}
+{"id": 104, "lang": "de", "intent": "answer", "text": "klar, los", "expected": {"choice": "ja"}, "question": "Soll ich das so umsetzen?", "options": ["ja", "nein"]}
+{"id": 105, "lang": "de", "intent": "answer", "text": "die in chemnitz", "expected": {"choice": "Sparkasse Chemnitz"}, "question": "Welche Sparkasse meinst du?", "options": ["Sparkasse Chemnitz", "Sparkasse Leipzig"]}
+{"id": 106, "lang": "de", "intent": "answer", "text": "monat is besser", "expected": {"choice": "nach Monat"}, "question": "Nach Monat oder nach Jahr?", "options": ["nach Monat", "nach Jahr"]}
+{"id": 107, "lang": "en", "intent": "answer", "text": "only now", "expected": {"choice": "just this once"}, "question": "Just this once or always?", "options": ["just this once", "always"]}
+{"id": 108, "lang": "en", "intent": "answer", "text": "always, thanks", "expected": {"choice": "always"}, "question": "Just this once or always?", "options": ["just this once", "always"]}
+{"id": 109, "lang": "en", "intent": "answer", "text": "yeah do it", "expected": {"choice": "yes"}, "question": "Shall I go ahead?", "options": ["yes", "no"]}
+{"id": 110, "lang": "en", "intent": "answer", "text": "nope", "expected": {"choice": "no"}, "question": "Shall I go ahead?", "options": ["yes", "no"]}
+{"id": 111, "lang": "de", "intent": "other", "text": "ls -la", "expected": {}}
+{"id": 112, "lang": "de", "intent": "other", "text": "hallo wie gehts", "expected": {}}
+{"id": 113, "lang": "de", "intent": "other", "text": "wie wird das wetter morgen", "expected": {}, "question": "Kopieren oder verschieben?", "options": ["kopieren", "verschieben"]}
+{"id": 114, "lang": "de", "intent": "other", "text": "rm -rf ~/Downloads", "expected": {}}
+{"id": 115, "lang": "de", "intent": "other", "text": "erzähl mir einen witz", "expected": {}}
+{"id": 116, "lang": "de", "intent": "other", "text": "asdfghjkl", "expected": {}}
+{"id": 117, "lang": "de", "intent": "other", "text": "wer ist bundeskanzler", "expected": {}}
+{"id": 118, "lang": "de", "intent": "other", "text": "was ist die hauptstadt von frankreich", "expected": {}}
+{"id": 119, "lang": "en", "intent": "other", "text": "tell me a joke", "expected": {}}
+{"id": 120, "lang": "en", "intent": "other", "text": "cd .. && git status", "expected": {}}

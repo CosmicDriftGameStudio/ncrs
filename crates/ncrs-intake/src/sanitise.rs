@@ -58,7 +58,40 @@ pub fn sanitise_value(value: &str) -> Option<String> {
         .take(MAX_VALUE_CHARS)
         .collect();
     let trimmed = capped.trim_matches([' ', '.']);
-    (!trimmed.is_empty()).then(|| trimmed.to_owned())
+    if trimmed.is_empty() {
+        return None;
+    }
+    if is_windows_device_name(trimmed) {
+        let (stem, extension) = split_stem(trimmed);
+        return Some(format!("{stem}_{extension}"));
+    }
+    Some(trimmed.to_owned())
+}
+
+/// The name before its first dot, and the rest from that dot on.
+fn split_stem(name: &str) -> (&str, &str) {
+    name.split_at(name.find('.').unwrap_or(name.len()))
+}
+
+/// Whether Windows reads the name as a device (`CON`, `NUL`, `COM1` …) rather
+/// than a file or folder, with or without an extension and in any case.
+pub fn is_windows_device_name(name: &str) -> bool {
+    let stem = split_stem(name).0.trim_end_matches(' ');
+    const PLAIN: [&str; 4] = ["CON", "PRN", "AUX", "NUL"];
+    if PLAIN.iter().any(|device| stem.eq_ignore_ascii_case(device)) {
+        return true;
+    }
+    let numbered = |prefix: &str| {
+        stem.len() == prefix.len() + 1
+            && stem
+                .get(..prefix.len())
+                .is_some_and(|start| start.eq_ignore_ascii_case(prefix))
+            && stem
+                .bytes()
+                .last()
+                .is_some_and(|digit| (b'1'..=b'9').contains(&digit))
+    };
+    numbered("COM") || numbered("LPT")
 }
 
 /// Whether a relative path stays inside the folder it is joined to. Checked
@@ -103,6 +136,34 @@ mod tests {
     fn a_value_of_only_dots_or_nothing_is_missing() {
         for value in ["", " ", ".", "..", "...", " . . ", "\u{0}", "/", "../.."] {
             assert_eq!(sanitise_value(value), None, "{value:?}");
+        }
+    }
+
+    #[test]
+    fn a_device_name_gets_an_underscore_after_its_stem() {
+        for (value, expected) in [
+            ("CON", "CON_"),
+            ("nul", "nul_"),
+            ("Com1", "Com1_"),
+            ("LPT9", "LPT9_"),
+            ("aux.txt", "aux_.txt"),
+            ("PRN.tar.gz", "PRN_.tar.gz"),
+            ("CONSULT", "CONSULT"),
+            ("COM0", "COM0"),
+            ("COM10", "COM10"),
+            ("a.CON", "a.CON"),
+        ] {
+            assert_eq!(sanitise_value(value).as_deref(), Some(expected), "{value}");
+        }
+    }
+
+    #[test]
+    fn device_names_are_told_from_other_names() {
+        for device in ["CON", "prn", "Aux.pdf", "NUL", "COM1", "lpt5.txt", "CON .x"] {
+            assert!(is_windows_device_name(device), "{device}");
+        }
+        for other in ["", "COM", "COM0", "COM12", "LPT", "console", "x.CON"] {
+            assert!(!is_windows_device_name(other), "{other}");
         }
     }
 

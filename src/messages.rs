@@ -21,6 +21,7 @@ use crate::replan_work::ReplanSummary;
 pub use ncrs_core::PanelSide;
 pub use ncrs_files::hit_list::HitListMessage;
 pub use ncrs_files::message::PanelMessage;
+pub use ncrs_hermes_chat::Message as HermesChatMessage;
 #[cfg(test)]
 pub use ncrs_hermes_ui::message::RuleFormMessage;
 pub use ncrs_hermes_ui::message::{
@@ -267,6 +268,11 @@ pub enum Message {
     HitList(HitListMessage),
     Trash(TrashMessage),
 
+    // --- The Hermes chat (F2) ---
+    HermesChat(HermesChatMessage),
+    /// Shift+F2 in the chat: the chat closes and the command line takes the focus.
+    HermesChatToCommandLine,
+
     // --- Filing module: the index and its first-start questions ---
     Filing(FilingMessage),
 
@@ -318,7 +324,7 @@ pub enum Message {
     // --- Quick Open (Cmd/Ctrl+P) ---
     QuickOpen(QuickOpenMessage),
 
-    // --- Command line below the panels (F2) ---
+    // --- Command line below the panels (Shift+F2) ---
     CommandLine(CommandLineMessage),
 
     // --- Command palette (Cmd/Ctrl+Shift+P) ---

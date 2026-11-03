@@ -214,6 +214,9 @@ fn condition_outcome(
         ConditionKind::Regex => {
             compile(&condition.value).map(|regex| regex.is_match(input.text))?
         }
+        ConditionKind::Kind => input.fields.kind.as_deref().is_some_and(|kind| {
+            input.kinds.catalog.kind_key(kind) == input.kinds.catalog.kind_key(&condition.value)
+        }),
         ConditionKind::Sender => input.fields.sender.as_deref().is_some_and(|sender| {
             let aliases = input.sender_aliases;
             aliases.canonical_sender(sender).to_lowercase()

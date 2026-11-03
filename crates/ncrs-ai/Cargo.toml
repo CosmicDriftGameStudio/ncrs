@@ -33,6 +33,15 @@ llama-cpp-2 = { version = "=0.1.159", default-features = false, optional = true 
 # (its own requirement is `^0.1.159`).
 llama-cpp-sys-2 = { version = "=0.1.160", default-features = false, optional = true }
 
+# Windows and x86_64 Linux: Vulkan for the GPU, and the backends (also the CPU
+# ones) as modules next to the executable, so a machine without a Vulkan driver
+# still runs on the CPU. aarch64 Linux is cross-built on x86_64 and has no arm64
+# Vulkan loader, macOS has Metal: both stay static. Keep the condition in step
+# with `dynamic_backends` in build.rs.
+[target.'cfg(any(target_os = "windows", all(target_os = "linux", target_arch = "x86_64")))'.dependencies]
+llama-cpp-2 = { version = "=0.1.159", default-features = false, optional = true, features = ["vulkan", "dynamic-backends"] }
+llama-cpp-sys-2 = { version = "=0.1.160", default-features = false, optional = true, features = ["vulkan", "dynamic-backends"] }
+
 [dev-dependencies]
 tempfile = "3.27"
 ncrs-intake = { path = "../ncrs-intake", version = "0.0.0", features = ["test-support"] }
