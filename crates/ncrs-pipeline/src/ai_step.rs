@@ -9,6 +9,7 @@ use ncrs_index::{
 use ncrs_intake::{plan, LocationMode, PlanInput, Planning, AI_FIELD_ORDER, FIELD_ORDER};
 
 use crate::step::{resolve_reviews_of, with_index_value, IndexAccess, Item, Step, StepOutcome};
+use crate::steps::location_relative;
 use crate::steps::NO_INDEX;
 
 /// Asks the provider for the fields the rules left open, for inbox documents
@@ -241,15 +242,16 @@ impl AiStep {
                 return Ok(None);
             }
             let sender_aliases = index.confirmed_sender_aliases()?;
+            let manual_fields = index.field_origins(id)?.manual_fields();
             let kinds = Kinds::new(Arc::clone(index.kinds()), self.kind_language);
             let planning = plan(
                 &index.rules()?,
                 &PlanInput {
                     text,
                     fields: &merged,
-                    path: Some(&item.path),
+                    path: Some(location_relative(item)),
                     sender_aliases: &sender_aliases,
-                    manual_fields: &[],
+                    manual_fields: &manual_fields,
                     kinds: &kinds,
                 },
             );
@@ -527,6 +529,66 @@ mod tests {
         );
         assert_eq!(origins.of(Field::Number), FieldOrigin::Rule(Some(rule)));
         assert_eq!(origins.of(Field::Amount), FieldOrigin::Unknown);
+    }
+
+    #[test]
+    fn a_folder_condition_ignores_the_folders_above_the_location() {
+        let fixture = Fixture::new();
+        let steps = fixture.steps(&Arc::new(reply("0.95")));
+        let above = fixture
+            .location
+            .path
+            .parent()
+            .and_then(|parent| parent.file_name())
+            .and_then(|name| name.to_str())
+            .unwrap()
+            .to_owned();
+        let mut rule = invoice_rule("{number}.pdf", true);
+        rule.conditions =
+            RuleConditions::all_of(vec![Condition::new(ConditionKind::Folder, &above)]);
+        fixture.index.lock().unwrap().create_rule(&rule).unwrap();
+        let document = fixture.add_document(1);
+        let mut item = fixture.item(document, INVOICE_TEXT);
+        item.path = fixture.location.path.join("invoice.pdf");
+
+        run(&steps, RULES, &mut item);
+
+        assert_eq!(item.plan, None);
+        assert_eq!(item.review, Some(ReviewReason::NoMatchingRule));
+    }
+
+    #[test]
+    fn planning_again_after_the_ai_keeps_a_field_set_by_hand() {
+        let fixture = Fixture::new();
+        let steps = fixture.steps(&Arc::new(reply("0.95")));
+        fixture
+            .index
+            .lock()
+            .unwrap()
+            .create_rule(&invoice_rule("{sender}/{number}.pdf", true))
+            .unwrap();
+        let document = fixture.add_document(1);
+        let mut by_hand = fixture.fields(document);
+        by_hand.kind = Some("bill".to_owned());
+        fixture
+            .index
+            .lock()
+            .unwrap()
+            .set_document_fields(document, &by_hand, |_| FieldOrigin::Manual)
+            .unwrap();
+        let mut item = fixture.item(document, INVOICE_TEXT);
+
+        run(&steps, RULES, &mut item);
+        run(&steps, AI, &mut item);
+
+        assert_eq!(fixture.fields(document).kind, by_hand.kind);
+        let origins = fixture
+            .index
+            .lock()
+            .unwrap()
+            .field_origins(document)
+            .unwrap();
+        assert_eq!(origins.of(Field::Kind), FieldOrigin::Manual);
     }
 
     #[test]

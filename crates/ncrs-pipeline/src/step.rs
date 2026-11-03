@@ -47,9 +47,9 @@ pub trait Step: Send + Sync + fmt::Debug {
     fn run(&self, item: &mut Item, now: SystemTime) -> Result<StepOutcome, String>;
 
     /// Called once the files found by a scan of the location have all passed
-    /// the first step.
-    fn after_scan(&self, _location: &Location) -> Result<(), String> {
-        Ok(())
+    /// the first step. Returns the paths it could not settle.
+    fn after_scan(&self, _location: &Location) -> Result<Vec<PathBuf>, String> {
+        Ok(Vec::new())
     }
 }
 

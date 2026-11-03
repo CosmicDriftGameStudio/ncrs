@@ -372,6 +372,88 @@ fn a_failed_file_that_changes_is_tried_again() {
     assert_eq!(report.errors.len(), 2);
 }
 
+#[test]
+fn a_file_that_is_gone_is_forgotten_by_the_repeat_check() {
+    let (_dir, location) = numbered_files(2);
+    let (step, _started) = probe("probe", None, continue_always);
+    let runner = start(workers(1), vec![step], &location, Arc::new(FixedClock));
+    runner.wait_for("both handled", |snapshot| {
+        is_idle(snapshot) && snapshot.steps[0].done == 2
+    });
+    let gone = location.path.join("file-1.pdf");
+    assert!(runner
+        .shared
+        .update(|state| state.taken.contains_key(&gone)));
+
+    fs::remove_file(&gone).unwrap();
+    runner.shared.on_watch_event(WatchEvent::File(gone.clone()));
+
+    assert!(!runner
+        .shared
+        .update(|state| state.taken.contains_key(&gone)));
+}
+
+#[cfg(unix)]
+#[test]
+fn a_file_replaced_by_one_of_the_same_size_and_mtime_looks_changed() {
+    let dir = TempDir::new().unwrap();
+    let target = dir.path().join("letter.pdf");
+    let mtime = epoch() + Duration::from_secs(1_000_000);
+    let stamp = |path: &Path, body: &[u8]| {
+        fs::write(path, body).unwrap();
+        fs::File::options()
+            .write(true)
+            .open(path)
+            .unwrap()
+            .set_modified(mtime)
+            .unwrap();
+    };
+    stamp(&target, b"first");
+    let before = Fingerprint::of(&target).unwrap();
+    let replacement = dir.path().join("staged.pdf");
+    stamp(&replacement, b"other");
+    fs::rename(&replacement, &target).unwrap();
+
+    let after = Fingerprint::of(&target).unwrap();
+
+    assert_ne!(before, after);
+}
+
+#[derive(Debug)]
+struct UnsettledAfterScan;
+
+impl Step for UnsettledAfterScan {
+    fn name(&self) -> &'static str {
+        "settle"
+    }
+
+    fn run(&self, _item: &mut Item, _now: SystemTime) -> Result<StepOutcome, String> {
+        Ok(StepOutcome::Continue)
+    }
+
+    fn after_scan(&self, location: &Location) -> Result<Vec<PathBuf>, String> {
+        Ok(vec![location.path.join("broken.pdf")])
+    }
+}
+
+#[test]
+fn paths_a_step_could_not_settle_after_a_scan_are_listed_as_errors() {
+    let (_dir, location) = numbered_files(1);
+    let runner = start(
+        workers(1),
+        vec![Box::new(UnsettledAfterScan)],
+        &location,
+        Arc::new(FixedClock),
+    );
+
+    let report = runner.wait_for("the scan settled", |snapshot| {
+        is_idle(snapshot) && !snapshot.errors.is_empty()
+    });
+
+    assert_eq!(report.errors.len(), 1);
+    assert_eq!(report.errors[0].file, location.path.join("broken.pdf"));
+}
+
 fn leave_the_second_file_unchanged(path: &Path) -> Result<StepOutcome, String> {
     match file_name(path) {
         "file-2.pdf" => Ok(StepOutcome::Unchanged),

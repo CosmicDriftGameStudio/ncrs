@@ -453,6 +453,26 @@ pub fn archive_scan(fixture: &IndexFixture, archive: &Location, chain: TextChain
 }
 
 #[test]
+fn a_broken_archive_file_is_reported_once_and_not_read_again_on_every_scan() {
+    let archive_dir = TempDir::new().unwrap();
+    let archive = location(&archive_dir, LocationMode::Archive);
+    put(&archive, "invoice.pdf", INVOICE);
+    let fixture = IndexFixture::new();
+    let broken = TextError::Unreadable {
+        path: PathBuf::from("invoice.pdf"),
+        reason: "broken".to_owned(),
+    };
+    let chain = || TextChain::new().with_source(FixedText(Err(broken.clone())));
+
+    let first = archive_scan(&fixture, &archive, chain());
+    assert_eq!(first.errors.len(), 1, "{:?}", first.errors);
+    archive_scan(&fixture, &archive, chain());
+    let third = archive_scan(&fixture, &archive, chain());
+
+    assert!(third.errors.is_empty(), "{:?}", third.errors);
+}
+
+#[test]
 fn an_archive_document_whose_text_could_not_be_read_gets_it_on_a_later_scan() {
     let archive_dir = TempDir::new().unwrap();
     let archive = location(&archive_dir, LocationMode::Archive);
