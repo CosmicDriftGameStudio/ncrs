@@ -340,3 +340,18 @@ async fn a_panel_inside_an_archive_does_not_start_a_run() {
 
     assert!(app.panels.folder_size_run.is_none());
 }
+
+#[tokio::test]
+async fn a_job_of_its_own_drops_the_measured_sizes() {
+    let mut app = app_in_links();
+    put_cursor_on(&mut app, "beta");
+    drop(app.update(Message::ComputeFolderSizes));
+    let id = run_id(&app);
+    measured(&mut app, id, "beta", 2048);
+    assert_eq!(shown(&app, "beta"), "2.0 KB");
+
+    drop(app.run_ops_actions(vec![ncrs_ops::Action::ReloadPanels]));
+    load(&mut app, directory(), listing(), fs::SortKey::default());
+
+    assert_eq!(shown(&app, "beta"), "<DIR>");
+}

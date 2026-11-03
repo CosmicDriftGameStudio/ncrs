@@ -179,6 +179,9 @@ impl App {
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
         let task = self.update_message(message);
+        if self.open_hermes_page().is_none() {
+            self.hermes_focus = HermesFocus::Content;
+        }
         let back = self.return_to_overview_when_its_card_is_gone();
         Task::batch([task, back])
     }
@@ -577,6 +580,10 @@ impl App {
                 self.ops.queue_dropped_file(path).map(Message::DropSettled)
             }
             Message::DropSettled(generation) => match self.ops.settled_drop(generation) {
+                Some(_) if self.blocking_overlay_is_open() => {
+                    let text = self.lang.text(Msg::StatusDropBusy).to_owned();
+                    self.show_notice(text)
+                }
                 Some(paths) => self.copy_external_files_into_active_panel(paths),
                 None => Task::none(),
             },

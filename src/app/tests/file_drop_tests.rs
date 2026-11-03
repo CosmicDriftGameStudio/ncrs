@@ -129,6 +129,18 @@ async fn a_drop_during_a_running_transfer_says_so_and_changes_nothing() {
 }
 
 #[tokio::test]
+async fn a_drop_while_a_card_is_open_says_so_and_starts_nothing() {
+    let mut case = dropping();
+    case.app.start_over_dialog = true;
+    let generation = drop_both(&mut case);
+
+    drop(case.app.update(Message::DropSettled(generation)));
+
+    assert!(case.app.ops.transfer.is_none());
+    assert!(case.app.notice.is_some());
+}
+
+#[tokio::test]
 async fn a_drop_into_the_folder_it_comes_from_is_refused_in_words() {
     let mut case = dropping();
     case.app.panels.right.path = case.source_file.parent().unwrap().to_path_buf();

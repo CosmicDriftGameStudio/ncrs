@@ -17,6 +17,9 @@ use crate::state::Hermes;
 /// Reads the figures on the blocking pool: the intake may hold the index for
 /// as long as it hashes a large file.
 pub fn request_index_figures(hermes: &mut Hermes) -> Task<Message> {
+    if hermes.filing_status.figures_in_flight() {
+        return Task::none();
+    }
     let Some(reader) = hermes
         .filing
         .as_ref()
@@ -162,9 +165,12 @@ fn filing_status_step(
                 _ => runner.snapshot().worker_target,
             };
             let most = std::thread::available_parallelism().map_or(1, NonZeroUsize::get);
-            let wanted = current
-                .saturating_add_signed(isize::from(delta))
-                .clamp(1, most);
+            let stepped = current.saturating_add_signed(isize::from(delta));
+            let wanted = if delta > 0 {
+                stepped.min(most.max(current))
+            } else {
+                stepped.max(1)
+            };
             if let Some(count) = NonZeroUsize::new(wanted) {
                 hermes.set_pipeline_load(Load::Workers(count), ctx.now);
             }

@@ -89,6 +89,27 @@ fn stepping_the_workers_never_goes_below_one() {
 }
 
 #[test]
+fn stepping_the_workers_from_above_the_core_count_moves_by_one() {
+    let mut app = app_with_empty_pipeline();
+    let most = std::thread::available_parallelism().map_or(1, NonZeroUsize::get);
+    let configured = |count: usize| Load::Workers(NonZeroUsize::new(count).unwrap());
+    app.hermes
+        .set_pipeline_load(configured(most + 4), app.wall_clock.now());
+
+    drop(app.update(status(FilingStatusMessage::StepWorkers(1))));
+    assert_eq!(
+        app.hermes.filing.as_ref().unwrap().load(),
+        configured(most + 4)
+    );
+
+    drop(app.update(status(FilingStatusMessage::StepWorkers(-1))));
+    assert_eq!(
+        app.hermes.filing.as_ref().unwrap().load(),
+        configured(most + 3)
+    );
+}
+
+#[test]
 fn without_a_pipeline_pause_and_load_do_nothing() {
     let mut app = App::with_fixed_filing(Phase::Ready);
 
@@ -105,6 +126,10 @@ fn index_figures_are_asked_for_on_opening_and_then_every_fifth_tick() {
     let _inside = runtime.enter();
     let mut app = App::with_fixed_filing(Phase::Ready);
 
+    drop(app.open_filing_status());
+    assert!(app.hermes.filing_status.figures_in_flight());
+
+    drop(app.update(status(FilingStatusMessage::Close)));
     drop(app.open_filing_status());
     assert!(app.hermes.filing_status.figures_in_flight());
 
