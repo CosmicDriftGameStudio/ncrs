@@ -278,5 +278,9 @@ pub fn segmented<'a, M: Clone + 'a>(
             })
             .into()
     });
-    Row::with_children(buttons).spacing(GAP_XS).into()
+    Row::with_children(buttons)
+        .spacing(GAP_XS)
+        .wrap()
+        .vertical_spacing(GAP_XS)
+        .into()
 }
