@@ -98,6 +98,8 @@ fn placeholders(count: usize) -> String {
     vec!["?"; count].join(", ")
 }
 
+type QueryFilter = (Vec<String>, Vec<Value>);
+
 impl Index {
     /// A name that is already taken is an error, not an update: two queries
     /// of one name could not be told apart in the list.
@@ -265,7 +267,7 @@ impl Index {
         &self,
         spec: &QuerySpec,
         under: Option<&Path>,
-    ) -> Result<Option<(Vec<String>, Vec<Value>)>, IndexError> {
+    ) -> Result<Option<QueryFilter>, IndexError> {
         let mut conditions: Vec<String> = Vec::new();
         let mut values: Vec<Value> = Vec::new();
         if let Some(year) = spec.year {
