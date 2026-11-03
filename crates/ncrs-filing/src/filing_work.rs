@@ -408,6 +408,22 @@ mod tests {
     }
 
     #[test]
+    fn the_fields_a_rule_filled_are_marked_as_coming_from_that_rule() {
+        let mut setup = Setup::new();
+        let document = setup.planned("scan 1.pdf", "Invoice from Company A");
+        let rule = setup.index.rules().unwrap()[0].id;
+
+        setup.run(&Move);
+
+        let origins = setup.index.field_origins(document.id).unwrap();
+        assert_eq!(
+            origins.of(ncrs_index::Field::Kind),
+            FieldOrigin::Rule(Some(rule))
+        );
+        assert_eq!(origins.of(ncrs_index::Field::Date), FieldOrigin::Unknown);
+    }
+
+    #[test]
     fn a_folder_above_the_inbox_takes_no_part_in_a_folder_condition() {
         let above = |dir: &Path| {
             let name = dir.file_name().unwrap().to_string_lossy().into_owned();

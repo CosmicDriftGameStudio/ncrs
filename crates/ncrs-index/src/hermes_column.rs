@@ -264,19 +264,29 @@ impl Index {
         directories: &[PathBuf],
     ) -> Result<Vec<FolderCounts>, IndexError> {
         let direct = self.direct_status_counts_under(directories)?;
+        let deep = self.deep_status_counts_under(directories)?;
+        Ok(direct
+            .into_iter()
+            .zip(deep)
+            .map(|(direct, deep)| FolderCounts { direct, deep })
+            .collect())
+    }
+
+    /// The `deep` half of [`Self::status_counts_under`]: everything below each
+    /// folder, which is the slow one on a deep tree.
+    pub fn deep_status_counts_under(
+        &self,
+        directories: &[PathBuf],
+    ) -> Result<Vec<StatusCounts>, IndexError> {
         let mut deep = self.connection().prepare(&format!(
             "SELECT {COUNT_COLUMNS} FROM document
              WHERE missing_since IS NULL AND path >= ?1 AND path < ?2"
         ))?;
         directories
             .iter()
-            .zip(direct)
-            .map(|(directory, direct_counts)| {
+            .map(|directory| {
                 let range = SubtreeRange::of(directory)?;
-                Ok(FolderCounts {
-                    direct: direct_counts,
-                    deep: deep.query_row([&range.from, &range.until], read_counts)?,
-                })
+                Ok(deep.query_row([&range.from, &range.until], read_counts)?)
             })
             .collect()
     }

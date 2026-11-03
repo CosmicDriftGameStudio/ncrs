@@ -105,10 +105,13 @@ fn read_folders(
     deep: bool,
 ) -> Result<Vec<FolderReading>, IndexError> {
     let (direct_stage, deep_stage) = if deep {
-        let both = index.status_counts_under(folders)?;
         (
             vec![None; folders.len()],
-            both.into_iter().map(|counts| Some(counts.deep)).collect(),
+            index
+                .deep_status_counts_under(folders)?
+                .into_iter()
+                .map(Some)
+                .collect(),
         )
     } else {
         (

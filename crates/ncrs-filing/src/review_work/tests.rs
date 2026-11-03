@@ -308,6 +308,30 @@ fn a_taken_place_keeps_the_entry_open_and_the_target_unchanged() {
     assert_eq!(fs::read_to_string(&taken).unwrap(), "the other file");
     assert!(setup.inbox.join("scan.pdf").exists());
     assert_eq!(access.load().unwrap().len(), 1);
+    setup.with_index(|index| {
+        let stored = index.document(item.document_id).unwrap().unwrap();
+        assert_eq!(stored.fields, item.fields);
+    });
+}
+
+#[test]
+fn an_excluded_document_is_neither_listed_nor_confirmed() {
+    let setup = Setup::new();
+    setup.in_review("scan.pdf");
+    let access = setup.access();
+    let item = first(&access);
+    setup.with_index(|index| index.exclude_path(&setup.inbox.join("scan.pdf")).unwrap());
+
+    assert!(access.load().unwrap().is_empty());
+    let result = access.confirm(
+        item.entry,
+        item.document_id,
+        &Setup::fields("Company A"),
+        "{sender}/{kind}",
+    );
+
+    assert_eq!(result, Err(DOCUMENT_EXCLUDED.to_owned()));
+    assert!(setup.inbox.join("scan.pdf").exists());
 }
 
 #[test]

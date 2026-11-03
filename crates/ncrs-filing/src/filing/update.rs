@@ -177,9 +177,7 @@ impl FilingModule {
         }
         // Safe on the UI thread: no pipeline holds the index before `Ready`,
         // and no work is running once its result is here.
-        if self.index_encrypted.is_none() {
-            self.index_encrypted = lock(&self.index).as_ref().map(Index::is_encrypted);
-        }
+        self.index_encrypted = lock(&self.index).as_ref().map(Index::is_encrypted);
         self.give_kinds_to_index();
     }
 

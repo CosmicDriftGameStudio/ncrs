@@ -388,7 +388,6 @@ fn attempt(
                 partial.restart()?;
                 pin.size
             }
-            416 if offset == pin.size => return Ok(partial.finish()?),
             other => return Err(DownloadError::Network(FetchError::Status(other))),
         };
         if response

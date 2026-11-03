@@ -187,6 +187,17 @@ fn deleting_needs_the_question_first() {
 }
 
 #[test]
+fn a_change_under_way_withdraws_the_delete_question() {
+    let mut page = page();
+    page.ask_delete();
+
+    assert!(page.begin_toggle(0).is_some());
+
+    assert!(!page.is_confirming_delete());
+    assert_eq!(page.begin_delete(), None);
+}
+
+#[test]
 fn cancelling_the_question_deletes_nothing() {
     let mut page = page();
     page.ask_delete();

@@ -146,9 +146,12 @@ impl PlanAccess {
                 let (rule, date) = match deciding_finding(&item) {
                     Some(Finding::Misplaced { rule }) => (rules.get(rule).cloned(), None),
                     Some(Finding::YearMismatch { .. }) => {
+                        // The date only words the sentence; a failed lookup must not
+                        // throw the whole plan away.
                         let found = index
                             .document_by_path(&root.join(&item.source))
-                            .map_err(|err| err.to_string())?;
+                            .ok()
+                            .flatten();
                         (None, found.and_then(|document| document.fields.date))
                     }
                     _ => (None, None),
