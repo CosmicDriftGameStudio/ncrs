@@ -238,7 +238,7 @@ The defaults. Most of them can be changed in the keyboard shortcuts dialog (`Cmd
 | `Cmd`+`P` / `Ctrl`+`P` | Quick Open: jump to a file by a few letters of its path. See [Quick Open](#quick-open) |
 | `Cmd`+`Shift`+`D` / `Ctrl`+`Shift`+`D` | Status and errors in the filing tab (filing module on): what the page is for, pipeline state, load, workers, index figures and the last errors. `P` pauses or resumes, `1`/`2`/`3` set the load gentle / balanced / full for this session, `+`/`-` change the worker count, `↑`/`↓` and `Enter` show the file of an error, `Esc` or the key again goes back to the panels. See [Filing](#filing) |
 | `Cmd`+`Shift`+`L` / `Ctrl`+`Shift`+`L` | Filing folders: choose the inbox and document folders and save them to the config file. See [Filing](#filing). `Esc` closes |
-| `Cmd`+`Shift`+`V` / `B` / `R` / `I` / `A` (`Ctrl`+`Shift` on Linux and Windows) | The filing pages Review, Rules, Rule suggestions, Sort again and Reports. See [Filing](#filing) |
+| `Cmd`+`Shift`+`V` / `B` / `R` / `I` / `A` (`Ctrl`+`Shift` on Linux and Windows) | The filing pages Review, Rules, Rule suggestions, Sort again and Reports; `Cmd`+`Shift`+`U` undoes the last Sort again run. See [Filing](#filing) |
 | `Cmd`+`.` / `Ctrl`+`.` | Quick fix for a review item: the fixes for the document under the cursor |
 | `Cmd`+`Shift`+`H` / `Ctrl`+`Shift`+`H` | Process again: runs the file under the cursor through the filing steps again |
 | `Backspace`        | Go to parent directory                   |
@@ -722,7 +722,7 @@ Linux and Windows); the name in `[keys]` changes the key.
 | Review | `V` | `review_list` | Documents that no confirmed rule could file, with a preview, where each field came from and the target path. Nothing is filed before you confirm |
 | Rules | `B` | `rules` | Rules, checked from top to bottom; the first that matches files the document |
 | Rule suggestions | `R` | `rule_suggestions` | Rules suggested from how your documents are already filed, with the reason. A suggestion does nothing until you confirm it |
-| Sort again | `I` | `reorganisation_plan` | Checks the folders you already filed into and suggests moves and renames. Nothing moves before you run the selected steps; `U` (`undo_reorganisation`) moves the last run back |
+| Sort again | `I` | `reorganisation_plan` | Checks the folders you already filed into and suggests moves and renames. Nothing moves before you run the selected steps; `Cmd`+`Shift`+`U` (`Ctrl`+`Shift`+`U` on Linux and Windows, `undo_reorganisation`) moves the last run back |
 | Reports | `A` | `saved_queries` | Saved searches for recurring questions, with their sum. Exporting copies the hits into a folder; the originals stay unchanged |
 | Tags | | `file_list_tags_choose` | All tags in one place. A tick shows the tag in the file tree behind the file name |
 | Status and errors | `D` | `filing_status` | What the filing is doing right now: the state of the pipeline, the load, the index figures and the latest errors |
@@ -1018,7 +1018,7 @@ Three layers, and they cover different things:
 
 | Layer | What it covers | Where |
 |---|---|---|
-| Filesystem, state, routing, selection | what the app *decides* | `src/fs/`, `src/dialog.rs`, `src/selection.rs`, `app.rs` |
+| Filesystem, state, routing, selection | what the app *decides* | `crates/ncrs-fs/`, `crates/ncrs-ops/`, `crates/ncrs-core/src/selection.rs`, `src/app/` |
 | UI, headless | what the user *sees* — clicks, rendering, layout | `src/ui_tests.rs` via `iced_test` |
 | Snapshots | the images themselves | `tests/snapshots/` — **macOS only in CI** |
 

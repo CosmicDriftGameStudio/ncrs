@@ -44,6 +44,7 @@ mod tests {
                 separator.is_whitespace() || separator == '(' || separator == ')'
             })
             .any(|identifier| {
+                let identifier = identifier.to_ascii_uppercase();
                 GPL_FAMILY_PREFIXES
                     .iter()
                     .any(|prefix| identifier.starts_with(prefix))
@@ -100,6 +101,8 @@ mod tests {
             "AGPL-3.0-only",
             "GPL-2.0-only WITH Classpath-exception-2.0",
             "(MIT OR LGPL-2.1-or-later)",
+            "lgpl-2.1-or-later",
+            "Gpl-3.0",
         ] {
             assert!(names_gpl_family(gpl), "{gpl} not recognised");
         }

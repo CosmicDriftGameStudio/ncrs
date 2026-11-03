@@ -10,6 +10,7 @@ use std::time::SystemTime;
 
 use chrono::{Local, TimeZone as _};
 use iced_test::Simulator;
+use ncrs_i18n::Language;
 
 use crate::app::{fixed_result_entry, App};
 use crate::fs::search::LineMatch;
@@ -275,14 +276,8 @@ mod tests {
     #[test]
     #[ignore = "writes docs/store-screenshots; run with `cargo test store_screenshots -- --ignored`"]
     fn store_screenshots() {
-        for language in ["en", "de"] {
-            let showcase = || {
-                let mut app = showcase_app();
-                if language == "de" {
-                    drop(app.update(Message::SwitchLanguage));
-                }
-                app
-            };
+        for (file_prefix, language) in [("en", Language::English), ("de", Language::German)] {
+            let showcase = || showcase_app().in_language(language);
 
             let main = showcase();
 
@@ -314,7 +309,7 @@ mod tests {
                     &app,
                     STORE_DIRECTORY,
                     STORE_WINDOW_SIZE,
-                    &format!("{language}-{name}.png"),
+                    &format!("{file_prefix}-{name}.png"),
                 );
             }
         }

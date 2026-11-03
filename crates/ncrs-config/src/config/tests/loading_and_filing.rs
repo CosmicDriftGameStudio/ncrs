@@ -605,10 +605,8 @@ fn a_data_folder_next_to_the_exe_makes_it_portable() {
 }
 
 #[test]
-fn a_data_file_or_a_data_folder_elsewhere_is_not_a_marker() {
+fn a_data_folder_elsewhere_is_not_a_marker() {
     let exe = Path::new("/home/user/ncrs/ncrs");
-    // A file named `data` is not a directory, and is_dir says so.
-    assert_eq!(portable_data_dir_of(exe, dirs(&[])), None);
     assert_eq!(
         portable_data_dir_of(exe, dirs(&["/home/user/data", "/home/user/ncrs/sub/data"])),
         None

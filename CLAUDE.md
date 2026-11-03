@@ -1,7 +1,7 @@
 # ncrs – rules for agents
 
 These rules come before the existing code: where the code does it differently, the code is wrong and is being moved
-towards them (see "Migration" below). Never copy a pattern from the code that breaks them.
+towards them (see "Where code lives" below). Never copy a pattern from the code that breaks them.
 
 ## Structure: one crate per feature
 
@@ -40,19 +40,9 @@ towards them (see "Migration" below). Never copy a pattern from the code that br
 - One `coder` per task with a precise spec; no intermediate planning agent.
 - GitHub texts (issues, PRs, commits) in English, no AI attribution.
 
-## Migration (in progress)
+## Where code lives
 
-Most of the UI and all app logic still live in the `ncrs` crate (`src/app.rs` alone has over 30,000 lines). The
-target and order, one commit per step:
-
-1. `ncrs-ui-kit`: `src/ui/kit.rs` and `src/ui/hermes_kit.rs` merged, plus theme, format, frame, fkeys, dialog,
-   context menu widget, and one file row.
-2. `ncrs-search`
-3. `ncrs-fs` (backend: the filesystem layer of `src/fs`), then `ncrs-files` (panel, columns, sorting, hit list,
-   history) and `ncrs-ops` (copy, move, delete, trash, pack, conflicts) on top of it
-4. `ncrs-palette` (command palette, quick open, command line), `ncrs-settings` (settings, key bindings, config,
-   themes, models), `ncrs-hermes-ui` (filing pages, review, rules, tags, overview, reorganise, reports),
-   `ncrs-remote` (SFTP)
-5. `ncrs` keeps only wiring: window, menu, title and status bar, message routing.
-
-When touching a feature that has not moved yet, do not grow `src/app.rs` or `src/ui/`; move the part you touch.
+The migration into feature crates is done. `ncrs-ui-kit`, `ncrs-search`, `ncrs-fs`, `ncrs-files`, `ncrs-ops`,
+`ncrs-palette`, `ncrs-settings`, `ncrs-hermes-ui` and `ncrs-remote` own their features; the `ncrs` crate (`src/app/`,
+`src/ui/`) is wiring: window, menu, title and status bar, message routing. New feature logic goes into the matching
+crate, not into `src/app/` or `src/ui/`; when you touch a part that is still there, move it.
