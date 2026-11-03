@@ -29,15 +29,8 @@ use ncrs_ui_kit::format;
 use sha2::{Digest as _, Sha256};
 use tempfile::TempDir;
 
-/// The filing setup's check, which the chat crate cannot depend on.
-pub fn resolve_folder(folder: &Path) -> Result<PathBuf, String> {
-    let canonical = fs::canonicalize(folder).map_err(|err| err.to_string())?;
-    if canonical.is_dir() {
-        Ok(canonical)
-    } else {
-        Err("not a directory".to_owned())
-    }
-}
+mod resolve;
+pub use resolve::resolve_folder;
 
 pub const LANG: Language = Language::German;
 

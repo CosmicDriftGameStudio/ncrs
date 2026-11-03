@@ -438,7 +438,16 @@ mod tests {
             talk.last_texts(),
             vec![say(Msg::HermesChatConfirmTypedFolder, &[("path", &real)])]
         );
-        let target = |talk: &Talk| talk.state.session.proposal.as_ref().unwrap().target.clone();
+        let target = |asked: &Talk| {
+            asked
+                .state
+                .session
+                .proposal
+                .as_ref()
+                .unwrap()
+                .target
+                .clone()
+        };
         assert_eq!(target(&talk), None, "not set before the yes");
         talk.press(&ChipReply::ReadAnyway);
         assert_eq!(target(&talk), Some(std::path::PathBuf::from(real)));

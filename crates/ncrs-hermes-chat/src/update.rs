@@ -427,7 +427,7 @@ pub fn resolve_folder_name(state: &State, ctx: &Ctx, name: &str) -> Option<PathB
 }
 
 pub fn folder_answer(state: &mut State, ctx: &Ctx, path: PathBuf, typed: bool) -> Option<Action> {
-    if typed && state.step != Step::OtherTarget && !is_known(state, ctx, &path) {
+    if typed && !is_known(state, ctx, &path) {
         let shown = path.to_string_lossy().into_owned();
         state.session.confirm = Some((path, state.step));
         state.step = Step::ConfirmUnknown;

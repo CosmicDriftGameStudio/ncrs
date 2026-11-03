@@ -554,6 +554,17 @@ jobs:
           # SDK, OpenSSL or build tools. A Vulkan loader only from a driver.
           $env:Path = "$env:SystemRoot\System32;$env:SystemRoot"
           where.exe vulkan-1.dll 2>&1 | Out-String | Write-Host
+          # The flag must not keep the Vulkan module from loading. Loaded the
+          # way ggml loads it (plain LoadLibraryW), after the libraries the app
+          # loads first; the runner has a Vulkan loader in System32.
+          Add-Type -Namespace Probe -Name Kernel32 -MemberDefinition '[DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] public static extern IntPtr LoadLibraryW(string path);'
+          foreach ($module in 'ggml-base.dll', 'ggml.dll', 'backends\ggml-vulkan.dll') {
+            $handle = [Probe.Kernel32]::LoadLibraryW((Join-Path $dir $module))
+            if ($handle -eq [IntPtr]::Zero) {
+              throw "$module did not load: Win32 error $([Runtime.InteropServices.Marshal]::GetLastWin32Error())"
+            }
+            Write-Host "loaded $module"
+          }
           $output = (& $exe --check-ai (Join-Path $env:GITHUB_WORKSPACE '.ai-models') 2>&1 | Out-String)
           $code = $LASTEXITCODE
           Write-Host $output
