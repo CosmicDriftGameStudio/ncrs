@@ -44,13 +44,14 @@ pub fn run_migrations(conn: &mut Connection, steps: &[&str]) -> Result<(), Index
     conn.pragma_update(None, "foreign_keys", false)?;
     let applied: u32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
     let supported = u32::try_from(steps.len()).unwrap_or(u32::MAX);
-    if applied > supported {
-        return Err(IndexError::SchemaTooNew {
+    let migrated = if applied > supported {
+        Err(IndexError::SchemaTooNew {
             found: applied,
             supported,
-        });
-    }
-    let migrated = apply_pending_steps(conn, steps, applied, supported);
+        })
+    } else {
+        apply_pending_steps(conn, steps, applied, supported)
+    };
     conn.pragma_update(None, "foreign_keys", true)?;
     migrated
 }
@@ -133,6 +134,22 @@ mod tests {
         );
         assert!(!table_exists(&conn, "first"));
         assert_eq!(version(&conn), 0);
+    }
+
+    #[test]
+    fn foreign_keys_stay_enforced_after_a_failed_or_refused_migration() {
+        let foreign_keys = |conn: &Connection| -> i64 {
+            conn.pragma_query_value(None, "foreign_keys", |row| row.get(0))
+                .unwrap()
+        };
+        let mut failing = Connection::open_in_memory().unwrap();
+        run_migrations(&mut failing, &["CREATE TABLE t (id INTEGER);", "NOT SQL;"]).unwrap_err();
+        assert_eq!(foreign_keys(&failing), 1);
+
+        let mut too_new = Connection::open_in_memory().unwrap();
+        run_migrations(&mut too_new, &["CREATE TABLE t (id INTEGER);"]).unwrap();
+        run_migrations(&mut too_new, &[]).unwrap_err();
+        assert_eq!(foreign_keys(&too_new), 1);
     }
 
     #[test]

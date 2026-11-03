@@ -191,6 +191,7 @@ impl std::error::Error for IndexError {
             Self::KeyStore(err) => Some(err),
             Self::Io(err) => Some(err),
             Self::Sqlite(err) => Some(err),
+            Self::RecoveryKey(err) => Some(err),
             _ => None,
         }
     }
