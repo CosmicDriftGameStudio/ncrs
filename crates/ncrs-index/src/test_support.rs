@@ -52,3 +52,8 @@ pub fn rule_spec() -> RuleSpec {
         enabled: true,
     }
 }
+
+/// Test paths are written with `/`; the subtree range uses the platform separator.
+pub fn native(path: &str) -> std::path::PathBuf {
+    std::path::PathBuf::from(path.replace('/', std::path::MAIN_SEPARATOR_STR))
+}

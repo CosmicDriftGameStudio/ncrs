@@ -143,7 +143,7 @@ mod tests {
 
     use super::*;
     use crate::model::ReviewReason;
-    use crate::test_support::{new_document, plain_index, rule_spec};
+    use crate::test_support::{native, new_document, plain_index, rule_spec};
     use crate::NewDocument;
 
     fn archive_document(seed: u8) -> NewDocument {
@@ -184,7 +184,7 @@ mod tests {
         let mut ids = Vec::new();
         for seed in 1..=3 {
             let document = NewDocument {
-                path: PathBuf::from(format!("/arch/doc-{seed}.pdf")),
+                path: native(&format!("/arch/doc-{seed}.pdf")),
                 ..new_document(seed)
             };
             ids.push(index.insert_document(&document).unwrap());
@@ -193,10 +193,10 @@ mod tests {
         index.set_document_text(ids[1], "Brief").unwrap();
         index.set_document_text(ids[2], "  ").unwrap();
         index.set_ai_asked(ids[0]).unwrap();
-        let folder = std::path::Path::new("/arch");
-        assert_eq!(index.ai_coverage_beneath(folder).unwrap(), (2, 1));
+        let folder = native("/arch");
+        assert_eq!(index.ai_coverage_beneath(&folder).unwrap(), (2, 1));
         index.set_ai_asked(ids[1]).unwrap();
-        assert_eq!(index.ai_coverage_beneath(folder).unwrap(), (2, 2));
+        assert_eq!(index.ai_coverage_beneath(&folder).unwrap(), (2, 2));
     }
 
     #[test]

@@ -291,12 +291,7 @@ mod tests {
 
     use super::*;
     use crate::model::{DocumentFields, DocumentSource, DocumentStatus, FieldOrigin};
-    use crate::test_support::{encrypted_index, new_document};
-
-    /// Test paths are written with `/`; the subtree range uses the platform separator.
-    fn native(path: &str) -> PathBuf {
-        PathBuf::from(path.replace('/', std::path::MAIN_SEPARATOR_STR))
-    }
+    use crate::test_support::{encrypted_index, native, new_document};
 
     fn stamp(size: u64, seconds: u64) -> FileStamp {
         FileStamp {
