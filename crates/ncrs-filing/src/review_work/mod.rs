@@ -309,6 +309,13 @@ fn load_matching(
 ) -> Result<Vec<ReviewItem>, IndexError> {
     let rules = index.rules()?;
     let sender_aliases = index.confirmed_sender_aliases()?;
+    let context = ReviewContext {
+        rules: &rules,
+        sender_aliases: &sender_aliases,
+        location_roots,
+        kind_language,
+        neighbours,
+    };
     let mut items = Vec::new();
     for entry in index.open_reviews()? {
         let Some(document) = index.document(entry.document_id)? else {
@@ -320,30 +327,33 @@ fn load_matching(
         {
             continue;
         }
-        items.push(review_item(
-            index,
-            &rules,
-            &sender_aliases,
-            &entry,
-            document,
-            location_roots,
-            kind_language,
-            neighbours,
-        )?);
+        items.push(review_item(index, &context, &entry, document)?);
     }
     Ok(items)
 }
 
+/// What is the same for every item of one run.
+struct ReviewContext<'a> {
+    rules: &'a [ncrs_index::Rule],
+    sender_aliases: &'a SenderAliases,
+    location_roots: &'a [PathBuf],
+    kind_language: KindLanguage,
+    neighbours: Option<&'a NeighbourIndex>,
+}
+
 fn review_item(
     index: &Index,
-    rules: &[ncrs_index::Rule],
-    sender_aliases: &SenderAliases,
+    context: &ReviewContext<'_>,
     entry: &ncrs_index::ReviewEntry,
     document: ncrs_index::Document,
-    location_roots: &[PathBuf],
-    kind_language: KindLanguage,
-    neighbours: Option<&NeighbourIndex>,
 ) -> Result<ReviewItem, IndexError> {
+    let ReviewContext {
+        rules,
+        sender_aliases,
+        location_roots,
+        kind_language,
+        neighbours,
+    } = *context;
     let stored_text = index.document_text(document.id)?;
     let text = stored_text.clone().unwrap_or_default();
     let origins = index.field_origins(document.id)?;
@@ -520,16 +530,14 @@ fn suggestion_for(
     };
     let rules = index.rules()?;
     let sender_aliases = index.confirmed_sender_aliases()?;
-    let item = review_item(
-        index,
-        &rules,
-        &sender_aliases,
-        &entry,
-        document,
+    let context = ReviewContext {
+        rules: &rules,
+        sender_aliases: &sender_aliases,
         location_roots,
         kind_language,
-        None,
-    )?;
+        neighbours: None,
+    };
+    let item = review_item(index, &context, &entry, document)?;
     let kinds = Kinds::new(Arc::clone(index.kinds()), kind_language);
     let target = item.suggested_target(&kinds);
     Ok(Some((item.text_state, target)))

@@ -41,20 +41,29 @@ pub fn parse(line: &str) -> Submission<'_> {
         return Submission::Shell(trimmed);
     }
     let rest = arguments.trim();
-    let path = strip_matching_quotes(rest);
-    if path.len() == rest.len() && (rest.contains(SHELL_OPERATORS) || rest.contains("$(")) {
+    let unquoted = strip_matching_quotes(rest);
+    if unquoted.len() == rest.len() && (rest.contains(SHELL_OPERATORS) || rest.contains("$(")) {
         return Submission::Shell(trimmed);
     }
-    #[cfg(windows)]
-    let path = path
-        .strip_prefix("/d")
-        .filter(|after| after.starts_with(char::is_whitespace))
-        .map_or(path, str::trim_start);
+    let path = without_drive_switch(unquoted);
     Submission::ChangeDirectory(if path.is_empty() { "~" } else { path })
 }
 
 /// Characters that make an unquoted `cd` argument a shell line instead of a path.
 const SHELL_OPERATORS: [char; 6] = ['&', '|', ';', '>', '<', '`'];
+
+/// On Windows `cd /d <path>` also switches the drive; the switch is no part of the path.
+#[cfg(windows)]
+fn without_drive_switch(path: &str) -> &str {
+    path.strip_prefix("/d")
+        .filter(|after| after.starts_with(char::is_whitespace))
+        .map_or(path, str::trim_start)
+}
+
+#[cfg(not(windows))]
+fn without_drive_switch(path: &str) -> &str {
+    path
+}
 
 fn strip_matching_quotes(text: &str) -> &str {
     ['"', '\'']
