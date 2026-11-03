@@ -350,12 +350,97 @@ mod tests {
         assert_eq!(
             talk.last_texts(),
             vec![say(
-                Msg::HermesChatUnknownPathConfirm,
-                &[("path", &elsewhere.to_string_lossy())]
+                Msg::HermesChatConfirmTypedFolder,
+                &[("path", &canonical(&elsewhere))]
             )]
         );
         assert!(talk.state.pending_work().is_none());
         talk.press(&ChipReply::Cancel);
         assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatCancelled, &[])]);
+    }
+
+    fn canonical(path: &std::path::Path) -> String {
+        std::fs::canonicalize(path)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    /// A talk that waits for the source folder, with `b` an existing folder
+    /// and the typed path `a/../b` pointing at it.
+    fn asking_for_the_source() -> (Talk, String) {
+        let mut talk = small_talk();
+        std::fs::create_dir_all(talk.path("a")).unwrap();
+        std::fs::create_dir_all(talk.path("b")).unwrap();
+        talk.send(Message::Open);
+        talk.press(&ChipReply::Folder(talk.path("archive")));
+        talk.press(&ChipReply::KeepYes);
+        let typed = talk.path("a").join("..").join("b");
+        (talk, typed.to_string_lossy().into_owned())
+    }
+
+    #[test]
+    fn a_typed_source_is_resolved_and_asked_before_anything_is_set() {
+        let (mut talk, typed) = asking_for_the_source();
+        talk.type_text(&typed);
+        let real = canonical(&talk.path("b"));
+        assert_eq!(
+            talk.last_texts(),
+            vec![say(Msg::HermesChatConfirmTypedFolder, &[("path", &real)])]
+        );
+        assert!(talk.actions.is_empty());
+        assert!(talk.state.pending_work().is_none());
+
+        talk.press(&ChipReply::ReadAnyway);
+        assert_eq!(
+            talk.actions,
+            vec![Action::SetFolderRole {
+                folder: std::path::PathBuf::from(&real),
+                role: ncrs_ui_kit::hermes_state::FolderRole::Inbox,
+            }]
+        );
+    }
+
+    #[test]
+    fn cancelling_the_typed_source_sets_nothing() {
+        let (mut talk, typed) = asking_for_the_source();
+        talk.type_text(&typed);
+        talk.press(&ChipReply::Cancel);
+        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatCancelled, &[])]);
+        assert!(talk.actions.is_empty());
+        assert!(talk.state.pending_work().is_none());
+        assert!(talk.state.pending_resolve().is_none());
+    }
+
+    #[test]
+    fn a_typed_missing_folder_is_not_a_folder_and_sets_nothing() {
+        let (mut talk, _) = asking_for_the_source();
+        let missing = talk.path("nowhere").to_string_lossy().into_owned();
+        talk.type_text(&missing);
+        assert_eq!(
+            talk.last_texts(),
+            vec![say(Msg::HermesChatNotAFolder, &[("path", &missing)])]
+        );
+        assert!(talk.actions.is_empty());
+        assert!(talk.state.pending_work().is_none());
+    }
+
+    #[test]
+    fn a_typed_other_target_is_asked_before_the_proposal_changes() {
+        let mut talk = small_talk();
+        std::fs::create_dir_all(talk.path("b")).unwrap();
+        talk.type_text_understood("Räum Inbox auf", TIDY_INBOX);
+        talk.press(&ChipReply::OtherTarget);
+        let typed = talk.path("b").to_string_lossy().into_owned();
+        talk.type_text(&typed);
+        let real = canonical(&talk.path("b"));
+        assert_eq!(
+            talk.last_texts(),
+            vec![say(Msg::HermesChatConfirmTypedFolder, &[("path", &real)])]
+        );
+        let target = |talk: &Talk| talk.state.session.proposal.as_ref().unwrap().target.clone();
+        assert_eq!(target(&talk), None, "not set before the yes");
+        talk.press(&ChipReply::ReadAnyway);
+        assert_eq!(target(&talk), Some(std::path::PathBuf::from(real)));
     }
 }

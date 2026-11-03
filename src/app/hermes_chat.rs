@@ -72,6 +72,7 @@ impl App {
                 .map(|location| location.path.clone())
                 .collect(),
             now: chrono::Local::now(),
+            resolve_folder: self.resolve_folder,
             model: self.chat_model.clone(),
         }
     }

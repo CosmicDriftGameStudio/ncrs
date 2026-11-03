@@ -6,7 +6,7 @@ use ncrs_ai::{ChatIntent, Compute, LocalModelStatus, ScriptedChatModel};
 use ncrs_filing::chat_work::{ChatAccess, ChatResult, RunSummary};
 use ncrs_hermes_chat::{
     AreaRow, AreasCard, Availability, Chip, ChipReply, Ctx, Entry, FileCard, Part, RowOutcome,
-    TrialCard, TrialRow,
+    Step, TrialCard, TrialRow,
 };
 use ncrs_index::{BatchKind, Index, Transfer};
 use ncrs_intake::TextChain;
@@ -49,6 +49,7 @@ fn ready(lang: Language) -> Ctx {
         targets: vec![PathBuf::from("/home/test/Documents/Archive")],
         sources: vec![PathBuf::from("/home/test/Downloads")],
         model: None,
+        resolve_folder: |path| Ok(path.to_path_buf()),
         now: chrono::Local
             .with_ymd_and_hms(2026, 11, 2, 12, 0, 0)
             .unwrap(),
@@ -334,6 +335,21 @@ fn tidy_confirmation_scene() -> App {
     app
 }
 
+fn typed_folder_confirmation_scene() -> App {
+    let (mut app, ctx) = opened(Language::German);
+    type_and_submit(&mut app, &ctx, "~/Documents/../Documents/Rechnungen");
+    send(
+        &mut app,
+        &ctx,
+        HermesChatMessage::TypedFolderResolved {
+            typed: PathBuf::from("/home/test/Documents/../Documents/Rechnungen"),
+            step: Step::ReadFolder,
+            result: Ok(PathBuf::from("/home/test/Documents/Rechnungen")),
+        },
+    );
+    app
+}
+
 fn thinking_scene() -> App {
     let (mut app, ctx) = with_model(LocalModelStatus::Loaded {
         name: "Qwen3-4B-Q4_K_M.gguf".to_owned(),
@@ -439,6 +455,14 @@ fn the_setup_hint_matches_its_snapshot() {
 #[test]
 fn the_tidy_confirmation_matches_its_snapshot() {
     matches_snapshot(&tidy_confirmation_scene(), "hermes_chat_confirm_tidy_de");
+}
+
+#[test]
+fn the_typed_folder_confirmation_matches_its_snapshot() {
+    matches_snapshot(
+        &typed_folder_confirmation_scene(),
+        "hermes_chat_confirm_typed_folder_de",
+    );
 }
 
 #[test]

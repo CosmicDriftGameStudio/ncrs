@@ -8149,6 +8149,12 @@
       "de": "{path} ist kein Ordner, den ich kenne. Trotzdem lesen?"
     },
     {
+      "key": "hermes_chat.confirm_typed_folder",
+      "context": "Hermes chat (F2): Hermes asks before it uses a folder path the user typed. {path} is the full path as the system resolved it: `..`, symbolic links and `~` are already resolved.",
+      "en": "Use the folder {path}?",
+      "de": "Den Ordner {path} nehmen?"
+    },
+    {
       "key": "hermes_chat.read_anyway",
       "context": "Hermes chat (F2): Button answering the question about an unknown folder: read it anyway.",
       "en": "Yes, read it",

@@ -23,7 +23,7 @@ pub use ctx::{Availability, Ctx};
 pub use keys::{chat_key, ChatKey};
 pub use message::Message;
 pub use state::{
-    AreaRow, AreasCard, Chip, ChipReply, CountRow, Entry, FileCard, Part, RowOutcome, State,
+    AreaRow, AreasCard, Chip, ChipReply, CountRow, Entry, FileCard, Part, RowOutcome, State, Step,
     TrialCard, TrialRow,
 };
 pub use update::update;

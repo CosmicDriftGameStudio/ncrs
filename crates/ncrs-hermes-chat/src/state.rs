@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, HashMap};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use ncrs_ai::{ChatTurn, Schedule};
@@ -330,6 +330,11 @@ pub struct State {
     pub thinking: Option<Thinking>,
     /// The turn set during this `update` that no task runs yet.
     pub fresh_turn: bool,
+    /// A typed folder being checked off the UI thread, and the step it was
+    /// typed in.
+    pub resolving: Option<(PathBuf, Step)>,
+    /// The check set during this `update` that no task runs yet.
+    pub fresh_resolve: bool,
     pub step: Step,
     pub session: Session,
 }
@@ -344,6 +349,8 @@ impl Default for State {
             fresh: false,
             thinking: None,
             fresh_turn: false,
+            resolving: None,
+            fresh_resolve: false,
             step: Step::Idle,
             session: Session::default(),
         }
@@ -364,6 +371,13 @@ impl State {
     /// blocking thread.
     pub fn pending_turn(&self) -> Option<&ChatTurn> {
         self.thinking.as_ref().map(|thinking| &thinking.turn)
+    }
+
+    /// The typed folder the app waits to have checked, and its step.
+    pub fn pending_resolve(&self) -> Option<(&Path, Step)> {
+        self.resolving
+            .as_ref()
+            .map(|(typed, step)| (typed.as_path(), *step))
     }
 
     /// The plan of the trial that is on screen.

@@ -29,6 +29,16 @@ use ncrs_ui_kit::format;
 use sha2::{Digest as _, Sha256};
 use tempfile::TempDir;
 
+/// The filing setup's check, which the chat crate cannot depend on.
+pub fn resolve_folder(folder: &Path) -> Result<PathBuf, String> {
+    let canonical = fs::canonicalize(folder).map_err(|err| err.to_string())?;
+    if canonical.is_dir() {
+        Ok(canonical)
+    } else {
+        Err("not a directory".to_owned())
+    }
+}
+
 pub const LANG: Language = Language::German;
 
 /// The test archive keeps its text in files named like PDFs.
@@ -98,6 +108,7 @@ impl Talk {
             // Long after any run of the test, so a run is never "today".
             now: Local.with_ymd_and_hms(2031, 1, 1, 12, 0, 0).unwrap(),
             model: Some(Arc::clone(&model) as Arc<dyn ChatModel>),
+            resolve_folder,
         };
         Self {
             dir,
@@ -133,6 +144,14 @@ impl Talk {
         self.actions.extend(action);
         if let Some(work) = self.state.pending_work().cloned() {
             return Some(Message::Done(Box::new(self.access.run(work))));
+        }
+        if let Some((typed, step)) = self.state.pending_resolve() {
+            let result = (self.ctx.resolve_folder)(typed);
+            return Some(Message::TypedFolderResolved {
+                typed: typed.to_path_buf(),
+                step,
+                result,
+            });
         }
         let turn = self.state.pending_turn().cloned()?;
         Some(Message::Understood(

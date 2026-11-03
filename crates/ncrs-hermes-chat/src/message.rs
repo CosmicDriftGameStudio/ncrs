@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use ncrs_ai::ChatIntent;
 use ncrs_filing::chat_work::ChatResult;
 
-use crate::state::ChipReply;
+use crate::state::{ChipReply, Step};
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -20,6 +20,12 @@ pub enum Message {
     FolderPicked(Option<PathBuf>),
     /// What the language model made of a typed sentence, or why it failed.
     Understood(Result<ChatIntent, String>),
+    /// The check of a typed folder, for the step it was typed in.
+    TypedFolderResolved {
+        typed: PathBuf,
+        step: Step,
+        result: Result<PathBuf, String>,
+    },
     /// The model was downloaded; sent by the app when the download is done.
     ModelReady,
 }
@@ -47,6 +53,20 @@ impl PartialEq for Message {
             ) => left_label == right_label && left_reply == right_reply,
             (Self::FolderPicked(left), Self::FolderPicked(right)) => left == right,
             (Self::Understood(left), Self::Understood(right)) => left == right,
+            (
+                Self::TypedFolderResolved {
+                    typed: left_typed,
+                    step: left_step,
+                    result: left_result,
+                },
+                Self::TypedFolderResolved {
+                    typed: right_typed,
+                    step: right_step,
+                    result: right_result,
+                },
+            ) => {
+                left_typed == right_typed && left_step == right_step && left_result == right_result
+            }
             _ => false,
         }
     }

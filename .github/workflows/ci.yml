@@ -406,6 +406,18 @@ jobs:
         shell: bash
         run: echo "CMAKE_GENERATOR=Ninja" >> "$GITHUB_ENV"
 
+      # ggml loads its backend modules with plain LoadLibraryW, so their own
+      # imports (vulkan-1.dll) would also be looked up in the current folder
+      # and on PATH. 0x800 is LOAD_LIBRARY_SEARCH_SYSTEM32: a module's imports
+      # come from System32 or from DLLs already loaded (ggml-base.dll comes
+      # with the app). llama-cpp-sys-2 hands CMAKE_* variables to CMake, and
+      # the backends are its only MODULE libraries. The start test below
+      # checks the flag in the packaged DLLs.
+      - name: Backend imports from System32 only (Windows)
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        shell: bash
+        run: echo "CMAKE_MODULE_LINKER_FLAGS=/DEPENDENTLOADFLAG:0x800" >> "$GITHUB_ENV"
+
       # The target triple in the path pushes ggml's vulkan-shaders-gen
       # try-compile below target/ past MAX_PATH (260), where cl.exe fails.
       - name: Short target folder (Windows)
@@ -523,6 +535,21 @@ jobs:
             Write-Host "== $file"
             dumpbin /nologo /dependents $file | Select-String '\.dll' | Out-String | Write-Host
           }
+          # Every shipped file that imports vulkan-1.dll must take its imports
+          # from System32 only (DependentLoadFlags 0x800, set at build time).
+          $vulkanUsers = 0
+          foreach ($file in $shipped) {
+            if (-not (dumpbin /nologo /dependents $file | Select-String -SimpleMatch 'vulkan-1.dll' -Quiet)) { continue }
+            $vulkanUsers++
+            $loadConfig = dumpbin /nologo /loadconfig $file
+            $flag = $loadConfig | Select-String 'Dependent ?Load ?Flag' | Select-Object -First 1
+            Write-Host "load flags of ${file}: $flag"
+            if (-not $flag -or $flag.Line -notmatch '^\s*(0x)?0*800\s') {
+              $loadConfig | Out-String | Write-Host
+              throw "$file may load its imports from outside System32"
+            }
+          }
+          if ($vulkanUsers -eq 0) { throw 'no shipped file imports vulkan-1.dll, so the check above checked nothing' }
           # Only Windows' own folders on PATH, as on a user's machine: no Vulkan
           # SDK, OpenSSL or build tools. A Vulkan loader only from a driver.
           $env:Path = "$env:SystemRoot\System32;$env:SystemRoot"

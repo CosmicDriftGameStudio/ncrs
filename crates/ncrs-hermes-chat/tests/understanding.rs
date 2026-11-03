@@ -254,7 +254,9 @@ mod tests {
             vec![say(Msg::HermesChatAskOtherTarget, &[])]
         );
         let elsewhere = talk.path("elsewhere");
+        std::fs::create_dir_all(&elsewhere).unwrap();
         talk.type_text(&elsewhere.to_string_lossy());
+        talk.press(&ChipReply::ReadAnyway);
         assert_eq!(
             talk.last_texts(),
             vec![say(

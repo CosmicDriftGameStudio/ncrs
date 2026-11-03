@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use std::sync::Arc;
 
@@ -26,6 +26,9 @@ pub struct Ctx {
     /// Folders where new files arrive.
     pub sources: Vec<PathBuf>,
     pub now: DateTime<Local>,
+    /// The filing setup's check of a folder: its canonical path, or the
+    /// reason it is not a folder. Blocking.
+    pub resolve_folder: fn(&Path) -> Result<PathBuf, String>,
     /// `None` in a build without the local language model.
     pub model: Option<Arc<dyn ChatModel>>,
 }

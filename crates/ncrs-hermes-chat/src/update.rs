@@ -80,6 +80,11 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
             user(state, path.to_string_lossy().into_owned());
             folder_answer(state, ctx, path, false)
         }
+        Message::TypedFolderResolved {
+            typed,
+            step,
+            result,
+        } => typed_folder_resolved(state, ctx, &typed, step, result),
         Message::Understood(result) => understand::understood(state, ctx, result),
         Message::ModelReady => understand::model_ready(state, ctx),
     }
@@ -87,7 +92,7 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
 
 /// Work or the model is running; typing and buttons wait for it.
 fn is_busy(state: &State) -> bool {
-    state.pending.is_some() || state.thinking.is_some()
+    state.pending.is_some() || state.thinking.is_some() || state.resolving.is_some()
 }
 
 pub fn text_with(ctx: &Ctx, msg: Msg, values: &[(&str, &str)]) -> String {
@@ -95,7 +100,11 @@ pub fn text_with(ctx: &Ctx, msg: Msg, values: &[(&str, &str)]) -> String {
 }
 
 fn launch(state: &mut State, ctx: &Ctx) -> Task<Message> {
-    Task::batch([launch_work(state, ctx), understand::launch(state, ctx)])
+    Task::batch([
+        launch_work(state, ctx),
+        understand::launch(state, ctx),
+        launch_resolve(state, ctx),
+    ])
 }
 
 fn launch_work(state: &mut State, ctx: &Ctx) -> Task<Message> {
@@ -114,6 +123,65 @@ fn launch_work(state: &mut State, ctx: &Ctx) -> Task<Message> {
             Err(error) => Message::Failed(error.to_string()),
         },
     )
+}
+
+fn launch_resolve(state: &mut State, ctx: &Ctx) -> Task<Message> {
+    if !std::mem::take(&mut state.fresh_resolve) {
+        return Task::none();
+    }
+    let Some((typed, step)) = state.resolving.clone() else {
+        return Task::none();
+    };
+    let resolve = ctx.resolve_folder;
+    let asked = typed.clone();
+    Task::perform(
+        async move { tokio::task::spawn_blocking(move || resolve(&asked)).await },
+        move |joined| Message::TypedFolderResolved {
+            typed: typed.clone(),
+            step,
+            result: joined.unwrap_or_else(|error| Err(error.to_string())),
+        },
+    )
+}
+
+/// Whatever the user may set in the filing setup, they may type here: the
+/// path is checked the same way, and used only after a yes.
+fn typed_folder_resolved(
+    state: &mut State,
+    ctx: &Ctx,
+    typed: &Path,
+    step: Step,
+    result: Result<PathBuf, String>,
+) -> Option<Action> {
+    let asked = state.resolving.take()?;
+    if asked.1 != step || state.step != step {
+        return None;
+    }
+    match result {
+        Err(_) => say(
+            state,
+            text_with(
+                ctx,
+                Msg::HermesChatNotAFolder,
+                &[("path", &typed.to_string_lossy())],
+            ),
+            Vec::new(),
+        ),
+        Ok(real) => {
+            let shown = real.display().to_string();
+            state.session.confirm = Some((real, step));
+            state.step = Step::ConfirmUnknown;
+            say(
+                state,
+                text_with(ctx, Msg::HermesChatConfirmTypedFolder, &[("path", &shown)]),
+                vec![
+                    chip(ctx, Msg::HermesChatConfirmYes, ChipReply::ReadAnyway, true),
+                    cancel_chip(ctx),
+                ],
+            );
+        }
+    }
+    None
 }
 
 fn finish_work(state: &mut State) {
@@ -417,7 +485,9 @@ fn handle_text(state: &mut State, ctx: &Ctx, typed: &str, asked: Asked) -> Optio
         return stay_groups::folder_named(state, ctx, typed);
     }
     if expects_folder(state.step) && looks_like_typed_path(typed) {
-        return folder_answer(state, ctx, expand_home(ctx, Path::new(typed)), true);
+        state.resolving = Some((expand_home(ctx, Path::new(typed)), state.step));
+        state.fresh_resolve = true;
+        return None;
     }
     understand::ask(state, ctx, typed, asked)
 }
