@@ -460,6 +460,9 @@ impl Pool {
         server: &ServerId,
         password: &Secret,
     ) -> Result<(), ConnectFailure> {
+        if self.is_connected(server) {
+            return Ok(());
+        }
         let files = self.known.clone();
         let known = tokio::task::spawn_blocking(move || KnownHosts::load(&files))
             .await
@@ -482,7 +485,17 @@ impl Pool {
         match opened {
             Err(_) => Err(ConnectFailure::Timeout),
             Ok(Ok(session)) => {
-                self.sessions().insert(server.clone(), Arc::new(session));
+                let session = Arc::new(session);
+                // A concurrent connect may have got in first; its connection
+                // keeps serving requests, so the newcomer is the one to leave.
+                let loser = match self.session(server) {
+                    Some(_) => Some(session),
+                    None => {
+                        self.sessions().insert(server.clone(), session);
+                        None
+                    }
+                };
+                self.say_goodbye(loser);
                 Ok(())
             }
             Ok(Err(step)) => Err(failure_of(step, &seen)),

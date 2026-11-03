@@ -291,9 +291,16 @@ fn open_existing(archive: &Path) -> io::Result<(ArchiveFormat, std::sync::Arc<Ar
 }
 
 fn new_temp(parent: &Path) -> io::Result<NamedTempFile> {
-    tempfile::Builder::new()
-        .prefix(".ncrs-partial-")
-        .tempfile_in(parent)
+    let mut builder = tempfile::Builder::new();
+    builder.prefix(".ncrs-partial-");
+    // tempfile defaults to 0600; asking for 0666 gets the umask applied, so a
+    // new archive is readable like any other new file.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        builder.permissions(std::fs::Permissions::from_mode(0o666));
+    }
+    builder.tempfile_in(parent)
 }
 
 /// Writes a new archive next to `archive` with everything `selector` keeps
@@ -898,7 +905,8 @@ fn copy_tar(
                 builder.append_link(&mut header, &path, &target)?;
             }
             _ => {
-                let size = header.size()?;
+                let size = entry.size();
+                header.set_size(size);
                 let mut watched = Watched::new((&mut entry).take(size), &mut *job.progress);
                 builder.append_data(&mut header, &path, &mut watched)?;
             }

@@ -265,10 +265,11 @@ impl<B: TrashBackend> Trash for JournaledTrash<B> {
         // `symlink_metadata`: the item may be a link, and a link must be moved
         // as itself, never followed.
         if let Err(err) = std::fs::symlink_metadata(trashed) {
-            if err.kind() == io::ErrorKind::NotFound {
-                entries.remove(position);
-                self.save_quietly(entries);
+            if err.kind() != io::ErrorKind::NotFound {
+                return Err(failed(format!("{}: {err}", trashed.display())));
             }
+            entries.remove(position);
+            self.save_quietly(entries);
             return Err(failed("the item is no longer in the trash"));
         }
         self.check_in_trash_folder(original, trashed)?;

@@ -253,7 +253,8 @@ pub fn parse_url(text: &str) -> Result<RemoteUrl, UrlProblem> {
 }
 
 /// Not empty, no white space and no control characters.
-fn plain_word(text: &str) -> bool {
+/// Whether `text` is a non-empty word without whitespace or control characters.
+pub fn plain_word(text: &str) -> bool {
     !text.is_empty() && !text.chars().any(|c| c.is_whitespace() || c.is_control())
 }
 
