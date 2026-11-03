@@ -174,11 +174,22 @@ fn a_theme_and_its_license_are_read() {
     assert_eq!(files.theme.bytes, THEME_JSON.as_bytes());
     assert_eq!(files.include, None);
     let license = files.license.unwrap();
-    assert_eq!(
-        license.path, "LICENSE.md",
-        "the first name in the list that exists"
-    );
+    assert_eq!(license.path, "LICENSE.md", "the first by name");
     assert_eq!(license.bytes, b"MIT text");
+}
+
+#[test]
+fn a_license_is_found_by_its_other_common_names() {
+    for name in ["LICENCE.md", "License.txt", "COPYING", "licence.markdown"] {
+        let vsix = package(&[("dark.json", THEME_JSON.as_bytes()), (name, b"text")]);
+        let files = read_theme_files(&vsix, &theme_at("dark.json")).unwrap();
+        assert_eq!(files.license.unwrap().path, name);
+    }
+    for name in ["LICENSE.exe", "licenses", "docs/LICENSE", "COPYING.d"] {
+        let vsix = package(&[("dark.json", THEME_JSON.as_bytes()), (name, b"text")]);
+        let files = read_theme_files(&vsix, &theme_at("dark.json")).unwrap();
+        assert_eq!(files.license, None, "{name}");
+    }
 }
 
 #[test]
@@ -409,6 +420,24 @@ fn a_package_that_fails_to_read_writes_nothing() {
     );
     assert!(!base.path().join("themes").exists());
     assert!(!config_path.exists());
+}
+
+#[test]
+fn a_config_that_does_not_load_leaves_no_theme_files_behind() {
+    let base = tempfile::tempdir().unwrap();
+    let config_path = base.path().join("config.toml");
+    std::fs::write(&config_path, "theme = 3\n").unwrap();
+    let vsix = package(&[("themes/dark.json", THEME_JSON.as_bytes())]);
+
+    let result = install_theme(
+        &vsix,
+        &theme_at("themes/dark.json"),
+        &example_id(),
+        &config_path,
+    );
+
+    assert!(matches!(result, Err(FetchError::Config(_))), "{result:?}");
+    assert!(!base.path().join("themes").exists());
 }
 
 #[test]

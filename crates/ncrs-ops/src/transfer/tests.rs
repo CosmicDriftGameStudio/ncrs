@@ -63,11 +63,16 @@ fn the_scan_counts_what_it_cannot_read() {
     let found = scan(&[root.path().join("tree")], &never());
     std::fs::set_permissions(&sealed, std::fs::Permissions::from_mode(0o755)).unwrap();
 
-    if !can_still_read {
-        assert_eq!(found.unreadable, 1);
-        assert_eq!(found.folders, 2, "the sealed folder itself still counts");
-        assert_eq!(found.files, 0);
+    if can_still_read {
+        eprintln!(
+            "permissions do not stop this user; counting unreadable entries is covered by \
+             a_vanished_source_is_unreadable_not_a_panic"
+        );
+        return;
     }
+    assert_eq!(found.unreadable, 1);
+    assert_eq!(found.folders, 2, "the sealed folder itself still counts");
+    assert_eq!(found.files, 0);
 }
 
 #[test]
@@ -140,6 +145,19 @@ fn a_missing_target_is_refused() {
     );
 
     assert_eq!(result, Err(Refusal::Missing));
+}
+
+#[test]
+fn a_source_folder_that_is_gone_is_not_blamed_on_the_target() {
+    let root = tempfile::tempdir().unwrap();
+    write(&root.path().join("from/a.txt"), 1);
+    std::fs::create_dir_all(root.path().join("to")).unwrap();
+    let source = root.path().join("from/a.txt");
+    std::fs::remove_dir_all(root.path().join("from")).unwrap();
+
+    let result = validate(TransferKind::Copy, &[source], &root.path().join("to"));
+
+    assert_eq!(result, Err(Refusal::SourceGone));
 }
 
 #[test]

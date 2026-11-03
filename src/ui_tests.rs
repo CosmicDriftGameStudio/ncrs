@@ -1866,6 +1866,44 @@ mod filing_status_page {
     }
 
     #[test]
+    fn a_step_row_holds_its_figures_in_the_order_of_the_columns() {
+        let mut snapshot = inspection_snapshot();
+        snapshot.steps = vec![
+            StepSnapshot {
+                name: "intake",
+                waiting: 21,
+                done: 35,
+                failed: 47,
+                unchanged: 58,
+            },
+            StepSnapshot {
+                name: "review",
+                waiting: 61,
+                done: 72,
+                failed: 83,
+                unchanged: 94,
+            },
+        ];
+        for (language, label) in [(Language::English, "Intake"), (Language::German, "Annahme")] {
+            let app = with_steps_shown(inspection_of(snapshot.clone(), language));
+            let mut sim = simulator(&app);
+            let name = sim.find(label).unwrap().bounds();
+            let mut previous = name;
+            for figure in ["21", "35", "47", "58"] {
+                let cell = sim.find(figure).unwrap().bounds();
+                assert!(cell.x > previous.x, "{language:?}: {figure} after {previous:?}");
+                assert!(
+                    (cell.y - name.y).abs() < name.height,
+                    "{language:?}: {figure} is in the row of {label}"
+                );
+                previous = cell;
+            }
+            let second_row = sim.find("61").unwrap().bounds();
+            assert!(second_row.y > name.y, "{language:?}: the second step is below");
+        }
+    }
+
+    #[test]
     fn the_page_shows_every_state_and_offers_the_pause_only_while_there_is_one() {
         let cases = [
             (RunnerState::Off, "Off", None),

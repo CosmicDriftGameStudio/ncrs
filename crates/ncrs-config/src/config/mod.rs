@@ -190,8 +190,8 @@ pub use self::write_support::one_config_writer;
 use self::write_support::*;
 use self::writing::*;
 pub use self::writing::{
-    check_filing_rules, write_filing_locations, write_servers, write_vscode_theme,
-    FilingRuleViolation, FilingWriteError,
+    check_filing_rules, check_vscode_theme_writable, write_filing_locations, write_servers,
+    write_vscode_theme, FilingRuleViolation, FilingWriteError,
 };
 
 impl Config {

@@ -19,14 +19,8 @@ use ncrs_config::vscode_theme::VscodeTheme;
 
 const PACKAGE_JSON: &str = "extension/package.json";
 const LICENSE_LIMIT: u64 = 256 * 1024;
-const LICENSE_NAMES: [&str; 6] = [
-    "LICENSE",
-    "LICENSE.txt",
-    "LICENSE.md",
-    "license",
-    "license.txt",
-    "license.md",
-];
+const LICENSE_STEMS: [&str; 3] = ["license", "licence", "copying"];
+const LICENSE_EXTENSIONS: [&str; 4] = ["", ".md", ".txt", ".markdown"];
 
 /// The folder next to the config file that holds the installed themes.
 const THEMES_FOLDER: &str = "themes";
@@ -229,6 +223,22 @@ fn package_file(
     Ok(PackageFile { path, bytes })
 }
 
+/// The name below `extension/` when `entry` is a license file in the folder of
+/// the extension: `license`, `licence` or `copying`, in any case, with no
+/// extension or `.md`, `.txt` or `.markdown`.
+fn license_file_name(entry: &str) -> Option<&str> {
+    let name = entry.strip_prefix("extension/")?;
+    let lower = name.to_ascii_lowercase();
+    LICENSE_STEMS
+        .iter()
+        .any(|stem| {
+            lower
+                .strip_prefix(stem)
+                .is_some_and(|rest| LICENSE_EXTENSIONS.contains(&rest))
+        })
+        .then_some(name)
+}
+
 fn read_theme_files_limited(
     vsix: &[u8],
     theme: &ContributedTheme,
@@ -247,15 +257,16 @@ fn read_theme_files_limited(
         }
         None => None,
     };
+    let license_name = archive
+        .file_names()
+        .filter_map(Result::ok)
+        .filter_map(|entry| license_file_name(&entry).map(str::to_owned))
+        .min();
     let mut license = None;
-    for name in LICENSE_NAMES {
+    if let Some(name) = license_name {
         if let Some(bytes) = read_entry(&mut archive, &format!("extension/{name}"), LICENSE_LIMIT)?
         {
-            license = Some(PackageFile {
-                path: name.to_owned(),
-                bytes,
-            });
-            break;
+            license = Some(PackageFile { path: name, bytes });
         }
     }
     Ok(ThemeFiles {
@@ -285,7 +296,12 @@ fn write_files(folder: &Path, files: &ThemeFiles) -> Result<(), FetchError> {
         if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent).map_err(|err| write_failed(parent, &err))?;
         }
-        std::fs::write(&target, &file.bytes).map_err(|err| write_failed(&target, &err))?;
+        let partial = target.with_file_name(format!(
+            "{}.part",
+            target.file_name().unwrap_or_default().to_string_lossy()
+        ));
+        std::fs::write(&partial, &file.bytes).map_err(|err| write_failed(&partial, &err))?;
+        std::fs::rename(&partial, &target).map_err(|err| write_failed(&target, &err))?;
     }
     Ok(())
 }
@@ -300,6 +316,7 @@ pub fn install_theme(
 ) -> Result<Config, FetchError> {
     let files = read_theme_files(vsix, theme)?;
     let config_folder = config_path.parent().ok_or(FetchError::NoConfigPath)?;
+    config::check_vscode_theme_writable(config_path)?;
     let folder = config_folder.join(THEMES_FOLDER).join(id.to_string());
     write_files(&folder, &files)?;
     let relative = format!("{THEMES_FOLDER}/{id}/{}", files.theme.path);
