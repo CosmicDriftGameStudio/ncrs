@@ -125,11 +125,23 @@ fn only_the_command_line_gives_its_built_in_key_away() {
 }
 
 #[test]
-fn a_key_section_that_used_the_free_f1_is_told_how_to_keep_it() {
-    let (_, reason) = failure("[keys]\ncopy = \"F1\"\n");
-    assert!(
-        reason.contains("already bound to command_palette; give command_palette other keys too"),
-        "{reason}"
+fn a_key_section_that_used_the_free_f1_keeps_it_and_the_palette_keeps_its_chord() {
+    let keymap = rebound("[keys]\ncopy = \"F1\"\n");
+    let f1 = named(Named::F1);
+    assert_eq!(
+        keymap.action_for(&f1, Modifiers::default(), KeyScope::Panel),
+        Some(KeyAction::Copy)
+    );
+    let chord = Binding::with_modifiers(
+        Key::Character("p".into()),
+        Modifiers::COMMAND | Modifiers::SHIFT,
+    );
+    assert!(keymap
+        .bindings_of(KeyAction::CommandPalette)
+        .any(|binding| *binding == chord));
+    assert_eq!(
+        keymap.action_for(&chord.key, chord.modifiers, KeyScope::Panel),
+        Some(KeyAction::CommandPalette)
     );
 }
 

@@ -263,6 +263,7 @@ impl KeyAction {
         matches!(
             self,
             Self::CommandLine
+                | Self::CommandPalette
                 | Self::HermesChat
                 | Self::NewFile
                 | Self::HistoryBack
