@@ -8,6 +8,20 @@ use crate::error::IndexError;
 use crate::index::Index;
 use crate::model::{timestamp_from_column, ContentHash, DocumentId, FileStamp};
 
+/// The smallest string above every string that starts with `prefix`, so a
+/// range scan over a byte-ordered index finds exactly the prefix matches.
+/// `None` when no such bound exists and the scan must stay open-ended.
+fn prefix_upper_bound(prefix: &str) -> Option<String> {
+    let mut bounded = prefix.to_owned();
+    while let Some(last) = bounded.pop() {
+        if let Some(next) = (last as u32 + 1..=char::MAX as u32).find_map(char::from_u32) {
+            bounded.push(next);
+            return Some(bounded);
+        }
+    }
+    None
+}
+
 fn utf8(path: &Path) -> Result<&str, IndexError> {
     path.to_str()
         .ok_or_else(|| IndexError::NonUtf8Path(path.to_path_buf()))
@@ -60,10 +74,10 @@ impl Index {
         let prefix = utf8(directory)?;
         let mut statement = self.connection().prepare(
             "SELECT id, path FROM document
-             WHERE missing_since IS NULL AND substr(path, 1, length(?1)) = ?1",
+             WHERE missing_since IS NULL AND path >= ?1 AND (?2 IS NULL OR path < ?2)",
         )?;
         let mut found = statement
-            .query_map([prefix], |row| {
+            .query_map(params![prefix, prefix_upper_bound(prefix)], |row| {
                 Ok((
                     DocumentId::new(row.get(0)?),
                     PathBuf::from(row.get::<_, String>(1)?),
@@ -203,11 +217,13 @@ impl Index {
     /// `/a/b` does not contain `/a/bc/x`. Sorted.
     pub fn duplicate_paths_under(&self, directory: &Path) -> Result<Vec<PathBuf>, IndexError> {
         let prefix = utf8(directory)?;
-        let mut statement = self
-            .connection()
-            .prepare("SELECT path FROM duplicate_path WHERE substr(path, 1, length(?1)) = ?1")?;
+        let mut statement = self.connection().prepare(
+            "SELECT path FROM duplicate_path WHERE path >= ?1 AND (?2 IS NULL OR path < ?2)",
+        )?;
         let mut paths = statement
-            .query_map([prefix], |row| row.get::<_, String>(0).map(PathBuf::from))?
+            .query_map(params![prefix, prefix_upper_bound(prefix)], |row| {
+                row.get::<_, String>(0).map(PathBuf::from)
+            })?
             .collect::<Result<Vec<_>, _>>()?;
         paths.retain(|path| path.starts_with(directory));
         paths.sort();
@@ -405,6 +421,13 @@ mod tests {
                 (ids[0], PathBuf::from("/a/b/x.pdf"))
             ]
         );
+    }
+
+    #[test]
+    fn the_prefix_bound_sits_above_every_string_with_that_prefix() {
+        assert_eq!(prefix_upper_bound("/a/b").as_deref(), Some("/a/c"));
+        assert_eq!(prefix_upper_bound(""), None);
+        assert!(prefix_upper_bound("/a/b\u{10FFFF}").as_deref() == Some("/a/c"));
     }
 
     #[test]

@@ -91,14 +91,7 @@ impl Index {
         unlock(&conn, key)?;
         drop(conn);
         store.replace(key.as_bytes())?;
-        let read_back = store
-            .load()?
-            .ok_or(IndexError::KeyStoreVerificationFailed)?;
-        if read_back == key.as_bytes() {
-            Ok(())
-        } else {
-            Err(IndexError::KeyStoreVerificationFailed)
-        }
+        verify_stored(store, key)
     }
 
     /// Encrypts a plain index in place. The data is exported into a copy next
@@ -291,6 +284,10 @@ fn key_for_new_database(store: &dyn KeyStore) -> Result<IndexKey, IndexError> {
 
 fn store_and_verify(store: &dyn KeyStore, key: &IndexKey) -> Result<(), IndexError> {
     store.store_new(key.as_bytes())?;
+    verify_stored(store, key)
+}
+
+fn verify_stored(store: &dyn KeyStore, key: &IndexKey) -> Result<(), IndexError> {
     let read_back = store
         .load()?
         .ok_or(IndexError::KeyStoreVerificationFailed)?;
