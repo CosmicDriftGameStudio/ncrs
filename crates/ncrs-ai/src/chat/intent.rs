@@ -69,6 +69,10 @@ pub enum ChatIntent {
     Answer {
         choice: usize,
     },
+    /// A greeting, thanks or "what can you do?": Hermes says what it does.
+    SmallTalk,
+    /// "Keep everything as it is", "never mind": nothing is to be changed.
+    LeaveAsIs,
     Other,
 }
 

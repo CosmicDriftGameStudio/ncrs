@@ -34,6 +34,20 @@ fn without_plural_ending(word: &str) -> &str {
 
 /// Whether two spellings name the same thing, ignoring case, umlauts and one
 /// German or English plural ending on either side.
+/// `same_word`, or one of the two inside the other ("Bankstatements" and
+/// "Bank"), for words long enough not to match by accident.
+pub fn word_within(typed: &str, name: &str) -> bool {
+    const SHORTEST: usize = 3;
+    if same_word(typed, name) {
+        return true;
+    }
+    let typed_norm = normalize_word(typed);
+    let name_norm = normalize_word(name);
+    typed_norm.chars().count() >= SHORTEST
+        && name_norm.chars().count() >= SHORTEST
+        && (typed_norm.contains(&name_norm) || name_norm.contains(&typed_norm))
+}
+
 pub fn same_word(typed: &str, name: &str) -> bool {
     let typed_norm = normalize_word(typed);
     let name_norm = normalize_word(name);

@@ -8263,22 +8263,10 @@
       "de": "{folder} ist mir zu groß: mehr als {limit} Dateien. Nimm einen Unterordner."
     },
     {
-      "key": "hermes_chat.area_by",
-      "context": "Hermes chat (F2): Describes how an area is ordered, in the list of areas. {levels} is a list of folder levels joined with the level joiner, for example 'by year, then sender'.",
-      "en": "by {levels}",
-      "de": "nach {levels}"
-    },
-    {
       "key": "hermes_chat.area_flat",
       "context": "Hermes chat (F2): Describes an area whose files lie directly in it, with no subfolders, in the list of areas.",
       "en": "no subfolders",
       "de": "ohne Unterordner"
-    },
-    {
-      "key": "hermes_chat.level_joiner",
-      "context": "Hermes chat (F2): Joins two folder levels in the description of an area, for example 'by year, then sender'. Keep the spaces as they are: a comma before and a space after.",
-      "en": ", then ",
-      "de": ", dann "
     },
     {
       "key": "hermes_chat.label_year",
@@ -8498,9 +8486,9 @@
     },
     {
       "key": "hermes_chat.change_not_found",
-      "context": "Hermes chat (F2): Hermes could not find a folder for the change of order. {word} is the kind of document as the user typed it, plural, for example 'bank statements'.",
-      "en": "I can't find a folder where “{word}” are sorted by year.",
-      "de": "Ich finde keinen Ordner, in dem „{word}“ nach Jahr liegen."
+      "context": "Hermes chat (F2): Hermes could not find a folder for the change of order the user asked for. {word} is the kind of document as the user typed it, plural, for example 'bank statements'.",
+      "en": "I can't find a folder with “{word}” where I could change that.",
+      "de": "Ich finde keinen Ordner mit „{word}“, in dem ich das ändern könnte."
     },
     {
       "key": "hermes_chat.change_needs_reading",
@@ -8677,12 +8665,6 @@
       "de": "Gern! In {folder} liegen **{count} Dateien**. Wohin damit?"
     },
     {
-      "key": "hermes_chat.source_summary_one_target",
-      "context": "Hermes chat (F2): Hermes' report after reading the folder to tidy up, when there is only one folder to file into, so Hermes does not ask. **Double asterisks** mark bold text and must stay around the same words. {folder} is the folder name, {count} the number of files, {target} the folder they are filed into.",
-      "en": "Sure! **{count} files** are in {folder}. I'll file them in {target}.",
-      "de": "Gern! In {folder} liegen **{count} Dateien**. Ich lege sie in {target} ab."
-    },
-    {
       "key": "hermes_chat.no_target",
       "context": "Hermes chat (F2): Hermes does not know yet where the user files documents. Folder buttons follow.",
       "en": "I don't know a folder for your documents yet. Where are they now?",
@@ -8705,12 +8687,6 @@
       "context": "Hermes chat (F2): Answer button: tidy up on every new file from now on.",
       "en": "Always",
       "de": "Immer"
-    },
-    {
-      "key": "hermes_chat.always_not_yet",
-      "context": "Hermes chat (F2): Hermes says the 'always' choice is not available yet and tidies up once instead.",
-      "en": "I can't do always yet; it comes in one of the next versions. For now I'll tidy up once.",
-      "de": "Immer kann ich noch nicht, das kommt in einer der nächsten Versionen. Für jetzt räume ich einmal auf."
     },
     {
       "key": "hermes_chat.ask_mode",
@@ -9007,6 +8983,30 @@
       "de": "Modell laden"
     },
     {
+      "key": "hermes_chat.ai_off",
+      "context": "Hermes chat (F2): Hermes says the AI setting is off, so it cannot understand typed sentences, and offers to switch it on. A button to switch it on follows. 'AI' is the same term as the 'Use AI' checkbox in the Hermes overview.",
+      "en": "My AI is switched off, so I can't understand sentences. Shall I switch it on?",
+      "de": "Meine KI ist ausgeschaltet, so verstehe ich keine Sätze. Soll ich sie einschalten?"
+    },
+    {
+      "key": "hermes_chat.model_ready",
+      "context": "Hermes chat (F2): Hermes says its language model finished downloading and can be used now. Shown before it answers the sentence that waited for the model, or before the first question.",
+      "en": "My language model is ready.",
+      "de": "Mein Sprachmodell ist da."
+    },
+    {
+      "key": "hermes_chat.directly_in",
+      "context": "Hermes chat (F2): An entry in the list of folders without a fixed order. It stands for the files that lie directly in the folder Hermes read, not in a subfolder. {folder} is the name of that folder as the chat shows it, for example 'Downloads'.",
+      "en": "directly in {folder}",
+      "de": "direkt in {folder}"
+    },
+    {
+      "key": "hermes_chat.turn_on_ai",
+      "context": "Hermes chat (F2): Primary button that switches the AI setting on.",
+      "en": "Switch AI on",
+      "de": "KI einschalten"
+    },
+    {
       "key": "hermes_chat.model_failed",
       "context": "Hermes chat (F2): Hermes says its language model cannot run. {reason} is a short technical reason. Buttons with things it can do follow.",
       "en": "My language model doesn't start: {reason}. What would you like to do?",
@@ -9026,13 +9026,13 @@
     },
     {
       "key": "hermes_chat.confirm_tidy_to",
-      "context": "Hermes chat (F2): Hermes asks to confirm a tidy-up it understood from a sentence. {source} is the full path of the folder to tidy up, {target} the full path of the folder the files go to, both as the system resolved them, {mode} is empty or one of the two phrases for copying or moving that start with a comma. The question ends with a question mark.",
+      "context": "Hermes chat (F2): Hermes asks to confirm a tidy-up it understood from a sentence. {source} is the folder to tidy up, {target} the folder the files go to, each named the way the chat names folders: its name or a path starting with ~, {mode} is empty or one of the two phrases for copying or moving that start with a comma. The question ends with a question mark.",
       "en": "Do you mean {source} → {target}{mode}?",
       "de": "Meinst du {source} → {target}{mode}?"
     },
     {
       "key": "hermes_chat.confirm_tidy",
-      "context": "Hermes chat (F2): Hermes asks to confirm a tidy-up it understood from a sentence when no target folder was named. {source} is the full path of the folder to tidy up as the system resolved it, {mode} is empty or one of the two phrases for copying or moving that start with a comma.",
+      "context": "Hermes chat (F2): Hermes asks to confirm a tidy-up it understood from a sentence when no target folder was named. {source} is the folder to tidy up, named the way the chat names folders: its name or a path starting with ~, {mode} is empty or one of the two phrases for copying or moving that start with a comma.",
       "en": "Do you mean: tidy up {source}{mode}?",
       "de": "Meinst du: {source} aufräumen{mode}?"
     },
@@ -9067,34 +9067,178 @@
       "de": "In welchen Ordner sollen sie?"
     },
     {
-      "key": "hermes_chat.order_not_yet",
-      "context": "Hermes chat (F2): Hermes says it cannot change the order of folders in the way the user asked. {order} is the wanted order from the next entries, capitalised, for example 'By year'.",
-      "en": "{order} I can't do yet, only by month.",
-      "de": "{order} kann ich noch nicht, nur nach Monat."
+      "key": "hermes_chat.greeting_source_chip",
+      "context": "Hermes chat (F2): button label in the greeting for a folder where new documents arrive, e.g. Downloads. {folder} is the folder name.",
+      "en": "{folder} · new files",
+      "de": "{folder} · neue Dateien"
     },
     {
-      "key": "hermes_chat.order_year",
-      "context": "Hermes chat (F2): Wanted order of the folders, capitalised, at the start of a sentence.",
+      "key": "hermes_chat.greeting_target_chip",
+      "context": "Hermes chat (F2): button label in the greeting for a folder where the user keeps their documents, e.g. the archive. {folder} is the folder name.",
+      "en": "{folder} · my archive",
+      "de": "{folder} · mein Archiv"
+    },
+    {
+      "key": "hermes_chat.ask_role",
+      "context": "Hermes chat (F2): Hermes does not know yet what a folder is for and asks. Two buttons follow. {folder} is the folder name.",
+      "en": "Is {folder} where new documents arrive, or where your documents are kept?",
+      "de": "Landen in {folder} neue Dokumente, oder sind dort deine Dokumente abgelegt?"
+    },
+    {
+      "key": "hermes_chat.role_source",
+      "context": "Hermes chat (F2): button answering what a folder is for: new documents arrive there (an inbox such as Downloads).",
+      "en": "Documents arrive here",
+      "de": "Hier landen neue Dokumente"
+    },
+    {
+      "key": "hermes_chat.role_target",
+      "context": "Hermes chat (F2): button answering what a folder is for: the user's documents are kept there (the archive).",
+      "en": "My documents are kept here",
+      "de": "Hier sind meine Dokumente abgelegt"
+    },
+    {
+      "key": "hermes_chat.adopt_pattern",
+      "context": "Hermes chat (F2): button after the folders were shown, to use one of the found orders for all folders. {pattern} is the order, folder levels separated by slashes, e.g. Year / Month.",
+      "en": "Everywhere: {pattern}",
+      "de": "Überall: {pattern}"
+    },
+    {
+      "key": "hermes_chat.pattern_preview",
+      "context": "Hermes chat (F2): Hermes shows what would change if one order is used everywhere; two paths follow, before and after. **Double asterisks** mark bold text. {count} is a number of files, {pattern} the order.",
+      "en": "Using **{pattern}** everywhere would move {count} files. For example:",
+      "de": "Wenn ich überall **{pattern}** nehme, ziehen {count} Dateien um. Zum Beispiel:"
+    },
+    {
+      "key": "hermes_chat.pattern_nothing",
+      "context": "Hermes chat (F2): Hermes says that using the chosen order everywhere would change nothing.",
+      "en": "Nothing would change: your folders already follow that order, or the files lack what it needs.",
+      "de": "Da würde sich nichts ändern: Deine Ordner folgen dem schon, oder den Dateien fehlt, was dafür nötig ist."
+    },
+    {
+      "key": "hermes_chat.ask_photos",
+      "context": "Hermes chat (F2): Hermes found photos or scans in the folder it can only read with text recognition, and the text recognition models are not installed. {folder} is the folder name, {count} the number of images.",
+      "en": "{folder} holds {count} photos or scans I can't read without text recognition. Shall I read them too?",
+      "de": "In {folder} liegen {count} Fotos oder Scans, die ich ohne Texterkennung nicht lesen kann. Soll ich sie mitlesen?"
+    },
+    {
+      "key": "hermes_chat.photos_yes",
+      "context": "Hermes chat (F2): button answering yes to reading photos and scans with text recognition.",
+      "en": "Yes, read them",
+      "de": "Ja, mitlesen"
+    },
+    {
+      "key": "hermes_chat.photos_no",
+      "context": "Hermes chat (F2): button answering no to reading photos and scans.",
+      "en": "No, skip them",
+      "de": "Nein, überspringen"
+    },
+    {
+      "key": "hermes_chat.photos_models",
+      "context": "Hermes chat (F2): Hermes opened the download of the text recognition models and waits for it. A button follows to go on once the models are there.",
+      "en": "I opened the download of the text recognition models. Once they are there, press the button and I'll read the photos.",
+      "de": "Ich habe den Download der Texterkennung geöffnet. Sobald sie da ist, drück den Knopf, dann lese ich die Fotos mit."
+    },
+    {
+      "key": "hermes_chat.photos_models_there",
+      "context": "Hermes chat (F2): button to go on reading the photos once the text recognition models are installed.",
+      "en": "The models are there",
+      "de": "Die Texterkennung ist da"
+    },
+    {
+      "key": "hermes_chat.photos_skipped",
+      "context": "Hermes chat (F2): Hermes says it skips the photos and scans. {count} is the number of images.",
+      "en": "Fine, I'll leave the {count} photos and scans out.",
+      "de": "Gut, die {count} Fotos und Scans lasse ich aus."
+    },
+    {
+      "key": "hermes_chat.new_folder_chip",
+      "context": "Hermes chat (F2): button among the folders to file into; it opens the folder picker to choose or make a new folder to file into.",
+      "en": "New folder …",
+      "de": "Neuer Ordner …"
+    },
+    {
+      "key": "hermes_chat.decide_chip",
+      "context": "Hermes chat (F2): button among the folders to file into; Hermes then asks for every file where it goes.",
+      "en": "I'll decide per file",
+      "de": "Ich entscheide pro Datei"
+    },
+    {
+      "key": "hermes_chat.decide_where",
+      "context": "Hermes chat (F2): Hermes asks where one file goes; buttons with the folders follow. **Double asterisks** mark bold text. {name} is the file name, {position} the number of the file in the folder, {total} how many files there are.",
+      "en": "Where does **{name}** go? ({position} of {total})",
+      "de": "Wohin kommt **{name}**? ({position} von {total})"
+    },
+    {
+      "key": "hermes_chat.decide_skip",
+      "context": "Hermes chat (F2): button to leave one file where it is.",
+      "en": "Leave it here",
+      "de": "Hier lassen"
+    },
+    {
+      "key": "hermes_chat.decide_nothing",
+      "context": "Hermes chat (F2): Hermes says that nothing is filed because the user left every file where it is.",
+      "en": "Then I'll leave everything where it is.",
+      "de": "Dann lasse ich alles, wo es ist."
+    },
+    {
+      "key": "hermes_chat.new_order_ask",
+      "context": "Hermes chat (F2): the folder to file into has no order yet; Hermes asks how to order what it puts there. Buttons follow. {folder} is the folder name.",
+      "en": "{folder} has no order yet. How should I order what I put there?",
+      "de": "{folder} hat noch keine Ordnung. Wie soll ich ordnen, was ich dort ablege?"
+    },
+    {
+      "key": "hermes_chat.new_order_year",
+      "context": "Hermes chat (F2): button: file by year, a folder for every year.",
       "en": "By year",
       "de": "Nach Jahr"
     },
     {
-      "key": "hermes_chat.order_sender",
-      "context": "Hermes chat (F2): Wanted order of the folders, capitalised, at the start of a sentence.",
+      "key": "hermes_chat.new_order_sender",
+      "context": "Hermes chat (F2): button: file by sender, a folder for every sender.",
       "en": "By sender",
       "de": "Nach Absender"
     },
     {
-      "key": "hermes_chat.order_kind",
-      "context": "Hermes chat (F2): Wanted order of the folders, capitalised, at the start of a sentence.",
-      "en": "By kind of document",
+      "key": "hermes_chat.new_order_kind",
+      "context": "Hermes chat (F2): button: file by kind of document, a folder for every kind.",
+      "en": "By kind",
       "de": "Nach Art"
     },
     {
-      "key": "hermes_chat.order_flat",
-      "context": "Hermes chat (F2): Wanted order of the folders, capitalised, at the start of a sentence: no subfolders at all.",
-      "en": "Without subfolders",
-      "de": "Ohne Unterordner"
+      "key": "hermes_chat.new_order_flat",
+      "context": "Hermes chat (F2): button: file everything into the one folder without subfolders.",
+      "en": "All in one folder",
+      "de": "Alles in einen Ordner"
+    },
+    {
+      "key": "hermes_chat.change_area_ask",
+      "context": "Hermes chat (F2): Hermes found no folder for the word the user used in a change of order and asks which area of the filing is meant. A button for every area follows.",
+      "en": "Which area do you mean?",
+      "de": "Welchen Bereich meinst du?"
+    },
+    {
+      "key": "hermes_chat.always_set",
+      "context": "Hermes chat (F2): Hermes says what the answer Always does. {folder} is the folder whose new files are filed.",
+      "en": "Understood: new files in {folder} are filed automatically from now on.",
+      "de": "Verstanden: neue Dateien in {folder} werden ab jetzt automatisch abgelegt."
+    },
+    {
+      "key": "hermes_chat.small_talk",
+      "context": "Hermes chat (F2): Hermes answers a greeting, thanks or the question what it can do, with one line on what it does. Buttons with things it can do follow.",
+      "en": "I'm Hermes: I tidy up your documents, find them and change how your archive is ordered. What would you like to do?",
+      "de": "Ich bin Hermes: Ich räume deine Dokumente auf, finde sie und ändere, wie dein Archiv geordnet ist. Was möchtest du tun?"
+    },
+    {
+      "key": "hermes_chat.leave_as_is",
+      "context": "Hermes chat (F2): the user said nothing should be changed; Hermes agrees politely. Buttons with things it can do follow.",
+      "en": "Alright, I'll leave everything as it is.",
+      "de": "In Ordnung, ich lasse alles so, wie es ist."
+    },
+    {
+      "key": "hermes_chat.change_already",
+      "context": "Hermes chat (F2): the user asked for an order the chosen area has already. {area} is the folder name. Buttons with things Hermes can do follow.",
+      "en": "{area} is already ordered that way.",
+      "de": "{area} ist schon so geordnet."
     }
   ]
 }

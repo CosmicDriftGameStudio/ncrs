@@ -62,6 +62,7 @@ mod tests {
             r#"{"intent":"tidy_folder","source":"Inbox"}"#,
         );
         talk.press(&ChipReply::ConfirmTidy);
+        talk.choose_archive_if_asked();
         talk.press(&ChipReply::Once);
         talk.press(transfer);
         talk.leave_stay_questions();
@@ -89,6 +90,13 @@ mod tests {
         assert_eq!(
             (card.rows[0].name.as_str(), card.rows[0].documents),
             ("Bank", 354)
+        );
+        let bank = &card.rows[0];
+        assert!(bank.description.contains(" / "), "{}", bank.description);
+        assert!(
+            bank.example.starts_with("Bank/") && bank.example.contains('.'),
+            "{}",
+            bank.example
         );
         assert_eq!(card.more.as_ref().map(|more| more.documents), Some(554));
         assert_eq!(card.unordered.as_ref().map(|row| row.documents), Some(190));
@@ -153,22 +161,19 @@ mod tests {
         );
         assert_eq!(talk.files(), before);
 
-        // Conversation 2: the source from Hermes' question, one target, so no
-        // question where to; then once, moving.
+        // Conversation 2: the source from Hermes' question; even with one
+        // target Hermes asks where to, then once, moving.
         talk.press(&ChipReply::Folder(talk.path("inbox")));
         assert_eq!(
             hermes_texts(&talk)
                 .into_iter()
                 .find(|text| text.starts_with("Gern!")),
             Some(say(
-                Msg::HermesChatSourceSummaryOneTarget,
-                &[
-                    ("folder", "inbox"),
-                    ("count", &count(INBOX_FILES)),
-                    ("target", "archive")
-                ]
+                Msg::HermesChatSourceSummary,
+                &[("folder", "inbox"), ("count", &count(INBOX_FILES))]
             ))
         );
+        talk.press(&ChipReply::Folder(talk.path("archive")));
         talk.press(&ChipReply::Once);
         talk.press(&ChipReply::ModeMove);
         talk.leave_stay_questions();
@@ -193,9 +198,9 @@ mod tests {
         assert_eq!(talk.state.chips()[0].label, file_all);
 
         talk.press(&ChipReply::FileAll);
-        // Folder, keep, source, once, move, file: six entries of the user from
+        // Folder, keep, source, target, once, move, file: seven entries of the user from
         // Open to the first filed file.
-        assert_eq!(talk.entries, 6);
+        assert_eq!(talk.entries, 7);
         assert_eq!(
             talk.last_texts()[0],
             say(
@@ -380,6 +385,7 @@ mod tests {
         talk.press(&ChipReply::Folder(archive(&talk)));
         talk.press(&ChipReply::KeepYes);
         talk.press(&ChipReply::Folder(talk.path("inbox")));
+        talk.choose_archive_if_asked();
         talk.press(&ChipReply::Once);
         talk.press(&ChipReply::ModeMove);
         talk.leave_stay_questions();
@@ -426,6 +432,7 @@ mod tests {
             r#"{"intent":"tidy_folder","source":"Inbox"}"#,
         );
         talk.press(&ChipReply::ConfirmTidy);
+        talk.choose_archive_if_asked();
         talk.press(&ChipReply::Once);
         talk.press(&ChipReply::ModeMove);
 
@@ -576,6 +583,7 @@ mod tests {
             r#"{"intent":"tidy_folder","source":"Inbox"}"#,
         );
         talk.press(&ChipReply::ConfirmTidy);
+        talk.choose_archive_if_asked();
         talk.press(&ChipReply::Once);
         talk.press(&ChipReply::ModeMove);
 
@@ -719,6 +727,7 @@ mod tests {
     fn trial_after_change(talk: &mut Talk) -> Vec<PathBuf> {
         talk.press(&ChipReply::FineAsIs);
         talk.press(&ChipReply::Folder(talk.path("inbox")));
+        talk.choose_archive_if_asked();
         talk.press(&ChipReply::Once);
         talk.press(&ChipReply::ModeMove);
         talk.plan()

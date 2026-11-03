@@ -36,7 +36,7 @@ pub const CONDITION_VALUE_FIELD_IDS: [&str; MAX_CONDITION_ROWS] = [
 const REMOVE_ICON: &str = "×";
 
 /// The room of the kind dropdown in a row, in pixels.
-const KIND_WIDTH: f32 = 128.0;
+const KIND_WIDTH: f32 = 160.0;
 
 /// The room of the has / has not dropdown in a row, in pixels.
 const NEGATION_WIDTH: f32 = 104.0;

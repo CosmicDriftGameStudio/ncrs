@@ -17,4 +17,9 @@ pub enum Action {
     /// Opens the download of the language model; `Message::ModelReady`
     /// follows when it is there.
     DownloadModel,
+    /// Switches the AI setting on; `Message::AiTurnedOn` follows once it is
+    /// applied.
+    TurnOnAi,
+    /// Opens the card that downloads the text recognition models.
+    OpenOcrModels,
 }

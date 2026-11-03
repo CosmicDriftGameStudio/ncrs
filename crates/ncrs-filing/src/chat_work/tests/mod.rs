@@ -20,6 +20,8 @@ use tempfile::TempDir;
 
 use super::*;
 
+mod orders;
+
 struct Setup {
     dir: TempDir,
     access: ChatAccess,
@@ -61,6 +63,22 @@ fn date(year: i32, month: u32, day: u32) -> NaiveDate {
     NaiveDate::from_ymd_opt(year, month, day).unwrap()
 }
 
+fn fields(when: Option<NaiveDate>, kind: Option<&str>, sender: Option<&str>) -> DocumentFields {
+    DocumentFields {
+        sender: sender.map(str::to_owned),
+        kind: kind.map(str::to_owned),
+        date: when,
+        ..DocumentFields::default()
+    }
+}
+
+fn kinds() -> ncrs_index::Kinds {
+    ncrs_index::Kinds::new(
+        Arc::new(KindCatalog::built_in()),
+        ncrs_index::KindLanguage::English,
+    )
+}
+
 fn plan_file(path: &str, seed: u8, sender: Option<&str>, when: NaiveDate) -> PlanFile {
     PlanFile {
         relative_path: PathBuf::from(path),
@@ -86,6 +104,7 @@ fn reading(root: &str, mut files: Vec<PlanFile>) -> FolderReading {
             .or_insert_with(|| file.relative_path.clone());
     }
     FolderReading {
+        patterns: Vec::new(),
         root: PathBuf::from(root),
         files,
         photos: 0,
@@ -248,6 +267,7 @@ fn trial_of(
         target: Arc::new(target_reading()),
         changes,
         answered,
+        layout: None,
     }) {
         ChatResult::Trial(plan) => plan.unwrap(),
         other => panic!("{other:?}"),
@@ -376,37 +396,58 @@ fn the_sample_shows_one_file_per_area_then_unsure_then_the_rest() {
 fn a_month_folder_goes_in_after_the_year_with_or_without_only() {
     let change = |only| OrderChange {
         area: PathBuf::from("Alfa"),
-        year_depth: 1,
-        unit: TimeUnit::Month,
+        depth: 1,
+        order: ChangeOrder::ByMonth,
         only,
         kind_names: Vec::new(),
+        pattern: None,
     };
     let to = || PathBuf::from("Alfa/2022/2022-07-04 Alfa Rechnung.pdf");
     let when = Some(date(2022, 7, 4));
     assert_eq!(
-        change::apply_changes(to(), when, None, &[change(None)]),
+        change::apply_changes(to(), &fields(when, None, None), &kinds(), &[change(None)]),
         PathBuf::from("Alfa/2022/07/2022-07-04 Alfa Rechnung.pdf")
     );
     assert_eq!(
-        change::apply_changes(to(), when, None, &[change(Some((0, "Alfa".to_owned())))]),
+        change::apply_changes(
+            to(),
+            &fields(when, None, None),
+            &kinds(),
+            &[change(Some((0, "Alfa".to_owned())))]
+        ),
         PathBuf::from("Alfa/2022/07/2022-07-04 Alfa Rechnung.pdf")
     );
     assert_eq!(
-        change::apply_changes(to(), when, None, &[change(Some((0, "Beta".to_owned())))]),
+        change::apply_changes(
+            to(),
+            &fields(when, None, None),
+            &kinds(),
+            &[change(Some((0, "Beta".to_owned())))]
+        ),
         to()
     );
     assert_eq!(
-        change::apply_changes(to(), None, None, &[change(None)]),
+        change::apply_changes(to(), &fields(None, None, None), &kinds(), &[change(None)]),
         to()
     );
     let other_area = PathBuf::from("Beta/2022/x.pdf");
     assert_eq!(
-        change::apply_changes(other_area.clone(), when, None, &[change(None)]),
+        change::apply_changes(
+            other_area.clone(),
+            &fields(when, None, None),
+            &kinds(),
+            &[change(None)]
+        ),
         other_area
     );
     let no_year = PathBuf::from("Alfa/Misc/x.pdf");
     assert_eq!(
-        change::apply_changes(no_year.clone(), when, None, &[change(None)]),
+        change::apply_changes(
+            no_year.clone(),
+            &fields(when, None, None),
+            &kinds(),
+            &[change(None)]
+        ),
         no_year
     );
 }
@@ -415,16 +456,22 @@ fn a_month_folder_goes_in_after_the_year_with_or_without_only() {
 fn a_change_only_touches_documents_of_its_kind_or_in_a_folder_that_names_it() {
     let change = OrderChange {
         area: PathBuf::from("Bank"),
-        year_depth: 3,
-        unit: TimeUnit::Month,
+        depth: 3,
+        order: ChangeOrder::ByMonth,
         only: None,
         kind_names: vec!["bank_statement".to_owned(), "Kontoauszüge".to_owned()],
+        pattern: None,
     };
     let when = Some(date(2022, 7, 4));
     let in_folder = PathBuf::from("Bank/Sparkasse/Kontoauszüge/2022/a.pdf");
     let card = PathBuf::from("Bank/DKB/Kreditkarte/2022/b.pdf");
     let apply = |to: &PathBuf, kind| {
-        change::apply_changes(to.clone(), when, kind, std::slice::from_ref(&change))
+        change::apply_changes(
+            to.clone(),
+            &fields(when, kind, None),
+            &kinds(),
+            std::slice::from_ref(&change),
+        )
     };
     assert_eq!(
         apply(&in_folder, None),
@@ -442,10 +489,11 @@ fn a_change_only_touches_documents_of_its_kind_or_in_a_folder_that_names_it() {
 fn the_trial_applies_the_order_change_to_the_filed_names() {
     let change = OrderChange {
         area: PathBuf::from("Alfa"),
-        year_depth: 1,
-        unit: TimeUnit::Month,
+        depth: 1,
+        order: ChangeOrder::ByMonth,
         only: None,
         kind_names: Vec::new(),
+        pattern: None,
     };
     let plan = trial(&Setup::new(), vec![change]);
     assert_eq!(
@@ -454,57 +502,6 @@ fn the_trial_applies_the_order_change_to_the_filed_names() {
             to: PathBuf::from("Alfa/2022/07/2022-07-04 Alfa Rechnung.pdf")
         }
     );
-}
-
-fn bank_reading() -> FolderReading {
-    let mut files = Vec::new();
-    let mut seed = 0;
-    for (bank, sender) in [("Sparkasse", "Sparkasse Chemnitz"), ("DKB", "DKB")] {
-        for year in [2020, 2021] {
-            for month in [1, 2, 3] {
-                seed += 1;
-                files.push(plan_file(
-                    &format!("Bank/{bank}/{year}/{year}-{month:02}-01 {bank} Auszug {seed}.pdf"),
-                    seed,
-                    Some(sender),
-                    date(year, month, 1),
-                ));
-            }
-        }
-    }
-    reading("/archive", files)
-}
-
-fn preview(setup: &Setup, word: &str) -> Option<ChangePreview> {
-    match setup.access.run(ChatWork::PreviewChange {
-        reading: Arc::new(bank_reading()),
-        kind_word: word.to_owned(),
-        unit: TimeUnit::Month,
-    }) {
-        ChatResult::Preview(preview) => preview,
-        other => panic!("{other:?}"),
-    }
-}
-
-#[test]
-fn the_preview_shows_the_newest_document_with_its_month_and_the_scope() {
-    let preview = preview(&Setup::new(), "Rechnungen").unwrap();
-    assert_eq!(preview.kind_label, "Invoice");
-    assert_eq!(preview.change.area, PathBuf::from("Bank"));
-    assert_eq!(preview.change.year_depth, 2);
-    assert_eq!(preview.highlighted, 3);
-    assert_eq!(
-        preview.example,
-        ["Bank", "DKB", "2021", "03", "2021-03-01 DKB Auszug 12.pdf"]
-    );
-    let scope = preview.scope.unwrap();
-    assert_eq!(scope.values, ["DKB", "Sparkasse"]);
-}
-
-#[test]
-fn no_preview_for_a_word_that_names_no_kind_in_the_folder() {
-    assert_eq!(preview(&Setup::new(), "Verträge"), None);
-    assert_eq!(preview(&Setup::new(), "Wetter"), None);
 }
 
 fn run_plan(setup: &Setup, transfer: Transfer) -> RunPlan {

@@ -17,6 +17,7 @@ use ncrs_intake::{
     ReorganisationInput,
 };
 
+use super::pattern::{adoptable_patterns, PatternChoice};
 use super::{ChatAccess, TrashItem};
 
 /// Most files the chat reads in one folder.
@@ -36,6 +37,8 @@ pub struct FolderReading {
     pub duplicates: Vec<TrashItem>,
     /// The first file (by path) of each content.
     pub hashes: HashMap<ContentHash, PathBuf>,
+    /// The patterns below the areas that moving to them would change files.
+    pub patterns: Vec<PatternChoice>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -166,7 +169,7 @@ pub fn read_folder(access: &ChatAccess, folder: &Path) -> Result<FolderReading, 
             .entry(file.hash)
             .or_insert_with(|| file.relative_path.clone());
     }
-    Ok(FolderReading {
+    let mut reading = FolderReading {
         root: folder.to_path_buf(),
         files,
         photos,
@@ -174,7 +177,10 @@ pub fn read_folder(access: &ChatAccess, folder: &Path) -> Result<FolderReading, 
         structure,
         duplicates,
         hashes,
-    })
+        patterns: Vec::new(),
+    };
+    reading.patterns = adoptable_patterns(&kinds, &reading);
+    Ok(reading)
 }
 
 fn look_up(

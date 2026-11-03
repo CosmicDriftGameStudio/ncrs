@@ -6,33 +6,50 @@ use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
 
 use chrono::{Datelike as _, NaiveDate};
-use ncrs_index::{KindEntry, Kinds};
+use ncrs_index::{DocumentFields, KindEntry, Kinds};
 use ncrs_intake::{
-    folder_label, Area, Branch, Level, NamePart, PlaceholderKind, PlaceholderLabel, PlanFile,
+    folder_label, render_pattern_in, Area, Branch, Level, NamePart, PlaceholderKind,
+    PlaceholderLabel, PlanFile,
 };
 
-use super::{same_word, FolderReading};
+use super::pattern::{self, PatternSpec};
+use super::{same_word, word_within, FolderReading};
 
+/// How the folders below an area are ordered after a change.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TimeUnit {
-    Year,
-    Month,
+pub enum ChangeOrder {
+    /// A month folder after the year folder.
+    ByMonth,
+    /// A year folder straight below the area.
+    ByYear,
+    /// A folder for the sender straight below the area.
+    BySender,
+    /// A folder for the kind of document straight below the area.
+    ByKind,
+    /// No folders between the area and the file.
+    Flat,
+    /// Every area gets the folders of `OrderChange::pattern`.
+    Pattern,
 }
 
-/// Files below `area` that lie in a year folder at `year_depth` get a month
-/// folder after it. Depths count path segments below the target, the area
-/// folder being 0.
+/// A change of order for the files below `area`. Depths count path segments
+/// below the target, the area folder being 0.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OrderChange {
     /// The literal start of the branch.
     pub area: PathBuf,
-    pub year_depth: usize,
-    pub unit: TimeUnit,
+    /// For `ByMonth` the depth of the year folder the month folder follows;
+    /// for the others the number of segments (the area and its literal
+    /// start) that stay before the change.
+    pub depth: usize,
+    pub order: ChangeOrder,
     /// Only files with this folder name at this depth.
     pub only: Option<(usize, String)>,
     /// Every spelling that names the kind the change is for: the catalog ID
     /// and words of a known kind, else the word as typed. Empty: any kind.
     pub kind_names: Vec<String>,
+    /// What `ChangeOrder::Pattern` puts below the areas.
+    pub pattern: Option<PatternSpec>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,7 +72,7 @@ pub struct ChangePreview {
     pub scope: Option<Scope>,
 }
 
-fn segments(path: &Path) -> Vec<String> {
+pub(in crate::chat_work) fn segments(path: &Path) -> Vec<String> {
     path.components()
         .filter_map(|component| match component {
             Component::Normal(name) => Some(name.to_string_lossy().into_owned()),
@@ -83,36 +100,94 @@ fn is_of_kind(change: &OrderChange, kind: Option<&str>, folders: &[String]) -> b
         })
 }
 
-/// Puts the month folder into `to` for every change that applies. Without a
-/// date there is nothing to put. A change only touches documents of its
+/// The one folder name a document gets for `placeholder`, written the way a
+/// filing pattern writes it.
+pub(in crate::chat_work) fn folder_value(
+    placeholder: &str,
+    fields: &DocumentFields,
+    kinds: &Kinds,
+) -> Option<String> {
+    let path = render_pattern_in(&format!("{{{placeholder}}}"), fields, kinds)?;
+    let mut names = segments(&path);
+    (names.len() == 1).then(|| names.remove(0))
+}
+
+/// The folder a change adds for a document, `None` when the document has no
+/// value for it or has the folder already.
+fn folder_to_add(
+    change: &OrderChange,
+    parts: &[String],
+    fields: &DocumentFields,
+    kinds: &Kinds,
+) -> Option<String> {
+    let folders = parts.get(change.depth..parts.len().saturating_sub(1))?;
+    match change.order {
+        ChangeOrder::ByYear => {
+            let year = folder_value("year", fields, kinds)?;
+            (!folders.iter().any(|folder| is_year_folder(folder))).then_some(year)
+        }
+        ChangeOrder::BySender => {
+            let sender = folder_value("sender", fields, kinds)?;
+            (!folders.iter().any(|folder| same_word(folder, &sender))).then_some(sender)
+        }
+        ChangeOrder::ByKind => {
+            let kind = folder_value("kind", fields, kinds)?;
+            (!folders.iter().any(|folder| same_word(folder, &kind))).then_some(kind)
+        }
+        ChangeOrder::ByMonth | ChangeOrder::Flat | ChangeOrder::Pattern => None,
+    }
+}
+
+/// Puts the document's new path together for every change that applies.
+/// Without the field a change needs (the date for a year or month, the sender,
+/// the kind) there is nothing to put. A change only touches documents of its
 /// kind, or those in a folder that names it.
 pub fn apply_changes(
     to: PathBuf,
-    dated: Option<NaiveDate>,
-    kind: Option<&str>,
+    fields: &DocumentFields,
+    kinds: &Kinds,
     changes: &[OrderChange],
 ) -> PathBuf {
-    let Some(date) = dated else {
-        return to;
-    };
     let mut parts = segments(&to);
     for change in changes {
         let current: PathBuf = parts.iter().collect();
-        let year_is_folder = parts
-            .get(change.year_depth)
-            .is_some_and(|part| is_year_folder(part))
-            && change.year_depth + 1 < parts.len();
         let allowed = change
             .only
             .as_ref()
             .is_none_or(|(depth, value)| parts.get(*depth).is_some_and(|part| part == value));
         let folders = parts.split_last().map_or(&[][..], |(_, folders)| folders);
-        if current.starts_with(&change.area)
-            && year_is_folder
+        if !(current.starts_with(&change.area)
             && allowed
-            && is_of_kind(change, kind, folders)
+            && is_of_kind(change, fields.kind.as_deref(), folders))
         {
-            parts.insert(change.year_depth + 1, month_folder(date));
+            continue;
+        }
+        match change.order {
+            ChangeOrder::ByMonth => {
+                let year_is_folder = parts
+                    .get(change.depth)
+                    .is_some_and(|part| is_year_folder(part))
+                    && change.depth + 1 < parts.len();
+                if let (true, Some(date)) = (year_is_folder, fields.date) {
+                    parts.insert(change.depth + 1, month_folder(date));
+                }
+            }
+            ChangeOrder::ByYear | ChangeOrder::BySender | ChangeOrder::ByKind => {
+                if let Some(folder) = folder_to_add(change, &parts, fields, kinds) {
+                    parts.insert(change.depth, folder);
+                }
+            }
+            ChangeOrder::Pattern => {
+                if let Some(spec) = &change.pattern {
+                    pattern::apply(&mut parts, spec, fields, kinds);
+                }
+            }
+            ChangeOrder::Flat => {
+                let file_at = parts.len().saturating_sub(1);
+                if change.depth < file_at {
+                    parts.drain(change.depth..file_at);
+                }
+            }
         }
     }
     parts.iter().collect()
@@ -130,6 +205,25 @@ fn matches_branch(parts: &[String], area: &Area, branch: &Branch) -> bool {
                 Level::Choice(names) => names.contains(part),
                 Level::Placeholder(_) => true,
             })
+}
+
+/// A real document of the branch to show its pattern with: the newest dated
+/// one, else the first by path.
+pub fn branch_example<'a>(
+    reading: &'a FolderReading,
+    area: &Area,
+    branch: &Branch,
+) -> Option<&'a PlanFile> {
+    reading
+        .files
+        .iter()
+        .filter(|file| matches_branch(&segments(&file.relative_path), area, branch))
+        .max_by(|left, right| {
+            left.fields
+                .date
+                .cmp(&right.fields.date)
+                .then_with(|| right.relative_path.cmp(&left.relative_path))
+        })
 }
 
 fn names_the_kind(kind_word: &str, name: &str) -> bool {
@@ -178,11 +272,8 @@ pub fn preview(
     kinds: &Kinds,
     reading: &FolderReading,
     kind_word: &str,
-    unit: TimeUnit,
+    order: ChangeOrder,
 ) -> Option<ChangePreview> {
-    if unit != TimeUnit::Month {
-        return None;
-    }
     let entry = kind_entry(kinds, kind_word);
     let of_kind = |file: &PlanFile| {
         file.fields.kind.as_deref().is_some_and(|kind| match entry {
@@ -202,17 +293,9 @@ pub fn preview(
     let mut best: Option<Candidate<'_>> = None;
     for area in &reading.structure.areas {
         for branch in &area.branches {
-            let Some(year_at) = branch.levels.iter().position(|level| {
-                matches!(level, Level::Placeholder(placeholder) if matches!(placeholder.kind, PlaceholderKind::Year { .. }))
-            }) else {
+            let Some(year_at) = change_point(order, branch) else {
                 continue;
             };
-            let has_month = branch.levels.iter().any(|level| {
-                matches!(level, Level::Placeholder(placeholder) if placeholder.kind == PlaceholderKind::Month)
-            });
-            if has_month {
-                continue;
-            }
             let in_branch: Vec<&PlanFile> = reading
                 .files
                 .iter()
@@ -220,7 +303,10 @@ pub fn preview(
                 .filter(|(_, parts)| matches_branch(parts, area, branch))
                 .map(|(file, _)| file)
                 .collect();
-            let documents: Vec<&PlanFile> = if branch_names_the_kind(kind_word, branch) {
+            let documents: Vec<&PlanFile> = if (entry.is_none()
+                && word_within(kind_word, &area.folder))
+                || branch_names_the_kind(kind_word, branch)
+            {
                 in_branch.clone()
             } else {
                 in_branch
@@ -249,17 +335,14 @@ pub fn preview(
         .documents
         .iter()
         .copied()
-        .filter(|file| file.fields.date.is_some())
+        .filter(|file| has_what_the_order_needs(order, &file.fields, kinds))
         .max_by(|left, right| {
             left.fields
                 .date
                 .cmp(&right.fields.date)
                 .then_with(|| right.relative_path.cmp(&left.relative_path))
         })?;
-    let date = sample.fields.date?;
-    let year_depth = chosen.year_at + 1;
-    let mut example = segments(&sample.relative_path);
-    example.insert(year_depth + 1, month_folder(date));
+    let depth = chosen.year_at + 1;
 
     let literal_start = chosen
         .branch
@@ -286,6 +369,8 @@ pub fn preview(
             names.dedup();
             names
         }
+        // The word names the area: everything in it changes.
+        None if word_within(kind_word, &chosen.area.folder) => Vec::new(),
         None => vec![kind_word.to_owned()],
     };
     let (change_area, scope) = match scope_of(&chosen, &parts_of_documents(&chosen)) {
@@ -302,22 +387,134 @@ pub fn preview(
         },
     };
 
+    let change = OrderChange {
+        area: change_area,
+        depth,
+        order,
+        only: None,
+        kind_names,
+        pattern: None,
+    };
+    let (example, highlighted) = example_of(&change, sample, kinds)?;
     Some(ChangePreview {
         kind_label: entry.map_or_else(
             || kind_word.to_owned(),
             |found| found.word(kinds.language).to_owned(),
         ),
-        change: OrderChange {
-            area: change_area,
-            year_depth,
-            unit,
-            only: None,
-            kind_names,
-        },
+        change,
         example,
-        highlighted: year_depth + 1,
+        highlighted,
         scope,
     })
+}
+
+/// The folder of the area the word names when the area is ordered the way
+/// `order` asks already: some branch has the level and none is left to change.
+pub fn already_ordered(
+    reading: &FolderReading,
+    area_word: &str,
+    order: ChangeOrder,
+) -> Option<String> {
+    let area = reading
+        .structure
+        .areas
+        .iter()
+        .find(|area| word_within(area_word, &area.folder))?;
+    let has_level = |branch: &Branch| {
+        let has = |wanted: fn(&PlaceholderKind) -> bool| {
+            branch
+                .levels
+                .iter()
+                .any(|level| matches!(level, Level::Placeholder(found) if wanted(&found.kind)))
+        };
+        match order {
+            ChangeOrder::ByMonth => has(|kind| *kind == PlaceholderKind::Month),
+            ChangeOrder::ByYear => has(|kind| matches!(kind, PlaceholderKind::Year { .. })),
+            ChangeOrder::BySender => change_point(order, branch).is_none(),
+            ChangeOrder::ByKind => has(|kind| *kind == PlaceholderKind::Kind),
+            ChangeOrder::Flat => !branch.levels.is_empty() && change_point(order, branch).is_none(),
+            ChangeOrder::Pattern => false,
+        }
+    };
+    let nothing_left = area
+        .branches
+        .iter()
+        .all(|branch| change_point(order, branch).is_none());
+    (nothing_left && area.branches.iter().any(has_level)).then(|| area.folder.clone())
+}
+
+/// Where in the branch the change happens: the position of the year level
+/// for a month folder, else the number of literal levels at its start. `None`
+/// when the branch is ordered that way already or has nothing to change.
+fn change_point(order: ChangeOrder, branch: &Branch) -> Option<usize> {
+    let has = |wanted: fn(&PlaceholderKind) -> bool| {
+        branch.levels.iter().any(
+            |level| matches!(level, Level::Placeholder(placeholder) if wanted(&placeholder.kind)),
+        )
+    };
+    // A bank or an insurer folder is the sender level under another name.
+    let has_sender = branch.levels.iter().any(|level| {
+        matches!(level, Level::Placeholder(placeholder) if placeholder.kind == PlaceholderKind::Sender
+            || matches!(placeholder.label, PlaceholderLabel::Sender | PlaceholderLabel::Bank | PlaceholderLabel::Insurer))
+    });
+    let leading_literals = branch
+        .levels
+        .iter()
+        .take_while(|level| matches!(level, Level::Literal(_)))
+        .count();
+    match order {
+        ChangeOrder::ByMonth => {
+            let year_at = branch.levels.iter().position(|level| {
+                matches!(level, Level::Placeholder(placeholder) if matches!(placeholder.kind, PlaceholderKind::Year { .. }))
+            })?;
+            (!has(|kind| *kind == PlaceholderKind::Month)).then_some(year_at)
+        }
+        ChangeOrder::ByYear => {
+            (!has(|kind| matches!(kind, PlaceholderKind::Year { .. }))).then_some(leading_literals)
+        }
+        ChangeOrder::BySender => (!has_sender).then_some(leading_literals),
+        ChangeOrder::ByKind => {
+            (!has(|kind| *kind == PlaceholderKind::Kind)).then_some(leading_literals)
+        }
+        ChangeOrder::Flat => (branch.levels.len() > leading_literals).then_some(leading_literals),
+        ChangeOrder::Pattern => None,
+    }
+}
+
+fn has_what_the_order_needs(order: ChangeOrder, fields: &DocumentFields, kinds: &Kinds) -> bool {
+    match order {
+        ChangeOrder::ByMonth | ChangeOrder::ByYear => fields.date.is_some(),
+        ChangeOrder::BySender => folder_value("sender", fields, kinds).is_some(),
+        ChangeOrder::ByKind => folder_value("kind", fields, kinds).is_some(),
+        ChangeOrder::Flat | ChangeOrder::Pattern => true,
+    }
+}
+
+/// The sample document's path after the change, and the segment that is new
+/// in it (for a flat order, the file name that moved up).
+fn example_of(
+    change: &OrderChange,
+    sample: &PlanFile,
+    kinds: &Kinds,
+) -> Option<(Vec<String>, usize)> {
+    let moved = apply_changes(
+        sample.relative_path.clone(),
+        &sample.fields,
+        kinds,
+        std::slice::from_ref(change),
+    );
+    if moved == sample.relative_path {
+        return None;
+    }
+    let highlighted = match change.order {
+        ChangeOrder::ByMonth => change.depth + 1,
+        ChangeOrder::ByYear
+        | ChangeOrder::BySender
+        | ChangeOrder::ByKind
+        | ChangeOrder::Flat
+        | ChangeOrder::Pattern => change.depth,
+    };
+    Some((segments(&moved), highlighted))
 }
 
 fn parts_of_documents(candidate: &Candidate<'_>) -> Vec<Vec<String>> {

@@ -16,6 +16,7 @@ use ncrs_pipeline::OwnDetails;
 
 mod change;
 mod groups;
+mod pattern;
 mod reading;
 mod runs;
 mod trial;
@@ -24,15 +25,19 @@ mod words;
 #[cfg(test)]
 mod tests;
 
-pub use change::{ChangePreview, OrderChange, Scope, TimeUnit};
+pub use change::{already_ordered, branch_example, ChangeOrder, ChangePreview, OrderChange, Scope};
 pub use groups::{
     area_pattern, group_rule, numbered_name, stay_groups, AnsweredGroups, GroupKey, NameTaken,
     RuleSaveFailure, StayGroup, StayGroups, MAX_GROUP_QUESTIONS,
 };
+pub use pattern::{
+    pattern_choices, PatternChoice, PatternLevel, PatternPreview, PatternSpec, PatternTarget,
+    OFFERED_PATTERNS,
+};
 pub use reading::{FolderReading, ReadError, FILE_LIMIT};
 pub use runs::{RunItem, RunPlan, RunReport, RunSummary};
 pub use trial::{StayReason, TrialEntry, TrialOutcome, TrialPlan};
-pub use words::{normalize_word, same_word};
+pub use words::{normalize_word, same_word, word_within};
 
 pub use crate::execute::{TrashItem, TrashReport, UndoReport};
 
@@ -49,6 +54,8 @@ pub enum ChatWork {
         target: Arc<FolderReading>,
         changes: Vec<OrderChange>,
         answered: AnsweredGroups,
+        /// The order a new target without neighbours gets.
+        layout: Option<Vec<PatternLevel>>,
     },
     SaveGroupRule {
         target: Arc<FolderReading>,
@@ -59,7 +66,11 @@ pub enum ChatWork {
     PreviewChange {
         reading: Arc<FolderReading>,
         kind_word: String,
-        unit: TimeUnit,
+        order: ChangeOrder,
+    },
+    PreviewPattern {
+        reading: Arc<FolderReading>,
+        levels: Vec<PatternLevel>,
     },
     File {
         run: RunPlan,
@@ -82,6 +93,7 @@ pub enum ChatResult {
     /// The name of the rule that was stored.
     RuleSaved(Result<String, RuleSaveFailure>),
     Preview(Option<ChangePreview>),
+    PatternPreviewed(Option<PatternPreview>),
     Filed(Result<RunReport, String>),
     Trashed(Result<TrashReport, String>),
     LastRun(Result<Option<RunSummary>, String>),
@@ -142,7 +154,15 @@ impl ChatAccess {
                 target,
                 changes,
                 answered,
-            } => ChatResult::Trial(trial::trial(self, &source, &target, &changes, &answered)),
+                layout,
+            } => ChatResult::Trial(trial::trial(
+                self,
+                &source,
+                &target,
+                &changes,
+                &answered,
+                layout.as_deref(),
+            )),
             ChatWork::SaveGroupRule {
                 target,
                 key,
@@ -152,11 +172,16 @@ impl ChatAccess {
             ChatWork::PreviewChange {
                 reading,
                 kind_word,
-                unit,
+                order,
             } => ChatResult::Preview(
                 self.kinds()
                     .ok()
-                    .and_then(|kinds| change::preview(&kinds, &reading, &kind_word, unit)),
+                    .and_then(|kinds| change::preview(&kinds, &reading, &kind_word, order)),
+            ),
+            ChatWork::PreviewPattern { reading, levels } => ChatResult::PatternPreviewed(
+                self.kinds()
+                    .ok()
+                    .and_then(|kinds| pattern::preview(&kinds, &reading, &levels)),
             ),
             ChatWork::File { run } => ChatResult::Filed(runs::file(self, &run)),
             ChatWork::TrashDuplicates { name, root, items } => {

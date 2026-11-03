@@ -214,6 +214,16 @@ pub(in crate::hermes_kit) fn pick_style(
     }
 }
 
+/// Every glyph of the app's monospace font is this wide, in ems.
+const MONOSPACE_EM: f32 = 0.62;
+
+/// The room `text` needs in the app font: the proportional estimate is too
+/// small for monospace text with narrow glyphs.
+fn text_width(text: &str) -> f32 {
+    let monospace = text.chars().count() as f32 * MONOSPACE_EM * TEXT_BODY;
+    format::estimated_width(text, TEXT_BODY).max(monospace)
+}
+
 /// A button that opens a list of entries below it. Picking one sends its
 /// message; the button itself keeps showing `caption`.
 pub fn menu_button<'a, M: Clone + 'a>(
@@ -228,10 +238,20 @@ pub fn menu_button<'a, M: Clone + 'a>(
         .map(|choice| format::estimated_width(&choice.label, TEXT_BODY))
         .chain([format::estimated_width(caption, TEXT_BODY)])
         .fold(0.0, f32::max);
+    let monospace_widest = choices
+        .iter()
+        .map(|choice| choice.label.as_str())
+        .chain([caption])
+        .map(text_width)
+        .fold(widest, f32::max);
     let caption_width = format::estimated_width(caption, TEXT_BODY);
     let (look_width, pad_x, pad_y) = match look {
         MenuLook::Icon => (CONTROL_HEIGHT, ICON_PAD_X, CONTROL_PAD_Y),
-        MenuLook::PieceAdd => (widest + 2.0 * MENU_PAD_X, MENU_PAD_X, PIECE_PAD_Y + 2.0),
+        MenuLook::PieceAdd => (
+            monospace_widest + 2.0 * MENU_PAD_X,
+            MENU_PAD_X,
+            PIECE_PAD_Y + 2.0,
+        ),
         MenuLook::Button => (caption_width + 2.0 * MENU_PAD_X, MENU_PAD_X, CONTROL_PAD_Y),
     };
     let shown = if look == MenuLook::Icon {

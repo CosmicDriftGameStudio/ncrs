@@ -11,6 +11,7 @@ use ncrs_intake::{
 
 use super::change::{apply_changes, OrderChange};
 use super::groups::{stay_groups, AnsweredGroups, StayGroups};
+use super::pattern::{layout_path, PatternLevel};
 use super::{ChatAccess, FolderReading};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -94,6 +95,7 @@ pub fn trial(
     target: &FolderReading,
     changes: &[OrderChange],
     answered: &AnsweredGroups,
+    layout: Option<&[PatternLevel]>,
 ) -> Result<TrialPlan, String> {
     let kinds = access.kinds()?;
     let (rules, aliases) = access.rules_and_aliases()?;
@@ -126,6 +128,7 @@ pub fn trial(
                 neighbours: &neighbours,
                 kinds: &kinds,
                 changes,
+                layout,
                 source_root: &source.root,
             };
             decided = decide(&ctx, file, &name, &mut taken);
@@ -172,6 +175,8 @@ struct Deciding<'a> {
     neighbours: &'a NeighbourIndex,
     kinds: &'a Kinds,
     changes: &'a [OrderChange],
+    /// How to file into a target no neighbour points the way in.
+    layout: Option<&'a [PatternLevel]>,
     source_root: &'a Path,
 }
 
@@ -226,14 +231,20 @@ fn decide(
     if let Planning::Plan(filing) = planning {
         let to = apply_changes(
             with_extension_of(filing.relative_path, name),
-            file.fields.date,
-            file.fields.kind.as_deref(),
+            &file.fields,
+            ctx.kinds,
             ctx.changes,
         );
         return Decided::filed_or_taken(to, taken);
     }
     let Some(placement) = ctx.neighbours.place(&file.fields, file.text.as_deref()) else {
-        return Decided::outcome(TrialOutcome::Stays(StayReason::NoNeighbours));
+        let Some(levels) = ctx.layout else {
+            return Decided::outcome(TrialOutcome::Stays(StayReason::NoNeighbours));
+        };
+        return match layout_path(levels, &file.fields, ctx.kinds, name) {
+            Some(to) => Decided::filed_or_taken(to, taken),
+            None => Decided::outcome(TrialOutcome::Stays(StayReason::NoPattern)),
+        };
     };
     if !placement.is_sure() {
         let mut choices = vec![placement.folder];
@@ -267,8 +278,8 @@ fn decide(
     };
     let to = apply_changes(
         with_extension_of(rendered, name),
-        file.fields.date,
-        file.fields.kind.as_deref(),
+        &file.fields,
+        ctx.kinds,
         ctx.changes,
     );
     let mut decided = Decided::filed_or_taken(to, taken);

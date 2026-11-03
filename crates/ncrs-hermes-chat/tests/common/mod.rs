@@ -105,6 +105,8 @@ impl Talk {
             sources: below(sources),
             // Long after any run of the test, so a run is never "today".
             now: Local.with_ymd_and_hms(2031, 1, 1, 12, 0, 0).unwrap(),
+            ai_on: true,
+            ocr_models_present: true,
             model: Some(Arc::clone(&model) as Arc<dyn ChatModel>),
             resolve_folder,
         };
@@ -220,6 +222,14 @@ impl Talk {
         };
         self.working = Some(line.clone());
         self.settle(next);
+    }
+
+    /// Answers "Where should they go?" with the archive, when it is asked.
+    pub fn choose_archive_if_asked(&mut self) {
+        let archive = ChipReply::Folder(self.path("archive"));
+        if self.state.chips().iter().any(|chip| chip.reply == archive) {
+            self.press(&archive);
+        }
     }
 
     pub fn open(&mut self) {

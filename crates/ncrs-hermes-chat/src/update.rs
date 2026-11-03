@@ -12,10 +12,10 @@ use crate::ctx::{Availability, Ctx};
 use crate::message::Message;
 use crate::state::{Asked, Chip, ChipReply, Entry, GroupFlow, Part, State, Step};
 use crate::texts::{fill, folder_name, text};
-use crate::{learn, named_folders, stay_groups, tidy, understand, undo};
+use crate::{learn, named_folders, patterns, photos, stay_groups, tidy, understand, undo};
 
 pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> (Task<Message>, Option<Action>) {
-    let action = route(state, message, ctx);
+    let action = route(state, message, ctx).or_else(|| state.queued_action.take());
     (launch(state, ctx), action)
 }
 
@@ -24,7 +24,7 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
         Message::Open => {
             state.open = true;
             if state.thread.is_empty() {
-                greet(state, ctx);
+                open_thread(state, ctx);
             }
             None
         }
@@ -91,6 +91,7 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
         }
         Message::Understood(result) => understand::understood(state, ctx, result),
         Message::ModelReady => understand::model_ready(state, ctx),
+        Message::AiTurnedOn => understand::ai_turned_on(state, ctx),
     }
 }
 
@@ -207,6 +208,7 @@ fn handle_done(state: &mut State, ctx: &Ctx, result: ChatResult) -> Option<Actio
     match result {
         ChatResult::Read(read) => learn::read_done(state, ctx, read),
         ChatResult::Preview(preview) => learn::preview_done(state, ctx, preview),
+        ChatResult::PatternPreviewed(preview) => patterns::previewed(state, ctx, preview),
         ChatResult::Trial(trial) => tidy::trial_done(state, ctx, trial),
         ChatResult::RuleSaved(saved) => stay_groups::rule_saved(state, ctx, saved),
         ChatResult::Filed(filed) => tidy::filed_done(state, ctx, filed),
@@ -314,6 +316,13 @@ pub fn well_known(ctx: &Ctx) -> [PathBuf; 4] {
     ]
 }
 
+pub fn is_target_folder(state: &State, ctx: &Ctx, path: &Path) -> bool {
+    ctx.targets
+        .iter()
+        .chain(&state.session.learned)
+        .any(|target| path.starts_with(target))
+}
+
 fn is_known(state: &State, ctx: &Ctx, path: &Path) -> bool {
     ctx.targets
         .iter()
@@ -324,7 +333,7 @@ fn is_known(state: &State, ctx: &Ctx, path: &Path) -> bool {
 }
 
 /// Targets and sources first, then Documents and Downloads when they exist.
-fn candidate_folders(ctx: &Ctx, with_targets: bool) -> Vec<PathBuf> {
+pub fn candidate_folders(ctx: &Ctx, with_targets: bool) -> Vec<PathBuf> {
     let mut found: Vec<PathBuf> = Vec::new();
     let own = if with_targets {
         ctx.targets.iter().chain(&ctx.sources)
@@ -349,6 +358,27 @@ pub fn folder_chips(ctx: &Ctx, folders: Vec<PathBuf>) -> Vec<Chip> {
         .collect()
 }
 
+/// Where structure is read: the filing locations only, and the picker.
+pub fn target_chips(state: &State, ctx: &Ctx) -> Vec<Chip> {
+    let mut targets: Vec<PathBuf> = ctx.targets.clone();
+    for learned in &state.session.learned {
+        if !targets.contains(learned) {
+            targets.push(learned.clone());
+        }
+    }
+    if targets.is_empty() {
+        targets.extend(Some(ctx.home.join("Documents")).filter(|path| path.is_dir()));
+    }
+    let mut chips = folder_chips(ctx, targets);
+    chips.push(chip(
+        ctx,
+        Msg::HermesChatOtherFolder,
+        ChipReply::PickFolder,
+        false,
+    ));
+    chips
+}
+
 /// The folders to offer when a folder is asked for, and the picker.
 pub fn ask_chips(ctx: &Ctx) -> Vec<Chip> {
     let mut chips = folder_chips(ctx, candidate_folders(ctx, true));
@@ -368,23 +398,39 @@ pub fn source_chips(state: &State, ctx: &Ctx) -> Vec<Chip> {
     chips
 }
 
-fn greet(state: &mut State, ctx: &Ctx) {
+/// The first bubble: the greeting, or why Hermes cannot understand sentences
+/// yet. The greeting follows once the AI and the model are there.
+pub fn open_thread(state: &mut State, ctx: &Ctx) {
     if !is_ready(state, ctx) {
         return;
     }
-    state.step = Step::ReadFolder;
-    state.session.read_for = Some(crate::state::ReadFor::Learn);
+    if understand::gate(state, ctx, None) == understand::Gate::Said {
+        state.greeting_owed = true;
+        return;
+    }
+    greet(state, ctx);
+}
+
+fn greet(state: &mut State, ctx: &Ctx) {
+    state.greeting_owed = false;
+    state.step = Step::Greeting;
     say(
         state,
         text(ctx.lang, Msg::HermesChatGreeting),
-        ask_chips(ctx),
+        crate::greeting::chips(state, ctx),
     );
 }
 
 fn expects_folder(step: Step) -> bool {
     matches!(
         step,
-        Step::ReadFolder | Step::Source | Step::TidyFolder | Step::Target | Step::OtherTarget
+        Step::ReadFolder
+            | Step::Greeting
+            | Step::Source
+            | Step::TidyFolder
+            | Step::Target
+            | Step::OtherTarget
+            | Step::NewTarget
     )
 }
 
@@ -415,6 +461,10 @@ pub fn folder_answer(state: &mut State, ctx: &Ctx, path: PathBuf, typed: bool) -
             learn::read(state, ctx, path);
             None
         }
+        Step::Greeting => {
+            crate::greeting::route(state, ctx, path);
+            None
+        }
         Step::Source => {
             let role = (!ctx.sources.contains(&path)).then(|| Action::SetFolderRole {
                 folder: path.clone(),
@@ -433,6 +483,10 @@ pub fn folder_answer(state: &mut State, ctx: &Ctx, path: PathBuf, typed: bool) -
         }
         Step::OtherTarget => {
             understand::other_target(state, ctx, path);
+            None
+        }
+        Step::NewTarget => {
+            crate::decide::new_target_picked(state, ctx, path);
             None
         }
         _ => None,
@@ -481,7 +535,7 @@ fn ask_read_folder(state: &mut State, ctx: &Ctx, folder: Option<PathBuf>) -> Opt
         say(
             state,
             text(ctx.lang, Msg::HermesChatAskReadFolder),
-            ask_chips(ctx),
+            target_chips(state, ctx),
         );
         return None;
     };
@@ -513,7 +567,7 @@ pub fn batch_not_yet(state: &mut State, ctx: &Ctx) {
     say(
         state,
         text(ctx.lang, Msg::HermesChatBatchNotYet),
-        Vec::new(),
+        fallback_chips(ctx),
     );
 }
 
@@ -571,6 +625,7 @@ pub fn handle_reply(state: &mut State, ctx: &Ctx, reply: ChipReply) -> Option<Ac
         ChipReply::Once => tidy::once(state, ctx, false),
         ChipReply::Always => tidy::once(state, ctx, true),
         ChipReply::DownloadModel => return Some(Action::DownloadModel),
+        ChipReply::TurnOnAi => return Some(Action::TurnOnAi),
         ChipReply::ConfirmTidy => return understand::confirm_tidy_yes(state, ctx),
         ChipReply::ConfirmChange => learn::confirm_change(state, ctx),
         ChipReply::OtherTarget => understand::ask_other_target(state, ctx),
@@ -586,6 +641,17 @@ pub fn handle_reply(state: &mut State, ctx: &Ctx, reply: ChipReply) -> Option<Ac
         ChipReply::ShowMore => tidy::show_more(state, ctx),
         ChipReply::GroupArea(area) => stay_groups::area_chosen(state, ctx, area),
         ChipReply::GroupNewFolder => stay_groups::new_folder(state, ctx),
+        ChipReply::PhotosYes => return photos::yes(state, ctx),
+        ChipReply::PhotosNo => photos::no(state, ctx),
+        ChipReply::AdoptPattern(index) => patterns::adopt(state, ctx, index),
+        ChipReply::RoleSource => return crate::greeting::role_chosen(state, ctx, true),
+        ChipReply::RoleTarget => return crate::greeting::role_chosen(state, ctx, false),
+        ChipReply::NewTarget => return crate::decide::pick_new_target(state),
+        ChipReply::ChangeArea(area) => learn::area_chosen(state, ctx, area),
+        ChipReply::DecidePerFile => crate::decide::per_file(state, ctx),
+        ChipReply::DecideTarget(path) => crate::decide::target_chosen(state, ctx, path),
+        ChipReply::DecideSkip => crate::decide::skipped(state, ctx),
+        ChipReply::NewLayout(layout) => crate::decide::layout_chosen(state, ctx, layout),
         ChipReply::GroupLeave => stay_groups::leave_group(state, ctx),
         ChipReply::SinglesShow => stay_groups::singles_show(state, ctx),
         ChipReply::SinglesLeave => stay_groups::singles_leave(state, ctx),
@@ -610,8 +676,15 @@ pub fn cancel(state: &mut State, ctx: &Ctx) {
     state.session.trial = None;
     state.session.groups = GroupFlow::default();
     state.session.pending_change = None;
+    state.session.pending_pattern = None;
     state.session.offer = None;
     state.session.resume_tidy = false;
+    state.session.role_asked = None;
+    state.session.photos_of = None;
+    state.session.layout = None;
+    state.session.deciding = None;
+    state.session.change_order = None;
+    state.session.area_chosen = false;
     state.session.confirm = None;
     state.session.choosing = None;
     state.session.proposal = None;

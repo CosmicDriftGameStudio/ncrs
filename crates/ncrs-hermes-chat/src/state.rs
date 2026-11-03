@@ -4,10 +4,34 @@ use std::sync::Arc;
 
 use ncrs_ai::{ChatTurn, Schedule};
 use ncrs_filing::chat_work::{
-    AnsweredGroups, ChangePreview, ChatWork, FolderReading, OrderChange, RunSummary, TrashItem,
-    TrialPlan,
+    AnsweredGroups, ChangeOrder, ChangePreview, ChatWork, FolderReading, OrderChange,
+    PatternChoice, PatternLevel, RunPlan, RunSummary, TrashItem, TrialPlan,
 };
 use ncrs_index::Transfer;
+
+use crate::action::Action;
+
+/// How a new, empty folder to file into is ordered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NewLayout {
+    Year,
+    Sender,
+    Kind,
+    Flat,
+}
+
+/// Filing a source file by file: where the walk stands and what is decided.
+#[derive(Debug, Clone)]
+pub struct Deciding {
+    pub source: Arc<FolderReading>,
+    pub next: usize,
+    /// The position of a file in the source and the folder it goes to.
+    pub picks: Vec<(usize, PathBuf)>,
+    /// One run for every folder the files go to, the next one last.
+    pub runs: Vec<RunPlan>,
+    pub done: usize,
+    pub skipped: usize,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChipReply {
@@ -37,6 +61,20 @@ pub enum ChipReply {
     NamedFolder(PathBuf),
     GroupNewFolder,
     GroupLeave,
+    RoleSource,
+    RoleTarget,
+    /// Uses the pattern at this position of `Session::patterns` everywhere.
+    AdoptPattern(usize),
+    PhotosYes,
+    PhotosNo,
+    /// Opens the picker for a new folder to file into.
+    NewTarget,
+    DecidePerFile,
+    /// The area the user meant by a word Hermes found no folder for.
+    ChangeArea(String),
+    DecideTarget(PathBuf),
+    DecideSkip,
+    NewLayout(NewLayout),
     SinglesShow,
     SinglesLeave,
     NamesNumbered,
@@ -53,6 +91,7 @@ pub enum ChipReply {
     IntentStructure,
     IntentUndo,
     DownloadModel,
+    TurnOnAi,
     ConfirmTidy,
     ConfirmChange,
     OtherTarget,
@@ -71,6 +110,9 @@ impl ChipReply {
             | Self::ToTrash
             | Self::FileAll
             | Self::GroupArea(_)
+            | Self::RoleSource
+            | Self::DecideTarget(_)
+            | Self::NewLayout(_)
             | Self::NamesNumbered
             | Self::PutBack
             | Self::Undo => true,
@@ -82,6 +124,7 @@ impl ChipReply {
             | Self::WantChange
             | Self::ShowAll
             | Self::ScopeAll
+            | Self::ChangeArea(_)
             | Self::ScopeOnly(_)
             | Self::LeaveThem
             | Self::Later
@@ -93,6 +136,13 @@ impl ChipReply {
             | Self::NamedFolder(_)
             | Self::GroupNewFolder
             | Self::GroupLeave
+            | Self::RoleTarget
+            | Self::AdoptPattern(_)
+            | Self::PhotosYes
+            | Self::NewTarget
+            | Self::DecidePerFile
+            | Self::DecideSkip
+            | Self::PhotosNo
             | Self::SinglesShow
             | Self::SinglesLeave
             | Self::NamesLeave
@@ -103,6 +153,7 @@ impl ChipReply {
             | Self::IntentStructure
             | Self::IntentUndo
             | Self::DownloadModel
+            | Self::TurnOnAi
             | Self::ConfirmTidy
             | Self::ConfirmChange
             | Self::OtherTarget
@@ -122,7 +173,10 @@ pub struct Chip {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AreaRow {
     pub name: String,
+    /// The folders below the area and the file, "Year / Sender / File".
     pub description: String,
+    /// The path of a real document laid out that way; empty for none.
+    pub example: String,
     pub documents: u32,
 }
 
@@ -196,6 +250,18 @@ pub enum Step {
     Idle,
     /// A folder to read, to learn its order.
     ReadFolder,
+    /// The opening question: any folder, routed by what it is for.
+    Greeting,
+    /// What a folder with no role is for.
+    Role,
+    /// Whether to read the photos of a source.
+    Photos,
+    /// The next picked folder is a new one to file into.
+    NewTarget,
+    /// How a new folder to file into is ordered.
+    NewLayout,
+    /// Which folder a file goes to.
+    Decide,
     ConfirmUnknown,
     Keep,
     Change,
@@ -221,6 +287,7 @@ pub enum ReadFor {
     Learn,
     Source,
     Target,
+    NewTarget,
 }
 
 #[derive(Debug, Clone)]
@@ -300,9 +367,24 @@ pub struct Session {
     pub learning: Option<Arc<FolderReading>>,
     pub read_for: Option<ReadFor>,
     pub resume_tidy: bool,
+    /// The folder whose role the chat asked about.
+    pub role_asked: Option<PathBuf>,
+    /// The source whose photos the chat asked about.
+    pub photos_of: Option<Arc<FolderReading>>,
+    /// The order a new target without neighbours gets.
+    pub layout: Option<Vec<PatternLevel>>,
+    pub deciding: Option<Deciding>,
     pub tidy: Option<Tidy>,
     pub changes: Vec<OrderChange>,
     pub pending_change: Option<ChangePreview>,
+    /// The order asked for, kept while Hermes asks which area is meant.
+    pub change_order: Option<ChangeOrder>,
+    /// The area was picked from the buttons: no second question if it fails.
+    pub area_chosen: bool,
+    /// The patterns on offer after the areas card.
+    pub patterns: Vec<PatternChoice>,
+    /// The pattern change waiting for a yes.
+    pub pending_pattern: Option<OrderChange>,
     pub change_word: String,
     /// The folder the running read is for.
     pub requested: PathBuf,
@@ -345,6 +427,11 @@ pub struct State {
     /// The check set during this `update` that no task runs yet.
     pub fresh_naming: bool,
     pub step: Step,
+    /// The opening question waits for the AI or the model; it follows once
+    /// they are there.
+    pub greeting_owed: bool,
+    /// An action a result of work asks for; `update` hands it to the app.
+    pub queued_action: Option<Action>,
     pub session: Session,
 }
 
@@ -363,6 +450,8 @@ impl Default for State {
             naming: None,
             fresh_naming: false,
             step: Step::Idle,
+            greeting_owed: false,
+            queued_action: None,
             session: Session::default(),
         }
     }

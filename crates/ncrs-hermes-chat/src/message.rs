@@ -34,6 +34,8 @@ pub enum Message {
     },
     /// The model was downloaded; sent by the app when the download is done.
     ModelReady,
+    /// The AI setting was switched on and applied; sent by the app.
+    AiTurnedOn,
 }
 
 /// A finished piece of work is never equal to another: its result is not
@@ -44,7 +46,8 @@ impl PartialEq for Message {
             (Self::Open, Self::Open)
             | (Self::Close, Self::Close)
             | (Self::Submit, Self::Submit)
-            | (Self::ModelReady, Self::ModelReady) => true,
+            | (Self::ModelReady, Self::ModelReady)
+            | (Self::AiTurnedOn, Self::AiTurnedOn) => true,
             (Self::InputChanged(left), Self::InputChanged(right))
             | (Self::Failed(left), Self::Failed(right)) => left == right,
             (

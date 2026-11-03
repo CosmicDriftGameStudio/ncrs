@@ -12,8 +12,12 @@ mod stay_groups;
 mod update;
 mod view;
 
+mod decide;
+mod greeting;
 mod learn;
 mod named_folders;
+mod patterns;
+mod photos;
 mod texts;
 mod tidy;
 mod understand;
@@ -24,8 +28,8 @@ pub use ctx::{Availability, Ctx};
 pub use keys::{chat_key, ChatKey};
 pub use message::Message;
 pub use state::{
-    AreaRow, AreasCard, Chip, ChipReply, CountRow, Entry, FileCard, Part, RowOutcome, State, Step,
-    TrialCard, TrialRow,
+    AreaRow, AreasCard, Chip, ChipReply, CountRow, Entry, FileCard, NewLayout, Part, RowOutcome,
+    State, Step, TrialCard, TrialRow,
 };
 pub use update::update;
 pub use view::{focus_input, view, ViewCtx, INPUT_ID, SCROLL_ID};

@@ -1,6 +1,6 @@
 use iced::widget::text::Wrapping;
 use iced::widget::{button, column, container, row, text, Column};
-use iced::{alignment, Element, Font, Length, Padding};
+use iced::{alignment, Element, Length, Padding};
 
 use super::*;
 use crate::message::SettingsMessage;
@@ -91,7 +91,7 @@ pub fn heading<'a>(feature: SettingsFeature, view: &SettingsView<'a>) -> Element
     let lang = view.lang;
     let mut title = row![text(lang.text(feature_label(feature)).to_owned())
         .size(font_size::FIGURE)
-        .font(Font::DEFAULT)]
+        .font(ncrs_ui_kit::APP_FONT)]
     .spacing(spacing::M)
     .align_y(alignment::Vertical::Center);
     if let Some(theme_name) = feature_theme_name(feature).and_then(|name| lang.futurama_name(name))

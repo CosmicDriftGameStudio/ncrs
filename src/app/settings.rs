@@ -277,6 +277,7 @@ impl App {
                 Task::none()
             }
             SettingChange::AiEnabled(_) | SettingChange::AiProvider(_) => {
+                let turned_on = matches!(change, SettingChange::AiEnabled(true));
                 let (applies, task) = self.apply_ai_change(config.filing);
                 let outcome = if matches!(applies, SavedFilingApplies::Now) {
                     InstallOutcome::TurnedOn
@@ -286,11 +287,19 @@ impl App {
                 if let Some(card) = self.settings.ai_model.as_mut() {
                     card.set_outcome(outcome);
                 }
-                if matches!(applies, SavedFilingApplies::AtNextStart) {
+                let with_notice = if matches!(applies, SavedFilingApplies::AtNextStart) {
                     let notice = self.lang.text(Msg::SettingsSavedNextStart).to_owned();
                     Task::batch([task, self.show_notice(notice)])
                 } else {
                     task
+                };
+                if turned_on {
+                    Task::batch([
+                        with_notice,
+                        self.update_hermes_chat(HermesChatMessage::AiTurnedOn),
+                    ])
+                } else {
+                    with_notice
                 }
             }
             SettingChange::OwnDetails { .. } => {

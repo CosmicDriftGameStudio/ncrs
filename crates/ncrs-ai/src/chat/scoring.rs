@@ -122,6 +122,8 @@ pub fn describe(intent: &ChatIntent, turn: &ChatTurn) -> (&'static str, Vec<(&'s
             text("choice", &option);
             ("answer", fields)
         }
+        ChatIntent::SmallTalk => ("smalltalk", fields),
+        ChatIntent::LeaveAsIs => ("leave_as_is", fields),
         ChatIntent::Other => ("other", fields),
     }
 }

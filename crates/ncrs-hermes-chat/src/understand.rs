@@ -8,7 +8,7 @@ use ncrs_ai::{
     ChatIntent, ChatQuestion, ChatTurn, LocalModelStatus, Order, Schedule,
     Transfer as SaidTransfer, LOCAL_MODEL,
 };
-use ncrs_filing::chat_work::TimeUnit;
+use ncrs_filing::chat_work::ChangeOrder;
 use ncrs_i18n::Msg;
 use ncrs_index::Transfer;
 use ncrs_ui_kit::format;
@@ -17,10 +17,10 @@ use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::message::Message;
 use crate::state::{Asked, Chip, ChipReply, Entry, Part, State, Step, Thinking, Unsent};
-use crate::texts::{fill, text};
+use crate::texts::{fill, shown_folder, text};
 use crate::update::{
-    ask_chips, batch_not_yet, cancel_chip, chip, drop_working, explain_not_yet, fallback,
-    fallback_chips, handle_reply, say, search_not_yet,
+    batch_not_yet, cancel_chip, chip, drop_working, explain_not_yet, fallback, fallback_chips,
+    handle_reply, open_thread, say, search_not_yet,
 };
 use crate::{learn, undo};
 
@@ -34,8 +34,19 @@ pub fn asked(state: &State) -> Asked {
         Part::Text(sentence) => Some(sentence.clone()),
         _ => None,
     });
+    // The buttons that offer what Hermes can do follow a statement, they are
+    // not options of a question the model could answer.
+    let only_ways_on = chips.iter().all(|chip| {
+        matches!(
+            chip.reply,
+            ChipReply::IntentSearch
+                | ChipReply::IntentTidy
+                | ChipReply::IntentStructure
+                | ChipReply::IntentUndo
+        )
+    });
     match last_text {
-        Some(sentence) if !chips.is_empty() => Asked {
+        Some(sentence) if !chips.is_empty() && !only_ways_on => Asked {
             question: Some(sentence),
             chips: chips.clone(),
         },
@@ -43,17 +54,35 @@ pub fn asked(state: &State) -> Asked {
     }
 }
 
-pub fn ask(state: &mut State, ctx: &Ctx, typed: &str, asked: Asked) -> Option<Action> {
+/// Whether Hermes said why the model cannot be used, or the model is usable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Gate {
+    Usable,
+    Said,
+}
+
+/// The one check before the model: the AI is on and the model is downloaded
+/// and runs. Otherwise Hermes says why; the sentence that waited for it is
+/// kept for when it is there.
+pub fn gate(state: &mut State, ctx: &Ctx, unsent: Option<Unsent>) -> Gate {
+    if !ctx.ai_on {
+        keep_unsent(state, unsent);
+        say(
+            state,
+            text(ctx.lang, Msg::HermesChatAiOff),
+            vec![
+                chip(ctx, Msg::HermesChatTurnOnAi, ChipReply::TurnOnAi, true),
+                chip(ctx, Msg::HermesChatLater, ChipReply::Later, false),
+            ],
+        );
+        return Gate::Said;
+    }
     let Some(model) = ctx.model.as_ref() else {
-        fallback(state, ctx);
-        return None;
+        return Gate::Usable;
     };
     match model.status() {
         LocalModelStatus::NotDownloaded => {
-            state.session.unsent = Some(Unsent {
-                message: typed.to_owned(),
-                asked,
-            });
+            keep_unsent(state, unsent);
             say(
                 state,
                 fill(
@@ -71,6 +100,7 @@ pub fn ask(state: &mut State, ctx: &Ctx, typed: &str, asked: Asked) -> Option<Ac
                     chip(ctx, Msg::HermesChatLater, ChipReply::Later, false),
                 ],
             );
+            Gate::Said
         }
         LocalModelStatus::Failed(reason) => {
             say(
@@ -78,12 +108,32 @@ pub fn ask(state: &mut State, ctx: &Ctx, typed: &str, asked: Asked) -> Option<Ac
                 fill(ctx.lang, Msg::HermesChatModelFailed, &[("reason", reason)]),
                 fallback_chips(ctx),
             );
+            Gate::Said
         }
-        status => {
-            let loaded = matches!(status, LocalModelStatus::Loaded { .. });
-            think(state, ctx, typed, asked, loaded);
-        }
+        _ => Gate::Usable,
     }
+}
+
+fn keep_unsent(state: &mut State, unsent: Option<Unsent>) {
+    if unsent.is_some() {
+        state.session.unsent = unsent;
+    }
+}
+
+pub fn ask(state: &mut State, ctx: &Ctx, typed: &str, asked: Asked) -> Option<Action> {
+    let unsent = Unsent {
+        message: typed.to_owned(),
+        asked: asked.clone(),
+    };
+    if gate(state, ctx, Some(unsent)) == Gate::Said {
+        return None;
+    }
+    let Some(model) = ctx.model.as_ref() else {
+        fallback(state, ctx);
+        return None;
+    };
+    let loaded = matches!(model.status(), LocalModelStatus::Loaded { .. });
+    think(state, ctx, typed, asked, loaded);
     None
 }
 
@@ -142,13 +192,43 @@ pub fn understood(
     }
 }
 
-/// The model is there now: the sentence that waited for it goes in again.
+/// The model is there now.
 pub fn model_ready(state: &mut State, ctx: &Ctx) -> Option<Action> {
     if let Some(model) = ctx.model.as_ref() {
         model.refresh();
     }
-    let unsent = state.session.unsent.take()?;
-    ask(state, ctx, &unsent.message, unsent.asked)
+    if state.session.unsent.is_some() || state.greeting_owed {
+        let usable = ctx.ai_on
+            && ctx.model.as_ref().is_some_and(|model| {
+                !matches!(
+                    model.status(),
+                    LocalModelStatus::NotDownloaded | LocalModelStatus::Failed(_)
+                )
+            });
+        if usable {
+            say(state, text(ctx.lang, Msg::HermesChatModelReady), Vec::new());
+        }
+    }
+    resume(state, ctx)
+}
+
+/// The AI is on now: whatever waited for it goes on, which offers the model
+/// download when it is missing.
+pub fn ai_turned_on(state: &mut State, ctx: &Ctx) -> Option<Action> {
+    resume(state, ctx)
+}
+
+/// The sentence that waited goes in again, else the opening question that
+/// waited comes.
+fn resume(state: &mut State, ctx: &Ctx) -> Option<Action> {
+    if let Some(unsent) = state.session.unsent.take() {
+        state.greeting_owed = false;
+        return ask(state, ctx, &unsent.message, unsent.asked);
+    }
+    if state.greeting_owed {
+        open_thread(state, ctx);
+    }
+    None
 }
 
 fn act_on(state: &mut State, ctx: &Ctx, intent: ChatIntent, asked: &Asked) -> Option<Action> {
@@ -171,20 +251,8 @@ fn act_on(state: &mut State, ctx: &Ctx, intent: ChatIntent, asked: &Asked) -> Op
             transfer,
         } => propose_tidy(state, ctx, &source, target.as_deref(), schedule, transfer),
         ChatIntent::ChangeStructure { order, area, scope } => {
-            if let Some(name) = unsupported_order(order) {
-                say(
-                    state,
-                    fill(
-                        ctx.lang,
-                        Msg::HermesChatOrderNotYet,
-                        &[("order", &text(ctx.lang, name))],
-                    ),
-                    Vec::new(),
-                );
-                return None;
-            }
             state.session.change_scope = scope;
-            learn::change_order(state, ctx, area, TimeUnit::Month);
+            learn::change_order(state, ctx, area, change_order_of(order));
             None
         }
         ChatIntent::Undo => {
@@ -201,6 +269,22 @@ fn act_on(state: &mut State, ctx: &Ctx, intent: ChatIntent, asked: &Asked) -> Op
         }
         ChatIntent::BulkMove { .. } => {
             batch_not_yet(state, ctx);
+            None
+        }
+        ChatIntent::SmallTalk => {
+            say(
+                state,
+                text(ctx.lang, Msg::HermesChatSmallTalk),
+                fallback_chips(ctx),
+            );
+            None
+        }
+        ChatIntent::LeaveAsIs => {
+            say(
+                state,
+                text(ctx.lang, Msg::HermesChatLeaveAsIs),
+                fallback_chips(ctx),
+            );
             None
         }
         ChatIntent::Other => {
@@ -221,14 +305,13 @@ fn confirm_typed_choice(state: &mut State, ctx: &Ctx, answer: Chip) {
     say(state, sentence, vec![answer, cancel_chip(ctx)]);
 }
 
-/// The name of an order Hermes cannot do yet, `None` for the one it can.
-fn unsupported_order(order: Order) -> Option<Msg> {
+fn change_order_of(order: Order) -> ChangeOrder {
     match order {
-        Order::ByMonth => None,
-        Order::ByYear => Some(Msg::HermesChatOrderYear),
-        Order::BySender => Some(Msg::HermesChatOrderSender),
-        Order::ByKind => Some(Msg::HermesChatOrderKind),
-        Order::Flat => Some(Msg::HermesChatOrderFlat),
+        Order::ByMonth => ChangeOrder::ByMonth,
+        Order::ByYear => ChangeOrder::ByYear,
+        Order::BySender => ChangeOrder::BySender,
+        Order::ByKind => ChangeOrder::ByKind,
+        Order::Flat => ChangeOrder::Flat,
     }
 }
 
@@ -260,14 +343,14 @@ pub fn confirm_tidy(state: &mut State, ctx: &Ctx) {
         Some(Transfer::Copy) => text(ctx.lang, Msg::HermesChatConfirmCopy),
         _ => String::new(),
     };
-    let source = proposal.source.display().to_string();
+    let source = shown_folder(ctx, &proposal.source);
     let sentence = match &proposal.target {
         Some(target) => fill(
             ctx.lang,
             Msg::HermesChatConfirmTidyTo,
             &[
                 ("source", &source),
-                ("target", &target.display().to_string()),
+                ("target", &shown_folder(ctx, target)),
                 ("mode", &mode),
             ],
         ),
@@ -318,7 +401,7 @@ pub fn ask_other_target(state: &mut State, ctx: &Ctx) {
     say(
         state,
         text(ctx.lang, Msg::HermesChatAskOtherTarget),
-        ask_chips(ctx),
+        crate::update::target_chips(state, ctx),
     );
 }
 

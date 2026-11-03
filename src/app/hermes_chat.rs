@@ -31,6 +31,10 @@ impl App {
 
     #[cfg(feature = "local-ai")]
     fn ensure_chat_model(&mut self) {
+        if !self.chat_ai_on() {
+            self.chat_model = None;
+            return;
+        }
         if self.chat_model.is_some() {
             return;
         }
@@ -47,7 +51,11 @@ impl App {
     #[cfg(not(feature = "local-ai"))]
     fn ensure_chat_model(&mut self) {}
 
-    fn hermes_chat_ctx(&self) -> ncrs_hermes_chat::Ctx {
+    fn chat_ai_on(&self) -> bool {
+        self.hermes.filing_config.ai != crate::config::AiSetting::Off
+    }
+
+    pub(in crate::app) fn hermes_chat_ctx(&self) -> ncrs_hermes_chat::Ctx {
         let availability = match self.hermes.filing.as_ref() {
             None => ncrs_hermes_chat::Availability::Starting,
             Some(module) => match module.chat_access(Arc::clone(&self.trash)) {
@@ -74,11 +82,16 @@ impl App {
             favourites: self.panels.favourites.clone(),
             now: chrono::Local::now(),
             resolve_folder: self.resolve_folder,
-            model: self.chat_model.clone(),
+            ai_on: self.chat_ai_on(),
+            ocr_models_present: self.ocr_models_present(),
+            model: self.chat_ai_on().then(|| self.chat_model.clone()).flatten(),
         }
     }
 
-    fn run_hermes_chat_action(&mut self, action: ncrs_hermes_chat::Action) -> Task<Message> {
+    pub(in crate::app) fn run_hermes_chat_action(
+        &mut self,
+        action: ncrs_hermes_chat::Action,
+    ) -> Task<Message> {
         match action {
             ncrs_hermes_chat::Action::Close => {
                 self.hermes_chat.open = false;
@@ -93,7 +106,15 @@ impl App {
                 (self.pick_folder)(&start_in)
                     .map(|folder| Message::HermesChat(HermesChatMessage::FolderPicked(folder)))
             }
-            ncrs_hermes_chat::Action::DownloadModel => self.open_ai_model_card(),
+            ncrs_hermes_chat::Action::DownloadModel => {
+                let card = self.open_and_download_ai_model();
+                if self.chat_ai_on() {
+                    card
+                } else {
+                    Task::batch([card, self.turn_on_ai()])
+                }
+            }
+            ncrs_hermes_chat::Action::TurnOnAi => self.turn_on_ai(),
             ncrs_hermes_chat::Action::OpenSearch => {
                 self.hermes_chat.open = false;
                 self.open_search()
@@ -102,10 +123,17 @@ impl App {
                 .run_hermes_flow(Vec::new(), |hermes, ctx| {
                     ncrs_hermes_ui::set_folder_role(hermes, &folder, role, ctx)
                 }),
+            ncrs_hermes_chat::Action::OpenOcrModels => {
+                self.update_ocr_models(OcrModelsMessage::Open)
+            }
             ncrs_hermes_chat::Action::OpenFilingSetup => {
                 self.update_filing_setup(FilingSetupMessage::Toggle)
             }
         }
+    }
+
+    fn turn_on_ai(&mut self) -> Task<Message> {
+        self.update_settings(SettingsMessage::Change(SettingChange::AiEnabled(true)))
     }
 
     /// Shift+F2: the chat closes and the command line takes the keys.

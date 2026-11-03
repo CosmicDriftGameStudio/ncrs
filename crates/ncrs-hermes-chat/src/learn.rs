@@ -5,7 +5,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use ncrs_filing::chat_work::{
-    same_word, ChangePreview, ChatWork, FolderReading, OrderChange, ReadError, TimeUnit,
+    already_ordered, same_word, ChangeOrder, ChangePreview, ChatWork, FolderReading, OrderChange,
+    ReadError,
 };
 use ncrs_i18n::Msg;
 use ncrs_ui_kit::hermes_state::FolderRole;
@@ -14,12 +15,13 @@ use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::state::{Chip, ChipReply, FileCard, Offer, Part, ReadFor, State, Step};
 use crate::texts::{areas_card, fill, folder_name, number, plural_text, text};
-use crate::tidy;
 use crate::update::{
-    access, ask_chips, cancel_chip, chip, chip_labelled, hermes, say, source_chips, work,
+    access, cancel_chip, chip, chip_labelled, hermes, say, source_chips, target_chips, work,
 };
+use crate::{patterns, tidy};
 
 const SCOPE_VALUES: usize = 3;
+const AREA_CHOICES: usize = 6;
 
 pub fn read(state: &mut State, ctx: &Ctx, folder: PathBuf) {
     read_for(state, ctx, folder, ReadFor::Learn);
@@ -87,10 +89,11 @@ fn deliver(state: &mut State, ctx: &Ctx, purpose: ReadFor, reading: &Arc<FolderR
         ReadFor::Learn => summary(state, ctx, reading),
         ReadFor::Source => tidy::source_read(state, ctx, reading),
         ReadFor::Target => tidy::target_read(state, ctx),
+        ReadFor::NewTarget => crate::decide::new_target_read(state, ctx, reading),
     }
 }
 
-fn summary(state: &mut State, ctx: &Ctx, reading: &Arc<FolderReading>) {
+pub fn summary(state: &mut State, ctx: &Ctx, reading: &Arc<FolderReading>) {
     let folder = folder_name(ctx, &reading.root);
     if reading.files.is_empty() {
         state.step = Step::Idle;
@@ -133,18 +136,24 @@ fn summary(state: &mut State, ctx: &Ctx, reading: &Arc<FolderReading>) {
         )
     };
     state.step = Step::Keep;
+    let chips = keep_chips(state, ctx, true);
     hermes(
         state,
         vec![
             Part::Text(intro),
-            Part::Areas(areas_card(ctx.lang, &reading.structure, false)),
+            Part::Areas(areas_card(
+                ctx.lang,
+                &folder_name(ctx, &reading.root),
+                reading,
+                false,
+            )),
             Part::Text(text(ctx.lang, Msg::HermesChatAskKeep)),
         ],
-        keep_chips(ctx, true),
+        chips,
     );
 }
 
-fn keep_chips(ctx: &Ctx, with_all: bool) -> Vec<Chip> {
+fn keep_chips(state: &mut State, ctx: &Ctx, with_all: bool) -> Vec<Chip> {
     let mut chips = vec![
         chip(ctx, Msg::HermesChatKeepYes, ChipReply::KeepYes, true),
         chip(ctx, Msg::HermesChatWantChange, ChipReply::WantChange, false),
@@ -152,6 +161,7 @@ fn keep_chips(ctx: &Ctx, with_all: bool) -> Vec<Chip> {
     if with_all {
         chips.push(chip(ctx, Msg::HermesChatShowAll, ChipReply::ShowAll, false));
     }
+    chips.extend(patterns::chips(state, ctx));
     chips
 }
 
@@ -160,13 +170,19 @@ pub fn show_all(state: &mut State, ctx: &Ctx) {
         return;
     };
     state.step = Step::Keep;
+    let chips = keep_chips(state, ctx, false);
     hermes(
         state,
         vec![
-            Part::Areas(areas_card(ctx.lang, &reading.structure, true)),
+            Part::Areas(areas_card(
+                ctx.lang,
+                &folder_name(ctx, &reading.root),
+                &reading,
+                true,
+            )),
             Part::Text(text(ctx.lang, Msg::HermesChatAskKeep)),
         ],
-        keep_chips(ctx, false),
+        chips,
     );
 }
 
@@ -217,14 +233,15 @@ pub fn keep(state: &mut State, ctx: &Ctx) -> Option<Action> {
     role
 }
 
-pub fn change_order(state: &mut State, ctx: &Ctx, kind_word: String, unit: TimeUnit) {
+pub fn change_order(state: &mut State, ctx: &Ctx, kind_word: String, order: ChangeOrder) {
+    state.session.change_order = Some(order);
     let Some(reading) = state.session.learning.clone() else {
         state.step = Step::ReadFolder;
         state.session.read_for = Some(ReadFor::Learn);
         say(
             state,
             text(ctx.lang, Msg::HermesChatChangeNeedsReading),
-            ask_chips(ctx),
+            target_chips(state, ctx),
         );
         return;
     };
@@ -234,27 +251,53 @@ pub fn change_order(state: &mut State, ctx: &Ctx, kind_word: String, unit: TimeU
         ChatWork::PreviewChange {
             reading,
             kind_word,
-            unit,
+            order,
         },
         None,
     );
 }
 
-pub fn preview_done(state: &mut State, ctx: &Ctx, computed: Option<ChangePreview>) {
-    let wanted = state.session.change_scope.take();
-    let Some(mut preview) = computed else {
-        state.step = Step::AfterChange;
-        let word = state.session.change_word.clone();
-        say(
+/// Nothing to change was found: the area is ordered that way already, or the
+/// user is asked for the area, or the areas are offered again.
+fn no_change_found(state: &mut State, ctx: &Ctx) {
+    let word = state.session.change_word.clone();
+    if let (Some(reading), Some(order)) =
+        (state.session.learning.clone(), state.session.change_order)
+    {
+        if let Some(area) = already_ordered(&reading, &word, order) {
+            state.step = Step::AfterChange;
+            say(
+                state,
+                fill(ctx.lang, Msg::HermesChatChangeAlready, &[("area", &area)]),
+                crate::update::fallback_chips(ctx),
+            );
+            return;
+        }
+    }
+    if ask_area(state, ctx) {
+        return;
+    }
+    let not_found = fill(ctx.lang, Msg::HermesChatChangeNotFound, &[("word", &word)]);
+    state.step = Step::AfterChange;
+    match area_chips(state, ctx) {
+        Some(chips) => say(state, not_found, chips),
+        None => say(
             state,
-            fill(ctx.lang, Msg::HermesChatChangeNotFound, &[("word", &word)]),
+            not_found,
             vec![chip(
                 ctx,
                 Msg::HermesChatFineAsIs,
                 ChipReply::FineAsIs,
                 true,
             )],
-        );
+        ),
+    }
+}
+
+pub fn preview_done(state: &mut State, ctx: &Ctx, computed: Option<ChangePreview>) {
+    let wanted = state.session.change_scope.take();
+    let Some(mut preview) = computed else {
+        no_change_found(state, ctx);
         return;
     };
     let mut parts = vec![
@@ -308,6 +351,61 @@ pub fn preview_done(state: &mut State, ctx: &Ctx, computed: Option<ChangePreview
     hermes(state, parts, chips);
 }
 
+/// No folder fits the word: the areas to choose from, so the order asked for
+/// is not lost. False when it was asked already or there is no area.
+fn ask_area(state: &mut State, ctx: &Ctx) -> bool {
+    if state.session.area_chosen {
+        return false;
+    }
+    let Some(chips) = area_chips(state, ctx) else {
+        return false;
+    };
+    state.step = Step::AfterChange;
+    say(state, text(ctx.lang, Msg::HermesChatChangeAreaAsk), chips);
+    true
+}
+
+/// One chip per area, the biggest first, plus another folder and cancel.
+fn area_chips(state: &State, ctx: &Ctx) -> Option<Vec<Chip>> {
+    let (Some(reading), Some(_)) = (state.session.learning.as_ref(), state.session.change_order)
+    else {
+        return None;
+    };
+    if reading.structure.areas.is_empty() {
+        return None;
+    }
+    let mut areas: Vec<&ncrs_intake::Area> = reading.structure.areas.iter().collect();
+    areas.sort_by_key(|area| std::cmp::Reverse(area.documents));
+    let mut chips: Vec<Chip> = areas
+        .into_iter()
+        .take(AREA_CHOICES)
+        .map(|area| {
+            chip_labelled(
+                area.folder.clone(),
+                ChipReply::ChangeArea(area.folder.clone()),
+                false,
+            )
+        })
+        .collect();
+    chips.push(chip(
+        ctx,
+        Msg::HermesChatOtherFolder,
+        ChipReply::PickFolder,
+        false,
+    ));
+    chips.push(cancel_chip(ctx));
+    Some(chips)
+}
+
+/// The area the user picked is the word the change is looked up with.
+pub fn area_chosen(state: &mut State, ctx: &Ctx, area: String) {
+    let Some(order) = state.session.change_order else {
+        return;
+    };
+    state.session.area_chosen = true;
+    change_order(state, ctx, area, order);
+}
+
 /// The preview is the question; the yes applies the change.
 fn confirm(state: &mut State, ctx: &Ctx, parts: Vec<Part>, preview: ChangePreview) {
     state.session.pending_change = Some(preview);
@@ -328,6 +426,10 @@ fn confirm(state: &mut State, ctx: &Ctx, parts: Vec<Part>, preview: ChangePrevie
 }
 
 pub fn confirm_change(state: &mut State, ctx: &Ctx) {
+    if let Some(change) = state.session.pending_pattern.take() {
+        apply(state, ctx, Vec::new(), change);
+        return;
+    }
     let Some(preview) = state.session.pending_change.take() else {
         return;
     };

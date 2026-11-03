@@ -42,6 +42,8 @@ mod gen {
     include!(concat!(env!("OUT_DIR"), "/futurama.rs"));
 }
 
+/// Every string, for tests that check what a screen shows against all of them.
+pub use gen::ALL as ALL_MESSAGES;
 pub use gen::{FuturamaName, Msg};
 
 impl Msg {

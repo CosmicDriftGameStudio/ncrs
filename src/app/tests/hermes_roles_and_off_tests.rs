@@ -112,6 +112,68 @@ async fn an_inbox_needs_a_filing_location_first_and_the_sentence_stays() {
     assert!(app.hermes.filing_config.locations.is_empty());
 }
 
+async fn with_a_filing_location(config: &tempfile::TempDir) -> App {
+    let mut app = ready_hermes_without_locations(config);
+    app.panel_mut(LEFT).selected = DOCUMENTS;
+    settle(
+        &mut app,
+        Message::HermesFile(HermesFileMessage::SetRole(FolderRole::FilingLocation)),
+    )
+    .await;
+    app
+}
+
+#[tokio::test]
+async fn the_chat_makes_a_folder_an_inbox_with_the_same_config_as_the_menu() {
+    let by_menu_dir = tempfile::tempdir().unwrap();
+    let mut by_menu = with_a_filing_location(&by_menu_dir).await;
+    let inbox = by_menu_dir.path().join("Downloads");
+    std::fs::create_dir(&inbox).unwrap();
+    by_menu.panel_mut(LEFT).entries[DOCUMENTS].path = inbox.clone();
+    settle(
+        &mut by_menu,
+        Message::HermesFile(HermesFileMessage::SetRole(FolderRole::Inbox)),
+    )
+    .await;
+
+    let by_chat_dir = tempfile::tempdir().unwrap();
+    let mut by_chat = with_a_filing_location(&by_chat_dir).await;
+    let chat_inbox = by_chat_dir.path().join("Downloads");
+    std::fs::create_dir(&chat_inbox).unwrap();
+    let task = by_chat.run_hermes_chat_action(ncrs_hermes_chat::Action::SetFolderRole {
+        folder: chat_inbox.clone(),
+        role: FolderRole::Inbox,
+    });
+    let mut queue = vec![task];
+    while let Some(next) = queue.pop() {
+        let Some(mut stream) = task::into_stream(next) else {
+            continue;
+        };
+        while let Some(action) = stream.next().await {
+            if let Action::Output(reported) = action {
+                if !matches!(reported, Message::NoticeExpired(_)) {
+                    queue.push(by_chat.update(reported));
+                }
+            }
+        }
+    }
+
+    let watched = |app: &App, root: &std::path::Path| {
+        app.hermes
+            .filing_config
+            .locations
+            .iter()
+            .filter(|location| location.mode == LocationMode::Inbox)
+            .map(|location| location.path.strip_prefix(root).map(ToOwned::to_owned))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        watched(&by_chat, by_chat_dir.path()),
+        watched(&by_menu, by_menu_dir.path())
+    );
+    assert_eq!(watched(&by_chat, by_chat_dir.path()).len(), 1);
+}
+
 #[test]
 fn a_hermes_command_while_hermes_is_off_opens_the_overview_with_the_reason() {
     let mut app = App::with_fixed_panels();
