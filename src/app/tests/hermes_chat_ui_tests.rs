@@ -27,7 +27,7 @@ fn simulator(app: &App) -> Simulator<'_, Message, iced::Theme> {
     )
 }
 
-pub(super) fn matches_snapshot(app: &App, name: &str) {
+pub(in crate::app::tests) fn matches_snapshot(app: &App, name: &str) {
     let matches = simulator(app)
         .snapshot(&iced::Theme::Dark)
         .unwrap()
@@ -39,7 +39,7 @@ pub(super) fn matches_snapshot(app: &App, name: &str) {
     );
 }
 
-pub(super) fn ready(lang: Language) -> Ctx {
+pub(in crate::app::tests) fn ready(lang: Language) -> Ctx {
     let access = ChatAccess::new(
         Arc::new(Mutex::new(None)),
         Arc::new(TextChain::new()),
@@ -62,7 +62,7 @@ pub(super) fn ready(lang: Language) -> Ctx {
     }
 }
 
-pub(super) fn send(app: &mut App, ctx: &Ctx, message: HermesChatMessage) {
+pub(in crate::app::tests) fn send(app: &mut App, ctx: &Ctx, message: HermesChatMessage) {
     drop(ncrs_hermes_chat::update(&mut app.hermes_chat, message, ctx));
 }
 
@@ -71,7 +71,7 @@ fn type_and_submit(app: &mut App, ctx: &Ctx, text: &str) {
     send(app, ctx, HermesChatMessage::Submit);
 }
 
-pub(super) fn opened(lang: Language) -> (App, Ctx) {
+pub(in crate::app::tests) fn opened(lang: Language) -> (App, Ctx) {
     let mut app = App::with_fixed_panels().in_language(lang);
     let ctx = ready(lang);
     send(&mut app, &ctx, HermesChatMessage::Open);
@@ -89,7 +89,7 @@ fn segments(names: &[&str]) -> Vec<String> {
     names.iter().map(|name| (*name).to_owned()).collect()
 }
 
-pub(super) fn chip(label: &str, reply: ChipReply, primary: bool) -> Chip {
+pub(in crate::app::tests) fn chip(label: &str, reply: ChipReply, primary: bool) -> Chip {
     Chip {
         label: label.to_owned(),
         reply,
@@ -97,11 +97,11 @@ pub(super) fn chip(label: &str, reply: ChipReply, primary: bool) -> Chip {
     }
 }
 
-pub(super) fn hermes_says(app: &mut App, parts: Vec<Part>, chips: Vec<Chip>) {
+pub(in crate::app::tests) fn hermes_says(app: &mut App, parts: Vec<Part>, chips: Vec<Chip>) {
     app.hermes_chat.thread.push(Entry::Hermes { parts, chips });
 }
 
-pub(super) fn user_says(app: &mut App, text: &str) {
+pub(in crate::app::tests) fn user_says(app: &mut App, text: &str) {
     app.hermes_chat.thread.push(Entry::User(text.to_owned()));
 }
 

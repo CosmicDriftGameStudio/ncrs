@@ -142,7 +142,7 @@ fn folder_of(level: PatternLevel, fields: &DocumentFields, kinds: &Kinds) -> Opt
 /// Where a file goes in a target that has no order of its own: below the
 /// folders of `levels`, in none for an empty list. `None` when the file lacks
 /// what a level needs.
-pub(super) fn layout_path(
+pub(in crate::chat_work) fn layout_path(
     levels: &[PatternLevel],
     fields: &DocumentFields,
     kinds: &Kinds,
@@ -157,7 +157,7 @@ pub(super) fn layout_path(
 
 /// Replaces the folders between the area and the file. A document without a
 /// value for one of the levels stays where it is.
-pub(super) fn apply(
+pub(in crate::chat_work) fn apply(
     parts: &mut Vec<String>,
     spec: &PatternSpec,
     fields: &DocumentFields,
@@ -166,12 +166,12 @@ pub(super) fn apply(
     let Some(target) = spec.targets.iter().find(|target| target.fits(parts)) else {
         return;
     };
-    let folders: Option<Vec<String>> = spec
+    let level_folders: Option<Vec<String>> = spec
         .levels
         .iter()
         .map(|level| folder_of(*level, fields, kinds))
         .collect();
-    if let Some(folders) = folders {
+    if let Some(folders) = level_folders {
         let file_at = parts.len() - 1;
         parts.splice(1 + target.keep..file_at, folders);
     }

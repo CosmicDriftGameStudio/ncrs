@@ -175,8 +175,8 @@ fn the_areas_card_of_the_real_flow_on_the_test_archive() {
     };
     let mut app = App::with_fixed_panels().in_language(Language::English);
     send(&mut app, &ctx, HermesChatMessage::Open);
-    let press = |app: &mut App, reply: ChipReply| {
-        let chip = app
+    let press = |chat_app: &mut App, reply: ChipReply| {
+        let chip = chat_app
             .hermes_chat
             .chips()
             .iter()
@@ -189,11 +189,11 @@ fn the_areas_card_of_the_real_flow_on_the_test_archive() {
         });
         while let Some(message) = next.take() {
             drop(ncrs_hermes_chat::update(
-                &mut app.hermes_chat,
+                &mut chat_app.hermes_chat,
                 message,
                 &ctx,
             ));
-            next = app
+            next = chat_app
                 .hermes_chat
                 .pending_work()
                 .cloned()

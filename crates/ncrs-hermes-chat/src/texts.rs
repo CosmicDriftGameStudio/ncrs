@@ -228,14 +228,14 @@ pub fn areas_card(
         .iter()
         .take(shown)
         .map(|area| {
-            let branch = area.branches.first();
+            let first_branch = area.branches.first();
             AreaRow {
                 name: folder_label(lang, read_folder, &area.folder),
-                description: branch.map_or_else(
+                description: first_branch.map_or_else(
                     || text(lang, Msg::HermesChatAreaFlat),
                     |branch| branch_pattern(lang, branch),
                 ),
-                example: branch
+                example: first_branch
                     .map(|branch| branch_example_path(reading, area, branch))
                     .unwrap_or_default(),
                 documents: area.documents,

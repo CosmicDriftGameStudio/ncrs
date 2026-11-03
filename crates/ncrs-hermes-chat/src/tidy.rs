@@ -108,11 +108,10 @@ pub fn choose_where(state: &mut State, ctx: &Ctx, reading: &Arc<FolderReading>) 
     }
     state.step = Step::Target;
     let only_one = candidates.len() == 1;
-    let chips = candidates
+    let mut chips = candidates
         .into_iter()
         .map(|path| chip_labelled(folder_name(ctx, &path), ChipReply::Folder(path), only_one))
         .collect::<Vec<_>>();
-    let mut chips = chips;
     chips.push(chip(
         ctx,
         Msg::HermesChatNewFolderChip,

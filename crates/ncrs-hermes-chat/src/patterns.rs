@@ -76,8 +76,8 @@ pub fn adopt(state: &mut State, ctx: &Ctx, index: usize) {
     );
 }
 
-pub fn previewed(state: &mut State, ctx: &Ctx, preview: Option<PatternPreview>) {
-    let Some(preview) = preview else {
+pub fn previewed(state: &mut State, ctx: &Ctx, computed: Option<PatternPreview>) {
+    let Some(preview) = computed else {
         state.step = Step::AfterChange;
         say(
             state,

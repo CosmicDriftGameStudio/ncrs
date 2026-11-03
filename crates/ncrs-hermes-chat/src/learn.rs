@@ -144,7 +144,7 @@ pub fn summary(state: &mut State, ctx: &Ctx, reading: &Arc<FolderReading>) {
             Part::Areas(areas_card(
                 ctx.lang,
                 &folder_name(ctx, &reading.root),
-                &reading,
+                reading,
                 false,
             )),
             Part::Text(text(ctx.lang, Msg::HermesChatAskKeep)),
@@ -375,7 +375,7 @@ fn area_chips(state: &State, ctx: &Ctx) -> Option<Vec<Chip>> {
         return None;
     }
     let mut areas: Vec<&ncrs_intake::Area> = reading.structure.areas.iter().collect();
-    areas.sort_by(|left, right| right.documents.cmp(&left.documents));
+    areas.sort_by_key(|area| std::cmp::Reverse(area.documents));
     let mut chips: Vec<Chip> = areas
         .into_iter()
         .take(AREA_CHOICES)

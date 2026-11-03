@@ -72,7 +72,7 @@ pub struct ChangePreview {
     pub scope: Option<Scope>,
 }
 
-pub(super) fn segments(path: &Path) -> Vec<String> {
+pub(in crate::chat_work) fn segments(path: &Path) -> Vec<String> {
     path.components()
         .filter_map(|component| match component {
             Component::Normal(name) => Some(name.to_string_lossy().into_owned()),
@@ -102,7 +102,7 @@ fn is_of_kind(change: &OrderChange, kind: Option<&str>, folders: &[String]) -> b
 
 /// The one folder name a document gets for `placeholder`, written the way a
 /// filing pattern writes it.
-pub(super) fn folder_value(
+pub(in crate::chat_work) fn folder_value(
     placeholder: &str,
     fields: &DocumentFields,
     kinds: &Kinds,

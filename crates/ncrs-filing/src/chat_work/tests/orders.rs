@@ -107,13 +107,13 @@ fn every_order_previews_one_document_and_applies_to_a_filed_name() {
     assert_eq!(by_year.change.order, ChangeOrder::ByYear);
     assert_eq!(by_year.example[1], "2021");
     assert_eq!(by_year.highlighted, 1);
-    let filed = change::apply_changes(
+    let filed_by_year = change::apply_changes(
         PathBuf::from("Bank/DKB/a.pdf"),
         &fields(Some(date(2022, 7, 4)), Some("invoice"), Some("DKB")),
         &kinds(),
         std::slice::from_ref(&by_year.change),
     );
-    assert_eq!(filed, PathBuf::from("Bank/2022/DKB/a.pdf"));
+    assert_eq!(filed_by_year, PathBuf::from("Bank/2022/DKB/a.pdf"));
 
     let by_sender = preview_of(
         ordered_reading(|_, year, month| format!("Bank/{year}/Auszug {month}.pdf")),
@@ -121,26 +121,26 @@ fn every_order_previews_one_document_and_applies_to_a_filed_name() {
     );
     assert_eq!(by_sender.example[1], "DKB");
     assert_eq!(by_sender.highlighted, 1);
-    let filed = change::apply_changes(
+    let filed_by_sender = change::apply_changes(
         PathBuf::from("Bank/2022/a.pdf"),
         &fields(Some(date(2022, 7, 4)), Some("invoice"), Some("DKB")),
         &kinds(),
         std::slice::from_ref(&by_sender.change),
     );
-    assert_eq!(filed, PathBuf::from("Bank/DKB/2022/a.pdf"));
+    assert_eq!(filed_by_sender, PathBuf::from("Bank/DKB/2022/a.pdf"));
 
     let by_kind = preview_of(
         ordered_reading(|_, year, month| format!("Bank/{year}/Auszug {month}.pdf")),
         ChangeOrder::ByKind,
     );
     assert_eq!(by_kind.example[1], "Invoice");
-    let filed = change::apply_changes(
+    let filed_by_kind = change::apply_changes(
         PathBuf::from("Bank/2022/a.pdf"),
         &fields(Some(date(2022, 7, 4)), Some("invoice"), None),
         &kinds(),
         std::slice::from_ref(&by_kind.change),
     );
-    assert_eq!(filed, PathBuf::from("Bank/Invoice/2022/a.pdf"));
+    assert_eq!(filed_by_kind, PathBuf::from("Bank/Invoice/2022/a.pdf"));
 
     let flat = preview_of(
         ordered_reading(|bank, year, month| format!("Bank/{bank}/{year}/Auszug {month}.pdf")),
@@ -148,13 +148,13 @@ fn every_order_previews_one_document_and_applies_to_a_filed_name() {
     );
     assert_eq!(flat.example.len(), 2);
     assert_eq!(flat.highlighted, 1);
-    let filed = change::apply_changes(
+    let filed_flat = change::apply_changes(
         PathBuf::from("Bank/DKB/2022/a.pdf"),
         &fields(Some(date(2022, 7, 4)), Some("invoice"), Some("DKB")),
         &kinds(),
         std::slice::from_ref(&flat.change),
     );
-    assert_eq!(filed, PathBuf::from("Bank/a.pdf"));
+    assert_eq!(filed_flat, PathBuf::from("Bank/a.pdf"));
 }
 
 #[test]
