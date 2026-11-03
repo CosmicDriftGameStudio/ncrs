@@ -4,11 +4,11 @@ use ncrs_hermes_chat::{ChipReply, Entry, Part};
 
 use crate::app::App;
 
-pub(super) fn chat(app: &App) -> &ncrs_hermes_chat::State {
+pub fn chat(app: &App) -> &ncrs_hermes_chat::State {
     app.hermes_chat_for_test()
 }
 
-pub(super) fn busy(app: &App) -> bool {
+pub fn busy(app: &App) -> bool {
     let chat = chat(app);
     chat.pending_work().is_some()
         || chat.pending_turn().is_some()
@@ -17,7 +17,7 @@ pub(super) fn busy(app: &App) -> bool {
         || chat.waits_for_hermes()
 }
 
-pub(super) fn entry_text(entry: &Entry) -> String {
+pub fn entry_text(entry: &Entry) -> String {
     match entry {
         Entry::User(text) | Entry::Working(text) => text.clone(),
         Entry::Hermes { parts, .. } => parts
@@ -46,7 +46,7 @@ pub(super) fn entry_text(entry: &Entry) -> String {
     }
 }
 
-pub(super) fn whole_thread(app: &App) -> String {
+pub fn whole_thread(app: &App) -> String {
     chat(app)
         .thread()
         .iter()
@@ -55,7 +55,7 @@ pub(super) fn whole_thread(app: &App) -> String {
         .join("\n")
 }
 
-pub(super) fn last_text(app: &App) -> String {
+pub fn last_text(app: &App) -> String {
     chat(app)
         .thread()
         .last()
@@ -63,19 +63,19 @@ pub(super) fn last_text(app: &App) -> String {
         .unwrap_or_default()
 }
 
-pub(super) fn last_working_has_digit(app: &App) -> bool {
+pub fn last_working_has_digit(app: &App) -> bool {
     matches!(chat(app).thread().last(), Some(Entry::Working(text)) if text.chars().any(|c| c.is_ascii_digit()))
 }
 
-pub(super) fn last_hermes_has_chips(app: &App) -> bool {
+pub fn last_hermes_has_chips(app: &App) -> bool {
     matches!(chat(app).thread().last(), Some(Entry::Hermes { chips, .. }) if !chips.is_empty())
 }
 
-pub(super) fn has_chip(app: &App, wanted: impl Fn(&ChipReply) -> bool) -> bool {
+pub fn has_chip(app: &App, wanted: impl Fn(&ChipReply) -> bool) -> bool {
     chat(app).chips().iter().any(|chip| wanted(&chip.reply))
 }
 
-pub(super) fn chip_labels(app: &App) -> String {
+pub fn chip_labels(app: &App) -> String {
     chat(app)
         .chips()
         .iter()
@@ -84,12 +84,12 @@ pub(super) fn chip_labels(app: &App) -> String {
         .join(" | ")
 }
 
-pub(super) fn is_ready(app: &App) -> bool {
+pub fn is_ready(app: &App) -> bool {
     app.filing_module_for_test()
         .is_some_and(|module| matches!(module.phase(), crate::filing::Phase::Ready))
 }
 
-pub(super) fn documents_indexed(app: &App) -> Option<u64> {
+pub fn documents_indexed(app: &App) -> Option<u64> {
     let figures = app
         .filing_module_for_test()?
         .index_figures_reader()?

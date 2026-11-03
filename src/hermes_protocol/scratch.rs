@@ -1,11 +1,12 @@
 //! The files the run works on.
 
+use std::io;
 use std::path::{Path, PathBuf};
 
 /// Copies files and folders; dot entries and symlinks stay behind.
-pub(super) fn copy_tree(from: &Path, to: &Path) {
-    std::fs::create_dir_all(to).unwrap();
-    for entry in std::fs::read_dir(from).unwrap().filter_map(Result::ok) {
+pub fn copy_tree(from: &Path, to: &Path) -> io::Result<()> {
+    std::fs::create_dir_all(to)?;
+    for entry in std::fs::read_dir(from)?.filter_map(Result::ok) {
         let name = entry.file_name();
         if name.to_string_lossy().starts_with('.') {
             continue;
@@ -14,27 +15,45 @@ pub(super) fn copy_tree(from: &Path, to: &Path) {
             continue;
         };
         if kind.is_dir() {
-            copy_tree(&entry.path(), &to.join(&name));
-        } else if kind.is_file() {
-            std::fs::copy(entry.path(), to.join(&name)).ok();
+            copy_tree(&entry.path(), &to.join(&name))?;
+        } else if !kind.is_dir() {
+            copy_file_reporting(&entry.path(), &to.join(&name));
+        }
+    }
+    Ok(())
+}
+
+/// One file the archive will not give up does not end the run; it is told.
+fn copy_file_reporting(from: &Path, to: &Path) {
+    if let Err(error) = std::fs::copy(from, to) {
+        println!("{} could not be copied: {error}", from.display());
+    }
+}
+
+/// A leftover that is already gone is fine; any other failure is told.
+pub fn report_removal(path: &Path, outcome: io::Result<()>) {
+    if let Err(error) = outcome {
+        if error.kind() != io::ErrorKind::NotFound {
+            println!("{} could not be removed: {error}", path.display());
         }
     }
 }
 
 /// The same tree as hard links, so a language's run can move files freely.
-pub(super) fn link_tree(from: &Path, to: &Path) {
-    std::fs::create_dir_all(to).unwrap();
-    for entry in std::fs::read_dir(from).unwrap().filter_map(Result::ok) {
+pub fn link_tree(from: &Path, to: &Path) -> io::Result<()> {
+    std::fs::create_dir_all(to)?;
+    for entry in std::fs::read_dir(from)?.filter_map(Result::ok) {
         let target = to.join(entry.file_name());
         if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
-            link_tree(&entry.path(), &target);
+            link_tree(&entry.path(), &target)?;
         } else if std::fs::hard_link(entry.path(), &target).is_err() {
-            std::fs::copy(entry.path(), &target).ok();
+            copy_file_reporting(&entry.path(), &target);
         }
     }
+    Ok(())
 }
 
-pub(super) fn count_files(dir: &Path) -> usize {
+pub fn count_files(dir: &Path) -> usize {
     std::fs::read_dir(dir)
         .map(|entries| {
             entries
@@ -51,7 +70,7 @@ pub(super) fn count_files(dir: &Path) -> usize {
         .unwrap_or(0)
 }
 
-pub(super) fn pdfs_below(dir: &Path, found: &mut Vec<PathBuf>, limit: usize) {
+pub fn pdfs_below(dir: &Path, found: &mut Vec<PathBuf>, limit: usize) {
     let mut entries: Vec<_> = std::fs::read_dir(dir)
         .unwrap()
         .filter_map(Result::ok)
@@ -70,13 +89,16 @@ pub(super) fn pdfs_below(dir: &Path, found: &mut Vec<PathBuf>, limit: usize) {
     }
 }
 
+const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+const FNV_PRIME: u64 = 0x0100_0000_01b3;
+
 /// A short stable name for a path, for the folder that keeps what a run reuses.
-pub(super) fn path_hash(path: &Path) -> String {
+pub fn path_hash(path: &Path) -> String {
     let hash = path
         .to_string_lossy()
         .bytes()
-        .fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
-            (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
+        .fold(FNV_OFFSET, |hash, byte| {
+            (hash ^ u64::from(byte)).wrapping_mul(FNV_PRIME)
         });
     format!("{hash:016x}")
 }
@@ -85,7 +107,7 @@ pub(super) fn path_hash(path: &Path) -> String {
 /// copy are never indexed, so the run must not wait for them.
 const INDEXED_EXTENSIONS: [&str; 5] = ["pdf", "docx", "odt", "txt", "md"];
 
-pub(super) fn count_indexable(dir: &Path) -> usize {
+pub fn count_indexable(dir: &Path) -> usize {
     std::fs::read_dir(dir)
         .map(|entries| {
             entries

@@ -170,19 +170,28 @@ mod tests {
     fn a_reading_says_how_far_the_ai_is_while_documents_wait_for_it() {
         let mut talk = archive_talk();
         talk.open();
-        {
-            let mut slot = talk.index.lock().unwrap();
-            let index = slot.as_mut().unwrap();
-            let document = ncrs_index::NewDocument {
-                hash: ncrs_index::ContentHash([9; 32]),
-                path: talk.path("archive").join("waiting.pdf"),
-                source: ncrs_index::DocumentSource::Archive,
-                received_at: chrono::Utc::now(),
-                stamp: None,
-            };
-            let id = index.insert_document(&document).unwrap();
-            index.set_document_text(id, "Rechnung").unwrap();
-        }
+        let document = ncrs_index::NewDocument {
+            hash: ncrs_index::ContentHash([9; 32]),
+            path: talk.path("archive").join("waiting.pdf"),
+            source: ncrs_index::DocumentSource::Archive,
+            received_at: chrono::Utc::now(),
+            stamp: None,
+        };
+        let id = talk
+            .index
+            .lock()
+            .unwrap()
+            .as_mut()
+            .unwrap()
+            .insert_document(&document)
+            .unwrap();
+        talk.index
+            .lock()
+            .unwrap()
+            .as_mut()
+            .unwrap()
+            .set_document_text(id, "Rechnung")
+            .unwrap();
         talk.press(&ChipReply::Folder(talk.path("archive")));
         assert!(
             talk.last_texts().contains(&say(

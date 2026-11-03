@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 use ncrs_filing::chat_work::AiCoverage;
 use ncrs_index::{InMemoryKeyStore, Index};
 
+use super::scratch::report_removal;
 use super::thread::documents_indexed;
 use super::{expect, Protocol};
 use crate::app::App;
@@ -36,11 +37,11 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
     /// Waits until the index holds every file and the AI has been through the
     /// documents with a text, or the time given for it ran out. Both go on
     /// side by side in the pipeline.
-    pub(super) fn wait_for_indexing(&mut self) {
+    pub fn wait_for_indexing(&mut self) {
         let started = Instant::now();
         let limit = ai_wait_limit();
         let watcher = Index::open(&self.index_path, &InMemoryKeyStore::empty()).ok();
-        let mut best = 0usize;
+        let mut best: usize = 0;
         let mut changed = Instant::now();
         let mut indexed_after = None;
         let mut coverage = AiCoverage::default();
@@ -92,7 +93,7 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         if let Some(index) = watcher.as_ref() {
             coverage = coverage_of(index, &self.archive);
             {
-                std::fs::remove_file(&self.kept_index).ok();
+                report_removal(&self.kept_index, std::fs::remove_file(&self.kept_index));
                 if let Err(error) = index.save_plain_copy(&self.kept_index) {
                     println!("the index could not be kept: {error}");
                 }

@@ -8,7 +8,8 @@
     clippy::panic,
     clippy::indexing_slicing,
     clippy::print_stdout,
-    clippy::too_many_lines
+    clippy::too_many_lines,
+    clippy::use_debug
 )]
 
 use std::collections::BTreeMap;
@@ -110,9 +111,9 @@ fn fields_report(archive: &FolderReading) {
     {
         *senders.entry(sender).or_default() += 1;
     }
-    let mut senders: Vec<_> = senders.into_iter().collect();
-    senders.sort_by_key(|(name, count)| (std::cmp::Reverse(*count), *name));
-    println!("  top senders: {:?}", &senders[..senders.len().min(10)]);
+    let mut ranked: Vec<_> = senders.into_iter().collect();
+    ranked.sort_by_key(|(name, count)| (std::cmp::Reverse(*count), *name));
+    println!("  top senders: {:?}", &ranked[..ranked.len().min(10)]);
 }
 
 fn trial_report(access: &ChatAccess, downloads: &FolderReading, archive: &FolderReading) {
@@ -251,9 +252,9 @@ fn pdfs_below(folder: &Path, found: &mut Vec<PathBuf>) {
     let Ok(entries) = fs::read_dir(folder) else {
         return;
     };
-    let mut entries: Vec<_> = entries.flatten().collect();
-    entries.sort_by_key(fs::DirEntry::path);
-    for entry in entries {
+    let mut listed: Vec<_> = entries.flatten().collect();
+    listed.sort_by_key(fs::DirEntry::path);
+    for entry in listed {
         let path = entry.path();
         if path.is_dir() {
             pdfs_below(&path, found);
@@ -270,7 +271,7 @@ fn pdfs_below(folder: &Path, found: &mut Vec<PathBuf>) {
 fn spread_of_pdfs(folder: &Path, count: usize) -> Vec<PathBuf> {
     let mut all = Vec::new();
     pdfs_below(folder, &mut all);
-    let step = (all.len() / count).max(1);
+    let step = all.len().div_euclid(count).max(1);
     all.into_iter().step_by(step).take(count).collect()
 }
 
@@ -278,7 +279,7 @@ fn spread_of_pdfs(folder: &Path, count: usize) -> Vec<PathBuf> {
 #[test]
 #[ignore = "reads NCRS_PROTOCOL_ARCHIVE and runs the model from NCRS_AI_MODELS_DIR"]
 fn ai_fields_on_archive_pdfs() {
-    use ncrs_ai::{ExtractionRequest, Provider, CONFIDENT, LOCAL_MODEL};
+    use ncrs_ai::{ExtractionRequest, Provider as _, CONFIDENT, LOCAL_MODEL};
     use ncrs_index::{Field, KindCatalog};
 
     let archive = PathBuf::from(std::env::var_os("NCRS_PROTOCOL_ARCHIVE").unwrap());
@@ -294,7 +295,8 @@ fn ai_fields_on_archive_pdfs() {
     let mut files = spread_of_pdfs(&archive.join("Bank"), 10);
     files.extend(spread_of_pdfs(&archive.join("Versicherung"), 10));
     let kinds = Arc::new(KindCatalog::built_in());
-    let (mut with_text, mut sender_hit, mut kind_hit, mut total_secs) = (0, 0, 0, 0.0_f64);
+    let (mut with_text, mut sender_hit, mut kind_hit) = (0, 0, 0);
+    let mut total_secs: f64 = 0.0;
     let mut asked = 0;
     for (position, path) in files.iter().enumerate() {
         let Some(text) = chain.extract(path).ok().flatten() else {
@@ -314,13 +316,12 @@ fn ai_fields_on_archive_pdfs() {
         asked += 1;
         total_secs += secs;
         let confident = |field: Field| {
-            answer.as_ref().ok().and_then(|extraction| {
-                extraction
-                    .fields
-                    .iter()
-                    .find(|found| found.field == field && found.confidence >= CONFIDENT)
-                    .map(|found| found.value.clone())
-            })
+            let extraction = answer.as_ref().ok()?;
+            extraction
+                .fields
+                .iter()
+                .find(|found| found.field == field && found.confidence >= CONFIDENT)
+                .map(|found| found.value.clone())
         };
         let (sender, kind) = (confident(Field::Sender), confident(Field::Kind));
         sender_hit += usize::from(sender.is_some());

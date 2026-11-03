@@ -56,7 +56,9 @@ mod thread;
 mod tidy_flows;
 mod waiting;
 
-use scratch::{copy_tree, count_files, count_indexable, link_tree, path_hash, pdfs_below};
+use scratch::{
+    copy_tree, count_files, count_indexable, link_tree, path_hash, pdfs_below, report_removal,
+};
 use thread::{
     busy, chat, chip_labels, has_chip, is_ready, last_hermes_has_chips, last_text,
     last_working_has_digit,
@@ -111,9 +113,9 @@ fn hermes_chat_protocol() {
         .join(path_hash(&archive));
     let master = workspace.join("master");
     if !(reuse && master.is_dir()) {
-        std::fs::remove_dir_all(&workspace).ok();
+        report_removal(&workspace, std::fs::remove_dir_all(&workspace));
         let started = Instant::now();
-        copy_tree(&archive, &master);
+        copy_tree(&archive, &master).unwrap();
         println!(
             "copied the archive: {} files in {:.1}s",
             count_files(&master),
@@ -127,7 +129,8 @@ fn hermes_chat_protocol() {
         } else {
             "en"
         };
-        std::fs::remove_dir_all(workspace.join("run")).ok();
+        let previous_run = workspace.join("run");
+        report_removal(&previous_run, std::fs::remove_dir_all(&previous_run));
         let mut run = start_protocol(
             &archive,
             &workspace,
@@ -139,7 +142,7 @@ fn hermes_chat_protocol() {
         run.flows();
     }
     if std::env::var_os("NCRS_PROTOCOL_KEEP").is_none() {
-        std::fs::remove_dir_all(&scratch).ok();
+        report_removal(&scratch, std::fs::remove_dir_all(&scratch));
     }
     println!("protocol folder: {}", root.display());
 }
@@ -175,6 +178,8 @@ struct Protocol<P: iced::Program<State = App, Message = Message> + 'static> {
 }
 
 type Check = Result<(), String>;
+/// A screenshot name and the moment, while busy, at which to take it.
+type ShotWhen<'name> = Option<(&'name str, fn(&App) -> bool)>;
 
 fn expect(condition: bool, otherwise: impl Into<String>) -> Check {
     if condition {
@@ -202,12 +207,12 @@ fn start_protocol(
     // The same paths in every language and run, so the index kept in the
     // workspace knows the documents again.
     let archive = workspace.join("run").join("archive");
-    link_tree(&workspace.join("master"), &archive);
+    link_tree(&workspace.join("master"), &archive).unwrap();
     let downloads = workspace.join("run").join("downloads");
     std::fs::create_dir_all(&downloads).unwrap();
     let mut pdfs = Vec::new();
     pdfs_below(&archive, &mut pdfs, usize::MAX);
-    let every = (pdfs.len() / 40).max(1);
+    let every = pdfs.len().div_euclid(40).max(1);
     // New documents of the kinds the archive holds: moved out of the copy
     // before it is indexed, so they have neighbours but are no duplicates.
     for pdf in pdfs.iter().step_by(every).take(40) {
@@ -272,11 +277,11 @@ fn start_protocol(
         crate::ui::layout::INITIAL_WINDOW_SIZE,
         move || {
             let (app, panel_loads) = App::starting_in(left.clone(), right.clone());
-            let app = app
+            let configured = app
                 .with_config(Ok(config.clone()))
                 .with_trash(Arc::clone(&trash))
                 .with_folder_picker(picker);
-            (app, panel_loads)
+            (configured, panel_loads)
         },
     ));
     // The start work runs at once on the blocking pool; its report is the
@@ -424,11 +429,7 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
     /// Runs until the chat has nothing left to wait for. The image is taken
     /// once while it is still busy and `when` holds. Returns the seconds and the
     /// image, or an error when `limit` ran out.
-    fn wait_idle(
-        &mut self,
-        limit: Duration,
-        shot: Option<(&str, fn(&App) -> bool)>,
-    ) -> (f64, String, Check) {
+    fn wait_idle(&mut self, limit: Duration, shot: ShotWhen<'_>) -> (f64, String, Check) {
         let started = Instant::now();
         let mut image = String::new();
         loop {
@@ -481,11 +482,7 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
 
     /// Types `sentence`, answers a confirmation of an unknown folder with
     /// "read anyway", and waits for the end of the work.
-    fn say_and_wait(
-        &mut self,
-        sentence: &str,
-        shot: Option<(&str, fn(&App) -> bool)>,
-    ) -> (f64, String, Check) {
+    fn say_and_wait(&mut self, sentence: &str, shot: ShotWhen<'_>) -> (f64, String, Check) {
         self.type_sentence(sentence);
         let (mut seconds, mut image, mut result) = self.wait_idle(READ_LIMIT, shot);
         if has_chip(self.app(), |reply| *reply == ChipReply::ReadAnyway) {
@@ -571,11 +568,11 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
             greeted,
         );
 
-        let started = Instant::now();
+        let waiting_started = Instant::now();
         *PICKED.lock().unwrap() = Some(self.archive.clone());
         let pressed = self.press_chip(|reply| *reply == ChipReply::PickFolder);
         self.session.settle();
-        let image = self.shot("waits-for-hermes");
+        let waiting_image = self.shot("waits-for-hermes");
         let waiting = all([
             pressed,
             expect(
@@ -590,18 +587,18 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         self.record(
             "1 wait",
             "pressed 'another folder', the picker answers the archive",
-            started.elapsed().as_secs_f64(),
-            &image,
+            waiting_started.elapsed().as_secs_f64(),
+            &waiting_image,
             "a visible 'one moment' line, the folder waits",
             waiting,
         );
 
-        let started = Instant::now();
+        let start_began = Instant::now();
         let start = self.held_start.borrow_mut().take();
         if let Some(task) = start {
             self.session.drive(task);
         }
-        let mut image = String::new();
+        let mut start_image = String::new();
         let mut confirmed = false;
         let limit = Instant::now() + Duration::from_secs(300);
         while !(is_ready(self.app()) && !busy(self.app())) && Instant::now() < limit {
@@ -614,8 +611,8 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
                 confirmed = true;
                 self.deliver(Message::Filing(FilingMessage::ConfirmPlainFile));
             }
-            if image.is_empty() && busy(self.app()) && last_working_has_digit(self.app()) {
-                image = self.shot("reading-after-start");
+            if start_image.is_empty() && busy(self.app()) && last_working_has_digit(self.app()) {
+                start_image = self.shot("reading-after-start");
             }
         }
         self.session.settle();
@@ -633,8 +630,8 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         self.record(
             "1 start",
             "the held start runs; the waiting folder is read by itself",
-            started.elapsed().as_secs_f64(),
-            &format!("{image} {after}"),
+            start_began.elapsed().as_secs_f64(),
+            &format!("{start_image} {after}"),
             "Hermes ready, the reading starts without a new click",
             result,
         );
@@ -673,10 +670,10 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
 
         self.ask_for_folder();
         let original = self.original.to_string_lossy().into_owned();
-        let (seconds, image, limit) =
+        let (cold_seconds, cold_image, cold_limit) =
             self.say_and_wait(&original, Some(("reading-cold", last_working_has_digit)));
-        let result = all([
-            limit,
+        let cold_result = all([
+            cold_limit,
             expect(
                 last_hermes_has_chips(self.app()),
                 format!(
@@ -688,17 +685,17 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         self.record(
             "2 cold",
             "typed the path of the original (not indexed)",
-            seconds,
-            &image,
+            cold_seconds,
+            &cold_image,
             "a counter while reading, then areas and buttons",
-            result,
+            cold_result,
         );
-        let after = self.shot("result-cold");
+        let after_cold = self.shot("result-cold");
         self.rows
             .last_mut()
             .unwrap()
             .image
-            .push_str(&format!(" {after}"));
+            .push_str(&format!(" {after_cold}"));
     }
 
     fn flow_3_leave_and_return(&mut self) {
@@ -745,19 +742,19 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         );
 
         let thanks = self.say("Danke", "Thanks");
-        let started = Instant::now();
+        let thanks_started = Instant::now();
         self.back_to_start();
         self.type_sentence(thanks);
-        let (_, _, limit) = self.wait_idle(Duration::from_secs(120), None);
+        let (_, _, thanks_limit) = self.wait_idle(Duration::from_secs(120), None);
         let image = self.shot("thanks");
         let answered = all([
-            limit,
+            thanks_limit,
             expect(last_hermes_has_chips(self.app()), "no answer with buttons"),
         ]);
         self.record(
             "3 typing",
             "typed a thank you after returning",
-            started.elapsed().as_secs_f64(),
+            thanks_started.elapsed().as_secs_f64(),
             &image,
             "an answer with buttons",
             answered,

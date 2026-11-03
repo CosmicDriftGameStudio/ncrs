@@ -1000,17 +1000,17 @@ mod tests {
         let steps = fixture.steps(&provider);
         let document = fixture.add_document(1);
         set_status(&fixture, document, DocumentStatus::Filed);
-        {
-            let mut index = fixture.index.lock().unwrap();
-            let fields = DocumentFields {
-                sender: Some("Company A".to_owned()),
-                kind: Some("invoice".to_owned()),
-                ..DocumentFields::default()
-            };
-            index
-                .set_document_fields(document, &fields, |_| FieldOrigin::Unknown)
-                .unwrap();
-        }
+        let fields = DocumentFields {
+            sender: Some("Company A".to_owned()),
+            kind: Some("invoice".to_owned()),
+            ..DocumentFields::default()
+        };
+        fixture
+            .index
+            .lock()
+            .unwrap()
+            .set_document_fields(document, &fields, |_| FieldOrigin::Unknown)
+            .unwrap();
         let mut item = fixture.item(document, INVOICE_TEXT);
 
         run(&steps, AI, &mut item);

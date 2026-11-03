@@ -283,7 +283,7 @@ fn hold_until_ready(state: &mut State, ctx: &Ctx, held: Held) -> bool {
     }
 }
 
-pub(crate) fn say_needs_setup(state: &mut State, ctx: &Ctx) {
+pub fn say_needs_setup(state: &mut State, ctx: &Ctx) {
     say(
         state,
         text(ctx.lang, Msg::HermesChatNeedsSetup),

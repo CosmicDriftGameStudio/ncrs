@@ -381,10 +381,13 @@ mod tests {
         progress
             .found
             .store(1234, std::sync::atomic::Ordering::Relaxed);
-        let tick = |talk: &mut Talk| {
-            let (_task, _action) =
-                ncrs_hermes_chat::update(&mut talk.state, Message::WorkTick, &talk.ctx);
-            working_line(talk).unwrap().to_owned()
+        let tick = |talk_in_tick: &mut Talk| {
+            let (_tick_task, _tick_action) = ncrs_hermes_chat::update(
+                &mut talk_in_tick.state,
+                Message::WorkTick,
+                &talk_in_tick.ctx,
+            );
+            working_line(talk_in_tick).unwrap().to_owned()
         };
         let first = tick(&mut talk);
         assert!(first.contains("1234"), "{first}");

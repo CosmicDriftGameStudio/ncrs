@@ -19,7 +19,7 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         last_text(self.app()).contains(fixed)
     }
 
-    pub(super) fn flow_5_tidy(&mut self) {
+    pub fn flow_5_tidy(&mut self) {
         self.back_to_start();
         let before_downloads = self.files_below(&self.downloads);
         let before_archive = self.files_below(&self.archive);
@@ -43,11 +43,11 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
             if has_chip(self.app(), |reply| *reply == ChipReply::Undo) {
                 break;
             }
-            let pressed = self.press_chip(|reply| match reply {
+            let first_press = self.press_chip(|reply| match reply {
                 ChipReply::Folder(path) | ChipReply::NamedFolder(path) => *path == archive,
                 _ => false,
             });
-            let pressed = pressed
+            let pressed = first_press
                 .or_else(|_| self.press_chip(|reply| *reply == ChipReply::Once))
                 .or_else(|_| self.press_chip(|reply| *reply == ChipReply::ModeMove))
                 .or_else(|_| self.press_chip(|reply| *reply == ChipReply::ConfirmTidy))
@@ -87,17 +87,17 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
             result,
         );
 
-        let started = Instant::now();
+        let undo_started = Instant::now();
         let asked = self.press_chip(|reply| *reply == ChipReply::Undo);
         let (_, _, asked_limit) = self.wait_idle(READ_LIMIT, None);
         let confirmed = self.press_chip(|reply| *reply == ChipReply::PutBack);
-        let (_, _, limit) = self.wait_idle(READ_LIMIT, None);
+        let (_, _, undo_limit) = self.wait_idle(READ_LIMIT, None);
         let undone = all([asked, asked_limit, confirmed]);
         let image = self.shot("tidy-undone");
         let restored = self.files_below(&self.downloads);
-        let result = all([
+        let undo_result = all([
             undone,
-            limit,
+            undo_limit,
             expect(
                 restored >= before_downloads,
                 format!("{restored} of {before_downloads} files back in downloads"),
@@ -106,14 +106,14 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         self.record(
             "5 undo",
             "pressed undo",
-            started.elapsed().as_secs_f64(),
+            undo_started.elapsed().as_secs_f64(),
             &image,
             "the files are back in downloads",
-            result,
+            undo_result,
         );
     }
 
-    pub(super) fn flow_6_structure(&mut self) {
+    pub fn flow_6_structure(&mut self) {
         let german = self.german();
         for (label, sentence, word) in [
             (
@@ -196,7 +196,7 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         }
     }
 
-    pub(super) fn flow_7_unknown(&mut self) {
+    pub fn flow_7_unknown(&mut self) {
         for (label, sentence) in [
             (
                 "7 suggestion",

@@ -165,11 +165,11 @@ fn in_parallel<T: Sync, R: Send>(items: &[T], work: impl Fn(&T) -> R + Sync) -> 
         .map_or(1, usize::from)
         .min(8);
     let chunk = items.len().div_ceil(threads).max(1);
-    let work = &work;
+    let work_ref = &work;
     std::thread::scope(|scope| {
         let handles: Vec<_> = items
             .chunks(chunk)
-            .map(|part| scope.spawn(move || part.iter().map(work).collect::<Vec<R>>()))
+            .map(|part| scope.spawn(move || part.iter().map(work_ref).collect::<Vec<R>>()))
             .collect();
         handles
             .into_iter()
@@ -209,7 +209,7 @@ pub fn read_folder(
     let changed: Vec<usize> = (0..walked.len())
         .filter(|position| known.get(*position).is_some_and(Option::is_none))
         .collect();
-    let hashes = in_parallel(&changed, |position| {
+    let changed_hashes = in_parallel(&changed, |position| {
         let hash = walked
             .get(*position)
             .and_then(|file| hash_path(&folder.join(&file.relative)).ok());
@@ -220,7 +220,7 @@ pub fn read_folder(
     });
     let hashed: Vec<(usize, ContentHash)> = changed
         .into_iter()
-        .zip(hashes)
+        .zip(changed_hashes)
         .filter_map(|(position, hash)| Some((position, hash?)))
         .collect();
     let by_hash = known_by_hash(access, &hashed).map_err(ReadError::Io)?;
@@ -286,8 +286,8 @@ pub fn read_folder(
     let mut files = Vec::with_capacity(walked.len());
     let mut photos = 0;
     let mut without_text = 0;
-    for (file, record) in walked.into_iter().zip(known) {
-        let Some(record) = record else {
+    for (file, known_record) in walked.into_iter().zip(known) {
+        let Some(record) = known_record else {
             continue;
         };
         if record.text.is_none() {

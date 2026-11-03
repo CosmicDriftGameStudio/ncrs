@@ -24,13 +24,13 @@ fn pixel_count(side: u32) -> usize {
 /// The page cut to its content with a margin, and scaled so the content's
 /// longer side has about `TARGET_SIDE_PIXELS`. A page without content stays as
 /// it is.
-pub(crate) fn trim_to_content(page: PageImage) -> PageImage {
+pub fn trim_to_content(page: PageImage) -> PageImage {
     let (width, height) = (pixel_count(page.width), pixel_count(page.height));
     if width == 0 || height == 0 || page.pixels.len() != width.saturating_mul(height) {
         return page;
     }
-    let mut dark_in_row = vec![0usize; height];
-    let mut dark_in_column = vec![0usize; width];
+    let mut dark_in_row = vec![0; height];
+    let mut dark_in_column = vec![0; width];
     for (row_count, line) in dark_in_row.iter_mut().zip(page.pixels.chunks_exact(width)) {
         for (column_count, &pixel) in dark_in_column.iter_mut().zip(line) {
             if pixel < DARK_BELOW {
@@ -70,8 +70,8 @@ pub(crate) fn trim_to_content(page: PageImage) -> PageImage {
         (TARGET_SIDE_PIXELS, longer_side)
     };
     let scaled = |length: usize| {
-        let length = u64::try_from(length).unwrap_or(u64::MAX);
-        let pixels = (length * numerator).div_ceil(denominator);
+        let length_wide = u64::try_from(length).unwrap_or(u64::MAX);
+        let pixels = (length_wide * numerator).div_ceil(denominator);
         u32::try_from(pixels.max(1)).unwrap_or(u32::MAX)
     };
     let (Ok(cropped_width), Ok(cropped_height)) =
@@ -148,7 +148,7 @@ mod tests {
         );
         let scale = f64::from(trimmed.height) / 748.0;
         let margin_rows = (24.0 * scale * 0.5) as u32;
-        assert!(!row_is_paper(&trimmed, trimmed.height / 2));
+        assert!(!row_is_paper(&trimmed, trimmed.height.div_euclid(2)));
         for y in 0..margin_rows {
             assert!(row_is_paper(&trimmed, y), "row {y}");
         }
