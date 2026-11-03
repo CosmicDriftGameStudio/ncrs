@@ -223,19 +223,43 @@ mod tests {
     }
 
     #[test]
-    fn always_says_it_cannot_yet_and_goes_on_with_the_mode() {
+    fn always_on_a_source_the_app_already_watches_asks_for_the_mode_and_changes_no_setting() {
         let mut talk = small_talk();
         tidy_until_once(&mut talk);
         talk.press(&ChipReply::Always);
         assert_eq!(
             talk.last_texts(),
-            vec![
-                say(Msg::HermesChatAlwaysNotYet, &[]),
-                say(Msg::HermesChatAskMode, &[("folder", "inbox")]),
-            ]
+            vec![say(Msg::HermesChatAskMode, &[("folder", "inbox")])]
         );
+        assert!(talk.actions.is_empty(), "{:?}", talk.actions);
         talk.press(&ChipReply::ModeMove);
         assert!(talk.state.trial_plan().is_some());
+    }
+
+    #[test]
+    fn always_makes_a_source_that_is_not_watched_yet_a_watched_one() {
+        let mut talk = Talk::in_dir(tempfile::tempdir().unwrap(), &["archive"], &[]);
+        talk.write(
+            "archive/Alfa/2020/2020-01-10 Alfa Rechnung.pdf",
+            &letter("Alfa AG", "10.01.2020", "Rechnung", 10),
+        );
+        talk.write(
+            "downloads/neu_alfa.pdf",
+            &letter("Alfa AG", "05.03.2021", "Rechnung", 77),
+        );
+        let downloads = talk.path("downloads");
+        talk.open();
+        talk.send(Message::FolderPicked(Some(downloads.clone())));
+        talk.press(&ChipReply::RoleSource);
+        talk.actions.clear();
+        talk.press(&ChipReply::Always);
+        assert_eq!(
+            talk.actions,
+            vec![Action::SetFolderRole {
+                folder: downloads,
+                role: ncrs_ui_kit::hermes_state::FolderRole::Inbox,
+            }]
+        );
     }
 
     #[test]
@@ -540,5 +564,78 @@ mod tests {
             .iter()
             .any(|entry| matches!(entry, Entry::Hermes { parts, .. }
                 if parts.contains(&Part::Text(say(Msg::HermesChatRuleRefused, &[("reason", &reason)]))))));
+    }
+
+    #[test]
+    fn a_found_pattern_is_previewed_on_one_file_and_adopted_for_the_session() {
+        let mut talk = Talk::in_dir(tempfile::tempdir().unwrap(), &["archive"], &["inbox"]);
+        for (month, day) in [(1, 10), (3, 11), (6, 12), (9, 13), (11, 14)] {
+            talk.write(
+                &format!("archive/Alfa/2020/2020-{month:02}-{day} Alfa Rechnung.pdf"),
+                &letter(
+                    "Alfa AG",
+                    &format!("{day}.{month:02}.2020"),
+                    "Rechnung",
+                    day,
+                ),
+            );
+            talk.write(
+                &format!("archive/Beta/2020/{month:02}/2020-{month:02}-{day} Beta Rechnung.pdf"),
+                &letter(
+                    "Beta GmbH",
+                    &format!("{day}.{month:02}.2020"),
+                    "Rechnung",
+                    day + 50,
+                ),
+            );
+        }
+        talk.open();
+        talk.press(&ChipReply::Folder(talk.path("archive")));
+        let offered: Vec<ChipReply> = talk
+            .state
+            .chips()
+            .iter()
+            .map(|chip| chip.reply.clone())
+            .filter(|reply| matches!(reply, ChipReply::AdoptPattern(_)))
+            .collect();
+        assert_eq!(offered.len(), 2, "{:?}", talk.labels());
+
+        // The pattern with the month folder is the one only Beta has.
+        let with_month = offered
+            .iter()
+            .find(|reply| {
+                talk.state
+                    .session
+                    .patterns
+                    .get(match reply {
+                        ChipReply::AdoptPattern(index) => *index,
+                        _ => 0,
+                    })
+                    .is_some_and(|choice| choice.levels.len() == 2)
+            })
+            .unwrap()
+            .clone();
+        talk.press(&with_month);
+        let parts = talk.last_parts();
+        let cards: Vec<&ncrs_hermes_chat::FileCard> = parts
+            .iter()
+            .filter_map(|part| match part {
+                Part::File(card) => Some(card),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(cards.len(), 2, "{parts:?}");
+        assert_eq!(cards[0].segments.len(), 3);
+        assert_eq!(
+            cards[1].segments[..3],
+            ["Alfa", "2020", "11"].map(String::from)[..]
+        );
+        assert!(
+            talk.state.session.changes.is_empty(),
+            "nothing before the yes"
+        );
+
+        talk.press(&ChipReply::ConfirmChange);
+        assert_eq!(talk.state.session.changes.len(), 1);
     }
 }

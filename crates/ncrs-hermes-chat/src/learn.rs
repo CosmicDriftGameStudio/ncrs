@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use ncrs_filing::chat_work::{
-    same_word, ChangePreview, ChatWork, FolderReading, OrderChange, ReadError, TimeUnit,
+    same_word, ChangeOrder, ChangePreview, ChatWork, FolderReading, OrderChange, ReadError,
 };
 use ncrs_i18n::Msg;
 use ncrs_ui_kit::hermes_state::FolderRole;
@@ -14,10 +14,10 @@ use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::state::{Chip, ChipReply, FileCard, Offer, Part, ReadFor, State, Step};
 use crate::texts::{areas_card, fill, folder_name, number, plural_text, text};
-use crate::tidy;
 use crate::update::{
     access, ask_chips, cancel_chip, chip, chip_labelled, hermes, say, source_chips, work,
 };
+use crate::{patterns, tidy};
 
 const SCOPE_VALUES: usize = 3;
 
@@ -87,10 +87,11 @@ fn deliver(state: &mut State, ctx: &Ctx, purpose: ReadFor, reading: &Arc<FolderR
         ReadFor::Learn => summary(state, ctx, reading),
         ReadFor::Source => tidy::source_read(state, ctx, reading),
         ReadFor::Target => tidy::target_read(state, ctx),
+        ReadFor::NewTarget => crate::decide::new_target_read(state, ctx, reading),
     }
 }
 
-fn summary(state: &mut State, ctx: &Ctx, reading: &Arc<FolderReading>) {
+pub fn summary(state: &mut State, ctx: &Ctx, reading: &Arc<FolderReading>) {
     let folder = folder_name(ctx, &reading.root);
     if reading.files.is_empty() {
         state.step = Step::Idle;
@@ -133,6 +134,7 @@ fn summary(state: &mut State, ctx: &Ctx, reading: &Arc<FolderReading>) {
         )
     };
     state.step = Step::Keep;
+    let chips = keep_chips(state, ctx, true);
     hermes(
         state,
         vec![
@@ -140,16 +142,16 @@ fn summary(state: &mut State, ctx: &Ctx, reading: &Arc<FolderReading>) {
             Part::Areas(areas_card(
                 ctx.lang,
                 &folder_name(ctx, &reading.root),
-                &reading.structure,
+                &reading,
                 false,
             )),
             Part::Text(text(ctx.lang, Msg::HermesChatAskKeep)),
         ],
-        keep_chips(ctx, true),
+        chips,
     );
 }
 
-fn keep_chips(ctx: &Ctx, with_all: bool) -> Vec<Chip> {
+fn keep_chips(state: &mut State, ctx: &Ctx, with_all: bool) -> Vec<Chip> {
     let mut chips = vec![
         chip(ctx, Msg::HermesChatKeepYes, ChipReply::KeepYes, true),
         chip(ctx, Msg::HermesChatWantChange, ChipReply::WantChange, false),
@@ -157,6 +159,7 @@ fn keep_chips(ctx: &Ctx, with_all: bool) -> Vec<Chip> {
     if with_all {
         chips.push(chip(ctx, Msg::HermesChatShowAll, ChipReply::ShowAll, false));
     }
+    chips.extend(patterns::chips(state, ctx));
     chips
 }
 
@@ -165,18 +168,19 @@ pub fn show_all(state: &mut State, ctx: &Ctx) {
         return;
     };
     state.step = Step::Keep;
+    let chips = keep_chips(state, ctx, false);
     hermes(
         state,
         vec![
             Part::Areas(areas_card(
                 ctx.lang,
                 &folder_name(ctx, &reading.root),
-                &reading.structure,
+                &reading,
                 true,
             )),
             Part::Text(text(ctx.lang, Msg::HermesChatAskKeep)),
         ],
-        keep_chips(ctx, false),
+        chips,
     );
 }
 
@@ -227,7 +231,7 @@ pub fn keep(state: &mut State, ctx: &Ctx) -> Option<Action> {
     role
 }
 
-pub fn change_order(state: &mut State, ctx: &Ctx, kind_word: String, unit: TimeUnit) {
+pub fn change_order(state: &mut State, ctx: &Ctx, kind_word: String, order: ChangeOrder) {
     let Some(reading) = state.session.learning.clone() else {
         state.step = Step::ReadFolder;
         state.session.read_for = Some(ReadFor::Learn);
@@ -244,7 +248,7 @@ pub fn change_order(state: &mut State, ctx: &Ctx, kind_word: String, unit: TimeU
         ChatWork::PreviewChange {
             reading,
             kind_word,
-            unit,
+            order,
         },
         None,
     );
@@ -338,6 +342,10 @@ fn confirm(state: &mut State, ctx: &Ctx, parts: Vec<Part>, preview: ChangePrevie
 }
 
 pub fn confirm_change(state: &mut State, ctx: &Ctx) {
+    if let Some(change) = state.session.pending_pattern.take() {
+        apply(state, ctx, Vec::new(), change);
+        return;
+    }
     let Some(preview) = state.session.pending_change.take() else {
         return;
     };

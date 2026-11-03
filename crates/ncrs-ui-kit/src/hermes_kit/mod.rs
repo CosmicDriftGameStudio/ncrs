@@ -50,9 +50,10 @@ const REMOVE: &str = "×";
 const FILTER_BORDER: f32 = 1.0;
 const SEPARATOR_HEIGHT: f32 = 1.0;
 
+// The system mono font has no semibold face, so a semibold request picks whichever installed mono font has one.
 fn semibold() -> Font {
     Font {
-        weight: Weight::Semibold,
+        weight: Weight::Bold,
         ..crate::APP_FONT
     }
 }

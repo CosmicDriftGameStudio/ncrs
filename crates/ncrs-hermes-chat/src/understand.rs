@@ -8,7 +8,7 @@ use ncrs_ai::{
     ChatIntent, ChatQuestion, ChatTurn, LocalModelStatus, Order, Schedule,
     Transfer as SaidTransfer, LOCAL_MODEL,
 };
-use ncrs_filing::chat_work::TimeUnit;
+use ncrs_filing::chat_work::ChangeOrder;
 use ncrs_i18n::Msg;
 use ncrs_index::Transfer;
 use ncrs_ui_kit::format;
@@ -240,20 +240,8 @@ fn act_on(state: &mut State, ctx: &Ctx, intent: ChatIntent, asked: &Asked) -> Op
             transfer,
         } => propose_tidy(state, ctx, &source, target.as_deref(), schedule, transfer),
         ChatIntent::ChangeStructure { order, area, scope } => {
-            if let Some(name) = unsupported_order(order) {
-                say(
-                    state,
-                    fill(
-                        ctx.lang,
-                        Msg::HermesChatOrderNotYet,
-                        &[("order", &text(ctx.lang, name))],
-                    ),
-                    Vec::new(),
-                );
-                return None;
-            }
             state.session.change_scope = scope;
-            learn::change_order(state, ctx, area, TimeUnit::Month);
+            learn::change_order(state, ctx, area, change_order_of(order));
             None
         }
         ChatIntent::Undo => {
@@ -290,14 +278,13 @@ fn confirm_typed_choice(state: &mut State, ctx: &Ctx, answer: Chip) {
     say(state, sentence, vec![answer, cancel_chip(ctx)]);
 }
 
-/// The name of an order Hermes cannot do yet, `None` for the one it can.
-fn unsupported_order(order: Order) -> Option<Msg> {
+fn change_order_of(order: Order) -> ChangeOrder {
     match order {
-        Order::ByMonth => None,
-        Order::ByYear => Some(Msg::HermesChatOrderYear),
-        Order::BySender => Some(Msg::HermesChatOrderSender),
-        Order::ByKind => Some(Msg::HermesChatOrderKind),
-        Order::Flat => Some(Msg::HermesChatOrderFlat),
+        Order::ByMonth => ChangeOrder::ByMonth,
+        Order::ByYear => ChangeOrder::ByYear,
+        Order::BySender => ChangeOrder::BySender,
+        Order::ByKind => ChangeOrder::ByKind,
+        Order::Flat => ChangeOrder::Flat,
     }
 }
 

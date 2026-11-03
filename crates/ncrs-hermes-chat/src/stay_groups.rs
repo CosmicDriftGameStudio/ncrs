@@ -284,6 +284,7 @@ fn rerun(state: &mut State, ctx: &Ctx) {
             target,
             changes: state.session.changes.clone(),
             answered,
+            layout: state.session.layout.clone(),
         },
         Some(text(ctx.lang, Msg::HermesChatWorkingTrial)),
     );

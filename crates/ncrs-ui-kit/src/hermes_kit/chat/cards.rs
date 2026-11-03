@@ -61,6 +61,8 @@ fn card_text<'a, M: 'a>(
 pub struct AreaLine {
     pub name: String,
     pub detail: String,
+    /// A real file path laid out like this area, under the row; empty for none.
+    pub example: String,
     pub count: String,
     /// A row for what is not an area of its own, dimmed.
     pub dim: bool,
@@ -95,7 +97,7 @@ pub fn areas_card<'a, M: 'a>(lines: &[AreaLine], palette: &Palette) -> Element<'
                 .align_y(alignment::Vertical::Center)
                 .into()
         };
-        Row::new()
+        let head = Row::new()
             .push(container(title).width(Length::Fill))
             .push(card_text(
                 &line.count,
@@ -104,8 +106,20 @@ pub fn areas_card<'a, M: 'a>(lines: &[AreaLine], palette: &Palette) -> Element<'
                 false,
             ))
             .spacing(GAP_M)
-            .align_y(alignment::Vertical::Center)
-            .into()
+            .align_y(alignment::Vertical::Center);
+        if line.example.is_empty() {
+            head.into()
+        } else {
+            Column::new()
+                .push(head)
+                .push(card_text(
+                    &line.example,
+                    palette.dim_text,
+                    Wrapping::WordOrGlyph,
+                    false,
+                ))
+                .into()
+        }
     });
     card(Column::with_children(rows).spacing(GAP_XS).into(), palette)
 }

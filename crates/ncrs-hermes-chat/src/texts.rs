@@ -3,11 +3,10 @@
 use std::path::{Component, Path};
 use std::time::{Duration, SystemTime};
 
+use ncrs_filing::chat_work::{branch_example, FolderReading};
 use ncrs_i18n::{fill_template, Language, Msg};
 use ncrs_index::Field;
-use ncrs_intake::{
-    Area, ConditionProblem, Level, LocationStructure, PlaceholderLabel, RuleProblem,
-};
+use ncrs_intake::{Area, Branch, ConditionProblem, Level, PlaceholderLabel, RuleProblem};
 use ncrs_ui_kit::format;
 
 use crate::ctx::Ctx;
@@ -126,33 +125,69 @@ pub fn field_label(lang: Language, field: Field) -> &'static str {
     })
 }
 
-/// "nach Bank, dann Jahr", from the biggest branch of the area.
-fn area_description(lang: Language, area: &Area) -> String {
-    let labels: Vec<&str> = area
-        .branches
-        .first()
-        .map(|branch| {
-            branch
-                .levels
-                .iter()
-                .filter_map(|level| match level {
-                    Level::Placeholder(placeholder) => Some(label_text(lang, placeholder.label)),
-                    _ => None,
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-    if labels.is_empty() {
+const PATTERN_JOINER: &str = " / ";
+
+/// The name of a placeholder as the filing masks call it; what the masks have
+/// no name for is named by what it stands for.
+fn pattern_label(lang: Language, label: PlaceholderLabel) -> String {
+    let mask = match label {
+        PlaceholderLabel::Year => Some(Msg::FilingPiecesFieldYear),
+        PlaceholderLabel::Month => Some(Msg::FilingPiecesFieldMonth),
+        PlaceholderLabel::Date => Some(Msg::FilingPiecesFieldDate),
+        PlaceholderLabel::Number => Some(Msg::FilingPiecesFieldNumber),
+        PlaceholderLabel::Sender => Some(Msg::FilingPiecesFieldSender),
+        PlaceholderLabel::Kind => Some(Msg::FilingPiecesFieldKind),
+        _ => None,
+    };
+    if let Some(msg) = mask {
+        return lang.text(msg).to_owned();
+    }
+    let word = label_text(lang, label);
+    let mut letters = word.chars();
+    letters.next().map_or_else(String::new, |first| {
+        first.to_uppercase().chain(letters).collect()
+    })
+}
+
+/// The folder levels of a pattern, "Year / Month".
+pub fn pattern_levels(lang: Language, labels: &[PlaceholderLabel]) -> String {
+    labels
+        .iter()
+        .map(|label| pattern_label(lang, *label))
+        .collect::<Vec<_>>()
+        .join(PATTERN_JOINER)
+}
+
+/// The folders below the area and the file, "Year / Sender / File"; "no
+/// subfolders" when the files lie in the area folder itself.
+pub fn branch_pattern(lang: Language, branch: &Branch) -> String {
+    if branch.levels.is_empty() {
         return text(lang, Msg::HermesChatAreaFlat);
     }
-    fill(
-        lang,
-        Msg::HermesChatAreaBy,
-        &[(
-            "levels",
-            &labels.join(lang.text(Msg::HermesChatLevelJoiner)),
-        )],
-    )
+    let mut parts: Vec<String> = branch
+        .levels
+        .iter()
+        .map(|level| match level {
+            Level::Literal(name) => name.clone(),
+            Level::Choice(names) => names.join(" | "),
+            Level::Placeholder(placeholder) => pattern_label(lang, placeholder.label),
+        })
+        .collect();
+    parts.push(text(lang, Msg::HermesChatTrialFile));
+    parts.join(PATTERN_JOINER)
+}
+
+/// The path of a real document of the branch.
+pub fn branch_example_path(reading: &FolderReading, area: &Area, branch: &Branch) -> String {
+    branch_example(reading, area, branch)
+        .map(|file| {
+            file.relative_path
+                .components()
+                .map(|part| part.as_os_str().to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+                .join("/")
+        })
+        .unwrap_or_default()
 }
 
 const SHOWN_AREAS: usize = 3;
@@ -170,9 +205,10 @@ fn folder_label(lang: Language, read_folder: &str, folder: &str) -> String {
 pub fn areas_card(
     lang: Language,
     read_folder: &str,
-    structure: &LocationStructure,
+    reading: &FolderReading,
     all: bool,
 ) -> AreasCard {
+    let structure = &reading.structure;
     let shown = if all {
         structure.areas.len()
     } else {
@@ -182,10 +218,19 @@ pub fn areas_card(
         .areas
         .iter()
         .take(shown)
-        .map(|area| AreaRow {
-            name: folder_label(lang, read_folder, &area.folder),
-            description: area_description(lang, area),
-            documents: area.documents,
+        .map(|area| {
+            let branch = area.branches.first();
+            AreaRow {
+                name: folder_label(lang, read_folder, &area.folder),
+                description: branch.map_or_else(
+                    || text(lang, Msg::HermesChatAreaFlat),
+                    |branch| branch_pattern(lang, branch),
+                ),
+                example: branch
+                    .map(|branch| branch_example_path(reading, area, branch))
+                    .unwrap_or_default(),
+                documents: area.documents,
+            }
         })
         .collect();
     let rest = structure.areas.get(shown..).unwrap_or_default();
@@ -275,7 +320,16 @@ mod tests {
                 },
             ],
         };
-        let card = areas_card(Language::English, "Downloads", &structure, false);
+        let reading = FolderReading {
+            root: "Downloads".into(),
+            files: Vec::new(),
+            photos: 0,
+            without_text: 0,
+            structure,
+            duplicates: Vec::new(),
+            hashes: Default::default(),
+        };
+        let card = areas_card(Language::English, "Downloads", &reading, false);
         let unordered = card.unordered.map(|row| row.text).unwrap_or_default();
         assert!(unordered.contains("directly in Downloads"), "{unordered}");
         assert!(unordered.contains("Misc"), "{unordered}");

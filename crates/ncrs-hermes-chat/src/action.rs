@@ -20,4 +20,6 @@ pub enum Action {
     /// Switches the AI setting on; `Message::AiTurnedOn` follows once it is
     /// applied.
     TurnOnAi,
+    /// Opens the card that downloads the text recognition models.
+    OpenOcrModels,
 }

@@ -61,6 +61,22 @@ fn date(year: i32, month: u32, day: u32) -> NaiveDate {
     NaiveDate::from_ymd_opt(year, month, day).unwrap()
 }
 
+fn fields(when: Option<NaiveDate>, kind: Option<&str>, sender: Option<&str>) -> DocumentFields {
+    DocumentFields {
+        sender: sender.map(str::to_owned),
+        kind: kind.map(str::to_owned),
+        date: when,
+        ..DocumentFields::default()
+    }
+}
+
+fn kinds() -> ncrs_index::Kinds {
+    ncrs_index::Kinds::new(
+        Arc::new(KindCatalog::built_in()),
+        ncrs_index::KindLanguage::English,
+    )
+}
+
 fn plan_file(path: &str, seed: u8, sender: Option<&str>, when: NaiveDate) -> PlanFile {
     PlanFile {
         relative_path: PathBuf::from(path),
@@ -248,6 +264,7 @@ fn trial_of(
         target: Arc::new(target_reading()),
         changes,
         answered,
+        layout: None,
     }) {
         ChatResult::Trial(plan) => plan.unwrap(),
         other => panic!("{other:?}"),
@@ -376,37 +393,58 @@ fn the_sample_shows_one_file_per_area_then_unsure_then_the_rest() {
 fn a_month_folder_goes_in_after_the_year_with_or_without_only() {
     let change = |only| OrderChange {
         area: PathBuf::from("Alfa"),
-        year_depth: 1,
-        unit: TimeUnit::Month,
+        depth: 1,
+        order: ChangeOrder::ByMonth,
         only,
         kind_names: Vec::new(),
+        pattern: None,
     };
     let to = || PathBuf::from("Alfa/2022/2022-07-04 Alfa Rechnung.pdf");
     let when = Some(date(2022, 7, 4));
     assert_eq!(
-        change::apply_changes(to(), when, None, &[change(None)]),
+        change::apply_changes(to(), &fields(when, None, None), &kinds(), &[change(None)]),
         PathBuf::from("Alfa/2022/07/2022-07-04 Alfa Rechnung.pdf")
     );
     assert_eq!(
-        change::apply_changes(to(), when, None, &[change(Some((0, "Alfa".to_owned())))]),
+        change::apply_changes(
+            to(),
+            &fields(when, None, None),
+            &kinds(),
+            &[change(Some((0, "Alfa".to_owned())))]
+        ),
         PathBuf::from("Alfa/2022/07/2022-07-04 Alfa Rechnung.pdf")
     );
     assert_eq!(
-        change::apply_changes(to(), when, None, &[change(Some((0, "Beta".to_owned())))]),
+        change::apply_changes(
+            to(),
+            &fields(when, None, None),
+            &kinds(),
+            &[change(Some((0, "Beta".to_owned())))]
+        ),
         to()
     );
     assert_eq!(
-        change::apply_changes(to(), None, None, &[change(None)]),
+        change::apply_changes(to(), &fields(None, None, None), &kinds(), &[change(None)]),
         to()
     );
     let other_area = PathBuf::from("Beta/2022/x.pdf");
     assert_eq!(
-        change::apply_changes(other_area.clone(), when, None, &[change(None)]),
+        change::apply_changes(
+            other_area.clone(),
+            &fields(when, None, None),
+            &kinds(),
+            &[change(None)]
+        ),
         other_area
     );
     let no_year = PathBuf::from("Alfa/Misc/x.pdf");
     assert_eq!(
-        change::apply_changes(no_year.clone(), when, None, &[change(None)]),
+        change::apply_changes(
+            no_year.clone(),
+            &fields(when, None, None),
+            &kinds(),
+            &[change(None)]
+        ),
         no_year
     );
 }
@@ -415,16 +453,22 @@ fn a_month_folder_goes_in_after_the_year_with_or_without_only() {
 fn a_change_only_touches_documents_of_its_kind_or_in_a_folder_that_names_it() {
     let change = OrderChange {
         area: PathBuf::from("Bank"),
-        year_depth: 3,
-        unit: TimeUnit::Month,
+        depth: 3,
+        order: ChangeOrder::ByMonth,
         only: None,
         kind_names: vec!["bank_statement".to_owned(), "Kontoauszüge".to_owned()],
+        pattern: None,
     };
     let when = Some(date(2022, 7, 4));
     let in_folder = PathBuf::from("Bank/Sparkasse/Kontoauszüge/2022/a.pdf");
     let card = PathBuf::from("Bank/DKB/Kreditkarte/2022/b.pdf");
     let apply = |to: &PathBuf, kind| {
-        change::apply_changes(to.clone(), when, kind, std::slice::from_ref(&change))
+        change::apply_changes(
+            to.clone(),
+            &fields(when, kind, None),
+            &kinds(),
+            std::slice::from_ref(&change),
+        )
     };
     assert_eq!(
         apply(&in_folder, None),
@@ -442,10 +486,11 @@ fn a_change_only_touches_documents_of_its_kind_or_in_a_folder_that_names_it() {
 fn the_trial_applies_the_order_change_to_the_filed_names() {
     let change = OrderChange {
         area: PathBuf::from("Alfa"),
-        year_depth: 1,
-        unit: TimeUnit::Month,
+        depth: 1,
+        order: ChangeOrder::ByMonth,
         only: None,
         kind_names: Vec::new(),
+        pattern: None,
     };
     let plan = trial(&Setup::new(), vec![change]);
     assert_eq!(
@@ -479,7 +524,7 @@ fn preview(setup: &Setup, word: &str) -> Option<ChangePreview> {
     match setup.access.run(ChatWork::PreviewChange {
         reading: Arc::new(bank_reading()),
         kind_word: word.to_owned(),
-        unit: TimeUnit::Month,
+        order: ChangeOrder::ByMonth,
     }) {
         ChatResult::Preview(preview) => preview,
         other => panic!("{other:?}"),
@@ -491,7 +536,7 @@ fn the_preview_shows_the_newest_document_with_its_month_and_the_scope() {
     let preview = preview(&Setup::new(), "Rechnungen").unwrap();
     assert_eq!(preview.kind_label, "Invoice");
     assert_eq!(preview.change.area, PathBuf::from("Bank"));
-    assert_eq!(preview.change.year_depth, 2);
+    assert_eq!(preview.change.depth, 2);
     assert_eq!(preview.highlighted, 3);
     assert_eq!(
         preview.example,
@@ -505,6 +550,128 @@ fn the_preview_shows_the_newest_document_with_its_month_and_the_scope() {
 fn no_preview_for_a_word_that_names_no_kind_in_the_folder() {
     assert_eq!(preview(&Setup::new(), "Verträge"), None);
     assert_eq!(preview(&Setup::new(), "Wetter"), None);
+}
+
+fn ordered_reading(layout: fn(&str, i32, u32) -> String) -> FolderReading {
+    let mut files = Vec::new();
+    let mut seed = 0;
+    for (bank, sender) in [("Sparkasse", "Sparkasse Chemnitz"), ("DKB", "DKB")] {
+        for year in [2020, 2021] {
+            for month in [1, 2, 3] {
+                seed += 1;
+                files.push(plan_file(
+                    &layout(bank, year, month),
+                    seed,
+                    Some(sender),
+                    date(year, month, 1),
+                ));
+            }
+        }
+    }
+    reading("/archive", files)
+}
+
+fn preview_of(reading: FolderReading, order: ChangeOrder) -> ChangePreview {
+    match Setup::new().access.run(ChatWork::PreviewChange {
+        reading: Arc::new(reading),
+        kind_word: "Rechnungen".to_owned(),
+        order,
+    }) {
+        ChatResult::Preview(Some(preview)) => preview,
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn every_order_previews_one_document_and_applies_to_a_filed_name() {
+    let by_year = preview_of(
+        ordered_reading(|bank, _, month| format!("Bank/{bank}/Auszug {month} {bank}.pdf")),
+        ChangeOrder::ByYear,
+    );
+    assert_eq!(by_year.change.order, ChangeOrder::ByYear);
+    assert_eq!(by_year.example[1], "2021");
+    assert_eq!(by_year.highlighted, 1);
+    let filed = change::apply_changes(
+        PathBuf::from("Bank/DKB/a.pdf"),
+        &fields(Some(date(2022, 7, 4)), Some("invoice"), Some("DKB")),
+        &kinds(),
+        std::slice::from_ref(&by_year.change),
+    );
+    assert_eq!(filed, PathBuf::from("Bank/2022/DKB/a.pdf"));
+
+    let by_sender = preview_of(
+        ordered_reading(|_, year, month| format!("Bank/{year}/Auszug {month}.pdf")),
+        ChangeOrder::BySender,
+    );
+    assert_eq!(by_sender.example[1], "DKB");
+    assert_eq!(by_sender.highlighted, 1);
+    let filed = change::apply_changes(
+        PathBuf::from("Bank/2022/a.pdf"),
+        &fields(Some(date(2022, 7, 4)), Some("invoice"), Some("DKB")),
+        &kinds(),
+        std::slice::from_ref(&by_sender.change),
+    );
+    assert_eq!(filed, PathBuf::from("Bank/DKB/2022/a.pdf"));
+
+    let by_kind = preview_of(
+        ordered_reading(|_, year, month| format!("Bank/{year}/Auszug {month}.pdf")),
+        ChangeOrder::ByKind,
+    );
+    assert_eq!(by_kind.example[1], "Invoice");
+    let filed = change::apply_changes(
+        PathBuf::from("Bank/2022/a.pdf"),
+        &fields(Some(date(2022, 7, 4)), Some("invoice"), None),
+        &kinds(),
+        std::slice::from_ref(&by_kind.change),
+    );
+    assert_eq!(filed, PathBuf::from("Bank/Invoice/2022/a.pdf"));
+
+    let flat = preview_of(
+        ordered_reading(|bank, year, month| format!("Bank/{bank}/{year}/Auszug {month}.pdf")),
+        ChangeOrder::Flat,
+    );
+    assert_eq!(flat.example.len(), 2);
+    assert_eq!(flat.highlighted, 1);
+    let filed = change::apply_changes(
+        PathBuf::from("Bank/DKB/2022/a.pdf"),
+        &fields(Some(date(2022, 7, 4)), Some("invoice"), Some("DKB")),
+        &kinds(),
+        std::slice::from_ref(&flat.change),
+    );
+    assert_eq!(filed, PathBuf::from("Bank/a.pdf"));
+}
+
+#[test]
+fn an_order_the_folder_has_already_changes_nothing() {
+    let by_year =
+        ordered_reading(|bank, year, month| format!("Bank/{bank}/{year}/Auszug {month}.pdf"));
+    let preview = match Setup::new().access.run(ChatWork::PreviewChange {
+        reading: Arc::new(by_year),
+        kind_word: "Rechnungen".to_owned(),
+        order: ChangeOrder::ByYear,
+    }) {
+        ChatResult::Preview(preview) => preview,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(preview, None);
+    let change = OrderChange {
+        area: PathBuf::from("Bank"),
+        depth: 1,
+        order: ChangeOrder::BySender,
+        only: None,
+        kind_names: Vec::new(),
+        pattern: None,
+    };
+    let named = PathBuf::from("Bank/DKB/a.pdf");
+    assert_eq!(
+        change::apply_changes(
+            named.clone(),
+            &fields(None, None, Some("DKB")),
+            &kinds(),
+            &[change]
+        ),
+        named
+    );
 }
 
 fn run_plan(setup: &Setup, transfer: Transfer) -> RunPlan {
@@ -868,4 +1035,107 @@ fn a_rule_the_form_would_refuse_is_refused_and_nothing_is_stored() {
         )))
     );
     assert_eq!(stored(&setup), 0);
+}
+
+fn pattern_preview_of(reading: FolderReading, levels: Vec<PatternLevel>) -> Option<PatternPreview> {
+    match Setup::new().access.run(ChatWork::PreviewPattern {
+        reading: Arc::new(reading),
+        levels,
+    }) {
+        ChatResult::PatternPreviewed(preview) => preview,
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn a_pattern_replaces_the_folders_below_every_area_and_counts_what_moves() {
+    let reading =
+        ordered_reading(|bank, year, month| format!("Bank/{bank}/{year}/Auszug {month}.pdf"));
+    let choices = pattern_choices(&reading.structure);
+    assert!(
+        choices.iter().all(|choice| !choice.levels.is_empty()),
+        "{choices:?}"
+    );
+
+    let preview =
+        pattern_preview_of(reading, vec![PatternLevel::Year, PatternLevel::Month]).unwrap();
+    assert_eq!(preview.moved, 12);
+    assert_eq!(preview.before.len(), 4);
+    assert_eq!(preview.after.len(), 4);
+    assert_eq!(preview.after[1], "2021");
+    assert_eq!(preview.after[2], "03");
+
+    let moved = change::apply_changes(
+        PathBuf::from("Bank/DKB/2022/a.pdf"),
+        &fields(Some(date(2022, 7, 4)), Some("invoice"), Some("DKB")),
+        &kinds(),
+        std::slice::from_ref(&preview.change),
+    );
+    assert_eq!(moved, PathBuf::from("Bank/2022/07/a.pdf"));
+
+    let without_date = change::apply_changes(
+        PathBuf::from("Bank/DKB/2022/a.pdf"),
+        &fields(None, Some("invoice"), Some("DKB")),
+        &kinds(),
+        std::slice::from_ref(&preview.change),
+    );
+    assert_eq!(
+        without_date,
+        PathBuf::from("Bank/DKB/2022/a.pdf"),
+        "a document without a date stays"
+    );
+    let elsewhere = change::apply_changes(
+        PathBuf::from("Other/x/a.pdf"),
+        &fields(Some(date(2022, 7, 4)), None, None),
+        &kinds(),
+        std::slice::from_ref(&preview.change),
+    );
+    assert_eq!(elsewhere, PathBuf::from("Other/x/a.pdf"));
+}
+
+#[test]
+fn a_pattern_everything_follows_has_nothing_to_preview() {
+    let reading = ordered_reading(|_, year, month| format!("Bank/{year}/Auszug {month}.pdf"));
+    assert_eq!(pattern_preview_of(reading, vec![PatternLevel::Year]), None);
+}
+
+#[test]
+fn a_target_without_neighbours_files_by_the_layout_it_was_given() {
+    let setup = Setup::new();
+    let source = reading(
+        "/inbox",
+        vec![plan_file(
+            "a.pdf",
+            1,
+            Some("Sparkasse Chemnitz"),
+            date(2021, 3, 1),
+        )],
+    );
+    let run = |layout: Option<Vec<PatternLevel>>| match setup.access.run(ChatWork::Trial {
+        source: Arc::new(source.clone()),
+        target: Arc::new(reading("/new", Vec::new())),
+        changes: Vec::new(),
+        answered: AnsweredGroups::default(),
+        layout,
+    }) {
+        ChatResult::Trial(plan) => plan.unwrap().entries.remove(0).outcome,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(
+        run(Some(vec![PatternLevel::Year])),
+        TrialOutcome::Filed {
+            to: PathBuf::from("2021/a.pdf")
+        }
+    );
+    assert_eq!(
+        run(Some(Vec::new())),
+        TrialOutcome::Filed {
+            to: PathBuf::from("a.pdf")
+        }
+    );
+    assert_eq!(
+        run(None),
+        TrialOutcome::Stays(StayReason::NoNeighbours),
+        "without a layout nothing is guessed"
+    );
 }

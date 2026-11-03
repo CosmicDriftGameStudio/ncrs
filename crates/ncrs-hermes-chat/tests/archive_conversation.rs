@@ -90,6 +90,13 @@ mod tests {
             (card.rows[0].name.as_str(), card.rows[0].documents),
             ("Bank", 354)
         );
+        let bank = &card.rows[0];
+        assert!(bank.description.contains(" / "), "{}", bank.description);
+        assert!(
+            bank.example.starts_with("Bank/") && bank.example.contains('.'),
+            "{}",
+            bank.example
+        );
         assert_eq!(card.more.as_ref().map(|more| more.documents), Some(554));
         assert_eq!(card.unordered.as_ref().map(|row| row.documents), Some(190));
     }

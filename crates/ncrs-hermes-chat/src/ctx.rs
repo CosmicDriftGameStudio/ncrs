@@ -33,6 +33,8 @@ pub struct Ctx {
     pub resolve_folder: fn(&Path) -> Result<PathBuf, String>,
     /// Whether the AI setting is on; off, no sentence goes to the model.
     pub ai_on: bool,
+    /// Whether the text recognition models are installed.
+    pub ocr_models_present: bool,
     /// `None` in a build without the local language model.
     pub model: Option<Arc<dyn ChatModel>>,
 }

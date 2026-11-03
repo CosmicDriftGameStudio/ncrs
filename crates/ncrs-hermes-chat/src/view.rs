@@ -33,6 +33,7 @@ fn count_line(row: &CountRow, dim: bool) -> AreaLine {
     AreaLine {
         name: row.text.clone(),
         detail: String::new(),
+        example: String::new(),
         count: row.documents.to_string(),
         dim,
     }
@@ -45,6 +46,7 @@ fn areas<'a>(card: &AreasCard, ctx: ViewCtx<'_>) -> Element<'a, Message> {
         .map(|row| AreaLine {
             name: row.name.clone(),
             detail: row.description.clone(),
+            example: row.example.clone(),
             count: row.documents.to_string(),
             dim: false,
         })

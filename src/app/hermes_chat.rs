@@ -83,6 +83,7 @@ impl App {
             now: chrono::Local::now(),
             resolve_folder: self.resolve_folder,
             ai_on: self.chat_ai_on(),
+            ocr_models_present: self.ocr_models_present(),
             model: self.chat_ai_on().then(|| self.chat_model.clone()).flatten(),
         }
     }
@@ -122,6 +123,9 @@ impl App {
                 .run_hermes_flow(Vec::new(), |hermes, ctx| {
                     ncrs_hermes_ui::set_folder_role(hermes, &folder, role, ctx)
                 }),
+            ncrs_hermes_chat::Action::OpenOcrModels => {
+                self.update_ocr_models(OcrModelsMessage::Open)
+            }
             ncrs_hermes_chat::Action::OpenFilingSetup => {
                 self.update_filing_setup(FilingSetupMessage::Toggle)
             }

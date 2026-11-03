@@ -11,6 +11,9 @@ use ncrs_filing::chat_work::{
 use ncrs_i18n::Msg;
 use ncrs_index::Transfer;
 
+use ncrs_ui_kit::hermes_state::FolderRole;
+
+use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::state::{
     Chip, ChipReply, Entry, GroupFlow, Offer, Part, ReadFor, RowOutcome, State, Step, Tidy,
@@ -22,7 +25,7 @@ use crate::{learn, stay_groups, texts};
 
 pub const PAGE: usize = 10;
 
-fn targets(state: &State, ctx: &Ctx) -> Vec<PathBuf> {
+pub fn targets(state: &State, ctx: &Ctx) -> Vec<PathBuf> {
     let mut found: Vec<PathBuf> = Vec::new();
     for path in ctx.targets.iter().chain(&state.session.learned) {
         if !found.contains(path) {
@@ -55,6 +58,8 @@ pub fn begin(state: &mut State, ctx: &Ctx, source: PathBuf) {
         target: None,
         transfer: None,
     });
+    state.session.layout = None;
+    state.session.deciding = None;
     state.step = Step::Idle;
     learn::read_for(state, ctx, source, ReadFor::Source);
 }
@@ -72,6 +77,13 @@ pub fn source_read(state: &mut State, ctx: &Ctx, reading: &Arc<FolderReading>) {
         );
         return;
     }
+    crate::photos::ask_or_go_on(state, ctx, reading);
+}
+
+/// Where the files of the source go: the target the sentence named, the only
+/// target there is, or a question.
+pub fn choose_where(state: &mut State, ctx: &Ctx, reading: &Arc<FolderReading>) {
+    let folder = folder_name(ctx, &reading.root);
     if let Some(target) = state
         .session
         .proposal
@@ -116,7 +128,20 @@ pub fn source_read(state: &mut State, ctx: &Ctx, reading: &Arc<FolderReading>) {
     let chips = candidates
         .into_iter()
         .map(|path| chip_labelled(folder_name(ctx, &path), ChipReply::Folder(path), false))
-        .collect();
+        .collect::<Vec<_>>();
+    let mut chips = chips;
+    chips.push(chip(
+        ctx,
+        Msg::HermesChatNewFolderChip,
+        ChipReply::NewTarget,
+        false,
+    ));
+    chips.push(chip(
+        ctx,
+        Msg::HermesChatDecideChip,
+        ChipReply::DecidePerFile,
+        false,
+    ));
     say(
         state,
         fill(
@@ -175,32 +200,33 @@ pub fn once(state: &mut State, ctx: &Ctx, always: bool) {
     let Some(tidy) = state.session.tidy.as_ref() else {
         return;
     };
-    let folder = folder_name(ctx, &tidy.source);
     let said = state
         .session
         .proposal
         .as_ref()
         .and_then(|proposal| proposal.transfer);
-    let mut parts = Vec::new();
-    if always {
-        parts.push(Part::Text(text(ctx.lang, Msg::HermesChatAlwaysNotYet)));
+    if always && !ctx.sources.contains(&tidy.source) {
+        state.queued_action = Some(Action::SetFolderRole {
+            folder: tidy.source.clone(),
+            role: FolderRole::Inbox,
+        });
     }
     if let Some(transfer) = said {
-        if !parts.is_empty() {
-            hermes(state, parts, Vec::new());
-        }
         mode(state, ctx, transfer);
         return;
     }
-    parts.push(Part::Text(fill(
-        ctx.lang,
-        Msg::HermesChatAskMode,
-        &[("folder", &folder)],
-    )));
+    ask_mode(state, ctx);
+}
+
+pub fn ask_mode(state: &mut State, ctx: &Ctx) {
+    let Some(tidy) = state.session.tidy.as_ref() else {
+        return;
+    };
+    let folder = folder_name(ctx, &tidy.source);
     state.step = Step::Mode;
-    hermes(
+    say(
         state,
-        parts,
+        fill(ctx.lang, Msg::HermesChatAskMode, &[("folder", &folder)]),
         vec![
             chip(ctx, Msg::HermesChatCopy, ChipReply::ModeCopy, false),
             chip(ctx, Msg::HermesChatMove, ChipReply::ModeMove, false),
@@ -209,6 +235,10 @@ pub fn once(state: &mut State, ctx: &Ctx, always: bool) {
 }
 
 pub fn mode(state: &mut State, ctx: &Ctx, transfer: Transfer) {
+    if state.session.deciding.is_some() {
+        crate::decide::start(state, ctx, transfer);
+        return;
+    }
     let Some(tidy) = state.session.tidy.as_mut() else {
         return;
     };
@@ -232,6 +262,7 @@ pub fn mode(state: &mut State, ctx: &Ctx, transfer: Transfer) {
             target,
             changes: state.session.changes.clone(),
             answered: AnsweredGroups::default(),
+            layout: state.session.layout.clone(),
         },
         Some(text(ctx.lang, Msg::HermesChatWorkingTrial)),
     );
@@ -598,6 +629,10 @@ pub fn file_all(state: &mut State, ctx: &Ctx) {
 }
 
 pub fn filed_done(state: &mut State, ctx: &Ctx, result: Result<RunReport, String>) {
+    if state.session.deciding.is_some() {
+        crate::decide::run_done(state, ctx, result);
+        return;
+    }
     let (Some(tidy), trial) = (state.session.tidy.take(), state.session.trial.take()) else {
         return;
     };

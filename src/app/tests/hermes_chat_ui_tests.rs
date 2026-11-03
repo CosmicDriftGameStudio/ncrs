@@ -52,6 +52,7 @@ fn ready(lang: Language) -> Ctx {
         targets: vec![PathBuf::from("/home/test/Documents/Archive")],
         sources: vec![PathBuf::from("/home/test/Downloads")],
         ai_on: true,
+        ocr_models_present: true,
         model: None,
         favourites: Vec::new(),
         resolve_folder: |path| Ok(path.to_path_buf()),
@@ -107,9 +108,10 @@ fn user_says(app: &mut App, text: &str) {
 fn areas_scene(lang: Language) -> App {
     let (mut app, _) = opened(lang);
     user_says(&mut app, pick(lang, "Mein Archiv", "My archive"));
-    let row = |name: &str, description: &str, documents| AreaRow {
+    let row = |name: &str, description: &str, example: &str, documents| AreaRow {
         name: name.to_owned(),
         description: description.to_owned(),
+        example: example.to_owned(),
         documents,
     };
     hermes_says(
@@ -125,9 +127,19 @@ fn areas_scene(lang: Language) -> App {
             ),
             Part::Areas(AreasCard {
                 rows: vec![
-                    row("Steuern", "nach Jahr", 148),
-                    row("Versicherungen", "nach Anbieter", 96),
-                    row("Wohnung", "nach Thema", 61),
+                    row(
+                        "Steuern",
+                        "Jahr / Datei",
+                        "Steuern/2023/2023-04-12_Finanzamt.pdf",
+                        148,
+                    ),
+                    row(
+                        "Versicherungen",
+                        "Anbieter / Datei",
+                        "Versicherungen/Allianz/Police_2022.pdf",
+                        96,
+                    ),
+                    row("Wohnung", "Datei", "Wohnung/Mietvertrag.pdf", 61),
                 ],
                 more: None,
                 unordered: None,
@@ -672,6 +684,7 @@ fn area_row(name: &str, description: &str, documents: u32) -> AreaRow {
     AreaRow {
         name: name.to_owned(),
         description: description.to_owned(),
+        example: String::new(),
         documents,
     }
 }
@@ -861,8 +874,10 @@ fn an_english_chat_shows_no_german_text_from_the_greeting_to_the_download_offer(
     ));
     let mut ctx = ready(lang);
     ctx.model = Some(Arc::clone(&model) as Arc<dyn ncrs_ai::ChatModel>);
-    send(&mut app, &ctx, HermesChatMessage::Open);
     let downloads = PathBuf::from("/home/test/Downloads");
+    ctx.sources.clear();
+    ctx.targets = vec![downloads.clone()];
+    send(&mut app, &ctx, HermesChatMessage::Open);
     let label = app
         .hermes_chat
         .chips()
