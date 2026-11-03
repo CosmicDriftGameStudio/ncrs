@@ -1,4 +1,5 @@
 use std::io;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::SystemTime;
 
@@ -63,6 +64,14 @@ pub fn intake_steps(
     }
     steps.push(Box::new(ReviewStep { index }));
     steps
+}
+
+/// Folder conditions look at every component of the path, so the part above
+/// the location's root must not take part.
+pub(crate) fn location_relative(item: &Item) -> &Path {
+    item.path
+        .strip_prefix(&item.location.path)
+        .unwrap_or(&item.path)
 }
 
 /// Takes the file into the index, once it has held still.
@@ -139,12 +148,12 @@ impl Step for IntakeStep {
         }
     }
 
-    fn after_scan(&self, location: &Location) -> Result<(), String> {
+    fn after_scan(&self, location: &Location) -> Result<Vec<PathBuf>, String> {
         with_index_value(self.index.as_ref(), |index| {
             settle_location(index, location)
         })
         .ok_or_else(|| NO_INDEX.to_owned())?
-        .map(|_report| ())
+        .map(|report| report.error_paths)
         .map_err(|err| err.to_string())
     }
 }
@@ -178,7 +187,19 @@ impl Step for TextStep {
         item.text = match self.chain.extract(&item.path) {
             Ok(text) => text,
             Err(TextError::LibraryMissing { .. }) => return Ok(StepOutcome::Unchanged),
-            Err(err) => return Err(err.to_string()),
+            Err(err) => {
+                // Without a stored text the archive document would be read
+                // (and fail) again on every scan.
+                if item.location.mode == LocationMode::Archive {
+                    let stored = with_index_value(self.index.as_ref(), |index| {
+                        index.set_document_text(id, "")
+                    });
+                    if let Some(Err(store_err)) = stored {
+                        return Err(format!("{err}; {store_err}"));
+                    }
+                }
+                return Err(err.to_string());
+            }
         };
         let stored = item.text.as_deref().unwrap_or_default();
         with_index_value(self.index.as_ref(), |index| {
@@ -286,7 +307,7 @@ impl Step for RulesStep {
                 &PlanInput {
                     text,
                     fields: &known,
-                    path: Some(&item.path),
+                    path: Some(location_relative(item)),
                     sender_aliases: &aliases,
                     manual_fields: &manual_fields,
                     kinds: &kinds,

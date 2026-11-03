@@ -49,6 +49,10 @@ struct StepCounts {
 struct Fingerprint {
     len: u64,
     modified: SystemTime,
+    /// A replaced file keeps size and mtime when copied with `cp -p` or
+    /// unpacked from an archive, but gets a new inode or change time.
+    #[cfg(unix)]
+    identity: (u64, u64, i64, i64),
 }
 
 impl Fingerprint {
@@ -57,6 +61,16 @@ impl Fingerprint {
         Some(Self {
             len: metadata.len(),
             modified: metadata.modified().ok()?,
+            #[cfg(unix)]
+            identity: {
+                use std::os::unix::fs::MetadataExt;
+                (
+                    metadata.dev(),
+                    metadata.ino(),
+                    metadata.ctime(),
+                    metadata.ctime_nsec(),
+                )
+            },
         })
     }
 }
@@ -597,6 +611,10 @@ impl Shared {
                     return;
                 };
                 let fingerprint = Fingerprint::of(&path);
+                if fingerprint.is_none() {
+                    // Deleted or moved away: nothing left to tell a repeat from.
+                    self.update(|state| state.taken.remove(&path));
+                }
                 // Until the watcher is stored, the scans queued with it still lie
                 // ahead and cover the file. Taken here, it would be forgotten when
                 // such a scan starts and then fed a second time by its walk.
@@ -637,7 +655,16 @@ impl Shared {
             }
             self.set_busy(id, &location.path, Task::Step(step.name()));
             let failed = match catch_unwind(AssertUnwindSafe(|| step.after_scan(location))) {
-                Ok(Ok(())) => continue,
+                Ok(Ok(unsettled)) => {
+                    for path in unsettled {
+                        self.record_error(
+                            &path,
+                            Task::Step(step.name()),
+                            "cannot be checked".to_owned(),
+                        );
+                    }
+                    continue;
+                }
                 Ok(Err(message)) => message,
                 Err(_panic) => PANIC_MESSAGE.to_owned(),
             };
