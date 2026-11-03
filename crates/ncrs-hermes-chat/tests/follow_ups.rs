@@ -304,4 +304,20 @@ mod tests {
         talk.press(&ChipReply::ChangeArea("Bank".to_owned()));
         assert!(has_file_card(&talk), "{:?}", talk.last_parts());
     }
+
+    #[test]
+    fn a_statement_with_the_usual_ways_on_is_not_a_question_for_the_model() {
+        let mut talk = small_talk();
+        talk.open();
+        talk.type_text_understood("hallo", r#"{"intent":"smalltalk"}"#);
+        talk.type_text_understood("Kontoauszüge nach Monat", BANK_BY_MONTH);
+        let turns = talk.model.turns();
+        assert_eq!(turns.len(), 2);
+        assert_eq!(turns[1].question, None);
+
+        talk.type_text_understood("hallo", r#"{"intent":"smalltalk"}"#);
+        talk.press(&ChipReply::IntentSearch);
+        assert!(talk.actions.contains(&Action::OpenSearch));
+        assert_eq!(talk.model.turns().len(), 3);
+    }
 }

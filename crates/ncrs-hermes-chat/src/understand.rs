@@ -34,8 +34,19 @@ pub fn asked(state: &State) -> Asked {
         Part::Text(sentence) => Some(sentence.clone()),
         _ => None,
     });
+    // The buttons that offer what Hermes can do follow a statement, they are
+    // not options of a question the model could answer.
+    let only_ways_on = chips.iter().all(|chip| {
+        matches!(
+            chip.reply,
+            ChipReply::IntentSearch
+                | ChipReply::IntentTidy
+                | ChipReply::IntentStructure
+                | ChipReply::IntentUndo
+        )
+    });
     match last_text {
-        Some(sentence) if !chips.is_empty() => Asked {
+        Some(sentence) if !chips.is_empty() && !only_ways_on => Asked {
             question: Some(sentence),
             chips: chips.clone(),
         },
