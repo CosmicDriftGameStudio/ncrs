@@ -79,6 +79,9 @@ pub enum PanelMessage {
     PanelDragMoved(Point),
     /// The left button went up while a row was held.
     PanelDragReleased,
+    /// The window lost the focus while a row was held: the release may never
+    /// arrive, so the drag ends without a drop.
+    PanelDragCancelled,
     /// Double click on a row of a panel: the row's Enter.
     RowActivated {
         side: PanelSide,

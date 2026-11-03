@@ -16,8 +16,6 @@ impl App {
         self.job_error.as_deref().or(self.config_error.as_deref())
     }
 
-    /// What the bar's path field says while the active panel is a hit list:
-    /// the query, where it ran and how many files it left, with the way back.
     /// The keys the bar shows: the search's while it has the keys, else the
     /// panels'. A hit list is no folder, so F7 (new folder) is left out.
     pub(in crate::app) fn function_key_bar(
@@ -35,6 +33,8 @@ impl App {
         keys
     }
 
+    /// What the bar's path field says while the active panel is a hit list:
+    /// the query, where it ran and how many files it left, with the way back.
     pub(in crate::app) fn hit_line(&self) -> Option<statusbar::HitLine> {
         let panel = self.active_panel();
         let list = panel.hit_list.as_ref()?;

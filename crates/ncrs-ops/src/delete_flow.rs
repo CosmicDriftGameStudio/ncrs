@@ -1,6 +1,6 @@
 //! The delete: asking, then one entry per job so Escape works between two.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use iced::Task;
@@ -104,11 +104,12 @@ pub fn confirm_delete(ops: &mut Ops, ctx: &FlowCtx<'_>) -> Outcome {
     let Some(deletion) = ops.delete_dialog.take() else {
         return idle();
     };
-    if let Some(archive) = ctx.archive_of(deletion.side) {
-        return start_archive_delete(ops, archive.to_path_buf(), deletion, ctx);
-    }
-    if !deletion.permanent {
+    let in_archive = ctx.archive_of(deletion.side).map(Path::to_path_buf);
+    if in_archive.is_some() || !deletion.permanent {
         ops.last_deletion.clear();
+    }
+    if let Some(archive) = in_archive {
+        return start_archive_delete(ops, archive, deletion, ctx);
     }
     ops.deleting = Some(deletion);
     ops.bump_generation();

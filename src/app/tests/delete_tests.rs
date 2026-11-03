@@ -399,3 +399,14 @@ fn only_movement_tagging_and_typing_repeat() {
     assert!(!repeats(&Message::DeleteConfirm));
     assert!(!repeats(&Message::Transfer(TransferKind::Copy)));
 }
+
+#[tokio::test]
+async fn a_delete_inside_an_archive_forgets_the_earlier_trash_batch() {
+    let mut app = app_with_entries(&["a.txt"]);
+    app.panels.left.archive = Some(PathBuf::from("/x/fotos.zip"));
+    app.ops.last_deletion = vec![PathBuf::from("/left/older.txt")];
+    app.panels.left.selected = 0;
+    let _open = app.update(Message::Delete { permanent: false });
+    let _confirm = app.update(Message::DeleteConfirm);
+    assert!(app.ops.last_deletion.is_empty());
+}

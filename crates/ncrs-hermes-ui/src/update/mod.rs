@@ -117,11 +117,17 @@ fn open_rule_of_plan(
     actions: &mut Vec<Action>,
 ) -> Task<Message> {
     let open = go_to_page(hermes, page, ctx, actions);
-    if let Some(rules) = hermes.rules.as_mut() {
-        rules.select_on_load(id);
-    }
-    if let Some(suggestions) = hermes.rule_suggestions.as_mut() {
-        suggestions.select_on_load(id);
+    match page {
+        HermesPage::Rules => {
+            if let Some(rules) = hermes.rules.as_mut() {
+                rules.select_on_load(id);
+            }
+        }
+        _ => {
+            if let Some(suggestions) = hermes.rule_suggestions.as_mut() {
+                suggestions.select_on_load(id);
+            }
+        }
     }
     open
 }

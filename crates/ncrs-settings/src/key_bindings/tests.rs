@@ -119,6 +119,19 @@ fn a_recorded_key_replaces_the_focused_one_and_takes_effect() {
 }
 
 #[test]
+fn typing_in_the_search_field_while_recording_keeps_the_action() {
+    let keymap = Keymap::built_in();
+    let mut dialog = KeyBindings::new(Language::English, &keymap);
+    select(&mut dialog, KeyAction::View);
+    dialog.record();
+
+    dialog.set_query("co".to_owned(), &keymap);
+    let changes = dialog.recorded(key(Named::F12), &keymap).unwrap();
+
+    assert_eq!(changes[0].action, KeyAction::View);
+}
+
+#[test]
 fn a_further_key_is_added_after_the_others() {
     let keymap = Keymap::built_in();
     let mut dialog = KeyBindings::new(Language::English, &keymap);

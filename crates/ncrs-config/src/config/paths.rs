@@ -35,13 +35,20 @@ pub fn is_inside_app_bundle(exe_dir: &Path) -> bool {
 }
 
 /// The portable data directory of the running executable. A failing
-/// `current_exe` or `canonicalize` means the normal layout.
+/// `current_exe` or `canonicalize` means the normal layout. Resolved once per
+/// run: a `data` folder that appears or vanishes later must not split config,
+/// index and key store between the two layouts.
 pub fn portable_data_dir() -> Option<PathBuf> {
+    static RESOLVED: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
     forbid_user_machine_in_tests("config::portable_data_dir");
-    let exe = std::env::current_exe()
-        .and_then(std::fs::canonicalize)
-        .ok()?;
-    portable_data_dir_of(&exe, Path::is_dir)
+    RESOLVED
+        .get_or_init(|| {
+            let exe = std::env::current_exe()
+                .and_then(std::fs::canonicalize)
+                .ok()?;
+            portable_data_dir_of(&exe, Path::is_dir)
+        })
+        .clone()
 }
 
 /// Config and index both ask this, so they never end up in different modes.

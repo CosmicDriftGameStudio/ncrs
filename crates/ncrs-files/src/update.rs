@@ -202,6 +202,10 @@ pub fn update(
             }
         }
         PanelMessage::PanelDragReleased => finish_panel_drag(panels, ctx, &mut actions),
+        PanelMessage::PanelDragCancelled => {
+            panels.drag = None;
+            actions.push(Action::DragArmed(false));
+        }
 
         PanelMessage::RowActivated { side, index } => {
             activate_row(panels, ctx, side, index, &mut actions);

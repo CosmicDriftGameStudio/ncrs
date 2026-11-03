@@ -252,6 +252,7 @@ impl RulesPage {
         let selected = self
             .select_on_load
             .take()
+            .filter(|id| load.rules.iter().any(|row| row.rule.id == *id))
             .or_else(|| self.selected().map(|row| row.rule.id));
         self.cursor = selected
             .and_then(|id| load.rules.iter().position(|row| row.rule.id == id))
