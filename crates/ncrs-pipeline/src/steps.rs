@@ -1,5 +1,5 @@
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::SystemTime;
 
@@ -64,12 +64,6 @@ pub fn intake_steps(
     }
     steps.push(Box::new(ReviewStep { index }));
     steps
-}
-
-/// Folder conditions look at every component of the path, so the part above
-/// the location's root must not take part.
-pub(crate) fn location_relative(item: &Item) -> &Path {
-    relative_to_location(&item.path, std::slice::from_ref(&item.location.path))
 }
 
 /// Takes the file into the index, once it has held still.
@@ -187,8 +181,11 @@ impl Step for TextStep {
             Err(TextError::LibraryMissing { .. }) => return Ok(StepOutcome::Unchanged),
             Err(err) => {
                 // Without a stored text the archive document would be read
-                // (and fail) again on every scan.
-                if item.location.mode == LocationMode::Archive {
+                // (and fail) again on every scan. Only the file itself being
+                // unreadable is permanent: once the models work, it is read.
+                if item.location.mode == LocationMode::Archive
+                    && matches!(err, TextError::Unreadable { .. })
+                {
                     let stored = with_index_value(self.index.as_ref(), |index| {
                         index.set_document_text(id, "")
                     });
@@ -305,7 +302,10 @@ impl Step for RulesStep {
                 &PlanInput {
                     text,
                     fields: &known,
-                    path: Some(location_relative(item)),
+                    path: Some(relative_to_location(
+                        &item.path,
+                        std::slice::from_ref(&item.location.path),
+                    )),
                     sender_aliases: &aliases,
                     manual_fields: &manual_fields,
                     kinds: &kinds,

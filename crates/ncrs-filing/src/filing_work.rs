@@ -350,7 +350,7 @@ mod tests {
             file_planned(
                 &mut self.index,
                 &self.archive,
-                &[self.inbox.clone()],
+                std::slice::from_ref(&self.inbox),
                 &mut Counting,
                 effect,
                 KindLanguage::English,

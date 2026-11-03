@@ -314,7 +314,10 @@ fn load_matching(
         let Some(document) = index.document(entry.document_id)? else {
             continue;
         };
-        if !wanted(&document.path) || index.is_excluded(&document.path)? {
+        if document.missing_since.is_some()
+            || !wanted(&document.path)
+            || index.is_excluded(&document.path)?
+        {
             continue;
         }
         items.push(review_item(

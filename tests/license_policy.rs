@@ -43,8 +43,8 @@ mod tests {
             .split(|separator: char| {
                 separator.is_whitespace() || separator == '(' || separator == ')'
             })
-            .any(|identifier| {
-                let identifier = identifier.to_ascii_uppercase();
+            .any(|word| {
+                let identifier = word.to_ascii_uppercase();
                 GPL_FAMILY_PREFIXES
                     .iter()
                     .any(|prefix| identifier.starts_with(prefix))

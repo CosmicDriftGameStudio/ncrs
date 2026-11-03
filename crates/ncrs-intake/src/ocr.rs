@@ -312,10 +312,11 @@ impl LazyOcrText {
         if let Some(engine) = cached.as_ref() {
             return Ok(Some(Arc::clone(engine)));
         }
-        let loaded = OcrText::load(&self.models_dir).map_err(|err| TextError::Unreadable {
-            path: self.models_dir.clone(),
-            reason: err.to_string(),
-        })?;
+        let loaded =
+            OcrText::load(&self.models_dir).map_err(|err| TextError::EngineUnavailable {
+                path: self.models_dir.clone(),
+                reason: err.to_string(),
+            })?;
         *cached = loaded.map(Arc::new);
         Ok(cached.clone())
     }
@@ -480,7 +481,7 @@ mod tests {
             height: 1,
             pixels: vec![0],
         };
-        let Err(TextError::Unreadable { reason, .. }) = source.recognise(&[page]) else {
+        let Err(TextError::EngineUnavailable { reason, .. }) = source.recognise(&[page]) else {
             panic!("expected an error");
         };
         assert!(reason.contains(detection.name), "{reason}");

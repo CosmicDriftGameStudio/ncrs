@@ -157,7 +157,7 @@ impl VscodeTheme {
     /// value the palette has.
     pub fn apply(&self, palette: &mut Palette) {
         let preset_background = palette.background;
-        let preset = palette.clone();
+        let preset = *palette;
         let panel = self
             .first(&[PANEL_KEY])
             .map_or(palette.panel, |color| over(color, preset_background));

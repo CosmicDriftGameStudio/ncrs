@@ -335,6 +335,18 @@ fn an_excluded_document_is_neither_listed_nor_confirmed() {
 }
 
 #[test]
+fn a_document_that_is_missing_is_neither_counted_nor_listed() {
+    let setup = Setup::new();
+    let id = setup.in_review("scan.pdf");
+    setup.with_index(|index| index.mark_document_missing(id).unwrap());
+
+    let open_reviews = setup.with_index(|index| index.hermes_counts().unwrap().open_reviews);
+
+    assert_eq!(open_reviews, 0);
+    assert!(setup.access().load().unwrap().is_empty());
+}
+
+#[test]
 fn a_pattern_that_cannot_be_rendered_moves_nothing() {
     let setup = Setup::new();
     setup.in_review("scan.pdf");

@@ -33,17 +33,18 @@ async fn host_key_is_checked_before_the_password_is_sent() {
     assert!(known.pool.is_connected(&Fixture::id()));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn two_connects_to_one_server_leave_one_session() {
     let fixture = Fixture::trusted();
     let id = Fixture::id();
-    let password = Fixture::password();
-    let (first, second) = tokio::join!(
-        fixture.pool.connect(&id, &password),
-        fixture.pool.connect(&id, &password)
-    );
-    first.unwrap();
-    second.unwrap();
+    let connect = || {
+        let pool = Arc::clone(&fixture.pool);
+        let server = id.clone();
+        tokio::spawn(async move { pool.connect(&server, &Fixture::password()).await })
+    };
+    let (first, second) = (connect(), connect());
+    first.await.unwrap().unwrap();
+    second.await.unwrap().unwrap();
     assert_eq!(fixture.pool.connected(), vec![id]);
 }
 

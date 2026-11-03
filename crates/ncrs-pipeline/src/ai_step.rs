@@ -6,10 +6,11 @@ use ncrs_index::{
     Document, DocumentFields, DocumentStatus, Field, FieldOrigin, IndexError, KindCatalog,
     KindLanguage, Kinds, ReviewReason,
 };
-use ncrs_intake::{plan, LocationMode, PlanInput, Planning, AI_FIELD_ORDER, FIELD_ORDER};
+use ncrs_intake::{
+    plan, relative_to_location, LocationMode, PlanInput, Planning, AI_FIELD_ORDER, FIELD_ORDER,
+};
 
 use crate::step::{with_index_value, IndexAccess, Item, Step, StepOutcome};
-use crate::steps::location_relative;
 use crate::steps::NO_INDEX;
 
 /// Asks the provider for the fields the rules left open, for inbox documents
@@ -251,7 +252,8 @@ impl AiStep {
             let manual_fields = index.field_origins(id)?.manual_fields();
             let kinds = Kinds::new(Arc::clone(index.kinds()), self.kind_language);
             let rules = index.rules()?;
-            let location_path = location_relative(item);
+            let location_path =
+                relative_to_location(&item.path, std::slice::from_ref(&item.location.path));
             let plan_with = |fields: &DocumentFields| {
                 plan(
                     &rules,

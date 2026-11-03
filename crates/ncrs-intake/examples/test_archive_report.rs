@@ -161,6 +161,7 @@ fn main() {
         rules: &[],
         existing: &existing,
         kinds: &kinds,
+        sender_aliases: &SenderAliases::default(),
     });
     let by_finding: Vec<String> = [
         FindingKind::Duplicate,

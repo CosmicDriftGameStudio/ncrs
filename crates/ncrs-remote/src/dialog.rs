@@ -229,11 +229,11 @@ impl ConnectDialog {
 
     /// The server and the folder to open, or what is still missing.
     pub fn target(&self) -> Result<(ServerId, Option<String>), Missing> {
-        let host = self.host.trim();
-        let host = host
+        let typed_host = self.host.trim();
+        let host = typed_host
             .strip_prefix('[')
             .and_then(|inner| inner.strip_suffix(']'))
-            .unwrap_or(host);
+            .unwrap_or(typed_host);
         if !plain_word(host) || host.contains(['/', '@']) {
             return Err(Missing::Host);
         }

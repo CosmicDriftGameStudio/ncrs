@@ -455,11 +455,7 @@ mod tests {
     fn scrolling_a_busy_list_leaves_the_cursor_alone() {
         let [one, _, _] = rule_ids();
         let mut view = RuleSuggestions::new();
-        view.loaded(
-            (0..40)
-                .map(|_| suggestion(one, "name", "Letters"))
-                .collect(),
-        );
+        view.loaded(std::iter::repeat_n(suggestion(one, "name", "Letters"), 40).collect());
         view.begin_analysis();
 
         view.scroll(ScrollDelta::Lines { x: 0.0, y: -30.0 });
