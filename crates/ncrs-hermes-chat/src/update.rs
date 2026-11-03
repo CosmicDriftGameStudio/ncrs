@@ -1,9 +1,9 @@
 //! The message loop and the routing of what the user typed or pressed.
 
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use iced::Task;
-use ncrs_filing::chat_work::{same_word, ChatAccess, ChatResult, ChatWork};
+use ncrs_filing::chat_work::{ChatAccess, ChatResult, ChatWork};
 use ncrs_i18n::Msg;
 use ncrs_ui_kit::hermes_state::FolderRole;
 
@@ -12,7 +12,7 @@ use crate::ctx::{Availability, Ctx};
 use crate::message::Message;
 use crate::state::{Asked, Chip, ChipReply, Entry, GroupFlow, Part, State, Step};
 use crate::texts::{fill, folder_name, text};
-use crate::{learn, stay_groups, tidy, understand, undo};
+use crate::{learn, named_folders, stay_groups, tidy, understand, undo};
 
 pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> (Task<Message>, Option<Action>) {
     let action = route(state, message, ctx);
@@ -85,6 +85,10 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
             step,
             result,
         } => typed_folder_resolved(state, ctx, &typed, step, result),
+        Message::NamedFoldersResolved { source, target } => {
+            named_folders::resolved(state, ctx, source, target);
+            None
+        }
         Message::Understood(result) => understand::understood(state, ctx, result),
         Message::ModelReady => understand::model_ready(state, ctx),
     }
@@ -92,7 +96,10 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
 
 /// Work or the model is running; typing and buttons wait for it.
 fn is_busy(state: &State) -> bool {
-    state.pending.is_some() || state.thinking.is_some() || state.resolving.is_some()
+    state.pending.is_some()
+        || state.thinking.is_some()
+        || state.resolving.is_some()
+        || state.naming.is_some()
 }
 
 pub fn text_with(ctx: &Ctx, msg: Msg, values: &[(&str, &str)]) -> String {
@@ -104,6 +111,7 @@ fn launch(state: &mut State, ctx: &Ctx) -> Task<Message> {
         launch_work(state, ctx),
         understand::launch(state, ctx),
         launch_resolve(state, ctx),
+        named_folders::launch(state, ctx),
     ])
 }
 
@@ -297,7 +305,7 @@ fn bubble_text(state: &State, label: &str, reply: &ChipReply) -> String {
 
 // Folders.
 
-fn well_known(ctx: &Ctx) -> [PathBuf; 4] {
+pub fn well_known(ctx: &Ctx) -> [PathBuf; 4] {
     [
         ctx.home.clone(),
         ctx.home.join("Documents"),
@@ -380,50 +388,11 @@ fn expects_folder(step: Step) -> bool {
     )
 }
 
-fn expand_home(ctx: &Ctx, path: &Path) -> PathBuf {
+pub fn expand_home(ctx: &Ctx, path: &Path) -> PathBuf {
     match path.strip_prefix("~") {
         Ok(rest) => ctx.home.join(rest),
         Err(_) => path.to_path_buf(),
     }
-}
-
-/// A configured, learned or well-known folder the word names.
-fn known_folder(state: &State, ctx: &Ctx, word: &str) -> Option<PathBuf> {
-    let usual = well_known(ctx);
-    ctx.targets
-        .iter()
-        .chain(&ctx.sources)
-        .chain(&state.session.learned)
-        .chain(&usual[1..])
-        .find(|path| {
-            same_word(word, &folder_name(ctx, path))
-                || path
-                    .file_name()
-                    .is_some_and(|last| same_word(word, &last.to_string_lossy()))
-        })
-        .cloned()
-}
-
-/// The folder a name stands for: a typed path, a known folder, a path below
-/// a known folder, or a folder in the home folder. `None` for names that
-/// climb out with `..`.
-pub fn resolve_folder_name(state: &State, ctx: &Ctx, name: &str) -> Option<PathBuf> {
-    let path = Path::new(name);
-    if path.components().any(|part| part == Component::ParentDir) {
-        return None;
-    }
-    if looks_like_typed_path(name) {
-        return Some(expand_home(ctx, path));
-    }
-    if let Some(found) = known_folder(state, ctx, name) {
-        return Some(found);
-    }
-    if let Some((first, rest)) = name.split_once('/') {
-        if let Some(found) = known_folder(state, ctx, first) {
-            return Some(found.join(rest));
-        }
-    }
-    Some(ctx.home.join(name))
 }
 
 pub fn folder_answer(state: &mut State, ctx: &Ctx, path: PathBuf, typed: bool) -> Option<Action> {
@@ -474,7 +443,7 @@ pub fn folder_answer(state: &mut State, ctx: &Ctx, path: PathBuf, typed: bool) -
 
 /// A path written out: from the root, from home, or absolute in the
 /// platform's own form (`C:\…` and `\\server\share` on Windows).
-fn looks_like_typed_path(text: &str) -> bool {
+pub fn looks_like_typed_path(text: &str) -> bool {
     text.starts_with('/') || text.starts_with('~') || Path::new(text).is_absolute()
 }
 
@@ -579,6 +548,7 @@ pub fn handle_reply(state: &mut State, ctx: &Ctx, reply: ChipReply) -> Option<Ac
     match reply {
         ChipReply::Cancel => cancel(state, ctx),
         ChipReply::Folder(path) => return folder_answer(state, ctx, path, false),
+        ChipReply::NamedFolder(folder) => named_folders::chosen(state, ctx, folder),
         ChipReply::PickFolder => return Some(Action::PickFolder),
         ChipReply::Setup => return Some(Action::OpenFilingSetup),
         ChipReply::ReadAnyway => {
@@ -643,6 +613,7 @@ pub fn cancel(state: &mut State, ctx: &Ctx) {
     state.session.offer = None;
     state.session.resume_tidy = false;
     state.session.confirm = None;
+    state.session.choosing = None;
     state.session.proposal = None;
     state.session.change_scope = None;
     state.step = Step::Idle;

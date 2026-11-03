@@ -158,7 +158,10 @@ mod tests {
             talk.last_texts(),
             vec![say(
                 Msg::HermesChatConfirmTidy,
-                &[("source", "inbox"), ("mode", "")]
+                &[
+                    ("source", &talk.path("inbox").to_string_lossy()),
+                    ("mode", "")
+                ]
             )]
         );
         assert_eq!(
@@ -222,12 +225,14 @@ mod tests {
             "verschieb die Inbox ins Archiv",
             r#"{"intent":"tidy_folder","source":"Inbox","target":"archive","transfer":"move"}"#,
         );
+        let inbox = talk.path("inbox");
+        let archive = talk.path("archive");
         let confirm = |mode: Msg| {
             say(
                 Msg::HermesChatConfirmTidyTo,
                 &[
-                    ("source", "inbox"),
-                    ("target", "archive"),
+                    ("source", &inbox.to_string_lossy()),
+                    ("target", &archive.to_string_lossy()),
                     ("mode", &say(mode, &[])),
                 ],
             )
@@ -262,8 +267,8 @@ mod tests {
             vec![say(
                 Msg::HermesChatConfirmTidyTo,
                 &[
-                    ("source", "inbox"),
-                    ("target", "elsewhere"),
+                    ("source", &talk.path("inbox").to_string_lossy()),
+                    ("target", &elsewhere.to_string_lossy()),
                     ("mode", &say(Msg::HermesChatConfirmCopy, &[])),
                 ]
             )]

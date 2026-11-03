@@ -3,13 +3,13 @@ use std::sync::Mutex;
 use chrono::TimeZone as _;
 use iced_test::Simulator;
 use ncrs_ai::{ChatIntent, Compute, LocalModelStatus, ScriptedChatModel};
-use ncrs_filing::chat_work::{ChatAccess, ChatResult, RunSummary};
+use ncrs_filing::chat_work::{ChatAccess, ChatResult, RuleSaveFailure, RunSummary};
 use ncrs_hermes_chat::{
     AreaRow, AreasCard, Availability, Chip, ChipReply, Ctx, Entry, FileCard, Part, RowOutcome,
     Step, TrialCard, TrialRow,
 };
 use ncrs_index::{BatchKind, Index, Transfer};
-use ncrs_intake::TextChain;
+use ncrs_intake::{RuleProblem, TextChain};
 
 use crate::app::*;
 use crate::i18n::Language;
@@ -49,6 +49,7 @@ fn ready(lang: Language) -> Ctx {
         targets: vec![PathBuf::from("/home/test/Documents/Archive")],
         sources: vec![PathBuf::from("/home/test/Downloads")],
         model: None,
+        favourites: Vec::new(),
         resolve_folder: |path| Ok(path.to_path_buf()),
         now: chrono::Local
             .with_ymd_and_hms(2026, 11, 2, 12, 0, 0)
@@ -332,6 +333,85 @@ fn tidy_confirmation_scene() -> App {
             transfer: None,
         })),
     );
+    send(
+        &mut app,
+        &ctx,
+        HermesChatMessage::NamedFoldersResolved {
+            source: vec![PathBuf::from("/home/test/Downloads")],
+            target: None,
+        },
+    );
+    app
+}
+
+fn meant_folder_scene() -> App {
+    let (mut app, ctx) = with_model(LocalModelStatus::Loaded {
+        name: "Qwen3-4B-Q4_K_M.gguf".to_owned(),
+        memory_bytes: 2_700_000_000,
+        compute: Compute::Cpu,
+    });
+    type_and_submit(&mut app, &ctx, "verschieb Downloads ins Archiv");
+    send(
+        &mut app,
+        &ctx,
+        HermesChatMessage::Understood(Ok(ChatIntent::TidyFolder {
+            source: "Downloads".to_owned(),
+            target: Some("Archive".to_owned()),
+            schedule: None,
+            transfer: Some(ncrs_ai::Transfer::Move),
+        })),
+    );
+    send(
+        &mut app,
+        &ctx,
+        HermesChatMessage::NamedFoldersResolved {
+            source: vec![PathBuf::from("/home/test/Downloads")],
+            target: Some(vec![PathBuf::from("/home/test/Documents/Archive")]),
+        },
+    );
+    app
+}
+
+fn which_folder_scene() -> App {
+    let (mut app, ctx) = with_model(LocalModelStatus::Loaded {
+        name: "Qwen3-4B-Q4_K_M.gguf".to_owned(),
+        memory_bytes: 2_700_000_000,
+        compute: Compute::Cpu,
+    });
+    type_and_submit(&mut app, &ctx, "räum Belege auf");
+    send(
+        &mut app,
+        &ctx,
+        HermesChatMessage::Understood(Ok(ChatIntent::TidyFolder {
+            source: "Belege".to_owned(),
+            target: None,
+            schedule: None,
+            transfer: None,
+        })),
+    );
+    send(
+        &mut app,
+        &ctx,
+        HermesChatMessage::NamedFoldersResolved {
+            source: vec![
+                PathBuf::from("/home/test/Documents/Belege"),
+                PathBuf::from("/home/test/Downloads/Belege"),
+            ],
+            target: None,
+        },
+    );
+    app
+}
+
+fn rule_refused_scene() -> App {
+    let (mut app, ctx) = opened(Language::German);
+    send(
+        &mut app,
+        &ctx,
+        HermesChatMessage::Done(Box::new(ChatResult::RuleSaved(Err(
+            RuleSaveFailure::Refused(RuleProblem::NoFilingTarget),
+        )))),
+    );
     app
 }
 
@@ -463,6 +543,21 @@ fn the_typed_folder_confirmation_matches_its_snapshot() {
         &typed_folder_confirmation_scene(),
         "hermes_chat_confirm_typed_folder_de",
     );
+}
+
+#[test]
+fn the_meant_folder_question_matches_its_snapshot() {
+    matches_snapshot(&meant_folder_scene(), "hermes_chat_confirm_meant_folder_de");
+}
+
+#[test]
+fn the_which_folder_question_matches_its_snapshot() {
+    matches_snapshot(&which_folder_scene(), "hermes_chat_which_folder_de");
+}
+
+#[test]
+fn the_refused_rule_matches_its_snapshot() {
+    matches_snapshot(&rule_refused_scene(), "hermes_chat_rule_refused_de");
 }
 
 #[test]

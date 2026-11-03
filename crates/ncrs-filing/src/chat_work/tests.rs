@@ -13,7 +13,9 @@ use std::sync::Mutex;
 use chrono::NaiveDate;
 use ncrs_fs::{FolderBackend, JournaledTrash};
 use ncrs_index::{ContentHash, DocumentFields, Index, KindCatalog, Transfer};
-use ncrs_intake::{hash_path, location_structure, PlainText, PlanFile};
+use ncrs_intake::{
+    hash_path, location_structure, ConditionProblem, PlainText, PlanFile, RuleProblem,
+};
 use tempfile::TempDir;
 
 use super::*;
@@ -841,4 +843,29 @@ fn a_kind_condition_matches_only_its_kind() {
         outcome(&plan, "contract.pdf"),
         &TrialOutcome::Stays(StayReason::NoNeighbours)
     );
+}
+
+#[test]
+fn a_rule_the_form_would_refuse_is_refused_and_nothing_is_stored() {
+    let setup = Setup::new();
+    let stored = |kept: &Setup| {
+        let guard = kept.access.slot.lock().unwrap();
+        guard.as_ref().unwrap().rules().unwrap().len()
+    };
+    let result = setup.access.run(ChatWork::SaveGroupRule {
+        target: Arc::new(target_reading()),
+        key: GroupKey::Sender(String::new()),
+        label: "  ".to_owned(),
+        area: "Zeta".to_owned(),
+    });
+    let ChatResult::RuleSaved(saved) = result else {
+        panic!("{result:?}");
+    };
+    assert_eq!(
+        saved,
+        Err(RuleSaveFailure::Refused(RuleProblem::Condition(
+            ConditionProblem::Empty
+        )))
+    );
+    assert_eq!(stored(&setup), 0);
 }

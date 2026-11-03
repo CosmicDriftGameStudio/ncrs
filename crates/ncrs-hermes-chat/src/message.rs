@@ -26,6 +26,12 @@ pub enum Message {
         step: Step,
         result: Result<PathBuf, String>,
     },
+    /// The candidates of the folders a sentence named, checked: the ones that
+    /// exist, per name.
+    NamedFoldersResolved {
+        source: Vec<PathBuf>,
+        target: Option<Vec<PathBuf>>,
+    },
     /// The model was downloaded; sent by the app when the download is done.
     ModelReady,
 }
@@ -53,6 +59,16 @@ impl PartialEq for Message {
             ) => left_label == right_label && left_reply == right_reply,
             (Self::FolderPicked(left), Self::FolderPicked(right)) => left == right,
             (Self::Understood(left), Self::Understood(right)) => left == right,
+            (
+                Self::NamedFoldersResolved {
+                    source: left_source,
+                    target: left_target,
+                },
+                Self::NamedFoldersResolved {
+                    source: right_source,
+                    target: right_target,
+                },
+            ) => left_source == right_source && left_target == right_target,
             (
                 Self::TypedFolderResolved {
                     typed: left_typed,

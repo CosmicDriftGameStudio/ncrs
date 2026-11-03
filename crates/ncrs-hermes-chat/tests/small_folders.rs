@@ -327,14 +327,6 @@ mod tests {
         talk.press(&ChipReply::ConfirmTidy);
         assert_eq!(
             talk.last_texts(),
-            vec![say(
-                Msg::HermesChatUnknownPathConfirm,
-                &[("path", &inside.to_string_lossy())]
-            )]
-        );
-        talk.press(&ChipReply::ReadAnyway);
-        assert_eq!(
-            talk.last_texts(),
             vec![say(Msg::HermesChatSourceIsTarget, &[("folder", "Alfa")])]
         );
         assert!(talk.state.pending_work().is_none());
@@ -451,5 +443,102 @@ mod tests {
         assert_eq!(target(&talk), None, "not set before the yes");
         talk.press(&ChipReply::ReadAnyway);
         assert_eq!(target(&talk), Some(std::path::PathBuf::from(real)));
+    }
+
+    fn tidy_sentence(talk: &mut Talk, name: &str) {
+        talk.type_text_understood(
+            &format!("Räum {name} auf"),
+            &format!(r#"{{"intent":"tidy_folder","source":"{name}"}}"#),
+        );
+    }
+
+    #[test]
+    fn a_short_name_for_one_folder_is_asked_with_its_full_path_before_it_is_read() {
+        let mut talk = small_talk();
+        talk.write("home/Downloads/x.txt", "x");
+        tidy_sentence(&mut talk, "Downloads");
+        let real = canonical(&talk.path("home/Downloads"));
+        assert_eq!(
+            talk.last_texts(),
+            vec![say(
+                Msg::HermesChatConfirmTidy,
+                &[("source", &real), ("mode", "")]
+            )]
+        );
+        assert!(talk.actions.is_empty());
+        assert!(talk.state.pending_work().is_none());
+
+        talk.press(&ChipReply::ConfirmTidy);
+        assert!(
+            talk.last_texts()
+                .iter()
+                .all(|sentence| *sentence
+                    != say(Msg::HermesChatUnknownPathConfirm, &[("path", &real)])),
+            "nothing asks a second time"
+        );
+        assert!(talk.state.pending_naming().is_none());
+    }
+
+    #[test]
+    fn an_unknown_name_is_not_found_and_leaves_no_proposal() {
+        let mut talk = small_talk();
+        tidy_sentence(&mut talk, "Nirgendwo");
+        assert_eq!(
+            talk.last_texts(),
+            vec![say(Msg::HermesChatNotAFolder, &[("path", "Nirgendwo")])]
+        );
+        assert!(talk.state.session.proposal.is_none());
+        assert!(talk.actions.is_empty());
+    }
+
+    #[test]
+    fn a_name_that_fits_two_folders_asks_which_and_goes_on_with_the_chosen() {
+        let mut talk = small_talk();
+        talk.write("home/Belege/a.txt", "a");
+        talk.write("elsewhere/Belege/b.txt", "b");
+        talk.ctx.favourites = vec![talk.path("elsewhere/Belege")];
+        tidy_sentence(&mut talk, "Belege");
+        let own = canonical(&talk.path("home/Belege"));
+        let favourite = canonical(&talk.path("elsewhere/Belege"));
+        assert_eq!(
+            talk.last_texts(),
+            vec![say(Msg::HermesChatWhichFolder, &[("name", "Belege")])]
+        );
+        let labels = talk.labels();
+        assert!(
+            labels.contains(&own) && labels.contains(&favourite),
+            "{labels:?}"
+        );
+        assert!(talk.state.session.proposal.is_none());
+
+        talk.press(&ChipReply::NamedFolder(std::path::PathBuf::from(
+            &favourite,
+        )));
+        assert_eq!(
+            talk.last_texts(),
+            vec![say(
+                Msg::HermesChatConfirmTidy,
+                &[("source", &favourite), ("mode", "")]
+            )]
+        );
+        assert!(talk.actions.is_empty());
+    }
+
+    #[test]
+    fn a_refused_rule_says_what_does_not_fit() {
+        use ncrs_filing::chat_work::{ChatResult, RuleSaveFailure};
+        use ncrs_intake::{ConditionProblem, RuleProblem};
+
+        let mut talk = small_talk();
+        talk.send(Message::Done(Box::new(ChatResult::RuleSaved(Err(
+            RuleSaveFailure::Refused(RuleProblem::Condition(ConditionProblem::Empty)),
+        )))));
+        let reason = say(Msg::HermesChatRuleProblemEmptyValue, &[]);
+        assert!(talk
+            .state
+            .thread()
+            .iter()
+            .any(|entry| matches!(entry, Entry::Hermes { parts, chips: _ }
+                if parts.contains(&Part::Text(say(Msg::HermesChatRuleRefused, &[("reason", &reason)]))))));
     }
 }

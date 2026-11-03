@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use ncrs_core::INDEX_NOT_OPEN;
 use ncrs_fs::Trash;
 use ncrs_index::{BatchId, Index, KindLanguage, Kinds, Rule, RuleOrigin, SenderAliases};
-use ncrs_intake::TextChain;
+use ncrs_intake::{rule_problem, TextChain};
 use ncrs_pipeline::OwnDetails;
 
 mod change;
@@ -27,7 +27,7 @@ mod tests;
 pub use change::{ChangePreview, OrderChange, Scope, TimeUnit};
 pub use groups::{
     area_pattern, group_rule, numbered_name, stay_groups, AnsweredGroups, GroupKey, NameTaken,
-    StayGroup, StayGroups, MAX_GROUP_QUESTIONS,
+    RuleSaveFailure, StayGroup, StayGroups, MAX_GROUP_QUESTIONS,
 };
 pub use reading::{FolderReading, ReadError, FILE_LIMIT};
 pub use runs::{RunItem, RunPlan, RunReport, RunSummary};
@@ -80,7 +80,7 @@ pub enum ChatResult {
     Read(Result<Arc<FolderReading>, ReadError>),
     Trial(Result<TrialPlan, String>),
     /// The name of the rule that was stored.
-    RuleSaved(Result<String, String>),
+    RuleSaved(Result<String, RuleSaveFailure>),
     Preview(Option<ChangePreview>),
     Filed(Result<RunReport, String>),
     Trashed(Result<TrashReport, String>),
@@ -191,15 +191,18 @@ impl ChatAccess {
         key: &GroupKey,
         label: &str,
         area: &str,
-    ) -> Result<String, String> {
-        let spec = group_rule(key, label, area, target)?;
-        let name = label.to_owned();
+    ) -> Result<String, RuleSaveFailure> {
+        let spec = group_rule(key, label, area, target);
+        if let Some(problem) = rule_problem(&spec) {
+            return Err(RuleSaveFailure::Refused(problem));
+        }
         self.with_index_mut(|index| {
             index
                 .create_rule_from(&spec, RuleOrigin::Hand)
                 .map_err(|err| err.to_string())
-        })?;
-        Ok(name)
+        })
+        .map_err(RuleSaveFailure::Failed)?;
+        Ok(label.to_owned())
     }
 
     fn with_index_mut<T>(

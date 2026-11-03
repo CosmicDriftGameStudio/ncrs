@@ -21,6 +21,7 @@ mod recipient_detection;
 pub mod recognition;
 mod reorganisation;
 mod reorganisation_plan;
+mod rule_check;
 mod rule_suggestions;
 mod sanitise;
 mod scan;
@@ -69,6 +70,7 @@ pub use reorganisation::{
     plan_reorganisation, PlanFile, PlanRule, ReorganisationInput, FINDING_PRIORITY,
 };
 pub use reorganisation_plan::{location_documents, location_structure, plan_location};
+pub use rule_check::{condition_problem, rule_problem, ConditionProblem, RuleProblem};
 pub use rule_suggestions::{
     suggest_rules, ArchiveText, RuleCandidate, MAX_CANDIDATES_PER_FOLDER, MAX_PHRASE_WORDS,
     MAX_SHARE_ELSEWHERE_PERCENT, MIN_FOLDER_DOCUMENTS, MIN_PHRASE_CHARS,

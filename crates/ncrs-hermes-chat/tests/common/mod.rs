@@ -53,6 +53,8 @@ impl TextSource for Utf8Text {
 
 pub struct Talk {
     pub dir: TempDir,
+    /// The canonical path of `dir`.
+    pub root: PathBuf,
     pub access: ChatAccess,
     pub ctx: Ctx,
     pub state: State,
@@ -91,12 +93,15 @@ impl Talk {
             },
             [],
         ));
-        let below = |names: &[&str]| names.iter().map(|name| dir.path().join(name)).collect();
+        // Resolved folders are canonical, so the configured ones must be too.
+        let root = fs::canonicalize(dir.path()).unwrap();
+        let below = |names: &[&str]| names.iter().map(|name| root.join(name)).collect();
         let ctx = Ctx {
             lang: LANG,
             availability: Availability::Ready(access.clone()),
-            home: dir.path().join("home"),
+            home: root.join("home"),
             targets: below(targets),
+            favourites: Vec::new(),
             sources: below(sources),
             // Long after any run of the test, so a run is never "today".
             now: Local.with_ymd_and_hms(2031, 1, 1, 12, 0, 0).unwrap(),
@@ -105,6 +110,7 @@ impl Talk {
         };
         Self {
             dir,
+            root,
             access,
             ctx,
             state: State::default(),
@@ -117,7 +123,7 @@ impl Talk {
     }
 
     pub fn path(&self, relative: &str) -> PathBuf {
-        self.dir.path().join(relative)
+        self.root.join(relative)
     }
 
     pub fn write(&self, relative: &str, content: &str) {
@@ -137,6 +143,9 @@ impl Talk {
         self.actions.extend(action);
         if let Some(work) = self.state.pending_work().cloned() {
             return Some(Message::Done(Box::new(self.access.run(work))));
+        }
+        if let Some(naming) = self.state.pending_naming() {
+            return Some(naming.resolve(self.ctx.resolve_folder));
         }
         if let Some((typed, step)) = self.state.pending_resolve() {
             let result = (self.ctx.resolve_folder)(typed);

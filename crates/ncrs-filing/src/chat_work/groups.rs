@@ -7,7 +7,7 @@ use std::path::{Component, Path, PathBuf};
 
 use ncrs_fs::flat_names::target_name;
 use ncrs_index::{Condition, ConditionKind, Kinds, RuleConditions, RuleSpec, SenderAliases};
-use ncrs_intake::{learn_archive, pattern_is_valid, ArchiveDocument};
+use ncrs_intake::{learn_archive, pattern_is_valid, ArchiveDocument, RuleProblem};
 
 use super::reading::FolderReading;
 use super::trial::{StayReason, TrialEntry, TrialOutcome, TrialPlan};
@@ -347,22 +347,22 @@ pub fn area_pattern(target: &FolderReading, area: &str) -> String {
         .unwrap_or_else(|| format!("{area}/"))
 }
 
+/// Why a rule of the chat was not stored.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RuleSaveFailure {
+    /// The check the rule form runs refused it; nothing was written.
+    Refused(RuleProblem),
+    Failed(String),
+}
+
 /// The rule that files a whole group below `area`.
-pub fn group_rule(
-    key: &GroupKey,
-    label: &str,
-    area: &str,
-    target: &FolderReading,
-) -> Result<RuleSpec, String> {
+pub fn group_rule(key: &GroupKey, label: &str, area: &str, target: &FolderReading) -> RuleSpec {
     let condition = match key {
         GroupKey::Sender(_) => Condition::new(ConditionKind::Sender, label),
         GroupKey::Kind(kind) => Condition::new(ConditionKind::Kind, kind.as_str()),
     };
     let pattern = area_pattern(target, area);
-    if !pattern_is_valid(&pattern) {
-        return Err(format!("{area} cannot be a folder of a filing pattern"));
-    }
-    Ok(RuleSpec {
+    RuleSpec {
         name: Some(label.to_owned()),
         conditions: RuleConditions::all_of(vec![condition]),
         extract_number: None,
@@ -373,5 +373,5 @@ pub fn group_rule(
         filing_pattern: pattern,
         confirmed: true,
         enabled: true,
-    })
+    }
 }

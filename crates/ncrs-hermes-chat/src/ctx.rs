@@ -23,6 +23,8 @@ pub struct Ctx {
     pub home: PathBuf,
     /// Folders the user files into.
     pub targets: Vec<PathBuf>,
+    /// The folders pinned in the drive menu.
+    pub favourites: Vec<PathBuf>,
     /// Folders where new files arrive.
     pub sources: Vec<PathBuf>,
     pub now: DateTime<Local>,

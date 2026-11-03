@@ -16,11 +16,11 @@ use ncrs_ui_kit::format;
 use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::message::Message;
-use crate::state::{Asked, Chip, ChipReply, Entry, Part, Proposal, State, Step, Thinking, Unsent};
-use crate::texts::{fill, folder_name, text};
+use crate::state::{Asked, Chip, ChipReply, Entry, Part, State, Step, Thinking, Unsent};
+use crate::texts::{fill, text};
 use crate::update::{
     ask_chips, batch_not_yet, cancel_chip, chip, drop_working, explain_not_yet, fallback,
-    fallback_chips, handle_reply, resolve_folder_name, say, search_not_yet,
+    fallback_chips, handle_reply, say, search_not_yet,
 };
 use crate::{learn, undo};
 
@@ -238,30 +238,15 @@ fn propose_tidy(
     source: &str,
     target: Option<&str>,
     schedule: Option<Schedule>,
-    transfer: Option<SaidTransfer>,
+    said_transfer: Option<SaidTransfer>,
 ) -> Option<Action> {
-    let Some(source_folder) = resolve_folder_name(state, ctx, source) else {
-        fallback(state, ctx);
-        return None;
-    };
-    let target_folder = match target.map(|name| resolve_folder_name(state, ctx, name)) {
-        Some(None) => {
-            fallback(state, ctx);
-            return None;
-        }
-        Some(Some(folder)) => Some(folder),
-        None => None,
-    };
-    state.session.proposal = Some(Proposal {
-        source: source_folder,
-        target: target_folder,
-        schedule,
-        transfer: transfer.map(|said| match said {
-            SaidTransfer::Copy => Transfer::Copy,
-            SaidTransfer::Move => Transfer::Move,
-        }),
+    let transfer = said_transfer.map(|said| match said {
+        SaidTransfer::Copy => Transfer::Copy,
+        SaidTransfer::Move => Transfer::Move,
     });
-    confirm_tidy(state, ctx);
+    if !crate::named_folders::start(state, ctx, source, target, schedule, transfer) {
+        fallback(state, ctx);
+    }
     None
 }
 
@@ -275,14 +260,14 @@ pub fn confirm_tidy(state: &mut State, ctx: &Ctx) {
         Some(Transfer::Copy) => text(ctx.lang, Msg::HermesChatConfirmCopy),
         _ => String::new(),
     };
-    let source = folder_name(ctx, &proposal.source);
+    let source = proposal.source.display().to_string();
     let sentence = match &proposal.target {
         Some(target) => fill(
             ctx.lang,
             Msg::HermesChatConfirmTidyTo,
             &[
                 ("source", &source),
-                ("target", &folder_name(ctx, target)),
+                ("target", &target.display().to_string()),
                 ("mode", &mode),
             ],
         ),
@@ -349,5 +334,5 @@ pub fn other_target(state: &mut State, ctx: &Ctx, target: PathBuf) {
 pub fn confirm_tidy_yes(state: &mut State, ctx: &Ctx) -> Option<Action> {
     let source = state.session.proposal.as_ref()?.source.clone();
     state.step = Step::TidyFolder;
-    crate::update::folder_answer(state, ctx, source, true)
+    crate::update::folder_answer(state, ctx, source, false)
 }

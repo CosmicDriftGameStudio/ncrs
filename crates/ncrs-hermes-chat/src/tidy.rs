@@ -79,7 +79,7 @@ pub fn source_read(state: &mut State, ctx: &Ctx, reading: &Arc<FolderReading>) {
         .and_then(|proposal| proposal.target.clone())
     {
         state.step = Step::Target;
-        crate::update::folder_answer(state, ctx, target, true);
+        crate::update::folder_answer(state, ctx, target, false);
         return;
     }
     let candidates = targets(state, ctx);

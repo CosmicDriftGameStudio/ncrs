@@ -33,6 +33,8 @@ pub enum ChipReply {
     ShowMore,
     /// Files the group in question below this first-level folder.
     GroupArea(String),
+    /// One of the folders a name the model heard can mean.
+    NamedFolder(PathBuf),
     GroupNewFolder,
     GroupLeave,
     SinglesShow,
@@ -88,6 +90,7 @@ impl ChipReply {
             | Self::ModeCopy
             | Self::ModeMove
             | Self::ShowMore
+            | Self::NamedFolder(_)
             | Self::GroupNewFolder
             | Self::GroupLeave
             | Self::SinglesShow
@@ -310,6 +313,8 @@ pub struct Session {
     /// A typed folder waiting for a yes, and the step it was typed in.
     pub confirm: Option<(PathBuf, Step)>,
     pub proposal: Option<Proposal>,
+    /// The names the user is asked to choose a folder for.
+    pub choosing: Option<crate::named_folders::Naming>,
     /// What the model said about the scope of a change, for the preview.
     pub change_scope: Option<String>,
     pub unsent: Option<Unsent>,
@@ -335,6 +340,10 @@ pub struct State {
     pub resolving: Option<(PathBuf, Step)>,
     /// The check set during this `update` that no task runs yet.
     pub fresh_resolve: bool,
+    /// The folders a sentence named, being checked off the UI thread.
+    pub naming: Option<crate::named_folders::Naming>,
+    /// The check set during this `update` that no task runs yet.
+    pub fresh_naming: bool,
     pub step: Step,
     pub session: Session,
 }
@@ -351,6 +360,8 @@ impl Default for State {
             fresh_turn: false,
             resolving: None,
             fresh_resolve: false,
+            naming: None,
+            fresh_naming: false,
             step: Step::Idle,
             session: Session::default(),
         }
@@ -378,6 +389,11 @@ impl State {
         self.resolving
             .as_ref()
             .map(|(typed, step)| (typed.as_path(), *step))
+    }
+
+    /// The names the app waits to have checked.
+    pub fn pending_naming(&self) -> Option<&crate::named_folders::Naming> {
+        self.naming.as_ref()
     }
 
     /// The plan of the trial that is on screen.

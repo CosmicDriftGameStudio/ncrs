@@ -311,7 +311,7 @@ impl RuleForm {
     }
 
     pub fn is_valid(&self) -> bool {
-        self.conditions.is_valid(false) && self.filing.is_usable()
+        ncrs_intake::rule_problem(&self.form_spec()).is_none()
     }
 
     /// The write to make, once; the answer comes to the page's `saved`.

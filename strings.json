@@ -8155,6 +8155,54 @@
       "de": "Den Ordner {path} nehmen?"
     },
     {
+      "key": "hermes_chat.which_folder",
+      "context": "Hermes chat (F2): Hermes asks which folder the user means when the name they said fits several existing folders. The full paths follow as buttons. {name} is the name as the user said it.",
+      "en": "Which folder do you mean by “{name}”?",
+      "de": "Welchen Ordner meinst du mit „{name}“?"
+    },
+    {
+      "key": "hermes_chat.rule_refused",
+      "context": "Hermes chat (F2): Hermes cannot store a rule it made, because the check the rule form runs refuses it. Nothing was stored. {reason} is one of the short reasons that follow.",
+      "en": "I can't save this rule: {reason}",
+      "de": "Diese Regel kann ich nicht speichern: {reason}"
+    },
+    {
+      "key": "hermes_chat.rule_problem_no_condition",
+      "context": "Hermes chat (F2): Reason in the refused-rule sentence: the rule has no condition that recognises documents.",
+      "en": "It has nothing to recognise documents by.",
+      "de": "Es fehlt, woran ich die Dokumente erkenne."
+    },
+    {
+      "key": "hermes_chat.rule_problem_empty_value",
+      "context": "Hermes chat (F2): Reason in the refused-rule sentence: a condition of the rule, such as the sender, has no text.",
+      "en": "A condition has no value.",
+      "de": "Bei einer Bedingung fehlt der Wert."
+    },
+    {
+      "key": "hermes_chat.rule_problem_invalid_regex",
+      "context": "Hermes chat (F2): Reason in the refused-rule sentence: a regular expression of the rule does not work. {reason} is the one-line reason of the regex library, in English.",
+      "en": "A regular expression doesn't work: {reason}",
+      "de": "Ein regulärer Ausdruck stimmt nicht: {reason}"
+    },
+    {
+      "key": "hermes_chat.rule_problem_invalid_iban",
+      "context": "Hermes chat (F2): Reason in the refused-rule sentence: the IBAN of a condition fails its checksum.",
+      "en": "The IBAN is not valid.",
+      "de": "Die IBAN ist nicht gültig."
+    },
+    {
+      "key": "hermes_chat.rule_problem_no_filing_target",
+      "context": "Hermes chat (F2): Reason in the refused-rule sentence: the rule has no place to file documents to.",
+      "en": "There is no place to file to.",
+      "de": "Der Ablageort fehlt."
+    },
+    {
+      "key": "hermes_chat.rule_problem_invalid_pattern",
+      "context": "Hermes chat (F2): Reason in the refused-rule sentence: the place to file to contains something Hermes cannot use.",
+      "en": "The place to file to can't be used.",
+      "de": "Der Ablageort lässt sich nicht verwenden."
+    },
+    {
       "key": "hermes_chat.read_anyway",
       "context": "Hermes chat (F2): Button answering the question about an unknown folder: read it anyway.",
       "en": "Yes, read it",
@@ -8978,15 +9026,15 @@
     },
     {
       "key": "hermes_chat.confirm_tidy_to",
-      "context": "Hermes chat (F2): Hermes asks to confirm a tidy-up it understood from a sentence. {source} is the folder to tidy up, {target} the folder the files go to, {mode} is empty or one of the two phrases for copying or moving that start with a comma. The question ends with a question mark.",
-      "en": "{source} → {target}{mode}?",
-      "de": "{source} → {target}{mode}?"
+      "context": "Hermes chat (F2): Hermes asks to confirm a tidy-up it understood from a sentence. {source} is the full path of the folder to tidy up, {target} the full path of the folder the files go to, both as the system resolved them, {mode} is empty or one of the two phrases for copying or moving that start with a comma. The question ends with a question mark.",
+      "en": "Do you mean {source} → {target}{mode}?",
+      "de": "Meinst du {source} → {target}{mode}?"
     },
     {
       "key": "hermes_chat.confirm_tidy",
-      "context": "Hermes chat (F2): Hermes asks to confirm a tidy-up it understood from a sentence when no target folder was named. {source} is the folder to tidy up, {mode} is empty or one of the two phrases for copying or moving that start with a comma.",
-      "en": "Tidy up {source}{mode}?",
-      "de": "{source} aufräumen{mode}?"
+      "context": "Hermes chat (F2): Hermes asks to confirm a tidy-up it understood from a sentence when no target folder was named. {source} is the full path of the folder to tidy up as the system resolved it, {mode} is empty or one of the two phrases for copying or moving that start with a comma.",
+      "en": "Do you mean: tidy up {source}{mode}?",
+      "de": "Meinst du: {source} aufräumen{mode}?"
     },
     {
       "key": "hermes_chat.confirm_move",

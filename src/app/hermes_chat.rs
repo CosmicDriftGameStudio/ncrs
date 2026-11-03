@@ -71,6 +71,7 @@ impl App {
                 .filter(|location| location.mode == LocationMode::Inbox)
                 .map(|location| location.path.clone())
                 .collect(),
+            favourites: self.panels.favourites.clone(),
             now: chrono::Local::now(),
             resolve_folder: self.resolve_folder,
             model: self.chat_model.clone(),

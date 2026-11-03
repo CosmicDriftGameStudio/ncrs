@@ -5,14 +5,14 @@
 use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
 
-use ncrs_filing::chat_work::{ChatWork, GroupKey, StayGroup, TrialOutcome};
+use ncrs_filing::chat_work::{ChatWork, GroupKey, RuleSaveFailure, StayGroup, TrialOutcome};
 use ncrs_i18n::Msg;
 use ncrs_intake::is_windows_device_name;
 
 use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::state::{Chip, ChipReply, Part, State, Step};
-use crate::texts::{fill, number, text};
+use crate::texts::{fill, number, rule_problem_text, text};
 use crate::tidy::{card_of, filed_count, trial_chips, PAGE};
 use crate::update::{cancel_chip, chip, chip_labelled, hermes, say, work};
 
@@ -224,15 +224,21 @@ pub fn folder_named(state: &mut State, ctx: &Ctx, typed: &str) -> Option<Action>
 }
 
 /// The rule is stored; the trial runs again so the counts show what it does.
-pub fn rule_saved(state: &mut State, ctx: &Ctx, saved: Result<String, String>) {
+pub fn rule_saved(state: &mut State, ctx: &Ctx, saved: Result<String, RuleSaveFailure>) {
     let name = match saved {
         Ok(name) => name,
-        Err(reason) => {
-            say(
-                state,
-                fill(ctx.lang, Msg::HermesChatReadFailed, &[("reason", &reason)]),
-                Vec::new(),
-            );
+        Err(failure) => {
+            let sentence = match failure {
+                RuleSaveFailure::Refused(problem) => fill(
+                    ctx.lang,
+                    Msg::HermesChatRuleRefused,
+                    &[("reason", &rule_problem_text(ctx.lang, &problem))],
+                ),
+                RuleSaveFailure::Failed(reason) => {
+                    fill(ctx.lang, Msg::HermesChatReadFailed, &[("reason", &reason)])
+                }
+            };
+            say(state, sentence, Vec::new());
             ask_next(state, ctx);
             return;
         }

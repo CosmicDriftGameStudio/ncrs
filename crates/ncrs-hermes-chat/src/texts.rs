@@ -5,7 +5,9 @@ use std::time::{Duration, SystemTime};
 
 use ncrs_i18n::{fill_template, Language, Msg};
 use ncrs_index::Field;
-use ncrs_intake::{Area, Level, LocationStructure, PlaceholderLabel};
+use ncrs_intake::{
+    Area, ConditionProblem, Level, LocationStructure, PlaceholderLabel, RuleProblem,
+};
 use ncrs_ui_kit::format;
 
 use crate::ctx::Ctx;
@@ -26,6 +28,26 @@ pub fn fill(lang: Language, msg: Msg, values: &[(&str, &str)]) -> String {
         .map(|(name, value)| (name.as_str(), *value))
         .collect();
     fill_template(lang.text(msg), &borrowed)
+}
+
+/// The reason a rule of the chat was refused, in plain words.
+pub fn rule_problem_text(lang: Language, problem: &RuleProblem) -> String {
+    match problem {
+        RuleProblem::NoCondition => text(lang, Msg::HermesChatRuleProblemNoCondition),
+        RuleProblem::Condition(ConditionProblem::Empty) => {
+            text(lang, Msg::HermesChatRuleProblemEmptyValue)
+        }
+        RuleProblem::Condition(ConditionProblem::InvalidRegex(reason)) => fill(
+            lang,
+            Msg::HermesChatRuleProblemInvalidRegex,
+            &[("reason", reason)],
+        ),
+        RuleProblem::Condition(ConditionProblem::InvalidIban) => {
+            text(lang, Msg::HermesChatRuleProblemInvalidIban)
+        }
+        RuleProblem::NoFilingTarget => text(lang, Msg::HermesChatRuleProblemNoFilingTarget),
+        RuleProblem::InvalidPattern => text(lang, Msg::HermesChatRuleProblemInvalidPattern),
+    }
 }
 
 pub fn number(value: usize) -> String {

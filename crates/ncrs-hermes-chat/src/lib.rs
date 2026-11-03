@@ -13,6 +13,7 @@ mod update;
 mod view;
 
 mod learn;
+mod named_folders;
 mod texts;
 mod tidy;
 mod understand;
