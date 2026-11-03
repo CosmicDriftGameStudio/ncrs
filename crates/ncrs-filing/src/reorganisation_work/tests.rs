@@ -197,3 +197,31 @@ fn executing_and_undoing_with_a_closed_index_is_reported() {
     );
     assert_eq!(access.undo_last(), Err(INDEX_NOT_OPEN.to_owned()));
 }
+
+#[test]
+fn a_stop_in_one_location_moves_nothing_in_the_next() {
+    struct StopAtOnce;
+    impl ncrs_fs::transfer::Progress for StopAtOnce {
+        fn advanced(&mut self, _done: usize, _total: usize) -> std::io::Result<()> {
+            Err(std::io::Error::other("stopped"))
+        }
+    }
+    let archive = archive();
+    let access = archive.access();
+    let items = access.plan().unwrap();
+    let first = item(&items, "Insurance/2023/2024-05-01_invoice.pdf").clone();
+    let other = tempfile::tempdir().unwrap();
+    fs::write(other.path().join("loose.pdf"), "loose").unwrap();
+    let mut second = first.clone();
+    second.location = other.path().to_path_buf();
+    second.item.source = PathBuf::from("loose.pdf");
+    second.item.outcome = PlanOutcome::Move {
+        target: PathBuf::from("Moved/loose.pdf"),
+    };
+
+    let summary = access.execute(&[first, second], &mut StopAtOnce).unwrap();
+
+    assert_eq!(summary.moved, 1);
+    assert_eq!(summary.skipped, 1);
+    assert!(other.path().join("loose.pdf").exists());
+}

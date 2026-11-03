@@ -100,7 +100,7 @@ impl QueryAccess {
         self.with_index(|index| {
             queries
                 .iter()
-                .map(|query| Ok((query.id, index.run_query_under(&query.spec, None)?.len())))
+                .map(|query| Ok((query.id, index.count_query(&query.spec)?)))
                 .collect()
         })
     }

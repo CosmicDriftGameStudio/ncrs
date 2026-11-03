@@ -129,7 +129,6 @@ pub fn trial(
                 kinds: &kinds,
                 changes,
                 layout,
-                source_root: &source.root,
             };
             decided = decide(&ctx, file, &name, &mut taken);
         }
@@ -177,7 +176,6 @@ struct Deciding<'a> {
     changes: &'a [OrderChange],
     /// How to file into a target no neighbour points the way in.
     layout: Option<&'a [PatternLevel]>,
-    source_root: &'a Path,
 }
 
 struct Decided {
@@ -216,13 +214,12 @@ fn decide(
     taken: &mut BTreeSet<PathBuf>,
 ) -> Decided {
     let text = file.text.as_deref().unwrap_or_default();
-    let absolute = ctx.source_root.join(&file.relative_path);
     let planning = plan(
         ctx.rules,
         &PlanInput {
             text,
             fields: &file.fields,
-            path: Some(&absolute),
+            path: Some(&file.relative_path),
             sender_aliases: ctx.aliases,
             manual_fields: &[],
             kinds: ctx.kinds,

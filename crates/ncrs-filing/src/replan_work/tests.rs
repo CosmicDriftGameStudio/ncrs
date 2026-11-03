@@ -28,6 +28,7 @@ impl Setup {
         file_previewed(
             &mut self.index,
             &self.archive,
+            std::slice::from_ref(&self.inbox),
             items,
             &mut Counting,
             &Move,

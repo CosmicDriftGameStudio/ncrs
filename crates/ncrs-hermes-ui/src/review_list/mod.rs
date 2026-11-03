@@ -229,6 +229,9 @@ pub struct ReviewList {
     filed: Option<FiledNotice>,
     /// What `begin_confirm` filed, until the work answers.
     pending_notice: Option<FiledNotice>,
+    /// What the last filing answered with, for the load that follows it: the
+    /// entry, its message and the form the user typed.
+    answer_to_keep: Option<(ReviewEntryId, Problem, Form)>,
     /// An entry to put the cursor on once the list has loaded, with the field
     /// to edit; set by the quick-fix menu.
     wanted: Option<(PathBuf, FormField)>,
@@ -272,6 +275,7 @@ impl ReviewList {
             problem: None,
             filed: None,
             pending_notice: None,
+            answer_to_keep: None,
             wanted: None,
             focus_request: None,
             custom_default_pattern: None,
@@ -460,7 +464,24 @@ impl ReviewList {
         self.busy = false;
         self.editing = false;
         self.fill_form();
+        self.restore_answer();
         self.go_to_wanted();
+    }
+
+    /// The message of the last filing outlives the load that follows it, and
+    /// so does the typed form while the cursor is still on the same entry.
+    fn restore_answer(&mut self) {
+        let Some((entry, problem, form)) = self.answer_to_keep.take() else {
+            return;
+        };
+        if self.selected().map(|row| row.entry) != Some(entry) {
+            return;
+        }
+        if problem == Problem::TargetExists {
+            self.target_editor = Some(TargetEditor::new(&form.pattern));
+            self.form = form;
+        }
+        self.problem = Some(problem);
     }
 
     fn go_to_wanted(&mut self) {
@@ -713,9 +734,16 @@ impl ReviewList {
                     ..pending
                 });
             }
-            ConfirmOutcome::TargetExists => self.problem = Some(Problem::TargetExists),
-            ConfirmOutcome::Requeued => self.problem = Some(Problem::FileChanged),
+            ConfirmOutcome::TargetExists => self.keep_answer(Problem::TargetExists),
+            ConfirmOutcome::Requeued => self.keep_answer(Problem::FileChanged),
         }
+    }
+
+    fn keep_answer(&mut self, problem: Problem) {
+        if let Some(entry) = self.selected().map(|row| row.entry) {
+            self.answer_to_keep = Some((entry, problem.clone(), self.form.clone()));
+        }
+        self.problem = Some(problem);
     }
 
     /// What the rule form starts with, for the offer after filing.

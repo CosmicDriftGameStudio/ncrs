@@ -20,6 +20,7 @@ use ncrs_intake::{
     contains_condition_holds, detect_sender, learn_archive, suggest_rules, word_condition_holds,
     ArchiveDocument, ArchiveText, OwnIdentifiers,
 };
+use ncrs_pipeline::OwnDetails;
 
 type IndexSlot = Arc<Mutex<Option<Index>>>;
 
@@ -73,6 +74,7 @@ pub struct SuggestionAccess {
     /// The folders of the archive locations as the intake sees them: the
     /// index stores the paths found below these.
     archive_roots: Vec<PathBuf>,
+    own: OwnDetails,
 }
 
 impl std::fmt::Debug for SuggestionAccess {
@@ -86,14 +88,20 @@ impl SuggestionAccess {
         Self {
             slot,
             archive_roots,
+            own: OwnDetails::default(),
         }
+    }
+
+    /// What is the user's own and so is never offered as a sender.
+    pub fn with_own(self, own: OwnDetails) -> Self {
+        Self { own, ..self }
     }
 
     /// Learns every archive location, suggests rules from it and returns all
     /// open suggestions.
     pub fn analyse(&self) -> Result<Vec<SuggestedRule>, String> {
         for root in &self.archive_roots {
-            let snapshot = self.with_index(|index| archive_snapshot(index, root))?;
+            let snapshot = self.with_index(|index| archive_snapshot(index, root, &self.own))?;
             let documents: Vec<ArchiveDocument> = snapshot
                 .entries
                 .iter()
@@ -157,7 +165,7 @@ impl SuggestionAccess {
     pub fn matching_documents(&self, condition: &Condition) -> Result<Vec<PathBuf>, String> {
         let mut found = Vec::new();
         for root in &self.archive_roots {
-            let snapshot = self.with_index(|index| archive_snapshot(index, root))?;
+            let snapshot = self.with_index(|index| archive_snapshot(index, root, &self.own))?;
             let wanted = snapshot.aliases.canonical_sender(&condition.value);
             found.extend(snapshot.entries.iter().filter_map(|entry| {
                 let holds = match condition.kind {
@@ -186,7 +194,11 @@ impl SuggestionAccess {
     }
 }
 
-fn archive_snapshot(index: &Index, root: &Path) -> Result<ArchiveSnapshot, IndexError> {
+fn archive_snapshot(
+    index: &Index,
+    root: &Path,
+    own: &OwnDetails,
+) -> Result<ArchiveSnapshot, IndexError> {
     let mut entries = Vec::new();
     for (id, path) in index.documents_under(root)? {
         let Ok(relative) = path.strip_prefix(root) else {
@@ -211,7 +223,11 @@ fn archive_snapshot(index: &Index, root: &Path) -> Result<ArchiveSnapshot, Index
         entries,
         aliases: index.confirmed_sender_aliases()?,
         sender_names: index.sender_names()?,
-        own: OwnIdentifiers::new([], [], []),
+        own: OwnIdentifiers::new(
+            own.names.iter().map(String::as_str),
+            own.ibans.iter().map(String::as_str),
+            own.tax_ids.iter().map(String::as_str),
+        ),
     })
 }
 
@@ -470,6 +486,27 @@ mod tests {
             1,
             "no phrase rule beside the sender rule"
         );
+    }
+
+    #[test]
+    fn an_own_name_found_in_the_text_is_not_suggested_as_a_sender() {
+        let archive = archive();
+        let own = OwnDetails {
+            names: vec!["Company A".to_owned()],
+            ..OwnDetails::default()
+        };
+
+        let suggestions = archive.access().with_own(own).analyse().unwrap();
+
+        assert!(!suggestions.iter().any(|suggestion| {
+            suggestion
+                .spec
+                .conditions
+                .single_condition()
+                .is_some_and(|condition| {
+                    condition.kind == ConditionKind::Sender && condition.value == "Company A"
+                })
+        }));
     }
 
     #[test]

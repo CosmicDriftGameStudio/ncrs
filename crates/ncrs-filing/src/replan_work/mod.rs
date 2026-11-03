@@ -15,7 +15,7 @@ use ncrs_index::{
     BatchKind, Document, DocumentId, DocumentStatus, FieldOrigin, Index, IndexError, KindLanguage,
     Kinds, ReviewEntry, ReviewEntryId, ReviewReason, Rule, SenderAliases,
 };
-use ncrs_intake::{plan, PlanInput, Planning};
+use ncrs_intake::{plan, relative_to_location, PlanInput, Planning};
 
 use crate::execute::{execute_with, ExecuteError, ExecutionItem, ItemOutcome, SkipReason};
 use crate::filing_work::{send_to_review, target_of};
@@ -140,6 +140,7 @@ impl ReplanAccess {
         file_previewed(
             index,
             &self.archive_root,
+            &self.inbox_roots,
             items,
             progress,
             &Move,
@@ -151,15 +152,21 @@ impl ReplanAccess {
 
 /// The rules and the confirmed sender aliases a planning needs, read once for
 /// a run.
-struct Rulebook {
+struct Rulebook<'a> {
+    inbox_roots: &'a [PathBuf],
     rules: Vec<Rule>,
     sender_aliases: SenderAliases,
     kinds: Kinds,
 }
 
-impl Rulebook {
-    fn load(index: &Index, kind_language: KindLanguage) -> Result<Self, IndexError> {
+impl<'a> Rulebook<'a> {
+    fn load(
+        index: &Index,
+        inbox_roots: &'a [PathBuf],
+        kind_language: KindLanguage,
+    ) -> Result<Self, IndexError> {
         Ok(Self {
+            inbox_roots,
             rules: index.rules()?,
             sender_aliases: index.confirmed_sender_aliases()?,
             kinds: Kinds::new(Arc::clone(index.kinds()), kind_language),
@@ -179,7 +186,7 @@ impl Rulebook {
             &PlanInput {
                 text: &text,
                 fields: &document.fields,
-                path: Some(&document.path),
+                path: Some(relative_to_location(&document.path, self.inbox_roots)),
                 sender_aliases: &self.sender_aliases,
                 manual_fields: &manual_fields,
                 kinds: &self.kinds,
@@ -246,7 +253,7 @@ pub fn preview(
     inbox_roots: &[PathBuf],
     kind_language: KindLanguage,
 ) -> Result<Vec<ReplanItem>, IndexError> {
-    let rulebook = Rulebook::load(index, kind_language)?;
+    let rulebook = Rulebook::load(index, inbox_roots, kind_language)?;
     let mut items = Vec::new();
     for (document, entry) in candidates(index, scope, inbox_roots)? {
         // Excluded: Hermes leaves it where it is.
@@ -270,12 +277,13 @@ pub fn preview(
 pub fn file_previewed<P: Progress, S: Source>(
     index: &mut Index,
     archive_root: &Path,
+    inbox_roots: &[PathBuf],
     items: &[ReplanItem],
     progress: &mut P,
     effect: &S,
     kind_language: KindLanguage,
 ) -> Result<ReplanSummary, ExecuteError> {
-    let rulebook = Rulebook::load(index, kind_language)?;
+    let rulebook = Rulebook::load(index, inbox_roots, kind_language)?;
     let mut summary = ReplanSummary::default();
     let mut moves = Vec::new();
     let mut moved_ids = Vec::new();

@@ -178,11 +178,16 @@ struct Overall<'a, P> {
     inner: &'a mut P,
     done_before: usize,
     total: usize,
+    /// The executor only asks for a stop after an item; the next location
+    /// must not start another.
+    stopped: bool,
 }
 
 impl<P: Progress> Progress for Overall<'_, P> {
     fn advanced(&mut self, done: usize, _total: usize) -> std::io::Result<()> {
-        self.inner.advanced(self.done_before + done, self.total)
+        let result = self.inner.advanced(self.done_before + done, self.total);
+        self.stopped |= result.is_err();
+        result
     }
 }
 
@@ -240,16 +245,22 @@ impl PlanAccess {
             moved: 0,
             skipped: 0,
         };
+        let mut stopped = false;
         for location in locations {
             let entries: Vec<&PlannedItem> = selection
                 .iter()
                 .filter(|entry| &entry.location == location)
                 .collect();
             let items = execution_items(index, &entries).map_err(|err| err.to_string())?;
+            if stopped {
+                summary.skipped += items.len();
+                continue;
+            }
             let mut overall = Overall {
                 inner: progress,
                 done_before: summary.moved + summary.skipped,
                 total,
+                stopped: false,
             };
             let report = execute::execute(
                 index,
@@ -261,6 +272,7 @@ impl PlanAccess {
             .map_err(|err| err.to_string())?;
             summary.moved += report.moved();
             summary.skipped += report.skipped();
+            stopped = overall.stopped;
             if let Some(plan) = index
                 .reorganisation_plan(location)
                 .map_err(|err| err.to_string())?
