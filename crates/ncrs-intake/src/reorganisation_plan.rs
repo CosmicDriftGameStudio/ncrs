@@ -36,11 +36,13 @@ pub fn plan_location(
     let existing = existing_paths(root)?;
     let kinds = Kinds::new(Arc::clone(index.kinds()), language);
     let unordered = location_structure(&files, &kinds.catalog);
+    let sender_aliases = index.confirmed_sender_aliases()?;
     let items = plan_reorganisation(&ReorganisationInput {
         files: &files,
         profile: &profile,
         unordered: &unordered,
         rules: &rules,
+        sender_aliases: &sender_aliases,
         existing: &existing,
         kinds: &kinds,
     });
@@ -138,7 +140,8 @@ mod tests {
     use ncrs_index::{
         Condition, ConditionKind, ConflictReason, ContentHash, DocumentFields, DocumentId,
         DocumentSource, FieldOrigin, FileStamp, Finding, FindingKind, NewDocument, NoActionReason,
-        PlanItem, PlanOutcome, RuleConditions, RuleEvidence, RuleSpec,
+        PlanItem, PlanOutcome, RuleConditions, RuleEvidence, RuleSpec, SenderAliasKind,
+        SenderAliases,
     };
     use tempfile::TempDir;
 
@@ -322,6 +325,70 @@ mod tests {
 
     fn only_findings(item: &PlanItem) -> Vec<FindingKind> {
         item.findings.iter().map(Finding::kind).collect()
+    }
+
+    #[test]
+    fn a_sender_rule_matches_a_confirmed_alias_in_the_reorganisation_as_in_intake() {
+        let mut archive = Archive::new();
+        archive.rule(&rule_spec(
+            "policy",
+            "invoice",
+            "Billing/{date}.pdf",
+            Some("Telekom"),
+            true,
+        ));
+        let rules: Vec<PlanRule> = archive
+            .index
+            .rules()
+            .unwrap()
+            .into_iter()
+            .map(|rule| PlanRule {
+                rule,
+                evidence: None,
+            })
+            .collect();
+        let files = [PlanFile {
+            relative_path: PathBuf::from("Misc/letter.pdf"),
+            hash: ContentHash([3; 32]),
+            fields: DocumentFields {
+                date: day(2024, 1, 1),
+                sender: Some("Telekom Deutschland GmbH".to_owned()),
+                ..DocumentFields::default()
+            },
+            text: Some("Telekom Deutschland GmbH policy letter".to_owned()),
+            recorded_at: 1,
+        }];
+        let planned = |aliases: &SenderAliases| {
+            plan_reorganisation(&ReorganisationInput {
+                files: &files,
+                profile: &[],
+                unordered: &LocationStructure {
+                    areas: Vec::new(),
+                    unordered: Vec::new(),
+                },
+                rules: &rules,
+                sender_aliases: aliases,
+                existing: &BTreeSet::new(),
+                kinds: &Kinds::built_in(KindLanguage::English),
+            })
+        };
+        let confirmed = SenderAliases::from_confirmed([(
+            SenderAliasKind::Name,
+            "Telekom Deutschland GmbH",
+            "Telekom",
+        )]);
+
+        let with_alias = planned(&confirmed);
+        let without_alias = planned(&SenderAliases::default());
+
+        assert_eq!(with_alias.len(), 1, "{with_alias:?}");
+        assert_eq!(
+            with_alias[0].outcome,
+            PlanOutcome::Move {
+                target: PathBuf::from("Billing/2024-01-01.pdf")
+            }
+        );
+        assert!(without_alias.is_empty(), "{without_alias:?}");
     }
 
     #[test]
@@ -718,6 +785,7 @@ mod tests {
                 unordered: Vec::new(),
             },
             rules: &[],
+            sender_aliases: &SenderAliases::default(),
             existing: &BTreeSet::new(),
             kinds: &Kinds::built_in(KindLanguage::English),
         });

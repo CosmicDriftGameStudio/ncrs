@@ -8,7 +8,7 @@ use ncrs_index::{
 };
 use ncrs_intake::{plan, LocationMode, PlanInput, Planning, AI_FIELD_ORDER, FIELD_ORDER};
 
-use crate::step::{resolve_reviews_of, with_index_value, IndexAccess, Item, Step, StepOutcome};
+use crate::step::{with_index_value, IndexAccess, Item, Step, StepOutcome};
 use crate::steps::location_relative;
 use crate::steps::NO_INDEX;
 
@@ -78,14 +78,19 @@ fn name_words(text: &str) -> Vec<String> {
 }
 
 /// Whether the sender contains the user's own name as a whole sequence of
-/// words, ignoring case, salutations and spacing. Without an own name nothing
-/// is ever the user.
+/// words, ignoring case, salutations and spacing. A one-word name is only
+/// the user when it is the whole sender: it is also the start of companies
+/// ("Marc GmbH"). Without an own name nothing is ever the user.
 pub fn sender_is_the_user(sender: &str, own_name: Option<&str>) -> bool {
     let own = own_name.map(name_words).unwrap_or_default();
     if own.is_empty() {
         return false;
     }
-    name_words(sender)
+    let sender_words = name_words(sender);
+    if own.len() == 1 {
+        return sender_words == own;
+    }
+    sender_words
         .windows(own.len())
         .any(|window| window == own.as_slice())
 }
@@ -223,6 +228,7 @@ impl AiStep {
             if current.status != DocumentStatus::New {
                 return Ok(None);
             }
+            let known_before = current.fields.clone();
             let mut merged = current.fields;
             let mut changed = false;
             for found in confident {
@@ -244,25 +250,38 @@ impl AiStep {
             let sender_aliases = index.confirmed_sender_aliases()?;
             let manual_fields = index.field_origins(id)?.manual_fields();
             let kinds = Kinds::new(Arc::clone(index.kinds()), self.kind_language);
-            let planning = plan(
-                &index.rules()?,
-                &PlanInput {
-                    text,
-                    fields: &merged,
-                    path: Some(location_relative(item)),
-                    sender_aliases: &sender_aliases,
-                    manual_fields: &manual_fields,
-                    kinds: &kinds,
-                },
-            );
+            let rules = index.rules()?;
+            let location_path = location_relative(item);
+            let plan_with = |fields: &DocumentFields| {
+                plan(
+                    &rules,
+                    &PlanInput {
+                        text,
+                        fields,
+                        path: Some(location_path),
+                        sender_aliases: &sender_aliases,
+                        manual_fields: &manual_fields,
+                        kinds: &kinds,
+                    },
+                )
+            };
+            let planning = plan_with(&merged);
+            // A value the model read out of the text must not move the
+            // document to a rule it did not match before.
+            let rule_before = match plan_with(&known_before) {
+                Planning::Plan(filing) => Some(filing.rule),
+                Planning::Review { rule, .. } => rule,
+            };
+            if matches!(&planning, Planning::Plan(filing) if Some(filing.rule) != rule_before) {
+                return Ok(None);
+            }
             if let Planning::Plan(filing) = &planning {
                 if filing.fields != merged {
                     index.set_document_fields(id, &filing.fields, |_| {
                         FieldOrigin::Rule(Some(filing.rule))
                     })?;
                 }
-                index.set_document_status(id, DocumentStatus::Planned)?;
-                resolve_reviews_of(index, id)?;
+                index.place_document(id)?;
             }
             Ok::<_, IndexError>(Some(planning))
         })
@@ -467,6 +486,9 @@ mod tests {
         assert!(!sender_is_the_user("Marc", own));
         assert!(sender_is_the_user("Marc", Some("Marc")));
         assert!(!sender_is_the_user("Marcus GmbH", Some("Marc")));
+        assert!(!sender_is_the_user("Marc GmbH", Some("Marc")));
+        assert!(!sender_is_the_user("Autohaus Marc", Some("Marc")));
+        assert!(sender_is_the_user("Herr Marc", Some("Marc")));
     }
 
     #[test]
@@ -529,6 +551,41 @@ mod tests {
         );
         assert_eq!(origins.of(Field::Number), FieldOrigin::Rule(Some(rule)));
         assert_eq!(origins.of(Field::Amount), FieldOrigin::Unknown);
+    }
+
+    #[test]
+    fn a_sender_read_by_the_ai_does_not_move_the_document_to_another_rule() {
+        let fixture = Fixture::new();
+        let steps = fixture.steps(&Arc::new(reply("0.95")));
+        let mut other = invoice_rule("Other/{number}.pdf", true);
+        other.conditions = RuleConditions::all_of(vec![
+            Condition::new(ConditionKind::Substring, "company a"),
+            Condition::new(ConditionKind::Sender, "Agency B"),
+        ]);
+        let mut index = fixture.index.lock().unwrap();
+        index.create_rule(&other).unwrap();
+        index
+            .create_rule(&invoice_rule("{sender}/{number}.pdf", true))
+            .unwrap();
+        drop(index);
+        let document = fixture.add_document(1);
+        let mut item = fixture.item(document, INVOICE_TEXT);
+
+        run(&steps, RULES, &mut item);
+        assert_eq!(item.review, Some(ReviewReason::MissingField(Field::Sender)));
+        let outcome = run(&steps, AI, &mut item);
+
+        assert_eq!(outcome, StepOutcome::Continue);
+        assert_eq!(item.plan, None);
+        let status = fixture
+            .index
+            .lock()
+            .unwrap()
+            .document(document)
+            .unwrap()
+            .unwrap()
+            .status;
+        assert_ne!(status, DocumentStatus::Planned);
     }
 
     #[test]

@@ -73,6 +73,7 @@ fn plan_of_the_test_archive() -> Vec<PlanItem> {
         profile: &learn_archive(&documents),
         unordered: &location_structure(&files, &catalog),
         rules: &[],
+        sender_aliases: &SenderAliases::default(),
         existing: &existing,
         kinds: &Kinds::built_in(KindLanguage::English),
     })

@@ -62,6 +62,9 @@ pub struct ReorganisationInput<'a> {
     /// unordered folder is the one that can go.
     pub unordered: &'a LocationStructure,
     pub rules: &'a [PlanRule],
+    /// The confirmed names a sender condition treats as one sender, as
+    /// intake and filing plan with them.
+    pub sender_aliases: &'a SenderAliases,
     /// Everything that is on disk below the location, as relative paths. A
     /// target in here is a conflict.
     pub existing: &'a BTreeSet<PathBuf>,
@@ -104,6 +107,7 @@ pub fn plan_reorganisation(input: &ReorganisationInput<'_>) -> Vec<PlanItem> {
         profile: input.profile,
         unordered: input.unordered,
         eligible: eligible_rules(input.rules, files.len()),
+        sender_aliases: input.sender_aliases,
         files: &files,
         patterns: &patterns,
         kinds: input.kinds,
@@ -150,6 +154,7 @@ struct Context<'a> {
     profile: &'a [SubtreePattern],
     unordered: &'a LocationStructure,
     eligible: Vec<Rule>,
+    sender_aliases: &'a SenderAliases,
     files: &'a [&'a PlanFile],
     patterns: &'a [Option<DocumentPattern>],
     kinds: &'a Kinds,
@@ -210,7 +215,7 @@ impl Context<'_> {
             text: file.text.as_deref().unwrap_or_default(),
             fields: &file.fields,
             path: Some(&file.relative_path),
-            sender_aliases: &SenderAliases::default(),
+            sender_aliases: self.sender_aliases,
             manual_fields: &[],
             kinds: self.kinds,
         };

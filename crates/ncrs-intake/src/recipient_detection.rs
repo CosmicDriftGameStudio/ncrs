@@ -25,6 +25,10 @@ const COMPANY_LINE: &str = "firma";
 
 const HEADING_SEARCH_LINES: usize = 15;
 
+fn is_salutation_end(character: char) -> bool {
+    character.is_whitespace() || character == ':' || character == '.'
+}
+
 fn without_leading_salutation(line: &str) -> &str {
     let mut rest = line.trim();
     'again: loop {
@@ -42,10 +46,9 @@ fn without_leading_salutation(line: &str) -> &str {
                 .char_indices()
                 .nth(length)
                 .map_or("", |(index, _)| &rest[index..]);
-            let ends_the_word =
-                after.is_empty() || after.starts_with(|c: char| c.is_whitespace() || c == ':');
+            let ends_the_word = after.is_empty() || after.starts_with(is_salutation_end);
             if ends_the_word {
-                rest = after.trim_start_matches(|c: char| c.is_whitespace() || c == ':');
+                rest = after.trim_start_matches(is_salutation_end);
                 continue 'again;
             }
         }
@@ -95,6 +98,13 @@ mod tests {
         let text = "Ms Example\n12 Sample Street\n12345 Sampletown\n\nInvoice 7";
 
         assert_eq!(detect_recipient(text).as_deref(), Some("Example"));
+    }
+
+    #[test]
+    fn an_english_salutation_with_a_period_is_cut_off() {
+        let text = "Mr. John Smith\n12 Sample Street\n12345 Sampletown\n\nInvoice 7";
+
+        assert_eq!(detect_recipient(text).as_deref(), Some("John Smith"));
     }
 
     #[test]

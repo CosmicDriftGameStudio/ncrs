@@ -760,3 +760,161 @@ mod archive_fields;
 mod review_tests;
 use review_tests::{archive_scan, first_document_status, reviewed_once, FixedText};
 mod rule_tests;
+
+fn handled_everything(runner: &Runner, count: usize) -> Snapshot {
+    runner.wait_for("every file handled", |snapshot| {
+        is_idle(snapshot) && snapshot.steps[0].done == count
+    })
+}
+
+#[test]
+fn a_report_while_the_file_waits_updates_the_state_a_repeat_is_matched_against() {
+    let (_dir, location) = numbered_files(1);
+    let (step, _started) = probe("probe", None, continue_always);
+    let runner = start(workers(1), vec![step], &location, Arc::new(FixedClock));
+    handled_everything(&runner, 1);
+    runner.pause();
+    let path = put(&location, "growing.pdf", b"half");
+    let half = Fingerprint::of(&path);
+    let queued_first = runner
+        .shared
+        .update(|state| state.queue_first_step(&location, &path, None, half));
+    fs::write(&path, b"the whole file").unwrap();
+    let whole = Fingerprint::of(&path);
+    let queued_again = runner
+        .shared
+        .update(|state| state.queue_first_step(&location, &path, None, whole));
+
+    let waiting = runner.shared.update(|state| {
+        state
+            .first_step
+            .iter()
+            .find(|queued| queued.item.path == path)
+            .map(|queued| queued.fingerprint)
+    });
+
+    assert!(queued_first);
+    assert!(!queued_again);
+    assert_ne!(half, whole);
+    assert_eq!(waiting, Some(whole));
+}
+
+static GROWN_WHILE_NOT_READY: AtomicUsize = AtomicUsize::new(0);
+
+fn not_ready_once_while_the_file_grows(path: &Path) -> Result<StepOutcome, String> {
+    if GROWN_WHILE_NOT_READY.fetch_add(1, Ordering::SeqCst) == 0 {
+        fs::write(path, b"a body that grew while the step was not ready").unwrap();
+        return Ok(StepOutcome::NotReady);
+    }
+    Ok(StepOutcome::Continue)
+}
+
+#[test]
+fn a_file_retried_after_not_ready_is_matched_against_its_state_at_the_retry() {
+    let (_dir, location) = numbered_files(1);
+    let (step, _started) = probe("probe", None, not_ready_once_while_the_file_grows);
+    let runner = start(workers(1), vec![step], &location, Arc::new(FixedClock));
+    handled_everything(&runner, 1);
+    let path = location.path.join("file-1.pdf");
+
+    let taken = runner
+        .shared
+        .update(|state| state.taken.get(&path).copied());
+
+    assert_eq!(taken, Fingerprint::of(&path));
+}
+
+#[test]
+fn a_scan_skips_the_files_already_taken_since_the_scan_started() {
+    let (_dir, location) = numbered_files(3);
+    let (step, _started) = probe("probe", None, continue_always);
+    let runner = start(workers(1), vec![step], &location, Arc::new(FixedClock));
+    handled_everything(&runner, 3);
+
+    runner.shared.run_scan(usize::MAX, &location);
+    let report = runner.wait_for("the walk is over", is_idle);
+
+    assert_eq!(report.steps[0].done, 3);
+}
+
+#[test]
+fn a_new_scan_offers_every_file_again() {
+    let (_dir, location) = numbered_files(3);
+    let (step, _started) = probe("probe", None, continue_always);
+    let runner = start(workers(1), vec![step], &location, Arc::new(FixedClock));
+    handled_everything(&runner, 3);
+
+    runner.shared.update(|state| state.queue_scan(&location));
+    runner.shared.work_ready.notify_all();
+    let report = runner.wait_for("every file taken again", |snapshot| {
+        is_idle(snapshot) && snapshot.steps[0].done == 6
+    });
+
+    assert_eq!(report.steps[0].done, 6);
+}
+
+#[test]
+fn a_watch_report_before_the_watcher_is_stored_is_left_to_the_scan() {
+    let (_dir, location) = numbered_files(1);
+    let (step, _started) = probe("probe", None, continue_always);
+    let runner = start(workers(1), vec![step], &location, Arc::new(FixedClock));
+    handled_everything(&runner, 1);
+    let watcher = runner.shared.update(|state| state.watcher.take());
+    let path = put(&location, "early.pdf", b"early");
+
+    runner.shared.on_watch_event(WatchEvent::File(path.clone()));
+
+    assert!(runner.shared.update(|state| state.first_step.is_empty()));
+    runner.shared.update(|state| state.watcher = watcher);
+    runner.shared.update(|state| state.queue_scan(&location));
+    runner.shared.work_ready.notify_all();
+    let report = runner.wait_for("the scan took the file once", |snapshot| {
+        is_idle(snapshot) && snapshot.steps[0].done == 3
+    });
+    assert_eq!(report.steps[0].done, 3);
+}
+
+#[test]
+fn the_rate_forgets_entries_dated_after_a_clock_that_jumped_back() {
+    let (_dir, location) = numbered_files(1);
+    let (step, _started) = probe("probe", None, continue_always);
+    let runner = start(workers(1), vec![step], &location, Arc::new(FixedClock));
+    handled_everything(&runner, 1);
+
+    let kept = runner.shared.update(|state| {
+        state.rate.clear();
+        state.record_document(epoch() + Duration::from_secs(10_000));
+        state.record_document(epoch());
+        state.rate.len()
+    });
+
+    assert_eq!(kept, 1);
+}
+
+#[cfg(unix)]
+#[test]
+fn an_unreadable_folder_is_reported_with_the_reason() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let dir = TempDir::new().unwrap();
+    let location = location(&dir, LocationMode::Archive);
+    let locked = location.path.join("locked");
+    fs::create_dir(&locked).unwrap();
+    fs::write(locked.join("inside.pdf"), b"x").unwrap();
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
+    let (step, _started) = probe("probe", None, continue_always);
+    let runner = start(workers(1), vec![step], &location, Arc::new(FixedClock));
+
+    let report = runner.wait_for("the scan reported the folder", |snapshot| {
+        is_idle(snapshot) && !snapshot.errors.is_empty()
+    });
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
+
+    let entry = &report.errors[0];
+    assert_eq!(entry.file, locked);
+    assert!(
+        entry.message.to_lowercase().contains("denied"),
+        "{}",
+        entry.message
+    );
+}

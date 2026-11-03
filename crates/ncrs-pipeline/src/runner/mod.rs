@@ -175,6 +175,15 @@ impl State {
         fingerprint: Option<Fingerprint>,
     ) -> bool {
         if !self.waiting_first.insert(path.to_path_buf()) {
+            // The worker will read the file as it is by then, so a repeat of
+            // that state must be recognised.
+            if let Some(queued) = self
+                .first_step
+                .iter_mut()
+                .find(|queued| queued.item.path == path)
+            {
+                queued.fingerprint = fingerprint.or(queued.fingerprint);
+            }
             return false;
         }
         if let Some(entry) = batch.and_then(|id| self.batches.get_mut(&id)) {
@@ -244,7 +253,7 @@ impl State {
         while self
             .rate
             .front()
-            .is_some_and(|&oldest| at.duration_since(oldest).is_ok_and(|age| age >= window))
+            .is_some_and(|&oldest| at.duration_since(oldest).map_or(true, |age| age >= window))
         {
             self.rate.pop_front();
         }
@@ -259,10 +268,11 @@ impl State {
             }
             let due_entry = self.deferred.swap_remove(index);
             if due_entry.step == 0 {
+                let fingerprint = Fingerprint::of(&due_entry.item.path);
                 self.first_step.push_back(Queued {
                     item: due_entry.item,
                     batch: None,
-                    fingerprint: None,
+                    fingerprint,
                 });
             } else {
                 self.continuations.push_back(Continuation {
@@ -704,8 +714,8 @@ impl Shared {
                     }
                 }
                 Found::Hidden => {}
-                Found::Unreadable(path) => {
-                    self.record_error(path, Task::Scan, "cannot be read".to_owned());
+                Found::Unreadable { path, message } => {
+                    self.record_error(path, Task::Scan, message.to_owned());
                 }
             }
             ControlFlow::Continue(())

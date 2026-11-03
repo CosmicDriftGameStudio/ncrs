@@ -221,7 +221,6 @@ pub fn detect_sender(
     known_senders: &[String],
     own: &OwnIdentifiers,
 ) -> SenderDetection {
-    let identifiers = Identifiers::find(text, own);
     // The recipient stands in the addressee block; it is never the sender.
     let addressee = addressee_block_lines(text).unwrap_or_default();
     let lines: Vec<&str> = text
@@ -229,14 +228,24 @@ pub fn detect_sender(
         .map(str::trim)
         .filter(|line| !line.is_empty() && !addressee.contains(line))
         .collect();
+    // Identifiers elsewhere belong to third parties: a payment provider's
+    // IBAN, linked portals, accounts on a statement.
+    let footer_from = lines.len().saturating_sub(FOOTER_LINES);
+    let sender_region: Vec<&str> = lines
+        .iter()
+        .take(LETTERHEAD_LINES)
+        .chain(lines.iter().skip(footer_from))
+        .copied()
+        .collect();
+    let identifiers = Identifiers::find(&sender_region.join("\n"), own);
     let detected = by_identifier(&identifiers, aliases)
         .or_else(|| {
             name_in(lines.iter().take(LETTERHEAD_LINES), aliases)
                 .map(|name| (name, SenderSource::Letterhead))
         })
         .or_else(|| {
-            let from = lines.len().saturating_sub(FOOTER_LINES);
-            name_in(lines.iter().skip(from), aliases).map(|name| (name, SenderSource::Footer))
+            name_in(lines.iter().skip(footer_from), aliases)
+                .map(|name| (name, SenderSource::Footer))
         });
     let Some((name, source)) = detected else {
         return SenderDetection {
@@ -699,6 +708,34 @@ mod tests {
             .offers
             .iter()
             .all(|offer| offer.sender == "Nordlicht Energie GmbH"));
+    }
+
+    #[test]
+    fn an_identifier_in_the_running_text_is_neither_offered_nor_used_to_detect() {
+        let filler = "Zeile ohne Bedeutung\n".repeat(LETTERHEAD_LINES + FOOTER_LINES);
+        let text = format!(
+            "Nordlicht Energie GmbH\n{filler}Bitte zahlen Sie an Paymentprovider: IBAN DE89 3704 0044 0532 0130 00\n{filler}"
+        );
+        let aliases = confirmed(&[(
+            SenderAliasKind::Iban,
+            "DE89 3704 0044 0532 0130 00",
+            "Paymentprovider AG",
+        )]);
+
+        let detection = detect_sender(&text, &aliases, &[], &OwnIdentifiers::default());
+        let offered = detect_sender(
+            &text,
+            &SenderAliases::default(),
+            &[],
+            &OwnIdentifiers::default(),
+        )
+        .offers;
+
+        assert_eq!(
+            detection.sender.as_ref().unwrap().source,
+            SenderSource::Letterhead
+        );
+        assert!(offered.is_empty(), "{offered:?}");
     }
 
     #[test]
