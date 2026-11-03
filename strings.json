@@ -9007,6 +9007,30 @@
       "de": "Modell laden"
     },
     {
+      "key": "hermes_chat.ai_off",
+      "context": "Hermes chat (F2): Hermes says the AI setting is off, so it cannot understand typed sentences, and offers to switch it on. A button to switch it on follows. 'AI' is the same term as the 'Use AI' checkbox in the Hermes overview.",
+      "en": "My AI is switched off, so I can't understand sentences. Shall I switch it on?",
+      "de": "Meine KI ist ausgeschaltet, so verstehe ich keine Sätze. Soll ich sie einschalten?"
+    },
+    {
+      "key": "hermes_chat.model_ready",
+      "context": "Hermes chat (F2): Hermes says its language model finished downloading and can be used now. Shown before it answers the sentence that waited for the model, or before the first question.",
+      "en": "My language model is ready.",
+      "de": "Mein Sprachmodell ist da."
+    },
+    {
+      "key": "hermes_chat.directly_in",
+      "context": "Hermes chat (F2): An entry in the list of folders without a fixed order. It stands for the files that lie directly in the folder Hermes read, not in a subfolder. {folder} is the name of that folder as the chat shows it, for example 'Downloads'.",
+      "en": "directly in {folder}",
+      "de": "direkt in {folder}"
+    },
+    {
+      "key": "hermes_chat.turn_on_ai",
+      "context": "Hermes chat (F2): Primary button that switches the AI setting on.",
+      "en": "Switch AI on",
+      "de": "KI einschalten"
+    },
+    {
       "key": "hermes_chat.model_failed",
       "context": "Hermes chat (F2): Hermes says its language model cannot run. {reason} is a short technical reason. Buttons with things it can do follow.",
       "en": "My language model doesn't start: {reason}. What would you like to do?",

@@ -48,6 +48,19 @@ fn simulator(app: &App) -> Simulator<'_, Message, iced::Theme> {
     )
 }
 
+/// Renders like the real window, whose default font is the app's. The Hermes
+/// pages set weights on top of it, so their snapshots need the same family.
+fn app_simulator(app: &App) -> Simulator<'_, Message, iced::Theme> {
+    Simulator::with_size(
+        iced::Settings {
+            default_font: ncrs_ui_kit::APP_FONT,
+            ..iced::Settings::default()
+        },
+        iced::Size::new(1200.0, 760.0),
+        app.view(),
+    )
+}
+
 /// The outer bounds of the dialog frame in the view of `app`. Test-only like
 /// the modules below, where a failing lookup is the signal.
 #[allow(clippy::expect_used)]
@@ -1619,6 +1632,7 @@ mod filing_cards {
 )]
 #[cfg(test)]
 mod filing_status_page {
+    use super::app_simulator as simulator;
     use std::path::PathBuf;
     use std::time::{Duration, SystemTime};
 
@@ -2703,6 +2717,7 @@ mod theme_fetch_card {
 )]
 #[cfg(test)]
 mod review_list_card {
+    use super::app_simulator as simulator;
     use std::path::PathBuf;
 
     use super::*;
@@ -3598,6 +3613,7 @@ pub mod search_filters_card {
 )]
 #[cfg(test)]
 mod saved_queries_card {
+    use super::app_simulator as simulator;
     use std::path::PathBuf;
 
     use super::*;
@@ -3881,6 +3897,7 @@ mod saved_queries_card {
 )]
 #[cfg(test)]
 mod tags_card {
+    use super::app_simulator as simulator;
     use std::collections::BTreeSet;
 
     use ncrs_index::{Condition, ConditionKind, RuleConditions, RuleSpec};
@@ -4125,6 +4142,7 @@ mod tags_card {
 )]
 #[cfg(test)]
 mod rules_card {
+    use super::app_simulator as simulator;
     use std::collections::BTreeSet;
 
     use ncrs_index::{Condition, ConditionKind, Rule, RuleConditions, RuleOrigin, RuleSpec};
@@ -4618,6 +4636,7 @@ mod rules_card {
 )]
 #[cfg(test)]
 mod rule_suggestions_card {
+    use super::app_simulator as simulator;
     use std::path::PathBuf;
 
     use super::*;
@@ -4991,6 +5010,7 @@ mod rule_suggestions_card {
 )]
 #[cfg(test)]
 mod reorganisation_plan_card {
+    use super::app_simulator as simulator;
     use super::*;
     use crate::messages::ReorganisationPlanMessage;
     use crate::reorganisation_plan::fixtures::loaded_view;
@@ -6111,6 +6131,7 @@ mod ai_model_card {
 )]
 #[cfg(test)]
 mod settings_tab {
+    use super::app_simulator as simulator;
     use std::path::PathBuf;
 
     use ncrs_intake::LocationMode;
@@ -6902,6 +6923,7 @@ mod hermes_setup_card {
 )]
 #[cfg(test)]
 mod hermes_overview_page {
+    use super::app_simulator as simulator;
     use std::path::PathBuf;
 
     use ncrs_index::HermesCounts;
@@ -7121,6 +7143,7 @@ mod hermes_overview_page {
 
     mod hit_list_snapshots {
         use super::*;
+        use crate::ui_tests::simulator;
 
         fn matches_snapshot(app: &App, name: &str) {
             let matches = simulator(app)

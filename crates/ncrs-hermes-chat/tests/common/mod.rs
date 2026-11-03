@@ -105,6 +105,7 @@ impl Talk {
             sources: below(sources),
             // Long after any run of the test, so a run is never "today".
             now: Local.with_ymd_and_hms(2031, 1, 1, 12, 0, 0).unwrap(),
+            ai_on: true,
             model: Some(Arc::clone(&model) as Arc<dyn ChatModel>),
             resolve_folder,
         };

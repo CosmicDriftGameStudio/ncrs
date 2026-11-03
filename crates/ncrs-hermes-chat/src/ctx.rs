@@ -31,6 +31,8 @@ pub struct Ctx {
     /// The filing setup's check of a folder: its canonical path, or the
     /// reason it is not a folder. Blocking.
     pub resolve_folder: fn(&Path) -> Result<PathBuf, String>,
+    /// Whether the AI setting is on; off, no sentence goes to the model.
+    pub ai_on: bool,
     /// `None` in a build without the local language model.
     pub model: Option<Arc<dyn ChatModel>>,
 }

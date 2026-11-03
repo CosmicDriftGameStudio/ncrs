@@ -5,8 +5,8 @@ use iced_test::Simulator;
 use ncrs_ai::{ChatIntent, Compute, LocalModelStatus, ScriptedChatModel};
 use ncrs_filing::chat_work::{ChatAccess, ChatResult, RuleSaveFailure, RunSummary};
 use ncrs_hermes_chat::{
-    AreaRow, AreasCard, Availability, Chip, ChipReply, Ctx, Entry, FileCard, Part, RowOutcome,
-    Step, TrialCard, TrialRow,
+    AreaRow, AreasCard, Availability, Chip, ChipReply, CountRow, Ctx, Entry, FileCard, Part,
+    RowOutcome, Step, TrialCard, TrialRow,
 };
 use ncrs_index::{BatchKind, Index, Transfer};
 use ncrs_intake::{RuleProblem, TextChain};
@@ -18,7 +18,10 @@ const NONE: Modifiers = Modifiers::empty();
 
 fn simulator(app: &App) -> Simulator<'_, Message, iced::Theme> {
     Simulator::with_size(
-        iced::Settings::default(),
+        iced::Settings {
+            default_font: ncrs_ui_kit::APP_FONT,
+            ..iced::Settings::default()
+        },
         iced::Size::new(1200.0, 760.0),
         app.view(),
     )
@@ -48,6 +51,7 @@ fn ready(lang: Language) -> Ctx {
         home: PathBuf::from("/home/test"),
         targets: vec![PathBuf::from("/home/test/Documents/Archive")],
         sources: vec![PathBuf::from("/home/test/Downloads")],
+        ai_on: true,
         model: None,
         favourites: Vec::new(),
         resolve_folder: |path| Ok(path.to_path_buf()),
@@ -446,9 +450,24 @@ fn waking_scene() -> App {
     app
 }
 
-fn download_offer_scene() -> App {
-    let (mut app, ctx) = with_model(LocalModelStatus::NotDownloaded);
-    type_and_submit(&mut app, &ctx, "räum Downloads auf");
+/// The chat right after opening, with the language model not downloaded.
+fn download_offer_scene(lang: Language) -> App {
+    let mut app = App::with_fixed_panels().in_language(lang);
+    let mut ctx = ready(lang);
+    ctx.model = Some(Arc::new(ScriptedChatModel::new(
+        LocalModelStatus::NotDownloaded,
+        [],
+    )));
+    send(&mut app, &ctx, HermesChatMessage::Open);
+    app
+}
+
+/// The chat right after opening, with the AI switched off.
+fn ai_off_scene() -> App {
+    let mut app = App::with_fixed_panels().in_language(Language::German);
+    let mut ctx = ready(Language::German);
+    ctx.ai_on = false;
+    send(&mut app, &ctx, HermesChatMessage::Open);
     app
 }
 
@@ -572,7 +591,19 @@ fn the_waking_line_matches_its_snapshot() {
 
 #[test]
 fn the_download_offer_matches_its_snapshot() {
-    matches_snapshot(&download_offer_scene(), "hermes_chat_download_offer_de");
+    matches_snapshot(
+        &download_offer_scene(Language::German),
+        "hermes_chat_download_offer_de",
+    );
+    matches_snapshot(
+        &download_offer_scene(Language::English),
+        "hermes_chat_download_offer_en",
+    );
+}
+
+#[test]
+fn the_ai_off_offer_matches_its_snapshot() {
+    matches_snapshot(&ai_off_scene(), "hermes_chat_ai_off_de");
 }
 
 #[test]
@@ -628,4 +659,259 @@ fn other_function_keys_are_swallowed_while_the_chat_is_open() {
         ..PromptKeyState::default()
     };
     assert_eq!(route_key(&open, Key::Named(Named::F5), NONE), None);
+}
+
+fn count_row(text: &str, documents: u32) -> CountRow {
+    CountRow {
+        text: text.to_owned(),
+        documents,
+    }
+}
+
+fn area_row(name: &str, description: &str, documents: u32) -> AreaRow {
+    AreaRow {
+        name: name.to_owned(),
+        description: description.to_owned(),
+        documents,
+    }
+}
+
+fn english_areas_bubbles(app: &mut App, card: AreasCard) {
+    user_says(app, "Downloads");
+    hermes_says(
+        app,
+        vec![
+            Part::Text(
+                "Done reading: **3779 files**. You already have a good order, I see **20 areas**:"
+                    .to_owned(),
+            ),
+            Part::Areas(card),
+            Part::Text("Shall I file new files the same way?".to_owned()),
+        ],
+        vec![
+            chip("Yes, the same way", ChipReply::KeepYes, true),
+            chip("Change something", ChipReply::WantChange, false),
+        ],
+    );
+}
+
+fn long_names_card() -> AreasCard {
+    AreasCard {
+        rows: vec![
+            area_row("Taxes", "by year", 148),
+            area_row(
+                "Idle_Game_Concept_Discussion_with_the_whole_team_2025",
+                "by sender",
+                1334,
+            ),
+        ],
+        more: Some(count_row(
+            "Idle_Game_Concept_Discussion (1), CashColt_ALLE_Logos, dist-chrome-2026.6.1, Archive-2025-12-06-13-45-22 and 13 more",
+            1334,
+        )),
+        unordered: Some(count_row(
+            "No fixed order: directly in Downloads, Idle_Game_Concept_Discussion_Final_Version",
+            57,
+        )),
+    }
+}
+
+fn long_names_scene() -> App {
+    let mut app = App::with_fixed_panels().in_language(Language::English);
+    let ctx = ready(Language::English);
+    send(&mut app, &ctx, HermesChatMessage::Open);
+    english_areas_bubbles(&mut app, long_names_card());
+    app
+}
+
+/// The area card as Marc sees it: English, the dracula preset applied the way
+/// the start applies a configured one.
+fn areas_dracula_scene() -> App {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("config.toml");
+    std::fs::write(&path, "[theme]\npreset = \"dracula\"\n").unwrap();
+    let mut app = App::with_fixed_panels()
+        .with_config(crate::config::load(&path))
+        .in_language(Language::English);
+    let ctx = ready(Language::English);
+    send(&mut app, &ctx, HermesChatMessage::Open);
+    english_areas_bubbles(
+        &mut app,
+        AreasCard {
+            rows: vec![
+                area_row("Taxes", "by year", 148),
+                area_row("Insurance", "by provider", 96),
+                area_row("Flat", "by topic", 61),
+            ],
+            more: Some(count_row("Cars, Health, Travel, Work and 14 more", 702)),
+            unordered: Some(count_row("No fixed order: Misc, Scans", 38)),
+        },
+    );
+    app
+}
+
+#[test]
+fn the_long_names_stay_inside_the_areas_card() {
+    matches_snapshot(&long_names_scene(), "hermes_chat_areas_long_names_en");
+}
+
+#[test]
+fn the_areas_card_in_the_dracula_preset_uses_one_font() {
+    matches_snapshot(&areas_dracula_scene(), "hermes_chat_areas_dracula_en");
+}
+
+fn read_downloads() -> Arc<ncrs_filing::chat_work::FolderReading> {
+    let file = |name: &str| ncrs_intake::PlanFile {
+        relative_path: PathBuf::from(name),
+        hash: ncrs_index::ContentHash([0; 32]),
+        fields: ncrs_index::DocumentFields::default(),
+        text: None,
+        recorded_at: 0,
+    };
+    Arc::new(ncrs_filing::chat_work::FolderReading {
+        root: PathBuf::from("/home/test/Downloads"),
+        files: vec![file("Taxes/a.pdf"), file("Misc/b.pdf"), file("c.pdf")],
+        photos: 0,
+        without_text: 0,
+        structure: ncrs_intake::LocationStructure {
+            areas: vec![ncrs_intake::Area {
+                folder: "Taxes".to_owned(),
+                documents: 1,
+                branches: Vec::new(),
+            }],
+            unordered: vec![
+                ncrs_intake::UnorderedFolder {
+                    folder: String::new(),
+                    documents: 1,
+                },
+                ncrs_intake::UnorderedFolder {
+                    folder: "Misc".to_owned(),
+                    documents: 1,
+                },
+            ],
+        },
+        duplicates: Vec::new(),
+        hashes: std::collections::HashMap::new(),
+    })
+}
+
+fn visible_texts(app: &App) -> Vec<String> {
+    let mut found = Vec::new();
+    for entry in app.hermes_chat.thread() {
+        let Entry::Hermes { parts, chips } = entry else {
+            continue;
+        };
+        for part in parts {
+            match part {
+                Part::Text(text) => found.push(text.clone()),
+                Part::Areas(card) => {
+                    for row in &card.rows {
+                        found.extend([row.name.clone(), row.description.clone()]);
+                    }
+                    found.extend(
+                        card.more
+                            .iter()
+                            .chain(&card.unordered)
+                            .map(|row| row.text.clone()),
+                    );
+                }
+                _ => {}
+            }
+        }
+        found.extend(chips.iter().map(|chip| chip.label.clone()));
+    }
+    found
+}
+
+/// The pieces of a German text between its `{placeholders}` and `**` marks.
+fn fixed_pieces(german: &str) -> Vec<String> {
+    let mut pieces = Vec::new();
+    let mut current = String::new();
+    let mut inside = false;
+    for character in german.replace("**", "").chars() {
+        match character {
+            '{' => {
+                pieces.push(std::mem::take(&mut current));
+                inside = true;
+            }
+            '}' => inside = false,
+            _ if !inside => current.push(character),
+            _ => {}
+        }
+    }
+    pieces.push(current);
+    pieces
+        .into_iter()
+        .map(|piece| piece.trim().to_owned())
+        .filter(|piece| piece.chars().count() >= 8)
+        .collect()
+}
+
+#[test]
+fn an_english_chat_shows_no_german_text_from_the_greeting_to_the_download_offer() {
+    let lang = Language::English;
+    let mut app = App::with_fixed_panels().in_language(lang);
+    let model = Arc::new(ScriptedChatModel::new(
+        LocalModelStatus::Loaded {
+            name: "test".to_owned(),
+            memory_bytes: 1,
+            compute: Compute::Cpu,
+        },
+        [],
+    ));
+    let mut ctx = ready(lang);
+    ctx.model = Some(Arc::clone(&model) as Arc<dyn ncrs_ai::ChatModel>);
+    send(&mut app, &ctx, HermesChatMessage::Open);
+    let downloads = PathBuf::from("/home/test/Downloads");
+    let label = app
+        .hermes_chat
+        .chips()
+        .iter()
+        .find(|chip| chip.reply == ChipReply::Folder(downloads.clone()))
+        .unwrap()
+        .label
+        .clone();
+    send(
+        &mut app,
+        &ctx,
+        HermesChatMessage::ChipPressed {
+            label,
+            reply: ChipReply::Folder(downloads),
+        },
+    );
+    send(
+        &mut app,
+        &ctx,
+        HermesChatMessage::Done(Box::new(ChatResult::Read(Ok(read_downloads())))),
+    );
+    model.set_status(LocalModelStatus::NotDownloaded);
+    type_and_submit(&mut app, &ctx, "test");
+
+    let shown = visible_texts(&app).join("\n");
+    assert!(shown.contains("Done reading"), "{shown}");
+    assert!(shown.contains("directly in Downloads"), "{shown}");
+    assert!(shown.contains("language model"), "{shown}");
+    for msg in ncrs_i18n::ALL_MESSAGES {
+        if !msg.key().starts_with("hermes_chat.") {
+            continue;
+        }
+        let english = Language::English.text(*msg);
+        for piece in fixed_pieces(Language::German.text(*msg)) {
+            assert!(
+                english.contains(&piece) || !shown.contains(&piece),
+                "{} shows the German {piece:?}:\n{shown}",
+                msg.key()
+            );
+        }
+    }
+
+    let mut screen = simulator(&app);
+    for header in [
+        Msg::HermesChatSubtitle,
+        Msg::HermesChatEscHint,
+        Msg::HermesChatPlaceholderReply,
+    ] {
+        screen.find(Language::English.text(header)).unwrap();
+        screen.find(Language::German.text(header)).unwrap_err();
+    }
 }

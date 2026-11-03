@@ -137,7 +137,12 @@ fn summary(state: &mut State, ctx: &Ctx, reading: &Arc<FolderReading>) {
         state,
         vec![
             Part::Text(intro),
-            Part::Areas(areas_card(ctx.lang, &reading.structure, false)),
+            Part::Areas(areas_card(
+                ctx.lang,
+                &folder_name(ctx, &reading.root),
+                &reading.structure,
+                false,
+            )),
             Part::Text(text(ctx.lang, Msg::HermesChatAskKeep)),
         ],
         keep_chips(ctx, true),
@@ -163,7 +168,12 @@ pub fn show_all(state: &mut State, ctx: &Ctx) {
     hermes(
         state,
         vec![
-            Part::Areas(areas_card(ctx.lang, &reading.structure, true)),
+            Part::Areas(areas_card(
+                ctx.lang,
+                &folder_name(ctx, &reading.root),
+                &reading.structure,
+                true,
+            )),
             Part::Text(text(ctx.lang, Msg::HermesChatAskKeep)),
         ],
         keep_chips(ctx, false),

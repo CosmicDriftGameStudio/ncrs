@@ -882,7 +882,7 @@ pub fn checkbox<'a, M: Clone + 'a>(
         .style(theme::dialog_checkbox(palette));
     if state == Check::Mixed {
         boxed = boxed.icon(widget_checkbox::Icon {
-            font: iced::Font::DEFAULT,
+            font: crate::APP_FONT,
             code_point: '-',
             size: None,
             line_height: LineHeight::default(),

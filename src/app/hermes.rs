@@ -456,11 +456,7 @@ impl App {
                 self.update_settings(SettingsMessage::Change(SettingChange::Load(load)))
             }
             Ask::OpenOcrModels => self.update_ocr_models(OcrModelsMessage::Open),
-            Ask::OpenAndDownloadAiModel => {
-                let open = self.update_ai_model(AiModelMessage::Open);
-                let download = self.update_ai_model(AiModelMessage::Download);
-                Task::batch([open, download])
-            }
+            Ask::OpenAndDownloadAiModel => self.open_and_download_ai_model(),
             Ask::ShowHermesSetting(row) => {
                 self.show_setting(crate::messages::SettingsFeature::Hermes, Some(row))
             }
@@ -530,6 +526,12 @@ impl App {
             }
             Ask::OpenAiModelCard => self.open_ai_model_card(),
         }
+    }
+
+    pub(in crate::app) fn open_and_download_ai_model(&mut self) -> Task<Message> {
+        let open = self.update_ai_model(AiModelMessage::Open);
+        let download = self.update_ai_model(AiModelMessage::Download);
+        Task::batch([open, download])
     }
 
     pub(in crate::app) fn open_ai_model_card(&mut self) -> Task<Message> {

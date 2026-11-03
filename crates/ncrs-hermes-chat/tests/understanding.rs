@@ -15,7 +15,7 @@ mod tests {
 
     use crate::common::{letter, say, Talk};
     use ncrs_ai::{AiError, Compute, LocalModelStatus, LOCAL_MODEL};
-    use ncrs_hermes_chat::{Action, ChipReply, Entry, Message};
+    use ncrs_hermes_chat::{Action, ChipReply, Entry, Message, Part};
     use ncrs_i18n::Msg;
     use ncrs_ui_kit::format;
 
@@ -172,6 +172,182 @@ mod tests {
             1,
             "no second bubble for the sentence sent again"
         );
+    }
+
+    fn offer_text() -> String {
+        say(
+            Msg::HermesChatModelMissing,
+            &[("size", &format::megabytes(LOCAL_MODEL.size))],
+        )
+    }
+
+    fn first_hermes_texts(talk: &Talk) -> Vec<String> {
+        talk.state
+            .thread()
+            .iter()
+            .filter_map(|entry| match entry {
+                Entry::Hermes { parts, .. } => Some(parts.clone()),
+                _ => None,
+            })
+            .flatten()
+            .filter_map(|part| match part {
+                Part::Text(text) => Some(text),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn opening_without_the_model_offers_the_download_and_no_greeting() {
+        let mut talk = small_talk();
+        talk.model.set_status(LocalModelStatus::NotDownloaded);
+        talk.open();
+        assert_eq!(first_hermes_texts(&talk), vec![offer_text()]);
+        assert_eq!(
+            talk.labels(),
+            vec![
+                say(Msg::HermesChatModelDownload, &[]),
+                say(Msg::HermesChatLater, &[])
+            ]
+        );
+    }
+
+    #[test]
+    fn opening_with_a_usable_model_greets() {
+        let mut talk = small_talk();
+        talk.open();
+        assert_eq!(
+            first_hermes_texts(&talk),
+            vec![say(Msg::HermesChatGreeting, &[])]
+        );
+    }
+
+    #[test]
+    fn opening_with_a_failed_model_says_so() {
+        let mut talk = small_talk();
+        talk.model.set_status(LocalModelStatus::Failed("no memory"));
+        talk.open();
+        assert_eq!(
+            first_hermes_texts(&talk),
+            vec![say(Msg::HermesChatModelFailed, &[("reason", "no memory")])]
+        );
+        assert_eq!(talk.labels().len(), 4);
+    }
+
+    #[test]
+    fn opening_with_the_ai_off_offers_to_switch_it_on_then_the_download() {
+        let mut talk = small_talk();
+        talk.ctx.ai_on = false;
+        talk.model.set_status(LocalModelStatus::NotDownloaded);
+        talk.open();
+        assert_eq!(
+            first_hermes_texts(&talk),
+            vec![say(Msg::HermesChatAiOff, &[])]
+        );
+        assert_eq!(
+            talk.labels(),
+            vec![
+                say(Msg::HermesChatTurnOnAi, &[]),
+                say(Msg::HermesChatLater, &[])
+            ]
+        );
+
+        talk.press(&ChipReply::TurnOnAi);
+        assert_eq!(talk.actions, vec![Action::TurnOnAi]);
+
+        talk.ctx.ai_on = true;
+        talk.send(Message::AiTurnedOn);
+        assert_eq!(talk.last_texts(), vec![offer_text()]);
+
+        talk.model.set_status(loaded());
+        talk.send(Message::ModelReady);
+        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatGreeting, &[])]);
+    }
+
+    #[test]
+    fn a_sentence_with_the_ai_off_waits_for_it() {
+        let mut talk = small_talk();
+        talk.ctx.ai_on = false;
+        talk.open();
+        talk.type_text("räum die Inbox auf");
+        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatAiOff, &[])]);
+        assert!(talk.model.turns().is_empty());
+
+        talk.ctx.ai_on = true;
+        talk.model
+            .push_reply(Ok(r#"{"intent":"tidy_folder","source":"Inbox"}"#));
+        talk.send(Message::AiTurnedOn);
+        assert_eq!(talk.model.turns()[0].message, "räum die Inbox auf");
+    }
+
+    #[test]
+    fn after_the_offer_the_download_finishing_brings_the_greeting() {
+        let mut talk = small_talk();
+        talk.model.set_status(LocalModelStatus::NotDownloaded);
+        talk.open();
+        talk.press(&ChipReply::DownloadModel);
+        talk.model.set_status(loaded());
+        talk.send(Message::ModelReady);
+        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatGreeting, &[])]);
+        assert_eq!(talk.model.refresh_count(), 1);
+    }
+
+    #[test]
+    fn the_download_chip_is_no_sentence_and_the_ready_line_comes_before_the_answer() {
+        let mut talk = small_talk();
+        talk.model.set_status(LocalModelStatus::NotDownloaded);
+        talk.type_text("räum die Inbox auf");
+        let before = first_hermes_texts(&talk).len();
+        talk.press(&ChipReply::DownloadModel);
+        assert_eq!(talk.actions, vec![Action::DownloadModel]);
+        assert!(talk.model.turns().is_empty());
+        assert_eq!(
+            first_hermes_texts(&talk).len(),
+            before,
+            "no answer to a press"
+        );
+        assert!(!first_hermes_texts(&talk).contains(&say(Msg::HermesChatFallback, &[])));
+
+        talk.model.set_status(loaded());
+        talk.model
+            .push_reply(Ok(r#"{"intent":"tidy_folder","source":"Inbox"}"#));
+        talk.send(Message::ModelReady);
+        let texts = first_hermes_texts(&talk);
+        let ready = texts
+            .iter()
+            .position(|text| *text == say(Msg::HermesChatModelReady, &[]))
+            .unwrap();
+        assert_eq!(ready, texts.len() - 2, "{texts:?}");
+        assert_eq!(talk.model.turns()[0].message, "räum die Inbox auf");
+    }
+
+    #[test]
+    fn the_ready_line_comes_before_the_greeting_too() {
+        let mut talk = small_talk();
+        talk.model.set_status(LocalModelStatus::NotDownloaded);
+        talk.open();
+        talk.model.set_status(loaded());
+        talk.send(Message::ModelReady);
+        let texts = first_hermes_texts(&talk);
+        assert_eq!(
+            texts[texts.len() - 2..],
+            [
+                say(Msg::HermesChatModelReady, &[]),
+                say(Msg::HermesChatGreeting, &[])
+            ]
+        );
+    }
+
+    #[test]
+    fn after_later_a_typed_sentence_offers_the_download_again() {
+        let mut talk = small_talk();
+        talk.model.set_status(LocalModelStatus::NotDownloaded);
+        talk.open();
+        talk.press(&ChipReply::Later);
+        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatLaterReply, &[])]);
+        talk.type_text("räum die Inbox auf");
+        assert_eq!(talk.last_texts(), vec![offer_text()]);
+        assert!(talk.model.turns().is_empty());
     }
 
     #[test]

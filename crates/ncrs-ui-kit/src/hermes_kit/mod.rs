@@ -53,7 +53,7 @@ const SEPARATOR_HEIGHT: f32 = 1.0;
 fn semibold() -> Font {
     Font {
         weight: Weight::Semibold,
-        ..Font::DEFAULT
+        ..crate::APP_FONT
     }
 }
 

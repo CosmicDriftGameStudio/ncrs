@@ -19,6 +19,7 @@ const PATH_SEPARATOR: &str = "/";
 const ARROW: &str = "→";
 const QUESTION_MARK: &str = "?";
 const NAME_MAX_WIDTH: f32 = 160.0;
+const AREA_NAME_MAX_WIDTH: f32 = 2.0 * NAME_MAX_WIDTH;
 
 fn card<'a, M: 'a>(content: Element<'a, M>, palette: &Palette) -> Element<'a, M> {
     let colors = *palette;
@@ -73,18 +74,27 @@ pub fn areas_card<'a, M: 'a>(lines: &[AreaLine], palette: &Palette) -> Element<'
         } else {
             palette.text
         };
-        let mut title = Row::new()
-            .spacing(GAP_S)
-            .align_y(alignment::Vertical::Center);
-        title = title.push(card_text(&line.name, ink, Wrapping::None, !line.dim));
-        if !line.detail.is_empty() {
-            title = title.push(card_text(
-                &line.detail,
-                palette.dim_text,
-                Wrapping::Word,
-                false,
-            ));
-        }
+        let name = card_text(&line.name, ink, Wrapping::WordOrGlyph, !line.dim);
+        // The name wraps inside the card, so the count on the right never
+        // has to give way. Beside a detail the name keeps a share of the row.
+        let title: Element<'a, M> = if line.detail.is_empty() {
+            container(name).width(Length::Fill).into()
+        } else {
+            Row::new()
+                .push(container(name).max_width(AREA_NAME_MAX_WIDTH))
+                .push(
+                    container(card_text(
+                        &line.detail,
+                        palette.dim_text,
+                        Wrapping::Word,
+                        false,
+                    ))
+                    .width(Length::Fill),
+                )
+                .spacing(GAP_S)
+                .align_y(alignment::Vertical::Center)
+                .into()
+        };
         Row::new()
             .push(container(title).width(Length::Fill))
             .push(card_text(

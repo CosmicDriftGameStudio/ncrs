@@ -158,7 +158,21 @@ fn area_description(lang: Language, area: &Area) -> String {
 const SHOWN_AREAS: usize = 3;
 const NAMED_MORE_AREAS: usize = 4;
 
-pub fn areas_card(lang: Language, structure: &LocationStructure, all: bool) -> AreasCard {
+/// The folder's own name; files lying directly in the read folder have none.
+fn folder_label(lang: Language, read_folder: &str, folder: &str) -> String {
+    if folder.is_empty() {
+        fill(lang, Msg::HermesChatDirectlyIn, &[("folder", read_folder)])
+    } else {
+        folder.to_owned()
+    }
+}
+
+pub fn areas_card(
+    lang: Language,
+    read_folder: &str,
+    structure: &LocationStructure,
+    all: bool,
+) -> AreasCard {
     let shown = if all {
         structure.areas.len()
     } else {
@@ -169,17 +183,17 @@ pub fn areas_card(lang: Language, structure: &LocationStructure, all: bool) -> A
         .iter()
         .take(shown)
         .map(|area| AreaRow {
-            name: area.folder.clone(),
+            name: folder_label(lang, read_folder, &area.folder),
             description: area_description(lang, area),
             documents: area.documents,
         })
         .collect();
     let rest = structure.areas.get(shown..).unwrap_or_default();
     let more = (!rest.is_empty()).then(|| {
-        let listed: Vec<&str> = rest
+        let listed: Vec<String> = rest
             .iter()
             .take(NAMED_MORE_AREAS)
-            .map(|area| area.folder.as_str())
+            .map(|area| folder_label(lang, read_folder, &area.folder))
             .collect();
         let further = rest.len().saturating_sub(NAMED_MORE_AREAS);
         let names = listed.join(", ");
@@ -197,16 +211,10 @@ pub fn areas_card(lang: Language, structure: &LocationStructure, all: bool) -> A
         }
     });
     let unordered = (!structure.unordered.is_empty()).then(|| {
-        let names: Vec<&str> = structure
+        let names: Vec<String> = structure
             .unordered
             .iter()
-            .map(|folder| {
-                if folder.folder.is_empty() {
-                    "."
-                } else {
-                    folder.folder.as_str()
-                }
-            })
+            .map(|folder| folder_label(lang, read_folder, &folder.folder))
             .collect();
         CountRow {
             text: fill(
@@ -243,5 +251,34 @@ pub fn when_text(ctx: &Ctx, unix_seconds: i64) -> String {
             Msg::HermesChatWhenDate,
             &[("date", date), ("time", time)],
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ncrs_intake::{LocationStructure, UnorderedFolder};
+
+    use super::*;
+
+    #[test]
+    fn files_lying_directly_in_the_read_folder_are_named_by_it_not_by_a_dot() {
+        let structure = LocationStructure {
+            areas: Vec::new(),
+            unordered: vec![
+                UnorderedFolder {
+                    folder: String::new(),
+                    documents: 4,
+                },
+                UnorderedFolder {
+                    folder: "Misc".to_owned(),
+                    documents: 2,
+                },
+            ],
+        };
+        let card = areas_card(Language::English, "Downloads", &structure, false);
+        let unordered = card.unordered.map(|row| row.text).unwrap_or_default();
+        assert!(unordered.contains("directly in Downloads"), "{unordered}");
+        assert!(unordered.contains("Misc"), "{unordered}");
+        assert!(!unordered.contains('.'), "{unordered}");
     }
 }

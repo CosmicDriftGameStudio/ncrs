@@ -53,6 +53,7 @@ pub enum ChipReply {
     IntentStructure,
     IntentUndo,
     DownloadModel,
+    TurnOnAi,
     ConfirmTidy,
     ConfirmChange,
     OtherTarget,
@@ -103,6 +104,7 @@ impl ChipReply {
             | Self::IntentStructure
             | Self::IntentUndo
             | Self::DownloadModel
+            | Self::TurnOnAi
             | Self::ConfirmTidy
             | Self::ConfirmChange
             | Self::OtherTarget
@@ -345,6 +347,9 @@ pub struct State {
     /// The check set during this `update` that no task runs yet.
     pub fresh_naming: bool,
     pub step: Step,
+    /// The opening question waits for the AI or the model; it follows once
+    /// they are there.
+    pub greeting_owed: bool,
     pub session: Session,
 }
 
@@ -363,6 +368,7 @@ impl Default for State {
             naming: None,
             fresh_naming: false,
             step: Step::Idle,
+            greeting_owed: false,
             session: Session::default(),
         }
     }

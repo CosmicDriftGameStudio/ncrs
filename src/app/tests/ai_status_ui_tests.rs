@@ -6,7 +6,10 @@ use crate::i18n::Language;
 
 fn simulator(app: &App) -> Simulator<'_, Message, iced::Theme> {
     Simulator::with_size(
-        iced::Settings::default(),
+        iced::Settings {
+            default_font: ncrs_ui_kit::APP_FONT,
+            ..iced::Settings::default()
+        },
         iced::Size::new(1200.0, 760.0),
         app.view(),
     )

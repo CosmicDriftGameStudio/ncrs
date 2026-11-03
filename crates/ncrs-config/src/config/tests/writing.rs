@@ -17,6 +17,56 @@ fn the_setup_writes_the_locations_and_they_load_back() {
 }
 
 #[test]
+fn the_first_setup_turns_the_ai_on() {
+    let folders = setup_folders();
+    let path = folders.base.path().join("config.toml");
+    std::fs::write(&path, "lang = \"de\"\n").unwrap();
+
+    let written = write_filing_locations_with_home(&path, &one_of_each(&folders), None).unwrap();
+
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        text.contains("[modules.filing.ai]\nenabled = true"),
+        "{text}"
+    );
+    assert_eq!(written.filing.ai, AiSetting::Local { threads: None });
+}
+
+#[test]
+fn a_setup_keeps_an_ai_the_user_switched_off() {
+    let folders = setup_folders();
+    let path = folders.base.path().join("config.toml");
+    std::fs::write(&path, "[modules.filing.ai]\nenabled = false\n").unwrap();
+
+    let written = write_filing_locations_with_home(&path, &one_of_each(&folders), None).unwrap();
+
+    assert_eq!(written.filing.ai, AiSetting::Off);
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.contains("enabled = false"), "{text}");
+}
+
+#[test]
+fn a_setup_over_existing_locations_does_not_add_an_ai_table() {
+    let folders = setup_folders();
+    let path = folders.base.path().join("config.toml");
+    let old_location = folders.base.path().join("old");
+    std::fs::write(
+        &path,
+        format!(
+            "[modules.filing]\nenabled = true\n\n[[modules.filing.locations]]\npath = {}\nmode = \"archive\"\ntarget = true\n",
+            quoted(&old_location)
+        ),
+    )
+    .unwrap();
+
+    let written = write_filing_locations_with_home(&path, &one_of_each(&folders), None).unwrap();
+
+    assert_eq!(written.filing.ai, AiSetting::Off);
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(!text.contains("[modules.filing.ai]"), "{text}");
+}
+
+#[test]
 fn comments_and_other_sections_survive_the_write() {
     let folders = setup_folders();
     let path = folders.base.path().join("config.toml");

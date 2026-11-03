@@ -91,7 +91,7 @@ fn program(
             icon: window_icon(),
             ..window_frame()
         })
-        .default_font(iced::Font::MONOSPACE)
+        .default_font(ncrs_ui_kit::APP_FONT)
         .antialiasing(true)
         // The close request becomes Quit, which saves the session state first.
         .exit_on_close_request(false)

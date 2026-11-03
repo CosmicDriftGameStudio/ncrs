@@ -56,7 +56,9 @@ pub fn not_a_table(path: &Path, key: &str) -> FilingWriteError {
     })
 }
 
-/// `source` with `enabled = true` and `locations` in `[modules.filing]`.
+/// `source` with `enabled = true` and `locations` in `[modules.filing]`. The
+/// first setup (no `locations` yet) also turns the AI on unless the file has
+/// an `[modules.filing.ai]` table: a user who set it, even to off, keeps it.
 pub fn with_filing_locations(
     source: &str,
     path: &Path,
@@ -80,6 +82,7 @@ pub fn with_filing_locations(
             filing.insert("enabled", toml_edit::value(true));
         }
     }
+    let first_setup = filing.get("locations").is_none();
     // A comment above the first location belongs to the list, not to the
     // entry that is replaced.
     let first_prefix = filing
@@ -112,6 +115,11 @@ pub fn with_filing_locations(
         entries.push(entry);
     }
     filing.insert("locations", toml_edit::Item::ArrayOfTables(entries));
+    if first_setup && filing.get("ai").is_none() {
+        let ai =
+            sub_table(filing, "ai", false).ok_or_else(|| not_a_table(path, "modules.filing.ai"))?;
+        ai.insert("enabled", toml_edit::value(true));
+    }
     Ok(document.to_string())
 }
 

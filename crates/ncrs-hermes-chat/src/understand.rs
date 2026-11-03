@@ -20,7 +20,7 @@ use crate::state::{Asked, Chip, ChipReply, Entry, Part, State, Step, Thinking, U
 use crate::texts::{fill, text};
 use crate::update::{
     ask_chips, batch_not_yet, cancel_chip, chip, drop_working, explain_not_yet, fallback,
-    fallback_chips, handle_reply, say, search_not_yet,
+    fallback_chips, handle_reply, open_thread, say, search_not_yet,
 };
 use crate::{learn, undo};
 
@@ -43,17 +43,35 @@ pub fn asked(state: &State) -> Asked {
     }
 }
 
-pub fn ask(state: &mut State, ctx: &Ctx, typed: &str, asked: Asked) -> Option<Action> {
+/// Whether Hermes said why the model cannot be used, or the model is usable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Gate {
+    Usable,
+    Said,
+}
+
+/// The one check before the model: the AI is on and the model is downloaded
+/// and runs. Otherwise Hermes says why; the sentence that waited for it is
+/// kept for when it is there.
+pub fn gate(state: &mut State, ctx: &Ctx, unsent: Option<Unsent>) -> Gate {
+    if !ctx.ai_on {
+        keep_unsent(state, unsent);
+        say(
+            state,
+            text(ctx.lang, Msg::HermesChatAiOff),
+            vec![
+                chip(ctx, Msg::HermesChatTurnOnAi, ChipReply::TurnOnAi, true),
+                chip(ctx, Msg::HermesChatLater, ChipReply::Later, false),
+            ],
+        );
+        return Gate::Said;
+    }
     let Some(model) = ctx.model.as_ref() else {
-        fallback(state, ctx);
-        return None;
+        return Gate::Usable;
     };
     match model.status() {
         LocalModelStatus::NotDownloaded => {
-            state.session.unsent = Some(Unsent {
-                message: typed.to_owned(),
-                asked,
-            });
+            keep_unsent(state, unsent);
             say(
                 state,
                 fill(
@@ -71,6 +89,7 @@ pub fn ask(state: &mut State, ctx: &Ctx, typed: &str, asked: Asked) -> Option<Ac
                     chip(ctx, Msg::HermesChatLater, ChipReply::Later, false),
                 ],
             );
+            Gate::Said
         }
         LocalModelStatus::Failed(reason) => {
             say(
@@ -78,12 +97,32 @@ pub fn ask(state: &mut State, ctx: &Ctx, typed: &str, asked: Asked) -> Option<Ac
                 fill(ctx.lang, Msg::HermesChatModelFailed, &[("reason", reason)]),
                 fallback_chips(ctx),
             );
+            Gate::Said
         }
-        status => {
-            let loaded = matches!(status, LocalModelStatus::Loaded { .. });
-            think(state, ctx, typed, asked, loaded);
-        }
+        _ => Gate::Usable,
     }
+}
+
+fn keep_unsent(state: &mut State, unsent: Option<Unsent>) {
+    if unsent.is_some() {
+        state.session.unsent = unsent;
+    }
+}
+
+pub fn ask(state: &mut State, ctx: &Ctx, typed: &str, asked: Asked) -> Option<Action> {
+    let unsent = Unsent {
+        message: typed.to_owned(),
+        asked: asked.clone(),
+    };
+    if gate(state, ctx, Some(unsent)) == Gate::Said {
+        return None;
+    }
+    let Some(model) = ctx.model.as_ref() else {
+        fallback(state, ctx);
+        return None;
+    };
+    let loaded = matches!(model.status(), LocalModelStatus::Loaded { .. });
+    think(state, ctx, typed, asked, loaded);
     None
 }
 
@@ -142,13 +181,43 @@ pub fn understood(
     }
 }
 
-/// The model is there now: the sentence that waited for it goes in again.
+/// The model is there now.
 pub fn model_ready(state: &mut State, ctx: &Ctx) -> Option<Action> {
     if let Some(model) = ctx.model.as_ref() {
         model.refresh();
     }
-    let unsent = state.session.unsent.take()?;
-    ask(state, ctx, &unsent.message, unsent.asked)
+    if state.session.unsent.is_some() || state.greeting_owed {
+        let usable = ctx.ai_on
+            && ctx.model.as_ref().is_some_and(|model| {
+                !matches!(
+                    model.status(),
+                    LocalModelStatus::NotDownloaded | LocalModelStatus::Failed(_)
+                )
+            });
+        if usable {
+            say(state, text(ctx.lang, Msg::HermesChatModelReady), Vec::new());
+        }
+    }
+    resume(state, ctx)
+}
+
+/// The AI is on now: whatever waited for it goes on, which offers the model
+/// download when it is missing.
+pub fn ai_turned_on(state: &mut State, ctx: &Ctx) -> Option<Action> {
+    resume(state, ctx)
+}
+
+/// The sentence that waited goes in again, else the opening question that
+/// waited comes.
+fn resume(state: &mut State, ctx: &Ctx) -> Option<Action> {
+    if let Some(unsent) = state.session.unsent.take() {
+        state.greeting_owed = false;
+        return ask(state, ctx, &unsent.message, unsent.asked);
+    }
+    if state.greeting_owed {
+        open_thread(state, ctx);
+    }
+    None
 }
 
 fn act_on(state: &mut State, ctx: &Ctx, intent: ChatIntent, asked: &Asked) -> Option<Action> {

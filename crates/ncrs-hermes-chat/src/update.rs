@@ -24,7 +24,7 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
         Message::Open => {
             state.open = true;
             if state.thread.is_empty() {
-                greet(state, ctx);
+                open_thread(state, ctx);
             }
             None
         }
@@ -91,6 +91,7 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
         }
         Message::Understood(result) => understand::understood(state, ctx, result),
         Message::ModelReady => understand::model_ready(state, ctx),
+        Message::AiTurnedOn => understand::ai_turned_on(state, ctx),
     }
 }
 
@@ -368,10 +369,21 @@ pub fn source_chips(state: &State, ctx: &Ctx) -> Vec<Chip> {
     chips
 }
 
-fn greet(state: &mut State, ctx: &Ctx) {
+/// The first bubble: the greeting, or why Hermes cannot understand sentences
+/// yet. The greeting follows once the AI and the model are there.
+pub fn open_thread(state: &mut State, ctx: &Ctx) {
     if !is_ready(state, ctx) {
         return;
     }
+    if understand::gate(state, ctx, None) == understand::Gate::Said {
+        state.greeting_owed = true;
+        return;
+    }
+    greet(state, ctx);
+}
+
+fn greet(state: &mut State, ctx: &Ctx) {
+    state.greeting_owed = false;
     state.step = Step::ReadFolder;
     state.session.read_for = Some(crate::state::ReadFor::Learn);
     say(
@@ -571,6 +583,7 @@ pub fn handle_reply(state: &mut State, ctx: &Ctx, reply: ChipReply) -> Option<Ac
         ChipReply::Once => tidy::once(state, ctx, false),
         ChipReply::Always => tidy::once(state, ctx, true),
         ChipReply::DownloadModel => return Some(Action::DownloadModel),
+        ChipReply::TurnOnAi => return Some(Action::TurnOnAi),
         ChipReply::ConfirmTidy => return understand::confirm_tidy_yes(state, ctx),
         ChipReply::ConfirmChange => learn::confirm_change(state, ctx),
         ChipReply::OtherTarget => understand::ask_other_target(state, ctx),
