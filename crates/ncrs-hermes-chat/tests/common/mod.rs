@@ -224,6 +224,14 @@ impl Talk {
         self.settle(next);
     }
 
+    /// Answers "Where should they go?" with the archive, when it is asked.
+    pub fn choose_archive_if_asked(&mut self) {
+        let archive = ChipReply::Folder(self.path("archive"));
+        if self.state.chips().iter().any(|chip| chip.reply == archive) {
+            self.press(&archive);
+        }
+    }
+
     pub fn open(&mut self) {
         self.send(Message::Open);
     }

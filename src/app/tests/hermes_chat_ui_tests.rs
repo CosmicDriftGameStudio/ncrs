@@ -5,8 +5,8 @@ use iced_test::Simulator;
 use ncrs_ai::{ChatIntent, Compute, LocalModelStatus, ScriptedChatModel};
 use ncrs_filing::chat_work::{ChatAccess, ChatResult, RuleSaveFailure, RunSummary};
 use ncrs_hermes_chat::{
-    AreaRow, AreasCard, Availability, Chip, ChipReply, CountRow, Ctx, Entry, FileCard, Part,
-    RowOutcome, Step, TrialCard, TrialRow,
+    AreaRow, AreasCard, Availability, Chip, ChipReply, Ctx, Entry, FileCard, Part, RowOutcome,
+    Step, TrialCard, TrialRow,
 };
 use ncrs_index::{BatchKind, Index, Transfer};
 use ncrs_intake::{RuleProblem, TextChain};
@@ -27,7 +27,7 @@ fn simulator(app: &App) -> Simulator<'_, Message, iced::Theme> {
     )
 }
 
-fn matches_snapshot(app: &App, name: &str) {
+pub(super) fn matches_snapshot(app: &App, name: &str) {
     let matches = simulator(app)
         .snapshot(&iced::Theme::Dark)
         .unwrap()
@@ -39,7 +39,7 @@ fn matches_snapshot(app: &App, name: &str) {
     );
 }
 
-fn ready(lang: Language) -> Ctx {
+pub(super) fn ready(lang: Language) -> Ctx {
     let access = ChatAccess::new(
         Arc::new(Mutex::new(None)),
         Arc::new(TextChain::new()),
@@ -62,7 +62,7 @@ fn ready(lang: Language) -> Ctx {
     }
 }
 
-fn send(app: &mut App, ctx: &Ctx, message: HermesChatMessage) {
+pub(super) fn send(app: &mut App, ctx: &Ctx, message: HermesChatMessage) {
     drop(ncrs_hermes_chat::update(&mut app.hermes_chat, message, ctx));
 }
 
@@ -71,7 +71,7 @@ fn type_and_submit(app: &mut App, ctx: &Ctx, text: &str) {
     send(app, ctx, HermesChatMessage::Submit);
 }
 
-fn opened(lang: Language) -> (App, Ctx) {
+pub(super) fn opened(lang: Language) -> (App, Ctx) {
     let mut app = App::with_fixed_panels().in_language(lang);
     let ctx = ready(lang);
     send(&mut app, &ctx, HermesChatMessage::Open);
@@ -89,7 +89,7 @@ fn segments(names: &[&str]) -> Vec<String> {
     names.iter().map(|name| (*name).to_owned()).collect()
 }
 
-fn chip(label: &str, reply: ChipReply, primary: bool) -> Chip {
+pub(super) fn chip(label: &str, reply: ChipReply, primary: bool) -> Chip {
     Chip {
         label: label.to_owned(),
         reply,
@@ -97,11 +97,11 @@ fn chip(label: &str, reply: ChipReply, primary: bool) -> Chip {
     }
 }
 
-fn hermes_says(app: &mut App, parts: Vec<Part>, chips: Vec<Chip>) {
+pub(super) fn hermes_says(app: &mut App, parts: Vec<Part>, chips: Vec<Chip>) {
     app.hermes_chat.thread.push(Entry::Hermes { parts, chips });
 }
 
-fn user_says(app: &mut App, text: &str) {
+pub(super) fn user_says(app: &mut App, text: &str) {
     app.hermes_chat.thread.push(Entry::User(text.to_owned()));
 }
 
@@ -673,106 +673,6 @@ fn other_function_keys_are_swallowed_while_the_chat_is_open() {
     assert_eq!(route_key(&open, Key::Named(Named::F5), NONE), None);
 }
 
-fn count_row(text: &str, documents: u32) -> CountRow {
-    CountRow {
-        text: text.to_owned(),
-        documents,
-    }
-}
-
-fn area_row(name: &str, description: &str, documents: u32) -> AreaRow {
-    AreaRow {
-        name: name.to_owned(),
-        description: description.to_owned(),
-        example: String::new(),
-        documents,
-    }
-}
-
-fn english_areas_bubbles(app: &mut App, card: AreasCard) {
-    user_says(app, "Downloads");
-    hermes_says(
-        app,
-        vec![
-            Part::Text(
-                "Done reading: **3779 files**. You already have a good order, I see **20 areas**:"
-                    .to_owned(),
-            ),
-            Part::Areas(card),
-            Part::Text("Shall I file new files the same way?".to_owned()),
-        ],
-        vec![
-            chip("Yes, the same way", ChipReply::KeepYes, true),
-            chip("Change something", ChipReply::WantChange, false),
-        ],
-    );
-}
-
-fn long_names_card() -> AreasCard {
-    AreasCard {
-        rows: vec![
-            area_row("Taxes", "by year", 148),
-            area_row(
-                "Idle_Game_Concept_Discussion_with_the_whole_team_2025",
-                "by sender",
-                1334,
-            ),
-        ],
-        more: Some(count_row(
-            "Idle_Game_Concept_Discussion (1), CashColt_ALLE_Logos, dist-chrome-2026.6.1, Archive-2025-12-06-13-45-22 and 13 more",
-            1334,
-        )),
-        unordered: Some(count_row(
-            "No fixed order: directly in Downloads, Idle_Game_Concept_Discussion_Final_Version",
-            57,
-        )),
-    }
-}
-
-fn long_names_scene() -> App {
-    let mut app = App::with_fixed_panels().in_language(Language::English);
-    let ctx = ready(Language::English);
-    send(&mut app, &ctx, HermesChatMessage::Open);
-    english_areas_bubbles(&mut app, long_names_card());
-    app
-}
-
-/// The area card as Marc sees it: English, the dracula preset applied the way
-/// the start applies a configured one.
-fn areas_dracula_scene() -> App {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("config.toml");
-    std::fs::write(&path, "[theme]\npreset = \"dracula\"\n").unwrap();
-    let mut app = App::with_fixed_panels()
-        .with_config(crate::config::load(&path))
-        .in_language(Language::English);
-    let ctx = ready(Language::English);
-    send(&mut app, &ctx, HermesChatMessage::Open);
-    english_areas_bubbles(
-        &mut app,
-        AreasCard {
-            rows: vec![
-                area_row("Taxes", "by year", 148),
-                area_row("Insurance", "by provider", 96),
-                area_row("Flat", "by topic", 61),
-            ],
-            more: Some(count_row("Cars, Health, Travel, Work and 14 more", 702)),
-            unordered: Some(count_row("No fixed order: Misc, Scans", 38)),
-        },
-    );
-    app
-}
-
-#[test]
-fn the_long_names_stay_inside_the_areas_card() {
-    matches_snapshot(&long_names_scene(), "hermes_chat_areas_long_names_en");
-}
-
-#[test]
-fn the_areas_card_in_the_dracula_preset_uses_one_font() {
-    matches_snapshot(&areas_dracula_scene(), "hermes_chat_areas_dracula_en");
-}
-
 fn read_downloads() -> Arc<ncrs_filing::chat_work::FolderReading> {
     let file = |name: &str| ncrs_intake::PlanFile {
         relative_path: PathBuf::from(name),
@@ -782,6 +682,7 @@ fn read_downloads() -> Arc<ncrs_filing::chat_work::FolderReading> {
         recorded_at: 0,
     };
     Arc::new(ncrs_filing::chat_work::FolderReading {
+        patterns: Vec::new(),
         root: PathBuf::from("/home/test/Downloads"),
         files: vec![file("Taxes/a.pdf"), file("Misc/b.pdf"), file("c.pdf")],
         photos: 0,

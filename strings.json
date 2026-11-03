@@ -8665,12 +8665,6 @@
       "de": "Gern! In {folder} liegen **{count} Dateien**. Wohin damit?"
     },
     {
-      "key": "hermes_chat.source_summary_one_target",
-      "context": "Hermes chat (F2): Hermes' report after reading the folder to tidy up, when there is only one folder to file into, so Hermes does not ask. **Double asterisks** mark bold text and must stay around the same words. {folder} is the folder name, {count} the number of files, {target} the folder they are filed into.",
-      "en": "Sure! **{count} files** are in {folder}. I'll file them in {target}.",
-      "de": "Gern! In {folder} liegen **{count} Dateien**. Ich lege sie in {target} ab."
-    },
-    {
       "key": "hermes_chat.no_target",
       "context": "Hermes chat (F2): Hermes does not know yet where the user files documents. Folder buttons follow.",
       "en": "I don't know a folder for your documents yet. Where are they now?",
@@ -9032,13 +9026,13 @@
     },
     {
       "key": "hermes_chat.confirm_tidy_to",
-      "context": "Hermes chat (F2): Hermes asks to confirm a tidy-up it understood from a sentence. {source} is the full path of the folder to tidy up, {target} the full path of the folder the files go to, both as the system resolved them, {mode} is empty or one of the two phrases for copying or moving that start with a comma. The question ends with a question mark.",
+      "context": "Hermes chat (F2): Hermes asks to confirm a tidy-up it understood from a sentence. {source} is the folder to tidy up, {target} the folder the files go to, each named the way the chat names folders: its name or a path starting with ~, {mode} is empty or one of the two phrases for copying or moving that start with a comma. The question ends with a question mark.",
       "en": "Do you mean {source} → {target}{mode}?",
       "de": "Meinst du {source} → {target}{mode}?"
     },
     {
       "key": "hermes_chat.confirm_tidy",
-      "context": "Hermes chat (F2): Hermes asks to confirm a tidy-up it understood from a sentence when no target folder was named. {source} is the full path of the folder to tidy up as the system resolved it, {mode} is empty or one of the two phrases for copying or moving that start with a comma.",
+      "context": "Hermes chat (F2): Hermes asks to confirm a tidy-up it understood from a sentence when no target folder was named. {source} is the folder to tidy up, named the way the chat names folders: its name or a path starting with ~, {mode} is empty or one of the two phrases for copying or moving that start with a comma.",
       "en": "Do you mean: tidy up {source}{mode}?",
       "de": "Meinst du: {source} aufräumen{mode}?"
     },
@@ -9215,6 +9209,30 @@
       "context": "Hermes chat (F2): button: file everything into the one folder without subfolders.",
       "en": "All in one folder",
       "de": "Alles in einen Ordner"
+    },
+    {
+      "key": "hermes_chat.change_area_ask",
+      "context": "Hermes chat (F2): Hermes found no folder for the word the user used in a change of order and asks which area of the filing is meant. A button for every area follows.",
+      "en": "Which area do you mean?",
+      "de": "Welchen Bereich meinst du?"
+    },
+    {
+      "key": "hermes_chat.always_set",
+      "context": "Hermes chat (F2): Hermes says what the answer Always does. {folder} is the folder whose new files are filed.",
+      "en": "Understood: new files in {folder} are filed automatically from now on.",
+      "de": "Verstanden: neue Dateien in {folder} werden ab jetzt automatisch abgelegt."
+    },
+    {
+      "key": "hermes_chat.small_talk",
+      "context": "Hermes chat (F2): Hermes answers a greeting, thanks or the question what it can do, with one line on what it does. Buttons with things it can do follow.",
+      "en": "I'm Hermes: I tidy up your documents, find them and change how your archive is ordered. What would you like to do?",
+      "de": "Ich bin Hermes: Ich räume deine Dokumente auf, finde sie und ändere, wie dein Archiv geordnet ist. Was möchtest du tun?"
+    },
+    {
+      "key": "hermes_chat.leave_as_is",
+      "context": "Hermes chat (F2): the user said nothing should be changed; Hermes agrees politely. Buttons with things it can do follow.",
+      "en": "Alright, I'll leave everything as it is.",
+      "de": "In Ordnung, ich lasse alles so, wie es ist."
     }
   ]
 }

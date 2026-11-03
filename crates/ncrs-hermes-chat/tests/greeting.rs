@@ -71,6 +71,14 @@ mod tests {
         assert_eq!(areas_cards(&talk), 0);
         assert_eq!(
             talk.last_texts(),
+            vec![say(
+                Msg::HermesChatSourceSummary,
+                &[("folder", "inbox"), ("count", "1")]
+            )]
+        );
+        talk.press(&ChipReply::Folder(talk.path("archive")));
+        assert_eq!(
+            talk.last_texts(),
             vec![say(Msg::HermesChatAskOnce, &[("folder", "inbox")])]
         );
     }
@@ -152,7 +160,10 @@ mod tests {
         assert!(texts.contains(&say(Msg::HermesChatPhotosSkipped, &[("count", "1")])));
         assert_eq!(
             talk.last_texts(),
-            vec![say(Msg::HermesChatAskOnce, &[("folder", "inbox")])]
+            vec![say(
+                Msg::HermesChatSourceSummary,
+                &[("folder", "inbox"), ("count", "2")]
+            )]
         );
     }
 
@@ -172,7 +183,10 @@ mod tests {
         talk.press(&ChipReply::PhotosYes);
         assert_eq!(
             talk.last_texts(),
-            vec![say(Msg::HermesChatAskOnce, &[("folder", "inbox")])],
+            vec![say(
+                Msg::HermesChatSourceSummary,
+                &[("folder", "inbox"), ("count", "2")]
+            )],
             "the photos are not asked about twice"
         );
     }

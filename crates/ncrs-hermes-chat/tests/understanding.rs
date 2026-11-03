@@ -483,6 +483,7 @@ mod tests {
             r#"{"intent":"tidy_folder","source":"Inbox","target":"archive","schedule":"once","transfer":"copy"}"#,
         );
         talk.press(&ChipReply::ConfirmTidy);
+        talk.choose_archive_if_asked();
         assert_eq!(talk.plan().filed, 1);
         assert_eq!(talk.files(), before, "the trial moves nothing");
         assert_eq!(
@@ -501,6 +502,7 @@ mod tests {
             r#"{"intent":"tidy_folder","source":"Inbox","schedule":"always","transfer":"move"}"#,
         );
         talk.press(&ChipReply::ConfirmTidy);
+        talk.choose_archive_if_asked();
         assert!(talk.plan().filed > 0);
     }
 

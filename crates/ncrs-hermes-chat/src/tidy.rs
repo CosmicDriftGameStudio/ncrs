@@ -20,7 +20,7 @@ use crate::state::{
     TrialCard, TrialRow, TrialSession,
 };
 use crate::texts::{field_label, fill, folder_name, number, segments, text};
-use crate::update::{access, ask_chips, cancel_chip, chip, chip_labelled, hermes, say, work};
+use crate::update::{access, cancel_chip, chip, chip_labelled, hermes, say, work};
 use crate::{learn, stay_groups, texts};
 
 pub const PAGE: usize = 10;
@@ -102,32 +102,15 @@ pub fn choose_where(state: &mut State, ctx: &Ctx, reading: &Arc<FolderReading>) 
         say(
             state,
             text(ctx.lang, Msg::HermesChatNoTarget),
-            ask_chips(ctx),
+            crate::update::target_chips(state, ctx),
         );
-        return;
-    }
-    if let [only] = candidates.as_slice() {
-        let target = only.clone();
-        say(
-            state,
-            fill(
-                ctx.lang,
-                Msg::HermesChatSourceSummaryOneTarget,
-                &[
-                    ("folder", &folder),
-                    ("count", &number(reading.files.len())),
-                    ("target", &folder_name(ctx, &target)),
-                ],
-            ),
-            Vec::new(),
-        );
-        choose_target(state, ctx, target);
         return;
     }
     state.step = Step::Target;
+    let only_one = candidates.len() == 1;
     let chips = candidates
         .into_iter()
-        .map(|path| chip_labelled(folder_name(ctx, &path), ChipReply::Folder(path), false))
+        .map(|path| chip_labelled(folder_name(ctx, &path), ChipReply::Folder(path), only_one))
         .collect::<Vec<_>>();
     let mut chips = chips;
     chips.push(chip(
@@ -205,11 +188,19 @@ pub fn once(state: &mut State, ctx: &Ctx, always: bool) {
         .proposal
         .as_ref()
         .and_then(|proposal| proposal.transfer);
-    if always && !ctx.sources.contains(&tidy.source) {
-        state.queued_action = Some(Action::SetFolderRole {
-            folder: tidy.source.clone(),
-            role: FolderRole::Inbox,
-        });
+    if always {
+        if !ctx.sources.contains(&tidy.source) {
+            state.queued_action = Some(Action::SetFolderRole {
+                folder: tidy.source.clone(),
+                role: FolderRole::Inbox,
+            });
+        }
+        let shown = folder_name(ctx, &tidy.source);
+        say(
+            state,
+            fill(ctx.lang, Msg::HermesChatAlwaysSet, &[("folder", &shown)]),
+            Vec::new(),
+        );
     }
     if let Some(transfer) = said {
         mode(state, ctx, transfer);

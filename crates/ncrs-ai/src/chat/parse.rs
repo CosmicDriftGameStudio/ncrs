@@ -75,6 +75,8 @@ pub fn parse_chat_reply(raw: &str, turn: &ChatTurn) -> Result<ChatIntent, AiErro
                 .map(|index| ChatIntent::Answer { choice: index })
                 .ok_or(AiError::BadReply("the choice is not one of the options"))
         }
+        "smalltalk" => Ok(ChatIntent::SmallTalk),
+        "leave_as_is" => Ok(ChatIntent::LeaveAsIs),
         "other" => Ok(ChatIntent::Other),
         _ => Err(AiError::BadReply("unknown intent")),
     }

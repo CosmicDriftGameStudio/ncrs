@@ -358,6 +358,27 @@ pub fn folder_chips(ctx: &Ctx, folders: Vec<PathBuf>) -> Vec<Chip> {
         .collect()
 }
 
+/// Where structure is read: the filing locations only, and the picker.
+pub fn target_chips(state: &State, ctx: &Ctx) -> Vec<Chip> {
+    let mut targets: Vec<PathBuf> = ctx.targets.clone();
+    for learned in &state.session.learned {
+        if !targets.contains(learned) {
+            targets.push(learned.clone());
+        }
+    }
+    if targets.is_empty() {
+        targets.extend(Some(ctx.home.join("Documents")).filter(|path| path.is_dir()));
+    }
+    let mut chips = folder_chips(ctx, targets);
+    chips.push(chip(
+        ctx,
+        Msg::HermesChatOtherFolder,
+        ChipReply::PickFolder,
+        false,
+    ));
+    chips
+}
+
 /// The folders to offer when a folder is asked for, and the picker.
 pub fn ask_chips(ctx: &Ctx) -> Vec<Chip> {
     let mut chips = folder_chips(ctx, candidate_folders(ctx, true));
@@ -514,7 +535,7 @@ fn ask_read_folder(state: &mut State, ctx: &Ctx, folder: Option<PathBuf>) -> Opt
         say(
             state,
             text(ctx.lang, Msg::HermesChatAskReadFolder),
-            ask_chips(ctx),
+            target_chips(state, ctx),
         );
         return None;
     };
@@ -546,7 +567,7 @@ pub fn batch_not_yet(state: &mut State, ctx: &Ctx) {
     say(
         state,
         text(ctx.lang, Msg::HermesChatBatchNotYet),
-        Vec::new(),
+        fallback_chips(ctx),
     );
 }
 
@@ -626,6 +647,7 @@ pub fn handle_reply(state: &mut State, ctx: &Ctx, reply: ChipReply) -> Option<Ac
         ChipReply::RoleSource => return crate::greeting::role_chosen(state, ctx, true),
         ChipReply::RoleTarget => return crate::greeting::role_chosen(state, ctx, false),
         ChipReply::NewTarget => return crate::decide::pick_new_target(state),
+        ChipReply::ChangeArea(area) => learn::area_chosen(state, ctx, area),
         ChipReply::DecidePerFile => crate::decide::per_file(state, ctx),
         ChipReply::DecideTarget(path) => crate::decide::target_chosen(state, ctx, path),
         ChipReply::DecideSkip => crate::decide::skipped(state, ctx),
@@ -661,6 +683,8 @@ pub fn cancel(state: &mut State, ctx: &Ctx) {
     state.session.photos_of = None;
     state.session.layout = None;
     state.session.deciding = None;
+    state.session.change_order = None;
+    state.session.area_chosen = false;
     state.session.confirm = None;
     state.session.choosing = None;
     state.session.proposal = None;

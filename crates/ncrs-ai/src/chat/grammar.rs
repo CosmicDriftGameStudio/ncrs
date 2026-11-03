@@ -4,7 +4,8 @@
 use super::turn::ChatTurn;
 
 const BASE_RULES: &str = include_str!("grammar.gbnf");
-const INTENT_ROOTS: &str = "tidy | change | undo | search | ask | explain | bulk | other";
+const INTENT_ROOTS: &str =
+    "tidy | change | undo | search | ask | explain | bulk | smalltalk | leave | other";
 
 /// An option the grammar can spell without escaping.
 fn is_literal_safe(option: &str) -> bool {

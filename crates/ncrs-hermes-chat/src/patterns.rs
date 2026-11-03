@@ -1,9 +1,7 @@
 //! "Is one of these your pattern?": the orders the folders already follow,
 //! offered to be used below every area, with a preview before the yes.
 
-use ncrs_filing::chat_work::{
-    pattern_choices, ChatWork, PatternChoice, PatternLevel, PatternPreview,
-};
+use ncrs_filing::chat_work::{ChatWork, PatternChoice, PatternLevel, PatternPreview};
 use ncrs_i18n::Msg;
 use ncrs_intake::PlaceholderLabel;
 
@@ -39,7 +37,7 @@ pub fn chips(state: &mut State, ctx: &Ctx) -> Vec<Chip> {
         .session
         .learning
         .as_ref()
-        .map(|reading| pattern_choices(&reading.structure))
+        .map(|reading| reading.patterns.clone())
         .unwrap_or_default();
     let chips = choices
         .iter()

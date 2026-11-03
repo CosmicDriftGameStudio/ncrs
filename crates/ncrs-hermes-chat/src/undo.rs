@@ -17,7 +17,11 @@ pub fn last_run_done(state: &mut State, ctx: &Ctx, result: Result<Option<RunSumm
     let summary = match result {
         Ok(Some(summary)) => summary,
         Ok(None) => {
-            say(state, text(ctx.lang, Msg::HermesChatUndoNone), Vec::new());
+            let chips = crate::update::fallback_chips(ctx)
+                .into_iter()
+                .filter(|chip| chip.reply != ChipReply::IntentUndo)
+                .collect();
+            say(state, text(ctx.lang, Msg::HermesChatUndoNone), chips);
             return;
         }
         Err(reason) => {

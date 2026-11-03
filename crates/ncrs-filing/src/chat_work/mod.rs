@@ -37,7 +37,7 @@ pub use pattern::{
 pub use reading::{FolderReading, ReadError, FILE_LIMIT};
 pub use runs::{RunItem, RunPlan, RunReport, RunSummary};
 pub use trial::{StayReason, TrialEntry, TrialOutcome, TrialPlan};
-pub use words::{normalize_word, same_word};
+pub use words::{normalize_word, same_word, word_within};
 
 pub use crate::execute::{TrashItem, TrashReport, UndoReport};
 

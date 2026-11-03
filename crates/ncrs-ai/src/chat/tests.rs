@@ -102,7 +102,7 @@ fn the_grammar_without_options_has_no_answer() {
     let grammar = chat_grammar(&turn("x"));
 
     assert!(grammar
-        .starts_with("root ::= tidy | change | undo | search | ask | explain | bulk | other\n"));
+        .starts_with("root ::= tidy | change | undo | search | ask | explain | bulk | smalltalk | leave | other\n"));
     assert!(!grammar.contains("answer"));
     assert!(grammar.contains("other ::="));
 }
@@ -117,7 +117,7 @@ fn the_grammar_with_options_has_an_answer_of_exactly_those() {
     let grammar = chat_grammar(&asked);
 
     assert!(grammar.starts_with(
-        "root ::= tidy | change | undo | search | ask | explain | bulk | other | answer\n\
+        "root ::= tidy | change | undo | search | ask | explain | bulk | smalltalk | leave | other | answer\n\
          choice ::= \"\\\"ja\\\"\" | \"\\\"nein\\\"\"\n\
          answer ::= \"{\\\"intent\\\":\\\"answer\\\",\\\"choice\\\":\" choice \"}\"\n"
     ));
@@ -196,6 +196,14 @@ fn every_intent_is_read() {
         })
     );
     assert_eq!(parse(r#"{"intent":"other","x":1}"#), Ok(ChatIntent::Other));
+    assert_eq!(
+        parse(r#"{"intent":"smalltalk"}"#),
+        Ok(ChatIntent::SmallTalk)
+    );
+    assert_eq!(
+        parse(r#"{"intent":"leave_as_is"}"#),
+        Ok(ChatIntent::LeaveAsIs)
+    );
 }
 
 #[test]
@@ -301,7 +309,7 @@ fn the_rows_are_all_there_and_make_turns() {
         .chain(rows(HOLDOUT_ROWS))
         .collect();
 
-    assert_eq!(all.len(), 160);
+    assert_eq!(all.len(), 166);
     for row in &all {
         let turn = row.turn();
         assert_eq!(turn.message, row.text);

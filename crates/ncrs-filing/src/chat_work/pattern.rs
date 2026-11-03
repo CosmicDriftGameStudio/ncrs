@@ -79,6 +79,22 @@ fn trailing_pattern(levels: &[Level]) -> Option<(usize, Vec<PatternLevel>)> {
 
 /// The distinct patterns the branches end in, most documents first.
 pub fn pattern_choices(structure: &LocationStructure) -> Vec<PatternChoice> {
+    let mut choices = all_choices(structure);
+    choices.truncate(OFFERED_PATTERNS);
+    choices
+}
+
+/// The patterns that would move at least one file of the reading.
+pub fn adoptable_patterns(kinds: &Kinds, reading: &FolderReading) -> Vec<PatternChoice> {
+    let mut choices: Vec<PatternChoice> = all_choices(&reading.structure)
+        .into_iter()
+        .filter(|choice| preview(kinds, reading, &choice.levels).is_some())
+        .collect();
+    choices.truncate(OFFERED_PATTERNS);
+    choices
+}
+
+fn all_choices(structure: &LocationStructure) -> Vec<PatternChoice> {
     let mut found: BTreeMap<Vec<PatternLevel>, u32> = BTreeMap::new();
     for branch in structure.areas.iter().flat_map(|area| &area.branches) {
         if let Some((_, levels)) = trailing_pattern(&branch.levels) {
@@ -95,7 +111,6 @@ pub fn pattern_choices(structure: &LocationStructure) -> Vec<PatternChoice> {
             .cmp(&left.documents)
             .then_with(|| left.levels.cmp(&right.levels))
     });
-    choices.truncate(OFFERED_PATTERNS);
     choices
 }
 

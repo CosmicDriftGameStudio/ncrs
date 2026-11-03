@@ -109,7 +109,7 @@
 {"id": 109, "lang": "en", "intent": "answer", "text": "yeah do it", "expected": {"choice": "yes"}, "question": "Shall I go ahead?", "options": ["yes", "no"]}
 {"id": 110, "lang": "en", "intent": "answer", "text": "nope", "expected": {"choice": "no"}, "question": "Shall I go ahead?", "options": ["yes", "no"]}
 {"id": 111, "lang": "de", "intent": "other", "text": "ls -la", "expected": {}}
-{"id": 112, "lang": "de", "intent": "other", "text": "hallo wie gehts", "expected": {}}
+{"id": 112, "lang": "de", "intent": "smalltalk", "text": "hallo wie gehts", "expected": {}}
 {"id": 113, "lang": "de", "intent": "other", "text": "wie wird das wetter morgen", "expected": {}, "question": "Kopieren oder verschieben?", "options": ["kopieren", "verschieben"]}
 {"id": 114, "lang": "de", "intent": "other", "text": "rm -rf ~/Downloads", "expected": {}}
 {"id": 115, "lang": "de", "intent": "other", "text": "erzähl mir einen witz", "expected": {}}
@@ -118,3 +118,9 @@
 {"id": 118, "lang": "de", "intent": "other", "text": "was ist die hauptstadt von frankreich", "expected": {}}
 {"id": 119, "lang": "en", "intent": "other", "text": "tell me a joke", "expected": {}}
 {"id": 120, "lang": "en", "intent": "other", "text": "cd .. && git status", "expected": {}}
+{"id": 121, "lang": "en", "intent": "smalltalk", "text": "hi", "expected": {}}
+{"id": 122, "lang": "en", "intent": "smalltalk", "text": "what can you do?", "expected": {}}
+{"id": 123, "lang": "en", "intent": "leave_as_is", "text": "actually, just keep everything as it is", "expected": {}}
+{"id": 124, "lang": "de", "intent": "smalltalk", "text": "hallo", "expected": {}}
+{"id": 125, "lang": "de", "intent": "smalltalk", "text": "was kannst du?", "expected": {}}
+{"id": 126, "lang": "de", "intent": "leave_as_is", "text": "lass einfach alles so wie es ist", "expected": {}}

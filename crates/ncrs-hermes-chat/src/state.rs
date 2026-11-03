@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use ncrs_ai::{ChatTurn, Schedule};
 use ncrs_filing::chat_work::{
-    AnsweredGroups, ChangePreview, ChatWork, FolderReading, OrderChange, PatternChoice,
-    PatternLevel, RunPlan, RunSummary, TrashItem, TrialPlan,
+    AnsweredGroups, ChangeOrder, ChangePreview, ChatWork, FolderReading, OrderChange,
+    PatternChoice, PatternLevel, RunPlan, RunSummary, TrashItem, TrialPlan,
 };
 use ncrs_index::Transfer;
 
@@ -70,6 +70,8 @@ pub enum ChipReply {
     /// Opens the picker for a new folder to file into.
     NewTarget,
     DecidePerFile,
+    /// The area the user meant by a word Hermes found no folder for.
+    ChangeArea(String),
     DecideTarget(PathBuf),
     DecideSkip,
     NewLayout(NewLayout),
@@ -122,6 +124,7 @@ impl ChipReply {
             | Self::WantChange
             | Self::ShowAll
             | Self::ScopeAll
+            | Self::ChangeArea(_)
             | Self::ScopeOnly(_)
             | Self::LeaveThem
             | Self::Later
@@ -374,6 +377,10 @@ pub struct Session {
     pub tidy: Option<Tidy>,
     pub changes: Vec<OrderChange>,
     pub pending_change: Option<ChangePreview>,
+    /// The order asked for, kept while Hermes asks which area is meant.
+    pub change_order: Option<ChangeOrder>,
+    /// The area was picked from the buttons: no second question if it fails.
+    pub area_chosen: bool,
     /// The patterns on offer after the areas card.
     pub patterns: Vec<PatternChoice>,
     /// The pattern change waiting for a yes.

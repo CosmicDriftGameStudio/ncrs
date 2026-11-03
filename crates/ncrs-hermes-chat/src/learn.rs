@@ -15,11 +15,12 @@ use crate::ctx::Ctx;
 use crate::state::{Chip, ChipReply, FileCard, Offer, Part, ReadFor, State, Step};
 use crate::texts::{areas_card, fill, folder_name, number, plural_text, text};
 use crate::update::{
-    access, ask_chips, cancel_chip, chip, chip_labelled, hermes, say, source_chips, work,
+    access, cancel_chip, chip, chip_labelled, hermes, say, source_chips, target_chips, work,
 };
 use crate::{patterns, tidy};
 
 const SCOPE_VALUES: usize = 3;
+const AREA_CHOICES: usize = 6;
 
 pub fn read(state: &mut State, ctx: &Ctx, folder: PathBuf) {
     read_for(state, ctx, folder, ReadFor::Learn);
@@ -232,13 +233,14 @@ pub fn keep(state: &mut State, ctx: &Ctx) -> Option<Action> {
 }
 
 pub fn change_order(state: &mut State, ctx: &Ctx, kind_word: String, order: ChangeOrder) {
+    state.session.change_order = Some(order);
     let Some(reading) = state.session.learning.clone() else {
         state.step = Step::ReadFolder;
         state.session.read_for = Some(ReadFor::Learn);
         say(
             state,
             text(ctx.lang, Msg::HermesChatChangeNeedsReading),
-            ask_chips(ctx),
+            target_chips(state, ctx),
         );
         return;
     };
@@ -257,6 +259,9 @@ pub fn change_order(state: &mut State, ctx: &Ctx, kind_word: String, order: Chan
 pub fn preview_done(state: &mut State, ctx: &Ctx, computed: Option<ChangePreview>) {
     let wanted = state.session.change_scope.take();
     let Some(mut preview) = computed else {
+        if ask_area(state, ctx) {
+            return;
+        }
         state.step = Step::AfterChange;
         let word = state.session.change_word.clone();
         say(
@@ -320,6 +325,50 @@ pub fn preview_done(state: &mut State, ctx: &Ctx, computed: Option<ChangePreview
     state.session.pending_change = Some(preview);
     state.step = Step::Scope;
     hermes(state, parts, chips);
+}
+
+/// No folder fits the word: the areas to choose from, so the order asked for
+/// is not lost. False when it was asked already or there is no area.
+fn ask_area(state: &mut State, ctx: &Ctx) -> bool {
+    let (Some(reading), Some(_)) = (state.session.learning.clone(), state.session.change_order)
+    else {
+        return false;
+    };
+    if state.session.area_chosen || reading.structure.areas.is_empty() {
+        return false;
+    }
+    let mut areas: Vec<&ncrs_intake::Area> = reading.structure.areas.iter().collect();
+    areas.sort_by(|left, right| right.documents.cmp(&left.documents));
+    let mut chips: Vec<Chip> = areas
+        .into_iter()
+        .take(AREA_CHOICES)
+        .map(|area| {
+            chip_labelled(
+                area.folder.clone(),
+                ChipReply::ChangeArea(area.folder.clone()),
+                false,
+            )
+        })
+        .collect();
+    chips.push(chip(
+        ctx,
+        Msg::HermesChatOtherFolder,
+        ChipReply::PickFolder,
+        false,
+    ));
+    chips.push(cancel_chip(ctx));
+    state.step = Step::AfterChange;
+    say(state, text(ctx.lang, Msg::HermesChatChangeAreaAsk), chips);
+    true
+}
+
+/// The area the user picked is the word the change is looked up with.
+pub fn area_chosen(state: &mut State, ctx: &Ctx, area: String) {
+    let Some(order) = state.session.change_order else {
+        return;
+    };
+    state.session.area_chosen = true;
+    change_order(state, ctx, area, order);
 }
 
 /// The preview is the question; the yes applies the change.

@@ -80,6 +80,15 @@ pub fn folder_name(ctx: &Ctx, path: &Path) -> String {
     )
 }
 
+/// A folder the way the chat shows it where it must be told apart: from home
+/// as `~/…`, else as it is.
+pub fn shown_folder(ctx: &Ctx, path: &Path) -> String {
+    match path.strip_prefix(&ctx.home) {
+        Ok(rest) if !rest.as_os_str().is_empty() => format!("~/{}", rest.display()),
+        _ => path.to_string_lossy().into_owned(),
+    }
+}
+
 pub fn label_text(lang: Language, label: PlaceholderLabel) -> &'static str {
     lang.text(match label {
         PlaceholderLabel::Year => Msg::HermesChatLabelYear,
@@ -321,6 +330,7 @@ mod tests {
             ],
         };
         let reading = FolderReading {
+            patterns: Vec::new(),
             root: "Downloads".into(),
             files: Vec::new(),
             photos: 0,

@@ -17,10 +17,10 @@ use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::message::Message;
 use crate::state::{Asked, Chip, ChipReply, Entry, Part, State, Step, Thinking, Unsent};
-use crate::texts::{fill, text};
+use crate::texts::{fill, shown_folder, text};
 use crate::update::{
-    ask_chips, batch_not_yet, cancel_chip, chip, drop_working, explain_not_yet, fallback,
-    fallback_chips, handle_reply, open_thread, say, search_not_yet,
+    batch_not_yet, cancel_chip, chip, drop_working, explain_not_yet, fallback, fallback_chips,
+    handle_reply, open_thread, say, search_not_yet,
 };
 use crate::{learn, undo};
 
@@ -260,6 +260,22 @@ fn act_on(state: &mut State, ctx: &Ctx, intent: ChatIntent, asked: &Asked) -> Op
             batch_not_yet(state, ctx);
             None
         }
+        ChatIntent::SmallTalk => {
+            say(
+                state,
+                text(ctx.lang, Msg::HermesChatSmallTalk),
+                fallback_chips(ctx),
+            );
+            None
+        }
+        ChatIntent::LeaveAsIs => {
+            say(
+                state,
+                text(ctx.lang, Msg::HermesChatLeaveAsIs),
+                fallback_chips(ctx),
+            );
+            None
+        }
         ChatIntent::Other => {
             fallback(state, ctx);
             None
@@ -316,14 +332,14 @@ pub fn confirm_tidy(state: &mut State, ctx: &Ctx) {
         Some(Transfer::Copy) => text(ctx.lang, Msg::HermesChatConfirmCopy),
         _ => String::new(),
     };
-    let source = proposal.source.display().to_string();
+    let source = shown_folder(ctx, &proposal.source);
     let sentence = match &proposal.target {
         Some(target) => fill(
             ctx.lang,
             Msg::HermesChatConfirmTidyTo,
             &[
                 ("source", &source),
-                ("target", &target.display().to_string()),
+                ("target", &shown_folder(ctx, target)),
                 ("mode", &mode),
             ],
         ),
@@ -374,7 +390,7 @@ pub fn ask_other_target(state: &mut State, ctx: &Ctx) {
     say(
         state,
         text(ctx.lang, Msg::HermesChatAskOtherTarget),
-        ask_chips(ctx),
+        crate::update::target_chips(state, ctx),
     );
 }
 

@@ -11,7 +11,9 @@ Intents and fields:
 - explain: ONLY a why-question about where a given file ended up (warum liegt X dort). Not for "wo ist ..." (that is search). file (file name).
 - bulk_move: move all documents of a certain kind, sender or year to a folder. Only when the message asks to move/put/pack such documents somewhere. If the source is a named folder, it is tidy_folder instead. Optional filter_kind, filter_sender, filter_year (4-digit); target (folder path, required). A message that only asks to find or show documents is search, never bulk_move.
 - answer: the message picks one of the options of Hermes' last question. Only if a last question is given; if the message is a correction or a new request instead, ignore the question. choice must be one of the options given.
-- other: smalltalk, nonsense, shell commands, anything unrelated to filing documents. No fields.
+- smalltalk: a greeting, thanks, or a question about what Hermes can do or who it is ("hi", "hallo", "danke", "what can you do?", "was kannst du?"). Not a request for a joke or a fact (that is other). No fields.
+- leave_as_is: the user wants nothing changed ("keep everything as it is", "lass alles so wie es ist", "never mind, forget it", "doch nichts ändern"). Only when it is neither taking back an action (that is undo: "zurücksetzen", "wie vorher") nor a pick from Hermes' last question ("nö stopp" after a question is answer). No fields.
+- other: nonsense, shell commands, anything unrelated to filing documents. No fields.
 
 Examples:
 Hermes' last question: none
@@ -93,6 +95,26 @@ Hermes' last question: none
 Previous search: none
 Message: wie viel hab ich vodafone insgesamt bezahlt
 {"intent":"ask_content","question_kind":"sum","sender":"Vodafone"}
+
+Hermes' last question: none
+Previous search: none
+Message: hi
+{"intent":"smalltalk"}
+
+Hermes' last question: none
+Previous search: none
+Message: was kannst du eigentlich
+{"intent":"smalltalk"}
+
+Hermes' last question: none
+Previous search: none
+Message: lass einfach alles so wie es ist
+{"intent":"leave_as_is"}
+
+Hermes' last question: none
+Previous search: none
+Message: actually, just keep everything as it is
+{"intent":"leave_as_is"}
 
 Hermes' last question: Papier oder digital? Options: Papier | digital
 Previous search: none

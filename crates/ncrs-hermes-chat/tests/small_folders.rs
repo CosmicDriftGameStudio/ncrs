@@ -62,6 +62,7 @@ mod tests {
     fn tidy_until_once(talk: &mut Talk) {
         talk.type_text_understood("Räum Inbox auf", TIDY_INBOX);
         talk.press(&ChipReply::ConfirmTidy);
+        talk.choose_archive_if_asked();
     }
 
     fn tidy_until_trial(talk: &mut Talk, transfer: &ChipReply) {
@@ -252,6 +253,7 @@ mod tests {
         talk.send(Message::FolderPicked(Some(downloads.clone())));
         talk.press(&ChipReply::RoleSource);
         talk.actions.clear();
+        talk.press(&ChipReply::Folder(talk.path("archive")));
         talk.press(&ChipReply::Always);
         assert_eq!(
             talk.actions,
@@ -341,6 +343,7 @@ mod tests {
         };
         talk.type_text_understood(&format!("Räum {} auf", archive.display()), &tidy(&archive));
         talk.press(&ChipReply::ConfirmTidy);
+        talk.choose_archive_if_asked();
         assert_eq!(
             talk.last_texts(),
             vec![say(Msg::HermesChatSourceIsTarget, &[("folder", "archive")])]
@@ -349,6 +352,7 @@ mod tests {
         let inside = archive.join("Alfa");
         talk.type_text_understood(&format!("Räum {} auf", inside.display()), &tidy(&inside));
         talk.press(&ChipReply::ConfirmTidy);
+        talk.choose_archive_if_asked();
         assert_eq!(
             talk.last_texts(),
             vec![say(Msg::HermesChatSourceIsTarget, &[("folder", "Alfa")])]
@@ -486,13 +490,14 @@ mod tests {
             talk.last_texts(),
             vec![say(
                 Msg::HermesChatConfirmTidy,
-                &[("source", &real), ("mode", "")]
+                &[("source", "~/Downloads"), ("mode", "")]
             )]
         );
         assert!(talk.actions.is_empty());
         assert!(talk.state.pending_work().is_none());
 
         talk.press(&ChipReply::ConfirmTidy);
+        talk.choose_archive_if_asked();
         assert!(
             talk.last_texts()
                 .iter()

@@ -13,7 +13,7 @@ use ncrs_intake::{
 };
 
 use super::pattern::{self, PatternSpec};
-use super::{same_word, FolderReading};
+use super::{same_word, word_within, FolderReading};
 
 /// How the folders below an area are ordered after a change.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -303,7 +303,10 @@ pub fn preview(
                 .filter(|(_, parts)| matches_branch(parts, area, branch))
                 .map(|(file, _)| file)
                 .collect();
-            let documents: Vec<&PlanFile> = if branch_names_the_kind(kind_word, branch) {
+            let documents: Vec<&PlanFile> = if (entry.is_none()
+                && word_within(kind_word, &area.folder))
+                || branch_names_the_kind(kind_word, branch)
+            {
                 in_branch.clone()
             } else {
                 in_branch
@@ -366,6 +369,8 @@ pub fn preview(
             names.dedup();
             names
         }
+        // The word names the area: everything in it changes.
+        None if word_within(kind_word, &chosen.area.folder) => Vec::new(),
         None => vec![kind_word.to_owned()],
     };
     let (change_area, scope) = match scope_of(&chosen, &parts_of_documents(&chosen)) {
