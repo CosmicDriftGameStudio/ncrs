@@ -227,12 +227,11 @@ pub fn export(
                     Copied::Yes => summary.copied += 1,
                     Copied::Exists => summary.skipped_existing += 1,
                     Copied::Missing => summary.skipped_missing += 1,
-                    Copied::Failed => {}
                 }
-                rows.push(csv_row(hit, done, &exported_as));
+                rows.push(csv_row(hit, Some(done), &exported_as));
             }
             Err(reason) => {
-                rows.push(csv_row(hit, Copied::Failed, &exported_as));
+                rows.push(csv_row(hit, None, &exported_as));
                 return Err(match write_csv(&summary.csv_path, &rows) {
                     Ok(()) => format!(
                         "{reason}; the CSV with the rows up to here is {}",
@@ -252,7 +251,6 @@ enum Copied {
     Yes,
     Exists,
     Missing,
-    Failed,
 }
 
 fn copy_hit(hit: &QueryHit, target: &Path) -> Result<Copied, String> {
@@ -264,7 +262,8 @@ fn copy_hit(hit: &QueryHit, target: &Path) -> Result<Copied, String> {
     }
 }
 
-fn csv_row(hit: &QueryHit, outcome: Copied, exported_as: &OsStr) -> Vec<String> {
+/// `outcome` is `None` for the hit whose copy failed.
+fn csv_row(hit: &QueryHit, outcome: Option<Copied>, exported_as: &OsStr) -> Vec<String> {
     let fields = &hit.fields;
     let text = |value: &Option<String>| guarded(value.as_deref().unwrap_or_default());
     let tags = fields
@@ -281,7 +280,7 @@ fn csv_row(hit: &QueryHit, outcome: Copied, exported_as: &OsStr) -> Vec<String> 
                 .unwrap_or_default(),
         ),
         match outcome {
-            Copied::Missing => String::new(),
+            Some(Copied::Missing) => String::new(),
             _ => guarded(&exported_as.to_string_lossy()),
         },
         guarded(&hit.path.to_string_lossy()),
@@ -301,10 +300,10 @@ fn csv_row(hit: &QueryHit, outcome: Copied, exported_as: &OsStr) -> Vec<String> 
             .unwrap_or_default(),
         guarded(&tags),
         match outcome {
-            Copied::Yes => EXPORTED,
-            Copied::Exists => SKIPPED_EXISTS,
-            Copied::Missing => SKIPPED_MISSING,
-            Copied::Failed => FAILED,
+            Some(Copied::Yes) => EXPORTED,
+            Some(Copied::Exists) => SKIPPED_EXISTS,
+            Some(Copied::Missing) => SKIPPED_MISSING,
+            None => FAILED,
         }
         .to_owned(),
     ]

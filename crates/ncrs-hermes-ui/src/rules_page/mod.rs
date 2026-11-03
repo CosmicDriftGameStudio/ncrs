@@ -338,7 +338,7 @@ impl RulesPage {
     }
 
     pub fn begin_delete(&mut self) -> Option<RuleChange> {
-        if !self.confirming_delete {
+        if self.list_is_locked() || !self.confirming_delete {
             return None;
         }
         let id = self.selected()?.rule.id;
@@ -352,6 +352,7 @@ impl RulesPage {
 
     fn begin(&mut self, change: RuleChange) -> Option<RuleChange> {
         self.busy = true;
+        self.confirming_delete = false;
         self.problem = None;
         Some(change)
     }

@@ -55,8 +55,17 @@ impl Default for FilingStatus {
 }
 
 impl FilingStatus {
+    /// The selected error stays the selected one when newer errors arrive.
     pub fn set_snapshot(&mut self, snapshot: Snapshot, now: SystemTime) {
+        let selected = self
+            .selected_error()
+            .and_then(|position| self.errors_newest_first().nth(position))
+            .cloned();
         self.snapshot = snapshot;
+        self.selected_error = selected.and_then(|entry| {
+            self.errors_newest_first()
+                .position(|candidate| *candidate == entry)
+        });
         self.taken_at = now;
     }
 
@@ -387,6 +396,25 @@ mod tests {
         empty.move_error_selection(1);
         assert_eq!(empty.selected_error(), None);
         assert_eq!(empty.selected_error_file(), None);
+    }
+
+    #[test]
+    fn a_newer_error_does_not_move_the_selection_to_another_one() {
+        let mut status = with_errors(3);
+        status.select_error(1);
+        let selected = status.selected_error_file().map(Path::to_path_buf);
+        let mut snapshot = status.snapshot().clone();
+        let mut newest = snapshot.errors[0].clone();
+        newest.file = PathBuf::from("/tmp/inbox/newer.pdf");
+        snapshot.errors.push(newest);
+
+        status.set_snapshot(snapshot, SystemTime::UNIX_EPOCH);
+
+        assert_eq!(status.selected_error(), Some(2));
+        assert_eq!(
+            status.selected_error_file().map(Path::to_path_buf),
+            selected
+        );
     }
 
     #[test]

@@ -32,6 +32,7 @@ pub use ncrs_ui_kit::format::{amount_digits, amount_text};
 type IndexSlot = Arc<Mutex<Option<Index>>>;
 
 pub const PATTERN_DOES_NOT_FIT: &str = "the pattern does not fit the fields";
+pub const DOCUMENT_EXCLUDED: &str = "the document is excluded from Hermes";
 const MINOR_DIGITS: usize = 2;
 /// The passages of a document that led to a field or a rule: how many, and how
 /// long each may be.
@@ -313,7 +314,7 @@ fn load_matching(
         let Some(document) = index.document(entry.document_id)? else {
             continue;
         };
-        if !wanted(&document.path) {
+        if !wanted(&document.path) || index.is_excluded(&document.path)? {
             continue;
         }
         items.push(review_item(
@@ -527,9 +528,7 @@ fn suggestion_for(
         None,
     )?;
     let kinds = Kinds::new(Arc::clone(index.kinds()), kind_language);
-    let target = item
-        .proposed_pattern
-        .and_then(|pattern| render_pattern_in(&pattern, &item.fields, &kinds));
+    let target = item.suggested_target(&kinds);
     Ok(Some((item.text_state, target)))
 }
 
@@ -550,9 +549,9 @@ fn confirm<S: Source>(
         .document(document_id)
         .map_err(failed)?
         .ok_or_else(|| "the document is no longer in the index".to_owned())?;
-    index
-        .set_document_fields(document_id, fields, |_| FieldOrigin::Manual)
-        .map_err(failed)?;
+    if index.is_excluded(&document.path).map_err(failed)? {
+        return Err(DOCUMENT_EXCLUDED.to_owned());
+    }
     let target = target_of(root, &relative, &document.path);
     let item = crate::execute::ExecutionItem {
         from: document.path.clone(),
@@ -573,6 +572,9 @@ fn confirm<S: Source>(
     let outcome = report.items.first().map(|reported| &reported.outcome);
     match outcome {
         Some(ItemOutcome::Moved) => {
+            index
+                .set_document_fields(document_id, fields, |_| FieldOrigin::Manual)
+                .map_err(failed)?;
             index.resolve_review(entry).map_err(failed)?;
             let relative_path = target
                 .strip_prefix(root)
