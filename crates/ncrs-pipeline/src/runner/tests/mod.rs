@@ -774,6 +774,8 @@ fn a_report_while_the_file_waits_updates_the_state_a_repeat_is_matched_against()
     let runner = start(workers(1), vec![step], &location, Arc::new(FixedClock));
     handled_everything(&runner, 1);
     runner.pause();
+    // The live watcher would queue the new file itself before the calls below.
+    let _watcher = runner.shared.update(|state| state.watcher.take());
     let path = put(&location, "growing.pdf", b"half");
     let half = Fingerprint::of(&path);
     let queued_first = runner
