@@ -227,7 +227,8 @@ impl InputState {
             }
             event::Event::Window(window::Event::Unfocused) => {
                 self.alt_tap.cancel();
-                None
+                self.panel_drag_armed
+                    .then_some(Message::Panel(PanelMessage::PanelDragCancelled))
             }
             _ => None,
         }
@@ -355,6 +356,21 @@ mod tests {
             &[event::Event::Window(window::Event::Unfocused)],
         );
         assert!(feed(&mut input, &[modifiers(Modifiers::empty())]).is_empty());
+    }
+
+    #[test]
+    fn losing_focus_while_a_row_is_held_cancels_the_drag() {
+        let mut input = InputState {
+            panel_drag_armed: true,
+            ..InputState::default()
+        };
+        assert_eq!(
+            feed(
+                &mut input,
+                &[event::Event::Window(window::Event::Unfocused)]
+            ),
+            vec![Message::Panel(PanelMessage::PanelDragCancelled)]
+        );
     }
 
     #[test]

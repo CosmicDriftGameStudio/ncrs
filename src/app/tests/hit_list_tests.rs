@@ -121,6 +121,17 @@ fn nothing_opens_without_results() {
 }
 
 #[test]
+fn nothing_opens_while_the_search_still_runs() {
+    let mut hits = searched(&["a.txt"]);
+    hits.app.search.view.as_mut().unwrap().running = true;
+    drop(hits.app.update(Message::Search(SearchMessage::OpenHitList(
+        PanelSide::Right,
+    ))));
+    assert!(!hits.app.panel(PanelSide::Right).is_hit_list());
+    assert!(hits.app.search.open);
+}
+
+#[test]
 fn a_read_of_an_older_open_is_ignored() {
     let mut hits = searched(&["a.txt"]);
     drop(hits.app.update(Message::Search(SearchMessage::OpenHitList(

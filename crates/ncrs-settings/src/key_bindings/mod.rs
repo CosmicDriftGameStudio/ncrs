@@ -236,7 +236,12 @@ impl KeyBindings {
             .ensure_visible(self.cursor, self.rows.len(), VISIBLE_ROWS);
     }
 
+    /// Ignored while a key is awaited or a question is up: the list under the
+    /// cursor must not change before the answer.
     pub fn set_query(&mut self, query: String, keymap: &Keymap) {
+        if !self.is_browsing() {
+            return;
+        }
         self.query = query;
         self.key_filter = None;
         self.cursor = 0;
@@ -245,6 +250,9 @@ impl KeyBindings {
 
     /// Lists only the actions on `binding`; the field shows the key.
     pub fn search_by_key(&mut self, binding: Binding, keymap: &Keymap) {
+        if !self.is_browsing() {
+            return;
+        }
         self.query = binding_label(&binding).unwrap_or_default();
         self.key_filter = Some(binding);
         self.cursor = 0;

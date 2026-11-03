@@ -133,6 +133,8 @@ pub fn update(
             only(Task::none())
         }
         SearchMessage::Close => (Task::none(), Some(Action::Close)),
+        // A list taken while the search runs would hold only the hits so far.
+        SearchMessage::OpenHitList(_) if view.running => only(Task::none()),
         SearchMessage::OpenHitList(side) => (Task::none(), Some(Action::OpenHitList(side))),
         SearchMessage::IndexRan { generation, result } => {
             let Some(filters) = view

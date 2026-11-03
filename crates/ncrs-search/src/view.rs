@@ -260,7 +260,8 @@ fn hit_list_row<'a>(
     let open = |label: Msg, side: PanelSide| {
         hermes_kit::secondary(
             lang.text(label),
-            (!search.results.is_empty()).then_some(SearchMessage::OpenHitList(side)),
+            (!search.results.is_empty() && !search.running)
+                .then_some(SearchMessage::OpenHitList(side)),
             palette,
         )
     };

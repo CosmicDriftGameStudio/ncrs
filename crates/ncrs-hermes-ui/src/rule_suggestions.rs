@@ -112,6 +112,7 @@ impl RuleSuggestions {
         let selected = self
             .select_on_load
             .take()
+            .filter(|id| rows.iter().any(|row| row.id == *id))
             .or_else(|| self.selected().map(|row| row.id));
         self.cursor = selected
             .and_then(|id| rows.iter().position(|row| row.id == id))
@@ -327,6 +328,21 @@ mod tests {
         ]);
 
         assert!(!view.is_busy());
+        assert_eq!(view.selected().unwrap().id, two);
+    }
+
+    #[test]
+    fn an_unlisted_rule_to_select_leaves_the_cursor_on_its_suggestion() {
+        let [one, two, three] = rule_ids();
+        let mut view = loaded_view();
+        view.select(1);
+        view.select_on_load(three);
+
+        view.loaded(vec![
+            suggestion(one, "agency a", "Letters"),
+            suggestion(two, "agency b tax office", "Taxes"),
+        ]);
+
         assert_eq!(view.selected().unwrap().id, two);
     }
 
