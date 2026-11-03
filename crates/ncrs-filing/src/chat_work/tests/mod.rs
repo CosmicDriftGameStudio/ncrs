@@ -44,7 +44,11 @@ impl Setup {
     }
 
     fn write(&self, relative: &str, content: &str) -> PathBuf {
-        let path = self.dir.path().join(relative);
+        // Joined part by part: a `/` kept inside a Windows path would fall
+        // outside the index's subtree range, which separates with `\`.
+        let path = relative
+            .split('/')
+            .fold(self.dir.path().to_path_buf(), |path, part| path.join(part));
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(&path, content).unwrap();
         path
