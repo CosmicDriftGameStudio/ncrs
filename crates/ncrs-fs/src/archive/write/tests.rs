@@ -863,6 +863,18 @@ fn an_encrypted_7z_is_refused_and_left_unchanged() {
     }
 }
 
+#[cfg(unix)]
+#[test]
+fn a_packed_archive_is_not_limited_to_its_owner() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = scratch("pack-mode");
+    let tree = make_tree(dir.path());
+    let archive = dir.path().join("p.zip");
+    pack(std::slice::from_ref(&tree), &archive, &mut Counting).unwrap();
+    let mode = std::fs::metadata(&archive).unwrap().permissions().mode();
+    assert_ne!(mode & 0o044, 0, "{mode:o}");
+}
+
 #[test]
 fn a_rewrite_keeps_the_permissions_of_the_archive_file() {
     #[cfg(unix)]

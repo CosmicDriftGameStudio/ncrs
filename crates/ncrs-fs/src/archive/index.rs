@@ -302,7 +302,7 @@ fn build_tar(path: &Path, format: ArchiveFormat) -> io::Result<ArchiveIndex> {
                     size: if kind == EntryKind::Dir {
                         0
                     } else {
-                        header.size()?
+                        entry.size()
                     },
                     modified: tar_time(header.mtime()),
                 },

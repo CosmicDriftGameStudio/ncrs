@@ -491,11 +491,12 @@ impl<P: Progress> Upload<'_, '_, P> {
     }
 
     fn file(&mut self, local: &Path, remote: &RemotePath, replaces: bool) -> io::Result<()> {
-        let name = remote.file_name().unwrap_or_default();
         let parent = remote
             .parent()
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "no folder to write in"))?;
-        let hidden = parent.join(&format!(".ncrs-partial-{}-{name}", unique()));
+        // The original name stays out: a name near the server's limit would
+        // not fit behind the prefix.
+        let hidden = parent.join(&format!(".ncrs-partial-{}", unique()));
         let link = self.link;
         let sftp = link.session.sftp();
         let mut input = std::fs::File::open(local)?;

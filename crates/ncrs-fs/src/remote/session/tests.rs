@@ -34,6 +34,20 @@ async fn host_key_is_checked_before_the_password_is_sent() {
 }
 
 #[tokio::test]
+async fn two_connects_to_one_server_leave_one_session() {
+    let fixture = Fixture::trusted();
+    let id = Fixture::id();
+    let password = Fixture::password();
+    let (first, second) = tokio::join!(
+        fixture.pool.connect(&id, &password),
+        fixture.pool.connect(&id, &password)
+    );
+    first.unwrap();
+    second.unwrap();
+    assert_eq!(fixture.pool.connected(), vec![id]);
+}
+
+#[tokio::test]
 async fn unknown_host_reports_sha256_fingerprint() {
     let fixture = Fixture::untrusted();
 

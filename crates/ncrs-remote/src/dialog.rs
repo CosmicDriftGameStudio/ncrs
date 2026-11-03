@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use russh::keys::PublicKey;
 
 use ncrs_core::PanelSide;
-use ncrs_fs::remote::{RemoteUrl, Secret, ServerId};
+use ncrs_fs::remote::{plain_word, RemoteUrl, Secret, ServerId};
 
 use crate::message::ConnectField;
 
@@ -230,11 +230,11 @@ impl ConnectDialog {
     /// The server and the folder to open, or what is still missing.
     pub fn target(&self) -> Result<(ServerId, Option<String>), Missing> {
         let host = self.host.trim();
-        if host.is_empty()
-            || host
-                .chars()
-                .any(|c| c.is_whitespace() || c == '/' || c == '@')
-        {
+        let host = host
+            .strip_prefix('[')
+            .and_then(|inner| inner.strip_suffix(']'))
+            .unwrap_or(host);
+        if !plain_word(host) || host.contains(['/', '@']) {
             return Err(Missing::Host);
         }
         let port = match self.port.trim() {
@@ -246,11 +246,7 @@ impl ConnectDialog {
                 .ok_or(Missing::Port)?,
         };
         let user = self.user.trim();
-        if user.is_empty()
-            || user
-                .chars()
-                .any(|c| c.is_whitespace() || c == '/' || c == '@' || c == ':')
-        {
+        if !plain_word(user) || user.contains(['/', '@', ':']) {
             return Err(Missing::User);
         }
         if self.password.is_empty() {
@@ -288,6 +284,16 @@ mod tests {
         let shown = format!("{dialog:?}");
         assert!(!shown.contains("hunter2"), "{shown}");
         assert!(shown.contains("marc") && shown.contains("***"));
+    }
+
+    #[test]
+    fn a_bracketed_ipv6_host_loses_its_brackets_and_control_characters_are_refused() {
+        let mut dialog = filled();
+        dialog.set(ConnectField::Host, "[::1]".to_owned());
+        let (server, _) = dialog.target().unwrap();
+        assert_eq!(server, ServerId::new("marc", "::1", 22));
+        dialog.set(ConnectField::Host, "a\u{1b}b".to_owned());
+        assert_eq!(dialog.target().unwrap_err(), Missing::Host);
     }
 
     #[test]

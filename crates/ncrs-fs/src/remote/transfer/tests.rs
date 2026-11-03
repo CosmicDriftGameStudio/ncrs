@@ -223,6 +223,24 @@ async fn a_download_over_an_existing_name_follows_the_conflict_rule() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn a_file_with_a_name_near_the_limit_can_be_uploaded() {
+    let fixture = Fixture::connected().await;
+    let name = format!("{}.bin", "n".repeat(250));
+    let local = fixture.scratch.path().join(&name);
+    std::fs::write(&local, b"long").unwrap();
+    let home = fixture.server.local("/home/tester");
+    let (pool, dir) = (Arc::clone(&fixture.pool), Fixture::at("/home/tester"));
+
+    blocking(move || {
+        let mut progress = StopAt::never();
+        upload(&pool, &local, &dir, &mut progress, OnConflict::Fail).unwrap()
+    })
+    .await;
+
+    assert_eq!(std::fs::read(home.join(&name)).unwrap(), b"long");
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn upload_file_goes_through_partial_and_rename() {
     let fixture = Fixture::connected().await;
     let content = bytes(CHUNK + 500);
@@ -246,11 +264,9 @@ async fn upload_file_goes_through_partial_and_rename() {
     assert_eq!(names_in(&home), ["up.bin"], "no hidden file is left");
     let snapshots = seen.lock().unwrap().clone();
     assert!(
-        snapshots.iter().any(|names| {
-            names.len() == 1
-                && names[0].starts_with(".ncrs-partial-")
-                && names[0].ends_with("-up.bin")
-        }),
+        snapshots
+            .iter()
+            .any(|names| { names.len() == 1 && names[0].starts_with(".ncrs-partial-") }),
         "while it was written it had a hidden name: {snapshots:?}"
     );
     assert!(snapshots
