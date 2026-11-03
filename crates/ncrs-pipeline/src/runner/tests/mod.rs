@@ -803,7 +803,8 @@ static GROWN_WHILE_NOT_READY: AtomicUsize = AtomicUsize::new(0);
 
 fn not_ready_once_while_the_file_grows(path: &Path) -> Result<StepOutcome, String> {
     if GROWN_WHILE_NOT_READY.fetch_add(1, Ordering::SeqCst) == 0 {
-        fs::write(path, b"a body that grew while the step was not ready").unwrap();
+        fs::write(path, b"a body that grew while the step was not ready")
+            .map_err(|error| error.to_string())?;
         return Ok(StepOutcome::NotReady);
     }
     Ok(StepOutcome::Continue)
@@ -901,14 +902,25 @@ fn an_unreadable_folder_is_reported_with_the_reason() {
     let locked = location.path.join("locked");
     fs::create_dir(&locked).unwrap();
     fs::write(locked.join("inside.pdf"), b"x").unwrap();
+    struct Unlock<'a>(&'a Path);
+    impl Drop for Unlock<'_> {
+        fn drop(&mut self) {
+            let _restored = fs::set_permissions(self.0, fs::Permissions::from_mode(0o755));
+        }
+    }
     fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
+    let _unlock = Unlock(&locked);
+    // Whoever may read it anyway (root) cannot show the case.
+    if fs::read_dir(&locked).is_ok() {
+        eprintln!("permissions do not stop this user; the unreadable folder cannot be shown");
+        return;
+    }
     let (step, _started) = probe("probe", None, continue_always);
     let runner = start(workers(1), vec![step], &location, Arc::new(FixedClock));
 
     let report = runner.wait_for("the scan reported the folder", |snapshot| {
         is_idle(snapshot) && !snapshot.errors.is_empty()
     });
-    fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
 
     let entry = &report.errors[0];
     assert_eq!(entry.file, locked);

@@ -473,6 +473,28 @@ fn a_broken_archive_file_is_reported_once_and_not_read_again_on_every_scan() {
 }
 
 #[test]
+fn an_archive_document_read_while_the_models_were_broken_gets_its_text_once_they_work() {
+    let archive_dir = TempDir::new().unwrap();
+    let archive = location(&archive_dir, LocationMode::Archive);
+    put(&archive, "invoice.pdf", INVOICE);
+    let fixture = IndexFixture::new();
+    let source = Arc::new(Mutex::new(Err(TextError::EngineUnavailable {
+        path: PathBuf::from("models"),
+        reason: "broken".to_owned(),
+    })));
+    let chain = || TextChain::new().with_source(SwitchableText(Arc::clone(&source)));
+
+    let first = archive_scan(&fixture, &archive, chain());
+    assert_eq!(first.errors.len(), 1, "{:?}", first.errors);
+
+    *source.lock().unwrap() = Ok(Extracted::Text("Invoice 4711 Company A".to_owned()));
+    archive_scan(&fixture, &archive, chain());
+
+    let index = fixture.index.lock().unwrap();
+    assert_eq!(index.search_text("4711", 10).unwrap().len(), 1);
+}
+
+#[test]
 fn an_archive_document_whose_text_could_not_be_read_gets_it_on_a_later_scan() {
     let archive_dir = TempDir::new().unwrap();
     let archive = location(&archive_dir, LocationMode::Archive);

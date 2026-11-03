@@ -58,8 +58,19 @@ pub enum Extracted {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum TextError {
-    LibraryMissing { path: PathBuf },
-    Unreadable { path: PathBuf, reason: String },
+    LibraryMissing {
+        path: PathBuf,
+    },
+    Unreadable {
+        path: PathBuf,
+        reason: String,
+    },
+    /// The recognition models could not be loaded: nothing is wrong with the
+    /// file, so it must be read again once they work.
+    EngineUnavailable {
+        path: PathBuf,
+        reason: String,
+    },
 }
 
 impl fmt::Display for TextError {
@@ -70,7 +81,9 @@ impl fmt::Display for TextError {
                 "the PDF library (pdfium) was not found or could not be loaded from {}",
                 path.display()
             ),
-            Self::Unreadable { path, reason } => write!(f, "{}: {reason}", path.display()),
+            Self::Unreadable { path, reason } | Self::EngineUnavailable { path, reason } => {
+                write!(f, "{}: {reason}", path.display())
+            }
         }
     }
 }

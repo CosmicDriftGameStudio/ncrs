@@ -207,15 +207,15 @@ impl Prompt {
         if !archive::is_archive_name(file_name) {
             return Err("archive_extension");
         }
-        let Some(target_folder) = target.parent().filter(|folder| folder.is_dir()) else {
+        let Some(parent_folder) = target.parent().filter(|folder| folder.is_dir()) else {
             return Err("archive_folder_missing");
         };
-        let target_folder = target_folder
+        let target_folder = parent_folder
             .canonicalize()
-            .unwrap_or_else(|_| target_folder.to_path_buf());
+            .unwrap_or_else(|_| parent_folder.to_path_buf());
         let inside_source = self.sources.iter().any(|source| {
-            let source = source.canonicalize().unwrap_or_else(|_| source.clone());
-            target_folder.starts_with(source)
+            let resolved_source = source.canonicalize().unwrap_or_else(|_| source.clone());
+            target_folder.starts_with(resolved_source)
         });
         if inside_source {
             return Err("archive_inside_source");

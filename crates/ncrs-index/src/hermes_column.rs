@@ -268,7 +268,10 @@ impl Index {
         Ok(direct
             .into_iter()
             .zip(deep)
-            .map(|(direct, deep)| FolderCounts { direct, deep })
+            .map(|(direct_count, deep_count)| FolderCounts {
+                direct: direct_count,
+                deep: deep_count,
+            })
             .collect())
     }
 

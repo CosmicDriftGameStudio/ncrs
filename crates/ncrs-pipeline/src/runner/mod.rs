@@ -63,7 +63,7 @@ impl Fingerprint {
             modified: metadata.modified().ok()?,
             #[cfg(unix)]
             identity: {
-                use std::os::unix::fs::MetadataExt;
+                use std::os::unix::fs::MetadataExt as _;
                 (
                     metadata.dev(),
                     metadata.ino(),

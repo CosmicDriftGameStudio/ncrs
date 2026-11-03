@@ -1891,7 +1891,10 @@ mod filing_status_page {
             let mut previous = name;
             for figure in ["21", "35", "47", "58"] {
                 let cell = sim.find(figure).unwrap().bounds();
-                assert!(cell.x > previous.x, "{language:?}: {figure} after {previous:?}");
+                assert!(
+                    cell.x > previous.x,
+                    "{language:?}: {figure} after {previous:?}"
+                );
                 assert!(
                     (cell.y - name.y).abs() < name.height,
                     "{language:?}: {figure} is in the row of {label}"
@@ -1899,7 +1902,10 @@ mod filing_status_page {
                 previous = cell;
             }
             let second_row = sim.find("61").unwrap().bounds();
-            assert!(second_row.y > name.y, "{language:?}: the second step is below");
+            assert!(
+                second_row.y > name.y,
+                "{language:?}: the second step is below"
+            );
         }
     }
 

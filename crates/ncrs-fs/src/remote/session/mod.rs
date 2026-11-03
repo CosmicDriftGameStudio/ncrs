@@ -484,15 +484,15 @@ impl Pool {
         .await;
         match opened {
             Err(_) => Err(ConnectFailure::Timeout),
-            Ok(Ok(session)) => {
-                let session = Arc::new(session);
+            Ok(Ok(opened_session)) => {
+                let session = Arc::new(opened_session);
                 // A concurrent connect may have got in first; its connection
                 // keeps serving requests, so the newcomer is the one to leave.
-                let loser = match self.session(server) {
-                    Some(_) => Some(session),
-                    None => {
-                        self.sessions().insert(server.clone(), session);
-                        None
+                let loser = {
+                    let mut sessions = self.sessions();
+                    match sessions.get(server) {
+                        Some(existing) if existing.is_alive() => Some(session),
+                        _ => sessions.insert(server.clone(), session),
                     }
                 };
                 self.say_goodbye(loser);

@@ -193,9 +193,27 @@ fn a_redirect_to_a_foreign_host_or_without_location_is_refused() {
 }
 
 #[test]
+fn a_scheme_relative_or_plain_http_location_is_checked_as_resolved() {
+    assert!(matches!(
+        hop(302, Some("//other.host/x"), 0),
+        Err(FetchError::DownloadRefused { .. })
+    ));
+    assert!(matches!(
+        hop(302, Some("http://open-vsx.org/x"), 0),
+        Err(FetchError::DownloadRefused { .. })
+    ));
+    assert_eq!(
+        hop(302, Some("//openvsx.eclipsecontent.org/x"), 0),
+        Ok(Hop::Follow(
+            "https://openvsx.eclipsecontent.org/x".to_owned()
+        ))
+    );
+}
+
+#[test]
 fn the_fourth_redirect_is_too_many() {
     let location = Some("https://open-vsx.org/x");
-    assert!(hop(302, location, MAX_REDIRECTS - 1).is_ok());
+    hop(302, location, MAX_REDIRECTS - 1).unwrap();
     assert_eq!(
         hop(302, location, MAX_REDIRECTS),
         Err(FetchError::TooManyRedirects)

@@ -275,7 +275,8 @@ pub fn validate(
         let (Some(parent), Some(name)) = (source.parent(), source.file_name()) else {
             continue;
         };
-        let resolved_parent = std::fs::canonicalize(parent).map_err(|_| Refusal::SourceGone)?;
+        let resolved_parent =
+            std::fs::canonicalize(parent).map_err(|_unreachable_parent| Refusal::SourceGone)?;
         if into.is_none() && resolved_parent == resolved {
             return Err(Refusal::SameFolder);
         }

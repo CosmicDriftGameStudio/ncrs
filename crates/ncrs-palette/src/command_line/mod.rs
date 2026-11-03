@@ -34,13 +34,13 @@ pub fn parse(line: &str) -> Submission<'_> {
     if trimmed.is_empty() {
         return Submission::Empty;
     }
-    let (word, rest) = trimmed
+    let (word, arguments) = trimmed
         .split_once(char::is_whitespace)
         .unwrap_or((trimmed, ""));
     if word != "cd" {
         return Submission::Shell(trimmed);
     }
-    let rest = rest.trim();
+    let rest = arguments.trim();
     let path = strip_matching_quotes(rest);
     if path.len() == rest.len() && (rest.contains(SHELL_OPERATORS) || rest.contains("$(")) {
         return Submission::Shell(trimmed);
