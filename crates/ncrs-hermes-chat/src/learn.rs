@@ -5,7 +5,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use ncrs_filing::chat_work::{
-    same_word, ChangeOrder, ChangePreview, ChatWork, FolderReading, OrderChange, ReadError,
+    already_ordered, same_word, ChangeOrder, ChangePreview, ChatWork, FolderReading, OrderChange,
+    ReadError,
 };
 use ncrs_i18n::Msg;
 use ncrs_ui_kit::hermes_state::FolderRole;
@@ -256,24 +257,47 @@ pub fn change_order(state: &mut State, ctx: &Ctx, kind_word: String, order: Chan
     );
 }
 
-pub fn preview_done(state: &mut State, ctx: &Ctx, computed: Option<ChangePreview>) {
-    let wanted = state.session.change_scope.take();
-    let Some(mut preview) = computed else {
-        if ask_area(state, ctx) {
+/// Nothing to change was found: the area is ordered that way already, or the
+/// user is asked for the area, or the areas are offered again.
+fn no_change_found(state: &mut State, ctx: &Ctx) {
+    let word = state.session.change_word.clone();
+    if let (Some(reading), Some(order)) =
+        (state.session.learning.clone(), state.session.change_order)
+    {
+        if let Some(area) = already_ordered(&reading, &word, order) {
+            state.step = Step::AfterChange;
+            say(
+                state,
+                fill(ctx.lang, Msg::HermesChatChangeAlready, &[("area", &area)]),
+                crate::update::fallback_chips(ctx),
+            );
             return;
         }
-        state.step = Step::AfterChange;
-        let word = state.session.change_word.clone();
-        say(
+    }
+    if ask_area(state, ctx) {
+        return;
+    }
+    let not_found = fill(ctx.lang, Msg::HermesChatChangeNotFound, &[("word", &word)]);
+    state.step = Step::AfterChange;
+    match area_chips(state, ctx) {
+        Some(chips) => say(state, not_found, chips),
+        None => say(
             state,
-            fill(ctx.lang, Msg::HermesChatChangeNotFound, &[("word", &word)]),
+            not_found,
             vec![chip(
                 ctx,
                 Msg::HermesChatFineAsIs,
                 ChipReply::FineAsIs,
                 true,
             )],
-        );
+        ),
+    }
+}
+
+pub fn preview_done(state: &mut State, ctx: &Ctx, computed: Option<ChangePreview>) {
+    let wanted = state.session.change_scope.take();
+    let Some(mut preview) = computed else {
+        no_change_found(state, ctx);
         return;
     };
     let mut parts = vec![
@@ -330,12 +354,25 @@ pub fn preview_done(state: &mut State, ctx: &Ctx, computed: Option<ChangePreview
 /// No folder fits the word: the areas to choose from, so the order asked for
 /// is not lost. False when it was asked already or there is no area.
 fn ask_area(state: &mut State, ctx: &Ctx) -> bool {
-    let (Some(reading), Some(_)) = (state.session.learning.clone(), state.session.change_order)
-    else {
+    if state.session.area_chosen {
+        return false;
+    }
+    let Some(chips) = area_chips(state, ctx) else {
         return false;
     };
-    if state.session.area_chosen || reading.structure.areas.is_empty() {
-        return false;
+    state.step = Step::AfterChange;
+    say(state, text(ctx.lang, Msg::HermesChatChangeAreaAsk), chips);
+    true
+}
+
+/// One chip per area, the biggest first, plus another folder and cancel.
+fn area_chips(state: &State, ctx: &Ctx) -> Option<Vec<Chip>> {
+    let (Some(reading), Some(_)) = (state.session.learning.as_ref(), state.session.change_order)
+    else {
+        return None;
+    };
+    if reading.structure.areas.is_empty() {
+        return None;
     }
     let mut areas: Vec<&ncrs_intake::Area> = reading.structure.areas.iter().collect();
     areas.sort_by(|left, right| right.documents.cmp(&left.documents));
@@ -357,9 +394,7 @@ fn ask_area(state: &mut State, ctx: &Ctx) -> bool {
         false,
     ));
     chips.push(cancel_chip(ctx));
-    state.step = Step::AfterChange;
-    say(state, text(ctx.lang, Msg::HermesChatChangeAreaAsk), chips);
-    true
+    Some(chips)
 }
 
 /// The area the user picked is the word the change is looked up with.

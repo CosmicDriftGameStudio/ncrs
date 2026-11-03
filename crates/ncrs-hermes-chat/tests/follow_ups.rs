@@ -259,4 +259,49 @@ mod tests {
         talk.type_text_understood("asdf", r#"{"intent":"other"}"#);
         assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatFallback, &[])]);
     }
+
+    fn change_in_area(talk: &mut Talk, area: &str, order: &str) {
+        talk.type_text_understood(
+            "mach es anders",
+            &format!(r#"{{"intent":"change_structure","area":"Zzzzqq","order":"{order}"}}"#),
+        );
+        talk.press(&ChipReply::ChangeArea(area.to_owned()));
+    }
+
+    #[test]
+    fn an_area_that_has_the_asked_order_says_so_and_offers_the_usual_ways_on() {
+        let mut talk = archive_talk();
+        talk.open();
+        talk.press(&ChipReply::Folder(talk.path("archive")));
+        talk.press(&ChipReply::WantChange);
+        change_in_area(&mut talk, "Versicherung", "by_sender");
+        assert_eq!(
+            talk.last_texts(),
+            vec![say(
+                Msg::HermesChatChangeAlready,
+                &[("area", "Versicherung")]
+            )]
+        );
+        assert!(replies(&talk).contains(&ChipReply::IntentSearch));
+        assert!(!has_file_card(&talk));
+    }
+
+    #[test]
+    fn an_area_without_a_matching_branch_offers_the_areas_again() {
+        let mut talk = archive_talk();
+        talk.open();
+        talk.press(&ChipReply::Folder(talk.path("archive")));
+        talk.press(&ChipReply::WantChange);
+        change_in_area(&mut talk, "Versicherung", "by_month");
+        assert_eq!(
+            talk.last_texts(),
+            vec![say(
+                Msg::HermesChatChangeNotFound,
+                &[("word", "Versicherung")]
+            )]
+        );
+        assert!(area_chips(&talk).contains(&"Bank".to_owned()));
+        talk.press(&ChipReply::ChangeArea("Bank".to_owned()));
+        assert!(has_file_card(&talk), "{:?}", talk.last_parts());
+    }
 }

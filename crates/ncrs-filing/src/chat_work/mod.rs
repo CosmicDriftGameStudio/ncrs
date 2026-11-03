@@ -25,7 +25,7 @@ mod words;
 #[cfg(test)]
 mod tests;
 
-pub use change::{branch_example, ChangeOrder, ChangePreview, OrderChange, Scope};
+pub use change::{already_ordered, branch_example, ChangeOrder, ChangePreview, OrderChange, Scope};
 pub use groups::{
     area_pattern, group_rule, numbered_name, stay_groups, AnsweredGroups, GroupKey, NameTaken,
     RuleSaveFailure, StayGroup, StayGroups, MAX_GROUP_QUESTIONS,

@@ -408,6 +408,41 @@ pub fn preview(
     })
 }
 
+/// The folder of the area the word names when the area is ordered the way
+/// `order` asks already: some branch has the level and none is left to change.
+pub fn already_ordered(
+    reading: &FolderReading,
+    area_word: &str,
+    order: ChangeOrder,
+) -> Option<String> {
+    let area = reading
+        .structure
+        .areas
+        .iter()
+        .find(|area| word_within(area_word, &area.folder))?;
+    let has_level = |branch: &Branch| {
+        let has = |wanted: fn(&PlaceholderKind) -> bool| {
+            branch
+                .levels
+                .iter()
+                .any(|level| matches!(level, Level::Placeholder(found) if wanted(&found.kind)))
+        };
+        match order {
+            ChangeOrder::ByMonth => has(|kind| *kind == PlaceholderKind::Month),
+            ChangeOrder::ByYear => has(|kind| matches!(kind, PlaceholderKind::Year { .. })),
+            ChangeOrder::BySender => change_point(order, branch).is_none(),
+            ChangeOrder::ByKind => has(|kind| *kind == PlaceholderKind::Kind),
+            ChangeOrder::Flat => !branch.levels.is_empty() && change_point(order, branch).is_none(),
+            ChangeOrder::Pattern => false,
+        }
+    };
+    let nothing_left = area
+        .branches
+        .iter()
+        .all(|branch| change_point(order, branch).is_none());
+    (nothing_left && area.branches.iter().any(has_level)).then(|| area.folder.clone())
+}
+
 /// Where in the branch the change happens: the position of the year level
 /// for a month folder, else the number of literal levels at its start. `None`
 /// when the branch is ordered that way already or has nothing to change.
@@ -417,6 +452,11 @@ fn change_point(order: ChangeOrder, branch: &Branch) -> Option<usize> {
             |level| matches!(level, Level::Placeholder(placeholder) if wanted(&placeholder.kind)),
         )
     };
+    // A bank or an insurer folder is the sender level under another name.
+    let has_sender = branch.levels.iter().any(|level| {
+        matches!(level, Level::Placeholder(placeholder) if placeholder.kind == PlaceholderKind::Sender
+            || matches!(placeholder.label, PlaceholderLabel::Sender | PlaceholderLabel::Bank | PlaceholderLabel::Insurer))
+    });
     let leading_literals = branch
         .levels
         .iter()
@@ -432,9 +472,7 @@ fn change_point(order: ChangeOrder, branch: &Branch) -> Option<usize> {
         ChangeOrder::ByYear => {
             (!has(|kind| matches!(kind, PlaceholderKind::Year { .. }))).then_some(leading_literals)
         }
-        ChangeOrder::BySender => {
-            (!has(|kind| *kind == PlaceholderKind::Sender)).then_some(leading_literals)
-        }
+        ChangeOrder::BySender => (!has_sender).then_some(leading_literals),
         ChangeOrder::ByKind => {
             (!has(|kind| *kind == PlaceholderKind::Kind)).then_some(leading_literals)
         }

@@ -9233,6 +9233,12 @@
       "context": "Hermes chat (F2): the user said nothing should be changed; Hermes agrees politely. Buttons with things it can do follow.",
       "en": "Alright, I'll leave everything as it is.",
       "de": "In Ordnung, ich lasse alles so, wie es ist."
+    },
+    {
+      "key": "hermes_chat.change_already",
+      "context": "Hermes chat (F2): the user asked for an order the chosen area has already. {area} is the folder name. Buttons with things Hermes can do follow.",
+      "en": "{area} is already ordered that way.",
+      "de": "{area} ist schon so geordnet."
     }
   ]
 }
