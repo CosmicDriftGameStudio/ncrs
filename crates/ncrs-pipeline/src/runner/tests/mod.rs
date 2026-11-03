@@ -919,11 +919,15 @@ fn an_unreadable_folder_is_reported_with_the_reason() {
     let runner = start(workers(1), vec![step], &location, Arc::new(FixedClock));
 
     let report = runner.wait_for("the scan reported the folder", |snapshot| {
-        is_idle(snapshot) && !snapshot.errors.is_empty()
+        is_idle(snapshot) && snapshot.errors.iter().any(|error| error.file == locked)
     });
 
-    let entry = &report.errors[0];
-    assert_eq!(entry.file, locked);
+    // On Linux an error for the location itself can come first.
+    let entry = report
+        .errors
+        .iter()
+        .find(|error| error.file == locked)
+        .unwrap();
     assert!(
         entry.message.to_lowercase().contains("denied"),
         "{}",
