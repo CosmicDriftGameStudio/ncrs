@@ -108,6 +108,11 @@ All notable changes to this project are documented here. The format follows
 - The protection of the index (encryption) moved to Settings › Filing.
 - Settings › Appearance links to the Tags page for the tags in the file list.
 
+### Fixed
+
+- A `[keys]` section that binds `F1` to another action keeps that binding;
+  the command palette is then on `Cmd`/`Ctrl`+`Shift`+`P` only.
+
 ## [1.1.1] — 2026-10-30
 
 ### Fixed

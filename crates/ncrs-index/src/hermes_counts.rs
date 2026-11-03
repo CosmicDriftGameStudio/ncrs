@@ -51,8 +51,10 @@ impl Index {
         let open_reviews_without_text = self.count(
             &format!(
                 "SELECT COUNT(*) FROM review_entry r
+                 JOIN document d ON d.id = r.document_id
                  LEFT JOIN document_text t ON t.rowid = r.document_id
-                 WHERE r.resolved_at IS NULL AND {WITHOUT_TEXT}"
+                 WHERE r.resolved_at IS NULL AND d.missing_since IS NULL
+                   AND {WITHOUT_TEXT}"
             ),
             [],
         )?;
@@ -60,7 +62,9 @@ impl Index {
             inbox: self.status_counts(DocumentSource::Inbox)?,
             archive: self.status_counts(DocumentSource::Archive)?,
             open_reviews: self.count(
-                "SELECT COUNT(*) FROM review_entry WHERE resolved_at IS NULL",
+                "SELECT COUNT(*) FROM review_entry r
+                 JOIN document d ON d.id = r.document_id
+                 WHERE r.resolved_at IS NULL AND d.missing_since IS NULL",
                 [],
             )?,
             open_reviews_without_text,
@@ -156,6 +160,23 @@ mod tests {
     fn an_empty_index_counts_nothing() {
         let (_dir, index) = plain_index();
         assert_eq!(index.hermes_counts().unwrap(), HermesCounts::default());
+    }
+
+    #[test]
+    fn reviews_of_missing_documents_are_not_counted() {
+        let (_dir, mut index) = plain_index();
+        let gone = index.insert_document(&new_document(1)).unwrap();
+        let here = index.insert_document(&new_document(2)).unwrap();
+        index
+            .add_review(gone, ReviewReason::NoMatchingRule)
+            .unwrap();
+        index
+            .add_review(here, ReviewReason::NoMatchingRule)
+            .unwrap();
+        index.mark_document_missing(gone).unwrap();
+        let counts = index.hermes_counts().unwrap();
+        assert_eq!(counts.open_reviews, 1);
+        assert_eq!(counts.open_reviews_without_text, 1);
     }
 
     #[test]
