@@ -319,8 +319,9 @@ impl Index {
         Ok(ids)
     }
 
-    /// Best match first. The input is the user's words, not FTS5 syntax: every
-    /// word is quoted, so all of them must match and operators are plain text.
+    /// Best match first, documents whose file is gone left out. The input is
+    /// the user's words, not FTS5 syntax: every word is quoted, so all of them
+    /// must match and operators are plain text.
     pub fn search_text(&self, words: &str, limit: usize) -> Result<Vec<DocumentId>, IndexError> {
         self.run_text_query(&match_query(words, false), limit)
     }
@@ -340,7 +341,9 @@ impl Index {
             return Ok(Vec::new());
         }
         let mut statement = self.connection().prepare(
-            "SELECT rowid FROM document_text WHERE document_text MATCH ?1
+            "SELECT document_text.rowid FROM document_text
+             JOIN document d ON d.id = document_text.rowid
+             WHERE document_text MATCH ?1 AND d.missing_since IS NULL
              ORDER BY rank LIMIT ?2",
         )?;
         let limit_rows = i64::try_from(limit).unwrap_or(i64::MAX);
@@ -816,6 +819,19 @@ mod tests {
         assert!(index.search_text("absent", 10).unwrap().is_empty());
         assert!(index.search_text("   ", 10).unwrap().is_empty());
         assert_eq!(index.search_text("nr", 1).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn missing_documents_do_not_use_up_the_limit() {
+        let (_dir, mut index) = encrypted_index();
+        for n in 1..=3 {
+            let gone = indexed_with_text(&mut index, n, "Rechnung Nr. 1");
+            index.mark_document_missing(gone).unwrap();
+        }
+        let present = indexed_with_text(&mut index, 4, "Rechnung Nr. 2");
+
+        assert_eq!(index.search_text("rechnung", 1).unwrap(), vec![present]);
+        assert_eq!(index.search_text_prefix("rechn", 1).unwrap(), vec![present]);
     }
 
     #[test]

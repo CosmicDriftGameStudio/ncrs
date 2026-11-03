@@ -564,11 +564,12 @@ impl QuickOpen {
             return;
         }
         // Name hits arriving above the documents push them down; the cursor
-        // on a document goes with it.
+        // on a document goes with it. Without name hits the cursor at the top
+        // has not been moved yet, so the first name hit takes it.
         let on_document = self
             .cursor
             .checked_sub(self.hits.len())
-            .filter(|_| !self.hits.is_empty());
+            .filter(|_| !self.hits.is_empty() || self.cursor > 0);
         let kept_selection = self.hits.get(self.cursor).map(|hit| (hit.chunk, hit.index));
         self.hits = merge_hits(&self.candidates, std::mem::take(&mut self.hits), found);
         self.cursor = kept_selection

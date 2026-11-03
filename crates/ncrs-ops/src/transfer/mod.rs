@@ -157,6 +157,9 @@ pub enum Refusal {
     InsideSource,
     /// The system would not say (permission, a mount that does not answer).
     Unreadable,
+    /// The folder of a selected entry is gone or cannot be read any more; the
+    /// target is not to blame.
+    SourceGone,
     /// A move was asked into an archive or a folder inside one; only copying
     /// goes in.
     IntoArchive,
@@ -272,7 +275,7 @@ pub fn validate(
         let (Some(parent), Some(name)) = (source.parent(), source.file_name()) else {
             continue;
         };
-        let resolved_parent = std::fs::canonicalize(parent).map_err(|error| refusal_of(&error))?;
+        let resolved_parent = std::fs::canonicalize(parent).map_err(|_| Refusal::SourceGone)?;
         if into.is_none() && resolved_parent == resolved {
             return Err(Refusal::SameFolder);
         }

@@ -397,6 +397,42 @@ fn the_cursor_runs_from_the_last_name_hit_into_the_documents_and_back() {
 }
 
 #[test]
+fn a_cursor_on_a_document_stays_on_it_when_the_first_name_hits_come_in() {
+    let mut quick_open = with_documents_on(&[], "rechnung");
+    let request = quick_open.request_documents().unwrap();
+    quick_open.apply_documents(
+        request.walk_generation,
+        request.generation,
+        Ok(vec![document("/d/a.pdf"), document("/d/b.pdf")]),
+    );
+    quick_open.move_cursor(1);
+    assert_eq!(quick_open.selected_path(), Some(PathBuf::from("/d/b.pdf")));
+
+    quick_open.apply_events(file_events("/r", &["rechnung.txt"]));
+
+    assert_eq!(names(&quick_open), ["rechnung.txt"]);
+    assert_eq!(quick_open.selected_path(), Some(PathBuf::from("/d/b.pdf")));
+}
+
+#[test]
+fn the_first_name_hits_take_an_unmoved_cursor() {
+    let mut quick_open = with_documents_on(&[], "rechnung");
+    let request = quick_open.request_documents().unwrap();
+    quick_open.apply_documents(
+        request.walk_generation,
+        request.generation,
+        Ok(vec![document("/d/a.pdf")]),
+    );
+
+    quick_open.apply_events(file_events("/r", &["rechnung.txt"]));
+
+    assert_eq!(
+        quick_open.selected_path(),
+        Some(PathBuf::from("/r/rechnung.txt"))
+    );
+}
+
+#[test]
 fn the_last_row_opens_all_hits_and_the_cursor_reaches_it() {
     let mut quick_open = with_documents_on(&["a1.txt", "a2.txt"], "a");
     assert_eq!(quick_open.all_hits_row(), None);

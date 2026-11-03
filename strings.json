@@ -5053,6 +5053,12 @@
       "de": "Das Ziel lässt sich nicht lesen"
     },
     {
+      "key": "transfer.error_source_gone",
+      "context": "Error under the target field when the folder of a selected file or folder is gone or cannot be read any more while the dialog is open, for example because it was renamed or its drive was removed. The target itself is fine.",
+      "en": "A selected item can no longer be found",
+      "de": "Ein ausgewählter Eintrag ist nicht mehr zu finden"
+    },
+    {
       "key": "transfer.progress_to",
       "context": "Dimmed text after the title of the progress dialog of a copy or move: where it goes. {target} is the folder path.",
       "en": "to {target}",

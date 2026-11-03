@@ -14,7 +14,7 @@ use ncrs_ui_kit::kit::{self, dim, error_line, one_line, paragraph, Tone};
 use ncrs_ui_kit::theme::{font_size, size, spacing};
 
 type Message = ThemeFetchMessage;
-use crate::open_vsx::FetchError;
+use crate::open_vsx::{shown_text, FetchError};
 use crate::theme_fetch::{Stage, ThemeFetch};
 use crate::vsix::Brightness;
 use ncrs_ui_kit::palette::Palette;
@@ -196,10 +196,25 @@ fn footer_buttons<'a>(
     items
 }
 
+/// Most characters of one value from a package, a server or a path that the
+/// error line shows.
+const ERROR_VALUE_CHARS: usize = 200;
+
 /// The words for what went wrong. The technical detail, where there is one,
-/// stays English.
+/// stays English. Values may come from a package or a server, so none is shown
+/// with control or bidi characters.
 pub fn error_text(error: &FetchError, lang: Language) -> String {
-    let with = |label: Msg, values: &[(&str, &str)]| fill_template(lang.text(label), values);
+    let with = |label: Msg, values: &[(&str, &str)]| {
+        let safe: Vec<(&str, String)> = values
+            .iter()
+            .map(|(name, value)| (*name, shown_text(value, ERROR_VALUE_CHARS)))
+            .collect();
+        let borrowed: Vec<(&str, &str)> = safe
+            .iter()
+            .map(|(name, value)| (*name, value.as_str()))
+            .collect();
+        fill_template(lang.text(label), &borrowed)
+    };
     match error {
         FetchError::InvalidId => lang.text(Msg::ThemeFetchErrorInvalidId).to_owned(),
         FetchError::NotFound(id) => with(Msg::ThemeFetchErrorNotFound, &[("{id}", id)]),
@@ -247,5 +262,38 @@ pub fn error_text(error: &FetchError, lang: Language) -> String {
             Msg::ThemeFetchErrorWrite,
             &[("{path}", path), ("{reason}", reason)],
         ),
+    }
+}
+
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn values_from_a_package_are_shown_without_control_or_bidi_characters() {
+        let hostile = "a\n\u{202E}../x.json";
+        for error in [
+            FetchError::UnsafePath(hostile.to_owned()),
+            FetchError::MissingFile(hostile.to_owned()),
+            FetchError::BadPackage(hostile.to_owned()),
+            FetchError::DownloadRefused {
+                host: hostile.to_owned(),
+            },
+            FetchError::BadJson {
+                file: hostile.to_owned(),
+                reason: hostile.to_owned(),
+            },
+        ] {
+            let shown = error_text(&error, Language::English);
+            assert!(!shown.contains('\n'), "{shown:?}");
+            assert!(!shown.contains('\u{202E}'), "{shown:?}");
+            assert!(shown.contains("a../x.json"), "{shown:?}");
+        }
     }
 }

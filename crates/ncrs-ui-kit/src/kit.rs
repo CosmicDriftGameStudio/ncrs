@@ -895,17 +895,23 @@ pub fn checkbox<'a, M: Clone + 'a>(
     boxed.into()
 }
 
-fn figure_cells<'a, M: Clone + 'a>(figures: &[(&str, String)], palette: &Palette) -> Row<'a, M> {
-    let cells = figures.iter().map(|(label, value)| {
-        let shown: Element<'a, M> = if value.chars().any(|c| c.is_ascii_digit()) {
-            text(value.clone())
+/// One number of a [`count_summary`], or the dimmed stand-in for it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Figure {
+    Value(String),
+    /// Shown quietly in place of a number: not counted yet, or not countable.
+    Note(String),
+}
+
+fn figure_cells<'a, M: Clone + 'a>(figures: &[(&str, Figure)], palette: &Palette) -> Row<'a, M> {
+    let cells = figures.iter().map(|(label, figure)| {
+        let shown: Element<'a, M> = match figure {
+            Figure::Value(value) => text(value.clone())
                 .size(font_size::FIGURE)
                 .color(palette.text)
                 .wrapping(Wrapping::None)
-                .into()
-        } else {
-            // A value without a digit is a note, not a number.
-            dim(value.clone(), palette)
+                .into(),
+            Figure::Note(note) => dim(note.clone(), palette),
         };
         container(column![dim(label.to_string(), palette), shown].spacing(spacing::XS / 2.0))
             .padding([spacing::S, BUTTON_PADDING_X])
@@ -918,7 +924,7 @@ fn figure_cells<'a, M: Clone + 'a>(figures: &[(&str, String)], palette: &Palette
 /// The size of a selection in a few numbers, with a button that shows or hides
 /// the list behind them; `note` goes between the two, set off by a divider.
 pub fn count_summary<'a, M: Clone + 'a>(
-    figures: &[(&str, String)],
+    figures: &[(&str, Figure)],
     note: Option<Element<'a, M>>,
     expanded: bool,
     on_toggle: M,

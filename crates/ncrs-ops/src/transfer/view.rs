@@ -11,7 +11,7 @@ use ncrs_core::TransferKind;
 use ncrs_i18n::{Language, Msg};
 use ncrs_ui_kit::format;
 use ncrs_ui_kit::frame::{self, DialogSize, Frame};
-use ncrs_ui_kit::kit::{self, Tone};
+use ncrs_ui_kit::kit::{self, Figure, Tone};
 use ncrs_ui_kit::numbered_hint::numbered_hint;
 use ncrs_ui_kit::palette::Palette;
 use ncrs_ui_kit::theme::{self, font_size, spacing};
@@ -51,6 +51,7 @@ pub fn refusal_text(refusal: Refusal, lang: Language) -> &'static str {
         Refusal::SameFolder => Msg::TransferErrorSameFolder,
         Refusal::InsideSource => Msg::TransferErrorInside,
         Refusal::Unreadable => Msg::TransferErrorUnreadable,
+        Refusal::SourceGone => Msg::TransferErrorSourceGone,
         Refusal::IntoArchive => Msg::TransferErrorIntoArchive,
         Refusal::ArchiveInArchive => Msg::TransferErrorArchiveNested,
         Refusal::ServerToArchive => Msg::TransferErrorServerToArchive,
@@ -122,7 +123,9 @@ fn figures<'a>(
     } else {
         COUNTING
     };
-    let counted = |value: Option<String>| value.unwrap_or_else(|| missing.to_string());
+    let counted = |value: Option<String>| {
+        value.map_or_else(|| Figure::Note(missing.to_string()), Figure::Value)
+    };
     let mut numbers = vec![
         (
             lang.text(Msg::TransferFigureFiles),
@@ -140,7 +143,7 @@ fn figures<'a>(
     if let Some(found) = scan.filter(|found| found.unreadable > 0) {
         numbers.push((
             lang.text(Msg::TransferFigureUnreadable),
-            found.unreadable.to_string(),
+            Figure::Value(found.unreadable.to_string()),
         ));
     }
     let names: Vec<String> = dialog.names().take(FIRST_NAMES).collect();

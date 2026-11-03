@@ -73,7 +73,8 @@ impl RuleRow {
 }
 
 fn require_condition(spec: &RuleSpec) -> Result<(), IndexError> {
-    if spec.conditions.list.is_empty() {
+    let blank = |condition: &Condition| condition.value.trim().is_empty();
+    if spec.conditions.list.is_empty() || spec.conditions.list.iter().any(blank) {
         return Err(IndexError::RuleWithoutCondition);
     }
     require_compilable_regexes(&spec.conditions.list)?;
@@ -527,6 +528,24 @@ mod tests {
             matches!(updated, IndexError::RuleWithoutCondition),
             "{updated}"
         );
+    }
+
+    #[test]
+    fn a_condition_without_a_value_is_refused() {
+        let (_dir, mut index) = encrypted_index();
+
+        for (kind, value) in [(ConditionKind::Substring, "  "), (ConditionKind::Regex, "")] {
+            let spec = RuleSpec {
+                conditions: RuleConditions::all_of(vec![Condition::new(kind, value)]),
+                ..rule_spec()
+            };
+            let created = index.create_rule(&spec).unwrap_err();
+            assert!(
+                matches!(created, IndexError::RuleWithoutCondition),
+                "{created}"
+            );
+        }
+        assert_eq!(rule_count(&index), 0);
     }
 
     fn regex_rule(source: &str) -> RuleSpec {

@@ -320,7 +320,8 @@ impl<P: Progress> Writer<'_, P> {
 fn apply_mode(file: &File, mode: Option<u32>) -> io::Result<()> {
     use std::os::unix::fs::PermissionsExt as _;
     match mode {
-        Some(bits) => file.set_permissions(std::fs::Permissions::from_mode(bits & 0o777)),
+        // The owner can always read and replace what was copied out.
+        Some(bits) => file.set_permissions(std::fs::Permissions::from_mode((bits & 0o777) | 0o600)),
         None => Ok(()),
     }
 }
@@ -757,5 +758,20 @@ mod tests {
             .permissions()
             .mode();
         assert_eq!(mode & 0o7777, 0o644);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_file_stays_readable_and_writable_for_its_owner_whatever_the_archive_says() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let dir = scratch("owner-mode");
+        let path = dir.path().join("f");
+        let file = File::create(&path).unwrap();
+
+        for (archived, expected) in [(0o000, 0o600), (0o444, 0o644), (0o755, 0o755)] {
+            apply_mode(&file, Some(archived)).unwrap();
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, expected, "{archived:o}");
+        }
     }
 }

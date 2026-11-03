@@ -192,6 +192,20 @@ pub fn write_vscode_theme(path: &Path, relative: &str) -> Result<Config, FilingW
     write_vscode_theme_with_home(path, relative, home_from_env().as_deref())
 }
 
+/// Whether [`write_vscode_theme`] would get past reading and editing the
+/// config at `path`, without writing or creating anything. Lets a caller refuse
+/// before it puts the theme's files down.
+pub fn check_vscode_theme_writable(path: &Path) -> Result<(), FilingWriteError> {
+    let home = home_from_env();
+    let source = read_source(path).map_err(FilingWriteError::Config)?;
+    if let Some(text) = &source {
+        parse_config(text, path, home.as_deref()).map_err(FilingWriteError::Config)?;
+    }
+    let edited = with_vscode_theme(source.as_deref().unwrap_or_default(), path, "theme.json")?;
+    parse_config(&edited, path, home.as_deref()).map_err(FilingWriteError::Config)?;
+    Ok(())
+}
+
 pub fn write_vscode_theme_with_home(
     path: &Path,
     relative: &str,
