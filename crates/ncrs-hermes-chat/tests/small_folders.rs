@@ -538,7 +538,7 @@ mod tests {
             .state
             .thread()
             .iter()
-            .any(|entry| matches!(entry, Entry::Hermes { parts, chips: _ }
+            .any(|entry| matches!(entry, Entry::Hermes { parts, .. }
                 if parts.contains(&Part::Text(say(Msg::HermesChatRuleRefused, &[("reason", &reason)]))))));
     }
 }
