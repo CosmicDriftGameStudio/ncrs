@@ -240,6 +240,11 @@ mod tests {
     use crate::model::{DocumentFields, DocumentSource, DocumentStatus, FieldOrigin};
     use crate::test_support::{encrypted_index, new_document};
 
+    /// Test paths are written with `/`; the subtree range uses the platform separator.
+    fn native(path: &str) -> PathBuf {
+        PathBuf::from(path.replace('/', std::path::MAIN_SEPARATOR_STR))
+    }
+
     fn stamp(size: u64, seconds: u64) -> FileStamp {
         FileStamp {
             size,
@@ -394,18 +399,18 @@ mod tests {
         ] {
             let id = index.insert_document(&new_document(seed)).unwrap();
             index
-                .set_document_path(id, Path::new(path), stamp(1, 1))
+                .set_document_path(id, &native(path), stamp(1, 1))
                 .unwrap();
             ids.push(id);
         }
 
-        let under = index.documents_under(Path::new("/a/b")).unwrap();
+        let under = index.documents_under(&native("/a/b")).unwrap();
 
         assert_eq!(
             under,
             vec![
-                (ids[2], PathBuf::from("/a/b/deeper/y.pdf")),
-                (ids[0], PathBuf::from("/a/b/x.pdf"))
+                (ids[2], native("/a/b/deeper/y.pdf")),
+                (ids[0], native("/a/b/x.pdf"))
             ]
         );
     }
@@ -549,18 +554,15 @@ mod tests {
             "/z/b/x.pdf",
         ] {
             index
-                .record_duplicate_path(id, Path::new(path), stamp(1, 1))
+                .record_duplicate_path(id, &native(path), stamp(1, 1))
                 .unwrap();
         }
 
-        let under = index.duplicate_paths_under(Path::new("/a/b")).unwrap();
+        let under = index.duplicate_paths_under(&native("/a/b")).unwrap();
 
         assert_eq!(
             under,
-            vec![
-                PathBuf::from("/a/b/deeper/y.pdf"),
-                PathBuf::from("/a/b/x.pdf")
-            ]
+            vec![native("/a/b/deeper/y.pdf"), native("/a/b/x.pdf")]
         );
     }
 
