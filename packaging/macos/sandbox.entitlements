@@ -11,11 +11,11 @@
 
   Left out on purpose:
   - Starting programs needs none. In the sandbox F3 and F4 start the viewer
-    or editor through `open -a` (src/fs/open.rs), which Launch Services runs
+    or editor through `open -a` (crates/ncrs-fs/src/open.rs), which Launch Services runs
     outside the sandbox; a program spawned directly inherits the sandbox, and
     no entitlement lets it run third-party binaries.
   - com.apple.security.automation.apple-events: the trash goes through
-    NSFileManager in the sandbox (src/fs/delete.rs), not through the Finder.
+    NSFileManager in the sandbox (crates/ncrs-fs/src/delete.rs), not through the Finder.
   - com.apple.security.network.server: ncrs listens on no port.
   - Hardened runtime exceptions (JIT, library validation): the normal app runs
     hardened without any, and libpdfium is signed by the same team.
@@ -32,7 +32,7 @@
 	<key>com.apple.security.files.user-selected.read-write</key>
 	<true/>
 	<!-- Security-scoped bookmarks, so a granted folder stays reachable after a
-	     restart (src/fs/grants.rs). -->
+	     restart (crates/ncrs-fs/src/grants.rs). -->
 	<key>com.apple.security.files.bookmarks.app-scope</key>
 	<true/>
 	<!-- Outgoing connections: SFTP servers, the HTTP model providers of Hermes

@@ -40,14 +40,30 @@ pub fn check_filing_rules(locations: &[FilingLocation]) -> Result<(), FilingRule
     }
     for (later, later_location) in locations.iter().enumerate() {
         let overlapping = locations.iter().take(later).position(|earlier_location| {
-            later_location.path.starts_with(&earlier_location.path)
-                || earlier_location.path.starts_with(&later_location.path)
+            lies_within(&later_location.path, &earlier_location.path)
+                || lies_within(&earlier_location.path, &later_location.path)
         });
         if let Some(earlier) = overlapping {
             return Err(FilingRuleViolation::Overlap { earlier, later });
         }
     }
     Ok(())
+}
+
+/// `Path::starts_with`, except that on macOS and Windows, whose default
+/// volumes ignore case, `~/Archive` and `~/archive` are the same folder.
+fn lies_within(path: &Path, base: &Path) -> bool {
+    let mut components = path.components();
+    base.components().all(|wanted| {
+        components.next().is_some_and(|component| {
+            if cfg!(any(windows, target_os = "macos")) {
+                component.as_os_str().to_string_lossy().to_lowercase()
+                    == wanted.as_os_str().to_string_lossy().to_lowercase()
+            } else {
+                component == wanted
+            }
+        })
+    })
 }
 
 /// Why the setup's locations were not written. The file is unchanged in

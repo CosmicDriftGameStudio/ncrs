@@ -1,7 +1,7 @@
 # Assets
 
 `icon.svg` is the source of the app icon, drawn in the colours of the Dracula
-preset (`src/palette.rs`). The other files are generated from it and committed,
+preset (`crates/ncrs-config/src/palette.rs`). The other files are generated from it and committed,
 so CI and contributors need no tooling: `icon-1024.png`, the window icon
 `icon-128.rgba` (embedded by `src/main.rs`), the macOS `ncrs.icns` and the
 Linux icons in `packaging/linux/icons/hicolor`. After a change to the SVG,

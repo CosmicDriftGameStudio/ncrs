@@ -459,8 +459,12 @@ jobs:
 
           version="${REF_NAME#v}"
           if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "::error::not a usable version: $version"
-            exit 1
+            {
+              echo "### AUR update skipped"
+              echo "Version $version is not plain X.Y.Z; nothing was submitted."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::not a plain X.Y.Z version ($version); skipping the AUR update."
+            exit 0
           fi
 
           sha256_x86_64=$(shasum -a 256 dist/ncrs-x86_64-unknown-linux-gnu.tar.gz | cut -d' ' -f1)
@@ -509,8 +513,12 @@ jobs:
 
           version="${REF_NAME#v}"
           if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "::error::not a usable version: $version"
-            exit 1
+            {
+              echo "### Homebrew tap update skipped"
+              echo "Version $version is not plain X.Y.Z; nothing was submitted."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::not a plain X.Y.Z version ($version); skipping the Homebrew tap update."
+            exit 0
           fi
 
           sha256_arm=$(shasum -a 256 dist/ncrs-aarch64-apple-darwin.app.zip | cut -d' ' -f1)
@@ -583,8 +591,12 @@ jobs:
 
           version="${REF_NAME#v}"
           if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "::error::not a usable version: $version"
-            exit 1
+            {
+              echo "### winget update skipped"
+              echo "Version $version is not plain X.Y.Z; nothing was submitted."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::not a plain X.Y.Z version ($version); skipping the winget update."
+            exit 0
           fi
 
           # komac only updates a package that already exists in winget-pkgs.

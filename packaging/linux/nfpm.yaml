@@ -126,3 +126,8 @@ overrides:
       - libvulkan.so.1()(64bit)
       - libEGL.so.1()(64bit)
       - libwayland-egl.so.1()(64bit)
+      # File dialogs go through the desktop portal.
+      - xdg-desktop-portal
+    suggests:
+      # Saved credentials need a Secret Service provider.
+      - gnome-keyring

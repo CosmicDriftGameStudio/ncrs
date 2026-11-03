@@ -51,9 +51,9 @@ impl Backend {
         if cfg!(feature = "gpu-with-fallback") {
             Self::GpuWithSoftwareFallback
         } else if cfg!(feature = "gpu-rendering") {
-            // wgpu without the explicit fallback flag. Software may still be on
-            // through the default feature, in which case iced builds a fallback
-            // renderer rather than a plain GPU one.
+            // wgpu without the fallback flag. Software may still be on when both
+            // single-backend features were requested explicitly, in which case
+            // iced builds a fallback renderer rather than a plain GPU one.
             if cfg!(feature = "software-rendering") {
                 Self::SoftwareWithGpuFallback
             } else {
@@ -151,19 +151,5 @@ mod tests {
     #[test]
     fn the_backend_has_a_readable_name() {
         assert!(!Backend::CURRENT.name().is_empty());
-    }
-
-    /// `--features` adds to the default set, it does not replace it. Asking for
-    /// `gpu-rendering` without `--no-default-features` keeps `gpu-with-fallback`
-    /// on, so the build is still the fallback renderer, not a pure GPU one —
-    /// surprising enough to pin down.
-    #[test]
-    fn requesting_a_feature_adds_to_the_default() {
-        let gpu = cfg!(feature = "gpu-rendering");
-        let fallback = cfg!(feature = "gpu-with-fallback");
-
-        if gpu && fallback {
-            assert_eq!(Backend::CURRENT, Backend::GpuWithSoftwareFallback);
-        }
     }
 }

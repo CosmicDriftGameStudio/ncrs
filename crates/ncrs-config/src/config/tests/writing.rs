@@ -773,3 +773,30 @@ fn a_table_that_is_not_one_is_reported_not_replaced() {
     );
     assert_eq!(lines_of(&path), "theme = \"classic\"\n");
 }
+
+#[test]
+fn the_same_folder_in_another_case_overlaps_where_the_file_system_ignores_case() {
+    let locations = [
+        FilingLocation {
+            path: PathBuf::from("/home/user/Archive"),
+            mode: LocationMode::Inbox,
+            images: false,
+            is_target: false,
+        },
+        FilingLocation {
+            path: PathBuf::from("/home/user/archive"),
+            mode: LocationMode::Archive,
+            images: false,
+            is_target: true,
+        },
+    ];
+    let expected = if cfg!(any(windows, target_os = "macos")) {
+        Err(FilingRuleViolation::Overlap {
+            earlier: 0,
+            later: 1,
+        })
+    } else {
+        Ok(())
+    };
+    assert_eq!(check_filing_rules(&locations), expected);
+}

@@ -189,6 +189,19 @@ jobs:
         if: runner.os == 'Linux'
         run: cargo deny check advisories licenses bans sources
 
+      # A lockfile update that moves winit past the vendored version makes cargo
+      # drop the patch with only a warning, and the private CoreGraphics symbols
+      # (see vendor/winit/NCRS-PATCH.md) are back in the binary. The patched
+      # crate is the lockfile entry without a registry source.
+      - name: Check the vendored winit is still used
+        if: runner.os == 'Linux'
+        run: |
+          awk '/^name = "winit"$/ { in_entry = 1; next }
+               in_entry && /^source =/ { registry = 1 }
+               in_entry && /^$/ { in_entry = 0 }
+               END { exit registry }' Cargo.lock \
+            || { echo "::error::Cargo.lock uses winit from the registry; vendor/winit is not applied"; exit 1; }
+
       # The PDF tests load the pdfium library at runtime. The script checks the
       # download against a pinned checksum. The library sits in lib/ on macOS
       # and Linux and in bin/ on Windows. The path goes through GITHUB_WORKSPACE,
