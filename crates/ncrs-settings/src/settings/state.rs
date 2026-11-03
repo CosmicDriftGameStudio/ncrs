@@ -348,13 +348,25 @@ impl SettingsState {
     }
 
     /// Shows a failed write at the row of `change`. `false` when it has no
-    /// field, so the failure goes to the status bar.
+    /// field, or its row is on a page that is not shown (a write that was
+    /// started on the way out of it), so the failure goes to the status bar.
     pub fn refused(&mut self, change: &SettingChange, failure: String) -> bool {
         let Some(&field) = fields_of(change).first() else {
             return false;
         };
         self.problems.insert(field, FieldProblem::Write(failure));
-        true
+        page_of(field) == self.feature
+    }
+}
+
+fn page_of(field: SettingField) -> SettingsFeature {
+    match field {
+        SettingField::Color(_) => SettingsFeature::Look,
+        SettingField::Program(_) => SettingsFeature::Programs,
+        SettingField::AiThreads
+        | SettingField::AiEndpoint
+        | SettingField::AiModel
+        | SettingField::Own(_) => SettingsFeature::Hermes,
     }
 }
 

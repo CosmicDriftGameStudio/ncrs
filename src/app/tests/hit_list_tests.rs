@@ -93,6 +93,23 @@ fn opening_on_the_other_side_keeps_the_search_and_activates_the_list() {
 }
 
 #[test]
+fn enter_on_a_hit_in_the_scope_folder_shows_the_folder_on_the_hit_list_side() {
+    let mut hits = opened(&["a.txt"], PanelSide::Right);
+    let folder = hits.files[0].parent().unwrap().to_path_buf();
+    hits.app.panel_mut(PanelSide::Right).path = folder;
+    drop(
+        hits.app
+            .update(Message::Panel(PanelMessage::PanelEntered(PanelSide::Left))),
+    );
+
+    drop(hits.app.update(Message::Search(SearchMessage::Activate)));
+
+    let right = hits.app.panel(PanelSide::Right);
+    assert!(!right.is_hit_list());
+    assert!(right.loading);
+}
+
+#[test]
 fn nothing_opens_without_results() {
     let mut app = App::with_fixed_panels();
     drop(app.update(Message::OpenSearch));

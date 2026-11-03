@@ -87,6 +87,25 @@ async fn back_returns_to_the_folder_with_the_cursor_on_where_it_came_from() {
 }
 
 #[tokio::test]
+async fn a_second_back_before_the_first_arrived_is_ignored() {
+    let scratch = tree();
+    let base = scratch.path();
+    let mut app = started_in(base);
+    go(&mut app, base).await;
+    go(&mut app, &base.join("a")).await;
+    go(&mut app, &base.join("a").join("b")).await;
+
+    drop(app.update(Message::Panel(PanelMessage::HistoryBack)));
+    drop(app.update(Message::Panel(PanelMessage::HistoryBack)));
+
+    assert_eq!(app.panels.left.history.back(), [base.to_path_buf()]);
+    assert_eq!(
+        app.panels.left.history.forward(),
+        [base.join("a").join("b")]
+    );
+}
+
+#[tokio::test]
 async fn a_reload_of_the_same_folder_records_nothing() {
     let scratch = tree();
     let mut app = started_in(scratch.path());

@@ -263,6 +263,7 @@ async fn a_command_click_tags_the_row() {
 
     let _held = app.update(Message::ModifiersChanged(Modifiers::COMMAND));
     click(&mut app);
+    let _released = app.update(Message::Panel(PanelMessage::PanelDragReleased));
     assert!(
         app.panels.left.selection.any_tagged(),
         "Cmd-click did not tag"

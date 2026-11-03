@@ -3132,6 +3132,43 @@ mod review_list_card {
         assert_ne!(first.serial, second.serial);
     }
 
+    #[tokio::test]
+    async fn only_the_preview_the_cursor_rested_on_is_made() {
+        use iced_test::futures::futures::StreamExt as _;
+
+        let mut list = loaded_list();
+        let first = list.preview_request().expect("a request for the first row");
+        list.move_cursor(1);
+        let second = list
+            .preview_request()
+            .expect("a request for the second row");
+        let mut app = App::with_review_list(list);
+        let generation = app.review_list_generation_for_test();
+        let mut serials_loaded = |request| {
+            let task = app.update(review_message(ReviewListMessage::PreviewDue {
+                generation,
+                request,
+            }));
+            async move {
+                let mut loaded = Vec::new();
+                if let Some(mut stream) = iced_test::runtime::task::into_stream(task) {
+                    while let Some(action) = stream.next().await {
+                        if let iced_test::runtime::Action::Output(Message::ReviewList(
+                            ReviewListMessage::PreviewLoaded { serial, .. },
+                        )) = action
+                        {
+                            loaded.push(serial);
+                        }
+                    }
+                }
+                loaded
+            }
+        };
+
+        assert_eq!(serials_loaded(first).await, Vec::<u64>::new());
+        assert_eq!(serials_loaded(second.clone()).await, vec![second.serial]);
+    }
+
     #[test]
     fn an_answer_for_a_row_the_cursor_left_changes_nothing() {
         let mut app = App::with_review_list(loaded_list());

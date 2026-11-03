@@ -10,6 +10,7 @@ use ncrs_fs::{SortColumn, SortKey};
 use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::message::PanelMessage;
+use crate::panel::PanelState;
 use crate::panel_drag::{self, PanelDrag};
 use crate::state::Panels;
 
@@ -165,20 +166,22 @@ pub fn update(
             on_tag,
         } => {
             panels.active = side;
-            let toggle = on_tag || ctx.modifiers.command();
+            // Cmd is also the move key of a drag on macOS, so a Cmd press
+            // tags only once it turns out not to be a drag.
+            let toggle_on_release = !on_tag && ctx.modifiers.command();
             let panel = panels.panel_mut(side);
             panel.select(index, rows);
-            if toggle {
-                // `..` is not a thing to copy, so it is not taggable — the
-                // same rule the keyboard path uses.
-                if let Some(entry) = panel.entries.get(index) {
-                    if !entry.is_parent {
-                        let path = entry.path.clone();
-                        panel.selection.toggle(&path);
-                    }
-                }
+            if on_tag {
+                toggle_tag(panel, index);
             }
-            arm_panel_drag(panels, ctx, side, on_tag, &mut actions);
+            arm_panel_drag(
+                panels,
+                ctx,
+                side,
+                on_tag,
+                toggle_on_release.then_some(index),
+                &mut actions,
+            );
         }
         PanelMessage::RowContext { side, index } => {
             actions.push(Action::ContextMenuAt { side, index });
@@ -294,10 +297,17 @@ fn jump_to_typed(panels: &mut Panels, ctx: &Ctx<'_>, typed: &str) {
 
 /// Alt+Left / Alt+Right on the active panel. A folder that is gone since
 /// opens its nearest existing parent, and the arrival does not count as a
-/// visit, so Forward survives it.
+/// visit, so Forward survives it. A step is ignored while the one before it
+/// is still loading.
 fn step_history(panels: &mut Panels, ctx: &Ctx<'_>, direction: HistoryDirection) -> Vec<Action> {
     let side = panels.active;
-    let current = panels.panel(side).path.clone();
+    let panel = panels.panel(side);
+    // The path only changes when the listing arrives; a second step before
+    // that would take the old folder as the current one again.
+    if panel.loading && panel.history_step_request == Some(panel.request_id) {
+        return Vec::new();
+    }
+    let current = panel.path.clone();
     let history = &mut panels.panel_mut(side).history;
     let stepped = match direction {
         HistoryDirection::Back => history.step_back(current.clone()),
@@ -404,18 +414,30 @@ fn activate_row(
     actions.push(Action::OpenSelected);
 }
 
+/// `..` is not a thing to copy, so it is not taggable — the same rule the
+/// keyboard path uses.
+fn toggle_tag(panel: &mut PanelState, index: usize) {
+    if let Some(entry) = panel.entries.get(index) {
+        if !entry.is_parent {
+            let path = entry.path.clone();
+            panel.selection.toggle(&path);
+        }
+    }
+}
+
 /// A press on the star only tags, so it never starts a drag.
 fn arm_panel_drag(
     panels: &mut Panels,
     ctx: &Ctx<'_>,
     side: PanelSide,
     on_tag: bool,
+    toggle_on_release: Option<usize>,
     actions: &mut Vec<Action>,
 ) {
     if on_tag {
         return;
     }
-    panels.drag = Some(PanelDrag::new(side, ctx.pointer));
+    panels.drag = Some(PanelDrag::new(side, ctx.pointer, toggle_on_release));
     actions.push(Action::DragArmed(true));
 }
 
@@ -425,6 +447,9 @@ fn finish_panel_drag(panels: &mut Panels, ctx: &Ctx<'_>, actions: &mut Vec<Actio
     let Some(drag) = panels.drag.take() else {
         return;
     };
+    if let (false, Some(index)) = (drag.is_dragging(), drag.toggle_on_release()) {
+        toggle_tag(panels.panel_mut(drag.source()), index);
+    }
     if !drag.is_dragging() || ctx.overlay_is_open || panels.hovered != Some(drag.source().other()) {
         return;
     }

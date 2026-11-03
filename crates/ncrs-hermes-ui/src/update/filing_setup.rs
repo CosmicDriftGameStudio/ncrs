@@ -17,6 +17,16 @@ pub fn update(
     actions: &mut Vec<Action>,
 ) -> Task<Message> {
     match message {
+        // A lookup or save still running would report to whichever card is
+        // open by then, so the card stays until it has answered.
+        FilingSetupMessage::Toggle | FilingSetupMessage::Close
+            if hermes
+                .filing_setup
+                .as_ref()
+                .is_some_and(FilingSetup::is_busy) =>
+        {
+            Task::none()
+        }
         FilingSetupMessage::Toggle => {
             if hermes.hermes_setup.take().is_some() {
                 hermes.pending_hermes_start = None;

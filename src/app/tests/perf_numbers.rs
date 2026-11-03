@@ -115,13 +115,19 @@ fn enter(app: &mut App, path: &std::path::Path, entries: Vec<FileEntry>) {
     })));
 }
 
+/// Every step starts from the first row, so each one really moves the cursor
+/// instead of pressing against the end of the list.
 fn per_step(app: &mut App, message: &Message) -> Duration {
-    let start = Instant::now();
+    let mut spent = Duration::ZERO;
     for _ in 0..STEPS {
+        drop(app.update(Message::Panel(PanelMessage::SelectFirst)));
+        drop(app.view());
+        let start = Instant::now();
         drop(app.update(message.clone()));
         drop(app.view());
+        spent += start.elapsed();
     }
-    start.elapsed() / STEPS
+    spent / STEPS
 }
 
 /// Runs the search the dialog runs, until its `Finished` event, and

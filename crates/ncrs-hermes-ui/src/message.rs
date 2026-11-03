@@ -21,7 +21,7 @@ use ncrs_intake::LocationMode;
 use ncrs_pipeline::Load;
 
 use crate::condition_editor::ConditionEdit;
-use crate::document_preview::PreviewContent;
+use crate::document_preview::{PreviewContent, PreviewRequest};
 use crate::filing_pieces::TargetEdit;
 use crate::hermes_column::{ColumnReading, ColumnStage, FileDetail, FolderRole};
 use crate::hermes_setup::FolderSlot;
@@ -479,6 +479,13 @@ pub enum ReviewListMessage {
         generation: u64,
         serial: u64,
         content: PreviewContent,
+    },
+    /// The cursor has rested on the document of `request`: only now is its
+    /// preview made, so moving through a long list starts no work. Dropped
+    /// like [`Self::PreviewLoaded`].
+    PreviewDue {
+        generation: u64,
+        request: PreviewRequest,
     },
 }
 

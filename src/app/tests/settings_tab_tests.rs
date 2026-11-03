@@ -116,6 +116,22 @@ fn a_written_color_is_painted_at_once() {
 }
 
 #[test]
+fn a_refused_value_of_a_page_that_was_left_is_shown_in_the_status_bar() {
+    let mut app = App::with_settings_file(SettingsFeature::Language, Ok(Config::default()));
+    drop(app.update(Message::Settings(SettingsMessage::Written {
+        change: SettingChange::Color {
+            role: ColorRole::Accent,
+            color: Some("#ff0000".to_owned()),
+        },
+        result: Err(FilingWriteError::Io {
+            path: PathBuf::from("/x/config.toml"),
+            reason: "denied".to_owned(),
+        }),
+    })));
+    assert!(app.settings.failure.as_deref().unwrap().contains("denied"));
+}
+
+#[test]
 fn a_refused_field_value_is_shown_at_its_row_and_not_in_the_status_bar() {
     let mut app = App::with_settings_file(SettingsFeature::Look, Ok(Config::default()));
     let field = SettingField::Color(ColorRole::Accent);

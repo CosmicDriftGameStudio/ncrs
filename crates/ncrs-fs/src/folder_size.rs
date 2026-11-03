@@ -6,8 +6,32 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use ncrs_core::FolderSize;
 
 /// Hard links are counted once per walk, symlinks are never followed (a link
-/// counts its own size). `None` when `cancel` was set. Blocking.
+/// counts its own size). Folders on another device (mounts, `/proc`) are
+/// skipped like `du -x` and make the result partial. `None` when `cancel` was
+/// set. Blocking.
 pub fn measure_folder(root: &Path, cancel: &AtomicBool) -> Option<FolderSize> {
+    measure_folder_on(root, cancel, device_of)
+}
+
+#[cfg(unix)]
+fn device_of(_path: &Path, metadata: &std::fs::Metadata) -> Option<u64> {
+    use std::os::unix::fs::MetadataExt as _;
+    Some(metadata.dev())
+}
+
+#[cfg(not(unix))]
+fn device_of(_path: &Path, _metadata: &std::fs::Metadata) -> Option<u64> {
+    None
+}
+
+fn measure_folder_on(
+    root: &Path,
+    cancel: &AtomicBool,
+    device_of: impl Fn(&Path, &std::fs::Metadata) -> Option<u64>,
+) -> Option<FolderSize> {
+    let root_device = std::fs::symlink_metadata(root)
+        .ok()
+        .and_then(|metadata| device_of(root, &metadata));
     let mut bytes: u64 = 0;
     let mut partial = false;
     let mut seen = SeenFiles::default();
@@ -34,7 +58,11 @@ pub fn measure_folder(root: &Path, cancel: &AtomicBool) -> Option<FolderSize> {
                 continue;
             };
             if metadata.is_dir() {
-                pending.push(path);
+                if root_device.is_some() && device_of(&path, &metadata) != root_device {
+                    partial = true;
+                } else {
+                    pending.push(path);
+                }
             } else if seen.first_time(&metadata) {
                 bytes = bytes.saturating_add(metadata.len());
             }
@@ -95,6 +123,25 @@ mod tests {
             Some(FolderSize {
                 bytes: 35,
                 partial: false
+            })
+        );
+    }
+
+    #[test]
+    fn a_folder_on_another_device_is_skipped_and_makes_the_total_partial() {
+        let root = tempfile::tempdir().unwrap();
+        write(&root.path().join("tree/a.txt"), 10);
+        write(&root.path().join("tree/mount/big.bin"), 1000);
+        let other_device =
+            |path: &Path, _: &std::fs::Metadata| Some(if path.ends_with("mount") { 2 } else { 1 });
+
+        let found = measure_folder_on(&root.path().join("tree"), &running(), other_device);
+
+        assert_eq!(
+            found,
+            Some(FolderSize {
+                bytes: 10,
+                partial: true
             })
         );
     }

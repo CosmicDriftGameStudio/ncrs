@@ -14,14 +14,16 @@ pub struct PanelDrag {
     source: PanelSide,
     origin: Point,
     dragging: bool,
+    toggle_on_release: Option<usize>,
 }
 
 impl PanelDrag {
-    pub fn new(source: PanelSide, origin: Point) -> Self {
+    pub fn new(source: PanelSide, origin: Point, toggle_on_release: Option<usize>) -> Self {
         Self {
             source,
             origin,
             dragging: false,
+            toggle_on_release,
         }
     }
 
@@ -33,6 +35,12 @@ impl PanelDrag {
 
     pub fn source(&self) -> PanelSide {
         self.source
+    }
+
+    /// The row a press with Cmd held tags when the button comes up without a
+    /// drag.
+    pub fn toggle_on_release(&self) -> Option<usize> {
+        self.toggle_on_release
     }
 
     pub fn is_dragging(&self) -> bool {
@@ -65,7 +73,7 @@ mod tests {
 
     #[test]
     fn a_press_becomes_a_drag_only_after_the_threshold() {
-        let mut drag = PanelDrag::new(PanelSide::Left, Point::new(10.0, 10.0));
+        let mut drag = PanelDrag::new(PanelSide::Left, Point::new(10.0, 10.0), None);
         drag.moved_to(Point::new(12.0, 11.0));
         assert!(!drag.is_dragging());
         drag.moved_to(Point::new(10.0, 16.0));
@@ -74,7 +82,7 @@ mod tests {
 
     #[test]
     fn a_drag_stays_a_drag_when_the_pointer_comes_back() {
-        let mut drag = PanelDrag::new(PanelSide::Right, Point::new(10.0, 10.0));
+        let mut drag = PanelDrag::new(PanelSide::Right, Point::new(10.0, 10.0), None);
         drag.moved_to(Point::new(40.0, 10.0));
         drag.moved_to(Point::new(10.0, 10.0));
         assert!(drag.is_dragging());

@@ -98,6 +98,31 @@ fn escape_closes_the_setup_when_nothing_else_wants_it() {
     );
 }
 
+#[test]
+fn the_setup_cannot_be_closed_while_a_lookup_is_running() {
+    let mut app = App::with_filing_setup(&[], false);
+    drop(app.update(setup_message(FilingSetupMessage::PickFolder(
+        LocationMode::Archive,
+    ))));
+
+    drop(app.update(setup_message(FilingSetupMessage::Close)));
+    drop(app.update(setup_message(FilingSetupMessage::Toggle)));
+    assert!(app.hermes.filing_setup.as_ref().unwrap().is_busy());
+
+    let folder = PathBuf::from("/archive");
+    drop(app.update(setup_message(FilingSetupMessage::Added {
+        mode: LocationMode::Archive,
+        folder: folder.clone(),
+        resolved: Ok(folder.clone()),
+    })));
+    assert_eq!(
+        app.hermes.filing_setup.as_ref().unwrap().chosen()[0].path,
+        folder
+    );
+    drop(app.update(setup_message(FilingSetupMessage::Close)));
+    assert!(app.hermes.filing_setup.is_none());
+}
+
 fn runtime() -> tokio::runtime::Runtime {
     tokio::runtime::Builder::new_current_thread()
         .build()

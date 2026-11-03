@@ -276,6 +276,10 @@ impl App {
         let Some((directory, name)) = self.search.cursor_location(self.search_has_keys()) else {
             return Task::none();
         };
-        self.load(self.search.side.other(), directory, Some(name))
+        let other = self.search.side.other();
+        // A hit list on that side whose scope is this very folder would only
+        // read its hits again instead of showing the folder.
+        self.panels.panel_mut(other).drop_hit_list();
+        self.load(other, directory, Some(name))
     }
 }
