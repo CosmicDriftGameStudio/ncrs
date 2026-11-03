@@ -27,7 +27,8 @@ pub enum Submission<'a> {
 
 /// Reads a line. `cd` and `cd <path>` change the directory of the active
 /// panel, a pair of surrounding quotes around the path is dropped; bare `cd`
-/// goes home. Everything else is for the shell.
+/// goes home. Everything else is for the shell, also a `cd` that is part of a
+/// longer shell line (`cd src && make`).
 pub fn parse(line: &str) -> Submission<'_> {
     let trimmed = line.trim();
     if trimmed.is_empty() {
@@ -39,9 +40,21 @@ pub fn parse(line: &str) -> Submission<'_> {
     if word != "cd" {
         return Submission::Shell(trimmed);
     }
-    let path = strip_matching_quotes(rest.trim());
+    let rest = rest.trim();
+    let path = strip_matching_quotes(rest);
+    if path.len() == rest.len() && (rest.contains(SHELL_OPERATORS) || rest.contains("$(")) {
+        return Submission::Shell(trimmed);
+    }
+    #[cfg(windows)]
+    let path = path
+        .strip_prefix("/d")
+        .filter(|after| after.starts_with(char::is_whitespace))
+        .map_or(path, str::trim_start);
     Submission::ChangeDirectory(if path.is_empty() { "~" } else { path })
 }
+
+/// Characters that make an unquoted `cd` argument a shell line instead of a path.
+const SHELL_OPERATORS: [char; 6] = ['&', '|', ';', '>', '<', '`'];
 
 fn strip_matching_quotes(text: &str) -> &str {
     ['"', '\'']

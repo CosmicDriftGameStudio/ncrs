@@ -375,12 +375,13 @@ impl SavedQueries {
     }
 
     /// The wheel moves the window; a query under the cursor follows it when
-    /// the cursor would leave. The unsaved row stays the one shown.
+    /// the cursor would leave. The unsaved row stays the one shown, and a name
+    /// being edited is never dropped by scrolling.
     pub fn scroll(&mut self, delta: ScrollDelta) {
         let mut moved = self.cursor.unwrap_or_default();
         self.window
             .scroll(delta, self.rows.len(), VISIBLE_ROWS, &mut moved);
-        if self.cursor.is_some() {
+        if self.cursor.is_some() && !self.busy && !self.name_is_changed() {
             self.select(moved);
         }
     }
@@ -880,5 +881,37 @@ mod tests {
 
         assert!(!list.is_busy());
         assert_eq!(list.problem(), Some(&Problem::Failed("boom".to_owned())));
+    }
+
+    fn list_of_many_queries() -> SavedQueries {
+        let dir = tempfile::TempDir::new().unwrap();
+        let mut index = ncrs_index::Index::create_plain(&dir.path().join("index.db")).unwrap();
+        for number in 0..40 {
+            index
+                .save_query(&format!("Query {number}"), &QuerySpec::default())
+                .unwrap();
+        }
+        let mut list = SavedQueries::new(THIS_YEAR);
+        list.loaded(index.saved_queries().unwrap());
+        list
+    }
+
+    #[test]
+    fn scrolling_keeps_a_changed_name_and_the_cursor() {
+        let mut list = list_of_many_queries();
+        list.set_name("renamed".to_owned());
+        let cursor = list.cursor();
+
+        list.scroll(ScrollDelta::Lines { x: 0.0, y: -30.0 });
+
+        assert_eq!(list.cursor(), cursor);
+        assert_eq!(list.name(), "renamed");
+    }
+
+    #[test]
+    fn scrolling_an_unchanged_form_moves_the_cursor_with_the_window() {
+        let mut list = list_of_many_queries();
+        list.scroll(ScrollDelta::Lines { x: 0.0, y: -30.0 });
+        assert_ne!(list.cursor(), Some(0));
     }
 }

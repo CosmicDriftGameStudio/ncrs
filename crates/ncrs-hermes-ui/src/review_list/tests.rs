@@ -1,4 +1,6 @@
-use super::fixtures::{default_pattern_list, ids, item, list_in, loaded_list, replan_item};
+use super::fixtures::{
+    default_pattern_list, ids, item, list_in, loaded_list, long_list, replan_item,
+};
 use super::*;
 use ncrs_index::KindLanguage;
 
@@ -378,4 +380,27 @@ fn an_empty_list_has_nothing_to_edit_or_file() {
     assert_eq!(list.begin_confirm(), None);
     assert_eq!(list.preview(), None);
     assert_eq!(list.open_count(), Some(0));
+}
+
+#[test]
+fn scrolling_does_not_drop_an_entry_being_edited() {
+    use iced::mouse::ScrollDelta;
+
+    let mut list = long_list();
+    list.set_text(FormField::Recipient, "typed by hand".to_owned());
+    assert!(list.is_editing());
+
+    list.scroll(ScrollDelta::Lines { x: 0.0, y: -30.0 });
+
+    assert_eq!(list.cursor(), 0);
+    assert!(list.is_editing());
+}
+
+#[test]
+fn scrolling_without_an_edit_moves_the_cursor_with_the_window() {
+    use iced::mouse::ScrollDelta;
+
+    let mut list = long_list();
+    list.scroll(ScrollDelta::Lines { x: 0.0, y: -30.0 });
+    assert!(list.cursor() > 0);
 }

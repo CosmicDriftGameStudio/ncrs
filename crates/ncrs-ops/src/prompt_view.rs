@@ -185,6 +185,7 @@ fn validation_message(reason: &str) -> Option<Msg> {
         "archive_extension" => Some(Msg::ErrorPackExtension),
         "archive_exists" => Some(Msg::ErrorPackExists),
         "archive_folder_missing" => Some(Msg::ErrorPackFolderMissing),
+        "archive_inside_source" => Some(Msg::ErrorPackInsideSource),
         _ => None,
     }
 }

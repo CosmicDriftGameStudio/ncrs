@@ -331,6 +331,12 @@
       "de": "Hier gibt es schon eine Datei oder einen Ordner mit diesem Namen"
     },
     {
+      "key": "error.pack_inside_source",
+      "context": "Shown in the pack dialog when the typed archive path lies inside one of the folders being packed, so the archive would be written into its own contents. The user picks a path outside the packed folders.",
+      "en": "The archive cannot be saved inside a folder it packs",
+      "de": "Das Archiv kann nicht in einem Ordner liegen, den es selbst packt"
+    },
+    {
       "key": "error.mkdir_failed",
       "context": "Shown when creating the directory failed for a reason the user could not have predicted — a permission problem, a read-only disk, a full filesystem. Takes the directory name and the OS reason. For the two predictable failures use error.mkdir_taken and error.parent_missing instead.",
       "en": "Could not create {name}: {reason}",

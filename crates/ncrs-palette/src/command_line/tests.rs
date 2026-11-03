@@ -30,6 +30,21 @@ fn one_pair_of_matching_quotes_is_dropped() {
 }
 
 #[test]
+fn a_cd_inside_a_longer_shell_line_goes_to_the_shell() {
+    for line in [
+        "cd build && make",
+        "cd src; ls",
+        "cd a | cat",
+        "cd a > out",
+        "cd `pwd`",
+        "cd $(pwd)",
+    ] {
+        assert_eq!(parse(line), Submission::Shell(line), "{line:?}");
+    }
+    assert_eq!(parse("cd \"a & b\""), Submission::ChangeDirectory("a & b"));
+}
+
+#[test]
 fn words_that_only_start_with_cd_go_to_the_shell() {
     assert_eq!(parse("cdx"), Submission::Shell("cdx"));
     assert_eq!(parse("cd."), Submission::Shell("cd."));
