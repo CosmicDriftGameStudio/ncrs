@@ -296,10 +296,8 @@ fn new_temp(parent: &Path) -> io::Result<NamedTempFile> {
     // tempfile defaults to 0600; asking for 0666 gets the umask applied, so a
     // new archive is readable like any other new file.
     #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt as _;
-        builder.permissions(std::fs::Permissions::from_mode(0o666));
-    }
+    builder
+        .permissions(<std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o666));
     builder.tempfile_in(parent)
 }
 
