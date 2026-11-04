@@ -572,3 +572,32 @@ fn everywhere_with_only_a_name_counts_every_renamed_document() {
     assert_eq!(preview.moved, total);
     assert_ne!(preview.before.last(), preview.after.last());
 }
+
+#[test]
+fn everywhere_a_folder_without_a_date_order_gets_the_new_folder_below_its_own() {
+    let club = Some("Allgemeiner Club");
+    let reading = reading(
+        "/archive",
+        vec![
+            plan_file("Bank/2023/a.pdf", 1, None, date(2023, 1, 2)),
+            plan_file("Bank/2024/b.pdf", 2, None, date(2024, 1, 2)),
+            plan_file("Bank/2025/c.pdf", 3, None, date(2025, 1, 2)),
+            plan_file("Versicherung/adac/d.pdf", 4, club, date(2020, 1, 2)),
+            plan_file("Versicherung/adac/e.pdf", 5, club, date(2020, 2, 3)),
+        ],
+    );
+    let result = Setup::new().access.run(ChatWork::PreviewPattern {
+        name: Some(name_of(&[NameBlock::Year], '_')),
+        reading: Arc::new(reading),
+        levels: vec![PatternLevel::Year],
+    });
+    let ChatResult::PatternPreviewed(Some(preview)) = result else {
+        panic!("{result:?}");
+    };
+    assert_eq!(preview.moved, 5);
+    assert_eq!(
+        preview.after,
+        ["Versicherung", "adac", "2020", "2020_e.pdf"],
+        "the example is a file that gets the new folder, not the newest renamed one"
+    );
+}

@@ -189,13 +189,16 @@ pub fn preview(
         .areas
         .iter()
         .flat_map(|area| {
-            area.branches.iter().filter_map(|branch| {
-                let (keep, _) = trailing_pattern(&branch.levels)?;
-                Some(PatternTarget {
+            area.branches.iter().map(|branch| {
+                // A branch without such folders keeps all of its own and gets
+                // the new ones below them.
+                let keep = trailing_pattern(&branch.levels)
+                    .map_or(branch.levels.len(), |(keep, _)| keep);
+                PatternTarget {
                     area: area.folder.clone(),
                     levels: branch.levels.clone(),
                     keep,
-                })
+                }
             })
         })
         .collect();
@@ -216,7 +219,7 @@ pub fn preview(
         name: name.cloned(),
     };
     let mut moved = 0;
-    let mut sample: Option<(&ncrs_intake::PlanFile, PathBuf)> = None;
+    let mut sample: Option<(&ncrs_intake::PlanFile, PathBuf, bool)> = None;
     for file in &reading.files {
         let after = super::change::apply_changes(
             file.relative_path.clone(),
@@ -228,14 +231,16 @@ pub fn preview(
             continue;
         }
         moved += 1;
-        let newer = sample
-            .as_ref()
-            .is_none_or(|(current, _)| file.fields.date > current.fields.date);
-        if newer {
-            sample = Some((file, after));
+        // The example shows new folders whenever a file gets any, not just a new name.
+        let changes_folder = after.parent() != file.relative_path.parent();
+        let better = sample.as_ref().is_none_or(|(current, _, current_changes)| {
+            (changes_folder, file.fields.date) > (*current_changes, current.fields.date)
+        });
+        if better {
+            sample = Some((file, after, changes_folder));
         }
     }
-    let (file, after) = sample?;
+    let (file, after, _) = sample?;
     Some(PatternPreview {
         change,
         moved,
