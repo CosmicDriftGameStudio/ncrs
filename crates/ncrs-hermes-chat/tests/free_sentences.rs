@@ -78,6 +78,9 @@ mod tests {
             talk.state.session.changes.is_empty(),
             "nothing before the yes"
         );
+        assert!(!talk
+            .last_texts()
+            .contains(&say(Msg::HermesChatChangePreviewWithNames, &[])));
         talk.press(&ChipReply::ConfirmChange);
         assert_eq!(talk.state.session.changes.len(), 1);
     }
@@ -183,6 +186,61 @@ mod tests {
 
         talk.type_text_understood("und wieder hmmm", other);
         assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatFallback, &[])]);
+    }
+
+    #[test]
+    fn an_order_with_a_name_says_that_the_names_change_too() {
+        let mut talk = archive_talk();
+        read_archive(&mut talk);
+
+        talk.type_text_understood(
+            "in alfa nach monat und dateinamen mit datum",
+            r#"{"intent":"change_structure","area":"Alfa","order":"by_month","name":["year","month","day"],"separator":"_"}"#,
+        );
+
+        let with_names = say(Msg::HermesChatChangePreviewWithNames, &[]);
+        assert_eq!(talk.last_texts()[1], with_names, "{:?}", talk.last_texts());
+    }
+
+    #[test]
+    fn an_order_with_a_name_for_every_area_says_that_the_names_change_too() {
+        let mut talk = archive_talk();
+        read_archive(&mut talk);
+
+        talk.type_text_understood(
+            "überall nach jahr und dateinamen mit datum",
+            r#"{"intent":"change_structure","area":"*","order":"by_year","name":["year","month","day"],"separator":"_"}"#,
+        );
+
+        let with_names = say(Msg::HermesChatChangePreviewWithNames, &[]);
+        assert_eq!(talk.last_texts()[1], with_names, "{:?}", talk.last_texts());
+    }
+
+    #[test]
+    fn small_talk_after_an_unusable_sentence_is_answered_as_small_talk() {
+        let mut talk = archive_talk();
+        talk.open();
+
+        talk.type_text_understood("hmmm", r#"{"intent":"other"}"#);
+        talk.type_text_understood("was kannst du?", SMALL_TALK);
+
+        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatSmallTalk, &[])]);
+    }
+
+    #[test]
+    fn a_statement_with_a_folder_button_is_sent_to_the_model_as_no_question() {
+        let mut talk = archive_talk();
+        talk.open();
+        talk.type_text_understood(
+            "Räum Nirgendwo auf",
+            r#"{"intent":"tidy_folder","source":"Nirgendwo"}"#,
+        );
+        assert!(has_chip(&talk, &ChipReply::PickFolder));
+
+        talk.type_text_understood("Downloads aufräumen", SMALL_TALK);
+
+        let turns = talk.model.turns();
+        assert!(turns[1].question.is_none(), "{:?}", turns[1].question);
     }
 
     #[test]

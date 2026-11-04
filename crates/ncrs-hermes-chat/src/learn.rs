@@ -448,8 +448,14 @@ pub fn preview_done(state: &mut State, ctx: &Ctx, computed: Option<ChangePreview
         no_change_found(state, ctx);
         return;
     };
-    let mut parts = vec![
-        Part::Text(preview_intro(state, ctx, &preview)),
+    let mut parts = vec![Part::Text(preview_intro(state, ctx, &preview))];
+    if preview.change.name.is_some() && preview.change.order != ChangeOrder::FileNames {
+        parts.push(Part::Text(text(
+            ctx.lang,
+            Msg::HermesChatChangePreviewWithNames,
+        )));
+    }
+    parts.extend([
         Part::File(FileCard {
             segments: preview.example.clone(),
             highlighted: Some(preview.highlighted),
@@ -459,7 +465,7 @@ pub fn preview_done(state: &mut State, ctx: &Ctx, computed: Option<ChangePreview
             Msg::HermesChatChangePreviewCount,
             &[("area", &preview_area(&preview))],
         )),
-    ];
+    ]);
     let Some(scope) = preview.scope.clone() else {
         confirm(state, ctx, parts, preview);
         return;

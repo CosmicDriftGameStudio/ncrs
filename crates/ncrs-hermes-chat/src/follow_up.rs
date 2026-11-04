@@ -40,9 +40,14 @@ pub fn remember(state: &mut State, intent: &ChatIntent, typed: &str) {
 /// Small talk or nothing right after a request is almost always a follow-up
 /// the model could not place: Hermes asks again, with the areas as buttons.
 pub fn answered_misread(state: &mut State, ctx: &Ctx, intent: &ChatIntent) -> bool {
-    let after_request =
-        state.session.previous_request.is_some() || state.session.previous_message.is_some();
-    if !after_request || !matches!(intent, ChatIntent::SmallTalk | ChatIntent::Other) {
+    let answers_follow_up = match intent {
+        ChatIntent::SmallTalk => state.session.previous_request.is_some(),
+        ChatIntent::Other => {
+            state.session.previous_request.is_some() || state.session.previous_message.is_some()
+        }
+        _ => false,
+    };
+    if !answers_follow_up {
         return false;
     }
     state.session.previous_message = None;

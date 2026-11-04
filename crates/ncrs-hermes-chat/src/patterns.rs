@@ -105,21 +105,29 @@ pub fn previewed(state: &mut State, ctx: &Ctx, computed: Option<PatternPreview>)
             &[("pattern", &state.session.change_word)],
         )
     };
+    let names_unsaid = preview.change.name.is_some() && !state.session.change_word.is_empty();
     state.session.pending_pattern = Some(preview.change);
     state.step = Step::ConfirmChange;
+    let mut parts = vec![Part::Text(intro)];
+    if names_unsaid {
+        parts.push(Part::Text(text(
+            ctx.lang,
+            Msg::HermesChatChangePreviewWithNames,
+        )));
+    }
+    parts.extend([
+        Part::File(FileCard {
+            segments: preview.before,
+            highlighted: None,
+        }),
+        Part::File(FileCard {
+            segments: preview.after,
+            highlighted: first_difference,
+        }),
+    ]);
     hermes(
         state,
-        vec![
-            Part::Text(intro),
-            Part::File(FileCard {
-                segments: preview.before,
-                highlighted: None,
-            }),
-            Part::File(FileCard {
-                segments: preview.after,
-                highlighted: first_difference,
-            }),
-        ],
+        parts,
         vec![
             chip(
                 ctx,

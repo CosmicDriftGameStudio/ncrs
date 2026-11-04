@@ -202,7 +202,7 @@ fn path_pieces<'a, M: 'a>(
         if index > 0 {
             pieces.push(mono(PATH_SEPARATOR, TEXT_BODY, colors.dim_text));
         }
-        let shown = format::ellipsize_middle(segment, SEGMENT_MAX_CHARS);
+        let shown = format::ellipsize_keeping_both_ends(segment, SEGMENT_MAX_CHARS);
         if highlighted == Some(index) {
             let marked = container(mono(shown.clone(), TEXT_BODY, colors.accent))
                 .padding([0.0, SEGMENT_PAD_X])

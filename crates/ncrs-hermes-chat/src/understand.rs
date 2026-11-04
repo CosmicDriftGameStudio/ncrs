@@ -43,6 +43,7 @@ pub fn asked(state: &State) -> Asked {
                 | ChipReply::IntentTidy
                 | ChipReply::IntentStructure
                 | ChipReply::IntentUndo
+                | ChipReply::PickFolder
         )
     });
     match last_text {

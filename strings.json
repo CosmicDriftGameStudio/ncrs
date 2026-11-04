@@ -7795,6 +7795,12 @@
       "de": "Neue Dateien in {area} bekommen dann solche Namen. Was schon da liegt, behält seinen Namen. So sähe es aus:"
     },
     {
+      "key": "hermes_chat.change_preview_with_names",
+      "context": "Hermes chat (F2): Line of the preview of a change of order that also changes how new documents are named, shown right after the first line and before the example path, whose file name is the new one. Files already in the area keep their names.",
+      "en": "New documents get names like the one shown, too.",
+      "de": "Auch die Dateinamen neuer Dateien sehen dann so aus."
+    },
+    {
       "key": "hermes_chat.pattern_preview_names",
       "context": "Hermes chat (F2): Hermes shows how new documents would be named if the file names were built the new way in every area. Files already in the folder keep their names. Two paths follow, before and after.",
       "en": "New documents would get names like this everywhere. What's already there keeps its name. It would look like this:",
