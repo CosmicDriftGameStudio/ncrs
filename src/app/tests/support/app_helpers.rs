@@ -467,8 +467,7 @@ impl App {
         self
     }
 
-    /// The state of the Hermes chat, for the protocol run that drives it.
-    #[cfg(unix)]
+    /// The state of the Hermes chat, for tests that look into it.
     pub fn hermes_chat_for_test(&self) -> &ncrs_hermes_chat::State {
         &self.hermes_chat
     }

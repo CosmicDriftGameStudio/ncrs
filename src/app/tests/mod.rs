@@ -452,4 +452,6 @@ mod hermes_chat_ui_tests;
 mod hit_list_tests;
 #[cfg(test)]
 mod settings_pages_tests;
+#[cfg(test)]
+mod settings_pages_ui_tests;
 pub(in crate::app) mod support;
