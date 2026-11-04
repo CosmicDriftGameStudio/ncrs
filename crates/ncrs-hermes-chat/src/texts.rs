@@ -6,7 +6,9 @@ use std::time::{Duration, SystemTime};
 use ncrs_filing::chat_work::{branch_example, FolderReading};
 use ncrs_i18n::{fill_template, Language, Msg};
 use ncrs_index::Field;
-use ncrs_intake::{Area, Branch, ConditionProblem, Level, PlaceholderLabel, RuleProblem};
+use ncrs_intake::{
+    branch_plain, label_text, Area, Branch, ConditionProblem, PlaceholderLabel, RuleProblem,
+};
 use ncrs_ui_kit::format;
 
 use crate::ctx::Ctx;
@@ -89,23 +91,6 @@ pub fn shown_folder(ctx: &Ctx, path: &Path) -> String {
     }
 }
 
-pub fn label_text(lang: Language, label: PlaceholderLabel) -> &'static str {
-    lang.text(match label {
-        PlaceholderLabel::Year => Msg::HermesChatLabelYear,
-        PlaceholderLabel::Month => Msg::HermesChatLabelMonth,
-        PlaceholderLabel::Date => Msg::HermesChatLabelDate,
-        PlaceholderLabel::Number => Msg::HermesChatLabelNumber,
-        PlaceholderLabel::Sender => Msg::HermesChatLabelSender,
-        PlaceholderLabel::Kind => Msg::HermesChatLabelKind,
-        PlaceholderLabel::Bank => Msg::HermesChatLabelBank,
-        PlaceholderLabel::Insurer => Msg::HermesChatLabelInsurer,
-        PlaceholderLabel::Vehicle => Msg::HermesChatLabelVehicle,
-        PlaceholderLabel::Child => Msg::HermesChatLabelChild,
-        PlaceholderLabel::Property => Msg::HermesChatLabelProperty,
-        PlaceholderLabel::Subfolder => Msg::HermesChatLabelSubfolder,
-    })
-}
-
 pub fn plural_text(lang: Language, label: PlaceholderLabel) -> &'static str {
     lang.text(match label {
         PlaceholderLabel::Year => Msg::HermesChatPluralYear,
@@ -135,7 +120,6 @@ pub fn field_label(lang: Language, field: Field) -> &'static str {
 }
 
 const PATTERN_JOINER: &str = " / ";
-const PLAIN_JOINER: &str = " › ";
 
 /// The name of a placeholder as the filing masks call it; what the masks have
 /// no name for is named by what it stands for.
@@ -166,43 +150,6 @@ pub fn pattern_levels(lang: Language, labels: &[PlaceholderLabel]) -> String {
         .map(|label| pattern_label(lang, *label))
         .collect::<Vec<_>>()
         .join(PATTERN_JOINER)
-}
-
-/// The names of a level with several fixed choices, "Account, Loan or
-/// Messages".
-fn choice_words(lang: Language, names: &[String]) -> String {
-    match names.split_last() {
-        Some((last, before)) if !before.is_empty() => fill(
-            lang,
-            Msg::HermesChatLevelOr,
-            &[("list", &before.join(", ")), ("last", last)],
-        ),
-        Some((only, _)) => only.clone(),
-        None => String::new(),
-    }
-}
-
-/// The folders below the area in words, "2024 › Deutsche Bank › Account,
-/// Loan or Messages"; "no subfolders" when the files lie in the area folder
-/// itself. The file at the end is left out.
-pub fn branch_plain(lang: Language, branch: &Branch) -> String {
-    levels_plain(lang, &branch.levels)
-}
-
-/// The same for these levels alone.
-pub fn levels_plain(lang: Language, levels: &[Level]) -> String {
-    if levels.is_empty() {
-        return text(lang, Msg::HermesChatAreaFlat);
-    }
-    levels
-        .iter()
-        .map(|level| match level {
-            Level::Literal(name) => name.clone(),
-            Level::Choice(names) => choice_words(lang, names),
-            Level::Placeholder(placeholder) => label_text(lang, placeholder.label).to_owned(),
-        })
-        .collect::<Vec<_>>()
-        .join(PLAIN_JOINER)
 }
 
 /// "12 files" / "1 file".

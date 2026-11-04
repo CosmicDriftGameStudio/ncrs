@@ -7,6 +7,8 @@
     clippy::indexing_slicing
 )]
 
+use ncrs_ai::{NameBlock, NameSpec};
+
 use super::*;
 
 fn bank_reading() -> FolderReading {
@@ -30,6 +32,7 @@ fn bank_reading() -> FolderReading {
 
 fn preview(setup: &Setup, word: &str) -> Option<ChangePreview> {
     match setup.access.run(ChatWork::PreviewChange {
+        name: None,
         reading: Arc::new(bank_reading()),
         kind_word: word.to_owned(),
         order: ChangeOrder::ByMonth,
@@ -89,6 +92,7 @@ fn kindless_reading(area: &str) -> FolderReading {
 
 fn preview_word(reading: FolderReading, word: &str, order: ChangeOrder) -> Option<ChangePreview> {
     match Setup::new().access.run(ChatWork::PreviewChange {
+        name: None,
         reading: Arc::new(reading),
         kind_word: word.to_owned(),
         order,
@@ -153,6 +157,7 @@ fn ordered_reading(layout: fn(&str, i32, u32) -> String) -> FolderReading {
 
 fn preview_of(reading: FolderReading, order: ChangeOrder) -> ChangePreview {
     match Setup::new().access.run(ChatWork::PreviewChange {
+        name: None,
         reading: Arc::new(reading),
         kind_word: "Rechnungen".to_owned(),
         order,
@@ -226,6 +231,7 @@ fn an_order_the_folder_has_already_changes_nothing() {
     let by_year =
         ordered_reading(|bank, year, month| format!("Bank/{bank}/{year}/Auszug {month}.pdf"));
     let preview = match Setup::new().access.run(ChatWork::PreviewChange {
+        name: None,
         reading: Arc::new(by_year),
         kind_word: "Rechnungen".to_owned(),
         order: ChangeOrder::ByYear,
@@ -241,6 +247,7 @@ fn an_order_the_folder_has_already_changes_nothing() {
         only: None,
         kind_names: Vec::new(),
         pattern: None,
+        name: None,
     };
     let named = PathBuf::from("Bank/DKB/a.pdf");
     assert_eq!(
@@ -256,6 +263,7 @@ fn an_order_the_folder_has_already_changes_nothing() {
 
 fn pattern_preview_of(reading: FolderReading, levels: Vec<PatternLevel>) -> Option<PatternPreview> {
     match Setup::new().access.run(ChatWork::PreviewPattern {
+        name: None,
         reading: Arc::new(reading),
         levels,
     }) {
@@ -415,4 +423,234 @@ fn a_branch_without_the_field_does_not_hide_a_branch_of_the_area_that_has_it() {
         ChangeOrder::BySender,
     );
     assert_eq!(preview.unwrap().change.area, PathBuf::from("Versicherung"));
+}
+
+fn name_of(blocks: &[NameBlock], separator: char) -> NameSpec {
+    NameSpec {
+        blocks: blocks.to_vec(),
+        separator,
+    }
+}
+
+fn names_only(spec: NameSpec) -> OrderChange {
+    OrderChange {
+        area: PathBuf::from("Bank"),
+        depth: 1,
+        order: ChangeOrder::FileNames,
+        only: None,
+        kind_names: Vec::new(),
+        pattern: None,
+        name: Some(spec),
+    }
+}
+
+fn renamed(change: &OrderChange, path: &str, when: Option<NaiveDate>) -> PathBuf {
+    change::apply_changes(
+        PathBuf::from(path),
+        &fields(when, Some("invoice"), Some("DKB")),
+        &kinds(),
+        std::slice::from_ref(change),
+    )
+}
+
+#[test]
+fn a_name_from_blocks_goes_in_front_of_the_old_name_once() {
+    let change = names_only(name_of(
+        &[NameBlock::Year, NameBlock::Month, NameBlock::Day],
+        '_',
+    ));
+    let when = Some(date(2022, 7, 4));
+    let once = renamed(&change, "Bank/DKB/Auszug.pdf", when);
+    assert_eq!(once, PathBuf::from("Bank/DKB/2022_07_04_Auszug.pdf"));
+    assert_eq!(renamed(&change, once.to_str().unwrap(), when), once);
+    assert_eq!(
+        renamed(&change, "Bank/DKB/2022-07-04 Auszug.pdf", when),
+        once,
+        "a date of the same day in front is replaced"
+    );
+    assert_eq!(
+        renamed(&change, "Bank/DKB/Auszug.pdf", None),
+        PathBuf::from("Bank/DKB/Auszug.pdf"),
+        "without a date the name stays"
+    );
+    assert_eq!(
+        renamed(&change, "Other/DKB/Auszug.pdf", when),
+        PathBuf::from("Other/DKB/Auszug.pdf"),
+        "another area is not touched"
+    );
+}
+
+#[test]
+fn the_separator_and_the_blocks_decide_the_name() {
+    let change = names_only(name_of(&[NameBlock::Sender, NameBlock::Year], '-'));
+    assert_eq!(
+        renamed(&change, "Bank/DKB/Auszug.pdf", Some(date(2022, 7, 4))),
+        PathBuf::from("Bank/DKB/DKB-2022-Auszug.pdf")
+    );
+    let only_date = names_only(name_of(&[NameBlock::Day], '.'));
+    assert_eq!(
+        renamed(&only_date, "Bank/DKB/Auszug", Some(date(2022, 7, 4))),
+        PathBuf::from("Bank/DKB/04.Auszug")
+    );
+}
+
+#[test]
+fn a_names_only_preview_shows_and_highlights_the_new_file_name() {
+    let spec = name_of(&[NameBlock::Year, NameBlock::Month, NameBlock::Day], '_');
+    let result = Setup::new().access.run(ChatWork::PreviewChange {
+        name: Some(spec),
+        reading: Arc::new(bank_reading()),
+        kind_word: "Bank".to_owned(),
+        order: ChangeOrder::FileNames,
+    });
+    let ChatResult::Preview(Some(preview)) = result else {
+        panic!("{result:?}");
+    };
+    assert_eq!(preview.highlighted, preview.example.len() - 1);
+    assert!(
+        preview.example.last().unwrap().starts_with("2021_03_01_"),
+        "{:?}",
+        preview.example
+    );
+}
+
+#[test]
+fn a_name_on_top_of_an_order_is_part_of_the_example() {
+    let spec = name_of(&[NameBlock::Year], '_');
+    let result = Setup::new().access.run(ChatWork::PreviewChange {
+        name: Some(spec),
+        reading: Arc::new(ordered_reading(|bank, _, month| {
+            format!("Bank/{bank}/Auszug {month}.pdf")
+        })),
+        kind_word: "Bank".to_owned(),
+        order: ChangeOrder::ByYear,
+    });
+    let ChatResult::Preview(Some(preview)) = result else {
+        panic!("{result:?}");
+    };
+    let file = preview.example.last().unwrap();
+    assert!(file.starts_with("2021_"), "{file}");
+    assert_eq!(preview.example.len(), 4);
+}
+
+#[test]
+fn an_area_ordered_that_way_already_still_gets_the_new_file_names() {
+    let run = |name: Option<NameSpec>| {
+        Setup::new().access.run(ChatWork::PreviewChange {
+            name,
+            reading: Arc::new(ordered_reading(|bank, year, month| {
+                format!("Bank/{bank}/{year}/Auszug {month}.pdf")
+            })),
+            kind_word: "Bank".to_owned(),
+            order: ChangeOrder::ByYear,
+        })
+    };
+    let ChatResult::Preview(Some(preview)) = run(Some(name_of(&[NameBlock::Year], '_'))) else {
+        panic!("expected a names preview");
+    };
+    assert_eq!(preview.change.order, ChangeOrder::FileNames);
+    let file = preview.example.last().unwrap();
+    assert!(file.starts_with("2021_"), "{file}");
+    assert!(
+        matches!(run(None), ChatResult::Preview(None)),
+        "without a name there is nothing to change"
+    );
+}
+
+#[test]
+fn everywhere_with_only_a_name_counts_every_renamed_document() {
+    let reading = bank_reading();
+    let total = reading.files.len();
+    let result = Setup::new().access.run(ChatWork::PreviewPattern {
+        name: Some(name_of(&[NameBlock::Year], '_')),
+        reading: Arc::new(reading),
+        levels: Vec::new(),
+    });
+    let ChatResult::PatternPreviewed(Some(preview)) = result else {
+        panic!("{result:?}");
+    };
+    assert_eq!(preview.moved, total);
+    assert_ne!(preview.before.last(), preview.after.last());
+}
+
+#[test]
+fn everywhere_a_folder_without_a_date_order_gets_the_new_folder_below_its_own() {
+    let club = Some("Allgemeiner Club");
+    let reading = reading(
+        "/archive",
+        vec![
+            plan_file("Bank/2023/a.pdf", 1, None, date(2023, 1, 2)),
+            plan_file("Bank/2024/b.pdf", 2, None, date(2024, 1, 2)),
+            plan_file("Bank/2025/c.pdf", 3, None, date(2025, 1, 2)),
+            plan_file("Versicherung/adac/d.pdf", 4, club, date(2020, 1, 2)),
+            plan_file("Versicherung/adac/e.pdf", 5, club, date(2020, 2, 3)),
+        ],
+    );
+    let result = Setup::new().access.run(ChatWork::PreviewPattern {
+        name: Some(name_of(&[NameBlock::Year], '_')),
+        reading: Arc::new(reading),
+        levels: vec![PatternLevel::Year],
+    });
+    let ChatResult::PatternPreviewed(Some(preview)) = result else {
+        panic!("{result:?}");
+    };
+    assert_eq!(preview.moved, 5);
+    assert_eq!(
+        preview.after,
+        ["Versicherung", "adac", "2020", "2020_e.pdf"],
+        "the example is a file that gets the new folder, not the newest renamed one"
+    );
+}
+
+#[test]
+fn everywhere_a_branch_with_the_folder_further_up_does_not_get_it_twice() {
+    let club = Some("Allgemeiner Club");
+    let reading = reading(
+        "/archive",
+        vec![
+            plan_file("Bank/DKB/2023/Konto/a.pdf", 1, None, date(2023, 1, 2)),
+            plan_file("Bank/DKB/2024/Konto/b.pdf", 2, None, date(2024, 1, 2)),
+            plan_file("Bank/DKB/2025/Konto/c.pdf", 3, None, date(2025, 1, 2)),
+            plan_file("Versicherung/adac/d.pdf", 4, club, date(2020, 1, 2)),
+            plan_file("Versicherung/adac/e.pdf", 5, club, date(2020, 2, 3)),
+        ],
+    );
+    let preview = pattern_preview_of(reading, vec![PatternLevel::Year]).unwrap();
+    let path = PathBuf::from("Bank/DKB/2024/Konto/b.pdf");
+    assert_eq!(
+        change::apply_changes(
+            path.clone(),
+            &fields(Some(date(2024, 1, 2)), Some("invoice"), None),
+            &kinds(),
+            std::slice::from_ref(&preview.change),
+        ),
+        path
+    );
+    assert_eq!(preview.moved, 2);
+}
+
+#[test]
+fn everywhere_a_branch_ending_in_months_does_not_get_a_second_year() {
+    let club = Some("Allgemeiner Club");
+    let reading = reading(
+        "/archive",
+        vec![
+            plan_file("Bank/DKB/2023/Konto/01/a.pdf", 1, None, date(2023, 1, 2)),
+            plan_file("Bank/DKB/2024/Konto/02/b.pdf", 2, None, date(2024, 2, 2)),
+            plan_file("Bank/DKB/2025/Konto/03/c.pdf", 3, None, date(2025, 3, 2)),
+            plan_file("Versicherung/adac/d.pdf", 4, club, date(2020, 1, 2)),
+            plan_file("Versicherung/adac/e.pdf", 5, club, date(2020, 2, 3)),
+        ],
+    );
+    let preview = pattern_preview_of(reading, vec![PatternLevel::Year]).unwrap();
+    let path = PathBuf::from("Bank/DKB/2024/Konto/02/b.pdf");
+    assert_eq!(
+        change::apply_changes(
+            path.clone(),
+            &fields(Some(date(2024, 2, 2)), Some("invoice"), None),
+            &kinds(),
+            std::slice::from_ref(&preview.change),
+        ),
+        path
+    );
 }

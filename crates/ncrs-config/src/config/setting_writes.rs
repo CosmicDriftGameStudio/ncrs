@@ -163,9 +163,23 @@ pub fn write_filing_enabled(path: &Path, enabled: bool) -> Result<Config, Filing
     )
 }
 
-/// Sets `load` in `[modules.filing]`; same guarantees as [`write_theme_preset`].
+/// Sets `load` in `[modules.filing]` and drops the old `threads` line of
+/// `[modules.filing.ai]`, so the load alone decides the workers and the model
+/// threads; same guarantees as [`write_theme_preset`].
 pub fn write_filing_load(path: &Path, load: Load) -> Result<Config, FilingWriteError> {
-    write_setting(path, filing_load_setting(load), home_from_env().as_deref())
+    write_settings(
+        path,
+        &[filing_load_setting(load), ai_threads_dropped_setting()],
+        home_from_env().as_deref(),
+    )
+}
+
+pub fn ai_threads_dropped_setting() -> Setting {
+    Setting {
+        tables: AI_TABLES,
+        key: "threads",
+        value: None,
+    }
 }
 
 /// Sets `default_pattern` in `[modules.filing]`, or drops the line for

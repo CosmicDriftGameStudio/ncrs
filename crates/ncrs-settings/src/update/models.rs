@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use iced::Task;
+use ncrs_config::SettingsFeature;
 
 use crate::action::Action;
 use crate::ai_model::view::CANCEL_FOCUS as AI_CANCEL_FOCUS;
@@ -27,14 +28,14 @@ pub fn update_ocr(
         OcrModelsMessage::Download => start_ocr_download(settings, ctx),
         OcrModelsMessage::Progress => Task::none(),
         OcrModelsMessage::Downloaded { generation, result } => {
-            ocr_downloaded(settings, generation, result, actions)
+            ocr_downloaded(settings, generation, result)
         }
     }
 }
 
 /// Only asks. Nothing is sent before the download button is pressed.
 fn open_ocr(settings: &mut Settings, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Task<Message> {
-    if ctx.overlay_apart_from_overview_open {
+    if ctx.dialog_open {
         return Task::none();
     }
     actions.push(Action::CloseContextMenu);
@@ -88,7 +89,6 @@ fn ocr_downloaded(
     settings: &mut Settings,
     generation: u64,
     result: Result<(), DownloadError>,
-    actions: &mut Vec<Action>,
 ) -> Task<Message> {
     if generation != settings.ocr_models_generation {
         return Task::none();
@@ -102,7 +102,6 @@ fn ocr_downloaded(
     if let Some(page) = settings.page.as_mut() {
         page.ocr_models_present = true;
     }
-    actions.push(Action::OcrModelsInstalled);
     Task::none()
 }
 
@@ -116,11 +115,10 @@ pub fn update_ai(
         AiModelMessage::Progress => Task::none(),
         AiModelMessage::ShowAiSetting => {
             settings.ai_model = None;
-            actions.push(Action::OpenOverview);
-            Task::none()
+            super::page::show_setting(settings, ctx, SettingsFeature::Hermes, None, actions)
         }
         AiModelMessage::Open => open_ai(settings, ctx, actions),
-        AiModelMessage::Close => close_ai(settings, ctx),
+        AiModelMessage::Close => close_ai(settings),
         AiModelMessage::Download => start_ai_download(settings, ctx),
         AiModelMessage::Stop => {
             if let Some(card) = settings.ai_model.as_mut() {
@@ -135,11 +133,10 @@ pub fn update_ai(
 }
 
 fn open_ai(settings: &mut Settings, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Task<Message> {
-    if ctx.overlay_apart_from_overview_open {
+    if ctx.dialog_open {
         return Task::none();
     }
     actions.push(Action::CloseContextMenu);
-    settings.ai_card_hidden = false;
     settings.ai_model_generation = settings.ai_model_generation.wrapping_add(1);
     actions.push(Action::SetDialogFocus(AI_CANCEL_FOCUS));
     let target = ctx.ai_models_dir.clone();
@@ -155,13 +152,11 @@ fn open_ai(settings: &mut Settings, ctx: &Ctx<'_>, actions: &mut Vec<Action>) ->
 }
 
 /// Not while the file is written: stopping comes first, then closing.
-fn close_ai(settings: &mut Settings, ctx: &Ctx<'_>) -> Task<Message> {
+fn close_ai(settings: &mut Settings) -> Task<Message> {
     if settings.ai_model_download_runs() {
-        settings.ai_card_hidden = ctx.overview_open;
         return Task::none();
     }
     settings.ai_model = None;
-    settings.ai_card_hidden = false;
     Task::none()
 }
 
@@ -211,7 +206,6 @@ fn ai_downloaded(
     if !card.finish(result) {
         return Task::none();
     }
-    settings.ai_card_hidden = false;
     actions.push(Action::SetDialogFocus(AI_CANCEL_FOCUS));
     actions.push(Action::RefreshAiModel);
     let can_write = ctx.config_path.is_some();

@@ -33,11 +33,9 @@ pub(in crate::app) fn archive_refusal(panel: &PanelState, message: &Message) -> 
         | Message::AddFavourite
         | Message::RemoveFavourite
         | Message::QuickFix(QuickFixMessage::Open)
-        | Message::FilingSetup(FilingSetupMessage::AddPanelFolder(_))
         | Message::HermesFile(
             HermesFileMessage::HandToInbox
             | HermesFileMessage::ProcessAgain
-            | HermesFileMessage::ReprocessFolder
             | HermesFileMessage::SetRole(_)
             | HermesFileMessage::ToggleExclusion
             | HermesFileMessage::ShowInInspection,
@@ -74,11 +72,9 @@ pub(in crate::app) fn remote_refusal(panel: &PanelState, message: &Message) -> O
         | Message::AddFavourite
         | Message::RemoveFavourite
         | Message::QuickFix(QuickFixMessage::Open)
-        | Message::FilingSetup(FilingSetupMessage::AddPanelFolder(_))
         | Message::HermesFile(
             HermesFileMessage::HandToInbox
             | HermesFileMessage::ProcessAgain
-            | HermesFileMessage::ReprocessFolder
             | HermesFileMessage::SetRole(_)
             | HermesFileMessage::ToggleExclusion
             | HermesFileMessage::ShowInInspection,
@@ -96,17 +92,12 @@ fn asks_for_hermes(message: &Message) -> bool {
         Message::HermesFile(
             HermesFileMessage::HandToInbox
                 | HermesFileMessage::ProcessAgain
-                | HermesFileMessage::ReprocessFolder
                 | HermesFileMessage::SetRole(_)
                 | HermesFileMessage::ToggleExclusion
                 | HermesFileMessage::ShowInInspection
         ) | Message::QuickFix(QuickFixMessage::Open)
-            | Message::RuleSuggestions(RuleSuggestionsMessage::Open)
             | Message::Rules(RulesMessage::Open)
-            | Message::ReviewList(ReviewListMessage::Open)
             | Message::SavedQueries(SavedQueriesMessage::Open)
-            | Message::ReorganisationPlan(ReorganisationPlanMessage::Open)
-            | Message::UndoReorganisation
     )
 }
 
@@ -124,12 +115,9 @@ fn leaves_bar_fields(message: &Message) -> bool {
             | Message::CommandPalette(CommandPaletteMessage::Toggle)
             | Message::KeyBindings(KeyBindingsMessage::Open)
             | Message::ThemeFetch(ThemeFetchMessage::Open)
-            | Message::RuleSuggestions(RuleSuggestionsMessage::Open)
             | Message::Rules(RulesMessage::Open)
-            | Message::ReviewList(ReviewListMessage::Open)
             | Message::SavedQueries(SavedQueriesMessage::Open)
             | Message::HermesPage(_)
-            | Message::ReorganisationPlan(ReorganisationPlanMessage::Open)
             | Message::OcrModels(OcrModelsMessage::Open)
             | Message::About(AboutMessage::Open)
             | Message::AiModel(AiModelMessage::Open)
@@ -137,16 +125,6 @@ fn leaves_bar_fields(message: &Message) -> bool {
             | Message::Remote(RemoteMessage::OpenConnect)
             | Message::Settings(_)
             | Message::FilingStatus(FilingStatusMessage::Open)
-            | Message::FilingSetup(
-                FilingSetupMessage::Toggle
-                    | FilingSetupMessage::Close
-                    | FilingSetupMessage::PickFolder(_)
-                    | FilingSetupMessage::AddPanelFolder(_)
-                    | FilingSetupMessage::SetTarget(_)
-                    | FilingSetupMessage::ToggleImages(_)
-                    | FilingSetupMessage::Remove(_)
-                    | FilingSetupMessage::Save
-            )
             | Message::ContextMenuAt { .. }
             | Message::ContextMenuKey
             | Message::CopyToClipboard(_)
@@ -179,28 +157,8 @@ impl App {
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
         let task = self.update_message(message);
-        if self.open_hermes_page().is_none() {
-            self.hermes_focus = HermesFocus::Content;
-        }
-        let back = self.return_to_overview_when_its_card_is_gone();
         let chat = self.tell_chat_hermes_is_ready();
-        Task::batch([task, back, chat])
-    }
-
-    fn return_to_overview_when_its_card_is_gone(&mut self) -> Task<Message> {
-        if !self.hermes.return_to_overview
-            || self.hermes.filing_setup.is_some()
-            || self.hermes.hermes_setup.is_some()
-            || self
-                .hermes
-                .filing
-                .as_ref()
-                .is_some_and(FilingModule::has_card)
-        {
-            return Task::none();
-        }
-        self.hermes.return_to_overview = false;
-        self.open_hermes_overview()
+        Task::batch([task, chat])
     }
 
     fn update_message(&mut self, message: Message) -> Task<Message> {
@@ -598,25 +556,11 @@ impl App {
             }
             Message::KeyBindings(shortcuts) => self.update_key_bindings(shortcuts),
             Message::ThemeFetch(fetch_message) => self.update_theme_fetch(fetch_message),
-            Message::RuleSuggestions(suggestions) => self.update_rule_suggestions(suggestions),
             Message::Rules(rules) => self.update_rules(rules),
-            Message::ReviewList(review) => {
-                let update = self.update_review_list(review);
-                Task::batch([update, self.request_review_preview()])
-            }
             Message::SavedQueries(queries) => self.update_saved_queries(queries),
             Message::Tags(tags) => self.update_tags(tags),
-            Message::HermesPage(page) => self.show_hermes_page(page),
-            Message::HermesFocus(focus) => self.focus_hermes(focus),
-            Message::HermesStep(step) => self.step_hermes_page(step),
-            Message::ReorganisationPlan(plan) => self.update_reorganisation(plan),
-            // #73 hangs the executor here; until then the selection goes nowhere.
-            Message::ExecuteReorganisation(selection) => self.run_reorganisation(selection),
-            Message::ReorganisationExecuted(result) => self.reorganisation_executed(result),
-            Message::UndoReorganisation => self.undo_reorganisation(),
+            Message::HermesPage(page) => self.go_to_hermes_page(page),
             Message::DocumentsFiled(result) => self.documents_filed(result),
-            Message::DocumentsRefiled(result) => self.documents_refiled(result),
-            Message::ReorganisationUndone(result) => self.reorganisation_undone(result),
             Message::About(about_message) => self.update_about(about_message),
             Message::OcrModels(models_message) => self.update_ocr_models(models_message),
             Message::AiModel(model_message) => self.update_ai_model(model_message),
@@ -629,22 +573,25 @@ impl App {
             }
             Message::Settings(settings_message) => self.update_settings(settings_message),
             Message::Filing(filing_message) => self.update_filing(filing_message),
-            Message::FilingStatus(page_message) => self
-                .run_hermes_flow(Vec::new(), |hermes, ctx| {
+            Message::FilingStatus(page_message) => {
+                let looks_for_waiting =
+                    matches!(page_message, FilingStatusMessage::Tick) && self.hermes_chat.open;
+                let status = self.run_hermes_flow(Vec::new(), |hermes, ctx| {
                     ncrs_hermes_ui::update_filing_status(hermes, page_message, ctx)
-                }),
+                });
+                if looks_for_waiting {
+                    let chat = self.update_hermes_chat(HermesChatMessage::WaitingCheck);
+                    Task::batch([status, chat])
+                } else {
+                    status
+                }
+            }
             Message::HermesColumn(column_message) => self
                 .run_hermes_flow(Vec::new(), |hermes, ctx| {
                     ncrs_hermes_ui::update_hermes_column(hermes, column_message, ctx)
                 }),
-            Message::FilingSetup(setup_message) => self.update_filing_setup(setup_message),
-            Message::HermesSetup(setup_message) => self.update_hermes_setup(setup_message),
             Message::HermesOverview(overview_message) => {
                 self.update_hermes_overview(overview_message)
-            }
-            Message::HermesFlowTick => {
-                self.hermes_flow_step = self.hermes_flow_step.wrapping_add(1);
-                Task::none()
             }
             #[cfg(any(target_os = "macos", test))]
             Message::RunCommand(action) => self.run_command(action),

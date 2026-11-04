@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use std::num::NonZeroU32;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
+use crate::facts::{LoadedFacts, ModelKind};
 use crate::message::{SettingChange, SettingField};
 use ncrs_config::config::{
     check_ai_endpoint, AiEndpointProblem, AiProviderChoice, AiProviderName, AiSection, Config,
@@ -53,8 +54,6 @@ pub struct SettingsState {
     /// Whether the folder of the text recognition models has files; looked up
     /// when the tab opens and after a download, not on every frame.
     pub ocr_models_present: bool,
-    /// The system reads scans itself (macOS), so there is nothing to download.
-    pub text_recognition_built_in: bool,
     /// The config as read when the tab opened or written since: the values
     /// as the file spells them, which the app keeps only resolved. The error
     /// when it does not load; then nothing can be written.
@@ -67,8 +66,22 @@ pub struct SettingsState {
     pub provider: Option<AiProviderName>,
     /// The macOS App Store build, which may only start apps.
     pub sandboxed: bool,
-    /// The user opened the folded rows of the page.
-    pub advanced_open: bool,
+    /// The read folder whose dialog is open.
+    pub folder_dialog: Option<PathBuf>,
+    /// The model the user is asked about removing.
+    pub model_to_remove: Option<ModelKind>,
+    /// The Order section lists every area, not the first three.
+    pub all_areas: bool,
+    /// The History section lists every run it knows, not the last three.
+    pub all_runs: bool,
+    /// The dialog of the own server is open.
+    pub server_dialog: bool,
+    /// Why the last change of the folder lists was refused, worded.
+    pub folder_note: Option<String>,
+    /// What the app read for the Index and Hermes pages; `None` until it did.
+    pub loaded: Option<LoadedFacts>,
+    /// The app was asked to read it, so it does not ask again.
+    pub facts_requested: bool,
 }
 
 /// Why the value of a field was not written.
@@ -99,14 +112,32 @@ impl SettingsState {
             marked_row: None,
             changed: 0,
             ocr_models_present,
-            text_recognition_built_in: false,
             file,
             drafts: HashMap::new(),
             problems: HashMap::new(),
             provider: None,
             sandboxed,
-            advanced_open: false,
+            folder_dialog: None,
+            model_to_remove: None,
+            all_areas: false,
+            all_runs: false,
+            server_dialog: false,
+            folder_note: None,
+            loaded: None,
+            facts_requested: false,
         }
+    }
+
+    /// A small dialog of the Index or Hermes page is up; Escape closes it
+    /// and not the page.
+    pub fn dialog_is_open(&self) -> bool {
+        self.folder_dialog.is_some() || self.model_to_remove.is_some() || self.server_dialog
+    }
+
+    pub fn close_dialog(&mut self) {
+        self.server_dialog = false;
+        self.folder_dialog = None;
+        self.model_to_remove = None;
     }
 
     /// Brings a page, or one row of it, into view: the row's label becomes the
@@ -343,6 +374,10 @@ impl SettingsState {
         if matches!(change, SettingChange::AiProvider(_)) {
             self.provider = None;
         }
+        if matches!(change, SettingChange::Locations(_)) {
+            self.folder_note = None;
+            self.facts_requested = false;
+        }
         self.file = Ok(Box::new(config.clone()));
         self.changed += 1;
     }
@@ -351,6 +386,13 @@ impl SettingsState {
     /// field, or its row is on a page that is not shown (a write that was
     /// started on the way out of it), so the failure goes to the status bar.
     pub fn refused(&mut self, change: &SettingChange, failure: String) -> bool {
+        if matches!(change, SettingChange::Locations(_)) {
+            self.folder_note = Some(failure);
+            return matches!(
+                self.feature,
+                SettingsFeature::Index | SettingsFeature::Hermes
+            );
+        }
         let Some(&field) = fields_of(change).first() else {
             return false;
         };
@@ -366,7 +408,7 @@ fn page_of(field: SettingField) -> SettingsFeature {
         SettingField::AiThreads
         | SettingField::AiEndpoint
         | SettingField::AiModel
-        | SettingField::Own(_) => SettingsFeature::Hermes,
+        | SettingField::Own(_) => SettingsFeature::Index,
     }
 }
 
@@ -393,6 +435,7 @@ fn fields_of(change: &SettingChange) -> Vec<SettingField> {
         | SettingChange::AiEnabled(_)
         | SettingChange::VscodeTheme(_)
         | SettingChange::Servers(_)
+        | SettingChange::Locations(_)
         | SettingChange::FileListTags(_) => Vec::new(),
         SettingChange::OwnDetails { detail, .. } => vec![SettingField::Own(*detail)],
     }
@@ -422,14 +465,21 @@ fn color_change(role: ColorRole, text: &str) -> Checked {
     })
 }
 
-/// `entry` joins the entries of the list; one that is there already changes
-/// nothing but is still written, which leaves the list as it is.
-fn own_detail_change(detail: OwnDetail, entry: &str, mut entries: Vec<String>) -> Checked {
-    if !detail.accepts(entry) {
-        return Err((SettingField::Own(detail), FieldProblem::NotAnIban));
-    }
-    if !entries.iter().any(|known| known == entry) {
-        entries.push(entry.to_owned());
+/// What is typed joins the entries of the list; commas and semicolons
+/// separate several. One that is there already changes nothing but is still
+/// written, which leaves the list as it is. One that is wrong stops them all.
+fn own_detail_change(detail: OwnDetail, typed: &str, mut entries: Vec<String>) -> Checked {
+    for entry in typed
+        .split([',', ';'])
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+    {
+        if !detail.accepts(entry) {
+            return Err((SettingField::Own(detail), FieldProblem::NotAnIban));
+        }
+        if !entries.iter().any(|known| known == entry) {
+            entries.push(entry.to_owned());
+        }
     }
     Ok(SettingChange::OwnDetails { detail, entries })
 }

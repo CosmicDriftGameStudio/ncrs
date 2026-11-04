@@ -160,7 +160,7 @@ pub(in crate::app::tests) fn real_flow_areas_app(lang: Language) -> App {
         )),
     );
     let ctx = Ctx {
-        availability: Availability::Ready(access.clone()),
+        availability: Availability::Ready(Box::new(access.clone())),
         targets: vec![root.join("archive")],
         sources: vec![root.join("inbox")],
         resolve_folder: canonical_folder,

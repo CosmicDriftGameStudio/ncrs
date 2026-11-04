@@ -1,4 +1,4 @@
-//! What the app draws of the Hermes pages: the pages themselves under the
+//! What the app draws of the Hermes pages: the single pages under the
 //! title bar, the keys line under them and the parts of the title and status
 //! bar that speak for Hermes.
 
@@ -9,21 +9,16 @@ use iced::{Element, Length, Size};
 use ncrs_config::config::AiSetting;
 use ncrs_config::file_list_tags::FileListTags;
 use ncrs_config::palette::Palette;
-use ncrs_filing::filing::{AiStatus, FilingModule, Phase};
+use ncrs_filing::filing::{FilingModule, Phase};
 use ncrs_i18n::{fill_template, FuturamaName, Language, Msg};
-use ncrs_intake::LocationMode;
 use ncrs_pipeline::RunnerState;
 
 use crate::hermes_overview::{ModuleState, OcrFacts, OverviewFacts, Protection};
 use crate::hermes_status::HermesStatus;
-use crate::message::{HermesFocus, Message};
-use crate::review_list::ReviewList;
+use crate::message::Message;
 use crate::state::Hermes;
-use crate::ui::hermes::Badges;
 use crate::ui::{
-    filing_status as filing_status_ui, hermes_overview as hermes_overview_ui,
-    reorganisation_plan as reorganisation_plan_ui, review_list as review_list_ui,
-    rule_suggestions as rule_suggestions_ui, rules as rules_ui, saved_queries as saved_queries_ui,
+    filing_status as filing_status_ui, rules as rules_ui, saved_queries as saved_queries_ui,
     tags as tags_ui,
 };
 
@@ -32,9 +27,7 @@ use crate::ui::{
 pub struct ViewCtx<'a> {
     pub lang: Language,
     pub palette: &'a Palette,
-    pub home: &'a Path,
     pub window_size: Size,
-    pub hermes_focus: HermesFocus,
     pub file_list_tags: &'a FileListTags,
     /// A job runs or waits.
     pub jobs_busy: bool,
@@ -49,62 +42,6 @@ pub struct ViewCtx<'a> {
 pub struct FilingBadge {
     pub text: String,
     pub failing: bool,
-}
-
-/// The counts the sidebar shows, from what the state already holds.
-pub fn hermes_badges(hermes: &Hermes, ctx: &ViewCtx<'_>) -> Badges {
-    let figures = hermes
-        .filing_status
-        .index_figures()
-        .and_then(|figures| figures.as_ref().ok())
-        .and_then(|figures| usize::try_from(figures.statistics.open_reviews).ok());
-    Badges {
-        focus: ctx.hermes_focus,
-        counts: hermes.filing_status.hermes_counts().copied(),
-        review: hermes
-            .review_list
-            .as_ref()
-            .and_then(ReviewList::open_count)
-            .or(figures),
-        rule_suggestions: hermes
-            .rule_suggestions
-            .as_ref()
-            .filter(|view| !view.is_busy())
-            .map(|view| view.rows().len()),
-    }
-}
-
-fn review_field_guide(hermes: &Hermes) -> review_list_ui::FieldGuide {
-    review_list_ui::FieldGuide {
-        confirmed_rules: hermes
-            .filing_status
-            .hermes_counts()
-            .map(|counts| counts.confirmed_rules),
-        ai_is_ready: !matches!(
-            hermes.filing_status.ai(),
-            AiStatus::Off | AiStatus::NotDownloaded | AiStatus::Failed(_)
-        ),
-    }
-}
-
-/// The inbox, the filing location and the archive of the config, by role.
-fn overview_folders(hermes: &Hermes) -> hermes_overview_ui::Folders<'_> {
-    let find = |mode: LocationMode, is_target: bool| {
-        hermes
-            .filing_config
-            .locations
-            .iter()
-            .find(|location| {
-                location.mode == mode
-                    && (mode == LocationMode::Inbox || location.is_target == is_target)
-            })
-            .map(|location| location.path.as_path())
-    };
-    hermes_overview_ui::Folders {
-        inbox: find(LocationMode::Inbox, false),
-        filing_location: find(LocationMode::Archive, true),
-        archive: find(LocationMode::Archive, false),
-    }
 }
 
 /// What the overview and the protection panel of the settings say about the
@@ -148,42 +85,6 @@ pub fn overview_facts(
     }
 }
 
-fn overview_page<'a>(hermes: &'a Hermes, ctx: &ViewCtx<'a>) -> Option<Element<'a, Message>> {
-    let state = hermes.overview.as_ref()?;
-    let snapshot = hermes.filing_status.snapshot();
-    let page = hermes_overview_ui::OverviewView {
-        facts: overview_facts(hermes, ctx, state.ocr_models_present()),
-        state,
-        folders: overview_folders(hermes),
-        home: ctx.home,
-        runner: snapshot.state,
-        in_progress: snapshot.open_files(),
-        badges: hermes_badges(hermes, ctx),
-        lang: ctx.lang,
-    };
-    Some(hermes_overview_ui::view(&page, ctx.palette))
-}
-
-fn review_list_page<'a>(hermes: &'a Hermes, ctx: &ViewCtx<'a>) -> Option<Element<'a, Message>> {
-    let state = hermes.review_list.as_ref()?;
-    Some(review_list_ui::view(
-        state,
-        hermes_badges(hermes, ctx),
-        review_field_guide(hermes),
-        review_list_ui::PreviewRoot {
-            archive: hermes
-                .filing_config
-                .locations
-                .iter()
-                .find(|location| location.is_target)
-                .map(|location| location.path.as_path()),
-            home: ctx.home,
-        },
-        ctx.lang,
-        ctx.palette,
-    ))
-}
-
 fn filing_status_page<'a>(hermes: &'a Hermes, ctx: &ViewCtx<'a>) -> Option<Element<'a, Message>> {
     if !hermes.filing_status.page_open() {
         return None;
@@ -200,39 +101,19 @@ fn filing_status_page<'a>(hermes: &'a Hermes, ctx: &ViewCtx<'a>) -> Option<Eleme
             pdf_library_missing: hermes.pdf_library_missing.as_deref(),
         },
         ctx.window_size,
-        hermes_badges(hermes, ctx),
         ctx.lang,
         ctx.palette,
     ))
 }
 
-/// The overview or the status below the title bar, with the status bar of
-/// filing under it.
+/// The open single page below the title bar, with the status bar of Hermes
+/// under it.
 pub fn ablage_area<'a>(hermes: &'a Hermes, ctx: &ViewCtx<'a>) -> Option<Element<'a, Message>> {
     let lang = ctx.lang;
-    let badges = || hermes_badges(hermes, ctx);
     let space = lang.text(Msg::HermesKitKeySpace);
-    let (page, hints): (_, Vec<(&str, Msg)>) = if let Some(page) = overview_page(hermes, ctx) {
+    let (page, hints): (_, Vec<(&str, Msg)>) = if let Some(state) = hermes.rules.as_ref() {
         (
-            page,
-            vec![
-                ("↑↓", Msg::HermesKitHintSelect),
-                ("Tab", Msg::HermesKitHintNextField),
-                ("Esc", Msg::DialogClose),
-            ],
-        )
-    } else if let Some(state) = hermes.rule_suggestions.as_ref() {
-        (
-            rule_suggestions_ui::view(state, badges(), lang, ctx.palette),
-            vec![
-                ("↑↓", Msg::HermesKitHintSelect),
-                ("Esc", Msg::DialogClose),
-                ("↵", Msg::RuleSuggestionsConfirm),
-            ],
-        )
-    } else if let Some(state) = hermes.rules.as_ref() {
-        (
-            rules_ui::view(state, badges(), lang, ctx.palette),
+            rules_ui::view(state, lang, ctx.palette),
             vec![
                 ("N", Msg::RulesHintNew),
                 (space, Msg::RulesHintToggle),
@@ -242,7 +123,7 @@ pub fn ablage_area<'a>(hermes: &'a Hermes, ctx: &ViewCtx<'a>) -> Option<Element<
         )
     } else if let Some(state) = hermes.tags.as_ref() {
         (
-            tags_ui::view(state, ctx.file_list_tags, badges(), lang, ctx.palette),
+            tags_ui::view(state, ctx.file_list_tags, lang, ctx.palette),
             vec![
                 ("↑↓", Msg::HermesKitHintSelect),
                 (space, Msg::RulesHintToggle),
@@ -251,30 +132,11 @@ pub fn ablage_area<'a>(hermes: &'a Hermes, ctx: &ViewCtx<'a>) -> Option<Element<
         )
     } else if let Some(state) = hermes.saved_queries.as_ref() {
         (
-            saved_queries_ui::view(state, badges(), lang, ctx.palette),
+            saved_queries_ui::view(state, lang, ctx.palette),
             vec![
                 ("↑↓", Msg::HermesKitHintSelect),
                 ("N", Msg::RulesHintNew),
                 ("Esc", Msg::DialogClose),
-            ],
-        )
-    } else if let Some(state) = hermes.reorganisation.as_ref() {
-        (
-            reorganisation_plan_ui::view(state, badges(), lang, ctx.palette),
-            vec![
-                ("↑↓", Msg::HermesKitHintSelect),
-                (space, Msg::HermesKitHintCheck),
-                ("Esc", Msg::DialogClose),
-            ],
-        )
-    } else if let Some(page) = review_list_page(hermes, ctx) {
-        (
-            page,
-            vec![
-                ("↑↓", Msg::HermesKitHintSelect),
-                ("Tab", Msg::HermesKitHintNextField),
-                ("F3", Msg::HermesKitHintView),
-                ("↵", Msg::ReviewListConfirm),
             ],
         )
     } else {

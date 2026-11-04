@@ -18,6 +18,14 @@ pub enum Message {
     Done(Box<ChatResult>),
     Failed(String),
     FolderPicked(Option<PathBuf>),
+    /// A picked folder was kept for the sandbox, or the system refused it;
+    /// sent by the app in place of `FolderPicked` when the build is sandboxed.
+    FolderGranted {
+        folder: PathBuf,
+        result: Result<(), String>,
+    },
+    /// Switching Hermes on did not work: the reason; sent by the app.
+    TurnOnFailed(String),
     /// What the language model made of a typed sentence, or why it failed.
     Understood(Result<ChatIntent, String>),
     /// The check of a typed folder, for the step it was typed in.
@@ -38,6 +46,14 @@ pub enum Message {
     AiTurnedOn,
     /// The filing module finished its start; sent by the app.
     HermesReady,
+    /// The settings page asks to change the order of one area of a read folder.
+    ChangeArea {
+        folder: PathBuf,
+        area: String,
+    },
+    /// New documents may be waiting; sent by the app now and then while the
+    /// chat is open.
+    WaitingCheck,
     /// A beat while work runs; sent by the app twice a second or so.
     WorkTick,
 }
@@ -68,9 +84,21 @@ impl PartialEq for Message {
             | (Self::ModelReady, Self::ModelReady)
             | (Self::AiTurnedOn, Self::AiTurnedOn)
             | (Self::HermesReady, Self::HermesReady)
+            | (Self::WaitingCheck, Self::WaitingCheck)
             | (Self::WorkTick, Self::WorkTick) => true,
             (Self::InputChanged(left), Self::InputChanged(right))
-            | (Self::Failed(left), Self::Failed(right)) => left == right,
+            | (Self::Failed(left), Self::Failed(right))
+            | (Self::TurnOnFailed(left), Self::TurnOnFailed(right)) => left == right,
+            (
+                Self::FolderGranted {
+                    folder: left_folder,
+                    result: left_result,
+                },
+                Self::FolderGranted {
+                    folder: right_folder,
+                    result: right_result,
+                },
+            ) => left_folder == right_folder && left_result == right_result,
             (
                 Self::ChipPressed {
                     label: left_label,
@@ -82,6 +110,16 @@ impl PartialEq for Message {
                 },
             ) => left_label == right_label && left_reply == right_reply,
             (Self::FolderPicked(left), Self::FolderPicked(right)) => left == right,
+            (
+                Self::ChangeArea {
+                    folder: left_folder,
+                    area: left_area,
+                },
+                Self::ChangeArea {
+                    folder: right_folder,
+                    area: right_area,
+                },
+            ) => left_folder == right_folder && left_area == right_area,
             (Self::Understood(left), Self::Understood(right)) => left == right,
             (
                 Self::NamedFoldersResolved {

@@ -47,7 +47,7 @@ pub(in crate::app::tests) fn ready(lang: Language) -> Ctx {
     );
     Ctx {
         lang,
-        availability: Availability::Ready(access),
+        availability: Availability::Ready(Box::new(access)),
         home: PathBuf::from("/home/test"),
         targets: vec![PathBuf::from("/home/test/Documents/Archive")],
         sources: vec![PathBuf::from("/home/test/Downloads")],
@@ -457,10 +457,10 @@ fn scope_scene() -> App {
     app
 }
 
-fn needs_setup_scene() -> App {
+fn off_scene() -> App {
     let mut app = App::with_fixed_panels().in_language(Language::German);
     let mut ctx = ready(Language::German);
-    ctx.availability = Availability::NeedsSetup;
+    ctx.availability = Availability::Off;
     send(&mut app, &ctx, HermesChatMessage::Open);
     app
 }
@@ -472,6 +472,22 @@ fn the_greeting_matches_its_snapshots() {
         (Language::English, "hermes_chat_greeting_en"),
     ] {
         matches_snapshot(&opened(lang).0, name);
+    }
+}
+
+#[test]
+fn the_waiting_documents_opener_matches_its_snapshots() {
+    for (lang, name) in [
+        (Language::German, "hermes_chat_waiting_de"),
+        (Language::English, "hermes_chat_waiting_en"),
+    ] {
+        let (mut app, ctx) = opened(lang);
+        send(
+            &mut app,
+            &ctx,
+            HermesChatMessage::Done(Box::new(ChatResult::WaitingCount(Ok(3)))),
+        );
+        matches_snapshot(&app, name);
     }
 }
 
@@ -507,8 +523,8 @@ fn the_fallback_matches_its_snapshot() {
 }
 
 #[test]
-fn the_setup_hint_matches_its_snapshot() {
-    matches_snapshot(&needs_setup_scene(), "hermes_chat_needs_setup_de");
+fn the_off_hint_matches_its_snapshot() {
+    matches_snapshot(&off_scene(), "hermes_chat_off_de");
 }
 
 #[test]

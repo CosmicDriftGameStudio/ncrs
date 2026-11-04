@@ -23,7 +23,7 @@ impl FilingModule {
         }
         let ai = db_path
             .as_deref()
-            .map_or(AiWiring::Off, |path| wire_ai(&filing.ai, path));
+            .map_or(AiWiring::Off, |path| wire_ai(&filing.ai, filing.load, path));
         let mut module = Self {
             ai,
             own: own_details(filing),

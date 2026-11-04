@@ -272,6 +272,14 @@ fn enabled_without_locations_loads() {
 }
 
 #[test]
+fn only_a_config_silent_about_filing_is_a_first_run() {
+    let first_run = |text: &str| load_filing(text, None).unwrap().filing.first_run;
+    assert!(first_run("version = 1\n"));
+    assert!(!first_run("[modules.filing]\nenabled = false\n"));
+    assert!(!first_run("[modules.filing]\nenabled = true\n"));
+}
+
+#[test]
 fn a_leading_tilde_is_the_home_directory() {
     let home = tempfile::tempdir().unwrap();
     let archive = "mode = \"archive\"\ntarget = true";
@@ -647,11 +655,6 @@ fn filing_errors_name_the_exact_line() {
             "target = true",
         ),
         (
-            "no target",
-            filing_text(false, &[plain_archive("archive-a")]),
-            "[[modules.filing.locations]]",
-        ),
-        (
             "nested locations",
             filing_text(
                 true,
@@ -686,12 +689,19 @@ fn filing_errors_name_the_exact_line() {
     ];
     for (name, text, marker) in &cases {
         let (found, reason) = filing_error(text, None);
-        let expected = match *name {
-            "no target" => 3,
-            _ => last_line_with(text, marker),
-        };
+        let expected = last_line_with(text, marker);
         assert_eq!(found, Some(expected), "{name}: {reason}\n{text}");
     }
+}
+
+#[test]
+fn a_config_with_only_an_inbox_loads() {
+    let base = tempfile::tempdir().unwrap();
+    let inbox = quoted(&base.path().join("inbox"));
+    let text = filing_text(true, &[location(&inbox, "mode = \"inbox\"")]);
+    let config = load_text(&text);
+    assert_eq!(config.filing.locations.len(), 1);
+    assert!(config.filing.locations.iter().all(|found| !found.is_target));
 }
 
 #[test]
@@ -718,10 +728,6 @@ fn filing_reasons_say_what_is_wrong() {
         (
             filing_text(true, &[location(&path, "mode = \"inbox\"\ntarget = true")]),
             "inbox cannot be the target",
-        ),
-        (
-            filing_text(true, &[location(&path, "mode = \"archive\"")]),
-            "no location has `target = true`",
         ),
     ];
     for (text, expected) in cases {
@@ -758,6 +764,7 @@ pub fn chosen(path: &Path, mode: LocationMode, images: bool, is_target: bool) ->
         mode,
         images,
         is_target,
+        transfer: Default::default(),
     }
 }
 

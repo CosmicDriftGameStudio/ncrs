@@ -19,12 +19,11 @@ pub struct Ctx<'a> {
     pub config_path: Option<&'a Path>,
     pub home: &'a Path,
     pub sandbox_active: bool,
-    /// A page of the Ablage or a dialog is up that nothing opens over.
+    /// A page of Hermes or a dialog is up that nothing opens over.
     pub blocking_overlay_open: bool,
-    /// Same, apart from the overview, over which the settings and the model
-    /// cards open.
-    pub overlay_apart_from_overview_open: bool,
-    pub overview_open: bool,
+    /// Same, apart from the pages of Hermes, over which the settings and the
+    /// model cards open.
+    pub dialog_open: bool,
     pub ocr_models_dir: Option<PathBuf>,
     pub ai_models_dir: Option<PathBuf>,
     pub file_list_tags: &'a FileListTags,

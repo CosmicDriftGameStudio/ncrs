@@ -11,23 +11,14 @@ impl FilingModule {
         self.load
     }
 
-    /// Only remembers the choice for the page; the running pipeline is told
-    /// separately.
+    /// Remembers the choice for the page and hands the local model its new
+    /// threads and priority; the running pipeline is told separately.
     pub fn set_load(&mut self, load: Load) {
         self.load = load;
-    }
-
-    /// The handle of the rule suggestions view: only when the module is
-    /// `Ready`, and over the archive locations that can be reached.
-    pub fn suggestion_access(&self) -> Option<SuggestionAccess> {
-        self.archive_handle(SuggestionAccess::new)
-            .map(|access| access.with_own(self.own.clone()))
-    }
-
-    /// The handle of the reorganisation plan view, on the same terms.
-    pub fn plan_access(&self) -> Option<PlanAccess> {
-        self.archive_handle(PlanAccess::new)
-            .map(|access| access.with_kind_language(self.own.kind_language))
+        #[cfg(feature = "local-ai")]
+        if let AiWiring::Local(model) = &self.ai {
+            model.set_extraction(ai::extraction_threads(load, None), load.thread_priority());
+        }
     }
 
     /// The module is busy with its start (opening, questions, conversion),
@@ -53,7 +44,9 @@ impl FilingModule {
         });
         Some(
             ChatAccess::new(Arc::clone(&self.index), Arc::clone(chain), trash)
-                .with_own(self.own.clone()),
+                .with_own(self.own.clone())
+                .with_load(self.load)
+                .with_review(self.review_access()),
         )
     }
 
@@ -85,6 +78,7 @@ impl FilingModule {
         Some(
             FilingAccess::new(Arc::clone(&self.index), root)
                 .with_location_roots(self.location_roots())
+                .with_copy_roots(self.copy_roots())
                 .with_kind_language(self.own.kind_language),
         )
     }
@@ -98,21 +92,6 @@ impl FilingModule {
                 .with_location_roots(self.location_roots())
                 .with_kind_language(self.own.kind_language)
                 .with_own(self.own.clone()),
-        )
-    }
-
-    /// The handle of re-planning and refiling: the inbox locations that can be
-    /// reached bound what it may touch, the archive is the filing target.
-    pub fn replan_access(&self) -> Option<ReplanAccess> {
-        let root = self.target_root()?;
-        let inbox_roots = self
-            .reachable_locations()
-            .filter(|location| location.mode == LocationMode::Inbox)
-            .map(|location| location.path.clone())
-            .collect();
-        Some(
-            ReplanAccess::new(Arc::clone(&self.index), inbox_roots, root)
-                .with_kind_language(self.own.kind_language),
         )
     }
 
@@ -147,6 +126,18 @@ impl FilingModule {
             .collect()
     }
 
+    /// The roots of the read folders whose files are copied, not moved.
+    fn copy_roots(&self) -> Vec<PathBuf> {
+        self.locations
+            .iter()
+            .filter(|entry| entry.configured.transfer == LocationTransfer::Copy)
+            .filter_map(|entry| match &entry.status {
+                LocationStatus::Ready(location) => Some(location.path.clone()),
+                LocationStatus::NotReachable { .. } | LocationStatus::Overlaps { .. } => None,
+            })
+            .collect()
+    }
+
     fn target_root(&self) -> Option<PathBuf> {
         if !matches!(self.phase, Phase::Ready) {
             return None;
@@ -158,19 +149,6 @@ impl FilingModule {
                 LocationStatus::Ready(location) => Some(location.path.clone()),
                 LocationStatus::NotReachable { .. } | LocationStatus::Overlaps { .. } => None,
             })
-    }
-
-    fn archive_handle<T>(&self, make: fn(IndexSlot, Vec<PathBuf>) -> T) -> Option<T> {
-        match self.phase {
-            Phase::Ready => Some(make(
-                Arc::clone(&self.index),
-                self.reachable_locations()
-                    .filter(|location| location.mode == LocationMode::Archive)
-                    .map(|location| location.path.clone())
-                    .collect(),
-            )),
-            _ => None,
-        }
     }
 
     pub fn locations(&self) -> &[ResolvedLocation] {

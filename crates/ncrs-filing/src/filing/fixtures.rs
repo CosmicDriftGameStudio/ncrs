@@ -73,7 +73,7 @@ impl FilingModule {
     /// not downloaded, so it reports that.
     pub fn in_phase_with_ai(phase: Phase, setting: &AiSetting) -> Self {
         Self {
-            ai: wire_ai(setting, Path::new("index.db")),
+            ai: wire_ai(setting, Load::default(), Path::new("index.db")),
             ..Self::in_phase(phase)
         }
     }

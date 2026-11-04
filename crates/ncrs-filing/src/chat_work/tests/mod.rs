@@ -22,6 +22,7 @@ use super::*;
 
 mod diagnosis;
 mod orders;
+mod recent_runs;
 
 struct Setup {
     dir: TempDir,
@@ -187,6 +188,77 @@ fn reading_a_file_or_a_missing_folder_or_too_many_files_is_refused() {
     assert_eq!(
         setup.read(&big),
         Err(ReadError::TooMany { limit: FILE_LIMIT })
+    );
+}
+
+fn read_date_of(setup: &Setup, name: &str) -> Option<NaiveDate> {
+    let read = setup.read(&setup.dir.path().join("in")).unwrap();
+    read.files
+        .iter()
+        .find(|file| file.relative_path == Path::new(name))?
+        .fields
+        .date
+}
+
+#[test]
+fn a_date_in_the_name_stands_in_when_the_text_has_none_and_the_mtime_comes_last() {
+    let setup = Setup::new();
+    let account = "Kontoauszug_706014687832EUR_05010101215505397.txt";
+    setup.write("in/Kontoauszug_706014687832EUR_2021-05-31_x.txt", "Saldo");
+    setup.write("in/Kontoauszug_ohne_Datum.txt", "Saldo");
+    setup.write(&format!("in/{account}"), "Saldo");
+    let mtime = |name: &str| -> NaiveDate {
+        let modified = fs::metadata(setup.dir.path().join("in").join(name))
+            .unwrap()
+            .modified()
+            .unwrap();
+        chrono::DateTime::<chrono::Local>::from(modified).date_naive()
+    };
+
+    assert_eq!(
+        read_date_of(&setup, "Kontoauszug_706014687832EUR_2021-05-31_x.txt"),
+        Some(date(2021, 5, 31))
+    );
+    assert_eq!(
+        read_date_of(&setup, "Kontoauszug_ohne_Datum.txt"),
+        Some(mtime("Kontoauszug_ohne_Datum.txt"))
+    );
+    assert_eq!(read_date_of(&setup, account), Some(mtime(account)));
+}
+
+#[test]
+fn a_date_in_the_text_wins_over_a_date_in_the_name() {
+    let setup = Setup::new();
+    setup.write(
+        "in/Rechnung_2021-05-31.txt",
+        "Alfa AG\nRechnung\n12.03.2019\nBetrag 10,00 EUR",
+    );
+    assert_eq!(
+        read_date_of(&setup, "Rechnung_2021-05-31.txt"),
+        Some(date(2019, 3, 12))
+    );
+}
+
+#[test]
+fn a_known_document_without_a_date_gets_the_date_of_its_name() {
+    let setup = Setup::new();
+    let path = setup.write("in/Beleg_2021-05-31.txt", "no letter date in here");
+    let hash = hash_path(&path).unwrap();
+    let mut guard = setup.access.slot.lock().unwrap();
+    let index = guard.as_mut().unwrap();
+    index
+        .insert_document(&ncrs_index::NewDocument {
+            hash,
+            path,
+            source: ncrs_index::DocumentSource::Archive,
+            received_at: chrono::Utc::now(),
+            stamp: None,
+        })
+        .unwrap();
+    drop(guard);
+    assert_eq!(
+        read_date_of(&setup, "Beleg_2021-05-31.txt"),
+        Some(date(2021, 5, 31))
     );
 }
 
@@ -494,6 +566,7 @@ fn a_month_folder_goes_in_after_the_year_with_or_without_only() {
         only,
         kind_names: Vec::new(),
         pattern: None,
+        name: None,
     };
     let to = || PathBuf::from("Alfa/2022/2022-07-04 Alfa Rechnung.pdf");
     let when = Some(date(2022, 7, 4));
@@ -554,6 +627,7 @@ fn a_change_only_touches_documents_of_its_kind_or_in_a_folder_that_names_it() {
         only: None,
         kind_names: vec!["bank_statement".to_owned(), "Kontoauszüge".to_owned()],
         pattern: None,
+        name: None,
     };
     let when = Some(date(2022, 7, 4));
     let in_folder = PathBuf::from("Bank/Sparkasse/Kontoauszüge/2022/a.pdf");
@@ -587,6 +661,7 @@ fn the_trial_applies_the_order_change_to_the_filed_names() {
         only: None,
         kind_names: Vec::new(),
         pattern: None,
+        name: None,
     };
     let plan = trial(&Setup::new(), vec![change]);
     assert_eq!(

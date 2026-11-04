@@ -12,7 +12,6 @@ use iced::{Background, Color, Element, Font, Length, Pixels, Theme};
 pub const HEADER_HEIGHT: f32 = 72.0;
 pub const ACTION_BAR_HEIGHT: f32 = 48.0;
 pub const STATUS_BAR_HEIGHT: f32 = 22.0;
-pub const NAV_WIDTH: f32 = 200.0;
 pub const ROW_ONE_LINE: f32 = 28.0;
 pub const ROW_TWO_LINE: f32 = 48.0;
 pub const LIST_WIDTH: f32 = 360.0;

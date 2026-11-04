@@ -12,9 +12,6 @@ All notable changes to this project are documented here. The format follows
   driver is present and the CPU otherwise; Status and errors shows which.
   `ncrs --check-ai <folder>` loads the model from a folder and reports the
   device and the time of three sentences.
-- Filing is a tab of its own. A sidebar lists its pages: Overview, Review,
-  Rules, Rule suggestions, Sort again, Reports, Tags and Status and errors.
-  The tab stays open while you switch pages.
 - The Rules page has a form to make and change rules; while it holds unsaved
   changes, the rule list waits until you save or cancel. Conditions combine as
   "all of", "any of" and "not", and test a tag, a word, the sender, the sender
@@ -23,15 +20,6 @@ All notable changes to this project are documented here. The format follows
   opens prefilled from a review item, a quick fix (`Cmd`+`.` / `Ctrl`+`.`) or a
   rule suggestion, and shows which documents the rule would match while you
   edit it.
-- "Apply to open cases" on the Review page and "Reprocess folder" for a folder
-  in the inbox plan the documents again with the current rules and show what
-  would happen before anything moves.
-- The Review page has a longer list and a real preview of the document. Its
-  fields are grouped, each says where its value came from, and the target path
-  is shown.
-- Sort again (before: the reorganisation plan) explains every step in one
-  sentence with a link to the rule behind it, and marks only the parts of a
-  path that change.
 - Tags: every document ncrs has read carries tags derived from its fields
   (kind, sender, recipient, year) and tags of your own, which stay when a
   document is read again. Rules can test tags ("invoice and firma-a"), and a
@@ -59,11 +47,6 @@ All notable changes to this project are documented here. The format follows
   identifier of a confirmed sender alias (IBAN, tax number, e-mail or web
   domain). Freemail domains and your own identifiers are never offered as an
   alias.
-- Rule suggestions come per sender when most documents of a sender lie in one
-  folder, and each says why ("4 of 5 documents from this sender are in
-  Insurance").
-- A default target for documents no rule covers. It only proposes a place in
-  the review; nothing is filed before you confirm.
 - Folder sizes on request, from the command list and the context menu.
 - The App Store build restores files from the trash, as the other builds do.
 - Signed package repositories for apt, dnf and zypper; see the README.
@@ -100,8 +83,27 @@ All notable changes to this project are documented here. The format follows
 - The AI reads the fields of every indexed document once, new arrivals first,
   and the chat says how many documents it has understood so far.
 
+### Removed
+
+- The filing tab with its sidebar and the dialogs for choosing folders, the
+  review list, rule suggestions, sort again, the overview and the first-time
+  setup card are gone. Folders, order, runs and the index are in Settings ›
+  Index and Settings › Hermes; sorting, reviewing waiting documents, and
+  changing an area happen in the Hermes chat. Rules, Tags, Saved searches and
+  Status and errors stay as single pages, reached from Settings › Hermes ›
+  Advanced and the command palette. The keys `filing_setup`, `review_list`,
+  `rule_suggestions`, `reorganisation_plan`, `undo_reorganisation` and
+  `hermes_reprocess_folder` no longer exist; an old config that binds one of
+  them keeps loading and the binding does nothing.
+- The editing form of the review list, the plan preview of sort again, "read
+  again with the AI" and filing an unsure document into a chosen folder have
+  no replacement yet.
+
 ### Changed
 
+- The words "Ablage", "Eingang" and "Archiv" are gone from the app: Hermes,
+  read folder, target folder, order and area take their place. Hermes opens
+  the chat with "N documents are waiting for you" when documents wait.
 - The Hermes chat talks in plain words. The reading summary says how many
   files it read and how each area is ordered, with a shortened example path.
   Questions name the folder they are about. A trial run that files nothing

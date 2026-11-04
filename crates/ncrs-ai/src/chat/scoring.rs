@@ -1,7 +1,7 @@
 //! Scoring of the measured sentences, as the probe that measured them did.
 
 use super::eval::{EvalRow, Expect};
-use super::intent::{ChatIntent, Order, QuestionKind, Schedule, Transfer};
+use super::intent::{ChatIntent, QuestionKind, Schedule, Transfer};
 use super::turn::ChatTurn;
 
 pub enum Got {
@@ -42,17 +42,26 @@ pub fn describe(intent: &ChatIntent, turn: &ChatTurn) -> (&'static str, Vec<(&'s
             );
             ("tidy_folder", fields)
         }
-        ChatIntent::ChangeStructure { area, scope, order } => {
+        ChatIntent::ChangeStructure {
+            area,
+            scope,
+            order,
+            name,
+        } => {
             text("area", &Some(area.clone()));
             text("scope", scope);
-            let order_word = match order {
-                Order::ByMonth => "by_month",
-                Order::ByYear => "by_year",
-                Order::BySender => "by_sender",
-                Order::ByKind => "by_kind",
-                Order::Flat => "flat",
-            };
-            text("order", &Some(order_word.to_owned()));
+            text("order", &order.map(|said| said.word().to_owned()));
+            text(
+                "name",
+                &name.as_ref().map(|spec| {
+                    let words: Vec<&str> = spec.blocks.iter().map(|block| block.word()).collect();
+                    words.join(",")
+                }),
+            );
+            text(
+                "separator",
+                &name.as_ref().map(|spec| spec.separator.to_string()),
+            );
             ("change_structure", fields)
         }
         ChatIntent::Undo => ("undo", fields),
@@ -157,7 +166,7 @@ pub fn score(row: &EvalRow, intent: &ChatIntent) -> (bool, bool) {
 fn is_exact_field(name: &str) -> bool {
     matches!(
         name,
-        "order" | "schedule" | "transfer" | "question_kind" | "choice"
+        "order" | "name" | "separator" | "schedule" | "transfer" | "question_kind" | "choice"
     )
 }
 
@@ -197,6 +206,9 @@ pub fn edit_distance(first: &str, second: &str) -> usize {
 }
 
 pub fn text_matches(wanted: &str, said: &str) -> bool {
+    if wanted.trim() == said.trim() {
+        return true;
+    }
     let (want, got) = (normalise(wanted), normalise(said));
     if want.is_empty() || got.is_empty() {
         return false;

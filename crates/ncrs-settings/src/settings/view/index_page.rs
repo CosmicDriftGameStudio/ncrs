@@ -1,0 +1,507 @@
+//! The Index page: what ncrs reads, how it reads it, what it knows about the
+//! user, how the index is protected and how far it is.
+
+use iced::widget::{column, row, Row};
+use iced::{alignment, Element};
+
+use super::*;
+use crate::facts::{AiState, ModelKind};
+use crate::folders::AddAs;
+use crate::message::SettingsMessage;
+use ncrs_config::config::{FilingLocation, OwnDetail};
+use ncrs_pipeline::Load;
+use ncrs_ui_kit::layout::SETTINGS_WIDE_CONTROL_WIDTH;
+use ncrs_ui_kit::list_kit::segmented_some_unavailable;
+
+pub fn index_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
+    let lang = view.lang;
+    let mut groups = vec![
+        titled(Msg::SettingsIndexSectionRead, None, read_rows(view), view),
+        titled(
+            Msg::SettingsIndexSectionOcr,
+            None,
+            ocr_section_rows(view),
+            view,
+        ),
+        titled(Msg::SettingsIndexSectionAi, None, ai_rows(view), view),
+        titled(
+            Msg::SettingsIndexSectionOwn,
+            Some(Msg::SettingsGroupOwnDetailsIntro),
+            [OwnDetail::Names, OwnDetail::Ibans, OwnDetail::TaxIds]
+                .into_iter()
+                .map(|detail| own_detail_row(detail, view))
+                .collect(),
+            view,
+        ),
+    ];
+    groups.extend(protection_group(view).map(|group| Group {
+        title: lang.text(Msg::SettingsIndexSectionProtection).to_owned(),
+        ..group
+    }));
+    groups.push(titled(
+        Msg::SettingsIndexSectionState,
+        None,
+        state_rows(view),
+        view,
+    ));
+    groups
+}
+
+fn titled<'a>(
+    title: Msg,
+    intro: Option<Msg>,
+    rows: Vec<SettingRow<'a>>,
+    view: &SettingsView<'a>,
+) -> Group<'a> {
+    Group {
+        intro: intro.map(|msg| view.lang.text(msg).to_owned()),
+        title: view.lang.text(title).to_owned(),
+        rows,
+    }
+}
+
+/// A row of these pages whose texts are worded already. They show state and
+/// the user's own data, so the command list does not take them.
+pub fn text_row<'a>(
+    label: String,
+    description: Option<String>,
+    control: Element<'a, Message>,
+) -> SettingRow<'a> {
+    SettingRow {
+        label,
+        theme_name: None,
+        config_key: None,
+        description,
+        problem: None,
+        warning: None,
+        control,
+        control_width: Some(SETTINGS_WIDE_CONTROL_WIDTH),
+        in_command_list: false,
+    }
+}
+
+/// The locations as the file says them, else as the module runs them.
+pub fn listed_locations<'a>(view: &SettingsView<'a>) -> &'a [FilingLocation] {
+    view.state
+        .config()
+        .map_or(view.filing.locations.as_slice(), |config| {
+            config.filing.locations.as_slice()
+        })
+}
+
+fn folder_name(location: &FilingLocation) -> String {
+    location
+        .path
+        .file_name()
+        .unwrap_or(location.path.as_os_str())
+        .to_string_lossy()
+        .into_owned()
+}
+
+fn folder_is_disconnected(location: &FilingLocation, view: &SettingsView<'_>) -> bool {
+    view.facts.disconnected.contains(&location.path)
+}
+
+/// The line of a folder: its name, where it is with how many documents the
+/// index holds from it when `files` says so, and a warning when its drive is
+/// not connected. `buttons` act on it.
+pub fn folder_row<'a>(
+    location: &FilingLocation,
+    status: Option<String>,
+    files: Option<usize>,
+    buttons: Vec<Element<'a, Message>>,
+    view: &SettingsView<'a>,
+) -> SettingRow<'a> {
+    let lang = view.lang;
+    let path = shown_path(&location.path, view.home);
+    let where_it_is = match files {
+        Some(1) => fill_template(
+            lang.text(Msg::SettingsIndexFolderOneFile),
+            &[("{path}", &path)],
+        ),
+        Some(count) => fill_template(
+            lang.text(Msg::SettingsIndexFolderFiles),
+            &[("{path}", &path), ("{count}", &count.to_string())],
+        ),
+        None => path,
+    };
+    let palette = view.palette;
+    let mut control = Row::new()
+        .spacing(spacing::S)
+        .align_y(alignment::Vertical::Center);
+    if let Some(status_text) = status {
+        control = control.push(kit::dim(status_text, palette));
+    }
+    let with_buttons = buttons
+        .into_iter()
+        .fold(control, |controls, button| controls.push(button));
+    SettingRow {
+        warning: folder_is_disconnected(location, view)
+            .then(|| lang.text(Msg::SettingsIndexFolderMissing).to_owned()),
+        ..text_row(
+            folder_name(location),
+            Some(where_it_is),
+            container(with_buttons)
+                .align_x(alignment::Horizontal::Right)
+                .into(),
+        )
+    }
+}
+
+pub fn remove_folder_button<'a>(
+    location: &FilingLocation,
+    view: &SettingsView<'a>,
+) -> Element<'a, Message> {
+    kit::button(
+        view.lang.text(Msg::SettingsRemove),
+        Some(SettingsMessage::RemoveFolder(location.path.clone())),
+        Tone::Secondary,
+        view.palette,
+    )
+}
+
+/// The button under a folder list, and the note when a change of the list was
+/// refused.
+pub fn add_folder_row<'a>(
+    kind: AddAs,
+    empty: Option<Msg>,
+    mut buttons: Vec<Element<'a, Message>>,
+    view: &SettingsView<'a>,
+) -> SettingRow<'a> {
+    let lang = view.lang;
+    buttons.push(kit::button(
+        lang.text(Msg::SettingsFolderAdd),
+        Some(SettingsMessage::AddFolder(kind)),
+        Tone::Secondary,
+        view.palette,
+    ));
+    SettingRow {
+        problem: view.state.folder_note.clone(),
+        ..text_row(
+            String::new(),
+            empty.map(|msg| lang.text(msg).to_owned()),
+            container(Row::with_children(buttons).spacing(spacing::S))
+                .align_x(alignment::Horizontal::Right)
+                .into(),
+        )
+    }
+}
+
+fn read_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
+    let lang = view.lang;
+    let scope = segmented_some_unavailable(
+        &[
+            (lang.text(Msg::SettingsIndexScopeAll), None),
+            (
+                lang.text(Msg::SettingsIndexScopeOnly),
+                Some(SettingsMessage::Select(SettingsFeature::Index)),
+            ),
+        ],
+        1,
+        view.palette,
+    );
+    let soon = format!(
+        "{}: {}",
+        lang.text(Msg::SettingsIndexScopeAll),
+        lang.text(Msg::SettingsIndexScopeSoon)
+    );
+    let locations = listed_locations(view);
+    let mut rows = vec![text_row(
+        lang.text(Msg::SettingsIndexRowScope).to_owned(),
+        Some(soon),
+        scope,
+    )];
+    rows.extend(locations.iter().map(|location| {
+        folder_row(
+            location,
+            None,
+            view.facts.folder_files.get(&location.path).copied(),
+            vec![remove_folder_button(location, view)],
+            view,
+        )
+    }));
+    rows.push(add_folder_row(
+        AddAs::Indexed,
+        locations
+            .is_empty()
+            .then_some(Msg::SettingsIndexFoldersEmpty),
+        Vec::new(),
+        view,
+    ));
+    rows
+}
+
+/// A state word with a model's buttons beside it.
+fn model_control<'a>(
+    state: String,
+    color: iced::Color,
+    buttons: Vec<Element<'a, Message>>,
+) -> Element<'a, Message> {
+    buttons
+        .into_iter()
+        .fold(
+            Row::new()
+                .push(status_text(state, color))
+                .spacing(spacing::S)
+                .align_y(alignment::Vertical::Center),
+            |controls, button| controls.push(button),
+        )
+        .into()
+}
+
+fn load_button<'a>(on_press: Message, view: &SettingsView<'a>) -> Element<'a, Message> {
+    kit::button(
+        view.lang.text(Msg::SettingsModelsDownload),
+        Some(on_press),
+        Tone::Secondary,
+        view.palette,
+    )
+}
+
+fn remove_model_button<'a>(kind: ModelKind, view: &SettingsView<'a>) -> Element<'a, Message> {
+    kit::button(
+        view.lang.text(Msg::SettingsRemove),
+        Some(SettingsMessage::AskRemoveModel(kind)),
+        Tone::Secondary,
+        view.palette,
+    )
+}
+
+fn ocr_section_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
+    let lang = view.lang;
+    let palette = view.palette;
+    let mut rows = Vec::new();
+    if view.facts.system_reads_scans {
+        rows.push(simple_row(
+            Msg::SettingsIndexRowOcrSystem,
+            Some(Msg::SettingsIndexRowOcrSystemNote),
+            status_text(
+                lang.text(Msg::SettingsIndexStateReady).to_owned(),
+                palette.success,
+            ),
+            lang,
+        ));
+    }
+    let (state, color, button) = if view.state.ocr_models_present {
+        (
+            Msg::SettingsIndexStateReady,
+            palette.success,
+            remove_model_button(ModelKind::Ocr, view),
+        )
+    } else {
+        (
+            Msg::SettingsModelsMissing,
+            palette.accent,
+            load_button(SettingsMessage::OpenOcrModels, view),
+        )
+    };
+    rows.push(simple_row(
+        Msg::SettingsIndexRowOcrFallback,
+        Some(Msg::SettingsIndexRowOcrFallbackNote),
+        model_control(lang.text(state).to_owned(), color, vec![button]),
+        lang,
+    ));
+    rows
+}
+
+fn ai_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
+    let lang = view.lang;
+    let palette = view.palette;
+    let (state, color) = match &view.facts.ai {
+        AiState::Off => (
+            lang.text(Msg::SettingsIndexAiOff).to_owned(),
+            palette.dim_text,
+        ),
+        AiState::Missing => (
+            lang.text(Msg::SettingsIndexAiMissing).to_owned(),
+            palette.accent,
+        ),
+        AiState::Downloading => (
+            lang.text(Msg::SettingsIndexAiDownloading).to_owned(),
+            palette.dim_text,
+        ),
+        AiState::Ready => (
+            lang.text(Msg::SettingsIndexAiReady).to_owned(),
+            palette.success,
+        ),
+        AiState::OwnServer { model } => (
+            fill_template(lang.text(Msg::SettingsIndexAiServer), &[("{model}", model)]),
+            palette.success,
+        ),
+        AiState::Failed => (
+            lang.text(Msg::SettingsIndexAiFailed).to_owned(),
+            palette.error,
+        ),
+        AiState::NextStart => (
+            lang.text(Msg::SettingsIndexAiNextStart).to_owned(),
+            palette.dim_text,
+        ),
+    };
+    let button = match &view.facts.ai {
+        AiState::Ready | AiState::NextStart => Some(remove_model_button(ModelKind::Ai, view)),
+        AiState::Off | AiState::Missing | AiState::Failed => {
+            Some(load_button(SettingsMessage::OpenAiModel, view))
+        }
+        AiState::Downloading | AiState::OwnServer { .. } => None,
+    };
+    let model = simple_row(
+        Msg::SettingsIndexRowAi,
+        Some(Msg::SettingsIndexRowAiNote),
+        model_control(state, color, button.into_iter().collect()),
+        lang,
+    );
+    let server = simple_row(
+        Msg::SettingsIndexRowServer,
+        Some(Msg::SettingsIndexRowServerNote),
+        kit::button(
+            lang.text(Msg::SettingsIndexServerSetup),
+            Some(SettingsMessage::ServerDialog(true)),
+            Tone::Secondary,
+            palette,
+        ),
+        lang,
+    );
+    vec![model, server]
+}
+
+/// The list of one own detail as chips with a cross, the field for the next
+/// entry and the button that adds what is typed.
+pub fn own_detail_row<'a>(detail: OwnDetail, view: &SettingsView<'a>) -> SettingRow<'a> {
+    let lang = view.lang;
+    let field = SettingField::Own(detail);
+    let (label, placeholder, id) = match detail {
+        OwnDetail::Names => (
+            Msg::SettingsRowOwnNames,
+            Msg::SettingsOwnNamesPlaceholder,
+            OWN_NAMES_FIELD_ID,
+        ),
+        OwnDetail::Ibans => (
+            Msg::SettingsRowOwnIbans,
+            Msg::SettingsOwnIbansPlaceholder,
+            OWN_IBANS_FIELD_ID,
+        ),
+        OwnDetail::TaxIds => (
+            Msg::SettingsRowOwnTaxIds,
+            Msg::SettingsOwnTaxIdsPlaceholder,
+            OWN_TAX_IDS_FIELD_ID,
+        ),
+    };
+    let entries = view.state.own_entries(detail);
+    let chips: Vec<Element<'a, Message>> = entries
+        .iter()
+        .map(|entry| {
+            let remaining = entries
+                .iter()
+                .filter(|other| *other != entry)
+                .cloned()
+                .collect();
+            kit::removable_chip(
+                entry,
+                change(SettingChange::OwnDetails {
+                    detail,
+                    entries: remaining,
+                }),
+                view.palette,
+            )
+        })
+        .collect();
+    let input = row![
+        setting_field(field, id, lang.text(placeholder), true, view),
+        kit::button(
+            lang.text(Msg::SettingsIndexOwnAdd),
+            Some(SettingsMessage::AddOwnDetail(detail)),
+            Tone::Secondary,
+            view.palette,
+        ),
+    ]
+    .spacing(spacing::S)
+    .align_y(alignment::Vertical::Center);
+    let control: Element<'a, Message> = if chips.is_empty() {
+        input.into()
+    } else {
+        column![Row::with_children(chips).spacing(spacing::XS).wrap(), input]
+            .spacing(spacing::XS)
+            .into()
+    };
+    SettingRow {
+        label: lang.text(label).to_owned(),
+        theme_name: None,
+        config_key: None,
+        description: matches!(detail, OwnDetail::Names)
+            .then(|| lang.text(Msg::SettingsIndexOwnNote).to_owned()),
+        problem: field_problem(field, view),
+        warning: None,
+        control,
+        control_width: Some(SETTINGS_WIDE_CONTROL_WIDTH),
+        in_command_list: true,
+    }
+}
+
+fn state_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
+    let lang = view.lang;
+    let palette = view.palette;
+    let facts = &view.facts;
+    let counts = fill_template(
+        lang.text(Msg::SettingsIndexStateCounts),
+        &[
+            ("{documents}", &facts.documents.to_string()),
+            ("{understood}", &facts.understood.to_string()),
+        ],
+    );
+    let pause = kit::button(
+        lang.text(if facts.paused {
+            Msg::SettingsIndexResume
+        } else {
+            Msg::SettingsIndexPause
+        }),
+        Some(SettingsMessage::TogglePause),
+        Tone::Secondary,
+        palette,
+    );
+    let loads = [
+        (Msg::SettingsIndexLoadGentle, Load::Gentle),
+        (Msg::SettingsIndexLoadBalanced, Load::Balanced),
+        (Msg::SettingsIndexLoadFull, Load::Full),
+    ];
+    let options: Vec<(&str, Message)> = loads
+        .iter()
+        .map(|&(label, load)| (lang.text(label), change(SettingChange::Load(load))))
+        .collect();
+    let chosen = loads
+        .iter()
+        .position(|&(_, load)| load == view.filing.load)
+        .unwrap_or(loads.len());
+    let mut rows = vec![
+        text_row(
+            counts,
+            Some(lang.text(Msg::SettingsIndexStateNote).to_owned()),
+            pause,
+        ),
+        simple_row(
+            Msg::SettingsIndexRowLoad,
+            Some(Msg::SettingsIndexRowLoadNote),
+            kit::segmented(&options, chosen, true, palette),
+            lang,
+        ),
+    ];
+    if facts.unreadable > 0 {
+        let text = match facts.unreadable {
+            1 => lang.text(Msg::SettingsIndexErrorsOne).to_owned(),
+            count => fill_template(
+                lang.text(Msg::SettingsIndexErrors),
+                &[("{count}", &count.to_string())],
+            ),
+        };
+        rows.push(text_row(
+            text,
+            None,
+            kit::button(
+                lang.text(Msg::SettingsIndexErrorsShow),
+                Some(SettingsMessage::OpenFilingStatus),
+                Tone::Secondary,
+                palette,
+            ),
+        ));
+    }
+    rows
+}

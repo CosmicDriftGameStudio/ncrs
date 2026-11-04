@@ -12,76 +12,6 @@ fn route(state: &PromptKeyState, named: Named, modifiers: Modifiers) -> Option<M
     route_key(state, Key::Named(named), modifiers)
 }
 
-fn review_page(sidebar: bool, editing: bool) -> PromptKeyState {
-    PromptKeyState {
-        review_list: true,
-        review_list_editing: editing,
-        hermes_sidebar: sidebar,
-        ..PromptKeyState::default()
-    }
-}
-
-#[test]
-fn left_in_a_hermes_page_moves_to_the_sidebar() {
-    assert_eq!(
-        route(
-            &review_page(false, false),
-            Named::ArrowLeft,
-            Modifiers::default()
-        ),
-        Some(Message::HermesFocus(HermesFocus::Sidebar))
-    );
-}
-
-#[test]
-fn up_and_down_in_the_sidebar_switch_the_page() {
-    let sidebar = review_page(true, false);
-    assert_eq!(
-        route(&sidebar, Named::ArrowUp, Modifiers::default()),
-        Some(Message::HermesStep(-1))
-    );
-    assert_eq!(
-        route(&sidebar, Named::ArrowDown, Modifiers::default()),
-        Some(Message::HermesStep(1))
-    );
-}
-
-#[test]
-fn right_in_the_sidebar_goes_back_into_the_page() {
-    assert_eq!(
-        route(
-            &review_page(true, false),
-            Named::ArrowRight,
-            Modifiers::default()
-        ),
-        Some(Message::HermesFocus(HermesFocus::Content))
-    );
-}
-
-#[test]
-fn up_in_the_page_still_moves_in_the_list() {
-    assert_eq!(
-        route(
-            &review_page(false, false),
-            Named::ArrowUp,
-            Modifiers::default()
-        ),
-        Some(Message::ReviewList(ReviewListMessage::Move(-1)))
-    );
-}
-
-#[test]
-fn an_open_form_keeps_the_arrows_for_its_fields() {
-    assert_eq!(
-        route(
-            &review_page(false, true),
-            Named::ArrowLeft,
-            Modifiers::default()
-        ),
-        None
-    );
-}
-
 #[test]
 fn f8_and_shift_f8_are_different_keys() {
     let idle = PromptKeyState::default();
@@ -188,19 +118,6 @@ fn escape_leaves_a_filing_card_that_may_be_left() {
             Modifiers::default()
         ),
         None
-    );
-}
-
-#[test]
-fn escape_closes_the_filing_setup_and_leaves_a_running_job_alone() {
-    let setup_over_job = PromptKeyState {
-        filing_setup: true,
-        job_running: true,
-        ..PromptKeyState::default()
-    };
-    assert_eq!(
-        route(&setup_over_job, Named::Escape, Modifiers::default()),
-        Some(Message::FilingSetup(FilingSetupMessage::Close))
     );
 }
 

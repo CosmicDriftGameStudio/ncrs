@@ -1,10 +1,10 @@
-use iced::widget::{column, container, row, Row};
-use iced::{alignment, Element, Length};
+use iced::widget::{column, container, row};
+use iced::{alignment, Length};
 
 use super::*;
 use crate::message::{SettingChange, SettingField, SettingsMessage};
 use crate::settings::*;
-use ncrs_config::config::{AiProviderName, OwnDetail, ServerEntry};
+use ncrs_config::config::{AiProviderName, ServerEntry};
 use ncrs_config::file_list_tags::FileListTags;
 use ncrs_fs::OpenKind;
 use ncrs_i18n::fill_template;
@@ -54,13 +54,11 @@ pub fn look_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
     vec![
         Group {
             intro: None,
-            advanced: false,
             title: String::new(),
             rows: vec![preset_row, vscode_row(view), open_vsx_row],
         },
         Group {
             intro: None,
-            advanced: false,
             title: lang.text(Msg::SettingsGroupColors).to_owned(),
             rows: ColorRole::ALL
                 .iter()
@@ -69,14 +67,13 @@ pub fn look_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
         },
         Group {
             intro: None,
-            advanced: false,
             title: String::new(),
             rows: file_tags_rows(view),
         },
     ]
 }
 
-/// The switch, and the way to the page that chooses the tags.
+/// The switch for the tags after the file names.
 pub fn file_tags_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
     let lang = view.lang;
     let current = view.state.file_list_tags();
@@ -90,18 +87,7 @@ pub fn file_tags_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
         switch(current.show, SettingChange::FileListTags(switched), view),
         lang,
     );
-    let open_row = simple_row(
-        Msg::SettingsRowFileTagsOpen,
-        Some(Msg::SettingsRowFileTagsOpenNote),
-        kit::button(
-            lang.text(Msg::SettingsHermesOpenButton),
-            Some(SettingsMessage::ChooseFileListTags),
-            Tone::Secondary,
-            view.palette,
-        ),
-        lang,
-    );
-    vec![show_row, open_row]
+    vec![show_row]
 }
 
 pub fn vscode_row<'a>(view: &SettingsView<'a>) -> SettingRow<'a> {
@@ -215,6 +201,7 @@ pub fn color_row<'a>(role: ColorRole, view: &SettingsView<'a>) -> SettingRow<'a>
         config_key: Some(role.name().to_owned()),
         description: None,
         problem: field_problem(field, view).or_else(|| contrast_problem(role, view)),
+        warning: None,
         control: control.into(),
         control_width: None,
         in_command_list: true,
@@ -274,6 +261,7 @@ pub fn program_row<'a>(kind: OpenKind, view: &SettingsView<'a>) -> SettingRow<'a
         config_key: None,
         description: Some(description),
         problem: field_problem(field, view),
+        warning: None,
         control: control.into(),
         control_width: Some(SETTINGS_WIDE_CONTROL_WIDTH),
         in_command_list: true,
@@ -283,7 +271,6 @@ pub fn program_row<'a>(kind: OpenKind, view: &SettingsView<'a>) -> SettingRow<'a
 pub fn programs_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
     vec![Group {
         intro: None,
-        advanced: false,
         title: String::new(),
         rows: vec![
             program_row(OpenKind::View, view),
@@ -305,7 +292,6 @@ pub fn keys_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
     };
     vec![Group {
         intro: None,
-        advanced: false,
         title: String::new(),
         rows: vec![simple_row(
             Msg::SettingsRowKeys,
@@ -330,6 +316,7 @@ pub fn servers_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
         config_key: None,
         description: None,
         problem: None,
+        warning: None,
         control: kit::button(
             lang.text(button),
             Some(SettingsMessage::OpenServerAdd),
@@ -342,7 +329,6 @@ pub fn servers_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
     if view.servers.is_empty() {
         return vec![Group {
             intro: None,
-            advanced: false,
             title: String::new(),
             rows: vec![add(
                 Msg::SettingsServersEmpty,
@@ -373,6 +359,7 @@ pub fn servers_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
                 config_key: None,
                 description: Some(detail),
                 problem: None,
+                warning: None,
                 control: row![
                     kit::button(
                         lang.text(Msg::RemoteConnect),
@@ -397,7 +384,6 @@ pub fn servers_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
     rows.push(add(Msg::SettingsServersAdd, Msg::SettingsServersAddButton));
     vec![Group {
         intro: None,
-        advanced: false,
         title: String::new(),
         rows,
     }]
@@ -421,7 +407,6 @@ pub fn language_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
         .unwrap_or_default();
     vec![Group {
         intro: None,
-        advanced: false,
         title: String::new(),
         rows: vec![
             simple_row(
@@ -444,66 +429,6 @@ pub fn language_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
             ),
         ],
     }]
-}
-
-/// What stays on the page of Hermes: the switch, and the way to the
-/// overview, where everything a user needs is.
-pub fn hermes_main_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
-    let lang = view.lang;
-    let enabled_row = simple_row(
-        Msg::SettingsRowHermesEnabled,
-        Some(Msg::SettingsRowHermesEnabledNote),
-        switch(
-            view.filing.enabled,
-            SettingChange::HermesEnabled(!view.filing.enabled),
-            view,
-        ),
-        lang,
-    );
-    let open_row = simple_row(
-        Msg::SettingsRowHermesOpen,
-        Some(Msg::SettingsRowHermesOpenNote),
-        kit::button(
-            lang.text(Msg::SettingsHermesOpenButton),
-            Some(SettingsMessage::OpenFilingStatus),
-            Tone::Secondary,
-            view.palette,
-        ),
-        lang,
-    );
-    vec![enabled_row, open_row]
-}
-
-pub fn ocr_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
-    let lang = view.lang;
-    let palette = view.palette;
-    if view.state.text_recognition_built_in {
-        return vec![simple_row(
-            Msg::SettingsRowTextRecognition,
-            None,
-            status_text(
-                lang.text(Msg::SettingsTextRecognitionBuiltin).to_owned(),
-                palette.success,
-            ),
-            lang,
-        )];
-    }
-    let (state, color) = if view.state.ocr_models_present {
-        (Msg::SettingsModelsPresent, palette.success)
-    } else {
-        (Msg::SettingsModelsMissing, palette.accent)
-    };
-    vec![simple_row(
-        Msg::SettingsRowOcrModels,
-        Some(Msg::SettingsRowOcrModelsNote),
-        with_button(
-            status_text(lang.text(state).to_owned(), color),
-            lang.text(Msg::SettingsModelsDownload),
-            SettingsMessage::OpenOcrModels,
-            palette,
-        ),
-        lang,
-    )]
 }
 
 /// A text row of the AI group.
@@ -548,16 +473,7 @@ pub fn provider_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
         lang,
     )];
     match provider {
-        AiProviderName::Local => rows.push(ai_field_row(
-            SettingField::AiThreads,
-            (
-                Msg::SettingsRowAiThreads,
-                Msg::SettingsRowAiThreadsNote,
-                THREADS_FIELD_ID,
-            ),
-            lang.text(Msg::SettingsThreadsPlaceholder),
-            view,
-        )),
+        AiProviderName::Local => {}
         AiProviderName::Http => {
             rows.push(ai_field_row(
                 SettingField::AiEndpoint,
@@ -584,96 +500,26 @@ pub fn provider_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
     rows
 }
 
-/// The list of one own detail as chips with a cross, and the field for the
-/// next entry.
-pub fn own_detail_row<'a>(detail: OwnDetail, view: &SettingsView<'a>) -> SettingRow<'a> {
-    let lang = view.lang;
-    let field = SettingField::Own(detail);
-    let (label, placeholder, id) = match detail {
-        OwnDetail::Names => (
-            Msg::SettingsRowOwnNames,
-            Msg::SettingsOwnNamesPlaceholder,
-            OWN_NAMES_FIELD_ID,
-        ),
-        OwnDetail::Ibans => (
-            Msg::SettingsRowOwnIbans,
-            Msg::SettingsOwnIbansPlaceholder,
-            OWN_IBANS_FIELD_ID,
-        ),
-        OwnDetail::TaxIds => (
-            Msg::SettingsRowOwnTaxIds,
-            Msg::SettingsOwnTaxIdsPlaceholder,
-            OWN_TAX_IDS_FIELD_ID,
-        ),
-    };
-    let entries = view.state.own_entries(detail);
-    let chips: Vec<Element<'a, Message>> = entries
-        .iter()
-        .map(|entry| {
-            let remaining = entries
-                .iter()
-                .filter(|other| *other != entry)
-                .cloned()
-                .collect();
-            kit::removable_chip(
-                entry,
-                change(SettingChange::OwnDetails {
-                    detail,
-                    entries: remaining,
-                }),
-                view.palette,
-            )
+/// The body of the dialog of the own server: the switch back to the local
+/// model, and the address and model name while the own server is chosen.
+pub fn server_dialog_body<'a>(view: &SettingsView<'a>) -> Element<'a, Message> {
+    let palette = view.palette;
+    provider_rows(view)
+        .into_iter()
+        .fold(column![].spacing(spacing::LINE_GAP), |body, setting| {
+            let described = match setting.description {
+                Some(description) => body
+                    .push(kit::paragraph(setting.label, palette))
+                    .push(kit::dim(description, palette)),
+                None => body.push(kit::paragraph(setting.label, palette)),
+            };
+            let with_control = described.push(setting.control);
+            match setting.problem {
+                Some(problem) => with_control.push(kit::error_line(problem, palette)),
+                None => with_control,
+            }
         })
-        .collect();
-    let input = setting_field(field, id, lang.text(placeholder), true, view);
-    let control: Element<'a, Message> = if chips.is_empty() {
-        input
-    } else {
-        column![Row::with_children(chips).spacing(spacing::XS).wrap(), input]
-            .spacing(spacing::XS)
-            .into()
-    };
-    SettingRow {
-        label: lang.text(label).to_owned(),
-        theme_name: None,
-        config_key: None,
-        description: None,
-        problem: field_problem(field, view),
-        control,
-        control_width: Some(SETTINGS_WIDE_CONTROL_WIDTH),
-        in_command_list: true,
-    }
-}
-
-pub fn hermes_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
-    let lang = view.lang;
-    let mut advanced_rows = ocr_rows(view);
-    advanced_rows.extend(provider_rows(view));
-    let mut groups = vec![Group {
-        intro: None,
-        advanced: false,
-        title: String::new(),
-        rows: hermes_main_rows(view),
-    }];
-    groups.extend(protection_group(view));
-    groups.extend([
-        Group {
-            intro: Some(lang.text(Msg::SettingsGroupOwnDetailsIntro).to_owned()),
-            advanced: false,
-            title: lang.text(Msg::SettingsGroupOwnDetails).to_owned(),
-            rows: [OwnDetail::Names, OwnDetail::Ibans, OwnDetail::TaxIds]
-                .into_iter()
-                .map(|detail| own_detail_row(detail, view))
-                .collect(),
-        },
-        Group {
-            intro: None,
-            advanced: true,
-            title: lang.text(Msg::SettingsGroupAdvanced).to_owned(),
-            rows: advanced_rows,
-        },
-    ]);
-    groups
+        .into()
 }
 
 /// The protection of the index: its state and the buttons that change it. The
@@ -708,16 +554,10 @@ pub fn protection_group<'a>(view: &SettingsView<'a>) -> Option<Group<'a>> {
         problem: panel.failure.clone(),
         description: Some(panel.sentence.clone()),
         in_command_list: false,
-        ..simple_row(
-            Msg::HermesOverviewSectionProtection,
-            None,
-            control.into(),
-            lang,
-        )
+        ..simple_row(Msg::SettingsIndexRowEncryption, None, control.into(), lang)
     };
     Some(Group {
         intro: None,
-        advanced: false,
         title: String::new(),
         rows: vec![protection],
     })

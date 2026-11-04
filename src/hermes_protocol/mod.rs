@@ -1,4 +1,4 @@
-//! The protocol run of the Hermes chat: the real program, driven through seven
+//! The protocol run of the Hermes chat: the real program, driven through eight
 //! flows in German and English against a copy of a real archive, with an image
 //! and a duration for every step.
 //!
@@ -51,6 +51,7 @@ use crate::e2e_tests::{Outcome, Session};
 use crate::filing::FilingMessage;
 use crate::messages::{Message, SettingsMessage};
 
+mod free_sentences;
 mod scratch;
 mod thread;
 mod tidy_flows;
@@ -255,12 +256,14 @@ fn start_protocol(
                 mode: ncrs_intake::LocationMode::Archive,
                 images: false,
                 is_target: true,
+                transfer: Default::default(),
             },
             FilingLocation {
                 path: downloads.clone(),
                 mode: ncrs_intake::LocationMode::Inbox,
                 images: false,
                 is_target: false,
+                transfer: Default::default(),
             },
         ],
         ai: AiSetting::Local { threads: None },
@@ -542,6 +545,7 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         self.flow_5_tidy();
         self.flow_6_structure();
         self.flow_7_unknown();
+        self.flow_8_free_sentences();
     }
 
     fn flow_1_greeting_while_starting(&mut self) {

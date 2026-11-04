@@ -15,6 +15,7 @@ workspace = true
 ncrs-ai = { path = "../ncrs-ai", version = "0.0.0" }
 ncrs-index = { path = "../ncrs-index", version = "0.0.0" }
 ncrs-intake = { path = "../ncrs-intake", version = "0.0.0" }
+ncrs-priority = { path = "../ncrs-priority", version = "0.0.0" }
 
 [dev-dependencies]
 ncrs-intake = { path = "../ncrs-intake", version = "0.0.0", features = ["test-support"] }

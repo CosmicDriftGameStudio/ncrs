@@ -19,6 +19,7 @@ fn location(path: &Path) -> FilingLocation {
         mode: LocationMode::Inbox,
         images: false,
         is_target: false,
+        transfer: Default::default(),
     }
 }
 
@@ -32,6 +33,7 @@ fn filing_with(locations: Vec<FilingLocation>) -> Filing {
         own_names: Vec::new(),
         own_ibans: Vec::new(),
         own_tax_ids: Vec::new(),
+        first_run: false,
     }
 }
 

@@ -6,7 +6,7 @@ use iced::{alignment, Element, Length};
 
 use ncrs_index::Kinds;
 
-use super::review_list::reason_text;
+use super::review_reason::reason_text;
 use crate::message::{Message, QuickFixMessage};
 use crate::quick_fix::{Entry, QuickFix, QuickFixAction};
 use ncrs_config::palette::Palette;

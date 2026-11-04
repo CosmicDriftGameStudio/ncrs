@@ -7,9 +7,8 @@ use iced::{event, mouse, window, Point};
 use crate::messages::PanelMessage;
 use crate::messages::{
     CommandLineMessage, CommandPaletteMessage, HermesChatMessage, KeyBindingsMessage, Message,
-    QuickOpenMessage, ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage,
-    RulesMessage, SavedQueriesMessage, SearchMessage, SettingsMessage, TagsMessage,
-    ThemeFetchMessage,
+    QuickOpenMessage, RulesMessage, SavedQueriesMessage, SearchMessage, SettingsMessage,
+    TagsMessage, ThemeFetchMessage,
 };
 use crate::transfer_dialog::TransferDialogMessage;
 
@@ -80,21 +79,13 @@ pub struct InputState {
     pub key_bindings: bool,
     /// The theme download card is up: same as Quick Open.
     pub theme_fetch: bool,
-    /// The rule suggestions view is up: same as Quick Open.
-    pub rule_suggestions: bool,
     /// The rules page is up: same as Quick Open.
     pub rules: bool,
-    pub review_list: bool,
     pub saved_queries: bool,
     /// The tags page is up: same as Quick Open.
     pub tags: bool,
-    /// The document search page is up: same as Quick Open.
-    /// The sidebar of the Hermes card has the arrows, not the page.
-    pub hermes_sidebar: bool,
     /// The copy or move confirmation is up: its target field takes Escape.
     pub transfer_dialog: bool,
-    /// The reorganisation plan view is up: same as Quick Open.
-    pub reorganisation_plan: bool,
     /// The settings tab is up with nothing on top: Escape closes it, even from
     /// its search field, and an Option tap opens no menu.
     pub settings: bool,
@@ -132,15 +123,7 @@ impl InputState {
                 self.theme_fetch,
                 Message::ThemeFetch(ThemeFetchMessage::Close),
             ),
-            (
-                self.rule_suggestions,
-                Message::RuleSuggestions(RuleSuggestionsMessage::Close),
-            ),
             (self.rules, Message::Rules(RulesMessage::Close)),
-            (
-                self.review_list,
-                Message::ReviewList(ReviewListMessage::Close),
-            ),
             (
                 self.transfer_dialog,
                 Message::TransferDialog(TransferDialogMessage::Cancel),
@@ -150,10 +133,6 @@ impl InputState {
                 Message::SavedQueries(SavedQueriesMessage::Close),
             ),
             (self.tags, Message::Tags(TagsMessage::Close)),
-            (
-                self.reorganisation_plan,
-                Message::ReorganisationPlan(ReorganisationPlanMessage::Close),
-            ),
             (self.settings, Message::Settings(SettingsMessage::Close)),
         ]
         .into_iter()
@@ -215,13 +194,10 @@ impl InputState {
                     && !self.command_palette
                     && !self.key_bindings
                     && !self.theme_fetch
-                    && !self.rule_suggestions
                     && !self.rules
-                    && !self.review_list
                     && !self.saved_queries
                     && !self.tags
                     && !self.transfer_dialog
-                    && !self.reorganisation_plan
                     && !self.settings)
                     .then_some(Message::ContextMenuKey)
             }

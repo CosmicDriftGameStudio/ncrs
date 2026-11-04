@@ -91,8 +91,9 @@ pub struct ModulesSection {
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FilingSection {
+    /// `None` when the file does not say: only then is it a first run.
     #[serde(default)]
-    pub enabled: bool,
+    pub enabled: Option<bool>,
     /// Keeps the position of the whole array for the "no target" error.
     #[serde(default)]
     pub locations: Option<Spanned<Vec<LocationEntry>>>,
@@ -200,6 +201,17 @@ pub struct LocationEntry {
     pub images: bool,
     #[serde(default)]
     pub target: Option<Spanned<bool>>,
+    #[serde(default)]
+    pub transfer: Option<LocationTransfer>,
+}
+
+/// What Hermes does with a file it takes from a read folder.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LocationTransfer {
+    Copy,
+    #[default]
+    Move,
 }
 
 /// The spelling of a mode in the file; `load` maps it to `LocationMode`.
@@ -220,9 +232,12 @@ impl From<LocationModeName> for LocationMode {
 }
 
 /// The filing module's settings in effect.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Filing {
     pub enabled: bool,
+    /// The config says nothing at all about filing: Hermes has never been
+    /// switched on or off, so the first run turns it on.
+    pub first_run: bool,
     pub locations: Vec<FilingLocation>,
     /// How many workers the pipeline may use; counts above the core count are
     /// capped when the pipeline starts.
@@ -237,6 +252,23 @@ pub struct Filing {
     pub own_tax_ids: Vec<String>,
 }
 
+/// What a config with nothing about filing resolves to.
+impl Default for Filing {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            first_run: true,
+            locations: Vec::new(),
+            load: Load::default(),
+            ai: AiSetting::default(),
+            default_pattern: None,
+            own_names: Vec::new(),
+            own_ibans: Vec::new(),
+            own_tax_ids: Vec::new(),
+        }
+    }
+}
+
 /// A location with an expanded, absolute, `..`-free path. Not looked up on
 /// disk: whether the folder exists is for the module to find out when it starts.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -245,6 +277,7 @@ pub struct FilingLocation {
     pub mode: LocationMode,
     pub images: bool,
     pub is_target: bool,
+    pub transfer: LocationTransfer,
 }
 
 /// A text and its ground in the `[theme]` palette whose contrast is low.

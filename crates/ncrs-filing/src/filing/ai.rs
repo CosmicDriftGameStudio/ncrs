@@ -46,14 +46,16 @@ pub enum AiStatus {
 
 /// Builds nothing that reads a model or reaches a server: the local model is
 /// loaded when the first document needs it, a remote endpoint is only parsed.
-pub(in crate::filing) fn wire_ai(setting: &AiSetting, db_path: &Path) -> AiWiring {
+pub(in crate::filing) fn wire_ai(setting: &AiSetting, load: Load, db_path: &Path) -> AiWiring {
     match setting {
         AiSetting::Off => AiWiring::Off,
         #[cfg(feature = "local-ai")]
-        AiSetting::Local { threads } => AiWiring::Local(shared_local_model(db_path, *threads)),
+        AiSetting::Local { threads } => {
+            AiWiring::Local(shared_local_model(db_path, load, *threads))
+        }
         #[cfg(not(feature = "local-ai"))]
         AiSetting::Local { .. } => {
-            let _ = db_path;
+            let _ = (db_path, load);
             AiWiring::Off
         }
         AiSetting::Http { endpoint, model } => {
@@ -81,31 +83,35 @@ pub(in crate::filing) fn wire_ai(setting: &AiSetting, db_path: &Path) -> AiWirin
 }
 
 /// The local model of this index. The path keys the instance, so the fields
-/// and the chat share it and the model is loaded once.
+/// and the chat share it and the model is loaded once. The load decides how
+/// many threads and what priority the documents get, unless the config names
+/// a thread count.
 #[cfg(feature = "local-ai")]
 pub fn shared_local_model(
     db_path: &Path,
-    threads: Option<NonZeroU32>,
+    load: Load,
+    configured_threads: Option<NonZeroU32>,
 ) -> Arc<ncrs_ai::LazyLocalModel> {
     let folder =
         ai_models_dir(db_path).unwrap_or_else(|| PathBuf::from(ncrs_ai::LOCAL_MODEL_FOLDER));
-    ncrs_ai::LazyLocalModel::shared(
+    let threads = extraction_threads(load, configured_threads);
+    let model = ncrs_ai::LazyLocalModel::shared(
         folder.join(ncrs_ai::LOCAL_MODEL.name),
         ncrs_ai::LOCAL_MODEL,
-        local_threads(threads),
+        threads,
         AI_CONTEXT_TOKENS,
-    )
+    );
+    model.set_extraction(threads, load.thread_priority());
+    model
 }
 
-/// The configured count, or half the logical cores: the model should not take
-/// the whole machine from the person using it.
+/// What the load gives the model for a document; the chat does not use it.
 #[cfg(feature = "local-ai")]
-pub(in crate::filing) fn local_threads(configured: Option<NonZeroU32>) -> NonZeroU32 {
+pub(in crate::filing) fn extraction_threads(
+    load: Load,
+    configured: Option<NonZeroU32>,
+) -> NonZeroU32 {
     configured.unwrap_or_else(|| {
-        let cores = thread::available_parallelism().map_or(1, NonZeroUsize::get);
-        u32::try_from(cores.div_euclid(2))
-            .ok()
-            .and_then(NonZeroU32::new)
-            .unwrap_or(NonZeroU32::MIN)
+        load.ai_threads(thread::available_parallelism().unwrap_or(NonZeroUsize::MIN))
     })
 }

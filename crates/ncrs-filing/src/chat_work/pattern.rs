@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use chrono::Datelike as _;
+use ncrs_ai::NameSpec;
 use ncrs_index::{DocumentFields, Kinds};
 use ncrs_intake::{Level, LocationStructure, PlaceholderKind};
 
@@ -88,7 +89,7 @@ pub fn pattern_choices(structure: &LocationStructure) -> Vec<PatternChoice> {
 pub fn adoptable_patterns(kinds: &Kinds, reading: &FolderReading) -> Vec<PatternChoice> {
     let mut choices: Vec<PatternChoice> = all_choices(&reading.structure)
         .into_iter()
-        .filter(|choice| preview(kinds, reading, &choice.levels).is_some())
+        .filter(|choice| preview(kinds, reading, &choice.levels, None).is_some())
         .collect();
     choices.truncate(OFFERED_PATTERNS);
     choices
@@ -181,6 +182,7 @@ pub fn preview(
     kinds: &Kinds,
     reading: &FolderReading,
     levels: &[PatternLevel],
+    name: Option<&NameSpec>,
 ) -> Option<PatternPreview> {
     let targets: Vec<PatternTarget> = reading
         .structure
@@ -188,7 +190,20 @@ pub fn preview(
         .iter()
         .flat_map(|area| {
             area.branches.iter().filter_map(|branch| {
-                let (keep, _) = trailing_pattern(&branch.levels)?;
+                let keep = match trailing_pattern(&branch.levels) {
+                    Some((keep, _)) => keep,
+                    // Year › account: the year is there, a second one would be wrong.
+                    None if branch
+                        .levels
+                        .iter()
+                        .filter_map(level_of)
+                        .any(|level| levels.contains(&level)) =>
+                    {
+                        return None;
+                    }
+                    // No such folders: it keeps its own and gets the new ones below.
+                    None => branch.levels.len(),
+                };
                 Some(PatternTarget {
                     area: area.folder.clone(),
                     levels: branch.levels.clone(),
@@ -200,16 +215,21 @@ pub fn preview(
     let change = OrderChange {
         area: PathBuf::new(),
         depth: 1,
-        order: ChangeOrder::Pattern,
+        order: if levels.is_empty() {
+            ChangeOrder::FileNames
+        } else {
+            ChangeOrder::Pattern
+        },
         only: None,
         kind_names: Vec::new(),
-        pattern: Some(PatternSpec {
+        pattern: (!levels.is_empty()).then(|| PatternSpec {
             levels: levels.to_vec(),
             targets,
         }),
+        name: name.cloned(),
     };
     let mut moved = 0;
-    let mut sample: Option<(&ncrs_intake::PlanFile, PathBuf)> = None;
+    let mut sample: Option<(&ncrs_intake::PlanFile, PathBuf, bool)> = None;
     for file in &reading.files {
         let after = super::change::apply_changes(
             file.relative_path.clone(),
@@ -221,14 +241,16 @@ pub fn preview(
             continue;
         }
         moved += 1;
-        let newer = sample
-            .as_ref()
-            .is_none_or(|(current, _)| file.fields.date > current.fields.date);
-        if newer {
-            sample = Some((file, after));
+        // The example shows new folders whenever a file gets any, not just a new name.
+        let changes_folder = after.parent() != file.relative_path.parent();
+        let better = sample.as_ref().is_none_or(|(current, _, current_changes)| {
+            (changes_folder, file.fields.date) > (*current_changes, current.fields.date)
+        });
+        if better {
+            sample = Some((file, after, changes_folder));
         }
     }
-    let (file, after) = sample?;
+    let (file, after, _) = sample?;
     Some(PatternPreview {
         change,
         moved,

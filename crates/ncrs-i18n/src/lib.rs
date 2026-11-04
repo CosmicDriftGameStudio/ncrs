@@ -358,6 +358,13 @@ mod tests {
                 | Msg::SearchMoreMatches
                 // The loanword, the same in both languages.
                 | Msg::HermesBeta
+                // The name of the feature, the same in both languages.
+                | Msg::ColumnHermes
+                | Msg::GroupHermes
+                | Msg::SettingsFeatureHermes
+                | Msg::SettingsFeatureIndex
+                // A plus sign only.
+                | Msg::SettingsIndexOwnAdd
                 // The name, the same word and a bare placeholder pair, in both languages.
                 | Msg::HermesChatTitle
                 | Msg::ShortcutHermesChat
@@ -375,7 +382,6 @@ mod tests {
                 // Numbers and a unit only.
                 | Msg::AiModelProgress
                 | Msg::OcrModelsProgress
-                | Msg::SettingsRowAiThreads
                 // The app's name heads the macOS app menu in every language.
                 | Msg::MenuApp
                 // Words German took over unchanged: the fields of the connect
@@ -400,10 +406,7 @@ mod tests {
             );
             let same_word = matches!(
                 name,
-                FuturamaName::GroupHermes
-                    | FuturamaName::ActionFilingSetup
-                    | FuturamaName::FilingSetupTitle
-                    | FuturamaName::HermesSetupFrameTitle
+                FuturamaName::GroupHermes | FuturamaName::ActionFilingSetup
             );
             assert_eq!(en == de, same_word, "{name:?}: en {en:?}, de {de:?}");
         }

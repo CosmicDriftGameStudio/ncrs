@@ -7,7 +7,7 @@ use ncrs_intake::PlaceholderLabel;
 
 use crate::ctx::Ctx;
 use crate::state::{Chip, ChipReply, FileCard, Part, State, Step};
-use crate::texts::{fill, number, pattern_levels, text};
+use crate::texts::{fill, pattern_levels, text};
 use crate::update::{cancel_chip, chip, chip_labelled, hermes, say, work};
 
 fn label_of(level: PatternLevel) -> PlaceholderLabel {
@@ -19,16 +19,15 @@ fn label_of(level: PatternLevel) -> PlaceholderLabel {
     }
 }
 
-fn levels_text(ctx: &Ctx, choice: &PatternChoice) -> String {
+pub fn levels_words(ctx: &Ctx, levels: &[PatternLevel]) -> String {
     pattern_levels(
         ctx.lang,
-        &choice
-            .levels
-            .iter()
-            .copied()
-            .map(label_of)
-            .collect::<Vec<_>>(),
+        &levels.iter().copied().map(label_of).collect::<Vec<_>>(),
     )
+}
+
+fn levels_text(ctx: &Ctx, choice: &PatternChoice) -> String {
+    levels_words(ctx, &choice.levels)
 }
 
 /// One button per pattern the folders follow, remembered for the answer.
@@ -71,6 +70,7 @@ pub fn adopt(state: &mut State, ctx: &Ctx, index: usize) {
         ChatWork::PreviewPattern {
             reading,
             levels: choice.levels,
+            name: None,
         },
         None,
     );
@@ -96,29 +96,38 @@ pub fn previewed(state: &mut State, ctx: &Ctx, computed: Option<PatternPreview>)
         .iter()
         .zip(&preview.after)
         .position(|(before, after)| before != after);
-    let intro = fill(
-        ctx.lang,
-        Msg::HermesChatPatternPreview,
-        &[
-            ("count", &number(preview.moved)),
-            ("pattern", &state.session.change_word),
-        ],
-    );
+    let intro = if state.session.change_word.is_empty() {
+        text(ctx.lang, Msg::HermesChatPatternPreviewNames)
+    } else {
+        fill(
+            ctx.lang,
+            Msg::HermesChatPatternPreview,
+            &[("pattern", &state.session.change_word)],
+        )
+    };
+    let names_unsaid = preview.change.name.is_some() && !state.session.change_word.is_empty();
     state.session.pending_pattern = Some(preview.change);
     state.step = Step::ConfirmChange;
+    let mut parts = vec![Part::Text(intro)];
+    if names_unsaid {
+        parts.push(Part::Text(text(
+            ctx.lang,
+            Msg::HermesChatChangePreviewWithNames,
+        )));
+    }
+    parts.extend([
+        Part::File(FileCard {
+            segments: preview.before,
+            highlighted: None,
+        }),
+        Part::File(FileCard {
+            segments: preview.after,
+            highlighted: first_difference,
+        }),
+    ]);
     hermes(
         state,
-        vec![
-            Part::Text(intro),
-            Part::File(FileCard {
-                segments: preview.before,
-                highlighted: None,
-            }),
-            Part::File(FileCard {
-                segments: preview.after,
-                highlighted: first_difference,
-            }),
-        ],
+        parts,
         vec![
             chip(
                 ctx,

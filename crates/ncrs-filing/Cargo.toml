@@ -16,6 +16,7 @@ ncrs-fs = { path = "../ncrs-fs", version = "0.0.0" }
 ncrs-index = { path = "../ncrs-index", version = "0.0.0" }
 ncrs-intake = { path = "../ncrs-intake", version = "0.0.0" }
 ncrs-pipeline = { path = "../ncrs-pipeline", version = "0.0.0" }
+ncrs-priority = { path = "../ncrs-priority", version = "0.0.0" }
 ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0" }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 # Folders that overlap are found by file identity, which holds for symlinks and

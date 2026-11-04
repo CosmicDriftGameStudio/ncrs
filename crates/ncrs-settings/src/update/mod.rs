@@ -1,6 +1,7 @@
 //! The state changes of the settings. What reaches outside them comes back as
 //! actions.
 
+mod documents;
 mod keys;
 mod models;
 mod page;

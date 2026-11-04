@@ -11,7 +11,7 @@ use ncrs_index::{
 };
 use ncrs_intake::{plan, Location, LocationMode, PlanInput, Planning};
 
-use crate::suggestion_work::INDEX_NOT_OPEN;
+use ncrs_core::INDEX_NOT_OPEN;
 
 /// What to write to the index.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -5,8 +5,7 @@
 use iced::widget::{container, mouse_area, row, Column, Row, Space};
 use iced::{alignment, Element, Length};
 
-use super::hermes::{self, Badges};
-use crate::message::{HermesPage, Message, TagsMessage};
+use crate::message::{Message, TagsMessage};
 use crate::rules_page::rule_sentence;
 use crate::tags_page::{TagRow, TagStep, TagsPage, TagsProblem, VISIBLE_ROWS};
 use ncrs_config::file_list_tags::{FileListTags, TagGroup};
@@ -37,12 +36,10 @@ fn send(message: TagsMessage) -> Message {
 pub fn view<'a>(
     state: &'a TagsPage,
     setting: &FileListTags,
-    badges: Badges,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
     page_kit::tab_page(
-        hermes::tab_nav(HermesPage::Tags, badges, lang, palette),
         header(state, lang, palette),
         body(state, setting, lang, palette),
         Some(action_bar(state, lang, palette)),

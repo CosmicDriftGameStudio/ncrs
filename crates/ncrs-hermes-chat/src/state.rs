@@ -2,10 +2,11 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use ncrs_ai::{ChatTurn, Schedule};
+use ncrs_ai::{ChatIntent, ChatTurn, NameSpec, Schedule};
 use ncrs_filing::chat_work::{
     AnsweredGroups, ChangeOrder, ChangePreview, ChatWork, FolderReading, OrderChange,
     PatternChoice, PatternLevel, ReadProgress, RunPlan, RunSummary, TrashItem, TrialPlan,
+    WaitingGroup,
 };
 use ncrs_index::Transfer;
 
@@ -38,7 +39,7 @@ pub enum ChipReply {
     Cancel,
     Folder(PathBuf),
     PickFolder,
-    Setup,
+    TurnOn,
     ReadAnyway,
     KeepYes,
     WantChange,
@@ -101,6 +102,8 @@ pub enum ChipReply {
     Retry,
     /// Asks the user to type the name of the area.
     OtherArea,
+    /// Runs the last request again for this area.
+    FollowUpArea(String),
     /// Asks for this order in this area.
     ChangeAreaOrder {
         area: String,
@@ -112,6 +115,16 @@ pub enum ChipReply {
     ShowStaying,
     /// Runs the trial again against a folder the user picks.
     TrialOtherTarget,
+    /// Goes through the documents that wait, group by group.
+    WaitingShow,
+    /// Files the group of waiting documents in question where it is proposed.
+    WaitingFile,
+    /// Files the waiting document in question in this folder below the target.
+    WaitingFileInto(PathBuf),
+    /// Opens the picker for the folder the waiting document in question goes to.
+    WaitingOtherFolder,
+    /// Leaves the group of waiting documents in question as it is.
+    WaitingSkip,
 }
 
 impl Session {
@@ -124,7 +137,7 @@ impl Session {
 impl ChipReply {
     /// Pressing it does not need the filing module.
     pub fn needs_no_hermes(&self) -> bool {
-        matches!(self, Self::Setup | Self::PickFolder)
+        matches!(self, Self::TurnOn | Self::PickFolder)
     }
 
     /// Whether handling the reply writes files, trash, rules or settings, or
@@ -143,16 +156,19 @@ impl ChipReply {
             | Self::NamesNumbered
             | Self::PutBack
             | Self::TrashDuplicatesNow
+            | Self::WaitingFile
+            | Self::WaitingFileInto(_)
             | Self::Undo => true,
             Self::Cancel
             | Self::Folder(_)
             | Self::PickFolder
-            | Self::Setup
+            | Self::TurnOn
             | Self::ReadAnyway
             | Self::WantChange
             | Self::ShowAll
             | Self::ScopeAll
             | Self::ChangeArea(_)
+            | Self::FollowUpArea(_)
             | Self::ScopeOnly(_)
             | Self::LeaveThem
             | Self::Later
@@ -191,6 +207,9 @@ impl ChipReply {
             | Self::OtherArea
             | Self::ChangeAreaOrder { .. }
             | Self::ShowStaying
+            | Self::WaitingShow
+            | Self::WaitingSkip
+            | Self::WaitingOtherFolder
             | Self::TrialOtherTarget => false,
         }
     }
@@ -324,6 +343,8 @@ pub enum Step {
     UndoAsk,
     /// The next typed text is the name of the area a change is for.
     AreaName,
+    /// The next picked folder is where the unsure waiting document goes.
+    WaitingFolder,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -409,8 +430,31 @@ pub struct Thinking {
     pub asked: Asked,
 }
 
+/// The walk through the waiting documents: the groups still to ask about, the
+/// one asked now, and how many documents there were and were filed.
+#[derive(Debug)]
+pub struct Walk {
+    pub groups: std::collections::VecDeque<WaitingGroup>,
+    pub current: Option<WaitingGroup>,
+    pub total: usize,
+    pub filed: usize,
+}
+
+/// The folders and file names every area gets.
+#[derive(Debug, Clone)]
+pub struct Everywhere {
+    pub levels: Vec<PatternLevel>,
+    pub name: Option<NameSpec>,
+}
+
 #[derive(Debug, Default)]
 pub struct Session {
+    pub waiting: Option<Walk>,
+    /// The greeting follows the count of the waiting documents.
+    pub greeting_after_count: bool,
+    /// How many waiting documents the user was told about last.
+    pub waiting_offered: usize,
+    pub last_check: Option<chrono::DateTime<chrono::Local>>,
     pub readings: HashMap<PathBuf, Arc<FolderReading>>,
     /// Folders learned in this chat that are not yet a target of the app.
     pub learned: Vec<PathBuf>,
@@ -432,6 +476,8 @@ pub struct Session {
     pub change_order: Option<ChangeOrder>,
     /// The area was picked from the buttons: no second question if it fails.
     pub area_chosen: bool,
+    /// The area the settings page asked to change, once its folder is read.
+    pub focus_area: Option<String>,
     /// The patterns on offer after the areas card.
     pub patterns: Vec<PatternChoice>,
     /// The pattern change waiting for a yes.
@@ -451,6 +497,14 @@ pub struct Session {
     pub choosing: Option<crate::named_folders::Naming>,
     /// What the model said about the scope of a change, for the preview.
     pub change_scope: Option<String>,
+    /// The file names the model heard in the sentence about the change.
+    pub change_name: Option<NameSpec>,
+    /// An order for every area that waits for its folder to be read.
+    pub everywhere: Option<Everywhere>,
+    /// The last tidy or structure change Hermes understood.
+    pub previous_request: Option<ChatIntent>,
+    /// The sentence before, when Hermes could do nothing with it.
+    pub previous_message: Option<String>,
     pub unsent: Option<Unsent>,
     /// A button or picked folder that waits for Hermes to start.
     pub unsent_reply: Option<ChipReply>,
@@ -556,6 +610,11 @@ impl State {
     /// The plan of the trial that is on screen.
     pub fn trial_plan(&self) -> Option<&TrialPlan> {
         self.session.trial.as_ref().map(|trial| &trial.plan)
+    }
+
+    /// Whether the newest entry is Hermes', so its chips are the ones on screen.
+    pub fn chips_owner_is_hermes(&self) -> bool {
+        matches!(self.thread.last(), Some(Entry::Hermes { .. }))
     }
 
     /// The chips of the newest entry, when it is Hermes'.

@@ -16,6 +16,8 @@ ncrs-index = { path = "../ncrs-index", version = "0.0.0" }
 # The parsers of the rules step: a date or an amount from the AI is read by
 # the same code as one from the rules, not by a second implementation.
 ncrs-intake = { path = "../ncrs-intake", version = "0.0.0" }
+# The model thread lowers its own priority while it reads documents.
+ncrs-priority = { path = "../ncrs-priority", version = "0.0.0" }
 # Reads the reply of the provider (JSON with comments and trailing commas is
 # fine there). The request is written by json.rs: it has no writer, but it is
 # already in the lock, and serde_json is not.

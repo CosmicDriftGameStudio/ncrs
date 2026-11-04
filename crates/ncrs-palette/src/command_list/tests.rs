@@ -309,7 +309,7 @@ fn an_empty_query_lists_every_command_by_group_in_a_fixed_order() {
     let palette = palette(KeyScope::Panel, Language::EnglishFuturama);
     assert_eq!(
         headers(&palette),
-        ["File", "Edit", "View", "Go", "Search", "Filing", "Help"]
+        ["File", "Edit", "View", "Go", "Search", "Hermes", "Help"]
     );
     let Some(Row::Header(first)) = palette.rows().first() else {
         panic!("a header comes first");
@@ -318,7 +318,7 @@ fn an_empty_query_lists_every_command_by_group_in_a_fixed_order() {
     let Some(Row::Header(hermes)) = palette
         .rows()
         .iter()
-        .find(|row| matches!(row, Row::Header(header) if header.label == "Filing"))
+        .find(|row| matches!(row, Row::Header(header) if header.label == "Hermes"))
     else {
         panic!("the Hermes group");
     };

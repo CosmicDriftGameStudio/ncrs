@@ -112,8 +112,8 @@ mod tests {
             + size::COMMAND_LINE
             + TITLE_BAR_HEIGHT
             + COLUMN_HEADER_HEIGHT;
-        assert_eq!(
-            CHROME, expected,
+        assert!(
+            (CHROME - expected).abs() < f32::EPSILON,
             "CHROME and the view's constants have drifted apart"
         );
     }

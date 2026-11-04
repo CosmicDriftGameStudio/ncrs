@@ -351,16 +351,27 @@ fn date_in(stem: &str) -> Option<(usize, usize, DateFormat)> {
             .is_some_and(u8::is_ascii_digit);
         let digit_after = bytes.get(found.end()).is_some_and(u8::is_ascii_digit);
         let text = found.as_str();
-        let normalised = match (text.get(..4), text.get(4..6), text.get(6..8)) {
-            (Some(year), Some(month), Some(day)) if text.len() == 8 => {
-                format!("{year}-{month}-{day}")
-            }
-            _ => text.to_owned(),
-        };
-        (!digit_before && !digit_after && parse_date(&normalised).is_some())
+        (!digit_before && !digit_after && parse_date(&iso_form(text)).is_some())
             .then(|| (found.start(), found.end(), date_format_of(text)))
     })
 }
+
+fn iso_form(text: &str) -> String {
+    match (text.get(..4), text.get(4..6), text.get(6..8)) {
+        (Some(year), Some(month), Some(day)) if text.len() == 8 => format!("{year}-{month}-{day}"),
+        _ => text.to_owned(),
+    }
+}
+
+/// The first date a file name (without extension) states, if it is a real day
+/// in a plausible year: a long number such as an account number is no date.
+pub fn date_in_file_stem(stem: &str) -> Option<NaiveDate> {
+    let (start, end, _) = date_in(stem)?;
+    let date = parse_date(&iso_form(stem.get(start..end)?))?;
+    (PLAUSIBLE_YEARS.contains(&date.year())).then_some(date)
+}
+
+const PLAUSIBLE_YEARS: std::ops::RangeInclusive<i32> = 1970..=2100;
 
 fn date_format_of(text: &str) -> DateFormat {
     if text.contains('-') {
@@ -541,6 +552,26 @@ mod tests {
         ArchiveDocument {
             date: NaiveDate::from_ymd_opt(year, month, day),
             ..document(path)
+        }
+    }
+
+    #[test]
+    fn a_file_stem_states_a_date_only_as_a_real_day_apart_from_other_digits() {
+        let day = NaiveDate::from_ymd_opt(2021, 5, 31);
+        assert_eq!(
+            date_in_file_stem("Kontoauszug_706014687832EUR_2021-05-31_05010101215505397"),
+            day
+        );
+        assert_eq!(date_in_file_stem("Rechnung 31.05.2021"), day);
+        assert_eq!(date_in_file_stem("Scan_20210531"), day);
+        for stem in [
+            "Kontoauszug_706014687832EUR_05010101215505397",
+            "Beleg_2021-13-45",
+            "Beleg_11111111",
+            "Beleg_12345678",
+            "Beleg",
+        ] {
+            assert_eq!(date_in_file_stem(stem), None, "{stem}");
         }
     }
 

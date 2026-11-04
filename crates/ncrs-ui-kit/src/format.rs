@@ -184,6 +184,26 @@ pub fn ellipsize_middle(text: &str, max_chars: usize) -> String {
     shortened
 }
 
+/// `text` with the middle cut out so at most `max_chars` characters remain,
+/// about half from the start and the rest from the end: for a single name,
+/// where both its beginning and its end tell it apart from similar ones.
+pub fn ellipsize_keeping_both_ends(text: &str, max_chars: usize) -> String {
+    let count = text.chars().count();
+    if count <= max_chars {
+        return text.to_owned();
+    }
+    if max_chars == 0 {
+        return String::new();
+    }
+    let kept = max_chars - 1;
+    let head = kept.div_ceil(2);
+    let tail = kept - head;
+    let mut shortened: String = text.chars().take(head).collect();
+    shortened.push(ELLIPSIS);
+    shortened.extend(text.chars().skip(count - tail));
+    shortened
+}
+
 const NARROW_GLYPHS: &str = "iljtfr.,:;'|! ";
 const WIDE_GLYPHS: &str = "mwMW@%—–";
 const NARROW_EM: f32 = 0.30;
@@ -404,6 +424,19 @@ mod tests {
         assert!(cut.ends_with("€€€.pdf"), "{cut}");
         assert_eq!(ellipsize_end("日本語のファイル名", 4), "日本語…");
     }
+
+    #[test]
+    fn a_long_name_keeps_its_start_and_its_end() {
+        let name = "2021_01_29_Abrechnung_KD401N05013001112401591.pdf";
+        let cut = ellipsize_keeping_both_ends(name, 26);
+        assert_eq!(cut.chars().count(), 26);
+        assert_eq!(cut, "2021_01_29_Ab…12401591.pdf");
+        assert!(cut.contains('…'));
+        assert_eq!(ellipsize_keeping_both_ends("short.pdf", 26), "short.pdf");
+        assert_eq!(ellipsize_keeping_both_ends("anything", 0), "");
+        assert_eq!(ellipsize_keeping_both_ends("Büro-Größe-€€€", 6), "Bür…€€");
+    }
+
     const BODY: f32 = 12.0;
 
     #[test]

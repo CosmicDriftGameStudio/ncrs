@@ -16,8 +16,11 @@ use ncrs_index::{
 };
 use ncrs_intake::{plan, relative_to_location, PlanInput, Planning};
 
-use crate::execute::{execute_with, ExecuteError, ExecutionItem, ItemOutcome, SkipReason};
-use crate::suggestion_work::INDEX_NOT_OPEN;
+use crate::execute::{
+    execute_copying, execute_with, ExecuteError, ExecutionItem, ExecutionReport, ItemOutcome,
+    SkipReason,
+};
+use ncrs_core::INDEX_NOT_OPEN;
 use ncrs_fs::transfer::{Move, Progress, Source};
 
 type IndexSlot = Arc<Mutex<Option<Index>>>;
@@ -29,6 +32,7 @@ pub struct FilingAccess {
     slot: IndexSlot,
     target_root: PathBuf,
     location_roots: Vec<PathBuf>,
+    copy_roots: Vec<PathBuf>,
     kind_language: KindLanguage,
 }
 
@@ -44,8 +48,14 @@ impl FilingAccess {
             slot,
             target_root,
             location_roots: Vec::new(),
+            copy_roots: Vec::new(),
             kind_language: KindLanguage::default(),
         }
+    }
+
+    /// The roots whose files are copied into the target, not moved.
+    pub fn with_copy_roots(self, copy_roots: Vec<PathBuf>) -> Self {
+        Self { copy_roots, ..self }
     }
 
     /// The roots of the locations: the rules see a path relative to its root.
@@ -70,6 +80,7 @@ impl FilingAccess {
             index,
             &self.target_root,
             &self.location_roots,
+            &self.copy_roots,
             progress,
             &Move,
             self.kind_language,
@@ -172,11 +183,14 @@ pub fn send_to_review(
     }
 }
 
-/// Files every `Planned` document into `root`.
+/// Files every `Planned` document into `root`. What lies below one of the
+/// `copy_roots` is copied and stays where it is, marked `Filed` so it is not
+/// planned again.
 pub fn file_planned<P: Progress, S: Source>(
     index: &mut Index,
     root: &Path,
     location_roots: &[PathBuf],
+    copy_roots: &[PathBuf],
     progress: &mut P,
     effect: &S,
     kind_language: KindLanguage,
@@ -210,13 +224,40 @@ pub fn file_planned<P: Progress, S: Source>(
     if items.is_empty() {
         return Ok(summary);
     }
-    let report = execute_with(index, BatchKind::Filing, root, &items, progress, effect)?;
+    let (copied, moved): (Vec<_>, Vec<_>) = items
+        .into_iter()
+        .partition(|item| copy_roots.iter().any(|copy| item.from.starts_with(copy)));
+    if !moved.is_empty() {
+        let report = execute_with(index, BatchKind::Filing, root, &moved, progress, effect)?;
+        settle_report(index, &moved, &report, false, &mut summary)?;
+    }
+    if !copied.is_empty() {
+        let report = execute_copying(index, BatchKind::Filing, root, &copied, progress)?;
+        settle_report(index, &copied, &report, true, &mut summary)?;
+    }
+    Ok(summary)
+}
+
+fn settle_report(
+    index: &mut Index,
+    items: &[ExecutionItem],
+    report: &ExecutionReport,
+    copied: bool,
+    summary: &mut FilingSummary,
+) -> Result<(), ExecuteError> {
     for (item, reported) in items.iter().zip(&report.items) {
         let Some(id) = item.document_id else {
             continue;
         };
         match &reported.outcome {
-            ItemOutcome::Moved => summary.filed += 1,
+            ItemOutcome::Moved => {
+                // The copy leaves the source where it is, so the status is
+                // all that keeps the document from being planned again.
+                if copied {
+                    index.set_document_status(id, DocumentStatus::Filed)?;
+                }
+                summary.filed += 1;
+            }
             ItemOutcome::Skipped(SkipReason::TargetExists) => {
                 if let Some(document) = index.document(id)? {
                     send_to_review(index, &document, ReviewReason::TargetExists)?;
@@ -230,7 +271,7 @@ pub fn file_planned<P: Progress, S: Source>(
             ItemOutcome::Skipped(_) => summary.left += 1,
         }
     }
-    Ok(summary)
+    Ok(())
 }
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
@@ -351,6 +392,7 @@ mod tests {
                 &mut self.index,
                 &self.archive,
                 std::slice::from_ref(&self.inbox),
+                &[],
                 &mut Counting,
                 effect,
                 KindLanguage::English,
@@ -408,6 +450,79 @@ mod tests {
     }
 
     #[test]
+    fn a_copied_document_stays_filed_through_a_rescan_and_is_not_copied_twice() {
+        use ncrs_index::Transfer;
+        use ncrs_intake::{take_in, Location, LocationMode, StabilityTracker, STABLE_AFTER};
+
+        let mut setup = Setup::new();
+        let document = setup.planned("scan 1.pdf", "Invoice from Company A");
+        let file_again = |world: &mut Setup| {
+            file_planned(
+                &mut world.index,
+                &world.archive,
+                std::slice::from_ref(&world.inbox),
+                std::slice::from_ref(&world.inbox),
+                &mut Counting,
+                &Move,
+                KindLanguage::English,
+            )
+            .unwrap()
+        };
+
+        let first = file_again(&mut setup);
+
+        assert_eq!(first.filed, 1);
+        assert_eq!(
+            fs::read_to_string(setup.target()).unwrap(),
+            "Invoice from Company A"
+        );
+        assert!(document.path.exists());
+        let after = setup.index.document(document.id).unwrap().unwrap();
+        assert_eq!(
+            (after.status, &after.path),
+            (DocumentStatus::Filed, &document.path)
+        );
+        let batch = setup
+            .index
+            .last_undoable_batch(ncrs_index::BatchKind::Filing)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            setup.index.batch_info(batch).unwrap().unwrap().transfer,
+            Transfer::Copy
+        );
+
+        let inbox = Location::new(&setup.inbox, LocationMode::Inbox, false).unwrap();
+        let archive = Location::new(&setup.archive, LocationMode::Archive, false).unwrap();
+        let mut tracker = StabilityTracker::new();
+        let mut now = std::time::SystemTime::now();
+        take_in(&mut setup.index, &inbox, &document.path, &mut tracker, now).unwrap();
+        // Written again with the same bytes: another mtime, so the file is
+        // hashed and not taken for unchanged by its stamp.
+        fs::write(&document.path, "Invoice from Company A").unwrap();
+        for _ in 0..2 {
+            take_in(&mut setup.index, &inbox, &document.path, &mut tracker, now).unwrap();
+            let copy = setup.target();
+            take_in(&mut setup.index, &archive, &copy, &mut tracker, now).unwrap();
+            now += STABLE_AFTER * 2;
+        }
+        let rescanned = setup.index.document(document.id).unwrap().unwrap();
+        assert_eq!(rescanned.status, DocumentStatus::Filed);
+
+        let second = file_again(&mut setup);
+
+        assert_eq!(second, FilingSummary::default());
+        assert_eq!(
+            setup
+                .index
+                .undoable_batches(ncrs_index::BatchKind::Filing, 10)
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    #[test]
     fn the_fields_a_rule_filled_are_marked_as_coming_from_that_rule() {
         let mut setup = Setup::new();
         let document = setup.planned("scan 1.pdf", "Invoice from Company A");
@@ -436,6 +551,7 @@ mod tests {
             &mut setup.index,
             &setup.archive,
             &[],
+            &[],
             &mut Counting,
             &Move,
             KindLanguage::English,
@@ -451,6 +567,7 @@ mod tests {
             &mut setup.index,
             &setup.archive,
             std::slice::from_ref(&setup.inbox),
+            &[],
             &mut Counting,
             &Move,
             KindLanguage::English,

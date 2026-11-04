@@ -23,7 +23,7 @@ use ncrs_pipeline::OwnDetails;
 
 use crate::execute::{execute_with, ItemOutcome, SkipReason};
 use crate::filing_work::target_of;
-use crate::suggestion_work::INDEX_NOT_OPEN;
+use ncrs_core::INDEX_NOT_OPEN;
 use ncrs_fs::transfer::{Counting, Move, Source};
 
 use ncrs_ui_kit::format::MINOR_UNITS_PER_UNIT;
@@ -197,6 +197,47 @@ impl ReviewAccess {
         })
     }
 
+    /// The open reviews, each with the folder below the target where the rule
+    /// or the neighbours would file it; `None` when nothing is sure.
+    pub fn load_with_folders(&self) -> Result<Vec<(ReviewItem, Option<PathBuf>)>, String> {
+        self.with_index_text(|index| {
+            let neighbours = self.neighbours(index)?;
+            let items = load_matching(
+                index,
+                |_path| true,
+                &self.location_roots,
+                self.kind_language,
+                Some(&neighbours),
+            )
+            .map_err(|err| err.to_string())?;
+            let kinds = Kinds::new(Arc::clone(index.kinds()), self.kind_language);
+            Ok(items
+                .into_iter()
+                .map(|item| {
+                    let folder = item
+                        .suggested_target(&kinds)
+                        .and_then(|target| target.parent().map(Path::to_path_buf));
+                    (item, folder)
+                })
+                .collect())
+        })
+    }
+
+    /// How many documents wait; reads no neighbours, so it is cheap.
+    pub fn waiting_count(&self) -> Result<usize, String> {
+        self.with_index_text(|index| {
+            load_matching(
+                index,
+                |_path| true,
+                &self.location_roots,
+                self.kind_language,
+                None,
+            )
+            .map(|items| items.len())
+            .map_err(|err| err.to_string())
+        })
+    }
+
     fn neighbours(&self, index: &Index) -> Result<NeighbourIndex, String> {
         let documents =
             location_documents(index, &self.target_root).map_err(|err| err.to_string())?;
@@ -238,6 +279,24 @@ impl ReviewAccess {
         summary
     }
 
+    /// Files each item under its own file name into `folder`, one after the
+    /// other, through the same journaled move as [`Self::confirm`]. A relative
+    /// `folder` lies below the target.
+    pub fn accept_into(&self, items: &[ReviewItem], folder: &Path) -> AcceptSummary {
+        let root = self.target_root.join(folder);
+        let mut summary = AcceptSummary::default();
+        for item in items {
+            let outcome = match item.path.file_stem().and_then(|stem| stem.to_str()) {
+                Some(stem) => {
+                    self.confirm_in(&root, item.entry, item.document_id, &item.fields, stem)
+                }
+                None => Err(PATTERN_DOES_NOT_FIT.to_owned()),
+            };
+            summary.record(outcome);
+        }
+        summary
+    }
+
     /// Hermes leaves these paths alone from now on.
     pub fn exclude(&self, paths: &[PathBuf]) -> Result<(), String> {
         self.with_index(|index| paths.iter().try_for_each(|path| index.exclude_path(path)))
@@ -268,11 +327,22 @@ impl ReviewAccess {
         fields: &DocumentFields,
         pattern: &str,
     ) -> Result<ConfirmOutcome, String> {
+        self.confirm_in(&self.target_root, entry, document_id, fields, pattern)
+    }
+
+    fn confirm_in(
+        &self,
+        root: &Path,
+        entry: ReviewEntryId,
+        document_id: DocumentId,
+        fields: &DocumentFields,
+        pattern: &str,
+    ) -> Result<ConfirmOutcome, String> {
         let mut guard = self.slot.lock().unwrap_or_else(PoisonError::into_inner);
         let index = guard.as_mut().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
         confirm(
             index,
-            &self.target_root,
+            root,
             (entry, document_id),
             fields,
             pattern,

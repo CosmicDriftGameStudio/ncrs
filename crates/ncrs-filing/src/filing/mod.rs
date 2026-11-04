@@ -32,8 +32,8 @@ use ncrs_index::{
 #[cfg(target_os = "macos")]
 use ncrs_intake::ImageTextWithFallback;
 use ncrs_intake::{
-    ImageFileText, ImageTextSource, LazyOcrText, Location, LocationMode, OfficeText, PdfText,
-    PdfUnavailable, PlainText, TextChain, TextError, OCR_MODELS_FOLDER,
+    ImageFileText, ImageTextSource, LazyOcrText, Location, OfficeText, PdfText, PdfUnavailable,
+    PlainText, TextChain, TextError, OCR_MODELS_FOLDER,
 };
 use ncrs_pipeline::{intake_steps, IndexAccess, Load, OwnDetails, Runner, Settings, SystemClock};
 
@@ -41,13 +41,10 @@ use crate::chat_work::ChatAccess;
 use crate::column_reading::{read_column, ColumnReading, ColumnRequest};
 use crate::filing_work::FilingAccess;
 use crate::query_work::QueryAccess;
-use crate::reorganisation_work::PlanAccess;
-use crate::replan_work::ReplanAccess;
 use crate::review_work::ReviewAccess;
 use crate::rules_work::RulesAccess;
-use crate::suggestion_work::SuggestionAccess;
 use crate::tags_work::TagsAccess;
-use ncrs_config::config::{AiSetting, Filing, FilingLocation};
+use ncrs_config::config::{AiSetting, Filing, FilingLocation, LocationTransfer};
 
 /// A recovery key is 13 groups of four characters.
 const GROUP_COUNT: usize = 13;

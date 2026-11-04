@@ -98,7 +98,7 @@ impl Talk {
         let below = |names: &[&str]| names.iter().map(|name| root.join(name)).collect();
         let ctx = Ctx {
             lang: LANG,
-            availability: Availability::Ready(access.clone()),
+            availability: Availability::Ready(Box::new(access.clone())),
             home: root.join("home"),
             targets: below(targets),
             favourites: Vec::new(),
@@ -122,6 +122,18 @@ impl Talk {
             model,
             working: None,
         }
+    }
+
+    /// The chat can count, show and file the documents that wait; they are
+    /// filed below `archive`.
+    pub fn with_review(mut self) -> Self {
+        let review = ncrs_filing::review_work::ReviewAccess::new(
+            Arc::clone(&self.index),
+            self.path("archive"),
+        );
+        self.access = self.access.with_review(Some(review));
+        self.ctx.availability = Availability::Ready(Box::new(self.access.clone()));
+        self
     }
 
     pub fn path(&self, relative: &str) -> PathBuf {

@@ -16,7 +16,7 @@ application state.
 
 The dual-panel navigator, the file operations, archives, SFTP servers, color
 themes and localization with per-string translator context work, and there is a
-[config file](#configuration) with programs and keys. [Filing](#filing), which
+[config file](#configuration) with programs and keys. [Hermes](#filing), which
 reads PDFs and scans and files them by your rules, is a beta. See
 [ROADMAP.md](ROADMAP.md) for the state, the licensing audit and the reasoning
 behind the order.
@@ -159,7 +159,7 @@ The same window in German, switched with F9.
   drive letters, the same places as in the Finder sidebar; see [Drives on macOS](#drives-on-macos)
 - Search in file names and contents below a directory, in the panel, the way
   VS Code does it, with filters for the documents ncrs has read: see [Search](#search)
-- Filing (beta): put PDFs and scans in an inbox, and ncrs reads them, recognises
+- Hermes (beta): point it at a read folder with PDFs and scans, and ncrs reads them, recognises
   sender, date and amount and files them where your rules say. Everything stays
   on this computer. See [Filing](#filing)
 - File lists show the tags of a document ncrs has read after its name (at most 3
@@ -236,9 +236,8 @@ The defaults. Most of them can be changed in the keyboard shortcuts dialog (`Cmd
 | `Alt`+`F7` / `Cmd`+`Shift`+`F` (`Ctrl`+`Shift`+`F` on Linux and Windows) | Search below the directory of the active panel; pressed again, it moves to the next field. See [Search](#search) |
 | `F1` / `Cmd`+`Shift`+`P` / `Ctrl`+`Shift`+`P` | Lab (command palette): lists the actions that work where you are, with their keys; type to filter, `↑`/`↓` move, `Enter` runs, `Esc` closes |
 | `Cmd`+`P` / `Ctrl`+`P` | Quick Open: jump to a file by a few letters of its path. See [Quick Open](#quick-open) |
-| `Cmd`+`Shift`+`D` / `Ctrl`+`Shift`+`D` | Status and errors in the filing tab (filing module on): what the page is for, pipeline state, load, workers, index figures and the last errors. `P` pauses or resumes, `1`/`2`/`3` set the load gentle / balanced / full for this session, `+`/`-` change the worker count, `↑`/`↓` and `Enter` show the file of an error, `Esc` or the key again goes back to the panels. See [Filing](#filing) |
-| `Cmd`+`Shift`+`L` / `Ctrl`+`Shift`+`L` | Filing folders: choose the inbox and document folders and save them to the config file. See [Filing](#filing). `Esc` closes |
-| `Cmd`+`Shift`+`V` / `B` / `R` / `I` / `A` (`Ctrl`+`Shift` on Linux and Windows) | The filing pages Review, Rules, Rule suggestions, Sort again and Reports; `Cmd`+`Shift`+`U` undoes the last Sort again run. See [Filing](#filing) |
+| `Cmd`+`Shift`+`D` / `Ctrl`+`Shift`+`D` | Status and errors (Hermes on): what the page is for, pipeline state, load, workers, index figures and the last errors. `P` pauses or resumes, `1`/`2`/`3` set the load gentle / balanced / full for this session, `+`/`-` change the worker count, `↑`/`↓` and `Enter` show the file of an error, `Esc` or the key again goes back to the panels. See [Filing](#filing) |
+| `Cmd`+`Shift`+`B` / `A` (`Ctrl`+`Shift` on Linux and Windows) | The Rules and the Saved searches page. See [Filing](#filing) |
 | `Cmd`+`.` / `Ctrl`+`.` | Quick fix for a review item: the fixes for the document under the cursor |
 | `Cmd`+`Shift`+`H` / `Ctrl`+`Shift`+`H` | Process again: runs the file under the cursor through the filing steps again |
 | `Backspace`        | Go to parent directory                   |
@@ -310,7 +309,7 @@ Filters only apply to documents ncrs has read. With a filter set, the search
 lists the documents below the search directory that match, each with its tags,
 date and amount and the piece of its text around the words. Filters apply
 together, and the summary line adds the sum of the amounts when all of them
-are in one currency. **Save as report** opens the Reports page of the filing
+are in one currency. **Save as report** opens the Saved searches page
 with the words and filters filled in, so the report only needs a name; a
 report opened in the search shows **Update report** instead.
 
@@ -510,13 +509,12 @@ Actions: `quit`, `open`, `go_up`, `switch_panel`, `switch_language`,
 `copy_path`, `copy_name`, `copy_files`, `paste`, `trash`, `restore_last_deletion`, `open_trash_in_finder`, `drive_menu_left`, `drive_menu_right`,
 `history_back`, `history_forward`, `add_favourite`, `remove_favourite`, `favourites`,
 `sort_by_name`, `sort_by_modified`, `sort_by_size`, `compute_folder_sizes`, `context_menu`, `search`, `quick_open`, `command_line`, `command_palette`, `search_case`,
-`search_whole_word`, `search_regex`, `open_hits_left`, `open_hits_right`, `filing_status`, `filing_setup`, `key_bindings`,
+`search_whole_word`, `search_regex`, `open_hits_left`, `open_hits_right`, `filing_status`, `key_bindings`,
 `settings`, `about`, `fetch_theme`, `download_ocr_models`, `download_ai_model`,
 `grant_folder_access`, `connect_server`, `disconnect_server`,
-`file_list_tags_toggle`, `file_list_tags_choose`, and for the filing `rules`,
-`rule_suggestions`, `review_list`, `saved_queries`, `reorganisation_plan`,
-`undo_reorganisation`, `hermes_quick_fix`, `hermes_hand_to_inbox`,
-`hermes_process_again`, `hermes_reprocess_folder`, `hermes_set_inbox`,
+`file_list_tags_toggle`, `file_list_tags_choose`, and for Hermes `rules`,
+`saved_queries`, `hermes_quick_fix`, `hermes_hand_to_inbox`,
+`hermes_process_again`, `hermes_set_inbox`,
 `hermes_set_filing_location`, `hermes_set_archive`, `hermes_exclude`,
 `hermes_inspect`. Their default keys are in [Keyboard shortcuts](#keyboard-shortcuts)
 and, for the filing pages, in [Filing](#filing).
@@ -683,78 +681,43 @@ Filing is a beta. Every new version migrates the index and keeps its documents
 behaviour, rules and screens of filing may still change before it leaves beta.
 1.0 does not wait for it.
 
-In the app the module is called Filing. The setup and Status and errors name
-the config terms like this:
+In the app the module is called Hermes (the config section is still `[modules.filing]`). It is set up and managed in Settings
+(Index and Hermes), and it sorts in the chat (`F2`). The settings name the
+config terms like this:
 
 | Config | English | German |
 | --- | --- | --- |
-| `mode = "inbox"` | Inbox: where new documents arrive, emptied | Eingang |
-| `mode = "archive"` and `target = true` | Filing location: documents are filed here | Ablage |
-| `mode = "archive"` without `target` | Archive: only read, nothing is moved | Archiv |
+| `mode = "inbox"` | Read folder: Hermes sorts what arrives here | Lesen-Ordner |
+| `mode = "archive"` and `target = true` | Target folder: documents are filed here | Zielordner |
+| `mode = "archive"` without `target` | Read only: indexed, nothing is moved | Nur lesen |
 
-The standard languages show these plain names only. The Futurama variants
-(`lang = "en-futurama"` and `"de-futurama"`) show the names from the show
-beside them:
+An older config file with `default_pattern`, `[[kinds]]` or `mode = "archive"`
+still loads.
+
+The Futurama variants (`lang = "en-futurama"` and `"de-futurama"`) show the
+names from the show beside the plain ones:
 
 | Plain name (English / German) | Futurama variants add (English / German) |
 | --- | --- |
-| Filing / Ablage | Hermes / Hermes |
-| Filing folders / Ablageordner | Hermes / Hermes |
-| Set up filing / Ablage einrichten | Hermes / Hermes |
+| Hermes / Hermes | Hermes / Hermes |
 | Status and errors / Status und Fehler | Inspection / Inspektion |
-| Overview / Übersicht | Delivery / Lieferdienst |
-| Review / Rückfragen | Pending / Wiedervorlage |
 | Rules / Regeln | Bureaucratic Regulations / Bürokratische Vorschriften |
-| Rule suggestions / Regelvorschläge | Requisitions / Anträge |
-| Sort again / Neu sortieren | Inventory / Inventur |
-| Reports / Auswertungen | Inquiries / Anforderungen |
 | Gentle / Schonend (`gentle`) | By the book / Dienst nach Vorschrift |
 | Balanced / Ausgewogen (`balanced`) | Business as usual / Normalbetrieb |
 | Full / Volle Last (`full`) | Grade 36 / Grad 36 |
 
-**The filing tab.** The filing has its pages in one tab with a sidebar, in
-this order. `Cmd`+`Shift` with the letter opens a page (`Ctrl`+`Shift` on
-Linux and Windows); the name in `[keys]` changes the key.
+**Where things are.** Settings › Index holds what ncrs reads, text recognition,
+the AI model, your own names, the protection of the index and its state.
+Settings › Hermes holds the read folders, the order Hermes learned per area,
+the runs it can undo, and Advanced. Hermes asks in the chat before it moves
+anything; documents it is unsure about wait there ("3 documents are waiting
+for you") and are gone through one question at a time. Four pages stay as
+single pages, each reached from Settings › Hermes › Advanced or the command
+palette (`F1`): Rules (`rules`), Tags (`file_list_tags_choose`), Saved searches
+(`saved_queries`) and Status and errors (`Cmd`+`Shift`+`D`, `filing_status`;
+also behind "Show" on the unreadable files in Settings › Index).
 
-| Page | Key | `[keys]` | What it is for |
-| --- | --- | --- | --- |
-| Overview | | | State, folders, text recognition, the AI model and the default target for documents no rule covers |
-| Review | `V` | `review_list` | Documents that no confirmed rule could file, with a preview, where each field came from and the target path. Nothing is filed before you confirm |
-| Rules | `B` | `rules` | Rules, checked from top to bottom; the first that matches files the document |
-| Rule suggestions | `R` | `rule_suggestions` | Rules suggested from how your documents are already filed, with the reason. A suggestion does nothing until you confirm it |
-| Sort again | `I` | `reorganisation_plan` | Checks the folders you already filed into and suggests moves and renames. Nothing moves before you run the selected steps; `Cmd`+`Shift`+`U` (`Ctrl`+`Shift`+`U` on Linux and Windows, `undo_reorganisation`) moves the last run back |
-| Reports | `A` | `saved_queries` | Saved searches for recurring questions, with their sum. Exporting copies the hits into a folder; the originals stay unchanged |
-| Tags | | `file_list_tags_choose` | All tags in one place. A tick shows the tag in the file tree behind the file name |
-| Status and errors | `D` | `filing_status` | What the filing is doing right now: the state of the pipeline, the load, the index figures and the latest errors |
-
-![The Review page of the filing tab](docs/screenshots/filing.png)
-
-Review: documents that no confirmed rule could file. Nothing is filed before
-you confirm.
-
-**Setup.** `Cmd`+`Shift`+`L` (`Ctrl`+`Shift`+`L` on Linux and Windows,
-`filing_setup` in `[keys]`) opens the setup, also from the command palette
-(`F1`) as "Choose folders" in the Filing group. It also opens on its own when the module is
-on and no locations are listed. The card has two sections: the inbox, where new
-documents arrive (optional), and the folders where you keep your documents (at
-least one). "Add folder…" opens the system folder dialog; "Use the folder in
-the panel" adds the folder of the active panel instead, for keyboard use and
-for systems without a dialog. The card stays open and the panels stay usable.
-Each entry has its images switch and can be removed. A folder that is already
-in the list is not added again; the card says "already added".
-
-With one document folder, it is the filing location. From two document folders
-on, pick the filing location with the radio buttons; saving waits for the
-choice. A list that breaks a rule, for example an inbox folder inside a document
-folder, says so and cannot be saved.
-
-Saving writes the locations by their real paths (symlinks resolved) to
-`[modules.filing]` and sets `enabled = true`. The rest of the file, comments
-included, stays as it is. A config file that does not load is not touched: fix
-it first, the setup shows the error. After saving, the card closes and the
-status bar says that filing is on and which key opens Status and errors. If no
-filing runs on configured locations yet, filing starts at once with the saved
-ones; otherwise the status bar says they apply from the next start of ncrs.
+![Settings › Hermes](docs/screenshots/filing.png)
 
 **AI.** Documents the rules cannot read can be handed to a small language
 model. It is off until switched on:

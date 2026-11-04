@@ -174,26 +174,7 @@ impl App {
             .filter(|module| module.has_card())
             .and_then(|module| filing_ui::view(module, self.window_size, self.lang, &self.palette))
             .map(|card| card.map(Message::from));
-        let setup_card = self.hermes.filing_setup.as_ref().map(|setup| {
-            let context = filing_setup_ui::SetupContext {
-                current_folder: &self.active_panel().path,
-                home: &self.home,
-                index_is_plain: self
-                    .hermes
-                    .filing
-                    .as_ref()
-                    .is_some_and(FilingModule::index_is_plain),
-                lang: self.lang,
-                window: self.window_size,
-            };
-            filing_setup_ui::view(setup, &context, &self.palette).map(Message::from)
-        });
-        let hermes_card = self.hermes_setup_view();
-        let cards: Vec<Element<'_, Message>> = setup_card
-            .into_iter()
-            .chain(hermes_card)
-            .chain(module_card)
-            .collect();
+        let cards: Vec<Element<'_, Message>> = module_card.into_iter().collect();
         let base: Element<'_, Message> = if cards.is_empty() {
             window.into()
         } else {
@@ -308,12 +289,7 @@ impl App {
             .into();
         }
 
-        if let Some(card) = self
-            .settings
-            .ai_model
-            .as_ref()
-            .filter(|_| !self.settings.ai_card_hidden)
-        {
+        if let Some(card) = self.settings.ai_model.as_ref() {
             let card_element = ai_model_ui::view(
                 card,
                 self.dialog_focus,
@@ -323,6 +299,16 @@ impl App {
             );
             return Stack::with_children([root, dialog::scrim(card_element.map(Message::AiModel))])
                 .into();
+        }
+
+        if let Some(dialog_element) = self.settings.page.as_ref().and_then(|state| {
+            ncrs_settings::dialogs::open_dialog(&self.settings_view(state), self.window_size)
+        }) {
+            return Stack::with_children([
+                root,
+                dialog::scrim(dialog_element.map(Message::Settings)),
+            ])
+            .into();
         }
 
         if self.start_over_dialog {
@@ -449,41 +435,11 @@ impl App {
         Stack::with_children([root, dialog::scrim(prompt_element)]).into()
     }
 
-    fn hermes_setup_view(&self) -> Option<Element<'_, Message>> {
-        let setup = self.hermes.hermes_setup.as_ref()?;
-        let card = hermes_setup_ui::SetupView {
-            setup,
-            focus: self
-                .hermes
-                .setup_focus_order()
-                .get(self.dialog_focus)
-                .copied(),
-            busy: self.hermes.setup_is_busy(),
-            creating_index: self
-                .hermes
-                .filing
-                .as_ref()
-                .is_some_and(FilingModule::is_creating_index),
-            creation_error: self
-                .hermes
-                .filing
-                .as_ref()
-                .and_then(FilingModule::index_creation_error),
-            home: &self.home,
-            flow_step: self.hermes_flow_step,
-            lang: self.lang,
-            window: self.window_size,
-        };
-        Some(hermes_setup_ui::view(&card, &self.palette).map(Message::from))
-    }
-
     pub(in crate::app) fn hermes_view_ctx(&self) -> ncrs_hermes_ui::ViewCtx<'_> {
         ncrs_hermes_ui::ViewCtx {
             lang: self.lang,
             palette: &self.palette,
-            home: &self.home,
             window_size: self.window_size,
-            hermes_focus: self.hermes_focus,
             file_list_tags: &self.file_list_tags,
             jobs_busy: self.jobs.is_busy(),
             ai_download: self

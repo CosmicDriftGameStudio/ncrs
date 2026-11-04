@@ -9,8 +9,7 @@ use iced::widget::{container, row, Row};
 use iced::{alignment, Element};
 use ncrs_index::{KindCatalog, QuerySpec};
 
-use super::hermes::{self, Badges};
-use crate::message::{HermesPage, Message, SavedQueriesMessage};
+use crate::message::{Message, SavedQueriesMessage};
 use crate::rules_page::hits_text;
 use crate::saved_queries::{Draft, ExportStep, Problem, Results, SavedQueries, VISIBLE_ROWS};
 use ncrs_config::palette::Palette;
@@ -42,7 +41,6 @@ fn send(message: SavedQueriesMessage) -> Message {
 
 pub fn view<'a>(
     state: &'a SavedQueries,
-    badges: Badges,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
@@ -57,7 +55,6 @@ pub fn view<'a>(
         page_kit::list_and_detail(list(state, lang, palette), detail(state, lang, palette))
     };
     page_kit::tab_page(
-        hermes::tab_nav(HermesPage::SavedQueries, badges, lang, palette),
         header(state, lang, palette),
         body,
         Some(action_bar(state, lang, palette)),

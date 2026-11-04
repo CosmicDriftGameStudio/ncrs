@@ -341,6 +341,18 @@ pub fn error_line<'a, M: Clone + 'a>(
         .into()
 }
 
+/// A line of text that warns without being wrong, in the accent color.
+pub fn warning_line<'a, M: Clone + 'a>(
+    content: impl IntoFragment<'a>,
+    palette: &Palette,
+) -> Element<'a, M> {
+    text(content)
+        .size(font_size::BODY)
+        .color(palette.accent)
+        .wrapping(Wrapping::Word)
+        .into()
+}
+
 /// A notice that is neither an error nor plain text: an outlined box with its
 /// line in the accent color, like the warning that a name is taken.
 pub fn warning_box<'a, M: Clone + 'a>(
@@ -424,13 +436,13 @@ pub fn divider<'a, M: Clone + 'a>(palette: &Palette) -> Element<'a, M> {
 
 /// One setting: its name, the name of the theme it belongs to and a
 /// description on the left, the control in a column of `control_width` on the
-/// right, with what is wrong with the value in the error color under the
+/// right, with `lines_below` (a problem or a warning) under the
 /// description.
 pub fn form_row_with_problem<'a, M: Clone + 'a>(
     label: &str,
     theme_name: Option<&str>,
     description: Option<&str>,
-    problem: Option<&str>,
+    lines_below: Vec<Element<'a, M>>,
     control: Element<'a, M>,
     control_width: f32,
     palette: &Palette,
@@ -445,8 +457,8 @@ pub fn form_row_with_problem<'a, M: Clone + 'a>(
     if let Some(text_below) = description {
         left = left.push(dim(text_below.to_owned(), palette));
     }
-    if let Some(wrong) = problem {
-        left = left.push(error_line(wrong.to_owned(), palette));
+    for line in lines_below {
+        left = left.push(line);
     }
     column![
         row![

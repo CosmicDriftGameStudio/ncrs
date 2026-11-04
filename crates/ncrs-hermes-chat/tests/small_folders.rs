@@ -318,11 +318,11 @@ mod tests {
     #[test]
     fn without_a_filing_the_chat_asks_for_setup_or_waits() {
         let mut talk = small_talk();
-        talk.ctx.availability = Availability::NeedsSetup;
+        talk.ctx.availability = Availability::Off;
         talk.open();
-        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatNeedsSetup, &[])]);
-        talk.press(&ChipReply::Setup);
-        assert_eq!(talk.actions, vec![Action::OpenFilingSetup]);
+        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatOff, &[])]);
+        talk.press(&ChipReply::TurnOn);
+        assert_eq!(talk.actions, vec![Action::TurnOnHermes]);
 
         let mut waiting = small_talk();
         waiting.ctx.availability = Availability::Starting;
@@ -443,7 +443,7 @@ mod tests {
 
     fn ready(talk: &mut Talk) {
         let access = talk.access.clone();
-        talk.ctx.availability = Availability::Ready(access);
+        talk.ctx.availability = Availability::Ready(Box::new(access));
         talk.send(Message::HermesReady);
     }
 
@@ -465,7 +465,7 @@ mod tests {
         talk.open();
         talk.send(Message::Close);
         let access = talk.access.clone();
-        talk.ctx.availability = Availability::Ready(access);
+        talk.ctx.availability = Availability::Ready(Box::new(access));
         talk.open();
         assert_eq!(talk.last_texts(), greeting());
     }
@@ -477,12 +477,45 @@ mod tests {
         talk.open();
         talk.type_text("hmmmm wie geht das");
         assert!(talk.state.waits_for_hermes());
-        talk.ctx.availability = Availability::NeedsSetup;
+        talk.ctx.availability = Availability::Off;
         talk.send(Message::HermesReady);
-        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatNeedsSetup, &[])]);
-        assert_eq!(talk.labels(), vec![say(Msg::HermesChatSetup, &[])]);
+        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatOff, &[])]);
+        assert_eq!(talk.labels(), vec![say(Msg::HermesChatTurnOn, &[])]);
         assert!(!talk.state.waits_for_hermes());
         assert!(talk.state.pending_work().is_none());
+    }
+
+    #[test]
+    fn a_start_that_failed_says_why_and_a_retry_restarts_hermes() {
+        let mut talk = small_talk();
+        talk.ctx.availability = Availability::Starting;
+        talk.open();
+        talk.type_text("hmmmm wie geht das");
+        talk.ctx.availability = Availability::Failed("no key".to_owned());
+        talk.send(Message::HermesReady);
+        assert_eq!(
+            talk.last_texts(),
+            vec![say(Msg::HermesChatStartFailed, &[("reason", "no key")])]
+        );
+        assert_eq!(talk.labels(), vec![say(Msg::HermesChatRetry, &[])]);
+        assert!(!talk.state.waits_for_hermes());
+        talk.press(&ChipReply::TurnOn);
+        assert_eq!(talk.actions, vec![Action::TurnOnHermes]);
+    }
+
+    #[test]
+    fn a_failed_switching_on_says_the_reason_and_offers_it_again() {
+        let mut talk = small_talk();
+        talk.ctx.availability = Availability::Starting;
+        talk.open();
+        talk.send(Message::TurnOnFailed("disk full".to_owned()));
+        assert_eq!(
+            talk.last_texts(),
+            vec![say(Msg::HermesChatTurnOnFailed, &[("reason", "disk full")])]
+        );
+        assert!(!talk.state.waits_for_hermes());
+        talk.press(&ChipReply::TurnOn);
+        assert_eq!(talk.actions, vec![Action::TurnOnHermes]);
     }
 
     #[test]
@@ -496,7 +529,7 @@ mod tests {
             Some(say(Msg::HermesChatStartingWait, &[]).as_str())
         );
         let access = talk.access.clone();
-        talk.ctx.availability = Availability::Ready(access);
+        talk.ctx.availability = Availability::Ready(Box::new(access));
         talk.model.push_reply(Ok(r#"{"intent":"other"}"#));
         talk.send(Message::HermesReady);
         assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatFallback, &[])]);

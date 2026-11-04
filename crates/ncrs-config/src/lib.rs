@@ -10,4 +10,4 @@ pub mod palette;
 pub mod settings_page;
 pub mod vscode_theme;
 
-pub use settings_page::{SettingsFeature, SettingsTarget};
+pub use settings_page::{SettingsFeature, SettingsGroup, SettingsTarget};

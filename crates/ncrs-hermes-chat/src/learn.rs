@@ -10,15 +10,14 @@ use ncrs_filing::chat_work::{
 };
 use ncrs_i18n::Msg;
 use ncrs_index::{KindCatalog, KindLanguage, Kinds};
-use ncrs_intake::{Area, Branch, Level, PlaceholderLabel};
+use ncrs_intake::{label_text, levels_plain, Area, Branch, Level, PlaceholderLabel};
 use ncrs_ui_kit::hermes_state::FolderRole;
 
 use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::state::{Chip, ChipReply, FileCard, Offer, Part, ReadFor, Retry, State, Step};
 use crate::texts::{
-    areas_card, fill, folder_name, label_text, levels_plain, number, plural_text, segments, text,
-    SHOWN_AREAS,
+    areas_card, fill, folder_name, number, plural_text, segments, text, SHOWN_AREAS,
 };
 use crate::update::{
     access, cancel_chip, chip, chip_labelled, hermes, lost_folder_chips, lost_folder_retry_chips,
@@ -72,6 +71,7 @@ pub fn read_done(state: &mut State, ctx: &Ctx, result: Result<Arc<FolderReading>
             deliver(state, ctx, purpose, &reading);
         }
         Err(error) => {
+            state.session.focus_area = None;
             state.session.tidy = None;
             state.session.resume_tidy = false;
             state.step = Step::Idle;
@@ -124,11 +124,52 @@ pub fn retry(state: &mut State, ctx: &Ctx) {
 
 fn deliver(state: &mut State, ctx: &Ctx, purpose: ReadFor, reading: &Arc<FolderReading>) {
     match purpose {
-        ReadFor::Learn => summary(state, ctx, reading),
+        ReadFor::Learn if crate::everywhere::after_read(state, ctx, reading) => {}
+        ReadFor::Learn => match state.session.focus_area.take() {
+            Some(area) => focused_area(state, ctx, reading, &area),
+            None => summary(state, ctx, reading),
+        },
         ReadFor::Source => tidy::source_read(state, ctx, reading),
         ReadFor::Target => tidy::target_read(state, ctx),
         ReadFor::NewTarget => crate::decide::new_target_read(state, ctx, reading),
     }
+}
+
+/// The orders on offer for the area the settings page named; when the folder
+/// has no such area the usual summary follows.
+fn focused_area(state: &mut State, ctx: &Ctx, reading: &Arc<FolderReading>, area: &str) {
+    if reading.files.is_empty()
+        || !reading
+            .structure
+            .areas
+            .iter()
+            .any(|found| found.folder == area)
+    {
+        summary(state, ctx, reading);
+        return;
+    }
+    state.session.learning = Some(Arc::clone(reading));
+    state.step = Step::AfterChange;
+    let mut chips: Vec<Chip> = ORDERS_ON_OFFER
+        .iter()
+        .map(|(order, msg)| {
+            chip(
+                ctx,
+                *msg,
+                ChipReply::ChangeAreaOrder {
+                    area: area.to_owned(),
+                    order: *order,
+                },
+                false,
+            )
+        })
+        .collect();
+    chips.push(cancel_chip(ctx));
+    say(
+        state,
+        fill(ctx.lang, Msg::HermesChatChangeAreaWhich, &[("area", area)]),
+        chips,
+    );
 }
 
 pub fn summary(state: &mut State, ctx: &Ctx, reading: &Arc<FolderReading>) {
@@ -257,6 +298,7 @@ pub fn want_change(state: &mut State, ctx: &Ctx) {
 /// wait for the first filing, and the talk moves on.
 pub fn keep(state: &mut State, ctx: &Ctx) -> Option<Action> {
     let reading = state.session.learning.clone()?;
+    crate::follow_up::forget(state);
     let folder = reading.root.clone();
     let known = ctx.targets.contains(&folder);
     let role = (!known).then(|| Action::SetFolderRole {
@@ -342,6 +384,7 @@ pub fn change_order(state: &mut State, ctx: &Ctx, kind_word: String, order: Chan
             reading,
             kind_word,
             order,
+            name: state.session.change_name.clone(),
         },
         None,
     );
@@ -405,8 +448,14 @@ pub fn preview_done(state: &mut State, ctx: &Ctx, computed: Option<ChangePreview
         no_change_found(state, ctx);
         return;
     };
-    let mut parts = vec![
-        Part::Text(preview_intro(state, ctx, &preview)),
+    let mut parts = vec![Part::Text(preview_intro(state, ctx, &preview))];
+    if preview.change.name.is_some() && preview.change.order != ChangeOrder::FileNames {
+        parts.push(Part::Text(text(
+            ctx.lang,
+            Msg::HermesChatChangePreviewWithNames,
+        )));
+    }
+    parts.extend([
         Part::File(FileCard {
             segments: preview.example.clone(),
             highlighted: Some(preview.highlighted),
@@ -416,7 +465,7 @@ pub fn preview_done(state: &mut State, ctx: &Ctx, computed: Option<ChangePreview
             Msg::HermesChatChangePreviewCount,
             &[("area", &preview_area(&preview))],
         )),
-    ];
+    ]);
     let Some(scope) = preview.scope.clone() else {
         confirm(state, ctx, parts, preview);
         return;
@@ -467,6 +516,13 @@ fn preview_area(preview: &ChangePreview) -> String {
 /// What the area looks like today and what it would look like, in a line.
 fn preview_intro(state: &State, ctx: &Ctx, preview: &ChangePreview) -> String {
     let area = preview_area(preview);
+    if preview.change.order == ChangeOrder::FileNames {
+        return fill(
+            ctx.lang,
+            Msg::HermesChatChangePreviewNames,
+            &[("area", &area)],
+        );
+    }
     let today_order = state
         .session
         .learning
@@ -504,7 +560,7 @@ fn order_label(order: ChangeOrder) -> Option<PlaceholderLabel> {
         ChangeOrder::ByMonth => Some(PlaceholderLabel::Month),
         ChangeOrder::BySender => Some(PlaceholderLabel::Sender),
         ChangeOrder::ByKind => Some(PlaceholderLabel::Kind),
-        ChangeOrder::Flat | ChangeOrder::Pattern => None,
+        ChangeOrder::Flat | ChangeOrder::Pattern | ChangeOrder::FileNames => None,
     }
 }
 
@@ -736,6 +792,8 @@ pub fn scope(state: &mut State, ctx: &Ctx, only: Option<String>) {
 
 fn apply(state: &mut State, ctx: &Ctx, mut parts: Vec<Part>, change: OrderChange) {
     state.session.changes.push(change);
+    state.session.change_name = None;
+    crate::follow_up::forget(state);
     parts.push(Part::Text(text(ctx.lang, Msg::HermesChatChangeDone)));
     parts.push(Part::Text(text(ctx.lang, Msg::HermesChatAnythingElse)));
     state.step = Step::AfterChange;

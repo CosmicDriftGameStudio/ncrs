@@ -194,25 +194,10 @@ pub fn default_bindings() -> Vec<(KeyAction, Binding)> {
             A::FilingStatus,
             Binding::with_modifiers(Character("d".into()), Modifiers::COMMAND | Modifiers::SHIFT),
         ),
-        // The filing setup, L for locations; Cmd+Shift+L, Ctrl+Shift+L elsewhere.
-        (
-            A::FilingSetup,
-            Binding::with_modifiers(Character("l".into()), Modifiers::COMMAND | Modifiers::SHIFT),
-        ),
         // The rules, B for bureaucratic regulations; Cmd+Shift+B, Ctrl+Shift+B elsewhere.
         (
             A::Rules,
             Binding::with_modifiers(Character("b".into()), Modifiers::COMMAND | Modifiers::SHIFT),
-        ),
-        // The rule suggestions, R for requisitions; Cmd+Shift+R, Ctrl+Shift+R elsewhere.
-        (
-            A::RuleSuggestions,
-            Binding::with_modifiers(Character("r".into()), Modifiers::COMMAND | Modifiers::SHIFT),
-        ),
-        // The review list, V for verify; Cmd+Shift+V, Ctrl+Shift+V elsewhere.
-        (
-            A::ReviewList,
-            Binding::with_modifiers(Character("v".into()), Modifiers::COMMAND | Modifiers::SHIFT),
         ),
         // The quick fixes of an inquiry, as in VS Code and Xcode; Cmd+. (Ctrl+. elsewhere).
         (
@@ -220,7 +205,7 @@ pub fn default_bindings() -> Vec<(KeyAction, Binding)> {
             Binding::with_modifiers(Character(".".into()), Modifiers::COMMAND),
         ),
         // Process the file under the cursor again, H for Hermes; Cmd+Shift+H,
-        // Ctrl+Shift+H elsewhere. Cmd+Shift+R already opens the rule suggestions.
+        // Ctrl+Shift+H elsewhere.
         (
             A::HermesProcessAgain,
             Binding::with_modifiers(Character("h".into()), Modifiers::COMMAND | Modifiers::SHIFT),
@@ -229,16 +214,6 @@ pub fn default_bindings() -> Vec<(KeyAction, Binding)> {
         (
             A::SavedQueries,
             Binding::with_modifiers(Character("a".into()), Modifiers::COMMAND | Modifiers::SHIFT),
-        ),
-        // The reorganisation plan, I for inventory; Cmd+Shift+I, Ctrl+Shift+I elsewhere.
-        (
-            A::ReorganisationPlan,
-            Binding::with_modifiers(Character("i".into()), Modifiers::COMMAND | Modifiers::SHIFT),
-        ),
-        // Undo of the last reorganisation, U for undo; Cmd+Shift+U, Ctrl+Shift+U elsewhere.
-        (
-            A::UndoReorganisation,
-            Binding::with_modifiers(Character("u".into()), Modifiers::COMMAND | Modifiers::SHIFT),
         ),
         // The toggles of the search fields, as in VS Code. On a Mac Option types
         // other characters, so these are only found through the physical key.

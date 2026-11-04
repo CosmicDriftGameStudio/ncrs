@@ -17,6 +17,7 @@ mod ocr;
 mod office;
 mod page_trim;
 mod placement;
+mod plain_words;
 mod recipient_detection;
 #[cfg(any(test, feature = "test-support"))]
 pub mod recognition;
@@ -38,8 +39,7 @@ mod text;
 mod watcher;
 
 pub use archive_profile::{
-    learn_archive, pattern_per_document, propose_target, subtree_per_document, ArchiveDocument,
-    DocumentPattern,
+    date_in_file_stem, learn_archive, subtree_per_document, ArchiveDocument,
 };
 pub use classify::{classify, is_image_file, text_is_readable, Skip};
 pub use conditions::{condition_match_ranges, word_condition_holds, MAX_MATCH_RANGES};
@@ -66,17 +66,11 @@ pub use ocr::{
 };
 pub use office::{extract_text_from_bytes, OfficeText, PlainText};
 pub use placement::{NeighbourIndex, Placement, Signal};
+pub use plain_words::{area_order_plain, branch_plain, label_text, levels_plain};
 pub use recipient_detection::{detect_recipient, kind_from_heading};
-pub use reorganisation::{
-    plan_reorganisation, PlanFile, PlanRule, ReorganisationInput, FINDING_PRIORITY,
-};
-pub use reorganisation_plan::{location_documents, location_structure, plan_location};
+pub use reorganisation::{plan_reorganisation, PlanFile, ReorganisationInput};
+pub use reorganisation_plan::{location_documents, location_structure};
 pub use rule_check::{condition_problem, rule_problem, ConditionProblem, RuleProblem};
-pub use rule_suggestions::{
-    suggest_rules, ArchiveText, RuleCandidate, MAX_CANDIDATES_PER_FOLDER, MAX_PHRASE_WORDS,
-    MAX_SHARE_ELSEWHERE_PERCENT, MIN_FOLDER_DOCUMENTS, MIN_PHRASE_CHARS,
-    MIN_SHARE_IN_FOLDER_PERCENT,
-};
 pub use sanitise::{is_plain_literal, is_windows_device_name, sanitise_value, stays_below};
 pub use scan::{
     scan_location, settle_location, walk_location, Found, ScanReport, MAX_REPORTED_ERRORS,

@@ -100,19 +100,9 @@ impl App {
                     }
                 }),
             // Keeps the status bar's progress and the open page current.
-            if self.hermes.pipeline.is_some()
-                || self.hermes.filing_status.page_open()
-                || self.hermes.overview.is_some()
-            {
+            if self.hermes.pipeline.is_some() || self.hermes.filing_status.page_open() {
                 iced::time::every(SNAPSHOT_EVERY)
                     .map(|_| Message::FilingStatus(FilingStatusMessage::Tick))
-            } else {
-                Subscription::none()
-            },
-            // The bar of a running model download reads a counter the download
-            // thread fills; nothing else wakes the view.
-            if self.hermes_flow_is_visible() {
-                iced::time::every(hermes_flow::STEP_INTERVAL).map(|_| Message::HermesFlowTick)
             } else {
                 Subscription::none()
             },
@@ -122,6 +112,8 @@ impl App {
             } else {
                 Subscription::none()
             },
+            // The bar of a running model download reads a counter the download
+            // thread fills; nothing else wakes the view.
             if self.settings.ai_model_download_runs() {
                 iced::time::every(DOWNLOAD_BAR_EVERY)
                     .map(|_| Message::AiModel(AiModelMessage::Progress))

@@ -9,8 +9,6 @@ pub enum FilingRuleViolation {
     SecondTarget {
         index: usize,
     },
-    /// There are locations, but none is the target.
-    NoTarget,
     /// Same folder, or one inside the other.
     Overlap {
         earlier: usize,
@@ -34,9 +32,6 @@ pub fn check_filing_rules(locations: &[FilingLocation]) -> Result<(), FilingRule
             return Err(FilingRuleViolation::SecondTarget { index });
         }
         target_seen = true;
-    }
-    if !locations.is_empty() && !target_seen {
-        return Err(FilingRuleViolation::NoTarget);
     }
     for (later, later_location) in locations.iter().enumerate() {
         let overlapping = locations.iter().take(later).position(|earlier_location| {
@@ -70,7 +65,7 @@ fn lies_within(path: &Path, base: &Path) -> bool {
 /// every case.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FilingWriteError {
-    /// The choice breaks a rule; an empty choice counts as `NoTarget`.
+    /// The choice breaks a rule.
     Rule(FilingRuleViolation),
     /// TOML has no way to spell a path that is not UTF-8.
     PathNotText(PathBuf),
@@ -80,6 +75,19 @@ pub enum FilingWriteError {
         path: PathBuf,
         reason: String,
     },
+}
+
+/// The reason alone, without the path of the file: where it lives is shown
+/// by the app in its own words.
+impl fmt::Display for FilingWriteError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Rule(_) => f.write_str("the folder list breaks a rule"),
+            Self::PathNotText(_) => f.write_str("a path is not valid text"),
+            Self::Config(error) => f.write_str(error.reason()),
+            Self::Io { reason, .. } => f.write_str(reason),
+        }
+    }
 }
 
 /// Turns the filing module on and replaces its locations in the config at
@@ -97,12 +105,30 @@ pub fn write_filing_locations_with_home(
     locations: &[FilingLocation],
     home: Option<&Path>,
 ) -> Result<Config, FilingWriteError> {
-    if locations.is_empty() {
-        return Err(FilingWriteError::Rule(FilingRuleViolation::NoTarget));
-    }
     check_filing_rules(locations).map_err(FilingWriteError::Rule)?;
     write_edited(path, home, |source| {
         with_filing_locations(source, path, locations)
+    })
+}
+
+/// Replaces the read folders in the config at `path`, keeping every other
+/// line as written; unlike [`write_filing_locations`] it does not turn Hermes
+/// or its AI on, and an empty list is fine. Returns the config read back.
+pub fn write_read_folders(
+    path: &Path,
+    locations: &[FilingLocation],
+) -> Result<Config, FilingWriteError> {
+    write_read_folders_with_home(path, locations, home_from_env().as_deref())
+}
+
+pub fn write_read_folders_with_home(
+    path: &Path,
+    locations: &[FilingLocation],
+    home: Option<&Path>,
+) -> Result<Config, FilingWriteError> {
+    check_filing_rules(locations).map_err(FilingWriteError::Rule)?;
+    write_edited(path, home, |source| {
+        with_read_folders(source, path, locations)
     })
 }
 

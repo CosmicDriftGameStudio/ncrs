@@ -60,16 +60,16 @@ fn pause_and_resume_act_on_the_pipeline_at_once() {
 #[test]
 fn the_load_is_set_on_the_pipeline_and_remembered_by_the_module() {
     let mut app = app_with_empty_pipeline();
-    assert_eq!(worker_target(&app), 2);
+    assert_eq!(worker_target(&app), 1);
 
     app.hermes
         .set_pipeline_load(Load::Full, app.wall_clock.now());
-    assert_eq!(worker_target(&app), 8);
+    assert_eq!(worker_target(&app), 4);
     assert_eq!(app.hermes.filing.as_ref().unwrap().load(), Load::Full);
 
     app.hermes
         .set_pipeline_load(Load::Gentle, app.wall_clock.now());
-    assert_eq!(worker_target(&app), 2);
+    assert_eq!(worker_target(&app), 1);
     assert_eq!(app.hermes.filing.as_ref().unwrap().load(), Load::Gentle);
 }
 
@@ -197,17 +197,6 @@ fn the_key_goes_back_to_the_panels_from_status_and_errors() {
     drop(app.update(status(FilingStatusMessage::Toggle)));
 
     assert_eq!(app.open_hermes_page(), None);
-}
-
-#[test]
-fn the_key_switches_to_status_and_errors_from_the_overview() {
-    let mut app = App::with_fixed_panels();
-    drop(app.update(status(FilingStatusMessage::Open)));
-    assert_eq!(app.open_hermes_page(), Some(HermesPage::Overview));
-
-    drop(app.update(status(FilingStatusMessage::Toggle)));
-
-    assert_eq!(app.open_hermes_page(), Some(HermesPage::Inspection));
 }
 
 #[test]

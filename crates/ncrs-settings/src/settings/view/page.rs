@@ -9,7 +9,7 @@ use ncrs_config::config::ConfigError;
 use ncrs_config::SettingsFeature;
 use ncrs_i18n::fill_template;
 use ncrs_i18n::Msg;
-use ncrs_ui_kit::kit::{self, Tone};
+use ncrs_ui_kit::kit;
 use ncrs_ui_kit::layout::SETTINGS_NAV_WIDTH;
 use ncrs_ui_kit::theme::{self, font_size, size, spacing};
 
@@ -30,17 +30,32 @@ pub fn nav<'a>(
         palette,
     );
     let mut entries = Column::new().spacing(NAV_ENTRY_GAP);
+    let mut current_group = None;
     for &feature in listed {
+        if current_group != Some(feature.group()) {
+            current_group = Some(feature.group());
+            entries = entries.push(
+                container(
+                    text(lang.text(group_label(feature.group())).to_owned())
+                        .size(font_size::SMALL)
+                        .color(palette.dim_text)
+                        .wrapping(Wrapping::None),
+                )
+                .padding(Padding {
+                    top: spacing::S,
+                    left: spacing::CELL_PADDING_X,
+                    ..Padding::ZERO
+                }),
+            );
+        }
         let mut label = row![text(lang.text(feature_label(feature)).to_owned())
             .size(font_size::BODY)
             .wrapping(Wrapping::None)]
         .spacing(spacing::S)
         .align_y(alignment::Vertical::Center);
-        if let Some(theme_name) =
-            feature_theme_name(feature).and_then(|name| lang.futurama_name(name))
-        {
+        if let Some(suffix) = feature_suffix(feature) {
             label = label.push(
-                text(theme_name.to_owned())
+                text(lang.text(suffix).to_owned())
                     .size(font_size::SMALL)
                     .color(palette.dim_text)
                     .wrapping(Wrapping::None),
@@ -94,10 +109,9 @@ pub fn heading<'a>(feature: SettingsFeature, view: &SettingsView<'a>) -> Element
         .font(ncrs_ui_kit::APP_FONT)]
     .spacing(spacing::M)
     .align_y(alignment::Vertical::Center);
-    if let Some(theme_name) = feature_theme_name(feature).and_then(|name| lang.futurama_name(name))
-    {
+    if let Some(suffix) = feature_suffix(feature) {
         title = title.push(
-            text(theme_name.to_owned())
+            text(lang.text(suffix).to_owned())
                 .size(font_size::TITLE)
                 .color(palette.dim_text),
         );
@@ -148,6 +162,17 @@ pub fn page<'a>(shown: Option<SettingsFeature>, view: &SettingsView<'a>) -> Elem
             .filter(|setting| whole_feature || row_matches(setting, &query))
             .map(|setting| {
                 let marked = view.state.marked_row.as_deref() == Some(setting.label.as_str());
+                let lines_below: Vec<Element<'a, Message>> = setting
+                    .problem
+                    .iter()
+                    .map(|wrong| kit::error_line(wrong.clone(), palette))
+                    .chain(
+                        setting
+                            .warning
+                            .iter()
+                            .map(|caution| kit::warning_line(caution.clone(), palette)),
+                    )
+                    .collect();
                 let form_row = kit::form_row_with_problem(
                     &setting.label,
                     setting
@@ -155,7 +180,7 @@ pub fn page<'a>(shown: Option<SettingsFeature>, view: &SettingsView<'a>) -> Elem
                         .as_deref()
                         .or(setting.config_key.as_deref()),
                     setting.description.as_deref(),
-                    setting.problem.as_deref(),
+                    lines_below,
                     setting.control,
                     setting.control_width.unwrap_or(size::CONTROL_WIDTH),
                     palette,
@@ -172,25 +197,6 @@ pub fn page<'a>(shown: Option<SettingsFeature>, view: &SettingsView<'a>) -> Elem
                 }
             })
             .collect();
-        if group.advanced {
-            let found_by_search = !query.is_empty() && !rows.is_empty();
-            let expanded = view.state.advanced_open || found_by_search;
-            let toggle = kit::button(
-                &group.title,
-                Some(SettingsMessage::ToggleAdvanced),
-                Tone::Secondary,
-                palette,
-            );
-            body = body.push(container(toggle).padding(Padding {
-                top: spacing::M,
-                ..Padding::ZERO
-            }));
-            if expanded {
-                body = body.push(Column::with_children(rows));
-            }
-            first = false;
-            continue;
-        }
         if rows.is_empty() {
             continue;
         }

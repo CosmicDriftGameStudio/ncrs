@@ -55,6 +55,8 @@ pub fn check_local_model(models_dir: &Path) -> Result<LocalCheck, AiError> {
         message: sentence.to_owned(),
         question: None,
         previous_search: None,
+        previous_request: None,
+        previous_message: None,
     };
     model.understand(&turn(SENTENCES[0]))?;
     let compute = match model.status() {

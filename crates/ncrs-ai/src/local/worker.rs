@@ -9,10 +9,12 @@ use std::sync::mpsc::Sender;
 use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant, SystemTime};
 
+use ncrs_priority::{set_current_thread_priority, ThreadPriority};
+
 use super::chat_session::ChatSession;
 use super::{LocalModel, LocalModelConfig};
 use crate::chat::{ChatIntent, ChatTurn};
-use crate::contract::{Extraction, ExtractionRequest, Provider as _};
+use crate::contract::{Extraction, ExtractionRequest};
 use crate::error::AiError;
 use crate::model_file::ModelPin;
 use crate::status::LocalModelStatus;
@@ -111,6 +113,7 @@ pub struct Shared {
     path: PathBuf,
     pin: ModelPin,
     threads: Mutex<NonZeroU32>,
+    extraction_priority: Mutex<ThreadPriority>,
     context_tokens: NonZeroU32,
     idle_unload: Duration,
 }
@@ -139,6 +142,7 @@ impl Shared {
             path,
             pin,
             threads: Mutex::new(threads),
+            extraction_priority: Mutex::new(ThreadPriority::Utility),
             context_tokens,
             idle_unload,
         }
@@ -161,9 +165,24 @@ impl Shared {
         }
     }
 
-    /// Used at the next load.
+    /// Used from the next document on.
     pub fn set_threads(&self, threads: NonZeroU32) {
         *locked(&self.threads) = threads;
+    }
+
+    /// Used from the next document on; the chat always runs at full priority.
+    pub fn set_extraction_priority(&self, priority: ThreadPriority) {
+        *locked(&self.extraction_priority) = priority;
+    }
+
+    /// The model thread takes the priority that belongs to the job it is about
+    /// to run.
+    fn prepare_for(&self, job: &Job) {
+        let priority = match job {
+            Job::Chat(_) => ThreadPriority::UserInitiated,
+            Job::Extract(_) => *locked(&self.extraction_priority),
+        };
+        set_current_thread_priority(priority);
     }
 
     pub fn submit(&self, job: Job) {
@@ -256,6 +275,7 @@ pub fn run(shared: &Shared) {
             return;
         };
         let first = *boxed;
+        shared.prepare_for(&first);
         match shared.load(&mut failed) {
             Ok(model) => {
                 let closed = serve_until_idle(shared, &model, first);
@@ -284,8 +304,13 @@ fn serve_until_idle(shared: &Shared, model: &LocalModel, first: Job) -> bool {
                 Waited::Closed => return true,
             },
         };
+        shared.prepare_for(&job);
         match job {
-            Job::Extract(extract) => drop(extract.reply.send(model.extract(&extract.request))),
+            Job::Extract(extract) => {
+                let threads = *locked(&shared.threads);
+                let answer = model.extract_with_threads(&extract.request, threads);
+                drop(extract.reply.send(answer));
+            }
             Job::Chat(request) => {
                 let answer = chat_answer(model, &mut chat, &request.turn);
                 drop(request.reply.send(answer));
@@ -337,6 +362,8 @@ mod queue_tests {
                 message: message.to_owned(),
                 question: None,
                 previous_search: None,
+                previous_request: None,
+                previous_message: None,
             },
             reply: channel().0,
         })

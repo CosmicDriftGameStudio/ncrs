@@ -20,7 +20,7 @@ use ncrs_index::{Index, IndexError, QuerySpec, SavedQuery, SavedQueryId};
 pub use ncrs_index::QueryHit;
 
 use crate::review_work::amount_digits;
-use crate::suggestion_work::INDEX_NOT_OPEN;
+use ncrs_core::INDEX_NOT_OPEN;
 use ncrs_fs::flat_names::target_name;
 use ncrs_fs::transfer::{transfer_to, Copy, Counting, OnConflict};
 

@@ -134,12 +134,14 @@ pub fn assert_the_filing_settings(config: &Config) {
                 mode: LocationMode::Inbox,
                 images: false,
                 is_target: false,
+                transfer: Default::default(),
             },
             FilingLocation {
                 path: home.join("Documents/Archive"),
                 mode: LocationMode::Archive,
                 images: true,
                 is_target: true,
+                transfer: Default::default(),
             },
         ]
     );
@@ -728,4 +730,32 @@ fn linux_falls_back_to_home_when_xdg_is_relative_or_empty() {
         let found = path_from_env(env(&[("XDG_CONFIG_HOME", xdg), ("HOME", "/h")]));
         assert_eq!(found, Some(PathBuf::from("/h/.config/ncrs/config.toml")));
     }
+}
+
+#[test]
+fn a_config_of_before_the_settings_pages_still_loads() {
+    let base = tempfile::tempdir().unwrap();
+    let archive = base.path().join("archive");
+    let text = format!(
+        "version = 1\n\
+         [[kinds]]\nid = \"payslip\"\nwords = [\"Gehaltsabrechnung\"]\n\
+         [modules.filing]\nenabled = true\ndefault_pattern = \"{{year}}/{{sender}}/\"\n\
+         [[modules.filing.locations]]\npath = {}\nmode = \"archive\"\ntarget = true\n",
+        quoted(&archive)
+    );
+    let config = load_text(&text);
+
+    assert_eq!(
+        config.filing.default_pattern.as_deref(),
+        Some("{year}/{sender}/")
+    );
+    assert_eq!(config.kinds.stored_kind("Gehaltsabrechnung"), "payslip");
+    assert_eq!(
+        config
+            .filing
+            .locations
+            .first()
+            .map(|location| location.mode),
+        Some(LocationMode::Archive)
+    );
 }

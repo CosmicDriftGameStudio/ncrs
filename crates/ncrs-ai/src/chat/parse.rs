@@ -5,7 +5,9 @@
 use jsonc_parser::{parse_to_value, JsonObject, JsonValue, ParseOptions};
 use ncrs_index::Currency;
 
-use super::intent::{ChatIntent, Order, QuestionKind, Schedule, Transfer};
+use super::intent::{
+    ChatIntent, NameBlock, NameSpec, Order, QuestionKind, Schedule, Transfer, NAME_SEPARATORS,
+};
 use super::turn::{ChatTurn, SearchQuery};
 use crate::contract::{clean_value, text_has_minor_units};
 use crate::error::AiError;
@@ -29,14 +31,19 @@ pub fn parse_chat_reply(raw: &str, turn: &ChatTurn) -> Result<ChatIntent, AiErro
             schedule: enum_of(&reply, "schedule", schedule_of),
             transfer: enum_of(&reply, "transfer", transfer_of),
         }),
-        "change_structure" => Ok(ChatIntent::ChangeStructure {
-            area: required_text(&reply, "area")?,
-            scope: text(&reply, "scope"),
-            order: reply
-                .get_string("order")
-                .and_then(|word| order_of(word))
-                .ok_or(AiError::BadReply("no order"))?,
-        }),
+        "change_structure" => {
+            let order = reply.get_string("order").and_then(|word| order_of(word));
+            let naming = name_spec(&reply);
+            if order.is_none() && naming.is_none() {
+                return Err(AiError::BadReply("no order and no name"));
+            }
+            Ok(ChatIntent::ChangeStructure {
+                area: required_text(&reply, "area")?,
+                scope: text(&reply, "scope"),
+                order,
+                name: naming,
+            })
+        }
         "undo" => Ok(ChatIntent::Undo),
         "search" => Ok(ChatIntent::Search(SearchQuery {
             sender: text(&reply, "sender"),
@@ -138,6 +145,40 @@ fn order_of(word: &str) -> Option<Order> {
         "by_sender" => Some(Order::BySender),
         "by_kind" => Some(Order::ByKind),
         "flat" => Some(Order::Flat),
+        _ => None,
+    }
+}
+
+fn name_spec(reply: &JsonObject<'_>) -> Option<NameSpec> {
+    let blocks: Vec<NameBlock> = reply
+        .get_array("name")?
+        .iter()
+        .filter_map(|value| match value {
+            JsonValue::String(word) => name_block_of(word),
+            _ => None,
+        })
+        .collect();
+    if blocks.is_empty() {
+        return None;
+    }
+    let separator = reply
+        .get_string("separator")
+        .and_then(|word| {
+            let mut characters = word.chars();
+            characters.next().filter(|_| characters.next().is_none())
+        })
+        .filter(|candidate| NAME_SEPARATORS.contains(candidate))
+        .unwrap_or('_');
+    Some(NameSpec { blocks, separator })
+}
+
+fn name_block_of(word: &str) -> Option<NameBlock> {
+    match word {
+        "year" => Some(NameBlock::Year),
+        "month" => Some(NameBlock::Month),
+        "day" => Some(NameBlock::Day),
+        "sender" => Some(NameBlock::Sender),
+        "kind" => Some(NameBlock::Kind),
         _ => None,
     }
 }

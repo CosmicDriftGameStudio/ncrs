@@ -180,10 +180,9 @@ impl App {
         (app, Task::batch([panel_loads, filing_start]))
     }
 
-    /// Starts the filing module when `filing` switches it on. The database
-    /// and its directory are not created here: only after the user chose at
-    /// the encryption question. Switched on without locations, the module
-    /// has nothing to work on, so the setup opens.
+    /// Starts the filing module when `filing` switches it on. The module
+    /// creates a missing index by itself, encrypted, and works on no folder
+    /// until the user picks one in the chat.
     pub fn with_filing(
         mut self,
         filing: &Filing,
@@ -193,9 +192,6 @@ impl App {
         self.hermes.index_path = db_path;
         self.hermes.key_store = Some(ncrs_hermes_ui::KeyStoreHandle(store));
         let task = self.start_filing_module(filing);
-        if filing.enabled && filing.locations.is_empty() {
-            self.open_hermes_setup();
-        }
         (self, task)
     }
 
@@ -265,9 +261,6 @@ impl App {
         }
         self.kinds = self.kinds.in_language(lang.kind_language());
         let kinds = self.kinds.clone();
-        if let Some(list) = &mut self.hermes.review_list {
-            list.set_kinds(kinds.clone());
-        }
         if let Some(view) = &mut self.hermes.saved_queries {
             view.set_kinds(kinds.clone());
         }
@@ -452,16 +445,17 @@ impl App {
             search: ncrs_search::Search::new(layout::INITIAL_WINDOW_SIZE),
             hermes_chat: ncrs_hermes_chat::State::default(),
             chat_model: None,
+            turning_hermes_on: false,
             quick_open: None,
             quick_open_walk_generation: 0,
             quick_open_walk: None,
             command_palette: None,
             recent_commands: Vec::new(),
             wall_clock: Arc::new(ncrs_pipeline::SystemClock),
+            system_reads_scans: crate::ocr_models::system_reads_scans(),
             config_path: None,
             file_list_tags: FileListTags::default(),
             kinds: Kinds::default(),
-            hermes_flow_step: 0,
             settings: Settings::default(),
             hermes: ncrs_hermes_ui::Hermes::default(),
             theme_preset: ThemePreset::DEFAULT,
@@ -475,7 +469,6 @@ impl App {
                 Box::new(move |files| writer.write(files))
             },
             tag_exceptions: TagExceptions::new(),
-            hermes_focus: HermesFocus::default(),
             fetch_extension: open_vsx::fetch_extension,
             install_theme: ncrs_settings::theme_fetch::install::install_picked_theme,
             about: None,

@@ -1777,28 +1777,6 @@ mod filing_status_page {
     }
 
     #[test]
-    fn the_counts_are_told_in_plain_sentences() {
-        let counts = sample_counts();
-        assert_eq!(
-            crate::ui::filing_status::counts_sentences(&counts, Language::English),
-            "ncrs has seen 2\u{a0}421 documents: 0 filed, 2\u{a0}421 wait for you. \
-             1\u{a0}800 of them have no readable text. \
-             For the rest no rule matches: there are no confirmed rules yet. \
-             Rule suggestions learn from the 4\u{a0}871 of 5\u{a0}120 archive documents that have text."
-        );
-        let with_rules = ncrs_index::HermesCounts {
-            confirmed_rules: 3,
-            open_reviews_without_text: 0,
-            archive_documents: 0,
-            ..counts
-        };
-        assert_eq!(
-            crate::ui::filing_status::counts_sentences(&with_rules, Language::German),
-            "ncrs hat 2\u{a0}421 Dokumente gesehen: 0 abgelegt, 2\u{a0}421 warten auf dich."
-        );
-    }
-
-    #[test]
     fn a_missing_pdf_library_is_a_box_with_the_searched_path_cut_in_the_middle() {
         let long = PathBuf::from(format!(
             "/Applications/Some Application/Contents/Frameworks/{}/lib/libpdfium.dylib",
@@ -2042,307 +2020,6 @@ mod filing_status_page {
     }
 }
 
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-#[cfg(test)]
-mod filing_setup_card {
-    use std::path::PathBuf;
-
-    use ncrs_intake::LocationMode;
-
-    use super::*;
-    use crate::config::FilingLocation;
-    use crate::messages::FilingSetupMessage;
-    use crate::ui::filing_setup::{
-        target_choice_id, ADD_DOCUMENT_FOLDER_ID, ADD_INBOX_FOLDER_ID, USE_PANEL_FOR_DOCUMENTS_ID,
-        USE_PANEL_FOR_INBOX_ID,
-    };
-
-    const CHOOSE_FILING_LOCATION: &str = "Choose which folder is the filing location.";
-    const NO_DOCUMENT_FOLDER: &str = "Add at least one folder where you keep your documents.";
-    const NO_FOLDER_YET: &str = "No folder yet.";
-    const VAULT_NOTE: &str = "With an unencrypted index, do not add folders from an encrypted drive (for example a mounted Cryptomator vault): their text would end up in the index in plain form. ncrs does not detect such drives.";
-
-    fn location(path: &str, mode: LocationMode, images: bool, is_target: bool) -> FilingLocation {
-        FilingLocation {
-            path: PathBuf::from(path),
-            mode,
-            images,
-            is_target,
-        }
-    }
-
-    fn tube(path: &str) -> FilingLocation {
-        location(path, LocationMode::Inbox, false, false)
-    }
-
-    fn documents(path: &str, is_target: bool) -> FilingLocation {
-        location(path, LocationMode::Archive, false, is_target)
-    }
-
-    fn filled() -> Vec<FilingLocation> {
-        vec![
-            tube("/home/test/Downloads/Scans"),
-            location("/home/test/Scanner", LocationMode::Inbox, true, false),
-            location(
-                "/home/test/Documents/Filed",
-                LocationMode::Archive,
-                true,
-                true,
-            ),
-            documents("/home/test/Documents/Old-2019", false),
-        ]
-    }
-
-    fn violation() -> Vec<FilingLocation> {
-        vec![
-            documents("/home/test/Documents/Filed", false),
-            location(
-                "/home/test/Documents/Filed/Scanner",
-                LocationMode::Inbox,
-                false,
-                false,
-            ),
-        ]
-    }
-
-    fn shows(app: &App, label: &str) -> bool {
-        simulator(app).find(label).is_ok()
-    }
-
-    fn messages_after_click(app: &App, label: &str) -> Vec<Message> {
-        let mut sim = simulator(app);
-        sim.click(label).expect("the clicked label");
-        sim.into_messages().filter(is_action).collect()
-    }
-
-    /// The card scrolls: what lies below the fold is reached by the wheel, as
-    /// by a user.
-    fn messages_after_clicking_id(app: &App, id: impl Into<iced::widget::Id>) -> Vec<Message> {
-        let mut sim = simulator(app);
-        sim.point_at(frame_bounds(app).center());
-        let _statuses = sim.simulate([iced::Event::Mouse(iced::mouse::Event::WheelScrolled {
-            delta: iced::mouse::ScrollDelta::Lines { x: 0.0, y: -20.0 },
-        })]);
-        sim.click(id.into()).expect("the clicked id");
-        sim.into_messages().collect()
-    }
-
-    fn has_target_choice(app: &App, index: usize) -> bool {
-        simulator(app)
-            .find(iced::widget::Id::from(target_choice_id(index)))
-            .is_ok()
-    }
-
-    fn setup_message(message: FilingSetupMessage) -> Message {
-        Message::FilingSetup(message)
-    }
-
-    #[test]
-    fn an_empty_card_asks_for_both_kinds_of_folder_and_cannot_be_saved() {
-        let app = App::with_filing_setup(&[], false);
-
-        for label in [
-            "Filing folders",
-            "Inbox: where do new documents arrive?",
-            "Where do you keep your documents?",
-            NO_FOLDER_YET,
-        ] {
-            assert!(shows(&app, label), "{label}");
-        }
-        assert!(
-            !shows(&app, NO_DOCUMENT_FOLDER),
-            "nothing to complain about yet"
-        );
-        assert!(messages_after_click(&app, "Save").is_empty());
-    }
-
-    #[test]
-    fn a_section_without_folders_says_so_until_it_has_one() {
-        let only_tubes = App::with_filing_setup(&[tube("/home/test/Scanner")], false);
-        assert!(shows(&only_tubes, NO_FOLDER_YET));
-        assert!(shows(&only_tubes, NO_DOCUMENT_FOLDER));
-
-        let only_documents = App::with_filing_setup(&[documents("/home/test/Filed", false)], false);
-        assert!(shows(&only_documents, NO_FOLDER_YET));
-
-        assert!(!shows(
-            &App::with_filing_setup(&filled(), false),
-            NO_FOLDER_YET
-        ));
-    }
-
-    #[test]
-    fn each_section_has_its_own_add_buttons() {
-        let app = App::with_filing_setup(&[], false);
-
-        for (pick_id, panel_id, mode) in [
-            (
-                ADD_INBOX_FOLDER_ID,
-                USE_PANEL_FOR_INBOX_ID,
-                LocationMode::Inbox,
-            ),
-            (
-                ADD_DOCUMENT_FOLDER_ID,
-                USE_PANEL_FOR_DOCUMENTS_ID,
-                LocationMode::Archive,
-            ),
-        ] {
-            assert_eq!(
-                messages_after_clicking_id(&app, pick_id),
-                [setup_message(FilingSetupMessage::PickFolder(mode))],
-                "{pick_id}"
-            );
-            assert_eq!(
-                messages_after_clicking_id(&app, panel_id),
-                [setup_message(FilingSetupMessage::AddPanelFolder(mode))],
-                "{panel_id}"
-            );
-        }
-    }
-
-    #[test]
-    fn one_document_folder_is_the_filing_location_without_radio_buttons() {
-        let app = App::with_filing_setup(&[documents("/home/test/Filed", false)], false);
-
-        assert!(shows(&app, "Filing location"));
-        assert!(!shows(&app, "Archive"));
-        assert!(
-            messages_after_click(&app, "~/Filed").is_empty(),
-            "a plain path is not a choice"
-        );
-    }
-
-    #[test]
-    fn a_choice_between_document_folders_sends_the_global_index() {
-        let app = App::with_filing_setup(&filled(), false);
-
-        assert!(shows(&app, "Filing location"));
-        assert!(shows(&app, "Archive"));
-        assert_eq!(
-            messages_after_clicking_id(&app, target_choice_id(3)),
-            [setup_message(FilingSetupMessage::SetTarget(3))]
-        );
-        assert_eq!(
-            messages_after_clicking_id(&app, target_choice_id(2)),
-            [setup_message(FilingSetupMessage::SetTarget(2))]
-        );
-        assert_eq!(
-            messages_after_click(&app, "Save"),
-            [setup_message(FilingSetupMessage::Save)]
-        );
-    }
-
-    #[test]
-    fn two_document_folders_without_a_mark_say_so_and_cannot_be_saved() {
-        let app = App::with_filing_setup(
-            &[
-                documents("/home/test/Filed", false),
-                documents("/home/test/Old", false),
-            ],
-            false,
-        );
-
-        assert!(shows(&app, CHOOSE_FILING_LOCATION));
-        assert!(messages_after_click(&app, "Save").is_empty());
-    }
-
-    #[test]
-    fn remove_takes_the_entry_off_the_list() {
-        let mut app = App::with_filing_setup(&filled(), false);
-
-        let clicked = messages_after_click(&app, "Remove");
-        assert_eq!(clicked, [setup_message(FilingSetupMessage::Remove(0))]);
-        for message in clicked {
-            drop(app.update(message));
-        }
-
-        assert!(!shows(&app, "~/Downloads/Scans"));
-        assert!(shows(&app, "~/Scanner"));
-        assert!(has_target_choice(&app, 1) && has_target_choice(&app, 2));
-        assert!(!has_target_choice(&app, 3));
-    }
-
-    #[test]
-    fn a_rule_the_list_breaks_is_shown() {
-        let app = App::with_filing_setup(&violation(), false);
-
-        assert!(shows(
-            &app,
-            "~/Documents/Filed and ~/Documents/Filed/Scanner overlap: a folder cannot lie inside another one."
-        ));
-        assert!(messages_after_click(&app, "Save").is_empty());
-    }
-
-    #[test]
-    fn an_unencrypted_index_repeats_the_vault_note() {
-        let app = App::with_filing_setup(&[documents("/home/test/Filed", false)], true);
-        assert!(shows(&app, VAULT_NOTE));
-        assert!(!shows(
-            &App::with_filing_setup(&[documents("/home/test/Filed", false)], false),
-            VAULT_NOTE
-        ));
-    }
-
-    #[test]
-    fn the_panels_stay_usable_while_the_setup_is_up() {
-        let row_click = |app: &App| -> Vec<Message> {
-            let mut sim = simulator(app);
-            // Directories are drawn with a leading slash.
-            sim.click("/Documents").expect("a panel row");
-            sim.into_messages().filter(is_action).collect()
-        };
-        let without_setup = row_click(&App::with_fixed_panels());
-        assert!(
-            matches!(
-                without_setup.as_slice(),
-                [Message::Panel(PanelMessage::RowClicked { .. })]
-            ),
-            "the click misses the row: {without_setup:?}"
-        );
-
-        assert_eq!(
-            row_click(&App::with_filing_setup(&filled(), false)),
-            without_setup
-        );
-    }
-
-    fn matches_snapshot(chosen: &[FilingLocation], language: Language, name: &str) {
-        let app = App::with_filing_setup(chosen, false).in_language(language);
-        let matches = simulator(&app)
-            .snapshot(&iced::Theme::Dark)
-            .unwrap()
-            .matches_image(format!("tests/snapshots/{name}.png"))
-            .expect("snapshot comparison");
-        assert!(
-            matches,
-            "the filing setup does not match tests/snapshots/{name}.png"
-        );
-    }
-
-    #[test]
-    fn the_empty_card_matches_its_snapshots() {
-        matches_snapshot(&[], Language::English, "filing_setup_empty_en");
-        matches_snapshot(&[], Language::German, "filing_setup_empty_de");
-    }
-
-    #[test]
-    fn the_filled_card_matches_its_snapshots() {
-        matches_snapshot(&filled(), Language::English, "filing_setup_filled_en");
-        matches_snapshot(&filled(), Language::German, "filing_setup_filled_de");
-    }
-
-    #[test]
-    fn the_card_with_a_rule_violation_matches_its_snapshots() {
-        matches_snapshot(&violation(), Language::English, "filing_setup_violation_en");
-        matches_snapshot(&violation(), Language::German, "filing_setup_violation_de");
-    }
-}
-
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
 #[allow(
@@ -2486,7 +2163,7 @@ mod command_palette {
     #[test]
     fn the_hermes_group_is_marked_beta_in_both_languages() {
         for language in [Language::EnglishFuturama, Language::GermanFuturama] {
-            let mut app = App::with_fixed_panels().in_language(language);
+            let mut app = App::with_fixed_filing(Phase::Ready).in_language(language);
             open(&mut app);
             typed(&mut app, "hermes");
             assert!(shows(&app, "Beta"), "{language:?}");
@@ -2748,642 +2425,6 @@ mod theme_fetch_card {
             ),
             "theme_fetch_error_en",
         );
-    }
-}
-
-// A failing assertion in a test is the signal, so `unwrap` belongs here; the
-// lint is meant for the production paths.
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-#[cfg(test)]
-mod review_list_card {
-    use super::app_simulator as simulator;
-    use std::path::PathBuf;
-
-    use super::*;
-    use crate::document_preview::{PreviewContent, PreviewImage};
-    use crate::messages::{HermesFocus, HermesPage, ReviewListMessage};
-    use crate::review_list::fixtures::{
-        default_pattern_list, loaded_list, long_list, nothing_recognised_list, origins_list,
-    };
-    use crate::review_list::{FormField, ReviewList};
-    use crate::review_work::ConfirmOutcome;
-    use crate::rule_suggestions::RuleSuggestions;
-
-    fn review_message(message: ReviewListMessage) -> Message {
-        Message::ReviewList(message)
-    }
-
-    fn shows(list: ReviewList, label: &str) -> bool {
-        simulator(&App::with_review_list(list)).find(label).is_ok()
-    }
-
-    /// The first document filed, the second still waiting, the offer up.
-    fn after_filing() -> ReviewList {
-        let mut list = loaded_list();
-        let second = list.rows()[1].clone();
-        list.begin_confirm().expect("a request");
-        list.confirmed(ConfirmOutcome::Filed {
-            relative_path: PathBuf::from("Company A/2024-03-09_invoice.pdf"),
-        });
-        list.loaded(vec![second]);
-        list
-    }
-
-    #[test]
-    fn the_list_shows_reason_fields_and_buttons() {
-        for label in [
-            "Review",
-            "scan-1.pdf",
-            "scan-2.pdf",
-            "Rule not confirmed",
-            "Sender",
-            "Move to",
-            "Will be filed as",
-            "Confirm",
-        ] {
-            assert!(shows(loaded_list(), label), "{label}");
-        }
-    }
-
-    #[test]
-    fn an_empty_list_says_so() {
-        let mut list = ReviewList::new();
-        list.loaded(Vec::new());
-
-        assert!(shows(
-            list,
-            "Nothing to review. Documents land here when ncrs cannot file them itself: without readable text or without a matching rule."
-        ));
-    }
-
-    #[test]
-    fn the_sidebar_marks_hermes_as_beta() {
-        assert!(shows(loaded_list(), "Beta"));
-    }
-
-    #[test]
-    fn the_empty_list_matches_its_snapshots() {
-        for name in ["review_list_empty_en", "review_list_empty_de"] {
-            let mut list = ReviewList::new();
-            list.loaded(Vec::new());
-            matches_snapshot(list, name);
-        }
-    }
-
-    #[test]
-    fn clicking_a_row_selects_it() {
-        let app = App::with_review_list(loaded_list());
-        let mut sim = simulator(&app);
-        sim.click("scan-2.pdf").expect("the row");
-
-        assert_eq!(
-            sim.into_messages().collect::<Vec<_>>(),
-            [review_message(ReviewListMessage::Select(1))]
-        );
-    }
-
-    #[test]
-    fn typing_into_a_field_changes_it() {
-        let app = App::with_review_list(loaded_list());
-        let mut sim = simulator(&app);
-        sim.click(iced_selector::id("review-sender"))
-            .expect("the sender field");
-        let _ = sim.typewrite("X");
-
-        assert_eq!(
-            sim.into_messages().last(),
-            Some(review_message(ReviewListMessage::FieldChanged(
-                FormField::Sender,
-                "Company AX".to_owned()
-            )))
-        );
-    }
-
-    #[test]
-    fn clicking_confirm_asks_to_file() {
-        let app = App::with_review_list(loaded_list());
-        let mut sim = simulator(&app);
-        sim.click("Confirm").expect("the button");
-
-        assert_eq!(
-            sim.into_messages().collect::<Vec<_>>(),
-            [review_message(ReviewListMessage::Confirm)]
-        );
-    }
-
-    #[test]
-    fn after_filing_the_rule_for_the_sender_is_offered() {
-        assert!(shows(
-            after_filing(),
-            "Filed as Company A/2024-03-09_invoice.pdf"
-        ));
-    }
-
-    fn rules_form_of(app: &App) -> &crate::rule_form::RuleForm {
-        app.rules_for_test().unwrap().form().unwrap()
-    }
-
-    #[test]
-    fn the_offer_after_filing_opens_the_rule_form_filled_from_the_notice() {
-        let mut app = App::with_review_list(after_filing());
-
-        let _ = app.update(review_message(ReviewListMessage::CreateRule));
-
-        assert!(app.review_list_for_test().is_none());
-        let form = rules_form_of(&app);
-        assert_eq!(form.target, crate::rule_form::RuleFormTarget::FromDocument);
-        assert_eq!(form.conditions.rows.len(), 2);
-        assert!(form
-            .conditions
-            .rows
-            .iter()
-            .all(|row| row.kind == ncrs_index::ConditionKind::Tag));
-        assert_eq!(form.conditions.rows[0].value, "invoice");
-        assert_eq!(form.conditions.rows[1].value, "company-a");
-        assert!(form.tags.is_empty());
-        assert_eq!(form.filing.pattern(), "{sender}/{date}_{kind}");
-    }
-
-    #[test]
-    fn cancelling_or_saving_the_form_of_the_offer_goes_back_to_the_review() {
-        use crate::messages::{RuleFormMessage, RulesMessage};
-        let opened = || {
-            let mut app = App::with_review_list(after_filing());
-            let _ = app.update(review_message(ReviewListMessage::CreateRule));
-            app
-        };
-
-        let mut cancelled = opened();
-        let _ = cancelled.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Cancel)));
-        assert!(cancelled.rules_for_test().is_none());
-        assert!(cancelled.review_list_for_test().is_some());
-
-        let mut saved = opened();
-        let _ = saved.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Saved {
-            generation: 1,
-            result: Ok(crate::rules_page::fixtures::rule_id(1)),
-        })));
-        assert!(saved.rules_for_test().is_none());
-        assert!(saved.review_list_for_test().is_some());
-    }
-
-    #[test]
-    fn create_rule_in_the_quick_fix_opens_the_rule_form_with_the_review_pattern() {
-        use crate::messages::QuickFixMessage;
-        let mut item = loaded_list().rows().to_vec().swap_remove(0);
-        item.fields.tags = std::collections::BTreeSet::from(["tax".to_owned()]);
-        let mut app = App::with_quick_fix_menu(item);
-        // Accept, set fields, create rule.
-        let _ = app.update(Message::QuickFix(QuickFixMessage::Hover(2)));
-
-        let _ = app.update(Message::QuickFix(QuickFixMessage::Activate));
-
-        assert!(app.review_list_for_test().is_none());
-        let form = rules_form_of(&app);
-        assert_eq!(form.target, crate::rule_form::RuleFormTarget::FromDocument);
-        assert_eq!(form.conditions.rows[1].value, "company-a");
-        assert_eq!(
-            form.tags,
-            std::collections::BTreeSet::from(["tax".to_owned()])
-        );
-        assert_eq!(form.filing.pattern(), "{sender}/{date}_{kind}");
-        // Opened from a panel: there is no page to go back to.
-        let _ = app.update(Message::Rules(crate::messages::RulesMessage::Form(
-            crate::messages::RuleFormMessage::Cancel,
-        )));
-        assert!(app.rules_for_test().is_some());
-        assert!(app.rules_for_test().unwrap().form().is_none());
-    }
-
-    #[test]
-    fn set_fields_in_the_quick_fix_opens_the_review_list() {
-        use crate::messages::QuickFixMessage;
-        let item = loaded_list().rows().to_vec().swap_remove(0);
-        let mut app = App::with_quick_fix_menu(item);
-        // Accept, set fields, create rule.
-        let _ = app.update(Message::QuickFix(QuickFixMessage::Hover(1)));
-
-        let _ = app.update(Message::QuickFix(QuickFixMessage::Activate));
-
-        assert!(app.review_list_for_test().is_some());
-    }
-
-    #[test]
-    fn the_view_is_worded_in_german_too() {
-        let app = App::with_review_list(after_filing()).in_language(Language::German);
-        let mut sim = simulator(&app);
-        for label in ["Rückfragen", "Bestätigen", "Verschieben nach"] {
-            assert!(sim.find(label).is_ok(), "{label}");
-        }
-    }
-
-    #[test]
-    fn the_sidebar_names_the_pages_of_hermes() {
-        let app = App::with_review_list(loaded_list());
-        let mut sim = simulator(&app);
-        for label in ["Status and errors", "Rule suggestions"] {
-            assert!(sim.find(label).is_ok(), "{label}");
-        }
-        sim.click("Rule suggestions").expect("the entry");
-        assert_eq!(
-            sim.into_messages().collect::<Vec<_>>(),
-            [Message::HermesPage(HermesPage::RuleSuggestions)]
-        );
-    }
-
-    #[test]
-    fn a_sidebar_click_swaps_the_open_card() {
-        let mut app = App::with_rule_suggestions(RuleSuggestions::new());
-        let _ = app.update(Message::HermesPage(HermesPage::Review));
-
-        assert!(app.rule_suggestions_for_test().is_none());
-        assert!(app.review_list_for_test().is_some());
-    }
-
-    #[test]
-    fn the_page_that_is_open_stays_as_it_is() {
-        let mut list = loaded_list();
-        list.start_edit();
-        let mut app = App::with_review_list(list);
-        let _ = app.update(Message::HermesPage(HermesPage::Review));
-
-        assert!(app.review_list_for_test().unwrap().is_editing());
-    }
-
-    #[test]
-    fn escape_leaves_the_form_first() {
-        let mut list = loaded_list();
-        list.start_edit();
-        let mut app = App::with_review_list(list);
-        let _ = app.update(review_message(ReviewListMessage::Close));
-        assert!(!app.review_list_for_test().unwrap().is_editing());
-        let _ = app.update(review_message(ReviewListMessage::Close));
-        assert!(app.review_list_for_test().is_none());
-    }
-
-    fn matches_snapshot(list: ReviewList, name: &str) {
-        matches_snapshot_focused(list, HermesFocus::Content, name);
-    }
-
-    fn matches_snapshot_focused(list: ReviewList, focus: HermesFocus, name: &str) {
-        let language = if name.ends_with("_de") {
-            Language::German
-        } else {
-            Language::English
-        };
-        let app = App::with_review_list(list)
-            .in_language(language)
-            .with_hermes_focus(focus);
-        let matches = simulator(&app)
-            .snapshot(&iced::Theme::Dark)
-            .unwrap()
-            .matches_image(format!("tests/snapshots/{name}.png"))
-            .expect("snapshot comparison");
-        assert!(
-            matches,
-            "the view does not match tests/snapshots/{name}.png"
-        );
-    }
-
-    #[test]
-    fn the_view_matches_its_snapshots() {
-        matches_snapshot(loaded_list(), "review_list_en");
-        matches_snapshot(loaded_list(), "review_list_de");
-        matches_snapshot(after_filing(), "review_list_filed_en");
-    }
-
-    #[test]
-    fn the_tags_and_the_default_target_match_their_snapshots() {
-        matches_snapshot(
-            crate::review_list::fixtures::tags_list(),
-            "review_list_tags_en",
-        );
-        matches_snapshot(
-            crate::review_list::fixtures::tags_list(),
-            "review_list_tags_de",
-        );
-    }
-
-    fn filled_rgba(width: u32, height: u32, paint: impl Fn(u32, u32) -> [u8; 4]) -> Vec<u8> {
-        let shared_paint = &paint;
-        (0..height)
-            .flat_map(|y| (0..width).flat_map(move |x| shared_paint(x, y)))
-            .collect()
-    }
-
-    /// A white page with a dark header bar and grey bars for the lines of text.
-    fn pdf_page() -> PreviewContent {
-        let (width, height) = (600, 850);
-        let rgba = filled_rgba(width, height, |x, y| {
-            let in_margin = (60..width - 60).contains(&x);
-            let header = in_margin && (60..110).contains(&y);
-            let text_line = in_margin && y >= 160 && y < height - 80 && y % 28 < 10;
-            if header {
-                [60, 70, 90, 255]
-            } else if text_line {
-                [200, 200, 205, 255]
-            } else {
-                [255, 255, 255, 255]
-            }
-        });
-        PreviewContent::Page {
-            image: PreviewImage::from_rgba(width, height, rgba),
-            page_count: 3,
-        }
-    }
-
-    /// A landscape picture of coloured areas.
-    fn photo() -> PreviewContent {
-        let (width, height) = (800, 500);
-        let rgba = filled_rgba(width, height, |x, y| {
-            if y < height.checked_div(2).unwrap_or_default() {
-                [90, 150, 220, 255]
-            } else if x < width.checked_div(3).unwrap_or_default() {
-                [70, 140, 80, 255]
-            } else {
-                [200, 170, 110, 255]
-            }
-        });
-        PreviewContent::Image(PreviewImage::from_rgba(width, height, rgba))
-    }
-
-    fn invoice_text() -> PreviewContent {
-        let excerpt = "Company A GmbH\nSample Street 1, 12345 Sampletown\n\nInvoice 4711\n\
-                       Date: 9 March 2024\n\nPosition 1  Consulting      600.00 EUR\n\
-                       Position 2  Travel costs    120.00 EUR\n\nTotal 720.00 EUR";
-        let highlights = ["Company A", "4711"]
-            .into_iter()
-            .filter_map(|passage| {
-                excerpt
-                    .find(passage)
-                    .map(|start| start..start + passage.len())
-            })
-            .collect();
-        PreviewContent::Text {
-            excerpt: excerpt.to_owned(),
-            truncated: true,
-            highlights,
-        }
-    }
-
-    #[test]
-    fn the_origins_match_their_snapshots() {
-        for name in ["review_origins_en", "review_origins_de"] {
-            let mut list = origins_list();
-            list.show_preview_for_test(invoice_text());
-            matches_snapshot(list, name);
-        }
-    }
-
-    #[test]
-    fn each_field_names_where_its_value_comes_from() {
-        for label in ["From a rule", "AI, 82 % sure", "By hand"] {
-            assert!(shows(origins_list(), label), "{label}");
-        }
-    }
-
-    #[test]
-    fn the_preview_matches_its_snapshots() {
-        for (kind, content) in [
-            ("pdf", pdf_page as fn() -> PreviewContent),
-            ("image", photo),
-            ("text", invoice_text),
-        ] {
-            for language in ["en", "de"] {
-                let mut list = loaded_list();
-                list.show_preview_for_test(content());
-                matches_snapshot(list, &format!("review_preview_{kind}_{language}"));
-            }
-        }
-    }
-
-    #[test]
-    fn moving_the_cursor_asks_for_the_preview_of_the_new_document_once() {
-        let mut list = loaded_list();
-        let first = list.preview_request().expect("a request for the first row");
-        assert_eq!(first.path, PathBuf::from("inbox/scan-1.pdf"));
-        assert_eq!(list.preview_request(), None);
-        list.move_cursor(1);
-        let second = list
-            .preview_request()
-            .expect("a request for the second row");
-        assert_eq!(second.path, PathBuf::from("inbox/scan-2.pdf"));
-        assert_ne!(first.serial, second.serial);
-    }
-
-    #[tokio::test]
-    async fn only_the_preview_the_cursor_rested_on_is_made() {
-        use iced_test::futures::futures::StreamExt as _;
-
-        let mut list = loaded_list();
-        let first = list.preview_request().expect("a request for the first row");
-        list.move_cursor(1);
-        let second = list
-            .preview_request()
-            .expect("a request for the second row");
-        let mut app = App::with_review_list(list);
-        let generation = app.review_list_generation_for_test();
-        let mut serials_loaded = |request| {
-            let task = app.update(review_message(ReviewListMessage::PreviewDue {
-                generation,
-                request,
-            }));
-            async move {
-                let mut loaded = Vec::new();
-                if let Some(mut stream) = iced_test::runtime::task::into_stream(task) {
-                    while let Some(action) = stream.next().await {
-                        if let iced_test::runtime::Action::Output(Message::ReviewList(
-                            ReviewListMessage::PreviewLoaded { serial, .. },
-                        )) = action
-                        {
-                            loaded.push(serial);
-                        }
-                    }
-                }
-                loaded
-            }
-        };
-
-        assert_eq!(serials_loaded(first).await, Vec::<u64>::new());
-        assert_eq!(serials_loaded(second.clone()).await, vec![second.serial]);
-    }
-
-    #[test]
-    fn an_answer_for_a_row_the_cursor_left_changes_nothing() {
-        let mut app = App::with_review_list(loaded_list());
-        let _ = app.update(review_message(ReviewListMessage::Select(1)));
-        let before = app.review_list_for_test().unwrap().clone();
-        let generation = app.review_list_generation_for_test();
-        let _ = app.update(review_message(ReviewListMessage::PreviewLoaded {
-            generation,
-            serial: 0,
-            content: PreviewContent::TooLarge,
-        }));
-        assert_eq!(app.review_list_for_test().unwrap(), &before);
-    }
-
-    /// One document that would be filed, one that stays in review, one the
-    /// rules cannot judge yet.
-    fn replan_preview() -> ReviewList {
-        use crate::replan_work::{ReplanAfter, ReplanItem, ReplanScope};
-        use ncrs_index::{Field, ReviewReason};
-
-        let rows = long_list().rows().to_vec();
-        let item = |position: usize, name: &str, after: ReplanAfter| ReplanItem {
-            document_id: rows[position].document_id,
-            review: Some(rows[position].entry),
-            path: PathBuf::from(format!("inbox/{name}")),
-            now: Some(ReviewReason::NoMatchingRule),
-            after,
-        };
-        let mut list = ReviewList::new();
-        let serial = list.begin_replan(ReplanScope::OpenCases).expect("a step");
-        list.previewed(
-            serial,
-            vec![
-                item(
-                    2,
-                    "scan-1.pdf",
-                    ReplanAfter::Filed(PathBuf::from("Company A/2024-03-09_invoice.pdf")),
-                ),
-                item(
-                    3,
-                    "scan-2.pdf",
-                    ReplanAfter::Review(ReviewReason::MissingField(Field::Date)),
-                ),
-                item(4, "scan-3.pdf", ReplanAfter::Unread),
-            ],
-        );
-        list
-    }
-
-    #[test]
-    fn replan_the_preview_names_now_and_after_for_each_row() {
-        for label in [
-            "With the current rules these documents would be filed. Nothing moves before you confirm.",
-            "scan-1.pdf",
-            "No rule matches → Company A/2024-03-09_invoice.pdf",
-            "No rule matches → Stays in review: Date missing",
-            "1 of 3 documents would be filed.",
-            "File 1 document",
-            "Cancel",
-        ] {
-            assert!(shows(replan_preview(), label), "{label}");
-        }
-    }
-
-    #[test]
-    fn replan_the_page_offers_the_button_for_the_open_cases() {
-        assert!(shows(loaded_list(), "Apply to open cases"));
-        assert!(!shows(replan_preview(), "Apply to open cases"));
-    }
-
-    #[test]
-    fn replan_the_preview_matches_its_snapshots() {
-        matches_snapshot(replan_preview(), "review_replan_en");
-        matches_snapshot(replan_preview(), "review_replan_de");
-    }
-
-    #[test]
-    fn the_default_pattern_is_named_in_the_reason_and_previewed() {
-        for label in [
-            "Default target",
-            "Default target, please check",
-            "Will be filed as",
-        ] {
-            assert!(shows(default_pattern_list(), label), "{label}");
-        }
-    }
-
-    #[test]
-    fn a_document_with_nothing_recognised_says_so() {
-        assert!(shows(
-            nothing_recognised_list(),
-            "No rule and nothing recognised"
-        ));
-    }
-
-    #[test]
-    fn the_default_pattern_matches_its_snapshots() {
-        matches_snapshot(default_pattern_list(), "review_list_default_pattern_en");
-        matches_snapshot(default_pattern_list(), "review_list_default_pattern_de");
-    }
-
-    fn without_rules(list: ReviewList, language: Language) -> App {
-        App::with_review_list(list)
-            .in_language(language)
-            .with_hermes_counts(ncrs_index::HermesCounts::default())
-    }
-
-    #[test]
-    fn the_page_explains_empty_fields_while_there_are_no_rules_and_no_ai() {
-        let hint = "No rules yet. ncrs suggests the default target for each document: check the fields and confirm. Load the AI model and it fills in the fields itself.";
-        let counts_unknown = App::with_review_list(loaded_list());
-        simulator(&counts_unknown).find(hint).unwrap_err();
-        let with_rules =
-            App::with_review_list(loaded_list()).with_hermes_counts(ncrs_index::HermesCounts {
-                confirmed_rules: 2,
-                ..Default::default()
-            });
-        simulator(&with_rules).find(hint).unwrap_err();
-        simulator(&without_rules(loaded_list(), Language::English))
-            .find(hint)
-            .unwrap();
-    }
-
-    #[test]
-    fn the_hint_about_missing_rules_matches_its_snapshots() {
-        for (language, name) in [
-            (Language::English, "review_list_no_rules_en"),
-            (Language::German, "review_list_no_rules_de"),
-        ] {
-            let app = without_rules(default_pattern_list(), language);
-            let matches = simulator(&app)
-                .snapshot(&iced::Theme::Dark)
-                .unwrap()
-                .matches_image(format!("tests/snapshots/{name}.png"))
-                .expect("snapshot comparison");
-            assert!(
-                matches,
-                "the view does not match tests/snapshots/{name}.png"
-            );
-        }
-    }
-
-    #[test]
-    fn long_names_and_a_long_list_stay_inside_their_columns() {
-        matches_snapshot(long_list(), "review_list_long_en");
-        matches_snapshot(long_list(), "review_list_long_de");
-    }
-
-    #[test]
-    fn the_sidebar_focus_outlines_the_list_and_fills_the_page_entry() {
-        matches_snapshot_focused(
-            loaded_list(),
-            HermesFocus::Sidebar,
-            "review_list_sidebar_focus_en",
-        );
-        matches_snapshot_focused(
-            loaded_list(),
-            HermesFocus::Sidebar,
-            "review_list_sidebar_focus_de",
-        );
-    }
-
-    #[test]
-    fn the_wheel_over_the_list_scrolls_it() {
-        let mut app = App::with_review_list(long_list());
-        let _ = app.update(review_message(ReviewListMessage::Scrolled(
-            iced::mouse::ScrollDelta::Lines { x: 0.0, y: -3.0 },
-        )));
-        let view = app.review_list_for_test().unwrap();
-        assert_eq!(view.first_visible(), 3);
-        assert!(view.cursor() >= 3);
     }
 }
 
@@ -3698,7 +2739,7 @@ mod saved_queries_card {
     use std::path::PathBuf;
 
     use super::*;
-    use crate::messages::{HermesPage, SavedQueriesMessage};
+    use crate::messages::SavedQueriesMessage;
     use crate::saved_queries::fixtures::{hit, loaded_list, THIS_YEAR};
     use crate::saved_queries::{Draft, SavedQueries};
 
@@ -3859,15 +2900,6 @@ mod saved_queries_card {
         ] {
             assert!(sim.find(label).is_ok(), "{label}");
         }
-    }
-
-    #[test]
-    fn a_sidebar_click_opens_the_page_and_closes_the_other() {
-        let mut app = App::with_review_list(crate::review_list::fixtures::loaded_list());
-        let _ = app.update(Message::HermesPage(HermesPage::SavedQueries));
-
-        assert!(app.review_list_for_test().is_none());
-        assert!(app.saved_queries_for_test().is_some());
     }
 
     #[test]
@@ -4165,10 +3197,11 @@ mod tags_card {
     }
 
     #[test]
-    fn the_look_page_has_the_row_with_the_button_and_not_the_removed_ones() {
+    fn the_look_page_has_the_switch_and_not_the_removed_ones() {
         let app = App::with_settings_open(SettingsFeature::Look, Filing::default());
         let mut sim = simulator(&app);
-        assert!(sim.find("Tags in the file list").is_ok(), "new row");
+        assert!(sim.find("Show tags").is_ok(), "the switch");
+        assert!(sim.find("Tags in the file list").is_err(), "removed row");
         assert!(sim.find("Which tags?").is_err(), "removed group");
         assert!(sim.find("Only show these").is_err(), "removed row");
     }
@@ -4356,7 +3389,7 @@ mod rules_card {
     fn an_empty_page_says_where_rules_come_from() {
         assert!(shows(
             empty(),
-            "No rules yet. Create one with “New rule”, or let rules come from suggestions and from filing in the review list."
+            "No rules yet. Create one with “New rule”, or let rules come from sorting in the chat."
         ));
     }
 
@@ -4716,798 +3749,6 @@ mod rules_card {
     clippy::indexing_slicing
 )]
 #[cfg(test)]
-mod rule_suggestions_card {
-    use super::app_simulator as simulator;
-    use std::path::PathBuf;
-
-    use super::*;
-    use crate::messages::{RuleFormMessage, RuleSuggestionsMessage, RulesMessage};
-    use crate::rule_form::RuleFormTarget;
-    use crate::rule_suggestions::fixtures::{loaded_view, rule_ids, suggestion};
-    use crate::rule_suggestions::{Problem, RuleSuggestions};
-    use crate::suggestion_work::INDEX_NOT_OPEN;
-
-    const FIRST_EVIDENCE: &str = "in 5 of 5 documents in Insurance, 0 elsewhere";
-
-    fn suggestions_message(message: RuleSuggestionsMessage) -> Message {
-        Message::RuleSuggestions(message)
-    }
-
-    fn two_rows() -> RuleSuggestions {
-        let [one, two, _] = rule_ids();
-        let mut second = suggestion(two, "Agency B", "Taxes");
-        second.spec.conditions =
-            ncrs_index::RuleConditions::all_of(vec![ncrs_index::Condition::new(
-                ncrs_index::ConditionKind::Sender,
-                "Agency B",
-            )]);
-        second.evidence.matching_in_folder = 4;
-        second.evidence.matching_elsewhere = 2;
-        let mut view = RuleSuggestions::new();
-        view.loaded(vec![suggestion(one, "company a ltd", "Insurance"), second]);
-        view
-    }
-
-    fn shows(view: RuleSuggestions, label: &str) -> bool {
-        simulator(&App::with_rule_suggestions(view))
-            .find(label)
-            .is_ok()
-    }
-
-    fn messages_after_click(view: RuleSuggestions, label: &str) -> Vec<Message> {
-        let app = App::with_rule_suggestions(view);
-        let mut sim = simulator(&app);
-        sim.click(label).expect("the clicked label");
-        sim.into_messages().collect()
-    }
-
-    #[test]
-    fn the_list_shows_condition_target_kind_and_evidence_of_each_suggestion() {
-        for label in [
-            "Rule suggestions",
-            "Text: company a ltd",
-            "Sender: Agency B",
-            "Condition",
-            "→ Insurance · File name: Date_Kind",
-            "→ Taxes · File name: Date_Kind",
-            "5 of 5",
-            "4 of 6",
-            FIRST_EVIDENCE,
-            "Confirm",
-            "Edit",
-            "Discard",
-            "Analyse again",
-        ] {
-            assert!(shows(two_rows(), label), "{label}");
-        }
-    }
-
-    #[test]
-    fn the_view_is_worded_in_german_too() {
-        let app = App::with_rule_suggestions(two_rows()).in_language(Language::German);
-        let mut sim = simulator(&app);
-        for label in [
-            "Regelvorschläge",
-            "in 5 von 5 Dokumenten in Insurance, 0 anderswo",
-            "4 von 6",
-            "Absender: Agency B",
-            "Bedingung",
-            "Bestätigen",
-            "Bearbeiten",
-            "Verwerfen",
-            "Erneut analysieren",
-        ] {
-            assert!(sim.find(label).is_ok(), "{label}");
-        }
-    }
-
-    #[test]
-    fn a_view_still_reading_says_so_and_decides_nothing() {
-        let view = RuleSuggestions::new();
-        assert!(shows(view.clone(), "Reading the document folders…"));
-        assert!(messages_after_click(view, "Confirm").is_empty());
-    }
-
-    #[test]
-    fn an_empty_result_says_how_suggestions_come_about() {
-        let mut view = RuleSuggestions::new();
-        view.loaded(Vec::new());
-        assert!(shows(
-            view,
-            "No suggestions. They appear from archive documents with read text, once at least 3 documents of one sender lie in the same folder (80 % of that sender's documents), or at least 3 documents with the same phrase (80 % of the folder and hardly any elsewhere)."
-        ));
-    }
-
-    #[test]
-    fn the_empty_view_with_counts_matches_its_snapshots() {
-        for (language, name) in [
-            (Language::English, "rule_suggestions_empty_en"),
-            (Language::German, "rule_suggestions_empty_de"),
-        ] {
-            let mut view = RuleSuggestions::new();
-            view.loaded(Vec::new());
-            let app = App::with_rule_suggestions(view)
-                .with_hermes_counts(ncrs_index::HermesCounts {
-                    archive_documents: 5120,
-                    archive_documents_with_text: 12,
-                    ..ncrs_index::HermesCounts::default()
-                })
-                .in_language(language);
-            let matches = simulator(&app)
-                .snapshot(&iced::Theme::Dark)
-                .unwrap()
-                .matches_image(format!("tests/snapshots/{name}.png"))
-                .expect("snapshot comparison");
-            assert!(
-                matches,
-                "the view does not match tests/snapshots/{name}.png"
-            );
-        }
-    }
-
-    #[test]
-    fn the_buttons_send_what_they_say() {
-        for (label, message) in [
-            ("Confirm", RuleSuggestionsMessage::Confirm),
-            ("Discard", RuleSuggestionsMessage::Discard),
-            ("Analyse again", RuleSuggestionsMessage::Reanalyse),
-        ] {
-            assert_eq!(
-                messages_after_click(two_rows(), label),
-                [suggestions_message(message)],
-                "{label}"
-            );
-        }
-    }
-
-    /// "Edit" is also the F4 key of the bar below the view, so the button is
-    /// clicked by its German name.
-    #[test]
-    fn the_edit_button_opens_the_form() {
-        let app = App::with_rule_suggestions(two_rows()).in_language(Language::German);
-        let mut sim = simulator(&app);
-        sim.click("Bearbeiten").expect("the clicked label");
-        assert_eq!(
-            sim.into_messages().collect::<Vec<_>>(),
-            [suggestions_message(RuleSuggestionsMessage::Edit)]
-        );
-    }
-
-    #[test]
-    fn a_click_on_a_row_selects_it() {
-        assert_eq!(
-            messages_after_click(two_rows(), "Sender: Agency B"),
-            [suggestions_message(RuleSuggestionsMessage::Select(1))]
-        );
-    }
-
-    #[test]
-    fn the_selected_suggestion_lists_the_documents_it_matches() {
-        let [one, _, _] = rule_ids();
-        let mut view = two_rows();
-        let (id, _) = view.matches_wanted().unwrap();
-        assert_eq!(id, one);
-        view.matches_found(
-            id,
-            vec![
-                PathBuf::from("Insurance/2024_a.pdf"),
-                PathBuf::from("b.pdf"),
-            ],
-        );
-
-        assert!(shows(view.clone(), "DOCUMENTS THAT CONTAIN THIS TEXT"));
-        assert!(shows(view, "Insurance/2024_a.pdf"));
-    }
-
-    #[test]
-    fn more_documents_than_fit_are_counted() {
-        let [one, _, _] = rule_ids();
-        let mut view = two_rows();
-        view.matches_wanted();
-        let paths = (0..15).map(|n| PathBuf::from(format!("Insurance/{n}.pdf")));
-        view.matches_found(one, paths.collect());
-
-        assert!(shows(view, "… and 3 more"));
-    }
-
-    fn rules_form_of(app: &App) -> &crate::rule_form::RuleForm {
-        app.rules_for_test().unwrap().form().unwrap()
-    }
-
-    #[test]
-    fn editing_a_suggestion_opens_the_rules_page_with_its_form() {
-        let mut app = App::with_rule_suggestions(two_rows());
-
-        let _ = app.update(suggestions_message(RuleSuggestionsMessage::Edit));
-
-        assert!(app.rule_suggestions_for_test().is_none());
-        let form = rules_form_of(&app);
-        let [one, _, _] = rule_ids();
-        assert!(matches!(&form.target, RuleFormTarget::FromSuggestion(rule) if rule.id == one));
-        assert_eq!(form.conditions.rows.len(), 1);
-        assert_eq!(
-            form.conditions.rows[0].kind,
-            ncrs_index::ConditionKind::Substring
-        );
-        assert_eq!(form.conditions.rows[0].value, "company a ltd");
-        assert_eq!(form.filing.pattern(), "Insurance/{date}_{name}");
-        let _ = simulator(&app)
-            .find("Confirm suggested rule")
-            .expect("the form says it confirms a suggestion");
-    }
-
-    #[test]
-    fn cancelling_the_form_of_a_suggestion_goes_back_to_the_suggestions() {
-        let mut app = App::with_rule_suggestions(two_rows());
-        let _ = app.update(suggestions_message(RuleSuggestionsMessage::Edit));
-
-        let _ = app.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Cancel)));
-
-        assert!(app.rules_for_test().is_none());
-        assert!(app.rule_suggestions_for_test().is_some());
-    }
-
-    #[test]
-    fn escape_in_the_form_of_a_suggestion_goes_back_to_the_suggestions() {
-        let mut app = App::with_rule_suggestions(two_rows());
-        let _ = app.update(suggestions_message(RuleSuggestionsMessage::Edit));
-
-        let _ = app.update(Message::Rules(RulesMessage::Close));
-
-        assert!(app.rules_for_test().is_none());
-        assert!(app.rule_suggestions_for_test().is_some());
-    }
-
-    #[test]
-    fn saving_the_form_of_a_suggestion_goes_back_to_the_suggestions() {
-        let mut app = App::with_rule_suggestions(two_rows());
-        let _ = app.update(suggestions_message(RuleSuggestionsMessage::Edit));
-
-        let _ = app.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Saved {
-            generation: 1,
-            result: Ok(crate::rules_page::fixtures::rule_id(1)),
-        })));
-
-        assert!(app.rules_for_test().is_none());
-        assert!(app.rule_suggestions_for_test().is_some());
-    }
-
-    #[test]
-    fn a_failed_save_keeps_the_form_of_a_suggestion_open() {
-        let mut app = App::with_rule_suggestions(two_rows());
-        let _ = app.update(suggestions_message(RuleSuggestionsMessage::Edit));
-
-        let _ = app.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Saved {
-            generation: 1,
-            result: Err("the suggested rule is not there any more".to_owned()),
-        })));
-
-        assert_eq!(
-            rules_form_of(&app).failure.as_deref(),
-            Some("the suggested rule is not there any more")
-        );
-        assert!(app.rule_suggestions_for_test().is_none());
-    }
-
-    #[test]
-    fn the_view_opens_busy_and_a_missing_index_ends_in_a_complaint() {
-        let mut app = App::with_fixed_panels().with_starting_hermes_for_test();
-
-        let _ = app.update(suggestions_message(RuleSuggestionsMessage::Open));
-
-        let view = app.rule_suggestions_for_test().unwrap();
-        assert_eq!(
-            view.problem(),
-            Some(&Problem::Failed(INDEX_NOT_OPEN.to_owned()))
-        );
-        assert!(!view.is_busy());
-    }
-
-    #[test]
-    fn a_late_answer_of_an_earlier_view_is_dropped() {
-        let mut app = App::with_fixed_panels().with_starting_hermes_for_test();
-        let _ = app.update(suggestions_message(RuleSuggestionsMessage::Open));
-        let _ = app.update(suggestions_message(RuleSuggestionsMessage::Close));
-        let _ = app.update(suggestions_message(RuleSuggestionsMessage::Open));
-
-        let _ = app.update(suggestions_message(RuleSuggestionsMessage::Loaded {
-            generation: 1,
-            result: Ok(loaded_view().rows().to_vec()),
-        }));
-
-        assert!(app.rule_suggestions_for_test().unwrap().rows().is_empty());
-    }
-
-    fn matches_snapshot(view: RuleSuggestions, name: &str) {
-        let language = if name.ends_with("_de") {
-            Language::German
-        } else {
-            Language::English
-        };
-        let app = App::with_rule_suggestions(view).in_language(language);
-        let matches = simulator(&app)
-            .snapshot(&iced::Theme::Dark)
-            .unwrap()
-            .matches_image(format!("tests/snapshots/{name}.png"))
-            .expect("snapshot comparison");
-        assert!(
-            matches,
-            "the view does not match tests/snapshots/{name}.png"
-        );
-    }
-
-    fn with_documents() -> RuleSuggestions {
-        let [one, _, _] = rule_ids();
-        let mut view = two_rows();
-        view.matches_wanted();
-        view.matches_found(
-            one,
-            vec![
-                PathBuf::from("Insurance/2023-05-02_policy.pdf"),
-                PathBuf::from("Insurance/2024-05-03_policy.pdf"),
-            ],
-        );
-        view
-    }
-
-    #[test]
-    fn the_view_matches_its_snapshots() {
-        matches_snapshot(with_documents(), "rule_suggestions_en");
-        matches_snapshot(with_documents(), "rule_suggestions_de");
-    }
-
-    #[test]
-    fn the_form_of_a_suggestion_matches_its_snapshots() {
-        for language in ["en", "de"] {
-            let mut suggestions_app = App::with_rule_suggestions(two_rows());
-            let _ = suggestions_app.update(suggestions_message(RuleSuggestionsMessage::Edit));
-            let page = suggestions_app.rules_for_test().unwrap().clone();
-            let name = format!("rule_form_from_suggestion_{language}");
-            let app = App::with_rules(page).in_language(if language == "de" {
-                Language::German
-            } else {
-                Language::English
-            });
-            let matches = simulator(&app)
-                .snapshot(&iced::Theme::Dark)
-                .unwrap()
-                .matches_image(format!("tests/snapshots/{name}.png"))
-                .expect("snapshot comparison");
-            assert!(
-                matches,
-                "the view does not match tests/snapshots/{name}.png"
-            );
-        }
-    }
-}
-
-// A failing assertion in a test is the signal, so `unwrap` belongs here; the
-// lint is meant for the production paths.
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-#[cfg(test)]
-mod reorganisation_plan_card {
-    use super::app_simulator as simulator;
-    use super::*;
-    use crate::messages::ReorganisationPlanMessage;
-    use crate::reorganisation_plan::fixtures::loaded_view;
-    use crate::reorganisation_plan::{Group, Line, ReorganisationView};
-    use crate::reorganisation_work::fixtures::{archive, sample_items};
-    use crate::suggestion_work::INDEX_NOT_OPEN;
-
-    fn plan_message(message: ReorganisationPlanMessage) -> Message {
-        Message::ReorganisationPlan(message)
-    }
-
-    fn shows(view: ReorganisationView, label: &str) -> bool {
-        simulator(&App::with_reorganisation_plan(view))
-            .find(label)
-            .is_ok()
-    }
-
-    fn messages_after_click(view: ReorganisationView, label: &str) -> Vec<Message> {
-        let app = App::with_reorganisation_plan(view);
-        let mut sim = simulator(&app);
-        sim.click(label).expect("the clicked label");
-        sim.into_messages().collect()
-    }
-
-    fn header_line(view: &ReorganisationView, group: Group) -> usize {
-        view.lines()
-            .iter()
-            .position(|line| *line == Line::Header(group))
-            .unwrap()
-    }
-
-    fn row_of(view: &ReorganisationView, source: &str) -> usize {
-        view.rows()
-            .iter()
-            .position(|planned| planned.item.source == std::path::Path::new(source))
-            .unwrap()
-    }
-
-    fn line_of(view: &ReorganisationView, source: &str) -> usize {
-        let row = row_of(view, source);
-        view.lines()
-            .iter()
-            .position(|line| *line == Line::Item(row))
-            .unwrap()
-    }
-
-    fn at(mut view: ReorganisationView, source: &str) -> ReorganisationView {
-        let line = line_of(&view, source);
-        view.select(line);
-        view
-    }
-
-    #[test]
-    fn the_plan_is_listed_per_group_with_the_action_of_each_entry() {
-        for label in [
-            "Sort again",
-            "Duplicates",
-            "Filed in the wrong folder",
-            "Year does not match",
-            "Name differs",
-            "Cannot be done",
-            "1 of 2 selected",
-            "2024-04-01_invoice.pdf",
-            "scan 0042.pdf",
-            "move",
-            "rename",
-            "3 of 4 selected · 2 cannot run",
-            "Run selected",
-            "Plan again",
-        ] {
-            assert!(shows(loaded_view(), label), "{label}");
-        }
-    }
-
-    #[test]
-    fn a_group_lists_its_steps_and_leaves_the_blocked_ones_out() {
-        assert!(
-            shows(loaded_view(), "Misc/2024-04-01_invoice.pdf"),
-            "the step of the group"
-        );
-        assert!(
-            !shows(loaded_view(), "IMG_7.pdf: Not enough is known to name it"),
-            "a blocked entry under another group"
-        );
-    }
-
-    #[test]
-    fn the_blocked_group_names_each_entry_with_its_reason() {
-        let mut view = loaded_view();
-        view.move_cursor(isize::try_from(header_line(&view, Group::Blocked)).unwrap());
-        for label in [
-            "2024-06-01_invoice.pdf: The target already exists",
-            "IMG_7.pdf: Not enough is known to name it",
-        ] {
-            assert!(shows(view.clone(), label), "{label}");
-        }
-    }
-
-    #[test]
-    fn the_selected_entry_shows_now_proposed_and_why() {
-        let view = at(loaded_view(), "Insurance/2023/2024-05-01_invoice.pdf");
-
-        for label in [
-            "Now",
-            "Proposed",
-            "Why",
-            "Filed under 2023, dated 2024",
-            "Dated 2024-05-01, but it lies in the folder 2023.",
-        ] {
-            assert!(shows(view.clone(), label), "{label}");
-        }
-        assert!(!shows(
-            at(loaded_view(), "Insurance/2024/IMG_7.pdf"),
-            "Proposed"
-        ));
-        assert!(!shows(view, "Before"));
-    }
-
-    #[test]
-    fn the_plan_is_worded_in_german_too() {
-        let app = App::with_reorganisation_plan(loaded_view()).in_language(Language::German);
-        let mut sim = simulator(&app);
-        for label in [
-            "Neu sortieren",
-            "Duplikate",
-            "Falsch abgelegt",
-            "Jahr passt nicht",
-            "Name weicht ab",
-            "Nicht ausführbar",
-            "1 von 2 ausgewählt",
-            "verschieben",
-            "umbenennen",
-            "3 von 4 ausgewählt · 2 nicht ausführbar",
-            "Ausgewählte ausführen",
-            "Neu planen",
-        ] {
-            assert!(sim.find(label).is_ok(), "{label}");
-        }
-    }
-
-    #[test]
-    fn a_plan_still_being_made_says_so_and_runs_nothing() {
-        let view = ReorganisationView::new();
-        assert!(shows(view.clone(), "Working out the plan…"));
-        assert!(!shows(view, "Run selected"));
-    }
-
-    #[test]
-    fn an_empty_plan_says_so() {
-        let mut view = ReorganisationView::new();
-        view.loaded(Vec::new());
-        assert!(shows(
-            view,
-            "Nothing to tidy up. Every document is where its folder expects it."
-        ));
-    }
-
-    #[test]
-    fn a_click_on_a_row_selects_it_and_the_box_selects_for_the_run() {
-        let mut app = App::with_reorganisation_plan(loaded_view());
-        let view = app.reorganisation_for_test().unwrap().clone();
-        let year = line_of(&view, "Insurance/2023/2024-05-01_invoice.pdf");
-        let year_row = row_of(&view, "Insurance/2023/2024-05-01_invoice.pdf");
-        assert!(view.is_selected(year_row));
-        let misplaced = header_line(&view, Group::Misplaced);
-        assert_eq!(
-            messages_after_click(view.clone(), "Filed in the wrong folder"),
-            [plan_message(ReorganisationPlanMessage::Select(misplaced))]
-        );
-
-        let _ = app.update(plan_message(ReorganisationPlanMessage::Toggle(year)));
-        assert!(!app.reorganisation_for_test().unwrap().is_selected(year_row));
-        let _ = app.update(plan_message(ReorganisationPlanMessage::Toggle(year)));
-        assert!(app.reorganisation_for_test().unwrap().is_selected(year_row));
-
-        let _ = app.update(plan_message(ReorganisationPlanMessage::Toggle(misplaced)));
-        assert_eq!(
-            app.reorganisation_for_test()
-                .unwrap()
-                .counts(Group::Misplaced),
-            (2, 2)
-        );
-        let _ = app.update(plan_message(ReorganisationPlanMessage::Toggle(misplaced)));
-        assert_eq!(
-            app.reorganisation_for_test()
-                .unwrap()
-                .counts(Group::Misplaced),
-            (0, 2)
-        );
-    }
-
-    #[test]
-    fn what_cannot_be_done_has_no_box_to_check() {
-        let mut app = App::with_reorganisation_plan(loaded_view());
-        let view = app.reorganisation_for_test().unwrap().clone();
-        let conflict = line_of(&view, "Insurance/2023/2024-06-01_invoice.pdf");
-
-        let _ = app.update(plan_message(ReorganisationPlanMessage::Toggle(conflict)));
-
-        assert_eq!(
-            app.reorganisation_for_test().unwrap().selection(),
-            view.selection()
-        );
-    }
-
-    #[test]
-    fn an_entry_on_an_unconfirmed_rule_starts_unselected() {
-        let view = loaded_view();
-        let by_suggestion = row_of(&view, "Insurance/2024/2024-08-01_invoice.pdf");
-        let by_confirmed = row_of(&view, "Insurance/2024/2024-07-01_invoice.pdf");
-
-        assert!(!view.is_selected(by_suggestion));
-        assert!(view.is_selected(by_confirmed));
-    }
-
-    #[test]
-    fn nothing_selected_leaves_the_button_without_effect() {
-        let mut view = loaded_view();
-        for group in Group::ALL {
-            let header = header_line(&view, group);
-            while view.counts(group).0 > 0 {
-                view.toggle(header);
-            }
-        }
-
-        assert!(shows(view.clone(), "0 of 4 selected · 2 cannot run"));
-        assert!(messages_after_click(view, "Run selected").is_empty());
-    }
-
-    #[test]
-    fn the_button_hands_the_selection_over() {
-        let view = loaded_view();
-        let selection = view.selection();
-        assert!(!selection.is_empty());
-
-        assert_eq!(
-            messages_after_click(view, "Run selected"),
-            [Message::ExecuteReorganisation(selection)]
-        );
-    }
-
-    #[test]
-    fn handing_the_selection_over_changes_nothing_yet() {
-        let mut app = App::with_reorganisation_plan(loaded_view());
-        let before = app.reorganisation_for_test().unwrap().clone();
-        let selection = before.selection();
-
-        let _ = app.update(Message::ExecuteReorganisation(selection));
-
-        assert_eq!(app.reorganisation_for_test().unwrap(), &before);
-    }
-
-    fn plan_app_on(source: &str) -> (App, ncrs_index::RuleId) {
-        let view = loaded_view();
-        let rule = view.rows()[row_of(&view, source)].rule.clone().unwrap().id;
-        (
-            App::with_reorganisation_plan(view).with_starting_hermes_for_test(),
-            rule,
-        )
-    }
-
-    #[test]
-    fn the_link_of_a_confirmed_rule_ends_on_the_rules_page_with_that_rule_selected() {
-        use crate::messages::RulesMessage;
-        use crate::rules_page::fixtures::{listed, rule_id};
-        use crate::rules_work::RulesLoad;
-        let (mut app, rule) = plan_app_on("Insurance/2024/2024-07-01_invoice.pdf");
-
-        let _ = app.update(plan_message(ReorganisationPlanMessage::OpenRule(rule)));
-        assert!(app.reorganisation_for_test().is_none());
-        let _ = app.update(Message::Rules(RulesMessage::Loaded {
-            generation: 1,
-            result: Ok(RulesLoad {
-                rules: vec![listed(3, 0), listed(2, 1), listed(1, 2)],
-            }),
-        }));
-
-        let page = app.rules_for_test().unwrap();
-        assert_eq!(rule, rule_id(1));
-        assert_eq!(page.selected().map(|row| row.rule.id), Some(rule));
-    }
-
-    #[test]
-    fn the_link_of_an_unconfirmed_rule_ends_on_the_suggestions_page_with_it_selected() {
-        use crate::messages::RuleSuggestionsMessage;
-        use crate::rule_suggestions::fixtures::{rule_ids, suggestion};
-        let (mut app, rule) = plan_app_on("Insurance/2024/2024-08-01_invoice.pdf");
-        let [first, second, third] = rule_ids();
-
-        let _ = app.update(plan_message(ReorganisationPlanMessage::OpenRule(rule)));
-        assert!(app.reorganisation_for_test().is_none());
-        assert!(app.rules_for_test().is_none());
-        let _ = app.update(Message::RuleSuggestions(RuleSuggestionsMessage::Loaded {
-            generation: 1,
-            result: Ok(vec![
-                suggestion(first, "a", "Letters"),
-                suggestion(third, "c", "Letters"),
-                suggestion(second, "b", "Letters"),
-            ]),
-        }));
-
-        let page = app.rule_suggestions_for_test().unwrap();
-        assert_eq!(rule, second);
-        assert_eq!(page.selected().map(|row| row.id), Some(rule));
-    }
-
-    #[test]
-    fn the_entry_under_the_cursor_is_explained_with_a_link_to_its_rule() {
-        let view = at(loaded_view(), "Insurance/2024/2024-07-01_invoice.pdf");
-
-        assert!(shows(view.clone(), "Show rule"));
-        assert!(!shows(loaded_view(), "Show rule"));
-        let planned = view.rows()[row_of(&view, "Insurance/2024/2024-07-01_invoice.pdf")].clone();
-        assert_eq!(
-            messages_after_click(view, "Show rule"),
-            [plan_message(ReorganisationPlanMessage::OpenRule(
-                planned.rule.unwrap().id
-            ))]
-        );
-    }
-
-    #[test]
-    fn opening_without_an_index_ends_in_a_complaint() {
-        let mut app = App::with_fixed_panels().with_starting_hermes_for_test();
-
-        let _ = app.update(plan_message(ReorganisationPlanMessage::Open));
-
-        let view = app.reorganisation_for_test().unwrap();
-        assert_eq!(view.problem(), Some(INDEX_NOT_OPEN));
-        assert!(!view.is_busy());
-        assert!(shows(
-            view.clone(),
-            "The plan could not be made (index not open)."
-        ));
-    }
-
-    #[test]
-    fn a_late_answer_of_an_earlier_view_is_dropped() {
-        let mut app = App::with_fixed_panels().with_starting_hermes_for_test();
-        let _ = app.update(plan_message(ReorganisationPlanMessage::Open));
-        let _ = app.update(plan_message(ReorganisationPlanMessage::Close));
-        let _ = app.update(plan_message(ReorganisationPlanMessage::Open));
-
-        let _ = app.update(plan_message(ReorganisationPlanMessage::Loaded {
-            generation: 1,
-            result: Ok(sample_items()),
-        }));
-
-        assert!(app.reorganisation_for_test().unwrap().rows().is_empty());
-    }
-
-    #[test]
-    fn opening_and_closing_the_view_changes_no_file() {
-        let archive = archive();
-        let before = archive.snapshot();
-        let mut app = App::with_fixed_panels().with_starting_hermes_for_test();
-
-        let _ = app.update(plan_message(ReorganisationPlanMessage::Open));
-        let _ = app.update(plan_message(ReorganisationPlanMessage::Loaded {
-            generation: 1,
-            result: archive.access().plan(),
-        }));
-        assert!(!app.reorganisation_for_test().unwrap().rows().is_empty());
-        let _ = app.update(plan_message(ReorganisationPlanMessage::Toggle(0)));
-        let selection = app.reorganisation_for_test().unwrap().selection();
-        let _ = app.update(Message::ExecuteReorganisation(selection));
-        let _ = app.update(plan_message(ReorganisationPlanMessage::Close));
-
-        assert!(app.reorganisation_for_test().is_none());
-        assert_eq!(archive.snapshot(), before);
-    }
-
-    fn matches_snapshot(view: ReorganisationView, name: &str) {
-        let language = if name.ends_with("_de") {
-            Language::German
-        } else {
-            Language::English
-        };
-        let app = App::with_reorganisation_plan(view).in_language(language);
-        let matches = simulator(&app)
-            .snapshot(&iced::Theme::Dark)
-            .unwrap()
-            .matches_image(format!("tests/snapshots/{name}.png"))
-            .expect("snapshot comparison");
-        assert!(
-            matches,
-            "the view does not match tests/snapshots/{name}.png"
-        );
-    }
-
-    #[test]
-    fn the_view_matches_its_snapshots() {
-        matches_snapshot(loaded_view(), "reorganisation_plan_en");
-        matches_snapshot(loaded_view(), "reorganisation_plan_de");
-    }
-
-    #[test]
-    fn an_entry_with_a_rule_matches_its_snapshots() {
-        let mut view = loaded_view();
-        let line = line_of(&view, "Insurance/2024/2024-07-01_invoice.pdf");
-        view.move_cursor(isize::try_from(line).unwrap());
-
-        matches_snapshot(view.clone(), "reorganisation_plan_rule_en");
-        matches_snapshot(view, "reorganisation_plan_rule_de");
-    }
-}
-
-// A failing assertion in a test is the signal, so `unwrap` belongs here; the
-// lint is meant for the production paths.
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-#[cfg(test)]
 mod title_bar {
     use std::time::{Duration, SystemTime};
 
@@ -5567,7 +3808,7 @@ mod title_bar {
     }
 
     #[test]
-    fn a_click_on_the_hermes_chip_opens_the_overview() {
+    fn a_click_on_the_hermes_chip_opens_the_inspection_page() {
         let mut app = with_hermes().with_starting_hermes_for_test();
         let messages = messages_after_click(&app, HERMES_CHIP_ID);
         assert_eq!(
@@ -5577,7 +3818,7 @@ mod title_bar {
         for message in messages {
             drop(app.update(message));
         }
-        assert!(app.hermes_overview_is_open_for_test());
+        assert!(app.inspection_page_is_open_for_test());
     }
 
     #[test]
@@ -5594,10 +3835,10 @@ mod title_bar {
     #[test]
     fn the_chip_names_the_rate_in_the_language_of_the_app() {
         let english = with_hermes();
-        simulator(&english).find("Filing 78/min processed").unwrap();
+        simulator(&english).find("Hermes 78/min processed").unwrap();
         let german = with_hermes().in_language(Language::German);
         simulator(&german)
-            .find("Ablage 78/Min. verarbeitet")
+            .find("Hermes 78/Min. verarbeitet")
             .unwrap();
     }
 
@@ -5608,7 +3849,7 @@ mod title_bar {
         snapshot.documents_per_minute[1] = 78;
         let snapshot_again = snapshot.clone();
         let app = App::with_filing_snapshot(snapshot, taken_at());
-        assert_eq!(app.hermes_chip_for_test().as_deref(), Some("Filing"));
+        assert_eq!(app.hermes_chip_for_test().as_deref(), Some("Hermes"));
         let themed = App::with_filing_snapshot(snapshot_again, taken_at())
             .in_language(Language::EnglishFuturama);
         assert_eq!(themed.hermes_chip_for_test().as_deref(), Some("Hermes"));
@@ -5727,7 +3968,9 @@ mod title_bar {
             (Language::English, "hermes_quick_fix_en"),
             (Language::German, "hermes_quick_fix_de"),
         ] {
-            let app = App::with_hermes_quick_fix_sample().in_language(language);
+            let app = App::with_hermes_quick_fix_sample()
+                .unwrap()
+                .in_language(language);
             let matches = simulator(&app)
                 .snapshot(&iced::Theme::Dark)
                 .unwrap()
@@ -6232,12 +4475,14 @@ mod settings_tab {
                     mode: LocationMode::Inbox,
                     images: true,
                     is_target: false,
+                    transfer: Default::default(),
                 },
                 FilingLocation {
                     path: PathBuf::from("/home/test/Documents/Filed"),
                     mode: LocationMode::Archive,
                     images: false,
                     is_target: true,
+                    transfer: Default::default(),
                 },
             ],
             load: Default::default(),
@@ -6246,6 +4491,7 @@ mod settings_tab {
             own_names: Vec::new(),
             own_ibans: Vec::new(),
             own_tax_ids: Vec::new(),
+            first_run: false,
         }
     }
 
@@ -6367,12 +4613,14 @@ mod settings_tab {
     fn an_own_ai_server_matches_its_snapshots() {
         both_languages(
             || {
-                settings_with(
+                let mut app = settings_with(
                     SettingsFeature::Hermes,
                     "[modules.filing.ai]\nprovider = \"http\"\n\
                      endpoint = \"http://localhost:11434\"\nmodel = \"qwen2.5:7b\"\n\n\
                      [theme]\npreset = \"cosmic\"\n",
-                )
+                );
+                drop(app.update(Message::Settings(SettingsMessage::ServerDialog(true))));
+                app
             },
             "settings_ai_server",
         );
@@ -6420,41 +4668,22 @@ mod settings_tab {
     #[test]
     fn the_search_filters_the_rows_by_label() {
         let mut app = App::with_settings_open(SettingsFeature::Hermes, hermes_config());
-        simulator(&app).find("Filing on").expect("the switch");
+        simulator(&app).find("Hermes on").expect("the switch");
         drop(app.update(Message::Settings(SettingsMessage::SearchChanged(
-            "threads".to_owned(),
+            "rules".to_owned(),
         ))));
-        let switch_hidden = simulator(&app).find("Filing on").is_err();
+        let switch_hidden = simulator(&app).find("Hermes on").is_err();
         assert!(switch_hidden);
-        simulator(&app).find("Threads").expect("the threads row");
+        simulator(&app).find("Rules").expect("the rules row");
     }
 
     #[test]
-    fn the_technical_rows_are_folded_until_opened_or_found() {
-        let mut app = App::with_settings_open(SettingsFeature::Hermes, hermes_config());
-        let shows = |shown: &App, label: &str| simulator(shown).find(label).is_ok();
-        assert!(shows(&app, "Advanced"));
-        assert!(!shows(&app, "Recognition models"));
-
-        drop(app.update(Message::Settings(SettingsMessage::ToggleAdvanced)));
-        assert!(shows(&app, "Recognition models"));
-
-        drop(app.update(Message::Settings(SettingsMessage::ToggleAdvanced)));
-        assert!(!shows(&app, "Recognition models"));
-
-        drop(app.update(Message::Settings(SettingsMessage::SearchChanged(
-            "recognition".to_owned(),
-        ))));
-        assert!(shows(&app, "Recognition models"));
-    }
-
-    #[test]
-    fn open_hermes_asks_for_the_overview() {
+    fn the_technical_rows_are_always_shown() {
         let app = App::with_settings_open(SettingsFeature::Hermes, hermes_config());
-        assert_eq!(
-            messages_after_click(&app, "Open").last(),
-            Some(&Message::Settings(SettingsMessage::OpenFilingStatus))
-        );
+        let shows = |label: &str| simulator(&app).find(label).is_ok();
+        assert!(shows("Advanced"));
+        assert!(shows("Rules"));
+        assert!(shows("Tags"));
     }
 }
 
@@ -6864,133 +5093,58 @@ mod servers_page {
     }
 }
 
-// A failing assertion in a test is the signal, so `unwrap` belongs here; the
-// lint is meant for the production paths.
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
-mod hermes_setup_card {
-    use std::path::PathBuf;
-
-    use ncrs_intake::LocationMode;
-
+mod hit_list_snapshots {
     use super::*;
-    use crate::config::FilingLocation;
-    use crate::hermes_setup::{ExistingIndex, SetupOffer};
-    use crate::messages::HermesSetupMessage;
+    use crate::ui_tests::simulator;
 
-    fn folders() -> Vec<FilingLocation> {
-        let at = |path: &str, mode, is_target| FilingLocation {
-            path: PathBuf::from(path),
-            mode,
-            images: false,
-            is_target,
-        };
-        vec![
-            at("/home/test/Scans", LocationMode::Inbox, false),
-            at("/home/test/Documents", LocationMode::Archive, true),
-        ]
-    }
+    type TestResult = Result<(), Box<dyn std::error::Error>>;
 
-    fn offer(existing_index: Option<ExistingIndex>) -> SetupOffer {
-        SetupOffer {
-            existing_index,
-            model_download: true,
-            hermes_was_off: false,
-        }
-    }
-
-    fn empty() -> App {
-        App::with_hermes_setup(&[], offer(None))
-    }
-
-    fn filled() -> App {
-        let mut app = App::with_hermes_setup(&folders(), offer(None));
-        drop(app.update(Message::HermesSetup(HermesSetupMessage::ToggleLoadModel)));
-        app
-    }
-
-    fn with_existing_index() -> App {
-        App::with_hermes_setup(&folders(), offer(Some(ExistingIndex::Encrypted)))
-    }
-
-    fn assert_snapshot(app: &App, name: &str) {
+    fn matches_snapshot(app: &App, name: &str) -> TestResult {
         let matches = simulator(app)
-            .snapshot(&iced::Theme::Dark)
-            .unwrap()
-            .matches_image(format!("tests/snapshots/{name}.png"))
-            .expect("snapshot comparison");
-        assert!(matches, "the card does not match {name}.png");
-    }
-
-    #[test]
-    fn the_card_matches_its_snapshots_in_both_languages() {
-        for (lang, suffix) in [(Language::English, "en"), (Language::German, "de")] {
-            assert_snapshot(
-                &empty().in_language(lang),
-                &format!("hermes_setup_empty_{suffix}"),
-            );
-            assert_snapshot(
-                &filled().in_language(lang),
-                &format!("hermes_setup_filled_{suffix}"),
-            );
-            assert_snapshot(
-                &with_existing_index().in_language(lang),
-                &format!("hermes_setup_existing_index_{suffix}"),
-            );
+            .snapshot(&iced::Theme::Dark)?
+            .matches_image(format!("tests/snapshots/{name}.png"))?;
+        if matches {
+            Ok(())
+        } else {
+            Err(format!("the view does not match tests/snapshots/{name}.png").into())
         }
     }
 
-    fn clicks(app: &App, label: &str) -> Vec<Message> {
-        let mut sim = simulator(app);
-        sim.click(label).unwrap();
-        sim.into_messages().collect()
+    fn both_languages(build: fn() -> App, name: &str) -> TestResult {
+        matches_snapshot(
+            &build().in_language(Language::English),
+            &format!("{name}_en"),
+        )?;
+        matches_snapshot(
+            &build().in_language(Language::German),
+            &format!("{name}_de"),
+        )
     }
 
     #[test]
-    fn start_sends_its_message_only_when_both_folders_are_chosen() {
-        assert!(clicks(&empty(), "Start filing").is_empty());
-        assert_eq!(
-            clicks(&filled(), "Start filing"),
-            [Message::HermesSetup(HermesSetupMessage::Start)]
-        );
+    fn the_search_with_hit_buttons_matches_its_snapshots() -> TestResult {
+        both_languages(App::with_fixed_search_hits, "search_hit_buttons")
     }
 
     #[test]
-    fn later_closes_without_setting_anything_up() {
-        assert_eq!(
-            clicks(&empty(), "Later"),
-            [Message::HermesSetup(HermesSetupMessage::Later)]
-        );
+    fn the_hit_list_matches_its_snapshots() -> TestResult {
+        both_languages(App::with_fixed_hit_list, "hit_list")
     }
 
     #[test]
-    fn an_existing_index_replaces_the_choice_of_protection() {
-        let sentence = Language::English.text(crate::i18n::Msg::HermesSetupIndexExistsEncrypted);
-        simulator(&with_existing_index()).find(sentence).unwrap();
-        simulator(&filled()).find(sentence).unwrap_err();
+    fn the_hit_list_context_menu_matches_its_snapshots() -> TestResult {
+        both_languages(App::with_fixed_hit_list_menu, "hit_list_context_menu")
     }
 
     #[test]
-    fn the_model_line_names_its_size_in_whole_decimal_megabytes() {
-        assert_eq!(
-            crate::ui::hermes_setup::model_size_label(),
-            crate::ui::format::megabytes(ncrs_ai::LOCAL_MODEL.size)
-        );
+    fn the_search_context_menu_matches_its_snapshots() -> TestResult {
+        both_languages(App::with_fixed_search_hits_menu, "search_context_menu")
     }
 
     #[test]
-    fn the_intro_names_the_kind_of_computer() {
-        let intro = Language::English.text(if cfg!(target_os = "macos") {
-            crate::i18n::Msg::HermesSetupIntroMac
-        } else {
-            crate::i18n::Msg::HermesSetupIntroOther
-        });
-        simulator(&empty()).find(intro).unwrap();
+    fn the_pack_prompt_of_a_hit_list_matches_its_snapshots() -> TestResult {
+        both_languages(App::with_fixed_hit_list_pack, "hit_list_pack")
     }
 }
 
@@ -7003,16 +5157,64 @@ mod hermes_setup_card {
     clippy::indexing_slicing
 )]
 #[cfg(test)]
-mod hermes_overview_page {
+mod quick_fix_menu_actions {
+    use super::*;
+    use crate::messages::{QuickFixMessage, RuleFormMessage, RulesMessage};
+
+    fn rules_form_of(app: &App) -> &crate::rule_form::RuleForm {
+        app.rules_for_test().unwrap().form().unwrap()
+    }
+
+    #[test]
+    fn create_rule_in_the_quick_fix_opens_the_rule_form_with_the_document_pattern() {
+        let mut item = App::waiting_document_for_test().unwrap();
+        item.fields.tags = std::collections::BTreeSet::from(["tax".to_owned()]);
+        let mut app = App::with_quick_fix_menu(item);
+        let _ = app.update(Message::QuickFix(QuickFixMessage::Hover(2)));
+
+        let _ = app.update(Message::QuickFix(QuickFixMessage::Activate));
+
+        let form = rules_form_of(&app);
+        assert_eq!(form.target, crate::rule_form::RuleFormTarget::FromDocument);
+        assert_eq!(form.conditions.rows[1].value, "company-a");
+        assert_eq!(
+            form.tags,
+            std::collections::BTreeSet::from(["tax".to_owned()])
+        );
+        assert_eq!(form.filing.pattern(), "{sender}/{date}_{kind}");
+        let _ = app.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Cancel)));
+        assert!(app.rules_for_test().is_some());
+        assert!(app.rules_for_test().unwrap().form().is_none());
+    }
+
+    #[test]
+    fn set_fields_in_the_quick_fix_opens_the_chat() {
+        let mut app = App::with_quick_fix_menu(App::waiting_document_for_test().unwrap());
+        let _ = app.update(Message::QuickFix(QuickFixMessage::Hover(1)));
+
+        let _ = app.update(Message::QuickFix(QuickFixMessage::Activate));
+
+        assert!(app.hermes_chat_for_test().open);
+    }
+}
+
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod settings_index_page {
     use super::app_simulator as simulator;
     use std::path::PathBuf;
-
-    use ncrs_index::HermesCounts;
-    use ncrs_intake::LocationMode;
 
     use super::*;
     use crate::config::{AiSetting, Filing, FilingLocation};
     use crate::messages::{HermesOverviewMessage, SettingsMessage};
+    use ncrs_intake::LocationMode;
 
     fn configured() -> Filing {
         let at = |path: &str, mode, is_target| FilingLocation {
@@ -7020,6 +5222,7 @@ mod hermes_overview_page {
             mode,
             images: false,
             is_target,
+            transfer: Default::default(),
         };
         Filing {
             enabled: true,
@@ -7033,75 +5236,8 @@ mod hermes_overview_page {
             own_names: Vec::new(),
             own_ibans: Vec::new(),
             own_tax_ids: Vec::new(),
+            first_run: false,
         }
-    }
-
-    fn five_open() -> HermesCounts {
-        HermesCounts {
-            open_reviews: 5,
-            ..HermesCounts::default()
-        }
-    }
-
-    fn running() -> App {
-        App::with_hermes_overview(Some(Phase::Ready), configured(), Some(five_open()))
-    }
-
-    fn off() -> App {
-        let config = Filing {
-            enabled: false,
-            ..configured()
-        };
-        App::with_hermes_overview(None, config, None)
-    }
-
-    fn assert_snapshot(app: &App, name: &str) {
-        let matches = simulator(app)
-            .snapshot(&iced::Theme::Dark)
-            .unwrap()
-            .matches_image(format!("tests/snapshots/{name}.png"))
-            .expect("snapshot comparison");
-        assert!(matches, "the overview does not match {name}.png");
-    }
-
-    fn in_both_languages(app: impl Fn() -> App, name: &str) {
-        assert_snapshot(&app().in_language(Language::English), &format!("{name}_en"));
-        assert_snapshot(&app().in_language(Language::German), &format!("{name}_de"));
-    }
-
-    #[test]
-    fn the_overview_matches_its_snapshots() {
-        in_both_languages(running, "hermes_overview_running");
-        in_both_languages(
-            || running().with_ai_download_at_for_test(49),
-            "hermes_overview_downloading",
-        );
-        in_both_languages(off, "hermes_overview_off");
-    }
-
-    #[test]
-    fn the_default_target_matches_its_snapshots() {
-        let own_target = || {
-            let config = Filing {
-                default_pattern: Some("{recipient}/{year}/{sender}/{date}_{sender}".to_owned()),
-                ..configured()
-            };
-            App::with_hermes_overview(Some(Phase::Ready), config, Some(five_open()))
-        };
-        for (lang, name) in [
-            (Language::English, "hermes_overview_standard_target_en"),
-            (Language::German, "hermes_overview_standard_target_de"),
-        ] {
-            assert_snapshot(&own_target().in_language(lang), name);
-        }
-    }
-
-    #[test]
-    fn a_missing_key_matches_its_snapshots() {
-        in_both_languages(
-            || running().with_missing_key_for_test(),
-            "hermes_overview_key_missing",
-        );
     }
 
     fn clicks(app: &App, label: &str) -> Vec<Message> {
@@ -7110,70 +5246,29 @@ mod hermes_overview_page {
         sim.into_messages().collect()
     }
 
+    fn tall_simulator(app: &App) -> Simulator<'_, Message, iced::Theme> {
+        Simulator::with_size(
+            iced::Settings::default(),
+            iced::Size::new(1200.0, 1100.0),
+            app.view(),
+        )
+    }
+
     fn overview_message(message: HermesOverviewMessage) -> Message {
         Message::HermesOverview(message)
     }
 
     #[test]
-    fn the_buttons_send_what_they_say() {
-        let app = running();
-        assert_eq!(
-            clicks(&app, "Load"),
-            [overview_message(HermesOverviewMessage::LoadOcrModels)]
-        );
-        assert_eq!(
-            clicks(
-                &app,
-                &format!(
-                    "Load · {}",
-                    crate::ui::format::megabytes(ncrs_ai::LOCAL_MODEL.size)
-                )
-            ),
-            [overview_message(HermesOverviewMessage::LoadAiModel)]
-        );
-        assert_eq!(
-            clicks(&app, "Change…"),
-            [overview_message(HermesOverviewMessage::ChangeFolders)]
-        );
-    }
-
-    #[test]
-    fn the_folder_name_field_opens_while_editing() {
-        let mut app = running();
-        drop(
-            app.update(overview_message(HermesOverviewMessage::TargetEdited(
-                crate::filing_pieces::TargetEdit::StartOwnName,
-            ))),
-        );
-        simulator(&app)
-            .find(iced_selector::id(
-                crate::ui::hermes_overview::FOLDER_NAME_FIELD_ID,
-            ))
-            .expect("the folder name field is shown while editing");
-    }
-
-    #[test]
-    fn a_missing_key_offers_the_key_and_a_new_try() {
-        let app = running().with_missing_key_for_test();
-        assert_eq!(
-            clicks(&app, "Enter recovery key"),
-            [overview_message(HermesOverviewMessage::EnterRecoveryKey)]
-        );
-        assert_eq!(
-            clicks(&app, "Try again"),
-            [overview_message(HermesOverviewMessage::TryAgain)]
-        );
-    }
-
-    #[test]
     fn the_settings_hold_the_protection_and_the_question_before_starting_over() {
         let missing =
-            App::with_hermes_settings(Some(Phase::Ready), configured()).with_missing_key_for_test();
+            App::with_index_settings(Some(Phase::Ready), configured()).with_missing_key_for_test();
+        let mut sim = tall_simulator(&missing);
+        sim.click("Start over …").unwrap();
         assert_eq!(
-            clicks(&missing, "Start over …"),
+            sim.into_messages().collect::<Vec<_>>(),
             [Message::Settings(SettingsMessage::Protection(2))]
         );
-        let asking = App::with_hermes_settings(Some(Phase::Ready), configured())
+        let asking = App::with_index_settings(Some(Phase::Ready), configured())
             .with_start_over_question_for_test();
         assert_eq!(
             clicks(&asking, "Cancel"),
@@ -7186,92 +5281,34 @@ mod hermes_overview_page {
     }
 
     fn settings_over_index(encrypted: bool) -> App {
-        App::with_hermes_settings(Some(Phase::Ready), configured()).with_index_for_test(encrypted)
+        App::with_index_settings(Some(Phase::Ready), configured()).with_index_for_test(encrypted)
+    }
+
+    fn both_languages_tall(app: impl Fn() -> App, name: &str) {
+        for (lang, suffix) in [(Language::English, "en"), (Language::German, "de")] {
+            let matches = tall_simulator(&app().in_language(lang))
+                .snapshot(&iced::Theme::Dark)
+                .unwrap()
+                .matches_image(format!("tests/snapshots/{name}_{suffix}.png"))
+                .expect("snapshot comparison");
+            assert!(matches, "the settings do not match {name}_{suffix}.png");
+        }
     }
 
     #[test]
     fn the_settings_with_the_protection_match_their_snapshots() {
-        in_both_languages(|| settings_over_index(true), "settings_hermes_protection");
-        in_both_languages(
+        both_languages_tall(|| settings_over_index(true), "settings_hermes_protection");
+        both_languages_tall(
             || settings_over_index(false),
             "settings_hermes_protection_plain",
         );
-        in_both_languages(
+        both_languages_tall(
             || settings_over_index(true).with_missing_key_for_test(),
             "settings_hermes_key_missing",
         );
-        in_both_languages(
+        both_languages_tall(
             || settings_over_index(true).with_start_over_question_for_test(),
             "settings_hermes_reset_confirm",
         );
-    }
-
-    #[test]
-    fn the_primary_button_and_enter_open_the_reviews() {
-        assert_eq!(
-            clicks(&running(), "Check"),
-            [overview_message(HermesOverviewMessage::ShowReviews)]
-        );
-    }
-
-    #[test]
-    fn hermes_off_offers_to_switch_it_on() {
-        assert_eq!(
-            clicks(&off(), "Switch filing on"),
-            [overview_message(HermesOverviewMessage::SwitchHermesOn)]
-        );
-    }
-
-    mod hit_list_snapshots {
-        use super::*;
-        use crate::ui_tests::simulator;
-
-        fn matches_snapshot(app: &App, name: &str) {
-            let matches = simulator(app)
-                .snapshot(&iced::Theme::Dark)
-                .unwrap()
-                .matches_image(format!("tests/snapshots/{name}.png"))
-                .expect("snapshot comparison");
-            assert!(
-                matches,
-                "the view does not match tests/snapshots/{name}.png"
-            );
-        }
-
-        fn both_languages(build: fn() -> App, name: &str) {
-            matches_snapshot(
-                &build().in_language(Language::English),
-                &format!("{name}_en"),
-            );
-            matches_snapshot(
-                &build().in_language(Language::German),
-                &format!("{name}_de"),
-            );
-        }
-
-        #[test]
-        fn the_search_with_hit_buttons_matches_its_snapshots() {
-            both_languages(App::with_fixed_search_hits, "search_hit_buttons");
-        }
-
-        #[test]
-        fn the_hit_list_matches_its_snapshots() {
-            both_languages(App::with_fixed_hit_list, "hit_list");
-        }
-
-        #[test]
-        fn the_hit_list_context_menu_matches_its_snapshots() {
-            both_languages(App::with_fixed_hit_list_menu, "hit_list_context_menu");
-        }
-
-        #[test]
-        fn the_search_context_menu_matches_its_snapshots() {
-            both_languages(App::with_fixed_search_hits_menu, "search_context_menu");
-        }
-
-        #[test]
-        fn the_pack_prompt_of_a_hit_list_matches_its_snapshots() {
-            both_languages(App::with_fixed_hit_list_pack, "hit_list_pack");
-        }
     }
 }

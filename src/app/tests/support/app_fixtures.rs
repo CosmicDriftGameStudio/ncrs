@@ -59,16 +59,17 @@ impl App {
             search: ncrs_search::Search::new(layout::INITIAL_WINDOW_SIZE),
             hermes_chat: ncrs_hermes_chat::State::default(),
             chat_model: None,
+            turning_hermes_on: false,
             quick_open: None,
             quick_open_walk_generation: 0,
             quick_open_walk: None,
             command_palette: None,
             recent_commands: Vec::new(),
             wall_clock: Arc::new(ncrs_pipeline::SystemClock),
+            system_reads_scans: true,
             config_path: None,
             file_list_tags: FileListTags::default(),
             kinds: Kinds::default(),
-            hermes_flow_step: 0,
             settings: Settings::default(),
             hermes: ncrs_hermes_ui::Hermes::default(),
             theme_preset: ThemePreset::Cosmic,
@@ -79,7 +80,6 @@ impl App {
             read_clipboard: || Task::done(None),
             write_clipboard_files: Box::new(|_| Ok(())),
             tag_exceptions: TagExceptions::new(),
-            hermes_focus: HermesFocus::default(),
             fetch_extension: |_| Err(FetchError::NoConnection("no network in tests".to_owned())),
             install_theme: |_, _| Err(FetchError::NoConfigPath),
             about: None,
@@ -128,85 +128,44 @@ impl App {
         app
     }
 
-    /// Fixed panels with the filing setup up, holding `chosen`. With
-    /// `index_is_plain` a module stands behind it that opened an unencrypted
-    /// index.
-    pub fn with_filing_setup(chosen: &[config::FilingLocation], index_is_plain: bool) -> Self {
-        let mut app = Self::with_fixed_panels();
-        app.hermes.filing_setup = Some(FilingSetup::new(chosen));
-        if index_is_plain {
-            app.hermes.filing = Some(FilingModule::in_phase_with_index(Phase::Ready, false));
-        }
-        app
-    }
-
-    /// Fixed panels with the first-time setup of Hermes up, prefilled from
-    /// `configured`.
-    pub fn with_hermes_setup(configured: &[config::FilingLocation], offer: SetupOffer) -> Self {
-        let mut app = Self::with_fixed_panels();
-        app.hermes.filing_config.locations = configured.to_vec();
-        let setup = HermesSetup::new(configured, offer);
-        app.dialog_focus = setup.first_focus(setup.can_start());
-        app.hermes.hermes_setup = Some(setup);
-        app
-    }
-
-    /// Fixed panels with the Hermes overview up, over a
-    /// module of `phase` (`None`: Hermes is off), the `config` and the
-    /// `counts` read from the index.
-    pub fn with_hermes_overview(
-        phase: Option<Phase>,
-        config: config::Filing,
-        counts: Option<ncrs_index::HermesCounts>,
-    ) -> Self {
-        let mut app = Self::with_fixed_panels();
-        let module_exists = phase.is_some();
-        app.hermes.filing =
-            phase.map(|in_phase| FilingModule::in_phase_with_ai(in_phase, &config.ai));
-        if module_exists {
-            let mut idle = ncrs_pipeline::Snapshot::off();
-            idle.state = ncrs_pipeline::RunnerState::Idle;
-            app.hermes
-                .filing_status
-                .set_snapshot(idle, app.wall_clock.now());
-        }
-        if let Some(read) = counts {
-            app.hermes.filing_status.counts_arrived(Ok(read));
-        }
-        app.hermes.overview = Some(OverviewState::new(config.default_pattern.as_deref(), false));
-        app.hermes.filing_config = config;
-        app
-    }
-
-    /// A model download of `percent` of the model's size under the overview.
-    pub fn with_ai_download_at_for_test(mut self, percent: u64) -> Self {
-        let mut card = AiModelCard::new(Some(PathBuf::from("models")), false);
-        drop(card.start());
-        card.set_received_for_test(ncrs_ai::LOCAL_MODEL.size.div_euclid(100) * percent);
-        self.settings.ai_model = Some(card);
-        self.settings.ai_card_hidden = true;
-        self
-    }
-
-    /// The module's key card was put off, so the overview shows the key as missing.
-    pub fn with_missing_key_for_test(mut self) -> Self {
-        self.hermes.filing = self
-            .hermes
-            .filing
-            .take()
-            .map(|module| module.dismissed_over(crate::filing::KeyProblem::Missing));
-        self
-    }
-
     /// An open index with or without encryption under the ready module.
     pub fn with_index_for_test(mut self, encrypted: bool) -> Self {
         self.hermes.filing = Some(FilingModule::in_phase_with_index(Phase::Ready, encrypted));
         self
     }
 
+    /// A ready Hermes with an encrypted index of 312 documents, 4 rules and two
+    /// files it could not read.
+    pub fn with_ready_index_for_test(mut self) -> Self {
+        let unreadable = |name: &str, message: &str| ncrs_pipeline::ErrorEntry {
+            file: PathBuf::from("/home/test/Downloads/Scans").join(name),
+            task: ncrs_pipeline::Task::Step("text"),
+            message: message.to_owned(),
+            at: std::time::SystemTime::UNIX_EPOCH,
+            sequence: 1,
+        };
+        let mut snapshot = ncrs_pipeline::Snapshot::off();
+        snapshot.state = ncrs_pipeline::RunnerState::Idle;
+        snapshot.errors = vec![
+            unreadable("scan-0412.pdf", "the file is password protected"),
+            unreadable("receipt.jpg", "no text found"),
+        ];
+        let now = self.wall_clock.now();
+        self.hermes.filing_status.set_snapshot(snapshot, now);
+        self.hermes
+            .filing_status
+            .counts_arrived(Ok(ncrs_index::HermesCounts {
+                archive_documents: 312,
+                archive_documents_with_text: 298,
+                confirmed_rules: 4,
+                ..ncrs_index::HermesCounts::default()
+            }));
+        self.with_index_for_test(true)
+    }
+
     /// The settings tab on the filing page, over a module in `phase`.
-    pub fn with_hermes_settings(phase: Option<Phase>, config: config::Filing) -> Self {
-        let mut app = Self::with_settings_open(crate::messages::SettingsFeature::Hermes, config);
+    pub fn with_index_settings(phase: Option<Phase>, config: config::Filing) -> Self {
+        let mut app = Self::with_settings_open(crate::messages::SettingsFeature::Index, config);
         app.hermes.filing = phase
             .map(|in_phase| FilingModule::in_phase_with_ai(in_phase, &app.hermes.filing_config.ai));
         app
@@ -215,6 +174,16 @@ impl App {
     /// The question whether to remove the index up.
     pub fn with_start_over_question_for_test(mut self) -> Self {
         drop(self.update(Message::HermesOverview(HermesOverviewMessage::AskStartOver)));
+        self
+    }
+
+    /// The module's key card was put off, so the index shows the key as missing.
+    pub fn with_missing_key_for_test(mut self) -> Self {
+        self.hermes.filing = self
+            .hermes
+            .filing
+            .take()
+            .map(|module| module.dismissed_over(crate::filing::KeyProblem::Missing));
         self
     }
 
@@ -261,6 +230,7 @@ impl App {
             mode,
             images: false,
             is_target,
+            transfer: Default::default(),
         };
         let mut app = Self::with_fixed_panels();
         app.hermes.filing = Some(FilingModule::in_phase_with_locations(Phase::Ready));
@@ -418,13 +388,10 @@ impl App {
 
     /// The Hermes column sample with the quick-fix menu open on its inquiry:
     /// one file whose sender was not read and whose suggestion is known.
-    pub fn with_hermes_quick_fix_sample() -> Self {
+    pub fn with_hermes_quick_fix_sample() -> Result<Self, Box<dyn std::error::Error>> {
         let mut app = Self::with_hermes_column_sample();
         let path = app.panels.right.path.join("2025-03 receipt market.pdf");
-        let mut item = crate::review_list::fixtures::loaded_list()
-            .rows()
-            .to_vec()
-            .swap_remove(0);
+        let mut item = waiting_document()?;
         item.path = path;
         item.fields.sender = None;
         item.fields.kind = Some("receipt".to_owned());
@@ -442,7 +409,12 @@ impl App {
         let mut menu = QuickFix::new(anchor, app.window_size);
         menu.loaded(vec![item]);
         app.hermes.quick_fix = Some(menu);
-        app
+        Ok(app)
+    }
+
+    /// A document waiting for the user, to put into a quick-fix menu.
+    pub fn waiting_document_for_test() -> Result<ReviewItem, Box<dyn std::error::Error>> {
+        waiting_document()
     }
 
     /// Fixed panels with the quick-fix menu open on `item` alone.
@@ -682,4 +654,39 @@ impl App {
         app.settings.ai_model = Some(card);
         app
     }
+}
+
+/// A document waiting for the user, as a rule would file it; its ids come from a real index, since
+/// only the index hands them out.
+fn waiting_document() -> Result<ReviewItem, Box<dyn std::error::Error>> {
+    use chrono::{TimeZone as _, Utc};
+    use ncrs_index::{ContentHash, DocumentSource, Index, NewDocument, ReviewReason};
+
+    let dir = tempfile::TempDir::new()?;
+    let mut index = Index::create_plain(&dir.path().join("index.db"))?;
+    let document_id = index.insert_document(&NewDocument {
+        hash: ContentHash([1; 32]),
+        path: dir.path().join("scan-1.pdf"),
+        source: DocumentSource::Inbox,
+        received_at: Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap(),
+        stamp: None,
+    })?;
+    let entry = index.add_review(document_id, ReviewReason::NoMatchingRule)?;
+    Ok(ReviewItem {
+        entry,
+        document_id,
+        path: PathBuf::from("inbox/scan-1.pdf"),
+        reason: ReviewReason::UnconfirmedRule,
+        text_state: crate::review_work::TextState::Read,
+        fields: ncrs_index::DocumentFields {
+            sender: Some("Company A".to_owned()),
+            kind: Some("invoice".to_owned()),
+            date: chrono::NaiveDate::from_ymd_opt(2024, 3, 9),
+            ..ncrs_index::DocumentFields::default()
+        },
+        proposed_pattern: Some("{sender}/{date}_{kind}".to_owned()),
+        origins: ncrs_index::FieldOrigins::default(),
+        passages: Vec::new(),
+        placement: None,
+    })
 }

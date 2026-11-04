@@ -13,7 +13,8 @@ pub enum Action {
         folder: PathBuf,
         role: FolderRole,
     },
-    OpenFilingSetup,
+    /// Switches Hermes on, or starts it again when it stopped.
+    TurnOnHermes,
     /// Opens the download of the language model; `Message::ModelReady`
     /// follows when it is there.
     DownloadModel,

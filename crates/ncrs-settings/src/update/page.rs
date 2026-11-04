@@ -5,7 +5,7 @@ use ncrs_fs::runs_in_app_sandbox;
 use ncrs_i18n::{fill_template, Msg};
 use ncrs_ui_kit::focus::release_focus;
 
-use super::{keys, models, theme};
+use super::{documents, keys, models, theme};
 use crate::action::Action;
 use crate::ai_model::InstallOutcome;
 use crate::ctx::Ctx;
@@ -18,7 +18,7 @@ use crate::state::Settings;
 use crate::theme_file::{
     copy_picked_theme_file, theme_file_entry, IncludeNotCopied, IncludeProblem,
 };
-use crate::write::{write_failure, write_setting};
+use crate::write::{change_failure, write_failure, write_setting};
 
 pub fn update(
     settings: &mut Settings,
@@ -42,6 +42,17 @@ pub fn update(
             actions.push(Action::ShowTagsPage);
             Task::none()
         }
+        SettingsMessage::Close
+            if settings
+                .page
+                .as_ref()
+                .is_some_and(|state| state.dialog_is_open()) =>
+        {
+            if let Some(state) = settings.page.as_mut() {
+                state.close_dialog();
+            }
+            Task::none()
+        }
         SettingsMessage::Close => leave_page(settings, ctx, close_settings),
         SettingsMessage::Select(feature)
             if settings
@@ -57,10 +68,6 @@ pub fn update(
                 Task::none()
             })
         }
-        SettingsMessage::ToggleAdvanced => in_settings(settings, ctx, |state| {
-            state.advanced_open = !state.advanced_open;
-            None
-        }),
         SettingsMessage::Select(_) => in_settings(settings, ctx, |state| {
             state.marked_row = None;
             None
@@ -121,6 +128,29 @@ pub fn update(
             actions.push(Action::Protection(position));
             Task::none()
         }
+        forwarded @ (SettingsMessage::AddFolder(_)
+        | SettingsMessage::FolderPicked { .. }
+        | SettingsMessage::FolderGranted { .. }
+        | SettingsMessage::RemoveFolder(_)
+        | SettingsMessage::EditFolder(_)
+        | SettingsMessage::ReplaceFolder(_)
+        | SettingsMessage::AddOwnDetail(_)
+        | SettingsMessage::ToggleAllAreas
+        | SettingsMessage::ToggleAllRuns
+        | SettingsMessage::ServerDialog(_)
+        | SettingsMessage::OpenChat(_)
+        | SettingsMessage::TogglePause
+        | SettingsMessage::UndoRun(_)
+        | SettingsMessage::FactsLoaded(_)
+        | SettingsMessage::RunUndone(_)
+        | SettingsMessage::OpenRules
+        | SettingsMessage::OpenAiModel
+        | SettingsMessage::AskRemoveModel(_)
+        | SettingsMessage::CancelRemoveModel
+        | SettingsMessage::ConfirmRemoveModel
+        | SettingsMessage::ModelRemoved { .. }) => {
+            documents::update(settings, forwarded, ctx, actions)
+        }
         SettingsMessage::Change(change) => write_setting(settings, change, ctx),
         SettingsMessage::Written { change, result } => {
             written(settings, change, result, ctx, actions)
@@ -148,7 +178,7 @@ fn leave_page(
 }
 
 /// Runs `edit` on the open tab and writes the change it asks for.
-fn in_settings(
+pub(in crate::update) fn in_settings(
     settings: &mut Settings,
     ctx: &Ctx<'_>,
     edit: impl FnOnce(&mut SettingsState) -> Option<SettingChange>,
@@ -225,7 +255,13 @@ fn written(
                     card.set_outcome(InstallOutcome::StillOff);
                 }
             }
-            let failure = write_failure(&error, ctx);
+            if matches!(change, SettingChange::HermesEnabled(true)) {
+                actions.push(Action::HermesNotTurnedOn(error.to_string()));
+                if settings.page.is_none() {
+                    return Task::none();
+                }
+            }
+            let failure = change_failure(&error, &change, ctx);
             let at_its_row = match settings.page.as_mut() {
                 Some(state) => state.refused(&change, failure.clone()),
                 None => false,
@@ -247,7 +283,7 @@ pub fn open_settings(
     ctx: &Ctx<'_>,
     actions: &mut Vec<Action>,
 ) -> Task<Message> {
-    if ctx.overlay_apart_from_overview_open {
+    if ctx.dialog_open {
         return Task::none();
     }
     actions.push(Action::LeaveAblagePage);
@@ -264,9 +300,7 @@ pub fn fresh_settings_state(ctx: &Ctx<'_>) -> SettingsState {
         Some(path) => config::load(path).map(Box::new),
         None => Ok(Box::default()),
     };
-    let mut state = SettingsState::new(ocr_models_present, file, runs_in_app_sandbox());
-    state.text_recognition_built_in = crate::ocr_models::system_reads_scans();
-    state
+    SettingsState::new(ocr_models_present, file, runs_in_app_sandbox())
 }
 
 pub fn close_settings(settings: &mut Settings) -> Task<Message> {

@@ -208,7 +208,6 @@ fn every_action_has_a_default_key_and_no_key_is_twice_bound() {
         KeyAction::OpenTrashInFinder,
         KeyAction::ComputeFolderSizes,
         KeyAction::HermesHandToInbox,
-        KeyAction::HermesReprocessFolder,
         KeyAction::HermesSetInbox,
         KeyAction::HermesSetFilingLocation,
         KeyAction::HermesSetArchive,

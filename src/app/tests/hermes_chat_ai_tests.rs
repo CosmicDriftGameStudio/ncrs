@@ -153,7 +153,7 @@ async fn a_chat_opened_while_hermes_starts_greets_at_once_and_only_once() {
 }
 
 #[tokio::test]
-async fn a_chat_waiting_for_hermes_says_it_needs_setup_when_the_start_fails() {
+async fn a_chat_waiting_for_hermes_says_why_when_the_start_fails() {
     let mut app = App::with_fixed_panels()
         .in_language(Language::German)
         .with_starting_hermes_for_test();
@@ -171,9 +171,134 @@ async fn a_chat_waiting_for_hermes_says_it_needs_setup_when_the_start_fails() {
     assert_eq!(
         parts,
         &[ncrs_hermes_chat::Part::Text(
-            Language::German
-                .text(ncrs_i18n::Msg::HermesChatNeedsSetup)
-                .to_owned()
+            "Hermes konnte nicht starten: no key".to_owned()
         )]
     );
+}
+
+fn last_hermes_text(app: &App) -> String {
+    let Some(ncrs_hermes_chat::Entry::Hermes { parts, .. }) = app.hermes_chat.thread().last()
+    else {
+        panic!("the thread ends without a Hermes entry");
+    };
+    match parts.as_slice() {
+        [ncrs_hermes_chat::Part::Text(text)] => text.clone(),
+        other => panic!("not one sentence: {other:?}"),
+    }
+}
+
+fn user_entries(app: &App) -> usize {
+    app.hermes_chat
+        .thread()
+        .iter()
+        .filter(|entry| matches!(entry, ncrs_hermes_chat::Entry::UserFolder(_)))
+        .count()
+}
+
+#[tokio::test]
+async fn a_module_that_failed_to_start_says_why_and_offers_to_try_again() {
+    let mut app = App::with_fixed_panels().in_language(Language::German);
+    app.hermes.filing = Some(FilingModule::in_phase(Phase::Failed("no key".into())));
+    assert!(matches!(
+        app.hermes_chat_ctx().availability,
+        ncrs_hermes_chat::Availability::Failed(_)
+    ));
+
+    settle(&mut app, Message::HermesChat(HermesChatMessage::Open)).await;
+
+    assert_eq!(
+        last_hermes_text(&app),
+        "Hermes konnte nicht starten: no key"
+    );
+    let retry = app
+        .hermes_chat
+        .chips()
+        .iter()
+        .find(|chip| chip.reply == ncrs_hermes_chat::ChipReply::TurnOn)
+        .map(|chip| chip.label.clone());
+    assert_eq!(retry.as_deref(), Some("Nochmal versuchen"));
+}
+
+#[tokio::test]
+async fn a_config_write_that_fails_on_turning_hermes_on_is_said_in_the_chat() {
+    let config_dir = tempfile::tempdir().unwrap();
+    let mut app = App::with_fixed_panels().in_language(Language::German);
+    app.hermes.filing_config.first_run = false;
+    app.config_path = Some(config_dir.path().to_path_buf());
+    settle(&mut app, Message::HermesChat(HermesChatMessage::Open)).await;
+    let turn_on = chat_chip(&app, &ncrs_hermes_chat::ChipReply::TurnOn);
+
+    settle(&mut app, turn_on).await;
+
+    assert!(last_hermes_text(&app).starts_with("Ich konnte Hermes nicht einschalten: "));
+    assert!(!app.turning_hermes_on);
+    assert!(matches!(
+        app.hermes_chat_ctx().availability,
+        ncrs_hermes_chat::Availability::Off
+    ));
+    chat_chip(&app, &ncrs_hermes_chat::ChipReply::TurnOn);
+}
+
+static GRANTED: std::sync::Mutex<Vec<PathBuf>> = std::sync::Mutex::new(Vec::new());
+
+fn recording_grant(_: &Path, folder: &Path) -> Result<(), String> {
+    GRANTED
+        .lock()
+        .map_err(|err| err.to_string())?
+        .push(folder.to_path_buf());
+    Ok(())
+}
+
+fn refusing_grant(_: &Path, _: &Path) -> Result<(), String> {
+    Err("bookmark refused".to_owned())
+}
+
+fn sandboxed_chat(grant: fn(&Path, &Path) -> Result<(), String>) -> App {
+    let mut app = App::with_fixed_panels().in_language(Language::German);
+    app.hermes.filing_config.first_run = false;
+    app.sandbox = fs::SandboxAccess {
+        active: true,
+        grants_dir: Some(PathBuf::from("grants-of-this-test")),
+        home_readable: || true,
+        grant,
+        covers: |_, _| true,
+    };
+    app
+}
+
+#[tokio::test]
+async fn a_folder_picked_in_the_chat_is_granted_before_the_chat_reads_it() {
+    let mut app = sandboxed_chat(recording_grant);
+    settle(&mut app, Message::HermesChat(HermesChatMessage::Open)).await;
+    let folder = PathBuf::from("/chat-grant-test/Invoices");
+
+    let task = app.update(Message::HermesChat(HermesChatMessage::FolderPicked(Some(
+        folder.clone(),
+    ))));
+    assert_eq!(user_entries(&app), 0, "nothing is read before the grant");
+    settle_task(&mut app, task).await;
+
+    assert!(GRANTED.lock().unwrap().contains(&folder));
+    assert_eq!(user_entries(&app), 1);
+}
+
+#[tokio::test]
+async fn a_refused_grant_for_a_picked_folder_is_said_in_the_chat() {
+    let mut app = sandboxed_chat(refusing_grant);
+    settle(&mut app, Message::HermesChat(HermesChatMessage::Open)).await;
+
+    settle(
+        &mut app,
+        Message::HermesChat(HermesChatMessage::FolderPicked(Some(PathBuf::from(
+            "/chat-grant-test/Refused",
+        )))),
+    )
+    .await;
+
+    assert_eq!(
+        last_hermes_text(&app),
+        "Das konnte ich nicht lesen: bookmark refused"
+    );
+    assert_eq!(user_entries(&app), 0);
+    assert!(!app.hermes_chat.chips().is_empty());
 }

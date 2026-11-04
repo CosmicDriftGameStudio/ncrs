@@ -4,6 +4,7 @@
 use std::collections::{BTreeSet, HashMap};
 use std::fs;
 use std::io;
+use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::SystemTime;
@@ -14,10 +15,12 @@ use ncrs_index::{
     SenderAliases,
 };
 use ncrs_intake::{
-    detect_fields, hash_path, is_image_file, learn_archive, location_structure,
+    date_in_file_stem, detect_fields, hash_path, is_image_file, learn_archive, location_structure,
     plan_reorganisation, ArchiveDocument, LocationStructure, OwnNames, PlanFile,
     ReorganisationInput,
 };
+use ncrs_pipeline::Load;
+use ncrs_priority::{set_current_thread_priority, ThreadPriority};
 
 use super::pattern::{adoptable_patterns, PatternChoice};
 use super::{ChatAccess, TrashItem};
@@ -152,6 +155,10 @@ fn modified_date(mtime: SystemTime) -> chrono::NaiveDate {
     DateTime::<Local>::from(mtime).date_naive()
 }
 
+fn date_in_file_name(relative: &Path) -> Option<chrono::NaiveDate> {
+    date_in_file_stem(relative.file_stem()?.to_str()?)
+}
+
 /// What the index knows of a file: its hash, fields and full text.
 struct Known {
     hash: ContentHash,
@@ -159,17 +166,33 @@ struct Known {
     text: Option<String>,
 }
 
-/// `work` on every item, spread over a few threads; the results keep the order.
-fn in_parallel<T: Sync, R: Send>(items: &[T], work: impl Fn(&T) -> R + Sync) -> Vec<R> {
-    let threads = std::thread::available_parallelism()
-        .map_or(1, usize::from)
+/// `work` on every item, spread over the threads the load allows, each at the
+/// load's priority; the results keep the order.
+fn in_parallel<T: Sync, R: Send>(items: &[T], load: Load, work: impl Fn(&T) -> R + Sync) -> Vec<R> {
+    let cores = std::thread::available_parallelism().unwrap_or(NonZeroUsize::MIN);
+    let threads = usize::try_from(load.ai_threads(cores).get())
+        .unwrap_or(1)
         .min(8);
+    in_threads(items, threads, load.thread_priority(), work)
+}
+
+fn in_threads<T: Sync, R: Send>(
+    items: &[T],
+    threads: usize,
+    priority: ThreadPriority,
+    work: impl Fn(&T) -> R + Sync,
+) -> Vec<R> {
     let chunk = items.len().div_ceil(threads).max(1);
     let work_ref = &work;
     std::thread::scope(|scope| {
         let handles: Vec<_> = items
             .chunks(chunk)
-            .map(|part| scope.spawn(move || part.iter().map(work_ref).collect::<Vec<R>>()))
+            .map(|part| {
+                scope.spawn(move || {
+                    set_current_thread_priority(priority);
+                    part.iter().map(work_ref).collect::<Vec<R>>()
+                })
+            })
             .collect();
         handles
             .into_iter()
@@ -209,7 +232,7 @@ pub fn read_folder(
     let changed: Vec<usize> = (0..walked.len())
         .filter(|position| known.get(*position).is_some_and(Option::is_none))
         .collect();
-    let changed_hashes = in_parallel(&changed, |position| {
+    let changed_hashes = in_parallel(&changed, access.load, |position| {
         let hash = walked
             .get(*position)
             .and_then(|file| hash_path(&folder.join(&file.relative)).ok());
@@ -244,7 +267,7 @@ pub fn read_folder(
         tax_ids: &access.own.tax_ids,
     };
     let aliases = SenderAliases::default();
-    let extracted = in_parallel(&unknown, |(position, _)| {
+    let extracted = in_parallel(&unknown, access.load, |(position, _)| {
         let text = walked.get(*position).and_then(|file| {
             access
                 .text_chain
@@ -256,9 +279,9 @@ pub fn read_folder(
         text
     });
     for ((position, hash), text) in unknown.into_iter().zip(extracted) {
-        let Some(file) = walked.get(position) else {
+        if walked.get(position).is_none() {
             continue;
-        };
+        }
         let detected = text.as_deref().map(|body| {
             detect_fields(
                 body,
@@ -270,10 +293,7 @@ pub fn read_folder(
             )
         });
         let fields = DocumentFields {
-            date: detected
-                .as_ref()
-                .and_then(|fields| fields.date)
-                .or_else(|| Some(modified_date(file.stamp.mtime))),
+            date: detected.as_ref().and_then(|fields| fields.date),
             sender: detected.as_ref().and_then(|fields| fields.sender.clone()),
             kind: detected.and_then(|fields| fields.kind),
             ..DocumentFields::default()
@@ -287,9 +307,14 @@ pub fn read_folder(
     let mut photos = 0;
     let mut without_text = 0;
     for (file, known_record) in walked.into_iter().zip(known) {
-        let Some(record) = known_record else {
+        let Some(mut record) = known_record else {
             continue;
         };
+        record.fields.date = record
+            .fields
+            .date
+            .or_else(|| date_in_file_name(&file.relative))
+            .or_else(|| Some(modified_date(file.stamp.mtime)));
         if record.text.is_none() {
             if is_image_file(&file.relative) {
                 photos += 1;
@@ -327,6 +352,35 @@ pub fn read_folder(
     };
     reading.patterns = adoptable_patterns(&kinds, &reading);
     Ok(reading)
+}
+
+/// The order of a folder from what the index already knows of its files.
+/// Files the index does not know are left out: nothing is hashed, opened or
+/// read for text, so this is cheap enough for a settings page.
+pub fn known_structure(access: &ChatAccess, folder: &Path) -> Result<LocationStructure, ReadError> {
+    match fs::metadata(folder) {
+        Ok(metadata) if metadata.is_dir() => {}
+        Ok(_) => return Err(ReadError::NotADirectory),
+        Err(err) => return Err(read_error(folder, &err)),
+    }
+    let mut walked = Vec::new();
+    walk(folder, Path::new(""), &mut walked, &ReadProgress::default())?;
+    let (known, kinds) = unchanged_in_index(access, folder, &walked).map_err(ReadError::Io)?;
+    let files: Vec<PlanFile> = walked
+        .into_iter()
+        .zip(known)
+        .filter_map(|(file, known_record)| {
+            let record = known_record?;
+            Some(PlanFile {
+                relative_path: file.relative,
+                hash: record.hash,
+                fields: record.fields,
+                text: record.text,
+                recorded_at: 0,
+            })
+        })
+        .collect();
+    Ok(location_structure(&files, &kinds.catalog))
 }
 
 fn ai_coverage(access: &ChatAccess, folder: &Path) -> AiCoverage {
@@ -460,4 +514,21 @@ fn duplicates_of(
         })
     })
     .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn in_threads_keeps_the_order_for_any_thread_count() {
+        let items: Vec<usize> = (0..50).collect();
+        for threads in [1, 2, 7] {
+            let doubled = in_threads(&items, threads, ThreadPriority::Utility, |item| {
+                item.saturating_mul(2)
+            });
+            let expected: Vec<usize> = items.iter().map(|item| item.saturating_mul(2)).collect();
+            assert_eq!(doubled, expected, "{threads} threads");
+        }
+    }
 }

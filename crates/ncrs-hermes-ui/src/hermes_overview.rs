@@ -1,14 +1,11 @@
-//! What the Hermes overview says: from the state of the module, the counts,
-//! the AI and the folders, one set of facts the page shows as a status pill,
-//! four tiles and the numbers of the flow picture.
+//! What the Index settings page says about Hermes: from the state of the
+//! module, the counts, the AI and the folders, one set of facts.
 //!
 //! The state only. Nothing here touches the disk or the module; the app
 //! gathers the facts and the page draws them.
 
 use ncrs_index::HermesCounts;
-use ncrs_intake::DEFAULT_PATTERNS;
 
-use crate::filing_pieces::{TargetEdit, TargetEditor};
 use ncrs_filing::filing::{AiStatus, KeyProblem, Phase, ProtectionNote};
 
 /// Where the module stands, as far as the overview tells.
@@ -206,110 +203,12 @@ impl OverviewFacts {
     }
 }
 
-/// The pattern the default target starts with when the config has none: the
-/// first of the built-in ones, which Hermes tries before the poorer ones.
-pub fn built_in_pattern() -> &'static str {
-    DEFAULT_PATTERNS[0]
-}
-
-/// That the write of the default target failed.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PatternNote {
-    WriteFailed(String),
-}
-
-/// What an edit of the default target asks the app to do.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PatternCommit {
-    Unchanged,
-    /// `None` drops the line, which brings back the built-in patterns.
-    Write(Option<String>),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OverviewState {
-    target: TargetEditor,
-    /// The pattern the config has now.
-    configured_pattern: Option<String>,
-    pattern_note: Option<PatternNote>,
-    pattern_writing: bool,
-    ocr_models_present: bool,
-}
-
-impl OverviewState {
-    pub fn new(configured_pattern: Option<&str>, ocr_models_present: bool) -> Self {
-        Self {
-            target: TargetEditor::new(configured_pattern.unwrap_or(built_in_pattern())),
-            configured_pattern: configured_pattern.map(str::to_owned),
-            pattern_note: None,
-            pattern_writing: false,
-            ocr_models_present,
-        }
-    }
-
-    pub fn target(&self) -> &TargetEditor {
-        &self.target
-    }
-
-    pub fn pattern_note(&self) -> Option<&PatternNote> {
-        self.pattern_note.as_ref()
-    }
-
-    pub fn ocr_models_present(&self) -> bool {
-        self.ocr_models_present
-    }
-
-    pub fn set_ocr_models_present(&mut self, present: bool) {
-        self.ocr_models_present = present;
-    }
-
-    /// The field for the name of a folder has the focus, so the letters are
-    /// its and not the page's.
-    pub fn is_editing(&self) -> bool {
-        self.target.own_name.is_some()
-    }
-
-    pub fn edit_target(&mut self, edit: TargetEdit) {
-        self.target.apply(edit);
-        self.pattern_note = None;
-    }
-
-    /// What to do with the target as it stands. A target that cannot file
-    /// anything is not written; the first built-in pattern means "no pattern
-    /// of my own".
-    pub fn commit_pattern(&mut self) -> PatternCommit {
-        if self.pattern_writing || !self.target.is_usable() {
-            return PatternCommit::Unchanged;
-        }
-        let pattern = self.target.pattern();
-        let wanted = (pattern != built_in_pattern()).then_some(pattern);
-        if wanted == self.configured_pattern {
-            return PatternCommit::Unchanged;
-        }
-        self.pattern_writing = true;
-        PatternCommit::Write(wanted)
-    }
-
-    /// The config was written: what it now says is the pattern.
-    pub fn pattern_written(&mut self, configured: Option<&str>) {
-        self.pattern_writing = false;
-        self.configured_pattern = configured.map(str::to_owned);
-        self.pattern_note = None;
-    }
-
-    pub fn pattern_write_failed(&mut self, reason: String) {
-        self.pattern_writing = false;
-        self.pattern_note = Some(PatternNote::WriteFailed(reason));
-    }
-}
-
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use ncrs_index::StatusCounts;
 
     use super::*;
-    use crate::filing_pieces::FolderField;
 
     fn facts(module: ModuleState) -> OverviewFacts {
         OverviewFacts {
@@ -441,79 +340,6 @@ mod tests {
         assert_eq!(
             ModuleState::of(&Phase::PlainFileWarning),
             ModuleState::WaitsForYou
-        );
-    }
-
-    #[test]
-    fn the_default_target_starts_with_the_first_built_in_pattern() {
-        let state = OverviewState::new(None, true);
-        assert_eq!(state.target().pattern(), built_in_pattern());
-        let own = OverviewState::new(Some("{year}/{sender}/"), true);
-        assert_eq!(own.target().pattern(), "{year}/{sender}/");
-    }
-
-    #[test]
-    fn a_changed_target_is_written_once() {
-        let mut state = OverviewState::new(None, true);
-        state.edit_target(TargetEdit::Remove(0));
-        assert_eq!(
-            state.commit_pattern(),
-            PatternCommit::Write(Some("{year}/{sender}/".to_owned()))
-        );
-        assert_eq!(state.commit_pattern(), PatternCommit::Unchanged);
-        state.pattern_written(Some("{year}/{sender}/"));
-        assert_eq!(state.commit_pattern(), PatternCommit::Unchanged);
-        assert_eq!(state.target().pattern(), "{year}/{sender}/");
-    }
-
-    #[test]
-    fn a_target_without_a_folder_is_not_written() {
-        let mut state = OverviewState::new(Some("{year}/"), true);
-        state.edit_target(TargetEdit::Remove(0));
-
-        assert_eq!(state.commit_pattern(), PatternCommit::Unchanged);
-        assert!(!state.target().is_usable());
-    }
-
-    #[test]
-    fn the_first_built_in_pattern_drops_the_own_pattern() {
-        let mut state = OverviewState::new(Some("{year}/{sender}/"), true);
-        state.edit_target(TargetEdit::Remove(0));
-        state.edit_target(TargetEdit::Remove(0));
-        state.edit_target(TargetEdit::AddField(FolderField::Recipient));
-        state.edit_target(TargetEdit::AddField(FolderField::Year));
-        state.edit_target(TargetEdit::AddField(FolderField::Sender));
-
-        assert_eq!(state.commit_pattern(), PatternCommit::Write(None));
-        state.pattern_written(None);
-        assert_eq!(state.target().pattern(), built_in_pattern());
-    }
-
-    #[test]
-    fn a_failed_write_says_why_and_lets_the_user_try_again() {
-        let mut state = OverviewState::new(None, true);
-        state.edit_target(TargetEdit::Remove(0));
-        assert!(matches!(state.commit_pattern(), PatternCommit::Write(_)));
-        state.pattern_write_failed("disk full".to_owned());
-        assert_eq!(
-            state.pattern_note(),
-            Some(&PatternNote::WriteFailed("disk full".to_owned()))
-        );
-        assert!(matches!(state.commit_pattern(), PatternCommit::Write(_)));
-    }
-
-    #[test]
-    fn the_name_field_for_a_folder_has_the_keys_of_the_page_while_it_is_open() {
-        let mut state = OverviewState::new(None, true);
-        assert!(!state.is_editing());
-        state.edit_target(TargetEdit::StartOwnName);
-        assert!(state.is_editing());
-        state.edit_target(TargetEdit::OwnNameTyped("Privat".to_owned()));
-        state.edit_target(TargetEdit::OwnNameSubmit);
-        assert!(!state.is_editing());
-        assert_eq!(
-            state.target().pattern(),
-            "{recipient}/{year}/{sender}/Privat/"
         );
     }
 }

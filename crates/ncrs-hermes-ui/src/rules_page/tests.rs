@@ -35,29 +35,29 @@ fn a_rule_to_select_that_is_not_listed_keeps_the_cursor() {
 #[test]
 fn a_form_opened_from_elsewhere_survives_the_load_and_remembers_where_to_go_back() {
     let mut page = RulesPage::new();
-    page.open_form(RuleForm::new(), Some(HermesPage::Review));
+    page.open_form(RuleForm::new(), Some(HermesPage::Tags));
 
     page.loaded(RulesLoad::default());
 
     assert!(page.form().is_some());
-    assert_eq!(page.saved(rule_id(1)), Some(HermesPage::Review));
+    assert_eq!(page.saved(rule_id(1)), Some(HermesPage::Tags));
     assert_eq!(page.saved(rule_id(1)), None);
 }
 
 #[test]
 fn cancelling_a_form_opened_from_elsewhere_names_the_page_to_go_back_to() {
     let mut page = page();
-    page.open_form(RuleForm::new(), Some(HermesPage::RuleSuggestions));
+    page.open_form(RuleForm::new(), Some(HermesPage::SavedQueries));
 
     assert!(page.cancel_form());
 
-    assert_eq!(page.take_return_to(), Some(HermesPage::RuleSuggestions));
+    assert_eq!(page.take_return_to(), Some(HermesPage::SavedQueries));
 }
 
 #[test]
 fn a_form_of_the_page_itself_goes_back_nowhere() {
     let mut page = page();
-    page.open_form(RuleForm::new(), Some(HermesPage::Review));
+    page.open_form(RuleForm::new(), Some(HermesPage::Tags));
     assert!(page.cancel_form());
     page.take_return_to();
 

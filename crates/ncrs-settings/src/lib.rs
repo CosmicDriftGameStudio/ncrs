@@ -4,9 +4,13 @@
 pub mod action;
 pub mod ai_model;
 pub mod ctx;
+pub mod dialogs;
+pub mod facts;
+pub mod folders;
 pub mod key_bindings;
 pub mod keys;
 pub mod message;
+pub mod model_removal;
 pub mod ocr_models;
 pub mod open_vsx;
 pub mod settings;

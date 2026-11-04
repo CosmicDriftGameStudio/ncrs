@@ -13,6 +13,8 @@ mod update;
 mod view;
 
 mod decide;
+mod everywhere;
+mod follow_up;
 mod greeting;
 mod learn;
 mod named_folders;
@@ -23,6 +25,7 @@ mod tidy;
 mod trial_end;
 mod understand;
 mod undo;
+mod waiting;
 mod working;
 
 pub use action::Action;
