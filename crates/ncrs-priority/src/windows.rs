@@ -16,9 +16,10 @@ pub fn set(priority: ThreadPriority) {
 
 #[allow(unsafe_code)]
 fn set_level(level: i32) {
-    // SAFETY: `GetCurrentThread` returns a pseudo handle for the calling
-    // thread that needs no closing, and `SetThreadPriority` only changes that
-    // thread; a refusal is reported by its return value, which is ignored on
-    // purpose.
-    let _refused = unsafe { SetThreadPriority(GetCurrentThread(), level) };
+    // SAFETY: `GetCurrentThread` returns a pseudo handle for the calling thread
+    // that needs no closing.
+    let thread = unsafe { GetCurrentThread() };
+    // SAFETY: `SetThreadPriority` only changes that thread; a refusal is reported
+    // by its return value, which is ignored on purpose.
+    let _refused = unsafe { SetThreadPriority(thread, level) };
 }

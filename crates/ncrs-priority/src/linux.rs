@@ -17,13 +17,11 @@ pub fn set(priority: ThreadPriority) {
 
 #[allow(unsafe_code)]
 fn set_nice(nice: libc::c_int) {
-    // SAFETY: `gettid` takes no arguments and cannot fail. `setpriority` with
-    // PRIO_PROCESS and a thread id changes only that thread's nice value on
-    // Linux; it takes no pointers, and a refusal is reported by its return
-    // value, which is ignored on purpose.
-    let _refused = unsafe {
-        let thread = libc::gettid();
-        let who = libc::id_t::try_from(thread).unwrap_or(0);
-        libc::setpriority(libc::PRIO_PROCESS, who, nice)
-    };
+    // SAFETY: `gettid` takes no arguments and cannot fail.
+    let thread = unsafe { libc::gettid() };
+    let who = libc::id_t::try_from(thread).unwrap_or(0);
+    // SAFETY: `setpriority` with PRIO_PROCESS and a thread id changes only that
+    // thread's nice value on Linux; it takes no pointers, and a refusal is
+    // reported by its return value, which is ignored on purpose.
+    let _refused = unsafe { libc::setpriority(libc::PRIO_PROCESS, who, nice) };
 }
