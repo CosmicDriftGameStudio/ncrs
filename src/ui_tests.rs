@@ -3968,7 +3968,9 @@ mod title_bar {
             (Language::English, "hermes_quick_fix_en"),
             (Language::German, "hermes_quick_fix_de"),
         ] {
-            let app = App::with_hermes_quick_fix_sample().in_language(language);
+            let app = App::with_hermes_quick_fix_sample()
+                .unwrap()
+                .in_language(language);
             let matches = simulator(&app)
                 .snapshot(&iced::Theme::Dark)
                 .unwrap()
@@ -5096,52 +5098,53 @@ mod hit_list_snapshots {
     use super::*;
     use crate::ui_tests::simulator;
 
-    fn matches_snapshot(app: &App, name: &str) {
+    type TestResult = Result<(), Box<dyn std::error::Error>>;
+
+    fn matches_snapshot(app: &App, name: &str) -> TestResult {
         let matches = simulator(app)
-            .snapshot(&iced::Theme::Dark)
-            .unwrap()
-            .matches_image(format!("tests/snapshots/{name}.png"))
-            .expect("snapshot comparison");
-        assert!(
-            matches,
-            "the view does not match tests/snapshots/{name}.png"
-        );
+            .snapshot(&iced::Theme::Dark)?
+            .matches_image(format!("tests/snapshots/{name}.png"))?;
+        if matches {
+            Ok(())
+        } else {
+            Err(format!("the view does not match tests/snapshots/{name}.png").into())
+        }
     }
 
-    fn both_languages(build: fn() -> App, name: &str) {
+    fn both_languages(build: fn() -> App, name: &str) -> TestResult {
         matches_snapshot(
             &build().in_language(Language::English),
             &format!("{name}_en"),
-        );
+        )?;
         matches_snapshot(
             &build().in_language(Language::German),
             &format!("{name}_de"),
-        );
+        )
     }
 
     #[test]
-    fn the_search_with_hit_buttons_matches_its_snapshots() {
-        both_languages(App::with_fixed_search_hits, "search_hit_buttons");
+    fn the_search_with_hit_buttons_matches_its_snapshots() -> TestResult {
+        both_languages(App::with_fixed_search_hits, "search_hit_buttons")
     }
 
     #[test]
-    fn the_hit_list_matches_its_snapshots() {
-        both_languages(App::with_fixed_hit_list, "hit_list");
+    fn the_hit_list_matches_its_snapshots() -> TestResult {
+        both_languages(App::with_fixed_hit_list, "hit_list")
     }
 
     #[test]
-    fn the_hit_list_context_menu_matches_its_snapshots() {
-        both_languages(App::with_fixed_hit_list_menu, "hit_list_context_menu");
+    fn the_hit_list_context_menu_matches_its_snapshots() -> TestResult {
+        both_languages(App::with_fixed_hit_list_menu, "hit_list_context_menu")
     }
 
     #[test]
-    fn the_search_context_menu_matches_its_snapshots() {
-        both_languages(App::with_fixed_search_hits_menu, "search_context_menu");
+    fn the_search_context_menu_matches_its_snapshots() -> TestResult {
+        both_languages(App::with_fixed_search_hits_menu, "search_context_menu")
     }
 
     #[test]
-    fn the_pack_prompt_of_a_hit_list_matches_its_snapshots() {
-        both_languages(App::with_fixed_hit_list_pack, "hit_list_pack");
+    fn the_pack_prompt_of_a_hit_list_matches_its_snapshots() -> TestResult {
+        both_languages(App::with_fixed_hit_list_pack, "hit_list_pack")
     }
 }
 
@@ -5164,7 +5167,7 @@ mod quick_fix_menu_actions {
 
     #[test]
     fn create_rule_in_the_quick_fix_opens_the_rule_form_with_the_document_pattern() {
-        let mut item = App::waiting_document_for_test();
+        let mut item = App::waiting_document_for_test().unwrap();
         item.fields.tags = std::collections::BTreeSet::from(["tax".to_owned()]);
         let mut app = App::with_quick_fix_menu(item);
         let _ = app.update(Message::QuickFix(QuickFixMessage::Hover(2)));
@@ -5186,7 +5189,7 @@ mod quick_fix_menu_actions {
 
     #[test]
     fn set_fields_in_the_quick_fix_opens_the_chat() {
-        let mut app = App::with_quick_fix_menu(App::waiting_document_for_test());
+        let mut app = App::with_quick_fix_menu(App::waiting_document_for_test().unwrap());
         let _ = app.update(Message::QuickFix(QuickFixMessage::Hover(1)));
 
         let _ = app.update(Message::QuickFix(QuickFixMessage::Activate));

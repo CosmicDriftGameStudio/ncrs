@@ -117,18 +117,18 @@ pub fn intent_json(intent: &ChatIntent) -> Option<String> {
                 "\"intent\":\"tidy_folder\",\"source\":{}",
                 json_string(source)
             ));
-            if let Some(target) = target {
-                parts.push(format!("\"target\":{}", json_string(target)));
+            if let Some(folder) = target {
+                parts.push(format!("\"target\":{}", json_string(folder)));
             }
-            if let Some(schedule) = schedule {
-                let word = match schedule {
+            if let Some(when) = schedule {
+                let word = match when {
                     Schedule::Once => "once",
                     Schedule::Always => "always",
                 };
                 parts.push(format!("\"schedule\":\"{word}\""));
             }
-            if let Some(transfer) = transfer {
-                let word = match transfer {
+            if let Some(how) = transfer {
+                let word = match how {
                     Transfer::Copy => "copy",
                     Transfer::Move => "move",
                 };
@@ -145,11 +145,11 @@ pub fn intent_json(intent: &ChatIntent) -> Option<String> {
                 "\"intent\":\"change_structure\",\"area\":{}",
                 json_string(area)
             ));
-            if let Some(scope) = scope {
-                parts.push(format!("\"scope\":{}", json_string(scope)));
+            if let Some(within) = scope {
+                parts.push(format!("\"scope\":{}", json_string(within)));
             }
-            if let Some(order) = order {
-                parts.push(format!("\"order\":\"{}\"", order.word()));
+            if let Some(sorting) = order {
+                parts.push(format!("\"order\":\"{}\"", sorting.word()));
             }
             if let Some(spec) = name {
                 let blocks: Vec<String> = spec

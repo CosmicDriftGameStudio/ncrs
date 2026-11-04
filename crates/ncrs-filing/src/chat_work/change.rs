@@ -475,7 +475,7 @@ fn order_preview(
         .take(chosen.year_at)
         .take_while(|level| matches!(level, Level::Literal(_)))
         .filter_map(|level| match level {
-            Level::Literal(name) => Some(name.as_str()),
+            Level::Literal(literal) => Some(literal.as_str()),
             _ => None,
         });
     let area: PathBuf = std::iter::once(chosen.area.folder.as_str())

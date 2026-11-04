@@ -461,7 +461,7 @@ fn the_hermes_page_matches_its_snapshots_empty() -> TestResult {
 
 #[tokio::test]
 async fn zeigen_on_the_unreadable_files_opens_the_inspection_page() -> TestResult {
-    let app = page(
+    let mut app = page(
         SettingsFeature::Index,
         filled_config(),
         Some(loaded_areas()),
@@ -471,7 +471,6 @@ async fn zeigen_on_the_unreadable_files_opens_the_inspection_page() -> TestResul
     let messages: Vec<Message> = simulator.into_messages().collect();
     assert_eq!(messages, [settings(SettingsMessage::OpenFilingStatus)]);
 
-    let mut app = app;
     drop(app.update(settings(SettingsMessage::OpenFilingStatus)));
     assert!(app.inspection_page_is_open_for_test());
     Ok(())

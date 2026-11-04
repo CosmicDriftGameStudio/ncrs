@@ -239,8 +239,8 @@ fn a_change_may_name_the_files_instead_of_the_order() {
 
 #[test]
 fn a_change_with_neither_order_nor_name_is_refused() {
-    assert!(parse(r#"{"intent":"change_structure","area":"Bank"}"#).is_err());
-    assert!(parse(r#"{"intent":"change_structure","area":"Bank","name":[]}"#).is_err());
+    parse(r#"{"intent":"change_structure","area":"Bank"}"#).unwrap_err();
+    parse(r#"{"intent":"change_structure","area":"Bank","name":[]}"#).unwrap_err();
 }
 
 #[test]

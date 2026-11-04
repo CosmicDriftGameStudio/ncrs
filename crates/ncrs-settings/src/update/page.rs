@@ -128,7 +128,7 @@ pub fn update(
             actions.push(Action::Protection(position));
             Task::none()
         }
-        message @ (SettingsMessage::AddFolder(_)
+        forwarded @ (SettingsMessage::AddFolder(_)
         | SettingsMessage::FolderPicked { .. }
         | SettingsMessage::FolderGranted { .. }
         | SettingsMessage::RemoveFolder(_)
@@ -149,7 +149,7 @@ pub fn update(
         | SettingsMessage::CancelRemoveModel
         | SettingsMessage::ConfirmRemoveModel
         | SettingsMessage::ModelRemoved { .. }) => {
-            documents::update(settings, message, ctx, actions)
+            documents::update(settings, forwarded, ctx, actions)
         }
         SettingsMessage::Change(change) => write_setting(settings, change, ctx),
         SettingsMessage::Written { change, result } => {
@@ -178,7 +178,7 @@ fn leave_page(
 }
 
 /// Runs `edit` on the open tab and writes the change it asks for.
-pub(super) fn in_settings(
+pub(in crate::update) fn in_settings(
     settings: &mut Settings,
     ctx: &Ctx<'_>,
     edit: impl FnOnce(&mut SettingsState) -> Option<SettingChange>,

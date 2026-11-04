@@ -33,7 +33,6 @@ impl FilingSetup {
     pub fn new(configured: &[FilingLocation]) -> Self {
         Self {
             chosen: configured.to_vec(),
-            ..Self::default()
         }
     }
 

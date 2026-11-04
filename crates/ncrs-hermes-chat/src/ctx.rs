@@ -10,7 +10,7 @@ use ncrs_i18n::Language;
 /// Whether the filing is up, so the chat has something to work with.
 #[derive(Debug, Clone)]
 pub enum Availability {
-    Ready(ChatAccess),
+    Ready(Box<ChatAccess>),
     Starting,
     /// The module tried to start and stopped; the module's reason.
     Failed(String),

@@ -21,8 +21,11 @@ impl App {
         }
         if let HermesChatMessage::FolderPicked(Some(folder)) = &message {
             if self.sandbox.grants_dir.is_some() {
-                return self.grant_chosen_folder(folder, |folder, result| {
-                    Message::HermesChat(HermesChatMessage::FolderGranted { folder, result })
+                return self.grant_chosen_folder(folder, |granted, result| {
+                    Message::HermesChat(HermesChatMessage::FolderGranted {
+                        folder: granted,
+                        result,
+                    })
                 });
             }
         }
@@ -111,7 +114,7 @@ impl App {
             }
             None => ncrs_hermes_chat::Availability::Off,
             Some(module) => match module.chat_access(Arc::clone(&self.trash)) {
-                Some(access) => ncrs_hermes_chat::Availability::Ready(access),
+                Some(access) => ncrs_hermes_chat::Availability::Ready(Box::new(access)),
                 None if self.hermes.is_restarting() || module.is_starting() => {
                     ncrs_hermes_chat::Availability::Starting
                 }

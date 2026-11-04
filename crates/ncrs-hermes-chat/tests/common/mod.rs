@@ -98,7 +98,7 @@ impl Talk {
         let below = |names: &[&str]| names.iter().map(|name| root.join(name)).collect();
         let ctx = Ctx {
             lang: LANG,
-            availability: Availability::Ready(access.clone()),
+            availability: Availability::Ready(Box::new(access.clone())),
             home: root.join("home"),
             targets: below(targets),
             favourites: Vec::new(),
@@ -132,7 +132,7 @@ impl Talk {
             self.path("archive"),
         );
         self.access = self.access.with_review(Some(review));
-        self.ctx.availability = Availability::Ready(self.access.clone());
+        self.ctx.availability = Availability::Ready(Box::new(self.access.clone()));
         self
     }
 

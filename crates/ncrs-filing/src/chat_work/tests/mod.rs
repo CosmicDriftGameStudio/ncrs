@@ -195,8 +195,7 @@ fn read_date_of(setup: &Setup, name: &str) -> Option<NaiveDate> {
     let read = setup.read(&setup.dir.path().join("in")).unwrap();
     read.files
         .iter()
-        .find(|file| file.relative_path == Path::new(name))
-        .unwrap()
+        .find(|file| file.relative_path == Path::new(name))?
         .fields
         .date
 }

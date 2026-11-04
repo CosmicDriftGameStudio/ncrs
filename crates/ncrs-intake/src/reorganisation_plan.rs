@@ -86,7 +86,7 @@ mod tests {
 
     /// Plans and stores the reorganisation of the location at `root`, as the chat's
     /// reading does, so the tests cover the whole planning.
-    pub(super) fn plan_location(
+    pub(in crate::reorganisation_plan) fn plan_location(
         index: &mut Index,
         root: &Path,
         language: KindLanguage,

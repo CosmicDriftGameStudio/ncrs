@@ -33,15 +33,15 @@ pub fn parse_chat_reply(raw: &str, turn: &ChatTurn) -> Result<ChatIntent, AiErro
         }),
         "change_structure" => {
             let order = reply.get_string("order").and_then(|word| order_of(word));
-            let name = name_spec(&reply);
-            if order.is_none() && name.is_none() {
+            let naming = name_spec(&reply);
+            if order.is_none() && naming.is_none() {
                 return Err(AiError::BadReply("no order and no name"));
             }
             Ok(ChatIntent::ChangeStructure {
                 area: required_text(&reply, "area")?,
                 scope: text(&reply, "scope"),
                 order,
-                name,
+                name: naming,
             })
         }
         "undo" => Ok(ChatIntent::Undo),

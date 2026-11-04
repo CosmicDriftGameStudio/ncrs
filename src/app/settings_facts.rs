@@ -67,7 +67,7 @@ impl App {
             return Task::none();
         }
         let access = match availability {
-            ncrs_hermes_chat::Availability::Ready(access) => Some(access),
+            ncrs_hermes_chat::Availability::Ready(access) => Some(*access),
             ncrs_hermes_chat::Availability::Starting => return Task::none(),
             ncrs_hermes_chat::Availability::Off | ncrs_hermes_chat::Availability::Failed(_) => None,
         };

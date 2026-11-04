@@ -279,9 +279,9 @@ pub fn read_folder(
         text
     });
     for ((position, hash), text) in unknown.into_iter().zip(extracted) {
-        let Some(file) = walked.get(position) else {
+        if walked.get(position).is_none() {
             continue;
-        };
+        }
         let detected = text.as_deref().map(|body| {
             detect_fields(
                 body,
@@ -369,8 +369,8 @@ pub fn known_structure(access: &ChatAccess, folder: &Path) -> Result<LocationStr
     let files: Vec<PlanFile> = walked
         .into_iter()
         .zip(known)
-        .filter_map(|(file, record)| {
-            let record = record?;
+        .filter_map(|(file, known_record)| {
+            let record = known_record?;
             Some(PlanFile {
                 relative_path: file.relative,
                 hash: record.hash,

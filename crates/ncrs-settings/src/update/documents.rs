@@ -168,11 +168,11 @@ fn confirm_removal(settings: &mut Settings, ctx: &Ctx<'_>) -> Task<Message> {
     else {
         return Task::none();
     };
-    let dir = match kind {
+    let configured_dir = match kind {
         ModelKind::Ocr => ctx.ocr_models_dir.clone(),
         ModelKind::Ai => ctx.ai_models_dir.clone(),
     };
-    let Some(dir) = dir else {
+    let Some(dir) = configured_dir else {
         return Task::none();
     };
     Task::perform(

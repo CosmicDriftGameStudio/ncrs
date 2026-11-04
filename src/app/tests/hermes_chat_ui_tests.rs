@@ -47,7 +47,7 @@ pub(in crate::app::tests) fn ready(lang: Language) -> Ctx {
     );
     Ctx {
         lang,
-        availability: Availability::Ready(access),
+        availability: Availability::Ready(Box::new(access)),
         home: PathBuf::from("/home/test"),
         targets: vec![PathBuf::from("/home/test/Documents/Archive")],
         sources: vec![PathBuf::from("/home/test/Downloads")],

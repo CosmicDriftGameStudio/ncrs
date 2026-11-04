@@ -388,10 +388,10 @@ impl App {
 
     /// The Hermes column sample with the quick-fix menu open on its inquiry:
     /// one file whose sender was not read and whose suggestion is known.
-    pub fn with_hermes_quick_fix_sample() -> Self {
+    pub fn with_hermes_quick_fix_sample() -> Result<Self, Box<dyn std::error::Error>> {
         let mut app = Self::with_hermes_column_sample();
         let path = app.panels.right.path.join("2025-03 receipt market.pdf");
-        let mut item = waiting_document();
+        let mut item = waiting_document()?;
         item.path = path;
         item.fields.sender = None;
         item.fields.kind = Some("receipt".to_owned());
@@ -409,11 +409,11 @@ impl App {
         let mut menu = QuickFix::new(anchor, app.window_size);
         menu.loaded(vec![item]);
         app.hermes.quick_fix = Some(menu);
-        app
+        Ok(app)
     }
 
     /// A document waiting for the user, to put into a quick-fix menu.
-    pub fn waiting_document_for_test() -> ReviewItem {
+    pub fn waiting_document_for_test() -> Result<ReviewItem, Box<dyn std::error::Error>> {
         waiting_document()
     }
 
@@ -658,25 +658,21 @@ impl App {
 
 /// A document waiting for the user, as a rule would file it; its ids come from a real index, since
 /// only the index hands them out.
-fn waiting_document() -> ReviewItem {
+fn waiting_document() -> Result<ReviewItem, Box<dyn std::error::Error>> {
     use chrono::{TimeZone as _, Utc};
     use ncrs_index::{ContentHash, DocumentSource, Index, NewDocument, ReviewReason};
 
-    let dir = tempfile::TempDir::new().unwrap();
-    let mut index = Index::create_plain(&dir.path().join("index.db")).unwrap();
-    let document_id = index
-        .insert_document(&NewDocument {
-            hash: ContentHash([1; 32]),
-            path: dir.path().join("scan-1.pdf"),
-            source: DocumentSource::Inbox,
-            received_at: Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap(),
-            stamp: None,
-        })
-        .unwrap();
-    let entry = index
-        .add_review(document_id, ReviewReason::NoMatchingRule)
-        .unwrap();
-    ReviewItem {
+    let dir = tempfile::TempDir::new()?;
+    let mut index = Index::create_plain(&dir.path().join("index.db"))?;
+    let document_id = index.insert_document(&NewDocument {
+        hash: ContentHash([1; 32]),
+        path: dir.path().join("scan-1.pdf"),
+        source: DocumentSource::Inbox,
+        received_at: Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap(),
+        stamp: None,
+    })?;
+    let entry = index.add_review(document_id, ReviewReason::NoMatchingRule)?;
+    Ok(ReviewItem {
         entry,
         document_id,
         path: PathBuf::from("inbox/scan-1.pdf"),
@@ -692,5 +688,5 @@ fn waiting_document() -> ReviewItem {
         origins: ncrs_index::FieldOrigins::default(),
         passages: Vec::new(),
         placement: None,
-    }
+    })
 }

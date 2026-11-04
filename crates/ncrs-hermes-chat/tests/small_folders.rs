@@ -443,7 +443,7 @@ mod tests {
 
     fn ready(talk: &mut Talk) {
         let access = talk.access.clone();
-        talk.ctx.availability = Availability::Ready(access);
+        talk.ctx.availability = Availability::Ready(Box::new(access));
         talk.send(Message::HermesReady);
     }
 
@@ -465,7 +465,7 @@ mod tests {
         talk.open();
         talk.send(Message::Close);
         let access = talk.access.clone();
-        talk.ctx.availability = Availability::Ready(access);
+        talk.ctx.availability = Availability::Ready(Box::new(access));
         talk.open();
         assert_eq!(talk.last_texts(), greeting());
     }
@@ -529,7 +529,7 @@ mod tests {
             Some(say(Msg::HermesChatStartingWait, &[]).as_str())
         );
         let access = talk.access.clone();
-        talk.ctx.availability = Availability::Ready(access);
+        talk.ctx.availability = Availability::Ready(Box::new(access));
         talk.model.push_reply(Ok(r#"{"intent":"other"}"#));
         talk.send(Message::HermesReady);
         assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatFallback, &[])]);
