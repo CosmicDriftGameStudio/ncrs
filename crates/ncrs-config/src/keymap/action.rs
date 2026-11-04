@@ -271,7 +271,7 @@ impl KeyAction {
             Self::HermesQuickFix
                 | Self::HermesHandToInbox
                 | Self::HermesProcessAgain
-                    | Self::HermesSetInbox
+                | Self::HermesSetInbox
                 | Self::HermesSetFilingLocation
                 | Self::HermesSetArchive
                 | Self::HermesExclude

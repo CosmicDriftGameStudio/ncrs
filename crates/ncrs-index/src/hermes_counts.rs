@@ -225,7 +225,10 @@ mod tests {
         index.set_document_text(inbox, "Bill").unwrap();
         index.set_ai_asked(inbox).unwrap();
         assert_eq!(index.archive_documents_understood().unwrap(), 1);
-        assert_eq!(index.hermes_counts().unwrap().archive_documents_with_text, 2);
+        assert_eq!(
+            index.hermes_counts().unwrap().archive_documents_with_text,
+            2
+        );
     }
 
     #[test]

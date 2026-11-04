@@ -24,8 +24,8 @@ use crate::action::{Action, ProtectionStep};
 use crate::ctx::Ctx;
 use crate::hermes_column::FolderRole;
 use crate::message::{
-    HermesColumnMessage, HermesOverviewMessage, HermesPage, Message, QuickFixMessage,
-    RulesMessage, SavedQueriesMessage, TagsMessage,
+    HermesColumnMessage, HermesOverviewMessage, HermesPage, Message, QuickFixMessage, RulesMessage,
+    SavedQueriesMessage, TagsMessage,
 };
 use crate::state::Hermes;
 use ncrs_config::config::Filing;

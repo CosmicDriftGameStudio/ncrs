@@ -406,8 +406,7 @@ mod tests {
             );
             let same_word = matches!(
                 name,
-                FuturamaName::GroupHermes
-                    | FuturamaName::ActionFilingSetup
+                FuturamaName::GroupHermes | FuturamaName::ActionFilingSetup
             );
             assert_eq!(en == de, same_word, "{name:?}: en {en:?}, de {de:?}");
         }
