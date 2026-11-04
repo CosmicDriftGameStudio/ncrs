@@ -385,10 +385,17 @@ jobs:
         shell: bash
         run: echo "CARGO_TARGET_DIR=D:/t" >> "$GITHUB_ENV"
 
-      # Only main saves.
+      # Only main saves. rust-cache ignores CARGO_TARGET_DIR: without
+      # `workspaces` it cleaned and saved the empty target/ of the checkout and
+      # kept only the cargo registry (153 MB), so the Windows build compiled
+      # every dependency on every run. The target folder is given relative to
+      # the checkout (D:\a\ncrs\ncrs -> D:\t). The Windows shared key has a
+      # suffix so the cache starts fresh: the old key matched, so it was never
+      # saved again.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
-          shared-key: target-${{ matrix.target }}
+          shared-key: target-${{ matrix.target }}${{ matrix.target == 'x86_64-pc-windows-msvc' && '-short-folder' || '' }}
+          workspaces: ${{ matrix.target == 'x86_64-pc-windows-msvc' && '. -> ../../../t' || '.' }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       # The dangling llama.cpp links of the tests job, here from the cache.
