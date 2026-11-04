@@ -54,8 +54,6 @@ pub struct SettingsState {
     /// Whether the folder of the text recognition models has files; looked up
     /// when the tab opens and after a download, not on every frame.
     pub ocr_models_present: bool,
-    /// The system reads scans itself (macOS), so there is nothing to download.
-    pub text_recognition_built_in: bool,
     /// The config as read when the tab opened or written since: the values
     /// as the file spells them, which the app keeps only resolved. The error
     /// when it does not load; then nothing can be written.
@@ -68,16 +66,16 @@ pub struct SettingsState {
     pub provider: Option<AiProviderName>,
     /// The macOS App Store build, which may only start apps.
     pub sandboxed: bool,
-    /// The user opened the folded rows of the page.
-    pub advanced_open: bool,
     /// The read folder whose dialog is open.
     pub folder_dialog: Option<PathBuf>,
     /// The model the user is asked about removing.
     pub model_to_remove: Option<ModelKind>,
     /// The Order section lists every area, not the first three.
     pub all_areas: bool,
-    /// The fields of the own server are shown.
-    pub server_open: bool,
+    /// The History section lists every run it knows, not the last three.
+    pub all_runs: bool,
+    /// The dialog of the own server is open.
+    pub server_dialog: bool,
     /// Why the last change of the folder lists was refused, worded.
     pub folder_note: Option<String>,
     /// What the app read for the Index and Hermes pages; `None` until it did.
@@ -114,17 +112,16 @@ impl SettingsState {
             marked_row: None,
             changed: 0,
             ocr_models_present,
-            text_recognition_built_in: false,
             file,
             drafts: HashMap::new(),
             problems: HashMap::new(),
             provider: None,
             sandboxed,
-            advanced_open: false,
             folder_dialog: None,
             model_to_remove: None,
             all_areas: false,
-            server_open: false,
+            all_runs: false,
+            server_dialog: false,
             folder_note: None,
             loaded: None,
             facts_requested: false,
@@ -134,10 +131,11 @@ impl SettingsState {
     /// A small dialog of the Index or Hermes page is up; Escape closes it
     /// and not the page.
     pub fn dialog_is_open(&self) -> bool {
-        self.folder_dialog.is_some() || self.model_to_remove.is_some()
+        self.folder_dialog.is_some() || self.model_to_remove.is_some() || self.server_dialog
     }
 
     pub fn close_dialog(&mut self) {
+        self.server_dialog = false;
         self.folder_dialog = None;
         self.model_to_remove = None;
     }

@@ -234,6 +234,30 @@ pub fn execute_with<P: Progress, S: Source>(
     )
 }
 
+/// `execute` for a filing run that copies: the sources stay where they are.
+pub fn execute_copying<P: Progress>(
+    index: &Index,
+    kind: BatchKind,
+    root: &Path,
+    items: &[ExecutionItem],
+    progress: &mut P,
+) -> Result<ExecutionReport, ExecuteError> {
+    let batch = index.begin_named_batch(kind, &root.to_string_lossy(), Transfer::Copy)?;
+    let places = Places {
+        target: root,
+        source: None,
+    };
+    run_batch(
+        index,
+        batch,
+        Transfer::Copy,
+        places,
+        items,
+        progress,
+        &Copy,
+    )
+}
+
 fn run_batch<P: Progress, S: Source>(
     index: &Index,
     batch: BatchId,

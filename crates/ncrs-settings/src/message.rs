@@ -81,8 +81,6 @@ pub enum SettingsMessage {
     /// Opens the tags page of the Ablage.
     ChooseFileListTags,
     Close,
-    /// Folds the technical rows of a page open or shut.
-    ToggleAdvanced,
     Select(SettingsFeature),
     SearchChanged(String),
     Change(SettingChange),
@@ -132,13 +130,16 @@ pub enum SettingsMessage {
     /// The "+" next to the field of an own detail.
     AddOwnDetail(OwnDetail),
     ToggleAllAreas,
-    ToggleServerSetup,
+    ToggleAllRuns,
+    /// Opens the dialog of the own server, or closes it.
+    ServerDialog(bool),
     /// Opens the chat (F2), at the change of this area when one is named.
     OpenChat(Option<AreaFacts>),
     TogglePause,
-    UndoLastRun,
-    /// The last run was put back, or the reason it could not be.
-    LastRunUndone(Result<(), String>),
+    /// Puts the run of this journal batch back.
+    UndoRun(i64),
+    /// A run was put back, or the reason it could not be.
+    RunUndone(Result<(), String>),
     /// The app read the facts the Index and Hermes pages show.
     FactsLoaded(LoadedFacts),
     OpenRules,

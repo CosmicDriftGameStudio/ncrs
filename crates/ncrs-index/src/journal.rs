@@ -428,19 +428,30 @@ impl Index {
 
     /// The latest batch of this kind that was not undone and moved something.
     pub fn last_undoable_batch(&self, kind: BatchKind) -> Result<Option<BatchId>, IndexError> {
-        let found: Option<i64> = self
-            .connection()
-            .query_row(
-                "SELECT id FROM execution_batch b
-                 WHERE kind = ?1 AND undone_at IS NULL
-                     AND EXISTS (SELECT 1 FROM execution_item i
-                                 WHERE i.batch_id = b.id AND i.state = 'moved')
-                 ORDER BY id DESC LIMIT 1",
-                [kind.as_str()],
-                |row| row.get(0),
-            )
-            .optional()?;
-        Ok(found.map(BatchId::new))
+        Ok(self.undoable_batches(kind, 1)?.into_iter().next())
+    }
+
+    /// The latest batches of this kind that were not undone and moved
+    /// something, newest first.
+    pub fn undoable_batches(
+        &self,
+        kind: BatchKind,
+        limit: usize,
+    ) -> Result<Vec<BatchId>, IndexError> {
+        let mut statement = self.connection().prepare(
+            "SELECT id FROM execution_batch b
+             WHERE kind = ?1 AND undone_at IS NULL
+                 AND EXISTS (SELECT 1 FROM execution_item i
+                             WHERE i.batch_id = b.id AND i.state = 'moved')
+             ORDER BY id DESC LIMIT ?2",
+        )?;
+        let found = statement
+            .query_map(
+                params![kind.as_str(), i64::try_from(limit).unwrap_or(i64::MAX)],
+                |row| row.get::<_, i64>(0),
+            )?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(found.into_iter().map(BatchId::new).collect())
     }
 
     pub fn batch_kind(&self, batch: BatchId) -> Result<Option<BatchKind>, IndexError> {

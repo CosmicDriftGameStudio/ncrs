@@ -9650,7 +9650,7 @@
     },
     {
       "key": "settings.index_state_counts",
-      "context": "Row on the Index page. {documents} is how many documents the index holds, {understood} how many of them it has read the text of.",
+      "context": "Row on the Index page. {documents} is how many documents the index holds, {understood} how many of them the AI has read and sorted.",
       "en": "{documents} documents, {understood} understood",
       "de": "{documents} Dokumente, {understood} verstanden"
     },
@@ -9977,6 +9977,78 @@
       "context": "Notice when a model could not be deleted. {reason} is the system's explanation.",
       "en": "The model could not be removed: {reason}",
       "de": "Das Modell konnte nicht entfernt werden: {reason}"
+    },
+    {
+      "key": "settings.index_folder_files",
+      "context": "Description under a folder of the Index page. {path} is where the folder is, {count} how many documents the index holds from it; at least 2.",
+      "en": "{path} · {count} files",
+      "de": "{path} · {count} Dateien"
+    },
+    {
+      "key": "settings.index_folder_one_file",
+      "context": "Description under a folder of the Index page when the index holds exactly one document from it. {path} is where the folder is.",
+      "en": "{path} · 1 file",
+      "de": "{path} · 1 Datei"
+    },
+    {
+      "key": "settings.index_row_encryption",
+      "context": "Label of the row of the Index page that shows whether the index is encrypted. Noun.",
+      "en": "Encryption",
+      "de": "Verschlüsselung"
+    },
+    {
+      "key": "settings.server_dialog_title",
+      "context": "Title of the small dialog opened with Set up on the own server row of the Index page. Noun phrase.",
+      "en": "Own server",
+      "de": "Eigener Server"
+    },
+    {
+      "key": "settings.folder_dialog_transfer",
+      "context": "Question in the read folder dialog: whether the files are copied out of the folder or moved when filed.",
+      "en": "What happens to the files?",
+      "de": "Was geschieht mit den Dateien?"
+    },
+    {
+      "key": "settings.folder_dialog_copy",
+      "context": "Option in the read folder dialog: files are copied and the originals stay in the folder. Verb.",
+      "en": "Copy",
+      "de": "Kopieren"
+    },
+    {
+      "key": "settings.folder_dialog_move",
+      "context": "Option in the read folder dialog: files are moved out of the folder when filed. Verb.",
+      "en": "Move",
+      "de": "Verschieben"
+    },
+    {
+      "key": "settings.hermes_history_today",
+      "context": "Day word in a run line of the History section on the Hermes page, followed by the time: Today 14:02.",
+      "en": "Today",
+      "de": "Heute"
+    },
+    {
+      "key": "settings.hermes_history_yesterday",
+      "context": "Day word in a run line of the History section on the Hermes page, followed by the time: Yesterday 09:30.",
+      "en": "Yesterday",
+      "de": "Gestern"
+    },
+    {
+      "key": "settings.hermes_history_to",
+      "context": "Run line of the History section when the folder the files went to is known. {line} is the line up to the source folder, for example: Today 14:02 · 12 files from Downloads. {to} is the target folder.",
+      "en": "{line} to {to}",
+      "de": "{line} nach {to}"
+    },
+    {
+      "key": "settings.hermes_history_examples",
+      "context": "Description under a run of the History section: some of the folders the files went to. {folders} is a comma separated list of paths.",
+      "en": "e.g. {folders}",
+      "de": "z. B. {folders}"
+    },
+    {
+      "key": "settings.hermes_history_show_all",
+      "context": "Button under the last runs of the History section on the Hermes page: lists all runs that are kept.",
+      "en": "Show all",
+      "de": "Alles zeigen"
     }
   ]
 }

@@ -4,6 +4,7 @@ mod index_page;
 mod page;
 
 use groups::*;
+pub use groups::server_dialog_body;
 use hermes_page::hermes_groups;
 use index_page::index_groups;
 use page::*;
@@ -80,6 +81,8 @@ struct SettingRow<'a> {
     description: Option<String>,
     /// What is wrong with the value, under the description.
     problem: Option<String>,
+    /// A caution under the description, not an error.
+    warning: Option<String>,
     control: Element<'a, Message>,
     /// Rows that show a state or a user's own data are not commands.
     in_command_list: bool,
@@ -89,9 +92,6 @@ struct SettingRow<'a> {
 struct Group<'a> {
     /// A sentence under the title that says what the group is for.
     intro: Option<String>,
-    /// Folded away behind its title until the user opens it or a search finds
-    /// a row in it.
-    advanced: bool,
     title: String,
     rows: Vec<SettingRow<'a>>,
 }
@@ -304,6 +304,7 @@ fn simple_row<'a>(
         config_key: None,
         description: note.map(|msg| lang.text(msg).to_owned()),
         problem: None,
+        warning: None,
         control,
         control_width: None,
         in_command_list: true,

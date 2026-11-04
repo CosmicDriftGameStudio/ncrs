@@ -9,7 +9,7 @@ use ncrs_config::config::ConfigError;
 use ncrs_config::SettingsFeature;
 use ncrs_i18n::fill_template;
 use ncrs_i18n::Msg;
-use ncrs_ui_kit::kit::{self, Tone};
+use ncrs_ui_kit::kit;
 use ncrs_ui_kit::layout::SETTINGS_NAV_WIDTH;
 use ncrs_ui_kit::theme::{self, font_size, size, spacing};
 
@@ -162,6 +162,17 @@ pub fn page<'a>(shown: Option<SettingsFeature>, view: &SettingsView<'a>) -> Elem
             .filter(|setting| whole_feature || row_matches(setting, &query))
             .map(|setting| {
                 let marked = view.state.marked_row.as_deref() == Some(setting.label.as_str());
+                let lines_below: Vec<Element<'a, Message>> = setting
+                    .problem
+                    .iter()
+                    .map(|wrong| kit::error_line(wrong.clone(), palette))
+                    .chain(
+                        setting
+                            .warning
+                            .iter()
+                            .map(|caution| kit::warning_line(caution.clone(), palette)),
+                    )
+                    .collect();
                 let form_row = kit::form_row_with_problem(
                     &setting.label,
                     setting
@@ -169,7 +180,7 @@ pub fn page<'a>(shown: Option<SettingsFeature>, view: &SettingsView<'a>) -> Elem
                         .as_deref()
                         .or(setting.config_key.as_deref()),
                     setting.description.as_deref(),
-                    setting.problem.as_deref(),
+                    lines_below,
                     setting.control,
                     setting.control_width.unwrap_or(size::CONTROL_WIDTH),
                     palette,
@@ -186,25 +197,6 @@ pub fn page<'a>(shown: Option<SettingsFeature>, view: &SettingsView<'a>) -> Elem
                 }
             })
             .collect();
-        if group.advanced {
-            let found_by_search = !query.is_empty() && !rows.is_empty();
-            let expanded = view.state.advanced_open || found_by_search;
-            let toggle = kit::button(
-                &group.title,
-                Some(SettingsMessage::ToggleAdvanced),
-                Tone::Secondary,
-                palette,
-            );
-            body = body.push(container(toggle).padding(Padding {
-                top: spacing::M,
-                ..Padding::ZERO
-            }));
-            if expanded {
-                body = body.push(Column::with_children(rows));
-            }
-            first = false;
-            continue;
-        }
         if rows.is_empty() {
             continue;
         }

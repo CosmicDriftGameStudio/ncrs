@@ -26,6 +26,7 @@ pub fn remove_model_files(kind: ModelKind, dir: &Path) -> Result<(), String> {
 }
 
 #[cfg(test)]
+#[allow(clippy::panic_in_result_fn)]
 mod tests {
     use super::*;
 

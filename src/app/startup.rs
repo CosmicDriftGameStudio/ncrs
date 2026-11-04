@@ -458,6 +458,7 @@ impl App {
             command_palette: None,
             recent_commands: Vec::new(),
             wall_clock: Arc::new(ncrs_pipeline::SystemClock),
+            system_reads_scans: crate::ocr_models::system_reads_scans(),
             config_path: None,
             file_list_tags: FileListTags::default(),
             kinds: Kinds::default(),

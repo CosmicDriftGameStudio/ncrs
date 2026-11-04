@@ -326,7 +326,7 @@ impl App {
         }
 
         if let Some(dialog_element) = self.settings.page.as_ref().and_then(|state| {
-            ncrs_settings::dialogs::open_dialog(state, self.window_size, self.lang, &self.palette)
+            ncrs_settings::dialogs::open_dialog(&self.settings_view(state), self.window_size)
         }) {
             return Stack::with_children([
                 root,

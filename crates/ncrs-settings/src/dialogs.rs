@@ -4,7 +4,7 @@
 
 use iced::widget::{column, row, text};
 use iced::{Element, Size};
-use ncrs_config::config::FilingLocation;
+use ncrs_config::config::{FilingLocation, LocationTransfer};
 use ncrs_i18n::{Language, Msg};
 use ncrs_intake::LocationMode;
 use ncrs_ui_kit::frame::{DialogSize, Frame, KeyHints};
@@ -14,7 +14,7 @@ use ncrs_ui_kit::theme::{font_size, spacing};
 
 use crate::facts::ModelKind;
 use crate::message::SettingsMessage;
-use crate::settings::SettingsState;
+use crate::settings::view::{server_dialog_body, SettingsView};
 
 type Message = SettingsMessage;
 
@@ -50,6 +50,27 @@ pub fn folder_dialog<'a>(
         true,
         palette,
     );
+    let transfer = kit::segmented(
+        &[
+            (
+                lang.text(Msg::SettingsFolderDialogCopy),
+                edit(FilingLocation {
+                    transfer: LocationTransfer::Copy,
+                    ..location.clone()
+                }),
+            ),
+            (
+                lang.text(Msg::SettingsFolderDialogMove),
+                edit(FilingLocation {
+                    transfer: LocationTransfer::Move,
+                    ..location.clone()
+                }),
+            ),
+        ],
+        usize::from(location.transfer == LocationTransfer::Move),
+        true,
+        palette,
+    );
     let images = row![
         kit::checkbox(
             if location.images {
@@ -71,6 +92,8 @@ pub fn folder_dialog<'a>(
     let body = column![
         kit::paragraph(lang.text(Msg::SettingsFolderDialogWhen), palette),
         when,
+        kit::paragraph(lang.text(Msg::SettingsFolderDialogTransfer), palette),
+        transfer,
         images,
     ]
     .spacing(spacing::LINE_GAP);
@@ -145,13 +168,38 @@ pub fn remove_model_dialog<'a>(
     .into_element()
 }
 
+/// The own server: the switch back to the local model, address and model
+/// name. Every entry is written when it is confirmed, so the one button only
+/// closes the dialog.
+pub fn server_dialog<'a>(view: &SettingsView<'a>, window: Size) -> Element<'a, Message> {
+    Frame::new(
+        view.lang.text(Msg::SettingsServerDialogTitle),
+        server_dialog_body(view),
+        SIZE,
+        window,
+        view.lang,
+        view.palette,
+    )
+    .buttons(vec![kit::button(
+        view.lang.text(Msg::DialogDone),
+        Some(SettingsMessage::ServerDialog(false)),
+        Tone::Primary,
+        view.palette,
+    )])
+    .on_close(SettingsMessage::ServerDialog(false))
+    .hints(KeyHints {
+        enter: false,
+        tab: false,
+    })
+    .into_element()
+}
+
 /// The dialog the open page asks for, if any.
-pub fn open_dialog<'a>(
-    state: &SettingsState,
-    window: Size,
-    lang: Language,
-    palette: &Palette,
-) -> Option<Element<'a, Message>> {
+pub fn open_dialog<'a>(view: &SettingsView<'a>, window: Size) -> Option<Element<'a, Message>> {
+    let (state, lang, palette) = (view.state, view.lang, view.palette);
+    if state.server_dialog {
+        return Some(server_dialog(view, window));
+    }
     if let Some(kind) = state.model_to_remove {
         return Some(remove_model_dialog(kind, window, lang, palette));
     }

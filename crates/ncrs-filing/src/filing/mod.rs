@@ -47,7 +47,7 @@ use crate::review_work::ReviewAccess;
 use crate::rules_work::RulesAccess;
 use crate::suggestion_work::SuggestionAccess;
 use crate::tags_work::TagsAccess;
-use ncrs_config::config::{AiSetting, Filing, FilingLocation};
+use ncrs_config::config::{AiSetting, Filing, FilingLocation, LocationTransfer};
 
 /// A recovery key is 13 groups of four characters.
 const GROUP_COUNT: usize = 13;

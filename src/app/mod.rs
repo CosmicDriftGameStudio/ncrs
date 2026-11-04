@@ -368,6 +368,9 @@ pub struct App {
     recent_commands: Vec<KeyAction>,
     /// The time the status page measures how long a worker has been busy by.
     wall_clock: Arc<dyn ncrs_pipeline::Clock>,
+    /// The system brings a recognizer for scans (macOS Vision); the Index page
+    /// lists it then.
+    system_reads_scans: bool,
     /// Where the filing setup writes. `None` when the system names no place.
     config_path: Option<PathBuf>,
     /// Which tags the file panels show after a file name.

@@ -43,7 +43,8 @@ pub enum Action {
         area: Option<AreaFacts>,
     },
     TogglePause,
-    UndoLastRun,
+    /// Puts the run of this journal batch back.
+    UndoRun(i64),
     OpenRules,
     /// The file now says this about `change`.
     Apply {
@@ -56,5 +57,7 @@ pub enum Action {
     KeymapChanged(Arc<Keymap>),
     OpenOverview,
     OcrModelsInstalled,
+    /// The fallback recognizer was deleted from the computer.
+    OcrModelsRemoved,
     RefreshAiModel,
 }

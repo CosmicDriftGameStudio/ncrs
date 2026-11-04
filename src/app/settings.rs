@@ -180,12 +180,18 @@ impl App {
             Ask::TogglePause => {
                 self.update(Message::FilingStatus(FilingStatusMessage::TogglePause))
             }
-            Ask::UndoLastRun => self.undo_last_run(),
+            Ask::UndoRun(batch) => self.undo_run(batch),
             Ask::OpenRules => self.open_rules_from_settings(),
             Ask::OpenOverview => self.open_hermes_overview(),
             Ask::OcrModelsInstalled => {
                 if let Some(overview) = self.hermes.overview.as_mut() {
                     overview.set_ocr_models_present(true);
+                }
+                Task::none()
+            }
+            Ask::OcrModelsRemoved => {
+                if let Some(overview) = self.hermes.overview.as_mut() {
+                    overview.set_ocr_models_present(false);
                 }
                 Task::none()
             }

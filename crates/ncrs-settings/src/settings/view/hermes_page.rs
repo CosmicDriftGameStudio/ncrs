@@ -8,6 +8,7 @@ use super::index_page::{
     add_folder_row, folder_row, listed_locations, remove_folder_button, text_row,
 };
 use super::*;
+use crate::facts::{RunDay, RunFacts};
 use crate::folders::AddAs;
 use crate::message::SettingsMessage;
 use ncrs_config::config::{FilingLocation, LocationTransfer};
@@ -16,18 +17,19 @@ use ncrs_intake::LocationMode;
 /// How many areas the Order section lists before "Show all".
 const AREAS_SHOWN: usize = 3;
 
+/// How many runs the History section lists before "Show all".
+const RUNS_SHOWN: usize = 3;
+
 pub fn hermes_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
     let lang = view.lang;
     let group = |title: Msg, intro: Option<Msg>, rows| Group {
         intro: intro.map(|msg| lang.text(msg).to_owned()),
-        advanced: false,
         title: lang.text(title).to_owned(),
         rows,
     };
     vec![
         Group {
             intro: None,
-            advanced: false,
             title: String::new(),
             rows: vec![simple_row(
                 Msg::SettingsHermesRowOn,
@@ -51,12 +53,7 @@ pub fn hermes_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
             order_rows(view),
         ),
         group(Msg::SettingsHermesSectionHistory, None, history_rows(view)),
-        Group {
-            intro: None,
-            advanced: true,
-            title: lang.text(Msg::SettingsGroupAdvanced).to_owned(),
-            rows: advanced_rows(view),
-        },
+        group(Msg::SettingsGroupAdvanced, None, advanced_rows(view)),
     ]
 }
 
@@ -96,6 +93,7 @@ fn read_folder_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
             folder_row(
                 location,
                 Some(folder_status(location, lang)),
+                None,
                 vec![change, remove_folder_button(location, view)],
                 view,
             )
@@ -200,37 +198,91 @@ fn order_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
     rows
 }
 
-fn history_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
-    let lang = view.lang;
-    let Some(run) = &view.facts.last_run else {
-        return vec![note_row(
-            lang.text(Msg::SettingsHermesHistoryEmpty).to_owned(),
-        )];
+fn run_line(run: &RunFacts, lang: Language) -> String {
+    let day = match &run.day {
+        RunDay::Today => lang.text(Msg::SettingsHermesHistoryToday).to_owned(),
+        RunDay::Yesterday => lang.text(Msg::SettingsHermesHistoryYesterday).to_owned(),
+        RunDay::On(date) => date.clone(),
     };
+    let when = format!("{day} {}", run.time);
     let line = match run.files {
         1 => fill_template(
             lang.text(Msg::SettingsHermesHistoryRunOne),
-            &[("{when}", &run.when), ("{from}", &run.from)],
+            &[("{when}", &when), ("{from}", &run.from)],
         ),
         count => fill_template(
             lang.text(Msg::SettingsHermesHistoryRun),
             &[
-                ("{when}", &run.when),
+                ("{when}", &when),
                 ("{count}", &count.to_string()),
                 ("{from}", &run.from),
             ],
         ),
     };
-    vec![text_row(
-        line,
-        None,
-        kit::button(
-            lang.text(Msg::SettingsHermesHistoryUndo),
-            Some(SettingsMessage::UndoLastRun),
-            Tone::Secondary,
-            view.palette,
-        ),
-    )]
+    if run.to.is_empty() {
+        line
+    } else {
+        fill_template(
+            lang.text(Msg::SettingsHermesHistoryTo),
+            &[("{line}", &line), ("{to}", &run.to)],
+        )
+    }
+}
+
+fn history_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
+    let lang = view.lang;
+    let runs = &view.facts.runs;
+    if runs.is_empty() {
+        return vec![note_row(
+            lang.text(Msg::SettingsHermesHistoryEmpty).to_owned(),
+        )];
+    }
+    let shown = if view.state.all_runs {
+        runs.len()
+    } else {
+        RUNS_SHOWN
+    };
+    let mut rows: Vec<SettingRow<'a>> = runs
+        .iter()
+        .take(shown)
+        .map(|run| {
+            let control: Element<'a, Message> = if run.undoable {
+                kit::button(
+                    lang.text(Msg::SettingsHermesHistoryUndo),
+                    Some(SettingsMessage::UndoRun(run.batch)),
+                    Tone::Secondary,
+                    view.palette,
+                )
+            } else {
+                container("").into()
+            };
+            let examples = (!run.examples.is_empty()).then(|| {
+                fill_template(
+                    lang.text(Msg::SettingsHermesHistoryExamples),
+                    &[("{folders}", &run.examples.join(", "))],
+                )
+            });
+            text_row(run_line(run, lang), examples, control)
+        })
+        .collect();
+    if runs.len() > RUNS_SHOWN {
+        let button = if view.state.all_runs {
+            Msg::SettingsHermesAreasShowFewer
+        } else {
+            Msg::SettingsHermesHistoryShowAll
+        };
+        rows.push(text_row(
+            String::new(),
+            None,
+            kit::button(
+                lang.text(button),
+                Some(SettingsMessage::ToggleAllRuns),
+                Tone::Secondary,
+                view.palette,
+            ),
+        ));
+    }
+    rows
 }
 
 fn advanced_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {

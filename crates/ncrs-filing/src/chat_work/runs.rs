@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use ncrs_fs::transfer::Counting;
-use ncrs_index::{BatchId, BatchKind, ContentHash, JournalState, Transfer};
+use ncrs_index::{BatchId, BatchKind, ContentHash, Index, JournalState, Transfer};
 use ncrs_intake::stays_below;
 
 use super::{ChatAccess, TrashItem, TrashReport, UndoReport};
@@ -46,6 +46,21 @@ pub struct RunSummary {
     pub finished_at: i64,
     pub source_folder: Option<PathBuf>,
 }
+
+/// A run of the list in the settings: the summary, where its files went, and
+/// whether the run may be put back.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecentRun {
+    pub summary: RunSummary,
+    pub target_folder: Option<PathBuf>,
+    /// Folders below the target that received files, as paths below it.
+    pub examples: Vec<PathBuf>,
+    /// The run passes the same checks a filing run does.
+    pub undoable: bool,
+}
+
+/// How many folders a run names as examples.
+const EXAMPLE_FOLDERS: usize = 2;
 
 /// The path with links resolved as far as it exists, so two spellings of the
 /// same folder compare equal even when the folder is not made yet.
@@ -171,24 +186,93 @@ pub fn last_run(access: &ChatAccess) -> Result<Option<RunSummary>, String> {
         else {
             return Ok(None);
         };
-        let Some(info) = index.batch_info(batch).map_err(|err| err.to_string())? else {
-            return Ok(None);
-        };
-        let done: Vec<_> = index
-            .journal_items(batch)
+        Ok(recent_run(index, batch)?.map(|run| run.summary))
+    })
+}
+
+/// The runs that can still be put back, newest first.
+pub fn recent_runs(access: &ChatAccess, limit: usize) -> Result<Vec<RecentRun>, String> {
+    access.with_index(|index| {
+        let mut runs = Vec::new();
+        for batch in index
+            .undoable_batches(BatchKind::Hermes, limit)
             .map_err(|err| err.to_string())?
-            .into_iter()
-            .filter(|item| item.state == JournalState::Moved)
-            .collect();
-        Ok(Some(RunSummary {
+        {
+            runs.extend(recent_run(index, batch)?);
+        }
+        Ok(runs)
+    })
+}
+
+fn recent_run(index: &Index, batch: BatchId) -> Result<Option<RecentRun>, String> {
+    let Some(info) = index.batch_info(batch).map_err(|err| err.to_string())? else {
+        return Ok(None);
+    };
+    let done: Vec<_> = index
+        .journal_items(batch)
+        .map_err(|err| err.to_string())?
+        .into_iter()
+        .filter(|item| item.state == JournalState::Moved)
+        .collect();
+    let target_folder = info.target_root.as_ref().map(|root| root.given.clone());
+    let examples = target_folder
+        .as_deref()
+        .map(|target| example_folders(target, &done))
+        .unwrap_or_default();
+    let undoable = match (&info.source_root, &target_folder) {
+        (Some(source), Some(target)) => {
+            let plan = RunPlan {
+                name: String::new(),
+                transfer: info.transfer,
+                source_root: source.given.clone(),
+                target_root: target.clone(),
+                items: done
+                    .iter()
+                    .map(|item| RunItem {
+                        from: item.from.clone(),
+                        to: item
+                            .to
+                            .strip_prefix(target)
+                            .unwrap_or(&item.to)
+                            .to_path_buf(),
+                        hash: item.hash,
+                    })
+                    .collect(),
+            };
+            refusal(&plan).is_none()
+        }
+        _ => info.transfer != Transfer::Trash,
+    };
+    Ok(Some(RecentRun {
+        summary: RunSummary {
             batch,
             name: info.name.unwrap_or_default(),
             transfer: info.transfer,
             items: done.len(),
             finished_at: info.finished_at.unwrap_or(info.started_at),
             source_folder: common_parent(done.iter().map(|item| item.from.as_path())),
-        }))
-    })
+        },
+        target_folder,
+        examples,
+        undoable,
+    }))
+}
+
+fn example_folders(target: &Path, done: &[ncrs_index::JournalItem]) -> Vec<PathBuf> {
+    let mut folders: Vec<PathBuf> = Vec::new();
+    for folder in done
+        .iter()
+        .filter_map(|item| item.to.strip_prefix(target).ok()?.parent())
+        .filter(|folder| !folder.as_os_str().is_empty())
+    {
+        if folders.len() == EXAMPLE_FOLDERS {
+            break;
+        }
+        if !folders.iter().any(|known| known == folder) {
+            folders.push(folder.to_path_buf());
+        }
+    }
+    folders
 }
 
 pub fn undo(access: &ChatAccess, batch: BatchId) -> Result<UndoReport, String> {

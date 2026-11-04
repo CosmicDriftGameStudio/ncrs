@@ -2,15 +2,19 @@
 //! of the index, the order read per folder, the last run, and the folders
 //! that cannot be reached.
 
-use std::time::{Duration, SystemTime};
+use std::collections::BTreeMap;
+use std::time::SystemTime;
+
+use chrono::{DateTime, Local, TimeZone as _};
 
 use crate::app::*;
 use ncrs_config::config::FilingLocation;
 use ncrs_config::SettingsFeature;
-use ncrs_filing::chat_work::{ChatAccess, ChatResult, ChatWork, RunSummary};
+use ncrs_filing::chat_work::{ChatAccess, ChatResult, ChatWork, RecentRun};
+use ncrs_index::BatchId;
 use ncrs_intake::area_order_plain;
 use ncrs_pipeline::RunnerState;
-use ncrs_settings::facts::{AiState, AreaFacts, DocumentsFacts, LoadedFacts, RunFacts};
+use ncrs_settings::facts::{AiState, AreaFacts, DocumentsFacts, LoadedFacts, RunDay, RunFacts};
 use ncrs_settings::folders::AddAs;
 
 impl App {
@@ -24,12 +28,16 @@ impl App {
         let status = &self.hermes.filing_status;
         DocumentsFacts {
             documents: counts.archive_documents,
-            understood: counts.archive_documents_with_text,
+            understood: loaded
+                .understood
+                .unwrap_or(counts.archive_documents_with_text),
             paused: status.snapshot().state == RunnerState::Paused,
             unreadable: status.errors_newest_first().count(),
             disconnected: loaded.disconnected,
             areas: state.loaded.as_ref().map(|_| loaded.areas),
-            last_run: loaded.last_run,
+            runs: loaded.runs,
+            folder_files: loaded.folder_files,
+            system_reads_scans: self.system_reads_scans,
             rules: usize::try_from(counts.confirmed_rules).unwrap_or(usize::MAX),
             ai: match overview.ai_tile() {
                 crate::hermes_overview::AiTile::Off => AiState::Off,
@@ -68,9 +76,12 @@ impl App {
         };
         state.facts_requested = true;
         let lang = self.lang;
+        let now = self.wall_clock.now();
         Task::perform(
             async move {
-                tokio::task::spawn_blocking(move || read_documents_facts(access, &locations, lang))
+                tokio::task::spawn_blocking(move || {
+                    read_documents_facts(access, &locations, lang, now)
+                })
                     .await
             },
             |joined| Message::Settings(SettingsMessage::FactsLoaded(joined.unwrap_or_default())),
@@ -90,8 +101,8 @@ impl App {
                 result: Ok(()),
             }));
         }
-        self.grant_chosen_folder(&path, move |path, result| {
-            Message::Settings(SettingsMessage::FolderGranted { kind, path, result })
+        self.grant_chosen_folder(&path, move |picked, result| {
+            Message::Settings(SettingsMessage::FolderGranted { kind, path: picked, result })
         })
     }
 
@@ -99,14 +110,14 @@ impl App {
     /// one is named.
     pub(in crate::app) fn open_chat_from_settings(
         &mut self,
-        area: Option<AreaFacts>,
+        to_change: Option<AreaFacts>,
     ) -> Task<Message> {
         let left = self.leave_settings_page();
         let opened = self.update_hermes_chat(HermesChatMessage::Open);
-        let changed = match area {
-            Some(area) => self.update_hermes_chat(HermesChatMessage::ChangeArea {
-                folder: area.read_folder,
-                area: area.name,
+        let changed = match to_change {
+            Some(named) => self.update_hermes_chat(HermesChatMessage::ChangeArea {
+                folder: named.read_folder,
+                area: named.name,
             }),
             None => Task::none(),
         };
@@ -119,53 +130,59 @@ impl App {
         Task::batch([left, opened])
     }
 
-    /// Puts the last run back; the page reads its facts again afterwards.
-    pub(in crate::app) fn undo_last_run(&self) -> Task<Message> {
+    /// Puts the run of `batch` back; the page reads its facts again afterwards.
+    pub(in crate::app) fn undo_run(&self, batch: i64) -> Task<Message> {
         let ncrs_hermes_chat::Availability::Ready(access) = self.chat_availability() else {
             return Task::none();
         };
         Task::perform(
             async move {
-                tokio::task::spawn_blocking(move || undo_last(&access))
+                tokio::task::spawn_blocking(move || undo_batch(&access, batch))
                     .await
                     .unwrap_or_else(|failure| Err(failure.to_string()))
             },
-            |result| Message::Settings(SettingsMessage::LastRunUndone(result)),
+            |result| Message::Settings(SettingsMessage::RunUndone(result)),
         )
     }
 }
 
-fn undo_last(access: &ChatAccess) -> Result<(), String> {
-    let ChatResult::LastRun(last) = access.run(ChatWork::LastRun) else {
-        return Ok(());
-    };
-    let Some(run) = last? else {
-        return Ok(());
-    };
-    match access.run(ChatWork::Undo { batch: run.batch }) {
+fn undo_batch(access: &ChatAccess, batch: i64) -> Result<(), String> {
+    match access.run(ChatWork::Undo {
+        batch: BatchId::from_number(batch),
+    }) {
         ChatResult::Undone(undone) => undone.map(|_report| ()),
         _ => Ok(()),
     }
 }
 
+/// How many runs "Show all" can list.
+const RUNS_LISTED_AT_MOST: usize = 50;
+
 fn read_documents_facts(
-    access: Option<ChatAccess>,
+    chat_access: Option<ChatAccess>,
     locations: &[FilingLocation],
     lang: Language,
+    now: SystemTime,
 ) -> LoadedFacts {
-    let disconnected = locations
+    let disconnected: Vec<PathBuf> = locations
         .iter()
         .filter(|location| std::fs::metadata(&location.path).is_err())
         .map(|location| location.path.clone())
         .collect();
-    let Some(access) = access else {
+    let Some(access) = chat_access else {
         return LoadedFacts {
             disconnected,
             ..LoadedFacts::default()
         };
     };
     let mut areas = Vec::new();
-    for location in locations.iter().filter(|location| !location.is_target) {
+    let mut folder_files = BTreeMap::new();
+    for location in locations {
+        if !disconnected.contains(&location.path) {
+            if let Ok(files) = access.documents_under(&location.path) {
+                folder_files.insert(location.path.clone(), files);
+            }
+        }
         let Ok(structure) = access.known_structure(&location.path) else {
             continue;
         };
@@ -183,34 +200,97 @@ fn read_documents_facts(
                 }),
         );
     }
-    let last_run = match access.run(ChatWork::LastRun) {
-        ChatResult::LastRun(Ok(Some(run))) => Some(run_facts(&run)),
-        _ => None,
-    };
+    let runs = access
+        .recent_runs(RUNS_LISTED_AT_MOST)
+        .unwrap_or_default()
+        .iter()
+        .map(|run| run_facts(run, now))
+        .collect();
     LoadedFacts {
         areas,
-        last_run,
+        runs,
+        folder_files,
+        understood: access.understood_documents().ok(),
         disconnected,
     }
 }
 
-fn run_facts(run: &RunSummary) -> RunFacts {
-    let seconds = u64::try_from(run.finished_at).unwrap_or_default();
+fn folder_name(folder: &Path) -> String {
+    folder
+        .file_name()
+        .unwrap_or(folder.as_os_str())
+        .to_string_lossy()
+        .into_owned()
+}
+
+fn run_facts(run: &RecentRun, now: SystemTime) -> RunFacts {
+    let finished = Local
+        .timestamp_opt(run.summary.finished_at, 0)
+        .single()
+        .unwrap_or_default();
+    let (day, time) = run_day_and_time(finished, DateTime::<Local>::from(now));
     RunFacts {
-        when: ncrs_ui_kit::format::time(Some(
-            SystemTime::UNIX_EPOCH + Duration::from_secs(seconds),
-        )),
-        files: run.items,
+        batch: run.summary.batch.number(),
+        day,
+        time,
+        files: run.summary.items,
         from: run
+            .summary
             .source_folder
             .as_deref()
-            .map(|folder| {
-                folder
-                    .file_name()
-                    .unwrap_or(folder.as_os_str())
-                    .to_string_lossy()
-                    .into_owned()
-            })
+            .map(folder_name)
             .unwrap_or_default(),
+        to: run
+            .target_folder
+            .as_deref()
+            .map(folder_name)
+            .unwrap_or_default(),
+        examples: run
+            .examples
+            .iter()
+            .map(|example| example.to_string_lossy().into_owned())
+            .collect(),
+        undoable: run.undoable,
+    }
+}
+
+/// Today and yesterday by the local calendar; older runs by their date.
+fn run_day_and_time(finished: DateTime<Local>, now: DateTime<Local>) -> (RunDay, String) {
+    let date = finished.date_naive();
+    let today = now.date_naive();
+    let day = if date == today {
+        RunDay::Today
+    } else if today.pred_opt() == Some(date) {
+        RunDay::Yesterday
+    } else {
+        RunDay::On(date.format("%Y-%m-%d").to_string())
+    };
+    (day, finished.format("%H:%M").to_string())
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    fn at(day: u32, hour: u32) -> DateTime<Local> {
+        Local
+            .with_ymd_and_hms(2026, 11, day, hour, 2, 0)
+            .single()
+            .expect("a valid local time")
+    }
+
+    #[test]
+    fn a_run_is_today_yesterday_or_dated_by_the_local_calendar() {
+        let now = at(4, 9);
+        assert_eq!(
+            run_day_and_time(at(4, 1), now),
+            (RunDay::Today, "01:02".to_owned())
+        );
+        assert_eq!(run_day_and_time(at(3, 23), now).0, RunDay::Yesterday);
+        assert_eq!(
+            run_day_and_time(at(1, 14), now),
+            (RunDay::On("2026-11-01".to_owned()), "14:02".to_owned())
+        );
     }
 }

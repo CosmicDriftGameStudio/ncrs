@@ -55,7 +55,6 @@ fn titled<'a>(
 ) -> Group<'a> {
     Group {
         intro: intro.map(|msg| view.lang.text(msg).to_owned()),
-        advanced: false,
         title: view.lang.text(title).to_owned(),
         rows,
     }
@@ -74,6 +73,7 @@ pub fn text_row<'a>(
         config_key: None,
         description,
         problem: None,
+        warning: None,
         control,
         control_width: Some(SETTINGS_WIDE_CONTROL_WIDTH),
         in_command_list: false,
@@ -102,31 +102,43 @@ fn folder_is_disconnected(location: &FilingLocation, view: &SettingsView<'_>) ->
     view.facts.disconnected.contains(&location.path)
 }
 
-/// The line of a folder: its name, where it is, and a warning when its drive
-/// is not connected. `buttons` act on it.
+/// The line of a folder: its name, where it is with how many documents the
+/// index holds from it when `files` says so, and a warning when its drive is
+/// not connected. `buttons` act on it.
 pub fn folder_row<'a>(
     location: &FilingLocation,
     status: Option<String>,
+    files: Option<usize>,
     buttons: Vec<Element<'a, Message>>,
     view: &SettingsView<'a>,
 ) -> SettingRow<'a> {
+    let lang = view.lang;
+    let path = shown_path(&location.path, view.home);
+    let where_it_is = match files {
+        Some(1) => fill_template(lang.text(Msg::SettingsIndexFolderOneFile), &[("{path}", &path)]),
+        Some(count) => fill_template(
+            lang.text(Msg::SettingsIndexFolderFiles),
+            &[("{path}", &path), ("{count}", &count.to_string())],
+        ),
+        None => path,
+    };
     let palette = view.palette;
     let mut control = Row::new()
         .spacing(spacing::S)
         .align_y(alignment::Vertical::Center);
-    if let Some(status) = status {
-        control = control.push(kit::dim(status, palette));
+    if let Some(status_text) = status {
+        control = control.push(kit::dim(status_text, palette));
     }
-    let control = buttons
+    let with_buttons = buttons
         .into_iter()
         .fold(control, |controls, button| controls.push(button));
     SettingRow {
-        problem: folder_is_disconnected(location, view)
-            .then(|| view.lang.text(Msg::SettingsIndexFolderMissing).to_owned()),
+        warning: folder_is_disconnected(location, view)
+            .then(|| lang.text(Msg::SettingsIndexFolderMissing).to_owned()),
         ..text_row(
             folder_name(location),
-            Some(shown_path(&location.path, view.home)),
-            container(control)
+            Some(where_it_is),
+            container(with_buttons)
                 .align_x(alignment::Horizontal::Right)
                 .into(),
         )
@@ -200,6 +212,7 @@ fn read_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
         folder_row(
             location,
             None,
+            view.facts.folder_files.get(&location.path).copied(),
             vec![remove_folder_button(location, view)],
             view,
         )
@@ -255,7 +268,7 @@ fn ocr_section_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
     let lang = view.lang;
     let palette = view.palette;
     let mut rows = Vec::new();
-    if view.state.text_recognition_built_in {
+    if view.facts.system_reads_scans {
         rows.push(simple_row(
             Msg::SettingsIndexRowOcrSystem,
             Some(Msg::SettingsIndexRowOcrSystemNote),
@@ -339,17 +352,13 @@ fn ai_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
         Some(Msg::SettingsIndexRowServerNote),
         kit::button(
             lang.text(Msg::SettingsIndexServerSetup),
-            Some(SettingsMessage::ToggleServerSetup),
+            Some(SettingsMessage::ServerDialog(true)),
             Tone::Secondary,
             palette,
         ),
         lang,
     );
-    let mut rows = vec![model, server];
-    if view.state.server_open {
-        rows.extend(provider_rows(view));
-    }
-    rows
+    vec![model, server]
 }
 
 /// The list of one own detail as chips with a cross, the field for the next
@@ -418,6 +427,7 @@ pub fn own_detail_row<'a>(detail: OwnDetail, view: &SettingsView<'a>) -> Setting
         description: matches!(detail, OwnDetail::Names)
             .then(|| lang.text(Msg::SettingsIndexOwnNote).to_owned()),
         problem: field_problem(field, view),
+        warning: None,
         control,
         control_width: Some(SETTINGS_WIDE_CONTROL_WIDTH),
         in_command_list: true,

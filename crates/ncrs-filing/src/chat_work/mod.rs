@@ -38,7 +38,7 @@ pub use pattern::{
     OFFERED_PATTERNS,
 };
 pub use reading::{AiCoverage, FolderReading, ReadError, ReadProgress, FILE_LIMIT};
-pub use runs::{RunItem, RunPlan, RunReport, RunSummary};
+pub use runs::{RecentRun, RunItem, RunPlan, RunReport, RunSummary};
 pub use trial::{StayReason, TrialEntry, TrialOutcome, TrialPlan};
 pub use words::{normalize_word, same_word, word_within};
 
@@ -158,6 +158,30 @@ impl ChatAccess {
         folder: &std::path::Path,
     ) -> Result<ncrs_intake::LocationStructure, ReadError> {
         reading::known_structure(self, folder)
+    }
+
+    /// The runs that can still be put back, newest first.
+    pub fn recent_runs(&self, limit: usize) -> Result<Vec<RecentRun>, String> {
+        runs::recent_runs(self, limit)
+    }
+
+    /// How many documents the index holds below `folder`.
+    pub fn documents_under(&self, folder: &std::path::Path) -> Result<usize, String> {
+        self.with_index(|index| {
+            index
+                .documents_under(folder)
+                .map(|found| found.len())
+                .map_err(|err| err.to_string())
+        })
+    }
+
+    /// How many archive documents the AI has read and sorted.
+    pub fn understood_documents(&self) -> Result<u64, String> {
+        self.with_index(|index| {
+            index
+                .archive_documents_understood()
+                .map_err(|err| err.to_string())
+        })
     }
 
     pub fn run(&self, work: ChatWork) -> ChatResult {

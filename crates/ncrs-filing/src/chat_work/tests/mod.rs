@@ -22,6 +22,7 @@ use super::*;
 
 mod diagnosis;
 mod orders;
+mod recent_runs;
 
 struct Setup {
     dir: TempDir,

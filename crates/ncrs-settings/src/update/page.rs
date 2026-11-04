@@ -68,10 +68,6 @@ pub fn update(
                 Task::none()
             })
         }
-        SettingsMessage::ToggleAdvanced => in_settings(settings, ctx, |state| {
-            state.advanced_open = !state.advanced_open;
-            None
-        }),
         SettingsMessage::Select(_) => in_settings(settings, ctx, |state| {
             state.marked_row = None;
             None
@@ -140,12 +136,13 @@ pub fn update(
         | SettingsMessage::ReplaceFolder(_)
         | SettingsMessage::AddOwnDetail(_)
         | SettingsMessage::ToggleAllAreas
-        | SettingsMessage::ToggleServerSetup
+        | SettingsMessage::ToggleAllRuns
+        | SettingsMessage::ServerDialog(_)
         | SettingsMessage::OpenChat(_)
         | SettingsMessage::TogglePause
-        | SettingsMessage::UndoLastRun
+        | SettingsMessage::UndoRun(_)
         | SettingsMessage::FactsLoaded(_)
-        | SettingsMessage::LastRunUndone(_)
+        | SettingsMessage::RunUndone(_)
         | SettingsMessage::OpenRules
         | SettingsMessage::OpenAiModel
         | SettingsMessage::AskRemoveModel(_)
@@ -297,9 +294,7 @@ pub fn fresh_settings_state(ctx: &Ctx<'_>) -> SettingsState {
         Some(path) => config::load(path).map(Box::new),
         None => Ok(Box::default()),
     };
-    let mut state = SettingsState::new(ocr_models_present, file, runs_in_app_sandbox());
-    state.text_recognition_built_in = crate::ocr_models::system_reads_scans();
-    state
+    SettingsState::new(ocr_models_present, file, runs_in_app_sandbox())
 }
 
 pub fn close_settings(settings: &mut Settings) -> Task<Message> {

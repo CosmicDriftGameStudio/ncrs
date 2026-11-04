@@ -71,10 +71,10 @@ pub fn update(
         SettingsMessage::AddOwnDetail(detail) => in_settings(settings, ctx, |state| {
             state.submit(crate::message::SettingField::Own(detail))
         }),
-        SettingsMessage::LastRunUndone(Ok(())) => {
+        SettingsMessage::RunUndone(Ok(())) => {
             page_flag(settings, |state| state.facts_requested = false)
         }
-        SettingsMessage::LastRunUndone(Err(reason)) => {
+        SettingsMessage::RunUndone(Err(reason)) => {
             actions.push(Action::ShowNotice(fill_template(
                 ctx.lang.text(Msg::SettingsHermesHistoryUndoFailed),
                 &[("{reason}", &reason)],
@@ -87,8 +87,11 @@ pub fn update(
         SettingsMessage::ToggleAllAreas => {
             page_flag(settings, |state| state.all_areas = !state.all_areas)
         }
-        SettingsMessage::ToggleServerSetup => {
-            page_flag(settings, |state| state.server_open = !state.server_open)
+        SettingsMessage::ToggleAllRuns => {
+            page_flag(settings, |state| state.all_runs = !state.all_runs)
+        }
+        SettingsMessage::ServerDialog(open) => {
+            page_flag(settings, |state| state.server_dialog = open)
         }
         SettingsMessage::OpenChat(area) => {
             actions.push(Action::OpenChat { area });
@@ -98,8 +101,8 @@ pub fn update(
             actions.push(Action::TogglePause);
             Task::none()
         }
-        SettingsMessage::UndoLastRun => {
-            actions.push(Action::UndoLastRun);
+        SettingsMessage::UndoRun(batch) => {
+            actions.push(Action::UndoRun(batch));
             Task::none()
         }
         SettingsMessage::OpenRules => {
@@ -196,6 +199,7 @@ fn model_removed(
                 if let Some(state) = settings.page.as_mut() {
                     state.ocr_models_present = false;
                 }
+                actions.push(Action::OcrModelsRemoved);
             }
             ModelKind::Ai => actions.push(Action::RefreshAiModel),
         },

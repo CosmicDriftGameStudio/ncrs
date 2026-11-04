@@ -89,6 +89,7 @@ impl FilingModule {
         Some(
             FilingAccess::new(Arc::clone(&self.index), root)
                 .with_location_roots(self.location_roots())
+                .with_copy_roots(self.copy_roots())
                 .with_kind_language(self.own.kind_language),
         )
     }
@@ -148,6 +149,18 @@ impl FilingModule {
     fn location_roots(&self) -> Vec<PathBuf> {
         self.reachable_locations()
             .map(|location| location.path.clone())
+            .collect()
+    }
+
+    /// The roots of the read folders whose files are copied, not moved.
+    fn copy_roots(&self) -> Vec<PathBuf> {
+        self.locations
+            .iter()
+            .filter(|entry| entry.configured.transfer == LocationTransfer::Copy)
+            .filter_map(|entry| match &entry.status {
+                LocationStatus::Ready(location) => Some(location.path.clone()),
+                LocationStatus::NotReachable { .. } | LocationStatus::Overlaps { .. } => None,
+            })
             .collect()
     }
 

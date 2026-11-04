@@ -36,6 +36,17 @@ id_newtype!(RuleId);
 id_newtype!(ReviewEntryId);
 id_newtype!(PlanId);
 id_newtype!(BatchId);
+
+impl BatchId {
+    /// A page that lists runs names one by its number and asks for the undo.
+    pub fn from_number(number: i64) -> Self {
+        Self::new(number)
+    }
+
+    pub fn number(self) -> i64 {
+        self.get()
+    }
+}
 id_newtype!(SavedQueryId);
 id_newtype!(SenderAliasId);
 

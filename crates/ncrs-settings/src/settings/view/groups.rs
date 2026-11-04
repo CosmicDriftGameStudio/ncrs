@@ -54,13 +54,11 @@ pub fn look_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
     vec![
         Group {
             intro: None,
-            advanced: false,
             title: String::new(),
             rows: vec![preset_row, vscode_row(view), open_vsx_row],
         },
         Group {
             intro: None,
-            advanced: false,
             title: lang.text(Msg::SettingsGroupColors).to_owned(),
             rows: ColorRole::ALL
                 .iter()
@@ -69,7 +67,6 @@ pub fn look_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
         },
         Group {
             intro: None,
-            advanced: false,
             title: String::new(),
             rows: file_tags_rows(view),
         },
@@ -215,6 +212,7 @@ pub fn color_row<'a>(role: ColorRole, view: &SettingsView<'a>) -> SettingRow<'a>
         config_key: Some(role.name().to_owned()),
         description: None,
         problem: field_problem(field, view).or_else(|| contrast_problem(role, view)),
+        warning: None,
         control: control.into(),
         control_width: None,
         in_command_list: true,
@@ -274,6 +272,7 @@ pub fn program_row<'a>(kind: OpenKind, view: &SettingsView<'a>) -> SettingRow<'a
         config_key: None,
         description: Some(description),
         problem: field_problem(field, view),
+        warning: None,
         control: control.into(),
         control_width: Some(SETTINGS_WIDE_CONTROL_WIDTH),
         in_command_list: true,
@@ -283,7 +282,6 @@ pub fn program_row<'a>(kind: OpenKind, view: &SettingsView<'a>) -> SettingRow<'a
 pub fn programs_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
     vec![Group {
         intro: None,
-        advanced: false,
         title: String::new(),
         rows: vec![
             program_row(OpenKind::View, view),
@@ -305,7 +303,6 @@ pub fn keys_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
     };
     vec![Group {
         intro: None,
-        advanced: false,
         title: String::new(),
         rows: vec![simple_row(
             Msg::SettingsRowKeys,
@@ -330,6 +327,7 @@ pub fn servers_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
         config_key: None,
         description: None,
         problem: None,
+        warning: None,
         control: kit::button(
             lang.text(button),
             Some(SettingsMessage::OpenServerAdd),
@@ -342,7 +340,6 @@ pub fn servers_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
     if view.servers.is_empty() {
         return vec![Group {
             intro: None,
-            advanced: false,
             title: String::new(),
             rows: vec![add(
                 Msg::SettingsServersEmpty,
@@ -373,6 +370,7 @@ pub fn servers_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
                 config_key: None,
                 description: Some(detail),
                 problem: None,
+                warning: None,
                 control: row![
                     kit::button(
                         lang.text(Msg::RemoteConnect),
@@ -397,7 +395,6 @@ pub fn servers_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
     rows.push(add(Msg::SettingsServersAdd, Msg::SettingsServersAddButton));
     vec![Group {
         intro: None,
-        advanced: false,
         title: String::new(),
         rows,
     }]
@@ -421,7 +418,6 @@ pub fn language_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
         .unwrap_or_default();
     vec![Group {
         intro: None,
-        advanced: false,
         title: String::new(),
         rows: vec![
             simple_row(
@@ -515,6 +511,28 @@ pub fn provider_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
     rows
 }
 
+/// The body of the dialog of the own server: the switch back to the local
+/// model, and the address and model name while the own server is chosen.
+pub fn server_dialog_body<'a>(view: &SettingsView<'a>) -> Element<'a, Message> {
+    let palette = view.palette;
+    provider_rows(view)
+        .into_iter()
+        .fold(column![].spacing(spacing::LINE_GAP), |body, setting| {
+            let described = match setting.description {
+                Some(description) => body
+                    .push(kit::paragraph(setting.label, palette))
+                    .push(kit::dim(description, palette)),
+                None => body.push(kit::paragraph(setting.label, palette)),
+            };
+            let with_control = described.push(setting.control);
+            match setting.problem {
+                Some(problem) => with_control.push(kit::error_line(problem, palette)),
+                None => with_control,
+            }
+        })
+        .into()
+}
+
 /// The protection of the index: its state and the buttons that change it. The
 /// question before the index is removed is asked by the app.
 pub fn protection_group<'a>(view: &SettingsView<'a>) -> Option<Group<'a>> {
@@ -548,7 +566,7 @@ pub fn protection_group<'a>(view: &SettingsView<'a>) -> Option<Group<'a>> {
         description: Some(panel.sentence.clone()),
         in_command_list: false,
         ..simple_row(
-            Msg::HermesOverviewSectionProtection,
+            Msg::SettingsIndexRowEncryption,
             None,
             control.into(),
             lang,
@@ -556,7 +574,6 @@ pub fn protection_group<'a>(view: &SettingsView<'a>) -> Option<Group<'a>> {
     };
     Some(Group {
         intro: None,
-        advanced: false,
         title: String::new(),
         rows: vec![protection],
     })
