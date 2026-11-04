@@ -4611,12 +4611,14 @@ mod settings_tab {
     fn an_own_ai_server_matches_its_snapshots() {
         both_languages(
             || {
-                settings_with(
+                let mut app = settings_with(
                     SettingsFeature::Hermes,
                     "[modules.filing.ai]\nprovider = \"http\"\n\
                      endpoint = \"http://localhost:11434\"\nmodel = \"qwen2.5:7b\"\n\n\
                      [theme]\npreset = \"cosmic\"\n",
-                )
+                );
+                drop(app.update(Message::Settings(SettingsMessage::ServerDialog(true))));
+                app
             },
             "settings_ai_server",
         );
