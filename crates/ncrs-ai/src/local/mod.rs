@@ -6,7 +6,7 @@
 //! app holds: it loads on the first job, on its own worker thread, and lets
 //! go of the memory again after a quiet time.
 
-use std::num::NonZeroU32;
+use std::num::{NonZeroU32, NonZeroUsize};
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
@@ -50,7 +50,7 @@ const MAX_BATCH_TOKENS: u32 = 512;
 #[derive(Debug, Clone)]
 pub struct LocalModelConfig {
     pub path: PathBuf,
-    /// Threads the model computes with, independent of the pipeline's workers.
+    /// Threads the model reads documents with, unless a job names another count.
     pub threads: NonZeroU32,
     /// The prompt (instructions and document) and the reply share this.
     pub context_tokens: NonZeroU32,
@@ -120,19 +120,33 @@ impl LocalModel {
         &self,
         context_tokens: NonZeroU32,
         batch_tokens: u32,
+        threads: NonZeroU32,
     ) -> Result<LlamaContext<'_>, AiError> {
-        let threads = i32::try_from(self.threads.get()).unwrap_or(i32::MAX);
+        let thread_count = i32::try_from(threads.get()).unwrap_or(i32::MAX);
         let params = LlamaContextParams::default()
             .with_n_ctx(Some(context_tokens))
             .with_n_batch(batch_tokens)
-            .with_n_threads(threads)
-            .with_n_threads_batch(threads);
+            .with_n_threads(thread_count)
+            .with_n_threads_batch(thread_count);
         self.model
             .new_context(backend()?, params)
             .map_err(|_refused| AiError::Model("llama.cpp could not set up a context"))
     }
 
-    fn generate(&self, request: &ExtractionRequest) -> Result<String, AiError> {
+    /// Reads a document with `threads` instead of the count of the config.
+    pub fn extract_with_threads(
+        &self,
+        request: &ExtractionRequest,
+        threads: NonZeroU32,
+    ) -> Result<Extraction, AiError> {
+        parse_reply(&self.generate(request, threads)?, request)
+    }
+
+    fn generate(
+        &self,
+        request: &ExtractionRequest,
+        threads: NonZeroU32,
+    ) -> Result<String, AiError> {
         let vocab = self.model.vocab();
         let context_tokens = self.context_tokens.get();
         let batch_tokens = context_tokens.min(MAX_BATCH_TOKENS);
@@ -142,7 +156,7 @@ impl LocalModel {
             .saturating_sub(MAX_NEW_TOKENS);
         let prompt = prompt_tokens(&vocab, request, prompt_limit)?;
 
-        let mut context = self.new_context(self.context_tokens, batch_tokens)?;
+        let mut context = self.new_context(self.context_tokens, batch_tokens, threads)?;
         let mut batch = LlamaBatch::new(batch_len, 1);
         decode_tokens(&mut context, &mut batch, &prompt, 0, batch_len)?;
         self.sample_reply(
@@ -254,8 +268,18 @@ fn decode_tokens(
 
 impl Provider for LocalModel {
     fn extract(&self, request: &ExtractionRequest) -> Result<Extraction, AiError> {
-        parse_reply(&self.generate(request)?, request)
+        self.extract_with_threads(request, self.threads)
     }
+}
+
+/// The chat is waited for by the person typing, so it gets half the cores no
+/// matter how gentle the indexing is.
+pub fn chat_threads() -> NonZeroU32 {
+    let cores = std::thread::available_parallelism().map_or(1, NonZeroUsize::get);
+    u32::try_from(cores.div_euclid(2))
+        .ok()
+        .and_then(NonZeroU32::new)
+        .unwrap_or(NonZeroU32::MIN)
 }
 
 /// The text of a document as tokens. Special tokens are not parsed, so

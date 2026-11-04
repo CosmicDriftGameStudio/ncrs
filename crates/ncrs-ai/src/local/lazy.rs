@@ -9,6 +9,8 @@ use std::sync::{Arc, Mutex, OnceLock, PoisonError, Weak};
 use std::thread::{Builder, JoinHandle};
 use std::time::Duration;
 
+use ncrs_priority::ThreadPriority;
+
 use super::worker::{run, ChatJob, ExtractJob, Job, Shared, IDLE_UNLOAD};
 use crate::chat::{ChatIntent, ChatModel, ChatTurn};
 use crate::contract::{Extraction, ExtractionRequest, Provider};
@@ -49,7 +51,7 @@ impl LazyLocalModel {
 
     /// The one model of this process for `path`: field reading and the chat
     /// call this and get the same instance as long as one of them holds it.
-    /// A different `threads` is used from the next load on.
+    /// A different `threads` is used from the next document on.
     pub fn shared(
         path: PathBuf,
         pin: ModelPin,
@@ -69,6 +71,13 @@ impl LazyLocalModel {
         let created = Arc::new(Self::new(path.clone(), pin, threads, context_tokens));
         registry.insert(path, Arc::downgrade(&created));
         created
+    }
+
+    /// How the model reads documents from the next one on. The chat is not
+    /// affected: it always runs at full priority.
+    pub fn set_extraction(&self, threads: NonZeroU32, priority: ThreadPriority) {
+        self.shared.set_threads(threads);
+        self.shared.set_extraction_priority(priority);
     }
 
     fn ensure_worker(&self) -> Result<(), AiError> {

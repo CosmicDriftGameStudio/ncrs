@@ -375,7 +375,6 @@ mod tests {
                 // Numbers and a unit only.
                 | Msg::AiModelProgress
                 | Msg::OcrModelsProgress
-                | Msg::SettingsRowAiThreads
                 // The app's name heads the macOS app menu in every language.
                 | Msg::MenuApp
                 // Words German took over unchanged: the fields of the connect

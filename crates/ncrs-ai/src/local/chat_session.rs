@@ -6,7 +6,7 @@ use std::num::NonZeroU32;
 use llama_cpp_2::context::LlamaContext;
 use llama_cpp_2::llama_batch::LlamaBatch;
 
-use super::{decode_tokens, LocalModel, MAX_BATCH_TOKENS};
+use super::{chat_threads, decode_tokens, LocalModel, MAX_BATCH_TOKENS};
 use crate::chat::{
     chat_grammar, chat_user_message, parse_chat_reply, ChatIntent, ChatTurn, CHAT_SYSTEM_PROMPT,
 };
@@ -46,7 +46,7 @@ impl<'model> ChatSession<'model> {
         let batch_tokens = n_ctx.get().min(MAX_BATCH_TOKENS);
         let batch_len = usize::try_from(batch_tokens).unwrap_or(1);
 
-        let mut context = model.new_context(n_ctx, batch_tokens)?;
+        let mut context = model.new_context(n_ctx, batch_tokens, chat_threads())?;
         let mut batch = LlamaBatch::new(batch_len, 1);
         decode_tokens(&mut context, &mut batch, &prefix, 0, batch_len)?;
         Ok(Self {

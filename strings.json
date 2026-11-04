@@ -2078,7 +2078,7 @@
     },
     {
       "key": "filing_status.load_full",
-      "context": "Button for the highest load of the pipeline: one worker per processor core (config value full). The Futurama variants show the theme name beside it.",
+      "context": "Button for the highest load of the pipeline: half the processor cores as workers and as model threads (config value full). The Futurama variants show the theme name beside it.",
       "en": "Full",
       "de": "Volle Last"
     },
@@ -2093,12 +2093,6 @@
       "context": "Label in front of the buttons that raise or lower the number of workers by one, followed by the current number.",
       "en": "Worker count",
       "de": "Anzahl Worker"
-    },
-    {
-      "key": "filing_status.load_note",
-      "context": "Note under the load buttons: a change made on the page is not written to the configuration file.",
-      "en": "A change applies until ncrs is restarted; config.toml is not changed.",
-      "de": "Eine Änderung gilt bis zum Neustart von ncrs; config.toml wird nicht geändert."
     },
     {
       "key": "filing_status.step_intake",
@@ -4793,24 +4787,6 @@
       "context": "Shown under the endpoint or model name setting when it is empty but the own server needs it.",
       "en": "Needed for an own server.",
       "de": "Für einen eigenen Server nötig."
-    },
-    {
-      "key": "settings.row_ai_threads",
-      "context": "Name of a setting in the AI group of the filing page: how many processor threads the local model may use.",
-      "en": "Threads",
-      "de": "Threads"
-    },
-    {
-      "key": "settings.row_ai_threads_note",
-      "context": "Explanation under the threads setting: an empty field lets Hermes pick the number itself.",
-      "en": "Empty: ncrs decides.",
-      "de": "Leer: ncrs entscheidet."
-    },
-    {
-      "key": "settings.threads_placeholder",
-      "context": "Placeholder in the empty threads field: the number is chosen automatically.",
-      "en": "automatic",
-      "de": "automatisch"
     },
     {
       "key": "settings.row_ai_endpoint",

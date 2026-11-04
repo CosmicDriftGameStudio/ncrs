@@ -6422,11 +6422,11 @@ mod settings_tab {
         let mut app = App::with_settings_open(SettingsFeature::Hermes, hermes_config());
         simulator(&app).find("Filing on").expect("the switch");
         drop(app.update(Message::Settings(SettingsMessage::SearchChanged(
-            "threads".to_owned(),
+            "provider".to_owned(),
         ))));
         let switch_hidden = simulator(&app).find("Filing on").is_err();
         assert!(switch_hidden);
-        simulator(&app).find("Threads").expect("the threads row");
+        simulator(&app).find("Provider").expect("the provider row");
     }
 
     #[test]

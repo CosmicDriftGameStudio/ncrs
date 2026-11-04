@@ -9,6 +9,7 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant, SystemTime};
 
 use ncrs_intake::{classify, walk_location, Found, Location, LocationWatcher, WatchEvent};
+use ncrs_priority::{set_current_thread_priority, ThreadPriority};
 
 use crate::clock::Clock;
 use crate::load::Load;
@@ -118,6 +119,8 @@ struct State {
     stopping: bool,
     paused: bool,
     target: usize,
+    /// What the workers run at; each applies a change before its next job.
+    priority: ThreadPriority,
     workers: Vec<WorkerSlot>,
     handles: Vec<JoinHandle<()>>,
     watcher: Option<LocationWatcher>,
@@ -883,7 +886,14 @@ fn run_start(shared: &Arc<Shared>) {
 
 fn worker_main(shared: &Arc<Shared>, id: usize, epoch: u64) {
     let _exit = ExitGuard { shared, id, epoch };
+    let mut applied = shared.lock().priority;
+    set_current_thread_priority(applied);
     while let Some(job) = shared.next_job_for(id) {
+        let wanted = shared.lock().priority;
+        if wanted != applied {
+            set_current_thread_priority(wanted);
+            applied = wanted;
+        }
         match job {
             Job::Start => run_start(shared),
             Job::Scan(location) => shared.run_scan(id, &location),
@@ -925,6 +935,7 @@ impl Runner {
             stopping: false,
             paused: false,
             target,
+            priority: settings.load.thread_priority(),
             workers: Vec::new(),
             handles: Vec::new(),
             watcher: None,
@@ -1007,7 +1018,10 @@ impl Runner {
     /// Workers that are above the new target leave after their current job.
     pub fn set_load(&self, load: Load) {
         let target = load.worker_count(self.shared.settings.logical_cores).get();
-        self.shared.update(|state| state.target = target);
+        self.shared.update(|state| {
+            state.target = target;
+            state.priority = load.thread_priority();
+        });
         self.shared.work_ready.notify_all();
         self.shared.ensure_workers();
     }

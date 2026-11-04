@@ -70,7 +70,11 @@ impl App {
             crate::config::AiSetting::Local { threads } => threads,
             _ => None,
         };
-        self.chat_model = Some(crate::filing::shared_local_model(index_path, threads));
+        self.chat_model = Some(crate::filing::shared_local_model(
+            index_path,
+            self.hermes.filing_config.load,
+            threads,
+        ));
     }
 
     #[cfg(not(feature = "local-ai"))]

@@ -548,16 +548,7 @@ pub fn provider_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
         lang,
     )];
     match provider {
-        AiProviderName::Local => rows.push(ai_field_row(
-            SettingField::AiThreads,
-            (
-                Msg::SettingsRowAiThreads,
-                Msg::SettingsRowAiThreadsNote,
-                THREADS_FIELD_ID,
-            ),
-            lang.text(Msg::SettingsThreadsPlaceholder),
-            view,
-        )),
+        AiProviderName::Local => {}
         AiProviderName::Http => {
             rows.push(ai_field_row(
                 SettingField::AiEndpoint,

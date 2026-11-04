@@ -411,10 +411,7 @@ fn pipeline_rows<'a>(
         page_kit::form_row(
             lang.text(Msg::FilingStatusLoadLabel),
             page_kit::segmented(&options, selected, palette),
-            Some(page_kit::hint(
-                lang.text(Msg::FilingStatusLoadNote),
-                palette,
-            )),
+            None,
             palette,
         ),
         page_kit::form_row(

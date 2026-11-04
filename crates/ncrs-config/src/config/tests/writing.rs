@@ -446,6 +446,43 @@ fn the_load_is_written_as_a_name_or_a_number_and_reads_back() {
 }
 
 #[test]
+fn writing_the_load_drops_the_thread_count_of_the_local_model() {
+    let base = tempfile::tempdir().unwrap();
+    let path = base.path().join("config.toml");
+    std::fs::write(
+        &path,
+        "[modules.filing]\nload = \"gentle\"\n\n[modules.filing.ai]\nenabled = true\nthreads = 8\n",
+    )
+    .unwrap();
+
+    let written = write_settings(
+        &path,
+        &[filing_load_setting(Load::Full), ai_threads_dropped_setting()],
+        None,
+    )
+    .unwrap();
+
+    let text = lines_of(&path);
+    assert!(!text.contains("threads"), "{text}");
+    assert!(text.contains("load = \"full\"\n"), "{text}");
+    assert!(text.contains("enabled = true\n"), "{text}");
+    assert_eq!(written.filing.load, Load::Full);
+}
+
+#[test]
+fn writing_the_load_to_a_file_without_ai_table_adds_none() {
+    let base = tempfile::tempdir().unwrap();
+    let path = base.path().join("config.toml");
+    std::fs::write(&path, "[modules.filing]\nenabled = true\n").unwrap();
+
+    write_filing_load(&path, Load::Balanced).unwrap();
+
+    let text = lines_of(&path);
+    assert!(!text.contains("[modules.filing.ai]"), "{text}");
+    assert!(text.contains("load = \"balanced\"\n"), "{text}");
+}
+
+#[test]
 fn ai_enabled_creates_the_nested_table_and_keeps_the_filing_keys() {
     let base = tempfile::tempdir().unwrap();
     let path = base.path().join("config.toml");

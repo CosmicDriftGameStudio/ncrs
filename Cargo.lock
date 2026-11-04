@@ -3404,6 +3404,7 @@ dependencies = [
  "llama-cpp-sys-2",
  "ncrs-index",
  "ncrs-intake",
+ "ncrs-priority",
  "sha2 0.11.1",
  "tempfile",
  "ureq",
@@ -3641,7 +3642,16 @@ dependencies = [
  "ncrs-ai",
  "ncrs-index",
  "ncrs-intake",
+ "ncrs-priority",
  "tempfile",
+]
+
+[[package]]
+name = "ncrs-priority"
+version = "0.0.0"
+dependencies = [
+ "libc",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

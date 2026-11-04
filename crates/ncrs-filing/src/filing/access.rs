@@ -11,10 +11,14 @@ impl FilingModule {
         self.load
     }
 
-    /// Only remembers the choice for the page; the running pipeline is told
-    /// separately.
+    /// Remembers the choice for the page and hands the local model its new
+    /// threads and priority; the running pipeline is told separately.
     pub fn set_load(&mut self, load: Load) {
         self.load = load;
+        #[cfg(feature = "local-ai")]
+        if let AiWiring::Local(model) = &self.ai {
+            model.set_extraction(ai::extraction_threads(load, None), load.thread_priority());
+        }
     }
 
     /// The handle of the rule suggestions view: only when the module is
