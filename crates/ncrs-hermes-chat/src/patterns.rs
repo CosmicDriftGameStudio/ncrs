@@ -7,7 +7,7 @@ use ncrs_intake::PlaceholderLabel;
 
 use crate::ctx::Ctx;
 use crate::state::{Chip, ChipReply, FileCard, Part, State, Step};
-use crate::texts::{fill, number, pattern_levels, text};
+use crate::texts::{fill, pattern_levels, text};
 use crate::update::{cancel_chip, chip, chip_labelled, hermes, say, work};
 
 fn label_of(level: PatternLevel) -> PlaceholderLabel {
@@ -96,18 +96,13 @@ pub fn previewed(state: &mut State, ctx: &Ctx, computed: Option<PatternPreview>)
         .iter()
         .zip(&preview.after)
         .position(|(before, after)| before != after);
-    let count = number(preview.moved);
     let intro = if state.session.change_word.is_empty() {
-        fill(
-            ctx.lang,
-            Msg::HermesChatPatternPreviewNames,
-            &[("count", &count)],
-        )
+        text(ctx.lang, Msg::HermesChatPatternPreviewNames)
     } else {
         fill(
             ctx.lang,
             Msg::HermesChatPatternPreview,
-            &[("count", &count), ("pattern", &state.session.change_word)],
+            &[("pattern", &state.session.change_word)],
         )
     };
     state.session.pending_pattern = Some(preview.change);

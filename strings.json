@@ -7616,9 +7616,9 @@
     },
     {
       "key": "hermes_chat.pattern_preview",
-      "context": "Hermes chat (F2): Hermes shows what would change if one order is used everywhere; two paths follow, before and after. **Double asterisks** mark bold text. {count} is a number of files, {pattern} the order.",
-      "en": "Using **{pattern}** everywhere would move {count} files. For example:",
-      "de": "Wenn ich überall **{pattern}** nehme, ziehen {count} Dateien um. Zum Beispiel:"
+      "context": "Hermes chat (F2): Hermes shows how new documents would be filed if one order is used everywhere. Files already in the folder do not move. Two paths follow, before and after. **Double asterisks** mark bold text. {pattern} is the order.",
+      "en": "I'd then file new documents by **{pattern}** everywhere. What's already there stays where it is. It would look like this:",
+      "de": "Neue Dateien lege ich dann überall nach **{pattern}** ab. Was schon da liegt, bleibt, wo es ist. So sähe es aus:"
     },
     {
       "key": "hermes_chat.pattern_nothing",
@@ -7790,15 +7790,15 @@
     },
     {
       "key": "hermes_chat.change_preview_names",
-      "context": "Hermes chat (F2): First line of the preview of a change that only gives the files of an area new names, built from parts of the document such as its date. The example path follows, with the new file name highlighted. {area} is the folder name of the area.",
-      "en": "In {area} the files would get new names. It would look like this:",
-      "de": "In {area} bekommen die Dateien neue Namen. Das sähe so aus:"
+      "context": "Hermes chat (F2): First line of the preview of a change that gives new documents filed in an area names built from parts of the document, such as its date. Files already in the area keep their names. The example path follows, with the new file name highlighted. {area} is the folder name of the area.",
+      "en": "New documents in {area} would get names like this. What's already there keeps its name. It would look like this:",
+      "de": "Neue Dateien in {area} bekommen dann solche Namen. Was schon da liegt, behält seinen Namen. So sähe es aus:"
     },
     {
       "key": "hermes_chat.pattern_preview_names",
-      "context": "Hermes chat (F2): Hermes shows what would change if the file names were built the new way in every area; two paths follow, before and after. **Double asterisks** mark bold text. {count} is a number of files.",
-      "en": "With the new names everywhere, **{count} files** would be renamed. For example:",
-      "de": "Mit den neuen Namen überall würden **{count} Dateien** umbenannt. Zum Beispiel:"
+      "context": "Hermes chat (F2): Hermes shows how new documents would be named if the file names were built the new way in every area. Files already in the folder keep their names. Two paths follow, before and after.",
+      "en": "New documents would get names like this everywhere. What's already there keeps its name. It would look like this:",
+      "de": "Neue Dateien bekommen dann überall solche Namen. Was schon da liegt, behält seinen Namen. So sähe es aus:"
     },
     {
       "key": "hermes_chat.not_understood_follow_up",
