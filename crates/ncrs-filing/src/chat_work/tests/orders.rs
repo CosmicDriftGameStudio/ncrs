@@ -628,3 +628,29 @@ fn everywhere_a_branch_with_the_folder_further_up_does_not_get_it_twice() {
     );
     assert_eq!(preview.moved, 2);
 }
+
+#[test]
+fn everywhere_a_branch_ending_in_months_does_not_get_a_second_year() {
+    let club = Some("Allgemeiner Club");
+    let reading = reading(
+        "/archive",
+        vec![
+            plan_file("Bank/DKB/2023/Konto/01/a.pdf", 1, None, date(2023, 1, 2)),
+            plan_file("Bank/DKB/2024/Konto/02/b.pdf", 2, None, date(2024, 2, 2)),
+            plan_file("Bank/DKB/2025/Konto/03/c.pdf", 3, None, date(2025, 3, 2)),
+            plan_file("Versicherung/adac/d.pdf", 4, club, date(2020, 1, 2)),
+            plan_file("Versicherung/adac/e.pdf", 5, club, date(2020, 2, 3)),
+        ],
+    );
+    let preview = pattern_preview_of(reading, vec![PatternLevel::Year]).unwrap();
+    let path = PathBuf::from("Bank/DKB/2024/Konto/02/b.pdf");
+    assert_eq!(
+        change::apply_changes(
+            path.clone(),
+            &fields(Some(date(2024, 2, 2)), Some("invoice"), None),
+            &kinds(),
+            std::slice::from_ref(&preview.change),
+        ),
+        path
+    );
+}
