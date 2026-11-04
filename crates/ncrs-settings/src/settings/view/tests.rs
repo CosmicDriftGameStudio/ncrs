@@ -1,6 +1,7 @@
 use std::num::NonZeroU32;
 use std::path::Path;
 
+use crate::facts::DocumentsFacts;
 use crate::message::{SettingChange, SettingField};
 use ncrs_config::config::{
     AiEndpointProblem, AiProviderChoice, AiProviderName, Filing, OwnDetail, ProgramLine,
@@ -27,7 +28,7 @@ fn typed(state: &mut SettingsState, field: SettingField, text: &str) -> Option<S
 }
 
 #[test]
-fn searching_the_theme_name_lists_the_page_and_shows_all_its_rows() {
+fn searching_the_page_name_lists_the_page_and_shows_all_its_rows() {
     let filing = Filing::default();
     let palette = Palette::default();
     for typed_query in ["hermes", "HERMES"] {
@@ -42,28 +43,22 @@ fn searching_the_theme_name_lists_the_page_and_shows_all_its_rows() {
             protection: None,
             home: Path::new("/home/test"),
             keys_changed: 0,
+            facts: DocumentsFacts::default(),
             lang: Language::EnglishFuturama,
             palette: &palette,
         };
 
-        assert_eq!(listed_features(&view), vec![SettingsFeature::Hermes]);
+        assert!(listed_features(&view).contains(&SettingsFeature::Hermes));
         let query = typed_query.to_lowercase();
         assert!(feature_name_matches(
             SettingsFeature::Hermes,
             &query,
             Language::EnglishFuturama
         ));
-        assert!(!feature_name_matches(
-            SettingsFeature::Hermes,
-            &query,
-            Language::English
-        ));
-        let unrelated_row = groups_of(SettingsFeature::Hermes, &view)
+        assert!(groups_of(SettingsFeature::Hermes, &view)
             .into_iter()
             .flat_map(|group| group.rows)
-            .find(|setting| !row_matches(setting, &query))
-            .expect("the page has rows that do not say Hermes themselves");
-        assert!(!unrelated_row.label.is_empty());
+            .any(|setting| !row_matches(&setting, &query)));
     }
 }
 
@@ -81,6 +76,7 @@ fn the_command_list_gets_every_page_and_every_row_the_tab_search_filters() {
         protection: None,
         home: Path::new("/home/test"),
         keys_changed: 0,
+        facts: DocumentsFacts::default(),
         lang: Language::English,
         palette: &palette,
     };

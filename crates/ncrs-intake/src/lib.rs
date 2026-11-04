@@ -17,6 +17,7 @@ mod ocr;
 mod office;
 mod page_trim;
 mod placement;
+mod plain_words;
 mod recipient_detection;
 #[cfg(any(test, feature = "test-support"))]
 pub mod recognition;
@@ -66,6 +67,7 @@ pub use ocr::{
 };
 pub use office::{extract_text_from_bytes, OfficeText, PlainText};
 pub use placement::{NeighbourIndex, Placement, Signal};
+pub use plain_words::{area_order_plain, branch_plain, label_text, levels_plain};
 pub use recipient_detection::{detect_recipient, kind_from_heading};
 pub use reorganisation::{
     plan_reorganisation, PlanFile, PlanRule, ReorganisationInput, FINDING_PRIORITY,

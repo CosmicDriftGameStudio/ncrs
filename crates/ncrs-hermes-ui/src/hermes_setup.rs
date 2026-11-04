@@ -245,6 +245,7 @@ impl HermesSetup {
                 mode: LocationMode::Inbox,
                 images: kept_images(path),
                 is_target: false,
+                transfer: Default::default(),
             });
         }
         list.extend(
@@ -253,6 +254,7 @@ impl HermesSetup {
                 .filter(|location| !replaced(location))
                 .map(|location| FilingLocation {
                     is_target: false,
+                    transfer: Default::default(),
                     ..location.clone()
                 }),
         );
@@ -262,6 +264,7 @@ impl HermesSetup {
                 mode: LocationMode::Archive,
                 images: kept_images(path),
                 is_target: true,
+                transfer: Default::default(),
             });
         }
         list
@@ -390,6 +393,7 @@ mod tests {
             mode,
             images: false,
             is_target,
+            transfer: Default::default(),
         }
     }
 

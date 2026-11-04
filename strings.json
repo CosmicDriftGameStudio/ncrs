@@ -2401,12 +2401,6 @@
       "de": "{path} ist schon dabei."
     },
     {
-      "key": "filing_setup.rule_no_target",
-      "context": "Rule message in the filing setup card: the written list has document folders, but none is the target. Normally the card prevents this; it can come from a failed write.",
-      "en": "One folder must be the filing location.",
-      "de": "Ein Ordner muss der Ablageort sein."
-    },
-    {
       "key": "filing_setup.rule_second_target",
       "context": "Rule message in the filing setup card: more than one folder is the target. Normally the card prevents this; it can come from a failed write.",
       "en": "Only one folder can be the filing location.",
@@ -4250,15 +4244,15 @@
     },
     {
       "key": "settings.feature_hermes",
-      "context": "Entry of the feature list on the settings tab for the filing module, next to its theme name Hermes. One word, noun.",
-      "en": "Filing",
-      "de": "Ablage"
+      "context": "Entry of the feature list on the settings tab and title of its page: Hermes, the name of the module that sorts documents.",
+      "en": "Hermes",
+      "de": "Hermes"
     },
     {
       "key": "settings.feature_hermes_intro",
-      "context": "Line under the heading of the filing page on the settings tab. Hermes is the name of the filing module.",
-      "en": "ncrs picks up new documents, reads them and files them by your rules.",
-      "de": "ncrs holt neue Dokumente ab, liest sie und legt sie nach deinen Regeln ab."
+      "context": "Line under the heading of the Hermes page on the settings tab. Hermes is the name of the module that sorts documents; the chat (F2) is where he asks.",
+      "en": "Hermes sorts documents from your read folders. He asks in the chat (F2) before he moves anything.",
+      "de": "Hermes sortiert Dokumente aus deinen Lesen-Ordnern. Er fragt im Chat (F2), bevor er etwas verschiebt."
     },
     {
       "key": "settings.row_preset",
@@ -9289,6 +9283,12 @@
       "de": "{area} ist schon nach {new} sortiert. Soll ich etwas anderes ändern?"
     },
     {
+      "key": "hermes_chat.change_area_which",
+      "context": "Hermes chat (F2): Question after the user pressed the button to change the order of one area on the settings page, with the possible orders as buttons. {area} is the folder name of the area.",
+      "en": "How should {area} be sorted?",
+      "de": "Wie soll {area} sortiert werden?"
+    },
+    {
       "key": "hermes_chat.sort_like_this",
       "context": "Hermes chat (F2): Answer button under the preview of a change of order: accept the new order for new files.",
       "en": "Yes, sort like this",
@@ -9425,6 +9425,558 @@
       "context": "Hermes chat (F2): Line above the list of files that cannot be placed. {count} is how many files are listed.",
       "en": "These {count} stay where they are for now:",
       "de": "Diese {count} bleiben vorerst liegen:"
+    },
+    {
+      "key": "settings.group_general",
+      "context": "Heading over the first run of pages in the feature list of the settings tab: look, language, programs, keys, servers. One word.",
+      "en": "General",
+      "de": "Allgemein"
+    },
+    {
+      "key": "settings.group_documents",
+      "context": "Heading over the second run of pages in the feature list of the settings tab: the Index page and the Hermes page. One word, noun, plural.",
+      "en": "Documents",
+      "de": "Dokumente"
+    },
+    {
+      "key": "settings.feature_index",
+      "context": "Entry of the feature list on the settings tab and title of its page: what ncrs knows about the user's files (text, sender, kind, date). One word, noun.",
+      "en": "Index",
+      "de": "Index"
+    },
+    {
+      "key": "settings.feature_index_intro",
+      "context": "Sentence under the title of the Index page of the settings tab. The index is the encrypted database in which ncrs keeps what it read from the files.",
+      "en": "What ncrs knows about your files: text, sender, kind, date. Stored encrypted on this Mac.",
+      "de": "Was ncrs über deine Dateien weiß: Text, Absender, Art, Datum. Liegt verschlüsselt auf diesem Mac."
+    },
+    {
+      "key": "settings.feature_hermes_sorting",
+      "context": "Dim word beside the entry Hermes in the feature list of the settings tab and beside the title of its page: what Hermes does. Verb as noun, one word.",
+      "en": "Sorting",
+      "de": "Sortieren"
+    },
+    {
+      "key": "settings.index_section_read",
+      "context": "Heading of the section of the Index page of the settings tab that lists the folders the index reads.",
+      "en": "What is read",
+      "de": "Was gelesen wird"
+    },
+    {
+      "key": "settings.index_section_ocr",
+      "context": "Heading of the section of the Index page of the settings tab about reading text from scans and photos (OCR).",
+      "en": "Text recognition",
+      "de": "Texterkennung"
+    },
+    {
+      "key": "settings.index_section_ai",
+      "context": "Heading of the section of the Index page of the settings tab about the AI model that understands documents.",
+      "en": "AI model",
+      "de": "KI-Modell"
+    },
+    {
+      "key": "settings.index_section_own",
+      "context": "Heading of the section of the Index page of the settings tab in which the user enters their own names, accounts and tax numbers.",
+      "en": "About you",
+      "de": "Über dich"
+    },
+    {
+      "key": "settings.index_section_protection",
+      "context": "Heading of the section of the Index page of the settings tab about the encryption of the index. One word, noun.",
+      "en": "Protection",
+      "de": "Schutz"
+    },
+    {
+      "key": "settings.index_section_state",
+      "context": "Heading of the section of the Index page of the settings tab that shows how far the index is: counts, pause, load, unreadable files. One word, noun.",
+      "en": "Status",
+      "de": "Stand"
+    },
+    {
+      "key": "settings.index_row_scope",
+      "context": "Label of the row of the Index page that chooses which folders the index reads. Noun, plural.",
+      "en": "Folders",
+      "de": "Ordner"
+    },
+    {
+      "key": "settings.index_scope_all",
+      "context": "Option of the segment in the Folders row of the Index page: read everything on the computer. Not available yet; the option is dimmed with the word soon beside it.",
+      "en": "Everything",
+      "de": "Alles"
+    },
+    {
+      "key": "settings.index_scope_only",
+      "context": "Option of the segment in the Folders row of the Index page: read only the folders listed below.",
+      "en": "Only these folders",
+      "de": "Nur diese Ordner"
+    },
+    {
+      "key": "settings.index_scope_soon",
+      "context": "Dim note beside the segment in the Folders row of the Index page: the option Everything is not available yet. One word.",
+      "en": "soon",
+      "de": "bald"
+    },
+    {
+      "key": "settings.index_folder_missing",
+      "context": "Warning under a folder line on the Index and Hermes pages: the folder is on a drive that is not connected right now.",
+      "en": "not connected",
+      "de": "nicht angeschlossen"
+    },
+    {
+      "key": "settings.folder_add",
+      "context": "Button under the folder list of the Index and Hermes pages: opens the system folder dialog to add a folder. The plus sign belongs to the label.",
+      "en": "+ Choose folder …",
+      "de": "+ Ordner wählen …"
+    },
+    {
+      "key": "settings.index_folders_empty",
+      "context": "Line on the Index page when no folder is listed.",
+      "en": "No folder yet. The index only reads folders you add.",
+      "de": "Noch kein Ordner. Der Index liest nur Ordner, die du hinzufügst."
+    },
+    {
+      "key": "settings.index_row_ocr_system",
+      "context": "Label of the row of the Index page about reading scans and photos with the recognizer the operating system brings (macOS Vision). Only shown on macOS.",
+      "en": "Read scans and photos",
+      "de": "Scans und Fotos lesen"
+    },
+    {
+      "key": "settings.index_row_ocr_system_note",
+      "context": "Description under the row about reading scans and photos on the Index page. macOS Vision is the name of Apple's recognizer.",
+      "en": "macOS Vision, built in.",
+      "de": "macOS Vision, eingebaut."
+    },
+    {
+      "key": "settings.index_state_ready",
+      "context": "State shown at the right of a row of the Index page: the function is ready to use. One word.",
+      "en": "ready",
+      "de": "bereit"
+    },
+    {
+      "key": "settings.index_row_ocr_fallback",
+      "context": "Label of the row of the Index page about the second text recognizer that ncrs downloads.",
+      "en": "Fallback recognizer",
+      "de": "Ersatz-Erkenner"
+    },
+    {
+      "key": "settings.index_row_ocr_fallback_note",
+      "context": "Description under the row about the fallback recognizer on the Index page. It consists of 2 files of 40 MB together.",
+      "en": "Steps in when macOS cannot read a page. 2 files, 40 MB. The only recognizer on Linux and Windows.",
+      "de": "Springt ein, wenn macOS eine Seite nicht lesen kann. 2 Dateien, 40 MB. Auf Linux und Windows der einzige Erkenner."
+    },
+    {
+      "key": "settings.index_row_ai",
+      "context": "Label of the row of the Index page about the AI model on this computer.",
+      "en": "Understands documents and the chat",
+      "de": "Versteht Dokumente und den Chat"
+    },
+    {
+      "key": "settings.index_row_ai_note",
+      "context": "Description under the row about the AI model on the Index page. Qwen3-4B is the name of the model.",
+      "en": "Qwen3-4B. Without a model only file names and dates.",
+      "de": "Qwen3-4B. Ohne Modell nur Dateinamen und Datum."
+    },
+    {
+      "key": "settings.index_ai_off",
+      "context": "State of the AI model on the Index page: the AI is switched off. One word.",
+      "en": "off",
+      "de": "aus"
+    },
+    {
+      "key": "settings.index_ai_missing",
+      "context": "State of the AI model on the Index page: the model is not on this computer.",
+      "en": "not loaded",
+      "de": "nicht geladen"
+    },
+    {
+      "key": "settings.index_ai_downloading",
+      "context": "State of the AI model on the Index page: the model is being downloaded right now.",
+      "en": "loading …",
+      "de": "wird geladen …"
+    },
+    {
+      "key": "settings.index_ai_ready",
+      "context": "State of the AI model on the Index page: the model is on this computer and ready. One word.",
+      "en": "ready",
+      "de": "bereit"
+    },
+    {
+      "key": "settings.index_ai_server",
+      "context": "State of the AI on the Index page: an own server is used instead of the local model. {model} is the model name on that server.",
+      "en": "own server ({model})",
+      "de": "eigener Server ({model})"
+    },
+    {
+      "key": "settings.index_ai_failed",
+      "context": "State of the AI on the Index page: it could not start. The reason is on the status page.",
+      "en": "failed",
+      "de": "fehlgeschlagen"
+    },
+    {
+      "key": "settings.index_ai_next_start",
+      "context": "State of the AI on the Index page: it was switched on and starts when ncrs is started the next time.",
+      "en": "starts at the next start",
+      "de": "startet beim nächsten Start"
+    },
+    {
+      "key": "settings.index_row_server",
+      "context": "Label of the row of the Index page that sets up an own AI server in place of the model on this computer.",
+      "en": "Own server instead of the local model",
+      "de": "Eigener Server statt lokalem Modell"
+    },
+    {
+      "key": "settings.index_row_server_note",
+      "context": "Description under the row about the own AI server on the Index page.",
+      "en": "Address and model name. Only if you run one.",
+      "de": "Adresse und Modellname. Nur, wenn du einen betreibst."
+    },
+    {
+      "key": "settings.index_server_setup",
+      "context": "Button in the row about the own AI server on the Index page: shows the fields for address and model name.",
+      "en": "Set up …",
+      "de": "Einrichten …"
+    },
+    {
+      "key": "settings.index_own_note",
+      "context": "Description under the rows of own names, accounts and tax numbers on the Index page. The typed text is added with the plus button or Enter.",
+      "en": "Several allowed: separate them with commas or semicolons.",
+      "de": "Mehrere möglich: mit Komma oder Semikolon trennen."
+    },
+    {
+      "key": "settings.index_own_add",
+      "context": "Button next to the field of an own detail (name, account, tax number) on the Index page: adds what is typed. A plus sign.",
+      "en": "+",
+      "de": "+"
+    },
+    {
+      "key": "settings.index_state_counts",
+      "context": "Row on the Index page. {documents} is how many documents the index holds, {understood} how many of them it has read the text of.",
+      "en": "{documents} documents, {understood} understood",
+      "de": "{documents} Dokumente, {understood} verstanden"
+    },
+    {
+      "key": "settings.index_state_note",
+      "context": "Description under the row with the document counts on the Index page.",
+      "en": "The rest runs in the background.",
+      "de": "Der Rest läuft im Hintergrund."
+    },
+    {
+      "key": "settings.index_pause",
+      "context": "Button on the Index page that pauses the background work of the index. Verb.",
+      "en": "Pause",
+      "de": "Pausieren"
+    },
+    {
+      "key": "settings.index_resume",
+      "context": "Button on the Index page that continues the paused background work of the index. Verb.",
+      "en": "Resume",
+      "de": "Fortsetzen"
+    },
+    {
+      "key": "settings.index_row_load",
+      "context": "Label of the row of the Index page that chooses how much of the computer the index may use. Noun.",
+      "en": "Load",
+      "de": "Last"
+    },
+    {
+      "key": "settings.index_row_load_note",
+      "context": "Description under the Load row on the Index page.",
+      "en": "How much of your computer the index may use.",
+      "de": "Wie viel Rechner der Index nehmen darf."
+    },
+    {
+      "key": "settings.index_load_gentle",
+      "context": "Option of the Load segment on the Index page: use little, so the computer stays usable.",
+      "en": "Gentle",
+      "de": "Schonend"
+    },
+    {
+      "key": "settings.index_load_balanced",
+      "context": "Option of the Load segment on the Index page: use a moderate share.",
+      "en": "Balanced",
+      "de": "Ausgewogen"
+    },
+    {
+      "key": "settings.index_load_full",
+      "context": "Option of the Load segment on the Index page: use all the computer can give.",
+      "en": "Full load",
+      "de": "Volle Last"
+    },
+    {
+      "key": "settings.index_errors",
+      "context": "Row on the Index page. {count} is how many files could not be read; at least 2.",
+      "en": "{count} files ncrs could not read",
+      "de": "{count} Dateien konnte ncrs nicht lesen"
+    },
+    {
+      "key": "settings.index_errors_one",
+      "context": "Row on the Index page when exactly one file could not be read.",
+      "en": "1 file ncrs could not read",
+      "de": "1 Datei konnte ncrs nicht lesen"
+    },
+    {
+      "key": "settings.index_errors_show",
+      "context": "Button in the row of unreadable files on the Index page: opens the list of the files and why they could not be read. Verb.",
+      "en": "Show",
+      "de": "Zeigen"
+    },
+    {
+      "key": "settings.hermes_row_on",
+      "context": "Label of the switch on the Hermes page of the settings tab that turns Hermes on or off.",
+      "en": "Hermes on",
+      "de": "Hermes an"
+    },
+    {
+      "key": "settings.hermes_row_on_note",
+      "context": "Description under the switch on the Hermes page. Read folders are the folders Hermes picks up new documents from.",
+      "en": "Watches the read folders while ncrs runs.",
+      "de": "Beobachtet die Lesen-Ordner, solange ncrs läuft."
+    },
+    {
+      "key": "settings.hermes_section_folders",
+      "context": "Heading of the section of the Hermes page that lists the folders Hermes picks up new documents from. Compound noun: read folders.",
+      "en": "Read folders",
+      "de": "Lesen-Ordner"
+    },
+    {
+      "key": "settings.hermes_section_folders_intro",
+      "context": "Sentence under the heading Read folders on the Hermes page.",
+      "en": "Where new documents arrive. Each line says what Hermes does with them.",
+      "de": "Wo neue Dokumente ankommen. Jede Zeile sagt, was Hermes damit macht."
+    },
+    {
+      "key": "settings.hermes_status_always",
+      "context": "Part of the status text of a read folder on the Hermes page: Hermes reads the folder all the time. Lower case, one or two words.",
+      "en": "always",
+      "de": "immer"
+    },
+    {
+      "key": "settings.hermes_status_on_request",
+      "context": "Part of the status text of a read folder on the Hermes page: Hermes reads the folder only when the user asks in the chat. Lower case.",
+      "en": "on request only",
+      "de": "nur auf Wunsch"
+    },
+    {
+      "key": "settings.hermes_status_move",
+      "context": "Part of the status text of a read folder on the Hermes page: files are moved out of the folder when filed. Lower case verb.",
+      "en": "move",
+      "de": "verschieben"
+    },
+    {
+      "key": "settings.hermes_status_copy",
+      "context": "Part of the status text of a read folder on the Hermes page: files are copied and the originals stay in the folder. Lower case verb.",
+      "en": "copy",
+      "de": "kopieren"
+    },
+    {
+      "key": "settings.hermes_status_images",
+      "context": "Part of the status text of a read folder on the Hermes page: images are read as well. Lower case.",
+      "en": "also images",
+      "de": "auch Bilder"
+    },
+    {
+      "key": "settings.hermes_folder_change",
+      "context": "Button on a read folder line of the Hermes page: opens the small dialog that changes what Hermes does with the folder. Verb.",
+      "en": "Change",
+      "de": "Ändern"
+    },
+    {
+      "key": "settings.hermes_setup_in_chat",
+      "context": "Button under the read folder list of the Hermes page: opens the Hermes chat (F2), which sets the folders up in conversation.",
+      "en": "Set up in chat",
+      "de": "Im Chat einrichten"
+    },
+    {
+      "key": "settings.hermes_folders_empty",
+      "context": "Line on the Hermes page when no read folder is listed.",
+      "en": "No read folder yet.",
+      "de": "Noch kein Lesen-Ordner."
+    },
+    {
+      "key": "settings.folder_dialog_title",
+      "context": "Title of the small dialog opened with Change on a read folder of the Hermes page. Compound noun: read folder.",
+      "en": "Read folder",
+      "de": "Lesen-Ordner"
+    },
+    {
+      "key": "settings.folder_dialog_when",
+      "context": "Question in the read folder dialog: whether Hermes reads the folder all the time or only when asked.",
+      "en": "When does Hermes read this folder?",
+      "de": "Wann liest Hermes diesen Ordner?"
+    },
+    {
+      "key": "settings.folder_dialog_always",
+      "context": "Option in the read folder dialog: Hermes reads the folder all the time.",
+      "en": "Always",
+      "de": "Immer"
+    },
+    {
+      "key": "settings.folder_dialog_on_request",
+      "context": "Option in the read folder dialog: Hermes reads the folder only when the user asks in the chat.",
+      "en": "Only on request",
+      "de": "Nur auf Wunsch"
+    },
+    {
+      "key": "settings.folder_dialog_images",
+      "context": "Checkbox in the read folder dialog: images are read as well.",
+      "en": "Also read images",
+      "de": "Auch Bilder lesen"
+    },
+    {
+      "key": "settings.hermes_section_order",
+      "context": "Heading of the section of the Hermes page that shows the order Hermes learned from the user's files. Noun.",
+      "en": "Order",
+      "de": "Ordnung"
+    },
+    {
+      "key": "settings.hermes_section_order_intro",
+      "context": "Sentence under the heading Order on the Hermes page. Nothing can be entered there; changes go through the chat.",
+      "en": "What Hermes has learned from your files. It files new documents the same way. Nothing to enter here; change it in the chat.",
+      "de": "Was Hermes aus deinen Dateien gelernt hat. Neue Dokumente legt er genauso ab. Nichts einzutragen; ändern geht im Chat."
+    },
+    {
+      "key": "settings.hermes_order_empty",
+      "context": "Line under the Order heading on the Hermes page when Hermes has learned nothing yet.",
+      "en": "Nothing learned yet. Let Hermes read a folder in the chat.",
+      "de": "Noch nichts gelernt. Lass Hermes im Chat einen Ordner lesen."
+    },
+    {
+      "key": "settings.hermes_order_reading",
+      "context": "Line under the Order heading on the Hermes page while the folders are being looked at.",
+      "en": "Looking at your folders …",
+      "de": "Schaue in deine Ordner …"
+    },
+    {
+      "key": "settings.hermes_area_files",
+      "context": "Name line of an area in the Order section of the Hermes page. An area is a part of the filing structure, for example Bank. {name} is its name, {count} the number of files; at least 2.",
+      "en": "{name} · {count} files",
+      "de": "{name} · {count} Dateien"
+    },
+    {
+      "key": "settings.hermes_area_one_file",
+      "context": "Name line of an area in the Order section of the Hermes page when it holds exactly one file. {name} is the name of the area.",
+      "en": "{name} · 1 file",
+      "de": "{name} · 1 Datei"
+    },
+    {
+      "key": "settings.hermes_area_change",
+      "context": "Button on an area line of the Hermes page: opens the Hermes chat (F2) at the change of this area.",
+      "en": "Change in chat",
+      "de": "Ändern im Chat"
+    },
+    {
+      "key": "settings.hermes_areas_more",
+      "context": "Line under the first three areas of the Order section. {count} is the number of areas not shown; at least 2.",
+      "en": "{count} more areas",
+      "de": "{count} weitere Bereiche"
+    },
+    {
+      "key": "settings.hermes_areas_more_one",
+      "context": "Line under the first three areas of the Order section when one more area is not shown.",
+      "en": "1 more area",
+      "de": "1 weiterer Bereich"
+    },
+    {
+      "key": "settings.hermes_areas_show_all",
+      "context": "Button in the Order section of the Hermes page: shows all areas.",
+      "en": "Show all",
+      "de": "Alle zeigen"
+    },
+    {
+      "key": "settings.hermes_areas_show_fewer",
+      "context": "Button in the Order section of the Hermes page after all areas are shown: shows only the first three again.",
+      "en": "Show fewer",
+      "de": "Weniger zeigen"
+    },
+    {
+      "key": "settings.hermes_section_history",
+      "context": "Heading of the section of the Hermes page that lists what Hermes filed recently. Noun.",
+      "en": "History",
+      "de": "Verlauf"
+    },
+    {
+      "key": "settings.hermes_history_empty",
+      "context": "Line under the History heading on the Hermes page when Hermes has not filed anything yet.",
+      "en": "Nothing filed yet.",
+      "de": "Noch nichts abgelegt."
+    },
+    {
+      "key": "settings.hermes_history_run",
+      "context": "Line of the last run in the History section. {when} is a date and time such as Today 14:02, {count} the number of files (at least 2), {from} the folder they came from.",
+      "en": "{when} · {count} files from {from}",
+      "de": "{when} · {count} Dateien aus {from}"
+    },
+    {
+      "key": "settings.hermes_history_run_one",
+      "context": "Line of the last run in the History section when it filed exactly one file. {when} is a date and time, {from} the folder the file came from.",
+      "en": "{when} · 1 file from {from}",
+      "de": "{when} · 1 Datei aus {from}"
+    },
+    {
+      "key": "settings.hermes_history_undo",
+      "context": "Button on the run in the History section: puts the files of the run back. Verb phrase.",
+      "en": "Undo",
+      "de": "Rückgängig"
+    },
+    {
+      "key": "settings.hermes_history_undo_failed",
+      "context": "Notice when the last run could not be put back. {reason} is the system's explanation.",
+      "en": "The last run could not be undone: {reason}",
+      "de": "Der letzte Lauf konnte nicht rückgängig gemacht werden: {reason}"
+    },
+    {
+      "key": "settings.hermes_row_rules",
+      "context": "Label of the row of the Advanced section on the Hermes page that opens the rules.",
+      "en": "Rules",
+      "de": "Regeln"
+    },
+    {
+      "key": "settings.hermes_row_rules_note",
+      "context": "Description under the Rules row on the Hermes page. {count} is the number of rules the user has.",
+      "en": "Only to force it, if Hermes should sort something differently. {count} rules.",
+      "de": "Nur zum Erzwingen, wenn Hermes etwas partout anders sortieren soll. {count} Regeln."
+    },
+    {
+      "key": "settings.hermes_row_tags",
+      "context": "Label of the row of the Advanced section on the Hermes page that opens the tags. Tags are the words Hermes attaches to files.",
+      "en": "Tags",
+      "de": "Schlagworte"
+    },
+    {
+      "key": "settings.hermes_row_tags_note",
+      "context": "Description under the Tags row on the Hermes page.",
+      "en": "Names Hermes attaches to files. Rename, merge.",
+      "de": "Namen, die Hermes an Dateien hängt. Umbenennen, zusammenlegen."
+    },
+    {
+      "key": "settings.open_ellipsis",
+      "context": "Button on the Hermes page that opens the page of the rules or of the tags. Verb with an ellipsis because a page follows.",
+      "en": "Open …",
+      "de": "Öffnen …"
+    },
+    {
+      "key": "settings.model_remove_title",
+      "context": "Title of the question before a downloaded model is deleted from this computer.",
+      "en": "Remove model",
+      "de": "Modell entfernen"
+    },
+    {
+      "key": "settings.model_remove_ocr",
+      "context": "Question before the fallback text recognizer is deleted from this computer.",
+      "en": "Remove the fallback recognizer from this Mac? You can load it again later.",
+      "de": "Den Ersatz-Erkenner von diesem Mac entfernen? Du kannst ihn später wieder laden."
+    },
+    {
+      "key": "settings.model_remove_ai",
+      "context": "Question before the AI model is deleted from this computer.",
+      "en": "Remove the AI model from this Mac? You can load it again later.",
+      "de": "Das KI-Modell von diesem Mac entfernen? Du kannst es später wieder laden."
+    },
+    {
+      "key": "settings.model_remove_failed",
+      "context": "Notice when a model could not be deleted. {reason} is the system's explanation.",
+      "en": "The model could not be removed: {reason}",
+      "de": "Das Modell konnte nicht entfernt werden: {reason}"
     }
   ]
 }

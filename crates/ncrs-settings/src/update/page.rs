@@ -5,7 +5,7 @@ use ncrs_fs::runs_in_app_sandbox;
 use ncrs_i18n::{fill_template, Msg};
 use ncrs_ui_kit::focus::release_focus;
 
-use super::{keys, models, theme};
+use super::{documents, keys, models, theme};
 use crate::action::Action;
 use crate::ai_model::InstallOutcome;
 use crate::ctx::Ctx;
@@ -18,7 +18,7 @@ use crate::state::Settings;
 use crate::theme_file::{
     copy_picked_theme_file, theme_file_entry, IncludeNotCopied, IncludeProblem,
 };
-use crate::write::{write_failure, write_setting};
+use crate::write::{change_failure, write_failure, write_setting};
 
 pub fn update(
     settings: &mut Settings,
@@ -40,6 +40,17 @@ pub fn update(
         }
         SettingsMessage::ChooseFileListTags => {
             actions.push(Action::ShowTagsPage);
+            Task::none()
+        }
+        SettingsMessage::Close
+            if settings
+                .page
+                .as_ref()
+                .is_some_and(|state| state.dialog_is_open()) =>
+        {
+            if let Some(state) = settings.page.as_mut() {
+                state.close_dialog();
+            }
             Task::none()
         }
         SettingsMessage::Close => leave_page(settings, ctx, close_settings),
@@ -121,6 +132,28 @@ pub fn update(
             actions.push(Action::Protection(position));
             Task::none()
         }
+        message @ (SettingsMessage::AddFolder(_)
+        | SettingsMessage::FolderPicked { .. }
+        | SettingsMessage::FolderGranted { .. }
+        | SettingsMessage::RemoveFolder(_)
+        | SettingsMessage::EditFolder(_)
+        | SettingsMessage::ReplaceFolder(_)
+        | SettingsMessage::AddOwnDetail(_)
+        | SettingsMessage::ToggleAllAreas
+        | SettingsMessage::ToggleServerSetup
+        | SettingsMessage::OpenChat(_)
+        | SettingsMessage::TogglePause
+        | SettingsMessage::UndoLastRun
+        | SettingsMessage::FactsLoaded(_)
+        | SettingsMessage::LastRunUndone(_)
+        | SettingsMessage::OpenRules
+        | SettingsMessage::OpenAiModel
+        | SettingsMessage::AskRemoveModel(_)
+        | SettingsMessage::CancelRemoveModel
+        | SettingsMessage::ConfirmRemoveModel
+        | SettingsMessage::ModelRemoved { .. }) => {
+            documents::update(settings, message, ctx, actions)
+        }
         SettingsMessage::Change(change) => write_setting(settings, change, ctx),
         SettingsMessage::Written { change, result } => {
             written(settings, change, result, ctx, actions)
@@ -148,7 +181,7 @@ fn leave_page(
 }
 
 /// Runs `edit` on the open tab and writes the change it asks for.
-fn in_settings(
+pub(super) fn in_settings(
     settings: &mut Settings,
     ctx: &Ctx<'_>,
     edit: impl FnOnce(&mut SettingsState) -> Option<SettingChange>,
@@ -225,7 +258,7 @@ fn written(
                     card.set_outcome(InstallOutcome::StillOff);
                 }
             }
-            let failure = write_failure(&error, ctx);
+            let failure = change_failure(&error, &change, ctx);
             let at_its_row = match settings.page.as_mut() {
                 Some(state) => state.refused(&change, failure.clone()),
                 None => false,

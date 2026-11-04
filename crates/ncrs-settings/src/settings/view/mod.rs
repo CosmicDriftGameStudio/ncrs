@@ -1,7 +1,11 @@
 mod groups;
+mod hermes_page;
+mod index_page;
 mod page;
 
 use groups::*;
+use hermes_page::hermes_groups;
+use index_page::index_groups;
 use page::*;
 
 use crate::settings::*;
@@ -13,9 +17,10 @@ use iced::widget::text::Wrapping;
 use iced::widget::{column, container, row, scrollable, text};
 use iced::{alignment, Color, Element, Font, Length, Padding};
 
+use crate::facts::DocumentsFacts;
 use crate::message::{SettingChange, SettingField, SettingsMessage};
 use ncrs_config::config::{AiEndpointProblem, Filing, ProgramLineProblem, ServerEntry};
-use ncrs_config::SettingsFeature;
+use ncrs_config::{SettingsFeature, SettingsGroup};
 use ncrs_i18n::fill_template;
 use ncrs_i18n::{FuturamaName, Language, Msg};
 use ncrs_ui_kit::format::shown_path;
@@ -56,6 +61,8 @@ pub struct SettingsView<'a> {
     pub servers: &'a [ServerEntry],
     /// How the index of filing is protected, while filing has a module.
     pub protection: Option<ProtectionPanel>,
+    /// What the Index and Hermes pages show that the config does not say.
+    pub facts: DocumentsFacts,
     pub home: &'a Path,
     /// How many actions have keys other than their built-in ones.
     pub keys_changed: usize,
@@ -156,6 +163,7 @@ fn feature_label(feature: SettingsFeature) -> Msg {
         SettingsFeature::Programs => Msg::SettingsFeaturePrograms,
         SettingsFeature::Keys => Msg::SettingsFeatureKeys,
         SettingsFeature::Servers => Msg::SettingsFeatureServers,
+        SettingsFeature::Index => Msg::SettingsFeatureIndex,
         SettingsFeature::Hermes => Msg::SettingsFeatureHermes,
     }
 }
@@ -167,7 +175,28 @@ fn feature_theme_name(feature: SettingsFeature) -> Option<FuturamaName> {
         | SettingsFeature::Language
         | SettingsFeature::Programs
         | SettingsFeature::Keys
-        | SettingsFeature::Servers => None,
+        | SettingsFeature::Servers
+        | SettingsFeature::Index => None,
+    }
+}
+
+fn group_label(group: SettingsGroup) -> Msg {
+    match group {
+        SettingsGroup::General => Msg::SettingsGroupGeneral,
+        SettingsGroup::Documents => Msg::SettingsGroupDocuments,
+    }
+}
+
+/// The dim word beside the name of the page, in the list and in the heading.
+fn feature_suffix(feature: SettingsFeature) -> Option<Msg> {
+    match feature {
+        SettingsFeature::Hermes => Some(Msg::SettingsFeatureHermesSorting),
+        SettingsFeature::Look
+        | SettingsFeature::Language
+        | SettingsFeature::Programs
+        | SettingsFeature::Keys
+        | SettingsFeature::Servers
+        | SettingsFeature::Index => None,
     }
 }
 
@@ -178,7 +207,8 @@ fn feature_beta_mark(feature: SettingsFeature) -> Option<Msg> {
         | SettingsFeature::Language
         | SettingsFeature::Programs
         | SettingsFeature::Keys
-        | SettingsFeature::Servers => None,
+        | SettingsFeature::Servers
+        | SettingsFeature::Index => None,
     }
 }
 
@@ -189,6 +219,7 @@ fn feature_intro(feature: SettingsFeature) -> Msg {
         SettingsFeature::Programs => Msg::SettingsFeatureProgramsIntro,
         SettingsFeature::Keys => Msg::SettingsFeatureKeysIntro,
         SettingsFeature::Servers => Msg::SettingsFeatureServersIntro,
+        SettingsFeature::Index => Msg::SettingsFeatureIndexIntro,
         SettingsFeature::Hermes => Msg::SettingsFeatureHermesIntro,
     }
 }
@@ -200,7 +231,7 @@ fn feature_config_place(feature: SettingsFeature) -> &'static str {
         SettingsFeature::Programs => OPEN_SECTION,
         SettingsFeature::Keys => KEYS_SECTION,
         SettingsFeature::Servers => SERVERS_SECTION,
-        SettingsFeature::Hermes => FILING_SECTION,
+        SettingsFeature::Index | SettingsFeature::Hermes => FILING_SECTION,
     }
 }
 
@@ -286,6 +317,7 @@ fn groups_of<'a>(feature: SettingsFeature, view: &SettingsView<'a>) -> Vec<Group
         SettingsFeature::Programs => programs_groups(view),
         SettingsFeature::Keys => keys_groups(view),
         SettingsFeature::Servers => servers_groups(view),
+        SettingsFeature::Index => index_groups(view),
         SettingsFeature::Hermes => hermes_groups(view),
     }
 }

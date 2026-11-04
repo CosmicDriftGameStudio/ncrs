@@ -329,6 +329,35 @@ pub fn read_folder(
     Ok(reading)
 }
 
+/// The order of a folder from what the index already knows of its files.
+/// Files the index does not know are left out: nothing is hashed, opened or
+/// read for text, so this is cheap enough for a settings page.
+pub fn known_structure(access: &ChatAccess, folder: &Path) -> Result<LocationStructure, ReadError> {
+    match fs::metadata(folder) {
+        Ok(metadata) if metadata.is_dir() => {}
+        Ok(_) => return Err(ReadError::NotADirectory),
+        Err(err) => return Err(read_error(folder, &err)),
+    }
+    let mut walked = Vec::new();
+    walk(folder, Path::new(""), &mut walked, &ReadProgress::default())?;
+    let (known, kinds) = unchanged_in_index(access, folder, &walked).map_err(ReadError::Io)?;
+    let files: Vec<PlanFile> = walked
+        .into_iter()
+        .zip(known)
+        .filter_map(|(file, record)| {
+            let record = record?;
+            Some(PlanFile {
+                relative_path: file.relative,
+                hash: record.hash,
+                fields: record.fields,
+                text: record.text,
+                recorded_at: 0,
+            })
+        })
+        .collect();
+    Ok(location_structure(&files, &kinds.catalog))
+}
+
 fn ai_coverage(access: &ChatAccess, folder: &Path) -> AiCoverage {
     access
         .with_index(|index| {

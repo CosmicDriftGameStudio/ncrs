@@ -4,7 +4,8 @@ use std::path::PathBuf;
 
 use iced::mouse::ScrollDelta;
 use ncrs_config::config::{
-    AiProviderChoice, AiProviderName, Config, FilingWriteError, OwnDetail, ProgramLine, ServerEntry,
+    AiProviderChoice, AiProviderName, Config, FilingLocation, FilingWriteError, OwnDetail,
+    ProgramLine, ServerEntry,
 };
 use ncrs_config::file_list_tags::FileListTags;
 use ncrs_config::keymap::Binding;
@@ -15,6 +16,8 @@ use ncrs_i18n::Language;
 use ncrs_pipeline::Load;
 
 use crate::ai_model::DownloadError as AiDownloadError;
+use crate::facts::{AreaFacts, LoadedFacts, ModelKind};
+use crate::folders::AddAs;
 use crate::ocr_models::DownloadError;
 use crate::open_vsx::FetchError;
 use crate::theme_fetch::{Fetched, Installed};
@@ -50,6 +53,9 @@ pub enum SettingChange {
     },
     /// Which tags follow a file name in the file lists.
     FileListTags(FileListTags),
+    /// The whole list of read folders, as it is to be written. Hermes and the
+    /// AI stay as they are.
+    Locations(Vec<FilingLocation>),
 }
 
 /// A text field of the settings tab. What is typed stays a draft until
@@ -106,6 +112,45 @@ pub enum SettingsMessage {
     OpenFilingStatus,
     /// The button at this position of the protection of the index.
     Protection(usize),
+    /// "+ Ordner wählen …": opens the system folder dialog.
+    AddFolder(AddAs),
+    FolderPicked {
+        kind: AddAs,
+        path: Option<PathBuf>,
+    },
+    /// The access to the picked folder is kept (sandbox), or not.
+    FolderGranted {
+        kind: AddAs,
+        path: PathBuf,
+        result: Result<(), String>,
+    },
+    RemoveFolder(PathBuf),
+    /// Opens the dialog of this read folder, or closes it.
+    EditFolder(Option<PathBuf>),
+    /// The folder with this path takes the values of the location.
+    ReplaceFolder(FilingLocation),
+    /// The "+" next to the field of an own detail.
+    AddOwnDetail(OwnDetail),
+    ToggleAllAreas,
+    ToggleServerSetup,
+    /// Opens the chat (F2), at the change of this area when one is named.
+    OpenChat(Option<AreaFacts>),
+    TogglePause,
+    UndoLastRun,
+    /// The last run was put back, or the reason it could not be.
+    LastRunUndone(Result<(), String>),
+    /// The app read the facts the Index and Hermes pages show.
+    FactsLoaded(LoadedFacts),
+    OpenRules,
+    OpenAiModel,
+    /// Asks before this model is removed from the computer.
+    AskRemoveModel(ModelKind),
+    CancelRemoveModel,
+    ConfirmRemoveModel,
+    ModelRemoved {
+        kind: ModelKind,
+        result: Result<(), String>,
+    },
     /// The config as read back after the write of `change`.
     Written {
         change: SettingChange,

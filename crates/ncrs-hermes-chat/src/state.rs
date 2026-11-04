@@ -432,6 +432,8 @@ pub struct Session {
     pub change_order: Option<ChangeOrder>,
     /// The area was picked from the buttons: no second question if it fails.
     pub area_chosen: bool,
+    /// The area the settings page asked to change, once its folder is read.
+    pub focus_area: Option<String>,
     /// The patterns on offer after the areas card.
     pub patterns: Vec<PatternChoice>,
     /// The pattern change waiting for a yes.

@@ -355,7 +355,6 @@ fn rule_text(
             .unwrap_or_default()
     };
     match violation {
-        FilingRuleViolation::NoTarget => lang.text(Msg::FilingSetupRuleNoTarget).to_owned(),
         FilingRuleViolation::SecondTarget { .. } => {
             lang.text(Msg::FilingSetupRuleSecondTarget).to_owned()
         }

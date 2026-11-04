@@ -83,6 +83,36 @@ pub fn with_filing_locations(
         }
     }
     let first_setup = filing.get("locations").is_none();
+    set_locations(filing, locations)?;
+    if first_setup && filing.get("ai").is_none() {
+        let ai =
+            sub_table(filing, "ai", false).ok_or_else(|| not_a_table(path, "modules.filing.ai"))?;
+        ai.insert("enabled", toml_edit::value(true));
+    }
+    Ok(document.to_string())
+}
+
+/// `source` with `locations` as the read folders of `[modules.filing]` and
+/// nothing else changed: whether Hermes is on and its AI settings stay as the
+/// user left them. An empty list removes the entries.
+pub fn with_read_folders(
+    source: &str,
+    path: &Path,
+    locations: &[FilingLocation],
+) -> Result<String, FilingWriteError> {
+    let mut document = parse_document(source, path)?;
+    let modules = sub_table(document.as_table_mut(), "modules", true)
+        .ok_or_else(|| not_a_table(path, "modules"))?;
+    let filing =
+        sub_table(modules, "filing", false).ok_or_else(|| not_a_table(path, "modules.filing"))?;
+    set_locations(filing, locations)?;
+    Ok(document.to_string())
+}
+
+fn set_locations(
+    filing: &mut toml_edit::Table,
+    locations: &[FilingLocation],
+) -> Result<(), FilingWriteError> {
     // A comment above the first location belongs to the list, not to the
     // entry that is replaced.
     let first_prefix = filing
@@ -107,6 +137,9 @@ pub fn with_filing_locations(
         if location.is_target {
             entry.insert("target", toml_edit::value(true));
         }
+        if location.transfer == LocationTransfer::Copy {
+            entry.insert("transfer", toml_edit::value("copy"));
+        }
         if entries.is_empty() {
             if let Some(prefix) = first_prefix.clone() {
                 entry.decor_mut().set_prefix(prefix);
@@ -114,13 +147,12 @@ pub fn with_filing_locations(
         }
         entries.push(entry);
     }
-    filing.insert("locations", toml_edit::Item::ArrayOfTables(entries));
-    if first_setup && filing.get("ai").is_none() {
-        let ai =
-            sub_table(filing, "ai", false).ok_or_else(|| not_a_table(path, "modules.filing.ai"))?;
-        ai.insert("enabled", toml_edit::value(true));
+    if entries.is_empty() {
+        filing.remove("locations");
+    } else {
+        filing.insert("locations", toml_edit::Item::ArrayOfTables(entries));
     }
-    Ok(document.to_string())
+    Ok(())
 }
 
 /// The table `key` in `parent`, created when missing. An inline table becomes

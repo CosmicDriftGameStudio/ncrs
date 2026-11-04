@@ -16,6 +16,7 @@ fn location(path: &str, mode: LocationMode, is_target: bool) -> FilingLocation {
         mode,
         images: false,
         is_target,
+        transfer: Default::default(),
     }
 }
 
@@ -402,7 +403,8 @@ fn a_module_busy_with_its_start_is_not_replaced() {
 #[test]
 fn a_failed_save_is_shown_and_changes_nothing() {
     let mut app = app_that_can_start_a_module();
-    let failure = FilingWriteError::Rule(crate::config::FilingRuleViolation::NoTarget);
+    let failure =
+        FilingWriteError::Rule(crate::config::FilingRuleViolation::SecondTarget { index: 1 });
 
     drop(app.update(setup_message(FilingSetupMessage::Saved(Err(
         failure.clone(),

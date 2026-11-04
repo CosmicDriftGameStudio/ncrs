@@ -466,4 +466,6 @@ mod hit_list_tests;
 )]
 #[cfg(test)]
 mod replan_flow;
+#[cfg(test)]
+mod settings_pages_tests;
 pub(in crate::app) mod support;

@@ -30,17 +30,32 @@ pub fn nav<'a>(
         palette,
     );
     let mut entries = Column::new().spacing(NAV_ENTRY_GAP);
+    let mut current_group = None;
     for &feature in listed {
+        if current_group != Some(feature.group()) {
+            current_group = Some(feature.group());
+            entries = entries.push(
+                container(
+                    text(lang.text(group_label(feature.group())).to_owned())
+                        .size(font_size::SMALL)
+                        .color(palette.dim_text)
+                        .wrapping(Wrapping::None),
+                )
+                .padding(Padding {
+                    top: spacing::S,
+                    left: spacing::CELL_PADDING_X,
+                    ..Padding::ZERO
+                }),
+            );
+        }
         let mut label = row![text(lang.text(feature_label(feature)).to_owned())
             .size(font_size::BODY)
             .wrapping(Wrapping::None)]
         .spacing(spacing::S)
         .align_y(alignment::Vertical::Center);
-        if let Some(theme_name) =
-            feature_theme_name(feature).and_then(|name| lang.futurama_name(name))
-        {
+        if let Some(suffix) = feature_suffix(feature) {
             label = label.push(
-                text(theme_name.to_owned())
+                text(lang.text(suffix).to_owned())
                     .size(font_size::SMALL)
                     .color(palette.dim_text)
                     .wrapping(Wrapping::None),
@@ -94,10 +109,9 @@ pub fn heading<'a>(feature: SettingsFeature, view: &SettingsView<'a>) -> Element
         .font(ncrs_ui_kit::APP_FONT)]
     .spacing(spacing::M)
     .align_y(alignment::Vertical::Center);
-    if let Some(theme_name) = feature_theme_name(feature).and_then(|name| lang.futurama_name(name))
-    {
+    if let Some(suffix) = feature_suffix(feature) {
         title = title.push(
-            text(theme_name.to_owned())
+            text(lang.text(suffix).to_owned())
                 .size(font_size::TITLE)
                 .color(palette.dim_text),
         );

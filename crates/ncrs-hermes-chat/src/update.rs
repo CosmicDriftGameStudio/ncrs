@@ -119,11 +119,34 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
         Message::ModelReady => understand::model_ready(state, ctx),
         Message::AiTurnedOn => understand::ai_turned_on(state, ctx),
         Message::HermesReady => understand::hermes_ready(state, ctx),
+        Message::ChangeArea { folder, area } => change_area(state, ctx, folder, area),
         Message::WorkTick => {
             crate::working::tick(state, ctx);
             None
         }
     }
+}
+
+/// The settings page asks for the change of one area: the folder is read
+/// and the orders for the area are on offer.
+fn change_area(state: &mut State, ctx: &Ctx, folder: PathBuf, area: String) -> Option<Action> {
+    state.open = true;
+    let fresh = state.thread.is_empty();
+    if fresh {
+        open_thread(state, ctx);
+    }
+    if !matches!(ctx.availability, Availability::Ready(_)) {
+        if !fresh && matches!(ctx.availability, Availability::NeedsSetup) {
+            say_needs_setup(state, ctx);
+        }
+        return None;
+    }
+    if is_busy(state) {
+        return None;
+    }
+    state.session.focus_area = Some(area);
+    learn::read(state, ctx, folder);
+    None
 }
 
 /// Work or the model is running, or something waits for Hermes to start;

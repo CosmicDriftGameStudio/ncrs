@@ -46,6 +46,7 @@ pub fn resolve_filing(section: &FilingSection, home: Option<&Path>) -> Result<Fi
             mode: LocationMode::from(*entry.mode.get_ref()),
             images: entry.images,
             is_target: entry.target.as_ref().is_some_and(|flag| *flag.get_ref()),
+            transfer: entry.transfer.unwrap_or_default(),
         });
     }
     check_filing_rules(&filing.locations).map_err(|violation| {
@@ -71,11 +72,6 @@ pub fn resolve_filing(section: &FilingSection, home: Option<&Path>) -> Result<Fi
             FilingRuleViolation::SecondTarget { index } => FilingError {
                 span: target_flag_span(index),
                 reason: "only one location can have `target = true`".to_owned(),
-            },
-            FilingRuleViolation::NoTarget => FilingError {
-                span: listed.span(),
-                reason: "no location has `target = true`, one archive must be the target"
-                    .to_owned(),
             },
             FilingRuleViolation::Overlap { earlier, later } => FilingError {
                 span: entries

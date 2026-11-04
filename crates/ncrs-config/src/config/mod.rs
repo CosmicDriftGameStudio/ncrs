@@ -178,8 +178,8 @@ pub use self::resolving::{check_ai_endpoint, AiEndpointProblem};
 pub use self::sections::{
     AiProviderName, AiSection, AiSetting, ContrastWarning, FileListTagsSection, Filing,
     FilingLocation, FilingSection, KeyEntry, KeySection, KindSection, KindWarning, LanguageWarning,
-    LoadValue, LocationEntry, LocationModeName, ModulesSection, ServerEntry, ServerSection,
-    ThemeEntry, ThemeSection, VscodeWarning,
+    LoadValue, LocationEntry, LocationModeName, LocationTransfer, ModulesSection, ServerEntry,
+    ServerSection, ThemeEntry, ThemeSection, VscodeWarning,
 };
 pub use self::setting_writes::{
     remove_vscode_theme, write_ai_enabled, write_ai_provider, write_color, write_default_pattern,
@@ -190,8 +190,8 @@ pub use self::write_support::one_config_writer;
 use self::write_support::*;
 use self::writing::*;
 pub use self::writing::{
-    check_filing_rules, check_vscode_theme_writable, write_filing_locations, write_servers,
-    write_vscode_theme, FilingRuleViolation, FilingWriteError,
+    check_filing_rules, check_vscode_theme_writable, write_filing_locations, write_read_folders,
+    write_servers, write_vscode_theme, FilingRuleViolation, FilingWriteError,
 };
 
 impl Config {

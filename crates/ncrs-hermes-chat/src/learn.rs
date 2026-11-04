@@ -10,15 +10,14 @@ use ncrs_filing::chat_work::{
 };
 use ncrs_i18n::Msg;
 use ncrs_index::{KindCatalog, KindLanguage, Kinds};
-use ncrs_intake::{Area, Branch, Level, PlaceholderLabel};
+use ncrs_intake::{label_text, levels_plain, Area, Branch, Level, PlaceholderLabel};
 use ncrs_ui_kit::hermes_state::FolderRole;
 
 use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::state::{Chip, ChipReply, FileCard, Offer, Part, ReadFor, Retry, State, Step};
 use crate::texts::{
-    areas_card, fill, folder_name, label_text, levels_plain, number, plural_text, segments, text,
-    SHOWN_AREAS,
+    areas_card, fill, folder_name, number, plural_text, segments, text, SHOWN_AREAS,
 };
 use crate::update::{
     access, cancel_chip, chip, chip_labelled, hermes, lost_folder_chips, lost_folder_retry_chips,
@@ -72,6 +71,7 @@ pub fn read_done(state: &mut State, ctx: &Ctx, result: Result<Arc<FolderReading>
             deliver(state, ctx, purpose, &reading);
         }
         Err(error) => {
+            state.session.focus_area = None;
             state.session.tidy = None;
             state.session.resume_tidy = false;
             state.step = Step::Idle;
@@ -124,11 +124,51 @@ pub fn retry(state: &mut State, ctx: &Ctx) {
 
 fn deliver(state: &mut State, ctx: &Ctx, purpose: ReadFor, reading: &Arc<FolderReading>) {
     match purpose {
-        ReadFor::Learn => summary(state, ctx, reading),
+        ReadFor::Learn => match state.session.focus_area.take() {
+            Some(area) => focused_area(state, ctx, reading, &area),
+            None => summary(state, ctx, reading),
+        },
         ReadFor::Source => tidy::source_read(state, ctx, reading),
         ReadFor::Target => tidy::target_read(state, ctx),
         ReadFor::NewTarget => crate::decide::new_target_read(state, ctx, reading),
     }
+}
+
+/// The orders on offer for the area the settings page named; when the folder
+/// has no such area the usual summary follows.
+fn focused_area(state: &mut State, ctx: &Ctx, reading: &Arc<FolderReading>, area: &str) {
+    if reading.files.is_empty()
+        || !reading
+            .structure
+            .areas
+            .iter()
+            .any(|found| found.folder == area)
+    {
+        summary(state, ctx, reading);
+        return;
+    }
+    state.session.learning = Some(Arc::clone(reading));
+    state.step = Step::AfterChange;
+    let mut chips: Vec<Chip> = ORDERS_ON_OFFER
+        .iter()
+        .map(|(order, msg)| {
+            chip(
+                ctx,
+                *msg,
+                ChipReply::ChangeAreaOrder {
+                    area: area.to_owned(),
+                    order: *order,
+                },
+                false,
+            )
+        })
+        .collect();
+    chips.push(cancel_chip(ctx));
+    say(
+        state,
+        fill(ctx.lang, Msg::HermesChatChangeAreaWhich, &[("area", area)]),
+        chips,
+    );
 }
 
 pub fn summary(state: &mut State, ctx: &Ctx, reading: &Arc<FolderReading>) {

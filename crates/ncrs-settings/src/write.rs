@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use iced::Task;
-use ncrs_config::config::{self, Config, FilingWriteError, KeyChange};
+use ncrs_config::config::{self, Config, FilingRuleViolation, FilingWriteError, KeyChange};
 use ncrs_i18n::{fill_template, Msg};
 use ncrs_ui_kit::format::shown_path;
 
@@ -40,6 +40,7 @@ pub fn write_setting_change(
             config::write_own_details(path, detail, &entries)
         }
         SettingChange::FileListTags(tags) => config::write_file_list_tags(path, &tags),
+        SettingChange::Locations(locations) => config::write_read_folders(path, &locations),
     };
     written.map(Box::new)
 }
@@ -77,6 +78,37 @@ pub fn write_setting(
             })
         },
     )
+}
+
+/// The words for the failed write of `change`: a rule of the folder list that
+/// the choice breaks is told in the words of the setup card.
+pub fn change_failure(error: &FilingWriteError, change: &SettingChange, ctx: &Ctx<'_>) -> String {
+    let (FilingWriteError::Rule(violation), SettingChange::Locations(chosen)) = (error, change)
+    else {
+        return write_failure(error, ctx);
+    };
+    let lang = ctx.lang;
+    let path_at = |index: usize| {
+        chosen
+            .get(index)
+            .map(|location| shown_path(&location.path, ctx.home))
+            .unwrap_or_default()
+    };
+    match *violation {
+        FilingRuleViolation::SecondTarget { .. } => {
+            lang.text(Msg::FilingSetupRuleSecondTarget).to_owned()
+        }
+        FilingRuleViolation::InboxAsTarget { .. } => {
+            lang.text(Msg::FilingSetupRuleInboxTarget).to_owned()
+        }
+        FilingRuleViolation::Overlap { earlier, later } => fill_template(
+            lang.text(Msg::FilingSetupRuleOverlap),
+            &[
+                ("{first}", &path_at(earlier)),
+                ("{second}", &path_at(later)),
+            ],
+        ),
+    }
 }
 
 /// The words for a write that failed.

@@ -152,6 +152,14 @@ impl ChatAccess {
         crate::execute::trash_can_restore(&*self.trash)
     }
 
+    /// What the index knows of the order below `folder`; reads no file.
+    pub fn known_structure(
+        &self,
+        folder: &std::path::Path,
+    ) -> Result<ncrs_intake::LocationStructure, ReadError> {
+        reading::known_structure(self, folder)
+    }
+
     pub fn run(&self, work: ChatWork) -> ChatResult {
         match work {
             ChatWork::Read { folder, progress } => {

@@ -10,7 +10,9 @@ impl App {
         &'a self,
         state: &'a settings_ui::SettingsState,
     ) -> settings_ui::SettingsView<'a> {
+        let overview = self.overview_facts(state.ocr_models_present);
         settings_ui::SettingsView {
+            facts: self.documents_facts(&overview, state),
             state,
             preset: self.theme_preset,
             vscode_theme: self.vscode_theme.as_deref(),
@@ -21,7 +23,7 @@ impl App {
                 .iter()
                 .filter(|&&action| !self.keymap.has_built_in_keys(action))
                 .count(),
-            protection: Some(self.protection_panel(&self.overview_facts(state.ocr_models_present))),
+            protection: Some(self.protection_panel(&overview)),
             lang: self.lang,
             palette: &self.palette,
         }
@@ -114,6 +116,7 @@ impl App {
         for action in actions {
             tasks.push(self.run_settings_action(action));
         }
+        tasks.push(self.load_documents_facts());
         Task::batch(tasks)
     }
 
@@ -171,6 +174,14 @@ impl App {
                 self.refresh_function_keys();
                 Task::none()
             }
+            Ask::PickFolder(kind) => self.pick_read_folder(kind),
+            Ask::GrantFolder { kind, path } => self.grant_read_folder(kind, path),
+            Ask::OpenChat { area } => self.open_chat_from_settings(area),
+            Ask::TogglePause => {
+                self.update(Message::FilingStatus(FilingStatusMessage::TogglePause))
+            }
+            Ask::UndoLastRun => self.undo_last_run(),
+            Ask::OpenRules => self.open_rules_from_settings(),
             Ask::OpenOverview => self.open_hermes_overview(),
             Ask::OcrModelsInstalled => {
                 if let Some(overview) = self.hermes.overview.as_mut() {
@@ -316,7 +327,7 @@ impl App {
                     task
                 }
             }
-            SettingChange::HermesEnabled(_) => {
+            SettingChange::HermesEnabled(_) | SettingChange::Locations(_) => {
                 let (applies, task) = self.apply_saved_filing(config.filing);
                 if matches!(applies, SavedFilingApplies::AtNextStart) {
                     let notice = self.lang.text(Msg::SettingsSavedNextStart).to_owned();

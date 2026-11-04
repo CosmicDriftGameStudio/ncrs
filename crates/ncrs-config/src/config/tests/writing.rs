@@ -17,6 +17,57 @@ fn the_setup_writes_the_locations_and_they_load_back() {
 }
 
 #[test]
+fn read_folders_are_written_without_switching_hermes_or_the_ai_on() {
+    let folders = setup_folders();
+    let path = folders.base.path().join("config.toml");
+    std::fs::write(&path, "[modules.filing]\nenabled = false\n").unwrap();
+
+    let written = write_read_folders_with_home(&path, &one_of_each(&folders), None).unwrap();
+
+    assert!(!written.filing.enabled);
+    assert_eq!(written.filing.ai, AiSetting::Off);
+    assert_eq!(written.filing.locations, one_of_each(&folders));
+}
+
+#[test]
+fn an_empty_list_of_read_folders_is_written_and_loads_back() {
+    let folders = setup_folders();
+    let path = folders.base.path().join("config.toml");
+    std::fs::write(&path, "lang = \"de\"\n").unwrap();
+    write_read_folders_with_home(&path, &one_of_each(&folders), None).unwrap();
+
+    let emptied = write_read_folders_with_home(&path, &[], None).unwrap();
+
+    assert!(emptied.filing.locations.is_empty());
+    assert_eq!(load_with_home(&path, None).unwrap(), emptied);
+    assert_eq!(emptied.lang, Some(Language::German));
+}
+
+#[test]
+fn read_folders_that_overlap_are_refused_and_the_file_stays() {
+    let folders = setup_folders();
+    let path = folders.base.path().join("config.toml");
+    let original = "lang = \"en\"\n";
+    std::fs::write(&path, original).unwrap();
+    let nested = folders.target.join("inside");
+    let overlapping = vec![
+        chosen(&folders.target, LocationMode::Archive, false, true),
+        chosen(&nested, LocationMode::Inbox, false, false),
+    ];
+
+    let result = write_read_folders_with_home(&path, &overlapping, None);
+
+    assert_eq!(
+        result,
+        Err(FilingWriteError::Rule(FilingRuleViolation::Overlap {
+            earlier: 0,
+            later: 1
+        }))
+    );
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+}
+
+#[test]
 fn the_first_setup_turns_the_ai_on() {
     let folders = setup_folders();
     let path = folders.base.path().join("config.toml");
@@ -126,14 +177,6 @@ fn an_invalid_choice_is_rejected_before_writing() {
     let nested = folders.target.join("inside");
     std::fs::create_dir(&nested).unwrap();
     let cases = [
-        (Vec::new(), FilingRuleViolation::NoTarget),
-        (
-            vec![
-                chosen(&folders.inbox, LocationMode::Inbox, false, false),
-                chosen(&folders.archive, LocationMode::Archive, false, false),
-            ],
-            FilingRuleViolation::NoTarget,
-        ),
         (
             vec![
                 chosen(&folders.archive, LocationMode::Archive, false, true),
@@ -457,7 +500,10 @@ fn writing_the_load_drops_the_thread_count_of_the_local_model() {
 
     let written = write_settings(
         &path,
-        &[filing_load_setting(Load::Full), ai_threads_dropped_setting()],
+        &[
+            filing_load_setting(Load::Full),
+            ai_threads_dropped_setting(),
+        ],
         None,
     )
     .unwrap();
@@ -819,12 +865,14 @@ fn the_same_folder_in_another_case_overlaps_where_the_file_system_ignores_case()
             mode: LocationMode::Inbox,
             images: false,
             is_target: false,
+            transfer: Default::default(),
         },
         FilingLocation {
             path: PathBuf::from("/home/user/archive"),
             mode: LocationMode::Archive,
             images: false,
             is_target: true,
+            transfer: Default::default(),
         },
     ];
     let expected = if cfg!(any(windows, target_os = "macos")) {
@@ -836,4 +884,34 @@ fn the_same_folder_in_another_case_overlaps_where_the_file_system_ignores_case()
         Ok(())
     };
     assert_eq!(check_filing_rules(&locations), expected);
+}
+
+#[test]
+fn what_hermes_does_with_the_files_of_a_read_folder_is_written_and_read_back() {
+    let base = tempfile::tempdir().unwrap();
+    let path = base.path().join("config.toml");
+    std::fs::write(&path, "version = 1\n").unwrap();
+    let (inbox, archive) = (base.path().join("inbox"), base.path().join("archive"));
+    std::fs::create_dir_all(&inbox).unwrap();
+    std::fs::create_dir_all(&archive).unwrap();
+    let locations = [
+        FilingLocation {
+            transfer: LocationTransfer::Copy,
+            ..chosen(&inbox, LocationMode::Inbox, true, false)
+        },
+        chosen(&archive, LocationMode::Archive, false, true),
+    ];
+
+    let config = write_filing_locations_with_home(&path, &locations, None).unwrap();
+
+    let read: Vec<_> = config
+        .filing
+        .locations
+        .iter()
+        .map(|location| location.transfer)
+        .collect();
+    assert_eq!(read, [LocationTransfer::Copy, LocationTransfer::Move]);
+    assert!(std::fs::read_to_string(&path)
+        .unwrap()
+        .contains("transfer = \"copy\""));
 }

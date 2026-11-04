@@ -2073,6 +2073,7 @@ mod filing_setup_card {
             mode,
             images,
             is_target,
+            transfer: Default::default(),
         }
     }
 
@@ -6232,12 +6233,14 @@ mod settings_tab {
                     mode: LocationMode::Inbox,
                     images: true,
                     is_target: false,
+                    transfer: Default::default(),
                 },
                 FilingLocation {
                     path: PathBuf::from("/home/test/Documents/Filed"),
                     mode: LocationMode::Archive,
                     images: false,
                     is_target: true,
+                    transfer: Default::default(),
                 },
             ],
             load: Default::default(),
@@ -6420,13 +6423,13 @@ mod settings_tab {
     #[test]
     fn the_search_filters_the_rows_by_label() {
         let mut app = App::with_settings_open(SettingsFeature::Hermes, hermes_config());
-        simulator(&app).find("Filing on").expect("the switch");
+        simulator(&app).find("Hermes on").expect("the switch");
         drop(app.update(Message::Settings(SettingsMessage::SearchChanged(
-            "provider".to_owned(),
+            "rules".to_owned(),
         ))));
-        let switch_hidden = simulator(&app).find("Filing on").is_err();
+        let switch_hidden = simulator(&app).find("Hermes on").is_err();
         assert!(switch_hidden);
-        simulator(&app).find("Provider").expect("the provider row");
+        simulator(&app).find("Rules").expect("the rules row");
     }
 
     #[test]
@@ -6434,27 +6437,18 @@ mod settings_tab {
         let mut app = App::with_settings_open(SettingsFeature::Hermes, hermes_config());
         let shows = |shown: &App, label: &str| simulator(shown).find(label).is_ok();
         assert!(shows(&app, "Advanced"));
-        assert!(!shows(&app, "Recognition models"));
+        assert!(!shows(&app, "Rules"));
 
         drop(app.update(Message::Settings(SettingsMessage::ToggleAdvanced)));
-        assert!(shows(&app, "Recognition models"));
+        assert!(shows(&app, "Rules"));
 
         drop(app.update(Message::Settings(SettingsMessage::ToggleAdvanced)));
-        assert!(!shows(&app, "Recognition models"));
+        assert!(!shows(&app, "Rules"));
 
         drop(app.update(Message::Settings(SettingsMessage::SearchChanged(
-            "recognition".to_owned(),
+            "rules".to_owned(),
         ))));
-        assert!(shows(&app, "Recognition models"));
-    }
-
-    #[test]
-    fn open_hermes_asks_for_the_overview() {
-        let app = App::with_settings_open(SettingsFeature::Hermes, hermes_config());
-        assert_eq!(
-            messages_after_click(&app, "Open").last(),
-            Some(&Message::Settings(SettingsMessage::OpenFilingStatus))
-        );
+        assert!(shows(&app, "Rules"));
     }
 }
 
@@ -6889,6 +6883,7 @@ mod hermes_setup_card {
             mode,
             images: false,
             is_target,
+            transfer: Default::default(),
         };
         vec![
             at("/home/test/Scans", LocationMode::Inbox, false),
@@ -7020,6 +7015,7 @@ mod hermes_overview_page {
             mode,
             images: false,
             is_target,
+            transfer: Default::default(),
         };
         Filing {
             enabled: true,
@@ -7168,12 +7164,12 @@ mod hermes_overview_page {
     #[test]
     fn the_settings_hold_the_protection_and_the_question_before_starting_over() {
         let missing =
-            App::with_hermes_settings(Some(Phase::Ready), configured()).with_missing_key_for_test();
+            App::with_index_settings(Some(Phase::Ready), configured()).with_missing_key_for_test();
         assert_eq!(
             clicks(&missing, "Start over …"),
             [Message::Settings(SettingsMessage::Protection(2))]
         );
-        let asking = App::with_hermes_settings(Some(Phase::Ready), configured())
+        let asking = App::with_index_settings(Some(Phase::Ready), configured())
             .with_start_over_question_for_test();
         assert_eq!(
             clicks(&asking, "Cancel"),
@@ -7186,7 +7182,7 @@ mod hermes_overview_page {
     }
 
     fn settings_over_index(encrypted: bool) -> App {
-        App::with_hermes_settings(Some(Phase::Ready), configured()).with_index_for_test(encrypted)
+        App::with_index_settings(Some(Phase::Ready), configured()).with_index_for_test(encrypted)
     }
 
     #[test]

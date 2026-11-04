@@ -48,12 +48,14 @@ fn fixture() -> Fixture {
             mode: LocationMode::Inbox,
             images: false,
             is_target: false,
+            transfer: Default::default(),
         },
         config::FilingLocation {
             path: archive.clone(),
             mode: LocationMode::Archive,
             images: false,
             is_target: true,
+            transfer: Default::default(),
         },
     ];
     let mut app = App::with_fixed_panels();

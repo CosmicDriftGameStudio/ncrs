@@ -325,6 +325,16 @@ impl App {
                 .into();
         }
 
+        if let Some(dialog_element) = self.settings.page.as_ref().and_then(|state| {
+            ncrs_settings::dialogs::open_dialog(state, self.window_size, self.lang, &self.palette)
+        }) {
+            return Stack::with_children([
+                root,
+                dialog::scrim(dialog_element.map(Message::Settings)),
+            ])
+            .into();
+        }
+
         if self.start_over_dialog {
             let question = hermes_overview_ui::start_over_dialog(
                 self.dialog_focus,

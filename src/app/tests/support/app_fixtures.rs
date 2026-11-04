@@ -205,8 +205,8 @@ impl App {
     }
 
     /// The settings tab on the filing page, over a module in `phase`.
-    pub fn with_hermes_settings(phase: Option<Phase>, config: config::Filing) -> Self {
-        let mut app = Self::with_settings_open(crate::messages::SettingsFeature::Hermes, config);
+    pub fn with_index_settings(phase: Option<Phase>, config: config::Filing) -> Self {
+        let mut app = Self::with_settings_open(crate::messages::SettingsFeature::Index, config);
         app.hermes.filing = phase
             .map(|in_phase| FilingModule::in_phase_with_ai(in_phase, &app.hermes.filing_config.ai));
         app
@@ -261,6 +261,7 @@ impl App {
             mode,
             images: false,
             is_target,
+            transfer: Default::default(),
         };
         let mut app = Self::with_fixed_panels();
         app.hermes.filing = Some(FilingModule::in_phase_with_locations(Phase::Ready));

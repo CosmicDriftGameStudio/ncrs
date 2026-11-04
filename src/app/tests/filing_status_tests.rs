@@ -60,16 +60,16 @@ fn pause_and_resume_act_on_the_pipeline_at_once() {
 #[test]
 fn the_load_is_set_on_the_pipeline_and_remembered_by_the_module() {
     let mut app = app_with_empty_pipeline();
-    assert_eq!(worker_target(&app), 2);
+    assert_eq!(worker_target(&app), 1);
 
     app.hermes
         .set_pipeline_load(Load::Full, app.wall_clock.now());
-    assert_eq!(worker_target(&app), 8);
+    assert_eq!(worker_target(&app), 4);
     assert_eq!(app.hermes.filing.as_ref().unwrap().load(), Load::Full);
 
     app.hermes
         .set_pipeline_load(Load::Gentle, app.wall_clock.now());
-    assert_eq!(worker_target(&app), 2);
+    assert_eq!(worker_target(&app), 1);
     assert_eq!(app.hermes.filing.as_ref().unwrap().load(), Load::Gentle);
 }
 

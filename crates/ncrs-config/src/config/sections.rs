@@ -200,6 +200,17 @@ pub struct LocationEntry {
     pub images: bool,
     #[serde(default)]
     pub target: Option<Spanned<bool>>,
+    #[serde(default)]
+    pub transfer: Option<LocationTransfer>,
+}
+
+/// What Hermes does with a file it takes from a read folder.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LocationTransfer {
+    Copy,
+    #[default]
+    Move,
 }
 
 /// The spelling of a mode in the file; `load` maps it to `LocationMode`.
@@ -245,6 +256,7 @@ pub struct FilingLocation {
     pub mode: LocationMode,
     pub images: bool,
     pub is_target: bool,
+    pub transfer: LocationTransfer,
 }
 
 /// A text and its ground in the `[theme]` palette whose contrast is low.

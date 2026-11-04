@@ -38,6 +38,11 @@ pub enum Message {
     AiTurnedOn,
     /// The filing module finished its start; sent by the app.
     HermesReady,
+    /// The settings page asks to change the order of one area of a read folder.
+    ChangeArea {
+        folder: PathBuf,
+        area: String,
+    },
     /// A beat while work runs; sent by the app twice a second or so.
     WorkTick,
 }
@@ -82,6 +87,16 @@ impl PartialEq for Message {
                 },
             ) => left_label == right_label && left_reply == right_reply,
             (Self::FolderPicked(left), Self::FolderPicked(right)) => left == right,
+            (
+                Self::ChangeArea {
+                    folder: left_folder,
+                    area: left_area,
+                },
+                Self::ChangeArea {
+                    folder: right_folder,
+                    area: right_area,
+                },
+            ) => left_folder == right_folder && left_area == right_area,
             (Self::Understood(left), Self::Understood(right)) => left == right,
             (
                 Self::NamedFoldersResolved {

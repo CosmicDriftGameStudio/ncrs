@@ -108,6 +108,7 @@ impl FilingSetup {
             .enumerate()
             .map(|(index, location)| FilingLocation {
                 is_target: Some(index) == target,
+                transfer: Default::default(),
                 ..location.clone()
             })
             .collect()
@@ -166,6 +167,7 @@ impl FilingSetup {
                 mode,
                 images: false,
                 is_target: false,
+                transfer: Default::default(),
             }),
             Err(reason) => self.note = Some(SetupNote::FolderUnusable { folder, reason }),
         }
@@ -261,6 +263,7 @@ pub fn locations_with_role(
             mode,
             images: false,
             is_target,
+            transfer: Default::default(),
         }),
     }
     if is_target {
@@ -330,6 +333,7 @@ mod tests {
             mode,
             images: false,
             is_target,
+            transfer: Default::default(),
         }
     }
 

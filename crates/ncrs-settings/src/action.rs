@@ -5,6 +5,8 @@ use ncrs_config::config::Config;
 use ncrs_config::keymap::Keymap;
 use ncrs_fs::OpenKind;
 
+use crate::facts::AreaFacts;
+use crate::folders::AddAs;
 use crate::message::SettingChange;
 
 /// What the settings ask of the app, which they cannot do themselves. The app
@@ -29,6 +31,20 @@ pub enum Action {
     OpenFilingStatus,
     /// The button at this position of the protection of the index.
     Protection(usize),
+    /// The system folder dialog for a read folder.
+    PickFolder(AddAs),
+    /// Keeps the access to a picked folder for the next start (sandbox).
+    GrantFolder {
+        kind: AddAs,
+        path: PathBuf,
+    },
+    /// Opens the chat (F2), at the change of this area when one is named.
+    OpenChat {
+        area: Option<AreaFacts>,
+    },
+    TogglePause,
+    UndoLastRun,
+    OpenRules,
     /// The file now says this about `change`.
     Apply {
         change: SettingChange,

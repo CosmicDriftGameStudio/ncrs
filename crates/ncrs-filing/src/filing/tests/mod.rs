@@ -19,6 +19,7 @@ fn location(path: &Path) -> FilingLocation {
         mode: LocationMode::Inbox,
         images: false,
         is_target: false,
+        transfer: Default::default(),
     }
 }
 

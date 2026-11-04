@@ -155,6 +155,7 @@ fn location(path: &str, mode: LocationMode, is_target: bool) -> FilingLocation {
         mode,
         images: false,
         is_target,
+        transfer: Default::default(),
     }
 }
 

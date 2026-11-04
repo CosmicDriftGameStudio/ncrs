@@ -428,6 +428,7 @@ mod tests {
             mode,
             images: false,
             is_target,
+            transfer: Default::default(),
         }
     }
 

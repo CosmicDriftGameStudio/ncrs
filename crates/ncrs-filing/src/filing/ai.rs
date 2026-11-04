@@ -50,7 +50,9 @@ pub(in crate::filing) fn wire_ai(setting: &AiSetting, load: Load, db_path: &Path
     match setting {
         AiSetting::Off => AiWiring::Off,
         #[cfg(feature = "local-ai")]
-        AiSetting::Local { threads } => AiWiring::Local(shared_local_model(db_path, load, *threads)),
+        AiSetting::Local { threads } => {
+            AiWiring::Local(shared_local_model(db_path, load, *threads))
+        }
         #[cfg(not(feature = "local-ai"))]
         AiSetting::Local { .. } => {
             let _ = (db_path, load);

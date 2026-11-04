@@ -8,18 +8,36 @@ pub enum SettingsFeature {
     Programs,
     Keys,
     Servers,
+    Index,
     Hermes,
 }
 
+/// The heading over a run of pages in the feature list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingsGroup {
+    General,
+    Documents,
+}
+
 impl SettingsFeature {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::Look,
         Self::Language,
         Self::Programs,
         Self::Keys,
         Self::Servers,
+        Self::Index,
         Self::Hermes,
     ];
+
+    pub fn group(self) -> SettingsGroup {
+        match self {
+            Self::Look | Self::Language | Self::Programs | Self::Keys | Self::Servers => {
+                SettingsGroup::General
+            }
+            Self::Index | Self::Hermes => SettingsGroup::Documents,
+        }
+    }
 }
 
 /// What the command list can open: a page, or one setting of a page.

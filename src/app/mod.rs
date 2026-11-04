@@ -199,6 +199,7 @@ mod remote;
 mod search;
 mod session;
 mod settings;
+mod settings_facts;
 mod startup;
 mod subscription;
 mod update;

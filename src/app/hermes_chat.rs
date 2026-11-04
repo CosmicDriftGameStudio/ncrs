@@ -84,7 +84,7 @@ impl App {
         self.hermes.filing_config.ai != crate::config::AiSetting::Off
     }
 
-    fn chat_availability(&self) -> ncrs_hermes_chat::Availability {
+    pub(in crate::app) fn chat_availability(&self) -> ncrs_hermes_chat::Availability {
         match self.hermes.filing.as_ref() {
             None => ncrs_hermes_chat::Availability::Starting,
             Some(module) => match module.chat_access(Arc::clone(&self.trash)) {
