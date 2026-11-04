@@ -189,16 +189,26 @@ pub fn preview(
         .areas
         .iter()
         .flat_map(|area| {
-            area.branches.iter().map(|branch| {
-                // A branch without such folders keeps all of its own and gets
-                // the new ones below them.
-                let keep = trailing_pattern(&branch.levels)
-                    .map_or(branch.levels.len(), |(keep, _)| keep);
-                PatternTarget {
+            area.branches.iter().filter_map(|branch| {
+                let keep = match trailing_pattern(&branch.levels) {
+                    Some((keep, _)) => keep,
+                    // Year › account: the year is there, a second one would be wrong.
+                    None if branch
+                        .levels
+                        .iter()
+                        .filter_map(level_of)
+                        .any(|level| levels.contains(&level)) =>
+                    {
+                        return None;
+                    }
+                    // No such folders: it keeps its own and gets the new ones below.
+                    None => branch.levels.len(),
+                };
+                Some(PatternTarget {
                     area: area.folder.clone(),
                     levels: branch.levels.clone(),
                     keep,
-                }
+                })
             })
         })
         .collect();
