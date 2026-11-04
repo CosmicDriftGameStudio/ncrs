@@ -5,7 +5,8 @@ use iced::{Element, Task};
 use ncrs_i18n::{Language, Msg};
 use ncrs_ui_kit::hermes_kit::{
     areas_card, chat_chip, chat_header, chat_input, chat_page, chat_text, chip_row, file_card,
-    hermes_bubble, trial_card, user_bubble, working_bubble, AreaLine, ChatInput, Choice, TrialLine,
+    folder_mention, hermes_bubble, trial_card, user_bubble, user_folder_bubble, working_bubble,
+    AreaLine, ChatInput, Choice, TrialLine,
 };
 use ncrs_ui_kit::palette::Palette;
 
@@ -13,6 +14,7 @@ use crate::message::Message;
 use crate::state::{
     AreasCard, Chip, CountRow, Entry, FileCard, Part, RowOutcome, State, TrialCard,
 };
+use crate::texts::documents_label;
 
 pub const INPUT_ID: &str = "hermes-chat-input";
 pub const SCROLL_ID: &str = "hermes-chat-thread";
@@ -29,12 +31,13 @@ pub fn focus_input<T: Send + 'static>() -> Task<T> {
     operation::focus(INPUT_ID)
 }
 
-fn count_line(row: &CountRow, dim: bool) -> AreaLine {
+fn count_line(row: &CountRow, dim: bool, lang: Language) -> AreaLine {
     AreaLine {
         name: row.text.clone(),
         detail: String::new(),
+        example_label: String::new(),
         example: String::new(),
-        count: row.documents.to_string(),
+        count: documents_label(lang, row.documents),
         dim,
     }
 }
@@ -46,13 +49,18 @@ fn areas<'a>(card: &AreasCard, ctx: ViewCtx<'_>) -> Element<'a, Message> {
         .map(|row| AreaLine {
             name: row.name.clone(),
             detail: row.description.clone(),
+            example_label: ctx.lang.text(Msg::HermesChatExampleShort).to_owned(),
             example: row.example.clone(),
-            count: row.documents.to_string(),
+            count: documents_label(ctx.lang, row.documents),
             dim: false,
         })
         .collect();
-    lines.extend(card.more.iter().map(|row| count_line(row, false)));
-    lines.extend(card.unordered.iter().map(|row| count_line(row, true)));
+    lines.extend(card.more.iter().map(|row| count_line(row, false, ctx.lang)));
+    lines.extend(
+        card.unordered
+            .iter()
+            .map(|row| count_line(row, true, ctx.lang)),
+    );
     areas_card(&lines, ctx.palette)
 }
 
@@ -108,6 +116,7 @@ fn part<'a>(part: &Part, ctx: ViewCtx<'_>) -> Element<'a, Message> {
         Part::Areas(card) => areas(card, ctx),
         Part::File(card) => file(card, ctx),
         Part::Trial(card) => trial(card, ctx),
+        Part::Folder(mention) => folder_mention(&mention.name, &mention.path, ctx.palette),
     }
 }
 
@@ -118,6 +127,7 @@ fn entry<'a>(entry: &Entry, ctx: ViewCtx<'_>) -> Element<'a, Message> {
             ctx.palette,
         ),
         Entry::User(content) => user_bubble(content, ctx.palette),
+        Entry::UserFolder(mention) => user_folder_bubble(&mention.name, &mention.path, ctx.palette),
         Entry::Working(content) => working_bubble(content, ctx.palette),
     }
 }

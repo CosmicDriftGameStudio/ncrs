@@ -170,6 +170,16 @@ fn push_entry(entries: &mut Vec<Entry>, current: &mut BTreeMap<&str, String>) {
              describing where it appears. Translators work from this file alone."
         );
     }
+    // `unescape` knows no `\u` escapes, so one would end up in the text as
+    // typed. Write the character itself.
+    for (language, value) in [("en", &en), ("de", &de)] {
+        if value.contains("\\u") {
+            panic!(
+                "strings.json: key {key:?} ({language}) contains a \\u escape; \
+                 write the character itself, the build does not decode escapes"
+            );
+        }
+    }
     if en.is_empty() || de.is_empty() {
         panic!("strings.json: key {key:?} is missing its English or German text");
     }

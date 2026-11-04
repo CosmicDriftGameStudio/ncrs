@@ -142,7 +142,7 @@ mod tests {
         );
         let areas = area_chips(&talk);
         assert!(areas.contains(&"Bank".to_owned()), "{areas:?}");
-        assert!(replies(&talk).contains(&ChipReply::PickFolder));
+        assert!(replies(&talk).contains(&ChipReply::OtherArea));
 
         talk.press(&ChipReply::ChangeArea("Bank".to_owned()));
         assert!(has_file_card(&talk), "{:?}", talk.last_parts());
@@ -215,9 +215,14 @@ mod tests {
             .unwrap()
             .to_string_lossy()
             .into_owned();
+        let name = std::path::Path::new(&real)
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
         assert_eq!(
             talk.last_texts(),
-            vec![say(Msg::HermesChatUnknownPathConfirm, &[("path", &real)])]
+            vec![say(Msg::HermesChatUnknownPathConfirm, &[("name", &name)])]
         );
     }
 
@@ -270,12 +275,16 @@ mod tests {
             "Räum Downloads auf",
             r#"{"intent":"tidy_folder","source":"Downloads"}"#,
         );
-        let said = talk.last_texts().join(" ");
-        assert!(said.contains("~/Downloads"), "{said}");
-        assert!(
-            !said.contains(&talk.root.to_string_lossy().into_owned()),
-            "{said}"
-        );
+        let mention = talk
+            .last_parts()
+            .iter()
+            .find_map(|part| match part {
+                Part::Folder(mention) => Some(mention.clone()),
+                _ => None,
+            })
+            .expect("a folder mention");
+        assert_eq!(mention.name, "Downloads");
+        assert_eq!(mention.path, "~/Downloads");
     }
 
     #[test]
@@ -347,14 +356,10 @@ mod tests {
         talk.press(&ChipReply::Folder(talk.path("archive")));
         talk.press(&ChipReply::WantChange);
         change_in_area(&mut talk, "Versicherung", "by_sender");
-        assert_eq!(
-            talk.last_texts(),
-            vec![say(
-                Msg::HermesChatChangeAlready,
-                &[("area", "Versicherung")]
-            )]
-        );
-        assert!(replies(&talk).contains(&ChipReply::IntentSearch));
+        let said = talk.last_texts().join(" ");
+        assert!(said.contains("Versicherung"), "{said}");
+        assert!(said.contains("Absender"), "{said}");
+        assert!(replies(&talk).contains(&ChipReply::FineAsIs));
         assert!(!has_file_card(&talk));
     }
 

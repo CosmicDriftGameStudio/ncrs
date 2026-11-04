@@ -16,6 +16,16 @@ use crate::texts::{fill, number, rule_problem_text, text};
 use crate::tidy::{card_of, filed_count, trial_chips, PAGE};
 use crate::update::{cancel_chip, chip, chip_labelled, hermes, say, work};
 
+/// Whether nothing is open but the single pieces, which the closing message
+/// of the trial offers to list.
+pub fn only_singles_open(state: &State) -> bool {
+    let Some(trial) = state.session.trial.as_ref() else {
+        return false;
+    };
+    let groups = &trial.plan.groups;
+    groups.asked.is_empty() && (groups.name_taken.is_empty() || state.session.groups.names_done)
+}
+
 /// Whether the trial still has something to ask about the staying files.
 pub fn has_open_questions(state: &State) -> bool {
     let Some(trial) = state.session.trial.as_ref() else {
@@ -132,15 +142,7 @@ pub fn ask_next(state: &mut State, ctx: &Ctx) {
     } else {
         let ready = filed_count(trial);
         if ready == 0 {
-            say(
-                state,
-                fill(
-                    ctx.lang,
-                    Msg::HermesChatNothingToFile,
-                    &[("stays", &number(trial.plan.entries.len()))],
-                ),
-                vec![cancel_chip(ctx)],
-            );
+            crate::trial_end::without_filing(state, ctx, Vec::new());
             return;
         }
         let chips = trial_chips(ctx, trial);

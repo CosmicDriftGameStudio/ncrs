@@ -97,6 +97,21 @@ pub enum ChipReply {
     OtherTarget,
     SwitchToCopy,
     SwitchToMove,
+    /// Reads the folder again that could not be read.
+    Retry,
+    /// Asks the user to type the name of the area.
+    OtherArea,
+    /// Asks for this order in this area.
+    ChangeAreaOrder {
+        area: String,
+        order: ChangeOrder,
+    },
+    /// Moves the files that are in the filing folder already to the trash.
+    TrashDuplicatesNow,
+    /// Lists the files of the trial that stay.
+    ShowStaying,
+    /// Runs the trial again against a folder the user picks.
+    TrialOtherTarget,
 }
 
 impl Session {
@@ -127,6 +142,7 @@ impl ChipReply {
             | Self::NewLayout(_)
             | Self::NamesNumbered
             | Self::PutBack
+            | Self::TrashDuplicatesNow
             | Self::Undo => true,
             Self::Cancel
             | Self::Folder(_)
@@ -170,7 +186,12 @@ impl ChipReply {
             | Self::ConfirmChange
             | Self::OtherTarget
             | Self::SwitchToCopy
-            | Self::SwitchToMove => false,
+            | Self::SwitchToMove
+            | Self::Retry
+            | Self::OtherArea
+            | Self::ChangeAreaOrder { .. }
+            | Self::ShowStaying
+            | Self::TrialOtherTarget => false,
         }
     }
 }
@@ -241,18 +262,27 @@ pub struct TrialCard {
     pub more: Option<String>,
 }
 
+/// A folder named in the chat: its name, and where it lies.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FolderMention {
+    pub name: String,
+    pub path: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Part {
     Text(String),
     Areas(AreasCard),
     File(FileCard),
     Trial(TrialCard),
+    Folder(FolderMention),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Entry {
     Hermes { parts: Vec<Part>, chips: Vec<Chip> },
     User(String),
+    UserFolder(FolderMention),
     Working(String),
 }
 
@@ -292,6 +322,8 @@ pub enum Step {
     GroupFolderName,
     AfterRun,
     UndoAsk,
+    /// The next typed text is the name of the area a change is for.
+    AreaName,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -300,6 +332,13 @@ pub enum ReadFor {
     Source,
     Target,
     NewTarget,
+}
+
+/// A read that failed because the folder was not there, to run again.
+#[derive(Debug, Clone)]
+pub struct Retry {
+    pub folder: PathBuf,
+    pub purpose: ReadFor,
 }
 
 #[derive(Debug, Clone)]
@@ -400,6 +439,7 @@ pub struct Session {
     pub change_word: String,
     /// The folder the running read is for.
     pub requested: PathBuf,
+    pub retry: Option<Retry>,
     pub trial: Option<TrialSession>,
     pub groups: GroupFlow,
     pub offer: Option<Offer>,

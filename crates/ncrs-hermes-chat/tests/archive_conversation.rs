@@ -23,7 +23,6 @@ mod tests {
     use ncrs_filing::chat_work::{StayGroups, TrialOutcome, TrialPlan};
     use ncrs_hermes_chat::{ChipReply, Entry, FileCard, Message, Part};
     use ncrs_i18n::Msg;
-    use ncrs_index::{KindLanguage, Kinds};
     use ncrs_intake::test_archive::test_archive;
 
     const UNDATED: (i32, u32, u32) = (2021, 6, 15);
@@ -86,19 +85,20 @@ mod tests {
         let Some(Part::Areas(card)) = parts.get(1) else {
             panic!("{parts:?}")
         };
-        assert_eq!(card.rows.len(), 3);
+        assert_eq!(card.rows.len(), 4);
         assert_eq!(
             (card.rows[0].name.as_str(), card.rows[0].documents),
             ("Bank", 354)
         );
         let bank = &card.rows[0];
-        assert!(bank.description.contains(" / "), "{}", bank.description);
+        assert!(bank.description.contains(" › "), "{}", bank.description);
+        assert!(!bank.description.contains(" / "), "{}", bank.description);
         assert!(
             bank.example.starts_with("Bank/") && bank.example.contains('.'),
             "{}",
             bank.example
         );
-        assert_eq!(card.more.as_ref().map(|more| more.documents), Some(554));
+        assert_eq!(card.more.as_ref().map(|more| more.documents), Some(425));
         assert_eq!(card.unordered.as_ref().map(|row| row.documents), Some(190));
     }
 
@@ -309,9 +309,20 @@ mod tests {
         assert_eq!(
             talk.last_texts(),
             vec![say(
-                Msg::HermesChatNothingToFile,
-                &[("stays", &count(INBOX_FILES))]
+                Msg::HermesChatTrialStuckSome,
+                &[
+                    ("total", &count(INBOX_FILES)),
+                    ("dupes", &count(filed)),
+                    ("rest", &count(INBOX_FILES - filed)),
+                    ("ai_note", ""),
+                ]
             )]
+        );
+        let labels = talk.labels();
+        assert!(labels.len() >= 3, "{labels:?}");
+        assert!(
+            labels.contains(&say(Msg::HermesChatLaterAgain, &[])),
+            "{labels:?}"
         );
         assert_eq!(talk.files(), copied, "nothing is copied twice");
 
@@ -670,12 +681,6 @@ mod tests {
         assert_eq!(talk.files(), before);
     }
 
-    fn statement_word() -> String {
-        Kinds::built_in(KindLanguage::default())
-            .kind_word("bank_statement")
-            .into_owned()
-    }
-
     /// "Kontoauszüge lieber nach Monat" on the archive up to the question which
     /// banks.
     fn ask_statements_by_month(talk: &mut Talk) {
@@ -705,12 +710,17 @@ mod tests {
             [
                 Part::Text(say(
                     Msg::HermesChatChangePreview,
-                    &[("kind", &statement_word())]
+                    &[
+                        ("area", "Bank"),
+                        ("today", &say(Msg::HermesChatLabelYear, &[])),
+                        ("new", &say(Msg::HermesChatLabelMonth, &[])),
+                    ]
                 )),
                 Part::File(FileCard {
                     segments,
                     highlighted: Some(4)
                 }),
+                Part::Text(say(Msg::HermesChatChangePreviewCount, &[("area", "Bank")])),
                 Part::Text(say(Msg::HermesChatChangeScope, &[("plural", &banks)])),
             ]
         );

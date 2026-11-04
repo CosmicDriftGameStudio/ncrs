@@ -203,9 +203,9 @@ fn settle(state: &mut State, ctx: &Ctx, mut naming: Naming) {
             let sentence = fill(
                 ctx.lang,
                 Msg::HermesChatNotAFolder,
-                &[("path", &named.said)],
+                &[("name", &named.said)],
             );
-            say(state, sentence, crate::update::fallback_chips(ctx));
+            say(state, sentence, crate::update::lost_folder_chips(ctx));
             return;
         }
         let sentence = fill(

@@ -60,8 +60,8 @@ use scratch::{
     copy_tree, count_files, count_indexable, link_tree, path_hash, pdfs_below, report_removal,
 };
 use thread::{
-    busy, chat, chip_labels, has_chip, is_ready, last_hermes_has_chips, last_text,
-    last_working_has_digit,
+    areas_in_plain_words, busy, chat, chip_labels, has_chip, is_ready, last_hermes_has_chips,
+    last_text, last_working_has_digit,
 };
 
 const WINDOW: iced::Size = iced::Size::new(1200.0, 760.0);
@@ -652,6 +652,10 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
                     last_text(self.app())
                 ),
             ),
+            expect(
+                areas_in_plain_words(self.app()),
+                "the areas card still writes the order with slashes or bars",
+            ),
         ]);
         self.record(
             "2 warm",
@@ -680,6 +684,10 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
                     "no result card with buttons; last: {}",
                     last_text(self.app())
                 ),
+            ),
+            expect(
+                areas_in_plain_words(self.app()),
+                "the areas card still writes the order with slashes or bars",
             ),
         ]);
         self.record(

@@ -135,6 +135,7 @@ pub fn field_label(lang: Language, field: Field) -> &'static str {
 }
 
 const PATTERN_JOINER: &str = " / ";
+const PLAIN_JOINER: &str = " › ";
 
 /// The name of a placeholder as the filing masks call it; what the masks have
 /// no name for is named by what it stands for.
@@ -167,23 +168,53 @@ pub fn pattern_levels(lang: Language, labels: &[PlaceholderLabel]) -> String {
         .join(PATTERN_JOINER)
 }
 
-/// The folders below the area and the file, "Year / Sender / File"; "no
-/// subfolders" when the files lie in the area folder itself.
-pub fn branch_pattern(lang: Language, branch: &Branch) -> String {
-    if branch.levels.is_empty() {
+/// The names of a level with several fixed choices, "Account, Loan or
+/// Messages".
+fn choice_words(lang: Language, names: &[String]) -> String {
+    match names.split_last() {
+        Some((last, before)) if !before.is_empty() => fill(
+            lang,
+            Msg::HermesChatLevelOr,
+            &[("list", &before.join(", ")), ("last", last)],
+        ),
+        Some((only, _)) => only.clone(),
+        None => String::new(),
+    }
+}
+
+/// The folders below the area in words, "2024 › Deutsche Bank › Account,
+/// Loan or Messages"; "no subfolders" when the files lie in the area folder
+/// itself. The file at the end is left out.
+pub fn branch_plain(lang: Language, branch: &Branch) -> String {
+    levels_plain(lang, &branch.levels)
+}
+
+/// The same for these levels alone.
+pub fn levels_plain(lang: Language, levels: &[Level]) -> String {
+    if levels.is_empty() {
         return text(lang, Msg::HermesChatAreaFlat);
     }
-    let mut parts: Vec<String> = branch
-        .levels
+    levels
         .iter()
         .map(|level| match level {
             Level::Literal(name) => name.clone(),
-            Level::Choice(names) => names.join(" | "),
-            Level::Placeholder(placeholder) => pattern_label(lang, placeholder.label),
+            Level::Choice(names) => choice_words(lang, names),
+            Level::Placeholder(placeholder) => label_text(lang, placeholder.label).to_owned(),
         })
-        .collect();
-    parts.push(text(lang, Msg::HermesChatTrialFile));
-    parts.join(PATTERN_JOINER)
+        .collect::<Vec<_>>()
+        .join(PLAIN_JOINER)
+}
+
+/// "12 files" / "1 file".
+pub fn documents_label(lang: Language, documents: u32) -> String {
+    if documents == 1 {
+        return text(lang, Msg::HermesChatFilesCountOne);
+    }
+    fill(
+        lang,
+        Msg::HermesChatFilesCount,
+        &[("count", &documents.to_string())],
+    )
 }
 
 /// The path of a real document of the branch.
@@ -199,7 +230,7 @@ pub fn branch_example_path(reading: &FolderReading, area: &Area, branch: &Branch
         .unwrap_or_default()
 }
 
-const SHOWN_AREAS: usize = 3;
+pub const SHOWN_AREAS: usize = 4;
 const NAMED_MORE_AREAS: usize = 4;
 
 /// The folder's own name; files lying directly in the read folder have none.
@@ -233,7 +264,7 @@ pub fn areas_card(
                 name: folder_label(lang, read_folder, &area.folder),
                 description: first_branch.map_or_else(
                     || text(lang, Msg::HermesChatAreaFlat),
-                    |branch| branch_pattern(lang, branch),
+                    |branch| branch_plain(lang, branch),
                 ),
                 example: first_branch
                     .map(|branch| branch_example_path(reading, area, branch))
@@ -250,17 +281,19 @@ pub fn areas_card(
             .map(|area| folder_label(lang, read_folder, &area.folder))
             .collect();
         let further = rest.len().saturating_sub(NAMED_MORE_AREAS);
-        let names = listed.join(", ");
         CountRow {
-            text: if further == 0 {
-                names
-            } else {
-                fill(
-                    lang,
-                    Msg::HermesChatMoreAreas,
-                    &[("names", &names), ("count", &number(further))],
-                )
-            },
+            text: fill(
+                lang,
+                if further == 0 {
+                    Msg::HermesChatMoreAreasAll
+                } else {
+                    Msg::HermesChatMoreAreas
+                },
+                &[
+                    ("names", &listed.join(", ")),
+                    ("count", &number(rest.len())),
+                ],
+            ),
             documents: rest.iter().map(|area| area.documents).sum(),
         }
     });

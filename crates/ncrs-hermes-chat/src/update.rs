@@ -10,9 +10,14 @@ use ncrs_ui_kit::hermes_state::FolderRole;
 use crate::action::Action;
 use crate::ctx::{Availability, Ctx};
 use crate::message::Message;
-use crate::state::{Asked, Chip, ChipReply, Entry, GroupFlow, Part, State, Step, Unsent};
-use crate::texts::{fill, folder_name, text};
-use crate::{learn, named_folders, patterns, photos, stay_groups, tidy, understand, undo};
+use crate::state::{
+    Asked, Chip, ChipReply, Entry, FolderMention, GroupFlow, Part, ReadFor, Retry, State, Step,
+    Unsent,
+};
+use crate::texts::{fill, folder_name, shown_folder, text};
+use crate::{
+    learn, named_folders, patterns, photos, stay_groups, tidy, trial_end, understand, undo,
+};
 
 pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> (Task<Message>, Option<Action>) {
     let action = route(state, message, ctx).or_else(|| state.queued_action.take());
@@ -44,7 +49,11 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
                 return None;
             }
             let asked = understand::asked(state);
-            user(state, typed.clone());
+            if looks_like_typed_path(&typed) {
+                user_folder(state, ctx, &expand_home(ctx, Path::new(&typed)));
+            } else {
+                user(state, typed.clone());
+            }
             let unsent = Unsent {
                 message: typed.clone(),
                 asked: asked.clone(),
@@ -58,8 +67,15 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
             if is_busy(state) {
                 return None;
             }
-            let bubble = bubble_text(state, &label, &reply);
-            user(state, bubble);
+            match &reply {
+                ChipReply::Folder(path) | ChipReply::NamedFolder(path) => {
+                    user_folder(state, ctx, path);
+                }
+                _ => {
+                    let bubble = bubble_text(state, &label, &reply);
+                    user(state, bubble);
+                }
+            }
             if !reply.needs_no_hermes() && hold_until_ready(state, ctx, Held::Reply(reply.clone()))
             {
                 return None;
@@ -84,7 +100,7 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
             if is_busy(state) {
                 return None;
             }
-            user(state, path.to_string_lossy().into_owned());
+            user_folder(state, ctx, &path);
             if hold_until_ready(state, ctx, Held::Reply(ChipReply::Folder(path.clone()))) {
                 return None;
             }
@@ -193,22 +209,40 @@ fn typed_folder_resolved(
         return None;
     }
     match result {
-        Err(_) => say(
-            state,
-            text_with(
-                ctx,
-                Msg::HermesChatNotAFolder,
-                &[("path", &typed.to_string_lossy())],
-            ),
-            lost_folder_chips(ctx),
-        ),
-        Ok(real) => {
-            let shown = real.display().to_string();
-            state.session.confirm = Some((real, step));
-            state.step = Step::ConfirmUnknown;
+        Err(_) => {
+            state.session.retry = match step {
+                Step::Source | Step::TidyFolder => Some(ReadFor::Source),
+                Step::ReadFolder => Some(ReadFor::Learn),
+                _ => None,
+            }
+            .map(|purpose| Retry {
+                folder: typed.to_path_buf(),
+                purpose,
+            });
             say(
                 state,
-                text_with(ctx, Msg::HermesChatConfirmTypedFolder, &[("path", &shown)]),
+                text_with(
+                    ctx,
+                    Msg::HermesChatNotAFolder,
+                    &[("name", &folder_name(ctx, typed))],
+                ),
+                lost_folder_retry_chips(state, ctx),
+            );
+        }
+        Ok(real) => {
+            let mention = mention_of(ctx, &real);
+            state.session.confirm = Some((real, step));
+            state.step = Step::ConfirmUnknown;
+            hermes(
+                state,
+                vec![
+                    Part::Text(text_with(
+                        ctx,
+                        Msg::HermesChatConfirmTypedFolder,
+                        &[("name", &mention.name)],
+                    )),
+                    Part::Folder(mention),
+                ],
                 vec![
                     chip(ctx, Msg::HermesChatConfirmYes, ChipReply::ReadAnyway, true),
                     cancel_chip(ctx),
@@ -309,12 +343,29 @@ pub fn cancel_chip(ctx: &Ctx) -> Chip {
 
 /// A bubble of the user clears the chips Hermes offered before it.
 pub fn user(state: &mut State, typed: String) {
+    clear_chips(state);
+    state.thread.push(Entry::User(typed));
+}
+
+fn clear_chips(state: &mut State) {
     for entry in &mut state.thread {
         if let Entry::Hermes { chips, .. } = entry {
             chips.clear();
         }
     }
-    state.thread.push(Entry::User(typed));
+}
+
+pub fn mention_of(ctx: &Ctx, path: &Path) -> FolderMention {
+    FolderMention {
+        name: folder_name(ctx, path),
+        path: shown_folder(ctx, path),
+    }
+}
+
+/// A folder the user picked or typed: its name, and where it lies.
+pub fn user_folder(state: &mut State, ctx: &Ctx, path: &Path) {
+    clear_chips(state);
+    state.thread.push(Entry::UserFolder(mention_of(ctx, path)));
 }
 
 pub fn hermes(state: &mut State, parts: Vec<Part>, chips: Vec<Chip>) {
@@ -497,12 +548,19 @@ pub fn expand_home(ctx: &Ctx, path: &Path) -> PathBuf {
 
 pub fn folder_answer(state: &mut State, ctx: &Ctx, path: PathBuf, typed: bool) -> Option<Action> {
     if typed && !is_known(state, ctx, &path) {
-        let shown = path.to_string_lossy().into_owned();
+        let mention = mention_of(ctx, &path);
         state.session.confirm = Some((path, state.step));
         state.step = Step::ConfirmUnknown;
-        say(
+        hermes(
             state,
-            text_with(ctx, Msg::HermesChatUnknownPathConfirm, &[("path", &shown)]),
+            vec![
+                Part::Text(text_with(
+                    ctx,
+                    Msg::HermesChatUnknownPathConfirm,
+                    &[("name", &mention.name)],
+                )),
+                Part::Folder(mention),
+            ],
             vec![
                 chip(ctx, Msg::HermesChatReadAnyway, ChipReply::ReadAnyway, true),
                 cancel_chip(ctx),
@@ -560,6 +618,11 @@ pub fn looks_like_typed_path(text: &str) -> bool {
 fn handle_text(state: &mut State, ctx: &Ctx, typed: &str, asked: Asked) -> Option<Action> {
     if state.step == Step::GroupFolderName {
         return stay_groups::folder_named(state, ctx, typed);
+    }
+    if state.step == Step::AreaName {
+        state.step = Step::AfterChange;
+        learn::area_chosen(state, ctx, typed.to_owned());
+        return None;
     }
     if expects_folder(state.step) && looks_like_typed_path(typed) {
         state.resolving = Some((expand_home(ctx, Path::new(typed)), state.step));
@@ -659,6 +722,15 @@ pub fn fallback_chips(ctx: &Ctx) -> Vec<Chip> {
     ]
 }
 
+/// The same, with the button to read the folder again when there is one.
+pub fn lost_folder_retry_chips(state: &State, ctx: &Ctx) -> Vec<Chip> {
+    let mut chips = lost_folder_chips(ctx);
+    if state.session.retry.is_some() {
+        chips.insert(1, chip(ctx, Msg::HermesChatRetry, ChipReply::Retry, false));
+    }
+    chips
+}
+
 /// A folder that cannot be read: another one, or one of the ways on.
 pub fn lost_folder_chips(ctx: &Ctx) -> Vec<Chip> {
     let mut chips = vec![chip(
@@ -692,13 +764,19 @@ pub fn handle_reply(state: &mut State, ctx: &Ctx, reply: ChipReply) -> Option<Ac
         ChipReply::ToTrash => tidy::trash_offer(state, ctx, true),
         ChipReply::LeaveThem => tidy::trash_offer(state, ctx, false),
         ChipReply::Later => {
+            reset_flow(state);
             say(
                 state,
                 text(ctx.lang, Msg::HermesChatLaterReply),
                 fallback_chips(ctx),
             );
-            state.step = Step::Idle;
         }
+        ChipReply::Retry => learn::retry(state, ctx),
+        ChipReply::OtherArea => learn::ask_area_name(state, ctx),
+        ChipReply::ChangeAreaOrder { area, order } => learn::area_order(state, ctx, area, order),
+        ChipReply::TrashDuplicatesNow => trial_end::trash_duplicates(state, ctx),
+        ChipReply::ShowStaying => trial_end::show_staying(state, ctx),
+        ChipReply::TrialOtherTarget => return trial_end::other_target(state),
         ChipReply::Once => tidy::once(state, ctx, false),
         ChipReply::Always => tidy::once(state, ctx, true),
         ChipReply::DownloadModel => return Some(Action::DownloadModel),
@@ -749,7 +827,18 @@ pub fn handle_reply(state: &mut State, ctx: &Ctx, reply: ChipReply) -> Option<Ac
 }
 
 pub fn cancel(state: &mut State, ctx: &Ctx) {
+    reset_flow(state);
+    say(
+        state,
+        text(ctx.lang, Msg::HermesChatCancelled),
+        fallback_chips(ctx),
+    );
+}
+
+/// Forgets what the running conversation was about; nothing is remembered.
+fn reset_flow(state: &mut State) {
     state.session.tidy = None;
+    state.session.retry = None;
     state.session.trial = None;
     state.session.groups = GroupFlow::default();
     state.session.pending_change = None;
@@ -767,9 +856,4 @@ pub fn cancel(state: &mut State, ctx: &Ctx) {
     state.session.proposal = None;
     state.session.change_scope = None;
     state.step = Step::Idle;
-    say(
-        state,
-        text(ctx.lang, Msg::HermesChatCancelled),
-        fallback_chips(ctx),
-    );
 }

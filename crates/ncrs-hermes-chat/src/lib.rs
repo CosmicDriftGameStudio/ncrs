@@ -20,6 +20,7 @@ mod patterns;
 mod photos;
 mod texts;
 mod tidy;
+mod trial_end;
 mod understand;
 mod undo;
 mod working;
@@ -29,8 +30,8 @@ pub use ctx::{Availability, Ctx};
 pub use keys::{chat_key, ChatKey};
 pub use message::Message;
 pub use state::{
-    AreaRow, AreasCard, Chip, ChipReply, CountRow, Entry, FileCard, NewLayout, Part, RowOutcome,
-    State, Step, TrialCard, TrialRow,
+    AreaRow, AreasCard, Chip, ChipReply, CountRow, Entry, FileCard, FolderMention, NewLayout, Part,
+    RowOutcome, State, Step, TrialCard, TrialRow,
 };
 pub use update::update;
 pub use view::{focus_input, view, ViewCtx, INPUT_ID, SCROLL_ID};

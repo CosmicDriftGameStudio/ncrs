@@ -26,8 +26,8 @@ mod words;
 mod tests;
 
 pub use change::{
-    already_ordered, area_lacks_fields, branch_example, names_known_kind, ChangeOrder,
-    ChangePreview, OrderChange, Scope,
+    already_ordered, apply_changes, area_lacks_fields, branch_example, names_known_kind,
+    ChangeOrder, ChangePreview, OrderChange, Scope,
 };
 pub use groups::{
     area_pattern, group_rule, numbered_name, stay_groups, AnsweredGroups, GroupKey, NameTaken,

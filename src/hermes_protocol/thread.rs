@@ -20,6 +20,7 @@ pub fn busy(app: &App) -> bool {
 pub fn entry_text(entry: &Entry) -> String {
     match entry {
         Entry::User(text) | Entry::Working(text) => text.clone(),
+        Entry::UserFolder(mention) => format!("{} ({})", mention.name, mention.path),
         Entry::Hermes { parts, .. } => parts
             .iter()
             .map(|part| match part {
@@ -31,6 +32,7 @@ pub fn entry_text(entry: &Entry) -> String {
                     .collect::<Vec<_>>()
                     .join(" "),
                 Part::File(card) => card.segments.join("/"),
+                Part::Folder(mention) => format!("{} ({})", mention.name, mention.path),
                 Part::Trial(card) => format!(
                     "{} {}",
                     card.header,
@@ -44,6 +46,27 @@ pub fn entry_text(entry: &Entry) -> String {
             .collect::<Vec<_>>()
             .join(" "),
     }
+}
+
+/// Whether the newest areas card writes the order of every area in words:
+/// no slashes or bars between the levels.
+pub fn areas_in_plain_words(app: &App) -> bool {
+    chat(app)
+        .thread()
+        .iter()
+        .rev()
+        .find_map(|entry| match entry {
+            Entry::Hermes { parts, .. } => parts.iter().find_map(|part| match part {
+                Part::Areas(card) => Some(card),
+                _ => None,
+            }),
+            _ => None,
+        })
+        .is_some_and(|card| {
+            card.rows
+                .iter()
+                .all(|row| !row.description.contains(" / ") && !row.description.contains(" | "))
+        })
 }
 
 pub fn whole_thread(app: &App) -> String {

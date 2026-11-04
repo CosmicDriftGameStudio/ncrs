@@ -28,6 +28,8 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         self.type_sentence(sentence);
         let (_, _, mut limit) = self.wait_idle(READ_LIMIT, None);
         let mut questions = Vec::new();
+        let mut stuck_chips_ok: Option<bool> = None;
+        let later_again = self.language.text(Msg::HermesChatLaterAgain);
         let archive = self.archive.clone();
         for round in 1..=80 {
             let image = if round <= 25 {
@@ -41,6 +43,16 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
                 last_text(self.app()).chars().take(80).collect::<String>()
             ));
             if has_chip(self.app(), |reply| *reply == ChipReply::Undo) {
+                break;
+            }
+            if has_chip(self.app(), |reply| *reply == ChipReply::TrialOtherTarget) {
+                let chips = chat(self.app()).chips();
+                stuck_chips_ok = Some(
+                    chips.len() >= 3
+                        && chips.iter().any(|chip| {
+                            chip.reply == ChipReply::Later && chip.label == later_again
+                        }),
+                );
                 break;
             }
             let first_press = self.press_chip(|reply| match reply {
@@ -76,6 +88,13 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
             expect(
                 moved > 0 && arrived > 0,
                 format!("{moved} left downloads, {arrived} reached the archive"),
+            ),
+            expect(
+                stuck_chips_ok.unwrap_or(true),
+                format!(
+                    "the end of a trial without filing needs at least 3 buttons including '{later_again}'; labels: {}",
+                    chip_labels(self.app())
+                ),
             ),
         ]);
         self.record(
@@ -145,7 +164,8 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
             let text = whole_thread(self.app());
             let previewed = has_chip(self.app(), |reply| {
                 matches!(reply, ChipReply::ConfirmChange | ChipReply::ScopeAll)
-            }) || self.last_says(Msg::HermesChatChangeAlready);
+            }) || self.last_says(Msg::HermesChatChangeAlready)
+                || self.last_says(Msg::HermesChatChangeAlreadyPlain);
             let mut met = all([
                 limit,
                 expect(

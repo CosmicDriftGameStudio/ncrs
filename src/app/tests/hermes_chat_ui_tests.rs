@@ -5,8 +5,8 @@ use iced_test::Simulator;
 use ncrs_ai::{ChatIntent, Compute, LocalModelStatus, ScriptedChatModel};
 use ncrs_filing::chat_work::{ChatAccess, ChatResult, RuleSaveFailure, RunSummary};
 use ncrs_hermes_chat::{
-    AreaRow, AreasCard, Availability, Chip, ChipReply, Ctx, Entry, FileCard, Part, RowOutcome,
-    Step, TrialCard, TrialRow,
+    Availability, Chip, ChipReply, Ctx, Entry, FileCard, Part, RowOutcome, Step, TrialCard,
+    TrialRow,
 };
 use ncrs_index::{BatchKind, Index, Transfer};
 use ncrs_intake::{RuleProblem, TextChain};
@@ -106,59 +106,7 @@ pub(in crate::app::tests) fn user_says(app: &mut App, text: &str) {
 }
 
 fn areas_scene(lang: Language) -> App {
-    let (mut app, _) = opened(lang);
-    user_says(&mut app, pick(lang, "Mein Archiv", "My archive"));
-    let row = |name: &str, description: &str, example: &str, documents| AreaRow {
-        name: name.to_owned(),
-        description: description.to_owned(),
-        example: example.to_owned(),
-        documents,
-    };
-    hermes_says(
-        &mut app,
-        vec![
-            Part::Text(
-                pick(
-                    lang,
-                    "Ich habe **412 Dokumente** gelesen. So ist es geordnet:",
-                    "I read **412 documents**. This is how it is ordered:",
-                )
-                .to_owned(),
-            ),
-            Part::Areas(AreasCard {
-                rows: vec![
-                    row(
-                        "Steuern",
-                        "Jahr / Datei",
-                        "Steuern/2023/2023-04-12_Finanzamt.pdf",
-                        148,
-                    ),
-                    row(
-                        "Versicherungen",
-                        "Anbieter / Datei",
-                        "Versicherungen/Allianz/Police_2022.pdf",
-                        96,
-                    ),
-                    row("Wohnung", "Datei", "Wohnung/Mietvertrag.pdf", 61),
-                ],
-                more: None,
-                unordered: None,
-            }),
-        ],
-        vec![
-            chip(
-                pick(lang, "Passt so", "Fine as it is"),
-                ChipReply::FineAsIs,
-                true,
-            ),
-            chip(
-                pick(lang, "Etwas ändern", "Change something"),
-                ChipReply::WantChange,
-                false,
-            ),
-        ],
-    );
-    app
+    super::hermes_chat_areas_ui_tests::real_flow_areas_app(lang)
 }
 
 fn change_scene(lang: Language) -> App {
