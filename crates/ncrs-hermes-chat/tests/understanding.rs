@@ -393,7 +393,12 @@ mod tests {
         talk.model.set_status(loaded());
         talk.model.push_reply(Err(AiError::Model("broken")));
         talk.type_text("hallo");
-        fallback(&talk);
+        let reason = AiError::Model("broken").to_string();
+        assert_eq!(
+            talk.last_texts(),
+            vec![say(Msg::HermesChatModelFailed, &[("reason", &reason)])]
+        );
+        assert_eq!(talk.labels().len(), 4);
 
         talk.type_text_understood(
             "räum ../geheim auf",

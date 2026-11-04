@@ -193,7 +193,7 @@ pub fn apply_changes(
     parts.iter().collect()
 }
 
-fn matches_branch(parts: &[String], area: &Area, branch: &Branch) -> bool {
+pub(in crate::chat_work) fn matches_branch(parts: &[String], area: &Area, branch: &Branch) -> bool {
     parts.len() == branch.levels.len() + 2
         && parts.first() == Some(&area.folder)
         && branch
@@ -226,7 +226,7 @@ pub fn branch_example<'a>(
         })
 }
 
-fn names_the_kind(kind_word: &str, name: &str) -> bool {
+pub(in crate::chat_work) fn names_the_kind(kind_word: &str, name: &str) -> bool {
     same_word(kind_word, name)
         || kind_word
             .split_whitespace()
@@ -235,7 +235,7 @@ fn names_the_kind(kind_word: &str, name: &str) -> bool {
 
 /// A branch the word names by its structure: a folder or a file name prefix
 /// that says the word, like "Kontoauszüge" and "Kontoauszug_".
-fn branch_names_the_kind(kind_word: &str, branch: &Branch) -> bool {
+pub(in crate::chat_work) fn branch_names_the_kind(kind_word: &str, branch: &Branch) -> bool {
     let in_levels = branch.levels.iter().any(|level| match level {
         Level::Literal(name) => names_the_kind(kind_word, name),
         Level::Choice(names) => names.iter().any(|name| names_the_kind(kind_word, name)),
@@ -249,7 +249,10 @@ fn branch_names_the_kind(kind_word: &str, branch: &Branch) -> bool {
         })
 }
 
-fn kind_entry<'a>(kinds: &'a Kinds, kind_word: &str) -> Option<&'a KindEntry> {
+pub(in crate::chat_work) fn kind_entry<'a>(
+    kinds: &'a Kinds,
+    kind_word: &str,
+) -> Option<&'a KindEntry> {
     kinds.catalog.entries().iter().find(|entry| {
         [
             entry.id(),
@@ -261,11 +264,18 @@ fn kind_entry<'a>(kinds: &'a Kinds, kind_word: &str) -> Option<&'a KindEntry> {
     })
 }
 
+pub fn names_known_kind(kinds: &Kinds, word: &str) -> bool {
+    kind_entry(kinds, word).is_some()
+}
+
 struct Candidate<'a> {
     area: &'a Area,
     year_at: usize,
     branch: &'a Branch,
     documents: Vec<&'a PlanFile>,
+    /// The word names the area and no document says the kind, so everything
+    /// in the area changes.
+    whole_area: bool,
 }
 
 pub fn preview(
@@ -303,28 +313,40 @@ pub fn preview(
                 .filter(|(_, parts)| matches_branch(parts, area, branch))
                 .map(|(file, _)| file)
                 .collect();
-            let documents: Vec<&PlanFile> = if (entry.is_none()
-                && word_within(kind_word, &area.folder))
+            let names_the_area = word_within(kind_word, &area.folder);
+            let of_the_kind: Vec<&PlanFile> = in_branch
+                .iter()
+                .copied()
+                .filter(|file| of_kind(file))
+                .collect();
+            // The word is the area's name and its kind is no more than a part of
+            // the area: the user means everything in it.
+            let whole_area =
+                names_the_area && entry.is_some() && of_the_kind.len() * 2 <= in_branch.len();
+            let documents: Vec<&PlanFile> = if (entry.is_none() && names_the_area)
                 || branch_names_the_kind(kind_word, branch)
+                || whole_area
             {
                 in_branch.clone()
             } else {
-                in_branch
-                    .iter()
-                    .copied()
-                    .filter(|file| of_kind(file))
-                    .collect()
+                of_the_kind
             };
             let mostly = documents.len() * 2 > in_branch.len();
             let better = best
                 .as_ref()
                 .is_none_or(|current| documents.len() > current.documents.len());
-            if mostly && better {
+            // A branch whose documents lack the field the order sorts by has no
+            // example to show; another branch of the area may have one.
+            let has_example = documents
+                .iter()
+                .any(|file| has_what_the_order_needs(order, &file.fields, kinds));
+            if mostly && better && has_example {
                 best = Some(Candidate {
                     area,
                     year_at,
                     branch,
                     documents,
+                    whole_area,
                 });
             }
         }
@@ -359,6 +381,7 @@ pub fn preview(
         .collect();
 
     let kind_names = match entry {
+        Some(_) if chosen.whole_area => Vec::new(),
         Some(found) => {
             let mut names = vec![
                 found.id().to_owned(),
@@ -443,10 +466,34 @@ pub fn already_ordered(
     (nothing_left && area.branches.iter().any(has_level)).then(|| area.folder.clone())
 }
 
+/// The folder of the area the word names when no document in it has the
+/// field `order` sorts by (no sender known yet, no date): a preview has
+/// nothing to show then, and that is no sign the area is missing.
+pub fn area_lacks_fields(
+    kinds: &Kinds,
+    reading: &FolderReading,
+    area_word: &str,
+    order: ChangeOrder,
+) -> Option<String> {
+    let area = reading
+        .structure
+        .areas
+        .iter()
+        .find(|area| word_within(area_word, &area.folder))?;
+    let mut documents = reading
+        .files
+        .iter()
+        .filter(|file| segments(&file.relative_path).first() == Some(&area.folder))
+        .peekable();
+    documents.peek()?;
+    let any_has = documents.any(|file| has_what_the_order_needs(order, &file.fields, kinds));
+    (!any_has).then(|| area.folder.clone())
+}
+
 /// Where in the branch the change happens: the position of the year level
 /// for a month folder, else the number of literal levels at its start. `None`
 /// when the branch is ordered that way already or has nothing to change.
-fn change_point(order: ChangeOrder, branch: &Branch) -> Option<usize> {
+pub(in crate::chat_work) fn change_point(order: ChangeOrder, branch: &Branch) -> Option<usize> {
     let has = |wanted: fn(&PlaceholderKind) -> bool| {
         branch.levels.iter().any(
             |level| matches!(level, Level::Placeholder(placeholder) if wanted(&placeholder.kind)),
@@ -492,7 +539,7 @@ fn has_what_the_order_needs(order: ChangeOrder, fields: &DocumentFields, kinds: 
 
 /// The sample document's path after the change, and the segment that is new
 /// in it (for a flat order, the file name that moved up).
-fn example_of(
+pub(in crate::chat_work) fn example_of(
     change: &OrderChange,
     sample: &PlanFile,
     kinds: &Kinds,

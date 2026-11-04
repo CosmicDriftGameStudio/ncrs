@@ -324,11 +324,179 @@ mod tests {
         let mut waiting = small_talk();
         waiting.ctx.availability = Availability::Starting;
         waiting.open();
+        assert_eq!(waiting.last_texts(), greeting());
+        assert!(waiting
+            .state
+            .chips()
+            .iter()
+            .any(|chip| chip.reply == ChipReply::PickFolder));
+    }
+
+    fn working_line(talk: &Talk) -> Option<&str> {
+        match talk.state.thread().last() {
+            Some(Entry::Working(line)) => Some(line),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn a_folder_chip_pressed_while_starting_waits_and_then_reads() {
+        let mut talk = small_talk();
+        talk.ctx.availability = Availability::Starting;
+        talk.open();
+        let archive = ChipReply::Folder(talk.path("archive"));
+        talk.press(&archive);
         assert_eq!(
-            waiting.last_texts(),
-            vec![say(Msg::HermesChatStarting, &[])]
+            working_line(&talk),
+            Some(say(Msg::HermesChatStartingWait, &[]).as_str())
         );
-        assert!(waiting.state.chips().is_empty());
+        assert!(talk.state.pending_work().is_none());
+        ready(&mut talk);
+        assert!(talk
+            .state
+            .chips()
+            .iter()
+            .any(|chip| chip.reply == ChipReply::KeepYes));
+        assert!(!talk.state.waits_for_hermes());
+    }
+
+    #[test]
+    fn a_work_tick_shows_the_counts_of_the_running_read() {
+        let mut talk = small_talk();
+        talk.open();
+        let archive = ChipReply::Folder(talk.path("archive"));
+        let (_task, _action) = ncrs_hermes_chat::update(
+            &mut talk.state,
+            Message::ChipPressed {
+                label: "archive".to_owned(),
+                reply: archive,
+            },
+            &talk.ctx,
+        );
+        let Some(ncrs_filing::chat_work::ChatWork::Read { progress, .. }) =
+            talk.state.pending_work().cloned()
+        else {
+            panic!("{:?}", talk.state.pending_work())
+        };
+        progress
+            .found
+            .store(1234, std::sync::atomic::Ordering::Relaxed);
+        let tick = |talk_in_tick: &mut Talk| {
+            let (_tick_task, _tick_action) = ncrs_hermes_chat::update(
+                &mut talk_in_tick.state,
+                Message::WorkTick,
+                &talk_in_tick.ctx,
+            );
+            working_line(talk_in_tick).unwrap().to_owned()
+        };
+        let first = tick(&mut talk);
+        assert!(first.contains("1234"), "{first}");
+        progress
+            .total
+            .store(2516, std::sync::atomic::Ordering::Relaxed);
+        progress
+            .done
+            .store(800, std::sync::atomic::Ordering::Relaxed);
+        let second = tick(&mut talk);
+        assert!(
+            second.contains("800") && second.contains("2516"),
+            "{second}"
+        );
+        assert_ne!(first.matches('.').count(), second.matches('.').count());
+    }
+
+    #[test]
+    fn a_failed_reading_ends_the_wait_and_offers_the_fallback_chips() {
+        let mut talk = small_talk();
+        talk.open();
+        let archive = ChipReply::Folder(talk.path("archive"));
+        let (_task, _action) = ncrs_hermes_chat::update(
+            &mut talk.state,
+            Message::ChipPressed {
+                label: "archive".to_owned(),
+                reply: archive,
+            },
+            &talk.ctx,
+        );
+        assert!(talk.state.pending_work().is_some());
+        talk.send(Message::Failed("volume gone".to_owned()));
+        assert!(talk.state.pending_work().is_none());
+        assert_eq!(
+            talk.labels(),
+            vec![
+                say(Msg::HermesChatIntentSearch, &[]),
+                say(Msg::HermesChatIntentTidy, &[]),
+                say(Msg::HermesChatIntentStructure, &[]),
+                say(Msg::HermesChatIntentUndo, &[]),
+            ]
+        );
+        talk.type_text_understood("hmmmm wie geht das", r#"{"intent":"other"}"#);
+        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatFallback, &[])]);
+    }
+
+    fn greeting() -> Vec<String> {
+        vec![say(Msg::HermesChatGreeting, &[])]
+    }
+
+    fn ready(talk: &mut Talk) {
+        let access = talk.access.clone();
+        talk.ctx.availability = Availability::Ready(access);
+        talk.send(Message::HermesReady);
+    }
+
+    #[test]
+    fn opened_while_starting_the_greeting_follows_when_hermes_is_ready() {
+        let mut talk = small_talk();
+        talk.ctx.availability = Availability::Starting;
+        talk.open();
+        assert_eq!(talk.last_texts(), greeting());
+        ready(&mut talk);
+        ready(&mut talk);
+        assert_eq!(talk.state.thread().len(), 1);
+    }
+
+    #[test]
+    fn closed_while_starting_the_greeting_comes_when_opened_ready() {
+        let mut talk = small_talk();
+        talk.ctx.availability = Availability::Starting;
+        talk.open();
+        talk.send(Message::Close);
+        let access = talk.access.clone();
+        talk.ctx.availability = Availability::Ready(access);
+        talk.open();
+        assert_eq!(talk.last_texts(), greeting());
+    }
+
+    #[test]
+    fn a_sentence_typed_while_starting_gets_the_setup_answer_when_the_start_fails() {
+        let mut talk = small_talk();
+        talk.ctx.availability = Availability::Starting;
+        talk.open();
+        talk.type_text("hmmmm wie geht das");
+        assert!(talk.state.waits_for_hermes());
+        talk.ctx.availability = Availability::NeedsSetup;
+        talk.send(Message::HermesReady);
+        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatNeedsSetup, &[])]);
+        assert_eq!(talk.labels(), vec![say(Msg::HermesChatSetup, &[])]);
+        assert!(!talk.state.waits_for_hermes());
+        assert!(talk.state.pending_work().is_none());
+    }
+
+    #[test]
+    fn a_sentence_typed_while_starting_is_answered_when_hermes_is_ready() {
+        let mut talk = small_talk();
+        talk.ctx.availability = Availability::Starting;
+        talk.open();
+        talk.type_text("hmmmm wie geht das");
+        assert_eq!(
+            working_line(&talk),
+            Some(say(Msg::HermesChatStartingWait, &[]).as_str())
+        );
+        let access = talk.access.clone();
+        talk.ctx.availability = Availability::Ready(access);
+        talk.model.push_reply(Ok(r#"{"intent":"other"}"#));
+        talk.send(Message::HermesReady);
+        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatFallback, &[])]);
     }
 
     #[test]

@@ -68,6 +68,70 @@ fn no_preview_for_a_word_that_names_no_kind_in_the_folder() {
     assert_eq!(preview(&Setup::new(), "Wetter"), None);
 }
 
+fn kindless_reading(area: &str) -> FolderReading {
+    let mut files = Vec::new();
+    let mut seed = 0;
+    for year in [2020, 2021] {
+        for month in [1, 2, 3, 4] {
+            seed += 1;
+            let mut file = plan_file(
+                &format!("{area}/{year}/{year}-{month:02}-01 Dokument {seed}.pdf"),
+                seed,
+                Some("Allianz"),
+                date(year, month, 1),
+            );
+            file.fields.kind = None;
+            files.push(file);
+        }
+    }
+    reading("/archive", files)
+}
+
+fn preview_word(reading: FolderReading, word: &str, order: ChangeOrder) -> Option<ChangePreview> {
+    match Setup::new().access.run(ChatWork::PreviewChange {
+        reading: Arc::new(reading),
+        kind_word: word.to_owned(),
+        order,
+    }) {
+        ChatResult::Preview(preview) => preview,
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn a_kind_word_that_is_also_an_area_changes_the_whole_area_when_no_document_has_the_kind() {
+    let preview = preview_word(
+        kindless_reading("Versicherung"),
+        "Versicherung",
+        ChangeOrder::BySender,
+    )
+    .unwrap();
+    assert_eq!(preview.change.area, PathBuf::from("Versicherung"));
+    assert!(preview.change.kind_names.is_empty());
+    assert_eq!(preview.example[0], "Versicherung");
+}
+
+#[test]
+fn a_kind_word_that_is_also_an_area_changes_the_whole_area_when_few_documents_have_the_kind() {
+    let mut reading = kindless_reading("Versicherung");
+    for file in reading.files.iter_mut().take(2) {
+        file.fields.kind = Some("Versicherung".to_owned());
+    }
+    let preview = preview_word(reading, "Versicherung", ChangeOrder::BySender).unwrap();
+    assert_eq!(preview.change.area, PathBuf::from("Versicherung"));
+    assert!(preview.change.kind_names.is_empty());
+}
+
+#[test]
+fn an_area_without_kinds_is_ordered_by_month_with_a_path_from_real_segments() {
+    let preview = preview_word(kindless_reading("Bank"), "Bank", ChangeOrder::ByMonth).unwrap();
+    assert_eq!(preview.change.area, PathBuf::from("Bank"));
+    assert_eq!(
+        preview.example,
+        ["Bank", "2021", "04", "2021-04-01 Dokument 8.pdf"]
+    );
+}
+
 fn ordered_reading(layout: fn(&str, i32, u32) -> String) -> FolderReading {
     let mut files = Vec::new();
     let mut seed = 0;
@@ -291,4 +355,64 @@ fn a_target_without_neighbours_files_by_the_layout_it_was_given() {
         TrialOutcome::Stays(StayReason::NoNeighbours),
         "without a layout nothing is guessed"
     );
+}
+
+#[test]
+fn an_area_whose_documents_have_no_sender_yet_lacks_the_field_for_a_sender_order() {
+    let mut without_sender = kindless_reading("Versicherung");
+    for file in &mut without_sender.files {
+        file.fields.sender = None;
+    }
+    let lacking = |reading: &FolderReading, word: &str, order| {
+        area_lacks_fields(&kinds(), reading, word, order)
+    };
+    assert_eq!(
+        lacking(&without_sender, "Versicherung", ChangeOrder::BySender).as_deref(),
+        Some("Versicherung")
+    );
+    assert_eq!(
+        lacking(&without_sender, "Versicherung", ChangeOrder::ByMonth),
+        None
+    );
+    assert_eq!(
+        lacking(
+            &kindless_reading("Versicherung"),
+            "Versicherung",
+            ChangeOrder::BySender
+        ),
+        None
+    );
+    assert_eq!(
+        lacking(&without_sender, "Wetter", ChangeOrder::BySender),
+        None
+    );
+}
+
+#[test]
+fn a_branch_without_the_field_does_not_hide_a_branch_of_the_area_that_has_it() {
+    let mut files = Vec::new();
+    for (seed, folder, sender) in [
+        (1, "Unfall", None),
+        (2, "Unfall", None),
+        (3, "Unfall", None),
+    ]
+    .into_iter()
+    .chain([(4, "Reise", Some("Allianz")), (5, "Reise", Some("Allianz"))])
+    {
+        let mut file = plan_file(
+            &format!("Versicherung/{folder}/2021-0{seed}-01 Dokument {seed}.pdf"),
+            seed,
+            sender,
+            date(2021, u32::from(seed), 1),
+        );
+        file.fields.kind = None;
+        file.fields.sender = sender.map(str::to_owned);
+        files.push(file);
+    }
+    let preview = preview_word(
+        reading("/archive", files),
+        "Versicherung",
+        ChangeOrder::BySender,
+    );
+    assert_eq!(preview.unwrap().change.area, PathBuf::from("Versicherung"));
 }

@@ -14,13 +14,13 @@ use ncrs_index::Transfer;
 use ncrs_ui_kit::format;
 
 use crate::action::Action;
-use crate::ctx::Ctx;
+use crate::ctx::{Availability, Ctx};
 use crate::message::Message;
 use crate::state::{Asked, Chip, ChipReply, Entry, Part, State, Step, Thinking, Unsent};
 use crate::texts::{fill, shown_folder, text};
 use crate::update::{
     batch_not_yet, cancel_chip, chip, drop_working, explain_not_yet, fallback, fallback_chips,
-    handle_reply, open_thread, say, search_not_yet,
+    handle_reply, open_thread, say, say_needs_setup, search_not_yet,
 };
 use crate::{learn, undo};
 
@@ -162,7 +162,16 @@ pub fn launch(state: &mut State, ctx: &Ctx) -> Task<Message> {
     if !std::mem::take(&mut state.fresh_turn) {
         return Task::none();
     }
-    let (Some(thinking), Some(model)) = (state.thinking.as_ref(), ctx.model.clone()) else {
+    let Some(thinking) = state.thinking.as_ref() else {
+        return Task::none();
+    };
+    let Some(model) = ctx.model.clone() else {
+        // The model went away since the question: end the wait.
+        state.thinking = None;
+        drop_working(state);
+        if gate(state, ctx, None) == Gate::Usable {
+            fallback(state, ctx);
+        }
         return Task::none();
     };
     let turn = thinking.turn.clone();
@@ -185,8 +194,14 @@ pub fn understood(
     drop_working(state);
     match result {
         Ok(intent) => act_on(state, ctx, intent, &thinking.asked),
-        Err(_) => {
-            fallback(state, ctx);
+        Err(reason) => {
+            if gate(state, ctx, None) == Gate::Usable {
+                say(
+                    state,
+                    fill(ctx.lang, Msg::HermesChatModelFailed, &[("reason", &reason)]),
+                    fallback_chips(ctx),
+                );
+            }
             None
         }
     }
@@ -208,6 +223,35 @@ pub fn model_ready(state: &mut State, ctx: &Ctx) -> Option<Action> {
         if usable {
             say(state, text(ctx.lang, Msg::HermesChatModelReady), Vec::new());
         }
+    }
+    resume(state, ctx)
+}
+
+/// The filing module is ready: the greeting or the sentence that waited for
+/// its start comes.
+pub fn hermes_ready(state: &mut State, ctx: &Ctx) -> Option<Action> {
+    if !state.waiting_for_hermes {
+        return None;
+    }
+    match ctx.availability {
+        Availability::Starting => return None,
+        Availability::NeedsSetup => {
+            state.waiting_for_hermes = false;
+            drop_working(state);
+            state.session.unsent = None;
+            state.session.unsent_reply = None;
+            say_needs_setup(state, ctx);
+            return None;
+        }
+        Availability::Ready(_) => {}
+    }
+    state.waiting_for_hermes = false;
+    drop_working(state);
+    if let Some(reply) = state.session.unsent_reply.take() {
+        return handle_reply(state, ctx, reply);
+    }
+    if state.session.unsent.is_none() && state.thread.is_empty() {
+        state.greeting_owed = true;
     }
     resume(state, ctx)
 }

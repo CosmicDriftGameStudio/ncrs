@@ -20,6 +20,7 @@ use tempfile::TempDir;
 
 use super::*;
 
+mod diagnosis;
 mod orders;
 
 struct Setup {
@@ -43,15 +44,28 @@ impl Setup {
     }
 
     fn write(&self, relative: &str, content: &str) -> PathBuf {
-        let path = self.dir.path().join(relative);
+        // Joined part by part: a `/` kept inside a Windows path would fall
+        // outside the index's subtree range, which separates with `\`.
+        let path = relative
+            .split('/')
+            .fold(self.dir.path().to_path_buf(), |path, part| path.join(part));
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(&path, content).unwrap();
         path
     }
 
     fn read(&self, folder: &Path) -> Result<Arc<FolderReading>, ReadError> {
+        self.read_with_progress(folder, Arc::default())
+    }
+
+    fn read_with_progress(
+        &self,
+        folder: &Path,
+        progress: Arc<ReadProgress>,
+    ) -> Result<Arc<FolderReading>, ReadError> {
         match self.access.run(ChatWork::Read {
             folder: folder.to_path_buf(),
+            progress,
         }) {
             ChatResult::Read(result) => result,
             other => Err(ReadError::Io(format!("{other:?}"))),
@@ -105,6 +119,7 @@ fn reading(root: &str, mut files: Vec<PlanFile>) -> FolderReading {
     }
     FolderReading {
         patterns: Vec::new(),
+        ai: Default::default(),
         root: PathBuf::from(root),
         files,
         photos: 0,
@@ -162,7 +177,7 @@ fn reading_a_file_or_a_missing_folder_or_too_many_files_is_refused() {
     assert_eq!(setup.read(&file), Err(ReadError::NotADirectory));
     assert_eq!(
         setup.read(&setup.dir.path().join("missing")),
-        Err(ReadError::NotADirectory)
+        Err(ReadError::Gone)
     );
     let big = setup.dir.path().join("big");
     fs::create_dir_all(&big).unwrap();
@@ -206,6 +221,84 @@ fn a_known_document_brings_its_fields_and_text_from_the_index() {
     let read = setup.read(&setup.dir.path().join("in")).unwrap();
     assert_eq!(read.files[0].fields.sender.as_deref(), Some("Alfa AG"));
     assert_eq!(read.files[0].text.as_deref(), Some("stored text"));
+}
+
+fn index_with_stored_hash(setup: &Setup, path: &Path, stamp: ncrs_index::FileStamp) {
+    let mut guard = setup.access.slot.lock().unwrap();
+    let index = guard.as_mut().unwrap();
+    let id = index
+        .insert_document(&ncrs_index::NewDocument {
+            hash: ContentHash([7; 32]),
+            path: path.to_path_buf(),
+            source: ncrs_index::DocumentSource::Archive,
+            received_at: chrono::Utc::now(),
+            stamp: Some(stamp),
+        })
+        .unwrap();
+    index
+        .set_document_fields(
+            id,
+            &DocumentFields {
+                sender: Some("Alfa AG".to_owned()),
+                ..DocumentFields::default()
+            },
+            |_| ncrs_index::FieldOrigin::Unknown,
+        )
+        .unwrap();
+    index.set_document_text(id, "stored text").unwrap();
+}
+
+fn stamp_of_file(path: &Path) -> ncrs_index::FileStamp {
+    let metadata = fs::metadata(path).unwrap();
+    ncrs_index::FileStamp {
+        size: metadata.len(),
+        mtime: metadata.modified().unwrap(),
+    }
+}
+
+#[test]
+fn a_file_with_the_stamp_of_the_index_is_not_opened() {
+    let setup = Setup::new();
+    let path = setup.write(
+        "in/known.txt",
+        "content that does not match the stored hash",
+    );
+    index_with_stored_hash(&setup, &path, stamp_of_file(&path));
+    let read = setup.read(&setup.dir.path().join("in")).unwrap();
+    assert_eq!(read.files[0].hash, ContentHash([7; 32]));
+    assert_eq!(read.files[0].fields.sender.as_deref(), Some("Alfa AG"));
+    assert_eq!(read.files[0].text.as_deref(), Some("stored text"));
+}
+
+#[test]
+fn a_file_with_another_stamp_than_the_index_is_hashed_again() {
+    let setup = Setup::new();
+    let path = setup.write(
+        "in/known.txt",
+        "content that does not match the stored hash",
+    );
+    let mut stamp = stamp_of_file(&path);
+    stamp.size += 1;
+    index_with_stored_hash(&setup, &path, stamp);
+    let read = setup.read(&setup.dir.path().join("in")).unwrap();
+    assert_eq!(read.files[0].hash, hash_path(&path).unwrap());
+    assert_eq!(read.files[0].fields.sender, None);
+}
+
+#[test]
+fn a_finished_read_has_counted_every_file_found() {
+    let setup = Setup::new();
+    for number in 0..5 {
+        setup.write(&format!("in/deep/{number}.txt"), &format!("file {number}"));
+    }
+    let progress = Arc::new(ReadProgress::default());
+    setup
+        .read_with_progress(&setup.dir.path().join("in"), Arc::clone(&progress))
+        .unwrap();
+    assert_eq!(
+        (progress.found(), progress.total(), progress.done()),
+        (5, 5, 5)
+    );
 }
 
 fn target_reading() -> FolderReading {
@@ -707,6 +800,20 @@ fn staying_files_are_grouped_largest_first_sender_before_kind() {
     assert_eq!(groups.rest.len(), 2);
     // No neighbours point anywhere, so the largest areas are offered.
     assert_eq!(groups.asked[1].areas, ["Alfa", "Firma", "Privat"]);
+}
+
+#[test]
+fn a_kind_the_catalog_does_not_know_forms_no_group() {
+    let entries = vec![
+        staying("a1.pdf", None, Some("Abschäuss")),
+        staying("a2.pdf", None, Some("abschäuss")),
+        staying("i1.pdf", None, Some("Invoice")),
+        staying("i2.pdf", None, Some("invoice")),
+    ];
+    let groups = grouped(&plan_of(entries), &AnsweredGroups::default());
+    let asked: Vec<&GroupKey> = groups.asked.iter().map(|group| &group.key).collect();
+    assert_eq!(asked, [&GroupKey::Kind("invoice".to_owned())]);
+    assert_eq!(groups.single_pieces, 2);
 }
 
 #[test]

@@ -21,8 +21,8 @@ mod tests {
     const TIDY_INBOX: &str = r#"{"intent":"tidy_folder","source":"Inbox"}"#;
     const BANK_BY_MONTH: &str =
         r#"{"intent":"change_structure","area":"Bankstatements","order":"by_month"}"#;
-    const NO_SUCH_AREA: &str =
-        r#"{"intent":"change_structure","area":"Zzzzqq","order":"by_month"}"#;
+    const KIND_WITHOUT_FILES: &str =
+        r#"{"intent":"change_structure","area":"Vertrag","order":"by_month"}"#;
 
     fn archive_talk() -> Talk {
         let dir = tempfile::tempdir().unwrap();
@@ -135,7 +135,7 @@ mod tests {
         talk.open();
         talk.press(&ChipReply::Folder(talk.path("archive")));
         talk.press(&ChipReply::WantChange);
-        talk.type_text_understood("mach es nach Monat", NO_SUCH_AREA);
+        talk.type_text_understood("mach es nach Monat", KIND_WITHOUT_FILES);
         assert_eq!(
             talk.last_texts(),
             vec![say(Msg::HermesChatChangeAreaAsk, &[])]
@@ -150,15 +150,87 @@ mod tests {
     }
 
     #[test]
+    fn a_word_that_is_no_area_and_no_kind_says_a_whole_folder_cannot_be_proposed() {
+        let mut talk = archive_talk();
+        talk.open();
+        talk.press(&ChipReply::Folder(talk.path("archive")));
+        talk.press(&ChipReply::WantChange);
+        talk.type_text_understood(
+            "mach einen Vorschlag",
+            r#"{"intent":"change_structure","area":"Zzzzqq","order":"by_month"}"#,
+        );
+        assert_eq!(
+            talk.last_texts(),
+            vec![say(Msg::HermesChatNotYetPropose, &[])]
+        );
+        assert!(replies(&talk).contains(&ChipReply::IntentSearch));
+    }
+
+    #[test]
+    fn a_reading_says_how_far_the_ai_is_while_documents_wait_for_it() {
+        let mut talk = archive_talk();
+        talk.open();
+        let document = ncrs_index::NewDocument {
+            hash: ncrs_index::ContentHash([9; 32]),
+            path: talk.path("archive").join("waiting.pdf"),
+            source: ncrs_index::DocumentSource::Archive,
+            received_at: chrono::Utc::now(),
+            stamp: None,
+        };
+        let id = talk
+            .index
+            .lock()
+            .unwrap()
+            .as_mut()
+            .unwrap()
+            .insert_document(&document)
+            .unwrap();
+        talk.index
+            .lock()
+            .unwrap()
+            .as_mut()
+            .unwrap()
+            .set_document_text(id, "Rechnung")
+            .unwrap();
+        talk.press(&ChipReply::Folder(talk.path("archive")));
+        assert!(
+            talk.last_texts().contains(&say(
+                Msg::HermesChatReadingAiProgress,
+                &[("done", "0"), ("total", "1")]
+            )),
+            "{:?}",
+            talk.last_texts()
+        );
+    }
+
+    #[test]
+    fn a_typed_path_of_an_existing_folder_is_taken_as_a_folder_not_as_a_sentence() {
+        let mut talk = archive_talk();
+        talk.open();
+        talk.press(&ChipReply::Folder(talk.path("archive")));
+        std::fs::create_dir_all(talk.path("elsewhere")).unwrap();
+        let typed = talk.path("elsewhere").to_string_lossy().into_owned();
+        talk.type_text(&typed);
+        let real = std::fs::canonicalize(talk.path("elsewhere"))
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        assert_eq!(
+            talk.last_texts(),
+            vec![say(Msg::HermesChatUnknownPathConfirm, &[("path", &real)])]
+        );
+    }
+
+    #[test]
     fn a_new_unknown_word_asks_again_after_an_area_was_picked() {
         let mut talk = archive_talk();
         talk.open();
         talk.press(&ChipReply::Folder(talk.path("archive")));
         talk.press(&ChipReply::WantChange);
-        talk.type_text_understood("mach es nach Monat", NO_SUCH_AREA);
+        talk.type_text_understood("mach es nach Monat", KIND_WITHOUT_FILES);
         talk.press(&ChipReply::ChangeArea("Bank".to_owned()));
         talk.press(&ChipReply::Cancel);
-        talk.type_text_understood("mach es nach Monat", NO_SUCH_AREA);
+        talk.type_text_understood("mach es nach Monat", KIND_WITHOUT_FILES);
         assert_eq!(
             talk.last_texts(),
             vec![say(Msg::HermesChatChangeAreaAsk, &[])]
@@ -263,7 +335,7 @@ mod tests {
     fn change_in_area(talk: &mut Talk, area: &str, order: &str) {
         talk.type_text_understood(
             "mach es anders",
-            &format!(r#"{{"intent":"change_structure","area":"Zzzzqq","order":"{order}"}}"#),
+            &format!(r#"{{"intent":"change_structure","area":"Vertrag","order":"{order}"}}"#),
         );
         talk.press(&ChipReply::ChangeArea(area.to_owned()));
     }

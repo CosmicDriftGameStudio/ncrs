@@ -5,10 +5,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use ncrs_filing::chat_work::{
-    already_ordered, same_word, ChangeOrder, ChangePreview, ChatWork, FolderReading, OrderChange,
-    ReadError,
+    already_ordered, area_lacks_fields, names_known_kind, same_word, word_within, ChangeOrder,
+    ChangePreview, ChatAccess, ChatWork, FolderReading, OrderChange, ReadError, ReadProgress,
 };
 use ncrs_i18n::Msg;
+use ncrs_index::{KindCatalog, KindLanguage, Kinds};
 use ncrs_ui_kit::hermes_state::FolderRole;
 
 use crate::action::Action;
@@ -16,7 +17,8 @@ use crate::ctx::Ctx;
 use crate::state::{Chip, ChipReply, FileCard, Offer, Part, ReadFor, State, Step};
 use crate::texts::{areas_card, fill, folder_name, number, plural_text, text};
 use crate::update::{
-    access, cancel_chip, chip, chip_labelled, hermes, say, source_chips, target_chips, work,
+    access, cancel_chip, chip, chip_labelled, hermes, lost_folder_chips, say, source_chips,
+    target_chips, work,
 };
 use crate::{patterns, tidy};
 
@@ -35,9 +37,11 @@ pub fn read_for(state: &mut State, ctx: &Ctx, folder: PathBuf, purpose: ReadFor)
     state.session.read_for = Some(purpose);
     state.session.requested = folder.clone();
     let shown = folder_name(ctx, &folder);
+    let progress = Arc::new(ReadProgress::default());
+    state.session.progress = Some(Arc::clone(&progress));
     work(
         state,
-        ChatWork::Read { folder },
+        ChatWork::Read { folder, progress },
         Some(fill(
             ctx.lang,
             Msg::HermesChatWorkingReading,
@@ -48,6 +52,7 @@ pub fn read_for(state: &mut State, ctx: &Ctx, folder: PathBuf, purpose: ReadFor)
 
 pub fn read_done(state: &mut State, ctx: &Ctx, result: Result<Arc<FolderReading>, ReadError>) {
     let purpose = state.session.read_for.take().unwrap_or(ReadFor::Learn);
+    state.session.progress = None;
     match result {
         Ok(reading) => {
             state
@@ -62,6 +67,11 @@ pub fn read_done(state: &mut State, ctx: &Ctx, result: Result<Arc<FolderReading>
             state.step = Step::Idle;
             let requested = state.session.requested.clone();
             let sentence = match error {
+                ReadError::Gone => fill(
+                    ctx.lang,
+                    Msg::HermesChatFolderGone,
+                    &[("path", &requested.to_string_lossy())],
+                ),
                 ReadError::NotADirectory => fill(
                     ctx.lang,
                     Msg::HermesChatNotAFolder,
@@ -79,7 +89,7 @@ pub fn read_done(state: &mut State, ctx: &Ctx, result: Result<Arc<FolderReading>
                     fill(ctx.lang, Msg::HermesChatReadFailed, &[("reason", &reason)])
                 }
             };
-            say(state, sentence, Vec::new());
+            say(state, sentence, lost_folder_chips(ctx));
         }
     }
 }
@@ -101,7 +111,7 @@ pub fn summary(state: &mut State, ctx: &Ctx, reading: &Arc<FolderReading>) {
         say(
             state,
             fill(ctx.lang, Msg::HermesChatReadEmpty, &[("folder", &folder)]),
-            Vec::new(),
+            lost_folder_chips(ctx),
         );
         return;
     }
@@ -118,7 +128,7 @@ pub fn summary(state: &mut State, ctx: &Ctx, reading: &Arc<FolderReading>) {
                 Msg::HermesChatReadSummaryNoOrder,
                 &[("count", &count)],
             ),
-            Vec::new(),
+            lost_folder_chips(ctx),
         );
         return;
     }
@@ -137,20 +147,27 @@ pub fn summary(state: &mut State, ctx: &Ctx, reading: &Arc<FolderReading>) {
     };
     state.step = Step::Keep;
     let chips = keep_chips(state, ctx, true);
-    hermes(
-        state,
-        vec![
-            Part::Text(intro),
-            Part::Areas(areas_card(
-                ctx.lang,
-                &folder_name(ctx, &reading.root),
-                reading,
-                false,
-            )),
-            Part::Text(text(ctx.lang, Msg::HermesChatAskKeep)),
-        ],
-        chips,
-    );
+    let mut parts = vec![
+        Part::Text(intro),
+        Part::Areas(areas_card(
+            ctx.lang,
+            &folder_name(ctx, &reading.root),
+            reading,
+            false,
+        )),
+    ];
+    if !reading.ai.is_complete() {
+        parts.push(Part::Text(fill(
+            ctx.lang,
+            Msg::HermesChatReadingAiProgress,
+            &[
+                ("done", &number(reading.ai.understood)),
+                ("total", &number(reading.ai.with_text)),
+            ],
+        )));
+    }
+    parts.push(Part::Text(text(ctx.lang, Msg::HermesChatAskKeep)));
+    hermes(state, parts, chips);
 }
 
 fn keep_chips(state: &mut State, ctx: &Ctx, with_all: bool) -> Vec<Chip> {
@@ -162,6 +179,12 @@ fn keep_chips(state: &mut State, ctx: &Ctx, with_all: bool) -> Vec<Chip> {
         chips.push(chip(ctx, Msg::HermesChatShowAll, ChipReply::ShowAll, false));
     }
     chips.extend(patterns::chips(state, ctx));
+    chips.push(chip(
+        ctx,
+        Msg::HermesChatOtherFolder,
+        ChipReply::PickFolder,
+        false,
+    ));
     chips
 }
 
@@ -188,7 +211,11 @@ pub fn show_all(state: &mut State, ctx: &Ctx) {
 
 pub fn want_change(state: &mut State, ctx: &Ctx) {
     state.step = Step::Change;
-    say(state, text(ctx.lang, Msg::HermesChatAskChange), Vec::new());
+    say(
+        state,
+        text(ctx.lang, Msg::HermesChatAskChange),
+        vec![cancel_chip(ctx)],
+    );
 }
 
 /// The order is kept: the folder becomes a filing location, its duplicates
@@ -233,7 +260,35 @@ pub fn keep(state: &mut State, ctx: &Ctx) -> Option<Action> {
     role
 }
 
+/// Whether the word names something a change of order can be about: an area
+/// of the reading or a kind of document. Without a reading the word cannot be
+/// checked, so it counts as fitting and the preview decides.
+fn word_names_something_to_order(state: &State, ctx: &Ctx, word: &str) -> bool {
+    let Some(reading) = state.session.learning.as_ref() else {
+        return true;
+    };
+    if reading.structure.areas.is_empty() {
+        return true;
+    }
+    let kinds = word_kinds(ctx);
+    reading
+        .structure
+        .areas
+        .iter()
+        .any(|area| word_within(word, &area.folder))
+        || names_known_kind(&kinds, word)
+}
+
 pub fn change_order(state: &mut State, ctx: &Ctx, kind_word: String, order: ChangeOrder) {
+    if !word_names_something_to_order(state, ctx, &kind_word) {
+        state.step = Step::AfterChange;
+        say(
+            state,
+            text(ctx.lang, Msg::HermesChatNotYetPropose),
+            crate::update::fallback_chips(ctx),
+        );
+        return;
+    }
     state.session.change_order = Some(order);
     let Some(reading) = state.session.learning.clone() else {
         state.step = Step::ReadFolder;
@@ -269,6 +324,24 @@ fn no_change_found(state: &mut State, ctx: &Ctx) {
             say(
                 state,
                 fill(ctx.lang, Msg::HermesChatChangeAlready, &[("area", &area)]),
+                crate::update::fallback_chips(ctx),
+            );
+            return;
+        }
+    }
+    if let (Some(reading), Some(order)) =
+        (state.session.learning.as_ref(), state.session.change_order)
+    {
+        let kinds = word_kinds(ctx);
+        if let Some(area) = area_lacks_fields(&kinds, reading, &word, order) {
+            state.step = Step::AfterChange;
+            say(
+                state,
+                fill(
+                    ctx.lang,
+                    Msg::HermesChatChangeNeedsFields,
+                    &[("area", &area)],
+                ),
                 crate::update::fallback_chips(ctx),
             );
             return;
@@ -462,4 +535,10 @@ fn apply(state: &mut State, ctx: &Ctx, mut parts: Vec<Part>, change: OrderChange
             true,
         )],
     );
+}
+
+/// The kinds a typed word is compared with, in the language the reading uses.
+fn word_kinds(ctx: &Ctx) -> Kinds {
+    let language = access(ctx).map_or_else(KindLanguage::default, ChatAccess::kind_language);
+    Kinds::new(Arc::new(KindCatalog::built_in()), language)
 }

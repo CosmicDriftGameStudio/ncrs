@@ -131,3 +131,49 @@ async fn loading_the_model_from_the_chat_opens_the_card_and_runs_the_download() 
     assert!(app.ai_model_for_test().is_some());
     assert!(app.settings.ai_model_download_runs());
 }
+
+#[tokio::test]
+async fn a_chat_opened_while_hermes_starts_greets_at_once_and_only_once() {
+    let mut app = App::with_fixed_panels()
+        .in_language(Language::German)
+        .with_starting_hermes_for_test();
+    settle(&mut app, Message::HermesChat(HermesChatMessage::Open)).await;
+    assert!(matches!(
+        app.hermes_chat_ctx().availability,
+        ncrs_hermes_chat::Availability::Starting
+    ));
+    assert_eq!(app.hermes_chat.thread().len(), 1);
+    assert!(!app.hermes_chat.chips().is_empty());
+
+    app.hermes.filing = Some(FilingModule::in_phase(Phase::Ready));
+    settle(&mut app, Message::NoticeExpired(0)).await;
+
+    assert_eq!(app.hermes_chat.thread().len(), 1);
+    assert!(!app.hermes_chat.waiting_for_hermes);
+}
+
+#[tokio::test]
+async fn a_chat_waiting_for_hermes_says_it_needs_setup_when_the_start_fails() {
+    let mut app = App::with_fixed_panels()
+        .in_language(Language::German)
+        .with_starting_hermes_for_test();
+    settle(&mut app, Message::HermesChat(HermesChatMessage::Open)).await;
+    assert!(app.hermes_chat.waiting_for_hermes);
+
+    app.hermes.filing = Some(FilingModule::in_phase(Phase::Failed("no key".into())));
+    settle(&mut app, Message::NoticeExpired(0)).await;
+
+    assert!(!app.hermes_chat.waiting_for_hermes);
+    let Some(ncrs_hermes_chat::Entry::Hermes { parts, .. }) = app.hermes_chat.thread().last()
+    else {
+        panic!("the thread ends without a Hermes entry");
+    };
+    assert_eq!(
+        parts,
+        &[ncrs_hermes_chat::Part::Text(
+            Language::German
+                .text(ncrs_i18n::Msg::HermesChatNeedsSetup)
+                .to_owned()
+        )]
+    );
+}

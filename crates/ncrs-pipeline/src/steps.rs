@@ -1,5 +1,5 @@
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::SystemTime;
 
@@ -44,6 +44,7 @@ pub fn intake_steps(
         Box::new(IntakeStep {
             index: Arc::clone(&index),
             tracker: Mutex::new(StabilityTracker::new()),
+            ai: ai.clone(),
         }),
         Box::new(TextStep {
             index: Arc::clone(&index),
@@ -70,7 +71,17 @@ pub fn intake_steps(
 #[derive(Debug)]
 struct IntakeStep {
     index: Arc<dyn IndexAccess>,
+    /// A document the AI was never asked goes on again, so it is asked once,
+    /// but only while the provider can answer (checked on every file, so a
+    /// model loaded later counts without a restart).
+    ai: Option<Arc<dyn Provider>>,
     tracker: Mutex<StabilityTracker>,
+}
+
+impl IntakeStep {
+    fn can_ask_ai(&self, source: &Path) -> bool {
+        self.ai.as_ref().is_some_and(|ai| ai.can_answer(source))
+    }
 }
 
 impl Step for IntakeStep {
@@ -105,7 +116,10 @@ impl Step for IntakeStep {
                     LocationMode::Archive => {
                         let has_text = index.has_document_text_row(id)?;
                         let continues = text_is_readable(&item.path)
-                            && (!has_text || index.fields_read_version(id)? < FIELDS_READ_VERSION);
+                            && (!has_text
+                                || index.fields_read_version(id)? < FIELDS_READ_VERSION
+                                || (self.can_ask_ai(&item.location.path)
+                                    && !index.ai_asked(id)?));
                         item.stored_text_is_current = continues && has_text;
                         continues
                     }

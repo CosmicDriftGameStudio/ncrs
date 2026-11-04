@@ -292,7 +292,7 @@ jobs:
         run: |
           set -o pipefail
           cargo test -p ncrs-ai --features llama with_model_ -- --ignored --show-output 2>&1 | tee ai-tests.log
-          grep -q 'test result: ok. 5 passed' ai-tests.log
+          grep -q 'test result: ok. 6 passed' ai-tests.log
           grep -q 'chat eval:' ai-tests.log
 
       # The chat evaluation alone on Windows, to see the speed there. The

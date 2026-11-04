@@ -14,6 +14,8 @@ use pdfium_render::prelude::{
     PdfBitmapFormat, PdfPage, PdfRenderConfig, PdfSearchDirection, PdfSearchOptions, Pdfium,
 };
 
+use crate::page_trim::trim_to_content;
+
 const PDF_HEADER: &[u8] = b"%PDF-";
 
 /// Resolution of a rendered scan. OCR reads small print well from here on.
@@ -248,11 +250,11 @@ impl PdfText {
                 MAX_SCAN_SIDE_PIXELS,
                 grey_of_rendered,
             )?;
-            images.push(PageImage {
+            images.push(trim_to_content(PageImage {
                 width,
                 height,
                 pixels,
-            });
+            }));
         }
         Ok(images)
     }
@@ -529,11 +531,12 @@ const LIBRARY_DIR_VARIABLE: &str = "NCRS_PDFIUM_DIR";
 
 /// Where the app looks for the pdfium library, best place first: next to the
 /// executable, on macOS also the `Frameworks` folder of the app bundle. Debug
-/// builds add `NCRS_PDFIUM_DIR` and the folder the fetch script fills; release
-/// builds read no environment variable, so nobody can make them load another
-/// library. When the executable was started through a symlink, as winget does,
-/// the folder of the real file comes first: the link's folder is shared and
-/// writable by the user, so a foreign library there must not win.
+/// builds and test builds (feature `test-support`) add `NCRS_PDFIUM_DIR` and the
+/// folder the fetch script fills; release builds read no environment variable,
+/// so nobody can make them load another library. When the executable was
+/// started through a symlink, as winget does, the folder of the real file
+/// comes first: the link's folder is shared and writable by the user, so a
+/// foreign library there must not win.
 pub fn pdfium_library_candidates() -> Vec<PathBuf> {
     let executable = std::env::current_exe().ok();
     let executable_dir = executable
@@ -544,7 +547,8 @@ pub fn pdfium_library_candidates() -> Vec<PathBuf> {
         .and_then(|path| std::fs::canonicalize(path).ok())
         .and_then(|path| path.parent().map(Path::to_path_buf))
         .map(without_verbatim_prefix);
-    let development = cfg!(debug_assertions).then(|| std::env::var_os(LIBRARY_DIR_VARIABLE));
+    let development = cfg!(any(debug_assertions, feature = "test-support"))
+        .then(|| std::env::var_os(LIBRARY_DIR_VARIABLE));
     candidates_in(executable_dir, resolved_dir, development)
 }
 
@@ -716,9 +720,9 @@ mod tests {
         };
         assert_eq!(images.len(), 1);
         let image = &images[0];
-        // 200 points at 200 dpi.
-        assert!((540..=570).contains(&image.width), "{}", image.width);
-        assert!((540..=570).contains(&image.height), "{}", image.height);
+        // Cut to the drawing and scaled, so no longer the 200 points at 200 dpi.
+        assert!(image.width > 0 && image.height > 0);
+        assert!(image.width.max(image.height) <= 2400);
         assert_eq!(image.pixels.len(), (image.width * image.height) as usize);
         assert!(
             image.pixels.iter().any(|&pixel| pixel < 64),

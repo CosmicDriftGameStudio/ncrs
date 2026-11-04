@@ -1,13 +1,14 @@
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 use rusqlite::{params, OptionalExtension as _};
 
-use crate::documents::require_document;
+use crate::documents::{require_document, DocumentRow, DOCUMENT_COLUMNS};
 use crate::error::IndexError;
 use crate::hermes_column::SubtreeRange;
 use crate::index::Index;
-use crate::model::{timestamp_from_column, ContentHash, DocumentId, FileStamp};
+use crate::model::{timestamp_from_column, ContentHash, Document, DocumentId, FileStamp};
 
 fn utf8(path: &Path) -> Result<&str, IndexError> {
     path.to_str()
@@ -74,6 +75,58 @@ impl Index {
         found.retain(|(_, path)| path.starts_with(directory));
         found.sort_by(|left, right| left.1.cmp(&right.1));
         Ok(found)
+    }
+
+    /// Every document that is not missing and lies below `directory`, in one
+    /// query. The manual tags are not loaded (`fields.tags` is empty).
+    pub fn documents_beneath(&self, directory: &Path) -> Result<Vec<Document>, IndexError> {
+        let (from, until) = SubtreeRange::of(directory)?.into_bounds();
+        let mut statement = self.connection().prepare(&format!(
+            "{DOCUMENT_COLUMNS} WHERE d.missing_since IS NULL AND d.path >= ?1 AND d.path < ?2"
+        ))?;
+        let rows = statement
+            .query_map([from, until], DocumentRow::read)?
+            .collect::<Result<Vec<_>, _>>()?;
+        rows.into_iter()
+            .map(|row| row.into_document(BTreeSet::new()))
+            .collect()
+    }
+
+    /// How many documents below `directory` have a text, and how many of them
+    /// the AI understood: sender or kind set, or asked without result.
+    pub fn ai_coverage_beneath(&self, directory: &Path) -> Result<(usize, usize), IndexError> {
+        let (from, until) = SubtreeRange::of(directory)?.into_bounds();
+        let (total, understood): (i64, Option<i64>) = self.connection().query_row(
+            "SELECT COUNT(*), SUM(d.sender_id IS NOT NULL OR d.kind_id IS NOT NULL OR d.ai_asked = 1)
+             FROM document d JOIN document_text t ON t.rowid = d.id
+             WHERE d.missing_since IS NULL AND d.path >= ?1 AND d.path < ?2
+               AND trim(t.body) <> ''",
+            [from, until],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        Ok((
+            usize::try_from(total).unwrap_or_default(),
+            usize::try_from(understood.unwrap_or(0)).unwrap_or_default(),
+        ))
+    }
+
+    /// The full texts of the documents below `directory` that have one, by
+    /// their path, in one query.
+    pub fn document_texts_beneath(
+        &self,
+        directory: &Path,
+    ) -> Result<HashMap<PathBuf, String>, IndexError> {
+        let (from, until) = SubtreeRange::of(directory)?.into_bounds();
+        let mut statement = self.connection().prepare(
+            "SELECT d.path, t.body FROM document d JOIN document_text t ON t.rowid = d.id
+             WHERE d.missing_since IS NULL AND d.path >= ?1 AND d.path < ?2",
+        )?;
+        let texts = statement
+            .query_map([from, until], |row| {
+                Ok((PathBuf::from(row.get::<_, String>(0)?), row.get(1)?))
+            })?
+            .collect::<Result<HashMap<_, _>, _>>()?;
+        Ok(texts)
     }
 
     /// The file at the document's path changed in place. The hash is replaced
@@ -238,12 +291,7 @@ mod tests {
 
     use super::*;
     use crate::model::{DocumentFields, DocumentSource, DocumentStatus, FieldOrigin};
-    use crate::test_support::{encrypted_index, new_document};
-
-    /// Test paths are written with `/`; the subtree range uses the platform separator.
-    fn native(path: &str) -> PathBuf {
-        PathBuf::from(path.replace('/', std::path::MAIN_SEPARATOR_STR))
-    }
+    use crate::test_support::{encrypted_index, native, new_document};
 
     fn stamp(size: u64, seconds: u64) -> FileStamp {
         FileStamp {

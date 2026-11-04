@@ -28,7 +28,7 @@ pub fn last_run_done(state: &mut State, ctx: &Ctx, result: Result<Option<RunSumm
             say(
                 state,
                 fill(ctx.lang, Msg::HermesChatReadFailed, &[("reason", &reason)]),
-                Vec::new(),
+                crate::update::fallback_chips(ctx),
             );
             return;
         }
@@ -89,7 +89,7 @@ pub fn undone_done(state: &mut State, ctx: &Ctx, result: Result<UndoReport, Stri
             say(
                 state,
                 fill(ctx.lang, Msg::HermesChatReadFailed, &[("reason", &reason)]),
-                Vec::new(),
+                crate::update::fallback_chips(ctx),
             );
             return;
         }
@@ -106,5 +106,5 @@ pub fn undone_done(state: &mut State, ctx: &Ctx, result: Result<UndoReport, Stri
             &[("left", &number(report.left))],
         )));
     }
-    crate::update::hermes(state, parts, Vec::new());
+    crate::update::hermes(state, parts, crate::update::fallback_chips(ctx));
 }

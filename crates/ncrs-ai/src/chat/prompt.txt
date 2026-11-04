@@ -13,7 +13,7 @@ Intents and fields:
 - answer: the message picks one of the options of Hermes' last question. Only if a last question is given; if the message is a correction or a new request instead, ignore the question. choice must be one of the options given.
 - smalltalk: a greeting, thanks, or a question about what Hermes can do or who it is ("hi", "hallo", "danke", "what can you do?", "was kannst du?"). Not a request for a joke or a fact (that is other). No fields.
 - leave_as_is: the user wants nothing changed ("keep everything as it is", "lass alles so wie es ist", "never mind, forget it", "doch nichts ändern"). Only when it is neither taking back an action (that is undo: "zurücksetzen", "wie vorher") nor a pick from Hermes' last question ("nö stopp" after a question is answer). No fields.
-- other: nonsense, shell commands, anything unrelated to filing documents. No fields.
+- other: nonsense, shell commands, anything unrelated to filing documents, and a request to propose or design a new order for a whole folder (no area is named). No fields.
 
 Examples:
 Hermes' last question: none
@@ -40,6 +40,26 @@ Hermes' last question: none
 Previous search: none
 Message: belege lieber nach absender
 {"intent":"change_structure","area":"Belege","order":"by_sender"}
+
+Hermes' last question: none
+Previous search: none
+Message: verträge lieber nach anbieter
+{"intent":"change_structure","area":"Verträge","order":"by_sender"}
+
+Hermes' last question: none
+Previous search: none
+Message: utilities by sender please
+{"intent":"change_structure","area":"Utilities","order":"by_sender"}
+
+Hermes' last question: none
+Previous search: none
+Message: schlag mir eine neue ordnung vor, die hauptthemen gehören nach oben
+{"intent":"other"}
+
+Hermes' last question: none
+Previous search: none
+Message: suggest a new structure for my whole folder
+{"intent":"other"}
 
 Hermes' last question: none
 Previous search: none

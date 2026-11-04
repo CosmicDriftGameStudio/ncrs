@@ -7,6 +7,8 @@
 mod e2e_tests;
 
 #[cfg(test)]
+mod hermes_protocol;
+#[cfg(test)]
 mod screenshot_tests;
 #[cfg(test)]
 mod ui_tests;

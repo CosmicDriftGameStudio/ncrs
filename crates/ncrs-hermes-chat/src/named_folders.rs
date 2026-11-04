@@ -205,7 +205,7 @@ fn settle(state: &mut State, ctx: &Ctx, mut naming: Naming) {
                 Msg::HermesChatNotAFolder,
                 &[("path", &named.said)],
             );
-            say(state, sentence, Vec::new());
+            say(state, sentence, crate::update::fallback_chips(ctx));
             return;
         }
         let sentence = fill(

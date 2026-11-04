@@ -5,7 +5,7 @@ use std::sync::Arc;
 use ncrs_ai::{ChatTurn, Schedule};
 use ncrs_filing::chat_work::{
     AnsweredGroups, ChangeOrder, ChangePreview, ChatWork, FolderReading, OrderChange,
-    PatternChoice, PatternLevel, RunPlan, RunSummary, TrashItem, TrialPlan,
+    PatternChoice, PatternLevel, ReadProgress, RunPlan, RunSummary, TrashItem, TrialPlan,
 };
 use ncrs_index::Transfer;
 
@@ -99,7 +99,19 @@ pub enum ChipReply {
     SwitchToMove,
 }
 
+impl Session {
+    /// Something the user asked that waits for Hermes to start.
+    pub fn holds_something(&self) -> bool {
+        self.unsent.is_some() || self.unsent_reply.is_some()
+    }
+}
+
 impl ChipReply {
+    /// Pressing it does not need the filing module.
+    pub fn needs_no_hermes(&self) -> bool {
+        matches!(self, Self::Setup | Self::PickFolder)
+    }
+
     /// Whether handling the reply writes files, trash, rules or settings, or
     /// settles what a later filing run does. A typed answer never runs such a
     /// reply on its own.
@@ -400,6 +412,10 @@ pub struct Session {
     /// What the model said about the scope of a change, for the preview.
     pub change_scope: Option<String>,
     pub unsent: Option<Unsent>,
+    /// A button or picked folder that waits for Hermes to start.
+    pub unsent_reply: Option<ChipReply>,
+    /// How far the running read is.
+    pub progress: Option<Arc<ReadProgress>>,
     /// The duplicates of the folder learned first, offered after the first
     /// filing, once.
     pub archive_duplicates: Option<Offer>,
@@ -430,6 +446,11 @@ pub struct State {
     /// The opening question waits for the AI or the model; it follows once
     /// they are there.
     pub greeting_owed: bool,
+    /// The chat was opened or written to while Hermes was still starting;
+    /// the greeting or the sentence follows once it is ready.
+    pub waiting_for_hermes: bool,
+    /// Counts the ticks of the wait; moves the dots of the working line.
+    pub tick: usize,
     /// An action a result of work asks for; `update` hands it to the app.
     pub queued_action: Option<Action>,
     pub session: Session,
@@ -451,6 +472,8 @@ impl Default for State {
             fresh_naming: false,
             step: Step::Idle,
             greeting_owed: false,
+            waiting_for_hermes: false,
+            tick: 0,
             queued_action: None,
             session: Session::default(),
         }
@@ -460,6 +483,11 @@ impl Default for State {
 impl State {
     pub fn thread(&self) -> &[Entry] {
         &self.thread
+    }
+
+    /// Something the user asked waits for the filing module to start.
+    pub fn waits_for_hermes(&self) -> bool {
+        self.waiting_for_hermes && self.session.holds_something()
     }
 
     /// The work the chat waits for; the app runs it on a blocking thread.

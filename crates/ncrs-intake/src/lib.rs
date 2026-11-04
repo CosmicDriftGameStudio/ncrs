@@ -15,6 +15,7 @@ mod image_text;
 mod location;
 mod ocr;
 mod office;
+mod page_trim;
 mod placement;
 mod recipient_detection;
 #[cfg(any(test, feature = "test-support"))]

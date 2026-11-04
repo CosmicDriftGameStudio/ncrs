@@ -36,6 +36,25 @@ pub enum Message {
     ModelReady,
     /// The AI setting was switched on and applied; sent by the app.
     AiTurnedOn,
+    /// The filing module finished its start; sent by the app.
+    HermesReady,
+    /// A beat while work runs; sent by the app twice a second or so.
+    WorkTick,
+}
+
+impl Message {
+    /// The report of work the chat launched. It is delivered even when the
+    /// chat is closed, else the wait it ends would never end.
+    pub fn is_work_result(&self) -> bool {
+        matches!(
+            self,
+            Self::Done(_)
+                | Self::Failed(_)
+                | Self::Understood(_)
+                | Self::TypedFolderResolved { .. }
+                | Self::NamedFoldersResolved { .. }
+        )
+    }
 }
 
 /// A finished piece of work is never equal to another: its result is not
@@ -47,7 +66,9 @@ impl PartialEq for Message {
             | (Self::Close, Self::Close)
             | (Self::Submit, Self::Submit)
             | (Self::ModelReady, Self::ModelReady)
-            | (Self::AiTurnedOn, Self::AiTurnedOn) => true,
+            | (Self::AiTurnedOn, Self::AiTurnedOn)
+            | (Self::HermesReady, Self::HermesReady)
+            | (Self::WorkTick, Self::WorkTick) => true,
             (Self::InputChanged(left), Self::InputChanged(right))
             | (Self::Failed(left), Self::Failed(right)) => left == right,
             (

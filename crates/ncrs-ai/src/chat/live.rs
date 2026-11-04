@@ -140,3 +140,31 @@ fn with_model_the_model_unloads_after_idle_and_wakes_again() {
     assert_eq!(model.understand(&turn), Ok(ChatIntent::Undo));
     assert!(is_loaded());
 }
+
+#[test]
+#[ignore = "needs the AI model: set NCRS_AI_MODELS_DIR to the folder with it"]
+fn with_model_the_protocol_sentences_print_their_intent() {
+    let model = lazy();
+    let sentences = [
+        "Downloads aufräumen",
+        "Bank nach Monat",
+        "Versicherung nach Anbieter",
+        "Mach mal einen Vorschlag, im Root sollten die Themen stehen",
+        "Was kannst du?",
+        "Danke",
+        "Tidy up Downloads",
+        "Bank by month",
+        "Insurance by sender",
+        "Make a suggestion, the topics should be at the root",
+        "What can you do?",
+        "Thanks",
+    ];
+    for sentence in sentences {
+        let turn = ChatTurn {
+            message: sentence.to_owned(),
+            question: None,
+            previous_search: None,
+        };
+        println!("intent {sentence:?} => {:?}", model.understand(&turn));
+    }
+}

@@ -45,6 +45,28 @@ impl Index {
         Ok(())
     }
 
+    /// Whether the AI was asked for the fields of the document.
+    pub fn ai_asked(&self, id: DocumentId) -> Result<bool, IndexError> {
+        self.connection()
+            .query_row(
+                "SELECT ai_asked FROM document WHERE id = ?1",
+                [id.get()],
+                |row| row.get(0),
+            )
+            .optional()?
+            .ok_or(IndexError::DocumentNotFound(id))
+    }
+
+    pub fn set_ai_asked(&mut self, id: DocumentId) -> Result<(), IndexError> {
+        let changed = self
+            .connection()
+            .execute("UPDATE document SET ai_asked = 1 WHERE id = ?1", [id.get()])?;
+        if changed == 0 {
+            return Err(IndexError::DocumentNotFound(id));
+        }
+        Ok(())
+    }
+
     /// Counts for the display of the automatic filing. Documents that are
     /// missing are left out. Cheaper than `statistics`: no page statistics.
     pub fn hermes_counts(&self) -> Result<HermesCounts, IndexError> {
@@ -121,7 +143,7 @@ mod tests {
 
     use super::*;
     use crate::model::ReviewReason;
-    use crate::test_support::{new_document, plain_index, rule_spec};
+    use crate::test_support::{native, new_document, plain_index, rule_spec};
     use crate::NewDocument;
 
     fn archive_document(seed: u8) -> NewDocument {
@@ -140,6 +162,41 @@ mod tests {
         index.set_document_text(empty, "").unwrap();
         assert!(!index.has_document_text_row(none).unwrap());
         assert!(index.has_document_text_row(empty).unwrap());
+    }
+
+    #[test]
+    fn the_ai_asked_flag_starts_unset_and_is_stored() {
+        let (_dir, mut index) = plain_index();
+        let id = index.insert_document(&new_document(1)).unwrap();
+        assert!(!index.ai_asked(id).unwrap());
+        index.set_ai_asked(id).unwrap();
+        assert!(index.ai_asked(id).unwrap());
+        let missing = DocumentId::new(id.get() + 100);
+        assert!(matches!(
+            index.set_ai_asked(missing),
+            Err(IndexError::DocumentNotFound(_))
+        ));
+    }
+
+    #[test]
+    fn ai_coverage_counts_documents_with_a_text_and_those_the_ai_was_asked_about() {
+        let (_dir, mut index) = plain_index();
+        let mut ids = Vec::new();
+        for seed in 1..=3 {
+            let document = NewDocument {
+                path: native(&format!("/arch/doc-{seed}.pdf")),
+                ..new_document(seed)
+            };
+            ids.push(index.insert_document(&document).unwrap());
+        }
+        index.set_document_text(ids[0], "Rechnung").unwrap();
+        index.set_document_text(ids[1], "Brief").unwrap();
+        index.set_document_text(ids[2], "  ").unwrap();
+        index.set_ai_asked(ids[0]).unwrap();
+        let folder = native("/arch");
+        assert_eq!(index.ai_coverage_beneath(&folder).unwrap(), (2, 1));
+        index.set_ai_asked(ids[1]).unwrap();
+        assert_eq!(index.ai_coverage_beneath(&folder).unwrap(), (2, 2));
     }
 
     #[test]
