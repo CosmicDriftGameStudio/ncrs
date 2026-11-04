@@ -3462,6 +3462,7 @@ dependencies = [
  "ncrs-intake",
  "ncrs-ocr-vision",
  "ncrs-pipeline",
+ "ncrs-priority",
  "ncrs-ui-kit",
  "objc2-foundation 0.3.2",
  "same-file",

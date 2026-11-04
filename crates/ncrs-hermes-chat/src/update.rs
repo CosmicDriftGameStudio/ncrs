@@ -847,6 +847,7 @@ pub fn handle_reply(state: &mut State, ctx: &Ctx, reply: ChipReply) -> Option<Ac
         }
         ChipReply::Retry => learn::retry(state, ctx),
         ChipReply::OtherArea => learn::ask_area_name(state, ctx),
+        ChipReply::FollowUpArea(area) => understand::follow_up_area(state, ctx, area),
         ChipReply::ChangeAreaOrder { area, order } => learn::area_order(state, ctx, area, order),
         ChipReply::TrashDuplicatesNow => trial_end::trash_duplicates(state, ctx),
         ChipReply::ShowStaying => trial_end::show_staying(state, ctx),
@@ -935,5 +936,8 @@ fn reset_flow(state: &mut State) {
     state.session.choosing = None;
     state.session.proposal = None;
     state.session.change_scope = None;
+    state.session.change_name = None;
+    state.session.everywhere = None;
+    crate::follow_up::forget(state);
     state.step = Step::Idle;
 }

@@ -29,6 +29,8 @@ pub struct EvalRow {
     pub question: Option<String>,
     pub options: Vec<String>,
     pub previous_search: Option<String>,
+    pub previous_request: Option<String>,
+    pub previous_message: Option<String>,
 }
 
 impl EvalRow {
@@ -40,6 +42,8 @@ impl EvalRow {
                 options: self.options.clone(),
             }),
             previous_search: self.previous_search.as_deref().map(search_of_json),
+            previous_request: self.previous_request.clone(),
+            previous_message: self.previous_message.clone(),
         }
     }
 }
@@ -92,6 +96,8 @@ fn row_of_line(line: &str) -> EvalRow {
         expected,
         question: row.get_string("question").map(ToString::to_string),
         previous_search: row.get_string("previous_search").map(ToString::to_string),
+        previous_request: row.get_string("previous_request").map(ToString::to_string),
+        previous_message: row.get_string("previous_message").map(ToString::to_string),
         options,
     }
 }

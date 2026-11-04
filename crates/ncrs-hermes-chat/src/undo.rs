@@ -82,6 +82,7 @@ pub fn put_back(state: &mut State, ctx: &Ctx) {
 
 pub fn undone_done(state: &mut State, ctx: &Ctx, result: Result<UndoReport, String>) {
     state.session.readings.clear();
+    crate::follow_up::forget(state);
     state.step = Step::Idle;
     let report = match result {
         Ok(report) => report,

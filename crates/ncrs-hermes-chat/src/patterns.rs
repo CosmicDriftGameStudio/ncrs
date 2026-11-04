@@ -19,16 +19,15 @@ fn label_of(level: PatternLevel) -> PlaceholderLabel {
     }
 }
 
-fn levels_text(ctx: &Ctx, choice: &PatternChoice) -> String {
+pub fn levels_words(ctx: &Ctx, levels: &[PatternLevel]) -> String {
     pattern_levels(
         ctx.lang,
-        &choice
-            .levels
-            .iter()
-            .copied()
-            .map(label_of)
-            .collect::<Vec<_>>(),
+        &levels.iter().copied().map(label_of).collect::<Vec<_>>(),
     )
+}
+
+fn levels_text(ctx: &Ctx, choice: &PatternChoice) -> String {
+    levels_words(ctx, &choice.levels)
 }
 
 /// One button per pattern the folders follow, remembered for the answer.
@@ -71,6 +70,7 @@ pub fn adopt(state: &mut State, ctx: &Ctx, index: usize) {
         ChatWork::PreviewPattern {
             reading,
             levels: choice.levels,
+            name: None,
         },
         None,
     );
@@ -96,14 +96,20 @@ pub fn previewed(state: &mut State, ctx: &Ctx, computed: Option<PatternPreview>)
         .iter()
         .zip(&preview.after)
         .position(|(before, after)| before != after);
-    let intro = fill(
-        ctx.lang,
-        Msg::HermesChatPatternPreview,
-        &[
-            ("count", &number(preview.moved)),
-            ("pattern", &state.session.change_word),
-        ],
-    );
+    let count = number(preview.moved);
+    let intro = if state.session.change_word.is_empty() {
+        fill(
+            ctx.lang,
+            Msg::HermesChatPatternPreviewNames,
+            &[("count", &count)],
+        )
+    } else {
+        fill(
+            ctx.lang,
+            Msg::HermesChatPatternPreview,
+            &[("count", &count), ("pattern", &state.session.change_word)],
+        )
+    };
     state.session.pending_pattern = Some(preview.change);
     state.step = Step::ConfirmChange;
     hermes(

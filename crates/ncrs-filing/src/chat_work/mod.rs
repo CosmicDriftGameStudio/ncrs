@@ -8,11 +8,12 @@
 use std::fmt;
 use std::sync::{Arc, Mutex, PoisonError};
 
+use ncrs_ai::NameSpec;
 use ncrs_core::INDEX_NOT_OPEN;
 use ncrs_fs::Trash;
 use ncrs_index::{BatchId, Index, KindLanguage, Kinds, Rule, RuleOrigin, SenderAliases};
 use ncrs_intake::{rule_problem, TextChain};
-use ncrs_pipeline::OwnDetails;
+use ncrs_pipeline::{Load, OwnDetails};
 
 use crate::review_work::{AcceptSummary, ReviewAccess, ReviewItem};
 
@@ -75,10 +76,13 @@ pub enum ChatWork {
         reading: Arc<FolderReading>,
         kind_word: String,
         order: ChangeOrder,
+        name: Option<NameSpec>,
     },
+    /// `levels` empty: only the file names change.
     PreviewPattern {
         reading: Arc<FolderReading>,
         levels: Vec<PatternLevel>,
+        name: Option<NameSpec>,
     },
     File {
         run: RunPlan,
@@ -130,6 +134,7 @@ pub struct ChatAccess {
     trash: Arc<dyn Trash>,
     own: OwnDetails,
     review: Option<ReviewAccess>,
+    load: Load,
 }
 
 impl fmt::Debug for ChatAccess {
@@ -150,7 +155,15 @@ impl ChatAccess {
             trash,
             own: OwnDetails::default(),
             review: None,
+            load: Load::default(),
         }
+    }
+
+    /// How many threads and at which priority a folder is read.
+    #[must_use]
+    pub fn with_load(mut self, load: Load) -> Self {
+        self.load = load;
+        self
     }
 
     /// The documents that wait for the user can be shown and filed only with
@@ -244,15 +257,18 @@ impl ChatAccess {
                 reading,
                 kind_word,
                 order,
-            } => ChatResult::Preview(
+                name,
+            } => ChatResult::Preview(self.kinds().ok().and_then(|kinds| {
+                change::preview(&kinds, &reading, &kind_word, order, name.as_ref())
+            })),
+            ChatWork::PreviewPattern {
+                reading,
+                levels,
+                name,
+            } => ChatResult::PatternPreviewed(
                 self.kinds()
                     .ok()
-                    .and_then(|kinds| change::preview(&kinds, &reading, &kind_word, order)),
-            ),
-            ChatWork::PreviewPattern { reading, levels } => ChatResult::PatternPreviewed(
-                self.kinds()
-                    .ok()
-                    .and_then(|kinds| pattern::preview(&kinds, &reading, &levels)),
+                    .and_then(|kinds| pattern::preview(&kinds, &reading, &levels, name.as_ref())),
             ),
             ChatWork::File { run } => ChatResult::Filed(runs::file(self, &run)),
             ChatWork::TrashDuplicates { name, root, items } => {

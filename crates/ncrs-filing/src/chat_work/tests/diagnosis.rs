@@ -210,7 +210,7 @@ fn preview_report(access: &ChatAccess, archive: &FolderReading, word: &str, orde
             }
         }
     }
-    let result = change::preview(&kinds, archive, word, order);
+    let result = change::preview(&kinds, archive, word, order, None);
     println!("  preview: {result:?}");
     if let Some(found) = &result {
         let sample = archive

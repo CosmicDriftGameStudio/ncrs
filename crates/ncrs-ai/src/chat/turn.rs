@@ -3,6 +3,7 @@
 
 use std::fmt::Write as _;
 
+use super::intent::{ChatIntent, Schedule, Transfer};
 use crate::contract::clean_value;
 use crate::error::AiError;
 
@@ -11,6 +12,11 @@ pub struct ChatTurn {
     pub message: String,
     pub question: Option<ChatQuestion>,
     pub previous_search: Option<SearchQuery>,
+    /// The compact JSON of the last understood `tidy_folder` or
+    /// `change_structure`, see `intent_json`.
+    pub previous_request: Option<String>,
+    /// What the user typed before, when Hermes could do nothing with it.
+    pub previous_message: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,8 +59,17 @@ pub fn chat_user_message(turn: &ChatTurn) -> Result<String, AiError> {
         .previous_search
         .as_ref()
         .map_or_else(|| "none".to_owned(), search_json);
+    let previous_request = turn
+        .previous_request
+        .as_deref()
+        .map_or_else(|| "none".to_owned(), without_control);
+    let previous_message = turn
+        .previous_message
+        .as_deref()
+        .map_or_else(|| "none".to_owned(), without_control);
     Ok(format!(
-        "Hermes' last question: {question}\nPrevious search: {previous}\nMessage: {message}"
+        "Hermes' last question: {question}\nPrevious search: {previous}\n\
+         Previous request: {previous_request}\nPrevious message: {previous_message}\nMessage: {message}"
     ))
 }
 
@@ -85,6 +100,73 @@ pub fn search_json(query: &SearchQuery) -> String {
         parts.push(format!("\"text\":{}", json_string(text)));
     }
     format!("{{{}}}", parts.join(","))
+}
+
+/// The request a follow-up can refine: only a tidy or a structure change, in
+/// the form the model replies with.
+pub fn intent_json(intent: &ChatIntent) -> Option<String> {
+    let mut parts: Vec<String> = Vec::new();
+    match intent {
+        ChatIntent::TidyFolder {
+            source,
+            target,
+            schedule,
+            transfer,
+        } => {
+            parts.push(format!(
+                "\"intent\":\"tidy_folder\",\"source\":{}",
+                json_string(source)
+            ));
+            if let Some(target) = target {
+                parts.push(format!("\"target\":{}", json_string(target)));
+            }
+            if let Some(schedule) = schedule {
+                let word = match schedule {
+                    Schedule::Once => "once",
+                    Schedule::Always => "always",
+                };
+                parts.push(format!("\"schedule\":\"{word}\""));
+            }
+            if let Some(transfer) = transfer {
+                let word = match transfer {
+                    Transfer::Copy => "copy",
+                    Transfer::Move => "move",
+                };
+                parts.push(format!("\"transfer\":\"{word}\""));
+            }
+        }
+        ChatIntent::ChangeStructure {
+            area,
+            scope,
+            order,
+            name,
+        } => {
+            parts.push(format!(
+                "\"intent\":\"change_structure\",\"area\":{}",
+                json_string(area)
+            ));
+            if let Some(scope) = scope {
+                parts.push(format!("\"scope\":{}", json_string(scope)));
+            }
+            if let Some(order) = order {
+                parts.push(format!("\"order\":\"{}\"", order.word()));
+            }
+            if let Some(spec) = name {
+                let blocks: Vec<String> = spec
+                    .blocks
+                    .iter()
+                    .map(|block| format!("\"{}\"", block.word()))
+                    .collect();
+                parts.push(format!("\"name\":[{}]", blocks.join(",")));
+                parts.push(format!(
+                    "\"separator\":{}",
+                    json_string(&spec.separator.to_string())
+                ));
+            }
+        }
+        _ => return None,
+    }
+    Some(format!("{{{}}}", parts.join(",")))
 }
 
 /// `100` when whole, else `12.5` or `12.34`.

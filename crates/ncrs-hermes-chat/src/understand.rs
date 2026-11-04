@@ -5,8 +5,8 @@ use std::path::PathBuf;
 
 use iced::Task;
 use ncrs_ai::{
-    ChatIntent, ChatQuestion, ChatTurn, LocalModelStatus, Order, Schedule,
-    Transfer as SaidTransfer, LOCAL_MODEL,
+    intent_json, ChatIntent, ChatQuestion, ChatTurn, LocalModelStatus, NameSpec, Order, Schedule,
+    Transfer as SaidTransfer, EVERY_AREA, LOCAL_MODEL,
 };
 use ncrs_filing::chat_work::ChangeOrder;
 use ncrs_i18n::Msg;
@@ -22,7 +22,7 @@ use crate::update::{
     batch_not_yet, cancel_chip, chip, drop_working, explain_not_yet, fallback, fallback_chips,
     handle_reply, hermes, open_thread, say, say_failed, say_off, search_not_yet,
 };
-use crate::{learn, undo};
+use crate::{everywhere, follow_up, learn, undo};
 
 /// The question the newest bubble of Hermes asks and its buttons. Read before
 /// the bubble of the user clears them.
@@ -146,6 +146,12 @@ fn think(state: &mut State, ctx: &Ctx, typed: &str, asked: Asked, loaded: bool) 
         message: typed.to_owned(),
         question,
         previous_search: None,
+        previous_request: state
+            .session
+            .previous_request
+            .as_ref()
+            .and_then(intent_json),
+        previous_message: state.session.previous_message.clone(),
     };
     let line = if loaded {
         Msg::HermesChatThinking
@@ -193,7 +199,13 @@ pub fn understood(
     let thinking = state.thinking.take()?;
     drop_working(state);
     match result {
-        Ok(intent) => act_on(state, ctx, intent, &thinking.asked),
+        Ok(intent) => {
+            if follow_up::answered_misread(state, ctx, &intent) {
+                return None;
+            }
+            follow_up::remember(state, &intent, &thinking.turn.message);
+            act_on(state, ctx, intent, &thinking.asked)
+        }
         Err(reason) => {
             if gate(state, ctx, None) == Gate::Usable {
                 say(
@@ -304,9 +316,13 @@ fn act_on(state: &mut State, ctx: &Ctx, intent: ChatIntent, asked: &Asked) -> Op
             schedule,
             transfer,
         } => propose_tidy(state, ctx, &source, target.as_deref(), schedule, transfer),
-        ChatIntent::ChangeStructure { order, area, scope } => {
-            state.session.change_scope = scope;
-            learn::change_order(state, ctx, area, change_order_of(order));
+        ChatIntent::ChangeStructure {
+            order,
+            area,
+            scope,
+            name,
+        } => {
+            change_structure(state, ctx, area, scope, order, name);
             None
         }
         ChatIntent::Undo => {
@@ -345,6 +361,34 @@ fn act_on(state: &mut State, ctx: &Ctx, intent: ChatIntent, asked: &Asked) -> Op
             fallback(state, ctx);
             None
         }
+    }
+}
+
+fn change_structure(
+    state: &mut State,
+    ctx: &Ctx,
+    area: String,
+    scope: Option<String>,
+    order: Option<Order>,
+    name: Option<NameSpec>,
+) {
+    state.session.change_scope = scope;
+    state.session.change_name = name;
+    if area == EVERY_AREA {
+        everywhere::start(state, ctx, order);
+        return;
+    }
+    let ordered = order.map_or(ChangeOrder::FileNames, change_order_of);
+    learn::change_order(state, ctx, area, ordered);
+}
+
+/// The last change again, for the area the user picked.
+pub fn follow_up_area(state: &mut State, ctx: &Ctx, area: String) {
+    match state.session.previous_request.clone() {
+        Some(ChatIntent::ChangeStructure {
+            scope, order, name, ..
+        }) => change_structure(state, ctx, area, scope, order, name),
+        _ => fallback(state, ctx),
     }
 }
 

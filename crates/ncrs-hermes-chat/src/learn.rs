@@ -124,6 +124,7 @@ pub fn retry(state: &mut State, ctx: &Ctx) {
 
 fn deliver(state: &mut State, ctx: &Ctx, purpose: ReadFor, reading: &Arc<FolderReading>) {
     match purpose {
+        ReadFor::Learn if crate::everywhere::after_read(state, ctx, reading) => {}
         ReadFor::Learn => match state.session.focus_area.take() {
             Some(area) => focused_area(state, ctx, reading, &area),
             None => summary(state, ctx, reading),
@@ -297,6 +298,7 @@ pub fn want_change(state: &mut State, ctx: &Ctx) {
 /// wait for the first filing, and the talk moves on.
 pub fn keep(state: &mut State, ctx: &Ctx) -> Option<Action> {
     let reading = state.session.learning.clone()?;
+    crate::follow_up::forget(state);
     let folder = reading.root.clone();
     let known = ctx.targets.contains(&folder);
     let role = (!known).then(|| Action::SetFolderRole {
@@ -382,6 +384,7 @@ pub fn change_order(state: &mut State, ctx: &Ctx, kind_word: String, order: Chan
             reading,
             kind_word,
             order,
+            name: state.session.change_name.clone(),
         },
         None,
     );
@@ -507,6 +510,13 @@ fn preview_area(preview: &ChangePreview) -> String {
 /// What the area looks like today and what it would look like, in a line.
 fn preview_intro(state: &State, ctx: &Ctx, preview: &ChangePreview) -> String {
     let area = preview_area(preview);
+    if preview.change.order == ChangeOrder::FileNames {
+        return fill(
+            ctx.lang,
+            Msg::HermesChatChangePreviewNames,
+            &[("area", &area)],
+        );
+    }
     let today_order = state
         .session
         .learning
@@ -544,7 +554,7 @@ fn order_label(order: ChangeOrder) -> Option<PlaceholderLabel> {
         ChangeOrder::ByMonth => Some(PlaceholderLabel::Month),
         ChangeOrder::BySender => Some(PlaceholderLabel::Sender),
         ChangeOrder::ByKind => Some(PlaceholderLabel::Kind),
-        ChangeOrder::Flat | ChangeOrder::Pattern => None,
+        ChangeOrder::Flat | ChangeOrder::Pattern | ChangeOrder::FileNames => None,
     }
 }
 
@@ -776,6 +786,8 @@ pub fn scope(state: &mut State, ctx: &Ctx, only: Option<String>) {
 
 fn apply(state: &mut State, ctx: &Ctx, mut parts: Vec<Part>, change: OrderChange) {
     state.session.changes.push(change);
+    state.session.change_name = None;
+    crate::follow_up::forget(state);
     parts.push(Part::Text(text(ctx.lang, Msg::HermesChatChangeDone)));
     parts.push(Part::Text(text(ctx.lang, Msg::HermesChatAnythingElse)));
     state.step = Step::AfterChange;

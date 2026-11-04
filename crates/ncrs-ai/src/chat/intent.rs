@@ -28,12 +28,60 @@ pub enum Order {
     Flat,
 }
 
+/// The `area` of a `change_structure` that is meant for every area.
+pub const EVERY_AREA: &str = "*";
+
+/// A part of a file name, taken from what the document says.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NameBlock {
+    Year,
+    Month,
+    Day,
+    Sender,
+    Kind,
+}
+
+/// The characters a file name may be joined with.
+pub const NAME_SEPARATORS: [char; 4] = ['_', '-', ' ', '.'];
+
+/// How the file names are built: these blocks, joined by the separator.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NameSpec {
+    pub blocks: Vec<NameBlock>,
+    pub separator: char,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum QuestionKind {
     Sum,
     Deadline,
     Number,
     Date,
+}
+
+impl Order {
+    /// The word the model and the eval rows use.
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::ByMonth => "by_month",
+            Self::ByYear => "by_year",
+            Self::BySender => "by_sender",
+            Self::ByKind => "by_kind",
+            Self::Flat => "flat",
+        }
+    }
+}
+
+impl NameBlock {
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::Year => "year",
+            Self::Month => "month",
+            Self::Day => "day",
+            Self::Sender => "sender",
+            Self::Kind => "kind",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -47,7 +95,9 @@ pub enum ChatIntent {
     ChangeStructure {
         area: String,
         scope: Option<String>,
-        order: Order,
+        /// At least one of `order` and `name` is set.
+        order: Option<Order>,
+        name: Option<NameSpec>,
     },
     Undo,
     Search(SearchQuery),

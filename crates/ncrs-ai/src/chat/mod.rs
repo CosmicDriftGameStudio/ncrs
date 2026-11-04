@@ -21,9 +21,12 @@ mod turn;
 mod tests;
 
 pub use grammar::chat_grammar;
-pub use intent::{ChatIntent, ChatModel, Order, QuestionKind, Schedule, Transfer};
+pub use intent::{
+    ChatIntent, ChatModel, NameBlock, NameSpec, Order, QuestionKind, Schedule, Transfer,
+    EVERY_AREA, NAME_SEPARATORS,
+};
 pub use parse::parse_chat_reply;
-pub use turn::{chat_user_message, search_json, ChatQuestion, ChatTurn, SearchQuery};
+pub use turn::{chat_user_message, intent_json, search_json, ChatQuestion, ChatTurn, SearchQuery};
 
 /// The instructions of the chat model, with the intents and examples of each.
 pub const CHAT_SYSTEM_PROMPT: &str = include_str!("prompt.txt");

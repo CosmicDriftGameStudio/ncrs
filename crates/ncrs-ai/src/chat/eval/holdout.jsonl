@@ -42,3 +42,7 @@
 {"id": 42, "lang": "en", "intent": "other", "text": "propose a better order for everything", "expected": {}}
 {"id": 43, "lang": "de", "intent": "change_structure", "text": "krankenkasse nach anbieter ordnen", "expected": {"area": "Krankenkasse", "order": "by_sender"}}
 {"id": 44, "lang": "en", "intent": "change_structure", "text": "bank statements by sender", "expected": {"area": "Bank statements|Bank", "order": "by_sender"}}
+{"id": 45, "lang": "en", "intent": "change_structure", "text": "overall sort by sender", "expected": {"area": "*", "order": "by_sender"}}
+{"id": 46, "lang": "en", "intent": "change_structure", "text": "and name the files by year and sender", "expected": {"area": "Versicherung", "order": "by_kind", "name": "year,sender"}, "previous_request": "{\"intent\":\"change_structure\",\"area\":\"Versicherung\",\"order\":\"by_kind\"}"}
+{"id": 47, "lang": "de", "intent": "tidy_folder", "text": "doch lieber immer automatisch", "expected": {"source": "Downloads", "schedule": "always"}, "previous_request": "{\"intent\":\"tidy_folder\",\"source\":\"Downloads\"}"}
+{"id": 48, "lang": "de", "intent": "change_structure", "text": "und zwar nur die steuer sachen nach jahr", "expected": {"area": "Steuer", "order": "by_year"}, "previous_message": "mach das mal ordentlich"}

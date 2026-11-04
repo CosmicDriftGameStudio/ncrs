@@ -622,6 +622,7 @@ pub fn file_all(state: &mut State, ctx: &Ctx) {
 }
 
 pub fn filed_done(state: &mut State, ctx: &Ctx, result: Result<RunReport, String>) {
+    crate::follow_up::forget(state);
     if state.session.deciding.is_some() {
         crate::decide::run_done(state, ctx, result);
         return;

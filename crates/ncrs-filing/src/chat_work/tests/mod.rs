@@ -495,6 +495,7 @@ fn a_month_folder_goes_in_after_the_year_with_or_without_only() {
         only,
         kind_names: Vec::new(),
         pattern: None,
+        name: None,
     };
     let to = || PathBuf::from("Alfa/2022/2022-07-04 Alfa Rechnung.pdf");
     let when = Some(date(2022, 7, 4));
@@ -555,6 +556,7 @@ fn a_change_only_touches_documents_of_its_kind_or_in_a_folder_that_names_it() {
         only: None,
         kind_names: vec!["bank_statement".to_owned(), "Kontoauszüge".to_owned()],
         pattern: None,
+        name: None,
     };
     let when = Some(date(2022, 7, 4));
     let in_folder = PathBuf::from("Bank/Sparkasse/Kontoauszüge/2022/a.pdf");
@@ -588,6 +590,7 @@ fn the_trial_applies_the_order_change_to_the_filed_names() {
         only: None,
         kind_names: Vec::new(),
         pattern: None,
+        name: None,
     };
     let plan = trial(&Setup::new(), vec![change]);
     assert_eq!(

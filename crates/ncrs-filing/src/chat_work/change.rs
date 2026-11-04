@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
 
 use chrono::{Datelike as _, NaiveDate};
+use ncrs_ai::{NameBlock, NameSpec};
 use ncrs_index::{DocumentFields, KindEntry, Kinds};
 use ncrs_intake::{
     folder_label, render_pattern_in, Area, Branch, Level, NamePart, PlaceholderKind,
@@ -30,6 +31,8 @@ pub enum ChangeOrder {
     Flat,
     /// Every area gets the folders of `OrderChange::pattern`.
     Pattern,
+    /// Only the file names change, see `OrderChange::name`.
+    FileNames,
 }
 
 /// A change of order for the files below `area`. Depths count path segments
@@ -50,6 +53,8 @@ pub struct OrderChange {
     pub kind_names: Vec<String>,
     /// What `ChangeOrder::Pattern` puts below the areas.
     pub pattern: Option<PatternSpec>,
+    /// The file names are built from these blocks, whatever the order.
+    pub name: Option<NameSpec>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -134,7 +139,10 @@ fn folder_to_add(
             let kind = folder_value("kind", fields, kinds)?;
             (!folders.iter().any(|folder| same_word(folder, &kind))).then_some(kind)
         }
-        ChangeOrder::ByMonth | ChangeOrder::Flat | ChangeOrder::Pattern => None,
+        ChangeOrder::ByMonth
+        | ChangeOrder::Flat
+        | ChangeOrder::Pattern
+        | ChangeOrder::FileNames => None,
     }
 }
 
@@ -163,6 +171,7 @@ pub fn apply_changes(
             continue;
         }
         match change.order {
+            ChangeOrder::FileNames => {}
             ChangeOrder::ByMonth => {
                 let year_is_folder = parts
                     .get(change.depth)
@@ -189,8 +198,85 @@ pub fn apply_changes(
                 }
             }
         }
+        if let (Some(spec), Some(file)) = (&change.name, parts.last_mut()) {
+            if let Some(renamed) = renamed_file(spec, file, fields, kinds) {
+                *file = renamed;
+            }
+        }
     }
     parts.iter().collect()
+}
+
+fn name_pattern(spec: &NameSpec) -> String {
+    let separator = spec.separator.to_string();
+    spec.blocks
+        .iter()
+        .map(|block| format!("{{{}}}", block.word()))
+        .collect::<Vec<_>>()
+        .join(&separator)
+}
+
+/// The file name `spec` gives a document: the blocks it has a value for, then
+/// the old name without a date of the same kind in front of it, then the old
+/// extension. `None` when no block has a value or the name stays as it is.
+fn renamed_file(
+    spec: &NameSpec,
+    current: &str,
+    fields: &DocumentFields,
+    kinds: &Kinds,
+) -> Option<String> {
+    let prefix = render_pattern_in(&name_pattern(spec), fields, kinds)?
+        .to_str()?
+        .to_owned();
+    let path = Path::new(current);
+    let stem = path.file_stem()?.to_str()?;
+    let extension = path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(|extension| format!(".{extension}"))
+        .unwrap_or_default();
+    let rest = without_leading_date(stem, &prefix, spec, fields)
+        .trim_start_matches(NAME_JOINERS)
+        .to_owned();
+    let renamed = if rest.is_empty() {
+        format!("{prefix}{extension}")
+    } else {
+        format!("{prefix}{}{rest}{extension}", spec.separator)
+    };
+    (renamed != current).then_some(renamed)
+}
+
+const NAME_JOINERS: [char; 4] = ['_', '-', ' ', '.'];
+
+/// `stem` without the name this change would put there, and without the whole
+/// date of the document in front when the blocks write one.
+fn without_leading_date<'a>(
+    stem: &'a str,
+    prefix: &str,
+    spec: &NameSpec,
+    fields: &DocumentFields,
+) -> &'a str {
+    if let Some(rest) = stem.strip_prefix(prefix) {
+        return rest;
+    }
+    let writes_whole_date = [NameBlock::Year, NameBlock::Month, NameBlock::Day]
+        .iter()
+        .all(|block| spec.blocks.contains(block));
+    let Some(date) = fields.date.filter(|_| writes_whole_date) else {
+        return stem;
+    };
+    let (year, month, day) = (date.year(), date.month(), date.day());
+    let forms = [
+        format!("{year:04}-{month:02}-{day:02}"),
+        format!("{year:04}_{month:02}_{day:02}"),
+        format!("{year:04}.{month:02}.{day:02}"),
+        format!("{year:04} {month:02} {day:02}"),
+        format!("{year:04}{month:02}{day:02}"),
+    ];
+    forms
+        .iter()
+        .find_map(|form| stem.strip_prefix(form.as_str()))
+        .unwrap_or(stem)
 }
 
 pub(in crate::chat_work) fn matches_branch(parts: &[String], area: &Area, branch: &Branch) -> bool {
@@ -283,6 +369,22 @@ pub fn preview(
     reading: &FolderReading,
     kind_word: &str,
     order: ChangeOrder,
+    name: Option<&NameSpec>,
+) -> Option<ChangePreview> {
+    if order == ChangeOrder::FileNames {
+        return preview_names(kinds, reading, kind_word, name?);
+    }
+    // An area ordered that way already can still get the new file names.
+    order_preview(kinds, reading, kind_word, order, name)
+        .or_else(|| preview_names(kinds, reading, kind_word, name?))
+}
+
+fn order_preview(
+    kinds: &Kinds,
+    reading: &FolderReading,
+    kind_word: &str,
+    order: ChangeOrder,
+    name: Option<&NameSpec>,
 ) -> Option<ChangePreview> {
     let entry = kind_entry(kinds, kind_word);
     let of_kind = |file: &PlanFile| {
@@ -417,6 +519,7 @@ pub fn preview(
         only: None,
         kind_names,
         pattern: None,
+        name: name.cloned(),
     };
     let (example, highlighted) = example_of(&change, sample, kinds)?;
     Some(ChangePreview {
@@ -428,6 +531,52 @@ pub fn preview(
         example,
         highlighted,
         scope,
+    })
+}
+
+/// Only the file names of the area the word names change; the example is its
+/// newest document whose name changes.
+fn preview_names(
+    kinds: &Kinds,
+    reading: &FolderReading,
+    area_word: &str,
+    name: &NameSpec,
+) -> Option<ChangePreview> {
+    let area = reading
+        .structure
+        .areas
+        .iter()
+        .find(|area| word_within(area_word, &area.folder))?;
+    let change = OrderChange {
+        area: PathBuf::from(&area.folder),
+        depth: 1,
+        order: ChangeOrder::FileNames,
+        only: None,
+        kind_names: Vec::new(),
+        pattern: None,
+        name: Some(name.clone()),
+    };
+    let mut documents: Vec<&PlanFile> = reading
+        .files
+        .iter()
+        .filter(|file| segments(&file.relative_path).first() == Some(&area.folder))
+        .collect();
+    documents.sort_by(|left, right| {
+        right
+            .fields
+            .date
+            .cmp(&left.fields.date)
+            .then_with(|| left.relative_path.cmp(&right.relative_path))
+    });
+    let (example, highlighted) = documents
+        .into_iter()
+        .find_map(|file| example_of(&change, file, kinds))?;
+    Some(ChangePreview {
+        kind_label: area.folder.clone(),
+        change,
+        example,
+        highlighted,
+        scope: None,
     })
 }
 
@@ -456,7 +605,7 @@ pub fn already_ordered(
             ChangeOrder::BySender => change_point(order, branch).is_none(),
             ChangeOrder::ByKind => has(|kind| *kind == PlaceholderKind::Kind),
             ChangeOrder::Flat => !branch.levels.is_empty() && change_point(order, branch).is_none(),
-            ChangeOrder::Pattern => false,
+            ChangeOrder::Pattern | ChangeOrder::FileNames => false,
         }
     };
     let nothing_left = area
@@ -524,7 +673,7 @@ pub(in crate::chat_work) fn change_point(order: ChangeOrder, branch: &Branch) ->
             (!has(|kind| *kind == PlaceholderKind::Kind)).then_some(leading_literals)
         }
         ChangeOrder::Flat => (branch.levels.len() > leading_literals).then_some(leading_literals),
-        ChangeOrder::Pattern => None,
+        ChangeOrder::Pattern | ChangeOrder::FileNames => None,
     }
 }
 
@@ -533,7 +682,7 @@ fn has_what_the_order_needs(order: ChangeOrder, fields: &DocumentFields, kinds: 
         ChangeOrder::ByMonth | ChangeOrder::ByYear => fields.date.is_some(),
         ChangeOrder::BySender => folder_value("sender", fields, kinds).is_some(),
         ChangeOrder::ByKind => folder_value("kind", fields, kinds).is_some(),
-        ChangeOrder::Flat | ChangeOrder::Pattern => true,
+        ChangeOrder::Flat | ChangeOrder::Pattern | ChangeOrder::FileNames => true,
     }
 }
 
@@ -553,7 +702,9 @@ pub(in crate::chat_work) fn example_of(
     if moved == sample.relative_path {
         return None;
     }
+    let moved_parts = segments(&moved);
     let highlighted = match change.order {
+        ChangeOrder::FileNames => moved_parts.len().saturating_sub(1),
         ChangeOrder::ByMonth => change.depth + 1,
         ChangeOrder::ByYear
         | ChangeOrder::BySender
@@ -561,7 +712,7 @@ pub(in crate::chat_work) fn example_of(
         | ChangeOrder::Flat
         | ChangeOrder::Pattern => change.depth,
     };
-    Some((segments(&moved), highlighted))
+    Some((moved_parts, highlighted))
 }
 
 fn parts_of_documents(candidate: &Candidate<'_>) -> Vec<Vec<String>> {

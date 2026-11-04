@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use chrono::Datelike as _;
+use ncrs_ai::NameSpec;
 use ncrs_index::{DocumentFields, Kinds};
 use ncrs_intake::{Level, LocationStructure, PlaceholderKind};
 
@@ -88,7 +89,7 @@ pub fn pattern_choices(structure: &LocationStructure) -> Vec<PatternChoice> {
 pub fn adoptable_patterns(kinds: &Kinds, reading: &FolderReading) -> Vec<PatternChoice> {
     let mut choices: Vec<PatternChoice> = all_choices(&reading.structure)
         .into_iter()
-        .filter(|choice| preview(kinds, reading, &choice.levels).is_some())
+        .filter(|choice| preview(kinds, reading, &choice.levels, None).is_some())
         .collect();
     choices.truncate(OFFERED_PATTERNS);
     choices
@@ -181,6 +182,7 @@ pub fn preview(
     kinds: &Kinds,
     reading: &FolderReading,
     levels: &[PatternLevel],
+    name: Option<&NameSpec>,
 ) -> Option<PatternPreview> {
     let targets: Vec<PatternTarget> = reading
         .structure
@@ -200,13 +202,18 @@ pub fn preview(
     let change = OrderChange {
         area: PathBuf::new(),
         depth: 1,
-        order: ChangeOrder::Pattern,
+        order: if levels.is_empty() {
+            ChangeOrder::FileNames
+        } else {
+            ChangeOrder::Pattern
+        },
         only: None,
         kind_names: Vec::new(),
-        pattern: Some(PatternSpec {
+        pattern: (!levels.is_empty()).then(|| PatternSpec {
             levels: levels.to_vec(),
             targets,
         }),
+        name: name.cloned(),
     };
     let mut moved = 0;
     let mut sample: Option<(&ncrs_intake::PlanFile, PathBuf)> = None;

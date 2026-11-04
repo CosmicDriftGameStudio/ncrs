@@ -362,6 +362,8 @@ mod queue_tests {
                 message: message.to_owned(),
                 question: None,
                 previous_search: None,
+                previous_request: None,
+                previous_message: None,
             },
             reply: channel().0,
         })

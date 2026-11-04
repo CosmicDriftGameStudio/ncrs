@@ -20,9 +20,9 @@ mod status;
 mod testing;
 
 pub use chat::{
-    chat_grammar, chat_user_message, parse_chat_reply, search_json, ChatIntent, ChatModel,
-    ChatQuestion, ChatTurn, Order, QuestionKind, Schedule, SearchQuery, Transfer,
-    CHAT_SYSTEM_PROMPT,
+    chat_grammar, chat_user_message, intent_json, parse_chat_reply, search_json, ChatIntent,
+    ChatModel, ChatQuestion, ChatTurn, NameBlock, NameSpec, Order, QuestionKind, Schedule,
+    SearchQuery, Transfer, CHAT_SYSTEM_PROMPT, EVERY_AREA, NAME_SEPARATORS,
 };
 pub use consent::{ConsentLedger, NoConsentGiven, OutgoingPreview};
 pub use contract::{

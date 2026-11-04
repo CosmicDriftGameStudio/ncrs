@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use ncrs_ai::{ChatTurn, Schedule};
+use ncrs_ai::{ChatIntent, ChatTurn, NameSpec, Schedule};
 use ncrs_filing::chat_work::{
     AnsweredGroups, ChangeOrder, ChangePreview, ChatWork, FolderReading, OrderChange,
     PatternChoice, PatternLevel, ReadProgress, RunPlan, RunSummary, TrashItem, TrialPlan,
@@ -102,6 +102,8 @@ pub enum ChipReply {
     Retry,
     /// Asks the user to type the name of the area.
     OtherArea,
+    /// Runs the last request again for this area.
+    FollowUpArea(String),
     /// Asks for this order in this area.
     ChangeAreaOrder {
         area: String,
@@ -166,6 +168,7 @@ impl ChipReply {
             | Self::ShowAll
             | Self::ScopeAll
             | Self::ChangeArea(_)
+            | Self::FollowUpArea(_)
             | Self::ScopeOnly(_)
             | Self::LeaveThem
             | Self::Later
@@ -437,6 +440,13 @@ pub struct Walk {
     pub filed: usize,
 }
 
+/// The folders and file names every area gets.
+#[derive(Debug, Clone)]
+pub struct Everywhere {
+    pub levels: Vec<PatternLevel>,
+    pub name: Option<NameSpec>,
+}
+
 #[derive(Debug, Default)]
 pub struct Session {
     pub waiting: Option<Walk>,
@@ -487,6 +497,14 @@ pub struct Session {
     pub choosing: Option<crate::named_folders::Naming>,
     /// What the model said about the scope of a change, for the preview.
     pub change_scope: Option<String>,
+    /// The file names the model heard in the sentence about the change.
+    pub change_name: Option<NameSpec>,
+    /// An order for every area that waits for its folder to be read.
+    pub everywhere: Option<Everywhere>,
+    /// The last tidy or structure change Hermes understood.
+    pub previous_request: Option<ChatIntent>,
+    /// The sentence before, when Hermes could do nothing with it.
+    pub previous_message: Option<String>,
     pub unsent: Option<Unsent>,
     /// A button or picked folder that waits for Hermes to start.
     pub unsent_reply: Option<ChipReply>,
