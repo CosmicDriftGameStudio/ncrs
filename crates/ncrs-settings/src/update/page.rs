@@ -255,6 +255,12 @@ fn written(
                     card.set_outcome(InstallOutcome::StillOff);
                 }
             }
+            if matches!(change, SettingChange::HermesEnabled(true)) {
+                actions.push(Action::HermesNotTurnedOn(error.to_string()));
+                if settings.page.is_none() {
+                    return Task::none();
+                }
+            }
             let failure = change_failure(&error, &change, ctx);
             let at_its_row = match settings.page.as_mut() {
                 Some(state) => state.refused(&change, failure.clone()),

@@ -6529,6 +6529,18 @@
       "de": "Hermes starten"
     },
     {
+      "key": "hermes_chat.start_failed",
+      "context": "Hermes chat (F2): Hermes says this when it tried to start and could not, instead of the sentence that it is switched off. {reason} is the error text of the start. A button to try again follows.",
+      "en": "Hermes could not start: {reason}",
+      "de": "Hermes konnte nicht starten: {reason}"
+    },
+    {
+      "key": "hermes_chat.turn_on_failed",
+      "context": "Hermes chat (F2): Hermes says this when switching it on failed because the setting could not be saved. {reason} is the error text of the write. A button to try again follows.",
+      "en": "I could not switch Hermes on: {reason}",
+      "de": "Ich konnte Hermes nicht einschalten: {reason}"
+    },
+    {
       "key": "hermes_chat.starting_wait",
       "context": "Hermes chat (F2): working line while the user's message or button press waits for the filing module to finish starting. It runs as soon as Hermes is ready.",
       "en": "One moment, I'm still starting …",
@@ -7874,7 +7886,7 @@
     },
     {
       "key": "hermes_chat.retry",
-      "context": "Hermes chat (F2): Answer button after a folder could not be read: read the same folder again.",
+      "context": "Hermes chat (F2): Answer button after a folder could not be read (read the same folder again) or after Hermes could not start (start it again).",
       "en": "Try again",
       "de": "Nochmal versuchen"
     },

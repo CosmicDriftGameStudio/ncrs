@@ -353,7 +353,7 @@ fn phase_of(app: &App) -> &Phase {
 }
 
 #[tokio::test]
-async fn the_first_start_turns_hermes_on_and_makes_an_encrypted_index() {
+async fn launching_with_a_silent_config_writes_nothing_and_starts_no_module() {
     let dir = TempDir::new().unwrap();
     let store = Arc::new(ncrs_index::InMemoryKeyStore::empty());
     let app = started_in(environment_in(
@@ -361,6 +361,23 @@ async fn the_first_start_turns_hermes_on_and_makes_an_encrypted_index() {
         Arc::clone(&store) as Arc<dyn KeyStore + Send + Sync>,
     ))
     .await;
+
+    assert!(config_in(&dir).is_empty(), "{}", config_in(&dir));
+    assert!(app.hermes.filing.is_none());
+    assert!(!index_in(&dir).exists());
+    assert!(store.snapshot().is_none());
+}
+
+#[tokio::test]
+async fn opening_the_chat_the_first_time_turns_hermes_on_and_makes_an_encrypted_index() {
+    let dir = TempDir::new().unwrap();
+    let store = Arc::new(ncrs_index::InMemoryKeyStore::empty());
+    let mut app = started_in(environment_in(
+        &dir,
+        Arc::clone(&store) as Arc<dyn KeyStore + Send + Sync>,
+    ))
+    .await;
+    settle(&mut app, Message::HermesChat(HermesChatMessage::Open)).await;
 
     assert!(
         config_in(&dir).contains("enabled = true"),
@@ -460,6 +477,9 @@ async fn hermes_switched_off_stays_off_and_the_chat_offers_to_turn_it_on() {
     assert!(!index_in(&dir).exists());
 
     settle(&mut app, Message::HermesChat(HermesChatMessage::Open)).await;
+    assert!(app.hermes.filing.is_none());
+    assert!(config_in(&dir).contains("enabled = false"));
+    assert!(!index_in(&dir).exists());
     let turn_on = app
         .hermes_chat
         .chips()
@@ -524,7 +544,8 @@ async fn an_index_whose_key_is_missing_asks_for_it_by_itself() {
 #[tokio::test]
 async fn a_key_store_that_refuses_ends_in_the_error_card_not_in_a_plain_index() {
     let dir = TempDir::new().unwrap();
-    let app = started_in(environment_in(&dir, Arc::new(RefusingStore))).await;
+    let mut app = started_in(environment_in(&dir, Arc::new(RefusingStore))).await;
+    settle(&mut app, Message::HermesChat(HermesChatMessage::Open)).await;
 
     assert!(matches!(phase_of(&app), Phase::Failed(_)));
     assert!(app.hermes.filing.as_ref().unwrap().has_card());

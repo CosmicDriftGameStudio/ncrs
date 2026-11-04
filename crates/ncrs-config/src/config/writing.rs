@@ -77,6 +77,19 @@ pub enum FilingWriteError {
     },
 }
 
+/// The reason alone, without the path of the file: where it lives is shown
+/// by the app in its own words.
+impl fmt::Display for FilingWriteError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Rule(_) => f.write_str("the folder list breaks a rule"),
+            Self::PathNotText(_) => f.write_str("a path is not valid text"),
+            Self::Config(error) => f.write_str(error.reason()),
+            Self::Io { reason, .. } => f.write_str(reason),
+        }
+    }
+}
+
 /// Turns the filing module on and replaces its locations in the config at
 /// `path`, keeping every other line, comment and section as written. Returns
 /// the config read back from disk.

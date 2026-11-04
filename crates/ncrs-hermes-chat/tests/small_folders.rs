@@ -486,6 +486,39 @@ mod tests {
     }
 
     #[test]
+    fn a_start_that_failed_says_why_and_a_retry_restarts_hermes() {
+        let mut talk = small_talk();
+        talk.ctx.availability = Availability::Starting;
+        talk.open();
+        talk.type_text("hmmmm wie geht das");
+        talk.ctx.availability = Availability::Failed("no key".to_owned());
+        talk.send(Message::HermesReady);
+        assert_eq!(
+            talk.last_texts(),
+            vec![say(Msg::HermesChatStartFailed, &[("reason", "no key")])]
+        );
+        assert_eq!(talk.labels(), vec![say(Msg::HermesChatRetry, &[])]);
+        assert!(!talk.state.waits_for_hermes());
+        talk.press(&ChipReply::TurnOn);
+        assert_eq!(talk.actions, vec![Action::TurnOnHermes]);
+    }
+
+    #[test]
+    fn a_failed_switching_on_says_the_reason_and_offers_it_again() {
+        let mut talk = small_talk();
+        talk.ctx.availability = Availability::Starting;
+        talk.open();
+        talk.send(Message::TurnOnFailed("disk full".to_owned()));
+        assert_eq!(
+            talk.last_texts(),
+            vec![say(Msg::HermesChatTurnOnFailed, &[("reason", "disk full")])]
+        );
+        assert!(!talk.state.waits_for_hermes());
+        talk.press(&ChipReply::TurnOn);
+        assert_eq!(talk.actions, vec![Action::TurnOnHermes]);
+    }
+
+    #[test]
     fn a_sentence_typed_while_starting_is_answered_when_hermes_is_ready() {
         let mut talk = small_talk();
         talk.ctx.availability = Availability::Starting;

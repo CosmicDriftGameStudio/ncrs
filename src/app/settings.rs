@@ -176,6 +176,7 @@ impl App {
             Ask::PickFolder(kind) => self.pick_read_folder(kind),
             Ask::GrantFolder { kind, path } => self.grant_read_folder(kind, path),
             Ask::OpenChat { area } => self.open_chat_from_settings(area),
+            Ask::HermesNotTurnedOn(reason) => self.hermes_not_turned_on(reason),
             Ask::TogglePause => {
                 self.update(Message::FilingStatus(FilingStatusMessage::TogglePause))
             }
@@ -320,6 +321,7 @@ impl App {
                 }
             }
             SettingChange::HermesEnabled(_) | SettingChange::Locations(_) => {
+                self.turning_hermes_on = false;
                 let (applies, task) = self.apply_saved_filing(config.filing);
                 if matches!(applies, SavedFilingApplies::AtNextStart) {
                     let notice = self.lang.text(Msg::SettingsSavedNextStart).to_owned();

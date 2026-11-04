@@ -12,6 +12,8 @@ use ncrs_i18n::Language;
 pub enum Availability {
     Ready(ChatAccess),
     Starting,
+    /// The module tried to start and stopped; the module's reason.
+    Failed(String),
     Off,
 }
 

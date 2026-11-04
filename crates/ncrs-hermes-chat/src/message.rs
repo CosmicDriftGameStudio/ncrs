@@ -18,6 +18,14 @@ pub enum Message {
     Done(Box<ChatResult>),
     Failed(String),
     FolderPicked(Option<PathBuf>),
+    /// A picked folder was kept for the sandbox, or the system refused it;
+    /// sent by the app in place of `FolderPicked` when the build is sandboxed.
+    FolderGranted {
+        folder: PathBuf,
+        result: Result<(), String>,
+    },
+    /// Switching Hermes on did not work: the reason; sent by the app.
+    TurnOnFailed(String),
     /// What the language model made of a typed sentence, or why it failed.
     Understood(Result<ChatIntent, String>),
     /// The check of a typed folder, for the step it was typed in.
@@ -79,7 +87,18 @@ impl PartialEq for Message {
             | (Self::WaitingCheck, Self::WaitingCheck)
             | (Self::WorkTick, Self::WorkTick) => true,
             (Self::InputChanged(left), Self::InputChanged(right))
-            | (Self::Failed(left), Self::Failed(right)) => left == right,
+            | (Self::Failed(left), Self::Failed(right))
+            | (Self::TurnOnFailed(left), Self::TurnOnFailed(right)) => left == right,
+            (
+                Self::FolderGranted {
+                    folder: left_folder,
+                    result: left_result,
+                },
+                Self::FolderGranted {
+                    folder: right_folder,
+                    result: right_result,
+                },
+            ) => left_folder == right_folder && left_result == right_result,
             (
                 Self::ChipPressed {
                     label: left_label,

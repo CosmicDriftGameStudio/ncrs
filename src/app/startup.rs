@@ -146,17 +146,10 @@ impl App {
         if let Err(err) = &loaded {
             eprintln!("ncrs: {err}");
         }
-        let mut filing = loaded
+        let filing = loaded
             .as_ref()
             .map(|config| config.filing.clone())
             .unwrap_or_default();
-        let first_run = loaded.is_ok() && filing.first_run && !filing.enabled;
-        if let (true, Some(path)) = (first_run, config_path.as_deref()) {
-            match config::write_filing_enabled(path, true) {
-                Ok(written) => filing = written.filing,
-                Err(_) => eprintln!("ncrs: could not write the first-run setting to the config"),
-            }
-        }
         let home = fs::home_dir();
         let (mut panels, panel_loads) = Self::starting_at(
             saved.left.start_directory().unwrap_or_else(fs::start_dir),
@@ -452,6 +445,7 @@ impl App {
             search: ncrs_search::Search::new(layout::INITIAL_WINDOW_SIZE),
             hermes_chat: ncrs_hermes_chat::State::default(),
             chat_model: None,
+            turning_hermes_on: false,
             quick_open: None,
             quick_open_walk_generation: 0,
             quick_open_walk: None,

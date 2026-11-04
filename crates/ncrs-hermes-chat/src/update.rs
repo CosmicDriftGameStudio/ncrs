@@ -107,6 +107,19 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
             }
             folder_answer(state, ctx, path, false)
         }
+        Message::FolderGranted { folder, result } => match result {
+            Ok(()) => route(state, Message::FolderPicked(Some(folder)), ctx),
+            Err(reason) => route(state, Message::Failed(reason), ctx),
+        },
+        Message::TurnOnFailed(reason) => {
+            understand::stop_waiting_for_hermes(state);
+            say(
+                state,
+                text_with(ctx, Msg::HermesChatTurnOnFailed, &[("reason", &reason)]),
+                vec![chip(ctx, Msg::HermesChatRetry, ChipReply::TurnOn, true)],
+            );
+            None
+        }
         Message::TypedFolderResolved {
             typed,
             step,
@@ -141,8 +154,12 @@ fn change_area(state: &mut State, ctx: &Ctx, folder: PathBuf, area: String) -> O
         open_thread(state, ctx);
     }
     if !matches!(ctx.availability, Availability::Ready(_)) {
-        if !fresh && matches!(ctx.availability, Availability::Off) {
-            say_off(state, ctx);
+        if !fresh {
+            match &ctx.availability {
+                Availability::Off => say_off(state, ctx),
+                Availability::Failed(reason) => say_failed(state, ctx, reason),
+                Availability::Starting | Availability::Ready(_) => {}
+            }
         }
         return None;
     }
@@ -341,11 +358,24 @@ fn hold_until_ready(state: &mut State, ctx: &Ctx, held: Held) -> bool {
                 .push(Entry::Working(text(ctx.lang, Msg::HermesChatStartingWait)));
             true
         }
+        Availability::Failed(reason) => {
+            say_failed(state, ctx, reason);
+            true
+        }
         Availability::Off => {
             say_off(state, ctx);
             true
         }
     }
+}
+
+/// Hermes tried to start and could not: the reason, and a way to try again.
+pub fn say_failed(state: &mut State, ctx: &Ctx, reason: &str) {
+    say(
+        state,
+        text_with(ctx, Msg::HermesChatStartFailed, &[("reason", reason)]),
+        vec![chip(ctx, Msg::HermesChatRetry, ChipReply::TurnOn, true)],
+    );
 }
 
 pub fn say_off(state: &mut State, ctx: &Ctx) {
@@ -528,9 +558,13 @@ pub fn source_chips(state: &State, ctx: &Ctx) -> Vec<Chip> {
 /// The first bubble: the greeting, or why Hermes cannot understand sentences
 /// yet. The greeting follows once the AI and the model are there.
 pub fn open_thread(state: &mut State, ctx: &Ctx) {
-    match ctx.availability {
+    match &ctx.availability {
         Availability::Off => {
             say_off(state, ctx);
+            return;
+        }
+        Availability::Failed(reason) => {
+            say_failed(state, ctx, reason);
             return;
         }
         Availability::Starting => {

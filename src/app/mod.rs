@@ -336,6 +336,9 @@ pub struct App {
     hermes_chat: ncrs_hermes_chat::State,
     /// The local model the chat talks to; shared with the field AI, created on first use.
     chat_model: Option<Arc<dyn ncrs_ai::ChatModel>>,
+    /// The setting that switches Hermes on is being written; the chat counts
+    /// Hermes as starting meanwhile.
+    turning_hermes_on: bool,
     /// Quick Open (Cmd/Ctrl+P), while its box is up.
     quick_open: Option<QuickOpen>,
     /// Counts the walks started, so the late batches of a closed one are dropped.
