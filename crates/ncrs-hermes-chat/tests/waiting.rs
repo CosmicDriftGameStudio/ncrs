@@ -15,7 +15,7 @@ mod tests {
     use std::fs;
 
     use chrono::{NaiveDate, TimeZone as _, Utc};
-    use ncrs_hermes_chat::{ChipReply, Message};
+    use ncrs_hermes_chat::{Action, ChipReply, Message};
     use ncrs_i18n::Msg;
     use ncrs_index::{
         DocumentFields, DocumentId, DocumentSource, DocumentStatus, FieldOrigin, FileStamp,
@@ -212,6 +212,64 @@ mod tests {
             .chips()
             .iter()
             .any(|chip| chip.reply == ChipReply::WaitingFile));
+    }
+
+    fn unsure_talk() -> Talk {
+        let mut talk =
+            Talk::in_dir(tempfile::tempdir().unwrap(), &["archive"], &["inbox"]).with_review();
+        neighbours_in(&talk, "Insurance/2024");
+        neighbours_in(&talk, "Contracts/2024");
+        wait(&talk, "scan-1.pdf", 1);
+        talk.open();
+        talk.press(&ChipReply::WaitingShow);
+        talk
+    }
+
+    #[test]
+    fn an_unsure_document_is_filed_in_the_folder_of_the_similar_ones() {
+        let mut talk = unsure_talk();
+        let folder = talk
+            .state
+            .chips()
+            .iter()
+            .find_map(|chip| match &chip.reply {
+                ChipReply::WaitingFileInto(folder) => Some(folder.clone()),
+                _ => None,
+            })
+            .expect("a chip with the proposed folder");
+
+        talk.press(&ChipReply::WaitingFileInto(folder.clone()));
+
+        assert_eq!(
+            talk.last_texts(),
+            ["Das waren alle. **1** eingeordnet, 0 warten weiter.".to_owned()]
+        );
+        assert!(!talk.path("inbox/scan-1.pdf").exists());
+        assert!(talk
+            .dir
+            .path()
+            .join("archive")
+            .join(folder)
+            .join("scan-1.pdf")
+            .exists());
+    }
+
+    #[test]
+    fn an_unsure_document_is_filed_in_a_folder_the_user_picks() {
+        let mut talk = unsure_talk();
+
+        talk.press(&ChipReply::WaitingOtherFolder);
+        assert_eq!(talk.actions.last(), Some(&Action::PickFolder));
+        talk.send(Message::FolderPicked(Some(
+            talk.path("archive/Insurance/2024"),
+        )));
+
+        assert_eq!(
+            talk.last_texts(),
+            ["Das waren alle. **1** eingeordnet, 0 warten weiter.".to_owned()]
+        );
+        assert!(!talk.path("inbox/scan-1.pdf").exists());
+        assert!(talk.path("archive/Insurance/2024/scan-1.pdf").exists());
     }
 
     #[test]

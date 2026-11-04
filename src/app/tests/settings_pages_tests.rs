@@ -302,7 +302,10 @@ fn loaded_areas() -> LoadedFacts {
         files,
         from: "Downloads".to_owned(),
         to: to.to_owned(),
-        examples: examples.iter().map(|example| (*example).to_owned()).collect(),
+        examples: examples
+            .iter()
+            .map(|example| (*example).to_owned())
+            .collect(),
         undoable,
     };
     LoadedFacts {
@@ -322,9 +325,33 @@ fn loaded_areas() -> LoadedFacts {
                 &["Steuern/2025", "Versicherung/Allianz"],
                 true,
             ),
-            run(3, RunDay::Yesterday, "09:30", 1, "Dokumente", &["Auto"], false),
-            run(2, RunDay::On("2026-10-30".to_owned()), "18:45", 7, "", &[], true),
-            run(1, RunDay::On("2026-10-28".to_owned()), "08:15", 3, "Dokumente", &[], true),
+            run(
+                3,
+                RunDay::Yesterday,
+                "09:30",
+                1,
+                "Dokumente",
+                &["Auto"],
+                false,
+            ),
+            run(
+                2,
+                RunDay::On("2026-10-30".to_owned()),
+                "18:45",
+                7,
+                "",
+                &[],
+                true,
+            ),
+            run(
+                1,
+                RunDay::On("2026-10-28".to_owned()),
+                "08:15",
+                3,
+                "Dokumente",
+                &[],
+                true,
+            ),
         ],
         folder_files: std::collections::BTreeMap::from([(
             PathBuf::from("/home/test/Downloads/Scans"),
@@ -401,7 +428,13 @@ fn the_index_page_matches_its_snapshots_filled() -> TestResult {
 
 #[test]
 fn the_index_page_matches_its_snapshots_empty() -> TestResult {
-    in_both_languages(SettingsFeature::Index, "", None, "settings_index_empty", WINDOW_HEIGHT)
+    in_both_languages(
+        SettingsFeature::Index,
+        "",
+        None,
+        "settings_index_empty",
+        WINDOW_HEIGHT,
+    )
 }
 
 #[test]

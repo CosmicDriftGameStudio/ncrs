@@ -69,7 +69,6 @@ impl App {
             config_path: None,
             file_list_tags: FileListTags::default(),
             kinds: Kinds::default(),
-            hermes_flow_step: 0,
             settings: Settings::default(),
             hermes: ncrs_hermes_ui::Hermes::default(),
             theme_preset: ThemePreset::Cosmic,
@@ -125,17 +124,6 @@ impl App {
     pub fn with_fixed_filing(phase: Phase) -> Self {
         let mut app = Self::with_fixed_panels();
         app.hermes.filing = Some(FilingModule::in_phase(phase));
-        app
-    }
-
-    /// Fixed panels with the first-time setup of Hermes up, prefilled from
-    /// `configured`.
-    pub fn with_hermes_setup(configured: &[config::FilingLocation], offer: SetupOffer) -> Self {
-        let mut app = Self::with_fixed_panels();
-        app.hermes.filing_config.locations = configured.to_vec();
-        let setup = HermesSetup::new(configured, offer);
-        app.dialog_focus = setup.first_focus(setup.can_start());
-        app.hermes.hermes_setup = Some(setup);
         app
     }
 

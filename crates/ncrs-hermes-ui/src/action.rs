@@ -7,7 +7,6 @@ use ncrs_jobs::Job;
 use ncrs_pipeline::Load;
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::hermes_setup::FolderSlot;
 use crate::message::{HermesPage, Message};
 
 /// The step of the module that starts a change of the protection of the index.
@@ -48,8 +47,6 @@ pub enum Action {
     FilingRestarted(u64),
     /// Opens the card of the AI model, and notes whether the user was asked.
     OpenAiModelCard,
-    /// Moves the focus of the dialog or card that is up.
-    SetDialogFocus(usize),
     /// Selects the error of the file on the status page.
     SelectErrorOf(PathBuf),
     /// Both panels read their folder again, keeping the cursor.
@@ -75,8 +72,6 @@ pub enum Action {
     CloseStartOverDialog,
     /// The setting of the load changes.
     SetLoad(Load),
-    /// Opens the card of the AI model and starts the download.
-    OpenAndDownloadAiModel,
     /// Builds the module again from the config it started with.
     RestartHermesModule,
     /// The tags the file list shows against their group, as the index has them.
@@ -91,16 +86,6 @@ pub enum Action {
     },
     /// Asks for the folder the reports are exported to, starting at the path.
     PickExportFolder(PathBuf),
-    /// Opens the system folder dialog for a slot of the setup card, starting
-    /// at the folder of the active panel; the answer is the card's
-    /// `FolderPicked`.
-    PickFolder(FolderSlot),
-    /// Keeps the access to the folder picked for a slot of the setup card
-    /// (sandbox only); the answer is the card's `Granted`.
-    GrantFolder {
-        slot: FolderSlot,
-        folder: PathBuf,
-    },
     /// Put the job into the queue and start it if nothing runs; the work
     /// sends its progress through the app's channel, which the app makes
     /// first.

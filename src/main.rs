@@ -35,8 +35,8 @@ pub use ncrs_filing::{
 };
 pub use ncrs_hermes_ui::{
     condition_editor, document_preview, filing_pieces, filing_setup, filing_status, hermes_column,
-    hermes_overview, hermes_setup, hermes_status, quick_fix, reading_again, rule_form, rules_page,
-    saved_queries, tags_page,
+    hermes_overview, hermes_status, quick_fix, reading_again, rule_form, rules_page, saved_queries,
+    tags_page,
 };
 pub use ncrs_i18n as i18n;
 pub use ncrs_jobs as jobs;

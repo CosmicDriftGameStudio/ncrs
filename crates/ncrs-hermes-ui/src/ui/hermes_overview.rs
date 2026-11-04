@@ -4,7 +4,6 @@
 use iced::widget::column;
 use iced::{Element, Size};
 
-use super::hermes_setup::on_this_computer;
 use crate::hermes_overview::{ModuleState, OverviewFacts, Protection};
 use crate::message::{HermesOverviewMessage, Message};
 use ncrs_config::palette::Palette;
@@ -14,6 +13,14 @@ use ncrs_i18n::{Language, Msg};
 use ncrs_ui_kit::frame::{DialogSize, Frame, KeyHints};
 use ncrs_ui_kit::kit::{self, paragraph, Tone};
 use ncrs_ui_kit::theme::spacing;
+
+fn on_this_computer(lang: Language, mac: Msg, other: Msg) -> &'static str {
+    lang.text(if cfg!(target_os = "macos") {
+        mac
+    } else {
+        other
+    })
+}
 
 fn send(message: HermesOverviewMessage) -> Message {
     Message::HermesOverview(message)

@@ -7,8 +7,8 @@ use iced::{event, mouse, window, Point};
 use crate::messages::PanelMessage;
 use crate::messages::{
     CommandLineMessage, CommandPaletteMessage, HermesChatMessage, KeyBindingsMessage, Message,
-    QuickOpenMessage, RulesMessage, SavedQueriesMessage, SearchMessage, SettingsMessage, TagsMessage,
-    ThemeFetchMessage,
+    QuickOpenMessage, RulesMessage, SavedQueriesMessage, SearchMessage, SettingsMessage,
+    TagsMessage, ThemeFetchMessage,
 };
 use crate::transfer_dialog::TransferDialogMessage;
 

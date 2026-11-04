@@ -141,8 +141,8 @@ fn change_area(state: &mut State, ctx: &Ctx, folder: PathBuf, area: String) -> O
         open_thread(state, ctx);
     }
     if !matches!(ctx.availability, Availability::Ready(_)) {
-        if !fresh && matches!(ctx.availability, Availability::NeedsSetup) {
-            say_needs_setup(state, ctx);
+        if !fresh && matches!(ctx.availability, Availability::Off) {
+            say_off(state, ctx);
         }
         return None;
     }
@@ -326,7 +326,7 @@ enum Held {
 }
 
 /// True when Hermes is not ready and has answered for it: while it starts, the
-/// input waits in the chat; without a setup, the setup is offered.
+/// input waits in the chat; when it is off, the way to switch it on is offered.
 fn hold_until_ready(state: &mut State, ctx: &Ctx, held: Held) -> bool {
     match &ctx.availability {
         Availability::Ready(_) => false,
@@ -341,18 +341,18 @@ fn hold_until_ready(state: &mut State, ctx: &Ctx, held: Held) -> bool {
                 .push(Entry::Working(text(ctx.lang, Msg::HermesChatStartingWait)));
             true
         }
-        Availability::NeedsSetup => {
-            say_needs_setup(state, ctx);
+        Availability::Off => {
+            say_off(state, ctx);
             true
         }
     }
 }
 
-pub fn say_needs_setup(state: &mut State, ctx: &Ctx) {
+pub fn say_off(state: &mut State, ctx: &Ctx) {
     say(
         state,
-        text(ctx.lang, Msg::HermesChatNeedsSetup),
-        vec![chip(ctx, Msg::HermesChatSetup, ChipReply::Setup, true)],
+        text(ctx.lang, Msg::HermesChatOff),
+        vec![chip(ctx, Msg::HermesChatTurnOn, ChipReply::TurnOn, true)],
     );
 }
 
@@ -529,8 +529,8 @@ pub fn source_chips(state: &State, ctx: &Ctx) -> Vec<Chip> {
 /// yet. The greeting follows once the AI and the model are there.
 pub fn open_thread(state: &mut State, ctx: &Ctx) {
     match ctx.availability {
-        Availability::NeedsSetup => {
-            say_needs_setup(state, ctx);
+        Availability::Off => {
+            say_off(state, ctx);
             return;
         }
         Availability::Starting => {
@@ -571,6 +571,7 @@ fn expects_folder(step: Step) -> bool {
             | Step::Target
             | Step::OtherTarget
             | Step::NewTarget
+            | Step::WaitingFolder
     )
 }
 
@@ -634,6 +635,10 @@ pub fn folder_answer(state: &mut State, ctx: &Ctx, path: PathBuf, typed: bool) -
         }
         Step::NewTarget => {
             crate::decide::new_target_picked(state, ctx, path);
+            None
+        }
+        Step::WaitingFolder => {
+            crate::waiting::file_into(state, ctx, path);
             None
         }
         _ => None,
@@ -784,7 +789,7 @@ pub fn handle_reply(state: &mut State, ctx: &Ctx, reply: ChipReply) -> Option<Ac
         ChipReply::Folder(path) => return folder_answer(state, ctx, path, false),
         ChipReply::NamedFolder(folder) => named_folders::chosen(state, ctx, folder),
         ChipReply::PickFolder => return Some(Action::PickFolder),
-        ChipReply::Setup => return Some(Action::OpenHermesSettings),
+        ChipReply::TurnOn => return Some(Action::TurnOnHermes),
         ChipReply::ReadAnyway => {
             if let Some((path, step)) = state.session.confirm.take() {
                 state.step = step;
@@ -850,6 +855,8 @@ pub fn handle_reply(state: &mut State, ctx: &Ctx, reply: ChipReply) -> Option<Ac
         ChipReply::UnsureChoice { entry, choice } => tidy::unsure(state, ctx, entry, choice),
         ChipReply::WaitingShow => crate::waiting::show(state),
         ChipReply::WaitingFile => crate::waiting::file_current(state, ctx),
+        ChipReply::WaitingFileInto(folder) => crate::waiting::file_into(state, ctx, folder),
+        ChipReply::WaitingOtherFolder => return crate::waiting::other_folder(state),
         ChipReply::WaitingSkip => crate::waiting::skip(state, ctx),
         ChipReply::PutBack => undo::put_back(state, ctx),
         ChipReply::Undo | ChipReply::IntentUndo => undo::ask(state, ctx),

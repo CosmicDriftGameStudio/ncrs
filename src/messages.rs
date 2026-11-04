@@ -23,7 +23,7 @@ pub use ncrs_hermes_chat::Message as HermesChatMessage;
 pub use ncrs_hermes_ui::message::RuleFormMessage;
 pub use ncrs_hermes_ui::message::{
     FilingStatusMessage, HermesColumnMessage, HermesFileMessage, HermesOverviewMessage, HermesPage,
-    HermesSetupMessage, QuickFixMessage, RulesMessage, SavedQueriesMessage, TagsMessage,
+    QuickFixMessage, RulesMessage, SavedQueriesMessage, TagsMessage,
 };
 pub use ncrs_ops::{ConflictChoice, OpsMessage, TransferDialogMessage, TrashMessage};
 pub use ncrs_search::message::SearchMessage;
@@ -277,10 +277,6 @@ pub enum Message {
     // --- The Hermes column of the panels ---
     HermesColumn(HermesColumnMessage),
 
-    // --- The first-time setup of Hermes ---
-    HermesSetup(HermesSetupMessage),
-    /// Moves the dots of the flow picture one step on.
-    HermesFlowTick,
     /// The protection buttons of the Index page in the settings.
     HermesOverview(HermesOverviewMessage),
     Rules(RulesMessage),
@@ -438,7 +434,6 @@ impl From<ncrs_hermes_ui::Message> for Message {
         match message {
             Hermes::Filing(inner) => Self::Filing(inner),
             Hermes::FilingStatus(inner) => Self::FilingStatus(inner),
-            Hermes::HermesSetup(inner) => Self::HermesSetup(inner),
             Hermes::HermesOverview(inner) => Self::HermesOverview(inner),
             Hermes::Rules(inner) => Self::Rules(inner),
             Hermes::QuickFix(inner) => Self::QuickFix(inner),

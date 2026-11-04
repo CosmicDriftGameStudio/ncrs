@@ -70,7 +70,6 @@ impl App {
             .as_ref()
             .is_some_and(KeyBindings::is_recording);
         let filing_status = self.hermes.filing_status.page_open();
-        let hermes_setup = self.hermes.hermes_setup.is_some();
         let filing_card = self
             .hermes
             .filing
@@ -126,7 +125,6 @@ impl App {
                 key_bindings,
                 key_bindings_recording,
                 filing_status,
-                hermes_setup,
                 filing_card,
                 theme_fetch,
                 rules,
@@ -170,7 +168,6 @@ impl App {
                 key_bindings,
                 key_bindings_recording,
                 filing_status,
-                hermes_setup,
                 filing_card,
                 theme_fetch,
                 rules,

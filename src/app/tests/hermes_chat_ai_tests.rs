@@ -172,7 +172,7 @@ async fn a_chat_waiting_for_hermes_says_it_needs_setup_when_the_start_fails() {
         parts,
         &[ncrs_hermes_chat::Part::Text(
             Language::German
-                .text(ncrs_i18n::Msg::HermesChatNeedsSetup)
+                .text(ncrs_i18n::Msg::HermesChatOff)
                 .to_owned()
         )]
     );

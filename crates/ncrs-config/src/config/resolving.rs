@@ -16,7 +16,8 @@ pub fn own_entries(entries: &[String], is_valid: impl Fn(&str) -> bool) -> Vec<S
 /// start or cost the user the rest of the config.
 pub fn resolve_filing(section: &FilingSection, home: Option<&Path>) -> Result<Filing, FilingError> {
     let mut filing = Filing {
-        enabled: section.enabled,
+        enabled: section.enabled.unwrap_or(false),
+        first_run: *section == FilingSection::default(),
         locations: Vec::new(),
         load: resolve_load(section.load.as_ref())?,
         ai: resolve_ai(section.ai.as_ref())?,

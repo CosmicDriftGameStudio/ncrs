@@ -146,10 +146,17 @@ impl App {
         if let Err(err) = &loaded {
             eprintln!("ncrs: {err}");
         }
-        let filing = loaded
+        let mut filing = loaded
             .as_ref()
             .map(|config| config.filing.clone())
             .unwrap_or_default();
+        let first_run = loaded.is_ok() && filing.first_run && !filing.enabled;
+        if let (true, Some(path)) = (first_run, config_path.as_deref()) {
+            match config::write_filing_enabled(path, true) {
+                Ok(written) => filing = written.filing,
+                Err(_) => eprintln!("ncrs: could not write the first-run setting to the config"),
+            }
+        }
         let home = fs::home_dir();
         let (mut panels, panel_loads) = Self::starting_at(
             saved.left.start_directory().unwrap_or_else(fs::start_dir),
@@ -180,10 +187,9 @@ impl App {
         (app, Task::batch([panel_loads, filing_start]))
     }
 
-    /// Starts the filing module when `filing` switches it on. The database
-    /// and its directory are not created here: only after the user chose at
-    /// the encryption question. Switched on without locations, the module
-    /// has nothing to work on, so the setup opens.
+    /// Starts the filing module when `filing` switches it on. The module
+    /// creates a missing index by itself, encrypted, and works on no folder
+    /// until the user picks one in the chat.
     pub fn with_filing(
         mut self,
         filing: &Filing,
@@ -193,9 +199,6 @@ impl App {
         self.hermes.index_path = db_path;
         self.hermes.key_store = Some(ncrs_hermes_ui::KeyStoreHandle(store));
         let task = self.start_filing_module(filing);
-        if filing.enabled && filing.locations.is_empty() {
-            self.open_hermes_setup();
-        }
         (self, task)
     }
 
@@ -459,7 +462,6 @@ impl App {
             config_path: None,
             file_list_tags: FileListTags::default(),
             kinds: Kinds::default(),
-            hermes_flow_step: 0,
             settings: Settings::default(),
             hermes: ncrs_hermes_ui::Hermes::default(),
             theme_preset: ThemePreset::DEFAULT,

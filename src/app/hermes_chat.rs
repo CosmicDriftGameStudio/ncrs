@@ -86,13 +86,16 @@ impl App {
 
     pub(in crate::app) fn chat_availability(&self) -> ncrs_hermes_chat::Availability {
         match self.hermes.filing.as_ref() {
-            None => ncrs_hermes_chat::Availability::Starting,
+            None if self.hermes.filing_config.enabled || self.hermes.is_restarting() => {
+                ncrs_hermes_chat::Availability::Starting
+            }
+            None => ncrs_hermes_chat::Availability::Off,
             Some(module) => match module.chat_access(Arc::clone(&self.trash)) {
                 Some(access) => ncrs_hermes_chat::Availability::Ready(access),
                 None if self.hermes.is_restarting() || module.is_starting() => {
                     ncrs_hermes_chat::Availability::Starting
                 }
-                None => ncrs_hermes_chat::Availability::NeedsSetup,
+                None => ncrs_hermes_chat::Availability::Off,
             },
         }
     }
@@ -161,9 +164,17 @@ impl App {
             ncrs_hermes_chat::Action::OpenOcrModels => {
                 self.update_ocr_models(OcrModelsMessage::Open)
             }
-            ncrs_hermes_chat::Action::OpenHermesSettings => {
-                self.show_setting(crate::messages::SettingsFeature::Hermes, None)
-            }
+            ncrs_hermes_chat::Action::TurnOnHermes => self.turn_on_hermes(),
+        }
+    }
+
+    /// Off by the setting: the setting is switched on. Stopped on a card the
+    /// user left: the module is built again.
+    fn turn_on_hermes(&mut self) -> Task<Message> {
+        if self.hermes.filing_config.enabled {
+            self.run_hermes_flow(Vec::new(), ncrs_hermes_ui::restart_hermes_module)
+        } else {
+            self.update_settings(SettingsMessage::Change(SettingChange::HermesEnabled(true)))
         }
     }
 

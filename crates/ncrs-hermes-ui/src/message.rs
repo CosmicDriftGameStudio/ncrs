@@ -18,14 +18,12 @@ use ncrs_pipeline::Load;
 use crate::condition_editor::ConditionEdit;
 use crate::filing_pieces::TargetEdit;
 use crate::hermes_column::{ColumnReading, ColumnStage, FileDetail, FolderRole};
-use crate::hermes_setup::FolderSlot;
 
 /// What the views of the Hermes pages send.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Message {
     Filing(FilingMessage),
     FilingStatus(FilingStatusMessage),
-    HermesSetup(HermesSetupMessage),
     HermesOverview(HermesOverviewMessage),
     Rules(RulesMessage),
     QuickFix(QuickFixMessage),
@@ -96,36 +94,6 @@ pub enum HermesColumnMessage {
     /// Hermes was told to leave these paths alone.
     Excluded {
         paths: Vec<PathBuf>,
-        result: Result<(), String>,
-    },
-}
-
-/// Everything the first-time setup of Hermes sends.
-#[derive(Debug, Clone, PartialEq)]
-pub enum HermesSetupMessage {
-    /// Open the system folder dialog for one of the two folders.
-    PickFolder(FolderSlot),
-    /// What the dialog returned; `None` when it was cancelled or could not open.
-    FolderPicked {
-        slot: FolderSlot,
-        folder: Option<PathBuf>,
-    },
-    /// The folder picked, looked up on disk: its canonical path, or why it
-    /// cannot be used.
-    Resolved {
-        slot: FolderSlot,
-        folder: PathBuf,
-        resolved: Result<PathBuf, String>,
-    },
-    ChooseEncrypted(bool),
-    ToggleLoadModel,
-    Start,
-    /// The filing settings read back from the written file.
-    Written(Result<Filing, FilingWriteError>),
-    Later,
-    /// The access to a picked folder was kept, or why not (sandbox only).
-    Granted {
-        folder: PathBuf,
         result: Result<(), String>,
     },
 }

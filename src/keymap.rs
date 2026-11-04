@@ -13,10 +13,10 @@ use crate::messages::Message;
 use crate::messages::PanelMessage;
 use crate::messages::{
     AboutMessage, AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage,
-    FilingStatusMessage, GrantMessage, HermesChatMessage, HermesFileMessage,
-    KeyBindingsMessage, OcrModelsMessage, PanelSide, QuickFixMessage, QuickOpenMessage,
-    RemoteMessage, RulesMessage, SavedQueriesMessage, SearchMessage, SettingsMessage, ThemeFetchMessage,
-    TransferKind, TrashMessage,
+    FilingStatusMessage, GrantMessage, HermesChatMessage, HermesFileMessage, KeyBindingsMessage,
+    OcrModelsMessage, PanelSide, QuickFixMessage, QuickOpenMessage, RemoteMessage, RulesMessage,
+    SavedQueriesMessage, SearchMessage, SettingsMessage, ThemeFetchMessage, TransferKind,
+    TrashMessage,
 };
 use ncrs_fs::SortColumn;
 

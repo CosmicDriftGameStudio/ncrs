@@ -361,7 +361,6 @@ mod tests {
                 // The name of the feature, the same in both languages.
                 | Msg::ColumnHermes
                 | Msg::GroupHermes
-                | Msg::HermesSetupBadge
                 | Msg::SettingsFeatureHermes
                 | Msg::SettingsFeatureIndex
                 // A plus sign only.
@@ -409,8 +408,6 @@ mod tests {
                 name,
                 FuturamaName::GroupHermes
                     | FuturamaName::ActionFilingSetup
-                    | FuturamaName::FilingSetupTitle
-                    | FuturamaName::HermesSetupFrameTitle
             );
             assert_eq!(en == de, same_word, "{name:?}: en {en:?}, de {de:?}");
         }

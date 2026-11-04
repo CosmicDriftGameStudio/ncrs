@@ -8,7 +8,6 @@ use ncrs_index::KeyStore;
 
 use crate::filing_status::FilingStatus;
 use crate::hermes_column::{ColumnStage, HermesColumn};
-use crate::hermes_setup::{ExistingIndex, HermesSetup, SetupFocus, SetupOffer, StartPlan};
 use crate::message::HermesPage;
 use crate::quick_fix::QuickFix;
 use crate::reading_again::ReadingAgain;
@@ -21,8 +20,6 @@ use crate::tags_page::TagsPage;
 /// closed and opened again is not taken for the answer of the new one.
 #[derive(Debug, Default)]
 pub struct Hermes {
-    /// The card that sets Hermes up the first time.
-    pub hermes_setup: Option<HermesSetup>,
     /// The fixes for an inquiry; at most one of it and the context menu.
     pub quick_fix: Option<QuickFix>,
     pub quick_fix_generation: u64,
@@ -58,8 +55,6 @@ pub struct Hermes {
     pub filing: Option<FilingModule>,
     /// Started once the filing module is ready; dropping it stops the workers.
     pub pipeline: Option<ncrs_pipeline::Runner>,
-    /// What "Hermes starten" still has to do once the module gets there.
-    pub pending_hermes_start: Option<StartPlan>,
     /// `Snapshot::plans_made` the filing job was last asked for.
     pub plans_filed_for: usize,
     /// The module is being rebuilt after an AI setting changed: its
@@ -136,37 +131,5 @@ impl Hermes {
         self.rules = None;
         self.saved_queries = None;
         self.tags = None;
-    }
-
-    /// The card that sets Hermes up cannot be changed while the folders are
-    /// written or the module starts and creates the index.
-    pub fn setup_is_busy(&self) -> bool {
-        self.pending_hermes_start.is_some()
-            || self.hermes_setup.as_ref().is_some_and(HermesSetup::is_busy)
-            || self
-                .filing
-                .as_ref()
-                .is_some_and(FilingModule::is_creating_index)
-    }
-
-    /// The elements of the setup card the keys go through, in order.
-    pub fn setup_focus_order(&self) -> Vec<SetupFocus> {
-        self.hermes_setup
-            .as_ref()
-            .map(|setup| setup.focus_order(setup.can_start() && !self.setup_is_busy()))
-            .unwrap_or_default()
-    }
-
-    /// What the setup card is told about the index and the model on disk.
-    pub fn setup_offer(&self, model_is_installed: fn(&Path) -> bool) -> SetupOffer {
-        let models_dir = self
-            .index_path
-            .as_deref()
-            .and_then(ncrs_filing::filing::ai_models_dir);
-        SetupOffer {
-            existing_index: self.index_path.as_deref().and_then(ExistingIndex::of_file),
-            model_download: models_dir.is_some_and(|dir| !model_is_installed(&dir)),
-            hermes_was_off: self.is_off(),
-        }
     }
 }

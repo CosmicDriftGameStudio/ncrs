@@ -132,9 +132,7 @@ impl App {
     }
 
     pub(in crate::app) fn dialog_button_count(&self) -> usize {
-        if self.hermes.hermes_setup.is_some() {
-            self.hermes.setup_focus_order().len()
-        } else if self.about.is_some() {
+        if self.about.is_some() {
             3
         } else if self.settings.model_card_has_one_button() {
             1
@@ -154,9 +152,6 @@ impl App {
 
     /// Enter in a button dialog: whatever the focused button does.
     pub(in crate::app) fn activate_dialog_button(&mut self) -> Task<Message> {
-        if self.hermes.hermes_setup.is_some() {
-            return self.activate_hermes_focus();
-        }
         if self.start_over_dialog {
             return if self.dialog_focus == hermes_overview_ui::START_OVER_CONFIRM_FOCUS {
                 self.update_hermes_overview(HermesOverviewMessage::ConfirmStartOver)
@@ -256,9 +251,7 @@ impl App {
 
     /// Every dialog and card that covers the panels and the pages.
     pub(in crate::app) fn dialog_is_open(&self) -> bool {
-        self.dialog_apart_from_hermes_is_open()
-            || self.hermes.quick_fix.is_some()
-            || self.hermes.hermes_setup.is_some()
+        self.dialog_apart_from_hermes_is_open() || self.hermes.quick_fix.is_some()
     }
 
     pub(in crate::app) fn dialog_apart_from_hermes_is_open(&self) -> bool {

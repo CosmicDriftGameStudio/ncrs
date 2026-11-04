@@ -4489,6 +4489,7 @@ mod settings_tab {
             own_names: Vec::new(),
             own_ibans: Vec::new(),
             own_tax_ids: Vec::new(),
+            first_run: false,
         }
     }
 
@@ -5088,137 +5089,6 @@ mod servers_page {
     }
 }
 
-// A failing assertion in a test is the signal, so `unwrap` belongs here; the
-// lint is meant for the production paths.
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-#[cfg(test)]
-mod hermes_setup_card {
-    use std::path::PathBuf;
-
-    use ncrs_intake::LocationMode;
-
-    use super::*;
-    use crate::config::FilingLocation;
-    use crate::hermes_setup::{ExistingIndex, SetupOffer};
-    use crate::messages::HermesSetupMessage;
-
-    fn folders() -> Vec<FilingLocation> {
-        let at = |path: &str, mode, is_target| FilingLocation {
-            path: PathBuf::from(path),
-            mode,
-            images: false,
-            is_target,
-            transfer: Default::default(),
-        };
-        vec![
-            at("/home/test/Scans", LocationMode::Inbox, false),
-            at("/home/test/Documents", LocationMode::Archive, true),
-        ]
-    }
-
-    fn offer(existing_index: Option<ExistingIndex>) -> SetupOffer {
-        SetupOffer {
-            existing_index,
-            model_download: true,
-            hermes_was_off: false,
-        }
-    }
-
-    fn empty() -> App {
-        App::with_hermes_setup(&[], offer(None))
-    }
-
-    fn filled() -> App {
-        let mut app = App::with_hermes_setup(&folders(), offer(None));
-        drop(app.update(Message::HermesSetup(HermesSetupMessage::ToggleLoadModel)));
-        app
-    }
-
-    fn with_existing_index() -> App {
-        App::with_hermes_setup(&folders(), offer(Some(ExistingIndex::Encrypted)))
-    }
-
-    fn assert_snapshot(app: &App, name: &str) {
-        let matches = simulator(app)
-            .snapshot(&iced::Theme::Dark)
-            .unwrap()
-            .matches_image(format!("tests/snapshots/{name}.png"))
-            .expect("snapshot comparison");
-        assert!(matches, "the card does not match {name}.png");
-    }
-
-    #[test]
-    fn the_card_matches_its_snapshots_in_both_languages() {
-        for (lang, suffix) in [(Language::English, "en"), (Language::German, "de")] {
-            assert_snapshot(
-                &empty().in_language(lang),
-                &format!("hermes_setup_empty_{suffix}"),
-            );
-            assert_snapshot(
-                &filled().in_language(lang),
-                &format!("hermes_setup_filled_{suffix}"),
-            );
-            assert_snapshot(
-                &with_existing_index().in_language(lang),
-                &format!("hermes_setup_existing_index_{suffix}"),
-            );
-        }
-    }
-
-    fn clicks(app: &App, label: &str) -> Vec<Message> {
-        let mut sim = simulator(app);
-        sim.click(label).unwrap();
-        sim.into_messages().collect()
-    }
-
-    #[test]
-    fn start_sends_its_message_only_when_both_folders_are_chosen() {
-        assert!(clicks(&empty(), "Start Hermes").is_empty());
-        assert_eq!(
-            clicks(&filled(), "Start Hermes"),
-            [Message::HermesSetup(HermesSetupMessage::Start)]
-        );
-    }
-
-    #[test]
-    fn later_closes_without_setting_anything_up() {
-        assert_eq!(
-            clicks(&empty(), "Later"),
-            [Message::HermesSetup(HermesSetupMessage::Later)]
-        );
-    }
-
-    #[test]
-    fn an_existing_index_replaces_the_choice_of_protection() {
-        let sentence = Language::English.text(crate::i18n::Msg::HermesSetupIndexExistsEncrypted);
-        simulator(&with_existing_index()).find(sentence).unwrap();
-        simulator(&filled()).find(sentence).unwrap_err();
-    }
-
-    #[test]
-    fn the_model_line_names_its_size_in_whole_decimal_megabytes() {
-        assert_eq!(
-            crate::ui::hermes_setup::model_size_label(),
-            crate::ui::format::megabytes(ncrs_ai::LOCAL_MODEL.size)
-        );
-    }
-
-    #[test]
-    fn the_intro_names_the_kind_of_computer() {
-        let intro = Language::English.text(if cfg!(target_os = "macos") {
-            crate::i18n::Msg::HermesSetupIntroMac
-        } else {
-            crate::i18n::Msg::HermesSetupIntroOther
-        });
-        simulator(&empty()).find(intro).unwrap();
-    }
-}
-
 #[cfg(test)]
 mod hit_list_snapshots {
     use super::*;
@@ -5361,6 +5231,7 @@ mod settings_index_page {
             own_names: Vec::new(),
             own_ibans: Vec::new(),
             own_tax_ids: Vec::new(),
+            first_run: false,
         }
     }
 

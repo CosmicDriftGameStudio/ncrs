@@ -97,6 +97,11 @@ pub enum ChatWork {
     WaitingFile {
         items: Vec<ReviewItem>,
     },
+    /// Files the documents in `folder`: below the target when relative.
+    WaitingFileInto {
+        items: Vec<ReviewItem>,
+        folder: std::path::PathBuf,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -259,6 +264,9 @@ impl ChatAccess {
             ChatWork::WaitingLoad => ChatResult::WaitingLoaded(waiting::load(self)),
             ChatWork::WaitingFile { items } => {
                 ChatResult::WaitingFiled(waiting::file(self, &items))
+            }
+            ChatWork::WaitingFileInto { items, folder } => {
+                ChatResult::WaitingFiled(waiting::file_into(self, &items, &folder))
             }
         }
     }

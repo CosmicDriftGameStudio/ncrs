@@ -12,7 +12,7 @@ use ncrs_i18n::Language;
 pub enum Availability {
     Ready(ChatAccess),
     Starting,
-    NeedsSetup,
+    Off,
 }
 
 /// What `update` reads from the app.

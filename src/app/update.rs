@@ -92,7 +92,7 @@ fn asks_for_hermes(message: &Message) -> bool {
         Message::HermesFile(
             HermesFileMessage::HandToInbox
                 | HermesFileMessage::ProcessAgain
-                    | HermesFileMessage::SetRole(_)
+                | HermesFileMessage::SetRole(_)
                 | HermesFileMessage::ToggleExclusion
                 | HermesFileMessage::ShowInInspection
         ) | Message::QuickFix(QuickFixMessage::Open)
@@ -574,8 +574,8 @@ impl App {
             Message::Settings(settings_message) => self.update_settings(settings_message),
             Message::Filing(filing_message) => self.update_filing(filing_message),
             Message::FilingStatus(page_message) => {
-                let looks_for_waiting = matches!(page_message, FilingStatusMessage::Tick)
-                    && self.hermes_chat.open;
+                let looks_for_waiting =
+                    matches!(page_message, FilingStatusMessage::Tick) && self.hermes_chat.open;
                 let status = self.run_hermes_flow(Vec::new(), |hermes, ctx| {
                     ncrs_hermes_ui::update_filing_status(hermes, page_message, ctx)
                 });
@@ -590,13 +590,8 @@ impl App {
                 .run_hermes_flow(Vec::new(), |hermes, ctx| {
                     ncrs_hermes_ui::update_hermes_column(hermes, column_message, ctx)
                 }),
-            Message::HermesSetup(setup_message) => self.update_hermes_setup(setup_message),
             Message::HermesOverview(overview_message) => {
                 self.update_hermes_overview(overview_message)
-            }
-            Message::HermesFlowTick => {
-                self.hermes_flow_step = self.hermes_flow_step.wrapping_add(1);
-                Task::none()
             }
             #[cfg(any(target_os = "macos", test))]
             Message::RunCommand(action) => self.run_command(action),

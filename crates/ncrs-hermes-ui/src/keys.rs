@@ -8,8 +8,8 @@ use ncrs_index::QuerySpec;
 use ncrs_pipeline::Load;
 
 use crate::message::{
-    FilingStatusMessage, HermesOverviewMessage, HermesSetupMessage, Message, QuickFixMessage,
-    RuleFormMessage, RulesMessage, SavedQueriesMessage, TagsMessage,
+    FilingStatusMessage, HermesOverviewMessage, Message, QuickFixMessage, RuleFormMessage,
+    RulesMessage, SavedQueriesMessage, TagsMessage,
 };
 
 /// What the keys read of the state of the app.
@@ -18,7 +18,6 @@ pub struct KeyFacts {
     pub rules_form: bool,
     pub rules_confirming_delete: bool,
     pub start_over_dialog: bool,
-    pub hermes_setup: bool,
 }
 
 /// The key that is pressed.
@@ -161,17 +160,11 @@ pub fn rules_key(
     }
 }
 
-/// What Escape sends while the question to begin again or the setup card is up.
+/// What Escape sends while the question to begin again is up.
 pub fn hermes_card_close_message(facts: &KeyFacts) -> Option<Message> {
-    if facts.start_over_dialog {
-        Some(Message::HermesOverview(
-            HermesOverviewMessage::CancelStartOver,
-        ))
-    } else if facts.hermes_setup {
-        Some(Message::HermesSetup(HermesSetupMessage::Later))
-    } else {
-        None
-    }
+    facts.start_over_dialog.then_some(Message::HermesOverview(
+        HermesOverviewMessage::CancelStartOver,
+    ))
 }
 
 pub fn filing_status_key(

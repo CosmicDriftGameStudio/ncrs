@@ -36,7 +36,6 @@ fn hermes_key_facts(prompt: &PromptKeyState) -> ncrs_hermes_ui::keys::KeyFacts {
         rules_form: prompt.rules_form,
         rules_confirming_delete: prompt.rules_confirming_delete,
         start_over_dialog: prompt.start_over_dialog,
-        hermes_setup: prompt.hermes_setup,
     }
 }
 

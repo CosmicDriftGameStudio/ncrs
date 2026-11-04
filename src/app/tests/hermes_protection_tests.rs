@@ -1,5 +1,3 @@
-use std::sync::Mutex;
-
 use iced_test::futures::futures::StreamExt as _;
 use iced_test::runtime::{task, Action};
 use ncrs_intake::LocationMode;
@@ -7,31 +5,6 @@ use tempfile::TempDir;
 
 use crate::app::*;
 use crate::config::FilingLocation;
-use crate::filing_setup::SetupNote;
-use crate::hermes_setup::{FolderSlot, SetupOffer};
-
-static GRANTED: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
-
-fn recording_grant(_: &Path, folder: &Path) -> Result<(), String> {
-    let mut recorded = GRANTED.lock().map_err(|err| err.to_string())?;
-    recorded.push(folder.to_path_buf());
-    Ok(())
-}
-
-fn refusing_grant(_: &Path, _: &Path) -> Result<(), String> {
-    Err("bookmark refused".to_owned())
-}
-
-fn sandboxed(mut app: App, grant: fn(&Path, &Path) -> Result<(), String>) -> App {
-    app.sandbox = fs::SandboxAccess {
-        active: true,
-        grants_dir: Some(PathBuf::from("grants-of-this-test")),
-        home_readable: || true,
-        grant,
-        covers: |_, _| true,
-    };
-    app
-}
 
 async fn settle(app: &mut App, message: Message) {
     let mut queue = vec![message];
@@ -57,70 +30,6 @@ fn location(path: &str, mode: LocationMode, is_target: bool) -> FilingLocation {
         is_target,
         transfer: Default::default(),
     }
-}
-
-fn no_offer() -> SetupOffer {
-    SetupOffer {
-        existing_index: None,
-        model_download: false,
-        hermes_was_off: false,
-    }
-}
-
-#[tokio::test]
-async fn a_folder_picked_in_the_setup_card_is_granted_in_the_sandbox() {
-    let mut app = sandboxed(App::with_hermes_setup(&[], no_offer()), recording_grant);
-    let picked = PathBuf::from("/home/test/picked-for-the-setup");
-
-    settle(
-        &mut app,
-        Message::HermesSetup(HermesSetupMessage::FolderPicked {
-            slot: FolderSlot::Inbox,
-            folder: Some(picked.clone()),
-        }),
-    )
-    .await;
-
-    assert!(GRANTED.lock().unwrap().contains(&picked));
-}
-
-#[tokio::test]
-async fn a_refused_grant_stays_as_a_sentence_in_the_setup_card() {
-    let mut app = sandboxed(App::with_hermes_setup(&[], no_offer()), refusing_grant);
-    let picked = PathBuf::from("/home/test/refused-for-the-setup");
-
-    settle(
-        &mut app,
-        Message::HermesSetup(HermesSetupMessage::FolderPicked {
-            slot: FolderSlot::Inbox,
-            folder: Some(picked.clone()),
-        }),
-    )
-    .await;
-
-    assert!(matches!(
-        app.hermes.hermes_setup.as_ref().unwrap().note(),
-        Some(SetupNote::GrantFailed { folder, reason })
-            if *folder == picked && reason == "bookmark refused"
-    ));
-}
-
-#[tokio::test]
-async fn without_a_grants_folder_nothing_is_granted() {
-    let mut app = App::with_hermes_setup(&[], no_offer());
-    app.sandbox.grants_dir = None;
-    settle(
-        &mut app,
-        Message::HermesSetup(HermesSetupMessage::FolderPicked {
-            slot: FolderSlot::Inbox,
-            folder: Some(PathBuf::from("/home/test/not-granted")),
-        }),
-    )
-    .await;
-    assert!(!GRANTED
-        .lock()
-        .unwrap()
-        .contains(&PathBuf::from("/home/test/not-granted")));
 }
 
 #[derive(Debug)]
@@ -294,7 +203,6 @@ async fn starting_over_asks_first_and_cancelling_removes_nothing() {
     assert!(!app.start_over_dialog);
     assert!(db.exists() && db.with_file_name("index.db.encrypting").exists());
     assert!(store.snapshot().is_some());
-    assert!(app.hermes.hermes_setup.is_none());
 
     settle(
         &mut app,
@@ -322,7 +230,7 @@ fn escape_cancels_the_question_before_anything_else() {
 }
 
 #[tokio::test]
-async fn confirming_removes_the_index_files_and_the_key_and_opens_the_setup_filled() {
+async fn confirming_removes_the_index_files_and_the_key_and_starts_afresh_in_the_chat() {
     let dir = TempDir::new().unwrap();
     let db = index_in(&dir);
     let store = Arc::new(ncrs_index::InMemoryKeyStore::empty());
@@ -349,17 +257,19 @@ async fn confirming_removes_the_index_files_and_the_key_and_opens_the_setup_fill
     .await;
 
     assert!(!app.start_over_dialog);
-    assert!(!db.exists());
     assert!(!db.with_file_name("index.db.encrypting").exists());
     assert!(db.with_file_name("index.db.bak").exists());
-    assert_eq!(store.snapshot(), None);
-    assert!(app.hermes.filing.as_ref().unwrap().asks_encryption());
-    let setup = app
-        .hermes
-        .hermes_setup
-        .as_ref()
-        .expect("the setup card opens");
-    assert!(setup.can_start(), "the folders are still filled in");
+    assert!(app.hermes_chat.open, "the chat opens");
+    assert!(matches!(
+        app.hermes.filing.as_ref().unwrap().phase(),
+        Phase::ShowRecoveryKey { .. }
+    ));
+    assert!(store.snapshot().is_some(), "a new key was kept");
+    assert_eq!(
+        app.hermes.filing_config.locations.len(),
+        2,
+        "the config locations stay"
+    );
 }
 
 #[tokio::test]
@@ -403,3 +313,222 @@ async fn a_dismissed_key_card_shows_as_a_missing_key() {
     ));
 }
 
+async fn settle_task(app: &mut App, first: Task<Message>) {
+    let mut queue = vec![first];
+    while let Some(next) = queue.pop() {
+        let Some(mut stream) = task::into_stream(next) else {
+            continue;
+        };
+        while let Some(action) = stream.next().await {
+            if let Action::Output(reported) = action {
+                if !matches!(reported, Message::NoticeExpired(_)) {
+                    queue.push(app.update(reported));
+                }
+            }
+        }
+    }
+}
+
+fn environment_in(dir: &TempDir, store: Arc<dyn KeyStore + Send + Sync>) -> Environment {
+    Environment {
+        config_path: Some(dir.path().join("config.toml")),
+        index_path: Some(index_in(dir)),
+        key_store: store,
+        ..Environment::isolated()
+    }
+}
+
+async fn started_in(environment: Environment) -> App {
+    let (mut app, start) = App::restored(environment, SessionState::default());
+    settle_task(&mut app, start).await;
+    app
+}
+
+fn config_in(dir: &TempDir) -> String {
+    std::fs::read_to_string(dir.path().join("config.toml")).unwrap_or_default()
+}
+
+fn phase_of(app: &App) -> &Phase {
+    app.hermes.filing.as_ref().unwrap().phase()
+}
+
+#[tokio::test]
+async fn the_first_start_turns_hermes_on_and_makes_an_encrypted_index() {
+    let dir = TempDir::new().unwrap();
+    let store = Arc::new(ncrs_index::InMemoryKeyStore::empty());
+    let app = started_in(environment_in(
+        &dir,
+        Arc::clone(&store) as Arc<dyn KeyStore + Send + Sync>,
+    ))
+    .await;
+
+    assert!(
+        config_in(&dir).contains("enabled = true"),
+        "{}",
+        config_in(&dir)
+    );
+    assert!(!ncrs_index::Index::file_is_plain(&index_in(&dir)).unwrap());
+    assert!(store.snapshot().is_some());
+    assert!(app.hermes.filing_config.locations.is_empty());
+    assert!(
+        matches!(phase_of(&app), Phase::ShowRecoveryKey { .. }),
+        "the new key is shown once"
+    );
+}
+
+#[tokio::test]
+async fn the_chat_greets_while_hermes_starts_and_the_first_folder_becomes_a_location() {
+    let dir = TempDir::new().unwrap();
+    let mut app = started_in(environment_in(
+        &dir,
+        Arc::new(ncrs_index::InMemoryKeyStore::empty()),
+    ))
+    .await;
+    settle(&mut app, Message::HermesChat(HermesChatMessage::Open)).await;
+    assert!(app.hermes_chat.open);
+    assert!(app.hermes_chat.waiting_for_hermes);
+    assert_eq!(app.hermes_chat.thread().len(), 1);
+    assert!(
+        app.hermes_chat
+            .chips()
+            .iter()
+            .any(|chip| chip.reply == ncrs_hermes_chat::ChipReply::PickFolder),
+        "{:?}",
+        app.hermes_chat.thread()
+    );
+    assert!(app
+        .hermes_chat
+        .chips()
+        .iter()
+        .all(|chip| chip.reply != ncrs_hermes_chat::ChipReply::TurnOn));
+
+    let Phase::ShowRecoveryKey {
+        group: shown_group, ..
+    } = phase_of(&app)
+    else {
+        panic!("the recovery key is not shown");
+    };
+    let group = *shown_group;
+    let shown = app
+        .hermes
+        .filing
+        .as_ref()
+        .unwrap()
+        .recovery_key_text()
+        .unwrap();
+    let part = shown.split('-').nth(group).unwrap().to_owned();
+    settle(
+        &mut app,
+        Message::Filing(FilingMessage::GroupInput(part.as_str().into())),
+    )
+    .await;
+    settle(&mut app, Message::Filing(FilingMessage::GroupSubmit)).await;
+    assert_eq!(phase_of(&app), &Phase::Ready);
+
+    let documents = dir.path().join("Documents");
+    std::fs::create_dir(&documents).unwrap();
+    let task = app.run_hermes_chat_action(ncrs_hermes_chat::Action::SetFolderRole {
+        folder: documents,
+        role: FolderRole::FilingLocation,
+    });
+    settle_task(&mut app, task).await;
+    let [location] = app.hermes.filing_config.locations.as_slice() else {
+        panic!(
+            "one location expected: {:?}",
+            app.hermes.filing_config.locations
+        );
+    };
+    assert!(location.is_target && location.path.ends_with("Documents"));
+    assert!(config_in(&dir).contains("Documents"), "{}", config_in(&dir));
+}
+
+#[tokio::test]
+async fn hermes_switched_off_stays_off_and_the_chat_offers_to_turn_it_on() {
+    let dir = TempDir::new().unwrap();
+    std::fs::write(
+        dir.path().join("config.toml"),
+        "[modules.filing]\nenabled = false\n",
+    )
+    .unwrap();
+    let mut app = started_in(environment_in(
+        &dir,
+        Arc::new(ncrs_index::InMemoryKeyStore::empty()),
+    ))
+    .await;
+    assert!(app.hermes.filing.is_none());
+    assert!(config_in(&dir).contains("enabled = false"));
+    assert!(!index_in(&dir).exists());
+
+    settle(&mut app, Message::HermesChat(HermesChatMessage::Open)).await;
+    let turn_on = app
+        .hermes_chat
+        .chips()
+        .iter()
+        .find(|chip| chip.reply == ncrs_hermes_chat::ChipReply::TurnOn)
+        .map(|chip| {
+            Message::HermesChat(HermesChatMessage::ChipPressed {
+                label: chip.label.clone(),
+                reply: chip.reply.clone(),
+            })
+        })
+        .expect("a chip turns Hermes on");
+    settle(&mut app, turn_on).await;
+
+    assert!(
+        config_in(&dir).contains("enabled = true"),
+        "{}",
+        config_in(&dir)
+    );
+    assert!(app.hermes.filing.is_some());
+}
+
+#[tokio::test]
+async fn a_restart_keeps_a_plain_index_plain() {
+    let dir = TempDir::new().unwrap();
+    plain_index(&index_in(&dir));
+    std::fs::write(
+        dir.path().join("config.toml"),
+        "[modules.filing]\nenabled = true\n",
+    )
+    .unwrap();
+    let app = started_in(environment_in(
+        &dir,
+        Arc::new(ncrs_index::InMemoryKeyStore::empty()),
+    ))
+    .await;
+
+    assert_eq!(phase_of(&app), &Phase::Ready);
+    assert!(ncrs_index::Index::file_is_plain(&index_in(&dir)).unwrap());
+    assert_eq!(facts_of(&app).protection, Protection::Plain);
+}
+
+#[tokio::test]
+async fn an_index_whose_key_is_missing_asks_for_it_by_itself() {
+    let dir = TempDir::new().unwrap();
+    encrypted_index_with_sidecars(&index_in(&dir), &ncrs_index::InMemoryKeyStore::empty());
+    std::fs::write(
+        dir.path().join("config.toml"),
+        "[modules.filing]\nenabled = true\n",
+    )
+    .unwrap();
+    let app = started_in(environment_in(
+        &dir,
+        Arc::new(ncrs_index::InMemoryKeyStore::empty()),
+    ))
+    .await;
+
+    assert!(matches!(phase_of(&app), Phase::AskRecoveryKey { .. }));
+    assert!(app.hermes.filing.as_ref().unwrap().has_card());
+}
+
+#[tokio::test]
+async fn a_key_store_that_refuses_ends_in_the_error_card_not_in_a_plain_index() {
+    let dir = TempDir::new().unwrap();
+    let app = started_in(environment_in(&dir, Arc::new(RefusingStore))).await;
+
+    assert!(matches!(phase_of(&app), Phase::Failed(_)));
+    assert!(app.hermes.filing.as_ref().unwrap().has_card());
+    assert!(
+        !index_in(&dir).exists() || !ncrs_index::Index::file_is_plain(&index_in(&dir)).unwrap()
+    );
+}

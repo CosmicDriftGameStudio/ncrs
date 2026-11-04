@@ -279,6 +279,24 @@ impl ReviewAccess {
         summary
     }
 
+    /// Files each item under its own file name into `folder`, one after the
+    /// other, through the same journaled move as [`Self::confirm`]. A relative
+    /// `folder` lies below the target.
+    pub fn accept_into(&self, items: &[ReviewItem], folder: &Path) -> AcceptSummary {
+        let root = self.target_root.join(folder);
+        let mut summary = AcceptSummary::default();
+        for item in items {
+            let outcome = match item.path.file_stem().and_then(|stem| stem.to_str()) {
+                Some(stem) => {
+                    self.confirm_in(&root, item.entry, item.document_id, &item.fields, stem)
+                }
+                None => Err(PATTERN_DOES_NOT_FIT.to_owned()),
+            };
+            summary.record(outcome);
+        }
+        summary
+    }
+
     /// Hermes leaves these paths alone from now on.
     pub fn exclude(&self, paths: &[PathBuf]) -> Result<(), String> {
         self.with_index(|index| paths.iter().try_for_each(|path| index.exclude_path(path)))
@@ -309,11 +327,22 @@ impl ReviewAccess {
         fields: &DocumentFields,
         pattern: &str,
     ) -> Result<ConfirmOutcome, String> {
+        self.confirm_in(&self.target_root, entry, document_id, fields, pattern)
+    }
+
+    fn confirm_in(
+        &self,
+        root: &Path,
+        entry: ReviewEntryId,
+        document_id: DocumentId,
+        fields: &DocumentFields,
+        pattern: &str,
+    ) -> Result<ConfirmOutcome, String> {
         let mut guard = self.slot.lock().unwrap_or_else(PoisonError::into_inner);
         let index = guard.as_mut().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
         confirm(
             index,
-            &self.target_root,
+            root,
             (entry, document_id),
             fields,
             pattern,

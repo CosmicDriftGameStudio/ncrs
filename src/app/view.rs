@@ -174,11 +174,7 @@ impl App {
             .filter(|module| module.has_card())
             .and_then(|module| filing_ui::view(module, self.window_size, self.lang, &self.palette))
             .map(|card| card.map(Message::from));
-        let hermes_card = self.hermes_setup_view();
-        let cards: Vec<Element<'_, Message>> = hermes_card
-            .into_iter()
-            .chain(module_card)
-            .collect();
+        let cards: Vec<Element<'_, Message>> = module_card.into_iter().collect();
         let base: Element<'_, Message> = if cards.is_empty() {
             window.into()
         } else {
@@ -437,34 +433,6 @@ impl App {
         // The prompt sits above everything and takes every keystroke; the scrim
         // swallows clicks meant for the panels underneath.
         Stack::with_children([root, dialog::scrim(prompt_element)]).into()
-    }
-
-    fn hermes_setup_view(&self) -> Option<Element<'_, Message>> {
-        let setup = self.hermes.hermes_setup.as_ref()?;
-        let card = hermes_setup_ui::SetupView {
-            setup,
-            focus: self
-                .hermes
-                .setup_focus_order()
-                .get(self.dialog_focus)
-                .copied(),
-            busy: self.hermes.setup_is_busy(),
-            creating_index: self
-                .hermes
-                .filing
-                .as_ref()
-                .is_some_and(FilingModule::is_creating_index),
-            creation_error: self
-                .hermes
-                .filing
-                .as_ref()
-                .and_then(FilingModule::index_creation_error),
-            home: &self.home,
-            flow_step: self.hermes_flow_step,
-            lang: self.lang,
-            window: self.window_size,
-        };
-        Some(hermes_setup_ui::view(&card, &self.palette).map(Message::from))
     }
 
     pub(in crate::app) fn hermes_view_ctx(&self) -> ncrs_hermes_ui::ViewCtx<'_> {

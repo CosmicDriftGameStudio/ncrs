@@ -39,7 +39,7 @@ pub enum ChipReply {
     Cancel,
     Folder(PathBuf),
     PickFolder,
-    Setup,
+    TurnOn,
     ReadAnyway,
     KeepYes,
     WantChange,
@@ -117,6 +117,10 @@ pub enum ChipReply {
     WaitingShow,
     /// Files the group of waiting documents in question where it is proposed.
     WaitingFile,
+    /// Files the waiting document in question in this folder below the target.
+    WaitingFileInto(PathBuf),
+    /// Opens the picker for the folder the waiting document in question goes to.
+    WaitingOtherFolder,
     /// Leaves the group of waiting documents in question as it is.
     WaitingSkip,
 }
@@ -131,7 +135,7 @@ impl Session {
 impl ChipReply {
     /// Pressing it does not need the filing module.
     pub fn needs_no_hermes(&self) -> bool {
-        matches!(self, Self::Setup | Self::PickFolder)
+        matches!(self, Self::TurnOn | Self::PickFolder)
     }
 
     /// Whether handling the reply writes files, trash, rules or settings, or
@@ -151,11 +155,12 @@ impl ChipReply {
             | Self::PutBack
             | Self::TrashDuplicatesNow
             | Self::WaitingFile
+            | Self::WaitingFileInto(_)
             | Self::Undo => true,
             Self::Cancel
             | Self::Folder(_)
             | Self::PickFolder
-            | Self::Setup
+            | Self::TurnOn
             | Self::ReadAnyway
             | Self::WantChange
             | Self::ShowAll
@@ -201,6 +206,7 @@ impl ChipReply {
             | Self::ShowStaying
             | Self::WaitingShow
             | Self::WaitingSkip
+            | Self::WaitingOtherFolder
             | Self::TrialOtherTarget => false,
         }
     }
@@ -334,6 +340,8 @@ pub enum Step {
     UndoAsk,
     /// The next typed text is the name of the area a change is for.
     AreaName,
+    /// The next picked folder is where the unsure waiting document goes.
+    WaitingFolder,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

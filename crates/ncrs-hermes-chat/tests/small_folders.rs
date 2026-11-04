@@ -318,11 +318,11 @@ mod tests {
     #[test]
     fn without_a_filing_the_chat_asks_for_setup_or_waits() {
         let mut talk = small_talk();
-        talk.ctx.availability = Availability::NeedsSetup;
+        talk.ctx.availability = Availability::Off;
         talk.open();
-        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatNeedsSetup, &[])]);
-        talk.press(&ChipReply::Setup);
-        assert_eq!(talk.actions, vec![Action::OpenHermesSettings]);
+        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatOff, &[])]);
+        talk.press(&ChipReply::TurnOn);
+        assert_eq!(talk.actions, vec![Action::TurnOnHermes]);
 
         let mut waiting = small_talk();
         waiting.ctx.availability = Availability::Starting;
@@ -477,10 +477,10 @@ mod tests {
         talk.open();
         talk.type_text("hmmmm wie geht das");
         assert!(talk.state.waits_for_hermes());
-        talk.ctx.availability = Availability::NeedsSetup;
+        talk.ctx.availability = Availability::Off;
         talk.send(Message::HermesReady);
-        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatNeedsSetup, &[])]);
-        assert_eq!(talk.labels(), vec![say(Msg::HermesChatSetup, &[])]);
+        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatOff, &[])]);
+        assert_eq!(talk.labels(), vec![say(Msg::HermesChatTurnOn, &[])]);
         assert!(!talk.state.waits_for_hermes());
         assert!(talk.state.pending_work().is_none());
     }

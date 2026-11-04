@@ -259,14 +259,8 @@ fn creating_an_encrypted_index_without_a_credential_store_creates_no_file() {
 
     send(&mut module, FilingMessage::CreateIndex);
 
-    assert!(matches!(
-        module.phase(),
-        Phase::AskEncryption {
-            busy: false,
-            error: Some(_),
-            ..
-        }
-    ));
+    assert!(matches!(module.phase(), Phase::Failed(_)));
+    assert!(module.has_card());
     assert!(!db.exists());
     assert!(!is_open(&module));
 }

@@ -69,7 +69,7 @@ impl App {
         let access = match availability {
             ncrs_hermes_chat::Availability::Ready(access) => Some(access),
             ncrs_hermes_chat::Availability::Starting => return Task::none(),
-            ncrs_hermes_chat::Availability::NeedsSetup => None,
+            ncrs_hermes_chat::Availability::Off => None,
         };
         let Some(locations) = state.config().map(|config| config.filing.locations.clone()) else {
             return Task::none();
@@ -82,7 +82,7 @@ impl App {
                 tokio::task::spawn_blocking(move || {
                     read_documents_facts(access, &locations, lang, now)
                 })
-                    .await
+                .await
             },
             |joined| Message::Settings(SettingsMessage::FactsLoaded(joined.unwrap_or_default())),
         )
@@ -102,7 +102,11 @@ impl App {
             }));
         }
         self.grant_chosen_folder(&path, move |picked, result| {
-            Message::Settings(SettingsMessage::FolderGranted { kind, path: picked, result })
+            Message::Settings(SettingsMessage::FolderGranted {
+                kind,
+                path: picked,
+                result,
+            })
         })
     }
 

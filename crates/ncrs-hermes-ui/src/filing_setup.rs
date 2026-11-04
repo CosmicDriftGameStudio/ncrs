@@ -11,27 +11,6 @@ use crate::hermes_column::FolderRole;
 use ncrs_config::config::{self, Filing, FilingLocation, FilingRuleViolation, FilingWriteError};
 pub use ncrs_ui_kit::format::shown_path;
 
-/// What the card says about the last thing the user did.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SetupNote {
-    FolderUnusable {
-        folder: PathBuf,
-        reason: String,
-    },
-    /// Not a failure: the folder is in the list, nothing was added.
-    AlreadyAdded {
-        folder: PathBuf,
-    },
-    NoConfigPath,
-    SaveFailed(FilingWriteError),
-    /// The folder is chosen, but the access to it could not be kept for the
-    /// next start.
-    GrantFailed {
-        folder: PathBuf,
-        reason: String,
-    },
-}
-
 /// What keeps the list from being saved. Shown at once, so the user sees what
 /// to fix.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

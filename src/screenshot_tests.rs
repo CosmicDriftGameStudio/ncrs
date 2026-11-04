@@ -269,7 +269,10 @@ mod tests {
         let search_filters = crate::ui_tests::search_filters_card::app_with_filters();
         write_screenshot(&search_filters, "search-filters.png");
 
-        let filing = App::with_settings_open(crate::messages::SettingsFeature::Hermes, crate::config::Filing::default());
+        let filing = App::with_settings_open(
+            crate::messages::SettingsFeature::Hermes,
+            crate::config::Filing::default(),
+        );
         write_screenshot_to(&filing, OUTPUT_DIRECTORY, FILING_WINDOW_SIZE, "filing.png");
     }
 

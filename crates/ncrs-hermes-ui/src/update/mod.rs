@@ -3,9 +3,7 @@
 
 mod column;
 mod filing_job;
-mod filing_setup;
 mod hermes_file;
-mod hermes_setup;
 mod lifecycle;
 mod overview;
 mod quick_fix;
@@ -26,8 +24,8 @@ use crate::action::{Action, ProtectionStep};
 use crate::ctx::Ctx;
 use crate::hermes_column::FolderRole;
 use crate::message::{
-    HermesColumnMessage, HermesOverviewMessage, HermesPage, HermesSetupMessage, Message,
-    QuickFixMessage, RulesMessage, SavedQueriesMessage, TagsMessage,
+    HermesColumnMessage, HermesOverviewMessage, HermesPage, Message, QuickFixMessage,
+    RulesMessage, SavedQueriesMessage, TagsMessage,
 };
 use crate::state::Hermes;
 use ncrs_config::config::Filing;
@@ -42,14 +40,12 @@ pub use self::status::{
 
 pub type Outcome = (Task<Message>, Vec<Action>);
 
-/// The pages, the menu and the setup card of the Hermes state count, as they
-/// are now; the status page and the dialogs come from the context.
+/// The pages and the menu of the Hermes state count, as they are now; the status page and the dialogs come from the context.
 fn blocking_overlay_is_open(hermes: &Hermes, ctx: &Ctx<'_>) -> bool {
     ctx.status_page_open
         || ctx.overlay_apart_from_ablage_tab_open
         || hermes.page_is_open()
         || hermes.quick_fix.is_some()
-        || hermes.hermes_setup.is_some()
 }
 
 /// The Hermes page that is up, in the order the sidebar knows them.
@@ -129,16 +125,6 @@ pub fn update_saved_queries(
 ) -> Outcome {
     let mut actions = Vec::new();
     let task = saved_queries::update(hermes, message, ctx, &mut actions);
-    (task, actions)
-}
-
-pub fn update_hermes_setup(
-    hermes: &mut Hermes,
-    message: HermesSetupMessage,
-    ctx: &Ctx<'_>,
-) -> Outcome {
-    let mut actions = Vec::new();
-    let task = hermes_setup::update(hermes, message, ctx, &mut actions);
     (task, actions)
 }
 
@@ -242,18 +228,6 @@ pub fn start_filing_module(hermes: &mut Hermes, filing: &Filing, ctx: &Ctx<'_>) 
     )
 }
 
-pub fn open_hermes_setup(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Outcome {
-    let mut actions = Vec::new();
-    lifecycle::open_hermes_setup(hermes, ctx, &mut actions);
-    (Task::none(), actions)
-}
-
-pub fn activate_hermes_focus(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Outcome {
-    let mut actions = Vec::new();
-    let task = hermes_setup::activate_focus(hermes, ctx, &mut actions);
-    (task, actions)
-}
-
 pub fn restart_hermes_module(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Outcome {
     (lifecycle::restart_hermes_module(hermes, ctx), Vec::new())
 }
@@ -304,12 +278,4 @@ pub fn show_in_inspection(hermes: &Hermes, path: &Path, ctx: &Ctx<'_>) -> Outcom
     let mut actions = Vec::new();
     hermes_file::show_in_inspection(hermes, path, ctx, &mut actions);
     (Task::none(), actions)
-}
-
-/// Takes the next step of "Hermes starten" the module's phase allows.
-pub fn advance_hermes_plan(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Outcome {
-    let _ = ctx;
-    let mut actions = Vec::new();
-    let task = lifecycle::advance_hermes_plan(hermes, &mut actions);
-    (task, actions)
 }

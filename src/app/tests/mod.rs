@@ -385,14 +385,6 @@ mod receiver_stream_tests;
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 #[cfg(test)]
 mod hermes_protection_tests;
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-#[cfg(test)]
-mod hermes_setup_tests;
 // reason: a failing assertion is the signal in a test
 #[allow(
     clippy::unwrap_used,

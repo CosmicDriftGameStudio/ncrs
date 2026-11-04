@@ -2,7 +2,7 @@
 //! would go to, and filed by the same journaled move as the review list.
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use super::ChatAccess;
 use crate::review_work::{AcceptSummary, ReviewAccess, ReviewItem};
@@ -59,4 +59,12 @@ pub(in crate::chat_work) fn file(
     items: &[ReviewItem],
 ) -> Result<AcceptSummary, String> {
     Ok(review(access)?.accept(items))
+}
+
+pub(in crate::chat_work) fn file_into(
+    access: &ChatAccess,
+    items: &[ReviewItem],
+    folder: &Path,
+) -> Result<AcceptSummary, String> {
+    Ok(review(access)?.accept_into(items, folder))
 }

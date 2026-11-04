@@ -13,8 +13,7 @@ use iced::{event, mouse, window, Element, Length, Point, Size, Subscription, Tas
 
 use crate::about::{AboutCard, REPOSITORY_URL};
 use crate::ai_model::{
-    download_ai_model, model_is_installed, AiModelCard, DownloadError as AiDownloadError,
-    DownloadJob, InstallOutcome,
+    download_ai_model, AiModelCard, DownloadError as AiDownloadError, DownloadJob, InstallOutcome,
 };
 use crate::clipboard_paste::{self, FileListWriter, PastedContent};
 use crate::command_line::{self, CommandLine, CommandLineAction, CommandLineCtx};
@@ -34,8 +33,6 @@ use crate::file_list_tags::{FileListTags, TagExceptions};
 use crate::filing::Phase;
 use crate::filing::{DocumentFinder, FilingMessage, FilingModule};
 use crate::filing_setup;
-#[cfg(test)]
-use crate::filing_setup::SetupNote;
 use crate::filing_status::SNAPSHOT_EVERY;
 use crate::filing_work::FilingSummary;
 use crate::fs;
@@ -46,11 +43,9 @@ use crate::fs::remote::{KnownHostsFiles, RemotePath, ServerId};
 #[cfg(test)]
 use crate::fs::CreateDirError;
 use crate::hermes_column::{role_of, ColumnView, FolderRole, HermesFileState};
-#[cfg(test)]
-use crate::hermes_overview::{ModuleState, Protection};
 use crate::hermes_overview::OverviewFacts;
 #[cfg(test)]
-use crate::hermes_setup::{HermesSetup, SetupFocus, SetupOffer};
+use crate::hermes_overview::{ModuleState, Protection};
 use crate::hermes_status::HermesStatus;
 use crate::i18n::{Language, Msg};
 use crate::input_state::InputState;
@@ -62,11 +57,11 @@ use crate::keymap::{KeyActionMessage as _, KeymapMessages as _};
 use crate::menu::Availability;
 use crate::messages::{
     AboutMessage, AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage,
-    ConflictChoice, FilingStatusMessage, GrantMessage, HermesChatMessage,
-    HermesFileMessage, HermesOverviewMessage, HermesPage, HermesSetupMessage,
-    HitListMessage, KeyBindingsMessage, Message, OcrModelsMessage, PanelSide, QuickFixMessage,
-    QuickOpenMessage, RemoteMessage, RulesMessage, SavedQueriesMessage, SearchMessage, SettingChange,
-    SettingsMessage, TagsMessage, ThemeFetchMessage, TitleBarMessage, TransferKind, TrashMessage,
+    ConflictChoice, FilingStatusMessage, GrantMessage, HermesChatMessage, HermesFileMessage,
+    HermesOverviewMessage, HermesPage, HitListMessage, KeyBindingsMessage, Message,
+    OcrModelsMessage, PanelSide, QuickFixMessage, QuickOpenMessage, RemoteMessage, RulesMessage,
+    SavedQueriesMessage, SearchMessage, SettingChange, SettingsMessage, TagsMessage,
+    ThemeFetchMessage, TitleBarMessage, TransferKind, TrashMessage,
 };
 #[cfg(target_os = "macos")]
 use crate::native_menu;
@@ -112,9 +107,7 @@ use crate::ui::context_menu as context_menu_view;
 use crate::ui::delete as delete_dialog_view;
 use crate::ui::filing as filing_ui;
 use crate::ui::grant as grant_ui;
-use crate::ui::hermes_flow;
 use crate::ui::hermes_overview as hermes_overview_ui;
-use crate::ui::hermes_setup as hermes_setup_ui;
 use crate::ui::key_bindings as key_bindings_ui;
 use crate::ui::ocr_models as ocr_models_ui;
 use crate::ui::quick_fix as quick_fix_view;
@@ -166,7 +159,7 @@ use ncrs_settings::keys::{SettingsKey, ThemeFetchKey};
 #[cfg(test)]
 use ncrs_settings::theme_fetch::install::download_theme;
 #[cfg(test)]
-use ncrs_settings::theme_file::{copy_picked_theme_file, theme_file_entry, IncludeProblem};
+use ncrs_settings::theme_file::theme_file_entry;
 use ncrs_settings::Settings;
 use ncrs_ui_kit::focus::release_focus;
 #[cfg(test)]
@@ -373,11 +366,7 @@ pub struct App {
     /// or written.
     theme_preset: ThemePreset,
     vscode_theme: Option<String>,
-    /// What a new filing module opens and keeps its key in; set by
-    /// `with_filing`. Without a store no module is started.
-    /// Moves the dots of the picture on the setup card.
-    hermes_flow_step: u32,
-    /// Looks up a folder the setup adds, on a blocking thread. Injected so
+    /// Looks up a folder the chat adds, on a blocking thread. Injected so
     /// tests add their fixed folders without a disk.
     resolve_folder: fn(&Path) -> Result<PathBuf, String>,
     /// Must be called from `update`: on macOS rfd sets up the panel as soon as
@@ -475,8 +464,6 @@ pub struct PromptKeyState {
     pub key_bindings_recording: bool,
     /// The filing status page is up, so its keys act on the pipeline.
     pub filing_status: bool,
-    /// The first-time setup of Hermes is up: keys answer it like a button dialog.
-    pub hermes_setup: bool,
     /// A filing card that "Not now" may leave is up, so Escape leaves it.
     pub filing_card: bool,
     /// The theme download card is up, so Enter and the arrows are its.
@@ -543,7 +530,6 @@ impl Default for PromptKeyState {
             key_bindings: false,
             key_bindings_recording: false,
             filing_status: false,
-            hermes_setup: false,
             filing_card: false,
             theme_fetch: false,
             rules: false,

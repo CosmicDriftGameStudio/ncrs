@@ -214,7 +214,7 @@ impl FilingModule {
                 };
             }
             Ok(None) => self.phase = Phase::Ready,
-            Err(reason) => self.stop_waiting(reason),
+            Err(reason) => self.phase = Phase::Failed(reason),
         }
     }
 

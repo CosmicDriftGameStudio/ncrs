@@ -272,6 +272,14 @@ fn enabled_without_locations_loads() {
 }
 
 #[test]
+fn only_a_config_silent_about_filing_is_a_first_run() {
+    let first_run = |text: &str| load_filing(text, None).unwrap().filing.first_run;
+    assert!(first_run("version = 1\n"));
+    assert!(!first_run("[modules.filing]\nenabled = false\n"));
+    assert!(!first_run("[modules.filing]\nenabled = true\n"));
+}
+
+#[test]
 fn a_leading_tilde_is_the_home_directory() {
     let home = tempfile::tempdir().unwrap();
     let archive = "mode = \"archive\"\ntarget = true";

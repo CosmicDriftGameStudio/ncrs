@@ -28,6 +28,7 @@ fn saved_filing() -> Filing {
         own_names: Vec::new(),
         own_ibans: Vec::new(),
         own_tax_ids: Vec::new(),
+        first_run: false,
     }
 }
 
@@ -174,29 +175,4 @@ fn a_module_busy_with_its_start_is_not_replaced() {
         app.hermes.filing.as_ref().unwrap().phase(),
         Phase::Starting
     ));
-}
-
-#[test]
-fn switched_on_without_locations_the_setup_opens_at_start() {
-    let store = || -> Arc<dyn KeyStore + Send + Sync> { Arc::new(InMemoryKeyStore::empty()) };
-    let without_locations = Filing {
-        enabled: true,
-        locations: Vec::new(),
-        load: Load::default(),
-        ai: crate::config::AiSetting::Off,
-        default_pattern: None,
-        own_names: Vec::new(),
-        own_ibans: Vec::new(),
-        own_tax_ids: Vec::new(),
-    };
-    let (empty, _empty_start) =
-        App::with_fixed_panels().with_filing(&without_locations, None, store());
-    assert!(empty.hermes.hermes_setup.is_some());
-
-    let (configured, _configured_start) =
-        App::with_fixed_panels().with_filing(&saved_filing(), None, store());
-    assert!(configured.hermes.hermes_setup.is_none());
-
-    let (off, _off_start) = App::with_fixed_panels().with_filing(&Filing::default(), None, store());
-    assert!(off.hermes.hermes_setup.is_none());
 }

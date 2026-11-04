@@ -12,7 +12,6 @@ pub mod filing_setup;
 pub mod filing_status;
 pub mod hermes_column;
 pub mod hermes_overview;
-pub mod hermes_setup;
 pub mod hermes_status;
 pub mod keys;
 pub mod message;
@@ -31,19 +30,17 @@ pub use action::{Action, ProgressJobBuilder, ProtectionStep, StartProgressJob};
 pub use ctx::Ctx;
 pub use message::{
     FilingStatusMessage, HermesColumnMessage, HermesFileMessage, HermesOverviewMessage, HermesPage,
-    HermesSetupMessage, Message, QuickFixMessage, RuleFormMessage, RulesMessage,
-    SavedQueriesMessage, TagsMessage,
+    Message, QuickFixMessage, RuleFormMessage, RulesMessage, SavedQueriesMessage, TagsMessage,
 };
 pub use state::{Hermes, KeyStoreHandle};
 pub use update::{
-    activate_hermes_focus, advance_hermes_plan, apply_ai_change, apply_saved_filing,
-    change_protection, documents_filed, exclude_from_hermes, filing_restarted, go_to_hermes_page,
-    hermes_included, hermes_role_saved, open_filing_status_page, open_hermes_setup,
-    open_saved_queries, open_tags, process_again, read_paths_again, refresh_hermes_column,
+    apply_ai_change, apply_saved_filing, change_protection, documents_filed,
+    exclude_from_hermes, filing_restarted, go_to_hermes_page, hermes_included, hermes_role_saved,
+    open_filing_status_page, open_saved_queries, open_tags, process_again, read_paths_again, refresh_hermes_column,
     request_hermes_column, request_hermes_counts, request_index_figures, restart_hermes_module,
     role_save_failed, run_filing, run_filing_work, run_filing_work_after, set_folder_role,
     show_in_inspection, start_filing_module, toggle_hermes_exclusion, update_filing,
-    update_filing_status, update_hermes_column, update_hermes_overview, update_hermes_setup,
+    update_filing_status, update_hermes_column, update_hermes_overview,
     update_quick_fix, update_rules, update_saved_queries, update_tags, Outcome, SavedFilingApplies,
 };
 pub use view::{

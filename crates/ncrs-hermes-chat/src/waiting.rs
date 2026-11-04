@@ -2,15 +2,19 @@
 //! through them group by group, one question each.
 
 use std::collections::VecDeque;
+use std::path::PathBuf;
 
 use ncrs_filing::chat_work::{ChatWork, WaitingGroup};
 use ncrs_filing::review_work::AcceptSummary;
 use ncrs_i18n::Msg;
 
+use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::state::{Chip, ChipReply, Part, State, Step, Walk};
 use crate::texts::{fill, number, segments, text};
-use crate::update::{access, cancel_chip, chip, fallback_chips, hermes, say, text_with, work};
+use crate::update::{
+    access, cancel_chip, chip, chip_labelled, fallback_chips, hermes, say, text_with, work,
+};
 
 /// The seconds between two looks for new waiting documents in an open chat.
 const CHECK_EVERY_SECONDS: i64 = 30;
@@ -157,6 +161,32 @@ pub fn file_current(state: &mut State, ctx: &Ctx) {
     );
 }
 
+pub fn other_folder(state: &mut State) -> Option<Action> {
+    state.step = Step::WaitingFolder;
+    Some(Action::PickFolder)
+}
+
+/// Files the document in question in `folder`: below the target when relative.
+pub fn file_into(state: &mut State, ctx: &Ctx, folder: PathBuf) {
+    let Some(group) = state
+        .session
+        .waiting
+        .as_mut()
+        .and_then(|walk| walk.current.take())
+    else {
+        return;
+    };
+    state.step = Step::Idle;
+    work(
+        state,
+        ChatWork::WaitingFileInto {
+            items: group.items,
+            folder,
+        },
+        Some(text(ctx.lang, Msg::HermesChatWorkingWaiting)),
+    );
+}
+
 pub fn skip(state: &mut State, ctx: &Ctx) {
     if let Some(walk) = state.session.waiting.as_mut() {
         walk.current = None;
@@ -195,21 +225,25 @@ fn next(state: &mut State, ctx: &Ctx, note: Option<String>) {
     let Some(walk) = state.session.waiting.as_mut() else {
         return;
     };
-    let Some(group) = walk.groups.pop_front() else {
-        let (filed, left) = (walk.filed, walk.total - walk.filed);
-        state.session.waiting = None;
-        state.session.waiting_offered = left;
-        state.step = Step::Idle;
-        let mut parts: Vec<Part> = note.into_iter().map(Part::Text).collect();
-        parts.push(Part::Text(text_with(
-            ctx,
-            Msg::HermesChatWaitingDone,
-            &[("filed", &number(filed)), ("left", &number(left))],
-        )));
-        hermes(state, parts, fallback_chips(ctx));
-        return;
+    let (group, (mut parts, chips)) = loop {
+        let Some(group) = walk.groups.pop_front() else {
+            let (filed, left) = (walk.filed, walk.total - walk.filed);
+            state.session.waiting = None;
+            state.session.waiting_offered = left;
+            state.step = Step::Idle;
+            let mut parts: Vec<Part> = note.into_iter().map(Part::Text).collect();
+            parts.push(Part::Text(text_with(
+                ctx,
+                Msg::HermesChatWaitingDone,
+                &[("filed", &number(filed)), ("left", &number(left))],
+            )));
+            hermes(state, parts, fallback_chips(ctx));
+            return;
+        };
+        if let Some(asked) = question(ctx, &group) {
+            break (group, asked);
+        }
     };
-    let (mut parts, chips) = question(ctx, &group);
     if let Some(failure) = note {
         parts.insert(0, Part::Text(failure));
     }
@@ -217,14 +251,16 @@ fn next(state: &mut State, ctx: &Ctx, note: Option<String>) {
     hermes(state, parts, chips);
 }
 
-fn question(ctx: &Ctx, group: &WaitingGroup) -> (Vec<Part>, Vec<Chip>) {
+/// `None` for a group with nothing in it: there is nothing to ask.
+fn question(ctx: &Ctx, group: &WaitingGroup) -> Option<(Vec<Part>, Vec<Chip>)> {
     let skip = chip(
         ctx,
         Msg::HermesChatWaitingSkip,
         ChipReply::WaitingSkip,
         false,
     );
-    match (&group.folder, group.items.first()) {
+    let first = group.items.first()?;
+    Some(match (&group.folder, first) {
         (Some(folder), _) => {
             let names: Vec<String> = group
                 .items
@@ -261,7 +297,7 @@ fn question(ctx: &Ctx, group: &WaitingGroup) -> (Vec<Part>, Vec<Chip>) {
                 ],
             )
         }
-        (None, Some(item)) => {
+        (None, item) => {
             let name = item
                 .path
                 .file_name()
@@ -272,15 +308,33 @@ fn question(ctx: &Ctx, group: &WaitingGroup) -> (Vec<Part>, Vec<Chip>) {
                 Msg::HermesChatWaitingUnsure,
                 &[("name", &name)],
             ))];
+            let mut chips = Vec::new();
             if let Some(placement) = &item.placement {
+                let folder = segments(&placement.folder).join(" / ");
                 parts.push(Part::Text(fill(
                     ctx.lang,
                     Msg::HermesChatWaitingUnsureNear,
-                    &[("folder", &segments(&placement.folder).join(" / "))],
+                    &[("folder", &folder)],
                 )));
+                chips.push(chip_labelled(
+                    fill(
+                        ctx.lang,
+                        Msg::HermesChatWaitingFileInto,
+                        &[("folder", &folder)],
+                    ),
+                    ChipReply::WaitingFileInto(placement.folder.clone()),
+                    true,
+                ));
             }
-            (parts, vec![skip, cancel_chip(ctx)])
+            chips.push(chip(
+                ctx,
+                Msg::HermesChatOtherFolder,
+                ChipReply::WaitingOtherFolder,
+                false,
+            ));
+            chips.push(skip);
+            chips.push(cancel_chip(ctx));
+            (parts, chips)
         }
-        (None, None) => (Vec::new(), vec![skip]),
-    }
+    })
 }

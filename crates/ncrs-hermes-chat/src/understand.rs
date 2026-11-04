@@ -20,7 +20,7 @@ use crate::state::{Asked, Chip, ChipReply, Entry, Part, State, Step, Thinking, U
 use crate::texts::{fill, shown_folder, text};
 use crate::update::{
     batch_not_yet, cancel_chip, chip, drop_working, explain_not_yet, fallback, fallback_chips,
-    handle_reply, hermes, open_thread, say, say_needs_setup, search_not_yet,
+    handle_reply, hermes, open_thread, say, say_off, search_not_yet,
 };
 use crate::{learn, undo};
 
@@ -235,12 +235,12 @@ pub fn hermes_ready(state: &mut State, ctx: &Ctx) -> Option<Action> {
     }
     match ctx.availability {
         Availability::Starting => return None,
-        Availability::NeedsSetup => {
+        Availability::Off => {
             state.waiting_for_hermes = false;
             drop_working(state);
             state.session.unsent = None;
             state.session.unsent_reply = None;
-            say_needs_setup(state, ctx);
+            say_off(state, ctx);
             return None;
         }
         Availability::Ready(_) => {}

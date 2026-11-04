@@ -22,9 +22,7 @@ pub use ncrs_files::volumes_view as volumes;
 pub use ncrs_ui_kit::{fkeys, format, frame, kit, theme};
 pub use panel::PanelState;
 
-pub use ncrs_hermes_ui::ui::{
-    filing, hermes_flow, hermes_overview, hermes_setup, quick_fix,
-};
+pub use ncrs_hermes_ui::ui::{filing, hermes_overview, quick_fix};
 pub use ncrs_settings::ai_model::view as ai_model;
 pub use ncrs_settings::key_bindings::view as key_bindings;
 pub use ncrs_settings::ocr_models::view as ocr_models;
