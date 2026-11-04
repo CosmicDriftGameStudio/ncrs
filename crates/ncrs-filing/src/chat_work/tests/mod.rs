@@ -191,6 +191,78 @@ fn reading_a_file_or_a_missing_folder_or_too_many_files_is_refused() {
     );
 }
 
+fn read_date_of(setup: &Setup, name: &str) -> Option<NaiveDate> {
+    let read = setup.read(&setup.dir.path().join("in")).unwrap();
+    read.files
+        .iter()
+        .find(|file| file.relative_path == Path::new(name))
+        .unwrap()
+        .fields
+        .date
+}
+
+#[test]
+fn a_date_in_the_name_stands_in_when_the_text_has_none_and_the_mtime_comes_last() {
+    let setup = Setup::new();
+    let account = "Kontoauszug_706014687832EUR_05010101215505397.txt";
+    setup.write("in/Kontoauszug_706014687832EUR_2021-05-31_x.txt", "Saldo");
+    setup.write("in/Kontoauszug_ohne_Datum.txt", "Saldo");
+    setup.write(&format!("in/{account}"), "Saldo");
+    let mtime = |name: &str| -> NaiveDate {
+        let modified = fs::metadata(setup.dir.path().join("in").join(name))
+            .unwrap()
+            .modified()
+            .unwrap();
+        chrono::DateTime::<chrono::Local>::from(modified).date_naive()
+    };
+
+    assert_eq!(
+        read_date_of(&setup, "Kontoauszug_706014687832EUR_2021-05-31_x.txt"),
+        Some(date(2021, 5, 31))
+    );
+    assert_eq!(
+        read_date_of(&setup, "Kontoauszug_ohne_Datum.txt"),
+        Some(mtime("Kontoauszug_ohne_Datum.txt"))
+    );
+    assert_eq!(read_date_of(&setup, account), Some(mtime(account)));
+}
+
+#[test]
+fn a_date_in_the_text_wins_over_a_date_in_the_name() {
+    let setup = Setup::new();
+    setup.write(
+        "in/Rechnung_2021-05-31.txt",
+        "Alfa AG\nRechnung\n12.03.2019\nBetrag 10,00 EUR",
+    );
+    assert_eq!(
+        read_date_of(&setup, "Rechnung_2021-05-31.txt"),
+        Some(date(2019, 3, 12))
+    );
+}
+
+#[test]
+fn a_known_document_without_a_date_gets_the_date_of_its_name() {
+    let setup = Setup::new();
+    let path = setup.write("in/Beleg_2021-05-31.txt", "no letter date in here");
+    let hash = hash_path(&path).unwrap();
+    let mut guard = setup.access.slot.lock().unwrap();
+    let index = guard.as_mut().unwrap();
+    index
+        .insert_document(&ncrs_index::NewDocument {
+            hash,
+            path,
+            source: ncrs_index::DocumentSource::Archive,
+            received_at: chrono::Utc::now(),
+            stamp: None,
+        })
+        .unwrap();
+    drop(guard);
+    assert_eq!(
+        read_date_of(&setup, "Beleg_2021-05-31.txt"),
+        Some(date(2021, 5, 31))
+    );
+}
+
 #[test]
 fn a_known_document_brings_its_fields_and_text_from_the_index() {
     let setup = Setup::new();

@@ -38,7 +38,9 @@ pub mod test_support;
 mod text;
 mod watcher;
 
-pub use archive_profile::{learn_archive, subtree_per_document, ArchiveDocument};
+pub use archive_profile::{
+    date_in_file_stem, learn_archive, subtree_per_document, ArchiveDocument,
+};
 pub use classify::{classify, is_image_file, text_is_readable, Skip};
 pub use conditions::{condition_match_ranges, word_condition_holds, MAX_MATCH_RANGES};
 pub use date_detection::detect_letter_date;

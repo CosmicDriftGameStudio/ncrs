@@ -15,7 +15,7 @@ use ncrs_index::{
     SenderAliases,
 };
 use ncrs_intake::{
-    detect_fields, hash_path, is_image_file, learn_archive, location_structure,
+    date_in_file_stem, detect_fields, hash_path, is_image_file, learn_archive, location_structure,
     plan_reorganisation, ArchiveDocument, LocationStructure, OwnNames, PlanFile,
     ReorganisationInput,
 };
@@ -155,6 +155,10 @@ fn modified_date(mtime: SystemTime) -> chrono::NaiveDate {
     DateTime::<Local>::from(mtime).date_naive()
 }
 
+fn date_in_file_name(relative: &Path) -> Option<chrono::NaiveDate> {
+    date_in_file_stem(relative.file_stem()?.to_str()?)
+}
+
 /// What the index knows of a file: its hash, fields and full text.
 struct Known {
     hash: ContentHash,
@@ -289,10 +293,7 @@ pub fn read_folder(
             )
         });
         let fields = DocumentFields {
-            date: detected
-                .as_ref()
-                .and_then(|fields| fields.date)
-                .or_else(|| Some(modified_date(file.stamp.mtime))),
+            date: detected.as_ref().and_then(|fields| fields.date),
             sender: detected.as_ref().and_then(|fields| fields.sender.clone()),
             kind: detected.and_then(|fields| fields.kind),
             ..DocumentFields::default()
@@ -306,9 +307,14 @@ pub fn read_folder(
     let mut photos = 0;
     let mut without_text = 0;
     for (file, known_record) in walked.into_iter().zip(known) {
-        let Some(record) = known_record else {
+        let Some(mut record) = known_record else {
             continue;
         };
+        record.fields.date = record
+            .fields
+            .date
+            .or_else(|| date_in_file_name(&file.relative))
+            .or_else(|| Some(modified_date(file.stamp.mtime)));
         if record.text.is_none() {
             if is_image_file(&file.relative) {
                 photos += 1;
