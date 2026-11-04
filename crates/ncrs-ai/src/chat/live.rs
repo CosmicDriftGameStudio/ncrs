@@ -16,6 +16,7 @@ use std::time::{Duration, Instant};
 
 use super::eval::{rows, HOLDOUT_ROWS, MAIN_ROWS};
 use super::scoring::score;
+use super::shard::{parse_shard, select, Shard, SHARD_VARIABLE};
 use super::{ChatIntent, ChatModel as _, ChatTurn};
 use crate::local::models_dir;
 use crate::model_file::LOCAL_MODEL;
@@ -51,14 +52,27 @@ fn lazy() -> &'static Arc<LazyLocalModel> {
     })
 }
 
+/// `None` when the variable is not set: the whole run, with its thresholds.
+fn shard_from_env() -> Option<Shard> {
+    let value = std::env::var(SHARD_VARIABLE).ok()?;
+    Some(parse_shard(&value).unwrap_or_else(|message| panic!("{message}")))
+}
+
 #[test]
 #[ignore = "needs the AI model: set NCRS_AI_MODELS_DIR to the folder with it"]
 fn with_model_chat_eval_meets_the_measured_rates() {
     let model = lazy();
-    let all: Vec<_> = rows(MAIN_ROWS)
+    let every_row: Vec<_> = rows(MAIN_ROWS)
         .into_iter()
         .chain(rows(HOLDOUT_ROWS))
         .collect();
+    let total = every_row.len();
+    let shard_setting = shard_from_env();
+    let all = match shard_setting {
+        Some(chosen) => select(every_row, chosen),
+        None => every_row,
+    };
+    assert!(!all.is_empty(), "the shard has no sentences");
     // The first query warms up the compute graphs; it is not counted.
     model.understand(&all[0].turn()).unwrap();
 
@@ -99,6 +113,14 @@ fn with_model_chat_eval_meets_the_measured_rates() {
         total_ms / u128::try_from(count).unwrap()
     );
 
+    if let Some(chosen) = shard_setting {
+        // Read by the aggregation job of the workflow; the thresholds apply to
+        // the sum of the shards, not to one of them.
+        println!(
+            "chat eval shard {chosen}: total {total} sentences {count} intent {intent_ok} full {full_ok}"
+        );
+        return;
+    }
     assert!(intent_ok * 100 >= count * 92, "intent {intent_ok}/{count}");
     assert!(full_ok * 100 >= count * 85, "full {full_ok}/{count}");
 }
