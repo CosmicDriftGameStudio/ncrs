@@ -9289,10 +9289,10 @@
       "de": "{done} von {total} Dokumenten verstanden, der Rest läuft im Hintergrund."
     },
     {
-      "key": "hermes_chat.change_preview_from_flat",
-      "context": "Hermes chat (F2): First line of the preview of a change of order for an area whose files lie directly in it, without subfolders. {area} is the folder name of the area, {new} what the user asked for (year, month, sender or kind).",
-      "en": "{area} has no subfolders today. Sorted by {new} it would look like this:",
-      "de": "{area} hat heute keine Unterordner. Nach {new} sähe das so aus:"
+      "key": "hermes_chat.change_preview_no_order",
+      "context": "Hermes chat (F2): First line of the preview of a change of order for an area in which no fixed order was learned, whether its files lie directly in it or in folders without a pattern. {area} is the folder name of the area, {new} what the user asked for (year, month, sender or kind).",
+      "en": "I see no fixed order in {area} yet. Sorted by {new} it would look like this:",
+      "de": "Für {area} kenne ich noch keine feste Ordnung. Nach {new} sähe das so aus:"
     },
     {
       "key": "hermes_chat.change_preview_to_flat",

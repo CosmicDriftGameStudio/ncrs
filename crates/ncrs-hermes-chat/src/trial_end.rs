@@ -8,10 +8,10 @@ use ncrs_index::Transfer;
 use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::state::{Chip, ChipReply, GroupFlow, Offer, Part, Proposal, State, Step, TrialSession};
-use crate::texts::{fill, folder_name, number};
+use crate::texts::{fill, folder_name, number, text};
 use crate::tidy;
 use crate::tidy::{card_of, PAGE};
-use crate::update::{access, cancel_chip, chip, chip_labelled, hermes};
+use crate::update::{access, cancel_chip, chip, chip_labelled, fallback_chips, hermes, say};
 
 /// The files of the trial that are in the filing folder already.
 fn duplicates(trial: &TrialSession) -> usize {
@@ -142,10 +142,15 @@ pub fn show_staying(state: &mut State, ctx: &Ctx) {
     let listed: Vec<usize> = staying.into_iter().take(PAGE).collect();
     let left = rest.saturating_sub(listed.len());
     let count = listed.len();
-    state.session.groups.singles_done = true;
     let Some(card) = card_of(state, ctx, listed, left) else {
+        say(
+            state,
+            text(ctx.lang, Msg::HermesChatFallback),
+            fallback_chips(ctx),
+        );
         return;
     };
+    state.session.groups.singles_done = true;
     let chips = ways_on(state, ctx, rest, dupes);
     hermes(
         state,
@@ -164,6 +169,20 @@ pub fn show_staying(state: &mut State, ctx: &Ctx) {
 /// The files that are in the filing folder already go to the trash, as one
 /// run that can be undone.
 pub fn trash_duplicates(state: &mut State, ctx: &Ctx) {
+    let ready = state.session.trial.is_some()
+        && state
+            .session
+            .tidy
+            .as_ref()
+            .is_some_and(|tidy| tidy.target.is_some());
+    if !ready {
+        say(
+            state,
+            text(ctx.lang, Msg::HermesChatFallback),
+            fallback_chips(ctx),
+        );
+        return;
+    }
     let (Some(trial), Some(tidy)) = (state.session.trial.take(), state.session.tidy.take()) else {
         return;
     };

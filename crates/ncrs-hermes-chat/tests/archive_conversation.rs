@@ -18,7 +18,7 @@ mod tests {
     use std::path::PathBuf;
     use std::time::{Duration, SystemTime};
 
-    use crate::common::{count, say, Talk};
+    use crate::common::{count, letter, say, Talk};
     use chrono::NaiveDate;
     use ncrs_filing::chat_work::{StayGroups, TrialOutcome, TrialPlan};
     use ncrs_hermes_chat::{ChipReply, Entry, FileCard, Message, Part};
@@ -330,6 +330,111 @@ mod tests {
         assert!(talk.last_texts()[0].contains(&format!("**{filed} Dateien** kopiert")));
         talk.press(&ChipReply::PutBack);
         assert_eq!(talk.files(), before);
+    }
+
+    /// The inbox copied to the archive, then the same sentence again: every
+    /// file is in the archive already, so nothing is left to file.
+    fn all_copied_already(second_transfer: &ChipReply) -> (Talk, BTreeMap<String, String>) {
+        let mut talk = archive_talk();
+        talk.send(Message::Open);
+        tidy_inbox_until_trial(&mut talk, &ChipReply::ModeCopy);
+        talk.press(&ChipReply::FileAll);
+        let copied = talk.files();
+        tidy_inbox_until_trial(&mut talk, second_transfer);
+        assert_eq!(talk.plan().filed, 0);
+        (talk, copied)
+    }
+
+    #[test]
+    fn the_duplicates_chip_trashes_the_originals_in_one_run_that_can_be_undone() {
+        let (mut talk, copied) = all_copied_already(&ChipReply::ModeMove);
+        let dupes = talk.plan().already_there;
+        assert!(dupes > 0);
+        talk.press(&ChipReply::TrashDuplicatesNow);
+        assert_eq!(
+            talk.files().len(),
+            copied.len() - dupes,
+            "the originals left, the copies in the archive stay"
+        );
+        assert!(talk
+            .files()
+            .keys()
+            .any(|path| path.starts_with("archive") || path.contains("archive")));
+        assert_eq!(
+            talk.last_texts()[0],
+            say(Msg::HermesChatTrashed, &[("count", &count(dupes))])
+        );
+        talk.press(&ChipReply::Undo);
+        talk.press(&ChipReply::PutBack);
+        assert_eq!(talk.files(), copied);
+    }
+
+    #[test]
+    fn copying_offers_no_duplicates_to_delete() {
+        let (talk, _) = all_copied_already(&ChipReply::ModeCopy);
+        let labels = talk.labels();
+        assert!(
+            !labels.iter().any(|label| label.contains("Doppelte")),
+            "{labels:?}"
+        );
+        assert!(!talk
+            .state
+            .chips()
+            .iter()
+            .any(|chip| chip.reply == ChipReply::TrashDuplicatesNow));
+    }
+
+    #[test]
+    fn the_staying_files_are_listed_once_and_the_chip_goes() {
+        let mut talk = Talk::in_dir(tempfile::tempdir().unwrap(), &["archive"], &["inbox"]);
+        for (month, day) in [(1, 10), (3, 11), (6, 12), (9, 13), (11, 14)] {
+            talk.write(
+                &format!("archive/Alfa/2020/2020-{month:02}-{day} Alfa Rechnung.pdf"),
+                &letter(
+                    "Alfa AG",
+                    &format!("{day}.{month:02}.2020"),
+                    "Rechnung",
+                    day,
+                ),
+            );
+        }
+        talk.write("inbox/one.txt", "x");
+        talk.write("inbox/two.txt", "y");
+        talk.send(Message::Open);
+        talk.type_text_understood(
+            "Räum Inbox auf",
+            r#"{"intent":"tidy_folder","source":"Inbox"}"#,
+        );
+        talk.press(&ChipReply::ConfirmTidy);
+        talk.choose_archive_if_asked();
+        talk.press(&ChipReply::Once);
+        talk.press(&ChipReply::ModeCopy);
+        talk.press(&ChipReply::ShowStaying);
+        let parts = talk.last_parts();
+        let Some(Part::Trial(card)) = parts.get(1) else {
+            panic!("{parts:?}")
+        };
+        assert!(!card.rows.is_empty());
+        assert!(!talk
+            .state
+            .chips()
+            .iter()
+            .any(|chip| chip.reply == ChipReply::ShowStaying));
+        assert!(talk
+            .state
+            .chips()
+            .iter()
+            .any(|chip| chip.reply == ChipReply::Later));
+    }
+
+    #[test]
+    fn another_folder_at_the_end_asks_for_the_folder_and_keeps_the_transfer() {
+        let (mut talk, _) = all_copied_already(&ChipReply::ModeCopy);
+        talk.press(&ChipReply::TrialOtherTarget);
+        assert!(talk.actions.contains(&ncrs_hermes_chat::Action::PickFolder));
+        let proposal = talk.state.session.proposal.as_ref().unwrap();
+        assert_eq!(proposal.transfer, Some(ncrs_index::Transfer::Copy));
+        assert_eq!(proposal.target, None);
     }
 
     #[test]

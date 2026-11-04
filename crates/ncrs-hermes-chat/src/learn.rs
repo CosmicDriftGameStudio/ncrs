@@ -486,7 +486,7 @@ fn preview_intro(state: &State, ctx: &Ctx, preview: &ChangePreview) -> String {
         ),
         (None, new_words) => fill(
             ctx.lang,
-            Msg::HermesChatChangePreviewFromFlat,
+            Msg::HermesChatChangePreviewNoOrder,
             &[
                 ("area", &area),
                 (
