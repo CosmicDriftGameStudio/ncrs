@@ -476,6 +476,22 @@ fn the_greeting_matches_its_snapshots() {
 }
 
 #[test]
+fn the_waiting_documents_opener_matches_its_snapshots() {
+    for (lang, name) in [
+        (Language::German, "hermes_chat_waiting_de"),
+        (Language::English, "hermes_chat_waiting_en"),
+    ] {
+        let (mut app, ctx) = opened(lang);
+        send(
+            &mut app,
+            &ctx,
+            HermesChatMessage::Done(Box::new(ChatResult::WaitingCount(Ok(3)))),
+        );
+        matches_snapshot(&app, name);
+    }
+}
+
+#[test]
 fn the_areas_matches_its_snapshot() {
     matches_snapshot(&areas_scene(Language::German), "hermes_chat_areas_de");
 }

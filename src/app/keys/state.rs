@@ -24,17 +24,11 @@ impl App {
             .as_ref()
             .is_some_and(|shortcuts| !shortcuts.is_recording());
         input.theme_fetch = self.settings.theme_fetch.is_some();
-        input.rule_suggestions = self.hermes.rule_suggestions.is_some();
         input.rules = self.hermes.rules.is_some();
-        input.review_list = self.hermes.review_list.is_some();
         input.saved_queries = self.hermes.saved_queries.is_some();
         input.tags = self.hermes.tags.is_some();
-        input.hermes_sidebar = state.hermes_sidebar;
         input.transfer_dialog = self.ops.transfer_dialog.is_some();
-        input.reorganisation_plan = self.hermes.reorganisation.is_some();
-        input.settings = self.settings.page.is_some()
-            && self.hermes.filing_setup.is_none()
-            && !self.blocking_overlay_is_open();
+        input.settings = self.settings.page.is_some() && !self.blocking_overlay_is_open();
         drop(input);
         // `get` rather than `get_or_init`: the cell is created by the
         // subscription, and `update` must not create it — a cell nothing reads
@@ -76,13 +70,6 @@ impl App {
             .as_ref()
             .is_some_and(KeyBindings::is_recording);
         let filing_status = self.hermes.filing_status.page_open();
-        let hermes_overview = self.hermes.overview.is_some();
-        let hermes_overview_editing = self
-            .hermes
-            .overview
-            .as_ref()
-            .is_some_and(OverviewState::is_editing);
-        let filing_setup = self.hermes.filing_setup.is_some();
         let hermes_setup = self.hermes.hermes_setup.is_some();
         let filing_card = self
             .hermes
@@ -90,7 +77,6 @@ impl App {
             .as_ref()
             .is_some_and(FilingModule::card_can_be_dismissed);
         let theme_fetch = self.settings.theme_fetch.is_some();
-        let rule_suggestions = self.hermes.rule_suggestions.is_some();
         let rules = self.hermes.rules.is_some();
         let rules_form = self
             .hermes
@@ -102,22 +88,8 @@ impl App {
             .rules
             .as_ref()
             .is_some_and(RulesPage::is_confirming_delete);
-        let review_list = self.hermes.review_list.is_some();
-        let review_list_editing = self
-            .hermes
-            .review_list
-            .as_ref()
-            .is_some_and(ReviewList::is_editing);
-        let review_list_replanning = self
-            .hermes
-            .review_list
-            .as_ref()
-            .is_some_and(|view| view.replan().is_some());
         let saved_queries = self.hermes.saved_queries.is_some();
         let tags = self.hermes.tags.is_some();
-        let hermes_sidebar =
-            self.hermes_focus == HermesFocus::Sidebar && self.open_hermes_page().is_some();
-        let reorganisation_plan = self.hermes.reorganisation.is_some();
         let about = self.about.is_some();
         let ocr_models = self.settings.ocr_models.is_some();
         let ai_model = self.settings.ai_card_is_shown();
@@ -154,23 +126,14 @@ impl App {
                 key_bindings,
                 key_bindings_recording,
                 filing_status,
-                hermes_overview,
-                hermes_overview_editing,
-                filing_setup,
                 hermes_setup,
                 filing_card,
                 theme_fetch,
-                rule_suggestions,
                 rules,
                 rules_form,
                 rules_confirming_delete,
-                review_list,
-                review_list_editing,
-                review_list_replanning,
                 saved_queries,
                 tags,
-                hermes_sidebar,
-                reorganisation_plan,
                 about,
                 ocr_models,
                 ai_model,
@@ -207,23 +170,14 @@ impl App {
                 key_bindings,
                 key_bindings_recording,
                 filing_status,
-                hermes_overview,
-                hermes_overview_editing,
-                filing_setup,
                 hermes_setup,
                 filing_card,
                 theme_fetch,
-                rule_suggestions,
                 rules,
                 rules_form,
                 rules_confirming_delete,
-                review_list,
-                review_list_editing,
-                review_list_replanning,
                 saved_queries,
                 tags,
-                hermes_sidebar,
-                reorganisation_plan,
                 about,
                 ocr_models,
                 ai_model,

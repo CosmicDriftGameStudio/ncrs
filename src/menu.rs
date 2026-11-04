@@ -240,7 +240,7 @@ mod tests {
             .iter()
             .find(|menu| menu.group == CommandGroup::Hermes)
             .unwrap();
-        assert_eq!(hermes.title, "Filing (Hermes)");
+        assert_eq!(hermes.title, "Hermes (Hermes)");
         let german = MenuModel::build(Language::GermanFuturama, &Keymap::default());
         assert!(item(&german, KeyAction::Search).title.ends_with(')'));
         assert_ne!(

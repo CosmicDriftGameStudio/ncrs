@@ -200,17 +200,6 @@ fn the_key_goes_back_to_the_panels_from_status_and_errors() {
 }
 
 #[test]
-fn the_key_switches_to_status_and_errors_from_the_overview() {
-    let mut app = App::with_fixed_panels();
-    drop(app.update(status(FilingStatusMessage::Open)));
-    assert_eq!(app.open_hermes_page(), Some(HermesPage::Overview));
-
-    drop(app.update(status(FilingStatusMessage::Toggle)));
-
-    assert_eq!(app.open_hermes_page(), Some(HermesPage::Inspection));
-}
-
-#[test]
 fn the_page_owns_the_keys_while_it_is_open() {
     let open = PromptKeyState {
         filing_status: true,

@@ -102,7 +102,6 @@ impl App {
             // Keeps the status bar's progress and the open page current.
             if self.hermes.pipeline.is_some()
                 || self.hermes.filing_status.page_open()
-                || self.hermes.overview.is_some()
             {
                 iced::time::every(SNAPSHOT_EVERY)
                     .map(|_| Message::FilingStatus(FilingStatusMessage::Tick))

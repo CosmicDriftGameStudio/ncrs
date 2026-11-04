@@ -3,8 +3,8 @@ mod hermes_page;
 mod index_page;
 mod page;
 
-use groups::*;
 pub use groups::server_dialog_body;
+use groups::*;
 use hermes_page::hermes_groups;
 use index_page::index_groups;
 use page::*;

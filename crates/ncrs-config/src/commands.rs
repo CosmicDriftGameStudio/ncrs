@@ -209,36 +209,15 @@ pub fn command_of(action: KeyAction) -> Option<Command> {
             Msg::ActionFilingStatus,
             FuturamaName::ActionFilingStatus,
         ),
-        KeyAction::FilingSetup => Command::themed(
-            action,
-            Hermes,
-            Msg::ActionFilingSetup,
-            FuturamaName::ActionFilingSetup,
-        ),
         KeyAction::Rules => {
             Command::themed(action, Hermes, Msg::ActionRules, FuturamaName::ActionRules)
         }
-        KeyAction::RuleSuggestions => Command::themed(
-            action,
-            Hermes,
-            Msg::ActionRuleSuggestions,
-            FuturamaName::ActionRuleSuggestions,
-        ),
-        KeyAction::ReviewList => Command::themed(
-            action,
-            Hermes,
-            Msg::ActionReviewList,
-            FuturamaName::ActionReviewList,
-        ),
         KeyAction::HermesQuickFix => Command::plain(action, Hermes, Msg::ActionHermesQuickFix),
         KeyAction::HermesHandToInbox => {
             Command::plain(action, Hermes, Msg::ActionHermesHandToInbox)
         }
         KeyAction::HermesProcessAgain => {
             Command::plain(action, Hermes, Msg::ActionHermesProcessAgain)
-        }
-        KeyAction::HermesReprocessFolder => {
-            Command::plain(action, Hermes, Msg::ActionHermesReprocessFolder)
         }
         KeyAction::HermesSetInbox => Command::plain(action, Hermes, Msg::ActionHermesSetInbox),
         KeyAction::HermesSetFilingLocation => {
@@ -258,18 +237,6 @@ pub fn command_of(action: KeyAction) -> Option<Command> {
             Hermes,
             Msg::ActionSearchDocuments,
             FuturamaName::ActionSearchDocuments,
-        ),
-        KeyAction::ReorganisationPlan => Command::themed(
-            action,
-            Hermes,
-            Msg::ActionReorganisationPlan,
-            FuturamaName::ActionReorganisationPlan,
-        ),
-        KeyAction::UndoReorganisation => Command::themed(
-            action,
-            Hermes,
-            Msg::ActionUndoReorganisation,
-            FuturamaName::ActionUndoReorganisation,
         ),
         KeyAction::About => {
             Command::themed(action, Help, Msg::ActionAbout, FuturamaName::ActionAbout)

@@ -277,7 +277,7 @@ pub fn open_settings(
     ctx: &Ctx<'_>,
     actions: &mut Vec<Action>,
 ) -> Task<Message> {
-    if ctx.overlay_apart_from_overview_open {
+    if ctx.dialog_open {
         return Task::none();
     }
     actions.push(Action::LeaveAblagePage);

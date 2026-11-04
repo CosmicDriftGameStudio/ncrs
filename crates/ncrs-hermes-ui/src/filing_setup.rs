@@ -1,9 +1,7 @@
-//! The filing setup: the user adds folders as inboxes and as document
-//! folders (archives), marks which document folder is the filing location, and
-//! saves the list to `[modules.filing]` in the config file.
-//!
-//! The state only. Looking up a folder and writing the file touch the disk
-//! and run on a blocking thread; the app hands their results back.
+//! The list of folders Hermes works on: the rules it has to follow, the role
+//! a folder can take, and writing the list to `[modules.filing]` in the config
+//! file. Looking up a folder and writing the file touch the disk and run on a
+//! blocking thread; the app hands their results back.
 
 use std::path::{Path, PathBuf};
 
@@ -48,9 +46,6 @@ pub struct FilingSetup {
     /// In the order the folders were added. Every index the card sends points
     /// into this list, whichever section shows the entry.
     chosen: Vec<FilingLocation>,
-    adding: bool,
-    saving: bool,
-    note: Option<SetupNote>,
 }
 
 impl FilingSetup {
@@ -61,18 +56,6 @@ impl FilingSetup {
             chosen: configured.to_vec(),
             ..Self::default()
         }
-    }
-
-    pub fn chosen(&self) -> &[FilingLocation] {
-        &self.chosen
-    }
-
-    pub fn note(&self) -> Option<&SetupNote> {
-        self.note.as_ref()
-    }
-
-    pub fn is_busy(&self) -> bool {
-        self.adding || self.saving
     }
 
     fn archive_indices(&self) -> impl Iterator<Item = usize> + '_ {
@@ -127,107 +110,6 @@ impl FilingSetup {
         config::check_filing_rules(&self.locations_to_save())
             .err()
             .map(SetupProblem::Rule)
-    }
-
-    pub fn can_save(&self) -> bool {
-        !self.chosen.is_empty() && self.problem().is_none() && !self.is_busy()
-    }
-
-    /// `false` while another lookup or the save is running.
-    pub fn start_adding(&mut self) -> bool {
-        if self.is_busy() {
-            return false;
-        }
-        self.adding = true;
-        self.note = None;
-        true
-    }
-
-    /// The dialog was cancelled or could not open.
-    pub fn cancel_adding(&mut self) {
-        self.adding = false;
-    }
-
-    pub fn finish_adding(
-        &mut self,
-        mode: LocationMode,
-        folder: PathBuf,
-        resolved: Result<PathBuf, String>,
-    ) {
-        if !self.adding {
-            return;
-        }
-        self.adding = false;
-        match resolved {
-            Ok(canonical) if self.chosen.iter().any(|l| l.path == canonical) => {
-                self.note = Some(SetupNote::AlreadyAdded { folder: canonical });
-            }
-            Ok(canonical) => self.chosen.push(FilingLocation {
-                path: canonical,
-                mode,
-                images: false,
-                is_target: false,
-                transfer: Default::default(),
-            }),
-            Err(reason) => self.note = Some(SetupNote::FolderUnusable { folder, reason }),
-        }
-    }
-
-    pub fn toggle_images(&mut self, index: usize) {
-        if self.is_busy() {
-            return;
-        }
-        if let Some(location) = self.chosen.get_mut(index) {
-            location.images = !location.images;
-            self.note = None;
-        }
-    }
-
-    /// Marks the document folder at `index` as the filing location.
-    pub fn set_target(&mut self, index: usize) {
-        let is_archive = self
-            .chosen
-            .get(index)
-            .is_some_and(|location| location.mode == LocationMode::Archive);
-        if self.is_busy() || !is_archive {
-            return;
-        }
-        for (at, location) in self.chosen.iter_mut().enumerate() {
-            location.is_target = at == index;
-        }
-        self.note = None;
-    }
-
-    pub fn remove(&mut self, index: usize) {
-        if self.is_busy() || index >= self.chosen.len() {
-            return;
-        }
-        self.chosen.remove(index);
-        self.note = None;
-    }
-
-    /// The list to write, or `None` when it cannot be saved now.
-    pub fn start_saving(&mut self) -> Option<Vec<FilingLocation>> {
-        if !self.can_save() {
-            return None;
-        }
-        self.saving = true;
-        self.note = None;
-        Some(self.locations_to_save())
-    }
-
-    pub fn finish_saving(&mut self, note: SetupNote) {
-        self.saving = false;
-        self.note = Some(note);
-    }
-
-    /// For a failure before the save could start, such as a missing config path.
-    pub fn refuse_saving(&mut self, note: SetupNote) {
-        self.note = Some(note);
-    }
-
-    pub fn show_note(&mut self, note: SetupNote) {
-        self.note = Some(note);
     }
 }
 
@@ -337,193 +219,10 @@ mod tests {
         }
     }
 
-    fn added(setup: &mut FilingSetup, mode: LocationMode, name: &str) {
-        assert!(setup.start_adding());
-        setup.finish_adding(mode, folder(name), Ok(folder(name)));
-    }
-
-    #[test]
-    fn one_document_folder_is_the_filing_location_without_a_choice() {
-        let mut setup = FilingSetup::new(&[]);
-        added(&mut setup, LocationMode::Archive, "filed");
-
-        assert!(!setup.chooses_target());
-        assert_eq!(setup.target_index(), Some(0));
-        assert_eq!(setup.problem(), None);
-        assert!(setup.can_save());
-        let saved = setup.start_saving().unwrap();
-        assert_eq!(saved.len(), 1);
-        assert!(saved[0].is_target);
-
-        let mut only_a_tube = FilingSetup::new(&[]);
-        added(&mut only_a_tube, LocationMode::Inbox, "tubes");
-        assert_eq!(only_a_tube.problem(), Some(SetupProblem::NoDocumentFolder));
-        assert!(!only_a_tube.can_save());
-        assert_eq!(only_a_tube.start_saving(), None);
-    }
-
-    #[test]
-    fn two_document_folders_need_a_choice_before_saving() {
-        let mut setup = FilingSetup::new(&[]);
-        added(&mut setup, LocationMode::Inbox, "tubes");
-        added(&mut setup, LocationMode::Archive, "records");
-        added(&mut setup, LocationMode::Archive, "filed");
-
-        assert!(setup.chooses_target());
-        assert_eq!(setup.target_index(), None);
-        assert_eq!(setup.problem(), Some(SetupProblem::ChooseFilingLocation));
-        assert_eq!(setup.start_saving(), None);
-
-        setup.set_target(0);
-        assert_eq!(setup.target_index(), None, "a tube cannot be the target");
-        assert_eq!(setup.problem(), Some(SetupProblem::ChooseFilingLocation));
-
-        setup.set_target(2);
-        assert!(setup.can_save());
-        let marks: Vec<bool> = setup
-            .start_saving()
-            .unwrap()
-            .iter()
-            .map(|location| location.is_target)
-            .collect();
-        assert_eq!(marks, [false, false, true]);
-    }
-
-    #[test]
-    fn removing_the_marked_folder_asks_for_a_choice_again() {
-        let mut setup = FilingSetup::new(&[]);
-        added(&mut setup, LocationMode::Archive, "a");
-        added(&mut setup, LocationMode::Archive, "b");
-        added(&mut setup, LocationMode::Archive, "c");
-        setup.set_target(1);
-        assert!(setup.can_save());
-
-        setup.remove(1);
-        assert_eq!(setup.problem(), Some(SetupProblem::ChooseFilingLocation));
-
-        setup.remove(0);
-        assert!(!setup.chooses_target());
-        assert_eq!(setup.target_index(), Some(0));
-        assert!(setup.can_save());
-    }
-
-    #[test]
-    fn a_configured_target_keeps_its_mark_when_another_folder_is_added() {
-        let configured = [location(LocationMode::Archive, "filed", true)];
-        let mut setup = FilingSetup::new(&configured);
-        added(&mut setup, LocationMode::Archive, "records");
-
-        assert!(setup.chooses_target());
-        assert_eq!(setup.target_index(), Some(0));
-        assert!(setup.can_save());
-    }
-
-    #[test]
-    fn the_same_folder_twice_is_a_note_and_adds_nothing() {
-        let mut setup = FilingSetup::new(&[]);
-        added(&mut setup, LocationMode::Inbox, "tubes");
-        added(&mut setup, LocationMode::Archive, "filed");
-
-        added(&mut setup, LocationMode::Archive, "filed");
-        assert_eq!(setup.chosen().len(), 2);
-        assert_eq!(
-            setup.note(),
-            Some(&SetupNote::AlreadyAdded {
-                folder: folder("filed")
-            })
-        );
-
-        added(&mut setup, LocationMode::Archive, "tubes");
-        assert_eq!(setup.chosen().len(), 2);
-        assert_eq!(setup.problem(), None);
-    }
-
-    #[test]
-    fn a_cancelled_dialog_adds_nothing_and_a_stray_result_is_ignored() {
-        let mut setup = FilingSetup::new(&[]);
-        assert!(setup.start_adding());
-        assert!(setup.is_busy());
-        setup.cancel_adding();
-        assert!(!setup.is_busy());
-        assert!(setup.chosen().is_empty());
-
-        setup.finish_adding(LocationMode::Inbox, folder("x"), Ok(folder("x")));
-        assert!(setup.chosen().is_empty());
-    }
-
-    #[test]
-    fn a_tube_inside_the_document_folder_is_an_overlap() {
-        let mut setup = FilingSetup::new(&[]);
-        added(&mut setup, LocationMode::Archive, "filed");
-        added(&mut setup, LocationMode::Inbox, "filed/scanner");
-        assert_eq!(
-            setup.problem(),
-            Some(SetupProblem::Rule(FilingRuleViolation::Overlap {
-                earlier: 0,
-                later: 1
-            }))
-        );
-        assert_eq!(setup.start_saving(), None);
-    }
-
-    #[test]
-    fn images_toggle_and_entries_go_per_location() {
-        let mut setup = FilingSetup::new(&[]);
-        added(&mut setup, LocationMode::Inbox, "inbox");
-        added(&mut setup, LocationMode::Archive, "filed");
-
-        setup.toggle_images(1);
-        assert_eq!(
-            setup
-                .chosen()
-                .iter()
-                .map(|location| location.images)
-                .collect::<Vec<_>>(),
-            [false, true]
-        );
-        setup.remove(0);
-        assert_eq!(setup.chosen().len(), 1);
-        assert_eq!(setup.chosen()[0].path, folder("filed"));
-        setup.remove(5);
-        assert_eq!(setup.chosen().len(), 1);
-    }
-
-    #[test]
-    fn nothing_changes_while_a_lookup_or_the_save_runs() {
-        let mut setup = FilingSetup::new(&[]);
-        added(&mut setup, LocationMode::Archive, "filed");
-        added(&mut setup, LocationMode::Archive, "records");
-        setup.set_target(0);
-        assert!(setup.start_adding());
-        assert!(!setup.start_adding());
-        setup.remove(0);
-        setup.toggle_images(0);
-        setup.set_target(1);
-        assert_eq!(setup.start_saving(), None);
-        assert_eq!(setup.chosen().len(), 2);
-        assert!(!setup.chosen()[0].images);
-        assert_eq!(setup.target_index(), Some(0));
-
-        setup.finish_adding(
-            LocationMode::Inbox,
-            folder("gone"),
-            Err("not found".to_owned()),
-        );
-        assert_eq!(
-            setup.note(),
-            Some(&SetupNote::FolderUnusable {
-                folder: folder("gone"),
-                reason: "not found".to_owned()
-            })
-        );
-        assert!(setup.start_saving().is_some());
-        assert!(!setup.start_adding());
-    }
-
     #[test]
     fn the_setup_starts_from_the_configured_locations() {
         let configured = [location(LocationMode::Archive, "filed", true)];
-        assert_eq!(FilingSetup::new(&configured).chosen(), configured);
+        assert_eq!(FilingSetup::new(&configured).chosen, configured);
     }
 
     #[test]
@@ -549,12 +248,12 @@ mod tests {
         std::fs::write(&config_path, text).unwrap();
 
         let first = config::load(&config_path).unwrap().filing.locations;
-        let mut setup = FilingSetup::new(&first);
+        let setup = FilingSetup::new(&first);
         assert_eq!(setup.problem(), None);
         assert_eq!(setup.target_index(), Some(2));
         assert_eq!(first[2].path, root.join("filed"));
 
-        let list = setup.start_saving().unwrap();
+        let list = setup.locations_to_save();
         write_locations(&config_path, &list).unwrap();
         let second = config::load(&config_path).unwrap().filing.locations;
         assert_eq!(second, first);

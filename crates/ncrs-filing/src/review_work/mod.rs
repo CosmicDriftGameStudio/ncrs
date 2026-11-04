@@ -23,7 +23,7 @@ use ncrs_pipeline::OwnDetails;
 
 use crate::execute::{execute_with, ItemOutcome, SkipReason};
 use crate::filing_work::target_of;
-use crate::suggestion_work::INDEX_NOT_OPEN;
+use ncrs_core::INDEX_NOT_OPEN;
 use ncrs_fs::transfer::{Counting, Move, Source};
 
 use ncrs_ui_kit::format::MINOR_UNITS_PER_UNIT;
@@ -193,6 +193,47 @@ impl ReviewAccess {
                 self.kind_language,
                 Some(&neighbours),
             )
+            .map_err(|err| err.to_string())
+        })
+    }
+
+    /// The open reviews, each with the folder below the target where the rule
+    /// or the neighbours would file it; `None` when nothing is sure.
+    pub fn load_with_folders(&self) -> Result<Vec<(ReviewItem, Option<PathBuf>)>, String> {
+        self.with_index_text(|index| {
+            let neighbours = self.neighbours(index)?;
+            let items = load_matching(
+                index,
+                |_path| true,
+                &self.location_roots,
+                self.kind_language,
+                Some(&neighbours),
+            )
+            .map_err(|err| err.to_string())?;
+            let kinds = Kinds::new(Arc::clone(index.kinds()), self.kind_language);
+            Ok(items
+                .into_iter()
+                .map(|item| {
+                    let folder = item
+                        .suggested_target(&kinds)
+                        .and_then(|target| target.parent().map(Path::to_path_buf));
+                    (item, folder)
+                })
+                .collect())
+        })
+    }
+
+    /// How many documents wait; reads no neighbours, so it is cheap.
+    pub fn waiting_count(&self) -> Result<usize, String> {
+        self.with_index_text(|index| {
+            load_matching(
+                index,
+                |_path| true,
+                &self.location_roots,
+                self.kind_language,
+                None,
+            )
+            .map(|items| items.len())
             .map_err(|err| err.to_string())
         })
     }

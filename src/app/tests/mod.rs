@@ -235,7 +235,7 @@ mod filing_tests;
     clippy::indexing_slicing
 )]
 #[cfg(test)]
-mod filing_setup_tests;
+mod hermes_apply_tests;
 // reason: a failing assertion is the signal in a test, so unwrap belongs here
 #[allow(
     clippy::unwrap_used,
@@ -384,7 +384,7 @@ mod receiver_stream_tests;
 // reason: a failing assertion is the signal in a test, so unwrap belongs here
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 #[cfg(test)]
-mod hermes_overview_tests;
+mod hermes_protection_tests;
 #[allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -458,14 +458,6 @@ mod hermes_chat_ui_tests;
 )]
 #[cfg(test)]
 mod hit_list_tests;
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-#[cfg(test)]
-mod replan_flow;
 #[cfg(test)]
 mod settings_pages_tests;
 pub(in crate::app) mod support;

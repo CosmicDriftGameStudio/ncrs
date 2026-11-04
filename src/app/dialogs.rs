@@ -88,9 +88,9 @@ impl App {
         }
     }
 
-    /// Settings and the filing setup replace the panel area; an overlay covers it.
+    /// Settings replace the panel area; an overlay covers it.
     pub(in crate::app) fn command_line_is_blocked(&self) -> bool {
-        self.overlay_is_open() || self.settings.page.is_some() || self.hermes.filing_setup.is_some()
+        self.overlay_is_open() || self.settings.page.is_some()
     }
 
     /// A shell command ended: its report goes to the status bar and both panels
@@ -239,11 +239,10 @@ impl App {
     /// Everything on top of the panels except the context menu, which a new
     /// right click may replace.
     pub(in crate::app) fn blocking_overlay_is_open(&self) -> bool {
-        self.ablage_tab_is_open() || self.overlay_apart_from_overview_is_open()
+        self.ablage_tab_is_open() || self.dialog_is_open()
     }
 
-    /// The page of filing that stands in for the panels: the overview or the
-    /// status.
+    /// The page of Hermes that stands in for the panels.
     pub(in crate::app) fn ablage_tab_is_open(&self) -> bool {
         self.hermes.filing_status.page_open() || self.hermes.page_is_open()
     }
@@ -251,19 +250,18 @@ impl App {
     /// Closes the page of filing without a word, for a page that replaces it.
     pub(in crate::app) fn close_ablage_tab(&mut self) -> Task<Message> {
         self.hermes.filing_status.close_page();
-        let left_overview = self.leave_hermes_overview();
         self.hermes.close_pages();
-        left_overview
+        Task::none()
     }
 
-    /// What the overview itself may open on top of it: the model cards.
-    pub(in crate::app) fn overlay_apart_from_overview_is_open(&self) -> bool {
-        self.overlay_apart_from_overview_and_hermes_is_open()
+    /// Every dialog and card that covers the panels and the pages.
+    pub(in crate::app) fn dialog_is_open(&self) -> bool {
+        self.dialog_apart_from_hermes_is_open()
             || self.hermes.quick_fix.is_some()
             || self.hermes.hermes_setup.is_some()
     }
 
-    pub(in crate::app) fn overlay_apart_from_overview_and_hermes_is_open(&self) -> bool {
+    pub(in crate::app) fn dialog_apart_from_hermes_is_open(&self) -> bool {
         self.ops.prompt.is_some()
             || self.ops.conflict_is_open()
             || self.ops.transfer_dialog.is_some()

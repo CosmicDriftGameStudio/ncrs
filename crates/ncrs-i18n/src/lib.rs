@@ -358,6 +358,14 @@ mod tests {
                 | Msg::SearchMoreMatches
                 // The loanword, the same in both languages.
                 | Msg::HermesBeta
+                // The name of the feature, the same in both languages.
+                | Msg::ColumnHermes
+                | Msg::GroupHermes
+                | Msg::HermesSetupBadge
+                | Msg::SettingsFeatureHermes
+                | Msg::SettingsFeatureIndex
+                // A plus sign only.
+                | Msg::SettingsIndexOwnAdd
                 // The name, the same word and a bare placeholder pair, in both languages.
                 | Msg::HermesChatTitle
                 | Msg::ShortcutHermesChat

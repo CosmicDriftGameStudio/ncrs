@@ -6,8 +6,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use ncrs_index::{Index, IndexError, RuleSpec, TagTally};
 
-use crate::suggestion_work::INDEX_NOT_OPEN;
 use ncrs_config::file_list_tags::TagExceptions;
+use ncrs_core::INDEX_NOT_OPEN;
 
 type IndexSlot = Arc<Mutex<Option<Index>>>;
 

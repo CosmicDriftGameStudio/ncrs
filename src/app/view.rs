@@ -174,24 +174,9 @@ impl App {
             .filter(|module| module.has_card())
             .and_then(|module| filing_ui::view(module, self.window_size, self.lang, &self.palette))
             .map(|card| card.map(Message::from));
-        let setup_card = self.hermes.filing_setup.as_ref().map(|setup| {
-            let context = filing_setup_ui::SetupContext {
-                current_folder: &self.active_panel().path,
-                home: &self.home,
-                index_is_plain: self
-                    .hermes
-                    .filing
-                    .as_ref()
-                    .is_some_and(FilingModule::index_is_plain),
-                lang: self.lang,
-                window: self.window_size,
-            };
-            filing_setup_ui::view(setup, &context, &self.palette).map(Message::from)
-        });
         let hermes_card = self.hermes_setup_view();
-        let cards: Vec<Element<'_, Message>> = setup_card
+        let cards: Vec<Element<'_, Message>> = hermes_card
             .into_iter()
-            .chain(hermes_card)
             .chain(module_card)
             .collect();
         let base: Element<'_, Message> = if cards.is_empty() {
@@ -308,12 +293,7 @@ impl App {
             .into();
         }
 
-        if let Some(card) = self
-            .settings
-            .ai_model
-            .as_ref()
-            .filter(|_| !self.settings.ai_card_hidden)
-        {
+        if let Some(card) = self.settings.ai_model.as_ref() {
             let card_element = ai_model_ui::view(
                 card,
                 self.dialog_focus,
@@ -491,9 +471,7 @@ impl App {
         ncrs_hermes_ui::ViewCtx {
             lang: self.lang,
             palette: &self.palette,
-            home: &self.home,
             window_size: self.window_size,
-            hermes_focus: self.hermes_focus,
             file_list_tags: &self.file_list_tags,
             jobs_busy: self.jobs.is_busy(),
             ai_download: self

@@ -3,56 +3,37 @@
 
 use std::path::PathBuf;
 
-use ncrs_config::config::{Config, Filing, FilingWriteError};
+use ncrs_config::config::{Filing, FilingWriteError};
 use ncrs_config::file_list_tags::{TagExceptions, TagGroup};
 use ncrs_core::PanelSide;
-use ncrs_filing::execute::UndoReport;
 use ncrs_filing::filing::{FilingMessage, IndexFigures};
 use ncrs_filing::filing_work::FilingSummary;
 use ncrs_filing::query_work::{ExportSummary, QueryHit};
-use ncrs_filing::reorganisation_work::{ExecutionSummary, PlannedItem};
-use ncrs_filing::replan_work::{ReplanItem, ReplanSummary};
-use ncrs_filing::review_work::{AcceptSummary, ConfirmOutcome, ReviewItem};
+use ncrs_filing::review_work::{AcceptSummary, ReviewItem};
 use ncrs_filing::rules_work::{RulesLoad, TryResult};
-use ncrs_filing::suggestion_work::SuggestedRule;
 use ncrs_filing::tags_work::{TagsFailure, TagsLoaded};
 use ncrs_index::{HermesCounts, IncludeOutcome, QuerySpec, RuleId, SavedQuery, SavedQueryId};
-use ncrs_intake::LocationMode;
 use ncrs_pipeline::Load;
 
 use crate::condition_editor::ConditionEdit;
-use crate::document_preview::{PreviewContent, PreviewRequest};
 use crate::filing_pieces::TargetEdit;
 use crate::hermes_column::{ColumnReading, ColumnStage, FileDetail, FolderRole};
 use crate::hermes_setup::FolderSlot;
-use crate::review_list::FormField;
 
 /// What the views of the Hermes pages send.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Message {
     Filing(FilingMessage),
     FilingStatus(FilingStatusMessage),
-    FilingSetup(FilingSetupMessage),
     HermesSetup(HermesSetupMessage),
     HermesOverview(HermesOverviewMessage),
-    RuleSuggestions(RuleSuggestionsMessage),
     Rules(RulesMessage),
-    ReorganisationPlan(ReorganisationPlanMessage),
-    ReviewList(ReviewListMessage),
     QuickFix(QuickFixMessage),
     SavedQueries(SavedQueriesMessage),
     Tags(TagsMessage),
     HermesPage(HermesPage),
-    /// Runs the entries of the reorganisation plan that are checked.
-    ExecuteReorganisation(Vec<PlannedItem>),
-    /// The executor on its blocking thread is done.
-    ReorganisationExecuted(Result<ExecutionSummary, String>),
     /// The filing job on its blocking thread is done.
     DocumentsFiled(Result<FilingSummary, String>),
-    /// The job that files the previewed documents is done.
-    DocumentsRefiled(Result<ReplanSummary, String>),
-    /// `None`: there was no carried out reorganisation left to undo.
-    ReorganisationUndone(Result<Option<UndoReport>, String>),
     HermesColumn(HermesColumnMessage),
     HermesFile(HermesFileMessage),
     /// The tags page offers to show the tags in the file list: the settings
@@ -119,43 +100,6 @@ pub enum HermesColumnMessage {
     },
 }
 
-/// Everything the filing setup sends.
-#[derive(Debug, Clone, PartialEq)]
-pub enum FilingSetupMessage {
-    Toggle,
-    Close,
-    /// Open the system folder dialog to add a folder of this mode.
-    PickFolder(LocationMode),
-    /// What the dialog returned; `None` when it was cancelled or could not open.
-    FolderPicked {
-        mode: LocationMode,
-        folder: Option<PathBuf>,
-    },
-    /// Add the active panel's folder: the fallback for keyboard use and for
-    /// systems without a dialog.
-    AddPanelFolder(LocationMode),
-    /// The folder of a pick or a panel add, looked up on disk: its canonical
-    /// path, or why it cannot be used.
-    Added {
-        mode: LocationMode,
-        folder: PathBuf,
-        resolved: Result<PathBuf, String>,
-    },
-    /// Make the document folder at this index of the chosen list the
-    /// filing location.
-    SetTarget(usize),
-    ToggleImages(usize),
-    Remove(usize),
-    Save,
-    /// The filing settings read back from the written file.
-    Saved(Result<Filing, FilingWriteError>),
-    /// The access to a picked folder was kept, or why not (sandbox only).
-    Granted {
-        folder: PathBuf,
-        result: Result<(), String>,
-    },
-}
-
 /// Everything the first-time setup of Hermes sends.
 #[derive(Debug, Clone, PartialEq)]
 pub enum HermesSetupMessage {
@@ -186,83 +130,23 @@ pub enum HermesSetupMessage {
     },
 }
 
-/// Everything the Hermes overview sends.
+/// What the buttons for the protection of the index send.
 #[derive(Debug, Clone, PartialEq)]
 pub enum HermesOverviewMessage {
-    Close,
-    /// An edit of the default target; it is written at once.
-    TargetEdited(TargetEdit),
-    PatternWritten(Result<Box<Config>, FilingWriteError>),
-    SetAiEnabled(bool),
     SetLoad(Load),
-    /// The user wants other folders: the old card, or the setup without any.
-    ChangeFolders,
-    LoadOcrModels,
-    LoadAiModel,
-    ShowOwnServerSettings,
-    /// Opens the settings of filing at the protection of the index.
-    ShowProtectionSettings,
-    /// Opens the review list, when there is something to review.
-    ShowReviews,
-    SwitchHermesOn,
-    ContinueSetup,
+    EncryptNow,
     TryAgain,
     EnterRecoveryKey,
-    EncryptNow,
     /// Opens the question whether to remove the index and begin again.
     AskStartOver,
     ConfirmStartOver,
     CancelStartOver,
 }
 
-/// Everything the reorganisation plan view sends. Running the selection is
-/// `Message::ExecuteReorganisation`, which carries the entries.
-#[derive(Debug, Clone, PartialEq)]
-pub enum ReorganisationPlanMessage {
-    Open,
-    Close,
-    /// Works the plan out again.
-    Replan,
-    /// The work of the generation is done. Dropped when the view was closed or
-    /// opened again meanwhile.
-    Loaded {
-        generation: u64,
-        result: Result<Vec<PlannedItem>, String>,
-    },
-    /// The wheel or trackpad over the list.
-    Scrolled(iced::mouse::ScrollDelta),
-    Move(isize),
-    /// A click on the row at this position: the cursor goes there.
-    Select(usize),
-    /// A click on the checkbox of the line at this position: an entry or a
-    /// group heading.
-    Toggle(usize),
-    ToggleCursor,
-    /// Enter: hands the selection over as `Message::ExecuteReorganisation`.
-    Execute,
-    /// The link under the list: opens the page of the rule behind the entry
-    /// under the cursor.
-    OpenRule(RuleId),
-}
-
-/// Which part of the Hermes card the arrow keys act on.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
-pub enum HermesFocus {
-    /// Up and down switch the page.
-    Sidebar,
-    /// Up and down move in the page's list.
-    #[default]
-    Content,
-}
-
-/// The pages of the Hermes card, in the order of its sidebar.
+/// The pages that open as a tab of their own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HermesPage {
-    Overview,
-    Review,
     Rules,
-    RuleSuggestions,
-    Reorganisation,
     SavedQueries,
     Tags,
     Inspection,
@@ -383,8 +267,6 @@ pub enum TagsMessage {
 pub enum HermesFileMessage {
     HandToInbox,
     ProcessAgain,
-    /// Plans the documents of the folder again and shows the preview.
-    ReprocessFolder,
     SetRole(FolderRole),
     /// Excludes the file, or includes it again when it is excluded.
     ToggleExclusion,
@@ -417,76 +299,6 @@ pub enum QuickFixMessage {
     Click(usize),
     /// The sequential filing of the accepted suggestions is done.
     Filed(AcceptSummary),
-}
-
-/// Everything the review list sends.
-#[derive(Debug, Clone, PartialEq)]
-pub enum ReviewListMessage {
-    Open,
-    /// Escape leaves the form first, the list second.
-    Close,
-    /// The work of the generation is done, with the open entries. Dropped when
-    /// the list was closed or opened again meanwhile.
-    Loaded {
-        generation: u64,
-        result: Result<Vec<ReviewItem>, String>,
-    },
-    /// The wheel or trackpad over the list.
-    Scrolled(iced::mouse::ScrollDelta),
-    Move(isize),
-    /// A click on the entry at this position.
-    Select(usize),
-    Edit,
-    FieldChanged(FormField, String),
-    /// F3 or the thumbnail: the page of the document instead of the fields.
-    TogglePreview,
-    /// "Add tag": the field for a new tag shows and takes the focus.
-    OpenTagInput,
-    TargetEdited(TargetEdit),
-    /// Enter in the tag field: the typed tag joins the user's own.
-    AddTag,
-    RemoveTag(String),
-    /// Tab (`false`) or Shift+Tab (`true`) in the form.
-    FocusField {
-        backwards: bool,
-    },
-    /// Enter or the button: files the document with the fields as shown.
-    Confirm,
-    Confirmed {
-        generation: u64,
-        result: Result<ConfirmOutcome, String>,
-    },
-    /// The AI can read now: every open entry goes through Hermes again.
-    ReadAgainWithAi,
-    /// The offer after filing: opens the rule form for this sender.
-    CreateRule,
-    /// The button or its key: plans the open cases again, as a preview.
-    ReplanOpenCases,
-    /// The work of the generation planned the documents again, without
-    /// changing anything. Dropped when the list was closed or opened again.
-    Previewed {
-        generation: u64,
-        serial: u64,
-        result: Result<Vec<ReplanItem>, String>,
-    },
-    /// Files the previewed documents.
-    ReplanConfirm,
-    /// Leaves the preview; nothing was filed.
-    ReplanCancel,
-    /// The preview of a document is ready. Dropped when the list was closed
-    /// or opened again, or the cursor has moved on since.
-    PreviewLoaded {
-        generation: u64,
-        serial: u64,
-        content: PreviewContent,
-    },
-    /// The cursor has rested on the document of `request`: only now is its
-    /// preview made, so moving through a long list starts no work. Dropped
-    /// like [`Self::PreviewLoaded`].
-    PreviewDue {
-        generation: u64,
-        request: PreviewRequest,
-    },
 }
 
 /// Everything the rules page sends.
@@ -555,35 +367,5 @@ pub enum RuleFormMessage {
     Saved {
         generation: u64,
         result: Result<RuleId, String>,
-    },
-}
-
-/// Everything the rule suggestions view sends.
-#[derive(Debug, Clone, PartialEq)]
-pub enum RuleSuggestionsMessage {
-    Open,
-    Close,
-    /// Learns the archive again and refreshes the list.
-    Reanalyse,
-    /// The work of the generation is done, with the open suggestions. Dropped
-    /// when the view was closed or the analysis started again meanwhile.
-    Loaded {
-        generation: u64,
-        result: Result<Vec<SuggestedRule>, String>,
-    },
-    /// The wheel or trackpad over the list.
-    Scrolled(iced::mouse::ScrollDelta),
-    Move(isize),
-    /// A click on the suggestion at this position.
-    Select(usize),
-    /// Opens the rule form for the selected suggestion.
-    Edit,
-    /// Enter or the button: confirms the suggestion as it is.
-    Confirm,
-    Discard,
-    /// The documents a suggestion's condition finds.
-    MatchesFound {
-        id: RuleId,
-        result: Result<Vec<PathBuf>, String>,
     },
 }

@@ -6,10 +6,11 @@
 use std::path::{Path, PathBuf};
 
 use iced::{Point, Size};
-use ncrs_index::{Field, Kinds, ReviewReason};
+use ncrs_index::Kinds;
 
-use crate::review_list::FormField;
+use crate::rule_form::RulePrefill;
 use ncrs_filing::review_work::ReviewItem;
+use ncrs_intake::choose_pattern;
 use ncrs_ui_kit::layout::{
     place, MENU_ITEM_HEIGHT, MENU_PADDING, QUICK_FIX_HEADER_HEIGHT, QUICK_FIX_WIDTH,
 };
@@ -20,8 +21,8 @@ use ncrs_ui_kit::layout::{
 pub enum QuickFixAction {
     /// File the members of this group under their suggestion.
     Accept(usize),
-    /// Open the review page on the documents without a suggestion (or the one
-    /// document) to fill in a field.
+    /// Open the chat on the documents without a suggestion (or the one
+    /// document), which asks for what is missing.
     SetFields,
     CreateRule,
     Later,
@@ -78,28 +79,25 @@ pub fn group_by_target(items: &[ReviewItem], kinds: &Kinds) -> (Vec<Group>, Vec<
     (groups, without)
 }
 
-/// The form field to put the cursor in for a document: the one its reason
-/// names, else the first of sender, kind and date that is still empty.
-pub fn field_to_fix(item: &ReviewItem) -> FormField {
-    if let ReviewReason::MissingField(field) | ReviewReason::LowConfidence(field) = item.reason {
-        match field {
-            Field::Sender => return FormField::Sender,
-            Field::Recipient => return FormField::Recipient,
-            Field::Kind => return FormField::Kind,
-            Field::Date => return FormField::Date,
-            Field::Number => return FormField::Number,
-            Field::Amount => return FormField::Amount,
-        }
-    }
+/// What a rule form for `item` starts with: its fields, and the pattern that
+/// would file it now.
+pub fn rule_prefill_of(
+    item: &ReviewItem,
+    custom_default: Option<&str>,
+    kinds: &Kinds,
+) -> RulePrefill {
     let fields = &item.fields;
-    if fields.sender.is_none() {
-        FormField::Sender
-    } else if fields.kind.is_none() {
-        FormField::Kind
-    } else if fields.date.is_none() {
-        FormField::Date
-    } else {
-        FormField::Sender
+    RulePrefill {
+        sender: fields.sender.clone().unwrap_or_default(),
+        kind: fields
+            .kind
+            .as_deref()
+            .map(|kind| kinds.catalog.stored_kind(kind))
+            .unwrap_or_default(),
+        tags: fields.tags.clone(),
+        pattern: choose_pattern(item.proposed_pattern.as_deref(), custom_default, fields)
+            .map(|chosen| chosen.pattern)
+            .unwrap_or_default(),
     }
 }
 
@@ -329,13 +327,63 @@ impl QuickFix {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::review_list::fixtures::loaded_list;
-    use ncrs_index::KindLanguage;
+    use ncrs_filing::review_work::TextState;
+    use ncrs_index::{DocumentFields, DocumentId, KindLanguage, ReviewEntryId, ReviewReason};
+
+    /// Ids come from a real index: only the index hands them out.
+    fn ids() -> Vec<(ReviewEntryId, DocumentId)> {
+        use chrono::{TimeZone as _, Utc};
+        use ncrs_index::{ContentHash, DocumentSource, Index, NewDocument};
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let mut index = Index::create_plain(&dir.path().join("index.db")).unwrap();
+        (1..=2)
+            .map(|seed| {
+                let document = index
+                    .insert_document(&NewDocument {
+                        hash: ContentHash([seed; 32]),
+                        path: dir.path().join(format!("scan-{seed}.pdf")),
+                        source: DocumentSource::Inbox,
+                        received_at: Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap(),
+                        stamp: None,
+                    })
+                    .unwrap();
+                let entry = index
+                    .add_review(document, ReviewReason::NoMatchingRule)
+                    .unwrap();
+                (entry, document)
+            })
+            .collect()
+    }
+
+    fn item(
+        (entry, document_id): (ReviewEntryId, DocumentId),
+        name: &str,
+        sender: &str,
+    ) -> ReviewItem {
+        ReviewItem {
+            entry,
+            document_id,
+            path: PathBuf::from(format!("inbox/{name}")),
+            reason: ReviewReason::UnconfirmedRule,
+            text_state: TextState::Read,
+            fields: DocumentFields {
+                sender: (!sender.is_empty()).then(|| sender.to_owned()),
+                kind: Some("invoice".to_owned()),
+                date: chrono::NaiveDate::from_ymd_opt(2024, 3, 9),
+                ..DocumentFields::default()
+            },
+            proposed_pattern: Some("{sender}/{date}_{kind}".to_owned()),
+            origins: ncrs_index::FieldOrigins::default(),
+            passages: Vec::new(),
+            placement: None,
+        }
+    }
 
     fn items() -> Vec<ReviewItem> {
-        let list = loaded_list();
-        let first = list.rows()[0].clone();
-        let second = list.rows()[1].clone();
+        let [one, two] = <[_; 2]>::try_from(ids()).unwrap();
+        let first = item(one, "scan-1.pdf", "Company A");
+        let second = item(two, "scan-2.pdf", "Agency B");
         let mut same_directory = second.clone();
         same_directory.fields.sender = first.fields.sender.clone();
         let mut without_rule = first.clone();
@@ -441,16 +489,6 @@ pub mod tests {
         assert!(menu.summarised_group().is_none());
         assert_eq!(menu.selected_action(), Some(QuickFixAction::Accept(0)));
         assert_eq!(menu.group_items(0).len(), 2);
-    }
-
-    #[test]
-    fn the_field_to_fix_is_the_one_the_reason_names_else_the_first_empty() {
-        let mut item = items().remove(0);
-        item.reason = ReviewReason::MissingField(Field::Date);
-        assert_eq!(field_to_fix(&item), FormField::Date);
-        item.reason = ReviewReason::NoMatchingRule;
-        item.fields.kind = None;
-        assert_eq!(field_to_fix(&item), FormField::Kind);
     }
 
     #[test]

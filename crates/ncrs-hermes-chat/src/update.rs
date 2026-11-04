@@ -88,6 +88,7 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
         }
         Message::Failed(reason) => {
             finish_work(state);
+            state.session.greeting_after_count = false;
             say(
                 state,
                 text_with(ctx, Msg::HermesChatReadFailed, &[("reason", &reason)]),
@@ -120,6 +121,10 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
         Message::AiTurnedOn => understand::ai_turned_on(state, ctx),
         Message::HermesReady => understand::hermes_ready(state, ctx),
         Message::ChangeArea { folder, area } => change_area(state, ctx, folder, area),
+        Message::WaitingCheck => {
+            crate::waiting::check(state, ctx);
+            None
+        }
         Message::WorkTick => {
             crate::working::tick(state, ctx);
             None
@@ -298,6 +303,9 @@ fn handle_done(state: &mut State, ctx: &Ctx, result: ChatResult) -> Option<Actio
         ChatResult::Trashed(trashed) => tidy::trashed_done(state, ctx, trashed),
         ChatResult::LastRun(last) => undo::last_run_done(state, ctx, last),
         ChatResult::Undone(undone) => undo::undone_done(state, ctx, undone),
+        ChatResult::WaitingCount(count) => crate::waiting::counted(state, ctx, count),
+        ChatResult::WaitingLoaded(loaded) => crate::waiting::loaded(state, ctx, loaded),
+        ChatResult::WaitingFiled(filed) => crate::waiting::filed(state, ctx, filed),
     }
     None
 }
@@ -542,6 +550,10 @@ pub fn open_thread(state: &mut State, ctx: &Ctx) {
 fn greet(state: &mut State, ctx: &Ctx) {
     state.greeting_owed = false;
     state.step = Step::Greeting;
+    if crate::waiting::has_review(ctx) {
+        crate::waiting::count_before_greeting(state);
+        return;
+    }
     say(
         state,
         text(ctx.lang, Msg::HermesChatGreeting),
@@ -772,7 +784,7 @@ pub fn handle_reply(state: &mut State, ctx: &Ctx, reply: ChipReply) -> Option<Ac
         ChipReply::Folder(path) => return folder_answer(state, ctx, path, false),
         ChipReply::NamedFolder(folder) => named_folders::chosen(state, ctx, folder),
         ChipReply::PickFolder => return Some(Action::PickFolder),
-        ChipReply::Setup => return Some(Action::OpenFilingSetup),
+        ChipReply::Setup => return Some(Action::OpenHermesSettings),
         ChipReply::ReadAnyway => {
             if let Some((path, step)) = state.session.confirm.take() {
                 state.step = step;
@@ -836,6 +848,9 @@ pub fn handle_reply(state: &mut State, ctx: &Ctx, reply: ChipReply) -> Option<Ac
         ChipReply::NamesNumbered => stay_groups::names_numbered(state, ctx),
         ChipReply::NamesLeave => stay_groups::names_leave(state, ctx),
         ChipReply::UnsureChoice { entry, choice } => tidy::unsure(state, ctx, entry, choice),
+        ChipReply::WaitingShow => crate::waiting::show(state),
+        ChipReply::WaitingFile => crate::waiting::file_current(state, ctx),
+        ChipReply::WaitingSkip => crate::waiting::skip(state, ctx),
         ChipReply::PutBack => undo::put_back(state, ctx),
         ChipReply::Undo | ChipReply::IntentUndo => undo::ask(state, ctx),
         ChipReply::OpenSearch | ChipReply::IntentSearch => return Some(Action::OpenSearch),
@@ -860,6 +875,7 @@ pub fn cancel(state: &mut State, ctx: &Ctx) {
 
 /// Forgets what the running conversation was about; nothing is remembered.
 fn reset_flow(state: &mut State) {
+    state.session.waiting = None;
     state.session.tidy = None;
     state.session.retry = None;
     state.session.trial = None;

@@ -7,14 +7,10 @@ use std::time::{Duration, SystemTime};
 use iced::widget::{column, container, row, scrollable, Column};
 use iced::{Element, Length, Padding, Size};
 use ncrs_ai::Compute;
-use ncrs_index::HermesCounts;
 use ncrs_pipeline::{Load, RunnerState, Task, WorkerSnapshot};
 
-use super::hermes::{self, Badges};
 use crate::filing_status::FilingStatus;
-use crate::message::{
-    FilingStatusMessage, HermesFocus, HermesOverviewMessage, HermesPage, Message,
-};
+use crate::message::{FilingStatusMessage, HermesOverviewMessage, Message};
 use ncrs_config::palette::Palette;
 use ncrs_filing::filing::{AiStatus, IndexFigures};
 use ncrs_i18n::fill_template;
@@ -36,8 +32,6 @@ const SECONDS_PER_HOUR: u64 = 3600;
 const ERROR_ROW_FIXED_CHARS: usize = 10;
 /// A monospace character is this many tenths wider than an average one.
 const MONO_WIDTH_TENTHS: usize = 13;
-/// The room for the button in the action bar.
-const ACTION_BUTTON_ROOM: f32 = 220.0;
 
 fn send(message: FilingStatusMessage) -> Message {
     Message::FilingStatus(message)
@@ -46,20 +40,15 @@ fn send(message: FilingStatusMessage) -> Message {
 /// How many characters the tables of the page hold in one line.
 struct LineBudget {
     table_chars: usize,
-    /// The note in the action bar.
-    note_chars: usize,
     /// The path in the PDF library notice.
     notice_path: f32,
 }
 
 impl LineBudget {
     fn of(window: Size) -> Self {
-        let column = (window.width - page_kit::NAV_WIDTH) / 2.0 - page_kit::GAP_M - page_kit::GAP_L;
+        let column = window.width / 2.0 - page_kit::GAP_M - page_kit::GAP_L;
         Self {
             table_chars: frame::chars_that_fit(column),
-            note_chars: frame::chars_that_fit(
-                window.width - page_kit::NAV_WIDTH - ACTION_BUTTON_ROOM - 3.0 * page_kit::GAP_L,
-            ),
             notice_path: column - 4.0 * theme::spacing::M,
         }
     }
@@ -79,7 +68,6 @@ pub fn view<'a>(
     status: &'a FilingStatus,
     setting: Setting<'_>,
     window: Size,
-    badges: Badges,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
@@ -98,20 +86,17 @@ pub fn view<'a>(
     .width(Length::FillPortion(1))
     .height(Length::Fill);
     let right = scrollable(
-        Column::with_children(right_column(
-            status, &setting, &budget, badges, lang, palette,
-        ))
-        .spacing(page_kit::GAP_S)
-        .width(Length::Fill),
+        Column::with_children(right_column(status, &setting, &budget, lang, palette))
+            .spacing(page_kit::GAP_S)
+            .width(Length::Fill),
     )
     .width(Length::FillPortion(1))
     .height(Length::Fill);
     let body = row![left, right].width(Length::Fill).height(Length::Fill);
     page_kit::tab_page(
-        hermes::tab_nav(HermesPage::Inspection, badges, lang, palette),
         header(status, lang, palette),
         body.into(),
-        Some(action_bar(status, badges, &budget, lang, palette)),
+        Some(action_bar(status, lang, palette)),
         palette,
     )
 }
@@ -143,16 +128,12 @@ fn header<'a>(status: &FilingStatus, lang: Language, palette: &Palette) -> Eleme
 
 fn action_bar<'a>(
     status: &FilingStatus,
-    badges: Badges,
-    budget: &LineBudget,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
     let again = !status.files_to_process_again().is_empty();
     page_kit::action_bar(
-        badges
-            .counts
-            .map(|counts| format::ellipsize_end(&seen_sentence(&counts, lang), budget.note_chars)),
+        None,
         vec![page_kit::primary(
             lang.text(Msg::FilingStatusProcessAgain),
             Some(kit::ENTER_KEY),
@@ -208,7 +189,6 @@ fn right_column<'a>(
     status: &'a FilingStatus,
     setting: &Setting<'_>,
     budget: &LineBudget,
-    badges: Badges,
     lang: Language,
     palette: &Palette,
 ) -> Vec<Element<'a, Message>> {
@@ -240,7 +220,7 @@ fn right_column<'a>(
         lang.text(Msg::FilingStatusSectionErrors),
         palette,
     )));
-    children.extend(error_rows(status, badges, budget, lang, palette));
+    children.extend(error_rows(status, budget, lang, palette));
     if let Some(full) = selected_error_line(status, lang, palette) {
         children.push(padded(full));
     }
@@ -262,47 +242,6 @@ fn right_column<'a>(
             .into(),
     );
     children
-}
-
-/// The first sentence of `counts_sentences`: the documents seen and where they are.
-fn seen_sentence(counts: &HermesCounts, lang: Language) -> String {
-    let inbox = counts.inbox;
-    let seen = inbox.new + inbox.planned + inbox.in_review + inbox.filed;
-    fill_template(
-        lang.text(Msg::FilingStatusCountsSeen),
-        &[
-            ("{seen}", &format::grouped(seen)),
-            ("{filed}", &format::grouped(inbox.filed)),
-            ("{waiting}", &format::grouped(counts.open_reviews)),
-        ],
-    )
-}
-
-/// What Hermes has done so far, in plain sentences: the documents seen and
-/// where they are, and why the rest waits.
-#[cfg(any(test, feature = "test-support"))]
-pub fn counts_sentences(counts: &HermesCounts, lang: Language) -> String {
-    let count = |number: u64| format::grouped(number);
-    let mut sentences = vec![seen_sentence(counts, lang)];
-    if counts.open_reviews_without_text > 0 {
-        sentences.push(fill_template(
-            lang.text(Msg::FilingStatusCountsWithoutText),
-            &[("{count}", &count(counts.open_reviews_without_text))],
-        ));
-    }
-    if counts.confirmed_rules == 0 && counts.open_reviews > counts.open_reviews_without_text {
-        sentences.push(lang.text(Msg::FilingStatusCountsNoRules).to_owned());
-    }
-    if counts.archive_documents > 0 {
-        sentences.push(fill_template(
-            lang.text(Msg::FilingStatusCountsArchive),
-            &[
-                ("{with_text}", &count(counts.archive_documents_with_text)),
-                ("{total}", &count(counts.archive_documents)),
-            ],
-        ));
-    }
-    sentences.join(" ")
 }
 
 fn state_message(state: RunnerState) -> Msg {
@@ -700,7 +639,6 @@ fn age_label(status: &FilingStatus, at: SystemTime) -> String {
 
 fn error_rows<'a>(
     status: &'a FilingStatus,
-    badges: Badges,
     budget: &LineBudget,
     lang: Language,
     palette: &Palette,
@@ -743,7 +681,7 @@ fn error_rows<'a>(
                 content.into(),
                 Some(age_label(status, error.at)),
                 false,
-                selected == Some(position) && badges.focus == HermesFocus::Content,
+                selected == Some(position),
                 Some(send(FilingStatusMessage::SelectError(position))),
                 palette,
             )

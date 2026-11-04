@@ -1,56 +1,13 @@
-//! Gathers what `plan_reorganisation` needs from the index and the disk and
-//! stores the plan. Reads only: the files of the location are not touched.
+//! Gathers what `plan_reorganisation` needs from the index. Reads only: the
+//! files of the location are not touched.
 
-use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
-use ncrs_index::{Index, KindCatalog, KindLanguage, Kinds, ReorganisationPlan};
-use walkdir::WalkDir;
+use ncrs_index::{Index, KindCatalog};
 
-use crate::archive_profile::{learn_archive, ArchiveDocument};
 use crate::error::IntakeError;
-use crate::reorganisation::{plan_reorganisation, PlanFile, PlanRule, ReorganisationInput};
+use crate::reorganisation::PlanFile;
 use crate::structure::{learn_structure, LocationStructure, StructureDocument};
-
-/// Plans the reorganisation of the archive location at `root` (the folder as
-/// the intake sees it, which is how the index stores the paths below it) and
-/// stores it, replacing the location's earlier unexecuted plan. The profile is
-/// learned from the documents as they are now, not read from the stored one,
-/// so the plan cannot disagree with the files it is about.
-pub fn plan_location(
-    index: &mut Index,
-    root: &Path,
-    language: KindLanguage,
-) -> Result<ReorganisationPlan, IntakeError> {
-    let files = location_documents(index, root)?;
-    let documents: Vec<ArchiveDocument> = files
-        .iter()
-        .map(|file| ArchiveDocument {
-            relative_path: file.relative_path.clone(),
-            date: file.fields.date,
-        })
-        .collect();
-    let profile = learn_archive(&documents);
-    let rules = plan_rules(index)?;
-    let existing = existing_paths(root)?;
-    let kinds = Kinds::new(Arc::clone(index.kinds()), language);
-    let unordered = location_structure(&files, &kinds.catalog);
-    let sender_aliases = index.confirmed_sender_aliases()?;
-    let items = plan_reorganisation(&ReorganisationInput {
-        files: &files,
-        profile: &profile,
-        unordered: &unordered,
-        rules: &rules,
-        sender_aliases: &sender_aliases,
-        existing: &existing,
-        kinds: &kinds,
-    });
-    index.replace_reorganisation_plan(root, &items)?;
-    index
-        .reorganisation_plan(root)?
-        .ok_or_else(|| IntakeError::io(root)(std::io::Error::other("the plan was not stored")))
-}
 
 /// The structure the documents of a location are laid out in, learned from
 /// their fields as they are now.
@@ -96,34 +53,6 @@ pub fn location_documents(index: &Index, root: &Path) -> Result<Vec<PlanFile>, I
     Ok(files)
 }
 
-fn plan_rules(index: &Index) -> Result<Vec<PlanRule>, IntakeError> {
-    index
-        .rules()?
-        .into_iter()
-        .map(|rule| {
-            let evidence = index.rule_evidence(rule.id)?;
-            Ok(PlanRule { rule, evidence })
-        })
-        .collect()
-}
-
-/// Every file and folder below the root, hidden ones too: a target must not
-/// land on any of them. A part that cannot be read fails the plan, because
-/// what is in it is not known.
-fn existing_paths(root: &Path) -> Result<BTreeSet<PathBuf>, IntakeError> {
-    let mut existing = BTreeSet::new();
-    for step in WalkDir::new(root).follow_links(false).min_depth(1) {
-        let entry = step.map_err(|err| {
-            let path = err.path().unwrap_or(root).to_path_buf();
-            IntakeError::io(path)(std::io::Error::from(err))
-        })?;
-        if let Ok(relative) = entry.path().strip_prefix(root) {
-            existing.insert(relative.to_path_buf());
-        }
-    }
-    Ok(existing)
-}
-
 #[cfg(test)]
 #[allow(
     clippy::unwrap_used,
@@ -146,6 +75,79 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
+    use std::collections::BTreeSet;
+    use std::sync::Arc;
+
+    use ncrs_index::{KindLanguage, Kinds, ReorganisationPlan};
+    use walkdir::WalkDir;
+
+    use crate::archive_profile::{learn_archive, ArchiveDocument};
+    use crate::reorganisation::{plan_reorganisation, PlanRule, ReorganisationInput};
+
+    /// Plans and stores the reorganisation of the location at `root`, as the chat's
+    /// reading does, so the tests cover the whole planning.
+    pub(super) fn plan_location(
+        index: &mut Index,
+        root: &Path,
+        language: KindLanguage,
+    ) -> Result<ReorganisationPlan, IntakeError> {
+        let files = location_documents(index, root)?;
+        let documents: Vec<ArchiveDocument> = files
+            .iter()
+            .map(|file| ArchiveDocument {
+                relative_path: file.relative_path.clone(),
+                date: file.fields.date,
+            })
+            .collect();
+        let profile = learn_archive(&documents);
+        let rules = plan_rules(index)?;
+        let existing = existing_paths(root)?;
+        let kinds = Kinds::new(Arc::clone(index.kinds()), language);
+        let unordered = location_structure(&files, &kinds.catalog);
+        let sender_aliases = index.confirmed_sender_aliases()?;
+        let items = plan_reorganisation(&ReorganisationInput {
+            files: &files,
+            profile: &profile,
+            unordered: &unordered,
+            rules: &rules,
+            sender_aliases: &sender_aliases,
+            existing: &existing,
+            kinds: &kinds,
+        });
+        index.replace_reorganisation_plan(root, &items)?;
+        index
+            .reorganisation_plan(root)?
+            .ok_or_else(|| IntakeError::io(root)(std::io::Error::other("the plan was not stored")))
+    }
+
+    fn plan_rules(index: &Index) -> Result<Vec<PlanRule>, IntakeError> {
+        index
+            .rules()?
+            .into_iter()
+            .map(|rule| {
+                let evidence = index.rule_evidence(rule.id)?;
+                Ok(PlanRule { rule, evidence })
+            })
+            .collect()
+    }
+
+    /// Every file and folder below the root, hidden ones too: a target must not
+    /// land on any of them. A part that cannot be read fails the plan, because
+    /// what is in it is not known.
+    fn existing_paths(root: &Path) -> Result<BTreeSet<PathBuf>, IntakeError> {
+        let mut existing = BTreeSet::new();
+        for step in WalkDir::new(root).follow_links(false).min_depth(1) {
+            let entry = step.map_err(|err| {
+                let path = err.path().unwrap_or(root).to_path_buf();
+                IntakeError::io(path)(std::io::Error::from(err))
+            })?;
+            if let Ok(relative) = entry.path().strip_prefix(root) {
+                existing.insert(relative.to_path_buf());
+            }
+        }
+        Ok(existing)
+    }
+
     use crate::location::{Location, LocationMode};
     use crate::reorganisation::FINDING_PRIORITY;
     use crate::sanitise::stays_below;

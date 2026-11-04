@@ -134,7 +134,6 @@ impl HermesFacts {
                     && !cursor.excluded
                     && cursor.lies_in_a_filing_location
             }
-            HermesAction::ReprocessFolder => cursor.is_dir,
             HermesAction::SetInbox => cursor.is_dir && cursor.inbox_role_is_free,
             HermesAction::SetFilingLocation => cursor.is_dir && cursor.filing_location_role_is_free,
             HermesAction::SetArchive => cursor.is_dir && cursor.archive_role_is_free,

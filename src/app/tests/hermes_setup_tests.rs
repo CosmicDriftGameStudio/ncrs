@@ -478,20 +478,3 @@ fn a_module_that_asks_for_the_encryption_opens_the_card() {
     drop(app.update(Message::Filing(FilingMessage::ChooseEncrypted(true))));
     assert!(app.hermes.hermes_setup.is_some());
 }
-
-#[test]
-fn the_setup_command_opens_the_new_card_without_locations_and_the_old_one_with() {
-    let runtime = runtime();
-    let _entered = runtime.enter();
-    let mut empty = App::with_fixed_panels();
-    drop(empty.update(Message::FilingSetup(FilingSetupMessage::Toggle)));
-    assert!(empty.hermes.hermes_setup.is_some() && empty.hermes.filing_setup.is_none());
-    drop(empty.update(Message::FilingSetup(FilingSetupMessage::Toggle)));
-    assert!(empty.hermes.hermes_setup.is_none());
-
-    let mut configured = App::with_fixed_panels();
-    configured.hermes.filing_config = filing_with(chosen_folders());
-    configured.hermes.filing = Some(FilingModule::in_phase_with_locations(Phase::Ready));
-    drop(configured.update(Message::FilingSetup(FilingSetupMessage::Toggle)));
-    assert!(configured.hermes.filing_setup.is_some() && configured.hermes.hermes_setup.is_none());
-}

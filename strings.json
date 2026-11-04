@@ -33,8 +33,8 @@
     {
       "key": "column.hermes",
       "context": "Column header above the filing status column of a file panel; the filing module is the automatic document filing. A noun.",
-      "en": "Filing",
-      "de": "Ablage"
+      "en": "Hermes",
+      "de": "Hermes"
     },
     {
       "key": "hermes_column.state_reading",
@@ -81,26 +81,26 @@
     {
       "key": "hermes_column.role_inbox",
       "context": "Small tag after the name of a folder Hermes takes new files from. One word.",
-      "en": "Inbox",
-      "de": "Eingang"
+      "en": "Read folder",
+      "de": "Lesen-Ordner"
     },
     {
       "key": "hermes_column.role_filing_location",
-      "context": "Small tag after the name of an archive folder Hermes files documents into. Short.",
-      "en": "Filing location",
-      "de": "Ablage"
+      "context": "Small tag after the name of a folder Hermes files documents into: the target folder. Short.",
+      "en": "Target folder",
+      "de": "Zielordner"
     },
     {
       "key": "hermes_column.role_archive",
-      "context": "Small tag after the name of an archive folder Hermes only reads. One word.",
-      "en": "Archive",
-      "de": "Archiv"
+      "context": "Small tag after the name of a folder Hermes only reads and never writes to. Short.",
+      "en": "Read only",
+      "de": "Nur lesen"
     },
     {
       "key": "hermes_column.role_archive_tooltip",
-      "context": "Hover text of the archive tag: Hermes learns from this folder but never moves files in or out of it.",
-      "en": "Archive, read-only: ncrs learns from it but moves nothing",
-      "de": "Archiv, nur lesen: ncrs lernt daraus, verschiebt aber nichts"
+      "context": "Hover text of the read-only tag: Hermes learns from this folder but never moves files in or out of it.",
+      "en": "Read only: ncrs learns from it but moves nothing",
+      "de": "Nur lesen: ncrs lernt daraus, verschiebt aber nichts"
     },
     {
       "key": "hermes_column.excluded_word",
@@ -386,9 +386,9 @@
     },
     {
       "key": "job.file",
-      "context": "Status bar while inbox documents are being filed into the archive by the rules. Same shape as job.copy.",
-      "en": "Filing…",
-      "de": "Lege ab…"
+      "context": "Status bar while documents from the read folders are being sorted into the target folder by the rules. Same shape as job.copy.",
+      "en": "Sorting…",
+      "de": "Ordne ein…"
     },
     {
       "key": "job.pack",
@@ -1119,8 +1119,8 @@
     {
       "key": "group.hermes",
       "context": "Heading of a group of commands in the command palette (and, later, a menu of the same name). One or two words.",
-      "en": "Filing",
-      "de": "Ablage"
+      "en": "Hermes",
+      "de": "Hermes"
     },
     {
       "key": "group.hermes.theme",
@@ -1537,16 +1537,10 @@
       "de": "Labor"
     },
     {
-      "key": "filing.encryption_note_vault",
-      "context": "Third explanation paragraph in the index card: a warning about folders on encrypted drives such as a mounted Cryptomator vault when the index is not encrypted.",
-      "en": "With an unencrypted index, do not add folders from an encrypted drive (for example a mounted Cryptomator vault): their text would end up in the index in plain form. ncrs does not detect such drives.",
-      "de": "Bei einem unverschlüsselten Index keine Ordner von einem verschlüsselten Laufwerk hinzufügen (zum Beispiel einen eingebundenen Cryptomator-Tresor): Deren Text landet sonst unverschlüsselt im Index. ncrs erkennt solche Laufwerke nicht."
-    },
-    {
       "key": "hermes_setup.frame_title",
       "context": "Card of the first-time setup of the document filing. Title of the card frame. The Futurama variants show the theme name beside it.",
-      "en": "Set up filing",
-      "de": "Ablage einrichten"
+      "en": "Set up Hermes",
+      "de": "Hermes einrichten"
     },
     {
       "key": "hermes_setup.frame_title.theme",
@@ -1557,8 +1551,8 @@
     {
       "key": "hermes_setup.badge",
       "context": "Card of the first-time setup of Hermes (the document filing). Small overline above the headline, in capitals. Hermes is the name of the feature; Beta marks it as not final.",
-      "en": "FILING · BETA",
-      "de": "ABLAGE · BETA"
+      "en": "HERMES · BETA",
+      "de": "HERMES · BETA"
     },
     {
       "key": "hermes_setup.title",
@@ -1581,20 +1575,20 @@
     {
       "key": "hermes_setup.off_note",
       "context": "Card of the first-time setup of Hermes (the document filing). Line at the top when Hermes is switched off: starting turns it on.",
-      "en": "Filing is off. “Start filing” switches it on.",
-      "de": "Die Ablage ist aus. „Ablage starten“ schaltet sie ein."
+      "en": "Hermes is off. “Start Hermes” switches it on.",
+      "de": "Hermes ist aus. „Hermes starten“ schaltet ihn ein."
     },
     {
       "key": "hermes_setup.flow_inbox",
       "context": "Card of the first-time setup of Hermes (the document filing). Box of the flow picture: the folder where new documents arrive.",
-      "en": "Inbox",
-      "de": "Eingang"
+      "en": "Read folder",
+      "de": "Lesen-Ordner"
     },
     {
       "key": "hermes_setup.flow_archive",
-      "context": "Card of the first-time setup of Hermes (the document filing). Box of the flow picture: the folders that already hold documents, drawn dashed.",
-      "en": "Archive",
-      "de": "Archiv"
+      "context": "Card of the first-time setup of Hermes (the document filing). Box of the flow picture: the folders that already hold documents and that Hermes only reads, drawn dashed.",
+      "en": "Read only",
+      "de": "Nur lesen"
     },
     {
       "key": "hermes_setup.flow_read",
@@ -1622,9 +1616,9 @@
     },
     {
       "key": "hermes_setup.flow_filed",
-      "context": "Card of the first-time setup of Hermes (the document filing). Box of the flow picture: the filing location, where documents end up.",
-      "en": "Filing",
-      "de": "Ablage"
+      "context": "Card of the first-time setup of Hermes (the document filing). Box of the flow picture: the order the documents end up in.",
+      "en": "Order",
+      "de": "Ordnung"
     },
     {
       "key": "hermes_setup.flow_filed_note",
@@ -1634,9 +1628,9 @@
     },
     {
       "key": "hermes_setup.step_inbox",
-      "context": "Card of the first-time setup of Hermes (the document filing). Heading of step one, the inbox folder.",
-      "en": "1 · Inbox",
-      "de": "1 · Eingang"
+      "context": "Card of the first-time setup of Hermes (the document filing). Heading of step one, the read folder.",
+      "en": "1 · Read folder",
+      "de": "1 · Lesen-Ordner"
     },
     {
       "key": "hermes_setup.step_inbox_text",
@@ -1646,9 +1640,9 @@
     },
     {
       "key": "hermes_setup.step_location",
-      "context": "Card of the first-time setup of Hermes (the document filing). Heading of step two, the filing location.",
-      "en": "2 · Filing location",
-      "de": "2 · Ablageort"
+      "context": "Card of the first-time setup of Hermes (the document filing). Heading of step two, the target folder.",
+      "en": "2 · Target folder",
+      "de": "2 · Zielordner"
     },
     {
       "key": "hermes_setup.step_location_text",
@@ -1737,8 +1731,8 @@
     {
       "key": "hermes_setup.start",
       "context": "Card of the first-time setup of Hermes (the document filing). Primary button: saves the folders and starts Hermes.",
-      "en": "Start filing",
-      "de": "Ablage starten"
+      "en": "Start Hermes",
+      "de": "Hermes starten"
     },
     {
       "key": "hermes_setup.creating_index",
@@ -1887,8 +1881,8 @@
     {
       "key": "filing.failed_title",
       "context": "Title of the card shown when the index could not be opened at all.",
-      "en": "Filing is unavailable",
-      "de": "Die Ablage ist nicht verfügbar"
+      "en": "Hermes is unavailable",
+      "de": "Hermes ist nicht verfügbar"
     },
     {
       "key": "filing.failed_reason",
@@ -1911,8 +1905,8 @@
     {
       "key": "filing.locations_skipped",
       "context": "Notice in the title bar after the filing module (Hermes) started: some configured folders cannot be used. Takes the number of folders.",
-      "en": "{count} filing folders skipped: not reachable or overlapping",
-      "de": "{count} Ablageordner übersprungen: nicht erreichbar oder überlappend"
+      "en": "{count} folders skipped: not reachable or overlapping",
+      "de": "{count} Ordner übersprungen: nicht erreichbar oder überlappend"
     },
     {
       "key": "hermes.status.running",
@@ -1965,14 +1959,14 @@
     {
       "key": "title_bar.hermes_rate",
       "context": "Chip in the title bar while the filing module (Hermes) is working: documents processed per minute (filed or sent to review), measured over the last full minutes; only shown while files are in work or queued. Takes the number. Pressing it opens the Inspection.",
-      "en": "Filing {rate}/min processed",
-      "de": "Ablage {rate}/Min. verarbeitet"
+      "en": "Hermes {rate}/min processed",
+      "de": "Hermes {rate}/Min. verarbeitet"
     },
     {
       "key": "title_bar.hermes_paused",
       "context": "Chip in the title bar while the filing module (Hermes) is paused; pressing it opens the Inspection.",
-      "en": "Filing paused",
-      "de": "Ablage pausiert"
+      "en": "Hermes paused",
+      "de": "Hermes pausiert"
     },
     {
       "key": "filing_status.section_pipeline",
@@ -1983,8 +1977,8 @@
     {
       "key": "filing_status.explain",
       "context": "One sentence under the title of the filing status page: what the page is for.",
-      "en": "Shows what the filing is doing right now: the state of the pipeline, the load, the index figures and the latest errors.",
-      "de": "Zeigt, was die Ablage gerade tut: Zustand der Verarbeitung, Last, Zahlen des Index und die letzten Fehler."
+      "en": "Shows what Hermes is doing right now: the state of the pipeline, the load, the index figures and the latest errors.",
+      "de": "Zeigt, was Hermes gerade tut: Zustand der Verarbeitung, Last, Zahlen des Index und die letzten Fehler."
     },
     {
       "key": "filing_status.section_workers",
@@ -2233,30 +2227,6 @@
       "de": "Gesucht in: {path}"
     },
     {
-      "key": "filing_status.counts_seen",
-      "context": "Plain sentence at the top of the Inspection. Takes the documents Hermes has seen in the inbox, the ones it filed, and the ones that wait for the user.",
-      "en": "ncrs has seen {seen} documents: {filed} filed, {waiting} wait for you.",
-      "de": "ncrs hat {seen} Dokumente gesehen: {filed} abgelegt, {waiting} warten auf dich."
-    },
-    {
-      "key": "filing_status.counts_without_text",
-      "context": "Reason sentence after the count sentence: documents waiting for the user that have no readable text. Takes the number.",
-      "en": "{count} of them have no readable text.",
-      "de": "{count} davon ohne gelesenen Text."
-    },
-    {
-      "key": "filing_status.counts_no_rules",
-      "context": "Reason sentence after the count sentence while no rule is confirmed.",
-      "en": "For the rest no rule matches: there are no confirmed rules yet.",
-      "de": "Für den Rest passt keine Regel: es gibt noch keine bestätigten Regeln."
-    },
-    {
-      "key": "filing_status.counts_archive",
-      "context": "Reason sentence: what the rule suggestions learn from. Takes the archive documents with text and all archive documents.",
-      "en": "Rule suggestions learn from the {with_text} of {total} archive documents that have text.",
-      "de": "Regelvorschläge lernen aus den {with_text} von {total} Archivdokumenten mit Text."
-    },
-    {
       "key": "filing_status.section_steps",
       "context": "Heading of the table on the filing status page that lists, per pipeline step, how many documents wait, are done, failed or stay unchanged.",
       "en": "Steps",
@@ -2301,98 +2271,14 @@
     {
       "key": "filing_setup.title",
       "context": "Title of the filing setup, a card above the panels where the user picks the folders the filing works with. The Futurama variants show the theme name beside it.",
-      "en": "Filing folders",
-      "de": "Ablageordner"
+      "en": "Read folders",
+      "de": "Lesen-Ordner"
     },
     {
       "key": "filing_setup.title.theme",
       "context": "Theme name of the filing setup title filing_setup.title, shown dimmed after the plain title in the Futurama variants only. The name of the filing module in the show.",
       "en": "Hermes",
       "de": "Hermes"
-    },
-    {
-      "key": "filing_setup.explain",
-      "context": "Explanation at the top of the filing setup card. Hermes is the name of the filing module; the two sections below ask for the inbox folders and the document folders.",
-      "en": "ncrs files your documents. Choose the folders it works with.",
-      "de": "ncrs legt deine Dokumente ab. Wähle die Ordner, mit denen es arbeitet."
-    },
-    {
-      "key": "filing_setup.inbox_heading",
-      "context": "Heading of the first section of the filing setup card, which lists the inbox folders (config mode \"inbox\"). The question says what they are.",
-      "en": "Inbox: where do new documents arrive?",
-      "de": "Eingang: Wo kommen neue Dokumente an?"
-    },
-    {
-      "key": "filing_setup.inbox_explain",
-      "context": "Explanation under the heading of the inbox section in the filing setup card: documents are picked up from these folders and filed, which empties them.",
-      "en": "ncrs picks them up there and files them. These folders are emptied.",
-      "de": "ncrs holt sie dort ab und legt sie ab. Diese Ordner werden geleert."
-    },
-    {
-      "key": "filing_setup.inbox_example",
-      "context": "Muted line in the inbox section of the filing setup card: says that the section is optional and gives examples of folders to add.",
-      "en": "Optional, e.g. Downloads or a scanner folder",
-      "de": "Optional, z. B. Downloads oder ein Scanner-Ordner"
-    },
-    {
-      "key": "filing_setup.documents_heading",
-      "context": "Heading of the second section of the filing setup card, which lists the document folders (config mode \"archive\").",
-      "en": "Where do you keep your documents?",
-      "de": "Wo bewahrst du deine Dokumente auf?"
-    },
-    {
-      "key": "filing_setup.documents_explain",
-      "context": "Explanation under the heading of the documents section in the filing setup card. The filing location is the document folder that new documents are moved into (config key target).",
-      "en": "ncrs reads them and learns how you file. Documents are only moved into the filing location.",
-      "de": "ncrs liest sie und lernt, wie du ablegst. Dokumente werden nur in den Ablageort verschoben."
-    },
-    {
-      "key": "filing_setup.documents_kinds",
-      "context": "Muted line in the documents section of the filing setup card: explains the two kinds of document folder. Filing location and archive; use the same words as the labels in the list.",
-      "en": "Filing location: new documents are filed here. Archive: only read, nothing is moved.",
-      "de": "Ablageort: Hier werden neue Dokumente abgelegt. Archiv: wird nur gelesen, nichts wird verschoben."
-    },
-    {
-      "key": "filing_setup.kind_filing_location",
-      "context": "Label in a row of the documents section of the filing setup card: this document folder is the one new documents are filed into (archive with target = true).",
-      "en": "Filing location",
-      "de": "Ablageort"
-    },
-    {
-      "key": "filing_setup.kind_archive",
-      "context": "Label in a row of the documents section of the filing setup card: this document folder is only read, nothing is moved into it (archive without target).",
-      "en": "Archive",
-      "de": "Archiv"
-    },
-    {
-      "key": "filing_setup.add_folder",
-      "context": "Button in the filing setup card, once per section: opens the system dialog to pick a folder to add to that section. Ends with an ellipsis because a dialog follows.",
-      "en": "Add folder…",
-      "de": "Ordner hinzufügen …"
-    },
-    {
-      "key": "filing_setup.use_panel_folder",
-      "context": "Button in the filing setup card, once per section, next to the add folder button: adds the folder shown in the active panel instead of opening a dialog. A muted line with that folder follows it.",
-      "en": "Use the folder in the panel",
-      "de": "Ordner aus dem Panel übernehmen"
-    },
-    {
-      "key": "filing_setup.empty_section",
-      "context": "Shown in a section of the filing setup card while no folder has been added to it.",
-      "en": "No folder yet.",
-      "de": "Noch kein Ordner."
-    },
-    {
-      "key": "filing_setup.images",
-      "context": "Checkbox next to a folder in the filing setup card: whether images in it are read too.",
-      "en": "also images",
-      "de": "auch Bilder"
-    },
-    {
-      "key": "filing_setup.remove",
-      "context": "Button next to a location in the filing setup card: takes it off the list.",
-      "en": "Remove",
-      "de": "Entfernen"
     },
     {
       "key": "filing_setup.already_added",
@@ -2403,14 +2289,14 @@
     {
       "key": "filing_setup.rule_second_target",
       "context": "Rule message in the filing setup card: more than one folder is the target. Normally the card prevents this; it can come from a failed write.",
-      "en": "Only one folder can be the filing location.",
-      "de": "Nur ein Ordner kann der Ablageort sein."
+      "en": "Only one folder can be the target folder.",
+      "de": "Nur ein Ordner kann der Zielordner sein."
     },
     {
       "key": "filing_setup.rule_inbox_target",
-      "context": "Rule message in the filing setup card: an inbox folder is marked as the target. Normally the card prevents this; it can come from a failed write.",
-      "en": "An inbox folder cannot be the filing location.",
-      "de": "Ein Eingangsordner kann nicht der Ablageort sein."
+      "context": "Rule message in the filing setup card: a read folder folder is marked as the target. Normally the card prevents this; it can come from a failed write.",
+      "en": "A read folder cannot be the target folder.",
+      "de": "Ein Lesen-Ordner kann nicht der Zielordner sein."
     },
     {
       "key": "filing_setup.rule_overlap",
@@ -2426,9 +2312,9 @@
     },
     {
       "key": "filing_setup.problem_choose_filing_location",
-      "context": "Problem line in the filing setup card while there are two or more document folders and none is chosen as the filing location; saving waits until the user picks one with the radio buttons.",
-      "en": "Choose which folder is the filing location.",
-      "de": "Wähle, welcher Ordner der Ablageort ist."
+      "context": "Problem line in the filing setup card while there are two or more document folders and none is chosen as the target folder; saving waits until the user picks one with the radio buttons.",
+      "en": "Choose which folder is the target folder.",
+      "de": "Wähle, welcher Ordner der Zielordner ist."
     },
     {
       "key": "filing_setup.folder_unusable",
@@ -2469,32 +2355,20 @@
     {
       "key": "filing_setup.saved_running",
       "context": "Notice in the title bar after saving the filing setup when Hermes starts with the saved folders right away. Takes the key that opens the Inspection (the filing status page), spelled for the platform.",
-      "en": "Filing is on. Open Status and errors with {key}.",
-      "de": "Die Ablage ist eingeschaltet. Status und Fehler öffnest du mit {key}."
+      "en": "Hermes is on. Open Status and errors with {key}.",
+      "de": "Hermes ist eingeschaltet. Status und Fehler öffnest du mit {key}."
     },
     {
       "key": "filing_setup.saved_running_unbound",
       "context": "Notice in the title bar after saving the filing setup when Hermes starts right away but no key is bound to the Inspection (the filing status page). Palette means the command palette of the app.",
-      "en": "Filing is on. Open Status and errors from the command palette.",
-      "de": "Die Ablage ist eingeschaltet. Status und Fehler öffnest du über „Aktion ausführen“."
+      "en": "Hermes is on. Open Status and errors from the command palette.",
+      "de": "Hermes ist eingeschaltet. Status und Fehler öffnest du über „Aktion ausführen“."
     },
     {
       "key": "filing_setup.saved_next_start",
       "context": "Notice in the title bar after saving the filing setup while Hermes already runs on configured folders: the new folders apply from the next start of ncrs.",
-      "en": "Saved. Filing uses the new folders from the next start of ncrs.",
-      "de": "Gespeichert. Die Ablage nimmt die neuen Ordner ab dem nächsten Start von ncrs."
-    },
-    {
-      "key": "filing_setup.cancel",
-      "context": "Button in the filing setup card: closes it without saving.",
-      "en": "Cancel",
-      "de": "Abbrechen"
-    },
-    {
-      "key": "filing_setup.save",
-      "context": "Button in the filing setup card: writes the locations to the config file.",
-      "en": "Save",
-      "de": "Speichern"
+      "en": "Saved. Hermes uses the new folders from the next start of ncrs.",
+      "de": "Gespeichert. Hermes nimmt die neuen Ordner ab dem nächsten Start von ncrs."
     },
     {
       "key": "action.fetch_theme",
@@ -2797,148 +2671,10 @@
       "de": "Es gibt keinen Datenordner, in dem die Modelle gespeichert werden könnten."
     },
     {
-      "key": "action.rule_suggestions",
-      "context": "Entry of the command list and the menu that runs the key action rule_suggestions, which opens the view with the rules Hermes suggests from how documents are already filed. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
-      "en": "Rule suggestions",
-      "de": "Regelvorschläge"
-    },
-    {
-      "key": "action.rule_suggestions.theme",
-      "context": "Theme name of the key action rule_suggestions, shown dimmed after its plain name action.rule_suggestions in the command list, and matched when typing. A playful name (a requisition is a request to be approved); the plain name beside it says what the action does.",
-      "en": "Requisitions",
-      "de": "Anträge"
-    },
-    {
-      "key": "rule_suggestions.explain",
-      "context": "Explanation in the header of the rule suggestions page. Says where the suggestions come from and that none of them does anything before the user confirms it.",
-      "en": "Suggested from how your documents are already filed. A suggestion does nothing until you confirm it.",
-      "de": "Vorgeschlagen aus der bisherigen Ablage deiner Dokumente. Ein Vorschlag bewirkt nichts, bevor du ihn bestätigst."
-    },
-    {
-      "key": "rule_suggestions.analysing",
-      "context": "Line in the rule suggestions view while the document folders are being read and the suggestions are made. It runs in the background.",
-      "en": "Reading the document folders…",
-      "de": "Die Dokumentenordner werden gelesen…"
-    },
-    {
-      "key": "rule_suggestions.empty",
-      "context": "Line in the rule suggestions view when there is no suggestion: says when suggestions appear, for a sender and for a phrase. Takes the minimum number of documents of a folder and the share that must be in the same folder.",
-      "en": "No suggestions. They appear from archive documents with read text, once at least {min} documents of one sender lie in the same folder ({share} % of that sender's documents), or at least {min} documents with the same phrase ({share} % of the folder and hardly any elsewhere).",
-      "de": "Keine Vorschläge. Sie entstehen aus Archivdokumenten mit gelesenem Text, sobald mindestens {min} Dokumente eines Absenders im selben Ordner liegen ({share} % seiner Dokumente) oder mindestens {min} Dokumente mit gleicher Wendung ({share} % des Ordners, anderswo kaum)."
-    },
-    {
-      "key": "rule_suggestions.empty_counts",
-      "context": "Second sentence under the empty rule suggestions line. Takes the archive documents with text and all archive documents.",
-      "en": "Right now {with_text} of {total} archive documents have text.",
-      "de": "Gerade haben {with_text} von {total} Archivdokumenten Text."
-    },
-    {
-      "key": "rule_suggestions.column_condition",
-      "context": "Heading of the first column of the rule suggestions list: the condition a document has to meet for the rule to apply, which is a sender or a text.",
-      "en": "Condition",
-      "de": "Bedingung"
-    },
-    {
-      "key": "rule_suggestions.condition_sender",
-      "context": "Condition of a suggested rule in its list row when the document has to come from a sender. Takes the sender name.",
-      "en": "Sender: {value}",
-      "de": "Absender: {value}"
-    },
-    {
       "key": "rule_suggestions.condition_text",
       "context": "Condition of a suggested rule in its list row when the document has to contain a word or phrase. Takes the text.",
       "en": "Text: {value}",
       "de": "Text: {value}"
-    },
-    {
-      "key": "rule_suggestions.column_pattern",
-      "context": "Heading of the second column of the rule suggestions list: the filing pattern, which says where a matching document is filed.",
-      "en": "Filed as",
-      "de": "Abgelegt als"
-    },
-    {
-      "key": "rule_suggestions.column_kind",
-      "context": "Heading of the third column of the rule suggestions list: the kind of document the rule sets, such as Invoice.",
-      "en": "Kind",
-      "de": "Art"
-    },
-    {
-      "key": "rule_suggestions.column_evidence",
-      "context": "Heading of the last column of the rule suggestions list: how many documents support the suggestion.",
-      "en": "Evidence",
-      "de": "Beleg"
-    },
-    {
-      "key": "rule_suggestions.evidence",
-      "context": "Evidence of a suggested rule in its list row. Takes three numbers: how many documents of the folder contain the text, how many the folder has, and how many documents outside the folder contain it too.",
-      "en": "{matching} of {folder} in folder, {elsewhere} elsewhere",
-      "de": "{matching} von {folder} im Ordner, {elsewhere} sonst"
-    },
-    {
-      "key": "rule_suggestions.evidence_sender",
-      "context": "Reason for a suggested rule with a sender condition, in its list row. Takes how many documents of the sender lie in the folder, how many documents the sender has in the archive, and the folder.",
-      "en": "{matching} of {total} documents from this sender are in {folder}",
-      "de": "{matching} von {total} Dokumenten dieses Absenders liegen in {folder}"
-    },
-    {
-      "key": "rule_suggestions.evidence_text",
-      "context": "Reason for a suggested rule with a text condition, in its list row. Takes how many documents of the folder contain the text, how many documents the folder has, the folder, and how many documents outside the folder contain it too.",
-      "en": "in {matching} of {folder_count} documents in {folder}, {elsewhere} elsewhere",
-      "de": "in {matching} von {folder_count} Dokumenten in {folder}, {elsewhere} anderswo"
-    },
-    {
-      "key": "rule_suggestions.documents_heading_sender",
-      "context": "Heading above the list of documents in the rule suggestions view that the selected suggestion with a sender condition matches, so the user can check the evidence.",
-      "en": "Documents from this sender",
-      "de": "Dokumente dieses Absenders"
-    },
-    {
-      "key": "rule_suggestions.documents_heading",
-      "context": "Heading above the list of documents in the rule suggestions view that the selected suggestion matches, so the user can check the evidence.",
-      "en": "Documents that contain this text",
-      "de": "Dokumente, die diesen Text enthalten"
-    },
-    {
-      "key": "rule_suggestions.documents_looking",
-      "context": "Line in the rule suggestions view while the documents of the selected suggestion are looked up in the background.",
-      "en": "Looking…",
-      "de": "Suche läuft…"
-    },
-    {
-      "key": "rule_suggestions.documents_none",
-      "context": "Line in the rule suggestions view when no document contains the text of the selected suggestion.",
-      "en": "No document contains this text.",
-      "de": "Kein Dokument enthält diesen Text."
-    },
-    {
-      "key": "rule_suggestions.documents_more",
-      "context": "Last line of the list of matching documents when only the first ones are shown. Takes the number of documents that are not shown.",
-      "en": "… and {count} more",
-      "de": "… und {count} weitere"
-    },
-    {
-      "key": "rule_suggestions.problem_failed",
-      "context": "Error line in the rule suggestions view when reading or writing the rules failed. Takes the technical detail, which stays untranslated.",
-      "en": "That did not work ({detail}).",
-      "de": "Das hat nicht geklappt ({detail})."
-    },
-    {
-      "key": "rule_suggestions.reanalyse",
-      "context": "Button in the rule suggestions view: reads the document folders again and refreshes the suggestions.",
-      "en": "Analyse again",
-      "de": "Erneut analysieren"
-    },
-    {
-      "key": "rule_suggestions.discard",
-      "context": "Button in the rule suggestions view: throws the selected suggestion away; it is not suggested again.",
-      "en": "Discard",
-      "de": "Verwerfen"
-    },
-    {
-      "key": "rule_suggestions.edit",
-      "context": "Button in the rule suggestions view: opens the rule form for the selected suggestion, to change it before confirming it.",
-      "en": "Edit",
-      "de": "Bearbeiten"
     },
     {
       "key": "rule_suggestions.confirm",
@@ -2947,352 +2683,10 @@
       "de": "Bestätigen"
     },
     {
-      "key": "rule_suggestions.note",
-      "context": "Note at the left of the action bar of the rule suggestions page: a suggestion has no effect until the user confirms it.",
-      "en": "A suggestion does nothing until you confirm it.",
-      "de": "Ein Vorschlag bewirkt nichts, bevor du ihn bestätigst."
-    },
-    {
-      "key": "rule_suggestions.share",
-      "context": "Figure at the right of a row in the rule suggestions list: how many of the documents that fit the suggestion's condition lie in the folder. {matching} and {total} are numbers.",
-      "en": "{matching} of {total}",
-      "de": "{matching} von {total}"
-    },
-    {
-      "key": "action.reorganisation_plan",
-      "context": "Entry of the command list and the menu that runs the key action reorganisation_plan, which opens the view with the plan for tidying the document folders. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
-      "en": "Sort again",
-      "de": "Neu sortieren"
-    },
-    {
-      "key": "action.reorganisation_plan.theme",
-      "context": "Theme name of the key action reorganisation_plan, shown dimmed after its plain name action.reorganisation_plan in the command list, and matched when typing. A playful name (taking inventory before tidying up); the plain name beside it says what the action does.",
-      "en": "Inventory",
-      "de": "Inventur"
-    },
-    {
-      "key": "action.undo_reorganisation",
-      "context": "Entry of the command list that runs the key action undo_reorganisation, which moves the documents of the last carried out reorganisation back. The plain name of what the action does, as short as a menu entry.",
-      "en": "Undo last reorganisation",
-      "de": "Letztes Umräumen rückgängig machen"
-    },
-    {
-      "key": "action.undo_reorganisation.theme",
-      "context": "Theme name of the key action undo_reorganisation, shown dimmed after its plain name in the command list, and matched when typing. A playful name; the plain name beside it says what the action does.",
-      "en": "Rewind",
-      "de": "Zurückspulen"
-    },
-    {
-      "key": "status.reorganised",
-      "context": "Status bar message after the reorganisation plan was carried out. Takes the number of moved and of skipped documents.",
-      "en": "{moved} moved, {skipped} skipped",
-      "de": "{moved} verschoben, {skipped} übersprungen"
-    },
-    {
-      "key": "status.reorganisation_undone",
-      "context": "Status bar message after the last reorganisation was undone. Takes the number of documents moved back and of those left where they are.",
-      "en": "{moved} moved back, {skipped} left where they are",
-      "de": "{moved} zurückverschoben, {skipped} unverändert gelassen"
-    },
-    {
       "key": "status.documents_filed",
       "context": "Status bar message after inbox documents were filed by the rules. Takes the number of filed documents and of those that need a look because their place is taken or no rule places them now.",
       "en": "{filed} filed, {reviewed} need a look",
       "de": "{filed} abgelegt, {reviewed} brauchen einen Blick"
-    },
-    {
-      "key": "status.nothing_to_undo",
-      "context": "Status bar message when undo was asked for but no carried out reorganisation is left to undo.",
-      "en": "No reorganisation to undo",
-      "de": "Kein Umräumen zum Rückgängigmachen"
-    },
-    {
-      "key": "reorganisation_plan.explain",
-      "context": "Paragraph in the header of the page for sorting the document folders again. Says in two sentences what the page is for and that nothing is moved before the user runs the selected steps.",
-      "en": "Checks the folders you already filed into and suggests moves and renames. Nothing moves before you run the selected steps.",
-      "de": "Prüft die Ordner, in die du schon abgelegt hast, und schlägt Verschiebungen und Umbenennungen vor. Nichts wird verschoben, bevor du die ausgewählten Schritte ausführst."
-    },
-    {
-      "key": "reorganisation_plan.planning",
-      "context": "Line in the reorganisation plan view while the plan is being worked out in the background, before any entry can be shown.",
-      "en": "Working out the plan…",
-      "de": "Der Plan wird erstellt…"
-    },
-    {
-      "key": "reorganisation_plan.empty",
-      "context": "Line in the reorganisation plan view when the plan has no entry: every document is already where the folder it is in expects it.",
-      "en": "Nothing to tidy up. Every document is where its folder expects it.",
-      "de": "Nichts aufzuräumen. Jedes Dokument liegt dort, wo sein Ordner es erwartet."
-    },
-    {
-      "key": "reorganisation_plan.group_duplicate",
-      "context": "Heading of the group of plan entries that are copies of a file kept elsewhere in an ordered folder; the copies lie in unsorted folders and nothing is moved or deleted.",
-      "en": "Duplicates",
-      "de": "Duplikate"
-    },
-    {
-      "key": "reorganisation_plan.group_misplaced",
-      "context": "Heading of the group of plan entries whose text matches a rule that files documents in another folder than the one they are in.",
-      "en": "Filed in the wrong folder",
-      "de": "Falsch abgelegt"
-    },
-    {
-      "key": "reorganisation_plan.group_year",
-      "context": "Heading of the group of plan entries that lie in a folder of one year although the document is dated in another year.",
-      "en": "Year does not match",
-      "de": "Jahr passt nicht"
-    },
-    {
-      "key": "reorganisation_plan.group_name",
-      "context": "Heading of the group of plan entries whose file name does not follow the naming pattern of the folder they are in.",
-      "en": "Name differs",
-      "de": "Name weicht ab"
-    },
-    {
-      "key": "reorganisation_plan.group_blocked",
-      "context": "Heading of the group of plan entries that cannot be carried out: the target is taken, or too little is known about the document. They are shown for information and cannot be selected.",
-      "en": "Cannot be done",
-      "de": "Nicht ausführbar"
-    },
-    {
-      "key": "reorganisation_plan.group_count",
-      "context": "Count behind a group heading of the reorganisation plan view: how many of the entries of the group are selected to be run.",
-      "en": "{selected} of {count} selected",
-      "de": "{selected} von {count} ausgewählt"
-    },
-    {
-      "key": "reorganisation_plan.group_explain_duplicate",
-      "context": "Explanation under the heading of the group of copies in the detail of the reorganisation plan view.",
-      "en": "Copies of a file that stays where it is. They lie in unsorted folders and can be cleared; the plan moves and deletes nothing.",
-      "de": "Kopien einer Datei, die an ihrem Platz bleibt. Sie liegen in unsortierten Ordnern und können weg; der Plan verschiebt und löscht nichts."
-    },
-    {
-      "key": "reorganisation_plan.group_explain_misplaced",
-      "context": "Explanation under the heading of the group of misplaced documents in the detail of the reorganisation plan view.",
-      "en": "Documents that a rule files in another folder than the one they are in.",
-      "de": "Dokumente, die eine Regel in einem anderen Ordner ablegt als dem, in dem sie liegen."
-    },
-    {
-      "key": "reorganisation_plan.group_explain_year",
-      "context": "Explanation under the heading of the group of documents in the folder of a wrong year in the detail of the reorganisation plan view.",
-      "en": "Documents in the folder of one year that are dated in another year.",
-      "de": "Dokumente im Ordner eines Jahres, die aus einem anderen Jahr stammen."
-    },
-    {
-      "key": "reorganisation_plan.group_explain_name",
-      "context": "Explanation under the heading of the group of oddly named files in the detail of the reorganisation plan view.",
-      "en": "Files whose name does not follow the pattern of their folder. They get a name that does.",
-      "de": "Dateien, deren Name nicht dem Muster ihres Ordners folgt. Sie bekommen einen passenden Namen."
-    },
-    {
-      "key": "reorganisation_plan.group_explain_blocked",
-      "context": "Explanation under the heading of the group of entries that cannot be run in the detail of the reorganisation plan view.",
-      "en": "Entries that cannot be run: the target is taken, or too little is known about the document. They are shown for information only.",
-      "de": "Einträge, die sich nicht ausführen lassen: Das Ziel ist belegt, oder über das Dokument ist zu wenig bekannt. Sie stehen nur zur Information hier."
-    },
-    {
-      "key": "reorganisation_plan.more_steps",
-      "context": "Line below the steps of a group in the detail of the reorganisation plan view when more steps exist than are listed. Takes the number of steps not listed.",
-      "en": "… and {count} more",
-      "de": "… und {count} weitere"
-    },
-    {
-      "key": "reorganisation_plan.column_current",
-      "context": "Column heading in the reorganisation plan view above the current path of each document, below its document folder.",
-      "en": "Now",
-      "de": "Jetzt"
-    },
-    {
-      "key": "reorganisation_plan.column_proposed",
-      "context": "Column heading in the reorganisation plan view above the path each document would get, below its document folder.",
-      "en": "Proposed",
-      "de": "Vorschlag"
-    },
-    {
-      "key": "reorganisation_plan.column_reason",
-      "context": "Column heading in the reorganisation plan view above the plain-text reason for each proposal.",
-      "en": "Why",
-      "de": "Grund"
-    },
-    {
-      "key": "reorganisation_plan.action_move",
-      "context": "Figure at the right of an entry of the plan for sorting again: the entry moves to another folder.",
-      "en": "move",
-      "de": "verschieben"
-    },
-    {
-      "key": "reorganisation_plan.action_rename",
-      "context": "Figure at the right of an entry of the plan for sorting again: the entry keeps its folder and gets another name.",
-      "en": "rename",
-      "de": "umbenennen"
-    },
-    {
-      "key": "reorganisation_plan.cannot_run",
-      "context": "Last part of the sentence in the action bar of the plan for sorting again, after how many entries are selected: how many entries cannot be run. {count} is a number.",
-      "en": "{count} cannot run",
-      "de": "{count} nicht ausführbar"
-    },
-    {
-      "key": "reorganisation_plan.reason_duplicate",
-      "context": "Reason of a plan entry that is a copy. Takes the path of the copy that stays where it is.",
-      "en": "Copy of {keeper}",
-      "de": "Kopie von {keeper}"
-    },
-    {
-      "key": "reorganisation_plan.reason_duplicate_copy",
-      "context": "Reason of a plan entry that is a copy lying in an unsorted folder; nothing is moved. Takes the path of the copy that stays in the ordered archive.",
-      "en": "Copy of {keeper}; can be cleared",
-      "de": "Kopie von {keeper}; kann weg"
-    },
-    {
-      "key": "reorganisation_plan.reason_misplaced",
-      "context": "Reason of a plan entry that a confirmed rule files in another folder.",
-      "en": "A rule files it elsewhere",
-      "de": "Eine Regel legt es woanders ab"
-    },
-    {
-      "key": "reorganisation_plan.reason_misplaced_unconfirmed",
-      "context": "Reason of a plan entry that a suggested rule files in another folder, where the user has not confirmed that rule yet; such an entry starts unselected.",
-      "en": "An unconfirmed rule files it elsewhere",
-      "de": "Eine unbestätigte Regel legt es woanders ab"
-    },
-    {
-      "key": "reorganisation_plan.reason_year",
-      "context": "Reason of a plan entry that lies in the folder of the wrong year. Takes the year of the folder and the year of the document.",
-      "en": "Filed under {folder_year}, dated {date_year}",
-      "de": "Abgelegt unter {folder_year}, datiert {date_year}"
-    },
-    {
-      "key": "reorganisation_plan.reason_name",
-      "context": "Reason of a plan entry whose name differs from the others in its folder. Takes the naming pattern of the folder.",
-      "en": "Does not follow the name pattern {pattern}",
-      "de": "Folgt nicht dem Namensmuster {pattern}"
-    },
-    {
-      "key": "reorganisation_plan.reason_target_exists",
-      "context": "Reason why a plan entry cannot be carried out: a file already exists at the path it would get.",
-      "en": "The target already exists",
-      "de": "Das Ziel gibt es schon"
-    },
-    {
-      "key": "reorganisation_plan.reason_target_taken",
-      "context": "Reason why a plan entry cannot be carried out: another entry of the same plan wants the same path.",
-      "en": "Another file wants the same target",
-      "de": "Eine andere Datei will dasselbe Ziel"
-    },
-    {
-      "key": "reorganisation_plan.reason_target_leaves",
-      "context": "Reason why a plan entry cannot be carried out: the path it would get is not inside the document folder.",
-      "en": "The target would leave the folder",
-      "de": "Das Ziel läge außerhalb des Ordners"
-    },
-    {
-      "key": "reorganisation_plan.reason_missing_fields",
-      "context": "Reason why a plan entry has no proposal: the fields the naming pattern of the folder needs, such as the date, are not known for the document.",
-      "en": "Not enough is known to name it",
-      "de": "Zu wenig bekannt für einen Namen"
-    },
-    {
-      "key": "reorganisation_plan.finding_misplaced",
-      "context": "Sentence under the plan list explaining an entry that a confirmed rule files in another folder. Takes the short name of the rule and the path the file would get.",
-      "en": "Rule ‘{rule}’ files documents like this one under {target}.",
-      "de": "Die Regel ‘{rule}’ legt solche Dokumente unter {target} ab."
-    },
-    {
-      "key": "reorganisation_plan.finding_misplaced_unconfirmed",
-      "context": "Sentence under the plan list explaining an entry that a suggested rule, not yet confirmed by the user, files in another folder. Takes the short name of the rule and the path the file would get.",
-      "en": "The suggested rule ‘{rule}’ would file this under {target}; it is not confirmed yet.",
-      "de": "Die vorgeschlagene Regel ‘{rule}’ würde dies unter {target} ablegen; sie ist noch nicht bestätigt."
-    },
-    {
-      "key": "reorganisation_plan.finding_misplaced_unknown",
-      "context": "Sentence under the plan list explaining an entry that a rule files in another folder, when that rule can no longer be found. Takes the path the file would get.",
-      "en": "A rule that is no longer there would file this under {target}.",
-      "de": "Eine Regel, die es nicht mehr gibt, würde dies unter {target} ablegen."
-    },
-    {
-      "key": "reorganisation_plan.finding_year_dated",
-      "context": "Sentence under the plan list explaining an entry that lies in the folder of the wrong year, when the date of the document is known. Takes the date (YYYY-MM-DD) and the year of the folder.",
-      "en": "Dated {date}, but it lies in the folder {folder_year}.",
-      "de": "Datiert auf {date}, liegt aber im Ordner {folder_year}."
-    },
-    {
-      "key": "reorganisation_plan.finding_year_undated",
-      "context": "Sentence under the plan list explaining an entry that lies in the folder of the wrong year, when only the year of the document is known. Takes the year of the document and the year of the folder.",
-      "en": "Dated in {date_year}, but it lies in the folder {folder_year}.",
-      "de": "Datiert auf {date_year}, liegt aber im Ordner {folder_year}."
-    },
-    {
-      "key": "reorganisation_plan.finding_duplicate",
-      "context": "Sentence under the plan list explaining an entry that is a copy. The copy is moved aside, never deleted. Takes the path of the file that stays and the path the copy would get.",
-      "en": "Same content as {keeper}, which stays; this copy moves to {target}.",
-      "de": "Gleicher Inhalt wie {keeper}, das bleibt; diese Kopie wandert nach {target}."
-    },
-    {
-      "key": "reorganisation_plan.finding_duplicate_copy",
-      "context": "Sentence under the plan list explaining an entry that is a copy in an unsorted folder. Nothing is moved; the user can clear the copy. Takes the path of the file that stays.",
-      "en": "Same content as {keeper}, which stays. This copy lies in an unsorted folder and can be cleared.",
-      "de": "Gleicher Inhalt wie {keeper}, das bleibt. Diese Kopie liegt in einem unsortierten Ordner und kann weg."
-    },
-    {
-      "key": "reorganisation_plan.finding_name",
-      "context": "Sentence under the plan list explaining an entry whose name differs from the others in its folder. Takes the naming pattern of the folder and the path the file would get.",
-      "en": "The name does not follow the pattern {pattern} of its folder; it becomes {target}.",
-      "de": "Der Name folgt nicht dem Muster {pattern} seines Ordners; er wird zu {target}."
-    },
-    {
-      "key": "reorganisation_plan.finding_target_exists",
-      "context": "Sentence under the plan list explaining why an entry cannot be carried out: a file already exists at the path it would get. Takes that path.",
-      "en": "{target} exists already, so this entry cannot be run.",
-      "de": "{target} gibt es schon, deshalb lässt sich dieser Eintrag nicht ausführen."
-    },
-    {
-      "key": "reorganisation_plan.finding_target_taken",
-      "context": "Sentence under the plan list explaining why an entry cannot be carried out: another entry of the same plan wants the same path. Takes that path.",
-      "en": "Another entry of this plan wants {target} as well, so this one cannot be run.",
-      "de": "Ein anderer Eintrag dieses Plans will ebenfalls {target}, deshalb lässt sich dieser nicht ausführen."
-    },
-    {
-      "key": "reorganisation_plan.finding_target_leaves",
-      "context": "Sentence under the plan list explaining why an entry cannot be carried out: the path it would get is not inside the document folder.",
-      "en": "The proposed path would lie outside the document folder, so this entry cannot be run.",
-      "de": "Der vorgeschlagene Pfad läge außerhalb des Dokumentenordners, deshalb lässt sich dieser Eintrag nicht ausführen."
-    },
-    {
-      "key": "reorganisation_plan.finding_missing_fields",
-      "context": "Sentence under the plan list explaining why an entry has no proposal: the naming pattern of the folder needs fields, such as the date, that are not known for the document.",
-      "en": "The naming pattern of the folder needs details that are unknown for this file, such as its date, so no name can be proposed.",
-      "de": "Das Namensmuster des Ordners braucht Angaben, die für diese Datei unbekannt sind, etwa das Datum, deshalb lässt sich kein Name vorschlagen."
-    },
-    {
-      "key": "reorganisation_plan.show_rule",
-      "context": "Link under the plan list that opens the Rules page on the rule behind the entry under the cursor.",
-      "en": "Show rule",
-      "de": "Regel anzeigen"
-    },
-    {
-      "key": "reorganisation_plan.show_suggestion",
-      "context": "Link under the plan list that opens the Rule suggestions page, for an entry that rests on a suggested rule the user has not confirmed yet.",
-      "en": "Show suggestion",
-      "de": "Vorschlag anzeigen"
-    },
-    {
-      "key": "reorganisation_plan.problem_failed",
-      "context": "Line in the reorganisation plan view when the plan could not be worked out. Takes the technical detail, which stays English.",
-      "en": "The plan could not be made ({detail}).",
-      "de": "Der Plan konnte nicht erstellt werden ({detail})."
-    },
-    {
-      "key": "reorganisation_plan.replan",
-      "context": "Button in the reorganisation plan view: works the plan out again from the documents as they are now, and drops the selection.",
-      "en": "Plan again",
-      "de": "Neu planen"
-    },
-    {
-      "key": "reorganisation_plan.execute",
-      "context": "Button in the reorganisation plan view: hands the selected entries over to be carried out. Disabled while no entry is selected.",
-      "en": "Run selected",
-      "de": "Ausgewählte ausführen"
     },
     {
       "key": "action.download_ai_model",
@@ -3493,18 +2887,6 @@
       "de": "{model} unter {endpoint}"
     },
     {
-      "key": "action.review_list",
-      "context": "Entry of the command list and the menu that runs the key action review_list, which opens the review list: documents that no confirmed rule could file. Also the title of that Hermes page and its sidebar entry.",
-      "en": "Review",
-      "de": "Rückfragen"
-    },
-    {
-      "key": "action.review_list.theme",
-      "context": "Theme name of the key action review_list, shown dimmed after its plain name action.review_list.",
-      "en": "Pending",
-      "de": "Wiedervorlage"
-    },
-    {
       "key": "hermes.nav_inspection",
       "context": "Sidebar entry of the Hermes card that opens the filing status and errors page.",
       "en": "Status and errors",
@@ -3517,58 +2899,10 @@
       "de": "Inspektion"
     },
     {
-      "key": "review_list.explain",
-      "context": "Explanation in the header of the review page: what the list holds and that nothing is filed before the user confirms.",
-      "en": "Documents that no confirmed rule could file. Nothing is filed before you confirm.",
-      "de": "Dokumente, die keine bestätigte Regel ablegen konnte. Nichts wird abgelegt, bevor du bestätigst."
-    },
-    {
-      "key": "review_list.note",
-      "context": "Note at the left of the action bar of the review page: nothing is filed before the user confirms.",
-      "en": "Nothing is filed before you confirm.",
-      "de": "Nichts wird abgelegt, bevor du bestätigst."
-    },
-    {
-      "key": "review_list.section_filing",
-      "context": "Title of the group of rows of the review page that say where the document goes and how it is named. One word.",
-      "en": "Filing",
-      "de": "Ablage"
-    },
-    {
-      "key": "review_list.no_rules_hint",
-      "context": "Hint line at the top of the review page while Hermes has no confirmed rule yet and the AI model is not ready: why the fields are empty and the two ways to fill them.",
-      "en": "No rules yet. ncrs suggests the default target for each document: check the fields and confirm. Load the AI model and it fills in the fields itself.",
-      "de": "Noch keine Regeln. ncrs schlägt für jedes Dokument das Standardziel vor: Felder prüfen und bestätigen. Mit dem KI-Modell füllt es die Felder selbst aus."
-    },
-    {
-      "key": "review_list.loading",
-      "context": "Shown in the review list while it loads.",
-      "en": "Loading …",
-      "de": "Lädt …"
-    },
-    {
-      "key": "review_list.empty",
-      "context": "Shown in the review list when no document waits. Says when entries appear.",
-      "en": "Nothing to review. Documents land here when ncrs cannot file them itself: without readable text or without a matching rule.",
-      "de": "Nichts zu prüfen. Hier landen Dokumente, die ncrs nicht selbst ablegen kann: ohne lesbaren Text oder ohne passende Regel."
-    },
-    {
       "key": "review_list.reason_no_rule",
       "context": "Review reason in the review list: no rule matched the document.",
       "en": "No rule matches",
       "de": "Keine Regel passt"
-    },
-    {
-      "key": "review_list.reason_default_pattern",
-      "context": "Review reason in the review list: the pattern in the form is the default pattern, not one from a rule.",
-      "en": "Default target, please check",
-      "de": "Standardziel, bitte prüfen"
-    },
-    {
-      "key": "review_list.reason_nothing_recognised",
-      "context": "Review reason in the review list: no rule matches and no field of the document was recognised, so there is no pattern either.",
-      "en": "No rule and nothing recognised",
-      "de": "Keine Regel, nichts erkannt"
     },
     {
       "key": "review_list.reason_image_no_text",
@@ -3605,42 +2939,6 @@
       "context": "Review reason in the review list: a field was read with low confidence. Takes the field name.",
       "en": "{field} uncertain",
       "de": "{field} unsicher"
-    },
-    {
-      "key": "review_list.neighbours_same_number",
-      "context": "Review reason in the review list: the document has the same labelled number as documents already filed. Takes the label of the number as printed on the letter, its value, how many documents share it and the folder they lie in.",
-      "en": "{label} {value}, like {count} documents in {folder}",
-      "de": "{label} {value} wie bei {count} Dokumenten in {folder}"
-    },
-    {
-      "key": "review_list.neighbours_same_iban",
-      "context": "Review reason in the review list: the document names the same bank account as documents already filed. Takes how many documents and the folder they lie in.",
-      "en": "Same IBAN as {count} documents in {folder}",
-      "de": "Gleiche IBAN wie {count} Dokumente in {folder}"
-    },
-    {
-      "key": "review_list.neighbours_same_sender_kind",
-      "context": "Review reason in the review list: documents of the same sender and kind are already filed together. Takes how many documents and the folder they lie in.",
-      "en": "{count} documents of this sender and kind lie in {folder}",
-      "de": "{count} Dokumente dieses Absenders und dieser Art liegen in {folder}"
-    },
-    {
-      "key": "review_list.neighbours_same_sender",
-      "context": "Review reason in the review list: documents of the same sender are already filed together. Takes how many documents and the folder they lie in.",
-      "en": "{count} documents of this sender lie in {folder}",
-      "de": "{count} Dokumente dieses Absenders liegen in {folder}"
-    },
-    {
-      "key": "review_list.neighbours_missing_field",
-      "context": "Review reason in the review list: similar documents lie in a folder, but the document lacks a field the naming pattern of that folder needs. Takes the folder and the field name.",
-      "en": "Belongs in {folder}, but the {field} is missing",
-      "de": "Gehört nach {folder}, aber {field} fehlt"
-    },
-    {
-      "key": "review_list.neighbours_unsure",
-      "context": "Review reason in the review list: similar documents are filed in several folders, so there is no sure place. Takes how many of the similar documents lie in the most likely folder, how many there are, and that folder.",
-      "en": "Similar documents are split: {agreeing} of {similar} in {folder}",
-      "de": "Ähnliche Dokumente sind verteilt: {agreeing} von {similar} in {folder}"
     },
     {
       "key": "document_preview.loading",
@@ -3737,156 +3035,6 @@
       "context": "Form label in the review list: amount. Also names the field in a review reason.",
       "en": "Amount",
       "de": "Betrag"
-    },
-    {
-      "key": "review_list.field_tags",
-      "context": "Form label in the review list: tags.",
-      "en": "Tags",
-      "de": "Schlagworte"
-    },
-    {
-      "key": "review_list.tags_add",
-      "context": "Placeholder of the field in the review list form where a new tag is typed; Enter adds it.",
-      "en": "Add tag",
-      "de": "Schlagwort hinzufügen"
-    },
-    {
-      "key": "review_list.tags_note",
-      "context": "Dimmed note under the tags block of the review list form.",
-      "en": "Automatic tags come from kind, sender, recipient and year. If one is wrong, correct the field above.",
-      "de": "Automatische Schlagworte kommen aus Art, Absender, Empfänger und Jahr. Stimmt eins nicht, korrigiere das Feld oben."
-    },
-    {
-      "key": "review_list.hint_date",
-      "context": "Description under the date field of the review list.",
-      "en": "Format YYYY-MM-DD",
-      "de": "Format JJJJ-MM-TT"
-    },
-    {
-      "key": "review_list.hint_amount",
-      "context": "Description under the amount field of the review list.",
-      "en": "For example 12.34 EUR",
-      "de": "Zum Beispiel 12,34 EUR"
-    },
-    {
-      "key": "review_list.origin_rule",
-      "context": "Line under a field in the review list form: the value comes from a rule.",
-      "en": "From a rule",
-      "de": "Aus einer Regel"
-    },
-    {
-      "key": "review_list.origin_ai",
-      "context": "Line under a field in the review list form: the value was read by the AI. Takes the confidence in percent as a number.",
-      "en": "AI, {percent} % sure",
-      "de": "KI, {percent} % sicher"
-    },
-    {
-      "key": "review_list.origin_manual",
-      "context": "Line under a field in the review list form: the user set the value earlier.",
-      "en": "By hand",
-      "de": "Von Hand"
-    },
-    {
-      "key": "review_list.origin_address",
-      "context": "Line under a field in the review list form: the value was read from the address block of the letter.",
-      "en": "From the address block",
-      "de": "Aus dem Adressfeld"
-    },
-    {
-      "key": "review_list.origin_heading",
-      "context": "Line under a field in the review list form: the value was read from the heading of the document.",
-      "en": "From the heading",
-      "de": "Aus der Überschrift"
-    },
-    {
-      "key": "review_list.origin_changed",
-      "context": "Line under a field in the review list form: the user changed the value in the form since it was loaded.",
-      "en": "Changed by hand",
-      "de": "Von Hand geändert"
-    },
-    {
-      "key": "review_list.preview",
-      "context": "Live preview in the review list. Takes the path the document would be filed under.",
-      "en": "Will be filed as {path}",
-      "de": "Wird abgelegt als {path}"
-    },
-    {
-      "key": "review_list.preview_none",
-      "context": "Shown in the review list instead of the preview when the pattern does not fit the fields.",
-      "en": "The target does not fit the fields yet",
-      "de": "Das Ziel passt noch nicht zu den Feldern"
-    },
-    {
-      "key": "review_list.preview_missing_field",
-      "context": "Shown in the review list instead of the preview when the pattern needs a field that is empty. Takes the name of that field.",
-      "en": "The target needs the field {field}",
-      "de": "Das Ziel braucht noch das Feld {field}"
-    },
-    {
-      "key": "review_list.problem_date",
-      "context": "Problem in the review list: the date text is not valid.",
-      "en": "The date must look like 2024-03-31.",
-      "de": "Das Datum muss so aussehen: 2024-03-31."
-    },
-    {
-      "key": "review_list.problem_amount",
-      "context": "Problem in the review list: the amount text is not valid.",
-      "en": "The amount must look like 12.34 EUR.",
-      "de": "Der Betrag muss so aussehen: 12,34 EUR."
-    },
-    {
-      "key": "review_list.problem_pattern",
-      "context": "Problem in the review list: the pattern cannot be rendered with the fields.",
-      "en": "The target does not fit the fields.",
-      "de": "Das Ziel passt nicht zu den Feldern."
-    },
-    {
-      "key": "review_list.problem_target_exists",
-      "context": "Problem in the review list: the target file exists; nothing was overwritten.",
-      "en": "A file with this name already exists. Nothing was overwritten.",
-      "de": "Eine Datei mit diesem Namen gibt es schon. Nichts wurde überschrieben."
-    },
-    {
-      "key": "review_list.problem_file_changed",
-      "context": "Problem in the review list: the source file changed or vanished; the document is queued again.",
-      "en": "The file changed or is gone. It will be looked at again.",
-      "de": "Die Datei hat sich geändert oder fehlt. Sie wird neu betrachtet."
-    },
-    {
-      "key": "review_list.problem_failed",
-      "context": "Problem in the review list. Takes the error detail.",
-      "en": "Failed: {detail}",
-      "de": "Fehlgeschlagen: {detail}"
-    },
-    {
-      "key": "review_list.create_rule",
-      "context": "Button in the review list after filing: creates a rule for the sender. Takes the sender.",
-      "en": "Create rule for sender ‘{sender}’",
-      "de": "Regel für Absender ‚{sender}‘ anlegen"
-    },
-    {
-      "key": "review_list.confirm",
-      "context": "Button in the review list: files the document with the fields shown.",
-      "en": "Confirm",
-      "de": "Bestätigen"
-    },
-    {
-      "key": "review_list.read_again_with_ai",
-      "context": "Button in the review list that hands all open reviews to Hermes again, now that the AI can read them. Takes the number of documents (more than one).",
-      "en": "Read {count} documents again with AI",
-      "de": "{count} Dokumente mit KI neu lesen"
-    },
-    {
-      "key": "review_list.read_again_with_ai_one",
-      "context": "Button in the review list that hands its single open review to Hermes again, now that the AI can read it.",
-      "en": "Read the document again with AI",
-      "de": "Dokument mit KI neu lesen"
-    },
-    {
-      "key": "review_list.filed_note",
-      "context": "Footer note in the review list after filing. Takes the path.",
-      "en": "Filed as {path}",
-      "de": "Abgelegt als {path}"
     },
     {
       "key": "action.saved_queries",
@@ -4339,18 +3487,6 @@
       "de": "Zeigt die Namen aus der Serie neben den Klartext-Namen, z. B. Smell-o-scope neben Suche."
     },
     {
-      "key": "settings.row_hermes_enabled",
-      "context": "Name of the setting on the filing page that switches the filing module Hermes on or off.",
-      "en": "Filing on",
-      "de": "Ablage aktiv"
-    },
-    {
-      "key": "settings.row_hermes_enabled_note",
-      "context": "Explanation under the setting that switches Hermes on: it works in the background while the program runs.",
-      "en": "Picks up and files documents while ncrs runs.",
-      "de": "Holt Dokumente ab und legt sie ab, solange ncrs läuft."
-    },
-    {
       "key": "settings.on",
       "context": "Value of a switched on setting on the settings tab, next to its checkbox. One word.",
       "en": "on",
@@ -4369,24 +3505,6 @@
       "de": "{count} Worker"
     },
     {
-      "key": "settings.row_ocr_models",
-      "context": "Name of the setting on the filing page for the files that read text from scans and images.",
-      "en": "Recognition models",
-      "de": "Erkennungsmodelle"
-    },
-    {
-      "key": "settings.row_ocr_models_note",
-      "context": "Explanation under the text recognition models: they are downloaded once, after asking.",
-      "en": "Needed to read scans and images. Downloaded once, after asking.",
-      "de": "Nötig, um Scans und Bilder zu lesen. Wird einmal geladen, nach Rückfrage."
-    },
-    {
-      "key": "settings.models_present",
-      "context": "Status of the text recognition models when their folder has files. Lower case, one or two words.",
-      "en": "downloaded",
-      "de": "geladen"
-    },
-    {
       "key": "settings.models_missing",
       "context": "Status of the text recognition models or the AI model when the files are not there. Lower case.",
       "en": "not downloaded",
@@ -4397,18 +3515,6 @@
       "context": "Button next to a model setting that opens the card to download the model. The ellipsis says a card follows.",
       "en": "Download…",
       "de": "Laden…"
-    },
-    {
-      "key": "settings.row_text_recognition",
-      "context": "Name of the setting on the filing page that tells how scans and images are read when the system has its own text recognition (macOS). There is nothing to change.",
-      "en": "Text recognition",
-      "de": "Texterkennung"
-    },
-    {
-      "key": "settings.text_recognition_builtin",
-      "context": "Status of the text recognition on the filing page where the system reads scans itself. Shown in the success color.",
-      "en": "Built into macOS",
-      "de": "Eingebaut in macOS"
     },
     {
       "key": "settings.row_ai_provider",
@@ -4649,12 +3755,6 @@
       "context": "Shown under a color setting whose text color is hard to read on its background. Takes the name of the background color setting and the contrast ratio, such as 2.1.",
       "en": "Hard to read on {background}: contrast {ratio}:1.",
       "de": "Schwer lesbar auf {background}: Kontrast {ratio}:1."
-    },
-    {
-      "key": "settings.group_own_details",
-      "context": "Title of the group in the Hermes settings page for the names, accounts and tax numbers of the user.",
-      "en": "Your own details",
-      "de": "Eigene Angaben"
     },
     {
       "key": "settings.group_own_details_intro",
@@ -5121,14 +4221,14 @@
     {
       "key": "quick_fix.exclude",
       "context": "Entry of the quick-fix menu for one file: Hermes leaves it alone from now on.",
-      "en": "Exclude from filing",
-      "de": "Von der Ablage ausschließen"
+      "en": "Exclude from Hermes",
+      "de": "Von Hermes ausschließen"
     },
     {
       "key": "quick_fix.exclude_all",
       "context": "Entry of the quick-fix menu for several files: Hermes leaves all of them alone from now on. {count} is their number.",
-      "en": "Exclude all {count} from filing",
-      "de": "Alle {count} von der Ablage ausschließen"
+      "en": "Exclude all {count} from Hermes",
+      "de": "Alle {count} von Hermes ausschließen"
     },
     {
       "key": "quick_fix.summary_title",
@@ -5187,8 +4287,8 @@
     {
       "key": "status.quick_fix_excluded",
       "context": "Status bar message after files were excluded from Hermes by the quick-fix menu. {count} is their number.",
-      "en": "Excluded from filing: {count}",
-      "de": "Von der Ablage ausgeschlossen: {count}"
+      "en": "Excluded from Hermes: {count}",
+      "de": "Von Hermes ausgeschlossen: {count}"
     },
     {
       "key": "hermes_menu.show_suggestion",
@@ -5198,15 +4298,15 @@
     },
     {
       "key": "hermes_menu.hand_to_inbox",
-      "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Opens the move dialog with the inbox as target.",
-      "en": "Hand to filing",
-      "de": "An die Ablage geben"
+      "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Opens the move dialog with the read folder as target.",
+      "en": "Hand to Hermes",
+      "de": "An Hermes geben"
     },
     {
       "key": "hermes_menu.note_inbox",
       "context": "Dimmed note after 'Hand to Hermes' in the Hermes submenu: where the file goes.",
-      "en": "into the inbox",
-      "de": "in den Eingang"
+      "en": "into the read folder",
+      "de": "in den Lesen-Ordner"
     },
     {
       "key": "hermes_menu.process_again",
@@ -5216,39 +4316,39 @@
     },
     {
       "key": "hermes_menu.set_inbox",
-      "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Makes the folder an inbox of Hermes.",
-      "en": "Set as inbox",
-      "de": "Als Eingang festlegen"
+      "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Makes the folder a read folder of Hermes.",
+      "en": "Set as read folder",
+      "de": "Als Lesen-Ordner festlegen"
     },
     {
       "key": "hermes_menu.set_filing_location",
-      "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Makes the folder the filing location, the archive that documents are filed into.",
-      "en": "Set as filing location",
-      "de": "Als Ablageort festlegen"
+      "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Makes the folder the target folder, the folder that documents are filed into.",
+      "en": "Set as target folder",
+      "de": "Als Zielordner festlegen"
     },
     {
       "key": "hermes_menu.set_archive",
-      "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Makes the folder an archive that Hermes only reads.",
-      "en": "Set as archive",
-      "de": "Als Archiv festlegen"
+      "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Makes the folder a read-only folder.",
+      "en": "Set as read-only folder",
+      "de": "Als Nur-lesen-Ordner festlegen"
     },
     {
       "key": "hermes_menu.note_read_only",
-      "context": "Dimmed note after 'Set as archive' in the Hermes submenu: Hermes does not change what is in it.",
+      "context": "Dimmed note after 'Set as read-only folder' in the Hermes submenu: Hermes does not change what is in it.",
       "en": "read-only",
       "de": "nur lesen"
     },
     {
       "key": "hermes_menu.exclude",
       "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Hermes leaves the file or folder alone from now on.",
-      "en": "Exclude from filing",
-      "de": "Von der Ablage ausschließen"
+      "en": "Exclude from Hermes",
+      "de": "Von Hermes ausschließen"
     },
     {
       "key": "hermes_menu.include",
       "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Takes back an exclusion.",
-      "en": "Include in filing again",
-      "de": "Wieder bei der Ablage einbeziehen"
+      "en": "Include in Hermes again",
+      "de": "Wieder bei Hermes einbeziehen"
     },
     {
       "key": "hermes_menu.inspect",
@@ -5265,8 +4365,8 @@
     {
       "key": "status.hermes_restarting",
       "context": "Status bar text while Hermes is rebuilt after the AI setting changed. It stands where the idle line of Hermes stands.",
-      "en": "Filing restarting …",
-      "de": "Die Ablage startet neu …"
+      "en": "Hermes restarting …",
+      "de": "Hermes startet neu …"
     },
     {
       "key": "status.reading_again",
@@ -5325,14 +4425,14 @@
     {
       "key": "status.hermes_not_processable",
       "context": "Status bar message when a file cannot be run through the Hermes steps: it is excluded, outside the configured folders, or the pipeline is not running.",
-      "en": "Filing cannot process this file now",
-      "de": "Die Ablage kann diese Datei jetzt nicht verarbeiten"
+      "en": "Hermes cannot process this file now",
+      "de": "Hermes kann diese Datei jetzt nicht verarbeiten"
     },
     {
       "key": "status.hermes_included",
       "context": "Status bar message after a file or folder was taken back into Hermes' view. {name} is its name.",
-      "en": "Included in filing again: {name}",
-      "de": "Wieder bei der Ablage einbezogen: {name}"
+      "en": "Included in Hermes again: {name}",
+      "de": "Wieder bei Hermes einbezogen: {name}"
     },
     {
       "key": "status.hermes_included_by_folder",
@@ -5342,15 +4442,15 @@
     },
     {
       "key": "status.hermes_role_needs_filing_location",
-      "context": "Status bar message when a folder cannot become an inbox because no filing location is set yet; the user sets the filing location first. A whole sentence.",
-      "en": "Set a filing location first.",
-      "de": "Lege zuerst einen Ablageort fest."
+      "context": "Status bar message when a folder cannot become a read folder because no target folder is set yet; the user sets the target folder first. A whole sentence.",
+      "en": "Set a target folder first.",
+      "de": "Lege zuerst einen Zielordner fest."
     },
     {
       "key": "status.hermes_is_off",
       "context": "Status bar message when the user starts a Hermes command while the filing module is switched off; the settings page with the switch opens at the same time. A whole sentence.",
-      "en": "Filing is off. Switch it on here to sort your documents.",
-      "de": "Die Ablage ist aus. Schalte sie hier ein, um deine Dokumente zu sortieren."
+      "en": "Hermes is off. Switch it on here to sort your documents.",
+      "de": "Hermes ist aus. Schalte ihn hier ein, um deine Dokumente zu sortieren."
     },
     {
       "key": "status.hermes_role_failed",
@@ -5360,15 +4460,15 @@
     },
     {
       "key": "status.hermes_no_inbox",
-      "context": "Status bar message when a file should go to the inbox but none is configured.",
-      "en": "No inbox is set up",
-      "de": "Es ist kein Eingang eingerichtet"
+      "context": "Status bar message when a file should go to the read folder but none is configured.",
+      "en": "No read folder is set up",
+      "de": "Es ist kein Lesen-Ordner eingerichtet"
     },
     {
       "key": "action.hermes_hand_to_inbox",
-      "context": "Entry of the command list and the menu that runs the key action hermes_hand_to_inbox: opens the move dialog for the file under the cursor with the inbox as target.",
-      "en": "Hand to filing (into the inbox)",
-      "de": "An die Ablage geben (in den Eingang)"
+      "context": "Entry of the command list and the menu that runs the key action hermes_hand_to_inbox: opens the move dialog for the file under the cursor with the read folder as target.",
+      "en": "Hand to Hermes (into the read folder)",
+      "de": "An Hermes geben (in den Lesen-Ordner)"
     },
     {
       "key": "action.hermes_process_again",
@@ -5378,27 +4478,27 @@
     },
     {
       "key": "action.hermes_set_inbox",
-      "context": "Entry of the command list and the menu that runs the key action hermes_set_inbox: makes the folder under the cursor an inbox.",
-      "en": "Set as inbox",
-      "de": "Als Eingang festlegen"
+      "context": "Entry of the command list and the menu that runs the key action hermes_set_inbox: makes the folder under the cursor a read folder.",
+      "en": "Set as read folder",
+      "de": "Als Lesen-Ordner festlegen"
     },
     {
       "key": "action.hermes_set_filing_location",
-      "context": "Entry of the command list and the menu that runs the key action hermes_set_filing_location: makes the folder under the cursor the filing location.",
-      "en": "Set as filing location",
-      "de": "Als Ablageort festlegen"
+      "context": "Entry of the command list and the menu that runs the key action hermes_set_filing_location: makes the folder under the cursor the target folder.",
+      "en": "Set as target folder",
+      "de": "Als Zielordner festlegen"
     },
     {
       "key": "action.hermes_set_archive",
-      "context": "Entry of the command list and the menu that runs the key action hermes_set_archive: makes the folder under the cursor a read-only archive.",
-      "en": "Set as archive (read-only)",
-      "de": "Als Archiv festlegen (nur lesen)"
+      "context": "Entry of the command list and the menu that runs the key action hermes_set_archive: makes the folder under the cursor a read-only folder.",
+      "en": "Set as read-only folder",
+      "de": "Als Nur-lesen-Ordner festlegen"
     },
     {
       "key": "action.hermes_exclude",
       "context": "Entry of the command list and the menu that runs the key action hermes_exclude: excludes the file or folder under the cursor from Hermes, or includes it again when it is excluded.",
-      "en": "Exclude from or include in filing",
-      "de": "Von der Ablage ausschließen oder wieder einbeziehen"
+      "en": "Exclude from or include in Hermes",
+      "de": "Von Hermes ausschließen oder wieder einbeziehen"
     },
     {
       "key": "action.hermes_inspect",
@@ -6073,244 +5173,10 @@
       "de": "Die Lizenzdatei gehört nicht zu diesem Build. Online lesen: {url}"
     },
     {
-      "key": "hermes.nav_overview",
-      "context": "Sidebar entry of the Hermes card that opens the overview page: what Hermes does and what it needs.",
-      "en": "Overview",
-      "de": "Übersicht"
-    },
-    {
-      "key": "hermes.nav_overview.theme",
-      "context": "Theme name shown dimmed behind the sidebar entry hermes.nav_overview. Playful, from the cartoon the module is named after.",
-      "en": "Delivery",
-      "de": "Lieferdienst"
-    },
-    {
-      "key": "hermes_overview.title",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Headline of the page: the promise of the feature.",
-      "en": "ncrs files your documents",
-      "de": "ncrs legt deine Dokumente ab"
-    },
-    {
-      "key": "hermes_overview.intro_mac",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Intro under the headline on macOS. Says where the data stays.",
-      "en": "Put PDFs and scans in the inbox. ncrs reads them, recognises sender, date and amount and files them where your rules say. Everything stays on this Mac.",
-      "de": "Lege PDFs und Scans in den Eingang. ncrs liest sie, erkennt Absender, Datum und Betrag und sortiert sie nach deinen Regeln in den Ablageort. Alles bleibt auf diesem Mac."
-    },
-    {
-      "key": "hermes_overview.intro_other",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Intro under the headline on systems other than macOS. Says where the data stays.",
-      "en": "Put PDFs and scans in the inbox. ncrs reads them, recognises sender, date and amount and files them where your rules say. Everything stays on this computer.",
-      "de": "Lege PDFs und Scans in den Eingang. ncrs liest sie, erkennt Absender, Datum und Betrag und sortiert sie nach deinen Regeln in den Ablageort. Alles bleibt auf diesem Computer."
-    },
-    {
-      "key": "hermes_overview.pill_running",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Status pill next to the headline: Hermes works and nothing waits for the user.",
-      "en": "Running",
-      "de": "Läuft"
-    },
-    {
-      "key": "hermes_overview.pill_needs_you",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Status pill next to the headline: something needs the user (open reviews, a missing key, no folders, a failure).",
-      "en": "Needs you",
-      "de": "Braucht dich"
-    },
-    {
-      "key": "hermes_overview.pill_off",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Status pill next to the headline: Hermes is switched off.",
-      "en": "Off",
-      "de": "Aus"
-    },
-    {
-      "key": "hermes_overview.pill_starting",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Status pill next to the headline while the module starts or is rebuilt after a setting changed.",
-      "en": "Starting …",
-      "de": "Startet …"
-    },
-    {
       "key": "hermes_overview.flow_filed_note",
       "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Line under the filing box of the flow picture: the filing location and how the documents are sorted into it. {path} is a folder, {pattern} the way the documents are sorted.",
       "en": "{path} · {pattern}",
       "de": "{path} · {pattern}"
-    },
-    {
-      "key": "hermes_overview.tile_folders_button",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Button of the folders tile that opens the setup.",
-      "en": "Set up",
-      "de": "Einrichten"
-    },
-    {
-      "key": "hermes_overview.tile_ocr_title",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Heading of the tile about the text recognition that reads scans.",
-      "en": "Text recognition",
-      "de": "Texterkennung"
-    },
-    {
-      "key": "hermes_overview.tile_ocr_ready",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Text of the text recognition tile when scans can be read.",
-      "en": "Ready, also for scans",
-      "de": "Bereit, auch für Scans"
-    },
-    {
-      "key": "hermes_overview.tile_ocr_missing",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Text of the text recognition tile when its models are missing, so scans cannot be read yet.",
-      "en": "Models missing, scans cannot be read yet",
-      "de": "Modelle fehlen, Scans kann ncrs noch nicht lesen"
-    },
-    {
-      "key": "hermes_overview.tile_ocr_button",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Button of the text recognition tile that opens the download of the models. One word, verb.",
-      "en": "Load",
-      "de": "Laden"
-    },
-    {
-      "key": "hermes_overview.tile_ai_title",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Heading of the tile about the AI model.",
-      "en": "AI model",
-      "de": "KI-Modell"
-    },
-    {
-      "key": "hermes_overview.tile_ai_off",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Text of the AI tile when the user switched the AI off.",
-      "en": "Off · without AI you fill in the fields yourself",
-      "de": "Aus · ohne KI füllst du die Felder selbst"
-    },
-    {
-      "key": "hermes_overview.tile_ai_not_loaded",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Text of the AI tile when the AI is on but the model file is not on this machine.",
-      "en": "Not loaded · without the model you fill in the fields yourself",
-      "de": "Nicht geladen · ohne Modell füllst du die Felder selbst"
-    },
-    {
-      "key": "hermes_overview.tile_ai_load",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Button of the AI tile that opens the download of the model and starts it. {size} is the download size, for example 2497 MB.",
-      "en": "Load · {size}",
-      "de": "Laden · {size}"
-    },
-    {
-      "key": "hermes_overview.tile_ai_downloading",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Text of the AI tile while the model downloads. {received} and {total} are megabytes as numbers, {percent} a whole percentage.",
-      "en": "{received} of {total} MB · {percent} %",
-      "de": "{received} von {total} MB · {percent} %"
-    },
-    {
-      "key": "hermes_overview.tile_ai_ready",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Text of the AI tile when the model is on and ready.",
-      "en": "On, fills in the fields by itself",
-      "de": "An, füllt Felder selbst"
-    },
-    {
-      "key": "hermes_overview.tile_ai_own_server",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Text of the AI tile when an own server answers instead of the local model. {model} is the model name on that server.",
-      "en": "Own server: {model}",
-      "de": "Eigener Server: {model}"
-    },
-    {
-      "key": "hermes_overview.tile_ai_restart",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Text of the AI tile when the AI was switched on but Hermes only takes it up at its next start.",
-      "en": "On · takes effect when filing restarts",
-      "de": "An · gilt, sobald die Ablage neu startet"
-    },
-    {
-      "key": "hermes_overview.tile_ai_failed",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Text of the AI tile when the model could not be loaded. {reason} is a short reason.",
-      "en": "Could not load: {reason}",
-      "de": "Konnte nicht geladen werden: {reason}"
-    },
-    {
-      "key": "hermes_overview.check_reviews",
-      "context": "Primary button in the action bar of the Hermes overview; it opens the list of documents that wait for the user. Its label must differ from the sidebar entry Review.",
-      "en": "Check",
-      "de": "Prüfen"
-    },
-    {
-      "key": "hermes_overview.tile_review_waiting",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Heading of the tile about open reviews. {count} is a number above one.",
-      "en": "{count} wait for you",
-      "de": "{count} warten auf dich"
-    },
-    {
-      "key": "hermes_overview.tile_review_waiting_one",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Heading of the tile about open reviews when exactly one waits.",
-      "en": "1 waits for you",
-      "de": "1 wartet auf dich"
-    },
-    {
-      "key": "hermes_overview.tile_review_clear",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Heading of the open reviews tile when nothing waits.",
-      "en": "Nothing open",
-      "de": "Nichts offen"
-    },
-    {
-      "key": "hermes_overview.section_folders",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Heading of the section that lists the folders.",
-      "en": "Folders",
-      "de": "Ordner"
-    },
-    {
-      "key": "hermes_overview.folders_change",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Button of the folders section that opens the card to change the folders. The ellipsis says a card follows.",
-      "en": "Change…",
-      "de": "Ändern…"
-    },
-    {
-      "key": "hermes_overview.role_inbox",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Label of the inbox folder in the folders section.",
-      "en": "Inbox",
-      "de": "Eingang"
-    },
-    {
-      "key": "hermes_overview.role_filing_location",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Label of the filing location in the folders section.",
-      "en": "Filing location",
-      "de": "Ablageort"
-    },
-    {
-      "key": "hermes_overview.role_archive",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Label of an archive folder (read only, searched for similar documents) in the folders section.",
-      "en": "Archive",
-      "de": "Archiv"
-    },
-    {
-      "key": "hermes_overview.archive_none",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Value of the archive line in the folders section when there is no archive folder.",
-      "en": "none yet · optional",
-      "de": "noch keins · optional"
-    },
-    {
-      "key": "hermes_overview.pattern_label",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Label of the text field with the filing pattern for new documents.",
-      "en": "Default target",
-      "de": "Standardziel"
-    },
-    {
-      "key": "hermes_overview.pattern_note",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Note under the pattern field: what a pattern is and what empty does.",
-      "en": "Where a document goes for which no rule exists. Only a suggestion in the review list.",
-      "de": "Wohin ein Dokument soll, für das es keine Regel gibt. Nur ein Vorschlag in den Rückfragen."
-    },
-    {
-      "key": "hermes_overview.pattern_write_failed",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Error under the pattern field when the config file could not be written. {reason} is the cause.",
-      "en": "The default target could not be saved: {reason}",
-      "de": "Das Standardziel konnte nicht gespeichert werden: {reason}"
-    },
-    {
-      "key": "hermes_overview.ai_switch",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Label of the switch that turns the AI on or off.",
-      "en": "Use AI",
-      "de": "KI verwenden"
-    },
-    {
-      "key": "hermes_overview.own_server",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Link in the AI section that opens the advanced settings, where an own AI server can be set. The ellipsis says the settings follow.",
-      "en": "Own server…",
-      "de": "Eigener Server…"
-    },
-    {
-      "key": "hermes_overview.section_protection",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Heading of the section about how the index is protected. {state} follows in a dimmed word: encrypted or not.",
-      "en": "Protection",
-      "de": "Schutz"
     },
     {
       "key": "hermes_overview.protection_encrypted",
@@ -6351,8 +5217,8 @@
     {
       "key": "hermes_overview.protection_none",
       "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Sentence in the protection section when Hermes has no index yet.",
-      "en": "Filing has no index yet. It is created when you set up filing.",
-      "de": "Die Ablage hat noch keinen Index. Er entsteht, wenn du die Ablage einrichtest."
+      "en": "Hermes has no index yet. It is created when you set up Hermes.",
+      "de": "Hermes hat noch keinen Index. Er entsteht, wenn du Hermes einrichtest."
     },
     {
       "key": "hermes_overview.key_missing_mac",
@@ -6429,20 +5295,20 @@
     {
       "key": "hermes_overview.start_over_title",
       "context": "Title of the question in the Hermes overview whether to remove the index and begin again.",
-      "en": "Start filing over?",
-      "de": "Ablage neu anfangen?"
+      "en": "Start the index over?",
+      "de": "Index neu anfangen?"
     },
     {
       "key": "hermes_overview.start_over_loss",
       "context": "Body of the question in the Hermes overview whether to remove the index: names what is lost.",
-      "en": "This removes the filing index with its rules, rule suggestions, reports and the undo history. It also removes what ncrs knows about your documents and the entries waiting for review.",
-      "de": "Damit wird der Index der Ablage entfernt, mit seinen Regeln, Regelvorschlägen, Auswertungen und dem Rückgängig-Verlauf. Auch das Wissen von ncrs über deine Dokumente und die Einträge, die auf Prüfung warten, gehen verloren."
+      "en": "This removes the index with its rules, rule suggestions, reports and the undo history. It also removes what ncrs knows about your documents and the entries waiting for review.",
+      "de": "Damit wird der Index entfernt, mit seinen Regeln, Regelvorschlägen, Auswertungen und dem Rückgängig-Verlauf. Auch das Wissen von ncrs über deine Dokumente und die Einträge, die auf Prüfung warten, gehen verloren."
     },
     {
       "key": "hermes_overview.start_over_files",
       "context": "Body of the question in the Hermes overview whether to remove the index: says what stays.",
-      "en": "Your files and folders stay where they are. The key of the index is removed as well. Afterwards you set up filing again.",
-      "de": "Deine Dateien und Ordner bleiben, wo sie sind. Auch der Schlüssel des Index wird entfernt. Danach richtest du die Ablage neu ein."
+      "en": "Your files and folders stay where they are. The key of the index is removed as well. Afterwards you set up Hermes again.",
+      "de": "Deine Dateien und Ordner bleiben, wo sie sind. Auch der Schlüssel des Index wird entfernt. Danach richtest du Hermes neu ein."
     },
     {
       "key": "hermes_overview.start_over_confirm",
@@ -6451,76 +5317,16 @@
       "de": "Index entfernen"
     },
     {
-      "key": "hermes_overview.off_note",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Sentence at the top of the overview when Hermes is switched off.",
-      "en": "Filing is off. Switch it on and it files your documents.",
-      "de": "Die Ablage ist aus. Schalte sie ein, dann legt sie deine Dokumente ab."
-    },
-    {
-      "key": "hermes_overview.switch_on",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Button next to the sentence that says Hermes is off. Switches the module on.",
-      "en": "Switch filing on",
-      "de": "Ablage einschalten"
-    },
-    {
-      "key": "hermes_overview.dismissed_note",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Sentence at the top of the overview when the user put the setup off.",
-      "en": "The filing setup is not finished.",
-      "de": "Die Einrichtung der Ablage ist nicht abgeschlossen."
-    },
-    {
-      "key": "hermes_overview.continue_setup",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Button next to the sentence that says the setup is not finished.",
-      "en": "Continue setup",
-      "de": "Einrichtung fortsetzen"
-    },
-    {
-      "key": "hermes_overview.failed_note",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Sentence at the top of the overview when the module failed to start. {reason} is the cause.",
-      "en": "Filing could not start: {reason}",
-      "de": "Die Ablage konnte nicht starten: {reason}"
-    },
-    {
       "key": "hermes_overview.try_again",
       "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Button next to the sentence that says Hermes could not start.",
       "en": "Try again",
       "de": "Erneut versuchen"
     },
     {
-      "key": "hermes_overview.no_folders_note",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Sentence at the top of the overview when Hermes has no folders yet.",
-      "en": "Filing has no folders yet.",
-      "de": "Die Ablage hat noch keine Ordner."
-    },
-    {
-      "key": "hermes_overview.waits_note",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Sentence at the top of the overview when Hermes waits for an answer in one of its cards.",
-      "en": "Filing waits for an answer in its own card.",
-      "de": "Die Ablage wartet auf eine Antwort in ihrer eigenen Karte."
-    },
-    {
       "key": "filing_setup.grant_failed",
       "context": "Line in the filing setup card or the Hermes setup card when access to the picked folder could not be kept for the next start (macOS sandbox). {path} is the folder, {reason} the cause.",
       "en": "Access to {path} could not be kept for the next start: {reason}",
       "de": "Der Zugriff auf {path} konnte nicht für den nächsten Start behalten werden: {reason}"
-    },
-    {
-      "key": "settings.row_hermes_open",
-      "context": "Label of the row in the Hermes settings page that opens the Hermes overview.",
-      "en": "Open filing",
-      "de": "Ablage öffnen"
-    },
-    {
-      "key": "settings.row_hermes_open_note",
-      "context": "Note under the row that opens the Hermes overview: says what lives there instead of in the settings.",
-      "en": "Folders, default target, AI and text recognition are on the overview of filing, the load on its status page.",
-      "de": "Ordner, Standardziel, KI und Texterkennung stehen in der Übersicht der Ablage, die Last im Status."
-    },
-    {
-      "key": "settings.hermes_open_button",
-      "context": "Button next to the row that opens the Hermes overview. One word, verb.",
-      "en": "Open",
-      "de": "Öffnen"
     },
     {
       "key": "settings.group_advanced",
@@ -6891,8 +5697,8 @@
     {
       "key": "rules.empty",
       "context": "Shown on the rules page when there is no confirmed rule yet.",
-      "en": "No rules yet. Create one with “New rule”, or let rules come from suggestions and from filing in the review list.",
-      "de": "Noch keine Regeln. Lege mit „Neue Regel“ eine an, oder lass Regeln aus Vorschlägen und beim Ablegen in der Prüfliste entstehen."
+      "en": "No rules yet. Create one with “New rule”, or let rules come from sorting in the chat.",
+      "de": "Noch keine Regeln. Lege mit „Neue Regel“ eine an, oder lass Regeln beim Einordnen im Chat entstehen."
     },
     {
       "key": "rules.rule_if",
@@ -7040,9 +5846,9 @@
     },
     {
       "key": "rules.origin_filing",
-      "context": "Origin of a rule on the rules page: it was made while filing a document in the review list.",
-      "en": "from filing",
-      "de": "beim Ablegen angelegt"
+      "context": "Origin of a rule on the rules page: it was made while sorting a document in the Hermes chat.",
+      "en": "from sorting",
+      "de": "beim Einordnen angelegt"
     },
     {
       "key": "rules.hits_one",
@@ -7298,9 +6104,9 @@
     },
     {
       "key": "rules.try_section_inbox",
-      "context": "Label in front of a document in the try section of the rule form: it is in the inbox and has no open review. One word.",
-      "en": "Inbox",
-      "de": "Eingang"
+      "context": "Label in front of a document in the try section of the rule form: it is in the read folder and has no open review. One word.",
+      "en": "Read folders",
+      "de": "Lesen-Ordner"
     },
     {
       "key": "rules.try_section_review",
@@ -7310,9 +6116,9 @@
     },
     {
       "key": "rules.try_section_archive",
-      "context": "Label in front of a document in the try section of the rule form: it lies in an archive folder. One word.",
-      "en": "Archive",
-      "de": "Archiv"
+      "context": "Label in front of a document in the try section of the rule form: it lies in a read-only folder. One word.",
+      "en": "Read only",
+      "de": "Nur lesen"
     },
     {
       "key": "rules.try_lies_at",
@@ -7331,108 +6137,6 @@
       "context": "Error line in the rule form when the user tried to save a rule without any condition, which would match every document.",
       "en": "Add at least one condition, or the rule would match every document.",
       "de": "Füge mindestens eine Bedingung hinzu, sonst würde die Regel auf jedes Dokument passen."
-    },
-    {
-      "key": "review_list.replan_button",
-      "context": "Button in the review list: plans the open cases again with the current rules and shows what would change, before anything is filed.",
-      "en": "Apply to open cases",
-      "de": "Auf offene Fälle anwenden"
-    },
-    {
-      "key": "review_list.replan_looking",
-      "context": "Line in the review list while the documents are being planned again with the current rules.",
-      "en": "Looking …",
-      "de": "Ich suche …"
-    },
-    {
-      "key": "review_list.replan_explain",
-      "context": "Sentence at the top of the preview step of the review list, which lists documents with where they stand now and where the current rules would put them.",
-      "en": "With the current rules these documents would be filed. Nothing moves before you confirm.",
-      "de": "Mit den aktuellen Regeln würden diese Dokumente abgelegt. Es wird nichts verschoben, bevor du bestätigst."
-    },
-    {
-      "key": "review_list.replan_now_none",
-      "context": "Cell in the preview step of the review list: the document is not in review at the moment.",
-      "en": "Not in review",
-      "de": "Nicht in der Rückfrage"
-    },
-    {
-      "key": "review_list.replan_after_review",
-      "context": "Cell in the preview step of the review list: the document would stay in review. Takes the reason, for example “No rule matches”.",
-      "en": "Stays in review: {reason}",
-      "de": "Bleibt in der Rückfrage: {reason}"
-    },
-    {
-      "key": "review_list.replan_after_unread",
-      "context": "Cell in the preview step of the review list: no text of the document is stored yet, so the rules cannot judge it.",
-      "en": "Not read yet",
-      "de": "Noch nicht gelesen"
-    },
-    {
-      "key": "review_list.replan_count",
-      "context": "Line under the list of the preview step of the review list. Takes the number of documents that would be filed and the number of all listed documents.",
-      "en": "{filed} of {total} documents would be filed.",
-      "de": "Abgelegt würden: {filed} von {total} Dokumenten."
-    },
-    {
-      "key": "review_list.replan_empty",
-      "context": "Line in the preview step of the review list when there is no document to plan again.",
-      "en": "No document to plan again.",
-      "de": "Kein Dokument, das neu geplant werden könnte."
-    },
-    {
-      "key": "review_list.replan_more",
-      "context": "Last line of the list in the preview step of the review list when more documents exist than are shown. Takes the number of the others.",
-      "en": "+{count} more",
-      "de": "+{count} weitere"
-    },
-    {
-      "key": "review_list.replan_cancel",
-      "context": "Button in the preview step of the review list: leaves the step, nothing is filed.",
-      "en": "Cancel",
-      "de": "Abbrechen"
-    },
-    {
-      "key": "review_list.replan_file",
-      "context": "Button in the preview step of the review list: files the previewed documents. Takes their number (not one).",
-      "en": "File {count} documents",
-      "de": "{count} Dokumente ablegen"
-    },
-    {
-      "key": "review_list.replan_file_one",
-      "context": "Button in the preview step of the review list: files the one previewed document.",
-      "en": "File 1 document",
-      "de": "1 Dokument ablegen"
-    },
-    {
-      "key": "action.hermes_reprocess_folder",
-      "context": "Entry of the command list and the menu that runs the key action hermes_reprocess_folder: plans the documents of the folder under the cursor again with the current rules and shows a preview in the review list; nothing is filed before the user confirms.",
-      "en": "Reprocess folder",
-      "de": "Ordner erneut verarbeiten"
-    },
-    {
-      "key": "hermes_menu.reprocess_folder",
-      "context": "Entry of the Hermes submenu of the context menu; acts on the folder under the cursor. Plans its documents again with the current rules and shows a preview first.",
-      "en": "Reprocess folder",
-      "de": "Ordner erneut verarbeiten"
-    },
-    {
-      "key": "status.reprocess_outside_inbox",
-      "context": "Status bar message when Reprocess folder is used on a folder that does not lie in an inbox location; nothing is done.",
-      "en": "Only folders in an inbox location can be reprocessed.",
-      "de": "Nur Ordner in einem Eingangsordner können erneut verarbeitet werden."
-    },
-    {
-      "key": "status.refile_waiting",
-      "context": "Status bar message after the user confirmed filing the previewed documents while another job is running: the filing starts when that job is done.",
-      "en": "The documents are filed when the running job is done.",
-      "de": "Die Dokumente werden abgelegt, sobald der laufende Auftrag fertig ist."
-    },
-    {
-      "key": "status.refile_done",
-      "context": "Status bar message after the previewed documents were filed. Takes the numbers filed, left in review, changed since the preview (not moved) and read again.",
-      "en": "{filed} filed, {reviewed} stayed in review, {changed} changed since the preview, {requeued} read again",
-      "de": "{filed} abgelegt, {reviewed} in der Rückfrage geblieben, {changed} seit der Vorschau geändert, {requeued} neu gelesen"
     },
     {
       "key": "action.search_documents",
@@ -7735,12 +6439,6 @@
       "de": "Verschieben nach"
     },
     {
-      "key": "review_list.origin_default_target",
-      "context": "Dim note beside Move to in the review list: the target comes from the default target.",
-      "en": "Default target",
-      "de": "Standardziel"
-    },
-    {
       "key": "document_search.facet_recipient",
       "context": "Label of the row of recipients that can be chosen to narrow the hits on the Search view.",
       "en": "Recipient",
@@ -7763,18 +6461,6 @@
       "context": "The word between the chosen values in the note that filters apply together on the Search view.",
       "en": "and",
       "de": "und"
-    },
-    {
-      "key": "settings.row_file_tags_open",
-      "context": "Label of the row in Settings > Look whose button opens the tags page of Hermes, where the user chooses which tags the file lists show.",
-      "en": "Tags in the file list",
-      "de": "Schlagworte in der Dateiliste"
-    },
-    {
-      "key": "settings.row_file_tags_open_note",
-      "context": "Note under the row that opens the tags page. Says what the tags in the file lists are.",
-      "en": "Shows the tags of read documents after the file name.",
-      "de": "Zeigt hinter dem Dateinamen die Schlagworte gelesener Dokumente."
     },
     {
       "key": "settings.row_file_tags_show",
@@ -7813,22 +6499,10 @@
       "de": "Eigene Schlagworte"
     },
     {
-      "key": "hermes_overview.section_state",
-      "context": "Heading of the group of rows on the filing overview that shows the state: whether filing runs, the text recognition and the AI model.",
-      "en": "State",
-      "de": "Stand"
-    },
-    {
       "key": "hermes_overview.in_progress",
       "context": "Behind the word Running on the filing overview and the status page: how many files are being worked on right now. {count} is a number.",
       "en": "{count} in progress",
       "de": "{count} in Arbeit"
-    },
-    {
-      "key": "hermes_overview.menu_protection",
-      "context": "Entry in the menu behind the three dots on the filing overview. Opens the settings of filing at the protection of the index. The dots tell that a page follows.",
-      "en": "Protection …",
-      "de": "Schutz …"
     },
     {
       "key": "filing_status.show_workers",
@@ -7861,22 +6535,10 @@
       "de": "Auswahl"
     },
     {
-      "key": "hermes_kit.hint_next_field",
-      "context": "Word behind the Tab key in the status line of a filing page: Tab moves to the next field.",
-      "en": "Next field",
-      "de": "Nächstes Feld"
-    },
-    {
       "key": "hermes_kit.hint_check",
       "context": "Word behind the Space key in the status line of a filing page: Space checks or unchecks the row under the cursor.",
       "en": "Check",
       "de": "Auswählen"
-    },
-    {
-      "key": "hermes_kit.hint_view",
-      "context": "Word behind the F3 key in the status line of the review page: F3 shows the page of the document.",
-      "en": "View",
-      "de": "Ansehen"
     },
     {
       "key": "hermes_kit.key_space",
@@ -7994,9 +6656,9 @@
     },
     {
       "key": "hint.numbered_in_archive",
-      "context": "Hint in the pack dialog above a list of files that get a number because several files share a name. {count} is the number of files that share a name.",
-      "en": "{count} files share a name. They are numbered in the archive:",
-      "de": "{count} Dateien heißen gleich. Im Archiv werden sie durchnummeriert:"
+      "context": "Hint in the move dialog: files that share a name get numbers in the target folder. {count} is the number of files.",
+      "en": "{count} files share a name. They are numbered in the target folder:",
+      "de": "{count} Dateien heißen gleich. Im Zielordner werden sie durchnummeriert:"
     },
     {
       "key": "hint.numbered_in_target",
@@ -8078,9 +6740,9 @@
     },
     {
       "key": "hermes_chat.working_filing",
-      "context": "Hermes chat (F2): Temporary line while Hermes moves or copies files into the archive.",
-      "en": "Filing …",
-      "de": "Ich lege ab …"
+      "context": "Hermes chat (F2): Temporary line while Hermes moves or copies files into the target folder.",
+      "en": "Sorting …",
+      "de": "Ich ordne ein …"
     },
     {
       "key": "hermes_chat.working_undo",
@@ -8199,14 +6861,14 @@
     {
       "key": "hermes_chat.rule_problem_no_filing_target",
       "context": "Hermes chat (F2): Reason in the refused-rule sentence: the rule has no place to file documents to.",
-      "en": "There is no place to file to.",
-      "de": "Der Ablageort fehlt."
+      "en": "There is no target folder.",
+      "de": "Der Zielordner fehlt."
     },
     {
       "key": "hermes_chat.rule_problem_invalid_pattern",
       "context": "Hermes chat (F2): Reason in the refused-rule sentence: the place to file to contains something Hermes cannot use.",
-      "en": "The place to file to can't be used.",
-      "de": "Der Ablageort lässt sich nicht verwenden."
+      "en": "The target folder can't be used.",
+      "de": "Der Zielordner lässt sich nicht verwenden."
     },
     {
       "key": "hermes_chat.read_anyway",
@@ -8917,6 +7579,78 @@
       "de": "{left} habe ich gelassen, weil sie sich geändert haben oder ihr alter Platz belegt ist."
     },
     {
+      "key": "hermes_chat.waiting_one",
+      "context": "Hermes chat (F2): Hermes says in its opening bubble that one document waits for the user's decision, because no rule could place it.",
+      "en": "One document is waiting for you.",
+      "de": "1 Dokument wartet auf dich."
+    },
+    {
+      "key": "hermes_chat.waiting_many",
+      "context": "Hermes chat (F2): Hermes says in its opening bubble that several documents wait for the user's decision, because no rule could place them. {count} is a number of two or more.",
+      "en": "{count} documents are waiting for you.",
+      "de": "{count} Dokumente warten auf dich."
+    },
+    {
+      "key": "hermes_chat.waiting_show",
+      "context": "Hermes chat (F2): Answer button under the note about waiting documents; starts going through them one question at a time.",
+      "en": "Show",
+      "de": "Zeigen"
+    },
+    {
+      "key": "hermes_chat.waiting_group",
+      "context": "Hermes chat (F2): Hermes asks about a group of waiting documents that all belong in the same folder. {count} is the number of documents, {folder} the folder they would go to, {names} the first file names, separated by commas.",
+      "en": "{count} of them belong in “{folder}”: {names}. Shall I file them there?",
+      "de": "{count} davon gehören nach „{folder}“: {names}. Soll ich sie dort einordnen?"
+    },
+    {
+      "key": "hermes_chat.waiting_file",
+      "context": "Hermes chat (F2): Primary answer button to the question about a group of waiting documents; files them in the folder named in the question.",
+      "en": "File them there",
+      "de": "Dort einordnen"
+    },
+    {
+      "key": "hermes_chat.waiting_skip",
+      "context": "Hermes chat (F2): Answer button to the question about waiting documents; leaves them as they are for now.",
+      "en": "Leave them",
+      "de": "Lassen"
+    },
+    {
+      "key": "hermes_chat.waiting_unsure",
+      "context": "Hermes chat (F2): Hermes says it cannot tell where one waiting document belongs. {name} is the file name.",
+      "en": "I'm not sure where “{name}” belongs.",
+      "de": "Bei „{name}“ bin ich nicht sicher, wohin es gehört."
+    },
+    {
+      "key": "hermes_chat.waiting_unsure_near",
+      "context": "Hermes chat (F2): Added to the note about an unsure waiting document: similar documents already lie in this folder. {folder} is the folder.",
+      "en": "Similar documents lie in “{folder}”.",
+      "de": "Ähnliche Dokumente liegen in „{folder}“."
+    },
+    {
+      "key": "hermes_chat.working_waiting",
+      "context": "Hermes chat (F2): Line shown while Hermes files waiting documents.",
+      "en": "Sorting the documents …",
+      "de": "Ich ordne die Dokumente ein …"
+    },
+    {
+      "key": "hermes_chat.waiting_done",
+      "context": "Hermes chat (F2): Hermes ends the walk through the waiting documents. **Double asterisks** mark bold text and must stay around the same words. {filed} is the number of documents filed, {left} the number still waiting.",
+      "en": "That was all. **{filed}** filed, {left} still waiting.",
+      "de": "Das waren alle. **{filed}** eingeordnet, {left} warten weiter."
+    },
+    {
+      "key": "hermes_chat.waiting_none",
+      "context": "Hermes chat (F2): Hermes says no document waits for the user any more.",
+      "en": "No document is waiting for you any more.",
+      "de": "Es wartet kein Dokument mehr auf dich."
+    },
+    {
+      "key": "hermes_chat.waiting_failed",
+      "context": "Hermes chat (F2): Hermes reports that some waiting documents could not be filed. {count} is the number, {reason} the first technical reason.",
+      "en": "{count} could not be filed: {reason}",
+      "de": "{count} konnten nicht eingeordnet werden: {reason}"
+    },
+    {
       "key": "hermes_chat.search_not_yet",
       "context": "Hermes chat (F2): Hermes says it cannot search inside the chat yet and offers to open the search.",
       "en": "I can't search in the chat yet. I'm happy to open the search for you.",
@@ -9074,9 +7808,9 @@
     },
     {
       "key": "hermes_chat.greeting_target_chip",
-      "context": "Hermes chat (F2): button label in the greeting for a folder where the user keeps their documents, e.g. the archive. {folder} is the folder name.",
-      "en": "{folder} · my archive",
-      "de": "{folder} · mein Archiv"
+      "context": "Hermes chat (F2): button label in the greeting for a folder where the user keeps their documents (a target folder). {folder} is the folder name.",
+      "en": "{folder} · target folder",
+      "de": "{folder} · Zielordner"
     },
     {
       "key": "hermes_chat.ask_role",
@@ -9225,8 +7959,8 @@
     {
       "key": "hermes_chat.small_talk",
       "context": "Hermes chat (F2): Hermes answers a greeting, thanks or the question what it can do, with one line on what it does. Buttons with things it can do follow.",
-      "en": "I'm Hermes: I tidy up your documents, find them and change how your archive is ordered. What would you like to do?",
-      "de": "Ich bin Hermes: Ich räume deine Dokumente auf, finde sie und ändere, wie dein Archiv geordnet ist. Was möchtest du tun?"
+      "en": "I'm Hermes: I tidy up your documents, find them and change how your documents are ordered. What would you like to do?",
+      "de": "Ich bin Hermes: Ich räume deine Dokumente auf, finde sie und ändere, wie deine Dokumente geordnet sind. Was möchtest du tun?"
     },
     {
       "key": "hermes_chat.leave_as_is",
@@ -9387,7 +8121,7 @@
     {
       "key": "hermes_chat.trial_stuck_some",
       "context": "Hermes chat (F2): One message at the end of a trial run that files nothing, when some of the files are in the filing folder already. {total} is the number of files looked at, {dupes} how many are there already, {rest} the others, {ai_note} is empty or the sentence about how far the AI is. Buttons with what to do follow.",
-      "en": "Of {total} files, {dupes} are already in the filing folder. For the other {rest} I still lack the sender{ai_note}. What shall I do?",
+      "en": "Of {total} files, {dupes} are already in the target folder. For the other {rest} I still lack the sender{ai_note}. What shall I do?",
       "de": "Von {total} Dateien sind {dupes} schon im Schreib-Ordner. Für die anderen {rest} fehlt mir noch der Absender{ai_note}. Was soll ich tun?"
     },
     {

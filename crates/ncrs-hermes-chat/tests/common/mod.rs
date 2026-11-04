@@ -124,6 +124,18 @@ impl Talk {
         }
     }
 
+    /// The chat can count, show and file the documents that wait; they are
+    /// filed below `archive`.
+    pub fn with_review(mut self) -> Self {
+        let review = ncrs_filing::review_work::ReviewAccess::new(
+            Arc::clone(&self.index),
+            self.path("archive"),
+        );
+        self.access = self.access.with_review(Some(review));
+        self.ctx.availability = Availability::Ready(self.access.clone());
+        self
+    }
+
     pub fn path(&self, relative: &str) -> PathBuf {
         self.root.join(relative)
     }

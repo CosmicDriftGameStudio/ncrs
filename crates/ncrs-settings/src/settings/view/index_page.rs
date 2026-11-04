@@ -115,7 +115,10 @@ pub fn folder_row<'a>(
     let lang = view.lang;
     let path = shown_path(&location.path, view.home);
     let where_it_is = match files {
-        Some(1) => fill_template(lang.text(Msg::SettingsIndexFolderOneFile), &[("{path}", &path)]),
+        Some(1) => fill_template(
+            lang.text(Msg::SettingsIndexFolderOneFile),
+            &[("{path}", &path)],
+        ),
         Some(count) => fill_template(
             lang.text(Msg::SettingsIndexFolderFiles),
             &[("{path}", &path), ("{count}", &count.to_string())],

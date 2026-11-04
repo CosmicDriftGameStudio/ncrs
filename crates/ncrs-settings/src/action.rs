@@ -16,7 +16,7 @@ pub enum Action {
     CloseContextMenu,
     SetDialogFocus(usize),
     ShowNotice(String),
-    /// The settings page opens in place of a page of the Ablage: that page
+    /// The settings page opens in place of a page of Hermes: that page
     /// closes, and so do the context menu, the path field and the notice.
     LeaveAblagePage,
     /// The system file dialog for the program behind F3 or F4.
@@ -55,9 +55,5 @@ pub enum Action {
     ApplyLook(Box<Config>),
     /// The keymap read back after an edit of the keys.
     KeymapChanged(Arc<Keymap>),
-    OpenOverview,
-    OcrModelsInstalled,
-    /// The fallback recognizer was deleted from the computer.
-    OcrModelsRemoved,
     RefreshAiModel,
 }

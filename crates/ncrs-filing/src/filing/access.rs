@@ -21,19 +21,6 @@ impl FilingModule {
         }
     }
 
-    /// The handle of the rule suggestions view: only when the module is
-    /// `Ready`, and over the archive locations that can be reached.
-    pub fn suggestion_access(&self) -> Option<SuggestionAccess> {
-        self.archive_handle(SuggestionAccess::new)
-            .map(|access| access.with_own(self.own.clone()))
-    }
-
-    /// The handle of the reorganisation plan view, on the same terms.
-    pub fn plan_access(&self) -> Option<PlanAccess> {
-        self.archive_handle(PlanAccess::new)
-            .map(|access| access.with_kind_language(self.own.kind_language))
-    }
-
     /// The module is busy with its start (opening, questions, conversion),
     /// not failed or dismissed.
     pub fn is_starting(&self) -> bool {
@@ -57,7 +44,8 @@ impl FilingModule {
         });
         Some(
             ChatAccess::new(Arc::clone(&self.index), Arc::clone(chain), trash)
-                .with_own(self.own.clone()),
+                .with_own(self.own.clone())
+                .with_review(self.review_access()),
         )
     }
 
@@ -103,21 +91,6 @@ impl FilingModule {
                 .with_location_roots(self.location_roots())
                 .with_kind_language(self.own.kind_language)
                 .with_own(self.own.clone()),
-        )
-    }
-
-    /// The handle of re-planning and refiling: the inbox locations that can be
-    /// reached bound what it may touch, the archive is the filing target.
-    pub fn replan_access(&self) -> Option<ReplanAccess> {
-        let root = self.target_root()?;
-        let inbox_roots = self
-            .reachable_locations()
-            .filter(|location| location.mode == LocationMode::Inbox)
-            .map(|location| location.path.clone())
-            .collect();
-        Some(
-            ReplanAccess::new(Arc::clone(&self.index), inbox_roots, root)
-                .with_kind_language(self.own.kind_language),
         )
     }
 
@@ -175,19 +148,6 @@ impl FilingModule {
                 LocationStatus::Ready(location) => Some(location.path.clone()),
                 LocationStatus::NotReachable { .. } | LocationStatus::Overlaps { .. } => None,
             })
-    }
-
-    fn archive_handle<T>(&self, make: fn(IndexSlot, Vec<PathBuf>) -> T) -> Option<T> {
-        match self.phase {
-            Phase::Ready => Some(make(
-                Arc::clone(&self.index),
-                self.reachable_locations()
-                    .filter(|location| location.mode == LocationMode::Archive)
-                    .map(|location| location.path.clone())
-                    .collect(),
-            )),
-            _ => None,
-        }
     }
 
     pub fn locations(&self) -> &[ResolvedLocation] {

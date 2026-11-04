@@ -6,6 +6,7 @@ use ncrs_ai::{ChatTurn, Schedule};
 use ncrs_filing::chat_work::{
     AnsweredGroups, ChangeOrder, ChangePreview, ChatWork, FolderReading, OrderChange,
     PatternChoice, PatternLevel, ReadProgress, RunPlan, RunSummary, TrashItem, TrialPlan,
+    WaitingGroup,
 };
 use ncrs_index::Transfer;
 
@@ -112,6 +113,12 @@ pub enum ChipReply {
     ShowStaying,
     /// Runs the trial again against a folder the user picks.
     TrialOtherTarget,
+    /// Goes through the documents that wait, group by group.
+    WaitingShow,
+    /// Files the group of waiting documents in question where it is proposed.
+    WaitingFile,
+    /// Leaves the group of waiting documents in question as it is.
+    WaitingSkip,
 }
 
 impl Session {
@@ -143,6 +150,7 @@ impl ChipReply {
             | Self::NamesNumbered
             | Self::PutBack
             | Self::TrashDuplicatesNow
+            | Self::WaitingFile
             | Self::Undo => true,
             Self::Cancel
             | Self::Folder(_)
@@ -191,6 +199,8 @@ impl ChipReply {
             | Self::OtherArea
             | Self::ChangeAreaOrder { .. }
             | Self::ShowStaying
+            | Self::WaitingShow
+            | Self::WaitingSkip
             | Self::TrialOtherTarget => false,
         }
     }
@@ -409,8 +419,24 @@ pub struct Thinking {
     pub asked: Asked,
 }
 
+/// The walk through the waiting documents: the groups still to ask about, the
+/// one asked now, and how many documents there were and were filed.
+#[derive(Debug)]
+pub struct Walk {
+    pub groups: std::collections::VecDeque<WaitingGroup>,
+    pub current: Option<WaitingGroup>,
+    pub total: usize,
+    pub filed: usize,
+}
+
 #[derive(Debug, Default)]
 pub struct Session {
+    pub waiting: Option<Walk>,
+    /// The greeting follows the count of the waiting documents.
+    pub greeting_after_count: bool,
+    /// How many waiting documents the user was told about last.
+    pub waiting_offered: usize,
+    pub last_check: Option<chrono::DateTime<chrono::Local>>,
     pub readings: HashMap<PathBuf, Arc<FolderReading>>,
     /// Folders learned in this chat that are not yet a target of the app.
     pub learned: Vec<PathBuf>,
@@ -558,6 +584,11 @@ impl State {
     /// The plan of the trial that is on screen.
     pub fn trial_plan(&self) -> Option<&TrialPlan> {
         self.session.trial.as_ref().map(|trial| &trial.plan)
+    }
+
+    /// Whether the newest entry is Hermes', so its chips are the ones on screen.
+    pub fn chips_owner_is_hermes(&self) -> bool {
+        matches!(self.thread.last(), Some(Entry::Hermes { .. }))
     }
 
     /// The chips of the newest entry, when it is Hermes'.

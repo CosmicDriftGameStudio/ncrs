@@ -108,7 +108,7 @@ async fn an_inbox_needs_a_filing_location_first_and_the_sentence_stays() {
     )
     .await;
 
-    assert_eq!(app.status_error(), Some("Set a filing location first."));
+    assert_eq!(app.status_error(), Some("Set a target folder first."));
     assert!(app.hermes.filing_config.locations.is_empty());
 }
 
@@ -175,17 +175,16 @@ async fn the_chat_makes_a_folder_an_inbox_with_the_same_config_as_the_menu() {
 }
 
 #[test]
-fn a_hermes_command_while_hermes_is_off_opens_the_overview_with_the_reason() {
+fn a_hermes_command_while_hermes_is_off_opens_the_hermes_settings_with_the_reason() {
     let mut app = App::with_fixed_panels();
     assert!(app.hermes.filing.is_none());
 
-    drop(app.update(Message::ReviewList(ReviewListMessage::Open)));
+    drop(app.update(Message::QuickFix(QuickFixMessage::Open)));
 
-    assert!(app.review_list_for_test().is_none());
-    assert!(app.hermes.overview.is_some(), "the overview is up");
+    assert!(app.settings_for_test().is_some(), "the settings are up");
     assert_eq!(
         app.status_error(),
-        Some("Filing is off. Switch it on here to sort your documents.")
+        Some(app.lang.text(Msg::StatusHermesIsOff))
     );
 }
 
@@ -195,19 +194,17 @@ fn a_hermes_command_while_hermes_restarts_says_so_and_opens_nothing() {
     app.hermes.filing_restart = Some((1, Filing::default()));
     assert!(!app.hermes.is_off());
 
-    drop(app.update(Message::ReviewList(ReviewListMessage::Open)));
+    drop(app.update(Message::QuickFix(QuickFixMessage::Open)));
 
-    assert!(app.review_list_for_test().is_none());
     assert!(app.settings_for_test().is_none());
-    assert_eq!(app.notice_for_test(), Some("Filing restarting …"));
+    assert_eq!(app.notice_for_test(), Some("Hermes restarting …"));
 }
 
 #[test]
-fn with_the_settings_already_open_the_command_still_opens_the_overview() {
+fn with_the_settings_already_open_the_command_still_explains_why_it_cannot_run() {
     let mut app = App::with_settings_open(SettingsFeature::Look, Filing::default());
 
     drop(app.update(Message::QuickFix(QuickFixMessage::Open)));
 
-    assert!(app.hermes.overview.is_some());
     assert!(app.status_error().is_some());
 }

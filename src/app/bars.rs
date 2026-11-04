@@ -180,16 +180,10 @@ impl App {
     /// What Escape sends on the top level of the page of filing.
     fn close_message_of(page: HermesPage) -> Message {
         match page {
-            HermesPage::Overview => Message::HermesOverview(HermesOverviewMessage::Close),
             HermesPage::Inspection => Message::FilingStatus(FilingStatusMessage::Close),
-            HermesPage::Review => Message::ReviewList(ReviewListMessage::Close),
             HermesPage::SavedQueries => Message::SavedQueries(SavedQueriesMessage::Close),
             HermesPage::Rules => Message::Rules(RulesMessage::Close),
-            HermesPage::RuleSuggestions => Message::RuleSuggestions(RuleSuggestionsMessage::Close),
             HermesPage::Tags => Message::Tags(TagsMessage::Close),
-            HermesPage::Reorganisation => {
-                Message::ReorganisationPlan(ReorganisationPlanMessage::Close)
-            }
         }
     }
 

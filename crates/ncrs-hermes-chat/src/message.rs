@@ -43,6 +43,9 @@ pub enum Message {
         folder: PathBuf,
         area: String,
     },
+    /// New documents may be waiting; sent by the app now and then while the
+    /// chat is open.
+    WaitingCheck,
     /// A beat while work runs; sent by the app twice a second or so.
     WorkTick,
 }
@@ -73,6 +76,7 @@ impl PartialEq for Message {
             | (Self::ModelReady, Self::ModelReady)
             | (Self::AiTurnedOn, Self::AiTurnedOn)
             | (Self::HermesReady, Self::HermesReady)
+            | (Self::WaitingCheck, Self::WaitingCheck)
             | (Self::WorkTick, Self::WorkTick) => true,
             (Self::InputChanged(left), Self::InputChanged(right))
             | (Self::Failed(left), Self::Failed(right)) => left == right,

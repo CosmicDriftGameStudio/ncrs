@@ -6,13 +6,12 @@ use ncrs_filing::filing::FilingModule;
 use ncrs_filing::review_work::{AcceptSummary, ReviewItem};
 use ncrs_i18n::{fill_template, Msg};
 
+use super::blocking_overlay_is_open;
 use super::rules::open_rule_form;
-use super::{blocking_overlay_is_open, review_list};
 use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::message::{HermesColumnMessage, Message, QuickFixMessage};
-use crate::quick_fix::{field_to_fix, QuickFix, QuickFixAction};
-use crate::review_list::rule_prefill_of;
+use crate::quick_fix::{rule_prefill_of, QuickFix, QuickFixAction};
 use crate::rule_form::RuleForm;
 use crate::state::Hermes;
 
@@ -132,7 +131,7 @@ fn run_entry(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> T
             menu.back();
             Task::none()
         }
-        QuickFixAction::SetFields => open_review_from_menu(hermes, ctx, actions),
+        QuickFixAction::SetFields => open_chat_from_menu(hermes, actions),
         QuickFixAction::CreateRule => open_rule_form_from_menu(hermes, ctx, actions),
         QuickFixAction::Later => {
             hermes.quick_fix = None;
@@ -194,26 +193,12 @@ fn file_group(hermes: &mut Hermes, group: usize, actions: &mut Vec<Action>) -> T
     )
 }
 
-/// Opens the review page on the document of the menu with its form open, to
-/// fill in the missing field.
-fn open_review_from_menu(
-    hermes: &mut Hermes,
-    ctx: &Ctx<'_>,
-    actions: &mut Vec<Action>,
-) -> Task<Message> {
-    let Some(menu) = hermes.quick_fix.take() else {
-        return Task::none();
-    };
-    let Some(item) = menu.item_to_fix() else {
-        return Task::none();
-    };
-    let field = field_to_fix(item);
-    let path = item.path.clone();
-    let opened = review_list::open(hermes, ctx, actions);
-    if let Some(view) = hermes.review_list.as_mut() {
-        view.edit_on_load(path, field);
-    }
-    opened
+/// Hands the documents without a suggestion to the chat, which asks for what
+/// is missing.
+fn open_chat_from_menu(hermes: &mut Hermes, actions: &mut Vec<Action>) -> Task<Message> {
+    hermes.quick_fix = None;
+    actions.push(Action::OpenChat);
+    Task::none()
 }
 
 /// Opens the rule form with what the review would file the document of the

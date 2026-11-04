@@ -13,7 +13,7 @@ use ncrs_index::{DocumentStatus, FileTags, Kinds, PathState};
 use ncrs_intake::LocationMode;
 use ncrs_pipeline::{Snapshot, Task};
 
-use crate::ui::review_list::reason_text;
+use crate::ui::review_reason::reason_text;
 use ncrs_config::config::FilingLocation;
 use ncrs_config::file_list_tags::{shown_tags, FileListTags, ShownTags, TagExceptions};
 use ncrs_filing::review_work::TextState;

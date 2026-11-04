@@ -33,12 +33,8 @@ pub(in crate::app) fn card_close_message(prompt: &PromptKeyState) -> Option<Mess
 /// What the keys of the Hermes pages read of the prompt state.
 fn hermes_key_facts(prompt: &PromptKeyState) -> ncrs_hermes_ui::keys::KeyFacts {
     ncrs_hermes_ui::keys::KeyFacts {
-        hermes_sidebar: prompt.hermes_sidebar,
-        review_list_editing: prompt.review_list_editing,
-        review_list_replanning: prompt.review_list_replanning,
         rules_form: prompt.rules_form,
         rules_confirming_delete: prompt.rules_confirming_delete,
-        hermes_overview_editing: prompt.hermes_overview_editing,
         start_over_dialog: prompt.start_over_dialog,
         hermes_setup: prompt.hermes_setup,
     }
@@ -72,8 +68,6 @@ pub(in crate::app) fn hermes_page_key(
     };
     page(&hermes_key_facts(prompt), &press, &bound).map(|pressed| match pressed {
         PageKey::Message(message) => message.into(),
-        PageKey::Focus(focus) => Message::HermesFocus(focus),
-        PageKey::Step(step) => Message::HermesStep(step),
         PageKey::Quit => Message::Quit,
     })
 }
@@ -254,23 +248,18 @@ pub(in crate::app) fn settings_key(
             .filter(|_| is_not_typed_by_text_field(key, key_modifiers))
     };
     match ncrs_settings::keys::settings_key(key, || bound().is_some())? {
-        SettingsKey::Close if prompt.filing_setup => {
-            Some(Message::FilingSetup(FilingSetupMessage::Close))
-        }
         SettingsKey::Close => Some(Message::Settings(SettingsMessage::Close)),
         SettingsKey::Bound => bound(),
     }
 }
 
 // A visible card whose footer promises "Esc: close" goes before the job
-// (same thought as the delete dialog): the filing setup, then a filing
+// (same thought as the delete dialog): a filing
 // card, then a running job, then the config error. Unbound rather than
 // bound to something that does nothing — a key that means different things
 // depending on invisible state is worse than one that is simply free.
 pub(in crate::app) fn escape_message(prompt: &PromptKeyState) -> Option<Message> {
-    if prompt.filing_setup {
-        Some(Message::FilingSetup(FilingSetupMessage::Close))
-    } else if prompt.filing_card {
+    if prompt.filing_card {
         Some(Message::Filing(FilingMessage::Dismiss))
     } else if prompt.job_running {
         Some(Message::AbortJob)

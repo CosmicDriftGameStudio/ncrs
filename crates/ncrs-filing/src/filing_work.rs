@@ -20,7 +20,7 @@ use crate::execute::{
     execute_copying, execute_with, ExecuteError, ExecutionItem, ExecutionReport, ItemOutcome,
     SkipReason,
 };
-use crate::suggestion_work::INDEX_NOT_OPEN;
+use ncrs_core::INDEX_NOT_OPEN;
 use ncrs_fs::transfer::{Move, Progress, Source};
 
 type IndexSlot = Arc<Mutex<Option<Index>>>;
@@ -478,7 +478,10 @@ mod tests {
         );
         assert!(document.path.exists());
         let after = setup.index.document(document.id).unwrap().unwrap();
-        assert_eq!((after.status, &after.path), (DocumentStatus::Filed, &document.path));
+        assert_eq!(
+            (after.status, &after.path),
+            (DocumentStatus::Filed, &document.path)
+        );
         let batch = setup
             .index
             .last_undoable_batch(ncrs_index::BatchKind::Filing)

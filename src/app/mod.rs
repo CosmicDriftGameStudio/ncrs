@@ -29,16 +29,13 @@ use crate::context_action_message::ContextActionMessage as _;
 use crate::context_menu::ContextAction;
 use crate::context_menu::{ContextMenu, HermesAction};
 use crate::dialog::{Prompt, PromptKind};
-use crate::execute;
 use crate::file_list_tags::{FileListTags, TagExceptions};
 #[cfg(test)]
 use crate::filing::Phase;
 use crate::filing::{DocumentFinder, FilingMessage, FilingModule};
-#[cfg(test)]
-use crate::filing_pieces::TargetEdit;
 use crate::filing_setup;
 #[cfg(test)]
-use crate::filing_setup::{FilingSetup, SetupNote};
+use crate::filing_setup::SetupNote;
 use crate::filing_status::SNAPSHOT_EVERY;
 use crate::filing_work::FilingSummary;
 use crate::fs;
@@ -51,7 +48,7 @@ use crate::fs::CreateDirError;
 use crate::hermes_column::{role_of, ColumnView, FolderRole, HermesFileState};
 #[cfg(test)]
 use crate::hermes_overview::{ModuleState, Protection};
-use crate::hermes_overview::{OverviewFacts, OverviewState};
+use crate::hermes_overview::OverviewFacts;
 #[cfg(test)]
 use crate::hermes_setup::{HermesSetup, SetupFocus, SetupOffer};
 use crate::hermes_status::HermesStatus;
@@ -65,11 +62,10 @@ use crate::keymap::{KeyActionMessage as _, KeymapMessages as _};
 use crate::menu::Availability;
 use crate::messages::{
     AboutMessage, AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage,
-    ConflictChoice, FilingSetupMessage, FilingStatusMessage, GrantMessage, HermesChatMessage,
-    HermesFileMessage, HermesFocus, HermesOverviewMessage, HermesPage, HermesSetupMessage,
+    ConflictChoice, FilingStatusMessage, GrantMessage, HermesChatMessage,
+    HermesFileMessage, HermesOverviewMessage, HermesPage, HermesSetupMessage,
     HitListMessage, KeyBindingsMessage, Message, OcrModelsMessage, PanelSide, QuickFixMessage,
-    QuickOpenMessage, RemoteMessage, ReorganisationPlanMessage, ReviewListMessage,
-    RuleSuggestionsMessage, RulesMessage, SavedQueriesMessage, SearchMessage, SettingChange,
+    QuickOpenMessage, RemoteMessage, RulesMessage, SavedQueriesMessage, SearchMessage, SettingChange,
     SettingsMessage, TagsMessage, ThemeFetchMessage, TitleBarMessage, TransferKind, TrashMessage,
 };
 #[cfg(target_os = "macos")]
@@ -85,14 +81,7 @@ use crate::quick_open::{
     self, QuickOpen, QuickOpenAction, QuickOpenCtx, WalkEvent, QUICK_OPEN_FILE_LIMIT,
 };
 #[cfg(test)]
-use crate::reorganisation_plan::ReorganisationView;
-use crate::reorganisation_work::{ExecutionSummary, PlannedItem};
-use crate::replan_work::ReplanSummary;
-use crate::review_list::ReviewList;
-#[cfg(test)]
 use crate::review_work::ReviewItem;
-#[cfg(test)]
-use crate::rule_suggestions::RuleSuggestions;
 use crate::rules_page::RulesPage;
 use crate::saved_queries::Draft;
 #[cfg(test)]
@@ -122,7 +111,6 @@ use crate::ui::command_line as command_line_ui;
 use crate::ui::context_menu as context_menu_view;
 use crate::ui::delete as delete_dialog_view;
 use crate::ui::filing as filing_ui;
-use crate::ui::filing_setup as filing_setup_ui;
 use crate::ui::grant as grant_ui;
 use crate::ui::hermes_flow;
 use crate::ui::hermes_overview as hermes_overview_ui;
@@ -151,7 +139,7 @@ use ncrs_files::open_plan::{open_refused_text, CopyOf, OpenPlan, OpenSource};
 #[cfg(test)]
 use ncrs_files::volumes::VolumeMenu;
 use ncrs_files::{PanelMessage, Panels, PendingReload};
-use ncrs_hermes_ui::{SavedFilingApplies, SetupCard};
+use ncrs_hermes_ui::SavedFilingApplies;
 pub use ncrs_i18n::fill_template;
 use ncrs_index::{KeyStore, KeyringKeyStore, KindSkip, Kinds, QuerySpec, SavedQueryId};
 use ncrs_intake::LocationMode;
@@ -406,8 +394,6 @@ pub struct App {
     write_clipboard_files: clipboard_paste::ClipboardFileWriter,
     /// The tags the file list shows against their group, from the index.
     tag_exceptions: TagExceptions,
-    /// Whether the arrow keys act on the sidebar or the page of the Hermes card.
-    hermes_focus: HermesFocus,
     /// Downloads an extension, on a blocking thread. Injected so tests need
     /// no network.
     fetch_extension: fn(&ExtensionId) -> Result<FetchedExtension, FetchError>,
@@ -489,41 +475,22 @@ pub struct PromptKeyState {
     pub key_bindings_recording: bool,
     /// The filing status page is up, so its keys act on the pipeline.
     pub filing_status: bool,
-    /// The Hermes overview is up: it has a text field, so only Escape and
-    /// its own key close it.
-    pub hermes_overview: bool,
-    /// The filing setup is up, so Escape closes it.
-    pub filing_setup: bool,
     /// The first-time setup of Hermes is up: keys answer it like a button dialog.
     pub hermes_setup: bool,
     /// A filing card that "Not now" may leave is up, so Escape leaves it.
     pub filing_card: bool,
     /// The theme download card is up, so Enter and the arrows are its.
     pub theme_fetch: bool,
-    /// The rule suggestions view is up, so Enter, the arrows and its letters are its.
-    pub rule_suggestions: bool,
     /// The rules page is up, so Enter, the arrows, Space and Delete are its.
     pub rules: bool,
     /// Its form is up, so the text fields take the keys.
     pub rules_form: bool,
     /// Its delete question is up, so Enter answers it.
     pub rules_confirming_delete: bool,
-    /// The review list is up, so Enter, the arrows and its letters are its.
-    pub review_list: bool,
-    /// Its form is up, so the text fields take the letters.
-    pub review_list_editing: bool,
-    /// The review list shows the preview of re-planned documents.
-    pub review_list_replanning: bool,
     /// The saved queries page is up, so Enter, the arrows and Tab are its.
     pub saved_queries: bool,
     /// The tags page is up, so the arrows, Space and Enter are its.
     pub tags: bool,
-    /// The overview's pattern field has the focus, so the letters are the field's.
-    pub hermes_overview_editing: bool,
-    /// A Hermes page is up and the arrow keys act on its sidebar.
-    pub hermes_sidebar: bool,
-    /// The reorganisation plan view is up, so its keys are the card's.
-    pub reorganisation_plan: bool,
     /// The about card is up, so keys answer it like a button dialog.
     pub about: bool,
     /// The OCR models card is up, so keys answer it like a button dialog.
@@ -576,23 +543,14 @@ impl Default for PromptKeyState {
             key_bindings: false,
             key_bindings_recording: false,
             filing_status: false,
-            hermes_overview: false,
-            filing_setup: false,
             hermes_setup: false,
             filing_card: false,
             theme_fetch: false,
-            rule_suggestions: false,
             rules: false,
             rules_form: false,
             rules_confirming_delete: false,
-            review_list: false,
-            review_list_editing: false,
-            review_list_replanning: false,
             saved_queries: false,
             tags: false,
-            hermes_overview_editing: false,
-            hermes_sidebar: false,
-            reorganisation_plan: false,
             about: false,
             ocr_models: false,
             ai_model: false,

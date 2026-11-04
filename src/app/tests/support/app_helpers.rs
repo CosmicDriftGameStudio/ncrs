@@ -71,34 +71,6 @@ impl App {
         app
     }
 
-    pub fn rule_suggestions_for_test(&self) -> Option<&RuleSuggestions> {
-        self.hermes.rule_suggestions.as_ref()
-    }
-
-    /// Fixed panels with the rule suggestions view up, in the state of `view`.
-    pub fn with_rule_suggestions(view: RuleSuggestions) -> Self {
-        let mut app = Self::with_fixed_panels();
-        app.set_idle_hermes_status();
-        app.hermes.rule_suggestions = Some(view);
-        app
-    }
-
-    pub fn review_list_for_test(&self) -> Option<&ReviewList> {
-        self.hermes.review_list.as_ref()
-    }
-
-    pub fn review_list_generation_for_test(&self) -> u64 {
-        self.hermes.review_list_generation
-    }
-
-    /// Fixed panels with the review list up, in the state of `view`.
-    pub fn with_review_list(view: ReviewList) -> Self {
-        let mut app = Self::with_fixed_panels();
-        app.set_idle_hermes_status();
-        app.hermes.review_list = Some(view);
-        app
-    }
-
     /// A ready, idle Hermes module, so the status line of the filing pages
     /// shows its sentence.
     fn set_idle_hermes_status(&mut self) {
@@ -118,12 +90,6 @@ impl App {
     /// The PDF library could not be loaded; `searched` is where it was looked for.
     pub fn with_pdf_library_missing(mut self, searched: PathBuf) -> Self {
         self.hermes.pdf_library_missing = Some(searched);
-        self
-    }
-
-    /// Puts the arrow keys of the Hermes card on its sidebar or its page.
-    pub fn with_hermes_focus(mut self, focus: HermesFocus) -> Self {
-        self.hermes_focus = focus;
         self
     }
 
@@ -187,18 +153,6 @@ impl App {
     pub fn with_saved_queries(view: SavedQueries) -> Self {
         let mut app = Self::with_fixed_panels();
         app.hermes.saved_queries = Some(view);
-        app
-    }
-
-    pub fn reorganisation_for_test(&self) -> Option<&ReorganisationView> {
-        self.hermes.reorganisation.as_ref()
-    }
-
-    /// Fixed panels with the reorganisation plan view up, in the state of `view`.
-    pub fn with_reorganisation_plan(view: ReorganisationView) -> Self {
-        let mut app = Self::with_fixed_panels();
-        app.set_idle_hermes_status();
-        app.hermes.reorganisation = Some(view);
         app
     }
 
@@ -492,8 +446,8 @@ impl App {
         self.modifiers = modifiers;
     }
 
-    pub fn hermes_overview_is_open_for_test(&self) -> bool {
-        self.hermes.overview.is_some()
+    pub fn inspection_page_is_open_for_test(&self) -> bool {
+        self.hermes.filing_status.page_open()
     }
 
     pub fn active_panel_side_for_test(&self) -> PanelSide {

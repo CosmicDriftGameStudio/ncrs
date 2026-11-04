@@ -341,6 +341,9 @@ fn page(
     loaded: Option<LoadedFacts>,
 ) -> Result<App, Box<dyn Error>> {
     let mut app = App::with_settings_file(feature, Ok(from_text(source)?));
+    if loaded.as_ref().is_some_and(|facts| !facts.areas.is_empty()) {
+        app = app.with_ready_index_for_test();
+    }
     if let Some(state) = app.settings.page.as_mut() {
         state.loaded = loaded;
         state.facts_requested = true;
@@ -421,6 +424,24 @@ fn the_hermes_page_matches_its_snapshots_empty() -> TestResult {
         "settings_hermes_empty",
         WINDOW_HEIGHT,
     )
+}
+
+#[tokio::test]
+async fn zeigen_on_the_unreadable_files_opens_the_inspection_page() -> TestResult {
+    let app = page(
+        SettingsFeature::Index,
+        filled_config(),
+        Some(loaded_areas()),
+    )?;
+    let mut simulator = page_simulator(&app);
+    simulator.click("Show")?;
+    let messages: Vec<Message> = simulator.into_messages().collect();
+    assert_eq!(messages, [settings(SettingsMessage::OpenFilingStatus)]);
+
+    let mut app = app;
+    drop(app.update(settings(SettingsMessage::OpenFilingStatus)));
+    assert!(app.inspection_page_is_open_for_test());
+    Ok(())
 }
 
 #[test]

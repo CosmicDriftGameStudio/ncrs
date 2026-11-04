@@ -14,12 +14,15 @@ use ncrs_index::{BatchId, Index, KindLanguage, Kinds, Rule, RuleOrigin, SenderAl
 use ncrs_intake::{rule_problem, TextChain};
 use ncrs_pipeline::OwnDetails;
 
+use crate::review_work::{AcceptSummary, ReviewAccess, ReviewItem};
+
 mod change;
 mod groups;
 mod pattern;
 mod reading;
 mod runs;
 mod trial;
+mod waiting;
 mod words;
 
 #[cfg(test)]
@@ -40,6 +43,7 @@ pub use pattern::{
 pub use reading::{AiCoverage, FolderReading, ReadError, ReadProgress, FILE_LIMIT};
 pub use runs::{RecentRun, RunItem, RunPlan, RunReport, RunSummary};
 pub use trial::{StayReason, TrialEntry, TrialOutcome, TrialPlan};
+pub use waiting::WaitingGroup;
 pub use words::{normalize_word, same_word, word_within};
 
 pub use crate::execute::{TrashItem, TrashReport, UndoReport};
@@ -88,6 +92,11 @@ pub enum ChatWork {
     Undo {
         batch: BatchId,
     },
+    WaitingCount,
+    WaitingLoad,
+    WaitingFile {
+        items: Vec<ReviewItem>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -102,6 +111,9 @@ pub enum ChatResult {
     Trashed(Result<TrashReport, String>),
     LastRun(Result<Option<RunSummary>, String>),
     Undone(Result<UndoReport, String>),
+    WaitingCount(Result<usize, String>),
+    WaitingLoaded(Result<Vec<WaitingGroup>, String>),
+    WaitingFiled(Result<AcceptSummary, String>),
 }
 
 /// The handle of the chat: the index the pipeline shares, the text sources to
@@ -112,6 +124,7 @@ pub struct ChatAccess {
     text_chain: Arc<TextChain>,
     trash: Arc<dyn Trash>,
     own: OwnDetails,
+    review: Option<ReviewAccess>,
 }
 
 impl fmt::Debug for ChatAccess {
@@ -131,7 +144,20 @@ impl ChatAccess {
             text_chain,
             trash,
             own: OwnDetails::default(),
+            review: None,
         }
+    }
+
+    /// The documents that wait for the user can be shown and filed only with
+    /// this.
+    #[must_use]
+    pub fn with_review(mut self, review: Option<ReviewAccess>) -> Self {
+        self.review = review;
+        self
+    }
+
+    pub fn has_review(&self) -> bool {
+        self.review.is_some()
     }
 
     #[must_use]
@@ -229,6 +255,11 @@ impl ChatAccess {
             }
             ChatWork::LastRun => ChatResult::LastRun(runs::last_run(self)),
             ChatWork::Undo { batch } => ChatResult::Undone(runs::undo(self, batch)),
+            ChatWork::WaitingCount => ChatResult::WaitingCount(waiting::count(self)),
+            ChatWork::WaitingLoad => ChatResult::WaitingLoaded(waiting::load(self)),
+            ChatWork::WaitingFile { items } => {
+                ChatResult::WaitingFiled(waiting::file(self, &items))
+            }
         }
     }
 

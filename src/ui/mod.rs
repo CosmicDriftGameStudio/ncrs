@@ -22,10 +22,8 @@ pub use ncrs_files::volumes_view as volumes;
 pub use ncrs_ui_kit::{fkeys, format, frame, kit, theme};
 pub use panel::PanelState;
 
-#[cfg(test)]
-pub use ncrs_hermes_ui::ui::filing_status;
 pub use ncrs_hermes_ui::ui::{
-    filing, filing_setup, hermes, hermes_flow, hermes_overview, hermes_setup, quick_fix,
+    filing, hermes_flow, hermes_overview, hermes_setup, quick_fix,
 };
 pub use ncrs_settings::ai_model::view as ai_model;
 pub use ncrs_settings::key_bindings::view as key_bindings;

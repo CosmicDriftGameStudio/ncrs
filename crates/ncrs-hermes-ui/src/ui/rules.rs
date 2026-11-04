@@ -10,9 +10,8 @@ use super::condition_editor::{
     add_condition_link, combinator_choice, condition_editor_rows, ConditionHost,
 };
 use super::filing_pieces::{target_view, ExampleLine, TargetHost};
-use super::hermes::{self, Badges};
-use super::review_list::reason_text;
-use crate::message::{HermesPage, Message, RuleFormMessage, RulesMessage};
+use super::review_reason::reason_text;
+use crate::message::{Message, RuleFormMessage, RulesMessage};
 use crate::rule_form::{RuleForm, RuleFormTarget, TryStatus};
 use crate::rules_page::{hits_text, origin_text, rule_sentence, RulesPage, VISIBLE_ROWS};
 use ncrs_config::palette::Palette;
@@ -55,12 +54,7 @@ fn send_form(message: RuleFormMessage) -> Message {
     send(RulesMessage::Form(message))
 }
 
-pub fn view<'a>(
-    state: &'a RulesPage,
-    badges: Badges,
-    lang: Language,
-    palette: &Palette,
-) -> Element<'a, Message> {
+pub fn view<'a>(state: &'a RulesPage, lang: Language, palette: &Palette) -> Element<'a, Message> {
     let body: Element<'a, Message> = if state.rows().is_empty() && state.form().is_none() {
         let sentence = if state.is_busy() {
             Msg::RulesLoading
@@ -72,7 +66,6 @@ pub fn view<'a>(
         page_kit::list_and_detail(list(state, lang, palette), detail(state, lang, palette))
     };
     page_kit::tab_page(
-        hermes::tab_nav(HermesPage::Rules, badges, lang, palette),
         header(state, lang, palette),
         body,
         Some(action_bar(state, lang, palette)),

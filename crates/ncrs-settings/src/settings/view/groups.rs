@@ -73,7 +73,7 @@ pub fn look_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
     ]
 }
 
-/// The switch, and the way to the page that chooses the tags.
+/// The switch for the tags after the file names.
 pub fn file_tags_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
     let lang = view.lang;
     let current = view.state.file_list_tags();
@@ -87,18 +87,7 @@ pub fn file_tags_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
         switch(current.show, SettingChange::FileListTags(switched), view),
         lang,
     );
-    let open_row = simple_row(
-        Msg::SettingsRowFileTagsOpen,
-        Some(Msg::SettingsRowFileTagsOpenNote),
-        kit::button(
-            lang.text(Msg::SettingsHermesOpenButton),
-            Some(SettingsMessage::ChooseFileListTags),
-            Tone::Secondary,
-            view.palette,
-        ),
-        lang,
-    );
-    vec![show_row, open_row]
+    vec![show_row]
 }
 
 pub fn vscode_row<'a>(view: &SettingsView<'a>) -> SettingRow<'a> {
@@ -565,12 +554,7 @@ pub fn protection_group<'a>(view: &SettingsView<'a>) -> Option<Group<'a>> {
         problem: panel.failure.clone(),
         description: Some(panel.sentence.clone()),
         in_command_list: false,
-        ..simple_row(
-            Msg::SettingsIndexRowEncryption,
-            None,
-            control.into(),
-            lang,
-        )
+        ..simple_row(Msg::SettingsIndexRowEncryption, None, control.into(), lang)
     };
     Some(Group {
         intro: None,

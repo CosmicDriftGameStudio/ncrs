@@ -82,14 +82,10 @@ key_actions! {
     HermesChat => "hermes_chat",
     CommandPalette => "command_palette",
     FilingStatus => "filing_status",
-    FilingSetup => "filing_setup",
     Rules => "rules",
-    RuleSuggestions => "rule_suggestions",
-    ReviewList => "review_list",
     HermesQuickFix => "hermes_quick_fix",
     HermesHandToInbox => "hermes_hand_to_inbox",
     HermesProcessAgain => "hermes_process_again",
-    HermesReprocessFolder => "hermes_reprocess_folder",
     HermesSetInbox => "hermes_set_inbox",
     HermesSetFilingLocation => "hermes_set_filing_location",
     HermesSetArchive => "hermes_set_archive",
@@ -97,8 +93,6 @@ key_actions! {
     HermesInspect => "hermes_inspect",
     SavedQueries => "saved_queries",
     SearchDocuments => "search_documents",
-    ReorganisationPlan => "reorganisation_plan",
-    UndoReorganisation => "undo_reorganisation",
     FetchTheme => "fetch_theme",
     Settings => "settings",
     KeyBindings => "key_bindings",
@@ -198,14 +192,10 @@ impl KeyAction {
             | Self::CommandLine
             | Self::HermesChat
             | Self::FilingStatus
-            | Self::FilingSetup
             | Self::Rules
-            | Self::RuleSuggestions
-            | Self::ReviewList
             | Self::HermesQuickFix
             | Self::HermesHandToInbox
             | Self::HermesProcessAgain
-            | Self::HermesReprocessFolder
             | Self::HermesSetInbox
             | Self::HermesSetFilingLocation
             | Self::HermesSetArchive
@@ -215,8 +205,6 @@ impl KeyAction {
             | Self::SearchDocuments
             | Self::FileListTagsToggle
             | Self::FileListTagsChoose
-            | Self::ReorganisationPlan
-            | Self::UndoReorganisation
             | Self::FetchTheme
             | Self::Settings
             | Self::KeyBindings
@@ -283,8 +271,7 @@ impl KeyAction {
             Self::HermesQuickFix
                 | Self::HermesHandToInbox
                 | Self::HermesProcessAgain
-                | Self::HermesReprocessFolder
-                | Self::HermesSetInbox
+                    | Self::HermesSetInbox
                 | Self::HermesSetFilingLocation
                 | Self::HermesSetArchive
                 | Self::HermesExclude
@@ -365,15 +352,10 @@ impl KeyAction {
             | Self::HermesChat
             | Self::CommandPalette
             | Self::FilingStatus
-            | Self::FilingSetup
             | Self::Rules
-            | Self::RuleSuggestions
-            | Self::ReviewList
             | Self::SavedQueries
             | Self::FileListTagsToggle
             | Self::FileListTagsChoose
-            | Self::ReorganisationPlan
-            | Self::UndoReorganisation
             | Self::FetchTheme
             | Self::Settings
             | Self::KeyBindings
@@ -405,7 +387,6 @@ impl KeyAction {
             | Self::HermesQuickFix
             | Self::HermesHandToInbox
             | Self::HermesProcessAgain
-            | Self::HermesReprocessFolder
             | Self::HermesSetInbox
             | Self::HermesSetFilingLocation
             | Self::HermesSetArchive
@@ -458,15 +439,10 @@ impl KeyAction {
             | Self::Last
             | Self::CommandPalette
             | Self::FilingStatus
-            | Self::FilingSetup
             | Self::Rules
-            | Self::RuleSuggestions
-            | Self::ReviewList
             | Self::SavedQueries
             | Self::FileListTagsToggle
             | Self::FileListTagsChoose
-            | Self::ReorganisationPlan
-            | Self::UndoReorganisation
             | Self::FetchTheme
             | Self::Settings
             | Self::KeyBindings
@@ -499,7 +475,6 @@ impl KeyAction {
             | Self::HermesQuickFix
             | Self::HermesHandToInbox
             | Self::HermesProcessAgain
-            | Self::HermesReprocessFolder
             | Self::HermesSetInbox
             | Self::HermesSetFilingLocation
             | Self::HermesSetArchive

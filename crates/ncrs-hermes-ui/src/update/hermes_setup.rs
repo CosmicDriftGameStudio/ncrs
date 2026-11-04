@@ -2,7 +2,7 @@ use iced::Task;
 
 use super::filing_setup::resolve_in_background;
 use super::lifecycle;
-use crate::action::{Action, SetupCard};
+use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::filing_setup::SetupNote;
 use crate::hermes_setup::{FolderSlot, SetupFocus};
@@ -33,14 +33,14 @@ pub fn update(
                 return Task::none();
             };
             if setup.start_picking(slot) {
-                actions.push(Action::PickFolder(SetupCard::Hermes(slot)));
+                actions.push(Action::PickFolder(slot));
             }
             Task::none()
         }
         HermesSetupMessage::FolderPicked { slot, folder } => match folder {
             Some(picked) => {
                 actions.push(Action::GrantFolder {
-                    card: SetupCard::Hermes(slot),
+                    slot,
                     folder: picked.clone(),
                 });
                 resolve_in_background(ctx, picked, move |looked_up, resolved| {

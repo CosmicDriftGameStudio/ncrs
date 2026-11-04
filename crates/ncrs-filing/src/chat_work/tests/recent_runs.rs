@@ -102,10 +102,7 @@ fn a_trash_run_is_listed_without_the_right_to_undo_it() {
         .iter()
         .map(|run| (run.summary.transfer, run.undoable))
         .collect();
-    assert_eq!(
-        flags,
-        [(Transfer::Move, true), (Transfer::Trash, false)]
-    );
+    assert_eq!(flags, [(Transfer::Move, true), (Transfer::Trash, false)]);
 }
 
 #[test]

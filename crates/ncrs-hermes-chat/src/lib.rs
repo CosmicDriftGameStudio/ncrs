@@ -23,6 +23,7 @@ mod tidy;
 mod trial_end;
 mod understand;
 mod undo;
+mod waiting;
 mod working;
 
 pub use action::Action;

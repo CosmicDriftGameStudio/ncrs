@@ -8,7 +8,7 @@ use ncrs_filing::filing::FilingModule;
 use ncrs_pipeline::{Load, Runner, RunnerState, Snapshot};
 
 use super::column::{refresh_hermes_column, settle_reading_again};
-use super::{filing_job, open_page, refile, Outcome};
+use super::{filing_job, open_page, Outcome};
 use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::message::{FilingStatusMessage, HermesPage, Message};
@@ -125,7 +125,7 @@ fn filing_status_step(
 ) -> Task<Message> {
     match message {
         FilingStatusMessage::Open => {
-            actions.push(Action::OpenHermesOverview);
+            actions.push(Action::OpenFilingStatus);
             Task::none()
         }
         FilingStatusMessage::Close => {
@@ -227,20 +227,10 @@ fn tick(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Task<M
     let plans_made = hermes
         .live_pipeline()
         .map_or(0, |runner| runner.snapshot().plans_made);
-    let first_new_action = actions.len();
     if plans_made > hermes.plans_filed_for || hermes.filing_due {
         hermes.plans_filed_for = plans_made;
         filing_job::run_filing(hermes, ctx, actions);
     }
-    let filing_job_started = actions
-        .iter()
-        .skip(first_new_action)
-        .any(|action| matches!(action, Action::StartJobWithProgress(_)));
-    let after_filing = Ctx {
-        jobs_busy: ctx.jobs_busy || filing_job_started,
-        ..ctx.clone()
-    };
-    refile::run_refile(hermes, &after_filing, actions);
     let counts = if hermes.live_pipeline().is_some() && hermes.filing_status.tick_wants_counts() {
         request_hermes_counts(hermes)
     } else {

@@ -56,8 +56,7 @@ impl App {
             home: &self.home,
             sandbox_active: self.sandbox.active,
             blocking_overlay_open: self.blocking_overlay_is_open(),
-            overlay_apart_from_overview_open: self.overlay_apart_from_overview_is_open(),
-            overview_open: self.hermes.overview.is_some(),
+            dialog_open: self.dialog_is_open(),
             ocr_models_dir: self
                 .hermes
                 .index_path
@@ -87,13 +86,13 @@ impl App {
         step: impl FnOnce(&mut ncrs_settings::Settings, &ncrs_settings::Ctx<'_>) -> R,
     ) -> R {
         let blocking_overlay_open = self.blocking_overlay_is_open();
-        let overlay_apart_from_overview_open = self.overlay_apart_from_overview_is_open();
+        let dialog_open = self.dialog_is_open();
         let mut settings = std::mem::take(&mut self.settings);
         let outcome = step(
             &mut settings,
             &ncrs_settings::Ctx {
                 blocking_overlay_open,
-                overlay_apart_from_overview_open,
+                dialog_open,
                 ..self.settings_ctx()
             },
         );
@@ -182,19 +181,6 @@ impl App {
             }
             Ask::UndoRun(batch) => self.undo_run(batch),
             Ask::OpenRules => self.open_rules_from_settings(),
-            Ask::OpenOverview => self.open_hermes_overview(),
-            Ask::OcrModelsInstalled => {
-                if let Some(overview) = self.hermes.overview.as_mut() {
-                    overview.set_ocr_models_present(true);
-                }
-                Task::none()
-            }
-            Ask::OcrModelsRemoved => {
-                if let Some(overview) = self.hermes.overview.as_mut() {
-                    overview.set_ocr_models_present(false);
-                }
-                Task::none()
-            }
             Ask::RefreshAiModel => {
                 if let Some(module) = self.hermes.filing.as_ref() {
                     module.refresh_ai_model();

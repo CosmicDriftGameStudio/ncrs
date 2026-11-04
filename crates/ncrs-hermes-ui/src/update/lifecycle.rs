@@ -215,7 +215,6 @@ pub fn update_filing(
     }
     let work_finished = matches!(message, FilingMessage::WorkDone { .. });
     let was_starting = matches!(module.phase(), Phase::Starting);
-    let was_changing_protection = module.is_changing_protection();
     let work = module.update(message);
     let mut pipeline_started = false;
     if hermes.pipeline.is_none() && matches!(module.phase(), Phase::Ready) {
@@ -243,9 +242,6 @@ pub fn update_filing(
     };
     let ask_for_ai_model = matches!(module.phase(), Phase::Ready) && module.ai_model_is_missing();
     let asks_encryption = module.asks_encryption();
-    let protection_change_wants_a_card = was_changing_protection
-        && !module.is_changing_protection()
-        && (asks_encryption || module.has_card());
     let exceptions_access = work_finished.then(|| module.tags_access()).flatten();
     let mut tasks: Vec<Task<Message>> = work.map(run_filing_work).into_iter().collect();
     tasks.extend(exceptions_access.map(|access| {
@@ -259,10 +255,6 @@ pub fn update_filing(
     }));
     if asks_encryption && hermes.hermes_setup.is_none() && hermes.pending_hermes_start.is_none() {
         open_hermes_setup(hermes, ctx, actions);
-    }
-    if protection_change_wants_a_card && hermes.overview.is_some() {
-        hermes.overview = None;
-        hermes.return_to_overview = true;
     }
     tasks.push(advance_hermes_plan(hermes, actions));
     tasks.extend(field.map(operation::focus));

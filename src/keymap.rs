@@ -13,10 +13,9 @@ use crate::messages::Message;
 use crate::messages::PanelMessage;
 use crate::messages::{
     AboutMessage, AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage,
-    FilingSetupMessage, FilingStatusMessage, GrantMessage, HermesChatMessage, HermesFileMessage,
+    FilingStatusMessage, GrantMessage, HermesChatMessage, HermesFileMessage,
     KeyBindingsMessage, OcrModelsMessage, PanelSide, QuickFixMessage, QuickOpenMessage,
-    RemoteMessage, ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage,
-    RulesMessage, SavedQueriesMessage, SearchMessage, SettingsMessage, ThemeFetchMessage,
+    RemoteMessage, RulesMessage, SavedQueriesMessage, SearchMessage, SettingsMessage, ThemeFetchMessage,
     TransferKind, TrashMessage,
 };
 use ncrs_fs::SortColumn;
@@ -82,14 +81,10 @@ impl KeyActionMessage for KeyAction {
             Self::HermesChat => Message::HermesChat(HermesChatMessage::Open),
             Self::CommandPalette => Message::CommandPalette(CommandPaletteMessage::Toggle),
             Self::FilingStatus => Message::FilingStatus(FilingStatusMessage::Toggle),
-            Self::FilingSetup => Message::FilingSetup(FilingSetupMessage::Toggle),
             Self::Rules => Message::Rules(RulesMessage::Open),
-            Self::RuleSuggestions => Message::RuleSuggestions(RuleSuggestionsMessage::Open),
-            Self::ReviewList => Message::ReviewList(ReviewListMessage::Open),
             Self::HermesQuickFix => Message::QuickFix(QuickFixMessage::Open),
             Self::HermesHandToInbox => Message::HermesFile(HermesFileMessage::HandToInbox),
             Self::HermesProcessAgain => Message::HermesFile(HermesFileMessage::ProcessAgain),
-            Self::HermesReprocessFolder => Message::HermesFile(HermesFileMessage::ReprocessFolder),
             Self::HermesSetInbox => {
                 Message::HermesFile(HermesFileMessage::SetRole(FolderRole::Inbox))
             }
@@ -103,10 +98,6 @@ impl KeyActionMessage for KeyAction {
             Self::HermesInspect => Message::HermesFile(HermesFileMessage::ShowInInspection),
             Self::SavedQueries => Message::SavedQueries(SavedQueriesMessage::Open),
             Self::SearchDocuments => Message::OpenSearch,
-            Self::ReorganisationPlan => {
-                Message::ReorganisationPlan(ReorganisationPlanMessage::Open)
-            }
-            Self::UndoReorganisation => Message::UndoReorganisation,
             Self::FetchTheme => Message::ThemeFetch(ThemeFetchMessage::Open),
             Self::Settings => Message::Settings(SettingsMessage::Toggle),
             Self::KeyBindings => Message::KeyBindings(KeyBindingsMessage::Open),
@@ -247,24 +238,24 @@ mod tests {
     }
 
     #[test]
-    fn primary_shift_l_toggles_the_filing_setup_in_the_panel_and_can_be_rebound() {
-        let message = Some(Message::FilingSetup(FilingSetupMessage::Toggle));
+    fn primary_shift_b_opens_the_rules_in_the_panel_and_can_be_rebound() {
+        let message = Some(Message::Rules(RulesMessage::Open));
         assert_eq!(
             map_key(
-                Key::Character("l".into()),
+                Key::Character("b".into()),
                 Modifiers::COMMAND | Modifiers::SHIFT
             ),
             message
         );
         assert_eq!(
             Keymap::default().map_key(
-                &Key::Character("l".into()),
+                &Key::Character("b".into()),
                 Modifiers::COMMAND | Modifiers::SHIFT,
                 KeyScope::Search
             ),
             None
         );
-        let keymap = rebound("[keys]\nfiling_setup = \"F11\"\n");
+        let keymap = rebound("[keys]\nrules = \"F11\"\n");
         assert_eq!(
             press(&keymap, named(Named::F11), Modifiers::default()),
             message
@@ -272,7 +263,7 @@ mod tests {
         assert_eq!(
             press(
                 &keymap,
-                Key::Character("l".into()),
+                Key::Character("b".into()),
                 Modifiers::COMMAND | Modifiers::SHIFT
             ),
             None

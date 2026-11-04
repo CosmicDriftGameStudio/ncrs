@@ -19,8 +19,6 @@ pub struct Settings {
     pub ocr_models_generation: u64,
     pub ai_model: Option<AiModelCard>,
     pub ai_model_generation: u64,
-    /// The download goes on behind the overview, so the card is not drawn.
-    pub ai_card_hidden: bool,
 }
 
 impl Settings {
@@ -52,6 +50,6 @@ impl Settings {
     }
 
     pub fn ai_card_is_shown(&self) -> bool {
-        self.ai_model.is_some() && !self.ai_card_hidden
+        self.ai_model.is_some()
     }
 }

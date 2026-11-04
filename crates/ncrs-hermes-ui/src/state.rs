@@ -4,20 +4,14 @@ use std::sync::Arc;
 
 use ncrs_config::config::Filing;
 use ncrs_filing::filing::{FilingModule, Phase};
-use ncrs_filing::replan_work::ReplanItem;
 use ncrs_index::KeyStore;
 
-use crate::filing_setup::FilingSetup;
 use crate::filing_status::FilingStatus;
 use crate::hermes_column::{ColumnStage, HermesColumn};
-use crate::hermes_overview::OverviewState;
 use crate::hermes_setup::{ExistingIndex, HermesSetup, SetupFocus, SetupOffer, StartPlan};
 use crate::message::HermesPage;
 use crate::quick_fix::QuickFix;
 use crate::reading_again::ReadingAgain;
-use crate::reorganisation_plan::ReorganisationView;
-use crate::review_list::ReviewList;
-use crate::rule_suggestions::RuleSuggestions;
 use crate::rules_page::RulesPage;
 use crate::saved_queries::SavedQueries;
 use crate::tags_page::TagsPage;
@@ -27,25 +21,11 @@ use crate::tags_page::TagsPage;
 /// closed and opened again is not taken for the answer of the new one.
 #[derive(Debug, Default)]
 pub struct Hermes {
-    /// The overview of Hermes.
-    pub overview: Option<OverviewState>,
-    /// The overview comes back when the card that covers it is gone.
-    pub return_to_overview: bool,
-    /// The card that lists the folders Hermes works on.
-    pub filing_setup: Option<FilingSetup>,
     /// The card that sets Hermes up the first time.
     pub hermes_setup: Option<HermesSetup>,
-    pub review_list: Option<ReviewList>,
-    pub review_list_generation: u64,
     /// The fixes for an inquiry; at most one of it and the context menu.
     pub quick_fix: Option<QuickFix>,
     pub quick_fix_generation: u64,
-    pub reorganisation: Option<ReorganisationView>,
-    pub reorganisation_generation: u64,
-    /// The undo of the last reorganisation runs; a second one would undo the run before it.
-    pub reorganisation_undo_running: bool,
-    pub rule_suggestions: Option<RuleSuggestions>,
-    pub rule_suggestions_generation: u64,
     pub rules: Option<RulesPage>,
     pub rules_generation: u64,
     pub saved_queries: Option<SavedQueries>,
@@ -54,9 +34,6 @@ pub struct Hermes {
     pub tags_generation: u64,
     /// The planned documents wait for a free queue; the next tick asks again.
     pub filing_due: bool,
-    /// The folder and the documents of a confirmed replan, waiting for a free
-    /// queue.
-    pub pending_refile: Option<(PathBuf, Vec<ReplanItem>)>,
     /// What the filing status page and the status bar show of the pipeline.
     pub filing_status: FilingStatus,
     /// What the index says about the files and folders the panels show.
@@ -144,30 +121,18 @@ impl Hermes {
 
     /// The page of this state that is up, if any.
     pub fn open_page(&self) -> Option<HermesPage> {
-        if self.overview.is_some() {
-            Some(HermesPage::Overview)
-        } else if self.review_list.is_some() {
-            Some(HermesPage::Review)
-        } else if self.saved_queries.is_some() {
+        if self.saved_queries.is_some() {
             Some(HermesPage::SavedQueries)
         } else if self.rules.is_some() {
             Some(HermesPage::Rules)
-        } else if self.rule_suggestions.is_some() {
-            Some(HermesPage::RuleSuggestions)
         } else if self.tags.is_some() {
             Some(HermesPage::Tags)
-        } else if self.reorganisation.is_some() {
-            Some(HermesPage::Reorganisation)
         } else {
             None
         }
     }
 
     pub fn close_pages(&mut self) {
-        self.overview = None;
-        self.review_list = None;
-        self.reorganisation = None;
-        self.rule_suggestions = None;
         self.rules = None;
         self.saved_queries = None;
         self.tags = None;

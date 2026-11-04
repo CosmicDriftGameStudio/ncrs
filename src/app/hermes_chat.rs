@@ -161,8 +161,8 @@ impl App {
             ncrs_hermes_chat::Action::OpenOcrModels => {
                 self.update_ocr_models(OcrModelsMessage::Open)
             }
-            ncrs_hermes_chat::Action::OpenFilingSetup => {
-                self.update_filing_setup(FilingSetupMessage::Toggle)
+            ncrs_hermes_chat::Action::OpenHermesSettings => {
+                self.show_setting(crate::messages::SettingsFeature::Hermes, None)
             }
         }
     }

@@ -322,7 +322,7 @@ mod tests {
         talk.open();
         assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatNeedsSetup, &[])]);
         talk.press(&ChipReply::Setup);
-        assert_eq!(talk.actions, vec![Action::OpenFilingSetup]);
+        assert_eq!(talk.actions, vec![Action::OpenHermesSettings]);
 
         let mut waiting = small_talk();
         waiting.ctx.availability = Availability::Starting;

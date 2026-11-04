@@ -91,19 +91,6 @@ fn every_action_is_refused_in_an_archive_exactly_when_it_is_not_allowed() {
 }
 
 #[test]
-fn adding_the_panel_folder_to_the_filing_setup_is_refused_in_an_archive() {
-    use crate::messages::FilingSetupMessage;
-    let panel = panel_in_archive(vec![entry("a.txt", false)]);
-    let message = Message::FilingSetup(FilingSetupMessage::AddPanelFolder(
-        ncrs_intake::LocationMode::Inbox,
-    ));
-    assert!(matches!(
-        archive_refusal(&panel, &message),
-        Some(Msg::StatusArchiveReadOnly)
-    ));
-}
-
-#[test]
 fn copy_delete_and_browsing_stay_allowed_inside_an_archive() {
     let panel = panel_in_archive(vec![entry("a.txt", false), entry("sub", true)]);
     for message in [

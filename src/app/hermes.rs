@@ -18,15 +18,6 @@ impl App {
         })
     }
 
-    pub(in crate::app) fn update_filing_setup(
-        &mut self,
-        message: FilingSetupMessage,
-    ) -> Task<Message> {
-        self.run_hermes_flow(Vec::new(), |hermes, ctx| {
-            ncrs_hermes_ui::update_filing_setup(hermes, message, ctx)
-        })
-    }
-
     pub(in crate::app) fn update_hermes_setup(
         &mut self,
         message: HermesSetupMessage,
@@ -73,7 +64,7 @@ impl App {
 
     /// The dots move only while the picture is on screen.
     pub(in crate::app) fn hermes_flow_is_visible(&self) -> bool {
-        self.hermes.hermes_setup.is_some() || self.hermes.overview.is_some()
+        self.hermes.hermes_setup.is_some()
     }
 
     /// The file or folder under the cursor of the active panel, for the Hermes
@@ -155,7 +146,6 @@ impl App {
             }
             HermesFileMessage::HandToInbox
             | HermesFileMessage::ProcessAgain
-            | HermesFileMessage::ReprocessFolder
             | HermesFileMessage::SetRole(_)
             | HermesFileMessage::ToggleExclusion
             | HermesFileMessage::ShowInInspection => {}
@@ -171,13 +161,6 @@ impl App {
         let cursor = self
             .hermes_cursor_entry()
             .map(|entry| (entry.path.clone(), entry.is_dir));
-        if message == HermesFileMessage::ReprocessFolder {
-            let folder = match cursor {
-                Some((path, true)) => path,
-                Some((_, false)) | None => self.active_panel().path.clone(),
-            };
-            return self.reprocess_folder(folder);
-        }
         let Some((path, is_dir)) = cursor else {
             return Task::none();
         };
@@ -209,19 +192,9 @@ impl App {
                 self.run_hermes_outcome(outcome)
             }
             HermesFileMessage::SetRole(_)
-            | HermesFileMessage::ReprocessFolder
             | HermesFileMessage::RoleSaved(_)
             | HermesFileMessage::Included { .. } => Task::none(),
         }
-    }
-
-    pub(in crate::app) fn run_reorganisation(
-        &mut self,
-        selection: Vec<PlannedItem>,
-    ) -> Task<Message> {
-        self.run_hermes_flow(Vec::new(), |hermes, ctx| {
-            ncrs_hermes_ui::run_reorganisation(hermes, selection, ctx)
-        })
     }
 
     pub(in crate::app) fn documents_filed(
@@ -230,45 +203,6 @@ impl App {
     ) -> Task<Message> {
         self.run_hermes_flow(Vec::new(), |_, ctx| {
             ncrs_hermes_ui::documents_filed(result, ctx)
-        })
-    }
-
-    pub(in crate::app) fn reorganisation_executed(
-        &mut self,
-        result: Result<ExecutionSummary, String>,
-    ) -> Task<Message> {
-        self.run_hermes_flow(Vec::new(), |hermes, ctx| {
-            ncrs_hermes_ui::reorganisation_executed(hermes, result, ctx)
-        })
-    }
-
-    pub(in crate::app) fn undo_reorganisation(&mut self) -> Task<Message> {
-        self.run_hermes_flow(Vec::new(), |hermes, ctx| {
-            ncrs_hermes_ui::undo_reorganisation(hermes, ctx)
-        })
-    }
-
-    pub(in crate::app) fn reorganisation_undone(
-        &mut self,
-        result: Result<Option<execute::UndoReport>, String>,
-    ) -> Task<Message> {
-        self.run_hermes_flow(Vec::new(), |hermes, ctx| {
-            ncrs_hermes_ui::reorganisation_undone(hermes, result, ctx)
-        })
-    }
-
-    pub(in crate::app) fn reprocess_folder(&mut self, folder: PathBuf) -> Task<Message> {
-        self.run_hermes_flow(Vec::new(), |hermes, ctx| {
-            ncrs_hermes_ui::reprocess_folder(hermes, folder, ctx)
-        })
-    }
-
-    pub(in crate::app) fn documents_refiled(
-        &mut self,
-        result: Result<ReplanSummary, String>,
-    ) -> Task<Message> {
-        self.run_hermes_flow(Vec::new(), |hermes, ctx| {
-            ncrs_hermes_ui::documents_refiled(hermes, result, ctx)
         })
     }
 
@@ -284,7 +218,7 @@ impl App {
             kinds: &self.kinds,
             status_page_open: hermes.filing_status.page_open(),
             overlay_apart_from_ablage_tab_open: self
-                .overlay_apart_from_overview_and_hermes_is_open(),
+                .dialog_apart_from_hermes_is_open(),
             start_over_dialog_open: self.start_over_dialog,
             hermes_is_restarting: hermes.is_restarting(),
             hermes_has_open_reviews: hermes
@@ -391,7 +325,7 @@ impl App {
     fn run_hermes_action(&mut self, action: ncrs_hermes_ui::Action) -> Task<Message> {
         use ncrs_hermes_ui::Action as Ask;
         match action {
-            Ask::OpenHermesOverview => self.open_hermes_overview(),
+            Ask::OpenChat => self.update_hermes_chat(HermesChatMessage::Open),
             Ask::OpenFilingStatus => self.open_filing_status(),
             Ask::RevealFile(path) => self.reveal_file(&path),
             Ask::FilingRestarted(generation) => self.filing_restarted(generation),
@@ -422,19 +356,8 @@ impl App {
                 Task::none()
             }
             Ask::GoToHermesPage(page) => self.go_to_hermes_page(page),
-            Ask::SetHermesFocus(focus) => {
-                self.hermes_focus = focus;
-                Task::none()
-            }
             Ask::RefreshFilingSnapshot => {
                 self.hermes.refresh_filing_snapshot(self.wall_clock.now());
-                Task::none()
-            }
-            Ask::ReadOcrModelsPresent => {
-                let present = self.ocr_models_present();
-                if let Some(overview) = self.hermes.overview.as_mut() {
-                    overview.set_ocr_models_present(present);
-                }
                 Task::none()
             }
             Ask::ChangeProtection(begin) => self.run_hermes_flow(Vec::new(), |hermes, ctx| {
@@ -449,21 +372,10 @@ impl App {
                 self.start_over_dialog = false;
                 Task::none()
             }
-            Ask::SetAiEnabled(on) => {
-                self.update_settings(SettingsMessage::Change(SettingChange::AiEnabled(on)))
-            }
             Ask::SetLoad(load) => {
                 self.update_settings(SettingsMessage::Change(SettingChange::Load(load)))
             }
-            Ask::OpenOcrModels => self.update_ocr_models(OcrModelsMessage::Open),
             Ask::OpenAndDownloadAiModel => self.open_and_download_ai_model(),
-            Ask::ShowHermesSetting(row) => {
-                self.show_setting(crate::messages::SettingsFeature::Hermes, Some(row))
-            }
-            Ask::OpenHermesSetup => {
-                self.open_hermes_setup();
-                Task::none()
-            }
             Ask::RestartHermesModule => {
                 self.run_hermes_flow(Vec::new(), ncrs_hermes_ui::restart_hermes_module)
             }
@@ -477,27 +389,20 @@ impl App {
             Ask::OpenSearchFor { spec, report } => self.open_search_for(&spec, report),
             Ask::PickExportFolder(start_in) => (self.pick_folder)(&start_in)
                 .map(|folder| Message::SavedQueries(SavedQueriesMessage::FolderPicked(folder))),
-            Ask::PickFolder(card) => {
+            Ask::PickFolder(slot) => {
                 let start_in = self.active_panel().path.clone();
-                (self.pick_folder)(&start_in).map(move |folder| match card {
-                    SetupCard::Filing(mode) => {
-                        Message::FilingSetup(FilingSetupMessage::FolderPicked { mode, folder })
-                    }
-                    SetupCard::Hermes(slot) => {
-                        Message::HermesSetup(HermesSetupMessage::FolderPicked { slot, folder })
-                    }
-                })
+                (self.pick_folder)(&start_in)
+                    .map(move |folder| Message::HermesSetup(HermesSetupMessage::FolderPicked {
+                        slot,
+                        folder,
+                    }))
             }
-            Ask::GrantFolder { card, folder } => {
-                self.grant_chosen_folder(&folder, move |granted_folder, result| match card {
-                    SetupCard::Filing(_) => Message::FilingSetup(FilingSetupMessage::Granted {
+            Ask::GrantFolder { slot: _, folder } => {
+                self.grant_chosen_folder(&folder, move |granted_folder, result| {
+                    Message::HermesSetup(HermesSetupMessage::Granted {
                         folder: granted_folder,
                         result,
-                    }),
-                    SetupCard::Hermes(_) => Message::HermesSetup(HermesSetupMessage::Granted {
-                        folder: granted_folder,
-                        result,
-                    }),
+                    })
                 })
             }
             Ask::StartJobWithProgress(start) => {

@@ -199,7 +199,6 @@ fn model_removed(
                 if let Some(state) = settings.page.as_mut() {
                     state.ocr_models_present = false;
                 }
-                actions.push(Action::OcrModelsRemoved);
             }
             ModelKind::Ai => actions.push(Action::RefreshAiModel),
         },

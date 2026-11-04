@@ -265,9 +265,6 @@ impl App {
         }
         self.kinds = self.kinds.in_language(lang.kind_language());
         let kinds = self.kinds.clone();
-        if let Some(list) = &mut self.hermes.review_list {
-            list.set_kinds(kinds.clone());
-        }
         if let Some(view) = &mut self.hermes.saved_queries {
             view.set_kinds(kinds.clone());
         }
@@ -476,7 +473,6 @@ impl App {
                 Box::new(move |files| writer.write(files))
             },
             tag_exceptions: TagExceptions::new(),
-            hermes_focus: HermesFocus::default(),
             fetch_extension: open_vsx::fetch_extension,
             install_theme: ncrs_settings::theme_fetch::install::install_picked_theme,
             about: None,

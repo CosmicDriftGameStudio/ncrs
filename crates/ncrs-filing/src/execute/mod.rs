@@ -247,15 +247,7 @@ pub fn execute_copying<P: Progress>(
         target: root,
         source: None,
     };
-    run_batch(
-        index,
-        batch,
-        Transfer::Copy,
-        places,
-        items,
-        progress,
-        &Copy,
-    )
+    run_batch(index, batch, Transfer::Copy, places, items, progress, &Copy)
 }
 
 fn run_batch<P: Progress, S: Source>(

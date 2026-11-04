@@ -8,7 +8,6 @@ use iced::Size;
 use crate::app::{RowFailure, Transfer};
 use crate::clipboard_paste::PastedContent;
 use crate::dialog::PromptKind;
-use crate::execute::UndoReport;
 use crate::filing::FilingMessage;
 use crate::filing_work::FilingSummary;
 use crate::fs::CreateDirError;
@@ -16,8 +15,6 @@ use crate::fs::{Destination, PathProblem};
 use crate::jobs::JobEvent;
 #[cfg(any(target_os = "macos", test))]
 use crate::keymap::KeyAction;
-use crate::reorganisation_work::{ExecutionSummary, PlannedItem};
-use crate::replan_work::ReplanSummary;
 pub use ncrs_core::PanelSide;
 pub use ncrs_files::hit_list::HitListMessage;
 pub use ncrs_files::message::PanelMessage;
@@ -25,10 +22,8 @@ pub use ncrs_hermes_chat::Message as HermesChatMessage;
 #[cfg(test)]
 pub use ncrs_hermes_ui::message::RuleFormMessage;
 pub use ncrs_hermes_ui::message::{
-    FilingSetupMessage, FilingStatusMessage, HermesColumnMessage, HermesFileMessage, HermesFocus,
-    HermesOverviewMessage, HermesPage, HermesSetupMessage, QuickFixMessage,
-    ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage, RulesMessage,
-    SavedQueriesMessage, TagsMessage,
+    FilingStatusMessage, HermesColumnMessage, HermesFileMessage, HermesOverviewMessage, HermesPage,
+    HermesSetupMessage, QuickFixMessage, RulesMessage, SavedQueriesMessage, TagsMessage,
 };
 pub use ncrs_ops::{ConflictChoice, OpsMessage, TransferDialogMessage, TrashMessage};
 pub use ncrs_search::message::SearchMessage;
@@ -282,44 +277,21 @@ pub enum Message {
     // --- The Hermes column of the panels ---
     HermesColumn(HermesColumnMessage),
 
-    // --- Filing setup: the locations, written to the config ---
-    FilingSetup(FilingSetupMessage),
-
     // --- The first-time setup of Hermes ---
     HermesSetup(HermesSetupMessage),
     /// Moves the dots of the flow picture one step on.
     HermesFlowTick,
-    // --- The overview, the first page of the Hermes card ---
+    /// The protection buttons of the Index page in the settings.
     HermesOverview(HermesOverviewMessage),
-
-    // --- Rule suggestions: rules read out of how the archive is filed ---
-    RuleSuggestions(RuleSuggestionsMessage),
     Rules(RulesMessage),
-    ReorganisationPlan(ReorganisationPlanMessage),
-    ReviewList(ReviewListMessage),
     QuickFix(QuickFixMessage),
     HermesFile(HermesFileMessage),
     SavedQueries(SavedQueriesMessage),
     Tags(TagsMessage),
-    /// The sidebar of the Hermes card: closes the card that is up and opens
-    /// this page.
+    /// Opens one of the single pages.
     HermesPage(HermesPage),
-    /// The arrow keys move to the sidebar or back into the page.
-    HermesFocus(HermesFocus),
-    /// Up or down in the sidebar: the previous or next page.
-    HermesStep(isize),
-    /// The user asked to carry out these entries of the reorganisation plan.
-    /// Nothing acts on it yet.
-    ExecuteReorganisation(Vec<PlannedItem>),
-    /// The executor on its blocking thread is done.
-    ReorganisationExecuted(Result<ExecutionSummary, String>),
-    UndoReorganisation,
     /// The filing job on its blocking thread is done.
     DocumentsFiled(Result<FilingSummary, String>),
-    /// The job that files the previewed documents is done.
-    DocumentsRefiled(Result<ReplanSummary, String>),
-    /// `None`: there was no carried out reorganisation left to undo.
-    ReorganisationUndone(Result<Option<UndoReport>, String>),
 
     // --- Quick Open (Cmd/Ctrl+P) ---
     QuickOpen(QuickOpenMessage),
@@ -466,22 +438,14 @@ impl From<ncrs_hermes_ui::Message> for Message {
         match message {
             Hermes::Filing(inner) => Self::Filing(inner),
             Hermes::FilingStatus(inner) => Self::FilingStatus(inner),
-            Hermes::FilingSetup(inner) => Self::FilingSetup(inner),
             Hermes::HermesSetup(inner) => Self::HermesSetup(inner),
             Hermes::HermesOverview(inner) => Self::HermesOverview(inner),
-            Hermes::RuleSuggestions(inner) => Self::RuleSuggestions(inner),
             Hermes::Rules(inner) => Self::Rules(inner),
-            Hermes::ReorganisationPlan(inner) => Self::ReorganisationPlan(inner),
-            Hermes::ReviewList(inner) => Self::ReviewList(inner),
             Hermes::QuickFix(inner) => Self::QuickFix(inner),
             Hermes::SavedQueries(inner) => Self::SavedQueries(inner),
             Hermes::Tags(inner) => Self::Tags(inner),
             Hermes::HermesPage(page) => Self::HermesPage(page),
-            Hermes::ExecuteReorganisation(entries) => Self::ExecuteReorganisation(entries),
-            Hermes::ReorganisationExecuted(result) => Self::ReorganisationExecuted(result),
             Hermes::DocumentsFiled(result) => Self::DocumentsFiled(result),
-            Hermes::DocumentsRefiled(result) => Self::DocumentsRefiled(result),
-            Hermes::ReorganisationUndone(result) => Self::ReorganisationUndone(result),
             Hermes::HermesColumn(inner) => Self::HermesColumn(inner),
             Hermes::HermesFile(inner) => Self::HermesFile(inner),
             Hermes::ToggleFileListTags => Self::Settings(SettingsMessage::ToggleFileListTags),

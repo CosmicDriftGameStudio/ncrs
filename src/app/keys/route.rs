@@ -109,39 +109,9 @@ fn keys_without_prompt(
         };
     }
 
-    if prompt.reorganisation_plan {
-        return hermes_page_key(
-            ncrs_hermes_ui::keys::reorganisation_plan_key,
-            prompt,
-            &key,
-            key_modifiers,
-            scope,
-        );
-    }
-
     if prompt.rules {
         return hermes_page_key(
             ncrs_hermes_ui::keys::rules_key,
-            prompt,
-            &key,
-            key_modifiers,
-            scope,
-        );
-    }
-
-    if prompt.rule_suggestions {
-        return hermes_page_key(
-            ncrs_hermes_ui::keys::rule_suggestions_key,
-            prompt,
-            &key,
-            key_modifiers,
-            scope,
-        );
-    }
-
-    if prompt.review_list {
-        return hermes_page_key(
-            ncrs_hermes_ui::keys::review_list_key,
             prompt,
             &key,
             key_modifiers,
@@ -197,16 +167,6 @@ fn keys_without_prompt(
     if prompt.filing_status {
         return hermes_page_key(
             ncrs_hermes_ui::keys::filing_status_key,
-            prompt,
-            &key,
-            key_modifiers,
-            scope,
-        );
-    }
-
-    if prompt.hermes_overview {
-        return hermes_page_key(
-            ncrs_hermes_ui::keys::hermes_overview_key,
             prompt,
             &key,
             key_modifiers,
@@ -478,13 +438,9 @@ pub(in crate::app) fn repeats(message: &Message) -> bool {
             | Message::CommandPalette(CommandPaletteMessage::Move(_))
             | Message::KeyBindings(KeyBindingsMessage::Move(_) | KeyBindingsMessage::MoveKey(_))
             | Message::ThemeFetch(ThemeFetchMessage::Move(_))
-            | Message::RuleSuggestions(RuleSuggestionsMessage::Move(_))
             | Message::Rules(RulesMessage::Move(_))
-            | Message::ReviewList(ReviewListMessage::Move(_))
             | Message::SavedQueries(SavedQueriesMessage::Move(_))
             | Message::Tags(TagsMessage::Move(_))
-            | Message::ReorganisationPlan(ReorganisationPlanMessage::Move(_))
-            | Message::HermesStep(_)
             | Message::FilingStatus(FilingStatusMessage::MoveError(_))
             | Message::Search(
                 SearchMessage::ToggleTag
