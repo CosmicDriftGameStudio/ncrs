@@ -20,7 +20,7 @@ use crate::state::{Asked, Chip, ChipReply, Entry, Part, State, Step, Thinking, U
 use crate::texts::{fill, shown_folder, text};
 use crate::update::{
     batch_not_yet, cancel_chip, chip, drop_working, explain_not_yet, fallback, fallback_chips,
-    handle_reply, open_thread, say, say_needs_setup, search_not_yet,
+    handle_reply, hermes, open_thread, say, say_needs_setup, search_not_yet,
 };
 use crate::{learn, undo};
 
@@ -388,6 +388,7 @@ pub fn confirm_tidy(state: &mut State, ctx: &Ctx) {
         _ => String::new(),
     };
     let source = shown_folder(ctx, &proposal.source);
+    let mention = crate::update::mention_of(ctx, &proposal.source);
     let sentence = match &proposal.target {
         Some(target) => fill(
             ctx.lang,
@@ -401,7 +402,7 @@ pub fn confirm_tidy(state: &mut State, ctx: &Ctx) {
         None => fill(
             ctx.lang,
             Msg::HermesChatConfirmTidy,
-            &[("source", &source), ("mode", &mode)],
+            &[("source", &mention.name), ("mode", &mode)],
         ),
     };
     let mut chips: Vec<Chip> = vec![
@@ -430,7 +431,11 @@ pub fn confirm_tidy(state: &mut State, ctx: &Ctx) {
     }
     chips.push(cancel_chip(ctx));
     state.step = Step::ConfirmTidy;
-    say(state, sentence, chips);
+    let mut parts = vec![Part::Text(sentence)];
+    if proposal.target.is_none() {
+        parts.push(Part::Folder(mention));
+    }
+    hermes(state, parts, chips);
 }
 
 pub fn switch_transfer(state: &mut State, ctx: &Ctx, transfer: Transfer) {

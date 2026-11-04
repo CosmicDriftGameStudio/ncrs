@@ -18,12 +18,11 @@ mod tests {
     use std::path::PathBuf;
     use std::time::{Duration, SystemTime};
 
-    use crate::common::{count, say, Talk};
+    use crate::common::{count, letter, say, Talk};
     use chrono::NaiveDate;
     use ncrs_filing::chat_work::{StayGroups, TrialOutcome, TrialPlan};
     use ncrs_hermes_chat::{ChipReply, Entry, FileCard, Message, Part};
     use ncrs_i18n::Msg;
-    use ncrs_index::{KindLanguage, Kinds};
     use ncrs_intake::test_archive::test_archive;
 
     const UNDATED: (i32, u32, u32) = (2021, 6, 15);
@@ -86,19 +85,20 @@ mod tests {
         let Some(Part::Areas(card)) = parts.get(1) else {
             panic!("{parts:?}")
         };
-        assert_eq!(card.rows.len(), 3);
+        assert_eq!(card.rows.len(), 4);
         assert_eq!(
             (card.rows[0].name.as_str(), card.rows[0].documents),
             ("Bank", 354)
         );
         let bank = &card.rows[0];
-        assert!(bank.description.contains(" / "), "{}", bank.description);
+        assert!(bank.description.contains(" › "), "{}", bank.description);
+        assert!(!bank.description.contains(" / "), "{}", bank.description);
         assert!(
             bank.example.starts_with("Bank/") && bank.example.contains('.'),
             "{}",
             bank.example
         );
-        assert_eq!(card.more.as_ref().map(|more| more.documents), Some(554));
+        assert_eq!(card.more.as_ref().map(|more| more.documents), Some(425));
         assert_eq!(card.unordered.as_ref().map(|row| row.documents), Some(190));
     }
 
@@ -309,9 +309,20 @@ mod tests {
         assert_eq!(
             talk.last_texts(),
             vec![say(
-                Msg::HermesChatNothingToFile,
-                &[("stays", &count(INBOX_FILES))]
+                Msg::HermesChatTrialStuckSome,
+                &[
+                    ("total", &count(INBOX_FILES)),
+                    ("dupes", &count(filed)),
+                    ("rest", &count(INBOX_FILES - filed)),
+                    ("ai_note", ""),
+                ]
             )]
+        );
+        let labels = talk.labels();
+        assert!(labels.len() >= 3, "{labels:?}");
+        assert!(
+            labels.contains(&say(Msg::HermesChatLaterAgain, &[])),
+            "{labels:?}"
         );
         assert_eq!(talk.files(), copied, "nothing is copied twice");
 
@@ -319,6 +330,111 @@ mod tests {
         assert!(talk.last_texts()[0].contains(&format!("**{filed} Dateien** kopiert")));
         talk.press(&ChipReply::PutBack);
         assert_eq!(talk.files(), before);
+    }
+
+    /// The inbox copied to the archive, then the same sentence again: every
+    /// file is in the archive already, so nothing is left to file.
+    fn all_copied_already(second_transfer: &ChipReply) -> (Talk, BTreeMap<String, String>) {
+        let mut talk = archive_talk();
+        talk.send(Message::Open);
+        tidy_inbox_until_trial(&mut talk, &ChipReply::ModeCopy);
+        talk.press(&ChipReply::FileAll);
+        let copied = talk.files();
+        tidy_inbox_until_trial(&mut talk, second_transfer);
+        assert_eq!(talk.plan().filed, 0);
+        (talk, copied)
+    }
+
+    #[test]
+    fn the_duplicates_chip_trashes_the_originals_in_one_run_that_can_be_undone() {
+        let (mut talk, copied) = all_copied_already(&ChipReply::ModeMove);
+        let dupes = talk.plan().already_there;
+        assert!(dupes > 0);
+        talk.press(&ChipReply::TrashDuplicatesNow);
+        assert_eq!(
+            talk.files().len(),
+            copied.len() - dupes,
+            "the originals left, the copies in the archive stay"
+        );
+        assert!(talk
+            .files()
+            .keys()
+            .any(|path| path.starts_with("archive") || path.contains("archive")));
+        assert_eq!(
+            talk.last_texts()[0],
+            say(Msg::HermesChatTrashed, &[("count", &count(dupes))])
+        );
+        talk.press(&ChipReply::Undo);
+        talk.press(&ChipReply::PutBack);
+        assert_eq!(talk.files(), copied);
+    }
+
+    #[test]
+    fn copying_offers_no_duplicates_to_delete() {
+        let (talk, _) = all_copied_already(&ChipReply::ModeCopy);
+        let labels = talk.labels();
+        assert!(
+            !labels.iter().any(|label| label.contains("Doppelte")),
+            "{labels:?}"
+        );
+        assert!(!talk
+            .state
+            .chips()
+            .iter()
+            .any(|chip| chip.reply == ChipReply::TrashDuplicatesNow));
+    }
+
+    #[test]
+    fn the_staying_files_are_listed_once_and_the_chip_goes() {
+        let mut talk = Talk::in_dir(tempfile::tempdir().unwrap(), &["archive"], &["inbox"]);
+        for (month, day) in [(1, 10), (3, 11), (6, 12), (9, 13), (11, 14)] {
+            talk.write(
+                &format!("archive/Alfa/2020/2020-{month:02}-{day} Alfa Rechnung.pdf"),
+                &letter(
+                    "Alfa AG",
+                    &format!("{day}.{month:02}.2020"),
+                    "Rechnung",
+                    day,
+                ),
+            );
+        }
+        talk.write("inbox/one.txt", "x");
+        talk.write("inbox/two.txt", "y");
+        talk.send(Message::Open);
+        talk.type_text_understood(
+            "Räum Inbox auf",
+            r#"{"intent":"tidy_folder","source":"Inbox"}"#,
+        );
+        talk.press(&ChipReply::ConfirmTidy);
+        talk.choose_archive_if_asked();
+        talk.press(&ChipReply::Once);
+        talk.press(&ChipReply::ModeCopy);
+        talk.press(&ChipReply::ShowStaying);
+        let parts = talk.last_parts();
+        let Some(Part::Trial(card)) = parts.get(1) else {
+            panic!("{parts:?}")
+        };
+        assert!(!card.rows.is_empty());
+        assert!(!talk
+            .state
+            .chips()
+            .iter()
+            .any(|chip| chip.reply == ChipReply::ShowStaying));
+        assert!(talk
+            .state
+            .chips()
+            .iter()
+            .any(|chip| chip.reply == ChipReply::Later));
+    }
+
+    #[test]
+    fn another_folder_at_the_end_asks_for_the_folder_and_keeps_the_transfer() {
+        let (mut talk, _) = all_copied_already(&ChipReply::ModeCopy);
+        talk.press(&ChipReply::TrialOtherTarget);
+        assert!(talk.actions.contains(&ncrs_hermes_chat::Action::PickFolder));
+        let proposal = talk.state.session.proposal.as_ref().unwrap();
+        assert_eq!(proposal.transfer, Some(ncrs_index::Transfer::Copy));
+        assert_eq!(proposal.target, None);
     }
 
     #[test]
@@ -670,12 +786,6 @@ mod tests {
         assert_eq!(talk.files(), before);
     }
 
-    fn statement_word() -> String {
-        Kinds::built_in(KindLanguage::default())
-            .kind_word("bank_statement")
-            .into_owned()
-    }
-
     /// "Kontoauszüge lieber nach Monat" on the archive up to the question which
     /// banks.
     fn ask_statements_by_month(talk: &mut Talk) {
@@ -705,12 +815,17 @@ mod tests {
             [
                 Part::Text(say(
                     Msg::HermesChatChangePreview,
-                    &[("kind", &statement_word())]
+                    &[
+                        ("area", "Bank"),
+                        ("today", &say(Msg::HermesChatLabelYear, &[])),
+                        ("new", &say(Msg::HermesChatLabelMonth, &[])),
+                    ]
                 )),
                 Part::File(FileCard {
                     segments,
                     highlighted: Some(4)
                 }),
+                Part::Text(say(Msg::HermesChatChangePreviewCount, &[("area", "Bank")])),
                 Part::Text(say(Msg::HermesChatChangeScope, &[("plural", &banks)])),
             ]
         );

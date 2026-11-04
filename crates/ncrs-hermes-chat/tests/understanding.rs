@@ -159,10 +159,7 @@ mod tests {
             talk.last_texts(),
             vec![say(
                 Msg::HermesChatConfirmTidy,
-                &[
-                    ("source", &talk.path("inbox").to_string_lossy()),
-                    ("mode", "")
-                ]
+                &[("source", "inbox"), ("mode", "")]
             )]
         );
         assert_eq!(
@@ -543,8 +540,8 @@ mod tests {
         assert_eq!(
             talk.labels(),
             vec![
-                say(Msg::HermesChatConfirmYes, &[]),
-                say(Msg::HermesChatCancel, &[])
+                say(Msg::HermesChatSortLikeThis, &[]),
+                say(Msg::HermesChatRatherNot, &[])
             ]
         );
         talk.press(&ChipReply::ConfirmChange);
@@ -584,8 +581,8 @@ mod tests {
         assert_eq!(
             talk.labels(),
             vec![
-                say(Msg::HermesChatConfirmYes, &[]),
-                say(Msg::HermesChatCancel, &[])
+                say(Msg::HermesChatSortLikeThis, &[]),
+                say(Msg::HermesChatRatherNot, &[])
             ]
         );
         talk.press(&ChipReply::ConfirmChange);

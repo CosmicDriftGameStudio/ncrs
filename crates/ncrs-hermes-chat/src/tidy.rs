@@ -21,7 +21,7 @@ use crate::state::{
 };
 use crate::texts::{field_label, fill, folder_name, number, segments, text};
 use crate::update::{access, cancel_chip, chip, chip_labelled, hermes, say, work};
-use crate::{learn, stay_groups, texts};
+use crate::{learn, stay_groups, texts, trial_end};
 
 pub const PAGE: usize = 10;
 
@@ -214,9 +214,20 @@ pub fn ask_mode(state: &mut State, ctx: &Ctx) {
     };
     let folder = folder_name(ctx, &tidy.source);
     state.step = Step::Mode;
-    say(
+    hermes(
         state,
-        fill(ctx.lang, Msg::HermesChatAskMode, &[("folder", &folder)]),
+        vec![
+            Part::Text(fill(
+                ctx.lang,
+                Msg::HermesChatAskMode,
+                &[("folder", &folder)],
+            )),
+            Part::Text(fill(
+                ctx.lang,
+                Msg::HermesChatModeConsequence,
+                &[("folder", &folder)],
+            )),
+        ],
         vec![
             chip(ctx, Msg::HermesChatCopy, ChipReply::ModeCopy, false),
             chip(ctx, Msg::HermesChatMove, ChipReply::ModeMove, false),
@@ -448,16 +459,8 @@ pub fn trial_done(state: &mut State, ctx: &Ctx, result: Result<TrialPlan, String
     };
     let open_questions = stay_groups::has_open_questions(state);
     if filed_count(trial) == 0 && trial.plan.unsure == 0 {
-        if !open_questions {
-            say(
-                state,
-                fill(
-                    ctx.lang,
-                    Msg::HermesChatNothingToFile,
-                    &[("stays", &number(total))],
-                ),
-                vec![cancel_chip(ctx)],
-            );
+        if !open_questions || stay_groups::only_singles_open(state) {
+            trial_end::without_filing(state, ctx, lead);
             return;
         }
         let mut parts = lead;

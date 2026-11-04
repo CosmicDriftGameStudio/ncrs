@@ -61,19 +61,51 @@ fn card_text<'a, M: 'a>(
     }
 }
 
-/// A row of the areas card: a name with what it holds and how many documents.
+/// A row of the areas card: a name with how many documents it holds, the
+/// order of its folders and a real path laid out that way.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AreaLine {
     pub name: String,
+    /// The order of the folders in words, under the name; empty for none.
     pub detail: String,
+    /// The word before the example path, "e.g.".
+    pub example_label: String,
     /// A real file path laid out like this area, under the row; empty for none.
     pub example: String,
+    /// The number of documents with its unit, "12 files".
     pub count: String,
     /// A row for what is not an area of its own, dimmed.
     pub dim: bool,
 }
 
-/// The areas of a folder, one row each.
+const COUNT_SEPARATOR: &str = "·";
+const PATH_HINT_MAX_CHARS: usize = 56;
+
+/// `path` cut in the middle to a line that fits a bubble, after `label`; the
+/// full path is in a small box on hover when it was cut.
+pub fn path_hint<'a, M: 'a>(
+    label: &str,
+    path: &str,
+    size: f32,
+    color: Color,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let cut = format::ellipsize_middle(path, PATH_HINT_MAX_CHARS);
+    let line = if label.is_empty() {
+        cut.clone()
+    } else {
+        format!("{label} {cut}")
+    };
+    let content = text(line)
+        .size(size)
+        .line_height(LineHeight::Absolute(Pixels(CARD_LINE)))
+        .color(color)
+        .wrapping(Wrapping::WordOrGlyph)
+        .into();
+    with_full_name(content, &cut, path, palette)
+}
+
+/// The areas of a folder, one block each: name and count, order, example.
 pub fn areas_card<'a, M: 'a>(lines: &[AreaLine], palette: &Palette) -> Element<'a, M> {
     let rows = lines.iter().map(|line| {
         let ink = if line.dim {
@@ -82,51 +114,56 @@ pub fn areas_card<'a, M: 'a>(lines: &[AreaLine], palette: &Palette) -> Element<'
             palette.text
         };
         let name = card_text(&line.name, ink, Wrapping::WordOrGlyph, !line.dim);
-        // The name wraps inside the card, so the count on the right never
-        // has to give way. Beside a detail the name keeps a share of the row.
-        let title: Element<'a, M> = if line.detail.is_empty() {
-            container(name).width(Length::Fill).into()
-        } else {
+        let count = card_text(
+            &format!("{COUNT_SEPARATOR} {}", line.count),
+            palette.dim_text,
+            Wrapping::None,
+            false,
+        );
+        let described = !line.detail.is_empty() || !line.example.is_empty();
+        // A name without a description wraps inside the card, so the count on
+        // the right never has to give way; an area keeps its count next to it.
+        let head: Element<'a, M> = if described {
             Row::new()
                 .push(container(name).max_width(AREA_NAME_MAX_WIDTH))
-                .push(
-                    container(card_text(
-                        &line.detail,
-                        palette.dim_text,
-                        Wrapping::Word,
-                        false,
-                    ))
-                    .width(Length::Fill),
-                )
+                .push(count)
                 .spacing(GAP_S)
+                .into()
+        } else {
+            Row::new()
+                .push(container(name).width(Length::Fill))
+                .push(count)
+                .spacing(GAP_M)
                 .align_y(alignment::Vertical::Center)
                 .into()
         };
-        let head = Row::new()
-            .push(container(title).width(Length::Fill))
-            .push(card_text(
-                &line.count,
-                palette.dim_text,
-                Wrapping::None,
-                false,
-            ))
-            .spacing(GAP_M)
-            .align_y(alignment::Vertical::Center);
-        if line.example.is_empty() {
-            head.into()
-        } else {
-            Column::new()
-                .push(head)
-                .push(card_text(
-                    &line.example,
-                    palette.dim_text,
-                    Wrapping::WordOrGlyph,
-                    false,
-                ))
-                .into()
+        let mut block = Column::new().push(head);
+        if !line.detail.is_empty() {
+            block = block.push(card_text(&line.detail, palette.text, Wrapping::Word, false));
         }
+        if !line.example.is_empty() {
+            block = block.push(path_hint(
+                &line.example_label,
+                &line.example,
+                TEXT_BODY,
+                palette.dim_text,
+                palette,
+            ));
+        }
+        block.into()
     });
-    card(Column::with_children(rows).spacing(GAP_XS).into(), palette)
+    card(Column::with_children(rows).spacing(GAP_S).into(), palette)
+}
+
+/// A folder the chat names: its name in bold, its path below it.
+pub fn folder_mention<'a, M: 'a>(name: &str, path: &str, palette: &Palette) -> Element<'a, M> {
+    card(
+        Column::new()
+            .push(card_text(name, palette.text, Wrapping::WordOrGlyph, true))
+            .push(path_hint("", path, TEXT_SMALL, palette.dim_text, palette))
+            .into(),
+        palette,
+    )
 }
 
 /// `content` with the full `name` in a small box on hover when `shown` is a

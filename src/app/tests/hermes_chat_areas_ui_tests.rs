@@ -31,14 +31,13 @@ fn english_areas_bubbles(app: &mut App, card: AreasCard) {
         app,
         vec![
             Part::Text(
-                "Done reading: **3779 files**. You already have a good order, I see **20 areas**:"
-                    .to_owned(),
+                "Done reading: **3779 files** in **20 areas**. This is the order I see:".to_owned(),
             ),
             Part::Areas(card),
-            Part::Text("Shall I file new files the same way?".to_owned()),
+            Part::Text("Shall I sort new files in the same way?".to_owned()),
         ],
         vec![
-            chip("Yes, the same way", ChipReply::KeepYes, true),
+            chip("Yes, carry on like this", ChipReply::KeepYes, true),
             chip("Change something", ChipReply::WantChange, false),
         ],
     );
@@ -49,13 +48,13 @@ fn long_names_card() -> AreasCard {
         rows: vec![
             area_row(
                 "Taxes",
-                "Year / File",
+                "year",
                 "Taxes/2023/2023-04-12_Finanzamt.pdf",
                 148,
             ),
             area_row(
                 "Idle_Game_Concept_Discussion_with_the_whole_team_2025",
-                "Sender / File",
+                "sender",
                 "Idle_Game_Concept_Discussion_with_the_whole_team_2025/Anna/Notes_2025-03-02.pdf",
                 1334,
             ),
@@ -94,19 +93,14 @@ fn areas_dracula_scene() -> App {
         &mut app,
         AreasCard {
             rows: vec![
-                area_row(
-                    "Taxes",
-                    "Year / File",
-                    "Taxes/2023/2023-04-12_Finanzamt.pdf",
-                    148,
-                ),
+                area_row("Taxes", "year", "Taxes/2023/2023-04-12_Finanzamt.pdf", 148),
                 area_row(
                     "Insurance",
-                    "Provider / File",
+                    "insurer",
                     "Insurance/Allianz/Policy_2022.pdf",
                     96,
                 ),
-                area_row("Flat", "Topic / File", "Flat/Lease/Lease_2021.pdf", 61),
+                area_row("Flat", "subfolder", "Flat/Lease/Lease_2021.pdf", 61),
             ],
             more: Some(count_row("Cars, Health, Travel, Work and 14 more", 702)),
             unordered: Some(count_row("No fixed order: Misc, Scans", 38)),
@@ -148,8 +142,7 @@ fn canonical_folder(folder: &Path) -> Result<PathBuf, String> {
 
 /// The areas card of the real flow: the greeting's archive chip pressed, the
 /// test archive read by a real chat access.
-#[test]
-fn the_areas_card_of_the_real_flow_on_the_test_archive() {
+pub(in crate::app::tests) fn real_flow_areas_app(lang: Language) -> App {
     let dir = tempfile::tempdir().unwrap();
     ncrs_intake::test_archive::test_archive()
         .write_to(dir.path())
@@ -171,9 +164,10 @@ fn the_areas_card_of_the_real_flow_on_the_test_archive() {
         targets: vec![root.join("archive")],
         sources: vec![root.join("inbox")],
         resolve_folder: canonical_folder,
-        ..ready(Language::English)
+        home: root.clone(),
+        ..ready(lang)
     };
-    let mut app = App::with_fixed_panels().in_language(Language::English);
+    let mut app = App::with_fixed_panels().in_language(lang);
     send(&mut app, &ctx, HermesChatMessage::Open);
     let press = |chat_app: &mut App, reply: ChipReply| {
         let chip = chat_app
@@ -201,5 +195,13 @@ fn the_areas_card_of_the_real_flow_on_the_test_archive() {
         }
     };
     press(&mut app, ChipReply::Folder(root.join("archive")));
-    matches_snapshot(&app, "hermes_chat_areas_flow_en");
+    app
+}
+
+#[test]
+fn the_areas_card_of_the_real_flow_on_the_test_archive() {
+    matches_snapshot(
+        &real_flow_areas_app(Language::English),
+        "hermes_chat_areas_flow_en",
+    );
 }

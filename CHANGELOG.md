@@ -102,6 +102,13 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- The Hermes chat talks in plain words. The reading summary says how many
+  files it read and how each area is ordered, with a shortened example path.
+  Questions name the folder they are about. A trial run that files nothing
+  ends with one message and ways on: try again later, show the files one by
+  one, pick another folder, or cancel. Answers to a change request say what
+  the area looks like today and what it would look like, and the area buttons
+  show at most six areas, the largest first.
 - The command line moved from `F2` to `Shift`+`F2`; `F2` opens the Hermes chat.
   A `copy = "F2"` of your own keeps working.
 - The built-in AI model is now Qwen3 4B (about 2.5 GB, one download) instead

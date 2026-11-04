@@ -212,7 +212,7 @@ mod tests {
         let Part::Areas(all) = talk.last_parts()[0].clone() else {
             panic!()
         };
-        assert_eq!((first.rows.len(), all.rows.len()), (3, 6));
+        assert_eq!((first.rows.len(), all.rows.len()), (4, 6));
         assert!(first.more.is_some());
         assert!(all.more.is_none());
         assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatAskKeep, &[])]);
@@ -230,7 +230,10 @@ mod tests {
         talk.press(&ChipReply::Always);
         assert_eq!(
             talk.last_texts(),
-            vec![say(Msg::HermesChatAskMode, &[("folder", "inbox")])]
+            vec![
+                say(Msg::HermesChatAskMode, &[("folder", "inbox")]),
+                say(Msg::HermesChatModeConsequence, &[("folder", "inbox")])
+            ]
         );
         assert!(talk.actions.is_empty(), "{:?}", talk.actions);
         talk.press(&ChipReply::ModeMove);
@@ -539,7 +542,7 @@ mod tests {
             talk.last_texts(),
             vec![say(
                 Msg::HermesChatConfirmTypedFolder,
-                &[("path", &canonical(&elsewhere))]
+                &[("name", "elsewhere")]
             )]
         );
         assert!(talk.state.pending_work().is_none());
@@ -574,7 +577,7 @@ mod tests {
         let real = canonical(&talk.path("b"));
         assert_eq!(
             talk.last_texts(),
-            vec![say(Msg::HermesChatConfirmTypedFolder, &[("path", &real)])]
+            vec![say(Msg::HermesChatConfirmTypedFolder, &[("name", "b")])]
         );
         assert!(talk.actions.is_empty());
         assert!(talk.state.pending_work().is_none());
@@ -607,7 +610,7 @@ mod tests {
         talk.type_text(&missing);
         assert_eq!(
             talk.last_texts(),
-            vec![say(Msg::HermesChatNotAFolder, &[("path", &missing)])]
+            vec![say(Msg::HermesChatNotAFolder, &[("name", "nowhere")])]
         );
         assert!(talk.actions.is_empty());
         assert!(talk.state.pending_work().is_none());
@@ -624,7 +627,7 @@ mod tests {
         let real = canonical(&talk.path("b"));
         assert_eq!(
             talk.last_texts(),
-            vec![say(Msg::HermesChatConfirmTypedFolder, &[("path", &real)])]
+            vec![say(Msg::HermesChatConfirmTypedFolder, &[("name", "b")])]
         );
         let target = |asked: &Talk| {
             asked
@@ -653,12 +656,11 @@ mod tests {
         let mut talk = small_talk();
         talk.write("home/Downloads/x.txt", "x");
         tidy_sentence(&mut talk, "Downloads");
-        let real = canonical(&talk.path("home/Downloads"));
         assert_eq!(
             talk.last_texts(),
             vec![say(
                 Msg::HermesChatConfirmTidy,
-                &[("source", "~/Downloads"), ("mode", "")]
+                &[("source", "Downloads"), ("mode", "")]
             )]
         );
         assert!(talk.actions.is_empty());
@@ -667,10 +669,8 @@ mod tests {
         talk.press(&ChipReply::ConfirmTidy);
         talk.choose_archive_if_asked();
         assert!(
-            talk.last_texts()
-                .iter()
-                .all(|sentence| *sentence
-                    != say(Msg::HermesChatUnknownPathConfirm, &[("path", &real)])),
+            talk.last_texts().iter().all(|sentence| *sentence
+                != say(Msg::HermesChatUnknownPathConfirm, &[("name", "Downloads")])),
             "nothing asks a second time"
         );
         assert!(talk.state.pending_naming().is_none());
@@ -682,7 +682,7 @@ mod tests {
         tidy_sentence(&mut talk, "Nirgendwo");
         assert_eq!(
             talk.last_texts(),
-            vec![say(Msg::HermesChatNotAFolder, &[("path", "Nirgendwo")])]
+            vec![say(Msg::HermesChatNotAFolder, &[("name", "Nirgendwo")])]
         );
         assert!(talk.state.session.proposal.is_none());
         assert!(talk.actions.is_empty());
@@ -715,7 +715,7 @@ mod tests {
             talk.last_texts(),
             vec![say(
                 Msg::HermesChatConfirmTidy,
-                &[("source", &favourite), ("mode", "")]
+                &[("source", "Belege"), ("mode", "")]
             )]
         );
         assert!(talk.actions.is_empty());
@@ -764,6 +764,7 @@ mod tests {
         }
         talk.open();
         talk.press(&ChipReply::Folder(talk.path("archive")));
+        talk.press(&ChipReply::WantChange);
         let offered: Vec<ChipReply> = talk
             .state
             .chips()

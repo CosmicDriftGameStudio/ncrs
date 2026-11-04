@@ -8180,15 +8180,15 @@
     },
     {
       "key": "hermes_chat.unknown_path_confirm",
-      "context": "Hermes chat (F2): Hermes asks before reading a folder it has not been told about. {path} is the folder path.",
-      "en": "{path} isn't a folder I know. Read it anyway?",
-      "de": "{path} ist kein Ordner, den ich kenne. Trotzdem lesen?"
+      "context": "Hermes chat (F2): The user typed or picked a folder that is not one of the known filing folders; Hermes asks before reading it. {name} is the name of the folder; its path follows in small type below.",
+      "en": "“{name}” isn't a folder I know. Read it anyway?",
+      "de": "„{name}“ ist kein Ordner, den ich kenne. Trotzdem lesen?"
     },
     {
       "key": "hermes_chat.confirm_typed_folder",
-      "context": "Hermes chat (F2): Hermes asks before it uses a folder path the user typed. {path} is the full path as the system resolved it: `..`, symbolic links and `~` are already resolved.",
-      "en": "Use the folder {path}?",
-      "de": "Den Ordner {path} nehmen?"
+      "context": "Hermes chat (F2): Hermes found the folder the user typed and asks whether it is the right one. {name} is the name of the folder; its path follows in small type below.",
+      "en": "Do you mean the folder “{name}”?",
+      "de": "Meinst du den Ordner „{name}“?"
     },
     {
       "key": "hermes_chat.which_folder",
@@ -8258,21 +8258,21 @@
     },
     {
       "key": "hermes_chat.not_a_folder",
-      "context": "Hermes chat (F2): Hermes says this when a typed path does not exist or is not a folder. {path} is what the user typed.",
-      "en": "I can't find {path}.",
-      "de": "{path} finde ich nicht."
+      "context": "Hermes chat (F2): A folder the user typed, picked or named does not exist or is not a folder. {name} is the name of the folder as the user gave it. Buttons to pick another folder or to try again follow.",
+      "en": "I can't find the folder “{name}”. Maybe the drive isn't connected.",
+      "de": "Den Ordner „{name}“ finde ich nicht. Vielleicht ist der Datenträger nicht angeschlossen."
     },
     {
       "key": "hermes_chat.read_summary",
       "context": "Hermes chat (F2): Hermes' report after reading a folder that has several areas (top-level folders with their own order). **Double asterisks** mark bold text and must stay around the same words. {count} is the number of files, {areas} the number of areas, for example '3 areas'. A list of areas follows.",
-      "en": "Done reading: **{count} files**. You already have a good order, I see **{areas} areas**:",
-      "de": "Hab ich gelesen: **{count} Dateien**. Du hast schon eine gute Ordnung, ich erkenne **{areas} Bereiche**:"
+      "en": "Done reading: {count} files in {areas} areas. This is the order I see:",
+      "de": "Hab ich gelesen: {count} Dateien in {areas} Bereichen. Die Ordnung sieht so aus:"
     },
     {
       "key": "hermes_chat.read_summary_one_area",
       "context": "Hermes chat (F2): Hermes' report after reading a folder that has exactly one area (a top-level folder with its own order). **Double asterisks** mark bold text and must stay around the same words. {count} is the number of files.",
-      "en": "Done reading: **{count} files**. You already have an order, I see **one area**:",
-      "de": "Hab ich gelesen: **{count} Dateien**. Du hast schon eine Ordnung, ich erkenne **einen Bereich**:"
+      "en": "Done reading: {count} files in one area. This is the order I see:",
+      "de": "Hab ich gelesen: {count} Dateien in einem Bereich. Die Ordnung sieht so aus:"
     },
     {
       "key": "hermes_chat.read_summary_no_order",
@@ -8450,9 +8450,9 @@
     },
     {
       "key": "hermes_chat.more_areas",
-      "context": "Hermes chat (F2): Last row of the list of areas: the names of the next few areas, then how many more there are and the number of files in them. {names} is a comma separated list, {count} a number.",
-      "en": "{names} … · {count} more",
-      "de": "{names} … · {count} weitere"
+      "context": "Hermes chat (F2): Row under the areas of a folder when more areas exist than are listed: how many more areas there are and the names of the next few, cut off by the dots. The number of files in them is added after the row. {names} is a comma separated list, {count} a number.",
+      "en": "{count} more areas: {names} …",
+      "de": "{count} weitere Bereiche: {names} …"
     },
     {
       "key": "hermes_chat.unordered",
@@ -8463,26 +8463,26 @@
     {
       "key": "hermes_chat.ask_keep",
       "context": "Hermes chat (F2): Hermes' question after the list of areas: whether new files shall be filed in the same way.",
-      "en": "Shall I file new files the same way?",
-      "de": "Soll ich neue Dateien genauso ablegen?"
+      "en": "Shall I sort new files in the same way?",
+      "de": "Soll ich neue Dateien genauso einsortieren?"
     },
     {
       "key": "hermes_chat.keep_yes",
       "context": "Hermes chat (F2): Answer button to the question whether new files shall be filed the same way (primary choice).",
-      "en": "Yes, just like that",
-      "de": "Ja, genau so"
+      "en": "Yes, carry on like this",
+      "de": "Ja, so weitermachen"
     },
     {
       "key": "hermes_chat.want_change",
       "context": "Hermes chat (F2): Answer button: the user wants to change something about the order Hermes found.",
-      "en": "I want to change something",
-      "de": "Ich will was ändern"
+      "en": "Change something",
+      "de": "Etwas ändern"
     },
     {
       "key": "hermes_chat.show_all",
-      "context": "Hermes chat (F2): Answer button: show every area, not just the biggest three.",
-      "en": "Show me everything",
-      "de": "Zeig mir alles"
+      "context": "Hermes chat (F2): Answer button under the list of areas: show every area, not only the first ones. {areas} is the number of areas.",
+      "en": "Show all {areas}",
+      "de": "Alle {areas} zeigen"
     },
     {
       "key": "hermes_chat.ask_change",
@@ -8492,9 +8492,9 @@
     },
     {
       "key": "hermes_chat.change_preview",
-      "context": "Hermes chat (F2): Hermes introduces an example file path after a change of order. {kind} is a kind of document, for example 'Invoice'. The path is shown below.",
-      "en": "Sure. Then a {kind} looks like this:",
-      "de": "Klar. Dann sieht ein {kind} so aus:"
+      "context": "Hermes chat (F2): First line of the preview of a change of order for one area. {area} is the folder name of the area, {today} how it is sorted now (for example year or sender), {new} what the user asked for (year, month, sender or kind). A real example path follows.",
+      "en": "{area} is sorted by {today} today. Sorted by {new} it would look like this:",
+      "de": "{area} ist heute nach {today} sortiert. Nach {new} sähe das so aus:"
     },
     {
       "key": "hermes_chat.change_scope",
@@ -8709,8 +8709,8 @@
     {
       "key": "hermes_chat.ask_once",
       "context": "Hermes chat (F2): Hermes asks whether to tidy a folder only now or on every new file. **Double asterisks** mark bold text and must stay around the same words. {folder} is the folder name.",
-      "en": "Just this once, or shall I **always** tidy up {folder} from now on?",
-      "de": "Nur dieses eine Mal, oder soll ich {folder} ab jetzt **immer** aufräumen?"
+      "en": "Shall I tidy up “{folder}” just now, or from now on whenever something arrives?",
+      "de": "Soll ich „{folder}“ nur jetzt aufräumen oder ab sofort immer, sobald etwas reinkommt?"
     },
     {
       "key": "hermes_chat.once",
@@ -8720,9 +8720,9 @@
     },
     {
       "key": "hermes_chat.always",
-      "context": "Hermes chat (F2): Answer button: tidy up on every new file from now on.",
-      "en": "Always",
-      "de": "Immer"
+      "context": "Hermes chat (F2): Answer button: tidy up every new file in the folder from now on, as soon as something arrives.",
+      "en": "Always watch",
+      "de": "Immer beobachten"
     },
     {
       "key": "hermes_chat.ask_mode",
@@ -8849,12 +8849,6 @@
       "context": "Hermes chat (F2): Hermes confirms the user's choice for an unsure file. {name} is the file name, {path} the folder.",
       "en": "Good, {name} goes to {path}.",
       "de": "Gut, {name} kommt nach {path}."
-    },
-    {
-      "key": "hermes_chat.nothing_to_file",
-      "context": "Hermes chat (F2): Hermes says nothing can be filed with confidence. {stays} is the number of files that stay.",
-      "en": "I found nothing here I can file with confidence. {stays} files stay.",
-      "de": "Hier finde ich nichts, das ich sicher ablegen kann. {stays} Dateien bleiben liegen."
     },
     {
       "key": "hermes_chat.cancelled",
@@ -9069,8 +9063,8 @@
     {
       "key": "hermes_chat.confirm_tidy",
       "context": "Hermes chat (F2): Hermes asks to confirm a tidy-up it understood from a sentence when no target folder was named. {source} is the folder to tidy up, named the way the chat names folders: its name or a path starting with ~, {mode} is empty or one of the two phrases for copying or moving that start with a comma.",
-      "en": "Do you mean: tidy up {source}{mode}?",
-      "de": "Meinst du: {source} aufräumen{mode}?"
+      "en": "Shall I tidy up “{source}”{mode}?",
+      "de": "Soll ich „{source}“ aufräumen{mode}?"
     },
     {
       "key": "hermes_chat.confirm_move",
@@ -9272,9 +9266,9 @@
     },
     {
       "key": "hermes_chat.change_already",
-      "context": "Hermes chat (F2): the user asked for an order the chosen area has already. {area} is the folder name. Buttons with things Hermes can do follow.",
-      "en": "{area} is already ordered that way.",
-      "de": "{area} ist schon so geordnet."
+      "context": "Hermes chat (F2): Hermes answers a wish for a new order of an area that the area has already. {area} is the folder name of the area, {new} the order (year, month, sender or kind), {examples} the names of its first subfolders. Buttons with the other orders follow.",
+      "en": "{area} is already sorted by {new} ({examples}). Shall I change something else?",
+      "de": "{area} ist schon nach {new} sortiert ({examples}). Soll ich etwas anderes ändern?"
     },
     {
       "key": "hermes_chat.not_yet_propose",
@@ -9285,14 +9279,176 @@
     {
       "key": "hermes_chat.change_needs_fields",
       "context": "Hermes chat (F2): the user asked to change the order of an area, but Hermes does not know the field the new order sorts by (for example the sender) for any document in that area yet, because it has not read them. {area} is the folder name of the area. Buttons with things Hermes can do follow.",
-      "en": "I don't know enough about the documents in \u201c{area}\u201d yet to show that, because I have not read them all. Try again once I am further along.",
-      "de": "Zu den Dokumenten in \u201e{area}\u201c weiß ich noch nicht genug, um das zu zeigen, weil ich sie noch nicht alle gelesen habe. Versuch es später noch einmal."
+      "en": "I don't know enough about the documents in “{area}” yet to show that, because I have not read them all. Try again once I am further along.",
+      "de": "Zu den Dokumenten in „{area}“ weiß ich noch nicht genug, um das zu zeigen, weil ich sie noch nicht alle gelesen habe. Versuch es später noch einmal."
     },
     {
       "key": "hermes_chat.reading_ai_progress",
       "context": "Hermes chat (F2): one line under the card of the areas Hermes read in a folder, shown while the AI has not yet understood every document with a text. {done} is how many it understood, {total} how many documents have a text. The rest continues in the background.",
       "en": "{done} of {total} documents understood, the rest continues in the background.",
       "de": "{done} von {total} Dokumenten verstanden, der Rest läuft im Hintergrund."
+    },
+    {
+      "key": "hermes_chat.change_preview_no_order",
+      "context": "Hermes chat (F2): First line of the preview of a change of order for an area in which no fixed order was learned, whether its files lie directly in it or in folders without a pattern. {area} is the folder name of the area, {new} what the user asked for (year, month, sender or kind).",
+      "en": "I see no fixed order in {area} yet. Sorted by {new} it would look like this:",
+      "de": "Für {area} kenne ich noch keine feste Ordnung. Nach {new} sähe das so aus:"
+    },
+    {
+      "key": "hermes_chat.change_preview_to_flat",
+      "context": "Hermes chat (F2): First line of the preview of a change of order that takes the subfolders of an area away. {area} is the folder name of the area, {today} how it is sorted now.",
+      "en": "{area} is sorted by {today} today. Without subfolders it would look like this:",
+      "de": "{area} ist heute nach {today} sortiert. Ohne Unterordner sähe das so aus:"
+    },
+    {
+      "key": "hermes_chat.change_preview_count",
+      "context": "Hermes chat (F2): Second line of the preview of a change of order: says the change applies to new files from now on and that the user sees the list before anything is filed. {area} is the name of the area.",
+      "en": "From now on this applies to new files in {area}. Before I file anything, I show you the list.",
+      "de": "Das gilt ab jetzt für neue Dateien in {area}. Bevor ich etwas ablege, zeige ich dir die Liste."
+    },
+    {
+      "key": "hermes_chat.change_already_plain",
+      "context": "Hermes chat (F2): Like the answer that an area is sorted that way already, for an area without subfolders to list. {area} is the folder name of the area, {new} the order.",
+      "en": "{area} is already sorted by {new}. Shall I change something else?",
+      "de": "{area} ist schon nach {new} sortiert. Soll ich etwas anderes ändern?"
+    },
+    {
+      "key": "hermes_chat.sort_like_this",
+      "context": "Hermes chat (F2): Answer button under the preview of a change of order: accept the new order for new files.",
+      "en": "Yes, sort like this",
+      "de": "Ja, so sortieren"
+    },
+    {
+      "key": "hermes_chat.rather_not",
+      "context": "Hermes chat (F2): Answer button under the preview of a change of order: do not make the change.",
+      "en": "Rather not",
+      "de": "Lieber nicht"
+    },
+    {
+      "key": "hermes_chat.order_year",
+      "context": "Hermes chat (F2): Answer button that asks for the files of an area to be sorted into folders by year.",
+      "en": "By year",
+      "de": "Nach Jahr"
+    },
+    {
+      "key": "hermes_chat.order_month",
+      "context": "Hermes chat (F2): Answer button that asks for the files of an area to be sorted into folders by month.",
+      "en": "By month",
+      "de": "Nach Monat"
+    },
+    {
+      "key": "hermes_chat.order_sender",
+      "context": "Hermes chat (F2): Answer button that asks for the files of an area to be sorted into folders by sender.",
+      "en": "By sender",
+      "de": "Nach Absender"
+    },
+    {
+      "key": "hermes_chat.order_kind",
+      "context": "Hermes chat (F2): Answer button that asks for the files of an area to be sorted into folders by kind of document.",
+      "en": "By kind",
+      "de": "Nach Art"
+    },
+    {
+      "key": "hermes_chat.no_more_change",
+      "context": "Hermes chat (F2): Answer button: the user wants no other order for the area.",
+      "en": "No, that's fine",
+      "de": "Nein, passt"
+    },
+    {
+      "key": "hermes_chat.other_area",
+      "context": "Hermes chat (F2): Answer button under the list of areas when none of them is meant: the user types the name of the area.",
+      "en": "Other area …",
+      "de": "Anderer Bereich …"
+    },
+    {
+      "key": "hermes_chat.other_area_hint",
+      "context": "Hermes chat (F2): Hermes asks the user to type the name of the area a change of order is for.",
+      "en": "Write me the name of the area.",
+      "de": "Schreib den Namen des Bereichs."
+    },
+    {
+      "key": "hermes_chat.files_count",
+      "context": "Hermes chat (F2): The number of files next to the name of an area in the list of areas. {count} is a number greater than one.",
+      "en": "{count} files",
+      "de": "{count} Dateien"
+    },
+    {
+      "key": "hermes_chat.files_count_one",
+      "context": "Hermes chat (F2): The number of files next to the name of an area in the list of areas when there is exactly one file.",
+      "en": "1 file",
+      "de": "1 Datei"
+    },
+    {
+      "key": "hermes_chat.example_short",
+      "context": "Hermes chat (F2): The short word before the example path under an area in the list of areas, as in 'e.g. 2024/Bank/statement.pdf'.",
+      "en": "e.g.",
+      "de": "z. B."
+    },
+    {
+      "key": "hermes_chat.level_or",
+      "context": "Hermes chat (F2): Joins the names of a folder level that has several fixed choices, as in 'Account, Loan or Messages'. {list} is a comma separated list, {last} the final name.",
+      "en": "{list} or {last}",
+      "de": "{list} oder {last}"
+    },
+    {
+      "key": "hermes_chat.more_areas_all",
+      "context": "Hermes chat (F2): Row under the areas of a folder when more areas exist than are listed and all of them are named. The number of files in them is added after the row. {names} is a comma separated list, {count} a number.",
+      "en": "{count} more areas: {names}",
+      "de": "{count} weitere Bereiche: {names}"
+    },
+    {
+      "key": "hermes_chat.retry",
+      "context": "Hermes chat (F2): Answer button after a folder could not be read: read the same folder again.",
+      "en": "Try again",
+      "de": "Nochmal versuchen"
+    },
+    {
+      "key": "hermes_chat.mode_consequence",
+      "context": "Hermes chat (F2): Short second line under the question whether to copy or move the files: what each choice does with the originals. {folder} is the name of the folder the files come from.",
+      "en": "Copy leaves the originals in “{folder}”, move clears them out of there.",
+      "de": "Kopieren lässt die Originale in „{folder}“ liegen, Verschieben räumt sie dort weg."
+    },
+    {
+      "key": "hermes_chat.trial_stuck_some",
+      "context": "Hermes chat (F2): One message at the end of a trial run that files nothing, when some of the files are in the filing folder already. {total} is the number of files looked at, {dupes} how many are there already, {rest} the others, {ai_note} is empty or the sentence about how far the AI is. Buttons with what to do follow.",
+      "en": "Of {total} files, {dupes} are already in the filing folder. For the other {rest} I still lack the sender{ai_note}. What shall I do?",
+      "de": "Von {total} Dateien sind {dupes} schon im Schreib-Ordner. Für die anderen {rest} fehlt mir noch der Absender{ai_note}. Was soll ich tun?"
+    },
+    {
+      "key": "hermes_chat.trial_stuck_none",
+      "context": "Hermes chat (F2): One message at the end of a trial run that files nothing, when none of the files is in the filing folder yet. {rest} is the number of files, {ai_note} is empty or the sentence about how far the AI is. Buttons with what to do follow.",
+      "en": "For {rest} files I still lack the sender{ai_note}. What shall I do?",
+      "de": "Für {rest} Dateien fehlt mir noch der Absender{ai_note}. Was soll ich tun?"
+    },
+    {
+      "key": "hermes_chat.trial_stuck_ai",
+      "context": "Hermes chat (F2): Added to the message that files are missing a sender, while the AI has not read every document yet. {done} is how many documents it understood, {all} how many have a text. It begins with a colon.",
+      "en": ": I am only just reading your folder, {done} of {all} documents are understood",
+      "de": ": Ich lese deinen Ordner gerade erst ein, {done} von {all} Dokumenten sind verstanden"
+    },
+    {
+      "key": "hermes_chat.later_again",
+      "context": "Hermes chat (F2): Answer button at the end of a trial run that files nothing: stop for now and come back later; nothing is remembered.",
+      "en": "Later again",
+      "de": "Später nochmal"
+    },
+    {
+      "key": "hermes_chat.show_staying",
+      "context": "Hermes chat (F2): Answer button at the end of a trial run that files nothing: list the files that cannot be placed, one by one. {count} is their number.",
+      "en": "Show the {count} one by one",
+      "de": "Die {count} einzeln zeigen"
+    },
+    {
+      "key": "hermes_chat.delete_dupes",
+      "context": "Hermes chat (F2): Answer button at the end of a trial run: move the files that are in the filing folder already to the trash. {count} is their number.",
+      "en": "Delete {count} duplicates",
+      "de": "{count} Doppelte löschen"
+    },
+    {
+      "key": "hermes_chat.staying_intro",
+      "context": "Hermes chat (F2): Line above the list of files that cannot be placed. {count} is how many files are listed.",
+      "en": "These {count} stay where they are for now:",
+      "de": "Diese {count} bleiben vorerst liegen:"
     }
   ]
 }

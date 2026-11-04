@@ -10,19 +10,29 @@ use ncrs_filing::chat_work::{
 };
 use ncrs_i18n::Msg;
 use ncrs_index::{KindCatalog, KindLanguage, Kinds};
+use ncrs_intake::{Area, Branch, Level, PlaceholderLabel};
 use ncrs_ui_kit::hermes_state::FolderRole;
 
 use crate::action::Action;
 use crate::ctx::Ctx;
-use crate::state::{Chip, ChipReply, FileCard, Offer, Part, ReadFor, State, Step};
-use crate::texts::{areas_card, fill, folder_name, number, plural_text, text};
+use crate::state::{Chip, ChipReply, FileCard, Offer, Part, ReadFor, Retry, State, Step};
+use crate::texts::{
+    areas_card, fill, folder_name, label_text, levels_plain, number, plural_text, segments, text,
+    SHOWN_AREAS,
+};
 use crate::update::{
-    access, cancel_chip, chip, chip_labelled, hermes, lost_folder_chips, say, source_chips,
-    target_chips, work,
+    access, cancel_chip, chip, chip_labelled, hermes, lost_folder_chips, lost_folder_retry_chips,
+    say, source_chips, target_chips, work,
 };
 use crate::{patterns, tidy};
 
 const SCOPE_VALUES: usize = 3;
+const ORDERS_ON_OFFER: [(ChangeOrder, Msg); 4] = [
+    (ChangeOrder::ByYear, Msg::HermesChatOrderYear),
+    (ChangeOrder::ByMonth, Msg::HermesChatOrderMonth),
+    (ChangeOrder::BySender, Msg::HermesChatOrderSender),
+    (ChangeOrder::ByKind, Msg::HermesChatOrderKind),
+];
 const AREA_CHOICES: usize = 6;
 
 pub fn read(state: &mut State, ctx: &Ctx, folder: PathBuf) {
@@ -66,6 +76,12 @@ pub fn read_done(state: &mut State, ctx: &Ctx, result: Result<Arc<FolderReading>
             state.session.resume_tidy = false;
             state.step = Step::Idle;
             let requested = state.session.requested.clone();
+            let can_retry = matches!(error, ReadError::Gone | ReadError::NotADirectory)
+                && matches!(purpose, ReadFor::Learn | ReadFor::Source);
+            state.session.retry = can_retry.then(|| Retry {
+                folder: requested.clone(),
+                purpose,
+            });
             let sentence = match error {
                 ReadError::Gone => fill(
                     ctx.lang,
@@ -75,7 +91,7 @@ pub fn read_done(state: &mut State, ctx: &Ctx, result: Result<Arc<FolderReading>
                 ReadError::NotADirectory => fill(
                     ctx.lang,
                     Msg::HermesChatNotAFolder,
-                    &[("path", &requested.to_string_lossy())],
+                    &[("name", &folder_name(ctx, &requested))],
                 ),
                 ReadError::TooMany { limit } => fill(
                     ctx.lang,
@@ -89,8 +105,20 @@ pub fn read_done(state: &mut State, ctx: &Ctx, result: Result<Arc<FolderReading>
                     fill(ctx.lang, Msg::HermesChatReadFailed, &[("reason", &reason)])
                 }
             };
-            say(state, sentence, lost_folder_chips(ctx));
+            let chips = lost_folder_retry_chips(state, ctx);
+            say(state, sentence, chips);
         }
+    }
+}
+
+/// Reads the folder again that could not be read.
+pub fn retry(state: &mut State, ctx: &Ctx) {
+    let Some(failed) = state.session.retry.take() else {
+        return;
+    };
+    match failed.purpose {
+        ReadFor::Source => tidy::begin(state, ctx, failed.folder),
+        ReadFor::Learn | ReadFor::Target | ReadFor::NewTarget => read(state, ctx, failed.folder),
     }
 }
 
@@ -146,7 +174,7 @@ pub fn summary(state: &mut State, ctx: &Ctx, reading: &Arc<FolderReading>) {
         )
     };
     state.step = Step::Keep;
-    let chips = keep_chips(state, ctx, true);
+    let chips = keep_chips(ctx, areas > SHOWN_AREAS, areas);
     let mut parts = vec![
         Part::Text(intro),
         Part::Areas(areas_card(
@@ -170,15 +198,22 @@ pub fn summary(state: &mut State, ctx: &Ctx, reading: &Arc<FolderReading>) {
     hermes(state, parts, chips);
 }
 
-fn keep_chips(state: &mut State, ctx: &Ctx, with_all: bool) -> Vec<Chip> {
+fn keep_chips(ctx: &Ctx, with_all: bool, areas: usize) -> Vec<Chip> {
     let mut chips = vec![
         chip(ctx, Msg::HermesChatKeepYes, ChipReply::KeepYes, true),
         chip(ctx, Msg::HermesChatWantChange, ChipReply::WantChange, false),
     ];
     if with_all {
-        chips.push(chip(ctx, Msg::HermesChatShowAll, ChipReply::ShowAll, false));
+        chips.push(chip_labelled(
+            fill(
+                ctx.lang,
+                Msg::HermesChatShowAll,
+                &[("areas", &number(areas))],
+            ),
+            ChipReply::ShowAll,
+            false,
+        ));
     }
-    chips.extend(patterns::chips(state, ctx));
     chips.push(chip(
         ctx,
         Msg::HermesChatOtherFolder,
@@ -193,7 +228,7 @@ pub fn show_all(state: &mut State, ctx: &Ctx) {
         return;
     };
     state.step = Step::Keep;
-    let chips = keep_chips(state, ctx, false);
+    let chips = keep_chips(ctx, false, reading.structure.areas.len());
     hermes(
         state,
         vec![
@@ -209,13 +244,13 @@ pub fn show_all(state: &mut State, ctx: &Ctx) {
     );
 }
 
+/// The patterns the folders follow are on offer here, next to what the user
+/// types.
 pub fn want_change(state: &mut State, ctx: &Ctx) {
     state.step = Step::Change;
-    say(
-        state,
-        text(ctx.lang, Msg::HermesChatAskChange),
-        vec![cancel_chip(ctx)],
-    );
+    let mut chips = patterns::chips(state, ctx);
+    chips.push(cancel_chip(ctx));
+    say(state, text(ctx.lang, Msg::HermesChatAskChange), chips);
 }
 
 /// The order is kept: the folder becomes a filing location, its duplicates
@@ -321,11 +356,8 @@ fn no_change_found(state: &mut State, ctx: &Ctx) {
     {
         if let Some(area) = already_ordered(&reading, &word, order) {
             state.step = Step::AfterChange;
-            say(
-                state,
-                fill(ctx.lang, Msg::HermesChatChangeAlready, &[("area", &area)]),
-                crate::update::fallback_chips(ctx),
-            );
+            let sentence = already_text(ctx, &reading, &area, order);
+            say(state, sentence, other_orders(ctx, &area, order));
             return;
         }
     }
@@ -374,15 +406,16 @@ pub fn preview_done(state: &mut State, ctx: &Ctx, computed: Option<ChangePreview
         return;
     };
     let mut parts = vec![
-        Part::Text(fill(
-            ctx.lang,
-            Msg::HermesChatChangePreview,
-            &[("kind", &preview.kind_label)],
-        )),
+        Part::Text(preview_intro(state, ctx, &preview)),
         Part::File(FileCard {
             segments: preview.example.clone(),
             highlighted: Some(preview.highlighted),
         }),
+        Part::Text(fill(
+            ctx.lang,
+            Msg::HermesChatChangePreviewCount,
+            &[("area", &preview_area(&preview))],
+        )),
     ];
     let Some(scope) = preview.scope.clone() else {
         confirm(state, ctx, parts, preview);
@@ -424,6 +457,186 @@ pub fn preview_done(state: &mut State, ctx: &Ctx, computed: Option<ChangePreview
     hermes(state, parts, chips);
 }
 
+fn preview_area(preview: &ChangePreview) -> String {
+    segments(&preview.change.area)
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| preview.kind_label.clone())
+}
+
+/// What the area looks like today and what it would look like, in a line.
+fn preview_intro(state: &State, ctx: &Ctx, preview: &ChangePreview) -> String {
+    let area = preview_area(preview);
+    let today_order = state
+        .session
+        .learning
+        .as_ref()
+        .and_then(|reading| today_word(ctx, reading, &preview.change));
+    let new_order = order_label(preview.change.order).map(|label| label_text(ctx.lang, label));
+    match (today_order, new_order) {
+        (Some(today_words), Some(new_words)) => fill(
+            ctx.lang,
+            Msg::HermesChatChangePreview,
+            &[("area", &area), ("today", &today_words), ("new", new_words)],
+        ),
+        (Some(today_words), None) => fill(
+            ctx.lang,
+            Msg::HermesChatChangePreviewToFlat,
+            &[("area", &area), ("today", &today_words)],
+        ),
+        (None, new_words) => fill(
+            ctx.lang,
+            Msg::HermesChatChangePreviewNoOrder,
+            &[
+                ("area", &area),
+                (
+                    "new",
+                    new_words.unwrap_or(ctx.lang.text(Msg::HermesChatAreaFlat)),
+                ),
+            ],
+        ),
+    }
+}
+
+fn order_label(order: ChangeOrder) -> Option<PlaceholderLabel> {
+    match order {
+        ChangeOrder::ByYear => Some(PlaceholderLabel::Year),
+        ChangeOrder::ByMonth => Some(PlaceholderLabel::Month),
+        ChangeOrder::BySender => Some(PlaceholderLabel::Sender),
+        ChangeOrder::ByKind => Some(PlaceholderLabel::Kind),
+        ChangeOrder::Flat | ChangeOrder::Pattern => None,
+    }
+}
+
+/// The folders from the area and the literal names after it: where a change
+/// of order starts.
+fn branch_start(area: &Area, branch: &Branch) -> PathBuf {
+    let mut start = PathBuf::from(&area.folder);
+    for level in &branch.levels {
+        let Level::Literal(name) = level else {
+            break;
+        };
+        start.push(name);
+    }
+    start
+}
+
+/// The order of the folders below the start of the change, in words; none for
+/// an area without subfolders.
+fn today_word(ctx: &Ctx, reading: &FolderReading, change: &OrderChange) -> Option<String> {
+    let folder = segments(&change.area)
+        .into_iter()
+        .next()
+        .unwrap_or_default();
+    let area = reading
+        .structure
+        .areas
+        .iter()
+        .find(|area| area.folder == folder)?;
+    let branch = area
+        .branches
+        .iter()
+        .find(|branch| branch_start(area, branch) == change.area)
+        .or_else(|| area.branches.first())?;
+    let below = branch
+        .levels
+        .iter()
+        .skip_while(|level| matches!(level, Level::Literal(_)))
+        .cloned()
+        .collect::<Vec<_>>();
+    (!below.is_empty()).then(|| levels_plain(ctx.lang, &below))
+}
+
+/// "{area} is already sorted by year (2023, 2024)", with the first folders of
+/// that level as examples.
+fn already_text(ctx: &Ctx, reading: &FolderReading, area: &str, order: ChangeOrder) -> String {
+    let label = order_label(order);
+    let new = label.map_or_else(
+        || text(ctx.lang, Msg::HermesChatAreaFlat),
+        |order_word| label_text(ctx.lang, order_word).to_owned(),
+    );
+    let mut examples: Vec<String> = Vec::new();
+    for found in reading
+        .structure
+        .areas
+        .iter()
+        .filter(|found| found.folder == area)
+        .flat_map(|found| &found.branches)
+        .flat_map(|branch| &branch.levels)
+    {
+        let Level::Placeholder(placeholder) = found else {
+            continue;
+        };
+        if Some(placeholder.label) != label {
+            continue;
+        }
+        for example in &placeholder.examples {
+            if !examples.contains(example) {
+                examples.push(example.clone());
+            }
+        }
+    }
+    examples.truncate(SCOPE_VALUES);
+    if examples.is_empty() {
+        return fill(
+            ctx.lang,
+            Msg::HermesChatChangeAlreadyPlain,
+            &[("area", area), ("new", &new)],
+        );
+    }
+    fill(
+        ctx.lang,
+        Msg::HermesChatChangeAlready,
+        &[
+            ("area", area),
+            ("new", &new),
+            ("examples", &examples.join(", ")),
+        ],
+    )
+}
+
+/// The other orders for the area, and a no.
+fn other_orders(ctx: &Ctx, area: &str, current: ChangeOrder) -> Vec<Chip> {
+    let mut chips: Vec<Chip> = ORDERS_ON_OFFER
+        .iter()
+        .filter(|(order, _)| *order != current)
+        .map(|(order, msg)| {
+            chip(
+                ctx,
+                *msg,
+                ChipReply::ChangeAreaOrder {
+                    area: area.to_owned(),
+                    order: *order,
+                },
+                false,
+            )
+        })
+        .collect();
+    chips.push(chip(
+        ctx,
+        Msg::HermesChatNoMoreChange,
+        ChipReply::FineAsIs,
+        true,
+    ));
+    chips
+}
+
+/// The order was asked for a named area, from the buttons.
+pub fn area_order(state: &mut State, ctx: &Ctx, area: String, order: ChangeOrder) {
+    state.session.area_chosen = true;
+    change_order(state, ctx, area, order);
+}
+
+/// The user types the name of the area.
+pub fn ask_area_name(state: &mut State, ctx: &Ctx) {
+    state.step = Step::AreaName;
+    say(
+        state,
+        text(ctx.lang, Msg::HermesChatOtherAreaHint),
+        vec![cancel_chip(ctx)],
+    );
+}
+
 /// No folder fits the word: the areas to choose from, so the order asked for
 /// is not lost. False when it was asked already or there is no area.
 fn ask_area(state: &mut State, ctx: &Ctx) -> bool {
@@ -451,6 +664,7 @@ fn area_chips(state: &State, ctx: &Ctx) -> Option<Vec<Chip>> {
     areas.sort_by_key(|area| std::cmp::Reverse(area.documents));
     let mut chips: Vec<Chip> = areas
         .into_iter()
+        .filter(|area| !area.folder.is_empty())
         .take(AREA_CHOICES)
         .map(|area| {
             chip_labelled(
@@ -462,8 +676,8 @@ fn area_chips(state: &State, ctx: &Ctx) -> Option<Vec<Chip>> {
         .collect();
     chips.push(chip(
         ctx,
-        Msg::HermesChatOtherFolder,
-        ChipReply::PickFolder,
+        Msg::HermesChatOtherArea,
+        ChipReply::OtherArea,
         false,
     ));
     chips.push(cancel_chip(ctx));
@@ -489,11 +703,11 @@ fn confirm(state: &mut State, ctx: &Ctx, parts: Vec<Part>, preview: ChangePrevie
         vec![
             chip(
                 ctx,
-                Msg::HermesChatConfirmYes,
+                Msg::HermesChatSortLikeThis,
                 ChipReply::ConfirmChange,
                 true,
             ),
-            cancel_chip(ctx),
+            chip(ctx, Msg::HermesChatRatherNot, ChipReply::Cancel, false),
         ],
     );
 }

@@ -25,6 +25,7 @@ const PILL: f32 = 999.0;
 /// Puts the avatar level with the first line of a bubble.
 const AVATAR_TOP_NUDGE: f32 = BUBBLE_PAD_Y + (CHAT_LINE - AVATAR_SIZE) / 2.0;
 const BOLD_MARK: &str = "**";
+const PATH_OPACITY: f32 = 0.8;
 
 /// The text with its `**bold**` stretches as spans.
 fn spans_of<'a>(content: &str, color: Color) -> Vec<Span<'a, (), Font>> {
@@ -138,8 +139,31 @@ pub fn hermes_bubble<'a, M: 'a>(parts: Vec<Element<'a, M>>, palette: &Palette) -
 
 /// What the user said: on the right, on the filled button colour.
 pub fn user_bubble<'a, M: 'a>(content: &str, palette: &Palette) -> Element<'a, M> {
-    let (fill, ink) = palette.primary_button();
-    let body = container(chat_text(content, ink))
+    user_bubble_around(chat_text(content, palette.primary_button().1), palette)
+}
+
+/// A folder the user picked or typed: its name, with its path in small type
+/// below it, cut in the middle.
+pub fn user_folder_bubble<'a, M: 'a>(name: &str, path: &str, palette: &Palette) -> Element<'a, M> {
+    let ink = palette.primary_button().1;
+    user_bubble_around(
+        Column::new()
+            .push(chat_text(name, ink))
+            .push(path_hint(
+                "",
+                path,
+                TEXT_SMALL,
+                ink.scale_alpha(PATH_OPACITY),
+                palette,
+            ))
+            .into(),
+        palette,
+    )
+}
+
+fn user_bubble_around<'a, M: 'a>(content: Element<'a, M>, palette: &Palette) -> Element<'a, M> {
+    let (fill, _) = palette.primary_button();
+    let body = container(content)
         .padding([BUBBLE_PAD_Y, BUBBLE_PAD_X])
         .max_width(BUBBLE_MAX_WIDTH)
         .style(move |_: &Theme| container::Style {
