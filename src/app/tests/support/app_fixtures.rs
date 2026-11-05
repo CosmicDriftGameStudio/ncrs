@@ -189,6 +189,26 @@ impl App {
         self
     }
 
+    /// The left panel with the name input open on "Projects", the name refused
+    /// because it holds a slash.
+    pub fn with_fixed_rename_refused() -> Self {
+        let mut app = Self::with_fixed_panels().in_language(Language::English);
+        app.panels.left.selected = 2;
+        drop(app.panels.begin_rename());
+        app.panels.type_rename("Pro/jects".to_owned());
+        let refusal = ncrs_ops::NameProblem::Separator.text(app.lang);
+        if let Some(path) = app
+            .panels
+            .left
+            .rename
+            .as_ref()
+            .map(|rename| rename.path.clone())
+        {
+            app.panels.refuse_rename(&path, refusal);
+        }
+        app
+    }
+
     /// The same app, worded in `lang`.
     pub fn in_language(mut self, lang: Language) -> Self {
         self.set_language(lang);

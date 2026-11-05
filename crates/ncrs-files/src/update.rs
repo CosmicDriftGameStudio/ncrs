@@ -30,6 +30,7 @@ pub fn update(
 ) -> (Task<PanelMessage>, Vec<Action>) {
     let rows = ctx.visible_rows;
     let mut actions = Vec::new();
+    let mut task = Task::none();
     match message {
         PanelMessage::DirectoryLoaded {
             side,
@@ -79,6 +80,7 @@ pub fn update(
                 actions.push(Action::DropViewCopies(server.root_path()));
             }
             actions.push(Action::StopFolderSizeRunIfLeft(side));
+            panels.drop_rename_of_missing_entry();
         }
 
         PanelMessage::MoveSelection(delta) => {
@@ -210,8 +212,12 @@ pub fn update(
         PanelMessage::RowActivated { side, index } => {
             activate_row(panels, ctx, side, index, &mut actions);
         }
+
+        PanelMessage::RenameStart => task = panels.begin_rename(),
+        PanelMessage::RenameInput(typed) => panels.type_rename(typed),
+        PanelMessage::RenameSubmit => actions.extend(panels.confirm_rename()),
     }
-    (Task::none(), actions)
+    (task, actions)
 }
 
 /// Puts the values of this session into a fresh local listing. The returned

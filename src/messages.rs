@@ -75,6 +75,13 @@ pub enum Message {
     TransferConflict(ConflictChoice),
     /// Ticks or unticks "for all files" in the conflict dialog.
     ToggleConflictAll,
+    /// The rename of the entry at `from` has finished.
+    Renamed {
+        request_id: u64,
+        side: PanelSide,
+        from: PathBuf,
+        result: Result<PathBuf, RowFailure>,
+    },
     /// One row of a transfer finished. Carries the whole transfer so the next
     /// row can start without the app keeping it in a field that a later
     /// message could overwrite.
@@ -488,6 +495,17 @@ impl From<OpsMessage> for Message {
                 Self::ArchiveWritten { result, generation }
             }
             OpsMessage::AbortJob => Self::AbortJob,
+            OpsMessage::Renamed {
+                request_id,
+                side,
+                from,
+                result,
+            } => Self::Renamed {
+                request_id,
+                side,
+                from,
+                result,
+            },
             OpsMessage::Trash(trash) => Self::Trash(trash),
         }
     }

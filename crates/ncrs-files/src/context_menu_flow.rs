@@ -87,7 +87,8 @@ impl MenuFacts {
                 | ContextAction::Move
                 | ContextAction::Trash
                 | ContextAction::DeletePermanently => self.has_sources,
-                ContextAction::NewFolder
+                ContextAction::Rename
+                | ContextAction::NewFolder
                 | ContextAction::ComputeFolderSizes
                 | ContextAction::AddFavourite
                 | ContextAction::RemoveFavourite
@@ -110,6 +111,7 @@ impl MenuFacts {
             | ContextAction::Move
             | ContextAction::Trash
             | ContextAction::DeletePermanently => self.has_sources,
+            ContextAction::Rename => cursor_row.is_some_and(|entry| !entry.is_parent),
             ContextAction::NewFolder => true,
             ContextAction::CopyPath => self.can_copy_path,
             ContextAction::CopyName => self.can_copy_name,

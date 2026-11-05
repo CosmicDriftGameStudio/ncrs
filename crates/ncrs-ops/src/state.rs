@@ -109,6 +109,9 @@ pub struct Ops {
     /// Id of the running prompt operation, so a late result cannot land on a
     /// prompt the user already dismissed.
     pub prompt_request_id: u64,
+    /// Id of the latest rename, so the answer of one the user has since
+    /// replaced is dropped.
+    pub rename_request_id: u64,
     /// The delete confirmation dialog, while it is up.
     pub delete_dialog: Option<Deletion>,
     /// The delete that is running.

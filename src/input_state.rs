@@ -55,7 +55,8 @@ impl AltTap {
 pub struct InputState {
     pub pointer: Point,
     pub alt_tap: AltTap,
-    /// The path field is being edited, so Escape and Tab leave it. Kept here
+    /// The path field or the name input of a row is being edited, so Escape
+    /// and Tab leave it (`PathFieldCancel` also ends a rename). Kept here
     /// because the text field captures those keys before the key routing.
     pub path_editing: bool,
     /// The command line has the focus: its text field captures Escape before

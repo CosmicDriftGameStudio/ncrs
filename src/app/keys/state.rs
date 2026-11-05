@@ -59,7 +59,8 @@ impl App {
             .as_ref()
             .is_some_and(ContextMenu::submenu_is_open);
         let quick_fix = self.hermes.quick_fix.is_some();
-        let path_editing = self.panels.path_field.is_some();
+        let path_editing =
+            self.panels.path_field.is_some() || self.panels.renaming_side().is_some();
         let command_line = self.command_line.is_focused();
         let search = self.search_has_keys();
         let hermes_chat = self.hermes_chat.open;

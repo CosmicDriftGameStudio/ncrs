@@ -355,6 +355,54 @@
       "de": "{path} existiert nicht mehr"
     },
     {
+      "key": "error.rename_empty",
+      "context": "Shown under the name input of a row being renamed when the name is empty. Tells the user a name is needed.",
+      "en": "Enter a name",
+      "de": "Gib einen Namen ein"
+    },
+    {
+      "key": "error.rename_dots",
+      "context": "Shown under the name input of a row being renamed when the name is a single dot or two dots, which stand for the current and the parent folder and cannot be names.",
+      "en": "“.” and “..” cannot be used as a name",
+      "de": "„.“ und „..“ können nicht als Name verwendet werden"
+    },
+    {
+      "key": "error.rename_trailing",
+      "context": "Shown under the name input of a row being renamed on Windows when the name ends in a dot or a space. Windows silently cuts those off, so the entry would end up with a different name than typed.",
+      "en": "On Windows a name cannot end in a dot or a space",
+      "de": "Unter Windows darf ein Name nicht mit einem Punkt oder Leerzeichen enden"
+    },
+    {
+      "key": "error.rename_separator",
+      "context": "Shown under the name input of a row being renamed when the name contains a path separator (a slash, on Windows also a backslash). A name is one entry in this folder, not a path.",
+      "en": "A name cannot contain a path separator",
+      "de": "Ein Name darf kein Pfadtrennzeichen enthalten"
+    },
+    {
+      "key": "error.rename_character",
+      "context": "Shown under the name input of a row being renamed when the name contains a character the file system does not allow (on Windows for example a colon or a question mark). Takes the offending character.",
+      "en": "A name cannot contain “{character}”",
+      "de": "Ein Name darf „{character}“ nicht enthalten"
+    },
+    {
+      "key": "error.rename_control",
+      "context": "Shown under the name input of a row being renamed when the name contains an invisible control character (or a NUL byte), which no file system accepts in a name.",
+      "en": "A name cannot contain control characters",
+      "de": "Ein Name darf keine Steuerzeichen enthalten"
+    },
+    {
+      "key": "error.rename_taken",
+      "context": "Shown under the name input of a row being renamed when another file or folder in the same folder already has that name. Nothing is replaced; the input stays open so the user can pick another name.",
+      "en": "A file or folder with this name already exists here",
+      "de": "Hier gibt es schon eine Datei oder einen Ordner mit diesem Namen"
+    },
+    {
+      "key": "error.rename_failed",
+      "context": "Shown when renaming failed for a reason the user could not have predicted — a missing permission, a locked file, a read-only disk. Takes the old name and the OS reason. The name being taken is reported by error.rename_taken instead.",
+      "en": "Could not rename {name}: {reason}",
+      "de": "{name} konnte nicht umbenannt werden: {reason}"
+    },
+    {
       "key": "error.parent_missing",
       "context": "Shown when the panel's own directory no longer exists: it was deleted, renamed or unmounted while the dialog was open. Tells the user the panel is out of date, not that they typed something wrong.",
       "en": "This folder no longer exists",
@@ -563,6 +611,12 @@
       "context": "Entry of the context menu: moves the tagged rows, or the cursor row, into the other panel (key F6). Verb, imperative.",
       "en": "Move",
       "de": "Verschieben"
+    },
+    {
+      "key": "context_menu.rename",
+      "context": "Entry of the context menu: turns the name of the cursor row into an input, so the file or folder can be renamed in place (key Shift+F6). Verb, imperative.",
+      "en": "Rename",
+      "de": "Umbenennen"
     },
     {
       "key": "context_menu.new_folder",
@@ -1343,6 +1397,12 @@
       "context": "Entry of the command palette that runs the key action move. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
       "en": "Move to other panel",
       "de": "In das andere Panel verschieben"
+    },
+    {
+      "key": "action.rename",
+      "context": "Entry of the command palette that runs the key action rename. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it. Verb, imperative.",
+      "en": "Rename",
+      "de": "Umbenennen"
     },
     {
       "key": "action.delete",

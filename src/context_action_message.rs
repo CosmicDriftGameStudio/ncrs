@@ -21,6 +21,7 @@ impl ContextActionMessage for ContextAction {
             ContextAction::Edit => Message::OpenExternal(OpenKind::Edit),
             ContextAction::Copy => Message::Transfer(TransferKind::Copy),
             ContextAction::Move => Message::Transfer(TransferKind::Move),
+            ContextAction::Rename => Message::Panel(PanelMessage::RenameStart),
             ContextAction::NewFolder => Message::CreateDirPrompt,
             ContextAction::CopyPath => Message::CopyToClipboard(ClipboardKind::Path),
             ContextAction::CopyName => Message::CopyToClipboard(ClipboardKind::Name),

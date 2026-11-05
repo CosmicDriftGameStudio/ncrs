@@ -195,6 +195,15 @@ impl App {
                 });
                 Task::batch(tasks)
             }
+            Ask::RenameRefused { from, text } => {
+                self.panels.refuse_rename(&from, text);
+                Task::none()
+            }
+            Ask::RenameEnded {
+                side,
+                from,
+                renamed_to,
+            } => self.end_rename(side, &from, renamed_to),
             Ask::RestartSearch => self.restart_search(),
             Ask::ListTrash => self.list_trash(),
             Ask::CloseQuickOpenAndPalette => {
@@ -207,6 +216,42 @@ impl App {
                 Task::none()
             }
         }
+    }
+
+    /// The name input closes. After a rename the folder is read again with
+    /// the cursor on the new name; the other panel keeps its own cursor.
+    fn end_rename(
+        &mut self,
+        side: PanelSide,
+        from: &Path,
+        renamed_to: Option<PathBuf>,
+    ) -> Task<Message> {
+        self.panels.end_rename_of(from);
+        let Some(to) = renamed_to else {
+            return release_focus();
+        };
+        self.panels.rename_hit(side, from, &to);
+        self.panels.folder_sizes.clear();
+        let name = to
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned());
+        let other = side.other();
+        let own_path = self.panel(side).path.clone();
+        let inside_renamed = self
+            .panel(other)
+            .path
+            .strip_prefix(from)
+            .ok()
+            .map(|rest| to.join(rest));
+        let reload_other = match inside_renamed {
+            Some(moved) => self.load(other, moved, None),
+            None => self.reload_keeping_cursor(other),
+        };
+        Task::batch([
+            release_focus(),
+            self.load(side, own_path, name),
+            reload_other,
+        ])
     }
 
     // --- the trash ---

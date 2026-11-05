@@ -5253,3 +5253,30 @@ mod settings_index_page {
         );
     }
 }
+
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod rename_row {
+    use super::*;
+    use crate::ui_tests::simulator;
+
+    #[test]
+    fn a_refused_name_shows_its_reason_under_the_input() -> Result<(), Box<dyn std::error::Error>> {
+        let app = App::with_fixed_rename_refused();
+        let matches = simulator(&app)
+            .snapshot(&iced::Theme::Dark)?
+            .matches_image("tests/snapshots/rename_refused_en.png")?;
+        if matches {
+            Ok(())
+        } else {
+            Err("the view does not match tests/snapshots/rename_refused_en.png".into())
+        }
+    }
+}

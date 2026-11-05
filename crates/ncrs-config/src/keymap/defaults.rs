@@ -72,6 +72,10 @@ pub fn default_bindings() -> Vec<(KeyAction, Binding)> {
         (A::Edit, Binding::key(KeyNamed(F4))),
         (A::Copy, Binding::key(KeyNamed(F5))),
         (A::Move, Binding::key(KeyNamed(F6))),
+        (
+            A::Rename,
+            Binding::with_modifiers(KeyNamed(F6), Modifiers::SHIFT),
+        ),
         (A::Delete, Binding::key(KeyNamed(F8))),
         // Not advertised: the header has no room, and a key that deletes for
         // good should be found in the help, not stumbled over.

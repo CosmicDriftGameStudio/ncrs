@@ -50,6 +50,7 @@ key_actions! {
     Edit => "edit",
     Copy => "copy",
     Move => "move",
+    Rename => "rename",
     Delete => "delete",
     DeletePermanently => "delete_permanently",
     Trash => "trash",
@@ -189,6 +190,7 @@ impl KeyAction {
             | Self::Paste
             | Self::Mkdir
             | Self::NewFile
+            | Self::Rename
             | Self::Pack
             | Self::QuickOpen
             | Self::CommandLine
@@ -246,7 +248,7 @@ impl KeyAction {
     /// Keys that became defaults after a config could already have given them
     /// to another action: bare F2 in 0.6, Shift+F4, the history keys and
     /// primary+D in 0.7, primary+K in 0.8, primary+C (`copy_files`) and primary+Z
-    /// (`restore_last_deletion`) after 1.0, F12 (`system_monitor`) after the 0.7.0 example config.
+    /// (`restore_last_deletion`) after 1.0, Shift+F6 (`rename`) after 1.2, F12 (`system_monitor`) after the 0.7.0 example config.
     /// Such a config keeps working: its binding wins over the built-in one,
     /// and the action keeps its other keys.
     pub fn yields_its_built_in_key(self) -> bool {
@@ -256,6 +258,7 @@ impl KeyAction {
                 | Self::CommandPalette
                 | Self::HermesChat
                 | Self::NewFile
+                | Self::Rename
                 | Self::HistoryBack
                 | Self::HistoryForward
                 | Self::AddFavourite
@@ -379,6 +382,7 @@ impl KeyAction {
             | Self::View => true,
             Self::Edit
             | Self::Move
+            | Self::Rename
             | Self::Mkdir
             | Self::NewFile
             | Self::Pack
@@ -401,7 +405,7 @@ impl KeyAction {
 
     /// Whether a panel on an SFTP server may run the action. It is what an
     /// archive allows, less the command line, which runs on this computer, and
-    /// plus the actions that connect and disconnect. No catch-all arm: a new
+    /// plus the actions that connect and disconnect and renaming, which SFTP does itself. No catch-all arm: a new
     /// action has to be decided.
     #[cfg(any(test, feature = "test-support"))]
     pub fn allowed_on_server(self) -> bool {
@@ -462,6 +466,7 @@ impl KeyAction {
             | Self::SearchRegex
             | Self::OpenHitsLeft
             | Self::OpenHitsRight
+            | Self::Rename
             | Self::View
             | Self::Copy => true,
             Self::Edit

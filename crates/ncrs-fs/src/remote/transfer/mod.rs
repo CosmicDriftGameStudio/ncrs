@@ -70,6 +70,37 @@ fn ensure_safe(name: &str) -> io::Result<()> {
     }
 }
 
+/// Renames `from` to `new_name` in the same folder on the server and returns
+/// the new place. A name another entry has is refused with `AlreadyExists`.
+/// The protocol's rename (SSH_FXP_RENAME, version 3) has no flag saying
+/// whether to replace, so whether a server refuses an existing target is its
+/// own choice (OpenSSH does; its `posix-rename@openssh.com` extension, which
+/// this does not use, replaces). The check here is made before and is not
+/// atomic with the rename. Runs on a blocking thread.
+pub fn rename(pool: &Pool, from: &RemotePath, new_name: &str) -> io::Result<RemotePath> {
+    ensure_safe(new_name)?;
+    let to = from
+        .parent()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "the root has no name"))?
+        .join(new_name);
+    if to == *from {
+        return Ok(to);
+    }
+    let link = Link::new(pool, from.server())?;
+    if link.lstat(&to)?.is_some() {
+        return Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            "an entry with this name exists",
+        ));
+    }
+    let sftp = link.session.sftp();
+    link.call(
+        link.timeouts.request,
+        sftp.rename(from.remote_str(), to.remote_str()),
+    )?;
+    Ok(to)
+}
+
 /// One connection, used from a blocking thread.
 struct Link<'a> {
     pool: &'a Pool,

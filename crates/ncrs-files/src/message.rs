@@ -95,6 +95,14 @@ pub enum PanelMessage {
     },
     /// Ctrl+F3, Ctrl+F5 or Ctrl+F6: sort the active panel.
     SortActive(SortColumn),
+
+    // --- Renaming in place ---
+    /// Shift+F6: the name of the cursor entry becomes an input.
+    RenameStart,
+    /// A keystroke went to the name input.
+    RenameInput(String),
+    /// Enter in the name input.
+    RenameSubmit,
 }
 
 impl PanelMessage {

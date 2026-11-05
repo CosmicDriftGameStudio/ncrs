@@ -449,7 +449,8 @@ pub struct PromptKeyState {
     pub transfer_dialog: bool,
     /// The progress mask of a transfer is up: Escape stops the job.
     pub transfer_progress: bool,
-    /// The path field is being edited: its keys are the text field's.
+    /// The path field or the name input of a row is being edited: its keys
+    /// are the text field's.
     pub path_editing: bool,
     /// The command line has the focus: its field types, Up and Down walk the history.
     pub command_line: bool,

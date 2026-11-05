@@ -51,6 +51,7 @@ impl KeyActionMessage for KeyAction {
             Self::Edit => Message::OpenExternal(OpenKind::Edit),
             Self::Copy => Message::Transfer(TransferKind::Copy),
             Self::Move => Message::Transfer(TransferKind::Move),
+            Self::Rename => Message::Panel(PanelMessage::RenameStart),
             Self::Delete => Message::Delete { permanent: false },
             Self::DeletePermanently => Message::Delete { permanent: true },
             Self::Mkdir => Message::CreateDirPrompt,
@@ -681,6 +682,19 @@ mod tests {
             Some(Message::OpenExternal(OpenKind::View))
         );
         assert_eq!(press(&keymap, named(Named::F8), Modifiers::SHIFT), None);
+    }
+
+    #[test]
+    fn shift_f6_renames_and_plain_f6_still_moves() {
+        let keymap = rebound("");
+        assert_eq!(
+            press(&keymap, Key::Named(Named::F6), Modifiers::SHIFT),
+            Some(Message::Panel(PanelMessage::RenameStart))
+        );
+        assert_eq!(
+            press(&keymap, Key::Named(Named::F6), Modifiers::default()),
+            Some(Message::Transfer(TransferKind::Move))
+        );
     }
 
     #[test]
