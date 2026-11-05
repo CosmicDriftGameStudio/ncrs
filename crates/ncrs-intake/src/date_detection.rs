@@ -123,9 +123,10 @@ fn is_birth_date(line: &str, start: usize, previous: Option<&str>) -> bool {
     // The label may be followed by a word such as `am`.
     let words: Vec<&str> = near.split_whitespace().collect();
     let tail_from = words.len().saturating_sub(3);
-    (0..=words.len() - tail_from).any(|dropped| {
-        let kept = words.len() - dropped;
-        kept > 0 && ends_with_birth_label(&words[..kept].join(" "))
+    (tail_from.max(1)..=words.len()).any(|kept| {
+        words
+            .get(..kept)
+            .is_some_and(|kept_words| ends_with_birth_label(&kept_words.join(" ")))
     })
 }
 

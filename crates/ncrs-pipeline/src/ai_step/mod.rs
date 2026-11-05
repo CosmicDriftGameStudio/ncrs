@@ -137,7 +137,7 @@ fn is_open(fields: &DocumentFields, field: Field) -> bool {
     }
 }
 
-pub(crate) fn clear_field(fields: &mut DocumentFields, field: Field) {
+pub fn clear_field(fields: &mut DocumentFields, field: Field) {
     match field {
         Field::Sender => fields.sender = None,
         Field::Recipient => fields.recipient = None,

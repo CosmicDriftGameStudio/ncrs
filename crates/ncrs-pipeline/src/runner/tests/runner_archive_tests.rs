@@ -268,11 +268,14 @@ fn a_guessed_date_is_read_again_and_a_date_set_by_hand_stays() {
 
         scan_with_files(&fixture, &location, &calls);
 
-        let index = fixture.index.lock().unwrap();
-        let document = index.document(id).unwrap().unwrap();
+        let reread_index = fixture.index.lock().unwrap();
+        let document = reread_index.document(id).unwrap().unwrap();
         let expected = if replaced { letter.date } else { birth_date };
         assert_eq!(document.fields.date, expected, "{origin:?}");
-        assert_eq!(index.fields_read_version(id).unwrap(), FIELDS_READ_VERSION);
+        assert_eq!(
+            reread_index.fields_read_version(id).unwrap(),
+            FIELDS_READ_VERSION
+        );
     }
 }
 

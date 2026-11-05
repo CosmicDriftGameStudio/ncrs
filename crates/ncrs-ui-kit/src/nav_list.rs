@@ -78,14 +78,14 @@ fn head<'a, M: 'a>(group: &NavGroup<M>, palette: &Palette) -> Element<'a, M> {
 }
 
 fn item_button<'a, M: Clone + 'a>(item: NavItem<M>, palette: &Palette) -> Element<'a, M> {
-    let mut label = row![text(item.label)
+    let mut label_row = row![text(item.label)
         .size(font_size::BODY)
         .color(palette.text)
         .wrapping(Wrapping::None)]
     .spacing(spacing::S)
     .align_y(alignment::Vertical::Center);
     if let Some(suffix) = item.suffix {
-        label = label.push(
+        label_row = label_row.push(
             text(suffix)
                 .size(font_size::SMALL)
                 .color(palette.dim_text)
@@ -93,7 +93,7 @@ fn item_button<'a, M: Clone + 'a>(item: NavItem<M>, palette: &Palette) -> Elemen
         );
     }
     // The label sits at the same x whether the bar is drawn or not.
-    let label = container(label)
+    let label = container(label_row)
         .padding(Padding {
             left: spacing::CELL_PADDING_X,
             ..Padding::ZERO

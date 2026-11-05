@@ -352,17 +352,17 @@ fn company_name(line: &str, aliases: &SenderAliases) -> Option<String> {
     if line.chars().count() > MAX_NAME_LINE_CHARS || line.ends_with(',') || is_register_line(line) {
         return None;
     }
-    let name = line
+    let first_part = line
         .split([',', '\t', '•', '∙', '⋅'])
         .next()
         .unwrap_or_default()
         .trim();
     let name = LETTERHEAD_SEPARATORS
         .iter()
-        .filter_map(|separator| name.find(separator))
+        .filter_map(|separator| first_part.find(separator))
         .min()
-        .and_then(|cut| name.get(..cut))
-        .unwrap_or(name)
+        .and_then(|cut| first_part.get(..cut))
+        .unwrap_or(first_part)
         .trim();
     let is_name = has_legal_form(name)
         || starts_with_authority_word(name)

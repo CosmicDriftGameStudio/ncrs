@@ -275,14 +275,14 @@ fn ocr_section_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub(super) enum AiButton {
+pub enum AiButton {
     Remove,
     /// The model is on disk and only the switch is off.
     TurnOn,
     Load,
 }
 
-pub(super) fn ai_button(ai: &AiState, model_present: bool) -> Option<AiButton> {
+pub fn ai_button(ai: &AiState, model_present: bool) -> Option<AiButton> {
     match ai {
         AiState::Ready | AiState::NextStart => Some(AiButton::Remove),
         AiState::Off if model_present => Some(AiButton::TurnOn),
