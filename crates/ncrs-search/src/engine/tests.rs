@@ -4,9 +4,12 @@ use std::fs;
 struct Outcome {
     /// (path relative to the root, lines), sorted by path.
     files: Vec<(String, Vec<LineMatch>)>,
+    /// Folders found by their name, relative to the root, sorted.
+    folders: Vec<String>,
     matches: usize,
     skipped: usize,
     truncated: bool,
+    totals: SearchTotals,
 }
 
 fn run_compiled(search: CompiledSearch) -> Outcome {
@@ -14,8 +17,13 @@ fn run_compiled(search: CompiledSearch) -> Outcome {
     let (sender, mut receiver) = mpsc::channel(100_000);
     let totals = run_blocking(search, sender);
     let mut files = Vec::new();
+    let mut folders = Vec::new();
     while let Ok(event) = receiver.try_recv() {
         match event {
+            SearchEvent::Folder { path, .. } => {
+                let relative = path.strip_prefix(&root).unwrap().to_string_lossy();
+                folders.push(relative.replace('\\', "/"));
+            }
             SearchEvent::File { path, lines, .. } => {
                 let relative = path.strip_prefix(&root).unwrap().to_string_lossy();
                 files.push((relative.replace('\\', "/"), lines));
@@ -24,11 +32,14 @@ fn run_compiled(search: CompiledSearch) -> Outcome {
         }
     }
     files.sort_by(|a, b| a.0.cmp(&b.0));
+    folders.sort();
     Outcome {
         files,
+        folders,
         matches: totals.matches,
         skipped: totals.skipped,
         truncated: totals.truncated,
+        totals,
     }
 }
 
@@ -381,6 +392,7 @@ async fn spawn_delivers_events_and_a_finish() {
     while let Some(event) = receiver.recv().await {
         match event {
             SearchEvent::File { .. } => found += 1,
+            SearchEvent::Folder { .. } => {}
             SearchEvent::Finished(totals) => {
                 assert_eq!(totals.files, 1);
                 finished = true;
@@ -519,4 +531,132 @@ fn the_path_filter_reports_a_bad_pattern() {
         PathFilter::compile(&query),
         Err(SearchError::Glob { .. })
     ));
+}
+
+fn found_in(outcome: &Outcome) -> (Vec<String>, Vec<String>) {
+    (
+        names(outcome).into_iter().map(str::to_owned).collect(),
+        outcome.folders.clone(),
+    )
+}
+
+fn name_tree() -> tempfile::TempDir {
+    let dir = tree();
+    write(dir.path(), "xx1.md", "needle\n");
+    write(dir.path(), "xx2.md", "hay\n");
+    write(dir.path(), "Report.PDF", "needle\n");
+    write(dir.path(), "sub/xx3.md", "needle\n");
+    write(dir.path(), "sub/note.txt", "needle\n");
+    write(dir.path(), "reports/a.txt", "needle\n");
+    write(dir.path(), "target/xx4.md", "needle\n");
+    dir
+}
+
+#[test]
+fn a_glob_finds_files_at_any_depth() {
+    let dir = name_tree();
+    let (files, folders) = found_in(&run(&name_query(&dir, "xx*.md")));
+    assert_eq!(files, ["sub/xx3.md", "target/xx4.md", "xx1.md", "xx2.md"]);
+    assert!(folders.is_empty());
+}
+
+#[test]
+fn several_patterns_separated_by_semicolons_all_count() {
+    let dir = name_tree();
+    let (files, _) = found_in(&run(&name_query(&dir, "*.pdf; note.txt")));
+    assert_eq!(files, ["Report.PDF", "sub/note.txt"]);
+    let (pdf_and_txt, _) = found_in(&run(&name_query(&dir, "*.pdf; *.txt")));
+    assert_eq!(pdf_and_txt, ["Report.PDF", "reports/a.txt", "sub/note.txt"]);
+}
+
+#[test]
+fn plain_text_is_a_part_of_the_name_whatever_its_case() {
+    let dir = name_tree();
+    let (files, folders) = found_in(&run(&name_query(&dir, "REPORT")));
+    assert_eq!(files, ["Report.PDF"]);
+    assert_eq!(folders, ["reports"]);
+}
+
+#[test]
+fn the_totals_count_folders_apart_from_files() {
+    let dir = name_tree();
+    let outcome = run(&name_query(&dir, "REPORT"));
+    assert_eq!(
+        (outcome.totals.files, outcome.totals.folders),
+        (outcome.files.len(), 1)
+    );
+}
+
+#[test]
+fn folders_are_found_by_their_name() {
+    let dir = name_tree();
+    let (files, folders) = found_in(&run(&name_query(&dir, "su")));
+    assert_eq!(folders, ["sub"]);
+    assert!(files.is_empty());
+    let (_, starting_with_s) = found_in(&run(&name_query(&dir, "s*")));
+    assert_eq!(starting_with_s, ["sub"]);
+}
+
+#[test]
+fn the_exclude_field_leaves_folders_and_files_out_of_a_name_search() {
+    let dir = name_tree();
+    let mut query = name_query(&dir, "xx*");
+    query.exclude = "target/".to_owned();
+    assert_eq!(found_in(&run(&query)).0, ["sub/xx3.md", "xx1.md", "xx2.md"]);
+    let mut folders_query = name_query(&dir, "s");
+    folders_query.exclude = "sub/".to_owned();
+    assert_eq!(found_in(&run(&folders_query)).1, ["reports"]);
+}
+
+#[test]
+fn a_name_and_a_text_find_the_files_with_both() {
+    let dir = name_tree();
+    let query = SearchQuery {
+        include: "xx*.md".to_owned(),
+        ..text_query(&dir, "needle")
+    };
+    let outcome = run(&query);
+    assert_eq!(
+        found_in(&outcome).0,
+        ["sub/xx3.md", "target/xx4.md", "xx1.md"]
+    );
+}
+
+#[test]
+fn a_content_search_finds_no_folders() {
+    let dir = name_tree();
+    let query = SearchQuery {
+        include: "*".to_owned(),
+        ..text_query(&dir, "needle")
+    };
+    let outcome = run(&query);
+    assert!(outcome.folders.is_empty());
+    assert_eq!(found_in(&outcome).0.len(), 6);
+}
+
+#[test]
+fn a_text_without_a_name_searches_every_file() {
+    let dir = name_tree();
+    let outcome = run(&text_query(&dir, "needle"));
+    assert_eq!(
+        found_in(&outcome).0,
+        [
+            "Report.PDF",
+            "reports/a.txt",
+            "sub/note.txt",
+            "sub/xx3.md",
+            "target/xx4.md",
+            "xx1.md"
+        ]
+    );
+    assert!(outcome.folders.is_empty());
+}
+
+#[test]
+fn nothing_asked_is_an_empty_search() {
+    let dir = name_tree();
+    assert_eq!(
+        compile(&name_query(&dir, " ; ")).err(),
+        Some(SearchError::Empty)
+    );
 }

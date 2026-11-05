@@ -46,7 +46,8 @@ pub const HERMES_CELL_GAP: f32 = 12.0;
 /// lay out, and the visible rows use this sum, so a change to any of them moves
 /// both sides together. Adding a header without adding it here would silently
 /// shorten the list.
-pub const CHROME: f32 = size::STATUS_BAR + FKEYBAR_HEIGHT + size::COMMAND_LINE + size::TITLE_BAR + size::COLUMN_HEADER;
+pub const CHROME: f32 =
+    size::STATUS_BAR + FKEYBAR_HEIGHT + size::COMMAND_LINE + size::TITLE_BAR + size::COLUMN_HEADER;
 
 /// The three fields and the summary line of the search view, above the result
 /// rows. Fixed, like the column header it replaces.
@@ -55,15 +56,23 @@ pub const SEARCH_HEADER_HEIGHT: f32 = 124.0 + SEARCH_HIT_ROW_HEIGHT + 4.0;
 pub const SEARCH_HIT_ROW_HEIGHT: f32 = 28.0;
 /// What the filter row, its hint and the taller summary row add to the header.
 pub const SEARCH_FILTER_EXTRA_HEIGHT: f32 = 64.0;
+/// What the field for the text in files, with its toggles, adds to the header.
+pub const SEARCH_CONTENT_EXTRA_HEIGHT: f32 = 32.0;
 
 /// The height of the search header: with filters, their row, hint and the
-/// taller summary row come on top.
-pub fn search_header_height(filtered: bool) -> f32 {
-    if filtered {
-        SEARCH_HEADER_HEIGHT + SEARCH_FILTER_EXTRA_HEIGHT
+/// taller summary row come on top; searching in files adds its field.
+pub fn search_header_height(filtered: bool, in_files: bool) -> f32 {
+    let filters = if filtered {
+        SEARCH_FILTER_EXTRA_HEIGHT
     } else {
-        SEARCH_HEADER_HEIGHT
-    }
+        0.0
+    };
+    let content = if in_files {
+        SEARCH_CONTENT_EXTRA_HEIGHT
+    } else {
+        0.0
+    };
+    SEARCH_HEADER_HEIGHT + filters + content
 }
 
 /// Rows of a hit list that fit where `normal_rows` folder rows fit.
@@ -74,8 +83,8 @@ pub fn hit_list_rows(normal_rows: usize) -> usize {
 /// Number of result rows of `row_height` that fit into the search view: the
 /// panel's room, less the difference between the search header and the column
 /// header.
-pub fn search_visible_rows(window: Size, filtered: bool, row_height: f32) -> usize {
-    let header = search_header_height(filtered);
+pub fn search_visible_rows(window: Size, filtered: bool, in_files: bool, row_height: f32) -> usize {
+    let header = search_header_height(filtered, in_files);
     let rows = ((window.height - CHROME - header) / row_height).floor();
     (rows as isize).max(1) as usize
 }

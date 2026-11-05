@@ -104,7 +104,7 @@ impl App {
         }
         let hits = ncrs_files::hit_list_flow::Hits {
             paths: view.results.iter().map(|file| file.path.clone()).collect(),
-            query: view.query.trim().to_owned(),
+            query: view.hit_list_title(),
             scope: view.root.clone(),
         };
         let origin = self.search.side;

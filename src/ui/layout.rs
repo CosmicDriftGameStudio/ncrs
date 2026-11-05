@@ -80,19 +80,25 @@ mod tests {
     fn the_search_view_gives_its_header_and_its_row_height_the_rows_they_need() {
         let window = Size::new(1200.0, 760.0);
         // (634 - 156) / 44 = 10.9 and (634 - 156) / 66 = 7.2
-        assert_eq!(search_visible_rows(window, false, HIT_LIST_ROW_HEIGHT), 10);
         assert_eq!(
-            search_visible_rows(window, false, SEARCH_CONTENT_ROW_HEIGHT),
+            search_visible_rows(window, false, false, HIT_LIST_ROW_HEIGHT),
+            10
+        );
+        assert_eq!(
+            search_visible_rows(window, false, false, SEARCH_CONTENT_ROW_HEIGHT),
             7
         );
         // (634 - 220) / 44 = 9.4 and (634 - 220) / 66 = 6.3
-        assert_eq!(search_visible_rows(window, true, HIT_LIST_ROW_HEIGHT), 9);
         assert_eq!(
-            search_visible_rows(window, true, SEARCH_CONTENT_ROW_HEIGHT),
+            search_visible_rows(window, true, false, HIT_LIST_ROW_HEIGHT),
+            9
+        );
+        assert_eq!(
+            search_visible_rows(window, true, false, SEARCH_CONTENT_ROW_HEIGHT),
             6
         );
         assert_eq!(
-            search_visible_rows(Size::new(1200.0, 10.0), false, HIT_LIST_ROW_HEIGHT),
+            search_visible_rows(Size::new(1200.0, 10.0), false, false, HIT_LIST_ROW_HEIGHT),
             1
         );
     }

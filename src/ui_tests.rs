@@ -2364,7 +2364,7 @@ pub mod search_filters_card {
 
         let view = app.search_for_test().unwrap();
         assert_eq!(view.results.len(), 4);
-        assert!(shows(&app, "Files: 4 · Lines: 4"));
+        assert!(shows(&app, "Found by name and content: 4 files · 4 lines"));
         assert!(shows(&app, " · Sum 412.80 EUR"));
         assert!(shows(&app, "Save as report"));
         assert!(shows(
@@ -2434,12 +2434,12 @@ pub mod search_filters_card {
         let mut app = app_with_filters();
         let rows = app.search_rows_for_test();
         let view = app.search_for_test_mut().unwrap();
-        view.include = "*-03.pdf".to_owned();
+        view.names = "*-03.pdf".to_owned();
 
         view.mirror_index(rows);
 
         assert_eq!(view.results.len(), 1);
-        view.include = String::new();
+        view.names = String::new();
         view.exclude = "*-0[12].pdf".to_owned();
         view.mirror_index(rows);
         assert_eq!(view.results.len(), 2);

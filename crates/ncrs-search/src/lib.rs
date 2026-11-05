@@ -21,4 +21,4 @@ pub use keys::{search_key, SearchKey, SearchKeyFacts};
 pub use message::SearchMessage;
 pub use state::{search_events, Search};
 pub use update::{activates_panel, needs_keys, update};
-pub use view::{field_id, title, view, QUERY_ID};
+pub use view::{field_id, title, view, NAMES_ID, QUERY_ID};

@@ -52,10 +52,11 @@ impl App {
     pub(in crate::app) fn hit_line(&self) -> Option<statusbar::HitLine> {
         let panel = self.active_panel();
         let list = panel.hit_list.as_ref()?;
-        let count = panel.entries.len();
+        let folders = panel.entries.iter().filter(|entry| entry.is_dir).count();
+        let counts = (panel.entries.len() - folders, folders);
         let scope = titlebar::tab_label(&list.scope, &self.home, false, usize::MAX);
         Some(statusbar::HitLine {
-            text: ncrs_files::hit_list_flow::hit_line_text(self.lang, list, count, &scope),
+            text: ncrs_files::hit_list_flow::hit_line_text(self.lang, list, counts, &scope),
             back_key: "Esc".to_owned(),
             back_label: self.lang.text(Msg::HitListBackHint).to_owned(),
         })

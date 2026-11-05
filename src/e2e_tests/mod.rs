@@ -2671,6 +2671,7 @@ mod search_view {
             session.app.search_is_open_for_test(),
             "Alt+F7 opened nothing"
         );
+        session.send(Message::Search(ncrs_search::SearchMessage::ToggleInFiles));
         session.type_text("hello");
 
         let view = session.app.search_for_test().expect("the search view");

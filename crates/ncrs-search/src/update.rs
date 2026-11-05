@@ -7,7 +7,7 @@ use crate::ctx::Ctx;
 use crate::filters::SearchFilters;
 use crate::message::SearchMessage;
 use crate::state::Search;
-use crate::view::QUERY_ID;
+use crate::view::{field_id, NAMES_ID, QUERY_ID};
 use crate::view_state::SearchField;
 
 /// Tagging comes from the keys only, and the keys are the panel's when the
@@ -60,10 +60,21 @@ pub fn update(
             view.focused = SearchField::Query;
             only(search.schedule())
         }
-        SearchMessage::IncludeChanged(text) => {
-            view.include = text;
-            view.focused = SearchField::Include;
+        SearchMessage::NamesChanged(text) => {
+            view.names = text;
+            view.focused = SearchField::Names;
             only(search.schedule())
+        }
+        SearchMessage::ToggleInFiles => {
+            view.in_files = !view.in_files;
+            view.focused = if view.in_files {
+                SearchField::Query
+            } else {
+                SearchField::Names
+            };
+            let focus = operation::focus(field_id(view.focused));
+            search.refresh_rows(ctx);
+            only(Task::batch([search.schedule(), focus]))
         }
         SearchMessage::ExcludeChanged(text) => {
             view.exclude = text;
@@ -71,10 +82,15 @@ pub fn update(
             only(search.schedule())
         }
         SearchMessage::AppendToQuery(typed) => {
-            view.query.push_str(&typed);
-            view.focused = SearchField::Query;
+            let id = if view.in_files && view.focused == SearchField::Query {
+                view.query.push_str(&typed);
+                QUERY_ID
+            } else {
+                view.names.push_str(&typed);
+                view.focused = SearchField::Names;
+                NAMES_ID
+            };
             let scheduled = search.schedule();
-            let id = QUERY_ID;
             only(Task::batch([
                 scheduled,
                 operation::focus(id).chain(operation::move_cursor_to_end(id)),

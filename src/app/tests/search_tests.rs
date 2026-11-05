@@ -213,14 +213,17 @@ fn a_batch_of_an_older_search_is_dropped() {
 fn the_visible_rows_follow_the_row_height_of_the_kind_of_search() {
     let mut app = App::with_fixed_panels();
     drop(app.update(Message::OpenSearch));
-    let rows_of =
-        |current: &App, height| layout::search_visible_rows(current.window_size, false, height);
+    let rows_of = |current: &App, height| {
+        let in_files = current.search_for_test().unwrap().in_files;
+        layout::search_visible_rows(current.window_size, false, in_files, height)
+    };
     assert_eq!(
         app.search_rows_for_test(),
         rows_of(&app, layout::HIT_LIST_ROW_HEIGHT),
         "file names only: two lines"
     );
 
+    drop(app.update(Message::Search(SearchMessage::ToggleInFiles)));
     drop(app.update(Message::Search(SearchMessage::QueryChanged(
         "x".to_string(),
     ))));
@@ -573,14 +576,14 @@ fn opening_the_search_again_brings_the_keys_back_without_changing_the_field() {
     let mut app = App::with_fixed_panels();
     drop(app.update(Message::OpenSearch));
     drop(app.update(Message::OpenSearch));
-    assert_eq!(app.search_for_test().unwrap().focused, SearchField::Include);
+    assert_eq!(app.search_for_test().unwrap().focused, SearchField::Exclude);
     drop(app.update(Message::Panel(PanelMessage::SwitchPanel)));
     assert!(!app.prompt_key_state().search);
 
     drop(app.update(Message::OpenSearch));
 
     assert!(app.prompt_key_state().search);
-    assert_eq!(app.search_for_test().unwrap().focused, SearchField::Include);
+    assert_eq!(app.search_for_test().unwrap().focused, SearchField::Exclude);
 }
 
 #[test]
@@ -607,10 +610,22 @@ fn using_the_search_makes_its_panel_active_again() {
 fn pressing_the_search_key_again_moves_to_the_next_field() {
     let mut app = App::with_fixed_panels();
     drop(app.update(Message::OpenSearch));
-    assert_eq!(app.search_for_test().unwrap().focused, SearchField::Query);
+    assert_eq!(app.search_for_test().unwrap().focused, SearchField::Names);
     drop(app.update(Message::OpenSearch));
-    assert_eq!(app.search_for_test().unwrap().focused, SearchField::Include);
+    assert_eq!(app.search_for_test().unwrap().focused, SearchField::Exclude);
     drop(app.update(Message::OpenSearch));
+    assert_eq!(app.search_for_test().unwrap().focused, SearchField::Names);
+}
+
+#[test]
+fn the_search_key_visits_the_text_field_while_the_box_is_ticked() {
+    let mut app = App::with_fixed_panels();
+    drop(app.update(Message::OpenSearch));
+    drop(app.update(Message::Search(SearchMessage::ToggleInFiles)));
+    drop(app.update(Message::OpenSearch));
+    assert_eq!(app.search_for_test().unwrap().focused, SearchField::Exclude);
+    drop(app.update(Message::OpenSearch));
+    assert_eq!(app.search_for_test().unwrap().focused, SearchField::Names);
     drop(app.update(Message::OpenSearch));
     assert_eq!(app.search_for_test().unwrap().focused, SearchField::Query);
 }
@@ -618,6 +633,7 @@ fn pressing_the_search_key_again_moves_to_the_next_field() {
 #[test]
 fn reopening_searches_again_with_the_same_fields() {
     let mut app = app_with_results(&[("/home/test/links/a.txt", &[1])]);
+    app.search_for_test_mut().unwrap().in_files = true;
     drop(app.update(Message::Search(SearchMessage::QueryChanged(
         "line".to_string(),
     ))));

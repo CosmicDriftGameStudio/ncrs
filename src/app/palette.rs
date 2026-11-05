@@ -5,7 +5,9 @@ fn quick_open_batch(generation: u64, events: Vec<fs::search::SearchEvent>) -> Me
         .into_iter()
         .filter_map(|event| match event {
             fs::search::SearchEvent::File { path, .. } => Some(WalkEvent::File { path }),
-            fs::search::SearchEvent::Progress { .. } => None,
+            fs::search::SearchEvent::Folder { .. } | fs::search::SearchEvent::Progress { .. } => {
+                None
+            }
             fs::search::SearchEvent::Finished(totals) => Some(WalkEvent::Finished {
                 truncated: totals.truncated,
             }),

@@ -932,15 +932,9 @@
     },
     {
       "key": "search.query_placeholder",
-      "context": "Placeholder of the search text field at the top of the search view, shown while it is empty. A short verb or noun.",
+      "context": "Placeholder of the text field in the search view that appears when the box \"Search in files\" is ticked, shown while it is empty. It takes the text to find inside the files. A short verb or noun.",
       "en": "Text in files",
       "de": "Text in Dateien"
-    },
-    {
-      "key": "search.files_label",
-      "context": "Label in front of the field that limits the search to file names matching patterns (the include field). Ends with a colon, kept short: the label column is narrow.",
-      "en": "File names:",
-      "de": "Dateinamen:"
     },
     {
       "key": "search.exclude_label",
@@ -949,10 +943,16 @@
       "de": "Ohne:"
     },
     {
-      "key": "search.include_placeholder",
-      "context": "Placeholder of the Files field in the search view: an example of patterns separated by semicolons. Patterns are globs, a trailing slash means a directory.",
-      "en": "e.g. *.rs; src/",
-      "de": "z. B. *.rs; src/"
+      "key": "search.names_placeholder",
+      "context": "Placeholder of the first field of the search view, shown while it is empty. It takes names of files and folders: part of a name as plain text, or patterns with * and ? separated by semicolons (a * stands for any characters). A short example, no sentence.",
+      "en": "Name, e.g. invoice or *.pdf; xx*.md",
+      "de": "Name, z. B. Rechnung oder *.pdf; xx*.md"
+    },
+    {
+      "key": "search.in_files_label",
+      "context": "Label of the checkbox below the name field of the search view. Ticked, a second field appears for text to find inside the files, and only files whose name matches and whose content has that text are found. Short, like a checkbox label.",
+      "en": "Search in files",
+      "de": "In Dateien suchen"
     },
     {
       "key": "search.exclude_placeholder",
@@ -980,15 +980,15 @@
     },
     {
       "key": "search.summary_content",
-      "context": "Summary line of a search in file contents, under the search fields. Takes the number of files with a match and the number of matching lines.",
-      "en": "Files: {files} · Lines: {lines}",
-      "de": "Dateien: {files} · Zeilen: {lines}"
+      "context": "Summary line of a search by name and content (the box \"Search in files\" is ticked and a text is given), under the search fields. Takes the number of files with a matching name and the text in them, and the number of matching lines.",
+      "en": "Found by name and content: {files} files · {lines} lines",
+      "de": "Nach Name und Inhalt gefunden: {files} Dateien · {lines} Zeilen"
     },
     {
       "key": "search.summary_names",
-      "context": "Summary line of a search by file name only (the search field is empty), under the search fields. Takes the number of files found.",
-      "en": "Files: {files}",
-      "de": "Dateien: {files}"
+      "context": "Summary line of a search by name only, under the search fields. {files} and {folders} are the counted parts with their noun, for example '3 files' and '1 folder'.",
+      "en": "Found by name: {files}, {folders}",
+      "de": "Nach Name gefunden: {files}, {folders}"
     },
     {
       "key": "search.skipped",
@@ -1022,9 +1022,15 @@
     },
     {
       "key": "search.hint",
-      "context": "Summary line of the search view while both the search field and the Files field are empty: tells what typing does.",
-      "en": "Type to search file contents, or fill in File names for a name search",
-      "de": "Tippen sucht in Dateiinhalten, nur „Dateinamen“ ausgefüllt sucht nach Namen"
+      "context": "Hint of the search view while nothing is asked and the box \"Search in files\" is not ticked: tells what typing does. Files and folders are searched by name.",
+      "en": "Type part of a name or a pattern like *.pdf to find files and folders by name",
+      "de": "Teil eines Namens oder ein Muster wie *.pdf tippen, um Dateien und Ordner nach Namen zu finden"
+    },
+    {
+      "key": "search.hint_in_files",
+      "context": "Hint of the search view while nothing is asked and the box \"Search in files\" is ticked: tells what typing does. Only files are searched, folders have no content.",
+      "en": "Type text to find in files; a name or pattern above narrows down which files",
+      "de": "Text tippen, der in Dateien gesucht wird; ein Name oder Muster oben grenzt die Dateien ein"
     },
     {
       "key": "search.error_pattern",
@@ -6025,16 +6031,10 @@
       "de": "Suchergebnis: {query}"
     },
     {
-      "key": "hit_list.path_bar_many",
-      "context": "Line at the place of the folder path above the status bar while a panel shows search hits. {query} is the search text, {scope} the folder searched (with ~ for home), {count} the number of files in the list (two or more).",
-      "en": "Search result “{query}” in {scope} · {count} files",
-      "de": "Suchergebnis „{query}“ in {scope} · {count} Dateien"
-    },
-    {
-      "key": "hit_list.path_bar_one",
-      "context": "Like hit_list.path_bar_many, for a list with exactly one file.",
-      "en": "Search result “{query}” in {scope} · 1 file",
-      "de": "Suchergebnis „{query}“ in {scope} · 1 Datei"
+      "key": "hit_list.path_bar",
+      "context": "Line at the place of the folder path above the status bar while a panel shows search hits. {query} is the search text, {scope} the folder searched (with ~ for home), {files} and {folders} the counted parts of the list with their noun, for example '3 files' and '1 folder'.",
+      "en": "Search result “{query}” in {scope} · {files}, {folders}",
+      "de": "Suchergebnis „{query}“ in {scope} · {files}, {folders}"
     },
     {
       "key": "hit_list.back_hint",

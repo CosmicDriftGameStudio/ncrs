@@ -40,7 +40,9 @@ fn searched(names: &[&str]) -> Hits {
         generation,
         events,
     })));
-    app.search.view.as_mut().unwrap().query = "needle".to_owned();
+    let view = app.search.view.as_mut().unwrap();
+    view.query = "needle".to_owned();
+    view.in_files = true;
     Hits { app, folder, files }
 }
 

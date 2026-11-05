@@ -20,7 +20,7 @@ impl Search {
     /// pressed again.
     pub fn focus_next_field(&mut self) {
         if let Some(view) = self.view.as_mut() {
-            view.focused = view.focused.next();
+            view.next_field();
         }
     }
 
@@ -43,11 +43,17 @@ impl Search {
         };
     }
 
-    /// The query is the words typed in the box that asked.
+    /// The words typed in the box that asked, or the words of a report: they
+    /// are searched in the files. Without words only the names are searched.
     pub fn set_query(&mut self, text: String) {
         if let Some(view) = self.view.as_mut() {
+            view.in_files = !text.is_empty();
+            view.focused = if view.in_files {
+                SearchField::Query
+            } else {
+                SearchField::Names
+            };
             view.query = text;
-            view.focused = SearchField::Query;
         }
     }
 
@@ -85,5 +91,56 @@ impl Search {
         };
         let relative = path.strip_prefix(&view.root).unwrap_or(&path);
         Some(relative.display().to_string())
+    }
+}
+
+// reason: a failing assertion is the signal in a test
+#[allow(clippy::unwrap_used)]
+#[cfg(test)]
+mod tests {
+    use iced::Size;
+
+    use super::*;
+
+    fn search_with_view() -> Search {
+        let mut search = Search::new(Size::new(1200.0, 800.0));
+        search.view = Some(SearchView::new(PathBuf::from("/root")));
+        search
+    }
+
+    #[test]
+    fn the_text_of_an_old_report_becomes_the_text_in_files() {
+        let mut search = search_with_view();
+        let spec = QuerySpec {
+            full_text: Some("invoice".to_owned()),
+            ..QuerySpec::default()
+        };
+        search.start_from(&spec, None);
+        let view = search.view.unwrap();
+        assert_eq!(view.query, "invoice");
+        assert!(view.in_files);
+        assert_eq!(view.focused, SearchField::Query);
+        assert_eq!(view.content_text(), "invoice");
+    }
+
+    #[test]
+    fn a_report_without_text_searches_names_only() {
+        let mut search = search_with_view();
+        if let Some(view) = search.view.as_mut() {
+            view.in_files = true;
+        }
+        search.start_from(&QuerySpec::default(), None);
+        let view = search.view.unwrap();
+        assert!(!view.in_files);
+        assert_eq!(view.focused, SearchField::Names);
+    }
+
+    #[test]
+    fn words_typed_in_the_box_are_searched_in_the_files() {
+        let mut search = search_with_view();
+        search.set_query("words".to_owned());
+        let view = search.view.unwrap();
+        assert!(view.in_files);
+        assert_eq!(view.query, "words");
     }
 }

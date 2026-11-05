@@ -560,12 +560,14 @@ impl App {
         let totals = SearchTotals {
             scanned: 14,
             files: files.len(),
+            folders: 0,
             matches: files.iter().map(|(_, lines)| lines.len()).sum(),
             skipped: 0,
             truncated: false,
         };
         if let Some(view) = self.search.view.as_mut() {
             view.query = query.to_string();
+            view.in_files = true;
             view.begin(1);
             for (entry, lines) in files {
                 view.apply_event(SearchEvent::File {

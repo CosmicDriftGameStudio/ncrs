@@ -116,6 +116,7 @@ impl App {
         let rows = app.search.rows;
         if let Some(view) = app.search.view.as_mut() {
             view.query = query.to_owned();
+            view.in_files = true;
             view.filters = Some(hits_below(&root));
             view.mirror_index(rows);
         }
