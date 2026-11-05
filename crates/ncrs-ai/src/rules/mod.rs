@@ -5,6 +5,7 @@
 //! rendering it, never by comparing text.
 
 mod annotate;
+#[cfg(test)]
 mod fixtures;
 mod grammar;
 mod levels;

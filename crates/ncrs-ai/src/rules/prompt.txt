@@ -9,18 +9,21 @@ A level is {"teile":[...],"trenner":"..."}: one to four parts, joined by the sep
 - Every folder the user names is one level of "ordner": "ein Ordner pro Jahr, darin ein Ordner pro Monat" is two levels, year and then month.
 - "datei" is null unless the user describes the file name ("Dateiname", "file name", "named", "called", "benannt"). If only the file name is described, "ordner" is [].
 - Every field the user names is its placeholder ("Nummer" is number, "Tag des Monats" is day, "Dokumentart" is kind), never plain text. Use a fixed text only where the user asks for a fixed word, and no more and no fewer fields than the user names.
-- DEFAULT: if the user says nothing about the structure (no folders and no file name described), the rule files at Bereich / year / date_sender_kind: "ordner" has two levels, first the fixed text Bereich and then year, and "datei" is the placeholders date, sender and kind with the separator "_". Bereich is the fixed word of the sentence where the documents go ("kommen nach Bank": Bank); if the sentence names none, it is the placeholder kind.
+- sender is who wrote the document ("von", "from", "Absender"); recipient is whom it is addressed to ("an", "to", "Empfänger").
+- DEFAULT: a sentence with no word about folders, a file name, year, month or date ("kommen nach Bank", "go to Tax") gets exactly this, with the place as Bereich (datei is NOT null here):
+"ordner":[{"teile":[{"fest":"Bereich"}],"trenner":""},{"teile":["year"],"trenner":""}],"datei":{"teile":["date","sender","kind"],"trenner":"_"}
+If the sentence names no place, Bereich is the placeholder kind.
 
 CONDITIONS
 A condition is {"kind":...,"value":...,"not":true|false}. The kinds:
 @CONDITIONS@
-"not":true means the condition must not hold. "match":"all" means every condition must hold, "match":"any" means at least one.
-Copy names, domains, numbers and folders exactly as the user wrote them.
+"not":true means the condition must not hold. "match":"any" if the user says "oder", "or", "entweder", "either" (at least one condition holds), otherwise "all" ("und", "and", "mit", "with", or one condition).
+Copy names, domains, numbers and folders exactly as the user wrote them. Only what the user states as a condition is one: the place the documents go to ("kommen nach Steuer", "go to Bank") is never a condition. A domain after "von"/"from" is sender_address, a name is sender.
 
 TASKS
 The user message starts with the task.
 TASK generate: a description follows. Answer {"match":"all"|"any","conditions":[...],"ordner":[...],"datei":...}.
-TASK recognize: the paths of filed documents follow. Under each path stand its levels, and behind a level the fields of that document that its text is ("= sender") or contains ("contains date, sender"). That only matches text; you decide. Answer {"ordner":[...],"datei":...}. The folders of the path become the levels of "ordner", one level each. A level that contains several fields is one level with several parts and the separator between them. A text that is no field and is the same in every path is a fixed text. If the last level is "the automatic file name", "datei" is null. Otherwise "datei" is the level of the last path level, without the file extension.
+TASK recognize: the paths of filed documents follow. Under each path stand its levels, and behind a level the fields of that document that its text is ("= sender") or contains ("contains date, sender"). That only matches text; you decide. Answer {"ordner":[...],"datei":...}. The last level of a path is the file name, never a folder: the levels before it become the levels of "ordner", one level each. A level that contains several fields is one level with several parts and the separator between them. A text that is no field and is the same in every path is a fixed text. If the last level is "the automatic file name", "datei" is null. Otherwise "datei" is the level of the last path level, without the file extension.
 
 EXAMPLES
 TASK generate
@@ -31,10 +34,6 @@ TASK generate
 Everything that contains the word insurance or has the tag tax is filed under a file named like the sender, an underscore, the word Tax and the year.
 @REMIND_GENERATE@
 {"match":"any","conditions":[{"kind":"word","value":"insurance","not":false},{"kind":"tag","value":"tax","not":false}],"pattern":"{sender}_Tax_{year}"}
-TASK generate
-Alles mit der Steuernummer 99/111/22220 soll in einen Ordner Belege, darunter Ordner nach Monat und darunter Ordner nach Absender.
-@REMIND_GENERATE@
-{"match":"all","conditions":[{"kind":"tax_id","value":"99/111/22220","not":false}],"pattern":"Belege/{month}/{sender}/"}
 TASK generate
 Dokumente aus dem Ordner Scans, die nicht von der Sparkasse kommen, bekommen einen Ordner je Empfänger und darunter einen Ordner Post.
 @REMIND_GENERATE@
