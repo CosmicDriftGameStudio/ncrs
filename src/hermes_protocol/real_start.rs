@@ -561,39 +561,50 @@ fn a_folder_the_user_names(root: &Path, source: &Path, models: Option<&PathBuf>)
     result_of(&session, &data);
 }
 
-#[test]
-fn a_cancelled_folder_dialog_leaves_a_way_on() {
-    let scratch = tempfile::tempdir().unwrap();
-    let data = scratch.path();
-    std::fs::write(data.join("config.toml"), FILING_ONLY).unwrap();
-    drop(ncrs_index::Index::create_plain(&data.join("index.db")).unwrap());
-    let mut session = boot(data, empty_store());
-    pump_for(&mut session, Duration::from_secs(20), is_ready);
-    session.send(Message::HermesChat(ChatMessage::Open));
+/// Named so CI's GPU-only run skips them with the other sessions: a session
+/// needs a renderer, and a runner has no GPU.
+mod e2e_tests {
+    use std::time::Duration;
 
-    session.send(Message::HermesChat(ChatMessage::ChipPressed {
-        label: "Other folder …".to_owned(),
-        reply: ChipReply::PickFolder,
-    }));
-    pump_for(&mut session, Duration::from_secs(1), |_| false);
+    use ncrs_hermes_chat::{ChipReply, Message as ChatMessage};
 
-    assert!(!chat(&session.app).chips().is_empty());
-}
+    use super::{boot, chat, empty_store, is_ready, phase_name, pump_for, FILING_AI, FILING_ONLY};
+    use crate::messages::Message;
 
-/// A missing model used to open its window at the start, and F2 did nothing
-/// behind it. The chat offers the download itself.
-#[test]
-fn a_missing_model_leaves_f2_to_the_chat() {
-    let scratch = tempfile::tempdir().unwrap();
-    let data = scratch.path();
-    std::fs::write(data.join("config.toml"), FILING_AI).unwrap();
-    drop(ncrs_index::Index::create_plain(&data.join("index.db")).unwrap());
-    let mut session = boot(data, empty_store());
-    pump_for(&mut session, Duration::from_secs(20), is_ready);
-    assert!(is_ready(&session.app), "{}", phase_name(&session.app));
+    #[test]
+    fn a_cancelled_folder_dialog_leaves_a_way_on() {
+        let scratch = tempfile::tempdir().unwrap();
+        let data = scratch.path();
+        std::fs::write(data.join("config.toml"), FILING_ONLY).unwrap();
+        drop(ncrs_index::Index::create_plain(&data.join("index.db")).unwrap());
+        let mut session = boot(data, empty_store());
+        pump_for(&mut session, Duration::from_secs(20), is_ready);
+        session.send(Message::HermesChat(ChatMessage::Open));
 
-    session.send(Message::HermesChat(ChatMessage::Open));
+        session.send(Message::HermesChat(ChatMessage::ChipPressed {
+            label: "Other folder …".to_owned(),
+            reply: ChipReply::PickFolder,
+        }));
+        pump_for(&mut session, Duration::from_secs(1), |_| false);
 
-    assert!(chat(&session.app).open);
-    assert!(!chat(&session.app).thread().is_empty());
+        assert!(!chat(&session.app).chips().is_empty());
+    }
+
+    /// A missing model used to open its window at the start, and F2 did nothing
+    /// behind it. The chat offers the download itself.
+    #[test]
+    fn a_missing_model_leaves_f2_to_the_chat() {
+        let scratch = tempfile::tempdir().unwrap();
+        let data = scratch.path();
+        std::fs::write(data.join("config.toml"), FILING_AI).unwrap();
+        drop(ncrs_index::Index::create_plain(&data.join("index.db")).unwrap());
+        let mut session = boot(data, empty_store());
+        pump_for(&mut session, Duration::from_secs(20), is_ready);
+        assert!(is_ready(&session.app), "{}", phase_name(&session.app));
+
+        session.send(Message::HermesChat(ChatMessage::Open));
+
+        assert!(chat(&session.app).open);
+        assert!(!chat(&session.app).thread().is_empty());
+    }
 }
