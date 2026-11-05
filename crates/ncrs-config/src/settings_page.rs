@@ -81,8 +81,8 @@ mod tests {
         assert_eq!(
             SettingsFeature::ALL,
             [
-                Look, Language, Keys, System, Programs, Servers, Index, ReadErrors, Reports, Hermes,
-                Rules, Tags
+                Look, Language, Keys, System, Programs, Servers, Index, ReadErrors, Reports,
+                Hermes, Rules, Tags
             ]
         );
         let expected = [
