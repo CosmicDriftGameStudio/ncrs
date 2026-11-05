@@ -9,11 +9,17 @@
 //!
 //! On Windows the icon (assets/ncrs.ico) and the version info (the Details tab
 //! of the file's properties) are compiled into ncrs.exe.
+//!
+//! `NCRS_DISPLAY_VERSION` is the version the status bar shows: the plain
+//! version for a build of its release tag or outside git, otherwise
+//! `<version>-dev+<short commit>`.
 
 use std::env;
+use std::process::Command;
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rustc-env=NCRS_DISPLAY_VERSION={}", display_version());
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     if target_os == "windows" {
         embed_windows_resources();
@@ -27,6 +33,38 @@ fn main() {
         // because some linkers default to new dtags.
         println!("cargo:rustc-link-arg-bins=-Wl,--disable-new-dtags");
         println!("cargo:rustc-link-arg-bins=-Wl,-rpath,$ORIGIN");
+    }
+}
+
+fn git(args: &[&str]) -> Option<String> {
+    let output = Command::new("git").args(args).output().ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
+}
+
+fn display_version() -> String {
+    let version = env::var("CARGO_PKG_VERSION").unwrap_or_default();
+    // The HEAD reflog changes with every commit and checkout, the tag refs
+    // when a built commit is tagged, so the version follows both without
+    // rebuilding on every file change. A path that does not exist would make
+    // cargo rerun this script on every build.
+    for git_path in ["logs/HEAD", "refs/tags", "packed-refs"] {
+        if let Some(path) = git(&["rev-parse", "--git-path", git_path]) {
+            if std::path::Path::new(&path).exists() {
+                println!("cargo:rerun-if-changed={path}");
+            }
+        }
+    }
+    let release_tag = format!("v{version}");
+    let tags_at_head = git(&["tag", "--points-at", "HEAD"]).unwrap_or_default();
+    if tags_at_head.lines().any(|tag| tag == release_tag) {
+        return version;
+    }
+    match git(&["rev-parse", "--short", "HEAD"]) {
+        Some(commit) => format!("{version}-dev+{commit}"),
+        None => version,
     }
 }
 

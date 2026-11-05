@@ -480,7 +480,7 @@ impl App {
             install_theme: ncrs_settings::theme_fetch::install::install_picked_theme,
             about: None,
             find_third_party_licenses: crate::about::installed_third_party_licenses,
-            app_version: env!("CARGO_PKG_VERSION"),
+            app_version: env!("NCRS_DISPLAY_VERSION"),
             download_ocr_models: download_models,
             download_ai_model,
             grant_dialog: false,
