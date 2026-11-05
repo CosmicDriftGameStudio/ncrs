@@ -15,6 +15,8 @@ pub use json::Json;
 mod local;
 mod model_file;
 mod prompt;
+#[cfg(any(test, feature = "llama"))]
+mod rules;
 mod status;
 #[cfg(any(test, feature = "testing"))]
 mod testing;
@@ -35,11 +37,15 @@ pub use http::{
     Secret, MAX_REPLY_BYTES,
 };
 #[cfg(feature = "llama")]
-pub use local::{check_local_model, LazyLocalModel, LocalCheck, LocalModel, LocalModelConfig};
+pub use local::{
+    check_local_model, LazyLocalModel, LocalCheck, LocalModel, LocalModelConfig, RuleSession,
+};
 pub use model_file::{
     has_partial_download, verify_model_file, ModelFileError, ModelPin, PartialDownload,
     LOCAL_MODEL, LOCAL_MODEL_FOLDER,
 };
+#[cfg(feature = "llama")]
+pub use rules::{ContextDocument, RuleRequest};
 pub use status::{Compute, LocalModelStatus};
 #[cfg(any(test, feature = "testing"))]
 pub use testing::{FakeProvider, ScriptedChatModel};
