@@ -59,7 +59,9 @@ type IndexSlot = Arc<Mutex<Option<Index>>>;
 pub use ai::shared_local_model;
 pub use ai::AiStatus;
 use ai::{wire_ai, AiWiring};
-use index_ops::{apply_key, create_index, encrypt_index, open_existing, start_over};
+use index_ops::{
+    apply_key, create_index, encrypt_index, open_existing, start_over, INDEX_NOT_REOPENED,
+};
 pub use locations::{resolve_locations, LocationStatus, ResolvedLocation};
 pub use messages::{FilingMessage, OpenOutcome, WorkOutcome};
 pub use readers::{
@@ -100,7 +102,8 @@ mod text_chain;
 mod update;
 mod work;
 
-/// How `Job::Encrypt` ended, and what the index looks like now.
+/// How `Job::Encrypt` ended, and what the index looks like now. `Ok` means the
+/// file is encrypted, even when `opened` says it could not be opened again.
 #[derive(Debug, Clone, PartialEq)]
 pub struct EncryptReport {
     result: Result<ShownRecoveryKey, String>,
@@ -143,6 +146,9 @@ pub struct FilingModule {
     /// index that is not encrypted cannot be encrypted here.
     key_store_reachable: bool,
     protection_note: Option<ProtectionNote>,
+    /// Set when the index could not be opened again after its encryption: the
+    /// recovery key is shown first, then the card for this outcome.
+    after_recovery_key: Option<OpenOutcome>,
     /// What the card said when "Not now" left it, so the overview can still
     /// offer the way back to it.
     dismissed_key_problem: Option<KeyProblem>,

@@ -46,6 +46,13 @@ fn unreadable(path: &Path, reason: impl ToString) -> TextError {
     }
 }
 
+fn io_failure(path: &Path, err: std::io::Error) -> TextError {
+    TextError::Io {
+        path: path.to_path_buf(),
+        reason: err.to_string(),
+    }
+}
+
 /// `.txt` and `.md` files, read as UTF-8 with invalid bytes replaced.
 #[derive(Debug, Default)]
 pub struct PlainText;
@@ -55,7 +62,7 @@ impl PlainText {
         let mut bytes = Vec::new();
         File::open(path)
             .and_then(|file| file.take(limits.text_bytes as u64).read_to_end(&mut bytes))
-            .map_err(|err| unreadable(path, err))?;
+            .map_err(|err| io_failure(path, err))?;
         Ok(Self::decode(&bytes))
     }
 
@@ -110,7 +117,7 @@ impl OfficeText {
         package: Package,
         limits: Limits,
     ) -> Result<Extracted, TextError> {
-        let file = File::open(path).map_err(|err| unreadable(path, err))?;
+        let file = File::open(path).map_err(|err| io_failure(path, err))?;
         Self::extract_from_reader(path, file, package, limits)
     }
 

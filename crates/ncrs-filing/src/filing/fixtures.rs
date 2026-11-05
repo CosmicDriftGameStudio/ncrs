@@ -20,6 +20,7 @@ impl FilingModule {
             index_encrypted: None,
             key_store_reachable: true,
             protection_note: None,
+            after_recovery_key: None,
             dismissed_key_problem: None,
             kinds: Arc::default(),
             chat_text_chain: OnceLock::new(),

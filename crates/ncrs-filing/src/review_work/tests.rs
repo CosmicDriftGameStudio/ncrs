@@ -588,3 +588,27 @@ fn an_amount_shown_is_an_amount_that_parses() {
     assert_eq!(amount_text(&amount), "-7.05 EUR");
     assert_eq!(parse_amount(&amount_text(&amount)), Ok(Some(amount)));
 }
+
+#[test]
+fn the_reviews_of_some_files_come_in_the_order_of_the_paths_each_once() {
+    let setup = Setup::new();
+    setup.in_review("a.pdf");
+    setup.in_review("b.pdf");
+    setup.in_review("c.pdf");
+    setup.document("filed.pdf", DocumentStatus::Filed);
+    let path = |name: &str| setup.inbox.join(name);
+
+    let items = setup
+        .access()
+        .items_for(&[
+            path("c.pdf"),
+            path("filed.pdf"),
+            path("unknown.pdf"),
+            path("a.pdf"),
+            path("c.pdf"),
+        ])
+        .unwrap();
+
+    let listed: Vec<_> = items.iter().map(|item| item.path.clone()).collect();
+    assert_eq!(listed, vec![path("c.pdf"), path("a.pdf")]);
+}
