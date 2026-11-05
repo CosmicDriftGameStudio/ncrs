@@ -37,14 +37,16 @@ pub enum Axis {
     FileName,
     Condition,
     Recognize,
+    Holdout,
 }
 
 impl Axis {
-    pub const ALL: [Self; 4] = [
+    pub const ALL: [Self; 5] = [
         Self::Folder,
         Self::FileName,
         Self::Condition,
         Self::Recognize,
+        Self::Holdout,
     ];
 }
 
@@ -103,7 +105,10 @@ impl Case {
     pub fn asked(&self) -> String {
         match &self.ask {
             Ask::Describe(description) => description.clone(),
-            Ask::Paths { paths, question: _ } => paths.join(" | "),
+            Ask::Paths {
+                paths,
+                question: _ignored,
+            } => paths.join(" | "),
         }
     }
 

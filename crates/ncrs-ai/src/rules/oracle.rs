@@ -38,10 +38,10 @@ pub fn filed_at(spec: &RuleSpec, fixture: &Fixture, kinds: &Kinds) -> Option<Pat
         manual_fields: &[],
         kinds,
     };
-    match plan(&[single_rule(spec)], &input) {
-        Planning::Plan(filing) => Some(filing.relative_path),
-        Planning::Review { .. } => None,
-    }
+    let Planning::Plan(filing) = plan(&[single_rule(spec)], &input) else {
+        return None;
+    };
+    Some(filing.relative_path)
 }
 
 pub fn check_generate(got: &RuleSpec, expected: &RuleSpec) -> Result<(), String> {

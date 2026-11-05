@@ -3,7 +3,7 @@
 //! model, so a cache can hash exactly what the model reads.
 
 use super::grammar::{generate_grammar, recognize_grammar};
-use super::prompt::END_OF_TURN;
+use super::prompt::{END_OF_TURN, GENERATE_REMINDER, RECOGNIZE_REMINDER};
 
 /// A rule is a short JSON object: up to six conditions and a pattern.
 const MAX_RULE_TOKENS: usize = 400;
@@ -23,7 +23,7 @@ impl RuleRequest {
     pub fn generate(prefix: &str, description: &str) -> Self {
         Self {
             prefix: prefix.to_owned(),
-            task: format!("TASK generate\n{description}"),
+            task: format!("TASK generate\n{description}\n{GENERATE_REMINDER}"),
             grammar: generate_grammar(),
             max_new_tokens: MAX_RULE_TOKENS,
         }
@@ -33,7 +33,10 @@ impl RuleRequest {
     pub fn recognize(prefix: &str, question: &str, paths: &[String]) -> Self {
         Self {
             prefix: prefix.to_owned(),
-            task: format!("TASK recognize\n{question}\n{}", paths.join("\n")),
+            task: format!(
+                "TASK recognize\n{question}\n{}\n{RECOGNIZE_REMINDER}",
+                paths.join("\n")
+            ),
             grammar: recognize_grammar(),
             max_new_tokens: MAX_PATTERN_TOKENS,
         }
@@ -54,7 +57,7 @@ mod tests {
         let request = RuleRequest::generate("PREFIX|", "Alles nach Jahr");
         assert_eq!(
             request.full_prompt(),
-            format!("PREFIX|TASK generate\nAlles nach Jahr{END_OF_TURN}")
+            format!("PREFIX|TASK generate\nAlles nach Jahr\n{GENERATE_REMINDER}{END_OF_TURN}")
         );
         assert!(request.grammar.contains("conditions"));
     }
@@ -63,7 +66,10 @@ mod tests {
     fn a_recognize_task_lists_the_paths() {
         let paths = vec!["a/b.pdf".to_owned(), "c/d.pdf".to_owned()];
         let request = RuleRequest::recognize("P", "Which?", &paths);
-        assert_eq!(request.task, "TASK recognize\nWhich?\na/b.pdf\nc/d.pdf");
+        assert_eq!(
+            request.task,
+            format!("TASK recognize\nWhich?\na/b.pdf\nc/d.pdf\n{RECOGNIZE_REMINDER}")
+        );
         assert!(!request.grammar.contains("conditions"));
     }
 }
