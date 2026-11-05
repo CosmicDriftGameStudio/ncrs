@@ -165,6 +165,16 @@ jobs:
         shell: bash
         run: echo "CMAKE_GENERATOR=Ninja" >> "$GITHUB_ENV"
 
+      # The hosted Windows runner keeps TEMP on C:, where creating a small file
+      # takes more than ten times as long as on D:, the drive of the workspace.
+      # The file and SQLite heavy tests create thousands of them in TEMP.
+      - name: Temp folder on the workspace drive (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          "TEMP=$env:RUNNER_TEMP" >> $env:GITHUB_ENV
+          "TMP=$env:RUNNER_TEMP" >> $env:GITHUB_ENV
+
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
