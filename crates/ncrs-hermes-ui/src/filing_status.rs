@@ -58,8 +58,13 @@ impl FilingStatus {
         Some(documents.div_ceil(span))
     }
 
+    /// Without the errors of files that have been read since.
     pub fn errors_newest_first(&self) -> impl Iterator<Item = &ErrorEntry> {
-        self.snapshot.errors.iter().rev()
+        self.snapshot
+            .errors
+            .iter()
+            .rev()
+            .filter(move |error| !self.snapshot.is_superseded(error))
     }
 
     pub fn page_open(&self) -> bool {
@@ -108,7 +113,9 @@ impl FilingStatus {
 mod tests {
     use std::path::PathBuf;
 
-    use ncrs_pipeline::{Busy, RunnerState, StepSnapshot, Task, WorkerSnapshot};
+    use ncrs_pipeline::{
+        Busy, ChangeOutcome, ChangedPath, RunnerState, StepSnapshot, Task, WorkerSnapshot,
+    };
 
     use super::*;
 
@@ -154,6 +161,41 @@ mod tests {
         let mut status = FilingStatus::default();
         status.set_snapshot(busy, at());
         assert_eq!(status.snapshot().open_files(), 0);
+    }
+
+    #[test]
+    fn an_error_is_gone_once_its_file_was_read_since() {
+        let error = |file: &str| ErrorEntry {
+            file: PathBuf::from(file),
+            task: Task::Scan,
+            message: String::new(),
+            at: at(),
+            sequence: 1,
+        };
+        let change = |file: &str, sequence, outcome| ChangedPath {
+            sequence,
+            path: PathBuf::from(file),
+            outcome,
+        };
+        let mut seen = snapshot(RunnerState::Running, 0, 0);
+        seen.errors = vec![error("/read.pdf"), error("/failed.pdf"), error("/left.pdf")];
+        seen.changed_paths = vec![
+            change("/read.pdf", 2, ChangeOutcome::Finished),
+            change("/failed.pdf", 3, ChangeOutcome::Failed),
+        ];
+        let mut status = FilingStatus::default();
+        status.set_snapshot(seen, at());
+        let left: Vec<_> = status
+            .errors_newest_first()
+            .map(|entry| entry.file.as_path())
+            .collect();
+        assert_eq!(
+            left,
+            [
+                std::path::Path::new("/left.pdf"),
+                std::path::Path::new("/failed.pdf")
+            ]
+        );
     }
 
     #[test]

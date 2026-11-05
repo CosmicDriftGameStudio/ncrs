@@ -672,7 +672,7 @@ target = true
 - Exactly one archive is the `target`, the archive filed documents go to. An
   inbox cannot be the target, and no location may be the same folder as another
   or lie inside it.
-- `load` has the names `gentle`, `balanced` and `full`; Status and errors
+- `load` has the names `gentle`, `balanced` and `full`; Settings › Index
   shows them as "Gentle", "Balanced" and "Full" (up to 2 workers, up to 4, one
   per processor core). The Futurama variants add "By the book", "Business as
   usual" and "Grade 36" beside them.
@@ -747,12 +747,12 @@ threads = 4
   is checked against its size and checksum before it is used. On Windows and
   x86_64 Linux the model runs on a Vulkan GPU if a driver is present and on the
   CPU otherwise; macOS uses Metal and aarch64 Linux the CPU. The row "AI model"
-  in Status and errors says which ("runs on" the GPU's name or CPU).
+  in Settings › Index says which ("runs on" the GPU's name or CPU).
 - `http` sends text to the server at `endpoint`, which must be on this machine
   for now (`localhost`, `127.0.0.1` or `::1`); `endpoint` and `model` are
   required and `threads` is not allowed. Without a consent given for that
   server, nothing is sent.
-- Status and errors shows a row "AI model" with the state while the AI is on.
+- Settings › Index shows a row "AI model" with the state while the AI is on.
 
 **Recognition baseline.** How often the filing reads a field right is measured
 against a synthetic corpus: 26 documents (invoices, contracts, letters, tax

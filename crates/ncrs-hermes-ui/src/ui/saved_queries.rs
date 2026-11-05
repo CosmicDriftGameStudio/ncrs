@@ -6,14 +6,15 @@
 //!
 //! Nothing is copied before the export dialog has shown where to and how many.
 
-use iced::widget::{container, row, Column, Row};
+use iced::widget::{Column, Row};
 use iced::{alignment, Element, Size};
 use ncrs_config::palette::Palette;
 use ncrs_filing::review_work::amount_text;
 use ncrs_i18n::{fill_template, Language, Msg};
 use ncrs_index::{KindCatalog, QuerySpec};
+use ncrs_ui_kit::format;
 use ncrs_ui_kit::frame::{DialogSize, Frame, KeyHints};
-use ncrs_ui_kit::hermes_kit::{self as page_kit, MenuItem, GAP_S, GAP_XS, TEXT_BODY};
+use ncrs_ui_kit::hermes_kit::{self as page_kit, MenuItem, RowTwo, GAP_S, TEXT_BODY};
 use ncrs_ui_kit::kit::{self, Tone};
 use ncrs_ui_kit::setting_rows::{Group, SettingRow};
 
@@ -29,9 +30,10 @@ pub const NAME_ID: &str = "saved-query-name";
 /// The room of the list of templates in the dialog of a new report.
 const TEMPLATE_WIDTH: f32 = 280.0;
 
-/// Widths of the date and the sender in a line of a hit.
-const DATE_WIDTH: f32 = 88.0;
-const SENDER_WIDTH: f32 = 120.0;
+/// Characters of a file name in the list of hits, with the amount beside it,
+/// and of the target folder, in the value column of the medium dialog.
+const HIT_NAME_CHARS: usize = 48;
+const EXPORT_FOLDER_CHARS: usize = 36;
 
 fn send(message: SavedQueriesMessage) -> Message {
     Message::SavedQueries(message)
@@ -276,15 +278,23 @@ fn export_dialog<'a>(
     body = body
         .push(page_kit::form_row(
             lang.text(Msg::SavedQueriesExportFolder),
-            page_kit::cell(vec![
-                page_kit::mono(step.folder.display().to_string(), TEXT_BODY, palette.text),
-                kit::button(
+            Column::new()
+                .spacing(GAP_S)
+                .push(page_kit::mono(
+                    format::ellipsize_middle(
+                        &step.folder.display().to_string(),
+                        EXPORT_FOLDER_CHARS,
+                    ),
+                    TEXT_BODY,
+                    palette.text,
+                ))
+                .push(kit::button(
                     lang.text(Msg::SavedQueriesChooseFolder),
                     Some(send(SavedQueriesMessage::PickFolder)),
                     Tone::Secondary,
                     palette,
-                ),
-            ]),
+                ))
+                .into(),
             None,
             palette,
         ))
@@ -516,30 +526,28 @@ fn hit_rows<'a>(results: &Results, lang: Language, palette: &Palette) -> Vec<Ele
     }
     let mut rows = Vec::new();
     for hit in shown.iter().take(VISIBLE_HITS) {
-        let date = hit
-            .fields
-            .date
-            .map(|date| date.format("%Y-%m-%d").to_string())
-            .unwrap_or_default();
         let file_name = hit
             .path
             .file_name()
             .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
-        let line: Element<'a, Message> = row![
-            container(page_kit::value_dim(date, palette)).width(DATE_WIDTH),
-            container(page_kit::value(
-                hit.fields.sender.clone().unwrap_or_default(),
-                palette
-            ))
-            .width(SENDER_WIDTH),
-            page_kit::mono(file_name, TEXT_BODY, palette.text),
+        let date_and_sender = [
+            hit.fields
+                .date
+                .map(|date| date.format("%Y-%m-%d").to_string()),
+            hit.fields.sender.clone(),
         ]
-        .spacing(GAP_XS)
-        .into();
-        rows.push(page_kit::list_row_one(
-            line,
-            hit.fields.amount.as_ref().map(amount_text),
-            false,
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(" · ");
+        rows.push(page_kit::list_row_two(
+            RowTwo {
+                primary: format::ellipsize_middle(&file_name, HIT_NAME_CHARS),
+                secondary: date_and_sender,
+                right: hit.fields.amount.as_ref().map(amount_text),
+                lead: None,
+                muted: false,
+            },
             false,
             None,
             palette,

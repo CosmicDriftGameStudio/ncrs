@@ -10,7 +10,7 @@ use ncrs_filing::rules_work::{ListedRule, TriedDocument, TryOutcome, TryResult, 
 use ncrs_i18n::{fill_template, Language, Msg};
 use ncrs_ui_kit::format;
 use ncrs_ui_kit::frame::{DialogSize, Frame, KeyHints};
-use ncrs_ui_kit::hermes_kit::{self as page_kit, ChipKind, GAP_S, GAP_XS};
+use ncrs_ui_kit::hermes_kit::{self as page_kit, ChipKind, RowTwo, GAP_S, GAP_XS};
 use ncrs_ui_kit::kit::{self, Check, Tone};
 use ncrs_ui_kit::setting_rows::{Group, SettingRow};
 
@@ -23,9 +23,10 @@ use crate::message::{Message, RuleFormMessage, RulesMessage};
 use crate::rule_form::{RuleForm, RuleFormTarget, TryStatus};
 use crate::rules_page::{hits_text, origin_text, rule_sentence, RulesPage};
 
-/// Characters of a document of the try and of its change in the list.
-const TRY_PATH_CHARS: usize = 56;
-const TRY_CHANGE_CHARS: usize = 44;
+/// Characters of a document of the try and of each side of its change, so
+/// that the target stays readable in the wide dialog.
+const TRY_PATH_CHARS: usize = 64;
+const TRY_CHANGE_SIDE_CHARS: usize = 36;
 
 /// Documents of the try listed at once.
 const TRY_VISIBLE_ROWS: usize = 8;
@@ -476,39 +477,40 @@ fn try_row<'a>(
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let change = format!(
-        "{} → {}",
-        outcome_text(&tried.now, lang),
-        outcome_text(&tried.after, lang)
-    );
+    let after = outcome_text(&tried.after, lang);
+    // Where a document lies is its path, which is the first line of the row.
+    let change = if matches!(tried.now, TryOutcome::Lies(_)) {
+        format!(
+            "→ {}",
+            format::ellipsize_middle(&after, TRY_CHANGE_SIDE_CHARS.saturating_mul(2))
+        )
+    } else {
+        format!(
+            "{} → {}",
+            format::ellipsize_middle(&outcome_text(&tried.now, lang), TRY_CHANGE_SIDE_CHARS),
+            format::ellipsize_middle(&after, TRY_CHANGE_SIDE_CHARS)
+        )
+    };
     let places: Vec<String> = tried
         .conflicts
         .iter()
         .filter_map(|id| result.conflict_names.get(id))
         .map(ToString::to_string)
         .collect();
-    let conflicts = if places.is_empty() {
-        String::new()
-    } else {
-        format!(
-            "  {}",
-            fill_template(
-                lang.text(Msg::RulesTryAlso),
-                &[("{rules}", &places.join(", "))],
-            )
+    let conflicts = (!places.is_empty()).then(|| {
+        fill_template(
+            lang.text(Msg::RulesTryAlso),
+            &[("{rules}", &places.join(", "))],
         )
-    };
-    page_kit::list_row_one(
-        page_kit::mono(
-            format::ellipsize_middle(&tried.path.display().to_string(), TRY_PATH_CHARS),
-            12.0,
-            palette.text,
-        ),
-        Some(format!(
-            "{}{conflicts}",
-            format::ellipsize_end(&change, TRY_CHANGE_CHARS)
-        )),
-        false,
+    });
+    page_kit::list_row_two(
+        RowTwo {
+            primary: format::ellipsize_middle(&tried.path.display().to_string(), TRY_PATH_CHARS),
+            secondary: change,
+            right: conflicts,
+            lead: None,
+            muted: false,
+        },
         false,
         None,
         palette,
