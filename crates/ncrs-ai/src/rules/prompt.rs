@@ -22,6 +22,11 @@ pub struct ContextDocument {
     pub folder: Option<String>,
 }
 
+/// The last lines of a task, after the user's words: a small model follows
+/// what it read last. The examples in the instructions end the same way.
+pub const GENERATE_REMINDER: &str = "(Only folders described: the pattern ends with \"/\". A file name described: it does not. Every field the user names is a placeholder.)";
+pub const RECOGNIZE_REMINDER: &str = "(No file extension. A last part like date_sender_number is the automatic file name: the pattern then ends with \"/\" after the last folder. Text equal to a field of a document is its placeholder, not literal text.)";
+
 pub fn system_prompt() -> String {
     let placeholders = FILING_PLACEHOLDERS
         .iter()
@@ -39,6 +44,8 @@ pub fn system_prompt() -> String {
     SYSTEM_PROMPT_TEXT
         .replace("@PLACEHOLDERS@", &placeholders)
         .replace("@CONDITIONS@", &conditions)
+        .replace("@REMIND_GENERATE@", GENERATE_REMINDER)
+        .replace("@REMIND_RECOGNIZE@", RECOGNIZE_REMINDER)
 }
 
 /// A value from the archive is data: it must not be able to write a token
@@ -99,6 +106,7 @@ mod tests {
     use ncrs_intake::{parse_date, render_pattern_in};
 
     use super::*;
+    use crate::rules::matrix::{all_cases, fixtures, Expected};
 
     fn document(sender: &str) -> ContextDocument {
         ContextDocument {
@@ -150,10 +158,20 @@ mod tests {
     fn the_recognize_examples_are_what_the_patterns_render() {
         let kinds = Kinds::built_in(KindLanguage::German);
         let shown = [
-            ("Otto GmbH", Some("5512"), "2021-04-02", "{year}/{sender}/"),
-            ("Bosch AG", Some("77"), "2019-11-23", "{year}/{sender}/"),
-            ("Bosch AG", None, "2019-11-23", "{sender}_{date}"),
-            ("Otto GmbH", None, "2021-04-02", "{sender}_{date}"),
+            (
+                "Otto GmbH",
+                Some("5512"),
+                "2021-04-02",
+                "Post/{year}/{sender}/",
+            ),
+            (
+                "Bosch AG",
+                Some("77"),
+                "2019-11-23",
+                "Post/{year}/{sender}/",
+            ),
+            ("Bosch AG", None, "2019-11-23", "Rechnung_{sender}_{year}"),
+            ("Otto GmbH", None, "2021-04-02", "Rechnung_{sender}_{year}"),
         ];
         let prompt = system_prompt();
         for (sender, number, date, pattern) in shown {
@@ -166,6 +184,55 @@ mod tests {
             let rendered = render_pattern_in(pattern, &fields, &kinds).unwrap();
             let line = format!("{}.pdf", rendered.display());
             assert!(prompt.lines().any(|l| l == line), "{line}");
+        }
+    }
+
+    const EXAMPLE_PATTERNS: [&str; 7] = [
+        "Rechnungen/{year}/{month}/",
+        "Belege/{month}/{sender}/",
+        "{sender}_Tax_{year}",
+        "{recipient}/Post/",
+        "Post/{year}/{sender}/",
+        "Rechnung_{sender}_{year}",
+        "{kind}/{month}/{year}.{month}",
+    ];
+
+    #[test]
+    fn every_example_pattern_is_in_the_prompt_and_none_is_a_matrix_answer() {
+        let prompt = system_prompt();
+        let matrix_patterns: Vec<String> = all_cases()
+            .iter()
+            .map(|case| match &case.expected {
+                Expected::Pattern(pattern) => pattern.clone(),
+                Expected::Rule(spec) => spec.filing_pattern.clone(),
+            })
+            .collect();
+        for pattern in EXAMPLE_PATTERNS {
+            assert!(
+                prompt.contains(&format!("\"pattern\":\"{pattern}\"")),
+                "{pattern}"
+            );
+            assert!(!matrix_patterns.iter().any(|m| m == pattern), "{pattern}");
+        }
+    }
+
+    #[test]
+    fn the_examples_use_no_value_of_the_fixtures() {
+        let prompt = system_prompt();
+        let examples = prompt
+            .split("EXAMPLES")
+            .nth(1)
+            .and_then(|rest| rest.split("The documents of this archive").next())
+            .unwrap_or_default();
+        assert!(examples.contains("Otto GmbH"));
+        for fixture in fixtures() {
+            let fields = &fixture.fields;
+            for value in [&fields.sender, &fields.recipient, &fields.number]
+                .into_iter()
+                .flatten()
+            {
+                assert!(!examples.contains(value.as_str()), "{value}");
+            }
         }
     }
 }

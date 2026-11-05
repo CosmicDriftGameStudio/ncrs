@@ -67,6 +67,11 @@ impl<'model> RuleSession<'model> {
         })
     }
 
+    /// The tokens of the prefix: the instructions and the documents.
+    pub fn prefix_tokens(&self) -> usize {
+        self.prefix_len
+    }
+
     pub fn prefix(&self) -> &str {
         &self.prefix
     }

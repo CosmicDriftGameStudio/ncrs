@@ -45,14 +45,14 @@ pub fn combinator_from_word(word: &str) -> Option<Combinator> {
 /// step with `FILING_PLACEHOLDERS`.
 pub fn placeholder_meaning(name: &str) -> Option<&'static str> {
     Some(match name {
-        "year" => "the year of the document date, four digits (2023)",
-        "month" => "the month of the document date, two digits (03)",
-        "day" => "the day of the document date, two digits (14)",
-        "date" => "the whole document date as YYYY-MM-DD, the same as {year}-{month}-{day}",
-        "sender" => "who sent the document",
-        "recipient" => "who the document is addressed to",
-        "number" => "the number of the document (invoice, reference or customer number)",
-        "kind" => "the kind of the document as a word (Invoice, Contract, ...)",
+        "year" => "Jahr, year: the year of the document date, four digits (2023)",
+        "month" => "Monat, month: the month of the document date, two digits (03)",
+        "day" => "Tag des Monats, day of the month: the day of the document date, two digits (14), never the month",
+        "date" => "Datum, date: the whole document date as YYYY-MM-DD, the same as {year}-{month}-{day}",
+        "sender" => "Absender, sender: who sent the document",
+        "recipient" => "Empfänger, recipient: who the document is addressed to",
+        "number" => "Nummer, number: the number of the document (invoice, reference or customer number)",
+        "kind" => "Dokumentart, document kind: the kind of the document as a word (Invoice, Contract, ...)",
         _ => return None,
     })
 }

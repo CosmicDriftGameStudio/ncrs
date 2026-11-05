@@ -5,8 +5,10 @@ A rule has conditions (which documents it is for) and a pattern (where those doc
 PATTERN
 A pattern is a relative path: parts separated by "/". A part is literal text mixed with placeholders in curly braces. The placeholders:
 @PLACEHOLDERS@
-- A pattern that ends with "/" names folders only. The file name is then made automatically from the date, the sender and the number.
-- A pattern that does not end with "/" has its last part as the file name. Write the file name without a file extension.
+- Folders or file name: when the user talks about folders ("ein Ordner pro X", "Ordner nach X", "sort into folders", "one folder per X"), every part is a folder and the pattern ENDS WITH "/". The file name is then made automatically from the date, the sender and the number.
+- So "Ordner nach Jahr" is {year}/ and "folders by sender, then by month" is {sender}/{month}/. Without the final "/" the last folder would become the file name: that is wrong whenever the user speaks of folders only.
+- Only when the user describes the file name ("Dateiname", "file name", "named", "called", "benannt") is the last part the file name, and the pattern does NOT end with "/". Write the file name without a file extension.
+- Write the parts in the order the user names them, the top folder first. Use exactly the fields the user names, no more and no fewer, each as its placeholder ("Nummer" is {number}, "Tag des Monats" is {day}, "Dokumentart" is {kind}), never as plain text.
 - Folders and the file name may mix placeholders and literal text, for example {year}-{month}-{day}_{sender}.
 - Use only the placeholders listed. Write literal text only where the user asks for it: a separator between placeholders, or a fixed word.
 
@@ -19,29 +21,39 @@ Copy names, domains, numbers and folders exactly as the user wrote them.
 TASKS
 The user message starts with the task.
 TASK generate: a description follows. Answer {"match":"all"|"any","conditions":[...],"pattern":"..."}.
-TASK recognize: paths of filed documents follow. Find the pattern that wrote them: compare every part of the paths with the fields of the documents below. Answer {"pattern":"..."}. The file extension is not part of the pattern. If the last part is the automatic file name, the pattern ends with "/".
+TASK recognize: paths of filed documents follow. Answer {"pattern":"..."}. Work from the left, part by part. For each part, find the placeholder that gives exactly this text for these documents, comparing with the fields of the documents below. Text that is the same in every path is literal text. A part made of several fields is several placeholders with their separators. Never write ".pdf" or any file extension. The last part of a path is the file name. If it looks like date_sender_number (for example 2021-04-02_Otto-GmbH_5512, spaces of the sender written as hyphens), it is the automatic file name: do NOT write it as {date}_{sender}_{number}; stop after the last folder and end the pattern with "/". Only a file name that is NOT of this form is written as a pattern, without "/" at the end. A part that is the same text in every path is literal text only if it is not a value from the documents below (a sender, a recipient, a kind, a date, a number).
 
 EXAMPLES
 TASK generate
-Alle Rechnungen von Vodafone GmbH: ein Ordner pro Jahr, darin ein Ordner pro Monat.
-{"match":"all","conditions":[{"kind":"kind","value":"Rechnung","not":false},{"kind":"sender","value":"Vodafone GmbH","not":false}],"pattern":"{year}/{month}/"}
+Alle Rechnungen von Vodafone GmbH: in einem Ordner Rechnungen, darin ein Ordner pro Jahr und darin ein Ordner pro Monat.
+@REMIND_GENERATE@
+{"match":"all","conditions":[{"kind":"kind","value":"Rechnung","not":false},{"kind":"sender","value":"Vodafone GmbH","not":false}],"pattern":"Rechnungen/{year}/{month}/"}
 TASK generate
-Everything that contains the word insurance or has the tag tax is filed under a file named like the date, a dash and the sender.
-{"match":"any","conditions":[{"kind":"word","value":"insurance","not":false},{"kind":"tag","value":"tax","not":false}],"pattern":"{date}-{sender}"}
+Everything that contains the word insurance or has the tag tax is filed under a file named like the sender, an underscore, the word Tax and the year.
+@REMIND_GENERATE@
+{"match":"any","conditions":[{"kind":"word","value":"insurance","not":false},{"kind":"tag","value":"tax","not":false}],"pattern":"{sender}_Tax_{year}"}
 TASK generate
-Dokumente aus dem Ordner Scans, die nicht von der Sparkasse kommen, bekommen einen Ordner je Empfänger.
-{"match":"all","conditions":[{"kind":"folder","value":"Scans","not":false},{"kind":"sender","value":"Sparkasse","not":true}],"pattern":"{recipient}/"}
+Alles mit der Steuernummer 99/111/22220 soll in einen Ordner Belege, darunter Ordner nach Monat und darunter Ordner nach Absender.
+@REMIND_GENERATE@
+{"match":"all","conditions":[{"kind":"tax_id","value":"99/111/22220","not":false}],"pattern":"Belege/{month}/{sender}/"}
+TASK generate
+Dokumente aus dem Ordner Scans, die nicht von der Sparkasse kommen, bekommen einen Ordner je Empfänger und darunter einen Ordner Post.
+@REMIND_GENERATE@
+{"match":"all","conditions":[{"kind":"folder","value":"Scans","not":false},{"kind":"sender","value":"Sparkasse","not":true}],"pattern":"{recipient}/Post/"}
 TASK recognize
-2021/Otto GmbH/2021-04-02_Otto-GmbH_5512.pdf
-2019/Bosch AG/2019-11-23_Bosch-AG_77.pdf
-{"pattern":"{year}/{sender}/"}
+Post/2021/Otto GmbH/2021-04-02_Otto-GmbH_5512.pdf
+Post/2019/Bosch AG/2019-11-23_Bosch-AG_77.pdf
+@REMIND_RECOGNIZE@
+{"pattern":"Post/{year}/{sender}/"}
 TASK recognize
-Bosch AG_2019-11-23.pdf
-Otto GmbH_2021-04-02.pdf
-{"pattern":"{sender}_{date}"}
+Rechnung_Bosch AG_2019.pdf
+Rechnung_Otto GmbH_2021.pdf
+@REMIND_RECOGNIZE@
+{"pattern":"Rechnung_{sender}_{year}"}
 TASK recognize
-Contract/03/2018.03.pdf
-Invoice/11/2020.11.pdf
+Vertrag/03/2018.03.pdf
+Rechnung/11/2020.11.pdf
+@REMIND_RECOGNIZE@
 {"pattern":"{kind}/{month}/{year}.{month}"}
 
 The documents of this archive follow, with the values the placeholders take for each of them.

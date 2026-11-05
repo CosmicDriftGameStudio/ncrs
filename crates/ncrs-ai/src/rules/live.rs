@@ -18,8 +18,10 @@ use std::sync::OnceLock;
 use std::time::Instant;
 
 use super::cache::{cache_key, ResultCache};
-use super::matrix::{all_cases, archive_kinds, fixtures, Ask, Axis, Case, Language};
+use super::holdout::holdout_cases;
+use super::matrix::{all_cases, archive_kinds, fixtures, Ask, Axis, Case, Expected, Language};
 use super::oracle::check_answer;
+use super::parse::{parse_generate, parse_pattern};
 use super::prompt::{prefix_text, ContextDocument};
 use super::session::RuleRequest;
 use crate::chat::shard::{parse_shard, select, SHARD_VARIABLE};
@@ -44,6 +46,7 @@ fn axis_name(axis: Axis) -> &'static str {
         Axis::FileName => "file name",
         Axis::Condition => "condition",
         Axis::Recognize => "recognize",
+        Axis::Holdout => "holdout",
     }
 }
 
@@ -96,6 +99,7 @@ fn model() -> &'static LocalModel {
 /// cases across all axes.
 fn chosen_cases() -> Vec<Case> {
     let mut cases = all_cases();
+    cases.extend(holdout_cases());
     if let Ok(value) = std::env::var(SHARD_VARIABLE) {
         let shard = parse_shard(&value).unwrap_or_else(|message| panic!("{message}"));
         cases = select(cases, shard);
@@ -105,9 +109,18 @@ fn chosen_cases() -> Vec<Case> {
         .and_then(|value| value.parse::<usize>().ok())
         .filter(|limit| *limit > 0 && *limit < cases.len())
     {
-        let total = cases.len();
-        cases = (0..limit)
-            .map(|n| cases[n * total / limit].clone())
+        // The same number from every axis (fewer where an axis is smaller),
+        // spread evenly over the axis.
+        let per_axis = limit.div_ceil(Axis::ALL.len());
+        cases = Axis::ALL
+            .into_iter()
+            .flat_map(|axis| {
+                let of_axis: Vec<&Case> = cases.iter().filter(|case| case.axis == axis).collect();
+                let taken = per_axis.min(of_axis.len());
+                (0..taken)
+                    .map(|n| of_axis[n * of_axis.len() / taken].clone())
+                    .collect::<Vec<_>>()
+            })
             .collect();
     }
     cases
@@ -136,6 +149,42 @@ impl Tally {
         for (key, (passed, total)) in &self.0 {
             let _ = writeln!(out, "  {key}: {passed}/{total} ({}%)", passed * 100 / total);
         }
+    }
+}
+
+fn placeholders_in(pattern: &str) -> Vec<&str> {
+    let mut names: Vec<&str> = pattern
+        .split('{')
+        .skip(1)
+        .filter_map(|s| s.split('}').next())
+        .collect();
+    names.sort_unstable();
+    names
+}
+
+/// A coarse name for what went wrong, by comparing the pattern the model
+/// wrote with the expected one.
+fn failure_kind(outcome: &Outcome) -> &'static str {
+    let (parsed, wanted) = match &outcome.case.expected {
+        Expected::Rule(spec) => (
+            parse_generate(&outcome.raw).map(|rule| rule.filing_pattern),
+            spec.filing_pattern.clone(),
+        ),
+        Expected::Pattern(pattern) => (parse_pattern(&outcome.raw), pattern.clone()),
+    };
+    let Ok(got) = parsed else {
+        return "answer is not parsed";
+    };
+    if got == wanted {
+        "pattern right, conditions wrong"
+    } else if got.trim_end_matches('/') == wanted.trim_end_matches('/') {
+        "trailing slash wrong (folder or file name)"
+    } else if placeholders_in(&got) == placeholders_in(&wanted) {
+        "right placeholders, wrong order, separator or literal"
+    } else if got.matches('/').count() == wanted.matches('/').count() {
+        "wrong placeholder"
+    } else {
+        "wrong number of parts"
     }
 }
 
@@ -201,6 +250,25 @@ fn report(outcomes: &[Outcome], setup_millis: u128) -> String {
     placeholders.write("per placeholder (folder, file name, recognize)", &mut out);
     kinds.write("per condition kind", &mut out);
     languages.write("per language", &mut out);
+    let mut kinds_of_failure: BTreeMap<&str, (usize, &Outcome)> = BTreeMap::new();
+    for outcome in outcomes.iter().filter(|o| o.verdict.is_err()) {
+        kinds_of_failure
+            .entry(failure_kind(outcome))
+            .or_insert((0, outcome))
+            .0 += 1;
+    }
+    let mut ranked: Vec<_> = kinds_of_failure.into_iter().collect();
+    ranked.sort_by_key(|(_, (count, _))| std::cmp::Reverse(*count));
+    let _ = writeln!(out, "failure kinds");
+    for (name, (count, example)) in ranked {
+        let _ = writeln!(
+            out,
+            "  {count}x {name}\n    e.g. {}\n    got:    {}\n    wanted: {}",
+            example.case.asked(),
+            example.raw,
+            example.case.expected_text()
+        );
+    }
     let _ = writeln!(out, "failures");
     for outcome in outcomes.iter().filter(|o| o.verdict.is_err()) {
         let case = &outcome.case;
@@ -247,6 +315,10 @@ fn with_model_rule_matrix_reports() {
                             .unwrap_or_else(|error| panic!("the session did not start: {error}")),
                     );
                     setup_millis += started.elapsed().as_millis();
+                    println!(
+                        "prefix: {} tokens",
+                        session.as_ref().map_or(0, RuleSession::prefix_tokens)
+                    );
                 }
                 let started = Instant::now();
                 let raw = session

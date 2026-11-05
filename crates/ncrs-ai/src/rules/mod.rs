@@ -12,6 +12,8 @@ mod vocabulary;
 
 #[cfg(test)]
 mod cache;
+#[cfg(test)]
+mod holdout;
 #[cfg(all(test, feature = "llama"))]
 mod live;
 #[cfg(test)]

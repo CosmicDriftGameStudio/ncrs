@@ -23,6 +23,12 @@ use super::prompt::END_OF_TURN;
 use super::session::RuleRequest;
 use crate::model_file::ModelPin;
 
+/// The pinned llama.cpp crate; `the_llama_version_matches_the_workspace` keeps
+/// it equal to the workspace dependency.
+const LLAMA_CPP_VERSION: &str = "0.1.160";
+/// The sampler chain of `LocalModel::sample_reply`.
+const SAMPLER_CHAIN: &str = "grammar(root),greedy";
+
 /// Each part with its length in front, so that moving text from one part to
 /// the next cannot give the same key.
 pub fn cache_key(pin: &ModelPin, request: &RuleRequest) -> String {
@@ -31,6 +37,8 @@ pub fn cache_key(pin: &ModelPin, request: &RuleRequest) -> String {
     for part in [
         pin.name,
         pin.sha256,
+        LLAMA_CPP_VERSION,
+        SAMPLER_CHAIN,
         request.prefix.as_str(),
         request.task.as_str(),
         END_OF_TURN,
@@ -173,6 +181,16 @@ mod tests {
             cache_key(&LOCAL_MODEL, &moved),
             cache_key(&LOCAL_MODEL, &request())
         );
+    }
+
+    #[test]
+    fn the_llama_version_matches_the_workspace() {
+        let manifest =
+            std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../Cargo.toml"))
+                .unwrap();
+        assert!(manifest.contains(&format!(
+            "llama-cpp-2 = {{ version = \"={LLAMA_CPP_VERSION}\""
+        )));
     }
 
     #[test]
