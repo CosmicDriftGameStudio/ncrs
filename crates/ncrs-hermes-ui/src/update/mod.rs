@@ -103,10 +103,8 @@ pub fn update_quick_fix(hermes: &mut Hermes, message: QuickFixMessage, ctx: &Ctx
     (task, actions)
 }
 
-pub fn update_rules(hermes: &mut Hermes, message: RulesMessage, ctx: &Ctx<'_>) -> Outcome {
-    let mut actions = Vec::new();
-    let task = rules::update(hermes, message, ctx, &mut actions);
-    (task, actions)
+pub fn update_rules(hermes: &mut Hermes, message: RulesMessage) -> Outcome {
+    (rules::update(hermes, message), Vec::new())
 }
 
 pub fn update_saved_queries(

@@ -36,8 +36,13 @@ pub fn update(state: &mut State, message: MonitorMessage, ctx: &Ctx) -> Outcome 
         M::Close => close(state),
         M::Tick | M::MeasureAgain => (measure(state), None),
         M::Measured(depth, snapshot) => {
+            let wants_second_reading = lacks_cpu_reading(state, depth, &snapshot);
             take_snapshot(state, depth, *snapshot, visible);
-            none()
+            if wants_second_reading {
+                (second_measurement_later(), None)
+            } else {
+                none()
+            }
         }
         M::DrivesMeasured(rows) => {
             if state.open {
@@ -242,11 +247,26 @@ fn open(state: &mut State) -> Outcome {
     state.failure = None;
     state.notice = None;
     state.reorder();
-    let again = Task::perform(
+    (measure(state), Some(Action::Opened))
+}
+
+/// The first full reading has no CPU percentage; the page asks for the next
+/// one only once the first has arrived, because a measurement still running
+/// would swallow an earlier request.
+pub fn lacks_cpu_reading(state: &State, depth: Depth, snapshot: &Snapshot) -> bool {
+    state.open
+        && depth == Depth::Full
+        && snapshot
+            .cpu
+            .as_ref()
+            .is_some_and(|cpu| cpu.percent.is_none())
+}
+
+fn second_measurement_later() -> Task<MonitorMessage> {
+    Task::perform(
         async { tokio::time::sleep(SECOND_MEASUREMENT_AFTER).await },
         |()| MonitorMessage::MeasureAgain,
-    );
-    (Task::batch([measure(state), again]), Some(Action::Opened))
+    )
 }
 
 fn close(state: &mut State) -> Outcome {

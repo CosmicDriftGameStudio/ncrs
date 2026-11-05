@@ -7,6 +7,17 @@ pub struct KeymapError {
     pub reason: String,
 }
 
+/// Action names earlier versions accepted under `[keys]`. A config that still
+/// lists one must keep loading, so they are skipped instead of rejected.
+const RETIRED_ACTION_NAMES: [&str; 6] = [
+    "filing_setup",
+    "rule_suggestions",
+    "review_list",
+    "hermes_reprocess_folder",
+    "reorganisation_plan",
+    "undo_reorganisation",
+];
+
 /// Which keys do what: the built-in table, or that table with the `[keys]`
 /// section of the config applied.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -61,6 +72,9 @@ impl Keymap {
         let mut yielded: Vec<(KeyAction, Binding)> = Vec::new();
         for entry in &overrides.entries {
             let name = entry.action.as_ref();
+            if RETIRED_ACTION_NAMES.contains(&name.as_str()) {
+                continue;
+            }
             let action = KeyAction::from_name(name).ok_or_else(|| KeymapError {
                 span: entry.action.span(),
                 reason: format!("unknown action {name:?}"),

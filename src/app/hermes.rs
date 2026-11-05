@@ -195,7 +195,7 @@ impl App {
             file_list_tags: &self.file_list_tags,
             filing_status_shortcut: self
                 .keymap
-                .shortcut_label(&Message::FilingStatus(FilingStatusMessage::Toggle)),
+                .shortcut_label(&Message::FilingStatus(FilingStatusMessage::Open)),
             active_panel_path: &panel.path,
             other_panel_path: &self.panel(side.other()).path,
             context_menu_open: self.panels.context_menu.is_some(),

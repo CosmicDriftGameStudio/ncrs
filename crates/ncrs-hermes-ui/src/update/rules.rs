@@ -15,12 +15,7 @@ use crate::rules_page::RulesPage;
 use crate::state::Hermes;
 
 /// The analysis starts with the view; the list appears when it is done.
-pub fn update(
-    hermes: &mut Hermes,
-    message: RulesMessage,
-    _ctx: &Ctx<'_>,
-    _actions: &mut Vec<Action>,
-) -> Task<Message> {
+pub fn update(hermes: &mut Hermes, message: RulesMessage) -> Task<Message> {
     match message {
         RulesMessage::Loaded { generation, result } => {
             if generation != hermes.rules_generation {
