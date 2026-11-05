@@ -44,7 +44,9 @@ pub struct SearchQuery {
     pub regex: bool,
     pub case_sensitive: bool,
     pub whole_word: bool,
-    /// `;`-separated globs; empty means every file.
+    /// `;`-separated name patterns: globs, or plain text for a part of the
+    /// name; empty means every file. Names of folders are matched too when no
+    /// `text` is searched.
     pub include: String,
     /// `;`-separated globs; a trailing `/` excludes a directory with its content.
     pub exclude: String,
@@ -108,6 +110,11 @@ pub enum SearchEvent {
         size: u64,
         modified: Option<SystemTime>,
     },
+    /// A folder whose name matched; only a name search finds folders.
+    Folder {
+        path: PathBuf,
+        modified: Option<SystemTime>,
+    },
     Progress {
         scanned: usize,
         skipped: usize,
@@ -118,7 +125,10 @@ pub enum SearchEvent {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SearchTotals {
     pub scanned: usize,
+    /// Files found, not counting folders.
     pub files: usize,
+    /// Folders found by name.
+    pub folders: usize,
     pub matches: usize,
     pub skipped: usize,
     pub truncated: bool,
@@ -180,6 +190,8 @@ pub struct CompiledSearch {
     root: PathBuf,
     paths: PathFilter,
     content: Option<RegexMatcher>,
+    /// A name search lists the folders whose name matches, too.
+    with_folders: bool,
     same_file_system: bool,
     match_limit: usize,
 }
@@ -199,6 +211,12 @@ fn normalize_separators(spec: &str, backslash_is_separator: bool) -> String {
     }
 }
 
+/// Text without glob characters: as an include pattern it is a part of the
+/// name, as in a file manager's quick search.
+fn is_plain_text(pattern: &str) -> bool {
+    !pattern.contains(['*', '?', '[', ']', '{', '}', '\\', '/'])
+}
+
 /// VS Code semantics: a pattern without `/` applies to the name at any depth.
 fn parse_patterns(spec: &str, include: bool, backslash_is_separator: bool) -> Vec<Pattern> {
     let normalized = normalize_separators(spec, backslash_is_separator);
@@ -216,6 +234,8 @@ fn parse_patterns(spec: &str, include: bool, backslash_is_separator: bool) -> Ve
             let name = if body == "*.*" { "*" } else { body };
             let anchored = if name.contains('/') {
                 name.to_owned()
+            } else if include && !dirs_only && is_plain_text(name) {
+                format!("**/*{name}*")
             } else {
                 format!("**/{name}")
             };
@@ -300,6 +320,7 @@ pub fn compile(query: &SearchQuery) -> Result<CompiledSearch, SearchError> {
     Ok(CompiledSearch {
         root: query.root.clone(),
         paths: PathFilter::compile(query)?,
+        with_folders: content.is_none(),
         content,
         same_file_system: query.same_file_system,
         match_limit: MATCH_LIMIT,
@@ -319,6 +340,7 @@ pub fn all_files(root: PathBuf, same_file_system: bool, limit: usize) -> Compile
         },
         root,
         content: None,
+        with_folders: false,
         same_file_system,
         match_limit: limit,
     }
@@ -475,6 +497,7 @@ struct Shared {
     scanned: AtomicUsize,
     skipped: AtomicUsize,
     files: AtomicUsize,
+    folders: AtomicUsize,
     matches: AtomicUsize,
     truncated: AtomicBool,
 }
@@ -558,6 +581,7 @@ pub fn run_blocking(compiled: CompiledSearch, sender: mpsc::Sender<SearchEvent>)
         scanned: AtomicUsize::new(0),
         skipped: AtomicUsize::new(0),
         files: AtomicUsize::new(0),
+        folders: AtomicUsize::new(0),
         matches: AtomicUsize::new(0),
         truncated: AtomicBool::new(false),
     });
@@ -604,7 +628,31 @@ pub fn run_blocking(compiled: CompiledSearch, sender: mpsc::Sender<SearchEvent>)
                 worker_shared.skipped.fetch_add(1, Ordering::Relaxed);
                 return WalkState::Continue;
             };
-            if !entry.file_type().is_some_and(|t| !t.is_dir()) {
+            if entry.file_type().is_some_and(|t| t.is_dir()) {
+                let named = worker_search.with_folders
+                    && entry.depth() > 0
+                    && worker_search.paths.takes(entry.path());
+                if !named {
+                    return WalkState::Continue;
+                }
+                if worker_shared.matches.fetch_add(1, Ordering::Relaxed)
+                    >= worker_search.match_limit
+                {
+                    worker_shared.truncated.store(true, Ordering::Relaxed);
+                    return WalkState::Quit;
+                }
+                worker_shared.folders.fetch_add(1, Ordering::Relaxed);
+                let event = SearchEvent::Folder {
+                    path: entry.path().to_path_buf(),
+                    modified: entry.metadata().ok().and_then(|stat| stat.modified().ok()),
+                };
+                return if worker_sender.blocking_send(event).is_err() {
+                    WalkState::Quit
+                } else {
+                    WalkState::Continue
+                };
+            }
+            if entry.file_type().is_none() {
                 return WalkState::Continue;
             }
 
@@ -698,6 +746,7 @@ pub fn run_blocking(compiled: CompiledSearch, sender: mpsc::Sender<SearchEvent>)
     let totals = SearchTotals {
         scanned: shared.scanned.load(Ordering::Relaxed),
         files: shared.files.load(Ordering::Relaxed),
+        folders: shared.folders.load(Ordering::Relaxed),
         matches: shared
             .matches
             .load(Ordering::Relaxed)

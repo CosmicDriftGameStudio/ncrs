@@ -10,11 +10,15 @@ use crate::filters::{Facet, FacetValue};
 /// the panels': the same key means "move the cursor" in both.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SearchMessage {
+    /// The text to find in the files.
     QueryChanged(String),
-    IncludeChanged(String),
+    NamesChanged(String),
     ExcludeChanged(String),
+    /// The "search in files" box was clicked.
+    ToggleInFiles,
     /// A printable key typed while the result list has the keys: it goes to the
-    /// end of the query, as in VS Code.
+    /// end of the field that was typed in last, the names unless that was the
+    /// text in files.
     AppendToQuery(String),
     ToggleCase,
     ToggleWholeWord,

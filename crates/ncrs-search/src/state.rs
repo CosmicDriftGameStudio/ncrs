@@ -12,7 +12,7 @@ use ncrs_ui_kit::layout::{self, HIT_LIST_ROW_HEIGHT};
 use crate::ctx::Ctx;
 use crate::engine::{self, CompiledSearch, SearchError, SearchEvent};
 use crate::message::SearchMessage;
-use crate::view::{field_id, QUERY_ID};
+use crate::view::{field_id, NAMES_ID};
 use crate::view_state::SearchView;
 
 /// How long the search view waits for the next keystroke before it searches.
@@ -72,7 +72,7 @@ impl Search {
             view: None,
             open: false,
             side: PanelSide::Left,
-            rows: layout::search_visible_rows(window, false, HIT_LIST_ROW_HEIGHT),
+            rows: layout::search_visible_rows(window, false, false, HIT_LIST_ROW_HEIGHT),
             generation: 0,
             handle: None,
         }
@@ -92,7 +92,7 @@ impl Search {
             .view
             .as_ref()
             .map_or(HIT_LIST_ROW_HEIGHT, SearchView::row_height);
-        layout::search_visible_rows(window, self.filtered(), row_height)
+        layout::search_visible_rows(window, self.filtered(), self.in_files(), row_height)
     }
 
     /// Whether the search shows its filters.
@@ -100,6 +100,11 @@ impl Search {
         self.view
             .as_ref()
             .is_some_and(|view| view.filters.is_some())
+    }
+
+    /// Whether the search shows the field for the text in files.
+    pub fn in_files(&self) -> bool {
+        self.view.as_ref().is_some_and(|view| view.in_files)
     }
 
     /// The rows of the search after its filters changed what they offer.
@@ -111,7 +116,7 @@ impl Search {
         let id = self
             .view
             .as_ref()
-            .map_or(QUERY_ID, |view| field_id(view.focused));
+            .map_or(NAMES_ID, |view| field_id(view.focused));
         operation::focus(id).chain(operation::select_all(id))
     }
 
@@ -191,7 +196,7 @@ impl Search {
             return Task::none();
         };
         let root = view.root.clone();
-        let words = view.query.clone();
+        let words = view.content_text().to_owned();
         let Some(filters) = view.filters.as_mut() else {
             return Task::none();
         };

@@ -122,19 +122,24 @@ impl Panels {
 }
 
 /// The path bar of a hit list: what was searched for, where, and how many
-/// files it found. `scope_label` is the searched folder as the path tabs write it.
-pub fn hit_line_text(lang: Language, list: &HitList, count: usize, scope_label: &str) -> String {
-    let template = lang.text(if count == 1 {
-        Msg::HitListPathBarOne
-    } else {
-        Msg::HitListPathBarMany
-    });
+/// files and folders it found. `scope_label` is the searched folder as the
+/// path tabs write it.
+pub fn hit_line_text(
+    lang: Language,
+    list: &HitList,
+    (files, folders): (usize, usize),
+    scope_label: &str,
+) -> String {
     fill_template(
-        template,
+        lang.text(Msg::HitListPathBar),
         &[
             ("{query}", &list.query),
             ("{scope}", scope_label),
-            ("{count}", &count.to_string()),
+            ("{files}", &ncrs_ui_kit::format::files_counted(files, lang)),
+            (
+                "{folders}",
+                &ncrs_ui_kit::format::folders_counted(folders, lang),
+            ),
         ],
     )
 }

@@ -16,6 +16,7 @@ use ncrs_ui_kit::file_row::{hit_row, tag_star, HitRow, RowClick};
 use ncrs_ui_kit::format::{self, amount_text};
 use ncrs_ui_kit::hermes_kit::{self, ChipKind, MenuItem};
 use ncrs_ui_kit::key_intercept::key_intercept;
+use ncrs_ui_kit::kit::Check;
 use ncrs_ui_kit::layout;
 use ncrs_ui_kit::palette::Palette;
 use ncrs_ui_kit::theme::{self, font_size, spacing};
@@ -26,14 +27,14 @@ use crate::filters::{Facet, FacetValue, SearchFilters};
 use crate::message::SearchMessage;
 use crate::view_state::{FileResult, SearchField, SearchView};
 
+pub const NAMES_ID: &str = "search-names";
 pub const QUERY_ID: &str = "search-query";
-pub const INCLUDE_ID: &str = "search-include";
 pub const EXCLUDE_ID: &str = "search-exclude";
 
 pub fn field_id(field: SearchField) -> &'static str {
     match field {
+        SearchField::Names => NAMES_ID,
         SearchField::Query => QUERY_ID,
-        SearchField::Include => INCLUDE_ID,
         SearchField::Exclude => EXCLUDE_ID,
     }
 }
@@ -176,6 +177,22 @@ fn header<'a>(
         .align_y(alignment::Vertical::Center)
     };
 
+    let names = field(
+        lang.text(Msg::SearchNamesPlaceholder),
+        &search.names,
+        NAMES_ID,
+        SearchMessage::NamesChanged,
+    );
+    let in_files_box = hermes_kit::checkbox(
+        if search.in_files {
+            Check::On
+        } else {
+            Check::Off
+        },
+        Some(SearchMessage::ToggleInFiles),
+        Some(lang.text(Msg::SearchInFilesLabel)),
+        palette,
+    );
     let query_row = row![
         field(
             lang.text(Msg::SearchQueryPlaceholder),
@@ -208,12 +225,6 @@ fn header<'a>(
     .spacing(2.0)
     .align_y(alignment::Vertical::Center);
 
-    let include = field(
-        lang.text(Msg::SearchIncludePlaceholder),
-        &search.include,
-        INCLUDE_ID,
-        SearchMessage::IncludeChanged,
-    );
     let exclude = field(
         lang.text(Msg::SearchExcludePlaceholder),
         &search.exclude,
@@ -227,12 +238,16 @@ fn header<'a>(
         .color(status_color)
         .wrapping(Wrapping::None);
     let mut fields = column![
-        container(query_row).height(FIELD_ROW_HEIGHT),
-        container(labelled(Msg::SearchFilesLabel, include)).height(FIELD_ROW_HEIGHT),
-        container(labelled(Msg::SearchExcludeLabel, exclude)).height(FIELD_ROW_HEIGHT),
+        container(names).height(FIELD_ROW_HEIGHT),
+        container(in_files_box).height(FIELD_ROW_HEIGHT),
     ]
     .spacing(4.0);
-    let height = layout::search_header_height(search.filters.is_some());
+    if search.in_files {
+        fields = fields.push(container(query_row).height(FIELD_ROW_HEIGHT));
+    }
+    fields =
+        fields.push(container(labelled(Msg::SearchExcludeLabel, exclude)).height(FIELD_ROW_HEIGHT));
+    let height = layout::search_header_height(search.filters.is_some(), search.in_files);
     match search.filters.as_ref() {
         Some(filters) => {
             fields = fields
@@ -403,13 +418,9 @@ fn filter_row<'a>(
     .into()
 }
 
-/// The width the two labels of the file name fields need in `lang`, and a
-/// gap.
+/// The width the label of the exclude field needs in `lang`, and a gap.
 fn label_column_width(lang: Language) -> f32 {
-    [Msg::SearchFilesLabel, Msg::SearchExcludeLabel]
-        .into_iter()
-        .map(|label| format::estimated_width(lang.text(label), font_size::COLUMN_HEADER))
-        .fold(0.0, f32::max)
+    format::estimated_width(lang.text(Msg::SearchExcludeLabel), font_size::COLUMN_HEADER)
         + hermes_kit::GAP_S
 }
 
@@ -526,7 +537,13 @@ fn status_line(search: &SearchView, lang: Language, palette: &Palette) -> (Strin
     };
     let files = totals.files.to_string();
     let mut line = if search.is_name_search() {
-        fill_template(lang.text(Msg::SearchSummaryNames), &[("{files}", &files)])
+        fill_template(
+            lang.text(Msg::SearchSummaryNames),
+            &[
+                ("{files}", &format::files_counted(totals.files, lang)),
+                ("{folders}", &format::folders_counted(totals.folders, lang)),
+            ],
+        )
     } else {
         let lines = totals.matches.to_string();
         fill_template(
@@ -555,9 +572,11 @@ fn status_line(search: &SearchView, lang: Language, palette: &Palette) -> (Strin
 
 /// What the empty result area says: how to start, or that nothing matched.
 fn empty_text(search: &SearchView, lang: Language) -> &'static str {
-    let nothing_asked = search.query.is_empty() && search.include.is_empty();
+    let nothing_asked = search.names.trim().is_empty() && search.content_text().is_empty();
     if nothing_asked || search.running || search.totals.is_none() {
-        if nothing_asked {
+        if nothing_asked && search.in_files {
+            lang.text(Msg::SearchHintInFiles)
+        } else if nothing_asked {
             lang.text(Msg::SearchHint)
         } else {
             ""
@@ -760,6 +779,7 @@ mod tests {
     fn result_with(lines: usize) -> FileResult {
         FileResult {
             path: std::path::PathBuf::from("/root/a.txt"),
+            is_dir: false,
             lines: (1..=lines as u64)
                 .map(|number| LineMatch {
                     number,

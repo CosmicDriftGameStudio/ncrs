@@ -65,10 +65,10 @@ pub fn footer_text(totals: &PanelTotals, lang: Language) -> String {
     let line = match &totals.selected {
         None => lang
             .text(Msg::PanelFooterTotals)
-            .replace("{files}", &counted(totals.shown.files, Part::Files, lang))
+            .replace("{files}", &format::files_counted(totals.shown.files, lang))
             .replace(
                 "{folders}",
-                &counted(totals.shown.folders, Part::Folders, lang),
+                &format::folders_counted(totals.shown.folders, lang),
             )
             .replace("{size}", &format::size(totals.shown.bytes)),
         Some(selected) => lang
@@ -84,22 +84,6 @@ pub fn footer_text(totals: &PanelTotals, lang: Language) -> String {
     } else {
         line
     }
-}
-
-enum Part {
-    Files,
-    Folders,
-}
-
-fn counted(count: usize, part: Part, lang: Language) -> String {
-    let msg = match (part, count == 1) {
-        (Part::Files, true) => Msg::PanelFooterFilesOne,
-        (Part::Files, false) => Msg::PanelFooterFiles,
-        (Part::Folders, true) => Msg::PanelFooterFoldersOne,
-        (Part::Folders, false) => Msg::PanelFooterFolders,
-    };
-    lang.text(msg)
-        .replace("{count}", &format::grouped(count as u64))
 }
 
 #[allow(

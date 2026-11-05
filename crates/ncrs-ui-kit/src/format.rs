@@ -4,7 +4,7 @@ use std::time::SystemTime;
 
 use chrono::{DateTime, Local};
 use ncrs_core::FileEntry;
-use ncrs_i18n::Msg;
+use ncrs_i18n::{Language, Msg};
 use ncrs_index::Amount;
 
 /// How many minor units (cents) make one unit of an amount.
@@ -257,6 +257,26 @@ pub fn grouped(count: u64) -> String {
         .map(String::as_str)
         .collect::<Vec<_>>()
         .join("\u{a0}")
+}
+
+/// `3 files`, `1 file`: how many files, worded for `lang`.
+pub fn files_counted(count: usize, lang: Language) -> String {
+    let msg = if count == 1 {
+        Msg::PanelFooterFilesOne
+    } else {
+        Msg::PanelFooterFiles
+    };
+    lang.text(msg).replace("{count}", &grouped(count as u64))
+}
+
+/// `3 folders`, `1 folder`: how many folders, worded for `lang`.
+pub fn folders_counted(count: usize, lang: Language) -> String {
+    let msg = if count == 1 {
+        Msg::PanelFooterFoldersOne
+    } else {
+        Msg::PanelFooterFolders
+    };
+    lang.text(msg).replace("{count}", &grouped(count as u64))
 }
 
 /// `text` as it is, or cut at the end with `…` to fit `width_px`.
