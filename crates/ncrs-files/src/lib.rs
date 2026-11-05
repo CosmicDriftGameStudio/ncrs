@@ -17,6 +17,7 @@ pub mod open_plan;
 pub mod panel;
 pub mod panel_drag;
 pub mod panel_history;
+pub mod panel_totals;
 pub mod path_field;
 pub mod reload;
 pub mod state;

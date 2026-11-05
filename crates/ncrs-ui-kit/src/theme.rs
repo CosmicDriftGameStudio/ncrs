@@ -54,6 +54,8 @@ pub mod size {
     pub const FKEY_BAR: f32 = 24.0;
     pub const COMMAND_LINE: f32 = 24.0;
     pub const COLUMN_HEADER: f32 = 22.0;
+    /// The line of totals under the rows of a file panel.
+    pub const PANEL_FOOTER: f32 = 22.0;
     pub const TAB_WIDTH: f32 = 240.0;
     pub const DOT: f32 = 6.0;
     /// The side of a status or folder icon: the line height of a panel row's text.

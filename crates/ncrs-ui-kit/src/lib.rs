@@ -46,6 +46,7 @@ pub mod numbered_hint;
 pub mod page_status_bar;
 pub mod page_text;
 pub mod palette;
+pub mod panel_footer;
 pub mod picker;
 pub mod popup_menu;
 pub mod setting_rows;
