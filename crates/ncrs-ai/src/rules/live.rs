@@ -14,7 +14,6 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
 use std::time::Instant;
 
 use ncrs_index::{DocumentFields, Kinds};
@@ -85,25 +84,24 @@ fn request_of(case: &Case, prefix: &str, kinds: &Kinds) -> RuleRequest {
     }
 }
 
-fn model() -> &'static LocalModel {
-    static MODEL: OnceLock<LocalModel> = OnceLock::new();
-    MODEL.get_or_init(|| {
-        let path = models_dir().join(LOCAL_MODEL.name);
-        assert!(
-            path.is_file(),
-            "{} is missing; set NCRS_AI_MODELS_DIR to the folder with the model",
-            path.display()
-        );
-        LocalModel::load(
-            LocalModelConfig {
-                path,
-                threads: NonZeroU32::new(THREADS).unwrap(),
-                context_tokens: NonZeroU32::new(CONTEXT_TOKENS).unwrap(),
-            },
-            &LOCAL_MODEL,
-        )
-        .unwrap_or_else(|error| panic!("{error}"))
-    })
+/// Owned by the test, not a static: Metal asserts at exit when a model is
+/// still alive.
+fn load_model() -> LocalModel {
+    let path = models_dir().join(LOCAL_MODEL.name);
+    assert!(
+        path.is_file(),
+        "{} is missing; set NCRS_AI_MODELS_DIR to the folder with the model",
+        path.display()
+    );
+    LocalModel::load(
+        LocalModelConfig {
+            path,
+            threads: NonZeroU32::new(THREADS).unwrap(),
+            context_tokens: NonZeroU32::new(CONTEXT_TOKENS).unwrap(),
+        },
+        &LOCAL_MODEL,
+    )
+    .unwrap_or_else(|error| panic!("{error}"))
 }
 
 /// The shard of the chat evaluation, then an even sample of `NCRS_RULE_LIMIT`
@@ -306,12 +304,13 @@ fn with_model_rule_matrix_reports() {
     let kinds = archive_kinds();
     let prefix = prefix_text(&documents, &kinds);
     let mut cache = ResultCache::open(&default_cache_path());
+    let model = load_model();
 
     let mut outcomes = Vec::new();
     let mut setup_millis = 0;
     for axis in Axis::ALL {
         // One session per group: the prefix is decoded once for the group.
-        let mut session: Option<RuleSession<'static>> = None;
+        let mut session: Option<RuleSession<'_>> = None;
         for case in cases.iter().filter(|case| case.axis == axis) {
             let request = request_of(case, &prefix, &kinds);
             let key = cache_key(&LOCAL_MODEL, &request);
@@ -322,7 +321,7 @@ fn with_model_rule_matrix_reports() {
                 if session.is_none() {
                     let started = Instant::now();
                     session = Some(
-                        RuleSession::new(model(), &documents, &kinds)
+                        RuleSession::new(&model, &documents, &kinds)
                             .unwrap_or_else(|error| panic!("the session did not start: {error}")),
                     );
                     setup_millis += started.elapsed().as_millis();

@@ -92,6 +92,7 @@ pub fn parse_levels(raw: &str) -> Result<Levels, AiError> {
     levels_of(&object_of(raw)?)
 }
 
+#[cfg(test)]
 pub fn parse_pattern(raw: &str) -> Result<String, AiError> {
     parse_levels(raw).map(|levels| levels.pattern())
 }

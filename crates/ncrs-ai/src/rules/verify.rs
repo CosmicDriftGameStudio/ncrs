@@ -46,7 +46,7 @@ pub fn pattern_mismatches(
             let written = render_pattern_in(pattern, fields, kinds).map(|path| path_text(&path));
             let fits = written
                 .as_deref()
-                .is_some_and(|written| is_written_path(file, written));
+                .is_some_and(|text| is_written_path(file, text));
             (!fits).then(|| Mismatch {
                 file: file.clone(),
                 written,
@@ -57,6 +57,8 @@ pub fn pattern_mismatches(
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::indexing_slicing, clippy::shadow_unrelated)]
+
     use ncrs_index::KindLanguage;
     use ncrs_intake::parse_date;
 

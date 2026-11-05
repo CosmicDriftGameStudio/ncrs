@@ -26,8 +26,8 @@ pub struct ContextDocument {
 
 /// The last lines of a task, after the user's words: a small model follows
 /// what it read last. The examples in the instructions end the same way.
-pub const GENERATE_REMINDER: &str = "(One level for every folder the user names. A file name described: datei, otherwise null. No structure named: the default.)";
-pub const RECOGNIZE_REMINDER: &str = "(One level for every folder. A field is a placeholder, a text the same in every path is fixed. The automatic file name: datei is null.)";
+pub const GENERATE_REMINDER: &str = "(One level per folder named. datei only for a described file name. No structure named: the default.)";
+pub const RECOGNIZE_REMINDER: &str = "(A field is a placeholder, a text the same in every path is fixed. The last level is the file: the automatic name is datei null and not in ordner.)";
 
 /// The paths of the recognize examples with the fields of their documents,
 /// each with the pattern that wrote them (`.pdf` appended).
@@ -239,9 +239,8 @@ mod tests {
         assert!(prompt.contains("_Otto-GmbH_5512.pdf\" = the automatic file name"));
     }
 
-    const EXAMPLE_PATTERNS: [&str; 8] = [
+    const EXAMPLE_PATTERNS: [&str; 7] = [
         "Rechnungen/{year}/{month}/",
-        "Belege/{month}/{sender}/",
         "{sender}_Tax_{year}",
         "{recipient}/Post/",
         "Finanzen/{year}/{date}_{sender}_{kind}",
