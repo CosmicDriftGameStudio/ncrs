@@ -5917,10 +5917,22 @@
       "de": "Alle erneut verarbeiten"
     },
     {
-      "key": "filing_status.age",
-      "context": "How long ago a file could not be read, at the right of its row on the read errors page. {age} is minutes:seconds, or hours:minutes:seconds from one hour on.",
-      "en": "{age} ago",
-      "de": "vor {age}"
+      "key": "filing_status.age_now",
+      "context": "At the right of a row on the read errors page: the file could not be read less than a minute ago.",
+      "en": "just now",
+      "de": "gerade eben"
+    },
+    {
+      "key": "filing_status.age_minutes",
+      "context": "At the right of a row on the read errors page: how long ago the file could not be read. {count} is a whole number of minutes, 1 to 59.",
+      "en": "{count} min ago",
+      "de": "vor {count} Min."
+    },
+    {
+      "key": "filing_status.age_hours",
+      "context": "At the right of a row on the read errors page: how long ago the file could not be read. {count} is a whole number of hours, 1 or more.",
+      "en": "{count} h ago",
+      "de": "vor {count} Std."
     },
     {
       "key": "filing_status.show_file",

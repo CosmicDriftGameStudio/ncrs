@@ -17,6 +17,7 @@ use crate::message::{FilingStatusMessage, Message};
 
 /// From this many rows on, a button reads all of them again at once.
 const MIN_ROWS_FOR_ALL_AT_ONCE: usize = 2;
+const SECONDS_PER_MINUTE: u64 = 60;
 const SECONDS_PER_HOUR: u64 = 3600;
 
 fn send(message: FilingStatusMessage) -> Message {
@@ -35,11 +36,8 @@ pub fn groups<'a>(
         .map(|error| {
             SettingRow::listed(
                 file_label(&error.file),
-                Some(error.message.clone()),
-                Some(ncrs_i18n::fill_template(
-                    lang.text(Msg::FilingStatusAge),
-                    &[("{age}", &age_label(status, error.at))],
-                )),
+                Some(reason_of(&error.file, &error.message)),
+                Some(age_label(status, error.at, lang)),
                 vec![
                     kit::button(
                         lang.text(Msg::FilingStatusShowFile),
@@ -117,19 +115,51 @@ fn file_label(file: &Path) -> String {
     )
 }
 
-/// How long ago an error happened: `m:ss`, and `h:mm:ss` from one hour on.
-fn age_label(status: &FilingStatus, at: SystemTime) -> String {
+/// The reason of an error without the path in front of it: the file name is
+/// the title of the row already.
+fn reason_of(file: &Path, message: &str) -> String {
+    message
+        .strip_prefix(&format!("{}: ", file.display()))
+        .unwrap_or(message)
+        .to_owned()
+}
+
+/// How long ago an error happened, in whole minutes or hours.
+fn age_label(status: &FilingStatus, at: SystemTime, lang: Language) -> String {
     let total = status
         .taken_at()
         .duration_since(at)
         .unwrap_or_default()
         .as_secs();
-    let hours = total.div_euclid(SECONDS_PER_HOUR);
-    let minutes = total.rem_euclid(SECONDS_PER_HOUR).div_euclid(60);
-    let seconds = total.rem_euclid(60);
-    if hours > 0 {
-        format!("{hours}:{minutes:02}:{seconds:02}")
+    let (template, count) = if total >= SECONDS_PER_HOUR {
+        (
+            Msg::FilingStatusAgeHours,
+            total.div_euclid(SECONDS_PER_HOUR),
+        )
+    } else if total >= SECONDS_PER_MINUTE {
+        (
+            Msg::FilingStatusAgeMinutes,
+            total.div_euclid(SECONDS_PER_MINUTE),
+        )
     } else {
-        format!("{minutes}:{seconds:02}")
+        return lang.text(Msg::FilingStatusAgeNow).to_owned();
+    };
+    ncrs_i18n::fill_template(lang.text(template), &[("{count}", &count.to_string())])
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::reason_of;
+
+    #[test]
+    fn the_reason_leaves_out_the_path_in_front_of_it() {
+        let file = Path::new("/archive/scan.pdf");
+        assert_eq!(reason_of(file, "/archive/scan.pdf: not a PDF"), "not a PDF");
+        assert_eq!(
+            reason_of(file, "no text could be read"),
+            "no text could be read"
+        );
     }
 }
