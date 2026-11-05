@@ -177,14 +177,18 @@ impl App {
     }
 
     fn page_tab_is_open(&self) -> bool {
-        self.settings.page.is_some()
+        self.monitor.is_open() || self.settings.page.is_some()
     }
 
     fn page_tab(&self) -> Option<titlebar::PageTab> {
-        self.settings
-            .page
-            .is_some()
-            .then_some(titlebar::PageTab::Settings)
+        if self.monitor.is_open() {
+            Some(titlebar::PageTab::System)
+        } else {
+            self.settings
+                .page
+                .is_some()
+                .then_some(titlebar::PageTab::Settings)
+        }
     }
 
     /// The name of the colour theme when the palette is one of the presets.

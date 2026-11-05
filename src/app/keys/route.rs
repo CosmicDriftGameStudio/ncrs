@@ -132,6 +132,10 @@ fn keys_without_prompt(
         };
     }
 
+    if prompt.monitor {
+        return monitor_page_key(prompt, &key, key_modifiers, scope);
+    }
+
     if prompt.settings {
         return settings_key(prompt, &key, key_modifiers, scope);
     }
@@ -375,6 +379,14 @@ pub(in crate::app) fn repeats(message: &Message) -> bool {
     matches!(
         message,
         Message::Panel(PanelMessage::MoveSelection(_))
+            | Message::Monitor(
+                MonitorMessage::Move(_)
+                    | MonitorMessage::PageMove(_)
+                    | MonitorMessage::First
+                    | MonitorMessage::Last
+                    | MonitorMessage::ShiftCommands(_)
+                    | MonitorMessage::MenuMove(_),
+            )
             | Message::Panel(PanelMessage::PageUp)
             | Message::Panel(PanelMessage::PageDown)
             | Message::Panel(PanelMessage::SelectFirst)

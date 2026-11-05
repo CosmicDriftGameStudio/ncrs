@@ -106,6 +106,12 @@ impl App {
             } else {
                 Subscription::none()
             },
+            match ncrs_monitor::tick_every(&self.monitor) {
+                Some(every) => {
+                    iced::time::every(every).map(|_| Message::Monitor(MonitorMessage::Tick))
+                }
+                None => Subscription::none(),
+            },
             if self.hermes_chat_is_working() {
                 iced::time::every(HERMES_CHAT_TICK_EVERY)
                     .map(|_| Message::HermesChat(HermesChatMessage::WorkTick))

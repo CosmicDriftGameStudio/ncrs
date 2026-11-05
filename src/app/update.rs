@@ -196,6 +196,7 @@ impl App {
         let applied = self.apply_unless_refused(message);
         let task = Task::batch([
             applied,
+            self.monitor_yields_to_other_pages(),
             self.with_hermes(Vec::new(), ncrs_hermes_ui::request_hermes_column)
                 .map(Message::from),
             self.schedule_session_save(),
@@ -555,6 +556,7 @@ impl App {
             Message::ThemeFetch(fetch_message) => self.update_theme_fetch(fetch_message),
             Message::Rules(rules) => self.update_rules(rules),
             Message::SavedQueries(queries) => self.update_saved_queries(queries),
+            Message::Monitor(monitor_message) => self.update_monitor(monitor_message),
             Message::Tags(tags) => self.update_tags(tags),
             Message::HermesPage(page) => self.show_hermes_page(page),
             Message::DocumentsFiled(result) => self.documents_filed(result),

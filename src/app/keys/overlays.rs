@@ -218,6 +218,35 @@ pub(in crate::app) fn settings_key(
     }
 }
 
+/// The System page owns the keyboard. Of the bindings the command list, the
+/// key that closes the page and quitting reach through.
+pub(in crate::app) fn monitor_page_key(
+    prompt: &PromptKeyState,
+    key: &Key,
+    key_modifiers: Modifiers,
+    scope: KeyScope,
+) -> Option<Message> {
+    let bound = bound_message(&prompt.keymap, key, key_modifiers, scope);
+    let passes = |message: &Message| {
+        *message == Message::Quit
+            || *message == KeyAction::CommandPalette.message()
+            || *message == KeyAction::SystemMonitor.message()
+            || *message == KeyAction::KeyBindings.message()
+    };
+    let facts = ncrs_monitor::KeyFacts {
+        filter_focused: prompt.monitor_filter,
+        dialog_open: prompt.monitor_dialog,
+        menu_open: prompt.monitor_menu,
+        context_menu_pressed: bound == Some(KeyAction::ContextMenu.message()),
+        bound_untyped: bound.as_ref().is_some_and(passes)
+            && is_not_typed_by_text_field(key, key_modifiers),
+    };
+    match ncrs_monitor::monitor_key(key, key_modifiers, facts)? {
+        ncrs_monitor::MonitorKey::Message(message) => Some(Message::Monitor(message)),
+        ncrs_monitor::MonitorKey::Bound => bound.filter(passes),
+    }
+}
+
 // A visible card whose footer promises "Esc: close" goes before the job
 // (same thought as the delete dialog): a filing
 // card, then a running job, then the config error. Unbound rather than

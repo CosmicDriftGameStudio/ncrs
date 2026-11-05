@@ -75,6 +75,7 @@ impl KeyActionMessage for KeyAction {
             Self::First => Message::Panel(PanelMessage::SelectFirst),
             Self::Last => Message::Panel(PanelMessage::SelectLast),
             Self::Search => Message::OpenSearch,
+            Self::SystemMonitor => Message::Monitor(ncrs_monitor::MonitorMessage::Toggle),
             Self::QuickOpen => Message::QuickOpen(QuickOpenMessage::Open),
             Self::CommandLine => Message::CommandLine(CommandLineMessage::Focus),
             Self::HermesChat => Message::HermesChat(HermesChatMessage::Open),

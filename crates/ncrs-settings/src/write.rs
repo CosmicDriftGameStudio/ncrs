@@ -40,6 +40,7 @@ pub fn write_setting_change(
             config::write_own_details(path, detail, &entries)
         }
         SettingChange::FileListTags(tags) => config::write_file_list_tags(path, &tags),
+        SettingChange::System(settings) => config::write_system_settings(path, &settings),
         SettingChange::Locations(locations) => config::write_read_folders(path, &locations),
     };
     written.map(Box::new)

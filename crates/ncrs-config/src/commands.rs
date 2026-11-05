@@ -158,6 +158,7 @@ pub fn command_of(action: KeyAction) -> Option<Command> {
         KeyAction::FetchTheme => Command::plain(action, View, Msg::ActionFetchTheme),
         KeyAction::SwitchLanguage => Command::plain(action, View, Msg::ActionSwitchLanguage),
         KeyAction::Settings => Command::plain(action, View, Msg::ActionSettings),
+        KeyAction::SystemMonitor => Command::plain(action, View, Msg::ActionSystemMonitor),
         KeyAction::FileListTagsToggle => {
             Command::plain(action, View, Msg::ActionFileListTagsToggle)
         }

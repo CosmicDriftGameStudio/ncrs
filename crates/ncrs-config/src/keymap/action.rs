@@ -95,6 +95,7 @@ key_actions! {
     SearchDocuments => "search_documents",
     FetchTheme => "fetch_theme",
     Settings => "settings",
+    SystemMonitor => "system_monitor",
     KeyBindings => "key_bindings",
     About => "about",
     DownloadOcrModels => "download_ocr_models",
@@ -170,6 +171,7 @@ impl KeyAction {
             | Self::DeletePermanently
             | Self::AbortJob
             | Self::SwitchLanguage
+            | Self::SystemMonitor
             | Self::SwitchPanel
             | Self::ToggleTag
             | Self::TagDown
@@ -244,7 +246,7 @@ impl KeyAction {
     /// Keys that became defaults after a config could already have given them
     /// to another action: bare F2 in 0.6, Shift+F4, the history keys and
     /// primary+D in 0.7, primary+K in 0.8, primary+C (`copy_files`) and primary+Z
-    /// (`restore_last_deletion`) after 1.0.
+    /// (`restore_last_deletion`) after 1.0, F12 (`system_monitor`) after the 0.7.0 example config.
     /// Such a config keeps working: its binding wins over the built-in one,
     /// and the action keeps its other keys.
     pub fn yields_its_built_in_key(self) -> bool {
@@ -260,6 +262,7 @@ impl KeyAction {
                 | Self::KeyBindings
                 | Self::CopyFiles
                 | Self::RestoreLastDeletion
+                | Self::SystemMonitor
         )
     }
 
@@ -319,6 +322,7 @@ impl KeyAction {
             | Self::Open
             | Self::SwitchPanel
             | Self::SwitchLanguage
+            | Self::SystemMonitor
             | Self::ToggleTag
             | Self::TagDown
             | Self::TagUp
@@ -405,6 +409,7 @@ impl KeyAction {
             Self::CommandLine => false,
             Self::Quit
             | Self::HermesChat
+            | Self::SystemMonitor
             | Self::GoUp
             | Self::Open
             | Self::SwitchPanel

@@ -16,6 +16,7 @@ pub const FILING_TABLE: &str = "filing";
 pub const AI_TABLE: &str = "ai";
 pub const OPEN_TABLE: &str = "open";
 pub const FILE_LIST_TAGS_TABLE: &str = "file_list_tags";
+pub const SYSTEM_TABLE: &str = "system";
 pub const AI_TABLES: &[&str] = &[MODULES_TABLE, FILING_TABLE, AI_TABLE];
 
 pub fn theme_preset_setting(preset: ThemePreset) -> Setting {
@@ -131,6 +132,34 @@ pub fn file_list_tags_settings(tags: &FileListTags) -> [Setting; 3] {
     ]
 }
 
+pub fn system_settings(settings: &SystemSettings) -> [Setting; 8] {
+    let list = |entries: Vec<&str>| toml_edit::Value::Array(entries.into_iter().collect());
+    let setting = |key: &'static str, value: toml_edit::Value| Setting {
+        tables: &[SYSTEM_TABLE],
+        key,
+        value: Some(value),
+    };
+    [
+        setting("refresh", settings.refresh.name().into()),
+        setting("sort", settings.sort.name().into()),
+        setting("network_unit", settings.network_unit.name().into()),
+        setting("drive_column", settings.drive_column.name().into()),
+        setting(
+            "status_values",
+            list(
+                settings
+                    .status_values
+                    .iter()
+                    .map(|value| value.name())
+                    .collect(),
+            ),
+        ),
+        setting("status_style", settings.status_style.name().into()),
+        setting("idle_interfaces", settings.idle_interfaces.name().into()),
+        setting("system_volumes", settings.system_volumes.name().into()),
+    ]
+}
+
 pub fn ai_enabled_setting(enabled: bool) -> Setting {
     Setting {
         tables: AI_TABLES,
@@ -219,6 +248,15 @@ pub fn write_file_list_tags(path: &Path, tags: &FileListTags) -> Result<Config, 
         &file_list_tags_settings(tags),
         home_from_env().as_deref(),
     )
+}
+
+/// Writes the whole `[system]` section; same guarantees as
+/// [`write_theme_preset`].
+pub fn write_system_settings(
+    path: &Path,
+    settings: &SystemSettings,
+) -> Result<Config, FilingWriteError> {
+    write_settings(path, &system_settings(settings), home_from_env().as_deref())
 }
 
 /// Sets `enabled` in `[modules.filing.ai]`; same guarantees as [`write_theme_preset`].

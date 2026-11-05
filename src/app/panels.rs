@@ -132,7 +132,7 @@ impl App {
                 self.panels.context_menu = None;
                 self.panels.set_path_field(None);
                 self.command_line.leave();
-                Task::none()
+                self.monitor_clicked_away()
             }
             _ => Task::none(),
         }

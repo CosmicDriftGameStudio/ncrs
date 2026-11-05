@@ -270,7 +270,7 @@ jobs:
       # render with tiny-skia whatever the build, see .cargo/config.toml.
       - name: Snapshot tests (macOS)
         if: runner.os == 'macOS'
-        run: cargo test ui_tests
+        run: cargo test --workspace ui_tests
 
       # The backend differs per feature set, so the app has to build and its
       # tests have to pass in every configuration. This is not a formality: the

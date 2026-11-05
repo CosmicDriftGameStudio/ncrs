@@ -151,6 +151,7 @@ use ncrs_palette::command_list::{
 #[cfg(test)]
 use ncrs_pipeline::Load;
 
+use ncrs_monitor::MonitorMessage;
 use ncrs_palette::keys::{CommandLineBound, CommandLineKey};
 use ncrs_search::{search_events, SearchKey, SearchKeyFacts};
 use ncrs_settings::keys::{SettingsKey, ThemeFetchKey};
@@ -171,6 +172,7 @@ mod hermes;
 mod hermes_chat;
 mod hermes_pages;
 mod keys;
+mod monitor;
 mod ops;
 mod palette;
 mod panels;
@@ -331,6 +333,8 @@ pub struct App {
     list_volumes: Arc<dyn Fn() -> Vec<fs::Volume> + Send + Sync>,
     /// The search: its view, which is kept when it is closed, and its run.
     search: ncrs_search::Search,
+    /// The System page (F12) and the badge in the status bar.
+    monitor: ncrs_monitor::State,
     /// The Hermes chat (F2): its thread is kept when it is closed.
     hermes_chat: ncrs_hermes_chat::State,
     /// The local model the chat talks to; shared with the field AI, created on first use.
@@ -481,6 +485,14 @@ pub struct PromptKeyState {
     pub connect_dialog: bool,
     /// The settings tab is up, so the panel keys are inert and Escape closes it.
     pub settings: bool,
+    /// The System page is up: its keys are the list's, and Escape closes it.
+    pub monitor: bool,
+    /// Its filter field has the focus: it types the letters.
+    pub monitor_filter: bool,
+    /// Its kill question is up.
+    pub monitor_dialog: bool,
+    /// Its context menu is up.
+    pub monitor_menu: bool,
     /// The delete dialog is up, so keys answer it.
     pub delete_dialog: DeleteKeys,
     /// The question whether to remove the Hermes index is up: keys answer it.
@@ -527,6 +539,10 @@ impl Default for PromptKeyState {
             grant_dialog: false,
             connect_dialog: false,
             settings: false,
+            monitor: false,
+            monitor_filter: false,
+            monitor_dialog: false,
+            monitor_menu: false,
             delete_dialog: DeleteKeys::default(),
             start_over_dialog: false,
             volume_menu: false,

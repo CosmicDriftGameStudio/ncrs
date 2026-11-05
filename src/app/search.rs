@@ -194,7 +194,7 @@ impl App {
         Task::batch([closed, load])
     }
 
-    fn close_search(&mut self) -> Task<Message> {
+    pub(in crate::app) fn close_search(&mut self) -> Task<Message> {
         self.search.close().map(Message::Search)
     }
 

@@ -26,6 +26,13 @@ impl App {
         input.theme_fetch = self.settings.theme_fetch.is_some();
         input.transfer_dialog = self.ops.transfer_dialog.is_some();
         input.settings = self.settings.page.is_some() && !self.blocking_overlay_is_open();
+        input.monitor = self.monitor.is_open();
+        input.monitor_filter = self.monitor.is_open()
+            && self.monitor.filter_has_focus()
+            && !self.blocking_overlay_is_open();
+        input.monitor_menu = self.monitor.is_open()
+            && !self.monitor.filter_has_focus()
+            && !self.blocking_overlay_is_open();
         drop(input);
         // `get` rather than `get_or_init`: the cell is created by the
         // subscription, and `update` must not create it — a cell nothing reads
@@ -78,6 +85,10 @@ impl App {
         let grant_dialog = self.grant_dialog;
         let connect_dialog = self.remote_ui.dialog.is_some();
         let settings = self.settings.page.is_some();
+        let monitor = self.monitor.is_open();
+        let monitor_filter = monitor && self.monitor.filter_has_focus();
+        let monitor_dialog = monitor && self.monitor.dialog_is_open();
+        let monitor_menu = monitor && self.monitor.menu_is_open();
         let transfer_dialog = self.ops.transfer_dialog.is_some();
         let transfer_progress = self.ops.progress_mask_is_open();
         let start_over_dialog = self.start_over_dialog;
@@ -115,6 +126,10 @@ impl App {
                 grant_dialog,
                 connect_dialog,
                 settings,
+                monitor,
+                monitor_filter,
+                monitor_dialog,
+                monitor_menu,
                 // A conflict is asked while no prompt is open — the prompt is
                 // gone by then, the transfer is what is running. Without this
                 // the dialog's keys would fall through to the panels.
@@ -152,6 +167,10 @@ impl App {
                 grant_dialog,
                 connect_dialog,
                 settings,
+                monitor,
+                monitor_filter,
+                monitor_dialog,
+                monitor_menu,
                 conflict_open: self.ops.conflict_is_open(),
                 transfer_dialog,
                 transfer_progress,

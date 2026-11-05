@@ -1,0 +1,33 @@
+[package]
+name = "ncrs-monitor"
+version = "0.0.0"
+edition = "2021"
+# Same as the root package: one place decides the compiler.
+rust-version = "1.98"
+description = "The System page of ncrs: CPU, memory, drives, network and tasks of this computer"
+license = "MIT"
+publish = false
+
+[dependencies]
+# Same as the kit: no renderer or window system, the app picks them.
+iced = { version = "0.14", default-features = false, features = ["tokio", "advanced"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
+# Only the parts the page shows. `user` names the owner of a task.
+sysinfo = { version = "0.40", default-features = false, features = ["system", "disk", "network", "component", "user"] }
+ncrs-core = { path = "../ncrs-core", version = "0.0.0" }
+ncrs-config = { path = "../ncrs-config", version = "0.0.0" }
+ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
+ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0" }
+
+[features]
+# The App Sandbox build: sysinfo then keeps to what the App Store allows, and
+# the page offers no way to kill a task.
+sandbox = ["sysinfo/apple-app-store"]
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+iced = { version = "0.14", default-features = false, features = ["tokio", "advanced", "tiny-skia"] }
+iced_test = "0.14"
+
+[lints]
+workspace = true

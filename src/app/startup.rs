@@ -211,6 +211,7 @@ impl App {
                 self.file_list_tags = config.file_list_tags;
                 self.kinds = Kinds::new(config.kinds, self.lang.kind_language());
                 self.keymap = config.keymap;
+                self.monitor.set_settings(config.system);
                 self.refresh_function_keys();
                 self.palette = config.palette;
                 self.report_look_warnings(config.contrast_warning, config.vscode_warning);
@@ -443,6 +444,7 @@ impl App {
             input: Arc::default(),
             list_volumes: Arc::new(fs::list_volumes),
             search: ncrs_search::Search::new(layout::INITIAL_WINDOW_SIZE),
+            monitor: ncrs_monitor::State::default(),
             hermes_chat: ncrs_hermes_chat::State::default(),
             chat_model: None,
             turning_hermes_on: false,

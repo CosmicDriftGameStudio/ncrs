@@ -8,6 +8,7 @@ pub enum SettingsFeature {
     Programs,
     Keys,
     Servers,
+    System,
     Index,
     Hermes,
     Rules,
@@ -24,12 +25,13 @@ pub enum SettingsGroup {
 }
 
 impl SettingsFeature {
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 12] = [
         Self::Look,
         Self::Language,
         Self::Programs,
         Self::Keys,
         Self::Servers,
+        Self::System,
         Self::Index,
         Self::Hermes,
         Self::Rules,
@@ -49,9 +51,12 @@ impl SettingsFeature {
 
     pub fn group(self) -> SettingsGroup {
         match self {
-            Self::Look | Self::Language | Self::Programs | Self::Keys | Self::Servers => {
-                SettingsGroup::General
-            }
+            Self::Look
+            | Self::Language
+            | Self::Programs
+            | Self::Keys
+            | Self::Servers
+            | Self::System => SettingsGroup::General,
             Self::Index
             | Self::Hermes
             | Self::Rules

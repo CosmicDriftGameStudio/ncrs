@@ -260,6 +260,8 @@ pub enum Message {
     /// it is already there.
     OpenSearch,
     Search(SearchMessage),
+    // --- The System page (F12) ---
+    Monitor(ncrs_monitor::MonitorMessage),
     HitList(HitListMessage),
     Trash(TrashMessage),
 

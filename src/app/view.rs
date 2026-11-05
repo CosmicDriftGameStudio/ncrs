@@ -97,7 +97,9 @@ impl App {
         .height(Length::Fill);
 
         let below_title_bar =
-            if self.hermes_chat.open {
+            if self.monitor.is_open() {
+                self.monitor_area()
+            } else if self.hermes_chat.open {
                 self.hermes_chat_area()
             } else if let Some(state) = self.settings.page.as_ref() {
                 self.settings_area(state)
@@ -150,6 +152,7 @@ impl App {
                                 text: self.app_version.to_owned(),
                                 on_press: Message::About(AboutMessage::Open),
                             }),
+                            monitor: self.monitor_badge(),
                         },
                         self.status_error(),
                         self.search_status(),
@@ -202,6 +205,20 @@ impl App {
                 root,
                 click_catcher.into(),
                 quick_fix_view::view(menu, self.lang, &self.palette).map(Message::from),
+            ])
+            .into();
+        }
+
+        if let Some(menu) = ncrs_monitor::menu_view(&self.monitor, self.monitor_view_ctx()) {
+            return Stack::with_children([root, menu.map(Message::Monitor)]).into();
+        }
+
+        if let Some(dialog_element) =
+            ncrs_monitor::dialog_view(&self.monitor, self.monitor_view_ctx())
+        {
+            return Stack::with_children([
+                root,
+                dialog::scrim(dialog_element.map(Message::Monitor)),
             ])
             .into();
         }
