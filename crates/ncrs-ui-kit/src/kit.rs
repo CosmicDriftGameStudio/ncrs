@@ -12,7 +12,7 @@ use iced::widget::{
     column, container, mouse_area, row, rule, text, text_input, Column, Row, Space,
 };
 use iced::{
-    alignment, Background, Color, Element, Font, Length, Padding, Pixels, Radians, Rotation, Theme,
+    alignment, Background, Color, Element, Length, Padding, Pixels, Radians, Rotation, Theme,
 };
 use ncrs_index::ConditionKind;
 use std::sync::LazyLock;
@@ -559,7 +559,7 @@ fn field_in<'a, M: Clone + 'a>(
         .id(id)
         .secure(matches!(look, Look::Secret));
     let fonted = match look {
-        Look::Mono => plain.font(Font::MONOSPACE),
+        Look::Mono => plain.font(crate::APP_FONT),
         Look::Plain | Look::Secret => plain,
     };
     let field = match on_input {

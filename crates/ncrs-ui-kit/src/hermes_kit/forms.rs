@@ -4,7 +4,7 @@ use iced::widget::text::Wrapping;
 use iced::widget::{
     button, column, container, mouse_area, row, text, text_input, Column, Row, Space,
 };
-use iced::{alignment, Background, Border, Color, Element, Font, Length, Pixels, Theme};
+use iced::{alignment, Background, Border, Color, Element, Length, Pixels, Theme};
 
 use crate::kit::{self, Check};
 use crate::palette::Palette;
@@ -153,7 +153,7 @@ pub fn mono<'a, M: 'a>(
 ) -> Element<'a, M> {
     text(content)
         .size(size)
-        .font(Font::MONOSPACE)
+        .font(crate::APP_FONT)
         .color(color)
         .wrapping(Wrapping::None)
         .into()
@@ -180,7 +180,7 @@ fn field_in<'a, M: Clone + 'a>(
 ) -> Element<'a, M> {
     let field = text_input(placeholder, value).id(id);
     let typed_in = if monospace {
-        field.font(Font::MONOSPACE)
+        field.font(crate::APP_FONT)
     } else {
         field
     };
