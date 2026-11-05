@@ -30,9 +30,9 @@ sha2 = "0.11"
 # The built-in model provider: llama.cpp runs in this process. No default
 # features: no OpenMP runtime to ship and no `common` (HTTP client, JSON and
 # template engines) that nothing here uses.
-llama-cpp-2 = { version = "=0.1.159", default-features = false, optional = true }
+llama-cpp-2 = { version = "=0.1.160", default-features = false, optional = true }
 # Only here to hold the native build at the version llama-cpp-2 is pinned to
-# (its own requirement is `^0.1.159`).
+# (its own requirement is `^0.1.160`).
 llama-cpp-sys-2 = { version = "=0.1.160", default-features = false, optional = true }
 
 # Windows and x86_64 Linux: Vulkan for the GPU, and the backends (also the CPU
@@ -41,7 +41,7 @@ llama-cpp-sys-2 = { version = "=0.1.160", default-features = false, optional = t
 # Vulkan loader, macOS has Metal: both stay static. Keep the condition in step
 # with `dynamic_backends` in build.rs.
 [target.'cfg(any(target_os = "windows", all(target_os = "linux", target_arch = "x86_64")))'.dependencies]
-llama-cpp-2 = { version = "=0.1.159", default-features = false, optional = true, features = ["vulkan", "dynamic-backends"] }
+llama-cpp-2 = { version = "=0.1.160", default-features = false, optional = true, features = ["vulkan", "dynamic-backends"] }
 llama-cpp-sys-2 = { version = "=0.1.160", default-features = false, optional = true, features = ["vulkan", "dynamic-backends"] }
 
 [dev-dependencies]
