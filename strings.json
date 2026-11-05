@@ -3475,6 +3475,48 @@
       "de": "1 Eintrag · {size}"
     },
     {
+      "key": "panel_footer.files",
+      "context": "Part of the line under a file panel: how many files the panel shows, two or more. {count} is the number.",
+      "en": "{count} files",
+      "de": "{count} Dateien"
+    },
+    {
+      "key": "panel_footer.files_one",
+      "context": "Same as panel_footer.files for exactly one file.",
+      "en": "{count} file",
+      "de": "{count} Datei"
+    },
+    {
+      "key": "panel_footer.folders",
+      "context": "Part of the line under a file panel: how many folders the panel shows, two or more. {count} is the number.",
+      "en": "{count} folders",
+      "de": "{count} Ordner"
+    },
+    {
+      "key": "panel_footer.folders_one",
+      "context": "Same as panel_footer.folders for exactly one folder.",
+      "en": "{count} folder",
+      "de": "{count} Ordner"
+    },
+    {
+      "key": "panel_footer.totals",
+      "context": "Line under a file panel when nothing is selected. {files} and {folders} are the counted parts, for example '24 files' and '3 folders'; {size} is the total size of the files, for example 182.4 MB.",
+      "en": "{files}, {folders} · {size}",
+      "de": "{files}, {folders} · {size}"
+    },
+    {
+      "key": "panel_footer.selected",
+      "context": "Line under a file panel when entries are selected. {selected} and {total} are numbers of entries (files and folders), {selected_size} and {total_size} are sizes like 12.1 MB.",
+      "en": "{selected} of {total} selected · {selected_size} of {total_size}",
+      "de": "{selected} von {total} ausgewählt · {selected_size} von {total_size}"
+    },
+    {
+      "key": "panel_footer.without_folder_sizes",
+      "context": "Line under a file panel when the size of some folders has not been computed yet, so the total leaves them out. {line} is the whole line as it would be otherwise, for example '24 files, 3 folders · 182.4 MB'.",
+      "en": "{line} · without folder sizes",
+      "de": "{line} · ohne Ordnergrößen"
+    },
+    {
       "key": "transfer.figure_files",
       "context": "Label above the number of files in the copy and move dialog when many entries are selected. Plural noun, one word.",
       "en": "Files",

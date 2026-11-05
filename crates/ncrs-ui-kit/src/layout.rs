@@ -46,8 +46,7 @@ pub const HERMES_CELL_GAP: f32 = 12.0;
 /// lay out, and the visible rows use this sum, so a change to any of them moves
 /// both sides together. Adding a header without adding it here would silently
 /// shorten the list.
-pub const CHROME: f32 =
-    size::STATUS_BAR + FKEYBAR_HEIGHT + size::COMMAND_LINE + size::TITLE_BAR + size::COLUMN_HEADER;
+pub const CHROME: f32 = size::STATUS_BAR + FKEYBAR_HEIGHT + size::COMMAND_LINE + size::TITLE_BAR + size::COLUMN_HEADER;
 
 /// The three fields and the summary line of the search view, above the result
 /// rows. Fixed, like the column header it replaces.

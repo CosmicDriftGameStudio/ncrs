@@ -18,18 +18,26 @@ pub const TITLE_BAR_HEIGHT: f32 = size::TITLE_BAR;
 /// Where the row starts on macOS: the traffic lights are drawn over its left end.
 pub const TRAFFIC_LIGHTS_INSET: f32 = 78.0;
 
-/// Number of file rows that fit into a panel for a given window size.
+/// Number of file rows that fit into a panel for a given window size: the
+/// room less the chrome and the totals line under the rows.
 pub fn visible_rows(window: Size) -> usize {
-    let rows = ((window.height - CHROME) / ROW_HEIGHT).floor();
+    rows_below_chrome(window, size::PANEL_FOOTER)
+}
+
+/// Rows of `ROW_HEIGHT` that fit under the chrome once `reserved` height is
+/// taken off.
+fn rows_below_chrome(window: Size, reserved: f32) -> usize {
+    let rows = ((window.height - CHROME - reserved) / ROW_HEIGHT).floor();
     // `max(1)`: a window too small for the chrome still has to show one row,
     // otherwise the panel renders nothing and the user cannot move the cursor.
     (rows as isize).max(1) as usize
 }
 
-/// Rows the trash view shows: the panel's, less its title line and the two
-/// hint lines at the bottom.
+/// Rows the trash view shows: the room of a panel without the totals line,
+/// which the trash has none of, less its title line and the two hint lines at
+/// the bottom.
 pub fn trash_visible_rows(window: Size) -> usize {
-    visible_rows(window).saturating_sub(3).max(1)
+    rows_below_chrome(window, 0.0).saturating_sub(3).max(1)
 }
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
@@ -55,8 +63,17 @@ mod tests {
     fn a_full_height_window_fits_the_expected_rows() {
         let window = Size::new(1200.0, 760.0);
         // Chrome: status 22 + function keys 24 + command line 24 + title bar 34
-        // + column header 22 = 126. 760 - 126 = 634; 634 / 22 = 28.8, so 28 rows.
-        assert_eq!(visible_rows(window), 28);
+        // + column header 22 + panel footer 22 = 148. 760 - 148 = 612;
+        // 612 / 22 = 27.8, so 27 rows.
+        assert_eq!(visible_rows(window), 27);
+    }
+
+    /// The trash has no totals line, so it keeps the row the panels give up.
+    #[test]
+    fn the_trash_view_has_the_panel_rows_back_that_the_footer_takes() {
+        let window = Size::new(1200.0, 760.0);
+        // 760 - 126 = 634; 634 / 22 = 28 rows, less title and two hints.
+        assert_eq!(trash_visible_rows(window), 28 - 3);
     }
 
     #[test]
@@ -86,14 +103,14 @@ mod tests {
     fn the_initial_window_shows_the_same_rows() {
         assert_eq!(
             visible_rows(INITIAL_WINDOW_SIZE),
-            28,
+            27,
             "the initial size no longer matches the documented row count"
         );
     }
 
     #[test]
     fn one_row_fits_exactly_at_the_chrome_height() {
-        let window = Size::new(800.0, CHROME + ROW_HEIGHT);
+        let window = Size::new(800.0, CHROME + size::PANEL_FOOTER + ROW_HEIGHT);
         assert_eq!(visible_rows(window), 1);
 
         // A partial row does not count.

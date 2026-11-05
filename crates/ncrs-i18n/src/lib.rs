@@ -356,6 +356,8 @@ mod tests {
                 | Msg::DeleteOne
                 // A sign and a number, nothing to translate.
                 | Msg::SearchMoreMatches
+                // Only placeholders, a comma and a dot between them.
+                | Msg::PanelFooterTotals
                 // The loanword, the same in both languages.
                 | Msg::HermesBeta
                 // The name of the feature, the same in both languages.
