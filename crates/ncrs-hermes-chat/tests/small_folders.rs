@@ -534,8 +534,9 @@ mod tests {
             vec![say(Msg::HermesChatStartFailed, &[("reason", "no key")])]
         );
         assert_eq!(talk.labels(), vec![say(Msg::HermesChatRetry, &[])]);
-        let still_waiting = |talk: &Talk| {
-            talk.state
+        let still_waiting = |asked: &Talk| {
+            asked
+                .state
                 .thread()
                 .iter()
                 .any(|entry| matches!(entry, Entry::Working(_)))
