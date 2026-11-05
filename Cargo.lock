@@ -3753,6 +3753,7 @@ dependencies = [
  "ncrs-core",
  "ncrs-i18n",
  "ncrs-index",
+ "ttf-parser",
 ]
 
 [[package]]

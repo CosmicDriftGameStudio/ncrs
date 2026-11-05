@@ -107,6 +107,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- Windows and Linux now show the same kind of font as the Mac: DejaVu Sans Mono
+  is embedded in the program file and used everywhere. On Linux this is a
+  different font than before; the Mac keeps its system font.
 - The words "Ablage", "Eingang" and "Archiv" are gone from the app: Hermes,
   read folder, target folder, order and area take their place. Hermes opens
   the chat with "N documents are waiting for you" when documents wait.

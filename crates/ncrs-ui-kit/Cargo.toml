@@ -18,5 +18,8 @@ ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
 ncrs-index = { path = "../ncrs-index", version = "0.0.0" }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
+[dev-dependencies]
+ttf-parser = "0.25"
+
 [lints]
 workspace = true

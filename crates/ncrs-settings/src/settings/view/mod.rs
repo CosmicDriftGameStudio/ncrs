@@ -16,7 +16,7 @@ use std::path::Path;
 use iced::widget::scrollable::{Direction, Scrollbar};
 use iced::widget::text::Wrapping;
 use iced::widget::{column, container, row, scrollable, text};
-use iced::{alignment, Color, Element, Font, Length, Padding};
+use iced::{alignment, Color, Element, Length, Padding};
 
 use crate::facts::DocumentsFacts;
 use crate::message::{SettingChange, SettingField, SettingsMessage};
@@ -247,7 +247,7 @@ fn preset_label(preset: ThemePreset) -> Msg {
 fn mono<'a>(content: String, color: Color) -> Element<'a, Message> {
     text(content)
         .size(font_size::FILE)
-        .font(Font::MONOSPACE)
+        .font(ncrs_ui_kit::APP_FONT)
         .color(color)
         .wrapping(Wrapping::None)
         .into()

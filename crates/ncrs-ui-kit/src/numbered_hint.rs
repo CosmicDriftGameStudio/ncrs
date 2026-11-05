@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use iced::widget::text::Wrapping;
 use iced::widget::{row, text};
-use iced::{alignment, Element, Font};
+use iced::{alignment, Element};
 use ncrs_i18n::{fill_template, Language, Msg};
 
 use crate::format;
@@ -41,7 +41,7 @@ pub fn numbered_hint<'a, M: Clone + 'a>(
             row![
                 text(name.to_string_lossy().into_owned())
                     .size(font_size::FILE)
-                    .font(Font::MONOSPACE)
+                    .font(crate::APP_FONT)
                     .wrapping(Wrapping::None),
                 text(fill_template(
                     lang.text(Msg::HintNumberedFrom),

@@ -87,7 +87,7 @@ fn program(
     window_size: iced::Size,
     boot: impl Fn() -> (App, iced::Task<crate::messages::Message>) + 'static,
 ) -> iced::Application<impl iced::Program<State = App, Message = crate::messages::Message>> {
-    iced::application(boot, App::update, App::view)
+    let application = iced::application(boot, App::update, App::view)
         .subscription(App::subscription)
         .theme(App::theme)
         .title(App::title)
@@ -99,7 +99,10 @@ fn program(
         .default_font(ncrs_ui_kit::APP_FONT)
         .antialiasing(true)
         // The close request becomes Quit, which saves the session state first.
-        .exit_on_close_request(false)
+        .exit_on_close_request(false);
+    ncrs_ui_kit::BUNDLED_FONTS
+        .iter()
+        .fold(application, |app, font| app.font(*font))
 }
 
 /// The title bar row in the app draws the title and, off macOS, the window

@@ -161,7 +161,7 @@ fn key_text_view<'a>(key_text: &str, group: usize, palette: &Palette) -> Element
         .map(|(part, color)| span(part).color(color))
         .collect();
     rich_text(spans)
-        .font(Font::MONOSPACE)
+        .font(ncrs_ui_kit::APP_FONT)
         .size(font_size::TITLE)
         .wrapping(Wrapping::Word)
         .width(Length::Fill)

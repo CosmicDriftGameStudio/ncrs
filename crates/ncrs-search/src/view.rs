@@ -6,7 +6,7 @@ use std::rc::Rc;
 use iced::widget::text::{Span, Wrapping};
 use iced::widget::{button, column, container, mouse_area, rich_text, row, span, text, text_input};
 use iced::widget::{tooltip, Column, Row};
-use iced::{alignment, Element, Font, Length};
+use iced::{alignment, Element, Length};
 
 use ncrs_core::{PanelSide, Selection};
 use ncrs_i18n::{fill_template, FuturamaName, Language, Msg};
@@ -143,7 +143,7 @@ fn header<'a>(
             button(
                 text(label)
                     .size(font_size::COLUMN_HEADER)
-                    .font(Font::MONOSPACE)
+                    .font(ncrs_ui_kit::APP_FONT)
                     .align_x(alignment::Horizontal::Center)
                     .width(Length::Fill),
             )
@@ -639,7 +639,7 @@ fn third_line<'a>(
     let more = more_matches_text(result, lang).map(|count| {
         text(count)
             .size(font_size::SMALL)
-            .font(Font::MONOSPACE)
+            .font(ncrs_ui_kit::APP_FONT)
             .color(dim)
             .wrapping(Wrapping::None)
             .into()
@@ -647,7 +647,7 @@ fn third_line<'a>(
     Some(
         row![rich_text(match_spans(first, highlighted, palette))
             .size(font_size::SMALL)
-            .font(Font::MONOSPACE)
+            .font(ncrs_ui_kit::APP_FONT)
             .wrapping(Wrapping::None)]
         .extend(more)
         .spacing(8.0)

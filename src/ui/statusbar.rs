@@ -1,6 +1,6 @@
 //! Bottom bar: active path, selected entry info, or the last error.
 use iced::widget::{button, column, container, row, text, text_input, tooltip, Space, Stack};
-use iced::{alignment, Element, Font, Length, Padding};
+use iced::{alignment, Element, Length, Padding};
 
 use super::format;
 use super::layout::STATUSBAR_HEIGHT;
@@ -90,7 +90,7 @@ fn path_bar<'a, M: Clone + 'a>(
         return row![
             text(hit.text)
                 .size(font_size::FILE)
-                .font(Font::MONOSPACE)
+                .font(ncrs_ui_kit::APP_FONT)
                 .wrapping(text::Wrapping::None),
             Space::new().width(Length::Fill),
             cap,
@@ -112,7 +112,7 @@ fn path_bar<'a, M: Clone + 'a>(
         .on_input(bar.on_input)
         .on_submit(bar.on_submit)
         .size(font_size::FILE)
-        .font(Font::MONOSPACE)
+        .font(ncrs_ui_kit::APP_FONT)
         .padding(0.0)
         .style(theme::path_input(palette))
         .into();
@@ -277,7 +277,7 @@ pub fn view<'a, M: Clone + 'a>(
                 .wrapping(text::Wrapping::None)
         };
         let mut info = row![
-            dim(name).font(Font::MONOSPACE),
+            dim(name).font(ncrs_ui_kit::APP_FONT),
             dim(ENTRY_SEPARATOR.to_owned()),
             dim(format::entry_size(entry)),
         ];
@@ -445,7 +445,7 @@ fn hermes_details<'a, M: 'a>(name: &str, line: String, palette: &Palette) -> Ele
     };
     row![
         small(name.to_owned())
-            .font(Font::MONOSPACE)
+            .font(ncrs_ui_kit::APP_FONT)
             .color(palette.dim_text),
         small(ENTRY_SEPARATOR.to_owned()).color(palette.dim_text),
         small(line),

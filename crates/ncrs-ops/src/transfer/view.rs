@@ -5,7 +5,7 @@ use std::path::Path;
 
 use iced::widget::text::Wrapping;
 use iced::widget::{column, container, row, scrollable, text, Column, Row};
-use iced::{alignment, Element, Font, Length, Size};
+use iced::{alignment, Element, Length, Size};
 
 use ncrs_core::TransferKind;
 use ncrs_i18n::{Language, Msg};
@@ -72,7 +72,7 @@ fn policy_text(policy: Policy, lang: Language) -> &'static str {
 
 fn mono_name<'a>(name: String, palette: &Palette) -> Element<'a, OpsMessage> {
     text(name)
-        .font(Font::MONOSPACE)
+        .font(ncrs_ui_kit::APP_FONT)
         .size(font_size::FILE)
         .color(palette.text)
         .wrapping(Wrapping::None)

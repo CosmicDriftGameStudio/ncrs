@@ -33,7 +33,7 @@ pub fn tag_star<'a, M: Clone + 'a>(
     button(
         text(if mark.tagged { "*" } else { " " })
             .size(font_size::FILE)
-            .font(Font::MONOSPACE)
+            .font(crate::APP_FONT)
             .color(if mark.tagged {
                 theme::tag_star_color(palette, mark.cursor && panel_active, panel_active)
             } else {
@@ -157,10 +157,10 @@ pub fn file_row<'a, M: Clone + 'a>(
     let font = if entry.is_dir || (highlighted && panel_active) {
         Font {
             weight: iced::font::Weight::Bold,
-            ..Font::MONOSPACE
+            ..crate::APP_FONT
         }
     } else {
-        Font::MONOSPACE
+        crate::APP_FONT
     };
 
     // Display only. The identity is `entry.name` as the filesystem spells it;
@@ -208,7 +208,7 @@ pub fn file_row<'a, M: Clone + 'a>(
             name_cell,
             text(format::folder_below(&entry.path, scope))
                 .size(font_size::SMALL)
-                .font(Font::MONOSPACE)
+                .font(crate::APP_FONT)
                 .color(if highlighted { color } else { palette.dim_text })
                 .wrapping(text::Wrapping::None),
         ]

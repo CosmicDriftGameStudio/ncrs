@@ -5,7 +5,7 @@
 use std::path::{Path, MAIN_SEPARATOR};
 
 use iced::widget::{button, column, container, mouse_area, row, text, Space};
-use iced::{alignment, mouse, Color, Element, Font, Length, Padding};
+use iced::{alignment, mouse, Color, Element, Length, Padding};
 
 use super::format::ellipsize_middle;
 use super::layout::{TITLE_BAR_HEIGHT, TRAFFIC_LIGHTS_INSET};
@@ -161,7 +161,7 @@ pub fn view<'a>(bar: &TitleBar<'a>) -> Element<'a, Message> {
         let letter: String = lang.text(letter_of).chars().take(1).collect();
         let mut label_row = row![text(label)
             .size(font_size::FILE)
-            .font(Font::MONOSPACE)
+            .font(ncrs_ui_kit::APP_FONT)
             .width(Length::Fill)
             .wrapping(text::Wrapping::None)]
         .spacing(TAB_GAP)

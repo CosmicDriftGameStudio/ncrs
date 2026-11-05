@@ -3,7 +3,7 @@
 //! around it.
 
 use iced::widget::{column, container, mouse_area, opaque, row, space, stack, text, text_input};
-use iced::{alignment, mouse, Element, Font, Length};
+use iced::{alignment, mouse, Element, Length};
 
 use ncrs_i18n::{fill_template, Language, Msg};
 use ncrs_ui_kit::kit::{self, Icon};
@@ -54,7 +54,7 @@ pub fn view<'a>(props: Props<'a>) -> Element<'a, CommandLineMessage> {
     let prompt_path = container(
         text(prompt)
             .size(font_size::FILE)
-            .font(Font::MONOSPACE)
+            .font(ncrs_ui_kit::APP_FONT)
             .color(palette.dim_text)
             .wrapping(text::Wrapping::None),
     )
@@ -73,7 +73,7 @@ pub fn view<'a>(props: Props<'a>) -> Element<'a, CommandLineMessage> {
         .on_input(CommandLineMessage::Input)
         .on_submit(CommandLineMessage::Submit)
         .size(font_size::FILE)
-        .font(Font::MONOSPACE)
+        .font(ncrs_ui_kit::APP_FONT)
         .padding(0.0)
         .style(theme::path_input(palette))
         .width(Length::Fill);
