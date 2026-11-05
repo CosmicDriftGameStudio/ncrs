@@ -57,6 +57,7 @@ impl App {
             input: Arc::default(),
             list_volumes: Arc::new(fs::list_volumes),
             search: ncrs_search::Search::new(layout::INITIAL_WINDOW_SIZE),
+            monitor: ncrs_monitor::State::default(),
             hermes_chat: ncrs_hermes_chat::State::default(),
             chat_model: None,
             turning_hermes_on: false,
@@ -588,6 +589,16 @@ impl App {
 
     pub fn settings_for_test(&self) -> Option<&settings_ui::SettingsState> {
         self.settings.page.as_ref()
+    }
+
+    pub fn monitor_for_test(&self) -> &ncrs_monitor::State {
+        &self.monitor
+    }
+
+    /// The config file settings are written to.
+    pub fn with_config_path_for_test(mut self, path: std::path::PathBuf) -> Self {
+        self.config_path = Some(path);
+        self
     }
 
     pub fn command_palette_for_test(&self) -> Option<&CommandPalette> {

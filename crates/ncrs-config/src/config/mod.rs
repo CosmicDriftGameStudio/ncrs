@@ -34,6 +34,7 @@ use crate::keymap::{KeyAction, Keymap};
 use crate::palette::{
     ColorRole, Palette, PaletteFromSection as _, ThemePreset, PRESET_KEY, VSCODE_KEY,
 };
+use crate::system_monitor::SystemSettings;
 use crate::vscode_theme::VscodeTheme;
 use ncrs_fs::OpenKind;
 use ncrs_i18n::Language;
@@ -107,6 +108,8 @@ pub struct Config {
     /// The tags the file panels show after a name.
     #[serde(skip)]
     pub file_list_tags: FileListTags,
+    #[serde(default)]
+    pub system: SystemSettings,
     /// The `[[kinds]]` entries as written; `load` checks them into `kinds`.
     #[serde(default, rename = "kinds")]
     pub kind_sections: Vec<KindSection>,
@@ -184,7 +187,8 @@ pub use self::sections::{
 pub use self::setting_writes::{
     remove_vscode_theme, write_ai_enabled, write_ai_provider, write_color, write_default_pattern,
     write_file_list_tags, write_filing_enabled, write_filing_load, write_keys, write_language,
-    write_own_details, write_program, write_theme_preset, AiProviderChoice, KeyChange, OwnDetail,
+    write_own_details, write_program, write_system_settings, write_theme_preset, AiProviderChoice,
+    KeyChange, OwnDetail,
 };
 pub use self::write_support::one_config_writer;
 use self::write_support::*;

@@ -407,6 +407,10 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Session<P> {
         let mapped = StreamExt::map(stream, |action| match action {
             Action::Output(message) => Outcome::Message(message),
             Action::Widget(operation) => Outcome::Widget(operation),
+            Action::Clipboard(iced_test::runtime::clipboard::Action::Write {
+                target: iced_test::core::clipboard::Kind::Standard,
+                contents,
+            }) => Outcome::ClipboardWrite(contents),
             // Widget operations, such as focusing a text field, run on the
             // widgets below. A font load or a clipboard read, which this app
             // does not perform, are dropped rather than turned into a
@@ -446,6 +450,9 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Session<P> {
             match outcome {
                 Some(Outcome::Message(message)) => self.send(message),
                 Some(Outcome::Widget(operation)) => self.operate(operation),
+                Some(Outcome::ClipboardWrite(contents)) => {
+                    self.widgets.clipboard.content = Some(contents);
+                }
                 Some(Outcome::Ignored) => {}
                 Some(Outcome::Finished) => self.in_flight -= 1,
                 None => return,
@@ -491,6 +498,8 @@ pub enum Outcome {
     Message(Message),
     /// A widget operation, such as focusing a field.
     Widget(Box<dyn iced_test::core::widget::Operation>),
+    /// Text the app put on the system clipboard.
+    ClipboardWrite(String),
     /// A runtime action with no message behind it.
     Ignored,
     Finished,
@@ -2634,6 +2643,9 @@ fn the_sort_keys_sort_the_active_panel_and_a_second_press_reverses() {
     assert_eq!(sort_of(&session), SortKey::default());
     assert_eq!(session.app.panel(PanelSide::Right).sort, SortKey::default());
 }
+
+#[cfg(test)]
+mod monitor;
 
 #[cfg(test)]
 mod search_view {

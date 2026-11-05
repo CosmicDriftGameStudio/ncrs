@@ -8,6 +8,7 @@ use ncrs_config::config::{
     ConfigError, OwnDetail, ProgramLine, ProgramLineProblem,
 };
 use ncrs_config::file_list_tags::FileListTags;
+use ncrs_config::system_monitor::SystemSettings;
 use ncrs_config::SettingsFeature;
 use ncrs_fs::OpenKind;
 use ncrs_ui_kit::palette::{parse_color, ColorRole};
@@ -23,6 +24,7 @@ pub const FILING_SECTION: &str = "[modules.filing]";
 pub const OPEN_SECTION: &str = "[open]";
 pub const KEYS_SECTION: &str = "[keys]";
 pub const SERVERS_SECTION: &str = "[[servers]]";
+pub const SYSTEM_SECTION: &str = "[system]";
 
 pub const VIEWER_FIELD_ID: &str = "settings-program-view";
 pub const EDITOR_FIELD_ID: &str = "settings-program-edit";
@@ -219,6 +221,12 @@ impl SettingsState {
     pub fn file_list_tags(&self) -> FileListTags {
         self.config()
             .map(|config| config.file_list_tags.clone())
+            .unwrap_or_default()
+    }
+
+    pub fn system_settings(&self) -> SystemSettings {
+        self.config()
+            .map(|config| config.system.clone())
             .unwrap_or_default()
     }
 
@@ -428,7 +436,8 @@ fn fields_of(change: &SettingChange) -> Vec<SettingField> {
         | SettingChange::VscodeTheme(_)
         | SettingChange::Servers(_)
         | SettingChange::Locations(_)
-        | SettingChange::FileListTags(_) => Vec::new(),
+        | SettingChange::FileListTags(_)
+        | SettingChange::System(_) => Vec::new(),
         SettingChange::OwnDetails { detail, .. } => vec![SettingField::Own(*detail)],
     }
 }

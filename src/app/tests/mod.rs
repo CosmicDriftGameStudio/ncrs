@@ -441,6 +441,8 @@ mod hermes_protection_tests;
 )]
 #[cfg(test)]
 mod hit_list_tests;
+#[cfg(test)]
+mod monitor_tests;
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
 #[allow(

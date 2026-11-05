@@ -8219,6 +8219,486 @@
       "context": "Title of the dialog in which an existing rule is changed on the Rules page of the settings.",
       "en": "Change rule",
       "de": "Regel ändern"
+    },
+    {
+      "key": "settings.feature_system",
+      "context": "Entry of the feature list on the settings tab: how the Monitor page measures and shows the machine.",
+      "en": "Monitor",
+      "de": "Monitor"
+    },
+    {
+      "key": "settings.feature_system_intro",
+      "context": "Line under the heading of the Monitor page on the settings tab. The Monitor page lists CPU, memory, drives, network and running tasks.",
+      "en": "What the Monitor page measures, how often, and what the status bar shows of it.",
+      "de": "Was die Seite Monitor misst, wie oft, und was die Statusleiste davon zeigt."
+    },
+    {
+      "key": "settings.row_system_refresh",
+      "context": "Label of the row that sets how often the Monitor page measures the machine, on the settings tab.",
+      "en": "Refresh every",
+      "de": "Aktualisieren alle"
+    },
+    {
+      "key": "settings.row_system_sort",
+      "context": "Label of the row that sets how the tasks on the Monitor page are sorted at first, on the settings tab.",
+      "en": "Sort tasks by",
+      "de": "Prozesse sortieren nach"
+    },
+    {
+      "key": "settings.row_system_network_unit",
+      "context": "Label of the row that sets the unit of the network speed on the Monitor page, on the settings tab.",
+      "en": "Network speed in",
+      "de": "Netzwerkgeschwindigkeit in"
+    },
+    {
+      "key": "settings.row_system_drive_column",
+      "context": "Label of the row that sets whether the drive list on the Monitor page shows used or free space, on the settings tab.",
+      "en": "Drive column",
+      "de": "Laufwerksspalte"
+    },
+    {
+      "key": "settings.row_system_status_cpu",
+      "context": "Label of the on/off switch that puts the CPU load in the status bar, on the settings tab.",
+      "en": "In the status bar: CPU",
+      "de": "In der Statusleiste: CPU"
+    },
+    {
+      "key": "settings.row_system_status_memory",
+      "context": "Label of the on/off switch that puts the memory use in the status bar, on the settings tab.",
+      "en": "In the status bar: Memory",
+      "de": "In der Statusleiste: Speicher"
+    },
+    {
+      "key": "settings.row_system_status_swap",
+      "context": "Label of the on/off switch that puts the swap use in the status bar, on the settings tab.",
+      "en": "In the status bar: Swap",
+      "de": "In der Statusleiste: Swap"
+    },
+    {
+      "key": "settings.row_system_status_load",
+      "context": "Label of the on/off switch that puts the load average in the status bar, on the settings tab. Not offered on Windows.",
+      "en": "In the status bar: Load",
+      "de": "In der Statusleiste: Last"
+    },
+    {
+      "key": "settings.row_system_status_network",
+      "context": "Label of the on/off switch that puts the network speed in the status bar, on the settings tab.",
+      "en": "In the status bar: Network",
+      "de": "In der Statusleiste: Netzwerk"
+    },
+    {
+      "key": "settings.row_system_status_style",
+      "context": "Label of the row that sets whether the status bar shows numbers or symbols for the chosen values, on the settings tab.",
+      "en": "Status bar shows",
+      "de": "Statusleiste zeigt"
+    },
+    {
+      "key": "settings.row_system_idle_interfaces",
+      "context": "Label of the row that sets whether network interfaces without traffic are listed on the Monitor page, on the settings tab.",
+      "en": "Network interfaces without traffic",
+      "de": "Netzwerkschnittstellen ohne Verkehr"
+    },
+    {
+      "key": "settings.row_system_system_volumes",
+      "context": "Label of the row that sets whether system volumes are listed among the drives on the Monitor page, on the settings tab.",
+      "en": "System volumes",
+      "de": "Systemvolumes"
+    },
+    {
+      "key": "settings.system_one_second",
+      "context": "Choice of the refresh row on the settings tab: measure every second.",
+      "en": "1 s",
+      "de": "1 s"
+    },
+    {
+      "key": "settings.system_two_seconds",
+      "context": "Choice of the refresh row on the settings tab: measure every two seconds.",
+      "en": "2 s",
+      "de": "2 s"
+    },
+    {
+      "key": "settings.system_five_seconds",
+      "context": "Choice of the refresh row on the settings tab: measure every five seconds.",
+      "en": "5 s",
+      "de": "5 s"
+    },
+    {
+      "key": "settings.system_sort_cpu",
+      "context": "Choice of the task sort row on the settings tab: by processor use.",
+      "en": "CPU",
+      "de": "CPU"
+    },
+    {
+      "key": "settings.system_sort_memory",
+      "context": "Choice of the task sort row on the settings tab: by memory use.",
+      "en": "Memory",
+      "de": "Speicher"
+    },
+    {
+      "key": "settings.system_sort_time",
+      "context": "Choice of the task sort row on the settings tab: by the processor time a task has used.",
+      "en": "Time",
+      "de": "Zeit"
+    },
+    {
+      "key": "settings.system_unit_bytes",
+      "context": "Choice of the network speed row on the settings tab: speed in bytes per second.",
+      "en": "Bytes",
+      "de": "Bytes"
+    },
+    {
+      "key": "settings.system_unit_bits",
+      "context": "Choice of the network speed row on the settings tab: speed in bits per second.",
+      "en": "Bits",
+      "de": "Bits"
+    },
+    {
+      "key": "settings.system_drive_used",
+      "context": "Choice of the drive column row on the settings tab: show the used space.",
+      "en": "Used",
+      "de": "Belegt"
+    },
+    {
+      "key": "settings.system_drive_free",
+      "context": "Choice of the drive column row on the settings tab: show the free space.",
+      "en": "Free",
+      "de": "Frei"
+    },
+    {
+      "key": "settings.system_style_number",
+      "context": "Choice of the status bar style row on the settings tab: percentages and speeds as numbers.",
+      "en": "Number",
+      "de": "Zahl"
+    },
+    {
+      "key": "settings.system_style_symbol",
+      "context": "Choice of the status bar style row on the settings tab: a small bar symbol instead of a number.",
+      "en": "Symbol",
+      "de": "Symbol"
+    },
+    {
+      "key": "settings.system_hide",
+      "context": "Choice of a visibility row on the Monitor page settings: do not list these entries.",
+      "en": "Hide",
+      "de": "Ausblenden"
+    },
+    {
+      "key": "settings.system_show",
+      "context": "Choice of a visibility row on the Monitor page settings: list these entries.",
+      "en": "Show",
+      "de": "Anzeigen"
+    },
+    {
+      "key": "action.system_monitor",
+      "context": "Entry of the command palette that runs the key action system_monitor, which opens the Monitor page with the load of the computer. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Monitor",
+      "de": "Monitor"
+    },
+    {
+      "key": "monitor.title",
+      "context": "Name of the Monitor page: the mode field in its status bar and the tab in the title bar.",
+      "en": "Monitor",
+      "de": "Monitor"
+    },
+    {
+      "key": "monitor.mode",
+      "context": "The mode field at the left end of the status bar of the Monitor page, in capitals like the one of the settings tab. The same word as the page's name.",
+      "en": "MONITOR",
+      "de": "MONITOR"
+    },
+    {
+      "key": "monitor.measuring",
+      "context": "Shown on the Monitor page until the first measurement of the computer has arrived.",
+      "en": "Measuring…",
+      "de": "Wird gemessen …"
+    },
+    {
+      "key": "monitor.uptime",
+      "context": "Header of the Monitor page: how long the computer has been running. {time} is a duration such as 3d 4h.",
+      "en": "Uptime {time}",
+      "de": "Laufzeit {time}"
+    },
+    {
+      "key": "monitor.meter_cpu",
+      "context": "Title of the processor meter at the top of the Monitor page.",
+      "en": "CPU",
+      "de": "CPU"
+    },
+    {
+      "key": "monitor.meter_memory",
+      "context": "Title of the main memory meter at the top of the Monitor page.",
+      "en": "Memory",
+      "de": "Speicher"
+    },
+    {
+      "key": "monitor.meter_swap",
+      "context": "Title of the swap meter at the top of the Monitor page; swap is memory spilled to disk.",
+      "en": "Swap",
+      "de": "Swap"
+    },
+    {
+      "key": "monitor.meter_load",
+      "context": "Title of the load average meter on the Monitor page. Not shown on Windows.",
+      "en": "Load",
+      "de": "Last"
+    },
+    {
+      "key": "monitor.detail_cpu",
+      "context": "Line under the processor meter. {brand} is the processor model, {cores} the number of cores.",
+      "en": "{brand} · {cores} cores",
+      "de": "{brand} · {cores} Kerne"
+    },
+    {
+      "key": "monitor.detail_memory",
+      "context": "Line under the memory meter. Placeholders are sizes such as 8.2G.",
+      "en": "{used} of {total} · {free} free",
+      "de": "{used} von {total} · {free} frei"
+    },
+    {
+      "key": "monitor.detail_swap",
+      "context": "Line under the swap meter. Placeholders are sizes such as 1.5G.",
+      "en": "{used} of {total} · {free} free",
+      "de": "{used} von {total} · {free} frei"
+    },
+    {
+      "key": "monitor.detail_load",
+      "context": "Line under the load meter: the load average over one, five and fifteen minutes.",
+      "en": "1 min {one} · 5 min {five} · 15 min {fifteen}",
+      "de": "1 Min {one} · 5 Min {five} · 15 Min {fifteen}"
+    },
+    {
+      "key": "monitor.network",
+      "context": "Heading of the network block on the Monitor page, which lists the network interfaces.",
+      "en": "Network",
+      "de": "Netzwerk"
+    },
+    {
+      "key": "monitor.network_interface",
+      "context": "Column title in the network block of the Monitor page: the name of the interface.",
+      "en": "Interface",
+      "de": "Schnittstelle"
+    },
+    {
+      "key": "monitor.network_received",
+      "context": "Column title in the network block of the Monitor page: data received per second.",
+      "en": "Rx/s",
+      "de": "Rx/s"
+    },
+    {
+      "key": "monitor.network_sent",
+      "context": "Column title in the network block of the Monitor page: data sent per second.",
+      "en": "Tx/s",
+      "de": "Tx/s"
+    },
+    {
+      "key": "monitor.drives",
+      "context": "Heading of the drives block on the Monitor page, which lists mounted volumes.",
+      "en": "Drives",
+      "de": "Laufwerke"
+    },
+    {
+      "key": "monitor.drive_used",
+      "context": "Column title in the drives block of the Monitor page: space in use.",
+      "en": "Used",
+      "de": "Belegt"
+    },
+    {
+      "key": "monitor.drive_free",
+      "context": "Column title in the drives block of the Monitor page: space still free.",
+      "en": "Free",
+      "de": "Frei"
+    },
+    {
+      "key": "monitor.drive_total",
+      "context": "Column title in the drives block of the Monitor page: size of the volume.",
+      "en": "Total",
+      "de": "Gesamt"
+    },
+    {
+      "key": "monitor.drive_read",
+      "context": "Column title in the drives block of the Monitor page: data read per second.",
+      "en": "Read/s",
+      "de": "Lesen/s"
+    },
+    {
+      "key": "monitor.drive_written",
+      "context": "Column title in the drives block of the Monitor page: data written per second.",
+      "en": "Write/s",
+      "de": "Schreiben/s"
+    },
+    {
+      "key": "monitor.sensors",
+      "context": "Heading of the block on the Monitor page that lists temperature sensors.",
+      "en": "Sensors",
+      "de": "Sensoren"
+    },
+    {
+      "key": "monitor.tasks",
+      "context": "Heading of the task list on the Monitor page, which lists running programs.",
+      "en": "Tasks",
+      "de": "Prozesse"
+    },
+    {
+      "key": "monitor.tasks_summary",
+      "context": "Line next to the task list heading. {running}, {sleeping} and {other} are counts; {sort} is the name of the column the list is sorted by.",
+      "en": "{total} · {running} running · {sleeping} sleeping · {other} other · sorted by {sort}",
+      "de": "{total} · {running} aktiv · {sleeping} schlafend · {other} andere · sortiert nach {sort}"
+    },
+    {
+      "key": "monitor.filter_placeholder",
+      "context": "Hint in the empty filter field above the task list on the Monitor page. {key} is the shortcut that focuses it.",
+      "en": "Filter ({key})",
+      "de": "Filter ({key})"
+    },
+    {
+      "key": "monitor.col_cpu",
+      "context": "Column title of the task list on the Monitor page: share of processor time in percent.",
+      "en": "CPU%",
+      "de": "CPU%"
+    },
+    {
+      "key": "monitor.col_mem",
+      "context": "Column title of the task list on the Monitor page: share of main memory in percent.",
+      "en": "MEM%",
+      "de": "MEM%"
+    },
+    {
+      "key": "monitor.col_res",
+      "context": "Column title of the task list on the Monitor page: resident memory in bytes.",
+      "en": "RES",
+      "de": "RES"
+    },
+    {
+      "key": "monitor.col_pid",
+      "context": "Column title of the task list on the Monitor page: the process number.",
+      "en": "PID",
+      "de": "PID"
+    },
+    {
+      "key": "monitor.col_user",
+      "context": "Column title of the task list on the Monitor page: the owner of the task.",
+      "en": "User",
+      "de": "Benutzer"
+    },
+    {
+      "key": "monitor.col_time",
+      "context": "Column title of the task list on the Monitor page: processor time the task has used.",
+      "en": "Time",
+      "de": "Zeit"
+    },
+    {
+      "key": "monitor.col_status",
+      "context": "Column title of the task list on the Monitor page: one letter for running or sleeping.",
+      "en": "S",
+      "de": "S"
+    },
+    {
+      "key": "monitor.col_command",
+      "context": "Column title of the task list on the Monitor page: the command line of the task.",
+      "en": "Command",
+      "de": "Befehl"
+    },
+    {
+      "key": "monitor.menu_kill",
+      "context": "Context menu entry of a task on the Monitor page: ends the task after a confirmation.",
+      "en": "Kill…",
+      "de": "Beenden…"
+    },
+    {
+      "key": "monitor.menu_copy_command",
+      "context": "Context menu entry of a task on the Monitor page: copies its command line to the clipboard.",
+      "en": "Copy command line",
+      "de": "Befehlszeile kopieren"
+    },
+    {
+      "key": "monitor.menu_go_to_folder",
+      "context": "Context menu entry of a task on the Monitor page: shows the folder of its program in the active panel.",
+      "en": "Go to folder",
+      "de": "Zum Ordner"
+    },
+    {
+      "key": "monitor.kill_title",
+      "context": "Title of the confirmation dialog for ending a task on the Monitor page.",
+      "en": "Kill task",
+      "de": "Prozess beenden"
+    },
+    {
+      "key": "monitor.kill_subject",
+      "context": "Line in the kill dialog naming the task. {name} is the program, {pid} its process number.",
+      "en": "{name} (PID {pid})",
+      "de": "{name} (PID {pid})"
+    },
+    {
+      "key": "monitor.kill_warning",
+      "context": "Warning in the kill dialog: the task ends at once and unsaved work in it is lost.",
+      "en": "The task ends at once. Unsaved work in it is lost.",
+      "de": "Der Prozess wird sofort beendet. Nicht gespeicherte Arbeit darin geht verloren."
+    },
+    {
+      "key": "monitor.kill_confirm",
+      "context": "Button of the kill dialog that ends the task.",
+      "en": "Kill",
+      "de": "Beenden"
+    },
+    {
+      "key": "monitor.hint_group",
+      "context": "Hint in the middle of the status bar of the Monitor page while every process has its own row. g is the key; it groups the processes by program.",
+      "en": "g: group by program",
+      "de": "g: nach Programm gruppieren"
+    },
+    {
+      "key": "monitor.hint_ungroup",
+      "context": "Hint in the middle of the status bar of the Monitor page while processes of one program are shown as one row. g is the key; it shows every process again.",
+      "en": "g: show all tasks",
+      "de": "g: alle Prozesse zeigen"
+    },
+    {
+      "key": "monitor.hint_refresh",
+      "context": "Right side of the status bar of the Monitor page: how often it measures. {seconds} is a number.",
+      "en": "Every {seconds} s",
+      "de": "Alle {seconds} s"
+    },
+    {
+      "key": "monitor.failure_kill_own",
+      "context": "Error in the status bar of the Monitor page: the task is ncrs itself and is not ended. {name} is the program.",
+      "en": "{name} is ncrs itself and cannot be killed",
+      "de": "{name} ist ncrs selbst und kann nicht beendet werden"
+    },
+    {
+      "key": "monitor.failure_kill_changed",
+      "context": "Error in the status bar of the Monitor page: the task has ended or the number belongs to another task now. {name} is the program.",
+      "en": "{name} is gone or has changed, nothing was killed",
+      "de": "{name} ist beendet oder ein anderer Prozess, nichts wurde beendet"
+    },
+    {
+      "key": "monitor.failure_kill_not_killed",
+      "context": "Error in the status bar of the Monitor page: the system did not let the task end. {name} is the program.",
+      "en": "{name} could not be killed",
+      "de": "{name} konnte nicht beendet werden"
+    },
+    {
+      "key": "monitor.failure_measure",
+      "context": "Error in the status bar of the Monitor page: the measurement failed. {reason} is the system's message.",
+      "en": "Measuring failed: {reason}",
+      "de": "Messen fehlgeschlagen: {reason}"
+    },
+    {
+      "key": "monitor.notice_killed",
+      "context": "Notice in the status bar of the Monitor page after a task ended. {name} is the program.",
+      "en": "{name} was killed",
+      "de": "{name} wurde beendet"
+    },
+    {
+      "key": "monitor.badge_tooltip",
+      "context": "Tooltip of the CPU and memory text at the right end of the status bar; a click opens the Monitor page.",
+      "en": "Open the Monitor page",
+      "de": "Seite Monitor öffnen"
+    },
+    {
+      "key": "monitor.notice_copied",
+      "context": "Notice in the status bar after the command line of a task from the Monitor page was copied to the clipboard.",
+      "en": "Command line copied",
+      "de": "Befehlszeile kopiert"
     }
   ]
 }

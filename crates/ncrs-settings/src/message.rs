@@ -10,6 +10,7 @@ use ncrs_config::config::{
 use ncrs_config::file_list_tags::FileListTags;
 use ncrs_config::keymap::Binding;
 use ncrs_config::palette::{ColorRole, ThemePreset};
+use ncrs_config::system_monitor::SystemSettings;
 use ncrs_config::SettingsFeature;
 use ncrs_fs::OpenKind;
 use ncrs_i18n::Language;
@@ -53,6 +54,8 @@ pub enum SettingChange {
     },
     /// Which tags follow a file name in the file lists.
     FileListTags(FileListTags),
+    /// The whole `[system]` section.
+    System(SystemSettings),
     /// The whole list of read folders, as it is to be written. Hermes and the
     /// AI stay as they are.
     Locations(Vec<FilingLocation>),

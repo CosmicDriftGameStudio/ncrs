@@ -100,17 +100,17 @@ fn a_recorded_key_replaces_the_focused_one_and_takes_effect() {
 
     dialog.record();
     assert!(dialog.is_recording());
-    let changes = dialog.recorded(key(Named::F12), &keymap).unwrap();
+    let changes = dialog.recorded(key(Named::F11), &keymap).unwrap();
     assert_eq!(
         changes,
         [KeyChange {
             action: KeyAction::View,
-            chords: Some(vec!["f12".to_owned()]),
+            chords: Some(vec!["f11".to_owned()]),
         }]
     );
 
     let rebound = written(&path, &changes);
-    assert_eq!(holder(&rebound, &key(Named::F12)), Some(KeyAction::View));
+    assert_eq!(holder(&rebound, &key(Named::F11)), Some(KeyAction::View));
     assert_eq!(holder(&rebound, &key(Named::F3)), None);
     dialog.refresh(&rebound);
     let row = dialog.selected().unwrap();
@@ -126,7 +126,7 @@ fn typing_in_the_search_field_while_recording_keeps_the_action() {
     dialog.record();
 
     dialog.set_query("co".to_owned(), &keymap);
-    let changes = dialog.recorded(key(Named::F12), &keymap).unwrap();
+    let changes = dialog.recorded(key(Named::F11), &keymap).unwrap();
 
     assert_eq!(changes[0].action, KeyAction::View);
 }
@@ -139,10 +139,10 @@ fn a_further_key_is_added_after_the_others() {
     dialog.move_key_cursor(1);
     assert_eq!(dialog.key_cursor(), 1, "the slot that adds a key");
     dialog.record();
-    let changes = dialog.recorded(key(Named::F12), &keymap).unwrap();
+    let changes = dialog.recorded(key(Named::F11), &keymap).unwrap();
     assert_eq!(
         changes[0].chords,
-        Some(vec!["f3".to_owned(), "f12".to_owned()])
+        Some(vec!["f3".to_owned(), "f11".to_owned()])
     );
 }
 
@@ -168,11 +168,11 @@ fn a_key_of_another_action_waits_for_the_takeover_and_moves_with_it() {
 
 #[test]
 fn an_only_key_taken_away_leaves_its_action_without_one_after_a_restart() {
-    let (_base, path, keymap) = config_with("copy = [\"f12\"]\n");
+    let (_base, path, keymap) = config_with("copy = [\"f11\"]\n");
     let mut dialog = KeyBindings::new(Language::English, &keymap);
     select(&mut dialog, KeyAction::View);
     dialog.record();
-    assert_eq!(dialog.recorded(key(Named::F12), &keymap), None);
+    assert_eq!(dialog.recorded(key(Named::F11), &keymap), None);
     written(&path, &dialog.confirm(&keymap).unwrap());
 
     let written_text = std::fs::read_to_string(&path).unwrap();
@@ -180,7 +180,7 @@ fn an_only_key_taken_away_leaves_its_action_without_one_after_a_restart() {
     let restarted = reloaded(&path);
     assert_eq!(restarted.bindings_of(KeyAction::Copy).count(), 0);
     assert_eq!(holder(&restarted, &key(Named::F5)), None);
-    assert_eq!(holder(&restarted, &key(Named::F12)), Some(KeyAction::View));
+    assert_eq!(holder(&restarted, &key(Named::F11)), Some(KeyAction::View));
 }
 
 #[test]
@@ -238,7 +238,7 @@ fn a_removed_key_leaves_the_action_and_the_last_one_leaves_it_without() {
 
 #[test]
 fn the_last_configured_key_removed_stays_removed_after_a_restart() {
-    let (_base, path, keymap) = config_with("view = [\"f12\"]\n");
+    let (_base, path, keymap) = config_with("view = [\"f11\"]\n");
     let mut dialog = KeyBindings::new(Language::English, &keymap);
     select(&mut dialog, KeyAction::View);
     written(&path, &dialog.remove_key().unwrap());
@@ -250,12 +250,12 @@ fn the_last_configured_key_removed_stays_removed_after_a_restart() {
     let restarted = reloaded(&path);
     assert_eq!(restarted.bindings_of(KeyAction::View).count(), 0);
     assert_eq!(holder(&restarted, &key(Named::F3)), None);
-    assert_eq!(holder(&restarted, &key(Named::F12)), None);
+    assert_eq!(holder(&restarted, &key(Named::F11)), None);
 }
 
 #[test]
 fn a_reset_drops_the_line_and_takes_back_a_key_given_away() {
-    let (_base, path, keymap) = config_with("view = \"f12\"\ncopy = [\"f3\", \"f5\"]\n");
+    let (_base, path, keymap) = config_with("view = \"f11\"\ncopy = [\"f3\", \"f5\"]\n");
     let mut dialog = KeyBindings::new(Language::English, &keymap);
     select(&mut dialog, KeyAction::View);
     assert!(!dialog.selected().unwrap().is_built_in);
@@ -286,7 +286,7 @@ fn a_reset_drops_the_line_and_takes_back_a_key_given_away() {
 
 #[test]
 fn reset_all_asks_first_and_then_drops_every_line() {
-    let (_base, path, keymap) = config_with("view = \"f12\"\nquit = \"f10\"\n");
+    let (_base, path, keymap) = config_with("view = \"f11\"\nquit = \"f10\"\n");
     let mut dialog = KeyBindings::new(Language::English, &keymap);
     dialog.ask_reset_all();
     assert_eq!(dialog.mode(), &Mode::ResetAllQuestion);

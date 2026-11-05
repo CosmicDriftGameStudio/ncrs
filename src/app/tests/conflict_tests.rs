@@ -44,7 +44,7 @@ fn with_conflict() -> (App, tempfile::TempDir) {
 ///
 /// The failure is built the way the operating system builds it and wrapped
 /// the way the app wraps it, so this exercises the classification and not a
-/// string that happens to look right. `e2e_tests.rs` covers the same ground
+/// string that happens to look right. `e2e_tests/mod.rs` covers the same ground
 /// with a real copy against a real file; this one is here because it also
 /// covers the "for all" rule, which needs several conflicts in a row.
 fn deliver_conflict(app: &mut App) {

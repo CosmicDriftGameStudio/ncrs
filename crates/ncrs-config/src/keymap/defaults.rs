@@ -184,6 +184,8 @@ pub fn default_bindings() -> Vec<(KeyAction, Binding)> {
             A::Settings,
             Binding::with_modifiers(Character(",".into()), Modifiers::COMMAND),
         ),
+        // The System page.
+        (A::SystemMonitor, Binding::key(KeyNamed(F12))),
         // The keyboard shortcuts, K for keys; Cmd+K, Ctrl+K elsewhere.
         (
             A::KeyBindings,

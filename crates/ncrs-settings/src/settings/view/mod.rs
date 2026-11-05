@@ -2,12 +2,14 @@ mod groups;
 mod hermes_page;
 mod index_page;
 mod page;
+mod system_page;
 
 pub use groups::server_dialog_body;
 use groups::*;
 use hermes_page::hermes_groups;
 use index_page::index_groups;
 use page::*;
+use system_page::system_groups;
 
 use crate::settings::*;
 
@@ -15,8 +17,8 @@ use std::path::Path;
 
 use iced::widget::scrollable::{Direction, Scrollbar};
 use iced::widget::text::Wrapping;
-use iced::widget::{column, container, row, scrollable, text, Column};
-use iced::{alignment, Color, Element, Length, Padding};
+use iced::widget::{container, row, scrollable, text, Column};
+use iced::{Color, Element, Length, Padding};
 
 use crate::facts::DocumentsFacts;
 use crate::message::{SettingChange, SettingField, SettingsMessage};
@@ -28,7 +30,8 @@ use ncrs_ui_kit::format::shown_path;
 use ncrs_ui_kit::frame::{SCROLLBAR_MARGIN, SCROLLBAR_WIDTH};
 use ncrs_ui_kit::kit::{self, Tone};
 use ncrs_ui_kit::layout::SETTINGS_PAGE_MAX_WIDTH;
-use ncrs_ui_kit::theme::{self, font_size, size, spacing};
+use ncrs_ui_kit::page_status_bar::{page_status_bar, PageStatusBar, PageStatusLine};
+use ncrs_ui_kit::theme::{self, font_size, spacing};
 
 type Message = SettingsMessage;
 use ncrs_ui_kit::palette::{Palette, ThemePreset};
@@ -140,6 +143,7 @@ fn feature_label(feature: SettingsFeature) -> Msg {
         SettingsFeature::Programs => Msg::SettingsFeaturePrograms,
         SettingsFeature::Keys => Msg::SettingsFeatureKeys,
         SettingsFeature::Servers => Msg::SettingsFeatureServers,
+        SettingsFeature::System => Msg::SettingsFeatureSystem,
         SettingsFeature::Index => Msg::SettingsFeatureIndex,
         SettingsFeature::Hermes => Msg::SettingsFeatureHermes,
         SettingsFeature::Rules => Msg::SettingsFeatureRules,
@@ -157,6 +161,7 @@ fn feature_theme_name(feature: SettingsFeature) -> Option<FuturamaName> {
         | SettingsFeature::Programs
         | SettingsFeature::Keys
         | SettingsFeature::Servers
+        | SettingsFeature::System
         | SettingsFeature::Index
         | SettingsFeature::Rules
         | SettingsFeature::Tags
@@ -181,6 +186,7 @@ fn feature_suffix(feature: SettingsFeature) -> Option<Msg> {
         | SettingsFeature::Programs
         | SettingsFeature::Keys
         | SettingsFeature::Servers
+        | SettingsFeature::System
         | SettingsFeature::Index
         | SettingsFeature::Rules
         | SettingsFeature::Tags
@@ -197,6 +203,7 @@ fn feature_beta_mark(feature: SettingsFeature) -> Option<Msg> {
         | SettingsFeature::Programs
         | SettingsFeature::Keys
         | SettingsFeature::Servers
+        | SettingsFeature::System
         | SettingsFeature::Index
         | SettingsFeature::Rules
         | SettingsFeature::Tags
@@ -212,6 +219,7 @@ fn feature_intro(feature: SettingsFeature) -> Msg {
         SettingsFeature::Programs => Msg::SettingsFeatureProgramsIntro,
         SettingsFeature::Keys => Msg::SettingsFeatureKeysIntro,
         SettingsFeature::Servers => Msg::SettingsFeatureServersIntro,
+        SettingsFeature::System => Msg::SettingsFeatureSystemIntro,
         SettingsFeature::Index => Msg::SettingsFeatureIndexIntro,
         SettingsFeature::Hermes => Msg::SettingsFeatureHermesIntro,
         SettingsFeature::Rules => Msg::SettingsFeatureRulesIntro,
@@ -230,6 +238,7 @@ fn feature_config_place(feature: SettingsFeature) -> Option<&'static str> {
         SettingsFeature::Programs => Some(OPEN_SECTION),
         SettingsFeature::Keys => Some(KEYS_SECTION),
         SettingsFeature::Servers => Some(SERVERS_SECTION),
+        SettingsFeature::System => Some(SYSTEM_SECTION),
         SettingsFeature::Index | SettingsFeature::Hermes => Some(FILING_SECTION),
         SettingsFeature::Rules
         | SettingsFeature::Tags
@@ -269,6 +278,7 @@ fn groups_of<'a>(feature: SettingsFeature, view: &SettingsView<'a>) -> Vec<Group
         SettingsFeature::Programs => programs_groups(view),
         SettingsFeature::Keys => keys_groups(view),
         SettingsFeature::Servers => servers_groups(view),
+        SettingsFeature::System => system_groups(view),
         SettingsFeature::Index => index_groups(view),
         SettingsFeature::Hermes => hermes_groups(view),
         SettingsFeature::Rules
@@ -432,53 +442,26 @@ pub struct StatusBar<'a> {
 }
 
 pub fn status_bar<'a>(bar: &StatusBar<'a>) -> Element<'a, Message> {
-    let palette = bar.palette;
     let lang = bar.lang;
-    let small = |content: String, color: Color| {
-        container(
-            text(content)
-                .size(font_size::SMALL)
-                .color(color)
-                .wrapping(Wrapping::None),
+    let changed = (bar.changed > 0).then(|| {
+        fill_template(
+            lang.text(Msg::SettingsStatusChanged),
+            &[("{count}", &bar.changed.to_string())],
         )
-        .padding([0.0, spacing::L])
+    });
+    let line = match (bar.failure, bar.notice) {
+        (Some(failure), _) => PageStatusLine::Failure(failure),
+        (None, Some(notice)) => PageStatusLine::Notice(notice),
+        (None, None) => PageStatusLine::Hint(lang.text(Msg::SettingsStatusHint)),
     };
-    let mode = container(
-        text(lang.text(Msg::SettingsMode))
-            .size(font_size::SMALL)
-            .wrapping(Wrapping::None),
+    page_status_bar(
+        PageStatusBar {
+            mode: lang.text(Msg::SettingsMode),
+            line,
+            right: changed.as_deref(),
+        },
+        bar.palette,
     )
-    .padding([0.0, spacing::L])
-    .height(Length::Fill)
-    .align_y(alignment::Vertical::Center)
-    .style(theme::mode_field_accent(palette));
-    let middle = match (bar.failure, bar.notice) {
-        (Some(failure), _) => small(failure.to_owned(), palette.error),
-        (None, Some(notice)) => small(format!("\u{2713} {notice}"), palette.success),
-        (None, None) => small(
-            lang.text(Msg::SettingsStatusHint).to_owned(),
-            palette.dim_text,
-        ),
-    };
-    let mut line =
-        row![mode, middle, container("").width(Length::Fill)].align_y(alignment::Vertical::Center);
-    if bar.changed > 0 {
-        line = line.push(small(
-            fill_template(
-                lang.text(Msg::SettingsStatusChanged),
-                &[("{count}", &bar.changed.to_string())],
-            ),
-            palette.dim_text,
-        ));
-    }
-    container(column![
-        theme::horizontal_rule(palette.border_inactive),
-        container(line).width(Length::Fill).height(Length::Fill),
-    ])
-    .height(size::STATUS_BAR)
-    .width(Length::Fill)
-    .style(theme::statusbar(palette))
-    .into()
 }
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the

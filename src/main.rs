@@ -73,7 +73,7 @@ use std::env;
 
 /// The application as iced runs it, window settings and all.
 ///
-/// One definition, shared with the end-to-end tests in `e2e_tests.rs`. A test
+/// One definition, shared with the end-to-end tests in `e2e_tests/mod.rs`. A test
 /// that wires `update` differently from `main` proves nothing about the app the
 /// user runs; the subscription is the part that matters most, because it is
 /// what routes keys.

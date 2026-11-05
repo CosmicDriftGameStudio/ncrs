@@ -1282,6 +1282,7 @@ mod status_notice {
                 notice: app.notice_for_test(),
                 hermes_line: None,
                 version: None,
+                monitor: None,
             },
             failure,
             None,

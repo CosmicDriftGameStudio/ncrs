@@ -456,8 +456,8 @@ action and gives one key or a list of keys:
 
 ```toml
 [keys]
-# F12 copies, F5 does nothing any more.
-copy = "F12"
+# F11 copies, F5 does nothing any more.
+copy = "F11"
 # Several keys for one action.
 quit = ["F10", "primary+q"]
 # No key at all; the context menu still offers it.

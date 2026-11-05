@@ -8,6 +8,7 @@ pub mod file_list_tags;
 pub mod keymap;
 pub mod palette;
 pub mod settings_page;
+pub mod system_monitor;
 pub mod vscode_theme;
 
 pub use settings_page::{SettingsFeature, SettingsGroup, SettingsTarget};

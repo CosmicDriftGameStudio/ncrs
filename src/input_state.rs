@@ -83,6 +83,13 @@ pub struct InputState {
     /// The settings tab is up with nothing on top: Escape closes it, even from
     /// its search field, and an Option tap opens no menu.
     pub settings: bool,
+    /// The System page is up: an Option tap opens no menu on the panel it hides.
+    pub monitor: bool,
+    /// The filter field of the System page has the focus: it captures Escape.
+    pub monitor_filter: bool,
+    /// The System page is up with nothing over it and its filter field
+    /// without the focus: an Option tap opens the page's own menu.
+    pub monitor_menu: bool,
     /// A row is held with the left button: the pointer and the button decide
     /// whether it becomes a drag.
     pub panel_drag_armed: bool,
@@ -96,6 +103,10 @@ impl InputState {
             return None;
         }
         [
+            (
+                self.monitor_filter,
+                Message::Monitor(ncrs_monitor::MonitorMessage::Escape),
+            ),
             (
                 self.hermes_chat,
                 Message::HermesChat(HermesChatMessage::Close),
@@ -173,7 +184,7 @@ impl InputState {
                 // Still fed, so the tap's bookkeeping stays right, but a tap
                 // while a path is being typed opens nothing.
                 let tapped = self.alt_tap.modifiers_changed(*modifiers);
-                (tapped
+                let nothing_else_up = tapped
                     && !self.path_editing
                     && !self.command_line
                     && !self.search_open
@@ -183,8 +194,12 @@ impl InputState {
                     && !self.key_bindings
                     && !self.theme_fetch
                     && !self.transfer_dialog
-                    && !self.settings)
-                    .then_some(Message::ContextMenuKey)
+                    && !self.settings;
+                if self.monitor {
+                    return (nothing_else_up && self.monitor_menu)
+                        .then_some(Message::Monitor(ncrs_monitor::MonitorMessage::MenuKey));
+                }
+                (nothing_else_up).then_some(Message::ContextMenuKey)
             }
             event::Event::Window(window::Event::Unfocused) => {
                 self.alt_tap.cancel();

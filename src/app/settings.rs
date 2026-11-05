@@ -281,6 +281,10 @@ impl App {
                 self.hermes.set_pipeline_load(load, self.wall_clock.now());
                 Task::none()
             }
+            SettingChange::System(_) => {
+                self.monitor.set_settings(config.system);
+                Task::none()
+            }
             SettingChange::Servers(_) => self.take_over_servers(config.servers),
             SettingChange::FileListTags(_) => {
                 self.file_list_tags = config.file_list_tags;

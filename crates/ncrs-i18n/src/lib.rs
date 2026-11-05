@@ -363,6 +363,36 @@ mod tests {
                 | Msg::GroupHermes
                 | Msg::SettingsFeatureHermes
                 | Msg::SettingsFeatureIndex
+                // The same word in both languages: the name of the Monitor page.
+                | Msg::SettingsFeatureSystem
+                | Msg::ActionSystemMonitor
+                | Msg::MonitorTitle
+                // The mode field of the Monitor page, in capitals like the one of Settings.
+                | Msg::MonitorMode
+                // Seconds, a sort column and units that German writes like English.
+                | Msg::SettingsSystemOneSecond
+                | Msg::SettingsSystemTwoSeconds
+                | Msg::SettingsSystemFiveSeconds
+                | Msg::SettingsSystemSortCpu
+                | Msg::SettingsSystemUnitBytes
+                | Msg::SettingsSystemUnitBits
+                // The loanword, the same in both languages.
+                | Msg::SettingsSystemStyleSymbol
+                // Abbreviations and loanwords on the Monitor page: CPU, Swap, Rx/s,
+                // Tx/s and the column heads CPU%, MEM%, RES, PID, S.
+                | Msg::MonitorMeterCpu
+                | Msg::MonitorMeterSwap
+                | Msg::MonitorNetworkReceived
+                | Msg::MonitorNetworkSent
+                | Msg::MonitorColCpu
+                | Msg::MonitorColMem
+                | Msg::MonitorColRes
+                | Msg::MonitorColPid
+                | Msg::MonitorColStatus
+                // Placeholders and the word PID.
+                | Msg::MonitorKillSubject
+                // "Filter" is the same word in both languages, then a key name.
+                | Msg::MonitorFilterPlaceholder
                 // A plus sign only.
                 | Msg::SettingsIndexOwnAdd
                 // The name, the same word and a bare placeholder pair, in both languages.
