@@ -4,6 +4,7 @@
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use chrono::NaiveDate;
 use ncrs_index::{DocumentFields, DocumentId, Field, FieldOrigin};
 use ncrs_intake::test_archive::{test_archive, TestArchive, TestFile};
 use ncrs_intake::FIELDS_READ_VERSION;
@@ -241,6 +242,38 @@ fn a_sender_set_by_hand_stays_and_the_empty_date_is_filled() {
         FieldOrigin::Manual
     );
     assert_eq!(document.status, DocumentStatus::Filed);
+}
+
+#[test]
+fn a_guessed_date_is_read_again_and_a_date_set_by_hand_stays() {
+    for (origin, replaced) in [
+        (FieldOrigin::Rule(None), true),
+        (FieldOrigin::Manual, false),
+    ] {
+        let root = TempDir::new().unwrap();
+        let (location, letter) = archive_with_one_letter(&root);
+        let fixture = IndexFixture::new();
+        let calls = Arc::new(AtomicUsize::new(0));
+        scan_with_files(&fixture, &location, &calls);
+        let id = only_document(&fixture, &location);
+        let birth_date = NaiveDate::from_ymd_opt(1978, 1, 2);
+        let mut index = fixture.index.lock().unwrap();
+        let mut fields = index.document(id).unwrap().unwrap().fields;
+        fields.date = birth_date;
+        index
+            .set_document_fields(id, &fields, |_| origin.clone())
+            .unwrap();
+        index.set_fields_read_version(id, 1).unwrap();
+        drop(index);
+
+        scan_with_files(&fixture, &location, &calls);
+
+        let index = fixture.index.lock().unwrap();
+        let document = index.document(id).unwrap().unwrap();
+        let expected = if replaced { letter.date } else { birth_date };
+        assert_eq!(document.fields.date, expected, "{origin:?}");
+        assert_eq!(index.fields_read_version(id).unwrap(), FIELDS_READ_VERSION);
+    }
 }
 
 #[test]

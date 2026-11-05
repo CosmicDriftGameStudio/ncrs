@@ -97,7 +97,7 @@ impl Index {
     pub fn ai_coverage_beneath(&self, directory: &Path) -> Result<(usize, usize), IndexError> {
         let (from, until) = SubtreeRange::of(directory)?.into_bounds();
         let (total, understood): (i64, Option<i64>) = self.connection().query_row(
-            "SELECT COUNT(*), SUM(d.sender_id IS NOT NULL OR d.kind_id IS NOT NULL OR d.ai_asked = 1)
+            "SELECT COUNT(*), SUM(d.sender_id IS NOT NULL OR d.kind_id IS NOT NULL OR d.ai_asked > 0)
              FROM document d JOIN document_text t ON t.rowid = d.id
              WHERE d.missing_since IS NULL AND d.path >= ?1 AND d.path < ?2
                AND trim(t.body) <> ''",

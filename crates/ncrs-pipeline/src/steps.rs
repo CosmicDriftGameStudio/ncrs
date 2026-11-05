@@ -14,7 +14,7 @@ use ncrs_intake::{
 use ncrs_intake::{relative_to_location, text_is_readable};
 use ncrs_intake::{settle_location, take_in, IntakeError, Location, LocationMode, Outcome};
 
-use crate::ai_step::AiStep;
+use crate::ai_step::{clear_field, AiStep, AI_READ_VERSION};
 use crate::step::{with_index_value, IndexAccess, Item, Step, StepOutcome};
 
 pub const NO_INDEX: &str = "index not open";
@@ -119,7 +119,7 @@ impl Step for IntakeStep {
                             && (!has_text
                                 || index.fields_read_version(id)? < FIELDS_READ_VERSION
                                 || (self.can_ask_ai(&item.location.path)
-                                    && !index.ai_asked(id)?));
+                                    && index.ai_read_version(id)? < AI_READ_VERSION));
                         item.stored_text_is_current = continues && has_text;
                         continues
                     }
@@ -220,6 +220,9 @@ impl Step for TextStep {
     }
 }
 
+/// The fields the detection of the look of a letter reads.
+const DETECTED_FIELDS: [Field; 4] = [Field::Sender, Field::Recipient, Field::Kind, Field::Date];
+
 /// Lets the rules decide where a new inbox document would be filed, and stores
 /// the fields they could fill. Nothing is moved here: a plan only ends the
 /// pipeline for the document, executing it is a later step. A document the
@@ -239,7 +242,8 @@ impl RulesStep {
         }
     }
 
-    /// Fills the empty fields of an archive document and notes which version
+    /// Fills the empty fields of an archive document, reads again the ones
+    /// that hold only a guess of an earlier detection, and notes which version
     /// of the detection read it. Never plans, never changes the status and
     /// offers no aliases: a whole archive would flood the alias list.
     fn read_archive_fields(&self, id: DocumentId, text: &str) -> Result<StepOutcome, String> {
@@ -247,15 +251,22 @@ impl RulesStep {
             let Some(document) = index.document(id)? else {
                 return Ok(());
             };
+            let origins = index.field_origins(id)?;
+            let mut current = document.fields.clone();
+            for field in DETECTED_FIELDS {
+                if origins.of(field).is_heuristic() {
+                    clear_field(&mut current, field);
+                }
+            }
             let detected = detect_fields(
                 text,
-                &document.fields,
+                &current,
                 &index.confirmed_sender_aliases()?,
                 &index.sender_names()?,
                 &self.own_names(),
                 index.kinds(),
             );
-            let filled = detected.fill(&document.fields);
+            let filled = detected.fill(&current);
             if filled != document.fields {
                 index.set_document_fields(id, &filled, |field| match field {
                     Field::Recipient => FieldOrigin::AddressBlock,

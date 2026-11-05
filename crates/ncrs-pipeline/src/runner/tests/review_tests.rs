@@ -599,3 +599,59 @@ fn an_unasked_archive_document_waits_while_the_provider_cannot_answer_and_is_ask
     scan_with_ai();
     assert_eq!(provider.requests().len(), 1);
 }
+
+#[test]
+fn an_archive_document_asked_by_an_older_ai_reading_is_asked_again_and_a_current_one_is_not() {
+    let archive_dir = TempDir::new().unwrap();
+    let archive = location(&archive_dir, LocationMode::Archive);
+    put(&archive, "invoice.pdf", INVOICE);
+    let fixture = IndexFixture::new();
+    let source = Arc::new(Mutex::new(Ok(Extracted::Text(
+        "Invoice 4711 Company A".to_owned(),
+    ))));
+    let chain = || TextChain::new().with_source(SwitchableText(Arc::clone(&source)));
+    archive_scan(&fixture, &archive, chain());
+    let provider = Arc::new(ncrs_ai::FakeProvider::replying(
+        r#"{"sender": {"value": "Company A", "confidence": 0.9}}"#,
+    ));
+    let scan_with_ai = || {
+        let steps = intake_steps(
+            Arc::new(SharedIndex(Arc::clone(&fixture.index))),
+            Arc::new(chain()),
+            Some(Arc::clone(&provider) as Arc<dyn ncrs_ai::Provider>),
+            OwnDetails::default(),
+        );
+        Runner::start(
+            settings(workers(1)),
+            steps,
+            vec![archive.clone()],
+            stepping_clock(),
+        )
+        .wait_for("the archive scanned", is_idle)
+    };
+    let id = fixture
+        .index
+        .lock()
+        .unwrap()
+        .documents_under(&archive.path)
+        .unwrap()[0]
+        .0;
+
+    scan_with_ai();
+    assert_eq!(provider.requests().len(), 1);
+    scan_with_ai();
+    assert_eq!(
+        provider.requests().len(),
+        1,
+        "a current reading is not asked"
+    );
+
+    fixture
+        .index
+        .lock()
+        .unwrap()
+        .set_ai_read_version(id, 1)
+        .unwrap();
+    scan_with_ai();
+    assert_eq!(provider.requests().len(), 2);
+}
