@@ -36,7 +36,10 @@ pub fn groups<'a>(
             SettingRow::listed(
                 file_label(&error.file),
                 Some(error.message.clone()),
-                Some(age_label(status, error.at)),
+                Some(ncrs_i18n::fill_template(
+                    lang.text(Msg::FilingStatusAge),
+                    &[("{age}", &age_label(status, error.at))],
+                )),
                 vec![
                     kit::button(
                         lang.text(Msg::FilingStatusShowFile),
@@ -78,7 +81,7 @@ pub fn groups<'a>(
         ));
     }
     vec![Group {
-        intro: Some(lang.text(Msg::FilingStatusExplain).to_owned()),
+        intro: None,
         title: String::new(),
         rows,
     }]

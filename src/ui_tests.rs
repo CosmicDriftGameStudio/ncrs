@@ -2956,10 +2956,9 @@ mod tags_card {
     }
 
     #[test]
-    fn the_page_shows_the_explanation_the_switch_and_the_tags() {
+    fn the_page_shows_the_switch_and_the_tags() {
         for label in [
             "Tags",
-            "All tags in one place. A tick shows the tag in the file tree behind the file name.",
             "Show tags",
             "At most 3 per file, then “+1”. Applies to both file lists.",
             "Documents",
@@ -3277,7 +3276,6 @@ mod rules_card {
     #[test]
     fn the_page_lists_the_rules_with_their_buttons_in_the_row() {
         for label in [
-            "Rules, checked from top to bottom. The first that matches files the document.",
             "Telekom-Rechnungen",
             "Strom",
             "Erinnerungen",

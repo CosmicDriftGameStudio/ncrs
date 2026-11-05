@@ -1777,12 +1777,6 @@
       "de": "Hermes pausiert"
     },
     {
-      "key": "filing_status.explain",
-      "context": "One sentence above the list of files that could not be read: what the rows are and what the buttons in them do.",
-      "en": "The latest files that could not be read. Process again tries one of them anew.",
-      "de": "Die letzten Dateien, die nicht gelesen werden konnten. Erneut verarbeiten versucht es mit einer noch einmal."
-    },
-    {
       "key": "filing_status.load_gentle.theme",
       "context": "Theme name of the gentle load, shown dimmed beside filing_status.load_gentle in the Futurama variants only. A playful name; the plain name beside it says what the load does.",
       "en": "By the book",
@@ -2539,12 +2533,6 @@
       "de": "Anforderungen"
     },
     {
-      "key": "saved_queries.explain",
-      "context": "Explanation under the title of the reports page.",
-      "en": "Saved searches for recurring questions. Exporting copies the hits into a folder; the originals stay unchanged.",
-      "de": "Gespeicherte Suchen für wiederkehrende Fragen. Exportieren kopiert die Treffer in einen Ordner, Originale bleiben unverändert."
-    },
-    {
       "key": "saved_queries.loading",
       "context": "Shown on the saved queries page while the list loads.",
       "en": "Loading …",
@@ -2889,8 +2877,8 @@
     {
       "key": "settings.feature_rules_intro",
       "context": "Line under the heading of the rules page on the settings tab. A rule makes Hermes sort documents of one kind the same way every time.",
-      "en": "Only for forcing it: when Hermes should sort something differently from what he learned.",
-      "de": "Nur zum Erzwingen: wenn Hermes etwas anders sortieren soll, als er gelernt hat."
+      "en": "Only for forcing it: when Hermes should sort something differently from what he learned. Checked from top to bottom; the first that matches decides.",
+      "de": "Nur zum Erzwingen: wenn Hermes etwas anders sortieren soll, als er gelernt hat. Von oben nach unten geprüft, die erste passende entscheidet."
     },
     {
       "key": "settings.feature_tags",
@@ -2901,8 +2889,8 @@
     {
       "key": "settings.feature_tags_intro",
       "context": "Line under the heading of the tags page on the settings tab. Tags are the keywords Hermes attaches to documents.",
-      "en": "Names Hermes attaches to files. Rename, merge or remove them.",
-      "de": "Namen, die Hermes an Dateien hängt. Umbenennen, zusammenlegen oder entfernen."
+      "en": "Names Hermes attaches to files. A tick shows the tag in the file list behind the file name.",
+      "de": "Namen, die Hermes an Dateien hängt. Ein Haken zeigt das Schlagwort in der Dateiliste hinter dem Dateinamen."
     },
     {
       "key": "settings.feature_reports",
@@ -2913,8 +2901,8 @@
     {
       "key": "settings.feature_reports_intro",
       "context": "Line under the heading of the reports page on the settings tab. A report is a saved search whose hits are counted and can be exported.",
-      "en": "Saved searches that count what they find. Change, export or remove them.",
-      "de": "Gespeicherte Suchen, die zählen, was sie finden. Ändern, exportieren oder entfernen."
+      "en": "Saved searches that count what they find. Exporting copies the hits into a folder; the originals stay where they are.",
+      "de": "Gespeicherte Suchen, die zählen, was sie finden. Exportieren kopiert die Treffer in einen Ordner, die Originale bleiben, wo sie sind."
     },
     {
       "key": "settings.feature_read_errors",
@@ -2925,8 +2913,8 @@
     {
       "key": "settings.feature_read_errors_intro",
       "context": "Line under the heading of the read errors page on the settings tab. The page lists files the index could not read and lets the user try them again.",
-      "en": "Files ncrs could not read, and why.",
-      "de": "Dateien, die ncrs nicht lesen konnte, und warum."
+      "en": "Files ncrs could not read, and why. Process again tries a file once more.",
+      "de": "Dateien, die ncrs nicht lesen konnte, und warum. Erneut verarbeiten versucht es noch einmal."
     },
     {
       "key": "settings.row_preset",
@@ -5185,12 +5173,6 @@
       "de": "Bürokratische Vorschriften"
     },
     {
-      "key": "rules.explain",
-      "context": "Paragraph at the top of the rules page: what rules are and in which order they apply.",
-      "en": "Rules, checked from top to bottom. The first that matches files the document.",
-      "de": "Regeln, von oben nach unten geprüft. Die erste passende legt ab."
-    },
-    {
       "key": "rules.loading",
       "context": "Shown on the rules page while the rules are being loaded.",
       "en": "Loading the rules…",
@@ -5387,12 +5369,6 @@
       "context": "Error line on the rules page when the index could not be read or changed. Takes the technical detail, which stays in English.",
       "en": "The rules could not be read or changed: {detail}",
       "de": "Die Regeln konnten nicht gelesen oder geändert werden: {detail}"
-    },
-    {
-      "key": "tags.explain",
-      "context": "Explanation under the title of the tags page: what the page is for and what a tick does.",
-      "en": "All tags in one place. A tick shows the tag in the file tree behind the file name.",
-      "de": "Alle Schlagworte an einem Ort. Ein Haken zeigt das Schlagwort im Dateibaum hinter dem Dateinamen."
     },
     {
       "key": "tags.search_placeholder",
@@ -5939,6 +5915,12 @@
       "context": "Button in the add row under the list of read errors, shown from two errors on: reads every file of the list again, without asking. Same verb as the button of a single row.",
       "en": "Process all again",
       "de": "Alle erneut verarbeiten"
+    },
+    {
+      "key": "filing_status.age",
+      "context": "How long ago a file could not be read, at the right of its row on the read errors page. {age} is minutes:seconds, or hours:minutes:seconds from one hour on.",
+      "en": "{age} ago",
+      "de": "vor {age}"
     },
     {
       "key": "filing_status.show_file",

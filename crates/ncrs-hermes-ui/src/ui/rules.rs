@@ -79,7 +79,7 @@ pub fn groups<'a>(
         )],
     ));
     vec![Group {
-        intro: Some(lang.text(Msg::RulesExplain).to_owned()),
+        intro: None,
         title: String::new(),
         rows,
     }]
