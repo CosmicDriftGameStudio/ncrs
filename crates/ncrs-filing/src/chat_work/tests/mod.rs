@@ -121,6 +121,7 @@ fn reading(root: &str, mut files: Vec<PlanFile>) -> FolderReading {
     FolderReading {
         patterns: Vec::new(),
         ai: Default::default(),
+        kinds: Default::default(),
         root: PathBuf::from(root),
         files,
         photos: 0,

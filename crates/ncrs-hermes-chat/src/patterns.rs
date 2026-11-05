@@ -106,6 +106,7 @@ pub fn previewed(state: &mut State, ctx: &Ctx, computed: Option<PatternPreview>)
         )
     };
     let names_unsaid = preview.change.name.is_some() && !state.session.change_word.is_empty();
+    state.session.pending_change = None;
     state.session.pending_pattern = Some(preview.change);
     state.step = Step::ConfirmChange;
     let mut parts = vec![Part::Text(intro)];

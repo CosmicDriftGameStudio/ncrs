@@ -46,6 +46,8 @@ pub struct FolderReading {
     pub patterns: Vec<PatternChoice>,
     /// How far the AI got with the documents of the folder the index knows.
     pub ai: AiCoverage,
+    /// The kinds the index knew when the folder was read, its own among them.
+    pub kinds: Kinds,
 }
 
 /// Documents with a text, and how many of them the AI has understood.
@@ -349,6 +351,7 @@ pub fn read_folder(
         hashes,
         patterns: Vec::new(),
         ai: ai_coverage(access, folder),
+        kinds: kinds.clone(),
     };
     reading.patterns = adoptable_patterns(&kinds, &reading);
     Ok(reading)

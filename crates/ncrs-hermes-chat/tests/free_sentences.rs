@@ -24,9 +24,18 @@ mod tests {
     /// Alfa is filed by year, Beta has a month folder below the year.
     fn archive_talk() -> Talk {
         let talk = Talk::in_dir(tempfile::tempdir().unwrap(), &["archive"], &["inbox"]);
+        write_archive(&talk, "archive");
+        talk.write(
+            "inbox/neu_alfa.pdf",
+            &letter("Alfa AG", "05.03.2021", "Rechnung", 77),
+        );
+        talk
+    }
+
+    fn write_archive(talk: &Talk, root: &str) {
         for (month, day) in [(1, 10), (3, 11), (6, 12), (9, 13), (11, 14)] {
             talk.write(
-                &format!("archive/Alfa/2020/2020-{month:02}-{day} Alfa Rechnung.pdf"),
+                &format!("{root}/Alfa/2020/2020-{month:02}-{day} Alfa Rechnung.pdf"),
                 &letter(
                     "Alfa AG",
                     &format!("{day}.{month:02}.2020"),
@@ -35,7 +44,7 @@ mod tests {
                 ),
             );
             talk.write(
-                &format!("archive/Beta/2020/{month:02}/2020-{month:02}-{day} Beta Rechnung.pdf"),
+                &format!("{root}/Beta/2020/{month:02}/2020-{month:02}-{day} Beta Rechnung.pdf"),
                 &letter(
                     "Beta GmbH",
                     &format!("{day}.{month:02}.2020"),
@@ -44,11 +53,6 @@ mod tests {
                 ),
             );
         }
-        talk.write(
-            "inbox/neu_alfa.pdf",
-            &letter("Alfa AG", "05.03.2021", "Rechnung", 77),
-        );
-        talk
     }
 
     fn read_archive(talk: &mut Talk) {
@@ -283,5 +287,96 @@ mod tests {
             talk.state.thread().last(),
             Some(Entry::Hermes { .. })
         ));
+    }
+
+    #[test]
+    fn a_pattern_preview_is_dropped_when_a_typed_change_is_previewed_instead() {
+        let mut talk = archive_talk();
+        read_archive(&mut talk);
+        talk.type_text_understood("überall nach jahr", EVERYWHERE_BY_YEAR);
+        assert!(talk.state.session.pending_pattern.is_some());
+
+        talk.type_text_understood(
+            "Alfa lieber nach Monat",
+            r#"{"intent":"change_structure","area":"Alfa","order":"by_month"}"#,
+        );
+        assert!(talk.state.session.pending_pattern.is_none());
+        talk.press(&ChipReply::ConfirmChange);
+
+        let changes = &talk.state.session.changes;
+        assert_eq!(changes.len(), 1);
+        assert_eq!(
+            changes[0].order,
+            ncrs_filing::chat_work::ChangeOrder::ByMonth
+        );
+    }
+
+    #[test]
+    fn a_typed_path_that_is_no_folder_in_a_step_without_folders_goes_to_the_model() {
+        let mut talk = archive_talk();
+        read_archive(&mut talk);
+
+        talk.model.push_reply(Ok(SMALL_TALK));
+        talk.type_text("/ hallo, was geht");
+
+        assert!(talk.state.pending_resolve().is_none());
+        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatSmallTalk, &[])]);
+    }
+
+    #[test]
+    fn an_order_for_every_area_survives_a_retry_of_the_same_folder() {
+        let mut talk = archive_talk();
+        talk.open();
+        talk.type_text_understood("überall nach jahr", EVERYWHERE_BY_YEAR);
+        let late = talk.path("late");
+
+        talk.type_text(&late.to_string_lossy());
+        assert!(talk.state.session.everywhere.is_none());
+        write_archive(&talk, "late");
+        talk.press(&ChipReply::Retry);
+
+        assert!(talk.state.session.pending_pattern.is_some());
+    }
+
+    #[test]
+    fn a_kind_of_the_user_counts_as_something_to_order() {
+        let mut talk = archive_talk();
+        let custom = [ncrs_index::CustomKind {
+            id: "honorarnote".to_owned(),
+            german: Some("Honorarnote".to_owned()),
+            english: None,
+            words: vec!["Honorarnote".to_owned()],
+        }];
+        let (catalog, _skipped) = ncrs_index::KindCatalog::built_in().extended(&custom);
+        talk.index
+            .lock()
+            .unwrap()
+            .as_mut()
+            .unwrap()
+            .set_kinds(std::sync::Arc::new(catalog));
+        read_archive(&mut talk);
+
+        talk.type_text_understood(
+            "Honorarnoten nach Jahr",
+            r#"{"intent":"change_structure","area":"Honorarnoten","order":"by_year"}"#,
+        );
+
+        assert!(!talk
+            .last_texts()
+            .contains(&say(Msg::HermesChatNotYetPropose, &[])));
+    }
+
+    #[test]
+    fn an_order_for_every_area_is_not_taken_over_by_another_folder() {
+        let mut talk = archive_talk();
+        talk.open();
+        talk.type_text_understood("überall nach jahr", EVERYWHERE_BY_YEAR);
+        talk.type_text(&talk.path("late").to_string_lossy());
+
+        talk.type_text(&talk.path("archive").to_string_lossy());
+        talk.press(&ChipReply::ReadAnyway);
+
+        assert!(talk.state.session.pending_pattern.is_none());
+        assert!(talk.state.session.everywhere.is_none());
     }
 }
