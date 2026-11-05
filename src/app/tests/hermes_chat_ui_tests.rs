@@ -648,6 +648,7 @@ fn read_downloads() -> Arc<ncrs_filing::chat_work::FolderReading> {
     Arc::new(ncrs_filing::chat_work::FolderReading {
         patterns: Vec::new(),
         ai: Default::default(),
+        kinds: Default::default(),
         root: PathBuf::from("/home/test/Downloads"),
         files: vec![file("Taxes/a.pdf"), file("Misc/b.pdf"), file("c.pdf")],
         photos: 0,

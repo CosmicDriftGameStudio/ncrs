@@ -88,6 +88,7 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
         }
         Message::Failed(reason) => {
             finish_work(state);
+            state.session.everywhere = None;
             state.session.greeting_after_count = false;
             say(
                 state,
@@ -258,11 +259,25 @@ fn typed_folder_resolved(
     result: Result<PathBuf, String>,
 ) -> Option<Action> {
     let asked = state.resolving.take()?;
+    let sentence = state.unresolved_sentence.take();
     if asked.1 != step || state.step != step {
         return None;
     }
+    if !expects_folder(step) {
+        return match (result, sentence) {
+            (Ok(real), _) => {
+                state.step = Step::Greeting;
+                folder_answer(state, ctx, real, true)
+            }
+            (Err(_), Some((unresolved, unresolved_asked))) => {
+                understand::ask(state, ctx, &unresolved, unresolved_asked)
+            }
+            (Err(_), None) => None,
+        };
+    }
     match result {
         Err(_) => {
+            let everywhere = state.session.everywhere.take();
             state.session.retry = match step {
                 Step::Source | Step::TidyFolder => Some(ReadFor::Source),
                 Step::ReadFolder => Some(ReadFor::Learn),
@@ -271,6 +286,7 @@ fn typed_folder_resolved(
             .map(|purpose| Retry {
                 folder: typed.to_path_buf(),
                 purpose,
+                everywhere,
             });
             say(
                 state,
@@ -712,11 +728,10 @@ fn handle_text(state: &mut State, ctx: &Ctx, typed: &str, asked: Asked) -> Optio
         return None;
     }
     if looks_like_typed_path(typed) {
-        let folder = expand_home(ctx, Path::new(typed));
-        if folder.is_dir() {
-            state.step = Step::Greeting;
-            return folder_answer(state, ctx, folder, true);
-        }
+        state.resolving = Some((expand_home(ctx, Path::new(typed)), state.step));
+        state.unresolved_sentence = Some((typed.to_owned(), asked));
+        state.fresh_resolve = true;
+        return None;
     }
     understand::ask(state, ctx, typed, asked)
 }

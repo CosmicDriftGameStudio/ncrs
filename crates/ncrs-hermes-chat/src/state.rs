@@ -360,6 +360,9 @@ pub enum ReadFor {
 pub struct Retry {
     pub folder: PathBuf,
     pub purpose: ReadFor,
+    /// The order that waited for this read: only a retry of the same folder
+    /// carries it on.
+    pub everywhere: Option<Everywhere>,
 }
 
 #[derive(Debug, Clone)]
@@ -530,6 +533,9 @@ pub struct State {
     /// A typed folder being checked off the UI thread, and the step it was
     /// typed in.
     pub resolving: Option<(PathBuf, Step)>,
+    /// What was typed while `resolving` checks a path in a step that asks
+    /// for no folder: it goes to the model if the path is none.
+    pub unresolved_sentence: Option<(String, Asked)>,
     /// The check set during this `update` that no task runs yet.
     pub fresh_resolve: bool,
     /// The folders a sentence named, being checked off the UI thread.
@@ -561,6 +567,7 @@ impl Default for State {
             thinking: None,
             fresh_turn: false,
             resolving: None,
+            unresolved_sentence: None,
             fresh_resolve: false,
             naming: None,
             fresh_naming: false,

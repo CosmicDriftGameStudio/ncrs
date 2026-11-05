@@ -6,10 +6,9 @@ use std::sync::Arc;
 
 use ncrs_filing::chat_work::{
     already_ordered, area_lacks_fields, names_known_kind, same_word, word_within, ChangeOrder,
-    ChangePreview, ChatAccess, ChatWork, FolderReading, OrderChange, ReadError, ReadProgress,
+    ChangePreview, ChatWork, FolderReading, OrderChange, ReadError, ReadProgress,
 };
 use ncrs_i18n::Msg;
-use ncrs_index::{KindCatalog, KindLanguage, Kinds};
 use ncrs_intake::{label_text, levels_plain, Area, Branch, Level, PlaceholderLabel};
 use ncrs_ui_kit::hermes_state::FolderRole;
 
@@ -78,9 +77,11 @@ pub fn read_done(state: &mut State, ctx: &Ctx, result: Result<Arc<FolderReading>
             let requested = state.session.requested.clone();
             let can_retry = matches!(error, ReadError::Gone | ReadError::NotADirectory)
                 && matches!(purpose, ReadFor::Learn | ReadFor::Source);
+            let everywhere = state.session.everywhere.take();
             state.session.retry = can_retry.then(|| Retry {
                 folder: requested.clone(),
                 purpose,
+                everywhere,
             });
             let sentence = match error {
                 ReadError::Gone => fill(
@@ -116,6 +117,7 @@ pub fn retry(state: &mut State, ctx: &Ctx) {
     let Some(failed) = state.session.retry.take() else {
         return;
     };
+    state.session.everywhere = failed.everywhere;
     match failed.purpose {
         ReadFor::Source => tidy::begin(state, ctx, failed.folder),
         ReadFor::Learn | ReadFor::Target | ReadFor::NewTarget => read(state, ctx, failed.folder),
@@ -340,24 +342,23 @@ pub fn keep(state: &mut State, ctx: &Ctx) -> Option<Action> {
 /// Whether the word names something a change of order can be about: an area
 /// of the reading or a kind of document. Without a reading the word cannot be
 /// checked, so it counts as fitting and the preview decides.
-fn word_names_something_to_order(state: &State, ctx: &Ctx, word: &str) -> bool {
+fn word_names_something_to_order(state: &State, word: &str) -> bool {
     let Some(reading) = state.session.learning.as_ref() else {
         return true;
     };
     if reading.structure.areas.is_empty() {
         return true;
     }
-    let kinds = word_kinds(ctx);
     reading
         .structure
         .areas
         .iter()
         .any(|area| word_within(word, &area.folder))
-        || names_known_kind(&kinds, word)
+        || names_known_kind(&reading.kinds, word)
 }
 
 pub fn change_order(state: &mut State, ctx: &Ctx, kind_word: String, order: ChangeOrder) {
-    if !word_names_something_to_order(state, ctx, &kind_word) {
+    if !word_names_something_to_order(state, &kind_word) {
         state.step = Step::AfterChange;
         say(
             state,
@@ -407,8 +408,7 @@ fn no_change_found(state: &mut State, ctx: &Ctx) {
     if let (Some(reading), Some(order)) =
         (state.session.learning.as_ref(), state.session.change_order)
     {
-        let kinds = word_kinds(ctx);
-        if let Some(area) = area_lacks_fields(&kinds, reading, &word, order) {
+        if let Some(area) = area_lacks_fields(&reading.kinds, reading, &word, order) {
             state.step = Step::AfterChange;
             say(
                 state,
@@ -501,6 +501,7 @@ pub fn preview_done(state: &mut State, ctx: &Ctx, computed: Option<ChangePreview
         ));
     }
     chips.push(cancel_chip(ctx));
+    state.session.pending_pattern = None;
     state.session.pending_change = Some(preview);
     state.step = Step::Scope;
     hermes(state, parts, chips);
@@ -751,6 +752,7 @@ pub fn area_chosen(state: &mut State, ctx: &Ctx, area: String) {
 
 /// The preview is the question; the yes applies the change.
 fn confirm(state: &mut State, ctx: &Ctx, parts: Vec<Part>, preview: ChangePreview) {
+    state.session.pending_pattern = None;
     state.session.pending_change = Some(preview);
     state.step = Step::ConfirmChange;
     hermes(
@@ -807,10 +809,4 @@ fn apply(state: &mut State, ctx: &Ctx, mut parts: Vec<Part>, change: OrderChange
             true,
         )],
     );
-}
-
-/// The kinds a typed word is compared with, in the language the reading uses.
-fn word_kinds(ctx: &Ctx) -> Kinds {
-    let language = access(ctx).map_or_else(KindLanguage::default, ChatAccess::kind_language);
-    Kinds::new(Arc::new(KindCatalog::built_in()), language)
 }

@@ -32,8 +32,6 @@ fn without_plural_ending(word: &str) -> &str {
     word
 }
 
-/// Whether two spellings name the same thing, ignoring case, umlauts and one
-/// German or English plural ending on either side.
 /// `same_word`, or one of the two inside the other ("Bankstatements" and
 /// "Bank"), for words long enough not to match by accident.
 pub fn word_within(typed: &str, name: &str) -> bool {
@@ -48,6 +46,8 @@ pub fn word_within(typed: &str, name: &str) -> bool {
         && (typed_norm.contains(&name_norm) || name_norm.contains(&typed_norm))
 }
 
+/// Whether two spellings name the same thing, ignoring case, umlauts and one
+/// German or English plural ending on either side.
 pub fn same_word(typed: &str, name: &str) -> bool {
     let typed_norm = normalize_word(typed);
     let name_norm = normalize_word(name);
@@ -57,6 +57,16 @@ pub fn same_word(typed: &str, name: &str) -> bool {
     typed_norm == name_norm
         || without_plural_ending(&typed_norm) == name_norm
         || typed_norm == without_plural_ending(&name_norm)
+        || is_n_plural_of(&typed_norm, &name_norm)
+        || is_n_plural_of(&name_norm, &typed_norm)
+}
+
+/// A word on "-e" and its plural on "-n" ("Honorarnote", "Honorarnoten"):
+/// stripping "en" from the plural would cut into the stem.
+fn is_n_plural_of(plural: &str, singular: &str) -> bool {
+    singular.ends_with('e')
+        && singular.chars().count() > MIN_STEM
+        && plural.strip_suffix('n') == Some(singular)
 }
 
 #[cfg(test)]
@@ -72,6 +82,8 @@ mod tests {
         assert!(same_word("Rechnungen", "Rechnung"));
         assert!(same_word("invoices", "invoice"));
         assert!(same_word("Rechnung", "rechnung"));
+        assert!(same_word("Honorarnoten", "Honorarnote"));
+        assert!(same_word("Honorarnote", "Honorarnoten"));
         assert!(!same_word("Rechnung", "Rechner"));
         assert!(!same_word("Vertrag", "Vertrags-Kunde"));
         assert!(!same_word("", ""));
