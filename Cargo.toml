@@ -5,6 +5,16 @@ members = ["crates/*"]
 exclude = ["vendor"]
 resolver = "2"
 
+[workspace.dependencies]
+# The llama.cpp crates of ncrs-ai, which names each of them twice (plain and for
+# the Vulkan targets): the pins live here once so that an update moves both
+# lines. No default features: no OpenMP runtime to ship. llama-cpp-sys-2 still
+# builds the `common` library of llama.cpp, because llama-cpp-2 depends on it
+# with its default features. llama-cpp-sys-2 is listed to hold the native build
+# at the version llama-cpp-2 is pinned to (its own requirement is `^0.1.160`).
+llama-cpp-2 = { version = "=0.1.160", default-features = false }
+llama-cpp-sys-2 = { version = "=0.1.160", default-features = false }
+
 [package]
 name = "ncrs"
 version = "1.1.1"
