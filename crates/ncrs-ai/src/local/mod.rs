@@ -32,10 +32,12 @@ mod backends;
 mod chat_session;
 mod check;
 mod lazy;
+mod rule_session;
 mod worker;
 
 pub use check::{check_local_model, LocalCheck};
 pub use lazy::LazyLocalModel;
+pub use rule_session::RuleSession;
 
 #[cfg(test)]
 mod tests;

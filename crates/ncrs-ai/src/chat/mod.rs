@@ -14,7 +14,7 @@ mod parse;
 #[cfg(all(test, feature = "llama"))]
 mod scoring;
 #[cfg(test)]
-mod shard;
+pub mod shard;
 mod turn;
 
 #[cfg(test)]
