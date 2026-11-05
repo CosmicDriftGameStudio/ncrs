@@ -1,6 +1,6 @@
 name: AI model
 
-# The tests that run the built-in model (Qwen3 4B) on a CPU runner take 20 to 30
+# The tests that run the built-in model (Qwen3.5 4B) on a CPU runner take 20 to 30
 # minutes. They live apart from ci.yml so that they block neither a pull
 # request nor the release: release.yml waits for the ci.yml run on main only.
 # A red run here is a signal to look at, not a gate.
@@ -214,7 +214,7 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       # Windows does not cache the model: the cache budget of the repository
-      # cannot hold 2.5 GB per operating system.
+      # cannot hold 2.7 GB per operating system.
       - name: Fetch the AI model
         shell: bash
         run: |

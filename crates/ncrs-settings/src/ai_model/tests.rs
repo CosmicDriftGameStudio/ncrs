@@ -694,3 +694,17 @@ fn an_installed_card_offers_to_turn_the_ai_on_only_while_it_is_off() {
     settings.ai_model = Some(AiModelCard::new(dir, false));
     assert!(!settings.ai_model.as_ref().unwrap().has_turn_on_button());
 }
+
+#[test]
+fn a_folder_with_only_the_previous_model_file_is_not_installed() {
+    let dir = tempfile::tempdir().unwrap();
+    let previous = dir.path().join("Qwen3-4B-Q4_K_M.gguf");
+    let previous_file = fs::File::create(&previous).unwrap();
+    previous_file.set_len(2_497_280_256).unwrap();
+
+    assert!(!model_is_installed(dir.path()));
+    let card = AiModelCard::new(Some(dir.path().to_path_buf()), false);
+    assert!(!card.is_installed());
+    assert!(!card.is_downloading());
+    assert!(previous.exists());
+}

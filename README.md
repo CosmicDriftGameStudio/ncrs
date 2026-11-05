@@ -816,7 +816,7 @@ threads = 4
 # model = "qwen3"
 ```
 
-- `local` uses Qwen3 4B (Apache-2.0), one file of about 2.5 GB that is not
+- `local` uses Qwen3.5 4B (Apache-2.0), one file of about 2.7 GB that is not
   part of ncrs. When it is missing, the Hermes chat (`F2`) offers to download it;
   the card shows host, file, size, checksum and folder first, and nothing
   is fetched before you press the button. The command palette entry "Download
@@ -1351,7 +1351,7 @@ the Mac App Store; `deny.toml` explains how `cargo deny` enforces it.
 | pdfium, the PDF library next to the binary ([pdfium-binaries](https://github.com/bblanchon/pdfium-binaries) build) | BSD-3-Clause; the build itself MIT; bundled components such as FreeType, ICU, libjpeg-turbo and zlib under their own permissive licenses | `licenses/pdfium/` in the archive, `Contents/Resources/licenses/pdfium/` in the macOS app |
 | DejaVu Sans Mono (regular and bold), embedded in the program file on Windows and Linux | Bitstream Vera license with public-domain changes (free to embed and redistribute) | `assets/fonts/LICENSE-DejaVu`, and in the license notice (`about.hbs`) |
 | OCR models (`text-detection.onnx`, `text-recognition.onnx`), downloaded only after asking | CC-BY-SA-4.0 ([ocrs-models](https://github.com/robertknight/ocrs-models), trained on HierText) | not shipped; fetched from the ocrs project |
-| Local AI model `Qwen3-4B-Q4_K_M.gguf`, downloaded only after asking | Apache-2.0 ([Qwen/Qwen3-4B-GGUF](https://huggingface.co/Qwen/Qwen3-4B-GGUF)) | not shipped; fetched from Hugging Face |
+| Local AI model `Qwen3.5-4B-Q4_K_M.gguf`, downloaded only after asking | Apache-2.0 ([unsloth/Qwen3.5-4B-GGUF](https://huggingface.co/unsloth/Qwen3.5-4B-GGUF), quantized from Qwen/Qwen3.5-4B) | not shipped; fetched from Hugging Face |
 
 ## Contributing, security, changes
 

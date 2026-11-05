@@ -2444,7 +2444,7 @@
     },
     {
       "key": "ai_model.file",
-      "context": "Line in the AI model card naming the model file and its size. Takes the file name and the size with its unit, for example 2497 MB.",
+      "context": "Line in the AI model card naming the model file and its size. Takes the file name and the size with its unit, for example 2741 MB.",
       "en": "{name}: {size}",
       "de": "{name} ({size})"
     },
@@ -2463,8 +2463,8 @@
     {
       "key": "ai_model.source",
       "context": "Line in the AI model card saying whose model this is. Takes the address of the model page, shown as plain text.",
-      "en": "The model is Qwen3 4B by the Qwen team: {project}",
-      "de": "Das Modell ist Qwen3 4B des Qwen-Teams: {project}"
+      "en": "The model is Qwen3.5 4B by the Qwen team: {project}",
+      "de": "Das Modell ist Qwen3.5 4B des Qwen-Teams: {project}"
     },
     {
       "key": "ai_model.target",
@@ -7916,7 +7916,7 @@
     },
     {
       "key": "hermes_chat.model_missing",
-      "context": "Hermes chat (F2): Hermes explains it needs its local language model to understand typed sentences and offers to download it. {size} is the download size, for example '2497 MB'. A button to download follows.",
+      "context": "Hermes chat (F2): Hermes explains it needs its local language model to understand typed sentences and offers to download it. {size} is the download size, for example '2741 MB'. A button to download follows.",
       "en": "To understand sentences I need my language model ({size}, one time, stays on this computer). Shall I download it?",
       "de": "Um Sätze zu verstehen, brauche ich mein Sprachmodell ({size}, einmalig, bleibt auf diesem Rechner). Soll ich es laden?"
     },
@@ -8450,9 +8450,9 @@
     },
     {
       "key": "settings.index_row_ai_note",
-      "context": "Description under the row about the AI model on this computer on the AI page. Qwen3-4B is the name of the model.",
-      "en": "Qwen3-4B. Without a model only file names and dates.",
-      "de": "Qwen3-4B. Ohne Modell nur Dateinamen und Datum."
+      "context": "Description under the row about the AI model on this computer on the AI page. Qwen3.5-4B is the name of the model.",
+      "en": "Qwen3.5-4B. Without a model only file names and dates.",
+      "de": "Qwen3.5-4B. Ohne Modell nur Dateinamen und Datum."
     },
     {
       "key": "settings.index_ai_off",

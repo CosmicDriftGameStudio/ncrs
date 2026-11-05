@@ -4420,7 +4420,7 @@ mod ai_model_card {
         assert!(shows(
             downloading(),
             &format!(
-                "312 / {} · 12 %",
+                "312 / {} · 11 %",
                 crate::ui::format::megabytes(ncrs_ai::LOCAL_MODEL.size)
             )
         ));

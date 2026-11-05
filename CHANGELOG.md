@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- The built-in AI model is now Qwen3.5 4B (about 2.7 GB, one download) instead
+  of Qwen3 4B. The old file is left in the `ai-models` folder.
+
+### Fixed
+
+- The Index page counts only the documents in read folders. "The rest runs in
+  the background" shows only while documents are still waiting for the AI.
+
 ## [1.4.1] — 2026-11-11
 
 ### Changed

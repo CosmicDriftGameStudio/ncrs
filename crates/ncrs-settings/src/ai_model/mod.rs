@@ -24,7 +24,7 @@ pub const AI_MODEL_HOSTS: [&str; 2] = [AI_MODEL_HOST, ".hf.co"];
 pub const AI_MODEL_HOST: &str = "huggingface.co";
 
 /// Where the model is made and under which license, as the card says it.
-pub const AI_MODEL_PROJECT: &str = "huggingface.co/Qwen/Qwen3-4B-GGUF";
+pub const AI_MODEL_PROJECT: &str = "huggingface.co/unsloth/Qwen3.5-4B-GGUF";
 pub const AI_MODEL_LICENSE: &str = "Apache-2.0";
 
 /// What can go wrong between pressing the button and having the file in
@@ -295,7 +295,7 @@ impl AiModelCard {
 }
 
 /// The model file is in `dir` with the pinned size. Not hashed: a download only
-/// renames a file that passed the check, and hashing 2.5 GB does not belong in
+/// renames a file that passed the check, and hashing 2.7 GB does not belong in
 /// the code that opens a card.
 pub fn model_is_installed(dir: &Path) -> bool {
     std::fs::symlink_metadata(dir.join(LOCAL_MODEL.name))

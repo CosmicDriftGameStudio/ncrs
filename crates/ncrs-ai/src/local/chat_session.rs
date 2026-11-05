@@ -1,8 +1,11 @@
-//! The chat's context: the instructions are decoded once, and every message
-//! only decodes its own few tokens after them.
+//! The chat's context: the instructions are decoded once and kept as a state,
+//! and every message goes back to that state and decodes its own few tokens.
+//! Going back by removing the tokens of the last turn is refused by models with
+//! recurrent memory, such as Qwen3.5.
 
 use std::num::NonZeroU32;
 
+use llama_cpp_2::context::session::{LlamaStateSeqFlags, SeqState};
 use llama_cpp_2::context::LlamaContext;
 use llama_cpp_2::llama_batch::LlamaBatch;
 
@@ -24,6 +27,7 @@ pub struct ChatSession<'model> {
     batch_len: usize,
     prefix_len: usize,
     context_tokens: usize,
+    after_instructions: SeqState,
 }
 
 impl<'model> ChatSession<'model> {
@@ -49,6 +53,9 @@ impl<'model> ChatSession<'model> {
         let mut context = model.new_context(n_ctx, batch_tokens, chat_threads())?;
         let mut batch = LlamaBatch::new(batch_len, 1);
         decode_tokens(&mut context, &mut batch, &prefix, 0, batch_len)?;
+        let after_instructions = context
+            .state_seq_get(0, LlamaStateSeqFlags::empty())
+            .map_err(|_refused| AiError::Model("the model could not keep the instructions"))?;
         Ok(Self {
             model,
             context,
@@ -56,6 +63,7 @@ impl<'model> ChatSession<'model> {
             batch_len,
             prefix_len: prefix.len(),
             context_tokens,
+            after_instructions,
         })
     }
 
@@ -74,15 +82,10 @@ impl<'model> ChatSession<'model> {
             return Err(AiError::Model("the message is too long"));
         }
 
-        let kept = u32::try_from(self.prefix_len)
-            .map_err(|_too_long| AiError::Model("the prompt is too long"))?;
-        let cleared = self
-            .context
-            .clear_kv_cache_seq(Some(0), Some(kept), None)
+        self.context.clear_kv_cache();
+        self.context
+            .state_seq_set(&self.after_instructions, 0)
             .map_err(|_refused| AiError::Model("the model could not start a new turn"))?;
-        if !cleared {
-            return Err(AiError::Model("the model could not start a new turn"));
-        }
         decode_tokens(
             &mut self.context,
             &mut self.batch,

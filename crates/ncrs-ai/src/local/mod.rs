@@ -290,7 +290,7 @@ pub fn document_tokens(vocab: &LlamaVocab<'_>, text: &str) -> Vec<LlamaToken> {
     vocab.tokenize(text.as_bytes(), false, false)
 }
 
-/// The prompt in the ChatML of the pinned Qwen3, written here and not read
+/// The prompt in the ChatML of the pinned Qwen3.5, written here and not read
 /// from the model file. The fixed parts are tokenized with special tokens, the
 /// document alone without, and the document is cut so the whole fits `limit`.
 pub fn prompt_tokens(
