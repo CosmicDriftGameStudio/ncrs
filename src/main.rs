@@ -3,6 +3,10 @@
 //! The async runtime is tokio: iced's `tokio` feature makes the iced executor
 //! run every `Task` on a tokio runtime, so no `#[tokio::main]` is needed here.
 
+// Windows release builds are GUI programs, so a double click opens no console
+// window. A command line run attaches to its parent's console in `main`.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 #[cfg(test)]
 mod e2e_tests;
 
@@ -256,7 +260,13 @@ fn check_ai(_models_dir: Option<std::ffi::OsString>) -> i32 {
 }
 
 fn main() -> iced::Result {
-    match env::args().nth(1).as_deref() {
+    let argument = env::args().nth(1);
+    if argument.is_some() {
+        // The Windows build has no console of its own; every command line run
+        // prints to the one it was started from.
+        ncrs_console::attach_to_parent_console();
+    }
+    match argument.as_deref() {
         Some("-V" | "--version") => {
             println!(
                 "ncrs {} ({})",

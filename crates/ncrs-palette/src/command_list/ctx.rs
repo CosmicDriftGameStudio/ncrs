@@ -50,6 +50,8 @@ pub struct CommandPaletteCtx<'a> {
     /// Where the keys work now; the list offers the commands of this scope.
     pub scope: KeyScope,
     pub hermes: HermesCommands,
+    /// Commands the panel under the cursor refuses, left out of the list.
+    pub unavailable: Vec<KeyAction>,
     /// The settings pages and settings a query can find. Read only when the
     /// list opens.
     pub settings_targets: Vec<SettingsTarget>,

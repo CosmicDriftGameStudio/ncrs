@@ -24,7 +24,6 @@ use crate::config::{
     self, Config, ConfigError, ContrastWarning, Filing, KindWarning, LanguageWarning, VscodeWarning,
 };
 use crate::context_action_message::ContextActionMessage as _;
-#[cfg(test)]
 use crate::context_menu::ContextAction;
 use crate::context_menu::{ContextMenu, HermesAction};
 use crate::dialog::{Prompt, PromptKind};
@@ -196,8 +195,9 @@ use self::settings::*;
 pub use self::startup::*;
 #[cfg(test)]
 use self::subscription::receiver_stream;
+use self::update::archive_refusal;
 #[cfg(test)]
-use self::update::{archive_refusal, remote_refusal};
+use self::update::remote_refusal;
 
 /// The routing state, shared with the keyboard subscription.
 ///

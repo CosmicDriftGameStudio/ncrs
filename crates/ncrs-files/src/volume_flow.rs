@@ -115,8 +115,27 @@ impl Panels {
         Vec::new()
     }
 
+    /// The folder the favourites entry of the context menu is about: the
+    /// folder under the cursor, else the folder of the panel (which is the
+    /// folder of a file under the cursor). `None` where favourites do not
+    /// reach: inside an archive, on a server, in a list of hits.
+    pub fn favourite_target(&self) -> Option<PathBuf> {
+        let panel = self.active_panel();
+        if panel.archive.is_some() || panel.remote().is_some() || panel.is_hit_list() {
+            return None;
+        }
+        Some(match panel.selected_entry() {
+            Some(entry) if entry.is_dir && !entry.is_parent => entry.path.clone(),
+            _ => panel.path.clone(),
+        })
+    }
+
     pub fn add_favourite(&mut self, lang: Language) -> Action {
         let path = self.active_panel().path.clone();
+        self.add_favourite_at(lang, path)
+    }
+
+    pub fn add_favourite_at(&mut self, lang: Language, path: PathBuf) -> Action {
         let msg = if self.favourites.contains(&path) {
             Msg::StatusFavouriteAlready
         } else {
@@ -128,6 +147,10 @@ impl Panels {
 
     pub fn remove_favourite(&mut self, lang: Language) -> Action {
         let path = self.active_panel().path.clone();
+        self.remove_favourite_at(lang, &path)
+    }
+
+    pub fn remove_favourite_at(&mut self, lang: Language, path: &Path) -> Action {
         let before = self.favourites.len();
         self.favourites.retain(|favourite| *favourite != path);
         let msg = if self.favourites.len() < before {
@@ -135,7 +158,7 @@ impl Panels {
         } else {
             Msg::StatusFavouriteNotOne
         };
-        favourite_notice(lang, msg, &path)
+        favourite_notice(lang, msg, path)
     }
 
     /// Delete or Backspace in the drive menu. A drive row ignores it.

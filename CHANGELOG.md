@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- The right-click menu of a file list has "Add to favourites" (the folder under
+  the cursor, else the panel's folder) and, for a favourite, "Remove from
+  favourites". Left out in archives, on servers and in hit lists.
+- The status bar shows the version of the app at its right end; pressing it
+  opens the About card.
+- The Windows build has an icon and the version info in its file properties.
 - On Windows and x86_64 Linux the built-in AI model uses a Vulkan GPU if a
   driver is present and the CPU otherwise; Status and errors shows which.
   `ncrs --check-ai <folder>` loads the model from a folder and reports the
@@ -133,6 +139,17 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- In an archive, the F-key bar dims `F4`, `F6` and `F7`, the right-click menu
+  greys out Edit and the command list no longer offers the commands the panel
+  refuses.
+- The settings page offers "Default" for a viewer or editor you just typed, not
+  only after it was saved, so it can be reset to the system default.
+- In the Hermes chat, a group of files is named by its sender without a
+  leading label ("2 files from Example GmbH"), and the question about files
+  Hermes cannot place yet reads "For 3 files I don't know yet where they
+  belong. What shall I do?".
+- On Windows the app no longer opens a console window; `--version`, `--help`
+  and `--check-ai` print to the console they were started from.
 - A `[keys]` section that binds `F1` to another action keeps that binding;
   the command palette is then on `Cmd`/`Ctrl`+`Shift`+`P` only.
 - A missing AI model no longer opens its download window at the start, which

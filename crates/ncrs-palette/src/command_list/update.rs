@@ -60,6 +60,9 @@ fn open(command_palette: &mut Option<CommandPalette>, ctx: &CommandPaletteCtx<'_
         }
         HermesCommands::All => palette,
     };
+    for &action in &ctx.unavailable {
+        palette = palette.without_command(action);
+    }
     palette = palette.with_settings(ctx.settings_targets.clone());
     palette.set_visible_rows(visible_rows(ctx.window));
     *command_palette = Some(palette);

@@ -101,8 +101,14 @@ fn shell_command(line: &str, shell: &OsStr) -> Command {
 #[cfg(windows)]
 fn shell_command(line: &str, _shell: &OsStr) -> Command {
     use std::os::windows::process::CommandExt as _;
+    // The release build is a GUI program without a console, so `cmd` would open
+    // a window of its own for every line. Nothing is shown from it anyway.
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     let mut command = Command::new("cmd");
-    command.arg("/C").raw_arg(line);
+    command
+        .arg("/C")
+        .raw_arg(line)
+        .creation_flags(CREATE_NO_WINDOW);
     command
 }
 

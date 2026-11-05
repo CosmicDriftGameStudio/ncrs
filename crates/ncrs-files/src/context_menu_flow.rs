@@ -89,10 +89,15 @@ impl MenuFacts {
                 | ContextAction::DeletePermanently => self.has_sources,
                 ContextAction::NewFolder
                 | ContextAction::ComputeFolderSizes
+                | ContextAction::AddFavourite
+                | ContextAction::RemoveFavourite
                 | ContextAction::RemoveFromList => false,
             };
         }
         let panel = panels.active_panel();
+        if panel.archive.is_some() && !action.allowed_in_archive() {
+            return false;
+        }
         let cursor_row = panel.selected_entry();
         match action {
             ContextAction::Open
@@ -109,6 +114,9 @@ impl MenuFacts {
             ContextAction::CopyPath => self.can_copy_path,
             ContextAction::CopyName => self.can_copy_name,
             ContextAction::ComputeFolderSizes => !folder_size_targets(panel).is_empty(),
+            ContextAction::AddFavourite | ContextAction::RemoveFavourite => {
+                panels.favourite_target().is_some()
+            }
         }
     }
 }
@@ -201,7 +209,10 @@ impl Panels {
         let menu = if self.panel(side).is_hit_list() {
             ContextMenu::for_hit_list(place_at, window, is_enabled, hermes)
         } else {
-            ContextMenu::with_hermes(place_at, window, is_enabled, hermes)
+            let is_favourite = self
+                .favourite_target()
+                .map(|target| self.favourites.contains(&target));
+            ContextMenu::with_favourite(place_at, window, is_enabled, hermes, is_favourite)
         };
         self.context_menu = Some(menu);
     }

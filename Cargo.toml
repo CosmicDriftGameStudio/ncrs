@@ -18,6 +18,11 @@ license = "MIT"
 [lints]
 workspace = true
 
+[target.'cfg(windows)'.build-dependencies]
+# build.rs embeds the icon and the version info into ncrs.exe with the Windows
+# resource compiler (MIT).
+embed-resource = "3"
+
 [dependencies]
 # x11 and wayland are not optional in practice: iced_tiny_skia depends on
 # softbuffer, whose backend enum is generated from #[cfg] arms. Without these
@@ -73,6 +78,8 @@ ncrs-files = { path = "crates/ncrs-files", version = "0.0.0" }
 ncrs-config = { path = "crates/ncrs-config", version = "0.0.0" }
 # The filesystem layer: reading folders, copying, archives, the trash, SFTP.
 ncrs-fs = { path = "crates/ncrs-fs", version = "0.0.0" }
+# Lets the Windows GUI build print to the console it was started from.
+ncrs-console = { path = "crates/ncrs-console", version = "0.0.0" }
 # The file operations: the copy and move dialog, the conflict and delete dialogs and the trash view.
 ncrs-ops = { path = "crates/ncrs-ops", version = "0.0.0" }
 # The command line, Quick Open and the messages of the command list.
@@ -216,8 +223,8 @@ objc2-foundation = { version = "0.3", default-features = false, features = ["std
 # arboard. In the tree through arboard already.
 clipboard-win = "5.4"
 
-# crates/ncrs-ocr-vision/Cargo.toml and crates/ncrs-sandbox/Cargo.toml repeat
-# these tables with unsafe_code = "deny"; change all three together.
+# crates/ncrs-console, ncrs-ocr-vision, ncrs-priority and ncrs-sandbox repeat
+# these tables in their Cargo.toml with unsafe_code = "deny"; change all together.
 [workspace.lints.rust]
 # A file manager must never execute unchecked code: the whole point is to touch
 # the filesystem, and the unsafe surface there is not worth the review.

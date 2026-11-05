@@ -84,7 +84,7 @@ impl App {
             install_theme: |_, _| Err(FetchError::NoConfigPath),
             about: None,
             find_third_party_licenses: || None,
-            app_version: env!("CARGO_PKG_VERSION"),
+            app_version: "1.2.3",
             download_ocr_models: |_, _| Err(DownloadError::NoDataFolder),
             download_ai_model: |_| Err(AiDownloadError::NoDataFolder),
             grant_dialog: false,

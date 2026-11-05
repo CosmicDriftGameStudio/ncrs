@@ -242,7 +242,7 @@ pub fn program_row<'a>(kind: OpenKind, view: &SettingsView<'a>) -> SettingRow<'a
     ]
     .spacing(spacing::S)
     .align_y(alignment::Vertical::Center);
-    if state.saved_program(kind).is_some() {
+    if state.can_reset_program(kind) {
         control = control.push(kit::button(
             lang.text(Msg::SettingsDefault),
             Some(change(SettingChange::Program { kind, line: None })),

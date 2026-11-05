@@ -73,6 +73,16 @@ impl App {
         settings_ui::search_targets(&self.settings_view(state))
     }
 
+    /// The commands whose key the active panel would refuse with a note,
+    /// as in an archive.
+    pub(in crate::app) fn commands_the_panel_refuses(&self) -> Vec<KeyAction> {
+        let panel = self.active_panel();
+        ncrs_config::commands::all()
+            .map(|command| command.action)
+            .filter(|action| archive_refusal(panel, &action.message()).is_some())
+            .collect()
+    }
+
     pub(in crate::app) fn resize_command_palette(&mut self, window: Size) {
         command_list::resize(&mut self.command_palette, window);
     }
@@ -109,6 +119,11 @@ impl App {
             blocked,
             scope,
             hermes,
+            unavailable: if opening && !blocked && scope == KeyScope::Panel {
+                self.commands_the_panel_refuses()
+            } else {
+                Vec::new()
+            },
             settings_targets,
         };
         let (inner, action) = command_list::update(&mut self.command_palette, message, &ctx);
