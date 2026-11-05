@@ -73,7 +73,7 @@ impl TextSource for ImageFileText {
         if !is_image_extension(path) {
             return Ok(Extracted::NotApplicable);
         }
-        let unreadable = |err: std::io::Error| TextError::Unreadable {
+        let unreadable = |err: std::io::Error| TextError::Io {
             path: path.to_path_buf(),
             reason: err.to_string(),
         };

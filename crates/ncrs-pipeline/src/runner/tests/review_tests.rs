@@ -655,3 +655,45 @@ fn an_archive_document_asked_by_an_older_ai_reading_is_asked_again_and_a_current
     scan_with_ai();
     assert_eq!(provider.requests().len(), 2);
 }
+
+#[test]
+fn an_archive_document_with_an_io_error_stores_no_text_and_gets_it_on_a_later_scan() {
+    let archive_dir = TempDir::new().unwrap();
+    let archive = location(&archive_dir, LocationMode::Archive);
+    put(&archive, "invoice.pdf", INVOICE);
+    let fixture = IndexFixture::new();
+    let source = Arc::new(Mutex::new(Err(TextError::Io {
+        path: PathBuf::from("invoice.pdf"),
+        reason: "the share is not mounted".to_owned(),
+    })));
+    let chain = || TextChain::new().with_source(SwitchableText(Arc::clone(&source)));
+
+    let first = archive_scan(&fixture, &archive, chain());
+    assert_eq!(first.errors.len(), 1, "{:?}", first.errors);
+
+    *source.lock().unwrap() = Ok(Extracted::Text("Invoice 4711 Company A".to_owned()));
+    archive_scan(&fixture, &archive, chain());
+
+    let index = fixture.index.lock().unwrap();
+    assert_eq!(index.search_text("4711", 10).unwrap().len(), 1);
+}
+
+#[cfg(unix)]
+#[test]
+fn an_unreadable_archive_text_file_stores_no_text_and_is_read_on_a_later_scan() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let archive_dir = TempDir::new().unwrap();
+    let archive = location(&archive_dir, LocationMode::Archive);
+    let note = put(&archive, "note.txt", b"Honorar 4711 Company A");
+    let fixture = IndexFixture::new();
+    let chain = || TextChain::new().with_source(ncrs_intake::PlainText);
+
+    fs::set_permissions(&note, fs::Permissions::from_mode(0o000)).unwrap();
+    archive_scan(&fixture, &archive, chain());
+    fs::set_permissions(&note, fs::Permissions::from_mode(0o644)).unwrap();
+    archive_scan(&fixture, &archive, chain());
+
+    let index = fixture.index.lock().unwrap();
+    assert_eq!(index.search_text("4711", 10).unwrap().len(), 1);
+}

@@ -218,3 +218,87 @@ fn a_dismissed_module_without_a_key_problem_cannot_start_over() {
     assert!(!module.can_start_over());
     assert!(module.begin_starting_over().is_none());
 }
+
+/// Keeps a new key and hands it back once for the check after storing it;
+/// every later load fails, as when the credential store locks after the swap.
+#[derive(Debug, Default)]
+struct LocksAfterTheCheck {
+    entry: Mutex<Option<Vec<u8>>>,
+    loads_since_store: AtomicU64,
+}
+
+impl KeyStore for LocksAfterTheCheck {
+    fn load(&self) -> Result<Option<Vec<u8>>, KeyStoreError> {
+        let entry = self
+            .entry
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        if entry.is_none() {
+            return Ok(None);
+        }
+        if self.loads_since_store.fetch_add(1, Ordering::SeqCst) == 0 {
+            return Ok(entry);
+        }
+        Err(KeyStoreError::Unavailable("locked".to_owned()))
+    }
+
+    fn store_new(&self, key: &[u8]) -> Result<(), KeyStoreError> {
+        *self
+            .entry
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(key.to_vec());
+        Ok(())
+    }
+
+    fn replace(&self, key: &[u8]) -> Result<(), KeyStoreError> {
+        self.store_new(key)
+    }
+
+    fn delete(&self) -> Result<(), KeyStoreError> {
+        *self
+            .entry
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+        Ok(())
+    }
+}
+
+#[test]
+fn an_encrypted_index_that_cannot_be_opened_again_still_shows_its_recovery_key() {
+    let dir = TempDir::new().unwrap();
+    let db = db_in(&dir);
+    make_plain(&db);
+    let mut module = started(&db, Arc::new(LocksAfterTheCheck::default()));
+
+    begin(&mut module, FilingModule::begin_encrypting);
+
+    assert!(matches!(module.phase(), Phase::ShowRecoveryKey { .. }));
+    assert!(module.recovery_key_text().is_some());
+    assert!(!Index::file_is_plain(&db).unwrap());
+    assert!(matches!(
+        module.protection_note(),
+        Some(ProtectionNote::EncryptFailed(_))
+    ));
+    let Phase::ShowRecoveryKey { group, .. } = module.phase() else {
+        panic!("the key is shown");
+    };
+    let asked = module
+        .recovery_key_text()
+        .unwrap()
+        .split('-')
+        .nth(*group)
+        .unwrap()
+        .to_owned();
+    send(
+        &mut module,
+        FilingMessage::GroupInput(SecretText::from(asked)),
+    );
+    send(&mut module, FilingMessage::GroupSubmit);
+    assert!(
+        matches!(module.phase(), Phase::Failed(_)),
+        "{:?}",
+        module.phase()
+    );
+    assert!(!is_open(&module));
+}

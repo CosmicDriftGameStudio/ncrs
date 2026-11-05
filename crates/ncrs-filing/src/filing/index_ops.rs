@@ -77,15 +77,9 @@ pub(in crate::filing) fn encrypt_index(
     let mut held = lock(slot);
     drop(held.take());
     match Index::encrypt_plain(db_path, store) {
-        Ok(recovery_key) => match open_into(&mut held, db_path, store) {
-            OpenOutcome::Opened => EncryptReport {
-                result: Ok(ShownRecoveryKey::new(recovery_key)),
-                opened: OpenOutcome::Opened,
-            },
-            other => EncryptReport {
-                result: Err(INDEX_NOT_REOPENED.to_owned()),
-                opened: other,
-            },
+        Ok(recovery_key) => EncryptReport {
+            result: Ok(ShownRecoveryKey::new(recovery_key)),
+            opened: open_into(&mut held, db_path, store),
         },
         Err(err) => EncryptReport {
             result: Err(err.to_string()),

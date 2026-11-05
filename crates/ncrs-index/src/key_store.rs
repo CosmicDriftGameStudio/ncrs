@@ -75,18 +75,29 @@ impl KeyringKeyStore {
         }
     }
 
-    /// `None` only for a folder account without an ID file when `create` is false.
-    fn entry(&self, create: bool) -> Result<Option<keyring::Entry>, KeyStoreError> {
+    /// `None` for a folder account without an ID file: nothing was stored.
+    fn existing_entry(&self) -> Result<Option<keyring::Entry>, KeyStoreError> {
         let account = match &self.account {
             Account::Fixed(account) => account.clone(),
-            Account::InFolder(id_file) => match folder_account(id_file, create)? {
+            Account::InFolder(id_file) => match existing_folder_account(id_file)? {
                 Some(account) => account,
                 None => return Ok(None),
             },
         };
-        keyring::Entry::new(&self.service, &account)
-            .map(Some)
-            .map_err(unavailable)
+        self.entry_of(&account).map(Some)
+    }
+
+    /// Creates the ID file of a folder account when it is missing.
+    fn entry_for_writing(&self) -> Result<keyring::Entry, KeyStoreError> {
+        let account = match &self.account {
+            Account::Fixed(account) => account.clone(),
+            Account::InFolder(id_file) => created_folder_account(id_file)?,
+        };
+        self.entry_of(&account)
+    }
+
+    fn entry_of(&self, account: &str) -> Result<keyring::Entry, KeyStoreError> {
+        keyring::Entry::new(&self.service, account).map_err(unavailable)
     }
 }
 
@@ -95,25 +106,43 @@ impl KeyringKeyStore {
 //
 // A file that holds nothing but whitespace or NULs counts as missing: a crash
 // while writing can leave one behind, and no key can be stored under an empty ID.
-fn folder_account(id_file: &Path, create: bool) -> Result<Option<String>, KeyStoreError> {
+fn existing_folder_account(id_file: &Path) -> Result<Option<String>, KeyStoreError> {
+    match read_key_id_file(id_file)? {
+        KeyIdFile::Id(text) => parse_key_id(&text, id_file).map(Some),
+        KeyIdFile::Missing | KeyIdFile::Blank => Ok(None),
+    }
+}
+
+fn created_folder_account(id_file: &Path) -> Result<String, KeyStoreError> {
     loop {
-        let content = match std::fs::read(id_file) {
-            Ok(bytes) => Some(String::from_utf8_lossy(&bytes).into_owned()),
-            Err(err) if err.kind() == ErrorKind::NotFound => None,
-            Err(err) => return Err(id_file_error(id_file, &err.to_string())),
-        };
-        let blank = content.as_deref().is_none_or(|text| {
-            text.trim_matches(|c: char| c.is_whitespace() || c == '\0')
-                .is_empty()
-        });
-        match content {
-            Some(text) if !blank => return parse_key_id(&text, id_file).map(Some),
-            _ if !create => return Ok(None),
-            existing => {
-                write_new_key_id(id_file, existing.is_some())?;
-            }
+        match read_key_id_file(id_file)? {
+            KeyIdFile::Id(text) => return parse_key_id(&text, id_file),
+            KeyIdFile::Missing => write_new_key_id(id_file, false)?,
+            KeyIdFile::Blank => write_new_key_id(id_file, true)?,
         }
     }
+}
+
+enum KeyIdFile {
+    Missing,
+    Blank,
+    Id(String),
+}
+
+fn read_key_id_file(id_file: &Path) -> Result<KeyIdFile, KeyStoreError> {
+    let text = match std::fs::read(id_file) {
+        Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(KeyIdFile::Missing),
+        Err(err) => return Err(id_file_error(id_file, &err.to_string())),
+    };
+    let blank = text
+        .trim_matches(|c: char| c.is_whitespace() || c == '\0')
+        .is_empty();
+    Ok(if blank {
+        KeyIdFile::Blank
+    } else {
+        KeyIdFile::Id(text)
+    })
 }
 
 fn parse_key_id(content: &str, id_file: &Path) -> Result<String, KeyStoreError> {
@@ -173,7 +202,7 @@ fn unavailable(err: keyring::Error) -> KeyStoreError {
 
 impl KeyStore for KeyringKeyStore {
     fn load(&self) -> Result<Option<Vec<u8>>, KeyStoreError> {
-        let Some(entry) = self.entry(false)? else {
+        let Some(entry) = self.existing_entry()? else {
             return Ok(None);
         };
         match entry.get_secret() {
@@ -198,7 +227,7 @@ impl KeyStore for KeyringKeyStore {
     }
 
     fn delete(&self) -> Result<(), KeyStoreError> {
-        let Some(entry) = self.entry(false)? else {
+        let Some(entry) = self.existing_entry()? else {
             return Ok(());
         };
         match entry.delete_credential() {
@@ -210,12 +239,9 @@ impl KeyStore for KeyringKeyStore {
 
 impl KeyringKeyStore {
     fn set_secret(&self, key: &[u8]) -> Result<(), KeyStoreError> {
-        match self.entry(true)? {
-            Some(entry) => entry.set_secret(key).map_err(unavailable),
-            None => Err(KeyStoreError::Unavailable(
-                "no account for the key".to_owned(),
-            )),
-        }
+        self.entry_for_writing()?
+            .set_secret(key)
+            .map_err(unavailable)
     }
 }
 
@@ -325,7 +351,7 @@ mod tests {
     fn missing_id_file_without_create_gives_no_account_and_no_file() {
         let dir = tempfile::tempdir().unwrap();
         let id_file = id_file_in(&dir);
-        assert_eq!(folder_account(&id_file, false).unwrap(), None);
+        assert_eq!(existing_folder_account(&id_file).unwrap(), None);
         assert!(!id_file.exists());
     }
 
@@ -333,7 +359,7 @@ mod tests {
     fn create_writes_a_hex_id_and_reuses_it() {
         let dir = tempfile::tempdir().unwrap();
         let id_file = id_file_in(&dir);
-        let first = folder_account(&id_file, true).unwrap().unwrap();
+        let first = created_folder_account(&id_file).unwrap();
         let written = std::fs::read_to_string(&id_file).unwrap();
         let id = written.trim();
         assert_eq!(id.len(), 32);
@@ -341,20 +367,16 @@ mod tests {
             .bytes()
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)));
         assert_eq!(first, format!("{ACCOUNT_NAME}:{id}"));
-        assert_eq!(folder_account(&id_file, true).unwrap().unwrap(), first);
-        assert_eq!(folder_account(&id_file, false).unwrap().unwrap(), first);
+        assert_eq!(created_folder_account(&id_file).unwrap(), first);
+        assert_eq!(existing_folder_account(&id_file).unwrap().unwrap(), first);
     }
 
     #[test]
     fn folders_get_different_accounts_that_differ_from_the_installed_one() {
         let first_dir = tempfile::tempdir().unwrap();
         let second_dir = tempfile::tempdir().unwrap();
-        let first = folder_account(&id_file_in(&first_dir), true)
-            .unwrap()
-            .unwrap();
-        let second = folder_account(&id_file_in(&second_dir), true)
-            .unwrap()
-            .unwrap();
+        let first = created_folder_account(&id_file_in(&first_dir)).unwrap();
+        let second = created_folder_account(&id_file_in(&second_dir)).unwrap();
         assert_ne!(first, second);
         assert_ne!(first, ACCOUNT_NAME);
         assert_ne!(second, ACCOUNT_NAME);
@@ -366,10 +388,10 @@ mod tests {
         let id_file = id_file_in(&dir);
         for content in [&b""[..], b"\n", b"\0\0\0\0"] {
             std::fs::write(&id_file, content).unwrap();
-            assert_eq!(folder_account(&id_file, false).unwrap(), None);
-            let account = folder_account(&id_file, true).unwrap().unwrap();
+            assert_eq!(existing_folder_account(&id_file).unwrap(), None);
+            let account = created_folder_account(&id_file).unwrap();
             assert_eq!(account.len(), ACCOUNT_NAME.len() + 1 + 32);
-            assert_eq!(folder_account(&id_file, false).unwrap().unwrap(), account);
+            assert_eq!(existing_folder_account(&id_file).unwrap().unwrap(), account);
         }
     }
 
@@ -379,7 +401,7 @@ mod tests {
         let id_file = id_file_in(&dir);
         std::fs::write(&id_file, "0123456789abcdef0123456789abcdef\r\n").unwrap();
         assert_eq!(
-            folder_account(&id_file, false).unwrap().unwrap(),
+            existing_folder_account(&id_file).unwrap().unwrap(),
             "index-key:0123456789abcdef0123456789abcdef"
         );
     }
@@ -394,8 +416,10 @@ mod tests {
             "g123456789abcdef0123456789abcdef",
         ] {
             std::fs::write(&id_file, content).unwrap();
-            for create in [false, true] {
-                let err = folder_account(&id_file, create).unwrap_err();
+            for err in [
+                existing_folder_account(&id_file).unwrap_err(),
+                created_folder_account(&id_file).unwrap_err(),
+            ] {
                 assert!(err.to_string().contains(KEY_ID_FILE));
                 assert!(!err.to_string().contains(content));
             }
@@ -415,13 +439,13 @@ mod tests {
         assert_eq!(first.load().unwrap().unwrap(), [7; 32]);
 
         first
-            .entry(false)
+            .existing_entry()
             .unwrap()
             .unwrap()
             .delete_credential()
             .unwrap();
         second
-            .entry(false)
+            .existing_entry()
             .unwrap()
             .unwrap()
             .delete_credential()

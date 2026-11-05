@@ -2,7 +2,8 @@ use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use rusqlite::{params, Connection, OptionalExtension as _};
+use rusqlite::types::Value;
+use rusqlite::{params, params_from_iter, Connection, OptionalExtension as _};
 
 use crate::error::IndexError;
 use crate::index::Index;
@@ -369,29 +370,32 @@ impl Index {
         if query.is_empty() || ids.is_empty() {
             return Ok(Vec::new());
         }
-        let mut statement = self.connection().prepare(
-            "SELECT snippet(document_text, 0, ?3, ?4, '…', ?5) FROM document_text
-             WHERE document_text MATCH ?1 AND rowid = ?2",
-        )?;
-        let mut found = Vec::new();
-        for id in ids {
-            let marked: Option<String> = statement
-                .query_row(
-                    params![
-                        query,
-                        id.get(),
-                        SNIPPET_MARK_START,
-                        SNIPPET_MARK_END,
-                        SNIPPET_WORDS
-                    ],
-                    |row| row.get(0),
-                )
-                .optional()?;
-            if let Some(snippet) = marked {
-                found.push((*id, snippet));
+        let mut snippets_by_rowid = HashMap::new();
+        for chunk in ids.chunks(SNIPPET_IDS_PER_STATEMENT) {
+            let marks = vec!["?"; chunk.len()].join(", ");
+            let mut statement = self.connection().prepare(&format!(
+                "SELECT rowid, snippet(document_text, 0, ?, ?, '…', ?) FROM document_text
+                 WHERE document_text MATCH ? AND rowid IN ({marks})"
+            ))?;
+            let mut values = vec![
+                Value::Text(SNIPPET_MARK_START.to_owned()),
+                Value::Text(SNIPPET_MARK_END.to_owned()),
+                Value::Integer(SNIPPET_WORDS),
+                Value::Text(query.clone()),
+            ];
+            values.extend(chunk.iter().map(|id| Value::Integer(id.get())));
+            let rows = statement.query_map(params_from_iter(values), |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+            })?;
+            for row in rows {
+                let (rowid, snippet) = row?;
+                snippets_by_rowid.insert(rowid, snippet);
             }
         }
-        Ok(found)
+        Ok(ids
+            .iter()
+            .filter_map(|id| Some((*id, snippets_by_rowid.remove(&id.get())?)))
+            .collect())
     }
 
     /// The full text `set_document_text` stored; `None` when there is none.
@@ -508,6 +512,8 @@ pub const SNIPPET_MARK_END: &str = "\u{3}";
 
 /// Words around the match in a snippet.
 const SNIPPET_WORDS: i64 = 12;
+/// Well below SQLite's limit of bound values per statement.
+const SNIPPET_IDS_PER_STATEMENT: usize = 500;
 
 /// The words as an FTS5 query, each one quoted; with `prefix_last` the last one
 /// carries the prefix star. Empty when there is no word.
@@ -579,6 +585,25 @@ mod tests {
         assert_eq!(snippets[0].0, matching);
         assert!(index.text_snippets(&[matching], "  ").unwrap().is_empty());
         assert!(index.text_snippets(&[], "rent").unwrap().is_empty());
+    }
+
+    #[test]
+    fn several_matching_documents_get_their_snippets_in_the_order_asked() {
+        let (_dir, mut index) = encrypted_index();
+        let first = indexed_with_text(&mut index, 1, "rent for the office");
+        let second = indexed_with_text(&mut index, 2, "the rent of the flat");
+        let third = indexed_with_text(&mut index, 3, "rent due in May");
+
+        let snippets = index
+            .text_snippets(&[third, first, second], "rent")
+            .unwrap();
+
+        let ids: Vec<_> = snippets.iter().map(|(id, _)| *id).collect();
+        assert_eq!(ids, [third, first, second]);
+        assert!(snippets
+            .iter()
+            .all(|(_, snippet)| snippet
+                .contains(&format!("{SNIPPET_MARK_START}rent{SNIPPET_MARK_END}"))));
     }
 
     #[test]

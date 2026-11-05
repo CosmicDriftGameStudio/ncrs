@@ -7,7 +7,7 @@
 //! document text, so they are data, and a spreadsheet must not read them as a
 //! formula.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
 use std::fs::OpenOptions;
 use std::io::{self, Write as _};
@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use chrono::NaiveDateTime;
-use ncrs_index::{Index, IndexError, QuerySpec, SavedQuery, SavedQueryId};
+use ncrs_index::{DocumentId, Index, IndexError, QuerySpec, SavedQuery, SavedQueryId};
 
 pub use ncrs_index::QueryHit;
 
@@ -127,20 +127,17 @@ impl ncrs_index::SearchIndex for QueryAccess {
     fn snippets(&self, paths: &[PathBuf], words: &str) -> Result<Vec<(PathBuf, String)>, String> {
         self.with_index(|index| {
             let mut ids = Vec::new();
-            let mut paths_of = Vec::new();
+            let mut path_of: HashMap<DocumentId, &PathBuf> = HashMap::new();
             for path in paths {
                 if let Some(document) = index.document_by_path(path)? {
                     ids.push(document.id);
-                    paths_of.push((document.id, path.clone()));
+                    path_of.insert(document.id, path);
                 }
             }
             Ok(index
                 .text_snippets(&ids, words)?
                 .into_iter()
-                .filter_map(|(id, snippet)| {
-                    let (_, path) = paths_of.iter().find(|(known, _)| *known == id)?;
-                    Some((path.clone(), snippet))
-                })
+                .filter_map(|(id, snippet)| Some(((*path_of.get(&id)?).clone(), snippet)))
                 .collect())
         })
     }

@@ -263,7 +263,9 @@ fn load_pdf_page(path: &Path, bytes: &[u8], passages: &[String]) -> PreviewConte
 
 fn failed_from(error: &TextError) -> PreviewContent {
     match error {
-        TextError::Unreadable { reason, .. } => PreviewContent::Failed(reason.clone()),
+        TextError::Unreadable { reason, .. } | TextError::Io { reason, .. } => {
+            PreviewContent::Failed(reason.clone())
+        }
         TextError::LibraryMissing { .. } => PreviewContent::LibraryMissing,
         _ => PreviewContent::Failed("the file cannot be read".to_owned()),
     }

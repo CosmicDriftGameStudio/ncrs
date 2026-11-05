@@ -6,6 +6,7 @@
 //! filing pattern is checked and rendered by the same code the rules use, and
 //! the move is the journaled executor that nothing overwrites a file with.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
@@ -250,13 +251,13 @@ impl ReviewAccess {
         Ok(NeighbourIndex::new(&documents, &own, &structure))
     }
 
-    /// The open reviews of these files, in the order the index lists them.
+    /// The open reviews of these files, in the order of `paths`.
     pub fn items_for(&self, paths: &[PathBuf]) -> Result<Vec<ReviewItem>, String> {
         self.with_index_text(|index| {
             let neighbours = self.neighbours(index)?;
-            load_matching(
+            load_for_paths(
                 index,
-                |path| paths.iter().any(|wanted| wanted == path),
+                paths,
                 &self.location_roots,
                 self.kind_language,
                 Some(&neighbours),
@@ -397,6 +398,44 @@ fn load_matching(
         {
             continue;
         }
+        items.push(review_item(index, &context, &entry, document)?);
+    }
+    Ok(items)
+}
+
+/// One lookup per path instead of loading every open review. Items come in the
+/// order of `paths`, each document once.
+fn load_for_paths(
+    index: &Index,
+    paths: &[PathBuf],
+    location_roots: &[PathBuf],
+    kind_language: KindLanguage,
+    neighbours: Option<&NeighbourIndex>,
+) -> Result<Vec<ReviewItem>, IndexError> {
+    let rules = index.rules()?;
+    let sender_aliases = index.confirmed_sender_aliases()?;
+    let context = ReviewContext {
+        rules: &rules,
+        sender_aliases: &sender_aliases,
+        location_roots,
+        kind_language,
+        neighbours,
+    };
+    let mut items = Vec::new();
+    let mut seen = HashSet::new();
+    for path in paths {
+        let Some(document) = index.document_by_path(path)? else {
+            continue;
+        };
+        if document.missing_since.is_some()
+            || index.is_excluded(&document.path)?
+            || !seen.insert(document.id)
+        {
+            continue;
+        }
+        let Some(entry) = index.open_review_of(document.id)? else {
+            continue;
+        };
         items.push(review_item(index, &context, &entry, document)?);
     }
     Ok(items)

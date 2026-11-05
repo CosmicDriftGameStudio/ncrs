@@ -67,6 +67,12 @@ pub enum TextError {
         path: PathBuf,
         reason: String,
     },
+    /// Opening or reading the file failed: the file itself may be fine, so it
+    /// must be read again later.
+    Io {
+        path: PathBuf,
+        reason: String,
+    },
     /// The recognition models could not be loaded: nothing is wrong with the
     /// file, so it must be read again once they work.
     EngineUnavailable {
@@ -83,7 +89,9 @@ impl fmt::Display for TextError {
                 "the PDF library (pdfium) was not found or could not be loaded from {}",
                 path.display()
             ),
-            Self::Unreadable { path, reason } | Self::EngineUnavailable { path, reason } => {
+            Self::Unreadable { path, reason }
+            | Self::Io { path, reason }
+            | Self::EngineUnavailable { path, reason } => {
                 write!(f, "{}: {reason}", path.display())
             }
         }
@@ -510,7 +518,7 @@ impl TextSource for PdfUnavailable {
 
 /// By the first bytes, not the extension.
 fn is_pdf(path: &Path) -> Result<bool, TextError> {
-    let unreadable = |err: std::io::Error| TextError::Unreadable {
+    let unreadable = |err: std::io::Error| TextError::Io {
         path: path.to_path_buf(),
         reason: err.to_string(),
     };

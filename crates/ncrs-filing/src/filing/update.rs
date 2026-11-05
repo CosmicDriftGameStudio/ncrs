@@ -121,7 +121,10 @@ impl FilingModule {
             .nth(*group)
             .is_some_and(|expected| typed.as_str().trim().eq_ignore_ascii_case(expected));
         if matches {
-            self.phase = Phase::Ready;
+            match self.after_recovery_key.take() {
+                Some(opened) => self.enter(opened),
+                None => self.phase = Phase::Ready,
+            }
         } else {
             *mismatch = true;
         }
@@ -239,6 +242,11 @@ impl FilingModule {
         }
         match report.result {
             Ok(key) => {
+                if report.opened != OpenOutcome::Opened {
+                    self.protection_note =
+                        Some(ProtectionNote::EncryptFailed(INDEX_NOT_REOPENED.to_owned()));
+                    self.after_recovery_key = Some(report.opened);
+                }
                 self.phase = Phase::ShowRecoveryKey {
                     key,
                     group: (self.pick_group)(GROUP_COUNT) % GROUP_COUNT,
