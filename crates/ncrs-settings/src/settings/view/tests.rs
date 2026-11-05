@@ -378,14 +378,12 @@ fn a_chosen_program_can_be_reset_to_the_system_default_and_the_file_loses_it() {
     assert!(!state.can_reset_program(OpenKind::View));
 
     let chosen = state
-        .picked_program(OpenKind::View, Path::new("/opt/tools/lookat"))
+        .picked_program(OpenKind::View, Path::new("lookat"))
         .unwrap();
     applied(&mut state, &path, chosen);
     assert!(state.can_reset_program(OpenKind::View));
-    assert_eq!(state.field_text(viewer), "/opt/tools/lookat");
-    assert!(std::fs::read_to_string(&path)
-        .unwrap()
-        .contains("/opt/tools/lookat"));
+    assert_eq!(state.field_text(viewer), "lookat");
+    assert!(std::fs::read_to_string(&path).unwrap().contains("lookat"));
 
     applied(
         &mut state,
