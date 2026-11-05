@@ -123,6 +123,20 @@ pub fn view<'a>(
     }
 
     if card.is_installed() {
+        let mut buttons = vec![kit::button(
+            lang.text(Msg::DialogClose),
+            Some(AiModelMessage::Close),
+            Tone::filled_if(focus == CANCEL_FOCUS),
+            palette,
+        )];
+        if card.has_turn_on_button() {
+            buttons.push(kit::button(
+                lang.text(Msg::AiModelTurnOn),
+                Some(AiModelMessage::TurnOn),
+                Tone::filled_if(focus == DOWNLOAD_FOCUS),
+                palette,
+            ));
+        }
         return Frame::new(
             lang.text(Msg::AiModelTitle),
             body,
@@ -131,16 +145,11 @@ pub fn view<'a>(
             lang,
             palette,
         )
-        .buttons(vec![kit::button(
-            lang.text(Msg::DialogClose),
-            Some(AiModelMessage::Close),
-            Tone::filled_if(focus == CANCEL_FOCUS),
-            palette,
-        )])
+        .buttons(buttons)
         .on_close(AiModelMessage::Close)
         .hints(KeyHints {
             enter: false,
-            tab: false,
+            tab: card.has_turn_on_button(),
         })
         .into_element();
     }
@@ -278,7 +287,7 @@ fn finished_view<'a>(
         InstallOutcome::StillOff => Msg::AiModelStillOff,
     };
     let second = (outcome == InstallOutcome::StillOff)
-        .then_some((Msg::AiModelTurnOn, AiModelMessage::ShowAiSetting));
+        .then_some((Msg::AiModelTurnOn, AiModelMessage::TurnOn));
     done_card(
         paragraph(lang.text(sentence), palette),
         second,

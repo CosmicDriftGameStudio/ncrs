@@ -20,6 +20,9 @@ use ncrs_pipeline::RunnerState;
 use ncrs_settings::facts::{AiState, AreaFacts, DocumentsFacts, LoadedFacts, RunDay, RunFacts};
 use ncrs_settings::folders::AddAs;
 
+/// How often the Index page may read its facts again while filing runs.
+const FACTS_REFRESH_EVERY: std::time::Duration = std::time::Duration::from_secs(10);
+
 /// The line under the AI row of the Index page: which model is in memory and
 /// on what it computes, or why it failed.
 pub(in crate::app) fn ai_detail(status: &AiStatus, lang: Language) -> Option<String> {
@@ -114,6 +117,7 @@ impl App {
         state.facts_requested = true;
         let lang = self.lang;
         let now = self.wall_clock.now();
+        self.facts_requested_at = Some(now);
         Task::perform(
             async move {
                 tokio::task::spawn_blocking(move || {
@@ -123,6 +127,26 @@ impl App {
             },
             |joined| Message::Settings(SettingsMessage::FactsLoaded(joined.unwrap_or_default())),
         )
+    }
+
+    /// While filing runs, the Status line of the open Index page moves: the
+    /// facts are read again on the tick that moves the title-bar rate, at most
+    /// every `FACTS_REFRESH_EVERY`.
+    pub(in crate::app) fn refresh_documents_facts(&mut self) -> Task<Message> {
+        let due = self.facts_requested_at.is_none_or(|asked| {
+            self.wall_clock
+                .now()
+                .duration_since(asked)
+                .is_ok_and(|waited| waited >= FACTS_REFRESH_EVERY)
+        });
+        let Some(state) = self.settings.page.as_mut() else {
+            return Task::none();
+        };
+        if !due || state.feature != SettingsFeature::Index || state.loaded.is_none() {
+            return Task::none();
+        }
+        state.facts_requested = false;
+        self.load_documents_facts()
     }
 
     pub(in crate::app) fn pick_read_folder(&self, kind: AddAs) -> Task<Message> {

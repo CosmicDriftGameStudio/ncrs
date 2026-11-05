@@ -1,5 +1,5 @@
 use iced::widget::text::Wrapping;
-use iced::widget::{button, column, container, row, text, Column};
+use iced::widget::{column, container, row, text, Column};
 use iced::{alignment, Element, Length, Padding};
 
 use super::*;
@@ -11,7 +11,24 @@ use ncrs_i18n::fill_template;
 use ncrs_i18n::Msg;
 use ncrs_ui_kit::kit;
 use ncrs_ui_kit::layout::SETTINGS_NAV_WIDTH;
-use ncrs_ui_kit::theme::{self, font_size, size, spacing};
+use ncrs_ui_kit::nav_list::{nav_list, NavGroup, NavItem};
+use ncrs_ui_kit::theme::{self, font_size, spacing};
+
+/// In the list the Hermes page shows only its second name: the group head
+/// above it already says Hermes.
+fn nav_label(feature: SettingsFeature) -> Msg {
+    match feature {
+        SettingsFeature::Hermes => Msg::SettingsFeatureHermesSorting,
+        other => feature_label(other),
+    }
+}
+
+fn group_mark(group: SettingsGroup) -> Option<Msg> {
+    match group {
+        SettingsGroup::Hermes => Some(Msg::HermesBeta),
+        SettingsGroup::General | SettingsGroup::Files | SettingsGroup::Documents => None,
+    }
+}
 
 pub fn nav<'a>(
     listed: &[SettingsFeature],
@@ -29,55 +46,29 @@ pub fn nav<'a>(
         message(view.state.query.clone()),
         palette,
     );
-    let mut entries = Column::new().spacing(NAV_ENTRY_GAP);
-    let mut current_group = None;
+    let mut groups: Vec<NavGroup<SettingsMessage>> = Vec::new();
+    let mut last_group = None;
     for &feature in listed {
-        if current_group != Some(feature.group()) {
-            current_group = Some(feature.group());
-            entries = entries.push(
-                container(
-                    text(lang.text(group_label(feature.group())).to_owned())
-                        .size(font_size::SMALL)
-                        .color(palette.dim_text)
-                        .wrapping(Wrapping::None),
-                )
-                .padding(Padding {
-                    top: spacing::S,
-                    left: spacing::CELL_PADDING_X,
-                    ..Padding::ZERO
-                }),
-            );
+        let group = feature.group();
+        let item = NavItem {
+            label: lang.text(nav_label(feature)).to_owned(),
+            suffix: None,
+            chosen: shown == Some(feature),
+            on_press: SettingsMessage::Select(feature),
+        };
+        match groups.last_mut() {
+            Some(last) if last_group == Some(group) => last.items.push(item),
+            _ => {
+                groups.push(NavGroup {
+                    head: lang.text(group_label(group)).to_owned(),
+                    mark: group_mark(group).map(|mark| lang.text(mark).to_owned()),
+                    items: vec![item],
+                });
+                last_group = Some(group);
+            }
         }
-        let mut label = row![text(lang.text(feature_label(feature)).to_owned())
-            .size(font_size::BODY)
-            .wrapping(Wrapping::None)]
-        .spacing(spacing::S)
-        .align_y(alignment::Vertical::Center);
-        if let Some(suffix) = feature_suffix(feature) {
-            label = label.push(
-                text(lang.text(suffix).to_owned())
-                    .size(font_size::SMALL)
-                    .color(palette.dim_text)
-                    .wrapping(Wrapping::None),
-            );
-        }
-        if let Some(beta_mark) = feature_beta_mark(feature) {
-            label = label.push(
-                text(lang.text(beta_mark).to_owned())
-                    .size(font_size::SMALL)
-                    .color(palette.dim_text)
-                    .wrapping(Wrapping::None),
-            );
-        }
-        entries = entries.push(
-            button(container(label).center_y(Length::Fill))
-                .on_press(SettingsMessage::Select(feature))
-                .width(Length::Fill)
-                .height(size::SIDEBAR_ITEM)
-                .padding([0.0, spacing::CELL_PADDING_X])
-                .style(theme::feature_item(palette, shown == Some(feature))),
-        );
     }
+    let entries = nav_list(groups, palette);
     let from_config_file = shown.and_then(feature_config_place).is_some();
     let footer: Element<'a, Message> = if from_config_file {
         text(lang.text(Msg::SettingsNavFooter))

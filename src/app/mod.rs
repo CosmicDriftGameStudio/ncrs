@@ -355,6 +355,8 @@ pub struct App {
     recent_commands: Vec<KeyAction>,
     /// The time the status page measures how long a worker has been busy by.
     wall_clock: Arc<dyn ncrs_pipeline::Clock>,
+    /// When the open Index or Hermes page last asked for its facts.
+    facts_requested_at: Option<std::time::SystemTime>,
     /// The system brings a recognizer for scans (macOS Vision); the Index page
     /// lists it then.
     system_reads_scans: bool,

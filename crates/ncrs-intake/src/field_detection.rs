@@ -10,7 +10,7 @@ use crate::sender_detection::{detect_sender, AliasOffer, OwnIdentifiers};
 
 /// Bump when the detection learns something new: archive documents are read
 /// again.
-pub const FIELDS_READ_VERSION: u32 = 1;
+pub const FIELDS_READ_VERSION: u32 = 2;
 
 /// What belongs to the user and never to a sender.
 #[derive(Debug, Clone, Copy)]

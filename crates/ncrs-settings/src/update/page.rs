@@ -289,7 +289,12 @@ pub fn fresh_settings_state(ctx: &Ctx<'_>) -> SettingsState {
         Some(path) => config::load(path).map(Box::new),
         None => Ok(Box::default()),
     };
-    SettingsState::new(ocr_models_present, file, runs_in_app_sandbox())
+    let mut state = SettingsState::new(ocr_models_present, file, runs_in_app_sandbox());
+    state.ai_model_present = ctx
+        .ai_models_dir
+        .as_deref()
+        .is_some_and(crate::ai_model::model_is_installed);
+    state
 }
 
 pub fn close_settings(settings: &mut Settings) -> Task<Message> {

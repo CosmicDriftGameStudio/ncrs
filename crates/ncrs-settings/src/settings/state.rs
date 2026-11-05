@@ -39,7 +39,6 @@ pub const SWATCH_SIZE: f32 = 16.0;
 pub const THEME_FILE_CHARS: usize = 26;
 /// Room the feature list keeps around its entries.
 pub const NAV_PADDING_Y: f32 = 10.0;
-pub const NAV_ENTRY_GAP: f32 = 1.0;
 
 /// What the tab remembers while it is open.
 #[derive(Debug, Clone, PartialEq)]
@@ -54,6 +53,10 @@ pub struct SettingsState {
     /// Whether the folder of the text recognition models has files; looked up
     /// when the tab opens and after a download, not on every frame.
     pub ocr_models_present: bool,
+    /// Whether the AI model file is in place; looked up like the above, and
+    /// it decides whether the Index page offers to turn the AI on or to load
+    /// the model.
+    pub ai_model_present: bool,
     /// The config as read when the tab opened or written since: the values
     /// as the file spells them, which the app keeps only resolved. The error
     /// when it does not load; then nothing can be written.
@@ -111,6 +114,7 @@ impl SettingsState {
             marked_row: None,
             changed: 0,
             ocr_models_present,
+            ai_model_present: false,
             file,
             drafts: HashMap::new(),
             problems: HashMap::new(),

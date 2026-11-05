@@ -426,3 +426,16 @@ fn a_typed_program_offers_the_reset_before_it_is_saved_and_clearing_it_drops_the
         .edit
         .is_none());
 }
+
+#[test]
+fn an_off_ai_with_the_model_on_disk_offers_the_switch_not_the_download() {
+    use super::index_page::{ai_button, AiButton};
+    use crate::facts::AiState;
+
+    assert_eq!(ai_button(&AiState::Off, true), Some(AiButton::TurnOn));
+    assert_eq!(ai_button(&AiState::Off, false), Some(AiButton::Load));
+    assert_eq!(ai_button(&AiState::Missing, true), Some(AiButton::Load));
+    assert_eq!(ai_button(&AiState::Failed, true), Some(AiButton::Load));
+    assert_eq!(ai_button(&AiState::Ready, true), Some(AiButton::Remove));
+    assert_eq!(ai_button(&AiState::Downloading, false), None);
+}

@@ -67,6 +67,7 @@ impl App {
             command_palette: None,
             recent_commands: Vec::new(),
             wall_clock: Arc::new(ncrs_pipeline::SystemClock),
+            facts_requested_at: None,
             system_reads_scans: true,
             config_path: None,
             file_list_tags: FileListTags::default(),

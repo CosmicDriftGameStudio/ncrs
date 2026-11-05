@@ -170,3 +170,33 @@ fn without_a_data_folder_the_button_says_why() {
     assert_eq!(card.error(), Some(&AiDownloadError::NoDataFolder));
     assert!(!card.is_downloading());
 }
+
+#[tokio::test]
+async fn turning_the_ai_on_from_the_card_writes_the_switch_and_closes_the_card() {
+    let mut app = app_with_data_folder();
+    app.config_path = Some(PathBuf::from("/example/config.toml"));
+    app.settings.ai_model = Some(
+        AiModelCard::installed(Some(PathBuf::from("/example/data/ai-models")))
+            .offering_turn_on(true),
+    );
+
+    let task = app.update(Message::AiModel(AiModelMessage::TurnOn));
+
+    assert!(app.ai_model_for_test().is_none(), "the card is closed");
+    assert!(task.units() > 0, "the switch is written");
+}
+
+#[test]
+fn turning_the_ai_on_without_a_config_file_closes_the_card_and_tells_why() {
+    let mut app = app_with_data_folder();
+    app.config_path = None;
+    app.settings.ai_model = Some(
+        AiModelCard::installed(Some(PathBuf::from("/example/data/ai-models")))
+            .offering_turn_on(true),
+    );
+
+    send(&mut app, AiModelMessage::TurnOn);
+
+    assert!(app.ai_model_for_test().is_none());
+    assert!(app.settings.failure.is_some());
+}

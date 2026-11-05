@@ -173,7 +173,9 @@ fn feature_theme_name(feature: SettingsFeature) -> Option<FuturamaName> {
 fn group_label(group: SettingsGroup) -> Msg {
     match group {
         SettingsGroup::General => Msg::SettingsGroupGeneral,
+        SettingsGroup::Files => Msg::SettingsGroupFiles,
         SettingsGroup::Documents => Msg::SettingsGroupDocuments,
+        SettingsGroup::Hermes => Msg::SettingsGroupHermes,
     }
 }
 

@@ -4334,7 +4334,7 @@ mod ai_model_card {
         );
         assert_eq!(
             messages_after_click(finished(InstallOutcome::StillOff), "Turn on AI"),
-            [Message::AiModel(AiModelMessage::ShowAiSetting)]
+            [Message::AiModel(AiModelMessage::TurnOn)]
         );
         matches_card_snapshot(
             finished(InstallOutcome::TurnedOn),

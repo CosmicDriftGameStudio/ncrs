@@ -41,6 +41,7 @@ pub mod list_kit;
 pub mod list_window;
 mod menu_button;
 pub mod meter;
+pub mod nav_list;
 pub mod numbered_hint;
 pub mod page_status_bar;
 pub mod page_text;

@@ -1,7 +1,6 @@
 use std::path::Path;
 
 use iced::Task;
-use ncrs_config::SettingsFeature;
 
 use crate::action::Action;
 use crate::ai_model::view::CANCEL_FOCUS as AI_CANCEL_FOCUS;
@@ -113,9 +112,9 @@ pub fn update_ai(
 ) -> Task<Message> {
     match message {
         AiModelMessage::Progress => Task::none(),
-        AiModelMessage::ShowAiSetting => {
+        AiModelMessage::TurnOn => {
             settings.ai_model = None;
-            super::page::show_setting(settings, ctx, SettingsFeature::Hermes, None)
+            write_setting(settings, SettingChange::AiEnabled(true), ctx)
         }
         AiModelMessage::Open => open_ai(settings, ctx, actions),
         AiModelMessage::Close => close_ai(settings),
@@ -144,7 +143,7 @@ fn open_ai(settings: &mut Settings, ctx: &Ctx<'_>, actions: &mut Vec<Action>) ->
         .as_deref()
         .is_some_and(|dir| ncrs_ai::has_partial_download(dir, &ncrs_ai::LOCAL_MODEL));
     settings.ai_model = Some(if target.as_deref().is_some_and(model_is_installed) {
-        AiModelCard::installed(target)
+        AiModelCard::installed(target).offering_turn_on(!ctx.ai_is_on)
     } else {
         AiModelCard::new(target, has_partial)
     });
@@ -205,6 +204,9 @@ fn ai_downloaded(
     };
     if !card.finish(result) {
         return Task::none();
+    }
+    if let Some(page) = settings.page.as_mut() {
+        page.ai_model_present = true;
     }
     actions.push(Action::SetDialogFocus(AI_CANCEL_FOCUS));
     actions.push(Action::RefreshAiModel);

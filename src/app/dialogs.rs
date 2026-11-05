@@ -186,10 +186,10 @@ impl App {
             .settings
             .ai_model
             .as_ref()
-            .is_some_and(AiModelCard::is_finished)
+            .is_some_and(AiModelCard::has_turn_on_button)
         {
             return if self.dialog_focus == ai_model_ui::DOWNLOAD_FOCUS {
-                self.update_ai_model(AiModelMessage::ShowAiSetting)
+                self.update_ai_model(AiModelMessage::TurnOn)
             } else {
                 self.update_ai_model(AiModelMessage::Close)
             };

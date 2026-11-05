@@ -1,4 +1,4 @@
-use crate::ai_model::{AiModelCard, InstallOutcome};
+use crate::ai_model::AiModelCard;
 use crate::key_bindings::KeyBindings;
 use crate::ocr_models::OcrModelsCard;
 use crate::settings::SettingsState;
@@ -43,8 +43,7 @@ impl Settings {
             .as_ref()
             .is_some_and(|card| card.is_installed() || card.is_finished());
         let ai = self.ai_model.as_ref().is_some_and(|card| {
-            card.is_installed()
-                || (card.is_finished() && card.outcome() != Some(InstallOutcome::StillOff))
+            (card.is_installed() || card.is_finished()) && !card.has_turn_on_button()
         });
         ocr || ai
     }

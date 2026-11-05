@@ -7,7 +7,7 @@ use iced::{alignment, Element};
 use super::*;
 use crate::facts::{AiState, ModelKind};
 use crate::folders::AddAs;
-use crate::message::SettingsMessage;
+use crate::message::{SettingChange, SettingsMessage};
 use ncrs_config::config::{FilingLocation, OwnDetail};
 use ncrs_pipeline::Load;
 use ncrs_ui_kit::layout::SETTINGS_WIDE_CONTROL_WIDTH;
@@ -175,15 +175,10 @@ fn read_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
         1,
         view.palette,
     );
-    let soon = format!(
-        "{}: {}",
-        lang.text(Msg::SettingsIndexScopeAll),
-        lang.text(Msg::SettingsIndexScopeSoon)
-    );
     let locations = listed_locations(view);
     let mut rows = vec![text_row(
         lang.text(Msg::SettingsIndexRowScope).to_owned(),
-        Some(soon),
+        Some(lang.text(Msg::SettingsIndexScopeOnlyHint).to_owned()),
         scope,
     )];
     rows.extend(locations.iter().map(|location| {
@@ -279,6 +274,23 @@ fn ocr_section_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
     rows
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum AiButton {
+    Remove,
+    /// The model is on disk and only the switch is off.
+    TurnOn,
+    Load,
+}
+
+pub(super) fn ai_button(ai: &AiState, model_present: bool) -> Option<AiButton> {
+    match ai {
+        AiState::Ready | AiState::NextStart => Some(AiButton::Remove),
+        AiState::Off if model_present => Some(AiButton::TurnOn),
+        AiState::Off | AiState::Missing | AiState::Failed => Some(AiButton::Load),
+        AiState::Downloading | AiState::OwnServer { .. } => None,
+    }
+}
+
 fn ai_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
     let lang = view.lang;
     let palette = view.palette;
@@ -312,13 +324,16 @@ fn ai_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
             palette.dim_text,
         ),
     };
-    let button = match &view.facts.ai {
-        AiState::Ready | AiState::NextStart => Some(remove_model_button(ModelKind::Ai, view)),
-        AiState::Off | AiState::Missing | AiState::Failed => {
-            Some(load_button(SettingsMessage::OpenAiModel, view))
-        }
-        AiState::Downloading | AiState::OwnServer { .. } => None,
-    };
+    let button = ai_button(&view.facts.ai, view.state.ai_model_present).map(|kind| match kind {
+        AiButton::Remove => remove_model_button(ModelKind::Ai, view),
+        AiButton::TurnOn => kit::button(
+            lang.text(Msg::AiModelTurnOn),
+            Some(SettingsMessage::Change(SettingChange::AiEnabled(true))),
+            Tone::Secondary,
+            palette,
+        ),
+        AiButton::Load => load_button(SettingsMessage::OpenAiModel, view),
+    });
     let mut model = simple_row(
         Msg::SettingsIndexRowAi,
         Some(Msg::SettingsIndexRowAiNote),
