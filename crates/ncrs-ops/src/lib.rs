@@ -19,6 +19,7 @@ pub mod open_flow;
 pub mod prompt;
 pub mod prompt_flow;
 pub mod prompt_view;
+pub mod rename_flow;
 pub mod restore_flow;
 pub mod row_failure;
 pub mod state;
@@ -53,6 +54,7 @@ pub use open_flow::{
     start_prompt_job, suggested_archive_name, update_transfer_dialog_flow, HitListFacts,
     PanelFacts, SelectionFacts,
 };
+pub use rename_flow::{rename_done, start_rename, validate_name, NameProblem};
 pub use restore_flow::{
     end_restore, newest_entries_from, restore_last_deletion, restore_listed_deletion, restore_one,
     restore_row_done, resume_restore, start_restore,

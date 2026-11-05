@@ -461,3 +461,33 @@ async fn a_stalled_block_times_out_and_the_connection_stays() {
     assert!(fixture.pool.is_connected(&Fixture::id()));
     assert!(names_in(&out).is_empty());
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn rename_gives_an_entry_a_new_name_and_never_replaces_another() {
+    let fixture = Fixture::connected().await;
+    std::fs::write(fixture.server.local("/home/tester/a.txt"), "a").unwrap();
+    std::fs::write(fixture.server.local("/home/tester/b.txt"), "b").unwrap();
+    let (pool, from) = (Arc::clone(&fixture.pool), Fixture::at("/home/tester/a.txt"));
+
+    let taken = blocking({
+        let (shared_pool, shared_from) = (Arc::clone(&pool), from.clone());
+        move || rename(&shared_pool, &shared_from, "b.txt")
+    })
+    .await
+    .unwrap_err();
+    let renamed = blocking(move || rename(&pool, &from, "c.txt"))
+        .await
+        .unwrap();
+
+    assert_eq!(taken.kind(), io::ErrorKind::AlreadyExists);
+    assert_eq!(renamed.remote_str(), "/home/tester/c.txt");
+    assert!(!fixture.server.local("/home/tester/a.txt").exists());
+    assert_eq!(
+        std::fs::read_to_string(fixture.server.local("/home/tester/c.txt")).unwrap(),
+        "a"
+    );
+    assert_eq!(
+        std::fs::read_to_string(fixture.server.local("/home/tester/b.txt")).unwrap(),
+        "b"
+    );
+}

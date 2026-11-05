@@ -5,6 +5,7 @@ use iced::widget::{column, container, mouse_area, Column, Row};
 use iced::{Element, Length};
 use ncrs_ui_kit::file_row::{file_row, tag_star, RowClick, RowExtras};
 use ncrs_ui_kit::panel_footer::panel_footer;
+use ncrs_ui_kit::rename_row::{rename_row, RenameRow};
 use ncrs_ui_kit::theme;
 
 use crate::ctx::ViewCtx;
@@ -51,6 +52,24 @@ pub fn view<'a>(state: &'a PanelState, ctx: ViewCtx<'a>) -> Element<'a, PanelMes
                 state.row_height(),
                 on_row_click(index, RowClick::Tag),
             ));
+            if let Some(rename) = state
+                .rename
+                .as_ref()
+                .filter(|rename| rename.path == entry.path)
+            {
+                return rename_row(
+                    RenameRow {
+                        entry,
+                        draft: &rename.draft,
+                        error: rename.error.as_deref(),
+                        busy: rename.busy,
+                        height: state.row_height(),
+                        on_input: PanelMessage::RenameInput,
+                        on_submit: PanelMessage::RenameSubmit,
+                    },
+                    palette,
+                );
+            }
             // A button takes only the left button, so the right press reaches
             // the area around it.
             mouse_area(file_row(
@@ -85,7 +104,7 @@ pub fn view<'a>(state: &'a PanelState, ctx: ViewCtx<'a>) -> Element<'a, PanelMes
                 hermes_cell.is_some(),
                 move |column| Some(PanelMessage::SortBy { side, column }),
             ),
-            Column::with_children(rows).height(Length::Fill),
+            Column::with_children(rows).height(Length::Fill).clip(true),
             panel_footer(footer_text(&panel_totals(state), lang), palette),
         ]
         .apply_frame(palette),

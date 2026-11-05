@@ -110,6 +110,7 @@ pub fn command_of(action: KeyAction) -> Option<Command> {
         KeyAction::Edit => Command::plain(action, File, Msg::ActionEdit),
         KeyAction::Copy => Command::plain(action, File, Msg::ActionCopy),
         KeyAction::Move => Command::plain(action, File, Msg::ActionMove),
+        KeyAction::Rename => Command::plain(action, File, Msg::ActionRename),
         KeyAction::Mkdir => Command::plain(action, File, Msg::ActionMkdir),
         KeyAction::NewFile => Command::plain(action, File, Msg::ActionNewFile),
         KeyAction::Pack => Command::themed(action, File, Msg::ActionPack, FuturamaName::ActionPack),

@@ -67,4 +67,10 @@ pub enum Action {
     ReleaseFocus,
     /// The connect dialog for an address typed without a user.
     OpenConnectDialog(RemoteUrl),
+    /// Enter in the name input: rename `from` to `new_name` in its folder.
+    SubmitRename {
+        side: PanelSide,
+        from: PathBuf,
+        new_name: String,
+    },
 }

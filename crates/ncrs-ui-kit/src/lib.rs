@@ -49,6 +49,7 @@ pub mod palette;
 pub mod panel_footer;
 pub mod picker;
 pub mod popup_menu;
+pub mod rename_row;
 pub mod setting_rows;
 pub mod tags;
 pub mod theme;

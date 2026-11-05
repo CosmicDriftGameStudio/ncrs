@@ -162,4 +162,11 @@ pub enum OpsMessage {
     /// The progress mask's abort button.
     AbortJob,
     Trash(TrashMessage),
+    /// The rename of the entry at `from` has finished, with its new path.
+    Renamed {
+        request_id: u64,
+        side: ncrs_core::PanelSide,
+        from: std::path::PathBuf,
+        result: Result<std::path::PathBuf, RowFailure>,
+    },
 }

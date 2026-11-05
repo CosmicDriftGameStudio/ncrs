@@ -133,6 +133,20 @@ pub enum Action {
     CloseQuickOpenAndPalette,
     /// An error that, pressed, opens the trash in the Finder.
     ShowErrorWithFinderPress(String),
+    /// The name typed for the rename of `from` cannot be used; the panel
+    /// shows `text` under the input of that entry and keeps it open.
+    RenameRefused {
+        from: PathBuf,
+        text: String,
+    },
+    /// The rename of the entry at `from` is over and the panel closes its
+    /// input. `renamed_to` is the new path when it worked, which the panels
+    /// then reload to select.
+    RenameEnded {
+        side: PanelSide,
+        from: PathBuf,
+        renamed_to: Option<PathBuf>,
+    },
     /// Shows the trash in place of the panel on this side.
     OpenTrash(PanelSide),
     /// Shows the trash folder in the Finder, where the app cannot list it.

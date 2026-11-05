@@ -20,6 +20,7 @@ pub mod panel_history;
 pub mod panel_totals;
 pub mod path_field;
 pub mod reload;
+pub mod rename;
 pub mod state;
 pub mod update;
 pub mod view;

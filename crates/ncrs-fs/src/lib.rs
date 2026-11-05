@@ -13,6 +13,7 @@ mod reader;
 #[cfg(any(test, feature = "test-support"))]
 pub mod real_trash_tests;
 pub mod remote;
+mod rename;
 mod replace_file;
 mod sandbox;
 mod sort;
@@ -39,6 +40,7 @@ pub use open::{privacy_settings_command, trash_in_finder_command};
 pub use open_programs::{is_separator, OpenPrograms, ProgramLine, ProgramLineProblem};
 pub use ops::{create_dir, create_file, CreateDirError};
 pub use reader::{home_dir, read_directory, start_dir, ReadError};
+pub use rename::rename;
 pub use replace_file::replace_file_atomically;
 pub use sandbox::{
     grant_start_dir, grant_start_dir_for, preferred_home, restore_grants, sandbox_active,

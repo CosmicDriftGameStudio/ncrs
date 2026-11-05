@@ -72,15 +72,18 @@ pub(in crate::app) fn rows_of(panel: &PanelState) -> PanelRows<'_> {
 impl App {
     /// Both panels read their folder again and keep the cursor on its file.
     pub(in crate::app) fn reload_panels(&mut self) -> Task<Message> {
-        let tasks = [PanelSide::Left, PanelSide::Right].map(|each| {
-            let panel = self.panel(each);
-            let path = panel.path.clone();
-            let cursor = panel
-                .selected_entry()
-                .map(|entry| entry.name.to_string_lossy().into_owned());
-            self.load(each, path, cursor)
-        });
+        let tasks =
+            [PanelSide::Left, PanelSide::Right].map(|each| self.reload_keeping_cursor(each));
         Task::batch(tasks)
+    }
+
+    pub(in crate::app) fn reload_keeping_cursor(&mut self, side: PanelSide) -> Task<Message> {
+        let panel = self.panel(side);
+        let path = panel.path.clone();
+        let cursor = panel
+            .selected_entry()
+            .map(|entry| entry.name.to_string_lossy().into_owned());
+        self.load(side, path, cursor)
     }
 
     pub(in crate::app) fn update_path_field(&mut self, message: Message) -> Task<Message> {
@@ -126,11 +129,13 @@ impl App {
             }
             Message::PathFieldCancel => {
                 self.panels.set_path_field(None);
+                self.panels.end_rename();
                 release_focus()
             }
             Message::ClickedOutside => {
                 self.panels.context_menu = None;
                 self.panels.set_path_field(None);
+                self.panels.end_rename();
                 self.command_line.leave();
                 self.monitor_clicked_away()
             }
@@ -454,6 +459,11 @@ impl App {
     }
 
     pub(in crate::app) fn update_panel(&mut self, message: PanelMessage) -> Task<Message> {
+        let rename_has_no_row =
+            self.blocking_overlay_is_open() || self.search_has_keys() || self.trash_has_keys();
+        if message == PanelMessage::RenameStart && rename_has_no_row {
+            return Task::none();
+        }
         let overlay_is_open = self.overlay_is_open();
         let context_menu_is_open = self.panels.context_menu.is_some();
         let pointer = self.input.lock().pointer;
@@ -558,6 +568,11 @@ impl App {
                 let removed = self.panels.remove_favourite_at(self.lang, &target);
                 self.run_panel_actions(vec![removed])
             }
+            Action::SubmitRename {
+                side,
+                from,
+                new_name,
+            } => self.with_ops(|ops, ctx| ncrs_ops::start_rename(ops, side, from, new_name, ctx)),
             Action::RunContextEntry(entry) => self.update(entry.message()),
             Action::RunHermesEntry(entry) => self.update(entry.message()),
             Action::ActivateSearchResult => self.update(Message::Search(SearchMessage::Activate)),

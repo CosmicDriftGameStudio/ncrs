@@ -25,6 +25,7 @@ pub(in crate::app) fn archive_refusal(panel: &PanelState, message: &Message) -> 
     match message {
         Message::PackPrompt => Some(Msg::StatusPackUnavailable),
         Message::Transfer(TransferKind::Move)
+        | Message::Panel(PanelMessage::RenameStart)
         | Message::OpenExternal(fs::OpenKind::Edit)
         | Message::CreateDirPrompt
         | Message::CreateFilePrompt
@@ -172,6 +173,7 @@ impl App {
         }
         if leaves_bar_fields(&message) {
             self.panels.set_path_field(None);
+            self.panels.end_rename();
             self.command_line.leave();
         }
         if let Message::SaveSessionState(generation) = message {
@@ -280,6 +282,15 @@ impl App {
                 generation,
             } => self.with_ops(|ops, ctx| {
                 ncrs_ops::transfer_row_done(ops, result, index, generation, ctx)
+            }),
+
+            Message::Renamed {
+                request_id,
+                side,
+                from,
+                result,
+            } => self.with_ops(|ops, ctx| {
+                ncrs_ops::rename_done(ops, request_id, side, &from, result, ctx)
             }),
 
             Message::OpenExternal(kind) => self.open_external(kind),

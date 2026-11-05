@@ -10,6 +10,7 @@ use ncrs_ui_kit::layout::{self, HIT_LIST_ROW_HEIGHT, ROW_HEIGHT};
 
 use crate::hit_list::HitList;
 use crate::panel_history::PanelHistory;
+use crate::rename::RenameState;
 
 /// Not inside an archive and not on an SFTP server: something other apps can
 /// be handed by path.
@@ -53,6 +54,8 @@ pub struct PanelState {
     pub archive: Option<PathBuf>,
     /// Set while the panel lists search hits instead of a folder.
     pub hit_list: Option<HitList>,
+    /// The name input of the row being renamed.
+    pub rename: Option<RenameState>,
 }
 
 impl PanelState {
@@ -72,6 +75,7 @@ impl PanelState {
             history_step_request: None,
             archive: None,
             hit_list: None,
+            rename: None,
         }
     }
 

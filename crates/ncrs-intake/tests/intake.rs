@@ -13,12 +13,16 @@ mod tests {
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     use chrono::{DateTime, Utc};
-    use ncrs_index::{ContentHash, DocumentSource, DocumentStatus, InMemoryKeyStore, Index};
+    use ncrs_index::{
+        ContentHash, DocumentFields, DocumentSource, DocumentStatus, FieldOrigin, InMemoryKeyStore,
+        Index,
+    };
     use ncrs_intake::{
         scan_location, settle_location, take_in, Location, LocationMode, LocationWatcher, Outcome,
         ScanReport, Skip, StabilityTracker, WatchEvent, STABLE_AFTER,
     };
     use sha2::{Digest as _, Sha256};
+    use std::collections::BTreeSet;
     use tempfile::TempDir;
     use walkdir::WalkDir;
 
@@ -420,6 +424,33 @@ mod tests {
         assert_eq!((report.moved, report.copies), (1, 0));
         assert_eq!(fixture.index.document(id).unwrap().unwrap().path, after);
         assert!(fixture.index.duplicate_paths(id).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_renamed_file_keeps_its_document_and_its_tags() {
+        let mut fixture = Fixture::new();
+        let dir = TempDir::new().unwrap();
+        let archive = location(&dir, LocationMode::Archive, false);
+        let before = put(&archive, "scan.pdf", INVOICE);
+        fixture.scan_settled(&archive);
+        let id = fixture.index.document_by_path(&before).unwrap().unwrap().id;
+        let tagged = DocumentFields {
+            tags: BTreeSet::from(["tax".to_owned(), "2026".to_owned()]),
+            ..DocumentFields::default()
+        };
+        fixture
+            .index
+            .set_document_fields(id, &tagged, |_| FieldOrigin::Unknown)
+            .unwrap();
+        let after = archive.path.join("Invoice Company A.pdf");
+        fs::rename(&before, &after).unwrap();
+
+        let report = fixture.scan_settled(&archive);
+
+        assert_eq!((report.moved, report.copies, report.new), (1, 0, 0));
+        let document = fixture.index.document(id).unwrap().unwrap();
+        assert_eq!(document.path, after);
+        assert_eq!(document.fields.tags, tagged.tags);
     }
 
     #[test]
