@@ -45,8 +45,6 @@ pub enum Action {
     /// The module of the previous settings is gone: the one of this
     /// generation starts now.
     FilingRestarted(u64),
-    /// Opens the card of the AI model, and notes whether the user was asked.
-    OpenAiModelCard,
     /// Selects the error of the file on the status page.
     SelectErrorOf(PathBuf),
     /// Both panels read their folder again, keeping the cursor.

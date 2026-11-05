@@ -44,9 +44,6 @@ pub struct Hermes {
     pub hermes_spinner_angle: f32,
     /// The folder the PDF library is missing from, as of the last pipeline start.
     pub pdf_library_missing: Option<PathBuf>,
-    /// The card opened by itself for a missing model; once per start, so a
-    /// "Cancel" is not asked again.
-    pub ai_model_asked: bool,
     /// Files the user asked to read again and whose end is not yet reported.
     pub reading_again: ReadingAgain,
     /// The filing settings of the config file, as last loaded or written.

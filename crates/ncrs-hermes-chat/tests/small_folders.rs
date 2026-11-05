@@ -191,7 +191,7 @@ mod tests {
         }
         talk.press(&ChipReply::ShowMore);
         assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatTrialEnd, &[])]);
-        assert_eq!(talk.labels().len(), 3, "file, more, cancel stay");
+        assert_eq!(talk.labels().len(), 2, "file and cancel stay");
     }
 
     #[test]
@@ -516,6 +516,39 @@ mod tests {
         assert!(!talk.state.waits_for_hermes());
         talk.press(&ChipReply::TurnOn);
         assert_eq!(talk.actions, vec![Action::TurnOnHermes]);
+    }
+
+    #[test]
+    fn a_pressed_start_is_answered_whether_hermes_comes_or_not() {
+        let mut talk = small_talk();
+        talk.ctx.availability = Availability::Off;
+        talk.open();
+
+        talk.press(&ChipReply::TurnOn);
+        assert_eq!(talk.actions, vec![Action::TurnOnHermes]);
+        assert!(talk.state.waiting_for_hermes);
+        talk.ctx.availability = Availability::Failed("no key".to_owned());
+        talk.send(Message::HermesReady);
+        assert_eq!(
+            talk.last_texts(),
+            vec![say(Msg::HermesChatStartFailed, &[("reason", "no key")])]
+        );
+        assert_eq!(talk.labels(), vec![say(Msg::HermesChatRetry, &[])]);
+        let still_waiting = |talk: &Talk| {
+            talk.state
+                .thread()
+                .iter()
+                .any(|entry| matches!(entry, Entry::Working(_)))
+        };
+        assert!(!still_waiting(&talk));
+
+        talk.press(&ChipReply::TurnOn);
+        assert!(talk.state.waiting_for_hermes);
+        let access = talk.access.clone();
+        talk.ctx.availability = Availability::Ready(Box::new(access));
+        talk.send(Message::HermesReady);
+        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatGreeting, &[])]);
+        assert!(!still_waiting(&talk));
     }
 
     #[test]

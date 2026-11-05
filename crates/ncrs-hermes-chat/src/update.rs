@@ -97,10 +97,18 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
             None
         }
         Message::FolderPicked(picked) => {
-            let path = picked?;
             if is_busy(state) {
                 return None;
             }
+            let Some(path) = picked else {
+                reset_flow(state);
+                say(
+                    state,
+                    text(ctx.lang, Msg::HermesChatLaterReply),
+                    fallback_chips(ctx),
+                );
+                return None;
+            };
             user_folder(state, ctx, &path);
             if hold_until_ready(state, ctx, Held::Reply(ChipReply::Folder(path.clone()))) {
                 return None;
@@ -823,7 +831,14 @@ pub fn handle_reply(state: &mut State, ctx: &Ctx, reply: ChipReply) -> Option<Ac
         ChipReply::Folder(path) => return folder_answer(state, ctx, path, false),
         ChipReply::NamedFolder(folder) => named_folders::chosen(state, ctx, folder),
         ChipReply::PickFolder => return Some(Action::PickFolder),
-        ChipReply::TurnOn => return Some(Action::TurnOnHermes),
+        ChipReply::TurnOn => {
+            state.waiting_for_hermes = true;
+            state.greeting_owed = true;
+            state
+                .thread
+                .push(Entry::Working(text(ctx.lang, Msg::HermesChatStartingWait)));
+            return Some(Action::TurnOnHermes);
+        }
         ChipReply::ReadAnyway => {
             if let Some((path, step)) = state.session.confirm.take() {
                 state.step = step;
