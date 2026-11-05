@@ -27,73 +27,64 @@ use crate::message::{
     HermesColumnMessage, HermesOverviewMessage, HermesPage, Message, QuickFixMessage, RulesMessage,
     SavedQueriesMessage, TagsMessage,
 };
+use crate::rules_page::RulesPage;
+use crate::saved_queries::SavedQueries;
 use crate::state::Hermes;
+use crate::tags_page::TagsPage;
 use ncrs_config::config::Filing;
 use ncrs_filing::filing::FilingMessage;
 
 pub use self::column::{refresh_hermes_column, request_hermes_column};
 pub use self::filing_job::{run_filing_work, run_filing_work_after};
 pub use self::lifecycle::SavedFilingApplies;
-pub use self::status::{
-    open_filing_status_page, request_hermes_counts, request_index_figures, update_filing_status,
-};
+pub use self::status::{open_filing_status_page, request_hermes_counts, update_filing_status};
 
 pub type Outcome = (Task<Message>, Vec<Action>);
 
-/// The pages and the menu of the Hermes state count, as they are now; the status page and the dialogs come from the context.
-fn blocking_overlay_is_open(hermes: &Hermes, ctx: &Ctx<'_>) -> bool {
-    ctx.status_page_open
-        || ctx.overlay_apart_from_ablage_tab_open
-        || hermes.page_is_open()
-        || hermes.quick_fix.is_some()
-}
-
-/// The Hermes page that is up, in the order the sidebar knows them.
-fn open_page(hermes: &Hermes, ctx: &Ctx<'_>) -> Option<HermesPage> {
-    ctx.status_page_open
-        .then_some(HermesPage::Inspection)
-        .or_else(|| hermes.open_page())
-}
-
-type Opener = fn(&mut Hermes, &Ctx<'_>, &mut Vec<Action>) -> Task<Message>;
-
-/// A click in the sidebar: the page that is up closes without its Escape
-/// steps, the chosen page opens. Nothing happens when it is the open one, or
-/// when no Hermes page is up. The status page is the app's: it goes there.
-fn go_to_page(
-    hermes: &mut Hermes,
-    page: HermesPage,
-    ctx: &Ctx<'_>,
-    actions: &mut Vec<Action>,
-) -> Task<Message> {
-    match open_page(hermes, ctx) {
-        None => return Task::none(),
-        Some(open) if open == page => return Task::none(),
-        Some(_) => {}
-    }
-    let open: Opener = match page {
-        HermesPage::SavedQueries => saved_queries::open,
-        HermesPage::Rules => rules::open,
-        HermesPage::Tags => tags::open,
+/// The settings show `page`: what the other Hermes pages held is dropped and
+/// the data of this one is read.
+pub fn show_page(hermes: &mut Hermes, page: HermesPage, ctx: &Ctx<'_>) -> Outcome {
+    let mut actions = Vec::new();
+    hermes.close_pages();
+    let task = match page {
+        HermesPage::SavedQueries => saved_queries::open(hermes, ctx, &mut actions),
+        HermesPage::Rules => rules::open(hermes, ctx, &mut actions),
+        HermesPage::Tags => tags::open(hermes, ctx, &mut actions),
         HermesPage::Inspection => {
-            actions.push(Action::GoToHermesPage(page));
-            return Task::none();
+            let (task, opened) = open_filing_status_page(hermes, ctx);
+            actions.extend(opened);
+            task
         }
     };
-    actions.push(Action::CloseStatusPage);
-    hermes.close_pages();
-    let without_ablage_tab = Ctx {
-        status_page_open: false,
-        ..ctx.clone()
-    };
-    Task::batch([release_focus(), open(hermes, &without_ablage_tab, actions)])
+    (Task::batch([release_focus(), task]), actions)
 }
 
-/// A click in the sidebar, or any other way to a page.
-pub fn go_to_hermes_page(hermes: &mut Hermes, page: HermesPage, ctx: &Ctx<'_>) -> Outcome {
-    let mut actions = Vec::new();
-    let task = go_to_page(hermes, page, ctx, &mut actions);
-    (task, actions)
+/// The settings show none of the Hermes pages any more.
+pub fn leave_pages(hermes: &mut Hermes) -> Task<Message> {
+    hermes.close_pages();
+    release_focus()
+}
+
+/// A dialog of the page is up, and the next Escape closes it.
+pub fn dialog_is_open(hermes: &Hermes) -> bool {
+    hermes.rules.as_ref().is_some_and(RulesPage::dialog_is_open)
+        || hermes.tags.as_ref().is_some_and(TagsPage::dialog_is_open)
+        || hermes
+            .saved_queries
+            .as_ref()
+            .is_some_and(SavedQueries::dialog_is_open)
+}
+
+/// Closes the dialog that is up; `None` when there was none.
+pub fn close_dialog(hermes: &mut Hermes) -> Option<Task<Message>> {
+    if !dialog_is_open(hermes) {
+        return None;
+    }
+    Some(Task::batch([
+        rules::close_dialog(hermes),
+        tags::close_dialog(hermes),
+        saved_queries::close_dialog(hermes),
+    ]))
 }
 
 pub fn update_hermes_overview(
@@ -131,18 +122,6 @@ pub fn update_saved_queries(
 pub fn update_tags(hermes: &mut Hermes, message: TagsMessage, ctx: &Ctx<'_>) -> Outcome {
     let mut actions = Vec::new();
     let task = tags::update(hermes, message, ctx, &mut actions);
-    (task, actions)
-}
-
-pub fn open_saved_queries(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Outcome {
-    let mut actions = Vec::new();
-    let task = saved_queries::open(hermes, ctx, &mut actions);
-    (task, actions)
-}
-
-pub fn open_tags(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Outcome {
-    let mut actions = Vec::new();
-    let task = tags::open(hermes, ctx, &mut actions);
     (task, actions)
 }
 
@@ -273,9 +252,9 @@ pub fn hermes_role_saved(
     (task, actions)
 }
 
-/// Opens the inspection page, at the file's error if the page lists one.
-pub fn show_in_inspection(hermes: &Hermes, path: &Path, ctx: &Ctx<'_>) -> Outcome {
+/// Opens the settings on the Read errors page.
+pub fn show_in_inspection() -> Outcome {
     let mut actions = Vec::new();
-    hermes_file::show_in_inspection(hermes, path, ctx, &mut actions);
+    hermes_file::show_in_inspection(&mut actions);
     (Task::none(), actions)
 }

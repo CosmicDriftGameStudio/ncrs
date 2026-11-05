@@ -33,42 +33,8 @@ pub(in crate::app) fn card_close_message(prompt: &PromptKeyState) -> Option<Mess
 /// What the keys of the Hermes pages read of the prompt state.
 fn hermes_key_facts(prompt: &PromptKeyState) -> ncrs_hermes_ui::keys::KeyFacts {
     ncrs_hermes_ui::keys::KeyFacts {
-        rules_form: prompt.rules_form,
-        rules_confirming_delete: prompt.rules_confirming_delete,
         start_over_dialog: prompt.start_over_dialog,
     }
-}
-
-type PageKeyFn = fn(
-    &ncrs_hermes_ui::keys::KeyFacts,
-    &ncrs_hermes_ui::keys::KeyPress<'_>,
-    &dyn Fn() -> ncrs_hermes_ui::keys::Bound,
-) -> Option<ncrs_hermes_ui::keys::PageKey>;
-
-/// What a key does on a page of Hermes. The keymap is asked only for a key
-/// the page does not know.
-pub(in crate::app) fn hermes_page_key(
-    page: PageKeyFn,
-    prompt: &PromptKeyState,
-    key: &Key,
-    key_modifiers: Modifiers,
-    scope: KeyScope,
-) -> Option<Message> {
-    use ncrs_hermes_ui::keys::{Bound, KeyPress, PageKey};
-    let press = KeyPress {
-        key,
-        modifiers: key_modifiers,
-        not_typed_by_text_field: is_not_typed_by_text_field(key, key_modifiers),
-    };
-    let bound = || match bound_message(&prompt.keymap, key, key_modifiers, scope) {
-        Some(Message::Quit) => Bound::Quit,
-        Some(Message::FilingStatus(FilingStatusMessage::Toggle)) => Bound::StatusToggle,
-        _ => Bound::Other,
-    };
-    page(&hermes_key_facts(prompt), &press, &bound).map(|pressed| match pressed {
-        PageKey::Message(message) => message.into(),
-        PageKey::Quit => Message::Quit,
-    })
 }
 
 pub(in crate::app) fn card_dialog_key(

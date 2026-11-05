@@ -96,8 +96,7 @@ fn asks_for_hermes(message: &Message) -> bool {
                 | HermesFileMessage::ToggleExclusion
                 | HermesFileMessage::ShowInInspection
         ) | Message::QuickFix(QuickFixMessage::Open)
-            | Message::Rules(RulesMessage::Open)
-            | Message::SavedQueries(SavedQueriesMessage::Open)
+            | Message::HermesPage(HermesPage::Rules | HermesPage::SavedQueries)
     )
 }
 
@@ -115,8 +114,6 @@ fn leaves_bar_fields(message: &Message) -> bool {
             | Message::CommandPalette(CommandPaletteMessage::Toggle)
             | Message::KeyBindings(KeyBindingsMessage::Open)
             | Message::ThemeFetch(ThemeFetchMessage::Open)
-            | Message::Rules(RulesMessage::Open)
-            | Message::SavedQueries(SavedQueriesMessage::Open)
             | Message::HermesPage(_)
             | Message::OcrModels(OcrModelsMessage::Open)
             | Message::About(AboutMessage::Open)
@@ -559,7 +556,7 @@ impl App {
             Message::Rules(rules) => self.update_rules(rules),
             Message::SavedQueries(queries) => self.update_saved_queries(queries),
             Message::Tags(tags) => self.update_tags(tags),
-            Message::HermesPage(page) => self.go_to_hermes_page(page),
+            Message::HermesPage(page) => self.show_hermes_page(page),
             Message::DocumentsFiled(result) => self.documents_filed(result),
             Message::About(about_message) => self.update_about(about_message),
             Message::OcrModels(models_message) => self.update_ocr_models(models_message),
@@ -570,6 +567,12 @@ impl App {
                     ncrs_remote::update(remote, remote_message, ctx)
                 });
                 self.run_remote_outcome(outcome)
+            }
+            Message::Settings(SettingsMessage::Close) => {
+                match ncrs_hermes_ui::close_dialog(&mut self.hermes) {
+                    Some(closed) => closed.map(Message::from),
+                    None => self.update_settings(SettingsMessage::Close),
+                }
             }
             Message::Settings(settings_message) => self.update_settings(settings_message),
             Message::Filing(filing_message) => self.update_filing(filing_message),

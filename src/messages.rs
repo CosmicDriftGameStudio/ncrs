@@ -439,7 +439,6 @@ impl From<ncrs_hermes_ui::Message> for Message {
             Hermes::QuickFix(inner) => Self::QuickFix(inner),
             Hermes::SavedQueries(inner) => Self::SavedQueries(inner),
             Hermes::Tags(inner) => Self::Tags(inner),
-            Hermes::HermesPage(page) => Self::HermesPage(page),
             Hermes::DocumentsFiled(result) => Self::DocumentsFiled(result),
             Hermes::HermesColumn(inner) => Self::HermesColumn(inner),
             Hermes::HermesFile(inner) => Self::HermesFile(inner),

@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 
 use crate::facts::{LoadedFacts, ModelKind};
@@ -27,7 +26,6 @@ pub const SERVERS_SECTION: &str = "[[servers]]";
 
 pub const VIEWER_FIELD_ID: &str = "settings-program-view";
 pub const EDITOR_FIELD_ID: &str = "settings-program-edit";
-pub const THREADS_FIELD_ID: &str = "settings-ai-threads";
 pub const ENDPOINT_FIELD_ID: &str = "settings-ai-endpoint";
 pub const MODEL_FIELD_ID: &str = "settings-ai-model";
 pub const OWN_NAMES_FIELD_ID: &str = "settings-own-names";
@@ -91,7 +89,6 @@ pub enum FieldProblem {
     OnlyApps,
     PathNotText,
     Color,
-    Threads,
     Endpoint(AiEndpointProblem),
     /// Empty, but an own server needs it.
     Needed,
@@ -212,10 +209,6 @@ impl SettingsState {
                 .map(ProgramLine::to_text)
                 .unwrap_or_default(),
             SettingField::Color(role) => self.saved_color(role).unwrap_or_default().to_owned(),
-            SettingField::AiThreads => ai
-                .and_then(|section| section.threads.as_ref())
-                .map(|threads| threads.get_ref().to_string())
-                .unwrap_or_default(),
             SettingField::AiEndpoint => ai_text(ai.and_then(|section| section.endpoint.as_ref())),
             SettingField::AiModel => ai_text(ai.and_then(|section| section.model.as_ref())),
             SettingField::Own(_) => String::new(),
@@ -259,7 +252,6 @@ impl SettingsState {
         let checked = match field {
             SettingField::Program(kind) => program_change(kind, text.trim()),
             SettingField::Color(role) => color_change(role, text.trim()),
-            SettingField::AiThreads => threads_change(text.trim()),
             SettingField::AiEndpoint | SettingField::AiModel => self.http_change(),
             SettingField::Own(detail) => {
                 let entry = text.trim();
@@ -306,11 +298,10 @@ impl SettingsState {
         all_valid.then_some(changes)
     }
 
-    /// Threads belong to the model on this machine, endpoint and model name
-    /// to an own server: the other provider's fields are not on the page.
+    /// Endpoint and model name belong to an own server: they are not on the
+    /// page for the model on this machine.
     pub fn is_shown(&self, field: SettingField) -> bool {
         match field {
-            SettingField::AiThreads => self.provider() == AiProviderName::Local,
             SettingField::AiEndpoint | SettingField::AiModel => {
                 self.provider() == AiProviderName::Http
             }
@@ -416,10 +407,9 @@ fn page_of(field: SettingField) -> SettingsFeature {
     match field {
         SettingField::Color(_) => SettingsFeature::Look,
         SettingField::Program(_) => SettingsFeature::Programs,
-        SettingField::AiThreads
-        | SettingField::AiEndpoint
-        | SettingField::AiModel
-        | SettingField::Own(_) => SettingsFeature::Index,
+        SettingField::AiEndpoint | SettingField::AiModel | SettingField::Own(_) => {
+            SettingsFeature::Index
+        }
     }
 }
 
@@ -429,16 +419,7 @@ fn fields_of(change: &SettingChange) -> Vec<SettingField> {
     match change {
         SettingChange::Program { kind, .. } => vec![SettingField::Program(*kind)],
         SettingChange::Color { role, .. } => vec![SettingField::Color(*role)],
-        SettingChange::AiProvider(AiProviderChoice::Local { .. }) => vec![
-            SettingField::AiThreads,
-            SettingField::AiEndpoint,
-            SettingField::AiModel,
-        ],
-        SettingChange::AiProvider(AiProviderChoice::Http { .. }) => vec![
-            SettingField::AiEndpoint,
-            SettingField::AiModel,
-            SettingField::AiThreads,
-        ],
+        SettingChange::AiProvider(_) => vec![SettingField::AiEndpoint, SettingField::AiModel],
         SettingChange::Preset(_)
         | SettingChange::Language(_)
         | SettingChange::HermesEnabled(_)
@@ -493,18 +474,4 @@ fn own_detail_change(detail: OwnDetail, typed: &str, mut entries: Vec<String>) -
         }
     }
     Ok(SettingChange::OwnDetails { detail, entries })
-}
-
-fn threads_change(text: &str) -> Checked {
-    let threads = if text.is_empty() {
-        None
-    } else {
-        Some(
-            text.parse::<NonZeroU32>()
-                .map_err(|_not_a_count| (SettingField::AiThreads, FieldProblem::Threads))?,
-        )
-    };
-    Ok(SettingChange::AiProvider(AiProviderChoice::Local {
-        threads,
-    }))
 }

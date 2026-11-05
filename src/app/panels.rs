@@ -609,7 +609,8 @@ impl App {
         };
         let directory = parent.to_path_buf();
         let name = file.to_string_lossy().into_owned();
-        self.load(self.panels.active, directory, Some(name))
+        let left = self.leave_settings_page();
+        Task::batch([left, self.load(self.panels.active, directory, Some(name))])
     }
 
     /// Starts an async directory read for `side`.

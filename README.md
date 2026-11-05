@@ -237,8 +237,8 @@ The defaults. Most of them can be changed in the keyboard shortcuts dialog (`Cmd
 | `Alt`+`F7` / `Cmd`+`Shift`+`F` (`Ctrl`+`Shift`+`F` on Linux and Windows) | Search below the directory of the active panel; pressed again, it moves to the next field. See [Search](#search) |
 | `F1` / `Cmd`+`Shift`+`P` / `Ctrl`+`Shift`+`P` | Lab (command palette): lists the actions that work where you are, with their keys; type to filter, `↑`/`↓` move, `Enter` runs, `Esc` closes |
 | `Cmd`+`P` / `Ctrl`+`P` | Quick Open: jump to a file by a few letters of its path. See [Quick Open](#quick-open) |
-| `Cmd`+`Shift`+`D` / `Ctrl`+`Shift`+`D` | Status and errors (Hermes on): what the page is for, pipeline state, load, workers, index figures and the last errors. `P` pauses or resumes, `1`/`2`/`3` set the load gentle / balanced / full for this session, `+`/`-` change the worker count, `↑`/`↓` and `Enter` show the file of an error, `Esc` or the key again goes back to the panels. See [Filing](#filing) |
-| `Cmd`+`Shift`+`B` / `A` (`Ctrl`+`Shift` on Linux and Windows) | The Rules and the Saved searches page. See [Filing](#filing) |
+| `Cmd`+`Shift`+`D` / `Ctrl`+`Shift`+`D` | Opens Settings on the Read errors page (Hermes on): the files that could not be read, each with Show file and Process again. `Esc` closes the settings. See [Filing](#filing) |
+| `Cmd`+`Shift`+`B` / `A` (`Ctrl`+`Shift` on Linux and Windows) | Opens Settings on the Rules and the Reports page. See [Filing](#filing) |
 | `Cmd`+`.` / `Ctrl`+`.` | Quick fix for a review item: the fixes for the document under the cursor |
 | `Cmd`+`Shift`+`H` / `Ctrl`+`Shift`+`H` | Process again: runs the file under the cursor through the filing steps again |
 | `Backspace`        | Go to parent directory                   |
@@ -672,7 +672,7 @@ target = true
 - Exactly one archive is the `target`, the archive filed documents go to. An
   inbox cannot be the target, and no location may be the same folder as another
   or lie inside it.
-- `load` has the names `gentle`, `balanced` and `full`; Status and errors
+- `load` has the names `gentle`, `balanced` and `full`; Settings › Index
   shows them as "Gentle", "Balanced" and "Full" (up to 2 workers, up to 4, one
   per processor core). The Futurama variants add "By the book", "Business as
   usual" and "Grade 36" beside them.
@@ -710,13 +710,15 @@ names from the show beside the plain ones:
 **Where things are.** Settings › Index holds what ncrs reads, text recognition,
 the AI model, your own names, the protection of the index and its state.
 Settings › Hermes holds the read folders, the order Hermes learned per area,
-the runs it can undo, and Advanced. Hermes asks in the chat before it moves
+and the runs it can undo. Hermes asks in the chat before it moves
 anything; documents it is unsure about wait there ("3 documents are waiting
-for you") and are gone through one question at a time. Four pages stay as
-single pages, each reached from Settings › Hermes › Advanced or the command
-palette (`F1`): Rules (`rules`), Tags (`file_list_tags_choose`), Saved searches
-(`saved_queries`) and Status and errors (`Cmd`+`Shift`+`D`, `filing_status`;
-also behind "Show" on the unreadable files in Settings › Index).
+for you") and are gone through one question at a time. Four more pages are in
+the same Settings list: Rules (`rules`), Tags (`file_list_tags_choose`),
+Reports (`saved_queries`) and Read errors (`Cmd`+`Shift`+`D`,
+`filing_status`; also behind "Show" on the unreadable files in Settings ›
+Index). Every command opens Settings on its page; `Esc` closes an open dialog
+first and the settings after that. Single values are saved at once, several
+fields sit in a small dialog with Save and Cancel.
 
 ![Settings › Hermes](docs/screenshots/filing.png)
 
@@ -745,12 +747,12 @@ threads = 4
   is checked against its size and checksum before it is used. On Windows and
   x86_64 Linux the model runs on a Vulkan GPU if a driver is present and on the
   CPU otherwise; macOS uses Metal and aarch64 Linux the CPU. The row "AI model"
-  in Status and errors says which ("runs on" the GPU's name or CPU).
+  in Settings › Index says which ("runs on" the GPU's name or CPU).
 - `http` sends text to the server at `endpoint`, which must be on this machine
   for now (`localhost`, `127.0.0.1` or `::1`); `endpoint` and `model` are
   required and `threads` is not allowed. Without a consent given for that
   server, nothing is sent.
-- Status and errors shows a row "AI model" with the state while the AI is on.
+- Settings › Index shows a row "AI model" with the state while the AI is on.
 
 **Recognition baseline.** How often the filing reads a field right is measured
 against a synthetic corpus: 26 documents (invoices, contracts, letters, tax

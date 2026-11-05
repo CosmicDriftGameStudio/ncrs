@@ -24,9 +24,6 @@ impl App {
             .as_ref()
             .is_some_and(|shortcuts| !shortcuts.is_recording());
         input.theme_fetch = self.settings.theme_fetch.is_some();
-        input.rules = self.hermes.rules.is_some();
-        input.saved_queries = self.hermes.saved_queries.is_some();
-        input.tags = self.hermes.tags.is_some();
         input.transfer_dialog = self.ops.transfer_dialog.is_some();
         input.settings = self.settings.page.is_some() && !self.blocking_overlay_is_open();
         drop(input);
@@ -69,26 +66,12 @@ impl App {
             .key_bindings
             .as_ref()
             .is_some_and(KeyBindings::is_recording);
-        let filing_status = self.hermes.filing_status.page_open();
         let filing_card = self
             .hermes
             .filing
             .as_ref()
             .is_some_and(FilingModule::card_can_be_dismissed);
         let theme_fetch = self.settings.theme_fetch.is_some();
-        let rules = self.hermes.rules.is_some();
-        let rules_form = self
-            .hermes
-            .rules
-            .as_ref()
-            .is_some_and(RulesPage::is_editing);
-        let rules_confirming_delete = self
-            .hermes
-            .rules
-            .as_ref()
-            .is_some_and(RulesPage::is_confirming_delete);
-        let saved_queries = self.hermes.saved_queries.is_some();
-        let tags = self.hermes.tags.is_some();
         let about = self.about.is_some();
         let ocr_models = self.settings.ocr_models.is_some();
         let ai_model = self.settings.ai_card_is_shown();
@@ -124,14 +107,8 @@ impl App {
                 command_palette,
                 key_bindings,
                 key_bindings_recording,
-                filing_status,
                 filing_card,
                 theme_fetch,
-                rules,
-                rules_form,
-                rules_confirming_delete,
-                saved_queries,
-                tags,
                 about,
                 ocr_models,
                 ai_model,
@@ -167,14 +144,8 @@ impl App {
                 command_palette,
                 key_bindings,
                 key_bindings_recording,
-                filing_status,
                 filing_card,
                 theme_fetch,
-                rules,
-                rules_form,
-                rules_confirming_delete,
-                saved_queries,
-                tags,
                 about,
                 ocr_models,
                 ai_model,

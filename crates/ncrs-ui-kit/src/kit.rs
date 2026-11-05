@@ -436,7 +436,7 @@ pub fn divider<'a, M: Clone + 'a>(palette: &Palette) -> Element<'a, M> {
 
 /// One setting: its name, the name of the theme it belongs to and a
 /// description on the left, the control in a column of `control_width` on the
-/// right, with `lines_below` (a problem or a warning) under the
+/// right (`Length::Shrink`: only as wide as the control), with `lines_below` (a problem or a warning) under the
 /// description.
 pub fn form_row_with_problem<'a, M: Clone + 'a>(
     label: &str,
@@ -444,7 +444,7 @@ pub fn form_row_with_problem<'a, M: Clone + 'a>(
     description: Option<&str>,
     lines_below: Vec<Element<'a, M>>,
     control: Element<'a, M>,
-    control_width: f32,
+    control_width: Length,
     palette: &Palette,
 ) -> Element<'a, M> {
     let mut names = Row::new()

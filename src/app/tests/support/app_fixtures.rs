@@ -457,20 +457,7 @@ impl App {
     ) -> Self {
         let mut app = Self::with_filing_snapshot(snapshot, taken_at);
         app.hermes.filing_status.open_page();
-        app
-    }
-
-    /// Like [`Self::with_filing_status_page`], with the index open and
-    /// `figures` read from it.
-    pub fn with_filing_inspection(
-        snapshot: ncrs_pipeline::Snapshot,
-        taken_at: std::time::SystemTime,
-        figures: crate::filing::IndexFigures,
-    ) -> Self {
-        let mut app = Self::with_filing_status_page(snapshot, taken_at);
-        app.hermes.filing = Some(FilingModule::in_phase(Phase::Ready));
-        app.hermes.filing_status.figures_arrived(Ok(figures));
-        app
+        app.showing_setting(crate::messages::SettingsFeature::ReadErrors)
     }
 
     /// A prompt on fixed data, for the prompt's own reference image.

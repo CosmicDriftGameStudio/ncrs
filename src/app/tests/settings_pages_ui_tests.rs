@@ -203,9 +203,10 @@ async fn zeigen_on_the_unreadable_files_opens_the_inspection_page() -> TestResul
     let mut simulator = page_simulator(&app);
     simulator.click("Show")?;
     let messages: Vec<Message> = simulator.into_messages().collect();
-    assert_eq!(messages, [settings(SettingsMessage::OpenFilingStatus)]);
+    let show = settings(SettingsMessage::Select(SettingsFeature::ReadErrors));
+    assert_eq!(messages, std::slice::from_ref(&show));
 
-    drop(app.update(settings(SettingsMessage::OpenFilingStatus)));
+    drop(app.update(show));
     assert!(app.inspection_page_is_open_for_test());
     Ok(())
 }

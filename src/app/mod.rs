@@ -76,7 +76,6 @@ use crate::quick_open::{
 };
 #[cfg(test)]
 use crate::review_work::ReviewItem;
-use crate::rules_page::RulesPage;
 use crate::saved_queries::Draft;
 #[cfg(test)]
 use crate::saved_queries::SavedQueries;
@@ -465,22 +464,10 @@ pub struct PromptKeyState {
     pub key_bindings: bool,
     /// The dialog waits for a key to record: every key but Escape is that key.
     pub key_bindings_recording: bool,
-    /// The filing status page is up, so its keys act on the pipeline.
-    pub filing_status: bool,
     /// A filing card that "Not now" may leave is up, so Escape leaves it.
     pub filing_card: bool,
     /// The theme download card is up, so Enter and the arrows are its.
     pub theme_fetch: bool,
-    /// The rules page is up, so Enter, the arrows, Space and Delete are its.
-    pub rules: bool,
-    /// Its form is up, so the text fields take the keys.
-    pub rules_form: bool,
-    /// Its delete question is up, so Enter answers it.
-    pub rules_confirming_delete: bool,
-    /// The saved queries page is up, so Enter, the arrows and Tab are its.
-    pub saved_queries: bool,
-    /// The tags page is up, so the arrows, Space and Enter are its.
-    pub tags: bool,
     /// The about card is up, so keys answer it like a button dialog.
     pub about: bool,
     /// The OCR models card is up, so keys answer it like a button dialog.
@@ -532,14 +519,8 @@ impl Default for PromptKeyState {
             command_palette: false,
             key_bindings: false,
             key_bindings_recording: false,
-            filing_status: false,
             filing_card: false,
             theme_fetch: false,
-            rules: false,
-            rules_form: false,
-            rules_confirming_delete: false,
-            saved_queries: false,
-            tags: false,
             about: false,
             ocr_models: false,
             ai_model: false,

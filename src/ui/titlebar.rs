@@ -22,7 +22,6 @@ pub const LEFT_TAB_ID: &str = "title-tab-left";
 pub const RIGHT_TAB_ID: &str = "title-tab-right";
 pub const HERMES_CHIP_ID: &str = "title-hermes-chip";
 pub const SETTINGS_TAB_ID: &str = "title-tab-settings";
-pub const ABLAGE_TAB_ID: &str = "title-tab-ablage";
 const CLOSE_CROSS: &str = "×";
 /// Characters of room the cross of a hit list tab takes from its title.
 const CROSS_CHARS: usize = 3;
@@ -70,10 +69,6 @@ pub use crate::hermes_status::Tone as HermesTone;
 /// The page that stands in for the panels, as a tab with a cross.
 pub enum PageTab {
     Settings,
-    /// A page of filing; the cross sends what Escape sends on its top level.
-    Filing {
-        close: Box<Message>,
-    },
 }
 
 pub struct TitleBar<'a> {
@@ -215,14 +210,6 @@ pub fn view<'a>(bar: &TitleBar<'a>) -> Element<'a, Message> {
                 lang.text(Msg::SettingsTab),
                 SETTINGS_TAB_ID,
                 Message::Settings(SettingsMessage::Close),
-                palette,
-            ));
-        }
-        Some(PageTab::Filing { close }) => {
-            tabs = tabs.push(page_tab(
-                lang.text(Msg::GroupHermes),
-                ABLAGE_TAB_ID,
-                (**close).clone(),
                 palette,
             ));
         }

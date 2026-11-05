@@ -78,10 +78,16 @@ pub fn nav<'a>(
                 .style(theme::feature_item(palette, shown == Some(feature))),
         );
     }
-    let footer = text(lang.text(Msg::SettingsNavFooter))
-        .size(font_size::SMALL)
-        .color(palette.dim_text)
-        .wrapping(Wrapping::Word);
+    let from_config_file = shown.and_then(feature_config_place).is_some();
+    let footer: Element<'a, Message> = if from_config_file {
+        text(lang.text(Msg::SettingsNavFooter))
+            .size(font_size::SMALL)
+            .color(palette.dim_text)
+            .wrapping(Wrapping::Word)
+            .into()
+    } else {
+        container("").into()
+    };
     container(
         column![
             container(search).padding(Padding {
@@ -123,10 +129,10 @@ pub fn heading<'a>(feature: SettingsFeature, view: &SettingsView<'a>) -> Element
                 .color(palette.dim_text),
         );
     }
-    title = title.push(container("").width(Length::Fill)).push(mono(
-        feature_config_place(feature).to_owned(),
-        palette.dim_text,
-    ));
+    title = title.push(container("").width(Length::Fill));
+    if let Some(place) = feature_config_place(feature) {
+        title = title.push(mono(place.to_owned(), palette.dim_text));
+    }
     column![
         title,
         kit::dim(lang.text(feature_intro(feature)).to_owned(), palette)
@@ -154,76 +160,17 @@ pub fn page<'a>(shown: Option<SettingsFeature>, view: &SettingsView<'a>) -> Elem
             ),
         );
     }
-    let mut first = true;
-    for group in groups_of(feature, view) {
-        let rows: Vec<Element<'a, Message>> = group
-            .rows
-            .into_iter()
-            .filter(|setting| whole_feature || row_matches(setting, &query))
-            .map(|setting| {
-                let marked = view.state.marked_row.as_deref() == Some(setting.label.as_str());
-                let lines_below: Vec<Element<'a, Message>> = setting
-                    .problem
-                    .iter()
-                    .map(|wrong| kit::error_line(wrong.clone(), palette))
-                    .chain(
-                        setting
-                            .warning
-                            .iter()
-                            .map(|caution| kit::warning_line(caution.clone(), palette)),
-                    )
-                    .collect();
-                let form_row = kit::form_row_with_problem(
-                    &setting.label,
-                    setting
-                        .theme_name
-                        .as_deref()
-                        .or(setting.config_key.as_deref()),
-                    setting.description.as_deref(),
-                    lines_below,
-                    setting.control,
-                    setting.control_width.unwrap_or(size::CONTROL_WIDTH),
-                    palette,
-                );
-                if marked {
-                    // The outline is drawn over the content, so the row keeps
-                    // its text and controls clear of it.
-                    container(form_row)
-                        .padding([0.0, spacing::XS])
-                        .style(theme::marked_setting(palette))
-                        .into()
-                } else {
-                    form_row
-                }
-            })
-            .collect();
-        if rows.is_empty() {
-            continue;
-        }
-        let mut content = Column::with_children(rows);
-        if let Some(intro) = group.intro {
-            content = Column::new()
-                .push(kit::dim(intro, palette))
-                .push(content)
-                .spacing(spacing::XS);
-        }
-        // A group without a title would only repeat its row's label.
-        if group.title.is_empty() {
-            body = body.push(container(content).padding(Padding {
-                top: spacing::M,
-                ..Padding::ZERO
-            }));
-            first = false;
-            continue;
-        }
-        body = body.push(if first {
-            kit::first_section(&group.title, content, palette)
-        } else {
-            kit::section(&group.title, content, palette)
-        });
-        first = false;
-    }
-    body.spacing(spacing::XS).into()
+    let sections = ncrs_ui_kit::setting_rows::sections(
+        groups_of(feature, view),
+        |setting| whole_feature || row_matches(setting, &query),
+        view.state.marked_row.as_deref(),
+        palette,
+    );
+    sections
+        .into_iter()
+        .fold(body, |column, section| column.push(section))
+        .spacing(spacing::XS)
+        .into()
 }
 
 pub fn config_broken_text(broken: &ConfigError, view: &SettingsView<'_>) -> String {

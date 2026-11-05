@@ -115,7 +115,7 @@ pub fn update_ai(
         AiModelMessage::Progress => Task::none(),
         AiModelMessage::ShowAiSetting => {
             settings.ai_model = None;
-            super::page::show_setting(settings, ctx, SettingsFeature::Hermes, None, actions)
+            super::page::show_setting(settings, ctx, SettingsFeature::Hermes, None)
         }
         AiModelMessage::Open => open_ai(settings, ctx, actions),
         AiModelMessage::Close => close_ai(settings),

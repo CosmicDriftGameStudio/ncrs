@@ -15,7 +15,7 @@ All notable changes to this project are documented here. The format follows
   opens the About card.
 - The Windows build has an icon and the version info in its file properties.
 - On Windows and x86_64 Linux the built-in AI model uses a Vulkan GPU if a
-  driver is present and the CPU otherwise; Status and errors shows which.
+  driver is present and the CPU otherwise; Settings › Index shows which.
   `ncrs --check-ai <folder>` loads the model from a folder and reports the
   device and the time of three sentences.
 - The Rules page has a form to make and change rules; while it holds unsaved
@@ -95,18 +95,35 @@ All notable changes to this project are documented here. The format follows
   review list, rule suggestions, sort again, the overview and the first-time
   setup card are gone. Folders, order, runs and the index are in Settings ›
   Index and Settings › Hermes; sorting, reviewing waiting documents, and
-  changing an area happen in the Hermes chat. Rules, Tags, Saved searches and
-  Status and errors stay as single pages, reached from Settings › Hermes ›
-  Advanced and the command palette. The keys `filing_setup`, `review_list`,
-  `rule_suggestions`, `reorganisation_plan`, `undo_reorganisation` and
+  changing an area happen in the Hermes chat. Rules, Tags, Reports and Read
+  errors are pages of Settings, listed in its sidebar. The keys `filing_setup`,
+  `review_list`, `rule_suggestions`, `reorganisation_plan`, `undo_reorganisation` and
   `hermes_reprocess_folder` no longer exist; an old config that binds one of
   them keeps loading and the binding does nothing.
 - The editing form of the review list, the plan preview of sort again, "read
   again with the AI" and filing an unsure document into a chosen folder have
   no replacement yet.
+- The Rules, Tags, Reports and Read errors pages work like the rest of
+  Settings, so their own keys are gone: the arrow keys and `Space` to move and
+  switch, `Delete` to remove, `n` for a new rule or report, `Enter` and `Tab` in
+  lists, `Alt`+arrows to reorder rules, `p` to pause, `1`, `2` and `3` for the
+  load and `+` and `-` for the workers. Most of these are buttons in a row
+  now. Gone without a replacement: moving a cursor through the lists, the
+  per-file tick boxes of the read errors (use "Process again" or "Process all
+  again"), the table of steps and workers, the fold-away list of a rule's try
+  run, and the worker count, which `[filing] load` in `config.toml` still sets.
 
 ### Changed
 
+- Rules, Tags, Reports and Read errors are pages of Settings with the same
+  rows and buttons as its other pages. "+ Rule" and "+ Report" are buttons in
+  the add row; the new-report dialog starts from a template or from nothing.
+  The rule dialog is wider, so the value of every condition has room. Rows show
+  their whole text, tags under a group are indented, and the read errors have
+  "Process all again". Dialogs and buttons say "Remove" where they remove a
+  rule, a report or a tag. The footer "Everything lives in config.toml" only shows
+  on pages that really come from it, and the line about the loaded AI model is
+  in Settings › Index.
 - Windows and Linux now show the same kind of font as the Mac: DejaVu Sans Mono
   is embedded in the program file and used everywhere. On Linux this is a
   different font than before; the Mac keeps its system font.

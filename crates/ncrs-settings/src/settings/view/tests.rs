@@ -1,4 +1,3 @@
-use std::num::NonZeroU32;
 use std::path::Path;
 
 use crate::facts::DocumentsFacts;
@@ -168,9 +167,8 @@ fn leaving_with_a_wrong_value_writes_nothing_and_shows_it() {
 }
 
 #[test]
-fn leaving_writes_an_own_server_once_and_not_the_threads_it_hides() {
+fn leaving_writes_an_own_server_once() {
     let mut state = state_of("");
-    state.edit(SettingField::AiThreads, "4".to_owned());
     assert_eq!(state.choose_provider(AiProviderName::Http), None);
     state.edit(
         SettingField::AiEndpoint,
@@ -189,7 +187,7 @@ fn leaving_writes_an_own_server_once_and_not_the_threads_it_hides() {
 #[test]
 fn enter_without_typing_writes_nothing() {
     let mut state = state_of("");
-    assert_eq!(state.submit(SettingField::AiThreads), None);
+    assert_eq!(state.submit(SettingField::AiModel), None);
     assert!(state.problems.is_empty());
 }
 
@@ -199,9 +197,6 @@ fn a_wrong_value_stays_at_its_row_and_is_not_written() {
     let accent = SettingField::Color(ColorRole::Accent);
     assert_eq!(typed(&mut state, accent, "red"), None);
     assert_eq!(state.problems.get(&accent), Some(&FieldProblem::Color));
-    let threads = SettingField::AiThreads;
-    assert_eq!(typed(&mut state, threads, "0"), None);
-    assert_eq!(state.problems.get(&threads), Some(&FieldProblem::Threads));
     let editor = SettingField::Program(OpenKind::Edit);
     assert_eq!(typed(&mut state, editor, "bin/edit"), None);
     assert_eq!(
@@ -262,12 +257,6 @@ fn a_right_value_becomes_its_change_and_an_empty_one_drops_the_line() {
             kind: OpenKind::View,
             line: None,
         })
-    );
-    assert_eq!(
-        typed(&mut state, SettingField::AiThreads, "4"),
-        Some(SettingChange::AiProvider(AiProviderChoice::Local {
-            threads: NonZeroU32::new(4),
-        }))
     );
 }
 

@@ -224,11 +224,11 @@ impl App {
         spec: &QuerySpec,
         report: Option<SavedQueryId>,
     ) -> Task<Message> {
-        self.hermes.saved_queries = None;
+        let left = self.leave_settings_page();
         let opened = self.open_search();
         self.search.start_from(spec, report);
         self.refresh_search_rows();
-        Task::batch([opened, self.restart_search()])
+        Task::batch([left, opened, self.restart_search()])
     }
 
     pub(in crate::app) fn update_search(&mut self, message: SearchMessage) -> Task<Message> {

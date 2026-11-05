@@ -234,19 +234,19 @@ impl App {
     /// Everything on top of the panels except the context menu, which a new
     /// right click may replace.
     pub(in crate::app) fn blocking_overlay_is_open(&self) -> bool {
-        self.ablage_tab_is_open() || self.dialog_is_open()
+        self.dialog_is_open()
     }
 
-    /// The page of Hermes that stands in for the panels.
-    pub(in crate::app) fn ablage_tab_is_open(&self) -> bool {
-        self.hermes.filing_status.page_open() || self.hermes.page_is_open()
-    }
-
-    /// Closes the page of filing without a word, for a page that replaces it.
-    pub(in crate::app) fn close_ablage_tab(&mut self) -> Task<Message> {
-        self.hermes.filing_status.close_page();
-        self.hermes.close_pages();
-        Task::none()
+    /// A dialog of a settings page is up (Hermes pages or Index/Hermes page
+    /// dialogs). Not part of `blocking_overlay_is_open`: Escape in these dialogs
+    /// is routed through `input.settings`, which depends on it.
+    pub(in crate::app) fn page_dialog_is_open(&self) -> bool {
+        ncrs_hermes_ui::dialog_is_open(&self.hermes)
+            || self
+                .settings
+                .page
+                .as_ref()
+                .is_some_and(|state| state.dialog_is_open())
     }
 
     /// Every dialog and card that covers the panels and the pages.

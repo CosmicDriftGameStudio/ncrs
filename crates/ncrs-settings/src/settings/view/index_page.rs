@@ -67,17 +67,7 @@ pub fn text_row<'a>(
     description: Option<String>,
     control: Element<'a, Message>,
 ) -> SettingRow<'a> {
-    SettingRow {
-        label,
-        theme_name: None,
-        config_key: None,
-        description,
-        problem: None,
-        warning: None,
-        control,
-        control_width: Some(SETTINGS_WIDE_CONTROL_WIDTH),
-        in_command_list: false,
-    }
+    SettingRow::text(label, description, control)
 }
 
 /// The locations as the file says them, else as the module runs them.
@@ -125,25 +115,15 @@ pub fn folder_row<'a>(
         ),
         None => path,
     };
-    let palette = view.palette;
-    let mut control = Row::new()
-        .spacing(spacing::S)
-        .align_y(alignment::Vertical::Center);
-    if let Some(status_text) = status {
-        control = control.push(kit::dim(status_text, palette));
-    }
-    let with_buttons = buttons
-        .into_iter()
-        .fold(control, |controls, button| controls.push(button));
     SettingRow {
         warning: folder_is_disconnected(location, view)
             .then(|| lang.text(Msg::SettingsIndexFolderMissing).to_owned()),
-        ..text_row(
+        ..SettingRow::listed(
             folder_name(location),
             Some(where_it_is),
-            container(with_buttons)
-                .align_x(alignment::Horizontal::Right)
-                .into(),
+            status,
+            buttons,
+            view.palette,
         )
     }
 }
@@ -175,16 +155,11 @@ pub fn add_folder_row<'a>(
         Tone::Secondary,
         view.palette,
     ));
-    SettingRow {
-        problem: view.state.folder_note.clone(),
-        ..text_row(
-            String::new(),
-            empty.map(|msg| lang.text(msg).to_owned()),
-            container(Row::with_children(buttons).spacing(spacing::S))
-                .align_x(alignment::Horizontal::Right)
-                .into(),
-        )
-    }
+    SettingRow::adding(
+        empty.map(|msg| lang.text(msg).to_owned()),
+        view.state.folder_note.clone(),
+        buttons,
+    )
 }
 
 fn read_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
@@ -344,12 +319,16 @@ fn ai_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
         }
         AiState::Downloading | AiState::OwnServer { .. } => None,
     };
-    let model = simple_row(
+    let mut model = simple_row(
         Msg::SettingsIndexRowAi,
         Some(Msg::SettingsIndexRowAiNote),
         model_control(state, color, button.into_iter().collect()),
         lang,
     );
+    if let Some(detail) = &view.facts.ai_detail {
+        let note = lang.text(Msg::SettingsIndexRowAiNote);
+        model.description = Some(format!("{note}\n{detail}"));
+    }
     let server = simple_row(
         Msg::SettingsIndexRowServer,
         Some(Msg::SettingsIndexRowServerNote),
@@ -434,6 +413,7 @@ pub fn own_detail_row<'a>(detail: OwnDetail, view: &SettingsView<'a>) -> Setting
         control,
         control_width: Some(SETTINGS_WIDE_CONTROL_WIDTH),
         in_command_list: true,
+        list_indent: None,
     }
 }
 
@@ -497,7 +477,7 @@ fn state_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
             None,
             kit::button(
                 lang.text(Msg::SettingsIndexErrorsShow),
-                Some(SettingsMessage::OpenFilingStatus),
+                Some(SettingsMessage::Select(SettingsFeature::ReadErrors)),
                 Tone::Secondary,
                 palette,
             ),

@@ -1,6 +1,5 @@
 //! The reads that feed the status page and the title and status bar.
 
-use std::num::NonZeroUsize;
 use std::time::SystemTime;
 
 use iced::Task;
@@ -8,37 +7,14 @@ use ncrs_filing::filing::FilingModule;
 use ncrs_pipeline::{Load, Runner, RunnerState, Snapshot};
 
 use super::column::{refresh_hermes_column, settle_reading_again};
-use super::{filing_job, open_page, Outcome};
+use super::{filing_job, Outcome};
 use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::message::{FilingStatusMessage, HermesPage, Message};
 use crate::state::Hermes;
 
-/// Reads the figures on the blocking pool: the intake may hold the index for
-/// as long as it hashes a large file.
-pub fn request_index_figures(hermes: &mut Hermes) -> Task<Message> {
-    if hermes.filing_status.figures_in_flight() {
-        return Task::none();
-    }
-    let Some(reader) = hermes
-        .filing
-        .as_ref()
-        .and_then(FilingModule::index_figures_reader)
-    else {
-        return Task::none();
-    };
-    hermes.filing_status.figures_requested();
-    Task::perform(
-        tokio::task::spawn_blocking(move || reader.read()),
-        |joined| {
-            Message::FilingStatus(FilingStatusMessage::IndexFigures(
-                joined.unwrap_or_else(|err| Err(err.to_string())),
-            ))
-        },
-    )
-}
-
-/// Reads the counts of Hermes on the blocking pool, like the index figures.
+/// Reads the counts of Hermes on the blocking pool: the intake may hold the
+/// index for as long as it hashes a large file.
 pub fn request_hermes_counts(hermes: &mut Hermes) -> Task<Message> {
     let Some(reader) = hermes
         .filing
@@ -66,12 +42,6 @@ impl Hermes {
             .as_ref()
             .map_or_else(Snapshot::off, Runner::snapshot);
         self.filing_status.set_snapshot(snapshot, now);
-        self.filing_status.set_ai(
-            self.filing
-                .as_ref()
-                .map(FilingModule::ai_status)
-                .unwrap_or_default(),
-        );
     }
 
     /// The pipeline, unless it is stopped.
@@ -97,14 +67,11 @@ impl Hermes {
     }
 }
 
-/// The status page opens: the app has checked that nothing covers it.
+/// The Read errors page is shown: the snapshot is taken at once.
 pub fn open_filing_status_page(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Outcome {
     hermes.filing_status.open_page();
     hermes.refresh_filing_snapshot(ctx.now);
-    (
-        request_index_figures(hermes),
-        vec![Action::CloseContextMenu],
-    )
+    (Task::none(), vec![Action::CloseContextMenu])
 }
 
 pub fn update_filing_status(
@@ -124,20 +91,8 @@ fn filing_status_step(
     actions: &mut Vec<Action>,
 ) -> Task<Message> {
     match message {
-        FilingStatusMessage::Open => {
-            actions.push(Action::OpenFilingStatus);
-            Task::none()
-        }
-        FilingStatusMessage::Close => {
-            hermes.filing_status.close_page();
-            Task::none()
-        }
-        FilingStatusMessage::Toggle => {
-            match open_page(hermes, ctx) {
-                Some(HermesPage::Inspection) => hermes.filing_status.close_page(),
-                Some(_) => actions.push(Action::GoToHermesPage(HermesPage::Inspection)),
-                None => actions.push(Action::OpenFilingStatus),
-            }
+        FilingStatusMessage::Open | FilingStatusMessage::Toggle => {
+            actions.push(Action::ShowPage(HermesPage::Inspection));
             Task::none()
         }
         FilingStatusMessage::Restarted(generation) => {
@@ -156,63 +111,27 @@ fn filing_status_step(
             }
             Task::none()
         }
-        FilingStatusMessage::StepWorkers(delta) => {
-            let Some(runner) = hermes.live_pipeline() else {
-                return Task::none();
-            };
-            let current = match hermes.filing.as_ref().map(FilingModule::load) {
-                Some(Load::Workers(count)) => count.get(),
-                _ => runner.snapshot().worker_target,
-            };
-            let most = std::thread::available_parallelism().map_or(1, NonZeroUsize::get);
-            let stepped = current.saturating_add_signed(isize::from(delta));
-            let wanted = if delta > 0 {
-                stepped.min(most.max(current))
-            } else {
-                stepped.max(1)
-            };
-            if let Some(count) = NonZeroUsize::new(wanted) {
-                hermes.set_pipeline_load(Load::Workers(count), ctx.now);
-            }
-            Task::none()
-        }
         FilingStatusMessage::HermesCounts(counts) => {
             hermes.filing_status.counts_arrived(counts);
             Task::none()
         }
-        FilingStatusMessage::IndexFigures(figures) => {
-            hermes.filing_status.figures_arrived(figures);
-            Task::none()
-        }
         FilingStatusMessage::ErrorActivated(path) => {
-            hermes.filing_status.close_page();
             actions.push(Action::RevealFile(path));
             Task::none()
         }
-        FilingStatusMessage::MoveError(delta) => {
-            hermes.filing_status.move_error_selection(delta);
+        FilingStatusMessage::ProcessOneAgain(path) => {
+            actions.push(Action::ReadPathsAgain(vec![path]));
             Task::none()
         }
-        FilingStatusMessage::SelectError(position) => {
-            hermes.filing_status.select_error(position);
-            Task::none()
-        }
-        FilingStatusMessage::ToggleErrorChecked(path) => {
-            hermes.filing_status.toggle_error_checked(&path);
-            Task::none()
-        }
-        FilingStatusMessage::ToggleSelectedErrorChecked => {
-            hermes.filing_status.toggle_selected_error_checked();
-            Task::none()
-        }
-        FilingStatusMessage::ProcessAgain => {
-            actions.push(Action::ReadPathsAgain(
-                hermes.filing_status.files_to_process_again(),
-            ));
-            Task::none()
-        }
-        FilingStatusMessage::ToggleSteps => {
-            hermes.filing_status.toggle_steps();
+        FilingStatusMessage::ProcessAllAgain => {
+            let files: Vec<_> = hermes
+                .filing_status
+                .errors_newest_first()
+                .map(|error| error.file.clone())
+                .collect();
+            if !files.is_empty() {
+                actions.push(Action::ReadPathsAgain(files));
+            }
             Task::none()
         }
     }
@@ -236,10 +155,5 @@ fn tick(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Task<M
     } else {
         Task::none()
     };
-    let figures = if hermes.filing_status.tick_wants_figures() {
-        request_index_figures(hermes)
-    } else {
-        Task::none()
-    };
-    Task::batch([counts, settled, figures])
+    Task::batch([counts, settled])
 }

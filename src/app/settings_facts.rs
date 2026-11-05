@@ -8,14 +8,50 @@ use std::time::SystemTime;
 use chrono::{DateTime, Local, TimeZone as _};
 
 use crate::app::*;
+use ncrs_ai::Compute;
 use ncrs_config::config::FilingLocation;
 use ncrs_config::SettingsFeature;
 use ncrs_filing::chat_work::{ChatAccess, ChatResult, ChatWork, RecentRun};
+use ncrs_filing::filing::AiStatus;
+use ncrs_i18n::{fill_template, Language, Msg};
 use ncrs_index::BatchId;
 use ncrs_intake::area_order_plain;
 use ncrs_pipeline::RunnerState;
 use ncrs_settings::facts::{AiState, AreaFacts, DocumentsFacts, LoadedFacts, RunDay, RunFacts};
 use ncrs_settings::folders::AddAs;
+
+/// The line under the AI row of the Index page: which model is in memory and
+/// on what it computes, or why it failed.
+pub(in crate::app) fn ai_detail(status: &AiStatus, lang: Language) -> Option<String> {
+    match status {
+        AiStatus::Loaded {
+            name,
+            memory_bytes,
+            compute,
+        } => {
+            let computes_on = match compute {
+                Compute::Gpu(device) => device.as_str(),
+                Compute::Cpu => lang.text(Msg::FilingStatusAiComputeCpu),
+            };
+            Some(fill_template(
+                lang.text(Msg::FilingStatusAiLoaded),
+                &[
+                    ("{name}", name),
+                    ("{memory}", &ncrs_ui_kit::format::size(*memory_bytes)),
+                    ("{compute}", computes_on),
+                ],
+            ))
+        }
+        AiStatus::Failed(reason) => Some(fill_template(
+            lang.text(Msg::FilingStatusAiFailed),
+            &[("{reason}", reason)],
+        )),
+        AiStatus::Off
+        | AiStatus::NotDownloaded
+        | AiStatus::NotLoadedYet
+        | AiStatus::Http { .. } => None,
+    }
+}
 
 impl App {
     pub(in crate::app) fn documents_facts(
@@ -38,6 +74,7 @@ impl App {
             runs: loaded.runs,
             folder_files: loaded.folder_files,
             system_reads_scans: self.system_reads_scans,
+            ai_detail: ai_detail(&overview.ai_status, self.lang),
             rules: usize::try_from(counts.confirmed_rules).unwrap_or(usize::MAX),
             ai: match overview.ai_tile() {
                 crate::hermes_overview::AiTile::Off => AiState::Off,
@@ -126,12 +163,6 @@ impl App {
             None => Task::none(),
         };
         Task::batch([left, opened, changed])
-    }
-
-    pub(in crate::app) fn open_rules_from_settings(&mut self) -> Task<Message> {
-        let left = self.leave_settings_page();
-        let opened = self.update(Message::Rules(RulesMessage::Open));
-        Task::batch([left, opened])
     }
 
     /// Puts the run of `batch` back; the page reads its facts again afterwards.

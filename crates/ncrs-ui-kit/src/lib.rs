@@ -42,6 +42,7 @@ mod menu_button;
 pub mod numbered_hint;
 pub mod palette;
 pub mod picker;
+pub mod setting_rows;
 pub mod tags;
 pub mod theme;
 

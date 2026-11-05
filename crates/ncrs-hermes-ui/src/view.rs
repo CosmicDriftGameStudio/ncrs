@@ -4,18 +4,19 @@
 
 use std::path::Path;
 
-use iced::widget::{column, container};
-use iced::{Element, Length, Size};
+use iced::widget::Column;
+use iced::{Element, Size};
 use ncrs_config::config::AiSetting;
 use ncrs_config::file_list_tags::FileListTags;
 use ncrs_config::palette::Palette;
 use ncrs_filing::filing::{FilingModule, Phase};
 use ncrs_i18n::{fill_template, FuturamaName, Language, Msg};
 use ncrs_pipeline::RunnerState;
+use ncrs_ui_kit::setting_rows;
 
 use crate::hermes_overview::{ModuleState, OcrFacts, OverviewFacts, Protection};
 use crate::hermes_status::HermesStatus;
-use crate::message::Message;
+use crate::message::{HermesPage, Message};
 use crate::state::Hermes;
 use crate::ui::{
     filing_status as filing_status_ui, rules as rules_ui, saved_queries as saved_queries_ui,
@@ -85,85 +86,68 @@ pub fn overview_facts(
     }
 }
 
-fn filing_status_page<'a>(hermes: &'a Hermes, ctx: &ViewCtx<'a>) -> Option<Element<'a, Message>> {
-    if !hermes.filing_status.page_open() {
-        return None;
+/// The rows of one of the pages the settings window fills from here: the
+/// rules, the reports, the tags or the read errors.
+pub fn page_content<'a>(
+    hermes: &'a Hermes,
+    page: HermesPage,
+    ctx: &ViewCtx<'a>,
+) -> Element<'a, Message> {
+    let (lang, palette) = (ctx.lang, ctx.palette);
+    let mut content = Column::new();
+    let groups = match page {
+        HermesPage::Rules => hermes
+            .rules
+            .as_ref()
+            .map(|state| rules_ui::groups(state, lang, palette)),
+        HermesPage::SavedQueries => hermes
+            .saved_queries
+            .as_ref()
+            .map(|state| saved_queries_ui::groups(state, lang, palette)),
+        HermesPage::Tags => hermes
+            .tags
+            .as_ref()
+            .map(|state| tags_ui::groups(state, ctx.file_list_tags, lang, palette)),
+        HermesPage::Inspection => {
+            if let Some(searched) = hermes.pdf_library_missing.as_deref() {
+                content = content.push(filing_status_ui::pdf_missing_notice(
+                    searched, lang, palette,
+                ));
+            }
+            Some(filing_status_ui::groups(
+                &hermes.filing_status,
+                lang,
+                palette,
+            ))
+        }
+    };
+    for section in setting_rows::sections(groups.unwrap_or_default(), |_| true, None, palette) {
+        content = content.push(section);
     }
-    let index_open = hermes
-        .filing
-        .as_ref()
-        .is_some_and(|module| matches!(module.phase(), Phase::Ready));
-    Some(filing_status_ui::view(
-        &hermes.filing_status,
-        filing_status_ui::Setting {
-            load: hermes.filing.as_ref().map(FilingModule::load),
-            index_open,
-            pdf_library_missing: hermes.pdf_library_missing.as_deref(),
-        },
-        ctx.window_size,
-        ctx.lang,
-        ctx.palette,
-    ))
+    content.into()
 }
 
-/// The open single page below the title bar, with the status bar of Hermes
-/// under it.
-pub fn ablage_area<'a>(hermes: &'a Hermes, ctx: &ViewCtx<'a>) -> Option<Element<'a, Message>> {
-    let lang = ctx.lang;
-    let space = lang.text(Msg::HermesKitKeySpace);
-    let (page, hints): (_, Vec<(&str, Msg)>) = if let Some(state) = hermes.rules.as_ref() {
-        (
-            rules_ui::view(state, lang, ctx.palette),
-            vec![
-                ("N", Msg::RulesHintNew),
-                (space, Msg::RulesHintToggle),
-                ("Alt ↑↓", Msg::RulesHintOrder),
-                ("Del", Msg::RulesHintDelete),
-            ],
-        )
-    } else if let Some(state) = hermes.tags.as_ref() {
-        (
-            tags_ui::view(state, ctx.file_list_tags, lang, ctx.palette),
-            vec![
-                ("↑↓", Msg::HermesKitHintSelect),
-                (space, Msg::RulesHintToggle),
-                ("Esc", Msg::DialogClose),
-            ],
-        )
-    } else if let Some(state) = hermes.saved_queries.as_ref() {
-        (
-            saved_queries_ui::view(state, lang, ctx.palette),
-            vec![
-                ("↑↓", Msg::HermesKitHintSelect),
-                ("N", Msg::RulesHintNew),
-                ("Esc", Msg::DialogClose),
-            ],
-        )
-    } else {
-        (
-            filing_status_page(hermes, ctx)?,
-            vec![
-                ("↑↓", Msg::HermesKitHintSelect),
-                (space, Msg::HermesKitHintCheck),
-                ("Esc", Msg::DialogClose),
-            ],
-        )
-    };
-    let bar = ncrs_ui_kit::hermes_kit::status_bar(
-        lang.text(Msg::GroupHermes),
-        &hints,
-        hermes_status(hermes)
-            .map(|status| status.line(lang))
-            .unwrap_or_default(),
-        lang,
-        ctx.palette,
-    );
-    Some(
-        container(column![page, bar])
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .into(),
-    )
+/// The dialogs of the pages above, to be stacked over the window; at most
+/// one of them is up.
+pub fn dialogs<'a>(hermes: &'a Hermes, ctx: &ViewCtx<'a>) -> Vec<Element<'a, Message>> {
+    let (window, lang, palette) = (ctx.window_size, ctx.lang, ctx.palette);
+    [
+        hermes
+            .rules
+            .as_ref()
+            .and_then(|state| rules_ui::dialog(state, window, lang, palette)),
+        hermes
+            .saved_queries
+            .as_ref()
+            .and_then(|state| saved_queries_ui::dialog(state, window, lang, palette)),
+        hermes
+            .tags
+            .as_ref()
+            .and_then(|state| tags_ui::dialog(state, window, lang, palette)),
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
 }
 
 pub fn hermes_status(hermes: &Hermes) -> Option<HermesStatus> {

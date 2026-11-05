@@ -1,3 +1,4 @@
+use super::hermes_pages::hermes_page_of;
 use crate::app::*;
 use iced::widget::column;
 
@@ -85,7 +86,7 @@ impl App {
         &mut self,
         step: impl FnOnce(&mut ncrs_settings::Settings, &ncrs_settings::Ctx<'_>) -> R,
     ) -> R {
-        let blocking_overlay_open = self.blocking_overlay_is_open();
+        let blocking_overlay_open = self.blocking_overlay_is_open() || self.page_dialog_is_open();
         let dialog_open = self.dialog_is_open();
         let mut settings = std::mem::take(&mut self.settings);
         let outcome = step(
@@ -115,6 +116,7 @@ impl App {
         for action in actions {
             tasks.push(self.run_settings_action(action));
         }
+        tasks.push(self.sync_hermes_page());
         tasks.push(self.load_documents_facts());
         Task::batch(tasks)
     }
@@ -131,23 +133,14 @@ impl App {
                 Task::none()
             }
             Ask::ShowNotice(text) => self.show_notice(text),
-            Ask::LeaveAblagePage => {
-                let left_ablage = self.close_ablage_tab();
-                self.panels.context_menu = None;
-                self.panels.set_path_field(None);
-                self.notice = None;
-                left_ablage
-            }
             Ask::PickProgram { kind, apps_only } => (self.pick_file)(FilePick::Program {
                 apps_only,
             })
             .map(move |path| Message::Settings(SettingsMessage::ProgramPicked { kind, path })),
             Ask::PickThemeFile => (self.pick_file)(FilePick::ThemeFile)
                 .map(|path| Message::Settings(SettingsMessage::ThemeFilePicked(path))),
-            Ask::ShowTagsPage => self.show_tags_page(),
             Ask::OpenServerAdd => self.update(Message::Remote(RemoteMessage::OpenAdd)),
             Ask::OpenServer(url) => self.update(Message::Remote(RemoteMessage::OpenServer(url))),
-            Ask::OpenFilingStatus => self.update(Message::FilingStatus(FilingStatusMessage::Open)),
             Ask::Protection(position) => {
                 let facts = self.overview_facts(
                     self.settings
@@ -181,7 +174,6 @@ impl App {
                 self.update(Message::FilingStatus(FilingStatusMessage::TogglePause))
             }
             Ask::UndoRun(batch) => self.undo_run(batch),
-            Ask::OpenRules => self.open_rules_from_settings(),
             Ask::RefreshAiModel => {
                 if let Some(module) = self.hermes.filing.as_ref() {
                     module.refresh_ai_model();
@@ -227,7 +219,8 @@ impl App {
     }
 
     pub(in crate::app) fn close_settings(&mut self) -> Task<Message> {
-        ncrs_settings::close_settings(&mut self.settings).map(Message::from_settings)
+        let closed = ncrs_settings::close_settings(&mut self.settings).map(Message::from_settings);
+        Task::batch([closed, self.sync_hermes_page()])
     }
 
     /// Writes the values typed on the page and closes it.
@@ -239,7 +232,15 @@ impl App {
         &'a self,
         state: &'a settings_ui::SettingsState,
     ) -> Container<'a, Message> {
-        let page = settings_ui::view(&self.settings_view(state)).map(Message::Settings);
+        let hermes_ctx = self.hermes_view_ctx();
+        let page =
+            settings_ui::view_with(&self.settings_view(state), Message::Settings, |feature| {
+                let page = hermes_page_of(feature)?;
+                Some(
+                    ncrs_hermes_ui::page_content(&self.hermes, page, &hermes_ctx)
+                        .map(Message::from),
+                )
+            });
         let bar = settings_ui::status_bar(&settings_ui::StatusBar {
             changed: state.changed,
             failure: self.settings.failure.as_deref(),

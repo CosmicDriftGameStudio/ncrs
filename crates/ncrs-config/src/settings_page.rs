@@ -10,6 +10,10 @@ pub enum SettingsFeature {
     Servers,
     Index,
     Hermes,
+    Rules,
+    Tags,
+    Reports,
+    ReadErrors,
 }
 
 /// The heading over a run of pages in the feature list.
@@ -20,7 +24,7 @@ pub enum SettingsGroup {
 }
 
 impl SettingsFeature {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 11] = [
         Self::Look,
         Self::Language,
         Self::Programs,
@@ -28,14 +32,32 @@ impl SettingsFeature {
         Self::Servers,
         Self::Index,
         Self::Hermes,
+        Self::Rules,
+        Self::Tags,
+        Self::Reports,
+        Self::ReadErrors,
     ];
+
+    /// Pages whose rows the app puts in: they belong to the Hermes module,
+    /// which the settings crate does not know.
+    pub fn is_filled_by_app(self) -> bool {
+        matches!(
+            self,
+            Self::Rules | Self::Tags | Self::Reports | Self::ReadErrors
+        )
+    }
 
     pub fn group(self) -> SettingsGroup {
         match self {
             Self::Look | Self::Language | Self::Programs | Self::Keys | Self::Servers => {
                 SettingsGroup::General
             }
-            Self::Index | Self::Hermes => SettingsGroup::Documents,
+            Self::Index
+            | Self::Hermes
+            | Self::Rules
+            | Self::Tags
+            | Self::Reports
+            | Self::ReadErrors => SettingsGroup::Documents,
         }
     }
 }

@@ -177,28 +177,14 @@ impl App {
     }
 
     fn page_tab_is_open(&self) -> bool {
-        self.settings.page.is_some() || self.ablage_tab_is_open()
+        self.settings.page.is_some()
     }
 
     fn page_tab(&self) -> Option<titlebar::PageTab> {
-        if self.settings.page.is_some() {
-            Some(titlebar::PageTab::Settings)
-        } else {
-            self.open_hermes_page()
-                .map(|page| titlebar::PageTab::Filing {
-                    close: Box::new(Self::close_message_of(page)),
-                })
-        }
-    }
-
-    /// What Escape sends on the top level of the page of filing.
-    fn close_message_of(page: HermesPage) -> Message {
-        match page {
-            HermesPage::Inspection => Message::FilingStatus(FilingStatusMessage::Close),
-            HermesPage::SavedQueries => Message::SavedQueries(SavedQueriesMessage::Close),
-            HermesPage::Rules => Message::Rules(RulesMessage::Close),
-            HermesPage::Tags => Message::Tags(TagsMessage::Close),
-        }
+        self.settings
+            .page
+            .is_some()
+            .then_some(titlebar::PageTab::Settings)
     }
 
     /// The name of the colour theme when the palette is one of the presets.

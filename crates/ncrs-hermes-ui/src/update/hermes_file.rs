@@ -233,13 +233,7 @@ pub fn role_saved(
     }
 }
 
-/// Opens the Hermes page on the inspection, at the file's error if the page
-/// lists one for it.
-pub fn show_in_inspection(hermes: &Hermes, path: &Path, ctx: &Ctx<'_>, actions: &mut Vec<Action>) {
-    actions.push(if super::open_page(hermes, ctx).is_some() {
-        Action::GoToHermesPage(HermesPage::Inspection)
-    } else {
-        Action::OpenFilingStatus
-    });
-    actions.push(Action::SelectErrorOf(path.to_path_buf()));
+/// Opens the settings on the Read errors page.
+pub fn show_in_inspection(actions: &mut Vec<Action>) {
+    actions.push(Action::ShowPage(HermesPage::Inspection));
 }

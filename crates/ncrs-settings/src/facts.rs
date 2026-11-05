@@ -84,6 +84,10 @@ pub struct DocumentsFacts {
     pub folder_files: BTreeMap<PathBuf, usize>,
     pub rules: usize,
     pub ai: AiState,
+    /// What the model in use is, worded: file name, memory and what it
+    /// computes on, or why it failed. `None` while there is nothing to add to
+    /// the state.
+    pub ai_detail: Option<String>,
     /// The system brings a recognizer for scans and photos (macOS Vision).
     pub system_reads_scans: bool,
 }

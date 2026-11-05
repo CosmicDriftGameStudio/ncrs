@@ -30,7 +30,7 @@ pub fn update(
         SettingsMessage::Toggle if settings.page.is_some() => {
             leave_page(settings, ctx, close_settings)
         }
-        SettingsMessage::Toggle => open_settings(settings, ctx, actions),
+        SettingsMessage::Toggle => open_settings(settings, ctx),
         SettingsMessage::ToggleFileListTags => {
             let switched = ncrs_config::file_list_tags::FileListTags {
                 show: !ctx.file_list_tags.show,
@@ -39,8 +39,7 @@ pub fn update(
             write_setting(settings, SettingChange::FileListTags(switched), ctx)
         }
         SettingsMessage::ChooseFileListTags => {
-            actions.push(Action::ShowTagsPage);
-            Task::none()
+            show_setting(settings, ctx, SettingsFeature::Tags, None)
         }
         SettingsMessage::Close
             if settings
@@ -120,10 +119,6 @@ pub fn update(
             actions.push(Action::OpenServer(url));
             Task::none()
         }
-        SettingsMessage::OpenFilingStatus => {
-            actions.push(Action::OpenFilingStatus);
-            Task::none()
-        }
         SettingsMessage::Protection(position) => {
             actions.push(Action::Protection(position));
             Task::none()
@@ -143,7 +138,6 @@ pub fn update(
         | SettingsMessage::UndoRun(_)
         | SettingsMessage::FactsLoaded(_)
         | SettingsMessage::RunUndone(_)
-        | SettingsMessage::OpenRules
         | SettingsMessage::OpenAiModel
         | SettingsMessage::AskRemoveModel(_)
         | SettingsMessage::CancelRemoveModel
@@ -278,15 +272,10 @@ fn written(
     Task::none()
 }
 
-pub fn open_settings(
-    settings: &mut Settings,
-    ctx: &Ctx<'_>,
-    actions: &mut Vec<Action>,
-) -> Task<Message> {
+pub fn open_settings(settings: &mut Settings, ctx: &Ctx<'_>) -> Task<Message> {
     if ctx.dialog_open {
         return Task::none();
     }
-    actions.push(Action::LeaveAblagePage);
     settings.failure = None;
     settings.page = Some(fresh_settings_state(ctx));
     release_focus()
@@ -319,7 +308,6 @@ pub fn show_setting(
     ctx: &Ctx<'_>,
     feature: SettingsFeature,
     row: Option<String>,
-    actions: &mut Vec<Action>,
 ) -> Task<Message> {
     if settings.page.is_some() {
         return leave_page(settings, ctx, |held| {
@@ -329,7 +317,7 @@ pub fn show_setting(
             Task::none()
         });
     }
-    let opened = open_settings(settings, ctx, actions);
+    let opened = open_settings(settings, ctx);
     if let Some(state) = settings.page.as_mut() {
         state.show(feature, row);
     }
