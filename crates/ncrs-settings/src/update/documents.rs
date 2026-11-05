@@ -196,7 +196,12 @@ fn model_removed(
                     state.ocr_models_present = false;
                 }
             }
-            ModelKind::Ai => actions.push(Action::RefreshAiModel),
+            ModelKind::Ai => {
+                if let Some(state) = settings.page.as_mut() {
+                    state.ai_model_present = false;
+                }
+                actions.push(Action::RefreshAiModel);
+            }
         },
         Err(reason) => actions.push(Action::ShowNotice(fill_template(
             ctx.lang.text(Msg::SettingsModelRemoveFailed),

@@ -515,7 +515,7 @@ impl App {
             }
             Message::SwitchLanguage => {
                 self.switch_language();
-                Task::none()
+                self.load_documents_facts()
             }
             #[cfg(any(target_os = "macos", target_os = "windows"))]
             Message::DragOutStarted(started) => self.drag_out_started(started),
@@ -579,16 +579,21 @@ impl App {
             Message::Settings(settings_message) => self.update_settings(settings_message),
             Message::Filing(filing_message) => self.update_filing(filing_message),
             Message::FilingStatus(page_message) => {
-                let looks_for_waiting =
-                    matches!(page_message, FilingStatusMessage::Tick) && self.hermes_chat.open;
+                let is_tick = matches!(page_message, FilingStatusMessage::Tick);
+                let looks_for_waiting = is_tick && self.hermes_chat.open;
+                let facts = if is_tick {
+                    self.refresh_documents_facts()
+                } else {
+                    Task::none()
+                };
                 let status = self.run_hermes_flow(Vec::new(), |hermes, ctx| {
                     ncrs_hermes_ui::update_filing_status(hermes, page_message, ctx)
                 });
                 if looks_for_waiting {
                     let chat = self.update_hermes_chat(HermesChatMessage::WaitingCheck);
-                    Task::batch([status, chat])
+                    Task::batch([status, chat, facts])
                 } else {
-                    status
+                    Task::batch([status, facts])
                 }
             }
             Message::HermesColumn(column_message) => self

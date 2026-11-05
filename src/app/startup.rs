@@ -257,6 +257,10 @@ impl App {
 
     pub(in crate::app) fn set_language(&mut self, lang: Language) {
         self.lang = lang;
+        // The open page worded its facts (the order's areas) in the old language.
+        if let Some(page) = self.settings.page.as_mut() {
+            page.facts_requested = false;
+        }
         if let Some(module) = &mut self.hermes.filing {
             module.set_kind_language(lang.kind_language());
         }
@@ -454,6 +458,7 @@ impl App {
             command_palette: None,
             recent_commands: Vec::new(),
             wall_clock: Arc::new(ncrs_pipeline::SystemClock),
+            facts_requested_at: None,
             system_reads_scans: crate::ocr_models::system_reads_scans(),
             config_path: None,
             file_list_tags: FileListTags::default(),

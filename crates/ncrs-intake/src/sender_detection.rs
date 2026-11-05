@@ -12,6 +12,10 @@ use crate::conditions::{addressee_block_lines, domains_found, EMAIL_ADDRESS, WEB
 const LETTERHEAD_LINES: usize = 6;
 const FOOTER_LINES: usize = 8;
 const MAX_NAME_LINE_CHARS: usize = 80;
+/// Where a letterhead line goes on from the name to the address or contact
+/// data. Bullets cut without spaces; the others only between spaces, so a
+/// hyphenated name stays whole.
+const LETTERHEAD_SEPARATORS: [&str; 4] = [" · ", " | ", " – ", " — "];
 const IBAN_PAYLOAD_CHARS: std::ops::RangeInclusive<usize> = 11..=30;
 const MIN_TAX_ID_CHARS: usize = 6;
 
@@ -348,16 +352,17 @@ fn company_name(line: &str, aliases: &SenderAliases) -> Option<String> {
     if line.chars().count() > MAX_NAME_LINE_CHARS || line.ends_with(',') || is_register_line(line) {
         return None;
     }
-    let name = line
-        .split([',', '\t'])
+    let first_part = line
+        .split([',', '\t', '•', '∙', '⋅'])
         .next()
         .unwrap_or_default()
-        .split(" · ")
-        .next()
-        .unwrap_or_default()
-        .split(" | ")
-        .next()
-        .unwrap_or_default()
+        .trim();
+    let name = LETTERHEAD_SEPARATORS
+        .iter()
+        .filter_map(|separator| first_part.find(separator))
+        .min()
+        .and_then(|cut| first_part.get(..cut))
+        .unwrap_or(first_part)
         .trim();
     let is_name = has_legal_form(name)
         || starts_with_authority_word(name)
@@ -410,6 +415,25 @@ fn is_register_line(line: &str) -> bool {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
+    #[test]
+    fn a_letterhead_line_is_cut_where_the_address_starts() {
+        let aliases = SenderAliases::default();
+        for line in [
+            "Muster GmbH • Hauptstr. 7 • 01234 Ort",
+            "Muster GmbH•Hauptstr. 7",
+            "Muster GmbH ∙ Hauptstr. 7",
+            "Muster GmbH ⋅ Hauptstr. 7",
+            "Muster GmbH – Hauptstr. 7",
+            "Muster GmbH — Hauptstr. 7",
+        ] {
+            assert_eq!(
+                company_name(line, &aliases).as_deref(),
+                Some("Muster GmbH"),
+                "{line}"
+            );
+        }
+    }
+
     use super::*;
 
     fn confirmed(entries: &[(SenderAliasKind, &str, &str)]) -> SenderAliases {

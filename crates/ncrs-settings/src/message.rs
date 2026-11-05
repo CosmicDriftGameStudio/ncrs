@@ -258,8 +258,8 @@ pub enum AiModelMessage {
     /// The 250 ms look at the byte counter of the running download: nothing to
     /// change, the redraw is the point.
     Progress,
-    /// The card after the download could not turn the AI on: opens the setting.
-    ShowAiSetting,
+    /// Writes the AI switch on and closes the card.
+    TurnOn,
     /// The download of the generation has ended. Dropped when the card was
     /// closed or opened again meanwhile.
     Downloaded {

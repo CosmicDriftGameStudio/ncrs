@@ -23,6 +23,22 @@ const DATE_LABELS: [&str; 5] = [
     "datum",
     "date",
 ];
+/// What stands in front of the owner's birth date, which is never the date of
+/// a letter.
+const BIRTH_LABELS: [&str; 10] = [
+    "geb.",
+    "geboren",
+    "geburtsdatum",
+    "geb.-datum",
+    "geb.datum",
+    "geburtstag",
+    "date of birth",
+    "birth date",
+    "born",
+    "dob",
+];
+/// How far in front of a date on its line a birth label still belongs to it.
+const BIRTH_LABEL_REACH: usize = 30;
 const GERMAN_MONTHS: [(&str, u32); 13] = [
     ("januar", 1),
     ("februar", 2),
@@ -81,9 +97,45 @@ fn dates_in(line: &str) -> Vec<FoundDate> {
         .collect()
 }
 
+/// `text` ends with a birth label that is a word of its own.
+fn ends_with_birth_label(text: &str) -> bool {
+    let lowered = text.trim_end_matches([':', ' ', '\t']).to_ascii_lowercase();
+    BIRTH_LABELS.iter().any(|label| {
+        lowered
+            .strip_suffix(label)
+            .is_some_and(|rest| rest.chars().next_back().is_none_or(|c| !c.is_alphabetic()))
+    })
+}
+
+/// The date at `start` of `line` is labelled as a birth date: on the same line
+/// in front of it, or alone on its line under a line that ends with the label.
+fn is_birth_date(line: &str, start: usize, previous: Option<&str>) -> bool {
+    let before = line.get(..start).unwrap_or_default();
+    if before.trim().is_empty() {
+        return previous.is_some_and(ends_with_birth_label);
+    }
+    let reach_start = before
+        .char_indices()
+        .rev()
+        .nth(BIRTH_LABEL_REACH)
+        .map_or(0, |(index, _)| index);
+    let near = before.get(reach_start..).unwrap_or(before);
+    // The label may be followed by a word such as `am`.
+    let words: Vec<&str> = near.split_whitespace().collect();
+    let tail_from = words.len().saturating_sub(3);
+    (tail_from.max(1)..=words.len()).any(|kept| {
+        words
+            .get(..kept)
+            .is_some_and(|kept_words| ends_with_birth_label(&kept_words.join(" ")))
+    })
+}
+
 /// A line that is only a date or `<place>, <date>`.
-fn header_date(line: &str) -> Option<NaiveDate> {
+fn header_date(line: &str, previous: Option<&str>) -> Option<NaiveDate> {
     let [found] = dates_in(line).try_into().ok()?;
+    if is_birth_date(line, found.range.start, previous) {
+        return None;
+    }
     let before = line.get(..found.range.start)?.trim();
     let after = line.get(found.range.end..)?.trim();
     let place = before.strip_suffix(',').map(str::trim);
@@ -96,7 +148,7 @@ fn header_date(line: &str) -> Option<NaiveDate> {
 }
 
 /// The date right behind a label such as `Datum:` or `Rechnungsdatum `.
-fn labelled_date(line: &str) -> Option<NaiveDate> {
+fn labelled_date(line: &str, previous: Option<&str>) -> Option<NaiveDate> {
     // ASCII lowercase keeps every byte offset of the line.
     let lowered = line.to_ascii_lowercase();
     DATE_LABELS.iter().find_map(|label| {
@@ -111,22 +163,43 @@ fn labelled_date(line: &str) -> Option<NaiveDate> {
             let rest = line.get(start + label.len()..)?;
             let value = rest.trim_start_matches([':', ' ', '\t']);
             let found = dates_in(value).into_iter().next()?;
-            (found.range.start == 0).then_some(found.date)
+            let at_label = found.range.start == 0;
+            let from_line_start = line.len() - value.len();
+            (at_label && !is_birth_date(line, from_line_start, previous)).then_some(found.date)
         })
     })
 }
 
 /// The date of the letter, `None` when the text names no plausible one.
 pub fn detect_letter_date(text: &str) -> Option<NaiveDate> {
-    let lines: Vec<&str> = text.lines().collect();
+    let mut previous_line = None;
+    let lines: Vec<(&str, Option<&str>)> = text
+        .lines()
+        .map(|line| {
+            let previous = previous_line;
+            if !line.trim().is_empty() {
+                previous_line = Some(line);
+            }
+            (line, previous)
+        })
+        .collect();
     let header_len = lines.len().div_ceil(3).max(MIN_HEADER_LINES);
     let header = || lines.iter().take(header_len).copied();
     header()
-        .find_map(header_date)
-        .or_else(|| lines.iter().find_map(|line| labelled_date(line)))
+        .find_map(|(line, previous)| header_date(line, previous))
+        .or_else(|| {
+            lines
+                .iter()
+                .find_map(|&(line, previous)| labelled_date(line, previous))
+        })
         .or_else(|| {
             header()
-                .flat_map(|line| dates_in(line).into_iter().map(|found| found.date))
+                .flat_map(|(line, previous)| {
+                    dates_in(line)
+                        .into_iter()
+                        .filter(move |found| !is_birth_date(line, found.range.start, previous))
+                        .map(|found| found.date)
+                })
                 .max()
         })
 }
@@ -203,6 +276,25 @@ mod tests {
         assert_eq!(
             detect_letter_date("Ort, 31.02.2020\nDatum: 05.06.2020\n"),
             Some(date(2020, 6, 5))
+        );
+    }
+
+    #[test]
+    fn a_birth_date_is_never_the_letter_date() {
+        let text = "Max Muster, geb. 21.10.1978\nBerlin, 03.05.2021\nBetreff\n";
+        assert_eq!(detect_letter_date(text), Some(date(2021, 5, 3)));
+        let labelled = "Geburtsdatum: 21.10.1978\nRechnungsdatum: 14.03.2021\n";
+        assert_eq!(detect_letter_date(labelled), Some(date(2021, 3, 14)));
+        let newest = "Vertrag\nGeboren am 21.10.1978, laufzeit ab 01.01.2020\n";
+        assert_eq!(detect_letter_date(newest), Some(date(2020, 1, 1)));
+        assert_eq!(detect_letter_date("Date of birth: 1978-10-21\n"), None);
+        assert_eq!(detect_letter_date("geb. 21.10.1978\n"), None);
+        assert_eq!(detect_letter_date("Name\nGeburtsdatum\n21.10.1978\n"), None);
+        assert_eq!(detect_letter_date("Geb.-Datum: 21.10.1978\n"), None);
+        assert_eq!(
+            detect_letter_date("Reborn GmbH\n21.10.2020\n"),
+            Some(date(2020, 10, 21)),
+            "a label inside another word is no label"
         );
     }
 

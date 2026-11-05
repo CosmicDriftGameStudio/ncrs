@@ -45,8 +45,10 @@ impl Index {
         Ok(())
     }
 
-    /// Whether the AI was asked for the fields of the document.
-    pub fn ai_asked(&self, id: DocumentId) -> Result<bool, IndexError> {
+    /// The version of the AI reading that last asked for the fields of the
+    /// document; 0 when it never was asked. Stored in the `ai_asked` column,
+    /// where 1 is the state from before versions.
+    pub fn ai_read_version(&self, id: DocumentId) -> Result<u32, IndexError> {
         self.connection()
             .query_row(
                 "SELECT ai_asked FROM document WHERE id = ?1",
@@ -57,10 +59,11 @@ impl Index {
             .ok_or(IndexError::DocumentNotFound(id))
     }
 
-    pub fn set_ai_asked(&mut self, id: DocumentId) -> Result<(), IndexError> {
-        let changed = self
-            .connection()
-            .execute("UPDATE document SET ai_asked = 1 WHERE id = ?1", [id.get()])?;
+    pub fn set_ai_read_version(&mut self, id: DocumentId, version: u32) -> Result<(), IndexError> {
+        let changed = self.connection().execute(
+            "UPDATE document SET ai_asked = ?2 WHERE id = ?1",
+            params![id.get(), version],
+        )?;
         if changed == 0 {
             return Err(IndexError::DocumentNotFound(id));
         }
@@ -114,7 +117,7 @@ impl Index {
             "SELECT COUNT(*) FROM document d JOIN document_text t ON t.rowid = d.id
              WHERE d.source = 'archive' AND d.missing_since IS NULL
                AND trim(t.body) <> ''
-               AND (d.sender_id IS NOT NULL OR d.kind_id IS NOT NULL OR d.ai_asked = 1)",
+               AND (d.sender_id IS NOT NULL OR d.kind_id IS NOT NULL OR d.ai_asked > 0)",
             [],
         )
     }
@@ -177,15 +180,15 @@ mod tests {
     }
 
     #[test]
-    fn the_ai_asked_flag_starts_unset_and_is_stored() {
+    fn the_ai_read_version_starts_at_zero_and_is_stored() {
         let (_dir, mut index) = plain_index();
         let id = index.insert_document(&new_document(1)).unwrap();
-        assert!(!index.ai_asked(id).unwrap());
-        index.set_ai_asked(id).unwrap();
-        assert!(index.ai_asked(id).unwrap());
+        assert_eq!(index.ai_read_version(id).unwrap(), 0);
+        index.set_ai_read_version(id, 2).unwrap();
+        assert_eq!(index.ai_read_version(id).unwrap(), 2);
         let missing = DocumentId::new(id.get() + 100);
         assert!(matches!(
-            index.set_ai_asked(missing),
+            index.set_ai_read_version(missing, 1),
             Err(IndexError::DocumentNotFound(_))
         ));
     }
@@ -204,10 +207,10 @@ mod tests {
         index.set_document_text(ids[0], "Rechnung").unwrap();
         index.set_document_text(ids[1], "Brief").unwrap();
         index.set_document_text(ids[2], "  ").unwrap();
-        index.set_ai_asked(ids[0]).unwrap();
+        index.set_ai_read_version(ids[0], 2).unwrap();
         let folder = native("/arch");
         assert_eq!(index.ai_coverage_beneath(&folder).unwrap(), (2, 1));
-        index.set_ai_asked(ids[1]).unwrap();
+        index.set_ai_read_version(ids[1], 2).unwrap();
         assert_eq!(index.ai_coverage_beneath(&folder).unwrap(), (2, 2));
     }
 
@@ -216,14 +219,14 @@ mod tests {
         let (_dir, mut index) = plain_index();
         let asked = index.insert_document(&archive_document(1)).unwrap();
         index.set_document_text(asked, "Rent").unwrap();
-        index.set_ai_asked(asked).unwrap();
+        index.set_ai_read_version(asked, 2).unwrap();
         let only_read = index.insert_document(&archive_document(2)).unwrap();
         index.set_document_text(only_read, "Letter").unwrap();
         let asked_without_text = index.insert_document(&archive_document(3)).unwrap();
-        index.set_ai_asked(asked_without_text).unwrap();
+        index.set_ai_read_version(asked_without_text, 2).unwrap();
         let inbox = index.insert_document(&new_document(4)).unwrap();
         index.set_document_text(inbox, "Bill").unwrap();
-        index.set_ai_asked(inbox).unwrap();
+        index.set_ai_read_version(inbox, 2).unwrap();
         assert_eq!(index.archive_documents_understood().unwrap(), 1);
         assert_eq!(
             index.hermes_counts().unwrap().archive_documents_with_text,

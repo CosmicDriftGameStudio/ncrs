@@ -7592,15 +7592,27 @@
     },
     {
       "key": "settings.group_general",
-      "context": "Heading over the first run of pages in the feature list of the settings tab: look, language, programs, keys, servers. One word.",
+      "context": "Heading over the first run of pages in the feature list of the settings tab: look, language, keys. One word.",
       "en": "General",
       "de": "Allgemein"
     },
     {
+      "key": "settings.group_files",
+      "context": "Heading over the second run of pages in the feature list of the settings tab: programs that open files, and servers. One word, noun, plural.",
+      "en": "Files",
+      "de": "Dateien"
+    },
+    {
       "key": "settings.group_documents",
-      "context": "Heading over the second run of pages in the feature list of the settings tab: the Index page and the Hermes page. One word, noun, plural.",
+      "context": "Heading over the third run of pages in the feature list of the settings tab: the Index, read errors and reports. One word, noun, plural.",
       "en": "Documents",
       "de": "Dokumente"
+    },
+    {
+      "key": "settings.group_hermes",
+      "context": "Heading over the last run of pages in the feature list of the settings tab: the Hermes sorting, its rules and tags. Hermes is the name of the AI sorting module, a Beta mark follows it. Keep the name.",
+      "en": "Hermes",
+      "de": "Hermes"
     },
     {
       "key": "settings.feature_index",
@@ -7664,7 +7676,7 @@
     },
     {
       "key": "settings.index_scope_all",
-      "context": "Option of the segment in the Folders row of the Index page: read everything on the computer. Not available yet; the option is dimmed with the word soon beside it.",
+      "context": "Option of the segment in the Folders row of the Index page: read everything on the computer. Not available yet; the option is dimmed.",
       "en": "Everything",
       "de": "Alles"
     },
@@ -7675,10 +7687,10 @@
       "de": "Nur diese Ordner"
     },
     {
-      "key": "settings.index_scope_soon",
-      "context": "Dim note beside the segment in the Folders row of the Index page: the option Everything is not available yet. One word.",
-      "en": "soon",
-      "de": "bald"
+      "key": "settings.index_scope_only_hint",
+      "context": "Dim sentence under the title of the Folders row of the Index page: only the folders listed below are read; the option Everything (the whole computer) is dimmed and comes in a later version.",
+      "en": "Only the folders below are read. Reading the whole computer comes in a later version.",
+      "de": "Gelesen werden nur die Ordner unten. Den ganzen Computer lesen kommt in einer späteren Version."
     },
     {
       "key": "settings.index_folder_missing",

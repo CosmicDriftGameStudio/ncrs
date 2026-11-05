@@ -65,24 +65,33 @@ impl ExtractedField {
     /// Sets the field if it is still empty; a field that is filled stays as
     /// it is. Whether it was set. A kind is written as the ID of a known kind.
     pub fn fill(&self, fields: &mut DocumentFields, kinds: &KindCatalog) -> bool {
+        self.write(fields, kinds, false)
+    }
+
+    /// Like `fill`, and with `replace` also over a filled field. Whether the
+    /// stored value changed.
+    pub fn write(&self, fields: &mut DocumentFields, kinds: &KindCatalog, replace: bool) -> bool {
         match self.field {
-            Field::Sender => set_if_empty(&mut fields.sender, Some(self.value.clone())),
-            Field::Recipient => set_if_empty(&mut fields.recipient, Some(self.value.clone())),
-            Field::Kind => set_if_empty(&mut fields.kind, Some(kinds.detected_kind(&self.value))),
-            Field::Number => set_if_empty(&mut fields.number, Some(self.value.clone())),
-            Field::Date => set_if_empty(&mut fields.date, parse_date(&self.value)),
-            Field::Amount => set_if_empty(&mut fields.amount, parse_amount(&self.value, None)),
+            Field::Sender => set_slot(&mut fields.sender, Some(self.value.clone()), replace),
+            Field::Recipient => set_slot(&mut fields.recipient, Some(self.value.clone()), replace),
+            Field::Kind => set_slot(
+                &mut fields.kind,
+                Some(kinds.detected_kind(&self.value)),
+                replace,
+            ),
+            Field::Number => set_slot(&mut fields.number, Some(self.value.clone()), replace),
+            Field::Date => set_slot(&mut fields.date, parse_date(&self.value), replace),
+            Field::Amount => set_slot(&mut fields.amount, parse_amount(&self.value, None), replace),
         }
     }
 }
 
-fn set_if_empty<T>(slot: &mut Option<T>, value: Option<T>) -> bool {
-    if slot.is_some() {
+fn set_slot<T: PartialEq>(slot: &mut Option<T>, value: Option<T>, replace: bool) -> bool {
+    if value.is_none() || (slot.is_some() && !replace) || *slot == value {
         return false;
     }
-    let found = value.is_some();
     *slot = value;
-    found
+    true
 }
 
 /// Control characters out, ends trimmed, at most `MAX_VALUE_CHARS`

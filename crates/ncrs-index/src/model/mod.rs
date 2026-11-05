@@ -179,6 +179,15 @@ pub enum FieldOrigin {
 }
 
 impl FieldOrigin {
+    /// A value the rules step guessed from the look of the letter, not one a
+    /// person, a rule of theirs or the AI set. Such a value may be replaced.
+    pub fn is_heuristic(&self) -> bool {
+        matches!(
+            self,
+            Self::Unknown | Self::Rule(None) | Self::AddressBlock | Self::Heading
+        )
+    }
+
     pub(crate) fn kind_column(&self) -> Option<&'static str> {
         match self {
             Self::Unknown => None,

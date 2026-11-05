@@ -301,3 +301,55 @@ fn show_all_lists_the_runs_beyond_the_last_three() -> TestResult {
     assert!(shown_after);
     Ok(())
 }
+
+fn long_ago() -> std::time::SystemTime {
+    std::time::SystemTime::now() - std::time::Duration::from_secs(60)
+}
+
+#[test]
+fn a_language_switch_reads_the_facts_of_the_open_page_again() -> TestResult {
+    let mut app = page(
+        SettingsFeature::Index,
+        filled_config(),
+        Some(loaded_areas()),
+    )?;
+    assert!(app.facts_requested_at.is_none());
+
+    drop(app.update(Message::SwitchLanguage));
+
+    assert!(app.facts_requested_at.is_some());
+    Ok(())
+}
+
+#[test]
+fn the_index_page_reads_its_facts_again_after_ten_seconds_and_not_before() -> TestResult {
+    let mut app = page(
+        SettingsFeature::Index,
+        filled_config(),
+        Some(loaded_areas()),
+    )?;
+    let recently = std::time::SystemTime::now() - std::time::Duration::from_secs(2);
+    app.facts_requested_at = Some(recently);
+    drop(app.refresh_documents_facts());
+    assert_eq!(app.facts_requested_at, Some(recently));
+
+    let asked_long_ago = long_ago();
+    app.facts_requested_at = Some(asked_long_ago);
+    drop(app.refresh_documents_facts());
+    assert!(app.facts_requested_at > Some(asked_long_ago));
+    Ok(())
+}
+
+#[test]
+fn another_page_does_not_read_its_facts_on_the_tick() -> TestResult {
+    let mut app = page(
+        SettingsFeature::Hermes,
+        filled_config(),
+        Some(loaded_areas()),
+    )?;
+    let asked_long_ago = long_ago();
+    app.facts_requested_at = Some(asked_long_ago);
+    drop(app.refresh_documents_facts());
+    assert_eq!(app.facts_requested_at, Some(asked_long_ago));
+    Ok(())
+}

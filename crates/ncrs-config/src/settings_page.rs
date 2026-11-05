@@ -21,23 +21,25 @@ pub enum SettingsFeature {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsGroup {
     General,
+    Files,
     Documents,
+    Hermes,
 }
 
 impl SettingsFeature {
     pub const ALL: [Self; 12] = [
         Self::Look,
         Self::Language,
-        Self::Programs,
         Self::Keys,
-        Self::Servers,
         Self::System,
+        Self::Programs,
+        Self::Servers,
         Self::Index,
+        Self::ReadErrors,
+        Self::Reports,
         Self::Hermes,
         Self::Rules,
         Self::Tags,
-        Self::Reports,
-        Self::ReadErrors,
     ];
 
     /// Pages whose rows the app puts in: they belong to the Hermes module,
@@ -51,18 +53,10 @@ impl SettingsFeature {
 
     pub fn group(self) -> SettingsGroup {
         match self {
-            Self::Look
-            | Self::Language
-            | Self::Programs
-            | Self::Keys
-            | Self::Servers
-            | Self::System => SettingsGroup::General,
-            Self::Index
-            | Self::Hermes
-            | Self::Rules
-            | Self::Tags
-            | Self::Reports
-            | Self::ReadErrors => SettingsGroup::Documents,
+            Self::Look | Self::Language | Self::Keys | Self::System => SettingsGroup::General,
+            Self::Programs | Self::Servers => SettingsGroup::Files,
+            Self::Index | Self::ReadErrors | Self::Reports => SettingsGroup::Documents,
+            Self::Hermes | Self::Rules | Self::Tags => SettingsGroup::Hermes,
         }
     }
 }
@@ -75,4 +69,41 @@ pub struct SettingsTarget {
     pub row: Option<String>,
     pub label: String,
     pub theme_name: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pages_come_in_the_order_of_their_groups() {
+        use SettingsFeature::*;
+        assert_eq!(
+            SettingsFeature::ALL,
+            [
+                Look, Language, Keys, System, Programs, Servers, Index, ReadErrors, Reports,
+                Hermes, Rules, Tags
+            ]
+        );
+        let expected = [
+            (Look, SettingsGroup::General),
+            (Language, SettingsGroup::General),
+            (Keys, SettingsGroup::General),
+            (System, SettingsGroup::General),
+            (Programs, SettingsGroup::Files),
+            (Servers, SettingsGroup::Files),
+            (Index, SettingsGroup::Documents),
+            (ReadErrors, SettingsGroup::Documents),
+            (Reports, SettingsGroup::Documents),
+            (Hermes, SettingsGroup::Hermes),
+            (Rules, SettingsGroup::Hermes),
+            (Tags, SettingsGroup::Hermes),
+        ];
+        for (feature, group) in expected {
+            assert_eq!(feature.group(), group, "{feature:?}");
+        }
+        let mut runs: Vec<SettingsGroup> = SettingsFeature::ALL.iter().map(|f| f.group()).collect();
+        runs.dedup();
+        assert_eq!(runs.len(), 4, "each group is one run in ALL");
+    }
 }

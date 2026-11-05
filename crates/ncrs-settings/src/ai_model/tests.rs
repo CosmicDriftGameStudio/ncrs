@@ -676,3 +676,21 @@ fn nothing_is_downloaded_without_consent() {
     assert_eq!(server.requests(), 0);
     assert!(fs::read_dir(dir.path()).unwrap().next().is_none());
 }
+
+#[test]
+fn an_installed_card_offers_to_turn_the_ai_on_only_while_it_is_off() {
+    let dir = Some(PathBuf::from("data/ai-models"));
+    let mut settings = crate::state::Settings {
+        ai_model: Some(AiModelCard::installed(dir.clone()).offering_turn_on(true)),
+        ..crate::state::Settings::default()
+    };
+    assert!(settings.ai_model.as_ref().unwrap().has_turn_on_button());
+    assert!(!settings.model_card_has_one_button());
+
+    settings.ai_model = Some(AiModelCard::installed(dir.clone()).offering_turn_on(false));
+    assert!(!settings.ai_model.as_ref().unwrap().has_turn_on_button());
+    assert!(settings.model_card_has_one_button());
+
+    settings.ai_model = Some(AiModelCard::new(dir, false));
+    assert!(!settings.ai_model.as_ref().unwrap().has_turn_on_button());
+}

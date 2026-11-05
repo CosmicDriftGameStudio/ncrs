@@ -106,6 +106,9 @@ pub struct AiModelCard {
     /// This card's download just ended with the file in place.
     finished: bool,
     outcome: Option<InstallOutcome>,
+    /// The AI was off when the card opened: an installed card then offers to
+    /// turn it on.
+    turn_on_offered: bool,
 }
 
 impl PartialEq for DownloadJob {
@@ -131,7 +134,21 @@ impl AiModelCard {
             installed: false,
             finished: false,
             outcome: None,
+            turn_on_offered: false,
         }
+    }
+
+    pub fn offering_turn_on(self, offered: bool) -> Self {
+        Self {
+            turn_on_offered: offered,
+            ..self
+        }
+    }
+
+    /// The card has a second button that switches the AI on.
+    pub fn has_turn_on_button(&self) -> bool {
+        (self.installed && self.turn_on_offered)
+            || (self.finished && self.outcome == Some(InstallOutcome::StillOff))
     }
 
     /// A card for a model that is already in place: it says so and closes.
