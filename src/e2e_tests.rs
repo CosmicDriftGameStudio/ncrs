@@ -127,6 +127,12 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Session<P> {
 
         let (app, boot) = program.boot();
         let settings = program.settings();
+        for font in settings.fonts {
+            iced_test::renderer::graphics::text::font_system()
+                .write()
+                .expect("the font system")
+                .load_font(font);
+        }
         let renderer = runtime
             .block_on(async {
                 P::Renderer::new(settings.default_font, settings.default_text_size, None).await
