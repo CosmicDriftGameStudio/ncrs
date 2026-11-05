@@ -101,9 +101,9 @@ fn dates_in(line: &str) -> Vec<FoundDate> {
 fn ends_with_birth_label(text: &str) -> bool {
     let lowered = text.trim_end_matches([':', ' ', '\t']).to_ascii_lowercase();
     BIRTH_LABELS.iter().any(|label| {
-        lowered.strip_suffix(label).is_some_and(|rest| {
-            rest.chars().next_back().is_none_or(|c| !c.is_alphabetic())
-        })
+        lowered
+            .strip_suffix(label)
+            .is_some_and(|rest| rest.chars().next_back().is_none_or(|c| !c.is_alphabetic()))
     })
 }
 
