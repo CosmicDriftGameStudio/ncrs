@@ -2962,7 +2962,7 @@ mod tags_card {
             "Tags",
             "Show tags",
             "At most 3 per file, then “+1”. Applies to both file lists.",
-            "Documents",
+            "HERMES",
             "steuer",
             "invoice",
             "… and 38 more",
@@ -2978,7 +2978,7 @@ mod tags_card {
         for label in [
             "Schlagworte",
             "Schlagwort suchen",
-            "Dokumente",
+            "HERMES",
             "… und 38 weitere",
         ] {
             assert!(sim.find(label).is_ok(), "{label}");
