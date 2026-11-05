@@ -377,7 +377,6 @@ impl App {
                 self.hermes.filing_status.select_error_of(&path);
                 Task::none()
             }
-            Ask::OpenAiModelCard => self.open_ai_model_card(),
         }
     }
 
@@ -385,11 +384,5 @@ impl App {
         let open = self.update_ai_model(AiModelMessage::Open);
         let download = self.update_ai_model(AiModelMessage::Download);
         Task::batch([open, download])
-    }
-
-    pub(in crate::app) fn open_ai_model_card(&mut self) -> Task<Message> {
-        let opened = self.update_ai_model(AiModelMessage::Open);
-        self.hermes.ai_model_asked = self.settings.ai_model.is_some();
-        opened
     }
 }

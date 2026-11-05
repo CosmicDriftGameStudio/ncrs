@@ -274,19 +274,25 @@ pub fn filed_count(trial: &TrialSession) -> usize {
 }
 
 pub fn trial_chips(ctx: &Ctx, trial: &TrialSession) -> Vec<Chip> {
-    vec![
-        chip_labelled(
-            fill(
-                ctx.lang,
-                Msg::HermesChatFileAll,
-                &[("count", &number(filed_count(trial)))],
-            ),
-            ChipReply::FileAll,
-            true,
+    let mut chips = vec![chip_labelled(
+        fill(
+            ctx.lang,
+            Msg::HermesChatFileAll,
+            &[("count", &number(filed_count(trial)))],
         ),
-        chip(ctx, Msg::HermesChatShowMore, ChipReply::ShowMore, false),
-        cancel_chip(ctx),
-    ]
+        ChipReply::FileAll,
+        true,
+    )];
+    if trial.shown < trial.plan.entries.len() {
+        chips.push(chip(
+            ctx,
+            Msg::HermesChatShowMore,
+            ChipReply::ShowMore,
+            false,
+        ));
+    }
+    chips.push(cancel_chip(ctx));
+    chips
 }
 
 pub fn row_of(ctx: &Ctx, trial: &TrialSession, position: usize) -> Option<TrialRow> {

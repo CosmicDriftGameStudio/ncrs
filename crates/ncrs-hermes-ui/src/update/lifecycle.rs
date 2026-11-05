@@ -244,7 +244,6 @@ pub fn update_filing(
         Phase::AskRecoveryKey { .. } if work_finished => Some(filing_ui::KEY_FIELD_ID),
         _ => None,
     };
-    let ask_for_ai_model = matches!(module.phase(), Phase::Ready) && module.ai_model_is_missing();
     let creation = first_run_creation(module);
     let exceptions_access = work_finished.then(|| module.tags_access()).flatten();
     let mut tasks: Vec<Task<Message>> = work
@@ -266,9 +265,6 @@ pub fn update_filing(
         // The index is open and `reconcile` has settled what a crash left;
         // what an earlier run planned but did not move goes now.
         run_filing(hermes, ctx, actions);
-    }
-    if ask_for_ai_model && !hermes.ai_model_asked {
-        actions.push(Action::OpenAiModelCard);
     }
     if skipped > 0 {
         let text = fill_template(

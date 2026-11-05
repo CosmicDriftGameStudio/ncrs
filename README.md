@@ -736,8 +736,8 @@ threads = 4
 ```
 
 - `local` uses Qwen3 4B (Apache-2.0), one file of about 2.5 GB that is not
-  part of ncrs. When it is missing, ncrs asks once per start whether to download
-  it; the card shows host, file, size, checksum and folder first, and nothing
+  part of ncrs. When it is missing, the Hermes chat (`F2`) offers to download it;
+  the card shows host, file, size, checksum and folder first, and nothing
   is fetched before you press the button. The command palette entry "Download
   AI model…" (`download_ai_model` in `[keys]`, no key by default) opens the card
   at any time. An interrupted download continues where it stopped, and the file

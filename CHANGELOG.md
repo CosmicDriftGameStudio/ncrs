@@ -135,6 +135,10 @@ All notable changes to this project are documented here. The format follows
 
 - A `[keys]` section that binds `F1` to another action keeps that binding;
   the command palette is then on `Cmd`/`Ctrl`+`Shift`+`P` only.
+- A missing AI model no longer opens its download window at the start, which
+  left `F2` without effect; the Hermes chat offers the download instead.
+- The Hermes chat answers "Start Hermes" however the start ends, and offers a
+  way on after a cancelled folder dialog.
 
 ## [1.1.1] — 2026-10-30
 

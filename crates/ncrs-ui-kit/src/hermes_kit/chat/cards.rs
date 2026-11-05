@@ -20,6 +20,9 @@ const PATH_SEPARATOR: &str = "/";
 const ARROW: &str = "→";
 const QUESTION_MARK: &str = "?";
 const NAME_MAX_WIDTH: f32 = 160.0;
+/// The bold face renders wider than the width estimate of the UI font, and the
+/// clip took the end of the extension. Counted at 0.6 em per glyph.
+const NAME_MAX_CHARS: usize = 19;
 const AREA_NAME_MAX_WIDTH: f32 = 2.0 * NAME_MAX_WIDTH;
 /// A path segment longer than this is cut in the middle so a path wraps
 /// between segments instead of running out of the card.
@@ -266,7 +269,7 @@ pub enum TrialLine<M> {
 }
 
 fn name_cell<'a, M: 'a>(name: &str, palette: &Palette) -> Element<'a, M> {
-    let shown = format::fit_middle(name, NAME_MAX_WIDTH, TEXT_BODY);
+    let shown = format::ellipsize_keeping_both_ends(name, NAME_MAX_CHARS);
     let cell = container(card_text(&shown, palette.text, Wrapping::None, true))
         .max_width(NAME_MAX_WIDTH)
         .clip(true)

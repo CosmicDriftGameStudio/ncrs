@@ -49,7 +49,7 @@ pub fn chat_text<'a, M: 'a>(content: &str, color: Color) -> Element<'a, M> {
     rich_text(spans_of(content, color))
         .size(CHAT_TEXT)
         .line_height(LineHeight::Absolute(Pixels(CHAT_LINE)))
-        .wrapping(Wrapping::Word)
+        .wrapping(Wrapping::WordOrGlyph)
         .into()
 }
 

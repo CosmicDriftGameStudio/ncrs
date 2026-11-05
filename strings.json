@@ -7005,8 +7005,8 @@
     {
       "key": "hermes_chat.single_pieces",
       "context": "Hermes chat (F2): Hermes says how many files are left that belong to no group and asks what to do. {count} is the number of files.",
-      "en": "{count} more single pieces",
-      "de": "{count} weitere Einzelstücke"
+      "en": "Files that fit no group: {count}. What shall I do with them?",
+      "de": "Dateien, die in keine Gruppe passen: {count}. Was soll ich mit ihnen tun?"
     },
     {
       "key": "hermes_chat.show_singly",
@@ -7017,8 +7017,8 @@
     {
       "key": "hermes_chat.name_taken",
       "context": "Hermes chat (F2): Hermes says some files cannot be filed because a file of that name is already in the folder. {count} is the number of files, {name} the name of one file, {suggested} the free name with a number that Hermes proposes.",
-      "en": "{count} files: name already taken, e.g. {name} → {suggested}",
-      "de": "{count} Dateien: Name schon vergeben, z. B. {name} → {suggested}"
+      "en": "Name already taken for {count} of the files, e.g. {name} → {suggested}",
+      "de": "Bei {count} der Dateien ist der Name schon vergeben, z. B. {name} → {suggested}"
     },
     {
       "key": "hermes_chat.file_numbered",

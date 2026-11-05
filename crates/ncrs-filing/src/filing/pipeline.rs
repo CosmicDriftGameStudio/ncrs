@@ -67,11 +67,6 @@ impl FilingModule {
         }
     }
 
-    /// The setting asks for the local model and its file is not there.
-    pub fn ai_model_is_missing(&self) -> bool {
-        self.ai_status() == AiStatus::NotDownloaded
-    }
-
     /// After a download: the model file is looked for again.
     pub fn refresh_ai_model(&self) {
         #[cfg(feature = "local-ai")]
