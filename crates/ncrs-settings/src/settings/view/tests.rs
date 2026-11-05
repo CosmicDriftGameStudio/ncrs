@@ -360,3 +360,82 @@ fn a_picked_app_is_opened_with_open_and_the_app_store_build_takes_nothing_else()
         );
     }
 }
+
+/// Applies `change` the way the page does: written to the file, then read
+/// back into the state.
+fn applied(state: &mut SettingsState, path: &Path, change: SettingChange) {
+    let config = crate::write::write_setting_change(path, change.clone()).unwrap();
+    state.written(&change, &config);
+}
+
+#[test]
+fn a_chosen_program_can_be_reset_to_the_system_default_and_the_file_loses_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("config.toml");
+    std::fs::write(&path, "").unwrap();
+    let mut state = state_of("");
+    let viewer = SettingField::Program(OpenKind::View);
+    assert!(!state.can_reset_program(OpenKind::View));
+
+    let chosen = state
+        .picked_program(OpenKind::View, Path::new("/opt/tools/lookat"))
+        .unwrap();
+    applied(&mut state, &path, chosen);
+    assert!(state.can_reset_program(OpenKind::View));
+    assert_eq!(state.field_text(viewer), "/opt/tools/lookat");
+    assert!(std::fs::read_to_string(&path)
+        .unwrap()
+        .contains("/opt/tools/lookat"));
+
+    applied(
+        &mut state,
+        &path,
+        SettingChange::Program {
+            kind: OpenKind::View,
+            line: None,
+        },
+    );
+    assert!(!state.can_reset_program(OpenKind::View));
+    assert_eq!(state.field_text(viewer), "");
+    let saved = std::fs::read_to_string(&path).unwrap();
+    assert!(!saved.contains("lookat"), "{saved}");
+    assert!(ncrs_config::config::load(&path)
+        .unwrap()
+        .open
+        .view
+        .is_none());
+}
+
+#[test]
+fn a_typed_program_offers_the_reset_before_it_is_saved_and_clearing_it_drops_the_line() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("config.toml");
+    std::fs::write(&path, "").unwrap();
+    let mut state = state_of("");
+    let editor = SettingField::Program(OpenKind::Edit);
+    state.edit(editor, "vim".to_owned());
+    assert!(state.can_reset_program(OpenKind::Edit));
+
+    let typed_change = state.submit(editor).unwrap();
+    applied(&mut state, &path, typed_change);
+    assert_eq!(state.field_text(editor), "vim");
+
+    state.edit(editor, "  ".to_owned());
+    let cleared = state.leave().unwrap();
+    assert_eq!(
+        cleared,
+        vec![SettingChange::Program {
+            kind: OpenKind::Edit,
+            line: None,
+        }]
+    );
+    for change in cleared {
+        applied(&mut state, &path, change);
+    }
+    assert_eq!(state.field_text(editor), "");
+    assert!(ncrs_config::config::load(&path)
+        .unwrap()
+        .open
+        .edit
+        .is_none());
+}

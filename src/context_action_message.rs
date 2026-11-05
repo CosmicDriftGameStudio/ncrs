@@ -25,6 +25,8 @@ impl ContextActionMessage for ContextAction {
             ContextAction::CopyPath => Message::CopyToClipboard(ClipboardKind::Path),
             ContextAction::CopyName => Message::CopyToClipboard(ClipboardKind::Name),
             ContextAction::ComputeFolderSizes => Message::ComputeFolderSizes,
+            ContextAction::AddFavourite => Message::AddFavourite,
+            ContextAction::RemoveFavourite => Message::RemoveFavourite,
             ContextAction::Trash => Message::Delete { permanent: false },
             ContextAction::DeletePermanently => Message::Delete { permanent: true },
             ContextAction::ShowOnOtherSide => Message::HitList(HitListMessage::ShowOnOtherSide),
@@ -79,7 +81,12 @@ mod tests {
         for action in GROUPS
             .iter()
             .flat_map(|group| group.iter())
-            .filter(|action| **action != ContextAction::ComputeFolderSizes)
+            .filter(|action| {
+                !matches!(
+                    action,
+                    ContextAction::ComputeFolderSizes | ContextAction::RemoveFavourite
+                )
+            })
         {
             assert!(
                 crate::keymap::Keymap::built_in()

@@ -180,6 +180,17 @@ impl SettingsState {
         }
     }
 
+    /// Whether the row of `kind` offers the way back to the system default:
+    /// a program is saved, or something is typed in the field that Enter or
+    /// leaving the page would save.
+    pub fn can_reset_program(&self, kind: OpenKind) -> bool {
+        self.saved_program(kind).is_some()
+            || !self
+                .field_text(SettingField::Program(kind))
+                .trim()
+                .is_empty()
+    }
+
     /// The color `[theme]` gives `role`, as written.
     pub fn saved_color(&self, role: ColorRole) -> Option<&str> {
         self.config()?

@@ -146,7 +146,8 @@ fn the_parent_row_offers_only_what_makes_sense() {
             ContextAction::NewFolder,
             ContextAction::CopyPath,
             ContextAction::CopyName,
-            ContextAction::ComputeFolderSizes
+            ContextAction::ComputeFolderSizes,
+            ContextAction::AddFavourite
         ]
     );
 }
@@ -203,7 +204,10 @@ fn an_empty_panel_still_offers_a_new_folder() {
     let mut app = App::with_fixed_panels();
     app.panel_mut(LEFT).entries.clear();
     open_at(&mut app, LEFT, 0);
-    assert_eq!(enabled_actions(&app), [ContextAction::NewFolder]);
+    assert_eq!(
+        enabled_actions(&app),
+        [ContextAction::NewFolder, ContextAction::AddFavourite]
+    );
 }
 
 #[test]
@@ -248,7 +252,7 @@ fn arrows_skip_what_cannot_be_chosen() {
     drop(app.update(Message::ContextMenuLast));
     assert_eq!(
         app.context_menu_selected_action(),
-        Some(ContextAction::ComputeFolderSizes)
+        Some(ContextAction::AddFavourite)
     );
     drop(app.update(Message::ContextMenuFirst));
     assert_eq!(
@@ -422,4 +426,69 @@ fn the_menu_is_an_overlay() {
     assert!(app.prompt_key_state().context_menu);
     drop(app.update(Message::VolumeMenu(LEFT)));
     assert!(!app.volume_menu_is_open());
+}
+
+#[test]
+fn a_folder_row_offers_its_folder_as_a_favourite_and_then_to_remove_it() {
+    let mut app = App::with_fixed_panels();
+    let folder = app.panel(LEFT).entries[DIRECTORY].path.clone();
+    open_at(&mut app, LEFT, DIRECTORY);
+    assert!(enabled_actions(&app).contains(&ContextAction::AddFavourite));
+    assert!(!enabled_actions(&app).contains(&ContextAction::RemoveFavourite));
+
+    let add = index_of(&app, ContextAction::AddFavourite);
+    drop(app.update(Message::ContextMenuClick(add)));
+    assert!(app.panels.favourites.contains(&folder));
+
+    open_at(&mut app, LEFT, DIRECTORY);
+    assert!(enabled_actions(&app).contains(&ContextAction::RemoveFavourite));
+    assert!(!enabled_actions(&app).contains(&ContextAction::AddFavourite));
+    let remove = index_of(&app, ContextAction::RemoveFavourite);
+    drop(app.update(Message::ContextMenuClick(remove)));
+    assert!(!app.panels.favourites.contains(&folder));
+}
+
+#[test]
+fn a_file_row_offers_the_folder_it_lies_in_as_a_favourite() {
+    let mut app = App::with_fixed_panels();
+    let folder = app.panel(LEFT).path.clone();
+    open_at(&mut app, LEFT, FILE);
+    let add = index_of(&app, ContextAction::AddFavourite);
+    drop(app.update(Message::ContextMenuClick(add)));
+    assert!(app.panels.favourites.contains(&folder));
+}
+
+#[test]
+fn in_an_archive_edit_is_greyed_out_and_favourites_are_left_out() {
+    let mut app = App::with_fixed_panels();
+    app.panel_mut(LEFT).archive = Some(PathBuf::from("/x/fotos.zip"));
+    open_at(&mut app, LEFT, FILE);
+    let enabled = enabled_actions(&app);
+    assert!(enabled.contains(&ContextAction::View));
+    assert!(!enabled.contains(&ContextAction::Edit));
+    assert!(!enabled.contains(&ContextAction::Move));
+    let entries = app.context_menu_for_test().unwrap().entries();
+    assert!(!entries.iter().any(|entry| matches!(
+        entry,
+        MenuEntry::Item {
+            action: ContextAction::AddFavourite | ContextAction::RemoveFavourite,
+            ..
+        }
+    )));
+}
+
+#[test]
+fn in_an_archive_the_f4_slot_is_dimmed_and_the_palette_drops_the_command() {
+    let mut app = App::with_fixed_panels();
+    let plain = app.function_key_dimmed();
+    assert!(plain.iter().all(|dimmed| !dimmed));
+    assert!(app.commands_the_panel_refuses().is_empty());
+
+    app.panel_mut(LEFT).archive = Some(PathBuf::from("/x/fotos.zip"));
+    let dimmed = app.function_key_dimmed();
+    assert_eq!(dimmed.get(3), Some(&true), "F4 is slot 4");
+    assert_eq!(dimmed.get(2), Some(&false), "F3 still works");
+    assert!(app
+        .commands_the_panel_refuses()
+        .contains(&ncrs_config::keymap::KeyAction::Edit));
 }

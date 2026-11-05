@@ -19,6 +19,10 @@ pub enum ContextAction {
     CopyPath,
     CopyName,
     ComputeFolderSizes,
+    /// Only for a folder that is not a favourite yet.
+    AddFavourite,
+    /// Only for a folder that is a favourite.
+    RemoveFavourite,
     Trash,
     DeletePermanently,
     /// Only in the menu of a search-hit list.
@@ -29,7 +33,7 @@ pub enum ContextAction {
 
 impl ContextAction {
     #[cfg(any(test, feature = "test-support"))]
-    pub const ALL: [ContextAction; 13] = [
+    pub const ALL: [ContextAction; 15] = [
         ContextAction::Open,
         ContextAction::View,
         ContextAction::Edit,
@@ -39,6 +43,8 @@ impl ContextAction {
         ContextAction::CopyPath,
         ContextAction::CopyName,
         ContextAction::ComputeFolderSizes,
+        ContextAction::AddFavourite,
+        ContextAction::RemoveFavourite,
         ContextAction::Trash,
         ContextAction::DeletePermanently,
         ContextAction::ShowOnOtherSide,
@@ -47,7 +53,6 @@ impl ContextAction {
 
     /// Whether a panel inside an archive may run the entry; see
     /// `KeyAction::allowed_in_archive`.
-    #[cfg(any(test, feature = "test-support"))]
     pub fn allowed_in_archive(self) -> bool {
         match self {
             ContextAction::Open
@@ -63,6 +68,8 @@ impl ContextAction {
             ContextAction::Edit
             | ContextAction::Move
             | ContextAction::NewFolder
+            | ContextAction::AddFavourite
+            | ContextAction::RemoveFavourite
             | ContextAction::ComputeFolderSizes => false,
         }
     }
@@ -83,6 +90,8 @@ impl ContextAction {
             | ContextAction::Move
             | ContextAction::NewFolder
             | ContextAction::ComputeFolderSizes
+            | ContextAction::AddFavourite
+            | ContextAction::RemoveFavourite
             | ContextAction::Trash
             | ContextAction::DeletePermanently => false,
         }
@@ -99,6 +108,8 @@ impl ContextAction {
             ContextAction::CopyPath => Msg::ContextMenuCopyPath,
             ContextAction::CopyName => Msg::ContextMenuCopyName,
             ContextAction::ComputeFolderSizes => Msg::ContextMenuComputeFolderSizes,
+            ContextAction::AddFavourite => Msg::ContextMenuAddFavourite,
+            ContextAction::RemoveFavourite => Msg::ContextMenuRemoveFavourite,
             ContextAction::Trash => Msg::ContextMenuTrash,
             ContextAction::DeletePermanently => Msg::ContextMenuDeletePermanently,
             ContextAction::ShowOnOtherSide => Msg::ContextMenuShowOnOtherSide,
@@ -119,7 +130,11 @@ pub const GROUPS: [&[ContextAction]; 5] = [
         ContextAction::NewFolder,
     ],
     &[ContextAction::CopyPath, ContextAction::CopyName],
-    &[ContextAction::ComputeFolderSizes],
+    &[
+        ContextAction::ComputeFolderSizes,
+        ContextAction::AddFavourite,
+        ContextAction::RemoveFavourite,
+    ],
     &[ContextAction::Trash, ContextAction::DeletePermanently],
 ];
 
@@ -353,7 +368,26 @@ impl ContextMenu {
         is_enabled: impl Fn(ContextAction) -> bool,
         hermes: Option<HermesMenu<'_>>,
     ) -> Self {
-        Self::of_groups(&GROUPS, &[], anchor, window, is_enabled, hermes)
+        Self::with_favourite(anchor, window, is_enabled, hermes, None)
+    }
+
+    /// As [`Self::with_hermes`], with the entry of the favourites that fits
+    /// the folder: `Some(true)` for one that is a favourite (the entry removes
+    /// it), `Some(false)` for one that is not, `None` for a place that has no
+    /// favourites, which leaves both entries out.
+    pub fn with_favourite(
+        anchor: Point,
+        window: Size,
+        is_enabled: impl Fn(ContextAction) -> bool,
+        hermes: Option<HermesMenu<'_>>,
+        is_favourite: Option<bool>,
+    ) -> Self {
+        let left_out: &[ContextAction] = match is_favourite {
+            Some(true) => &[ContextAction::AddFavourite],
+            Some(false) => &[ContextAction::RemoveFavourite],
+            None => &[ContextAction::AddFavourite, ContextAction::RemoveFavourite],
+        };
+        Self::of_groups(&GROUPS, left_out, anchor, window, is_enabled, hermes)
     }
 
     /// The menu of a row of a search-hit list.
@@ -705,6 +739,35 @@ mod tests {
         assert_eq!(separators, 4);
         assert_eq!(menu.entries().len(), 11 + 4);
         assert_eq!(selected_action(&menu), ContextAction::Open);
+    }
+
+    #[test]
+    fn the_favourites_entry_fits_the_folder() {
+        let actions_of = |is_favourite: Option<bool>| {
+            ContextMenu::with_favourite(
+                Point::new(10.0, 10.0),
+                WINDOW,
+                |_| true,
+                None,
+                is_favourite,
+            )
+            .entries()
+            .iter()
+            .filter_map(|entry| match entry {
+                MenuEntry::Item { action, .. } => Some(*action),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+        };
+        let adds = actions_of(Some(false));
+        assert!(adds.contains(&ContextAction::AddFavourite));
+        assert!(!adds.contains(&ContextAction::RemoveFavourite));
+        let removes = actions_of(Some(true));
+        assert!(removes.contains(&ContextAction::RemoveFavourite));
+        assert!(!removes.contains(&ContextAction::AddFavourite));
+        let neither = actions_of(None);
+        assert!(!neither.contains(&ContextAction::AddFavourite));
+        assert!(!neither.contains(&ContextAction::RemoveFavourite));
     }
 
     #[test]

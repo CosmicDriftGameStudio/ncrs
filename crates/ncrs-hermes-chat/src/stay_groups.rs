@@ -38,6 +38,25 @@ pub fn has_open_questions(state: &State) -> bool {
         || (!groups.name_taken.is_empty() && !flow.names_done)
 }
 
+/// The name of a sender the model read together with the label printed in
+/// front of it ("Account holder: Example GmbH"). Only the first short,
+/// digit-free word group before a colon counts as a label, so a colon inside
+/// the name stays. The stored value and the rule keep the raw text.
+fn sender_without_label(sender: &str) -> &str {
+    let Some((label, after_colon)) = sender.split_once(':') else {
+        return sender;
+    };
+    let name = after_colon.trim();
+    let label_like = !label.trim().is_empty()
+        && label.split_whitespace().count() <= 2
+        && !label.chars().any(|letter| letter.is_ascii_digit());
+    if label_like && !name.is_empty() {
+        name
+    } else {
+        sender
+    }
+}
+
 fn group_question(ctx: &Ctx, group: &StayGroup) -> (String, Vec<Chip>) {
     let count = number(group.count());
     let examples = group.examples.join(", ");
@@ -47,7 +66,7 @@ fn group_question(ctx: &Ctx, group: &StayGroup) -> (String, Vec<Chip>) {
             Msg::HermesChatGroupWhere,
             &[
                 ("count", &count),
-                ("label", &group.label),
+                ("label", sender_without_label(&group.label)),
                 ("examples", &examples),
             ],
         ),
@@ -401,7 +420,33 @@ pub fn names_leave(state: &mut State, ctx: &Ctx) {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
-    use super::plain_folder_name;
+    use super::{plain_folder_name, sender_without_label};
+
+    #[test]
+    fn a_label_in_front_of_the_sender_is_dropped() {
+        assert_eq!(
+            sender_without_label("Accountholder: Example GmbH"),
+            "Example GmbH"
+        );
+        assert_eq!(
+            sender_without_label("Kontoinhaber:  Muster AG "),
+            "Muster AG"
+        );
+    }
+
+    #[test]
+    fn a_colon_later_in_the_name_survives() {
+        assert_eq!(
+            sender_without_label("Sender: Example: Branch GmbH"),
+            "Example: Branch GmbH"
+        );
+        assert_eq!(
+            sender_without_label("Example one two three: Branch"),
+            "Example one two three: Branch"
+        );
+        assert_eq!(sender_without_label("Example GmbH:"), "Example GmbH:");
+        assert_eq!(sender_without_label("Example GmbH"), "Example GmbH");
+    }
 
     #[test]
     fn a_folder_name_is_one_plain_name() {

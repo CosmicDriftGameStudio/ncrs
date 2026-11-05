@@ -153,6 +153,7 @@ The same window in German, switched with F9.
 - Stale-result protection (fast navigation cannot show an outdated listing)
 - Errors (e.g. *Permission denied*) are shown in the status bar – no panics
 - Confirmations (e.g. *Path copied*) appear at the right of the status bar for three seconds
+- The right end of the status bar shows the language, the theme and the app version; the version opens the About card
 - Mouse click selects a row and activates its panel; the wheel and the trackpad scroll the panel under the pointer
 - Drive menu (`Alt`+`F1` / `Alt`+`F2`): jump a panel to the system volume, home, iCloud Drive and
   cloud storage folders such as Google Drive, OneDrive or Dropbox (macOS), mounted volumes or
@@ -229,7 +230,7 @@ The defaults. Most of them can be changed in the keyboard shortcuts dialog (`Cmd
 | `Shift`+`F8`       | Delete permanently (`Enter` cancels; `Shift`+`F8` again confirms) |
 | `Alt`+`F1` / `Alt`+`F2` | Drive menu for the left / right panel (`↑`/`↓`, `Home`/`End`, `Enter` goes, `Esc` closes; `Option` on macOS); below the drives come the favourite folders (`Enter` goes, `Del` (`⌫` on macOS) removes) |
 | `Alt`+`←` / `Alt`+`→` (also `Cmd`+`[` / `Cmd`+`]` on macOS) | Back / forward in the active panel's folder history |
-| `Ctrl`+`D` (`Cmd`+`D` on macOS) | Add the active panel's folder to the favourites (`remove_favourite` and `favourites` have no default key) |
+| `Ctrl`+`D` (`Cmd`+`D` on macOS) | Add the active panel's folder to the favourites (`remove_favourite` and `favourites` have no default key); the right-click menu has "Add to favourites" / "Remove from favourites" for the folder under the cursor |
 | Right click / `Shift`+`F10` / `Option` tapped alone | Context menu at the pointer or the cursor row (`↑`/`↓`, `Home`/`End`, `Enter` runs, `Esc` closes; `Ctrl`+click also on a Mac) |
 | Click a column title | Sort that panel by Name / Size / Modified; a second click reverses the order (▲ / ▼). `..` and folders stay on top |
 | `Ctrl`+`F3` / `Ctrl`+`F5` / `Ctrl`+`F6` (macOS: `Cmd`+`1` / `Cmd`+`3` / `Cmd`+`2`) | Sort the active panel by name / modification time / size; again reverses. macOS uses `Cmd`+digit because the system takes `Ctrl`+`F`-keys |

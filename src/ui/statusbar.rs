@@ -158,6 +158,12 @@ pub struct FilingBadge<M> {
     pub on_press: M,
 }
 
+/// The app version at the very right of the bar; pressing it sends `on_press`.
+pub struct VersionBadge<M> {
+    pub text: String,
+    pub on_press: M,
+}
+
 /// What goes on in the background, at the right of the bar.
 pub struct Activity<'a, M> {
     /// The panel the bar speaks for: named in the mode field at its left end.
@@ -184,6 +190,7 @@ pub struct Activity<'a, M> {
     /// What Hermes says about the file under the cursor: its state, why, and
     /// where it would go. Shown in place of the entry info.
     pub hermes_line: Option<String>,
+    pub version: Option<VersionBadge<M>>,
 }
 
 /// The bottom bar: path, then the running job, then the failure of the last
@@ -212,6 +219,7 @@ pub fn view<'a, M: Clone + 'a>(
         blocked_by_sandbox,
         notice,
         hermes_line,
+        version,
     } = activity;
     let path_chars = match (&path_bar_input.hit_line, path_bar_input.editing) {
         (Some(hit), _) => hit.text.chars().count(),
@@ -395,6 +403,27 @@ pub fn view<'a, M: Clone + 'a>(
             )
             .padding([0.0, FIELD_PADDING_X]),
         );
+    }
+    if let Some(badge) = version {
+        bar = bar.push(tooltip(
+            button(
+                text(badge.text)
+                    .size(font_size::SMALL)
+                    .color(palette.dim_text)
+                    .wrapping(text::Wrapping::None),
+            )
+            .on_press(badge.on_press)
+            .padding([0.0, FIELD_PADDING_X])
+            .style(theme::icon_button(palette)),
+            container(
+                text(lang.text(Msg::StatusVersionTooltip))
+                    .size(font_size::SMALL)
+                    .wrapping(text::Wrapping::None),
+            )
+            .padding([2.0, 6.0])
+            .style(theme::dialog(palette)),
+            tooltip::Position::Top,
+        ));
     }
 
     container(column![

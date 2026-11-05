@@ -33,6 +33,20 @@ impl App {
         keys
     }
 
+    /// The slots of the key bar whose action the active panel refuses, as
+    /// F4 and F6 inside an archive; they are drawn faint.
+    pub(in crate::app) fn function_key_dimmed(&self) -> [bool; keymap::FUNCTION_KEY_COUNT] {
+        let panel = self.active_panel();
+        if self.search_has_keys() {
+            return [false; keymap::FUNCTION_KEY_COUNT];
+        }
+        self.keymap
+            .function_key_actions(keymap::KeyScope::Panel)
+            .map(|slot| {
+                slot.is_some_and(|action| archive_refusal(panel, &action.message()).is_some())
+            })
+    }
+
     /// What the bar's path field says while the active panel is a hit list:
     /// the query, where it ran and how many files it left, with the way back.
     pub(in crate::app) fn hit_line(&self) -> Option<statusbar::HitLine> {

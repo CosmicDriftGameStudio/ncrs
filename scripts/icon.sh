@@ -29,6 +29,14 @@ for size in 16 32 128 256 512; do
 done
 iconutil -c icns "$iconset" -o ncrs.icns
 
+# The Windows icon, embedded by build.rs: the sizes Explorer and the taskbar ask for.
+ico_pngs=()
+for size in 16 24 32 48 64 256; do
+  "$work/render" png "$size" "$work/ico_${size}.png"
+  ico_pngs+=("$work/ico_${size}.png")
+done
+python3 "$repo_root/scripts/make_ico.py" ncrs.ico "${ico_pngs[@]}"
+
 # The sizes scripts/package.sh checks for in the Linux archive and packages.
 for size in 32 48 64 128 256 512; do
   linux_dir="$repo_root/packaging/linux/icons/hicolor/${size}x${size}/apps"

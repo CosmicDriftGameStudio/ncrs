@@ -544,6 +544,20 @@ impl App {
                 self.panels.context_menu = None;
                 Task::none()
             }
+            Action::RunContextEntry(ContextAction::AddFavourite) => {
+                let Some(target) = self.panels.favourite_target() else {
+                    return Task::none();
+                };
+                let added = self.panels.add_favourite_at(self.lang, target);
+                self.run_panel_actions(vec![added])
+            }
+            Action::RunContextEntry(ContextAction::RemoveFavourite) => {
+                let Some(target) = self.panels.favourite_target() else {
+                    return Task::none();
+                };
+                let removed = self.panels.remove_favourite_at(self.lang, &target);
+                self.run_panel_actions(vec![removed])
+            }
             Action::RunContextEntry(entry) => self.update(entry.message()),
             Action::RunHermesEntry(entry) => self.update(entry.message()),
             Action::ActivateSearchResult => self.update(Message::Search(SearchMessage::Activate)),

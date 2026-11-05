@@ -589,6 +589,18 @@
       "de": "Ordnergrößen berechnen"
     },
     {
+      "key": "context_menu.add_favourite",
+      "context": "Entry of the context menu: adds the folder under the cursor, or the folder of the file under the cursor, to the favourites. Verb, imperative.",
+      "en": "Add to favourites",
+      "de": "Zu Favoriten hinzufügen"
+    },
+    {
+      "key": "context_menu.remove_favourite",
+      "context": "Entry of the context menu, shown instead of the one that adds to the favourites when the folder is a favourite already: takes it out of the favourites. Verb, imperative.",
+      "en": "Remove from favourites",
+      "de": "Aus Favoriten entfernen"
+    },
+    {
       "key": "context_menu.trash",
       "context": "Entry of the context menu: moves the tagged rows, or the cursor row, to the trash after a confirmation (key F8). The German text is a prepositional phrase because the entry reads as an action on the selection.",
       "en": "Move to trash",
@@ -605,6 +617,12 @@
       "context": "Tooltip of the small copy icon at the right end of the path field in the status bar. The icon copies the path of the directory shown in the active panel to the clipboard. Verb, imperative.",
       "en": "Copy path",
       "de": "Pfad kopieren"
+    },
+    {
+      "key": "status.version_tooltip",
+      "context": "Tooltip of the version number at the right end of the status bar. Pressing the number opens the About card. Short phrase, no verb needed.",
+      "en": "About NC-rs",
+      "de": "Über NC-rs"
     },
     {
       "key": "status.path_missing",
@@ -7923,18 +7941,18 @@
     {
       "key": "hermes_chat.trial_stuck_some",
       "context": "Hermes chat (F2): One message at the end of a trial run that files nothing, when some of the files are in the filing folder already. {total} is the number of files looked at, {dupes} how many are there already, {rest} the others, {ai_note} is empty or the sentence about how far the AI is. Buttons with what to do follow.",
-      "en": "Of {total} files, {dupes} are already in the target folder. For the other {rest} I still lack the sender{ai_note}. What shall I do?",
-      "de": "Von {total} Dateien sind {dupes} schon im Schreib-Ordner. Für die anderen {rest} fehlt mir noch der Absender{ai_note}. Was soll ich tun?"
+      "en": "Of {total} files, {dupes} are already in the target folder. For the other {rest} I don't know yet where they belong{ai_note}. What shall I do?",
+      "de": "Von {total} Dateien sind {dupes} schon im Schreib-Ordner. Für die anderen {rest} weiß ich noch nicht, wohin sie gehören{ai_note}. Was soll ich tun?"
     },
     {
       "key": "hermes_chat.trial_stuck_none",
       "context": "Hermes chat (F2): One message at the end of a trial run that files nothing, when none of the files is in the filing folder yet. {rest} is the number of files, {ai_note} is empty or the sentence about how far the AI is. Buttons with what to do follow.",
-      "en": "For {rest} files I still lack the sender{ai_note}. What shall I do?",
-      "de": "Für {rest} Dateien fehlt mir noch der Absender{ai_note}. Was soll ich tun?"
+      "en": "For {rest} files I don't know yet where they belong{ai_note}. What shall I do?",
+      "de": "Für {rest} Dateien weiß ich noch nicht, wohin sie gehören{ai_note}. Was soll ich tun?"
     },
     {
       "key": "hermes_chat.trial_stuck_ai",
-      "context": "Hermes chat (F2): Added to the message that files are missing a sender, while the AI has not read every document yet. {done} is how many documents it understood, {all} how many have a text. It begins with a colon.",
+      "context": "Hermes chat (F2): Added to the message that the app does not know yet where files belong, while the AI has not read every document yet. {done} is how many documents it understood, {all} how many have a text. It begins with a colon.",
       "en": ": I am only just reading your folder, {done} of {all} documents are understood",
       "de": ": Ich lese deinen Ordner gerade erst ein, {done} von {all} Dokumenten sind verstanden"
     },

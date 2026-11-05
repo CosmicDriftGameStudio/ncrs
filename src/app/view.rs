@@ -119,7 +119,11 @@ impl App {
                         palette: &self.palette,
                     })
                     .map(Message::CommandLine),
-                    fkeys::view(&self.function_key_bar(), &self.palette,),
+                    fkeys::view_dimmed(
+                        &self.function_key_bar(),
+                        &self.function_key_dimmed(),
+                        &self.palette,
+                    ),
                     statusbar::view(
                         self.active_panel(),
                         self.lang,
@@ -144,6 +148,10 @@ impl App {
                             blocked_by_sandbox: cfg!(target_os = "macos") && self.sandbox.active,
                             notice: self.notice.as_deref(),
                             hermes_line: self.hermes_line(),
+                            version: Some(statusbar::VersionBadge {
+                                text: self.app_version.to_owned(),
+                                on_press: Message::About(AboutMessage::Open),
+                            }),
                         },
                         self.status_error(),
                         self.search_status(),

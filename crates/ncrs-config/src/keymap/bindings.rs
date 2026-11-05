@@ -204,14 +204,20 @@ impl Keymap {
         lang: Language,
         scope: KeyScope,
     ) -> [Option<&'static str>; FUNCTION_KEY_COUNT] {
+        self.function_key_actions(scope).map(|slot| {
+            slot.and_then(|action| action.hint())
+                .map(|hint| lang.text(hint))
+        })
+    }
+
+    /// The action behind each slot of the function key bar; see
+    /// [`Keymap::function_keys`].
+    pub fn function_key_actions(&self, scope: KeyScope) -> [Option<KeyAction>; FUNCTION_KEY_COUNT] {
         let mut slots = [None; FUNCTION_KEY_COUNT];
         for (action, binding) in &self.bindings {
-            if !action.works_in(scope) {
+            if !action.works_in(scope) || action.hint().is_none() {
                 continue;
             }
-            let Some(hint) = action.hint() else {
-                continue;
-            };
             if binding.modifiers != Modifiers::default() {
                 continue;
             }
@@ -219,7 +225,7 @@ impl Keymap {
                 continue;
             };
             if let Some(slot) = slots.get_mut(number - 1) {
-                slot.get_or_insert(lang.text(hint));
+                slot.get_or_insert(*action);
             }
         }
         slots
