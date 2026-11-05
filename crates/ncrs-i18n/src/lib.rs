@@ -393,6 +393,7 @@ mod tests {
                 | Msg::MonitorKillSubject
                 // "Filter" is the same word in both languages, then a key name.
                 | Msg::MonitorFilterPlaceholder
+                | Msg::SettingsGroupHermes
                 // A plus sign only.
                 | Msg::SettingsIndexOwnAdd
                 // The name, the same word and a bare placeholder pair, in both languages.
