@@ -4,10 +4,14 @@
 //! constants of the rule language; whether the answer is right is decided by
 //! rendering it, never by comparing text.
 
+mod annotate;
+mod fixtures;
 mod grammar;
+mod levels;
 mod parse;
 mod prompt;
 mod session;
+mod verify;
 mod vocabulary;
 
 #[cfg(test)]
@@ -22,8 +26,14 @@ mod matrix;
 mod oracle;
 
 #[cfg(feature = "llama")]
-pub use parse::{parse_generate, parse_pattern};
+pub use annotate::annotated_paths;
+#[cfg(feature = "llama")]
+pub use levels::{Level, Levels, Part};
+#[cfg(feature = "llama")]
+pub use parse::{parse_generate, parse_levels};
 #[cfg(feature = "llama")]
 pub use prompt::{prefix_text, ContextDocument, END_OF_TURN};
 #[cfg(feature = "llama")]
 pub use session::RuleRequest;
+#[cfg(feature = "llama")]
+pub use verify::{pattern_mismatches, Mismatch};

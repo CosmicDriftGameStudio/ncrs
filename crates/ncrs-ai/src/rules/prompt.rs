@@ -4,9 +4,11 @@
 
 use std::fmt::Write as _;
 
-use ncrs_index::{ConditionKind, DocumentFields, Kinds};
-use ncrs_intake::FILING_PLACEHOLDERS;
+use ncrs_index::{ConditionKind, DocumentFields, KindLanguage, Kinds};
+use ncrs_intake::{parse_date, FILING_PLACEHOLDERS};
 
+use super::annotate::annotated_paths;
+use super::levels::Levels;
 use super::vocabulary::{condition_meaning, condition_word, placeholder_meaning};
 
 const SYSTEM_PROMPT_TEXT: &str = include_str!("prompt.txt");
@@ -24,8 +26,73 @@ pub struct ContextDocument {
 
 /// The last lines of a task, after the user's words: a small model follows
 /// what it read last. The examples in the instructions end the same way.
-pub const GENERATE_REMINDER: &str = "(Only folders described: the pattern ends with \"/\". A file name described: it does not. Every field the user names is a placeholder.)";
-pub const RECOGNIZE_REMINDER: &str = "(No file extension. A last part like date_sender_number is the automatic file name: the pattern then ends with \"/\" after the last folder. Text equal to a field of a document is its placeholder, not literal text.)";
+pub const GENERATE_REMINDER: &str = "(One level for every folder the user names. A file name described: datei, otherwise null. No structure named: the default.)";
+pub const RECOGNIZE_REMINDER: &str = "(One level for every folder. A field is a placeholder, a text the same in every path is fixed. The automatic file name: datei is null.)";
+
+/// The paths of the recognize examples with the fields of their documents,
+/// each with the pattern that wrote them (`.pdf` appended).
+pub struct RecognizeExample {
+    pub pattern: &'static str,
+    /// (sender, kind, number, date) of each document.
+    pub documents: [(&'static str, &'static str, &'static str, &'static str); 2],
+}
+
+pub const RECOGNIZE_EXAMPLES: [RecognizeExample; 3] = [
+    RecognizeExample {
+        pattern: "Post/{year}/{sender}/",
+        documents: [
+            ("Otto GmbH", "", "5512", "2021-04-02"),
+            ("Bosch AG", "", "77", "2019-11-23"),
+        ],
+    },
+    RecognizeExample {
+        pattern: "Rechnung_{sender}_{year}",
+        documents: [
+            ("Bosch AG", "", "", "2019-11-23"),
+            ("Otto GmbH", "", "", "2021-04-02"),
+        ],
+    },
+    RecognizeExample {
+        pattern: "{kind}/{month}/{year}.{month}",
+        documents: [
+            ("", "contract", "", "2018-03-15"),
+            ("", "invoice", "", "2020-11-04"),
+        ],
+    },
+];
+
+fn present(text: &str) -> Option<String> {
+    (!text.is_empty()).then(|| text.to_owned())
+}
+
+impl RecognizeExample {
+    pub fn files(&self, kinds: &Kinds) -> Vec<(String, DocumentFields)> {
+        self.documents
+            .iter()
+            .filter_map(|(sender, kind, number, date)| {
+                let fields = DocumentFields {
+                    sender: present(sender),
+                    kind: present(kind),
+                    number: present(number),
+                    date: parse_date(date),
+                    ..DocumentFields::default()
+                };
+                let path = ncrs_intake::render_pattern_in(self.pattern, &fields, kinds)?;
+                Some((format!("{}.pdf", super::verify::path_text(&path)), fields))
+            })
+            .collect()
+    }
+}
+
+/// An example answer is written as a pattern in prompt.txt and shown as levels.
+pub fn with_levels(line: &str) -> String {
+    let converted = line.rsplit_once("\"pattern\":\"").and_then(|(head, rest)| {
+        let pattern = rest.strip_suffix("\"}")?;
+        let levels = Levels::from_pattern(pattern)?;
+        Some(format!("{head}{}}}", levels.json_fields()))
+    });
+    converted.unwrap_or_else(|| line.to_owned())
+}
 
 pub fn system_prompt() -> String {
     let placeholders = FILING_PLACEHOLDERS
@@ -41,11 +108,17 @@ pub fn system_prompt() -> String {
         .map(|kind| format!("- {}: {}", condition_word(kind), condition_meaning(kind)))
         .collect::<Vec<_>>()
         .join("\n");
-    SYSTEM_PROMPT_TEXT
+    let kinds = Kinds::built_in(KindLanguage::German);
+    let mut text = SYSTEM_PROMPT_TEXT
         .replace("@PLACEHOLDERS@", &placeholders)
         .replace("@CONDITIONS@", &conditions)
         .replace("@REMIND_GENERATE@", GENERATE_REMINDER)
-        .replace("@REMIND_RECOGNIZE@", RECOGNIZE_REMINDER)
+        .replace("@REMIND_RECOGNIZE@", RECOGNIZE_REMINDER);
+    for (index, example) in RECOGNIZE_EXAMPLES.iter().enumerate() {
+        let marker = format!("@EXAMPLE_RECOGNIZE_{}@", index + 1);
+        text = text.replace(&marker, &annotated_paths(&example.files(&kinds), &kinds));
+    }
+    text.lines().map(with_levels).collect::<Vec<_>>().join("\n") + "\n"
 }
 
 /// A value from the archive is data: it must not be able to write a token
@@ -102,11 +175,11 @@ pub fn prefix_text(documents: &[ContextDocument], kinds: &Kinds) -> String {
 
 #[cfg(test)]
 mod tests {
-    use ncrs_index::KindLanguage;
-    use ncrs_intake::{parse_date, render_pattern_in};
+    #![allow(clippy::unwrap_used)]
 
     use super::*;
     use crate::rules::matrix::{all_cases, fixtures, Expected};
+    use crate::rules::verify::pattern_mismatches;
 
     fn document(sender: &str) -> ContextDocument {
         ContextDocument {
@@ -154,52 +227,33 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::unwrap_used)]
-    fn the_recognize_examples_are_what_the_patterns_render() {
+    fn every_recognize_example_is_what_its_pattern_writes() {
         let kinds = Kinds::built_in(KindLanguage::German);
-        let shown = [
-            (
-                "Otto GmbH",
-                Some("5512"),
-                "2021-04-02",
-                "Post/{year}/{sender}/",
-            ),
-            (
-                "Bosch AG",
-                Some("77"),
-                "2019-11-23",
-                "Post/{year}/{sender}/",
-            ),
-            ("Bosch AG", None, "2019-11-23", "Rechnung_{sender}_{year}"),
-            ("Otto GmbH", None, "2021-04-02", "Rechnung_{sender}_{year}"),
-        ];
         let prompt = system_prompt();
-        for (sender, number, date, pattern) in shown {
-            let fields = DocumentFields {
-                sender: Some(sender.to_owned()),
-                number: number.map(str::to_owned),
-                date: parse_date(date),
-                ..DocumentFields::default()
-            };
-            let rendered = render_pattern_in(pattern, &fields, &kinds).unwrap();
-            let line = format!("{}.pdf", rendered.display());
-            assert!(prompt.lines().any(|l| l == line), "{line}");
+        for example in &RECOGNIZE_EXAMPLES {
+            let files = example.files(&kinds);
+            assert_eq!(files.len(), 2);
+            assert!(pattern_mismatches(example.pattern, &files, &kinds).is_empty());
+            assert!(prompt.contains(&annotated_paths(&files, &kinds)));
         }
+        assert!(prompt.contains("_Otto-GmbH_5512.pdf\" = the automatic file name"));
     }
 
-    const EXAMPLE_PATTERNS: [&str; 7] = [
+    const EXAMPLE_PATTERNS: [&str; 8] = [
         "Rechnungen/{year}/{month}/",
         "Belege/{month}/{sender}/",
         "{sender}_Tax_{year}",
         "{recipient}/Post/",
+        "Finanzen/{year}/{date}_{sender}_{kind}",
         "Post/{year}/{sender}/",
         "Rechnung_{sender}_{year}",
         "{kind}/{month}/{year}.{month}",
     ];
 
     #[test]
-    fn every_example_pattern_is_in_the_prompt_and_none_is_a_matrix_answer() {
+    fn every_example_is_shown_as_levels_and_none_is_a_matrix_answer() {
         let prompt = system_prompt();
+        assert!(!prompt.contains("\"pattern\""));
         let matrix_patterns: Vec<String> = all_cases()
             .iter()
             .map(|case| match &case.expected {
@@ -208,10 +262,8 @@ mod tests {
             })
             .collect();
         for pattern in EXAMPLE_PATTERNS {
-            assert!(
-                prompt.contains(&format!("\"pattern\":\"{pattern}\"")),
-                "{pattern}"
-            );
+            let levels = Levels::from_pattern(pattern).unwrap();
+            assert!(prompt.contains(&levels.json_fields()), "{pattern}");
             assert!(!matrix_patterns.iter().any(|m| m == pattern), "{pattern}");
         }
     }

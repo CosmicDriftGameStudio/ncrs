@@ -1,28 +1,31 @@
 //! The grammar (llama.cpp GBNF) of the two answers: a whole rule, or the
-//! pattern alone. The words in it come from the constants of the rule
+//! levels alone. The words in it come from the constants of the rule
 //! language, so a new placeholder or condition kind reaches the model without
 //! anyone editing a list here.
 
 use ncrs_index::ConditionKind;
 use ncrs_intake::FILING_PLACEHOLDERS;
 
+use super::levels::SEPARATORS;
 use super::vocabulary::{condition_word, COMBINATORS};
 
-/// A pattern is one to eight segments. A segment is literal text, or
-/// placeholders with literal text between them. Every text has exactly one
-/// parse (literal text never contains `{`, and two literals never touch):
-/// llama.cpp follows every parse of an ambiguous grammar at once, and a
-/// grammar that splits literal runs in many ways stalls it.
-/// The literal text keeps off the characters a pattern or a file name cannot
+/// Up to seven folder levels and a file name level, each of one to four
+/// parts: a fixed text or a placeholder name. Every text has exactly one parse
+/// (a fixed part starts with `{`, a placeholder with `"`): llama.cpp follows
+/// every parse of an ambiguous grammar at once and stalls on one that splits
+/// text in many ways.
+/// The fixed text keeps off the characters a pattern or a file name cannot
 /// carry.
-const PATTERN_RULES: &str = r#"pattern ::= "\"" segment ("/" segment){0,7} "/"? "\""
-segment ::= literal | (literal? placeholder)+ literal?
+const LEVEL_RULES: &str = r#"levels ::= "\"ordner\":[" (level ("," level){0,6})? "],\"datei\":" (level | "null")
+level ::= "{\"teile\":[" part ("," part){0,3} "],\"trenner\":" separator "}"
+part ::= fixed | placeholder
+fixed ::= "{\"fest\":\"" fixedchar{1,40} "\"}"
+fixedchar ::= [^/{}\\"<>:*?|\x00-\x1F\x7F]
 placeholder ::= @PLACEHOLDERS@
-literal ::= literalchar+
-literalchar ::= [^/{}\\"<>:*?|\x00-\x1F\x7F]
+separator ::= @SEPARATORS@
 "#;
 
-const GENERATE_RULES: &str = r#"root ::= "{\"match\":" combinator ",\"conditions\":[" (condition ("," condition){0,5})? "],\"pattern\":" pattern "}"
+const GENERATE_RULES: &str = r#"root ::= "{\"match\":" combinator ",\"conditions\":[" (condition ("," condition){0,5})? "]," levels "}"
 combinator ::= @COMBINATORS@
 condition ::= "{\"kind\":" kindword ",\"value\":" value ",\"not\":" boolean "}"
 kindword ::= @KINDS@
@@ -31,7 +34,7 @@ valuechar ::= [^"\\\x00-\x1F\x7F] | "\\" ["\\/bfnrt]
 boolean ::= "true" | "false"
 "#;
 
-const RECOGNIZE_RULES: &str = r#"root ::= "{\"pattern\":" pattern "}"
+const RECOGNIZE_RULES: &str = r#"root ::= "{" levels "}"
 "#;
 
 fn alternatives<'word>(words: impl IntoIterator<Item = &'word str>) -> String {
@@ -42,16 +45,14 @@ fn alternatives<'word>(words: impl IntoIterator<Item = &'word str>) -> String {
         .join(" | ")
 }
 
-fn pattern_rules() -> String {
-    let placeholders = FILING_PLACEHOLDERS
-        .iter()
-        .map(|name| format!("\"{{{name}}}\""))
-        .collect::<Vec<_>>()
-        .join(" | ");
-    PATTERN_RULES.replace("@PLACEHOLDERS@", &placeholders)
+fn level_rules() -> String {
+    let placeholders = alternatives(FILING_PLACEHOLDERS);
+    LEVEL_RULES
+        .replace("@PLACEHOLDERS@", &placeholders)
+        .replace("@SEPARATORS@", &alternatives(SEPARATORS))
 }
 
-/// The whole rule: `{"match":"all","conditions":[...],"pattern":"..."}`.
+/// The whole rule: `{"match":"all","conditions":[...],"ordner":[...],"datei":...}`.
 pub fn generate_grammar() -> String {
     let kinds = alternatives(ConditionKind::ALL.into_iter().map(condition_word));
     let combinators = alternatives(
@@ -62,12 +63,12 @@ pub fn generate_grammar() -> String {
     let rules = GENERATE_RULES
         .replace("@COMBINATORS@", &combinators)
         .replace("@KINDS@", &kinds);
-    format!("{rules}{}", pattern_rules())
+    format!("{rules}{}", level_rules())
 }
 
-/// The pattern alone: `{"pattern":"..."}`.
+/// The levels alone: `{"ordner":[...],"datei":...}`.
 pub fn recognize_grammar() -> String {
-    format!("{RECOGNIZE_RULES}{}", pattern_rules())
+    format!("{RECOGNIZE_RULES}{}", level_rules())
 }
 
 #[cfg(test)]
@@ -85,7 +86,13 @@ mod tests {
         }
         for grammar in [generate, recognize_grammar()] {
             for name in FILING_PLACEHOLDERS {
-                assert!(grammar.contains(&format!("\"{{{name}}}\"")), "{name}");
+                assert!(grammar.contains(&format!("\"\\\"{name}\\\"\"")), "{name}");
+            }
+            for separator in SEPARATORS {
+                assert!(
+                    grammar.contains(&format!("\"\\\"{separator}\\\"\"")),
+                    "{separator:?}"
+                );
             }
             assert!(!grammar.contains('@'));
         }
