@@ -81,7 +81,7 @@ impl KeyActionMessage for KeyAction {
             Self::CommandLine => Message::CommandLine(CommandLineMessage::Focus),
             Self::HermesChat => Message::HermesChat(HermesChatMessage::Open),
             Self::CommandPalette => Message::CommandPalette(CommandPaletteMessage::Toggle),
-            Self::FilingStatus => Message::FilingStatus(FilingStatusMessage::Toggle),
+            Self::FilingStatus => Message::FilingStatus(FilingStatusMessage::Open),
             Self::Rules => Message::HermesPage(HermesPage::Rules),
             Self::HermesQuickFix => Message::QuickFix(QuickFixMessage::Open),
             Self::HermesHandToInbox => Message::HermesFile(HermesFileMessage::HandToInbox),

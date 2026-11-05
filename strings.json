@@ -4165,6 +4165,12 @@
       "de": "{command}: Die Shell ließ sich nicht starten: {reason}"
     },
     {
+      "key": "command_line.network_folder",
+      "context": "Status bar error when a command typed into the command line was not run because the folder shown is a Windows network path (starting with two backslashes), which the Windows command shell cannot use as working folder. {command} is the typed line.",
+      "en": "{command}: not run, the Windows command shell cannot work in a network folder",
+      "de": "{command}: nicht ausgeführt, die Windows-Eingabeaufforderung kann nicht in einem Netzwerkordner arbeiten"
+    },
+    {
       "key": "action.key_bindings",
       "context": "Entry of the command palette that runs the key action key_bindings, which opens the dialog listing every keyboard shortcut. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
       "en": "Keyboard shortcuts",

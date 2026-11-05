@@ -77,7 +77,18 @@ fn strip_matching_quotes(text: &str) -> &str {
 pub enum ShellOutcome {
     Exited(i32),
     NoExitCode,
-    NotStarted { reason: String },
+    /// Windows' `cmd` cannot start in a UNC folder: it falls back to
+    /// `C:\Windows` and would run the command in the wrong place.
+    NetworkFolder,
+    NotStarted {
+        reason: String,
+    },
+}
+
+/// `\\server\share\…` and `\\?\UNC\server\share\…`.
+fn is_unc(path: &Path) -> bool {
+    let text = path.to_string_lossy();
+    text.starts_with(r"\\") && !text.starts_with(r"\\?\") || text.starts_with(r"\\?\UNC\")
 }
 
 /// `$SHELL`, or `/bin/sh` when it is unset or empty.
@@ -115,6 +126,9 @@ fn shell_command(line: &str, _shell: &OsStr) -> Command {
 /// Blocks until the command ends; call it on the blocking pool. Nothing is
 /// piped: a background child that kept a pipe open would block the wait.
 fn run_blocking(line: &str, directory: &Path, shell: &OsStr) -> ShellOutcome {
+    if cfg!(windows) && is_unc(directory) {
+        return ShellOutcome::NetworkFolder;
+    }
     let waited = shell_command(line, shell)
         .current_dir(directory)
         .stdin(Stdio::null())

@@ -91,7 +91,7 @@ fn filing_status_step(
     actions: &mut Vec<Action>,
 ) -> Task<Message> {
     match message {
-        FilingStatusMessage::Open | FilingStatusMessage::Toggle => {
+        FilingStatusMessage::Open => {
             actions.push(Action::ShowPage(HermesPage::Inspection));
             Task::none()
         }

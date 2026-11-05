@@ -79,17 +79,15 @@ fn without_a_pipeline_the_pause_does_nothing() {
 
 #[test]
 fn the_status_key_and_the_chip_open_the_settings_on_the_read_errors() {
-    for message in [FilingStatusMessage::Toggle, FilingStatusMessage::Open] {
-        let mut app = App::with_fixed_panels();
+    let mut app = App::with_fixed_panels();
 
-        drop(app.update(status(message)));
+    drop(app.update(status(FilingStatusMessage::Open)));
 
-        assert_eq!(app.open_hermes_page(), Some(HermesPage::Inspection));
-        assert_eq!(
-            settings_ui::shown_feature(&app.settings_view(app.settings.page.as_ref().unwrap())),
-            Some(SettingsFeature::ReadErrors)
-        );
-    }
+    assert_eq!(app.open_hermes_page(), Some(HermesPage::Inspection));
+    assert_eq!(
+        settings_ui::shown_feature(&app.settings_view(app.settings.page.as_ref().unwrap())),
+        Some(SettingsFeature::ReadErrors)
+    );
 }
 
 #[test]

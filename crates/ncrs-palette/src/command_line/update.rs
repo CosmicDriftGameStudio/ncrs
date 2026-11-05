@@ -163,6 +163,10 @@ fn shell_report(
             ctx.lang.text(Msg::CommandLineNoExitStatus),
             &[("{command}", command)],
         )),
+        ShellOutcome::NetworkFolder => Err(fill_template(
+            ctx.lang.text(Msg::CommandLineNetworkFolder),
+            &[("{command}", command)],
+        )),
         ShellOutcome::NotStarted { reason } => Err(fill_template(
             ctx.lang.text(Msg::CommandLineNotStarted),
             &[("{command}", command), ("{reason}", &reason)],

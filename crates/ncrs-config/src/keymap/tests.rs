@@ -111,6 +111,15 @@ fn the_labels_are_translated_and_fit_a_slot() {
 }
 
 #[test]
+fn a_key_section_naming_a_retired_action_still_loads() {
+    let keymap = rebound("[keys]\nreview_list = [\"ctrl+shift+r\"]\ncopy = \"F5\"\n");
+    assert_eq!(
+        keymap.action_for(&named(Named::F5), Modifiers::default(), KeyScope::Panel),
+        Some(KeyAction::Copy)
+    );
+}
+
+#[test]
 fn only_the_command_line_gives_its_built_in_key_away() {
     let (_, clash_with_view) = failure("[keys]\ncopy = \"F3\"\n");
     assert!(

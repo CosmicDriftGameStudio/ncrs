@@ -59,8 +59,8 @@ impl App {
     }
 
     pub(in crate::app) fn update_rules(&mut self, message: RulesMessage) -> Task<Message> {
-        let outcome = self.with_hermes(Vec::new(), |hermes, ctx| {
-            ncrs_hermes_ui::update_rules(hermes, message, ctx)
+        let outcome = self.with_hermes(Vec::new(), |hermes, _ctx| {
+            ncrs_hermes_ui::update_rules(hermes, message)
         });
         self.run_hermes_outcome(outcome)
     }

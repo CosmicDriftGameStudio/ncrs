@@ -1,6 +1,15 @@
 use super::*;
 
 #[test]
+fn network_paths_are_recognised_as_unc() {
+    assert!(is_unc(Path::new(r"\\server\share\docs")));
+    assert!(is_unc(Path::new(r"\\?\UNC\server\share")));
+    assert!(!is_unc(Path::new(r"\\?\C:\docs")));
+    assert!(!is_unc(Path::new(r"C:\docs")));
+    assert!(!is_unc(Path::new("/home/me")));
+}
+
+#[test]
 fn blank_lines_are_empty() {
     assert_eq!(parse(""), Submission::Empty);
     assert_eq!(parse("   \t"), Submission::Empty);

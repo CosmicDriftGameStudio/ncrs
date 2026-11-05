@@ -124,6 +124,25 @@ fn badge_settings(values: &[StatusValue], style: StatusStyle) -> SystemSettings 
 }
 
 #[test]
+fn a_full_reading_without_cpu_use_asks_for_a_second_one_only_while_open() {
+    use crate::update::lacks_cpu_reading;
+    let mut first = snapshot();
+    if let Some(cpu) = first.cpu.as_mut() {
+        cpu.percent = None;
+    }
+    let open = open_state(snapshot());
+    assert!(lacks_cpu_reading(&open, sampler::Depth::Full, &first));
+    assert!(!lacks_cpu_reading(&open, sampler::Depth::Full, &snapshot()));
+    let light = sampler::Depth::Light(sampler::Wanted::default());
+    assert!(!lacks_cpu_reading(&open, light, &first));
+    assert!(!lacks_cpu_reading(
+        &State::default(),
+        sampler::Depth::Full,
+        &first
+    ));
+}
+
+#[test]
 fn the_tick_follows_what_there_is_to_show() {
     let mut state = State::default();
     assert_eq!(tick_every(&state), None, "closed, nothing selected");
@@ -732,4 +751,37 @@ mod ui_tests {
         let _ = update(&mut state, MonitorMessage::ToggleGroups, &ctx());
         matches_image(&state, "system-page-grouped");
     }
+}
+
+#[tokio::test]
+async fn a_full_reading_without_cpu_use_makes_the_page_measure_again() {
+    use iced_test::futures::futures::StreamExt as _;
+    use iced_test::runtime::{task, Action};
+
+    let mut first = snapshot();
+    if let Some(cpu) = first.cpu.as_mut() {
+        cpu.percent = None;
+    }
+    let mut state = open_state(snapshot());
+
+    let (without_cpu, _) = update(
+        &mut state,
+        MonitorMessage::Measured(sampler::Depth::Full, Box::new(first)),
+        &ctx(),
+    );
+    let mut stream = task::into_stream(without_cpu).expect("a follow-up measurement is scheduled");
+    let mut follow_up = None;
+    while let Some(action) = stream.next().await {
+        if let Action::Output(message) = action {
+            follow_up = Some(message);
+        }
+    }
+    assert!(matches!(follow_up, Some(MonitorMessage::MeasureAgain)));
+
+    let (with_cpu, _) = update(
+        &mut state,
+        MonitorMessage::Measured(sampler::Depth::Full, Box::new(snapshot())),
+        &ctx(),
+    );
+    assert!(task::into_stream(with_cpu).is_none());
 }

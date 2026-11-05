@@ -43,7 +43,6 @@ pub enum Message {
 pub enum FilingStatusMessage {
     /// Shows the page with the files that could not be read.
     Open,
-    Toggle,
     /// The once-a-second look at the pipeline.
     Tick,
     /// The module and runner of the previous settings are gone; the one of
