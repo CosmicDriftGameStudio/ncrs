@@ -109,36 +109,6 @@ fn keys_without_prompt(
         };
     }
 
-    if prompt.rules {
-        return hermes_page_key(
-            ncrs_hermes_ui::keys::rules_key,
-            prompt,
-            &key,
-            key_modifiers,
-            scope,
-        );
-    }
-
-    if prompt.saved_queries {
-        return hermes_page_key(
-            ncrs_hermes_ui::keys::saved_queries_key,
-            prompt,
-            &key,
-            key_modifiers,
-            scope,
-        );
-    }
-
-    if prompt.tags {
-        return hermes_page_key(
-            ncrs_hermes_ui::keys::tags_key,
-            prompt,
-            &key,
-            key_modifiers,
-            scope,
-        );
-    }
-
     // Like the command palette: the field takes the typing, the card the
     // rest. Enter reaches the routing when the list has the keys, not the field.
     if prompt.theme_fetch {
@@ -160,18 +130,6 @@ fn keys_without_prompt(
                 .filter(|message| *message == Message::Quit)
                 .filter(|_| is_not_typed_by_text_field(&key, key_modifiers)),
         };
-    }
-
-    // The page owns the keyboard; of the bindings only its own key (which
-    // closes it) and quitting reach past it.
-    if prompt.filing_status {
-        return hermes_page_key(
-            ncrs_hermes_ui::keys::filing_status_key,
-            prompt,
-            &key,
-            key_modifiers,
-            scope,
-        );
     }
 
     if prompt.settings {
@@ -438,10 +396,6 @@ pub(in crate::app) fn repeats(message: &Message) -> bool {
             | Message::CommandPalette(CommandPaletteMessage::Move(_))
             | Message::KeyBindings(KeyBindingsMessage::Move(_) | KeyBindingsMessage::MoveKey(_))
             | Message::ThemeFetch(ThemeFetchMessage::Move(_))
-            | Message::Rules(RulesMessage::Move(_))
-            | Message::SavedQueries(SavedQueriesMessage::Move(_))
-            | Message::Tags(TagsMessage::Move(_))
-            | Message::FilingStatus(FilingStatusMessage::MoveError(_))
             | Message::Search(
                 SearchMessage::ToggleTag
                     | SearchMessage::TagMove(_)

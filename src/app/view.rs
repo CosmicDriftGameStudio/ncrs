@@ -101,8 +101,6 @@ impl App {
                 self.hermes_chat_area()
             } else if let Some(state) = self.settings.page.as_ref() {
                 self.settings_area(state)
-            } else if let Some(area) = self.ablage_area() {
-                area
             } else {
                 container(column![
                     panels,
@@ -319,6 +317,14 @@ impl App {
             .into();
         }
 
+        if let Some(dialog_element) = ncrs_hermes_ui::dialogs(&self.hermes, &self.hermes_view_ctx())
+            .into_iter()
+            .next()
+        {
+            return Stack::with_children([root, dialog::scrim(dialog_element.map(Message::from))])
+                .into();
+        }
+
         if self.start_over_dialog {
             let question = hermes_overview_ui::start_over_dialog(
                 self.dialog_focus,
@@ -458,16 +464,5 @@ impl App {
                 .and_then(AiModelCard::progress),
             system_reads_scans: crate::ocr_models::system_reads_scans(),
         }
-    }
-
-    /// The overview or the status below the title bar, with the status bar of
-    /// filing under it.
-    fn ablage_area(&self) -> Option<Container<'_, Message>> {
-        let page = ncrs_hermes_ui::ablage_area(&self.hermes, &self.hermes_view_ctx())?;
-        Some(
-            container(page.map(Message::from))
-                .width(Length::Fill)
-                .height(Length::Fill),
-        )
     }
 }

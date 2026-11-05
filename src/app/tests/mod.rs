@@ -382,18 +382,6 @@ mod hermes_roles_and_off_tests;
 #[cfg(test)]
 mod receiver_stream_tests;
 // reason: a failing assertion is the signal in a test, so unwrap belongs here
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
-#[cfg(test)]
-mod hermes_protection_tests;
-// reason: a failing assertion is the signal in a test
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-#[cfg(test)]
-mod ai_status_ui_tests;
 #[allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -442,6 +430,9 @@ mod hermes_chat_areas_ui_tests;
 )]
 #[cfg(test)]
 mod hermes_chat_ui_tests;
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+#[cfg(test)]
+mod hermes_protection_tests;
 #[allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -450,6 +441,16 @@ mod hermes_chat_ui_tests;
 )]
 #[cfg(test)]
 mod hit_list_tests;
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod one_concept_ui_tests;
 #[cfg(test)]
 mod settings_pages_tests;
 #[cfg(test)]

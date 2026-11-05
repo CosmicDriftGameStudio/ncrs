@@ -61,6 +61,9 @@ pub enum DialogSize {
     Medium,
     /// Lists: the command palette and Quick Open.
     Large,
+    /// Forms with a line of several controls, like the conditions of a rule:
+    /// as wide as `Large` and taller.
+    Wide,
     /// The card of Hermes: a sidebar and a page.
     Card,
 }
@@ -100,6 +103,7 @@ impl DialogSize {
             Self::Small => (Extent::fixed(400.0), Extent::new(0.34, 240.0, 320.0)),
             Self::Medium => (Extent::fixed(520.0), Extent::new(0.62, 360.0, 600.0)),
             Self::Large => (Extent::fixed(640.0), Extent::fixed(640.0)),
+            Self::Wide => (Extent::fixed(640.0), Extent::new(0.9, 360.0, 900.0)),
             Self::Card => (Extent::fixed(1000.0), Extent::fixed(690.0)),
         }
     }
@@ -525,6 +529,7 @@ mod tests {
         assert_size(DialogSize::Small, INITIAL_WINDOW_SIZE, 400.0, 258.4);
         assert_size(DialogSize::Medium, INITIAL_WINDOW_SIZE, 520.0, 471.2);
         assert_size(DialogSize::Large, INITIAL_WINDOW_SIZE, 640.0, 640.0);
+        assert_size(DialogSize::Wide, INITIAL_WINDOW_SIZE, 640.0, 684.0);
         assert_size(DialogSize::Card, INITIAL_WINDOW_SIZE, 1000.0, 690.0);
     }
 
@@ -534,6 +539,7 @@ mod tests {
         assert_eq!(sized(DialogSize::Small, huge), (400.0, 320.0));
         assert_eq!(sized(DialogSize::Medium, huge), (520.0, 600.0));
         assert_eq!(sized(DialogSize::Large, huge), (640.0, 640.0));
+        assert_eq!(sized(DialogSize::Wide, huge), (640.0, 900.0));
         assert_eq!(sized(DialogSize::Card, huge), (1000.0, 690.0));
     }
 
@@ -544,6 +550,7 @@ mod tests {
             DialogSize::Small,
             DialogSize::Medium,
             DialogSize::Large,
+            DialogSize::Wide,
             DialogSize::Card,
         ] {
             let framed = frame_size(size, tiny);

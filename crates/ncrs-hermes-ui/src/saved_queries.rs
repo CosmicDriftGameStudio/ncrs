@@ -1,5 +1,5 @@
-//! State of the reports page: the list of saved queries, the one under the
-//! cursor (or a search not saved yet), what running it found, and the steps of
+//! State of the reports page: the list of saved queries, the one shown (or a
+//! search not saved yet), what running it found, and the dialogs of editing,
 //! deleting and exporting. The criteria are only shown here; they are changed
 //! in the search. No widgets and no tasks; `App` owns it and changes it from
 //! `update`, the view is `ui::saved_queries`.
@@ -7,13 +7,10 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use iced::mouse::ScrollDelta;
-
 use ncrs_index::{tag_name, Amount, Kinds, QuerySpec, SavedQuery, SavedQueryId};
 
 use ncrs_filing::query_work::{copies_of, ExportSummary, QueryHit};
 use ncrs_i18n::{Language, Msg};
-use ncrs_ui_kit::list_window::ListWindow;
 
 /// A ready-made report the user starts from; the search it opens is theirs
 /// to change before saving.
@@ -134,15 +131,16 @@ pub struct ExportRequest {
     pub folder: PathBuf,
 }
 
-/// Most reports of the list shown at once; the list follows the cursor.
-pub const VISIBLE_ROWS: usize = 12;
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct SavedQueries {
     rows: Vec<SavedQuery>,
     /// `None` is the search that is not saved yet, if there is one.
     cursor: Option<usize>,
-    window: ListWindow,
+    /// The dialog with the name and the criteria of the report is up.
+    edit_open: bool,
+    /// "Exportieren" waits for the hits of the report; the dialog opens with
+    /// this folder when they are there.
+    export_when_ran: Option<PathBuf>,
     /// The list is loading or the work is running; the view takes no new task.
     busy: bool,
     /// What is typed in the name field.
@@ -163,6 +161,8 @@ pub struct SavedQueries {
     unsaved: Option<Draft>,
     /// The year the templates count back from.
     this_year: i32,
+    /// The entry of the template list chosen for a new report; 0 is none.
+    template_choice: usize,
     kinds: Kinds,
 }
 
@@ -172,7 +172,8 @@ impl SavedQueries {
         Self {
             rows: Vec::new(),
             cursor: None,
-            window: ListWindow::default(),
+            edit_open: false,
+            export_when_ran: None,
             busy: true,
             name: String::new(),
             problem: None,
@@ -186,6 +187,7 @@ impl SavedQueries {
             pending_draft: None,
             unsaved: None,
             this_year,
+            template_choice: 0,
             kinds: Kinds::default(),
         }
     }
@@ -212,11 +214,6 @@ impl SavedQueries {
 
     pub fn cursor(&self) -> Option<usize> {
         self.cursor
-    }
-
-    /// The first query of the list that is shown.
-    pub fn first_visible(&self) -> usize {
-        self.window.offset(self.rows.len(), VISIBLE_ROWS)
     }
 
     pub fn selected(&self) -> Option<&SavedQuery> {
@@ -277,16 +274,32 @@ impl SavedQueries {
             .map_or(0, |results| copies_of(&results.hits))
     }
 
-    /// A step the user can still back out of is up.
-    pub fn has_open_step(&self) -> bool {
-        self.confirming_delete || self.export.is_some()
+    /// The dialog of the name and criteria: of a report, or of a search that
+    /// is not saved yet.
+    pub fn edit_is_open(&self) -> bool {
+        self.edit_open || self.unsaved().is_some()
     }
 
-    /// Backs out of the step that is up; whether there was one.
+    /// A dialog the user can still back out of is up.
+    pub fn dialog_is_open(&self) -> bool {
+        self.confirming_delete || self.export.is_some() || self.edit_is_open()
+    }
+
+    /// Backs out of the dialog that is up; a search that was not saved is
+    /// dropped. Whether there was one.
     pub fn cancel_step(&mut self) -> bool {
-        let was_open = self.has_open_step();
+        let was_open = self.dialog_is_open();
         self.confirming_delete = false;
         self.export = None;
+        self.export_when_ran = None;
+        self.edit_open = false;
+        if self.unsaved.take().is_some() {
+            self.pending_draft = None;
+            self.template_choice = 0;
+            self.name.clear();
+        } else if let Some(name) = self.selected().map(|query| query.name.clone()) {
+            self.name = name;
+        }
         was_open
     }
 
@@ -308,13 +321,6 @@ impl SavedQueries {
             return;
         }
         self.cursor = wanted.and_then(|id| self.rows.iter().position(|query| query.id == id));
-        if self.cursor.is_none() && self.unsaved.is_none() && !self.rows.is_empty() {
-            self.cursor = Some(0);
-        }
-        if let Some(cursor) = self.cursor {
-            self.window
-                .ensure_visible(cursor, self.rows.len(), VISIBLE_ROWS);
-        }
         if let Some(name) = self.selected().map(|query| query.name.clone()) {
             self.name = name;
         }
@@ -344,19 +350,8 @@ impl SavedQueries {
 
     pub fn failed(&mut self, detail: String) {
         self.busy = false;
+        self.export_when_ran = None;
         self.problem = Some(Problem::Failed(detail));
-    }
-
-    pub fn move_cursor(&mut self, delta: isize) {
-        let Some(last) = self.rows.len().checked_sub(1) else {
-            return;
-        };
-        let next = match self.cursor {
-            Some(index) => index.saturating_add_signed(delta).min(last),
-            None if delta > 0 => 0,
-            None => last,
-        };
-        self.select(next);
     }
 
     pub fn select(&mut self, index: usize) {
@@ -369,24 +364,59 @@ impl SavedQueries {
         self.name.clone_from(&query.name);
         self.cursor = Some(index);
         self.unsaved = None;
-        self.window
-            .ensure_visible(index, self.rows.len(), VISIBLE_ROWS);
         self.leave_query();
     }
 
-    /// The wheel moves the window; a query under the cursor follows it when
-    /// the cursor would leave. The unsaved row stays the one shown, and a name
-    /// being edited is never dropped by scrolling.
-    pub fn scroll(&mut self, delta: ScrollDelta) {
-        let mut moved = self.cursor.unwrap_or_default();
-        self.window
-            .scroll(delta, self.rows.len(), VISIBLE_ROWS, &mut moved);
-        if self.cursor.is_some() && !self.busy && !self.name_is_changed() {
-            self.select(moved);
+    /// Opens the dialog for a new report with no criteria and no name.
+    pub fn begin_new(&mut self) {
+        if self.busy {
+            return;
         }
+        self.cursor = None;
+        self.name.clear();
+        self.template_choice = 0;
+        self.unsaved = Some(Draft {
+            name: String::new(),
+            spec: QuerySpec::default(),
+        });
+        self.leave_query();
+    }
+
+    /// The entry of the template list that is chosen; 0 is no template.
+    pub const fn template_choice(&self) -> usize {
+        self.template_choice
+    }
+
+    /// Fills the name and the criteria of the new report from the template
+    /// at `choice` of the list (0: no template, empty criteria and name).
+    pub fn choose_template(&mut self, choice: usize, lang: Language) {
+        let template = choice
+            .checked_sub(1)
+            .and_then(|position| self.templates().into_iter().nth(position));
+        let Some(draft) = self.unsaved.as_mut() else {
+            return;
+        };
+        let (name, spec) = template.map_or_else(
+            || (String::new(), QuerySpec::default()),
+            |found| (found.name(lang), found.spec(lang)),
+        );
+        self.name.clone_from(&name);
+        *draft = Draft { name, spec };
+        self.template_choice = choice;
+        self.problem = None;
+    }
+
+    /// Opens the dialog of the report at `index`.
+    pub fn begin_edit(&mut self, index: usize) {
+        if self.busy || index >= self.rows.len() {
+            return;
+        }
+        self.select(index);
+        self.edit_open = true;
     }
 
     fn leave_query(&mut self) {
+        self.export_when_ran = None;
         self.problem = None;
         self.results = None;
         self.confirming_delete = false;
@@ -425,15 +455,18 @@ impl SavedQueries {
     /// The query is saved; the list is loaded again, with the cursor on it.
     pub fn saved(&mut self, id: SavedQueryId) {
         self.select_after_load = Some(id);
+        self.edit_open = false;
         self.unsaved = None;
+        self.template_choice = 0;
         self.hit_counts.remove(&id);
         self.results = None;
     }
 
-    /// Asks "really delete?" in the page, for the query under the cursor.
+    /// Asks "really delete?" for the query shown.
     pub fn ask_delete(&mut self) {
         if !self.busy && self.selected().is_some() {
             self.export = None;
+            self.edit_open = false;
             self.confirming_delete = true;
         }
     }
@@ -481,6 +514,18 @@ impl SavedQueries {
             hits,
             missing_shown: false,
         });
+        if let Some(folder) = self.export_when_ran.take() {
+            self.start_export(folder);
+        }
+    }
+
+    /// The hits of the report shown are there, so the export can open now.
+    pub fn export_when_ready(&mut self, folder: PathBuf) {
+        if self.results.is_some() {
+            self.start_export(folder);
+        } else {
+            self.export_when_ran = Some(folder);
+        }
     }
 
     /// The hits counted for the list.
@@ -494,11 +539,12 @@ impl SavedQueries {
         }
     }
 
-    /// Opens the step that asks before anything is copied. Only a result with
-    /// files to copy can be exported.
+    /// Opens the step that asks before anything is copied; with nothing to
+    /// copy it shows that and the confirm button stays off.
     pub fn start_export(&mut self, folder: PathBuf) {
-        if !self.busy && self.copies() > 0 {
+        if !self.busy {
             self.confirming_delete = false;
+            self.edit_open = false;
             self.exported = None;
             self.export = Some(ExportStep { folder });
         }
@@ -570,6 +616,7 @@ pub mod fixtures {
     pub fn loaded_list() -> SavedQueries {
         let mut list = SavedQueries::new(THIS_YEAR);
         list.loaded(stored_queries());
+        list.select(0);
         list
     }
 
@@ -696,7 +743,7 @@ mod tests {
     }
 
     #[test]
-    fn the_page_opens_busy_and_the_loaded_list_selects_the_first_report() {
+    fn the_page_opens_busy_and_the_loaded_list_selects_nothing_until_a_report_is_chosen() {
         let mut list = SavedQueries::new(THIS_YEAR);
         assert!(list.is_busy());
         assert!(list.selected().is_none());
@@ -704,7 +751,10 @@ mod tests {
         list.loaded(stored_queries());
 
         assert!(!list.is_busy());
-        assert_eq!(list.cursor(), Some(0));
+        assert_eq!(list.cursor(), None);
+
+        list.select(0);
+
         assert_eq!(list.name(), "Company A 2024");
     }
 
@@ -852,13 +902,36 @@ mod tests {
     }
 
     #[test]
-    fn nothing_to_copy_means_no_export_step() {
+    fn nothing_to_copy_still_opens_the_export_step_and_shows_zero() {
         let mut list = loaded_list();
         let (serial, _) = list.begin_run().unwrap();
         list.ran(serial, vec![hit("gone.pdf", true)]);
 
         list.start_export(PathBuf::from("out"));
 
+        assert!(list.export_step().is_some());
+        assert_eq!(list.copies(), 0);
+    }
+
+    #[test]
+    fn an_export_waiting_for_a_run_is_forgotten_when_the_report_changes() {
+        let mut list = loaded_list();
+        list.begin_run().unwrap();
+        list.export_when_ready(PathBuf::from("out"));
+        list.begin_new();
+        let (serial, _) = list.begin_run().unwrap();
+        list.ran(serial, vec![hit("a.pdf", false)]);
+        assert!(list.export_step().is_none());
+    }
+
+    #[test]
+    fn an_export_waiting_for_a_run_is_forgotten_when_the_run_fails() {
+        let mut list = loaded_list();
+        list.begin_run().unwrap();
+        list.export_when_ready(PathBuf::from("out"));
+        list.failed("boom".to_owned());
+        let serial = list.begin_run().unwrap().0;
+        list.ran(serial, vec![hit("a.pdf", false)]);
         assert!(list.export_step().is_none());
     }
 
@@ -881,37 +954,5 @@ mod tests {
 
         assert!(!list.is_busy());
         assert_eq!(list.problem(), Some(&Problem::Failed("boom".to_owned())));
-    }
-
-    fn list_of_many_queries() -> SavedQueries {
-        let dir = tempfile::TempDir::new().unwrap();
-        let mut index = ncrs_index::Index::create_plain(&dir.path().join("index.db")).unwrap();
-        for number in 0..40 {
-            index
-                .save_query(&format!("Query {number}"), &QuerySpec::default())
-                .unwrap();
-        }
-        let mut list = SavedQueries::new(THIS_YEAR);
-        list.loaded(index.saved_queries().unwrap());
-        list
-    }
-
-    #[test]
-    fn scrolling_keeps_a_changed_name_and_the_cursor() {
-        let mut list = list_of_many_queries();
-        list.set_name("renamed".to_owned());
-        let cursor = list.cursor();
-
-        list.scroll(ScrollDelta::Lines { x: 0.0, y: -30.0 });
-
-        assert_eq!(list.cursor(), cursor);
-        assert_eq!(list.name(), "renamed");
-    }
-
-    #[test]
-    fn scrolling_an_unchanged_form_moves_the_cursor_with_the_window() {
-        let mut list = list_of_many_queries();
-        list.scroll(ScrollDelta::Lines { x: 0.0, y: -30.0 });
-        assert_ne!(list.cursor(), Some(0));
     }
 }

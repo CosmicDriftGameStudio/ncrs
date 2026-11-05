@@ -71,6 +71,25 @@ fn frame_bounds(app: &App) -> iced::Rectangle {
         .bounds()
 }
 
+/// A confirm button that repeats the title of its dialog: plain text would
+/// find the title, which comes first.
+fn button_repeating_the_title(
+    label: &str,
+) -> impl FnMut(iced_selector::Candidate<'_>) -> Option<iced_selector::Target> + Send + '_ {
+    let mut title_passed = false;
+    move |candidate| {
+        if !matches!(&candidate, iced_selector::Candidate::Text { content, .. } if *content == label)
+        {
+            return None;
+        }
+        if !title_passed {
+            title_passed = true;
+            return None;
+        }
+        Some(iced_selector::Target::from(candidate))
+    }
+}
+
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
 #[allow(
@@ -1637,14 +1656,10 @@ mod filing_status_page {
     use std::path::PathBuf;
     use std::time::{Duration, SystemTime};
 
-    use ncrs_pipeline::{
-        Busy, ErrorEntry, RunnerState, Snapshot, StepSnapshot, Task, WorkerSnapshot,
-    };
+    use ncrs_pipeline::{ErrorEntry, RunnerState, Snapshot, StepSnapshot, Task};
 
     use super::*;
     use crate::messages::FilingStatusMessage;
-
-    const ERROR_FILE: &str = "/tmp/inbox/company-a-invoice.pdf";
 
     fn taken_at() -> SystemTime {
         SystemTime::UNIX_EPOCH + Duration::from_secs(1_800_000_000)
@@ -1671,12 +1686,6 @@ mod filing_status_page {
 
     fn shows(app: &App, label: &str) -> bool {
         simulator(app).find(label).is_ok()
-    }
-
-    /// The page with the steps and the workers unfolded.
-    fn with_steps_shown(mut app: App) -> App {
-        drop(app.update(page_message(FilingStatusMessage::ToggleSteps)));
-        app
     }
 
     fn two_errors() -> Vec<ErrorEntry> {
@@ -1706,77 +1715,6 @@ mod filing_status_page {
         Message::FilingStatus(message)
     }
 
-    /// Two files open, none finished yet: the state in which throughput and
-    /// time left have nothing to show.
-    fn inspection_snapshot() -> Snapshot {
-        let mut snapshot = snapshot(RunnerState::Running, 0, 0);
-        snapshot.steps = vec![
-            StepSnapshot {
-                name: "intake",
-                waiting: 2,
-                done: 5,
-                failed: 0,
-                unchanged: 1,
-            },
-            StepSnapshot {
-                name: "review",
-                waiting: 0,
-                done: 3,
-                failed: 1,
-                unchanged: 0,
-            },
-        ];
-        snapshot.workers = vec![
-            WorkerSnapshot {
-                id: 0,
-                busy: Some(Busy {
-                    file: PathBuf::from("/home/user/inbox/invoice.pdf"),
-                    task: Task::Step("intake"),
-                    started_at: taken_at() - Duration::from_secs(12),
-                }),
-            },
-            WorkerSnapshot { id: 1, busy: None },
-        ];
-        snapshot
-    }
-
-    fn inspection(language: Language) -> App {
-        inspection_of(inspection_snapshot(), language)
-    }
-
-    fn inspection_of(snapshot: Snapshot, language: Language) -> App {
-        let figures = crate::filing::IndexFigures {
-            path: PathBuf::from("/home/user/.local/share/ncrs/index.db"),
-            file_bytes: Some(2 * 1024 * 1024),
-            encrypted: true,
-            statistics: ncrs_index::IndexStatistics {
-                schema_version: 3,
-                document_count: 240,
-                open_reviews: 12,
-                full_text_bytes: 512 * 1024,
-            },
-        };
-        App::with_filing_inspection(snapshot, taken_at(), figures)
-            .with_hermes_counts(sample_counts())
-            .in_language(language)
-    }
-
-    /// 2 421 documents seen, none filed; the archive has text for most.
-    fn sample_counts() -> ncrs_index::HermesCounts {
-        ncrs_index::HermesCounts {
-            inbox: ncrs_index::StatusCounts {
-                in_review: 2421,
-                ..ncrs_index::StatusCounts::default()
-            },
-            open_reviews: 2421,
-            open_reviews_without_text: 1800,
-            confirmed_rules: 0,
-            archive_documents: 5120,
-            archive_documents_with_text: 4871,
-            ..ncrs_index::HermesCounts::default()
-        }
-    }
-
     #[test]
     fn a_missing_pdf_library_is_a_box_with_the_searched_path_cut_in_the_middle() {
         let long = PathBuf::from(format!(
@@ -1787,34 +1725,9 @@ mod filing_status_page {
             (Language::English, "inspection_pdf_missing_en"),
             (Language::German, "inspection_pdf_missing_de"),
         ] {
-            let app = inspection(language).with_pdf_library_missing(long.clone());
-            let matches = simulator(&app)
-                .snapshot(&iced::Theme::Dark)
-                .unwrap()
-                .matches_image(format!("tests/snapshots/{name}.png"))
-                .expect("snapshot comparison");
-            assert!(
-                matches,
-                "the inspection does not match tests/snapshots/{name}.png"
-            );
-        }
-    }
-
-    #[test]
-    fn the_inspection_matches_its_snapshots() {
-        for (language, name) in [
-            (Language::English, "filing_status_en"),
-            (Language::German, "filing_status_de"),
-        ] {
-            let mut snapshot = inspection_snapshot();
-            snapshot.errors = two_errors();
-            let mut app = inspection_of(snapshot, language);
-            drop(app.update(page_message(FilingStatusMessage::SelectError(0))));
-            drop(
-                app.update(page_message(FilingStatusMessage::ToggleErrorChecked(
-                    PathBuf::from(ERROR_FILE),
-                ))),
-            );
+            let app = page(snapshot(RunnerState::Idle, 0, 0))
+                .in_language(language)
+                .with_pdf_library_missing(long.clone());
             let matches = simulator(&app)
                 .snapshot(&iced::Theme::Dark)
                 .unwrap()
@@ -1828,134 +1741,56 @@ mod filing_status_page {
     }
 
     #[test]
-    fn the_inspection_uses_the_visible_names_and_says_when_figures_come() {
-        let english = with_steps_shown(inspection(Language::English));
-        for label in ["Intake", "waiting", "done", "failed", "unchanged", "Review"] {
-            assert!(shows(&english, label), "{label}");
-        }
-        assert!(shows(&english, "after the first full minute"));
-        let german = with_steps_shown(inspection(Language::German));
-        assert!(shows(&german, "Annahme"));
-        assert!(shows(&german, "wartend"));
-        assert!(shows(&german, "Rückfragen"));
-        assert!(shows(&german, "ab der ersten vollen Minute"));
-
-        let idle = page(snapshot(RunnerState::Idle, 0, 0));
-        assert!(!shows(&idle, "after the first full minute"));
-    }
-
-    #[test]
-    fn a_step_row_holds_its_figures_in_the_order_of_the_columns() {
-        let mut snapshot = inspection_snapshot();
-        snapshot.steps = vec![
-            StepSnapshot {
-                name: "intake",
-                waiting: 21,
-                done: 35,
-                failed: 47,
-                unchanged: 58,
-            },
-            StepSnapshot {
-                name: "review",
-                waiting: 61,
-                done: 72,
-                failed: 83,
-                unchanged: 94,
-            },
-        ];
-        for (language, label) in [(Language::English, "Intake"), (Language::German, "Annahme")] {
-            let app = with_steps_shown(inspection_of(snapshot.clone(), language));
-            let mut sim = simulator(&app);
-            let name = sim.find(label).unwrap().bounds();
-            let mut previous = name;
-            for figure in ["21", "35", "47", "58"] {
-                let cell = sim.find(figure).unwrap().bounds();
-                assert!(
-                    cell.x > previous.x,
-                    "{language:?}: {figure} after {previous:?}"
-                );
-                assert!(
-                    (cell.y - name.y).abs() < name.height,
-                    "{language:?}: {figure} is in the row of {label}"
-                );
-                previous = cell;
-            }
-            let second_row = sim.find("61").unwrap().bounds();
+    fn the_read_errors_match_their_snapshots() {
+        for (language, name, errors) in [
+            (Language::English, "read_errors_en", two_errors()),
+            (Language::German, "read_errors_de", two_errors()),
+            (Language::English, "read_errors_none_en", Vec::new()),
+            (Language::German, "read_errors_none_de", Vec::new()),
+        ] {
+            let mut with_errors = snapshot(RunnerState::Idle, 0, 0);
+            with_errors.errors = errors;
+            let app = page(with_errors).in_language(language);
+            let matches = simulator(&app)
+                .snapshot(&iced::Theme::Dark)
+                .unwrap()
+                .matches_image(format!("tests/snapshots/{name}.png"))
+                .expect("snapshot comparison");
             assert!(
-                second_row.y > name.y,
-                "{language:?}: the second step is below"
+                matches,
+                "the page does not match tests/snapshots/{name}.png"
             );
         }
     }
 
     #[test]
-    fn the_page_shows_every_state_and_offers_the_pause_only_while_there_is_one() {
-        let cases = [
-            (RunnerState::Off, "Off", None),
-            (RunnerState::Idle, "Idle", Some("Pause")),
-            (RunnerState::Running, "Running", Some("Pause")),
-            (RunnerState::Paused, "Paused", Some("Resume")),
-        ];
-        for (state, state_text, pause) in cases {
-            let app = page(snapshot(state, 0, 0));
-            assert!(shows(&app, state_text), "{state:?}: {state_text}");
-            assert!(shows(&app, "Balanced"), "{state:?}: the load");
-            for control in ["Pause", "Resume"] {
-                assert_eq!(shows(&app, control), pause == Some(control), "{state:?}");
-            }
-        }
-    }
-
-    #[test]
-    fn an_error_is_listed_selected_by_a_click_and_its_file_can_be_shown() {
+    fn an_error_is_a_row_with_its_reason_and_two_buttons_in_the_row() {
         let mut with_error = snapshot(RunnerState::Idle, 0, 1);
         with_error.errors = two_errors();
-        let mut app = page(with_error);
+        let app = page(with_error);
 
         assert!(shows(&app, "the step stopped unexpectedly"));
         assert!(!shows(&app, "No errors"));
         assert_eq!(
-            messages_after_click(&app, "company-a-invoice.pdf"),
-            [page_message(FilingStatusMessage::SelectError(0))]
-        );
-        assert!(!shows(&app, "Show file"));
-
-        drop(app.update(page_message(FilingStatusMessage::SelectError(0))));
-        assert_eq!(
             messages_after_click(&app, "Show file"),
             [page_message(FilingStatusMessage::ErrorActivated(
-                PathBuf::from(ERROR_FILE)
+                PathBuf::from("/tmp/inbox/company-a-invoice.pdf")
             ))]
         );
-        assert!(shows(&page(snapshot(RunnerState::Idle, 0, 0)), "No errors"));
+        assert_eq!(
+            messages_after_click(&app, "Process again"),
+            [page_message(FilingStatusMessage::ProcessOneAgain(
+                PathBuf::from("/tmp/inbox/company-a-invoice.pdf")
+            ))]
+        );
     }
 
     #[test]
-    fn a_busy_worker_shows_how_long_it_has_been_at_it() {
-        let mut busy = snapshot(RunnerState::Running, 0, 0);
-        busy.workers = vec![
-            WorkerSnapshot {
-                id: 0,
-                busy: Some(Busy {
-                    file: PathBuf::from(ERROR_FILE),
-                    task: Task::Step("probe"),
-                    started_at: taken_at() - Duration::from_secs(42),
-                }),
-            },
-            WorkerSnapshot { id: 1, busy: None },
-        ];
-        let app = with_steps_shown(page(busy));
-
-        assert!(shows(&app, "0:42"));
-        assert!(shows(&app, "company-a-invoice.pdf"));
-        assert!(shows(&app, "idle"));
-    }
-
-    #[test]
-    fn without_figures_the_index_says_why() {
+    fn without_errors_the_page_is_not_missing_but_says_so_in_a_row() {
         let app = page(snapshot(RunnerState::Idle, 0, 0));
 
-        assert!(shows(&app, "Index not open"));
+        assert!(shows(&app, "No errors"));
+        assert!(!shows(&app, "Show file"));
     }
 
     #[test]
@@ -2740,7 +2575,7 @@ mod saved_queries_card {
     use std::path::PathBuf;
 
     use super::*;
-    use crate::messages::SavedQueriesMessage;
+    use crate::messages::{SavedQueriesMessage, SettingsMessage};
     use crate::saved_queries::fixtures::{hit, loaded_list, THIS_YEAR};
     use crate::saved_queries::{Draft, SavedQueries};
 
@@ -2785,30 +2620,37 @@ mod saved_queries_card {
         list
     }
 
-    #[test]
-    fn the_page_shows_the_reports_their_criteria_and_the_result() {
-        for label in [
-            "Reports",
-            "Company A 2024",
-            "Taxes 2023",
-            "Criteria",
-            "Edit in search",
-            "RESULT",
-            "Hits",
-            "View list",
-            "Open in search",
-            "Export …",
-        ] {
-            assert!(shows(after_run(), label), "{label}");
-        }
+    /// The reports with the hits each one finds today.
+    fn listing() -> SavedQueries {
+        let mut list = loaded_list();
+        let ids: Vec<_> = list.rows().iter().map(|query| query.id).collect();
+        list.counted(ids.into_iter().zip([12, 3]).collect());
+        list
+    }
+
+    fn editing() -> SavedQueries {
+        let mut list = after_run();
+        list.begin_edit(0);
+        list
+    }
+
+    fn asking_to_delete() -> SavedQueries {
+        let mut list = loaded_list();
+        list.select(0);
+        list.ask_delete();
+        list
     }
 
     #[test]
-    fn an_empty_list_says_so() {
-        assert!(shows(
-            empty_list(),
-            "No reports yet. Choose New to start a search and save it as a report."
-        ));
+    fn the_button_of_the_remove_question_removes_the_report() {
+        let app = App::with_saved_queries(asking_to_delete());
+        let mut sim = simulator(&app);
+        sim.click(button_repeating_the_title("Remove report"))
+            .expect("the confirm button");
+        assert!(sim.into_messages().any(|message| matches!(
+            message,
+            Message::SavedQueries(SavedQueriesMessage::ConfirmDelete)
+        )));
     }
 
     fn empty_list() -> SavedQueries {
@@ -2817,34 +2659,72 @@ mod saved_queries_card {
         list
     }
 
-    #[test]
-    fn clicking_a_row_selects_it() {
-        let app = App::with_saved_queries(loaded_list());
+    fn click_sends(list: SavedQueries, label: &str, message: SavedQueriesMessage) {
+        let app = App::with_saved_queries(list);
         let mut sim = simulator(&app);
-        sim.click("Taxes 2023").expect("the row");
-
+        sim.click(label).expect(label);
         assert_eq!(
             sim.into_messages().collect::<Vec<_>>(),
-            [queries_message(SavedQueriesMessage::Select(1))]
+            [queries_message(message)],
+            "{label}"
         );
     }
 
     #[test]
-    fn the_links_and_the_secondary_button_hand_the_report_to_the_search() {
-        let app = App::with_saved_queries(after_run());
-        for (label, message) in [
-            ("Edit in search", SavedQueriesMessage::EditInSearch),
-            ("Open in search", SavedQueriesMessage::OpenInSearch),
-            ("View list", SavedQueriesMessage::ToggleMissing),
-            ("Export …", SavedQueriesMessage::StartExport),
+    fn the_page_lists_the_reports_with_their_criteria_and_the_buttons_in_the_row() {
+        for label in [
+            "Company A 2024",
+            "Taxes 2023",
+            "12 hits",
+            "Change",
+            "Export …",
+            "Remove",
         ] {
-            let mut sim = simulator(&app);
-            sim.click(label).expect(label);
-            assert_eq!(
-                sim.into_messages().collect::<Vec<_>>(),
-                [queries_message(message)],
-                "{label}"
-            );
+            assert!(shows(listing(), label), "{label}");
+        }
+    }
+
+    #[test]
+    fn an_empty_list_says_so() {
+        assert!(shows(
+            empty_list(),
+            "No reports yet. Choose + Report to make one, or start from a template."
+        ));
+    }
+
+    #[test]
+    fn the_buttons_of_a_row_send_what_they_say_for_that_row() {
+        click_sends(listing(), "Change", SavedQueriesMessage::Edit(0));
+        click_sends(listing(), "Export …", SavedQueriesMessage::StartExport(0));
+        click_sends(listing(), "Remove", SavedQueriesMessage::AskDelete(0));
+    }
+
+    #[test]
+    fn the_change_dialog_shows_name_criteria_and_result_and_hands_the_report_to_the_search() {
+        for label in [
+            "Edit in search",
+            "RESULT",
+            "Hits",
+            "View list",
+            "Cancel",
+            "Save",
+        ] {
+            assert!(shows(editing(), label), "{label}");
+        }
+        click_sends(
+            editing(),
+            "Edit in search",
+            SavedQueriesMessage::EditInSearch,
+        );
+        click_sends(editing(), "View list", SavedQueriesMessage::ToggleMissing);
+        click_sends(editing(), "Cancel", SavedQueriesMessage::CancelStep);
+    }
+
+    #[test]
+    fn the_list_stays_the_same_while_a_dialog_is_up() {
+        for list in [editing(), at_export(), asking_to_delete()] {
+            assert!(shows(list.clone(), "Taxes 2023"));
+            assert!(shows(list, "Change"));
         }
     }
 
@@ -2860,32 +2740,19 @@ mod saved_queries_card {
         ] {
             assert!(shows(at_export(), label), "{label}");
         }
-        let app = App::with_saved_queries(at_export());
-        let mut sim = simulator(&app);
-        sim.click("Choose folder …").expect("the button");
-        assert_eq!(
-            sim.into_messages().collect::<Vec<_>>(),
-            [queries_message(SavedQueriesMessage::PickFolder)]
+        click_sends(
+            at_export(),
+            "Choose folder …",
+            SavedQueriesMessage::PickFolder,
         );
     }
 
     #[test]
-    fn deleting_asks_in_the_page_first() {
-        let mut list = loaded_list();
-        list.select(0);
-        list.ask_delete();
+    fn deleting_asks_in_a_dialog_first() {
         assert!(shows(
-            list.clone(),
-            "Delete the report ‘Company A 2024’? Documents stay as they are."
+            asking_to_delete(),
+            "Remove the report ‘Company A 2024’? Documents stay as they are."
         ));
-
-        let app = App::with_saved_queries(list);
-        let mut sim = simulator(&app);
-        sim.click("Delete report").expect("the button");
-        assert_eq!(
-            sim.into_messages().collect::<Vec<_>>(),
-            [queries_message(SavedQueriesMessage::ConfirmDelete)]
-        );
     }
 
     #[test]
@@ -2893,7 +2760,6 @@ mod saved_queries_card {
         let app = App::with_saved_queries(at_export()).in_language(Language::German);
         let mut sim = simulator(&app);
         for label in [
-            "Auswertungen",
             "Abbrechen",
             "Zielordner",
             "Ordner wählen …",
@@ -2904,15 +2770,16 @@ mod saved_queries_card {
     }
 
     #[test]
-    fn escape_backs_out_of_the_step_first() {
+    fn escape_closes_the_dialog_first_and_then_the_settings() {
         let mut app = App::with_saved_queries(at_export());
-        let _ = app.update(queries_message(SavedQueriesMessage::Close));
+        let _ = app.update(Message::Settings(SettingsMessage::Close));
         let page = app.saved_queries_for_test().unwrap();
         assert!(page.export_step().is_none());
         assert!(page.results().is_some());
+        assert!(app.open_hermes_page().is_some());
 
-        let _ = app.update(queries_message(SavedQueriesMessage::Close));
-        assert!(app.saved_queries_for_test().is_none());
+        let _ = app.update(Message::Settings(SettingsMessage::Close));
+        assert!(app.open_hermes_page().is_none());
     }
 
     fn matches_snapshot(list: SavedQueries, name: &str) {
@@ -2935,14 +2802,19 @@ mod saved_queries_card {
 
     #[test]
     fn the_view_matches_its_snapshots() {
-        matches_snapshot(after_run(), "saved_queries_en");
-        matches_snapshot(after_run(), "saved_queries_de");
-        matches_snapshot(at_export(), "saved_queries_export_en");
-        matches_snapshot(empty_list(), "saved_queries_empty_en");
-        matches_snapshot(empty_list(), "saved_queries_empty_de");
+        for language in ["en", "de"] {
+            matches_snapshot(listing(), &format!("saved_queries_{language}"));
+            matches_snapshot(empty_list(), &format!("saved_queries_empty_{language}"));
+            matches_snapshot(editing(), &format!("saved_queries_edit_{language}"));
+            matches_snapshot(at_export(), &format!("saved_queries_export_{language}"));
+            matches_snapshot(
+                asking_to_delete(),
+                &format!("saved_queries_delete_{language}"),
+            );
+        }
     }
 
-    /// A search handed over to be saved: a row without a stored report.
+    /// A search handed over to be saved: a dialog for a report not stored yet.
     fn unsaved_list() -> SavedQueries {
         let mut list = SavedQueries::new(THIS_YEAR);
         list.prefill(Draft {
@@ -2960,39 +2832,27 @@ mod saved_queries_card {
     }
 
     #[test]
-    fn a_search_handed_over_is_an_unsaved_row_with_a_save_button() {
-        assert!(shows(unsaved_list(), "New report"));
-        let app = App::with_saved_queries(unsaved_list());
-        let mut sim = simulator(&app);
-        sim.click("Save").expect("the primary button");
-        assert_eq!(
-            sim.into_messages().collect::<Vec<_>>(),
-            [queries_message(SavedQueriesMessage::Save)]
-        );
+    fn a_search_handed_over_opens_the_dialog_with_a_save_button() {
+        click_sends(unsaved_list(), "Save", SavedQueriesMessage::Save);
     }
 
     #[test]
-    fn editing_in_the_search_binds_the_report_and_opening_does_not() {
+    fn editing_in_the_search_binds_the_report() {
         let runtime = tokio::runtime::Runtime::new().expect("a runtime");
         let _inside = runtime.enter();
         let first = crate::saved_queries::fixtures::stored_queries()[0].id;
-        for (message, bound) in [
-            (SavedQueriesMessage::EditInSearch, Some(first)),
-            (SavedQueriesMessage::OpenInSearch, None),
-        ] {
-            let mut app = App::with_saved_queries(loaded_list()).with_ready_hermes_for_test();
+        let mut app = App::with_saved_queries(loaded_list()).with_ready_hermes_for_test();
 
-            drop(app.update(queries_message(message)));
+        drop(app.update(queries_message(SavedQueriesMessage::EditInSearch)));
 
-            assert!(app.search_is_open_for_test());
-            assert!(app.saved_queries_for_test().is_none());
-            let filters = app
-                .search_for_test()
-                .and_then(|view| view.filters.as_ref())
-                .expect("the filters of an indexed search");
-            assert_eq!(filters.report(), bound);
-            assert_eq!(filters.selection().year, Some(2024));
-        }
+        assert!(app.search_is_open_for_test());
+        assert!(app.saved_queries_for_test().is_none());
+        let filters = app
+            .search_for_test()
+            .and_then(|view| view.filters.as_ref())
+            .expect("the filters of an indexed search");
+        assert_eq!(filters.report(), Some(first));
+        assert_eq!(filters.selection().year, Some(2024));
     }
 
     #[test]
@@ -3058,7 +2918,6 @@ mod tags_card {
             },
             exceptions: TagExceptions::from([("notice".to_owned(), false)]),
         });
-        page.select(1);
         page
     }
 
@@ -3103,7 +2962,6 @@ mod tags_card {
             "All tags in one place. A tick shows the tag in the file tree behind the file name.",
             "Show tags",
             "At most 3 per file, then “+1”. Applies to both file lists.",
-            "show in file tree",
             "Documents",
             "steuer",
             "invoice",
@@ -3135,11 +2993,24 @@ mod tags_card {
     }
 
     #[test]
+    fn the_button_of_the_remove_question_removes_the_tag() {
+        let mut asking = loaded_page();
+        asking.ask_delete("steuer".to_owned());
+        let app = App::with_tags(asking);
+        let mut sim = simulator(&app);
+        sim.click(button_repeating_the_title("Remove tag"))
+            .expect("the confirm button");
+        assert!(sim
+            .into_messages()
+            .any(|message| matches!(message, Message::Tags(TagsMessage::ConfirmDelete))));
+    }
+
+    #[test]
     fn the_delete_question_has_its_button_and_a_refused_delete_names_the_rules() {
         assert!(renaming().is_editing());
         let mut asking = loaded_page();
         asking.ask_delete("steuer".to_owned());
-        assert!(shows(asking, "Delete tag"));
+        assert!(shows(asking, "Remove tag"));
         assert!(shows(
             refused_delete(),
             "‘steuer’ is a condition of these rules and stays: If the sender is “Company A” → Invoice …. Change the rules first."
@@ -3155,14 +3026,15 @@ mod tags_card {
     }
 
     #[test]
-    fn escape_backs_out_of_the_step_first() {
+    fn escape_closes_the_dialog_first_and_then_the_settings() {
         let mut app = App::with_tags(renaming());
-        let _ = app.update(Message::Tags(TagsMessage::Close));
+        let _ = app.update(Message::Settings(SettingsMessage::Close));
         assert!(app
             .tags_for_test()
             .is_some_and(|page| page.step().is_none()));
-        let _ = app.update(Message::Tags(TagsMessage::Close));
-        assert!(app.tags_for_test().is_none());
+        assert!(app.open_hermes_page().is_some());
+        let _ = app.update(Message::Settings(SettingsMessage::Close));
+        assert!(app.open_hermes_page().is_none());
     }
 
     #[test]
@@ -3190,11 +3062,12 @@ mod tags_card {
     }
 
     #[test]
-    fn the_settings_button_leaves_the_settings_for_the_page() {
+    fn the_settings_button_shows_the_tags_page_in_the_same_settings() {
         let mut app = App::with_settings_open(SettingsFeature::Look, Filing::default());
         let _ = app.update(Message::Settings(SettingsMessage::ChooseFileListTags));
         assert!(app.tags_for_test().is_some());
-        assert!(app.settings_for_test().is_none());
+        assert_eq!(app.open_hermes_page(), Some(HermesPage::Tags));
+        assert!(app.settings_for_test().is_some());
     }
 
     #[test]
@@ -3264,7 +3137,7 @@ mod rules_card {
 
     use super::*;
     use crate::condition_editor::ConditionEdit;
-    use crate::messages::{RuleFormMessage, RulesMessage};
+    use crate::messages::{RuleFormMessage, RulesMessage, SettingsMessage};
     use crate::rules_page::fixtures::rule_id;
     use crate::rules_page::RulesPage;
     use crate::rules_work::{ListedRule, RulesLoad};
@@ -3373,14 +3246,47 @@ mod rules_card {
         simulator(&App::with_rules(page)).find(label).is_ok()
     }
 
+    fn click_sends(page: RulesPage, label: &str, message: RulesMessage) {
+        let app = App::with_rules(page);
+        let mut sim = simulator(&app);
+        sim.click(label).expect(label);
+        assert_eq!(
+            sim.into_messages().filter(is_action).collect::<Vec<_>>(),
+            [Message::Rules(message)],
+            "{label}"
+        );
+    }
+
+    fn asking_to_delete() -> RulesPage {
+        let mut page = three_rules();
+        page.ask_delete(0);
+        page
+    }
+
     #[test]
-    fn the_page_shows_the_purpose_the_example_and_the_buttons() {
+    fn the_button_of_the_remove_question_removes_the_rule() {
+        let app = App::with_rules(asking_to_delete());
+        let mut sim = simulator(&app);
+        sim.click(button_repeating_the_title("Remove rule"))
+            .expect("the confirm button");
+        assert!(sim
+            .into_messages()
+            .any(|message| matches!(message, Message::Rules(RulesMessage::ConfirmDelete))));
+    }
+
+    #[test]
+    fn the_page_lists_the_rules_with_their_buttons_in_the_row() {
         for label in [
-            "Rules",
             "Rules, checked from top to bottom. The first that matches files the document.",
-            "New rule",
-            "Save",
-            "Cancel",
+            "Telekom-Rechnungen",
+            "Strom",
+            "Erinnerungen",
+            "12 hits",
+            "↑",
+            "↓",
+            "Change",
+            "Remove",
+            "+ Rule",
         ] {
             assert!(shows(three_rules(), label), "{label}");
         }
@@ -3390,35 +3296,42 @@ mod rules_card {
     fn an_empty_page_says_where_rules_come_from() {
         assert!(shows(
             empty(),
-            "No rules yet. Create one with “New rule”, or let rules come from sorting in the chat."
+            "No rules yet. Create one with “+ Rule”, or let rules come from sorting in the chat."
         ));
     }
 
     #[test]
-    fn the_buttons_send_what_they_say() {
-        let app = App::with_rules(three_rules());
-        let mut sim = simulator(&app);
-        sim.click("New rule").expect("New rule");
-
-        assert_eq!(
-            sim.into_messages().filter(is_action).collect::<Vec<_>>(),
-            [Message::Rules(RulesMessage::New)]
+    fn the_buttons_send_what_they_say_for_their_row() {
+        click_sends(three_rules(), "+ Rule", RulesMessage::New);
+        click_sends(three_rules(), "Change", RulesMessage::Edit(0));
+        click_sends(three_rules(), "Remove", RulesMessage::AskDelete(0));
+        click_sends(
+            three_rules(),
+            "↓",
+            RulesMessage::ReorderAt { index: 0, delta: 1 },
         );
     }
 
     #[test]
-    fn save_and_cancel_wait_for_a_change() {
+    fn the_first_rule_cannot_move_up() {
         let app = App::with_rules(three_rules());
-        for label in ["Save", "Cancel"] {
-            let mut sim = simulator(&app);
-            let _ = sim.click(label);
-            assert!(
-                sim.into_messages().find(is_action).is_none(),
-                "{label} without a change"
-            );
-        }
+        let mut sim = simulator(&app);
+        let _ = sim.click("↑");
 
-        let mut changed = App::with_rules(three_rules());
+        assert!(sim.into_messages().find(is_action).is_none());
+    }
+
+    #[test]
+    fn save_waits_for_a_change_and_cancel_closes_the_dialog() {
+        let app = App::with_rules(with_edit_form());
+        let mut sim = simulator(&app);
+        let _ = sim.click("Save");
+        assert!(
+            sim.into_messages().find(is_action).is_none(),
+            "Save without a change"
+        );
+
+        let mut changed = App::with_rules(with_edit_form());
         let _ = changed.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Name(
             "Contract".to_owned(),
         ))));
@@ -3426,10 +3339,13 @@ mod rules_card {
             ("Save", RuleFormMessage::Save),
             ("Cancel", RuleFormMessage::Cancel),
         ] {
-            let mut sim = simulator(&changed);
-            sim.click(label).expect(label);
+            let mut pressed = simulator(&changed);
+            pressed.click(label).expect(label);
             assert_eq!(
-                sim.into_messages().filter(is_action).collect::<Vec<_>>(),
+                pressed
+                    .into_messages()
+                    .filter(is_action)
+                    .collect::<Vec<_>>(),
                 [Message::Rules(RulesMessage::Form(message))],
                 "{label}"
             );
@@ -3437,30 +3353,40 @@ mod rules_card {
     }
 
     #[test]
-    fn the_delete_button_asks_first() {
-        let mut app = App::with_rules(three_rules());
-        let _ = app.update(Message::Rules(RulesMessage::AskDelete));
+    fn cancelling_the_dialog_drops_what_was_typed() {
+        let mut app = App::with_rules(with_edit_form());
+        let _ = app.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Name(
+            "Contract".to_owned(),
+        ))));
 
-        assert!(app.rules_for_test().unwrap().is_confirming_delete());
+        let _ = app.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Cancel)));
+
+        let page = app.rules_for_test().unwrap();
+        assert!(page.form().is_none());
+        assert_eq!(page.rows().len(), 3);
+        assert_eq!(
+            page.rows()[0].rule.spec.name.as_deref(),
+            Some("Telekom-Rechnungen")
+        );
     }
 
     #[test]
-    fn the_first_rule_cannot_move_up() {
-        let app = App::with_rules(three_rules());
-        let mut sim = simulator(&app);
-        let _ = sim.click("Move up");
-
-        assert!(sim.into_messages().find(is_action).is_none());
+    fn the_list_stays_the_same_while_a_dialog_is_up() {
+        for page in [with_edit_form(), with_new_form(), asking_to_delete()] {
+            assert!(shows(page.clone(), "Strom"));
+            assert!(shows(page, "Remove"));
+        }
     }
 
     #[test]
     fn the_delete_question_names_the_rule_and_cancel_keeps_it() {
         let mut app = App::with_rules(three_rules());
-        let _ = app.update(Message::Rules(RulesMessage::AskDelete));
+        let _ = app.update(Message::Rules(RulesMessage::AskDelete(0)));
 
-        assert!(app_shows(&app, "Delete rule"));
+        assert!(app.rules_for_test().unwrap().is_confirming_delete());
+        assert!(app_shows(&app, "Remove rule"));
         assert!(app_shows(&app, "Cancel"));
-        let _ = app.update(Message::Rules(RulesMessage::Close));
+        let _ = app.update(Message::Rules(RulesMessage::CancelDelete));
         let page = app.rules_for_test().unwrap();
         assert!(!page.is_confirming_delete());
         assert_eq!(page.rows().len(), 3);
@@ -3473,7 +3399,14 @@ mod rules_card {
             Language::English
         };
         let app = App::with_rules(page).in_language(language);
-        let matches = simulator(&app)
+        let tall = f32::from(name.starts_with("rule_form"));
+        let size = iced::Size::new(1200.0, 760.0 + 340.0 * tall);
+        let settings = iced::Settings {
+            default_font: ncrs_ui_kit::APP_FONT,
+            ..iced::Settings::default()
+        };
+        let mut simulator = Simulator::with_size(settings, size, app.view());
+        let matches = simulator
             .snapshot(&iced::Theme::Dark)
             .unwrap()
             .matches_image(format!("tests/snapshots/{name}.png"))
@@ -3490,10 +3423,8 @@ mod rules_card {
         matches_snapshot(three_rules(), "rules_de");
         matches_snapshot(empty(), "rules_empty_en");
         matches_snapshot(empty(), "rules_empty_de");
-        let mut asking = three_rules();
-        asking.ask_delete();
-        matches_snapshot(asking.clone(), "rules_delete_en");
-        matches_snapshot(asking, "rules_delete_de");
+        matches_snapshot(asking_to_delete(), "rules_delete_en");
+        matches_snapshot(asking_to_delete(), "rules_delete_de");
     }
 
     fn with_new_form() -> RulesPage {
@@ -3504,7 +3435,7 @@ mod rules_card {
 
     fn with_edit_form() -> RulesPage {
         let mut page = three_rules();
-        page.begin_edit();
+        page.begin_edit(0);
         page
     }
 
@@ -3582,7 +3513,7 @@ mod rules_card {
     fn the_rule_form_with_tags_matches_its_snapshots() {
         for language in ["en", "de"] {
             let mut page = tag_rules();
-            page.begin_edit();
+            page.begin_edit(0);
             matches_snapshot(page, &format!("rule_form_tags_{language}"));
         }
     }
@@ -3651,7 +3582,7 @@ mod rules_card {
         use crate::rule_form::TryStatus;
 
         let mut app = App::with_rules(three_rules());
-        let _ = app.update(Message::Rules(RulesMessage::Edit));
+        let _ = app.update(Message::Rules(RulesMessage::Edit(0)));
         let waiting = |shown: &App| {
             shown
                 .rules_for_test()
@@ -3687,45 +3618,34 @@ mod rules_card {
         assert_eq!(new_form.name, "");
         assert_eq!(new_form.filing.pattern(), "{year}/{sender}/");
 
-        let _ = app.update(Message::Rules(RulesMessage::Close));
-        let _ = app.update(Message::Rules(RulesMessage::Edit));
+        let _ = app.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Cancel)));
+        let _ = app.update(Message::Rules(RulesMessage::Edit(0)));
         let edit_form = app.rules_for_test().unwrap().form().unwrap();
         assert_eq!(edit_form.filing.pattern(), "{year}/{sender}");
-        assert!(app.rules_for_test().unwrap().is_editing());
+        assert!(matches!(
+            edit_form.target,
+            crate::rule_form::RuleFormTarget::Edit(_)
+        ));
     }
 
     #[test]
-    fn escape_leaves_the_fields_first_and_saves_nothing() {
+    fn escape_closes_the_dialog_first_saves_nothing_and_then_closes_the_settings() {
         let mut app = App::with_rules(with_edit_form());
         let _ = app.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Name(
             "Contract".to_owned(),
         ))));
 
-        let _ = app.update(Message::Rules(RulesMessage::Close));
+        let _ = app.update(Message::Settings(SettingsMessage::Close));
 
         let page = app.rules_for_test().unwrap();
-        assert!(!page.is_editing());
+        assert!(page.form().is_none());
         assert_eq!(
             page.rows().first().unwrap().rule.spec.kind.as_deref(),
             Some("Invoice")
         );
-        let _ = app.update(Message::Rules(RulesMessage::Close));
-        assert!(app.rules_for_test().is_none());
-    }
-
-    #[test]
-    fn selecting_a_rule_while_the_new_form_is_up_shows_the_form_of_the_rule() {
-        let mut app = App::with_rules(with_new_form());
-        let _ = app.update(Message::Rules(RulesMessage::Select(2)));
-
-        let page = app.rules_for_test().unwrap();
-        assert_eq!(page.cursor(), 2);
-        assert!(!page.has_unlisted_form());
-        assert!(!page.is_editing());
-        assert!(matches!(
-            page.form().unwrap().target,
-            crate::rule_form::RuleFormTarget::Edit(_)
-        ));
+        assert!(app.open_hermes_page().is_some());
+        let _ = app.update(Message::Settings(SettingsMessage::Close));
+        assert!(app.open_hermes_page().is_none());
     }
 
     #[test]
@@ -4464,7 +4384,9 @@ mod settings_tab {
     use super::*;
     use crate::config::{AiSetting, Filing, FilingLocation};
     use crate::fs::OpenKind;
-    use crate::messages::{SettingChange, SettingField, SettingsFeature, SettingsMessage};
+    use crate::messages::{
+        HermesPage, SettingChange, SettingField, SettingsFeature, SettingsMessage,
+    };
     use crate::palette::ThemePreset;
 
     fn hermes_config() -> Filing {
@@ -4679,12 +4601,31 @@ mod settings_tab {
     }
 
     #[test]
-    fn the_technical_rows_are_always_shown() {
+    fn the_pages_of_hermes_are_always_in_the_list() {
         let app = App::with_settings_open(SettingsFeature::Hermes, hermes_config());
         let shows = |label: &str| simulator(&app).find(label).is_ok();
-        assert!(shows("Advanced"));
-        assert!(shows("Rules"));
-        assert!(shows("Tags"));
+        for label in ["Index", "Hermes", "Rules", "Tags", "Reports", "Read errors"] {
+            assert!(shows(label), "{label}");
+        }
+        assert!(!shows("Advanced"));
+    }
+
+    #[test]
+    fn a_click_on_a_page_of_hermes_selects_it_and_the_search_finds_it_by_name() {
+        let mut app = App::with_settings_open(SettingsFeature::Hermes, hermes_config());
+        let mut sim = simulator(&app);
+        sim.click("Read errors").expect("the page in the list");
+        for message in sim.into_messages() {
+            drop(app.update(message));
+        }
+        assert_eq!(app.open_hermes_page(), Some(HermesPage::Inspection));
+
+        drop(app.update(Message::Settings(SettingsMessage::SearchChanged(
+            "Reports".to_owned(),
+        ))));
+        simulator(&app)
+            .find("Reports")
+            .expect("the search finds the page by its name");
     }
 }
 

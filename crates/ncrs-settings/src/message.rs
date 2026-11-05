@@ -64,7 +64,6 @@ pub enum SettingChange {
 pub enum SettingField {
     Program(OpenKind),
     Color(ColorRole),
-    AiThreads,
     AiEndpoint,
     AiModel,
     /// Where an entry for one of the own details is typed.
@@ -78,7 +77,7 @@ pub enum SettingsMessage {
     Toggle,
     /// Switches the tags after the names in the file lists on or off.
     ToggleFileListTags,
-    /// Opens the tags page of the Ablage.
+    /// Shows the tags page, where the tags for the file lists are chosen.
     ChooseFileListTags,
     Close,
     Select(SettingsFeature),
@@ -106,8 +105,6 @@ pub enum SettingsMessage {
     OpenServerAdd,
     /// The button of the saved server with this address.
     OpenServer(PathBuf),
-    /// The button that opens the status page of the Ablage.
-    OpenFilingStatus,
     /// The button at this position of the protection of the index.
     Protection(usize),
     /// "+ Ordner wählen …": opens the system folder dialog.
@@ -142,7 +139,6 @@ pub enum SettingsMessage {
     RunUndone(Result<(), String>),
     /// The app read the facts the Index and Hermes pages show.
     FactsLoaded(LoadedFacts),
-    OpenRules,
     OpenAiModel,
     /// Asks before this model is removed from the computer.
     AskRemoveModel(ModelKind),

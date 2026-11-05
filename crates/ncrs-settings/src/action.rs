@@ -16,19 +16,14 @@ pub enum Action {
     CloseContextMenu,
     SetDialogFocus(usize),
     ShowNotice(String),
-    /// The settings page opens in place of a page of Hermes: that page
-    /// closes, and so do the context menu, the path field and the notice.
-    LeaveAblagePage,
     /// The system file dialog for the program behind F3 or F4.
     PickProgram {
         kind: OpenKind,
         apps_only: bool,
     },
     PickThemeFile,
-    ShowTagsPage,
     OpenServerAdd,
     OpenServer(PathBuf),
-    OpenFilingStatus,
     /// The button at this position of the protection of the index.
     Protection(usize),
     /// The system folder dialog for a read folder.
@@ -45,7 +40,6 @@ pub enum Action {
     TogglePause,
     /// Puts the run of this journal batch back.
     UndoRun(i64),
-    OpenRules,
     /// The file now says this about `change`.
     Apply {
         change: SettingChange,

@@ -3,9 +3,7 @@ use iced::Task;
 use ncrs_core::INDEX_NOT_OPEN;
 use ncrs_filing::filing::FilingModule;
 use ncrs_filing::query_work::{self, QueryAccess};
-use ncrs_ui_kit::focus::release_focus;
 
-use super::blocking_overlay_is_open;
 use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::message::{Message, SavedQueriesMessage};
@@ -20,8 +18,6 @@ pub fn update(
     actions: &mut Vec<Action>,
 ) -> Task<Message> {
     match message {
-        SavedQueriesMessage::Open => open(hermes, ctx, actions),
-        SavedQueriesMessage::Close => close(hermes),
         SavedQueriesMessage::Loaded { generation, result } => {
             if generation != hermes.saved_queries_generation {
                 return Task::none();
@@ -57,42 +53,34 @@ pub fn update(
             }
             Task::none()
         }
-        SavedQueriesMessage::Move(delta) => {
-            let Some(view) = hermes.saved_queries.as_mut() else {
-                return Task::none();
-            };
-            let before = view.cursor();
-            view.move_cursor(delta);
-            if view.cursor() == before {
-                return Task::none();
+        SavedQueriesMessage::Edit(index) => {
+            if let Some(view) = hermes.saved_queries.as_mut() {
+                view.begin_edit(index);
+            }
+            let needs_run = hermes
+                .saved_queries
+                .as_ref()
+                .is_some_and(|view| view.edit_is_open() && view.results().is_none());
+            if needs_run {
+                run_selected_query(hermes)
+            } else {
+                Task::none()
+            }
+        }
+        SavedQueriesMessage::New => {
+            if let Some(view) = hermes.saved_queries.as_mut() {
+                view.begin_new();
+            }
+            Task::batch([
+                operation::focus(saved_queries_ui::NAME_ID),
+                run_selected_query(hermes),
+            ])
+        }
+        SavedQueriesMessage::Template(choice) => {
+            if let Some(view) = hermes.saved_queries.as_mut() {
+                view.choose_template(choice, ctx.lang);
             }
             run_selected_query(hermes)
-        }
-        SavedQueriesMessage::Scrolled(delta) => {
-            let Some(view) = hermes.saved_queries.as_mut() else {
-                return Task::none();
-            };
-            let before = view.cursor();
-            view.scroll(delta);
-            if view.cursor() == before {
-                return Task::none();
-            }
-            run_selected_query(hermes)
-        }
-        SavedQueriesMessage::Select(index) => {
-            let Some(view) = hermes.saved_queries.as_mut() else {
-                return Task::none();
-            };
-            let before = view.cursor();
-            view.select(index);
-            if view.cursor() == before {
-                return Task::none();
-            }
-            run_selected_query(hermes)
-        }
-        SavedQueriesMessage::NewSearch(spec) => {
-            actions.push(Action::OpenSearchFor { spec, report: None });
-            Task::none()
         }
         SavedQueriesMessage::EditInSearch => {
             let Some(view) = hermes.saved_queries.as_ref() else {
@@ -105,37 +93,11 @@ pub fn update(
             actions.push(Action::OpenSearchFor { spec, report });
             Task::none()
         }
-        SavedQueriesMessage::OpenInSearch => {
-            let Some(spec) = hermes
-                .saved_queries
-                .as_ref()
-                .and_then(|view| view.selected_spec().cloned())
-            else {
-                return Task::none();
-            };
-            actions.push(Action::OpenSearchFor { spec, report: None });
-            Task::none()
-        }
         SavedQueriesMessage::NameChanged(name) => {
             if let Some(view) = hermes.saved_queries.as_mut() {
                 view.set_name(name);
             }
             Task::none()
-        }
-        SavedQueriesMessage::Confirm => {
-            let Some(view) = hermes.saved_queries.as_ref() else {
-                return Task::none();
-            };
-            let next = if view.export_step().is_some() {
-                SavedQueriesMessage::Export
-            } else if view.is_confirming_delete() {
-                SavedQueriesMessage::ConfirmDelete
-            } else if view.unsaved().is_some() || view.name_is_changed() {
-                SavedQueriesMessage::Save
-            } else {
-                SavedQueriesMessage::StartExport
-            };
-            update(hermes, next, ctx, actions)
         }
         SavedQueriesMessage::Save => {
             let Some(request) = hermes
@@ -175,18 +137,14 @@ pub fn update(
             }
             run_query_load(hermes)
         }
-        SavedQueriesMessage::AskDelete => {
+        SavedQueriesMessage::AskDelete(index) => {
             if let Some(view) = hermes.saved_queries.as_mut() {
+                view.select(index);
                 view.ask_delete();
             }
             Task::none()
         }
-        SavedQueriesMessage::CancelStep => {
-            if let Some(view) = hermes.saved_queries.as_mut() {
-                view.cancel_step();
-            }
-            Task::none()
-        }
+        SavedQueriesMessage::CancelStep => close_dialog(hermes),
         SavedQueriesMessage::ConfirmDelete => {
             let Some(id) = hermes
                 .saved_queries
@@ -244,13 +202,18 @@ pub fn update(
             }
             Task::none()
         }
-        SavedQueriesMessage::StartExport => {
+        SavedQueriesMessage::StartExport(index) => {
             // The other panel's folder is where files are usually wanted.
             let folder = ctx.other_panel_path.to_path_buf();
-            if let Some(view) = hermes.saved_queries.as_mut() {
-                view.start_export(folder);
+            let Some(view) = hermes.saved_queries.as_mut() else {
+                return Task::none();
+            };
+            view.select(index);
+            view.export_when_ready(folder);
+            if view.results().is_some() {
+                return Task::none();
             }
-            Task::none()
+            run_selected_query(hermes)
         }
         SavedQueriesMessage::PickFolder => {
             let start_in = hermes
@@ -305,7 +268,7 @@ pub fn update(
 }
 
 pub fn open(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Task<Message> {
-    if hermes.saved_queries.is_some() || blocking_overlay_is_open(hermes, ctx) {
+    if hermes.saved_queries.is_some() {
         return Task::none();
     }
     actions.push(Action::CloseContextMenu);
@@ -317,16 +280,12 @@ pub fn open(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Ta
     run_query_load(hermes)
 }
 
-/// Escape backs out of the step that is up first, then leaves the page.
-fn close(hermes: &mut Hermes) -> Task<Message> {
-    let Some(view) = hermes.saved_queries.as_mut() else {
-        return Task::none();
-    };
-    if view.cancel_step() {
-        return Task::none();
+/// Closes the dialog that is up and drops a search that was not saved.
+pub fn close_dialog(hermes: &mut Hermes) -> Task<Message> {
+    if let Some(view) = hermes.saved_queries.as_mut() {
+        view.cancel_step();
     }
-    hermes.saved_queries = None;
-    release_focus()
+    Task::none()
 }
 
 fn run_query_load(hermes: &mut Hermes) -> Task<Message> {

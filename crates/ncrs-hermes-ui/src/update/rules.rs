@@ -7,7 +7,6 @@ use ncrs_filing::filing::FilingModule;
 use ncrs_filing::rules_work::{RuleChange, RulesAccess};
 use ncrs_ui_kit::focus::release_focus;
 
-use super::{blocking_overlay_is_open, go_to_page, open_page};
 use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::message::{HermesPage, Message, RuleFormMessage, RulesMessage};
@@ -19,12 +18,10 @@ use crate::state::Hermes;
 pub fn update(
     hermes: &mut Hermes,
     message: RulesMessage,
-    ctx: &Ctx<'_>,
-    actions: &mut Vec<Action>,
+    _ctx: &Ctx<'_>,
+    _actions: &mut Vec<Action>,
 ) -> Task<Message> {
     match message {
-        RulesMessage::Open => open(hermes, ctx, actions),
-        RulesMessage::Close => close(hermes, ctx, actions),
         RulesMessage::Loaded { generation, result } => {
             if generation != hermes.rules_generation {
                 return Task::none();
@@ -37,37 +34,6 @@ pub fn update(
             }
             schedule_rule_try(hermes)
         }
-        RulesMessage::Move(delta) => {
-            if let Some(view) = hermes.rules.as_mut() {
-                view.move_cursor(delta);
-            }
-            schedule_rule_try(hermes)
-        }
-        RulesMessage::Scrolled(delta) => {
-            if let Some(view) = hermes.rules.as_mut() {
-                view.scroll(delta);
-            }
-            schedule_rule_try(hermes)
-        }
-        RulesMessage::Select(index) => {
-            if let Some(view) = hermes.rules.as_mut() {
-                view.select(index);
-            }
-            Task::batch([release_focus(), schedule_rule_try(hermes)])
-        }
-        RulesMessage::ToggleTryList => {
-            if let Some(view) = hermes.rules.as_mut() {
-                view.toggle_try_list();
-            }
-            Task::none()
-        }
-        RulesMessage::Toggle => {
-            let change = hermes
-                .rules
-                .as_mut()
-                .and_then(|view| view.begin_toggle(view.cursor()));
-            run_rule_change(hermes, change)
-        }
         RulesMessage::ToggleAt(index) => {
             let change = hermes
                 .rules
@@ -75,16 +41,16 @@ pub fn update(
                 .and_then(|view| view.begin_toggle(index));
             run_rule_change(hermes, change)
         }
-        RulesMessage::Reorder(delta) => {
+        RulesMessage::ReorderAt { index, delta } => {
             let change = hermes
                 .rules
                 .as_mut()
-                .and_then(|view| view.begin_move(delta));
+                .and_then(|view| view.begin_move(index, delta));
             run_rule_change(hermes, change)
         }
-        RulesMessage::AskDelete => {
+        RulesMessage::AskDelete(index) => {
             if let Some(view) = hermes.rules.as_mut() {
-                view.ask_delete();
+                view.ask_delete(index);
             }
             Task::none()
         }
@@ -118,13 +84,13 @@ pub fn update(
             }
             Task::batch([focus_rule_form(hermes), schedule_rule_try(hermes)])
         }
-        RulesMessage::Edit => {
+        RulesMessage::Edit(index) => {
             if let Some(view) = hermes.rules.as_mut() {
-                view.begin_edit();
+                view.begin_edit(index);
             }
             Task::batch([focus_rule_form(hermes), schedule_rule_try(hermes)])
         }
-        RulesMessage::Form(form_message) => update_rule_form(hermes, form_message, ctx, actions),
+        RulesMessage::Form(form_message) => update_rule_form(hermes, form_message),
         RulesMessage::TryElapsed(generation) => run_rule_try(hermes, generation),
         RulesMessage::Tried { generation, result } => {
             if let Some(form) = hermes.rules.as_mut().and_then(RulesPage::form_mut) {
@@ -147,41 +113,36 @@ fn focus_rule_form(hermes: &Hermes) -> Task<Message> {
     }
 }
 
-/// Closes the form without saving, if there is one, and goes back to the
-/// page it was opened from.
-fn cancel_rule_form(
-    hermes: &mut Hermes,
-    ctx: &Ctx<'_>,
-    actions: &mut Vec<Action>,
-) -> Option<Task<Message>> {
-    let view = hermes.rules.as_mut()?;
-    if !view.cancel_form() {
-        return None;
-    }
-    Some(match view.take_return_to() {
-        Some(page) => go_to_page(hermes, page, ctx, actions),
-        None => Task::batch([release_focus(), schedule_rule_try(hermes)]),
-    })
+/// Closes the form without saving, if there is one; whether there was one.
+pub fn cancel_rule_form(hermes: &mut Hermes) -> bool {
+    hermes.rules.as_mut().is_some_and(RulesPage::cancel_form)
 }
 
-/// Shows the Rules page with `form` open. From another Hermes page, or
-/// from the panels, the page loads as the sidebar would load it.
+/// Closes the dialog that is up: the delete question or the form.
+pub fn close_dialog(hermes: &mut Hermes) -> Task<Message> {
+    if let Some(view) = hermes.rules.as_mut() {
+        if !view.cancel_delete() {
+            view.cancel_form();
+        }
+    }
+    release_focus()
+}
+
+/// Shows the Rules page of the settings with `form` open in its dialog. The
+/// page loads here, so the form can be put in before the settings show it.
 pub fn open_rule_form(
     hermes: &mut Hermes,
     form: RuleForm,
-    return_to: Option<HermesPage>,
     ctx: &Ctx<'_>,
     actions: &mut Vec<Action>,
 ) -> Task<Message> {
-    let opened = if open_page(hermes, ctx).is_some() {
-        go_to_page(hermes, HermesPage::Rules, ctx, actions)
-    } else {
-        open(hermes, ctx, actions)
-    };
+    actions.push(Action::ShowPage(HermesPage::Rules));
+    hermes.close_pages();
+    let opened = open(hermes, ctx, actions);
     let Some(view) = hermes.rules.as_mut() else {
         return opened;
     };
-    view.open_form(form, return_to);
+    view.open_form(form);
     Task::batch([opened, focus_rule_form(hermes), schedule_rule_try(hermes)])
 }
 
@@ -221,12 +182,7 @@ fn run_rule_try(hermes: &mut Hermes, generation: u64) -> Task<Message> {
     )
 }
 
-fn update_rule_form(
-    hermes: &mut Hermes,
-    message: RuleFormMessage,
-    ctx: &Ctx<'_>,
-    actions: &mut Vec<Action>,
-) -> Task<Message> {
+fn update_rule_form(hermes: &mut Hermes, message: RuleFormMessage) -> Task<Message> {
     let Some(view) = hermes.rules.as_mut() else {
         return Task::none();
     };
@@ -236,17 +192,18 @@ fn update_rule_form(
             run_rule_save(hermes, save)
         }
         RuleFormMessage::Cancel => {
-            cancel_rule_form(hermes, ctx, actions).unwrap_or_else(Task::none)
+            cancel_rule_form(hermes);
+            release_focus()
         }
         RuleFormMessage::Saved { generation, result } => {
             if generation != hermes.rules_generation {
                 return Task::none();
             }
             match result {
-                Ok(id) => match view.saved(id) {
-                    Some(page) => go_to_page(hermes, page, ctx, actions),
-                    None => run_rules_load(hermes),
-                },
+                Ok(id) => {
+                    view.saved(id);
+                    run_rules_load(hermes)
+                }
                 Err(detail) => {
                     view.save_failed(detail);
                     Task::none()
@@ -257,50 +214,25 @@ fn update_rule_form(
             if let Some(form) = view.form_mut() {
                 form.update(RuleFormMessage::OpenTagInput);
             }
-            view.start_editing();
             operation::focus(crate::ui::rules::TAG_FIELD_ID)
         }
         field_change => {
             if let Some(form) = view.form_mut() {
                 form.update(field_change);
             }
-            view.start_editing();
             schedule_rule_try(hermes)
         }
     }
 }
 
 pub fn open(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Task<Message> {
-    if hermes.rules.is_some() || blocking_overlay_is_open(hermes, ctx) {
+    if hermes.rules.is_some() {
         return Task::none();
     }
     actions.push(Action::CloseContextMenu);
     hermes.rules_generation = hermes.rules_generation.wrapping_add(1);
     hermes.rules = Some(RulesPage::new().with_kinds(Arc::clone(&ctx.kinds.catalog)));
     run_rules_load(hermes)
-}
-
-/// Escape backs out of the delete question, the list of the try, a form
-/// that is not listed yet and the fields, then leaves the page.
-fn close(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Task<Message> {
-    let Some(view) = hermes.rules.as_mut() else {
-        return Task::none();
-    };
-    if view.cancel_delete() {
-        return Task::none();
-    }
-    if view.is_try_list_open() {
-        view.toggle_try_list();
-        return Task::none();
-    }
-    if view.has_unlisted_form() {
-        return cancel_rule_form(hermes, ctx, actions).unwrap_or_else(Task::none);
-    }
-    if view.stop_editing() {
-        return release_focus();
-    }
-    hermes.rules = None;
-    release_focus()
 }
 
 fn rules_access(hermes: &mut Hermes) -> Option<RulesAccess> {

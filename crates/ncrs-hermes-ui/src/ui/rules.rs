@@ -1,10 +1,18 @@
-//! The rules page: every confirmed rule as a row of the list, the form of the
-//! selected one beside it. The order is the order Hermes tries the rules in.
-//! A page of the Ablage tab. Pure view over [`RulesPage`].
+//! The rules page of the settings: every confirmed rule as a row of the list,
+//! in the order Hermes tries them in, and the small dialog in which one rule
+//! is made or changed. Pure view over [`RulesPage`].
 
-use iced::widget::{row, Row};
-use iced::{alignment, Element};
-use ncrs_index::KindCatalog;
+use iced::widget::{Column, Row};
+use iced::{alignment, Element, Length, Size};
+use ncrs_config::palette::Palette;
+use ncrs_filing::review_work::TextState;
+use ncrs_filing::rules_work::{ListedRule, TriedDocument, TryOutcome, TryResult, TrySection};
+use ncrs_i18n::{fill_template, Language, Msg};
+use ncrs_ui_kit::format;
+use ncrs_ui_kit::frame::{DialogSize, Frame, KeyHints};
+use ncrs_ui_kit::hermes_kit::{self as page_kit, ChipKind, GAP_S, GAP_XS};
+use ncrs_ui_kit::kit::{self, Check, Tone};
+use ncrs_ui_kit::setting_rows::{Group, SettingRow};
 
 use super::condition_editor::{
     add_condition_link, combinator_choice, condition_editor_rows, ConditionHost,
@@ -13,38 +21,18 @@ use super::filing_pieces::{target_view, ExampleLine, TargetHost};
 use super::review_reason::reason_text;
 use crate::message::{Message, RuleFormMessage, RulesMessage};
 use crate::rule_form::{RuleForm, RuleFormTarget, TryStatus};
-use crate::rules_page::{hits_text, origin_text, rule_sentence, RulesPage, VISIBLE_ROWS};
-use ncrs_config::palette::Palette;
-use ncrs_filing::review_work::TextState;
-use ncrs_filing::rules_work::{ListedRule, TriedDocument, TryOutcome, TryResult, TrySection};
-use ncrs_i18n::fill_template;
-use ncrs_i18n::{FuturamaName, Language, Msg};
-use ncrs_ui_kit::format;
-use ncrs_ui_kit::hermes_kit::{
-    self as page_kit, ChipKind, MenuItem, MenuLook, RowTwo, GAP_M, GAP_S, GAP_XS,
-};
-use ncrs_ui_kit::kit::{self, Check};
-
-/// Characters of the name and of the second line that fit a row of the list.
-const NAME_CHARS: usize = 32;
-const SENTENCE_CHARS: usize = 40;
+use crate::rules_page::{hits_text, origin_text, rule_sentence, RulesPage};
 
 /// Characters of a document of the try and of its change in the list.
 const TRY_PATH_CHARS: usize = 56;
 const TRY_CHANGE_CHARS: usize = 44;
 
 /// Documents of the try listed at once.
-const TRY_VISIBLE_ROWS: usize = 12;
+const TRY_VISIBLE_ROWS: usize = 8;
 
 pub const NAME_FIELD_ID: &str = "rule-form-name";
 pub const TAG_FIELD_ID: &str = "rule-form-tag";
 const TARGET_NAME_FIELD_ID: &str = "rule-form-folder-name";
-
-const SAVE_KEY: &str = if cfg!(target_os = "macos") {
-    "⌘↵"
-} else {
-    "Ctrl+↵"
-};
 
 fn send(message: RulesMessage) -> Message {
     Message::Rules(message)
@@ -54,172 +42,225 @@ fn send_form(message: RuleFormMessage) -> Message {
     send(RulesMessage::Form(message))
 }
 
-pub fn view<'a>(state: &'a RulesPage, lang: Language, palette: &Palette) -> Element<'a, Message> {
-    let body: Element<'a, Message> = if state.rows().is_empty() && state.form().is_none() {
-        let sentence = if state.is_busy() {
-            Msg::RulesLoading
-        } else {
-            Msg::RulesEmpty
-        };
-        page_kit::centered_note(page_kit::hint(lang.text(sentence), palette))
-    } else {
-        page_kit::list_and_detail(list(state, lang, palette), detail(state, lang, palette))
-    };
-    page_kit::tab_page(
-        header(state, lang, palette),
-        body,
-        Some(action_bar(state, lang, palette)),
-        palette,
-    )
-}
-
-fn header<'a>(state: &RulesPage, lang: Language, palette: &Palette) -> Element<'a, Message> {
-    let listed_selected =
-        !state.is_busy() && state.selected().is_some() && !state.has_unlisted_form();
-    let can_move = |delta: isize| {
-        listed_selected
-            && state
-                .cursor()
-                .checked_add_signed(delta)
-                .is_some_and(|neighbour| neighbour < state.rows().len())
-    };
-    let mut items = Vec::new();
-    if can_move(-1) {
-        items.push(MenuItem {
-            key_hint: Some("Alt ↑".to_owned()),
-            ..MenuItem::new(lang.text(Msg::RulesMoveUp), send(RulesMessage::Reorder(-1)))
-        });
-    }
-    if can_move(1) {
-        items.push(MenuItem {
-            key_hint: Some("Alt ↓".to_owned()),
-            ..MenuItem::new(
-                lang.text(Msg::RulesMoveDown),
-                send(RulesMessage::Reorder(1)),
-            )
-        });
-    }
-    if listed_selected {
-        items.push(MenuItem {
-            key_hint: Some("Del".to_owned()),
-            ..MenuItem::new(lang.text(Msg::RulesDelete), send(RulesMessage::AskDelete))
-        });
-    }
-    let mut actions = vec![page_kit::secondary(
-        lang.text(Msg::RulesNew),
-        (!state.is_busy() && !state.has_unsaved_changes()).then(|| send(RulesMessage::New)),
-        palette,
-    )];
-    if !items.is_empty() {
-        actions.push(page_kit::menu_button("", &items, MenuLook::Icon, palette));
-    }
-    page_kit::page_header(
-        lang.text(Msg::ActionRules),
-        lang.futurama_name(FuturamaName::ActionRules),
-        Some(lang.text(Msg::RulesExplain).to_owned()),
-        None,
-        actions,
-        palette,
-    )
-}
-
-fn list<'a>(state: &RulesPage, lang: Language, palette: &Palette) -> Element<'a, Message> {
-    let mut rows: Vec<Element<'a, Message>> = Vec::new();
-    let unlisted = state.has_unlisted_form();
-    if let Some(form) = state.form().filter(|_| unlisted) {
-        rows.push(page_kit::list_row_two(
-            unlisted_row(form, lang),
-            true,
-            None,
-            palette,
-        ));
-    }
-    let room = VISIBLE_ROWS.saturating_sub(rows.len());
-    let first = state.first_visible();
-    for (index, listed) in state.rows().iter().enumerate().skip(first).take(room) {
-        rows.push(page_kit::list_row_two(
-            rule_row(index, listed, lang, state.kinds()),
-            index == state.cursor() && !unlisted,
-            Some(send(RulesMessage::Select(index))),
-            palette,
-        ));
-    }
-    page_kit::list_pane(rows, |delta| send(RulesMessage::Scrolled(delta)), palette)
-}
-
-fn unlisted_row(form: &RuleForm, lang: Language) -> RowTwo<Message> {
-    let name = form.name.trim();
-    RowTwo {
-        primary: if name.is_empty() {
-            lang.text(Msg::RulesFormTitleNew).to_owned()
-        } else {
-            format::ellipsize_end(name, NAME_CHARS)
-        },
-        secondary: match form.target {
-            RuleFormTarget::FromSuggestion(_) => lang.text(Msg::RulesFormTitleConfirm).to_owned(),
-            RuleFormTarget::New | RuleFormTarget::FromDocument | RuleFormTarget::Edit(_) => {
-                String::new()
-            }
-        },
-        right: None,
-        lead: None,
-        muted: false,
-    }
-}
-
-fn rule_row(
-    index: usize,
-    listed: &ListedRule,
+/// The sections of the page: the list with the button under it.
+pub fn groups<'a>(
+    state: &'a RulesPage,
     lang: Language,
-    kinds: &KindCatalog,
-) -> RowTwo<Message> {
+    palette: &Palette,
+) -> Vec<Group<'a, Message>> {
+    let idle = !state.is_busy();
+    let count = state.rows().len();
+    let mut rows: Vec<SettingRow<'a, Message>> = state
+        .rows()
+        .iter()
+        .enumerate()
+        .map(|(index, listed)| rule_row(index, count, listed, state, lang, palette))
+        .collect();
+    let empty = if count > 0 {
+        None
+    } else if state.is_busy() {
+        Some(lang.text(Msg::RulesLoading).to_owned())
+    } else {
+        Some(lang.text(Msg::RulesEmpty).to_owned())
+    };
+    let problem = state
+        .problem()
+        .filter(|_| !state.dialog_is_open())
+        .map(|detail| problem_text(detail, lang));
+    rows.push(SettingRow::adding(
+        empty,
+        problem,
+        vec![kit::button(
+            lang.text(Msg::HermesPagesRuleAdd),
+            idle.then(|| send(RulesMessage::New)),
+            Tone::Secondary,
+            palette,
+        )],
+    ));
+    vec![Group {
+        intro: Some(lang.text(Msg::RulesExplain).to_owned()),
+        title: String::new(),
+        rows,
+    }]
+}
+
+fn rule_row<'a>(
+    index: usize,
+    count: usize,
+    listed: &ListedRule,
+    state: &RulesPage,
+    lang: Language,
+    palette: &Palette,
+) -> SettingRow<'a, Message> {
     let spec = &listed.rule.spec;
-    let sentence = rule_sentence(spec, lang, kinds);
+    let sentence = rule_sentence(spec, lang, state.kinds());
     let named = spec.name.as_deref().filter(|name| !name.is_empty());
-    let (primary, secondary) = match named {
+    let (label, second) = match named {
         Some(name) => (name.to_owned(), sentence),
         None => (sentence, origin_text(listed.rule.origin, lang).to_owned()),
     };
-    RowTwo {
-        primary: format::ellipsize_end(&primary, NAME_CHARS),
-        secondary: format::ellipsize_end(&secondary, SENTENCE_CHARS),
-        right: Some(if spec.enabled {
-            hits_text(listed.hits, lang)
-        } else {
-            lang.text(Msg::RulesOff).to_owned()
-        }),
-        lead: Some((
+    let idle = !state.is_busy();
+    let status = if spec.enabled {
+        hits_text(listed.hits, lang)
+    } else {
+        lang.text(Msg::RulesOff).to_owned()
+    };
+    let actions = vec![
+        kit::checkbox(
             if spec.enabled { Check::On } else { Check::Off },
-            send(RulesMessage::ToggleAt(index)),
-        )),
-        muted: !spec.enabled,
-    }
+            idle.then(|| send(RulesMessage::ToggleAt(index))),
+            palette,
+        ),
+        kit::button(
+            "↑",
+            (idle && index > 0).then(|| send(RulesMessage::ReorderAt { index, delta: -1 })),
+            Tone::Secondary,
+            palette,
+        ),
+        kit::button(
+            "↓",
+            (idle && index + 1 < count).then(|| send(RulesMessage::ReorderAt { index, delta: 1 })),
+            Tone::Secondary,
+            palette,
+        ),
+        kit::button(
+            lang.text(Msg::HermesPagesChange),
+            idle.then(|| send(RulesMessage::Edit(index))),
+            Tone::Secondary,
+            palette,
+        ),
+        kit::button(
+            lang.text(Msg::SettingsRemove),
+            idle.then(|| send(RulesMessage::AskDelete(index))),
+            Tone::Secondary,
+            palette,
+        ),
+    ];
+    SettingRow::listed(label, Some(second), Some(status), actions, palette)
 }
 
-fn detail<'a>(state: &RulesPage, lang: Language, palette: &Palette) -> Element<'a, Message> {
-    let mut children: Vec<Element<'a, Message>> = Vec::new();
+fn problem_text(detail: &str, lang: Language) -> String {
+    fill_template(lang.text(Msg::RulesProblemFailed), &[("{detail}", detail)])
+}
+
+/// The dialog that is up: the question before a rule is deleted, or the
+/// form of a rule.
+pub fn dialog<'a>(
+    state: &'a RulesPage,
+    window: Size,
+    lang: Language,
+    palette: &Palette,
+) -> Option<Element<'a, Message>> {
     if state.is_confirming_delete() {
-        let rule = state
-            .selected()
-            .map(|listed| rule_sentence(&listed.rule.spec, lang, state.kinds()))
-            .unwrap_or_default();
-        children.push(page_kit::error_line(
-            fill_template(lang.text(Msg::RulesDeleteQuestion), &[("{rule}", &rule)]),
+        return Some(delete_dialog(state, window, lang, palette));
+    }
+    state
+        .form()
+        .map(|form| form_dialog(form, state.problem(), window, lang, palette))
+}
+
+fn delete_dialog<'a>(
+    state: &RulesPage,
+    window: Size,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let rule = state
+        .selected()
+        .map(|listed| rule_sentence(&listed.rule.spec, lang, state.kinds()))
+        .unwrap_or_default();
+    let question = fill_template(lang.text(Msg::RulesDeleteQuestion), &[("{rule}", &rule)]);
+    let mut body = Column::new().spacing(GAP_S);
+    if let Some(detail) = state.problem() {
+        body = body.push(page_kit::error_line(problem_text(detail, lang), palette));
+    }
+    body = body.push(kit::paragraph(question, palette));
+    Frame::new(
+        lang.text(Msg::RulesDeleteConfirm),
+        body,
+        DialogSize::Small,
+        window,
+        lang,
+        palette,
+    )
+    .buttons(vec![
+        kit::button(
+            lang.text(Msg::RulesCancel),
+            Some(send(RulesMessage::CancelDelete)),
+            Tone::Secondary,
             palette,
-        ));
-    }
-    if let Some(problem) = state.problem() {
-        children.push(page_kit::error_line(
-            fill_template(lang.text(Msg::RulesProblemFailed), &[("{detail}", problem)]),
+        ),
+        kit::button(
+            lang.text(Msg::RulesDeleteConfirm),
+            Some(send(RulesMessage::ConfirmDelete)),
+            Tone::Danger,
             palette,
-        ));
+        ),
+    ])
+    .on_close(send(RulesMessage::CancelDelete))
+    .hints(KeyHints {
+        enter: false,
+        tab: false,
+    })
+    .into_element()
+}
+
+fn form_dialog<'a>(
+    form: &RuleForm,
+    problem: Option<&str>,
+    window: Size,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let title = match form.target {
+        RuleFormTarget::FromSuggestion(_) => Msg::RulesFormTitleConfirm,
+        RuleFormTarget::New | RuleFormTarget::FromDocument => Msg::RulesFormTitleNew,
+        RuleFormTarget::Edit(_) => Msg::HermesPagesRuleTitleEdit,
+    };
+    let save_label = match form.target {
+        RuleFormTarget::FromSuggestion(_) => Msg::RuleSuggestionsConfirm,
+        RuleFormTarget::New | RuleFormTarget::FromDocument | RuleFormTarget::Edit(_) => {
+            Msg::RulesFormSave
+        }
+    };
+    let mut body = Column::new().spacing(GAP_S);
+    if let Some(detail) = problem {
+        body = body.push(page_kit::error_line(problem_text(detail, lang), palette));
     }
-    match state.form() {
-        Some(form) if state.is_try_list_open() => children.extend(try_rows(form, lang, palette)),
-        Some(form) => children.extend(form_rows(form, lang, palette)),
-        None => {}
+    for element in form_rows(form, lang, palette) {
+        body = body.push(element);
     }
-    page_kit::detail(children)
+    for element in try_rows(form, lang, palette) {
+        body = body.push(element);
+    }
+    Frame::new(
+        lang.text(title),
+        body,
+        DialogSize::Wide,
+        window,
+        lang,
+        palette,
+    )
+    .buttons(vec![
+        kit::button(
+            lang.text(Msg::RulesFormCancel),
+            Some(send_form(RuleFormMessage::Cancel)),
+            Tone::Secondary,
+            palette,
+        ),
+        kit::button(
+            lang.text(save_label),
+            (form.is_changed() && !form.saving).then(|| send_form(RuleFormMessage::Save)),
+            Tone::Primary,
+            palette,
+        ),
+    ])
+    .on_close(send_form(RuleFormMessage::Cancel))
+    .hints(KeyHints {
+        enter: false,
+        tab: false,
+    })
+    .into_element()
 }
 
 fn form_rows<'a>(form: &RuleForm, lang: Language, palette: &Palette) -> Vec<Element<'a, Message>> {
@@ -257,11 +298,9 @@ fn form_rows<'a>(form: &RuleForm, lang: Language, palette: &Palette) -> Vec<Elem
         palette,
     ));
     if form.conditions.rows.len() > 1 {
-        rows.push(page_kit::form_row(
-            "",
+        rows.push(full_width(
             combinator_choice(form.conditions.combinator, &host),
             None,
-            palette,
         ));
     }
     let condition_rows = condition_editor_rows(&form.conditions, &host);
@@ -272,23 +311,19 @@ fn form_rows<'a>(form: &RuleForm, lang: Language, palette: &Palette) -> Vec<Elem
         let note = problem
             .or(missing)
             .map(|text| page_kit::error_line(text, palette));
-        rows.push(page_kit::form_row("", control, note, palette));
+        rows.push(full_width(control, note));
     }
     if form.conditions.rows.is_empty() {
-        rows.push(page_kit::form_row(
-            "",
+        rows.push(full_width(
             page_kit::hint(lang.text(Msg::ConditionEditorEmpty), palette),
             problems.no_condition.then(|| {
                 page_kit::error_line(lang.text(Msg::RulesFormProblemNoCondition), palette)
             }),
-            palette,
         ));
     }
-    rows.push(page_kit::form_row(
-        "",
+    rows.push(full_width(
         add_condition_link(&form.conditions, &host),
         Some(page_kit::hint(lang.text(Msg::ConditionEditorHelp), palette)),
-        palette,
     ));
 
     rows.push(page_kit::section(lang.text(Msg::RulesFormThen), palette));
@@ -305,6 +340,22 @@ fn form_rows<'a>(form: &RuleForm, lang: Language, palette: &Palette) -> Vec<Elem
     ));
     rows.push(tags_row(form, lang, palette));
     rows
+}
+
+/// A control over the whole width of the dialog, with its note under it: the
+/// conditions need the room that a label column would take.
+fn full_width<'a>(
+    control: Element<'a, Message>,
+    note: Option<Element<'a, Message>>,
+) -> Element<'a, Message> {
+    let mut column = Column::new()
+        .push(control)
+        .spacing(GAP_XS)
+        .width(Length::Fill);
+    if let Some(extra) = note {
+        column = column.push(extra);
+    }
+    column.into()
 }
 
 fn tags_row<'a>(form: &RuleForm, lang: Language, palette: &Palette) -> Element<'a, Message> {
@@ -330,9 +381,10 @@ fn tags_row<'a>(form: &RuleForm, lang: Language, palette: &Palette) -> Element<'
             palette,
         ));
     } else {
-        items.push(page_kit::link(
+        items.push(kit::button(
             lang.text(Msg::RulesFormTagsAdd),
             Some(send_form(RuleFormMessage::OpenTagInput)),
+            Tone::Secondary,
             palette,
         ));
         items.push(page_kit::value_dim(
@@ -356,11 +408,6 @@ fn tags_row<'a>(form: &RuleForm, lang: Language, palette: &Palette) -> Element<'
 /// The documents the rule as it stands in the form would match.
 fn try_rows<'a>(form: &RuleForm, lang: Language, palette: &Palette) -> Vec<Element<'a, Message>> {
     let mut rows: Vec<Element<'a, Message>> = vec![
-        page_kit::link(
-            lang.text(Msg::RulesTryBack),
-            Some(send(RulesMessage::ToggleTryList)),
-            palette,
-        ),
         page_kit::section(lang.text(Msg::RulesTryHeading), palette),
         page_kit::hint(lang.text(Msg::RulesTryExplain), palette),
     ];
@@ -370,13 +417,17 @@ fn try_rows<'a>(form: &RuleForm, lang: Language, palette: &Palette) -> Vec<Eleme
             rows.push(page_kit::hint(lang.text(Msg::RulesTryLooking), palette));
         }
         TryStatus::Failed(detail) => rows.push(page_kit::error_line(
-            fill_template(lang.text(Msg::RulesTryFailed), &[("{detail}", detail)]),
+            fill_template(
+                lang.text(Msg::RulesTryFailed),
+                &[("{detail}", &format::ellipsize_end(detail, TRY_PATH_CHARS))],
+            ),
             palette,
         )),
         TryStatus::Ready(result) if result.documents.is_empty() => {
             rows.push(page_kit::hint(lang.text(Msg::RulesTryEmpty), palette));
         }
         TryStatus::Ready(result) => {
+            rows.push(page_kit::value(try_summary(result, lang), palette));
             for tried in result.documents.iter().take(TRY_VISIBLE_ROWS) {
                 rows.push(try_row(tried, result, lang, palette));
             }
@@ -397,6 +448,26 @@ fn try_rows<'a>(form: &RuleForm, lang: Language, palette: &Palette) -> Vec<Eleme
         }
     }
     rows
+}
+
+/// "Read folders 2 · Review 1 · Read only 11".
+fn try_summary(result: &TryResult, lang: Language) -> String {
+    let count = |section: TrySection| {
+        result
+            .documents
+            .iter()
+            .filter(|tried| tried.section == section)
+            .count()
+    };
+    format!(
+        "{} {} · {} {} · {} {}",
+        lang.text(Msg::RulesTrySectionInbox),
+        count(TrySection::Inbox),
+        lang.text(Msg::RulesTrySectionReview),
+        count(TrySection::Review),
+        lang.text(Msg::RulesTrySectionArchive),
+        count(TrySection::Archive),
+    )
 }
 
 fn try_row<'a>(
@@ -442,112 +513,6 @@ fn try_row<'a>(
         None,
         palette,
     )
-}
-
-fn action_bar<'a>(state: &RulesPage, lang: Language, palette: &Palette) -> Element<'a, Message> {
-    if state.is_confirming_delete() {
-        return page_kit::action_bar(
-            None,
-            vec![
-                page_kit::secondary(
-                    lang.text(Msg::RulesCancel),
-                    Some(send(RulesMessage::CancelDelete)),
-                    palette,
-                ),
-                page_kit::primary(
-                    lang.text(Msg::RulesDeleteConfirm),
-                    Some(kit::ENTER_KEY),
-                    Some(send(RulesMessage::ConfirmDelete)),
-                    palette,
-                ),
-            ],
-            palette,
-        );
-    }
-    let Some(form) = state.form() else {
-        return page_kit::action_bar(None, Vec::new(), palette);
-    };
-    let changed = form.is_changed() && !form.saving;
-    let save_label = lang.text(match form.target {
-        RuleFormTarget::FromSuggestion(_) => Msg::RuleSuggestionsConfirm,
-        RuleFormTarget::New | RuleFormTarget::FromDocument | RuleFormTarget::Edit(_) => {
-            Msg::RulesFormSave
-        }
-    });
-    let left: Element<'a, Message> = if state.has_unsaved_changes() {
-        row![
-            page_kit::hint(lang.text(Msg::RulesUnsavedChanges), palette),
-            try_summary(form, lang, palette),
-        ]
-        .spacing(GAP_M)
-        .align_y(alignment::Vertical::Center)
-        .into()
-    } else {
-        try_summary(form, lang, palette)
-    };
-    page_kit::action_bar_with(
-        left,
-        vec![
-            page_kit::secondary(
-                lang.text(Msg::RulesFormCancel),
-                form.is_changed()
-                    .then(|| send_form(RuleFormMessage::Cancel)),
-                palette,
-            ),
-            page_kit::primary(
-                save_label,
-                Some(SAVE_KEY),
-                changed.then(|| send_form(RuleFormMessage::Save)),
-                palette,
-            ),
-        ],
-        palette,
-    )
-}
-
-/// "Try: Inbox 2 · Review 1 · Archive 11 ·" and the link to the list.
-fn try_summary<'a>(form: &RuleForm, lang: Language, palette: &Palette) -> Element<'a, Message> {
-    let sentence = match &form.live_try.status {
-        TryStatus::Idle => return Row::new().into(),
-        TryStatus::Waiting | TryStatus::Running => lang.text(Msg::RulesTryLooking).to_owned(),
-        TryStatus::Failed(detail) => fill_template(
-            lang.text(Msg::RulesTryFailed),
-            &[("{detail}", &format::ellipsize_end(detail, TRY_PATH_CHARS))],
-        ),
-        TryStatus::Ready(result) if result.documents.is_empty() => {
-            lang.text(Msg::RulesTryEmpty).to_owned()
-        }
-        TryStatus::Ready(result) => {
-            let count = |section: TrySection| {
-                result
-                    .documents
-                    .iter()
-                    .filter(|tried| tried.section == section)
-                    .count()
-            };
-            format!(
-                "{}: {} {} · {} {} · {} {} ·",
-                lang.text(Msg::RulesTryHeading),
-                lang.text(Msg::RulesTrySectionInbox),
-                count(TrySection::Inbox),
-                lang.text(Msg::RulesTrySectionReview),
-                count(TrySection::Review),
-                lang.text(Msg::RulesTrySectionArchive),
-                count(TrySection::Archive),
-            )
-        }
-    };
-    let mut line = row![page_kit::hint(sentence, palette)]
-        .spacing(GAP_S)
-        .align_y(alignment::Vertical::Center);
-    if matches!(&form.live_try.status, TryStatus::Ready(result) if !result.documents.is_empty()) {
-        line = line.push(page_kit::link(
-            lang.text(Msg::RulesTryShowList),
-            Some(send(RulesMessage::ToggleTryList)),
-            palette,
-        ));
-    }
-    line.into()
 }
 
 fn outcome_text(outcome: &TryOutcome, lang: Language) -> String {

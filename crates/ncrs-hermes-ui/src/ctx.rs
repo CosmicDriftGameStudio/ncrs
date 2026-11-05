@@ -13,12 +13,6 @@ pub struct Ctx<'a> {
     pub lang: Language,
     pub kinds: &'a Kinds,
     pub file_list_tags: &'a FileListTags,
-    /// The status page is up. The pages and the menu in [`crate::Hermes`] are
-    /// read from the state, which changes while `update` runs.
-    pub status_page_open: bool,
-    /// A dialog or card is up that nothing opens over, apart from the Ablage
-    /// tab and the menu in [`crate::Hermes`].
-    pub overlay_apart_from_ablage_tab_open: bool,
     /// The question whether to remove the index and begin again is up.
     pub start_over_dialog_open: bool,
     /// The module is being built again.

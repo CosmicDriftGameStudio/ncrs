@@ -106,12 +106,7 @@ impl Hermes {
         self.hermes_detail_reads.remove(path);
     }
 
-    /// A page of this state stands in for the panels.
-    pub fn page_is_open(&self) -> bool {
-        self.open_page().is_some()
-    }
-
-    /// The page of this state that is up, if any.
+    /// The page of this state that is loaded, if any.
     pub fn open_page(&self) -> Option<HermesPage> {
         if self.saved_queries.is_some() {
             Some(HermesPage::SavedQueries)
@@ -119,6 +114,8 @@ impl Hermes {
             Some(HermesPage::Rules)
         } else if self.tags.is_some() {
             Some(HermesPage::Tags)
+        } else if self.filing_status.page_open() {
+            Some(HermesPage::Inspection)
         } else {
             None
         }
@@ -128,5 +125,6 @@ impl Hermes {
         self.rules = None;
         self.saved_queries = None;
         self.tags = None;
+        self.filing_status.close_page();
     }
 }

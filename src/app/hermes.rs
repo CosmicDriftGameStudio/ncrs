@@ -159,10 +159,7 @@ impl App {
                 })
             }
             HermesFileMessage::ShowInInspection => {
-                let outcome = self.with_hermes(Vec::new(), |hermes, ctx| {
-                    ncrs_hermes_ui::show_in_inspection(hermes, &path, ctx)
-                });
-                self.run_hermes_outcome(outcome)
+                self.run_hermes_outcome(ncrs_hermes_ui::show_in_inspection())
             }
             HermesFileMessage::SetRole(_)
             | HermesFileMessage::RoleSaved(_)
@@ -189,8 +186,6 @@ impl App {
         ncrs_hermes_ui::Ctx {
             lang: self.lang,
             kinds: &self.kinds,
-            status_page_open: hermes.filing_status.page_open(),
-            overlay_apart_from_ablage_tab_open: self.dialog_apart_from_hermes_is_open(),
             start_over_dialog_open: self.start_over_dialog,
             hermes_is_restarting: hermes.is_restarting(),
             hermes_has_open_reviews: hermes
@@ -295,7 +290,6 @@ impl App {
         use ncrs_hermes_ui::Action as Ask;
         match action {
             Ask::OpenChat => self.update_hermes_chat(HermesChatMessage::Open),
-            Ask::OpenFilingStatus => self.open_filing_status(),
             Ask::RevealFile(path) => self.reveal_file(&path),
             Ask::FilingRestarted(generation) => self.filing_restarted(generation),
             Ask::CloseContextMenu => {
@@ -320,11 +314,7 @@ impl App {
             Ask::ReadPathsAgain(paths) => self.run_hermes_flow(Vec::new(), |hermes, ctx| {
                 ncrs_hermes_ui::read_paths_again(hermes, paths, ctx)
             }),
-            Ask::CloseStatusPage => {
-                self.hermes.filing_status.close_page();
-                Task::none()
-            }
-            Ask::GoToHermesPage(page) => self.go_to_hermes_page(page),
+            Ask::ShowPage(page) => self.show_hermes_page(page),
             Ask::RefreshFilingSnapshot => {
                 self.hermes.refresh_filing_snapshot(self.wall_clock.now());
                 Task::none()
@@ -373,10 +363,6 @@ impl App {
                 Task::none()
             }
             Ask::ReloadPanels => self.reload_panels(),
-            Ask::SelectErrorOf(path) => {
-                self.hermes.filing_status.select_error_of(&path);
-                Task::none()
-            }
         }
     }
 

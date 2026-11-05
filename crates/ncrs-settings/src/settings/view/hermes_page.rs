@@ -53,7 +53,6 @@ pub fn hermes_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
             order_rows(view),
         ),
         group(Msg::SettingsHermesSectionHistory, None, history_rows(view)),
-        group(Msg::SettingsGroupAdvanced, None, advanced_rows(view)),
     ]
 }
 
@@ -283,31 +282,4 @@ fn history_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
         ));
     }
     rows
-}
-
-fn advanced_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
-    let lang = view.lang;
-    let open = |message: SettingsMessage| -> Element<'a, Message> {
-        kit::button(
-            lang.text(Msg::SettingsOpenEllipsis),
-            Some(message),
-            Tone::Secondary,
-            view.palette,
-        )
-    };
-    vec![
-        text_row(
-            lang.text(Msg::SettingsHermesRowRules).to_owned(),
-            Some(fill_template(
-                lang.text(Msg::SettingsHermesRowRulesNote),
-                &[("{count}", &view.facts.rules.to_string())],
-            )),
-            open(SettingsMessage::OpenRules),
-        ),
-        text_row(
-            lang.text(Msg::SettingsHermesRowTags).to_owned(),
-            Some(lang.text(Msg::SettingsHermesRowTagsNote).to_owned()),
-            open(SettingsMessage::ChooseFileListTags),
-        ),
-    ]
 }

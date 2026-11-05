@@ -1,45 +1,32 @@
-//! State of the rules page: the confirmed rules in their order, the cursor in
-//! them, the delete question, and the sentences the rules are shown as. No
-//! widgets and no tasks; `App` owns it and changes it from `update`, the view
-//! is `ui::rules`.
-
-use iced::mouse::ScrollDelta;
+//! State of the rules page: the confirmed rules in their order, the rule the
+//! last action was on, the delete question, and the sentences the rules are
+//! shown as. No widgets and no tasks; `App` owns it and changes it from
+//! `update`, the view is `ui::rules`.
 
 use std::sync::Arc;
 
 use ncrs_index::{Combinator, Condition, ConditionKind, KindCatalog, RuleId, RuleOrigin, RuleSpec};
 
 use crate::filing_pieces::FilingTarget;
-use crate::message::HermesPage;
-use crate::rule_form::{RuleForm, RuleFormTarget, RuleSave};
+use crate::rule_form::{RuleForm, RuleSave};
 use ncrs_filing::rules_work::{ListedRule, RuleChange, RulesLoad};
 use ncrs_i18n::fill_template;
 use ncrs_i18n::{Language, Msg};
-use ncrs_ui_kit::list_window::ListWindow;
-
-/// Most rules of the list shown at once; the list follows the cursor.
-pub const VISIBLE_ROWS: usize = 12;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RulesPage {
     rows: Vec<ListedRule>,
+    /// The rule the last action was on; the delete question is about it.
     cursor: usize,
-    window: ListWindow,
     /// The list is loading or a change is running; the page takes no new one.
     busy: bool,
     confirming_delete: bool,
     /// The work on the index failed; the technical detail stays English.
     problem: Option<String>,
-    /// The form of the selected rule, or of a rule that is not listed yet.
+    /// The form of the dialog: a rule of the list, or one that is not listed
+    /// yet. No form, no dialog.
     form: Option<RuleForm>,
-    /// The keys go to the fields of the form, not to the list.
-    editing: bool,
-    /// The documents of the try fill the detail instead of the form.
-    try_list_open: bool,
-    /// The page the form was opened from; the card goes back to it when the
-    /// form is saved or cancelled.
-    return_to: Option<HermesPage>,
-    /// The rule the first load puts the cursor on.
+    /// The rule the next load puts the cursor on.
     select_on_load: Option<RuleId>,
     kinds: Arc<KindCatalog>,
 }
@@ -56,14 +43,10 @@ impl RulesPage {
         Self {
             rows: Vec::new(),
             cursor: 0,
-            window: ListWindow::default(),
             busy: true,
             confirming_delete: false,
             problem: None,
             form: None,
-            editing: false,
-            try_list_open: false,
-            return_to: None,
             select_on_load: None,
             kinds: Arc::default(),
         }
@@ -84,15 +67,6 @@ impl RulesPage {
 
     pub fn rows(&self) -> &[ListedRule] {
         &self.rows
-    }
-
-    pub fn cursor(&self) -> usize {
-        self.cursor
-    }
-
-    /// The first rule of the list that is shown.
-    pub fn first_visible(&self) -> usize {
-        self.window.offset(self.rows.len(), VISIBLE_ROWS)
     }
 
     pub fn selected(&self) -> Option<&ListedRule> {
@@ -119,60 +93,14 @@ impl RulesPage {
         self.form.as_mut()
     }
 
-    pub fn is_editing(&self) -> bool {
-        self.editing
+    /// A dialog is up: the form or the delete question.
+    pub fn dialog_is_open(&self) -> bool {
+        self.form.is_some() || self.confirming_delete
     }
 
-    /// The keys go to the fields.
-    pub fn start_editing(&mut self) {
-        self.editing = self.form.is_some();
-    }
-
-    /// The keys go to the list again; whether they went to the fields.
-    pub fn stop_editing(&mut self) -> bool {
-        std::mem::take(&mut self.editing)
-    }
-
-    pub fn is_try_list_open(&self) -> bool {
-        self.try_list_open
-    }
-
-    pub fn toggle_try_list(&mut self) {
-        self.try_list_open = self.form.is_some() && !self.try_list_open;
-    }
-
-    /// Whether the form is for a rule that is not in the list.
-    pub fn has_unlisted_form(&self) -> bool {
-        self.form.as_ref().is_some_and(|form| {
-            matches!(
-                form.target,
-                RuleFormTarget::New
-                    | RuleFormTarget::FromDocument
-                    | RuleFormTarget::FromSuggestion(_)
-            )
-        })
-    }
-
-    /// The form holds changes that are neither saved nor cancelled.
-    pub fn has_unsaved_changes(&self) -> bool {
-        self.form.as_ref().is_some_and(RuleForm::is_edited)
-    }
-
-    /// The list takes no change while a change runs or while the form holds
-    /// unsaved changes: another rule, a new rule or a reload would drop them.
+    /// The list takes no change while a change runs.
     fn list_is_locked(&self) -> bool {
-        self.busy || self.has_unsaved_changes()
-    }
-
-    /// Shows the form of the rule under the cursor and drops what was typed.
-    fn show_selected(&mut self) {
-        self.return_to = None;
-        self.editing = false;
-        self.try_list_open = false;
-        self.form = self
-            .rows
-            .get(self.cursor)
-            .map(|listed| RuleForm::edit(&listed.rule));
+        self.busy
     }
 
     /// Opens the form for a new rule.
@@ -182,41 +110,33 @@ impl RulesPage {
         }
         self.confirming_delete = false;
         self.problem = None;
-        self.return_to = None;
-        self.try_list_open = false;
-        self.editing = true;
         self.form = Some(RuleForm::new());
     }
 
     /// Opens a form made elsewhere, also while the list still loads.
-    pub fn open_form(&mut self, form: RuleForm, return_to: Option<HermesPage>) {
+    pub fn open_form(&mut self, form: RuleForm) {
         self.confirming_delete = false;
         self.problem = None;
-        self.return_to = return_to;
-        self.try_list_open = false;
-        self.editing = true;
         self.form = Some(form);
     }
 
-    /// Enter in the list: the keys go to the fields of the selected rule.
-    pub fn begin_edit(&mut self) {
-        if self.busy {
+    /// Opens the form of the rule at `index`.
+    pub fn begin_edit(&mut self, index: usize) {
+        if self.list_is_locked() {
             return;
         }
-        if self.form.is_none() {
-            self.show_selected();
-        }
-        self.start_editing();
+        let Some(listed) = self.rows.get(index) else {
+            return;
+        };
+        self.cursor = index;
+        self.confirming_delete = false;
+        self.problem = None;
+        self.form = Some(RuleForm::edit(&listed.rule));
     }
 
-    /// Drops what was typed and shows the selected rule again; whether there
-    /// was a form.
+    /// Drops what was typed and closes the dialog; whether there was a form.
     pub fn cancel_form(&mut self) -> bool {
-        let had_form = self.form.is_some();
-        let back = self.return_to.take();
-        self.show_selected();
-        self.return_to = back;
-        had_form
+        self.form.take().is_some()
     }
 
     /// The write the form asks for, once and only while it is valid.
@@ -224,20 +144,11 @@ impl RulesPage {
         self.form.as_mut()?.save_request()
     }
 
-    /// The write is done: the form closes. The caller loads the list again,
-    /// or goes back to the page the form came from.
-    pub fn saved(&mut self, id: RuleId) -> Option<HermesPage> {
+    /// The write is done: the form closes. The caller loads the list again.
+    pub fn saved(&mut self, id: RuleId) {
         self.select_on_load = Some(id);
         self.form = None;
-        self.editing = false;
-        self.try_list_open = false;
         self.busy = true;
-        self.return_to.take()
-    }
-
-    /// The page to go back to after the form was cancelled.
-    pub fn take_return_to(&mut self) -> Option<HermesPage> {
-        self.return_to.take()
     }
 
     pub fn save_failed(&mut self, detail: String) {
@@ -258,11 +169,6 @@ impl RulesPage {
             .and_then(|id| load.rules.iter().position(|row| row.rule.id == id))
             .unwrap_or_else(|| self.cursor.min(load.rules.len().saturating_sub(1)));
         self.rows = load.rules;
-        self.window
-            .ensure_visible(self.cursor, self.rows.len(), VISIBLE_ROWS);
-        if !self.has_unlisted_form() {
-            self.show_selected();
-        }
         self.busy = false;
         self.confirming_delete = false;
         self.problem = None;
@@ -274,42 +180,11 @@ impl RulesPage {
         self.problem = Some(detail);
     }
 
-    pub fn move_cursor(&mut self, delta: isize) {
-        let last = self.rows.len().saturating_sub(1);
-        self.select(self.cursor.saturating_add_signed(delta).min(last));
-    }
-
-    /// The wheel moves the window; the cursor follows it when it would leave.
-    pub fn scroll(&mut self, delta: ScrollDelta) {
-        let mut cursor = self.cursor;
-        self.window
-            .scroll(delta, self.rows.len(), VISIBLE_ROWS, &mut cursor);
-        self.select(cursor);
-    }
-
-    /// Selecting another rule drops what was typed into the form of the one
-    /// before; so does selecting the rule of a form that is not listed yet.
-    pub fn select(&mut self, index: usize) {
-        if self.list_is_locked() || index >= self.rows.len() {
-            return;
-        }
-        if index == self.cursor && !self.has_unlisted_form() {
-            return;
-        }
-        self.cursor = index;
-        self.window
-            .ensure_visible(index, self.rows.len(), VISIBLE_ROWS);
-        self.confirming_delete = false;
-        self.problem = None;
-        self.show_selected();
-    }
-
     /// Flips the switch of the rule at `index` and returns the change to make.
     pub fn begin_toggle(&mut self, index: usize) -> Option<RuleChange> {
         if self.list_is_locked() {
             return None;
         }
-        self.select(index);
         let row = self.rows.get(index)?;
         let change = RuleChange::SetEnabled {
             id: row.rule.id,
@@ -318,22 +193,25 @@ impl RulesPage {
         self.begin(change)
     }
 
-    /// Moves the selected rule one place among the listed ones. The target is
-    /// the place of the neighbour among all rules, suggestions included.
-    pub fn begin_move(&mut self, delta: isize) -> Option<RuleChange> {
+    /// Moves the rule at `index` one place among the listed ones. The target
+    /// is the place of the neighbour among all rules, suggestions included.
+    pub fn begin_move(&mut self, index: usize, delta: isize) -> Option<RuleChange> {
         if self.list_is_locked() {
             return None;
         }
-        let neighbour = self.rows.get(self.cursor.checked_add_signed(delta)?)?;
-        let id = self.selected()?.rule.id;
+        let neighbour = self.rows.get(index.checked_add_signed(delta)?)?;
+        let id = self.rows.get(index)?.rule.id;
         self.begin(RuleChange::Move {
             id,
             to_index: neighbour.global_index,
         })
     }
 
-    pub fn ask_delete(&mut self) {
-        if !self.list_is_locked() && self.selected().is_some() {
+    /// The question before the rule at `index` is removed.
+    pub fn ask_delete(&mut self, index: usize) {
+        if !self.list_is_locked() && index < self.rows.len() {
+            self.cursor = index;
+            self.form = None;
             self.confirming_delete = true;
         }
     }

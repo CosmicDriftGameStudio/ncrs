@@ -1,10 +1,10 @@
 //! The rows of a [`ConditionEditor`]: kind, has / has not, value and a cross,
-//! and the link that adds a condition. The combinator is offered
+//! and the button that adds a condition. The combinator is offered
 //! apart by [`combinator_choice`]. The host (the
 //! rule form) lays the rows out in its own row type.
 
 use iced::widget::row;
-use iced::{alignment, Element};
+use iced::{alignment, Element, Length};
 use ncrs_index::{Combinator, Condition, ConditionKind};
 
 use crate::condition_editor::{
@@ -15,7 +15,7 @@ use ncrs_config::palette::Palette;
 use ncrs_i18n::fill_template;
 use ncrs_i18n::{Language, Msg};
 use ncrs_ui_kit::hermes_kit::{self as page_kit, MenuItem};
-use ncrs_ui_kit::kit;
+use ncrs_ui_kit::kit::{self, Tone};
 use ncrs_ui_kit::theme::spacing;
 
 pub const CONDITION_VALUE_FIELD_IDS: [&str; MAX_CONDITION_ROWS] = [
@@ -72,14 +72,15 @@ pub fn condition_editor_rows<'a>(
         .collect()
 }
 
-/// The link under the rows that adds a condition.
+/// The button under the rows that adds a condition.
 pub fn add_condition_link<'a>(
     editor: &ConditionEditor,
     host: &ConditionHost<'_>,
 ) -> Element<'a, Message> {
-    page_kit::link(
+    kit::button(
         host.lang.text(Msg::ConditionEditorAdd),
         editor.can_add().then(|| (host.wrap)(ConditionEdit::Add)),
+        Tone::Secondary,
         host.palette,
     )
 }
@@ -132,6 +133,7 @@ fn condition_row<'a>(
         )
     };
     let mut cells = row![page_kit::dropdown(KIND_WIDTH, &kinds, selected, palette)]
+        .width(Length::Fill)
         .spacing(spacing::S)
         .align_y(alignment::Vertical::Center);
     if editor.negation {

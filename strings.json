@@ -1777,88 +1777,10 @@
       "de": "Hermes pausiert"
     },
     {
-      "key": "filing_status.section_pipeline",
-      "context": "Heading of the section with the state, the load and the steps of the filing pipeline.",
-      "en": "Pipeline",
-      "de": "Verarbeitung"
-    },
-    {
       "key": "filing_status.explain",
-      "context": "One sentence under the title of the filing status page: what the page is for.",
-      "en": "Shows what Hermes is doing right now: the state of the pipeline, the load, the index figures and the latest errors.",
-      "de": "Zeigt, was Hermes gerade tut: Zustand der Verarbeitung, Last, Zahlen des Index und die letzten Fehler."
-    },
-    {
-      "key": "filing_status.section_workers",
-      "context": "Heading of the section that lists what each worker thread of the pipeline is doing right now.",
-      "en": "Workers",
-      "de": "Worker"
-    },
-    {
-      "key": "filing_status.section_index",
-      "context": "Heading of the section with figures about the document index.",
-      "en": "Index",
-      "de": "Dokumentenindex"
-    },
-    {
-      "key": "filing_status.section_errors",
-      "context": "Heading of the list of the latest errors of the pipeline.",
-      "en": "Errors",
-      "de": "Fehler"
-    },
-    {
-      "key": "filing_status.state_label",
-      "context": "Label in front of the state of the pipeline on the filing status page.",
-      "en": "State",
-      "de": "Zustand"
-    },
-    {
-      "key": "filing_status.state_running",
-      "context": "State of the pipeline: it is working on files.",
-      "en": "Running",
-      "de": "Läuft"
-    },
-    {
-      "key": "filing_status.state_paused",
-      "context": "State of the pipeline: the user paused it; running files still finish their steps.",
-      "en": "Paused",
-      "de": "Pausiert"
-    },
-    {
-      "key": "filing_status.state_idle",
-      "context": "State of the pipeline: it runs but has nothing to do.",
-      "en": "Idle",
-      "de": "Leerlauf"
-    },
-    {
-      "key": "filing_status.state_off",
-      "context": "State of the pipeline: it is not running, for example because the index is not open.",
-      "en": "Off",
-      "de": "Aus"
-    },
-    {
-      "key": "filing_status.pause",
-      "context": "Button on the filing status page that pauses the pipeline. Verb.",
-      "en": "Pause",
-      "de": "Pausieren"
-    },
-    {
-      "key": "filing_status.resume",
-      "context": "Button on the filing status page that continues a paused pipeline. Verb.",
-      "en": "Resume",
-      "de": "Fortsetzen"
-    },
-    {
-      "key": "filing_status.load_label",
-      "context": "Label in front of the three load buttons on the filing status page. The load says how many workers the pipeline may use.",
-      "en": "Load",
-      "de": "Last"
-    },
-    {
-      "key": "filing_status.load_gentle",
-      "context": "Button for the lowest load of the pipeline: few workers, so the computer stays usable (config value gentle). The Futurama variants show the theme name beside it.",
-      "en": "Gentle",
-      "de": "Schonend"
+      "context": "One sentence above the list of files that could not be read: what the rows are and what the buttons in them do.",
+      "en": "The latest files that could not be read. Process again tries one of them anew.",
+      "de": "Die letzten Dateien, die nicht gelesen werden konnten. Erneut verarbeiten versucht es mit einer noch einmal."
     },
     {
       "key": "filing_status.load_gentle.theme",
@@ -1867,154 +1789,16 @@
       "de": "Dienst nach Vorschrift"
     },
     {
-      "key": "filing_status.load_balanced",
-      "context": "Button for the middle load of the pipeline (config value balanced). The Futurama variants show the theme name beside it.",
-      "en": "Balanced",
-      "de": "Ausgewogen"
-    },
-    {
       "key": "filing_status.load_balanced.theme",
       "context": "Theme name of the balanced load, shown dimmed beside filing_status.load_balanced in the Futurama variants only. A playful name; the plain name beside it says what the load does.",
       "en": "Business as usual",
       "de": "Normalbetrieb"
     },
     {
-      "key": "filing_status.load_full",
-      "context": "Button for the highest load of the pipeline: half the processor cores as workers and as model threads (config value full). The Futurama variants show the theme name beside it.",
-      "en": "Full",
-      "de": "Volle Last"
-    },
-    {
       "key": "filing_status.load_full.theme",
       "context": "Theme name of the full load, shown dimmed beside filing_status.load_full in the Futurama variants only. A playful name; the plain name beside it says what the load does.",
       "en": "Grade 36",
       "de": "Grad 36"
-    },
-    {
-      "key": "filing_status.workers_label",
-      "context": "Label in front of the buttons that raise or lower the number of workers by one, followed by the current number.",
-      "en": "Worker count",
-      "de": "Anzahl Worker"
-    },
-    {
-      "key": "filing_status.step_intake",
-      "context": "Visible name of the pipeline step that takes documents into the index, in the step lines, the worker lines and the error list of the inspection page. Themed name.",
-      "en": "Intake",
-      "de": "Annahme"
-    },
-    {
-      "key": "filing_status.step_review",
-      "context": "Visible name of the pipeline step that decides which documents need the user's review. The same word as the name of the review list.",
-      "en": "Review",
-      "de": "Rückfragen"
-    },
-    {
-      "key": "filing_status.first_minute",
-      "context": "Dimmed, instead of a throughput or time-left figure, while documents are waiting but no full minute of work has been measured yet.",
-      "en": "after the first full minute",
-      "de": "ab der ersten vollen Minute"
-    },
-    {
-      "key": "filing_status.section_throughput",
-      "context": "Heading of the section with the throughput and time-left figures; must differ from the Throughput figure label below it.",
-      "en": "Pace",
-      "de": "Tempo"
-    },
-    {
-      "key": "filing_status.throughput_label",
-      "context": "Label in front of the number of documents the pipeline filed per minute.",
-      "en": "Throughput",
-      "de": "Durchsatz"
-    },
-    {
-      "key": "filing_status.throughput",
-      "context": "Documents per minute. Takes the number.",
-      "en": "{count} documents/min",
-      "de": "{count} Dokumente/Min."
-    },
-    {
-      "key": "filing_status.remaining_label",
-      "context": "Label in front of the estimated time until the files in the pipeline are done.",
-      "en": "Time left",
-      "de": "Restzeit"
-    },
-    {
-      "key": "filing_status.remaining",
-      "context": "Estimated time left. Takes the number of minutes.",
-      "en": "about {minutes} min",
-      "de": "etwa {minutes} Min."
-    },
-    {
-      "key": "filing_status.worker_idle",
-      "context": "Shown for a worker that has no job right now. Lower case.",
-      "en": "idle",
-      "de": "untätig"
-    },
-    {
-      "key": "filing_status.task_workers",
-      "context": "What a worker does: it starts the other worker threads. Lower case, short.",
-      "en": "starting workers",
-      "de": "startet Worker"
-    },
-    {
-      "key": "filing_status.task_watch",
-      "context": "What a worker does: it sets up the watching of the filing folders. Lower case, short.",
-      "en": "watching folders",
-      "de": "überwacht Ordner"
-    },
-    {
-      "key": "filing_status.task_scan",
-      "context": "What a worker does: it looks through a filing folder for files. Lower case, short.",
-      "en": "scanning",
-      "de": "durchsucht Ordner"
-    },
-    {
-      "key": "filing_status.index_size",
-      "context": "Label for the size of the index file on disk.",
-      "en": "File size",
-      "de": "Dateigröße"
-    },
-    {
-      "key": "filing_status.index_encrypted",
-      "context": "Label for whether the index file is encrypted.",
-      "en": "Encrypted",
-      "de": "Verschlüsselt"
-    },
-    {
-      "key": "filing_status.yes",
-      "context": "Answer on the filing status page. Lower case.",
-      "en": "yes",
-      "de": "ja"
-    },
-    {
-      "key": "filing_status.no",
-      "context": "Answer on the filing status page. Lower case.",
-      "en": "no",
-      "de": "nein"
-    },
-    {
-      "key": "filing_status.index_documents",
-      "context": "Label for the number of documents in the index.",
-      "en": "Documents",
-      "de": "Dokumente"
-    },
-    {
-      "key": "filing_status.index_reviews",
-      "context": "Label for the number of documents waiting for the user's review. The same word as the name of the review list; the explanation follows the number in its own text.",
-      "en": "Review",
-      "de": "Rückfragen"
-    },
-    {
-      "key": "filing_status.index_unavailable",
-      "context": "Shown instead of the index figures when they could not be read. Takes the reason.",
-      "en": "Index figures unavailable: {reason}",
-      "de": "Indexkennzahlen nicht verfügbar: {reason}"
-    },
-    {
-      "key": "filing_status.index_not_open",
-      "context": "Shown instead of the index figures while the index is not open.",
-      "en": "Index not open",
-      "de": "Index nicht geöffnet"
     },
     {
       "key": "filing_status.errors_none",
@@ -2033,36 +1817,6 @@
       "context": "Second line of the PDF library warning: where it was looked for. Takes the path.",
       "en": "Looked for it in: {path}",
       "de": "Gesucht in: {path}"
-    },
-    {
-      "key": "filing_status.section_steps",
-      "context": "Heading of the table on the filing status page that lists, per pipeline step, how many documents wait, are done, failed or stay unchanged.",
-      "en": "Steps",
-      "de": "Stufen"
-    },
-    {
-      "key": "filing_status.step_waiting",
-      "context": "Column title in the table of pipeline steps on the filing status page: documents waiting for this step.",
-      "en": "waiting",
-      "de": "wartend"
-    },
-    {
-      "key": "filing_status.step_done",
-      "context": "Column title in the table of pipeline steps on the filing status page: documents this step has finished.",
-      "en": "done",
-      "de": "fertig"
-    },
-    {
-      "key": "filing_status.step_failed",
-      "context": "Column title in the table of pipeline steps on the filing status page: documents on which this step failed.",
-      "en": "failed",
-      "de": "fehlgeschlagen"
-    },
-    {
-      "key": "filing_status.step_unchanged",
-      "context": "Column title in the table of pipeline steps on the filing status page: documents this step found unchanged and skipped.",
-      "en": "unchanged",
-      "de": "unverändert"
     },
     {
       "key": "saved_queries.summary_missing_one",
@@ -2629,54 +2383,6 @@
       "de": "Es gibt keinen Datenordner, in dem das Modell gespeichert werden könnte."
     },
     {
-      "key": "filing_status.ai_label",
-      "context": "Label for the row on the filing status page that tells which AI model reads the documents the rules cannot read. The row is only there when the AI is switched on in the config.",
-      "en": "AI model",
-      "de": "KI-Modell"
-    },
-    {
-      "key": "filing_status.ai_not_downloaded",
-      "context": "Value of the AI model row on the filing status page when the AI is switched on but its model file has not been downloaded. Lower case.",
-      "en": "not downloaded",
-      "de": "nicht heruntergeladen"
-    },
-    {
-      "key": "filing_status.ai_not_loaded",
-      "context": "Value of the AI model row on the filing status page when the model file is there but has not been needed yet, so it is not in memory. Lower case.",
-      "en": "not loaded yet",
-      "de": "noch nicht geladen"
-    },
-    {
-      "key": "filing_status.ai_loaded",
-      "context": "Value of the AI model row on the filing status page when the model is in memory. Takes the file name, the memory it uses with its unit (for example 2.5 GB) and what it computes on: the name of the graphics device, or the word for the processor.",
-      "en": "{name} · {memory} in memory · runs on {compute}",
-      "de": "{name} · {memory} im Speicher · rechnet auf {compute}"
-    },
-    {
-      "key": "filing_status.ai_compute_cpu",
-      "context": "Part of the AI model row on the filing status page: the model computes on the processor, not on a graphics card. Follows the words 'runs on'.",
-      "en": "CPU",
-      "de": "dem Prozessor (CPU)"
-    },
-    {
-      "key": "filing_status.ai_failed",
-      "context": "Value of the AI model row on the filing status page when the model file could not be used. Takes the reason, which is English and stays untranslated.",
-      "en": "failed: {reason}",
-      "de": "fehlgeschlagen: {reason}"
-    },
-    {
-      "key": "filing_status.ai_http",
-      "context": "Value of the AI model row on the filing status page when a server is asked instead of a model on this machine. Takes the address of the server (scheme and host) and the name of the model.",
-      "en": "{model} at {endpoint}",
-      "de": "{model} unter {endpoint}"
-    },
-    {
-      "key": "hermes.nav_inspection",
-      "context": "Sidebar entry of the Hermes card that opens the filing status and errors page.",
-      "en": "Status and errors",
-      "de": "Status und Fehler"
-    },
-    {
       "key": "hermes.nav_inspection.theme",
       "context": "Theme name shown dimmed behind the sidebar entry hermes.nav_inspection.",
       "en": "Inspection",
@@ -2833,12 +2539,6 @@
       "de": "Anforderungen"
     },
     {
-      "key": "action.tags",
-      "context": "Title of the tags page of Hermes (all tags in one place, with the choice which of them the file lists show) and its entry in the sidebar.",
-      "en": "Tags",
-      "de": "Schlagworte"
-    },
-    {
       "key": "saved_queries.explain",
       "context": "Explanation under the title of the reports page.",
       "en": "Saved searches for recurring questions. Exporting copies the hits into a folder; the originals stay unchanged.",
@@ -2852,9 +2552,9 @@
     },
     {
       "key": "saved_queries.empty",
-      "context": "Shown on the reports page when no report is saved yet.",
-      "en": "No reports yet. Choose New to start a search and save it as a report.",
-      "de": "Noch keine Auswertungen. Wähle Neu, starte eine Suche und speichere sie als Auswertung."
+      "context": "Shown on the reports page when no report is saved yet. Names the button of the add row below.",
+      "en": "No reports yet. Choose + Report to make one, or start from a template.",
+      "de": "Noch keine Auswertungen. Wähle + Auswertung und lege eine an, auch aus einer Vorlage."
     },
     {
       "key": "saved_queries.column_criteria",
@@ -2936,21 +2636,33 @@
     },
     {
       "key": "saved_queries.new",
-      "context": "Button on the saved queries page: starts an empty, new query.",
-      "en": "New",
-      "de": "Neu"
+      "context": "Button in the add row under the list on the reports page: opens the dialog of a new report. Worded like the button that adds a rule, with a plus sign.",
+      "en": "+ Report",
+      "de": "+ Auswertung"
     },
     {
-      "key": "saved_queries.empty_search",
-      "context": "Entry of the New menu on the reports page: opens the search with no criteria.",
-      "en": "Empty search",
-      "de": "Leere Suche"
+      "key": "saved_queries.template",
+      "context": "Label of the list of templates at the top of the dialog of a new report. The template fills in the name and the criteria.",
+      "en": "Template",
+      "de": "Vorlage"
     },
     {
-      "key": "saved_queries.unsaved",
-      "context": "Name of the row of a search handed over from the search view that has no name yet.",
+      "key": "saved_queries.template_none",
+      "context": "First entry of the list of templates in the dialog of a new report: start with no criteria and no name.",
+      "en": "No template",
+      "de": "Keine Vorlage"
+    },
+    {
+      "key": "saved_queries.dialog_new",
+      "context": "Title of the dialog in which a new report is made.",
       "en": "New report",
       "de": "Neue Auswertung"
+    },
+    {
+      "key": "saved_queries.dialog_edit",
+      "context": "Title of the dialog in which the name and criteria of an existing report are changed.",
+      "en": "Change report",
+      "de": "Auswertung ändern"
     },
     {
       "key": "saved_queries.edit_in_search",
@@ -2959,34 +2671,16 @@
       "de": "In der Suche bearbeiten"
     },
     {
-      "key": "saved_queries.open_in_search",
-      "context": "Button of the reports page: opens the search with the criteria of the report.",
-      "en": "Open in search",
-      "de": "In der Suche öffnen"
-    },
-    {
       "key": "saved_queries.result",
       "context": "Title of the section of the reports page that shows what the report finds.",
       "en": "Result",
       "de": "Ergebnis"
     },
     {
-      "key": "saved_queries.export_note",
-      "context": "Note in the action bar of the reports page: what the export does to the files.",
-      "en": "Copies only; moves and deletes nothing.",
-      "de": "Kopiert nur, verschiebt und löscht nichts."
-    },
-    {
       "key": "saved_queries.save",
       "context": "Button on the saved queries page: saves the form as a query, or the change of the selected one.",
       "en": "Save",
       "de": "Speichern"
-    },
-    {
-      "key": "saved_queries.delete",
-      "context": "Button on the saved queries page: asks whether to delete the selected query.",
-      "en": "Delete",
-      "de": "Löschen"
     },
     {
       "key": "saved_queries.export",
@@ -3002,15 +2696,15 @@
     },
     {
       "key": "saved_queries.delete_question",
-      "context": "Question on the reports page before a report is deleted. Takes the name of the report.",
-      "en": "Delete the report ‘{name}’? Documents stay as they are.",
-      "de": "Auswertung ‚{name}‘ löschen? Dokumente bleiben unverändert."
+      "context": "Question on the reports page before a report is removed. Takes the name of the report.",
+      "en": "Remove the report ‘{name}’? Documents stay as they are.",
+      "de": "Auswertung ‚{name}‘ entfernen? Dokumente bleiben unverändert."
     },
     {
       "key": "saved_queries.delete_confirm",
-      "context": "Button in the delete question of the reports page: deletes the report.",
-      "en": "Delete report",
-      "de": "Auswertung löschen"
+      "context": "Button in the remove question of the reports page: removes the report. Also the title of that dialog.",
+      "en": "Remove report",
+      "de": "Auswertung entfernen"
     },
     {
       "key": "saved_queries.summary_hits",
@@ -3058,7 +2752,7 @@
       "key": "saved_queries.export_count",
       "context": "Label of the number of files the export would copy.",
       "en": "Files to copy",
-      "de": "Zu kopierende Dateien"
+      "de": "Dateien"
     },
     {
       "key": "saved_queries.export_csv",
@@ -3187,6 +2881,54 @@
       "de": "Hermes sortiert Dokumente aus deinen Lesen-Ordnern. Er fragt im Chat (F2), bevor er etwas verschiebt."
     },
     {
+      "key": "settings.feature_rules",
+      "context": "Entry of the feature list on the settings tab and title of its page: the rules that tell Hermes where a kind of document goes.",
+      "en": "Rules",
+      "de": "Regeln"
+    },
+    {
+      "key": "settings.feature_rules_intro",
+      "context": "Line under the heading of the rules page on the settings tab. A rule makes Hermes sort documents of one kind the same way every time.",
+      "en": "Only for forcing it: when Hermes should sort something differently from what he learned.",
+      "de": "Nur zum Erzwingen: wenn Hermes etwas anders sortieren soll, als er gelernt hat."
+    },
+    {
+      "key": "settings.feature_tags",
+      "context": "Entry of the feature list on the settings tab and title of its page: the tags (keywords) Hermes puts on documents.",
+      "en": "Tags",
+      "de": "Schlagworte"
+    },
+    {
+      "key": "settings.feature_tags_intro",
+      "context": "Line under the heading of the tags page on the settings tab. Tags are the keywords Hermes attaches to documents.",
+      "en": "Names Hermes attaches to files. Rename, merge or remove them.",
+      "de": "Namen, die Hermes an Dateien hängt. Umbenennen, zusammenlegen oder entfernen."
+    },
+    {
+      "key": "settings.feature_reports",
+      "context": "Entry of the feature list on the settings tab and title of its page: saved searches that count and list matching documents, like a report.",
+      "en": "Reports",
+      "de": "Auswertungen"
+    },
+    {
+      "key": "settings.feature_reports_intro",
+      "context": "Line under the heading of the reports page on the settings tab. A report is a saved search whose hits are counted and can be exported.",
+      "en": "Saved searches that count what they find. Change, export or remove them.",
+      "de": "Gespeicherte Suchen, die zählen, was sie finden. Ändern, exportieren oder entfernen."
+    },
+    {
+      "key": "settings.feature_read_errors",
+      "context": "Entry of the feature list on the settings tab and title of its page: the files the index could not read.",
+      "en": "Read errors",
+      "de": "Lesefehler"
+    },
+    {
+      "key": "settings.feature_read_errors_intro",
+      "context": "Line under the heading of the read errors page on the settings tab. The page lists files the index could not read and lets the user try them again.",
+      "en": "Files ncrs could not read, and why.",
+      "de": "Dateien, die ncrs nicht lesen konnte, und warum."
+    },
+    {
       "key": "settings.row_preset",
       "context": "Name of a setting on the appearance page: which built-in color scheme the look starts from.",
       "en": "Color scheme",
@@ -3281,12 +3023,6 @@
       "context": "Value of a switched off setting on the settings tab, next to its checkbox. One word.",
       "en": "off",
       "de": "aus"
-    },
-    {
-      "key": "settings.load_workers",
-      "context": "Fourth choice of the load setting, shown only when the config names a number of workers. Takes the number.",
-      "en": "{count} workers",
-      "de": "{count} Worker"
     },
     {
       "key": "settings.models_missing",
@@ -3641,12 +3377,6 @@
       "context": "The {reason} of the previous entry when the included file's name points outside the picked theme's folder (.. or an absolute path).",
       "en": "it lies outside the theme's folder",
       "de": "sie liegt außerhalb des Theme-Ordners"
-    },
-    {
-      "key": "settings.problem_threads",
-      "context": "Shown under the threads setting when the typed value is not a whole number from 1 up.",
-      "en": "A number from 1 up, or empty.",
-      "de": "Eine Zahl ab 1 oder leer."
     },
     {
       "key": "settings.problem_endpoint",
@@ -5107,12 +4837,6 @@
       "de": "Erneut versuchen"
     },
     {
-      "key": "settings.group_advanced",
-      "context": "Title of the folded group of technical settings on the Hermes settings page. One word.",
-      "en": "Advanced",
-      "de": "Erweitert"
-    },
-    {
       "key": "clipboard.pasted_name_prefix",
       "context": "First word of the file name that Paste gives a picture or text from the clipboard, followed by date and time and the ending: \"Pasted 2026-10-28 08.15.txt\". One word, no trailing space, no characters a file name cannot hold.",
       "en": "Pasted",
@@ -5475,8 +5199,8 @@
     {
       "key": "rules.empty",
       "context": "Shown on the rules page when there is no confirmed rule yet.",
-      "en": "No rules yet. Create one with “New rule”, or let rules come from sorting in the chat.",
-      "de": "Noch keine Regeln. Lege mit „Neue Regel“ eine an, oder lass Regeln beim Einordnen im Chat entstehen."
+      "en": "No rules yet. Create one with “+ Rule”, or let rules come from sorting in the chat.",
+      "de": "Noch keine Regeln. Lege mit „+ Regel“ eine an, oder lass Regeln beim Einordnen im Chat entstehen."
     },
     {
       "key": "rules.rule_if",
@@ -5641,42 +5365,6 @@
       "de": "{count} Treffer"
     },
     {
-      "key": "rules.hint_toggle",
-      "context": "Verb next to the Space key in the footer of the rules page: switches the rule on or off.",
-      "en": "on/off",
-      "de": "an/aus"
-    },
-    {
-      "key": "rules.hint_order",
-      "context": "Verb next to the Alt and arrow keys in the footer of the rules page: moves the rule up or down in the order.",
-      "en": "order",
-      "de": "Reihenfolge"
-    },
-    {
-      "key": "rules.hint_delete",
-      "context": "Verb next to the Delete key in the footer of the rules page: deletes the rule.",
-      "en": "delete",
-      "de": "löschen"
-    },
-    {
-      "key": "rules.move_up",
-      "context": "Button of the rules page: moves the selected rule one place up, so it applies earlier.",
-      "en": "Move up",
-      "de": "Nach oben"
-    },
-    {
-      "key": "rules.move_down",
-      "context": "Button of the rules page: moves the selected rule one place down, so it applies later.",
-      "en": "Move down",
-      "de": "Nach unten"
-    },
-    {
-      "key": "rules.delete",
-      "context": "Button of the rules page: asks whether to delete the selected rule.",
-      "en": "Delete",
-      "de": "Löschen"
-    },
-    {
       "key": "rules.cancel",
       "context": "Button in the delete question of the rules page: keeps the rule.",
       "en": "Cancel",
@@ -5684,15 +5372,15 @@
     },
     {
       "key": "rules.delete_confirm",
-      "context": "Button in the delete question of the rules page: deletes the rule.",
-      "en": "Delete rule",
-      "de": "Regel löschen"
+      "context": "Button in the remove question of the rules page: removes the rule. Also the title of that dialog.",
+      "en": "Remove rule",
+      "de": "Regel entfernen"
     },
     {
       "key": "rules.delete_question",
-      "context": "Question on the rules page before a rule is deleted. Takes the rule sentence.",
-      "en": "Delete this rule? {rule}. Documents stay as they are.",
-      "de": "Diese Regel löschen? {rule}. Dokumente bleiben unverändert."
+      "context": "Question on the rules page before a rule is removed. Takes the rule sentence.",
+      "en": "Remove this rule? {rule}. Documents stay as they are.",
+      "de": "Diese Regel entfernen? {rule}. Dokumente bleiben unverändert."
     },
     {
       "key": "rules.problem_failed",
@@ -5719,18 +5407,6 @@
       "de": "Höchstens 3 pro Datei, dann „+1“. Gilt für beide Dateilisten."
     },
     {
-      "key": "tags.column_shown",
-      "context": "Header of the column of ticks in the table of the tags page: the tick shows the tag in the file tree. Lower case, a few words.",
-      "en": "show in file tree",
-      "de": "im Dateibaum anzeigen"
-    },
-    {
-      "key": "tags.column_documents",
-      "context": "Header of the column with the number of documents per tag in the table of the tags page. One word, plural noun.",
-      "en": "Documents",
-      "de": "Dokumente"
-    },
-    {
       "key": "tags.more",
       "context": "Link behind a long group of tags on the tags page that unfolds the rest of the group. {count} is the number of tags that are not shown yet.",
       "en": "… and {count} more",
@@ -5743,6 +5419,12 @@
       "de": "Umbenennen …"
     },
     {
+      "key": "tags.rename_title",
+      "context": "Title of the dialog on the tags page in which an own tag gets a new name everywhere it is set.",
+      "en": "Rename tag",
+      "de": "Schlagwort umbenennen"
+    },
+    {
       "key": "tags.delete_question",
       "context": "Question on the tags page before an own tag is removed from all documents. {tag} is the tag.",
       "en": "Remove the tag ‘{tag}’ from all documents? The documents stay as they are.",
@@ -5750,9 +5432,9 @@
     },
     {
       "key": "tags.delete_confirm",
-      "context": "Button on the tags page that answers the delete question with yes: removes the own tag.",
-      "en": "Delete tag",
-      "de": "Schlagwort löschen"
+      "context": "Button on the tags page that answers the remove question with yes: removes the own tag. Also the title of that dialog.",
+      "en": "Remove tag",
+      "de": "Schlagwort entfernen"
     },
     {
       "key": "tags.in_use",
@@ -5785,40 +5467,10 @@
       "de": "Kein Schlagwort passt."
     },
     {
-      "key": "tags.saved_note",
-      "context": "Note at the left of the action bar of the tags page: a change is stored at once, there is nothing to save.",
-      "en": "Saved at once.",
-      "de": "Wird sofort gespeichert."
-    },
-    {
-      "key": "rules.new",
-      "context": "Button of the rules page: opens the form for a new rule.",
-      "en": "New rule",
-      "de": "Neue Regel"
-    },
-    {
       "key": "rules.off",
       "context": "Right figure of a switched-off rule in the rules list, where the hits stand otherwise.",
       "en": "off",
       "de": "aus"
-    },
-    {
-      "key": "rules.try_back",
-      "context": "Link over the documents of the try on the rules page: back to the form of the rule.",
-      "en": "Back to the rule",
-      "de": "Zurück zur Regel"
-    },
-    {
-      "key": "rules.try_show_list",
-      "context": "Link in the action bar of the rules page after the sentence that counts the documents of the try: shows them.",
-      "en": "Show list",
-      "de": "Liste ansehen"
-    },
-    {
-      "key": "rules.hint_new",
-      "context": "Verb next to the N key in the footer of the rules page: opens the form for a new rule.",
-      "en": "new",
-      "de": "neu"
     },
     {
       "key": "rules.form_title_new",
@@ -6277,58 +5929,22 @@
       "de": "Eigene Schlagworte"
     },
     {
-      "key": "hermes_overview.in_progress",
-      "context": "Behind the word Running on the filing overview and the status page: how many files are being worked on right now. {count} is a number.",
-      "en": "{count} in progress",
-      "de": "{count} in Arbeit"
-    },
-    {
-      "key": "filing_status.show_workers",
-      "context": "Entry in the menu behind the three dots on the status page. Shows the tables of the steps and of the workers under the index figures.",
-      "en": "Show workers and steps",
-      "de": "Worker und Stufen anzeigen"
-    },
-    {
-      "key": "filing_status.hide_workers",
-      "context": "Entry in the menu behind the three dots on the status page while the tables of the steps and of the workers are shown. Hides them again.",
-      "en": "Hide workers and steps",
-      "de": "Worker und Stufen ausblenden"
-    },
-    {
       "key": "filing_status.process_again",
       "context": "Main button in the bar under the status page. Reads the files with errors that are checked again, or the selected one.",
       "en": "Process again",
       "de": "Erneut verarbeiten"
     },
     {
+      "key": "filing_status.process_all_again",
+      "context": "Button in the add row under the list of read errors, shown from two errors on: reads every file of the list again, without asking. Same verb as the button of a single row.",
+      "en": "Process all again",
+      "de": "Alle erneut verarbeiten"
+    },
+    {
       "key": "filing_status.show_file",
       "context": "Link under the selected error on the status page. Shows the file with the error in the file list.",
       "en": "Show file",
       "de": "Datei zeigen"
-    },
-    {
-      "key": "hermes_kit.hint_select",
-      "context": "Word behind the arrow keys in the status line of a filing page: the keys move the selection in the list or the page.",
-      "en": "Select",
-      "de": "Auswahl"
-    },
-    {
-      "key": "hermes_kit.hint_check",
-      "context": "Word behind the Space key in the status line of a filing page: Space checks or unchecks the row under the cursor.",
-      "en": "Check",
-      "de": "Auswählen"
-    },
-    {
-      "key": "hermes_kit.key_space",
-      "context": "Name of the space bar on the key cap in the status line of a filing page. Only the name, the verb is drawn next to it.",
-      "en": "Space",
-      "de": "Leertaste"
-    },
-    {
-      "key": "rules.unsaved_changes",
-      "context": "Action bar of the rules page while the form holds changes that are not saved; the selection is locked until they are saved or cancelled.",
-      "en": "Unsaved changes",
-      "de": "Ungespeicherte Änderungen"
     },
     {
       "key": "search.hits_as_list_label",
@@ -8125,6 +7741,24 @@
       "de": "Versteht Dokumente und den Chat"
     },
     {
+      "key": "filing_status.ai_loaded",
+      "context": "Second line under the AI model row of the Index page of the settings tab when the model is in memory. Takes the file name, the memory it uses with its unit (for example 2.5 GB) and what it computes on: the name of the graphics device, or the word for the processor.",
+      "en": "{name} · {memory} in memory · runs on {compute}",
+      "de": "{name} · {memory} im Speicher · rechnet auf {compute}"
+    },
+    {
+      "key": "filing_status.ai_compute_cpu",
+      "context": "Part of the second line under the AI model row of the Index page: the model computes on the processor, not on a graphics card. Follows the words 'runs on'.",
+      "en": "CPU",
+      "de": "dem Prozessor (CPU)"
+    },
+    {
+      "key": "filing_status.ai_failed",
+      "context": "Second line under the AI model row of the Index page when the model file could not be used. Takes the reason, which is English and stays untranslated.",
+      "en": "failed: {reason}",
+      "de": "fehlgeschlagen: {reason}"
+    },
+    {
       "key": "settings.index_row_ai_note",
       "context": "Description under the row about the AI model on the Index page. Qwen3-4B is the name of the model.",
       "en": "Qwen3-4B. Without a model only file names and dates.",
@@ -8479,36 +8113,6 @@
       "de": "Der letzte Lauf konnte nicht rückgängig gemacht werden: {reason}"
     },
     {
-      "key": "settings.hermes_row_rules",
-      "context": "Label of the row of the Advanced section on the Hermes page that opens the rules.",
-      "en": "Rules",
-      "de": "Regeln"
-    },
-    {
-      "key": "settings.hermes_row_rules_note",
-      "context": "Description under the Rules row on the Hermes page. {count} is the number of rules the user has.",
-      "en": "Only to force it, if Hermes should sort something differently. {count} rules.",
-      "de": "Nur zum Erzwingen, wenn Hermes etwas partout anders sortieren soll. {count} Regeln."
-    },
-    {
-      "key": "settings.hermes_row_tags",
-      "context": "Label of the row of the Advanced section on the Hermes page that opens the tags. Tags are the words Hermes attaches to files.",
-      "en": "Tags",
-      "de": "Schlagworte"
-    },
-    {
-      "key": "settings.hermes_row_tags_note",
-      "context": "Description under the Tags row on the Hermes page.",
-      "en": "Names Hermes attaches to files. Rename, merge.",
-      "de": "Namen, die Hermes an Dateien hängt. Umbenennen, zusammenlegen."
-    },
-    {
-      "key": "settings.open_ellipsis",
-      "context": "Button on the Hermes page that opens the page of the rules or of the tags. Verb with an ellipsis because a page follows.",
-      "en": "Open …",
-      "de": "Öffnen …"
-    },
-    {
       "key": "settings.model_remove_title",
       "context": "Title of the question before a downloaded model is deleted from this computer.",
       "en": "Remove model",
@@ -8603,6 +8207,24 @@
       "context": "Button under the last runs of the History section on the Hermes page: lists all runs that are kept.",
       "en": "Show all",
       "de": "Alles zeigen"
+    },
+    {
+      "key": "hermes_pages.change",
+      "context": "Button in the row of a rule or a report on the settings pages Rules and Reports: opens the small dialog to change it.",
+      "en": "Change",
+      "de": "Ändern"
+    },
+    {
+      "key": "hermes_pages.rule_add",
+      "context": "Button under the list on the Rules page of the settings: opens the dialog for a new rule. The plus sign belongs to the label.",
+      "en": "+ Rule",
+      "de": "+ Regel"
+    },
+    {
+      "key": "hermes_pages.rule_title_edit",
+      "context": "Title of the dialog in which an existing rule is changed on the Rules page of the settings.",
+      "en": "Change rule",
+      "de": "Regel ändern"
     }
   ]
 }

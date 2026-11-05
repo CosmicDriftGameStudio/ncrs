@@ -3,16 +3,11 @@
 //! renaming and deleting an own tag. No widgets and no tasks; `App` owns it and
 //! changes it from `update`, the view is `ui::tags`.
 
-use iced::mouse::ScrollDelta;
 use ncrs_index::{tag_name, Kinds, RuleSpec};
 
 use ncrs_config::file_list_tags::{FileListTags, TagGroup};
 use ncrs_filing::tags_work::{TagsFailure, TagsLoaded};
 use ncrs_ui_kit::kit::Check;
-use ncrs_ui_kit::list_window::ListWindow;
-
-/// Most rows of the table shown at once; the table follows the cursor.
-pub const VISIBLE_ROWS: usize = 14;
 
 /// A group with more tags than this shows [`SHOWN_OF_LONG_GROUP`] of them and
 /// a link for the rest.
@@ -69,8 +64,6 @@ pub struct TagsPage {
     closed: Vec<TagGroup>,
     unfolded: Vec<TagGroup>,
     search: String,
-    cursor: usize,
-    window: ListWindow,
     step: Option<TagStep>,
     /// The tag whose deletion is running.
     deleting: Option<String>,
@@ -87,8 +80,6 @@ impl TagsPage {
             closed: GROUPS_CLOSED_AT_FIRST.to_vec(),
             unfolded: Vec::new(),
             search: String::new(),
-            cursor: 0,
-            window: ListWindow::default(),
             step: None,
             deleting: None,
             problem: None,
@@ -125,14 +116,6 @@ impl TagsPage {
 
     pub fn search(&self) -> &str {
         &self.search
-    }
-
-    pub fn cursor(&self) -> usize {
-        self.cursor
-    }
-
-    pub fn first_visible(&self) -> usize {
-        self.window.offset(self.rows().len(), VISIBLE_ROWS)
     }
 
     pub fn step(&self) -> Option<&TagStep> {
@@ -226,10 +209,6 @@ impl TagsPage {
         rows
     }
 
-    pub fn selected(&self) -> Option<TagRow> {
-        self.rows().into_iter().nth(self.cursor)
-    }
-
     /// Whether the file list shows the tag: its exception, else its group.
     pub fn tag_check(&self, setting: &FileListTags, group: TagGroup, tag: &str) -> Check {
         let shown = self
@@ -297,7 +276,6 @@ impl TagsPage {
         self.step = None;
         self.deleting = None;
         self.problem = None;
-        self.keep_cursor_in_table();
     }
 
     pub fn failed(&mut self, failure: TagsFailure) {
@@ -312,54 +290,22 @@ impl TagsPage {
         });
     }
 
-    fn keep_cursor_in_table(&mut self) {
-        let len = self.rows().len();
-        self.cursor = self.cursor.min(len.saturating_sub(1));
-        self.window.ensure_visible(self.cursor, len, VISIBLE_ROWS);
-    }
-
-    pub fn move_cursor(&mut self, delta: isize) {
-        self.select(self.cursor.saturating_add_signed(delta));
-    }
-
-    pub fn select(&mut self, index: usize) {
-        let len = self.rows().len();
-        if self.step.is_some() || len == 0 {
-            return;
-        }
-        self.cursor = index.min(len.saturating_sub(1));
-        self.window.ensure_visible(self.cursor, len, VISIBLE_ROWS);
-        self.problem = None;
-    }
-
-    /// The wheel moves the window; the cursor follows it when it would leave.
-    pub fn scroll(&mut self, delta: ScrollDelta) {
-        let len = self.rows().len();
-        let mut cursor = self.cursor;
-        self.window.scroll(delta, len, VISIBLE_ROWS, &mut cursor);
-        self.cursor = cursor;
-    }
-
     pub fn toggle_open(&mut self, group: TagGroup) {
         if let Some(position) = self.closed.iter().position(|known| *known == group) {
             self.closed.remove(position);
         } else {
             self.closed.push(group);
         }
-        self.keep_cursor_in_table();
     }
 
     pub fn unfold(&mut self, group: TagGroup) {
         if !self.unfolded.contains(&group) {
             self.unfolded.push(group);
         }
-        self.keep_cursor_in_table();
     }
 
     pub fn set_search(&mut self, text: String) {
         self.search = text;
-        self.cursor = 0;
-        self.window = ListWindow::default();
     }
 
     pub fn start_rename(&mut self, tag: String) {
@@ -413,6 +359,11 @@ impl TagsPage {
         self.busy = true;
         self.deleting = Some(name.clone());
         Some(name)
+    }
+
+    /// The rename or the delete question is up.
+    pub fn dialog_is_open(&self) -> bool {
+        self.step.is_some()
     }
 
     /// Escape backs out of the step that is up first. Whether there was one.

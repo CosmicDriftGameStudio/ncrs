@@ -4,20 +4,15 @@ use ncrs_index::{Index, RuleConditions};
 use std::collections::BTreeSet;
 
 #[test]
-fn the_rule_to_select_on_load_gets_the_cursor_once() {
+fn the_rule_to_select_on_load_is_the_selected_one() {
     let mut page = RulesPage::new();
     page.select_on_load(rule_id(3));
 
     page.loaded(RulesLoad {
         rules: vec![listed(1, 0), listed(2, 2), listed(3, 3)],
     });
-    assert_eq!(page.selected().map(|row| row.rule.id), Some(rule_id(3)));
 
-    page.select(0);
-    page.loaded(RulesLoad {
-        rules: vec![listed(1, 0), listed(2, 2), listed(3, 3)],
-    });
-    assert_eq!(page.selected().map(|row| row.rule.id), Some(rule_id(1)));
+    assert_eq!(page.selected().map(|row| row.rule.id), Some(rule_id(3)));
 }
 
 #[test]
@@ -33,38 +28,14 @@ fn a_rule_to_select_that_is_not_listed_keeps_the_cursor() {
 }
 
 #[test]
-fn a_form_opened_from_elsewhere_survives_the_load_and_remembers_where_to_go_back() {
+fn a_form_opened_from_elsewhere_survives_the_load() {
     let mut page = RulesPage::new();
-    page.open_form(RuleForm::new(), Some(HermesPage::Tags));
+    page.open_form(RuleForm::new());
 
     page.loaded(RulesLoad::default());
 
     assert!(page.form().is_some());
-    assert_eq!(page.saved(rule_id(1)), Some(HermesPage::Tags));
-    assert_eq!(page.saved(rule_id(1)), None);
-}
-
-#[test]
-fn cancelling_a_form_opened_from_elsewhere_names_the_page_to_go_back_to() {
-    let mut page = page();
-    page.open_form(RuleForm::new(), Some(HermesPage::SavedQueries));
-
-    assert!(page.cancel_form());
-
-    assert_eq!(page.take_return_to(), Some(HermesPage::SavedQueries));
-}
-
-#[test]
-fn a_form_of_the_page_itself_goes_back_nowhere() {
-    let mut page = page();
-    page.open_form(RuleForm::new(), Some(HermesPage::Tags));
-    assert!(page.cancel_form());
-    page.take_return_to();
-
-    page.begin_new();
-
-    assert!(page.cancel_form());
-    assert_eq!(page.take_return_to(), None);
+    assert!(page.dialog_is_open());
 }
 
 #[test]
@@ -79,39 +50,15 @@ fn a_new_page_is_busy_until_the_list_is_loaded() {
 }
 
 #[test]
-fn the_cursor_moves_inside_the_list() {
-    let mut page = page();
-
-    page.move_cursor(-1);
-    assert_eq!(page.cursor(), 0);
-    page.move_cursor(5);
-    assert_eq!(page.cursor(), 2);
-    page.select(1);
-    assert_eq!(page.cursor(), 1);
-}
-
-#[test]
 fn a_reload_keeps_the_cursor_on_the_same_rule() {
     let mut page = page();
-    page.select(2);
+    page.begin_edit(2);
 
     page.loaded(RulesLoad {
         rules: vec![listed(3, 0), listed(1, 1), listed(2, 2)],
     });
 
     assert_eq!(page.selected().unwrap().rule.id, rule_id(3));
-}
-
-#[test]
-fn a_reload_after_a_delete_keeps_the_cursor_inside_the_list() {
-    let mut page = page();
-    page.select(2);
-
-    page.loaded(RulesLoad {
-        rules: vec![listed(1, 0), listed(2, 2)],
-    });
-
-    assert_eq!(page.cursor(), 1);
 }
 
 #[test]
@@ -127,7 +74,6 @@ fn a_toggle_asks_for_the_opposite_of_the_current_switch() {
             enabled: false
         })
     );
-    assert_eq!(page.cursor(), 1);
     assert!(page.is_busy());
     assert_eq!(page.begin_toggle(0), None);
 }
@@ -136,7 +82,7 @@ fn a_toggle_asks_for_the_opposite_of_the_current_switch() {
 fn moving_down_targets_the_place_of_the_next_listed_rule_among_all() {
     let mut page = page();
 
-    let change = page.begin_move(1);
+    let change = page.begin_move(0, 1);
 
     assert_eq!(
         change,
@@ -150,9 +96,8 @@ fn moving_down_targets_the_place_of_the_next_listed_rule_among_all() {
 #[test]
 fn moving_up_targets_the_place_of_the_previous_listed_rule_among_all() {
     let mut page = page();
-    page.select(1);
 
-    let change = page.begin_move(-1);
+    let change = page.begin_move(1, -1);
 
     assert_eq!(
         change,
@@ -166,11 +111,10 @@ fn moving_up_targets_the_place_of_the_previous_listed_rule_among_all() {
 #[test]
 fn the_first_rule_cannot_move_up_and_the_last_cannot_move_down() {
     let mut page = page();
-    assert_eq!(page.begin_move(-1), None);
+    assert_eq!(page.begin_move(0, -1), None);
     assert!(!page.is_busy());
-    page.select(2);
 
-    assert_eq!(page.begin_move(1), None);
+    assert_eq!(page.begin_move(2, 1), None);
     assert!(!page.is_busy());
 }
 
@@ -179,17 +123,30 @@ fn deleting_needs_the_question_first() {
     let mut page = page();
     assert_eq!(page.begin_delete(), None);
 
-    page.ask_delete();
+    page.ask_delete(0);
     assert!(page.is_confirming_delete());
+    assert!(page.dialog_is_open());
     let change = page.begin_delete();
 
     assert_eq!(change, Some(RuleChange::Delete { id: rule_id(1) }));
 }
 
 #[test]
+fn the_question_is_about_the_rule_it_was_asked_on() {
+    let mut page = page();
+
+    page.ask_delete(2);
+
+    assert_eq!(
+        page.begin_delete(),
+        Some(RuleChange::Delete { id: rule_id(3) })
+    );
+}
+
+#[test]
 fn a_change_under_way_withdraws_the_delete_question() {
     let mut page = page();
-    page.ask_delete();
+    page.ask_delete(0);
 
     assert!(page.begin_toggle(0).is_some());
 
@@ -200,7 +157,7 @@ fn a_change_under_way_withdraws_the_delete_question() {
 #[test]
 fn cancelling_the_question_deletes_nothing() {
     let mut page = page();
-    page.ask_delete();
+    page.ask_delete(0);
 
     assert!(page.cancel_delete());
 
@@ -210,89 +167,33 @@ fn cancelling_the_question_deletes_nothing() {
 }
 
 #[test]
-fn moving_the_cursor_withdraws_the_question() {
+fn cancelling_a_form_closes_the_dialog_and_drops_what_was_typed() {
     let mut page = page();
-    page.ask_delete();
+    page.begin_new();
+    assert!(page.dialog_is_open());
+    page.form_mut()
+        .unwrap()
+        .update(crate::message::RuleFormMessage::Name("Contract".to_owned()));
+    assert!(page.form().unwrap().is_changed());
 
-    page.move_cursor(1);
+    assert!(page.cancel_form());
 
-    assert!(!page.is_confirming_delete());
+    assert!(page.form().is_none());
+    assert!(!page.dialog_is_open());
+    assert!(!page.cancel_form());
 }
 
 #[test]
-fn cancelling_a_new_form_frees_the_selection() {
+fn editing_a_rule_opens_the_form_of_that_rule() {
     let mut page = page();
-    page.begin_new();
-    assert!(page.has_unlisted_form());
-    assert!(!page.has_unsaved_changes());
 
-    assert!(page.cancel_form());
-    page.select(1);
+    page.begin_edit(1);
 
-    assert!(!page.has_unlisted_form());
-    assert_eq!(page.cursor(), 1);
-    assert!(!page.is_editing());
     assert!(matches!(
         page.form().unwrap().target,
         crate::rule_form::RuleFormTarget::Edit(_)
     ));
-}
-
-#[test]
-fn unsaved_changes_lock_every_change_of_the_selection_until_they_are_cancelled() {
-    let mut page = page();
-    page.form_mut()
-        .unwrap()
-        .update(crate::message::RuleFormMessage::Name("Contract".to_owned()));
-    assert!(page.has_unsaved_changes());
-
-    page.move_cursor(1);
-    page.select(2);
-    page.begin_new();
-    page.ask_delete();
-    assert_eq!(page.begin_toggle(1), None);
-    assert_eq!(page.begin_toggle(0), None);
-    assert_eq!(page.begin_move(1), None);
-
-    assert_eq!(page.cursor(), 0);
-    assert!(!page.has_unlisted_form());
-    assert!(!page.is_confirming_delete());
-    assert!(!page.is_busy());
-    assert_eq!(page.form().unwrap().name, "Contract");
-
-    assert!(page.cancel_form());
-    assert!(!page.has_unsaved_changes());
-    page.move_cursor(1);
-    assert_eq!(page.cursor(), 1);
-}
-
-#[test]
-fn a_new_form_locks_the_list_once_something_was_typed_into_it() {
-    let mut page = page();
-    page.begin_new();
-    page.form_mut()
-        .unwrap()
-        .update(crate::message::RuleFormMessage::Name("Contract".to_owned()));
-    assert!(page.has_unsaved_changes());
-
-    page.select(1);
-
-    assert!(page.has_unlisted_form());
-    assert_eq!(page.cursor(), 0);
-}
-
-#[test]
-fn a_new_rule_that_was_saved_is_the_selected_one_after_the_load() {
-    let mut page = page();
-    page.begin_new();
-
-    page.saved(rule_id(4));
-    page.loaded(RulesLoad {
-        rules: vec![listed(1, 0), listed(2, 2), listed(3, 3), listed(4, 4)],
-    });
-
-    assert_eq!(page.selected().map(|row| row.rule.id), Some(rule_id(4)));
-    assert!(!page.has_unsaved_changes());
+    assert_eq!(page.selected().unwrap().rule.id, rule_id(2));
 }
 
 #[test]
@@ -300,30 +201,14 @@ fn while_a_change_runs_the_list_takes_no_change() {
     let mut page = page();
     assert!(page.begin_toggle(0).is_some());
 
-    page.move_cursor(1);
-    page.select(2);
-    page.ask_delete();
+    page.ask_delete(2);
     page.begin_new();
+    page.begin_edit(1);
 
-    assert_eq!(page.cursor(), 0);
     assert!(!page.is_confirming_delete());
-    assert!(!page.has_unlisted_form());
+    assert!(page.form().is_none());
     assert_eq!(page.begin_toggle(0), None);
-    assert_eq!(page.begin_move(1), None);
-}
-
-#[test]
-fn a_form_that_was_typed_into_is_changed_until_cancelled() {
-    let mut page = page();
-    assert!(!page.form().unwrap().is_changed());
-
-    page.form_mut()
-        .unwrap()
-        .update(crate::message::RuleFormMessage::Name("Contract".to_owned()));
-    assert!(page.form().unwrap().is_changed());
-
-    assert!(page.cancel_form());
-    assert!(!page.form().unwrap().is_changed());
+    assert_eq!(page.begin_move(0, 1), None);
 }
 
 #[test]
@@ -352,7 +237,7 @@ fn saving_a_new_form_creates_the_rule_and_an_edit_form_changes_it() {
     page.saved(created);
     page.loaded(access.load().unwrap());
 
-    assert!(!page.has_unlisted_form());
+    assert!(page.form().is_none());
     let sentence = rule_sentence(
         &page.selected().unwrap().rule.spec,
         Language::English,
@@ -360,7 +245,7 @@ fn saving_a_new_form_creates_the_rule_and_an_edit_form_changes_it() {
     );
     assert_eq!(sentence, "If telekom → Year / Sender");
 
-    page.begin_edit();
+    page.begin_edit(0);
     page.form_mut()
         .unwrap()
         .update(RuleFormMessage::Target(TargetEdit::Remove(1)));
@@ -375,7 +260,7 @@ fn saving_a_new_form_creates_the_rule_and_an_edit_form_changes_it() {
 #[test]
 fn a_failed_save_keeps_the_form_with_the_reason() {
     let mut page = page();
-    page.begin_edit();
+    page.begin_edit(0);
     page.begin_save().unwrap();
 
     page.save_failed("index not open".to_owned());

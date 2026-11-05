@@ -38,15 +38,13 @@ pub enum Action {
     CloseContextMenu,
     /// Opens the Hermes chat.
     OpenChat,
-    /// Opens the status page, if nothing covers it.
-    OpenFilingStatus,
+    /// The settings show this page of the Hermes crate.
+    ShowPage(HermesPage),
     /// Shows the file in the active panel.
     RevealFile(PathBuf),
     /// The module of the previous settings is gone: the one of this
     /// generation starts now.
     FilingRestarted(u64),
-    /// Selects the error of the file on the status page.
-    SelectErrorOf(PathBuf),
     /// Both panels read their folder again, keeping the cursor.
     ReloadPanels,
     /// Clears the error and the notice in the status bar.
@@ -56,11 +54,6 @@ pub enum Action {
     RequestHermesCounts,
     /// Hermes reads these files again.
     ReadPathsAgain(Vec<PathBuf>),
-    /// Closes the status page, which a page of this crate replaces.
-    CloseStatusPage,
-    /// Goes to the status page, which the app still owns, from the page that
-    /// is up.
-    GoToHermesPage(HermesPage),
     /// Takes in the latest snapshot of the pipeline and of the module.
     RefreshFilingSnapshot,
     /// Stops the pipeline and runs the job that encrypts or removes the index.

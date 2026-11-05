@@ -42,16 +42,6 @@ impl App {
         app
     }
 
-    /// The status page open, with the AI line in the state of `ai`.
-    pub fn with_filing_status_ai(ai: crate::filing::AiStatus) -> Self {
-        let mut app = Self::with_filing_status_page(
-            ncrs_pipeline::Snapshot::off(),
-            std::time::SystemTime::UNIX_EPOCH,
-        );
-        app.hermes.filing_status.set_ai(ai);
-        app
-    }
-
     /// Fixed panels with the theme download card up, in the state of `card`.
     pub fn with_theme_fetch_card(card: ThemeFetch) -> Self {
         let mut app = Self::with_fixed_panels();
@@ -59,16 +49,30 @@ impl App {
         app
     }
 
-    pub fn rules_for_test(&self) -> Option<&RulesPage> {
+    /// The settings tab is open on `feature`, as it is while a page of Hermes
+    /// is shown.
+    pub fn showing_setting(mut self, feature: crate::messages::SettingsFeature) -> Self {
+        let mut state = settings_ui::SettingsState::new(false, Ok(Box::default()), false);
+        state.feature = feature;
+        self.settings.page = Some(state);
+        self
+    }
+
+    /// The page of Hermes the open settings tab shows, if any.
+    pub fn open_hermes_page(&self) -> Option<HermesPage> {
+        self.settings.page.as_ref().and(self.hermes.open_page())
+    }
+
+    pub fn rules_for_test(&self) -> Option<&crate::rules_page::RulesPage> {
         self.hermes.rules.as_ref()
     }
 
     /// Fixed panels with the rules page up, in the state of `view`.
-    pub fn with_rules(view: RulesPage) -> Self {
+    pub fn with_rules(view: crate::rules_page::RulesPage) -> Self {
         let mut app = Self::with_fixed_panels();
         app.set_idle_hermes_status();
         app.hermes.rules = Some(view);
-        app
+        app.showing_setting(crate::messages::SettingsFeature::Rules)
     }
 
     /// A ready, idle Hermes module, so the status line of the filing pages
@@ -142,7 +146,7 @@ impl App {
     pub fn with_tags(page: TagsPage) -> Self {
         let mut app = Self::with_fixed_panels();
         app.hermes.tags = Some(page);
-        app
+        app.showing_setting(crate::messages::SettingsFeature::Tags)
     }
 
     pub fn saved_queries_for_test(&self) -> Option<&SavedQueries> {
@@ -153,7 +157,7 @@ impl App {
     pub fn with_saved_queries(view: SavedQueries) -> Self {
         let mut app = Self::with_fixed_panels();
         app.hermes.saved_queries = Some(view);
-        app
+        app.showing_setting(crate::messages::SettingsFeature::Reports)
     }
 
     /// A Hermes module that is switched on but has no index yet, so its pages

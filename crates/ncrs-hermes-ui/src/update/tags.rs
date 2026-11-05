@@ -6,12 +6,11 @@ use ncrs_filing::filing::FilingModule;
 use ncrs_filing::tags_work::{TagsAccess, TagsFailure, TagsLoaded};
 use ncrs_ui_kit::focus::release_focus;
 
-use super::blocking_overlay_is_open;
 use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::message::{Message, TagsMessage};
 use crate::state::Hermes;
-use crate::tags_page::{TagRow, TagsPage};
+use crate::tags_page::TagsPage;
 use crate::ui::tags as tags_ui;
 
 pub fn update(
@@ -21,7 +20,7 @@ pub fn update(
     actions: &mut Vec<Action>,
 ) -> Task<Message> {
     match message {
-        TagsMessage::Close => close(hermes),
+        TagsMessage::CancelStep => close_dialog(hermes),
         TagsMessage::Done { generation, result } => {
             if generation != hermes.tags_generation {
                 return Task::none();
@@ -46,33 +45,6 @@ pub fn update(
                 actions.push(Action::SetTagExceptions(exceptions));
             }
             Task::none()
-        }
-        TagsMessage::Scrolled(delta) => {
-            if let Some(page) = hermes.tags.as_mut() {
-                page.scroll(delta);
-            }
-            Task::none()
-        }
-        TagsMessage::Move(delta) => {
-            if let Some(page) = hermes.tags.as_mut() {
-                page.move_cursor(delta);
-            }
-            Task::none()
-        }
-        TagsMessage::Select(index) => {
-            if let Some(page) = hermes.tags.as_mut() {
-                page.select(index);
-            }
-            Task::none()
-        }
-        TagsMessage::ToggleSelected => {
-            let next = match hermes.tags.as_ref().and_then(TagsPage::selected) {
-                Some(TagRow::Group(group)) => TagsMessage::ToggleGroup(group),
-                Some(TagRow::Tag { group, tag, .. }) => TagsMessage::ToggleTag { group, tag },
-                Some(TagRow::More { group, .. }) => TagsMessage::Unfold(group),
-                None => return Task::none(),
-            };
-            update(hermes, next, ctx, actions)
         }
         TagsMessage::ToggleOpen(group) => {
             if let Some(page) = hermes.tags.as_mut() {
@@ -135,9 +107,6 @@ pub fn update(
             let Some(page) = hermes.tags.as_mut() else {
                 return Task::none();
             };
-            if page.step().is_none() {
-                return update(hermes, TagsMessage::ToggleSelected, ctx, actions);
-            }
             let Some(name) = page.begin_delete() else {
                 return Task::none();
             };
@@ -171,7 +140,7 @@ fn toggle_tag_group(
 }
 
 pub fn open(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Task<Message> {
-    if hermes.tags.is_some() || blocking_overlay_is_open(hermes, ctx) {
+    if hermes.tags.is_some() {
         return Task::none();
     }
     actions.push(Action::CloseContextMenu);
@@ -180,15 +149,11 @@ pub fn open(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Ta
     run_tags_work(hermes, TagsAccess::load)
 }
 
-/// Escape backs out of the step that is up first, then leaves the page.
-fn close(hermes: &mut Hermes) -> Task<Message> {
-    let Some(page) = hermes.tags.as_mut() else {
-        return Task::none();
-    };
-    if page.cancel_step() {
-        return Task::none();
+/// Closes the dialog that is up: the rename or the delete question.
+pub fn close_dialog(hermes: &mut Hermes) -> Task<Message> {
+    if let Some(page) = hermes.tags.as_mut() {
+        page.cancel_step();
     }
-    hermes.tags = None;
     release_focus()
 }
 

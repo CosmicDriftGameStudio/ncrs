@@ -25,7 +25,7 @@ impl App {
         if self.quick_open.is_some() {
             return focus;
         }
-        if self.blocking_overlay_is_open() {
+        if self.blocking_overlay_is_open() || self.page_dialog_is_open() {
             return Task::none();
         }
         self.panels.context_menu = None;
@@ -97,7 +97,7 @@ impl App {
     ) -> Task<Message> {
         let opening =
             matches!(message, CommandPaletteMessage::Toggle) && self.command_palette.is_none();
-        let blocked = opening && self.blocking_overlay_is_open();
+        let blocked = opening && (self.blocking_overlay_is_open() || self.page_dialog_is_open());
         let (hermes, settings_targets) = if opening && !blocked {
             (
                 self.command_palette_hermes(),
@@ -151,11 +151,10 @@ impl App {
         feature: crate::messages::SettingsFeature,
         row: Option<String>,
     ) -> Task<Message> {
-        let mut actions = Vec::new();
         let task = self.with_settings(|settings, ctx| {
-            ncrs_settings::show_setting(settings, ctx, feature, row, &mut actions)
+            ncrs_settings::show_setting(settings, ctx, feature, row)
         });
-        self.run_settings_actions(task, actions)
+        self.run_settings_actions(task, Vec::new())
     }
 
     /// Runs a command chosen from the command list or the menu bar: what its

@@ -15,7 +15,7 @@ use std::path::Path;
 
 use iced::widget::scrollable::{Direction, Scrollbar};
 use iced::widget::text::Wrapping;
-use iced::widget::{column, container, row, scrollable, text};
+use iced::widget::{column, container, row, scrollable, text, Column};
 use iced::{alignment, Color, Element, Length, Padding};
 
 use crate::facts::DocumentsFacts;
@@ -26,7 +26,7 @@ use ncrs_i18n::fill_template;
 use ncrs_i18n::{FuturamaName, Language, Msg};
 use ncrs_ui_kit::format::shown_path;
 use ncrs_ui_kit::frame::{SCROLLBAR_MARGIN, SCROLLBAR_WIDTH};
-use ncrs_ui_kit::kit::{self, Check, Tone};
+use ncrs_ui_kit::kit::{self, Tone};
 use ncrs_ui_kit::layout::SETTINGS_PAGE_MAX_WIDTH;
 use ncrs_ui_kit::theme::{self, font_size, size, spacing};
 
@@ -71,30 +71,8 @@ pub struct SettingsView<'a> {
     pub palette: &'a Palette,
 }
 
-struct SettingRow<'a> {
-    label: String,
-    /// The Futurama name, from a `Msg`; the only name the command list takes.
-    theme_name: Option<String>,
-    /// The key in the config or theme file, shown where the theme name is but
-    /// never offered to the command list.
-    config_key: Option<String>,
-    description: Option<String>,
-    /// What is wrong with the value, under the description.
-    problem: Option<String>,
-    /// A caution under the description, not an error.
-    warning: Option<String>,
-    control: Element<'a, Message>,
-    /// Rows that show a state or a user's own data are not commands.
-    in_command_list: bool,
-    control_width: Option<f32>,
-}
-
-struct Group<'a> {
-    /// A sentence under the title that says what the group is for.
-    intro: Option<String>,
-    title: String,
-    rows: Vec<SettingRow<'a>>,
-}
+type SettingRow<'a> = ncrs_ui_kit::setting_rows::SettingRow<'a, Message>;
+type Group<'a> = ncrs_ui_kit::setting_rows::Group<'a, Message>;
 
 fn change(setting: SettingChange) -> Message {
     SettingsMessage::Change(setting)
@@ -134,7 +112,6 @@ fn problem_text(problem: &FieldProblem, lang: Language) -> String {
         FieldProblem::OnlyApps => Msg::SettingsProblemOnlyApps,
         FieldProblem::PathNotText => Msg::SettingsProblemPathNotText,
         FieldProblem::Color => Msg::SettingsProblemColor,
-        FieldProblem::Threads => Msg::SettingsProblemThreads,
         FieldProblem::Endpoint(AiEndpointProblem::Unusable(reason)) => {
             return fill_template(
                 lang.text(Msg::SettingsProblemEndpoint),
@@ -165,6 +142,10 @@ fn feature_label(feature: SettingsFeature) -> Msg {
         SettingsFeature::Servers => Msg::SettingsFeatureServers,
         SettingsFeature::Index => Msg::SettingsFeatureIndex,
         SettingsFeature::Hermes => Msg::SettingsFeatureHermes,
+        SettingsFeature::Rules => Msg::SettingsFeatureRules,
+        SettingsFeature::Tags => Msg::SettingsFeatureTags,
+        SettingsFeature::Reports => Msg::SettingsFeatureReports,
+        SettingsFeature::ReadErrors => Msg::SettingsFeatureReadErrors,
     }
 }
 
@@ -176,7 +157,11 @@ fn feature_theme_name(feature: SettingsFeature) -> Option<FuturamaName> {
         | SettingsFeature::Programs
         | SettingsFeature::Keys
         | SettingsFeature::Servers
-        | SettingsFeature::Index => None,
+        | SettingsFeature::Index
+        | SettingsFeature::Rules
+        | SettingsFeature::Tags
+        | SettingsFeature::Reports
+        | SettingsFeature::ReadErrors => None,
     }
 }
 
@@ -196,7 +181,11 @@ fn feature_suffix(feature: SettingsFeature) -> Option<Msg> {
         | SettingsFeature::Programs
         | SettingsFeature::Keys
         | SettingsFeature::Servers
-        | SettingsFeature::Index => None,
+        | SettingsFeature::Index
+        | SettingsFeature::Rules
+        | SettingsFeature::Tags
+        | SettingsFeature::Reports
+        | SettingsFeature::ReadErrors => None,
     }
 }
 
@@ -208,7 +197,11 @@ fn feature_beta_mark(feature: SettingsFeature) -> Option<Msg> {
         | SettingsFeature::Programs
         | SettingsFeature::Keys
         | SettingsFeature::Servers
-        | SettingsFeature::Index => None,
+        | SettingsFeature::Index
+        | SettingsFeature::Rules
+        | SettingsFeature::Tags
+        | SettingsFeature::Reports
+        | SettingsFeature::ReadErrors => None,
     }
 }
 
@@ -221,17 +214,27 @@ fn feature_intro(feature: SettingsFeature) -> Msg {
         SettingsFeature::Servers => Msg::SettingsFeatureServersIntro,
         SettingsFeature::Index => Msg::SettingsFeatureIndexIntro,
         SettingsFeature::Hermes => Msg::SettingsFeatureHermesIntro,
+        SettingsFeature::Rules => Msg::SettingsFeatureRulesIntro,
+        SettingsFeature::Tags => Msg::SettingsFeatureTagsIntro,
+        SettingsFeature::Reports => Msg::SettingsFeatureReportsIntro,
+        SettingsFeature::ReadErrors => Msg::SettingsFeatureReadErrorsIntro,
     }
 }
 
-fn feature_config_place(feature: SettingsFeature) -> &'static str {
+/// Where the page's values live in the config file; the pages the app fills
+/// show data that is not in it.
+fn feature_config_place(feature: SettingsFeature) -> Option<&'static str> {
     match feature {
-        SettingsFeature::Look => THEME_SECTION,
-        SettingsFeature::Language => LANGUAGE_KEY,
-        SettingsFeature::Programs => OPEN_SECTION,
-        SettingsFeature::Keys => KEYS_SECTION,
-        SettingsFeature::Servers => SERVERS_SECTION,
-        SettingsFeature::Index | SettingsFeature::Hermes => FILING_SECTION,
+        SettingsFeature::Look => Some(THEME_SECTION),
+        SettingsFeature::Language => Some(LANGUAGE_KEY),
+        SettingsFeature::Programs => Some(OPEN_SECTION),
+        SettingsFeature::Keys => Some(KEYS_SECTION),
+        SettingsFeature::Servers => Some(SERVERS_SECTION),
+        SettingsFeature::Index | SettingsFeature::Hermes => Some(FILING_SECTION),
+        SettingsFeature::Rules
+        | SettingsFeature::Tags
+        | SettingsFeature::Reports
+        | SettingsFeature::ReadErrors => None,
     }
 }
 
@@ -253,62 +256,10 @@ fn mono<'a>(content: String, color: Color) -> Element<'a, Message> {
         .into()
 }
 
-fn status_text<'a>(content: String, color: Color) -> Element<'a, Message> {
-    text(content)
-        .size(font_size::BODY)
-        .color(color)
-        .wrapping(Wrapping::None)
-        .into()
-}
-
-fn with_button<'a>(
-    value: Element<'a, Message>,
-    label: &str,
-    on_press: Message,
-    palette: &Palette,
-) -> Element<'a, Message> {
-    row![
-        value,
-        kit::button(label, Some(on_press), Tone::Secondary, palette)
-    ]
-    .spacing(spacing::S)
-    .align_y(alignment::Vertical::Center)
-    .into()
-}
+use ncrs_ui_kit::setting_rows::{simple_row, status_text, with_button};
 
 fn switch<'a>(on: bool, setting: SettingChange, view: &SettingsView<'_>) -> Element<'a, Message> {
-    let state = if on { Check::On } else { Check::Off };
-    let word = view.lang.text(if on {
-        Msg::SettingsOn
-    } else {
-        Msg::SettingsOff
-    });
-    row![
-        kit::checkbox(state, Some(change(setting)), view.palette),
-        status_text(word.to_owned(), view.palette.dim_text),
-    ]
-    .spacing(spacing::S)
-    .align_y(alignment::Vertical::Center)
-    .into()
-}
-
-fn simple_row<'a>(
-    label: Msg,
-    note: Option<Msg>,
-    control: Element<'a, Message>,
-    lang: Language,
-) -> SettingRow<'a> {
-    SettingRow {
-        label: lang.text(label).to_owned(),
-        theme_name: None,
-        config_key: None,
-        description: note.map(|msg| lang.text(msg).to_owned()),
-        problem: None,
-        warning: None,
-        control,
-        control_width: None,
-        in_command_list: true,
-    }
+    ncrs_ui_kit::setting_rows::switch(on, change(setting), view.lang, view.palette)
 }
 
 fn groups_of<'a>(feature: SettingsFeature, view: &SettingsView<'a>) -> Vec<Group<'a>> {
@@ -320,6 +271,10 @@ fn groups_of<'a>(feature: SettingsFeature, view: &SettingsView<'a>) -> Vec<Group
         SettingsFeature::Servers => servers_groups(view),
         SettingsFeature::Index => index_groups(view),
         SettingsFeature::Hermes => hermes_groups(view),
+        SettingsFeature::Rules
+        | SettingsFeature::Tags
+        | SettingsFeature::Reports
+        | SettingsFeature::ReadErrors => Vec::new(),
     }
 }
 
@@ -401,17 +356,44 @@ fn listed_features(view: &SettingsView<'_>) -> Vec<SettingsFeature> {
         .collect()
 }
 
-/// The window area under the title bar and above the status bar.
-pub fn view<'a>(view: &SettingsView<'a>) -> Element<'a, Message> {
-    let palette = view.palette;
+/// The page the window shows: the chosen one, or the first the search leaves.
+pub fn shown_feature(view: &SettingsView<'_>) -> Option<SettingsFeature> {
     let listed = listed_features(view);
-    let shown = listed
+    listed
         .iter()
         .copied()
         .find(|&feature| feature == view.state.feature)
-        .or_else(|| listed.first().copied());
+        .or_else(|| listed.first().copied())
+}
+
+/// The window area under the title bar and above the status bar.
+pub fn view<'a>(view: &SettingsView<'a>) -> Element<'a, Message> {
+    view_with(view, |message| message, |_| None)
+}
+
+/// Like [`view`], with the rows of the pages the app fills (see
+/// `SettingsFeature::is_filled_by_app`) put in by `app_page`, whose messages
+/// are the caller's own.
+pub fn view_with<'a, M: 'a>(
+    view: &SettingsView<'a>,
+    wrap: impl Fn(Message) -> M + Copy + 'a,
+    app_page: impl FnOnce(SettingsFeature) -> Option<Element<'a, M>>,
+) -> Element<'a, M> {
+    let palette = view.palette;
+    let listed = listed_features(view);
+    let shown = shown_feature(view);
+    let body: Element<'a, M> = match shown {
+        Some(feature) if feature.is_filled_by_app() => {
+            let mut body = Column::new().push(heading(feature, view).map(wrap));
+            if let Some(rows) = app_page(feature) {
+                body = body.push(rows);
+            }
+            body.spacing(spacing::XS).into()
+        }
+        _ => page(shown, view).map(wrap),
+    };
     let content = scrollable(
-        container(page(shown, view))
+        container(body)
             .max_width(SETTINGS_PAGE_MAX_WIDTH)
             .padding(Padding {
                 top: spacing::XL,
@@ -430,7 +412,7 @@ pub fn view<'a>(view: &SettingsView<'a>) -> Element<'a, Message> {
     .width(Length::Fill)
     .height(Length::Fill);
     row![
-        nav(&listed, shown, view),
+        Element::from(nav(&listed, shown, view)).map(wrap),
         theme::vertical_rule(palette.border_inactive),
         content,
     ]

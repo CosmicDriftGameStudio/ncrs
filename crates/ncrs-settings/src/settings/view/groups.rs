@@ -133,6 +133,7 @@ pub fn vscode_row<'a>(view: &SettingsView<'a>) -> SettingRow<'a> {
         problem: warning,
         control_width: Some(SETTINGS_WIDE_CONTROL_WIDTH),
         in_command_list: true,
+        list_indent: None,
         ..simple_row(
             Msg::SettingsRowVscode,
             Some(Msg::SettingsRowVscodeNote),
@@ -205,6 +206,7 @@ pub fn color_row<'a>(role: ColorRole, view: &SettingsView<'a>) -> SettingRow<'a>
         control: control.into(),
         control_width: None,
         in_command_list: true,
+        list_indent: None,
     }
 }
 
@@ -265,6 +267,7 @@ pub fn program_row<'a>(kind: OpenKind, view: &SettingsView<'a>) -> SettingRow<'a
         control: control.into(),
         control_width: Some(SETTINGS_WIDE_CONTROL_WIDTH),
         in_command_list: true,
+        list_indent: None,
     }
 }
 
@@ -325,6 +328,7 @@ pub fn servers_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
         ),
         control_width: None,
         in_command_list: true,
+        list_indent: None,
     };
     if view.servers.is_empty() {
         return vec![Group {
@@ -378,6 +382,7 @@ pub fn servers_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
                 .into(),
                 control_width: None,
                 in_command_list: true,
+                list_indent: None,
             }
         })
         .collect();
@@ -554,6 +559,7 @@ pub fn protection_group<'a>(view: &SettingsView<'a>) -> Option<Group<'a>> {
         problem: panel.failure.clone(),
         description: Some(panel.sentence.clone()),
         in_command_list: false,
+        list_indent: None,
         ..simple_row(Msg::SettingsIndexRowEncryption, None, control.into(), lang)
     };
     Some(Group {

@@ -7,8 +7,7 @@ use iced::{event, mouse, window, Point};
 use crate::messages::PanelMessage;
 use crate::messages::{
     CommandLineMessage, CommandPaletteMessage, HermesChatMessage, KeyBindingsMessage, Message,
-    QuickOpenMessage, RulesMessage, SavedQueriesMessage, SearchMessage, SettingsMessage,
-    TagsMessage, ThemeFetchMessage,
+    QuickOpenMessage, SearchMessage, SettingsMessage, ThemeFetchMessage,
 };
 use crate::transfer_dialog::TransferDialogMessage;
 
@@ -79,11 +78,6 @@ pub struct InputState {
     pub key_bindings: bool,
     /// The theme download card is up: same as Quick Open.
     pub theme_fetch: bool,
-    /// The rules page is up: same as Quick Open.
-    pub rules: bool,
-    pub saved_queries: bool,
-    /// The tags page is up: same as Quick Open.
-    pub tags: bool,
     /// The copy or move confirmation is up: its target field takes Escape.
     pub transfer_dialog: bool,
     /// The settings tab is up with nothing on top: Escape closes it, even from
@@ -123,16 +117,10 @@ impl InputState {
                 self.theme_fetch,
                 Message::ThemeFetch(ThemeFetchMessage::Close),
             ),
-            (self.rules, Message::Rules(RulesMessage::Close)),
             (
                 self.transfer_dialog,
                 Message::TransferDialog(TransferDialogMessage::Cancel),
             ),
-            (
-                self.saved_queries,
-                Message::SavedQueries(SavedQueriesMessage::Close),
-            ),
-            (self.tags, Message::Tags(TagsMessage::Close)),
             (self.settings, Message::Settings(SettingsMessage::Close)),
         ]
         .into_iter()
@@ -194,9 +182,6 @@ impl InputState {
                     && !self.command_palette
                     && !self.key_bindings
                     && !self.theme_fetch
-                    && !self.rules
-                    && !self.saved_queries
-                    && !self.tags
                     && !self.transfer_dialog
                     && !self.settings)
                     .then_some(Message::ContextMenuKey)

@@ -105,10 +105,6 @@ pub fn update(
             actions.push(Action::UndoRun(batch));
             Task::none()
         }
-        SettingsMessage::OpenRules => {
-            actions.push(Action::OpenRules);
-            Task::none()
-        }
         SettingsMessage::OpenAiModel => {
             models::update_ai(settings, AiModelMessage::Open, ctx, actions)
         }

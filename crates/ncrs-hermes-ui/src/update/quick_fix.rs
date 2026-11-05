@@ -6,7 +6,6 @@ use ncrs_filing::filing::FilingModule;
 use ncrs_filing::review_work::{AcceptSummary, ReviewItem};
 use ncrs_i18n::{fill_template, Msg};
 
-use super::blocking_overlay_is_open;
 use super::rules::open_rule_form;
 use crate::action::Action;
 use crate::ctx::Ctx;
@@ -56,10 +55,7 @@ fn with_quick_fix(hermes: &mut Hermes, change: impl FnOnce(&mut QuickFix)) -> Ta
 /// Cmd+.: opens the menu on the inquiries of the active panel, and looks up
 /// their reviews on a blocking thread. Says so when there are none.
 fn open(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Task<Message> {
-    if blocking_overlay_is_open(hermes, ctx)
-        || ctx.context_menu_open
-        || ctx.search_open
-        || !ctx.hermes_active
+    if hermes.quick_fix.is_some() || ctx.context_menu_open || ctx.search_open || !ctx.hermes_active
     {
         return Task::none();
     }
@@ -222,7 +218,6 @@ fn open_rule_form_from_menu(
     open_rule_form(
         hermes,
         RuleForm::from_document(prefill, ctx.kinds),
-        None,
         ctx,
         actions,
     )

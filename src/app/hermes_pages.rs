@@ -1,18 +1,6 @@
 use crate::app::*;
 
 impl App {
-    /// The tags page, from the settings or the command list: in place of the
-    /// page of Hermes that is up, if any.
-    pub(in crate::app) fn show_tags_page(&mut self) -> Task<Message> {
-        let left = self.leave_settings_page();
-        let opened = if self.open_hermes_page().is_some() {
-            self.go_to_hermes_page(HermesPage::Tags)
-        } else {
-            self.open_tags()
-        };
-        Task::batch([left, opened])
-    }
-
     pub(in crate::app) fn overview_facts(&self, ocr_models_present: bool) -> OverviewFacts {
         ncrs_hermes_ui::overview_facts(&self.hermes, &self.hermes_view_ctx(), ocr_models_present)
     }
@@ -33,33 +21,29 @@ impl App {
         Task::batch([before, after])
     }
 
-    /// The Hermes card that is up, if any.
-    pub(in crate::app) fn open_hermes_page(&self) -> Option<HermesPage> {
-        self.hermes
-            .filing_status
-            .page_open()
-            .then_some(HermesPage::Inspection)
-            .or_else(|| self.hermes.open_page())
+    /// Opens the settings on the page of Settings that shows this Hermes page.
+    pub(in crate::app) fn show_hermes_page(&mut self, page: HermesPage) -> Task<Message> {
+        self.show_setting(settings_feature_of(page), None)
     }
 
-    /// The card that is up closes without its Escape steps, the chosen page
-    /// opens. Nothing happens when it is the open one,
-    /// or when no Hermes card is up.
-    pub(in crate::app) fn go_to_hermes_page(&mut self, page: HermesPage) -> Task<Message> {
-        if page != HermesPage::Inspection {
-            return self.run_hermes_flow(Vec::new(), |hermes, ctx| {
-                ncrs_hermes_ui::go_to_hermes_page(hermes, page, ctx)
-            });
+    /// Brings the Hermes state in line with the settings page that is up: the
+    /// page is loaded when it is shown and let go when the settings leave it.
+    pub(in crate::app) fn sync_hermes_page(&mut self) -> Task<Message> {
+        let wanted = self.settings.page.as_ref().and_then(|state| {
+            settings_ui::shown_feature(&self.settings_view(state)).and_then(hermes_page_of)
+        });
+        if wanted == self.hermes.open_page() {
+            return Task::none();
         }
-        match self.open_hermes_page() {
-            None => return Task::none(),
-            Some(open) if open == page => return Task::none(),
-            Some(_) => {}
+        match wanted {
+            Some(page) => {
+                let outcome = self.with_hermes(Vec::new(), |hermes, ctx| {
+                    ncrs_hermes_ui::show_page(hermes, page, ctx)
+                });
+                self.run_hermes_outcome(outcome)
+            }
+            None => ncrs_hermes_ui::leave_pages(&mut self.hermes).map(Message::from),
         }
-        self.hermes.close_pages();
-        self.hermes.filing_status.close_page();
-        let open = self.open_filing_status();
-        Task::batch([release_focus(), open])
     }
 
     pub(in crate::app) fn update_quick_fix(&mut self, message: QuickFixMessage) -> Task<Message> {
@@ -99,13 +83,7 @@ impl App {
     }
 
     pub(in crate::app) fn open_saved_queries(&mut self) -> Task<Message> {
-        let outcome = self.with_hermes(Vec::new(), ncrs_hermes_ui::open_saved_queries);
-        self.run_hermes_outcome(outcome)
-    }
-
-    fn open_tags(&mut self) -> Task<Message> {
-        let outcome = self.with_hermes(Vec::new(), ncrs_hermes_ui::open_tags);
-        self.run_hermes_outcome(outcome)
+        self.show_hermes_page(HermesPage::SavedQueries)
     }
 
     /// The full-text lookup of Hermes, when its module is ready. Without an
@@ -125,16 +103,27 @@ impl App {
         self.set_status_error(&reason);
         shown
     }
+}
 
-    pub(in crate::app) fn open_filing_status(&mut self) -> Task<Message> {
-        if self.blocking_overlay_is_open() {
-            return Task::none();
-        }
-        let left_settings = self.leave_settings_page();
-        if self.settings.page.is_some() {
-            return left_settings;
-        }
-        let opened = self.run_hermes_flow(Vec::new(), ncrs_hermes_ui::open_filing_status_page);
-        Task::batch([left_settings, opened])
+fn settings_feature_of(page: HermesPage) -> crate::messages::SettingsFeature {
+    use crate::messages::SettingsFeature;
+    match page {
+        HermesPage::Rules => SettingsFeature::Rules,
+        HermesPage::SavedQueries => SettingsFeature::Reports,
+        HermesPage::Tags => SettingsFeature::Tags,
+        HermesPage::Inspection => SettingsFeature::ReadErrors,
+    }
+}
+
+pub(in crate::app) fn hermes_page_of(
+    feature: crate::messages::SettingsFeature,
+) -> Option<HermesPage> {
+    use crate::messages::SettingsFeature;
+    match feature {
+        SettingsFeature::Rules => Some(HermesPage::Rules),
+        SettingsFeature::Reports => Some(HermesPage::SavedQueries),
+        SettingsFeature::Tags => Some(HermesPage::Tags),
+        SettingsFeature::ReadErrors => Some(HermesPage::Inspection),
+        _ => None,
     }
 }
