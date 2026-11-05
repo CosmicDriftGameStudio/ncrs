@@ -33,6 +33,8 @@ fn main() {
 #[cfg(not(windows))]
 fn embed_windows_resources() {}
 
+// A build script reports a failure by panicking.
+#[allow(clippy::expect_used)]
 #[cfg(windows)]
 fn embed_windows_resources() {
     use std::fmt::Write as _;

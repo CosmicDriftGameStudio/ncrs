@@ -14,7 +14,7 @@ pub fn attach_to_parent_console() {
 #[cfg(windows)]
 mod windows {
     use std::fs::OpenOptions;
-    use std::os::windows::io::IntoRawHandle;
+    use std::os::windows::io::IntoRawHandle as _;
 
     use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
     use windows_sys::Win32::System::Console::{
@@ -22,7 +22,7 @@ mod windows {
         STD_HANDLE, STD_OUTPUT_HANDLE,
     };
 
-    pub(super) fn attach() {
+    pub fn attach() {
         // SAFETY: `AttachConsole` takes no pointers; a refusal (no parent
         // console) is reported by its return value.
         #[allow(unsafe_code)]
