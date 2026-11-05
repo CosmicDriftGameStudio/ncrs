@@ -11,11 +11,12 @@
 
 use std::path::PathBuf;
 
-use ncrs_index::{Kinds, Rule, RuleId, RuleOrigin, RuleSpec, SenderAliases};
+use ncrs_index::{DocumentFields, Kinds, Rule, RuleId, RuleOrigin, RuleSpec, SenderAliases};
 use ncrs_intake::{plan, render_pattern_in, rule_problem, PlanInput, Planning};
 
 use super::matrix::{archive_kinds, fixtures, Case, Expected, Fixture};
 use super::parse::{parse_generate, parse_pattern};
+use super::verify::{path_text, pattern_mismatches};
 
 fn single_rule(spec: &RuleSpec) -> Rule {
     Rule {
@@ -62,19 +63,27 @@ pub fn check_generate(got: &RuleSpec, expected: &RuleSpec) -> Result<(), String>
     Ok(())
 }
 
+/// The paths the expected pattern gives every fixture document, as files.
+pub fn recognize_files(expected: &str, kinds: &Kinds) -> Vec<(String, DocumentFields)> {
+    fixtures()
+        .iter()
+        .filter_map(|fixture| {
+            let path = render_pattern_in(expected, &fixture.fields, kinds)?;
+            Some((format!("{}.pdf", path_text(&path)), fixture.fields.clone()))
+        })
+        .collect()
+}
+
 pub fn check_recognize(got: &str, expected: &str) -> Result<(), String> {
     let kinds = archive_kinds();
-    for (number, fixture) in fixtures().iter().enumerate() {
-        let wanted = render_pattern_in(expected, &fixture.fields, &kinds);
-        let written = render_pattern_in(got, &fixture.fields, &kinds);
-        if written.is_none() || wanted != written {
-            return Err(format!(
-                "document {} renders {written:?}, wanted {wanted:?}",
-                number + 1
-            ));
-        }
+    let files = recognize_files(expected, &kinds);
+    match pattern_mismatches(got, &files, &kinds).first() {
+        None => Ok(()),
+        Some(mismatch) => Err(format!(
+            "{} is written as {:?}",
+            mismatch.file, mismatch.written
+        )),
     }
-    Ok(())
 }
 
 /// The raw answer of the model against the case.
@@ -97,6 +106,7 @@ mod tests {
     use ncrs_intake::FILING_PLACEHOLDERS;
 
     use super::*;
+    use crate::rules::levels::Levels;
     use crate::rules::matrix::{all_cases, rule, Axis};
 
     fn rule_of(conditions: Vec<Condition>, combinator: Combinator, pattern: &str) -> RuleSpec {
@@ -268,6 +278,10 @@ mod tests {
             .unwrap()
     }
 
+    fn levels_of(pattern: &str) -> String {
+        Levels::from_pattern(pattern).unwrap().json_fields()
+    }
+
     fn answer_of(spec: &RuleSpec, pattern: &str) -> String {
         let conditions: Vec<String> = spec
             .conditions
@@ -283,8 +297,9 @@ mod tests {
             })
             .collect();
         format!(
-            r#"{{"match":"all","conditions":[{}],"pattern":"{pattern}"}}"#,
-            conditions.join(",")
+            r#"{{"match":"all","conditions":[{}],{}}}"#,
+            conditions.join(","),
+            levels_of(pattern)
         )
     }
 
@@ -312,10 +327,14 @@ mod tests {
             panic!("a recognize case expects a pattern");
         };
         assert_eq!(
-            check_answer(&case, &format!(r#"{{"pattern":"{expected}"}}"#)),
+            check_answer(&case, &format!("{{{}}}", levels_of(expected))),
             Ok(())
         );
-        assert!(check_answer(&case, r#"{"pattern":"{kind}/{kind}/{kind}/"}"#).is_err());
+        assert!(check_answer(
+            &case,
+            &format!("{{{}}}", levels_of("{kind}/{kind}/{kind}/"))
+        )
+        .is_err());
         assert!(check_answer(&case, "").is_err());
     }
 }

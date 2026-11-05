@@ -11,14 +11,13 @@
 )]
 
 use std::collections::BTreeSet;
-use std::path::PathBuf;
 
 use ncrs_index::{
-    Combinator, Condition, ConditionKind, DocumentFields, KindLanguage, Kinds, RuleConditions,
-    RuleSpec,
+    Combinator, Condition, ConditionKind, KindLanguage, Kinds, RuleConditions, RuleSpec,
 };
-use ncrs_intake::{parse_date, render_pattern_in, FILING_PLACEHOLDERS};
+use ncrs_intake::{render_pattern_in, FILING_PLACEHOLDERS};
 
+pub use super::fixtures::{archive_kinds, fixtures, spaced, Fixture};
 use super::vocabulary::COMBINATORS;
 
 /// The file name separators; case number `n` of the file name axis takes the
@@ -37,15 +36,18 @@ pub enum Axis {
     FileName,
     Condition,
     Recognize,
+    /// Sentences that say nothing about the structure: the default applies.
+    Default,
     Holdout,
 }
 
 impl Axis {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Folder,
         Self::FileName,
         Self::Condition,
         Self::Recognize,
+        Self::Default,
         Self::Holdout,
     ];
 }
@@ -136,212 +138,6 @@ pub fn rule_text(spec: &RuleSpec) -> String {
         spec.conditions.combinator.as_str(),
         spec.filing_pattern
     )
-}
-
-struct Row {
-    sender: &'static str,
-    domain: &'static str,
-    recipient: &'static str,
-    address: &'static str,
-    kind: &'static str,
-    date: &'static str,
-    number: &'static str,
-    folder: &'static str,
-    tag: &'static str,
-    keyword: &'static str,
-    iban: &'static str,
-    tax_id: &'static str,
-}
-
-/// Days above 12 and different from the month, years and numbers all
-/// different: no two placeholders render the same on these.
-const ROWS: [Row; 8] = [
-    Row {
-        sender: "Telekom Deutschland GmbH",
-        domain: "telekom.de",
-        recipient: "Marc Beispiel",
-        address: "Andrestr. 12\n09112 Chemnitz",
-        kind: "invoice",
-        date: "2023-03-14",
-        number: "R-2023-0314",
-        folder: "Posteingang/Telefon",
-        tag: "steuer",
-        keyword: "Mobilfunk",
-        iban: "DE89370400440532013000",
-        tax_id: "12/345/67890",
-    },
-    Row {
-        sender: "Allianz Versicherung",
-        domain: "allianz.de",
-        recipient: "Marc Beispiel",
-        address: "Andrestr. 12\n09112 Chemnitz",
-        kind: "contract",
-        date: "2022-11-28",
-        number: "V-88231",
-        folder: "Versicherungen",
-        tag: "privat",
-        keyword: "Haftpflicht",
-        iban: "DE02120300000000202051",
-        tax_id: "21/987/65432",
-    },
-    Row {
-        sender: "Stadtwerke Müller",
-        domain: "stadtwerke-mueller.de",
-        recipient: "Jürgen Köhler",
-        address: "Gartenweg 5\n04109 Leipzig",
-        kind: "reminder",
-        date: "2024-01-31",
-        number: "M-4412",
-        folder: "Posteingang/Energie",
-        tag: "energie",
-        keyword: "Stromlieferung",
-        iban: "DE75512108001245126199",
-        tax_id: "33/222/11110",
-    },
-    Row {
-        sender: "Finanzamt Chemnitz",
-        domain: "finanzamt-chemnitz.de",
-        recipient: "Marc Beispiel",
-        address: "Andrestr. 12\n09112 Chemnitz",
-        kind: "notice",
-        date: "2021-06-25",
-        number: "St-2021-77",
-        folder: "Steuer",
-        tag: "steuer",
-        keyword: "Einkommensteuer",
-        iban: "DE12500105170648489890",
-        tax_id: "44/555/66670",
-    },
-    Row {
-        sender: "Sparkasse Leipzig",
-        domain: "sparkasse-leipzig.de",
-        recipient: "Anna Weiß",
-        address: "Lindenallee 7\n80331 München",
-        kind: "bank_statement",
-        date: "2020-09-19",
-        number: "KA-2020-09",
-        folder: "Bank",
-        tag: "privat",
-        keyword: "Kontostand",
-        iban: "DE68210501700012345678",
-        tax_id: "55/666/77780",
-    },
-    Row {
-        sender: "Zalando SE",
-        domain: "zalando.de",
-        recipient: "Jürgen Köhler",
-        address: "Gartenweg 5\n04109 Leipzig",
-        kind: "receipt",
-        date: "2019-05-17",
-        number: "Z-558120",
-        folder: "Einkäufe",
-        tag: "einkauf",
-        keyword: "Bestellung",
-        iban: "DE27100777770209299700",
-        tax_id: "66/777/88890",
-    },
-    Row {
-        sender: "Praxis Dr. Schäfer",
-        domain: "praxis-schaefer.de",
-        recipient: "Anna Weiß",
-        address: "Lindenallee 7\n80331 München",
-        kind: "invoice",
-        date: "2025-08-22",
-        number: "A-2025-0822",
-        folder: "Posteingang/Arzt",
-        tag: "steuer",
-        keyword: "Behandlung",
-        iban: "DE91100000000123456789",
-        tax_id: "77/888/99900",
-    },
-    Row {
-        sender: "Stromio GmbH",
-        domain: "stromio.de",
-        recipient: "Marc Beispiel",
-        address: "Andrestr. 12\n09112 Chemnitz",
-        kind: "termination",
-        date: "2017-12-29",
-        number: "K-91827",
-        folder: "Posteingang/Telefon",
-        tag: "wichtig",
-        keyword: "Vertragsende",
-        iban: "DE44500105175407324931",
-        tax_id: "88/999/00010",
-    },
-];
-
-#[derive(Debug, Clone)]
-pub struct Fixture {
-    pub fields: DocumentFields,
-    pub text: String,
-    pub path: PathBuf,
-    pub folder: &'static str,
-    pub domain: &'static str,
-    pub iban: &'static str,
-    pub tax_id: &'static str,
-    pub keyword: &'static str,
-    pub tag: &'static str,
-}
-
-impl Fixture {
-    fn from_row(index: usize, row: &Row) -> Self {
-        let mut day_month_year = row.date.split('-').rev();
-        let dotted = day_month_year.by_ref().collect::<Vec<_>>().join(".");
-        let kinds = Kinds::built_in(KindLanguage::German);
-        let text = format!(
-            "{sender}\nMusterstr. {index}, 10115 Berlin\nservice@{domain} · Tel. 0800 1234\n\n\
-             {recipient}\n{address}\n\n{kind} Nr. {number}\n{COMMON_WORD}: 4711-{index}\n\
-             Datum: {dotted}\nBetreff: {keyword}\nZahlbar auf IBAN {iban}\nSteuernummer {tax_id}\n",
-            sender = row.sender,
-            domain = row.domain,
-            recipient = row.recipient,
-            address = row.address,
-            kind = kinds.kind_word(row.kind),
-            number = row.number,
-            keyword = row.keyword,
-            iban = spaced(row.iban),
-            tax_id = row.tax_id,
-        );
-        Self {
-            fields: DocumentFields {
-                sender: Some(row.sender.to_owned()),
-                recipient: Some(row.recipient.to_owned()),
-                kind: Some(row.kind.to_owned()),
-                date: parse_date(row.date),
-                number: Some(row.number.to_owned()),
-                amount: None,
-                tags: BTreeSet::from([row.tag.to_owned()]),
-            },
-            text,
-            path: PathBuf::from(format!("{}/scan-{index}.pdf", row.folder)),
-            folder: row.folder,
-            domain: row.domain,
-            iban: row.iban,
-            tax_id: row.tax_id,
-            keyword: row.keyword,
-            tag: row.tag,
-        }
-    }
-}
-
-fn spaced(iban: &str) -> String {
-    iban.as_bytes()
-        .chunks(4)
-        .map(|group| String::from_utf8_lossy(group).into_owned())
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-pub fn fixtures() -> Vec<Fixture> {
-    ROWS.iter()
-        .enumerate()
-        .map(|(index, row)| Fixture::from_row(index + 1, row))
-        .collect()
-}
-
-/// The language the archive of the fixtures is shown in.
-pub fn archive_kinds() -> Kinds {
-    Kinds::built_in(KindLanguage::German)
 }
 
 fn word_of(placeholder: &str, language: Language) -> &'static str {
@@ -753,6 +549,102 @@ fn recognize_cases(patterns: Vec<(String, Vec<&'static str>)>) -> Vec<Case> {
         .collect()
 }
 
+/// The places the default sentences send documents to.
+const AREAS: [&str; 8] = [
+    "Bank",
+    "Versicherung",
+    "Steuer",
+    "Strom",
+    "Arzt",
+    "Einkäufe",
+    "Verträge",
+    "Archiv",
+];
+const DEFAULT_CASES: usize = 24;
+/// Folder, file name and area-less default of the instructions.
+const DEFAULT_TAIL: &str = "{year}/{date}_{sender}_{kind}";
+
+/// 24 sentences that name a condition and a place, never a folder or a file
+/// name: the answer is `<area>/{year}/{date}_{sender}_{kind}`.
+fn default_cases() -> Vec<Case> {
+    // Six conditions with the words for them in both languages; with eight
+    // areas, 24 cases use every pair once.
+    const CONDITIONS: usize = 6;
+    (0..DEFAULT_CASES)
+        .map(|index| {
+            let language = Language::alternating(index);
+            let area = AREAS[index % AREAS.len()];
+            let german = language == Language::German;
+            let invoice = Kinds::built_in(language.kind_language())
+                .kind_word("invoice")
+                .into_owned();
+            let (condition, sentence) = match index % CONDITIONS {
+                0 => (
+                    Condition::new(ConditionKind::Sender, "Sparkasse Leipzig"),
+                    if german {
+                        format!("Kontoauszüge der Sparkasse Leipzig kommen nach {area}.")
+                    } else {
+                        format!("Statements from Sparkasse Leipzig go to {area}.")
+                    },
+                ),
+                1 => (
+                    Condition::new(ConditionKind::Kind, invoice),
+                    if german {
+                        format!("Alle Rechnungen kommen nach {area}.")
+                    } else {
+                        format!("All invoices go to {area}.")
+                    },
+                ),
+                2 => (
+                    Condition::new(ConditionKind::Tag, "steuer"),
+                    if german {
+                        format!("Was das Tag steuer hat, gehört nach {area}.")
+                    } else {
+                        format!("Anything tagged steuer goes to {area}.")
+                    },
+                ),
+                3 => (
+                    Condition::new(ConditionKind::Word, "Haftpflicht"),
+                    if german {
+                        format!("Dokumente mit dem Wort Haftpflicht im Text kommen nach {area}.")
+                    } else {
+                        format!("Documents with the word Haftpflicht in the text go to {area}.")
+                    },
+                ),
+                4 => (
+                    Condition::not(ConditionKind::Sender, "Zalando SE"),
+                    if german {
+                        format!("Alles außer von Zalando SE kommt nach {area}.")
+                    } else {
+                        format!("Everything except from Zalando SE goes to {area}.")
+                    },
+                ),
+                _ => (
+                    Condition::new(ConditionKind::SenderAddress, "stromio.de"),
+                    if german {
+                        format!("Mails von stromio.de kommen nach {area}.")
+                    } else {
+                        format!("Mail from stromio.de goes to {area}.")
+                    },
+                ),
+            };
+            let kind = condition.kind;
+            Case {
+                axis: Axis::Default,
+                language,
+                ask: Ask::Describe(sentence),
+                expected: Expected::Rule(rule(
+                    vec![condition],
+                    Combinator::AllOf,
+                    &format!("{area}/{DEFAULT_TAIL}"),
+                )),
+                placeholders: vec!["year", "date", "sender", "kind"],
+                conditions: vec![kind],
+            }
+        })
+        .collect()
+}
+
 pub fn all_cases() -> Vec<Case> {
     let mut cases = folder_cases();
     cases.extend(file_name_cases());
@@ -766,6 +658,7 @@ pub fn all_cases() -> Vec<Case> {
         })
         .collect();
     cases.extend(recognize_cases(patterns));
+    cases.extend(default_cases());
     cases
 }
 
@@ -802,9 +695,10 @@ mod tests {
             ),
             (400, 400, 132, 800)
         );
+        assert_eq!(count(Axis::Default), 24);
         let generate = all_cases()
             .iter()
-            .filter(|case| case.axis != Axis::Recognize)
+            .filter(|case| !matches!(case.axis, Axis::Recognize | Axis::Default))
             .count();
         assert_eq!(generate, 932);
     }

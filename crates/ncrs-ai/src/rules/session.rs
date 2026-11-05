@@ -30,13 +30,10 @@ impl RuleRequest {
     }
 
     /// `question` is asked above the paths, in the user's language.
-    pub fn recognize(prefix: &str, question: &str, paths: &[String]) -> Self {
+    pub fn recognize(prefix: &str, question: &str, paths: &str) -> Self {
         Self {
             prefix: prefix.to_owned(),
-            task: format!(
-                "TASK recognize\n{question}\n{}\n{RECOGNIZE_REMINDER}",
-                paths.join("\n")
-            ),
+            task: format!("TASK recognize\n{question}\n{paths}\n{RECOGNIZE_REMINDER}"),
             grammar: recognize_grammar(),
             max_new_tokens: MAX_PATTERN_TOKENS,
         }
@@ -64,11 +61,13 @@ mod tests {
 
     #[test]
     fn a_recognize_task_lists_the_paths() {
-        let paths = vec!["a/b.pdf".to_owned(), "c/d.pdf".to_owned()];
-        let request = RuleRequest::recognize("P", "Which?", &paths);
+        let paths = "PATH 1: a/b.pdf\nPATH 2: c/d.pdf";
+        let request = RuleRequest::recognize("P", "Which?", paths);
         assert_eq!(
             request.task,
-            format!("TASK recognize\nWhich?\na/b.pdf\nc/d.pdf\n{RECOGNIZE_REMINDER}")
+            format!(
+                "TASK recognize\nWhich?\nPATH 1: a/b.pdf\nPATH 2: c/d.pdf\n{RECOGNIZE_REMINDER}"
+            )
         );
         assert!(!request.grammar.contains("conditions"));
     }

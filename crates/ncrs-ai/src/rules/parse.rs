@@ -5,6 +5,7 @@
 use jsonc_parser::{parse_to_value, JsonObject, JsonValue, ParseOptions};
 use ncrs_index::{Condition, RuleConditions, RuleSpec};
 
+use super::levels::{placeholder_named, separator_named, Level, Levels, Part};
 use super::vocabulary::{combinator_from_word, condition_from_word};
 use crate::error::AiError;
 
@@ -35,11 +36,64 @@ fn condition_of(value: &JsonValue<'_>) -> Result<Condition, AiError> {
     })
 }
 
+fn part_of(value: &JsonValue<'_>) -> Result<Part, AiError> {
+    match value {
+        JsonValue::String(name) => placeholder_named(name)
+            .map(Part::Placeholder)
+            .ok_or(AiError::BadReply("unknown placeholder")),
+        JsonValue::Object(object) => object
+            .get_string("fest")
+            .map(|text| Part::Fixed(text.to_string()))
+            .ok_or(AiError::BadReply(
+                "a part is neither fixed nor a placeholder",
+            )),
+        _ => Err(AiError::BadReply(
+            "a part is neither fixed nor a placeholder",
+        )),
+    }
+}
+
+fn level_of(value: &JsonValue<'_>) -> Result<Level, AiError> {
+    let JsonValue::Object(object) = value else {
+        return Err(AiError::BadReply("a level is not an object"));
+    };
+    let parts = object
+        .get_array("teile")
+        .ok_or(AiError::BadReply("a level has no parts"))?
+        .iter()
+        .map(part_of)
+        .collect::<Result<Vec<_>, _>>()?;
+    if parts.is_empty() {
+        return Err(AiError::BadReply("a level has no parts"));
+    }
+    let separator = object
+        .get_string("trenner")
+        .and_then(|text| separator_named(text))
+        .ok_or(AiError::BadReply("unknown separator"))?;
+    Ok(Level { parts, separator })
+}
+
+fn levels_of(object: &JsonObject<'_>) -> Result<Levels, AiError> {
+    let folders = object
+        .get_array("ordner")
+        .ok_or(AiError::BadReply("no folders"))?
+        .iter()
+        .map(level_of)
+        .collect::<Result<Vec<_>, _>>()?;
+    let file = match object.get("datei") {
+        Some(JsonValue::Null) => None,
+        Some(value) => Some(level_of(value)?),
+        None => return Err(AiError::BadReply("no file name")),
+    };
+    Ok(Levels { folders, file })
+}
+
+pub fn parse_levels(raw: &str) -> Result<Levels, AiError> {
+    levels_of(&object_of(raw)?)
+}
+
 pub fn parse_pattern(raw: &str) -> Result<String, AiError> {
-    object_of(raw)?
-        .get_string("pattern")
-        .map(ToString::to_string)
-        .ok_or(AiError::BadReply("no pattern"))
+    parse_levels(raw).map(|levels| levels.pattern())
 }
 
 /// The rule is confirmed and enabled: it is what the user asked for, and the
@@ -56,10 +110,7 @@ pub fn parse_generate(raw: &str) -> Result<RuleSpec, AiError> {
         .iter()
         .map(condition_of)
         .collect::<Result<Vec<_>, _>>()?;
-    let filing_pattern = object
-        .get_string("pattern")
-        .ok_or(AiError::BadReply("no pattern"))?
-        .to_string();
+    let filing_pattern = levels_of(&object)?.pattern();
     Ok(RuleSpec {
         name: None,
         conditions: RuleConditions { combinator, list },
@@ -85,7 +136,7 @@ mod tests {
     #[test]
     fn a_rule_reads_back() {
         let rule = parse_generate(
-            r#"{"match":"any","conditions":[{"kind":"tax_id","value":"12/345","not":true},{"kind":"folder","value":"Scans","not":false}],"pattern":"{year}/{sender}/"}"#,
+            r#"{"match":"any","conditions":[{"kind":"tax_id","value":"12/345","not":true},{"kind":"folder","value":"Scans","not":false}],"ordner":[{"teile":["year"],"trenner":""},{"teile":["sender"],"trenner":""}],"datei":null}"#,
         )
         .unwrap();
         assert_eq!(rule.conditions.combinator, Combinator::AnyOf);
@@ -103,9 +154,14 @@ mod tests {
     #[test]
     fn a_pattern_reads_back() {
         assert_eq!(
-            parse_pattern(r#"{"pattern":"{date}_{sender}"}"#).unwrap(),
-            "{date}_{sender}"
+            parse_pattern(
+                r#"{"ordner":[{"teile":[{"fest":"Post"}],"trenner":""}],"datei":{"teile":["date","sender"],"trenner":"_"}}"#
+            )
+            .unwrap(),
+            "Post/{date}_{sender}"
         );
+        let levels = parse_levels(r#"{"ordner":[],"datei":null}"#).unwrap();
+        assert_eq!(levels.count(), 0);
     }
 
     #[test]
@@ -113,10 +169,13 @@ mod tests {
         for raw in [
             "",
             "[]",
-            r#"{"match":"all","conditions":[],"pattern":1}"#,
-            r#"{"match":"some","conditions":[],"pattern":"a"}"#,
-            r#"{"match":"all","conditions":[{"kind":"nope","value":"x","not":false}],"pattern":"a"}"#,
-            r#"{"match":"all","conditions":[{"kind":"word","not":false}],"pattern":"a"}"#,
+            r#"{"match":"all","conditions":[],"ordner":1,"datei":null}"#,
+            r#"{"match":"some","conditions":[],"ordner":[],"datei":null}"#,
+            r#"{"match":"all","conditions":[{"kind":"nope","value":"x","not":false}],"ordner":[],"datei":null}"#,
+            r#"{"match":"all","conditions":[{"kind":"word","not":false}],"ordner":[],"datei":null}"#,
+            r#"{"match":"all","conditions":[],"ordner":[{"teile":["nope"],"trenner":""}],"datei":null}"#,
+            r#"{"match":"all","conditions":[],"ordner":[{"teile":["year"],"trenner":"x"}],"datei":null}"#,
+            r#"{"match":"all","conditions":[],"ordner":[]}"#,
         ] {
             assert!(parse_generate(raw).is_err(), "{raw}");
         }

@@ -17,6 +17,9 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::time::Instant;
 
+use ncrs_index::{DocumentFields, Kinds};
+
+use super::annotate::annotated_paths;
 use super::cache::{cache_key, ResultCache};
 use super::holdout::holdout_cases;
 use super::matrix::{all_cases, archive_kinds, fixtures, Ask, Axis, Case, Expected, Language};
@@ -46,6 +49,7 @@ fn axis_name(axis: Axis) -> &'static str {
         Axis::FileName => "file name",
         Axis::Condition => "condition",
         Axis::Recognize => "recognize",
+        Axis::Default => "default",
         Axis::Holdout => "holdout",
     }
 }
@@ -67,10 +71,17 @@ fn context_documents() -> Vec<ContextDocument> {
         .collect()
 }
 
-fn request_of(case: &Case, prefix: &str) -> RuleRequest {
+fn request_of(case: &Case, prefix: &str, kinds: &Kinds) -> RuleRequest {
     match &case.ask {
         Ask::Describe(description) => RuleRequest::generate(prefix, description),
-        Ask::Paths { question, paths } => RuleRequest::recognize(prefix, question, paths),
+        Ask::Paths { question, paths } => {
+            let files: Vec<(String, DocumentFields)> = paths
+                .iter()
+                .zip(fixtures())
+                .map(|(path, fixture)| (path.clone(), fixture.fields))
+                .collect();
+            RuleRequest::recognize(prefix, question, &annotated_paths(&files, kinds))
+        }
     }
 }
 
@@ -302,7 +313,7 @@ fn with_model_rule_matrix_reports() {
         // One session per group: the prefix is decoded once for the group.
         let mut session: Option<RuleSession<'static>> = None;
         for case in cases.iter().filter(|case| case.axis == axis) {
-            let request = request_of(case, &prefix);
+            let request = request_of(case, &prefix, &kinds);
             let key = cache_key(&LOCAL_MODEL, &request);
             let (raw, cached, millis) = if let Some(raw) = cache.get(&key) {
                 let started = Instant::now();

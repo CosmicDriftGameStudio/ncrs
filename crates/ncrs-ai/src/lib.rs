@@ -45,7 +45,10 @@ pub use model_file::{
     LOCAL_MODEL, LOCAL_MODEL_FOLDER,
 };
 #[cfg(feature = "llama")]
-pub use rules::{ContextDocument, RuleRequest};
+pub use rules::{
+    annotated_paths, pattern_mismatches, ContextDocument, Level, Levels, Mismatch, Part,
+    RuleRequest,
+};
 pub use status::{Compute, LocalModelStatus};
 #[cfg(any(test, feature = "testing"))]
 pub use testing::{FakeProvider, ScriptedChatModel};

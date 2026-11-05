@@ -7,6 +7,7 @@ use ncrs_intake::FILING_PLACEHOLDERS;
 
 use super::matrix::{Ask, Axis, Case, Expected, Language};
 use super::parse::parse_generate;
+use super::prompt::with_levels;
 
 const HOLDOUT: &str = include_str!("holdout.txt");
 
@@ -21,7 +22,7 @@ pub fn holdout_cases() -> Vec<Case> {
             else {
                 panic!("a holdout line is `language | sentence | answer`: {line}");
             };
-            let spec = parse_generate(answer)
+            let spec = parse_generate(&with_levels(answer))
                 .unwrap_or_else(|error| panic!("the answer of {text:?} is bad: {error}"));
             Case {
                 axis: Axis::Holdout,

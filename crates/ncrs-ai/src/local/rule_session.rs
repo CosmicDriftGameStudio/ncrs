@@ -10,7 +10,7 @@ use ncrs_index::{Kinds, RuleSpec};
 use super::{chat_threads, decode_tokens, LocalModel, MAX_BATCH_TOKENS};
 use crate::error::AiError;
 use crate::rules::{
-    parse_generate, parse_pattern, prefix_text, ContextDocument, RuleRequest, END_OF_TURN,
+    parse_generate, parse_levels, prefix_text, ContextDocument, Levels, RuleRequest, END_OF_TURN,
 };
 
 /// Room after the prefix for the task and its answer.
@@ -81,9 +81,10 @@ impl<'model> RuleSession<'model> {
         parse_generate(&self.answer(&request)?)
     }
 
-    pub fn recognize(&mut self, question: &str, paths: &[String]) -> Result<String, AiError> {
+    /// `paths` is the text of `annotated_paths`.
+    pub fn recognize(&mut self, question: &str, paths: &str) -> Result<Levels, AiError> {
         let request = RuleRequest::recognize(&self.prefix, question, paths);
-        parse_pattern(&self.answer(&request)?)
+        parse_levels(&self.answer(&request)?)
     }
 
     /// The raw answer to `request`, which has to start with this session's
