@@ -15,7 +15,7 @@ use ncrs_intake::{rule_problem, TextChain};
 use ncrs_pipeline::{Load, OwnDetails};
 
 use crate::review_work::{AcceptSummary, ReviewAccess, ReviewItem};
-use crate::rules_work::{RuleTry, RulesAccess, TriedDocument};
+use crate::rules_work::{ArchiveMove, RuleTry, RulesAccess, TriedDocument};
 
 mod change;
 mod groups;
@@ -120,10 +120,15 @@ pub enum ChatResult {
 pub struct RuleTrial {
     /// All documents the rule matches.
     pub matches: usize,
-    /// Of them, the ones in the archive: filing leaves those where they lie.
-    pub in_archive: usize,
-    /// The first of those that would move, as they stand and as they would stand.
+    /// The archive documents that already lie where the rule puts them.
+    pub right: usize,
+    /// The matches that are not in the archive, so they come from the inbox.
+    pub from_inbox: usize,
+    /// The first of those that would move, as they stand and as they would
+    /// stand.
     pub examples: Vec<TriedDocument>,
+    /// The archive documents the rule renames or moves.
+    pub archive_moves: Vec<ArchiveMove>,
 }
 
 /// How many matching documents the chat shows.
@@ -332,13 +337,15 @@ impl ChatAccess {
         })?;
         Ok(RuleTrial {
             matches: tried.documents.len() + tried.more,
-            in_archive: tried.in_archive,
+            right: tried.in_archive - tried.archive_moves.len(),
+            from_inbox: tried.documents.len() + tried.more - tried.in_archive,
             examples: tried
                 .documents
                 .into_iter()
                 .filter(|document| !document.is_in_archive())
                 .take(RULE_TRIAL_EXAMPLES)
                 .collect(),
+            archive_moves: tried.archive_moves,
         })
     }
 

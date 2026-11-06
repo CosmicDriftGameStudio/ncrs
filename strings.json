@@ -6901,6 +6901,12 @@
       "de": "Fertig: **{done} Dateien** abgelegt. {stays} bleiben in {folder}."
     },
     {
+      "key": "hermes_chat.filed_inside",
+      "context": "Hermes chat (F2): added to the report of a filing run when files that already lay in the archive were renamed or moved as well, because the folder levels changed. {count} is the number of those files.",
+      "en": "{count} files already in the archive were renamed or moved.",
+      "de": "{count} Dateien, die schon im Archiv lagen, wurden umbenannt oder verschoben."
+    },
+    {
       "key": "hermes_chat.filed_skipped",
       "context": "Hermes chat (F2): Added to the filing report when some files were skipped. {skipped} is a number.",
       "en": "I skipped {skipped} because they changed in the meantime.",
@@ -8671,6 +8677,12 @@
       "de": "{count} Ebenen gefunden"
     },
     {
+      "key": "hermes_chat.levels_changed",
+      "context": "Title of the card that lists the folder levels after the user started to change them. Replaces the title of the levels found.",
+      "en": "Changed levels",
+      "de": "Geänderte Ebenen"
+    },
+    {
       "key": "hermes_chat.levels_suggested",
       "context": "Title of the card with the standard order proposed for a new, empty filing folder. {count} is the number of levels.",
       "en": "Suggested order, {count} levels",
@@ -8702,9 +8714,9 @@
     },
     {
       "key": "hermes_chat.levels_keep",
-      "context": "Button: accept the levels shown for the folder.",
-      "en": "Keep it",
-      "de": "So lassen"
+      "context": "Button under the levels Hermes found: the levels are right, make the rule from them.",
+      "en": "Looks right",
+      "de": "Passt so"
     },
     {
       "key": "hermes_chat.levels_create",
@@ -8725,16 +8737,52 @@
       "de": "Standard nehmen"
     },
     {
-      "key": "hermes_chat.level_drop",
-      "context": "Button that removes one level from the order. {number} is the level number.",
-      "en": "Drop {number}",
-      "de": "{number} weglassen"
+      "key": "hermes_chat.levels_apply",
+      "context": "Button under the levels card after the user changed a level in words: take the levels as they now stand and go on to the trial of the rule.",
+      "en": "Apply",
+      "de": "Übernehmen"
+    },
+    {
+      "key": "hermes_chat.levels_more",
+      "context": "Button under the levels card after a change: say one more change of the levels in words.",
+      "en": "Change more",
+      "de": "Weiter ändern"
+    },
+    {
+      "key": "hermes_chat.levels_discard",
+      "context": "Button under the levels card after a change: throw the changes away and show the levels Hermes found again.",
+      "en": "Discard",
+      "de": "Verwerfen"
+    },
+    {
+      "key": "hermes_chat.levels_done",
+      "context": "Button while the user changes the levels: nothing more to change, take the levels as they stand and go on to the trial of the rule. Always there, also before the first change.",
+      "en": "Done",
+      "de": "Fertig"
+    },
+    {
+      "key": "hermes_chat.level_before",
+      "context": "Small line under a changed level in the levels card. {value} is what the level wrote before the change, from a real file.",
+      "en": "before: {value}",
+      "de": "vorher: {value}"
+    },
+    {
+      "key": "hermes_chat.levels_preview",
+      "context": "Line under the levels card after a change, before the examples. {count} is how many existing files the changed levels would rename or move when applied.",
+      "en": "On applying, {count} files are renamed or moved:",
+      "de": "Beim Übernehmen werden {count} Dateien umbenannt oder verschoben:"
+    },
+    {
+      "key": "hermes_chat.levels_preview_none",
+      "context": "Line under the levels card after a change when no existing file would be renamed or moved by the changed levels.",
+      "en": "On applying, no existing file changes.",
+      "de": "Beim Übernehmen ändert sich keine vorhandene Datei."
     },
     {
       "key": "hermes_chat.levels_change_hint",
-      "context": "Explains how to change the levels: with the buttons or in a typed sentence.",
-      "en": "Drop levels with the buttons, or tell me in words, for example \"year, then month, file name date_sender\".",
-      "de": "Lass Ebenen mit den Knöpfen weg, oder sag es in Worten, zum Beispiel „Jahr, dann Monat, Datei Datum_Absender“."
+      "context": "Explains how to change the levels: tell it in a typed sentence; the buttons below finish. Examples with level numbers as on the card.",
+      "en": "Tell me in words what to change, for example \"year and month together in level 2\" or \"date first in level 3\". Say when you are done.",
+      "de": "Sag in Worten, was sich ändern soll, zum Beispiel „Jahr und Monat zusammen in Ebene 2“ oder „Datum vorne bei Ebene 3“. Sag Bescheid, wenn du fertig bist."
     },
     {
       "key": "hermes_chat.level_role_fixed",
@@ -8833,10 +8881,10 @@
       "de": "… und {count} weitere"
     },
     {
-      "key": "hermes_chat.rule_in_archive",
-      "context": "Line of the rule trial about where the matching documents lie. {in_archive} already lie in the archive, which is never reorganised, {moves} would be moved out of the source folders. Both are counts.",
-      "en": "Already in the archive: {in_archive}. Would be moved: {moves}.",
-      "de": "Schon im Archiv: {in_archive}. Würden verschoben: {moves}."
+      "key": "hermes_chat.rule_trial_counts",
+      "context": "Line of the rule trial about where the matching documents lie. {right} already lie in the archive where the rule would put them, {moves} would be renamed or moved (existing archive files included), {inbox} of those come from the source folders. All three are counts.",
+      "en": "Already filed correctly: {right}. Would be renamed or moved: {moves} ({inbox} of them from the inbox).",
+      "de": "Schon richtig abgelegt: {right}. Würden umbenannt oder verschoben: {moves} (davon {inbox} aus dem Eingang)."
     },
     {
       "key": "hermes_chat.rule_create",

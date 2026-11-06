@@ -42,9 +42,17 @@ mod tests {
     /// Four invoices of `Alfa AG` in the archive, one more waits in the inbox,
     /// and the empty folder `Telefon` has just got its rule.
     fn talk_with_stored_rule() -> Talk {
+        stored_rule(&[(
+            WAITING,
+            letter("Alfa AG", "05.07.2021", "Rechnung", 77),
+            (2021, 7, 5),
+        )])
+    }
+
+    fn stored_rule(waiting: &[(&str, String, (i32, u32, u32))]) -> Talk {
         let mut talk = Talk::in_dir(tempfile::tempdir().unwrap(), &["archive"], &["inbox"]);
         for (month, day) in [(1, 10), (3, 11), (6, 12), (9, 13)] {
-            talk.index_document(
+            let id = talk.index_document(
                 &format!("archive/Alfa/2020/2020-{month:02}-{day}.pdf"),
                 &letter(
                     "Alfa AG",
@@ -53,9 +61,29 @@ mod tests {
                     day,
                 ),
             );
+            talk.set_fields(
+                id,
+                &ncrs_index::DocumentFields {
+                    sender: Some("Alfa AG".to_owned()),
+                    kind: Some("invoice".to_owned()),
+                    date: chrono::NaiveDate::from_ymd_opt(2020, month, day),
+                    ..ncrs_index::DocumentFields::default()
+                },
+            );
         }
         std::fs::create_dir_all(talk.path("archive/Telefon")).unwrap();
-        talk.index_inbox_document(WAITING, &letter("Alfa AG", "05.07.2021", "Rechnung", 77));
+        for (name, text, (year, month, day)) in waiting {
+            let id = talk.index_inbox_document(name, text);
+            talk.set_fields(
+                id,
+                &ncrs_index::DocumentFields {
+                    sender: Some("Alfa AG".to_owned()),
+                    kind: Some("invoice".to_owned()),
+                    date: chrono::NaiveDate::from_ymd_opt(*year, *month, *day),
+                    ..ncrs_index::DocumentFields::default()
+                },
+            );
+        }
         talk = talk.with_rules();
         let folder = talk.path("archive");
         talk.send(Message::ChangeArea {
@@ -157,5 +185,125 @@ mod tests {
             "no trial filed anything"
         );
         assert!(talk.actions.is_empty());
+    }
+
+    fn names_below(talk: &Talk, folder: &str) -> Vec<String> {
+        talk.files()
+            .keys()
+            .filter(|path| path.starts_with(folder))
+            .cloned()
+            .collect()
+    }
+
+    #[test]
+    fn file_now_renames_the_archive_documents_with_the_waiting_file_and_undo_puts_all_back() {
+        let mut talk = talk_with_stored_rule();
+        let before = talk.files();
+
+        trial_of_the_waiting_file(&mut talk, &ChipReply::ModeMove);
+        talk.press(&ChipReply::FileAll);
+
+        assert!(names_below(&talk, "archive/Alfa").is_empty());
+        assert_eq!(names_below(&talk, "archive/Telefon/2020/").len(), 4);
+        assert!(talk.files().contains_key(FILED_AT));
+
+        talk.press(&ChipReply::Undo);
+        talk.press(&ChipReply::PutBack);
+        assert_eq!(talk.files(), before);
+    }
+
+    #[test]
+    fn file_now_with_only_archive_documents_moves_them_at_once_and_undo_puts_them_back() {
+        let mut talk = stored_rule(&[]);
+        let before = talk.files();
+
+        talk.press(&ChipReply::RuleNow);
+        assert!(names_below(&talk, "archive/Alfa").is_empty());
+        assert_eq!(names_below(&talk, "archive/Telefon/2020/").len(), 4);
+        talk.press(&ChipReply::Undo);
+        talk.press(&ChipReply::PutBack);
+        assert_eq!(talk.files(), before);
+    }
+
+    #[test]
+    fn archive_renames_run_even_when_the_waiting_file_cannot_be_filed() {
+        let copy = letter("Alfa AG", "10.01.2020", "Rechnung", 10);
+        let mut talk = stored_rule(&[("inbox/copy.pdf", copy, (2020, 1, 10))]);
+        let before = talk.files();
+
+        talk.press(&ChipReply::RuleNow);
+        talk.press(&ChipReply::Folder(talk.path("archive")));
+        talk.press(&ChipReply::Once);
+        talk.press(&ChipReply::ModeMove);
+
+        assert!(names_below(&talk, "archive/Alfa").is_empty());
+        assert_eq!(names_below(&talk, "archive/Telefon/2020/").len(), 4);
+        assert!(talk.files().contains_key("inbox/copy.pdf"));
+        assert!(
+            !talk.path("archive/Alfa").exists(),
+            "the emptied folders go"
+        );
+        talk.press(&ChipReply::Undo);
+        talk.press(&ChipReply::PutBack);
+        assert_eq!(talk.files(), before);
+        assert!(talk.path("archive/Alfa/2020").is_dir());
+    }
+
+    #[test]
+    fn archive_renames_in_two_archives_each_run_in_its_own_archive() {
+        let mut talk = Talk::in_dir(
+            tempfile::tempdir().unwrap(),
+            &["archive", "second"],
+            &["inbox"],
+        );
+        for (root, day) in [
+            ("archive", 10),
+            ("archive", 11),
+            ("second", 12),
+            ("second", 13),
+        ] {
+            let id = talk.index_document(
+                &format!("{root}/Alfa/2020/2020-01-{day}.pdf"),
+                &letter("Alfa AG", &format!("{day}.01.2020"), "Rechnung", day),
+            );
+            talk.set_fields(
+                id,
+                &ncrs_index::DocumentFields {
+                    sender: Some("Alfa AG".to_owned()),
+                    kind: Some("invoice".to_owned()),
+                    date: chrono::NaiveDate::from_ymd_opt(2020, 1, day),
+                    ..ncrs_index::DocumentFields::default()
+                },
+            );
+        }
+        talk = talk.with_rules();
+        std::fs::create_dir_all(talk.path("archive/Telefon")).unwrap();
+        let before = talk.files();
+        talk.send(Message::ChangeArea {
+            folder: talk.path("archive"),
+            area: "Telefon".to_owned(),
+        });
+        talk.press(&ChipReply::LevelsKeep);
+        talk.model.push_rule(Ok(spec()));
+        talk.type_text("Rechnungen kommen hierhin");
+        talk.press(&ChipReply::RuleCreate);
+        talk.press(&ChipReply::RuleNow);
+
+        for root in ["archive", "second"] {
+            assert!(
+                names_below(&talk, &format!("{root}/Alfa")).is_empty(),
+                "{:?}",
+                talk.files().keys()
+            );
+            assert_eq!(
+                names_below(&talk, &format!("{root}/Telefon/2020/")).len(),
+                2
+            );
+        }
+        talk.press(&ChipReply::Undo);
+        talk.press(&ChipReply::PutBack);
+        talk.press(&ChipReply::IntentUndo);
+        talk.press(&ChipReply::PutBack);
+        assert_eq!(talk.files(), before);
     }
 }

@@ -2,7 +2,7 @@
 
 use ncrs_ai::{
     file_names_share_structure, folder_depth, pattern_mismatches, AiError, ChatModel,
-    ContextDocument, Levels,
+    ContextDocument, Levels, Revision,
 };
 use ncrs_index::{DocumentFields, Kinds, RuleSpec};
 
@@ -34,6 +34,8 @@ pub enum RuleAsk {
 #[derive(Debug, Clone)]
 pub enum RuleAnswer {
     Levels(Result<Levels, String>),
+    /// The levels after a sentence about them, and whether the user is done.
+    Revised(Result<Revision, String>),
     Rule(Result<RuleSpec, String>),
     /// The thread that asked the model broke.
     Failed(String),
@@ -50,7 +52,7 @@ impl RuleAsk {
                 kinds,
                 previous,
                 sentence,
-            } => RuleAnswer::Levels(
+            } => RuleAnswer::Revised(
                 model
                     .revise_levels(files, kinds, previous, sentence)
                     .map_err(|error| error.to_string()),

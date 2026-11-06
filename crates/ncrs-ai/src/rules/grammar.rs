@@ -81,6 +81,15 @@ pub fn recognize_grammar(folder_depth: Option<usize>) -> String {
     format!("{RECOGNIZE_RULES}{levels}{}", level_rules())
 }
 
+/// The levels after a change, and whether the user is done:
+/// `{"ordner":[...],"datei":...,"fertig":false}`.
+pub fn revise_grammar() -> String {
+    format!(
+        "root ::= \"{{\" levels \",\\\"fertig\\\":\" (\"true\" | \"false\") \"}}\"\n{FREE_LEVELS}{}",
+        level_rules()
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -10,7 +10,8 @@ use ncrs_index::{Kinds, RuleSpec};
 use super::{chat_threads, decode_tokens, LocalModel, MAX_BATCH_TOKENS};
 use crate::error::AiError;
 use crate::rules::{
-    parse_generate, parse_levels, prefix_text, ContextDocument, Levels, RuleRequest, END_OF_TURN,
+    parse_generate, parse_levels, parse_revision, prefix_text, ContextDocument, Levels, Revision,
+    RuleRequest, END_OF_TURN,
 };
 
 /// Room after the prefix for the task and its answer.
@@ -90,6 +91,11 @@ impl<'model> RuleSession<'model> {
     ) -> Result<Levels, AiError> {
         let request = RuleRequest::recognize(&self.prefix, question, paths, folder_depth);
         parse_levels(&self.answer(&request)?)
+    }
+
+    pub fn revise(&mut self, question: &str) -> Result<Revision, AiError> {
+        let request = RuleRequest::revise(&self.prefix, question);
+        parse_revision(&self.answer(&request)?)
     }
 
     /// The raw answer to `request`, which has to start with this session's

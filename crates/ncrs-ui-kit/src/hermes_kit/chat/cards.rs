@@ -167,6 +167,10 @@ pub struct LevelRow {
     pub text: String,
     /// "fixed", the name of a field, or "file: date_sender"; localized by the caller.
     pub role: String,
+    /// What this level was before the change, as the caller words it ("before:
+    /// ..."). A row with it is a changed one: its value is bold and the old
+    /// one stands under it.
+    pub before: Option<String>,
 }
 
 /// The levels of a pattern, one row each, under a title and above a footer.
@@ -180,6 +184,20 @@ pub fn levels_card<'a, M: 'a>(
         .push(card_text(title, palette.text, Wrapping::Word, true))
         .spacing(GAP_S);
     for level in levels {
+        let mut value = Column::new().push(card_text(
+            &level.text,
+            palette.text,
+            Wrapping::WordOrGlyph,
+            level.before.is_some(),
+        ));
+        if let Some(before) = &level.before {
+            value = value.push(card_text(
+                before,
+                palette.dim_text,
+                Wrapping::WordOrGlyph,
+                false,
+            ));
+        }
         column = column.push(
             Row::new()
                 .push(card_text(
@@ -188,15 +206,7 @@ pub fn levels_card<'a, M: 'a>(
                     Wrapping::None,
                     false,
                 ))
-                .push(
-                    container(card_text(
-                        &level.text,
-                        palette.text,
-                        Wrapping::WordOrGlyph,
-                        false,
-                    ))
-                    .width(Length::FillPortion(3)),
-                )
+                .push(container(value).width(Length::FillPortion(3)))
                 .push(
                     container(card_text(
                         &level.role,

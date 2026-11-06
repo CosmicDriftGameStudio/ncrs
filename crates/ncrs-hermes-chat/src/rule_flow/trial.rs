@@ -1,17 +1,20 @@
 //! The trial of a proposed rule, the click that stores it and "file now".
 
-use ncrs_filing::chat_work::{ChatWork, RuleSaveFailure, RuleTrial};
+use ncrs_filing::chat_work::{ChatWork, RuleSaveFailure, RuleTrial, RULE_TRIAL_EXAMPLES};
 use ncrs_filing::rules_work::TryOutcome;
 use ncrs_i18n::Msg;
 use ncrs_index::{Combinator, Condition, Kinds, RuleSpec};
 use ncrs_intake::filing_pieces::FilingTarget;
 use ncrs_ui_kit::kit::condition_kind_name;
 
+use std::path::PathBuf;
+
 use super::ask_what;
 use crate::action::Action;
 use crate::ctx::Ctx;
-use crate::state::{ChipReply, Part, State, Step};
+use crate::state::{ChipReply, Part, RuleMoves, State, Step};
 use crate::texts::{fill, number, rule_problem_text, segments, text};
+use crate::tidy::archive_run;
 use crate::update::{
     cancel_chip, chip, fallback_chips, folder_answer, hermes, say, source_chips, work,
 };
@@ -93,8 +96,11 @@ pub fn trial_done(state: &mut State, ctx: &Ctx, tried: Result<RuleTrial, String>
         return;
     }
     let kinds = flow.kinds.clone();
-    let moves = trial.matches.saturating_sub(trial.in_archive);
-    flow.trial_moves = moves;
+    let moves = trial.from_inbox + trial.archive_moves.len();
+    flow.moves = RuleMoves {
+        from_inbox: trial.from_inbox,
+        archive: trial.archive_moves.clone(),
+    };
     let sentence = fill(
         ctx.lang,
         Msg::HermesChatRuleProposal,
@@ -112,21 +118,33 @@ pub fn trial_done(state: &mut State, ctx: &Ctx, tried: Result<RuleTrial, String>
         .examples
         .iter()
         .map(|document| example_line(ctx, document))
+        .chain(trial.archive_moves.iter().map(|found| {
+            fill(
+                ctx.lang,
+                Msg::HermesChatRuleExample,
+                &[
+                    ("from", &segments(&found.from).join("/")),
+                    ("to", &segments(&found.to).join("/")),
+                ],
+            )
+        }))
+        .take(RULE_TRIAL_EXAMPLES)
         .collect();
-    if moves > trial.examples.len() {
+    if moves > lines.len() {
         lines.push(fill(
             ctx.lang,
             Msg::HermesChatRuleExamplesMore,
-            &[("count", &number(moves - trial.examples.len()))],
+            &[("count", &number(moves - lines.len()))],
         ));
     }
-    if trial.in_archive > 0 {
+    if trial.right > 0 || !trial.archive_moves.is_empty() {
         lines.push(fill(
             ctx.lang,
-            Msg::HermesChatRuleInArchive,
+            Msg::HermesChatRuleTrialCounts,
             &[
-                ("in_archive", &number(trial.in_archive)),
+                ("right", &number(trial.right)),
                 ("moves", &number(moves)),
+                ("inbox", &number(trial.from_inbox)),
             ],
         ));
     }
@@ -163,12 +181,14 @@ pub fn create(state: &mut State) {
 pub fn stored(state: &mut State, ctx: &Ctx, stored: Result<(), RuleSaveFailure>) {
     match stored {
         Ok(()) => {
-            let something_moves = state
+            let moves = state
                 .session
                 .rule
-                .as_ref()
-                .is_some_and(|flow| flow.trial_moves > 0);
-            state.session.rule = None;
+                .take()
+                .map(|flow| flow.moves)
+                .unwrap_or_default();
+            let something_moves = moves.total() > 0;
+            state.session.rule_moves = Some(moves);
             state.step = Step::Idle;
             let mut chips = Vec::new();
             if something_moves && !ctx.sources.is_empty() {
@@ -198,9 +218,22 @@ pub fn stored(state: &mut State, ctx: &Ctx, stored: Result<(), RuleSaveFailure>)
     }
 }
 
-/// "File now": the usual tidy-up of the source folders.
+/// "File now": the usual tidy-up of the source folders, with the archive
+/// documents the stored rule renames or moves in the same run. When nothing
+/// comes from the inbox, the run holds only those.
 pub fn file_now(state: &mut State, ctx: &Ctx) -> Option<Action> {
     state.step = Step::TidyFolder;
+    let archive_only = state
+        .session
+        .rule_moves
+        .as_ref()
+        .is_some_and(|moves| moves.from_inbox == 0 && !moves.archive.is_empty());
+    if archive_only {
+        if let Some(source) = ctx.sources.first() {
+            return file_archive_only(state, ctx, source.clone());
+        }
+    }
+    state.session.rule_moves_wait = true;
     match ctx.sources.as_slice() {
         [only] => folder_answer(state, ctx, only.clone(), false),
         _ => {
@@ -212,4 +245,11 @@ pub fn file_now(state: &mut State, ctx: &Ctx) -> Option<Action> {
             None
         }
     }
+}
+
+fn file_archive_only(state: &mut State, ctx: &Ctx, source: PathBuf) -> Option<Action> {
+    let moves = state.session.rule_moves.take()?;
+    state.step = Step::Idle;
+    archive_run(state, ctx, source, moves.archive);
+    None
 }

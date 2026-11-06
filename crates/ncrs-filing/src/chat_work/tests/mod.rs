@@ -549,6 +549,7 @@ fn run_plan(setup: &Setup, transfer: Transfer) -> RunPlan {
         transfer,
         source_root: source,
         target_root: setup.dir.path().join("archive"),
+        inside: Vec::new(),
         items: vec![item("a.txt", "first"), item("b.txt", "second")],
     }
 }
@@ -578,6 +579,61 @@ fn a_run_outside_its_roots_is_refused_as_a_whole() {
     assert!(!setup.dir.path().join("archive/Alfa").exists());
 }
 
+#[test]
+fn files_inside_the_target_are_renamed_in_the_same_run_and_undone_with_it() {
+    let setup = Setup::new();
+    let old = setup.write("archive/Gehalt/2017/old.txt", "old");
+    setup.write("archive/Keep/2017/other.txt", "other");
+    let mut run = run_plan(&setup, Transfer::Move);
+    let archive = setup.dir.path().join("archive");
+    run.inside = vec![RunItem {
+        hash: hash_path(&old).unwrap(),
+        from: old.clone(),
+        to: PathBuf::from("Beta/new.txt"),
+    }];
+
+    let outside = |change: &dyn Fn(&mut RunPlan)| {
+        let mut refused = run.clone();
+        change(&mut refused);
+        match setup.access.run(ChatWork::File { run: refused }) {
+            ChatResult::Filed(result) => result.unwrap_err(),
+            other => panic!("{other:?}"),
+        }
+    };
+    outside(&|plan| plan.inside[0].from = setup.dir.path().join("inbox/a.txt"));
+    outside(&|plan| plan.inside[0].to = PathBuf::from("../escape.txt"));
+    assert!(old.exists());
+
+    let ChatResult::Filed(report) = setup.access.run(ChatWork::File { run }) else {
+        panic!("not a filing result");
+    };
+    assert_eq!(
+        report.unwrap(),
+        RunReport {
+            done: 2,
+            skipped: 0,
+            inside_done: 1,
+        }
+    );
+    assert!(!old.exists());
+    assert!(archive.join("Beta/new.txt").exists());
+    assert!(!archive.join("Gehalt").exists(), "the emptied folders go");
+    assert!(archive.join("Keep/2017/other.txt").exists());
+    assert!(archive.exists());
+
+    let summary = last_run(&setup).unwrap();
+    assert_eq!(summary.items, 3);
+    let ChatResult::Undone(undone) = setup.access.run(ChatWork::Undo {
+        batch: summary.batch,
+    }) else {
+        panic!("not an undo result");
+    };
+    assert_eq!(undone.unwrap().undone, 3);
+    assert!(old.exists());
+    assert!(!archive.join("Beta").exists());
+    assert!(setup.dir.path().join("inbox/a.txt").exists());
+}
+
 fn last_run(setup: &Setup) -> Option<RunSummary> {
     match setup.access.run(ChatWork::LastRun) {
         ChatResult::LastRun(result) => result.unwrap(),
@@ -598,7 +654,8 @@ fn a_move_run_is_summarised_and_undone_from_the_journal() {
         report.unwrap(),
         RunReport {
             done: 2,
-            skipped: 0
+            skipped: 0,
+            inside_done: 0,
         }
     );
     assert!(!setup.dir.path().join("inbox/a.txt").exists());
@@ -668,7 +725,7 @@ fn duplicates_go_to_the_trash_and_come_back_with_the_undo() {
         report.unwrap(),
         TrashReport {
             trashed: 1,
-            skipped: 0
+            skipped: 0,
         }
     );
     assert!(!copy.exists());

@@ -27,12 +27,18 @@ pub struct RunPlan {
     pub source_root: PathBuf,
     pub target_root: PathBuf,
     pub items: Vec<RunItem>,
+    /// Files that already lie below the target and are renamed or moved
+    /// within it in the same run: `from` is absolute below the target.
+    pub inside: Vec<RunItem>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RunReport {
+    /// The files carried out of the source folder.
     pub done: usize,
     pub skipped: usize,
+    /// The files renamed or moved within the target.
+    pub inside_done: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -103,6 +109,22 @@ fn refusal(run: &RunPlan) -> Option<String> {
             return Some(format!("{} leaves the target", item.to.display()));
         }
     }
+    for item in &run.inside {
+        let below_target = item
+            .from
+            .strip_prefix(&run.target_root)
+            .is_ok_and(stays_below);
+        if !below_target {
+            return Some(format!(
+                "{} is not below {}",
+                item.from.display(),
+                run.target_root.display()
+            ));
+        }
+        if !stays_below(&item.to) {
+            return Some(format!("{} leaves the target", item.to.display()));
+        }
+    }
     None
 }
 
@@ -114,6 +136,7 @@ pub fn file(access: &ChatAccess, run: &RunPlan) -> Result<RunReport, String> {
         let items: Vec<ExecutionItem> = run
             .items
             .iter()
+            .chain(&run.inside)
             .map(|item| {
                 let document_id = index
                     .document_by_hash(&item.hash)
@@ -129,6 +152,7 @@ pub fn file(access: &ChatAccess, run: &RunPlan) -> Result<RunReport, String> {
                 })
             })
             .collect::<Result<_, String>>()?;
+        let carried = run.items.len();
         let report = execute::execute_run(
             index,
             BatchKind::Hermes,
@@ -137,16 +161,47 @@ pub fn file(access: &ChatAccess, run: &RunPlan) -> Result<RunReport, String> {
             execute::RunPlaces {
                 source: &run.source_root,
                 target: &run.target_root,
+                inside_target: !run.inside.is_empty(),
             },
             &items,
             &mut Counting,
         )
         .map_err(|err| err.to_string())?;
+        let moved = |reports: &[execute::ItemReport]| {
+            reports
+                .iter()
+                .filter(|item| item.outcome == execute::ItemOutcome::Moved)
+                .count()
+        };
+        let (carried_items, inside_items) = report.items.split_at(carried);
+        remove_emptied_folders(
+            &run.target_root,
+            inside_items
+                .iter()
+                .filter(|item| item.outcome == execute::ItemOutcome::Moved)
+                .map(|item| item.from.as_path()),
+        );
         Ok(RunReport {
-            done: report.moved(),
+            done: moved(carried_items),
             skipped: report.skipped(),
+            inside_done: moved(inside_items),
         })
     })
+}
+
+/// The folders below `root` a run emptied by moving files out of them; `root`
+/// and every folder that still holds anything stay.
+fn remove_emptied_folders<'a>(root: &Path, moved_from: impl Iterator<Item = &'a Path>) {
+    let mut folders: Vec<&Path> = moved_from
+        .filter_map(Path::parent)
+        .flat_map(|parent| parent.ancestors().take_while(|folder| *folder != root))
+        .filter(|folder| folder.starts_with(root))
+        .collect();
+    folders.sort_by_key(|folder| std::cmp::Reverse(folder.components().count()));
+    for folder in folders {
+        // Fails on a folder that holds anything, hidden files included.
+        let _ = fs::remove_dir(folder);
+    }
 }
 
 pub fn trash_duplicates(
@@ -221,23 +276,24 @@ fn recent_run(index: &Index, batch: BatchId) -> Result<Option<RecentRun>, String
         .unwrap_or_default();
     let undoable = match (&info.source_root, &target_folder) {
         (Some(source), Some(target)) => {
+            let run_item = |item: &ncrs_index::JournalItem| RunItem {
+                from: item.from.clone(),
+                to: item
+                    .to
+                    .strip_prefix(target)
+                    .unwrap_or(&item.to)
+                    .to_path_buf(),
+                hash: item.hash,
+            };
+            let (inside, items): (Vec<_>, Vec<_>) =
+                done.iter().partition(|item| item.from.starts_with(target));
             let plan = RunPlan {
                 name: String::new(),
                 transfer: info.transfer,
                 source_root: source.given.clone(),
                 target_root: target.clone(),
-                items: done
-                    .iter()
-                    .map(|item| RunItem {
-                        from: item.from.clone(),
-                        to: item
-                            .to
-                            .strip_prefix(target)
-                            .unwrap_or(&item.to)
-                            .to_path_buf(),
-                        hash: item.hash,
-                    })
-                    .collect(),
+                items: items.into_iter().map(run_item).collect(),
+                inside: inside.into_iter().map(run_item).collect(),
             };
             refusal(&plan).is_none()
         }

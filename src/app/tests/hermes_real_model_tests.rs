@@ -33,7 +33,7 @@ const SHOT_SIZE: iced::Size = iced::Size::new(1740.0, 1130.0);
 
 /// The test archive keeps its text in files named like PDFs.
 #[derive(Debug)]
-struct Utf8Text;
+pub(in crate::app::tests) struct Utf8Text;
 
 impl TextSource for Utf8Text {
     fn extract(&self, path: &Path) -> Result<Extracted, TextError> {
@@ -48,7 +48,7 @@ impl TextSource for Utf8Text {
     }
 }
 
-fn canonical_folder(folder: &Path) -> Result<PathBuf, String> {
+pub(in crate::app::tests) fn canonical_folder(folder: &Path) -> Result<PathBuf, String> {
     std::fs::canonicalize(folder).map_err(|err| err.to_string())
 }
 
@@ -74,7 +74,12 @@ fn shoot(app: &App, name: &str) -> PathBuf {
 }
 
 /// What the app does with the chat's pending work, on the spot.
-fn settle(app: &mut App, ctx: &Ctx, access: &ChatAccess, model: &dyn ChatModel) {
+pub(in crate::app::tests) fn settle(
+    app: &mut App,
+    ctx: &Ctx,
+    access: &ChatAccess,
+    model: &dyn ChatModel,
+) {
     loop {
         let chat = &app.hermes_chat;
         let next = if let Some(work) = chat.pending_work().cloned() {
@@ -99,14 +104,20 @@ fn settle(app: &mut App, ctx: &Ctx, access: &ChatAccess, model: &dyn ChatModel) 
     }
 }
 
-fn has_chip(app: &App, reply: &ChipReply) -> bool {
+pub(in crate::app::tests) fn has_chip(app: &App, reply: &ChipReply) -> bool {
     app.hermes_chat
         .chips()
         .iter()
         .any(|chip| &chip.reply == reply)
 }
 
-fn press(app: &mut App, ctx: &Ctx, access: &ChatAccess, model: &dyn ChatModel, reply: &ChipReply) {
+pub(in crate::app::tests) fn press(
+    app: &mut App,
+    ctx: &Ctx,
+    access: &ChatAccess,
+    model: &dyn ChatModel,
+    reply: &ChipReply,
+) {
     let chip = app
         .hermes_chat
         .chips()
@@ -125,7 +136,13 @@ fn press(app: &mut App, ctx: &Ctx, access: &ChatAccess, model: &dyn ChatModel, r
     settle(app, ctx, access, model);
 }
 
-fn type_sentence(app: &mut App, ctx: &Ctx, access: &ChatAccess, model: &dyn ChatModel, text: &str) {
+pub(in crate::app::tests) fn type_sentence(
+    app: &mut App,
+    ctx: &Ctx,
+    access: &ChatAccess,
+    model: &dyn ChatModel,
+    text: &str,
+) {
     for message in [
         HermesChatMessage::InputChanged(text.to_owned()),
         HermesChatMessage::Submit,
@@ -135,7 +152,7 @@ fn type_sentence(app: &mut App, ctx: &Ctx, access: &ChatAccess, model: &dyn Chat
     settle(app, ctx, access, model);
 }
 
-fn levels_card_shown(app: &App) -> bool {
+pub(in crate::app::tests) fn levels_card_shown(app: &App) -> bool {
     matches!(
         app.hermes_chat.thread.last(),
         Some(Entry::Hermes { parts, .. }) if parts.iter().any(|part| matches!(part, Part::Levels(_)))
@@ -206,8 +223,7 @@ fn scenario(misplace: bool) {
     let dir = tempfile::tempdir().unwrap();
     let archive = ncrs_intake::test_archive::test_archive();
     archive.write_to(dir.path()).unwrap();
-    let (mut waiting, mut misfiled): (Vec<(String, PathBuf)>, Vec<PathBuf>) =
-        (Vec::new(), Vec::new());
+    let (mut waiting, mut misfiled): (Waiting, Misfiled) = (Vec::new(), Vec::new());
     if misplace {
         std::fs::remove_dir_all(dir.path().join("inbox")).unwrap();
     }
@@ -249,7 +265,7 @@ fn scenario(misplace: bool) {
             std::fs::rename(&path, &placed).unwrap();
         }
         match (misplace && sparkasse, kept_statements) {
-            (true, 1..=3) => misfiled.push(placed.clone()),
+            (true, 1..=3) => misfiled.push((placed.clone(), path.clone())),
             (true, 4..=9) => waiting.push((name.to_string_lossy().into_owned(), path.clone())),
             _ => {}
         }
@@ -427,6 +443,25 @@ fn scenario(misplace: bool) {
     model.shutdown();
 }
 
+type Waiting = Vec<(String, PathBuf)>;
+type Misfiled = Vec<(PathBuf, PathBuf)>;
+
+/// The wrong-year files lie at the rule's path after filing and back at the
+/// wrong one after Undo; the index follows either way.
+fn assert_wrong_year_placed(
+    slot: &Arc<Mutex<Option<Index>>>,
+    misfiled: &[(PathBuf, PathBuf)],
+    undone: bool,
+) {
+    for (wrong, right) in misfiled {
+        let (here, gone) = if undone { (wrong, right) } else { (right, wrong) };
+        assert!(here.is_file(), "{} missing", here.display());
+        assert!(!gone.exists(), "{} remains", gone.display());
+        assert!(index_has(slot, here), "index lacks {}", here.display());
+        assert!(!index_has(slot, gone), "index keeps {}", gone.display());
+    }
+}
+
 fn index_has(slot: &Arc<Mutex<Option<Index>>>, path: &Path) -> bool {
     let guard = slot.lock().unwrap();
     guard
@@ -438,7 +473,8 @@ fn index_has(slot: &Arc<Mutex<Option<Index>>>, path: &Path) -> bool {
 }
 
 /// Statements in a source folder and in a wrong year folder; the rule is made,
-/// "File now" files the source ones, the archive ones stay, Undo puts it back.
+/// "File now" files the source ones and puts the wrong-year ones where the
+/// rule says, Undo puts all back.
 fn file_and_undo(
     app: &mut App,
     ctx: &Ctx,
@@ -446,19 +482,23 @@ fn file_and_undo(
     model: &dyn ChatModel,
     slot: &Arc<Mutex<Option<Index>>>,
     root: &Path,
-    (waiting, misfiled): (&[(String, PathBuf)], &[PathBuf]),
+    (waiting, misfiled): (&Waiting, &Misfiled),
 ) {
     let proposal = last_hermes_text(app);
     println!("PROPOSAL:\n{proposal}");
     let moves = waiting.len();
+    let renamed = misfiled.len();
+    let lying_right = 24 - renamed;
+    let all = moves + renamed;
     assert!(
-        proposal.contains(&format!("Würden verschoben: {moves}.")),
+        proposal.contains(&format!(
+            "Schon richtig abgelegt: {lying_right}. Würden umbenannt oder verschoben: {all} (davon {moves} aus dem Eingang)."
+        )),
         "{proposal}"
     );
-    assert!(proposal.contains("Schon im Archiv: 24."), "{proposal}");
     assert_eq!(proposal.matches(" → ").count(), 3, "{proposal}");
     assert!(
-        proposal.contains(&format!("… und {} weitere", moves - 3)),
+        proposal.contains(&format!("… und {} weitere", all - 3)),
         "{proposal}"
     );
 
@@ -490,9 +530,13 @@ fn file_and_undo(
         assert!(index_has(slot, target), "index lacks {}", target.display());
         assert!(!index_has(slot, &old), "index keeps {}", old.display());
     }
-    for path in misfiled {
-        assert!(path.is_file(), "{} was moved", path.display());
-    }
+    assert!(
+        filed_text.contains(&format!(
+            "{renamed} Dateien, die schon im Archiv lagen, wurden umbenannt oder verschoben"
+        )),
+        "{filed_text}"
+    );
+    assert_wrong_year_placed(slot, misfiled, false);
 
     press(app, ctx, access, model, &ChipReply::Undo);
     press(app, ctx, access, model, &ChipReply::PutBack);
@@ -504,8 +548,6 @@ fn file_and_undo(
         assert!(index_has(slot, &old), "index lacks {}", old.display());
         assert!(!index_has(slot, target), "index keeps {}", target.display());
     }
-    for path in misfiled {
-        assert!(path.is_file(), "{} was moved", path.display());
-    }
+    assert_wrong_year_placed(slot, misfiled, true);
     let _ = thread_text(app);
 }

@@ -7,6 +7,7 @@ fn file_one(setup: &Setup, name: &str, folder: &str) -> BatchId {
         transfer: Transfer::Move,
         source_root: setup.dir.path().join("inbox"),
         target_root: setup.dir.path().join("archive"),
+        inside: Vec::new(),
         items: vec![RunItem {
             hash: hash_path(&from).unwrap(),
             to: PathBuf::from(folder).join(name),

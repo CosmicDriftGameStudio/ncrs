@@ -178,6 +178,7 @@ pub fn execute_run<P: Progress>(
     let checked = Places {
         target: places.target,
         source: Some(places.source),
+        inside_target: places.inside_target,
     };
     if moves {
         run_batch(index, batch, transfer, checked, items, progress, &Move)
@@ -191,6 +192,9 @@ pub fn execute_run<P: Progress>(
 pub struct RunPlaces<'a> {
     pub source: &'a Path,
     pub target: &'a Path,
+    /// The items may also come from below `target`: a run renames what
+    /// already lies there in the same batch as the files it brings in.
+    pub inside_target: bool,
 }
 
 /// Where a run works. The files of a run without a `source` come from
@@ -199,6 +203,8 @@ pub struct RunPlaces<'a> {
 struct Places<'a> {
     target: &'a Path,
     source: Option<&'a Path>,
+    /// Items may also come from below `target`.
+    inside_target: bool,
 }
 
 pub(in crate::execute) fn remember_source_root(source: &Path) -> Result<SourceRoot, ExecuteError> {
@@ -222,6 +228,7 @@ pub fn execute_with<P: Progress, S: Source>(
     let places = Places {
         target: root,
         source: None,
+        inside_target: false,
     };
     run_batch(
         index,
@@ -246,6 +253,7 @@ pub fn execute_copying<P: Progress>(
     let places = Places {
         target: root,
         source: None,
+        inside_target: false,
     };
     run_batch(index, batch, Transfer::Copy, places, items, progress, &Copy)
 }
@@ -337,10 +345,15 @@ fn run_item<S: Source>(
         Err(err) => return skip(index, batch, item, SkipReason::Failed(err.to_string())),
     }
     if let Some(source) = places.source {
-        if !is_below(source, &item.from) {
+        let from_root = if places.inside_target && is_below(root, &item.from) {
+            root
+        } else {
+            source
+        };
+        if !is_below(from_root, &item.from) {
             return skip(index, batch, item, SkipReason::OutsideLocation);
         }
-        match has_symlink_ancestor_under(source, &item.from) {
+        match has_symlink_ancestor_under(from_root, &item.from) {
             Ok(false) => {}
             Ok(true) => return skip(index, batch, item, SkipReason::LeavesLocation),
             Err(err) => return skip(index, batch, item, SkipReason::Failed(err.to_string())),
@@ -770,6 +783,11 @@ fn undo_item(
     }
     if fs::symlink_metadata(&item.from).is_ok() {
         return Ok(Some(SkipReason::TargetExists));
+    }
+    if let Some(parent) = item.from.parent() {
+        if let Err(err) = fs::create_dir_all(parent) {
+            return Ok(Some(SkipReason::Failed(err.to_string())));
+        }
     }
     if let Err(err) = transfer_to(&item.to, &item.from, &Move, &mut Counting, OnConflict::Fail) {
         return Ok(Some(SkipReason::Failed(err.to_string())));

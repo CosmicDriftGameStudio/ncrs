@@ -107,12 +107,18 @@ pub enum ChipReply {
     WaitingOtherFolder,
     /// Accepts the levels shown for the folder.
     LevelsKeep,
-    /// Shows the levels to drop one of them.
+    /// Starts the change of the levels in words.
     LevelsChange,
     /// Takes the standard levels.
     LevelsDefault,
-    /// Drops this level (counted from 0, the file name last).
-    LevelDrop(usize),
+    /// Takes the levels as changed so far: the rule's pattern.
+    LevelsApply,
+    /// Asks for one more change of the levels.
+    LevelsMore,
+    /// Throws the changes away: the levels found are shown again.
+    LevelsDiscard,
+    /// The user is done with the levels: they are taken as they are.
+    LevelsDone,
     /// Describes what goes into the folder, in these words.
     RuleWhat(String),
     /// Stores the proposed rule.
@@ -202,7 +208,10 @@ impl ChipReply {
             | Self::LevelsKeep
             | Self::LevelsChange
             | Self::LevelsDefault
-            | Self::LevelDrop(_)
+            | Self::LevelsApply
+            | Self::LevelsMore
+            | Self::LevelsDiscard
+            | Self::LevelsDone
             | Self::RuleWhat(_)
             | Self::RuleEdit
             | Self::RuleNow
@@ -373,6 +382,22 @@ pub struct Tidy {
     pub source: PathBuf,
     pub target: Option<PathBuf>,
     pub transfer: Option<Transfer>,
+    /// Archive documents the stored rule renames or moves with this run.
+    pub inside: Vec<ncrs_filing::rules_work::ArchiveMove>,
+}
+
+/// What a rule would move: the documents of the inbox and, because the
+/// levels may have changed, the ones that already lie in the archive.
+#[derive(Debug, Clone, Default)]
+pub struct RuleMoves {
+    pub from_inbox: usize,
+    pub archive: Vec<ncrs_filing::rules_work::ArchiveMove>,
+}
+
+impl RuleMoves {
+    pub fn total(&self) -> usize {
+        self.from_inbox + self.archive.len()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -496,6 +521,11 @@ pub struct Session {
     pub archive_offered: bool,
     /// The rule being made from a folder or a description.
     pub rule: Option<crate::rule_flow::RuleFlow>,
+    /// What the stored rule moves, kept for "File now".
+    pub rule_moves: Option<RuleMoves>,
+    /// "File now" asked which source folder; the answer starts the tidy
+    /// that takes the moves of the stored rule along.
+    pub rule_moves_wait: bool,
 }
 
 #[derive(Debug)]

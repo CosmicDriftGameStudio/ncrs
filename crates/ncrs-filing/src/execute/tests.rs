@@ -459,6 +459,7 @@ fn copy_run(setup: &Setup, items: &[ExecutionItem]) -> ExecutionReport {
         RunPlaces {
             source: &setup.root,
             target: &setup.root,
+            inside_target: false,
         },
         items,
         &mut Counting,
@@ -501,6 +502,7 @@ fn a_move_run_of_the_chat_files_the_document() {
         RunPlaces {
             source: &setup.root,
             target: &setup.root,
+            inside_target: false,
         },
         std::slice::from_ref(&item),
         &mut Counting,

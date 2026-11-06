@@ -447,6 +447,7 @@ mod hermes_chat_areas_ui_tests;
 )]
 #[cfg(test)]
 mod hermes_chat_ui_tests;
+mod hermes_flow_matrix_shots;
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 #[cfg(test)]
 mod hermes_protection_tests;

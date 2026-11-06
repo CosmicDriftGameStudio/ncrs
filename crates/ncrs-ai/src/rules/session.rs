@@ -2,8 +2,8 @@
 //! grammar the answer is written in. The text is built here, apart from the
 //! model, so a cache can hash exactly what the model reads.
 
-use super::grammar::{generate_grammar, recognize_grammar};
-use super::prompt::{END_OF_TURN, GENERATE_REMINDER, RECOGNIZE_REMINDER};
+use super::grammar::{generate_grammar, recognize_grammar, revise_grammar};
+use super::prompt::{END_OF_TURN, GENERATE_REMINDER, RECOGNIZE_REMINDER, REVISE_REMINDER};
 
 /// A rule is a short JSON object: up to six conditions and a pattern.
 const MAX_RULE_TOKENS: usize = 400;
@@ -45,6 +45,17 @@ impl RuleRequest {
             prefix: prefix.to_owned(),
             task: format!("TASK recognize\n{question}\n{depth_line}{paths}\n{RECOGNIZE_REMINDER}"),
             grammar: recognize_grammar(folder_depth),
+            max_new_tokens: MAX_PATTERN_TOKENS,
+        }
+    }
+
+    /// The levels as they are, a sentence about them, and the changed levels
+    /// with the flag whether the user is done.
+    pub fn revise(prefix: &str, question: &str) -> Self {
+        Self {
+            prefix: prefix.to_owned(),
+            task: format!("TASK recognize\n{question}\n{REVISE_REMINDER}"),
+            grammar: revise_grammar(),
             max_new_tokens: MAX_PATTERN_TOKENS,
         }
     }

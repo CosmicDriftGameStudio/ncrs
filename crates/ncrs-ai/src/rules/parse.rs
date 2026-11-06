@@ -98,6 +98,25 @@ pub fn parse_levels(raw: &str) -> Result<Levels, AiError> {
     levels_of(&object_of(raw)?)
 }
 
+/// The answer to a sentence about the levels: the changed levels, and whether
+/// the user says they are done.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Revision {
+    pub levels: Levels,
+    pub done: bool,
+}
+
+pub fn parse_revision(raw: &str) -> Result<Revision, AiError> {
+    let object = object_of(raw)?;
+    let done = object
+        .get_boolean("fertig")
+        .ok_or(AiError::BadReply("no done flag"))?;
+    Ok(Revision {
+        levels: levels_of(&object)?,
+        done,
+    })
+}
+
 #[cfg(test)]
 pub fn parse_pattern(raw: &str) -> Result<String, AiError> {
     parse_levels(raw).map(|levels| levels.pattern())
