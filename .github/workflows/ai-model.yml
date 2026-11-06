@@ -47,7 +47,7 @@ permissions:
   contents: read
 
 jobs:
-  # The 174 sentences of the chat evaluation run one after the other, about 25
+  # The 202 sentences of the chat evaluation run one after the other, about 30
   # minutes on a CPU. Each shard takes every fourth sentence; the thresholds
   # apply to the sum of the shards (chat-eval-result), not to a single shard.
   chat-eval:
