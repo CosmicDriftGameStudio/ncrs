@@ -7,7 +7,8 @@ use std::path::{Path, PathBuf};
 
 use iced::Task;
 use ncrs_ai::{
-    pattern_mismatches, AiError, ChatModel, ContextDocument, Level, Levels, Part as LevelPart,
+    folder_depth, pattern_mismatches, AiError, ChatModel, ContextDocument, Level, Levels,
+    Part as LevelPart,
 };
 use ncrs_filing::chat_work::{ChatWork, FolderReading};
 use ncrs_i18n::Msg;
@@ -91,12 +92,13 @@ fn recognize_checked(
     all: &[(String, DocumentFields)],
     kinds: &Kinds,
 ) -> Result<Levels, AiError> {
-    let first = model.recognize_levels(files, kinds)?;
+    let depth = folder_depth(all.iter().map(|(path, _)| path.as_str()));
+    let first = model.recognize_levels(files, kinds, depth)?;
     let misfits = pattern_mismatches(&first.pattern(), all, kinds);
     if misfits.is_empty() {
         return Ok(first);
     }
-    let Ok(second) = model.recognize_levels_again(files, kinds, &first, &misfits) else {
+    let Ok(second) = model.recognize_levels_again(files, kinds, depth, &first, &misfits) else {
         return Ok(first);
     };
     let remaining = pattern_mismatches(&second.pattern(), all, kinds).len();
@@ -562,7 +564,10 @@ fn levels_parts(state: &State, ctx: &Ctx, poor_fit: bool) -> (Vec<Part>, bool) {
                 Some(shown) => fill(
                     ctx.lang,
                     Msg::HermesChatLevelsMisfit,
-                    &[("file", &misfit.file), ("written", shown)],
+                    &[
+                        ("file", &misfit.file),
+                        ("written", &with_extension_of(shown, &misfit.file)),
+                    ],
                 ),
                 None => fill(
                     ctx.lang,
@@ -911,3 +916,17 @@ fn propose(state: &mut State, ctx: &Ctx, mut spec: RuleSpec) {
 mod trial;
 
 pub use trial::{create, file_now, stored, trial_done};
+
+/// What a pattern writes has no extension; the file it is compared with has.
+fn with_extension_of(written: &str, file: &str) -> String {
+    let extension = file
+        .rsplit_once('/')
+        .map_or(file, |(_, name)| name)
+        .rsplit_once('.')
+        .map_or("", |(_, extension)| extension);
+    if extension.is_empty() {
+        written.to_owned()
+    } else {
+        format!("{written}.{extension}")
+    }
+}

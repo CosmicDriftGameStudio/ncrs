@@ -55,6 +55,7 @@ mod tests {
 
         assert!(has_levels_card(&talk));
         let asked = talk.model.recognized();
+        assert_eq!(asked.len(), 1, "the pattern fits, no second ask: {asked:?}");
         assert_eq!(asked[0].len(), 3, "only the files of Alfa: {asked:?}");
         assert!(
             asked[0].iter().all(|(path, _)| path.starts_with("2020/")),

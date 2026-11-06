@@ -314,8 +314,7 @@ fn scenario(misplace: bool) {
         model: Some(Arc::clone(&model) as Arc<dyn ChatModel>),
         ..super::hermes_chat_ui_tests::ready(Language::German)
     };
-    let recording = RecordingModel(model.as_ref());
-    let answering: &dyn ChatModel = &recording;
+    let answering: &dyn ChatModel = model.as_ref();
 
     let mut app = App::with_fixed_panels().in_language(Language::German);
     super::hermes_chat_ui_tests::send(&mut app, &ctx, HermesChatMessage::Open);
@@ -414,6 +413,17 @@ fn scenario(misplace: bool) {
         proposal.display(),
         page_shot.display()
     );
+    let _ = app.quit();
+    assert!(
+        model
+            .recognize_levels(
+                &[("2018/a.pdf".to_owned(), DocumentFields::default())],
+                &ncrs_index::Kinds::default(),
+                Some(1),
+            )
+            .is_err(),
+        "the model still answers after quit"
+    );
     model.shutdown();
 }
 
@@ -498,80 +508,4 @@ fn file_and_undo(
         assert!(path.is_file(), "{} was moved", path.display());
     }
     let _ = thread_text(app);
-}
-
-/// Writes what the recognize step is asked and what it answers to
-/// `target/recognize-dump.txt`.
-#[derive(Debug)]
-struct RecordingModel<'a>(&'a dyn ChatModel);
-
-impl RecordingModel<'_> {
-    fn dump(text: &str) {
-        use std::io::Write as _;
-        let mut file = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open("target/recognize-dump.txt")
-            .unwrap();
-        writeln!(file, "{text}\n").unwrap();
-    }
-}
-
-impl ChatModel for RecordingModel<'_> {
-    fn understand(
-        &self,
-        turn: &ncrs_ai::ChatTurn,
-    ) -> Result<ncrs_ai::ChatIntent, ncrs_ai::AiError> {
-        self.0.understand(turn)
-    }
-
-    fn generate_rule(
-        &self,
-        description: &str,
-        documents: &[ncrs_ai::ContextDocument],
-        kinds: &ncrs_index::Kinds,
-    ) -> Result<ncrs_index::RuleSpec, ncrs_ai::AiError> {
-        self.0.generate_rule(description, documents, kinds)
-    }
-
-    fn recognize_levels(
-        &self,
-        files: &[(String, DocumentFields)],
-        kinds: &ncrs_index::Kinds,
-    ) -> Result<ncrs_ai::Levels, ncrs_ai::AiError> {
-        let answer = self.0.recognize_levels(files, kinds);
-        Self::dump(&format!(
-            "=== recognize_levels\nQUESTION: Which pattern wrote these paths?\nUSER PATHS ({} files):\n{}\nANSWER: {answer:?}",
-            files.len(),
-            ncrs_ai::annotated_paths(files, kinds)
-        ));
-        answer
-    }
-
-    fn recognize_levels_again(
-        &self,
-        files: &[(String, DocumentFields)],
-        kinds: &ncrs_index::Kinds,
-        previous: &ncrs_ai::Levels,
-        misfits: &[ncrs_ai::Mismatch],
-    ) -> Result<ncrs_ai::Levels, ncrs_ai::AiError> {
-        let answer = self
-            .0
-            .recognize_levels_again(files, kinds, previous, misfits);
-        Self::dump(&format!(
-            "=== recognize_levels_again\nREPAIR NOTE:\n{}\nUSER PATHS ({} files):\n{}\nANSWER: {answer:?}",
-            ncrs_ai::repair_note(&previous.pattern(), misfits),
-            files.len(),
-            ncrs_ai::annotated_paths(files, kinds)
-        ));
-        answer
-    }
-
-    fn status(&self) -> ncrs_ai::LocalModelStatus {
-        self.0.status()
-    }
-
-    fn refresh(&self) {
-        self.0.refresh();
-    }
 }

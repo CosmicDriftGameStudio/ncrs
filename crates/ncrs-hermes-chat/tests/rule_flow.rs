@@ -193,6 +193,32 @@ mod tests {
     }
 
     #[test]
+    fn the_depth_is_forced_only_when_all_files_of_the_folder_have_it() {
+        use ncrs_ai::ScriptedChatModel;
+        use ncrs_hermes_chat::RuleAsk;
+        use ncrs_index::DocumentFields;
+
+        let file = |path: &str| (path.to_owned(), DocumentFields::default());
+        let sample = vec![file("2020/a.pdf"), file("2021/b.pdf")];
+        let asked_depths = |all: Vec<(String, DocumentFields)>| {
+            let model = ScriptedChatModel::new(ncrs_ai::LocalModelStatus::NotLoadedYet, []);
+            model.push_levels(Ok(levels("{year}/")));
+            let ask = RuleAsk::Recognize {
+                files: sample.clone(),
+                all,
+                kinds: ncrs_index::Kinds::default(),
+            };
+            ask.run(&model);
+            model.recognized_depths().first().copied()
+        };
+
+        let mixed = vec![file("2020/a.pdf"), file("2021/x/b.pdf")];
+        assert_eq!(asked_depths(mixed), Some(None));
+        let uniform = vec![file("2020/a.pdf"), file("2021/b.pdf")];
+        assert_eq!(asked_depths(uniform), Some(Some(1)));
+    }
+
+    #[test]
     fn levels_that_still_do_not_fit_offer_only_the_change() {
         let mut talk = archive_talk();
         talk.model.push_levels(Ok(levels("{year}/{sender}/{date}")));

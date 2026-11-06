@@ -144,10 +144,13 @@ pub trait ChatModel: Send + Sync + fmt::Debug {
         kinds: &Kinds,
     ) -> Result<RuleSpec, AiError>;
     /// The levels that wrote these paths, with the fields of each file.
+    /// `folder_depth` is the number of folder levels every file of the folder
+    /// has, when it is the same for all of them.
     fn recognize_levels(
         &self,
         files: &[(String, DocumentFields)],
         kinds: &Kinds,
+        folder_depth: Option<usize>,
     ) -> Result<Levels, AiError>;
     /// The same question once more, after the answer `previous` did not write
     /// the paths of the files in `misfits`.
@@ -155,6 +158,7 @@ pub trait ChatModel: Send + Sync + fmt::Debug {
         &self,
         files: &[(String, DocumentFields)],
         kinds: &Kinds,
+        folder_depth: Option<usize>,
         previous: &Levels,
         misfits: &[Mismatch],
     ) -> Result<Levels, AiError>;

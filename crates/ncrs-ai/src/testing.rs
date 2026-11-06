@@ -82,6 +82,7 @@ pub struct ScriptedChatModel {
     levels: Mutex<VecDeque<Result<Levels, AiError>>>,
     described: Mutex<Vec<String>>,
     recognized: Mutex<Vec<Vec<(String, DocumentFields)>>>,
+    depths: Mutex<Vec<Option<usize>>>,
 }
 
 impl ScriptedChatModel {
@@ -103,6 +104,7 @@ impl ScriptedChatModel {
             levels: Mutex::new(VecDeque::new()),
             described: Mutex::new(Vec::new()),
             recognized: Mutex::new(Vec::new()),
+            depths: Mutex::new(Vec::new()),
         }
     }
 
@@ -133,6 +135,14 @@ impl ScriptedChatModel {
     /// The files each `recognize_levels` was asked about, in order.
     pub fn recognized(&self) -> Vec<Vec<(String, DocumentFields)>> {
         self.recognized
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    /// The folder depth each `recognize_levels` was told, in order.
+    pub fn recognized_depths(&self) -> Vec<Option<usize>> {
+        self.depths
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .clone()
@@ -202,11 +212,16 @@ impl ChatModel for ScriptedChatModel {
         &self,
         files: &[(String, DocumentFields)],
         _kinds: &Kinds,
+        folder_depth: Option<usize>,
     ) -> Result<Levels, AiError> {
         self.recognized
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .push(files.to_vec());
+        self.depths
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(folder_depth);
         self.levels
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -218,10 +233,11 @@ impl ChatModel for ScriptedChatModel {
         &self,
         files: &[(String, DocumentFields)],
         kinds: &Kinds,
+        folder_depth: Option<usize>,
         _previous: &Levels,
         _misfits: &[Mismatch],
     ) -> Result<Levels, AiError> {
-        self.recognize_levels(files, kinds)
+        self.recognize_levels(files, kinds, folder_depth)
     }
 
     fn status(&self) -> LocalModelStatus {
