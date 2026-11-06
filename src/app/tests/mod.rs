@@ -450,6 +450,7 @@ mod hermes_chat_ui_tests;
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 #[cfg(test)]
 mod hermes_protection_tests;
+mod hermes_real_model_tests;
 #[allow(
     clippy::unwrap_used,
     clippy::expect_used,

@@ -212,6 +212,7 @@ mod tests {
 
         talk.press(&ChipReply::Cancel);
 
+        assert!(!has_chip(&talk, &ChipReply::RuleCreate), "no dead button");
         assert_eq!(talk.rule_count(), 0);
         assert!(talk.state.session.rule.is_none());
     }
@@ -385,7 +386,7 @@ mod tests {
         talk.send(Message::Open);
 
         assert!(talk.state.session.rule.is_none());
-        talk.press(&ChipReply::RuleCreate);
+        assert!(!has_chip(&talk, &ChipReply::RuleCreate), "no dead button");
         assert_eq!(talk.rule_count(), 0, "the old proposal is gone");
         talk.type_text_understood("Rechnung", r#"{"intent":"search","text":"Rechnung"}"#);
         assert_eq!(talk.rule_count(), 0);
