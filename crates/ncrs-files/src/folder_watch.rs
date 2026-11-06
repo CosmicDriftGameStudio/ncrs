@@ -31,8 +31,8 @@ impl Panels {
 fn watch_folder(
     (side, folder): &(PanelSide, PathBuf),
 ) -> impl iced::futures::Stream<Item = PanelMessage> + 'static {
-    let side = *side;
+    let changed_side = *side;
     iced::futures::StreamExt::map(ncrs_fs::folder_watch::folder_changes(folder), move |()| {
-        PanelMessage::FolderChangedOnDisk(side)
+        PanelMessage::FolderChangedOnDisk(changed_side)
     })
 }
