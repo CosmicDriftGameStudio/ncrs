@@ -241,6 +241,21 @@ mod tests {
     }
 
     #[test]
+    fn an_archive_only_rearrange_with_two_sources_leaves_no_queue() {
+        let mut talk = stored_rule_in(&["inbox_a", "inbox"], &[], None);
+        let before = talk.files();
+
+        talk.press(&ChipReply::RuleNow);
+
+        assert_eq!(names_below(&talk, "archive/Telefon/2020/").len(), 4);
+        assert!(talk.state.session.rule_queue.is_none());
+        assert!(names_below(&talk, "inbox").is_empty());
+        talk.press(&ChipReply::Undo);
+        talk.press(&ChipReply::PutBack);
+        assert_eq!(talk.files(), before);
+    }
+
+    #[test]
     fn a_typed_yes_to_file_now_files_nothing_either() {
         let mut talk = talk_with_stored_rule();
         let before = talk.files();

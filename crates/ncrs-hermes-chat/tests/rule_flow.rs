@@ -51,7 +51,14 @@ mod tests {
     }
 
     fn archive_talk_reading(sources: &[&str]) -> Talk {
-        let talk = Talk::in_dir(tempfile::tempdir().unwrap(), &["archive"], sources);
+        archive_talk_in(&["archive"], sources)
+    }
+
+    fn archive_talk_in(targets: &[&str], sources: &[&str]) -> Talk {
+        let talk = Talk::in_dir(tempfile::tempdir().unwrap(), targets, sources);
+        for target in targets {
+            std::fs::create_dir_all(talk.path(target)).unwrap();
+        }
         for (month, day) in [(1, 10), (3, 11), (6, 12), (9, 13)] {
             let id = talk.index_document(
                 &format!("archive/Alfa/2020/2020-{month:02}-{day}.pdf"),
@@ -107,6 +114,19 @@ mod tests {
         talk.press(&ChipReply::LevelsKeep);
         talk.model.push_rule(Ok(spec("Rechnung", "Telefon/{year}")));
         talk.type_text("Rechnungen kommen hierhin");
+    }
+
+    #[test]
+    fn with_several_targets_the_rule_name_starts_with_the_target() {
+        let mut talk = archive_talk_in(&["archive", "second"], &["inbox"]);
+
+        propose_for_telefon(&mut talk);
+        talk.press(&ChipReply::RuleCreate);
+
+        assert_eq!(
+            the_only_rule(&talk).spec.name.as_deref(),
+            Some("archive / Telefon")
+        );
     }
 
     #[test]
