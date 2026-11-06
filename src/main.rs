@@ -168,9 +168,12 @@ KEYS (the defaults; [keys] in the config file changes them):
     PgUp/PgDn  page                Backspace go up
     Home/End   first/last          Enter    open
     Ins/Space  tag a row           *        tag all
+    F1         command list        F2       Hermes chat (Beta)
+    Shift+F2   command line        F12      Monitor
     F3 / F4    view / edit         F5 / F6  copy / move
     F7         create directory    Shift+F4 new file (opens in the editor)
     F8         delete (to trash)   Shift+F8 delete permanently
+    Shift+F6   rename in place
     F9         switch language (en/de)
     F10 / Cmd+Q  quit
     Alt+Left/Right  folder history back / forward (macOS also Cmd+[ / ])
