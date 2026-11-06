@@ -73,7 +73,11 @@ impl MenuModel {
             MenuItemSpec {
                 action: command.action,
                 title: match command.menu.kind {
-                    EntryKind::Dialog => format!("{title}{DIALOG_ELLIPSIS}"),
+                    // Some labels already end in one for the context menu.
+                    EntryKind::Dialog => format!(
+                        "{}{DIALOG_ELLIPSIS}",
+                        title.trim_end_matches([DIALOG_ELLIPSIS, ' '])
+                    ),
                     EntryKind::Plain | EntryKind::Toggle => title,
                 },
                 accelerator: keymap
@@ -608,6 +612,11 @@ mod tests {
         assert_eq!(item(&model, KeyAction::Copy).title, "Copy to other panel");
         let german = MenuModel::build(Language::German, &Keymap::default(), Toggles::default());
         assert!(item(&german, KeyAction::Rename).title.ends_with('\u{2026}'));
+        let places = submenu_of(menu_of(&german, CommandGroup::Go), Submenu::Places);
+        for entry in &places.items {
+            assert!(!entry.title.contains("\u{2026}\u{2026}"), "{}", entry.title);
+            assert!(!entry.title.contains(" \u{2026}"), "{}", entry.title);
+        }
     }
 
     #[test]
