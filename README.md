@@ -223,6 +223,7 @@ The defaults. Most of them can be changed in the keyboard shortcuts dialog (`Cmd
 | `Shift`+`F2`       | Focus the command line below the panels: `cd` changes the active panel's folder, any other command runs in the shell in that folder (the status bar shows its exit status; its output is not shown). `↑`/`↓` walk the commands of this session, `Esc` or `Shift`+`F2` goes back to the panels |
 | `F3` / `F4`        | View / edit the file under the cursor in an external program (programs configurable, see [Configuration](#configuration)) |
 | `F5` / `F6`        | Copy / move to the other panel          |
+| `Shift`+`F6`       | Rename the row under the cursor in place: `Enter` renames, `Esc` cancels |
 | `Alt`+`F5`         | Pack the tagged rows (else the cursor row) into a new archive in the other panel's folder; asks for the name (ends in `.zip`, `.tar`, `.tar.gz`, `.tgz`, `.tar.zst`, `.tzst` or `.7z`) |
 | `F7`               | Create directory                        |
 | `Shift`+`F4`       | New file: creates an empty file under the name asked for and opens it in the editor like `F4`; an existing name is never overwritten |
@@ -244,6 +245,7 @@ The defaults. Most of them can be changed in the keyboard shortcuts dialog (`Cmd
 | `Backspace`        | Go to parent directory                   |
 | `Tab`              | Switch active panel                      |
 | `F9`               | Switch language for this session (start: `lang`) |
+| `F12`              | Monitor: CPU, memory, network, drives, sensors and the task list |
 | `Cmd`+`K` / `Ctrl`+`K` | Keyboard shortcuts: every action with its keys. Type to search by name, or press a key to find what it does. `Enter` records a new key for the selected action, `←`/`→` pick one of its keys or the slot that adds one, `Del` (`⌫` on a Mac) removes the key, `Shift`+`Del` resets the action. A key another action holds is only taken after you confirm. Changes apply at once and are written to `[keys]` |
 | `F10` / `Cmd`+`Q` / `Ctrl`+`Q` | Quit                                     |
 
