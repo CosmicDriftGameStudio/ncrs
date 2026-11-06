@@ -79,15 +79,6 @@ pub enum RuleSaved {
     Changed,
 }
 
-fn same_conditions(first: &RuleConditions, second: &RuleConditions) -> bool {
-    first.combinator == second.combinator
-        && first.list.len() == second.list.len()
-        && first
-            .list
-            .iter()
-            .all(|condition| second.list.contains(condition))
-}
-
 fn require_condition(spec: &RuleSpec) -> Result<(), IndexError> {
     let blank = |condition: &Condition| condition.value.trim().is_empty();
     if spec.conditions.list.is_empty() || spec.conditions.list.iter().any(blank) {
@@ -189,9 +180,9 @@ impl Index {
             .collect()
     }
 
-    /// Stores a rule from the chat: a rule with the same conditions or the
-    /// same name is changed in place, keeping its id and position, otherwise
-    /// a new one is added. Says whether an existing rule was changed.
+    /// Stores a rule from the chat: a rule with the same name is changed in
+    /// place, keeping its id and position, otherwise a new one is added. Says
+    /// whether an existing rule was changed.
     pub fn save_rule_from(
         &mut self,
         spec: &RuleSpec,
@@ -209,21 +200,22 @@ impl Index {
         }
     }
 
-    /// The stored rule a chat rule takes the place of: the first one with
-    /// the same conditions or the same name.
+    /// The stored rule a chat rule takes the place of: the first one with the
+    /// same name. Not the same conditions: two folders of one sender share
+    /// them, and each keeps its own rule.
     pub fn rule_replaced_by(&self, spec: &RuleSpec) -> Result<Option<RuleId>, IndexError> {
-        let name = spec
+        let Some(name) = spec
             .name
             .as_deref()
             .map(str::trim)
-            .filter(|name| !name.is_empty());
+            .filter(|name| !name.is_empty())
+        else {
+            return Ok(None);
+        };
         Ok(self
             .rules()?
             .into_iter()
-            .find(|rule| {
-                same_conditions(&rule.spec.conditions, &spec.conditions)
-                    || name.is_some_and(|wanted| rule.spec.name.as_deref() == Some(wanted))
-            })
+            .find(|rule| rule.spec.name.as_deref() == Some(name))
             .map(|rule| rule.id))
     }
 
@@ -386,6 +378,40 @@ mod tests {
         let updated = index.rule(id).unwrap().unwrap().spec;
         assert_eq!(updated.name, None);
         assert_eq!(updated.kind.as_deref(), Some("invoice"));
+    }
+
+    #[test]
+    fn a_chat_rule_changes_the_rule_of_its_name_and_not_one_of_the_same_sender() {
+        let (_dir, mut index) = encrypted_index();
+        let named = |name: &str, pattern: &str| RuleSpec {
+            name: Some(name.to_owned()),
+            conditions: RuleConditions::all_of(vec![Condition::new(
+                ConditionKind::Sender,
+                "Cosmicdrift GmbH",
+            )]),
+            filing_pattern: pattern.to_owned(),
+            ..rule_spec()
+        };
+
+        let salary = named("Arbeit / Gehalt", "Arbeit/Gehalt/{year}/{date}");
+        let contracts = named("Arbeit / Verträge", "Arbeit/Verträge/{date}");
+        let saved = [
+            index.save_rule_from(&salary, RuleOrigin::Chat).unwrap(),
+            index.save_rule_from(&contracts, RuleOrigin::Chat).unwrap(),
+        ];
+        assert_eq!(saved, [RuleSaved::Added, RuleSaved::Added]);
+        let first = ids_in_order(&index)[0];
+
+        let changed = named("Arbeit / Gehalt", "Arbeit/Gehalt/{year}-{month}/{date}");
+        assert_eq!(
+            index.save_rule_from(&changed, RuleOrigin::Chat).unwrap(),
+            RuleSaved::Changed
+        );
+        let rules = index.rules().unwrap();
+        assert_eq!(rules.len(), 2);
+        assert_eq!(rules[0].id, first);
+        assert_eq!(rules[0].spec.filing_pattern, changed.filing_pattern);
+        assert_eq!(rules[1].spec.filing_pattern, contracts.filing_pattern);
     }
 
     #[test]
