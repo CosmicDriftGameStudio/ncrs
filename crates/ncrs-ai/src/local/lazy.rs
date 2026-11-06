@@ -139,6 +139,15 @@ impl LazyLocalModel {
 impl Drop for LazyLocalModel {
     fn drop(&mut self) {
         self.shared.close();
+        // The worker frees the model on its way out; a process that exits
+        // meanwhile makes the GPU backend abort.
+        let worker = self
+            .worker
+            .get_mut()
+            .unwrap_or_else(PoisonError::into_inner);
+        if let Some(thread) = worker.take() {
+            drop(thread.join());
+        }
     }
 }
 

@@ -50,3 +50,4 @@
 {"id": 50, "lang": "de", "intent": "open_folder", "text": "zeig mir /Archiv/Versicherung", "expected": {"folder": "/Archiv/Versicherung"}}
 {"id": 51, "lang": "de", "intent": "open_folder", "text": "was liegt in /Scans", "expected": {"folder": "/Scans"}}
 {"id": 52, "lang": "en", "intent": "open_folder", "text": "open ~/Documents/Taxes", "expected": {"folder": "~/Documents/Taxes"}}
+{"id": 53, "lang": "de", "intent": "open_folder", "text": "öffne mal /private/var/folders/d_/5gtylpmx0p322jdtbnxnfz100000gn/T/.tmpm1hUMS/archive/Bank/Sparkasse Chemnitz/Kontoauszüge", "expected": {"folder": "/private/var/folders/d_/5gtylpmx0p322jdtbnxnfz100000gn/T/.tmpm1hUMS/archive/Bank/Sparkasse Chemnitz/Kontoauszüge"}}

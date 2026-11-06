@@ -371,6 +371,19 @@ fn an_amount_the_typed_sentence_does_not_contain_is_dropped() {
 }
 
 #[test]
+fn a_long_path_of_a_folder_is_kept_whole() {
+    let long = format!(
+        "/Users/anna/{}/Policen",
+        "Dokumente/Archiv/Versicherung".repeat(4)
+    );
+    assert!(long.chars().count() > 80);
+    assert_eq!(
+        parse(&format!(r#"{{"intent":"open_folder","folder":"{long}"}}"#)),
+        Ok(ChatIntent::OpenFolder { folder: long })
+    );
+}
+
+#[test]
 fn strings_are_cleaned_and_a_long_one_is_no_value() {
     let long = "x".repeat(81);
     let raw = format!(r#"{{"intent":"search","sender":"A\u0007B","kind":"{long}"}}"#);
@@ -421,7 +434,7 @@ fn the_rows_are_all_there_and_make_turns() {
         .chain(rows(HOLDOUT_ROWS))
         .collect();
 
-    assert_eq!(all.len(), 201);
+    assert_eq!(all.len(), 202);
     for row in &all {
         let turn = row.turn();
         assert_eq!(turn.message, row.text);

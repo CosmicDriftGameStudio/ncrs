@@ -198,6 +198,7 @@ fn diagnosis() {
     trial_report(&access, &downloads, &archive);
 }
 
+#[cfg(feature = "local-ai")]
 fn pdfs_below(folder: &Path, found: &mut Vec<PathBuf>) {
     let Ok(entries) = fs::read_dir(folder) else {
         return;
@@ -218,6 +219,7 @@ fn pdfs_below(folder: &Path, found: &mut Vec<PathBuf>) {
 }
 
 /// Every `step`-th PDF below `folder`, `count` of them: a spread over the years.
+#[cfg(feature = "local-ai")]
 fn spread_of_pdfs(folder: &Path, count: usize) -> Vec<PathBuf> {
     let mut all = Vec::new();
     pdfs_below(folder, &mut all);

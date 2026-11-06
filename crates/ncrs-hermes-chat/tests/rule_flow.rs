@@ -308,6 +308,94 @@ mod tests {
     }
 
     #[test]
+    fn a_typed_open_with_a_slash_names_the_area_below_the_target() {
+        let mut talk = archive_talk();
+        talk.model.push_levels(Ok(levels("{year}/{date}")));
+        talk.send(Message::Open);
+
+        talk.type_text_understood(
+            "öffne mal /Alfa",
+            r#"{"intent":"open_folder","folder":"/Alfa"}"#,
+        );
+
+        assert_eq!(talk.model.recognized().len(), 1, "the folder was read");
+        assert!(levels_card(&talk).is_some(), "{:?}", talk.last_texts());
+        assert_eq!(talk.rule_count(), 0);
+    }
+
+    #[test]
+    fn a_nested_folder_is_found_by_its_name_alone() {
+        let mut talk = archive_talk();
+        talk.model.push_levels(Ok(levels("{date}")));
+        talk.send(Message::Open);
+
+        talk.type_text_understood(
+            "öffne mal 2020",
+            r#"{"intent":"open_folder","folder":"2020"}"#,
+        );
+
+        assert_eq!(talk.model.recognized().len(), 1, "the folder was read");
+        assert!(levels_card(&talk).is_some(), "{:?}", talk.last_texts());
+    }
+
+    #[test]
+    fn several_nested_folders_of_a_name_are_asked_about() {
+        let mut talk = archive_talk();
+        talk.index_document(
+            "archive/Beta/2020/2020-05-01.pdf",
+            &letter("Beta AG", "01.05.2020", "Rechnung", 5),
+        );
+        talk.model.push_levels(Ok(levels("{date}")));
+        talk.send(Message::Open);
+
+        talk.type_text_understood(
+            "öffne mal 2020",
+            r#"{"intent":"open_folder","folder":"2020"}"#,
+        );
+
+        let choices: Vec<_> = talk
+            .state
+            .chips()
+            .iter()
+            .filter_map(|chip| match &chip.reply {
+                ChipReply::NamedFolder(path) => Some(path.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            choices,
+            vec![
+                talk.path("archive/Alfa/2020"),
+                talk.path("archive/Beta/2020")
+            ]
+        );
+        assert!(talk.model.recognized().is_empty(), "nothing is read yet");
+
+        talk.press(&ChipReply::NamedFolder(talk.path("archive/Beta/2020")));
+        assert_eq!(talk.model.recognized().len(), 1);
+        assert!(levels_card(&talk).is_some());
+    }
+
+    #[test]
+    fn opening_the_chat_again_drops_an_old_rule_session() {
+        let mut talk = archive_talk();
+        propose_for_telefon(&mut talk);
+        assert!(talk.state.session.rule.is_some());
+
+        talk.send(Message::Open);
+
+        assert!(talk.state.session.rule.is_none());
+        talk.press(&ChipReply::RuleCreate);
+        assert_eq!(talk.rule_count(), 0, "the old proposal is gone");
+        talk.type_text_understood("Rechnung", r#"{"intent":"search","text":"Rechnung"}"#);
+        assert_eq!(talk.rule_count(), 0);
+        assert!(
+            talk.state.session.rule.is_none(),
+            "the sentence went to the router"
+        );
+    }
+
+    #[test]
     fn a_folder_outside_the_targets_keeps_the_old_way() {
         let mut talk = archive_talk();
         talk.write(

@@ -24,6 +24,9 @@ use crate::update::{
 pub struct Named {
     pub said: String,
     pub folders: Vec<PathBuf>,
+    /// The targets to search for folders of this name when no candidate
+    /// exists; empty for a path.
+    pub search_below: Vec<PathBuf>,
 }
 
 /// The folders of one sentence that are being checked or chosen from.
@@ -45,25 +48,79 @@ impl Naming {
     /// The check of every candidate, as the message the app sends back.
     pub fn resolve(&self, resolve: fn(&Path) -> Result<PathBuf, String>) -> Message {
         Message::NamedFoldersResolved {
-            source: existing(resolve, &self.source.folders),
-            target: self
-                .target
-                .as_ref()
-                .map(|named| existing(resolve, &named.folders)),
+            source: existing(resolve, &self.source),
+            target: self.target.as_ref().map(|named| existing(resolve, named)),
         }
     }
 }
 
-fn existing(resolve: fn(&Path) -> Result<PathBuf, String>, candidates: &[PathBuf]) -> Vec<PathBuf> {
+/// How deep below a target a folder is looked for by its name alone.
+const SEARCH_DEPTH: usize = 4;
+/// Folders looked at in one search, so a huge archive cannot hold the check.
+const SEARCH_LIMIT: usize = 20_000;
+
+fn existing(resolve: fn(&Path) -> Result<PathBuf, String>, named: &Named) -> Vec<PathBuf> {
     let mut found: Vec<PathBuf> = Vec::new();
-    for candidate in candidates {
+    for candidate in &named.folders {
         if let Ok(real) = resolve(candidate) {
             if !found.contains(&real) {
                 found.push(real);
             }
         }
     }
+    if found.is_empty() {
+        for target in &named.search_below {
+            for folder in folders_named_below(target, &named.said) {
+                if let Ok(real) = resolve(&folder) {
+                    if !found.contains(&real) {
+                        found.push(real);
+                    }
+                }
+            }
+        }
+    }
     found
+}
+
+/// The folders below `root`, at most `SEARCH_DEPTH` levels down, whose name
+/// is `word`; breadth first, so the shallow ones come first.
+fn folders_named_below(root: &Path, word: &str) -> Vec<PathBuf> {
+    let mut hits = Vec::new();
+    let mut level = vec![root.to_path_buf()];
+    let mut looked_at = 0;
+    for _ in 0..SEARCH_DEPTH {
+        let mut deeper = Vec::new();
+        for folder in &level {
+            let Ok(entries) = std::fs::read_dir(folder) else {
+                continue;
+            };
+            let mut subfolders: Vec<PathBuf> = entries
+                .flatten()
+                .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+                .map(|entry| entry.path())
+                .filter(|path| {
+                    path.file_name()
+                        .is_some_and(|name| !name.to_string_lossy().starts_with('.'))
+                })
+                .collect();
+            subfolders.sort();
+            for path in subfolders {
+                looked_at += 1;
+                if looked_at > SEARCH_LIMIT {
+                    return hits;
+                }
+                let named_so = path
+                    .file_name()
+                    .is_some_and(|name| same_word(word, &name.to_string_lossy()));
+                if named_so {
+                    hits.push(path.clone());
+                }
+                deeper.push(path);
+            }
+        }
+        level = deeper;
+    }
+    hits
 }
 
 /// Configured, favourite, learned or well-known folders the word names.
@@ -94,7 +151,15 @@ fn candidates(state: &State, ctx: &Ctx, name: &str) -> Option<Vec<PathBuf>> {
         return None;
     }
     if looks_like_typed_path(name) {
-        return Some(vec![expand_home(ctx, path)]);
+        // "/Bank" also names the area below a target, as the chat shows areas.
+        let below_targets = name
+            .strip_prefix('/')
+            .filter(|rest| !rest.is_empty())
+            .into_iter()
+            .flat_map(|rest| ctx.targets.iter().map(move |target| target.join(rest)));
+        let mut typed = vec![expand_home(ctx, path)];
+        typed.extend(below_targets);
+        return Some(typed);
     }
     let mut found = known_folders(state, ctx, name);
     if let Some((first, rest)) = name.split_once('/') {
@@ -115,9 +180,15 @@ fn candidates(state: &State, ctx: &Ctx, name: &str) -> Option<Vec<PathBuf>> {
 }
 
 fn named(state: &State, ctx: &Ctx, said: &str) -> Option<Named> {
+    let search_below = if looks_like_typed_path(said) || said.contains('/') {
+        Vec::new()
+    } else {
+        ctx.targets.clone()
+    };
     candidates(state, ctx, said).map(|folders| Named {
         said: said.to_owned(),
         folders,
+        search_below,
     })
 }
 
