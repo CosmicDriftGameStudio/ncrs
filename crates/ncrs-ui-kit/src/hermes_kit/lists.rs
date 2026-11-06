@@ -283,16 +283,14 @@ pub fn dropdown<'a, M: Clone + 'a>(
     selected: usize,
     palette: &Palette,
 ) -> Element<'a, M> {
-    let choices = entries(items);
-    let chosen = choices.get(selected).cloned();
-    pick_list(choices, chosen, |choice| choice.message)
-        .width(width)
-        .padding([CONTROL_PAD_Y, MENU_PAD_X])
-        .text_size(TEXT_BODY)
-        .text_line_height(LineHeight::Absolute(Pixels(BODY_LINE)))
-        .style(pick_style(palette, MenuLook::Icon))
-        .menu_style(theme::dropdown_menu(palette))
-        .into()
+    sized_dropdown(
+        width,
+        items,
+        selected,
+        palette,
+        [CONTROL_PAD_Y, MENU_PAD_X],
+        (TEXT_BODY, BODY_LINE),
+    )
 }
 
 /// [`dropdown`] the size of a settings text field, for a settings row.
@@ -302,13 +300,31 @@ pub fn field_dropdown<'a, M: Clone + 'a>(
     selected: usize,
     palette: &Palette,
 ) -> Element<'a, M> {
+    sized_dropdown(
+        width,
+        items,
+        selected,
+        palette,
+        [theme::spacing::XS, theme::spacing::S],
+        (theme::font_size::BODY, kit::FIELD_LINE_HEIGHT),
+    )
+}
+
+fn sized_dropdown<'a, M: Clone + 'a>(
+    width: f32,
+    items: &[MenuItem<M>],
+    selected: usize,
+    palette: &Palette,
+    padding: [f32; 2],
+    (text_size, line_height): (f32, f32),
+) -> Element<'a, M> {
     let choices = entries(items);
     let chosen = choices.get(selected).cloned();
     pick_list(choices, chosen, |choice| choice.message)
         .width(width)
-        .padding([theme::spacing::XS, theme::spacing::S])
-        .text_size(theme::font_size::BODY)
-        .text_line_height(LineHeight::Absolute(Pixels(kit::FIELD_LINE_HEIGHT)))
+        .padding(padding)
+        .text_size(text_size)
+        .text_line_height(LineHeight::Absolute(Pixels(line_height)))
         .style(pick_style(palette, MenuLook::Icon))
         .menu_style(theme::dropdown_menu(palette))
         .into()

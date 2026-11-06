@@ -446,7 +446,7 @@ fn the_terminal_choice_round_trips_through_the_open_section() {
         found("Konsole", "konsole", &["--workdir", "{path}"]),
         found("foot", "foot", &["--working-directory={path}"]),
     ];
-    let saved = |path: &Path| ncrs_config::config::load(path).unwrap().open.terminal;
+    let saved = |config: &Path| ncrs_config::config::load(config).unwrap().open.terminal;
     assert_eq!(state.terminal_choice(), TerminalChoice::Automatic);
 
     let change = state.choose_terminal(TerminalChoice::Detected(1)).unwrap();
@@ -470,8 +470,8 @@ fn the_terminal_choice_round_trips_through_the_open_section() {
         Some(ProgramLine::new("myterm", &["--cd", "{path}"]))
     );
 
-    let change = state.choose_terminal(TerminalChoice::Automatic).unwrap();
-    applied(&mut state, &path, change);
+    let back_to_automatic = state.choose_terminal(TerminalChoice::Automatic).unwrap();
+    applied(&mut state, &path, back_to_automatic);
     assert_eq!(state.terminal_choice(), TerminalChoice::Automatic);
     assert_eq!(saved(&path), None);
 }
