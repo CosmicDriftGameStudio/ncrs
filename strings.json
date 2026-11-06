@@ -1279,6 +1279,30 @@
       "de": "NC-rs"
     },
     {
+      "key": "menu.submenu_bookmarks",
+      "context": "Title of a submenu of the Go menu that holds the commands for bookmarks: add the current folder, remove it and show the list.",
+      "en": "Bookmarks",
+      "de": "Lesezeichen"
+    },
+    {
+      "key": "menu.submenu_places",
+      "context": "Title of a submenu of the Go menu that holds the commands for places outside the current folder: the drives and the servers.",
+      "en": "Places",
+      "de": "Orte"
+    },
+    {
+      "key": "menu.submenu_hermes_review",
+      "context": "Title of a submenu of the Hermes menu that holds the commands for looking at what Hermes has filed and found.",
+      "en": "Review",
+      "de": "Überprüfen"
+    },
+    {
+      "key": "menu.submenu_hermes_setup",
+      "context": "Title of a submenu of the Hermes menu that holds the commands for setting up Hermes: the folders it works with and the models it needs.",
+      "en": "Setup",
+      "de": "Einrichtung"
+    },
+    {
       "key": "command_palette.settings_page",
       "context": "Name of a settings page in the command palette, which lists the settings pages beside the commands. {page} is the name of the page, such as Programs or Look; keep the colon, which sets the page apart from the commands of the same name.",
       "en": "Settings: {page}",

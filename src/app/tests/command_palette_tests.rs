@@ -238,16 +238,19 @@ fn a_menu_entry_does_what_the_same_entry_in_the_lab_does() {
 #[test]
 fn the_menu_is_off_while_a_box_is_open_and_follows_the_search() {
     let mut app = App::with_fixed_panels();
-    assert_eq!(app.menu_availability(), Availability::Open(KeyScope::Panel));
+    assert_eq!(
+        app.menu_state().availability,
+        Availability::Open(KeyScope::Panel)
+    );
     open_palette(&mut app);
-    let blocked = app.menu_availability();
+    let blocked = app.menu_state().availability;
     assert_eq!(blocked, Availability::Blocked);
     assert!(blocked.enables(KeyAction::Quit));
     assert!(!blocked.enables(KeyAction::Mkdir));
     drop(app.update(palette_message(CommandPaletteMessage::Close)));
     drop(app.update(Message::OpenSearch));
     assert_eq!(
-        app.menu_availability(),
+        app.menu_state().availability,
         Availability::Open(KeyScope::Search)
     );
 }

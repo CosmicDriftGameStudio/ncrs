@@ -58,12 +58,85 @@ impl CommandGroup {
     }
 }
 
+/// A submenu of a group's menu, for the commands that are long or rarely
+/// used. The order is the order the submenus have within a section.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Submenu {
+    Bookmarks,
+    Places,
+    HermesReview,
+    HermesSetup,
+}
+
+impl Submenu {
+    pub fn label(self) -> Msg {
+        match self {
+            Self::Bookmarks => Msg::MenuSubmenuBookmarks,
+            Self::Places => Msg::MenuSubmenuPlaces,
+            Self::HermesReview => Msg::MenuSubmenuHermesReview,
+            Self::HermesSetup => Msg::MenuSubmenuHermesSetup,
+        }
+    }
+}
+
+/// How the menu shows a command.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EntryKind {
+    Plain,
+    /// Opens a dialog or a list first, so the title ends with "…".
+    Dialog,
+    /// Switches something on or off and shows which.
+    Toggle,
+}
+
+/// Where a command stands in the menu of its group.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MenuPlace {
+    /// The commands of a group with the same section stand together, with a
+    /// separator between the sections, in ascending order.
+    pub section: u8,
+    pub submenu: Option<Submenu>,
+    pub kind: EntryKind,
+}
+
+impl MenuPlace {
+    const fn section(section: u8) -> Self {
+        Self {
+            section,
+            submenu: None,
+            kind: EntryKind::Plain,
+        }
+    }
+
+    const fn dialog(self) -> Self {
+        Self {
+            kind: EntryKind::Dialog,
+            ..self
+        }
+    }
+
+    const fn toggle(self) -> Self {
+        Self {
+            kind: EntryKind::Toggle,
+            ..self
+        }
+    }
+
+    const fn within(self, submenu: Submenu) -> Self {
+        Self {
+            submenu: Some(submenu),
+            ..self
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Command {
     pub action: KeyAction,
     pub group: CommandGroup,
     pub label: Msg,
     pub theme_name: Option<FuturamaName>,
+    pub menu: MenuPlace,
 }
 
 impl Command {
@@ -73,6 +146,7 @@ impl Command {
             group,
             label,
             theme_name: None,
+            menu: MenuPlace::section(0),
         })
     }
 
@@ -87,14 +161,98 @@ impl Command {
             group,
             label,
             theme_name: Some(theme_name),
+            menu: MenuPlace::section(0),
         })
     }
 }
 
 /// The command of `action`, or `None` for cursor and tag movement, which is
-/// not something to look up by name. No catch-all arm: a new action has to
-/// say whether it is a command and where it belongs.
+/// not something to look up by name.
 pub fn command_of(action: KeyAction) -> Option<Command> {
+    command_without_place(action).map(|command| Command {
+        menu: menu_place_of(action),
+        ..command
+    })
+}
+
+/// The place in the menu. No catch-all arm: a new action has to say where it
+/// belongs. The sections are in the order the menu shows them.
+fn menu_place_of(action: KeyAction) -> MenuPlace {
+    use Submenu::{Bookmarks, HermesReview, HermesSetup, Places};
+    let at = MenuPlace::section;
+    match action {
+        KeyAction::CursorUp
+        | KeyAction::CursorDown
+        | KeyAction::PageUp
+        | KeyAction::PageDown
+        | KeyAction::First
+        | KeyAction::Last
+        | KeyAction::TagUp
+        | KeyAction::TagDown
+        | KeyAction::Open
+        | KeyAction::View
+        | KeyAction::Edit => at(0),
+        KeyAction::Copy | KeyAction::Move => at(1),
+        KeyAction::Rename | KeyAction::Mkdir | KeyAction::NewFile => at(1).dialog(),
+        KeyAction::Pack => at(2).dialog(),
+        KeyAction::Trash
+        | KeyAction::Delete
+        | KeyAction::DeletePermanently
+        | KeyAction::OpenTrashInFinder => at(3),
+        KeyAction::AbortJob => at(4),
+        KeyAction::GrantFolderAccess => at(4).dialog(),
+        KeyAction::Quit => at(5),
+        KeyAction::ToggleTag | KeyAction::TagAll | KeyAction::ClearTags => at(0),
+        KeyAction::CopyPath | KeyAction::CopyName | KeyAction::CopyFiles | KeyAction::Paste => {
+            at(1)
+        }
+        KeyAction::RestoreLastDeletion | KeyAction::ContextMenu => at(2),
+        KeyAction::SortByName
+        | KeyAction::SortByModified
+        | KeyAction::SortBySize
+        | KeyAction::ComputeFolderSizes => at(0),
+        KeyAction::FileListTagsToggle => at(1).toggle(),
+        KeyAction::FileListTagsChoose => at(1).dialog(),
+        KeyAction::FetchTheme => at(2).dialog(),
+        KeyAction::SwitchLanguage => at(2),
+        KeyAction::Settings | KeyAction::SystemMonitor => at(3),
+        KeyAction::KeyBindings => at(3).dialog(),
+        KeyAction::GoUp
+        | KeyAction::SwitchPanel
+        | KeyAction::HistoryBack
+        | KeyAction::HistoryForward => at(0),
+        KeyAction::CommandLine | KeyAction::HermesChat | KeyAction::QuickOpen => at(1),
+        KeyAction::DriveMenuLeft | KeyAction::DriveMenuRight | KeyAction::DisconnectServer => {
+            at(2).within(Places)
+        }
+        KeyAction::ConnectServer => at(2).dialog().within(Places),
+        KeyAction::AddFavourite | KeyAction::RemoveFavourite => at(2).within(Bookmarks),
+        KeyAction::Favourites => at(2).dialog().within(Bookmarks),
+        KeyAction::Search | KeyAction::SearchDocuments => at(0),
+        KeyAction::SearchCase | KeyAction::SearchWholeWord | KeyAction::SearchRegex => {
+            at(1).toggle()
+        }
+        KeyAction::OpenHitsLeft | KeyAction::OpenHitsRight => at(2),
+        KeyAction::HermesHandToInbox
+        | KeyAction::HermesProcessAgain
+        | KeyAction::HermesQuickFix
+        | KeyAction::HermesExclude => at(0),
+        KeyAction::Rules => at(1),
+        KeyAction::FilingStatus | KeyAction::SavedQueries | KeyAction::HermesInspect => {
+            at(1).within(HermesReview)
+        }
+        KeyAction::HermesSetInbox
+        | KeyAction::HermesSetFilingLocation
+        | KeyAction::HermesSetArchive => at(1).within(HermesSetup),
+        KeyAction::DownloadOcrModels | KeyAction::DownloadAiModel => {
+            at(1).dialog().within(HermesSetup)
+        }
+        KeyAction::About => at(0),
+        KeyAction::CommandPalette => at(1).dialog(),
+    }
+}
+
+fn command_without_place(action: KeyAction) -> Option<Command> {
     use CommandGroup::{Edit, File, Go, Help, Hermes, Search, View};
     match action {
         KeyAction::CursorUp
