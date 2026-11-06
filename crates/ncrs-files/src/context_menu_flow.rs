@@ -89,6 +89,7 @@ impl MenuFacts {
                 | ContextAction::DeletePermanently => self.has_sources,
                 ContextAction::Rename
                 | ContextAction::NewFolder
+                | ContextAction::OpenTerminal
                 | ContextAction::ComputeFolderSizes
                 | ContextAction::AddFavourite
                 | ContextAction::RemoveFavourite
@@ -113,6 +114,7 @@ impl MenuFacts {
             | ContextAction::DeletePermanently => self.has_sources,
             ContextAction::Rename => cursor_row.is_some_and(|entry| !entry.is_parent),
             ContextAction::NewFolder => true,
+            ContextAction::OpenTerminal => panels.terminal_folder().is_some(),
             ContextAction::CopyPath => self.can_copy_path,
             ContextAction::CopyName => self.can_copy_name,
             ContextAction::ComputeFolderSizes => !folder_size_targets(panel).is_empty(),

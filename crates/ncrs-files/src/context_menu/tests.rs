@@ -30,7 +30,7 @@ fn the_menu_has_the_five_groups_with_separators() {
         .filter(|entry| **entry == MenuEntry::Separator)
         .count();
     assert_eq!(separators, 4);
-    assert_eq!(menu.entries().len(), 12 + 4);
+    assert_eq!(menu.entries().len(), 13 + 4);
     assert_eq!(selected_action(&menu), ContextAction::Open);
 }
 
@@ -61,7 +61,11 @@ fn the_favourites_entry_fits_the_folder() {
 fn navigation_skips_separators_and_greyed_out_entries() {
     let mut menu = menu_with(&[ContextAction::View, ContextAction::Edit]);
     menu.move_by(1);
+    assert_eq!(selected_action(&menu), ContextAction::OpenTerminal);
+    menu.move_by(1);
     assert_eq!(selected_action(&menu), ContextAction::Copy);
+    menu.move_by(-1);
+    assert_eq!(selected_action(&menu), ContextAction::OpenTerminal);
     menu.move_by(-1);
     assert_eq!(selected_action(&menu), ContextAction::Open);
     menu.move_by(-1);
@@ -129,7 +133,7 @@ fn only_usable_entries_can_be_highlighted() {
     let mut menu = menu_with(&[ContextAction::View]);
     menu.select(1);
     assert_eq!(selected_action(&menu), ContextAction::Open);
-    menu.select(4);
+    menu.select(5);
     assert_eq!(selected_action(&menu), ContextAction::Copy);
     let separator = menu
         .entries()

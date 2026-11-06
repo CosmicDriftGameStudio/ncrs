@@ -49,6 +49,7 @@ impl KeyActionMessage for KeyAction {
             Self::Paste => Message::Paste,
             Self::View => Message::OpenExternal(OpenKind::View),
             Self::Edit => Message::OpenExternal(OpenKind::Edit),
+            Self::OpenTerminal => Message::OpenTerminal,
             Self::Copy => Message::Transfer(TransferKind::Copy),
             Self::Move => Message::Transfer(TransferKind::Move),
             Self::Rename => Message::Panel(PanelMessage::RenameStart),

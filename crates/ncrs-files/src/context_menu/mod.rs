@@ -13,6 +13,9 @@ pub enum ContextAction {
     Open,
     View,
     Edit,
+    /// Not in the menu of a list of hits or of the search results: they have
+    /// no folder of their own.
+    OpenTerminal,
     Copy,
     Move,
     Rename,
@@ -34,10 +37,11 @@ pub enum ContextAction {
 
 impl ContextAction {
     #[cfg(any(test, feature = "test-support"))]
-    pub const ALL: [ContextAction; 16] = [
+    pub const ALL: [ContextAction; 17] = [
         ContextAction::Open,
         ContextAction::View,
         ContextAction::Edit,
+        ContextAction::OpenTerminal,
         ContextAction::Copy,
         ContextAction::Move,
         ContextAction::Rename,
@@ -68,6 +72,7 @@ impl ContextAction {
             | ContextAction::ShowOnOtherSide
             | ContextAction::RemoveFromList => true,
             ContextAction::Edit
+            | ContextAction::OpenTerminal
             | ContextAction::Move
             | ContextAction::Rename
             | ContextAction::NewFolder
@@ -91,6 +96,7 @@ impl ContextAction {
             | ContextAction::ShowOnOtherSide
             | ContextAction::RemoveFromList => true,
             ContextAction::Edit
+            | ContextAction::OpenTerminal
             | ContextAction::Move
             | ContextAction::NewFolder
             | ContextAction::ComputeFolderSizes
@@ -106,6 +112,7 @@ impl ContextAction {
             ContextAction::Open => Msg::ContextMenuOpen,
             ContextAction::View => Msg::ContextMenuView,
             ContextAction::Edit => Msg::ContextMenuEdit,
+            ContextAction::OpenTerminal => Msg::ContextMenuOpenTerminal,
             ContextAction::Copy => Msg::ContextMenuCopy,
             ContextAction::Move => Msg::ContextMenuMove,
             ContextAction::Rename => Msg::ContextMenuRename,
@@ -128,6 +135,7 @@ pub const GROUPS: [&[ContextAction]; 5] = [
         ContextAction::Open,
         ContextAction::View,
         ContextAction::Edit,
+        ContextAction::OpenTerminal,
     ],
     &[
         ContextAction::Copy,

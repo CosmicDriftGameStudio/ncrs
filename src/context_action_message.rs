@@ -19,6 +19,7 @@ impl ContextActionMessage for ContextAction {
             ContextAction::Open => Message::Panel(PanelMessage::OpenSelected),
             ContextAction::View => Message::OpenExternal(OpenKind::View),
             ContextAction::Edit => Message::OpenExternal(OpenKind::Edit),
+            ContextAction::OpenTerminal => Message::OpenTerminal,
             ContextAction::Copy => Message::Transfer(TransferKind::Copy),
             ContextAction::Move => Message::Transfer(TransferKind::Move),
             ContextAction::Rename => Message::Panel(PanelMessage::RenameStart),

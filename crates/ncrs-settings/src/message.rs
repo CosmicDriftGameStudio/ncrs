@@ -73,6 +73,17 @@ pub enum SettingField {
     Own(OwnDetail),
 }
 
+/// An entry of the terminal list on the programs page.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TerminalChoice {
+    /// The first terminal found.
+    Automatic,
+    /// The terminal at this position of the list found on this computer.
+    Detected(usize),
+    /// A command typed in the field below the list.
+    Own,
+}
+
 /// Everything the settings tab sends.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SettingsMessage {
@@ -100,6 +111,7 @@ pub enum SettingsMessage {
     PickThemeFile,
     ThemeFilePicked(Option<PathBuf>),
     ChooseProvider(AiProviderName),
+    ChooseTerminal(TerminalChoice),
     /// The button that opens the card to fetch a color theme.
     OpenThemeFetch,
     OpenKeyBindings,

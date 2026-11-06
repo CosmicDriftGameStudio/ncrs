@@ -2,7 +2,7 @@ use iced::widget::{column, container, row};
 use iced::{alignment, Length};
 
 use super::*;
-use crate::message::{SettingChange, SettingField, SettingsMessage};
+use crate::message::{SettingChange, SettingField, SettingsMessage, TerminalChoice};
 use crate::settings::*;
 use ncrs_config::config::{AiProviderName, ServerEntry};
 use ncrs_config::file_list_tags::FileListTags;
@@ -10,6 +10,7 @@ use ncrs_fs::OpenKind;
 use ncrs_i18n::fill_template;
 use ncrs_i18n::{Language, Msg};
 use ncrs_ui_kit::format::ellipsize_middle;
+use ncrs_ui_kit::hermes_kit::{field_dropdown, MenuItem};
 use ncrs_ui_kit::kit::{self, Check, Tone};
 use ncrs_ui_kit::layout::SETTINGS_WIDE_CONTROL_WIDTH;
 use ncrs_ui_kit::theme::{self, spacing};
@@ -226,6 +227,11 @@ pub fn program_row<'a>(kind: OpenKind, view: &SettingsView<'a>) -> SettingRow<'a
             Msg::SettingsRowEditorNote,
             EDITOR_FIELD_ID,
         ),
+        OpenKind::Terminal => (
+            Msg::SettingsRowTerminal,
+            Msg::SettingsRowTerminalNote,
+            TERMINAL_FIELD_ID,
+        ),
     };
     let mut control = row![
         setting_field(
@@ -271,6 +277,85 @@ pub fn program_row<'a>(kind: OpenKind, view: &SettingsView<'a>) -> SettingRow<'a
     }
 }
 
+/// The terminal of "Open terminal here": a list of Automatic, the terminals
+/// found on this computer and, outside the App Store build, an own command.
+pub fn terminal_row<'a>(view: &SettingsView<'a>) -> SettingRow<'a> {
+    let lang = view.lang;
+    let state = view.state;
+    let field = SettingField::Program(OpenKind::Terminal);
+    let automatic = match state.terminals.first() {
+        Some(first) => fill_template(
+            lang.text(Msg::SettingsTerminalAutomatic),
+            &[("{name}", &first.name)],
+        ),
+        None => lang.text(Msg::SettingsTerminalAutomaticNone).to_owned(),
+    };
+    let mut items = vec![MenuItem::new(
+        automatic,
+        SettingsMessage::ChooseTerminal(TerminalChoice::Automatic),
+    )];
+    items.extend(state.terminals.iter().enumerate().map(|(index, terminal)| {
+        MenuItem::new(
+            terminal.name.clone(),
+            SettingsMessage::ChooseTerminal(TerminalChoice::Detected(index)),
+        )
+    }));
+    if !state.sandboxed {
+        items.push(MenuItem::new(
+            lang.text(Msg::SettingsTerminalOwn),
+            SettingsMessage::ChooseTerminal(TerminalChoice::Own),
+        ));
+    }
+    let choice = state.terminal_choice();
+    let selected = match choice {
+        TerminalChoice::Automatic => 0,
+        TerminalChoice::Detected(index) => index + 1,
+        TerminalChoice::Own => items.len() - 1,
+    };
+    let mut control = column![field_dropdown(
+        SETTINGS_WIDE_CONTROL_WIDTH,
+        &items,
+        selected,
+        view.palette
+    )]
+    .spacing(spacing::S);
+    if choice == TerminalChoice::Own {
+        let mut own = row![setting_field(
+            field,
+            TERMINAL_FIELD_ID,
+            lang.text(Msg::SettingsTerminalCommandPlaceholder),
+            !state.sandboxed,
+            view,
+        )]
+        .spacing(spacing::S)
+        .align_y(alignment::Vertical::Center);
+        if state.can_reset_program(OpenKind::Terminal) {
+            own = own.push(kit::button(
+                lang.text(Msg::SettingsDefault),
+                Some(change(SettingChange::Program {
+                    kind: OpenKind::Terminal,
+                    line: None,
+                })),
+                Tone::Secondary,
+                view.palette,
+            ));
+        }
+        control = control.push(own);
+    }
+    SettingRow {
+        label: lang.text(Msg::SettingsRowTerminal).to_owned(),
+        theme_name: None,
+        config_key: None,
+        description: Some(lang.text(Msg::SettingsRowTerminalNote).to_owned()),
+        problem: field_problem(field, view),
+        warning: None,
+        control: control.into(),
+        control_width: Some(SETTINGS_WIDE_CONTROL_WIDTH),
+        in_command_list: true,
+        list_indent: None,
+    }
+}
+
 pub fn programs_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
     vec![Group {
         intro: None,
@@ -278,6 +363,7 @@ pub fn programs_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
         rows: vec![
             program_row(OpenKind::View, view),
             program_row(OpenKind::Edit, view),
+            terminal_row(view),
         ],
     }]
 }

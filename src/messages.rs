@@ -118,6 +118,9 @@ pub enum Message {
     // --- view / edit (F3, F4) ---
     /// F3 or F4: hand the file under the cursor to an external program.
     OpenExternal(crate::fs::OpenKind),
+    /// "Open terminal here": the terminal starts in the folder under the
+    /// cursor, else in the panel's folder.
+    OpenTerminal,
     /// Click on the "access blocked" error: open the system's privacy settings.
     #[cfg(target_os = "macos")]
     OpenPrivacySettings,

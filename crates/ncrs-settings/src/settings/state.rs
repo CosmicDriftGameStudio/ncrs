@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::facts::{LoadedFacts, ModelKind};
-use crate::message::{SettingChange, SettingField};
+use crate::message::{SettingChange, SettingField, TerminalChoice};
 use ncrs_config::config::{
     check_ai_endpoint, AiEndpointProblem, AiProviderChoice, AiProviderName, AiSection, Config,
     ConfigError, OwnDetail, ProgramLine, ProgramLineProblem,
@@ -10,7 +10,7 @@ use ncrs_config::config::{
 use ncrs_config::file_list_tags::FileListTags;
 use ncrs_config::system_monitor::SystemSettings;
 use ncrs_config::SettingsFeature;
-use ncrs_fs::OpenKind;
+use ncrs_fs::{KnownTerminal, OpenKind};
 use ncrs_ui_kit::palette::{parse_color, ColorRole};
 
 /// The id of the search field above the feature list.
@@ -28,6 +28,7 @@ pub const SYSTEM_SECTION: &str = "[system]";
 
 pub const VIEWER_FIELD_ID: &str = "settings-program-view";
 pub const EDITOR_FIELD_ID: &str = "settings-program-edit";
+pub const TERMINAL_FIELD_ID: &str = "settings-program-terminal";
 pub const ENDPOINT_FIELD_ID: &str = "settings-ai-endpoint";
 pub const MODEL_FIELD_ID: &str = "settings-ai-model";
 pub const OWN_NAMES_FIELD_ID: &str = "settings-own-names";
@@ -69,6 +70,12 @@ pub struct SettingsState {
     pub provider: Option<AiProviderName>,
     /// The macOS App Store build, which may only start apps.
     pub sandboxed: bool,
+    /// The terminals found on this computer when the tab opened; looked up
+    /// then, not on every frame.
+    pub terminals: Vec<KnownTerminal>,
+    /// "Own command" was picked in the terminal list but nothing is saved
+    /// for it yet.
+    pub terminal_own: bool,
     /// The read folder whose dialog is open.
     pub folder_dialog: Option<PathBuf>,
     /// The model the user is asked about removing.
@@ -120,6 +127,8 @@ impl SettingsState {
             problems: HashMap::new(),
             provider: None,
             sandboxed,
+            terminals: Vec::new(),
+            terminal_own: false,
             folder_dialog: None,
             model_to_remove: None,
             all_areas: false,
@@ -180,7 +189,38 @@ impl SettingsState {
         match kind {
             OpenKind::View => open.view.as_ref(),
             OpenKind::Edit => open.edit.as_ref(),
+            OpenKind::Terminal => open.terminal.as_ref(),
         }
+    }
+
+    /// The entry of the terminal list that shows: a saved line that is one
+    /// of the terminals found is that terminal, any other saved line is the
+    /// own command, and nothing saved is Automatic.
+    pub fn terminal_choice(&self) -> TerminalChoice {
+        match self.saved_program(OpenKind::Terminal) {
+            Some(saved) => self
+                .terminals
+                .iter()
+                .position(|terminal| terminal.line == *saved)
+                .map_or(TerminalChoice::Own, TerminalChoice::Detected),
+            None if self.terminal_own => TerminalChoice::Own,
+            None => TerminalChoice::Automatic,
+        }
+    }
+
+    /// A click in the terminal list. A found terminal is saved as the line
+    /// that starts it; Automatic drops the line; Own only opens the field.
+    pub fn choose_terminal(&mut self, choice: TerminalChoice) -> Option<SettingChange> {
+        self.terminal_own = choice == TerminalChoice::Own;
+        let line = match choice {
+            TerminalChoice::Automatic => None,
+            TerminalChoice::Detected(index) => Some(self.terminals.get(index)?.line.clone()),
+            TerminalChoice::Own => return None,
+        };
+        Some(SettingChange::Program {
+            kind: OpenKind::Terminal,
+            line,
+        })
     }
 
     /// Whether the row of `kind` offers the way back to the system default:
@@ -387,6 +427,15 @@ impl SettingsState {
         }
         if matches!(change, SettingChange::AiProvider(_)) {
             self.provider = None;
+        }
+        if matches!(
+            change,
+            SettingChange::Program {
+                kind: OpenKind::Terminal,
+                line: None
+            }
+        ) {
+            self.terminal_own = false;
         }
         if matches!(change, SettingChange::Locations(_)) {
             self.folder_note = None;

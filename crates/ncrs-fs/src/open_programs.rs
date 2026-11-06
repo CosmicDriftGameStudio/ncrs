@@ -5,7 +5,7 @@ use std::path::{Component, Path};
 use serde::de::{Deserializer, Error as _};
 use serde::Deserialize;
 
-/// The `[open]` section: the programs behind F3 and F4. A missing one means
+/// The `[open]` section: the programs behind F3, F4 and the terminal. A missing one means
 /// the system default of the platform.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -14,6 +14,11 @@ pub struct OpenPrograms {
     pub view: Option<ProgramLine>,
     #[serde(default)]
     pub edit: Option<ProgramLine>,
+    /// The terminal of "Open terminal here", started with the folder as its
+    /// working directory; a missing one means the first terminal found. Unlike
+    /// the other two, `{path}` is not appended when no argument has it.
+    #[serde(default)]
+    pub terminal: Option<ProgramLine>,
 }
 
 /// Program plus leading arguments. `{path}` and `{line}` in an argument are

@@ -427,6 +427,78 @@ fn a_typed_program_offers_the_reset_before_it_is_saved_and_clearing_it_drops_the
         .is_none());
 }
 
+fn found(name: &str, program: &str, args: &[&str]) -> ncrs_fs::KnownTerminal {
+    ncrs_fs::KnownTerminal {
+        name: name.to_owned(),
+        line: ProgramLine::new(program, args),
+    }
+}
+
+#[test]
+fn the_terminal_choice_round_trips_through_the_open_section() {
+    use crate::message::TerminalChoice;
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("config.toml");
+    std::fs::write(&path, "").unwrap();
+    let mut state = state_of("");
+    state.terminals = vec![
+        found("Konsole", "konsole", &["--workdir", "{path}"]),
+        found("foot", "foot", &["--working-directory={path}"]),
+    ];
+    let saved = |path: &Path| ncrs_config::config::load(path).unwrap().open.terminal;
+    assert_eq!(state.terminal_choice(), TerminalChoice::Automatic);
+
+    let change = state.choose_terminal(TerminalChoice::Detected(1)).unwrap();
+    applied(&mut state, &path, change);
+    assert_eq!(state.terminal_choice(), TerminalChoice::Detected(1));
+    assert_eq!(
+        saved(&path),
+        Some(ProgramLine::new("foot", &["--working-directory={path}"]))
+    );
+    assert!(std::fs::read_to_string(&path)
+        .unwrap()
+        .contains("terminal = [\"foot\", \"--working-directory={path}\"]"));
+
+    let own = SettingField::Program(OpenKind::Terminal);
+    assert_eq!(state.choose_terminal(TerminalChoice::Own), None);
+    let typed_change = typed(&mut state, own, "myterm --cd {path}").unwrap();
+    applied(&mut state, &path, typed_change);
+    assert_eq!(state.terminal_choice(), TerminalChoice::Own);
+    assert_eq!(
+        saved(&path),
+        Some(ProgramLine::new("myterm", &["--cd", "{path}"]))
+    );
+
+    let change = state.choose_terminal(TerminalChoice::Automatic).unwrap();
+    applied(&mut state, &path, change);
+    assert_eq!(state.terminal_choice(), TerminalChoice::Automatic);
+    assert_eq!(saved(&path), None);
+}
+
+#[test]
+fn own_command_shows_its_field_before_anything_is_saved_and_reset_drops_it() {
+    use crate::message::TerminalChoice;
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("config.toml");
+    std::fs::write(&path, "").unwrap();
+    let mut state = state_of("");
+    assert_eq!(state.choose_terminal(TerminalChoice::Own), None);
+    assert_eq!(state.terminal_choice(), TerminalChoice::Own);
+    assert!(!state.can_reset_program(OpenKind::Terminal));
+
+    applied(
+        &mut state,
+        &path,
+        SettingChange::Program {
+            kind: OpenKind::Terminal,
+            line: None,
+        },
+    );
+    assert_eq!(state.terminal_choice(), TerminalChoice::Automatic);
+}
+
 #[test]
 fn an_off_ai_with_the_model_on_disk_offers_the_switch_not_the_download() {
     use super::index_page::{ai_button, AiButton};

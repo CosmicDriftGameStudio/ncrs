@@ -24,6 +24,9 @@ use crate::open_programs::{OpenPrograms, ProgramLine};
 pub enum OpenKind {
     View,
     Edit,
+    /// The program behind "Open terminal here". It takes a folder, not a
+    /// file, so `open_command` has nothing for it: see `terminal_command`.
+    Terminal,
 }
 
 /// Whether this is the macOS App Store build, which runs in the App Sandbox
@@ -34,10 +37,15 @@ pub fn runs_in_app_sandbox() -> bool {
 }
 
 /// A program and its arguments, ready to start. Built by `open_command`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct OpenCommand {
     pub program: OsString,
     pub args: Vec<OsString>,
+    /// The folder the program starts in; the process's own where `None`.
+    pub current_dir: Option<PathBuf>,
+    /// Windows: a console window of its own, which a shell needs and which
+    /// the redirected stdio of the other programs would leave without input.
+    pub new_console: bool,
 }
 
 /// Where F3 and F4 start a program. A trait so the end-to-end tests can hand
@@ -58,11 +66,25 @@ pub struct SystemLauncher;
 
 impl Launcher for SystemLauncher {
     fn launch(&self, command: &OpenCommand) -> Result<(), String> {
-        let mut child = Command::new(&command.program)
-            .args(&command.args)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
+        let mut process = Command::new(&command.program);
+        process.args(&command.args);
+        if let Some(folder) = &command.current_dir {
+            process.current_dir(folder);
+        }
+        if command.new_console {
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt as _;
+                const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
+                process.creation_flags(CREATE_NEW_CONSOLE);
+            }
+        } else {
+            process
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null());
+        }
+        let mut child = process
             .spawn()
             .map_err(|err| format!("{}: {err}", command.program.to_string_lossy()))?;
         // Reaped on a thread, or every opened file would leave a zombie.
@@ -83,6 +105,7 @@ pub fn privacy_settings_command() -> OpenCommand {
         args: vec![
             "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles".into(),
         ],
+        ..OpenCommand::default()
     }
 }
 
@@ -98,6 +121,7 @@ pub fn trash_in_finder_command() -> OpenCommand {
             "Finder".into(),
             super::home_dir().join(".Trash").into(),
         ],
+        ..OpenCommand::default()
     }
 }
 
@@ -110,6 +134,7 @@ pub fn system_open_command(target: impl Into<OsString>) -> OpenCommand {
     OpenCommand {
         program: opener.program().into(),
         args,
+        ..OpenCommand::default()
     }
 }
 
@@ -298,11 +323,13 @@ pub fn open_command(
     let (default_view, default_edit) = default_programs();
     let view = programs.view.clone().unwrap_or(default_view);
     let edit = programs.edit.clone().or(default_edit);
-    let chosen = if executable {
+    let chosen = if kind == OpenKind::Terminal {
+        return None;
+    } else if executable {
         edit?
     } else {
         match kind {
-            OpenKind::View => view,
+            OpenKind::View | OpenKind::Terminal => view,
             OpenKind::Edit => edit.unwrap_or(view),
         }
     };
@@ -327,6 +354,7 @@ pub fn open_command(
     Some(OpenCommand {
         program: chosen.program().into(),
         args,
+        ..OpenCommand::default()
     })
 }
 
@@ -376,11 +404,16 @@ mod tests {
         OpenCommand {
             program: program.into(),
             args: all,
+            ..OpenCommand::default()
         }
     }
 
     fn configured(view: Option<ProgramLine>, edit: Option<ProgramLine>) -> OpenPrograms {
-        OpenPrograms { view, edit }
+        OpenPrograms {
+            view,
+            edit,
+            ..OpenPrograms::default()
+        }
     }
 
     #[cfg(target_os = "macos")]

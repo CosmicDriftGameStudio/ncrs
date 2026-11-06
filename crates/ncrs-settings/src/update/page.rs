@@ -84,6 +84,9 @@ pub fn update(
         SettingsMessage::ChooseProvider(provider) => {
             in_settings(settings, ctx, |state| state.choose_provider(provider))
         }
+        SettingsMessage::ChooseTerminal(choice) => {
+            in_settings(settings, ctx, |state| state.choose_terminal(choice))
+        }
         SettingsMessage::PickProgram(kind) => {
             let apps_only = settings.page.as_ref().is_some_and(|state| state.sandboxed);
             actions.push(Action::PickProgram { kind, apps_only });
@@ -290,6 +293,7 @@ pub fn fresh_settings_state(ctx: &Ctx<'_>) -> SettingsState {
         None => Ok(Box::default()),
     };
     let mut state = SettingsState::new(ocr_models_present, file, runs_in_app_sandbox());
+    state.terminals = ncrs_fs::detect_terminals();
     state.ai_model_present = ctx
         .ai_models_dir
         .as_deref()

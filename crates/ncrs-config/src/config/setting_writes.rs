@@ -274,6 +274,7 @@ pub fn program_setting(kind: OpenKind, line: Option<&ProgramLine>) -> Setting {
         key: match kind {
             OpenKind::View => "view",
             OpenKind::Edit => "edit",
+            OpenKind::Terminal => "terminal",
         },
         value: line.map(|words| toml_edit::Value::Array(words.words().collect())),
     }
@@ -338,7 +339,7 @@ pub enum AiProviderChoice {
     },
 }
 
-/// Sets `view` or `edit` in `[open]`, `None` drops it so that the system
+/// Sets `view`, `edit` or `terminal` in `[open]`, `None` drops it so that the system
 /// default opens the file; same guarantees as [`write_theme_preset`].
 pub fn write_program(
     path: &Path,

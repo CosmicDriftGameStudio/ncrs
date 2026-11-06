@@ -44,7 +44,7 @@ const BUTTON_PADDING_X: f32 = 10.0;
 
 /// The height of the text inside a field: with the padding it makes
 /// [`size::ROW_TALL`].
-const FIELD_LINE_HEIGHT: f32 = 16.0;
+pub const FIELD_LINE_HEIGHT: f32 = 16.0;
 
 /// How strongly the outline of a key cap shows on a filled button.
 const CAP_OUTLINE_ALPHA: f32 = 0.35;
