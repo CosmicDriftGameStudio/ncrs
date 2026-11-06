@@ -618,7 +618,7 @@ impl App {
             Message::RunCommand(action) => self.run_command(action),
             #[cfg(target_os = "macos")]
             Message::InstallNativeMenu => {
-                native_menu::install(self.lang, &self.keymap, self.menu_availability());
+                native_menu::install(self.lang, &self.keymap, self.menu_state());
                 Task::none()
             }
             Message::Quit => self.quit(),
@@ -636,7 +636,7 @@ impl App {
         // dialog could not be answered at all.
         self.publish_key_state();
         #[cfg(target_os = "macos")]
-        native_menu::sync(self.lang, &self.keymap, self.menu_availability());
+        native_menu::sync(self.lang, &self.keymap, self.menu_state());
         task
     }
 

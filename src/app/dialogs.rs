@@ -22,16 +22,27 @@ pub(in crate::app) fn blocked_access_press(
 }
 
 impl App {
-    /// What the menu bar lets the user run: nothing while a dialog or box is
-    /// open, otherwise what works in the area the keys go to.
+    /// What the menu bar shows: what it lets the user run, which is nothing
+    /// while a dialog or box is open and otherwise what works in the area the
+    /// keys go to, and the state of its check items.
     #[cfg(any(target_os = "macos", test))]
-    pub(in crate::app) fn menu_availability(&self) -> Availability {
-        if self.overlay_is_open() {
+    pub(in crate::app) fn menu_state(&self) -> crate::menu::MenuState {
+        let availability = if self.overlay_is_open() {
             Availability::Blocked
         } else if self.search_has_keys() {
             Availability::Open(KeyScope::Search)
         } else {
             Availability::Open(KeyScope::Panel)
+        };
+        let search = self.search.view.as_ref();
+        crate::menu::MenuState {
+            availability,
+            toggles: crate::menu::Toggles {
+                search_case: search.is_some_and(|view| view.case_sensitive),
+                search_whole_word: search.is_some_and(|view| view.whole_word),
+                search_regex: search.is_some_and(|view| view.regex),
+                file_list_tags: self.file_list_tags.show,
+            },
         }
     }
 

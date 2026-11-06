@@ -10,22 +10,38 @@ use std::sync::Arc;
 
 use iced::Subscription;
 use muda::accelerator::{Accelerator, Code, Modifiers as MenuModifiers};
-use muda::{Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
+use muda::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
 
 use crate::commands::CommandGroup;
 use crate::i18n::{Language, Msg};
 use crate::keymap::{Binding, KeyAction, Keymap};
-use crate::menu::{self, Availability, MenuItemSpec, MenuModel};
+use crate::menu::{self, Availability, MenuEntry, MenuItemSpec, MenuModel, MenuState};
 use crate::messages::Message;
 use iced::keyboard::Key;
+
+/// An entry the state can change after the menu is built.
+enum Entry {
+    Plain(MenuItem),
+    Check(CheckMenuItem),
+}
+
+impl Entry {
+    fn set_enabled(&self, enabled: bool) {
+        match self {
+            Self::Plain(item) => item.set_enabled(enabled),
+            Self::Check(item) => item.set_enabled(enabled),
+        }
+    }
+}
 
 struct Installed {
     /// Held so the system menu lives as long as this record.
     _menu: Menu,
-    items: Vec<(KeyAction, MenuItem)>,
+    /// Every entry with an action, those in submenus too.
+    items: Vec<(KeyAction, Entry)>,
     lang: Language,
     keymap: Arc<Keymap>,
-    availability: Availability,
+    state: MenuState,
 }
 
 thread_local! {
@@ -34,38 +50,44 @@ thread_local! {
 
 /// Replaces the menu bar. Must run on the main thread: muda refuses to make
 /// menu items anywhere else.
-pub fn install(lang: Language, keymap: &Arc<Keymap>, availability: Availability) {
-    match build(lang, keymap, availability) {
+pub fn install(lang: Language, keymap: &Arc<Keymap>, state: MenuState) {
+    match build(lang, keymap, state) {
         Ok(installed) => INSTALLED.set(Some(installed)),
         Err(error) => eprintln!("ncrs: the menu bar could not be built: {error}"),
     }
 }
 
 /// Brings an installed menu up to date: new titles after a language or keymap
-/// change, and only the entries whose enabled state changed otherwise.
-/// Does nothing before `install`.
-pub fn sync(lang: Language, keymap: &Arc<Keymap>, availability: Availability) {
+/// change, and only the entries whose enabled or checked state changed
+/// otherwise. Does nothing before `install`.
+pub fn sync(lang: Language, keymap: &Arc<Keymap>, state: MenuState) {
     INSTALLED.with_borrow_mut(|slot| {
         let Some(installed) = slot.as_mut() else {
             return;
         };
         if installed.lang != lang || !Arc::ptr_eq(&installed.keymap, keymap) {
-            match build(lang, keymap, availability) {
+            match build(lang, keymap, state) {
                 Ok(rebuilt) => *slot = Some(rebuilt),
                 Err(error) => eprintln!("ncrs: the menu bar could not be rebuilt: {error}"),
             }
             return;
         }
-        if installed.availability == availability {
-            return;
-        }
-        for (action, item) in &installed.items {
-            let enabled = availability.enables(*action);
-            if enabled != installed.availability.enables(*action) {
-                item.set_enabled(enabled);
+        for (action, entry) in &installed.items {
+            let enabled = state.availability.enables(*action);
+            if enabled != installed.state.availability.enables(*action) {
+                entry.set_enabled(enabled);
+            }
+            // Compared with the item itself, not with the last state: the
+            // system flips a check item when it is chosen, even when the app
+            // then leaves the toggle as it was.
+            if let Entry::Check(item) = entry {
+                let on = state.toggles.is_on(*action);
+                if item.is_checked() != on {
+                    item.set_checked(on);
+                }
             }
         }
-        installed.availability = availability;
+        installed.state = state;
     });
 }
 
@@ -95,48 +117,78 @@ fn menu_event_ids() -> impl iced::futures::Stream<Item = String> {
     })
 }
 
-fn build(
-    lang: Language,
-    keymap: &Arc<Keymap>,
+/// Makes the system's items of a menu and remembers those the state can
+/// change.
+struct Maker {
     availability: Availability,
-) -> muda::Result<Installed> {
-    let model = MenuModel::build(lang, keymap);
-    let mut items: Vec<(KeyAction, MenuItem)> = Vec::new();
-    let mut item_of = |spec: &MenuItemSpec| {
-        let item = MenuItem::with_id(
-            spec.action.name(),
-            &spec.title,
-            availability.enables(spec.action),
-            spec.accelerator.as_ref().and_then(accelerator_of),
-        );
-        items.push((spec.action, item.clone()));
-        item
-    };
-    let text = |msg: Msg| Some(lang.text(msg));
+    items: Vec<(KeyAction, Entry)>,
+}
 
-    let menu = Menu::new();
-
-    let app_menu = Submenu::new(lang.text(Msg::MenuApp), true);
-    let (about, quit) = model.app.split_at(model.app.len().min(1));
-    for spec in about {
-        app_menu.append(&item_of(spec))?;
+impl Maker {
+    fn append_item(&mut self, parent: &Submenu, spec: &MenuItemSpec) -> muda::Result<()> {
+        let enabled = self.availability.enables(spec.action);
+        let accelerator = spec.accelerator.as_ref().and_then(accelerator_of);
+        let entry = match spec.checked {
+            Some(checked) => {
+                let item = CheckMenuItem::with_id(
+                    spec.action.name(),
+                    &spec.title,
+                    enabled,
+                    checked,
+                    accelerator,
+                );
+                parent.append(&item)?;
+                Entry::Check(item)
+            }
+            None => {
+                let item = MenuItem::with_id(spec.action.name(), &spec.title, enabled, accelerator);
+                parent.append(&item)?;
+                Entry::Plain(item)
+            }
+        };
+        self.items.push((spec.action, entry));
+        Ok(())
     }
-    app_menu.append(&PredefinedMenuItem::separator())?;
-    app_menu.append(&PredefinedMenuItem::services(text(Msg::MenuServices)))?;
-    app_menu.append(&PredefinedMenuItem::separator())?;
-    app_menu.append(&PredefinedMenuItem::hide(text(Msg::MenuHide)))?;
-    app_menu.append(&PredefinedMenuItem::hide_others(text(Msg::MenuHideOthers)))?;
-    app_menu.append(&PredefinedMenuItem::show_all(text(Msg::MenuShowAll)))?;
-    app_menu.append(&PredefinedMenuItem::separator())?;
-    for spec in quit {
-        app_menu.append(&item_of(spec))?;
-    }
-    menu.append(&app_menu)?;
 
-    for spec in &model.menus {
+    fn append_entry(&mut self, parent: &Submenu, entry: &MenuEntry) -> muda::Result<()> {
+        match entry {
+            MenuEntry::Item(spec) => self.append_item(parent, spec),
+            MenuEntry::Separator => parent.append(&PredefinedMenuItem::separator()),
+            MenuEntry::Submenu(spec) => {
+                let submenu = Submenu::new(&spec.title, true);
+                for item in &spec.items {
+                    self.append_item(&submenu, item)?;
+                }
+                parent.append(&submenu)
+            }
+        }
+    }
+
+    fn app_menu(&mut self, lang: Language, specs: &[MenuItemSpec]) -> muda::Result<Submenu> {
+        let text = |msg: Msg| Some(lang.text(msg));
+        let app_menu = Submenu::new(lang.text(Msg::MenuApp), true);
+        let (about, quit) = specs.split_at(specs.len().min(1));
+        for spec in about {
+            self.append_item(&app_menu, spec)?;
+        }
+        app_menu.append(&PredefinedMenuItem::separator())?;
+        app_menu.append(&PredefinedMenuItem::services(text(Msg::MenuServices)))?;
+        app_menu.append(&PredefinedMenuItem::separator())?;
+        app_menu.append(&PredefinedMenuItem::hide(text(Msg::MenuHide)))?;
+        app_menu.append(&PredefinedMenuItem::hide_others(text(Msg::MenuHideOthers)))?;
+        app_menu.append(&PredefinedMenuItem::show_all(text(Msg::MenuShowAll)))?;
+        app_menu.append(&PredefinedMenuItem::separator())?;
+        for spec in quit {
+            self.append_item(&app_menu, spec)?;
+        }
+        Ok(app_menu)
+    }
+
+    fn group_menu(&mut self, lang: Language, spec: &menu::MenuSpec) -> muda::Result<Submenu> {
+        let text = |msg: Msg| Some(lang.text(msg));
         let submenu = Submenu::new(&spec.title, true);
         for entry in &spec.items {
-            submenu.append(&item_of(entry))?;
+            self.append_entry(&submenu, entry)?;
         }
         match spec.group {
             CommandGroup::Window => {
@@ -157,16 +209,28 @@ fn build(
             | CommandGroup::Search
             | CommandGroup::Hermes => {}
         }
-        menu.append(&submenu)?;
+        Ok(submenu)
     }
+}
 
+fn build(lang: Language, keymap: &Arc<Keymap>, state: MenuState) -> muda::Result<Installed> {
+    let model = MenuModel::build(lang, keymap, state.toggles);
+    let mut maker = Maker {
+        availability: state.availability,
+        items: Vec::new(),
+    };
+    let menu = Menu::new();
+    menu.append(&maker.app_menu(lang, &model.app)?)?;
+    for spec in &model.menus {
+        menu.append(&maker.group_menu(lang, spec)?)?;
+    }
     menu.init_for_nsapp();
     Ok(Installed {
         _menu: menu,
-        items,
+        items: maker.items,
         lang,
         keymap: Arc::clone(keymap),
-        availability,
+        state,
     })
 }
 
@@ -216,6 +280,7 @@ fn accelerator_of(binding: &Binding) -> Option<Accelerator> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::menu::Toggles;
     use iced::keyboard::{key, Modifiers};
 
     #[test]
@@ -271,12 +336,13 @@ mod tests {
     #[test]
     fn keys_that_would_break_typing_are_not_handed_over_at_all() {
         let keymap = Keymap::default();
-        let model = MenuModel::build(Language::English, &keymap);
-        for spec in model
-            .app
-            .iter()
-            .chain(model.menus.iter().flat_map(|menu| &menu.items))
-        {
+        let model = MenuModel::build(Language::English, &keymap, Toggles::default());
+        for spec in model.app.iter().chain(
+            model
+                .menus
+                .iter()
+                .flat_map(|menu| menu.items.iter().flat_map(MenuEntry::items)),
+        ) {
             if let Some(binding) = &spec.accelerator {
                 assert!(menu::is_safe_as_key_equivalent(binding));
             }
