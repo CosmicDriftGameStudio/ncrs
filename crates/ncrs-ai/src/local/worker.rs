@@ -205,14 +205,36 @@ impl Shared {
     }
 
     pub fn submit(&self, job: Job) {
-        locked(&self.queue).push(job);
+        let mut queue = locked(&self.queue);
+        if queue.closed {
+            drop(queue);
+            job.fail(AiError::Model("the model is closed"));
+            return;
+        }
+        queue.push(job);
+        drop(queue);
         self.wake.notify_one();
     }
 
-    /// The worker stops, and with it the model leaves the memory.
+    /// The worker stops, and with it the model leaves the memory. Jobs still
+    /// waiting fail, so no caller waits for an answer that never comes.
     pub fn close(&self) {
-        locked(&self.queue).closed = true;
+        let mut waiting = Vec::new();
+        {
+            let mut queue = locked(&self.queue);
+            queue.closed = true;
+            while let Some(job) = queue.pop() {
+                waiting.push(job);
+            }
+        }
         self.wake.notify_all();
+        for job in waiting {
+            job.fail(AiError::Model("the model is closed"));
+        }
+    }
+
+    pub fn is_closed(&self) -> bool {
+        locked(&self.queue).closed
     }
 
     fn wait_for_job(&self, idle: Option<Duration>) -> Waited {
@@ -415,5 +437,53 @@ mod queue_tests {
                 "second document"
             ]
         );
+    }
+
+    fn closed_shared() -> Shared {
+        let shared = Shared::new(
+            PathBuf::from("none.gguf"),
+            crate::model_file::LOCAL_MODEL,
+            std::num::NonZeroU32::MIN,
+            std::num::NonZeroU32::MIN,
+            Duration::from_secs(1),
+        );
+        shared.close();
+        shared
+    }
+
+    #[test]
+    fn a_job_for_a_closed_model_fails_at_once() {
+        let shared = closed_shared();
+        let (reply, answer) = channel();
+        shared.submit(Job::Extract(ExtractJob {
+            request: match extract_job("x") {
+                Job::Extract(extract) => extract.request,
+                Job::Chat(_) | Job::Rule(_) => panic!("not an extraction"),
+            },
+            reply,
+        }));
+
+        answer.recv().unwrap().unwrap_err();
+    }
+
+    #[test]
+    fn closing_fails_the_jobs_still_waiting() {
+        let shared = Shared::new(
+            PathBuf::from("none.gguf"),
+            crate::model_file::LOCAL_MODEL,
+            std::num::NonZeroU32::MIN,
+            std::num::NonZeroU32::MIN,
+            Duration::from_secs(1),
+        );
+        let (reply, answer) = channel();
+        let Job::Extract(mut waiting) = extract_job("x") else {
+            panic!("not an extraction");
+        };
+        waiting.reply = reply;
+        shared.submit(Job::Extract(waiting));
+
+        shared.close();
+
+        answer.recv().unwrap().unwrap_err();
     }
 }

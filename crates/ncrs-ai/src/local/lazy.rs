@@ -18,7 +18,7 @@ use crate::chat::{ChatIntent, ChatModel, ChatTurn};
 use crate::contract::{Extraction, ExtractionRequest, Provider};
 use crate::error::AiError;
 use crate::model_file::ModelPin;
-use crate::rules::{annotated_paths, folder_depth, repair_note, ContextDocument, Levels, Mismatch};
+use crate::rules::{annotated_paths, repair_note, ContextDocument, Levels, Mismatch};
 use crate::status::LocalModelStatus;
 
 const RECOGNIZE_QUESTION: &str = "Which pattern wrote these paths?";
@@ -114,6 +114,9 @@ impl LazyLocalModel {
     }
 
     fn ensure_worker(&self) -> Result<(), AiError> {
+        if self.shared.is_closed() {
+            return Err(AiError::Model("the model is closed"));
+        }
         let mut worker = self.worker.lock().unwrap_or_else(PoisonError::into_inner);
         if worker.as_ref().is_some_and(|thread| !thread.is_finished()) {
             return Ok(());
@@ -158,6 +161,7 @@ impl LazyLocalModel {
         &self,
         files: &[(String, DocumentFields)],
         kinds: &Kinds,
+        folder_depth: Option<usize>,
         question: String,
     ) -> Result<Levels, AiError> {
         let documents: Vec<ContextDocument> = files
@@ -168,9 +172,8 @@ impl LazyLocalModel {
             })
             .collect();
         let paths = annotated_paths(files, kinds);
-        let depth = folder_depth(files.iter().map(|(path, _)| path.as_str()));
         self.ask_rules(&documents, kinds, move |session| {
-            session.recognize(&question, &paths, depth)
+            session.recognize(&question, &paths, folder_depth)
         })
     }
 
@@ -241,19 +244,26 @@ impl ChatModel for LazyLocalModel {
         &self,
         files: &[(String, DocumentFields)],
         kinds: &Kinds,
+        folder_depth: Option<usize>,
     ) -> Result<Levels, AiError> {
-        self.recognize_with(files, kinds, RECOGNIZE_QUESTION.to_owned())
+        self.recognize_with(files, kinds, folder_depth, RECOGNIZE_QUESTION.to_owned())
     }
 
     fn recognize_levels_again(
         &self,
         files: &[(String, DocumentFields)],
         kinds: &Kinds,
+        folder_depth: Option<usize>,
         previous: &Levels,
         misfits: &[Mismatch],
     ) -> Result<Levels, AiError> {
         let note = repair_note(&previous.pattern(), misfits);
-        self.recognize_with(files, kinds, format!("{RECOGNIZE_QUESTION}\n{note}"))
+        self.recognize_with(
+            files,
+            kinds,
+            folder_depth,
+            format!("{RECOGNIZE_QUESTION}\n{note}"),
+        )
     }
 
     /// Reads a snapshot only, never the disk and never the worker. While the
