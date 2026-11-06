@@ -197,6 +197,9 @@ impl SettingsState {
     /// of the terminals found is that terminal, any other saved line is the
     /// own command, and nothing saved is Automatic.
     pub fn terminal_choice(&self) -> TerminalChoice {
+        if self.terminal_own {
+            return TerminalChoice::Own;
+        }
         match self.saved_program(OpenKind::Terminal) {
             Some(saved) => self
                 .terminals

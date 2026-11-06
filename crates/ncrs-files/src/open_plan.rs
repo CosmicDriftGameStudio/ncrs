@@ -43,7 +43,7 @@ impl Panels {
     /// Tags are ignored, as in classic dual-panel file managers; `..` and directories have
     /// nothing to view or edit.
     pub fn plan_open(&self, kind: OpenKind, source: OpenSource) -> OpenPlan {
-        // A terminal takes a folder, which is `terminal_folder`'s business.
+        // A terminal takes a folder, which is `local_folder_target`'s business.
         if kind == OpenKind::Terminal {
             return OpenPlan::Nothing;
         }
@@ -61,7 +61,8 @@ impl Panels {
         if let Some(remote) = RemotePath::parse(&path) {
             return match kind {
                 OpenKind::Edit => OpenPlan::Refused(Msg::StatusRemoteReadOnly),
-                OpenKind::View | OpenKind::Terminal => OpenPlan::ViewFromServer(remote),
+                OpenKind::View => OpenPlan::ViewFromServer(remote),
+                OpenKind::Terminal => OpenPlan::Nothing,
             };
         }
         let in_archive = ncrs_fs::archive::locate_in_archive(&path)
@@ -69,7 +70,8 @@ impl Panels {
             .map(|location| location.archive);
         match (in_archive, kind) {
             (Some(_), OpenKind::Edit) => OpenPlan::Refused(Msg::StatusArchiveReadOnly),
-            (Some(archive), OpenKind::View | OpenKind::Terminal) => OpenPlan::ViewFromArchive {
+            (_, OpenKind::Terminal) => OpenPlan::Nothing,
+            (Some(archive), OpenKind::View) => OpenPlan::ViewFromArchive {
                 source: path,
                 archive,
             },

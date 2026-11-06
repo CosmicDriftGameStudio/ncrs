@@ -114,12 +114,12 @@ impl MenuFacts {
             | ContextAction::DeletePermanently => self.has_sources,
             ContextAction::Rename => cursor_row.is_some_and(|entry| !entry.is_parent),
             ContextAction::NewFolder => true,
-            ContextAction::OpenTerminal => panels.terminal_folder().is_some(),
+            ContextAction::OpenTerminal => panels.local_folder_target().is_some(),
             ContextAction::CopyPath => self.can_copy_path,
             ContextAction::CopyName => self.can_copy_name,
             ContextAction::ComputeFolderSizes => !folder_size_targets(panel).is_empty(),
             ContextAction::AddFavourite | ContextAction::RemoveFavourite => {
-                panels.favourite_target().is_some()
+                panels.local_folder_target().is_some()
             }
         }
     }
@@ -214,7 +214,7 @@ impl Panels {
             ContextMenu::for_hit_list(place_at, window, is_enabled, hermes)
         } else {
             let is_favourite = self
-                .favourite_target()
+                .local_folder_target()
                 .map(|target| self.favourites.contains(&target));
             ContextMenu::with_favourite(place_at, window, is_enabled, hermes, is_favourite)
         };

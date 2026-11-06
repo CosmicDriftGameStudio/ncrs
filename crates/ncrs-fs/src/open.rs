@@ -323,15 +323,11 @@ pub fn open_command(
     let (default_view, default_edit) = default_programs();
     let view = programs.view.clone().unwrap_or(default_view);
     let edit = programs.edit.clone().or(default_edit);
-    let chosen = if kind == OpenKind::Terminal {
-        return None;
-    } else if executable {
-        edit?
-    } else {
-        match kind {
-            OpenKind::View | OpenKind::Terminal => view,
-            OpenKind::Edit => edit.unwrap_or(view),
-        }
+    let chosen = match (kind, executable) {
+        (OpenKind::Terminal, _) => return None,
+        (_, true) => edit?,
+        (OpenKind::View, false) => view,
+        (OpenKind::Edit, false) => edit.unwrap_or(view),
     };
     let anchored: PathBuf = if path.is_absolute() {
         path.to_path_buf()
