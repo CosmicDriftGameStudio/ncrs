@@ -6,8 +6,8 @@ Datum: 2026-09-29 · Stand: ein Commit, 1217 Zeilen, 9 Tests · noch kein Releas
 
 Deine Anforderung „standard Datei manager funktionen" ist eine **Spezifikation**, keine
 Feature-Liste. Es gibt kein Norm-Dokument, an dem du dich abarbeiten kannst. Die
-präziseste öffentliche Referenz ist die Tastenbelegung von **Norton Commander 5.0**
-(WordPerfect DOS, 1993): F1=Help, F2=UserMenu, F3=View, F4=Edit, F5=Copy, F6=Rename/Move,
+präziseste öffentliche Referenz ist die klassische Tastenbelegung der Zwei-Panel-Dateimanager
+aus der DOS-Zeit: F1=Help, F2=UserMenu, F3=View, F4=Edit, F5=Copy, F6=Rename/Move,
 F7=MkDir, F8=Delete, F9=Menu, F10=Quit, Alt+F1..F10 = Panels/Ziele, Tab = Switch.
 
 An der arbeiten wir uns ab. Zwei Konsequenzen daraus:

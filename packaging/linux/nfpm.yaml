@@ -11,7 +11,7 @@ maintainer: CosmicDriftGameStudio
 homepage: https://github.com/CosmicDriftGameStudio/ncrs
 license: MIT
 description: |
-  A dual-panel file manager inspired by Norton Commander, built with iced
+  A fast, keyboard-first dual-panel file manager, built with iced
 
 # Both libraries sit in one folder because a release build looks for
 # libpdfium.so only next to the executable (it resolves symlinks, so the

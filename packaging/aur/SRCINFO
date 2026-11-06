@@ -1,6 +1,6 @@
 # Template: rendered by scripts/aur-package.sh
 pkgbase = ncrs-bin
-	pkgdesc = A dual-panel file manager inspired by Norton Commander, built with iced
+	pkgdesc = A fast, keyboard-first dual-panel file manager, built with iced
 	pkgver = @VERSION@
 	pkgrel = 1
 	url = https://github.com/CosmicDriftGameStudio/ncrs

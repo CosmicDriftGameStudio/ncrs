@@ -2,7 +2,7 @@
 
 Stand: Commit-Stand vom Review-Tag, 4.315 LOC Rust, 85 Tests grün, Clippy sauber
 (`-D warnings`). Ziel des Reviews: die Weichen für einen vollständigen
-„Norton Commander 2026“-Clone mit Enterprise-Anspruch (Sicherheit, Performance,
+Zwei-Panel-Dateimanager mit Enterprise-Anspruch (Sicherheit, Performance,
 Stabilität) **jetzt** stellen, statt später zu refactoren.
 
 Revision 2: nach Gegenprüfung durch den Maintainer. Was sich geändert hat,

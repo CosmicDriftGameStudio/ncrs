@@ -34,7 +34,7 @@ const PARTIAL_SIZE_MARK: char = '+';
 /// Size column text: `<UP>` / `<DIR>` for directories (the computed size once
 /// there is one), size otherwise.
 ///
-/// The markers are a Norton Commander convention and are deliberately not
+/// The markers are a classic dual-panel convention and are deliberately not
 /// translated, so this takes no `Language`.
 pub fn entry_size(entry: &FileEntry) -> String {
     if entry.is_parent {

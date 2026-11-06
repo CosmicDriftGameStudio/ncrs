@@ -1,6 +1,6 @@
 //! Multi-selection: which rows an operation applies to.
 //!
-//! Norton Commander has three visual states per row, and the difference matters
+//! A classic dual-panel file manager has three visual states per row, and the difference matters
 //! for what a file operation does:
 //!
 //! - the **cursor** is where Enter goes, one per panel

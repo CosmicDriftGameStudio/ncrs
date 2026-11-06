@@ -40,7 +40,7 @@ pub enum OpenPlan {
 }
 
 impl Panels {
-    /// Tags are ignored, as in Norton Commander; `..` and directories have
+    /// Tags are ignored, as in classic dual-panel file managers; `..` and directories have
     /// nothing to view or edit.
     pub fn plan_open(&self, kind: OpenKind, source: OpenSource) -> OpenPlan {
         let target = match source {

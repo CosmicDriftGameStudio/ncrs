@@ -1,4 +1,4 @@
-//! Colors, spacing and reusable widget styles (dark, Norton Commander inspired).
+//! Colors, spacing and reusable widget styles (dark, in the classic dual-panel style).
 
 use iced::widget::overlay::menu;
 use iced::widget::{button, checkbox, container, pick_list, text_input, Space};

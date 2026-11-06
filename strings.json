@@ -122,7 +122,7 @@
     },
     {
       "key": "marker.dir",
-      "context": "Shown in the size column for directories, like <DIR>. Convention from Norton Commander. Keep the angle brackets; this is deliberately not translated.",
+      "context": "Shown in the size column for directories, like <DIR>. Convention from classic dual-panel file managers. Keep the angle brackets; this is deliberately not translated.",
       "en": "<DIR>",
       "de": "<DIR>"
     },
@@ -212,7 +212,7 @@
     },
     {
       "key": "shortcut.mkdir",
-      "context": "Label of the F7 slot in the function key bar at the bottom of the window. The key asks for a new directory name; at most 8 characters, like Norton Commander's MkDir.",
+      "context": "Label of the F7 slot in the function key bar at the bottom of the window. The key asks for a new directory name; at most 8 characters, like the classic MkDir.",
       "en": "Mkdir",
       "de": "Ordner"
     },

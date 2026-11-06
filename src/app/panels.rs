@@ -209,7 +209,7 @@ impl App {
     }
 
     /// F3 / F4: the row under the cursor goes to the external program. Tags
-    /// are ignored, as in Norton Commander; `..` and directories have nothing
+    /// are ignored, as in classic dual-panel file managers; `..` and directories have nothing
     /// to view or edit. A file inside an archive is unpacked first, and only
     /// viewing works: the copy is thrown away, so an edit would be lost.
     pub(in crate::app) fn open_external(&mut self, kind: fs::OpenKind) -> Task<Message> {

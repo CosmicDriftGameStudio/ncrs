@@ -230,7 +230,7 @@ fn parse_patterns(spec: &str, include: bool, backslash_is_separator: bool) -> Ve
             if body.is_empty() {
                 return None;
             }
-            // Norton style: `*.*` is every name, dot or not.
+            // Classic style: `*.*` is every name, dot or not.
             let name = if body == "*.*" { "*" } else { body };
             let anchored = if name.contains('/') {
                 name.to_owned()
