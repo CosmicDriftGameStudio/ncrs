@@ -1,6 +1,6 @@
 //! Conversation 2: tidying a source folder into a target, with a trial first.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use ncrs_ai::Schedule;
@@ -8,6 +8,7 @@ use ncrs_filing::chat_work::{
     AnsweredGroups, ChatWork, FolderReading, RunItem, RunPlan, RunReport, StayReason, TrashItem,
     TrashReport, TrialOutcome, TrialPlan,
 };
+use ncrs_filing::rules_work::ArchiveMove;
 use ncrs_i18n::Msg;
 use ncrs_index::Transfer;
 
@@ -53,10 +54,21 @@ pub fn begin(state: &mut State, ctx: &Ctx, source: PathBuf) {
         );
         return;
     }
+    let inside = if std::mem::take(&mut state.session.rule_moves_wait) {
+        state
+            .session
+            .rule_moves
+            .take()
+            .map(|moves| moves.archive)
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
     state.session.tidy = Some(Tidy {
         source: source.clone(),
         target: None,
         transfer: None,
+        inside,
     });
     state.session.layout = None;
     state.session.deciding = None;
@@ -464,6 +476,16 @@ pub fn trial_done(state: &mut State, ctx: &Ctx, result: Result<TrialPlan, String
     };
     let open_questions = stay_groups::has_open_questions(state);
     if filed_count(trial) == 0 && trial.plan.unsure == 0 {
+        if let Some(tidy) = state
+            .session
+            .tidy
+            .as_ref()
+            .filter(|tidy| !tidy.inside.is_empty())
+        {
+            let (source, moves) = (tidy.source.clone(), tidy.inside.clone());
+            archive_run(state, ctx, source, moves);
+            return;
+        }
         if !open_questions || stay_groups::only_singles_open(state) {
             trial_end::without_filing(state, ctx, lead);
             return;
@@ -579,6 +601,19 @@ pub fn unsure(state: &mut State, ctx: &Ctx, entry: usize, choice: usize) {
     );
 }
 
+/// The archive documents of this target as items of the run.
+pub fn inside_items(moves: &[ArchiveMove], target: &Path) -> Vec<RunItem> {
+    moves
+        .iter()
+        .filter(|found| found.root == target)
+        .map(|found| RunItem {
+            from: found.root.join(&found.from),
+            to: found.to.clone(),
+            hash: found.hash,
+        })
+        .collect()
+}
+
 pub fn file_all(state: &mut State, ctx: &Ctx) {
     let (Some(trial), Some(tidy)) = (state.session.trial.as_mut(), state.session.tidy.as_ref())
     else {
@@ -610,11 +645,17 @@ pub fn file_all(state: &mut State, ctx: &Ctx) {
             hash: entry.hash,
         });
     }
+    if items.is_empty() && inside_items(&tidy.inside, &target).is_empty() {
+        let (source, moves) = (tidy.source.clone(), tidy.inside.clone());
+        archive_run(state, ctx, source, moves);
+        return;
+    }
     let folder = folder_name(ctx, &tidy.source);
     let run = RunPlan {
         name: fill(ctx.lang, Msg::HermesChatRunName, &[("folder", &folder)]),
         transfer,
         source_root: tidy.source.clone(),
+        inside: inside_items(&tidy.inside, &target),
         target_root: target,
         items,
     };
@@ -627,6 +668,58 @@ pub fn file_all(state: &mut State, ctx: &Ctx) {
 }
 
 pub fn filed_done(state: &mut State, ctx: &Ctx, result: Result<RunReport, String>) {
+    let chained = match (&result, state.session.tidy.as_ref()) {
+        (Ok(_), Some(tidy)) if state.session.deciding.is_none() => {
+            let left: Vec<ArchiveMove> = tidy
+                .inside
+                .iter()
+                .filter(|found| Some(&found.root) != tidy.target.as_ref())
+                .cloned()
+                .collect();
+            Some((tidy.source.clone(), left)).filter(|(_, moves)| !moves.is_empty())
+        }
+        _ => None,
+    };
+    filed_report(state, ctx, result);
+    if let Some((source, left)) = chained {
+        archive_run(state, ctx, source, left);
+    }
+}
+
+/// The renames in the archive alone: one run for the archive the first of
+/// the moves lies in. The moves of another archive follow once it is filed.
+pub fn archive_run(state: &mut State, ctx: &Ctx, source: PathBuf, moves: Vec<ArchiveMove>) {
+    let Some(target) = moves.first().map(|found| found.root.clone()) else {
+        return;
+    };
+    let run = RunPlan {
+        name: fill(
+            ctx.lang,
+            Msg::HermesChatRunName,
+            &[("folder", &folder_name(ctx, &source))],
+        ),
+        transfer: Transfer::Move,
+        source_root: source.clone(),
+        inside: inside_items(&moves, &target),
+        target_root: target.clone(),
+        items: Vec::new(),
+    };
+    state.session.trial = None;
+    state.session.tidy = Some(Tidy {
+        source,
+        target: Some(target),
+        transfer: Some(Transfer::Move),
+        inside: moves,
+    });
+    state.step = Step::Idle;
+    work(
+        state,
+        ChatWork::File { run },
+        Some(text(ctx.lang, Msg::HermesChatWorkingFiling)),
+    );
+}
+
+fn filed_report(state: &mut State, ctx: &Ctx, result: Result<RunReport, String>) {
     crate::follow_up::forget(state);
     if state.session.deciding.is_some() {
         crate::decide::run_done(state, ctx, result);
@@ -655,15 +748,25 @@ pub fn filed_done(state: &mut State, ctx: &Ctx, result: Result<RunReport, String
         .map_or(0, |reading| reading.files.len());
     state.session.readings.clear();
     state.session.groups = GroupFlow::default();
-    let mut parts = vec![Part::Text(fill(
-        ctx.lang,
-        Msg::HermesChatFiled,
-        &[
-            ("done", &number(report.done)),
-            ("stays", &number(total.saturating_sub(report.done))),
-            ("folder", &folder),
-        ],
-    ))];
+    let mut parts = Vec::new();
+    if report.done > 0 || report.inside_done == 0 {
+        parts.push(Part::Text(fill(
+            ctx.lang,
+            Msg::HermesChatFiled,
+            &[
+                ("done", &number(report.done)),
+                ("stays", &number(total.saturating_sub(report.done))),
+                ("folder", &folder),
+            ],
+        )));
+    }
+    if report.inside_done > 0 {
+        parts.push(Part::Text(fill(
+            ctx.lang,
+            Msg::HermesChatFiledInside,
+            &[("count", &number(report.inside_done))],
+        )));
+    }
     if report.skipped > 0 {
         parts.push(Part::Text(fill(
             ctx.lang,

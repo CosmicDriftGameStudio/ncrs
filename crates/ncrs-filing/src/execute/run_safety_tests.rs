@@ -65,6 +65,7 @@ impl Place {
             RunPlaces {
                 source: &self.source,
                 target: &self.target,
+                inside_target: false,
             },
             items,
             &mut Counting,

@@ -16,7 +16,7 @@ mod tests {
     use std::collections::BTreeSet;
 
     use crate::common::{count, letter, say, Talk};
-    use ncrs_ai::Levels;
+    use ncrs_ai::{Levels, Revision};
     use ncrs_hermes_chat::{ChipReply, Entry, Message, Part};
     use ncrs_i18n::Msg;
     use ncrs_index::{Combinator, Condition, ConditionKind, RuleConditions, RuleSpec};
@@ -141,8 +141,8 @@ mod tests {
         );
         assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatRuleStored, &[])]);
         assert!(
-            !has_chip(&talk, &ChipReply::RuleNow),
-            "the archive documents stay, nothing waits in a source folder"
+            has_chip(&talk, &ChipReply::RuleNow),
+            "the four archive documents would move under the new levels"
         );
     }
 
@@ -156,24 +156,21 @@ mod tests {
         let card = levels_card(&talk).expect("a card of levels");
         assert_eq!(card.footer, None, "every file fits");
         assert!(has_chip(&talk, &ChipReply::LevelsKeep));
-        assert!(!has_chip(&talk, &ChipReply::LevelsDefault));
+        assert!(has_chip(&talk, &ChipReply::LevelsDefault));
 
         talk.press(&ChipReply::LevelsKeep);
-        let suggestion = talk
-            .state
-            .chips()
-            .iter()
-            .find(|chip| matches!(chip.reply, ChipReply::RuleWhat(_)))
-            .expect("a suggestion from the files of the folder")
-            .reply
-            .clone();
-        talk.model.push_rule(Ok(spec("Rechnung", "Alfa/{year}")));
-        talk.press(&suggestion);
+        assert!(
+            has_chip(&talk, &ChipReply::RuleCreate),
+            "the trial of what the files of the folder share: {:?}",
+            talk.labels()
+        );
         talk.press(&ChipReply::RuleCreate);
 
+        let rule = the_only_rule(&talk);
+        assert_eq!(rule.spec.filing_pattern, "Alfa/{year}/{date}");
         assert_eq!(
-            the_only_rule(&talk).spec.filing_pattern,
-            "Alfa/{year}/{date}"
+            rule.spec.conditions.list,
+            vec![Condition::new(ConditionKind::Sender, "Alfa AG")]
         );
     }
 
@@ -335,8 +332,12 @@ mod tests {
         let mut talk = archive_talk();
         open_area(&mut talk, "Telefon");
         talk.press(&ChipReply::LevelsChange);
-        talk.press(&ChipReply::LevelDrop(0));
-        talk.press(&ChipReply::LevelsKeep);
+        talk.model.push_revision(Ok(Revision {
+            levels: levels("{date}_{sender}_{kind}"),
+            done: false,
+        }));
+        talk.type_text("leave out the year");
+        talk.press(&ChipReply::LevelsApply);
         talk.model.push_rule(Ok(spec("Rechnung", "Telefon/{year}")));
         talk.type_text("Rechnungen");
 
@@ -523,7 +524,7 @@ mod tests {
                     "Alfa AG",
                     &format!("{day}.{month:02}.2020"),
                     "Rechnung",
-                    day,
+                    day + 50,
                 ),
             );
             talk.set_fields(
@@ -548,7 +549,14 @@ mod tests {
         );
         assert_eq!(
             lines[3],
-            say(Msg::HermesChatRuleExamplesMore, &[("count", "1")])
+            say(Msg::HermesChatRuleExamplesMore, &[("count", "5")])
+        );
+        assert_eq!(
+            lines[4],
+            say(
+                Msg::HermesChatRuleTrialCounts,
+                &[("right", "0"), ("moves", "8"), ("inbox", "4")]
+            )
         );
         assert!(
             lines[0].contains("2020-01-10.pdf → Telefon/2020/") && lines[0].ends_with(".pdf"),
@@ -570,8 +578,8 @@ mod tests {
         assert_eq!(
             texts[1],
             say(
-                Msg::HermesChatRuleInArchive,
-                &[("in_archive", "4"), ("moves", "0")]
+                Msg::HermesChatRuleTrialCounts,
+                &[("right", "4"), ("moves", "0"), ("inbox", "0")]
             )
         );
         talk.press(&ChipReply::RuleCreate);
@@ -690,10 +698,15 @@ mod tests {
         let mut talk = archive_talk();
         open_area(&mut talk, "Telefon");
         talk.press(&ChipReply::LevelsChange);
-        talk.press(&ChipReply::LevelDrop(0));
-        talk.press(&ChipReply::LevelsChange);
-        talk.press(&ChipReply::LevelDrop(0));
-        talk.press(&ChipReply::LevelsKeep);
+        talk.model.push_revision(Ok(Revision {
+            levels: Levels {
+                folders: Vec::new(),
+                file: None,
+            },
+            done: false,
+        }));
+        talk.type_text("no levels at all");
+        talk.press(&ChipReply::LevelsApply);
         talk.model.push_rule(Ok(spec("Rechnung", "Telefon/{year}")));
         talk.type_text("Rechnungen");
 

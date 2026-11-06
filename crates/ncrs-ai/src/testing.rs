@@ -9,7 +9,7 @@ use ncrs_index::{DocumentFields, Kinds, RuleSpec};
 use crate::chat::{parse_chat_reply, ChatIntent, ChatModel, ChatTurn};
 use crate::contract::{parse_reply, Extraction, ExtractionRequest, Provider};
 use crate::error::AiError;
-use crate::rules::{ContextDocument, Levels, Mismatch};
+use crate::rules::{ContextDocument, Levels, Mismatch, Revision};
 use crate::status::LocalModelStatus;
 
 /// Answers with a canned raw reply, which goes through the same parser as the
@@ -84,6 +84,7 @@ pub struct ScriptedChatModel {
     recognized: Mutex<Vec<Vec<(String, DocumentFields)>>>,
     depths: Mutex<Vec<Option<usize>>>,
     revised: Mutex<Vec<(Levels, String)>>,
+    revisions: Mutex<VecDeque<Result<Revision, AiError>>>,
 }
 
 impl ScriptedChatModel {
@@ -107,11 +108,12 @@ impl ScriptedChatModel {
             recognized: Mutex::new(Vec::new()),
             depths: Mutex::new(Vec::new()),
             revised: Mutex::new(Vec::new()),
+            revisions: Mutex::new(VecDeque::new()),
         }
     }
 
     /// The levels and the sentence each `revise_levels` was asked, in order;
-    /// it answers from the same script as `recognize_levels`.
+    /// it answers from `push_revision`.
     pub fn revised(&self) -> Vec<(Levels, String)> {
         self.revised
             .lock()
@@ -133,6 +135,14 @@ impl ScriptedChatModel {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .push_back(levels);
+    }
+
+    /// The next answer of `revise_levels`.
+    pub fn push_revision(&self, revision: Result<Revision, AiError>) {
+        self.revisions
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push_back(revision);
     }
 
     /// The descriptions `generate_rule` was asked, in order.
@@ -257,16 +267,16 @@ impl ChatModel for ScriptedChatModel {
         _kinds: &Kinds,
         previous: &Levels,
         sentence: &str,
-    ) -> Result<Levels, AiError> {
+    ) -> Result<Revision, AiError> {
         self.revised
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .push((previous.clone(), sentence.to_owned()));
-        self.levels
+        self.revisions
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .pop_front()
-            .unwrap_or(Err(AiError::Model("no scripted levels")))
+            .unwrap_or(Err(AiError::Model("no scripted revision")))
     }
 
     fn status(&self) -> LocalModelStatus {

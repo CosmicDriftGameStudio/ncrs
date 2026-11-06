@@ -222,6 +222,7 @@ fn finish(state: &mut State, ctx: &Ctx) {
             transfer,
             source_root: tidy.source.clone(),
             target_root,
+            inside: Vec::new(),
             items,
         })
         .collect();

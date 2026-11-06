@@ -7,7 +7,7 @@ use ncrs_index::{DocumentFields, Kinds, RuleSpec};
 
 use super::turn::{ChatTurn, SearchQuery};
 use crate::error::AiError;
-use crate::rules::{ContextDocument, Levels, Mismatch};
+use crate::rules::{ContextDocument, Levels, Mismatch, Revision};
 use crate::status::LocalModelStatus;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -170,7 +170,7 @@ pub trait ChatModel: Send + Sync + fmt::Debug {
         kinds: &Kinds,
         previous: &Levels,
         sentence: &str,
-    ) -> Result<Levels, AiError>;
+    ) -> Result<Revision, AiError>;
     /// Never blocks and never reads the disk.
     fn status(&self) -> LocalModelStatus;
     /// Looks for the model file again (after a download).

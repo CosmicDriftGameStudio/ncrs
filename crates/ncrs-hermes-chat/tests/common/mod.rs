@@ -154,12 +154,15 @@ impl Talk {
 
     /// The chat can try and save rules; its locations are the archive and the inbox.
     pub fn with_rules(mut self) -> Self {
-        let archive = ncrs_intake::Location::new(
-            &self.path("archive"),
-            ncrs_intake::LocationMode::Archive,
-            false,
-        )
-        .unwrap();
+        let mut locations: Vec<ncrs_intake::Location> = self
+            .ctx
+            .targets
+            .iter()
+            .map(|target| {
+                ncrs_intake::Location::new(target, ncrs_intake::LocationMode::Archive, false)
+                    .unwrap()
+            })
+            .collect();
         std::fs::create_dir_all(self.path("inbox")).unwrap();
         let inbox = ncrs_intake::Location::new(
             &self.path("inbox"),
@@ -167,10 +170,8 @@ impl Talk {
             false,
         )
         .unwrap();
-        let rules = ncrs_filing::rules_work::RulesAccess::new(
-            Arc::clone(&self.index),
-            vec![archive, inbox],
-        );
+        locations.push(inbox);
+        let rules = ncrs_filing::rules_work::RulesAccess::new(Arc::clone(&self.index), locations);
         self.access = self.access.with_rules(Some(rules));
         self.ctx.availability = Availability::Ready(Box::new(self.access.clone()));
         self
@@ -194,17 +195,22 @@ impl Talk {
         source: ncrs_index::DocumentSource,
     ) -> ncrs_index::DocumentId {
         self.write(relative, text);
-        let hash: [u8; 32] = Sha256::digest(relative.as_bytes()).into();
         let mut guard = self.index.lock().unwrap();
         let index = guard.as_mut().unwrap();
+        let new_document = |hash| ncrs_index::NewDocument {
+            hash,
+            path: self.path(relative),
+            source,
+            received_at: chrono::Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap(),
+            stamp: None,
+        };
+        // The hash of the content, so a run can move the file. A copy of a
+        // document that is already indexed gets a hash of its path instead.
+        let content_hash = ncrs_intake::hash_path(&self.path(relative)).unwrap();
+        let path_hash = ncrs_index::ContentHash(Sha256::digest(relative.as_bytes()).into());
         let id = index
-            .insert_document(&ncrs_index::NewDocument {
-                hash: ncrs_index::ContentHash(hash),
-                path: self.path(relative),
-                source,
-                received_at: chrono::Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap(),
-                stamp: None,
-            })
+            .insert_document(&new_document(content_hash))
+            .or_else(|_duplicate| index.insert_document(&new_document(path_hash)))
             .unwrap();
         index.set_document_text(id, text).unwrap();
         id

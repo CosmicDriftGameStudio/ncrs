@@ -29,6 +29,8 @@ pub struct ContextDocument {
 pub const GENERATE_REMINDER: &str = "(One level per folder named. datei only for a described file name. No structure named: the default.)";
 pub const RECOGNIZE_REMINDER: &str = "(Braces are fields, other text is fixed. The last level is the file, never a folder; the automatic name is datei null.)";
 
+pub const REVISE_REMINDER: &str = "(Braces are fields, other text is fixed. The last level is the file name, datei null is the automatic name. fertig is true only when the user says they are done.)";
+
 /// The paths of the recognize examples with the fields of their documents,
 /// each with the pattern that wrote them (`.pdf` appended).
 pub struct RecognizeExample {

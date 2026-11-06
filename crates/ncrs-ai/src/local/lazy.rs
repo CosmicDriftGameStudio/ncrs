@@ -19,7 +19,7 @@ use crate::contract::{Extraction, ExtractionRequest, Provider};
 use crate::error::AiError;
 use crate::model_file::ModelPin;
 use crate::rules::{
-    annotated_paths, repair_note_for, revise_question, ContextDocument, Levels, Mismatch,
+    annotated_paths, repair_note_for, revise_question, ContextDocument, Levels, Mismatch, Revision,
 };
 use crate::status::LocalModelStatus;
 
@@ -159,27 +159,25 @@ impl LazyLocalModel {
             .map_err(|_stopped| AiError::Model("the model stopped before it answered"))?
     }
 
+    fn documents_of(files: &[(String, DocumentFields)]) -> Vec<ContextDocument> {
+        files
+            .iter()
+            .map(|(path, fields)| ContextDocument {
+                fields: fields.clone(),
+                folder: path.rsplit_once('/').map(|(folder, _)| folder.to_owned()),
+            })
+            .collect()
+    }
+
     fn recognize_with(
         &self,
         files: &[(String, DocumentFields)],
         kinds: &Kinds,
         folder_depth: Option<usize>,
         question: String,
-        show_paths: bool,
     ) -> Result<Levels, AiError> {
-        let documents: Vec<ContextDocument> = files
-            .iter()
-            .map(|(path, fields)| ContextDocument {
-                fields: fields.clone(),
-                folder: path.rsplit_once('/').map(|(folder, _)| folder.to_owned()),
-            })
-            .collect();
-        let paths = if show_paths {
-            annotated_paths(files, kinds)
-        } else {
-            String::new()
-        };
-        self.ask_rules(&documents, kinds, move |session| {
+        let paths = annotated_paths(files, kinds);
+        self.ask_rules(&Self::documents_of(files), kinds, move |session| {
             session.recognize(&question, &paths, folder_depth)
         })
     }
@@ -253,13 +251,7 @@ impl ChatModel for LazyLocalModel {
         kinds: &Kinds,
         folder_depth: Option<usize>,
     ) -> Result<Levels, AiError> {
-        self.recognize_with(
-            files,
-            kinds,
-            folder_depth,
-            RECOGNIZE_QUESTION.to_owned(),
-            true,
-        )
+        self.recognize_with(files, kinds, folder_depth, RECOGNIZE_QUESTION.to_owned())
     }
 
     fn recognize_levels_again(
@@ -276,7 +268,6 @@ impl ChatModel for LazyLocalModel {
             kinds,
             folder_depth,
             format!("{RECOGNIZE_QUESTION}\n{note}"),
-            true,
         )
     }
 
@@ -286,16 +277,12 @@ impl ChatModel for LazyLocalModel {
         kinds: &Kinds,
         previous: &Levels,
         sentence: &str,
-    ) -> Result<Levels, AiError> {
-        self.recognize_with(
-            files,
-            kinds,
-            None,
-            revise_question(previous, sentence),
-            false,
-        )
+    ) -> Result<Revision, AiError> {
+        let question = revise_question(previous, sentence);
+        self.ask_rules(&Self::documents_of(files), kinds, move |session| {
+            session.revise(&question)
+        })
     }
-
     /// Reads a snapshot only, never the disk and never the worker. While the
     /// model is being loaded, or asleep, it reports `NotLoadedYet`.
     fn status(&self) -> LocalModelStatus {

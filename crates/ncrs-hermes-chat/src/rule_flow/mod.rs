@@ -9,7 +9,7 @@ use iced::Task;
 use ncrs_ai::{pattern_mismatches, ContextDocument, Level, Levels, Part as LevelPart};
 use ncrs_filing::chat_work::{ChatWork, FolderReading};
 use ncrs_i18n::Msg;
-use ncrs_index::{DocumentFields, Kinds, RuleSpec};
+use ncrs_index::{Condition, ConditionKind, DocumentFields, Kinds, RuleConditions, RuleSpec};
 use ncrs_intake::{label_text, render_pattern_in, rule_problem, PlaceholderLabel};
 use ncrs_ui_kit::hermes_kit::LevelRow;
 
@@ -17,7 +17,7 @@ use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::learn;
 use crate::message::Message;
-use crate::state::{Chip, ChipReply, Entry, LevelsCard, Part, ReadFor, State, Step};
+use crate::state::{Chip, ChipReply, Entry, LevelsCard, Part, ReadFor, RuleMoves, State, Step};
 use crate::texts::{fill, folder_name, number, rule_problem_text, segments, text};
 use crate::understand::{gate, Gate};
 use crate::update::{
@@ -26,8 +26,10 @@ use crate::update::{
 };
 
 mod ask;
+mod change;
 
 pub use ask::{RuleAnswer, RuleAsk};
+pub use change::{levels_change, levels_discard, levels_more};
 
 const DEFAULT_LEVELS: &str = "{year}/{date}_{sender}_{kind}";
 /// Files the model sees: the prefix of its prompt grows with them.
@@ -39,16 +41,6 @@ const MISFITS_SHOWN: usize = 3;
 const FOLDER_VALUES: usize = 3;
 const FILE_VALUES: usize = 2;
 
-/// What the next answer of the model is for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Stage {
-    Recognize,
-    /// Words that change the levels.
-    Levels,
-    /// Words that say what goes into the folder.
-    Rule,
-}
-
 #[derive(Debug, Clone)]
 pub struct RuleFlow {
     /// The folder, and the path below its target with a closing `/`.
@@ -57,15 +49,19 @@ pub struct RuleFlow {
     /// The folder is not known yet: the description names it (flow D).
     free: bool,
     levels: Levels,
+    /// The levels as the model found them (or the standard): what "discard"
+    /// goes back to and what a changed level is marked against.
+    found: Levels,
+    /// The user is changing the levels in words.
+    changing: bool,
     /// The files of the folder: path below the folder, and fields.
     files: Vec<(String, DocumentFields)>,
     /// The rule the model made from a description; its levels can still change.
     candidate: Option<RuleSpec>,
     /// The rule on screen, waiting for the click.
     proposed: Option<RuleSpec>,
-    /// How many documents the trial of the proposal would move.
-    trial_moves: usize,
-    stage: Stage,
+    /// What the trial of the proposal would move.
+    moves: RuleMoves,
     /// Read once when the flow starts.
     kinds: Kinds,
 }
@@ -77,11 +73,12 @@ impl RuleFlow {
             prefix,
             free: false,
             levels: default_levels(),
+            found: default_levels(),
+            changing: false,
             files: Vec::new(),
             candidate: None,
             proposed: None,
-            trial_moves: 0,
-            stage: Stage::Recognize,
+            moves: RuleMoves::default(),
             kinds,
         }
     }
@@ -203,7 +200,6 @@ pub fn folder_read(state: &mut State, ctx: &Ctx, reading: &FolderReading) {
         hermes(state, parts, chips);
         return;
     }
-    flow.stage = Stage::Recognize;
     let files = sample(&flow.files, MODEL_FILES);
     let all = flow.files.clone();
     let kinds = flow.kinds.clone();
@@ -256,18 +252,18 @@ pub fn launch(state: &mut State, ctx: &Ctx) -> Task<Message> {
 pub fn answered(state: &mut State, ctx: &Ctx, answer: RuleAnswer) -> Option<Action> {
     state.rule_ask = None;
     drop_working(state);
-    let stage = state.session.rule.as_ref()?.stage;
-    match (answer, stage) {
-        (RuleAnswer::Levels(Ok(levels)), _) => {
+    state.session.rule.as_ref()?;
+    match answer {
+        RuleAnswer::Levels(Ok(levels)) => {
             if let Some(flow) = state.session.rule.as_mut() {
-                flow.levels = levels;
+                flow.levels = levels.clone();
+                flow.found = levels;
+                flow.changing = false;
             }
-            // The user asked for these levels: files that do not follow them
-            // are no reason to hold them back.
-            show_levels_checked(state, ctx, stage != Stage::Levels);
+            show_levels_checked(state, ctx, true);
         }
-        (RuleAnswer::Rule(Ok(spec)), _) => generated(state, ctx, spec),
-        (RuleAnswer::Levels(Err(_)), Stage::Levels) => {
+        RuleAnswer::Revised(Ok(revision)) => change::revised(state, ctx, revision),
+        RuleAnswer::Revised(Err(_)) => {
             say(
                 state,
                 text(ctx.lang, Msg::HermesChatRuleNotLevels),
@@ -275,12 +271,10 @@ pub fn answered(state: &mut State, ctx: &Ctx, answer: RuleAnswer) -> Option<Acti
             );
             levels_change(state, ctx);
         }
-        (
-            RuleAnswer::Levels(Err(reason))
-            | RuleAnswer::Rule(Err(reason))
-            | RuleAnswer::Failed(reason),
-            _,
-        ) => {
+        RuleAnswer::Rule(Ok(spec)) => generated(state, ctx, spec),
+        RuleAnswer::Levels(Err(reason))
+        | RuleAnswer::Rule(Err(reason))
+        | RuleAnswer::Failed(reason) => {
             state.session.rule = None;
             state.step = Step::Idle;
             if gate(state, ctx, None) == Gate::Usable {
@@ -410,8 +404,23 @@ fn file_names(flow: &RuleFlow) -> String {
     names.join(", ")
 }
 
-fn level_rows(ctx: &Ctx, flow: &RuleFlow, kinds: &Kinds) -> Vec<LevelRow> {
+/// `baseline`: the levels a changed level is marked against.
+fn level_rows(
+    ctx: &Ctx,
+    flow: &RuleFlow,
+    kinds: &Kinds,
+    baseline: Option<&Levels>,
+) -> Vec<LevelRow> {
     let value = |level: &Level| level_values(ctx, flow, kinds, level, FOLDER_VALUES);
+    let before = |old: Option<&Level>, now: Option<&Level>, shown: &dyn Fn(&Level) -> String| {
+        baseline.filter(|_| old != now).map(|_| {
+            fill(
+                ctx.lang,
+                Msg::HermesChatLevelBefore,
+                &[("value", &old.map_or_else(|| "–".to_owned(), shown))],
+            )
+        })
+    };
     let mut rows: Vec<LevelRow> = flow
         .levels
         .folders
@@ -425,35 +434,52 @@ fn level_rows(ctx: &Ctx, flow: &RuleFlow, kinds: &Kinds) -> Vec<LevelRow> {
             } else {
                 words(ctx, level).join(", ")
             },
+            before: before(
+                baseline.and_then(|found| found.folders.get(position)),
+                Some(level),
+                &value,
+            ),
         })
         .collect();
     let number = rows.len() + 1;
-    rows.extend(match &flow.levels.file {
-        Some(level) => Some(LevelRow {
+    let file_value = |level: &Level| level_values(ctx, flow, kinds, level, FILE_VALUES);
+    let old_file = baseline.and_then(|found| found.file.as_ref());
+    rows.push(match &flow.levels.file {
+        Some(level) => LevelRow {
             number,
-            text: level_values(ctx, flow, kinds, level, FILE_VALUES),
+            text: file_value(level),
             role: fill(
                 ctx.lang,
                 Msg::HermesChatLevelRoleFile,
                 &[("parts", &words(ctx, level).join(", "))],
             ),
-        }),
-        None => Some(LevelRow {
+            before: before(old_file, Some(level), &file_value),
+        },
+        None => LevelRow {
             number,
             text: file_names(flow),
             role: text(ctx.lang, Msg::HermesChatLevelRoleAutomatic),
-        }),
+            before: before(old_file, None, &file_value),
+        },
     });
     rows
 }
 
-fn levels_card(ctx: &Ctx, flow: &RuleFlow, kinds: &Kinds, footer: Option<String>) -> LevelsCard {
-    let key = if flow.files.is_empty() {
+fn levels_card(
+    ctx: &Ctx,
+    flow: &RuleFlow,
+    kinds: &Kinds,
+    footer: Option<String>,
+    baseline: Option<&Levels>,
+) -> LevelsCard {
+    let key = if baseline.is_some() {
+        Msg::HermesChatLevelsChanged
+    } else if flow.files.is_empty() {
         Msg::HermesChatLevelsSuggested
     } else {
         Msg::HermesChatLevelsFound
     };
-    let rows = level_rows(ctx, flow, kinds);
+    let rows = level_rows(ctx, flow, kinds, baseline);
     LevelsCard {
         title: fill(ctx.lang, key, &[("count", &number(rows.len()))]),
         rows,
@@ -479,7 +505,7 @@ fn levels_parts(state: &State, ctx: &Ctx, poor_fit: bool) -> (Vec<Part>, bool) {
             ],
         )
     });
-    let mut parts = vec![Part::Levels(levels_card(ctx, flow, &kinds, footer))];
+    let mut parts = vec![Part::Levels(levels_card(ctx, flow, &kinds, footer, None))];
     let fitting = written.len() - misfits.len();
     let poor = poor_fit && fitting * 100 < written.len() * FIT_AT_LEAST_PERCENT;
     if poor {
@@ -521,7 +547,11 @@ fn levels_parts(state: &State, ctx: &Ctx, poor_fit: bool) -> (Vec<Part>, bool) {
 /// files is not offered as it is.
 fn show_levels_checked(state: &mut State, ctx: &Ctx, checked: bool) {
     let (parts, poor) = levels_parts(state, ctx, checked);
-    let deviates = parts.len() > 1;
+    let with_default = state
+        .session
+        .rule
+        .as_ref()
+        .is_some_and(|flow| !flow.files.is_empty());
     state.step = Step::RuleLevels;
     let chips = if poor {
         vec![chip(
@@ -531,77 +561,59 @@ fn show_levels_checked(state: &mut State, ctx: &Ctx, checked: bool) {
             true,
         )]
     } else {
-        levels_chips(ctx, deviates)
+        levels_chips(ctx, with_default)
     };
     hermes(state, parts, chips);
 }
 
-fn show_levels(state: &mut State, ctx: &Ctx) {
-    show_levels_checked(state, ctx, false);
-}
-
-pub fn levels_change(state: &mut State, ctx: &Ctx) {
-    let Some(flow) = state.session.rule.as_ref() else {
-        return;
-    };
-    let kinds = flow.kinds.clone();
-    let mut parts = vec![Part::Levels(levels_card(ctx, flow, &kinds, None))];
-    parts.push(Part::Text(text(ctx.lang, Msg::HermesChatLevelsChangeHint)));
-    let mut chips: Vec<Chip> = (0..flow.levels.count())
-        .map(|position| {
-            chip_labelled(
-                fill(
-                    ctx.lang,
-                    Msg::HermesChatLevelDrop,
-                    &[("number", &number(position + 1))],
-                ),
-                ChipReply::LevelDrop(position),
-                false,
-            )
-        })
-        .collect();
-    chips.push(chip(
-        ctx,
-        Msg::HermesChatLevelsDefault,
-        ChipReply::LevelsDefault,
-        false,
-    ));
-    chips.push(cancel_chip(ctx));
-    state.step = Step::RuleLevels;
-    hermes(state, parts, chips);
-}
-
-pub fn level_drop(state: &mut State, ctx: &Ctx, position: usize) {
+/// The standard is a change of the levels found like any other: it is shown
+/// marked against them, with what applying it does and the way back.
+pub fn levels_default(state: &mut State, ctx: &Ctx) {
     let Some(flow) = state.session.rule.as_mut() else {
         return;
     };
-    if position < flow.levels.folders.len() {
-        flow.levels.folders.remove(position);
-    } else {
-        flow.levels.file = None;
-    }
-    show_levels(state, ctx);
+    flow.levels = default_levels();
+    flow.changing = true;
+    change::show_change(state, ctx, false);
 }
 
-pub fn levels_default(state: &mut State, ctx: &Ctx) {
-    if let Some(flow) = state.session.rule.as_mut() {
-        flow.levels = default_levels();
-    }
-    show_levels(state, ctx);
-}
-
-/// The levels stay; next the user says what goes into the folder, or the
-/// rule the model wrote is shown again.
+/// The levels are taken as they stand: the rule the model wrote is shown
+/// again, else a rule for what the files of the folder share, else the user
+/// says what goes into the folder.
 pub fn levels_kept(state: &mut State, ctx: &Ctx) {
-    let candidate = state
-        .session
-        .rule
-        .as_ref()
-        .and_then(|flow| flow.candidate.clone());
-    match candidate {
+    let Some(flow) = state.session.rule.as_mut() else {
+        return;
+    };
+    flow.changing = false;
+    match flow.candidate.clone().or_else(|| shared_by_files(flow)) {
         Some(spec) => propose(state, ctx, spec),
         None => ask_what(state, ctx, None),
     }
+}
+
+/// A rule for the documents that have the sender (else the kind) most of the
+/// files of the folder have.
+fn shared_by_files(flow: &RuleFlow) -> Option<RuleSpec> {
+    let fields = || flow.files.iter().map(|(_, found)| found);
+    let (kind, value) = match counted(fields().filter_map(|found| found.sender.clone())) {
+        Some(sender) => (ConditionKind::Sender, sender),
+        None => (
+            ConditionKind::Kind,
+            counted(fields().filter_map(|found| found.kind.clone()))?,
+        ),
+    };
+    Some(RuleSpec {
+        name: None,
+        conditions: RuleConditions::all_of(vec![Condition::new(kind, value)]),
+        extract_number: None,
+        extract_date: None,
+        extract_amount: None,
+        kind: None,
+        tags: std::collections::BTreeSet::new(),
+        filing_pattern: String::new(),
+        confirmed: false,
+        enabled: false,
+    })
 }
 
 // What goes into the folder.
@@ -673,7 +685,6 @@ fn ask_what(state: &mut State, ctx: &Ctx, lead: Option<String>) {
         ask_read_folder(state, ctx, None);
         return;
     }
-    flow.stage = Stage::Rule;
     flow.proposed = None;
     let kinds = flow.kinds.clone();
     let question = fill(
@@ -709,32 +720,16 @@ pub fn described(state: &mut State, ctx: &Ctx, description: &str) {
 /// say what goes into the folder.
 pub fn typed(state: &mut State, ctx: &Ctx, typed: &str) {
     if state.step == Step::RuleLevels {
-        revise_levels(state, ctx, typed);
+        change::revise(state, ctx, typed);
     } else {
         ask_rule(state, ctx, typed);
     }
-}
-
-/// The model gets the levels as they are and the sentence about them.
-fn revise_levels(state: &mut State, ctx: &Ctx, sentence: &str) {
-    let Some(flow) = state.session.rule.as_mut() else {
-        return;
-    };
-    flow.stage = Stage::Levels;
-    let ask = RuleAsk::Revise {
-        files: sample(&flow.files, MODEL_FILES),
-        kinds: flow.kinds.clone(),
-        previous: flow.levels.clone(),
-        sentence: sentence.to_owned(),
-    };
-    ask_model(state, ctx, ask);
 }
 
 fn ask_rule(state: &mut State, ctx: &Ctx, description: &str) -> bool {
     let Some(flow) = state.session.rule.as_mut() else {
         return false;
     };
-    flow.stage = Stage::Rule;
     let kinds = flow.kinds.clone();
     let documents = sample(&flow.files, CONTEXT_FILES)
         .into_iter()
@@ -761,7 +756,6 @@ fn ask_rule(state: &mut State, ctx: &Ctx, description: &str) -> bool {
 pub fn from_description(state: &mut State, ctx: &Ctx, description: &str) {
     let mut flow = RuleFlow::new(String::new(), String::new(), kinds_of(ctx));
     flow.free = true;
-    flow.stage = Stage::Rule;
     state.session.rule = Some(flow);
     if ask_rule(state, ctx, description) {
         state.step = Step::RuleWhat;

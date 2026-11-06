@@ -439,6 +439,7 @@ fn levels_scene(lang: Language) -> App {
         number,
         text: text.to_owned(),
         role: role.to_owned(),
+        before: None,
     };
     user_says(
         &mut app,
