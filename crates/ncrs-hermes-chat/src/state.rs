@@ -123,10 +123,12 @@ pub enum ChipReply {
     RuleWhat(String),
     /// Stores the proposed rule.
     RuleCreate,
-    /// Asks again what goes into the folder.
-    RuleEdit,
-    /// Files what lies in the source folders with the new rule.
+    /// Asks for the condition in a sentence; the levels stay.
+    RuleCondition,
+    /// Files what lies differently with the new rule.
     RuleNow,
+    /// Leaves what exists as it is: the new rule is for new documents only.
+    RuleOnlyNew,
     /// Leaves the group of waiting documents in question as it is.
     WaitingSkip,
 }
@@ -213,8 +215,9 @@ impl ChipReply {
             | Self::LevelsDiscard
             | Self::LevelsDone
             | Self::RuleWhat(_)
-            | Self::RuleEdit
+            | Self::RuleCondition
             | Self::RuleNow
+            | Self::RuleOnlyNew
             | Self::WaitingOtherFolder
             | Self::TrialOtherTarget => false,
         }

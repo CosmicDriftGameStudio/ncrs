@@ -337,6 +337,7 @@ pub fn origin_text(origin: RuleOrigin, lang: Language) -> &'static str {
         RuleOrigin::Hand => Msg::RulesOriginHand,
         RuleOrigin::Suggestion => Msg::RulesOriginSuggestion,
         RuleOrigin::Filing => Msg::RulesOriginFiling,
+        RuleOrigin::Chat => Msg::RulesOriginChat,
     })
 }
 

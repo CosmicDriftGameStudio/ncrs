@@ -240,6 +240,30 @@ impl Talk {
             .unwrap()
     }
 
+    /// What the saved-query search of the app finds for `word` in the text of
+    /// the documents: their paths below the temp dir. A hit whose file the
+    /// index thinks gone fails on the spot.
+    pub fn searched(&self, word: &str) -> std::collections::BTreeSet<String> {
+        let access = ncrs_filing::query_work::QueryAccess::new(Arc::clone(&self.index));
+        let spec = ncrs_index::QuerySpec {
+            full_text: Some(word.to_owned()),
+            ..ncrs_index::QuerySpec::default()
+        };
+        access
+            .run(&spec)
+            .unwrap()
+            .into_iter()
+            .map(|hit| {
+                assert!(!hit.missing, "the search finds a gone file: {:?}", hit.path);
+                hit.path
+                    .strip_prefix(&self.root)
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect()
+    }
+
     pub fn path(&self, relative: &str) -> PathBuf {
         self.root.join(relative)
     }

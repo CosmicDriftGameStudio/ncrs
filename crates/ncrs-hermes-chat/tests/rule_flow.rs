@@ -139,11 +139,27 @@ mod tests {
             rule.spec.conditions.list,
             vec![Condition::new(ConditionKind::Word, "Rechnung")]
         );
-        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatRuleStored, &[])]);
+        assert_eq!(rule.spec.name.as_deref(), Some("Telefon"));
+        assert_eq!(rule.origin, ncrs_index::RuleOrigin::Chat);
         assert!(
-            has_chip(&talk, &ChipReply::RuleNow),
+            talk.state.thread().iter().any(|entry| matches!(
+                entry,
+                ncrs_hermes_chat::Entry::Hermes { parts, .. }
+                    if parts.contains(&ncrs_hermes_chat::Part::Text(say(
+                        Msg::HermesChatRuleStored,
+                        &[("name", "Telefon")]
+                    )))
+            )),
+            "the saved rule is named"
+        );
+        assert_eq!(
+            talk.last_texts(),
+            vec![say(Msg::HermesChatRuleMoveQuestionOther, &[("count", "4")])],
             "the four archive documents would move under the new levels"
         );
+        assert!(has_chip(&talk, &ChipReply::RuleNow));
+        assert!(has_chip(&talk, &ChipReply::RuleOnlyNew));
+        assert!(!has_chip(&talk, &ChipReply::Cancel));
     }
 
     #[test]
@@ -354,7 +370,7 @@ mod tests {
         let mut talk = archive_talk();
         propose_for_telefon(&mut talk);
 
-        talk.press(&ChipReply::RuleEdit);
+        talk.press(&ChipReply::RuleCondition);
 
         assert_eq!(
             talk.last_texts(),
@@ -729,5 +745,67 @@ mod tests {
         talk.press(&ChipReply::RuleCreate);
 
         assert_eq!(the_only_rule(&talk).spec.filing_pattern, "Alfa/2020/{date}");
+    }
+
+    fn applies_to(talk: &Talk) -> String {
+        let card = talk.proposal().expect("the proposal card");
+        assert_eq!(
+            card.facts[0].label,
+            say(Msg::HermesChatProposalAppliesTo, &[]),
+            "the condition comes first"
+        );
+        card.facts[0].value.clone()
+    }
+
+    #[test]
+    fn a_condition_taken_from_the_files_says_what_they_share() {
+        let mut talk = archive_talk();
+        talk.model.push_levels(Ok(levels("{year}/{date}")));
+        open_area(&mut talk, "Alfa");
+
+        talk.press(&ChipReply::LevelsKeep);
+
+        let sender = format!("{}: Alfa AG", say(Msg::ConditionKindSender, &[]));
+        assert_eq!(
+            applies_to(&talk),
+            say(
+                Msg::HermesChatProposalAppliesSharedAll,
+                &[("condition", &sender), ("count", "4")]
+            )
+        );
+        assert!(has_chip(&talk, &ChipReply::RuleCondition));
+    }
+
+    #[test]
+    fn changing_the_condition_keeps_the_levels_and_shows_the_proposal_again() {
+        let mut talk = archive_talk();
+        talk.model.push_levels(Ok(levels("{year}/{date}")));
+        open_area(&mut talk, "Alfa");
+        talk.press(&ChipReply::LevelsKeep);
+        let before = talk.proposal().cloned().expect("the proposal card");
+
+        talk.press(&ChipReply::RuleCondition);
+        assert_eq!(
+            talk.last_texts(),
+            vec![say(Msg::HermesChatRuleWhat, &[("folder", "Alfa")])]
+        );
+        talk.model.push_rule(Ok(spec("Rechnung", "Alfa/{year}")));
+        talk.type_text("nur Rechnungen");
+
+        let card = talk.proposal().expect("the proposal card again");
+        assert_ne!(card.facts[0].value, before.facts[0].value);
+        assert_eq!(
+            card.facts[0].value,
+            format!("{}: Rechnung", say(Msg::ConditionKindWord, &[])),
+            "no reason in words for what the user said"
+        );
+        assert_eq!(card.facts[1], before.facts[1], "the filing stays");
+        assert_eq!(card.facts[2], before.facts[2], "the file name stays");
+        assert!(has_chip(&talk, &ChipReply::RuleCreate));
+        talk.press(&ChipReply::RuleCreate);
+        let rule = the_only_rule(&talk);
+        assert_eq!(rule.spec.filing_pattern, "Alfa/{year}/{date}");
+        assert_eq!(rule.spec.name.as_deref(), Some("Alfa"));
+        assert_eq!(rule.origin, ncrs_index::RuleOrigin::Chat);
     }
 }

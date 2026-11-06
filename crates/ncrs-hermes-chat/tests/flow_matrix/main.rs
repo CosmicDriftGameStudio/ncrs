@@ -13,7 +13,11 @@
     clippy::print_stdout
 )]
 
+#[path = "../common/mod.rs"]
 mod common;
+mod rules;
+
+use rules::{change_the_condition, create_and_check, only_new};
 
 use std::collections::BTreeMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -30,7 +34,7 @@ use ncrs_ai::{
 };
 use ncrs_hermes_chat::{ChipReply, LevelsCard, Message, Part};
 use ncrs_i18n::Msg;
-use ncrs_index::{DocumentFields, Kinds, RuleSpec};
+use ncrs_index::{DocumentFields, Kinds, RuleOrigin, RuleSpec};
 use ncrs_ui_kit::hermes_kit::MoveRow;
 
 const MODELS_DIR_VARIABLE: &str = "NCRS_AI_MODELS_DIR";
@@ -41,12 +45,12 @@ const EXAMPLES_SHOWN: usize = 3;
 
 /// What the prompts are made of: a change in one of them asks the model again.
 const PROMPT_SOURCES: [&str; 6] = [
-    include_str!("../../ncrs-ai/src/rules/revise.rs"),
-    include_str!("../../ncrs-ai/src/rules/prompt.rs"),
-    include_str!("../../ncrs-ai/src/rules/grammar.rs"),
-    include_str!("../../ncrs-ai/src/rules/session.rs"),
-    include_str!("../../ncrs-ai/src/rules/annotate.rs"),
-    include_str!("../../ncrs-ai/src/local/lazy.rs"),
+    include_str!("../../../ncrs-ai/src/rules/revise.rs"),
+    include_str!("../../../ncrs-ai/src/rules/prompt.rs"),
+    include_str!("../../../ncrs-ai/src/rules/grammar.rs"),
+    include_str!("../../../ncrs-ai/src/rules/session.rs"),
+    include_str!("../../../ncrs-ai/src/rules/annotate.rs"),
+    include_str!("../../../ncrs-ai/src/local/lazy.rs"),
 ];
 
 /// The real model, with its answers to the rule questions kept on disk.
@@ -124,7 +128,12 @@ impl ChatModel for CachedModel {
         documents: &[ContextDocument],
         kinds: &Kinds,
     ) -> Result<RuleSpec, AiError> {
-        self.inner.generate_rule(description, documents, kinds)
+        let spec = self.inner.generate_rule(description, documents, kinds)?;
+        self.asked
+            .lock()
+            .unwrap()
+            .push(format!("rule {:?}", spec.conditions.list));
+        Ok(spec)
     }
 
     fn recognize_levels(
@@ -454,60 +463,6 @@ fn check_trial(talk: &Talk, docs: &[Doc], pattern: &str) {
         "{:?}",
         talk.labels()
     );
-}
-
-/// Creates the rule from the trial; it holds `pattern`, "file now" is
-/// offered, and filing moves every file to its new path (the archive ones
-/// too) and undoing puts every file back.
-fn create_and_check(talk: &mut Talk, docs: &[Doc], pattern: &str) {
-    let before = talk.files();
-    talk.press(&ChipReply::RuleCreate);
-    let rules = talk.rules();
-    assert_eq!(rules.len(), 1, "{rules:?}");
-    assert_eq!(
-        rules[0].spec.filing_pattern,
-        format!("{AREA_PREFIX}{pattern}")
-    );
-    assert!(
-        talk.state
-            .chips()
-            .iter()
-            .any(|chip| chip.reply == ChipReply::RuleNow),
-        "{:?}",
-        talk.labels()
-    );
-    talk.press(&ChipReply::RuleNow);
-    // With nothing waiting in the inbox, the archive renames run at once.
-    if docs.iter().any(|doc| doc.inbox) {
-        talk.press(&ChipReply::Folder(talk.path("archive")));
-        talk.press(&ChipReply::Once);
-        talk.press(&ChipReply::ModeMove);
-        talk.press(&ChipReply::FileAll);
-    }
-    let filed = talk.files();
-    for doc in docs {
-        let old = if doc.inbox {
-            format!("inbox/{}", doc.in_area)
-        } else {
-            format!("archive/{AREA_PREFIX}{}", doc.in_area)
-        };
-        let new = format!("archive/{AREA_PREFIX}{}", render(pattern, doc.date));
-        assert_eq!(filed.get(&new), before.get(&old), "{old} -> {new}");
-        if new != old {
-            assert!(!filed.contains_key(&old), "{old} is still there");
-        }
-    }
-    let old_folder = talk.path("archive/Arbeit/Gehalt");
-    if !pattern.starts_with("Gehalt/") {
-        assert!(
-            !old_folder.exists(),
-            "the emptied level 1 folder is removed"
-        );
-    }
-    talk.press(&ChipReply::Undo);
-    talk.press(&ChipReply::PutBack);
-    assert_eq!(talk.files(), before, "undo puts every file back");
-    assert!(old_folder.is_dir(), "undo makes the folders again");
 }
 
 fn has_levels_card(talk: &Talk) -> bool {
@@ -842,7 +797,9 @@ fn with_model_level_change_matrix() {
             Box::new(move |model, english| change_then_apply(model, &change, english)),
         ));
     }
-    let paths: [(&str, fn(&Arc<CachedModel>, bool)); 11] = [
+    let paths: [(&str, fn(&Arc<CachedModel>, bool)); 13] = [
+        ("save, no: only new ones", only_new),
+        ("change the condition in a sentence", change_the_condition),
         ("report path, index knows both", |model, english| {
             marc_path(model, english, Indexed::Both);
         }),

@@ -5479,6 +5479,12 @@
       "de": "beim Einordnen angelegt"
     },
     {
+      "key": "rules.origin_chat",
+      "context": "Origin of a rule on the rules page: it was made in the Hermes chat from a folder of the archive.",
+      "en": "created in chat",
+      "de": "im Chat erstellt"
+    },
+    {
       "key": "rules.hits_one",
       "context": "Hits of a rule on the rules page when exactly one document was filed by it; the number is 1.",
       "en": "1 hit",
@@ -8828,9 +8834,9 @@
     },
     {
       "key": "hermes_chat.rule_what",
-      "context": "Question after the levels are settled. {folder} is the folder name.",
-      "en": "What should go into {folder}?",
-      "de": "Was soll nach {folder}?"
+      "context": "Question for the condition of the rule, after the levels are settled or when the user wants to change the condition. {folder} is the folder name.",
+      "en": "Which documents should the rule for {folder} apply to? For example \"only from one sender\" or \"only if the text says invoice\".",
+      "de": "Für welche Dokumente soll die Regel für {folder} gelten? Zum Beispiel „nur von einem Absender“ oder „nur wenn im Text Rechnung steht“."
     },
     {
       "key": "hermes_chat.rule_suggest_kind",
@@ -8942,15 +8948,57 @@
     },
     {
       "key": "hermes_chat.rule_stored",
-      "context": "Chat reply after a rule was stored.",
-      "en": "Rule saved. New files land like this from now on.",
-      "de": "Regel gespeichert. Neue Dateien landen ab jetzt so."
+      "context": "Chat reply after a rule was stored. {name} is the name of the rule, made from the fixed folder names of its filing, e.g. Work / Salary.",
+      "en": "Rule “{name}” saved. It applies from now on to new documents in the inbox.",
+      "de": "Regel „{name}“ gespeichert. Sie gilt ab jetzt für neue Dokumente im Eingang."
     },
     {
-      "key": "hermes_chat.rule_file_now",
-      "context": "Button after a rule was stored: file what lies in the source folders now.",
-      "en": "File now",
-      "de": "Jetzt ablegen"
+      "key": "hermes_chat.rule_move_question_one",
+      "context": "Question after a rule was stored when exactly one existing file lies differently from what the rule would do. {count} is 1.",
+      "en": "{count} existing file is filed differently. Rearrange it now?",
+      "de": "{count} bestehende Datei liegt noch anders. Jetzt umräumen?"
+    },
+    {
+      "key": "hermes_chat.rule_move_question_other",
+      "context": "Question after a rule was stored when several existing files lie differently from what the rule would do. {count} is the number of files.",
+      "en": "{count} existing files are filed differently. Rearrange them now?",
+      "de": "{count} bestehende Dateien liegen noch anders. Jetzt umräumen?"
+    },
+    {
+      "key": "hermes_chat.rule_rearrange_now",
+      "context": "Button under the question after a rule was stored: move the existing files as the rule would. {count} is the number of files.",
+      "en": "Rearrange now ({count})",
+      "de": "Jetzt umräumen ({count})"
+    },
+    {
+      "key": "hermes_chat.rule_only_new",
+      "context": "Button under the question after a rule was stored: leave the existing files where they are, the rule is for new documents only.",
+      "en": "No, only new ones",
+      "de": "Nein, nur neue"
+    },
+    {
+      "key": "hermes_chat.rule_only_new_done",
+      "context": "Chat reply when the user chose to leave the existing files as they are after a rule was stored.",
+      "en": "All right, nothing moves. Only new documents are filed this way.",
+      "de": "Gut, nichts wird verschoben. Nur neue Dokumente werden so abgelegt."
+    },
+    {
+      "key": "hermes_chat.rule_change_condition",
+      "context": "Button under the proposal card of a rule: change which documents the rule applies to, in a sentence. The filing stays.",
+      "en": "Change condition",
+      "de": "Bedingung ändern"
+    },
+    {
+      "key": "hermes_chat.proposal_applies_shared_all",
+      "context": "Value of the row Applies to in the proposal card when the condition was taken from what all files of the folder share. {condition} is the condition in words, e.g. Sender: Acme; {count} is the number of files.",
+      "en": "{condition} (all {count} files have this in common)",
+      "de": "{condition} (haben alle {count} Dateien gemeinsam)"
+    },
+    {
+      "key": "hermes_chat.proposal_applies_shared_some",
+      "context": "Value of the row Applies to in the proposal card when the condition was taken from what most files of the folder share. {condition} is the condition in words; {count} files of {total} have it.",
+      "en": "{condition} ({count} of {total} files have this in common)",
+      "de": "{condition} ({count} von {total} Dateien haben das gemeinsam)"
     },
     {
       "key": "hermes_chat.rule_not_levels",
