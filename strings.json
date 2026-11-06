@@ -6909,8 +6909,8 @@
     {
       "key": "hermes_chat.filed_inside",
       "context": "Hermes chat (F2): added to the report of a filing run when files that already lay in the archive were renamed or moved as well, because the folder levels changed. {count} is the number of those files.",
-      "en": "{count} files already in the archive were renamed or moved.",
-      "de": "{count} Dateien, die schon im Archiv lagen, wurden umbenannt oder verschoben."
+      "en": "{count} files already in the target folder were renamed or moved.",
+      "de": "{count} Dateien, die schon im Zielordner lagen, wurden umbenannt oder verschoben."
     },
     {
       "key": "hermes_chat.filed_skipped",
@@ -8709,8 +8709,8 @@
     {
       "key": "hermes_chat.levels_misfit",
       "context": "One line below the levels card for a file that does not follow the found order. {file} is its path, {written} is the path the order would give it.",
-      "en": "{file} should be {written}",
-      "de": "{file} soll {written} sein"
+      "en": "{file} would be {written}",
+      "de": "{file} wäre {written}"
     },
     {
       "key": "hermes_chat.levels_misfit_none",
@@ -8787,13 +8787,13 @@
     {
       "key": "hermes_chat.levels_not_indexed",
       "context": "Chat reply while changing the levels when the rule finds no document because the index has not read the folder's files yet. {known} of {total} files of {folder} are in the index; the levels stay as they are.",
-      "en": "The index knows only {known} of the {total} files in {folder} so far, Hermes is still reading the rest. The levels stay as they are: change them further, or say you are done and I try again.",
+      "en": "The index knows only {known} of the {total} files in {folder} so far, Hermes is still reading the rest. The levels stay as they are: change them further, or say you are done and I will try again.",
       "de": "Der Index kennt von den {total} Dateien in {folder} erst {known}, den Rest liest Hermes noch. Die Ebenen bleiben, wie sie sind: Ändere sie weiter, oder sag Bescheid, dass du fertig bist, dann versuche ich es noch einmal."
     },
     {
       "key": "hermes_chat.levels_no_match",
       "context": "Chat reply while changing the levels when the rule matches none of the files of the folder although the index knows them. {folder} is the folder name; the levels stay as they are.",
-      "en": "The rule for these levels matches none of the files in {folder}. The levels stay as they are: change them further, or say you are done and I try again.",
+      "en": "The rule for these levels matches none of the files in {folder}. The levels stay as they are: change them further, or say you are done and I will try again.",
       "de": "Die Regel für diese Ebenen passt auf keine Datei in {folder}. Die Ebenen bleiben, wie sie sind: Ändere sie weiter, oder sag Bescheid, dass du fertig bist, dann versuche ich es noch einmal."
     },
     {
@@ -8866,13 +8866,13 @@
       "key": "hermes_chat.rule_condition_all",
       "context": "Joins the conditions of a rule: all must hold. {list} is the list of conditions.",
       "en": "all of these hold: {list}",
-      "de": "alles davon zutrifft: {list}"
+      "de": "alle davon treffen zu: {list}"
     },
     {
       "key": "hermes_chat.rule_condition_any",
       "context": "Joins the conditions of a rule: one must hold. {list} is the list of conditions.",
       "en": "one of these holds: {list}",
-      "de": "eines davon zutrifft: {list}"
+      "de": "eines davon trifft zu: {list}"
     },
     {
       "key": "hermes_chat.rule_example_review",
@@ -8895,8 +8895,8 @@
     {
       "key": "hermes_chat.proposal_filing",
       "context": "Label in the proposal card, left of the folder levels in words: where the rule files the documents.",
-      "en": "Filing",
-      "de": "Ablage"
+      "en": "Target",
+      "de": "Ziel"
     },
     {
       "key": "hermes_chat.proposal_file_name",
@@ -8908,7 +8908,7 @@
       "key": "hermes_chat.proposal_matches_label",
       "context": "Label in the proposal card, left of how many known documents the rule matches.",
       "en": "Matches",
-      "de": "Trifft"
+      "de": "Treffer"
     },
     {
       "key": "hermes_chat.proposal_matches",
@@ -8937,8 +8937,8 @@
     {
       "key": "hermes_chat.rule_trial_counts",
       "context": "Line of the rule trial about where the matching documents lie. {right} already lie in the archive where the rule would put them, {moves} would be renamed or moved (existing archive files included), {inbox} of those come from the source folders. All three are counts.",
-      "en": "Already filed correctly: {right} · Will be renamed or moved: {moves} ({inbox} of them from the inbox)",
-      "de": "Schon richtig abgelegt: {right} · Wird umbenannt oder verschoben: {moves} (davon {inbox} aus dem Eingang)"
+      "en": "Already filed correctly: {right} · Will be renamed or moved: {moves} ({inbox} of them from the read folders)",
+      "de": "Schon richtig abgelegt: {right} · Wird umbenannt oder verschoben: {moves} (davon {inbox} aus den Lesen-Ordnern)"
     },
     {
       "key": "hermes_chat.rule_create",
@@ -8949,14 +8949,14 @@
     {
       "key": "hermes_chat.rule_stored",
       "context": "Chat reply after a rule was stored. {name} is the name of the rule, made from the fixed folder names of its filing, e.g. Work / Salary.",
-      "en": "Rule “{name}” saved. It applies from now on to new documents in the inbox.",
-      "de": "Regel „{name}“ gespeichert. Sie gilt ab jetzt für neue Dokumente im Eingang."
+      "en": "Rule “{name}” saved. It applies from now on to new documents in the read folders.",
+      "de": "Regel „{name}“ gespeichert. Sie gilt ab jetzt für neue Dokumente in den Lesen-Ordnern."
     },
     {
       "key": "hermes_chat.rule_updated",
       "context": "Chat reply after a rule that already existed was changed in place instead of adding a second one. {name} is the name of the rule, made from the fixed folder names of its filing, e.g. Work / Salary.",
-      "en": "Rule “{name}” adjusted. It applies from now on to new documents in the inbox.",
-      "de": "Regel „{name}“ angepasst. Sie gilt ab jetzt für neue Dokumente im Eingang."
+      "en": "Rule “{name}” changed. It applies from now on to new documents in the read folders.",
+      "de": "Regel „{name}“ angepasst. Sie gilt ab jetzt für neue Dokumente in den Lesen-Ordnern."
     },
     {
       "key": "hermes_chat.levels_existing_rule",
@@ -9004,7 +9004,7 @@
       "key": "hermes_chat.proposal_from_all",
       "context": "Value of the From row on the proposal card when the rule applies to documents of every read folder.",
       "en": "all read folders",
-      "de": "alle Eingänge"
+      "de": "alle Lesen-Ordner"
     },
     {
       "key": "hermes_chat.rule_change_condition",
