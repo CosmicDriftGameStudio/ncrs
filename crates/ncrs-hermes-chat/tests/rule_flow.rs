@@ -417,4 +417,122 @@ mod tests {
         assert!(talk.model.recognized().is_empty());
         assert_eq!(talk.rule_count(), 0);
     }
+
+    #[test]
+    fn the_empty_folder_card_shows_no_invented_values() {
+        let mut talk = archive_talk();
+
+        open_area(&mut talk, "Telefon");
+
+        let card = levels_card(&talk).expect("a card of levels");
+        for row in &card.rows {
+            assert_ne!(row.text, "–", "{row:?}");
+            assert!(!row.text.contains("Telekom"), "{row:?}");
+            assert!(!row.text.contains("invoice"), "{row:?}");
+        }
+    }
+
+    #[test]
+    fn opening_the_chat_during_a_read_keeps_the_rule_session() {
+        let mut talk = archive_talk();
+        talk.model.push_levels(Ok(levels("{year}/{date}")));
+        let folder = talk.path("archive");
+        let (_task, _action) = ncrs_hermes_chat::update(
+            &mut talk.state,
+            Message::ChangeArea {
+                folder,
+                area: "Alfa".to_owned(),
+            },
+            &talk.ctx,
+        );
+        assert!(talk.state.pending_work().is_some(), "the read is running");
+
+        talk.send(Message::Open);
+
+        assert!(levels_card(&talk).is_some(), "{:?}", talk.last_texts());
+        assert!(talk.state.session.rule.is_some());
+    }
+
+    #[test]
+    fn without_the_ai_the_rule_question_is_not_asked() {
+        let mut talk = archive_talk();
+        open_area(&mut talk, "Telefon");
+        talk.press(&ChipReply::LevelsKeep);
+        talk.ctx.ai_on = false;
+
+        talk.type_text("Rechnungen kommen hierhin");
+
+        assert!(has_chip(&talk, &ChipReply::TurnOnAi));
+        assert!(talk.model.described().is_empty());
+        assert!(talk.state.session.rule.is_none());
+        assert_eq!(talk.rule_count(), 0);
+    }
+
+    #[test]
+    fn a_folder_with_files_and_no_ai_does_not_start_a_rule() {
+        let mut talk = archive_talk();
+        talk.ctx.ai_on = false;
+
+        open_area(&mut talk, "Alfa");
+
+        assert!(has_chip(&talk, &ChipReply::TurnOnAi));
+        assert!(talk.state.session.rule.is_none());
+        assert_eq!(talk.rule_count(), 0);
+    }
+
+    #[test]
+    fn opening_a_folder_outside_the_targets_by_typing_only_reads_it() {
+        let mut talk = archive_talk();
+        talk.write(
+            "home/Documents/Taxes/a.pdf",
+            &letter("Alfa AG", "01.01.2020", "Rechnung", 1),
+        );
+        let before = talk.files();
+        talk.send(Message::Open);
+
+        talk.type_text_understood(
+            "open ~/Documents/Taxes",
+            r#"{"intent":"open_folder","folder":"~/Documents/Taxes"}"#,
+        );
+
+        assert!(!has_chip(&talk, &ChipReply::ConfirmTidy));
+        assert_eq!(talk.files(), before);
+        assert!(talk.state.session.rule.is_none());
+    }
+
+    #[test]
+    fn dropping_every_level_stores_the_folder_with_one_slash() {
+        let mut talk = archive_talk();
+        open_area(&mut talk, "Telefon");
+        talk.press(&ChipReply::LevelsChange);
+        talk.press(&ChipReply::LevelDrop(0));
+        talk.press(&ChipReply::LevelsChange);
+        talk.press(&ChipReply::LevelDrop(0));
+        talk.press(&ChipReply::LevelsKeep);
+        talk.model.push_rule(Ok(spec("Rechnung", "Telefon/{year}")));
+        talk.type_text("Rechnungen");
+
+        talk.press(&ChipReply::RuleCreate);
+
+        assert_eq!(the_only_rule(&talk).spec.filing_pattern, "Telefon/");
+    }
+
+    #[test]
+    fn a_nested_folder_does_not_repeat_its_own_path_in_the_levels() {
+        let mut talk = archive_talk();
+        talk.model.push_levels(Ok(levels("{date}")));
+        talk.send(Message::Open);
+        talk.type_text_understood(
+            "öffne mal /Alfa/2020",
+            r#"{"intent":"open_folder","folder":"/Alfa/2020"}"#,
+        );
+        talk.press(&ChipReply::LevelsKeep);
+        talk.model
+            .push_rule(Ok(spec("Rechnung", "Alfa/2020/{date}")));
+        talk.type_text("Rechnungen");
+
+        talk.press(&ChipReply::RuleCreate);
+
+        assert_eq!(the_only_rule(&talk).spec.filing_pattern, "Alfa/2020/{date}");
+    }
 }

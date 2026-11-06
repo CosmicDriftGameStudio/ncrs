@@ -338,7 +338,12 @@ fn act_on(
             explain_not_yet(state, ctx);
             None
         }
-        ChatIntent::OpenFolder { folder } => propose_tidy(state, ctx, &folder, None, None, None),
+        ChatIntent::OpenFolder { folder } => {
+            if !crate::named_folders::start(state, ctx, &folder, None, None, None, true) {
+                fallback(state, ctx);
+            }
+            None
+        }
         ChatIntent::BulkMove { .. } => {
             batch_not_yet(state, ctx);
             None
@@ -389,7 +394,7 @@ fn propose_tidy(
         SaidTransfer::Copy => Transfer::Copy,
         SaidTransfer::Move => Transfer::Move,
     });
-    if !crate::named_folders::start(state, ctx, source, target, schedule, transfer) {
+    if !crate::named_folders::start(state, ctx, source, target, schedule, transfer, false) {
         fallback(state, ctx);
     }
     None

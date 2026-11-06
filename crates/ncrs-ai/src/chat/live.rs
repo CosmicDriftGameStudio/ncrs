@@ -111,6 +111,7 @@ fn with_model_chat_eval_meets_the_measured_rates() {
         total_ms / u128::try_from(count).unwrap()
     );
 
+    model.shutdown();
     if let Some(chosen) = shard_setting {
         // Read by the aggregation job of the workflow; the thresholds apply to
         // the sum of the shards, not to one of them.
@@ -191,6 +192,7 @@ fn with_model_the_protocol_sentences_print_their_intent() {
         };
         println!("intent {sentence:?} => {:?}", model.understand(&turn));
     }
+    model.shutdown();
 }
 
 #[test]
@@ -217,4 +219,5 @@ fn with_model_folder_sentences_print_their_intent() {
         };
         println!("intent {sentence:?} => {:?}", model.understand(&turn));
     }
+    model.shutdown();
 }

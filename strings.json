@@ -6541,78 +6541,6 @@
       "de": "Unterordner"
     },
     {
-      "key": "hermes_chat.plural_year",
-      "context": "Hermes chat (F2): Plural, lower case: what the folders of one level of an area stand for ('years'); used in a question such as 'For all banks?'.",
-      "en": "years",
-      "de": "Jahre"
-    },
-    {
-      "key": "hermes_chat.plural_month",
-      "context": "Hermes chat (F2): Plural, lower case: what the folders of one level of an area stand for ('months'); used in a question such as 'For all banks?'.",
-      "en": "months",
-      "de": "Monate"
-    },
-    {
-      "key": "hermes_chat.plural_date",
-      "context": "Hermes chat (F2): Plural, lower case: what the folders of one level of an area stand for ('dates'); used in a question such as 'For all banks?'.",
-      "en": "dates",
-      "de": "Daten"
-    },
-    {
-      "key": "hermes_chat.plural_number",
-      "context": "Hermes chat (F2): Plural, lower case: what the folders of one level of an area stand for ('numbers'); used in a question such as 'For all banks?'.",
-      "en": "numbers",
-      "de": "Nummern"
-    },
-    {
-      "key": "hermes_chat.plural_sender",
-      "context": "Hermes chat (F2): Plural, lower case: what the folders of one level of an area stand for ('senders'); used in a question such as 'For all banks?'.",
-      "en": "senders",
-      "de": "Absender"
-    },
-    {
-      "key": "hermes_chat.plural_kind",
-      "context": "Hermes chat (F2): Plural, lower case: what the folders of one level of an area stand for ('kinds'); used in a question such as 'For all banks?'.",
-      "en": "kinds",
-      "de": "Arten"
-    },
-    {
-      "key": "hermes_chat.plural_bank",
-      "context": "Hermes chat (F2): Plural, lower case: what the folders of one level of an area stand for ('banks'); used in a question such as 'For all banks?'.",
-      "en": "banks",
-      "de": "Banken"
-    },
-    {
-      "key": "hermes_chat.plural_insurer",
-      "context": "Hermes chat (F2): Plural, lower case: what the folders of one level of an area stand for ('insurers'); used in a question such as 'For all banks?'.",
-      "en": "insurers",
-      "de": "Versicherer"
-    },
-    {
-      "key": "hermes_chat.plural_vehicle",
-      "context": "Hermes chat (F2): Plural, lower case: what the folders of one level of an area stand for ('vehicles'); used in a question such as 'For all banks?'.",
-      "en": "vehicles",
-      "de": "Fahrzeuge"
-    },
-    {
-      "key": "hermes_chat.plural_child",
-      "context": "Hermes chat (F2): Plural, lower case: what the folders of one level of an area stand for ('children'); used in a question such as 'For all banks?'.",
-      "en": "children",
-      "de": "Kinder"
-    },
-    {
-      "key": "hermes_chat.plural_property",
-      "context": "Hermes chat (F2): Plural, lower case: what the folders of one level of an area stand for ('properties'); used in a question such as 'For all banks?'.",
-      "en": "properties",
-      "de": "Objekte"
-    },
-    {
-      "key": "hermes_chat.plural_subfolder",
-      "context": "Hermes chat (F2): Plural, lower case: what the folders of one level of an area stand for ('subfolders'); used in a question such as 'For all banks?'.",
-      "en": "subfolders",
-      "de": "Unterordner"
-    },
-    {
       "key": "hermes_chat.more_areas",
       "context": "Hermes chat (F2): Row under the areas of a folder when more areas exist than are listed: how many more areas there are and the names of the next few, cut off by the dots. The number of files in them is added after the row. {names} is a comma separated list, {count} a number.",
       "en": "{count} more areas: {names} …",
@@ -6637,76 +6565,10 @@
       "de": "Ja, so weitermachen"
     },
     {
-      "key": "hermes_chat.want_change",
-      "context": "Hermes chat (F2): Answer button: the user wants to change something about the order Hermes found.",
-      "en": "Change something",
-      "de": "Etwas ändern"
-    },
-    {
       "key": "hermes_chat.show_all",
       "context": "Hermes chat (F2): Answer button under the list of areas: show every area, not only the first ones. {areas} is the number of areas.",
       "en": "Show all {areas}",
       "de": "Alle {areas} zeigen"
-    },
-    {
-      "key": "hermes_chat.ask_change",
-      "context": "Hermes chat (F2): Hermes asks what shall be different about the order. The quoted example is a sentence the user can type.",
-      "en": "What should be different? Write it to me, e.g. “bank statements by month”.",
-      "de": "Was soll anders sein? Schreib es mir, z. B. „Kontoauszüge lieber nach Monat“."
-    },
-    {
-      "key": "hermes_chat.change_preview",
-      "context": "Hermes chat (F2): First line of the preview of a change of order for one area. {area} is the folder name of the area, {today} how it is sorted now (for example year or sender), {new} what the user asked for (year, month, sender or kind). A real example path follows.",
-      "en": "{area} is sorted by {today} today. Sorted by {new} it would look like this:",
-      "de": "{area} ist heute nach {today} sortiert. Nach {new} sähe das so aus:"
-    },
-    {
-      "key": "hermes_chat.change_scope",
-      "context": "Hermes chat (F2): Hermes asks whether the change applies to all folders of one level. {plural} is the plural of the level, for example 'banks'.",
-      "en": "For all {plural}?",
-      "de": "Für alle {plural}?"
-    },
-    {
-      "key": "hermes_chat.scope_all",
-      "context": "Hermes chat (F2): Answer button to the scope question (primary). {plural} is the plural of the level, for example 'banks'.",
-      "en": "All {plural}",
-      "de": "Alle {plural}"
-    },
-    {
-      "key": "hermes_chat.scope_only",
-      "context": "Hermes chat (F2): Answer button to the scope question: only one folder. {value} is the folder name, for example 'DKB'.",
-      "en": "Only {value}",
-      "de": "Nur {value}"
-    },
-    {
-      "key": "hermes_chat.change_done",
-      "context": "Hermes chat (F2): Hermes confirms a change of order. The change lasts only until the app is closed.",
-      "en": "Good, I'll file them like that for this session.",
-      "de": "Gut, so lege ich sie in dieser Sitzung ab."
-    },
-    {
-      "key": "hermes_chat.change_not_found",
-      "context": "Hermes chat (F2): Hermes could not find a folder for the change of order the user asked for. {word} is the kind of document as the user typed it, plural, for example 'bank statements'.",
-      "en": "I can't find a folder with “{word}” where I could change that.",
-      "de": "Ich finde keinen Ordner mit „{word}“, in dem ich das ändern könnte."
-    },
-    {
-      "key": "hermes_chat.change_needs_reading",
-      "context": "Hermes chat (F2): Hermes needs to read a folder before it can change an order. Folder buttons follow.",
-      "en": "For that I need to know your folder first. Where are your documents?",
-      "de": "Dafür muss ich erst deinen Ordner kennen. Wo liegen deine Dokumente?"
-    },
-    {
-      "key": "hermes_chat.anything_else",
-      "context": "Hermes chat (F2): Hermes asks whether the user wants anything else after a change.",
-      "en": "Anything else?",
-      "de": "Sonst noch etwas?"
-    },
-    {
-      "key": "hermes_chat.fine_as_is",
-      "context": "Hermes chat (F2): Answer button: the user does not want to change anything else.",
-      "en": "That's it",
-      "de": "Passt so"
     },
     {
       "key": "hermes_chat.kept",
@@ -7369,24 +7231,6 @@
       "de": "Hier sind meine Dokumente abgelegt"
     },
     {
-      "key": "hermes_chat.adopt_pattern",
-      "context": "Hermes chat (F2): button after the folders were shown, to use one of the found orders for all folders. {pattern} is the order, folder levels separated by slashes, e.g. Year / Month.",
-      "en": "Everywhere: {pattern}",
-      "de": "Überall: {pattern}"
-    },
-    {
-      "key": "hermes_chat.pattern_preview",
-      "context": "Hermes chat (F2): Hermes shows how new documents would be filed if one order is used everywhere. Files already in the folder do not move. Two paths follow, before and after. **Double asterisks** mark bold text. {pattern} is the order.",
-      "en": "I'd then file new documents by **{pattern}** everywhere. What's already there stays where it is. It would look like this:",
-      "de": "Neue Dateien lege ich dann überall nach **{pattern}** ab. Was schon da liegt, bleibt, wo es ist. So sähe es aus:"
-    },
-    {
-      "key": "hermes_chat.pattern_nothing",
-      "context": "Hermes chat (F2): Hermes says that using the chosen order everywhere would change nothing.",
-      "en": "Nothing would change: your folders already follow that order, or the files lack what it needs.",
-      "de": "Da würde sich nichts ändern: Deine Ordner folgen dem schon, oder den Dateien fehlt, was dafür nötig ist."
-    },
-    {
       "key": "hermes_chat.ask_photos",
       "context": "Hermes chat (F2): Hermes found photos or scans in the folder it can only read with text recognition, and the text recognition models are not installed. {folder} is the folder name, {count} the number of images.",
       "en": "{folder} holds {count} photos or scans I can't read without text recognition. Shall I read them too?",
@@ -7507,136 +7351,16 @@
       "de": "In Ordnung, ich lasse alles so, wie es ist."
     },
     {
-      "key": "hermes_chat.change_already",
-      "context": "Hermes chat (F2): Hermes answers a wish for a new order of an area that the area has already. {area} is the folder name of the area, {new} the order (year, month, sender or kind), {examples} the names of its first subfolders. Buttons with the other orders follow.",
-      "en": "{area} is already sorted by {new} ({examples}). Shall I change something else?",
-      "de": "{area} ist schon nach {new} sortiert ({examples}). Soll ich etwas anderes ändern?"
-    },
-    {
-      "key": "hermes_chat.not_yet_propose",
-      "context": "Hermes chat (F2): the user asked for a new order for the whole folder (for example 'make a suggestion'), which Hermes cannot do yet; it names what it can do instead. Buttons with things Hermes can do follow.",
-      "en": "I can't propose a new order for the whole folder yet. I can order one area by month, year, sender or kind, or tidy up a folder.",
-      "de": "Eine neue Ordnung für den ganzen Ordner vorschlagen kann ich noch nicht. Ich kann einen Bereich nach Monat, Jahr, Absender oder Art ordnen oder einen Ordner aufräumen."
-    },
-    {
-      "key": "hermes_chat.change_needs_fields",
-      "context": "Hermes chat (F2): the user asked to change the order of an area, but Hermes does not know the field the new order sorts by (for example the sender) for any document in that area yet, because it has not read them. {area} is the folder name of the area. Buttons with things Hermes can do follow.",
-      "en": "I don't know enough about the documents in “{area}” yet to show that, because I have not read them all. Try again once I am further along.",
-      "de": "Zu den Dokumenten in „{area}“ weiß ich noch nicht genug, um das zu zeigen, weil ich sie noch nicht alle gelesen habe. Versuch es später noch einmal."
-    },
-    {
       "key": "hermes_chat.reading_ai_progress",
       "context": "Hermes chat (F2): one line under the card of the areas Hermes read in a folder, shown while the AI has not yet understood every document with a text. {done} is how many it understood, {total} how many documents have a text. The rest continues in the background.",
       "en": "{done} of {total} documents understood, the rest continues in the background.",
       "de": "{done} von {total} Dokumenten verstanden, der Rest läuft im Hintergrund."
     },
     {
-      "key": "hermes_chat.change_preview_no_order",
-      "context": "Hermes chat (F2): First line of the preview of a change of order for an area in which no fixed order was learned, whether its files lie directly in it or in folders without a pattern. {area} is the folder name of the area, {new} what the user asked for (year, month, sender or kind).",
-      "en": "I see no fixed order in {area} yet. Sorted by {new} it would look like this:",
-      "de": "Für {area} kenne ich noch keine feste Ordnung. Nach {new} sähe das so aus:"
-    },
-    {
-      "key": "hermes_chat.change_preview_to_flat",
-      "context": "Hermes chat (F2): First line of the preview of a change of order that takes the subfolders of an area away. {area} is the folder name of the area, {today} how it is sorted now.",
-      "en": "{area} is sorted by {today} today. Without subfolders it would look like this:",
-      "de": "{area} ist heute nach {today} sortiert. Ohne Unterordner sähe das so aus:"
-    },
-    {
-      "key": "hermes_chat.change_preview_count",
-      "context": "Hermes chat (F2): Second line of the preview of a change of order: says the change applies to new files from now on and that the user sees the list before anything is filed. {area} is the name of the area.",
-      "en": "From now on this applies to new files in {area}. Before I file anything, I show you the list.",
-      "de": "Das gilt ab jetzt für neue Dateien in {area}. Bevor ich etwas ablege, zeige ich dir die Liste."
-    },
-    {
-      "key": "hermes_chat.change_preview_names",
-      "context": "Hermes chat (F2): First line of the preview of a change that gives new documents filed in an area names built from parts of the document, such as its date. Files already in the area keep their names. The example path follows, with the new file name highlighted. {area} is the folder name of the area.",
-      "en": "New documents in {area} would get names like this. What's already there keeps its name. It would look like this:",
-      "de": "Neue Dateien in {area} bekommen dann solche Namen. Was schon da liegt, behält seinen Namen. So sähe es aus:"
-    },
-    {
-      "key": "hermes_chat.change_preview_with_names",
-      "context": "Hermes chat (F2): Line of the preview of a change of order that also changes how new documents are named, shown right after the first line and before the example path, whose file name is the new one. Files already in the area keep their names.",
-      "en": "New documents get names like the one shown, too.",
-      "de": "Auch die Dateinamen neuer Dateien sehen dann so aus."
-    },
-    {
-      "key": "hermes_chat.pattern_preview_names",
-      "context": "Hermes chat (F2): Hermes shows how new documents would be named if the file names were built the new way in every area. Files already in the folder keep their names. Two paths follow, before and after.",
-      "en": "New documents would get names like this everywhere. What's already there keeps its name. It would look like this:",
-      "de": "Neue Dateien bekommen dann überall solche Namen. Was schon da liegt, behält seinen Namen. So sähe es aus:"
-    },
-    {
       "key": "hermes_chat.not_understood_follow_up",
       "context": "Hermes chat (F2): the user wrote something Hermes took for small talk or could not use right after a request, so it was probably about that request. Hermes asks again; buttons with the areas it knows follow. The example in quotes is what the user could type.",
       "en": "Is that about what we just did? Please tell me again with the area, for example “only Bank by year”.",
       "de": "Meinst du das zur letzten Frage? Sag es mir bitte noch einmal mit dem Bereich, zum Beispiel „nur Bank nach Jahr“."
-    },
-    {
-      "key": "hermes_chat.change_already_plain",
-      "context": "Hermes chat (F2): Like the answer that an area is sorted that way already, for an area without subfolders to list. {area} is the folder name of the area, {new} the order.",
-      "en": "{area} is already sorted by {new}. Shall I change something else?",
-      "de": "{area} ist schon nach {new} sortiert. Soll ich etwas anderes ändern?"
-    },
-    {
-      "key": "hermes_chat.change_area_which",
-      "context": "Hermes chat (F2): Question after the user pressed the button to change the order of one area on the settings page, with the possible orders as buttons. {area} is the folder name of the area.",
-      "en": "How should {area} be sorted?",
-      "de": "Wie soll {area} sortiert werden?"
-    },
-    {
-      "key": "hermes_chat.sort_like_this",
-      "context": "Hermes chat (F2): Answer button under the preview of a change of order: accept the new order for new files.",
-      "en": "Yes, sort like this",
-      "de": "Ja, so sortieren"
-    },
-    {
-      "key": "hermes_chat.rather_not",
-      "context": "Hermes chat (F2): Answer button under the preview of a change of order: do not make the change.",
-      "en": "Rather not",
-      "de": "Lieber nicht"
-    },
-    {
-      "key": "hermes_chat.order_year",
-      "context": "Hermes chat (F2): Answer button that asks for the files of an area to be sorted into folders by year.",
-      "en": "By year",
-      "de": "Nach Jahr"
-    },
-    {
-      "key": "hermes_chat.order_month",
-      "context": "Hermes chat (F2): Answer button that asks for the files of an area to be sorted into folders by month.",
-      "en": "By month",
-      "de": "Nach Monat"
-    },
-    {
-      "key": "hermes_chat.order_sender",
-      "context": "Hermes chat (F2): Answer button that asks for the files of an area to be sorted into folders by sender.",
-      "en": "By sender",
-      "de": "Nach Absender"
-    },
-    {
-      "key": "hermes_chat.order_kind",
-      "context": "Hermes chat (F2): Answer button that asks for the files of an area to be sorted into folders by kind of document.",
-      "en": "By kind",
-      "de": "Nach Art"
-    },
-    {
-      "key": "hermes_chat.no_more_change",
-      "context": "Hermes chat (F2): Answer button: the user wants no other order for the area.",
-      "en": "No, that's fine",
-      "de": "Nein, passt"
-    },
-    {
-      "key": "hermes_chat.other_area",
-      "context": "Hermes chat (F2): Answer button under the list of areas when none of them is meant: the user types the name of the area.",
-      "en": "Other area …",
-      "de": "Anderer Bereich …"
-    },
-    {
-      "key": "hermes_chat.other_area_hint",
-      "context": "Hermes chat (F2): Hermes asks the user to type the name of the area a change of order is for.",
-      "en": "Write me the name of the area.",
-      "de": "Schreib den Namen des Bereichs."
     },
     {
       "key": "hermes_chat.files_count",

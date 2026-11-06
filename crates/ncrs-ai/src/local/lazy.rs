@@ -85,6 +85,22 @@ impl LazyLocalModel {
         self.shared.set_extraction_priority(priority);
     }
 
+    /// Closes the model and waits until its worker has freed it. A process
+    /// that ends while the worker still frees the model makes the GPU backend
+    /// abort, so a test ends with this. Dropping only asks the worker to
+    /// stop, which keeps the app from waiting for a running job.
+    pub fn shutdown(self: Arc<Self>) {
+        self.shared.close();
+        let worker = self
+            .worker
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take();
+        if let Some(thread) = worker {
+            drop(thread.join());
+        }
+    }
+
     fn ensure_worker(&self) -> Result<(), AiError> {
         let mut worker = self.worker.lock().unwrap_or_else(PoisonError::into_inner);
         if worker.as_ref().is_some_and(|thread| !thread.is_finished()) {
@@ -139,15 +155,6 @@ impl LazyLocalModel {
 impl Drop for LazyLocalModel {
     fn drop(&mut self) {
         self.shared.close();
-        // The worker frees the model on its way out; a process that exits
-        // meanwhile makes the GPU backend abort.
-        let worker = self
-            .worker
-            .get_mut()
-            .unwrap_or_else(PoisonError::into_inner);
-        if let Some(thread) = worker.take() {
-            drop(thread.join());
-        }
     }
 }
 

@@ -87,7 +87,7 @@ fn with_model_a_typed_open_reaches_the_levels_through_the_router() {
     );
     assert_eq!(talk.rule_count(), 0, "opening saves nothing");
     drop(talk);
-    drop(model);
+    model.shutdown();
 }
 
 #[test]
@@ -108,7 +108,7 @@ fn with_model_a_nested_folder_is_opened_by_its_name_alone() {
         talk.labels()
     );
     drop(talk);
-    drop(model);
+    model.shutdown();
 }
 
 #[test]
@@ -132,7 +132,7 @@ fn with_model_an_empty_folder_gets_the_default_levels_and_one_rule() {
         "Telefon/{year}/{date}_{sender}_{kind}"
     );
     drop(talk);
-    drop(model);
+    model.shutdown();
 }
 
 #[test]
@@ -167,7 +167,7 @@ fn with_model_router_latency_per_sentence() {
         millis.iter().sum::<u128>() / millis.len() as u128
     );
     drop(talk);
-    drop(model);
+    model.shutdown();
 }
 
 #[test]
@@ -246,5 +246,5 @@ fn with_model_hermes_rule_flow() {
         rule.spec.filing_pattern
     );
     drop(talk);
-    drop(model);
+    model.shutdown();
 }
