@@ -65,7 +65,7 @@ fn the_terminal_starts_in_the_folder_under_the_cursor_with_the_path_filled_in() 
     drop(app.update(Message::RunCommand(KeyAction::OpenTerminal)));
     let launched = calls(&launcher);
     assert_eq!(launched.len(), 1);
-    let folder = PathBuf::from("/home/test/links/my photos");
+    let folder = Path::new("/home/test/links").join("my photos");
     assert_eq!(launched[0].program, OsString::from("myterm"));
     assert_eq!(
         launched[0].args,
