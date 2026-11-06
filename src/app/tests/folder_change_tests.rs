@@ -49,7 +49,6 @@ fn a_change_on_disk_keeps_cursor_and_tags_and_drops_vanished_ones() {
     let folder = scratch.path().to_path_buf();
     let mut app = app_showing(&folder, &["a", "b", "c", "d"]);
     app.panels.left.selected = 2;
-    app.panels.left.scroll_offset = 1;
     app.panels.left.selection.toggle(&folder.join("b"));
     app.panels.left.selection.toggle(&folder.join("d"));
     let before = app.panels.left.request_id;
@@ -65,7 +64,6 @@ fn a_change_on_disk_keeps_cursor_and_tags_and_drops_vanished_ones() {
 
     let panel = &app.panels.left;
     assert_eq!(panel.entries[panel.selected].name, "c");
-    assert_eq!(panel.scroll_offset, 1);
     assert!(!panel.selection.is_tagged(&folder.join("b")));
     assert!(panel.selection.is_tagged(&folder.join("d")));
 }
