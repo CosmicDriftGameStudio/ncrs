@@ -34,10 +34,12 @@ pub struct ChatJob {
     pub reply: Sender<Result<ChatIntent, AiError>>,
 }
 
+type RuleTask = Box<dyn FnOnce(Result<&LocalModel, AiError>) + Send>;
+
 /// A task on the rule session of the chat. The task runs on the worker with
 /// the loaded model, or learns why there is none.
 pub struct RuleJob {
-    pub task: Box<dyn FnOnce(Result<&LocalModel, AiError>) + Send>,
+    pub task: RuleTask,
 }
 
 impl std::fmt::Debug for RuleJob {

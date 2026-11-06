@@ -198,6 +198,33 @@ fn diagnosis() {
     trial_report(&access, &downloads, &archive);
 }
 
+fn pdfs_below(folder: &Path, found: &mut Vec<PathBuf>) {
+    let Ok(entries) = fs::read_dir(folder) else {
+        return;
+    };
+    let mut listed: Vec<_> = entries.flatten().collect();
+    listed.sort_by_key(fs::DirEntry::path);
+    for entry in listed {
+        let path = entry.path();
+        if path.is_dir() {
+            pdfs_below(&path, found);
+        } else if path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("pdf"))
+        {
+            found.push(path);
+        }
+    }
+}
+
+/// Every `step`-th PDF below `folder`, `count` of them: a spread over the years.
+fn spread_of_pdfs(folder: &Path, count: usize) -> Vec<PathBuf> {
+    let mut all = Vec::new();
+    pdfs_below(folder, &mut all);
+    let step = all.len().div_euclid(count).max(1);
+    all.into_iter().step_by(step).take(count).collect()
+}
+
 #[cfg(feature = "local-ai")]
 #[test]
 #[ignore = "reads NCRS_PROTOCOL_ARCHIVE and runs the model from NCRS_AI_MODELS_DIR"]

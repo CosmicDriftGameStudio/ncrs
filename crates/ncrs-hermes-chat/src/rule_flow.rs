@@ -143,7 +143,11 @@ fn sample<T: Clone>(items: &[T], most: usize) -> Vec<T> {
         return items.to_vec();
     }
     (0..most)
-        .filter_map(|position| items.get(position * items.len() / most).cloned())
+        .filter_map(|position| {
+            items
+                .get((position * items.len()).checked_div(most)?)
+                .cloned()
+        })
         .collect()
 }
 
@@ -474,10 +478,10 @@ fn levels_parts(state: &State, ctx: &Ctx) -> Vec<Part> {
             .iter()
             .take(MISFITS_SHOWN)
             .map(|misfit| match &misfit.written {
-                Some(written) => fill(
+                Some(shown) => fill(
                     ctx.lang,
                     Msg::HermesChatLevelsMisfit,
-                    &[("file", &misfit.file), ("written", written)],
+                    &[("file", &misfit.file), ("written", shown)],
                 ),
                 None => fill(
                     ctx.lang,
@@ -609,36 +613,41 @@ fn counted(values: impl Iterator<Item = String>) -> Option<String> {
 }
 
 fn suggestions(ctx: &Ctx, flow: &RuleFlow, kinds: &Kinds) -> Vec<Chip> {
-    let fields = || flow.files.iter().map(|(_, fields)| fields);
-    let kind = counted(fields().filter_map(|fields| fields.kind.clone()));
-    let sender = counted(fields().filter_map(|fields| fields.sender.clone()));
-    let both = counted(fields().filter_map(|fields| {
+    let all_fields = || flow.files.iter().map(|(_, found)| found);
+    let top_kind = counted(all_fields().filter_map(|found| found.kind.clone()));
+    let top_sender = counted(all_fields().filter_map(|found| found.sender.clone()));
+    let both = counted(all_fields().filter_map(|found| {
         Some(format!(
             "{}\u{0}{}",
-            fields.kind.as_ref()?,
-            fields.sender.as_ref()?
+            found.kind.as_ref()?,
+            found.sender.as_ref()?
         ))
     }));
     let mut labels: Vec<String> = Vec::new();
-    if let Some(kind) = &kind {
+    if let Some(common_kind) = &top_kind {
         labels.push(fill(
             ctx.lang,
             Msg::HermesChatRuleSuggestKind,
-            &[("kind", &kinds.kind_word(kind))],
+            &[("kind", &kinds.kind_word(common_kind))],
         ));
     }
-    if let Some(sender) = &sender {
+    if let Some(common_sender) = &top_sender {
         labels.push(fill(
             ctx.lang,
             Msg::HermesChatRuleSuggestSender,
-            &[("sender", sender)],
+            &[("sender", common_sender)],
         ));
     }
-    if let Some((kind, sender)) = both.as_deref().and_then(|pair| pair.split_once('\u{0}')) {
+    if let Some((pair_kind, pair_sender)) =
+        both.as_deref().and_then(|pair| pair.split_once('\u{0}'))
+    {
         labels.push(fill(
             ctx.lang,
             Msg::HermesChatRuleSuggestBoth,
-            &[("kind", &kinds.kind_word(kind)), ("sender", sender)],
+            &[
+                ("kind", &kinds.kind_word(pair_kind)),
+                ("sender", pair_sender),
+            ],
         ));
     }
     labels.dedup();
@@ -661,7 +670,7 @@ fn ask_what(state: &mut State, ctx: &Ctx, lead: Option<String>) {
         &[("folder", &flow.folder)],
     );
     let sentence = match lead {
-        Some(lead) => format!("{lead} {question}"),
+        Some(opening) => format!("{opening} {question}"),
         None => question,
     };
     let kinds = kinds_of(ctx);
@@ -669,7 +678,7 @@ fn ask_what(state: &mut State, ctx: &Ctx, lead: Option<String>) {
         .session
         .rule
         .as_ref()
-        .map(|flow| suggestions(ctx, flow, &kinds))
+        .map(|current| suggestions(ctx, current, &kinds))
         .unwrap_or_default();
     chips.push(cancel_chip(ctx));
     state.step = Step::RuleWhat;

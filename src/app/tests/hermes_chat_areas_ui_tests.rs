@@ -171,7 +171,7 @@ pub(in crate::app::tests) fn real_flow_areas_app(lang: Language) -> App {
     send(&mut app, &ctx, HermesChatMessage::Open);
     // The archive is not a filing folder yet when it is picked: the chat reads
     // it for the order it keeps, and shows it as a card of areas.
-    let ctx = Ctx {
+    let unlearned = Ctx {
         targets: Vec::new(),
         ..ctx
     };
@@ -191,7 +191,7 @@ pub(in crate::app::tests) fn real_flow_areas_app(lang: Language) -> App {
             drop(ncrs_hermes_chat::update(
                 &mut chat_app.hermes_chat,
                 message,
-                &ctx,
+                &unlearned,
             ));
             next = chat_app
                 .hermes_chat
@@ -202,7 +202,7 @@ pub(in crate::app::tests) fn real_flow_areas_app(lang: Language) -> App {
     };
     send(
         &mut app,
-        &ctx,
+        &unlearned,
         HermesChatMessage::FolderPicked(Some(root.join("archive"))),
     );
     press(&mut app, ChipReply::RoleTarget);

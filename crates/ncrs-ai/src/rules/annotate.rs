@@ -7,9 +7,6 @@ use ncrs_intake::{render_pattern_in, FILING_PLACEHOLDERS};
 
 use super::verify::path_text;
 
-/// A shorter value than this inside a longer text is chance, not a find.
-const LEAST_CONTAINED: usize = 3;
-
 fn value_of(name: &str, fields: &DocumentFields, kinds: &Kinds) -> Option<String> {
     render_pattern_in(&format!("{{{name}}}"), fields, kinds).map(|path| path_text(&path))
 }
@@ -60,23 +57,48 @@ fn note(level: &str, is_last: bool, fields: &DocumentFields, kinds: &Kinds) -> S
     if !equal.is_empty() {
         return format!(" = {}", equal.join(", "));
     }
-    let mut inside: Vec<&str> = values
-        .iter()
-        .filter(|(_, spelled)| {
-            spelled
-                .iter()
-                .any(|text| text.chars().count() >= LEAST_CONTAINED && stem.contains(text))
-        })
-        .map(|(name, _)| *name)
-        .collect();
-    if inside.contains(&"date") {
-        inside.retain(|name| !matches!(*name, "year" | "month" | "day"));
-    }
-    if inside.is_empty() {
-        String::new()
+    let written = template(stem, &values);
+    if written.contains('{') {
+        format!(" reads \"{written}\"")
     } else {
-        format!(" contains {}", inside.join(", "))
+        String::new()
     }
+}
+
+/// The level with every field value in it replaced by its placeholder, so
+/// the text left outside the braces is what no field explains. A value only
+/// counts as a whole word: "03" is no part of "0314".
+fn template(stem: &str, values: &[(&str, [String; 2])]) -> String {
+    let mut candidates: Vec<(&str, &str)> = values
+        .iter()
+        .flat_map(|(name, spelled)| spelled.iter().map(move |text| (*name, text.as_str())))
+        .filter(|(_, text)| text.chars().count() >= 2)
+        .collect();
+    candidates.sort_by_key(|(_, text)| std::cmp::Reverse(text.len()));
+    let mut written = String::new();
+    let mut before: Option<char> = None;
+    let mut rest = stem;
+    while let Some(next) = rest.chars().next() {
+        let found = candidates.iter().find_map(|(name, text)| {
+            let after = rest.strip_prefix(text)?;
+            let whole = before.is_none_or(|ch| !ch.is_alphanumeric())
+                && after.chars().next().is_none_or(|ch| !ch.is_alphanumeric());
+            whole.then_some((*name, after, text.chars().last()))
+        });
+        match found {
+            Some((name, after, last)) => {
+                written.push_str(&format!("{{{name}}}"));
+                before = last;
+                rest = after;
+            }
+            None => {
+                written.push(next);
+                before = Some(next);
+                rest = &rest[next.len_utf8()..];
+            }
+        }
+    }
+    written
 }
 
 /// One block per path: the path, then each of its levels with the fields it
@@ -120,7 +142,7 @@ mod tests {
         let text = annotated_paths(&[(path, otto())], &kinds);
         assert_eq!(
             text,
-            "PATH 1: Post/2021/Otto GmbH/Rechnung_Otto-GmbH_2021-04-02.pdf\n  1 \"Post\"\n  2 \"2021\" = year\n  3 \"Otto GmbH\" = sender\n  4 \"Rechnung_Otto-GmbH_2021-04-02.pdf\" contains date, sender, kind"
+            "PATH 1: Post/2021/Otto GmbH/Rechnung_Otto-GmbH_2021-04-02.pdf\n  1 \"Post\"\n  2 \"2021\" = year\n  3 \"Otto GmbH\" = sender\n  4 \"Rechnung_Otto-GmbH_2021-04-02.pdf\" reads \"{kind}_{sender}_{date}\""
         );
     }
 
@@ -130,5 +152,16 @@ mod tests {
         let path = "2021/2021-04-02_Otto-GmbH_5512.pdf".to_owned();
         let text = annotated_paths(&[(path, otto())], &kinds);
         assert!(text.ends_with("2 \"2021-04-02_Otto-GmbH_5512.pdf\" = the automatic file name"));
+    }
+
+    #[test]
+    fn a_word_no_field_explains_stays_in_the_template() {
+        let kinds = Kinds::built_in(KindLanguage::German);
+        let path = "Bank/Beleg_2021-04-02_Otto-GmbH_Kopie.pdf".to_owned();
+        let text = annotated_paths(&[(path, otto())], &kinds);
+        assert!(
+            text.ends_with("reads \"Beleg_{date}_{sender}_Kopie\""),
+            "{text}"
+        );
     }
 }

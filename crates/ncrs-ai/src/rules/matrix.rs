@@ -36,17 +36,20 @@ pub enum Axis {
     FileName,
     Condition,
     Recognize,
+    /// Recognize tasks whose file name holds a fixed word.
+    FixedName,
     /// Sentences that say nothing about the structure: the default applies.
     Default,
     Holdout,
 }
 
 impl Axis {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::Folder,
         Self::FileName,
         Self::Condition,
         Self::Recognize,
+        Self::FixedName,
         Self::Default,
         Self::Holdout,
     ];
@@ -513,7 +516,41 @@ fn condition_cases() -> Vec<Case> {
     cases
 }
 
-fn recognize_cases(patterns: Vec<(String, Vec<&'static str>)>) -> Vec<Case> {
+/// Twelve patterns with a fixed word at the front or the back of the file
+/// name, with and without folder levels. The words are no field values.
+fn fixed_name_patterns() -> Vec<(String, Vec<&'static str>)> {
+    [
+        ("Beleg_{date}_{sender}", vec!["date", "sender"]),
+        ("Scan-{sender}-{date}", vec!["sender", "date"]),
+        ("Eingang {year} {sender}", vec!["year", "sender"]),
+        ("{date}_{sender}_Kopie", vec!["date", "sender"]),
+        ("{sender}-{kind}-final", vec!["sender", "kind"]),
+        ("{year}-{month}_Ablage", vec!["year", "month"]),
+        (
+            "Post/{year}/Scan_{date}_{sender}",
+            vec!["year", "date", "sender"],
+        ),
+        ("{year}/Eingang_{sender}", vec!["year", "sender"]),
+        ("Bank/{sender}/{date}_Kopie", vec!["sender", "date"]),
+        (
+            "Archiv/{year}/{month}/{sender}_Beleg",
+            vec!["year", "month", "sender"],
+        ),
+        (
+            "{sender}/Beleg_{date}_{kind}",
+            vec!["sender", "date", "kind"],
+        ),
+        (
+            "Bank/{year}/{kind}_{sender}_Ablage",
+            vec!["year", "kind", "sender"],
+        ),
+    ]
+    .into_iter()
+    .map(|(pattern, placeholders)| (pattern.to_owned(), placeholders))
+    .collect()
+}
+
+fn recognize_cases(axis: Axis, patterns: Vec<(String, Vec<&'static str>)>) -> Vec<Case> {
     let kinds = archive_kinds();
     let documents = fixtures();
     patterns
@@ -535,7 +572,7 @@ fn recognize_cases(patterns: Vec<(String, Vec<&'static str>)>) -> Vec<Case> {
                 Language::English => "Which pattern wrote these paths?",
             };
             Case {
-                axis: Axis::Recognize,
+                axis,
                 language,
                 ask: Ask::Paths {
                     question: question.to_owned(),
@@ -657,7 +694,8 @@ pub fn all_cases() -> Vec<Case> {
             Expected::Pattern(_) => None,
         })
         .collect();
-    cases.extend(recognize_cases(patterns));
+    cases.extend(recognize_cases(Axis::Recognize, patterns));
+    cases.extend(recognize_cases(Axis::FixedName, fixed_name_patterns()));
     cases.extend(default_cases());
     cases
 }
@@ -695,10 +733,11 @@ mod tests {
             ),
             (400, 400, 132, 800)
         );
+        assert_eq!(count(Axis::FixedName), 12);
         assert_eq!(count(Axis::Default), 24);
         let generate = all_cases()
             .iter()
-            .filter(|case| !matches!(case.axis, Axis::Recognize | Axis::Default))
+            .filter(|case| !matches!(case.axis, Axis::Recognize | Axis::FixedName | Axis::Default))
             .count();
         assert_eq!(generate, 932);
     }

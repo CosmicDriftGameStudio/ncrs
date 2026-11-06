@@ -262,7 +262,7 @@ mod tests {
     fn the_expected_answer_of_every_recognize_case_passes() {
         for case in all_cases()
             .iter()
-            .filter(|case| case.axis == Axis::Recognize)
+            .filter(|case| matches!(case.axis, Axis::Recognize | Axis::FixedName))
         {
             let Expected::Pattern(pattern) = &case.expected else {
                 panic!("a recognize case expects a pattern");

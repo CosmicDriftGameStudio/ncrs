@@ -199,8 +199,8 @@ mod tests {
         assert_eq!(talk.rule_count(), 0);
 
         talk.press(&ChipReply::LevelsDefault);
-        let card = levels_card(&talk).expect("the default levels");
-        assert_eq!(card.rows.len(), 2);
+        let default_card = levels_card(&talk).expect("the default levels");
+        assert_eq!(default_card.rows.len(), 2);
         assert_eq!(talk.rule_count(), 0);
     }
 

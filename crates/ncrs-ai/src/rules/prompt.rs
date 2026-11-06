@@ -27,7 +27,7 @@ pub struct ContextDocument {
 /// The last lines of a task, after the user's words: a small model follows
 /// what it read last. The examples in the instructions end the same way.
 pub const GENERATE_REMINDER: &str = "(One level per folder named. datei only for a described file name. No structure named: the default.)";
-pub const RECOGNIZE_REMINDER: &str = "(A field is a placeholder, a text the same in every path is fixed. The last level is the file: the automatic name is datei null and not in ordner.)";
+pub const RECOGNIZE_REMINDER: &str = "(Braces are fields, other text is fixed. The last level is the file, never a folder; the automatic name is datei null.)";
 
 /// The paths of the recognize examples with the fields of their documents,
 /// each with the pattern that wrote them (`.pdf` appended).
