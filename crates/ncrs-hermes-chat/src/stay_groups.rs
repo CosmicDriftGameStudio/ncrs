@@ -303,7 +303,6 @@ fn rerun(state: &mut State, ctx: &Ctx) {
         ChatWork::Trial {
             source,
             target,
-            changes: state.session.changes.clone(),
             answered,
             layout: state.session.layout.clone(),
         },

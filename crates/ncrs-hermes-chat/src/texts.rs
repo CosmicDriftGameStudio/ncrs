@@ -6,9 +6,7 @@ use std::time::{Duration, SystemTime};
 use ncrs_filing::chat_work::{branch_example, FolderReading};
 use ncrs_i18n::{fill_template, Language, Msg};
 use ncrs_index::Field;
-use ncrs_intake::{
-    branch_plain, label_text, Area, Branch, ConditionProblem, PlaceholderLabel, RuleProblem,
-};
+use ncrs_intake::{branch_plain, Area, Branch, ConditionProblem, RuleProblem};
 use ncrs_ui_kit::format;
 
 use crate::ctx::Ctx;
@@ -91,23 +89,6 @@ pub fn shown_folder(ctx: &Ctx, path: &Path) -> String {
     }
 }
 
-pub fn plural_text(lang: Language, label: PlaceholderLabel) -> &'static str {
-    lang.text(match label {
-        PlaceholderLabel::Year => Msg::HermesChatPluralYear,
-        PlaceholderLabel::Month => Msg::HermesChatPluralMonth,
-        PlaceholderLabel::Date => Msg::HermesChatPluralDate,
-        PlaceholderLabel::Number => Msg::HermesChatPluralNumber,
-        PlaceholderLabel::Sender => Msg::HermesChatPluralSender,
-        PlaceholderLabel::Kind => Msg::HermesChatPluralKind,
-        PlaceholderLabel::Bank => Msg::HermesChatPluralBank,
-        PlaceholderLabel::Insurer => Msg::HermesChatPluralInsurer,
-        PlaceholderLabel::Vehicle => Msg::HermesChatPluralVehicle,
-        PlaceholderLabel::Child => Msg::HermesChatPluralChild,
-        PlaceholderLabel::Property => Msg::HermesChatPluralProperty,
-        PlaceholderLabel::Subfolder => Msg::HermesChatPluralSubfolder,
-    })
-}
-
 pub fn field_label(lang: Language, field: Field) -> &'static str {
     lang.text(match field {
         Field::Sender => Msg::ReviewListFieldSender,
@@ -117,39 +98,6 @@ pub fn field_label(lang: Language, field: Field) -> &'static str {
         Field::Number => Msg::ReviewListFieldNumber,
         Field::Amount => Msg::ReviewListFieldAmount,
     })
-}
-
-const PATTERN_JOINER: &str = " / ";
-
-/// The name of a placeholder as the filing masks call it; what the masks have
-/// no name for is named by what it stands for.
-fn pattern_label(lang: Language, label: PlaceholderLabel) -> String {
-    let mask = match label {
-        PlaceholderLabel::Year => Some(Msg::FilingPiecesFieldYear),
-        PlaceholderLabel::Month => Some(Msg::FilingPiecesFieldMonth),
-        PlaceholderLabel::Date => Some(Msg::FilingPiecesFieldDate),
-        PlaceholderLabel::Number => Some(Msg::FilingPiecesFieldNumber),
-        PlaceholderLabel::Sender => Some(Msg::FilingPiecesFieldSender),
-        PlaceholderLabel::Kind => Some(Msg::FilingPiecesFieldKind),
-        _ => None,
-    };
-    if let Some(msg) = mask {
-        return lang.text(msg).to_owned();
-    }
-    let word = label_text(lang, label);
-    let mut letters = word.chars();
-    letters.next().map_or_else(String::new, |first| {
-        first.to_uppercase().chain(letters).collect()
-    })
-}
-
-/// The folder levels of a pattern, "Year / Month".
-pub fn pattern_levels(lang: Language, labels: &[PlaceholderLabel]) -> String {
-    labels
-        .iter()
-        .map(|label| pattern_label(lang, *label))
-        .collect::<Vec<_>>()
-        .join(PATTERN_JOINER)
 }
 
 /// "12 files" / "1 file".
@@ -310,7 +258,6 @@ mod tests {
             ],
         };
         let reading = FolderReading {
-            patterns: Vec::new(),
             ai: Default::default(),
             kinds: Default::default(),
             root: "Downloads".into(),

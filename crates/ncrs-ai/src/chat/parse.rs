@@ -65,6 +65,9 @@ pub fn parse_chat_reply(raw: &str, turn: &ChatTurn) -> Result<ChatIntent, AiErro
         "explain" => Ok(ChatIntent::Explain {
             file: required_text(&reply, "file")?,
         }),
+        "open_folder" => Ok(ChatIntent::OpenFolder {
+            folder: required_text(&reply, "folder")?,
+        }),
         "bulk_move" => Ok(ChatIntent::BulkMove {
             filter_kind: text(&reply, "filter_kind"),
             filter_sender: text(&reply, "filter_sender"),

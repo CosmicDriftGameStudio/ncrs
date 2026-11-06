@@ -8,14 +8,14 @@
 use std::fmt;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use ncrs_ai::NameSpec;
 use ncrs_core::INDEX_NOT_OPEN;
 use ncrs_fs::Trash;
-use ncrs_index::{BatchId, Index, KindLanguage, Kinds, Rule, RuleOrigin, SenderAliases};
+use ncrs_index::{BatchId, Index, KindLanguage, Kinds, Rule, RuleOrigin, RuleSpec, SenderAliases};
 use ncrs_intake::{rule_problem, TextChain};
 use ncrs_pipeline::{Load, OwnDetails};
 
 use crate::review_work::{AcceptSummary, ReviewAccess, ReviewItem};
+use crate::rules_work::{RuleTry, RulesAccess, TriedDocument};
 
 mod change;
 mod groups;
@@ -29,18 +29,12 @@ mod words;
 #[cfg(test)]
 mod tests;
 
-pub use change::{
-    already_ordered, apply_changes, area_lacks_fields, branch_example, names_known_kind,
-    ChangeOrder, ChangePreview, OrderChange, Scope,
-};
+pub use change::branch_example;
 pub use groups::{
     area_pattern, group_rule, numbered_name, stay_groups, AnsweredGroups, GroupKey, NameTaken,
     RuleSaveFailure, StayGroup, StayGroups, MAX_GROUP_QUESTIONS,
 };
-pub use pattern::{
-    pattern_choices, PatternChoice, PatternLevel, PatternPreview, PatternSpec, PatternTarget,
-    OFFERED_PATTERNS,
-};
+pub use pattern::PatternLevel;
 pub use reading::{AiCoverage, FolderReading, ReadError, ReadProgress, FILE_LIMIT};
 pub use runs::{RecentRun, RunItem, RunPlan, RunReport, RunSummary};
 pub use trial::{StayReason, TrialEntry, TrialOutcome, TrialPlan};
@@ -61,7 +55,6 @@ pub enum ChatWork {
     Trial {
         source: Arc<FolderReading>,
         target: Arc<FolderReading>,
-        changes: Vec<OrderChange>,
         answered: AnsweredGroups,
         /// The order a new target without neighbours gets.
         layout: Option<Vec<PatternLevel>>,
@@ -72,17 +65,14 @@ pub enum ChatWork {
         label: String,
         area: String,
     },
-    PreviewChange {
-        reading: Arc<FolderReading>,
-        kind_word: String,
-        order: ChangeOrder,
-        name: Option<NameSpec>,
+    /// Where a rule would file the documents the index knows; nothing is
+    /// written.
+    RuleTrial {
+        spec: RuleSpec,
     },
-    /// `levels` empty: only the file names change.
-    PreviewPattern {
-        reading: Arc<FolderReading>,
-        levels: Vec<PatternLevel>,
-        name: Option<NameSpec>,
+    /// Stores a rule the user confirmed.
+    SaveRule {
+        spec: RuleSpec,
     },
     File {
         run: RunPlan,
@@ -114,8 +104,8 @@ pub enum ChatResult {
     Trial(Result<TrialPlan, String>),
     /// The name of the rule that was stored.
     RuleSaved(Result<String, RuleSaveFailure>),
-    Preview(Option<ChangePreview>),
-    PatternPreviewed(Option<PatternPreview>),
+    RuleTried(Result<RuleTrial, String>),
+    RuleStored(Result<(), RuleSaveFailure>),
     Filed(Result<RunReport, String>),
     Trashed(Result<TrashReport, String>),
     LastRun(Result<Option<RunSummary>, String>),
@@ -124,6 +114,18 @@ pub enum ChatResult {
     WaitingLoaded(Result<Vec<WaitingGroup>, String>),
     WaitingFiled(Result<AcceptSummary, String>),
 }
+
+/// What a rule would do to the documents the index knows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuleTrial {
+    /// All documents the rule matches.
+    pub matches: usize,
+    /// The first of them, as they stand and as they would stand.
+    pub examples: Vec<TriedDocument>,
+}
+
+/// How many matching documents the chat shows.
+pub const RULE_TRIAL_EXAMPLES: usize = 3;
 
 /// The handle of the chat: the index the pipeline shares, the text sources to
 /// read files it does not know yet, and the trash for duplicates.
@@ -134,6 +136,7 @@ pub struct ChatAccess {
     trash: Arc<dyn Trash>,
     own: OwnDetails,
     review: Option<ReviewAccess>,
+    rules: Option<RulesAccess>,
     load: Load,
 }
 
@@ -155,6 +158,7 @@ impl ChatAccess {
             trash,
             own: OwnDetails::default(),
             review: None,
+            rules: None,
             load: Load::default(),
         }
     }
@@ -171,6 +175,13 @@ impl ChatAccess {
     #[must_use]
     pub fn with_review(mut self, review: Option<ReviewAccess>) -> Self {
         self.review = review;
+        self
+    }
+
+    /// A rule can be tried against the documents only with this.
+    #[must_use]
+    pub fn with_rules(mut self, rules: Option<RulesAccess>) -> Self {
+        self.rules = rules;
         self
     }
 
@@ -236,14 +247,12 @@ impl ChatAccess {
             ChatWork::Trial {
                 source,
                 target,
-                changes,
                 answered,
                 layout,
             } => ChatResult::Trial(trial::trial(
                 self,
                 &source,
                 &target,
-                &changes,
                 &answered,
                 layout.as_deref(),
             )),
@@ -253,23 +262,8 @@ impl ChatAccess {
                 label,
                 area,
             } => ChatResult::RuleSaved(self.save_group_rule(&target, &key, &label, &area)),
-            ChatWork::PreviewChange {
-                reading,
-                kind_word,
-                order,
-                name,
-            } => ChatResult::Preview(self.kinds().ok().and_then(|kinds| {
-                change::preview(&kinds, &reading, &kind_word, order, name.as_ref())
-            })),
-            ChatWork::PreviewPattern {
-                reading,
-                levels,
-                name,
-            } => ChatResult::PatternPreviewed(
-                self.kinds()
-                    .ok()
-                    .and_then(|kinds| pattern::preview(&kinds, &reading, &levels, name.as_ref())),
-            ),
+            ChatWork::RuleTrial { spec } => ChatResult::RuleTried(self.try_rule(spec)),
+            ChatWork::SaveRule { spec } => ChatResult::RuleStored(self.save_rule(&spec)),
             ChatWork::File { run } => ChatResult::Filed(runs::file(self, &run)),
             ChatWork::TrashDuplicates { name, root, items } => {
                 ChatResult::Trashed(runs::trash_duplicates(self, &name, &root, &items))
@@ -325,6 +319,38 @@ impl ChatAccess {
         Ok(label.to_owned())
     }
 
+    fn try_rule(&self, spec: RuleSpec) -> Result<RuleTrial, String> {
+        let rules = self
+            .rules
+            .as_ref()
+            .ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
+        let tried = rules.try_rule(&RuleTry {
+            replaces: None,
+            spec,
+        })?;
+        Ok(RuleTrial {
+            matches: tried.documents.len() + tried.more,
+            examples: tried
+                .documents
+                .into_iter()
+                .take(RULE_TRIAL_EXAMPLES)
+                .collect(),
+        })
+    }
+
+    fn save_rule(&self, spec: &RuleSpec) -> Result<(), RuleSaveFailure> {
+        if let Some(problem) = rule_problem(spec) {
+            return Err(RuleSaveFailure::Refused(problem));
+        }
+        self.with_index_mut(|index| {
+            index
+                .create_rule_from(spec, RuleOrigin::Hand)
+                .map(|_| ())
+                .map_err(|err| err.to_string())
+        })
+        .map_err(RuleSaveFailure::Failed)
+    }
+
     fn with_index_mut<T>(
         &self,
         work: impl FnOnce(&mut Index) -> Result<T, String>,
@@ -334,7 +360,7 @@ impl ChatAccess {
         work(index)
     }
 
-    fn kinds(&self) -> Result<Kinds, String> {
+    pub fn kinds(&self) -> Result<Kinds, String> {
         self.with_index(|index| {
             Ok(Kinds::new(
                 Arc::clone(index.kinds()),

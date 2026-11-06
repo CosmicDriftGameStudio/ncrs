@@ -28,6 +28,8 @@ pub enum Message {
     TurnOnFailed(String),
     /// What the language model made of a typed sentence, or why it failed.
     Understood(Result<ChatIntent, String>),
+    /// What the model made of a rule or levels it was asked.
+    RuleAnswered(crate::rule_flow::RuleAnswer),
     /// The check of a typed folder, for the step it was typed in.
     TypedFolderResolved {
         typed: PathBuf,
@@ -67,6 +69,7 @@ impl Message {
             Self::Done(_)
                 | Self::Failed(_)
                 | Self::Understood(_)
+                | Self::RuleAnswered(_)
                 | Self::TypedFolderResolved { .. }
                 | Self::NamedFoldersResolved { .. }
         )

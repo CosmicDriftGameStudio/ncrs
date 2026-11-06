@@ -5,10 +5,9 @@ use std::path::PathBuf;
 
 use iced::Task;
 use ncrs_ai::{
-    intent_json, ChatIntent, ChatQuestion, ChatTurn, LocalModelStatus, NameSpec, Order, Schedule,
-    Transfer as SaidTransfer, EVERY_AREA, LOCAL_MODEL,
+    intent_json, ChatIntent, ChatQuestion, ChatTurn, LocalModelStatus, Schedule,
+    Transfer as SaidTransfer, LOCAL_MODEL,
 };
-use ncrs_filing::chat_work::ChangeOrder;
 use ncrs_i18n::Msg;
 use ncrs_index::Transfer;
 use ncrs_ui_kit::format;
@@ -22,7 +21,7 @@ use crate::update::{
     batch_not_yet, cancel_chip, chip, drop_working, explain_not_yet, fallback, fallback_chips,
     handle_reply, hermes, open_thread, say, say_failed, say_off, search_not_yet,
 };
-use crate::{everywhere, follow_up, learn, undo};
+use crate::{follow_up, undo};
 
 /// The question the newest bubble of Hermes asks and its buttons. Read before
 /// the bubble of the user clears them.
@@ -205,7 +204,7 @@ pub fn understood(
                 return None;
             }
             follow_up::remember(state, &intent, &thinking.turn.message);
-            act_on(state, ctx, intent, &thinking.asked)
+            act_on(state, ctx, intent, &thinking.asked, &thinking.turn.message)
         }
         Err(reason) => {
             if gate(state, ctx, None) == Gate::Usable {
@@ -298,7 +297,13 @@ fn resume(state: &mut State, ctx: &Ctx) -> Option<Action> {
     None
 }
 
-fn act_on(state: &mut State, ctx: &Ctx, intent: ChatIntent, asked: &Asked) -> Option<Action> {
+fn act_on(
+    state: &mut State,
+    ctx: &Ctx,
+    intent: ChatIntent,
+    asked: &Asked,
+    message: &str,
+) -> Option<Action> {
     match intent {
         ChatIntent::Answer { choice } => match asked.chips.get(choice) {
             Some(answer) if answer.reply.changes_something() => {
@@ -317,13 +322,8 @@ fn act_on(state: &mut State, ctx: &Ctx, intent: ChatIntent, asked: &Asked) -> Op
             schedule,
             transfer,
         } => propose_tidy(state, ctx, &source, target.as_deref(), schedule, transfer),
-        ChatIntent::ChangeStructure {
-            order,
-            area,
-            scope,
-            name,
-        } => {
-            change_structure(state, ctx, area, scope, order, name);
+        ChatIntent::ChangeStructure { .. } => {
+            crate::rule_flow::from_description(state, ctx, message);
             None
         }
         ChatIntent::Undo => {
@@ -338,6 +338,7 @@ fn act_on(state: &mut State, ctx: &Ctx, intent: ChatIntent, asked: &Asked) -> Op
             explain_not_yet(state, ctx);
             None
         }
+        ChatIntent::OpenFolder { folder } => propose_tidy(state, ctx, &folder, None, None, None),
         ChatIntent::BulkMove { .. } => {
             batch_not_yet(state, ctx);
             None
@@ -365,34 +366,6 @@ fn act_on(state: &mut State, ctx: &Ctx, intent: ChatIntent, asked: &Asked) -> Op
     }
 }
 
-fn change_structure(
-    state: &mut State,
-    ctx: &Ctx,
-    area: String,
-    scope: Option<String>,
-    order: Option<Order>,
-    name: Option<NameSpec>,
-) {
-    state.session.change_scope = scope;
-    state.session.change_name = name;
-    if area == EVERY_AREA {
-        everywhere::start(state, ctx, order);
-        return;
-    }
-    let ordered = order.map_or(ChangeOrder::FileNames, change_order_of);
-    learn::change_order(state, ctx, area, ordered);
-}
-
-/// The last change again, for the area the user picked.
-pub fn follow_up_area(state: &mut State, ctx: &Ctx, area: String) {
-    match state.session.previous_request.clone() {
-        Some(ChatIntent::ChangeStructure {
-            scope, order, name, ..
-        }) => change_structure(state, ctx, area, scope, order, name),
-        _ => fallback(state, ctx),
-    }
-}
-
 /// Document text reaches the model, so a typed answer never does a change on
 /// its own: the user taps the option to confirm it.
 fn confirm_typed_choice(state: &mut State, ctx: &Ctx, answer: Chip) {
@@ -402,16 +375,6 @@ fn confirm_typed_choice(state: &mut State, ctx: &Ctx, answer: Chip) {
         &[("choice", &answer.label)],
     );
     say(state, sentence, vec![answer, cancel_chip(ctx)]);
-}
-
-fn change_order_of(order: Order) -> ChangeOrder {
-    match order {
-        Order::ByMonth => ChangeOrder::ByMonth,
-        Order::ByYear => ChangeOrder::ByYear,
-        Order::BySender => ChangeOrder::BySender,
-        Order::ByKind => ChangeOrder::ByKind,
-        Order::Flat => ChangeOrder::Flat,
-    }
 }
 
 fn propose_tidy(

@@ -34,9 +34,22 @@ pub struct ChatJob {
     pub reply: Sender<Result<ChatIntent, AiError>>,
 }
 
+/// A task on the rule session of the chat. The task runs on the worker with
+/// the loaded model, or learns why there is none.
+pub struct RuleJob {
+    pub task: Box<dyn FnOnce(Result<&LocalModel, AiError>) + Send>,
+}
+
+impl std::fmt::Debug for RuleJob {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RuleJob").finish_non_exhaustive()
+    }
+}
+
 #[derive(Debug)]
 pub enum Job {
     Chat(ChatJob),
+    Rule(RuleJob),
     Extract(ExtractJob),
 }
 
@@ -46,6 +59,7 @@ impl Job {
         // A caller that stopped waiting is no one to tell.
         match self {
             Self::Chat(job) => drop(job.reply.send(Err(error))),
+            Self::Rule(job) => (job.task)(Err(error)),
             Self::Extract(job) => drop(job.reply.send(Err(error))),
         }
     }
@@ -56,6 +70,7 @@ impl Job {
 #[derive(Debug, Default)]
 pub struct Queue {
     chat: VecDeque<ChatJob>,
+    rule: VecDeque<RuleJob>,
     extract: VecDeque<ExtractJob>,
     closed: bool,
 }
@@ -64,6 +79,7 @@ impl Queue {
     pub fn push(&mut self, job: Job) {
         match job {
             Job::Chat(chat) => self.chat.push_back(chat),
+            Job::Rule(rule) => self.rule.push_back(rule),
             Job::Extract(extract) => self.extract.push_back(extract),
         }
     }
@@ -72,6 +88,7 @@ impl Queue {
         self.chat
             .pop_front()
             .map(Job::Chat)
+            .or_else(|| self.rule.pop_front().map(Job::Rule))
             .or_else(|| self.extract.pop_front().map(Job::Extract))
     }
 }
@@ -179,7 +196,7 @@ impl Shared {
     /// to run.
     fn prepare_for(&self, job: &Job) {
         let priority = match job {
-            Job::Chat(_) => ThreadPriority::UserInitiated,
+            Job::Chat(_) | Job::Rule(_) => ThreadPriority::UserInitiated,
             Job::Extract(_) => *locked(&self.extraction_priority),
         };
         set_current_thread_priority(priority);
@@ -315,6 +332,7 @@ fn serve_until_idle(shared: &Shared, model: &LocalModel, first: Job) -> bool {
                 let answer = chat_answer(model, &mut chat, &request.turn);
                 drop(request.reply.send(answer));
             }
+            Job::Rule(rule) => (rule.task)(Ok(model)),
         }
     }
 }
@@ -381,6 +399,7 @@ mod queue_tests {
         while let Some(job) = queue.pop() {
             order.push(match job {
                 Job::Chat(chat) => chat.turn.message,
+                Job::Rule(_) => String::new(),
                 Job::Extract(extract) => extract.request.text,
             });
         }

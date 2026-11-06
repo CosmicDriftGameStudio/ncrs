@@ -4,9 +4,12 @@ use std::sync::{Mutex, PoisonError};
 
 use std::collections::VecDeque;
 
+use ncrs_index::{DocumentFields, Kinds, RuleSpec};
+
 use crate::chat::{parse_chat_reply, ChatIntent, ChatModel, ChatTurn};
 use crate::contract::{parse_reply, Extraction, ExtractionRequest, Provider};
 use crate::error::AiError;
+use crate::rules::{ContextDocument, Levels};
 use crate::status::LocalModelStatus;
 
 /// Answers with a canned raw reply, which goes through the same parser as the
@@ -75,6 +78,10 @@ pub struct ScriptedChatModel {
     replies: Mutex<VecDeque<Result<String, AiError>>>,
     turns: Mutex<Vec<ChatTurn>>,
     refreshes: Mutex<usize>,
+    rules: Mutex<VecDeque<Result<RuleSpec, AiError>>>,
+    levels: Mutex<VecDeque<Result<Levels, AiError>>>,
+    described: Mutex<Vec<String>>,
+    recognized: Mutex<Vec<Vec<(String, DocumentFields)>>>,
 }
 
 impl ScriptedChatModel {
@@ -92,7 +99,43 @@ impl ScriptedChatModel {
             ),
             turns: Mutex::new(Vec::new()),
             refreshes: Mutex::new(0),
+            rules: Mutex::new(VecDeque::new()),
+            levels: Mutex::new(VecDeque::new()),
+            described: Mutex::new(Vec::new()),
+            recognized: Mutex::new(Vec::new()),
         }
+    }
+
+    /// The next answer of `generate_rule`.
+    pub fn push_rule(&self, rule: Result<RuleSpec, AiError>) {
+        self.rules
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push_back(rule);
+    }
+
+    /// The next answer of `recognize_levels`.
+    pub fn push_levels(&self, levels: Result<Levels, AiError>) {
+        self.levels
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push_back(levels);
+    }
+
+    /// The descriptions `generate_rule` was asked, in order.
+    pub fn described(&self) -> Vec<String> {
+        self.described
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    /// The files each `recognize_levels` was asked about, in order.
+    pub fn recognized(&self) -> Vec<Vec<(String, DocumentFields)>> {
+        self.recognized
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 
     /// Another raw reply, after those already scripted.
@@ -136,6 +179,39 @@ impl ChatModel for ScriptedChatModel {
             .pop_front()
             .unwrap_or(Err(AiError::Model("no scripted reply")));
         parse_chat_reply(&next?, turn)
+    }
+
+    fn generate_rule(
+        &self,
+        description: &str,
+        _documents: &[ContextDocument],
+        _kinds: &Kinds,
+    ) -> Result<RuleSpec, AiError> {
+        self.described
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(description.to_owned());
+        self.rules
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .pop_front()
+            .unwrap_or(Err(AiError::Model("no scripted rule")))
+    }
+
+    fn recognize_levels(
+        &self,
+        files: &[(String, DocumentFields)],
+        _kinds: &Kinds,
+    ) -> Result<Levels, AiError> {
+        self.recognized
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(files.to_vec());
+        self.levels
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .pop_front()
+            .unwrap_or(Err(AiError::Model("no scripted levels")))
     }
 
     fn status(&self) -> LocalModelStatus {

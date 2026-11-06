@@ -3,8 +3,11 @@
 
 use std::fmt;
 
+use ncrs_index::{DocumentFields, Kinds, RuleSpec};
+
 use super::turn::{ChatTurn, SearchQuery};
 use crate::error::AiError;
+use crate::rules::{ContextDocument, Levels};
 use crate::status::LocalModelStatus;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -109,6 +112,10 @@ pub enum ChatIntent {
     Explain {
         file: String,
     },
+    /// "Open /Bank", "show me what is in Scans": look into one folder.
+    OpenFolder {
+        folder: String,
+    },
     BulkMove {
         filter_kind: Option<String>,
         filter_sender: Option<String>,
@@ -128,6 +135,20 @@ pub enum ChatIntent {
 
 pub trait ChatModel: Send + Sync + fmt::Debug {
     fn understand(&self, turn: &ChatTurn) -> Result<ChatIntent, AiError>;
+    /// The rule a described filing means; `documents` are what the model is
+    /// shown of the archive.
+    fn generate_rule(
+        &self,
+        description: &str,
+        documents: &[ContextDocument],
+        kinds: &Kinds,
+    ) -> Result<RuleSpec, AiError>;
+    /// The levels that wrote these paths, with the fields of each file.
+    fn recognize_levels(
+        &self,
+        files: &[(String, DocumentFields)],
+        kinds: &Kinds,
+    ) -> Result<Levels, AiError>;
     /// Never blocks and never reads the disk.
     fn status(&self) -> LocalModelStatus;
     /// Looks for the model file again (after a download).

@@ -2,11 +2,10 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use ncrs_ai::{ChatIntent, ChatTurn, NameSpec, Schedule};
+use ncrs_ai::{ChatIntent, ChatTurn, Schedule};
 use ncrs_filing::chat_work::{
-    AnsweredGroups, ChangeOrder, ChangePreview, ChatWork, FolderReading, OrderChange,
-    PatternChoice, PatternLevel, ReadProgress, RunPlan, RunSummary, TrashItem, TrialPlan,
-    WaitingGroup,
+    AnsweredGroups, ChatWork, FolderReading, PatternLevel, ReadProgress, RunPlan, RunSummary,
+    TrashItem, TrialPlan, WaitingGroup,
 };
 use ncrs_index::Transfer;
 
@@ -42,10 +41,7 @@ pub enum ChipReply {
     TurnOn,
     ReadAnyway,
     KeepYes,
-    WantChange,
     ShowAll,
-    ScopeAll,
-    ScopeOnly(String),
     FineAsIs,
     ToTrash,
     LeaveThem,
@@ -64,15 +60,11 @@ pub enum ChipReply {
     GroupLeave,
     RoleSource,
     RoleTarget,
-    /// Uses the pattern at this position of `Session::patterns` everywhere.
-    AdoptPattern(usize),
     PhotosYes,
     PhotosNo,
     /// Opens the picker for a new folder to file into.
     NewTarget,
     DecidePerFile,
-    /// The area the user meant by a word Hermes found no folder for.
-    ChangeArea(String),
     DecideTarget(PathBuf),
     DecideSkip,
     NewLayout(NewLayout),
@@ -94,21 +86,11 @@ pub enum ChipReply {
     DownloadModel,
     TurnOnAi,
     ConfirmTidy,
-    ConfirmChange,
     OtherTarget,
     SwitchToCopy,
     SwitchToMove,
     /// Reads the folder again that could not be read.
     Retry,
-    /// Asks the user to type the name of the area.
-    OtherArea,
-    /// Runs the last request again for this area.
-    FollowUpArea(String),
-    /// Asks for this order in this area.
-    ChangeAreaOrder {
-        area: String,
-        order: ChangeOrder,
-    },
     /// Moves the files that are in the filing folder already to the trash.
     TrashDuplicatesNow,
     /// Lists the files of the trial that stay.
@@ -123,6 +105,22 @@ pub enum ChipReply {
     WaitingFileInto(PathBuf),
     /// Opens the picker for the folder the waiting document in question goes to.
     WaitingOtherFolder,
+    /// Accepts the levels shown for the folder.
+    LevelsKeep,
+    /// Shows the levels to drop one of them.
+    LevelsChange,
+    /// Takes the standard levels.
+    LevelsDefault,
+    /// Drops this level (counted from 0, the file name last).
+    LevelDrop(usize),
+    /// Describes what goes into the folder, in these words.
+    RuleWhat(String),
+    /// Stores the proposed rule.
+    RuleCreate,
+    /// Asks again what goes into the folder.
+    RuleEdit,
+    /// Files what lies in the source folders with the new rule.
+    RuleNow,
     /// Leaves the group of waiting documents in question as it is.
     WaitingSkip,
 }
@@ -158,18 +156,14 @@ impl ChipReply {
             | Self::TrashDuplicatesNow
             | Self::WaitingFile
             | Self::WaitingFileInto(_)
+            | Self::RuleCreate
             | Self::Undo => true,
             Self::Cancel
             | Self::Folder(_)
             | Self::PickFolder
             | Self::TurnOn
             | Self::ReadAnyway
-            | Self::WantChange
             | Self::ShowAll
-            | Self::ScopeAll
-            | Self::ChangeArea(_)
-            | Self::FollowUpArea(_)
-            | Self::ScopeOnly(_)
             | Self::LeaveThem
             | Self::Later
             | Self::Once
@@ -181,7 +175,6 @@ impl ChipReply {
             | Self::GroupNewFolder
             | Self::GroupLeave
             | Self::RoleTarget
-            | Self::AdoptPattern(_)
             | Self::PhotosYes
             | Self::NewTarget
             | Self::DecidePerFile
@@ -199,16 +192,20 @@ impl ChipReply {
             | Self::DownloadModel
             | Self::TurnOnAi
             | Self::ConfirmTidy
-            | Self::ConfirmChange
             | Self::OtherTarget
             | Self::SwitchToCopy
             | Self::SwitchToMove
             | Self::Retry
-            | Self::OtherArea
-            | Self::ChangeAreaOrder { .. }
             | Self::ShowStaying
             | Self::WaitingShow
             | Self::WaitingSkip
+            | Self::LevelsKeep
+            | Self::LevelsChange
+            | Self::LevelsDefault
+            | Self::LevelDrop(_)
+            | Self::RuleWhat(_)
+            | Self::RuleEdit
+            | Self::RuleNow
             | Self::WaitingOtherFolder
             | Self::TrialOtherTarget => false,
         }
@@ -243,6 +240,14 @@ pub struct AreasCard {
     pub rows: Vec<AreaRow>,
     pub more: Option<CountRow>,
     pub unordered: Option<CountRow>,
+}
+
+/// The levels of a filing pattern with a real value for each.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LevelsCard {
+    pub title: String,
+    pub rows: Vec<ncrs_ui_kit::hermes_kit::LevelRow>,
+    pub footer: Option<String>,
 }
 
 /// A path as segments, one of them highlighted.
@@ -291,6 +296,7 @@ pub struct FolderMention {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Part {
     Text(String),
+    Levels(LevelsCard),
     Areas(AreasCard),
     File(FileCard),
     Trial(TrialCard),
@@ -325,10 +331,6 @@ pub enum Step {
     Decide,
     ConfirmUnknown,
     Keep,
-    Change,
-    Scope,
-    ConfirmChange,
-    AfterChange,
     ConfirmTidy,
     OtherTarget,
     Source,
@@ -341,8 +343,10 @@ pub enum Step {
     GroupFolderName,
     AfterRun,
     UndoAsk,
-    /// The next typed text is the name of the area a change is for.
-    AreaName,
+    /// Typed words change the levels shown.
+    RuleLevels,
+    /// Typed words say what goes into the folder.
+    RuleWhat,
     /// The next picked folder is where the unsure waiting document goes.
     WaitingFolder,
 }
@@ -350,6 +354,8 @@ pub enum Step {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReadFor {
     Learn,
+    /// The folder is opened for its levels.
+    Open,
     Source,
     Target,
     NewTarget,
@@ -360,9 +366,6 @@ pub enum ReadFor {
 pub struct Retry {
     pub folder: PathBuf,
     pub purpose: ReadFor,
-    /// The order that waited for this read: only a retry of the same folder
-    /// carries it on.
-    pub everywhere: Option<Everywhere>,
 }
 
 #[derive(Debug, Clone)]
@@ -443,13 +446,6 @@ pub struct Walk {
     pub filed: usize,
 }
 
-/// The folders and file names every area gets.
-#[derive(Debug, Clone)]
-pub struct Everywhere {
-    pub levels: Vec<PatternLevel>,
-    pub name: Option<NameSpec>,
-}
-
 #[derive(Debug, Default)]
 pub struct Session {
     pub waiting: Option<Walk>,
@@ -473,19 +469,6 @@ pub struct Session {
     pub layout: Option<Vec<PatternLevel>>,
     pub deciding: Option<Deciding>,
     pub tidy: Option<Tidy>,
-    pub changes: Vec<OrderChange>,
-    pub pending_change: Option<ChangePreview>,
-    /// The order asked for, kept while Hermes asks which area is meant.
-    pub change_order: Option<ChangeOrder>,
-    /// The area was picked from the buttons: no second question if it fails.
-    pub area_chosen: bool,
-    /// The area the settings page asked to change, once its folder is read.
-    pub focus_area: Option<String>,
-    /// The patterns on offer after the areas card.
-    pub patterns: Vec<PatternChoice>,
-    /// The pattern change waiting for a yes.
-    pub pending_pattern: Option<OrderChange>,
-    pub change_word: String,
     /// The folder the running read is for.
     pub requested: PathBuf,
     pub retry: Option<Retry>,
@@ -498,12 +481,6 @@ pub struct Session {
     pub proposal: Option<Proposal>,
     /// The names the user is asked to choose a folder for.
     pub choosing: Option<crate::named_folders::Naming>,
-    /// What the model said about the scope of a change, for the preview.
-    pub change_scope: Option<String>,
-    /// The file names the model heard in the sentence about the change.
-    pub change_name: Option<NameSpec>,
-    /// An order for every area that waits for its folder to be read.
-    pub everywhere: Option<Everywhere>,
     /// The last tidy or structure change Hermes understood.
     pub previous_request: Option<ChatIntent>,
     /// The sentence before, when Hermes could do nothing with it.
@@ -517,6 +494,8 @@ pub struct Session {
     /// filing, once.
     pub archive_duplicates: Option<Offer>,
     pub archive_offered: bool,
+    /// The rule being made from a folder or a description.
+    pub rule: Option<crate::rule_flow::RuleFlow>,
 }
 
 #[derive(Debug)]
@@ -530,6 +509,10 @@ pub struct State {
     pub thinking: Option<Thinking>,
     /// The turn set during this `update` that no task runs yet.
     pub fresh_turn: bool,
+    /// What the model is asked about a rule or levels.
+    pub rule_ask: Option<crate::rule_flow::RuleAsk>,
+    /// The ask set during this `update` that no task runs yet.
+    pub fresh_rule_ask: bool,
     /// A typed folder being checked off the UI thread, and the step it was
     /// typed in.
     pub resolving: Option<(PathBuf, Step)>,
@@ -566,6 +549,8 @@ impl Default for State {
             fresh: false,
             thinking: None,
             fresh_turn: false,
+            rule_ask: None,
+            fresh_rule_ask: false,
             resolving: None,
             unresolved_sentence: None,
             fresh_resolve: false,
@@ -600,6 +585,12 @@ impl State {
     /// blocking thread.
     pub fn pending_turn(&self) -> Option<&ChatTurn> {
         self.thinking.as_ref().map(|thinking| &thinking.turn)
+    }
+
+    /// What the model is asked about a rule; the app asks it on a blocking
+    /// thread.
+    pub fn pending_rule_ask(&self) -> Option<&crate::rule_flow::RuleAsk> {
+        self.rule_ask.as_ref()
     }
 
     /// The typed folder the app waits to have checked, and its step.

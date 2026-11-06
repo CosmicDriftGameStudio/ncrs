@@ -46,3 +46,7 @@
 {"id": 46, "lang": "en", "intent": "change_structure", "text": "and name the files by year and sender", "expected": {"area": "Versicherung", "order": "by_kind", "name": "year,sender"}, "previous_request": "{\"intent\":\"change_structure\",\"area\":\"Versicherung\",\"order\":\"by_kind\"}"}
 {"id": 47, "lang": "de", "intent": "tidy_folder", "text": "doch lieber immer automatisch", "expected": {"source": "Downloads", "schedule": "always"}, "previous_request": "{\"intent\":\"tidy_folder\",\"source\":\"Downloads\"}"}
 {"id": 48, "lang": "de", "intent": "change_structure", "text": "und zwar nur die steuer sachen nach jahr", "expected": {"area": "Steuer", "order": "by_year"}, "previous_message": "mach das mal ordentlich"}
+{"id": 49, "lang": "de", "intent": "open_folder", "text": "öffne mal /Bank", "expected": {"folder": "/Bank"}}
+{"id": 50, "lang": "de", "intent": "open_folder", "text": "zeig mir /Archiv/Versicherung", "expected": {"folder": "/Archiv/Versicherung"}}
+{"id": 51, "lang": "de", "intent": "open_folder", "text": "was liegt in /Scans", "expected": {"folder": "/Scans"}}
+{"id": 52, "lang": "en", "intent": "open_folder", "text": "open ~/Documents/Taxes", "expected": {"folder": "~/Documents/Taxes"}}

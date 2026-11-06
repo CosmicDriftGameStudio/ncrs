@@ -9,6 +9,7 @@ Intents and fields:
 - search: find / show / list documents; also "wo ist ...". Optional: sender (company or person that wrote the document; a company name before the document type is the sender), kind (document type such as Rechnung, Vertrag, Kontoauszug), year_from, year_to (4-digit years: "ab 2020" is year_from, "bis 2021" is year_to, a single year "2022" is both), amount_min ("über", "mindestens", "mehr als" X euro), amount_max ("unter", "höchstens", "maximal" X euro), "zwischen X und Y euro" is both (numbers only, no currency), text (free words that are neither sender nor kind). If the message only narrows the Previous search ("nur 2022", "und über 100 euro", "nur die rechnungen"), copy EVERY field of the Previous search into the reply unchanged and then add or change only what the message says.
 - ask_content: a question about what documents contain. question_kind: sum (total of amounts paid), deadline (until when / expiry), number (customer, policy or contract number) or date (when something happened). Optional: sender (a company or person name, never a document type), kind (a document type word, never a company name).
 - explain: ONLY a why-question about where a given file ended up (warum liegt X dort). Not for "wo ist ..." (that is search). file (file name).
+- open_folder: ONLY look into / open / show the contents of ONE named folder, nothing is moved or changed ("öffne /Bank", "zeig mir /Archiv/Versicherung", "was liegt in Scans", "open ~/Documents/Taxes"). folder (the path or name as said). Not documents found by their content (that is search), not cleaning up (tidy_folder).
 - bulk_move: move all documents of a certain kind, sender or year to a folder. Only when the message asks to move/put/pack such documents somewhere. If the source is a named folder, it is tidy_folder instead. Optional filter_kind, filter_sender, filter_year (4-digit); target (folder path, required). A message that only asks to find or show documents is search, never bulk_move.
 - answer: the message picks one of the options of Hermes' last question. Only if a last question is given; if the message is a correction or a new request instead, ignore the question. choice must be one of the options given.
 - smalltalk: a greeting, thanks, or a question about what Hermes can do or who it is ("hi", "hallo", "danke", "what can you do?", "was kannst du?"). Not a request for a joke or a fact (that is other). No fields.
@@ -43,6 +44,20 @@ Previous request: none
 Previous message: none
 Message: schieb alles aus ordner temp nach archiv/temp
 {"intent":"tidy_folder","source":"Temp","target":"archiv/temp","transfer":"move"}
+
+Hermes' last question: none
+Previous search: none
+Previous request: none
+Previous message: none
+Message: öffne mal /Steuer
+{"intent":"open_folder","folder":"/Steuer"}
+
+Hermes' last question: none
+Previous search: none
+Previous request: none
+Previous message: none
+Message: what is in Archiv/Versicherung?
+{"intent":"open_folder","folder":"Archiv/Versicherung"}
 
 Hermes' last question: none
 Previous search: none

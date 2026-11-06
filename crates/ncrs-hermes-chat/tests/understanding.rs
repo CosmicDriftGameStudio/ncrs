@@ -15,7 +15,6 @@ mod tests {
 
     use crate::common::{letter, say, Talk};
     use ncrs_ai::{AiError, Compute, LocalModelStatus, LOCAL_MODEL};
-    use ncrs_filing::chat_work::ChangeOrder;
     use ncrs_hermes_chat::{Action, ChipReply, Entry, Message, Part};
     use ncrs_i18n::Msg;
     use ncrs_ui_kit::format;
@@ -97,10 +96,7 @@ mod tests {
             &format!(r#"{{"intent":"answer","choice":"{label}"}}"#),
         );
         assert_eq!(user_bubbles(&talk), ["den Eingang bitte"]);
-        assert_eq!(
-            talk.last_texts()[0],
-            say(Msg::HermesChatReadSummaryOneArea, &[("count", "5")])
-        );
+        assert_eq!(talk.last_texts()[0], say(Msg::HermesChatAreaHere, &[]));
     }
 
     #[test]
@@ -506,120 +502,5 @@ mod tests {
         talk.press(&ChipReply::ConfirmTidy);
         talk.choose_archive_if_asked();
         assert!(talk.plan().filed > 0);
-    }
-
-    fn archive_with_years() -> Talk {
-        let mut talk = Talk::in_dir(tempfile::tempdir().unwrap(), &["archive"], &["inbox"]);
-        for year in [2020, 2021] {
-            for (month, day) in [(1, 10), (3, 11), (6, 12)] {
-                talk.write(
-                    &format!("archive/Alfa/{year}/{year}-{month:02}-{day} Alfa Rechnung.pdf"),
-                    &letter(
-                        "Alfa AG",
-                        &format!("{day}.{month:02}.{year}"),
-                        "Rechnung",
-                        day + month,
-                    ),
-                );
-            }
-        }
-        talk.open();
-        talk.press(&ChipReply::Folder(talk.path("archive")));
-        talk.press(&ChipReply::WantChange);
-        talk
-    }
-
-    #[test]
-    fn a_change_without_a_scope_needs_a_yes_before_it_counts() {
-        let mut talk = archive_with_years();
-        talk.type_text_understood(
-            "Rechnungen lieber nach Monat",
-            r#"{"intent":"change_structure","area":"Rechnungen","order":"by_month"}"#,
-        );
-        assert!(talk.state.session.changes.is_empty());
-        assert_eq!(
-            talk.labels(),
-            vec![
-                say(Msg::HermesChatSortLikeThis, &[]),
-                say(Msg::HermesChatRatherNot, &[])
-            ]
-        );
-        talk.press(&ChipReply::ConfirmChange);
-        assert_eq!(talk.state.session.changes.len(), 1);
-        assert_eq!(talk.last_texts()[0], say(Msg::HermesChatChangeDone, &[]));
-    }
-
-    fn archive_laid_out(layout: fn(i32, u32, u32) -> String) -> Talk {
-        let mut talk = Talk::in_dir(tempfile::tempdir().unwrap(), &["archive"], &["inbox"]);
-        for year in [2020, 2021] {
-            for (month, day) in [(1, 10), (3, 11), (6, 12)] {
-                talk.write(
-                    &format!("archive/{}", layout(year, month, day)),
-                    &letter(
-                        "Alfa AG",
-                        &format!("{day}.{month:02}.{year}"),
-                        "Rechnung",
-                        day + month,
-                    ),
-                );
-            }
-        }
-        talk.open();
-        talk.press(&ChipReply::Folder(talk.path("archive")));
-        talk.press(&ChipReply::WantChange);
-        talk
-    }
-
-    fn asks_to_confirm_the_order(order_word: &str, order: ChangeOrder, mut talk: Talk) {
-        talk.type_text_understood(
-            "Rechnungen anders ordnen",
-            &format!(
-                r#"{{"intent":"change_structure","area":"Rechnungen","order":"{order_word}"}}"#
-            ),
-        );
-        assert!(talk.state.session.changes.is_empty());
-        assert_eq!(
-            talk.labels(),
-            vec![
-                say(Msg::HermesChatSortLikeThis, &[]),
-                say(Msg::HermesChatRatherNot, &[])
-            ]
-        );
-        talk.press(&ChipReply::ConfirmChange);
-        let changes = &talk.state.session.changes;
-        assert_eq!(changes.len(), 1);
-        assert_eq!(changes[0].order, order);
-    }
-
-    #[test]
-    fn every_order_shows_an_example_and_counts_after_a_yes() {
-        asks_to_confirm_the_order(
-            "by_year",
-            ChangeOrder::ByYear,
-            archive_laid_out(|year, month, day| {
-                format!("Alfa/{year}-{month:02}-{day} Alfa Rechnung.pdf")
-            }),
-        );
-        asks_to_confirm_the_order(
-            "by_sender",
-            ChangeOrder::BySender,
-            archive_laid_out(|year, month, day| {
-                format!("Alfa/{year}/{year}-{month:02}-{day} Alfa Rechnung.pdf")
-            }),
-        );
-        asks_to_confirm_the_order(
-            "by_kind",
-            ChangeOrder::ByKind,
-            archive_laid_out(|year, month, day| {
-                format!("Alfa/{year}/{year}-{month:02}-{day} Alfa Rechnung.pdf")
-            }),
-        );
-        asks_to_confirm_the_order(
-            "flat",
-            ChangeOrder::Flat,
-            archive_laid_out(|year, month, day| {
-                format!("Alfa/{year}/{year}-{month:02}-{day} Alfa Rechnung.pdf")
-            }),
-        );
     }
 }

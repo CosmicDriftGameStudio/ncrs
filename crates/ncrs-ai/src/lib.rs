@@ -15,7 +15,6 @@ pub use json::Json;
 mod local;
 mod model_file;
 mod prompt;
-#[cfg(any(test, feature = "llama"))]
 mod rules;
 mod status;
 #[cfg(any(test, feature = "testing"))]
@@ -44,10 +43,9 @@ pub use model_file::{
     has_partial_download, verify_model_file, ModelFileError, ModelPin, PartialDownload,
     LOCAL_MODEL, LOCAL_MODEL_FOLDER,
 };
-#[cfg(feature = "llama")]
 pub use rules::{
-    annotated_paths, pattern_mismatches, ContextDocument, Level, Levels, Mismatch, Part,
-    RuleRequest,
+    annotated_paths, condition_meaning, parse_generate, parse_levels, pattern_mismatches,
+    prefix_text, ContextDocument, Level, Levels, Mismatch, Part, RuleRequest, END_OF_TURN,
 };
 pub use status::{Compute, LocalModelStatus};
 #[cfg(any(test, feature = "testing"))]

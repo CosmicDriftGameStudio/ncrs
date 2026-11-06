@@ -19,10 +19,6 @@ mod tests {
     use ncrs_intake::test_archive::test_archive;
 
     const TIDY_INBOX: &str = r#"{"intent":"tidy_folder","source":"Inbox"}"#;
-    const BANK_BY_MONTH: &str =
-        r#"{"intent":"change_structure","area":"Bankstatements","order":"by_month"}"#;
-    const KIND_WITHOUT_FILES: &str =
-        r#"{"intent":"change_structure","area":"Vertrag","order":"by_month"}"#;
 
     fn archive_talk() -> Talk {
         let dir = tempfile::tempdir().unwrap();
@@ -58,22 +54,6 @@ mod tests {
             .collect()
     }
 
-    fn has_file_card(talk: &Talk) -> bool {
-        talk.last_parts()
-            .iter()
-            .any(|part| matches!(part, Part::File(_)))
-    }
-
-    fn area_chips(talk: &Talk) -> Vec<String> {
-        replies(talk)
-            .into_iter()
-            .filter_map(|reply| match reply {
-                ChipReply::ChangeArea(area) => Some(area),
-                _ => None,
-            })
-            .collect()
-    }
-
     fn all_texts(talk: &Talk) -> Vec<String> {
         talk.state
             .thread()
@@ -88,82 +68,6 @@ mod tests {
                 _ => None,
             })
             .collect()
-    }
-
-    #[test]
-    fn a_pattern_that_would_move_nothing_is_not_offered() {
-        let mut talk = archive_talk();
-        talk.open();
-        talk.press(&ChipReply::Folder(talk.path("archive")));
-        for reply in replies(&talk) {
-            if matches!(reply, ChipReply::AdoptPattern(_)) {
-                talk.press(&reply);
-                assert!(
-                    replies(&talk).contains(&ChipReply::ConfirmChange),
-                    "{:?}",
-                    talk.last_texts()
-                );
-                return;
-            }
-        }
-        // Every folder of a small archive follows the pattern already.
-        let mut small = small_talk();
-        small.open();
-        small.press(&ChipReply::Folder(small.path("archive")));
-        assert!(
-            !replies(&small)
-                .iter()
-                .any(|reply| matches!(reply, ChipReply::AdoptPattern(_))),
-            "{:?}",
-            small.labels()
-        );
-    }
-
-    #[test]
-    fn an_area_word_matches_a_folder_it_contains_without_regard_to_case() {
-        let mut talk = archive_talk();
-        talk.open();
-        talk.press(&ChipReply::Folder(talk.path("archive")));
-        talk.press(&ChipReply::WantChange);
-        talk.type_text_understood("Kontoauszüge nach Monat", BANK_BY_MONTH);
-        assert!(has_file_card(&talk), "{:?}", talk.last_parts());
-    }
-
-    #[test]
-    fn a_word_no_folder_fits_asks_which_area_and_keeps_the_order() {
-        let mut talk = archive_talk();
-        talk.open();
-        talk.press(&ChipReply::Folder(talk.path("archive")));
-        talk.press(&ChipReply::WantChange);
-        talk.type_text_understood("mach es nach Monat", KIND_WITHOUT_FILES);
-        assert_eq!(
-            talk.last_texts(),
-            vec![say(Msg::HermesChatChangeAreaAsk, &[])]
-        );
-        let areas = area_chips(&talk);
-        assert!(areas.contains(&"Bank".to_owned()), "{areas:?}");
-        assert!(replies(&talk).contains(&ChipReply::OtherArea));
-
-        talk.press(&ChipReply::ChangeArea("Bank".to_owned()));
-        assert!(has_file_card(&talk), "{:?}", talk.last_parts());
-        assert!(area_chips(&talk).is_empty());
-    }
-
-    #[test]
-    fn a_word_that_is_no_area_and_no_kind_says_a_whole_folder_cannot_be_proposed() {
-        let mut talk = archive_talk();
-        talk.open();
-        talk.press(&ChipReply::Folder(talk.path("archive")));
-        talk.press(&ChipReply::WantChange);
-        talk.type_text_understood(
-            "mach einen Vorschlag",
-            r#"{"intent":"change_structure","area":"Zzzzqq","order":"by_month"}"#,
-        );
-        assert_eq!(
-            talk.last_texts(),
-            vec![say(Msg::HermesChatNotYetPropose, &[])]
-        );
-        assert!(replies(&talk).contains(&ChipReply::IntentSearch));
     }
 
     #[test]
@@ -222,23 +126,7 @@ mod tests {
             .into_owned();
         assert_eq!(
             talk.last_texts(),
-            vec![say(Msg::HermesChatUnknownPathConfirm, &[("name", &name)])]
-        );
-    }
-
-    #[test]
-    fn a_new_unknown_word_asks_again_after_an_area_was_picked() {
-        let mut talk = archive_talk();
-        talk.open();
-        talk.press(&ChipReply::Folder(talk.path("archive")));
-        talk.press(&ChipReply::WantChange);
-        talk.type_text_understood("mach es nach Monat", KIND_WITHOUT_FILES);
-        talk.press(&ChipReply::ChangeArea("Bank".to_owned()));
-        talk.press(&ChipReply::Cancel);
-        talk.type_text_understood("mach es nach Monat", KIND_WITHOUT_FILES);
-        assert_eq!(
-            talk.last_texts(),
-            vec![say(Msg::HermesChatChangeAreaAsk, &[])]
+            vec![say(Msg::HermesChatConfirmTypedFolder, &[("name", &name)])]
         );
     }
 
@@ -288,19 +176,6 @@ mod tests {
     }
 
     #[test]
-    fn structure_is_asked_for_only_on_filing_locations() {
-        let mut talk = small_talk();
-        talk.open();
-        talk.type_text_understood("Kontoauszüge nach Monat", BANK_BY_MONTH);
-        let folders: Vec<ChipReply> = replies(&talk)
-            .into_iter()
-            .filter(|reply| matches!(reply, ChipReply::Folder(_)))
-            .collect();
-        assert_eq!(folders, vec![ChipReply::Folder(talk.path("archive"))]);
-        assert!(replies(&talk).contains(&ChipReply::PickFolder));
-    }
-
-    #[test]
     fn a_move_of_many_files_and_an_undo_without_a_run_offer_the_usual_ways_on() {
         let mut talk = small_talk();
         talk.open();
@@ -341,53 +216,12 @@ mod tests {
         assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatFallback, &[])]);
     }
 
-    fn change_in_area(talk: &mut Talk, area: &str, order: &str) {
-        talk.type_text_understood(
-            "mach es anders",
-            &format!(r#"{{"intent":"change_structure","area":"Vertrag","order":"{order}"}}"#),
-        );
-        talk.press(&ChipReply::ChangeArea(area.to_owned()));
-    }
-
-    #[test]
-    fn an_area_that_has_the_asked_order_says_so_and_offers_the_usual_ways_on() {
-        let mut talk = archive_talk();
-        talk.open();
-        talk.press(&ChipReply::Folder(talk.path("archive")));
-        talk.press(&ChipReply::WantChange);
-        change_in_area(&mut talk, "Versicherung", "by_sender");
-        let said = talk.last_texts().join(" ");
-        assert!(said.contains("Versicherung"), "{said}");
-        assert!(said.contains("Absender"), "{said}");
-        assert!(replies(&talk).contains(&ChipReply::FineAsIs));
-        assert!(!has_file_card(&talk));
-    }
-
-    #[test]
-    fn an_area_without_a_matching_branch_offers_the_areas_again() {
-        let mut talk = archive_talk();
-        talk.open();
-        talk.press(&ChipReply::Folder(talk.path("archive")));
-        talk.press(&ChipReply::WantChange);
-        change_in_area(&mut talk, "Versicherung", "by_month");
-        assert_eq!(
-            talk.last_texts(),
-            vec![say(
-                Msg::HermesChatChangeNotFound,
-                &[("word", "Versicherung")]
-            )]
-        );
-        assert!(area_chips(&talk).contains(&"Bank".to_owned()));
-        talk.press(&ChipReply::ChangeArea("Bank".to_owned()));
-        assert!(has_file_card(&talk), "{:?}", talk.last_parts());
-    }
-
     #[test]
     fn a_statement_with_the_usual_ways_on_is_not_a_question_for_the_model() {
         let mut talk = small_talk();
         talk.open();
         talk.type_text_understood("hallo", r#"{"intent":"smalltalk"}"#);
-        talk.type_text_understood("Kontoauszüge nach Monat", BANK_BY_MONTH);
+        talk.type_text_understood("danke", r#"{"intent":"smalltalk"}"#);
         let turns = talk.model.turns();
         assert_eq!(turns.len(), 2);
         assert_eq!(turns[1].question, None);

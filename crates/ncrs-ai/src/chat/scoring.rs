@@ -108,6 +108,10 @@ pub fn describe(intent: &ChatIntent, turn: &ChatTurn) -> (&'static str, Vec<(&'s
             text("file", &Some(file.clone()));
             ("explain", fields)
         }
+        ChatIntent::OpenFolder { folder } => {
+            text("folder", &Some(folder.clone()));
+            ("open_folder", fields)
+        }
         ChatIntent::BulkMove {
             filter_kind,
             filter_sender,

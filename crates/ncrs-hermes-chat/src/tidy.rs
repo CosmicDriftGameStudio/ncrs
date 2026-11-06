@@ -261,7 +261,6 @@ pub fn mode(state: &mut State, ctx: &Ctx, transfer: Transfer) {
         ChatWork::Trial {
             source,
             target,
-            changes: state.session.changes.clone(),
             answered: AnsweredGroups::default(),
             layout: state.session.layout.clone(),
         },

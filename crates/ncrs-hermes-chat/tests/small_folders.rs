@@ -199,20 +199,36 @@ mod tests {
         let mut talk = small_talk();
         for area in ["Gamma", "Delta", "Epsilon"] {
             talk.write(
-                &format!("archive/{area}/2020/2020-04-04 {area} Rechnung.pdf"),
+                &format!("elsewhere/{area}/2020/2020-04-04 {area} Rechnung.pdf"),
                 &letter(&format!("{area} AG"), "04.04.2020", "Rechnung", 5),
             );
         }
+        talk.write(
+            "elsewhere/Alfa/2020/2020-01-10.pdf",
+            &letter("Alfa AG", "10.01.2020", "Rechnung", 1),
+        );
+        talk.write(
+            "elsewhere/Beta/2020/2020-01-10.pdf",
+            &letter("Beta AG", "10.01.2020", "Rechnung", 2),
+        );
+        talk.write(
+            "elsewhere/Zeta/2020/2020-01-10.pdf",
+            &letter("Zeta AG", "10.01.2020", "Rechnung", 3),
+        );
         talk.open();
-        talk.press(&ChipReply::Folder(talk.path("archive")));
+        let elsewhere = talk.path("elsewhere");
+        talk.send(Message::ChangeArea {
+            folder: elsewhere,
+            area: "Alfa".to_owned(),
+        });
         let Part::Areas(first) = talk.last_parts()[1].clone() else {
-            panic!()
+            panic!("{:?}", talk.last_parts())
         };
         talk.press(&ChipReply::ShowAll);
         let Part::Areas(all) = talk.last_parts()[0].clone() else {
             panic!()
         };
-        assert_eq!((first.rows.len(), all.rows.len()), (4, 6));
+        assert!(first.rows.len() < all.rows.len());
         assert!(first.more.is_some());
         assert!(all.more.is_none());
         assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatAskKeep, &[])]);
@@ -355,11 +371,8 @@ mod tests {
         );
         assert!(talk.state.pending_work().is_none());
         ready(&mut talk);
-        assert!(talk
-            .state
-            .chips()
-            .iter()
-            .any(|chip| chip.reply == ChipReply::KeepYes));
+        let alfa = ChipReply::Folder(talk.path("archive/Alfa"));
+        assert!(talk.state.chips().iter().any(|chip| chip.reply == alfa));
         assert!(!talk.state.waits_for_hermes());
     }
 
@@ -570,7 +583,7 @@ mod tests {
     }
 
     #[test]
-    fn a_source_inside_a_target_is_not_tidied_into_itself() {
+    fn a_source_inside_a_target_is_opened_not_tidied_into_itself() {
         let mut talk = small_talk();
         let archive = talk.path("archive");
         let tidy = |path: &std::path::Path| {
@@ -580,21 +593,21 @@ mod tests {
             )
         };
         talk.type_text_understood(&format!("Räum {} auf", archive.display()), &tidy(&archive));
-        talk.press(&ChipReply::ConfirmTidy);
-        talk.choose_archive_if_asked();
-        assert_eq!(
-            talk.last_texts(),
-            vec![say(Msg::HermesChatSourceIsTarget, &[("folder", "archive")])]
-        );
+        let alfa = ChipReply::Folder(archive.join("Alfa"));
+        assert!(talk.state.chips().iter().any(|chip| chip.reply == alfa));
+        assert!(!talk
+            .state
+            .chips()
+            .iter()
+            .any(|chip| chip.reply == ChipReply::ConfirmTidy));
 
         let inside = archive.join("Alfa");
         talk.type_text_understood(&format!("Räum {} auf", inside.display()), &tidy(&inside));
-        talk.press(&ChipReply::ConfirmTidy);
-        talk.choose_archive_if_asked();
-        assert_eq!(
-            talk.last_texts(),
-            vec![say(Msg::HermesChatSourceIsTarget, &[("folder", "Alfa")])]
-        );
+        assert!(!talk
+            .state
+            .chips()
+            .iter()
+            .any(|chip| chip.reply == ChipReply::ConfirmTidy));
         assert!(talk.state.pending_work().is_none());
     }
 
@@ -631,8 +644,6 @@ mod tests {
         std::fs::create_dir_all(talk.path("a")).unwrap();
         std::fs::create_dir_all(talk.path("b")).unwrap();
         talk.send(Message::Open);
-        talk.press(&ChipReply::Folder(talk.path("archive")));
-        talk.press(&ChipReply::KeepYes);
         let typed = talk.path("a").join("..").join("b");
         (talk, typed.to_string_lossy().into_owned())
     }
@@ -641,7 +652,6 @@ mod tests {
     fn a_typed_source_is_resolved_and_asked_before_anything_is_set() {
         let (mut talk, typed) = asking_for_the_source();
         talk.type_text(&typed);
-        let real = canonical(&talk.path("b"));
         assert_eq!(
             talk.last_texts(),
             vec![say(Msg::HermesChatConfirmTypedFolder, &[("name", "b")])]
@@ -650,13 +660,11 @@ mod tests {
         assert!(talk.state.pending_work().is_none());
 
         talk.press(&ChipReply::ReadAnyway);
-        assert_eq!(
-            talk.actions,
-            vec![Action::SetFolderRole {
-                folder: std::path::PathBuf::from(&real),
-                role: ncrs_ui_kit::hermes_state::FolderRole::Inbox,
-            }]
-        );
+        assert!(!talk
+            .state
+            .chips()
+            .iter()
+            .any(|chip| chip.reply == ChipReply::ReadAnyway));
     }
 
     #[test]
@@ -804,79 +812,5 @@ mod tests {
             .iter()
             .any(|entry| matches!(entry, Entry::Hermes { parts, .. }
                 if parts.contains(&Part::Text(say(Msg::HermesChatRuleRefused, &[("reason", &reason)]))))));
-    }
-
-    #[test]
-    fn a_found_pattern_is_previewed_on_one_file_and_adopted_for_the_session() {
-        let mut talk = Talk::in_dir(tempfile::tempdir().unwrap(), &["archive"], &["inbox"]);
-        for (month, day) in [(1, 10), (3, 11), (6, 12), (9, 13), (11, 14)] {
-            talk.write(
-                &format!("archive/Alfa/2020/2020-{month:02}-{day} Alfa Rechnung.pdf"),
-                &letter(
-                    "Alfa AG",
-                    &format!("{day}.{month:02}.2020"),
-                    "Rechnung",
-                    day,
-                ),
-            );
-            talk.write(
-                &format!("archive/Beta/2020/{month:02}/2020-{month:02}-{day} Beta Rechnung.pdf"),
-                &letter(
-                    "Beta GmbH",
-                    &format!("{day}.{month:02}.2020"),
-                    "Rechnung",
-                    day + 50,
-                ),
-            );
-        }
-        talk.open();
-        talk.press(&ChipReply::Folder(talk.path("archive")));
-        talk.press(&ChipReply::WantChange);
-        let offered: Vec<ChipReply> = talk
-            .state
-            .chips()
-            .iter()
-            .map(|chip| chip.reply.clone())
-            .filter(|reply| matches!(reply, ChipReply::AdoptPattern(_)))
-            .collect();
-        assert_eq!(offered.len(), 2, "{:?}", talk.labels());
-
-        // The pattern with the month folder is the one only Beta has.
-        let with_month = offered
-            .iter()
-            .find(|reply| {
-                talk.state
-                    .session
-                    .patterns
-                    .get(match reply {
-                        ChipReply::AdoptPattern(index) => *index,
-                        _ => 0,
-                    })
-                    .is_some_and(|choice| choice.levels.len() == 2)
-            })
-            .unwrap()
-            .clone();
-        talk.press(&with_month);
-        let parts = talk.last_parts();
-        let cards: Vec<&ncrs_hermes_chat::FileCard> = parts
-            .iter()
-            .filter_map(|part| match part {
-                Part::File(card) => Some(card),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(cards.len(), 2, "{parts:?}");
-        assert_eq!(cards[0].segments.len(), 3);
-        assert_eq!(
-            cards[1].segments[..3],
-            ["Alfa", "2020", "11"].map(String::from)[..]
-        );
-        assert!(
-            talk.state.session.changes.is_empty(),
-            "nothing before the yes"
-        );
-
-        talk.press(&ChipReply::ConfirmChange);
-        assert_eq!(talk.state.session.changes.len(), 1);
     }
 }

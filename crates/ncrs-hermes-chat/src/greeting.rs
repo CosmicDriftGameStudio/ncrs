@@ -51,7 +51,9 @@ pub fn route(state: &mut State, ctx: &Ctx, path: PathBuf) {
     if ctx.sources.contains(&path) {
         tidy::begin(state, ctx, path);
     } else if is_target_folder(state, ctx, &path) {
-        learn::read(state, ctx, path);
+        if !crate::rule_flow::open(state, ctx, path.clone()) {
+            learn::read(state, ctx, path);
+        }
     } else {
         state.step = Step::Role;
         let shown = folder_name(ctx, &path);
@@ -79,7 +81,9 @@ pub fn role_chosen(state: &mut State, ctx: &Ctx, source: bool) -> Option<Action>
         Some(role)
     } else {
         state.step = Step::Greeting;
-        learn::read(state, ctx, path);
+        if !crate::rule_flow::open(state, ctx, path.clone()) {
+            learn::read(state, ctx, path);
+        }
         None
     }
 }

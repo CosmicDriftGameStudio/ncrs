@@ -21,7 +21,6 @@ use tempfile::TempDir;
 use super::*;
 
 mod diagnosis;
-mod orders;
 mod recent_runs;
 
 struct Setup {
@@ -78,22 +77,6 @@ fn date(year: i32, month: u32, day: u32) -> NaiveDate {
     NaiveDate::from_ymd_opt(year, month, day).unwrap()
 }
 
-fn fields(when: Option<NaiveDate>, kind: Option<&str>, sender: Option<&str>) -> DocumentFields {
-    DocumentFields {
-        sender: sender.map(str::to_owned),
-        kind: kind.map(str::to_owned),
-        date: when,
-        ..DocumentFields::default()
-    }
-}
-
-fn kinds() -> ncrs_index::Kinds {
-    ncrs_index::Kinds::new(
-        Arc::new(KindCatalog::built_in()),
-        ncrs_index::KindLanguage::English,
-    )
-}
-
 fn plan_file(path: &str, seed: u8, sender: Option<&str>, when: NaiveDate) -> PlanFile {
     PlanFile {
         relative_path: PathBuf::from(path),
@@ -119,7 +102,6 @@ fn reading(root: &str, mut files: Vec<PlanFile>) -> FolderReading {
             .or_insert_with(|| file.relative_path.clone());
     }
     FolderReading {
-        patterns: Vec::new(),
         ai: Default::default(),
         kinds: Default::default(),
         root: PathBuf::from(root),
@@ -418,20 +400,14 @@ fn source_reading() -> FolderReading {
     )
 }
 
-fn trial(setup: &Setup, changes: Vec<OrderChange>) -> TrialPlan {
-    trial_of(setup, source_reading(), changes, AnsweredGroups::default())
+fn trial(setup: &Setup) -> TrialPlan {
+    trial_of(setup, source_reading(), AnsweredGroups::default())
 }
 
-fn trial_of(
-    setup: &Setup,
-    source: FolderReading,
-    changes: Vec<OrderChange>,
-    answered: AnsweredGroups,
-) -> TrialPlan {
+fn trial_of(setup: &Setup, source: FolderReading, answered: AnsweredGroups) -> TrialPlan {
     match setup.access.run(ChatWork::Trial {
         source: Arc::new(source),
         target: Arc::new(target_reading()),
-        changes,
         answered,
         layout: None,
     }) {
@@ -505,7 +481,7 @@ fn outcome<'a>(plan: &'a TrialPlan, name: &str) -> &'a TrialOutcome {
 
 #[test]
 fn the_trial_files_finds_duplicates_and_names_what_stays() {
-    let plan = trial(&Setup::new(), Vec::new());
+    let plan = trial(&Setup::new());
     assert_eq!(
         plan.filed + plan.unsure + plan.already_there + plan.stays,
         plan.entries.len()
@@ -543,7 +519,7 @@ fn the_trial_files_finds_duplicates_and_names_what_stays() {
 
 #[test]
 fn the_sample_shows_one_file_per_area_then_unsure_then_the_rest() {
-    let plan = trial(&Setup::new(), Vec::new());
+    let plan = trial(&Setup::new());
     let order: Vec<&str> = plan
         .entries
         .iter()
@@ -556,121 +532,6 @@ fn the_sample_shows_one_file_per_area_then_unsure_then_the_rest() {
     assert!(plan
         .taken
         .contains(Path::new("Alfa/2022/2022-07-04 Alfa Rechnung.pdf")));
-}
-
-#[test]
-fn a_month_folder_goes_in_after_the_year_with_or_without_only() {
-    let change = |only| OrderChange {
-        area: PathBuf::from("Alfa"),
-        depth: 1,
-        order: ChangeOrder::ByMonth,
-        only,
-        kind_names: Vec::new(),
-        pattern: None,
-        name: None,
-    };
-    let to = || PathBuf::from("Alfa/2022/2022-07-04 Alfa Rechnung.pdf");
-    let when = Some(date(2022, 7, 4));
-    assert_eq!(
-        change::apply_changes(to(), &fields(when, None, None), &kinds(), &[change(None)]),
-        PathBuf::from("Alfa/2022/07/2022-07-04 Alfa Rechnung.pdf")
-    );
-    assert_eq!(
-        change::apply_changes(
-            to(),
-            &fields(when, None, None),
-            &kinds(),
-            &[change(Some((0, "Alfa".to_owned())))]
-        ),
-        PathBuf::from("Alfa/2022/07/2022-07-04 Alfa Rechnung.pdf")
-    );
-    assert_eq!(
-        change::apply_changes(
-            to(),
-            &fields(when, None, None),
-            &kinds(),
-            &[change(Some((0, "Beta".to_owned())))]
-        ),
-        to()
-    );
-    assert_eq!(
-        change::apply_changes(to(), &fields(None, None, None), &kinds(), &[change(None)]),
-        to()
-    );
-    let other_area = PathBuf::from("Beta/2022/x.pdf");
-    assert_eq!(
-        change::apply_changes(
-            other_area.clone(),
-            &fields(when, None, None),
-            &kinds(),
-            &[change(None)]
-        ),
-        other_area
-    );
-    let no_year = PathBuf::from("Alfa/Misc/x.pdf");
-    assert_eq!(
-        change::apply_changes(
-            no_year.clone(),
-            &fields(when, None, None),
-            &kinds(),
-            &[change(None)]
-        ),
-        no_year
-    );
-}
-
-#[test]
-fn a_change_only_touches_documents_of_its_kind_or_in_a_folder_that_names_it() {
-    let change = OrderChange {
-        area: PathBuf::from("Bank"),
-        depth: 3,
-        order: ChangeOrder::ByMonth,
-        only: None,
-        kind_names: vec!["bank_statement".to_owned(), "Kontoauszüge".to_owned()],
-        pattern: None,
-        name: None,
-    };
-    let when = Some(date(2022, 7, 4));
-    let in_folder = PathBuf::from("Bank/Sparkasse/Kontoauszüge/2022/a.pdf");
-    let card = PathBuf::from("Bank/DKB/Kreditkarte/2022/b.pdf");
-    let apply = |to: &PathBuf, kind| {
-        change::apply_changes(
-            to.clone(),
-            &fields(when, kind, None),
-            &kinds(),
-            std::slice::from_ref(&change),
-        )
-    };
-    assert_eq!(
-        apply(&in_folder, None),
-        PathBuf::from("Bank/Sparkasse/Kontoauszüge/2022/07/a.pdf")
-    );
-    assert_eq!(apply(&card, None), card);
-    assert_eq!(apply(&card, Some("invoice")), card);
-    assert_eq!(
-        apply(&card, Some("Kontoauszug")),
-        PathBuf::from("Bank/DKB/Kreditkarte/2022/07/b.pdf")
-    );
-}
-
-#[test]
-fn the_trial_applies_the_order_change_to_the_filed_names() {
-    let change = OrderChange {
-        area: PathBuf::from("Alfa"),
-        depth: 1,
-        order: ChangeOrder::ByMonth,
-        only: None,
-        kind_names: Vec::new(),
-        pattern: None,
-        name: None,
-    };
-    let plan = trial(&Setup::new(), vec![change]);
-    assert_eq!(
-        outcome(&plan, "a1.pdf"),
-        &TrialOutcome::Filed {
-            to: PathBuf::from("Alfa/2022/07/2022-07-04 Alfa Rechnung.pdf")
-        }
-    );
 }
 
 fn run_plan(setup: &Setup, transfer: Transfer) -> RunPlan {
@@ -850,7 +711,6 @@ fn staying_files_are_grouped_largest_first_sender_before_kind() {
     let plan = trial_of(
         &Setup::new(),
         source_with_staying_files(),
-        Vec::new(),
         AnsweredGroups::default(),
     );
     let groups = &plan.groups;
@@ -944,7 +804,7 @@ fn at_most_six_groups_are_asked_and_answered_ones_are_not_asked_again() {
 
 #[test]
 fn a_taken_name_gets_the_next_free_number_that_the_plan_does_not_use() {
-    let plan = trial(&Setup::new(), Vec::new());
+    let plan = trial(&Setup::new());
     let taken = &plan.groups.name_taken;
     assert_eq!(taken.len(), 1);
     assert_eq!(taken[0].name, "a2.pdf");
@@ -972,7 +832,7 @@ fn a_taken_name_gets_the_next_free_number_that_the_plan_does_not_use() {
 #[test]
 fn the_trial_applies_a_stored_rule_before_the_neighbours() {
     let setup = Setup::new();
-    let before = trial(&setup, Vec::new());
+    let before = trial(&setup);
     assert_eq!(
         outcome(&before, "nobody.pdf"),
         &TrialOutcome::Stays(StayReason::NoNeighbours)
@@ -983,7 +843,7 @@ fn the_trial_applies_a_stored_rule_before_the_neighbours() {
         "Unknown KG",
         "Zeta",
     );
-    let after = trial(&setup, Vec::new());
+    let after = trial(&setup);
     assert_eq!(
         outcome(&after, "nobody.pdf"),
         &TrialOutcome::Filed {
@@ -1012,7 +872,7 @@ fn a_kind_condition_matches_only_its_kind() {
         "Kay",
     );
 
-    let plan = trial_of(&setup, source(), Vec::new(), AnsweredGroups::default());
+    let plan = trial_of(&setup, source(), AnsweredGroups::default());
     assert_eq!(
         outcome(&plan, "invoice.pdf"),
         &TrialOutcome::Filed {

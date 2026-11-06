@@ -30,5 +30,9 @@ ncrs-fs = { path = "../ncrs-fs", version = "0.0.0", features = ["test-support"] 
 ncrs-filing = { path = "../ncrs-filing", version = "0.0.0", features = ["test-support"] }
 ncrs-intake = { path = "../ncrs-intake", version = "0.0.0", features = ["test-support"] }
 
+[features]
+# The ignored tests that run the real local model.
+llama = ["ncrs-ai/llama"]
+
 [lints]
 workspace = true

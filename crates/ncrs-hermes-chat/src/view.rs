@@ -5,8 +5,8 @@ use iced::{Element, Task};
 use ncrs_i18n::{Language, Msg};
 use ncrs_ui_kit::hermes_kit::{
     areas_card, chat_chip, chat_header, chat_input, chat_page, chat_text, chip_row, file_card,
-    folder_mention, hermes_bubble, trial_card, user_bubble, user_folder_bubble, working_bubble,
-    AreaLine, ChatInput, Choice, TrialLine,
+    folder_mention, hermes_bubble, levels_card, trial_card, user_bubble, user_folder_bubble,
+    working_bubble, AreaLine, ChatInput, Choice, TrialLine,
 };
 use ncrs_ui_kit::palette::Palette;
 
@@ -114,6 +114,9 @@ fn part<'a>(part: &Part, ctx: ViewCtx<'_>) -> Element<'a, Message> {
     match part {
         Part::Text(content) => chat_text(content, ctx.palette.text),
         Part::Areas(card) => areas(card, ctx),
+        Part::Levels(card) => {
+            levels_card(&card.title, &card.rows, card.footer.as_deref(), ctx.palette)
+        }
         Part::File(card) => file(card, ctx),
         Part::Trial(card) => trial(card, ctx),
         Part::Folder(mention) => folder_mention(&mention.name, &mention.path, ctx.palette),
