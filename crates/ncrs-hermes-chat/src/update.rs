@@ -913,6 +913,7 @@ pub fn cancel(state: &mut State, ctx: &Ctx) {
 fn reset_flow(state: &mut State) {
     state.session.waiting = None;
     state.session.tidy = None;
+    state.session.rule_queue = None;
     state.session.retry = None;
     state.session.trial = None;
     state.session.groups = GroupFlow::default();
