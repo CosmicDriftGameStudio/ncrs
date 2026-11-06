@@ -141,3 +141,9 @@
 {"id": 141, "lang": "de", "intent": "change_structure", "text": "in bank die dateinamen als jahr-monat-tag", "expected": {"area": "Bank", "name": "year,month,day", "separator": "-"}}
 {"id": 142, "lang": "en", "intent": "change_structure", "text": "name the files in Insurance by year, sender and kind", "expected": {"area": "Insurance|Versicherung", "name": "year,sender,kind"}}
 {"id": 143, "lang": "de", "intent": "change_structure", "text": "verträge: dateinamen mit absender und datum", "expected": {"area": "Verträge", "name": "sender,year,month,day"}}
+{"id": 144, "lang": "de", "intent": "open_folder", "text": "öffne den ordner /Bank", "expected": {"folder": "/Bank"}}
+{"id": 145, "lang": "de", "intent": "open_folder", "text": "zeig mir was in /Archiv/Versicherung liegt", "expected": {"folder": "/Archiv/Versicherung"}}
+{"id": 146, "lang": "en", "intent": "open_folder", "text": "open ~/Documents/Steuern", "expected": {"folder": "~/Documents/Steuern"}}
+{"id": 147, "lang": "en", "intent": "open_folder", "text": "show me the folder Scans", "expected": {"folder": "Scans"}}
+{"id": 148, "lang": "de", "intent": "open_folder", "text": "was liegt eigentlich in verträge", "expected": {"folder": "Verträge"}}
+{"id": 149, "lang": "de", "intent": "open_folder", "text": "mach mal den ordner rechnungen auf", "expected": {"folder": "Rechnungen"}}

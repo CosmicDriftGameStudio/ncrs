@@ -9,7 +9,6 @@ use ncrs_intake::{
     plan, render_pattern_in, NeighbourIndex, OwnNames, PlanFile, PlanInput, Planning,
 };
 
-use super::change::{apply_changes, OrderChange};
 use super::groups::{stay_groups, AnsweredGroups, StayGroups};
 use super::pattern::{layout_path, PatternLevel};
 use super::{ChatAccess, FolderReading};
@@ -93,7 +92,6 @@ pub fn trial(
     access: &ChatAccess,
     source: &FolderReading,
     target: &FolderReading,
-    changes: &[OrderChange],
     answered: &AnsweredGroups,
     layout: Option<&[PatternLevel]>,
 ) -> Result<TrialPlan, String> {
@@ -127,7 +125,6 @@ pub fn trial(
                 aliases: &aliases,
                 neighbours: &neighbours,
                 kinds: &kinds,
-                changes,
                 layout,
             };
             decided = decide(&ctx, file, &name, &mut taken);
@@ -173,7 +170,6 @@ struct Deciding<'a> {
     aliases: &'a SenderAliases,
     neighbours: &'a NeighbourIndex,
     kinds: &'a Kinds,
-    changes: &'a [OrderChange],
     /// How to file into a target no neighbour points the way in.
     layout: Option<&'a [PatternLevel]>,
 }
@@ -226,12 +222,7 @@ fn decide(
         },
     );
     if let Planning::Plan(filing) = planning {
-        let to = apply_changes(
-            with_extension_of(filing.relative_path, name),
-            &file.fields,
-            ctx.kinds,
-            ctx.changes,
-        );
+        let to = with_extension_of(filing.relative_path, name);
         return Decided::filed_or_taken(to, taken);
     }
     let Some(placement) = ctx.neighbours.place(&file.fields, file.text.as_deref()) else {
@@ -273,12 +264,7 @@ fn decide(
             wanted: None,
         };
     };
-    let to = apply_changes(
-        with_extension_of(rendered, name),
-        &file.fields,
-        ctx.kinds,
-        ctx.changes,
-    );
+    let to = with_extension_of(rendered, name);
     let mut decided = Decided::filed_or_taken(to, taken);
     if decided.wanted.is_some() {
         decided.neighbour = Some(placement.folder);

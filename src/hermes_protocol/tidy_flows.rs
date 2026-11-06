@@ -5,7 +5,7 @@ use std::time::Instant;
 use ncrs_hermes_chat::{ChipReply, Step};
 use ncrs_i18n::Msg;
 
-use super::thread::{chat, chip_labels, has_chip, last_hermes_has_chips, last_text, whole_thread};
+use super::thread::{chat, chip_labels, has_chip, last_hermes_has_chips, last_text};
 use super::{all, expect, Protocol, READ_LIMIT};
 use crate::app::App;
 use crate::messages::Message;
@@ -133,84 +133,54 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
     }
 
     pub fn flow_6_structure(&mut self) {
-        let german = self.german();
-        for (label, sentence, word) in [
+        for (label, sentence) in [
             (
                 "6 bank",
-                self.say("Bank nach Monat", "Bank by month"),
-                "Bank",
+                self.say(
+                    "Kontoauszüge der Sparkasse kommen nach Bank, dann Jahr und Monat",
+                    "Statements from the Sparkasse go to Bank, then year and month",
+                ),
             ),
             (
                 "6 insurance",
-                self.say("Versicherung nach Anbieter", "Insurance by sender"),
-                "Versicherung",
+                self.say(
+                    "Versicherungspost nach Versicherung und Absender",
+                    "Insurance mail to Versicherung and sender",
+                ),
             ),
         ] {
             self.back_to_start();
             let started = Instant::now();
             self.type_sentence(sentence);
-            let (_, _, mut limit) = self.wait_idle(READ_LIMIT, None);
-            let asked_area = chat(self.app())
-                .chips()
-                .iter()
-                .any(|chip| chip.label == word && matches!(chip.reply, ChipReply::ChangeArea(_)));
-            if asked_area {
-                let _ = self.press_chip(
-                    |reply| matches!(reply, ChipReply::ChangeArea(area) if area == word),
-                );
-                limit = self.wait_idle(READ_LIMIT, None).2;
-            }
-            let image = self.shot(&format!("{}-preview", label.replace(' ', "-")));
-            let text = whole_thread(self.app());
-            let previewed = has_chip(self.app(), |reply| {
-                matches!(reply, ChipReply::ConfirmChange | ChipReply::ScopeAll)
-            }) || self.last_says(Msg::HermesChatChangeAlready)
-                || self.last_says(Msg::HermesChatChangeAlreadyPlain);
-            let mut met = all([
+            let (_, _, limit) = self.wait_idle(READ_LIMIT, None);
+            let image = self.shot(&format!("{}-proposal", label.replace(' ', "-")));
+            let proposed = has_chip(self.app(), |reply| *reply == ChipReply::RuleCreate);
+            let asked = has_chip(self.app(), |reply| matches!(reply, ChipReply::RuleWhat(_)));
+            let met = all([
                 limit,
                 expect(
                     last_hermes_has_chips(self.app()),
-                    "no preview or answer with buttons",
+                    "no proposal or question with buttons",
                 ),
                 expect(
-                    previewed,
+                    proposed || asked,
                     format!(
-                        "neither a preview nor 'already so'; last: {}",
+                        "neither a proposed rule nor the question what goes in; last: {}",
                         last_text(self.app())
                     ),
                 ),
-                expect(
-                    !(german && text.to_lowercase().contains("statements")),
-                    "an English folder word in the German thread",
-                ),
             ]);
-            let mut images = image;
-            if has_chip(self.app(), |reply| *reply == ChipReply::ConfirmChange) {
-                let pressed = self.press_chip(|reply| *reply == ChipReply::ConfirmChange);
-                let (_, _, done) = self.wait_idle(READ_LIMIT, None);
-                images = format!(
-                    "{images} {}",
-                    self.shot(&format!("{}-done", label.replace(' ', "-")))
-                );
-                met = all([met, pressed, done]);
-                if has_chip(self.app(), |reply| *reply == ChipReply::Undo) {
-                    let _ = self.press_chip(|reply| *reply == ChipReply::Undo);
-                    let _ = self.wait_idle(READ_LIMIT, None);
-                    images = format!(
-                        "{images} {}",
-                        self.shot(&format!("{}-undone", label.replace(' ', "-")))
-                    );
-                }
+            // The rule is only proposed here: nothing is saved without a click
+            // on "Create rule", and the protocol never makes it.
+            if has_chip(self.app(), |reply| *reply == ChipReply::Cancel) {
+                let _ = self.press_chip(|reply| *reply == ChipReply::Cancel);
             }
             self.record(
                 label,
-                &format!(
-                    "typed '{sentence}' ({word}); labels: {}",
-                    chip_labels(self.app())
-                ),
+                &format!("typed '{sentence}'; labels: {}", chip_labels(self.app())),
                 started.elapsed().as_secs_f64(),
-                &images,
-                "a preview with real folder names and a confirmation, or a clear 'already so'",
+                &image,
+                "a rule proposal with levels and buttons, or the question what goes in",
                 met,
             );
         }

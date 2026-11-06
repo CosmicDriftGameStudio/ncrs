@@ -11,7 +11,7 @@
 )]
 
 use std::num::NonZeroU32;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use super::eval::{rows, HOLDOUT_ROWS, MAIN_ROWS};
@@ -40,16 +40,14 @@ fn model_path() -> std::path::PathBuf {
     path
 }
 
-fn lazy() -> &'static Arc<LazyLocalModel> {
-    static MODEL: OnceLock<Arc<LazyLocalModel>> = OnceLock::new();
-    MODEL.get_or_init(|| {
-        LazyLocalModel::shared(
-            model_path(),
-            LOCAL_MODEL,
-            nonzero(THREADS),
-            nonzero(CONTEXT_TOKENS),
-        )
-    })
+/// A model of the test itself: dropped with the test, before the process ends.
+fn lazy() -> Arc<LazyLocalModel> {
+    LazyLocalModel::shared(
+        model_path(),
+        LOCAL_MODEL,
+        nonzero(THREADS),
+        nonzero(CONTEXT_TOKENS),
+    )
 }
 
 /// `None` when the variable is not set: the whole run, with its thresholds.
@@ -182,6 +180,32 @@ fn with_model_the_protocol_sentences_print_their_intent() {
         "Make a suggestion, the topics should be at the root",
         "What can you do?",
         "Thanks",
+    ];
+    for sentence in sentences {
+        let turn = ChatTurn {
+            message: sentence.to_owned(),
+            question: None,
+            previous_search: None,
+            previous_request: None,
+            previous_message: None,
+        };
+        println!("intent {sentence:?} => {:?}", model.understand(&turn));
+    }
+}
+
+#[test]
+#[ignore = "needs the AI model: set NCRS_AI_MODELS_DIR to the folder with it"]
+fn with_model_folder_sentences_print_their_intent() {
+    let model = lazy();
+    let sentences = [
+        "öffne mal /Bank",
+        "zeig mir /Archiv/Versicherung",
+        "was liegt in /Scans",
+        "open ~/Documents/Taxes",
+        "Kontoauszüge der Sparkasse kommen nach Bank",
+        "Rechnungen von der Telekom nach Telefon, Jahr und Monat",
+        "räum /Downloads auf",
+        "sortier /Downloads nach Jahr",
     ];
     for sentence in sentences {
         let turn = ChatTurn {

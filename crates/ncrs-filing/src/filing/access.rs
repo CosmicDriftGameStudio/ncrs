@@ -46,7 +46,8 @@ impl FilingModule {
             ChatAccess::new(Arc::clone(&self.index), Arc::clone(chain), trash)
                 .with_own(self.own.clone())
                 .with_load(self.load)
-                .with_review(self.review_access()),
+                .with_review(self.review_access())
+                .with_rules(self.rules_access()),
         )
     }
 

@@ -64,6 +64,8 @@ pub struct Talk {
     pub index: Arc<Mutex<Option<Index>>>,
     /// The scripted model behind `ctx.model`.
     pub model: Arc<ScriptedChatModel>,
+    /// A real model that answers instead of the scripted one.
+    pub real_model: Option<Arc<dyn ChatModel>>,
     /// The line shown while the model worked on the last typed sentence.
     pub working: Option<String>,
 }
@@ -120,8 +122,22 @@ impl Talk {
             entries: 0,
             index: slot,
             model,
+            real_model: None,
             working: None,
         }
+    }
+
+    /// The sentences go to `model` instead of the scripted one.
+    pub fn with_real_model(mut self, model: Arc<dyn ChatModel>) -> Self {
+        self.ctx.model = Some(Arc::clone(&model));
+        self.real_model = Some(model);
+        self
+    }
+
+    fn model_answering(&self) -> &dyn ChatModel {
+        self.real_model
+            .as_deref()
+            .unwrap_or(self.model.as_ref() as &dyn ChatModel)
     }
 
     /// The chat can count, show and file the documents that wait; they are
@@ -134,6 +150,65 @@ impl Talk {
         self.access = self.access.with_review(Some(review));
         self.ctx.availability = Availability::Ready(Box::new(self.access.clone()));
         self
+    }
+
+    /// The chat can try and save rules; the archive is the one location.
+    pub fn with_rules(mut self) -> Self {
+        let archive = ncrs_intake::Location::new(
+            &self.path("archive"),
+            ncrs_intake::LocationMode::Archive,
+            false,
+        )
+        .unwrap();
+        let rules =
+            ncrs_filing::rules_work::RulesAccess::new(Arc::clone(&self.index), vec![archive]);
+        self.access = self.access.with_rules(Some(rules));
+        self.ctx.availability = Availability::Ready(Box::new(self.access.clone()));
+        self
+    }
+
+    /// A document of the archive the rules trial sees: the file on disk and
+    /// its entry in the index with `text`.
+    pub fn index_document(&self, relative: &str, text: &str) -> ncrs_index::DocumentId {
+        self.write(relative, text);
+        let hash: [u8; 32] = Sha256::digest(relative.as_bytes()).into();
+        let mut guard = self.index.lock().unwrap();
+        let index = guard.as_mut().unwrap();
+        let id = index
+            .insert_document(&ncrs_index::NewDocument {
+                hash: ncrs_index::ContentHash(hash),
+                path: self.path(relative),
+                source: ncrs_index::DocumentSource::Archive,
+                received_at: chrono::Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap(),
+                stamp: None,
+            })
+            .unwrap();
+        index.set_document_text(id, text).unwrap();
+        id
+    }
+
+    /// The fields the index holds of a document, as if the AI had read them.
+    pub fn set_fields(&self, id: ncrs_index::DocumentId, fields: &ncrs_index::DocumentFields) {
+        let mut guard = self.index.lock().unwrap();
+        let index = guard.as_mut().unwrap();
+        index
+            .set_document_fields(id, fields, |_| ncrs_index::FieldOrigin::Manual)
+            .unwrap();
+    }
+
+    /// How many rules the index holds.
+    pub fn rule_count(&self) -> usize {
+        self.rules().len()
+    }
+
+    pub fn rules(&self) -> Vec<ncrs_index::Rule> {
+        self.index
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .rules()
+            .unwrap()
     }
 
     pub fn path(&self, relative: &str) -> PathBuf {
@@ -169,9 +244,12 @@ impl Talk {
                 result,
             });
         }
+        if let Some(ask) = self.state.pending_rule_ask().cloned() {
+            return Some(Message::RuleAnswered(ask.run(self.model_answering())));
+        }
         let turn = self.state.pending_turn().cloned()?;
         Some(Message::Understood(
-            self.model
+            self.model_answering()
                 .understand(&turn)
                 .map_err(|error| error.to_string()),
         ))

@@ -18,6 +18,7 @@ amax ::= ",\"amount_max\":" amount
 search ::= "{\"intent\":\"search\"" (",\"sender\":" str)? (",\"kind\":" str)? yfrom? yto? amin? amax? (",\"text\":" str)? "}"
 ask ::= "{\"intent\":\"ask_content\",\"question_kind\":" qk (",\"sender\":" str)? (",\"kind\":" str)? "}"
 explain ::= "{\"intent\":\"explain\",\"file\":" str "}"
+open ::= "{\"intent\":\"open_folder\",\"folder\":" str "}"
 bulk ::= "{\"intent\":\"bulk_move\"" (",\"filter_kind\":" str)? (",\"filter_sender\":" str)? (",\"filter_year\":" year)? ",\"target\":" str "}"
 smalltalk ::= "{\"intent\":\"smalltalk\"}"
 leave ::= "{\"intent\":\"leave_as_is\"}"

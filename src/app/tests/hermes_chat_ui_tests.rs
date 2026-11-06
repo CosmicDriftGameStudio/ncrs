@@ -5,11 +5,12 @@ use iced_test::Simulator;
 use ncrs_ai::{ChatIntent, Compute, LocalModelStatus, ScriptedChatModel};
 use ncrs_filing::chat_work::{ChatAccess, ChatResult, RuleSaveFailure, RunSummary};
 use ncrs_hermes_chat::{
-    Availability, Chip, ChipReply, Ctx, Entry, FileCard, Part, RowOutcome, Step, TrialCard,
-    TrialRow,
+    Availability, Chip, ChipReply, Ctx, Entry, FileCard, LevelsCard, Part, RowOutcome, Step,
+    TrialCard, TrialRow,
 };
 use ncrs_index::{BatchKind, Index, Transfer};
 use ncrs_intake::{RuleProblem, TextChain};
+use ncrs_ui_kit::hermes_kit::LevelRow;
 
 use crate::app::*;
 use crate::i18n::Language;
@@ -431,27 +432,83 @@ fn ai_off_scene() -> App {
     app
 }
 
-fn scope_scene() -> App {
-    let (mut app, _) = opened(Language::German);
-    user_says(&mut app, "Kontoauszüge lieber nach Monat");
+fn levels_scene(lang: Language) -> App {
+    let (mut app, _) = opened(lang);
+    let german = lang == Language::German;
+    let row = |number, text: &str, role: &str| LevelRow {
+        number,
+        text: text.to_owned(),
+        role: role.to_owned(),
+    };
+    user_says(
+        &mut app,
+        if german {
+            "Kontoauszüge der Sparkasse kommen nach Bank"
+        } else {
+            "Statements from the Sparkasse go to Bank"
+        },
+    );
     hermes_says(
         &mut app,
         vec![
-            Part::Text("Klar. Dann sieht ein Kontoauszug so aus:".to_owned()),
-            Part::File(FileCard {
-                segments: segments(&["Archiv", "Kontoauszüge", "Sparkasse", "11", "Auszug.pdf"]),
-                highlighted: Some(3),
+            Part::Text(
+                if german {
+                    "Diese Regel würde 12 Dateien ablegen, zum Beispiel Auszug.pdf nach Bank/2025/."
+                } else {
+                    "This rule would file 12 files, for example Auszug.pdf to Bank/2025/."
+                }
+                .to_owned(),
+            ),
+            Part::Levels(LevelsCard {
+                title: if german {
+                    "3 Ebenen gefunden"
+                } else {
+                    "3 levels found"
+                }
+                .to_owned(),
+                rows: vec![
+                    row(1, "Bank", if german { "fest" } else { "fixed" }),
+                    row(2, "2025", if german { "Jahr" } else { "year" }),
+                    row(
+                        3,
+                        "2025-11-03_Sparkasse.pdf",
+                        if german {
+                            "Dateiname: Datum, Absender"
+                        } else {
+                            "file name: date, sender"
+                        },
+                    ),
+                ],
+                footer: Some(
+                    if german {
+                        "passt bei 11 von 12 Dateien"
+                    } else {
+                        "fits 11 of 12 files"
+                    }
+                    .to_owned(),
+                ),
             }),
-            Part::Text("Für alle Banken?".to_owned()),
         ],
         vec![
-            chip("Alle Banken", ChipReply::ScopeAll, true),
             chip(
-                "Nur Sparkasse",
-                ChipReply::ScopeOnly("Sparkasse".to_owned()),
+                if german {
+                    "Regel anlegen"
+                } else {
+                    "Create rule"
+                },
+                ChipReply::RuleCreate,
+                true,
+            ),
+            chip(
+                if german { "Ändern" } else { "Change" },
+                ChipReply::LevelsChange,
                 false,
             ),
-            chip("Abbrechen", ChipReply::Cancel, false),
+            chip(
+                if german { "Abbrechen" } else { "Cancel" },
+                ChipReply::Cancel,
+                false,
+            ),
         ],
     );
     app
@@ -583,8 +640,13 @@ fn the_ai_off_offer_matches_its_snapshot() {
 }
 
 #[test]
-fn the_question_for_which_banks_matches_its_snapshot() {
-    matches_snapshot(&scope_scene(), "hermes_chat_scope_de");
+fn the_levels_of_a_rule_match_their_snapshots() {
+    for (lang, name) in [
+        (Language::German, "hermes_chat_levels_de"),
+        (Language::English, "hermes_chat_levels_en"),
+    ] {
+        matches_snapshot(&levels_scene(lang), name);
+    }
 }
 
 fn open_chat() -> App {
@@ -646,7 +708,6 @@ fn read_downloads() -> Arc<ncrs_filing::chat_work::FolderReading> {
         recorded_at: 0,
     };
     Arc::new(ncrs_filing::chat_work::FolderReading {
-        patterns: Vec::new(),
         ai: Default::default(),
         kinds: Default::default(),
         root: PathBuf::from("/home/test/Downloads"),
@@ -743,13 +804,18 @@ fn an_english_chat_shows_no_german_text_from_the_greeting_to_the_download_offer(
     ctx.model = Some(Arc::clone(&model) as Arc<dyn ncrs_ai::ChatModel>);
     let downloads = PathBuf::from("/home/test/Downloads");
     ctx.sources.clear();
-    ctx.targets = vec![downloads.clone()];
+    ctx.targets.clear();
     send(&mut app, &ctx, HermesChatMessage::Open);
+    send(
+        &mut app,
+        &ctx,
+        HermesChatMessage::FolderPicked(Some(downloads)),
+    );
     let label = app
         .hermes_chat
         .chips()
         .iter()
-        .find(|chip| chip.reply == ChipReply::Folder(downloads.clone()))
+        .find(|chip| chip.reply == ChipReply::RoleTarget)
         .unwrap()
         .label
         .clone();
@@ -758,7 +824,7 @@ fn an_english_chat_shows_no_german_text_from_the_greeting_to_the_download_offer(
         &ctx,
         HermesChatMessage::ChipPressed {
             label,
-            reply: ChipReply::Folder(downloads),
+            reply: ChipReply::RoleTarget,
         },
     );
     send(

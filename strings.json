@@ -8909,6 +8909,210 @@
       "context": "Placeholder in the empty field of the own terminal command on the programs page. An example line; {path} must stay as it is.",
       "en": "myterminal --cd {path}",
       "de": "meinterminal --cd {path}"
+    },
+    {
+      "key": "hermes_chat.areas_here",
+      "context": "Chat reply when a filing folder is opened that holds several areas. {count} is the number of subfolders; buttons with their names follow.",
+      "en": "{count} areas lie here. Which one shall I open?",
+      "de": "Hier liegen {count} Bereiche. Welchen soll ich öffnen?"
+    },
+    {
+      "key": "hermes_chat.area_here",
+      "context": "Chat reply when a filing folder is opened that holds exactly one area. A button with its name follows.",
+      "en": "One area lies here. Shall I open it?",
+      "de": "Hier liegt ein Bereich. Soll ich ihn öffnen?"
+    },
+    {
+      "key": "hermes_chat.folder_empty",
+      "context": "Chat reply when an opened filing folder holds no files. {folder} is its name. Followed by a suggested order and buttons.",
+      "en": "{folder} is empty. Should something go in?",
+      "de": "{folder} ist leer. Soll da was rein?"
+    },
+    {
+      "key": "hermes_chat.levels_found",
+      "context": "Title of the card that lists the folder levels and file name Hermes found in a filing folder. {count} is the number of levels.",
+      "en": "{count} levels found",
+      "de": "{count} Ebenen gefunden"
+    },
+    {
+      "key": "hermes_chat.levels_suggested",
+      "context": "Title of the card with the standard order proposed for a new, empty filing folder. {count} is the number of levels.",
+      "en": "Suggested order, {count} levels",
+      "de": "Vorschlag, {count} Ebenen"
+    },
+    {
+      "key": "hermes_chat.levels_fit",
+      "context": "Last line of the levels card. {fitting} files follow the found order, {total} files were checked.",
+      "en": "fits {fitting} of {total} files",
+      "de": "passt bei {fitting} von {total} Dateien"
+    },
+    {
+      "key": "hermes_chat.levels_misfit",
+      "context": "One line below the levels card for a file that does not follow the found order. {file} is its path, {written} is the path the order would give it.",
+      "en": "{file} should be {written}",
+      "de": "{file} soll {written} sein"
+    },
+    {
+      "key": "hermes_chat.levels_misfit_none",
+      "context": "One line below the levels card for a file the found order cannot write a path for. {file} is its path.",
+      "en": "{file} cannot be written by this order",
+      "de": "{file} lässt sich mit dieser Ordnung nicht schreiben"
+    },
+    {
+      "key": "hermes_chat.levels_keep",
+      "context": "Button: accept the levels shown for the folder.",
+      "en": "Keep it",
+      "de": "So lassen"
+    },
+    {
+      "key": "hermes_chat.levels_create",
+      "context": "Button: set up the levels shown for an empty folder.",
+      "en": "Set it up like this",
+      "de": "So anlegen"
+    },
+    {
+      "key": "hermes_chat.levels_change",
+      "context": "Button: change the levels shown.",
+      "en": "Change",
+      "de": "Ändern"
+    },
+    {
+      "key": "hermes_chat.levels_default",
+      "context": "Button: use the standard order year, then date_sender_kind as file name.",
+      "en": "Use the standard",
+      "de": "Standard nehmen"
+    },
+    {
+      "key": "hermes_chat.level_drop",
+      "context": "Button that removes one level from the order. {number} is the level number.",
+      "en": "Drop {number}",
+      "de": "{number} weglassen"
+    },
+    {
+      "key": "hermes_chat.levels_change_hint",
+      "context": "Explains how to change the levels: with the buttons or in a typed sentence.",
+      "en": "Drop levels with the buttons, or tell me in words, for example \"year, then month, file name date_sender\".",
+      "de": "Lass Ebenen mit den Knöpfen weg, oder sag es in Worten, zum Beispiel „Jahr, dann Monat, Datei Datum_Absender“."
+    },
+    {
+      "key": "hermes_chat.level_role_fixed",
+      "context": "Role of a folder level whose name is the same for all files: it stays as it is.",
+      "en": "fixed",
+      "de": "fest"
+    },
+    {
+      "key": "hermes_chat.level_role_file",
+      "context": "Role of the last level, the file name. {parts} are the fields it is made of.",
+      "en": "File: {parts}",
+      "de": "Datei: {parts}"
+    },
+    {
+      "key": "hermes_chat.level_role_day",
+      "context": "Name of the day field in the levels card, one word.",
+      "en": "Day",
+      "de": "Tag"
+    },
+    {
+      "key": "hermes_chat.level_role_recipient",
+      "context": "Name of the recipient field in the levels card, one word.",
+      "en": "Recipient",
+      "de": "Empfänger"
+    },
+    {
+      "key": "hermes_chat.level_role_automatic",
+      "context": "Role of the file name when Hermes makes it automatically.",
+      "en": "File: automatic name",
+      "de": "Datei: automatischer Name"
+    },
+    {
+      "key": "hermes_chat.rule_what",
+      "context": "Question after the levels are settled. {folder} is the folder name.",
+      "en": "What should go into {folder}?",
+      "de": "Was soll nach {folder}?"
+    },
+    {
+      "key": "hermes_chat.rule_suggest_kind",
+      "context": "Button text that describes a rule: documents of one kind. {kind} is the kind.",
+      "en": "All documents of kind {kind}",
+      "de": "Alle Dokumente der Art {kind}"
+    },
+    {
+      "key": "hermes_chat.rule_suggest_sender",
+      "context": "Button text that describes a rule: documents of one sender. {sender} is the sender.",
+      "en": "All documents from {sender}",
+      "de": "Alle Dokumente von {sender}"
+    },
+    {
+      "key": "hermes_chat.rule_suggest_both",
+      "context": "Button text that describes a rule: documents of one kind from one sender.",
+      "en": "{kind} from {sender}",
+      "de": "{kind} von {sender}"
+    },
+    {
+      "key": "hermes_chat.rule_none_match",
+      "context": "Chat reply when a proposed rule would file none of the documents the index knows.",
+      "en": "No document I know would go there. Describe it another way?",
+      "de": "Kein Dokument, das ich kenne, würde dorthin gehen. Beschreibst du es anders?"
+    },
+    {
+      "key": "hermes_chat.rule_proposal",
+      "context": "Chat reply with the proposed rule. {count} known documents match it; the lines below show some examples. {conditions} is the condition in words, {pattern} the folder order.",
+      "en": "This rule files {count} documents I know. It applies when {conditions}. It files them as {pattern}.",
+      "de": "Die Regel legt {count} Dokumente ab, die ich kenne. Sie gilt, wenn {conditions}. Sie legt sie so ab: {pattern}."
+    },
+    {
+      "key": "hermes_chat.rule_condition_all",
+      "context": "Joins the conditions of a rule: all must hold. {list} is the list of conditions.",
+      "en": "all of these hold: {list}",
+      "de": "alles davon zutrifft: {list}"
+    },
+    {
+      "key": "hermes_chat.rule_condition_any",
+      "context": "Joins the conditions of a rule: one must hold. {list} is the list of conditions.",
+      "en": "one of these holds: {list}",
+      "de": "eines davon zutrifft: {list}"
+    },
+    {
+      "key": "hermes_chat.rule_example",
+      "context": "One example line of the rule trial. {from} is where the document lies, {to} where the rule files it.",
+      "en": "{from} → {to}",
+      "de": "{from} → {to}"
+    },
+    {
+      "key": "hermes_chat.rule_example_review",
+      "context": "Where the rule trial puts a document the rule does not settle: it waits in the review list.",
+      "en": "to review",
+      "de": "zur Prüfung"
+    },
+    {
+      "key": "hermes_chat.rule_create",
+      "context": "Button: store the proposed rule.",
+      "en": "Create rule",
+      "de": "Regel anlegen"
+    },
+    {
+      "key": "hermes_chat.rule_stored",
+      "context": "Chat reply after a rule was stored.",
+      "en": "Rule saved. New files land like this from now on.",
+      "de": "Regel gespeichert. Neue Dateien landen ab jetzt so."
+    },
+    {
+      "key": "hermes_chat.rule_file_now",
+      "context": "Button after a rule was stored: file what lies in the source folders now.",
+      "en": "File now",
+      "de": "Jetzt ablegen"
+    },
+    {
+      "key": "hermes_chat.rule_not_levels",
+      "context": "Chat reply when the typed words gave no usable order of levels.",
+      "en": "I could not make an order from that. Try again in other words?",
+      "de": "Daraus konnte ich keine Ordnung machen. Sag es nochmal anders?"
+    },
+    {
+      "key": "hermes_chat.rule_condition_not",
+      "context": "Negates one condition of a rule in the chat. {condition} is the condition in words, for example “Sender: Telekom”.",
+      "en": "not ({condition})",
+      "de": "nicht ({condition})"
     }
   ]
 }

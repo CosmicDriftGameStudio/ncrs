@@ -22,7 +22,6 @@ use ncrs_intake::{
 use ncrs_pipeline::Load;
 use ncrs_priority::{set_current_thread_priority, ThreadPriority};
 
-use super::pattern::{adoptable_patterns, PatternChoice};
 use super::{ChatAccess, TrashItem};
 
 /// Most files the chat reads in one folder.
@@ -42,8 +41,6 @@ pub struct FolderReading {
     pub duplicates: Vec<TrashItem>,
     /// The first file (by path) of each content.
     pub hashes: HashMap<ContentHash, PathBuf>,
-    /// The patterns below the areas that moving to them would change files.
-    pub patterns: Vec<PatternChoice>,
     /// How far the AI got with the documents of the folder the index knows.
     pub ai: AiCoverage,
     /// The kinds the index knew when the folder was read, its own among them.
@@ -341,7 +338,7 @@ pub fn read_folder(
             .entry(file.hash)
             .or_insert_with(|| file.relative_path.clone());
     }
-    let mut reading = FolderReading {
+    let reading = FolderReading {
         root: folder.to_path_buf(),
         files,
         photos,
@@ -349,11 +346,9 @@ pub fn read_folder(
         structure,
         duplicates,
         hashes,
-        patterns: Vec::new(),
         ai: ai_coverage(access, folder),
         kinds: kinds.clone(),
     };
-    reading.patterns = adoptable_patterns(&kinds, &reading);
     Ok(reading)
 }
 

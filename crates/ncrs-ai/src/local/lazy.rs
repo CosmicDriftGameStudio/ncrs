@@ -9,14 +9,19 @@ use std::sync::{Arc, Mutex, OnceLock, PoisonError, Weak};
 use std::thread::{Builder, JoinHandle};
 use std::time::Duration;
 
+use ncrs_index::{DocumentFields, Kinds, RuleSpec};
 use ncrs_priority::ThreadPriority;
 
-use super::worker::{run, ChatJob, ExtractJob, Job, Shared, IDLE_UNLOAD};
+use super::rule_session::RuleSession;
+use super::worker::{run, ChatJob, ExtractJob, Job, RuleJob, Shared, IDLE_UNLOAD};
 use crate::chat::{ChatIntent, ChatModel, ChatTurn};
 use crate::contract::{Extraction, ExtractionRequest, Provider};
 use crate::error::AiError;
 use crate::model_file::ModelPin;
+use crate::rules::{annotated_paths, ContextDocument, Levels};
 use crate::status::LocalModelStatus;
+
+const RECOGNIZE_QUESTION: &str = "Which pattern wrote these paths?";
 
 /// The local model, loaded when the first job needs it and only if its file
 /// is there. Without the file a call fails at once and does nothing else.
@@ -94,6 +99,33 @@ impl LazyLocalModel {
         Ok(())
     }
 
+    /// Runs `work` on a rule session of the worker's model. The session lives
+    /// for this one task: no context outlives it.
+    // ponytail: the prefix is decoded again for every request; a session cache per folder if the seconds get in the way.
+    fn ask_rules<T: Send + 'static>(
+        &self,
+        documents: &[ContextDocument],
+        kinds: &Kinds,
+        work: impl FnOnce(&mut RuleSession<'_>) -> Result<T, AiError> + Send + 'static,
+    ) -> Result<T, AiError> {
+        self.ensure_worker()?;
+        let (reply, answer) = channel();
+        let documents = documents.to_vec();
+        let kinds = kinds.clone();
+        self.shared.submit(Job::Rule(RuleJob {
+            task: Box::new(move |model| {
+                let outcome = model.and_then(|loaded| {
+                    let mut session = RuleSession::new(loaded, &documents, &kinds)?;
+                    work(&mut session)
+                });
+                drop(reply.send(outcome));
+            }),
+        }));
+        answer
+            .recv()
+            .map_err(|_stopped| AiError::Model("the model stopped before it answered"))?
+    }
+
     fn ask<T>(&self, job: impl FnOnce(Sender<Result<T, AiError>>) -> Job) -> Result<T, AiError> {
         self.ensure_worker()?;
         let (reply, answer) = channel();
@@ -135,6 +167,36 @@ impl ChatModel for LazyLocalModel {
                 turn: turn.clone(),
                 reply,
             })
+        })
+    }
+
+    fn generate_rule(
+        &self,
+        description: &str,
+        documents: &[ContextDocument],
+        kinds: &Kinds,
+    ) -> Result<RuleSpec, AiError> {
+        let description = description.to_owned();
+        self.ask_rules(documents, kinds, move |session| {
+            session.generate(&description)
+        })
+    }
+
+    fn recognize_levels(
+        &self,
+        files: &[(String, DocumentFields)],
+        kinds: &Kinds,
+    ) -> Result<Levels, AiError> {
+        let documents: Vec<ContextDocument> = files
+            .iter()
+            .map(|(path, fields)| ContextDocument {
+                fields: fields.clone(),
+                folder: path.rsplit_once('/').map(|(folder, _)| folder.to_owned()),
+            })
+            .collect();
+        let paths = annotated_paths(files, kinds);
+        self.ask_rules(&documents, kinds, move |session| {
+            session.recognize(RECOGNIZE_QUESTION, &paths)
         })
     }
 

@@ -13,29 +13,17 @@ mod common;
 #[cfg(test)]
 mod tests {
     use crate::common::{letter, say, Talk};
-    use ncrs_hermes_chat::{ChipReply, Entry, Part};
+    use ncrs_hermes_chat::ChipReply;
     use ncrs_i18n::Msg;
 
-    const EVERYWHERE_BY_YEAR: &str =
-        r#"{"intent":"change_structure","area":"*","order":"by_year"}"#;
-    const ALFA_NAMES: &str = r#"{"intent":"change_structure","area":"Alfa","name":["year","month","day"],"separator":"_"}"#;
     const SMALL_TALK: &str = r#"{"intent":"smalltalk"}"#;
 
     /// Alfa is filed by year, Beta has a month folder below the year.
     fn archive_talk() -> Talk {
         let talk = Talk::in_dir(tempfile::tempdir().unwrap(), &["archive"], &["inbox"]);
-        write_archive(&talk, "archive");
-        talk.write(
-            "inbox/neu_alfa.pdf",
-            &letter("Alfa AG", "05.03.2021", "Rechnung", 77),
-        );
-        talk
-    }
-
-    fn write_archive(talk: &Talk, root: &str) {
         for (month, day) in [(1, 10), (3, 11), (6, 12), (9, 13), (11, 14)] {
             talk.write(
-                &format!("{root}/Alfa/2020/2020-{month:02}-{day} Alfa Rechnung.pdf"),
+                &format!("archive/Alfa/2020/2020-{month:02}-{day} Alfa Rechnung.pdf"),
                 &letter(
                     "Alfa AG",
                     &format!("{day}.{month:02}.2020"),
@@ -44,7 +32,7 @@ mod tests {
                 ),
             );
             talk.write(
-                &format!("{root}/Beta/2020/{month:02}/2020-{month:02}-{day} Beta Rechnung.pdf"),
+                &format!("archive/Beta/2020/{month:02}/2020-{month:02}-{day} Beta Rechnung.pdf"),
                 &letter(
                     "Beta GmbH",
                     &format!("{day}.{month:02}.2020"),
@@ -53,107 +41,15 @@ mod tests {
                 ),
             );
         }
-    }
-
-    fn read_archive(talk: &mut Talk) {
-        talk.open();
-        talk.press(&ChipReply::Folder(talk.path("archive")));
-        talk.press(&ChipReply::WantChange);
+        talk.write(
+            "inbox/neu_alfa.pdf",
+            &letter("Alfa AG", "05.03.2021", "Rechnung", 77),
+        );
+        talk
     }
 
     fn has_chip(talk: &Talk, reply: &ChipReply) -> bool {
         talk.state.chips().iter().any(|chip| &chip.reply == reply)
-    }
-
-    #[test]
-    fn every_area_by_year_previews_a_pattern_and_applies_it() {
-        let mut talk = archive_talk();
-        read_archive(&mut talk);
-
-        talk.type_text_understood("überall nach jahr", EVERYWHERE_BY_YEAR);
-
-        let cards = talk
-            .last_parts()
-            .iter()
-            .filter(|part| matches!(part, Part::File(_)))
-            .count();
-        assert_eq!(cards, 2, "{:?}", talk.last_parts());
-        assert!(
-            talk.state.session.changes.is_empty(),
-            "nothing before the yes"
-        );
-        assert!(!talk
-            .last_texts()
-            .contains(&say(Msg::HermesChatChangePreviewWithNames, &[])));
-        talk.press(&ChipReply::ConfirmChange);
-        assert_eq!(talk.state.session.changes.len(), 1);
-    }
-
-    #[test]
-    fn a_name_from_the_date_renames_on_filing_and_undo_brings_the_old_name_back() {
-        let mut talk = archive_talk();
-        let before = talk.files();
-        read_archive(&mut talk);
-
-        talk.type_text_understood("in alfa dateinamen mit datum", ALFA_NAMES);
-        assert_eq!(
-            talk.last_texts()[0],
-            say(Msg::HermesChatChangePreviewNames, &[("area", "Alfa")])
-        );
-        for reply in [ChipReply::ConfirmChange, ChipReply::ScopeAll] {
-            if has_chip(&talk, &reply) {
-                talk.press(&reply);
-                break;
-            }
-        }
-        assert_eq!(talk.state.session.changes.len(), 1);
-
-        talk.type_text_understood(
-            "Räum Inbox auf",
-            r#"{"intent":"tidy_folder","source":"Inbox"}"#,
-        );
-        talk.press(&ChipReply::ConfirmTidy);
-        talk.choose_archive_if_asked();
-        talk.press(&ChipReply::Once);
-        talk.press(&ChipReply::ModeMove);
-        talk.leave_stay_questions();
-        talk.press(&ChipReply::FileAll);
-        let filed = talk.files();
-        assert!(
-            filed.keys().any(|path| path.starts_with("archive/Alfa/")
-                && path.ends_with("2021_03_05_Alfa Rechnung.pdf")),
-            "{:?}",
-            filed
-                .keys()
-                .filter(|path| path.contains("2021"))
-                .collect::<Vec<_>>()
-        );
-
-        assert!(
-            filed.contains_key("archive/Alfa/2020/2020-01-10 Alfa Rechnung.pdf"),
-            "documents already in the archive keep their names: only what is filed gets the name"
-        );
-
-        talk.type_text_understood("mach das rückgängig", r#"{"intent":"undo"}"#);
-        talk.press(&ChipReply::PutBack);
-        assert_eq!(talk.files(), before);
-    }
-
-    #[test]
-    fn the_next_sentence_is_shown_the_previous_change() {
-        let mut talk = archive_talk();
-        read_archive(&mut talk);
-        talk.type_text_understood("überall nach jahr", EVERYWHERE_BY_YEAR);
-
-        talk.type_text_understood("dann erstmal nur alfa", SMALL_TALK);
-
-        let turns = talk.model.turns();
-        assert_eq!(turns[0].previous_request, None);
-        let previous = turns[1].previous_request.clone().unwrap();
-        assert!(
-            previous.contains(r#""area":"*""#) && previous.contains(r#""order":"by_year""#),
-            "{previous}"
-        );
     }
 
     #[test]
@@ -180,44 +76,10 @@ mod tests {
             talk.last_texts(),
             vec![say(Msg::HermesChatNotUnderstoodFollowUp, &[])]
         );
-        let follow_up_area = talk
-            .state
-            .chips()
-            .iter()
-            .any(|chip| matches!(chip.reply, ChipReply::FollowUpArea(_)));
-        assert!(!follow_up_area);
         assert!(has_chip(&talk, &ChipReply::Cancel));
 
         talk.type_text_understood("und wieder hmmm", other);
         assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatFallback, &[])]);
-    }
-
-    #[test]
-    fn an_order_with_a_name_says_that_the_names_change_too() {
-        let mut talk = archive_talk();
-        read_archive(&mut talk);
-
-        talk.type_text_understood(
-            "in alfa nach monat und dateinamen mit datum",
-            r#"{"intent":"change_structure","area":"Alfa","order":"by_month","name":["year","month","day"],"separator":"_"}"#,
-        );
-
-        let with_names = say(Msg::HermesChatChangePreviewWithNames, &[]);
-        assert_eq!(talk.last_texts()[1], with_names, "{:?}", talk.last_texts());
-    }
-
-    #[test]
-    fn an_order_with_a_name_for_every_area_says_that_the_names_change_too() {
-        let mut talk = archive_talk();
-        read_archive(&mut talk);
-
-        talk.type_text_understood(
-            "überall nach jahr und dateinamen mit datum",
-            r#"{"intent":"change_structure","area":"*","order":"by_year","name":["year","month","day"],"separator":"_"}"#,
-        );
-
-        let with_names = say(Msg::HermesChatChangePreviewWithNames, &[]);
-        assert_eq!(talk.last_texts()[1], with_names, "{:?}", talk.last_texts());
     }
 
     #[test]
@@ -248,135 +110,14 @@ mod tests {
     }
 
     #[test]
-    fn small_talk_after_a_confirmed_change_is_no_misread_follow_up() {
-        let mut talk = archive_talk();
-        read_archive(&mut talk);
-        talk.type_text_understood("überall nach jahr", EVERYWHERE_BY_YEAR);
-        talk.press(&ChipReply::ConfirmChange);
-        assert_eq!(talk.state.session.changes.len(), 1);
-
-        talk.type_text_understood("danke", SMALL_TALK);
-
-        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatSmallTalk, &[])]);
-    }
-
-    #[test]
-    fn small_talk_after_a_change_asks_again_with_the_areas() {
-        let mut talk = archive_talk();
-        read_archive(&mut talk);
-        talk.type_text_understood("überall nach jahr", EVERYWHERE_BY_YEAR);
-
-        talk.type_text_understood("dann erstmal nur alfa", SMALL_TALK);
-
-        assert_eq!(
-            talk.last_texts(),
-            vec![say(Msg::HermesChatNotUnderstoodFollowUp, &[])]
-        );
-        let areas: Vec<_> = talk
-            .state
-            .chips()
-            .iter()
-            .filter_map(|chip| match &chip.reply {
-                ChipReply::FollowUpArea(area) => Some(area.clone()),
-                _ => None,
-            })
-            .collect();
-        assert!(areas.contains(&"Alfa".to_owned()), "{areas:?}");
-        assert!(has_chip(&talk, &ChipReply::Cancel));
-        assert!(matches!(
-            talk.state.thread().last(),
-            Some(Entry::Hermes { .. })
-        ));
-    }
-
-    #[test]
-    fn a_pattern_preview_is_dropped_when_a_typed_change_is_previewed_instead() {
-        let mut talk = archive_talk();
-        read_archive(&mut talk);
-        talk.type_text_understood("überall nach jahr", EVERYWHERE_BY_YEAR);
-        assert!(talk.state.session.pending_pattern.is_some());
-
-        talk.type_text_understood(
-            "Alfa lieber nach Monat",
-            r#"{"intent":"change_structure","area":"Alfa","order":"by_month"}"#,
-        );
-        assert!(talk.state.session.pending_pattern.is_none());
-        talk.press(&ChipReply::ConfirmChange);
-
-        let changes = &talk.state.session.changes;
-        assert_eq!(changes.len(), 1);
-        assert_eq!(
-            changes[0].order,
-            ncrs_filing::chat_work::ChangeOrder::ByMonth
-        );
-    }
-
-    #[test]
     fn a_typed_path_that_is_no_folder_in_a_step_without_folders_goes_to_the_model() {
         let mut talk = archive_talk();
-        read_archive(&mut talk);
+        talk.open();
 
         talk.model.push_reply(Ok(SMALL_TALK));
         talk.type_text("/ hallo, was geht");
 
         assert!(talk.state.pending_resolve().is_none());
         assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatSmallTalk, &[])]);
-    }
-
-    #[test]
-    fn an_order_for_every_area_survives_a_retry_of_the_same_folder() {
-        let mut talk = archive_talk();
-        talk.open();
-        talk.type_text_understood("überall nach jahr", EVERYWHERE_BY_YEAR);
-        let late = talk.path("late");
-
-        talk.type_text(&late.to_string_lossy());
-        assert!(talk.state.session.everywhere.is_none());
-        write_archive(&talk, "late");
-        talk.press(&ChipReply::Retry);
-
-        assert!(talk.state.session.pending_pattern.is_some());
-    }
-
-    #[test]
-    fn a_kind_of_the_user_counts_as_something_to_order() {
-        let mut talk = archive_talk();
-        let custom = [ncrs_index::CustomKind {
-            id: "honorarnote".to_owned(),
-            german: Some("Honorarnote".to_owned()),
-            english: None,
-            words: vec!["Honorarnote".to_owned()],
-        }];
-        let (catalog, _skipped) = ncrs_index::KindCatalog::built_in().extended(&custom);
-        talk.index
-            .lock()
-            .unwrap()
-            .as_mut()
-            .unwrap()
-            .set_kinds(std::sync::Arc::new(catalog));
-        read_archive(&mut talk);
-
-        talk.type_text_understood(
-            "Honorarnoten nach Jahr",
-            r#"{"intent":"change_structure","area":"Honorarnoten","order":"by_year"}"#,
-        );
-
-        assert!(!talk
-            .last_texts()
-            .contains(&say(Msg::HermesChatNotYetPropose, &[])));
-    }
-
-    #[test]
-    fn an_order_for_every_area_is_not_taken_over_by_another_folder() {
-        let mut talk = archive_talk();
-        talk.open();
-        talk.type_text_understood("überall nach jahr", EVERYWHERE_BY_YEAR);
-        talk.type_text(&talk.path("late").to_string_lossy());
-
-        talk.type_text(&talk.path("archive").to_string_lossy());
-        talk.press(&ChipReply::ReadAnyway);
-
-        assert!(talk.state.session.pending_pattern.is_none());
-        assert!(talk.state.session.everywhere.is_none());
     }
 }

@@ -14,6 +14,7 @@ pub fn busy(app: &App) -> bool {
         || chat.pending_turn().is_some()
         || chat.pending_resolve().is_some()
         || chat.pending_naming().is_some()
+        || chat.pending_rule_ask().is_some()
         || chat.waits_for_hermes()
 }
 
@@ -32,6 +33,12 @@ pub fn entry_text(entry: &Entry) -> String {
                     .collect::<Vec<_>>()
                     .join(" "),
                 Part::File(card) => card.segments.join("/"),
+                Part::Levels(card) => card
+                    .rows
+                    .iter()
+                    .map(|row| format!("{}. {}", row.number, row.text))
+                    .collect::<Vec<_>>()
+                    .join(" "),
                 Part::Folder(mention) => format!("{} ({})", mention.name, mention.path),
                 Part::Trial(card) => format!(
                     "{} {}",

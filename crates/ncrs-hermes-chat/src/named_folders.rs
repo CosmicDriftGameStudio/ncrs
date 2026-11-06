@@ -239,6 +239,9 @@ fn settle(state: &mut State, ctx: &Ctx, mut naming: Naming) {
         Some(None) => return,
         None => None,
     };
+    if target_folder.is_none() && crate::rule_flow::open(state, ctx, source.clone()) {
+        return;
+    }
     state.session.proposal = Some(Proposal {
         source,
         target: target_folder,

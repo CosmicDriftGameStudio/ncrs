@@ -158,6 +158,63 @@ pub fn areas_card<'a, M: 'a>(lines: &[AreaLine], palette: &Palette) -> Element<'
     card(Column::with_children(rows).spacing(GAP_S).into(), palette)
 }
 
+/// One level of a filing pattern: its number, a real value of it and what
+/// it stands for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LevelRow {
+    pub number: usize,
+    /// A folder name or file name taken from a real document.
+    pub text: String,
+    /// "fixed", the name of a field, or "file: date_sender"; localized by the caller.
+    pub role: String,
+}
+
+/// The levels of a pattern, one row each, under a title and above a footer.
+pub fn levels_card<'a, M: 'a>(
+    title: &str,
+    levels: &[LevelRow],
+    footer: Option<&str>,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let mut column = Column::new()
+        .push(card_text(title, palette.text, Wrapping::Word, true))
+        .spacing(GAP_S);
+    for level in levels {
+        column = column.push(
+            Row::new()
+                .push(card_text(
+                    &level.number.to_string(),
+                    palette.dim_text,
+                    Wrapping::None,
+                    false,
+                ))
+                .push(
+                    container(card_text(
+                        &level.text,
+                        palette.text,
+                        Wrapping::WordOrGlyph,
+                        false,
+                    ))
+                    .width(Length::FillPortion(3)),
+                )
+                .push(
+                    container(card_text(
+                        &level.role,
+                        palette.dim_text,
+                        Wrapping::Word,
+                        false,
+                    ))
+                    .width(Length::FillPortion(2)),
+                )
+                .spacing(GAP_M),
+        );
+    }
+    if let Some(line) = footer {
+        column = column.push(card_text(line, palette.dim_text, Wrapping::Word, false));
+    }
+    card(column.into(), palette)
+}
+
 /// A folder the chat names: its name in bold, its path below it.
 pub fn folder_mention<'a, M: 'a>(name: &str, path: &str, palette: &Palette) -> Element<'a, M> {
     card(

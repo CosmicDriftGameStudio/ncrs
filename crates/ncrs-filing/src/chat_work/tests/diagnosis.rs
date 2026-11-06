@@ -18,9 +18,7 @@ use ncrs_index::InMemoryKeyStore;
 use ncrs_intake::{NeighbourIndex, OwnNames, PdfText};
 
 use super::*;
-use crate::chat_work::change::{
-    branch_names_the_kind, change_point, example_of, kind_entry, matches_branch, segments,
-};
+use crate::chat_work::change::segments;
 use crate::chat_work::{TrialOutcome, TrialPlan};
 
 fn scratch_access(scratch: &Path, work: &Path) -> ChatAccess {
@@ -121,7 +119,6 @@ fn trial_report(access: &ChatAccess, downloads: &FolderReading, archive: &Folder
     let plan: TrialPlan = match access.run(ChatWork::Trial {
         source: Arc::new(downloads.clone()),
         target: Arc::new(archive.clone()),
-        changes: Vec::new(),
         answered: AnsweredGroups::default(),
         layout: None,
     }) {
@@ -178,51 +175,6 @@ fn trial_report(access: &ChatAccess, downloads: &FolderReading, archive: &Folder
     println!("  tally: {tally:?}");
 }
 
-fn preview_report(access: &ChatAccess, archive: &FolderReading, word: &str, order: ChangeOrder) {
-    println!("== D1.3 preview {word:?} {order:?}");
-    let kinds = access.kinds().unwrap();
-    let entry = kind_entry(&kinds, word);
-    println!(
-        "  kind_entry: {:?}",
-        entry.map(|found| found.id().to_owned())
-    );
-    let parts_of: Vec<Vec<String>> = archive
-        .files
-        .iter()
-        .map(|file| segments(&file.relative_path))
-        .collect();
-    for area in &archive.structure.areas {
-        for branch in &area.branches {
-            let point = change_point(order, branch);
-            let in_branch = archive
-                .files
-                .iter()
-                .zip(&parts_of)
-                .filter(|(_, parts)| matches_branch(parts, area, branch))
-                .count();
-            let area_names = entry.is_none() && word_within(word, &area.folder);
-            let names_branch = branch_names_the_kind(word, branch);
-            if area.folder == word || point.is_some() && (area_names || names_branch) {
-                println!(
-                    "  area {} branch levels {:?} name {:?}: change_point {point:?}, in_branch {in_branch}, word_within_area {area_names}, branch_names_kind {names_branch}",
-                    area.folder, branch.levels, branch.name
-                );
-            }
-        }
-    }
-    let result = change::preview(&kinds, archive, word, order, None);
-    println!("  preview: {result:?}");
-    if let Some(found) = &result {
-        let sample = archive
-            .files
-            .iter()
-            .find(|file| segments(&file.relative_path) == found.example[..found.example.len()])
-            .map(|file| file.relative_path.clone());
-        println!("  sample on disk: {sample:?}");
-        let _ = example_of;
-    }
-}
-
 #[test]
 #[ignore = "reads NCRS_DIAGNOSIS_SCRATCH, the scratch folder of a protocol run"]
 fn diagnosis() {
@@ -244,35 +196,6 @@ fn diagnosis() {
     }
     fields_report(&archive);
     trial_report(&access, &downloads, &archive);
-    preview_report(&access, &archive, "Bank", ChangeOrder::ByMonth);
-    preview_report(&access, &archive, "Versicherung", ChangeOrder::BySender);
-}
-
-fn pdfs_below(folder: &Path, found: &mut Vec<PathBuf>) {
-    let Ok(entries) = fs::read_dir(folder) else {
-        return;
-    };
-    let mut listed: Vec<_> = entries.flatten().collect();
-    listed.sort_by_key(fs::DirEntry::path);
-    for entry in listed {
-        let path = entry.path();
-        if path.is_dir() {
-            pdfs_below(&path, found);
-        } else if path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("pdf"))
-        {
-            found.push(path);
-        }
-    }
-}
-
-/// Every `step`-th PDF below `folder`, `count` of them: a spread over the years.
-fn spread_of_pdfs(folder: &Path, count: usize) -> Vec<PathBuf> {
-    let mut all = Vec::new();
-    pdfs_below(folder, &mut all);
-    let step = all.len().div_euclid(count).max(1);
-    all.into_iter().step_by(step).take(count).collect()
 }
 
 #[cfg(feature = "local-ai")]

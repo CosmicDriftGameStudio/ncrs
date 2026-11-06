@@ -15,9 +15,7 @@ use crate::state::{
     Unsent,
 };
 use crate::texts::{fill, folder_name, shown_folder, text};
-use crate::{
-    learn, named_folders, patterns, photos, stay_groups, tidy, trial_end, understand, undo,
-};
+use crate::{learn, named_folders, photos, stay_groups, tidy, trial_end, understand, undo};
 
 pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> (Task<Message>, Option<Action>) {
     let action = route(state, message, ctx).or_else(|| state.queued_action.take());
@@ -88,7 +86,6 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
         }
         Message::Failed(reason) => {
             finish_work(state);
-            state.session.everywhere = None;
             state.session.greeting_after_count = false;
             say(
                 state,
@@ -138,6 +135,7 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
             named_folders::resolved(state, ctx, source, target);
             None
         }
+        Message::RuleAnswered(answer) => crate::rule_flow::answered(state, ctx, answer),
         Message::Understood(result) => understand::understood(state, ctx, result),
         Message::ModelReady => understand::model_ready(state, ctx),
         Message::AiTurnedOn => understand::ai_turned_on(state, ctx),
@@ -175,8 +173,10 @@ fn change_area(state: &mut State, ctx: &Ctx, folder: PathBuf, area: String) -> O
     if is_busy(state) {
         return None;
     }
-    state.session.focus_area = Some(area);
-    learn::read(state, ctx, folder);
+    let area_folder = folder.join(area);
+    if !crate::rule_flow::open(state, ctx, area_folder) {
+        learn::read(state, ctx, folder);
+    }
     None
 }
 
@@ -186,6 +186,7 @@ fn is_busy(state: &State) -> bool {
     state.waits_for_hermes()
         || state.pending.is_some()
         || state.thinking.is_some()
+        || state.rule_ask.is_some()
         || state.resolving.is_some()
         || state.naming.is_some()
 }
@@ -198,6 +199,7 @@ fn launch(state: &mut State, ctx: &Ctx) -> Task<Message> {
     Task::batch([
         launch_work(state, ctx),
         understand::launch(state, ctx),
+        crate::rule_flow::launch(state, ctx),
         launch_resolve(state, ctx),
         named_folders::launch(state, ctx),
     ])
@@ -277,7 +279,6 @@ fn typed_folder_resolved(
     }
     match result {
         Err(_) => {
-            let everywhere = state.session.everywhere.take();
             state.session.retry = match step {
                 Step::Source | Step::TidyFolder => Some(ReadFor::Source),
                 Step::ReadFolder => Some(ReadFor::Learn),
@@ -286,7 +287,6 @@ fn typed_folder_resolved(
             .map(|purpose| Retry {
                 folder: typed.to_path_buf(),
                 purpose,
-                everywhere,
             });
             say(
                 state,
@@ -336,10 +336,10 @@ pub fn drop_working(state: &mut State) {
 fn handle_done(state: &mut State, ctx: &Ctx, result: ChatResult) -> Option<Action> {
     match result {
         ChatResult::Read(read) => learn::read_done(state, ctx, read),
-        ChatResult::Preview(preview) => learn::preview_done(state, ctx, preview),
-        ChatResult::PatternPreviewed(preview) => patterns::previewed(state, ctx, preview),
         ChatResult::Trial(trial) => tidy::trial_done(state, ctx, trial),
         ChatResult::RuleSaved(saved) => stay_groups::rule_saved(state, ctx, saved),
+        ChatResult::RuleTried(tried) => crate::rule_flow::trial_done(state, ctx, tried),
+        ChatResult::RuleStored(stored) => crate::rule_flow::stored(state, ctx, stored),
         ChatResult::Filed(filed) => tidy::filed_done(state, ctx, filed),
         ChatResult::Trashed(trashed) => tidy::trashed_done(state, ctx, trashed),
         ChatResult::LastRun(last) => undo::last_run_done(state, ctx, last),
@@ -664,7 +664,9 @@ pub fn folder_answer(state: &mut State, ctx: &Ctx, path: PathBuf, typed: bool) -
     }
     match state.step {
         Step::ReadFolder => {
-            learn::read(state, ctx, path);
+            if !crate::rule_flow::open(state, ctx, path.clone()) {
+                learn::read(state, ctx, path);
+            }
             None
         }
         Step::Greeting => {
@@ -717,9 +719,8 @@ fn handle_text(state: &mut State, ctx: &Ctx, typed: &str, asked: Asked) -> Optio
     if state.step == Step::GroupFolderName {
         return stay_groups::folder_named(state, ctx, typed);
     }
-    if state.step == Step::AreaName {
-        state.step = Step::AfterChange;
-        learn::area_chosen(state, ctx, typed.to_owned());
+    if matches!(state.step, Step::RuleLevels | Step::RuleWhat) {
+        crate::rule_flow::typed(state, ctx, typed);
         return None;
     }
     if expects_folder(state.step) && looks_like_typed_path(typed) {
@@ -861,10 +862,7 @@ pub fn handle_reply(state: &mut State, ctx: &Ctx, reply: ChipReply) -> Option<Ac
             }
         }
         ChipReply::KeepYes | ChipReply::FineAsIs => return learn::keep(state, ctx),
-        ChipReply::WantChange => learn::want_change(state, ctx),
         ChipReply::ShowAll => learn::show_all(state, ctx),
-        ChipReply::ScopeAll => learn::scope(state, ctx, None),
-        ChipReply::ScopeOnly(value) => learn::scope(state, ctx, Some(value)),
         ChipReply::ToTrash => tidy::trash_offer(state, ctx, true),
         ChipReply::LeaveThem => tidy::trash_offer(state, ctx, false),
         ChipReply::Later => {
@@ -876,9 +874,6 @@ pub fn handle_reply(state: &mut State, ctx: &Ctx, reply: ChipReply) -> Option<Ac
             );
         }
         ChipReply::Retry => learn::retry(state, ctx),
-        ChipReply::OtherArea => learn::ask_area_name(state, ctx),
-        ChipReply::FollowUpArea(area) => understand::follow_up_area(state, ctx, area),
-        ChipReply::ChangeAreaOrder { area, order } => learn::area_order(state, ctx, area, order),
         ChipReply::TrashDuplicatesNow => trial_end::trash_duplicates(state, ctx),
         ChipReply::ShowStaying => trial_end::show_staying(state, ctx),
         ChipReply::TrialOtherTarget => return trial_end::other_target(state),
@@ -887,7 +882,6 @@ pub fn handle_reply(state: &mut State, ctx: &Ctx, reply: ChipReply) -> Option<Ac
         ChipReply::DownloadModel => return Some(Action::DownloadModel),
         ChipReply::TurnOnAi => return Some(Action::TurnOnAi),
         ChipReply::ConfirmTidy => return understand::confirm_tidy_yes(state, ctx),
-        ChipReply::ConfirmChange => learn::confirm_change(state, ctx),
         ChipReply::OtherTarget => understand::ask_other_target(state, ctx),
         ChipReply::SwitchToCopy => {
             understand::switch_transfer(state, ctx, ncrs_index::Transfer::Copy)
@@ -903,11 +897,9 @@ pub fn handle_reply(state: &mut State, ctx: &Ctx, reply: ChipReply) -> Option<Ac
         ChipReply::GroupNewFolder => stay_groups::new_folder(state, ctx),
         ChipReply::PhotosYes => return photos::yes(state, ctx),
         ChipReply::PhotosNo => photos::no(state, ctx),
-        ChipReply::AdoptPattern(index) => patterns::adopt(state, ctx, index),
         ChipReply::RoleSource => return crate::greeting::role_chosen(state, ctx, true),
         ChipReply::RoleTarget => return crate::greeting::role_chosen(state, ctx, false),
         ChipReply::NewTarget => return crate::decide::pick_new_target(state),
-        ChipReply::ChangeArea(area) => learn::area_chosen(state, ctx, area),
         ChipReply::DecidePerFile => crate::decide::per_file(state, ctx),
         ChipReply::DecideTarget(path) => crate::decide::target_chosen(state, ctx, path),
         ChipReply::DecideSkip => crate::decide::skipped(state, ctx),
@@ -923,6 +915,14 @@ pub fn handle_reply(state: &mut State, ctx: &Ctx, reply: ChipReply) -> Option<Ac
         ChipReply::WaitingFileInto(folder) => crate::waiting::file_into(state, ctx, folder),
         ChipReply::WaitingOtherFolder => return crate::waiting::other_folder(state),
         ChipReply::WaitingSkip => crate::waiting::skip(state, ctx),
+        ChipReply::LevelsKeep => crate::rule_flow::levels_kept(state, ctx),
+        ChipReply::LevelsChange => crate::rule_flow::levels_change(state, ctx),
+        ChipReply::LevelsDefault => crate::rule_flow::levels_default(state, ctx),
+        ChipReply::LevelDrop(index) => crate::rule_flow::level_drop(state, ctx, index),
+        ChipReply::RuleWhat(description) => crate::rule_flow::described(state, ctx, &description),
+        ChipReply::RuleCreate => crate::rule_flow::create(state),
+        ChipReply::RuleEdit => crate::rule_flow::edit(state, ctx),
+        ChipReply::RuleNow => return crate::rule_flow::file_now(state, ctx),
         ChipReply::PutBack => undo::put_back(state, ctx),
         ChipReply::Undo | ChipReply::IntentUndo => undo::ask(state, ctx),
         ChipReply::OpenSearch | ChipReply::IntentSearch => return Some(Action::OpenSearch),
@@ -952,22 +952,16 @@ fn reset_flow(state: &mut State) {
     state.session.retry = None;
     state.session.trial = None;
     state.session.groups = GroupFlow::default();
-    state.session.pending_change = None;
-    state.session.pending_pattern = None;
     state.session.offer = None;
     state.session.resume_tidy = false;
     state.session.role_asked = None;
     state.session.photos_of = None;
     state.session.layout = None;
     state.session.deciding = None;
-    state.session.change_order = None;
-    state.session.area_chosen = false;
     state.session.confirm = None;
     state.session.choosing = None;
     state.session.proposal = None;
-    state.session.change_scope = None;
-    state.session.change_name = None;
-    state.session.everywhere = None;
+    state.session.rule = None;
     crate::follow_up::forget(state);
     state.step = Step::Idle;
 }

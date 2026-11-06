@@ -38,7 +38,7 @@ fn english_areas_bubbles(app: &mut App, card: AreasCard) {
         ],
         vec![
             chip("Yes, carry on like this", ChipReply::KeepYes, true),
-            chip("Change something", ChipReply::WantChange, false),
+            chip("Change something", ChipReply::LevelsChange, false),
         ],
     );
 }
@@ -169,6 +169,12 @@ pub(in crate::app::tests) fn real_flow_areas_app(lang: Language) -> App {
     };
     let mut app = App::with_fixed_panels().in_language(lang);
     send(&mut app, &ctx, HermesChatMessage::Open);
+    // The archive is not a filing folder yet when it is picked: the chat reads
+    // it for the order it keeps, and shows it as a card of areas.
+    let ctx = Ctx {
+        targets: Vec::new(),
+        ..ctx
+    };
     let press = |chat_app: &mut App, reply: ChipReply| {
         let chip = chat_app
             .hermes_chat
@@ -194,7 +200,12 @@ pub(in crate::app::tests) fn real_flow_areas_app(lang: Language) -> App {
                 .map(|work| HermesChatMessage::Done(Box::new(access.run(work))));
         }
     };
-    press(&mut app, ChipReply::Folder(root.join("archive")));
+    send(
+        &mut app,
+        &ctx,
+        HermesChatMessage::FolderPicked(Some(root.join("archive"))),
+    );
+    press(&mut app, ChipReply::RoleTarget);
     app
 }
 

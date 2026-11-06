@@ -84,11 +84,17 @@ mod tests {
     }
 
     #[test]
-    fn the_archive_shows_its_areas() {
+    fn the_archive_offers_its_areas_as_folders_to_open() {
         let mut talk = talk();
         talk.open();
         talk.press(&ChipReply::Folder(talk.path("archive")));
-        assert_eq!(areas_cards(&talk), 1);
+        assert_eq!(areas_cards(&talk), 0);
+        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatAreaHere, &[])]);
+        assert!(talk
+            .state
+            .chips()
+            .iter()
+            .any(|chip| chip.reply == ChipReply::Folder(talk.path("archive/Alfa"))));
     }
 
     #[test]

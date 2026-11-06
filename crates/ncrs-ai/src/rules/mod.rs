@@ -26,15 +26,10 @@ mod matrix;
 #[cfg(test)]
 mod oracle;
 
-#[cfg(feature = "llama")]
 pub use annotate::annotated_paths;
-#[cfg(feature = "llama")]
 pub use levels::{Level, Levels, Part};
-#[cfg(feature = "llama")]
 pub use parse::{parse_generate, parse_levels};
-#[cfg(feature = "llama")]
 pub use prompt::{prefix_text, ContextDocument, END_OF_TURN};
-#[cfg(feature = "llama")]
 pub use session::RuleRequest;
-#[cfg(feature = "llama")]
 pub use verify::{pattern_mismatches, Mismatch};
+pub use vocabulary::condition_meaning;
