@@ -264,35 +264,30 @@ mod tests {
 
         talk.type_text(DATE_FIRST);
 
-        let texts = talk.last_texts();
-        assert_eq!(texts.len(), 1, "{texts:?}");
-        let lines: Vec<&str> = texts[0].lines().collect();
+        assert!(talk.last_texts().is_empty(), "{:?}", talk.last_texts());
+        let moves = card(&talk).moves.as_ref().expect("the renames in the card");
         assert_eq!(
-            lines[0],
-            say(Msg::HermesChatLevelsPreview, &[("count", &count(4))])
+            moves.header,
+            say(Msg::HermesChatLevelsRenames, &[("count", &count(4))])
+        );
+        assert_eq!(moves.rows.len(), 3, "three examples: {:?}", moves.rows);
+        assert_eq!(
+            moves.rows[0].to,
+            "Gehalt/2023/2023-05-25_Gehaltsabrechnung.pdf"
         );
         assert_eq!(
-            lines[1],
+            moves.rows[0].before,
             say(
-                Msg::HermesChatRuleExample,
-                &[
-                    ("from", "Gehalt/2023/Gehaltsabrechnung_2023-05-25.pdf"),
-                    ("to", "Gehalt/2023/2023-05-25_Gehaltsabrechnung.pdf"),
-                ]
+                Msg::HermesChatLevelBefore,
+                &[("value", "Gehalt/2023/Gehaltsabrechnung_2023-05-25.pdf")]
             )
         );
-        assert_eq!(lines.len(), 5, "three examples and the rest: {lines:?}");
         assert_eq!(
-            lines[4],
-            say(Msg::HermesChatRuleExamplesMore, &[("count", &count(1))])
-        );
-        let fits = say(
-            Msg::HermesChatLevelsFit,
-            &[("fitting", &count(0)), ("total", &count(4))],
-        );
-        assert!(
-            !texts[0].contains(&fits),
-            "no error after an intended change"
+            moves.more,
+            Some(say(
+                Msg::HermesChatRuleExamplesMore,
+                &[("count", &count(1))]
+            ))
         );
         assert!(card(&talk).footer.is_none());
     }

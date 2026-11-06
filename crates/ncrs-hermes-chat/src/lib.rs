@@ -35,7 +35,7 @@ pub use message::Message;
 pub use rule_flow::{RuleAnswer, RuleAsk};
 pub use state::{
     AreaRow, AreasCard, Chip, ChipReply, CountRow, Entry, FileCard, FolderMention, LevelsCard,
-    NewLayout, Part, RowOutcome, State, Step, TrialCard, TrialRow,
+    NewLayout, Part, ProposalCard, RowOutcome, State, Step, TrialCard, TrialRow,
 };
 pub use update::update;
 pub use view::{focus_input, view, ViewCtx, INPUT_ID, SCROLL_ID};

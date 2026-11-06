@@ -373,6 +373,14 @@ impl Talk {
             .collect()
     }
 
+    /// The proposal card of the newest Hermes entry.
+    pub fn proposal(&self) -> Option<&ncrs_hermes_chat::ProposalCard> {
+        self.last_parts().iter().find_map(|part| match part {
+            Part::Proposal(card) => Some(card),
+            _ => None,
+        })
+    }
+
     /// "{date} {time}" of the last undoable run, as the undo question says it.
     pub fn last_run_when(&self) -> String {
         let guard = self.index.lock().unwrap();

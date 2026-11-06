@@ -354,8 +354,6 @@ mod tests {
                 // Only placeholders and a dot between them.
                 | Msg::HermesOverviewFlowFiledNote
                 | Msg::DeleteOne
-                // Only placeholders and an arrow between them.
-                | Msg::HermesChatRuleExample
                 // A sign and a number, nothing to translate.
                 | Msg::SearchMoreMatches
                 // Only placeholders, a comma and a dot between them.

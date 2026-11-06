@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use iced::Task;
 use ncrs_ai::{pattern_mismatches, ContextDocument, Level, Levels, Part as LevelPart};
 use ncrs_filing::chat_work::{ChatWork, FolderReading};
+use ncrs_filing::rules_work::TryFile;
 use ncrs_i18n::Msg;
 use ncrs_index::{Condition, ConditionKind, DocumentFields, Kinds, RuleConditions, RuleSpec};
 use ncrs_intake::{label_text, render_pattern_in, rule_problem, PlaceholderLabel};
@@ -58,6 +59,12 @@ pub struct RuleFlow {
     files: Vec<(String, DocumentFields)>,
     /// The rule the model made from a description; its levels can still change.
     candidate: Option<RuleSpec>,
+    /// The files as read from the disk, for a trial of files the index does
+    /// not know yet.
+    try_files: Vec<TryFile>,
+    /// The levels were found by the model: a trial that matches nothing
+    /// does not leave them.
+    from_levels: bool,
     /// The rule on screen, waiting for the click.
     proposed: Option<RuleSpec>,
     /// What the trial of the proposal would move.
@@ -77,6 +84,8 @@ impl RuleFlow {
             changing: false,
             files: Vec::new(),
             candidate: None,
+            try_files: Vec::new(),
+            from_levels: false,
             proposed: None,
             moves: RuleMoves::default(),
             kinds,
@@ -158,6 +167,18 @@ pub fn folder_read(state: &mut State, ctx: &Ctx, reading: &FolderReading) {
         .files
         .iter()
         .map(|file| (segments(&file.relative_path).join("/"), file.fields.clone()))
+        .collect();
+    flow.try_files = reading
+        .files
+        .iter()
+        .filter_map(|file| {
+            Some(TryFile {
+                path: reading.root.join(&file.relative_path),
+                hash: file.hash,
+                fields: file.fields.clone(),
+                text: file.text.clone()?,
+            })
+        })
         .collect();
     if reading.files.is_empty() {
         let sentence = fill(
@@ -258,6 +279,7 @@ pub fn answered(state: &mut State, ctx: &Ctx, answer: RuleAnswer) -> Option<Acti
             if let Some(flow) = state.session.rule.as_mut() {
                 flow.levels = levels.clone();
                 flow.found = levels;
+                flow.from_levels = true;
                 flow.changing = false;
             }
             show_levels_checked(state, ctx, true);
@@ -483,6 +505,7 @@ fn levels_card(
     LevelsCard {
         title: fill(ctx.lang, key, &[("count", &number(rows.len()))]),
         rows,
+        moves: None,
         footer,
     }
 }
@@ -686,6 +709,7 @@ fn ask_what(state: &mut State, ctx: &Ctx, lead: Option<String>) {
         return;
     }
     flow.proposed = None;
+    flow.from_levels = false;
     let kinds = flow.kinds.clone();
     let question = fill(
         ctx.lang,
@@ -720,7 +744,10 @@ pub fn described(state: &mut State, ctx: &Ctx, description: &str) {
 /// say what goes into the folder.
 pub fn typed(state: &mut State, ctx: &Ctx, typed: &str) {
     if state.step == Step::RuleLevels {
-        change::revise(state, ctx, typed);
+        match change::level_reference(typed) {
+            Some(level) => change::ask_level(state, ctx, level),
+            None => change::revise(state, ctx, typed),
+        }
     } else {
         ask_rule(state, ctx, typed);
     }
@@ -818,7 +845,8 @@ fn propose(state: &mut State, ctx: &Ctx, mut spec: RuleSpec) {
         return;
     }
     flow.proposed = Some(spec.clone());
-    work(state, ChatWork::RuleTrial { spec }, None);
+    let files = flow.try_files.clone();
+    work(state, ChatWork::RuleTrial { spec, files }, None);
 }
 
 mod trial;

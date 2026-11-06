@@ -4,6 +4,7 @@
 
 use ncrs_ai::{pattern_mismatches, Revision};
 use ncrs_i18n::Msg;
+use ncrs_ui_kit::hermes_kit::{MoveRow, MovesBlock};
 
 use super::{
     ask_model, levels_card, levels_kept, sample, show_levels_checked, with_extension_of, RuleAsk,
@@ -85,73 +86,158 @@ pub fn show_change(state: &mut State, ctx: &Ctx, hint: bool) {
     // The hint follows a card that is still on screen.
     let mut parts = Vec::new();
     if !hint {
-        parts.push(Part::Levels(levels_card(
-            ctx,
-            flow,
-            &kinds,
-            None,
-            Some(&flow.found),
-        )));
+        let mut card = levels_card(ctx, flow, &kinds, None, Some(&flow.found));
+        let mut nothing_moves = None;
         if changed {
-            parts.push(Part::Text(preview(ctx, flow)));
+            card.moves = preview(ctx, flow);
+            if card.moves.is_none() {
+                nothing_moves = Some(text(ctx.lang, Msg::HermesChatLevelsPreviewNone));
+            }
         }
+        parts.push(Part::Levels(card));
+        parts.extend(nothing_moves.map(Part::Text));
     }
     if hint {
         parts.push(Part::Text(text(ctx.lang, Msg::HermesChatLevelsChangeHint)));
     }
+    state.step = Step::RuleLevels;
+    hermes(state, parts, change_chips(ctx, changed));
+}
+
+/// The buttons of the change: done is always there.
+fn change_chips(ctx: &Ctx, changed: bool) -> Vec<Chip> {
     let done = chip(ctx, Msg::HermesChatLevelsDone, ChipReply::LevelsDone, false);
-    let chips: Vec<Chip> = if changed {
-        vec![
-            chip(
-                ctx,
-                Msg::HermesChatLevelsApply,
-                ChipReply::LevelsApply,
-                true,
-            ),
-            chip(ctx, Msg::HermesChatLevelsMore, ChipReply::LevelsMore, false),
-            chip(
-                ctx,
-                Msg::HermesChatLevelsDiscard,
-                ChipReply::LevelsDiscard,
-                false,
-            ),
-            done,
-        ]
-    } else {
-        vec![done]
+    if !changed {
+        return vec![done];
+    }
+    vec![
+        chip(
+            ctx,
+            Msg::HermesChatLevelsApply,
+            ChipReply::LevelsApply,
+            true,
+        ),
+        chip(ctx, Msg::HermesChatLevelsMore, ChipReply::LevelsMore, false),
+        chip(
+            ctx,
+            Msg::HermesChatLevelsDiscard,
+            ChipReply::LevelsDiscard,
+            false,
+        ),
+        done,
+    ]
+}
+
+/// The words that may stand around a level number: "level 3", "die 3".
+const LEVEL_WORDS: [&str; 9] = [
+    "die", "der", "the", "ebene", "level", "stufe", "nr", "nummer", "number",
+];
+
+/// A sentence that only names a level ("3", "Ebene 3", "level 3", "die 3"):
+/// no change yet, and never "done".
+pub fn level_reference(sentence: &str) -> Option<usize> {
+    let lowered = sentence.trim().to_lowercase();
+    let words: Vec<&str> = lowered
+        .trim_end_matches(['.', '!', '?'])
+        .split_whitespace()
+        .collect();
+    let (last, before) = words.split_last()?;
+    let level: usize = last.trim_start_matches('#').parse().ok()?;
+    (level > 0 && before.len() < 3 && before.iter().all(|word| LEVEL_WORDS.contains(word)))
+        .then_some(level)
+}
+
+/// The user named a level only: ask what should change on it, and stay in
+/// the change.
+pub fn ask_level(state: &mut State, ctx: &Ctx, level: usize) {
+    let Some(flow) = state.session.rule.as_mut() else {
+        return;
+    };
+    flow.changing = true;
+    let changed = is_changed(flow);
+    state.step = Step::RuleLevels;
+    hermes(
+        state,
+        vec![Part::Text(fill(
+            ctx.lang,
+            Msg::HermesChatLevelsAskLevel,
+            &[("level", &number(level))],
+        ))],
+        change_chips(ctx, changed),
+    );
+}
+
+/// The rule of the levels matches no file: the levels stay, the reason is
+/// said in words, and the change goes on.
+pub fn no_match(state: &mut State, ctx: &Ctx, known: Option<(usize, usize)>) {
+    let Some(flow) = state.session.rule.as_mut() else {
+        return;
+    };
+    flow.changing = true;
+    flow.proposed = None;
+    let folder = flow.folder.clone();
+    let changed = is_changed(flow);
+    let reason = match known {
+        Some((known_files, total)) => fill(
+            ctx.lang,
+            Msg::HermesChatLevelsNotIndexed,
+            &[
+                ("known", &number(known_files)),
+                ("total", &number(total)),
+                ("folder", &folder),
+            ],
+        ),
+        None => fill(
+            ctx.lang,
+            Msg::HermesChatLevelsNoMatch,
+            &[("folder", &folder)],
+        ),
     };
     state.step = Step::RuleLevels;
-    hermes(state, parts, chips);
+    hermes(state, vec![Part::Text(reason)], change_chips(ctx, changed));
+}
+
+/// One file of a list of moves: where it goes, and dim under it where it
+/// lies now.
+pub fn move_row(ctx: &Ctx, from: &str, to: String) -> MoveRow {
+    MoveRow {
+        to,
+        before: fill(ctx.lang, Msg::HermesChatLevelBefore, &[("value", from)]),
+    }
+}
+
+/// "… and N more" when more files move than the list shows.
+pub fn more_moves(ctx: &Ctx, hidden: usize) -> Option<String> {
+    (hidden > 0).then(|| {
+        fill(
+            ctx.lang,
+            Msg::HermesChatRuleExamplesMore,
+            &[("count", &number(hidden))],
+        )
+    })
 }
 
 /// What applying the levels does to the files the folder holds now: how many
-/// are renamed or moved, and a few of them as they were and as they would be.
-fn preview(ctx: &Ctx, flow: &RuleFlow) -> String {
+/// are renamed or moved, and a few of them as they would be and as they were.
+fn preview(ctx: &Ctx, flow: &RuleFlow) -> Option<MovesBlock> {
     let moving: Vec<_> = pattern_mismatches(&flow.pattern(), &flow.written_files(), &flow.kinds)
         .into_iter()
         .filter_map(|misfit| Some((misfit.file, misfit.written?)))
         .collect();
     if moving.is_empty() {
-        return text(ctx.lang, Msg::HermesChatLevelsPreviewNone);
+        return None;
     }
-    let mut lines = vec![fill(
-        ctx.lang,
-        Msg::HermesChatLevelsPreview,
-        &[("count", &number(moving.len()))],
-    )];
-    lines.extend(moving.iter().take(MISFITS_SHOWN).map(|(file, written)| {
-        fill(
+    Some(MovesBlock {
+        header: fill(
             ctx.lang,
-            Msg::HermesChatRuleExample,
-            &[("from", file), ("to", &with_extension_of(written, file))],
-        )
-    }));
-    if moving.len() > MISFITS_SHOWN {
-        lines.push(fill(
-            ctx.lang,
-            Msg::HermesChatRuleExamplesMore,
-            &[("count", &number(moving.len() - MISFITS_SHOWN))],
-        ));
-    }
-    lines.join("\n")
+            Msg::HermesChatLevelsRenames,
+            &[("count", &number(moving.len()))],
+        ),
+        rows: moving
+            .iter()
+            .take(MISFITS_SHOWN)
+            .map(|(file, written)| move_row(ctx, file, with_extension_of(written, file)))
+            .collect(),
+        more: more_moves(ctx, moving.len().saturating_sub(MISFITS_SHOWN)),
+    })
 }

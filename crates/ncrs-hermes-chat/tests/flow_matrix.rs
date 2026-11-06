@@ -31,6 +31,7 @@ use ncrs_ai::{
 use ncrs_hermes_chat::{ChipReply, LevelsCard, Message, Part};
 use ncrs_i18n::Msg;
 use ncrs_index::{DocumentFields, Kinds, RuleSpec};
+use ncrs_ui_kit::hermes_kit::MoveRow;
 
 const MODELS_DIR_VARIABLE: &str = "NCRS_AI_MODELS_DIR";
 const SENDER: &str = "Cosmicdrift GmbH";
@@ -340,30 +341,14 @@ const CHANGE_CHIPS: [Msg; 4] = [
     Msg::HermesChatLevelsDone,
 ];
 
-fn split_example(line: &str) -> (&str, &str) {
-    line.split_once(" → ")
-        .unwrap_or_else(|| panic!("not an example line: {line}"))
-}
-
-/// The line is "old → new" of one of `docs` written by `pattern`.
-fn check_example(line: &str, docs: &[&Doc], pattern: &str) {
-    let (from, to) = split_example(line);
+/// The row is "new path" over "before: old path" of one of `docs` written by
+/// `pattern`.
+fn check_example(row: &MoveRow, docs: &[&Doc], pattern: &str) {
     let doc = docs
         .iter()
-        .find(|doc| from.ends_with(&doc.in_area))
-        .unwrap_or_else(|| panic!("no document for {line}"));
-    assert!(to.ends_with(&render(pattern, doc.date)), "{line}");
-}
-
-fn first_lines(talk: &Talk, header: &str) -> Vec<String> {
-    talk.last_texts()
-        .iter()
-        .find(|text| text.starts_with(header))
-        .unwrap_or_else(|| panic!("no text with {header}: {:?}", talk.last_texts()))
-        .lines()
-        .skip(1)
-        .map(str::to_owned)
-        .collect()
+        .find(|doc| row.before.ends_with(&doc.in_area))
+        .unwrap_or_else(|| panic!("no document for {row:?}"));
+    assert!(row.to.ends_with(&render(pattern, doc.date)), "{row:?}");
 }
 
 /// After a change: the levels marked, what applying does to the archive's
@@ -379,31 +364,31 @@ fn check_change(talk: &Talk, docs: &[Doc], pattern: &str) {
         !joined.contains("passt bei") && !joined.contains(" soll "),
         "{joined}"
     );
-    let archive: Vec<&Doc> = docs.iter().filter(|doc| !doc.inbox).collect();
-    let moving: Vec<&Doc> = archive
+    let moving: Vec<&Doc> = docs
         .iter()
-        .copied()
-        .filter(|doc| render(pattern, doc.date) != doc.in_area)
+        .filter(|doc| !doc.inbox && render(pattern, doc.date) != doc.in_area)
         .collect();
-    let header = say(
-        Msg::HermesChatLevelsPreview,
-        &[("count", &count(moving.len()))],
+    let Some(block) = card.moves.as_ref() else {
+        assert!(moving.is_empty(), "no renames in the card: {joined}");
+        return;
+    };
+    assert_eq!(
+        block.header,
+        say(
+            Msg::HermesChatLevelsRenames,
+            &[("count", &count(moving.len()))]
+        )
     );
-    let lines = first_lines(talk, header.split(':').next().unwrap());
-    assert!(joined.contains(&header), "{joined}");
     let shown = moving.len().min(EXAMPLES_SHOWN);
+    assert_eq!(block.rows.len(), shown, "{:?}", block.rows);
+    for row in &block.rows {
+        check_example(row, &moving, pattern);
+    }
     let more = say(
         Msg::HermesChatRuleExamplesMore,
         &[("count", &count(moving.len() - shown))],
     );
-    let expected_lines = shown + usize::from(moving.len() > shown);
-    assert_eq!(lines.len(), expected_lines, "{lines:?}");
-    for line in &lines[..shown] {
-        check_example(line, &moving, pattern);
-    }
-    if moving.len() > shown {
-        assert_eq!(lines[shown], more);
-    }
+    assert_eq!(block.more, (moving.len() > shown).then_some(more));
 }
 
 /// The archive documents `pattern` writes to another path.
@@ -417,19 +402,20 @@ fn archive_moves<'a>(docs: &'a [Doc], pattern: &str) -> Vec<&'a Doc> {
 /// button to create the rule. The archive renames are the ones the change
 /// preview announced.
 fn check_trial(talk: &Talk, docs: &[Doc], pattern: &str) {
-    let texts = talk.last_texts();
     let inbox: Vec<&Doc> = docs.iter().filter(|doc| doc.inbox).collect();
     let in_archive = docs.len() - inbox.len();
     let renamed = archive_moves(docs, pattern);
     let moves = inbox.len() + renamed.len();
+    let card = talk.proposal().expect("the proposal card");
     assert!(
-        texts[0].contains(&format!("{} ", count(docs.len()))),
-        "matches: {texts:?}"
+        card.facts.iter().any(|fact| fact.value
+            == say(
+                Msg::HermesChatProposalMatches,
+                &[("count", &count(docs.len()))]
+            )),
+        "matches: {:?}",
+        card.facts
     );
-    let lines: Vec<&str> = texts
-        .get(1)
-        .map(|text| text.lines().collect())
-        .unwrap_or_default();
     let shown = moves.min(EXAMPLES_SHOWN);
     let more = say(
         Msg::HermesChatRuleExamplesMore,
@@ -443,18 +429,23 @@ fn check_trial(talk: &Talk, docs: &[Doc], pattern: &str) {
             ("inbox", &count(inbox.len())),
         ],
     );
-    let wanted_lines = shown + usize::from(moves > shown) + 1;
-    assert_eq!(lines.len(), wanted_lines, "{texts:?}");
+    let rows = card
+        .moves
+        .as_ref()
+        .map(|block| block.rows.as_slice())
+        .unwrap_or_default();
+    assert_eq!(rows.len(), shown, "{rows:?}");
     let sources: Vec<&Doc> = inbox
         .iter()
         .copied()
         .chain(renamed.iter().copied())
         .collect();
-    for (line, doc) in lines.iter().zip(&sources).take(shown) {
-        check_example(line, &[doc], pattern);
+    for (row, doc) in rows.iter().zip(&sources) {
+        check_example(row, &[doc], pattern);
     }
-    assert_eq!(lines.contains(&more.as_str()), moves > shown, "{lines:?}");
-    assert_eq!(lines.last().copied(), Some(counts.as_str()), "{lines:?}");
+    let shown_more = card.moves.as_ref().and_then(|block| block.more.clone());
+    assert_eq!(shown_more, (moves > shown).then_some(more));
+    assert_eq!(card.counts, Some(counts));
     assert!(
         talk.state
             .chips()
@@ -486,10 +477,13 @@ fn create_and_check(talk: &mut Talk, docs: &[Doc], pattern: &str) {
         talk.labels()
     );
     talk.press(&ChipReply::RuleNow);
-    talk.press(&ChipReply::Folder(talk.path("archive")));
-    talk.press(&ChipReply::Once);
-    talk.press(&ChipReply::ModeMove);
-    talk.press(&ChipReply::FileAll);
+    // With nothing waiting in the inbox, the archive renames run at once.
+    if docs.iter().any(|doc| doc.inbox) {
+        talk.press(&ChipReply::Folder(talk.path("archive")));
+        talk.press(&ChipReply::Once);
+        talk.press(&ChipReply::ModeMove);
+        talk.press(&ChipReply::FileAll);
+    }
     let filed = talk.files();
     for doc in docs {
         let old = if doc.inbox {
@@ -651,10 +645,15 @@ fn standard(model: &Arc<CachedModel>, english: bool) {
         "{joined}"
     );
     talk.press(&ChipReply::LevelsApply);
-    let texts = talk.last_texts();
+    let card = talk.proposal().expect("the proposal card");
     assert!(
-        texts[0].contains(&format!("{} ", count(docs.len()))),
-        "{texts:?}"
+        card.facts.iter().any(|fact| fact.value
+            == say(
+                Msg::HermesChatProposalMatches,
+                &[("count", &count(docs.len()))]
+            )),
+        "{:?}",
+        card.facts
     );
     talk.press(&ChipReply::RuleCreate);
     assert_eq!(
@@ -719,6 +718,100 @@ fn change_then_change_more(model: &Arc<CachedModel>, english: bool) {
     create_and_check(&mut talk, &docs, pattern);
 }
 
+/// How much of Marc's two pay slips the index knows.
+#[derive(Debug, Clone, Copy)]
+enum Indexed {
+    Both,
+    First,
+    Neither,
+}
+
+const MARC_SLIPS: [(&str, u32, u32, u32); 2] = [
+    ("Gehalt/2023/Gehaltsabrechnung_2023-05-25.pdf", 2023, 5, 25),
+    ("Gehalt/2024/Gehaltsabrechnung_2024-12-25.pdf", 2024, 12, 25),
+];
+
+/// An Arbeit folder with two pay slips only, as in the app of the report; the
+/// index knows `indexed` of them, the others lie on the disk alone.
+fn marc_fixture(model: &Arc<CachedModel>, indexed: Indexed) -> (Talk, Vec<Doc>) {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("archive")).unwrap();
+    let talk = Talk::in_dir(dir, &["archive"], &["inbox"])
+        .with_real_model(Arc::clone(model) as Arc<dyn ChatModel>)
+        .with_rules();
+    let mut docs = Vec::new();
+    for (position, (in_area, year, month, day)) in MARC_SLIPS.into_iter().enumerate() {
+        let date = NaiveDate::from_ymd_opt(year as i32, month, day).unwrap();
+        let relative = format!("archive/Arbeit/{in_area}");
+        let text = common::letter(
+            SENDER,
+            &date.format("%d.%m.%Y").to_string(),
+            "Gehaltsabrechnung",
+            position as u32 + 1,
+        );
+        let known = match indexed {
+            Indexed::Both => true,
+            Indexed::First => position == 0,
+            Indexed::Neither => false,
+        };
+        if known {
+            let id = talk.index_document(&relative, &text);
+            talk.set_fields(
+                id,
+                &DocumentFields {
+                    sender: Some(SENDER.to_owned()),
+                    date: Some(date),
+                    ..DocumentFields::default()
+                },
+            );
+        } else {
+            talk.write(&relative, &text);
+        }
+        docs.push(Doc {
+            in_area: in_area.to_owned(),
+            date,
+            inbox: false,
+        });
+    }
+    (talk, docs)
+}
+
+const BARE_LEVEL: &str = "3";
+const DATE_FIRST_AT_3: (&str, &str) = (
+    "mach bei 3 das datum vorne hin",
+    "put the date first in level 3",
+);
+
+/// The path of the report: the archive opened, the area picked, "Change",
+/// a bare "3", then the sentence; the trial counts the files the preview
+/// listed whatever the index knows.
+fn marc_path(model: &Arc<CachedModel>, english: bool, indexed: Indexed) {
+    let (mut talk, docs) = marc_fixture(model, indexed);
+    talk.send(Message::Open);
+    let archive_root = talk.path("archive").display().to_string();
+    talk.type_text(&if english {
+        format!("open {archive_root}")
+    } else {
+        format!("öffne {archive_root}")
+    });
+    talk.press(&ChipReply::Folder(talk.path("archive/Arbeit")));
+    check_levels(levels_card(&talk), &FOUND);
+    expect_chips(&talk, &FOUND_CHIPS);
+    talk.press(&ChipReply::LevelsChange);
+    talk.type_text(BARE_LEVEL);
+    assert_eq!(
+        talk.last_texts(),
+        vec![say(Msg::HermesChatLevelsAskLevel, &[("level", "3")])]
+    );
+    expect_chips(&talk, &[Msg::HermesChatLevelsDone]);
+    talk.type_text(pick(english, DATE_FIRST_AT_3));
+    let pattern = "Gehalt/{year}/{date}_Gehaltsabrechnung";
+    check_change(&talk, &docs, pattern);
+    talk.press(&ChipReply::LevelsApply);
+    check_trial(&talk, &docs, pattern);
+    create_and_check(&mut talk, &docs, pattern);
+}
+
 fn message_of(panic: &(dyn std::any::Any + Send)) -> String {
     panic
         .downcast_ref::<String>()
@@ -749,7 +842,16 @@ fn with_model_level_change_matrix() {
             Box::new(move |model, english| change_then_apply(model, &change, english)),
         ));
     }
-    let paths: [(&str, fn(&Arc<CachedModel>, bool)); 8] = [
+    let paths: [(&str, fn(&Arc<CachedModel>, bool)); 11] = [
+        ("report path, index knows both", |model, english| {
+            marc_path(model, english, Indexed::Both);
+        }),
+        ("report path, index knows one", |model, english| {
+            marc_path(model, english, Indexed::First);
+        }),
+        ("report path, index knows none", |model, english| {
+            marc_path(model, english, Indexed::Neither);
+        }),
         ("looks right", looks_right),
         ("use the standard", standard),
         ("change, done at once", fertig_at_once),

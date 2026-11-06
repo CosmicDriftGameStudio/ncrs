@@ -173,10 +173,115 @@ pub struct LevelRow {
     pub before: Option<String>,
 }
 
+/// One file a change would rename or move: where it goes, and under it,
+/// dim, where it lies now.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MoveRow {
+    pub to: String,
+    /// Worded by the caller ("before: ...").
+    pub before: String,
+}
+
+/// A section of a card listing the files a change would rename or move.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MovesBlock {
+    pub header: String,
+    pub rows: Vec<MoveRow>,
+    /// "… and 4 more" under the rows.
+    pub more: Option<String>,
+}
+
+/// A label with its value, a row of the proposal card.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FactRow {
+    pub label: String,
+    pub value: String,
+}
+
+fn moves_section<'a, M: 'a>(
+    mut column: Column<'a, M>,
+    moves: &MovesBlock,
+    palette: &Palette,
+) -> Column<'a, M> {
+    column = column.push(card_text(
+        &moves.header,
+        palette.dim_text,
+        Wrapping::Word,
+        true,
+    ));
+    for row in &moves.rows {
+        column = column.push(
+            Column::new()
+                .push(card_text(
+                    &row.to,
+                    palette.text,
+                    Wrapping::WordOrGlyph,
+                    false,
+                ))
+                .push(card_text(
+                    &row.before,
+                    palette.dim_text,
+                    Wrapping::WordOrGlyph,
+                    false,
+                )),
+        );
+    }
+    if let Some(rest) = &moves.more {
+        column = column.push(card_text(rest, palette.dim_text, Wrapping::Word, false));
+    }
+    column
+}
+
+/// A rule proposal: what it applies to and where it files, the files it
+/// would rename or move, and the counts.
+pub fn proposal_card<'a, M: 'a>(
+    title: &str,
+    facts: &[FactRow],
+    moves: Option<&MovesBlock>,
+    counts: Option<&str>,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let mut column = Column::new()
+        .push(card_text(title, palette.text, Wrapping::Word, true))
+        .spacing(GAP_S);
+    for fact in facts {
+        column = column.push(
+            Row::new()
+                .push(
+                    container(card_text(
+                        &fact.label,
+                        palette.dim_text,
+                        Wrapping::Word,
+                        false,
+                    ))
+                    .width(Length::FillPortion(2)),
+                )
+                .push(
+                    container(card_text(
+                        &fact.value,
+                        palette.text,
+                        Wrapping::WordOrGlyph,
+                        false,
+                    ))
+                    .width(Length::FillPortion(5)),
+                )
+                .spacing(GAP_M),
+        );
+    }
+    if let Some(block) = moves {
+        column = moves_section(column, block, palette);
+    }
+    if let Some(line) = counts {
+        column = column.push(card_text(line, palette.dim_text, Wrapping::Word, false));
+    }
+    card(column.into(), palette)
+}
+
 /// The levels of a pattern, one row each, under a title and above a footer.
 pub fn levels_card<'a, M: 'a>(
     title: &str,
     levels: &[LevelRow],
+    moves: Option<&MovesBlock>,
     footer: Option<&str>,
     palette: &Palette,
 ) -> Element<'a, M> {
@@ -218,6 +323,9 @@ pub fn levels_card<'a, M: 'a>(
                 )
                 .spacing(GAP_M),
         );
+    }
+    if let Some(block) = moves {
+        column = moves_section(column, block, palette);
     }
     if let Some(line) = footer {
         column = column.push(card_text(line, palette.dim_text, Wrapping::Word, false));

@@ -5,14 +5,16 @@ use ncrs_filing::rules_work::TryOutcome;
 use ncrs_i18n::Msg;
 use ncrs_index::{Combinator, Condition, Kinds, RuleSpec};
 use ncrs_intake::filing_pieces::FilingTarget;
+use ncrs_ui_kit::hermes_kit::{FactRow, MoveRow, MovesBlock};
 use ncrs_ui_kit::kit::condition_kind_name;
 
 use std::path::PathBuf;
 
 use super::ask_what;
+use super::change::{more_moves, move_row};
 use crate::action::Action;
 use crate::ctx::Ctx;
-use crate::state::{ChipReply, Part, RuleMoves, State, Step};
+use crate::state::{ChipReply, Part, ProposalCard, RuleMoves, State, Step};
 use crate::texts::{fill, number, rule_problem_text, segments, text};
 use crate::tidy::archive_run;
 use crate::update::{
@@ -54,19 +56,19 @@ fn condition_words(ctx: &Ctx, spec: &RuleSpec, kinds: &Kinds) -> String {
     fill(ctx.lang, msg, &[("list", &items.join(", "))])
 }
 
-fn example_line(ctx: &Ctx, document: &ncrs_filing::rules_work::TriedDocument) -> String {
+fn fact(ctx: &Ctx, label: Msg, value: String) -> FactRow {
+    FactRow {
+        label: text(ctx.lang, label),
+        value,
+    }
+}
+
+fn example_row(ctx: &Ctx, document: &ncrs_filing::rules_work::TriedDocument) -> MoveRow {
     let after = match &document.after {
         TryOutcome::Filed(path) | TryOutcome::Lies(path) => segments(path).join("/"),
         TryOutcome::Review(_) => text(ctx.lang, Msg::HermesChatRuleExampleReview),
     };
-    fill(
-        ctx.lang,
-        Msg::HermesChatRuleExample,
-        &[
-            ("from", &segments(&document.path).join("/")),
-            ("to", &after),
-        ],
-    )
+    move_row(ctx, &segments(&document.path).join("/"), after)
 }
 
 pub fn trial_done(state: &mut State, ctx: &Ctx, tried: Result<RuleTrial, String>) {
@@ -88,6 +90,13 @@ pub fn trial_done(state: &mut State, ctx: &Ctx, tried: Result<RuleTrial, String>
         return;
     };
     if trial.matches == 0 {
+        if flow.from_levels {
+            let total = flow.files.len();
+            let known =
+                (trial.not_indexed > 0).then(|| (total.saturating_sub(trial.not_indexed), total));
+            super::change::no_match(state, ctx, known);
+            return;
+        }
         ask_what(
             state,
             ctx,
@@ -96,61 +105,73 @@ pub fn trial_done(state: &mut State, ctx: &Ctx, tried: Result<RuleTrial, String>
         return;
     }
     let kinds = flow.kinds.clone();
-    let moves = trial.from_inbox + trial.archive_moves.len();
+    let moved = trial.from_inbox + trial.archive_moves.len();
     flow.moves = RuleMoves {
         from_inbox: trial.from_inbox,
         archive: trial.archive_moves.clone(),
     };
-    let sentence = fill(
-        ctx.lang,
-        Msg::HermesChatRuleProposal,
-        &[
-            ("count", &number(trial.matches)),
-            ("conditions", &condition_words(ctx, &spec, &kinds)),
-            (
-                "pattern",
-                &FilingTarget::parse(&flow.pattern()).in_words(ctx.lang),
-            ),
-        ],
-    );
-    let mut parts = vec![Part::Text(sentence)];
-    let mut lines: Vec<String> = trial
-        .examples
-        .iter()
-        .map(|document| example_line(ctx, document))
-        .chain(trial.archive_moves.iter().map(|found| {
+    let pattern = FilingTarget::parse(&flow.pattern());
+    let facts = vec![
+        fact(
+            ctx,
+            Msg::HermesChatProposalAppliesTo,
+            condition_words(ctx, &spec, &kinds),
+        ),
+        fact(
+            ctx,
+            Msg::HermesChatProposalFiling,
+            pattern.folders_in_words(ctx.lang),
+        ),
+        fact(
+            ctx,
+            Msg::HermesChatProposalFileName,
+            pattern.file_name_in_words(ctx.lang),
+        ),
+        fact(
+            ctx,
+            Msg::HermesChatProposalMatchesLabel,
             fill(
                 ctx.lang,
-                Msg::HermesChatRuleExample,
-                &[
-                    ("from", &segments(&found.from).join("/")),
-                    ("to", &segments(&found.to).join("/")),
-                ],
+                Msg::HermesChatProposalMatches,
+                &[("count", &number(trial.matches))],
+            ),
+        ),
+    ];
+    let rows: Vec<MoveRow> = trial
+        .examples
+        .iter()
+        .map(|document| example_row(ctx, document))
+        .chain(trial.archive_moves.iter().map(|found| {
+            move_row(
+                ctx,
+                &segments(&found.from).join("/"),
+                segments(&found.to).join("/"),
             )
         }))
         .take(RULE_TRIAL_EXAMPLES)
         .collect();
-    if moves > lines.len() {
-        lines.push(fill(
-            ctx.lang,
-            Msg::HermesChatRuleExamplesMore,
-            &[("count", &number(moves - lines.len()))],
-        ));
-    }
-    if trial.right > 0 || !trial.archive_moves.is_empty() {
-        lines.push(fill(
+    let moves = (!rows.is_empty()).then(|| MovesBlock {
+        header: text(ctx.lang, Msg::HermesChatProposalExamples),
+        more: more_moves(ctx, moved.saturating_sub(rows.len())),
+        rows,
+    });
+    let counts = (trial.right > 0 || !trial.archive_moves.is_empty()).then(|| {
+        fill(
             ctx.lang,
             Msg::HermesChatRuleTrialCounts,
             &[
                 ("right", &number(trial.right)),
-                ("moves", &number(moves)),
+                ("moves", &number(moved)),
                 ("inbox", &number(trial.from_inbox)),
             ],
-        ));
-    }
-    if !lines.is_empty() {
-        parts.push(Part::Text(lines.join("\n")));
-    }
+        )
+    });
+    let parts = vec![Part::Proposal(ProposalCard {
+        title: text(ctx.lang, Msg::HermesChatProposalTitle),
+        facts,
+        moves,
+        counts,
+    })];
     let change = if flow.candidate.is_some() {
         ChipReply::LevelsChange
     } else {
