@@ -93,3 +93,25 @@ fn a_change_during_a_read_reloads_after_it() {
     );
     assert!(app.panels.left.loading);
 }
+
+/// In a folder longer than the window, the rows in view stay where they were.
+#[test]
+fn a_change_on_disk_keeps_the_scroll_position_of_a_long_folder() {
+    let scratch = tempfile::tempdir().expect("a scratch directory");
+    let folder = scratch.path().to_path_buf();
+    let names: Vec<String> = (0..200).map(|n| format!("f{n:03}")).collect();
+    let all: Vec<&str> = names.iter().map(String::as_str).collect();
+    let mut app = app_showing(&folder, &all);
+    app.panels.left.selected = 150;
+    app.panels.left.scroll_offset = 140;
+
+    let _ = app.update(Message::Panel(PanelMessage::FolderChangedOnDisk(
+        PanelSide::Left,
+    )));
+    let without_f010: Vec<&str> = all.iter().copied().filter(|name| *name != "f010").collect();
+    loaded(&mut app, &folder, &without_f010);
+
+    let panel = &app.panels.left;
+    assert_eq!(panel.entries[panel.selected].name, "f150");
+    assert_eq!(panel.scroll_offset, 140);
+}

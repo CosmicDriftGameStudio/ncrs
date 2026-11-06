@@ -4,7 +4,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use futures::Stream;
-use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher as _};
 use tokio::sync::mpsc;
 use tokio::time::{timeout_at, Instant};
 
@@ -25,10 +25,11 @@ impl FolderWatch {
     /// is no polling instead, the manual reload remains.
     fn start(folder: &Path) -> Option<Self> {
         let (sender, raw) = mpsc::unbounded_channel();
-        let mut watcher = notify::recommended_watcher(move |event: notify::Result<Event>| {
+        let mut watcher = notify::recommended_watcher(move |received: notify::Result<Event>| {
             // Reading the folder is no change. An error means events may have
             // been lost, so it counts as one.
-            let is_change = event.map_or(true, |event| !matches!(event.kind, EventKind::Access(_)));
+            let is_change =
+                received.map_or(true, |event| !matches!(event.kind, EventKind::Access(_)));
             if is_change {
                 // The receiver is gone once the watch is dropped.
                 let _ = sender.send(());
@@ -59,8 +60,8 @@ impl FolderWatch {
 /// One item per change in `folder` (not its subfolders), after the burst of
 /// events has settled. Ends at once when the folder cannot be watched.
 pub fn folder_changes(folder: &Path) -> impl Stream<Item = ()> + Send + 'static {
-    futures::stream::unfold(FolderWatch::start(folder), |watch| async move {
-        let mut watch = watch?;
+    futures::stream::unfold(FolderWatch::start(folder), |started| async move {
+        let mut watch = started?;
         watch.next_change().await?;
         Some(((), Some(watch)))
     })
@@ -75,7 +76,7 @@ pub fn folder_changes(folder: &Path) -> impl Stream<Item = ()> + Send + 'static 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use futures::StreamExt;
+    use futures::StreamExt as _;
 
     const GENEROUS: Duration = Duration::from_secs(10);
 
@@ -102,7 +103,10 @@ mod tests {
         let mut changes = Box::pin(folder_changes(root.path()));
 
         std::fs::write(root.path().join("a"), b"x").unwrap();
-        assert!(tokio::time::timeout(GENEROUS, changes.next()).await.is_ok());
+        assert!(matches!(
+            tokio::time::timeout(GENEROUS, changes.next()).await,
+            Ok(Some(()))
+        ));
 
         std::fs::remove_file(root.path().join("a")).unwrap();
         assert!(matches!(
