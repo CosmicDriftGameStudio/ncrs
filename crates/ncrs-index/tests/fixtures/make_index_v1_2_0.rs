@@ -1,9 +1,8 @@
 //! Writes `index-v1.2.0.db`, an encrypted index as release v1.2.0 makes it.
 //!
 //! Not compiled by cargo in the main repository. Run in an extract of the
-//! commit that becomes the tag v1.2.0. The tag does not exist yet; until then
-//! use the base of the release preparation branch (50f5735). Write the file
-//! again when a migration is added before the tag.
+//! commit that becomes the tag v1.2.0 (HEAD of the release branch, the tag is
+//! made from it). Write the file again when a migration is added before the tag.
 //!
 //! ```text
 //! git archive "<v1.2.0 commit>" | tar -x -C <dir>
@@ -12,7 +11,7 @@
 //! ```
 //!
 //! The key is the fixed test key bytes 0x00..0x1f, which the tests put in an
-//! `InMemoryKeyStore`. Every table and column the steps 010 to 021 add holds a
+//! `InMemoryKeyStore`. Every table and column the steps 010 to 025 add holds a
 //! value that is not its default.
 
 use std::collections::BTreeSet;
@@ -20,10 +19,10 @@ use std::path::{Path, PathBuf};
 
 use chrono::{NaiveDate, TimeZone as _, Utc};
 use ncrs_index::{
-    Amount, Condition, ConditionKind, ContentHash, Currency, DocumentFields, DocumentSource,
-    DocumentStatus, Field, FieldOrigin, InMemoryKeyStore, Index, NewDocument, QuerySpec,
-    ReviewReason, RuleConditions, RuleEvidence, RuleOrigin, RuleSpec, SenderAliasKind,
-    SubtreePattern,
+    Amount, BatchKind, Condition, ConditionKind, ContentHash, Currency, DocumentFields,
+    DocumentSource, DocumentStatus, Field, FieldOrigin, InMemoryKeyStore, Index, NewDocument,
+    QuerySpec, ReviewReason, RuleConditions, RuleEvidence, RuleOrigin, RuleSpec, SenderAliasKind,
+    SourceRoot, SubtreePattern, Transfer,
 };
 
 fn tags(names: &[&str]) -> BTreeSet<String> {
@@ -152,6 +151,19 @@ fn main() {
     };
     assert!(index.discard_rule_suggestion(dropped_id).unwrap());
     index.move_rule(identifiers, 0).unwrap();
+    index
+        .create_rule_from(
+            &RuleSpec {
+                name: Some("From the chat".to_owned()),
+                ..rule(
+                    RuleConditions::all_of(vec![Condition::new(ConditionKind::Word, "Vertrag")]),
+                    Some("Contract"),
+                    "{year}/{kind}/",
+                )
+            },
+            RuleOrigin::Chat,
+        )
+        .unwrap();
 
     // Documents: every field origin variant, the recipient, own and automatic tags.
     let invoice = index
@@ -197,6 +209,8 @@ fn main() {
     index
         .set_document_status(invoice, DocumentStatus::Filed)
         .unwrap();
+    index.set_fields_read_version(invoice, 3).unwrap();
+    index.set_ai_read_version(invoice, 2).unwrap();
 
     let receipt = index
         .insert_document(&document(2, "inbox/scan-2.pdf", DocumentSource::Inbox, 16))
@@ -237,6 +251,8 @@ fn main() {
     index
         .add_review(notice, ReviewReason::LowConfidence(Field::Kind))
         .unwrap();
+    // 1 is the AI state from before versions.
+    index.set_ai_read_version(notice, 1).unwrap();
 
     index
         .replace_location_profile(
@@ -302,4 +318,31 @@ fn main() {
 
     index.set_file_list_tag("services", Some(true)).unwrap();
     index.set_file_list_tag("project-x", Some(false)).unwrap();
+
+    // Named runs the chat started: one copies between two folders, one trashes.
+    let copy_run = index
+        .begin_named_batch(BatchKind::Hermes, "Copy contracts", Transfer::Copy)
+        .unwrap();
+    index
+        .set_batch_source_root(
+            copy_run,
+            &SourceRoot {
+                given: PathBuf::from("inbox"),
+                resolved: PathBuf::from("/data/inbox"),
+            },
+        )
+        .unwrap();
+    index
+        .set_batch_target_root(
+            copy_run,
+            &SourceRoot {
+                given: PathBuf::from("archive/2026"),
+                resolved: PathBuf::from("/data/archive/2026"),
+            },
+        )
+        .unwrap();
+    index.finish_batch(copy_run).unwrap();
+    index
+        .begin_named_batch(BatchKind::Hermes, "Clear out drafts", Transfer::Trash)
+        .unwrap();
 }

@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-11-06
+
 ### Added
 
 - The right-click menu of a file list has "Add to favourites" (the folder under
@@ -81,13 +83,60 @@ All notable changes to this project are documented here. The format follows
   are not opened again. Results arrive even if the chat was closed meanwhile.
 - Every Hermes answer ends with buttons, also after an error, an undo or a
   cancel. A folder that is not there (ejected drive) says so and offers
-  another one. "Insurance by sender" or "Bank by month" show a preview for
-  the whole area; a new order for the whole folder is named as something
-  Hermes cannot do yet.
+  another one. A sentence that describes an order ("insurance by year") makes
+  a rule proposal for that area.
 - Scanned pages are cut to their content and enlarged before text
   recognition, so a letter scanned small on a large page is read correctly.
 - The AI reads the fields of every indexed document once, new arrivals first,
   and the chat says how many documents it has understood so far.
+- Hermes makes filing rules in the chat. Open a folder of your archive and
+  Hermes shows how it is ordered as levels: fixed words, the year, the date,
+  the sender, the kind and the file name. Change a level in a sentence ("year
+  and month together in level 2", "date first in the file name"); the card
+  shows each changed level beside what it was and which files would be
+  renamed.
+- Before a rule is saved, a card shows what it applies to and why (for
+  example the sender, because all files share it), where it files, the file
+  name, which read folders it takes documents from, how many documents it
+  hits with examples, and a dry run that counts the files already in place
+  and the files that would move. The condition can be changed in a sentence.
+- A saved chat rule is named after its fixed folder words and files new
+  documents from the read folders. Opening a folder that already has a rule
+  changes that rule instead of adding a second one. Settings › Rules shows
+  "created in chat". After saving, Hermes asks separately whether to move the
+  existing files now: they are renamed on disk, the index and the search
+  follow, folders the run empties are removed, and undo brings everything
+  back.
+- "New chat" in the chat header starts the conversation over; rules, index and
+  settings stay.
+- `ncrs --data-dir <folder>` keeps config, index, state and journal in that
+  folder, with the index key as a file there instead of the keychain, for
+  test runs. The status bar names the folder.
+- "Open terminal here" in the command list, the File menu and the context
+  menu starts a terminal in the folder. Settings › Programs chooses it:
+  Automatic takes the first terminal found, a command of your own gets the
+  folder as `{path}`. Windows Terminal opens in the folder.
+- The menus have sections, submenus (Bookmarks, Places, Hermes) and check
+  items for settings that switch on and off.
+- A local panel reloads when its folder changes on disk and keeps cursor,
+  selection, sort and scroll position. Archives, servers and hit lists keep
+  the manual reload.
+- Rename in place: `Shift`+`F6`, the context menu or the command list turn the
+  name under the cursor into an input with the name without its extension
+  selected. `Enter` renames, `Esc` cancels. On servers the file is renamed on
+  the server, and the index follows the new name.
+- The search finds files and folders by name (patterns like `*.pdf`, several
+  separated by `;`, or part of the name). "Search in files" adds the text
+  search; then a file must match both.
+- A line under each panel counts the files and folders it shows, their size,
+  and the selection.
+- A Monitor page (`F12`) shows CPU, memory, swap and load, network, drives,
+  sensors and a sortable task list. A task can be ended after a confirmation,
+  its command line copied, its program's folder opened. Settings can put a
+  short readout at the right end of the status bar.
+- Development builds show the commit after the version in the status bar.
+- The Settings sidebar groups its pages under headings. An installed AI model
+  that is switched off offers "Turn on AI" in place.
 
 ### Removed
 
@@ -141,7 +190,7 @@ All notable changes to this project are documented here. The format follows
   A `copy = "F2"` of your own keeps working.
 - The built-in AI model is now Qwen3 4B (about 2.5 GB, one download) instead
   of Qwen3 0.6B. It also reads the fields of documents.
-- The index schema is now 23; the index is migrated on the first start and
+- The index schema is now 25; the index is migrated on the first start and
   keeps its documents.
 - English and German show plain names only ("Filing", "Review", "Status and
   errors", load "Gentle", "Balanced", "Full"). The Futurama names appear only

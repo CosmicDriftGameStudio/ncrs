@@ -1727,7 +1727,7 @@ mod tests {
     }
 
     const FIXTURE_V0_6_0_VERSION: u32 = 9;
-    const FIXTURE_V1_2_0_VERSION: u32 = 21;
+    const FIXTURE_V1_2_0_VERSION: u32 = 25;
 
     fn latest_version() -> u32 {
         u32::try_from(MIGRATIONS.len()).unwrap()
@@ -1918,6 +1918,45 @@ mod tests {
         let (receipt, notice) = assert_v1_2_0_inbox_documents(index, invoice);
         assert_v1_2_0_rules(index);
         assert_v1_2_0_aliases_reviews_queries_and_tags(index, receipt, notice);
+        assert_v1_2_0_reading_versions(index, invoice, notice);
+        assert_v1_2_0_hermes_runs(index);
+    }
+
+    fn assert_v1_2_0_reading_versions(index: &Index, invoice: DocumentId, notice: DocumentId) {
+        assert_eq!(index.fields_read_version(invoice).unwrap(), 3);
+        assert_eq!(index.ai_read_version(invoice).unwrap(), 2);
+        assert_eq!(index.fields_read_version(notice).unwrap(), 0);
+        assert_eq!(index.ai_read_version(notice).unwrap(), 1);
+    }
+
+    fn assert_v1_2_0_hermes_runs(index: &Index) {
+        use crate::journal::{BatchKind, SourceRoot, Transfer};
+        use crate::model::BatchId;
+
+        let copy = index.batch_info(BatchId::new(1)).unwrap().unwrap();
+        assert_eq!(copy.kind, BatchKind::Hermes);
+        assert_eq!(copy.name.as_deref(), Some("Copy contracts"));
+        assert_eq!(copy.transfer, Transfer::Copy);
+        assert!(copy.finished_at.is_some() && copy.undone_at.is_none());
+        assert_eq!(
+            copy.source_root,
+            Some(SourceRoot {
+                given: PathBuf::from("inbox"),
+                resolved: PathBuf::from("/data/inbox"),
+            })
+        );
+        assert_eq!(
+            copy.target_root,
+            Some(SourceRoot {
+                given: PathBuf::from("archive/2026"),
+                resolved: PathBuf::from("/data/archive/2026"),
+            })
+        );
+        let trash = index.batch_info(BatchId::new(2)).unwrap().unwrap();
+        assert_eq!(trash.kind, BatchKind::Hermes);
+        assert_eq!(trash.name.as_deref(), Some("Clear out drafts"));
+        assert_eq!(trash.transfer, Transfer::Trash);
+        assert_eq!((trash.source_root, trash.target_root), (None, None));
     }
 
     fn assert_v1_2_0_invoice(index: &Index) -> DocumentId {
@@ -2023,7 +2062,10 @@ mod tests {
     fn assert_v1_2_0_rules(index: &Index) {
         let rules = index.rules().unwrap();
         let ids: Vec<(i64, i64)> = rules.iter().map(|r| (r.id.get(), r.position)).collect();
-        assert_eq!(ids, [(4, 1), (1, 2), (2, 3), (3, 4)]);
+        assert_eq!(ids[..4], [(4, 1), (1, 2), (2, 3), (3, 4)]);
+        assert_eq!(rules.len(), 5);
+        assert_eq!(rules[4].origin, crate::model::RuleOrigin::Chat);
+        assert_eq!(rules[4].spec.name.as_deref(), Some("From the chat"));
         assert_v1_2_0_rule_with_identifiers(&rules[0]);
         assert_v1_2_0_hosting_rule(index, &rules[1]);
         assert_v1_2_0_inbox_rule(&rules[2]);

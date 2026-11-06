@@ -219,7 +219,7 @@ The defaults. Most of them can be changed in the keyboard shortcuts dialog (`Cmd
 | `Option`+`Cmd`+`C` / `Ctrl`+`Alt`+`C` | Copy the path of the tagged rows (else the cursor row) to the clipboard |
 | `Ctrl`+`Cmd`+`C` / `Ctrl`+`Shift`+`C` | Copy the name of the tagged rows (else the cursor row) to the clipboard |
 | Click the path in the status bar | Edit the path (`Enter` goes there, `~` is home, `Esc` puts the current path back); the icon beside it copies the folder path |
-| `F2`               | Open the Hermes chat (Beta): tell Hermes a folder and it reads how it is ordered, shows a trial run and files only after you confirm; the last run can be undone; `Esc` closes it |
+| `F2`               | Open the Hermes chat (Beta): open a folder and Hermes shows how it is ordered, makes a rule from it and files only after you confirm; runs can be undone; `Esc` closes it |
 | `Shift`+`F2`       | Focus the command line below the panels: `cd` changes the active panel's folder, any other command runs in the shell in that folder (the status bar shows its exit status; its output is not shown). `↑`/`↓` walk the commands of this session, `Esc` or `Shift`+`F2` goes back to the panels |
 | `F3` / `F4`        | View / edit the file under the cursor in an external program (programs configurable, see [Configuration](#configuration)) |
 | `F5` / `F6`        | Copy / move to the other panel          |
@@ -719,6 +719,19 @@ Reports (`saved_queries`) and Read errors (`Cmd`+`Shift`+`D`,
 Index). Every command opens Settings on its page; `Esc` closes an open dialog
 first and the settings after that. Single values are saved at once, several
 fields sit in a small dialog with Save and Cancel.
+
+**Rules in the chat.** Open a folder of your archive in the chat (`F2`) and
+Hermes shows how it is ordered as levels: fixed folder names, the year, and how
+the files are named (`Work/Salary/{year}/{date}_{kind}`). Change a level in a
+sentence ("date first in the file name"); the card shows the changed levels
+next to what they were and which files that would rename. "Create rule" shows
+a proposal first: what the rule applies to and why, where it takes documents
+from, where it files them, how many documents it hits and a dry run. The
+saved rule files new documents from the read folders. Hermes then asks
+separately whether to move the files that already lie differently; that run
+renames them on disk, the index follows, and undo puts everything back. A
+folder that already has a rule from the chat changes that rule instead of
+adding a second one. "New chat" starts over.
 
 ![Settings › Hermes](docs/screenshots/filing.png)
 
