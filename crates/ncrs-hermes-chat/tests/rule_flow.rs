@@ -374,10 +374,13 @@ mod tests {
 
         assert_eq!(talk.rule_count(), 0);
         assert!(levels_card(&talk).is_none(), "the proposal has no card");
+        let card = talk.proposal().expect("the proposal card");
         assert!(
-            talk.last_texts()[0].contains("Telefon / Jahr / Monat"),
+            card.facts
+                .iter()
+                .any(|fact| fact.value == "Telefon / Jahr / Monat"),
             "{:?}",
-            talk.last_texts()
+            card.facts
         );
         assert!(has_chip(&talk, &ChipReply::RuleCreate));
         assert!(has_chip(&talk, &ChipReply::LevelsChange));
@@ -506,12 +509,10 @@ mod tests {
         propose_for_telefon(&mut talk);
 
         assert!(levels_card(&talk).is_none());
-        let texts = talk.last_texts();
-        assert!(!texts[0].contains('{'), "{texts:?}");
-        assert!(
-            texts[0].contains("Telefon / Jahr · Dateiname:"),
-            "{texts:?}"
-        );
+        let card = talk.proposal().expect("the proposal card");
+        let shown: Vec<&str> = card.facts.iter().map(|fact| fact.value.as_str()).collect();
+        assert!(shown.iter().all(|value| !value.contains('{')), "{shown:?}");
+        assert!(shown.contains(&"Telefon / Jahr"), "{shown:?}");
     }
 
     #[test]
@@ -539,28 +540,26 @@ mod tests {
         }
         propose_for_telefon(&mut talk);
 
-        let texts = talk.last_texts();
-        assert_eq!(texts.len(), 2, "{texts:?}");
-        let lines: Vec<&str> = texts[1].lines().collect();
+        let card = talk.proposal().expect("the proposal card");
+        let moves = card.moves.as_ref().expect("examples");
+        assert_eq!(moves.rows.len(), 3, "{:?}", moves.rows);
         assert_eq!(
-            lines.len(),
-            5,
-            "3 examples, the rest, the archive: {lines:?}"
+            moves.more,
+            Some(say(Msg::HermesChatRuleExamplesMore, &[("count", "5")]))
         );
         assert_eq!(
-            lines[3],
-            say(Msg::HermesChatRuleExamplesMore, &[("count", "5")])
-        );
-        assert_eq!(
-            lines[4],
-            say(
+            card.counts,
+            Some(say(
                 Msg::HermesChatRuleTrialCounts,
                 &[("right", "0"), ("moves", "8"), ("inbox", "4")]
-            )
+            ))
         );
         assert!(
-            lines[0].contains("2020-01-10.pdf → Telefon/2020/") && lines[0].ends_with(".pdf"),
-            "{lines:?}"
+            moves.rows[0].to.starts_with("Telefon/2020/")
+                && moves.rows[0].to.ends_with(".pdf")
+                && moves.rows[0].before.contains("2020-01-10.pdf"),
+            "{:?}",
+            moves.rows[0]
         );
     }
 
@@ -573,14 +572,12 @@ mod tests {
         talk.model.push_rule(Ok(spec("Rechnung", "Alfa/{year}")));
         talk.type_text("Rechnungen");
 
-        let texts = talk.last_texts();
-        assert_eq!(texts.len(), 2, "{texts:?}");
         assert_eq!(
-            texts[1],
-            say(
+            talk.proposal().expect("the proposal card").counts,
+            Some(say(
                 Msg::HermesChatRuleTrialCounts,
                 &[("right", "4"), ("moves", "0"), ("inbox", "0")]
-            )
+            ))
         );
         talk.press(&ChipReply::RuleCreate);
         assert!(!has_chip(&talk, &ChipReply::RuleNow));

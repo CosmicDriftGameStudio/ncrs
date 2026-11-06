@@ -15,7 +15,7 @@ use ncrs_intake::{rule_problem, TextChain};
 use ncrs_pipeline::{Load, OwnDetails};
 
 use crate::review_work::{AcceptSummary, ReviewAccess, ReviewItem};
-use crate::rules_work::{ArchiveMove, RuleTry, RulesAccess, TriedDocument};
+use crate::rules_work::{ArchiveMove, RuleTry, RulesAccess, TriedDocument, TryFile};
 
 mod change;
 mod groups;
@@ -69,6 +69,9 @@ pub enum ChatWork {
     /// written.
     RuleTrial {
         spec: RuleSpec,
+        /// The files of the folder as read from the disk: the index may not
+        /// know them yet.
+        files: Vec<TryFile>,
     },
     /// Stores a rule the user confirmed.
     SaveRule {
@@ -127,6 +130,8 @@ pub struct RuleTrial {
     /// The first of those that would move, as they stand and as they would
     /// stand.
     pub examples: Vec<TriedDocument>,
+    /// The files given to the trial that the index does not know yet.
+    pub not_indexed: usize,
     /// The archive documents the rule renames or moves.
     pub archive_moves: Vec<ArchiveMove>,
 }
@@ -269,7 +274,9 @@ impl ChatAccess {
                 label,
                 area,
             } => ChatResult::RuleSaved(self.save_group_rule(&target, &key, &label, &area)),
-            ChatWork::RuleTrial { spec } => ChatResult::RuleTried(self.try_rule(spec)),
+            ChatWork::RuleTrial { spec, files } => {
+                ChatResult::RuleTried(self.try_rule(spec, &files))
+            }
             ChatWork::SaveRule { spec } => ChatResult::RuleStored(self.save_rule(&spec)),
             ChatWork::File { run } => ChatResult::Filed(runs::file(self, &run)),
             ChatWork::TrashDuplicates { name, root, items } => {
@@ -326,15 +333,18 @@ impl ChatAccess {
         Ok(label.to_owned())
     }
 
-    fn try_rule(&self, spec: RuleSpec) -> Result<RuleTrial, String> {
+    fn try_rule(&self, spec: RuleSpec, files: &[TryFile]) -> Result<RuleTrial, String> {
         let rules = self
             .rules
             .as_ref()
             .ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
-        let tried = rules.try_rule(&RuleTry {
-            replaces: None,
-            spec,
-        })?;
+        let tried = rules.try_rule_with(
+            &RuleTry {
+                replaces: None,
+                spec,
+            },
+            files,
+        )?;
         Ok(RuleTrial {
             matches: tried.documents.len() + tried.more,
             right: tried.in_archive - tried.archive_moves.len(),
@@ -346,6 +356,7 @@ impl ChatAccess {
                 .take(RULE_TRIAL_EXAMPLES)
                 .collect(),
             archive_moves: tried.archive_moves,
+            not_indexed: tried.not_indexed,
         })
     }
 

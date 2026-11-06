@@ -5,12 +5,12 @@ use iced_test::Simulator;
 use ncrs_ai::{ChatIntent, Compute, LocalModelStatus, ScriptedChatModel};
 use ncrs_filing::chat_work::{ChatAccess, ChatResult, RuleSaveFailure, RunSummary};
 use ncrs_hermes_chat::{
-    Availability, Chip, ChipReply, Ctx, Entry, FileCard, LevelsCard, Part, RowOutcome, Step,
-    TrialCard, TrialRow,
+    Availability, Chip, ChipReply, Ctx, Entry, FileCard, LevelsCard, Part, ProposalCard,
+    RowOutcome, Step, TrialCard, TrialRow,
 };
 use ncrs_index::{BatchKind, Index, Transfer};
 use ncrs_intake::{RuleProblem, TextChain};
-use ncrs_ui_kit::hermes_kit::LevelRow;
+use ncrs_ui_kit::hermes_kit::{FactRow, LevelRow, MoveRow, MovesBlock};
 
 use crate::app::*;
 use crate::i18n::Language;
@@ -452,15 +452,78 @@ fn levels_scene(lang: Language) -> App {
     hermes_says(
         &mut app,
         vec![
-            Part::Text(
-                if german {
-                    "Diese Regel würde 12 Dateien ablegen, zum Beispiel Auszug.pdf nach Bank/2025/2025-11-03_Sparkasse.pdf."
-                } else {
-                    "This rule would file 12 files, for example Auszug.pdf to Bank/2025/2025-11-03_Sparkasse.pdf."
-                }
-                .to_owned(),
-            ),
+            Part::Proposal(ProposalCard {
+                title: if german { "Vorschlag" } else { "Proposal" }.to_owned(),
+                facts: vec![
+                    FactRow {
+                        label: if german { "Gilt für" } else { "Applies to" }.to_owned(),
+                        value: if german {
+                            "Absender: Sparkasse"
+                        } else {
+                            "Sender: Sparkasse"
+                        }
+                        .to_owned(),
+                    },
+                    FactRow {
+                        label: if german { "Ablage" } else { "Filing" }.to_owned(),
+                        value: if german { "Bank / Jahr" } else { "Bank / Year" }.to_owned(),
+                    },
+                    FactRow {
+                        label: if german { "Dateiname" } else { "File name" }.to_owned(),
+                        value: if german {
+                            "Datum, Absender"
+                        } else {
+                            "Date, Sender"
+                        }
+                        .to_owned(),
+                    },
+                    FactRow {
+                        label: if german { "Trifft" } else { "Matches" }.to_owned(),
+                        value: if german { "12 Dokumente" } else { "12 documents" }.to_owned(),
+                    },
+                ],
+                moves: Some(MovesBlock {
+                    header: if german { "Beispiele" } else { "Examples" }.to_owned(),
+                    rows: vec![
+                        MoveRow {
+                            to: "Bank/2025/2025-11-03_Sparkasse.pdf".to_owned(),
+                            before: if german {
+                                "vorher: Auszug.pdf"
+                            } else {
+                                "before: Auszug.pdf"
+                            }
+                            .to_owned(),
+                        },
+                        MoveRow {
+                            to: "Bank/2025/2025-10-05_Sparkasse.pdf".to_owned(),
+                            before: if german {
+                                "vorher: Bank/Auszug-Oktober.pdf"
+                            } else {
+                                "before: Bank/Auszug-Oktober.pdf"
+                            }
+                            .to_owned(),
+                        },
+                    ],
+                    more: Some(
+                        if german {
+                            "… und 10 weitere"
+                        } else {
+                            "… and 10 more"
+                        }
+                        .to_owned(),
+                    ),
+                }),
+                counts: Some(
+                    if german {
+                        "Schon richtig abgelegt: 0 · Wird umbenannt oder verschoben: 12 (davon 12 aus dem Eingang)"
+                    } else {
+                        "Already filed correctly: 0 · Will be renamed or moved: 12 (12 of them from the inbox)"
+                    }
+                    .to_owned(),
+                ),
+            }),
             Part::Levels(LevelsCard {
+                moves: None,
                 title: if german {
                     "3 Ebenen gefunden"
                 } else {
@@ -647,6 +710,81 @@ fn the_levels_of_a_rule_match_their_snapshots() {
         (Language::English, "hermes_chat_levels_en"),
     ] {
         matches_snapshot(&levels_scene(lang), name);
+    }
+}
+
+/// The card after a change of the levels: the changed level marked, and the
+/// files the change would rename under it.
+fn changed_levels_scene(lang: Language) -> App {
+    let (mut app, _) = opened(lang);
+    user_says(
+        &mut app,
+        pick(
+            lang,
+            "mach bei 3 das Datum vorne hin",
+            "put the date first in level 3",
+        ),
+    );
+    let row = |number, text: &str, role: &str, before: Option<&str>| LevelRow {
+        number,
+        text: text.to_owned(),
+        role: role.to_owned(),
+        before: before.map(str::to_owned),
+    };
+    let before = |value: &str| pick(lang, "vorher: ", "before: ").to_owned() + value;
+    hermes_says(
+        &mut app,
+        vec![Part::Levels(LevelsCard {
+            title: pick(lang, "Geänderte Ebenen", "Changed levels").to_owned(),
+            rows: vec![
+                row(1, "Gehalt", pick(lang, "fest", "fixed"), None),
+                row(2, "2023", pick(lang, "Jahr", "year"), None),
+                row(
+                    3,
+                    "2023-05-25_Gehaltsabrechnung.pdf",
+                    pick(lang, "Dateiname: Datum, Art", "file name: date, kind"),
+                    Some(&before("Gehaltsabrechnung_2023-05-25.pdf")),
+                ),
+            ],
+            moves: Some(MovesBlock {
+                header: pick(lang, "Wird umbenannt (4)", "Will be renamed (4)").to_owned(),
+                rows: vec![
+                    MoveRow {
+                        to: "Gehalt/2023/2023-05-25_Gehaltsabrechnung.pdf".to_owned(),
+                        before: before("Gehalt/2023/Gehaltsabrechnung_2023-05-25.pdf"),
+                    },
+                    MoveRow {
+                        to: "Gehalt/2023/2023-06-26_Gehaltsabrechnung.pdf".to_owned(),
+                        before: before("Gehalt/2023/Gehaltsabrechnung_2023-06-26.pdf"),
+                    },
+                    MoveRow {
+                        to: "Gehalt/2024/2024-01-25_Gehaltsabrechnung.pdf".to_owned(),
+                        before: before("Gehalt/2024/Gehaltsabrechnung_2024-01-25.pdf"),
+                    },
+                ],
+                more: Some(pick(lang, "… und 1 weitere", "… and 1 more").to_owned()),
+            }),
+            footer: None,
+        })],
+        vec![
+            chip(
+                pick(lang, "Übernehmen", "Apply"),
+                ChipReply::LevelsApply,
+                true,
+            ),
+            chip(pick(lang, "Fertig", "Done"), ChipReply::LevelsDone, false),
+        ],
+    );
+    app
+}
+
+#[test]
+fn the_changed_levels_with_their_renames_match_their_snapshots() {
+    for (lang, name) in [
+        (Language::German, "hermes_chat_changed_levels_de"),
+        (Language::English, "hermes_chat_changed_levels_en"),
+    ] {
+        matches_snapshot(&changed_levels_scene(lang), name);
     }
 }
 

@@ -39,6 +39,12 @@ pub fn entry_text(entry: &Entry) -> String {
                     .map(|row| format!("{}. {}", row.number, row.text))
                     .collect::<Vec<_>>()
                     .join(" "),
+                Part::Proposal(card) => card
+                    .facts
+                    .iter()
+                    .map(|fact| format!("{}: {}", fact.label, fact.value))
+                    .collect::<Vec<_>>()
+                    .join(" "),
                 Part::Folder(mention) => format!("{} ({})", mention.name, mention.path),
                 Part::Trial(card) => format!(
                     "{} {}",

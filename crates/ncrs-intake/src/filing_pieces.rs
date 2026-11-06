@@ -288,11 +288,9 @@ impl FilingTarget {
         }
     }
 
-    /// The target in words, for example "Firma A / Year / Sender"; a file
-    /// name of its own follows after a dot.
-    pub fn in_words(&self, lang: Language) -> String {
-        let mut words = self
-            .folders
+    /// The folders of the target in words, "Firma A / Year / Sender".
+    pub fn folders_in_words(&self, lang: Language) -> String {
+        self.folders
             .iter()
             .map(|folder| match folder {
                 FolderPiece::Named(name) => name.clone(),
@@ -300,7 +298,12 @@ impl FilingTarget {
                 FolderPiece::Mixed(segment) => segment_in_words(segment, lang),
             })
             .collect::<Vec<_>>()
-            .join(" / ");
+            .join(" / ")
+    }
+    /// The target in words, for example "Firma A / Year / Sender"; a file
+    /// name of its own follows after a dot.
+    pub fn in_words(&self, lang: Language) -> String {
+        let mut words = self.folders_in_words(lang);
         if let Some(name) = self.explicit_file_name_in_words(lang) {
             if words.is_empty() {
                 words = name;

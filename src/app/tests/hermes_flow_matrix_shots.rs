@@ -31,28 +31,47 @@ const SENDER: &str = "Cosmicdrift GmbH";
 const SHOT_DIR: &str = "target/acceptance/flow-matrix";
 const SHOT_SIZE: iced::Size = iced::Size::new(1740.0, 1130.0);
 
-const CASES: [(&str, &str); 7] = [
-    ("1-rename", "nenne Ebene 1 Lohn statt Gehalt"),
+/// Name, the sentence in German and in English.
+const CASES: [(&str, &str, &str); 8] = [
+    (
+        "1-rename",
+        "nenne Ebene 1 Lohn statt Gehalt",
+        "rename level 1 to Lohn",
+    ),
     (
         "2-year-month",
         "Jahr und Monat zusammen in Ebene 2, mit Bindestrich",
+        "put year and month together in level 2, with a dash",
     ),
-    ("3-date-first", "Datum vorne bei Ebene 3"),
+    (
+        "3-date-first",
+        "Datum vorne bei Ebene 3",
+        "date first at level 3",
+    ),
     (
         "1+2",
         "nenne Ebene 1 Lohn und mach Jahr und Monat zusammen in Ebene 2, mit Bindestrich",
+        "rename level 1 to Lohn and put year and month together in level 2, with a dash",
     ),
     (
         "1+3",
         "nenne Ebene 1 Lohn und setz das Datum vorne bei Ebene 3",
+        "rename level 1 to Lohn and put the date first in level 3",
     ),
     (
         "2+3",
         "Jahr und Monat zusammen in Ebene 2, mit Bindestrich, und das Datum vorne bei Ebene 3",
+        "put year and month together in level 2, with a dash, and the date first in level 3",
     ),
     (
         "1+2+3",
         "nenne Ebene 1 Lohn, mach Jahr und Monat zusammen in Ebene 2, mit Bindestrich, und setz das Datum vorne bei Ebene 3",
+        "rename level 1 to Lohn, put year and month together in level 2, with a dash, and the date first in level 3",
+    ),
+    (
+        "report-bare-3-then-date-first",
+        "mach bei 3 das datum vorne hin",
+        "put the date first in level 3",
     ),
 ];
 
@@ -154,86 +173,96 @@ fn with_model_the_changed_levels_and_the_dry_run_are_shot_for_each_change() {
     );
     let answering: &dyn ChatModel = model.as_ref();
 
-    for (name, sentence) in CASES {
-        let dir = tempfile::tempdir().unwrap();
-        let root = std::fs::canonicalize(dir.path()).unwrap();
-        let slot = std::sync::Arc::new(Mutex::new(Some(
-            Index::create_plain(&dir.path().join("index.db")).unwrap(),
-        )));
-        pay_slip_archive(dir.path(), &slot);
-        let bin = dir.path().join("bin");
-        std::fs::create_dir_all(&bin).unwrap();
-        let trash = ncrs_fs::JournaledTrash::new(
-            dir.path().join("trash.toml"),
-            ncrs_fs::FolderBackend(bin),
-        );
-        let archive_location = ncrs_intake::Location::new(
-            &root.join("archive"),
-            ncrs_intake::LocationMode::Archive,
-            false,
-        )
-        .unwrap();
-        let inbox_location = ncrs_intake::Location::new(
-            &root.join("inbox"),
-            ncrs_intake::LocationMode::Inbox,
-            false,
-        )
-        .unwrap();
-        let rules = RulesAccess::new(
-            std::sync::Arc::clone(&slot),
-            vec![archive_location, inbox_location],
-        )
-        .with_kind_language(KindLanguage::German);
-        let access = ChatAccess::new(
-            std::sync::Arc::clone(&slot),
-            std::sync::Arc::new(TextChain::new().with_source(Utf8Text)),
-            std::sync::Arc::new(trash),
-        )
-        .with_kind_language(KindLanguage::German)
-        .with_rules(Some(rules));
-        let ctx = Ctx {
-            availability: Availability::Ready(Box::new(access.clone())),
-            targets: vec![root.join("archive")],
-            sources: vec![root.join("inbox")],
-            resolve_folder: canonical_folder,
-            home: root.clone(),
-            model: Some(std::sync::Arc::clone(&model) as std::sync::Arc<dyn ChatModel>),
-            ..super::hermes_chat_ui_tests::ready(Language::German)
-        };
+    for (case, german_sentence, english_sentence) in CASES {
+        for (lang, suffix, sentence) in [
+            (Language::German, "de", german_sentence),
+            (Language::English, "en", english_sentence),
+        ] {
+            let name = &format!("{case}-{suffix}");
+            let dir = tempfile::tempdir().unwrap();
+            let root = std::fs::canonicalize(dir.path()).unwrap();
+            let slot = std::sync::Arc::new(Mutex::new(Some(
+                Index::create_plain(&dir.path().join("index.db")).unwrap(),
+            )));
+            pay_slip_archive(dir.path(), &slot);
+            let bin = dir.path().join("bin");
+            std::fs::create_dir_all(&bin).unwrap();
+            let trash = ncrs_fs::JournaledTrash::new(
+                dir.path().join("trash.toml"),
+                ncrs_fs::FolderBackend(bin),
+            );
+            let archive_location = ncrs_intake::Location::new(
+                &root.join("archive"),
+                ncrs_intake::LocationMode::Archive,
+                false,
+            )
+            .unwrap();
+            let inbox_location = ncrs_intake::Location::new(
+                &root.join("inbox"),
+                ncrs_intake::LocationMode::Inbox,
+                false,
+            )
+            .unwrap();
+            let rules = RulesAccess::new(
+                std::sync::Arc::clone(&slot),
+                vec![archive_location, inbox_location],
+            )
+            .with_kind_language(KindLanguage::German);
+            let access = ChatAccess::new(
+                std::sync::Arc::clone(&slot),
+                std::sync::Arc::new(TextChain::new().with_source(Utf8Text)),
+                std::sync::Arc::new(trash),
+            )
+            .with_kind_language(KindLanguage::German)
+            .with_rules(Some(rules));
+            let ctx = Ctx {
+                availability: Availability::Ready(Box::new(access.clone())),
+                targets: vec![root.join("archive")],
+                sources: vec![root.join("inbox")],
+                resolve_folder: canonical_folder,
+                home: root.clone(),
+                model: Some(std::sync::Arc::clone(&model) as std::sync::Arc<dyn ChatModel>),
+                ..super::hermes_chat_ui_tests::ready(lang)
+            };
 
-        let mut app = App::with_fixed_panels().in_language(Language::German);
-        super::hermes_chat_ui_tests::send(&mut app, &ctx, HermesChatMessage::Open);
-        type_sentence(&mut app, &ctx, &access, answering, "öffne mal Arbeit");
-        let named: Vec<ChipReply> = app
-            .hermes_chat
-            .chips()
-            .iter()
-            .filter_map(|chip| match &chip.reply {
-                ChipReply::NamedFolder(path) if path.ends_with("archive/Arbeit") => {
-                    Some(chip.reply.clone())
-                }
-                _ => None,
-            })
-            .collect();
-        if let Some(reply) = named.first() {
-            press(&mut app, &ctx, &access, answering, reply);
+            let mut app = App::with_fixed_panels().in_language(lang);
+            super::hermes_chat_ui_tests::send(&mut app, &ctx, HermesChatMessage::Open);
+            type_sentence(&mut app, &ctx, &access, answering, "öffne mal Arbeit");
+            let named: Vec<ChipReply> = app
+                .hermes_chat
+                .chips()
+                .iter()
+                .filter_map(|chip| match &chip.reply {
+                    ChipReply::NamedFolder(path) if path.ends_with("archive/Arbeit") => {
+                        Some(chip.reply.clone())
+                    }
+                    _ => None,
+                })
+                .collect();
+            if let Some(reply) = named.first() {
+                press(&mut app, &ctx, &access, answering, reply);
+            }
+            assert!(
+                levels_card_shown(&app),
+                "{name}: {:?}",
+                app.hermes_chat.thread.last()
+            );
+            press(&mut app, &ctx, &access, answering, &ChipReply::LevelsChange);
+            if case.starts_with("report") {
+                type_sentence(&mut app, &ctx, &access, answering, "3");
+                shoot(&app, &format!("{name}-0-bare-level"));
+            }
+            type_sentence(&mut app, &ctx, &access, answering, sentence);
+            assert!(
+                has_chip(&app, &ChipReply::LevelsApply),
+                "{name}: {:?}",
+                app.hermes_chat.chips()
+            );
+            shoot(&app, &format!("{name}-1-change"));
+            press(&mut app, &ctx, &access, answering, &ChipReply::LevelsApply);
+            assert!(has_chip(&app, &ChipReply::RuleCreate), "{name}: no dry run");
+            shoot(&app, &format!("{name}-2-dry-run"));
         }
-        assert!(
-            levels_card_shown(&app),
-            "{name}: {:?}",
-            app.hermes_chat.thread.last()
-        );
-        press(&mut app, &ctx, &access, answering, &ChipReply::LevelsChange);
-        type_sentence(&mut app, &ctx, &access, answering, sentence);
-        assert!(
-            has_chip(&app, &ChipReply::LevelsApply),
-            "{name}: {:?}",
-            app.hermes_chat.chips()
-        );
-        shoot(&app, &format!("{name}-1-change"));
-        press(&mut app, &ctx, &access, answering, &ChipReply::LevelsApply);
-        assert!(has_chip(&app, &ChipReply::RuleCreate), "{name}: no dry run");
-        shoot(&app, &format!("{name}-2-dry-run"));
     }
     model.shutdown();
 }

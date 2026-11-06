@@ -199,9 +199,24 @@ fn last_hermes_text(app: &App) -> String {
     match app.hermes_chat.thread().last() {
         Some(Entry::Hermes { parts, .. }) => parts
             .iter()
-            .filter_map(|part| match part {
-                Part::Text(line) => Some(line.as_str()),
-                _ => None,
+            .flat_map(|part| match part {
+                Part::Text(line) => vec![line.clone()],
+                Part::Proposal(card) => {
+                    let mut lines: Vec<String> = card
+                        .facts
+                        .iter()
+                        .map(|fact| format!("{}: {}", fact.label, fact.value))
+                        .collect();
+                    if let Some(block) = &card.moves {
+                        for row in &block.rows {
+                            lines.push(format!("{} | {}", row.to, row.before));
+                        }
+                        lines.extend(block.more.clone());
+                    }
+                    lines.extend(card.counts.clone());
+                    lines
+                }
+                _ => Vec::new(),
             })
             .collect::<Vec<_>>()
             .join("\n"),
@@ -454,7 +469,11 @@ fn assert_wrong_year_placed(
     undone: bool,
 ) {
     for (wrong, right) in misfiled {
-        let (here, gone) = if undone { (wrong, right) } else { (right, wrong) };
+        let (here, gone) = if undone {
+            (wrong, right)
+        } else {
+            (right, wrong)
+        };
         assert!(here.is_file(), "{} missing", here.display());
         assert!(!gone.exists(), "{} remains", gone.display());
         assert!(index_has(slot, here), "index lacks {}", here.display());
@@ -492,11 +511,11 @@ fn file_and_undo(
     let all = moves + renamed;
     assert!(
         proposal.contains(&format!(
-            "Schon richtig abgelegt: {lying_right}. Würden umbenannt oder verschoben: {all} (davon {moves} aus dem Eingang)."
+            "Schon richtig abgelegt: {lying_right} · Wird umbenannt oder verschoben: {all} (davon {moves} aus dem Eingang)"
         )),
         "{proposal}"
     );
-    assert_eq!(proposal.matches(" → ").count(), 3, "{proposal}");
+    assert_eq!(proposal.matches(" | vorher: ").count(), 3, "{proposal}");
     assert!(
         proposal.contains(&format!("… und {} weitere", all - 3)),
         "{proposal}"

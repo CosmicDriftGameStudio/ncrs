@@ -256,7 +256,18 @@ pub struct AreasCard {
 pub struct LevelsCard {
     pub title: String,
     pub rows: Vec<ncrs_ui_kit::hermes_kit::LevelRow>,
+    /// The files the changed levels would rename or move.
+    pub moves: Option<ncrs_ui_kit::hermes_kit::MovesBlock>,
     pub footer: Option<String>,
+}
+
+/// A rule proposal: what it applies to, where it files, some examples.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProposalCard {
+    pub title: String,
+    pub facts: Vec<ncrs_ui_kit::hermes_kit::FactRow>,
+    pub moves: Option<ncrs_ui_kit::hermes_kit::MovesBlock>,
+    pub counts: Option<String>,
 }
 
 /// A path as segments, one of them highlighted.
@@ -306,6 +317,7 @@ pub struct FolderMention {
 pub enum Part {
     Text(String),
     Levels(LevelsCard),
+    Proposal(ProposalCard),
     Areas(AreasCard),
     File(FileCard),
     Trial(TrialCard),
