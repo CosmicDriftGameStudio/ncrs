@@ -860,6 +860,35 @@ mod tests {
     }
 
     #[test]
+    fn changing_a_level_word_in_the_same_folder_changes_its_rule_and_adds_none() {
+        let mut talk = archive_talk();
+        let mut first = None;
+        for (word, pattern) in [("Rechnung", "Rechnung/{year}"), ("Beleg", "Beleg/{year}")] {
+            open_area(&mut talk, "Telefon");
+            talk.press(&ChipReply::LevelsChange);
+            talk.model.push_revision(Ok(Revision {
+                levels: levels(pattern),
+                done: false,
+            }));
+            talk.type_text("level 1 with another word");
+            talk.press(&ChipReply::LevelsApply);
+            talk.model.push_rule(Ok(spec("Rechnung", pattern)));
+            talk.type_text("Rechnungen");
+            talk.press(&ChipReply::RuleCreate);
+            if word == "Rechnung" {
+                first = Some(the_only_rule(&talk));
+                talk.press(&ChipReply::RuleOnlyNew);
+            }
+        }
+
+        let second = the_only_rule(&talk);
+        assert_eq!(Some(second.id), first.map(|rule| rule.id));
+        assert_eq!(second.spec.filing_pattern, "Telefon/Beleg/{year}");
+        assert_eq!(second.spec.name.as_deref(), Some("Telefon"));
+        assert!(rule_said(&talk, Msg::HermesChatRuleUpdated, "Telefon"));
+    }
+
+    #[test]
     fn the_proposal_names_the_only_read_folder() {
         let mut talk = archive_talk();
         propose_for_telefon(&mut talk);

@@ -165,6 +165,7 @@ impl ChipReply {
             | Self::WaitingFile
             | Self::WaitingFileInto(_)
             | Self::RuleCreate
+            | Self::RuleNow
             | Self::Undo => true,
             Self::Cancel
             | Self::Folder(_)
@@ -216,7 +217,6 @@ impl ChipReply {
             | Self::LevelsDone
             | Self::RuleWhat(_)
             | Self::RuleCondition
-            | Self::RuleNow
             | Self::RuleOnlyNew
             | Self::WaitingOtherFolder
             | Self::TrialOtherTarget => false,
@@ -394,6 +394,10 @@ pub struct Retry {
 
 #[derive(Debug, Clone)]
 pub struct Tidy {
+    /// Started by "Rearrange now": target and transfer are given and the run
+    /// starts without a question. Holds the rule's folder below the target;
+    /// only documents filed there are filed.
+    pub rule_now: Option<PathBuf>,
     pub source: PathBuf,
     pub target: Option<PathBuf>,
     pub transfer: Option<Transfer>,
@@ -405,6 +409,10 @@ pub struct Tidy {
 /// levels may have changed, the ones that already lie in the archive.
 #[derive(Debug, Clone, Default)]
 pub struct RuleMoves {
+    /// The target the rule files into.
+    pub target: PathBuf,
+    /// The rule's folder below the target.
+    pub prefix: PathBuf,
     pub from_inbox: usize,
     pub archive: Vec<ncrs_filing::rules_work::ArchiveMove>,
 }
@@ -538,9 +546,15 @@ pub struct Session {
     pub rule: Option<crate::rule_flow::RuleFlow>,
     /// What the stored rule moves, kept for "File now".
     pub rule_moves: Option<RuleMoves>,
-    /// "File now" asked which source folder; the answer starts the tidy
-    /// that takes the moves of the stored rule along.
-    pub rule_moves_wait: bool,
+    /// The sources "Rearrange now" still has to go through, one run each.
+    pub rule_queue: Option<RuleQueue>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RuleQueue {
+    pub target: PathBuf,
+    pub prefix: PathBuf,
+    pub sources: Vec<PathBuf>,
 }
 
 #[derive(Debug)]

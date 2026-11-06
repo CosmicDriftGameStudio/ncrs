@@ -54,21 +54,12 @@ pub fn begin(state: &mut State, ctx: &Ctx, source: PathBuf) {
         );
         return;
     }
-    let inside = if std::mem::take(&mut state.session.rule_moves_wait) {
-        state
-            .session
-            .rule_moves
-            .take()
-            .map(|moves| moves.archive)
-            .unwrap_or_default()
-    } else {
-        Vec::new()
-    };
     state.session.tidy = Some(Tidy {
+        rule_now: None,
         source: source.clone(),
         target: None,
         transfer: None,
-        inside,
+        inside: Vec::new(),
     });
     state.session.layout = None;
     state.session.deciding = None;
@@ -79,6 +70,15 @@ pub fn begin(state: &mut State, ctx: &Ctx, source: PathBuf) {
 pub fn source_read(state: &mut State, ctx: &Ctx, reading: &Arc<FolderReading>) {
     let folder = folder_name(ctx, &reading.root);
     if reading.files.is_empty() {
+        if state
+            .session
+            .tidy
+            .as_ref()
+            .is_some_and(|tidy| tidy.rule_now.is_some() && tidy.inside.is_empty())
+            && crate::rule_flow::trial::next_source(state, ctx)
+        {
+            return;
+        }
         state.session.tidy = None;
         state.session.proposal = None;
         state.step = Step::Idle;
@@ -89,6 +89,10 @@ pub fn source_read(state: &mut State, ctx: &Ctx, reading: &Arc<FolderReading>) {
         );
         return;
     }
+    if state.session.tidy.as_ref().is_some_and(|tidy| tidy.rule_now.is_some()) {
+        choose_where(state, ctx, reading);
+        return;
+    }
     crate::photos::ask_or_go_on(state, ctx, reading);
 }
 
@@ -96,6 +100,16 @@ pub fn source_read(state: &mut State, ctx: &Ctx, reading: &Arc<FolderReading>) {
 /// target there is, or a question.
 pub fn choose_where(state: &mut State, ctx: &Ctx, reading: &Arc<FolderReading>) {
     let folder = folder_name(ctx, &reading.root);
+    if let Some(target) = state
+        .session
+        .tidy
+        .as_ref()
+        .filter(|tidy| tidy.rule_now.is_some())
+        .and_then(|tidy| tidy.target.clone())
+    {
+        choose_target(state, ctx, target);
+        return;
+    }
     if let Some(target) = state
         .session
         .proposal
@@ -169,6 +183,10 @@ pub fn target_read(state: &mut State, ctx: &Ctx) {
     let Some(tidy) = state.session.tidy.as_ref() else {
         return;
     };
+    if tidy.rule_now.is_some() {
+        mode(state, ctx, Transfer::Move);
+        return;
+    }
     if let Some(schedule) = state
         .session
         .proposal
@@ -462,6 +480,15 @@ pub fn trial_done(state: &mut State, ctx: &Ctx, result: Result<TrialPlan, String
         resolved,
         shown,
     });
+    if state
+        .session
+        .tidy
+        .as_ref()
+        .is_some_and(|tidy| tidy.rule_now.is_some())
+    {
+        crate::rule_flow::trial::file_rule_trial(state, ctx);
+        return;
+    }
     state.step = Step::Trial;
     let lead: Vec<Part> = state
         .session
@@ -624,7 +651,11 @@ pub fn file_all(state: &mut State, ctx: &Ctx) {
     };
     let mut items = Vec::new();
     let entries = trial.plan.entries.clone();
+    let rule_prefix = tidy.rule_now.as_deref();
     for (position, entry) in entries.iter().enumerate() {
+        if !crate::rule_flow::trial::rule_keeps(rule_prefix, &entry.outcome) {
+            continue;
+        }
         let to = match &entry.outcome {
             TrialOutcome::Filed { to } => to.clone(),
             TrialOutcome::Unsure { .. } => {
@@ -680,9 +711,12 @@ pub fn filed_done(state: &mut State, ctx: &Ctx, result: Result<RunReport, String
         }
         _ => None,
     };
+    let went_well = result.is_ok();
     filed_report(state, ctx, result);
     if let Some((source, left)) = chained {
         archive_run(state, ctx, source, left);
+    } else if went_well {
+        crate::rule_flow::trial::next_source(state, ctx);
     }
 }
 
@@ -706,6 +740,7 @@ pub fn archive_run(state: &mut State, ctx: &Ctx, source: PathBuf, moves: Vec<Arc
     };
     state.session.trial = None;
     state.session.tidy = Some(Tidy {
+        rule_now: None,
         source,
         target: Some(target),
         transfer: Some(Transfer::Move),

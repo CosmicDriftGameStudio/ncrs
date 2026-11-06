@@ -27,10 +27,9 @@ pub fn old_path(doc: &Doc) -> String {
     }
 }
 
-/// The name of the rule: the fixed words of the folder levels.
-pub fn expected_rule_name(pattern: &str) -> String {
-    let first = pattern.split('/').next().unwrap();
-    format!("{} / {first}", AREA_PREFIX.trim_end_matches('/'))
+/// The name of the rule: the opened folder, whatever the level words say.
+pub fn expected_rule_name() -> String {
+    AREA_PREFIX.trim_end_matches('/').to_owned()
 }
 
 /// Creates the rule from the trial: it holds `pattern`, a name and the
@@ -43,7 +42,7 @@ pub fn create_rule(talk: &mut Talk, docs: &[Doc], pattern: &str) {
         rules[0].spec.filing_pattern,
         format!("{AREA_PREFIX}{pattern}")
     );
-    let name = expected_rule_name(pattern);
+    let name = expected_rule_name();
     assert_eq!(rules[0].spec.name.as_deref(), Some(name.as_str()));
     assert_eq!(rules[0].origin, RuleOrigin::Chat);
     let moves = docs.iter().filter(|doc| doc.inbox).count() + archive_moves(docs, pattern).len();
@@ -71,13 +70,6 @@ pub fn create_and_check(talk: &mut Talk, docs: &[Doc], pattern: &str) {
     let found_before = searched(talk);
     create_rule(talk, docs, pattern);
     talk.press(&ChipReply::RuleNow);
-    // With nothing waiting in the inbox, the archive renames run at once.
-    if docs.iter().any(|doc| doc.inbox) {
-        talk.press(&ChipReply::Folder(talk.path("archive")));
-        talk.press(&ChipReply::Once);
-        talk.press(&ChipReply::ModeMove);
-        talk.press(&ChipReply::FileAll);
-    }
     let filed = talk.files();
     let found = searched(talk);
     for doc in docs {
@@ -136,7 +128,7 @@ pub fn create_and_leave(talk: &mut Talk, docs: &[Doc], pattern: &str) {
     let rule = &talk.rules()[0];
     assert_eq!(
         rule.spec.name.as_deref(),
-        Some(expected_rule_name(pattern).as_str())
+        Some(expected_rule_name().as_str())
     );
     assert_eq!(rule.origin, RuleOrigin::Chat);
 }
@@ -221,7 +213,7 @@ pub fn saved_twice_for_the_same_folder(model: &Arc<CachedModel>, english: bool) 
         "öffne /Arbeit"
     });
     assert!(has_levels_card(&talk), "{:?}", talk.last_texts());
-    let rule_name = expected_rule_name(first);
+    let rule_name = expected_rule_name();
     assert!(
         talk.last_texts().contains(&say(
             Msg::HermesChatLevelsExistingRule,
@@ -245,6 +237,52 @@ pub fn saved_twice_for_the_same_folder(model: &Arc<CachedModel>, english: bool) 
     assert_eq!(rules[0].id, first_rule.id);
     assert_eq!(rules[0].position, first_rule.position);
     assert_eq!(rules[0].spec.filing_pattern, format!("{AREA_PREFIX}{last}"));
+    assert_eq!(rules[0].origin, RuleOrigin::Chat);
+    assert!(talk.state.thread().iter().any(|entry| matches!(
+        entry,
+        Entry::Hermes { parts, .. }
+            if parts.contains(&Part::Text(say(Msg::HermesChatRuleUpdated, &[("name", &rule_name)])))
+    )));
+}
+
+/// Saves a rule for the folder, opens the folder again and renames level 1:
+/// the rule keeps its name, id and position, holds the new pattern, and no
+/// second rule appears.
+pub fn saved_twice_with_a_new_level_word(model: &Arc<CachedModel>, english: bool) {
+    let (mut talk, docs) = entered(model, english);
+    talk.press(&ChipReply::LevelsChange);
+    talk.type_text(pick(english, DATE_FIRST));
+    talk.press(&ChipReply::LevelsApply);
+    let first = "Gehalt/{year}/{date}_Gehaltsabrechnung";
+    check_trial(&talk, &docs, first);
+    create_and_leave(&mut talk, &docs, first);
+    let first_rule = talk.rules().remove(0);
+
+    talk.type_text(if english {
+        "open /Arbeit"
+    } else {
+        "öffne /Arbeit"
+    });
+    assert!(has_levels_card(&talk), "{:?}", talk.last_texts());
+    talk.press(&ChipReply::LevelsChange);
+    talk.type_text(pick(english, RENAME));
+    talk.press(&ChipReply::LevelsApply);
+    talk.press(&ChipReply::RuleCreate);
+
+    let rule_name = expected_rule_name();
+    let rules = talk.rules();
+    assert_eq!(rules.len(), 1, "no second rule: {rules:?}");
+    assert_eq!(rules[0].id, first_rule.id);
+    assert_eq!(rules[0].position, first_rule.position);
+    assert!(
+        rules[0]
+            .spec
+            .filing_pattern
+            .starts_with(&format!("{AREA_PREFIX}Lohn/")),
+        "{:?}",
+        rules[0].spec.filing_pattern
+    );
+    assert_eq!(rules[0].spec.name.as_deref(), Some(rule_name.as_str()));
     assert_eq!(rules[0].origin, RuleOrigin::Chat);
     assert!(talk.state.thread().iter().any(|entry| matches!(
         entry,
