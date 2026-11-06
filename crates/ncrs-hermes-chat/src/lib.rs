@@ -13,6 +13,7 @@ mod update;
 mod view;
 
 mod decide;
+mod fallback;
 mod follow_up;
 mod greeting;
 mod learn;

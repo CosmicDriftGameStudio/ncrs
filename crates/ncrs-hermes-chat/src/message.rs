@@ -9,6 +9,8 @@ use crate::state::{ChipReply, Step};
 pub enum Message {
     Open,
     Close,
+    /// The header button: the conversation starts over with a fresh greeting.
+    NewChat,
     InputChanged(String),
     Submit,
     ChipPressed {
@@ -83,6 +85,7 @@ impl PartialEq for Message {
         match (self, other) {
             (Self::Open, Self::Open)
             | (Self::Close, Self::Close)
+            | (Self::NewChat, Self::NewChat)
             | (Self::Submit, Self::Submit)
             | (Self::ModelReady, Self::ModelReady)
             | (Self::AiTurnedOn, Self::AiTurnedOn)

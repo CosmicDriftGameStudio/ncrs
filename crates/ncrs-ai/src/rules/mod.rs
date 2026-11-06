@@ -11,6 +11,7 @@ mod grammar;
 mod levels;
 mod parse;
 mod prompt;
+mod revise;
 mod session;
 mod verify;
 mod vocabulary;
@@ -30,6 +31,9 @@ pub use annotate::{annotated_paths, folder_depth};
 pub use levels::{Level, Levels, Part};
 pub use parse::{parse_generate, parse_levels};
 pub use prompt::{prefix_text, ContextDocument, END_OF_TURN};
+pub use revise::revise_question;
 pub use session::RuleRequest;
-pub use verify::{pattern_mismatches, repair_note, Mismatch};
+pub use verify::{
+    file_names_share_structure, pattern_mismatches, repair_note, repair_note_for, Mismatch,
+};
 pub use vocabulary::condition_meaning;

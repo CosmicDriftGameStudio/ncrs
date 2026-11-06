@@ -163,6 +163,7 @@ pub fn view<'a>(state: &State, ctx: ViewCtx<'_>) -> Element<'a, Message> {
         AVATAR_LETTER,
         lang.text(Msg::HermesChatTitle),
         lang.text(Msg::HermesChatSubtitle),
+        (lang.text(Msg::HermesChatNewChat), Message::NewChat),
         lang.text(Msg::HermesChatEscHint),
         ctx.palette,
     );

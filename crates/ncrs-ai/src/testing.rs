@@ -83,6 +83,7 @@ pub struct ScriptedChatModel {
     described: Mutex<Vec<String>>,
     recognized: Mutex<Vec<Vec<(String, DocumentFields)>>>,
     depths: Mutex<Vec<Option<usize>>>,
+    revised: Mutex<Vec<(Levels, String)>>,
 }
 
 impl ScriptedChatModel {
@@ -105,7 +106,17 @@ impl ScriptedChatModel {
             described: Mutex::new(Vec::new()),
             recognized: Mutex::new(Vec::new()),
             depths: Mutex::new(Vec::new()),
+            revised: Mutex::new(Vec::new()),
         }
+    }
+
+    /// The levels and the sentence each `revise_levels` was asked, in order;
+    /// it answers from the same script as `recognize_levels`.
+    pub fn revised(&self) -> Vec<(Levels, String)> {
+        self.revised
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 
     /// The next answer of `generate_rule`.
@@ -238,6 +249,24 @@ impl ChatModel for ScriptedChatModel {
         _misfits: &[Mismatch],
     ) -> Result<Levels, AiError> {
         self.recognize_levels(files, kinds, folder_depth)
+    }
+
+    fn revise_levels(
+        &self,
+        _files: &[(String, DocumentFields)],
+        _kinds: &Kinds,
+        previous: &Levels,
+        sentence: &str,
+    ) -> Result<Levels, AiError> {
+        self.revised
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push((previous.clone(), sentence.to_owned()));
+        self.levels
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .pop_front()
+            .unwrap_or(Err(AiError::Model("no scripted levels")))
     }
 
     fn status(&self) -> LocalModelStatus {

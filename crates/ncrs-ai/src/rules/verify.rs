@@ -5,8 +5,16 @@
 use ncrs_index::{DocumentFields, Kinds};
 use ncrs_intake::render_pattern_in;
 
+use super::levels::Levels;
+
 /// How many deviating files the repair note names.
 const REPAIR_FILES: usize = 3;
+/// Letters a shared run of the file names needs to count as a pattern.
+const WORDY_RUN: usize = 3;
+/// Said to the model when its answer left the file name automatic although
+/// the files have names of their own.
+const FILE_NAME_NOTE: &str =
+    "The file names follow a pattern. Describe it in datei; datei null is not the answer here.";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Mismatch {
@@ -34,6 +42,66 @@ pub fn repair_note(pattern: &str, misfits: &[Mismatch]) -> String {
     }
     note.push_str("\nAnswer with a pattern that writes the paths as they are.");
     note
+}
+
+/// [`repair_note`] for the answer `previous`; an automatic file name is
+/// pointed out as well, whether or not paths deviate.
+pub fn repair_note_for(previous: &Levels, misfits: &[Mismatch]) -> String {
+    let mut parts = Vec::new();
+    if !misfits.is_empty() {
+        parts.push(repair_note(&previous.pattern(), misfits));
+    }
+    if previous.file.is_none() {
+        parts.push(FILE_NAME_NOTE.to_owned());
+    }
+    parts.join("\n")
+}
+
+/// The files are named after a pattern of their own: at least two different
+/// names share a leading or trailing run with words in it, as
+/// `Gehaltsabrechnung_` or `_Rechnung`. Only the structure is looked at, the
+/// model writes the level.
+pub fn file_names_share_structure(files: &[(String, DocumentFields)]) -> bool {
+    let stems: Vec<&str> = files
+        .iter()
+        .map(|(path, _)| {
+            let name = path.rsplit('/').next().unwrap_or(path);
+            match name.rsplit_once('.') {
+                Some((stem, extension)) if is_extension(&format!(".{extension}")) => stem,
+                _ => name,
+            }
+        })
+        .collect();
+    let Some(first) = stems.first() else {
+        return false;
+    };
+    if stems.iter().all(|stem| stem == first) {
+        return false;
+    }
+    let lead: Vec<char> = first
+        .chars()
+        .enumerate()
+        .take_while(|(index, ch)| {
+            stems
+                .iter()
+                .all(|stem| stem.chars().nth(*index) == Some(*ch))
+        })
+        .map(|(_, ch)| ch)
+        .collect();
+    let tail: Vec<char> = first
+        .chars()
+        .rev()
+        .enumerate()
+        .take_while(|(index, ch)| {
+            stems
+                .iter()
+                .all(|stem| stem.chars().rev().nth(*index) == Some(*ch))
+        })
+        .map(|(_, ch)| ch)
+        .collect();
+    [lead, tail]
+        .iter()
+        .any(|run| run.iter().filter(|ch| ch.is_alphabetic()).count() >= WORDY_RUN)
 }
 
 pub fn path_text(path: &std::path::Path) -> String {
@@ -80,7 +148,11 @@ pub fn pattern_mismatches(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::indexing_slicing, clippy::shadow_unrelated)]
+    #![allow(
+        clippy::indexing_slicing,
+        clippy::shadow_unrelated,
+        clippy::unwrap_used
+    )]
 
     use ncrs_index::KindLanguage;
     use ncrs_intake::parse_date;
@@ -123,6 +195,52 @@ mod tests {
                 .map(|w| w.starts_with("Otto GmbH/2021")),
             Some(true)
         );
+    }
+
+    fn named(names: &[&str]) -> Vec<(String, DocumentFields)> {
+        names
+            .iter()
+            .map(|name| ((*name).to_owned(), DocumentFields::default()))
+            .collect()
+    }
+
+    #[test]
+    fn names_with_a_shared_word_follow_a_pattern() {
+        assert!(file_names_share_structure(&named(&[
+            "2023/Gehaltsabrechnung_2023-05-25.pdf",
+            "2024/Gehaltsabrechnung_2024-01-31.pdf",
+        ])));
+        assert!(file_names_share_structure(&named(&[
+            "2023-05-25_Rechnung.pdf",
+            "2024-01-31_Rechnung.pdf",
+        ])));
+    }
+
+    #[test]
+    fn names_of_dates_or_a_single_name_show_no_structure() {
+        assert!(!file_names_share_structure(&named(&[
+            "2020-01-10.pdf",
+            "2020-03-11.pdf"
+        ])));
+        assert!(!file_names_share_structure(&named(&["Rechnung_1.pdf"])));
+        assert!(!file_names_share_structure(&named(&[
+            "a/Rechnung_1.pdf",
+            "b/Rechnung_1.pdf"
+        ])));
+    }
+
+    #[test]
+    fn the_repair_note_points_out_an_automatic_file_name() {
+        let automatic = Levels::from_pattern("{year}/").unwrap();
+        let named_file = Levels::from_pattern("{year}/{date}").unwrap();
+        assert!(repair_note_for(&automatic, &[]).contains("datei"));
+        assert!(!repair_note_for(&named_file, &[]).contains("datei"));
+        let misfit = Mismatch {
+            file: "a.pdf".to_owned(),
+            written: None,
+        };
+        let note = repair_note_for(&automatic, &[misfit]);
+        assert!(note.contains("does not write these paths") && note.contains("datei"));
     }
 
     #[test]

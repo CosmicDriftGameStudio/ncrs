@@ -136,6 +136,51 @@ fn with_model_an_empty_folder_gets_the_default_levels_and_one_rule() {
 }
 
 #[test]
+#[ignore = "needs the AI model: set NCRS_AI_MODELS_DIR to the folder with it"]
+fn with_model_a_sentence_puts_the_date_in_front_of_the_file_name_level() {
+    let model = real_model();
+    let mut talk = archive_talk(&model);
+    talk.send(Message::Open);
+    talk.send(Message::ChangeArea {
+        folder: talk.path("archive"),
+        area: "Arbeit/Gehalt".to_owned(),
+    });
+    let shown = levels_card(&talk);
+    println!("recognized: {:?}", shown.rows);
+    talk.press(&ChipReply::LevelsChange);
+
+    talk.type_text("kannst du bei 2 das datum vorne hin machen?");
+
+    let changed = levels_card(&talk);
+    let file_row = changed.rows.last().expect("a file name row");
+    println!("changed: {:?}", changed.rows);
+    let names: Vec<&str> = file_row.text.split(", ").collect();
+    assert!(!names.is_empty(), "{file_row:?}");
+    for name in names {
+        let stem = name.strip_suffix(".pdf").unwrap_or(name);
+        let (date, word) = stem.split_once('_').unwrap_or_default();
+        assert!(
+            date.len() == 10 && date.chars().all(|ch| ch.is_ascii_digit() || ch == '-'),
+            "the date comes first: {file_row:?}"
+        );
+        assert_eq!(word, "Gehaltsabrechnung", "{file_row:?}");
+    }
+    assert_eq!(talk.rule_count(), 0, "changing the levels saves nothing");
+    drop(talk);
+    model.shutdown();
+}
+
+fn levels_card(talk: &Talk) -> &ncrs_hermes_chat::LevelsCard {
+    talk.last_parts()
+        .iter()
+        .find_map(|part| match part {
+            ncrs_hermes_chat::Part::Levels(card) => Some(card),
+            _ => None,
+        })
+        .expect("a card of levels")
+}
+
+#[test]
 #[ignore = "measures the router on a warm model: set NCRS_AI_MODELS_DIR to the folder with it"]
 fn with_model_router_latency_per_sentence() {
     let model = real_model();
