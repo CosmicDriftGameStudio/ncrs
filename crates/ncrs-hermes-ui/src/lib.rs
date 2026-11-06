@@ -7,7 +7,7 @@ pub mod action;
 pub mod condition_editor;
 pub mod ctx;
 pub mod document_preview;
-pub mod filing_pieces;
+pub use ncrs_intake::filing_pieces;
 pub mod filing_setup;
 pub mod filing_status;
 pub mod hermes_column;

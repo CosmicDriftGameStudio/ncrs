@@ -7,13 +7,11 @@ use std::path::{Path, PathBuf};
 
 use iced::Task;
 use ncrs_ai::{pattern_mismatches, ChatModel, ContextDocument, Level, Levels, Part as LevelPart};
-use ncrs_filing::chat_work::{ChatWork, FolderReading, RuleSaveFailure, RuleTrial};
-use ncrs_filing::rules_work::TryOutcome;
+use ncrs_filing::chat_work::{ChatWork, FolderReading};
 use ncrs_i18n::Msg;
-use ncrs_index::{Combinator, Condition, DocumentFields, Kinds, RuleSpec};
+use ncrs_index::{DocumentFields, Kinds, RuleSpec};
 use ncrs_intake::{label_text, render_pattern_in, rule_problem, PlaceholderLabel};
 use ncrs_ui_kit::hermes_kit::LevelRow;
-use ncrs_ui_kit::kit::condition_kind_name;
 
 use crate::action::Action;
 use crate::ctx::Ctx;
@@ -23,8 +21,8 @@ use crate::state::{Chip, ChipReply, Entry, LevelsCard, Part, ReadFor, State, Ste
 use crate::texts::{fill, folder_name, number, rule_problem_text, segments, text};
 use crate::understand::{gate, Gate};
 use crate::update::{
-    access, cancel_chip, chip, chip_labelled, drop_working, fallback, fallback_chips,
-    folder_answer, hermes, say, source_chips, work,
+    access, cancel_chip, chip, chip_labelled, drop_working, fallback, fallback_chips, hermes, say,
+    work,
 };
 
 const DEFAULT_LEVELS: &str = "{year}/{date}_{sender}_{kind}";
@@ -33,6 +31,9 @@ const MODEL_FILES: usize = 6;
 const CONTEXT_FILES: usize = 12;
 const SUGGESTIONS: usize = 3;
 const MISFITS_SHOWN: usize = 3;
+/// Different values the levels card shows per level.
+const FOLDER_VALUES: usize = 3;
+const FILE_VALUES: usize = 2;
 
 /// What the model is asked.
 #[derive(Debug, Clone)]
@@ -102,6 +103,8 @@ pub struct RuleFlow {
     candidate: Option<RuleSpec>,
     /// The rule on screen, waiting for the click.
     proposed: Option<RuleSpec>,
+    /// How many documents the trial of the proposal would move.
+    trial_moves: usize,
     stage: Stage,
     /// Read once when the flow starts.
     kinds: Kinds,
@@ -117,6 +120,7 @@ impl RuleFlow {
             files: Vec::new(),
             candidate: None,
             proposed: None,
+            trial_moves: 0,
             stage: Stage::Recognize,
             kinds,
         }
@@ -382,38 +386,59 @@ fn is_fixed(level: &Level) -> bool {
         .all(|part| matches!(part, LevelPart::Fixed(_)))
 }
 
-fn sample_fields(ctx: &Ctx, flow: &RuleFlow, kinds: &Kinds) -> (DocumentFields, String) {
-    let complete = |fields: &DocumentFields| {
-        render_pattern_in(&flow.levels.pattern(), fields, kinds).is_some()
-    };
-    match flow
-        .files
-        .iter()
-        .find(|(_, fields)| complete(fields))
-        .or_else(|| flow.files.first())
-    {
-        Some((path, fields)) => (
-            fields.clone(),
-            path.rsplit('/').next().unwrap_or(path).to_owned(),
-        ),
-        None => (
-            DocumentFields {
-                sender: Some(label_text(ctx.lang, PlaceholderLabel::Sender).to_owned()),
-                kind: Some(label_text(ctx.lang, PlaceholderLabel::Kind).to_owned()),
-                date: Some(ctx.now.date_naive()),
-                ..DocumentFields::default()
-            },
-            String::new(),
-        ),
+/// What a folder of no files shows: the words of the fields, no real value.
+fn placeholder_fields(ctx: &Ctx) -> DocumentFields {
+    DocumentFields {
+        sender: Some(label_text(ctx.lang, PlaceholderLabel::Sender).to_owned()),
+        kind: Some(label_text(ctx.lang, PlaceholderLabel::Kind).to_owned()),
+        date: Some(ctx.now.date_naive()),
+        ..DocumentFields::default()
     }
 }
 
-fn level_rows(ctx: &Ctx, flow: &RuleFlow, kinds: &Kinds) -> Vec<LevelRow> {
-    let (fields, file_name) = sample_fields(ctx, flow, kinds);
-    let value = |level: &Level| {
-        render_pattern_in(&level.text(), &fields, kinds)
-            .map_or_else(|| "–".to_owned(), |path| segments(&path).join("/"))
+/// Different values of a level from the files, in the order of the files.
+fn level_values(ctx: &Ctx, flow: &RuleFlow, kinds: &Kinds, level: &Level, most: usize) -> String {
+    let render = |fields: &DocumentFields| {
+        render_pattern_in(&level.text(), fields, kinds).map(|path| segments(&path).join("/"))
     };
+    let mut values: Vec<String> = Vec::new();
+    for (_, fields) in &flow.files {
+        if let Some(value) = render(fields) {
+            if !values.contains(&value) {
+                values.push(value);
+            }
+        }
+        if values.len() == most {
+            break;
+        }
+    }
+    if flow.files.is_empty() {
+        values.extend(render(&placeholder_fields(ctx)));
+    }
+    if values.is_empty() {
+        "–".to_owned()
+    } else {
+        values.join(", ")
+    }
+}
+
+/// The names the files have now, when no file name level of its own is set.
+fn file_names(flow: &RuleFlow) -> String {
+    let mut names: Vec<&str> = Vec::new();
+    for (path, _) in &flow.files {
+        let name = path.rsplit('/').next().unwrap_or(path);
+        if !names.contains(&name) {
+            names.push(name);
+        }
+        if names.len() == FILE_VALUES {
+            break;
+        }
+    }
+    names.join(", ")
+}
+
+fn level_rows(ctx: &Ctx, flow: &RuleFlow, kinds: &Kinds) -> Vec<LevelRow> {
+    let value = |level: &Level| level_values(ctx, flow, kinds, level, FOLDER_VALUES);
     let mut rows: Vec<LevelRow> = flow
         .levels
         .folders
@@ -433,7 +458,7 @@ fn level_rows(ctx: &Ctx, flow: &RuleFlow, kinds: &Kinds) -> Vec<LevelRow> {
     rows.extend(match &flow.levels.file {
         Some(level) => Some(LevelRow {
             number,
-            text: value(level),
+            text: level_values(ctx, flow, kinds, level, FILE_VALUES),
             role: fill(
                 ctx.lang,
                 Msg::HermesChatLevelRoleFile,
@@ -442,7 +467,7 @@ fn level_rows(ctx: &Ctx, flow: &RuleFlow, kinds: &Kinds) -> Vec<LevelRow> {
         }),
         None => Some(LevelRow {
             number,
-            text: file_name,
+            text: file_names(flow),
             role: text(ctx.lang, Msg::HermesChatLevelRoleAutomatic),
         }),
     });
@@ -823,176 +848,6 @@ fn propose(state: &mut State, ctx: &Ctx, mut spec: RuleSpec) {
     work(state, ChatWork::RuleTrial { spec }, None);
 }
 
-fn condition_words(ctx: &Ctx, spec: &RuleSpec, kinds: &Kinds) -> String {
-    let items: Vec<String> = spec
-        .conditions
-        .list
-        .iter()
-        .map(|condition: &Condition| {
-            let value = match condition.kind {
-                ncrs_index::ConditionKind::Kind => kinds.kind_word(&condition.value).into_owned(),
-                _ => condition.value.clone(),
-            };
-            let item = format!(
-                "{}: {value}",
-                text(ctx.lang, condition_kind_name(condition.kind))
-            );
-            if condition.negated {
-                fill(
-                    ctx.lang,
-                    Msg::HermesChatRuleConditionNot,
-                    &[("condition", &item)],
-                )
-            } else {
-                item
-            }
-        })
-        .collect();
-    if items.len() < 2 {
-        return items.join("");
-    }
-    let msg = match spec.conditions.combinator {
-        Combinator::AllOf => Msg::HermesChatRuleConditionAll,
-        Combinator::AnyOf => Msg::HermesChatRuleConditionAny,
-    };
-    fill(ctx.lang, msg, &[("list", &items.join(", "))])
-}
+mod trial;
 
-fn example_line(ctx: &Ctx, document: &ncrs_filing::rules_work::TriedDocument) -> String {
-    let after = match &document.after {
-        TryOutcome::Filed(path) | TryOutcome::Lies(path) => segments(path).join("/"),
-        TryOutcome::Review(_) => text(ctx.lang, Msg::HermesChatRuleExampleReview),
-    };
-    fill(
-        ctx.lang,
-        Msg::HermesChatRuleExample,
-        &[
-            ("from", &segments(&document.path).join("/")),
-            ("to", &after),
-        ],
-    )
-}
-
-pub fn trial_done(state: &mut State, ctx: &Ctx, tried: Result<RuleTrial, String>) {
-    let trial = match tried {
-        Ok(trial) => trial,
-        Err(reason) => {
-            say(
-                state,
-                fill(ctx.lang, Msg::HermesChatReadFailed, &[("reason", &reason)]),
-                fallback_chips(ctx),
-            );
-            return;
-        }
-    };
-    let Some(flow) = state.session.rule.as_ref() else {
-        return;
-    };
-    let Some(spec) = flow.proposed.clone() else {
-        return;
-    };
-    if trial.matches == 0 {
-        ask_what(
-            state,
-            ctx,
-            Some(text(ctx.lang, Msg::HermesChatRuleNoneMatch)),
-        );
-        return;
-    }
-    let kinds = flow.kinds.clone();
-    let sentence = fill(
-        ctx.lang,
-        Msg::HermesChatRuleProposal,
-        &[
-            ("count", &number(trial.matches)),
-            ("conditions", &condition_words(ctx, &spec, &kinds)),
-            ("pattern", &flow.pattern()),
-        ],
-    );
-    let mut parts = vec![
-        Part::Text(sentence),
-        Part::Levels(levels_card(ctx, flow, &kinds, None)),
-    ];
-    if !trial.examples.is_empty() {
-        let lines: Vec<String> = trial
-            .examples
-            .iter()
-            .map(|document| example_line(ctx, document))
-            .collect();
-        parts.push(Part::Text(lines.join("\n")));
-    }
-    let change = if flow.candidate.is_some() {
-        ChipReply::LevelsChange
-    } else {
-        ChipReply::RuleEdit
-    };
-    let chips = vec![
-        chip(ctx, Msg::HermesChatRuleCreate, ChipReply::RuleCreate, true),
-        chip(ctx, Msg::HermesChatLevelsChange, change, false),
-        cancel_chip(ctx),
-    ];
-    state.step = Step::RuleWhat;
-    hermes(state, parts, chips);
-}
-
-/// The click on "Create rule".
-pub fn create(state: &mut State) {
-    let Some(spec) = state
-        .session
-        .rule
-        .as_ref()
-        .and_then(|flow| flow.proposed.clone())
-    else {
-        return;
-    };
-    work(state, ChatWork::SaveRule { spec }, None);
-}
-
-pub fn stored(state: &mut State, ctx: &Ctx, stored: Result<(), RuleSaveFailure>) {
-    match stored {
-        Ok(()) => {
-            state.session.rule = None;
-            state.step = Step::Idle;
-            let mut chips = Vec::new();
-            if !ctx.sources.is_empty() {
-                chips.push(chip(
-                    ctx,
-                    Msg::HermesChatRuleFileNow,
-                    ChipReply::RuleNow,
-                    true,
-                ));
-            }
-            chips.extend(fallback_chips(ctx));
-            say(state, text(ctx.lang, Msg::HermesChatRuleStored), chips);
-        }
-        Err(RuleSaveFailure::Refused(problem)) => {
-            let reason = fill(
-                ctx.lang,
-                Msg::HermesChatRuleRefused,
-                &[("reason", &rule_problem_text(ctx.lang, &problem))],
-            );
-            ask_what(state, ctx, Some(reason));
-        }
-        Err(RuleSaveFailure::Failed(reason)) => say(
-            state,
-            fill(ctx.lang, Msg::HermesChatReadFailed, &[("reason", &reason)]),
-            fallback_chips(ctx),
-        ),
-    }
-}
-
-/// "File now": the usual tidy-up of the source folders.
-pub fn file_now(state: &mut State, ctx: &Ctx) -> Option<Action> {
-    state.step = Step::TidyFolder;
-    match ctx.sources.as_slice() {
-        [only] => folder_answer(state, ctx, only.clone(), false),
-        _ => {
-            say(
-                state,
-                text(ctx.lang, Msg::HermesChatAskTidyFolder),
-                source_chips(state, ctx),
-            );
-            None
-        }
-    }
-}
+pub use trial::{create, file_now, stored, trial_done};

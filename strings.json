@@ -8809,6 +8809,18 @@
       "de": "zur Prüfung"
     },
     {
+      "key": "hermes_chat.rule_examples_more",
+      "context": "Last line under the example lines of the rule trial when more documents would move than are shown. {count} is how many are not shown.",
+      "en": "… and {count} more",
+      "de": "… und {count} weitere"
+    },
+    {
+      "key": "hermes_chat.rule_in_place",
+      "context": "Line of the rule trial about where the matching documents lie. {in_place} lie in the archive where the rule would file them anyway, {moves} would be moved. Both are counts.",
+      "en": "Already in the right place: {in_place}. Would be moved: {moves}.",
+      "de": "Schon am richtigen Platz: {in_place}. Würden verschoben: {moves}."
+    },
+    {
       "key": "hermes_chat.rule_create",
       "context": "Button: store the proposed rule.",
       "en": "Create rule",
