@@ -26,6 +26,8 @@ use super::hermes_real_model_tests::{
 use crate::app::*;
 use crate::i18n::Language;
 
+type IndexSlot = std::sync::Arc<Mutex<Option<Index>>>;
+
 const MODELS_DIR_VARIABLE: &str = "NCRS_AI_MODELS_DIR";
 const SENDER: &str = "Cosmicdrift GmbH";
 const SHOT_DIR: &str = "target/acceptance/flow-matrix";
@@ -184,7 +186,7 @@ fn opened_pay_slips(
     lang: Language,
     answering: &dyn ChatModel,
     name: &str,
-) -> (tempfile::TempDir, App, Ctx, ChatAccess) {
+) -> (tempfile::TempDir, App, Ctx, ChatAccess, IndexSlot) {
     let dir = tempfile::tempdir().unwrap();
     let root = std::fs::canonicalize(dir.path()).unwrap();
     let slot = std::sync::Arc::new(Mutex::new(Some(
@@ -234,7 +236,7 @@ fn opened_pay_slips(
         "{name}: {:?}",
         app.hermes_chat.thread.last()
     );
-    (dir, app, ctx, access)
+    (dir, app, ctx, access, slot)
 }
 
 fn local_model() -> std::sync::Arc<LazyLocalModel> {
@@ -271,7 +273,7 @@ fn with_model_the_rule_flow_from_the_proposal_to_the_question_is_shot() {
         ),
     ] {
         let name = &format!("rule-{suffix}");
-        let (_dir, mut app, ctx, access) = opened_pay_slips(&model, lang, answering, name);
+        let (_dir, mut app, ctx, access, _slot) = opened_pay_slips(&model, lang, answering, name);
         press(&mut app, &ctx, &access, answering, &ChipReply::LevelsKeep);
         assert!(has_chip(&app, &ChipReply::RuleCondition), "{name}");
         assert!(has_chip(&app, &ChipReply::LevelsChange), "{name}");
@@ -289,7 +291,7 @@ fn with_model_the_rule_flow_from_the_proposal_to_the_question_is_shot() {
         shoot(&app, &format!("{name}-3-new-condition"));
 
         // The question about the existing files, from the sender proposal.
-        let (_second_dir, mut second_app, second_ctx, second_access) =
+        let (second_dir, mut second_app, second_ctx, second_access, slot) =
             opened_pay_slips(&model, lang, answering, name);
         press(
             &mut second_app,
@@ -334,6 +336,85 @@ fn with_model_the_rule_flow_from_the_proposal_to_the_question_is_shot() {
             &ChipReply::RuleCreate,
         );
         shoot(&second_app, &format!("{name}-7-rule-adjusted"));
+
+        let root = std::fs::canonicalize(second_dir.path()).unwrap();
+        let before = files_on_disk(&root);
+        let found_before = searched(&slot, &root);
+        assert!(has_chip(&second_app, &ChipReply::RuleNow), "{name}");
+        press(
+            &mut second_app,
+            &second_ctx,
+            &second_access,
+            answering,
+            &ChipReply::RuleNow,
+        );
+        shoot(&second_app, &format!("{name}-8-rearranged"));
+        let after = files_on_disk(&root);
+        let mut removed: Vec<(&String, &String)> = before
+            .iter()
+            .filter(|(path, _)| !after.contains_key(*path))
+            .collect();
+        let mut added: Vec<(&String, &String)> = after
+            .iter()
+            .filter(|(path, _)| !before.contains_key(*path))
+            .collect();
+        assert!(!removed.is_empty(), "{name}: nothing moved");
+        assert_eq!(removed.len(), added.len(), "{name}");
+        removed.sort_by_key(|(path, content)| (*content, *path));
+        added.sort_by_key(|(path, content)| (*content, *path));
+        let found_after = searched(&slot, &root);
+        let mut searched_pairs = 0;
+        for ((old, old_content), (new, new_content)) in removed.iter().zip(&added) {
+            assert_eq!(old_content, new_content, "{name}: {old} -> {new}");
+            assert!(root.join(new).is_file(), "{name}: {new} missing");
+            assert!(!root.join(old).exists(), "{name}: {old} remains");
+            assert!(
+                index_knows(&slot, &root.join(new)),
+                "{name}: index lacks {new}"
+            );
+            assert!(
+                !index_knows(&slot, &root.join(old)),
+                "{name}: index keeps {old}"
+            );
+            if found_before.contains(*old) {
+                searched_pairs += 1;
+                assert!(found_after.contains(*new), "{name}: search lacks {new}");
+                assert!(!found_after.contains(*old), "{name}: search finds {old}");
+            }
+        }
+        assert!(searched_pairs > 0, "{name}: no moved file was searchable");
+
+        press(
+            &mut second_app,
+            &second_ctx,
+            &second_access,
+            answering,
+            &ChipReply::Undo,
+        );
+        press(
+            &mut second_app,
+            &second_ctx,
+            &second_access,
+            answering,
+            &ChipReply::PutBack,
+        );
+        shoot(&second_app, &format!("{name}-9-undone"));
+        assert_eq!(
+            files_on_disk(&root),
+            before,
+            "{name}: undo puts every file back"
+        );
+        assert_eq!(
+            searched(&slot, &root),
+            found_before,
+            "{name}: search after undo"
+        );
+        for (old, _) in &removed {
+            assert!(
+                index_knows(&slot, &root.join(old)),
+                "{name}: index lacks {old}"
+            );
+        }
     }
     model.shutdown();
 }
@@ -350,7 +431,8 @@ fn with_model_the_changed_levels_and_the_dry_run_are_shot_for_each_change() {
             (Language::English, "en", english_sentence),
         ] {
             let name = &format!("{case}-{suffix}");
-            let (_dir, mut app, ctx, access) = opened_pay_slips(&model, lang, answering, name);
+            let (_dir, mut app, ctx, access, _slot) =
+                opened_pay_slips(&model, lang, answering, name);
             press(&mut app, &ctx, &access, answering, &ChipReply::LevelsChange);
             if case.starts_with("report") {
                 type_sentence(&mut app, &ctx, &access, answering, "3");
@@ -369,4 +451,73 @@ fn with_model_the_changed_levels_and_the_dry_run_are_shot_for_each_change() {
         }
     }
     model.shutdown();
+}
+
+/// Every file of the archive and the inbox with its content, by path below
+/// the root.
+fn files_on_disk(root: &std::path::Path) -> std::collections::BTreeMap<String, String> {
+    fn walk(
+        root: &std::path::Path,
+        dir: &std::path::Path,
+        out: &mut std::collections::BTreeMap<String, String>,
+    ) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                walk(root, &path, out);
+            } else {
+                let relative = path
+                    .strip_prefix(root)
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned();
+                out.insert(relative, std::fs::read_to_string(&path).unwrap());
+            }
+        }
+    }
+    let mut out = std::collections::BTreeMap::new();
+    for folder in ["archive", "inbox"] {
+        walk(root, &root.join(folder), &mut out);
+    }
+    out
+}
+
+/// What the search of the app finds for the words of the pay slips, as paths
+/// below the root. The search reads the index, as the app's search does.
+fn searched(
+    slot: &std::sync::Arc<Mutex<Option<Index>>>,
+    root: &std::path::Path,
+) -> std::collections::BTreeSet<String> {
+    let access = ncrs_filing::query_work::QueryAccess::new(std::sync::Arc::clone(slot));
+    ["Entgeltabrechnung", "Gehaltsabrechnung"]
+        .iter()
+        .flat_map(|word| {
+            let spec = ncrs_index::QuerySpec {
+                full_text: Some((*word).to_owned()),
+                ..ncrs_index::QuerySpec::default()
+            };
+            access.run(&spec).unwrap()
+        })
+        .map(|hit| {
+            assert!(!hit.missing, "the search finds a gone file: {:?}", hit.path);
+            hit.path
+                .strip_prefix(root)
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect()
+}
+
+fn index_knows(slot: &std::sync::Arc<Mutex<Option<Index>>>, path: &std::path::Path) -> bool {
+    slot.lock()
+        .unwrap()
+        .as_ref()
+        .unwrap()
+        .document_by_path(path)
+        .unwrap()
+        .is_some()
 }

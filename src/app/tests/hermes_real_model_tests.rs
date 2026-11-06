@@ -524,11 +524,6 @@ fn file_and_undo(
     press(app, ctx, access, model, &ChipReply::RuleCreate);
     assert!(has_chip(app, &ChipReply::RuleNow), "no [Jetzt ablegen]");
     press(app, ctx, access, model, &ChipReply::RuleNow);
-    let archive_folder = ChipReply::Folder(root.join("archive"));
-    press(app, ctx, access, model, &archive_folder);
-    press(app, ctx, access, model, &ChipReply::Once);
-    press(app, ctx, access, model, &ChipReply::ModeMove);
-    press(app, ctx, access, model, &ChipReply::FileAll);
     let filed_text = last_hermes_text(app);
     println!("FILED: {filed_text}");
     assert!(

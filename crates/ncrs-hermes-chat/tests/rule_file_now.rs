@@ -1,6 +1,5 @@
-//! A rule made in the chat files the waiting documents: the click on "File
-//! now" leads to the usual trial, the file moves only on the click on "File
-//! all" and goes back with undo.
+//! A rule made in the chat files the waiting documents: the click on
+//! "Rearrange now" is the confirmation and files at once; undo puts it back.
 
 #![allow(
     clippy::unwrap_used,
@@ -23,18 +22,19 @@ mod tests {
     const WAITING: &str = "inbox/scan.pdf";
 
     fn spec() -> RuleSpec {
+        spec_for("Rechnung", "Telefon/{year}")
+    }
+
+    fn spec_for(word: &str, pattern: &str) -> RuleSpec {
         RuleSpec {
             name: None,
-            conditions: RuleConditions::all_of(vec![Condition::new(
-                ConditionKind::Word,
-                "Rechnung",
-            )]),
+            conditions: RuleConditions::all_of(vec![Condition::new(ConditionKind::Word, word)]),
             extract_number: None,
             extract_date: None,
             extract_amount: None,
             kind: None,
             tags: BTreeSet::new(),
-            filing_pattern: "Telefon/{year}".to_owned(),
+            filing_pattern: pattern.to_owned(),
             confirmed: false,
             enabled: false,
         }
@@ -51,6 +51,14 @@ mod tests {
     }
 
     fn stored_rule(waiting: &[(&str, String, (i32, u32, u32))]) -> Talk {
+        stored_rule_after(waiting, None)
+    }
+
+    /// `other`: an area and a word of a rule made before the one under test.
+    fn stored_rule_after(
+        waiting: &[(&str, String, (i32, u32, u32))],
+        other: Option<(&str, &str)>,
+    ) -> Talk {
         let mut talk = Talk::in_dir(tempfile::tempdir().unwrap(), &["archive"], &["inbox"]);
         for (month, day) in [(1, 10), (3, 11), (6, 12), (9, 13)] {
             let id = talk.index_document(
@@ -86,6 +94,20 @@ mod tests {
             );
         }
         talk = talk.with_rules();
+        if let Some((area, word)) = other {
+            std::fs::create_dir_all(talk.path(&format!("archive/{area}"))).unwrap();
+            let folder = talk.path("archive");
+            talk.send(Message::ChangeArea {
+                folder,
+                area: area.to_owned(),
+            });
+            talk.press(&ChipReply::LevelsKeep);
+            talk.model
+                .push_rule(Ok(spec_for(word, &format!("{area}/{{year}}"))));
+            talk.type_text("Das kommt woanders hin");
+            talk.press(&ChipReply::RuleCreate);
+            talk.press(&ChipReply::RuleOnlyNew);
+        }
         let folder = talk.path("archive");
         talk.send(Message::ChangeArea {
             folder,
@@ -95,36 +117,22 @@ mod tests {
         talk.model.push_rule(Ok(spec()));
         talk.type_text("Rechnungen kommen hierhin");
         talk.press(&ChipReply::RuleCreate);
-        assert_eq!(talk.rule_count(), 1);
+        assert_eq!(talk.rule_count(), 1 + usize::from(other.is_some()));
         talk
     }
 
     const FILED_AT: &str = "archive/Telefon/2021/2021-07-05_Alfa AG_Invoice.pdf";
-
-    fn trial_of_the_waiting_file(talk: &mut Talk, mode: &ChipReply) {
-        talk.press(&ChipReply::RuleNow);
-        assert!(
-            talk.actions.is_empty(),
-            "filing now needs nothing of the app"
-        );
-        talk.press(&ChipReply::Folder(talk.path("archive")));
-        talk.press(&ChipReply::Once);
-        talk.press(mode);
-        assert!(talk
-            .labels()
-            .iter()
-            .any(|label| label.contains("1 ablegen")));
-    }
 
     #[test]
     fn file_now_moves_the_waiting_file_where_the_rule_says_and_undo_puts_it_back() {
         let mut talk = talk_with_stored_rule();
         let before = talk.files();
 
-        trial_of_the_waiting_file(&mut talk, &ChipReply::ModeMove);
-        assert_eq!(talk.files(), before, "the trial moves nothing");
-
-        talk.press(&ChipReply::FileAll);
+        talk.press(&ChipReply::RuleNow);
+        assert!(
+            talk.actions.is_empty(),
+            "filing now needs nothing of the app"
+        );
         let filed = talk.files();
         assert!(!filed.contains_key(WAITING), "{:?}", filed.keys());
         assert_eq!(filed[FILED_AT], before[WAITING], "same content, new place");
@@ -135,27 +143,64 @@ mod tests {
     }
 
     #[test]
-    fn a_typed_yes_to_the_trial_moves_nothing() {
+    fn rearrange_now_asks_nothing_and_files_inbox_and_archive_in_one_run() {
         let mut talk = talk_with_stored_rule();
         let before = talk.files();
-        trial_of_the_waiting_file(&mut talk, &ChipReply::ModeMove);
-        let file_all = talk
+
+        talk.press(&ChipReply::RuleNow);
+
+        let asked: Vec<_> = talk
             .state
             .chips()
             .iter()
-            .find(|chip| chip.reply == ChipReply::FileAll)
-            .unwrap()
-            .label
-            .clone();
+            .map(|chip| chip.reply.clone())
+            .filter(|reply| {
+                matches!(
+                    reply,
+                    ChipReply::Folder(_)
+                        | ChipReply::Once
+                        | ChipReply::Always
+                        | ChipReply::ModeMove
+                        | ChipReply::ModeCopy
+                        | ChipReply::FileAll
+                )
+            })
+            .collect();
+        assert!(asked.is_empty(), "{asked:?}");
+        assert!(talk.files().contains_key(FILED_AT));
+        assert!(names_below(&talk, "archive/Alfa").is_empty());
+        assert_eq!(names_below(&talk, "archive/Telefon/2020/").len(), 4);
 
-        talk.type_text_understood(
-            "ja, ablegen",
-            &format!(r#"{{"intent":"answer","choice":"{file_all}"}}"#),
+        talk.press(&ChipReply::Undo);
+        talk.press(&ChipReply::PutBack);
+        assert_eq!(talk.files(), before, "one undo restores both");
+    }
+
+    #[test]
+    fn rearrange_now_leaves_documents_other_rules_would_file() {
+        let strom = letter("Alfa AG", "06.07.2021", "Strom", 78);
+        let mut talk = stored_rule_after(
+            &[
+                (
+                    WAITING,
+                    letter("Alfa AG", "05.07.2021", "Rechnung", 77),
+                    (2021, 7, 5),
+                ),
+                ("inbox/strom.pdf", strom, (2021, 7, 6)),
+            ],
+            Some(("Strom", "Strom")),
         );
 
-        assert_eq!(talk.files(), before, "a typed answer files nothing");
-        talk.press(&ChipReply::FileAll);
-        assert!(talk.files().contains_key(FILED_AT));
+        talk.press(&ChipReply::RuleNow);
+
+        let filed = talk.files();
+        assert!(filed.contains_key(FILED_AT), "{:?}", filed.keys());
+        assert!(!filed.contains_key(WAITING));
+        assert!(
+            filed.contains_key("inbox/strom.pdf"),
+            "the other rule's document stays: {:?}",
+            filed.keys()
+        );
     }
 
     #[test]
@@ -244,23 +289,6 @@ mod tests {
     }
 
     #[test]
-    fn file_now_renames_the_archive_documents_with_the_waiting_file_and_undo_puts_all_back() {
-        let mut talk = talk_with_stored_rule();
-        let before = talk.files();
-
-        trial_of_the_waiting_file(&mut talk, &ChipReply::ModeMove);
-        talk.press(&ChipReply::FileAll);
-
-        assert!(names_below(&talk, "archive/Alfa").is_empty());
-        assert_eq!(names_below(&talk, "archive/Telefon/2020/").len(), 4);
-        assert!(talk.files().contains_key(FILED_AT));
-
-        talk.press(&ChipReply::Undo);
-        talk.press(&ChipReply::PutBack);
-        assert_eq!(talk.files(), before);
-    }
-
-    #[test]
     fn file_now_with_only_archive_documents_moves_them_at_once_and_undo_puts_them_back() {
         let mut talk = stored_rule(&[]);
         let before = talk.files();
@@ -280,9 +308,6 @@ mod tests {
         let before = talk.files();
 
         talk.press(&ChipReply::RuleNow);
-        talk.press(&ChipReply::Folder(talk.path("archive")));
-        talk.press(&ChipReply::Once);
-        talk.press(&ChipReply::ModeMove);
 
         assert!(names_below(&talk, "archive/Alfa").is_empty());
         assert_eq!(names_below(&talk, "archive/Telefon/2020/").len(), 4);

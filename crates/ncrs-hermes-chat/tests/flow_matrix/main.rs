@@ -17,7 +17,10 @@
 mod common;
 mod rules;
 
-use rules::{change_the_condition, create_and_check, only_new, saved_twice_for_the_same_folder};
+use rules::{
+    change_the_condition, create_and_check, only_new, saved_twice_for_the_same_folder,
+    saved_twice_with_a_new_level_word,
+};
 
 use std::collections::BTreeMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -797,12 +800,16 @@ fn with_model_level_change_matrix() {
             Box::new(move |model, english| change_then_apply(model, &change, english)),
         ));
     }
-    let paths: [(&str, fn(&Arc<CachedModel>, bool)); 14] = [
+    let paths: [(&str, fn(&Arc<CachedModel>, bool)); 15] = [
         ("save, no: only new ones", only_new),
         ("change the condition in a sentence", change_the_condition),
         (
             "save twice for the same folder",
             saved_twice_for_the_same_folder,
+        ),
+        (
+            "save twice for the same folder, new level word",
+            saved_twice_with_a_new_level_word,
         ),
         ("report path, index knows both", |model, english| {
             marc_path(model, english, Indexed::Both);

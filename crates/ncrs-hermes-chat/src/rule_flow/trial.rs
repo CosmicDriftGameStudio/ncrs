@@ -8,19 +8,21 @@ use ncrs_intake::filing_pieces::FilingTarget;
 use ncrs_ui_kit::hermes_kit::{FactRow, MoveRow, MovesBlock};
 use ncrs_ui_kit::kit::condition_kind_name;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+use ncrs_filing::chat_work::TrialOutcome;
 
 use super::change::{more_moves, move_row};
-use super::{ask_what, is_fixed, RuleFlow};
+use super::{ask_what, RuleFlow};
 use crate::action::Action;
 use crate::ctx::Ctx;
-use crate::state::{ChipReply, Part, ProposalCard, RuleMoves, State, Step};
+use crate::state::{ChipReply, Part, ProposalCard, RuleMoves, RuleQueue, State, Step, Tidy};
 use crate::texts::{fill, number, rule_problem_text, segments, text};
-use crate::tidy::archive_run;
-use crate::update::{
-    cancel_chip, chip, chip_labelled, fallback_chips, folder_answer, hermes, say, source_chips,
-    work,
-};
+use crate::tidy::{archive_run, file_all};
+use crate::update::{cancel_chip, chip, chip_labelled, fallback_chips, hermes, say, work};
+use crate::{learn, trial_end};
+use ncrs_index::Transfer;
+use crate::state::ReadFor;
 
 fn condition_words(ctx: &Ctx, spec: &RuleSpec, kinds: &Kinds) -> String {
     let items: Vec<String> = spec
@@ -108,6 +110,12 @@ pub fn trial_done(state: &mut State, ctx: &Ctx, tried: Result<RuleTrial, String>
     let kinds = flow.kinds.clone();
     let moved = trial.from_inbox + trial.archive_moves.len();
     flow.moves = RuleMoves {
+        prefix: PathBuf::from(&flow.prefix),
+        target: flow
+            .target
+            .clone()
+            .or_else(|| ctx.targets.first().cloned())
+            .unwrap_or_default(),
         from_inbox: trial.from_inbox,
         archive: trial.archive_moves.clone(),
     };
@@ -224,17 +232,15 @@ pub fn create(state: &mut State) {
     work(state, ChatWork::SaveRule { spec }, None);
 }
 
-/// The fixed words of the folder levels, "Work / Salary"; the folder when
-/// the filing has none.
+/// The path of the opened folder below its target, "Archive / Work"; the
+/// folder itself at the target root. The rule belongs to the folder, so
+/// changing a level word keeps the name and two folders stay apart.
 pub fn rule_name(flow: &RuleFlow) -> String {
-    let below = flow.prefix.split('/').filter(|name| !name.is_empty());
-    let fixed = flow
-        .levels
-        .folders
-        .iter()
-        .filter(|level| is_fixed(level))
-        .map(|level| level.text());
-    let words: Vec<String> = below.map(str::to_owned).chain(fixed).collect();
+    let words: Vec<&str> = flow
+        .prefix
+        .split('/')
+        .filter(|name| !name.is_empty())
+        .collect();
     if words.is_empty() {
         flow.folder.clone()
     } else {
@@ -320,38 +326,103 @@ pub fn only_new(state: &mut State, ctx: &Ctx) {
     );
 }
 
-/// "File now": the usual tidy-up of the source folders, with the archive
-/// documents the stored rule renames or moves in the same run. When nothing
-/// comes from the inbox, the run holds only those.
+/// "Rearrange now" is the confirmation: the documents of the inbox go into the
+/// rule's target at once, moved, once, with the archive documents the stored
+/// rule renames in the same run. With several sources one run follows the
+/// other; when nothing comes from the inbox, the run holds only the archive.
 pub fn file_now(state: &mut State, ctx: &Ctx) -> Option<Action> {
-    state.step = Step::TidyFolder;
-    let archive_only = state
-        .session
-        .rule_moves
-        .as_ref()
-        .is_some_and(|moves| moves.from_inbox == 0 && !moves.archive.is_empty());
-    if archive_only {
+    let moves = state.session.rule_moves.take()?;
+    state.step = Step::Idle;
+    if moves.from_inbox == 0 && !moves.archive.is_empty() {
         if let Some(source) = ctx.sources.first() {
-            return file_archive_only(state, ctx, source.clone());
+            archive_run(state, ctx, source.clone(), moves.archive);
         }
+        return None;
     }
-    state.session.rule_moves_wait = true;
-    match ctx.sources.as_slice() {
-        [only] => folder_answer(state, ctx, only.clone(), false),
-        _ => {
-            say(
-                state,
-                text(ctx.lang, Msg::HermesChatAskTidyFolder),
-                source_chips(state, ctx),
-            );
-            None
-        }
+    let mut sources = ctx.sources.iter().cloned();
+    let first = sources.next()?;
+    state.session.rule_queue = Some(RuleQueue {
+        target: moves.target.clone(),
+        prefix: moves.prefix.clone(),
+        sources: sources.collect(),
+    });
+    start_source(state, ctx, first, (moves.target, moves.prefix), moves.archive);
+    None
+}
+
+fn start_source(
+    state: &mut State,
+    ctx: &Ctx,
+    source: PathBuf,
+    (target, prefix): (PathBuf, PathBuf),
+    inside: Vec<ncrs_filing::rules_work::ArchiveMove>,
+) {
+    state.session.tidy = Some(Tidy {
+        rule_now: Some(prefix),
+        source: source.clone(),
+        target: Some(target),
+        transfer: Some(Transfer::Move),
+        inside,
+    });
+    state.session.layout = None;
+    state.session.deciding = None;
+    state.step = Step::Idle;
+    learn::read_for(state, ctx, source, ReadFor::Source);
+}
+
+/// The next source of "Rearrange now"; `false` when none is left.
+pub fn next_source(state: &mut State, ctx: &Ctx) -> bool {
+    let Some(queue) = state.session.rule_queue.as_mut() else {
+        return false;
+    };
+    if queue.sources.is_empty() {
+        state.session.rule_queue = None;
+        return false;
+    }
+    let source = queue.sources.remove(0);
+    let at = (queue.target.clone(), queue.prefix.clone());
+    start_source(state, ctx, source, at, Vec::new());
+    true
+}
+
+/// Whether "Rearrange now" files this entry of the tidy trial: only what
+/// lands below the rule's own folder; unsure ones stay. Without a prefix (a
+/// normal tidy-up) everything goes through.
+/// ponytail: the trial knows no rule names, so another rule filing below the
+/// same prefix would ride along.
+pub fn rule_keeps(prefix: Option<&Path>, outcome: &TrialOutcome) -> bool {
+    match (prefix, outcome) {
+        (None, _) => true,
+        (Some(prefix), TrialOutcome::Filed { to }) => to.starts_with(prefix),
+        (Some(_), _) => false,
     }
 }
 
-fn file_archive_only(state: &mut State, ctx: &Ctx, source: PathBuf) -> Option<Action> {
-    let moves = state.session.rule_moves.take()?;
-    state.step = Step::Idle;
-    archive_run(state, ctx, source, moves.archive);
-    None
+/// The tidy trial of a "Rearrange now" source is back: file what it can
+/// file, no second look. What is unsure or stays, stays where it is.
+pub fn file_rule_trial(state: &mut State, ctx: &Ctx) {
+    let prefix = state
+        .session
+        .tidy
+        .as_ref()
+        .and_then(|tidy| tidy.rule_now.as_deref());
+    let nothing_to_file = state.session.trial.as_ref().is_none_or(|trial| {
+        !trial.plan.entries.iter().any(|entry| {
+            matches!(entry.outcome, TrialOutcome::Filed { .. })
+                && rule_keeps(prefix, &entry.outcome)
+        })
+    }) && state
+        .session
+        .tidy
+        .as_ref()
+        .is_none_or(|tidy| tidy.inside.is_empty());
+    if nothing_to_file {
+        if next_source(state, ctx) {
+            return;
+        }
+        state.session.rule_queue = None;
+        trial_end::without_filing(state, ctx, Vec::new());
+        return;
+    }
+    file_all(state, ctx);
 }

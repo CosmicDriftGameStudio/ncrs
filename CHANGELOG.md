@@ -100,7 +100,7 @@ All notable changes to this project are documented here. The format follows
   name, which read folders it takes documents from, how many documents it
   hits with examples, and a dry run that counts the files already in place
   and the files that would move. The condition can be changed in a sentence.
-- A saved chat rule is named after its fixed folder words and files new
+- A saved chat rule is named after the folder it was made in and files new
   documents from the read folders. Opening a folder that already has a rule
   changes that rule instead of adding a second one. Settings › Rules shows
   "created in chat". After saving, Hermes asks separately whether to move the

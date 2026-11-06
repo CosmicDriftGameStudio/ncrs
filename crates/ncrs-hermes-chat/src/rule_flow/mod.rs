@@ -79,6 +79,8 @@ pub struct RuleFlow {
     proposed: Option<RuleSpec>,
     /// What the trial of the proposal would move.
     moves: RuleMoves,
+    /// The target the opened folder lies in; unknown for a free description.
+    target: Option<PathBuf>,
     /// Read once when the flow starts.
     kinds: Kinds,
 }
@@ -99,6 +101,7 @@ impl RuleFlow {
             shared: None,
             proposed: None,
             moves: RuleMoves::default(),
+            target: None,
             kinds,
         }
     }
@@ -158,11 +161,9 @@ pub fn open(state: &mut State, ctx: &Ctx, folder: PathBuf) -> bool {
     } else {
         format!("{}/", below.join("/"))
     };
-    state.session.rule = Some(RuleFlow::new(
-        folder_name(ctx, &folder),
-        prefix,
-        kinds_of(ctx),
-    ));
+    let mut flow = RuleFlow::new(folder_name(ctx, &folder), prefix, kinds_of(ctx));
+    flow.target = Some(target.clone());
+    state.session.rule = Some(flow);
     learn::read_for(state, ctx, folder, ReadFor::Open);
     true
 }
@@ -905,7 +906,7 @@ fn propose(state: &mut State, ctx: &Ctx, mut spec: RuleSpec) {
 }
 
 mod source;
-mod trial;
+pub(crate) mod trial;
 
 pub use trial::{create, file_now, only_new, stored, trial_done};
 
