@@ -51,6 +51,7 @@ pub struct MenuItemSpec {
     pub checked: Option<bool>,
 }
 
+#[cfg(test)]
 impl MenuEntry {
     /// The items of this entry: itself, or those of its submenu.
     pub fn items(&self) -> &[MenuItemSpec] {
@@ -612,10 +613,12 @@ mod tests {
         assert_eq!(item(&model, KeyAction::Copy).title, "Copy to other panel");
         let german = MenuModel::build(Language::German, &Keymap::default(), Toggles::default());
         assert!(item(&german, KeyAction::Rename).title.ends_with('\u{2026}'));
-        let places = submenu_of(menu_of(&german, CommandGroup::Go), Submenu::Places);
-        for entry in &places.items {
-            assert!(!entry.title.contains("\u{2026}\u{2026}"), "{}", entry.title);
-            assert!(!entry.title.contains(" \u{2026}"), "{}", entry.title);
+        for language_model in [&model, &german] {
+            for entry in all_items(language_model) {
+                assert!(!entry.title.contains("\u{2026}\u{2026}"), "{}", entry.title);
+                assert!(!entry.title.contains(" \u{2026}"), "{}", entry.title);
+                assert!(!entry.title.contains("..."), "{}", entry.title);
+            }
         }
     }
 
