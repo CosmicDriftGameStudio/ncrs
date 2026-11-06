@@ -84,7 +84,12 @@ pub fn source_read(state: &mut State, ctx: &Ctx, reading: &Arc<FolderReading>) {
         );
         return;
     }
-    if state.session.tidy.as_ref().is_some_and(|tidy| tidy.rule_now.is_some()) {
+    if state
+        .session
+        .tidy
+        .as_ref()
+        .is_some_and(|tidy| tidy.rule_now.is_some())
+    {
         choose_where(state, ctx, reading);
         return;
     }

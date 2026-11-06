@@ -16,13 +16,13 @@ use super::change::{more_moves, move_row};
 use super::{ask_what, RuleFlow};
 use crate::action::Action;
 use crate::ctx::Ctx;
+use crate::state::ReadFor;
 use crate::state::{ChipReply, Part, ProposalCard, RuleMoves, RuleQueue, State, Step, Tidy};
 use crate::texts::{fill, number, rule_problem_text, segments, text};
 use crate::tidy::{archive_run, file_all};
 use crate::update::{cancel_chip, chip, chip_labelled, fallback_chips, hermes, say, work};
 use crate::{learn, trial_end};
 use ncrs_index::Transfer;
-use crate::state::ReadFor;
 
 fn condition_words(ctx: &Ctx, spec: &RuleSpec, kinds: &Kinds) -> String {
     let items: Vec<String> = spec
@@ -366,7 +366,13 @@ pub fn file_now(state: &mut State, ctx: &Ctx) -> Option<Action> {
         prefix: moves.prefix.clone(),
         sources: sources.collect(),
     });
-    start_source(state, ctx, first, (moves.target, moves.prefix), moves.archive);
+    start_source(
+        state,
+        ctx,
+        first,
+        (moves.target, moves.prefix),
+        moves.archive,
+    );
     None
 }
 
@@ -413,7 +419,12 @@ pub fn next_source(
 /// the next source, or run alone when none is left. `false` when there is
 /// nothing to do for this source.
 pub fn empty_source(state: &mut State, ctx: &Ctx) -> bool {
-    let Some(tidy) = state.session.tidy.as_ref().filter(|tidy| tidy.rule_now.is_some()) else {
+    let Some(tidy) = state
+        .session
+        .tidy
+        .as_ref()
+        .filter(|tidy| tidy.rule_now.is_some())
+    else {
         return false;
     };
     let (source, inside) = (tidy.source.clone(), tidy.inside.clone());
