@@ -42,6 +42,13 @@ const MISFITS_SHOWN: usize = 3;
 const FOLDER_VALUES: usize = 3;
 const FILE_VALUES: usize = 2;
 
+/// How many of the files of the folder have the value the condition was taken from.
+#[derive(Debug, Clone, Copy)]
+struct SharedByFiles {
+    count: usize,
+    total: usize,
+}
+
 #[derive(Debug, Clone)]
 pub struct RuleFlow {
     /// The folder, and the path below its target with a closing `/`.
@@ -65,6 +72,9 @@ pub struct RuleFlow {
     /// The levels were found by the model: a trial that matches nothing
     /// does not leave them.
     from_levels: bool,
+    /// The condition of the proposal was what the files of the folder share,
+    /// not something the user said.
+    shared: Option<SharedByFiles>,
     /// The rule on screen, waiting for the click.
     proposed: Option<RuleSpec>,
     /// What the trial of the proposal would move.
@@ -86,6 +96,7 @@ impl RuleFlow {
             candidate: None,
             try_files: Vec::new(),
             from_levels: false,
+            shared: None,
             proposed: None,
             moves: RuleMoves::default(),
             kinds,
@@ -608,24 +619,44 @@ pub fn levels_kept(state: &mut State, ctx: &Ctx) {
         return;
     };
     flow.changing = false;
-    match flow.candidate.clone().or_else(|| shared_by_files(flow)) {
-        Some(spec) => propose(state, ctx, spec),
+    flow.shared = None;
+    if let Some(spec) = flow.candidate.clone() {
+        propose(state, ctx, spec);
+        return;
+    }
+    match shared_by_files(flow) {
+        Some((spec, shared)) => {
+            flow.shared = Some(shared);
+            propose(state, ctx, spec);
+        }
         None => ask_what(state, ctx, None),
     }
 }
 
 /// A rule for the documents that have the sender (else the kind) most of the
-/// files of the folder have.
-fn shared_by_files(flow: &RuleFlow) -> Option<RuleSpec> {
+/// files of the folder have, and how many of the files have it.
+fn shared_by_files(flow: &RuleFlow) -> Option<(RuleSpec, SharedByFiles)> {
     let fields = || flow.files.iter().map(|(_, found)| found);
-    let (kind, value) = match counted(fields().filter_map(|found| found.sender.clone())) {
-        Some(sender) => (ConditionKind::Sender, sender),
-        None => (
-            ConditionKind::Kind,
-            counted(fields().filter_map(|found| found.kind.clone()))?,
-        ),
+    let (kind, value, count) = match counted(fields().filter_map(|found| found.sender.clone())) {
+        Some(sender) => {
+            let count = fields()
+                .filter(|found| found.sender.as_ref() == Some(&sender))
+                .count();
+            (ConditionKind::Sender, sender, count)
+        }
+        None => {
+            let common = counted(fields().filter_map(|found| found.kind.clone()))?;
+            let count = fields()
+                .filter(|found| found.kind.as_ref() == Some(&common))
+                .count();
+            (ConditionKind::Kind, common, count)
+        }
     };
-    Some(RuleSpec {
+    let shared = SharedByFiles {
+        count,
+        total: flow.files.len(),
+    };
+    let spec = RuleSpec {
         name: None,
         conditions: RuleConditions::all_of(vec![Condition::new(kind, value)]),
         extract_number: None,
@@ -636,7 +667,8 @@ fn shared_by_files(flow: &RuleFlow) -> Option<RuleSpec> {
         filing_pattern: String::new(),
         confirmed: false,
         enabled: false,
-    })
+    };
+    Some((spec, shared))
 }
 
 // What goes into the folder.
@@ -795,6 +827,7 @@ fn generated(state: &mut State, ctx: &Ctx, spec: RuleSpec) {
     let Some(flow) = state.session.rule.as_mut() else {
         return;
     };
+    flow.shared = None;
     if flow.free {
         let Some(mut levels) = Levels::from_pattern(&spec.filing_pattern) else {
             state.session.rule = None;
@@ -821,8 +854,8 @@ fn generated(state: &mut State, ctx: &Ctx, spec: RuleSpec) {
             default_levels()
         };
         flow.free = false;
-        flow.candidate = Some(spec.clone());
     }
+    flow.candidate = Some(spec.clone());
     propose(state, ctx, spec);
 }
 
@@ -851,7 +884,7 @@ fn propose(state: &mut State, ctx: &Ctx, mut spec: RuleSpec) {
 
 mod trial;
 
-pub use trial::{create, file_now, stored, trial_done};
+pub use trial::{create, file_now, only_new, stored, trial_done};
 
 /// What a pattern writes has no extension; the file it is compared with has.
 fn with_extension_of(written: &str, file: &str) -> String {

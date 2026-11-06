@@ -15,8 +15,9 @@ mod common;
 mod tests {
     use std::collections::BTreeSet;
 
-    use crate::common::{letter, Talk};
+    use crate::common::{letter, say, Talk};
     use ncrs_hermes_chat::{ChipReply, Message};
+    use ncrs_i18n::Msg;
     use ncrs_index::{Condition, ConditionKind, RuleConditions, RuleSpec};
 
     const WAITING: &str = "inbox/scan.pdf";
@@ -185,6 +186,53 @@ mod tests {
             "no trial filed anything"
         );
         assert!(talk.actions.is_empty());
+    }
+
+    #[test]
+    fn the_stored_rule_is_named_and_asks_about_the_existing_files_in_its_own_bubble() {
+        let talk = talk_with_stored_rule();
+
+        let rule = &talk.rules()[0];
+        assert_eq!(rule.spec.name.as_deref(), Some("Telefon"));
+        assert_eq!(rule.origin, ncrs_index::RuleOrigin::Chat);
+        // Four archive documents and the waiting file.
+        assert_eq!(
+            talk.last_texts(),
+            vec![say(Msg::HermesChatRuleMoveQuestionOther, &[("count", "5")])]
+        );
+        assert_eq!(
+            talk.labels()[..2],
+            [
+                say(Msg::HermesChatRuleRearrangeNow, &[("count", "5")]),
+                say(Msg::HermesChatRuleOnlyNew, &[]),
+            ]
+        );
+    }
+
+    #[test]
+    fn only_new_moves_nothing_and_offers_the_usual_buttons() {
+        let mut talk = talk_with_stored_rule();
+        let before = talk.files();
+
+        talk.press(&ChipReply::RuleOnlyNew);
+
+        assert_eq!(talk.files(), before);
+        assert_eq!(
+            talk.last_texts(),
+            vec![say(Msg::HermesChatRuleOnlyNewDone, &[])]
+        );
+        let replies: Vec<_> = talk
+            .state
+            .chips()
+            .iter()
+            .map(|chip| chip.reply.clone())
+            .collect();
+        assert!(!replies.contains(&ChipReply::RuleNow));
+        assert!(!replies.contains(&ChipReply::RuleOnlyNew));
+        assert!(!replies.is_empty(), "the usual buttons");
+        let rule = &talk.rules()[0];
+        assert_eq!(rule.spec.name.as_deref(), Some("Telefon"));
+        assert_eq!(rule.origin, ncrs_index::RuleOrigin::Chat);
     }
 
     fn names_below(talk: &Talk, folder: &str) -> Vec<String> {

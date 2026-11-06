@@ -326,7 +326,7 @@ impl ChatAccess {
         }
         self.with_index_mut(|index| {
             index
-                .create_rule_from(&spec, RuleOrigin::Hand)
+                .create_rule_from(&spec, RuleOrigin::Chat)
                 .map_err(|err| err.to_string())
         })
         .map_err(RuleSaveFailure::Failed)?;
@@ -366,7 +366,7 @@ impl ChatAccess {
         }
         self.with_index_mut(|index| {
             index
-                .create_rule_from(spec, RuleOrigin::Hand)
+                .create_rule_from(spec, RuleOrigin::Chat)
                 .map(|_| ())
                 .map_err(|err| err.to_string())
         })

@@ -10,15 +10,16 @@ use ncrs_ui_kit::kit::condition_kind_name;
 
 use std::path::PathBuf;
 
-use super::ask_what;
 use super::change::{more_moves, move_row};
+use super::{ask_what, is_fixed, RuleFlow};
 use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::state::{ChipReply, Part, ProposalCard, RuleMoves, State, Step};
 use crate::texts::{fill, number, rule_problem_text, segments, text};
 use crate::tidy::archive_run;
 use crate::update::{
-    cancel_chip, chip, fallback_chips, folder_answer, hermes, say, source_chips, work,
+    cancel_chip, chip, chip_labelled, fallback_chips, folder_answer, hermes, say, source_chips,
+    work,
 };
 
 fn condition_words(ctx: &Ctx, spec: &RuleSpec, kinds: &Kinds) -> String {
@@ -111,12 +112,26 @@ pub fn trial_done(state: &mut State, ctx: &Ctx, tried: Result<RuleTrial, String>
         archive: trial.archive_moves.clone(),
     };
     let pattern = FilingTarget::parse(&flow.pattern());
-    let facts = vec![
-        fact(
-            ctx,
-            Msg::HermesChatProposalAppliesTo,
-            condition_words(ctx, &spec, &kinds),
+    let condition = condition_words(ctx, &spec, &kinds);
+    let applies_to = match flow.shared {
+        Some(shared) if shared.count == shared.total => fill(
+            ctx.lang,
+            Msg::HermesChatProposalAppliesSharedAll,
+            &[("condition", &condition), ("count", &number(shared.count))],
         ),
+        Some(shared) => fill(
+            ctx.lang,
+            Msg::HermesChatProposalAppliesSharedSome,
+            &[
+                ("condition", &condition),
+                ("count", &number(shared.count)),
+                ("total", &number(shared.total)),
+            ],
+        ),
+        None => condition,
+    };
+    let facts = vec![
+        fact(ctx, Msg::HermesChatProposalAppliesTo, applies_to),
         fact(
             ctx,
             Msg::HermesChatProposalFiling,
@@ -172,56 +187,104 @@ pub fn trial_done(state: &mut State, ctx: &Ctx, tried: Result<RuleTrial, String>
         moves,
         counts,
     })];
-    let change = if flow.candidate.is_some() {
-        ChipReply::LevelsChange
-    } else {
-        ChipReply::RuleEdit
-    };
-    let chips = vec![
+    let mut chips = vec![
         chip(ctx, Msg::HermesChatRuleCreate, ChipReply::RuleCreate, true),
-        chip(ctx, Msg::HermesChatLevelsChange, change, false),
-        cancel_chip(ctx),
+        chip(
+            ctx,
+            Msg::HermesChatRuleChangeCondition,
+            ChipReply::RuleCondition,
+            false,
+        ),
     ];
+    chips.push(chip(
+        ctx,
+        Msg::HermesChatLevelsChange,
+        ChipReply::LevelsChange,
+        false,
+    ));
+    chips.push(cancel_chip(ctx));
     state.step = Step::RuleWhat;
     hermes(state, parts, chips);
 }
 
 /// The click on "Create rule".
 pub fn create(state: &mut State) {
-    let Some(spec) = state
-        .session
-        .rule
-        .as_ref()
-        .and_then(|flow| flow.proposed.clone())
-    else {
+    let Some(flow) = state.session.rule.as_mut() else {
         return;
     };
+    let name = rule_name(flow);
+    let Some(proposed) = flow.proposed.as_mut() else {
+        return;
+    };
+    proposed.name = Some(name);
+    let spec = proposed.clone();
     work(state, ChatWork::SaveRule { spec }, None);
+}
+
+/// The fixed words of the folder levels, "Work / Salary"; the folder when
+/// the filing has none.
+fn rule_name(flow: &RuleFlow) -> String {
+    let below = flow.prefix.split('/').filter(|name| !name.is_empty());
+    let fixed = flow
+        .levels
+        .folders
+        .iter()
+        .filter(|level| is_fixed(level))
+        .map(|level| level.text());
+    let words: Vec<String> = below.map(str::to_owned).chain(fixed).collect();
+    if words.is_empty() {
+        flow.folder.clone()
+    } else {
+        words.join(" / ")
+    }
 }
 
 pub fn stored(state: &mut State, ctx: &Ctx, stored: Result<(), RuleSaveFailure>) {
     match stored {
         Ok(()) => {
-            let moves = state
-                .session
-                .rule
-                .take()
-                .map(|flow| flow.moves)
+            let finished = state.session.rule.take();
+            let name = finished
+                .as_ref()
+                .and_then(|open| open.proposed.as_ref())
+                .and_then(|proposed| proposed.name.clone())
                 .unwrap_or_default();
-            let something_moves = moves.total() > 0;
+            let moves = finished.map(|open| open.moves).unwrap_or_default();
+            let count = moves.total();
             state.session.rule_moves = Some(moves);
             state.step = Step::Idle;
-            let mut chips = Vec::new();
-            if something_moves && !ctx.sources.is_empty() {
-                chips.push(chip(
-                    ctx,
-                    Msg::HermesChatRuleFileNow,
+            let said = fill(ctx.lang, Msg::HermesChatRuleStored, &[("name", &name)]);
+            if count == 0 || ctx.sources.is_empty() {
+                say(state, said, fallback_chips(ctx));
+                return;
+            }
+            say(state, said, Vec::new());
+            let question = if count == 1 {
+                Msg::HermesChatRuleMoveQuestionOne
+            } else {
+                Msg::HermesChatRuleMoveQuestionOther
+            };
+            let chips = vec![
+                chip_labelled(
+                    fill(
+                        ctx.lang,
+                        Msg::HermesChatRuleRearrangeNow,
+                        &[("count", &number(count))],
+                    ),
                     ChipReply::RuleNow,
                     true,
-                ));
-            }
-            chips.extend(fallback_chips(ctx));
-            say(state, text(ctx.lang, Msg::HermesChatRuleStored), chips);
+                ),
+                chip(
+                    ctx,
+                    Msg::HermesChatRuleOnlyNew,
+                    ChipReply::RuleOnlyNew,
+                    false,
+                ),
+            ];
+            say(
+                state,
+                fill(ctx.lang, question, &[("count", &number(count))]),
+                chips,
+            );
         }
         Err(RuleSaveFailure::Refused(problem)) => {
             let reason = fill(
@@ -237,6 +300,17 @@ pub fn stored(state: &mut State, ctx: &Ctx, stored: Result<(), RuleSaveFailure>)
             fallback_chips(ctx),
         ),
     }
+}
+
+/// "No, only new ones": nothing moves.
+pub fn only_new(state: &mut State, ctx: &Ctx) {
+    state.session.rule_moves = None;
+    state.step = Step::Idle;
+    say(
+        state,
+        text(ctx.lang, Msg::HermesChatRuleOnlyNewDone),
+        fallback_chips(ctx),
+    );
 }
 
 /// "File now": the usual tidy-up of the source folders, with the archive

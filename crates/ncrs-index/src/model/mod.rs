@@ -842,6 +842,7 @@ pub enum RuleOrigin {
     Hand,
     Suggestion,
     Filing,
+    Chat,
 }
 
 impl RuleOrigin {
@@ -850,6 +851,7 @@ impl RuleOrigin {
             Self::Hand => "hand",
             Self::Suggestion => "suggestion",
             Self::Filing => "filing",
+            Self::Chat => "chat",
         }
     }
 
@@ -858,6 +860,7 @@ impl RuleOrigin {
             "hand" => Ok(Self::Hand),
             "suggestion" => Ok(Self::Suggestion),
             "filing" => Ok(Self::Filing),
+            "chat" => Ok(Self::Chat),
             other => Err(corrupt("rule.origin", other)),
         }
     }

@@ -158,19 +158,166 @@ fn pay_slip_archive(dir: &std::path::Path, slot: &Mutex<Option<Index>>) {
     }
 }
 
-#[test]
-#[ignore = "needs the AI model: set NCRS_AI_MODELS_DIR to the folder with it"]
-fn with_model_the_changed_levels_and_the_dry_run_are_shot_for_each_change() {
+/// The app with the pay slip archive, the chat opened on the folder Arbeit
+/// and its levels card on screen.
+fn opened_pay_slips(
+    model: &std::sync::Arc<LazyLocalModel>,
+    lang: Language,
+    answering: &dyn ChatModel,
+    name: &str,
+) -> (tempfile::TempDir, App, Ctx, ChatAccess) {
+    let dir = tempfile::tempdir().unwrap();
+    let root = std::fs::canonicalize(dir.path()).unwrap();
+    let slot = std::sync::Arc::new(Mutex::new(Some(
+        Index::create_plain(&dir.path().join("index.db")).unwrap(),
+    )));
+    pay_slip_archive(dir.path(), &slot);
+    let bin = dir.path().join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let trash =
+        ncrs_fs::JournaledTrash::new(dir.path().join("trash.toml"), ncrs_fs::FolderBackend(bin));
+    let archive_location = ncrs_intake::Location::new(
+        &root.join("archive"),
+        ncrs_intake::LocationMode::Archive,
+        false,
+    )
+    .unwrap();
+    let inbox_location =
+        ncrs_intake::Location::new(&root.join("inbox"), ncrs_intake::LocationMode::Inbox, false)
+            .unwrap();
+    let rules = RulesAccess::new(
+        std::sync::Arc::clone(&slot),
+        vec![archive_location, inbox_location],
+    )
+    .with_kind_language(KindLanguage::German);
+    let access = ChatAccess::new(
+        std::sync::Arc::clone(&slot),
+        std::sync::Arc::new(TextChain::new().with_source(Utf8Text)),
+        std::sync::Arc::new(trash),
+    )
+    .with_kind_language(KindLanguage::German)
+    .with_rules(Some(rules));
+    let ctx = Ctx {
+        availability: Availability::Ready(Box::new(access.clone())),
+        targets: vec![root.join("archive")],
+        sources: vec![root.join("inbox")],
+        resolve_folder: canonical_folder,
+        home: root.clone(),
+        model: Some(std::sync::Arc::clone(model) as std::sync::Arc<dyn ChatModel>),
+        ..super::hermes_chat_ui_tests::ready(lang)
+    };
+
+    let mut app = App::with_fixed_panels().in_language(lang);
+    super::hermes_chat_ui_tests::send(&mut app, &ctx, HermesChatMessage::Open);
+    type_sentence(&mut app, &ctx, &access, answering, "öffne mal Arbeit");
+    let named: Vec<ChipReply> = app
+        .hermes_chat
+        .chips()
+        .iter()
+        .filter_map(|chip| match &chip.reply {
+            ChipReply::NamedFolder(path) if path.ends_with("archive/Arbeit") => {
+                Some(chip.reply.clone())
+            }
+            _ => None,
+        })
+        .collect();
+    if let Some(reply) = named.first() {
+        press(&mut app, &ctx, &access, answering, reply);
+    }
+    assert!(
+        levels_card_shown(&app),
+        "{name}: {:?}",
+        app.hermes_chat.thread.last()
+    );
+    (dir, app, ctx, access)
+}
+
+fn local_model() -> std::sync::Arc<LazyLocalModel> {
     let models =
         std::path::PathBuf::from(std::env::var_os(MODELS_DIR_VARIABLE).expect(MODELS_DIR_VARIABLE));
     let model_file = models.join(LOCAL_MODEL.name);
     assert!(model_file.is_file(), "{} is missing", model_file.display());
-    let model = LazyLocalModel::shared(
+    LazyLocalModel::shared(
         model_file,
         LOCAL_MODEL,
         NonZeroU32::new(4).unwrap(),
         NonZeroU32::new(4096).unwrap(),
-    );
+    )
+}
+
+/// The proposal with the reason of its condition, the sentence that changes
+/// the condition, the saved rule with the question about the existing files,
+/// and the answer "No, only new ones".
+#[test]
+#[ignore = "needs the AI model: set NCRS_AI_MODELS_DIR to the folder with it"]
+fn with_model_the_rule_flow_from_the_proposal_to_the_question_is_shot() {
+    let model = local_model();
+    let answering: &dyn ChatModel = model.as_ref();
+    for (lang, suffix, sentence) in [
+        (
+            Language::German,
+            "de",
+            "nur wenn im Text Gehaltsabrechnung steht",
+        ),
+        (
+            Language::English,
+            "en",
+            "only if the text says Gehaltsabrechnung",
+        ),
+    ] {
+        let name = &format!("rule-{suffix}");
+        let (_dir, mut app, ctx, access) = opened_pay_slips(&model, lang, answering, name);
+        press(&mut app, &ctx, &access, answering, &ChipReply::LevelsKeep);
+        assert!(has_chip(&app, &ChipReply::RuleCondition), "{name}");
+        assert!(has_chip(&app, &ChipReply::LevelsChange), "{name}");
+        shoot(&app, &format!("{name}-1-proposal"));
+        press(
+            &mut app,
+            &ctx,
+            &access,
+            answering,
+            &ChipReply::RuleCondition,
+        );
+        shoot(&app, &format!("{name}-2-ask-condition"));
+        type_sentence(&mut app, &ctx, &access, answering, sentence);
+        assert!(has_chip(&app, &ChipReply::RuleCreate), "{name}");
+        shoot(&app, &format!("{name}-3-new-condition"));
+
+        // The question about the existing files, from the sender proposal.
+        let (_second_dir, mut second_app, second_ctx, second_access) =
+            opened_pay_slips(&model, lang, answering, name);
+        press(
+            &mut second_app,
+            &second_ctx,
+            &second_access,
+            answering,
+            &ChipReply::LevelsKeep,
+        );
+        press(
+            &mut second_app,
+            &second_ctx,
+            &second_access,
+            answering,
+            &ChipReply::RuleCreate,
+        );
+        assert!(has_chip(&second_app, &ChipReply::RuleNow), "{name}");
+        shoot(&second_app, &format!("{name}-4-saved-question"));
+        press(
+            &mut second_app,
+            &second_ctx,
+            &second_access,
+            answering,
+            &ChipReply::RuleOnlyNew,
+        );
+        shoot(&second_app, &format!("{name}-5-only-new"));
+    }
+    model.shutdown();
+}
+
+#[test]
+#[ignore = "needs the AI model: set NCRS_AI_MODELS_DIR to the folder with it"]
+fn with_model_the_changed_levels_and_the_dry_run_are_shot_for_each_change() {
+    let model = local_model();
     let answering: &dyn ChatModel = model.as_ref();
 
     for (case, german_sentence, english_sentence) in CASES {
@@ -179,74 +326,7 @@ fn with_model_the_changed_levels_and_the_dry_run_are_shot_for_each_change() {
             (Language::English, "en", english_sentence),
         ] {
             let name = &format!("{case}-{suffix}");
-            let dir = tempfile::tempdir().unwrap();
-            let root = std::fs::canonicalize(dir.path()).unwrap();
-            let slot = std::sync::Arc::new(Mutex::new(Some(
-                Index::create_plain(&dir.path().join("index.db")).unwrap(),
-            )));
-            pay_slip_archive(dir.path(), &slot);
-            let bin = dir.path().join("bin");
-            std::fs::create_dir_all(&bin).unwrap();
-            let trash = ncrs_fs::JournaledTrash::new(
-                dir.path().join("trash.toml"),
-                ncrs_fs::FolderBackend(bin),
-            );
-            let archive_location = ncrs_intake::Location::new(
-                &root.join("archive"),
-                ncrs_intake::LocationMode::Archive,
-                false,
-            )
-            .unwrap();
-            let inbox_location = ncrs_intake::Location::new(
-                &root.join("inbox"),
-                ncrs_intake::LocationMode::Inbox,
-                false,
-            )
-            .unwrap();
-            let rules = RulesAccess::new(
-                std::sync::Arc::clone(&slot),
-                vec![archive_location, inbox_location],
-            )
-            .with_kind_language(KindLanguage::German);
-            let access = ChatAccess::new(
-                std::sync::Arc::clone(&slot),
-                std::sync::Arc::new(TextChain::new().with_source(Utf8Text)),
-                std::sync::Arc::new(trash),
-            )
-            .with_kind_language(KindLanguage::German)
-            .with_rules(Some(rules));
-            let ctx = Ctx {
-                availability: Availability::Ready(Box::new(access.clone())),
-                targets: vec![root.join("archive")],
-                sources: vec![root.join("inbox")],
-                resolve_folder: canonical_folder,
-                home: root.clone(),
-                model: Some(std::sync::Arc::clone(&model) as std::sync::Arc<dyn ChatModel>),
-                ..super::hermes_chat_ui_tests::ready(lang)
-            };
-
-            let mut app = App::with_fixed_panels().in_language(lang);
-            super::hermes_chat_ui_tests::send(&mut app, &ctx, HermesChatMessage::Open);
-            type_sentence(&mut app, &ctx, &access, answering, "öffne mal Arbeit");
-            let named: Vec<ChipReply> = app
-                .hermes_chat
-                .chips()
-                .iter()
-                .filter_map(|chip| match &chip.reply {
-                    ChipReply::NamedFolder(path) if path.ends_with("archive/Arbeit") => {
-                        Some(chip.reply.clone())
-                    }
-                    _ => None,
-                })
-                .collect();
-            if let Some(reply) = named.first() {
-                press(&mut app, &ctx, &access, answering, reply);
-            }
-            assert!(
-                levels_card_shown(&app),
-                "{name}: {:?}",
-                app.hermes_chat.thread.last()
-            );
+            let (_dir, mut app, ctx, access) = opened_pay_slips(&model, lang, answering, name);
             press(&mut app, &ctx, &access, answering, &ChipReply::LevelsChange);
             if case.starts_with("report") {
                 type_sentence(&mut app, &ctx, &access, answering, "3");

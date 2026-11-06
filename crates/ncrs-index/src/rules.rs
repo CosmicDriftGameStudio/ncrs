@@ -605,6 +605,9 @@ mod tests {
         let from_filing = index
             .create_rule_from(&rule_spec(), RuleOrigin::Filing)
             .unwrap();
+        let from_chat = index
+            .create_rule_from(&rule_spec(), RuleOrigin::Chat)
+            .unwrap();
         let outcome = index
             .suggest_rule(
                 &RuleSpec {
@@ -648,6 +651,7 @@ mod tests {
         let origin_of = |id| index.rule(id).unwrap().unwrap().origin;
         assert_eq!(origin_of(by_hand), RuleOrigin::Hand);
         assert_eq!(origin_of(from_filing), RuleOrigin::Filing);
+        assert_eq!(origin_of(from_chat), RuleOrigin::Chat);
         assert_eq!(origin_of(suggested), RuleOrigin::Suggestion);
     }
 

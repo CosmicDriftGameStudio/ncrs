@@ -3485,7 +3485,7 @@ mod rules_card {
                 ),
                 tagged(
                     2,
-                    RuleOrigin::Hand,
+                    RuleOrigin::Chat,
                     RuleConditions::all_of(vec![Condition::new(ConditionKind::Tag, "steuer")]),
                     4,
                 ),
