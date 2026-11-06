@@ -234,17 +234,26 @@ pub fn create(state: &mut State) {
 
 /// The path of the opened folder below its target, "Archive / Work"; the
 /// folder itself at the target root. The rule belongs to the folder, so
-/// changing a level word keeps the name and two folders stay apart.
+/// changing a level word keeps the name and two folders stay apart. With
+/// several targets the target's name leads; a rule with nothing to name it
+/// by is named after its filing pattern, which is never empty.
+///
 pub fn rule_name(flow: &RuleFlow) -> String {
     let words: Vec<&str> = flow
         .prefix
         .split('/')
         .filter(|name| !name.is_empty())
         .collect();
-    if words.is_empty() {
-        flow.folder.clone()
+    let name = match (&flow.target_name, words.is_empty()) {
+        (Some(target), true) => target.clone(),
+        (Some(target), false) => format!("{target} / {}", words.join(" / ")),
+        (None, true) => flow.folder.clone(),
+        (None, false) => words.join(" / "),
+    };
+    if name.is_empty() {
+        flow.pattern()
     } else {
-        words.join(" / ")
+        name
     }
 }
 
@@ -331,16 +340,27 @@ pub fn only_new(state: &mut State, ctx: &Ctx) {
 /// rule renames in the same run. With several sources one run follows the
 /// other; when nothing comes from the inbox, the run holds only the archive.
 pub fn file_now(state: &mut State, ctx: &Ctx) -> Option<Action> {
-    let moves = state.session.rule_moves.take()?;
-    state.step = Step::Idle;
-    if moves.from_inbox == 0 && !moves.archive.is_empty() {
-        if let Some(source) = ctx.sources.first() {
-            archive_run(state, ctx, source.clone(), moves.archive);
-        }
+    state.session.rule_queue = None;
+    let archive_only = state
+        .session
+        .rule_moves
+        .as_ref()
+        .is_some_and(|moves| moves.from_inbox == 0 && !moves.archive.is_empty());
+    if archive_only {
+        let moves = state.session.rule_moves.take()?;
+        state.step = Step::Idle;
+        let source = ctx
+            .sources
+            .first()
+            .cloned()
+            .unwrap_or_else(|| moves.target.clone());
+        archive_run(state, ctx, source, moves.archive);
         return None;
     }
     let mut sources = ctx.sources.iter().cloned();
     let first = sources.next()?;
+    let moves = state.session.rule_moves.take()?;
+    state.step = Step::Idle;
     state.session.rule_queue = Some(RuleQueue {
         target: moves.target.clone(),
         prefix: moves.prefix.clone(),
@@ -443,7 +463,6 @@ pub fn file_rule_trial(state: &mut State, ctx: &Ctx) {
         if next_source(state, ctx, Vec::new()) {
             return;
         }
-        state.session.rule_queue = None;
         trial_end::without_filing(state, ctx, Vec::new());
         return;
     }

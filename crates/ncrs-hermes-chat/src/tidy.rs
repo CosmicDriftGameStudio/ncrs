@@ -446,6 +446,7 @@ pub fn trial_done(state: &mut State, ctx: &Ctx, result: Result<TrialPlan, String
     let plan = match result {
         Ok(plan) => plan,
         Err(reason) => {
+            state.session.rule_queue = None;
             state.step = Step::Idle;
             say(
                 state,
@@ -706,13 +707,21 @@ pub fn filed_done(state: &mut State, ctx: &Ctx, result: Result<RunReport, String
         }
         _ => None,
     };
+    let rule_prefix = state
+        .session
+        .tidy
+        .as_ref()
+        .and_then(|tidy| tidy.rule_now.clone());
     let went_well = result.is_ok();
     filed_report(state, ctx, result);
     if let Some((source, left)) = chained {
         archive_run(state, ctx, source, left);
-    } else if went_well {
+        if let Some(tidy) = state.session.tidy.as_mut() {
+            tidy.rule_now = rule_prefix;
+        }
+    } else if went_well && rule_prefix.is_some() {
         crate::rule_flow::trial::next_source(state, ctx, Vec::new());
-    } else if !went_well {
+    } else {
         state.session.rule_queue = None;
     }
 }

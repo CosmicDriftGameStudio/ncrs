@@ -81,6 +81,8 @@ pub struct RuleFlow {
     moves: RuleMoves,
     /// The target the opened folder lies in; unknown for a free description.
     target: Option<PathBuf>,
+    /// The target's name, only when there are several: it leads the rule name.
+    target_name: Option<String>,
     /// Read once when the flow starts.
     kinds: Kinds,
 }
@@ -102,6 +104,7 @@ impl RuleFlow {
             proposed: None,
             moves: RuleMoves::default(),
             target: None,
+            target_name: None,
             kinds,
         }
     }
@@ -163,6 +166,7 @@ pub fn open(state: &mut State, ctx: &Ctx, folder: PathBuf) -> bool {
     };
     let mut flow = RuleFlow::new(folder_name(ctx, &folder), prefix, kinds_of(ctx));
     flow.target = Some(target.clone());
+    flow.target_name = (ctx.targets.len() > 1).then(|| folder_name(ctx, target));
     state.session.rule = Some(flow);
     learn::read_for(state, ctx, folder, ReadFor::Open);
     true
