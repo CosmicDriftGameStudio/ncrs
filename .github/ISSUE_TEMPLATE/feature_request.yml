@@ -18,7 +18,7 @@ body:
   - type: textarea
     id: nc
     attributes:
-      label: How does Norton Commander do it?
+      label: How do classic dual-panel file managers do it?
       description: ncrs is a clone, so the original is a useful reference. A keybinding and the behaviour it triggers is ideal.
 
   - type: checkboxes

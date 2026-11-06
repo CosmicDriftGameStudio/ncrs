@@ -14,7 +14,7 @@ cask "ncrs" do
 
   url "https://github.com/CosmicDriftGameStudio/ncrs/releases/download/v#{version}/ncrs-#{arch}-apple-darwin.app.zip"
   name "ncrs"
-  desc "Dual-panel file manager inspired by Norton Commander"
+  desc "Fast, keyboard-first dual-panel file manager"
   homepage "https://github.com/CosmicDriftGameStudio/ncrs"
 
   livecheck do

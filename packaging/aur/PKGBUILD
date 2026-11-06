@@ -3,7 +3,7 @@
 pkgname=ncrs-bin
 pkgver=@VERSION@
 pkgrel=1
-pkgdesc='A dual-panel file manager inspired by Norton Commander, built with iced'
+pkgdesc='A fast, keyboard-first dual-panel file manager, built with iced'
 arch=('x86_64' 'aarch64')
 url='https://github.com/CosmicDriftGameStudio/ncrs'
 license=('MIT' 'BSD-3-Clause' 'Apache-2.0')

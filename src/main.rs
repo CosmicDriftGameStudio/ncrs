@@ -1,4 +1,4 @@
-//! NC-rs – a dual-panel file manager inspired by Norton Commander.
+//! NC-rs – a fast, keyboard-first dual-panel file manager.
 //!
 //! The async runtime is tokio: iced's `tokio` feature makes the iced executor
 //! run every `Task` on a tokio runtime, so no `#[tokio::main]` is needed here.
@@ -153,7 +153,7 @@ fn window_icon() -> Option<iced::window::Icon> {
 /// up. `--help` lives here too because this is the only place that knows the
 /// binary's name and the graphics backend it was built with.
 const HELP: &str = "\
-ncrs - a dual-panel file manager inspired by Norton Commander
+ncrs - a fast, keyboard-first dual-panel file manager
 
 USAGE:
     ncrs

@@ -22,7 +22,7 @@ edition = "2021"
 # Matches rust-toolchain.toml. One place decides the compiler; this makes the
 # requirement visible to anything reading the manifest instead of the file.
 rust-version = "1.98"
-description = "A dual-panel file manager inspired by Norton Commander, built with iced"
+description = "A fast, keyboard-first dual-panel file manager, built with iced"
 license = "MIT"
 
 [lints]

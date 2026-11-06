@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.90%2B-orange.svg)](rust-toolchain.toml)
 
-A fast, keyboard-first **dual-panel file manager inspired by Norton Commander**, written in Rust
+A fast, keyboard-first **dual-panel file manager**, written in Rust
 with [iced](https://iced.rs) 0.14 (GPU-accelerated, cross-platform native UI).
 
 ![NC-rs with two panels](docs/screenshots/main.png)
@@ -269,7 +269,7 @@ panel back; the next search starts with the same fields.
 - **Files** and **Exclude** take patterns separated by `;`. A pattern without
   `/` matches the name at any depth (`*.rs`), one with `/` the path below the
   search directory (`src/*.rs`). A trailing `/` means a directory with
-  everything in it (`target/`). `*.*` is every file, as in Norton Commander.
+  everything in it (`target/`). `*.*` is every file, dot or not.
 - With no search text, **Files** alone lists the matching names.
 - Hidden files are searched too; `.gitignore` is not read. Binary files and
   cloud files that are not downloaded are skipped, and the search stops after
@@ -525,7 +525,7 @@ and, for the filing pages, in [Filing](#filing).
 `[theme]` picks a ready-made palette and changes single colors on top of it.
 There are four: `dracula` is the default, the Dracula look; `cosmic` is a calm,
 almost neutral dark grey with muted accents (the look of earlier versions);
-`default` is the earlier dark teal look; `classic` is Norton Commander blue.
+`default` is the earlier dark teal look; `classic` is the classic blue look.
 
 The `dracula` preset uses the colors of the
 [Dracula theme](https://draculatheme.com), MIT License, Copyright (c)
@@ -534,7 +534,7 @@ Dracula Theme.
 ```toml
 [theme]
 # "dracula" (the default), "cosmic" (calm dark grey), "default" (the earlier
-# dark teal look) or "classic" (Norton Commander blue).
+# dark teal look) or "classic" (the classic blue look).
 preset = "classic"
 # Then single roles, as "#rrggbb" or "#rgb".
 directory = "#ffff55"
@@ -1182,7 +1182,7 @@ Adding a language:
 3. `cargo test` — placeholder mismatches and untranslated copies fail the build, not the
    UI. `<DIR>` and `<UP>` are deliberately never translated.
 
-`<DIR>` and `<UP>` are deliberately never translated: they are a Norton Commander
+`<DIR>` and `<UP>` are deliberately never translated: they are a classic dual-panel
 convention, and the tests enforce it.
 
 ### Scrolling
@@ -1240,11 +1240,6 @@ per frame, independent of directory size.
   under **rustup**. A Homebrew-installed Rust ignores the file, so a local
   `cargo test` can run a different compiler than CI. `thiserror` and `softbuffer`,
   both pulled in by iced, have each broken the build on a brand-new stable.
-
-## Trademark
-
-Norton Commander is a trademark of its respective owner. ncrs is not affiliated
-with or endorsed by it.
 
 ## License
 

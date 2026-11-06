@@ -90,18 +90,18 @@ pub fn default_bindings() -> Vec<(KeyAction, Binding)> {
             Binding::with_modifiers(Character("z".into()), Modifiers::COMMAND),
         ),
         (A::Mkdir, Binding::key(KeyNamed(F7))),
-        // Norton Commander's Shift+F4: edit a new file.
+        // The classic Shift+F4: edit a new file.
         (
             A::NewFile,
             Binding::with_modifiers(KeyNamed(F4), Modifiers::SHIFT),
         ),
-        // Alt+F5 packs into an archive, as in Norton Commander.
+        // Alt+F5 packs into an archive, as in classic dual-panel file managers.
         (
             A::Pack,
             Binding::with_modifiers(KeyNamed(F5), Modifiers::ALT),
         ),
         // Alt (Option on macOS) with F1 or F2 picks the drive of the left or
-        // right panel, as in Norton Commander. Not advertised: the bar shows
+        // right panel, as in classic dual-panel file managers. Not advertised: the bar shows
         // bare keys only, and NC does not list these either.
         (
             A::DriveMenuLeft,
@@ -135,7 +135,7 @@ pub fn default_bindings() -> Vec<(KeyAction, Binding)> {
             A::ContextMenu,
             Binding::with_modifiers(KeyNamed(F10), Modifiers::SHIFT),
         ),
-        // Quit is also F10, the Norton Commander convention.
+        // Quit is also F10, the classic dual-panel convention.
         (A::Quit, Binding::key(KeyNamed(F10))),
         // --- bound, not advertised: the header has no room for these ---
         (A::CursorUp, Binding::key(KeyNamed(ArrowUp))),
@@ -154,7 +154,7 @@ pub fn default_bindings() -> Vec<(KeyAction, Binding)> {
         ),
         (A::First, Binding::key(KeyNamed(Home))),
         (A::Last, Binding::key(KeyNamed(End))),
-        // Alt+F7 is Norton Commander's file search. Cmd+Shift+F (Ctrl+Shift+F
+        // Alt+F7 is the classic file search key. Cmd+Shift+F (Ctrl+Shift+F
         // elsewhere) is VS Code's search in files.
         (
             A::Search,
@@ -169,7 +169,7 @@ pub fn default_bindings() -> Vec<(KeyAction, Binding)> {
             A::QuickOpen,
             Binding::with_modifiers(Character("p".into()), Modifiers::COMMAND),
         ),
-        // F2 was Norton Commander's user menu, the key that ran user commands;
+        // F2 was the classic user menu, the key that ran user commands;
         // here it asks Hermes for help. Alt+F2 stays the right drive menu, the
         // command line is on Shift+F2.
         (A::HermesChat, Binding::key(KeyNamed(F2))),
@@ -258,7 +258,7 @@ pub fn default_bindings() -> Vec<(KeyAction, Binding)> {
     bindings
 }
 
-/// Ctrl+F3, Ctrl+F5 and Ctrl+F6 as in Norton Commander. A Mac takes Ctrl+F-keys
+/// Ctrl+F3, Ctrl+F5 and Ctrl+F6 as in classic dual-panel file managers. A Mac takes Ctrl+F-keys
 /// for itself, so there it is Cmd+1 (name), Cmd+2 (size) and Cmd+3 (modified).
 pub fn sort_binding(column: SortColumn) -> Binding {
     use key::Named::{F3, F5, F6};
