@@ -103,10 +103,12 @@ pub struct RuleFlow {
     /// The rule on screen, waiting for the click.
     proposed: Option<RuleSpec>,
     stage: Stage,
+    /// Read once when the flow starts.
+    kinds: Kinds,
 }
 
 impl RuleFlow {
-    fn new(folder: String, prefix: String) -> Self {
+    fn new(folder: String, prefix: String, kinds: Kinds) -> Self {
         Self {
             folder,
             prefix,
@@ -116,10 +118,16 @@ impl RuleFlow {
             candidate: None,
             proposed: None,
             stage: Stage::Recognize,
+            kinds,
         }
     }
 
+    /// Without levels the files get their automatic name in the folder
+    /// itself, which is the prefix alone.
     fn pattern(&self) -> String {
+        if self.levels.count() == 0 {
+            return self.prefix.clone();
+        }
         format!("{}{}", self.prefix, self.levels.pattern())
     }
 
@@ -169,7 +177,11 @@ pub fn open(state: &mut State, ctx: &Ctx, folder: PathBuf) -> bool {
     } else {
         format!("{}/", below.join("/"))
     };
-    state.session.rule = Some(RuleFlow::new(folder_name(ctx, &folder), prefix));
+    state.session.rule = Some(RuleFlow::new(
+        folder_name(ctx, &folder),
+        prefix,
+        kinds_of(ctx),
+    ));
     learn::read_for(state, ctx, folder, ReadFor::Open);
     true
 }
@@ -229,29 +241,29 @@ pub fn folder_read(state: &mut State, ctx: &Ctx, reading: &FolderReading) {
     }
     flow.stage = Stage::Recognize;
     let files = sample(&flow.files, MODEL_FILES);
-    ask_model(
-        state,
-        ctx,
-        RuleAsk::Recognize {
-            files,
-            kinds: kinds_of(ctx),
-        },
-    );
+    let kinds = flow.kinds.clone();
+    ask_model(state, ctx, RuleAsk::Recognize { files, kinds });
 }
 
-fn ask_model(state: &mut State, ctx: &Ctx, ask: RuleAsk) {
-    if gate(state, ctx, None) == Gate::Said {
-        return;
-    }
-    if ctx.model.is_none() {
+/// Asks the model. Without one (AI off, model missing, none at all) the usual
+/// offer is said instead and the flow is over, so nothing of it is left to
+/// answer a later sentence.
+fn ask_model(state: &mut State, ctx: &Ctx, ask: RuleAsk) -> bool {
+    let usable = gate(state, ctx, None) == Gate::Usable;
+    if usable && ctx.model.is_none() {
         fallback(state, ctx);
-        return;
+    }
+    if !usable || ctx.model.is_none() {
+        state.session.rule = None;
+        state.step = Step::Idle;
+        return false;
     }
     state
         .thread
         .push(Entry::Working(text(ctx.lang, Msg::HermesChatThinking)));
     state.rule_ask = Some(ask);
     state.fresh_rule_ask = true;
+    true
 }
 
 /// The task that asks the model on a blocking thread.
@@ -386,8 +398,8 @@ fn sample_fields(ctx: &Ctx, flow: &RuleFlow, kinds: &Kinds) -> (DocumentFields, 
         ),
         None => (
             DocumentFields {
-                sender: Some("Telekom".to_owned()),
-                kind: Some("invoice".to_owned()),
+                sender: Some(label_text(ctx.lang, PlaceholderLabel::Sender).to_owned()),
+                kind: Some(label_text(ctx.lang, PlaceholderLabel::Kind).to_owned()),
                 date: Some(ctx.now.date_naive()),
                 ..DocumentFields::default()
             },
@@ -459,7 +471,7 @@ fn levels_parts(state: &State, ctx: &Ctx) -> Vec<Part> {
     let Some(flow) = state.session.rule.as_ref() else {
         return Vec::new();
     };
-    let kinds = kinds_of(ctx);
+    let kinds = flow.kinds.clone();
     let written = flow.written_files();
     let misfits = pattern_mismatches(&flow.pattern(), &written, &kinds);
     let footer = (!misfits.is_empty()).then(|| {
@@ -506,7 +518,7 @@ pub fn levels_change(state: &mut State, ctx: &Ctx) {
     let Some(flow) = state.session.rule.as_ref() else {
         return;
     };
-    let kinds = kinds_of(ctx);
+    let kinds = flow.kinds.clone();
     let mut parts = vec![Part::Levels(levels_card(ctx, flow, &kinds, None))];
     parts.push(Part::Text(text(ctx.lang, Msg::HermesChatLevelsChangeHint)));
     let mut chips: Vec<Chip> = (0..flow.levels.count())
@@ -558,7 +570,7 @@ fn levels_from_words(state: &mut State, ctx: &Ctx, spec: &RuleSpec) {
     let Some(flow) = state.session.rule.as_mut() else {
         return;
     };
-    match levels_below(&spec.filing_pattern, &flow.folder) {
+    match levels_below(&spec.filing_pattern, &flow.prefix) {
         Some(levels) => {
             flow.levels = levels;
             show_levels(state, ctx);
@@ -574,14 +586,25 @@ fn levels_from_words(state: &mut State, ctx: &Ctx, spec: &RuleSpec) {
     }
 }
 
-fn levels_below(pattern: &str, folder: &str) -> Option<Levels> {
+/// The levels of `pattern` below the folder: the leading fixed levels that
+/// spell the path of the folder (`prefix`, from its target) are cut off. A
+/// model that left out the front of the path is read as well: `Bank/{year}`
+/// below `Archiv/Bank/`.
+fn levels_below(pattern: &str, prefix: &str) -> Option<Levels> {
     let mut levels = Levels::from_pattern(pattern)?;
-    if let Some(first) = levels.folders.first() {
-        if matches!(first.parts.as_slice(), [LevelPart::Fixed(name)] if name.eq_ignore_ascii_case(folder))
-        {
-            levels.folders.remove(0);
-        }
-    }
+    let path: Vec<&str> = prefix.split('/').filter(|part| !part.is_empty()).collect();
+    let matching = |start: usize| {
+        levels
+            .folders
+            .iter()
+            .zip(path.iter().skip(start))
+            .take_while(|(level, segment)| {
+                matches!(level.parts.as_slice(), [LevelPart::Fixed(name)] if name.eq_ignore_ascii_case(segment))
+            })
+            .count()
+    };
+    let cut = (0..path.len()).map(matching).max().unwrap_or(0);
+    levels.folders.drain(..cut);
     (levels.count() > 0).then_some(levels)
 }
 
@@ -664,6 +687,7 @@ fn ask_what(state: &mut State, ctx: &Ctx, lead: Option<String>) {
     };
     flow.stage = Stage::Rule;
     flow.proposed = None;
+    let kinds = flow.kinds.clone();
     let question = fill(
         ctx.lang,
         Msg::HermesChatRuleWhat,
@@ -673,7 +697,6 @@ fn ask_what(state: &mut State, ctx: &Ctx, lead: Option<String>) {
         Some(opening) => format!("{opening} {question}"),
         None => question,
     };
-    let kinds = kinds_of(ctx);
     let mut chips = state
         .session
         .rule
@@ -703,11 +726,12 @@ pub fn typed(state: &mut State, ctx: &Ctx, typed: &str) {
     ask_rule(state, ctx, typed, stage);
 }
 
-fn ask_rule(state: &mut State, ctx: &Ctx, description: &str, stage: Stage) {
+fn ask_rule(state: &mut State, ctx: &Ctx, description: &str, stage: Stage) -> bool {
     let Some(flow) = state.session.rule.as_mut() else {
-        return;
+        return false;
     };
     flow.stage = stage;
+    let kinds = flow.kinds.clone();
     let documents = sample(&flow.files, CONTEXT_FILES)
         .into_iter()
         .map(|(path, fields)| ContextDocument {
@@ -724,19 +748,20 @@ fn ask_rule(state: &mut State, ctx: &Ctx, description: &str, stage: Stage) {
         RuleAsk::Generate {
             description: description.to_owned(),
             documents,
-            kinds: kinds_of(ctx),
+            kinds,
         },
-    );
+    )
 }
 
 /// A description with no folder in it: the rule names the folder itself.
 pub fn from_description(state: &mut State, ctx: &Ctx, description: &str) {
-    let mut flow = RuleFlow::new(String::new(), String::new());
+    let mut flow = RuleFlow::new(String::new(), String::new(), kinds_of(ctx));
     flow.free = true;
     flow.stage = Stage::Rule;
     state.session.rule = Some(flow);
-    state.step = Step::RuleWhat;
-    ask_rule(state, ctx, description, Stage::Rule);
+    if ask_rule(state, ctx, description, Stage::Rule) {
+        state.step = Step::RuleWhat;
+    }
 }
 
 /// The model wrote a rule: its folder and levels are taken when no folder was
@@ -874,7 +899,7 @@ pub fn trial_done(state: &mut State, ctx: &Ctx, tried: Result<RuleTrial, String>
         );
         return;
     }
-    let kinds = kinds_of(ctx);
+    let kinds = flow.kinds.clone();
     let sentence = fill(
         ctx.lang,
         Msg::HermesChatRuleProposal,

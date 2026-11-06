@@ -36,6 +36,8 @@ pub struct Naming {
     pub target: Option<Named>,
     pub schedule: Option<Schedule>,
     pub transfer: Option<Transfer>,
+    /// The sentence only looks into the folder: nothing is proposed to move.
+    pub opens: bool,
 }
 
 impl Naming {
@@ -201,6 +203,7 @@ pub fn start(
     target_said: Option<&str>,
     schedule: Option<Schedule>,
     transfer: Option<Transfer>,
+    opens: bool,
 ) -> bool {
     let Some(source) = named(state, ctx, source_said) else {
         return false;
@@ -217,6 +220,7 @@ pub fn start(
         target,
         schedule,
         transfer,
+        opens,
     });
     state.fresh_naming = true;
     true
@@ -311,6 +315,10 @@ fn settle(state: &mut State, ctx: &Ctx, mut naming: Naming) {
         None => None,
     };
     if target_folder.is_none() && crate::rule_flow::open(state, ctx, source.clone()) {
+        return;
+    }
+    if naming.opens {
+        crate::learn::read(state, ctx, source);
         return;
     }
     state.session.proposal = Some(Proposal {

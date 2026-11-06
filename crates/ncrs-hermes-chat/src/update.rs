@@ -26,7 +26,8 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
     match message {
         Message::Open => {
             state.open = true;
-            if state.session.rule.take().is_some()
+            if !is_busy(state)
+                && state.session.rule.take().is_some()
                 && matches!(state.step, Step::RuleLevels | Step::RuleWhat)
             {
                 state.step = Step::Idle;

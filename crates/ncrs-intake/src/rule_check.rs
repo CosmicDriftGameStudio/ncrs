@@ -52,7 +52,9 @@ pub fn rule_problem(spec: &RuleSpec) -> Option<RuleProblem> {
     if spec.filing_pattern.trim_matches('/').is_empty() {
         return Some(RuleProblem::NoFilingTarget);
     }
-    (!pattern_is_valid(&spec.filing_pattern)).then_some(RuleProblem::InvalidPattern)
+    let empty_segment = spec.filing_pattern.contains("//");
+    (empty_segment || !pattern_is_valid(&spec.filing_pattern))
+        .then_some(RuleProblem::InvalidPattern)
 }
 
 /// The multi-line message of the regex crate names the reason on its last
@@ -155,5 +157,14 @@ mod tests {
             rule_problem(&spec(vec![sender("Alfa")], "{nonsense}/")),
             Some(RuleProblem::InvalidPattern)
         );
+    }
+
+    #[test]
+    fn an_empty_folder_level_is_refused() {
+        assert_eq!(
+            rule_problem(&spec(vec![sender("Alfa")], "Bank//")),
+            Some(RuleProblem::InvalidPattern)
+        );
+        assert_eq!(rule_problem(&spec(vec![sender("Alfa")], "Bank/")), None);
     }
 }
