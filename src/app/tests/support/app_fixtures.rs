@@ -646,6 +646,11 @@ impl App {
         app
     }
 
+    pub fn with_version_for_test(mut self, version: &'static str) -> Self {
+        self.app_version = version;
+        self
+    }
+
     /// Makes the licence lookup find (or not find) a file.
     pub fn with_licenses_finder(mut self, finder: fn() -> Option<PathBuf>) -> Self {
         self.find_third_party_licenses = finder;
