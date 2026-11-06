@@ -347,19 +347,21 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Session<P> {
         // `SinkExt::send` polls the stream until it has consumed the event, so
         // there is no "the subscription has not started yet" window.
         let mut produced = Vec::new();
+        let runtime = &self.runtime;
         for sub in self.subscriptions.iter_mut() {
             let _ignored = sub.input.unbounded_send(event.clone());
             // Drain what the subscription produced. `poll_next` is used rather
             // than `next().await` because a subscription with nothing to say
-            // must not park the test here.
-            loop {
+            // must not park the test here. Inside the tokio context: the folder
+            // watch sets a tokio timer once the system reports a change.
+            runtime.enter(|| loop {
                 let waker = futures::task::noop_waker();
                 let mut cx = std::task::Context::from_waker(&waker);
                 match sub.stream.as_mut().poll_next(&mut cx) {
                     std::task::Poll::Ready(Some(message)) => produced.push(message),
                     std::task::Poll::Ready(None) | std::task::Poll::Pending => break,
                 }
-            }
+            });
         }
         for message in produced {
             self.send(message);
