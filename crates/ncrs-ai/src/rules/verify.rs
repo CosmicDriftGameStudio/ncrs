@@ -5,12 +5,35 @@
 use ncrs_index::{DocumentFields, Kinds};
 use ncrs_intake::render_pattern_in;
 
+/// How many deviating files the repair note names.
+const REPAIR_FILES: usize = 3;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Mismatch {
     /// The path the file has.
     pub file: String,
     /// What the pattern writes for it, or `None` when it cannot write one.
     pub written: Option<String>,
+}
+
+/// What the model is told when its pattern does not write the paths: the
+/// pattern, and for some files what it writes against where they lie.
+pub fn repair_note(pattern: &str, misfits: &[Mismatch]) -> String {
+    let mut note = format!("Your answer {pattern} does not write these paths:");
+    for misfit in misfits.iter().take(REPAIR_FILES) {
+        match &misfit.written {
+            Some(written) => note.push_str(&format!(
+                "\n- the pattern gives \"{written}\", the file lies at \"{}\"",
+                misfit.file
+            )),
+            None => note.push_str(&format!(
+                "\n- the pattern cannot write a path for \"{}\"",
+                misfit.file
+            )),
+        }
+    }
+    note.push_str("\nAnswer with a pattern that writes the paths as they are.");
+    note
 }
 
 pub fn path_text(path: &std::path::Path) -> String {

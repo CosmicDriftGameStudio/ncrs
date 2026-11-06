@@ -9,7 +9,7 @@ use ncrs_index::{DocumentFields, Kinds, RuleSpec};
 use crate::chat::{parse_chat_reply, ChatIntent, ChatModel, ChatTurn};
 use crate::contract::{parse_reply, Extraction, ExtractionRequest, Provider};
 use crate::error::AiError;
-use crate::rules::{ContextDocument, Levels};
+use crate::rules::{ContextDocument, Levels, Mismatch};
 use crate::status::LocalModelStatus;
 
 /// Answers with a canned raw reply, which goes through the same parser as the
@@ -212,6 +212,16 @@ impl ChatModel for ScriptedChatModel {
             .unwrap_or_else(PoisonError::into_inner)
             .pop_front()
             .unwrap_or(Err(AiError::Model("no scripted levels")))
+    }
+
+    fn recognize_levels_again(
+        &self,
+        files: &[(String, DocumentFields)],
+        kinds: &Kinds,
+        _previous: &Levels,
+        _misfits: &[Mismatch],
+    ) -> Result<Levels, AiError> {
+        self.recognize_levels(files, kinds)
     }
 
     fn status(&self) -> LocalModelStatus {

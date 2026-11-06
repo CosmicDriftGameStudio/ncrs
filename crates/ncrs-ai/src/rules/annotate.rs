@@ -101,6 +101,14 @@ fn template(stem: &str, values: &[(&str, [String; 2])]) -> String {
     written
 }
 
+/// The number of folder levels all of these paths have, when it is the same
+/// for every one.
+pub fn folder_depth<'path>(paths: impl IntoIterator<Item = &'path str>) -> Option<usize> {
+    let mut depths = paths.into_iter().map(|path| path.matches('/').count());
+    let first = depths.next()?;
+    depths.all(|depth| depth == first).then_some(first)
+}
+
 /// One block per path: the path, then each of its levels with the fields it
 /// shows.
 pub fn annotated_paths(files: &[(String, DocumentFields)], kinds: &Kinds) -> String {
@@ -163,5 +171,14 @@ mod tests {
             text.ends_with("reads \"Beleg_{date}_{sender}_Kopie\""),
             "{text}"
         );
+    }
+
+    #[test]
+    fn the_depth_is_known_when_every_path_has_it() {
+        assert_eq!(folder_depth(["2018/a.pdf", "2019/b.pdf"]), Some(1));
+        assert_eq!(folder_depth(["a/b/c.pdf"]), Some(2));
+        assert_eq!(folder_depth(["a.pdf"]), Some(0));
+        assert_eq!(folder_depth(["2018/a.pdf", "2019/x/b.pdf"]), None);
+        assert_eq!(folder_depth([]), None);
     }
 }

@@ -82,8 +82,13 @@ impl<'model> RuleSession<'model> {
     }
 
     /// `paths` is the text of `annotated_paths`.
-    pub fn recognize(&mut self, question: &str, paths: &str) -> Result<Levels, AiError> {
-        let request = RuleRequest::recognize(&self.prefix, question, paths);
+    pub fn recognize(
+        &mut self,
+        question: &str,
+        paths: &str,
+        folder_depth: Option<usize>,
+    ) -> Result<Levels, AiError> {
+        let request = RuleRequest::recognize(&self.prefix, question, paths, folder_depth);
         parse_levels(&self.answer(&request)?)
     }
 

@@ -26,10 +26,10 @@ mod matrix;
 #[cfg(test)]
 mod oracle;
 
-pub use annotate::annotated_paths;
+pub use annotate::{annotated_paths, folder_depth};
 pub use levels::{Level, Levels, Part};
 pub use parse::{parse_generate, parse_levels};
 pub use prompt::{prefix_text, ContextDocument, END_OF_TURN};
 pub use session::RuleRequest;
-pub use verify::{pattern_mismatches, Mismatch};
+pub use verify::{pattern_mismatches, repair_note, Mismatch};
 pub use vocabulary::condition_meaning;

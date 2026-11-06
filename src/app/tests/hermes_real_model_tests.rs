@@ -88,7 +88,8 @@ fn settle(app: &mut App, ctx: &Ctx, access: &ChatAccess, model: &dyn ChatModel) 
                 result: (ctx.resolve_folder)(typed),
             }
         } else if let Some(ask) = chat.pending_rule_ask().cloned() {
-            HermesChatMessage::RuleAnswered(ask.run(model))
+            let answer = ask.run(model);
+            HermesChatMessage::RuleAnswered(answer)
         } else if let Some(turn) = chat.pending_turn().cloned() {
             HermesChatMessage::Understood(model.understand(&turn).map_err(|err| err.to_string()))
         } else {
@@ -205,7 +206,8 @@ fn scenario(misplace: bool) {
     let dir = tempfile::tempdir().unwrap();
     let archive = ncrs_intake::test_archive::test_archive();
     archive.write_to(dir.path()).unwrap();
-    let (mut waiting, mut misfiled): (Vec<String>, Vec<PathBuf>) = (Vec::new(), Vec::new());
+    let (mut waiting, mut misfiled): (Vec<(String, PathBuf)>, Vec<PathBuf>) =
+        (Vec::new(), Vec::new());
     if misplace {
         std::fs::remove_dir_all(dir.path().join("inbox")).unwrap();
     }
@@ -248,7 +250,7 @@ fn scenario(misplace: bool) {
         }
         match (misplace && sparkasse, kept_statements) {
             (true, 1..=3) => misfiled.push(placed.clone()),
-            (true, 4..=9) => waiting.push(name.to_string_lossy().into_owned()),
+            (true, 4..=9) => waiting.push((name.to_string_lossy().into_owned(), path.clone())),
             _ => {}
         }
         let mut guard = slot.lock().unwrap();
@@ -312,7 +314,8 @@ fn scenario(misplace: bool) {
         model: Some(Arc::clone(&model) as Arc<dyn ChatModel>),
         ..super::hermes_chat_ui_tests::ready(Language::German)
     };
-    let answering: &dyn ChatModel = model.as_ref();
+    let recording = RecordingModel(model.as_ref());
+    let answering: &dyn ChatModel = &recording;
 
     let mut app = App::with_fixed_panels().in_language(Language::German);
     super::hermes_chat_ui_tests::send(&mut app, &ctx, HermesChatMessage::Open);
@@ -343,6 +346,13 @@ fn scenario(misplace: bool) {
         shoot(&app, "hermes_rule_1_levels")
     };
 
+    if misplace {
+        assert!(
+            has_chip(&app, &ChipReply::LevelsKeep),
+            "the recognized levels do not fit the archive: {:?}",
+            app.hermes_chat.thread().last()
+        );
+    }
     let keep = if has_chip(&app, &ChipReply::LevelsKeep) {
         ChipReply::LevelsKeep
     } else {
@@ -407,25 +417,6 @@ fn scenario(misplace: bool) {
     model.shutdown();
 }
 
-/// Where the one file of that name lies below the archive: the rule's pattern
-/// is the model's, so the place is looked up.
-fn filed_where(root: &Path, name: &str) -> PathBuf {
-    fn walk(folder: &Path, name: &str, found: &mut Vec<PathBuf>) {
-        for entry in std::fs::read_dir(folder).unwrap() {
-            let path = entry.unwrap().path();
-            if path.is_dir() {
-                walk(&path, name, found);
-            } else if path.file_name().is_some_and(|file| file == name) {
-                found.push(path);
-            }
-        }
-    }
-    let mut found = Vec::new();
-    walk(&root.join("archive"), name, &mut found);
-    assert_eq!(found.len(), 1, "{name}: {found:?}");
-    found.remove(0)
-}
-
 fn index_has(slot: &Arc<Mutex<Option<Index>>>, path: &Path) -> bool {
     let guard = slot.lock().unwrap();
     guard
@@ -445,7 +436,7 @@ fn file_and_undo(
     model: &dyn ChatModel,
     slot: &Arc<Mutex<Option<Index>>>,
     root: &Path,
-    (waiting, misfiled): (&[String], &[PathBuf]),
+    (waiting, misfiled): (&[(String, PathBuf)], &[PathBuf]),
 ) {
     let proposal = last_hermes_text(app);
     println!("PROPOSAL:\n{proposal}");
@@ -476,10 +467,15 @@ fn file_and_undo(
         "{filed_text}"
     );
     shoot(app, "hermes_rule_5_filed");
-    let targets: Vec<PathBuf> = waiting.iter().map(|name| filed_where(root, name)).collect();
-    for (name, target) in waiting.iter().zip(&targets) {
+    for (name, target) in waiting {
         let old = root.join("inbox").join(name);
         assert!(target.is_file(), "{} missing", target.display());
+        let neighbours = std::fs::read_dir(target.parent().unwrap()).unwrap().count();
+        assert!(
+            neighbours > 1,
+            "{} lies alone in a new folder",
+            target.display()
+        );
         assert!(!old.exists(), "{} is still there", old.display());
         assert!(index_has(slot, target), "index lacks {}", target.display());
         assert!(!index_has(slot, &old), "index keeps {}", old.display());
@@ -491,7 +487,7 @@ fn file_and_undo(
     press(app, ctx, access, model, &ChipReply::Undo);
     press(app, ctx, access, model, &ChipReply::PutBack);
     println!("UNDONE: {}", last_hermes_text(app));
-    for (name, target) in waiting.iter().zip(&targets) {
+    for (name, target) in waiting {
         let old = root.join("inbox").join(name);
         assert!(old.is_file(), "{} not back", old.display());
         assert!(!target.exists(), "{} remains", target.display());
@@ -502,4 +498,80 @@ fn file_and_undo(
         assert!(path.is_file(), "{} was moved", path.display());
     }
     let _ = thread_text(app);
+}
+
+/// Writes what the recognize step is asked and what it answers to
+/// `target/recognize-dump.txt`.
+#[derive(Debug)]
+struct RecordingModel<'a>(&'a dyn ChatModel);
+
+impl RecordingModel<'_> {
+    fn dump(text: &str) {
+        use std::io::Write as _;
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open("target/recognize-dump.txt")
+            .unwrap();
+        writeln!(file, "{text}\n").unwrap();
+    }
+}
+
+impl ChatModel for RecordingModel<'_> {
+    fn understand(
+        &self,
+        turn: &ncrs_ai::ChatTurn,
+    ) -> Result<ncrs_ai::ChatIntent, ncrs_ai::AiError> {
+        self.0.understand(turn)
+    }
+
+    fn generate_rule(
+        &self,
+        description: &str,
+        documents: &[ncrs_ai::ContextDocument],
+        kinds: &ncrs_index::Kinds,
+    ) -> Result<ncrs_index::RuleSpec, ncrs_ai::AiError> {
+        self.0.generate_rule(description, documents, kinds)
+    }
+
+    fn recognize_levels(
+        &self,
+        files: &[(String, DocumentFields)],
+        kinds: &ncrs_index::Kinds,
+    ) -> Result<ncrs_ai::Levels, ncrs_ai::AiError> {
+        let answer = self.0.recognize_levels(files, kinds);
+        Self::dump(&format!(
+            "=== recognize_levels\nQUESTION: Which pattern wrote these paths?\nUSER PATHS ({} files):\n{}\nANSWER: {answer:?}",
+            files.len(),
+            ncrs_ai::annotated_paths(files, kinds)
+        ));
+        answer
+    }
+
+    fn recognize_levels_again(
+        &self,
+        files: &[(String, DocumentFields)],
+        kinds: &ncrs_index::Kinds,
+        previous: &ncrs_ai::Levels,
+        misfits: &[ncrs_ai::Mismatch],
+    ) -> Result<ncrs_ai::Levels, ncrs_ai::AiError> {
+        let answer = self
+            .0
+            .recognize_levels_again(files, kinds, previous, misfits);
+        Self::dump(&format!(
+            "=== recognize_levels_again\nREPAIR NOTE:\n{}\nUSER PATHS ({} files):\n{}\nANSWER: {answer:?}",
+            ncrs_ai::repair_note(&previous.pattern(), misfits),
+            files.len(),
+            ncrs_ai::annotated_paths(files, kinds)
+        ));
+        answer
+    }
+
+    fn status(&self) -> ncrs_ai::LocalModelStatus {
+        self.0.status()
+    }
+
+    fn refresh(&self) {
+        self.0.refresh();
+    }
 }

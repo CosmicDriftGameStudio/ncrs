@@ -6,7 +6,9 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use iced::Task;
-use ncrs_ai::{pattern_mismatches, ChatModel, ContextDocument, Level, Levels, Part as LevelPart};
+use ncrs_ai::{
+    pattern_mismatches, AiError, ChatModel, ContextDocument, Level, Levels, Part as LevelPart,
+};
 use ncrs_filing::chat_work::{ChatWork, FolderReading};
 use ncrs_i18n::Msg;
 use ncrs_index::{DocumentFields, Kinds, RuleSpec};
@@ -39,7 +41,10 @@ const FILE_VALUES: usize = 2;
 #[derive(Debug, Clone)]
 pub enum RuleAsk {
     Recognize {
+        /// What the model is shown.
         files: Vec<(String, DocumentFields)>,
+        /// All files of the folder: what the answer is checked against.
+        all: Vec<(String, DocumentFields)>,
         kinds: Kinds,
     },
     Generate {
@@ -61,10 +66,8 @@ pub enum RuleAnswer {
 impl RuleAsk {
     pub fn run(&self, model: &dyn ChatModel) -> RuleAnswer {
         match self {
-            Self::Recognize { files, kinds } => RuleAnswer::Levels(
-                model
-                    .recognize_levels(files, kinds)
-                    .map_err(|error| error.to_string()),
+            Self::Recognize { files, all, kinds } => RuleAnswer::Levels(
+                recognize_checked(model, files, all, kinds).map_err(|error| error.to_string()),
             ),
             Self::Generate {
                 description,
@@ -77,6 +80,31 @@ impl RuleAsk {
             ),
         }
     }
+}
+
+/// The model's levels for the files. When they do not write the paths the
+/// files have, the model is asked once more with the deviations named, and
+/// the answer with fewer deviations is taken.
+fn recognize_checked(
+    model: &dyn ChatModel,
+    files: &[(String, DocumentFields)],
+    all: &[(String, DocumentFields)],
+    kinds: &Kinds,
+) -> Result<Levels, AiError> {
+    let first = model.recognize_levels(files, kinds)?;
+    let misfits = pattern_mismatches(&first.pattern(), all, kinds);
+    if misfits.is_empty() {
+        return Ok(first);
+    }
+    let Ok(second) = model.recognize_levels_again(files, kinds, &first, &misfits) else {
+        return Ok(first);
+    };
+    let remaining = pattern_mismatches(&second.pattern(), all, kinds).len();
+    Ok(if remaining < misfits.len() {
+        second
+    } else {
+        first
+    })
 }
 
 /// What the next answer of the model is for.
@@ -209,7 +237,7 @@ pub fn folder_read(state: &mut State, ctx: &Ctx, reading: &FolderReading) {
             &[("folder", &flow.folder)],
         );
         let mut parts = vec![Part::Text(sentence)];
-        parts.extend(levels_parts(state, ctx));
+        parts.extend(levels_parts(state, ctx, false).0);
         hermes(state, parts, levels_chips(ctx, false));
         state.step = Step::RuleLevels;
         return;
@@ -245,8 +273,9 @@ pub fn folder_read(state: &mut State, ctx: &Ctx, reading: &FolderReading) {
     }
     flow.stage = Stage::Recognize;
     let files = sample(&flow.files, MODEL_FILES);
+    let all = flow.files.clone();
     let kinds = flow.kinds.clone();
-    ask_model(state, ctx, RuleAsk::Recognize { files, kinds });
+    ask_model(state, ctx, RuleAsk::Recognize { files, all, kinds });
 }
 
 /// Asks the model. Without one (AI off, model missing, none at all) the usual
@@ -301,7 +330,7 @@ pub fn answered(state: &mut State, ctx: &Ctx, answer: RuleAnswer) -> Option<Acti
             if let Some(flow) = state.session.rule.as_mut() {
                 flow.levels = levels;
             }
-            show_levels(state, ctx);
+            show_levels_checked(state, ctx, true);
         }
         (RuleAnswer::Rule(Ok(spec)), Stage::Levels) => levels_from_words(state, ctx, &spec),
         (RuleAnswer::Rule(Ok(spec)), _) => generated(state, ctx, spec),
@@ -326,6 +355,9 @@ pub fn answered(state: &mut State, ctx: &Ctx, answer: RuleAnswer) -> Option<Acti
 }
 
 // The levels.
+
+/// Below this share of fitting files a recognized pattern is not offered as it is.
+const FIT_AT_LEAST_PERCENT: usize = 80;
 
 fn levels_chips(ctx: &Ctx, with_default: bool) -> Vec<Chip> {
     let keep = if with_default {
@@ -492,9 +524,9 @@ fn levels_card(ctx: &Ctx, flow: &RuleFlow, kinds: &Kinds, footer: Option<String>
 }
 
 /// The card of the levels, and under it the files that do not follow them.
-fn levels_parts(state: &State, ctx: &Ctx) -> Vec<Part> {
+fn levels_parts(state: &State, ctx: &Ctx, poor_fit: bool) -> (Vec<Part>, bool) {
     let Some(flow) = state.session.rule.as_ref() else {
-        return Vec::new();
+        return (Vec::new(), false);
     };
     let kinds = flow.kinds.clone();
     let written = flow.written_files();
@@ -510,6 +542,18 @@ fn levels_parts(state: &State, ctx: &Ctx) -> Vec<Part> {
         )
     });
     let mut parts = vec![Part::Levels(levels_card(ctx, flow, &kinds, footer))];
+    let fitting = written.len() - misfits.len();
+    let poor = poor_fit && fitting * 100 < written.len() * FIT_AT_LEAST_PERCENT;
+    if poor {
+        parts.push(Part::Text(fill(
+            ctx.lang,
+            Msg::HermesChatLevelsPoor,
+            &[
+                ("fitting", &number(fitting)),
+                ("total", &number(written.len())),
+            ],
+        )));
+    }
     if !misfits.is_empty() {
         let lines: Vec<String> = misfits
             .iter()
@@ -529,14 +573,30 @@ fn levels_parts(state: &State, ctx: &Ctx) -> Vec<Part> {
             .collect();
         parts.push(Part::Text(lines.join("\n")));
     }
-    parts
+    (parts, poor)
+}
+
+/// `checked`: the levels are the model's, so a pattern that fits too few
+/// files is not offered as it is.
+fn show_levels_checked(state: &mut State, ctx: &Ctx, checked: bool) {
+    let (parts, poor) = levels_parts(state, ctx, checked);
+    let deviates = parts.len() > 1;
+    state.step = Step::RuleLevels;
+    let chips = if poor {
+        vec![chip(
+            ctx,
+            Msg::HermesChatLevelsChange,
+            ChipReply::LevelsChange,
+            true,
+        )]
+    } else {
+        levels_chips(ctx, deviates)
+    };
+    hermes(state, parts, chips);
 }
 
 fn show_levels(state: &mut State, ctx: &Ctx) {
-    let parts = levels_parts(state, ctx);
-    let deviates = parts.len() > 1;
-    state.step = Step::RuleLevels;
-    hermes(state, parts, levels_chips(ctx, deviates));
+    show_levels_checked(state, ctx, false);
 }
 
 pub fn levels_change(state: &mut State, ctx: &Ctx) {
