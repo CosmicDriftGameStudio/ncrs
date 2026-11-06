@@ -197,7 +197,7 @@ fn with_model_the_protocol_sentences_print_their_intent() {
 
 #[test]
 #[ignore = "needs the AI model: set NCRS_AI_MODELS_DIR to the folder with it"]
-fn with_model_folder_sentences_print_their_intent() {
+fn folder_sentences_print_their_intent_with_the_model() {
     let model = lazy();
     let sentences = [
         "öffne mal /Bank",

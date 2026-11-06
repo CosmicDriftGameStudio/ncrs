@@ -299,7 +299,7 @@ fn report(outcomes: &[Outcome], setup_millis: u128) -> String {
 
 #[test]
 #[ignore = "needs the AI model: set NCRS_AI_MODELS_DIR to the folder with it"]
-fn with_model_rule_matrix_reports() {
+fn rule_matrix_reports_with_the_model() {
     let cases = chosen_cases();
     assert!(!cases.is_empty(), "the shard has no cases");
     let documents = context_documents();
