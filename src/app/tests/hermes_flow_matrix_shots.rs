@@ -160,6 +160,25 @@ fn pay_slip_archive(dir: &std::path::Path, slot: &Mutex<Option<Index>>) {
 
 /// The app with the pay slip archive, the chat opened on the folder Arbeit
 /// and its levels card on screen.
+/// Says "open Arbeit" and takes the archive folder when Hermes asks which.
+fn open_arbeit(app: &mut App, ctx: &Ctx, access: &ChatAccess, answering: &dyn ChatModel) {
+    type_sentence(app, ctx, access, answering, "öffne mal Arbeit");
+    let named: Vec<ChipReply> = app
+        .hermes_chat
+        .chips()
+        .iter()
+        .filter_map(|chip| match &chip.reply {
+            ChipReply::NamedFolder(path) if path.ends_with("archive/Arbeit") => {
+                Some(chip.reply.clone())
+            }
+            _ => None,
+        })
+        .collect();
+    if let Some(reply) = named.first() {
+        press(app, ctx, access, answering, reply);
+    }
+}
+
 fn opened_pay_slips(
     model: &std::sync::Arc<LazyLocalModel>,
     lang: Language,
@@ -209,21 +228,7 @@ fn opened_pay_slips(
 
     let mut app = App::with_fixed_panels().in_language(lang);
     super::hermes_chat_ui_tests::send(&mut app, &ctx, HermesChatMessage::Open);
-    type_sentence(&mut app, &ctx, &access, answering, "öffne mal Arbeit");
-    let named: Vec<ChipReply> = app
-        .hermes_chat
-        .chips()
-        .iter()
-        .filter_map(|chip| match &chip.reply {
-            ChipReply::NamedFolder(path) if path.ends_with("archive/Arbeit") => {
-                Some(chip.reply.clone())
-            }
-            _ => None,
-        })
-        .collect();
-    if let Some(reply) = named.first() {
-        press(&mut app, &ctx, &access, answering, reply);
-    }
+    open_arbeit(&mut app, &ctx, &access, answering);
     assert!(
         levels_card_shown(&app),
         "{name}: {:?}",
@@ -310,6 +315,25 @@ fn with_model_the_rule_flow_from_the_proposal_to_the_question_is_shot() {
             &ChipReply::RuleOnlyNew,
         );
         shoot(&second_app, &format!("{name}-5-only-new"));
+
+        // The folder again: the rule exists, saving changes it.
+        open_arbeit(&mut second_app, &second_ctx, &second_access, answering);
+        shoot(&second_app, &format!("{name}-6-second-open"));
+        press(
+            &mut second_app,
+            &second_ctx,
+            &second_access,
+            answering,
+            &ChipReply::LevelsKeep,
+        );
+        press(
+            &mut second_app,
+            &second_ctx,
+            &second_access,
+            answering,
+            &ChipReply::RuleCreate,
+        );
+        shoot(&second_app, &format!("{name}-7-rule-adjusted"));
     }
     model.shutdown();
 }

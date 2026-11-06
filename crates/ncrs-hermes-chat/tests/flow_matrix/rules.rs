@@ -4,6 +4,8 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
+use ncrs_hermes_chat::Entry;
+
 use super::*;
 
 /// A word of the text of the archive documents and one of the inbox ones.
@@ -189,8 +191,8 @@ pub fn change_the_condition(model: &Arc<CachedModel>, english: bool) {
         "{:?}",
         card.facts
     );
-    assert_eq!(card.facts[1], before.facts[1], "the filing stays");
-    assert_eq!(card.facts[2], before.facts[2], "the file name stays");
+    assert_eq!(card.facts[2], before.facts[2], "the filing stays");
+    assert_eq!(card.facts[3], before.facts[3], "the file name stays");
     talk.press(&ChipReply::RuleCreate);
     let rules = talk.rules();
     assert_eq!(
@@ -198,4 +200,55 @@ pub fn change_the_condition(model: &Arc<CachedModel>, english: bool) {
         format!("{AREA_PREFIX}{}", found_pattern()),
         "the levels did not change"
     );
+}
+
+/// Saves a rule for the folder, opens the folder again, changes another
+/// level and saves again: one rule is left, holding the last pattern, and
+/// the second opening says that the rule exists.
+pub fn saved_twice_for_the_same_folder(model: &Arc<CachedModel>, english: bool) {
+    let (mut talk, docs) = entered(model, english);
+    talk.press(&ChipReply::LevelsChange);
+    talk.type_text(pick(english, DATE_FIRST));
+    talk.press(&ChipReply::LevelsApply);
+    let first = "Gehalt/{year}/{date}_Gehaltsabrechnung";
+    check_trial(&talk, &docs, first);
+    create_and_leave(&mut talk, &docs, first);
+    let first_rule = talk.rules().remove(0);
+
+    talk.type_text(if english {
+        "open /Arbeit"
+    } else {
+        "öffne /Arbeit"
+    });
+    assert!(has_levels_card(&talk), "{:?}", talk.last_texts());
+    let rule_name = expected_rule_name(first);
+    assert!(
+        talk.last_texts().contains(&say(
+            Msg::HermesChatLevelsExistingRule,
+            &[
+                ("folder", AREA_PREFIX.trim_end_matches('/')),
+                ("name", &rule_name)
+            ]
+        )),
+        "the second opening names the rule: {:?}",
+        talk.last_texts()
+    );
+    talk.press(&ChipReply::LevelsChange);
+    talk.type_text(pick(english, MONTH));
+    talk.press(&ChipReply::LevelsApply);
+    let last = "Gehalt/{year}-{month}/Gehaltsabrechnung_{date}";
+    check_trial(&talk, &docs, last);
+    talk.press(&ChipReply::RuleCreate);
+
+    let rules = talk.rules();
+    assert_eq!(rules.len(), 1, "no second rule: {rules:?}");
+    assert_eq!(rules[0].id, first_rule.id);
+    assert_eq!(rules[0].position, first_rule.position);
+    assert_eq!(rules[0].spec.filing_pattern, format!("{AREA_PREFIX}{last}"));
+    assert_eq!(rules[0].origin, RuleOrigin::Chat);
+    assert!(talk.state.thread().iter().any(|entry| matches!(
+        entry,
+        Entry::Hermes { parts, .. }
+            if parts.contains(&Part::Text(say(Msg::HermesChatRuleUpdated, &[("name", &rule_name)])))
+    )));
 }

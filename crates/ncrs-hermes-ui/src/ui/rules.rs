@@ -97,7 +97,10 @@ fn rule_row<'a>(
     let sentence = rule_sentence(spec, lang, state.kinds());
     let named = spec.name.as_deref().filter(|name| !name.is_empty());
     let (label, second) = match named {
-        Some(name) => (name.to_owned(), sentence),
+        Some(name) => (
+            name.to_owned(),
+            format!("{sentence}\n{}", origin_text(listed.rule.origin, lang)),
+        ),
         None => (sentence, origin_text(listed.rule.origin, lang).to_owned()),
     };
     let idle = !state.is_busy();

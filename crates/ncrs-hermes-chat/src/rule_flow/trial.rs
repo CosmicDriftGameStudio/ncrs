@@ -3,7 +3,7 @@
 use ncrs_filing::chat_work::{ChatWork, RuleSaveFailure, RuleTrial, RULE_TRIAL_EXAMPLES};
 use ncrs_filing::rules_work::TryOutcome;
 use ncrs_i18n::Msg;
-use ncrs_index::{Combinator, Condition, Kinds, RuleSpec};
+use ncrs_index::{Combinator, Condition, Kinds, RuleSaved, RuleSpec};
 use ncrs_intake::filing_pieces::FilingTarget;
 use ncrs_ui_kit::hermes_kit::{FactRow, MoveRow, MovesBlock};
 use ncrs_ui_kit::kit::condition_kind_name;
@@ -130,7 +130,7 @@ pub fn trial_done(state: &mut State, ctx: &Ctx, tried: Result<RuleTrial, String>
         ),
         None => condition,
     };
-    let facts = vec![
+    let mut facts = vec![
         fact(ctx, Msg::HermesChatProposalAppliesTo, applies_to),
         fact(
             ctx,
@@ -152,6 +152,9 @@ pub fn trial_done(state: &mut State, ctx: &Ctx, tried: Result<RuleTrial, String>
             ),
         ),
     ];
+    if let Some(from) = super::source::from_fact(ctx) {
+        facts.insert(1, from);
+    }
     let rows: Vec<MoveRow> = trial
         .examples
         .iter()
@@ -223,7 +226,7 @@ pub fn create(state: &mut State) {
 
 /// The fixed words of the folder levels, "Work / Salary"; the folder when
 /// the filing has none.
-fn rule_name(flow: &RuleFlow) -> String {
+pub fn rule_name(flow: &RuleFlow) -> String {
     let below = flow.prefix.split('/').filter(|name| !name.is_empty());
     let fixed = flow
         .levels
@@ -239,9 +242,9 @@ fn rule_name(flow: &RuleFlow) -> String {
     }
 }
 
-pub fn stored(state: &mut State, ctx: &Ctx, stored: Result<(), RuleSaveFailure>) {
+pub fn stored(state: &mut State, ctx: &Ctx, stored: Result<RuleSaved, RuleSaveFailure>) {
     match stored {
-        Ok(()) => {
+        Ok(saved) => {
             let finished = state.session.rule.take();
             let name = finished
                 .as_ref()
@@ -252,7 +255,11 @@ pub fn stored(state: &mut State, ctx: &Ctx, stored: Result<(), RuleSaveFailure>)
             let count = moves.total();
             state.session.rule_moves = Some(moves);
             state.step = Step::Idle;
-            let said = fill(ctx.lang, Msg::HermesChatRuleStored, &[("name", &name)]);
+            let message = match saved {
+                RuleSaved::Added => Msg::HermesChatRuleStored,
+                RuleSaved::Changed => Msg::HermesChatRuleUpdated,
+            };
+            let said = fill(ctx.lang, message, &[("name", &name)]);
             if count == 0 || ctx.sources.is_empty() {
                 say(state, said, fallback_chips(ctx));
                 return;

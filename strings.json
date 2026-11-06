@@ -8953,6 +8953,18 @@
       "de": "Regel „{name}“ gespeichert. Sie gilt ab jetzt für neue Dokumente im Eingang."
     },
     {
+      "key": "hermes_chat.rule_updated",
+      "context": "Chat reply after a rule that already existed was changed in place instead of adding a second one. {name} is the name of the rule, made from the fixed folder names of its filing, e.g. Work / Salary.",
+      "en": "Rule “{name}” adjusted. It applies from now on to new documents in the inbox.",
+      "de": "Regel „{name}“ angepasst. Sie gilt ab jetzt für neue Dokumente im Eingang."
+    },
+    {
+      "key": "hermes_chat.levels_existing_rule",
+      "context": "Note under the levels card of an opened folder that an existing rule already files into. {folder} is the folder name, {name} the name of the rule. Creating the rule from the levels changes that rule instead of adding a second one.",
+      "en": "{folder} already has the rule “{name}”. Creating the rule changes it.",
+      "de": "Für {folder} gibt es schon die Regel „{name}“. Wenn du die Regel anlegst, wird sie angepasst."
+    },
+    {
       "key": "hermes_chat.rule_move_question_one",
       "context": "Question after a rule was stored when exactly one existing file lies differently from what the rule would do. {count} is 1.",
       "en": "{count} existing file is filed differently. Rearrange it now?",
@@ -8981,6 +8993,18 @@
       "context": "Chat reply when the user chose to leave the existing files as they are after a rule was stored.",
       "en": "All right, nothing moves. Only new documents are filed this way.",
       "de": "Gut, nichts wird verschoben. Nur neue Dokumente werden so abgelegt."
+    },
+    {
+      "key": "hermes_chat.proposal_from",
+      "context": "Row label on the proposal card: which read folders (inboxes) the rule looks at. The value is the name of the folder or all of them.",
+      "en": "From",
+      "de": "Aus"
+    },
+    {
+      "key": "hermes_chat.proposal_from_all",
+      "context": "Value of the From row on the proposal card when the rule applies to documents of every read folder.",
+      "en": "all read folders",
+      "de": "alle Eingänge"
     },
     {
       "key": "hermes_chat.rule_change_condition",

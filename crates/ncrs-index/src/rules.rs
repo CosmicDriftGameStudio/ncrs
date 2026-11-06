@@ -72,6 +72,22 @@ impl RuleRow {
     }
 }
 
+/// Whether a chat rule was added or an existing one changed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuleSaved {
+    Added,
+    Changed,
+}
+
+fn same_conditions(first: &RuleConditions, second: &RuleConditions) -> bool {
+    first.combinator == second.combinator
+        && first.list.len() == second.list.len()
+        && first
+            .list
+            .iter()
+            .all(|condition| second.list.contains(condition))
+}
+
 fn require_condition(spec: &RuleSpec) -> Result<(), IndexError> {
     let blank = |condition: &Condition| condition.value.trim().is_empty();
     if spec.conditions.list.is_empty() || spec.conditions.list.iter().any(blank) {
@@ -173,7 +189,54 @@ impl Index {
             .collect()
     }
 
+    /// Stores a rule from the chat: a rule with the same conditions or the
+    /// same name is changed in place, keeping its id and position, otherwise
+    /// a new one is added. Says whether an existing rule was changed.
+    pub fn save_rule_from(
+        &mut self,
+        spec: &RuleSpec,
+        origin: RuleOrigin,
+    ) -> Result<RuleSaved, IndexError> {
+        match self.rule_replaced_by(spec)? {
+            Some(id) => {
+                self.update_rule_with_origin(id, spec, Some(origin))?;
+                Ok(RuleSaved::Changed)
+            }
+            None => {
+                self.create_rule_from(spec, origin)?;
+                Ok(RuleSaved::Added)
+            }
+        }
+    }
+
+    /// The stored rule a chat rule takes the place of: the first one with
+    /// the same conditions or the same name.
+    pub fn rule_replaced_by(&self, spec: &RuleSpec) -> Result<Option<RuleId>, IndexError> {
+        let name = spec
+            .name
+            .as_deref()
+            .map(str::trim)
+            .filter(|name| !name.is_empty());
+        Ok(self
+            .rules()?
+            .into_iter()
+            .find(|rule| {
+                same_conditions(&rule.spec.conditions, &spec.conditions)
+                    || name.is_some_and(|wanted| rule.spec.name.as_deref() == Some(wanted))
+            })
+            .map(|rule| rule.id))
+    }
+
     pub fn update_rule(&mut self, id: RuleId, spec: &RuleSpec) -> Result<(), IndexError> {
+        self.update_rule_with_origin(id, spec, None)
+    }
+
+    fn update_rule_with_origin(
+        &mut self,
+        id: RuleId,
+        spec: &RuleSpec,
+        origin: Option<RuleOrigin>,
+    ) -> Result<(), IndexError> {
         require_condition(spec)?;
         let kinds = Arc::clone(self.kinds());
         let tx = self.conn_mut().transaction()?;
@@ -181,7 +244,7 @@ impl Index {
         let changed = tx.execute(
             "UPDATE rule SET combinator = ?2, extract_number = ?3, extract_date = ?4,
                  extract_amount = ?5, kind_id = ?6, filing_pattern = ?7,
-                 confirmed = ?8, enabled = ?9, name = ?10
+                 confirmed = ?8, enabled = ?9, name = ?10, origin = COALESCE(?11, origin)
              WHERE id = ?1",
             params![
                 id.get(),
@@ -197,6 +260,7 @@ impl Index {
                     .as_deref()
                     .map(str::trim)
                     .filter(|name| !name.is_empty()),
+                origin.map(RuleOrigin::as_str),
             ],
         )?;
         if changed == 0 {
