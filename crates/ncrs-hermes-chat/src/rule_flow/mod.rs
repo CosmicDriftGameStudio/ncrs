@@ -6,10 +6,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use iced::Task;
-use ncrs_ai::{
-    folder_depth, pattern_mismatches, AiError, ChatModel, ContextDocument, Level, Levels,
-    Part as LevelPart,
-};
+use ncrs_ai::{pattern_mismatches, ContextDocument, Level, Levels, Part as LevelPart};
 use ncrs_filing::chat_work::{ChatWork, FolderReading};
 use ncrs_i18n::Msg;
 use ncrs_index::{DocumentFields, Kinds, RuleSpec};
@@ -24,9 +21,13 @@ use crate::state::{Chip, ChipReply, Entry, LevelsCard, Part, ReadFor, State, Ste
 use crate::texts::{fill, folder_name, number, rule_problem_text, segments, text};
 use crate::understand::{gate, Gate};
 use crate::update::{
-    access, cancel_chip, chip, chip_labelled, drop_working, fallback, fallback_chips, hermes, say,
-    work,
+    access, ask_read_folder, cancel_chip, chip, chip_labelled, drop_working, fallback,
+    fallback_chips, hermes, say, work,
 };
+
+mod ask;
+
+pub use ask::{RuleAnswer, RuleAsk};
 
 const DEFAULT_LEVELS: &str = "{year}/{date}_{sender}_{kind}";
 /// Files the model sees: the prefix of its prompt grows with them.
@@ -37,77 +38,6 @@ const MISFITS_SHOWN: usize = 3;
 /// Different values the levels card shows per level.
 const FOLDER_VALUES: usize = 3;
 const FILE_VALUES: usize = 2;
-
-/// What the model is asked.
-#[derive(Debug, Clone)]
-pub enum RuleAsk {
-    Recognize {
-        /// What the model is shown.
-        files: Vec<(String, DocumentFields)>,
-        /// All files of the folder: what the answer is checked against.
-        all: Vec<(String, DocumentFields)>,
-        kinds: Kinds,
-    },
-    Generate {
-        description: String,
-        documents: Vec<ContextDocument>,
-        kinds: Kinds,
-    },
-}
-
-/// What the model made of it.
-#[derive(Debug, Clone)]
-pub enum RuleAnswer {
-    Levels(Result<Levels, String>),
-    Rule(Result<RuleSpec, String>),
-    /// The thread that asked the model broke.
-    Failed(String),
-}
-
-impl RuleAsk {
-    pub fn run(&self, model: &dyn ChatModel) -> RuleAnswer {
-        match self {
-            Self::Recognize { files, all, kinds } => RuleAnswer::Levels(
-                recognize_checked(model, files, all, kinds).map_err(|error| error.to_string()),
-            ),
-            Self::Generate {
-                description,
-                documents,
-                kinds,
-            } => RuleAnswer::Rule(
-                model
-                    .generate_rule(description, documents, kinds)
-                    .map_err(|error| error.to_string()),
-            ),
-        }
-    }
-}
-
-/// The model's levels for the files. When they do not write the paths the
-/// files have, the model is asked once more with the deviations named, and
-/// the answer with fewer deviations is taken.
-fn recognize_checked(
-    model: &dyn ChatModel,
-    files: &[(String, DocumentFields)],
-    all: &[(String, DocumentFields)],
-    kinds: &Kinds,
-) -> Result<Levels, AiError> {
-    let depth = folder_depth(all.iter().map(|(path, _)| path.as_str()));
-    let first = model.recognize_levels(files, kinds, depth)?;
-    let misfits = pattern_mismatches(&first.pattern(), all, kinds);
-    if misfits.is_empty() {
-        return Ok(first);
-    }
-    let Ok(second) = model.recognize_levels_again(files, kinds, depth, &first, &misfits) else {
-        return Ok(first);
-    };
-    let remaining = pattern_mismatches(&second.pattern(), all, kinds).len();
-    Ok(if remaining < misfits.len() {
-        second
-    } else {
-        first
-    })
-}
 
 /// What the next answer of the model is for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -332,10 +262,19 @@ pub fn answered(state: &mut State, ctx: &Ctx, answer: RuleAnswer) -> Option<Acti
             if let Some(flow) = state.session.rule.as_mut() {
                 flow.levels = levels;
             }
-            show_levels_checked(state, ctx, true);
+            // The user asked for these levels: files that do not follow them
+            // are no reason to hold them back.
+            show_levels_checked(state, ctx, stage != Stage::Levels);
         }
-        (RuleAnswer::Rule(Ok(spec)), Stage::Levels) => levels_from_words(state, ctx, &spec),
         (RuleAnswer::Rule(Ok(spec)), _) => generated(state, ctx, spec),
+        (RuleAnswer::Levels(Err(_)), Stage::Levels) => {
+            say(
+                state,
+                text(ctx.lang, Msg::HermesChatRuleNotLevels),
+                Vec::new(),
+            );
+            levels_change(state, ctx);
+        }
         (
             RuleAnswer::Levels(Err(reason))
             | RuleAnswer::Rule(Err(reason))
@@ -514,13 +453,10 @@ fn levels_card(ctx: &Ctx, flow: &RuleFlow, kinds: &Kinds, footer: Option<String>
     } else {
         Msg::HermesChatLevelsFound
     };
+    let rows = level_rows(ctx, flow, kinds);
     LevelsCard {
-        title: fill(
-            ctx.lang,
-            key,
-            &[("count", &number(flow.levels.count().max(1)))],
-        ),
-        rows: level_rows(ctx, flow, kinds),
+        title: fill(ctx.lang, key, &[("count", &number(rows.len()))]),
+        rows,
         footer,
     }
 }
@@ -654,50 +590,6 @@ pub fn levels_default(state: &mut State, ctx: &Ctx) {
     show_levels(state, ctx);
 }
 
-/// The levels of a sentence: the pattern of the rule the model wrote for it,
-/// without the folder in front when it names this one.
-fn levels_from_words(state: &mut State, ctx: &Ctx, spec: &RuleSpec) {
-    let Some(flow) = state.session.rule.as_mut() else {
-        return;
-    };
-    match levels_below(&spec.filing_pattern, &flow.prefix) {
-        Some(levels) => {
-            flow.levels = levels;
-            show_levels(state, ctx);
-        }
-        None => {
-            say(
-                state,
-                text(ctx.lang, Msg::HermesChatRuleNotLevels),
-                Vec::new(),
-            );
-            state.step = Step::RuleLevels;
-        }
-    }
-}
-
-/// The levels of `pattern` below the folder: the leading fixed levels that
-/// spell the path of the folder (`prefix`, from its target) are cut off. A
-/// model that left out the front of the path is read as well: `Bank/{year}`
-/// below `Archiv/Bank/`.
-fn levels_below(pattern: &str, prefix: &str) -> Option<Levels> {
-    let mut levels = Levels::from_pattern(pattern)?;
-    let path: Vec<&str> = prefix.split('/').filter(|part| !part.is_empty()).collect();
-    let matching = |start: usize| {
-        levels
-            .folders
-            .iter()
-            .zip(path.iter().skip(start))
-            .take_while(|(level, segment)| {
-                matches!(level.parts.as_slice(), [LevelPart::Fixed(name)] if name.eq_ignore_ascii_case(segment))
-            })
-            .count()
-    };
-    let cut = (0..path.len()).map(matching).max().unwrap_or(0);
-    levels.folders.drain(..cut);
-    (levels.count() > 0).then_some(levels)
-}
-
 /// The levels stay; next the user says what goes into the folder, or the
 /// rule the model wrote is shown again.
 pub fn levels_kept(state: &mut State, ctx: &Ctx) {
@@ -775,6 +667,12 @@ fn ask_what(state: &mut State, ctx: &Ctx, lead: Option<String>) {
     let Some(flow) = state.session.rule.as_mut() else {
         return;
     };
+    if flow.folder.is_empty() {
+        // No folder was ever named, so there is nothing to ask "what goes into".
+        state.session.rule = None;
+        ask_read_folder(state, ctx, None);
+        return;
+    }
     flow.stage = Stage::Rule;
     flow.proposed = None;
     let kinds = flow.kinds.clone();
@@ -804,23 +702,39 @@ pub fn edit(state: &mut State, ctx: &Ctx) {
 
 /// Words about what goes into the folder, typed or taken from a button.
 pub fn described(state: &mut State, ctx: &Ctx, description: &str) {
-    ask_rule(state, ctx, description, Stage::Rule);
+    ask_rule(state, ctx, description);
 }
 
+/// Typed words: while the levels are shown they change the levels, else they
+/// say what goes into the folder.
 pub fn typed(state: &mut State, ctx: &Ctx, typed: &str) {
-    let stage = if state.step == Step::RuleLevels {
-        Stage::Levels
+    if state.step == Step::RuleLevels {
+        revise_levels(state, ctx, typed);
     } else {
-        Stage::Rule
-    };
-    ask_rule(state, ctx, typed, stage);
+        ask_rule(state, ctx, typed);
+    }
 }
 
-fn ask_rule(state: &mut State, ctx: &Ctx, description: &str, stage: Stage) -> bool {
+/// The model gets the levels as they are and the sentence about them.
+fn revise_levels(state: &mut State, ctx: &Ctx, sentence: &str) {
+    let Some(flow) = state.session.rule.as_mut() else {
+        return;
+    };
+    flow.stage = Stage::Levels;
+    let ask = RuleAsk::Revise {
+        files: sample(&flow.files, MODEL_FILES),
+        kinds: flow.kinds.clone(),
+        previous: flow.levels.clone(),
+        sentence: sentence.to_owned(),
+    };
+    ask_model(state, ctx, ask);
+}
+
+fn ask_rule(state: &mut State, ctx: &Ctx, description: &str) -> bool {
     let Some(flow) = state.session.rule.as_mut() else {
         return false;
     };
-    flow.stage = stage;
+    flow.stage = Stage::Rule;
     let kinds = flow.kinds.clone();
     let documents = sample(&flow.files, CONTEXT_FILES)
         .into_iter()
@@ -849,7 +763,7 @@ pub fn from_description(state: &mut State, ctx: &Ctx, description: &str) {
     flow.free = true;
     flow.stage = Stage::Rule;
     state.session.rule = Some(flow);
-    if ask_rule(state, ctx, description, Stage::Rule) {
+    if ask_rule(state, ctx, description) {
         state.step = Step::RuleWhat;
     }
 }

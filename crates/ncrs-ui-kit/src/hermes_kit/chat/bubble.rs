@@ -78,12 +78,13 @@ pub fn avatar<'a, M: 'a>(letter: &str, palette: &Palette) -> Element<'a, M> {
     .into()
 }
 
-/// The top of the chat: the avatar, the name with what Hermes does, and the key
-/// that closes the chat at the right.
-pub fn chat_header<'a, M: 'a>(
+/// The top of the chat: the avatar, the name with what Hermes does, and at the
+/// right the button that starts a new chat and the key that closes the chat.
+pub fn chat_header<'a, M: Clone + 'a>(
     letter: &str,
     name: &str,
     tagline: &str,
+    new_chat: (&str, M),
     close_hint: &str,
     palette: &Palette,
 ) -> Element<'a, M> {
@@ -101,6 +102,7 @@ pub fn chat_header<'a, M: 'a>(
                 .push(small(tagline.to_owned(), palette.dim_text)),
         )
         .push(Space::new().width(Length::Fill))
+        .push(chat_chip_small(new_chat.0, false, new_chat.1, palette))
         .push(small(close_hint.to_owned(), palette.dim_text))
         .spacing(GAP_S + GAP_XS)
         .padding([0.0, THREAD_PADDING])

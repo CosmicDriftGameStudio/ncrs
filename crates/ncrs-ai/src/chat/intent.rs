@@ -162,6 +162,15 @@ pub trait ChatModel: Send + Sync + fmt::Debug {
         previous: &Levels,
         misfits: &[Mismatch],
     ) -> Result<Levels, AiError>;
+    /// The levels after the user's `sentence` about them: `previous` and the
+    /// sentence go in, the changed levels come out.
+    fn revise_levels(
+        &self,
+        files: &[(String, DocumentFields)],
+        kinds: &Kinds,
+        previous: &Levels,
+        sentence: &str,
+    ) -> Result<Levels, AiError>;
     /// Never blocks and never reads the disk.
     fn status(&self) -> LocalModelStatus;
     /// Looks for the model file again (after a download).

@@ -6217,6 +6217,12 @@
       "de": "Esc schließt"
     },
     {
+      "key": "hermes_chat.new_chat",
+      "context": "Hermes chat (F2): Small button in the chat heading, left of the Esc hint. It clears the conversation and starts again with the greeting; settings, index and rules stay. Two words at most.",
+      "en": "New chat",
+      "de": "Neuer Chat"
+    },
+    {
       "key": "hermes_chat.placeholder",
       "context": "Hermes chat (F2): Grey hint inside the empty message field of the chat. The quoted example is a sentence the user can type.",
       "en": "Write to Hermes, e.g. “tidy up my Downloads”",

@@ -18,7 +18,9 @@ use crate::chat::{ChatIntent, ChatModel, ChatTurn};
 use crate::contract::{Extraction, ExtractionRequest, Provider};
 use crate::error::AiError;
 use crate::model_file::ModelPin;
-use crate::rules::{annotated_paths, repair_note, ContextDocument, Levels, Mismatch};
+use crate::rules::{
+    annotated_paths, repair_note_for, revise_question, ContextDocument, Levels, Mismatch,
+};
 use crate::status::LocalModelStatus;
 
 const RECOGNIZE_QUESTION: &str = "Which pattern wrote these paths?";
@@ -163,6 +165,7 @@ impl LazyLocalModel {
         kinds: &Kinds,
         folder_depth: Option<usize>,
         question: String,
+        show_paths: bool,
     ) -> Result<Levels, AiError> {
         let documents: Vec<ContextDocument> = files
             .iter()
@@ -171,7 +174,11 @@ impl LazyLocalModel {
                 folder: path.rsplit_once('/').map(|(folder, _)| folder.to_owned()),
             })
             .collect();
-        let paths = annotated_paths(files, kinds);
+        let paths = if show_paths {
+            annotated_paths(files, kinds)
+        } else {
+            String::new()
+        };
         self.ask_rules(&documents, kinds, move |session| {
             session.recognize(&question, &paths, folder_depth)
         })
@@ -246,7 +253,13 @@ impl ChatModel for LazyLocalModel {
         kinds: &Kinds,
         folder_depth: Option<usize>,
     ) -> Result<Levels, AiError> {
-        self.recognize_with(files, kinds, folder_depth, RECOGNIZE_QUESTION.to_owned())
+        self.recognize_with(
+            files,
+            kinds,
+            folder_depth,
+            RECOGNIZE_QUESTION.to_owned(),
+            true,
+        )
     }
 
     fn recognize_levels_again(
@@ -257,12 +270,29 @@ impl ChatModel for LazyLocalModel {
         previous: &Levels,
         misfits: &[Mismatch],
     ) -> Result<Levels, AiError> {
-        let note = repair_note(&previous.pattern(), misfits);
+        let note = repair_note_for(previous, misfits);
         self.recognize_with(
             files,
             kinds,
             folder_depth,
             format!("{RECOGNIZE_QUESTION}\n{note}"),
+            true,
+        )
+    }
+
+    fn revise_levels(
+        &self,
+        files: &[(String, DocumentFields)],
+        kinds: &Kinds,
+        previous: &Levels,
+        sentence: &str,
+    ) -> Result<Levels, AiError> {
+        self.recognize_with(
+            files,
+            kinds,
+            None,
+            revise_question(previous, sentence),
+            false,
         )
     }
 

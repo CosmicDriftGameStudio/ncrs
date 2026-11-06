@@ -9,6 +9,10 @@ use ncrs_ui_kit::hermes_state::FolderRole;
 
 use crate::action::Action;
 use crate::ctx::{Availability, Ctx};
+pub use crate::fallback::{
+    batch_not_yet, explain_not_yet, fallback, fallback_chips, lost_folder_chips,
+    lost_folder_retry_chips, search_not_yet,
+};
 use crate::message::Message;
 use crate::state::{
     Asked, Chip, ChipReply, Entry, FolderMention, GroupFlow, Part, ReadFor, Retry, State, Step,
@@ -43,6 +47,10 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
             state.open = false;
             Some(Action::Close)
         }
+        Message::NewChat => {
+            new_chat(state, ctx);
+            None
+        }
         Message::InputChanged(input) => {
             state.input = input;
             None
@@ -53,7 +61,7 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
                 return None;
             }
             let asked = understand::asked(state);
-            if looks_like_typed_path(&typed) {
+            if looks_like_typed_path(&typed) && !words_are_taken_as_text(state.step) {
                 user_folder(state, ctx, &expand_home(ctx, Path::new(&typed)));
             } else {
                 user(state, typed.clone());
@@ -184,6 +192,30 @@ fn change_area(state: &mut State, ctx: &Ctx, folder: PathBuf, area: String) -> O
         learn::read(state, ctx, folder);
     }
     None
+}
+
+/// The conversation starts over as when Hermes was opened the first time:
+/// thread and flow are gone, the settings, the index and the rules are not
+/// touched. While work runs, its result would land in the new chat, so the
+/// button waits for it.
+fn new_chat(state: &mut State, ctx: &Ctx) {
+    if is_busy(state) {
+        return;
+    }
+    *state = State {
+        open: state.open,
+        ..State::default()
+    };
+    open_thread(state, ctx);
+}
+
+/// In these steps every typed text is for the flow, so a text that looks like
+/// a path is no folder the user picked.
+fn words_are_taken_as_text(step: Step) -> bool {
+    matches!(
+        step,
+        Step::RuleLevels | Step::RuleWhat | Step::GroupFolderName
+    )
 }
 
 /// Work or the model is running, or something waits for Hermes to start;
@@ -756,7 +788,7 @@ fn ask_tidy_folder(state: &mut State, ctx: &Ctx, folder: Option<PathBuf>) -> Opt
     folder_answer(state, ctx, path, true)
 }
 
-fn ask_read_folder(state: &mut State, ctx: &Ctx, folder: Option<PathBuf>) -> Option<Action> {
+pub fn ask_read_folder(state: &mut State, ctx: &Ctx, folder: Option<PathBuf>) -> Option<Action> {
     state.step = Step::ReadFolder;
     state.session.read_for = Some(crate::state::ReadFor::Learn);
     let Some(path) = folder else {
@@ -768,83 +800,6 @@ fn ask_read_folder(state: &mut State, ctx: &Ctx, folder: Option<PathBuf>) -> Opt
         return None;
     };
     folder_answer(state, ctx, path, true)
-}
-
-pub fn search_not_yet(state: &mut State, ctx: &Ctx) {
-    say(
-        state,
-        text(ctx.lang, Msg::HermesChatSearchNotYet),
-        vec![chip(
-            ctx,
-            Msg::HermesChatOpenSearch,
-            ChipReply::OpenSearch,
-            true,
-        )],
-    );
-}
-
-pub fn explain_not_yet(state: &mut State, ctx: &Ctx) {
-    say(
-        state,
-        text(ctx.lang, Msg::HermesChatExplainNotYet),
-        fallback_chips(ctx),
-    );
-}
-
-pub fn batch_not_yet(state: &mut State, ctx: &Ctx) {
-    say(
-        state,
-        text(ctx.lang, Msg::HermesChatBatchNotYet),
-        fallback_chips(ctx),
-    );
-}
-
-pub fn fallback(state: &mut State, ctx: &Ctx) {
-    say(
-        state,
-        text(ctx.lang, Msg::HermesChatFallback),
-        fallback_chips(ctx),
-    );
-}
-
-pub fn fallback_chips(ctx: &Ctx) -> Vec<Chip> {
-    vec![
-        chip(
-            ctx,
-            Msg::HermesChatIntentSearch,
-            ChipReply::IntentSearch,
-            false,
-        ),
-        chip(ctx, Msg::HermesChatIntentTidy, ChipReply::IntentTidy, false),
-        chip(
-            ctx,
-            Msg::HermesChatIntentStructure,
-            ChipReply::IntentStructure,
-            false,
-        ),
-        chip(ctx, Msg::HermesChatIntentUndo, ChipReply::IntentUndo, false),
-    ]
-}
-
-/// The same, with the button to read the folder again when there is one.
-pub fn lost_folder_retry_chips(state: &State, ctx: &Ctx) -> Vec<Chip> {
-    let mut chips = lost_folder_chips(ctx);
-    if state.session.retry.is_some() {
-        chips.insert(1, chip(ctx, Msg::HermesChatRetry, ChipReply::Retry, false));
-    }
-    chips
-}
-
-/// A folder that cannot be read: another one, or one of the ways on.
-pub fn lost_folder_chips(ctx: &Ctx) -> Vec<Chip> {
-    let mut chips = vec![chip(
-        ctx,
-        Msg::HermesChatOtherFolder,
-        ChipReply::PickFolder,
-        true,
-    )];
-    chips.extend(fallback_chips(ctx));
-    chips
 }
 
 pub fn handle_reply(state: &mut State, ctx: &Ctx, reply: ChipReply) -> Option<Action> {
