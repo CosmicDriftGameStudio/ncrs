@@ -55,7 +55,7 @@ mod tests {
             );
         }
         std::fs::create_dir_all(talk.path("archive/Telefon")).unwrap();
-        talk.write(WAITING, &letter("Alfa AG", "05.07.2021", "Rechnung", 77));
+        talk.index_inbox_document(WAITING, &letter("Alfa AG", "05.07.2021", "Rechnung", 77));
         talk = talk.with_rules();
         let folder = talk.path("archive");
         talk.send(Message::ChangeArea {

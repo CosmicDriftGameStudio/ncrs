@@ -15,6 +15,7 @@ use ncrs_ai::{ChatModel, LazyLocalModel, LOCAL_MODEL};
 use ncrs_filing::chat_work::ChatAccess;
 use ncrs_filing::rules_work::RulesAccess;
 use ncrs_hermes_chat::{Availability, ChipReply, Ctx, Entry, Part};
+use ncrs_index::DocumentSource::{Archive, Inbox};
 use ncrs_index::{DocumentFields, Index, KindLanguage};
 use ncrs_intake::{Extracted, TextChain, TextError, TextSource};
 use sha2::Digest as _;
@@ -143,6 +144,54 @@ fn levels_card_shown(app: &App) -> bool {
 #[test]
 #[ignore = "needs the AI model: set NCRS_AI_MODELS_DIR to the folder with it"]
 fn with_model_the_app_makes_a_rule_from_a_typed_folder_and_a_sentence() {
+    scenario(false);
+}
+
+#[test]
+#[ignore = "needs the AI model: set NCRS_AI_MODELS_DIR to the folder with it"]
+fn with_model_the_app_files_what_lies_in_the_wrong_place_and_undoes_it() {
+    scenario(true);
+}
+
+/// A year folder that exists, other than the one the statement belongs in.
+fn wrong_year_of(year: &std::ffi::OsStr) -> &'static str {
+    if year == "2018" {
+        "2019"
+    } else {
+        "2018"
+    }
+}
+
+fn thread_text(app: &App) -> String {
+    let mut text = String::new();
+    for entry in app.hermes_chat.thread() {
+        if let Entry::Hermes { parts, .. } = entry {
+            for part in parts {
+                if let Part::Text(line) = part {
+                    text.push_str(line);
+                    text.push('\n');
+                }
+            }
+        }
+    }
+    text
+}
+
+fn last_hermes_text(app: &App) -> String {
+    match app.hermes_chat.thread().last() {
+        Some(Entry::Hermes { parts, .. }) => parts
+            .iter()
+            .filter_map(|part| match part {
+                Part::Text(line) => Some(line.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        other => panic!("last entry is {other:?}"),
+    }
+}
+
+fn scenario(misplace: bool) {
     let models = PathBuf::from(std::env::var_os(MODELS_DIR_VARIABLE).expect(MODELS_DIR_VARIABLE));
     let model_file = models.join(LOCAL_MODEL.name);
     assert!(model_file.is_file(), "{} is missing", model_file.display());
@@ -156,6 +205,10 @@ fn with_model_the_app_makes_a_rule_from_a_typed_folder_and_a_sentence() {
     let dir = tempfile::tempdir().unwrap();
     let archive = ncrs_intake::test_archive::test_archive();
     archive.write_to(dir.path()).unwrap();
+    let (mut waiting, mut misfiled): (Vec<String>, Vec<PathBuf>) = (Vec::new(), Vec::new());
+    if misplace {
+        std::fs::remove_dir_all(dir.path().join("inbox")).unwrap();
+    }
     let root = std::fs::canonicalize(dir.path()).unwrap();
     let slot = Arc::new(Mutex::new(Some(
         Index::create_plain(&dir.path().join("index.db")).unwrap(),
@@ -179,14 +232,33 @@ fn with_model_the_app_makes_a_rule_from_a_typed_folder_and_a_sentence() {
             continue;
         }
         indexed += 1;
+        let name = path.file_name().unwrap().to_owned();
+        let (placed, source) = match (misplace && sparkasse, kept_statements) {
+            (true, 1..=3) => {
+                let year_folder = path.parent().unwrap();
+                let wrong = wrong_year_of(year_folder.file_name().unwrap());
+                (year_folder.with_file_name(wrong).join(&name), Archive)
+            }
+            (true, 4..=9) => (root.join("inbox").join(&name), Inbox),
+            _ => (path.clone(), Archive),
+        };
+        if placed != path {
+            std::fs::create_dir_all(placed.parent().unwrap()).unwrap();
+            std::fs::rename(&path, &placed).unwrap();
+        }
+        match (misplace && sparkasse, kept_statements) {
+            (true, 1..=3) => misfiled.push(placed.clone()),
+            (true, 4..=9) => waiting.push(name.to_string_lossy().into_owned()),
+            _ => {}
+        }
         let mut guard = slot.lock().unwrap();
         let index = guard.as_mut().unwrap();
-        let hash: [u8; 32] = sha2::Sha256::digest(path.to_string_lossy().as_bytes()).into();
+        let hash: [u8; 32] = sha2::Sha256::digest(std::fs::read(&placed).unwrap()).into();
         let id = index
             .insert_document(&ncrs_index::NewDocument {
                 hash: ncrs_index::ContentHash(hash),
-                path,
-                source: ncrs_index::DocumentSource::Archive,
+                path: placed,
+                source,
                 received_at: chrono::Utc::now(),
                 stamp: None,
             })
@@ -218,7 +290,11 @@ fn with_model_the_app_makes_a_rule_from_a_typed_folder_and_a_sentence() {
         false,
     )
     .unwrap();
-    let rules = RulesAccess::new(Arc::clone(&slot), vec![location])
+    std::fs::create_dir_all(root.join("inbox")).unwrap();
+    let inbox_location =
+        ncrs_intake::Location::new(&root.join("inbox"), ncrs_intake::LocationMode::Inbox, false)
+            .unwrap();
+    let rules = RulesAccess::new(Arc::clone(&slot), vec![location, inbox_location])
         .with_kind_language(KindLanguage::German);
     let access = ChatAccess::new(
         Arc::clone(&slot),
@@ -261,7 +337,11 @@ fn with_model_the_app_makes_a_rule_from_a_typed_folder_and_a_sentence() {
         "{:?}",
         app.hermes_chat.thread.last()
     );
-    let levels = shoot(&app, "hermes_rule_1_levels");
+    let levels = if misplace {
+        PathBuf::new()
+    } else {
+        shoot(&app, "hermes_rule_1_levels")
+    };
 
     let keep = if has_chip(&app, &ChipReply::LevelsKeep) {
         ChipReply::LevelsKeep
@@ -277,7 +357,27 @@ fn with_model_the_app_makes_a_rule_from_a_typed_folder_and_a_sentence() {
         "Alle Kontoauszüge der Sparkasse Chemnitz",
     );
     assert!(has_chip(&app, &ChipReply::RuleCreate), "no proposal");
-    let proposal = shoot(&app, "hermes_rule_2_proposal");
+    let proposal = shoot(
+        &app,
+        if misplace {
+            "hermes_rule_4_move"
+        } else {
+            "hermes_rule_2_proposal"
+        },
+    );
+    if misplace {
+        file_and_undo(
+            &mut app,
+            &ctx,
+            &access,
+            answering,
+            &slot,
+            &root,
+            (&waiting, &misfiled),
+        );
+        model.shutdown();
+        return;
+    }
 
     press(&mut app, &ctx, &access, answering, &ChipReply::RuleCreate);
     let stored = slot.lock().unwrap().as_ref().unwrap().rules().unwrap();
@@ -305,4 +405,101 @@ fn with_model_the_app_makes_a_rule_from_a_typed_folder_and_a_sentence() {
         page_shot.display()
     );
     model.shutdown();
+}
+
+/// Where the one file of that name lies below the archive: the rule's pattern
+/// is the model's, so the place is looked up.
+fn filed_where(root: &Path, name: &str) -> PathBuf {
+    fn walk(folder: &Path, name: &str, found: &mut Vec<PathBuf>) {
+        for entry in std::fs::read_dir(folder).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                walk(&path, name, found);
+            } else if path.file_name().is_some_and(|file| file == name) {
+                found.push(path);
+            }
+        }
+    }
+    let mut found = Vec::new();
+    walk(&root.join("archive"), name, &mut found);
+    assert_eq!(found.len(), 1, "{name}: {found:?}");
+    found.remove(0)
+}
+
+fn index_has(slot: &Arc<Mutex<Option<Index>>>, path: &Path) -> bool {
+    let guard = slot.lock().unwrap();
+    guard
+        .as_ref()
+        .unwrap()
+        .document_by_path(path)
+        .unwrap()
+        .is_some()
+}
+
+/// Statements in a source folder and in a wrong year folder; the rule is made,
+/// "File now" files the source ones, the archive ones stay, Undo puts it back.
+fn file_and_undo(
+    app: &mut App,
+    ctx: &Ctx,
+    access: &ChatAccess,
+    model: &dyn ChatModel,
+    slot: &Arc<Mutex<Option<Index>>>,
+    root: &Path,
+    (waiting, misfiled): (&[String], &[PathBuf]),
+) {
+    let proposal = last_hermes_text(app);
+    println!("PROPOSAL:\n{proposal}");
+    let moves = waiting.len();
+    assert!(
+        proposal.contains(&format!("Würden verschoben: {moves}.")),
+        "{proposal}"
+    );
+    assert!(proposal.contains("Schon im Archiv: 24."), "{proposal}");
+    assert_eq!(proposal.matches(" → ").count(), 3, "{proposal}");
+    assert!(
+        proposal.contains(&format!("… und {} weitere", moves - 3)),
+        "{proposal}"
+    );
+
+    press(app, ctx, access, model, &ChipReply::RuleCreate);
+    assert!(has_chip(app, &ChipReply::RuleNow), "no [Jetzt ablegen]");
+    press(app, ctx, access, model, &ChipReply::RuleNow);
+    let archive_folder = ChipReply::Folder(root.join("archive"));
+    press(app, ctx, access, model, &archive_folder);
+    press(app, ctx, access, model, &ChipReply::Once);
+    press(app, ctx, access, model, &ChipReply::ModeMove);
+    press(app, ctx, access, model, &ChipReply::FileAll);
+    let filed_text = last_hermes_text(app);
+    println!("FILED: {filed_text}");
+    assert!(
+        filed_text.contains(&format!("{moves} Dateien")),
+        "{filed_text}"
+    );
+    shoot(app, "hermes_rule_5_filed");
+    let targets: Vec<PathBuf> = waiting.iter().map(|name| filed_where(root, name)).collect();
+    for (name, target) in waiting.iter().zip(&targets) {
+        let old = root.join("inbox").join(name);
+        assert!(target.is_file(), "{} missing", target.display());
+        assert!(!old.exists(), "{} is still there", old.display());
+        assert!(index_has(slot, target), "index lacks {}", target.display());
+        assert!(!index_has(slot, &old), "index keeps {}", old.display());
+    }
+    for path in misfiled {
+        assert!(path.is_file(), "{} was moved", path.display());
+    }
+
+    press(app, ctx, access, model, &ChipReply::Undo);
+    press(app, ctx, access, model, &ChipReply::PutBack);
+    println!("UNDONE: {}", last_hermes_text(app));
+    for (name, target) in waiting.iter().zip(&targets) {
+        let old = root.join("inbox").join(name);
+        assert!(old.is_file(), "{} not back", old.display());
+        assert!(!target.exists(), "{} remains", target.display());
+        assert!(index_has(slot, &old), "index lacks {}", old.display());
+        assert!(!index_has(slot, target), "index keeps {}", target.display());
+    }
+    for path in misfiled {
+        assert!(path.is_file(), "{} was moved", path.display());
+    }
+    let _ = thread_text(app);
 }

@@ -324,6 +324,8 @@ impl App {
             copies.close();
         }
         self.remote.close_all();
+        #[cfg(feature = "local-ai")]
+        ncrs_ai::LazyLocalModel::shutdown_all();
         iced::exit()
     }
 

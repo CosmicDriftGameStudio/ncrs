@@ -140,7 +140,10 @@ mod tests {
             vec![Condition::new(ConditionKind::Word, "Rechnung")]
         );
         assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatRuleStored, &[])]);
-        assert!(has_chip(&talk, &ChipReply::RuleNow));
+        assert!(
+            !has_chip(&talk, &ChipReply::RuleNow),
+            "the archive documents stay, nothing waits in a source folder"
+        );
     }
 
     #[test]
@@ -449,12 +452,36 @@ mod tests {
     #[test]
     fn the_trial_says_how_many_more_would_move() {
         let mut talk = archive_talk();
+        for (month, day) in [(1, 10), (3, 11), (6, 12), (9, 13)] {
+            let id = talk.index_inbox_document(
+                &format!("inbox/2020-{month:02}-{day}.pdf"),
+                &letter(
+                    "Alfa AG",
+                    &format!("{day}.{month:02}.2020"),
+                    "Rechnung",
+                    day,
+                ),
+            );
+            talk.set_fields(
+                id,
+                &ncrs_index::DocumentFields {
+                    sender: Some("Alfa AG".to_owned()),
+                    kind: Some("invoice".to_owned()),
+                    date: chrono::NaiveDate::from_ymd_opt(2020, month, day),
+                    ..ncrs_index::DocumentFields::default()
+                },
+            );
+        }
         propose_for_telefon(&mut talk);
 
         let texts = talk.last_texts();
         assert_eq!(texts.len(), 2, "{texts:?}");
         let lines: Vec<&str> = texts[1].lines().collect();
-        assert_eq!(lines.len(), 4, "3 examples and the rest: {lines:?}");
+        assert_eq!(
+            lines.len(),
+            5,
+            "3 examples, the rest, the archive: {lines:?}"
+        );
         assert_eq!(
             lines[3],
             say(Msg::HermesChatRuleExamplesMore, &[("count", "1")])
@@ -479,8 +506,8 @@ mod tests {
         assert_eq!(
             texts[1],
             say(
-                Msg::HermesChatRuleInPlace,
-                &[("in_place", "4"), ("moves", "0")]
+                Msg::HermesChatRuleInArchive,
+                &[("in_archive", "4"), ("moves", "0")]
             )
         );
         talk.press(&ChipReply::RuleCreate);

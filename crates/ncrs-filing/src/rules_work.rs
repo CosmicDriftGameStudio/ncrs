@@ -102,10 +102,10 @@ pub struct TriedDocument {
 }
 
 impl TriedDocument {
-    /// An archive document the rule would file where it already lies.
-    pub fn is_in_place(&self) -> bool {
+    /// Archive documents stay where they lie: filing only moves what comes
+    /// from the source folders.
+    pub fn is_in_archive(&self) -> bool {
         self.section == TrySection::Archive
-            && matches!(&self.after, TryOutcome::Filed(target) if *target == self.path)
     }
 }
 
@@ -114,8 +114,8 @@ pub struct TryResult {
     pub documents: Vec<TriedDocument>,
     /// Matches beyond [`MAX_TRIED_DOCUMENTS`].
     pub more: usize,
-    /// Matches of the archive that the rule would file where they already lie.
-    pub in_place: usize,
+    /// Matches that lie in the archive, which filing never reorganises.
+    pub in_archive: usize,
     /// The 1-based place of each conflicting rule on the rules page.
     pub conflict_names: HashMap<RuleId, usize>,
 }
@@ -225,16 +225,16 @@ impl RulesAccess {
             tried.sort_by(|left, right| {
                 (left.section, &left.path).cmp(&(right.section, &right.path))
             });
-            let in_place = tried
+            let in_archive = tried
                 .iter()
-                .filter(|document| document.is_in_place())
+                .filter(|document| document.is_in_archive())
                 .count();
             let more = tried.len().saturating_sub(MAX_TRIED_DOCUMENTS);
             tried.truncate(MAX_TRIED_DOCUMENTS);
             Ok(TryResult {
                 conflict_names: conflict_places(&rules_after, &tried),
                 documents: tried,
-                in_place,
+                in_archive,
                 more,
             })
         })
