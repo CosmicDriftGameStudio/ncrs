@@ -358,7 +358,7 @@ impl App {
         if self.open_search_view().is_some() {
             return;
         }
-        let Some(folder) = self.panels.terminal_folder() else {
+        let Some(folder) = self.panels.local_folder_target() else {
             return;
         };
         // Looked up only when nothing is set: Launch Services is asked on
@@ -596,14 +596,14 @@ impl App {
                 Task::none()
             }
             Action::RunContextEntry(ContextAction::AddFavourite) => {
-                let Some(target) = self.panels.favourite_target() else {
+                let Some(target) = self.panels.local_folder_target() else {
                     return Task::none();
                 };
                 let added = self.panels.add_favourite_at(self.lang, target);
                 self.run_panel_actions(vec![added])
             }
             Action::RunContextEntry(ContextAction::RemoveFavourite) => {
-                let Some(target) = self.panels.favourite_target() else {
+                let Some(target) = self.panels.local_folder_target() else {
                     return Task::none();
                 };
                 let removed = self.panels.remove_favourite_at(self.lang, &target);

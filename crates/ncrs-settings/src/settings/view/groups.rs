@@ -300,13 +300,13 @@ pub fn terminal_row<'a>(view: &SettingsView<'a>) -> SettingRow<'a> {
             SettingsMessage::ChooseTerminal(TerminalChoice::Detected(index)),
         )
     }));
-    if !state.sandboxed {
+    let choice = state.terminal_choice();
+    if !state.sandboxed || choice == TerminalChoice::Own {
         items.push(MenuItem::new(
             lang.text(Msg::SettingsTerminalOwn),
             SettingsMessage::ChooseTerminal(TerminalChoice::Own),
         ));
     }
-    let choice = state.terminal_choice();
     let selected = match choice {
         TerminalChoice::Automatic => 0,
         TerminalChoice::Detected(index) => index + 1,

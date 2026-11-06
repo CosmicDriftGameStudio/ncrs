@@ -462,6 +462,7 @@ fn the_terminal_choice_round_trips_through_the_open_section() {
 
     let own = SettingField::Program(OpenKind::Terminal);
     assert_eq!(state.choose_terminal(TerminalChoice::Own), None);
+    assert_eq!(state.terminal_choice(), TerminalChoice::Own);
     let typed_change = typed(&mut state, own, "myterm --cd {path}").unwrap();
     applied(&mut state, &path, typed_change);
     assert_eq!(state.terminal_choice(), TerminalChoice::Own);
@@ -510,4 +511,15 @@ fn an_off_ai_with_the_model_on_disk_offers_the_switch_not_the_download() {
     assert_eq!(ai_button(&AiState::Failed, true), Some(AiButton::Load));
     assert_eq!(ai_button(&AiState::Ready, true), Some(AiButton::Remove));
     assert_eq!(ai_button(&AiState::Downloading, false), None);
+}
+
+#[test]
+fn a_saved_unknown_terminal_is_the_own_entry_in_the_sandbox() {
+    use crate::message::TerminalChoice;
+
+    let mut state = state_of("[open]\nterminal = [\"myterm\", \"--cd\", \"{path}\"]\n");
+    state.sandboxed = true;
+    state.terminals = vec![found("foot", "foot", &["--working-directory={path}"])];
+
+    assert_eq!(state.terminal_choice(), TerminalChoice::Own);
 }
