@@ -447,7 +447,7 @@ pub fn empty_source(state: &mut State, ctx: &Ctx) -> bool {
 pub fn rule_keeps(prefix: Option<&Path>, outcome: &TrialOutcome) -> bool {
     match (prefix, outcome) {
         (None, _) => true,
-        (Some(prefix), TrialOutcome::Filed { to }) => to.starts_with(prefix),
+        (Some(folder), TrialOutcome::Filed { to }) => to.starts_with(folder),
         (Some(_), _) => false,
     }
 }

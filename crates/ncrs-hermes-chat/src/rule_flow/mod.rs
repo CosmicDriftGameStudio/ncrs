@@ -910,7 +910,7 @@ fn propose(state: &mut State, ctx: &Ctx, mut spec: RuleSpec) {
 }
 
 mod source;
-pub(crate) mod trial;
+pub mod trial;
 
 pub use trial::{create, file_now, only_new, stored, trial_done};
 
