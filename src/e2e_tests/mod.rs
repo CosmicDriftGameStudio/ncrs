@@ -1980,6 +1980,7 @@ mod tests {
         crate::fs::OpenCommand {
             program: program.into(),
             args: all,
+            ..crate::fs::OpenCommand::default()
         }
     }
 

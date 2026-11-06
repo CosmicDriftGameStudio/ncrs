@@ -9,6 +9,7 @@ fn is_not_offered_in_hit_list(message: &Message) -> bool {
             | Message::CreateFilePrompt
             | Message::Paste
             | Message::ComputeFolderSizes
+            | Message::OpenTerminal
             | Message::PathFieldInput(_)
     )
 }
@@ -24,6 +25,7 @@ pub(in crate::app) fn archive_refusal(panel: &PanelState, message: &Message) -> 
     panel.archive.as_ref()?;
     match message {
         Message::PackPrompt => Some(Msg::StatusPackUnavailable),
+        Message::OpenTerminal => Some(Msg::StatusTerminalNeedsLocalFolder),
         Message::Transfer(TransferKind::Move)
         | Message::Panel(PanelMessage::RenameStart)
         | Message::OpenExternal(fs::OpenKind::Edit)
@@ -62,6 +64,7 @@ pub(in crate::app) fn remote_refusal(panel: &PanelState, message: &Message) -> O
     panel.remote()?;
     match message {
         Message::CommandLine(CommandLineMessage::Focus) => Some(Msg::StatusRemoteNoShell),
+        Message::OpenTerminal => Some(Msg::StatusTerminalNeedsLocalFolder),
         Message::PackPrompt => Some(Msg::StatusPackUnavailable),
         Message::Transfer(TransferKind::Move)
         | Message::OpenExternal(fs::OpenKind::Edit)
@@ -294,6 +297,10 @@ impl App {
             }),
 
             Message::OpenExternal(kind) => self.open_external(kind),
+            Message::OpenTerminal => {
+                self.open_terminal();
+                Task::none()
+            }
 
             Message::ViewExtracted {
                 generation,

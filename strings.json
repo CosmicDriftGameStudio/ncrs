@@ -3153,8 +3153,8 @@
     {
       "key": "settings.feature_programs_intro",
       "context": "Line under the heading of the programs page on the settings tab.",
-      "en": "The programs F3 and F4 open a file with.",
-      "de": "Die Programme, mit denen F3 und F4 eine Datei öffnen."
+      "en": "The programs F3 and F4 open a file with, and the terminal.",
+      "de": "Die Programme, mit denen F3 und F4 eine Datei öffnen, und das Terminal."
     },
     {
       "key": "settings.feature_keys",
@@ -8843,6 +8843,72 @@
       "context": "Notice in the status bar after the command line of a task from the Monitor page was copied to the clipboard.",
       "en": "Command line copied",
       "de": "Befehlszeile kopiert"
+    },
+    {
+      "key": "action.open_terminal",
+      "context": "Entry of the command palette and the File menu that runs the key action open_terminal: starts the user's terminal in the folder of the active panel, or in the folder under the cursor. Imperative, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Open terminal here",
+      "de": "Terminal hier öffnen"
+    },
+    {
+      "key": "context_menu.open_terminal",
+      "context": "Entry of the context menu: starts the user's terminal in the folder under the cursor, or in the folder of the panel when the cursor is on a file. Verb, imperative.",
+      "en": "Open terminal here",
+      "de": "Terminal hier öffnen"
+    },
+    {
+      "key": "status.terminal_needs_local_folder",
+      "context": "Status bar notice when 'Open terminal here' is used while the active panel shows a server, the inside of an archive or a list of search hits: there is no folder on this computer to start a terminal in.",
+      "en": "A terminal needs a folder on this computer",
+      "de": "Ein Terminal braucht einen Ordner auf diesem Computer"
+    },
+    {
+      "key": "error.terminal_none",
+      "context": "Status bar error when 'Open terminal here' finds no terminal on the computer and none is set in the settings.",
+      "en": "No terminal found. Choose one under Settings > Programs.",
+      "de": "Kein Terminal gefunden. Wähle eines unter Einstellungen > Programme."
+    },
+    {
+      "key": "error.terminal_failed",
+      "context": "Status bar error when the terminal could not be started. Takes the folder name and the OS reason.",
+      "en": "Could not open a terminal in {name}: {reason}",
+      "de": "Terminal in {name} konnte nicht geöffnet werden: {reason}"
+    },
+    {
+      "key": "settings.row_terminal",
+      "context": "Name of a setting on the programs page: the terminal that 'Open terminal here' starts. One word, noun.",
+      "en": "Terminal",
+      "de": "Terminal"
+    },
+    {
+      "key": "settings.row_terminal_note",
+      "context": "Explanation under the terminal setting: Automatic means the first terminal found on the computer; in an own command, {path} is replaced by the folder.",
+      "en": "Automatic takes the first terminal found. In your own command {path} stands for the folder.",
+      "de": "Automatisch nimmt das erste gefundene Terminal. Im eigenen Befehl steht {path} für den Ordner."
+    },
+    {
+      "key": "settings.terminal_automatic",
+      "context": "Choice in the terminal list on the programs page: the first terminal found on the computer is used. Takes the name of that terminal.",
+      "en": "Automatic ({name})",
+      "de": "Automatisch ({name})"
+    },
+    {
+      "key": "settings.terminal_automatic_none",
+      "context": "Choice in the terminal list on the programs page when no terminal was found on the computer: the same 'Automatic' choice, without a name.",
+      "en": "Automatic (none found)",
+      "de": "Automatisch (keines gefunden)"
+    },
+    {
+      "key": "settings.terminal_own",
+      "context": "Choice in the terminal list on the programs page: the user types the program and its arguments themselves.",
+      "en": "Own command",
+      "de": "Eigener Befehl"
+    },
+    {
+      "key": "settings.terminal_command_placeholder",
+      "context": "Placeholder in the empty field of the own terminal command on the programs page. An example line; {path} must stay as it is.",
+      "en": "myterminal --cd {path}",
+      "de": "meinterminal --cd {path}"
     }
   ]
 }

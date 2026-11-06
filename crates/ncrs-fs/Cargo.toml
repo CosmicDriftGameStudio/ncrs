@@ -67,6 +67,8 @@ trash = "5.2.9"
 [target.'cfg(target_os = "macos")'.dependencies]
 # Moving entries to the trash and back.
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSPathUtilities", "NSFileManager", "NSURL", "NSError"] }
+# Finding an installed app by its bundle id through Launch Services.
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSWorkspace"] }
 
 [features]
 # The macOS App Store build: inside the App Sandbox the folder grants and the

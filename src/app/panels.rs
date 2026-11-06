@@ -348,6 +348,47 @@ impl App {
         }
     }
 
+    /// "Open terminal here": the terminal from `[open] terminal`, else the
+    /// first one found, started in the folder under the cursor or the panel's
+    /// folder. Where the panel has no local folder the update refuses before
+    /// this runs.
+    pub(in crate::app) fn open_terminal(&mut self) {
+        self.job_error = None;
+        self.notice = None;
+        if self.open_search_view().is_some() {
+            return;
+        }
+        let Some(folder) = self.panels.terminal_folder() else {
+            return;
+        };
+        // Looked up only when nothing is set: Launch Services is asked on
+        // every use, not remembered.
+        let detected = match self.open_programs.terminal {
+            Some(_) => Vec::new(),
+            None => fs::detect_terminals(),
+        };
+        let command =
+            match fs::terminal_command(self.open_programs.terminal.as_ref(), &detected, &folder) {
+                Ok(command) => command,
+                Err(fs::NoTerminal) => {
+                    let text = self.lang.text(Msg::ErrorTerminalNone).to_owned();
+                    self.set_status_error(&text);
+                    return;
+                }
+            };
+        if let Err(reason) = self.launcher.launch(&command) {
+            let name = folder
+                .file_name()
+                .map_or_else(|| folder.to_string_lossy(), |name| name.to_string_lossy());
+            let message = self
+                .lang
+                .text(Msg::ErrorTerminalFailed)
+                .replace("{name}", &name)
+                .replace("{reason}", &reason);
+            self.set_status_error(&message);
+        }
+    }
+
     pub(in crate::app) fn copy_external_files_into_active_panel(
         &mut self,
         paths: Vec<PathBuf>,

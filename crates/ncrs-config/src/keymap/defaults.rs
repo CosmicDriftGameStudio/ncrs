@@ -70,6 +70,12 @@ pub fn default_bindings() -> Vec<(KeyAction, Binding)> {
         ),
         (A::View, Binding::key(KeyNamed(F3))),
         (A::Edit, Binding::key(KeyNamed(F4))),
+        // Cmd+Option+T (Ctrl+Alt+T elsewhere, the usual "open a terminal" key
+        // of Linux desktops). Not advertised: the header has no room.
+        (
+            A::OpenTerminal,
+            Binding::with_modifiers(Character("t".into()), Modifiers::ALT | Modifiers::COMMAND),
+        ),
         (A::Copy, Binding::key(KeyNamed(F5))),
         (A::Move, Binding::key(KeyNamed(F6))),
         (

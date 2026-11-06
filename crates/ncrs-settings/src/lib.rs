@@ -25,7 +25,7 @@ pub use action::Action;
 pub use ctx::{Ctx, Services};
 pub use message::{
     AiModelMessage, KeyBindingsMessage, Message, OcrModelsMessage, SettingChange, SettingField,
-    SettingsMessage, ThemeFetchMessage,
+    SettingsMessage, TerminalChoice, ThemeFetchMessage,
 };
 pub use state::Settings;
 pub use update::{

@@ -143,6 +143,7 @@ fn the_parent_row_offers_only_what_makes_sense() {
         enabled_actions(&app),
         [
             ContextAction::Open,
+            ContextAction::OpenTerminal,
             ContextAction::NewFolder,
             ContextAction::CopyPath,
             ContextAction::CopyName,
@@ -206,7 +207,11 @@ fn an_empty_panel_still_offers_a_new_folder() {
     open_at(&mut app, LEFT, 0);
     assert_eq!(
         enabled_actions(&app),
-        [ContextAction::NewFolder, ContextAction::AddFavourite]
+        [
+            ContextAction::OpenTerminal,
+            ContextAction::NewFolder,
+            ContextAction::AddFavourite
+        ]
     );
 }
 
@@ -242,8 +247,13 @@ fn an_entry_runs_the_same_message_as_its_key() {
 fn arrows_skip_what_cannot_be_chosen() {
     let mut app = App::with_fixed_panels();
     open_at(&mut app, LEFT, PARENT);
-    // Open, then the next usable entry is the new folder: View, Edit, Copy
+    // Open, then the terminal, then the new folder: View, Edit, Copy
     // and Move are greyed out and the separator is not an entry.
+    drop(app.update(Message::ContextMenuMove(1)));
+    assert_eq!(
+        app.context_menu_selected_action(),
+        Some(ContextAction::OpenTerminal)
+    );
     drop(app.update(Message::ContextMenuMove(1)));
     assert_eq!(
         app.context_menu_selected_action(),

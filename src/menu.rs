@@ -490,10 +490,25 @@ mod tests {
     }
 
     #[test]
+    fn open_terminal_is_a_plain_file_menu_entry_with_its_key_and_only_for_the_panels() {
+        let model = english();
+        let file = menu_of(&model, CommandGroup::File);
+        let entry = items_in(file)
+            .find(|item| item.action == KeyAction::OpenTerminal)
+            .unwrap();
+        assert_eq!(entry.title, "Open terminal here");
+        assert!(entry.accelerator.is_some());
+        assert!(Availability::Open(KeyScope::Panel).enables(KeyAction::OpenTerminal));
+        assert!(!Availability::Open(KeyScope::Search).enables(KeyAction::OpenTerminal));
+        assert!(!Availability::Blocked.enables(KeyAction::OpenTerminal));
+    }
+
+    #[test]
     fn no_menu_shows_more_than_seven_entries_without_a_separator() {
         for lang in [Language::English, Language::German] {
             let model = MenuModel::build(lang, &Keymap::default(), Toggles::default());
-            for menu in &model.menus {
+            // The Window menu is empty here; macOS fills it.
+            for menu in model.menus.iter().filter(|menu| !menu.items.is_empty()) {
                 for run in menu.items.split(|entry| *entry == MenuEntry::Separator) {
                     assert!(
                         run.len() <= 7,
@@ -528,7 +543,15 @@ mod tests {
         assert!(sections.len() >= 4);
         assert_eq!(
             sections.first().map(Vec::as_slice),
-            Some([KeyAction::Open, KeyAction::View, KeyAction::Edit].as_slice())
+            Some(
+                [
+                    KeyAction::Open,
+                    KeyAction::View,
+                    KeyAction::Edit,
+                    KeyAction::OpenTerminal
+                ]
+                .as_slice()
+            )
         );
         assert!(sections[1].contains(&KeyAction::Copy));
         assert!(sections[1].contains(&KeyAction::Move));

@@ -360,6 +360,14 @@ mod grant_tests;
 )]
 #[cfg(test)]
 mod remote_panel_tests;
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod terminal_tests;
 // reason: a failing assertion is the signal in a test
 #[allow(
     clippy::unwrap_used,

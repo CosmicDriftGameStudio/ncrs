@@ -48,6 +48,7 @@ key_actions! {
     Paste => "paste",
     View => "view",
     Edit => "edit",
+    OpenTerminal => "open_terminal",
     Copy => "copy",
     Move => "move",
     Rename => "rename",
@@ -181,6 +182,7 @@ impl KeyAction {
             | Self::ClearTags => Reach::Both,
             Self::GoUp
             | Self::Open
+            | Self::OpenTerminal
             | Self::CopyPath
             | Self::CopyName
             | Self::CopyFiles
@@ -381,6 +383,7 @@ impl KeyAction {
             | Self::DeletePermanently
             | Self::View => true,
             Self::Edit
+            | Self::OpenTerminal
             | Self::Move
             | Self::Rename
             | Self::Mkdir
@@ -470,6 +473,7 @@ impl KeyAction {
             | Self::View
             | Self::Copy => true,
             Self::Edit
+            | Self::OpenTerminal
             | Self::Move
             | Self::Delete
             | Self::DeletePermanently

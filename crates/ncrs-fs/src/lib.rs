@@ -18,6 +18,7 @@ mod rename;
 mod replace_file;
 mod sandbox;
 mod sort;
+mod terminal;
 pub mod transfer;
 #[cfg(any(target_os = "macos", test, feature = "test-support"))]
 mod trash_journal;
@@ -48,6 +49,7 @@ pub use sandbox::{
     sandbox_home, SandboxAccess,
 };
 pub use sort::{sort_entries, SortColumn, SortKey};
+pub use terminal::{detect_terminals, terminal_command, KnownTerminal, NoTerminal};
 #[cfg(any(test, feature = "test-support"))]
 pub use trash_journal::{FolderBackend, JournaledTrash};
 pub use typed_path::{locate, resolve as resolve_typed_path, Destination, PathProblem};

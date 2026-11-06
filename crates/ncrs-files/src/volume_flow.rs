@@ -130,6 +130,14 @@ impl Panels {
         })
     }
 
+    /// The folder "Open terminal here" starts in: the same one as the
+    /// favourites entry, so a file under the cursor means the panel's folder
+    /// and `..` does not count as a folder. `None` where there is no local
+    /// folder: inside an archive, on a server, in a list of hits.
+    pub fn terminal_folder(&self) -> Option<PathBuf> {
+        self.favourite_target()
+    }
+
     pub fn add_favourite(&mut self, lang: Language) -> Action {
         let path = self.active_panel().path.clone();
         self.add_favourite_at(lang, path)
@@ -246,5 +254,59 @@ impl Panels {
                 select: None,
             },
         ]
+    }
+}
+
+#[cfg(test)]
+mod terminal_folder_tests {
+    use super::*;
+    use crate::panel::PanelState;
+    use ncrs_core::FileEntry;
+
+    fn entry(name: &str, is_dir: bool, is_parent: bool) -> FileEntry {
+        FileEntry {
+            name: name.into(),
+            path: Path::new("/data").join(name),
+            is_dir,
+            is_symlink: false,
+            is_parent,
+            size: 0,
+            modified: None,
+            folder_size: None,
+        }
+    }
+
+    fn panels_with(entries: Vec<FileEntry>) -> Panels {
+        let mut left = PanelState::new(PathBuf::from("/data"));
+        left.entries = entries;
+        Panels::new(
+            left,
+            PanelState::new(PathBuf::from("/other")),
+            PanelSide::Left,
+        )
+    }
+
+    #[test]
+    fn a_folder_under_the_cursor_is_the_target() {
+        let panels = panels_with(vec![entry("my photos", true, false)]);
+        assert_eq!(
+            panels.terminal_folder(),
+            Some(PathBuf::from("/data/my photos"))
+        );
+    }
+
+    #[test]
+    fn a_file_or_the_parent_entry_means_the_folder_of_the_panel() {
+        for under_cursor in [entry("a.txt", false, false), entry("..", true, true)] {
+            let panels = panels_with(vec![under_cursor]);
+            assert_eq!(panels.terminal_folder(), Some(PathBuf::from("/data")));
+        }
+    }
+
+    #[test]
+    fn inside_an_archive_there_is_no_folder() {
+        let mut panels = panels_with(Vec::new());
+        panels.left.archive = Some(PathBuf::from("/data/a.zip"));
+        assert_eq!(panels.terminal_folder(), None);
     }
 }

@@ -295,6 +295,25 @@ pub fn dropdown<'a, M: Clone + 'a>(
         .into()
 }
 
+/// [`dropdown`] the size of a settings text field, for a settings row.
+pub fn field_dropdown<'a, M: Clone + 'a>(
+    width: f32,
+    items: &[MenuItem<M>],
+    selected: usize,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let choices = entries(items);
+    let chosen = choices.get(selected).cloned();
+    pick_list(choices, chosen, |choice| choice.message)
+        .width(width)
+        .padding([theme::spacing::XS, theme::spacing::S])
+        .text_size(theme::font_size::BODY)
+        .text_line_height(LineHeight::Absolute(Pixels(kit::FIELD_LINE_HEIGHT)))
+        .style(pick_style(palette, MenuLook::Icon))
+        .menu_style(theme::dropdown_menu(palette))
+        .into()
+}
+
 /// [`detail`] for forms: no wider than `FORM_WIDTH`.
 pub fn form_column<'a, M: Clone + 'a>(children: Vec<Element<'a, M>>) -> Element<'a, M> {
     scrollable(

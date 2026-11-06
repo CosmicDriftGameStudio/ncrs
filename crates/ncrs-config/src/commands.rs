@@ -191,7 +191,8 @@ fn menu_place_of(action: KeyAction) -> MenuPlace {
         | KeyAction::TagDown
         | KeyAction::Open
         | KeyAction::View
-        | KeyAction::Edit => at(0),
+        | KeyAction::Edit
+        | KeyAction::OpenTerminal => at(0),
         KeyAction::Copy | KeyAction::Move => at(1),
         KeyAction::Rename | KeyAction::Mkdir | KeyAction::NewFile => at(1).dialog(),
         KeyAction::Pack => at(2).dialog(),
@@ -266,6 +267,7 @@ fn command_without_place(action: KeyAction) -> Option<Command> {
         KeyAction::Open => Command::plain(action, File, Msg::ActionOpen),
         KeyAction::View => Command::plain(action, File, Msg::ActionView),
         KeyAction::Edit => Command::plain(action, File, Msg::ActionEdit),
+        KeyAction::OpenTerminal => Command::plain(action, File, Msg::ActionOpenTerminal),
         KeyAction::Copy => Command::plain(action, File, Msg::ActionCopy),
         KeyAction::Move => Command::plain(action, File, Msg::ActionMove),
         KeyAction::Rename => Command::plain(action, File, Msg::ActionRename),
