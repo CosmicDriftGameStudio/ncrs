@@ -49,7 +49,7 @@ mod tests {
     fn archive_talk() -> Talk {
         let talk = Talk::in_dir(tempfile::tempdir().unwrap(), &["archive"], &["inbox"]);
         for (month, day) in [(1, 10), (3, 11), (6, 12), (9, 13)] {
-            talk.index_document(
+            let id = talk.index_document(
                 &format!("archive/Alfa/2020/2020-{month:02}-{day}.pdf"),
                 &letter(
                     "Alfa AG",
@@ -57,6 +57,15 @@ mod tests {
                     "Rechnung",
                     day,
                 ),
+            );
+            talk.set_fields(
+                id,
+                &ncrs_index::DocumentFields {
+                    sender: Some("Alfa AG".to_owned()),
+                    kind: Some("invoice".to_owned()),
+                    date: chrono::NaiveDate::from_ymd_opt(2020, month, day),
+                    ..ncrs_index::DocumentFields::default()
+                },
             );
         }
         std::fs::create_dir_all(talk.path("archive/Telefon")).unwrap();
@@ -296,8 +305,12 @@ mod tests {
         talk.type_text_understood("Rechnungen nach Telefon, Jahr und Monat", CHANGE_STRUCTURE);
 
         assert_eq!(talk.rule_count(), 0);
-        let card = levels_card(&talk).expect("the levels of the rule");
-        assert_eq!(card.rows.len(), 3, "year, month and the automatic file");
+        assert!(levels_card(&talk).is_none(), "the proposal has no card");
+        assert!(
+            talk.last_texts()[0].contains("Telefon / Jahr / Monat"),
+            "{:?}",
+            talk.last_texts()
+        );
         assert!(has_chip(&talk, &ChipReply::RuleCreate));
         assert!(has_chip(&talk, &ChipReply::LevelsChange));
 
@@ -417,6 +430,86 @@ mod tests {
         assert!(talk.state.session.rule.is_none());
         assert!(talk.model.recognized().is_empty());
         assert_eq!(talk.rule_count(), 0);
+    }
+
+    #[test]
+    fn the_proposal_has_the_target_in_words_and_no_levels_card() {
+        let mut talk = archive_talk();
+        propose_for_telefon(&mut talk);
+
+        assert!(levels_card(&talk).is_none());
+        let texts = talk.last_texts();
+        assert!(!texts[0].contains('{'), "{texts:?}");
+        assert!(
+            texts[0].contains("Telefon / Jahr · Dateiname:"),
+            "{texts:?}"
+        );
+    }
+
+    #[test]
+    fn the_trial_says_how_many_more_would_move() {
+        let mut talk = archive_talk();
+        propose_for_telefon(&mut talk);
+
+        let texts = talk.last_texts();
+        assert_eq!(texts.len(), 2, "{texts:?}");
+        let lines: Vec<&str> = texts[1].lines().collect();
+        assert_eq!(lines.len(), 4, "3 examples and the rest: {lines:?}");
+        assert_eq!(
+            lines[3],
+            say(Msg::HermesChatRuleExamplesMore, &[("count", "1")])
+        );
+        assert!(
+            lines[0].contains("2020-01-10.pdf → Telefon/2020/") && lines[0].ends_with(".pdf"),
+            "{lines:?}"
+        );
+    }
+
+    #[test]
+    fn documents_that_lie_right_are_counted_and_nothing_to_move_offers_no_filing() {
+        let mut talk = archive_talk();
+        talk.model.push_levels(Ok(levels("{year}/{date}")));
+        open_area(&mut talk, "Alfa");
+        talk.press(&ChipReply::LevelsKeep);
+        talk.model.push_rule(Ok(spec("Rechnung", "Alfa/{year}")));
+        talk.type_text("Rechnungen");
+
+        let texts = talk.last_texts();
+        assert_eq!(texts.len(), 2, "{texts:?}");
+        assert_eq!(
+            texts[1],
+            say(
+                Msg::HermesChatRuleInPlace,
+                &[("in_place", "4"), ("moves", "0")]
+            )
+        );
+        talk.press(&ChipReply::RuleCreate);
+        assert!(!has_chip(&talk, &ChipReply::RuleNow));
+    }
+
+    #[test]
+    fn the_levels_card_shows_different_values_from_the_files() {
+        let mut talk = archive_talk();
+        for (year, month) in [(2019, 2), (2021, 5)] {
+            talk.index_document(
+                &format!("archive/Alfa/{year}/{year}-{month:02}-01.pdf"),
+                &letter("Alfa AG", &format!("01.{month:02}.{year}"), "Rechnung", 1),
+            );
+        }
+        talk.model.push_levels(Ok(levels("{year}/{date}")));
+
+        open_area(&mut talk, "Alfa");
+
+        let card = levels_card(&talk).expect("a card of levels");
+        let mut years: Vec<&str> = card.rows[0].text.split(", ").collect();
+        years.sort_unstable();
+        assert_eq!(years, ["2019", "2020", "2021"]);
+        assert_eq!(
+            card.rows[1].text.split(", ").count(),
+            2,
+            "{:?}",
+            card.rows[1]
+        );
     }
 
     #[test]

@@ -3,7 +3,7 @@
 //! blocking thread, never in `update`.
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use ncrs_index::{
@@ -12,6 +12,8 @@ use ncrs_index::{
 use ncrs_intake::{plan, Location, LocationMode, PlanInput, Planning};
 
 use ncrs_core::INDEX_NOT_OPEN;
+
+use crate::filing_work::target_of;
 
 /// What to write to the index.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -99,11 +101,21 @@ pub struct TriedDocument {
     pub conflicts: Vec<RuleId>,
 }
 
+impl TriedDocument {
+    /// An archive document the rule would file where it already lies.
+    pub fn is_in_place(&self) -> bool {
+        self.section == TrySection::Archive
+            && matches!(&self.after, TryOutcome::Filed(target) if *target == self.path)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct TryResult {
     pub documents: Vec<TriedDocument>,
     /// Matches beyond [`MAX_TRIED_DOCUMENTS`].
     pub more: usize,
+    /// Matches of the archive that the rule would file where they already lie.
+    pub in_place: usize,
     /// The 1-based place of each conflicting rule on the rules page.
     pub conflict_names: HashMap<RuleId, usize>,
 }
@@ -187,7 +199,7 @@ impl RulesAccess {
                     let now = if archived {
                         TryOutcome::Lies(path.clone())
                     } else {
-                        outcome(&plan(&rules_now, &input))
+                        outcome(&plan(&rules_now, &input), &path)
                     };
                     let section = if archived {
                         TrySection::Archive
@@ -196,11 +208,12 @@ impl RulesAccess {
                     } else {
                         TrySection::Inbox
                     };
+                    let after_outcome = outcome(&after, &path);
                     tried.push(TriedDocument {
                         section,
                         path,
                         now,
-                        after: outcome(&after),
+                        after: after_outcome,
                         conflicts: matching
                             .iter()
                             .copied()
@@ -212,11 +225,16 @@ impl RulesAccess {
             tried.sort_by(|left, right| {
                 (left.section, &left.path).cmp(&(right.section, &right.path))
             });
+            let in_place = tried
+                .iter()
+                .filter(|document| document.is_in_place())
+                .count();
             let more = tried.len().saturating_sub(MAX_TRIED_DOCUMENTS);
             tried.truncate(MAX_TRIED_DOCUMENTS);
             Ok(TryResult {
                 conflict_names: conflict_places(&rules_after, &tried),
                 documents: tried,
+                in_place,
                 more,
             })
         })
@@ -320,9 +338,13 @@ fn matching_rules(planning: &Planning) -> &[RuleId] {
     }
 }
 
-fn outcome(planning: &Planning) -> TryOutcome {
+/// A pattern names the file without its extension; filing adds the one of
+/// the file, so the outcome shows it too.
+fn outcome(planning: &Planning, source: &Path) -> TryOutcome {
     match planning {
-        Planning::Plan(filing) => TryOutcome::Filed(filing.relative_path.clone()),
+        Planning::Plan(filing) => {
+            TryOutcome::Filed(target_of(Path::new(""), &filing.relative_path, source))
+        }
         Planning::Review { reason, .. } => TryOutcome::Review(*reason),
     }
 }
@@ -759,7 +781,7 @@ mod tests {
                 )
             })
             .collect();
-        let filed = TryOutcome::Filed(PathBuf::from("Invoice"));
+        let filed = TryOutcome::Filed(PathBuf::from("Invoice.pdf"));
         let unplaced = TryOutcome::Review(ReviewReason::NoMatchingRule);
         let old_rent = PathBuf::from("old").join("rent.pdf");
         assert_eq!(
@@ -798,7 +820,7 @@ mod tests {
         assert_eq!(tried.conflicts, vec![other]);
         assert_eq!(
             tried.now,
-            TryOutcome::Filed(PathBuf::from("Invoice").join("other"))
+            TryOutcome::Filed(PathBuf::from("Invoice").join("other.pdf"))
         );
         assert_eq!(tried.after, tried.now);
         assert_eq!(result.conflict_names, HashMap::from([(other, 2)]));
@@ -824,7 +846,7 @@ mod tests {
         assert_eq!(tried.now, TryOutcome::Review(ReviewReason::NoMatchingRule));
         assert_eq!(
             tried.after,
-            TryOutcome::Filed(PathBuf::from("Invoice").join("edited"))
+            TryOutcome::Filed(PathBuf::from("Invoice").join("edited.pdf"))
         );
         assert!(tried.conflicts.is_empty());
     }
@@ -862,7 +884,7 @@ mod tests {
         assert_eq!(tried.path, PathBuf::from("tagged.pdf"));
         assert_eq!(
             tried.after,
-            TryOutcome::Filed(PathBuf::from("Tags").join("Invoice"))
+            TryOutcome::Filed(PathBuf::from("Tags").join("Invoice.pdf"))
         );
     }
 
@@ -886,7 +908,7 @@ mod tests {
             .unwrap();
 
         let tried = result.documents.first().unwrap();
-        assert_eq!(tried.after, TryOutcome::Filed(PathBuf::from("offer")));
+        assert_eq!(tried.after, TryOutcome::Filed(PathBuf::from("offer.pdf")));
     }
 
     #[test]

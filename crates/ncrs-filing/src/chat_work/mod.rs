@@ -120,7 +120,9 @@ pub enum ChatResult {
 pub struct RuleTrial {
     /// All documents the rule matches.
     pub matches: usize,
-    /// The first of them, as they stand and as they would stand.
+    /// Of them, the archive documents that already lie where the rule files them.
+    pub in_place: usize,
+    /// The first of those that would move, as they stand and as they would stand.
     pub examples: Vec<TriedDocument>,
 }
 
@@ -330,9 +332,11 @@ impl ChatAccess {
         })?;
         Ok(RuleTrial {
             matches: tried.documents.len() + tried.more,
+            in_place: tried.in_place,
             examples: tried
                 .documents
                 .into_iter()
+                .filter(|document| !document.is_in_place())
                 .take(RULE_TRIAL_EXAMPLES)
                 .collect(),
         })

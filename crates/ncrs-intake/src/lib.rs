@@ -10,6 +10,7 @@ mod default_pattern;
 mod error;
 mod extract;
 mod field_detection;
+pub mod filing_pieces;
 mod filing_plan;
 mod image_text;
 mod location;

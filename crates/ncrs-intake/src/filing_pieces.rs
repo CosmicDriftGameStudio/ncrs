@@ -2,9 +2,9 @@
 //! behind the "Move to" widget. A pattern is its stored form; no widgets here,
 //! the view is `ui::filing_pieces`.
 
+use crate::{is_plain_literal, render_pattern_in};
 use chrono::NaiveDate;
 use ncrs_index::{DocumentFields, Kinds};
-use ncrs_intake::{is_plain_literal, render_pattern_in};
 
 use ncrs_i18n::{Language, Msg};
 
@@ -519,7 +519,7 @@ impl TargetEditor {
 
     /// The target is something a rule can file by.
     pub fn is_usable(&self) -> bool {
-        !self.target.is_empty() && ncrs_intake::pattern_is_valid(&self.pattern())
+        !self.target.is_empty() && crate::pattern_is_valid(&self.pattern())
     }
 }
 
@@ -608,7 +608,7 @@ fn segment_in_words(segment: &str, lang: Language) -> String {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
-    use ncrs_intake::{pattern_is_valid, DEFAULT_PATTERNS, FILING_PLACEHOLDERS};
+    use crate::{pattern_is_valid, DEFAULT_PATTERNS, FILING_PLACEHOLDERS};
 
     use super::*;
 
