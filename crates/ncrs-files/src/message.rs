@@ -24,6 +24,10 @@ pub enum PanelMessage {
         archive: Option<PathBuf>,
     },
 
+    /// Another program added, removed or renamed something in the folder the
+    /// panel shows.
+    FolderChangedOnDisk(PanelSide),
+
     // --- Navigation inside the active panel ---
     MoveSelection(isize),
     PageUp,

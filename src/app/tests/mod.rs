@@ -74,6 +74,7 @@ mod mouse_tagging;
     clippy::indexing_slicing
 )]
 #[cfg(test)]
+mod folder_change_tests;
 mod reload_keeps_place;
 // reason: a failing assertion is the signal in a test, so unwrap belongs here
 #[allow(

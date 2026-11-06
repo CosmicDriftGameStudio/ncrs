@@ -149,6 +149,9 @@ impl App {
             // the session first; the window does not close by itself.
             window::close_requests().map(|_id| Message::Quit),
             native_menu_events(),
+            // Unlike the streams above, this one is meant to restart: its
+            // identity is the side and the folder, so it follows the panel.
+            self.panels.folder_watches().map(Message::Panel),
             // The transfer's ticks. Taken out of the app because a subscription
             // outlives `&self`; the receiver is taken so the subscription
             // rebuilds itself when a new transfer starts.
