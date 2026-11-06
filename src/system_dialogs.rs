@@ -20,7 +20,8 @@ pub fn pick_folder_with_system_dialog(start_in: &Path) -> Task<Option<PathBuf>> 
 /// What the file dialog of the settings tab picks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FilePick {
-    /// The program behind F3 or F4; only app bundles in the App Store build.
+    /// The program behind F3 or F4: from /Applications on macOS (only app
+    /// bundles in the App Store build), from /usr/bin on Linux.
     Program { apps_only: bool },
     /// A VS Code color theme.
     ThemeFile,
@@ -35,6 +36,10 @@ pub fn pick_file_with_system_dialog(pick: FilePick) -> Task<Option<PathBuf>> {
         FilePick::Program { apps_only } => {
             let in_apps = if cfg!(target_os = "macos") {
                 plain_dialog.set_directory("/Applications")
+            } else if cfg!(target_os = "linux") {
+                // The GTK dialog starts in the last folder or home, where no
+                // program lives, and never shows /usr on its own.
+                plain_dialog.set_directory("/usr/bin")
             } else {
                 plain_dialog
             };
