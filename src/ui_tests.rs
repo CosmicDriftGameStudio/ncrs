@@ -1283,6 +1283,7 @@ mod status_notice {
                 hermes_line: None,
                 version: None,
                 monitor: None,
+                test_folder: None,
             },
             failure,
             None,

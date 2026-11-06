@@ -172,9 +172,9 @@ use self::loading::*;
 pub use self::loading::{load, read_source};
 use self::paths::*;
 pub use self::paths::{
-    default_index_path, default_journal_path, default_known_hosts_path, default_path,
-    default_ssh_known_hosts_path, default_state_path, default_view_copies_dir, portable_data_dir,
-    portable_data_dir_of,
+    data_dir_override, default_index_path, default_journal_path, default_known_hosts_path,
+    default_path, default_ssh_known_hosts_path, default_state_path, default_view_copies_dir,
+    portable_data_dir, portable_data_dir_of, use_data_dir,
 };
 use self::resolving::*;
 pub use self::resolving::{check_ai_endpoint, AiEndpointProblem};

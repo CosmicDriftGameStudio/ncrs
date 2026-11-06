@@ -37,7 +37,7 @@ pub use journal::{
     BatchInfo, BatchKind, JournalItem, JournalState, NewJournalItem, SourceRoot, Transfer,
 };
 pub use key::RecoveryKey;
-pub use key_store::{InMemoryKeyStore, KeyStore, KeyringKeyStore};
+pub use key_store::{FileKeyStore, InMemoryKeyStore, KeyStore, KeyringKeyStore};
 pub use kinds::{CustomKind, KindCatalog, KindEntry, KindLanguage, KindSkip, Kinds};
 pub use model::{iban_is_valid, is_iban_separator, is_tax_id_separator, tag_name};
 pub use model::{

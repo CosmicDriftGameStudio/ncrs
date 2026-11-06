@@ -199,6 +199,9 @@ pub struct Activity<'a, M> {
     pub hermes_line: Option<String>,
     pub version: Option<VersionBadge<M>>,
     pub monitor: Option<MonitorBadge<M>>,
+    /// Set while ncrs runs on a throwaway data folder (`--data-dir`): the
+    /// bar says so at its right end.
+    pub test_folder: Option<String>,
 }
 
 /// The bottom bar: path, then the running job, then the failure of the last
@@ -229,6 +232,7 @@ pub fn view<'a, M: Clone + 'a>(
         hermes_line,
         version,
         monitor,
+        test_folder,
     } = activity;
     let path_chars = match (&path_bar_input.hit_line, path_bar_input.editing) {
         (Some(hit), _) => hit.text.chars().count(),
@@ -399,9 +403,13 @@ pub fn view<'a, M: Clone + 'a>(
             .style(theme::icon_button(palette)),
         );
     }
-    for dim in [Some(lang.base().code().to_uppercase()), theme_name]
-        .into_iter()
-        .flatten()
+    for dim in [
+        test_folder,
+        Some(lang.base().code().to_uppercase()),
+        theme_name,
+    ]
+    .into_iter()
+    .flatten()
     {
         bar = bar.push(
             container(

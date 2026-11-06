@@ -194,6 +194,10 @@ CONFIG:
     state.toml next to index.db remembers the panels' folders and sort, the
     active panel and the window size. ncrs writes it; delete it to start fresh.
 
+    --data-dir DIR keeps config, index, state and journal in DIR and the index
+    key as a file there instead of the system keychain. For tests with
+    throwaway data, not for real data.
+
     journal.toml next to state.toml records what ncrs moved to the trash on
     macOS, so the trash view can list it and put it back.
 
@@ -262,13 +266,34 @@ fn check_ai(_models_dir: Option<std::ffi::OsString>) -> i32 {
     2
 }
 
+/// `--data-dir DIR`: the folder is created when missing and made absolute;
+/// `None` when that is not possible.
+fn data_dir_of(value: Option<std::ffi::OsString>) -> Option<std::path::PathBuf> {
+    let given = std::path::PathBuf::from(value?);
+    std::fs::create_dir_all(&given).ok()?;
+    std::fs::canonicalize(&given)
+        .ok()
+        .filter(|absolute| absolute.is_dir())
+}
+
 fn main() -> iced::Result {
-    let argument = env::args().nth(1);
-    if argument.is_some() {
+    let first_argument = env::args().nth(1);
+    if first_argument.is_some() {
         // The Windows build has no console of its own; every command line run
         // prints to the one it was started from.
         ncrs_console::attach_to_parent_console();
     }
+    let argument = if first_argument.as_deref() == Some("--data-dir") {
+        let Some(dir) = data_dir_of(env::args_os().nth(2)) else {
+            eprintln!("ncrs: --data-dir needs a folder");
+            eprintln!("try 'ncrs --help'");
+            std::process::exit(2);
+        };
+        config::use_data_dir(dir);
+        None
+    } else {
+        first_argument
+    };
     match argument.as_deref() {
         Some("-V" | "--version") => {
             println!(

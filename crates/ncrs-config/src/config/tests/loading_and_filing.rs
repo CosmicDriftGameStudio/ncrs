@@ -671,6 +671,39 @@ fn the_state_lives_next_to_the_index() {
 }
 
 #[test]
+fn a_given_data_dir_holds_config_index_state_and_journal() {
+    let vars = [
+        ("HOME", "/home/user"),
+        ("XDG_CONFIG_HOME", "/home/user/xdg"),
+    ];
+    let dir = || Some(PathBuf::from("/tmp/throwaway"));
+    assert_eq!(
+        config_path_in(dir(), env(&vars)),
+        Some(PathBuf::from("/tmp/throwaway/config.toml"))
+    );
+    assert_eq!(
+        index_path_in(dir(), env(&vars)),
+        Some(PathBuf::from("/tmp/throwaway/index.db"))
+    );
+    assert_eq!(
+        state_path_in(dir(), env(&vars)),
+        Some(PathBuf::from("/tmp/throwaway/state.toml"))
+    );
+    assert_eq!(
+        journal_path_in(dir(), env(&vars)),
+        Some(PathBuf::from("/tmp/throwaway/journal.toml"))
+    );
+}
+
+#[test]
+fn the_data_dir_override_is_set_once() {
+    assert_eq!(data_dir_override(), None);
+    use_data_dir(PathBuf::from("/tmp/first"));
+    use_data_dir(PathBuf::from("/tmp/second"));
+    assert_eq!(data_dir_override(), Some(PathBuf::from("/tmp/first")));
+}
+
+#[test]
 fn the_trash_journal_lives_next_to_the_index() {
     let vars = [
         ("HOME", "/home/user"),
