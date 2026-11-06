@@ -673,6 +673,12 @@
       "de": "Pfad kopieren"
     },
     {
+      "key": "status.test_folder",
+      "context": "Permanent note at the right of the status bar while ncrs runs with --data-dir: config, index and key live in a throwaway test folder. {dir} is the folder path. Keep the placeholder verbatim.",
+      "en": "Test folder: {dir}",
+      "de": "Testordner: {dir}"
+    },
+    {
       "key": "status.version_tooltip",
       "context": "Tooltip of the version number at the right end of the status bar. Pressing the number opens the About card. Short phrase, no verb needed.",
       "en": "About NC-rs",

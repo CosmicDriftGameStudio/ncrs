@@ -41,6 +41,9 @@ pub fn is_inside_app_bundle(exe_dir: &Path) -> bool {
 pub fn portable_data_dir() -> Option<PathBuf> {
     static RESOLVED: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
     forbid_user_machine_in_tests("config::portable_data_dir");
+    if let Some(dir) = data_dir_override() {
+        return Some(dir);
+    }
     RESOLVED
         .get_or_init(|| {
             let exe = std::env::current_exe()
@@ -49,6 +52,19 @@ pub fn portable_data_dir() -> Option<PathBuf> {
             portable_data_dir_of(&exe, Path::is_dir)
         })
         .clone()
+}
+
+static DATA_DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
+/// `--data-dir`: this folder holds config, index, state and journal instead
+/// of the portable or the user's folders. Set once, before any path is
+/// resolved; a second call changes nothing.
+pub fn use_data_dir(dir: PathBuf) {
+    drop(DATA_DIR.set(dir));
+}
+
+pub fn data_dir_override() -> Option<PathBuf> {
+    DATA_DIR.get().cloned()
 }
 
 /// Config and index both ask this, so they never end up in different modes.

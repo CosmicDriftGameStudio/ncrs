@@ -69,7 +69,7 @@ impl Environment {
             state_path: config::default_state_path(),
             journal_path: config::default_journal_path(),
             view_copies_dir: config::default_view_copies_dir(),
-            key_store: Arc::new(user_key_store()),
+            key_store: user_key_store(),
             passwords: Arc::new(KeyringPasswords::new()),
             ssh_known_hosts: Some(config::default_ssh_known_hosts_path()),
             own_known_hosts: config::default_known_hosts_path(),
@@ -101,13 +101,18 @@ impl Environment {
 pub(in crate::app) const APP_STORE_KEY_SERVICE: &str = "ncrs-appstore";
 
 /// The one place the app builds the system keychain store.
-fn user_key_store() -> KeyringKeyStore {
+fn user_key_store() -> Arc<dyn KeyStore + Send + Sync> {
     config::forbid_user_machine_in_tests("the system keychain");
-    if fs::sandbox_active() {
-        return KeyringKeyStore::with_service(APP_STORE_KEY_SERVICE);
+    if let Some(dir) = config::data_dir_override() {
+        return Arc::new(ncrs_index::FileKeyStore::new(dir.join("index.key")));
     }
-    config::portable_data_dir()
-        .map_or_else(KeyringKeyStore::new, |dir| KeyringKeyStore::portable(&dir))
+    if fs::sandbox_active() {
+        return Arc::new(KeyringKeyStore::with_service(APP_STORE_KEY_SERVICE));
+    }
+    Arc::new(
+        config::portable_data_dir()
+            .map_or_else(KeyringKeyStore::new, |dir| KeyringKeyStore::portable(&dir)),
+    )
 }
 
 impl App {

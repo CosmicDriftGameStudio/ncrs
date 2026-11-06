@@ -153,6 +153,12 @@ impl App {
                                 on_press: Message::About(AboutMessage::Open),
                             }),
                             monitor: self.monitor_badge(),
+                            test_folder: config::data_dir_override().map(|dir| {
+                                ncrs_i18n::fill_template(
+                                    self.lang.text(Msg::StatusTestFolder),
+                                    &[("dir", &dir.display().to_string())],
+                                )
+                            }),
                         },
                         self.status_error(),
                         self.search_status(),

@@ -298,6 +298,56 @@ impl KeyStore for InMemoryKeyStore {
     }
 }
 
+/// The key in a file, for a throwaway data folder (`--data-dir`): the key
+/// sits next to the index it opens, not in the keychain.
+#[derive(Debug)]
+pub struct FileKeyStore {
+    path: PathBuf,
+}
+
+impl FileKeyStore {
+    pub fn new(path: PathBuf) -> Self {
+        Self { path }
+    }
+
+    fn create(&self, options: &mut OpenOptions, key: &[u8]) -> std::io::Result<()> {
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(options, 0o600);
+        options.write(true).open(&self.path)?.write_all(key)
+    }
+}
+
+impl KeyStore for FileKeyStore {
+    fn load(&self) -> Result<Option<Vec<u8>>, KeyStoreError> {
+        match std::fs::read(&self.path) {
+            Ok(key) => Ok(Some(key)),
+            Err(err) if err.kind() == ErrorKind::NotFound => Ok(None),
+            Err(err) => Err(KeyStoreError::Unavailable(err.to_string())),
+        }
+    }
+
+    fn store_new(&self, key: &[u8]) -> Result<(), KeyStoreError> {
+        match self.create(OpenOptions::new().create_new(true), key) {
+            Ok(()) => Ok(()),
+            Err(err) if err.kind() == ErrorKind::AlreadyExists => Err(KeyStoreError::AlreadyExists),
+            Err(err) => Err(KeyStoreError::Unavailable(err.to_string())),
+        }
+    }
+
+    fn replace(&self, key: &[u8]) -> Result<(), KeyStoreError> {
+        self.create(OpenOptions::new().create(true).truncate(true), key)
+            .map_err(|err| KeyStoreError::Unavailable(err.to_string()))
+    }
+
+    fn delete(&self) -> Result<(), KeyStoreError> {
+        match std::fs::remove_file(&self.path) {
+            Ok(()) => Ok(()),
+            Err(err) if err.kind() == ErrorKind::NotFound => Ok(()),
+            Err(err) => Err(KeyStoreError::Unavailable(err.to_string())),
+        }
+    }
+}
+
 #[cfg(test)]
 #[allow(
     clippy::unwrap_used,
@@ -461,5 +511,35 @@ mod tests {
         let empty = InMemoryKeyStore::empty();
         empty.replace(&[3; 32]).unwrap();
         assert_eq!(empty.snapshot().unwrap(), vec![3; 32]);
+    }
+
+    #[test]
+    fn the_file_store_follows_the_key_store_contract() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = FileKeyStore::new(dir.path().join("index.key"));
+        assert_eq!(store.load().unwrap(), None);
+
+        store.store_new(&[1; 32]).unwrap();
+        assert_eq!(store.load().unwrap(), Some(vec![1; 32]));
+        assert_eq!(store.store_new(&[2; 32]), Err(KeyStoreError::AlreadyExists));
+        assert_eq!(store.load().unwrap(), Some(vec![1; 32]));
+
+        store.replace(&[3; 8]).unwrap();
+        assert_eq!(store.load().unwrap(), Some(vec![3; 8]));
+
+        store.delete().unwrap();
+        assert_eq!(store.load().unwrap(), None);
+        store.delete().unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_key_file_is_private() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("index.key");
+        FileKeyStore::new(path.clone()).store_new(&[1; 32]).unwrap();
+        let mode = std::fs::metadata(path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
     }
 }
