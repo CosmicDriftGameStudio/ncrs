@@ -41,9 +41,15 @@ fn part_of(value: &JsonValue<'_>) -> Result<Part, AiError> {
         JsonValue::String(name) => placeholder_named(name)
             .map(Part::Placeholder)
             .ok_or(AiError::BadReply("unknown placeholder")),
+        // The model often writes a placeholder as fixed text ({"fest":"date"});
+        // no file name holds the bare English placeholder word on purpose.
         JsonValue::Object(object) => object
             .get_string("fest")
-            .map(|text| Part::Fixed(text.to_string()))
+            .map(|text| {
+                let bare = text.trim_start_matches('{').trim_end_matches('}');
+                placeholder_named(bare)
+                    .map_or_else(|| Part::Fixed(text.to_string()), Part::Placeholder)
+            })
             .ok_or(AiError::BadReply(
                 "a part is neither fixed nor a placeholder",
             )),
@@ -160,6 +166,13 @@ mod tests {
             )
             .unwrap(),
             "Post/{date}_{sender}"
+        );
+        assert_eq!(
+            parse_pattern(
+                r#"{"ordner":[],"datei":{"teile":[{"fest":"Beleg"},{"fest":"date"},{"fest":"{sender}"}],"trenner":"_"}}"#
+            )
+            .unwrap(),
+            "Beleg_{date}_{sender}"
         );
         let levels = parse_levels(r#"{"ordner":[],"datei":null}"#).unwrap();
         assert_eq!(levels.count(), 0);
