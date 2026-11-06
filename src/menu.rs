@@ -427,6 +427,19 @@ mod tests {
     }
 
     #[test]
+    fn every_toggle_entry_has_a_state_in_the_toggles() {
+        let all_on = Toggles {
+            search_case: true,
+            search_whole_word: true,
+            search_regex: true,
+            file_list_tags: true,
+        };
+        for command in commands::all().filter(|command| command.menu.kind == EntryKind::Toggle) {
+            assert!(all_on.is_on(command.action), "{}", command.action.name());
+        }
+    }
+
+    #[test]
     fn bare_keys_and_alt_letters_get_no_key() {
         let model = MenuModel::build(Language::English, &Keymap::default(), Toggles::default());
         for action in [
