@@ -131,7 +131,9 @@ fn known_terminals(os: Os) -> &'static [Spec] {
         spec(
             "Windows Terminal",
             OnPath("wt.exe"),
-            Program(&["-d", PATH_PLACEHOLDER]),
+            // wt splits its arguments at `;`, so the folder goes in as the
+            // working directory, never as text.
+            Program(&["-d", "."]),
         ),
         spec(
             "PowerShell 7",
@@ -427,11 +429,12 @@ mod tests {
     }
 
     #[test]
-    fn windows_terminal_gets_d_and_powershell_stays_open_in_the_folder() {
-        let folder = r"C:\Users\me\My Projects";
+    fn windows_terminal_opens_its_working_directory_and_powershell_stays_open_in_the_folder() {
+        let folder = r"C:\Users\me\My Projects; new-tab cmd";
         let wt = started(Some(&line_of(Os::Windows, "Windows Terminal")), folder);
         assert_eq!(wt.program, OsString::from("wt.exe"));
-        assert_eq!(args_of(&wt), ["-d", folder]);
+        assert_eq!(args_of(&wt), ["-d", "."]);
+        assert_eq!(wt.current_dir.as_deref(), Some(Path::new(folder)));
         let pwsh = started(Some(&line_of(Os::Windows, "PowerShell 7")), folder);
         assert_eq!(args_of(&pwsh), ["-NoExit", "-WorkingDirectory", folder]);
         let legacy = started(Some(&line_of(Os::Windows, "Windows PowerShell")), folder);
@@ -474,7 +477,13 @@ mod tests {
 
     #[test]
     fn detection_lists_the_installed_terminals_in_the_order_of_the_table() {
-        let found = detect_with(
+        fn names(found: &[KnownTerminal]) -> Vec<&str> {
+            found
+                .iter()
+                .map(|terminal| terminal.name.as_str())
+                .collect()
+        }
+        let on_mac = detect_with(
             Os::Mac,
             &installed(&[
                 "com.apple.Terminal",
@@ -482,26 +491,14 @@ mod tests {
                 "com.googlecode.iterm2",
             ]),
         );
-        let names: Vec<&str> = found
-            .iter()
-            .map(|terminal| terminal.name.as_str())
-            .collect();
-        assert_eq!(names, ["iTerm2", "Alacritty", "Terminal"]);
+        assert_eq!(names(&on_mac), ["iTerm2", "Alacritty", "Terminal"]);
 
-        let found = detect_with(Os::Windows, &installed(&["powershell.exe", "pwsh.exe"]));
-        let names: Vec<&str> = found
-            .iter()
-            .map(|terminal| terminal.name.as_str())
-            .collect();
-        assert_eq!(names, ["PowerShell 7", "Windows PowerShell"]);
+        let on_windows = detect_with(Os::Windows, &installed(&["powershell.exe", "pwsh.exe"]));
+        assert_eq!(names(&on_windows), ["PowerShell 7", "Windows PowerShell"]);
 
-        let found = detect_with(Os::Linux, &installed(&["foot", "konsole", "TERMINAL"]));
-        let names: Vec<&str> = found
-            .iter()
-            .map(|terminal| terminal.name.as_str())
-            .collect();
-        assert_eq!(names, ["mine", "Konsole", "foot"]);
-        assert_eq!(words(&found[0].line), ["/usr/local/bin/mine"]);
+        let on_linux = detect_with(Os::Linux, &installed(&["foot", "konsole", "TERMINAL"]));
+        assert_eq!(names(&on_linux), ["mine", "Konsole", "foot"]);
+        assert_eq!(words(&on_linux[0].line), ["/usr/local/bin/mine"]);
         assert!(detect_with(Os::Linux, &installed(&[])).is_empty());
     }
 
@@ -529,9 +526,9 @@ mod tests {
         assert_eq!(command.current_dir.as_deref(), Some(folder));
 
         let without = ProgramLine::new("myterm", &["--tab"]);
-        let command = terminal_command(Some(&without), &[], folder).unwrap();
-        assert_eq!(args_of(&command), ["--tab"]);
-        assert_eq!(command.current_dir.as_deref(), Some(folder));
+        let nothing_appended = terminal_command(Some(&without), &[], folder).unwrap();
+        assert_eq!(args_of(&nothing_appended), ["--tab"]);
+        assert_eq!(nothing_appended.current_dir.as_deref(), Some(folder));
     }
 
     #[test]
@@ -545,10 +542,8 @@ mod tests {
         let file = dir.path().join(name);
         std::fs::write(&file, "").unwrap();
         #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt as _;
-            std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o755)).unwrap();
-        }
+        std::fs::set_permissions(&file, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+            .unwrap();
         assert!(is_program(&file));
         assert!(!is_program(&dir.path().join("absent")));
     }
@@ -561,7 +556,7 @@ mod tests {
                 let in_args = line.args().iter().any(|arg| arg.contains(PATH_PLACEHOLDER));
                 let by_working_directory_only = matches!(
                     terminal.name,
-                    "$TERMINAL" | "x-terminal-emulator" | "Windows PowerShell"
+                    "$TERMINAL" | "x-terminal-emulator" | "Windows PowerShell" | "Windows Terminal"
                 );
                 assert_eq!(in_args, !by_working_directory_only, "{}", terminal.name);
             }

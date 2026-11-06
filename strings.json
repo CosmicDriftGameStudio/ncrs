@@ -3153,8 +3153,8 @@
     {
       "key": "settings.feature_programs_intro",
       "context": "Line under the heading of the programs page on the settings tab.",
-      "en": "The programs F3 and F4 open a file with, and the terminal.",
-      "de": "Die Programme, mit denen F3 und F4 eine Datei öffnen, und das Terminal."
+      "en": "The programs that open a file (F3, F4) and a folder (terminal).",
+      "de": "Die Programme, die eine Datei (F3, F4) und einen Ordner (Terminal) öffnen."
     },
     {
       "key": "settings.feature_keys",
