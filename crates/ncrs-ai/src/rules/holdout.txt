@@ -39,3 +39,4 @@ en | I want folders by month only for the documents that are not invoices | {"ma
 en | file name: sender, underscore, the word Beleg, underscore, year. Only for texts containing Bestellung | {"match":"all","conditions":[{"kind":"substring","value":"Bestellung","not":false}],"pattern":"{sender}_Beleg_{year}"}
 en | put it under Archive and then the year, for everything from Stadtwerke Müller | {"match":"all","conditions":[{"kind":"sender","value":"Stadtwerke Müller","not":false}],"pattern":"Archive/{year}/"}
 en | uh could you maybe arrange it so that the sender is the folder and inside that the date is the name of the file, thanks, only for Praxis Dr. Schäfer | {"match":"all","conditions":[{"kind":"sender","value":"Praxis Dr. Schäfer","not":false}],"pattern":"{sender}/{date}"}
+de | Alles von der Sparkasse Leipzig kommt nach Bank, pro Jahr ein Ordner | {"match":"all","conditions":[{"kind":"sender","value":"Sparkasse Leipzig","not":false}],"pattern":"Bank/{year}/"}

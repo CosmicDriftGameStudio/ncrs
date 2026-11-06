@@ -453,9 +453,9 @@ fn levels_scene(lang: Language) -> App {
         vec![
             Part::Text(
                 if german {
-                    "Diese Regel würde 12 Dateien ablegen, zum Beispiel Auszug.pdf nach Bank/2025/."
+                    "Diese Regel würde 12 Dateien ablegen, zum Beispiel Auszug.pdf nach Bank/2025/2025-11-03_Sparkasse.pdf."
                 } else {
-                    "This rule would file 12 files, for example Auszug.pdf to Bank/2025/."
+                    "This rule would file 12 files, for example Auszug.pdf to Bank/2025/2025-11-03_Sparkasse.pdf."
                 }
                 .to_owned(),
             ),

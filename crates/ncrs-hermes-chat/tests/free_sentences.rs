@@ -13,7 +13,8 @@ mod common;
 #[cfg(test)]
 mod tests {
     use crate::common::{letter, say, Talk};
-    use ncrs_hermes_chat::ChipReply;
+    use ncrs_ai::Levels;
+    use ncrs_hermes_chat::{ChipReply, Message};
     use ncrs_i18n::Msg;
 
     const SMALL_TALK: &str = r#"{"intent":"smalltalk"}"#;
@@ -110,14 +111,19 @@ mod tests {
     }
 
     #[test]
-    fn a_typed_path_that_is_no_folder_in_a_step_without_folders_goes_to_the_model() {
+    fn a_typed_path_in_a_step_without_folders_is_a_sentence_and_no_folder() {
         let mut talk = archive_talk();
         talk.open();
+        talk.model
+            .push_levels(Ok(Levels::from_pattern("{year}/").unwrap()));
+        talk.send(Message::ChangeArea {
+            folder: talk.path("archive"),
+            area: "Alfa".to_owned(),
+        });
 
-        talk.model.push_reply(Ok(SMALL_TALK));
         talk.type_text("/ hallo, was geht");
 
         assert!(talk.state.pending_resolve().is_none());
-        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatSmallTalk, &[])]);
+        assert!(!talk.last_texts()[0].contains("finde ich nicht"));
     }
 }

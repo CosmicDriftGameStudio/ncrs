@@ -115,13 +115,18 @@ fn with_model_hermes_rule_flow() {
             )
         })
         .collect();
-    let kinds = Kinds::new(Arc::new(KindCatalog::built_in()), KindLanguage::default());
+    let kinds = Kinds::new(Arc::new(KindCatalog::built_in()), KindLanguage::German);
     let mismatches = pattern_mismatches(&rule.spec.filing_pattern, &files, &kinds);
     // What the model recognized may not fit every file; then the card said
     // so before the click, and when it fits, nothing deviates.
     assert_eq!(
         deviations_shown,
         !mismatches.is_empty(),
+        "{}: {mismatches:?}",
+        rule.spec.filing_pattern
+    );
+    assert!(
+        mismatches.is_empty(),
         "{}: {mismatches:?}",
         rule.spec.filing_pattern
     );

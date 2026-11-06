@@ -110,12 +110,12 @@ impl LazyLocalModel {
     ) -> Result<T, AiError> {
         self.ensure_worker()?;
         let (reply, answer) = channel();
-        let documents = documents.to_vec();
-        let kinds = kinds.clone();
+        let owned_documents = documents.to_vec();
+        let owned_kinds = kinds.clone();
         self.shared.submit(Job::Rule(RuleJob {
             task: Box::new(move |model| {
                 let outcome = model.and_then(|loaded| {
-                    let mut session = RuleSession::new(loaded, &documents, &kinds)?;
+                    let mut session = RuleSession::new(loaded, &owned_documents, &owned_kinds)?;
                     work(&mut session)
                 });
                 drop(reply.send(outcome));
@@ -176,9 +176,9 @@ impl ChatModel for LazyLocalModel {
         documents: &[ContextDocument],
         kinds: &Kinds,
     ) -> Result<RuleSpec, AiError> {
-        let description = description.to_owned();
+        let owned_description = description.to_owned();
         self.ask_rules(documents, kinds, move |session| {
-            session.generate(&description)
+            session.generate(&owned_description)
         })
     }
 

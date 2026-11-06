@@ -48,6 +48,7 @@ fn axis_name(axis: Axis) -> &'static str {
         Axis::FileName => "file name",
         Axis::Condition => "condition",
         Axis::Recognize => "recognize",
+        Axis::FixedName => "fixed name",
         Axis::Default => "default",
         Axis::Holdout => "holdout",
     }
