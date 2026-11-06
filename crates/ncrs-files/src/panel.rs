@@ -36,6 +36,9 @@ pub struct PanelState {
     pub error: Option<ReadError>,
     /// A directory read is in flight.
     pub loading: bool,
+    /// The folder changed on disk while a read was in flight: once it is in,
+    /// the folder is read again.
+    pub changed_while_loading: bool,
     /// Id of the latest load request; older results are ignored.
     pub request_id: u64,
     /// Trackpad pixels scrolled that do not yet add up to a whole row, in the
@@ -68,6 +71,7 @@ impl PanelState {
             scroll_offset: 0,
             error: None,
             loading: false,
+            changed_while_loading: false,
             request_id: 0,
             scroll_remainder: 0.0,
             sort: SortKey::default(),

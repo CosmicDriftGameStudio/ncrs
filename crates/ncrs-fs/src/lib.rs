@@ -4,6 +4,7 @@ pub mod archive;
 mod delete;
 pub mod flat_names;
 mod folder_size;
+pub mod folder_watch;
 #[cfg(any(all(feature = "sandbox", target_os = "macos"), test))]
 mod grants;
 mod open;

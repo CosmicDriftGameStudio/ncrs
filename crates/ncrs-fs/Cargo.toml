@@ -22,6 +22,8 @@ same-file = "1.0"
 tempfile = "3.27"
 # `join_all` of the SFTP link lookups; the same crate iced re-exports.
 futures = { version = "0.3", default-features = false, features = ["std"] }
+# The change notifications of a shown folder; the same version as ncrs-intake.
+notify = "8"
 # Browsing and writing .zip archives.
 zip = { version = "=9.1.2", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 # Browsing archives like folders. Entries are unpacked by our own code, never

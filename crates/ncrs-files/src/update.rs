@@ -21,6 +21,23 @@ enum HistoryDirection {
     Forward,
 }
 
+/// The load that shows what another program changed in the folder of `side`.
+/// It is the ordinary reload: cursor, tags, sort and scroll stay, a tag whose
+/// file is gone drops out. An open rename input is not touched by it.
+fn reload_after_change_on_disk(panels: &Panels, side: PanelSide) -> Option<Action> {
+    let panel = panels.panel(side);
+    if panel.is_virtual() || panel.is_hit_list() {
+        return None;
+    }
+    Some(Action::Load {
+        side,
+        path: panel.path.clone(),
+        select: panel
+            .selected_entry()
+            .map(|entry| entry.name.to_string_lossy().into_owned()),
+    })
+}
+
 /// Applies `message` to the panels. The actions are for the app to run, in
 /// order, right after.
 pub fn update(
@@ -53,6 +70,7 @@ pub fn update(
             let panel = panels.panel_mut(side);
             let mut left_archive = None;
             let mut left_server = None;
+            let mut changed_meanwhile = false;
             if panel.request_id == request_id {
                 let before = panel.remote();
                 left_archive = panel
@@ -71,6 +89,7 @@ pub fn update(
                 );
                 panel.record_arrival(previous, request_id);
                 left_server = before.filter(|server| panel.remote().as_ref() != Some(server));
+                changed_meanwhile = std::mem::take(&mut panel.changed_while_loading);
                 actions.push(Action::CloseMenuOfReloaded(side));
             }
             if let Some(old) = left_archive {
@@ -81,6 +100,19 @@ pub fn update(
             }
             actions.push(Action::StopFolderSizeRunIfLeft(side));
             panels.drop_rename_of_missing_entry();
+            if changed_meanwhile {
+                actions.extend(reload_after_change_on_disk(panels, side));
+            }
+        }
+
+        PanelMessage::FolderChangedOnDisk(side) => {
+            let panel = panels.panel_mut(side);
+            if panel.loading {
+                // The read in flight may have started before the change.
+                panel.changed_while_loading = true;
+            } else {
+                actions.extend(reload_after_change_on_disk(panels, side));
+            }
         }
 
         PanelMessage::MoveSelection(delta) => {

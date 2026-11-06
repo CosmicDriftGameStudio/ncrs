@@ -8,6 +8,7 @@ pub mod context_menu_flow;
 pub mod context_menu_view;
 pub mod ctx;
 pub mod folder_size;
+pub mod folder_watch;
 pub mod hit_list;
 pub mod hit_list_flow;
 pub mod keys;
