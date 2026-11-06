@@ -26,6 +26,11 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
     match message {
         Message::Open => {
             state.open = true;
+            if state.session.rule.take().is_some()
+                && matches!(state.step, Step::RuleLevels | Step::RuleWhat)
+            {
+                state.step = Step::Idle;
+            }
             if state.thread.is_empty() {
                 open_thread(state, ctx);
                 None

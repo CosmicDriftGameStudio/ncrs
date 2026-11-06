@@ -13,6 +13,8 @@ use crate::contract::{clean_value, text_has_minor_units};
 use crate::error::AiError;
 
 const MAX_FIELD_CHARS: usize = 80;
+/// The same as the `path` rule of the grammar.
+const MAX_PATH_CHARS: usize = 200;
 const YEARS: std::ops::RangeInclusive<u16> = 1000..=2999;
 
 pub fn parse_chat_reply(raw: &str, turn: &ChatTurn) -> Result<ChatIntent, AiError> {
@@ -26,8 +28,8 @@ pub fn parse_chat_reply(raw: &str, turn: &ChatTurn) -> Result<ChatIntent, AiErro
         .ok_or(AiError::BadReply("no intent"))?;
     match name.as_ref() {
         "tidy_folder" => Ok(ChatIntent::TidyFolder {
-            source: required_text(&reply, "source")?,
-            target: text(&reply, "target"),
+            source: required_path(&reply, "source")?,
+            target: path(&reply, "target"),
             schedule: enum_of(&reply, "schedule", schedule_of),
             transfer: enum_of(&reply, "transfer", transfer_of),
         }),
@@ -66,13 +68,13 @@ pub fn parse_chat_reply(raw: &str, turn: &ChatTurn) -> Result<ChatIntent, AiErro
             file: required_text(&reply, "file")?,
         }),
         "open_folder" => Ok(ChatIntent::OpenFolder {
-            folder: required_text(&reply, "folder")?,
+            folder: required_path(&reply, "folder")?,
         }),
         "bulk_move" => Ok(ChatIntent::BulkMove {
             filter_kind: text(&reply, "filter_kind"),
             filter_sender: text(&reply, "filter_sender"),
             filter_year: year(&reply, "filter_year"),
-            target: required_text(&reply, "target")?,
+            target: required_path(&reply, "target")?,
         }),
         "answer" => {
             let choice = reply
@@ -99,6 +101,15 @@ fn text(reply: &JsonObject<'_>, key: &str) -> Option<String> {
 
 fn required_text(reply: &JsonObject<'_>, key: &'static str) -> Result<String, AiError> {
     text(reply, key).ok_or(AiError::BadReply("a required field is missing"))
+}
+
+fn path(reply: &JsonObject<'_>, key: &str) -> Option<String> {
+    let cleaned = clean_value(reply.get_string(key)?)?;
+    (cleaned.chars().count() <= MAX_PATH_CHARS).then_some(cleaned)
+}
+
+fn required_path(reply: &JsonObject<'_>, key: &'static str) -> Result<String, AiError> {
+    path(reply, key).ok_or(AiError::BadReply("a required field is missing"))
 }
 
 fn year(reply: &JsonObject<'_>, key: &str) -> Option<u16> {
