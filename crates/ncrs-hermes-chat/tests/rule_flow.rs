@@ -178,6 +178,44 @@ mod tests {
     }
 
     #[test]
+    fn the_first_levels_do_not_fit_and_the_second_answer_does() {
+        let mut talk = archive_talk();
+        talk.model.push_levels(Ok(levels("{year}/{sender}/{date}")));
+        talk.model.push_levels(Ok(levels("{year}/{date}")));
+
+        open_area(&mut talk, "Alfa");
+
+        assert_eq!(talk.model.recognized().len(), 2, "asked once more");
+        let card = levels_card(&talk).expect("a card of levels");
+        assert_eq!(card.footer, None, "no deviations");
+        assert_eq!(talk.last_parts().len(), 1);
+        assert!(has_chip(&talk, &ChipReply::LevelsKeep));
+    }
+
+    #[test]
+    fn levels_that_still_do_not_fit_offer_only_the_change() {
+        let mut talk = archive_talk();
+        talk.model.push_levels(Ok(levels("{year}/{sender}/{date}")));
+        talk.model.push_levels(Ok(levels("{year}/{kind}/{date}")));
+
+        open_area(&mut talk, "Alfa");
+
+        assert_eq!(talk.model.recognized().len(), 2);
+        let texts = talk.last_texts();
+        assert_eq!(
+            texts[0],
+            say(
+                Msg::HermesChatLevelsPoor,
+                &[("fitting", "0"), ("total", "4")]
+            )
+        );
+        assert!(!has_chip(&talk, &ChipReply::LevelsKeep));
+        assert!(!has_chip(&talk, &ChipReply::LevelsDefault));
+        assert!(has_chip(&talk, &ChipReply::LevelsChange));
+        assert_eq!(talk.rule_count(), 0);
+    }
+
+    #[test]
     fn files_that_deviate_are_shown_and_nothing_is_saved_until_a_click() {
         let mut talk = archive_talk();
         talk.index_document(

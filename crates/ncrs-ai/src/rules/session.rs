@@ -29,12 +29,22 @@ impl RuleRequest {
         }
     }
 
-    /// `question` is asked above the paths, in the user's language.
-    pub fn recognize(prefix: &str, question: &str, paths: &str) -> Self {
+    /// `question` is asked above the paths, in the user's language. With a
+    /// `folder_depth` the answer is forced to that many folder levels and the
+    /// prompt says so.
+    pub fn recognize(
+        prefix: &str,
+        question: &str,
+        paths: &str,
+        folder_depth: Option<usize>,
+    ) -> Self {
+        let depth_line = folder_depth.map_or_else(String::new, |depth| {
+            format!("Every path has {depth} folder level(s) and a file name.\n")
+        });
         Self {
             prefix: prefix.to_owned(),
-            task: format!("TASK recognize\n{question}\n{paths}\n{RECOGNIZE_REMINDER}"),
-            grammar: recognize_grammar(),
+            task: format!("TASK recognize\n{question}\n{depth_line}{paths}\n{RECOGNIZE_REMINDER}"),
+            grammar: recognize_grammar(folder_depth),
             max_new_tokens: MAX_PATTERN_TOKENS,
         }
     }
@@ -62,7 +72,7 @@ mod tests {
     #[test]
     fn a_recognize_task_lists_the_paths() {
         let paths = "PATH 1: a/b.pdf\nPATH 2: c/d.pdf";
-        let request = RuleRequest::recognize("P", "Which?", paths);
+        let request = RuleRequest::recognize("P", "Which?", paths, None);
         assert_eq!(
             request.task,
             format!(
@@ -70,5 +80,14 @@ mod tests {
             )
         );
         assert!(!request.grammar.contains("conditions"));
+    }
+
+    #[test]
+    fn a_known_depth_is_told_and_forced() {
+        let request = RuleRequest::recognize("P", "Which?", "PATH 1: a/b.pdf", Some(1));
+        assert!(request
+            .task
+            .contains("Which?\nEvery path has 1 folder level(s) and a file name.\nPATH 1"));
+        assert_eq!(request.grammar, recognize_grammar(Some(1)));
     }
 }

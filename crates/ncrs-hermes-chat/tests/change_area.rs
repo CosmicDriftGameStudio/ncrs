@@ -43,8 +43,9 @@ mod tests {
     #[test]
     fn the_named_area_gets_the_levels_of_exactly_that_folder() {
         let mut talk = talk_with_areas();
-        talk.model
-            .push_levels(Ok(Levels::from_pattern("{year}/").unwrap()));
+        talk.model.push_levels(Ok(
+            Levels::from_pattern("{year}/{date} Alfa Rechnung").unwrap()
+        ));
         let folder = talk.path("archive");
 
         talk.send(Message::ChangeArea {
@@ -54,7 +55,6 @@ mod tests {
 
         assert!(has_levels_card(&talk));
         let asked = talk.model.recognized();
-        assert_eq!(asked.len(), 1);
         assert_eq!(asked[0].len(), 3, "only the files of Alfa: {asked:?}");
         assert!(
             asked[0].iter().all(|(path, _)| path.starts_with("2020/")),

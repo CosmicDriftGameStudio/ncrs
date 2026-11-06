@@ -44,8 +44,9 @@ pub use model_file::{
     LOCAL_MODEL, LOCAL_MODEL_FOLDER,
 };
 pub use rules::{
-    annotated_paths, condition_meaning, parse_generate, parse_levels, pattern_mismatches,
-    prefix_text, ContextDocument, Level, Levels, Mismatch, Part, RuleRequest, END_OF_TURN,
+    annotated_paths, condition_meaning, folder_depth, parse_generate, parse_levels,
+    pattern_mismatches, prefix_text, repair_note, ContextDocument, Level, Levels, Mismatch, Part,
+    RuleRequest, END_OF_TURN,
 };
 pub use status::{Compute, LocalModelStatus};
 #[cfg(any(test, feature = "testing"))]

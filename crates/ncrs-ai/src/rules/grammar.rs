@@ -16,8 +16,10 @@ use super::vocabulary::{condition_word, COMBINATORS};
 /// text in many ways.
 /// The fixed text keeps off the characters a pattern or a file name cannot
 /// carry.
-const LEVEL_RULES: &str = r#"levels ::= "\"ordner\":[" (level ("," level){0,6})? "],\"datei\":" (level | "null")
-level ::= "{\"teile\":[" part ("," part){0,3} "],\"trenner\":" separator "}"
+const FREE_LEVELS: &str = r#"levels ::= "\"ordner\":[" (level ("," level){0,6})? "],\"datei\":" (level | "null")
+"#;
+
+const LEVEL_RULES: &str = r#"level ::= "{\"teile\":[" part ("," part){0,3} "],\"trenner\":" separator "}"
 part ::= fixed | placeholder
 fixed ::= "{\"fest\":\"" fixedchar{1,40} "\"}"
 fixedchar ::= [^/{}\\"<>:*?|\x00-\x1F\x7F]
@@ -63,12 +65,20 @@ pub fn generate_grammar() -> String {
     let rules = GENERATE_RULES
         .replace("@COMBINATORS@", &combinators)
         .replace("@KINDS@", &kinds);
-    format!("{rules}{}", level_rules())
+    format!("{rules}{FREE_LEVELS}{}", level_rules())
 }
 
-/// The levels alone: `{"ordner":[...],"datei":...}`.
-pub fn recognize_grammar() -> String {
-    format!("{RECOGNIZE_RULES}{}", level_rules())
+/// The levels alone: `{"ordner":[...],"datei":...}`. With `folder_depth` the
+/// answer has exactly that many folder levels and a file name level.
+pub fn recognize_grammar(folder_depth: Option<usize>) -> String {
+    let levels = match folder_depth {
+        None => FREE_LEVELS.to_owned(),
+        Some(depth) => {
+            let folders = vec!["level"; depth].join(" \",\" ");
+            format!("levels ::= \"\\\"ordner\\\":[\" {folders} \"],\\\"datei\\\":\" (level | \"null\")\n")
+        }
+    };
+    format!("{RECOGNIZE_RULES}{levels}{}", level_rules())
 }
 
 #[cfg(test)]
@@ -84,7 +94,7 @@ mod tests {
         for combinator in COMBINATORS {
             assert!(generate.contains(&format!("\\\"{}\\\"", combinator.as_str())));
         }
-        for grammar in [generate, recognize_grammar()] {
+        for grammar in [generate, recognize_grammar(None)] {
             for name in FILING_PLACEHOLDERS {
                 assert!(grammar.contains(&format!("\"\\\"{name}\\\"\"")), "{name}");
             }
@@ -100,12 +110,32 @@ mod tests {
 
     #[test]
     fn each_grammar_has_one_root() {
-        for grammar in [generate_grammar(), recognize_grammar()] {
+        for grammar in [generate_grammar(), recognize_grammar(None)] {
             let roots = grammar
                 .lines()
                 .filter(|line| line.starts_with("root ::="))
                 .count();
             assert_eq!(roots, 1);
         }
+    }
+
+    #[test]
+    fn a_known_depth_allows_exactly_that_many_folder_levels() {
+        let levels_rule = |depth| {
+            recognize_grammar(depth)
+                .lines()
+                .find(|line| line.starts_with("levels ::="))
+                .unwrap_or_default()
+                .to_owned()
+        };
+        assert_eq!(
+            levels_rule(Some(2)),
+            r#"levels ::= "\"ordner\":[" level "," level "],\"datei\":" (level | "null")"#
+        );
+        assert_eq!(
+            levels_rule(Some(1)),
+            r#"levels ::= "\"ordner\":[" level "],\"datei\":" (level | "null")"#
+        );
+        assert!(levels_rule(None).contains("{0,6}"));
     }
 }

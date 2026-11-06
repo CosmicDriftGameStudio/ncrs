@@ -18,7 +18,7 @@ use std::time::Instant;
 
 use ncrs_index::{DocumentFields, Kinds};
 
-use super::annotate::annotated_paths;
+use super::annotate::{annotated_paths, folder_depth};
 use super::cache::{cache_key, ResultCache};
 use super::holdout::holdout_cases;
 use super::matrix::{all_cases, archive_kinds, fixtures, Ask, Axis, Case, Expected, Language};
@@ -80,7 +80,8 @@ fn request_of(case: &Case, prefix: &str, kinds: &Kinds) -> RuleRequest {
                 .zip(fixtures())
                 .map(|(path, fixture)| (path.clone(), fixture.fields))
                 .collect();
-            RuleRequest::recognize(prefix, question, &annotated_paths(&files, kinds))
+            let depth = folder_depth(paths.iter().map(String::as_str));
+            RuleRequest::recognize(prefix, question, &annotated_paths(&files, kinds), depth)
         }
     }
 }

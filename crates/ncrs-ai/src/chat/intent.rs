@@ -7,7 +7,7 @@ use ncrs_index::{DocumentFields, Kinds, RuleSpec};
 
 use super::turn::{ChatTurn, SearchQuery};
 use crate::error::AiError;
-use crate::rules::{ContextDocument, Levels};
+use crate::rules::{ContextDocument, Levels, Mismatch};
 use crate::status::LocalModelStatus;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -148,6 +148,15 @@ pub trait ChatModel: Send + Sync + fmt::Debug {
         &self,
         files: &[(String, DocumentFields)],
         kinds: &Kinds,
+    ) -> Result<Levels, AiError>;
+    /// The same question once more, after the answer `previous` did not write
+    /// the paths of the files in `misfits`.
+    fn recognize_levels_again(
+        &self,
+        files: &[(String, DocumentFields)],
+        kinds: &Kinds,
+        previous: &Levels,
+        misfits: &[Mismatch],
     ) -> Result<Levels, AiError>;
     /// Never blocks and never reads the disk.
     fn status(&self) -> LocalModelStatus;

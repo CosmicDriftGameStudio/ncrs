@@ -18,7 +18,7 @@ use crate::chat::{ChatIntent, ChatModel, ChatTurn};
 use crate::contract::{Extraction, ExtractionRequest, Provider};
 use crate::error::AiError;
 use crate::model_file::ModelPin;
-use crate::rules::{annotated_paths, ContextDocument, Levels};
+use crate::rules::{annotated_paths, folder_depth, repair_note, ContextDocument, Levels, Mismatch};
 use crate::status::LocalModelStatus;
 
 const RECOGNIZE_QUESTION: &str = "Which pattern wrote these paths?";
@@ -154,6 +154,26 @@ impl LazyLocalModel {
             .map_err(|_stopped| AiError::Model("the model stopped before it answered"))?
     }
 
+    fn recognize_with(
+        &self,
+        files: &[(String, DocumentFields)],
+        kinds: &Kinds,
+        question: String,
+    ) -> Result<Levels, AiError> {
+        let documents: Vec<ContextDocument> = files
+            .iter()
+            .map(|(path, fields)| ContextDocument {
+                fields: fields.clone(),
+                folder: path.rsplit_once('/').map(|(folder, _)| folder.to_owned()),
+            })
+            .collect();
+        let paths = annotated_paths(files, kinds);
+        let depth = folder_depth(files.iter().map(|(path, _)| path.as_str()));
+        self.ask_rules(&documents, kinds, move |session| {
+            session.recognize(&question, &paths, depth)
+        })
+    }
+
     fn ask<T>(&self, job: impl FnOnce(Sender<Result<T, AiError>>) -> Job) -> Result<T, AiError> {
         self.ensure_worker()?;
         let (reply, answer) = channel();
@@ -222,17 +242,18 @@ impl ChatModel for LazyLocalModel {
         files: &[(String, DocumentFields)],
         kinds: &Kinds,
     ) -> Result<Levels, AiError> {
-        let documents: Vec<ContextDocument> = files
-            .iter()
-            .map(|(path, fields)| ContextDocument {
-                fields: fields.clone(),
-                folder: path.rsplit_once('/').map(|(folder, _)| folder.to_owned()),
-            })
-            .collect();
-        let paths = annotated_paths(files, kinds);
-        self.ask_rules(&documents, kinds, move |session| {
-            session.recognize(RECOGNIZE_QUESTION, &paths)
-        })
+        self.recognize_with(files, kinds, RECOGNIZE_QUESTION.to_owned())
+    }
+
+    fn recognize_levels_again(
+        &self,
+        files: &[(String, DocumentFields)],
+        kinds: &Kinds,
+        previous: &Levels,
+        misfits: &[Mismatch],
+    ) -> Result<Levels, AiError> {
+        let note = repair_note(&previous.pattern(), misfits);
+        self.recognize_with(files, kinds, format!("{RECOGNIZE_QUESTION}\n{note}"))
     }
 
     /// Reads a snapshot only, never the disk and never the worker. While the

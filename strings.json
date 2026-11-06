@@ -8671,6 +8671,12 @@
       "de": "passt bei {fitting} von {total} Dateien"
     },
     {
+      "key": "hermes_chat.levels_poor",
+      "context": "Chat text under the levels card when the order the model recognised fits too few of the files. {fitting} of {total} files follow it. The only button left is the one that changes the levels.",
+      "en": "This order fits only {fitting} of {total} files, so I will not create a rule from it as it is. Change the levels.",
+      "de": "Diese Reihenfolge passt nur auf {fitting} von {total} Dateien, deshalb lege ich daraus nicht einfach eine Regel an. Ändere die Ebenen."
+    },
+    {
       "key": "hermes_chat.levels_misfit",
       "context": "One line below the levels card for a file that does not follow the found order. {file} is its path, {written} is the path the order would give it.",
       "en": "{file} should be {written}",
