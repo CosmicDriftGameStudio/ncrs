@@ -93,7 +93,7 @@ pub fn trial_done(state: &mut State, ctx: &Ctx, tried: Result<RuleTrial, String>
         return;
     }
     let kinds = flow.kinds.clone();
-    let moves = trial.matches.saturating_sub(trial.in_place);
+    let moves = trial.matches.saturating_sub(trial.in_archive);
     flow.trial_moves = moves;
     let sentence = fill(
         ctx.lang,
@@ -120,12 +120,12 @@ pub fn trial_done(state: &mut State, ctx: &Ctx, tried: Result<RuleTrial, String>
             &[("count", &number(moves - trial.examples.len()))],
         ));
     }
-    if trial.in_place > 0 {
+    if trial.in_archive > 0 {
         lines.push(fill(
             ctx.lang,
-            Msg::HermesChatRuleInPlace,
+            Msg::HermesChatRuleInArchive,
             &[
-                ("in_place", &number(trial.in_place)),
+                ("in_archive", &number(trial.in_archive)),
                 ("moves", &number(moves)),
             ],
         ));

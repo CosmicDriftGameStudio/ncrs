@@ -8781,8 +8781,8 @@
     {
       "key": "hermes_chat.rule_proposal",
       "context": "Chat reply with the proposed rule. {count} known documents match it; the lines below show some examples. {conditions} is the condition in words, {pattern} the folder order.",
-      "en": "This rule files {count} documents I know. It applies when {conditions}. It files them as {pattern}.",
-      "de": "Die Regel legt {count} Dokumente ab, die ich kenne. Sie gilt, wenn {conditions}. Sie legt sie so ab: {pattern}."
+      "en": "This rule matches {count} documents I know. It applies when {conditions}. It files them as {pattern}.",
+      "de": "Die Regel passt auf {count} Dokumente, die ich kenne. Sie gilt, wenn {conditions}. Sie legt sie so ab: {pattern}."
     },
     {
       "key": "hermes_chat.rule_condition_all",
@@ -8815,10 +8815,10 @@
       "de": "… und {count} weitere"
     },
     {
-      "key": "hermes_chat.rule_in_place",
-      "context": "Line of the rule trial about where the matching documents lie. {in_place} lie in the archive where the rule would file them anyway, {moves} would be moved. Both are counts.",
-      "en": "Already in the right place: {in_place}. Would be moved: {moves}.",
-      "de": "Schon am richtigen Platz: {in_place}. Würden verschoben: {moves}."
+      "key": "hermes_chat.rule_in_archive",
+      "context": "Line of the rule trial about where the matching documents lie. {in_archive} already lie in the archive, which is never reorganised, {moves} would be moved out of the source folders. Both are counts.",
+      "en": "Already in the archive: {in_archive}. Would be moved: {moves}.",
+      "de": "Schon im Archiv: {in_archive}. Würden verschoben: {moves}."
     },
     {
       "key": "hermes_chat.rule_create",

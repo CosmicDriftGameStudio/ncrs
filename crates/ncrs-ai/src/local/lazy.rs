@@ -63,11 +63,7 @@ impl LazyLocalModel {
         threads: NonZeroU32,
         context_tokens: NonZeroU32,
     ) -> Arc<Self> {
-        static REGISTRY: OnceLock<Mutex<HashMap<PathBuf, Weak<LazyLocalModel>>>> = OnceLock::new();
-        let mut registry = REGISTRY
-            .get_or_init(Mutex::default)
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
+        let mut registry = registry().lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(live) = registry.get(&path).and_then(Weak::upgrade) {
             live.shared.set_threads(threads);
             return live;
@@ -76,6 +72,22 @@ impl LazyLocalModel {
         let created = Arc::new(Self::new(path.clone(), pin, threads, context_tokens));
         registry.insert(path, Arc::downgrade(&created));
         created
+    }
+
+    /// Ends every model made by `shared` and waits for each worker to free it:
+    /// the app calls this on quit, because background threads that still hold
+    /// a model never drop it and the GPU backend aborts a process that ends
+    /// with a model loaded. Waits for a running job.
+    pub fn shutdown_all() {
+        let live: Vec<Arc<Self>> = registry()
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .values()
+            .filter_map(Weak::upgrade)
+            .collect();
+        for model in live {
+            model.shutdown();
+        }
     }
 
     /// How the model reads documents from the next one on. The chat is not
@@ -150,6 +162,13 @@ impl LazyLocalModel {
             .recv()
             .map_err(|_stopped| AiError::Model("the model stopped before it answered"))?
     }
+}
+
+type Registry = Mutex<HashMap<PathBuf, Weak<LazyLocalModel>>>;
+
+fn registry() -> &'static Registry {
+    static REGISTRY: OnceLock<Registry> = OnceLock::new();
+    REGISTRY.get_or_init(Mutex::default)
 }
 
 impl Drop for LazyLocalModel {

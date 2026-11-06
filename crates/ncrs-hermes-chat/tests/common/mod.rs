@@ -152,7 +152,7 @@ impl Talk {
         self
     }
 
-    /// The chat can try and save rules; the archive is the one location.
+    /// The chat can try and save rules; its locations are the archive and the inbox.
     pub fn with_rules(mut self) -> Self {
         let archive = ncrs_intake::Location::new(
             &self.path("archive"),
@@ -160,8 +160,17 @@ impl Talk {
             false,
         )
         .unwrap();
-        let rules =
-            ncrs_filing::rules_work::RulesAccess::new(Arc::clone(&self.index), vec![archive]);
+        std::fs::create_dir_all(self.path("inbox")).unwrap();
+        let inbox = ncrs_intake::Location::new(
+            &self.path("inbox"),
+            ncrs_intake::LocationMode::Inbox,
+            false,
+        )
+        .unwrap();
+        let rules = ncrs_filing::rules_work::RulesAccess::new(
+            Arc::clone(&self.index),
+            vec![archive, inbox],
+        );
         self.access = self.access.with_rules(Some(rules));
         self.ctx.availability = Availability::Ready(Box::new(self.access.clone()));
         self
@@ -170,6 +179,20 @@ impl Talk {
     /// A document of the archive the rules trial sees: the file on disk and
     /// its entry in the index with `text`.
     pub fn index_document(&self, relative: &str, text: &str) -> ncrs_index::DocumentId {
+        self.index_with_source(relative, text, ncrs_index::DocumentSource::Archive)
+    }
+
+    /// A document that waits in the inbox, known to the index.
+    pub fn index_inbox_document(&self, relative: &str, text: &str) -> ncrs_index::DocumentId {
+        self.index_with_source(relative, text, ncrs_index::DocumentSource::Inbox)
+    }
+
+    fn index_with_source(
+        &self,
+        relative: &str,
+        text: &str,
+        source: ncrs_index::DocumentSource,
+    ) -> ncrs_index::DocumentId {
         self.write(relative, text);
         let hash: [u8; 32] = Sha256::digest(relative.as_bytes()).into();
         let mut guard = self.index.lock().unwrap();
@@ -178,7 +201,7 @@ impl Talk {
             .insert_document(&ncrs_index::NewDocument {
                 hash: ncrs_index::ContentHash(hash),
                 path: self.path(relative),
-                source: ncrs_index::DocumentSource::Archive,
+                source,
                 received_at: chrono::Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap(),
                 stamp: None,
             })
