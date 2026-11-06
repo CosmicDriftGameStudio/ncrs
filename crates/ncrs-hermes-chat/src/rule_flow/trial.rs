@@ -371,7 +371,11 @@ fn start_source(
 }
 
 /// The next source of "Rearrange now"; `false` when none is left.
-pub fn next_source(state: &mut State, ctx: &Ctx) -> bool {
+pub fn next_source(
+    state: &mut State,
+    ctx: &Ctx,
+    inside: Vec<ncrs_filing::rules_work::ArchiveMove>,
+) -> bool {
     let Some(queue) = state.session.rule_queue.as_mut() else {
         return false;
     };
@@ -381,7 +385,25 @@ pub fn next_source(state: &mut State, ctx: &Ctx) -> bool {
     }
     let source = queue.sources.remove(0);
     let at = (queue.target.clone(), queue.prefix.clone());
-    start_source(state, ctx, source, at, Vec::new());
+    start_source(state, ctx, source, at, inside);
+    true
+}
+
+/// A source of "Rearrange now" holds no files: its archive moves go on with
+/// the next source, or run alone when none is left. `false` when there is
+/// nothing to do for this source.
+pub fn empty_source(state: &mut State, ctx: &Ctx) -> bool {
+    let Some(tidy) = state.session.tidy.as_ref().filter(|tidy| tidy.rule_now.is_some()) else {
+        return false;
+    };
+    let (source, inside) = (tidy.source.clone(), tidy.inside.clone());
+    if next_source(state, ctx, inside.clone()) {
+        return true;
+    }
+    if inside.is_empty() {
+        return false;
+    }
+    archive_run(state, ctx, source, inside);
     true
 }
 
@@ -389,7 +411,8 @@ pub fn next_source(state: &mut State, ctx: &Ctx) -> bool {
 /// lands below the rule's own folder; unsure ones stay. Without a prefix (a
 /// normal tidy-up) everything goes through.
 /// ponytail: the trial knows no rule names, so another rule filing below the
-/// same prefix would ride along.
+/// same prefix would ride along. A rule made in the target root itself has an
+/// empty prefix, which keeps everything the trial files.
 pub fn rule_keeps(prefix: Option<&Path>, outcome: &TrialOutcome) -> bool {
     match (prefix, outcome) {
         (None, _) => true,
@@ -417,7 +440,7 @@ pub fn file_rule_trial(state: &mut State, ctx: &Ctx) {
         .as_ref()
         .is_none_or(|tidy| tidy.inside.is_empty());
     if nothing_to_file {
-        if next_source(state, ctx) {
+        if next_source(state, ctx, Vec::new()) {
             return;
         }
         state.session.rule_queue = None;

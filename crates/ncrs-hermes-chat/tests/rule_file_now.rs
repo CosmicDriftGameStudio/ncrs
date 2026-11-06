@@ -54,12 +54,23 @@ mod tests {
         stored_rule_after(waiting, None)
     }
 
-    /// `other`: an area and a word of a rule made before the one under test.
     fn stored_rule_after(
         waiting: &[(&str, String, (i32, u32, u32))],
         other: Option<(&str, &str)>,
     ) -> Talk {
-        let mut talk = Talk::in_dir(tempfile::tempdir().unwrap(), &["archive"], &["inbox"]);
+        stored_rule_in(&["inbox"], waiting, other)
+    }
+
+    /// `other`: an area and a word of a rule made before the one under test.
+    fn stored_rule_in(
+        sources: &[&str],
+        waiting: &[(&str, String, (i32, u32, u32))],
+        other: Option<(&str, &str)>,
+    ) -> Talk {
+        let mut talk = Talk::in_dir(tempfile::tempdir().unwrap(), &["archive"], sources);
+        for source in sources {
+            std::fs::create_dir_all(talk.path(source)).unwrap();
+        }
         for (month, day) in [(1, 10), (3, 11), (6, 12), (9, 13)] {
             let id = talk.index_document(
                 &format!("archive/Alfa/2020/2020-{month:02}-{day}.pdf"),
@@ -201,6 +212,32 @@ mod tests {
             "the other rule's document stays: {:?}",
             filed.keys()
         );
+    }
+
+    #[test]
+    fn an_empty_first_source_hands_the_archive_moves_to_the_next() {
+        let mut talk = stored_rule_in(
+            &["inbox_a", "inbox"],
+            &[(
+                WAITING,
+                letter("Alfa AG", "05.07.2021", "Rechnung", 77),
+                (2021, 7, 5),
+            )],
+            None,
+        );
+        let before = talk.files();
+
+        talk.press(&ChipReply::RuleNow);
+
+        let filed = talk.files();
+        assert!(filed.contains_key(FILED_AT), "{:?}", filed.keys());
+        assert!(names_below(&talk, "archive/Alfa").is_empty());
+        assert_eq!(names_below(&talk, "archive/Telefon/2020/").len(), 4);
+        assert!(talk.state.session.rule_queue.is_none());
+
+        talk.press(&ChipReply::Undo);
+        talk.press(&ChipReply::PutBack);
+        assert_eq!(talk.files(), before);
     }
 
     #[test]

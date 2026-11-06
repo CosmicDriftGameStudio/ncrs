@@ -104,7 +104,7 @@ All notable changes to this project are documented here. The format follows
   documents from the read folders. Opening a folder that already has a rule
   changes that rule instead of adding a second one. Settings › Rules shows
   "created in chat". After saving, Hermes asks separately whether to move the
-  existing files now: they are renamed on disk, the index and the search
+  existing files now (a click files at once, without asking again): they are renamed on disk, the index and the search
   follow, folders the run empties are removed, and undo brings everything
   back.
 - "New chat" in the chat header starts the conversation over; rules, index and

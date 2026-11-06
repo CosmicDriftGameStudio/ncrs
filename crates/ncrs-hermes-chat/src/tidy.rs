@@ -54,6 +54,7 @@ pub fn begin(state: &mut State, ctx: &Ctx, source: PathBuf) {
         );
         return;
     }
+    state.session.rule_queue = None;
     state.session.tidy = Some(Tidy {
         rule_now: None,
         source: source.clone(),
@@ -70,13 +71,7 @@ pub fn begin(state: &mut State, ctx: &Ctx, source: PathBuf) {
 pub fn source_read(state: &mut State, ctx: &Ctx, reading: &Arc<FolderReading>) {
     let folder = folder_name(ctx, &reading.root);
     if reading.files.is_empty() {
-        if state
-            .session
-            .tidy
-            .as_ref()
-            .is_some_and(|tidy| tidy.rule_now.is_some() && tidy.inside.is_empty())
-            && crate::rule_flow::trial::next_source(state, ctx)
-        {
+        if crate::rule_flow::trial::empty_source(state, ctx) {
             return;
         }
         state.session.tidy = None;
@@ -716,7 +711,9 @@ pub fn filed_done(state: &mut State, ctx: &Ctx, result: Result<RunReport, String
     if let Some((source, left)) = chained {
         archive_run(state, ctx, source, left);
     } else if went_well {
-        crate::rule_flow::trial::next_source(state, ctx);
+        crate::rule_flow::trial::next_source(state, ctx, Vec::new());
+    } else if !went_well {
+        state.session.rule_queue = None;
     }
 }
 
