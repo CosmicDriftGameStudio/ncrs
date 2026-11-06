@@ -78,5 +78,8 @@ sandbox = ["dep:ncrs-sandbox"]
 # for the tests of the app.
 test-support = []
 
+[dev-dependencies]
+tokio = { version = "1", features = ["test-util"] }
+
 [lints]
 workspace = true
