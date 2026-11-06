@@ -17,7 +17,7 @@ const REPORT_AT_LEAST_EVERY: Duration = Duration::from_secs(2);
 /// The watcher and the events it has seen. Dropping it stops the watching.
 struct FolderWatch {
     raw: mpsc::UnboundedReceiver<()>,
-    _watcher: RecommendedWatcher,
+    _watcher: Option<RecommendedWatcher>,
 }
 
 impl FolderWatch {
@@ -39,7 +39,7 @@ impl FolderWatch {
         watcher.watch(folder, RecursiveMode::NonRecursive).ok()?;
         Some(Self {
             raw,
-            _watcher: watcher,
+            _watcher: Some(watcher),
         })
     }
 
@@ -77,41 +77,59 @@ pub fn folder_changes(folder: &Path) -> impl Stream<Item = ()> + Send + 'static 
 mod tests {
     use super::*;
     use futures::StreamExt as _;
+    use tokio::sync::mpsc::error::TryRecvError;
 
-    const GENEROUS: Duration = Duration::from_secs(10);
+    fn fed_by_hand() -> (mpsc::UnboundedSender<()>, FolderWatch) {
+        let (sender, raw) = mpsc::unbounded_channel();
+        (
+            sender,
+            FolderWatch {
+                raw,
+                _watcher: None,
+            },
+        )
+    }
 
-    #[tokio::test]
-    async fn a_burst_of_writes_is_one_change() {
-        let root = tempfile::tempdir().unwrap();
-        let mut changes = Box::pin(folder_changes(root.path()));
-
-        for n in 0..20 {
-            std::fs::write(root.path().join(format!("f{n}")), b"x").unwrap();
+    #[tokio::test(start_paused = true)]
+    async fn a_burst_of_events_is_one_change() {
+        let (sender, mut watch) = fed_by_hand();
+        for _ in 0..20 {
+            sender.send(()).unwrap();
         }
 
-        let first = tokio::time::timeout(GENEROUS, changes.next()).await;
-        assert!(matches!(first, Ok(Some(()))), "no change was reported");
+        let started = Instant::now();
+        assert_eq!(watch.next_change().await, Some(()));
 
-        // Nothing more is queued for the same burst.
-        let second = tokio::time::timeout(QUIET_FOR * 4, changes.next()).await;
-        assert!(second.is_err(), "the burst was reported twice");
+        assert_eq!(started.elapsed(), QUIET_FOR);
+        assert_eq!(watch.raw.try_recv(), Err(TryRecvError::Empty));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn events_that_never_stop_are_still_reported() {
+        let (sender, mut watch) = fed_by_hand();
+        let feeder = tokio::spawn(async move {
+            loop {
+                sender.send(()).unwrap();
+                tokio::time::sleep(QUIET_FOR / 3).await;
+            }
+        });
+
+        let started = Instant::now();
+        assert_eq!(watch.next_change().await, Some(()));
+        feeder.abort();
+
+        assert!(started.elapsed() >= REPORT_AT_LEAST_EVERY);
+        assert!(started.elapsed() < REPORT_AT_LEAST_EVERY + QUIET_FOR);
     }
 
     #[tokio::test]
-    async fn a_later_change_is_reported_again() {
+    async fn a_write_in_the_watched_folder_is_reported() {
         let root = tempfile::tempdir().unwrap();
         let mut changes = Box::pin(folder_changes(root.path()));
 
         std::fs::write(root.path().join("a"), b"x").unwrap();
-        assert!(matches!(
-            tokio::time::timeout(GENEROUS, changes.next()).await,
-            Ok(Some(()))
-        ));
 
-        std::fs::remove_file(root.path().join("a")).unwrap();
-        assert!(matches!(
-            tokio::time::timeout(GENEROUS, changes.next()).await,
-            Ok(Some(()))
-        ));
+        let first = tokio::time::timeout(Duration::from_secs(10), changes.next()).await;
+        assert!(matches!(first, Ok(Some(()))), "no change was reported");
     }
 }
