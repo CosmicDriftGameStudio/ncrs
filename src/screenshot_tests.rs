@@ -140,7 +140,7 @@ fn position_of(entries: &[FileEntry], name: &str) -> usize {
 /// Two realistic panels. The cursor is on `README.md`, `Cargo.toml` and
 /// `CHANGELOG.md` are tagged.
 fn showcase_app() -> App {
-    let mut app = App::with_fixed_panels();
+    let mut app = App::with_fixed_panels().with_version_for_test(env!("CARGO_PKG_VERSION"));
     app.set_visible_rows_for_test(VISIBLE_ROWS);
 
     let project = app.panel_mut_for_test(PanelSide::Left);
