@@ -108,7 +108,7 @@ pub enum ChatResult {
     /// The name of the rule that was stored.
     RuleSaved(Result<String, RuleSaveFailure>),
     RuleTried(Result<RuleTrial, String>),
-    RuleStored(Result<(), RuleSaveFailure>),
+    RuleStored(Result<ncrs_index::RuleSaved, RuleSaveFailure>),
     Filed(Result<RunReport, String>),
     Trashed(Result<TrashReport, String>),
     LastRun(Result<Option<RunSummary>, String>),
@@ -334,17 +334,13 @@ impl ChatAccess {
     }
 
     fn try_rule(&self, spec: RuleSpec, files: &[TryFile]) -> Result<RuleTrial, String> {
+        let replaces =
+            self.with_index(|index| index.rule_replaced_by(&spec).map_err(|err| err.to_string()))?;
         let rules = self
             .rules
             .as_ref()
             .ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
-        let tried = rules.try_rule_with(
-            &RuleTry {
-                replaces: None,
-                spec,
-            },
-            files,
-        )?;
+        let tried = rules.try_rule_with(&RuleTry { replaces, spec }, files)?;
         Ok(RuleTrial {
             matches: tried.documents.len() + tried.more,
             right: tried.in_archive - tried.archive_moves.len(),
@@ -360,14 +356,13 @@ impl ChatAccess {
         })
     }
 
-    fn save_rule(&self, spec: &RuleSpec) -> Result<(), RuleSaveFailure> {
+    fn save_rule(&self, spec: &RuleSpec) -> Result<ncrs_index::RuleSaved, RuleSaveFailure> {
         if let Some(problem) = rule_problem(spec) {
             return Err(RuleSaveFailure::Refused(problem));
         }
         self.with_index_mut(|index| {
             index
-                .create_rule_from(spec, RuleOrigin::Chat)
-                .map(|_| ())
+                .save_rule_from(spec, RuleOrigin::Chat)
                 .map_err(|err| err.to_string())
         })
         .map_err(RuleSaveFailure::Failed)
@@ -380,6 +375,10 @@ impl ChatAccess {
         let mut guard = self.slot.lock().unwrap_or_else(PoisonError::into_inner);
         let index = guard.as_mut().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
         work(index)
+    }
+
+    pub fn rules(&self) -> Result<Vec<Rule>, String> {
+        self.with_index(|index| index.rules().map_err(|err| err.to_string()))
     }
 
     pub fn kinds(&self) -> Result<Kinds, String> {

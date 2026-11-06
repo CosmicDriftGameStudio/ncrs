@@ -521,6 +521,24 @@ fn levels_card(
     }
 }
 
+/// Names the rule that saving takes the place of, found by the name the
+/// levels give the rule; one with the same conditions is only known once the
+/// proposal is made.
+fn existing_rule_note(ctx: &Ctx, flow: &RuleFlow) -> Option<String> {
+    let name = trial::rule_name(flow);
+    let rules = access(ctx)?.rules().ok()?;
+    rules
+        .iter()
+        .any(|rule| rule.spec.name.as_deref() == Some(name.as_str()))
+        .then(|| {
+            fill(
+                ctx.lang,
+                Msg::HermesChatLevelsExistingRule,
+                &[("folder", &flow.folder), ("name", &name)],
+            )
+        })
+}
+
 /// The card of the levels, and under it the files that do not follow them.
 fn levels_parts(state: &State, ctx: &Ctx, poor_fit: bool) -> (Vec<Part>, bool) {
     let Some(flow) = state.session.rule.as_ref() else {
@@ -540,6 +558,9 @@ fn levels_parts(state: &State, ctx: &Ctx, poor_fit: bool) -> (Vec<Part>, bool) {
         )
     });
     let mut parts = vec![Part::Levels(levels_card(ctx, flow, &kinds, footer, None))];
+    if let Some(note) = existing_rule_note(ctx, flow) {
+        parts.push(Part::Text(note));
+    }
     let fitting = written.len() - misfits.len();
     let poor = poor_fit && fitting * 100 < written.len() * FIT_AT_LEAST_PERCENT;
     if poor {
@@ -867,6 +888,7 @@ fn propose(state: &mut State, ctx: &Ctx, mut spec: RuleSpec) {
     };
     spec.filing_pattern = flow.pattern();
     spec.confirmed = true;
+    spec.name = Some(trial::rule_name(flow));
     spec.enabled = true;
     if let Some(problem) = rule_problem(&spec) {
         let reason = fill(
@@ -882,6 +904,7 @@ fn propose(state: &mut State, ctx: &Ctx, mut spec: RuleSpec) {
     work(state, ChatWork::RuleTrial { spec, files }, None);
 }
 
+mod source;
 mod trial;
 
 pub use trial::{create, file_now, only_new, stored, trial_done};
