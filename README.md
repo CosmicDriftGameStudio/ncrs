@@ -25,10 +25,19 @@ behind the order.
 
 | System | Command |
 | --- | --- |
-| macOS | `brew install --cask cosmicdriftgamestudio/ncrs/ncrs` |
+| macOS | `brew install --cask ncrs`, after adding the tap below |
 | Debian, Ubuntu | `sudo apt install ncrs`, after adding the repository below |
 | Fedora | `sudo dnf install ncrs`, after adding the repository below |
 | openSUSE | `sudo zypper install ncrs`, after adding the repository below |
+
+On macOS, add the tap once. Homebrew only loads casks from a tap it was told
+to trust:
+
+```bash
+brew tap CosmicDriftGameStudio/ncrs
+brew trust --cask cosmicdriftgamestudio/ncrs/ncrs
+brew install --cask ncrs
+```
 
 On Debian and Ubuntu, add the key and the repository once:
 
