@@ -428,6 +428,27 @@ mod tests {
         assert!(view(&search).folder_missing);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn a_folder_that_may_not_be_read_counts_as_missing() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let from = tempfile::tempdir().unwrap();
+        let locked = from.path().join("locked");
+        std::fs::create_dir(&locked).unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let mut search = open_search(from.path());
+
+        send(
+            &mut search,
+            SearchMessage::FolderChanged(locked.display().to_string()),
+            &ctx(false),
+        );
+
+        let missing = view(&search).folder_missing;
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(missing);
+    }
+
     #[test]
     fn a_missing_folder_is_searched_again_once_it_exists() {
         let from = tempfile::tempdir().unwrap();

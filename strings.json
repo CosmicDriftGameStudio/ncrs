@@ -1022,9 +1022,9 @@
     },
     {
       "key": "search.folder_missing",
-      "context": "Shown in the empty result area of the search view when the folder typed in the folder field does not exist or is not a folder, so nothing is searched.",
-      "en": "Folder not found",
-      "de": "Ordner nicht gefunden"
+      "context": "Shown in the empty result area of the search view when the folder typed in the folder field does not exist, is not a folder or may not be read, so nothing is searched.",
+      "en": "Folder not found or not readable",
+      "de": "Ordner nicht gefunden oder nicht lesbar"
     },
     {
       "key": "search.names_placeholder",

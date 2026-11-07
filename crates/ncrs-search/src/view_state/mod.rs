@@ -51,7 +51,7 @@ impl SearchField {
 }
 
 /// The folder a typed text names: `~` stands for the home folder. `None` when
-/// it is not an existing folder.
+/// it is not an existing folder this user may read.
 pub fn resolve_folder(text: &str) -> Option<PathBuf> {
     let trimmed = text.trim();
     let expanded = match trimmed.strip_prefix('~') {
@@ -62,7 +62,7 @@ pub fn resolve_folder(text: &str) -> Option<PathBuf> {
         _ if trimmed.is_empty() => return None,
         _ => PathBuf::from(trimmed),
     };
-    expanded.is_dir().then_some(expanded)
+    std::fs::read_dir(&expanded).is_ok().then_some(expanded)
 }
 
 /// A file with matches or a folder with a matching name, in the order the
