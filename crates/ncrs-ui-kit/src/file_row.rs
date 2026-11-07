@@ -163,17 +163,7 @@ pub fn file_row<'a, M: Clone + 'a>(
         crate::APP_FONT
     };
 
-    // Display only. The identity is `entry.name` as the filesystem spells it;
-    // this is the lossy form, computed here and thrown away. A name that is not
-    // valid UTF-8 shows as U+FFFD, which is what the platform's own file
-    // managers do.
-    let name = if entry.is_dir && !entry.is_parent {
-        format!("/{}", entry.name.to_string_lossy())
-    } else if entry.is_symlink {
-        format!("~{}", entry.name.to_string_lossy())
-    } else {
-        entry.name.to_string_lossy().into_owned()
-    };
+    let name = display_name(entry);
 
     let cell = |content: String| {
         text(content)
@@ -541,6 +531,22 @@ impl<'a, M: 'a> HermesCell<'a, M> {
     }
 }
 
+/// Display only. The identity is `entry.name` as the filesystem spells it;
+/// this is the lossy form, computed here and thrown away. A name that is not
+/// valid UTF-8 shows as U+FFFD, which is what the platform's own file
+/// managers do. A link is checked first: a link to a folder is a folder too,
+/// and would otherwise look like a real one.
+fn display_name(entry: &FileEntry) -> String {
+    let name = entry.name.to_string_lossy();
+    if entry.is_symlink {
+        format!("~{name}")
+    } else if entry.is_dir && !entry.is_parent {
+        format!("/{name}")
+    } else {
+        name.into_owned()
+    }
+}
+
 /// `content` with `label` in a small box on hover.
 fn hint<'a, M: 'a>(content: Element<'a, M>, label: String, palette: &Palette) -> Element<'a, M> {
     tooltip(
@@ -590,6 +596,23 @@ mod tests {
         assert!(fitted.chips.len() < 3);
         assert_eq!(fitted.chips.len() + fitted.more, 3);
         assert!(fitted.more > 0);
+    }
+
+    #[test]
+    fn a_link_to_a_folder_shows_as_a_link_not_as_a_folder() {
+        let mut entry = FileEntry {
+            name: "Dokumente".into(),
+            path: "/home/marc/Dokumente".into(),
+            is_dir: true,
+            is_symlink: true,
+            is_parent: false,
+            size: 0,
+            modified: None,
+            folder_size: None,
+        };
+        assert_eq!(display_name(&entry), "~Dokumente");
+        entry.is_symlink = false;
+        assert_eq!(display_name(&entry), "/Dokumente");
     }
 
     #[test]
