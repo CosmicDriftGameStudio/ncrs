@@ -47,7 +47,9 @@ if ($Uninstall) {
 $arch = $env:PROCESSOR_ARCHITECTURE
 switch ($arch) {
     'AMD64' { $cpu = 'x86_64' }
-    'ARM64' { $cpu = 'aarch64' }
+    # There is no ARM64 build for Windows; Windows on ARM runs the x64 one
+    # under its built-in emulation.
+    'ARM64' { $cpu = 'x86_64' }
     'x86'   { $cpu = 'i686' }
     default {
         Write-Error "unsupported architecture: $arch"
@@ -75,7 +77,7 @@ try {
         Invoke-WebRequest -Uri "$base/$archive" -OutFile $archivePath -UseBasicParsing
     }
     catch {
-        Write-Error "no release found for $target at $base/$archive`n   (this is expected until a v* tag exists)"
+        Write-Error "no release found for $target at $base/$archive"
         return
     }
 
