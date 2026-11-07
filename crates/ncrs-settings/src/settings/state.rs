@@ -486,6 +486,7 @@ fn fields_of(change: &SettingChange) -> Vec<SettingField> {
         SettingChange::AiProvider(_) => vec![SettingField::AiEndpoint, SettingField::AiModel],
         SettingChange::Preset(_)
         | SettingChange::Language(_)
+        | SettingChange::CheckForUpdates(_)
         | SettingChange::HermesEnabled(_)
         | SettingChange::Load(_)
         | SettingChange::AiEnabled(_)

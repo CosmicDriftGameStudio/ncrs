@@ -215,6 +215,7 @@ impl Context<'_> {
             text: file.text.as_deref().unwrap_or_default(),
             fields: &file.fields,
             path: Some(&file.relative_path),
+            location: None,
             sender_aliases: self.sender_aliases,
             manual_fields: &[],
             kinds: self.kinds,

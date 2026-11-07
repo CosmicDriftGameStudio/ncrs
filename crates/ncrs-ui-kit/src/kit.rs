@@ -36,6 +36,7 @@ pub fn condition_kind_name(kind: ConditionKind) -> Msg {
         ConditionKind::Folder => Msg::ConditionKindFolder,
         ConditionKind::Tag => Msg::ConditionKindTag,
         ConditionKind::Kind => Msg::ConditionKindKind,
+        ConditionKind::ReadFolder => Msg::ConditionKindReadFolder,
     }
 }
 

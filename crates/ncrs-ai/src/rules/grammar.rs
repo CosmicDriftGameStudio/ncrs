@@ -3,11 +3,10 @@
 //! language, so a new placeholder or condition kind reaches the model without
 //! anyone editing a list here.
 
-use ncrs_index::ConditionKind;
 use ncrs_intake::FILING_PLACEHOLDERS;
 
 use super::levels::SEPARATORS;
-use super::vocabulary::{condition_word, COMBINATORS};
+use super::vocabulary::{condition_word, COMBINATORS, MODEL_CONDITIONS};
 
 /// Up to seven folder levels and a file name level, each of one to four
 /// parts: a fixed text or a placeholder name. Every text has exactly one parse
@@ -56,7 +55,7 @@ fn level_rules() -> String {
 
 /// The whole rule: `{"match":"all","conditions":[...],"ordner":[...],"datei":...}`.
 pub fn generate_grammar() -> String {
-    let kinds = alternatives(ConditionKind::ALL.into_iter().map(condition_word));
+    let kinds = alternatives(MODEL_CONDITIONS.into_iter().map(condition_word));
     let combinators = alternatives(
         COMBINATORS
             .into_iter()
@@ -97,7 +96,7 @@ mod tests {
     #[test]
     fn the_words_come_from_the_constants() {
         let generate = generate_grammar();
-        for kind in ConditionKind::ALL {
+        for kind in MODEL_CONDITIONS {
             assert!(generate.contains(&format!("\\\"{}\\\"", condition_word(kind))));
         }
         for combinator in COMBINATORS {

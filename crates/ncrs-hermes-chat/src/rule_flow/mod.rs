@@ -912,6 +912,8 @@ fn propose(state: &mut State, ctx: &Ctx, mut spec: RuleSpec) {
 mod source;
 pub mod trial;
 
+pub use source::limit_to_source;
+
 pub use trial::{create, file_now, only_new, stored, trial_done};
 
 /// What a pattern writes has no extension; the file it is compared with has.

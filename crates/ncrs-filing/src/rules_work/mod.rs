@@ -274,6 +274,7 @@ impl RulesAccess {
                     text: &subject.text,
                     fields: &subject.fields,
                     path: Some(&path),
+                    location: Some(&location.path),
                     sender_aliases: &aliases,
                     manual_fields: &subject.manual_fields,
                     kinds: &kinds,

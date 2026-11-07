@@ -3398,6 +3398,7 @@ dependencies = [
  "ncrs-search",
  "ncrs-settings",
  "ncrs-ui-kit",
+ "ncrs-updates",
  "objc2 0.6.5",
  "objc2-app-kit 0.3.2",
  "objc2-foundation 0.3.2",
@@ -3771,6 +3772,23 @@ dependencies = [
  "ncrs-i18n",
  "ncrs-index",
  "ttf-parser",
+]
+
+[[package]]
+name = "ncrs-updates"
+version = "0.0.0"
+dependencies = [
+ "iced",
+ "iced_test",
+ "jsonc-parser",
+ "ncrs-i18n",
+ "ncrs-ui-kit",
+ "semver",
+ "serde",
+ "tempfile",
+ "tokio",
+ "toml_edit 0.25.17+spec-1.1.0",
+ "ureq",
 ]
 
 [[package]]

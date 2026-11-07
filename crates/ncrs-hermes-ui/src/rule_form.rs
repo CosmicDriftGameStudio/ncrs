@@ -508,6 +508,30 @@ mod tests {
     }
 
     #[test]
+    fn a_read_folder_condition_survives_opening_and_saving_the_form() {
+        for negated in [false, true] {
+            let mut rule = stored_rule();
+            let condition = Condition {
+                kind: ConditionKind::ReadFolder,
+                value: "/Users/marc/Scans".to_owned(),
+                negated,
+            };
+            rule.spec.conditions = RuleConditions::all_of(vec![condition.clone()]);
+            let mut form = RuleForm::edit(&rule);
+            assert!(form
+                .conditions
+                .kind_choices(0)
+                .contains(&ConditionKind::ReadFolder));
+
+            let RuleSave::Update(_, spec) = form.save_request().unwrap() else {
+                panic!("not an update");
+            };
+
+            assert_eq!(spec.conditions, RuleConditions::all_of(vec![condition]));
+        }
+    }
+
+    #[test]
     fn an_edit_form_keeps_what_it_does_not_show() {
         let rule = stored_rule();
         let mut form = RuleForm::edit(&rule);

@@ -1,0 +1,38 @@
+[package]
+name = "ncrs-updates"
+version = "0.0.0"
+edition = "2021"
+# Same as the root package: one place decides the compiler.
+rust-version = "1.98"
+description = "The update check of ncrs: how this copy was installed, the look-up of the newest release and the notice about it"
+license = "MIT"
+publish = false
+
+[dependencies]
+# Same as the kit: no renderer or window system, the app picks them.
+iced = { version = "0.14", default-features = false, features = ["tokio", "advanced"] }
+ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
+ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0" }
+# The release look-up runs on the blocking pool.
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
+# One HTTPS request to GitHub, blocking, only in builds outside the sandbox.
+ureq = { version = "=3.5.0", default-features = false, features = ["rustls"] }
+# Reads the answer of GitHub; the same parser as the theme fetch.
+jsonc-parser = { version = "=0.34.0", default-features = false }
+# Compares the release with the running version.
+semver = "=1.0.28"
+serde = { version = "1", features = ["derive"] }
+# The remembered check: same format as the session state.
+toml_edit = { version = "0.25", default-features = false, features = ["parse", "serde", "display"] }
+
+[features]
+# The App Store build: no request, no check.
+sandbox = []
+
+[dev-dependencies]
+tempfile = "3.27"
+iced = { version = "0.14", default-features = false, features = ["tokio", "advanced", "tiny-skia"] }
+iced_test = "0.14"
+
+[lints]
+workspace = true

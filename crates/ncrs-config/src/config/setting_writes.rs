@@ -35,6 +35,24 @@ pub fn language_setting(language: Language) -> Setting {
     }
 }
 
+pub fn check_for_updates_setting(enabled: bool) -> Setting {
+    Setting {
+        tables: &[],
+        key: "check_for_updates",
+        value: Some(enabled.into()),
+    }
+}
+
+/// Sets the top-level `check_for_updates`; same guarantees as
+/// [`write_theme_preset`].
+pub fn write_check_for_updates(path: &Path, enabled: bool) -> Result<Config, FilingWriteError> {
+    write_setting(
+        path,
+        check_for_updates_setting(enabled),
+        home_from_env().as_deref(),
+    )
+}
+
 pub fn filing_enabled_setting(enabled: bool) -> Setting {
     Setting {
         tables: &[MODULES_TABLE, FILING_TABLE],

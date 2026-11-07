@@ -70,6 +70,9 @@ pub struct SettingsView<'a> {
     pub home: &'a Path,
     /// How many actions have keys other than their built-in ones.
     pub keys_changed: usize,
+    /// Whether the Updates page is in the list; the App Store build makes no
+    /// request and leaves it out.
+    pub updates_listed: bool,
     pub lang: Language,
     pub palette: &'a Palette,
 }
@@ -144,6 +147,7 @@ fn feature_label(feature: SettingsFeature) -> Msg {
         SettingsFeature::Keys => Msg::SettingsFeatureKeys,
         SettingsFeature::Servers => Msg::SettingsFeatureServers,
         SettingsFeature::System => Msg::SettingsFeatureSystem,
+        SettingsFeature::Updates => Msg::SettingsFeatureUpdates,
         SettingsFeature::Index => Msg::SettingsFeatureIndex,
         SettingsFeature::Hermes => Msg::SettingsFeatureHermes,
         SettingsFeature::Rules => Msg::SettingsFeatureRules,
@@ -162,6 +166,7 @@ fn feature_theme_name(feature: SettingsFeature) -> Option<FuturamaName> {
         | SettingsFeature::Keys
         | SettingsFeature::Servers
         | SettingsFeature::System
+        | SettingsFeature::Updates
         | SettingsFeature::Index
         | SettingsFeature::Rules
         | SettingsFeature::Tags
@@ -189,6 +194,7 @@ fn feature_suffix(feature: SettingsFeature) -> Option<Msg> {
         | SettingsFeature::Keys
         | SettingsFeature::Servers
         | SettingsFeature::System
+        | SettingsFeature::Updates
         | SettingsFeature::Index
         | SettingsFeature::Rules
         | SettingsFeature::Tags
@@ -206,6 +212,7 @@ fn feature_beta_mark(feature: SettingsFeature) -> Option<Msg> {
         | SettingsFeature::Keys
         | SettingsFeature::Servers
         | SettingsFeature::System
+        | SettingsFeature::Updates
         | SettingsFeature::Index
         | SettingsFeature::Rules
         | SettingsFeature::Tags
@@ -222,6 +229,7 @@ fn feature_intro(feature: SettingsFeature) -> Msg {
         SettingsFeature::Keys => Msg::SettingsFeatureKeysIntro,
         SettingsFeature::Servers => Msg::SettingsFeatureServersIntro,
         SettingsFeature::System => Msg::SettingsFeatureSystemIntro,
+        SettingsFeature::Updates => Msg::SettingsFeatureUpdatesIntro,
         SettingsFeature::Index => Msg::SettingsFeatureIndexIntro,
         SettingsFeature::Hermes => Msg::SettingsFeatureHermesIntro,
         SettingsFeature::Rules => Msg::SettingsFeatureRulesIntro,
@@ -245,7 +253,8 @@ fn feature_config_place(feature: SettingsFeature) -> Option<&'static str> {
         SettingsFeature::Rules
         | SettingsFeature::Tags
         | SettingsFeature::Reports
-        | SettingsFeature::ReadErrors => None,
+        | SettingsFeature::ReadErrors
+        | SettingsFeature::Updates => None,
     }
 }
 
@@ -286,7 +295,8 @@ fn groups_of<'a>(feature: SettingsFeature, view: &SettingsView<'a>) -> Vec<Group
         SettingsFeature::Rules
         | SettingsFeature::Tags
         | SettingsFeature::Reports
-        | SettingsFeature::ReadErrors => Vec::new(),
+        | SettingsFeature::ReadErrors
+        | SettingsFeature::Updates => Vec::new(),
     }
 }
 
@@ -330,7 +340,10 @@ pub use ncrs_config::SettingsTarget;
 pub fn search_targets(view: &SettingsView<'_>) -> Vec<SettingsTarget> {
     let lang = view.lang;
     let mut targets = Vec::new();
-    for feature in SettingsFeature::ALL {
+    for feature in SettingsFeature::ALL
+        .into_iter()
+        .filter(|&feature| is_listed(feature, view))
+    {
         let page = lang.text(feature_label(feature));
         targets.push(SettingsTarget {
             feature,
@@ -359,11 +372,18 @@ pub fn search_targets(view: &SettingsView<'_>) -> Vec<SettingsTarget> {
     targets
 }
 
+/// Every page is in the list but the Updates page of a build that makes no
+/// update check.
+fn is_listed(feature: SettingsFeature, view: &SettingsView<'_>) -> bool {
+    feature != SettingsFeature::Updates || view.updates_listed
+}
+
 /// The features the search leaves, in their order.
 fn listed_features(view: &SettingsView<'_>) -> Vec<SettingsFeature> {
     let query = view.state.query.trim().to_lowercase();
     SettingsFeature::ALL
         .into_iter()
+        .filter(|&feature| is_listed(feature, view))
         .filter(|&feature| feature_matches(feature, &query, view))
         .collect()
 }

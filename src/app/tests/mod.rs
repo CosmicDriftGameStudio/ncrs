@@ -352,6 +352,8 @@ mod settings_tab_tests;
 // lint is meant for the production paths.
 #[cfg(test)]
 mod about_tests;
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
 #[allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -376,6 +378,14 @@ mod remote_panel_tests;
 )]
 #[cfg(test)]
 mod terminal_tests;
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod updates_tests;
 // reason: a failing assertion is the signal in a test
 #[allow(
     clippy::unwrap_used,

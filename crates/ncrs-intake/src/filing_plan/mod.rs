@@ -38,6 +38,10 @@ pub struct PlanInput<'a> {
     /// Where the document lies now, in the inbox or the archive; `None` when
     /// the caller has no path, which makes a folder condition unusable.
     pub path: Option<&'a Path>,
+    /// The root of the read or archive location the document lies under;
+    /// `None` when the caller does not know it, which makes a read-folder
+    /// condition unusable.
+    pub location: Option<&'a Path>,
     /// Names the sender condition treats as one sender.
     pub sender_aliases: &'a SenderAliases,
     /// Fields the user set by hand: a rule does not overwrite them, they keep
@@ -206,6 +210,7 @@ fn condition_outcome(
         ConditionKind::TaxId => tax_id_holds(input.text, &condition.value),
         ConditionKind::Recipient => recipient_holds(input.text, &condition.value),
         ConditionKind::Folder => folder_holds(input.path?, &condition.value)?,
+        ConditionKind::ReadFolder => input.location? == Path::new(condition.value.trim()),
         ConditionKind::Tag => input
             .fields
             .all_tags(&input.kinds.catalog)

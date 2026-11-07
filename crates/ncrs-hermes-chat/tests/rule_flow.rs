@@ -928,4 +928,78 @@ mod tests {
             say(Msg::HermesChatProposalFromAll, &[])
         );
     }
+
+    fn only_from_label(name: &str) -> String {
+        say(Msg::HermesChatRuleOnlyFrom, &[("folder", name)])
+    }
+
+    #[test]
+    fn with_one_read_folder_the_proposal_offers_no_source_chips() {
+        let mut talk = archive_talk();
+        propose_for_telefon(&mut talk);
+        let labels = talk.labels();
+        assert!(!labels.contains(&only_from_label("inbox")));
+        assert!(!labels.contains(&say(Msg::HermesChatRuleFromAllSources, &[])));
+    }
+
+    #[test]
+    fn with_two_read_folders_the_proposal_offers_a_chip_for_each() {
+        let mut talk = archive_talk_reading(&["inbox", "scans"]);
+        propose_for_telefon(&mut talk);
+        let labels = talk.labels();
+        assert!(labels.contains(&only_from_label("inbox")));
+        assert!(labels.contains(&only_from_label("scans")));
+        assert!(!labels.contains(&say(Msg::HermesChatRuleFromAllSources, &[])));
+    }
+
+    #[test]
+    fn limiting_the_rule_to_a_read_folder_sets_the_condition_and_names_it() {
+        let mut talk = archive_talk_reading(&["inbox", "scans"]);
+        talk.index_inbox_document(
+            "inbox/rechnung.pdf",
+            &letter("Alfa AG", "10.01.2020", "Rechnung", 10),
+        );
+        propose_for_telefon(&mut talk);
+        let scans = talk.path("inbox");
+        talk.press(&ChipReply::OnlyFrom(scans.clone()));
+
+        let card = talk.proposal().expect("a proposal");
+        assert_eq!(card.facts[1].value, "inbox");
+        let labels = talk.labels();
+        assert!(labels.contains(&say(Msg::HermesChatRuleFromAllSources, &[])));
+        assert!(!labels.contains(&only_from_label("inbox")));
+
+        talk.press(&ChipReply::RuleCreate);
+        let conditions = the_only_rule(&talk).spec.conditions;
+        assert!(conditions.list.contains(&ncrs_index::Condition::new(
+            ncrs_index::ConditionKind::ReadFolder,
+            scans.to_string_lossy()
+        )));
+    }
+
+    #[test]
+    fn going_back_to_all_read_folders_removes_the_condition() {
+        let mut talk = archive_talk_reading(&["inbox", "scans"]);
+        talk.index_inbox_document(
+            "inbox/rechnung.pdf",
+            &letter("Alfa AG", "10.01.2020", "Rechnung", 10),
+        );
+        propose_for_telefon(&mut talk);
+        let inbox = talk.path("inbox");
+        talk.press(&ChipReply::OnlyFrom(inbox));
+        talk.press(&ChipReply::FromAllSources);
+
+        let card = talk.proposal().expect("a proposal");
+        assert_eq!(
+            card.facts[1].value,
+            say(Msg::HermesChatProposalFromAll, &[])
+        );
+        talk.press(&ChipReply::RuleCreate);
+        assert!(the_only_rule(&talk)
+            .spec
+            .conditions
+            .list
+            .iter()
+            .all(|condition| condition.kind != ncrs_index::ConditionKind::ReadFolder));
+    }
 }

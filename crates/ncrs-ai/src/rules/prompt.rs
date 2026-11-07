@@ -4,12 +4,12 @@
 
 use std::fmt::Write as _;
 
-use ncrs_index::{ConditionKind, DocumentFields, KindLanguage, Kinds};
+use ncrs_index::{DocumentFields, KindLanguage, Kinds};
 use ncrs_intake::{parse_date, FILING_PLACEHOLDERS};
 
 use super::annotate::annotated_paths;
 use super::levels::Levels;
-use super::vocabulary::{condition_meaning, condition_word, placeholder_meaning};
+use super::vocabulary::{condition_meaning, condition_word, placeholder_meaning, MODEL_CONDITIONS};
 
 const SYSTEM_PROMPT_TEXT: &str = include_str!("prompt.txt");
 
@@ -105,7 +105,7 @@ pub fn system_prompt() -> String {
         })
         .collect::<Vec<_>>()
         .join("\n");
-    let conditions = ConditionKind::ALL
+    let conditions = MODEL_CONDITIONS
         .into_iter()
         .map(|kind| format!("- {}: {}", condition_word(kind), condition_meaning(kind)))
         .collect::<Vec<_>>()
@@ -202,7 +202,7 @@ mod tests {
         for name in FILING_PLACEHOLDERS {
             assert!(prompt.contains(&format!("- {{{name}}}:")), "{name}");
         }
-        for kind in ConditionKind::ALL {
+        for kind in MODEL_CONDITIONS {
             assert!(
                 prompt.contains(&format!("- {}:", condition_word(kind))),
                 "{kind:?}"

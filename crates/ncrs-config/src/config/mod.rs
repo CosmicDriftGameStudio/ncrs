@@ -65,6 +65,10 @@ pub struct Config {
     /// Set when `lang` names no known language; English is used then.
     #[serde(skip)]
     pub language_warning: Option<LanguageWarning>,
+    /// The `check_for_updates` switch; `None` leaves it to how this copy was
+    /// installed.
+    #[serde(default)]
+    pub check_for_updates: Option<bool>,
     #[serde(default)]
     pub open: OpenPrograms,
     /// The `[keys]` section as written; `load` turns it into `keymap`.
@@ -185,10 +189,10 @@ pub use self::sections::{
     ServerSection, ThemeEntry, ThemeSection, VscodeWarning,
 };
 pub use self::setting_writes::{
-    remove_vscode_theme, write_ai_enabled, write_ai_provider, write_color, write_default_pattern,
-    write_file_list_tags, write_filing_enabled, write_filing_load, write_keys, write_language,
-    write_own_details, write_program, write_system_settings, write_theme_preset, AiProviderChoice,
-    KeyChange, OwnDetail,
+    remove_vscode_theme, write_ai_enabled, write_ai_provider, write_check_for_updates, write_color,
+    write_default_pattern, write_file_list_tags, write_filing_enabled, write_filing_load,
+    write_keys, write_language, write_own_details, write_program, write_system_settings,
+    write_theme_preset, AiProviderChoice, KeyChange, OwnDetail,
 };
 pub use self::write_support::one_config_writer;
 use self::write_support::*;

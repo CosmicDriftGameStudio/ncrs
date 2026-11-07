@@ -792,3 +792,17 @@ fn a_config_of_before_the_settings_pages_still_loads() {
         Some(LocationMode::Archive)
     );
 }
+
+#[test]
+fn the_update_check_setting_is_off_on_or_left_to_the_channel() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = write(&dir, b"# mine\n");
+    assert_eq!(load_text("").check_for_updates, None);
+    let on = write_check_for_updates(&path, true).unwrap();
+    assert_eq!(on.check_for_updates, Some(true));
+    let off = write_check_for_updates(&path, false).unwrap();
+    assert_eq!(off.check_for_updates, Some(false));
+    let written = std::fs::read_to_string(&path).unwrap();
+    assert!(written.contains("# mine\n"), "{written}");
+    assert!(written.contains("check_for_updates = false"), "{written}");
+}

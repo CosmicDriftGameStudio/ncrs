@@ -184,6 +184,7 @@ mod settings_facts;
 mod startup;
 mod subscription;
 mod update;
+mod updates;
 mod view;
 
 use self::dialogs::*;
@@ -335,6 +336,12 @@ pub struct App {
     search: ncrs_search::Search,
     /// The System page (F12) and the badge in the status bar.
     monitor: ncrs_monitor::State,
+    /// The check for a newer release and what it found.
+    updates: ncrs_updates::State,
+    /// The `check_for_updates` setting; `None` follows how ncrs was installed.
+    update_check: Option<bool>,
+    /// Asks GitHub for the newest release. Injected so tests need no network.
+    fetch_latest_release: ncrs_updates::FetchFn,
     /// The Hermes chat (F2): its thread is kept when it is closed.
     hermes_chat: ncrs_hermes_chat::State,
     /// The local model the chat talks to; shared with the field AI, created on first use.

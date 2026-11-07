@@ -3,6 +3,9 @@ use crate::app::*;
 /// How often the working line of the chat moves and recounts.
 const HERMES_CHAT_TICK_EVERY: std::time::Duration = std::time::Duration::from_millis(250);
 
+/// How often an open app asks the update check whether a day has passed.
+const UPDATE_CHECK_ASKS_EVERY: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+
 #[cfg(target_os = "macos")]
 fn native_menu_events() -> Subscription<Message> {
     native_menu::events()
@@ -111,6 +114,14 @@ impl App {
                     iced::time::every(every).map(|_| Message::Monitor(MonitorMessage::Tick))
                 }
                 None => Subscription::none(),
+            },
+            // The check itself holds back to once a day; the hourly ask is for an
+            // app that stays open for days.
+            if self.update_check_runs() {
+                iced::time::every(UPDATE_CHECK_ASKS_EVERY)
+                    .map(|_| Message::Updates(ncrs_updates::Message::CheckDue))
+            } else {
+                Subscription::none()
             },
             if self.hermes_chat_is_working() {
                 iced::time::every(HERMES_CHAT_TICK_EVERY)

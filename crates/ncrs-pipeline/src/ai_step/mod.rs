@@ -315,6 +315,7 @@ impl AiStep {
                         text,
                         fields,
                         path: Some(location_path),
+                        location: Some(&item.location.path),
                         sender_aliases: &sender_aliases,
                         manual_fields: &manual_fields,
                         kinds: &kinds,

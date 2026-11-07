@@ -9,6 +9,7 @@ pub enum SettingsFeature {
     Keys,
     Servers,
     System,
+    Updates,
     Index,
     Hermes,
     Rules,
@@ -27,11 +28,12 @@ pub enum SettingsGroup {
 }
 
 impl SettingsFeature {
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 13] = [
         Self::Look,
         Self::Language,
         Self::Keys,
         Self::System,
+        Self::Updates,
         Self::Programs,
         Self::Servers,
         Self::Index,
@@ -47,13 +49,15 @@ impl SettingsFeature {
     pub fn is_filled_by_app(self) -> bool {
         matches!(
             self,
-            Self::Rules | Self::Tags | Self::Reports | Self::ReadErrors
+            Self::Rules | Self::Tags | Self::Reports | Self::ReadErrors | Self::Updates
         )
     }
 
     pub fn group(self) -> SettingsGroup {
         match self {
-            Self::Look | Self::Language | Self::Keys | Self::System => SettingsGroup::General,
+            Self::Look | Self::Language | Self::Keys | Self::System | Self::Updates => {
+                SettingsGroup::General
+            }
             Self::Programs | Self::Servers => SettingsGroup::Files,
             Self::Index | Self::ReadErrors | Self::Reports => SettingsGroup::Documents,
             Self::Hermes | Self::Rules | Self::Tags => SettingsGroup::Hermes,
@@ -81,8 +85,8 @@ mod tests {
         assert_eq!(
             SettingsFeature::ALL,
             [
-                Look, Language, Keys, System, Programs, Servers, Index, ReadErrors, Reports,
-                Hermes, Rules, Tags
+                Look, Language, Keys, System, Updates, Programs, Servers, Index, ReadErrors,
+                Reports, Hermes, Rules, Tags
             ]
         );
         let expected = [
@@ -90,6 +94,7 @@ mod tests {
             (Language, SettingsGroup::General),
             (Keys, SettingsGroup::General),
             (System, SettingsGroup::General),
+            (Updates, SettingsGroup::General),
             (Programs, SettingsGroup::Files),
             (Servers, SettingsGroup::Files),
             (Index, SettingsGroup::Documents),

@@ -272,6 +272,11 @@ pub enum Message {
     Search(SearchMessage),
     // --- The System page (F12) ---
     Monitor(ncrs_monitor::MonitorMessage),
+    // --- The check for a newer release ---
+    Updates(ncrs_updates::Message),
+    /// The version at the right of the status bar: the Updates page, or the
+    /// About card where the build has no update check.
+    VersionPressed,
     HitList(HitListMessage),
     Trash(TrashMessage),
 

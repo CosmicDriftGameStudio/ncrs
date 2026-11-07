@@ -29,6 +29,8 @@ use crate::theme_fetch::{Fetched, Installed};
 pub enum SettingChange {
     Preset(ThemePreset),
     Language(Language),
+    /// The `check_for_updates` switch.
+    CheckForUpdates(bool),
     HermesEnabled(bool),
     Load(Load),
     AiEnabled(bool),

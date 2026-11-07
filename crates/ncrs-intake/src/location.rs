@@ -31,6 +31,15 @@ pub fn relative_to_location<'a>(path: &'a Path, roots: &[PathBuf]) -> &'a Path {
         .unwrap_or(path)
 }
 
+/// The innermost location root the path lies under.
+pub fn location_of<'a>(path: &Path, roots: &'a [PathBuf]) -> Option<&'a Path> {
+    roots
+        .iter()
+        .filter(|root| path.starts_with(root))
+        .max_by_key(|root| root.components().count())
+        .map(PathBuf::as_path)
+}
+
 impl Location {
     /// The path is canonicalised and must be an existing directory. Walk and
     /// watcher both work on this root: on macOS FSEvents reports

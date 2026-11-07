@@ -12,7 +12,8 @@
 //!
 //! `NCRS_DISPLAY_VERSION` is the version the status bar shows: the plain
 //! version for a build of its release tag or outside git, otherwise
-//! `<version>-dev+<short commit>`.
+//! `<version> (<short commit>)`. The app tells a development build from the
+//! release by the two differing.
 
 use std::env;
 use std::process::Command;
@@ -63,7 +64,7 @@ fn display_version() -> String {
         return version;
     }
     match git(&["rev-parse", "--short", "HEAD"]) {
-        Some(commit) => format!("{version}-dev+{commit}"),
+        Some(commit) => format!("{version} ({commit})"),
         None => version,
     }
 }
