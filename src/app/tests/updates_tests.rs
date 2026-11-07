@@ -13,12 +13,16 @@ fn found(app: &mut App, body: &str) {
     drop(app.update(Message::Updates(ncrs_updates::Message::Checked(release))));
 }
 
+/// The App Store build makes no request, so it never shows the dot.
 #[test]
 fn a_newer_release_puts_its_version_on_the_status_bar_badge() {
     let mut app = App::with_fixed_panels();
     assert_eq!(app.newer_version_text(), None);
     found(&mut app, NEWER_RELEASE);
-    assert_eq!(app.newer_version_text().as_deref(), Some("1.3.0"));
+    assert_eq!(
+        app.newer_version_text().as_deref(),
+        ncrs_updates::CHECK_AVAILABLE.then_some("1.3.0")
+    );
 }
 
 #[test]
