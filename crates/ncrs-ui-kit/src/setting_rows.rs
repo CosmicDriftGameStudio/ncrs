@@ -32,6 +32,9 @@ pub enum RowKey<M> {
         choices: Vec<M>,
         selected: usize,
     },
+    /// A row with several buttons: Left and Right choose one, Enter and
+    /// Space press it. Left on the first goes back to the list of pages.
+    Buttons(Vec<M>),
 }
 
 impl<M> RowKey<M> {
@@ -44,6 +47,7 @@ impl<M> RowKey<M> {
                 next: wrap(next),
             },
             Self::Text(id) => RowKey::Text(id),
+            Self::Buttons(messages) => RowKey::Buttons(messages.into_iter().map(wrap).collect()),
             Self::Dropdown {
                 labels,
                 choices,
@@ -63,6 +67,102 @@ impl<M> RowKey<M> {
 pub struct RowFocus {
     pub row: usize,
     pub open: Option<usize>,
+    /// The button of a row with several that Enter presses.
+    pub button: usize,
+}
+
+/// A button or tick box of a row; one without a message is off.
+#[derive(Debug)]
+pub struct RowButton<M> {
+    pub label: String,
+    pub message: Option<M>,
+    pub tone: Tone,
+    /// A tick box in this state instead of a button.
+    pub check: Option<Check>,
+    /// Whether Left and Right reach it; a mouse-only one is drawn and pressed
+    /// by click.
+    pub keyboard: bool,
+}
+
+impl<M> RowButton<M> {
+    pub fn new(label: impl Into<String>, message: Option<M>, tone: Tone) -> Self {
+        Self {
+            label: label.into(),
+            message,
+            tone,
+            check: None,
+            keyboard: true,
+        }
+    }
+
+    pub fn check(state: Check, message: Option<M>) -> Self {
+        Self {
+            check: Some(state),
+            ..Self::new("", message, Tone::Secondary)
+        }
+    }
+
+    pub fn mouse_only(self) -> Self {
+        Self {
+            keyboard: false,
+            ..self
+        }
+    }
+
+    fn reachable(&self) -> bool {
+        self.keyboard && self.message.is_some()
+    }
+}
+
+/// What the keyboard presses, one message per reachable button.
+pub fn pressable<M: Clone>(buttons: &[RowButton<M>]) -> Vec<M> {
+    buttons
+        .iter()
+        .filter(|button| button.reachable())
+        .filter_map(|button| button.message.clone())
+        .collect()
+}
+
+/// `leading` and the buttons side by side; the `marked`th of those that are
+/// on is highlighted.
+pub fn button_row<'a, M: Clone + 'a>(
+    leading: Option<Element<'a, M>>,
+    buttons: &[RowButton<M>],
+    marked: Option<usize>,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let mut on = 0;
+    let mut strip = Row::new()
+        .spacing(spacing::S)
+        .align_y(alignment::Vertical::Center);
+    if let Some(leading) = leading {
+        strip = strip.push(leading);
+    }
+    for button in buttons {
+        let is_marked = button.reachable() && marked == Some(on);
+        on += usize::from(button.reachable());
+        let tone = match (marked, is_marked, button.tone) {
+            (_, true, _) => Tone::Primary,
+            // The mark is the only Primary button while the keyboard is here.
+            (Some(_), false, Tone::Primary) => Tone::Secondary,
+            _ => button.tone,
+        };
+        strip = strip.push(match button.check {
+            Some(state) => {
+                let tick = kit::checkbox(state, button.message.clone(), palette);
+                if is_marked {
+                    container(tick)
+                        .padding(spacing::XS)
+                        .style(theme::focused_setting(palette))
+                        .into()
+                } else {
+                    tick
+                }
+            }
+            None => kit::button(&button.label, button.message.clone(), tone, palette),
+        });
+    }
+    strip.into()
 }
 
 pub struct SettingRow<'a, M> {
@@ -87,6 +187,9 @@ pub struct SettingRow<'a, M> {
     /// need and the description the rest. The value is how far the row is
     /// set in from the left.
     pub list_indent: Option<f32>,
+    /// Set with [`RowKey::Buttons`]: the control once for each button, with
+    /// that button marked.
+    pub marked_controls: Vec<Element<'a, M>>,
 }
 
 pub struct Group<'a, M> {
@@ -94,6 +197,21 @@ pub struct Group<'a, M> {
     pub intro: Option<String>,
     pub title: String,
     pub rows: Vec<SettingRow<'a, M>>,
+}
+
+impl<'a, M: Clone + 'a> Group<'a, M> {
+    /// The group for the messages of the page around.
+    pub fn map<N: Clone + 'a>(self, wrap: impl Fn(M) -> N + Clone + 'a) -> Group<'a, N> {
+        Group {
+            intro: self.intro,
+            title: self.title,
+            rows: self
+                .rows
+                .into_iter()
+                .map(|row| row.map(wrap.clone()))
+                .collect(),
+        }
+    }
 }
 
 impl<M> std::fmt::Debug for SettingRow<'_, M> {
@@ -113,6 +231,28 @@ impl<M> std::fmt::Debug for Group<'_, M> {
 }
 
 impl<'a, M: Clone + 'a> SettingRow<'a, M> {
+    /// The row for the messages of the page around.
+    pub fn map<N: Clone + 'a>(self, wrap: impl Fn(M) -> N + Clone + 'a) -> SettingRow<'a, N> {
+        SettingRow {
+            key: self.key.map(|key| key.map(&wrap)),
+            label: self.label,
+            theme_name: self.theme_name,
+            config_key: self.config_key,
+            description: self.description,
+            problem: self.problem,
+            warning: self.warning,
+            control: self.control.map(wrap.clone()),
+            in_command_list: self.in_command_list,
+            control_width: self.control_width,
+            list_indent: self.list_indent,
+            marked_controls: self
+                .marked_controls
+                .into_iter()
+                .map(|control| control.map(wrap.clone()))
+                .collect(),
+        }
+    }
+
     /// A row whose texts are worded already. It shows state or the user's own
     /// data, so the command list does not take it.
     pub fn text(label: String, description: Option<String>, control: Element<'a, M>) -> Self {
@@ -128,6 +268,63 @@ impl<'a, M: Clone + 'a> SettingRow<'a, M> {
             control_width: Some(SETTINGS_WIDE_CONTROL_WIDTH),
             in_command_list: false,
             list_indent: None,
+            marked_controls: Vec::new(),
+        }
+    }
+
+    /// A row of a list whose actions the keyboard reaches one by one. A row
+    /// with no button on gets no key.
+    pub fn listed_buttons(
+        label: String,
+        description: Option<String>,
+        status: Option<String>,
+        buttons: Vec<RowButton<M>>,
+        palette: &Palette,
+    ) -> Self {
+        let build = |marked| {
+            let leading = status
+                .clone()
+                .map(|shown| status_text(shown, palette.dim_text));
+            button_row(leading, &buttons, marked, palette)
+        };
+        Self {
+            list_indent: Some(0.0),
+            ..Self::text(label, description, build(None))
+        }
+        .with_buttons(pressable(&buttons), build)
+    }
+
+    /// The row under a list, with its buttons reachable by keyboard.
+    pub fn adding_buttons(
+        empty: Option<String>,
+        problem: Option<String>,
+        buttons: Vec<RowButton<M>>,
+        palette: &Palette,
+    ) -> Self {
+        let build = |marked| button_row(None, &buttons, marked, palette);
+        Self {
+            problem,
+            list_indent: Some(0.0),
+            ..Self::text(String::new(), empty, build(None))
+        }
+        .with_buttons(pressable(&buttons), build)
+    }
+
+    /// The keys of `messages` go with the control `build` draws; `build`
+    /// marks the button the keyboard is on.
+    pub fn with_buttons(
+        self,
+        messages: Vec<M>,
+        build: impl Fn(Option<usize>) -> Element<'a, M>,
+    ) -> Self {
+        if messages.is_empty() {
+            return self;
+        }
+        Self {
+            control: build(None),
+            marked_controls: (0..messages.len()).map(|at| build(Some(at))).collect(),
+            key: Some(RowKey::Buttons(messages)),
+            ..self
         }
     }
 
@@ -223,6 +420,7 @@ pub fn simple_row<'a, M: Clone + 'a>(
         control_width: None,
         in_command_list: true,
         list_indent: None,
+        marked_controls: Vec::new(),
     }
 }
 
@@ -327,6 +525,14 @@ pub fn sections_with_focus<'a, M: Clone + 'a>(
                 });
                 let is_marked = marked == Some(setting.label.as_str());
                 let has_focus = number.is_some() && number == focused;
+                let mut marked_controls = setting.marked_controls;
+                let control = match focus {
+                    Some(at) if has_focus && !marked_controls.is_empty() => {
+                        let last = marked_controls.len() - 1;
+                        marked_controls.swap_remove(at.button.min(last))
+                    }
+                    _ => setting.control,
+                };
                 let control = match (&setting.key, focus) {
                     (
                         Some(RowKey::Dropdown {
@@ -346,7 +552,7 @@ pub fn sections_with_focus<'a, M: Clone + 'a>(
                         setting.control_width.unwrap_or(size::CONTROL_WIDTH),
                         palette,
                     ),
-                    _ => setting.control,
+                    _ => control,
                 };
                 let control = match number {
                     Some(at) => control

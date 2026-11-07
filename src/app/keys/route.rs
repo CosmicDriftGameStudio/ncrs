@@ -136,27 +136,17 @@ fn keys_without_prompt(
         };
     }
 
-    // The System page has no text field of its own to take Tab unless its
-    // filter, a dialog or a menu is up; the Settings page keeps Tab for its fields.
-    if prompt.monitor
-        && !(prompt.monitor_filter || prompt.monitor_dialog || prompt.monitor_menu)
-        && matches!(key.as_ref(), Key::Named(Named::Tab))
-    {
+    // Tab leaves the page for the next tab, unless a text field has the
+    // keyboard: the widgets are asked (`TabInPage`). The System page's own
+    // filter, a dialog or a menu keep the key.
+    let page_tab_stop = (prompt.monitor
+        && !(prompt.monitor_filter || prompt.monitor_dialog || prompt.monitor_menu))
+        || prompt.settings;
+    if page_tab_stop && matches!(key.as_ref(), Key::Named(Named::Tab)) {
         return if key_modifiers == Modifiers::SHIFT {
-            Some(Message::SwitchTabBack)
+            Some(Message::TabInPage { backward: true })
         } else if key_modifiers.is_empty() {
-            Some(Message::Panel(PanelMessage::SwitchPanel))
-        } else {
-            None
-        };
-    }
-
-    // Settings keep Tab for a text field the keyboard sits in.
-    if prompt.settings && !prompt.settings_field && matches!(key.as_ref(), Key::Named(Named::Tab)) {
-        return if key_modifiers == Modifiers::SHIFT {
-            Some(Message::SwitchTabBack)
-        } else if key_modifiers.is_empty() {
-            Some(Message::Panel(PanelMessage::SwitchPanel))
+            Some(Message::TabInPage { backward: false })
         } else {
             None
         };

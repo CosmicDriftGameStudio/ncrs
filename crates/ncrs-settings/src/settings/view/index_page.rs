@@ -99,8 +99,7 @@ pub fn folder_row<'a>(
     location: &FilingLocation,
     status: Option<String>,
     files: Option<usize>,
-    press: Message,
-    buttons: Vec<Element<'a, Message>>,
+    buttons: Vec<RowButton<Message>>,
     view: &SettingsView<'a>,
 ) -> SettingRow<'a> {
     let lang = view.lang;
@@ -117,10 +116,9 @@ pub fn folder_row<'a>(
         None => path,
     };
     SettingRow {
-        key: Some(RowKey::Press(press)),
         warning: folder_is_disconnected(location, view)
             .then(|| lang.text(Msg::SettingsIndexFolderMissing).to_owned()),
-        ..SettingRow::listed(
+        ..SettingRow::listed_buttons(
             folder_name(location),
             Some(where_it_is),
             status,
@@ -130,15 +128,14 @@ pub fn folder_row<'a>(
     }
 }
 
-pub fn remove_folder_button<'a>(
+pub fn remove_folder_button(
     location: &FilingLocation,
-    view: &SettingsView<'a>,
-) -> Element<'a, Message> {
-    kit::button(
+    view: &SettingsView<'_>,
+) -> RowButton<Message> {
+    RowButton::new(
         view.lang.text(Msg::SettingsRemove),
         Some(SettingsMessage::RemoveFolder(location.path.clone())),
         Tone::Secondary,
-        view.palette,
     )
 }
 
@@ -147,22 +144,21 @@ pub fn remove_folder_button<'a>(
 pub fn add_folder_row<'a>(
     kind: AddAs,
     empty: Option<Msg>,
-    mut buttons: Vec<Element<'a, Message>>,
+    mut buttons: Vec<RowButton<Message>>,
     view: &SettingsView<'a>,
 ) -> SettingRow<'a> {
     let lang = view.lang;
-    buttons.push(kit::button(
+    buttons.push(RowButton::new(
         lang.text(Msg::SettingsFolderAdd),
         Some(SettingsMessage::AddFolder(kind)),
         Tone::Secondary,
-        view.palette,
     ));
-    SettingRow::adding(
+    SettingRow::adding_buttons(
         empty.map(|msg| lang.text(msg).to_owned()),
         view.state.folder_note.clone(),
         buttons,
+        view.palette,
     )
-    .keyed(RowKey::Press(SettingsMessage::AddFolder(kind)))
 }
 
 fn read_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
@@ -183,13 +179,15 @@ fn read_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
         lang.text(Msg::SettingsIndexRowScope).to_owned(),
         Some(lang.text(Msg::SettingsIndexScopeOnlyHint).to_owned()),
         scope,
-    )];
+    )
+    .keyed(RowKey::Press(SettingsMessage::Select(
+        SettingsFeature::Index,
+    )))];
     rows.extend(locations.iter().map(|location| {
         folder_row(
             location,
             None,
             view.facts.folder_files.get(&location.path).copied(),
-            SettingsMessage::RemoveFolder(location.path.clone()),
             vec![remove_folder_button(location, view)],
             view,
         )
@@ -449,6 +447,7 @@ pub fn own_detail_row<'a>(detail: OwnDetail, view: &SettingsView<'a>) -> Setting
         control_width: Some(SETTINGS_WIDE_CONTROL_WIDTH),
         in_command_list: true,
         list_indent: None,
+        marked_controls: Vec::new(),
     }
 }
 

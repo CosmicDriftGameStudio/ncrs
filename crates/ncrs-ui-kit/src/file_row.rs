@@ -280,7 +280,7 @@ pub fn file_row<'a, M: Clone + 'a>(
 }
 
 /// What a cell besides the name and the symbol says. Unknown is empty.
-pub(in crate) fn cell_text(
+pub fn cell_text(
     entry: &FileEntry,
     column: Column,
     layout: &ColumnLayout<'_>,

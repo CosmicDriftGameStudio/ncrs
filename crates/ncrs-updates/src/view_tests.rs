@@ -49,6 +49,8 @@ fn page<'a>(state: &State, enabled: bool, palette: &'a Palette) -> Element<'a, M
             enabled,
         },
         None,
+        |message| message,
+        |_, message| message,
     )
 }
 

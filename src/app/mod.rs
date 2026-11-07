@@ -514,8 +514,6 @@ pub struct PromptKeyState {
     pub settings: bool,
     /// The System page is up: its keys are the list's, and Escape closes it.
     pub monitor: bool,
-    /// The keyboard sits in a text field of the settings tab, which keeps Tab.
-    pub settings_field: bool,
     /// Its filter field has the focus: it types the letters.
     pub monitor_filter: bool,
     /// Its kill question is up.
@@ -570,7 +568,6 @@ impl Default for PromptKeyState {
             connect_dialog: false,
             settings: false,
             monitor: false,
-            settings_field: false,
             monitor_filter: false,
             monitor_dialog: false,
             monitor_menu: false,

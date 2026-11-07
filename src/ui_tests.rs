@@ -37,7 +37,17 @@ fn is_action(message: &Message) -> bool {
         message,
         Message::Panel(PanelMessage::PanelEntered(_))
             | Message::Panel(PanelMessage::PanelExited(_))
+            | Message::FocusPageThen(_, None)
     )
+}
+
+/// A click on a control of a page the app fills first moves the keyboard
+/// focus to its row; this is what the control itself sends.
+fn without_focus(message: Message) -> Message {
+    match message {
+        Message::FocusPageThen(_, Some(inner)) => *inner,
+        other => other,
+    }
 }
 
 fn simulator(app: &App) -> Simulator<'_, Message, iced::Theme> {
@@ -1711,7 +1721,10 @@ mod filing_status_page {
     fn messages_after_click(app: &App, label: &str) -> Vec<Message> {
         let mut sim = simulator(app);
         sim.click(label).expect("the clicked label");
-        sim.into_messages().filter(is_action).collect()
+        sim.into_messages()
+            .filter(is_action)
+            .map(without_focus)
+            .collect()
     }
 
     fn page_message(message: FilingStatusMessage) -> Message {
@@ -2667,7 +2680,7 @@ mod saved_queries_card {
         let mut sim = simulator(&app);
         sim.click(label).expect(label);
         assert_eq!(
-            sim.into_messages().collect::<Vec<_>>(),
+            sim.into_messages().map(without_focus).collect::<Vec<_>>(),
             [queries_message(message)],
             "{label}"
         );
@@ -3253,7 +3266,10 @@ mod rules_card {
         let mut sim = simulator(&app);
         sim.click(label).expect(label);
         assert_eq!(
-            sim.into_messages().filter(is_action).collect::<Vec<_>>(),
+            sim.into_messages()
+                .filter(is_action)
+                .map(without_focus)
+                .collect::<Vec<_>>(),
             [Message::Rules(message)],
             "{label}"
         );
@@ -5223,7 +5239,7 @@ mod settings_index_page {
         assert_eq!(
             sim.into_messages().collect::<Vec<_>>(),
             [Message::Settings(SettingsMessage::FocusThen(
-                7,
+                8,
                 Some(Box::new(SettingsMessage::Protection(2)))
             ))]
         );

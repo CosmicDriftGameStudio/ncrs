@@ -87,12 +87,6 @@ impl App {
         let grant_dialog = self.grant_dialog;
         let connect_dialog = self.remote_ui.dialog.is_some();
         let settings = self.settings_shown();
-        let settings_field = self.settings_shown()
-            && self
-                .settings
-                .page
-                .as_ref()
-                .is_some_and(|page| page.focus.field);
         let monitor = self.monitor_shown();
         let monitor_filter = monitor && self.monitor.filter_has_focus();
         let monitor_dialog = monitor && self.monitor.dialog_is_open();
@@ -135,7 +129,6 @@ impl App {
                 grant_dialog,
                 connect_dialog,
                 settings,
-                settings_field,
                 monitor,
                 monitor_filter,
                 monitor_dialog,
@@ -178,7 +171,6 @@ impl App {
                 grant_dialog,
                 connect_dialog,
                 settings,
-                settings_field,
                 monitor,
                 monitor_filter,
                 monitor_dialog,

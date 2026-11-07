@@ -205,7 +205,7 @@ async fn zeigen_on_the_unreadable_files_opens_the_inspection_page() -> TestResul
     let messages: Vec<Message> = simulator.into_messages().collect();
     let show = settings(SettingsMessage::Select(SettingsFeature::ReadErrors));
     let focused = settings(SettingsMessage::FocusThen(
-        12,
+        13,
         Some(Box::new(SettingsMessage::Select(
             SettingsFeature::ReadErrors,
         ))),

@@ -88,31 +88,33 @@ pub fn overview_facts(
 
 /// The rows of one of the pages the settings window fills from here: the
 /// rules, the reports, the tags or the read errors.
-pub fn page_content<'a>(
+///
+/// The page for the messages `wrap` makes of its own; a click on a row sends
+/// what `on_focus` makes of the row's number.
+pub fn page_content<'a, M: Clone + 'a>(
     hermes: &'a Hermes,
     page: HermesPage,
     ctx: &ViewCtx<'a>,
     focus: Option<setting_rows::RowFocus>,
-) -> Element<'a, Message> {
+    wrap: impl Fn(Message) -> M + Copy + 'a,
+    on_focus: impl Fn(usize, Option<M>) -> Option<M> + Copy + 'a,
+) -> Element<'a, M> {
     let mut content = Column::new();
     if page == HermesPage::Inspection {
         if let Some(searched) = hermes.pdf_library_missing.as_deref() {
-            content = content.push(filing_status_ui::pdf_missing_notice(
-                searched,
-                ctx.lang,
-                ctx.palette,
-            ));
+            content = content.push(
+                filing_status_ui::pdf_missing_notice(searched, ctx.lang, ctx.palette).map(wrap),
+            );
         }
     }
-    let groups = page_groups(hermes, page, ctx);
-    for section in setting_rows::sections_with_focus(
-        groups.unwrap_or_default(),
-        |_| true,
-        None,
-        focus,
-        |_, message| message,
-        ctx.palette,
-    ) {
+    let groups = page_groups(hermes, page, ctx)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|group| group.map(wrap))
+        .collect();
+    for section in
+        setting_rows::sections_with_focus(groups, |_| true, None, focus, on_focus, ctx.palette)
+    {
         content = content.push(section);
     }
     content.into()

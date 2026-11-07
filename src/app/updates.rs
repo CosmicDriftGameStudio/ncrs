@@ -1,3 +1,4 @@
+use super::settings::page_focus;
 use crate::app::*;
 use ncrs_updates::Action as Ask;
 
@@ -64,7 +65,13 @@ impl App {
         &self,
         focus: Option<ncrs_ui_kit::setting_rows::RowFocus>,
     ) -> Element<'_, Message> {
-        ncrs_updates::view(&self.updates, self.updates_view_ctx(), focus).map(Message::Updates)
+        ncrs_updates::view(
+            &self.updates,
+            self.updates_view_ctx(),
+            focus,
+            Message::Updates,
+            page_focus,
+        )
     }
 
     pub(in crate::app) fn updates_view_ctx(&self) -> ncrs_updates::ViewCtx<'_> {

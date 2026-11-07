@@ -86,27 +86,24 @@ fn read_folder_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
     let mut rows: Vec<SettingRow<'a>> = read_folders
         .iter()
         .map(|location| {
-            let change = kit::button(
+            let change = RowButton::new(
                 lang.text(Msg::SettingsHermesFolderChange),
                 Some(SettingsMessage::EditFolder(Some(location.path.clone()))),
                 Tone::Secondary,
-                view.palette,
             );
             folder_row(
                 location,
                 Some(folder_status(location, lang)),
                 None,
-                SettingsMessage::EditFolder(Some(location.path.clone())),
                 vec![change, remove_folder_button(location, view)],
                 view,
             )
         })
         .collect();
-    let chat = kit::button(
+    let chat = RowButton::new(
         lang.text(Msg::SettingsHermesSetupInChat),
         Some(SettingsMessage::OpenChat(None)),
         Tone::Secondary,
-        view.palette,
     );
     rows.push(add_folder_row(
         AddAs::ReadFolder,

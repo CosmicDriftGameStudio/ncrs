@@ -71,6 +71,20 @@ pub enum Message {
     SwitchTabBack,
     /// A click on the tab of an open page.
     ShowTab(ShownTab),
+    /// Tab or Shift+Tab on a page that stands in for the panels: asks the
+    /// widgets whether a text field has the keyboard.
+    TabInPage {
+        backward: bool,
+    },
+    /// A click on a row of a page the app fills, or on its control: the
+    /// keyboard focus moves to the row and the control's message is handled.
+    FocusPageThen(usize, Option<Box<Message>>),
+    /// The answer: a field keeps Tab for moving between fields, else the tab
+    /// changes.
+    TabInPageAnswered {
+        backward: bool,
+        field_focused: bool,
+    },
     /// The system clipboard has been read for a paste; `None` when it holds
     /// nothing usable.
     ClipboardRead(Option<PastedContent>),

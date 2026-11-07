@@ -287,7 +287,9 @@ fn mono<'a>(content: String, color: Color) -> Element<'a, Message> {
         .into()
 }
 
-use ncrs_ui_kit::setting_rows::{simple_row, status_text, with_button, RowKey};
+use ncrs_ui_kit::setting_rows::{
+    button_row, pressable, simple_row, status_text, with_button, RowButton, RowKey,
+};
 
 /// Left and Right step through `messages`, one per value, and stop at the ends.
 fn choice_key(messages: Vec<Message>, selected: usize) -> RowKey<Message> {

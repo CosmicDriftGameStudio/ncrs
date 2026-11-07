@@ -12,7 +12,7 @@ use ncrs_ui_kit::format;
 use ncrs_ui_kit::frame::{DialogSize, Frame, KeyHints};
 use ncrs_ui_kit::hermes_kit::{self as page_kit, ChipKind, RowTwo, GAP_S, GAP_XS};
 use ncrs_ui_kit::kit::{self, Check, Tone};
-use ncrs_ui_kit::setting_rows::{Group, RowKey, SettingRow};
+use ncrs_ui_kit::setting_rows::{Group, RowButton, SettingRow};
 
 use super::condition_editor::{
     add_condition_link, combinator_choice, condition_editor_rows, ConditionHost,
@@ -55,10 +55,7 @@ pub fn groups<'a>(
         .rows()
         .iter()
         .enumerate()
-        .map(|(index, listed)| {
-            rule_row(index, count, listed, state, lang, palette)
-                .keyed_if(idle, RowKey::Press(send(RulesMessage::Edit(index))))
-        })
+        .map(|(index, listed)| rule_row(index, count, listed, state, lang, palette))
         .collect();
     let empty = if count > 0 {
         None
@@ -71,19 +68,16 @@ pub fn groups<'a>(
         .problem()
         .filter(|_| !state.dialog_is_open())
         .map(|detail| problem_text(detail, lang));
-    rows.push(
-        SettingRow::adding(
-            empty,
-            problem,
-            vec![kit::button(
-                lang.text(Msg::HermesPagesRuleAdd),
-                idle.then(|| send(RulesMessage::New)),
-                Tone::Secondary,
-                palette,
-            )],
-        )
-        .keyed_if(idle, RowKey::Press(send(RulesMessage::New))),
-    );
+    rows.push(SettingRow::adding_buttons(
+        empty,
+        problem,
+        vec![RowButton::new(
+            lang.text(Msg::HermesPagesRuleAdd),
+            idle.then(|| send(RulesMessage::New)),
+            Tone::Secondary,
+        )],
+        palette,
+    ));
     vec![Group {
         intro: None,
         title: String::new(),
@@ -116,37 +110,35 @@ fn rule_row<'a>(
         lang.text(Msg::RulesOff).to_owned()
     };
     let actions = vec![
-        kit::checkbox(
+        RowButton::check(
             if spec.enabled { Check::On } else { Check::Off },
             idle.then(|| send(RulesMessage::ToggleAt(index))),
-            palette,
-        ),
-        kit::button(
+        )
+        .mouse_only(),
+        RowButton::new(
             "↑",
             (idle && index > 0).then(|| send(RulesMessage::ReorderAt { index, delta: -1 })),
             Tone::Secondary,
-            palette,
-        ),
-        kit::button(
+        )
+        .mouse_only(),
+        RowButton::new(
             "↓",
             (idle && index + 1 < count).then(|| send(RulesMessage::ReorderAt { index, delta: 1 })),
             Tone::Secondary,
-            palette,
-        ),
-        kit::button(
+        )
+        .mouse_only(),
+        RowButton::new(
             lang.text(Msg::HermesPagesChange),
             idle.then(|| send(RulesMessage::Edit(index))),
             Tone::Secondary,
-            palette,
         ),
-        kit::button(
+        RowButton::new(
             lang.text(Msg::SettingsRemove),
             idle.then(|| send(RulesMessage::AskDelete(index))),
             Tone::Secondary,
-            palette,
         ),
     ];
-    SettingRow::listed(label, Some(second), Some(status), actions, palette)
+    SettingRow::listed_buttons(label, Some(second), Some(status), actions, palette)
 }
 
 fn problem_text(detail: &str, lang: Language) -> String {

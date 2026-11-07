@@ -12,7 +12,7 @@ use ncrs_ui_kit::format;
 use ncrs_ui_kit::frame::{DialogSize, Frame, KeyHints};
 use ncrs_ui_kit::hermes_kit as page_kit;
 use ncrs_ui_kit::kit::{self, Tone};
-use ncrs_ui_kit::setting_rows::{switch, Group, RowKey, SettingRow};
+use ncrs_ui_kit::setting_rows::{switch, Group, RowButton, RowKey, SettingRow};
 
 use crate::message::{Message, TagsMessage};
 use crate::rules_page::rule_sentence;
@@ -104,54 +104,48 @@ fn row_of<'a>(
     palette: &Palette,
 ) -> SettingRow<'a, Message> {
     match tag_row {
-        TagRow::Group(group) => SettingRow::listed(
+        TagRow::Group(group) => SettingRow::listed_buttons(
             lang.text(group_label(*group)).to_owned(),
             None,
             Some(state.tag_count(*group).to_string()),
             vec![
-                kit::button(
+                RowButton::new(
                     if state.is_open(*group) { "▾" } else { "▸" },
                     Some(send(TagsMessage::ToggleOpen(*group))),
                     Tone::Secondary,
-                    palette,
                 ),
-                kit::checkbox(
+                RowButton::check(
                     state.group_check(setting, *group),
                     Some(send(TagsMessage::ToggleGroup(*group))),
-                    palette,
                 ),
             ],
             palette,
-        )
-        .keyed(RowKey::Press(send(TagsMessage::ToggleOpen(*group)))),
+        ),
         TagRow::Tag {
             group,
             tag,
             documents,
         } => {
-            let mut actions = vec![kit::checkbox(
+            let mut actions = vec![RowButton::check(
                 state.tag_check(setting, *group, tag),
                 Some(send(TagsMessage::ToggleTag {
                     group: *group,
                     tag: tag.clone(),
                 })),
-                palette,
             )];
             if *group == TagGroup::Own {
-                actions.push(kit::button(
+                actions.push(RowButton::new(
                     lang.text(Msg::TagsMenuRename),
                     Some(send(TagsMessage::StartRename(tag.clone()))),
                     Tone::Secondary,
-                    palette,
                 ));
-                actions.push(kit::button(
+                actions.push(RowButton::new(
                     lang.text(Msg::SettingsRemove),
                     Some(send(TagsMessage::AskDelete(tag.clone()))),
                     Tone::Secondary,
-                    palette,
                 ));
             }
-            SettingRow::listed(
+            SettingRow::listed_buttons(
                 state.label(*group, tag),
                 None,
                 Some(format::grouped(*documents)),
@@ -159,10 +153,6 @@ fn row_of<'a>(
                 palette,
             )
             .indented()
-            .keyed(RowKey::Press(send(TagsMessage::ToggleTag {
-                group: *group,
-                tag: tag.clone(),
-            })))
         }
         TagRow::More { group, rest } => SettingRow::listed(
             fill_template(lang.text(Msg::TagsMore), &[("{count}", &rest.to_string())]),

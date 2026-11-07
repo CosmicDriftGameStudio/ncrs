@@ -24,6 +24,8 @@ pub struct Focus {
     pub open: Option<usize>,
     /// A text field of the row has the keyboard, so Tab stays in the page.
     pub field: bool,
+    /// The button of a row with several that Enter presses.
+    pub button: usize,
 }
 
 impl Focus {
@@ -40,6 +42,7 @@ impl Focus {
         (self.area == Area::Rows).then_some(ncrs_ui_kit::setting_rows::RowFocus {
             row: self.row,
             open: self.open,
+            button: self.button,
         })
     }
 }
@@ -151,7 +154,15 @@ fn step_in_rows<M: Clone>(focus: Focus, key: FocusKey, rows: &[RowKey<M>]) -> St
         ) => choices
             .get(selected.wrapping_sub(1))
             .map_or_else(|| Step::to(here), pressing),
+        (FocusKey::Left, RowKey::Buttons(_)) if focus.button > 0 => Step::to(Focus {
+            button: focus.button - 1,
+            ..here
+        }),
         (FocusKey::Left, _) => to_pages,
+        (FocusKey::Right, RowKey::Buttons(messages)) => Step::to(Focus {
+            button: (focus.button + 1).min(messages.len() - 1),
+            ..here
+        }),
         (FocusKey::Right, RowKey::Choice { next, .. }) => pressing(next),
         (
             FocusKey::Right,
@@ -163,6 +174,13 @@ fn step_in_rows<M: Clone>(focus: Focus, key: FocusKey, rows: &[RowKey<M>]) -> St
             .map_or_else(|| Step::to(here), pressing),
         (FocusKey::Right, _) => Step::to(here),
         (FocusKey::Press, RowKey::Press(message)) => pressing(message),
+        (FocusKey::Press, RowKey::Buttons(messages)) => {
+            let button = focus.button.min(messages.len() - 1);
+            Step {
+                press: Some(messages[button].clone()),
+                ..Step::to(Focus { button, ..here })
+            }
+        }
         (FocusKey::Press, RowKey::Choice { next, .. }) => pressing(next),
         (FocusKey::Press, RowKey::Dropdown { selected, .. }) => Step::to(Focus {
             open: Some(*selected),
@@ -243,6 +261,47 @@ mod tests {
         assert_eq!(pages(FocusKey::Up, Columns).unwrap().select, Some(Language));
         assert_eq!(pages(FocusKey::Up, Look), None);
         assert_eq!(pages(FocusKey::Down, Columns), None);
+    }
+
+    fn on_button(button: usize, key: FocusKey) -> Step<SettingsMessage> {
+        let rows = vec![
+            RowKey::Press(SettingsMessage::Close),
+            RowKey::Buttons(vec![
+                SettingsMessage::Toggle,
+                SettingsMessage::ToggleFileListTags,
+            ]),
+        ];
+        let focus = Focus {
+            button,
+            ..IN_ROWS(1)
+        };
+        step(focus, key, &PAGES, Look, &rows).expect("handled")
+    }
+
+    #[test]
+    fn left_and_right_choose_the_button_of_a_row() {
+        assert_eq!(on_button(0, FocusKey::Right).focus.button, 1);
+        assert_eq!(on_button(1, FocusKey::Right).focus.button, 1);
+        assert_eq!(on_button(1, FocusKey::Left).focus.button, 0);
+        assert_eq!(on_button(1, FocusKey::Left).focus.area, Area::Rows);
+    }
+
+    #[test]
+    fn left_on_the_first_button_goes_back_to_the_pages() {
+        assert_eq!(on_button(0, FocusKey::Left).focus.area, Area::Pages);
+    }
+
+    #[test]
+    fn enter_presses_the_chosen_button_and_a_row_change_resets_it() {
+        assert_eq!(
+            on_button(0, FocusKey::Press).press,
+            Some(SettingsMessage::Toggle)
+        );
+        let second = on_button(1, FocusKey::Press);
+        assert_eq!(second.press, Some(SettingsMessage::ToggleFileListTags));
+        assert_eq!(second.focus.button, 1);
+        assert_eq!(on_button(1, FocusKey::Down).focus.button, 0);
+        assert_eq!(on_button(1, FocusKey::Up).focus.button, 0);
     }
 
     #[test]

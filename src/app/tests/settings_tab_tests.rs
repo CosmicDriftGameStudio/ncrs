@@ -37,8 +37,15 @@ fn escape_closes_it_and_a_panel_tab_only_shows_the_panels() {
 }
 
 fn tab(app: &mut App, modifiers: Modifiers) {
-    let message = press(app, Key::Named(Named::Tab), modifiers).expect("Tab is routed");
-    drop(app.update(message));
+    let routed = press(app, Key::Named(Named::Tab), modifiers).expect("Tab is routed");
+    match routed {
+        // The page asks iced whether a text field has the keyboard; none has.
+        Message::TabInPage { backward } => drop(app.update(Message::TabInPageAnswered {
+            backward,
+            field_focused: false,
+        })),
+        other => drop(app.update(other)),
+    }
 }
 
 #[test]
@@ -100,14 +107,23 @@ fn a_click_on_a_page_tab_shows_it_and_a_panel_click_shows_the_panels() {
 }
 
 #[test]
-fn a_text_field_in_the_tab_keeps_tab() {
+fn a_text_field_that_has_the_keyboard_keeps_tab() {
     let mut app = App::with_fixed_panels();
     open(&mut app);
-    app.settings.page.as_mut().unwrap().focus.field = true;
     assert_eq!(
         press(&app, Key::Named(Named::Tab), Modifiers::empty()),
-        None
+        Some(Message::TabInPage { backward: false })
     );
+    drop(app.update(Message::TabInPageAnswered {
+        backward: false,
+        field_focused: true,
+    }));
+    assert_eq!(app.shown_tab, ShownTab::Settings);
+    drop(app.update(Message::TabInPageAnswered {
+        backward: false,
+        field_focused: false,
+    }));
+    assert_eq!(app.shown_tab, ShownTab::Panels);
 }
 
 #[test]
@@ -338,4 +354,13 @@ fn a_page_is_selected_and_searched() {
         app.settings.page.as_ref().unwrap().feature,
         SettingsFeature::Hermes
     );
+}
+
+#[test]
+fn a_click_on_a_page_the_app_fills_moves_the_keyboard_to_its_row() {
+    let mut app = App::with_fixed_panels();
+    open(&mut app);
+    drop(app.update(Message::FocusPageThen(2, None)));
+    let page = app.settings.page.as_ref().expect("settings are open");
+    assert_eq!(page.focus, ncrs_settings::focus::Focus::in_rows(2));
 }

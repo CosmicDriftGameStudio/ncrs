@@ -293,11 +293,6 @@ impl App {
         ncrs_settings::ocr_models_present(self.settings_ctx().ocr_models_dir.as_deref())
     }
 
-    pub(in crate::app) fn close_settings(&mut self) -> Task<Message> {
-        let closed = ncrs_settings::close_settings(&mut self.settings).map(Message::from_settings);
-        Task::batch([closed, self.sync_hermes_page()])
-    }
-
     /// Writes the values typed on the page and closes it.
     pub(in crate::app) fn leave_settings_page(&mut self) -> Task<Message> {
         self.update_settings(SettingsMessage::Close)
@@ -315,10 +310,14 @@ impl App {
                     return Some(self.updates_page(focus));
                 }
                 let page = hermes_page_of(feature)?;
-                Some(
-                    ncrs_hermes_ui::page_content(&self.hermes, page, &hermes_ctx, focus)
-                        .map(Message::from),
-                )
+                Some(ncrs_hermes_ui::page_content(
+                    &self.hermes,
+                    page,
+                    &hermes_ctx,
+                    focus,
+                    Message::from,
+                    page_focus,
+                ))
             });
         let bar = settings_ui::status_bar(&settings_ui::StatusBar {
             changed: state.changed,
@@ -618,4 +617,10 @@ impl App {
             self.grant_dialog = true;
         }
     }
+}
+
+/// What a click on a row of a page the app fills sends: the focus goes to the
+/// row, then the control's own message follows.
+pub(in crate::app) fn page_focus(row: usize, message: Option<Message>) -> Option<Message> {
+    Some(Message::FocusPageThen(row, message.map(Box::new)))
 }

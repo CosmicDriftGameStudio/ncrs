@@ -540,6 +540,33 @@ impl App {
                 self.switch_tab(tab_stops::TabDirection::Forward)
             }
             Message::SwitchTabBack => self.switch_tab(tab_stops::TabDirection::Backward),
+            Message::TabInPage { backward } => {
+                ncrs_ui_kit::focus::field_has_focus().map(move |field_focused| {
+                    Message::TabInPageAnswered {
+                        backward,
+                        field_focused,
+                    }
+                })
+            }
+            Message::FocusPageThen(row, inner) => {
+                let focused = self.update_settings(SettingsMessage::FocusThen(row, None));
+                match inner {
+                    Some(inner) => Task::batch([focused, self.update(*inner)]),
+                    None => focused,
+                }
+            }
+            Message::TabInPageAnswered {
+                backward,
+                field_focused,
+            } => match (field_focused, backward) {
+                (true, true) => iced::widget::operation::focus_previous(),
+                (true, false) => iced::widget::operation::focus_next(),
+                (false, _) => self.switch_tab(if backward {
+                    tab_stops::TabDirection::Backward
+                } else {
+                    tab_stops::TabDirection::Forward
+                }),
+            },
             Message::ShowTab(tab) => {
                 self.shown_tab = tab;
                 Task::none()
