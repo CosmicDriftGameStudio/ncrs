@@ -54,7 +54,9 @@ pub enum Action {
     /// Enter on the cursor row, through the app's own message so that the
     /// refusals of archives and hit lists apply.
     OpenSelected,
-    CloseSettings,
+    /// A click on a panel: the panels are what the window shows again, while
+    /// the pages stay open as tabs.
+    ShowPanels,
     /// Shows `text` in the status bar for a while.
     ShowNotice(String),
     /// Shows `text` as the error of the status bar.

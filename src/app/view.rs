@@ -100,11 +100,16 @@ impl App {
         .height(Length::Fill);
 
         let below_title_bar =
-            if self.monitor.is_open() {
+            if self.monitor_shown() {
                 self.monitor_area()
             } else if self.hermes_chat.open {
                 self.hermes_chat_area()
-            } else if let Some(state) = self.settings.page.as_ref() {
+            } else if let Some(state) = self
+                .settings
+                .page
+                .as_ref()
+                .filter(|_| self.settings_shown())
+            {
                 self.settings_area(state)
             } else {
                 container(column![
@@ -359,9 +364,15 @@ impl App {
                 .into();
         }
 
-        if let Some(dialog_element) = self.settings.page.as_ref().and_then(|state| {
-            ncrs_settings::dialogs::open_dialog(&self.settings_view(state), self.window_size)
-        }) {
+        if let Some(dialog_element) = self
+            .settings
+            .page
+            .as_ref()
+            .filter(|_| self.settings_shown())
+            .and_then(|state| {
+                ncrs_settings::dialogs::open_dialog(&self.settings_view(state), self.window_size)
+            })
+        {
             return Stack::with_children([
                 root,
                 dialog::scrim(dialog_element.map(Message::Settings)),

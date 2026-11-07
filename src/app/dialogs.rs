@@ -34,8 +34,8 @@ impl App {
             || self.panels.path_field.is_some()
             || self.panels.renaming_side().is_some()
             || self.hermes_chat.open
-            || self.settings.page.is_some()
-            || (self.monitor.is_open() && self.monitor.filter_has_focus())
+            || self.settings_shown()
+            || (self.monitor_shown() && self.monitor.filter_has_focus())
     }
 
     pub(in crate::app) fn menu_state(&self) -> crate::menu::MenuState {
@@ -118,7 +118,7 @@ impl App {
 
     /// Settings replace the panel area; an overlay covers it.
     pub(in crate::app) fn command_line_is_blocked(&self) -> bool {
-        self.overlay_is_open() || self.settings.page.is_some()
+        self.overlay_is_open() || self.settings_shown()
     }
 
     /// A shell command ended: its report goes to the status bar and both panels

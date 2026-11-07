@@ -322,13 +322,33 @@ impl PermissionsDialog {
         }
         let folders = self.targets.iter().filter(|target| target.is_dir).count();
         let files = self.targets.len() - folders;
-        fill_template(
-            lang.text(Msg::PermissionsTitleMany),
-            &[
-                ("{files}", &files.to_string()),
-                ("{folders}", &folders.to_string()),
-            ],
-        )
+        let counted = |count: usize, one: Msg, many: Msg| match count {
+            0 => None,
+            1 => Some(lang.text(one).to_owned()),
+            _ => Some(fill_template(
+                lang.text(many),
+                &[("{count}", &count.to_string())],
+            )),
+        };
+        let files = counted(
+            files,
+            Msg::PermissionsTitleFileOne,
+            Msg::PermissionsTitleFiles,
+        );
+        let folders = counted(
+            folders,
+            Msg::PermissionsTitleFolderOne,
+            Msg::PermissionsTitleFolders,
+        );
+        let parts = match (files, folders) {
+            (Some(files), Some(folders)) => fill_template(
+                lang.text(Msg::PermissionsTitlePartsJoined),
+                &[("{files}", &files), ("{folders}", &folders)],
+            ),
+            (Some(only), None) | (None, Some(only)) => only,
+            (None, None) => String::new(),
+        };
+        fill_template(lang.text(Msg::PermissionsTitleMany), &[("{parts}", &parts)])
     }
 
     /// The line with owner and group, `None` where the system knows neither.

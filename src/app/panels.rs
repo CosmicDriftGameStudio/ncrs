@@ -639,7 +639,10 @@ impl App {
             Action::StartDragOut => self.start_drag_out(),
             Action::OpenTransferDialog(kind) => self.open_transfer_dialog_to(kind, None),
             Action::OpenSelected => self.update(Message::Panel(PanelMessage::OpenSelected)),
-            Action::CloseSettings => self.close_settings(),
+            Action::ShowPanels => {
+                self.shown_tab = ShownTab::Panels;
+                Task::none()
+            }
             Action::ReleaseFocus => release_focus(),
             Action::OpenConnectDialog(url) => {
                 let outcome = self.with_connect_feature(|remote, ctx| {

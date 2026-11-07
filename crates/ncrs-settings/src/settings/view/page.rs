@@ -157,8 +157,8 @@ pub fn page<'a>(shown: Option<SettingsFeature>, view: &SettingsView<'a>) -> Elem
         groups_of(feature, view),
         |setting| whole_feature || row_matches(setting, &query),
         view.state.marked_row.as_deref(),
-        (focus.area == crate::focus::Area::Rows).then_some(focus.row),
-        |row| Some(SettingsMessage::FocusRow(row)),
+        focus.row_focus(),
+        |row, inner| Some(SettingsMessage::FocusThen(row, inner.map(Box::new))),
         palette,
     );
     sections

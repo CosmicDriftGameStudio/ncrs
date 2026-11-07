@@ -5,6 +5,7 @@
 use ncrs_config::SettingsFeature;
 use ncrs_ui_kit::setting_rows::RowKey;
 
+#[cfg(test)]
 use crate::message::SettingsMessage;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -19,6 +20,28 @@ pub enum Area {
 pub struct Focus {
     pub area: Area,
     pub row: usize,
+    /// The highlighted row of the open list of a dropdown row.
+    pub open: Option<usize>,
+    /// A text field of the row has the keyboard, so Tab stays in the page.
+    pub field: bool,
+}
+
+impl Focus {
+    pub fn in_rows(row: usize) -> Self {
+        Self {
+            area: Area::Rows,
+            row,
+            ..Self::default()
+        }
+    }
+
+    /// Where the rows draw their focus, while the keyboard is in them.
+    pub fn row_focus(self) -> Option<ncrs_ui_kit::setting_rows::RowFocus> {
+        (self.area == Area::Rows).then_some(ncrs_ui_kit::setting_rows::RowFocus {
+            row: self.row,
+            open: self.open,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,18 +57,18 @@ pub enum FocusKey {
 
 /// What a key does. Fields not named stay as they are.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Step {
+pub struct Step<M> {
     pub focus: Focus,
     pub select: Option<SettingsFeature>,
     /// The message of the row's button, switch or choice.
-    pub press: Option<SettingsMessage>,
+    pub press: Option<M>,
     /// A text field to give the keyboard to.
     pub focus_field: Option<&'static str>,
     /// A text field that may have the keyboard gives it up.
     pub release_field: bool,
 }
 
-impl Step {
+impl<M: Clone> Step<M> {
     fn to(focus: Focus) -> Self {
         Self {
             focus,
@@ -60,13 +83,13 @@ impl Step {
 /// The step for `key`; `None` leaves the key to the tab as it was (Escape
 /// closes it, Left and Right do nothing). `listed` are the pages in the list,
 /// `current` the one shown and `rows` its rows that have a key.
-pub fn step(
+pub fn step<M: Clone>(
     focus: Focus,
     key: FocusKey,
     listed: &[SettingsFeature],
     current: SettingsFeature,
-    rows: &[RowKey<SettingsMessage>],
-) -> Option<Step> {
+    rows: &[RowKey<M>],
+) -> Option<Step<M>> {
     match focus.area {
         Area::Pages => step_in_pages(key, listed, current, rows),
         Area::Rows if rows.is_empty() => Some(Step::to(Focus::default())),
@@ -74,12 +97,12 @@ pub fn step(
     }
 }
 
-fn step_in_pages(
+fn step_in_pages<M: Clone>(
     key: FocusKey,
     listed: &[SettingsFeature],
     current: SettingsFeature,
-    rows: &[RowKey<SettingsMessage>],
-) -> Option<Step> {
+    rows: &[RowKey<M>],
+) -> Option<Step<M>> {
     let at = listed.iter().position(|&page| page == current)?;
     let neighbour = |next: usize| {
         listed.get(next).map(|&page| Step {
@@ -90,54 +113,91 @@ fn step_in_pages(
     match key {
         FocusKey::Up => neighbour(at.checked_sub(1)?),
         FocusKey::Down => neighbour(at + 1),
-        FocusKey::Right | FocusKey::Press if !rows.is_empty() => Some(Step::to(Focus {
-            area: Area::Rows,
-            row: 0,
-        })),
+        FocusKey::Right | FocusKey::Press if !rows.is_empty() => Some(Step::to(Focus::in_rows(0))),
         FocusKey::Left | FocusKey::Right | FocusKey::Press | FocusKey::Escape => None,
     }
 }
 
-fn step_in_rows(focus: Focus, key: FocusKey, rows: &[RowKey<SettingsMessage>]) -> Step {
+fn step_in_rows<M: Clone>(focus: Focus, key: FocusKey, rows: &[RowKey<M>]) -> Step<M> {
     let row = focus.row.min(rows.len() - 1);
-    let here = Focus {
-        area: Area::Rows,
-        row,
-    };
+    let here = Focus::in_rows(row);
     let to_pages = Step {
         release_field: true,
         ..Step::to(Focus::default())
     };
-    let pressing = |message: &SettingsMessage| Step {
+    let pressing = |message: &M| Step {
         press: Some(message.clone()),
         ..Step::to(here)
     };
+    if let (Some(highlighted), RowKey::Dropdown { choices, .. }) = (focus.open, &rows[row]) {
+        return step_in_open_list(here, highlighted, key, choices);
+    }
     match (key, &rows[row]) {
         (FocusKey::Up, _) => Step {
             release_field: true,
-            ..Step::to(Focus {
-                row: row.saturating_sub(1),
-                ..here
-            })
+            ..Step::to(Focus::in_rows(row.saturating_sub(1)))
         },
         (FocusKey::Down, _) => Step {
             release_field: true,
-            ..Step::to(Focus {
-                row: (row + 1).min(rows.len() - 1),
-                ..here
-            })
+            ..Step::to(Focus::in_rows((row + 1).min(rows.len() - 1)))
         },
         (FocusKey::Escape, _) => to_pages,
         (FocusKey::Left, RowKey::Choice { previous, .. }) => pressing(previous),
+        (
+            FocusKey::Left,
+            RowKey::Dropdown {
+                choices, selected, ..
+            },
+        ) => choices
+            .get(selected.wrapping_sub(1))
+            .map_or_else(|| Step::to(here), pressing),
         (FocusKey::Left, _) => to_pages,
         (FocusKey::Right, RowKey::Choice { next, .. }) => pressing(next),
+        (
+            FocusKey::Right,
+            RowKey::Dropdown {
+                choices, selected, ..
+            },
+        ) => choices
+            .get(selected + 1)
+            .map_or_else(|| Step::to(here), pressing),
         (FocusKey::Right, _) => Step::to(here),
         (FocusKey::Press, RowKey::Press(message)) => pressing(message),
         (FocusKey::Press, RowKey::Choice { next, .. }) => pressing(next),
+        (FocusKey::Press, RowKey::Dropdown { selected, .. }) => Step::to(Focus {
+            open: Some(*selected),
+            ..here
+        }),
         (FocusKey::Press, RowKey::Text(id)) => Step {
             focus_field: Some(id),
+            ..Step::to(Focus {
+                field: true,
+                ..here
+            })
+        },
+    }
+}
+
+fn step_in_open_list<M: Clone>(
+    here: Focus,
+    highlighted: usize,
+    key: FocusKey,
+    choices: &[M],
+) -> Step<M> {
+    let highlight = |at: usize| {
+        Step::to(Focus {
+            open: Some(at),
+            ..here
+        })
+    };
+    match key {
+        FocusKey::Up => highlight(highlighted.saturating_sub(1)),
+        FocusKey::Down => highlight((highlighted + 1).min(choices.len().saturating_sub(1))),
+        FocusKey::Press => Step {
+            press: choices.get(highlighted).cloned(),
             ..Step::to(here)
         },
+        FocusKey::Escape | FocusKey::Left | FocusKey::Right => Step::to(here),
     }
 }
 
@@ -154,20 +214,26 @@ mod tests {
             },
             RowKey::Press(SettingsMessage::ToggleFileListTags),
             RowKey::Text("field"),
+            RowKey::Dropdown {
+                labels: vec!["a".into(), "b".into(), "c".into()],
+                choices: vec![
+                    SettingsMessage::Close,
+                    SettingsMessage::Toggle,
+                    SettingsMessage::ToggleFileListTags,
+                ],
+                selected: 1,
+            },
         ]
     }
 
     const PAGES: [SettingsFeature; 3] = [Look, Language, Columns];
-    const IN_ROWS: fn(usize) -> Focus = |row| Focus {
-        area: Area::Rows,
-        row,
-    };
+    const IN_ROWS: fn(usize) -> Focus = Focus::in_rows;
 
-    fn pages(key: FocusKey, current: SettingsFeature) -> Option<Step> {
+    fn pages(key: FocusKey, current: SettingsFeature) -> Option<Step<SettingsMessage>> {
         step(Focus::default(), key, &PAGES, current, &rows())
     }
 
-    fn in_rows(row: usize, key: FocusKey) -> Step {
+    fn in_rows(row: usize, key: FocusKey) -> Step<SettingsMessage> {
         step(IN_ROWS(row), key, &PAGES, Look, &rows()).expect("handled")
     }
 
@@ -187,7 +253,13 @@ mod tests {
 
     #[test]
     fn a_page_without_rows_keeps_the_keyboard_in_the_list() {
-        let none = step(Focus::default(), FocusKey::Right, &PAGES, Look, &[]);
+        let none = step(
+            Focus::default(),
+            FocusKey::Right,
+            &PAGES,
+            Look,
+            &[] as &[RowKey<SettingsMessage>],
+        );
         assert_eq!(none, None);
     }
 
@@ -200,7 +272,7 @@ mod tests {
     fn up_and_down_in_the_rows_stop_at_the_ends() {
         assert_eq!(in_rows(0, FocusKey::Up).focus, IN_ROWS(0));
         assert_eq!(in_rows(1, FocusKey::Down).focus, IN_ROWS(2));
-        assert_eq!(in_rows(2, FocusKey::Down).focus, IN_ROWS(2));
+        assert_eq!(in_rows(3, FocusKey::Down).focus, IN_ROWS(3));
     }
 
     #[test]
@@ -242,5 +314,54 @@ mod tests {
     fn leaving_a_field_with_up_or_down_moves_to_the_next_row() {
         let up = in_rows(2, FocusKey::Up);
         assert_eq!((up.focus, up.release_field), (IN_ROWS(1), true));
+    }
+
+    fn open_at(highlighted: usize) -> Focus {
+        Focus {
+            open: Some(highlighted),
+            ..IN_ROWS(3)
+        }
+    }
+
+    fn in_open_list(highlighted: usize, key: FocusKey) -> Step<SettingsMessage> {
+        step(open_at(highlighted), key, &PAGES, Look, &rows()).expect("handled")
+    }
+
+    #[test]
+    fn enter_opens_a_dropdown_on_its_current_value() {
+        assert_eq!(in_rows(3, FocusKey::Press).focus, open_at(1));
+    }
+
+    #[test]
+    fn in_an_open_list_up_and_down_choose_and_enter_takes_the_row() {
+        assert_eq!(in_open_list(1, FocusKey::Down).focus, open_at(2));
+        assert_eq!(in_open_list(2, FocusKey::Down).focus, open_at(2));
+        assert_eq!(in_open_list(0, FocusKey::Up).focus, open_at(0));
+        let taken = in_open_list(2, FocusKey::Press);
+        assert_eq!(taken.press, Some(SettingsMessage::ToggleFileListTags));
+        assert_eq!(taken.focus, IN_ROWS(3));
+    }
+
+    #[test]
+    fn escape_closes_the_list_and_stays_on_the_row() {
+        assert_eq!(in_open_list(2, FocusKey::Escape).focus, IN_ROWS(3));
+    }
+
+    #[test]
+    fn left_and_right_change_a_dropdown_without_opening_it() {
+        assert_eq!(
+            in_rows(3, FocusKey::Left).press,
+            Some(SettingsMessage::Close)
+        );
+        assert_eq!(
+            in_rows(3, FocusKey::Right).press,
+            Some(SettingsMessage::ToggleFileListTags)
+        );
+    }
+
+    #[test]
+    fn a_text_field_row_marks_the_field_as_having_the_keys() {
+        assert!(in_rows(2, FocusKey::Press).focus.field);
+        assert!(!in_rows(2, FocusKey::Up).focus.field);
     }
 }

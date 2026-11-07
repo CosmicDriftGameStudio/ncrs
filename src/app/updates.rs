@@ -60,16 +60,19 @@ impl App {
     }
 
     /// The Updates page of the settings tab.
-    pub(in crate::app) fn updates_page(&self) -> Element<'_, Message> {
-        ncrs_updates::view(
-            &self.updates,
-            ncrs_updates::ViewCtx {
-                lang: self.lang,
-                palette: &self.palette,
-                enabled: self.updates.is_enabled(self.update_check),
-            },
-        )
-        .map(Message::Updates)
+    pub(in crate::app) fn updates_page(
+        &self,
+        focus: Option<ncrs_ui_kit::setting_rows::RowFocus>,
+    ) -> Element<'_, Message> {
+        ncrs_updates::view(&self.updates, self.updates_view_ctx(), focus).map(Message::Updates)
+    }
+
+    pub(in crate::app) fn updates_view_ctx(&self) -> ncrs_updates::ViewCtx<'_> {
+        ncrs_updates::ViewCtx {
+            lang: self.lang,
+            palette: &self.palette,
+            enabled: self.updates.is_enabled(self.update_check),
+        }
     }
 
     /// Whether the update check runs: always false where this build makes no

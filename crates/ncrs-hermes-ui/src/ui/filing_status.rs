@@ -10,7 +10,7 @@ use ncrs_config::palette::Palette;
 use ncrs_i18n::{Language, Msg};
 use ncrs_ui_kit::format;
 use ncrs_ui_kit::kit::{self, Tone};
-use ncrs_ui_kit::setting_rows::{Group, SettingRow};
+use ncrs_ui_kit::setting_rows::{Group, RowKey, SettingRow};
 
 use crate::filing_status::FilingStatus;
 use crate::message::{FilingStatusMessage, Message};
@@ -58,6 +58,9 @@ pub fn groups<'a>(
                 ],
                 palette,
             )
+            .keyed(RowKey::Press(send(FilingStatusMessage::ErrorActivated(
+                error.file.clone(),
+            ))))
         })
         .collect();
     if rows.is_empty() {
@@ -67,16 +70,19 @@ pub fn groups<'a>(
             Vec::new(),
         ));
     } else if rows.len() >= MIN_ROWS_FOR_ALL_AT_ONCE {
-        rows.push(SettingRow::adding(
-            None,
-            None,
-            vec![kit::button(
-                lang.text(Msg::FilingStatusProcessAllAgain),
-                Some(send(FilingStatusMessage::ProcessAllAgain)),
-                Tone::Secondary,
-                palette,
-            )],
-        ));
+        rows.push(
+            SettingRow::adding(
+                None,
+                None,
+                vec![kit::button(
+                    lang.text(Msg::FilingStatusProcessAllAgain),
+                    Some(send(FilingStatusMessage::ProcessAllAgain)),
+                    Tone::Secondary,
+                    palette,
+                )],
+            )
+            .keyed(RowKey::Press(send(FilingStatusMessage::ProcessAllAgain))),
+        );
     }
     vec![Group {
         intro: None,

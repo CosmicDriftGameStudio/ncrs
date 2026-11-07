@@ -17,6 +17,7 @@ impl App {
         let mut state = settings_ui::SettingsState::new(false, Ok(Box::default()), false);
         state.feature = feature;
         app.settings.page = Some(state);
+        app.shown_tab = ShownTab::Settings;
         app
     }
 
@@ -55,6 +56,7 @@ impl App {
         let mut state = settings_ui::SettingsState::new(false, Ok(Box::default()), false);
         state.feature = feature;
         self.settings.page = Some(state);
+        self.shown_tab = ShownTab::Settings;
         self
     }
 

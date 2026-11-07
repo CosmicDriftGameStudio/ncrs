@@ -151,6 +151,17 @@ fn keys_without_prompt(
         };
     }
 
+    // Settings keep Tab for a text field the keyboard sits in.
+    if prompt.settings && !prompt.settings_field && matches!(key.as_ref(), Key::Named(Named::Tab)) {
+        return if key_modifiers == Modifiers::SHIFT {
+            Some(Message::SwitchTabBack)
+        } else if key_modifiers.is_empty() {
+            Some(Message::Panel(PanelMessage::SwitchPanel))
+        } else {
+            None
+        };
+    }
+
     if prompt.monitor {
         return monitor_page_key(prompt, &key, key_modifiers, scope);
     }

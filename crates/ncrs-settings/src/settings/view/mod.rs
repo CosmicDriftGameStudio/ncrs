@@ -298,6 +298,18 @@ fn choice_key(messages: Vec<Message>, selected: usize) -> RowKey<Message> {
     }
 }
 
+/// The keyboard on a dropdown that offers `items`.
+fn dropdown_key(
+    items: &[ncrs_ui_kit::hermes_kit::MenuItem<Message>],
+    selected: usize,
+) -> RowKey<Message> {
+    RowKey::Dropdown {
+        labels: items.iter().map(|item| item.label.clone()).collect(),
+        choices: items.iter().map(|item| item.message.clone()).collect(),
+        selected,
+    }
+}
+
 fn switch<'a>(on: bool, setting: SettingChange, view: &SettingsView<'_>) -> Element<'a, Message> {
     ncrs_ui_kit::setting_rows::switch(on, change(setting), view.lang, view.palette)
 }

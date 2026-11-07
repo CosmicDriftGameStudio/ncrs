@@ -40,7 +40,10 @@ pub fn hermes_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
                     view,
                 ),
                 lang,
-            )],
+            )
+            .keyed(RowKey::Press(change(SettingChange::HermesEnabled(
+                !view.filing.enabled,
+            ))))],
         },
         group(
             Msg::SettingsHermesSectionFolders,
@@ -93,6 +96,7 @@ fn read_folder_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
                 location,
                 Some(folder_status(location, lang)),
                 None,
+                SettingsMessage::EditFolder(Some(location.path.clone())),
                 vec![change, remove_folder_button(location, view)],
                 view,
             )
@@ -167,6 +171,7 @@ fn order_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
                     palette,
                 ),
             )
+            .keyed(RowKey::Press(SettingsMessage::OpenChat(Some(area.clone()))))
         })
         .collect();
     let hidden = areas.len().saturating_sub(AREAS_SHOWN);
@@ -183,16 +188,19 @@ fn order_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
             };
             (label, Msg::SettingsHermesAreasShowAll)
         };
-        rows.push(text_row(
-            label,
-            None,
-            kit::button(
-                lang.text(button),
-                Some(SettingsMessage::ToggleAllAreas),
-                Tone::Secondary,
-                palette,
-            ),
-        ));
+        rows.push(
+            text_row(
+                label,
+                None,
+                kit::button(
+                    lang.text(button),
+                    Some(SettingsMessage::ToggleAllAreas),
+                    Tone::Secondary,
+                    palette,
+                ),
+            )
+            .keyed(RowKey::Press(SettingsMessage::ToggleAllAreas)),
+        );
     }
     rows
 }
@@ -261,7 +269,12 @@ fn history_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
                     &[("{folders}", &run.examples.join(", "))],
                 )
             });
-            text_row(run_line(run, lang), examples, control)
+            let row = text_row(run_line(run, lang), examples, control);
+            if run.undoable {
+                row.keyed(RowKey::Press(SettingsMessage::UndoRun(run.batch)))
+            } else {
+                row
+            }
         })
         .collect();
     if runs.len() > RUNS_SHOWN {
@@ -270,16 +283,19 @@ fn history_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
         } else {
             Msg::SettingsHermesHistoryShowAll
         };
-        rows.push(text_row(
-            String::new(),
-            None,
-            kit::button(
-                lang.text(button),
-                Some(SettingsMessage::ToggleAllRuns),
-                Tone::Secondary,
-                view.palette,
-            ),
-        ));
+        rows.push(
+            text_row(
+                String::new(),
+                None,
+                kit::button(
+                    lang.text(button),
+                    Some(SettingsMessage::ToggleAllRuns),
+                    Tone::Secondary,
+                    view.palette,
+                ),
+            )
+            .keyed(RowKey::Press(SettingsMessage::ToggleAllRuns)),
+        );
     }
     rows
 }

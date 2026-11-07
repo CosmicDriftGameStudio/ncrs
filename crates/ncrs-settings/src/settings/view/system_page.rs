@@ -24,6 +24,10 @@ pub fn system_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
                 kit::segmented(&options, chosen, true, view.palette),
                 lang,
             )
+            .keyed(choice_key(
+                options.iter().map(|(_, message)| message.clone()).collect(),
+                chosen,
+            ))
         };
     let choice_row = |label: Msg,
                       choices: &[(Msg, SystemSettings)],
@@ -86,6 +90,9 @@ pub fn system_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
                     switch(on, SettingChange::System(current.toggled(value, !on)), view),
                     lang,
                 )
+                .keyed(RowKey::Press(change(SettingChange::System(
+                    current.toggled(value, !on),
+                ))))
             }),
     );
     rows.push(choice_row(

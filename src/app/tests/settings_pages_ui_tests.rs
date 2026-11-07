@@ -204,7 +204,13 @@ async fn zeigen_on_the_unreadable_files_opens_the_inspection_page() -> TestResul
     simulator.click("Show")?;
     let messages: Vec<Message> = simulator.into_messages().collect();
     let show = settings(SettingsMessage::Select(SettingsFeature::ReadErrors));
-    assert_eq!(messages, std::slice::from_ref(&show));
+    let focused = settings(SettingsMessage::FocusThen(
+        12,
+        Some(Box::new(SettingsMessage::Select(
+            SettingsFeature::ReadErrors,
+        ))),
+    ));
+    assert_eq!(messages, std::slice::from_ref(&focused));
 
     drop(app.update(show));
     assert!(app.inspection_page_is_open_for_test());
@@ -279,7 +285,13 @@ fn only_a_run_that_can_be_put_back_has_the_undo_button() -> TestResult {
     let mut simulator = page_simulator(&app);
     simulator.click("Undo")?;
     let messages: Vec<Message> = simulator.into_messages().collect();
-    assert_eq!(messages, vec![settings(SettingsMessage::UndoRun(2))]);
+    assert_eq!(
+        messages,
+        vec![settings(SettingsMessage::FocusThen(
+            7,
+            Some(Box::new(SettingsMessage::UndoRun(2)))
+        ))]
+    );
     Ok(())
 }
 

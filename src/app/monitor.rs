@@ -62,9 +62,6 @@ impl App {
     /// replaces whichever of them is up.
     fn leave_pages_for_monitor(&mut self) -> Task<Message> {
         let mut tasks = Vec::new();
-        if self.settings.page.is_some() {
-            tasks.push(self.leave_settings_page());
-        }
         if self.hermes_chat.open {
             tasks.push(self.update_hermes_chat(HermesChatMessage::Close));
         }
@@ -76,8 +73,7 @@ impl App {
 
     /// A page opened over the System page, from a menu or a key: it wins.
     pub(in crate::app) fn monitor_yields_to_other_pages(&mut self) -> Task<Message> {
-        let other_page_is_open = self.settings.page.is_some() || self.hermes_chat.open;
-        if !(self.monitor.is_open() && other_page_is_open) {
+        if !(self.monitor.is_open() && self.hermes_chat.open) {
             return Task::none();
         }
         let ctx = self.monitor_ctx();

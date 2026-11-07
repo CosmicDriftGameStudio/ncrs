@@ -9584,9 +9584,39 @@
     },
     {
       "key": "permissions.title_many",
-      "context": "Title of the permissions dialog for several entries. {files} is the number of files, {folders} the number of folders.",
-      "en": "Permissions – {files} files, {folders} folders",
-      "de": "Rechte – {files} Dateien, {folders} Ordner"
+      "context": "Title of the permissions dialog for several entries. {parts} is the count of files, of folders, or both joined; a count of zero is left out.",
+      "en": "Permissions – {parts}",
+      "de": "Rechte – {parts}"
+    },
+    {
+      "key": "permissions.title_parts_joined",
+      "context": "Joins the count of files and the count of folders in the title of the permissions dialog. {files} and {folders} are already worded, e.g. '3 files' and '2 folders'.",
+      "en": "{files}, {folders}",
+      "de": "{files}, {folders}"
+    },
+    {
+      "key": "permissions.title_files",
+      "context": "Part of the title of the permissions dialog: several files. {count} is the number, two or more.",
+      "en": "{count} files",
+      "de": "{count} Dateien"
+    },
+    {
+      "key": "permissions.title_file_one",
+      "context": "Part of the title of the permissions dialog: exactly one file.",
+      "en": "1 file",
+      "de": "1 Datei"
+    },
+    {
+      "key": "permissions.title_folders",
+      "context": "Part of the title of the permissions dialog: several folders. {count} is the number, two or more.",
+      "en": "{count} folders",
+      "de": "{count} Ordner"
+    },
+    {
+      "key": "permissions.title_folder_one",
+      "context": "Part of the title of the permissions dialog: exactly one folder.",
+      "en": "1 folder",
+      "de": "1 Ordner"
     },
     {
       "key": "permissions.row_owner",

@@ -195,7 +195,16 @@ impl App {
             return Task::none();
         };
         let view = self.settings_view(state);
-        let facts = settings_ui::focus_facts(&view);
+        let facts = settings_ui::focus_facts(&view).map(|(listed, current, rows)| {
+            let rows = match self.app_page_keys(current) {
+                Some(keys) => keys,
+                None => rows
+                    .into_iter()
+                    .map(|row| row.map(Message::Settings))
+                    .collect(),
+            };
+            (listed, current, rows)
+        });
         let step = facts.as_ref().and_then(|(listed, current, rows)| {
             ncrs_settings::focus::step(state.focus, key, listed, *current, rows)
         });
@@ -213,7 +222,7 @@ impl App {
         }
         tasks.push(self.update_settings(SettingsMessage::SetFocus(step.focus)));
         if let Some(message) = step.press {
-            tasks.push(self.update_settings(message));
+            tasks.push(self.update(message));
         }
         if let Some(field) = step.focus_field {
             tasks.push(operation::focus(field));
@@ -224,6 +233,33 @@ impl App {
             tasks.push(settings_ui::scroll_to_row(step.focus.row, rows));
         }
         Task::batch(tasks)
+    }
+
+    /// The keyboard rows of a page the app fills, while one is shown.
+    fn app_page_keys(
+        &self,
+        feature: crate::messages::SettingsFeature,
+    ) -> Option<Vec<ncrs_ui_kit::setting_rows::RowKey<Message>>> {
+        if !feature.is_filled_by_app() {
+            return None;
+        }
+        if feature == crate::messages::SettingsFeature::Updates {
+            let ctx = self.updates_view_ctx();
+            return Some(
+                ncrs_updates::keys(&self.updates, &ctx)
+                    .into_iter()
+                    .map(|key| key.map(Message::Updates))
+                    .collect(),
+            );
+        }
+        let page = hermes_page_of(feature)?;
+        let ctx = self.hermes_view_ctx();
+        Some(
+            ncrs_hermes_ui::page_keys(&self.hermes, page, &ctx)
+                .into_iter()
+                .map(|key| key.map(Message::from))
+                .collect(),
+        )
     }
 
     pub(in crate::app) fn update_key_bindings(
@@ -274,12 +310,13 @@ impl App {
         let hermes_ctx = self.hermes_view_ctx();
         let page =
             settings_ui::view_with(&self.settings_view(state), Message::Settings, |feature| {
+                let focus = state.focus.row_focus();
                 if feature == crate::messages::SettingsFeature::Updates {
-                    return Some(self.updates_page());
+                    return Some(self.updates_page(focus));
                 }
                 let page = hermes_page_of(feature)?;
                 Some(
-                    ncrs_hermes_ui::page_content(&self.hermes, page, &hermes_ctx)
+                    ncrs_hermes_ui::page_content(&self.hermes, page, &hermes_ctx, focus)
                         .map(Message::from),
                 )
             });

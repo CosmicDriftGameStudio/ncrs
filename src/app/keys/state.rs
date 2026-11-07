@@ -26,12 +26,12 @@ impl App {
         input.theme_fetch = self.settings.theme_fetch.is_some();
         input.transfer_dialog = self.ops.transfer_dialog.is_some();
         input.permissions_dialog = self.ops.permissions_dialog.is_some();
-        input.settings = self.settings.page.is_some() && !self.blocking_overlay_is_open();
-        input.monitor = self.monitor.is_open();
-        input.monitor_filter = self.monitor.is_open()
+        input.settings = self.settings_shown() && !self.blocking_overlay_is_open();
+        input.monitor = self.monitor_shown();
+        input.monitor_filter = self.monitor_shown()
             && self.monitor.filter_has_focus()
             && !self.blocking_overlay_is_open();
-        input.monitor_menu = self.monitor.is_open()
+        input.monitor_menu = self.monitor_shown()
             && !self.monitor.filter_has_focus()
             && !self.blocking_overlay_is_open();
         drop(input);
@@ -86,8 +86,14 @@ impl App {
         let ai_model = self.settings.ai_card_is_shown();
         let grant_dialog = self.grant_dialog;
         let connect_dialog = self.remote_ui.dialog.is_some();
-        let settings = self.settings.page.is_some();
-        let monitor = self.monitor.is_open();
+        let settings = self.settings_shown();
+        let settings_field = self.settings_shown()
+            && self
+                .settings
+                .page
+                .as_ref()
+                .is_some_and(|page| page.focus.field);
+        let monitor = self.monitor_shown();
         let monitor_filter = monitor && self.monitor.filter_has_focus();
         let monitor_dialog = monitor && self.monitor.dialog_is_open();
         let monitor_menu = monitor && self.monitor.menu_is_open();
@@ -129,6 +135,7 @@ impl App {
                 grant_dialog,
                 connect_dialog,
                 settings,
+                settings_field,
                 monitor,
                 monitor_filter,
                 monitor_dialog,
@@ -171,6 +178,7 @@ impl App {
                 grant_dialog,
                 connect_dialog,
                 settings,
+                settings_field,
                 monitor,
                 monitor_filter,
                 monitor_dialog,

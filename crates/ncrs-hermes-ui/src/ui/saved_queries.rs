@@ -16,7 +16,7 @@ use ncrs_ui_kit::format;
 use ncrs_ui_kit::frame::{DialogSize, Frame, KeyHints};
 use ncrs_ui_kit::hermes_kit::{self as page_kit, MenuItem, RowTwo, GAP_S, TEXT_BODY};
 use ncrs_ui_kit::kit::{self, Tone};
-use ncrs_ui_kit::setting_rows::{Group, SettingRow};
+use ncrs_ui_kit::setting_rows::{Group, RowKey, SettingRow};
 
 use crate::message::{Message, SavedQueriesMessage};
 use crate::rules_page::hits_text;
@@ -80,6 +80,7 @@ pub fn groups<'a>(
                 ],
                 palette,
             )
+            .keyed_if(idle, RowKey::Press(send(SavedQueriesMessage::Edit(index))))
         })
         .collect();
     let note = match state.exported() {
@@ -113,16 +114,19 @@ pub fn groups<'a>(
     } else {
         state.problem().map(|found| problem_text(found, lang))
     };
-    rows.push(SettingRow::adding(
-        note,
-        problem,
-        vec![kit::button(
-            lang.text(Msg::SavedQueriesNew),
-            idle.then(|| send(SavedQueriesMessage::New)),
-            Tone::Secondary,
-            palette,
-        )],
-    ));
+    rows.push(
+        SettingRow::adding(
+            note,
+            problem,
+            vec![kit::button(
+                lang.text(Msg::SavedQueriesNew),
+                idle.then(|| send(SavedQueriesMessage::New)),
+                Tone::Secondary,
+                palette,
+            )],
+        )
+        .keyed_if(idle, RowKey::Press(send(SavedQueriesMessage::New))),
+    );
     vec![Group {
         intro: None,
         title: String::new(),

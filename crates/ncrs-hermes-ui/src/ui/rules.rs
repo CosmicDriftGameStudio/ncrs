@@ -12,7 +12,7 @@ use ncrs_ui_kit::format;
 use ncrs_ui_kit::frame::{DialogSize, Frame, KeyHints};
 use ncrs_ui_kit::hermes_kit::{self as page_kit, ChipKind, RowTwo, GAP_S, GAP_XS};
 use ncrs_ui_kit::kit::{self, Check, Tone};
-use ncrs_ui_kit::setting_rows::{Group, SettingRow};
+use ncrs_ui_kit::setting_rows::{Group, RowKey, SettingRow};
 
 use super::condition_editor::{
     add_condition_link, combinator_choice, condition_editor_rows, ConditionHost,
@@ -55,7 +55,10 @@ pub fn groups<'a>(
         .rows()
         .iter()
         .enumerate()
-        .map(|(index, listed)| rule_row(index, count, listed, state, lang, palette))
+        .map(|(index, listed)| {
+            rule_row(index, count, listed, state, lang, palette)
+                .keyed_if(idle, RowKey::Press(send(RulesMessage::Edit(index))))
+        })
         .collect();
     let empty = if count > 0 {
         None
@@ -68,16 +71,19 @@ pub fn groups<'a>(
         .problem()
         .filter(|_| !state.dialog_is_open())
         .map(|detail| problem_text(detail, lang));
-    rows.push(SettingRow::adding(
-        empty,
-        problem,
-        vec![kit::button(
-            lang.text(Msg::HermesPagesRuleAdd),
-            idle.then(|| send(RulesMessage::New)),
-            Tone::Secondary,
-            palette,
-        )],
-    ));
+    rows.push(
+        SettingRow::adding(
+            empty,
+            problem,
+            vec![kit::button(
+                lang.text(Msg::HermesPagesRuleAdd),
+                idle.then(|| send(RulesMessage::New)),
+                Tone::Secondary,
+                palette,
+            )],
+        )
+        .keyed_if(idle, RowKey::Press(send(RulesMessage::New))),
+    );
     vec![Group {
         intro: None,
         title: String::new(),

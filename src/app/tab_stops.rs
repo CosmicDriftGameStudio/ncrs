@@ -43,14 +43,31 @@ pub(in crate::app) fn next_stop(
 
 impl App {
     fn current_stop(&self) -> TabStop {
-        if self.monitor.is_open() {
-            TabStop::Monitor
-        } else if self.settings.page.is_some() {
-            TabStop::Settings
-        } else if self.panels.active == PanelSide::Left {
-            TabStop::Left
-        } else {
-            TabStop::Right
+        match self.shown_tab {
+            ShownTab::Monitor => TabStop::Monitor,
+            ShownTab::Settings => TabStop::Settings,
+            ShownTab::Panels if self.panels.active == PanelSide::Left => TabStop::Left,
+            ShownTab::Panels => TabStop::Right,
+        }
+    }
+
+    /// A page that opened is the one shown; the shown one that closed gives
+    /// way to the panels. `was_open` is settings and System before the update.
+    pub(in crate::app) fn follow_opened_pages(&mut self, was_open: (bool, bool)) {
+        let (settings, monitor) = (self.settings.page.is_some(), self.monitor.is_open());
+        if monitor && !was_open.1 {
+            self.shown_tab = ShownTab::Monitor;
+        }
+        if settings && !was_open.0 {
+            self.shown_tab = ShownTab::Settings;
+        }
+        let shown_is_closed = match self.shown_tab {
+            ShownTab::Settings => !settings,
+            ShownTab::Monitor => !monitor,
+            ShownTab::Panels => false,
+        };
+        if shown_is_closed {
+            self.shown_tab = ShownTab::Panels;
         }
     }
 
@@ -62,21 +79,19 @@ impl App {
             current,
             direction,
         );
-        if target == current {
-            return Task::none();
+        match target {
+            TabStop::Left | TabStop::Right => {
+                self.panels.active = if target == TabStop::Left {
+                    PanelSide::Left
+                } else {
+                    PanelSide::Right
+                };
+                self.shown_tab = ShownTab::Panels;
+            }
+            TabStop::Settings => self.shown_tab = ShownTab::Settings,
+            TabStop::Monitor => self.shown_tab = ShownTab::Monitor,
         }
-        let side = match target {
-            TabStop::Left => PanelSide::Left,
-            TabStop::Right => PanelSide::Right,
-            // Only one page is open at a time and it is the current stop.
-            TabStop::Settings | TabStop::Monitor => return Task::none(),
-        };
-        self.panels.active = side;
-        match current {
-            TabStop::Monitor => self.update_monitor(MonitorMessage::Close),
-            TabStop::Settings => self.leave_settings_page(),
-            TabStop::Left | TabStop::Right => Task::none(),
-        }
+        Task::none()
     }
 }
 

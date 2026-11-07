@@ -144,6 +144,7 @@ pub fn vscode_row<'a>(view: &SettingsView<'a>) -> SettingRow<'a> {
             )
         });
     SettingRow {
+        key: Some(RowKey::Press(SettingsMessage::PickThemeFile)),
         problem: warning,
         control_width: Some(SETTINGS_WIDE_CONTROL_WIDTH),
         in_command_list: true,
@@ -278,7 +279,7 @@ pub fn program_row<'a>(kind: OpenKind, view: &SettingsView<'a>) -> SettingRow<'a
         description.push_str(lang.text(Msg::SettingsProgramsSandboxNote));
     }
     SettingRow {
-        key: None,
+        key: Some(RowKey::Press(SettingsMessage::PickProgram(kind))),
         label: lang.text(label).to_owned(),
         theme_name: None,
         config_key: None,
@@ -358,7 +359,7 @@ pub fn terminal_row<'a>(view: &SettingsView<'a>) -> SettingRow<'a> {
         control = control.push(own);
     }
     SettingRow {
-        key: None,
+        key: Some(dropdown_key(&items, selected)),
         label: lang.text(Msg::SettingsRowTerminal).to_owned(),
         theme_name: None,
         config_key: None,
@@ -408,7 +409,8 @@ pub fn keys_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
                 palette,
             ),
             lang,
-        )],
+        )
+        .keyed(RowKey::Press(SettingsMessage::OpenKeyBindings))],
     }]
 }
 
@@ -416,7 +418,7 @@ pub fn servers_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
     let lang = view.lang;
     let palette = view.palette;
     let add = |label: Msg, button: Msg| SettingRow {
-        key: None,
+        key: Some(RowKey::Press(SettingsMessage::OpenServerAdd)),
         label: lang.text(label).to_owned(),
         theme_name: None,
         config_key: None,
@@ -461,7 +463,7 @@ pub fn servers_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
                 detail.push_str(folder);
             }
             SettingRow {
-                key: None,
+                key: Some(RowKey::Press(SettingsMessage::OpenServer(server.url()))),
                 label: server.label(),
                 theme_name: None,
                 config_key: None,
@@ -556,6 +558,7 @@ pub fn ai_field_row<'a>(
     view: &SettingsView<'a>,
 ) -> SettingRow<'a> {
     SettingRow {
+        key: Some(RowKey::Text(id)),
         problem: field_problem(field, view),
         ..simple_row(
             label,
@@ -588,7 +591,11 @@ pub fn provider_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
         Some(Msg::SettingsRowAiProviderNote),
         kit::segmented(&options, chosen, true, view.palette),
         lang,
-    )];
+    )
+    .keyed(choice_key(
+        options.iter().map(|(_, message)| message.clone()).collect(),
+        chosen,
+    ))];
     match provider {
         AiProviderName::Local => {}
         AiProviderName::Http => {
@@ -667,7 +674,9 @@ pub fn protection_group<'a>(view: &SettingsView<'a>) -> Option<Group<'a>> {
             palette,
         ));
     }
+    let first_enabled = panel.buttons.iter().position(|button| button.enabled);
     let protection = SettingRow {
+        key: first_enabled.map(|position| RowKey::Press(SettingsMessage::Protection(position))),
         problem: panel.failure.clone(),
         description: Some(panel.sentence.clone()),
         in_command_list: false,

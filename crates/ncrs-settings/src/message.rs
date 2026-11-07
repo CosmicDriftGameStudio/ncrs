@@ -123,8 +123,9 @@ pub enum SettingsMessage {
     FocusKey(crate::focus::FocusKey),
     /// Where the keyboard is now.
     SetFocus(crate::focus::Focus),
-    /// A click on the row with this number among those that have a key.
-    FocusRow(usize),
+    /// A click on the row with this number among those that have a key, or
+    /// on its control: the control's message goes along and is handled too.
+    FocusThen(usize, Option<Box<SettingsMessage>>),
     SearchChanged(String),
     Change(SettingChange),
     Columns(ColumnsEdit),

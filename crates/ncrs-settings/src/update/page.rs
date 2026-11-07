@@ -77,13 +77,20 @@ pub fn update(
             state.focus = focus;
             None
         }),
-        SettingsMessage::FocusRow(row) => in_settings(settings, ctx, |state| {
-            state.focus = crate::focus::Focus {
-                area: crate::focus::Area::Rows,
-                row,
-            };
-            None
-        }),
+        SettingsMessage::FocusThen(row, inner) => {
+            let focused = in_settings(settings, ctx, |state| {
+                let same_row =
+                    state.focus.area == crate::focus::Area::Rows && state.focus.row == row;
+                if !same_row {
+                    state.focus = crate::focus::Focus::in_rows(row);
+                }
+                None
+            });
+            match inner {
+                Some(inner) => Task::batch([focused, update(settings, *inner, ctx, actions)]),
+                None => focused,
+            }
+        }
         // Needs the rows of the page; the app turns it into a step.
         SettingsMessage::FocusKey(_) => Task::none(),
         SettingsMessage::SearchChanged(query) => in_settings(settings, ctx, |state| {

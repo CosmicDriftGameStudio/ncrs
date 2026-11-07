@@ -69,6 +69,8 @@ pub enum Message {
     Paste,
     /// Shift+Tab: the previous tab; Tab is `PanelMessage::SwitchPanel`.
     SwitchTabBack,
+    /// A click on the tab of an open page.
+    ShowTab(ShownTab),
     /// The system clipboard has been read for a paste; `None` when it holds
     /// nothing usable.
     ClipboardRead(Option<PastedContent>),
@@ -371,6 +373,16 @@ pub enum Message {
 pub use ncrs_config::SettingsFeature;
 
 /// What the title bar asks of the window.
+/// What the area under the title bar shows. Settings and the System page stay
+/// open while the panels are shown.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ShownTab {
+    #[default]
+    Panels,
+    Settings,
+    Monitor,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TitleBarMessage {
     /// A press on an empty part of the row: the window follows the pointer.

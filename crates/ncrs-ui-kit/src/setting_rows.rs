@@ -23,6 +23,46 @@ pub enum RowKey<M> {
     Choice { previous: M, next: M },
     /// A text field: Enter and Space focus it.
     Text(&'static str),
+    /// A dropdown: Enter and Space open its list, Up and Down choose in it,
+    /// Enter takes the highlighted row and Escape closes it; Left and Right
+    /// change the value without opening it. `choices` is what picking each
+    /// of `labels` sends.
+    Dropdown {
+        labels: Vec<String>,
+        choices: Vec<M>,
+        selected: usize,
+    },
+}
+
+impl<M> RowKey<M> {
+    /// The same key for the messages of the page around.
+    pub fn map<N>(self, wrap: impl Fn(M) -> N) -> RowKey<N> {
+        match self {
+            Self::Press(message) => RowKey::Press(wrap(message)),
+            Self::Choice { previous, next } => RowKey::Choice {
+                previous: wrap(previous),
+                next: wrap(next),
+            },
+            Self::Text(id) => RowKey::Text(id),
+            Self::Dropdown {
+                labels,
+                choices,
+                selected,
+            } => RowKey::Dropdown {
+                labels,
+                choices: choices.into_iter().map(wrap).collect(),
+                selected,
+            },
+        }
+    }
+}
+
+/// Where the keyboard is on a page: the number of the row among those that
+/// have a key, and the highlighted row of its list while that is open.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RowFocus {
+    pub row: usize,
+    pub open: Option<usize>,
 }
 
 pub struct SettingRow<'a, M> {
@@ -96,6 +136,16 @@ impl<'a, M: Clone + 'a> SettingRow<'a, M> {
         Self {
             key: Some(key),
             ..self
+        }
+    }
+
+    /// Like [`Self::keyed`], only while `when` holds: a row whose buttons are
+    /// off answers no key either.
+    pub fn keyed_if(self, when: bool, key: RowKey<M>) -> Self {
+        if when {
+            self.keyed(key)
+        } else {
+            self
         }
     }
 
@@ -232,7 +282,7 @@ pub fn sections<'a, M: Clone + 'a>(
     marked: Option<&str>,
     palette: &Palette,
 ) -> Vec<Element<'a, M>> {
-    sections_with_focus(groups, shown, marked, None, |_| None, palette)
+    sections_with_focus(groups, shown, marked, None, |_, _| None, palette)
 }
 
 /// The keys of the rows [`sections_with_focus`] shows, in order: the numbers
@@ -249,16 +299,19 @@ pub fn keyed_rows<'a, M: Clone + 'a>(
         .collect()
 }
 
-/// Like [`sections`], with the keyboard focus on the `focused`th row that has
-/// a key; a click on a row sends what `on_focus` makes of its number.
+/// Like [`sections`], with the keyboard focus on the row `focus` names. A
+/// click on a row, or on its control, sends what `on_focus` makes of the
+/// row's number: the control's own message goes along as `Some`, a click on
+/// the row beside it as `None`; `None` back sends nothing.
 pub fn sections_with_focus<'a, M: Clone + 'a>(
     groups: Vec<Group<'a, M>>,
     shown: impl Fn(&SettingRow<'a, M>) -> bool,
     marked: Option<&str>,
-    focused: Option<usize>,
-    on_focus: impl Fn(usize) -> Option<M>,
+    focus: Option<RowFocus>,
+    on_focus: impl Fn(usize, Option<M>) -> Option<M> + Copy + 'a,
     palette: &Palette,
 ) -> Vec<Element<'a, M>> {
+    let focused = focus.map(|at| at.row);
     let mut sections = Vec::new();
     let mut first = true;
     let mut keyed_so_far = 0;
@@ -273,6 +326,33 @@ pub fn sections_with_focus<'a, M: Clone + 'a>(
                     keyed_so_far - 1
                 });
                 let is_marked = marked == Some(setting.label.as_str());
+                let has_focus = number.is_some() && number == focused;
+                let control = match (&setting.key, focus) {
+                    (
+                        Some(RowKey::Dropdown {
+                            labels,
+                            choices,
+                            selected,
+                        }),
+                        Some(RowFocus {
+                            open: Some(highlighted),
+                            ..
+                        }),
+                    ) if has_focus => crate::open_list::open_list(
+                        labels,
+                        choices,
+                        highlighted,
+                        *selected,
+                        setting.control_width.unwrap_or(size::CONTROL_WIDTH),
+                        palette,
+                    ),
+                    _ => setting.control,
+                };
+                let control = match number {
+                    Some(at) => control
+                        .map(move |message| on_focus(at, Some(message.clone())).unwrap_or(message)),
+                    None => control,
+                };
                 let lines_below: Vec<Element<'a, M>> = setting
                     .problem
                     .iter()
@@ -292,7 +372,7 @@ pub fn sections_with_focus<'a, M: Clone + 'a>(
                         .or(setting.config_key.as_deref()),
                     setting.description.as_deref(),
                     lines_below,
-                    setting.control,
+                    control,
                     if setting.list_indent.is_some() {
                         Length::Shrink
                     } else {
@@ -309,7 +389,6 @@ pub fn sections_with_focus<'a, M: Clone + 'a>(
                         .into(),
                     None => plain_row,
                 };
-                let has_focus = number.is_some() && number == focused;
                 let row: Element<'a, M> = if has_focus {
                     // Like the mark: drawn over the content, which keeps clear.
                     container(form_row)
@@ -326,7 +405,7 @@ pub fn sections_with_focus<'a, M: Clone + 'a>(
                 } else {
                     form_row
                 };
-                match number.and_then(&on_focus) {
+                match number.and_then(|at| on_focus(at, None)) {
                     Some(message) => iced::widget::mouse_area(row).on_press(message).into(),
                     None => row,
                 }

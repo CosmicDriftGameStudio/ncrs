@@ -20,7 +20,7 @@ fn the_key_opens_the_tab_and_closes_it_again() {
 }
 
 #[test]
-fn escape_and_the_panel_tabs_close_it() {
+fn escape_closes_it_and_a_panel_tab_only_shows_the_panels() {
     let mut app = App::with_fixed_panels();
     open(&mut app);
     // Escape is `InputState`'s, which sees it also in a captured text field.
@@ -31,7 +31,83 @@ fn escape_and_the_panel_tabs_close_it() {
     drop(app.update(Message::Panel(PanelMessage::ActivatePanel(
         PanelSide::Right,
     ))));
-    assert!(app.settings.page.is_none());
+    assert!(app.settings.page.is_some());
+    assert_eq!(app.shown_tab, ShownTab::Panels);
+    assert!(!app.settings_shown());
+}
+
+fn tab(app: &mut App, modifiers: Modifiers) {
+    let message = press(app, Key::Named(Named::Tab), modifiers).expect("Tab is routed");
+    drop(app.update(message));
+}
+
+#[test]
+fn tab_walks_the_circle_with_both_pages_open_and_closes_none() {
+    let mut app = App::with_fixed_panels();
+    app.panels.active = PanelSide::Left;
+    open(&mut app);
+    drop(app.update(Message::Monitor(MonitorMessage::Toggle)));
+    assert!(app.settings.page.is_some() && app.monitor.is_open());
+    assert_eq!(app.shown_tab, ShownTab::Monitor);
+    // Monitor -> Left -> Right -> Settings -> Monitor.
+    tab(&mut app, Modifiers::empty());
+    assert_eq!(
+        (app.shown_tab, app.panels.active),
+        (ShownTab::Panels, PanelSide::Left)
+    );
+    tab(&mut app, Modifiers::empty());
+    assert_eq!(
+        (app.shown_tab, app.panels.active),
+        (ShownTab::Panels, PanelSide::Right)
+    );
+    tab(&mut app, Modifiers::empty());
+    assert_eq!(app.shown_tab, ShownTab::Settings);
+    tab(&mut app, Modifiers::empty());
+    assert_eq!(app.shown_tab, ShownTab::Monitor);
+    // And back.
+    tab(&mut app, Modifiers::SHIFT);
+    assert_eq!(app.shown_tab, ShownTab::Settings);
+    tab(&mut app, Modifiers::SHIFT);
+    assert_eq!(
+        (app.shown_tab, app.panels.active),
+        (ShownTab::Panels, PanelSide::Right)
+    );
+    tab(&mut app, Modifiers::SHIFT);
+    assert_eq!(
+        (app.shown_tab, app.panels.active),
+        (ShownTab::Panels, PanelSide::Left)
+    );
+    tab(&mut app, Modifiers::SHIFT);
+    assert_eq!(app.shown_tab, ShownTab::Monitor);
+    assert!(app.settings.page.is_some() && app.monitor.is_open());
+}
+
+#[test]
+fn a_click_on_a_page_tab_shows_it_and_a_panel_click_shows_the_panels() {
+    let mut app = App::with_fixed_panels();
+    open(&mut app);
+    drop(app.update(Message::Monitor(MonitorMessage::Toggle)));
+    drop(app.update(Message::ShowTab(ShownTab::Settings)));
+    assert_eq!(app.shown_tab, ShownTab::Settings);
+    drop(app.update(Message::Panel(PanelMessage::ActivatePanel(PanelSide::Left))));
+    assert_eq!(app.shown_tab, ShownTab::Panels);
+    assert!(app.settings.page.is_some() && app.monitor.is_open());
+    // Closing the shown page leaves the other one open.
+    drop(app.update(Message::ShowTab(ShownTab::Monitor)));
+    drop(app.update(Message::Monitor(MonitorMessage::Close)));
+    assert!(app.settings.page.is_some());
+    assert_eq!(app.shown_tab, ShownTab::Panels);
+}
+
+#[test]
+fn a_text_field_in_the_tab_keeps_tab() {
+    let mut app = App::with_fixed_panels();
+    open(&mut app);
+    app.settings.page.as_mut().unwrap().focus.field = true;
+    assert_eq!(
+        press(&app, Key::Named(Named::Tab), Modifiers::empty()),
+        None
+    );
 }
 
 #[test]

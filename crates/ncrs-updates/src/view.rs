@@ -6,7 +6,7 @@ use iced::Element;
 use ncrs_i18n::{fill_template, Language, Msg};
 use ncrs_ui_kit::kit::{self, Tone};
 use ncrs_ui_kit::palette::Palette;
-use ncrs_ui_kit::setting_rows::{self, Group, SettingRow};
+use ncrs_ui_kit::setting_rows::{self, Group, RowKey, SettingRow};
 use ncrs_ui_kit::theme::spacing;
 
 use crate::channel::Channel;
@@ -51,13 +51,15 @@ fn news_rows<'a>(
             ]
             .spacing(spacing::S)
             .into(),
-        )],
+        )
+        .keyed(RowKey::Press(Message::OpenReleaseNotes))],
         Channel::PackageManager(manager) => vec![
             SettingRow::text(
                 available,
                 None,
                 button(Msg::UpdatesSkipVersion, Message::SkipThisVersion),
-            ),
+            )
+            .keyed(RowKey::Press(Message::SkipThisVersion)),
             SettingRow::text(
                 lang.text(Msg::UpdatesRunCommand).to_owned(),
                 None,
@@ -75,12 +77,12 @@ fn news_rows<'a>(
 }
 
 /// The page content under the heading the settings tab draws.
-pub fn view<'a>(state: &State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
+fn groups<'a>(state: &State, ctx: &ViewCtx<'a>) -> Vec<Group<'a, Message>> {
     let ViewCtx {
         lang,
         palette,
         enabled,
-    } = ctx;
+    } = *ctx;
     let mut rows = vec![
         setting_rows::simple_row(
             Msg::UpdatesInstalledVersion,
@@ -93,23 +95,40 @@ pub fn view<'a>(state: &State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
             Some(Msg::SettingsRowUpdateCheckNote),
             setting_rows::switch(enabled, Message::SetEnabled(!enabled), lang, palette),
             lang,
-        ),
+        )
+        .keyed(RowKey::Press(Message::SetEnabled(!enabled))),
     ];
     // What a check found earlier stays in updates.toml; with the check off it
     // is not news any more.
     if enabled {
         rows.extend(news_rows(state, lang, palette));
     }
-    let sections = setting_rows::sections(
-        vec![Group {
-            intro: None,
-            title: String::new(),
-            rows,
-        }],
+    vec![Group {
+        intro: None,
+        title: String::new(),
+        rows,
+    }]
+}
+
+/// The rows of the page that answer the keyboard.
+pub fn keys(state: &State, ctx: &ViewCtx<'_>) -> Vec<RowKey<Message>> {
+    setting_rows::keyed_rows(groups(state, ctx), |_| true)
+}
+
+pub fn view<'a>(
+    state: &State,
+    ctx: ViewCtx<'a>,
+    focus: Option<setting_rows::RowFocus>,
+) -> Element<'a, Message> {
+    let sections = setting_rows::sections_with_focus(
+        groups(state, &ctx),
         |_| true,
         None,
-        palette,
+        focus,
+        |_, message| message,
+        ctx.palette,
     );
+    let (lang, palette, enabled) = (ctx.lang, ctx.palette, ctx.enabled);
     let mut page = column(sections).spacing(spacing::XS);
     if enabled && state.newer_release().is_none() {
         page = page.push(kit::dim(lang.text(Msg::UpdatesUpToDate), palette));

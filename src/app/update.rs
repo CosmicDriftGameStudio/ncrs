@@ -161,7 +161,9 @@ impl App {
     // -----------------------------------------------------------------------
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
+        let was_open = (self.settings.page.is_some(), self.monitor.is_open());
         let task = self.update_message(message);
+        self.follow_opened_pages(was_open);
         self.refresh_special_folders();
         let chat = self.tell_chat_hermes_is_ready();
         Task::batch([task, chat])
@@ -538,6 +540,10 @@ impl App {
                 self.switch_tab(tab_stops::TabDirection::Forward)
             }
             Message::SwitchTabBack => self.switch_tab(tab_stops::TabDirection::Backward),
+            Message::ShowTab(tab) => {
+                self.shown_tab = tab;
+                Task::none()
+            }
             Message::Panel(panel_message) => self.update_panel(panel_message),
             Message::TitleBar(title_bar) => update_title_bar(title_bar),
             Message::ComputeFolderSizes => {

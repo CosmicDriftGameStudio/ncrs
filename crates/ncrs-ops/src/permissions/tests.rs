@@ -158,7 +158,17 @@ fn the_title_names_one_entry_or_counts_several() {
         target("b", false, 0o644),
         target("d", true, 0o755),
     ]);
-    assert_eq!(several.title(LANG), "Permissions – 2 files, 1 folders");
+    assert_eq!(several.title(LANG), "Permissions – 2 files, 1 folder");
+    let files = dialog_of(vec![target("a", false, 0o644), target("b", false, 0o644)]);
+    assert_eq!(files.title(LANG), "Permissions – 2 files");
+    let folders = dialog_of(vec![
+        target("d", true, 0o755),
+        target("e", true, 0o755),
+        target("f", true, 0o755),
+    ]);
+    assert_eq!(folders.title(LANG), "Permissions – 3 folders");
+    let one_each = dialog_of(vec![target("a", false, 0o644), target("d", true, 0o755)]);
+    assert_eq!(one_each.title(LANG), "Permissions – 1 file, 1 folder");
 }
 
 #[test]

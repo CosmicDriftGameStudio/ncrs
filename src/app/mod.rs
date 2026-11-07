@@ -59,7 +59,7 @@ use crate::messages::{
     ConflictChoice, FilingStatusMessage, GrantMessage, HermesChatMessage, HermesFileMessage,
     HermesOverviewMessage, HermesPage, HitListMessage, KeyBindingsMessage, Message,
     OcrModelsMessage, PanelSide, QuickFixMessage, QuickOpenMessage, RemoteMessage, RulesMessage,
-    SavedQueriesMessage, SearchMessage, SettingChange, SettingsMessage, TagsMessage,
+    SavedQueriesMessage, SearchMessage, SettingChange, SettingsMessage, ShownTab, TagsMessage,
     ThemeFetchMessage, TitleBarMessage, TransferKind, TrashMessage,
 };
 #[cfg(target_os = "macos")]
@@ -340,6 +340,8 @@ pub struct App {
     search: ncrs_search::Search,
     /// The System page (F12) and the badge in the status bar.
     monitor: ncrs_monitor::State,
+    /// Which of the open tabs the area under the title bar shows.
+    shown_tab: ShownTab,
     /// The check for a newer release and what it found.
     updates: ncrs_updates::State,
     /// The `check_for_updates` setting; `None` follows how ncrs was installed.
@@ -512,6 +514,8 @@ pub struct PromptKeyState {
     pub settings: bool,
     /// The System page is up: its keys are the list's, and Escape closes it.
     pub monitor: bool,
+    /// The keyboard sits in a text field of the settings tab, which keeps Tab.
+    pub settings_field: bool,
     /// Its filter field has the focus: it types the letters.
     pub monitor_filter: bool,
     /// Its kill question is up.
@@ -566,6 +570,7 @@ impl Default for PromptKeyState {
             connect_dialog: false,
             settings: false,
             monitor: false,
+            settings_field: false,
             monitor_filter: false,
             monitor_dialog: false,
             monitor_menu: false,

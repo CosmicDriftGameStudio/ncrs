@@ -77,20 +77,8 @@ pub fn font_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
         lang,
     );
     preview.control_width = Some(SETTINGS_WIDE_CONTROL_WIDTH);
-    let family_key = choice_key(
-        family_choices
-            .iter()
-            .map(|(choice, _, _)| appearance_change(choice.clone(), appearance.font_size))
-            .collect(),
-        family_selected,
-    );
-    let size_key = choice_key(
-        size_choices
-            .iter()
-            .map(|&choice| appearance_change(appearance.font.clone(), choice))
-            .collect(),
-        size_selected,
-    );
+    let family_key = dropdown_key(&family_items, family_selected);
+    let size_key = dropdown_key(&size_items, size_selected);
     vec![
         simple_row(
             Msg::SettingsRowFont,

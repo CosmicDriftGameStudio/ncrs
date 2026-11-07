@@ -12,7 +12,7 @@ use ncrs_ui_kit::format;
 use ncrs_ui_kit::frame::{DialogSize, Frame, KeyHints};
 use ncrs_ui_kit::hermes_kit as page_kit;
 use ncrs_ui_kit::kit::{self, Tone};
-use ncrs_ui_kit::setting_rows::{switch, Group, SettingRow};
+use ncrs_ui_kit::setting_rows::{switch, Group, RowKey, SettingRow};
 
 use crate::message::{Message, TagsMessage};
 use crate::rules_page::rule_sentence;
@@ -40,7 +40,8 @@ pub fn groups<'a>(
         lang.text(Msg::SettingsRowFileTagsShow).to_owned(),
         Some(lang.text(Msg::TagsShowHint).to_owned()),
         switch(setting.show, Message::ToggleFileListTags, lang, palette),
-    );
+    )
+    .keyed(RowKey::Press(Message::ToggleFileListTags));
     show.problem = state
         .problem()
         .map(|problem| problem_text(problem, state, lang));
@@ -55,7 +56,8 @@ pub fn groups<'a>(
             send(TagsMessage::SearchChanged(state.search().to_owned())),
             palette,
         ),
-    );
+    )
+    .keyed(RowKey::Text(SEARCH_ID));
     let mut rows = vec![show, search];
     if !state.is_loaded() || !state.has_tags() {
         let note = if state.problem().is_some() {
@@ -120,7 +122,8 @@ fn row_of<'a>(
                 ),
             ],
             palette,
-        ),
+        )
+        .keyed(RowKey::Press(send(TagsMessage::ToggleOpen(*group)))),
         TagRow::Tag {
             group,
             tag,
@@ -156,6 +159,10 @@ fn row_of<'a>(
                 palette,
             )
             .indented()
+            .keyed(RowKey::Press(send(TagsMessage::ToggleTag {
+                group: *group,
+                tag: tag.clone(),
+            })))
         }
         TagRow::More { group, rest } => SettingRow::listed(
             fill_template(lang.text(Msg::TagsMore), &[("{count}", &rest.to_string())]),
@@ -168,7 +175,8 @@ fn row_of<'a>(
                 palette,
             )],
             palette,
-        ),
+        )
+        .keyed(RowKey::Press(send(TagsMessage::Unfold(*group)))),
     }
 }
 

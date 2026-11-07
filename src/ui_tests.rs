@@ -4575,11 +4575,13 @@ mod settings_tab {
     #[test]
     fn a_preset_is_chosen_by_its_name() {
         let app = App::with_settings_open(SettingsFeature::Look, Filing::default());
-        assert!(
-            messages_after_click(&app, "Dracula").contains(&Message::Settings(
-                SettingsMessage::Change(SettingChange::Preset(ThemePreset::Dracula))
-            ))
-        );
+        assert!(messages_after_click(&app, "Dracula").iter().any(|message| {
+            matches!(
+                message,
+                Message::Settings(SettingsMessage::FocusThen(_, Some(inner)))
+                    if **inner == SettingsMessage::Change(SettingChange::Preset(ThemePreset::Dracula))
+            )
+        }));
     }
 
     #[test]
@@ -5006,14 +5008,19 @@ mod servers_page {
         let app = page(TWO);
         assert_eq!(
             messages_after_click(&app, "Connect"),
-            [Message::Settings(SettingsMessage::OpenServer(
-                PathBuf::from("sftp://marc@files.example.org/srv")
+            [Message::Settings(SettingsMessage::FocusThen(
+                0,
+                Some(Box::new(SettingsMessage::OpenServer(PathBuf::from(
+                    "sftp://marc@files.example.org/srv"
+                ))))
             ))]
         );
         let sent = messages_after_click(&app, "Remove");
-        let [Message::Settings(SettingsMessage::Change(SettingChange::Servers(rest)))] =
-            sent.as_slice()
+        let [Message::Settings(SettingsMessage::FocusThen(_, Some(change)))] = sent.as_slice()
         else {
+            panic!("{sent:?}");
+        };
+        let SettingsMessage::Change(SettingChange::Servers(rest)) = change.as_ref() else {
             panic!("{sent:?}");
         };
         assert_eq!(rest.len(), 1);
@@ -5026,7 +5033,10 @@ mod servers_page {
         simulator(&app).find("No saved servers").unwrap();
         assert_eq!(
             messages_after_click(&app, "Add…"),
-            [Message::Settings(SettingsMessage::OpenServerAdd)]
+            [Message::Settings(SettingsMessage::FocusThen(
+                0,
+                Some(Box::new(SettingsMessage::OpenServerAdd))
+            ))]
         );
     }
 
@@ -5212,7 +5222,10 @@ mod settings_index_page {
         sim.click("Start over …").unwrap();
         assert_eq!(
             sim.into_messages().collect::<Vec<_>>(),
-            [Message::Settings(SettingsMessage::Protection(2))]
+            [Message::Settings(SettingsMessage::FocusThen(
+                7,
+                Some(Box::new(SettingsMessage::Protection(2)))
+            ))]
         );
         let asking = App::with_index_settings(Some(Phase::Ready), configured())
             .with_start_over_question_for_test();

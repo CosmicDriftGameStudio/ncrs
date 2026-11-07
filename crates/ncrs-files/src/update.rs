@@ -178,7 +178,7 @@ pub fn update(
         }
         PanelMessage::ActivatePanel(side) => {
             panels.active = side;
-            actions.push(Action::CloseSettings);
+            actions.push(Action::ShowPanels);
         }
         PanelMessage::SortBy { .. } | PanelMessage::SortActive(_) => {
             update_sort(panels, ctx, message, &mut actions);

@@ -45,5 +45,5 @@ pub use update::{
 };
 pub use view::{
     dialogs, filing_badge, hermes_chip, hermes_line, hermes_status, overview_facts, page_content,
-    FilingBadge, ViewCtx,
+    page_keys, FilingBadge, ViewCtx,
 };

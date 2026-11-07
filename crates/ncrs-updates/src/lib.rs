@@ -15,4 +15,4 @@ pub use fetch::{latest_release, FetchFn};
 pub use release::LatestRelease;
 pub use state::{update, Action, Ctx, Message, State, CHECK_AVAILABLE};
 pub use store::file_beside;
-pub use view::{view, ViewCtx, COMMAND_FIELD_ID};
+pub use view::{keys, view, ViewCtx, COMMAND_FIELD_ID};
