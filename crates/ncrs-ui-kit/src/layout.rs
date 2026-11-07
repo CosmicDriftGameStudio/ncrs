@@ -77,7 +77,8 @@ pub const CHROME: f32 =
 
 /// The three fields and the summary line of the search view, above the result
 /// rows. Fixed, like the column header it replaces.
-pub const SEARCH_HEADER_HEIGHT: f32 = 124.0 + SEARCH_HIT_ROW_HEIGHT + 4.0 + SEARCH_FOLDER_ROW_HEIGHT;
+pub const SEARCH_HEADER_HEIGHT: f32 =
+    124.0 + SEARCH_HIT_ROW_HEIGHT + 4.0 + SEARCH_FOLDER_ROW_HEIGHT;
 /// The folder row below the names field, with the gap above it.
 pub const SEARCH_FOLDER_ROW_HEIGHT: f32 = 32.0;
 /// The row that opens the hits as a list, below the summary line.

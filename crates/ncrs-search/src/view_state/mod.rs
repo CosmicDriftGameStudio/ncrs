@@ -51,10 +51,11 @@ impl SearchField {
 }
 
 /// The folder a typed text names: `~` stands for the home folder. `None` when
-/// it is not an existing folder this user may read.
-pub fn resolve_folder(text: &str) -> Option<PathBuf> {
+/// it is not an existing folder this user may read. A relative text is taken
+/// from `root`, the folder the search is in now.
+pub fn resolve_folder(text: &str, root: &Path) -> Option<PathBuf> {
     let trimmed = text.trim();
-    let expanded = match trimmed.strip_prefix('~') {
+    let typed = match trimmed.strip_prefix('~') {
         Some("") => ncrs_fs::home_dir(),
         Some(rest) if rest.starts_with(['/', std::path::MAIN_SEPARATOR]) => {
             ncrs_fs::home_dir().join(rest.trim_start_matches(['/', std::path::MAIN_SEPARATOR]))
@@ -62,6 +63,7 @@ pub fn resolve_folder(text: &str) -> Option<PathBuf> {
         _ if trimmed.is_empty() => return None,
         _ => PathBuf::from(trimmed),
     };
+    let expanded = root.join(typed);
     std::fs::read_dir(&expanded).is_ok().then_some(expanded)
 }
 

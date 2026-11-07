@@ -529,19 +529,21 @@ fn apply_without_opening(
     use std::os::unix::fs::PermissionsExt as _;
 
     use nix::fcntl::AT_FDCWD;
-    use nix::sys::stat::{fchmodat, FchmodatFlags, Mode};
+    use nix::sys::stat::{fchmodat, FchmodatFlags};
 
     let metadata = fs::symlink_metadata(path)?;
     if !metadata.is_file() && !metadata.is_dir() {
         return Ok(false);
     }
-    let mut permissions = metadata.permissions();
-    if !edited(&mut permissions, edit) {
+    let Some(after) = mode_after(metadata.permissions().mode(), edit) else {
         return Ok(false);
-    }
-    // mode_t is u16 on macOS and u32 on Linux; the mask keeps the cast lossless.
-    let mode = Mode::from_bits_truncate((permissions.mode() & 0o7777) as libc::mode_t);
-    match fchmodat(AT_FDCWD, path, mode, FchmodatFlags::NoFollowSymlink) {
+    };
+    match fchmodat(
+        AT_FDCWD,
+        path,
+        mode_of_bits(after),
+        FchmodatFlags::NoFollowSymlink,
+    ) {
         Ok(()) => Ok(true),
         Err(nix::errno::Errno::EOPNOTSUPP) => Err(open_error),
         Err(errno) => Err(io::Error::from(errno)),

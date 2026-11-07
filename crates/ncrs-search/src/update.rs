@@ -82,12 +82,16 @@ pub fn update(
             only(search.schedule())
         }
         // A server's folder is not one this computer can walk or choose.
-        SearchMessage::FolderChanged(_) | SearchMessage::ChooseFolder if ctx.side_is_remote => {
+        SearchMessage::FolderChanged(_)
+        | SearchMessage::ChooseFolder
+        | SearchMessage::FolderPicked(_)
+            if ctx.side_is_remote =>
+        {
             only(Task::none())
         }
         SearchMessage::FolderChanged(text) => {
             view.focused = SearchField::Folder;
-            match resolve_folder(&text) {
+            match resolve_folder(&text, &view.root) {
                 Some(folder) => {
                     view.set_root(folder);
                     view.folder_text = text;
@@ -331,6 +335,8 @@ pub fn update(
 #[allow(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use iced::Size;
 
     use super::*;
@@ -489,8 +495,49 @@ mod tests {
 
     #[test]
     fn a_tilde_in_front_of_a_path_is_the_home_folder_below() {
-        assert_eq!(resolve_folder("~/"), Some(ncrs_fs::home_dir()));
-        assert_eq!(resolve_folder("  ~/nonexistent-folder-for-test  "), None);
+        let root = Path::new("/");
+        assert_eq!(resolve_folder("~/", root), Some(ncrs_fs::home_dir()));
+        assert_eq!(
+            resolve_folder("  ~/nonexistent-folder-for-test  ", root),
+            None
+        );
+    }
+
+    #[test]
+    fn a_relative_folder_is_taken_from_the_current_root() {
+        let from = tempfile::tempdir().unwrap();
+        std::fs::create_dir(from.path().join("sub")).unwrap();
+        let mut search = open_search(from.path());
+
+        send(
+            &mut search,
+            SearchMessage::FolderChanged("sub".to_owned()),
+            &ctx(false),
+        );
+        assert_eq!(view(&search).root, from.path().join("sub"));
+
+        send(
+            &mut search,
+            SearchMessage::FolderChanged("..".to_owned()),
+            &ctx(false),
+        );
+        assert_eq!(view(&search).root, from.path().join("sub").join(".."));
+        assert!(!view(&search).folder_missing);
+    }
+
+    #[test]
+    fn a_picked_folder_is_ignored_on_a_remote_side() {
+        let from = tempfile::tempdir().unwrap();
+        let to = tempfile::tempdir().unwrap();
+        let mut search = open_search(from.path());
+
+        send(
+            &mut search,
+            SearchMessage::FolderPicked(Some(to.path().to_path_buf())),
+            &ctx(true),
+        );
+
+        assert_eq!(view(&search).root, from.path());
     }
 
     #[test]
