@@ -57,8 +57,10 @@ impl App {
         &mut self,
         step: impl FnOnce(&mut ncrs_ops::Ops, &ncrs_ops::FlowCtx<'_>, &Panels) -> R,
     ) -> R {
-        let start_blocked =
-            self.jobs.is_busy() || self.ops.prompt.is_some() || self.ops.conflict_is_open();
+        let start_blocked = self.jobs.is_busy()
+            || self.ops.prompt.is_some()
+            || self.ops.conflict_is_open()
+            || self.ops.permissions_dialog.is_some();
         let transfer_dialog_open = self.ops.transfer_dialog.is_some();
         let permanent_delete_key = self
             .keymap
@@ -341,6 +343,28 @@ impl App {
         })
     }
 
+    /// The rights key or menu entry: the dialog for the tagged entries, else
+    /// the one under the cursor. The search and trash views have no entries
+    /// of a folder to change.
+    pub(in crate::app) fn open_permissions_dialog(&mut self) -> Task<Message> {
+        if self.search_has_keys() || self.trash_has_keys() {
+            return Task::none();
+        }
+        let panel = self.active_panel();
+        let entries: Vec<fs::FileEntry> = if panel.selection.any_tagged() {
+            panel
+                .selection
+                .ordered(&panel.entries)
+                .into_iter()
+                .cloned()
+                .collect()
+        } else {
+            panel.selected_entry().cloned().into_iter().collect()
+        };
+        let targets = ncrs_ops::targets_of(&entries);
+        self.with_ops(|ops, ctx| ncrs_ops::open_permissions(ops, targets, ctx))
+    }
+
     pub(in crate::app) fn toggle_keep_folders(&mut self) -> Task<Message> {
         self.ops.toggle_keep_folders();
         Task::none()
@@ -356,6 +380,8 @@ impl App {
             ncrs_ops::end_extraction(&mut self.ops);
             Task::none()
         } else if let Some(outcome) = ncrs_ops::abort_archive_write(&mut self.ops) {
+            self.run_ops_outcome(outcome)
+        } else if let Some(outcome) = ncrs_ops::abort_permissions(&mut self.ops) {
             self.run_ops_outcome(outcome)
         } else if self.ops.deleting.is_some() {
             self.end_delete()

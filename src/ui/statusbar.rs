@@ -377,7 +377,14 @@ pub fn view<'a, M: Clone + 'a>(
             .replace("{done}", &job.done.to_string())
             .replace("{total}", &job.total.to_string());
 
-        let mut line = format!("{}  {counter}", job.label);
+        // A label that carries its own counter, like the permissions one, is the whole line.
+        let mut line = if job.label.contains("{done}") {
+            job.label
+                .replace("{done}", &job.done.to_string())
+                .replace("{total}", &job.total.to_string())
+        } else {
+            format!("{}  {counter}", job.label)
+        };
         if job.waiting > 0 {
             let waiting = lang
                 .text(Msg::JobQueued)

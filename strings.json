@@ -9351,8 +9351,8 @@
     {
       "key": "settings.row_columns_list_note",
       "context": "Note under the Columns and order row. The arrows are the up and down buttons beside each column; the header is the title row of a file panel.",
-      "en": "Dragging the handle or ↑/↓ changes the order. The same works in the panel itself, at the column header.",
-      "de": "Ziehen am Griff oder ↑/↓ ändert die Reihenfolge. Dasselbe geht im Panel direkt am Spaltenkopf."
+      "en": "↑/↓ changes the order. The same works in the panel itself, by dragging at the column header.",
+      "de": "Mit ↑/↓ änderst du die Reihenfolge. Dasselbe geht im Panel direkt am Spaltenkopf durch Ziehen."
     },
     {
       "key": "settings.column_desc_icon",
@@ -9713,6 +9713,24 @@
       "context": "Text of the progress bar of a running permissions change. {done} is how many entries are done, {total} how many there are.",
       "en": "Setting permissions: {done} of {total}",
       "de": "Rechte setzen: {done} von {total}"
+    },
+    {
+      "key": "permissions.setuid",
+      "context": "Label of the checkbox for the setuid bit in the advanced part of the permissions dialog. Technical term, usually kept as is.",
+      "en": "setuid",
+      "de": "setuid"
+    },
+    {
+      "key": "permissions.setgid",
+      "context": "Label of the checkbox for the setgid bit in the advanced part of the permissions dialog. Technical term, usually kept as is.",
+      "en": "setgid",
+      "de": "setgid"
+    },
+    {
+      "key": "permissions.sticky",
+      "context": "Label of the checkbox for the sticky bit in the advanced part of the permissions dialog. Technical term, usually kept as is.",
+      "en": "sticky",
+      "de": "sticky"
     },
     {
       "key": "permissions.done",

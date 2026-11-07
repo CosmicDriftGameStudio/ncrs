@@ -64,6 +64,7 @@ pub fn update(
                 if let Some(state) = held.page.as_mut() {
                     state.feature = feature;
                     state.marked_row = None;
+                    state.focus = crate::focus::Focus::default();
                 }
                 Task::none()
             })
@@ -72,6 +73,19 @@ pub fn update(
             state.marked_row = None;
             None
         }),
+        SettingsMessage::SetFocus(focus) => in_settings(settings, ctx, |state| {
+            state.focus = focus;
+            None
+        }),
+        SettingsMessage::FocusRow(row) => in_settings(settings, ctx, |state| {
+            state.focus = crate::focus::Focus {
+                area: crate::focus::Area::Rows,
+                row,
+            };
+            None
+        }),
+        // Needs the rows of the page; the app turns it into a step.
+        SettingsMessage::FocusKey(_) => Task::none(),
         SettingsMessage::SearchChanged(query) => in_settings(settings, ctx, |state| {
             state.query = query;
             state.marked_row = None;

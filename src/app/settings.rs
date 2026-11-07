@@ -188,6 +188,44 @@ impl App {
         self.run_settings(ncrs_settings::Message::Settings(message))
     }
 
+    /// An arrow, Enter, Space or Escape on the settings tab, as the pure
+    /// `focus::step` takes it from the rows the page draws.
+    pub(in crate::app) fn settings_focus_key(&mut self, key: FocusKey) -> Task<Message> {
+        let Some(state) = self.settings.page.as_ref() else {
+            return Task::none();
+        };
+        let view = self.settings_view(state);
+        let facts = settings_ui::focus_facts(&view);
+        let step = facts.as_ref().and_then(|(listed, current, rows)| {
+            ncrs_settings::focus::step(state.focus, key, listed, *current, rows)
+        });
+        let rows = facts.map_or(0, |(_, _, rows)| rows.len());
+        let Some(step) = step else {
+            return if key == FocusKey::Escape {
+                self.update(Message::Settings(SettingsMessage::Close))
+            } else {
+                Task::none()
+            };
+        };
+        let mut tasks = Vec::new();
+        if let Some(feature) = step.select {
+            tasks.push(self.update_settings(SettingsMessage::Select(feature)));
+        }
+        tasks.push(self.update_settings(SettingsMessage::SetFocus(step.focus)));
+        if let Some(message) = step.press {
+            tasks.push(self.update_settings(message));
+        }
+        if let Some(field) = step.focus_field {
+            tasks.push(operation::focus(field));
+        } else if step.release_field {
+            tasks.push(release_focus());
+        }
+        if step.focus.area == ncrs_settings::focus::Area::Rows {
+            tasks.push(settings_ui::scroll_to_row(step.focus.row, rows));
+        }
+        Task::batch(tasks)
+    }
+
     pub(in crate::app) fn update_key_bindings(
         &mut self,
         message: KeyBindingsMessage,
@@ -294,6 +332,14 @@ impl App {
                 Task::none()
             }
             SettingChange::Servers(_) => self.take_over_servers(config.servers),
+            SettingChange::Columns(columns) => {
+                self.columns = columns;
+                Task::none()
+            }
+            SettingChange::Appearance(appearance) => {
+                self.take_over_appearance(appearance);
+                Task::none()
+            }
             SettingChange::FileListTags(_) => {
                 self.file_list_tags = config.file_list_tags;
                 Task::none()

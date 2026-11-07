@@ -77,19 +77,35 @@ pub fn font_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
         lang,
     );
     preview.control_width = Some(SETTINGS_WIDE_CONTROL_WIDTH);
+    let family_key = choice_key(
+        family_choices
+            .iter()
+            .map(|(choice, _, _)| appearance_change(choice.clone(), appearance.font_size))
+            .collect(),
+        family_selected,
+    );
+    let size_key = choice_key(
+        size_choices
+            .iter()
+            .map(|&choice| appearance_change(appearance.font.clone(), choice))
+            .collect(),
+        size_selected,
+    );
     vec![
         simple_row(
             Msg::SettingsRowFont,
             Some(Msg::SettingsRowFontNote),
             field_dropdown(DROPDOWN_WIDTH, &family_items, family_selected, palette),
             lang,
-        ),
+        )
+        .keyed(family_key),
         simple_row(
             Msg::SettingsRowFontSize,
             Some(Msg::SettingsRowFontSizeNote),
             field_dropdown(DROPDOWN_WIDTH, &size_items, size_selected, palette),
             lang,
-        ),
+        )
+        .keyed(size_key),
         preview,
     ]
 }

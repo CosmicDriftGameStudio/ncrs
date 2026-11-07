@@ -246,8 +246,12 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Session<P> {
         self.interact(vec![
             Event::Mouse(mouse::Event::CursorMoved { position: point }),
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
-            Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)),
         ]);
+        // A press that arms a drag is applied before the release arrives, as
+        // in the real loop; a column title sorts on the release.
+        self.interact(vec![Event::Mouse(mouse::Event::ButtonReleased(
+            mouse::Button::Left,
+        ))]);
     }
 
     /// Types `text` the way the keyboard does: a key press with its text.
@@ -2530,7 +2534,7 @@ fn a_click_into_the_path_field_with_a_context_menu_open_closes_the_menu() {
     assert!(session.app.context_menu_for_test().is_none());
 }
 
-const LEFT_NAME_HEADER: Point = Point::new(50.0, 45.0);
+const LEFT_NAME_HEADER: Point = Point::new(90.0, 45.0);
 const LEFT_SIZE_HEADER: Point = Point::new(418.0, 45.0);
 const LEFT_MODIFIED_HEADER: Point = Point::new(544.0, 45.0);
 

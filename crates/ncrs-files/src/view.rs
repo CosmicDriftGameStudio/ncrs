@@ -66,6 +66,9 @@ pub fn view<'a>(state: &'a PanelState, ctx: ViewCtx<'a>) -> Element<'a, PanelMes
                         error: rename.error.as_deref(),
                         busy: rename.busy,
                         height: state.row_height(),
+                        columns: layout,
+                        special: special_folder_of(ctx.special_folders, &entry.path)
+                            .filter(|_| entry.is_dir),
                         on_input: PanelMessage::RenameInput,
                         on_submit: PanelMessage::RenameSubmit,
                     },

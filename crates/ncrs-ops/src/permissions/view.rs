@@ -19,9 +19,6 @@ pub const OCTAL_FIELD_ID: &str = "permissions-octal";
 
 /// Technical names of the three special bits; they are the same in every
 /// language.
-const SETUID_LABEL: &str = "setuid";
-const SETGID_LABEL: &str = "setgid";
-const STICKY_LABEL: &str = "sticky";
 
 fn send(message: PermissionsMessage) -> OpsMessage {
     OpsMessage::Permissions(message)
@@ -141,9 +138,9 @@ fn rights<'a>(
         };
         body = body.push(
             row![
-                special(SETUID_LABEL, SETUID),
-                special(SETGID_LABEL, SETGID),
-                special(STICKY_LABEL, STICKY),
+                special(lang.text(Msg::PermissionsSetuid), SETUID),
+                special(lang.text(Msg::PermissionsSetgid), SETGID),
+                special(lang.text(Msg::PermissionsSticky), STICKY),
             ]
             .spacing(spacing::XL),
         );

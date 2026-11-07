@@ -256,7 +256,7 @@ pub fn icon_color(
         palette.directory
     } else {
         match kind {
-            IconKind::ReadFolder | IconKind::WriteFolder => palette.tagged_mark,
+            IconKind::ReadFolder | IconKind::WriteFolder => palette.accent,
             IconKind::BrokenLink => palette.error,
             _ => palette.dim_text,
         }

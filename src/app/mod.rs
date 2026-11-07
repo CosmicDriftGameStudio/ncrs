@@ -154,6 +154,7 @@ use ncrs_pipeline::Load;
 use ncrs_monitor::MonitorMessage;
 use ncrs_palette::keys::{CommandLineBound, CommandLineKey};
 use ncrs_search::{search_events, SearchKey, SearchKeyFacts};
+use ncrs_settings::focus::FocusKey;
 use ncrs_settings::keys::{SettingsKey, ThemeFetchKey};
 #[cfg(test)]
 use ncrs_settings::theme_fetch::install::download_theme;
@@ -166,6 +167,7 @@ use std::ffi::OsString;
 use tokio::sync::mpsc;
 
 mod bars;
+mod columns;
 mod context_menu;
 mod dialogs;
 mod hermes;
@@ -183,10 +185,12 @@ mod settings;
 mod settings_facts;
 mod startup;
 mod subscription;
+mod tab_stops;
 mod update;
 mod updates;
 mod view;
 
+use self::columns::column_settings_of;
 use self::dialogs::*;
 pub use self::keys::*;
 use self::ops::*;
@@ -373,6 +377,15 @@ pub struct App {
     file_list_tags: FileListTags,
     /// The document kinds the config asks for, on top of the built-in ones.
     kinds: Kinds,
+    /// The `[columns]` setting: which columns the panels show and how wide.
+    columns: ncrs_config::panel_columns::PanelColumns,
+    /// Folders that get a symbol of their own, worked out from the Hermes
+    /// folders in `special_folders_source` so a frame only reads them.
+    special_folders: Vec<(PathBuf, ncrs_ui_kit::file_icon::SpecialFolder)>,
+    special_folders_source: Vec<ncrs_config::config::FilingLocation>,
+    /// The `[appearance]` setting and the scale of the window it asks for.
+    appearance: ncrs_config::panel_columns::Appearance,
+    ui_scale: f32,
     /// The settings tab, while it is open.
     settings: Settings,
     /// The pages of Hermes that its crate owns and the quick-fix menu.
@@ -456,6 +469,8 @@ pub struct PromptKeyState {
     pub transfer_dialog: bool,
     /// The progress mask of a transfer is up: Escape stops the job.
     pub transfer_progress: bool,
+    /// The permissions dialog is up: Escape closes it, Enter applies.
+    pub permissions_dialog: bool,
     /// The path field or the name input of a row is being edited: its keys
     /// are the text field's.
     pub path_editing: bool,
@@ -531,6 +546,7 @@ impl Default for PromptKeyState {
             conflict_open: false,
             transfer_dialog: false,
             transfer_progress: false,
+            permissions_dialog: false,
             path_editing: false,
             command_line: false,
             search: false,

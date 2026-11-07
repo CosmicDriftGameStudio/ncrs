@@ -177,7 +177,7 @@ impl App {
         })
     }
 
-    fn page_tab_is_open(&self) -> bool {
+    pub(in crate::app) fn page_tab_is_open(&self) -> bool {
         self.monitor.is_open() || self.settings.page.is_some()
     }
 

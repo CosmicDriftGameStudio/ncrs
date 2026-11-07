@@ -48,6 +48,10 @@ fn keys_without_prompt(
         };
     }
 
+    if prompt.permissions_dialog {
+        return ncrs_ops::keys::permissions_key(&key).map(|pressed| Message::Permissions(pressed));
+    }
+
     if prompt.key_bindings {
         return key_bindings_key(prompt, &key, key_modifiers);
     }
@@ -132,6 +136,21 @@ fn keys_without_prompt(
         };
     }
 
+    // The System page has no text field of its own to take Tab unless its
+    // filter, a dialog or a menu is up; the Settings page keeps Tab for its fields.
+    if prompt.monitor
+        && !(prompt.monitor_filter || prompt.monitor_dialog || prompt.monitor_menu)
+        && matches!(key.as_ref(), Key::Named(Named::Tab))
+    {
+        return if key_modifiers == Modifiers::SHIFT {
+            Some(Message::SwitchTabBack)
+        } else if key_modifiers.is_empty() {
+            Some(Message::Panel(PanelMessage::SwitchPanel))
+        } else {
+            None
+        };
+    }
+
     if prompt.monitor {
         return monitor_page_key(prompt, &key, key_modifiers, scope);
     }
@@ -168,6 +187,10 @@ fn keys_without_prompt(
 
     if matches!(key.as_ref(), Key::Named(Named::Escape)) {
         return escape_message(prompt);
+    }
+    // Shift+Tab is Tab backwards; with a rebound Tab it still means "previous".
+    if matches!(key.as_ref(), Key::Named(Named::Tab)) && key_modifiers == Modifiers::SHIFT {
+        return Some(Message::SwitchTabBack);
     }
     bound_message(&prompt.keymap, &key, key_modifiers, scope)
         .or_else(|| type_ahead_message(&key, key_modifiers))

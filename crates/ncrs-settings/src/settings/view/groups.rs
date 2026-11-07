@@ -40,6 +40,10 @@ pub fn look_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
         lang,
     );
     preset_row.control_width = Some(SETTINGS_WIDE_CONTROL_WIDTH);
+    let preset_row = preset_row.keyed(choice_key(
+        options.iter().map(|(_, message)| message.clone()).collect(),
+        chosen,
+    ));
 
     let open_vsx_row = simple_row(
         Msg::SettingsRowOpenVsx,
@@ -51,7 +55,8 @@ pub fn look_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
             palette,
         ),
         lang,
-    );
+    )
+    .keyed(RowKey::Press(SettingsMessage::OpenThemeFetch));
     vec![
         Group {
             intro: None,
@@ -88,9 +93,14 @@ pub fn file_tags_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
     let show_row = simple_row(
         Msg::SettingsRowFileTagsShow,
         None,
-        switch(current.show, SettingChange::FileListTags(switched), view),
+        switch(
+            current.show,
+            SettingChange::FileListTags(switched.clone()),
+            view,
+        ),
         lang,
-    );
+    )
+    .keyed(RowKey::Press(change(SettingChange::FileListTags(switched))));
     vec![show_row]
 }
 
@@ -201,6 +211,7 @@ pub fn color_row<'a>(role: ColorRole, view: &SettingsView<'a>) -> SettingRow<'a>
     .spacing(spacing::S)
     .align_y(alignment::Vertical::Center);
     SettingRow {
+        key: Some(RowKey::Text(role.field_id())),
         label: view.lang.text(color_label(role)).to_owned(),
         theme_name: None,
         config_key: Some(role.name().to_owned()),
@@ -267,6 +278,7 @@ pub fn program_row<'a>(kind: OpenKind, view: &SettingsView<'a>) -> SettingRow<'a
         description.push_str(lang.text(Msg::SettingsProgramsSandboxNote));
     }
     SettingRow {
+        key: None,
         label: lang.text(label).to_owned(),
         theme_name: None,
         config_key: None,
@@ -346,6 +358,7 @@ pub fn terminal_row<'a>(view: &SettingsView<'a>) -> SettingRow<'a> {
         control = control.push(own);
     }
     SettingRow {
+        key: None,
         label: lang.text(Msg::SettingsRowTerminal).to_owned(),
         theme_name: None,
         config_key: None,
@@ -403,6 +416,7 @@ pub fn servers_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
     let lang = view.lang;
     let palette = view.palette;
     let add = |label: Msg, button: Msg| SettingRow {
+        key: None,
         label: lang.text(label).to_owned(),
         theme_name: None,
         config_key: None,
@@ -447,6 +461,7 @@ pub fn servers_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
                 detail.push_str(folder);
             }
             SettingRow {
+                key: None,
                 label: server.label(),
                 theme_name: None,
                 config_key: None,
@@ -499,6 +514,10 @@ pub fn language_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
         .iter()
         .position(|&language| language == lang.base())
         .unwrap_or_default();
+    let language_key = choice_key(
+        options.iter().map(|(_, message)| message.clone()).collect(),
+        chosen,
+    );
     vec![Group {
         intro: None,
         title: String::new(),
@@ -508,7 +527,8 @@ pub fn language_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
                 Some(Msg::SettingsRowLanguageNote),
                 kit::segmented(&options, chosen, true, view.palette),
                 lang,
-            ),
+            )
+            .keyed(language_key),
             simple_row(
                 Msg::SettingsRowFuturamaNames,
                 Some(Msg::SettingsRowFuturamaNamesNote),
@@ -520,7 +540,10 @@ pub fn language_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
                     view.palette,
                 ),
                 lang,
-            ),
+            )
+            .keyed(RowKey::Press(change(SettingChange::Language(
+                lang.base().with_futurama(!futurama),
+            )))),
         ],
     }]
 }

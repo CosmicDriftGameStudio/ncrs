@@ -27,6 +27,7 @@ pub(in crate::app) fn archive_refusal(panel: &PanelState, message: &Message) -> 
         Message::PackPrompt => Some(Msg::StatusPackUnavailable),
         Message::OpenTerminal => Some(Msg::StatusTerminalNeedsLocalFolder),
         Message::Transfer(TransferKind::Move)
+        | Message::PermissionsPrompt
         | Message::Panel(PanelMessage::RenameStart)
         | Message::OpenExternal(fs::OpenKind::Edit)
         | Message::CreateDirPrompt
@@ -67,6 +68,7 @@ pub(in crate::app) fn remote_refusal(panel: &PanelState, message: &Message) -> O
         Message::OpenTerminal => Some(Msg::StatusTerminalNeedsLocalFolder),
         Message::PackPrompt => Some(Msg::StatusPackUnavailable),
         Message::Transfer(TransferKind::Move)
+        | Message::PermissionsPrompt
         | Message::OpenExternal(fs::OpenKind::Edit)
         | Message::Delete { .. }
         | Message::CreateDirPrompt
@@ -130,11 +132,12 @@ fn leaves_bar_fields(message: &Message) -> bool {
             | Message::ContextMenuAt { .. }
             | Message::ContextMenuKey
             | Message::CopyToClipboard(_)
-            | Message::Paste
             | Message::CopyFilesToClipboard
             | Message::Panel(PanelMessage::SwitchPanel)
+            | Message::SwitchTabBack
             | Message::Panel(PanelMessage::ActivatePanel(_))
             | Message::Panel(PanelMessage::SortBy { .. })
+            | Message::Panel(PanelMessage::HeaderPressed { .. })
     )
 }
 
@@ -159,6 +162,7 @@ impl App {
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
         let task = self.update_message(message);
+        self.refresh_special_folders();
         let chat = self.tell_chat_hermes_is_ready();
         Task::batch([task, chat])
     }
@@ -410,6 +414,9 @@ impl App {
             // --- delete ---
             Message::Delete { permanent } => self.open_delete_dialog(permanent),
             Message::CopyToClipboard(kind) => self.copy_to_clipboard(kind),
+            // The field that has the focus pastes by itself when the key
+            // reaches the window; a file is made only from the panels.
+            Message::Paste if self.text_field_has_keys() => Task::none(),
             Message::Paste => self.paste_from_clipboard(),
             Message::ClipboardRead(content) => self.paste_content(content),
             Message::CopyFilesToClipboard => self.copy_files_to_clipboard(),
@@ -452,7 +459,13 @@ impl App {
                 self.open_prompt(Prompt::create_file(parent))
             }
             Message::PackPrompt => self.open_pack_prompt(),
-            Message::PermissionsPrompt => Task::none(),
+            Message::PermissionsPrompt => self.open_permissions_dialog(),
+            Message::Permissions(permissions_message) => {
+                self.with_ops(|ops, _| ncrs_ops::update_permissions(ops, permissions_message))
+            }
+            Message::PermissionsDone { generation, result } => {
+                self.with_ops(|ops, ctx| ncrs_ops::permissions_done(ops, generation, result, ctx))
+            }
             Message::ArchiveWritten { result, generation } => {
                 self.with_ops(|ops, ctx| ncrs_ops::archive_written(ops, generation, result, ctx))
             }
@@ -521,6 +534,10 @@ impl App {
                 result,
             } => self.finish_prompt(kind, request_id, result),
 
+            Message::Panel(PanelMessage::SwitchPanel) if self.page_tab_is_open() => {
+                self.switch_tab(tab_stops::TabDirection::Forward)
+            }
+            Message::SwitchTabBack => self.switch_tab(tab_stops::TabDirection::Backward),
             Message::Panel(panel_message) => self.update_panel(panel_message),
             Message::TitleBar(title_bar) => update_title_bar(title_bar),
             Message::ComputeFolderSizes => {
@@ -598,6 +615,7 @@ impl App {
                     None => self.update_settings(SettingsMessage::Close),
                 }
             }
+            Message::Settings(SettingsMessage::FocusKey(key)) => self.settings_focus_key(key),
             Message::Settings(settings_message) => self.update_settings(settings_message),
             Message::Filing(filing_message) => self.update_filing(filing_message),
             Message::FilingStatus(page_message) => {

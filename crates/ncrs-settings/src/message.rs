@@ -119,6 +119,12 @@ pub enum SettingsMessage {
     ChooseFileListTags,
     Close,
     Select(SettingsFeature),
+    /// A key of the keyboard focus; the app turns it into a step.
+    FocusKey(crate::focus::FocusKey),
+    /// Where the keyboard is now.
+    SetFocus(crate::focus::Focus),
+    /// A click on the row with this number among those that have a key.
+    FocusRow(usize),
     SearchChanged(String),
     Change(SettingChange),
     Columns(ColumnsEdit),

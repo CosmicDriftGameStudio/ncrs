@@ -193,6 +193,22 @@ pub(in crate::app) fn key_bindings_key(
         .map(Message::KeyBindings)
 }
 
+/// The keys the rows of the tab take; Escape is `InputState`'s, which sees it
+/// also when a text field has captured it.
+fn settings_focus_key(key: &Key, modifiers: Modifiers) -> Option<FocusKey> {
+    if !modifiers.is_empty() {
+        return None;
+    }
+    match key.as_ref() {
+        Key::Named(Named::ArrowUp) => Some(FocusKey::Up),
+        Key::Named(Named::ArrowDown) => Some(FocusKey::Down),
+        Key::Named(Named::ArrowLeft) => Some(FocusKey::Left),
+        Key::Named(Named::ArrowRight) => Some(FocusKey::Right),
+        Key::Named(Named::Enter | Named::Space) => Some(FocusKey::Press),
+        _ => None,
+    }
+}
+
 /// The tab shows no panel, so the panel keys do nothing. Of the bindings the
 /// command list, the key that closes the tab and quitting reach through. A
 /// card opened from the tab has the Escape first.
@@ -212,6 +228,12 @@ pub(in crate::app) fn settings_key(
             })
             .filter(|_| is_not_typed_by_text_field(key, key_modifiers))
     };
+    if matches!(key.as_ref(), Key::Named(Named::Escape)) {
+        return None;
+    }
+    if let Some(focus_key) = settings_focus_key(key, key_modifiers) {
+        return Some(Message::Settings(SettingsMessage::FocusKey(focus_key)));
+    }
     match ncrs_settings::keys::settings_key(key, || bound().is_some())? {
         SettingsKey::Close => Some(Message::Settings(SettingsMessage::Close)),
         SettingsKey::Bound => bound(),

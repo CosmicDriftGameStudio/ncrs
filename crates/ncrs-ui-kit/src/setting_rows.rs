@@ -13,7 +13,21 @@ use crate::palette::Palette;
 use crate::theme::{self, font_size, size, spacing};
 use ncrs_i18n::{Language, Msg};
 
+/// What the keyboard can do on a row; a row without one is skipped by it.
+#[derive(Debug, Clone, PartialEq)]
+pub enum RowKey<M> {
+    /// Enter and Space press the row's button, switch or opener.
+    Press(M),
+    /// A choice among a few values: Left and Right change it, Enter and
+    /// Space step on to the next one.
+    Choice { previous: M, next: M },
+    /// A text field: Enter and Space focus it.
+    Text(&'static str),
+}
+
 pub struct SettingRow<'a, M> {
+    /// Set by the page that builds the row; see [`RowKey`].
+    pub key: Option<RowKey<M>>,
     pub label: String,
     /// The Futurama name, from a `Msg`; the only name the command list takes.
     pub theme_name: Option<String>,
@@ -63,6 +77,7 @@ impl<'a, M: Clone + 'a> SettingRow<'a, M> {
     /// data, so the command list does not take it.
     pub fn text(label: String, description: Option<String>, control: Element<'a, M>) -> Self {
         Self {
+            key: None,
             label,
             theme_name: None,
             config_key: None,
@@ -73,6 +88,14 @@ impl<'a, M: Clone + 'a> SettingRow<'a, M> {
             control_width: Some(SETTINGS_WIDE_CONTROL_WIDTH),
             in_command_list: false,
             list_indent: None,
+        }
+    }
+
+    /// The row answers the keyboard as `key` says.
+    pub fn keyed(self, key: RowKey<M>) -> Self {
+        Self {
+            key: Some(key),
+            ..self
         }
     }
 
@@ -139,6 +162,7 @@ pub fn simple_row<'a, M: Clone + 'a>(
     lang: Language,
 ) -> SettingRow<'a, M> {
     SettingRow {
+        key: None,
         label: lang.text(label).to_owned(),
         theme_name: None,
         config_key: None,
@@ -208,14 +232,46 @@ pub fn sections<'a, M: Clone + 'a>(
     marked: Option<&str>,
     palette: &Palette,
 ) -> Vec<Element<'a, M>> {
+    sections_with_focus(groups, shown, marked, None, |_| None, palette)
+}
+
+/// The keys of the rows [`sections_with_focus`] shows, in order: the numbers
+/// `focused` and `on_focus` count in.
+pub fn keyed_rows<'a, M: Clone + 'a>(
+    groups: Vec<Group<'a, M>>,
+    shown: impl Fn(&SettingRow<'a, M>) -> bool,
+) -> Vec<RowKey<M>> {
+    groups
+        .into_iter()
+        .flat_map(|group| group.rows)
+        .filter(|setting| shown(setting))
+        .filter_map(|setting| setting.key)
+        .collect()
+}
+
+/// Like [`sections`], with the keyboard focus on the `focused`th row that has
+/// a key; a click on a row sends what `on_focus` makes of its number.
+pub fn sections_with_focus<'a, M: Clone + 'a>(
+    groups: Vec<Group<'a, M>>,
+    shown: impl Fn(&SettingRow<'a, M>) -> bool,
+    marked: Option<&str>,
+    focused: Option<usize>,
+    on_focus: impl Fn(usize) -> Option<M>,
+    palette: &Palette,
+) -> Vec<Element<'a, M>> {
     let mut sections = Vec::new();
     let mut first = true;
+    let mut keyed_so_far = 0;
     for group in groups {
         let rows: Vec<Element<'a, M>> = group
             .rows
             .into_iter()
             .filter(|setting| shown(setting))
             .map(|setting| {
+                let number = setting.key.as_ref().map(|_| {
+                    keyed_so_far += 1;
+                    keyed_so_far - 1
+                });
                 let is_marked = marked == Some(setting.label.as_str());
                 let lines_below: Vec<Element<'a, M>> = setting
                     .problem
@@ -253,7 +309,14 @@ pub fn sections<'a, M: Clone + 'a>(
                         .into(),
                     None => plain_row,
                 };
-                if is_marked {
+                let has_focus = number.is_some() && number == focused;
+                let row: Element<'a, M> = if has_focus {
+                    // Like the mark: drawn over the content, which keeps clear.
+                    container(form_row)
+                        .padding([0.0, spacing::XS])
+                        .style(theme::focused_setting(palette))
+                        .into()
+                } else if is_marked {
                     // The outline is drawn over the content, so the row keeps
                     // its text and controls clear of it.
                     container(form_row)
@@ -262,6 +325,10 @@ pub fn sections<'a, M: Clone + 'a>(
                         .into()
                 } else {
                     form_row
+                };
+                match number.and_then(&on_focus) {
+                    Some(message) => iced::widget::mouse_area(row).on_press(message).into(),
+                    None => row,
                 }
             })
             .collect();

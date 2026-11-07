@@ -22,6 +22,7 @@ impl ContextActionMessage for ContextAction {
             ContextAction::OpenTerminal => Message::OpenTerminal,
             ContextAction::Copy => Message::Transfer(TransferKind::Copy),
             ContextAction::Move => Message::Transfer(TransferKind::Move),
+            ContextAction::Permissions => Message::PermissionsPrompt,
             ContextAction::Rename => Message::Panel(PanelMessage::RenameStart),
             ContextAction::NewFolder => Message::CreateDirPrompt,
             ContextAction::CopyPath => Message::CopyToClipboard(ClipboardKind::Path),

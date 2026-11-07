@@ -27,7 +27,7 @@ pub fn columns_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
             rows: vec![panels_row(&columns, side, view)],
         },
         Group {
-            intro: None,
+            intro: Some(lang.text(Msg::SettingsRowColumnsListNote).to_owned()),
             title: lang.text(Msg::SettingsRowColumnsList).to_owned(),
             rows: list_rows(&columns, side, view),
         },
@@ -98,6 +98,13 @@ fn panels_row<'a>(
             palette,
         ));
     }
+    let panels_key = choice_key(
+        vec![
+            edit(ColumnsEdit::SameInBoth(true)),
+            edit(ColumnsEdit::SameInBoth(false)),
+        ],
+        usize::from(!columns.same_in_both),
+    );
     let mut row = simple_row(
         Msg::SettingsRowColumnsPanels,
         Some(Msg::SettingsRowColumnsPanelsNote),
@@ -105,7 +112,7 @@ fn panels_row<'a>(
         lang,
     );
     row.control_width = Some(SETTINGS_WIDE_CONTROL_WIDTH);
-    row
+    row.keyed(panels_key)
 }
 
 fn list_rows<'a>(
@@ -137,18 +144,24 @@ fn list_rows<'a>(
                 .filter(|&at| at + 1 < shown_count)
                 .map(|_| edit(ColumnsEdit::Down(column))),
         };
-        entries.push(list_entry_row(entry, lang, palette));
+        entries.push(
+            list_entry_row(entry, lang, palette)
+                .keyed(RowKey::Press(edit(ColumnsEdit::Toggle(column)))),
+        );
     }
-    entries.push(SettingRow::adding(
-        None,
-        None,
-        vec![kit::button(
-            lang.text(Msg::ColumnMenuRestore),
-            Some(edit(ColumnsEdit::Restore)),
-            Tone::Secondary,
-            palette,
-        )],
-    ));
+    entries.push(
+        SettingRow::adding(
+            None,
+            None,
+            vec![kit::button(
+                lang.text(Msg::ColumnMenuRestore),
+                Some(edit(ColumnsEdit::Restore)),
+                Tone::Secondary,
+                palette,
+            )],
+        )
+        .keyed(RowKey::Press(edit(ColumnsEdit::Restore))),
+    );
     entries
 }
 
@@ -173,7 +186,13 @@ fn format_row<'a, F: Copy + PartialEq>(
     let control: Element<'a, Message> = kit::segmented(&options, chosen, true, view.palette);
     let mut row = simple_row(label, Some(note), control, lang);
     row.control_width = Some(SETTINGS_WIDE_CONTROL_WIDTH);
-    row
+    row.keyed(choice_key(
+        formats
+            .iter()
+            .map(|&(_, format)| edit(make(format)))
+            .collect(),
+        chosen,
+    ))
 }
 
 fn date_label(format: DateFormat) -> Msg {

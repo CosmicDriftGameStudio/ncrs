@@ -187,9 +187,10 @@ impl App {
             .as_deref()
             .and_then(|dir| fs::archive::ViewCopies::open(dir).ok());
         panels.apply_session_state(&saved);
-        let (app, filing_start) = panels
+        let (mut app, filing_start) = panels
             .with_config(loaded)
             .with_filing(&filing, index_path, key_store);
+        app.refresh_special_folders();
         let first_check = Task::done(Message::Updates(ncrs_updates::Message::CheckDue));
         (app, Task::batch([panel_loads, filing_start, first_check]))
     }
@@ -223,6 +224,8 @@ impl App {
                 self.open_programs = config.open;
                 self.saved_servers = config.servers;
                 self.file_list_tags = config.file_list_tags;
+                self.columns = config.columns;
+                self.start_appearance(config.appearance);
                 self.kinds = Kinds::new(config.kinds, self.lang.kind_language());
                 self.keymap = config.keymap;
                 self.monitor.set_settings(config.system);
@@ -485,6 +488,11 @@ impl App {
             config_path: None,
             file_list_tags: FileListTags::default(),
             kinds: Kinds::default(),
+            columns: ncrs_config::panel_columns::PanelColumns::default(),
+            special_folders: Vec::new(),
+            special_folders_source: Vec::new(),
+            appearance: ncrs_config::panel_columns::Appearance::default(),
+            ui_scale: 1.0,
             settings: Settings::default(),
             hermes: ncrs_hermes_ui::Hermes::default(),
             theme_preset: ThemePreset::DEFAULT,

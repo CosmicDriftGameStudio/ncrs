@@ -418,6 +418,7 @@ pub fn own_detail_row<'a>(detail: OwnDetail, view: &SettingsView<'a>) -> Setting
             .into()
     };
     SettingRow {
+        key: None,
         label: lang.text(label).to_owned(),
         theme_name: None,
         config_key: None,

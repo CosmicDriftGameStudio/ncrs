@@ -33,6 +33,9 @@ impl App {
                     is_active: self.panels.active == side,
                     visible_rows: self.visible_rows,
                     hermes_cell,
+                    columns: self.column_settings(),
+                    special_folders: &self.special_folders,
+                    header_drag: self.panels.header_drag_view(side),
                 },
             )
             .map(Message::Panel)
@@ -230,6 +233,20 @@ impl App {
             .into();
         }
 
+        if let Some(menu) = self.panels.header_menu.as_ref() {
+            return Stack::with_children([
+                root,
+                ncrs_files::header_menu_view(
+                    menu,
+                    self.column_settings(),
+                    self.lang,
+                    &self.palette,
+                )
+                .map(Message::Panel),
+            ])
+            .into();
+        }
+
         if let Some(menu) = self.panels.context_menu.as_ref() {
             // A left press anywhere beside the menu closes it, the path field
             // and the column titles included: those take their own clicks and
@@ -284,6 +301,17 @@ impl App {
                 &ncrs_ops::delete_subject(self.lang, deletion),
                 deletion.permanent,
                 self.dialog_focus,
+                self.window_size,
+                self.lang,
+                &self.palette,
+            )
+            .map(Message::from);
+            return Stack::with_children([root, dialog::scrim(dialog_element)]).into();
+        }
+
+        if let Some(dialog) = self.ops.permissions_dialog.as_ref() {
+            let dialog_element = ncrs_ops::permissions::view::view(
+                dialog,
                 self.window_size,
                 self.lang,
                 &self.palette,

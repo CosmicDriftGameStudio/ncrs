@@ -509,6 +509,8 @@ impl App {
         let context_menu_is_open = self.panels.context_menu.is_some();
         let pointer = self.input.lock().pointer;
         let ctx = ncrs_files::Ctx {
+            columns: column_settings_of(&self.columns),
+            has_hermes_column: self.hermes.is_active(),
             visible_rows: self.visible_rows,
             window_size: self.window_size,
             modifiers: self.modifiers,
@@ -654,6 +656,11 @@ impl App {
             Action::Disconnect(server) => {
                 Task::done(Message::Remote(RemoteMessage::Disconnect(server)))
             }
+            Action::ColumnsChanged { side, columns } => self.panel_columns_changed(side, columns),
+            Action::ColumnWidth { column, width } => self.panel_column_resized(column, width),
+            Action::SameColumnsInBoth(same) => self.panel_columns_same_in_both(same),
+            Action::RestoreColumnDefaults => self.panel_column_defaults_restored(),
+            Action::OpenColumnSettings => self.open_column_settings(),
         }
     }
 

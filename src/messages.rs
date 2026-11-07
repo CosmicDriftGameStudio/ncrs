@@ -25,7 +25,9 @@ pub use ncrs_hermes_ui::message::{
     FilingStatusMessage, HermesColumnMessage, HermesFileMessage, HermesOverviewMessage, HermesPage,
     QuickFixMessage, RulesMessage, SavedQueriesMessage, TagsMessage,
 };
-pub use ncrs_ops::{ConflictChoice, OpsMessage, TransferDialogMessage, TrashMessage};
+pub use ncrs_ops::{
+    ConflictChoice, OpsMessage, PermissionsMessage, TransferDialogMessage, TrashMessage,
+};
 pub use ncrs_search::message::SearchMessage;
 #[cfg(test)]
 pub use ncrs_settings::SettingField;
@@ -65,6 +67,8 @@ pub enum Message {
     /// Cmd+V / Ctrl+V: read the system clipboard and bring what it holds into
     /// the active panel.
     Paste,
+    /// Shift+Tab: the previous tab; Tab is `PanelMessage::SwitchPanel`.
+    SwitchTabBack,
     /// The system clipboard has been read for a paste; `None` when it holds
     /// nothing usable.
     ClipboardRead(Option<PastedContent>),
@@ -134,6 +138,13 @@ pub enum Message {
     DeleteConfirm,
     /// The user dismissed the delete dialog.
     DeleteCancel,
+    /// A message of the permissions dialog.
+    Permissions(PermissionsMessage),
+    /// The permissions change is over; the result of a stopped one is dropped.
+    PermissionsDone {
+        generation: u64,
+        result: Result<crate::fs::permissions::Outcome, String>,
+    },
     /// A pack, a copy into an archive or a delete from one finished.
     ArchiveWritten {
         result: Result<crate::fs::archive::WriteReport, RowFailure>,
@@ -517,6 +528,10 @@ impl From<OpsMessage> for Message {
                 result,
             },
             OpsMessage::Trash(trash) => Self::Trash(trash),
+            OpsMessage::Permissions(permissions) => Self::Permissions(permissions),
+            OpsMessage::PermissionsDone { generation, result } => {
+                Self::PermissionsDone { generation, result }
+            }
         }
     }
 }

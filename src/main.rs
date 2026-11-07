@@ -90,6 +90,7 @@ fn program(
     let application = iced::application(boot, App::update, App::view)
         .subscription(App::subscription)
         .theme(App::theme)
+        .scale_factor(App::scale_factor)
         .title(App::title)
         .window(iced::window::Settings {
             size: window_size,

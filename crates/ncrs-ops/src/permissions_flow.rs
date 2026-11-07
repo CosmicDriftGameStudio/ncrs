@@ -63,7 +63,7 @@ fn confirm(ops: &mut Ops) -> Outcome {
     ops.bump_generation();
     let generation = ops.generation;
     let job = Job {
-        kind: JobKind::File,
+        kind: JobKind::Permissions,
         path: chosen
             .first()
             .and_then(|first| first.parent())

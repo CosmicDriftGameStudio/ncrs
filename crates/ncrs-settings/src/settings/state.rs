@@ -102,6 +102,8 @@ pub struct SettingsState {
     pub installed_fonts: Vec<String>,
     /// What the desktop says about its fonts, for the "System" entries.
     pub system_font: Option<SystemFont>,
+    /// Where the keyboard is: the list of pages or the rows of the page.
+    pub focus: crate::focus::Focus,
 }
 
 /// Why the value of a field was not written.
@@ -150,6 +152,7 @@ impl SettingsState {
             columns_side: PanelSide::Left,
             installed_fonts: Vec::new(),
             system_font: None,
+            focus: crate::focus::Focus::default(),
         }
     }
 

@@ -23,9 +23,10 @@ fn the_key_opens_the_tab_and_closes_it_again() {
 fn escape_and_the_panel_tabs_close_it() {
     let mut app = App::with_fixed_panels();
     open(&mut app);
+    // Escape is `InputState`'s, which sees it also in a captured text field.
     assert_eq!(
         press(&app, Key::Named(Named::Escape), Modifiers::empty()),
-        Some(Message::Settings(SettingsMessage::Close))
+        None
     );
     drop(app.update(Message::Panel(PanelMessage::ActivatePanel(
         PanelSide::Right,
@@ -37,10 +38,14 @@ fn escape_and_the_panel_tabs_close_it() {
 fn the_panel_keys_do_nothing_while_it_is_open() {
     let mut app = App::with_fixed_panels();
     open(&mut app);
+    let cursor = app.panel(PanelSide::Left).selected;
     assert_eq!(
         press(&app, Key::Named(Named::ArrowDown), Modifiers::empty()),
-        None
+        Some(Message::Settings(SettingsMessage::FocusKey(
+            ncrs_settings::focus::FocusKey::Down
+        )))
     );
+    assert_eq!(app.panel(PanelSide::Left).selected, cursor);
 }
 
 #[test]

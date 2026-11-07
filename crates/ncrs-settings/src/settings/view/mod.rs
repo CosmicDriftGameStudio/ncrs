@@ -12,6 +12,7 @@ pub use groups::server_dialog_body;
 use groups::*;
 use hermes_page::hermes_groups;
 use index_page::index_groups;
+pub use page::focus_facts;
 use page::*;
 use system_page::system_groups;
 
@@ -286,7 +287,16 @@ fn mono<'a>(content: String, color: Color) -> Element<'a, Message> {
         .into()
 }
 
-use ncrs_ui_kit::setting_rows::{simple_row, status_text, with_button};
+use ncrs_ui_kit::setting_rows::{simple_row, status_text, with_button, RowKey};
+
+/// Left and Right step through `messages`, one per value, and stop at the ends.
+fn choice_key(messages: Vec<Message>, selected: usize) -> RowKey<Message> {
+    let at = |index: usize| messages[index.min(messages.len() - 1)].clone();
+    RowKey::Choice {
+        previous: at(selected.saturating_sub(1)),
+        next: at(selected + 1),
+    }
+}
 
 fn switch<'a>(on: bool, setting: SettingChange, view: &SettingsView<'_>) -> Element<'a, Message> {
     ncrs_ui_kit::setting_rows::switch(on, change(setting), view.lang, view.palette)
@@ -452,6 +462,7 @@ pub fn view_with<'a, M: 'a>(
             .margin(SCROLLBAR_MARGIN)
             .spacing(0.0),
     ))
+    .id(PAGE_SCROLL_ID)
     .width(Length::Fill)
     .height(Length::Fill);
     row![
@@ -461,6 +472,21 @@ pub fn view_with<'a, M: 'a>(
     ]
     .height(Length::Fill)
     .into()
+}
+
+const PAGE_SCROLL_ID: &str = "settings-page-scroll";
+
+/// Scrolls the page so that its row number `row` of `count` is about in view.
+pub fn scroll_to_row<T: Send + 'static>(row: usize, count: usize) -> iced::Task<T> {
+    let last = count.saturating_sub(1).max(1);
+    let y = (row.min(last) as f32 / last as f32).clamp(0.0, 1.0);
+    iced::widget::operation::snap_to(
+        PAGE_SCROLL_ID,
+        scrollable::RelativeOffset {
+            x: None,
+            y: Some(y),
+        },
+    )
 }
 
 /// What the status bar shows while the tab is open.

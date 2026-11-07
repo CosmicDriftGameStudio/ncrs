@@ -6,6 +6,7 @@ pub mod ai_model;
 pub mod ctx;
 pub mod dialogs;
 pub mod facts;
+pub mod focus;
 pub mod folders;
 pub mod key_bindings;
 pub mod keys;
