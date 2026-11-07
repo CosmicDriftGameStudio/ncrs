@@ -2652,6 +2652,9 @@ fn the_sort_keys_sort_the_active_panel_and_a_second_press_reverses() {
 }
 
 #[cfg(test)]
+mod acceptance;
+
+#[cfg(test)]
 mod monitor;
 
 #[cfg(test)]

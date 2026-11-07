@@ -319,6 +319,36 @@ impl App {
         self.panels.left.move_selection(delta, rows);
     }
 
+    /// The columns the panels show, as the settings hold them.
+    pub fn columns_for_test(&self) -> &ncrs_config::panel_columns::PanelColumns {
+        &self.columns
+    }
+
+    /// The tab the window shows.
+    pub fn shown_tab_for_test(&self) -> crate::messages::ShownTab {
+        self.shown_tab
+    }
+
+    /// Replaces the clipboard read, so a paste never touches the developer's
+    /// real clipboard.
+    pub fn with_clipboard_reader_for_test(
+        mut self,
+        read: fn() -> iced::Task<Option<crate::clipboard_paste::PastedContent>>,
+    ) -> Self {
+        self.read_clipboard = read;
+        self
+    }
+
+    /// Whether a modal prompt (new folder, pasted file name, ...) is up.
+    pub fn prompt_is_open_for_test(&self) -> bool {
+        self.ops.prompt.is_some()
+    }
+
+    /// Whether the permissions dialog is up.
+    pub fn permissions_dialog_is_open(&self) -> bool {
+        self.ops.permissions_dialog.is_some()
+    }
+
     /// Whether the delete confirmation is up.
     pub fn delete_dialog_is_open(&self) -> bool {
         self.ops.delete_dialog.is_some()
