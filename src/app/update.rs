@@ -237,7 +237,7 @@ impl App {
             _ => return false,
         };
         let hidden = self.shown_tab != tab;
-        if hidden {
+        if hidden && !self.dialog_is_open() {
             self.shown_tab = tab;
         }
         hidden
