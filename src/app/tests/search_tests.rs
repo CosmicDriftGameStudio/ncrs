@@ -576,14 +576,14 @@ fn opening_the_search_again_brings_the_keys_back_without_changing_the_field() {
     let mut app = App::with_fixed_panels();
     drop(app.update(Message::OpenSearch));
     drop(app.update(Message::OpenSearch));
-    assert_eq!(app.search_for_test().unwrap().focused, SearchField::Exclude);
+    assert_eq!(app.search_for_test().unwrap().focused, SearchField::Folder);
     drop(app.update(Message::Panel(PanelMessage::SwitchPanel)));
     assert!(!app.prompt_key_state().search);
 
     drop(app.update(Message::OpenSearch));
 
     assert!(app.prompt_key_state().search);
-    assert_eq!(app.search_for_test().unwrap().focused, SearchField::Exclude);
+    assert_eq!(app.search_for_test().unwrap().focused, SearchField::Folder);
 }
 
 #[test]
@@ -612,6 +612,8 @@ fn pressing_the_search_key_again_moves_to_the_next_field() {
     drop(app.update(Message::OpenSearch));
     assert_eq!(app.search_for_test().unwrap().focused, SearchField::Names);
     drop(app.update(Message::OpenSearch));
+    assert_eq!(app.search_for_test().unwrap().focused, SearchField::Folder);
+    drop(app.update(Message::OpenSearch));
     assert_eq!(app.search_for_test().unwrap().focused, SearchField::Exclude);
     drop(app.update(Message::OpenSearch));
     assert_eq!(app.search_for_test().unwrap().focused, SearchField::Names);
@@ -626,6 +628,8 @@ fn the_search_key_visits_the_text_field_while_the_box_is_ticked() {
     assert_eq!(app.search_for_test().unwrap().focused, SearchField::Exclude);
     drop(app.update(Message::OpenSearch));
     assert_eq!(app.search_for_test().unwrap().focused, SearchField::Names);
+    drop(app.update(Message::OpenSearch));
+    assert_eq!(app.search_for_test().unwrap().focused, SearchField::Folder);
     drop(app.update(Message::OpenSearch));
     assert_eq!(app.search_for_test().unwrap().focused, SearchField::Query);
 }

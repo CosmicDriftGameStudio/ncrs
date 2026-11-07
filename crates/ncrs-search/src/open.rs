@@ -33,7 +33,7 @@ impl Search {
         let view = self
             .view
             .get_or_insert_with(|| SearchView::new(root.clone()));
-        view.root = root;
+        view.set_root(root);
         view.filters = if indexed {
             view.filters
                 .take()

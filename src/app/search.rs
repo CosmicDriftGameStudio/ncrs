@@ -257,6 +257,8 @@ impl App {
             ncrs_search::Action::Close => self.close_search(),
             ncrs_search::Action::OpenHitList(side) => self.open_hit_list(side),
             ncrs_search::Action::ActivateCursor => self.activate_search_cursor(),
+            ncrs_search::Action::PickFolder(start) => (self.pick_folder)(&start)
+                .map(|folder| Message::Search(SearchMessage::FolderPicked(folder))),
             ncrs_search::Action::OpenContextMenu => {
                 self.open_search_context_menu();
                 Task::none()

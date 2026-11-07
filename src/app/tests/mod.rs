@@ -495,6 +495,15 @@ mod settings_pages_ui_tests;
 )]
 #[cfg(test)]
 mod panel_columns_ui_tests;
+// reason: a failing assertion is the signal in a test, so unwrap belongs here
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod search_folder_ui_tests;
 pub(in crate::app) mod support;
 // reason: a failing assertion is the signal in a test, so unwrap belongs here
 #[allow(

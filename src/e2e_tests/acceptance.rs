@@ -664,3 +664,128 @@ fn the_focused_settings_row_stays_wholly_in_view_on_long_pages() {
         "no page was long enough to scroll: {scrolled:?}"
     );
 }
+
+/// Cmd+V in the focused field with `text` on the clipboard. A path is pasted,
+/// not typed: every folder on the way would start a search of its own.
+#[cfg(unix)]
+fn paste_over_the_field<P: iced::Program<State = App, Message = Message> + 'static>(
+    session: &mut Session<P>,
+    text: &str,
+) {
+    session.widgets.clipboard.content = Some(text.to_owned());
+    command_key_in_the_field(session, "v");
+}
+
+/// Cmd plus `letter` for the focused field, which reads the modifiers from the
+/// event that announced them, not from the key press.
+#[cfg(unix)]
+fn command_key_in_the_field<P: iced::Program<State = App, Message = Message> + 'static>(
+    session: &mut Session<P>,
+    letter: &str,
+) {
+    use iced_test::core::Event;
+    let held = |modifiers| Event::Keyboard(keyboard::Event::ModifiersChanged(modifiers));
+    session.interact(vec![held(Modifiers::COMMAND)]);
+    session.press_in_widgets(Key::Character(letter.into()), Modifiers::COMMAND);
+    // The field remembers a paste until the key comes up.
+    let key = Key::Character(letter.into());
+    session.interact(vec![Event::Keyboard(keyboard::Event::KeyReleased {
+        key: key.clone(),
+        modified_key: key,
+        physical_key: keyboard::key::Physical::Unidentified(
+            keyboard::key::NativeCode::Unidentified,
+        ),
+        location: keyboard::Location::Standard,
+        modifiers: Modifiers::COMMAND,
+    })]);
+    session.interact(vec![held(Modifiers::default())]);
+}
+
+/// A search in a folder that holds only a link finds nothing and says where it
+/// looked; the folder field then points it at the real folder, and a path that
+/// does not exist is said so.
+#[cfg(unix)]
+#[test]
+fn the_search_folder_is_changed_in_the_view_and_the_search_follows() {
+    use ncrs_i18n::{fill_template, Language, Msg};
+
+    let base = scratch("search-folder");
+    let base_path = std::fs::canonicalize(base.path()).expect("a canonical scratch path");
+    let start = base_path.join("start");
+    let photos = base_path.join("photos");
+    std::fs::create_dir_all(start.join("home")).unwrap();
+    std::fs::create_dir_all(photos.join("sub")).unwrap();
+    for name in ["a.jpeg", "b.jpeg", "sub/c.jpeg", "notes.txt"] {
+        std::fs::write(photos.join(name), "x").unwrap();
+    }
+    std::os::unix::fs::symlink("../photos", start.join("pics-link")).unwrap();
+    let data = scratch("search-folder-data");
+
+    let mut session = session_with_config_file(&start, &data.path().join("config.toml"));
+    focus_the_window(&mut session);
+    session.press_with(Key::Named(Named::F7), Modifiers::ALT);
+    session.type_text("*.jpeg");
+    session.settle();
+
+    let lang = Language::default();
+    let title_of = |shown: &Session<_>| {
+        ncrs_search::title(shown.app.search_for_test().expect("the search view"), lang)
+    };
+    let first_run = session.app.search_for_test().expect("the search view");
+    assert!(!first_run.running, "the search did not finish");
+    assert!(first_run.results.is_empty(), "the link was followed");
+    assert!(title_of(&session).contains(&start.display().to_string()));
+    let no_results = fill_template(
+        lang.text(Msg::SearchNoResultsInFolder),
+        &[("{path}", &start.display().to_string())],
+    );
+    assert_eq!(
+        texts_where(&mut session, move |text| text == no_results).len(),
+        1,
+        "the empty text does not name the folder"
+    );
+
+    // The key that opened the search moves on to the folder field, with its
+    // text selected, so a paste replaces it.
+    session.press_with(Key::Named(Named::F7), Modifiers::ALT);
+    paste_over_the_field(&mut session, &photos.display().to_string());
+    session.settle();
+
+    let second_run = session.app.search_for_test().expect("the search view");
+    assert!(!second_run.running, "the search did not finish");
+    let mut found: Vec<String> = second_run
+        .results
+        .iter()
+        .filter_map(|hit| hit.path.strip_prefix(&photos).ok())
+        .map(|path| path.display().to_string())
+        .collect();
+    found.sort();
+    assert_eq!(found, ["a.jpeg", "b.jpeg", "sub/c.jpeg"]);
+    let title = title_of(&session);
+    assert!(title.contains(&photos.display().to_string()), "{title}");
+    assert!(!title.contains(&start.display().to_string()), "{title}");
+
+    // Around the circle of fields back to the folder, text selected again.
+    for _ in 0..3 {
+        session.press_with(Key::Named(Named::F7), Modifiers::ALT);
+    }
+    assert_eq!(
+        session.app.search_for_test().unwrap().focused,
+        ncrs_search::view_state::SearchField::Folder
+    );
+    paste_over_the_field(
+        &mut session,
+        &base_path.join("does-not-exist").display().to_string(),
+    );
+    session.settle();
+
+    let last_run = session.app.search_for_test().expect("the search view");
+    assert!(last_run.folder_missing);
+    assert!(last_run.results.is_empty());
+    let missing = lang.text(Msg::SearchFolderMissing).to_owned();
+    assert_eq!(
+        texts_where(&mut session, move |text| text == missing).len(),
+        1,
+        "the missing folder is not said"
+    );
+}

@@ -1009,6 +1009,24 @@
       "de": "Ohne:"
     },
     {
+      "key": "search.folder_label",
+      "context": "Label in front of the field that shows the folder the search looks in. Ends with a colon, kept short: the label column is narrow.",
+      "en": "Folder:",
+      "de": "Ordner:"
+    },
+    {
+      "key": "search.choose_folder",
+      "context": "Button next to the folder field of the search view. Opens the system dialog to pick the folder to search in. Keep it short; the ellipsis means a dialog follows.",
+      "en": "Choose…",
+      "de": "Wählen…"
+    },
+    {
+      "key": "search.folder_missing",
+      "context": "Shown in the empty result area of the search view when the folder typed in the folder field does not exist or is not a folder, so nothing is searched.",
+      "en": "Folder not found",
+      "de": "Ordner nicht gefunden"
+    },
+    {
       "key": "search.names_placeholder",
       "context": "Placeholder of the first field of the search view, shown while it is empty. It takes names of files and folders: part of a name as plain text, or patterns with * and ? separated by semicolons (a * stands for any characters). A short example, no sentence.",
       "en": "Name, e.g. invoice or *.pdf; xx*.md",
@@ -1085,6 +1103,12 @@
       "context": "Summary line of the search view when a finished search found nothing.",
       "en": "No results",
       "de": "Keine Treffer"
+    },
+    {
+      "key": "search.no_results_in_folder",
+      "context": "Shown in the empty result area of the search view when a finished search found nothing. {path} is the folder that was searched. Tells the user what was left out: links (symbolic links) and other drives are not followed.",
+      "en": "No results in {path} and its subfolders. Links and other drives are not searched.",
+      "de": "Keine Treffer in {path} und seinen Unterordnern. Links und andere Laufwerke werden nicht durchsucht."
     },
     {
       "key": "search.hint",

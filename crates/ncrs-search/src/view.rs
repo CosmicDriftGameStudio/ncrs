@@ -16,7 +16,7 @@ use ncrs_ui_kit::file_row::{hit_row, tag_star, HitRow, RowClick};
 use ncrs_ui_kit::format::{self, amount_text};
 use ncrs_ui_kit::hermes_kit::{self, ChipKind, MenuItem};
 use ncrs_ui_kit::key_intercept::key_intercept;
-use ncrs_ui_kit::kit::Check;
+use ncrs_ui_kit::kit::{self, Check, Tone};
 use ncrs_ui_kit::layout;
 use ncrs_ui_kit::palette::Palette;
 use ncrs_ui_kit::theme::{self, font_size, spacing};
@@ -30,10 +30,12 @@ use crate::view_state::{FileResult, SearchField, SearchView};
 pub const NAMES_ID: &str = "search-names";
 pub const QUERY_ID: &str = "search-query";
 pub const EXCLUDE_ID: &str = "search-exclude";
+pub const FOLDER_ID: &str = "search-folder";
 
 pub fn field_id(field: SearchField) -> &'static str {
     match field {
         SearchField::Names => NAMES_ID,
+        SearchField::Folder => FOLDER_ID,
         SearchField::Query => QUERY_ID,
         SearchField::Exclude => EXCLUDE_ID,
     }
@@ -52,6 +54,7 @@ pub fn view<'a>(
         lang,
         palette,
         is_active,
+        side_is_remote,
         shortcuts,
         toggle_for_press,
     } = ctx;
@@ -76,7 +79,14 @@ pub fn view<'a>(
     };
 
     let framed = column![
-        header(search, lang, palette, &toggle_for_press, &shortcuts),
+        header(
+            search,
+            lang,
+            palette,
+            side_is_remote,
+            &toggle_for_press,
+            &shortcuts
+        ),
         plain_column_header(palette, ColumnLayout::standard(lang)),
         container(body).height(Length::Fill).width(Length::Fill),
     ];
@@ -106,6 +116,7 @@ fn header<'a>(
     search: &'a SearchView,
     lang: Language,
     palette: &Palette,
+    side_is_remote: bool,
     toggle_for_press: &TogglePress<'a>,
     shortcuts: &ToggleShortcuts,
 ) -> Element<'a, SearchMessage> {
@@ -114,13 +125,14 @@ fn header<'a>(
     let field = |placeholder: &'a str,
                  value: &'a str,
                  id: &'static str,
-                 changed: fn(String) -> SearchMessage| {
+                 changed: fn(String) -> SearchMessage,
+                 submit: SearchMessage| {
         let press = Rc::clone(toggle_for_press);
         key_intercept(
             text_input(placeholder, value)
                 .id(id)
                 .on_input(changed)
-                .on_submit(SearchMessage::Activate)
+                .on_submit(submit)
                 .size(font_size::ROW)
                 .padding([3.0, 6.0])
                 .style(theme::search_input(palette))
@@ -182,7 +194,35 @@ fn header<'a>(
         &search.names,
         NAMES_ID,
         SearchMessage::NamesChanged,
+        SearchMessage::Activate,
     );
+    let folder: Element<'a, SearchMessage> = if side_is_remote {
+        text(&search.folder_text)
+            .size(font_size::ROW)
+            .color(palette.dim_text)
+            .wrapping(Wrapping::None)
+            .width(Length::Fill)
+            .into()
+    } else {
+        row![
+            field(
+                "",
+                &search.folder_text,
+                FOLDER_ID,
+                SearchMessage::FolderChanged,
+                SearchMessage::FolderChanged(search.folder_text.clone()),
+            ),
+            kit::button(
+                lang.text(Msg::SearchChooseFolder),
+                Some(SearchMessage::ChooseFolder),
+                Tone::Secondary,
+                palette,
+            ),
+        ]
+        .spacing(hermes_kit::GAP_S)
+        .align_y(alignment::Vertical::Center)
+        .into()
+    };
     let in_files_box = hermes_kit::checkbox(
         if search.in_files {
             Check::On
@@ -199,6 +239,7 @@ fn header<'a>(
             &search.query,
             QUERY_ID,
             SearchMessage::QueryChanged,
+            SearchMessage::Activate,
         ),
         toggle(
             "Aa",
@@ -230,6 +271,7 @@ fn header<'a>(
         &search.exclude,
         EXCLUDE_ID,
         SearchMessage::ExcludeChanged,
+        SearchMessage::Activate,
     );
 
     let (status_text, status_color) = status_line(search, lang, palette);
@@ -239,6 +281,7 @@ fn header<'a>(
         .wrapping(Wrapping::None);
     let mut fields = column![
         container(names).height(FIELD_ROW_HEIGHT),
+        container(labelled(Msg::SearchFolderLabel, folder)).height(FIELD_ROW_HEIGHT),
         container(in_files_box).height(FIELD_ROW_HEIGHT),
     ]
     .spacing(4.0);
@@ -418,10 +461,22 @@ fn filter_row<'a>(
     .into()
 }
 
-/// The width the label of the exclude field needs in `lang`, and a gap.
+/// The advance of a glyph of the UI font in ems: the narrow letters of a label
+/// are not narrower than this in it, which the estimate of the width assumes.
+const UI_FONT_ADVANCE_EM: f32 = 0.62;
+
+/// The width the longest label of the fields needs in `lang`, and a gap.
 fn label_column_width(lang: Language) -> f32 {
-    format::estimated_width(lang.text(Msg::SearchExcludeLabel), font_size::COLUMN_HEADER)
-        + hermes_kit::GAP_S
+    let widest = [Msg::SearchExcludeLabel, Msg::SearchFolderLabel]
+        .into_iter()
+        .map(|label| {
+            let text = lang.text(label);
+            let advance =
+                text.chars().count() as f32 * UI_FONT_ADVANCE_EM * font_size::COLUMN_HEADER;
+            format::estimated_width(text, font_size::COLUMN_HEADER).max(advance)
+        })
+        .fold(0.0, f32::max);
+    widest + hermes_kit::GAP_S
 }
 
 /// That the filters look at the index, and while values are chosen that they
@@ -571,18 +626,25 @@ fn status_line(search: &SearchView, lang: Language, palette: &Palette) -> (Strin
 }
 
 /// What the empty result area says: how to start, or that nothing matched.
-fn empty_text(search: &SearchView, lang: Language) -> &'static str {
+fn empty_text(search: &SearchView, lang: Language) -> String {
+    if search.folder_missing {
+        return lang.text(Msg::SearchFolderMissing).to_owned();
+    }
     let nothing_asked = search.names.trim().is_empty() && search.content_text().is_empty();
     if nothing_asked || search.running || search.totals.is_none() {
-        if nothing_asked && search.in_files {
+        let hint = if nothing_asked && search.in_files {
             lang.text(Msg::SearchHintInFiles)
         } else if nothing_asked {
             lang.text(Msg::SearchHint)
         } else {
             ""
-        }
+        };
+        hint.to_owned()
     } else {
-        lang.text(Msg::SearchNoResults)
+        fill_template(
+            lang.text(Msg::SearchNoResultsInFolder),
+            &[("{path}", &search.root.display().to_string())],
+        )
     }
 }
 

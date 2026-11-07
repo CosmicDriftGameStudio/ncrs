@@ -8,7 +8,7 @@ use crate::filters::SearchFilters;
 use crate::message::SearchMessage;
 use crate::state::Search;
 use crate::view::{field_id, NAMES_ID, QUERY_ID};
-use crate::view_state::SearchField;
+use crate::view_state::{resolve_folder, SearchField};
 
 /// Tagging comes from the keys only, and the keys are the panel's when the
 /// other one is active. The toggles are not guarded the same way: a click on
@@ -81,6 +81,32 @@ pub fn update(
             view.focused = SearchField::Exclude;
             only(search.schedule())
         }
+        // A server's folder is not one this computer can walk or choose.
+        SearchMessage::FolderChanged(_) | SearchMessage::ChooseFolder if ctx.side_is_remote => {
+            only(Task::none())
+        }
+        SearchMessage::FolderChanged(text) => {
+            view.focused = SearchField::Folder;
+            match resolve_folder(&text) {
+                Some(folder) => {
+                    view.set_root(folder);
+                    view.folder_text = text;
+                    only(search.schedule())
+                }
+                None => {
+                    view.folder_text = text;
+                    view.folder_missing = true;
+                    search.stop_and_clear();
+                    only(Task::none())
+                }
+            }
+        }
+        SearchMessage::ChooseFolder => (Task::none(), Some(Action::PickFolder(view.root.clone()))),
+        SearchMessage::FolderPicked(Some(folder)) => {
+            view.set_root(folder);
+            only(search.schedule())
+        }
+        SearchMessage::FolderPicked(None) => only(Task::none()),
         SearchMessage::AppendToQuery(typed) => {
             let id = if view.in_files && view.focused == SearchField::Query {
                 view.query.push_str(&typed);
@@ -298,5 +324,210 @@ pub fn update(
             view.scroll(delta, rows);
             only(Task::none())
         }
+    }
+}
+
+// reason: a failing assertion is the signal in a test
+#[allow(clippy::unwrap_used)]
+#[cfg(test)]
+mod tests {
+    use iced::Size;
+
+    use super::*;
+    use crate::view_state::SearchView;
+
+    fn ctx(side_is_remote: bool) -> Ctx {
+        Ctx {
+            window_size: Size::new(1200.0, 800.0),
+            side_is_remote,
+            has_keys: true,
+            index: None,
+        }
+    }
+
+    fn send(search: &mut Search, message: SearchMessage, ctx: &Ctx) -> Option<Action> {
+        let (task, action) = update(search, message, ctx);
+        drop(task);
+        action
+    }
+
+    fn open_search(root: &std::path::Path) -> Search {
+        let mut search = Search::new(Size::new(1200.0, 800.0));
+        search.view = Some(SearchView::new(root.to_path_buf()));
+        search.open = true;
+        search
+    }
+
+    fn view(search: &Search) -> &SearchView {
+        search.view.as_ref().unwrap()
+    }
+
+    #[test]
+    fn typing_an_existing_folder_searches_there() {
+        let from = tempfile::tempdir().unwrap();
+        let to = tempfile::tempdir().unwrap();
+        let mut search = open_search(from.path());
+        let before = search.generation;
+
+        let text = to.path().display().to_string();
+        let action = send(
+            &mut search,
+            SearchMessage::FolderChanged(text.clone()),
+            &ctx(false),
+        );
+
+        assert_eq!(action, None);
+        assert_eq!(view(&search).root, to.path());
+        assert_eq!(view(&search).folder_text, text);
+        assert!(!view(&search).folder_missing);
+        assert_eq!(view(&search).focused, SearchField::Folder);
+        assert_ne!(search.generation, before, "a new search is scheduled");
+    }
+
+    #[test]
+    fn typing_a_missing_folder_stops_the_search_and_keeps_the_root() {
+        let from = tempfile::tempdir().unwrap();
+        let mut search = open_search(from.path());
+        let running = search.view.as_mut().unwrap();
+        running.begin(1);
+        running.apply_event(crate::engine::SearchEvent::File {
+            path: from.path().join("a.txt"),
+            lines: Vec::new(),
+            size: 0,
+            modified: None,
+        });
+        let missing = from.path().join("nowhere");
+
+        send(
+            &mut search,
+            SearchMessage::FolderChanged(missing.display().to_string()),
+            &ctx(false),
+        );
+
+        let shown = view(&search);
+        assert!(shown.folder_missing);
+        assert_eq!(shown.root, from.path());
+        assert!(shown.results.is_empty());
+        assert!(!shown.running);
+        assert!(search.handle.is_none());
+    }
+
+    #[test]
+    fn a_file_is_not_a_folder() {
+        let from = tempfile::tempdir().unwrap();
+        let file = from.path().join("a.txt");
+        std::fs::write(&file, "x").unwrap();
+        let mut search = open_search(from.path());
+
+        send(
+            &mut search,
+            SearchMessage::FolderChanged(file.display().to_string()),
+            &ctx(false),
+        );
+
+        assert!(view(&search).folder_missing);
+    }
+
+    #[test]
+    fn a_missing_folder_is_searched_again_once_it_exists() {
+        let from = tempfile::tempdir().unwrap();
+        let mut search = open_search(from.path());
+        let later = from.path().join("later");
+        send(
+            &mut search,
+            SearchMessage::FolderChanged(later.display().to_string()),
+            &ctx(false),
+        );
+        assert!(view(&search).folder_missing);
+
+        std::fs::create_dir(&later).unwrap();
+        send(
+            &mut search,
+            SearchMessage::FolderChanged(later.display().to_string()),
+            &ctx(false),
+        );
+
+        assert!(!view(&search).folder_missing);
+        assert_eq!(view(&search).root, later);
+    }
+
+    #[test]
+    fn a_tilde_stands_for_the_home_folder() {
+        let from = tempfile::tempdir().unwrap();
+        let mut search = open_search(from.path());
+
+        send(
+            &mut search,
+            SearchMessage::FolderChanged("~".to_owned()),
+            &ctx(false),
+        );
+
+        assert_eq!(view(&search).root, ncrs_fs::home_dir());
+        assert_eq!(view(&search).folder_text, "~", "the typed text stays");
+    }
+
+    #[test]
+    fn a_tilde_in_front_of_a_path_is_the_home_folder_below() {
+        assert_eq!(resolve_folder("~/"), Some(ncrs_fs::home_dir()));
+        assert_eq!(resolve_folder("  ~/nonexistent-folder-for-test  "), None);
+    }
+
+    #[test]
+    fn a_picked_folder_becomes_the_root() {
+        let from = tempfile::tempdir().unwrap();
+        let to = tempfile::tempdir().unwrap();
+        let mut search = open_search(from.path());
+        search.view.as_mut().unwrap().folder_missing = true;
+        let before = search.generation;
+
+        send(
+            &mut search,
+            SearchMessage::FolderPicked(Some(to.path().to_path_buf())),
+            &ctx(false),
+        );
+
+        assert_eq!(view(&search).root, to.path());
+        assert_eq!(view(&search).folder_text, to.path().display().to_string());
+        assert!(!view(&search).folder_missing);
+        assert_ne!(search.generation, before);
+    }
+
+    #[test]
+    fn a_cancelled_dialog_changes_nothing() {
+        let from = tempfile::tempdir().unwrap();
+        let mut search = open_search(from.path());
+        let before = search.generation;
+
+        send(&mut search, SearchMessage::FolderPicked(None), &ctx(false));
+
+        assert_eq!(view(&search).root, from.path());
+        assert_eq!(search.generation, before);
+    }
+
+    #[test]
+    fn the_button_asks_for_a_dialog_starting_in_the_folder() {
+        let from = tempfile::tempdir().unwrap();
+        let mut search = open_search(from.path());
+
+        let action = send(&mut search, SearchMessage::ChooseFolder, &ctx(false));
+
+        assert_eq!(action, Some(Action::PickFolder(from.path().to_path_buf())));
+    }
+
+    #[test]
+    fn the_folder_of_a_server_panel_is_not_changed() {
+        let from = tempfile::tempdir().unwrap();
+        let to = tempfile::tempdir().unwrap();
+        let mut search = open_search(from.path());
+
+        let chosen = send(&mut search, SearchMessage::ChooseFolder, &ctx(true));
+        send(
+            &mut search,
+            SearchMessage::FolderChanged(to.path().display().to_string()),
+            &ctx(true),
+        );
+
+        assert_eq!(chosen, None);
+        assert_eq!(view(&search).root, from.path());
     }
 }

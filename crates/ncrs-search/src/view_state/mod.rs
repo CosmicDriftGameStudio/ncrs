@@ -25,11 +25,13 @@ pub const INDEX_HIT_LIMIT: usize = 100_000;
 /// Characters of a snippet kept in a result row.
 const SNIPPET_CHARS: usize = 160;
 
-/// The three text fields of the search view.
+/// The four text fields of the search view.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SearchField {
     /// The name pattern at the top.
     Names,
+    /// The folder the search looks in, right below the names.
+    Folder,
     /// The text to find in the files; there while `in_files` is on.
     Query,
     Exclude,
@@ -40,11 +42,27 @@ impl SearchField {
     /// is skipped while it is not shown.
     pub fn next(self, in_files: bool) -> Self {
         match self {
-            Self::Names if in_files => Self::Query,
-            Self::Names | Self::Query => Self::Exclude,
+            Self::Names => Self::Folder,
+            Self::Folder if in_files => Self::Query,
+            Self::Folder | Self::Query => Self::Exclude,
             Self::Exclude => Self::Names,
         }
     }
+}
+
+/// The folder a typed text names: `~` stands for the home folder. `None` when
+/// it is not an existing folder.
+pub fn resolve_folder(text: &str) -> Option<PathBuf> {
+    let trimmed = text.trim();
+    let expanded = match trimmed.strip_prefix('~') {
+        Some("") => ncrs_fs::home_dir(),
+        Some(rest) if rest.starts_with(['/', std::path::MAIN_SEPARATOR]) => {
+            ncrs_fs::home_dir().join(rest.trim_start_matches(['/', std::path::MAIN_SEPARATOR]))
+        }
+        _ if trimmed.is_empty() => return None,
+        _ => PathBuf::from(trimmed),
+    };
+    expanded.is_dir().then_some(expanded)
 }
 
 /// A file with matches or a folder with a matching name, in the order the
@@ -90,6 +108,11 @@ impl FileResult {
 #[derive(Debug, Clone)]
 pub struct SearchView {
     pub root: PathBuf,
+    /// What the folder field shows: `root`, or what the user typed on the way
+    /// to another folder.
+    pub folder_text: String,
+    /// The typed folder is not an existing folder: nothing is searched.
+    pub folder_missing: bool,
     /// Name patterns, the first field: globs separated by `;`, or plain text
     /// for a part of the name.
     pub names: String,
@@ -146,6 +169,8 @@ pub fn stays_on_file_system(root: &Path) -> bool {
 impl SearchView {
     pub fn new(root: PathBuf) -> Self {
         Self {
+            folder_text: root.display().to_string(),
+            folder_missing: false,
             root,
             names: String::new(),
             in_files: false,
@@ -171,6 +196,13 @@ impl SearchView {
             filters: None,
             not_shown: 0,
         }
+    }
+
+    /// Searches below `folder` from now on.
+    pub fn set_root(&mut self, folder: PathBuf) {
+        self.folder_text = folder.display().to_string();
+        self.root = folder;
+        self.folder_missing = false;
     }
 
     /// The index answers the search, not the walk.

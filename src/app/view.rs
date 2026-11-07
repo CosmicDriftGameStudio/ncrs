@@ -54,6 +54,7 @@ impl App {
                         lang: self.lang,
                         palette: &self.palette,
                         is_active: self.panels.active == side,
+                        side_is_remote: self.panel(side).remote().is_some(),
                         shortcuts: self.toggle_shortcuts(),
                         toggle_for_press: Rc::new(move |key, physical_key, modifiers| {
                             search_toggle_for_press(keymap, key, physical_key, modifiers)
