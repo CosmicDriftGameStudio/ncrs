@@ -26,11 +26,14 @@ const BUNDLED_REGULAR: &[u8] = include_bytes!("../../../assets/fonts/DejaVuSansM
 const BUNDLED_BOLD: &[u8] = include_bytes!("../../../assets/fonts/DejaVuSansMono-Bold.ttf");
 
 pub mod badge_dot;
+pub mod choice_rows;
 pub mod column_header;
 pub mod data_table;
+pub mod file_icon;
 pub mod file_row;
 pub mod fkeys;
 pub mod focus;
+pub mod font;
 pub mod format;
 pub mod frame;
 pub mod hermes_kit;
@@ -48,6 +51,7 @@ pub mod page_status_bar;
 pub mod page_text;
 pub mod palette;
 pub mod panel_footer;
+pub mod permission_grid;
 pub mod picker;
 pub mod popup_menu;
 pub mod rename_row;
