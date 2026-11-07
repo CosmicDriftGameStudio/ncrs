@@ -52,6 +52,13 @@ pub fn update_permissions(ops: &mut Ops, message: PermissionsMessage) -> Outcome
 /// Apply: close the dialog and start the job, or only close when nothing was
 /// touched.
 fn confirm(ops: &mut Ops) -> Outcome {
+    if ops
+        .permissions_dialog
+        .as_ref()
+        .is_some_and(|dialog| !dialog.octal_is_valid())
+    {
+        return idle();
+    }
     let Some(dialog) = ops.permissions_dialog.take() else {
         return idle();
     };

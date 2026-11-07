@@ -123,12 +123,10 @@ impl App {
         self.appearance = appearance;
     }
 
-    /// The font at start. A system font needs no call: it is what the text
-    /// system starts with.
+    /// The font at start; the same call as after a change, so "System" looks the
+    /// same either way.
     pub(in crate::app) fn start_appearance(&mut self, appearance: Appearance) {
-        if appearance.font != FontChoice::System {
-            font::apply_font(family_of(&appearance.font));
-        }
+        font::apply_font(family_of(&appearance.font));
         self.ui_scale = font::ui_scale(
             points_of(appearance.font_size),
             font::system_font().as_ref(),

@@ -63,7 +63,9 @@ pub fn view<'a>(
         ),
         kit::enter_button(
             lang.text(Msg::PermissionsApply),
-            Some(send(PermissionsMessage::Confirm)),
+            dialog
+                .octal_is_valid()
+                .then(|| send(PermissionsMessage::Confirm)),
             Tone::Primary,
             palette,
         ),

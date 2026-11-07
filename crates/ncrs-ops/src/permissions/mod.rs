@@ -378,9 +378,20 @@ impl PermissionsDialog {
             .fold(0, |bits, (_, mask)| bits | mask)
     }
 
+    /// False while the octal field holds a number that is not valid: Apply
+    /// then does nothing, the boxes still show the last valid one.
+    pub fn octal_is_valid(&self) -> bool {
+        self.typed
+            .as_deref()
+            .is_none_or(|typed| parse_octal(typed).is_some())
+    }
+
     /// What Apply does; `None` when nothing was touched and nothing goes
     /// into the folders, so Apply only closes.
     pub fn plan(&self) -> Option<PermissionPlan> {
+        if !self.octal_is_valid() {
+            return None;
+        }
         let edit = PermissionEdit {
             set: self.touched_bits(Check::On),
             clear: self.touched_bits(Check::Off),

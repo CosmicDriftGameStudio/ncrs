@@ -16,6 +16,9 @@ pub struct EntryDetails {
     /// Unix permission bits (`& 0o7777`) of the link target, of the link itself
     /// when the target is missing.
     pub mode: Option<u32>,
+    /// The numeric ids of the owner and the group, where the system has them.
+    pub uid: Option<u32>,
+    pub gid: Option<u32>,
     /// Filled by the filesystem layer, which can look names up; the core only
     /// holds the result. A name that cannot be found is the number as text.
     pub owner: Option<String>,

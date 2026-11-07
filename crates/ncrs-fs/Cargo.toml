@@ -71,8 +71,8 @@ objc2-foundation = { version = "0.3", default-features = false, features = ["std
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSWorkspace"] }
 
 [target.'cfg(unix)'.dependencies]
-# Owner and group names of the files in a listing. The `user` feature, and `fs` for chmod of a file that cannot be opened.
-nix = { version = "0.31", default-features = false, features = ["user", "fs"] }
+# Owner and group names of the files in a listing. The `user` feature; `fs` for chmod of a file that cannot be opened and `dir` for walking a folder by its handle.
+nix = { version = "0.31", default-features = false, features = ["user", "fs", "dir"] }
 # O_NOFOLLOW and friends for opening an entry without following a link.
 libc = "0.2"
 

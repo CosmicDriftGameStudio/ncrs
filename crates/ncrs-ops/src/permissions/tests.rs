@@ -200,3 +200,13 @@ fn the_parent_row_is_never_a_target() {
     };
     assert!(targets_of(&[parent]).is_empty());
 }
+
+#[test]
+fn a_number_made_invalid_again_applies_nothing() {
+    let mut dialog = one(0o600);
+    dialog.type_octal("644".into());
+    assert!(dialog.plan().is_some());
+    dialog.type_octal("64".into());
+    assert!(!dialog.octal_is_valid());
+    assert_eq!(dialog.plan(), None);
+}
