@@ -7,6 +7,7 @@ pub mod config;
 pub mod file_list_tags;
 pub mod keymap;
 pub mod palette;
+pub mod panel_columns;
 pub mod settings_page;
 pub mod system_monitor;
 pub mod vscode_theme;

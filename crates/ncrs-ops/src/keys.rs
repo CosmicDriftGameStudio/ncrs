@@ -6,7 +6,7 @@
 use iced::keyboard::key::Named;
 use iced::keyboard::{Key, Modifiers};
 
-use crate::message::{ConflictChoice, TransferDialogMessage, TrashMessage};
+use crate::message::{ConflictChoice, PermissionsMessage, TransferDialogMessage, TrashMessage};
 
 /// The keys every button dialog shares.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -156,5 +156,14 @@ pub fn trash_key(
     match bound {
         TrashBound::Tagging(_) | TrashBound::Other => None,
         passes => Some(TrashKey::Bound(passes)),
+    }
+}
+
+/// Keys while the permissions dialog is up: Escape closes it, Enter applies.
+pub fn permissions_key(key: &Key) -> Option<PermissionsMessage> {
+    match key.as_ref() {
+        Key::Named(Named::Escape) => Some(PermissionsMessage::Cancel),
+        Key::Named(Named::Enter) => Some(PermissionsMessage::Confirm),
+        _ => None,
     }
 }

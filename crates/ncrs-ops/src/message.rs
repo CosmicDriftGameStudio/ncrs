@@ -1,5 +1,6 @@
 //! The messages of the file operations.
 
+use ncrs_fs::permissions::{ForFiles, ForFolders, Outcome as PermissionChanges};
 use ncrs_fs::{RestoreError, TrashedItem};
 
 use crate::row_failure::RowFailure;
@@ -75,6 +76,21 @@ pub enum TrashMessage {
     OpenInFinder,
 }
 
+/// What the permissions dialog sends.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PermissionsMessage {
+    /// A box: 0 to 8 the grid by rows, 9 to 11 setuid, setgid, sticky, 12 the
+    /// read-only attribute.
+    Toggle(usize),
+    OctalInput(String),
+    ToggleAdvanced,
+    ToggleContents,
+    SetForFiles(ForFiles),
+    SetForFolders(ForFolders),
+    Confirm,
+    Cancel,
+}
+
 /// What to do about a name that is already taken.
 ///
 /// The "All" options are the point: answering the same question per file turns
@@ -134,6 +150,13 @@ pub enum OpsMessage {
     ToggleConflictAll,
     DeleteCancel,
     DeleteConfirm,
+    Permissions(PermissionsMessage),
+    /// The permissions change is over. Dropped when `generation` is not the
+    /// current one.
+    PermissionsDone {
+        generation: u64,
+        result: Result<PermissionChanges, String>,
+    },
     /// One entry of a delete is gone or failed. Dropped when `generation` is
     /// not the current one.
     DeleteRowDone {

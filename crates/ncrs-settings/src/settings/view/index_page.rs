@@ -99,7 +99,7 @@ pub fn folder_row<'a>(
     location: &FilingLocation,
     status: Option<String>,
     files: Option<usize>,
-    buttons: Vec<Element<'a, Message>>,
+    buttons: Vec<RowButton<Message>>,
     view: &SettingsView<'a>,
 ) -> SettingRow<'a> {
     let lang = view.lang;
@@ -118,7 +118,7 @@ pub fn folder_row<'a>(
     SettingRow {
         warning: folder_is_disconnected(location, view)
             .then(|| lang.text(Msg::SettingsIndexFolderMissing).to_owned()),
-        ..SettingRow::listed(
+        ..SettingRow::listed_buttons(
             folder_name(location),
             Some(where_it_is),
             status,
@@ -128,15 +128,14 @@ pub fn folder_row<'a>(
     }
 }
 
-pub fn remove_folder_button<'a>(
+pub fn remove_folder_button(
     location: &FilingLocation,
-    view: &SettingsView<'a>,
-) -> Element<'a, Message> {
-    kit::button(
+    view: &SettingsView<'_>,
+) -> RowButton<Message> {
+    RowButton::new(
         view.lang.text(Msg::SettingsRemove),
         Some(SettingsMessage::RemoveFolder(location.path.clone())),
         Tone::Secondary,
-        view.palette,
     )
 }
 
@@ -145,20 +144,20 @@ pub fn remove_folder_button<'a>(
 pub fn add_folder_row<'a>(
     kind: AddAs,
     empty: Option<Msg>,
-    mut buttons: Vec<Element<'a, Message>>,
+    mut buttons: Vec<RowButton<Message>>,
     view: &SettingsView<'a>,
 ) -> SettingRow<'a> {
     let lang = view.lang;
-    buttons.push(kit::button(
+    buttons.push(RowButton::new(
         lang.text(Msg::SettingsFolderAdd),
         Some(SettingsMessage::AddFolder(kind)),
         Tone::Secondary,
-        view.palette,
     ));
-    SettingRow::adding(
+    SettingRow::adding_buttons(
         empty.map(|msg| lang.text(msg).to_owned()),
         view.state.folder_note.clone(),
         buttons,
+        view.palette,
     )
 }
 
@@ -180,7 +179,10 @@ fn read_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
         lang.text(Msg::SettingsIndexRowScope).to_owned(),
         Some(lang.text(Msg::SettingsIndexScopeOnlyHint).to_owned()),
         scope,
-    )];
+    )
+    .keyed(RowKey::Press(SettingsMessage::Select(
+        SettingsFeature::Index,
+    )))];
     rows.extend(locations.iter().map(|location| {
         folder_row(
             location,
@@ -265,12 +267,19 @@ fn ocr_section_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
             load_button(SettingsMessage::OpenOcrModels, view),
         )
     };
-    rows.push(simple_row(
-        Msg::SettingsIndexRowOcrFallback,
-        Some(Msg::SettingsIndexRowOcrFallbackNote),
-        model_control(lang.text(state).to_owned(), color, vec![button]),
-        lang,
-    ));
+    rows.push(
+        simple_row(
+            Msg::SettingsIndexRowOcrFallback,
+            Some(Msg::SettingsIndexRowOcrFallbackNote),
+            model_control(lang.text(state).to_owned(), color, vec![button]),
+            lang,
+        )
+        .keyed(RowKey::Press(if view.state.ocr_models_present {
+            SettingsMessage::AskRemoveModel(ModelKind::Ocr)
+        } else {
+            SettingsMessage::OpenOcrModels
+        })),
+    );
     rows
 }
 
@@ -324,7 +333,13 @@ fn ai_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
             palette.dim_text,
         ),
     };
-    let button = ai_button(&view.facts.ai, view.state.ai_model_present).map(|kind| match kind {
+    let ai_kind = ai_button(&view.facts.ai, view.state.ai_model_present);
+    let ai_press = ai_kind.as_ref().map(|kind| match kind {
+        AiButton::Remove => SettingsMessage::AskRemoveModel(ModelKind::Ai),
+        AiButton::TurnOn => SettingsMessage::Change(SettingChange::AiEnabled(true)),
+        AiButton::Load => SettingsMessage::OpenAiModel,
+    });
+    let button = ai_kind.map(|kind| match kind {
         AiButton::Remove => remove_model_button(ModelKind::Ai, view),
         AiButton::TurnOn => kit::button(
             lang.text(Msg::AiModelTurnOn),
@@ -340,6 +355,7 @@ fn ai_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
         model_control(state, color, button.into_iter().collect()),
         lang,
     );
+    model.key = ai_press.map(RowKey::Press);
     if let Some(detail) = &view.facts.ai_detail {
         let note = lang.text(Msg::SettingsIndexRowAiNote);
         model.description = Some(format!("{note}\n{detail}"));
@@ -354,7 +370,8 @@ fn ai_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
             palette,
         ),
         lang,
-    );
+    )
+    .keyed(RowKey::Press(SettingsMessage::ServerDialog(true)));
     vec![model, server]
 }
 
@@ -418,6 +435,7 @@ pub fn own_detail_row<'a>(detail: OwnDetail, view: &SettingsView<'a>) -> Setting
             .into()
     };
     SettingRow {
+        key: Some(RowKey::Text(id)),
         label: lang.text(label).to_owned(),
         theme_name: None,
         config_key: None,
@@ -429,6 +447,7 @@ pub fn own_detail_row<'a>(detail: OwnDetail, view: &SettingsView<'a>) -> Setting
         control_width: Some(SETTINGS_WIDE_CONTROL_WIDTH),
         in_command_list: true,
         list_indent: None,
+        marked_controls: Vec::new(),
     }
 }
 
@@ -471,13 +490,18 @@ fn state_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
             counts,
             Some(lang.text(Msg::SettingsIndexStateNote).to_owned()),
             pause,
-        ),
+        )
+        .keyed(RowKey::Press(SettingsMessage::TogglePause)),
         simple_row(
             Msg::SettingsIndexRowLoad,
             Some(Msg::SettingsIndexRowLoadNote),
             kit::segmented(&options, chosen, true, palette),
             lang,
-        ),
+        )
+        .keyed_maybe(choice_key(
+            options.iter().map(|(_, message)| message.clone()).collect(),
+            chosen,
+        )),
     ];
     if facts.unreadable > 0 {
         let text = match facts.unreadable {
@@ -487,16 +511,21 @@ fn state_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
                 &[("{count}", &count.to_string())],
             ),
         };
-        rows.push(text_row(
-            text,
-            None,
-            kit::button(
-                lang.text(Msg::SettingsIndexErrorsShow),
-                Some(SettingsMessage::Select(SettingsFeature::ReadErrors)),
-                Tone::Secondary,
-                palette,
-            ),
-        ));
+        rows.push(
+            text_row(
+                text,
+                None,
+                kit::button(
+                    lang.text(Msg::SettingsIndexErrorsShow),
+                    Some(SettingsMessage::Select(SettingsFeature::ReadErrors)),
+                    Tone::Secondary,
+                    palette,
+                ),
+            )
+            .keyed(RowKey::Press(SettingsMessage::Select(
+                SettingsFeature::ReadErrors,
+            ))),
+        );
     }
     rows
 }

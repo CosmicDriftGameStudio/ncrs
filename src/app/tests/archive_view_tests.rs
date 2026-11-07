@@ -77,6 +77,7 @@ fn app_in_zip(dir: &Path, copies: Option<&Path>) -> (App, Arc<Recorded>) {
         size: 6,
         modified: None,
         folder_size: None,
+        details: Default::default(),
     }];
     panel.selected = 0;
     (app, launcher)

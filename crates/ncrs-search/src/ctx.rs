@@ -52,6 +52,9 @@ pub struct ViewCtx<'a> {
     pub palette: &'a Palette,
     /// The panel of the search is the active one.
     pub is_active: bool,
+    /// The panel the search stands in for shows a server: its folder is shown,
+    /// not edited.
+    pub side_is_remote: bool,
     pub shortcuts: ToggleShortcuts,
     /// The toggle a press is bound to, so the fields claim it before they
     /// type its character.

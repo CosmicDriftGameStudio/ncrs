@@ -14,6 +14,7 @@ fn app_with_long_list() -> App {
             size: 1,
             modified: None,
             folder_size: None,
+            details: Default::default(),
         })
         .collect();
     app

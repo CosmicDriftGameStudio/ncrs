@@ -20,27 +20,124 @@ fn the_key_opens_the_tab_and_closes_it_again() {
 }
 
 #[test]
-fn escape_and_the_panel_tabs_close_it() {
+fn escape_closes_it_and_a_panel_tab_only_shows_the_panels() {
     let mut app = App::with_fixed_panels();
     open(&mut app);
+    // Escape is `InputState`'s, which sees it also in a captured text field.
     assert_eq!(
         press(&app, Key::Named(Named::Escape), Modifiers::empty()),
-        Some(Message::Settings(SettingsMessage::Close))
+        None
     );
     drop(app.update(Message::Panel(PanelMessage::ActivatePanel(
         PanelSide::Right,
     ))));
-    assert!(app.settings.page.is_none());
+    assert!(app.settings.page.is_some());
+    assert_eq!(app.shown_tab, ShownTab::Panels);
+    assert!(!app.settings_shown());
+}
+
+fn tab(app: &mut App, modifiers: Modifiers) {
+    let routed = press(app, Key::Named(Named::Tab), modifiers).expect("Tab is routed");
+    match routed {
+        // The page asks iced whether a text field has the keyboard; none has.
+        Message::TabInPage { backward } => drop(app.update(Message::TabInPageAnswered {
+            backward,
+            field_focused: false,
+        })),
+        other => drop(app.update(other)),
+    }
+}
+
+#[test]
+fn tab_walks_the_circle_with_both_pages_open_and_closes_none() {
+    let mut app = App::with_fixed_panels();
+    app.panels.active = PanelSide::Left;
+    open(&mut app);
+    drop(app.update(Message::Monitor(MonitorMessage::Toggle)));
+    assert!(app.settings.page.is_some() && app.monitor.is_open());
+    assert_eq!(app.shown_tab, ShownTab::Monitor);
+    // Monitor -> Left -> Right -> Settings -> Monitor.
+    tab(&mut app, Modifiers::empty());
+    assert_eq!(
+        (app.shown_tab, app.panels.active),
+        (ShownTab::Panels, PanelSide::Left)
+    );
+    tab(&mut app, Modifiers::empty());
+    assert_eq!(
+        (app.shown_tab, app.panels.active),
+        (ShownTab::Panels, PanelSide::Right)
+    );
+    tab(&mut app, Modifiers::empty());
+    assert_eq!(app.shown_tab, ShownTab::Settings);
+    tab(&mut app, Modifiers::empty());
+    assert_eq!(app.shown_tab, ShownTab::Monitor);
+    // And back.
+    tab(&mut app, Modifiers::SHIFT);
+    assert_eq!(app.shown_tab, ShownTab::Settings);
+    tab(&mut app, Modifiers::SHIFT);
+    assert_eq!(
+        (app.shown_tab, app.panels.active),
+        (ShownTab::Panels, PanelSide::Right)
+    );
+    tab(&mut app, Modifiers::SHIFT);
+    assert_eq!(
+        (app.shown_tab, app.panels.active),
+        (ShownTab::Panels, PanelSide::Left)
+    );
+    tab(&mut app, Modifiers::SHIFT);
+    assert_eq!(app.shown_tab, ShownTab::Monitor);
+    assert!(app.settings.page.is_some() && app.monitor.is_open());
+}
+
+#[test]
+fn a_click_on_a_page_tab_shows_it_and_a_panel_click_shows_the_panels() {
+    let mut app = App::with_fixed_panels();
+    open(&mut app);
+    drop(app.update(Message::Monitor(MonitorMessage::Toggle)));
+    drop(app.update(Message::ShowTab(ShownTab::Settings)));
+    assert_eq!(app.shown_tab, ShownTab::Settings);
+    drop(app.update(Message::Panel(PanelMessage::ActivatePanel(PanelSide::Left))));
+    assert_eq!(app.shown_tab, ShownTab::Panels);
+    assert!(app.settings.page.is_some() && app.monitor.is_open());
+    // Closing the shown page leaves the other one open.
+    drop(app.update(Message::ShowTab(ShownTab::Monitor)));
+    drop(app.update(Message::Monitor(MonitorMessage::Close)));
+    assert!(app.settings.page.is_some());
+    assert_eq!(app.shown_tab, ShownTab::Panels);
+}
+
+#[test]
+fn a_text_field_that_has_the_keyboard_keeps_tab() {
+    let mut app = App::with_fixed_panels();
+    open(&mut app);
+    assert_eq!(
+        press(&app, Key::Named(Named::Tab), Modifiers::empty()),
+        Some(Message::TabInPage { backward: false })
+    );
+    drop(app.update(Message::TabInPageAnswered {
+        backward: false,
+        field_focused: true,
+    }));
+    assert_eq!(app.shown_tab, ShownTab::Settings);
+    drop(app.update(Message::TabInPageAnswered {
+        backward: false,
+        field_focused: false,
+    }));
+    assert_eq!(app.shown_tab, ShownTab::Panels);
 }
 
 #[test]
 fn the_panel_keys_do_nothing_while_it_is_open() {
     let mut app = App::with_fixed_panels();
     open(&mut app);
+    let cursor = app.panel(PanelSide::Left).selected;
     assert_eq!(
         press(&app, Key::Named(Named::ArrowDown), Modifiers::empty()),
-        None
+        Some(Message::Settings(SettingsMessage::FocusKey(
+            ncrs_settings::focus::FocusKey::Down
+        )))
     );
+    assert_eq!(app.panel(PanelSide::Left).selected, cursor);
 }
 
 #[test]
@@ -257,4 +354,13 @@ fn a_page_is_selected_and_searched() {
         app.settings.page.as_ref().unwrap().feature,
         SettingsFeature::Hermes
     );
+}
+
+#[test]
+fn a_click_on_a_page_the_app_fills_moves_the_keyboard_to_its_row() {
+    let mut app = App::with_fixed_panels();
+    open(&mut app);
+    drop(app.update(Message::FocusPageThen(2, None)));
+    let page = app.settings.page.as_ref().expect("settings are open");
+    assert_eq!(page.focus, ncrs_settings::focus::Focus::in_rows(2));
 }

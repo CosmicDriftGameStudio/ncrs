@@ -1009,6 +1009,24 @@
       "de": "Ohne:"
     },
     {
+      "key": "search.folder_label",
+      "context": "Label in front of the field that shows the folder the search looks in. Ends with a colon, kept short: the label column is narrow.",
+      "en": "Folder:",
+      "de": "Ordner:"
+    },
+    {
+      "key": "search.choose_folder",
+      "context": "Button next to the folder field of the search view. Opens the system dialog to pick the folder to search in. Keep it short; the ellipsis means a dialog follows.",
+      "en": "Choose…",
+      "de": "Wählen…"
+    },
+    {
+      "key": "search.folder_missing",
+      "context": "Shown in the empty result area of the search view when the folder typed in the folder field does not exist, is not a folder or may not be read, so nothing is searched.",
+      "en": "Folder not found or not readable",
+      "de": "Ordner nicht gefunden oder nicht lesbar"
+    },
+    {
       "key": "search.names_placeholder",
       "context": "Placeholder of the first field of the search view, shown while it is empty. It takes names of files and folders: part of a name as plain text, or patterns with * and ? separated by semicolons (a * stands for any characters). A short example, no sentence.",
       "en": "Name, e.g. invoice or *.pdf; xx*.md",
@@ -1085,6 +1103,12 @@
       "context": "Summary line of the search view when a finished search found nothing.",
       "en": "No results",
       "de": "Keine Treffer"
+    },
+    {
+      "key": "search.no_results_in_folder",
+      "context": "Shown in the empty result area of the search view when a finished search found nothing. {path} is the folder that was searched. Tells the user what was left out: links (symbolic links) and other drives are not followed.",
+      "en": "No results in {path} and its subfolders. Links and other drives are not searched.",
+      "de": "Keine Treffer in {path} und seinen Unterordnern. Links und andere Laufwerke werden nicht durchsucht."
     },
     {
       "key": "search.hint",
@@ -9131,6 +9155,654 @@
       "context": "Negates one condition of a rule in the chat. {condition} is the condition in words, for example “Sender: Telekom”.",
       "en": "not ({condition})",
       "de": "nicht ({condition})"
+    },
+    {
+      "key": "action.permissions",
+      "context": "Entry of the command palette and of the menus that runs the key action permissions: opens the dialog that shows and changes the access rights of the selected files. Menus add the ellipsis themselves. One word, plural noun.",
+      "en": "Permissions",
+      "de": "Rechte"
+    },
+    {
+      "key": "column.icon",
+      "context": "Name of the icon column in the column menu of a panel header and in the settings page for columns. The column shows a small picture before the file name. One word, noun.",
+      "en": "Icon",
+      "de": "Symbol"
+    },
+    {
+      "key": "column.created",
+      "context": "Column header above the date a file was created. One word; may expand in some languages.",
+      "en": "Created",
+      "de": "Erstellt"
+    },
+    {
+      "key": "column.type",
+      "context": "Column header above the kind of a file in words (folder, image, PDF). One word, noun.",
+      "en": "Type",
+      "de": "Typ"
+    },
+    {
+      "key": "column.extension",
+      "context": "Column header above the file name extension, the part after the last dot. One word, noun.",
+      "en": "Extension",
+      "de": "Endung"
+    },
+    {
+      "key": "column.permissions",
+      "context": "Column header above the access rights of a file (rwxr-xr-x; read-only, hidden, system on Windows). One word, plural noun.",
+      "en": "Permissions",
+      "de": "Rechte"
+    },
+    {
+      "key": "column.owner",
+      "context": "Column header above the user who owns a file. Not shown on Windows. One word, noun.",
+      "en": "Owner",
+      "de": "Besitzer"
+    },
+    {
+      "key": "column.group",
+      "context": "Column header above the group that owns a file. Not shown on Windows. One word, noun.",
+      "en": "Group",
+      "de": "Gruppe"
+    },
+    {
+      "key": "column.accessed",
+      "context": "Column header above the date a file was last read. One word; may expand in some languages.",
+      "en": "Accessed",
+      "de": "Zugriff"
+    },
+    {
+      "key": "column.link_target",
+      "context": "Column header above the place a link points to; empty for everything that is not a link. Short, noun.",
+      "en": "Link target",
+      "de": "Linkziel"
+    },
+    {
+      "key": "column.menu_always",
+      "context": "Note beside the Name entry in the column menu that opens from a panel header. The name column cannot be switched off. One lowercase word.",
+      "en": "always",
+      "de": "immer"
+    },
+    {
+      "key": "column.menu_same_in_both",
+      "context": "Switch in the column menu of a panel header: when on, both panels show the same columns in the same order; when off, each panel has its own.",
+      "en": "Same columns in both panels",
+      "de": "Gleiche Spalten in beiden Panels"
+    },
+    {
+      "key": "column.menu_configure",
+      "context": "Entry at the bottom of the column menu of a panel header that opens the Columns page of the settings tab. The ellipsis shows that a page opens.",
+      "en": "Configure columns…",
+      "de": "Spalten einstellen…"
+    },
+    {
+      "key": "column.menu_restore",
+      "context": "Entry at the bottom of the column menu of a panel header that puts the columns back to the built-in ones: icon, name, size, modified.",
+      "en": "Restore defaults",
+      "de": "Standard wiederherstellen"
+    },
+    {
+      "key": "column_type.folder",
+      "context": "Value in the Type column of a file panel for a folder. One word, noun.",
+      "en": "Folder",
+      "de": "Ordner"
+    },
+    {
+      "key": "column_type.link",
+      "context": "Value in the Type column of a file panel for a symbolic link or shortcut. One word, noun.",
+      "en": "Link",
+      "de": "Link"
+    },
+    {
+      "key": "column_type.broken_link",
+      "context": "Value in the Type column of a file panel for a link whose target does not exist. Short noun phrase.",
+      "en": "Broken link",
+      "de": "Kaputter Link"
+    },
+    {
+      "key": "column_type.image",
+      "context": "Value in the Type column of a file panel for a picture file such as PNG or JPEG. One word, noun.",
+      "en": "Image",
+      "de": "Bild"
+    },
+    {
+      "key": "column_type.video",
+      "context": "Value in the Type column of a file panel for a video file. One word, noun.",
+      "en": "Video",
+      "de": "Video"
+    },
+    {
+      "key": "column_type.audio",
+      "context": "Value in the Type column of a file panel for a sound or music file. One word, noun.",
+      "en": "Audio",
+      "de": "Audio"
+    },
+    {
+      "key": "column_type.pdf",
+      "context": "Value in the Type column of a file panel for a PDF file. The format name, keep it.",
+      "en": "PDF",
+      "de": "PDF"
+    },
+    {
+      "key": "column_type.document",
+      "context": "Value in the Type column of a file panel for a text document such as DOCX or ODT. One word, noun.",
+      "en": "Document",
+      "de": "Dokument"
+    },
+    {
+      "key": "column_type.spreadsheet",
+      "context": "Value in the Type column of a file panel for a spreadsheet such as XLSX or CSV. One word, noun.",
+      "en": "Spreadsheet",
+      "de": "Tabelle"
+    },
+    {
+      "key": "column_type.code",
+      "context": "Value in the Type column of a file panel for a source code file. One word, noun.",
+      "en": "Code",
+      "de": "Code"
+    },
+    {
+      "key": "column_type.program",
+      "context": "Value in the Type column of a file panel for a program that can be run. One word, noun.",
+      "en": "Program",
+      "de": "Programm"
+    },
+    {
+      "key": "column_type.archive",
+      "context": "Value in the Type column of a file panel for a packed archive such as ZIP or TAR. One word, noun.",
+      "en": "Archive",
+      "de": "Archiv"
+    },
+    {
+      "key": "column_type.file",
+      "context": "Value in the Type column of a file panel for a file of no known kind. One word, noun.",
+      "en": "File",
+      "de": "Datei"
+    },
+    {
+      "key": "settings.feature_columns",
+      "context": "Entry of the feature list on the settings tab, in the group of the files: the page for the columns of the file panels. One word, plural noun.",
+      "en": "Columns",
+      "de": "Spalten"
+    },
+    {
+      "key": "settings.feature_columns_intro",
+      "context": "Line under the heading of the Columns page on the settings tab.",
+      "en": "Which columns the panels show, in which order, and how dates and sizes look.",
+      "de": "Welche Spalten die Panels zeigen, in welcher Reihenfolge und wie Datum und Größe aussehen."
+    },
+    {
+      "key": "settings.row_columns_panels",
+      "context": "Label of the row on the Columns page that sets whether both file panels show the same columns. One word, plural noun.",
+      "en": "Panels",
+      "de": "Panels"
+    },
+    {
+      "key": "settings.row_columns_panels_note",
+      "context": "Note under the Panels row on the Columns page, explaining the two options of the segment.",
+      "en": "Both panels show the same columns, or each panel has its own.",
+      "de": "Beide Panels zeigen dieselben Spalten, oder jedes Panel hat seine eigenen."
+    },
+    {
+      "key": "settings.columns_both_same",
+      "context": "Option of the Panels segment on the Columns page: both panels show the same columns.",
+      "en": "Both the same",
+      "de": "Beide gleich"
+    },
+    {
+      "key": "settings.columns_per_panel",
+      "context": "Option of the Panels segment on the Columns page: each panel has its own columns, a left and a right list.",
+      "en": "Per panel",
+      "de": "Je Panel"
+    },
+    {
+      "key": "settings.columns_side_left",
+      "context": "Option of the segment on the Columns page that picks which list is edited while each panel has its own columns: the left panel.",
+      "en": "Left panel",
+      "de": "Linkes Panel"
+    },
+    {
+      "key": "settings.columns_side_right",
+      "context": "Option of the segment on the Columns page that picks which list is edited while each panel has its own columns: the right panel.",
+      "en": "Right panel",
+      "de": "Rechtes Panel"
+    },
+    {
+      "key": "settings.row_columns_list",
+      "context": "Label of the row on the Columns page that lists every column with a switch and a handle to change the order.",
+      "en": "Columns and order",
+      "de": "Spalten und Reihenfolge"
+    },
+    {
+      "key": "settings.row_columns_list_note",
+      "context": "Note under the Columns and order row. The arrows are the up and down buttons beside each column; the header is the title row of a file panel.",
+      "en": "↑/↓ changes the order. The same works in the panel itself, by dragging at the column header.",
+      "de": "Mit ↑/↓ änderst du die Reihenfolge. Dasselbe geht im Panel direkt am Spaltenkopf durch Ziehen."
+    },
+    {
+      "key": "settings.column_desc_icon",
+      "context": "Description beside the Icon column on the Columns page.",
+      "en": "Folder, link or kind of file as a picture before the name.",
+      "de": "Ordner, Link oder Dateiart als Bild vor dem Namen."
+    },
+    {
+      "key": "settings.column_desc_name",
+      "context": "Description beside the Name column on the Columns page. The name column cannot be switched off.",
+      "en": "Always on.",
+      "de": "Immer an."
+    },
+    {
+      "key": "settings.column_desc_size",
+      "context": "Description beside the Size column on the Columns page. <DIR> is the marker shown for a folder and is not translated; Space is the key that computes the size of a folder.",
+      "en": "Folders show <DIR>; Space computes the folder size.",
+      "de": "Bei Ordnern <DIR>, mit Leertaste die Ordnergröße."
+    },
+    {
+      "key": "settings.column_desc_modified",
+      "context": "Description beside the Modified column on the Columns page.",
+      "en": "When the content was last changed.",
+      "de": "Wann der Inhalt zuletzt geändert wurde."
+    },
+    {
+      "key": "settings.column_desc_permissions",
+      "context": "Description beside the Permissions column on the Columns page. rwxr-xr-x is the Unix notation and stays; the three words on Windows are the attributes of a file there.",
+      "en": "rwxr-xr-x. On Windows: Read-only, Hidden, System.",
+      "de": "rwxr-xr-x. Unter Windows: Schreibgeschützt, Versteckt, System."
+    },
+    {
+      "key": "settings.column_desc_created",
+      "context": "Description beside the Created column on the Columns page.",
+      "en": "When the file was created. Not every file system knows this.",
+      "de": "Wann die Datei angelegt wurde. Nicht jedes Dateisystem kennt das."
+    },
+    {
+      "key": "settings.column_desc_type",
+      "context": "Description beside the Type column on the Columns page.",
+      "en": "The kind of file in words: PDF, image, folder, link.",
+      "de": "Dateiart in Worten: PDF, Bild, Ordner, Link."
+    },
+    {
+      "key": "settings.column_desc_extension",
+      "context": "Description beside the Extension column on the Columns page.",
+      "en": "The part after the last dot.",
+      "de": "Der Teil nach dem letzten Punkt."
+    },
+    {
+      "key": "settings.column_desc_owner_group",
+      "context": "Description beside the Owner column and beside the Group column on the Columns page.",
+      "en": "macOS and Linux only.",
+      "de": "Nur macOS und Linux."
+    },
+    {
+      "key": "settings.column_desc_accessed",
+      "context": "Description beside the Accessed column on the Columns page.",
+      "en": "When the file was last read. Many file systems do not keep it up to date.",
+      "de": "Letzter Lesezugriff. Viele Dateisysteme halten es nicht aktuell."
+    },
+    {
+      "key": "settings.column_desc_link_target",
+      "context": "Description beside the Link target column on the Columns page.",
+      "en": "Where a link points; empty for everything else.",
+      "de": "Wohin ein Link zeigt; leer bei allem anderen."
+    },
+    {
+      "key": "settings.columns_formats",
+      "context": "Heading over the rows on the Columns page that set how dates and sizes are written. One word, plural noun.",
+      "en": "Formats",
+      "de": "Formate"
+    },
+    {
+      "key": "settings.row_date_format",
+      "context": "Label of the row on the Columns page that sets how dates are written in the panels. One word, noun.",
+      "en": "Date",
+      "de": "Datum"
+    },
+    {
+      "key": "settings.row_date_format_note",
+      "context": "Note under the Date row on the Columns page: the three formats with an example each. Keep the three format names in step with the options of the segment.",
+      "en": "Relative: 5 min ago, yesterday 16:12. Short: Nov 5 16:12, with the year for dates before this year. ISO: 2026-11-05 16:12.",
+      "de": "Relativ: vor 5 Min., gestern 16:12. Kurz: 05.11. 16:12, mit Jahr vor dem laufenden Jahr. ISO: 2026-11-05 16:12."
+    },
+    {
+      "key": "settings.date_relative",
+      "context": "Option of the Date segment on the Columns page: dates as time passed, such as 5 min ago.",
+      "en": "Relative",
+      "de": "Relativ"
+    },
+    {
+      "key": "settings.date_short",
+      "context": "Option of the Date segment on the Columns page: day and month, the year only for older dates.",
+      "en": "Short",
+      "de": "Kurz"
+    },
+    {
+      "key": "settings.date_iso",
+      "context": "Option of the Date segment on the Columns page: year-month-day as in ISO 8601. The standard's name, keep it.",
+      "en": "ISO",
+      "de": "ISO"
+    },
+    {
+      "key": "settings.row_size_format",
+      "context": "Label of the row on the Columns page that sets how sizes are written in the panels. One word, noun.",
+      "en": "Size",
+      "de": "Größe"
+    },
+    {
+      "key": "settings.row_size_format_note",
+      "context": "Note under the Size row on the Columns page: the three formats with an example each, for the same file.",
+      "en": "Bytes: 1433600 B. KB: 1400 KB. Readable: 1.4 MB.",
+      "de": "Bytes: 1433600 B. KB: 1400 KB. Lesbar: 1,4 MB."
+    },
+    {
+      "key": "settings.size_bytes",
+      "context": "Option of the Size segment on the Columns page: the exact number of bytes. The unit name, keep it.",
+      "en": "Bytes",
+      "de": "Bytes"
+    },
+    {
+      "key": "settings.size_kilobytes",
+      "context": "Option of the Size segment on the Columns page: always in kilobytes. The unit symbol, keep it.",
+      "en": "KB",
+      "de": "KB"
+    },
+    {
+      "key": "settings.size_readable",
+      "context": "Option of the Size segment on the Columns page: the unit that fits the size, such as 1.4 MB.",
+      "en": "Readable",
+      "de": "Lesbar"
+    },
+    {
+      "key": "format.date_minutes_ago",
+      "context": "Relative date in a file panel for a time less than an hour ago. {n} is the number of minutes. Keep it short, it must fit a narrow column.",
+      "en": "{n} min ago",
+      "de": "vor {n} Min."
+    },
+    {
+      "key": "format.date_hours_ago",
+      "context": "Relative date in a file panel for a time less than a day ago. {n} is the number of hours. Keep it short, it must fit a narrow column.",
+      "en": "{n} h ago",
+      "de": "vor {n} Std."
+    },
+    {
+      "key": "format.date_yesterday",
+      "context": "Relative date in a file panel for a time yesterday. {time} is the time of day, such as 14:03.",
+      "en": "yesterday {time}",
+      "de": "gestern {time}"
+    },
+    {
+      "key": "format.date_short",
+      "context": "chrono format pattern, keep the % codes. The Short date in a file panel for a time in this year: day and month, then the time. English example: Nov 5 16:12; German: 05.11. 16:12.",
+      "en": "%b %-d %H:%M",
+      "de": "%d.%m. %H:%M"
+    },
+    {
+      "key": "format.date_short_with_year",
+      "context": "chrono format pattern, keep the % codes. The Short date in a file panel for a time before this year: day, month and year, without the time. English example: Nov 5 2025; German: 05.11.2025.",
+      "en": "%b %-d %Y",
+      "de": "%d.%m.%Y"
+    },
+    {
+      "key": "settings.row_font",
+      "context": "Label of the row on the Appearance page that sets the font of the whole window. One word, noun.",
+      "en": "Font",
+      "de": "Schriftart"
+    },
+    {
+      "key": "settings.row_font_note",
+      "context": "Note under the Font row on the Appearance page. System is the first option of the list. Monospace means every character is equally wide; the panel columns are measured in characters.",
+      "en": "System takes the system's monospace font. Monospace fonts only, because columns are measured in characters.",
+      "de": "System nimmt die Monospace-Schrift des Systems. Nur Monospace-Schriften, weil Spalten in Zeichen gerechnet werden."
+    },
+    {
+      "key": "settings.font_system",
+      "context": "First entry of the font list on the Appearance page. {name} is the name of the monospace font the system uses.",
+      "en": "System – {name}",
+      "de": "System – {name}"
+    },
+    {
+      "key": "settings.font_bundled",
+      "context": "Small note beside a font in the font list on the Appearance page: the font comes with ncrs and is not taken from the system. One lowercase word.",
+      "en": "bundled",
+      "de": "mitgeliefert"
+    },
+    {
+      "key": "settings.row_font_size",
+      "context": "Label of the row on the Appearance page that sets the size of the text in the whole window. One word, noun.",
+      "en": "Font size",
+      "de": "Schriftgröße"
+    },
+    {
+      "key": "settings.row_font_size_note",
+      "context": "Note under the Font size row on the Appearance page. System is the first option of the list; text scaling is the setting of the operating system that makes text larger or smaller.",
+      "en": "System takes the system's size times its text scaling. Everything grows with it: rows, spacing, icons.",
+      "de": "System nimmt die Größe des Systems mal dessen Textskalierung. Alles wächst mit: Zeilen, Abstände, Symbole."
+    },
+    {
+      "key": "settings.font_size_system",
+      "context": "First entry of the font size list on the Appearance page. {size} is the size in points the system gives, after its text scaling.",
+      "en": "System ({size} pt)",
+      "de": "System ({size} pt)"
+    },
+    {
+      "key": "settings.font_size_points",
+      "context": "Entry of the font size list on the Appearance page. {size} is a number of points.",
+      "en": "{size} pt",
+      "de": "{size} pt"
+    },
+    {
+      "key": "settings.row_font_preview",
+      "context": "Label of the row on the Appearance page that shows a small file panel in the chosen font and size. One word, noun.",
+      "en": "Preview",
+      "de": "Vorschau"
+    },
+    {
+      "key": "settings.row_font_preview_note",
+      "context": "Note under the Preview row on the Appearance page.",
+      "en": "This is how a panel looks in this font.",
+      "de": "So sieht ein Panel mit dieser Schrift aus."
+    },
+    {
+      "key": "permissions.title_one",
+      "context": "Title of the permissions dialog for one file or folder. {name} is its name.",
+      "en": "Permissions – {name}",
+      "de": "Rechte – {name}"
+    },
+    {
+      "key": "permissions.title_many",
+      "context": "Title of the permissions dialog for several entries. {parts} is the count of files, of folders, or both joined; a count of zero is left out.",
+      "en": "Permissions – {parts}",
+      "de": "Rechte – {parts}"
+    },
+    {
+      "key": "permissions.title_parts_joined",
+      "context": "Joins the count of files and the count of folders in the title of the permissions dialog. {files} and {folders} are already worded, e.g. '3 files' and '2 folders'.",
+      "en": "{files}, {folders}",
+      "de": "{files}, {folders}"
+    },
+    {
+      "key": "permissions.title_files",
+      "context": "Part of the title of the permissions dialog: several files. {count} is the number, two or more.",
+      "en": "{count} files",
+      "de": "{count} Dateien"
+    },
+    {
+      "key": "permissions.title_file_one",
+      "context": "Part of the title of the permissions dialog: exactly one file.",
+      "en": "1 file",
+      "de": "1 Datei"
+    },
+    {
+      "key": "permissions.title_folders",
+      "context": "Part of the title of the permissions dialog: several folders. {count} is the number, two or more.",
+      "en": "{count} folders",
+      "de": "{count} Ordner"
+    },
+    {
+      "key": "permissions.title_folder_one",
+      "context": "Part of the title of the permissions dialog: exactly one folder.",
+      "en": "1 folder",
+      "de": "1 Ordner"
+    },
+    {
+      "key": "permissions.row_owner",
+      "context": "Label of the row in the permissions dialog with the rights of the user who owns the file. One word, noun.",
+      "en": "Owner",
+      "de": "Besitzer"
+    },
+    {
+      "key": "permissions.row_group",
+      "context": "Label of the row in the permissions dialog with the rights of the group that owns the file. One word, noun.",
+      "en": "Group",
+      "de": "Gruppe"
+    },
+    {
+      "key": "permissions.row_others",
+      "context": "Label of the row in the permissions dialog with the rights of everybody else. One or two words.",
+      "en": "Others",
+      "de": "Andere"
+    },
+    {
+      "key": "permissions.read",
+      "context": "Label of the checkbox in the permissions dialog for the right to read a file or list a folder. One word, verb.",
+      "en": "Read",
+      "de": "Lesen"
+    },
+    {
+      "key": "permissions.write",
+      "context": "Label of the checkbox in the permissions dialog for the right to change a file or add to a folder. One word, verb.",
+      "en": "Write",
+      "de": "Schreiben"
+    },
+    {
+      "key": "permissions.execute",
+      "context": "Label of the checkbox in the permissions dialog for the right to run a file or enter a folder. One word, verb.",
+      "en": "Execute",
+      "de": "Ausführen"
+    },
+    {
+      "key": "permissions.owner_and_group",
+      "context": "Line in the permissions dialog naming the owner and the group of the file. {owner} and {group} are account names.",
+      "en": "Owner {owner} · Group {group}",
+      "de": "Besitzer {owner} · Gruppe {group}"
+    },
+    {
+      "key": "permissions.mixed",
+      "context": "Shown in a checkbox or beside it in the permissions dialog when the selected files differ in that right. One lowercase word.",
+      "en": "mixed",
+      "de": "gemischt"
+    },
+    {
+      "key": "permissions.octal",
+      "context": "Label of the field in the permissions dialog where the rights are typed as an octal number such as 755. One word.",
+      "en": "Octal",
+      "de": "Oktal"
+    },
+    {
+      "key": "permissions.octal_note",
+      "context": "Note beside the octal field in the permissions dialog: typing one number sets the rights of all selected files to the same.",
+      "en": "A number sets all of them alike",
+      "de": "Eine Zahl setzt alles gleich"
+    },
+    {
+      "key": "permissions.advanced",
+      "context": "Heading of the folded part of the permissions dialog with the options for the contents of folders. One word.",
+      "en": "Advanced",
+      "de": "Erweitert"
+    },
+    {
+      "key": "permissions.apply_to_contents",
+      "context": "Label of the switch in the permissions dialog: the change also goes to everything inside the selected folders.",
+      "en": "Apply to the contents of folders",
+      "de": "Auf den Inhalt der Ordner anwenden"
+    },
+    {
+      "key": "permissions.row_files",
+      "context": "Label of the row in the permissions dialog that says what happens to the files inside the selected folders. Plural noun, one word.",
+      "en": "Files",
+      "de": "Dateien"
+    },
+    {
+      "key": "permissions.row_folders",
+      "context": "Label of the row in the permissions dialog that says what happens to the folders inside the selected folders. Plural noun, one word.",
+      "en": "Folders",
+      "de": "Ordner"
+    },
+    {
+      "key": "permissions.choice_as_above",
+      "context": "Option for the contents of folders in the permissions dialog: they get the same rights as set above.",
+      "en": "As above",
+      "de": "Wie oben"
+    },
+    {
+      "key": "permissions.choice_without_execute",
+      "context": "Option for files inside folders in the permissions dialog: the rights as set above, but without the right to execute.",
+      "en": "Without execute",
+      "de": "Ohne Ausführen"
+    },
+    {
+      "key": "permissions.choice_unchanged",
+      "context": "Option for the contents of folders in the permissions dialog: their rights stay as they are.",
+      "en": "Don't change",
+      "de": "Nicht ändern"
+    },
+    {
+      "key": "permissions.checkbox_note",
+      "context": "Note under the checkboxes of the permissions dialog. A dash is the third state of a checkbox: the selected files differ in that right. The change runs in the background like copying.",
+      "en": "Only boxes you click change; a dash stays as it is on each file. Runs in the background like copying, with progress and cancel.",
+      "de": "Nur angeklickte Häkchen ändern sich, ein Strich bleibt, wie er bei jeder Datei ist. Läuft im Hintergrund wie Kopieren, mit Fortschritt und Abbrechen."
+    },
+    {
+      "key": "permissions.windows_read_only",
+      "context": "Label of the checkbox in the permissions dialog on Windows for the read-only attribute of a file.",
+      "en": "Read-only",
+      "de": "Schreibgeschützt"
+    },
+    {
+      "key": "permissions.windows_note",
+      "context": "Note in the permissions dialog on Windows, where there are no owner, group and others rights and only the read-only attribute can be changed.",
+      "en": "On Windows only read-only can be changed here.",
+      "de": "Unter Windows lässt sich hier nur Schreibgeschützt ändern."
+    },
+    {
+      "key": "permissions.progress",
+      "context": "Text of the progress bar of a running permissions change. {done} is how many entries are done, {total} how many there are.",
+      "en": "Setting permissions: {done} of {total}",
+      "de": "Rechte setzen: {done} von {total}"
+    },
+    {
+      "key": "permissions.setuid",
+      "context": "Label of the checkbox for the setuid bit in the advanced part of the permissions dialog. Technical term, usually kept as is.",
+      "en": "setuid",
+      "de": "setuid"
+    },
+    {
+      "key": "permissions.setgid",
+      "context": "Label of the checkbox for the setgid bit in the advanced part of the permissions dialog. Technical term, usually kept as is.",
+      "en": "setgid",
+      "de": "setgid"
+    },
+    {
+      "key": "permissions.sticky",
+      "context": "Label of the checkbox for the sticky bit in the advanced part of the permissions dialog. Technical term, usually kept as is.",
+      "en": "sticky",
+      "de": "sticky"
+    },
+    {
+      "key": "permissions.done",
+      "context": "Status bar notice after a permissions change. {count} is the number of entries whose rights were changed.",
+      "en": "Permissions of {count} entries changed",
+      "de": "Rechte von {count} Einträgen geändert"
+    },
+    {
+      "key": "permissions.failed",
+      "context": "Status bar notice when a permissions change could not be applied to some entries. {count} is how many, {reason} the system's reason for the first.",
+      "en": "{count} entries not changed: {reason}",
+      "de": "{count} Einträge nicht geändert: {reason}"
+    },
+    {
+      "key": "permissions.apply",
+      "context": "Button of the permissions dialog that applies the rights. One word, verb.",
+      "en": "Apply",
+      "de": "Übernehmen"
     }
   ]
 }

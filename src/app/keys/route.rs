@@ -13,14 +13,7 @@ fn keys_without_prompt(
     // The menu takes the arrows and Enter that would otherwise move the panel
     // behind it; any other key does nothing until it is closed.
     if prompt.volume_menu {
-        return ncrs_files::keys::volume_menu_key(&key).map(|pressed| match pressed {
-            VolumeMenuKey::Close => Message::VolumeMenuClose,
-            VolumeMenuKey::Activate => Message::VolumeMenuActivate,
-            VolumeMenuKey::Move(delta) => Message::VolumeMenuMove(delta),
-            VolumeMenuKey::First => Message::VolumeMenuFirst,
-            VolumeMenuKey::Last => Message::VolumeMenuLast,
-            VolumeMenuKey::Remove => Message::VolumeMenuRemove,
-        });
+        return ncrs_files::keys::volume_menu_key(&key).map(volume_menu_message);
     }
     if prompt.quick_fix {
         return ncrs_hermes_ui::keys::quick_fix_key(&key).map(Message::from);
@@ -46,6 +39,10 @@ fn keys_without_prompt(
                 .then_some(Message::DeleteConfirm)
             }),
         };
+    }
+
+    if prompt.permissions_dialog {
+        return ncrs_ops::keys::permissions_key(&key).map(Message::Permissions);
     }
 
     if prompt.key_bindings {
@@ -132,6 +129,16 @@ fn keys_without_prompt(
         };
     }
 
+    // Tab leaves the page for the next tab, unless a text field has the
+    // keyboard: the widgets are asked (`TabInPage`). The System page's own
+    // filter, a dialog or a menu keep the key.
+    let page_tab_stop = (prompt.monitor
+        && !(prompt.monitor_filter || prompt.monitor_dialog || prompt.monitor_menu))
+        || prompt.settings;
+    if page_tab_stop && matches!(key.as_ref(), Key::Named(Named::Tab)) {
+        return page_tab_message(key_modifiers);
+    }
+
     if prompt.monitor {
         return monitor_page_key(prompt, &key, key_modifiers, scope);
     }
@@ -168,6 +175,10 @@ fn keys_without_prompt(
 
     if matches!(key.as_ref(), Key::Named(Named::Escape)) {
         return escape_message(prompt);
+    }
+    // Shift+Tab is Tab backwards; with a rebound Tab it still means "previous".
+    if matches!(key.as_ref(), Key::Named(Named::Tab)) && key_modifiers == Modifiers::SHIFT {
+        return Some(Message::SwitchTabBack);
     }
     bound_message(&prompt.keymap, &key, key_modifiers, scope)
         .or_else(|| type_ahead_message(&key, key_modifiers))
@@ -448,5 +459,26 @@ pub fn route_key(prompt: &PromptKeyState, key: Key, modifiers: Modifiers) -> Opt
             Some(Message::PromptInput(name))
         }
         _ => None,
+    }
+}
+
+fn volume_menu_message(pressed: VolumeMenuKey) -> Message {
+    match pressed {
+        VolumeMenuKey::Close => Message::VolumeMenuClose,
+        VolumeMenuKey::Activate => Message::VolumeMenuActivate,
+        VolumeMenuKey::Move(delta) => Message::VolumeMenuMove(delta),
+        VolumeMenuKey::First => Message::VolumeMenuFirst,
+        VolumeMenuKey::Last => Message::VolumeMenuLast,
+        VolumeMenuKey::Remove => Message::VolumeMenuRemove,
+    }
+}
+
+fn page_tab_message(key_modifiers: Modifiers) -> Option<Message> {
+    if key_modifiers == Modifiers::SHIFT {
+        Some(Message::TabInPage { backward: true })
+    } else if key_modifiers.is_empty() {
+        Some(Message::TabInPage { backward: false })
+    } else {
+        None
     }
 }

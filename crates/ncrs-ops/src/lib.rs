@@ -16,6 +16,8 @@ pub mod drop_paste;
 pub mod keys;
 pub mod message;
 pub mod open_flow;
+pub mod permissions;
+pub mod permissions_flow;
 pub mod prompt;
 pub mod prompt_flow;
 pub mod prompt_view;
@@ -48,11 +50,17 @@ pub use delete_flow::{
     confirm_delete, delete_failure, delete_row_done, delete_subject, end_delete, open_delete,
     DeleteRequest, Outcome,
 };
-pub use message::{ConflictChoice, OpsMessage, TransferDialogMessage, TrashMessage};
+pub use message::{
+    ConflictChoice, OpsMessage, PermissionsMessage, TransferDialogMessage, TrashMessage,
+};
 pub use open_flow::{
     confirm_transfer, copy_external_files, open_pack_prompt, open_transfer_dialog, paste_content,
     start_prompt_job, suggested_archive_name, update_transfer_dialog_flow, HitListFacts,
     PanelFacts, SelectionFacts,
+};
+pub use permissions::{targets_of, PermissionTarget, PermissionsDialog};
+pub use permissions_flow::{
+    abort_permissions, open_permissions, permissions_done, update_permissions,
 };
 pub use rename_flow::{rename_done, start_rename, validate_name, NameProblem};
 pub use restore_flow::{

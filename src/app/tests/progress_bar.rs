@@ -15,6 +15,7 @@ fn app_with_one_file() -> App {
         size: 1,
         modified: None,
         folder_size: None,
+        details: Default::default(),
     }];
     app.panels.left.selected = 0;
     app

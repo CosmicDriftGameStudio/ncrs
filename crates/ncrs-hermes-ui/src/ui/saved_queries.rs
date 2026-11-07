@@ -16,7 +16,7 @@ use ncrs_ui_kit::format;
 use ncrs_ui_kit::frame::{DialogSize, Frame, KeyHints};
 use ncrs_ui_kit::hermes_kit::{self as page_kit, MenuItem, RowTwo, GAP_S, TEXT_BODY};
 use ncrs_ui_kit::kit::{self, Tone};
-use ncrs_ui_kit::setting_rows::{Group, SettingRow};
+use ncrs_ui_kit::setting_rows::{Group, RowButton, SettingRow};
 
 use crate::message::{Message, SavedQueriesMessage};
 use crate::rules_page::hits_text;
@@ -52,30 +52,27 @@ pub fn groups<'a>(
         .iter()
         .enumerate()
         .map(|(index, query)| {
-            SettingRow::listed(
+            SettingRow::listed_buttons(
                 query.name.clone(),
                 Some(criteria_text(&query.spec, lang, kinds)),
                 state
                     .hit_count(query.id)
                     .map(|count| hits_text(u64::try_from(count).unwrap_or(u64::MAX), lang)),
                 vec![
-                    kit::button(
+                    RowButton::new(
                         lang.text(Msg::HermesPagesChange),
                         idle.then(|| send(SavedQueriesMessage::Edit(index))),
                         Tone::Secondary,
-                        palette,
                     ),
-                    kit::button(
+                    RowButton::new(
                         lang.text(Msg::SavedQueriesExport),
                         idle.then(|| send(SavedQueriesMessage::StartExport(index))),
                         Tone::Secondary,
-                        palette,
                     ),
-                    kit::button(
+                    RowButton::new(
                         lang.text(Msg::SettingsRemove),
                         idle.then(|| send(SavedQueriesMessage::AskDelete(index))),
                         Tone::Secondary,
-                        palette,
                     ),
                 ],
                 palette,
@@ -113,15 +110,15 @@ pub fn groups<'a>(
     } else {
         state.problem().map(|found| problem_text(found, lang))
     };
-    rows.push(SettingRow::adding(
+    rows.push(SettingRow::adding_buttons(
         note,
         problem,
-        vec![kit::button(
+        vec![RowButton::new(
             lang.text(Msg::SavedQueriesNew),
             idle.then(|| send(SavedQueriesMessage::New)),
             Tone::Secondary,
-            palette,
         )],
+        palette,
     ));
     vec![Group {
         intro: None,

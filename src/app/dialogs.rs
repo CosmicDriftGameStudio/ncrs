@@ -22,17 +22,34 @@ pub(in crate::app) fn blocked_access_press(
 }
 
 impl App {
+    /// A text field outside the dialogs may have the focus: the command line,
+    /// the path field, a name being edited, the search query, the chat, a
+    /// settings page or the filter of the System page.
+    pub(in crate::app) fn text_field_has_keys(&self) -> bool {
+        self.command_line.is_focused()
+            || self.panels.path_field.is_some()
+            || self.panels.renaming_side().is_some()
+            || self.hermes_chat.open
+            || self.settings_shown()
+            || (self.monitor_shown() && self.monitor.filter_has_focus())
+    }
+
     /// What the menu bar shows: what it lets the user run, which is nothing
     /// while a dialog or box is open and otherwise what works in the area the
     /// keys go to, and the state of its check items.
     #[cfg(any(target_os = "macos", test))]
     pub(in crate::app) fn menu_state(&self) -> crate::menu::MenuState {
+        let scope = if self.search_has_keys() {
+            KeyScope::Search
+        } else {
+            KeyScope::Panel
+        };
         let availability = if self.overlay_is_open() {
             Availability::Blocked
-        } else if self.search_has_keys() {
-            Availability::Open(KeyScope::Search)
+        } else if self.text_field_has_keys() {
+            Availability::EditingText(scope)
         } else {
-            Availability::Open(KeyScope::Panel)
+            Availability::Open(scope)
         };
         let search = self.search.view.as_ref();
         crate::menu::MenuState {
@@ -101,7 +118,7 @@ impl App {
 
     /// Settings replace the panel area; an overlay covers it.
     pub(in crate::app) fn command_line_is_blocked(&self) -> bool {
-        self.overlay_is_open() || self.settings.page.is_some()
+        self.overlay_is_open() || self.settings_shown()
     }
 
     /// A shell command ended: its report goes to the status bar and both panels
@@ -271,6 +288,7 @@ impl App {
             || self.ops.transfer_dialog.is_some()
             || self.ops.progress_mask_is_open()
             || self.ops.delete_dialog.is_some()
+            || self.ops.permissions_dialog.is_some()
             || self.start_over_dialog
             || self.panels.volume_menu.is_some()
             || self.quick_open.is_some()

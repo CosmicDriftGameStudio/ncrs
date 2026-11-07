@@ -58,6 +58,7 @@ impl App {
             list_volumes: Arc::new(fs::list_volumes),
             search: ncrs_search::Search::new(layout::INITIAL_WINDOW_SIZE),
             monitor: ncrs_monitor::State::default(),
+            shown_tab: crate::messages::ShownTab::default(),
             hermes_chat: ncrs_hermes_chat::State::default(),
             chat_model: None,
             turning_hermes_on: false,
@@ -72,6 +73,11 @@ impl App {
             config_path: None,
             file_list_tags: FileListTags::default(),
             kinds: Kinds::default(),
+            columns: ncrs_config::panel_columns::PanelColumns::default(),
+            special_folders: Vec::new(),
+            special_folders_source: Vec::new(),
+            appearance: ncrs_config::panel_columns::Appearance::default(),
+            ui_scale: 1.0,
             settings: Settings::default(),
             hermes: ncrs_hermes_ui::Hermes::default(),
             theme_preset: ThemePreset::Cosmic,
@@ -119,6 +125,7 @@ impl App {
                     size: if i == 0 { 0 } else { 1024 * (i as u64 * 4096) },
                     modified: None,
                     folder_size: None,
+                    details: Default::default(),
                 })
                 .collect();
         }
@@ -277,6 +284,7 @@ impl App {
             size: if is_dir { 0 } else { 183_000 },
             modified: None,
             folder_size: None,
+            details: Default::default(),
         };
         app.panels.left.entries = [".."]
             .into_iter()

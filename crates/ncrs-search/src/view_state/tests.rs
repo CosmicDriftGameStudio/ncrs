@@ -35,14 +35,16 @@ fn paths(view: &SearchView) -> Vec<&str> {
 
 #[test]
 fn the_fields_cycle() {
-    assert_eq!(SearchField::Names.next(true), SearchField::Query);
+    assert_eq!(SearchField::Names.next(true), SearchField::Folder);
+    assert_eq!(SearchField::Folder.next(true), SearchField::Query);
     assert_eq!(SearchField::Query.next(true), SearchField::Exclude);
     assert_eq!(SearchField::Exclude.next(true), SearchField::Names);
 }
 
 #[test]
 fn the_text_field_is_skipped_while_it_is_not_shown() {
-    assert_eq!(SearchField::Names.next(false), SearchField::Exclude);
+    assert_eq!(SearchField::Names.next(false), SearchField::Folder);
+    assert_eq!(SearchField::Folder.next(false), SearchField::Exclude);
     assert_eq!(SearchField::Exclude.next(false), SearchField::Names);
 }
 

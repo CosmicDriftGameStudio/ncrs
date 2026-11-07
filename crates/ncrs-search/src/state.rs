@@ -151,7 +151,22 @@ impl Search {
         self.start(generation, ctx)
     }
 
+    /// Stops the run and empties the results, for a folder that cannot be
+    /// searched.
+    pub fn stop_and_clear(&mut self) {
+        self.handle = None;
+        let generation = self.next_generation();
+        if let Some(view) = self.view.as_mut() {
+            view.generation = generation;
+            view.clear_results();
+        }
+    }
+
     pub fn start(&mut self, generation: u64, ctx: &Ctx) -> Task<SearchMessage> {
+        if self.view.as_ref().is_some_and(|view| view.folder_missing) {
+            self.stop_and_clear();
+            return Task::none();
+        }
         let asked = self.ask_index(ctx);
         let Some(view) = self.view.as_mut() else {
             return asked;

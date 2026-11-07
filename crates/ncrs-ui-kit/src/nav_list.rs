@@ -21,6 +21,8 @@ pub struct NavItem<M> {
     /// A dim word after the label.
     pub suffix: Option<String>,
     pub chosen: bool,
+    /// The chosen page while the keyboard is on its rows.
+    pub dimmed: bool,
     pub on_press: M,
 }
 
@@ -122,6 +124,6 @@ fn item_button<'a, M: Clone + 'a>(item: NavItem<M>, palette: &Palette) -> Elemen
         .width(Length::Fill)
         .height(size::SIDEBAR_ITEM)
         .padding(0.0)
-        .style(theme::feature_item(palette, item.chosen))
+        .style(theme::feature_item(palette, item.chosen, item.dimmed))
         .into()
 }

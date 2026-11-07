@@ -88,14 +88,54 @@ pub fn overview_facts(
 
 /// The rows of one of the pages the settings window fills from here: the
 /// rules, the reports, the tags or the read errors.
-pub fn page_content<'a>(
+///
+/// The page for the messages `wrap` makes of its own; a click on a row sends
+/// what `on_focus` makes of the row's number.
+pub fn page_content<'a, M: Clone + 'a>(
     hermes: &'a Hermes,
     page: HermesPage,
     ctx: &ViewCtx<'a>,
-) -> Element<'a, Message> {
-    let (lang, palette) = (ctx.lang, ctx.palette);
+    focus: Option<setting_rows::RowFocus>,
+    wrap: impl Fn(Message) -> M + Copy + 'a,
+    on_focus: impl Fn(usize, Option<M>) -> Option<M> + Copy + 'a,
+) -> Element<'a, M> {
     let mut content = Column::new();
-    let groups = match page {
+    if page == HermesPage::Inspection {
+        if let Some(searched) = hermes.pdf_library_missing.as_deref() {
+            content = content.push(
+                filing_status_ui::pdf_missing_notice(searched, ctx.lang, ctx.palette).map(wrap),
+            );
+        }
+    }
+    let groups = page_groups(hermes, page, ctx)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|group| group.map(wrap))
+        .collect();
+    for section in
+        setting_rows::sections_with_focus(groups, |_| true, None, focus, on_focus, ctx.palette)
+    {
+        content = content.push(section);
+    }
+    content.into()
+}
+
+/// The rows of the page that answer the keyboard.
+pub fn page_keys<'a>(
+    hermes: &'a Hermes,
+    page: HermesPage,
+    ctx: &ViewCtx<'a>,
+) -> Vec<setting_rows::RowKey<Message>> {
+    setting_rows::keyed_rows(page_groups(hermes, page, ctx).unwrap_or_default(), |_| true)
+}
+
+fn page_groups<'a>(
+    hermes: &'a Hermes,
+    page: HermesPage,
+    ctx: &ViewCtx<'a>,
+) -> Option<Vec<setting_rows::Group<'a, Message>>> {
+    let (lang, palette) = (ctx.lang, ctx.palette);
+    match page {
         HermesPage::Rules => hermes
             .rules
             .as_ref()
@@ -108,23 +148,12 @@ pub fn page_content<'a>(
             .tags
             .as_ref()
             .map(|state| tags_ui::groups(state, ctx.file_list_tags, lang, palette)),
-        HermesPage::Inspection => {
-            if let Some(searched) = hermes.pdf_library_missing.as_deref() {
-                content = content.push(filing_status_ui::pdf_missing_notice(
-                    searched, lang, palette,
-                ));
-            }
-            Some(filing_status_ui::groups(
-                &hermes.filing_status,
-                lang,
-                palette,
-            ))
-        }
-    };
-    for section in setting_rows::sections(groups.unwrap_or_default(), |_| true, None, palette) {
-        content = content.push(section);
+        HermesPage::Inspection => Some(filing_status_ui::groups(
+            &hermes.filing_status,
+            lang,
+            palette,
+        )),
     }
-    content.into()
 }
 
 /// The dialogs of the pages above, to be stacked over the window; at most

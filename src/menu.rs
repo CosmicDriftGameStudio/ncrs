@@ -225,6 +225,10 @@ pub enum Availability {
     /// entry's key equivalent is not performed by the system.
     Blocked,
     Open(KeyScope),
+    /// A text field has the focus: what it types stays its own. The clipboard
+    /// chords are disabled, so the system hands them to the window and the
+    /// field pastes and copies text, not files.
+    EditingText(KeyScope),
 }
 
 impl Availability {
@@ -235,6 +239,9 @@ impl Availability {
         match self {
             Self::Blocked => false,
             Self::Open(scope) => action.works_in(scope),
+            Self::EditingText(scope) => {
+                action.works_in(scope) && !matches!(action, KeyAction::Paste | KeyAction::CopyFiles)
+            }
         }
     }
 }

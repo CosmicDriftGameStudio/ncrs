@@ -188,6 +188,79 @@ impl App {
         self.run_settings(ncrs_settings::Message::Settings(message))
     }
 
+    /// An arrow, Enter, Space or Escape on the settings tab, as the pure
+    /// `focus::step` takes it from the rows the page draws.
+    pub(in crate::app) fn settings_focus_key(&mut self, key: FocusKey) -> Task<Message> {
+        let Some(state) = self.settings.page.as_ref() else {
+            return Task::none();
+        };
+        let view = self.settings_view(state);
+        let facts = settings_ui::focus_facts(&view).map(|(listed, current, page_rows)| {
+            let keyed_rows = match self.app_page_keys(current) {
+                Some(keys) => keys,
+                None => page_rows
+                    .into_iter()
+                    .map(|row| row.map(Message::Settings))
+                    .collect(),
+            };
+            (listed, current, keyed_rows)
+        });
+        let stepped = facts.as_ref().and_then(|(listed, current, rows)| {
+            ncrs_settings::focus::step(state.focus, key, listed, *current, rows)
+        });
+        let Some(step) = stepped else {
+            return if key == FocusKey::Escape {
+                self.update(Message::Settings(SettingsMessage::Close))
+            } else {
+                Task::none()
+            };
+        };
+        let mut tasks = Vec::new();
+        if let Some(feature) = step.select {
+            tasks.push(self.update_settings(SettingsMessage::Select(feature)));
+        }
+        tasks.push(self.update_settings(SettingsMessage::SetFocus(step.focus)));
+        if let Some(message) = step.press {
+            tasks.push(self.update(message));
+        }
+        if let Some(field) = step.focus_field {
+            tasks.push(operation::focus(field));
+        } else if step.release_field {
+            tasks.push(release_focus());
+        }
+        if step.focus.area == ncrs_settings::focus::Area::Rows {
+            tasks.push(settings_ui::scroll_to_row());
+        }
+        Task::batch(tasks)
+    }
+
+    /// The keyboard rows of a page the app fills, while one is shown.
+    fn app_page_keys(
+        &self,
+        feature: crate::messages::SettingsFeature,
+    ) -> Option<Vec<ncrs_ui_kit::setting_rows::RowKey<Message>>> {
+        if !feature.is_filled_by_app() {
+            return None;
+        }
+        if feature == crate::messages::SettingsFeature::Updates {
+            let ctx = self.updates_view_ctx();
+            return Some(
+                ncrs_updates::keys(&self.updates, &ctx)
+                    .into_iter()
+                    .map(|key| key.map(Message::Updates))
+                    .collect(),
+            );
+        }
+        let page = hermes_page_of(feature)?;
+        let ctx = self.hermes_view_ctx();
+        Some(
+            ncrs_hermes_ui::page_keys(&self.hermes, page, &ctx)
+                .into_iter()
+                .map(|key| key.map(Message::from))
+                .collect(),
+        )
+    }
+
     pub(in crate::app) fn update_key_bindings(
         &mut self,
         message: KeyBindingsMessage,
@@ -219,11 +292,6 @@ impl App {
         ncrs_settings::ocr_models_present(self.settings_ctx().ocr_models_dir.as_deref())
     }
 
-    pub(in crate::app) fn close_settings(&mut self) -> Task<Message> {
-        let closed = ncrs_settings::close_settings(&mut self.settings).map(Message::from_settings);
-        Task::batch([closed, self.sync_hermes_page()])
-    }
-
     /// Writes the values typed on the page and closes it.
     pub(in crate::app) fn leave_settings_page(&mut self) -> Task<Message> {
         self.update_settings(SettingsMessage::Close)
@@ -236,14 +304,19 @@ impl App {
         let hermes_ctx = self.hermes_view_ctx();
         let page =
             settings_ui::view_with(&self.settings_view(state), Message::Settings, |feature| {
+                let focus = state.focus.row_focus();
                 if feature == crate::messages::SettingsFeature::Updates {
-                    return Some(self.updates_page());
+                    return Some(self.updates_page(focus));
                 }
                 let page = hermes_page_of(feature)?;
-                Some(
-                    ncrs_hermes_ui::page_content(&self.hermes, page, &hermes_ctx)
-                        .map(Message::from),
-                )
+                Some(ncrs_hermes_ui::page_content(
+                    &self.hermes,
+                    page,
+                    &hermes_ctx,
+                    focus,
+                    Message::from,
+                    page_focus,
+                ))
             });
         let bar = settings_ui::status_bar(&settings_ui::StatusBar {
             changed: state.changed,
@@ -294,6 +367,14 @@ impl App {
                 Task::none()
             }
             SettingChange::Servers(_) => self.take_over_servers(config.servers),
+            SettingChange::Columns(columns) => {
+                self.columns = columns;
+                Task::none()
+            }
+            SettingChange::Appearance(appearance) => {
+                self.take_over_appearance(appearance);
+                Task::none()
+            }
             SettingChange::FileListTags(_) => {
                 self.file_list_tags = config.file_list_tags;
                 Task::none()
@@ -535,4 +616,10 @@ impl App {
             self.grant_dialog = true;
         }
     }
+}
+
+/// What a click on a row of a page the app fills sends: the focus goes to the
+/// row, then the control's own message follows.
+pub(in crate::app) fn page_focus(row: usize, message: Option<Message>) -> Option<Message> {
+    Some(Message::FocusPageThen(row, message.map(Box::new)))
 }

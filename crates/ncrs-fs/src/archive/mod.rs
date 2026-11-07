@@ -26,7 +26,7 @@ pub use view::restrict_to_owner;
 pub use view::{extract_for_view, ViewCopies};
 pub use write::{add, delete, pack, pack_named, WriteReport};
 
-use super::FileEntry;
+use super::{EntryDetails, FileEntry};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ArchiveFormat {
@@ -131,6 +131,7 @@ pub fn list(location: &ArchiveLocation) -> io::Result<ArchiveListing> {
             size: if node.is_dir { 0 } else { node.size },
             modified: node.modified,
             folder_size: None,
+            details: EntryDetails::default(),
         })
         .collect();
     Ok(ArchiveListing {

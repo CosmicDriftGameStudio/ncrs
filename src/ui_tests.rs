@@ -37,7 +37,17 @@ fn is_action(message: &Message) -> bool {
         message,
         Message::Panel(PanelMessage::PanelEntered(_))
             | Message::Panel(PanelMessage::PanelExited(_))
+            | Message::FocusPageThen(_, None)
     )
+}
+
+/// A click on a control of a page the app fills first moves the keyboard
+/// focus to its row; this is what the control itself sends.
+fn without_focus(message: Message) -> Message {
+    match message {
+        Message::FocusPageThen(_, Some(inner)) => *inner,
+        other => other,
+    }
 }
 
 fn simulator(app: &App) -> Simulator<'_, Message, iced::Theme> {
@@ -572,6 +582,7 @@ mod tagging {
             size: 100,
             modified: None,
             folder_size: None,
+            details: Default::default(),
         }
     }
 
@@ -1710,7 +1721,10 @@ mod filing_status_page {
     fn messages_after_click(app: &App, label: &str) -> Vec<Message> {
         let mut sim = simulator(app);
         sim.click(label).expect("the clicked label");
-        sim.into_messages().filter(is_action).collect()
+        sim.into_messages()
+            .filter(is_action)
+            .map(without_focus)
+            .collect()
     }
 
     fn page_message(message: FilingStatusMessage) -> Message {
@@ -2666,7 +2680,7 @@ mod saved_queries_card {
         let mut sim = simulator(&app);
         sim.click(label).expect(label);
         assert_eq!(
-            sim.into_messages().collect::<Vec<_>>(),
+            sim.into_messages().map(without_focus).collect::<Vec<_>>(),
             [queries_message(message)],
             "{label}"
         );
@@ -3252,7 +3266,10 @@ mod rules_card {
         let mut sim = simulator(&app);
         sim.click(label).expect(label);
         assert_eq!(
-            sim.into_messages().filter(is_action).collect::<Vec<_>>(),
+            sim.into_messages()
+                .filter(is_action)
+                .map(without_focus)
+                .collect::<Vec<_>>(),
             [Message::Rules(message)],
             "{label}"
         );
@@ -4574,11 +4591,13 @@ mod settings_tab {
     #[test]
     fn a_preset_is_chosen_by_its_name() {
         let app = App::with_settings_open(SettingsFeature::Look, Filing::default());
-        assert!(
-            messages_after_click(&app, "Dracula").contains(&Message::Settings(
-                SettingsMessage::Change(SettingChange::Preset(ThemePreset::Dracula))
-            ))
-        );
+        assert!(messages_after_click(&app, "Dracula").iter().any(|message| {
+            matches!(
+                message,
+                Message::Settings(SettingsMessage::FocusThen(_, Some(inner)))
+                    if **inner == SettingsMessage::Change(SettingChange::Preset(ThemePreset::Dracula))
+            )
+        }));
     }
 
     #[test]
@@ -5005,14 +5024,19 @@ mod servers_page {
         let app = page(TWO);
         assert_eq!(
             messages_after_click(&app, "Connect"),
-            [Message::Settings(SettingsMessage::OpenServer(
-                PathBuf::from("sftp://marc@files.example.org/srv")
+            [Message::Settings(SettingsMessage::FocusThen(
+                0,
+                Some(Box::new(SettingsMessage::OpenServer(PathBuf::from(
+                    "sftp://marc@files.example.org/srv"
+                ))))
             ))]
         );
         let sent = messages_after_click(&app, "Remove");
-        let [Message::Settings(SettingsMessage::Change(SettingChange::Servers(rest)))] =
-            sent.as_slice()
+        let [Message::Settings(SettingsMessage::FocusThen(_, Some(change)))] = sent.as_slice()
         else {
+            panic!("{sent:?}");
+        };
+        let SettingsMessage::Change(SettingChange::Servers(rest)) = change.as_ref() else {
             panic!("{sent:?}");
         };
         assert_eq!(rest.len(), 1);
@@ -5025,7 +5049,10 @@ mod servers_page {
         simulator(&app).find("No saved servers").unwrap();
         assert_eq!(
             messages_after_click(&app, "Add…"),
-            [Message::Settings(SettingsMessage::OpenServerAdd)]
+            [Message::Settings(SettingsMessage::FocusThen(
+                0,
+                Some(Box::new(SettingsMessage::OpenServerAdd))
+            ))]
         );
     }
 
@@ -5211,7 +5238,10 @@ mod settings_index_page {
         sim.click("Start over …").unwrap();
         assert_eq!(
             sim.into_messages().collect::<Vec<_>>(),
-            [Message::Settings(SettingsMessage::Protection(2))]
+            [Message::Settings(SettingsMessage::FocusThen(
+                8,
+                Some(Box::new(SettingsMessage::Protection(2)))
+            ))]
         );
         let asking = App::with_index_settings(Some(Phase::Ready), configured())
             .with_start_over_question_for_test();

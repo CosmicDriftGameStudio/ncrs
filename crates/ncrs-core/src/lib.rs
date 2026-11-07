@@ -1,6 +1,8 @@
 //! Plain data types several features share. No logic beyond what a type needs
 //! to be built, and no UI.
 
+mod column;
+mod details;
 mod entry;
 mod folder_size;
 mod found_document;
@@ -11,6 +13,8 @@ pub mod selection;
 mod sort_key;
 mod transfer_kind;
 
+pub use column::{Column, DateFormat, SizeFormat};
+pub use details::{EntryDetails, WindowsAttributes};
 pub use entry::FileEntry;
 pub use folder_size::FolderSize;
 pub use found_document::{FoundDocument, TextSource};

@@ -33,13 +33,17 @@ pub fn look_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
         .iter()
         .position(|&preset| preset == view.preset)
         .unwrap_or_default();
-    let mut preset_row = simple_row(
+    let mut plain_preset_row = simple_row(
         Msg::SettingsRowPreset,
         Some(Msg::SettingsRowPresetNote),
         kit::segmented(&options, chosen, true, palette),
         lang,
     );
-    preset_row.control_width = Some(SETTINGS_WIDE_CONTROL_WIDTH);
+    plain_preset_row.control_width = Some(SETTINGS_WIDE_CONTROL_WIDTH);
+    let preset_row = plain_preset_row.keyed_maybe(choice_key(
+        options.iter().map(|(_, message)| message.clone()).collect(),
+        chosen,
+    ));
 
     let open_vsx_row = simple_row(
         Msg::SettingsRowOpenVsx,
@@ -51,12 +55,16 @@ pub fn look_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
             palette,
         ),
         lang,
-    );
+    )
+    .keyed(RowKey::Press(SettingsMessage::OpenThemeFetch));
     vec![
         Group {
             intro: None,
             title: String::new(),
-            rows: vec![preset_row, vscode_row(view), open_vsx_row],
+            rows: [preset_row, vscode_row(view), open_vsx_row]
+                .into_iter()
+                .chain(font_rows(view))
+                .collect(),
         },
         Group {
             intro: None,
@@ -85,9 +93,14 @@ pub fn file_tags_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
     let show_row = simple_row(
         Msg::SettingsRowFileTagsShow,
         None,
-        switch(current.show, SettingChange::FileListTags(switched), view),
+        switch(
+            current.show,
+            SettingChange::FileListTags(switched.clone()),
+            view,
+        ),
         lang,
-    );
+    )
+    .keyed(RowKey::Press(change(SettingChange::FileListTags(switched))));
     vec![show_row]
 }
 
@@ -131,10 +144,12 @@ pub fn vscode_row<'a>(view: &SettingsView<'a>) -> SettingRow<'a> {
             )
         });
     SettingRow {
+        key: Some(RowKey::Press(SettingsMessage::PickThemeFile)),
         problem: warning,
         control_width: Some(SETTINGS_WIDE_CONTROL_WIDTH),
         in_command_list: true,
         list_indent: None,
+        marked_controls: Vec::new(),
         ..simple_row(
             Msg::SettingsRowVscode,
             Some(Msg::SettingsRowVscodeNote),
@@ -198,6 +213,7 @@ pub fn color_row<'a>(role: ColorRole, view: &SettingsView<'a>) -> SettingRow<'a>
     .spacing(spacing::S)
     .align_y(alignment::Vertical::Center);
     SettingRow {
+        key: Some(RowKey::Text(role.field_id())),
         label: view.lang.text(color_label(role)).to_owned(),
         theme_name: None,
         config_key: Some(role.name().to_owned()),
@@ -208,6 +224,7 @@ pub fn color_row<'a>(role: ColorRole, view: &SettingsView<'a>) -> SettingRow<'a>
         control_width: None,
         in_command_list: true,
         list_indent: None,
+        marked_controls: Vec::new(),
     }
 }
 
@@ -233,48 +250,48 @@ pub fn program_row<'a>(kind: OpenKind, view: &SettingsView<'a>) -> SettingRow<'a
             TERMINAL_FIELD_ID,
         ),
     };
-    let mut control = row![
-        setting_field(
+    let mut buttons = vec![RowButton::new(
+        lang.text(Msg::SettingsChoose),
+        Some(SettingsMessage::PickProgram(kind)),
+        Tone::Secondary,
+    )];
+    if state.can_reset_program(kind) {
+        buttons.push(RowButton::new(
+            lang.text(Msg::SettingsDefault),
+            Some(change(SettingChange::Program { kind, line: None })),
+            Tone::Secondary,
+        ));
+    }
+    let build = |marked| {
+        let program_field = setting_field(
             field,
             id,
             lang.text(Msg::SettingsProgramPlaceholder),
             !state.sandboxed,
             view,
-        ),
-        kit::button(
-            lang.text(Msg::SettingsChoose),
-            Some(SettingsMessage::PickProgram(kind)),
-            Tone::Secondary,
-            palette,
-        ),
-    ]
-    .spacing(spacing::S)
-    .align_y(alignment::Vertical::Center);
-    if state.can_reset_program(kind) {
-        control = control.push(kit::button(
-            lang.text(Msg::SettingsDefault),
-            Some(change(SettingChange::Program { kind, line: None })),
-            Tone::Secondary,
-            palette,
-        ));
-    }
+        );
+        button_row(Some(program_field), &buttons, marked, palette)
+    };
     let mut description = lang.text(note).to_owned();
     if state.sandboxed {
         description.push(' ');
         description.push_str(lang.text(Msg::SettingsProgramsSandboxNote));
     }
     SettingRow {
+        key: None,
         label: lang.text(label).to_owned(),
         theme_name: None,
         config_key: None,
         description: Some(description),
         problem: field_problem(field, view),
         warning: None,
-        control: control.into(),
+        control: build(None),
         control_width: Some(SETTINGS_WIDE_CONTROL_WIDTH),
         in_command_list: true,
         list_indent: None,
+        marked_controls: Vec::new(),
     }
+    .with_buttons(pressable(&buttons), build)
 }
 
 /// The terminal of "Open terminal here": a list of Automatic, the terminals
@@ -343,6 +360,7 @@ pub fn terminal_row<'a>(view: &SettingsView<'a>) -> SettingRow<'a> {
         control = control.push(own);
     }
     SettingRow {
+        key: Some(dropdown_key(&items, selected)),
         label: lang.text(Msg::SettingsRowTerminal).to_owned(),
         theme_name: None,
         config_key: None,
@@ -353,6 +371,7 @@ pub fn terminal_row<'a>(view: &SettingsView<'a>) -> SettingRow<'a> {
         control_width: Some(SETTINGS_WIDE_CONTROL_WIDTH),
         in_command_list: true,
         list_indent: None,
+        marked_controls: Vec::new(),
     }
 }
 
@@ -392,7 +411,8 @@ pub fn keys_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
                 palette,
             ),
             lang,
-        )],
+        )
+        .keyed(RowKey::Press(SettingsMessage::OpenKeyBindings))],
     }]
 }
 
@@ -400,21 +420,19 @@ pub fn servers_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
     let lang = view.lang;
     let palette = view.palette;
     let add = |label: Msg, button: Msg| SettingRow {
-        label: lang.text(label).to_owned(),
-        theme_name: None,
-        config_key: None,
-        description: None,
-        problem: None,
-        warning: None,
-        control: kit::button(
-            lang.text(button),
-            Some(SettingsMessage::OpenServerAdd),
-            Tone::Secondary,
-            palette,
-        ),
+        key: Some(RowKey::Press(SettingsMessage::OpenServerAdd)),
         control_width: None,
         in_command_list: true,
-        list_indent: None,
+        ..SettingRow::text(
+            lang.text(label).to_owned(),
+            None,
+            kit::button(
+                lang.text(button),
+                Some(SettingsMessage::OpenServerAdd),
+                Tone::Secondary,
+                palette,
+            ),
+        )
     };
     if view.servers.is_empty() {
         return vec![Group {
@@ -444,31 +462,26 @@ pub fn servers_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
                 detail.push_str(folder);
             }
             SettingRow {
-                label: server.label(),
-                theme_name: None,
-                config_key: None,
-                description: Some(detail),
-                problem: None,
-                warning: None,
-                control: row![
-                    kit::button(
-                        lang.text(Msg::RemoteConnect),
-                        Some(SettingsMessage::OpenServer(server.url())),
-                        Tone::Secondary,
-                        palette,
-                    ),
-                    kit::button(
-                        lang.text(Msg::SettingsServersRemove),
-                        Some(change(SettingChange::Servers(remaining))),
-                        Tone::Secondary,
-                        palette,
-                    ),
-                ]
-                .spacing(spacing::S)
-                .into(),
-                control_width: None,
                 in_command_list: true,
                 list_indent: None,
+                ..SettingRow::listed_buttons(
+                    server.label(),
+                    Some(detail),
+                    None,
+                    vec![
+                        RowButton::new(
+                            lang.text(Msg::RemoteConnect),
+                            Some(SettingsMessage::OpenServer(server.url())),
+                            Tone::Secondary,
+                        ),
+                        RowButton::new(
+                            lang.text(Msg::SettingsServersRemove),
+                            Some(change(SettingChange::Servers(remaining))),
+                            Tone::Secondary,
+                        ),
+                    ],
+                    palette,
+                )
             }
         })
         .collect();
@@ -496,6 +509,10 @@ pub fn language_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
         .iter()
         .position(|&language| language == lang.base())
         .unwrap_or_default();
+    let language_key = choice_key(
+        options.iter().map(|(_, message)| message.clone()).collect(),
+        chosen,
+    );
     vec![Group {
         intro: None,
         title: String::new(),
@@ -505,7 +522,8 @@ pub fn language_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
                 Some(Msg::SettingsRowLanguageNote),
                 kit::segmented(&options, chosen, true, view.palette),
                 lang,
-            ),
+            )
+            .keyed_maybe(language_key),
             simple_row(
                 Msg::SettingsRowFuturamaNames,
                 Some(Msg::SettingsRowFuturamaNamesNote),
@@ -517,7 +535,10 @@ pub fn language_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
                     view.palette,
                 ),
                 lang,
-            ),
+            )
+            .keyed(RowKey::Press(change(SettingChange::Language(
+                lang.base().with_futurama(!futurama),
+            )))),
         ],
     }]
 }
@@ -530,6 +551,7 @@ pub fn ai_field_row<'a>(
     view: &SettingsView<'a>,
 ) -> SettingRow<'a> {
     SettingRow {
+        key: Some(RowKey::Text(id)),
         problem: field_problem(field, view),
         ..simple_row(
             label,
@@ -562,7 +584,11 @@ pub fn provider_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
         Some(Msg::SettingsRowAiProviderNote),
         kit::segmented(&options, chosen, true, view.palette),
         lang,
-    )];
+    )
+    .keyed_maybe(choice_key(
+        options.iter().map(|(_, message)| message.clone()).collect(),
+        chosen,
+    ))];
     match provider {
         AiProviderName::Local => {}
         AiProviderName::Http => {
@@ -624,30 +650,46 @@ pub fn protection_group<'a>(view: &SettingsView<'a>) -> Option<Group<'a>> {
     } else {
         palette.accent
     };
-    let mut control = column![status_text(panel.state.clone(), color)]
-        .spacing(spacing::S)
-        .align_x(alignment::Horizontal::Right);
-    for (position, button) in panel.buttons.iter().enumerate() {
-        control = control.push(kit::button(
-            lang.text(button.label),
-            button
-                .enabled
-                .then_some(SettingsMessage::Protection(position)),
-            if button.primary {
+    let build = |marked: Option<usize>| {
+        let mut control = column![status_text(panel.state.clone(), color)]
+            .spacing(spacing::S)
+            .align_x(alignment::Horizontal::Right);
+        let mut on = 0;
+        for (position, button) in panel.buttons.iter().enumerate() {
+            let is_marked = button.enabled && marked == Some(on);
+            on += usize::from(button.enabled);
+            let tone = if is_marked || (button.primary && marked.is_none()) {
                 Tone::Primary
             } else {
                 Tone::Secondary
-            },
-            palette,
-        ));
-    }
+            };
+            control = control.push(kit::button(
+                lang.text(button.label),
+                button
+                    .enabled
+                    .then_some(SettingsMessage::Protection(position)),
+                tone,
+                palette,
+            ));
+        }
+        control.into()
+    };
+    let enabled_buttons: Vec<SettingsMessage> = panel
+        .buttons
+        .iter()
+        .enumerate()
+        .filter(|(_, button)| button.enabled)
+        .map(|(position, _)| SettingsMessage::Protection(position))
+        .collect();
     let protection = SettingRow {
         problem: panel.failure.clone(),
         description: Some(panel.sentence.clone()),
         in_command_list: false,
         list_indent: None,
-        ..simple_row(Msg::SettingsIndexRowEncryption, None, control.into(), lang)
-    };
+        marked_controls: Vec::new(),
+        ..simple_row(Msg::SettingsIndexRowEncryption, None, build(None), lang)
+    }
+    .with_buttons(enabled_buttons, build);
     Some(Group {
         intro: None,
         title: String::new(),

@@ -3,17 +3,14 @@
 //! type, so a feature crate maps them into its own messages.
 
 /// Family name inside the embedded DejaVu Sans Mono files.
-const BUNDLED_FAMILY: &str = "DejaVu Sans Mono";
+pub const BUNDLED_FAMILY: &str = "DejaVu Sans Mono";
 
 /// The font of all text in the app: the window's default font and the base of
-/// every weight variant, so a bold part never switches family. macOS keeps its
-/// system monospace font (Menlo) because Menlo's license does not allow
-/// shipping it; the other systems get the embedded DejaVu Sans Mono.
-pub const APP_FONT: iced::Font = if cfg!(target_os = "macos") {
-    iced::Font::MONOSPACE
-} else {
-    iced::Font::with_name(BUNDLED_FAMILY)
-};
+/// every weight variant, so a bold part never switches family. It is the
+/// generic monospace font; `font::apply_font` decides the family behind it
+/// (the system's font, the embedded DejaVu Sans Mono where the system has
+/// none to ship, or the user's choice).
+pub const APP_FONT: iced::Font = iced::Font::MONOSPACE;
 
 /// Font files the app must load for `APP_FONT`; empty on macOS.
 pub const BUNDLED_FONTS: &[&[u8]] = if cfg!(target_os = "macos") {
@@ -26,11 +23,14 @@ const BUNDLED_REGULAR: &[u8] = include_bytes!("../../../assets/fonts/DejaVuSansM
 const BUNDLED_BOLD: &[u8] = include_bytes!("../../../assets/fonts/DejaVuSansMono-Bold.ttf");
 
 pub mod badge_dot;
+pub mod choice_rows;
 pub mod column_header;
 pub mod data_table;
+pub mod file_icon;
 pub mod file_row;
 pub mod fkeys;
 pub mod focus;
+pub mod font;
 pub mod format;
 pub mod frame;
 pub mod hermes_kit;
@@ -44,13 +44,16 @@ mod menu_button;
 pub mod meter;
 pub mod nav_list;
 pub mod numbered_hint;
+pub mod open_list;
 pub mod page_status_bar;
 pub mod page_text;
 pub mod palette;
 pub mod panel_footer;
+pub mod permission_grid;
 pub mod picker;
 pub mod popup_menu;
 pub mod rename_row;
+pub mod row_scroll;
 pub mod setting_rows;
 pub mod tags;
 pub mod theme;

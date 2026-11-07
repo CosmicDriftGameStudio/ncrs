@@ -54,6 +54,7 @@ pub fn nav<'a>(
             label: lang.text(nav_label(feature)).to_owned(),
             suffix: None,
             chosen: shown == Some(feature),
+            dimmed: view.state.focus.area == crate::focus::Area::Rows,
             on_press: SettingsMessage::Select(feature),
         };
         match groups.last_mut() {
@@ -151,10 +152,13 @@ pub fn page<'a>(shown: Option<SettingsFeature>, view: &SettingsView<'a>) -> Elem
             ),
         );
     }
-    let sections = ncrs_ui_kit::setting_rows::sections(
+    let focus = view.state.focus;
+    let sections = ncrs_ui_kit::setting_rows::sections_with_focus(
         groups_of(feature, view),
         |setting| whole_feature || row_matches(setting, &query),
         view.state.marked_row.as_deref(),
+        focus.row_focus(),
+        |row, inner| Some(SettingsMessage::FocusThen(row, inner.map(Box::new))),
         palette,
     );
     sections
@@ -162,6 +166,24 @@ pub fn page<'a>(shown: Option<SettingsFeature>, view: &SettingsView<'a>) -> Elem
         .fold(body, |column, section| column.push(section))
         .spacing(spacing::XS)
         .into()
+}
+
+/// The pages in the list, the one shown and its rows that have a key: what the
+/// keyboard moves through, from the same groups and filter the page draws.
+pub fn focus_facts(
+    view: &SettingsView<'_>,
+) -> Option<(
+    Vec<SettingsFeature>,
+    SettingsFeature,
+    Vec<ncrs_ui_kit::setting_rows::RowKey<Message>>,
+)> {
+    let shown = shown_feature(view)?;
+    let query = view.state.query.trim().to_lowercase();
+    let whole_feature = query.is_empty() || feature_name_matches(shown, &query, view.lang);
+    let rows = ncrs_ui_kit::setting_rows::keyed_rows(groups_of(shown, view), |setting| {
+        whole_feature || row_matches(setting, &query)
+    });
+    Some((listed_features(view), shown, rows))
 }
 
 pub fn config_broken_text(broken: &ConfigError, view: &SettingsView<'_>) -> String {

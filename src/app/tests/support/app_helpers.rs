@@ -17,6 +17,7 @@ impl App {
         let mut state = settings_ui::SettingsState::new(false, Ok(Box::default()), false);
         state.feature = feature;
         app.settings.page = Some(state);
+        app.shown_tab = ShownTab::Settings;
         app
     }
 
@@ -55,6 +56,7 @@ impl App {
         let mut state = settings_ui::SettingsState::new(false, Ok(Box::default()), false);
         state.feature = feature;
         self.settings.page = Some(state);
+        self.shown_tab = ShownTab::Settings;
         self
     }
 
@@ -315,6 +317,37 @@ impl App {
     pub fn move_selection_for_test(&mut self, delta: isize) {
         let rows = self.visible_rows;
         self.panels.left.move_selection(delta, rows);
+    }
+
+    /// The columns the panels show, as the settings hold them.
+    pub fn columns_for_test(&self) -> &ncrs_config::panel_columns::PanelColumns {
+        &self.columns
+    }
+
+    /// The tab the window shows.
+    pub fn shown_tab_for_test(&self) -> crate::messages::ShownTab {
+        self.shown_tab
+    }
+
+    /// Replaces the clipboard read, so a paste never touches the developer's
+    /// real clipboard.
+    pub fn with_clipboard_reader_for_test(
+        mut self,
+        read: fn() -> iced::Task<Option<crate::clipboard_paste::PastedContent>>,
+    ) -> Self {
+        self.read_clipboard = read;
+        self
+    }
+
+    /// Whether a modal prompt (new folder, pasted file name, ...) is up.
+    pub fn prompt_is_open_for_test(&self) -> bool {
+        self.ops.prompt.is_some()
+    }
+
+    /// Whether the permissions dialog is up.
+    #[cfg(unix)]
+    pub fn permissions_dialog_is_open(&self) -> bool {
+        self.ops.permissions_dialog.is_some()
     }
 
     /// Whether the delete confirmation is up.
@@ -622,6 +655,7 @@ impl App {
             size,
             modified: None,
             folder_size: None,
+            details: Default::default(),
         };
         let mut panel = PanelState::new(folder.clone());
         panel.archive = Some(PathBuf::from("/home/test/fotos.zip"));

@@ -15,6 +15,7 @@ fn entries(n: usize) -> Vec<FileEntry> {
             size: 1024 * (i as u64 % 900),
             modified: None,
             folder_size: None,
+            details: Default::default(),
         })
         .collect()
 }

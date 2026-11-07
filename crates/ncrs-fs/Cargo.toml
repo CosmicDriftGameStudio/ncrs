@@ -70,6 +70,12 @@ objc2-foundation = { version = "0.3", default-features = false, features = ["std
 # Finding an installed app by its bundle id through Launch Services.
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSWorkspace"] }
 
+[target.'cfg(unix)'.dependencies]
+# Owner and group names of the files in a listing. The `user` feature; `fs` for chmod of a file that cannot be opened and `dir` for walking a folder by its handle.
+nix = { version = "0.31", default-features = false, features = ["user", "fs", "dir"] }
+# O_NOFOLLOW and friends for opening an entry without following a link.
+libc = "0.2"
+
 [features]
 # The macOS App Store build: inside the App Sandbox the folder grants and the
 # trash work differently. On other systems the feature builds but changes nothing.

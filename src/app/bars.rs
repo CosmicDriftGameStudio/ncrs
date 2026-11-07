@@ -158,12 +158,12 @@ impl App {
             titlebar::Tab {
                 side,
                 title,
-                active: self.panels.active == side && !self.page_tab_is_open(),
+                active: self.panels.active == side && self.shown_tab == ShownTab::Panels,
             }
         };
         titlebar::view(&titlebar::TitleBar {
             tabs: [tab(PanelSide::Left), tab(PanelSide::Right)],
-            page_tab: self.page_tab(),
+            page_tabs: self.page_tabs(),
             home: &self.home,
             hermes: self.hermes_chip(),
             hermes_tone: self
@@ -177,19 +177,33 @@ impl App {
         })
     }
 
-    fn page_tab_is_open(&self) -> bool {
+    pub(in crate::app) fn page_tab_is_open(&self) -> bool {
         self.monitor.is_open() || self.settings.page.is_some()
     }
 
-    fn page_tab(&self) -> Option<titlebar::PageTab> {
-        if self.monitor.is_open() {
-            Some(titlebar::PageTab::System)
-        } else {
-            self.settings
-                .page
-                .is_some()
-                .then_some(titlebar::PageTab::Settings)
+    pub(in crate::app) fn settings_shown(&self) -> bool {
+        self.settings.page.is_some() && self.shown_tab == ShownTab::Settings
+    }
+
+    pub(in crate::app) fn monitor_shown(&self) -> bool {
+        self.monitor.is_open() && self.shown_tab == ShownTab::Monitor
+    }
+
+    fn page_tabs(&self) -> Vec<titlebar::PageTabState> {
+        let mut tabs = Vec::new();
+        if self.settings.page.is_some() {
+            tabs.push(titlebar::PageTabState {
+                page: titlebar::PageTab::Settings,
+                active: self.shown_tab == ShownTab::Settings,
+            });
         }
+        if self.monitor.is_open() {
+            tabs.push(titlebar::PageTabState {
+                page: titlebar::PageTab::System,
+                active: self.shown_tab == ShownTab::Monitor,
+            });
+        }
+        tabs
     }
 
     /// The name of the colour theme when the palette is one of the presets.

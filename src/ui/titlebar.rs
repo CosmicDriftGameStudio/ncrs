@@ -12,6 +12,7 @@ use super::layout::{TITLE_BAR_HEIGHT, TRAFFIC_LIGHTS_INSET};
 use super::theme::{self, font_size, size, spacing};
 use crate::i18n::{Language, Msg};
 use crate::messages::PanelMessage;
+use crate::messages::ShownTab;
 use crate::messages::{
     CommandPaletteMessage, FilingStatusMessage, HitListMessage, Message, PanelSide, ResizeEdge,
     SettingsMessage, TitleBarMessage,
@@ -73,6 +74,11 @@ pub enum PageTab {
     System,
 }
 
+pub struct PageTabState {
+    pub page: PageTab,
+    pub active: bool,
+}
+
 pub struct TitleBar<'a> {
     pub tabs: [Tab<'a>; 2],
     pub home: &'a Path,
@@ -82,8 +88,8 @@ pub struct TitleBar<'a> {
     pub hermes_tone: HermesTone,
     /// The key of the command palette, if it has one.
     pub lab_shortcut: Option<String>,
-    /// The tab of a page after the two path tabs; it is the active one then.
-    pub page_tab: Option<PageTab>,
+    /// The tabs of the open pages after the two path tabs.
+    pub page_tabs: Vec<PageTabState>,
     pub lang: Language,
     pub palette: &'a Palette,
 }
@@ -206,24 +212,29 @@ pub fn view<'a>(bar: &TitleBar<'a>) -> Element<'a, Message> {
         tab(right, RIGHT_TAB_ID, Msg::StatusModeRight),
     ]
     .height(Length::Fill);
-    match &bar.page_tab {
-        Some(PageTab::Settings) => {
-            tabs = tabs.push(page_tab(
+    for open in &bar.page_tabs {
+        tabs = tabs.push(match open.page {
+            PageTab::Settings => page_tab(
                 lang.text(Msg::SettingsTab),
                 SETTINGS_TAB_ID,
-                Message::Settings(SettingsMessage::Close),
+                open.active,
+                (
+                    ShownTab::Settings,
+                    Message::Settings(SettingsMessage::Close),
+                ),
                 palette,
-            ));
-        }
-        Some(PageTab::System) => {
-            tabs = tabs.push(page_tab(
+            ),
+            PageTab::System => page_tab(
                 lang.text(Msg::MonitorTitle),
                 MONITOR_TAB_ID,
-                Message::Monitor(ncrs_monitor::MonitorMessage::Close),
+                open.active,
+                (
+                    ShownTab::Monitor,
+                    Message::Monitor(ncrs_monitor::MonitorMessage::Close),
+                ),
                 palette,
-            ));
-        }
-        None => {}
+            ),
+        });
     }
 
     let mut right_side = row![]
@@ -312,11 +323,12 @@ pub fn view<'a>(bar: &TitleBar<'a>) -> Element<'a, Message> {
     .into()
 }
 
-/// The tab of a page: always the active one, with a cross that closes it.
+/// The tab of an open page, with a cross that closes it; a click shows it.
 fn page_tab<'a>(
     title: &str,
     id: &'static str,
-    close: Message,
+    active: bool,
+    (shown, close): (ShownTab, Message),
     palette: &Palette,
 ) -> Element<'a, Message> {
     let label = row![
@@ -332,15 +344,21 @@ fn page_tab<'a>(
     .spacing(TAB_GAP)
     .height(Length::Fill)
     .align_y(alignment::Vertical::Center);
+    let top_line = if active {
+        palette.accent
+    } else {
+        Color::TRANSPARENT
+    };
     container(row![
         theme::vertical_rule(palette.border_inactive),
         column![
-            theme::horizontal_rule(palette.accent),
-            container(label)
+            theme::horizontal_rule(top_line),
+            button(label)
+                .on_press(Message::ShowTab(shown))
                 .padding([0.0, TAB_PADDING_X])
                 .width(Length::Fill)
                 .height(Length::Fill)
-                .style(theme::panel(palette)),
+                .style(theme::title_tab(palette, active)),
         ],
         theme::vertical_rule(palette.border_inactive),
     ])

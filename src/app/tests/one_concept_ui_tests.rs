@@ -114,7 +114,8 @@ fn process_all_again_comes_with_two_errors_and_reads_every_shown_file_again() {
         .expect("the button for all");
     assert!(simulator.into_messages().any(|message| matches!(
         message,
-        Message::FilingStatus(FilingStatusMessage::ProcessAllAgain)
+        Message::FocusPageThen(_, Some(inner))
+            if matches!(*inner, Message::FilingStatus(FilingStatusMessage::ProcessAllAgain))
     )));
 
     let mut reading = read_errors_app(2);

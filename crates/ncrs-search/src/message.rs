@@ -14,6 +14,12 @@ pub enum SearchMessage {
     QueryChanged(String),
     NamesChanged(String),
     ExcludeChanged(String),
+    /// The folder field was typed in.
+    FolderChanged(String),
+    /// The button next to the folder field: the system dialog asks for one.
+    ChooseFolder,
+    /// The dialog's answer; `None` when it was cancelled.
+    FolderPicked(Option<PathBuf>),
     /// The "search in files" box was clicked.
     ToggleInFiles,
     /// A printable key typed while the result list has the keys: it goes to the

@@ -33,6 +33,9 @@ impl App {
                     is_active: self.panels.active == side,
                     visible_rows: self.visible_rows,
                     hermes_cell,
+                    columns: self.column_settings(),
+                    special_folders: &self.special_folders,
+                    header_drag: self.panels.header_drag_view(side),
                 },
             )
             .map(Message::Panel)
@@ -51,6 +54,7 @@ impl App {
                         lang: self.lang,
                         palette: &self.palette,
                         is_active: self.panels.active == side,
+                        side_is_remote: self.panel(side).remote().is_some(),
                         shortcuts: self.toggle_shortcuts(),
                         toggle_for_press: Rc::new(move |key, physical_key, modifiers| {
                             search_toggle_for_press(keymap, key, physical_key, modifiers)
@@ -97,11 +101,16 @@ impl App {
         .height(Length::Fill);
 
         let below_title_bar =
-            if self.monitor.is_open() {
+            if self.monitor_shown() {
                 self.monitor_area()
             } else if self.hermes_chat.open {
                 self.hermes_chat_area()
-            } else if let Some(state) = self.settings.page.as_ref() {
+            } else if let Some(state) = self
+                .settings
+                .page
+                .as_ref()
+                .filter(|_| self.settings_shown())
+            {
                 self.settings_area(state)
             } else {
                 container(column![
@@ -230,6 +239,20 @@ impl App {
             .into();
         }
 
+        if let Some(menu) = self.panels.header_menu.as_ref() {
+            return Stack::with_children([
+                root,
+                ncrs_files::header_menu_view(
+                    menu,
+                    self.column_settings(),
+                    self.lang,
+                    &self.palette,
+                )
+                .map(Message::Panel),
+            ])
+            .into();
+        }
+
         if let Some(menu) = self.panels.context_menu.as_ref() {
             // A left press anywhere beside the menu closes it, the path field
             // and the column titles included: those take their own clicks and
@@ -292,6 +315,17 @@ impl App {
             return Stack::with_children([root, dialog::scrim(dialog_element)]).into();
         }
 
+        if let Some(dialog) = self.ops.permissions_dialog.as_ref() {
+            let dialog_element = ncrs_ops::permissions::view::view(
+                dialog,
+                self.window_size,
+                self.lang,
+                &self.palette,
+            )
+            .map(Message::from);
+            return Stack::with_children([root, dialog::scrim(dialog_element)]).into();
+        }
+
         if let Some(card) = self.about.as_ref() {
             let card_element = about_ui::view(
                 card,
@@ -331,9 +365,15 @@ impl App {
                 .into();
         }
 
-        if let Some(dialog_element) = self.settings.page.as_ref().and_then(|state| {
-            ncrs_settings::dialogs::open_dialog(&self.settings_view(state), self.window_size)
-        }) {
+        if let Some(dialog_element) = self
+            .settings
+            .page
+            .as_ref()
+            .filter(|_| self.settings_shown())
+            .and_then(|state| {
+                ncrs_settings::dialogs::open_dialog(&self.settings_view(state), self.window_size)
+            })
+        {
             return Stack::with_children([
                 root,
                 dialog::scrim(dialog_element.map(Message::Settings)),

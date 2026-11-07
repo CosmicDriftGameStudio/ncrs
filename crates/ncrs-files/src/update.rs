@@ -6,9 +6,13 @@ use iced::Task;
 use ncrs_core::{FileEntry, PanelSide, TransferKind};
 use ncrs_fs::remote::RemotePath;
 use ncrs_fs::{SortColumn, SortKey};
+use ncrs_i18n::Language;
+use ncrs_ui_kit::column_header::{column_spans, ColumnSpan};
 
 use crate::action::Action;
 use crate::ctx::Ctx;
+use crate::header_drag::{self, HeaderPhase, HeaderPress};
+use crate::header_menu::HeaderMenu;
 use crate::message::PanelMessage;
 use crate::panel::PanelState;
 use crate::panel_drag::{self, PanelDrag};
@@ -174,7 +178,7 @@ pub fn update(
         }
         PanelMessage::ActivatePanel(side) => {
             panels.active = side;
-            actions.push(Action::CloseSettings);
+            actions.push(Action::ShowPanels);
         }
         PanelMessage::SortBy { .. } | PanelMessage::SortActive(_) => {
             update_sort(panels, ctx, message, &mut actions);
@@ -227,7 +231,10 @@ pub fn update(
             }
         }
         PanelMessage::PanelDragMoved(position) => {
-            if let Some(drag) = panels.drag.as_mut() {
+            if let Some(press) = panels.header_press.as_mut() {
+                let spans = header_spans(ctx, press.side);
+                press.moved_to(position, &spans, ctx.window_size.width);
+            } else if let Some(drag) = panels.drag.as_mut() {
                 drag.moved_to(position);
                 #[cfg(any(target_os = "macos", target_os = "windows"))]
                 if drag.is_dragging() && panel_drag::is_outside(position, ctx.window_size) {
@@ -235,11 +242,57 @@ pub fn update(
                 }
             }
         }
+        PanelMessage::PanelDragReleased if panels.header_press.is_some() => {
+            finish_header_press(panels, ctx, &mut actions);
+        }
         PanelMessage::PanelDragReleased => finish_panel_drag(panels, ctx, &mut actions),
         PanelMessage::PanelDragCancelled => {
             panels.drag = None;
+            panels.header_press = None;
             actions.push(Action::DragArmed(false));
         }
+
+        PanelMessage::HeaderPressed { side, .. } if ctx.is_context_click => {
+            open_header_menu(panels, ctx, side, &mut actions);
+        }
+        PanelMessage::HeaderPressed { .. } if ctx.context_menu_is_open => {
+            actions.push(Action::CloseContextMenu);
+        }
+        PanelMessage::HeaderPressed { side, column } => {
+            panels.header_menu = None;
+            panels.header_press = Some(HeaderPress::pressed(side, column, ctx.pointer));
+            actions.push(Action::DragArmed(true));
+        }
+        PanelMessage::HeaderResizePressed { side, column } => {
+            panels.header_menu = None;
+            let width = ctx
+                .columns
+                .layout(side, Language::default())
+                .width_of(column);
+            panels.header_press = Some(HeaderPress::resizing(side, column, ctx.pointer, width));
+            actions.push(Action::DragArmed(true));
+        }
+        PanelMessage::HeaderContext(side) => open_header_menu(panels, ctx, side, &mut actions),
+        PanelMessage::HeaderMenuToggleColumn(column) => {
+            if let Some(menu) = panels.header_menu {
+                actions.push(Action::ColumnsChanged {
+                    side: menu.side,
+                    columns: header_drag::toggled(ctx.columns.of(menu.side), column),
+                });
+            }
+        }
+        PanelMessage::HeaderMenuSameInBoth => {
+            actions.push(Action::SameColumnsInBoth(!ctx.columns.same_in_both));
+        }
+        PanelMessage::HeaderMenuConfigure => {
+            panels.header_menu = None;
+            actions.push(Action::OpenColumnSettings);
+        }
+        PanelMessage::HeaderMenuRestore => {
+            panels.header_menu = None;
+            actions.push(Action::RestoreColumnDefaults);
+        }
+        PanelMessage::HeaderMenuClose => panels.header_menu = None,
 
         PanelMessage::RowActivated { side, index } => {
             activate_row(panels, ctx, side, index, &mut actions);
@@ -481,6 +534,69 @@ fn arm_panel_drag(
     }
     panels.drag = Some(PanelDrag::new(side, ctx.pointer, toggle_on_release));
     actions.push(Action::DragArmed(true));
+}
+
+/// The shown columns of `side` as they lie in the panel, for hit-testing a
+/// dragged title.
+fn header_spans(ctx: &Ctx<'_>, side: PanelSide) -> Vec<ColumnSpan> {
+    column_spans(
+        ctx.columns.layout(side, Language::default()),
+        header_drag::panel_width(ctx.window_size.width),
+        ctx.has_hermes_column,
+    )
+}
+
+fn open_header_menu(
+    panels: &mut Panels,
+    ctx: &Ctx<'_>,
+    side: PanelSide,
+    actions: &mut Vec<Action>,
+) {
+    panels.header_menu = Some(HeaderMenu::at(side, ctx.pointer, ctx.window_size));
+    if ctx.context_menu_is_open {
+        actions.push(Action::CloseContextMenu);
+    }
+}
+
+/// The button came up on a title: a click sorts, a drag moved or resized.
+fn finish_header_press(panels: &mut Panels, ctx: &Ctx<'_>, actions: &mut Vec<Action>) {
+    actions.push(Action::DragArmed(false));
+    let Some(press) = panels.header_press.take() else {
+        return;
+    };
+    match press.phase {
+        HeaderPhase::Pressed => {
+            if let Some(column) = press.column.sort_column() {
+                update_sort(
+                    panels,
+                    ctx,
+                    PanelMessage::SortBy {
+                        side: press.side,
+                        column,
+                    },
+                    actions,
+                );
+            }
+        }
+        HeaderPhase::Reordering { before, .. } => {
+            let current = ctx.columns.of(press.side);
+            let columns = header_drag::reordered(current, press.column, before);
+            if columns != current {
+                actions.push(Action::ColumnsChanged {
+                    side: press.side,
+                    columns,
+                });
+            }
+        }
+        HeaderPhase::Resizing { start_width, width } => {
+            if (width - start_width).abs() >= 1.0 {
+                actions.push(Action::ColumnWidth {
+                    column: press.column,
+                    width: width.round() as u16,
+                });
+            }
+        }
+    }
 }
 
 /// Dropping on the other panel asks the F5 or F6 question for it.

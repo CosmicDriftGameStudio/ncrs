@@ -26,6 +26,7 @@ fn app_with_conflict() -> (App, tempfile::TempDir) {
         size: 3,
         modified: None,
         folder_size: None,
+        details: Default::default(),
     }];
     app.panels.left.selected = 0;
     (app, scratch)

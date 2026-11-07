@@ -525,3 +525,92 @@ fn a_saved_unknown_terminal_is_the_own_entry_in_the_sandbox() {
 
     assert_eq!(state.terminal_choice(), TerminalChoice::Own);
 }
+
+fn rows_of(feature: SettingsFeature, state: &SettingsState, lang: Language) -> Vec<String> {
+    let filing = Filing::default();
+    let palette = Palette::default();
+    let view = SettingsView {
+        state,
+        preset: ThemePreset::Cosmic,
+        vscode_theme: None,
+        filing: &filing,
+        servers: &[],
+        protection: None,
+        home: Path::new("/home/test"),
+        keys_changed: 0,
+        updates_listed: true,
+        facts: DocumentsFacts::default(),
+        lang,
+        palette: &palette,
+    };
+    groups_of(feature, &view)
+        .into_iter()
+        .flat_map(|group| group.rows)
+        .map(|setting| setting.label)
+        .collect()
+}
+
+#[test]
+fn the_columns_page_lists_every_column_of_this_system_in_both_languages() {
+    let state = state_of("");
+    for lang in [Language::English, Language::German] {
+        let labels = rows_of(SettingsFeature::Columns, &state, lang);
+        let columns = ncrs_core::Column::ALL
+            .into_iter()
+            .filter(|column| column.on_this_system())
+            .count();
+        // Panels, the columns and the restore button, date and size.
+        assert_eq!(labels.len(), 1 + columns + 1 + 2, "{lang:?}");
+        assert_eq!(
+            labels.first().map(String::as_str),
+            Some(lang.text(Msg::SettingsRowColumnsPanels))
+        );
+    }
+}
+
+#[test]
+fn the_look_page_has_the_font_size_and_preview_rows_one_after_the_other() {
+    let state = state_of("");
+    for lang in [Language::English, Language::German] {
+        let labels = rows_of(SettingsFeature::Look, &state, lang);
+        let expected = [
+            Msg::SettingsRowFont,
+            Msg::SettingsRowFontSize,
+            Msg::SettingsRowFontPreview,
+        ]
+        .map(|msg| lang.text(msg));
+        let at = labels
+            .iter()
+            .position(|label| label == lang.text(Msg::SettingsRowFont))
+            .unwrap();
+        let found: Vec<&str> = labels.iter().skip(at).take(3).map(String::as_str).collect();
+        assert_eq!(found, expected, "{lang:?}");
+    }
+}
+
+#[test]
+fn the_keyboard_starts_the_hermes_page_on_its_first_row() {
+    let state = state_of("");
+    let filing = Filing::default();
+    let palette = Palette::default();
+    let view = SettingsView {
+        state: &state,
+        preset: ThemePreset::Cosmic,
+        vscode_theme: None,
+        filing: &filing,
+        servers: &[],
+        protection: None,
+        home: Path::new("/home/test"),
+        keys_changed: 0,
+        updates_listed: true,
+        facts: DocumentsFacts::default(),
+        lang: Language::English,
+        palette: &palette,
+    };
+    let hermes_keys =
+        ncrs_ui_kit::setting_rows::keyed_rows(groups_of(SettingsFeature::Hermes, &view), |_| true);
+    assert!(matches!(
+        hermes_keys.first(),
+        Some(ncrs_ui_kit::setting_rows::RowKey::Press(_))
+    ));
+}

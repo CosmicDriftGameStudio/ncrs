@@ -12,7 +12,7 @@ use ncrs_ui_kit::format;
 use ncrs_ui_kit::frame::{DialogSize, Frame, KeyHints};
 use ncrs_ui_kit::hermes_kit::{self as page_kit, ChipKind, RowTwo, GAP_S, GAP_XS};
 use ncrs_ui_kit::kit::{self, Check, Tone};
-use ncrs_ui_kit::setting_rows::{Group, SettingRow};
+use ncrs_ui_kit::setting_rows::{Group, RowButton, SettingRow};
 
 use super::condition_editor::{
     add_condition_link, combinator_choice, condition_editor_rows, ConditionHost,
@@ -68,15 +68,15 @@ pub fn groups<'a>(
         .problem()
         .filter(|_| !state.dialog_is_open())
         .map(|detail| problem_text(detail, lang));
-    rows.push(SettingRow::adding(
+    rows.push(SettingRow::adding_buttons(
         empty,
         problem,
-        vec![kit::button(
+        vec![RowButton::new(
             lang.text(Msg::HermesPagesRuleAdd),
             idle.then(|| send(RulesMessage::New)),
             Tone::Secondary,
-            palette,
         )],
+        palette,
     ));
     vec![Group {
         intro: None,
@@ -110,37 +110,32 @@ fn rule_row<'a>(
         lang.text(Msg::RulesOff).to_owned()
     };
     let actions = vec![
-        kit::checkbox(
+        RowButton::check(
             if spec.enabled { Check::On } else { Check::Off },
             idle.then(|| send(RulesMessage::ToggleAt(index))),
-            palette,
         ),
-        kit::button(
+        RowButton::new(
             "↑",
             (idle && index > 0).then(|| send(RulesMessage::ReorderAt { index, delta: -1 })),
             Tone::Secondary,
-            palette,
         ),
-        kit::button(
+        RowButton::new(
             "↓",
             (idle && index + 1 < count).then(|| send(RulesMessage::ReorderAt { index, delta: 1 })),
             Tone::Secondary,
-            palette,
         ),
-        kit::button(
+        RowButton::new(
             lang.text(Msg::HermesPagesChange),
             idle.then(|| send(RulesMessage::Edit(index))),
             Tone::Secondary,
-            palette,
         ),
-        kit::button(
+        RowButton::new(
             lang.text(Msg::SettingsRemove),
             idle.then(|| send(RulesMessage::AskDelete(index))),
             Tone::Secondary,
-            palette,
         ),
     ];
-    SettingRow::listed(label, Some(second), Some(status), actions, palette)
+    SettingRow::listed_buttons(label, Some(second), Some(status), actions, palette)
 }
 
 fn problem_text(detail: &str, lang: Language) -> String {
@@ -528,5 +523,57 @@ fn outcome_text(outcome: &TryOutcome, lang: Language) -> String {
             lang.text(Msg::RulesTryLiesAt),
             &[("{path}", &path.display().to_string())],
         ),
+    }
+}
+
+#[cfg(test)]
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+mod tests {
+    use super::*;
+    use crate::rules_page::fixtures::page;
+    use ncrs_ui_kit::setting_rows::{keyed_rows, RowKey};
+
+    #[test]
+    fn the_switch_and_the_order_of_a_rule_are_reached_by_keyboard() {
+        let rules = page();
+        let keys = keyed_rows(
+            groups(&rules, Language::English, &Palette::default()),
+            |_| true,
+        );
+        // Three rules and the add row.
+        assert_eq!(keys.len(), 4);
+        let RowKey::Buttons(middle) = &keys[1] else {
+            panic!("a rule row has several buttons: {:?}", keys[1]);
+        };
+        assert_eq!(
+            middle,
+            &[
+                send(RulesMessage::ToggleAt(1)),
+                send(RulesMessage::ReorderAt {
+                    index: 1,
+                    delta: -1
+                }),
+                send(RulesMessage::ReorderAt { index: 1, delta: 1 }),
+                send(RulesMessage::Edit(1)),
+                send(RulesMessage::AskDelete(1)),
+            ]
+        );
+        let RowKey::Buttons(first) = &keys[0] else {
+            panic!("a rule row has several buttons");
+        };
+        assert!(
+            !first.contains(&send(RulesMessage::ReorderAt {
+                index: 0,
+                delta: -1
+            })),
+            "the first rule cannot move up"
+        );
     }
 }

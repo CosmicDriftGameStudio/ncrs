@@ -25,7 +25,9 @@ pub use ncrs_hermes_ui::message::{
     FilingStatusMessage, HermesColumnMessage, HermesFileMessage, HermesOverviewMessage, HermesPage,
     QuickFixMessage, RulesMessage, SavedQueriesMessage, TagsMessage,
 };
-pub use ncrs_ops::{ConflictChoice, OpsMessage, TransferDialogMessage, TrashMessage};
+pub use ncrs_ops::{
+    ConflictChoice, OpsMessage, PermissionsMessage, TransferDialogMessage, TrashMessage,
+};
 pub use ncrs_search::message::SearchMessage;
 #[cfg(test)]
 pub use ncrs_settings::SettingField;
@@ -65,6 +67,24 @@ pub enum Message {
     /// Cmd+V / Ctrl+V: read the system clipboard and bring what it holds into
     /// the active panel.
     Paste,
+    /// Shift+Tab: the previous tab; Tab is `PanelMessage::SwitchPanel`.
+    SwitchTabBack,
+    /// A click on the tab of an open page.
+    ShowTab(ShownTab),
+    /// Tab or Shift+Tab on a page that stands in for the panels: asks the
+    /// widgets whether a text field has the keyboard.
+    TabInPage {
+        backward: bool,
+    },
+    /// A click on a row of a page the app fills, or on its control: the
+    /// keyboard focus moves to the row and the control's message is handled.
+    FocusPageThen(usize, Option<Box<Message>>),
+    /// The answer: a field keeps Tab for moving between fields, else the tab
+    /// changes.
+    TabInPageAnswered {
+        backward: bool,
+        field_focused: bool,
+    },
     /// The system clipboard has been read for a paste; `None` when it holds
     /// nothing usable.
     ClipboardRead(Option<PastedContent>),
@@ -134,6 +154,13 @@ pub enum Message {
     DeleteConfirm,
     /// The user dismissed the delete dialog.
     DeleteCancel,
+    /// A message of the permissions dialog.
+    Permissions(PermissionsMessage),
+    /// The permissions change is over; the result of a stopped one is dropped.
+    PermissionsDone {
+        generation: u64,
+        result: Result<crate::fs::permissions::Outcome, String>,
+    },
     /// A pack, a copy into an archive or a delete from one finished.
     ArchiveWritten {
         result: Result<crate::fs::archive::WriteReport, RowFailure>,
@@ -230,6 +257,8 @@ pub enum Message {
     CreateFilePrompt,
     /// Alt+F5: ask for the name of a new archive in the other panel's folder.
     PackPrompt,
+    /// Option+Cmd+R (Ctrl+Alt+R elsewhere): open the permissions dialog for the tagged entries.
+    PermissionsPrompt,
     /// A keystroke went to the open prompt.
     PromptInput(String),
     /// The "Keep folders" box of the pack prompt for a hit list was clicked.
@@ -358,6 +387,16 @@ pub enum Message {
 pub use ncrs_config::SettingsFeature;
 
 /// What the title bar asks of the window.
+/// What the area under the title bar shows. Settings and the System page stay
+/// open while the panels are shown.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ShownTab {
+    #[default]
+    Panels,
+    Settings,
+    Monitor,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TitleBarMessage {
     /// A press on an empty part of the row: the window follows the pointer.
@@ -515,6 +554,10 @@ impl From<OpsMessage> for Message {
                 result,
             },
             OpsMessage::Trash(trash) => Self::Trash(trash),
+            OpsMessage::Permissions(permissions) => Self::Permissions(permissions),
+            OpsMessage::PermissionsDone { generation, result } => {
+                Self::PermissionsDone { generation, result }
+            }
         }
     }
 }

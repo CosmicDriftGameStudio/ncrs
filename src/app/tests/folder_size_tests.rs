@@ -20,6 +20,7 @@ fn row(name: &str, is_dir: bool) -> FileEntry {
         size: 1,
         modified: None,
         folder_size: None,
+        details: Default::default(),
     }
 }
 

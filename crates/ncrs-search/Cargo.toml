@@ -21,6 +21,7 @@ grep-searcher = "0.1.17"
 grep-matcher = "0.1.9"
 unicode-normalization = "0.1.26"
 ncrs-core = { path = "../ncrs-core", version = "0.0.0" }
+ncrs-fs = { path = "../ncrs-fs", version = "0.0.0" }
 ncrs-index = { path = "../ncrs-index", version = "0.0.0" }
 ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
 ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0" }

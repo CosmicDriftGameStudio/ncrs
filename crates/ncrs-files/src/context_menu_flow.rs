@@ -88,6 +88,7 @@ impl MenuFacts {
                 | ContextAction::Trash
                 | ContextAction::DeletePermanently => self.has_sources,
                 ContextAction::Rename
+                | ContextAction::Permissions
                 | ContextAction::NewFolder
                 | ContextAction::OpenTerminal
                 | ContextAction::ComputeFolderSizes
@@ -111,7 +112,8 @@ impl MenuFacts {
             ContextAction::Copy
             | ContextAction::Move
             | ContextAction::Trash
-            | ContextAction::DeletePermanently => self.has_sources,
+            | ContextAction::DeletePermanently
+            | ContextAction::Permissions => self.has_sources,
             ContextAction::Rename => cursor_row.is_some_and(|entry| !entry.is_parent),
             ContextAction::NewFolder => true,
             ContextAction::OpenTerminal => panels.local_folder_target().is_some(),

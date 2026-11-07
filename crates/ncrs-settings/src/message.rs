@@ -10,8 +10,10 @@ use ncrs_config::config::{
 use ncrs_config::file_list_tags::FileListTags;
 use ncrs_config::keymap::Binding;
 use ncrs_config::palette::{ColorRole, ThemePreset};
+use ncrs_config::panel_columns::{Appearance, DateFormat, PanelColumns, SizeFormat};
 use ncrs_config::system_monitor::SystemSettings;
 use ncrs_config::SettingsFeature;
+use ncrs_core::{Column, PanelSide};
 use ncrs_fs::OpenKind;
 use ncrs_i18n::Language;
 use ncrs_pipeline::Load;
@@ -58,9 +60,29 @@ pub enum SettingChange {
     FileListTags(FileListTags),
     /// The whole `[system]` section.
     System(SystemSettings),
+    /// The whole `[columns]` section, as it is to be written.
+    Columns(PanelColumns),
+    /// The whole `[appearance]` section: the font and its size.
+    Appearance(Appearance),
     /// The whole list of read folders, as it is to be written. Hermes and the
     /// AI stay as they are.
     Locations(Vec<FilingLocation>),
+}
+
+/// An edit on the Columns page. All but `Side` become a [`SettingChange::Columns`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ColumnsEdit {
+    SameInBoth(bool),
+    /// Which list is edited while each panel has its own; nothing is written.
+    Side(PanelSide),
+    /// Shows the column when it is hidden and hides it when it is shown.
+    Toggle(Column),
+    Up(Column),
+    Down(Column),
+    /// The built-in columns for the edited list.
+    Restore,
+    Date(DateFormat),
+    Size(SizeFormat),
 }
 
 /// A text field of the settings tab. What is typed stays a draft until
@@ -97,8 +119,16 @@ pub enum SettingsMessage {
     ChooseFileListTags,
     Close,
     Select(SettingsFeature),
+    /// A key of the keyboard focus; the app turns it into a step.
+    FocusKey(crate::focus::FocusKey),
+    /// Where the keyboard is now.
+    SetFocus(crate::focus::Focus),
+    /// A click on the row with this number among those that have a key, or
+    /// on its control: the control's message goes along and is handled too.
+    FocusThen(usize, Option<Box<SettingsMessage>>),
     SearchChanged(String),
     Change(SettingChange),
+    Columns(ColumnsEdit),
     Edit {
         field: SettingField,
         text: String,

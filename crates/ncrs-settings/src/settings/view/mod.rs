@@ -1,13 +1,18 @@
+mod columns_page;
+mod font_rows;
 mod groups;
 mod hermes_page;
 mod index_page;
 mod page;
 mod system_page;
 
+use columns_page::columns_groups;
+use font_rows::font_rows;
 pub use groups::server_dialog_body;
 use groups::*;
 use hermes_page::hermes_groups;
 use index_page::index_groups;
+pub use page::focus_facts;
 use page::*;
 use system_page::system_groups;
 
@@ -146,6 +151,7 @@ fn feature_label(feature: SettingsFeature) -> Msg {
         SettingsFeature::Programs => Msg::SettingsFeaturePrograms,
         SettingsFeature::Keys => Msg::SettingsFeatureKeys,
         SettingsFeature::Servers => Msg::SettingsFeatureServers,
+        SettingsFeature::Columns => Msg::SettingsFeatureColumns,
         SettingsFeature::System => Msg::SettingsFeatureSystem,
         SettingsFeature::Updates => Msg::SettingsFeatureUpdates,
         SettingsFeature::Index => Msg::SettingsFeatureIndex,
@@ -165,6 +171,7 @@ fn feature_theme_name(feature: SettingsFeature) -> Option<FuturamaName> {
         | SettingsFeature::Programs
         | SettingsFeature::Keys
         | SettingsFeature::Servers
+        | SettingsFeature::Columns
         | SettingsFeature::System
         | SettingsFeature::Updates
         | SettingsFeature::Index
@@ -193,6 +200,7 @@ fn feature_suffix(feature: SettingsFeature) -> Option<Msg> {
         | SettingsFeature::Programs
         | SettingsFeature::Keys
         | SettingsFeature::Servers
+        | SettingsFeature::Columns
         | SettingsFeature::System
         | SettingsFeature::Updates
         | SettingsFeature::Index
@@ -211,6 +219,7 @@ fn feature_beta_mark(feature: SettingsFeature) -> Option<Msg> {
         | SettingsFeature::Programs
         | SettingsFeature::Keys
         | SettingsFeature::Servers
+        | SettingsFeature::Columns
         | SettingsFeature::System
         | SettingsFeature::Updates
         | SettingsFeature::Index
@@ -228,6 +237,7 @@ fn feature_intro(feature: SettingsFeature) -> Msg {
         SettingsFeature::Programs => Msg::SettingsFeatureProgramsIntro,
         SettingsFeature::Keys => Msg::SettingsFeatureKeysIntro,
         SettingsFeature::Servers => Msg::SettingsFeatureServersIntro,
+        SettingsFeature::Columns => Msg::SettingsFeatureColumnsIntro,
         SettingsFeature::System => Msg::SettingsFeatureSystemIntro,
         SettingsFeature::Updates => Msg::SettingsFeatureUpdatesIntro,
         SettingsFeature::Index => Msg::SettingsFeatureIndexIntro,
@@ -248,6 +258,7 @@ fn feature_config_place(feature: SettingsFeature) -> Option<&'static str> {
         SettingsFeature::Programs => Some(OPEN_SECTION),
         SettingsFeature::Keys => Some(KEYS_SECTION),
         SettingsFeature::Servers => Some(SERVERS_SECTION),
+        SettingsFeature::Columns => Some(COLUMNS_SECTION),
         SettingsFeature::System => Some(SYSTEM_SECTION),
         SettingsFeature::Index | SettingsFeature::Hermes => Some(FILING_SECTION),
         SettingsFeature::Rules
@@ -276,7 +287,31 @@ fn mono<'a>(content: String, color: Color) -> Element<'a, Message> {
         .into()
 }
 
-use ncrs_ui_kit::setting_rows::{simple_row, status_text, with_button};
+use ncrs_ui_kit::setting_rows::{
+    button_row, pressable, simple_row, status_text, with_button, RowButton, RowKey,
+};
+
+/// Left and Right step through `messages`, one per value, and stop at the ends.
+fn choice_key(messages: Vec<Message>, selected: usize) -> Option<RowKey<Message>> {
+    let last = messages.len().saturating_sub(1);
+    let at = |index: usize| messages.get(index.min(last)).cloned();
+    Some(RowKey::Choice {
+        previous: at(selected.saturating_sub(1))?,
+        next: at(selected + 1)?,
+    })
+}
+
+/// The keyboard on a dropdown that offers `items`.
+fn dropdown_key(
+    items: &[ncrs_ui_kit::hermes_kit::MenuItem<Message>],
+    selected: usize,
+) -> RowKey<Message> {
+    RowKey::Dropdown {
+        labels: items.iter().map(|item| item.label.clone()).collect(),
+        choices: items.iter().map(|item| item.message.clone()).collect(),
+        selected,
+    }
+}
 
 fn switch<'a>(on: bool, setting: SettingChange, view: &SettingsView<'_>) -> Element<'a, Message> {
     ncrs_ui_kit::setting_rows::switch(on, change(setting), view.lang, view.palette)
@@ -289,6 +324,7 @@ fn groups_of<'a>(feature: SettingsFeature, view: &SettingsView<'a>) -> Vec<Group
         SettingsFeature::Programs => programs_groups(view),
         SettingsFeature::Keys => keys_groups(view),
         SettingsFeature::Servers => servers_groups(view),
+        SettingsFeature::Columns => columns_groups(view),
         SettingsFeature::System => system_groups(view),
         SettingsFeature::Index => index_groups(view),
         SettingsFeature::Hermes => hermes_groups(view),
@@ -441,6 +477,7 @@ pub fn view_with<'a, M: 'a>(
             .margin(SCROLLBAR_MARGIN)
             .spacing(0.0),
     ))
+    .id(PAGE_SCROLL_ID)
     .width(Length::Fill)
     .height(Length::Fill);
     row![
@@ -450,6 +487,14 @@ pub fn view_with<'a, M: 'a>(
     ]
     .height(Length::Fill)
     .into()
+}
+
+const PAGE_SCROLL_ID: &str = "settings-page-scroll";
+
+/// Scrolls the page just far enough that the row the keyboard is on shows
+/// whole.
+pub fn scroll_to_row<T: Send + 'static>() -> iced::Task<T> {
+    ncrs_ui_kit::row_scroll::focused_row_into_view(PAGE_SCROLL_ID)
 }
 
 /// What the status bar shows while the tab is open.

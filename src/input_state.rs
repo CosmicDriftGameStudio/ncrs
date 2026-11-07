@@ -7,9 +7,10 @@ use iced::{event, mouse, window, Point};
 use crate::messages::PanelMessage;
 use crate::messages::{
     CommandLineMessage, CommandPaletteMessage, HermesChatMessage, KeyBindingsMessage, Message,
-    QuickOpenMessage, SearchMessage, SettingsMessage, ThemeFetchMessage,
+    PermissionsMessage, QuickOpenMessage, SearchMessage, SettingsMessage, ThemeFetchMessage,
 };
 use crate::transfer_dialog::TransferDialogMessage;
+use ncrs_settings::focus::FocusKey;
 
 /// A tap of Option (Alt) on its own: pressed and released with no other key,
 /// modifier or mouse button in between.
@@ -81,6 +82,8 @@ pub struct InputState {
     pub theme_fetch: bool,
     /// The copy or move confirmation is up: its target field takes Escape.
     pub transfer_dialog: bool,
+    /// The permissions dialog is up: its octal field takes Escape.
+    pub permissions_dialog: bool,
     /// The settings tab is up with nothing on top: Escape closes it, even from
     /// its search field, and an Option tap opens no menu.
     pub settings: bool,
@@ -133,7 +136,14 @@ impl InputState {
                 self.transfer_dialog,
                 Message::TransferDialog(TransferDialogMessage::Cancel),
             ),
-            (self.settings, Message::Settings(SettingsMessage::Close)),
+            (
+                self.permissions_dialog,
+                Message::Permissions(PermissionsMessage::Cancel),
+            ),
+            (
+                self.settings,
+                Message::Settings(SettingsMessage::FocusKey(FocusKey::Escape)),
+            ),
         ]
         .into_iter()
         .find_map(|(open, close)| open.then_some(close))
@@ -195,6 +205,7 @@ impl InputState {
                     && !self.key_bindings
                     && !self.theme_fetch
                     && !self.transfer_dialog
+                    && !self.permissions_dialog
                     && !self.settings;
                 if self.monitor {
                     return (nothing_else_up && self.monitor_menu)

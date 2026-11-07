@@ -18,6 +18,7 @@ fn app_with(names: &[&str]) -> (App, Arc<Mutex<Instant>>) {
             size: 0,
             modified: None,
             folder_size: None,
+            details: Default::default(),
         })
         .collect();
     (app, now)

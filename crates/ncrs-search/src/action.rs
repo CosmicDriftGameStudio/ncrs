@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use ncrs_core::PanelSide;
 use ncrs_index::{QuerySpec, SavedQueryId};
 
@@ -10,6 +12,9 @@ pub enum Action {
     /// Shows the file under the cursor in the other panel.
     ActivateCursor,
     OpenContextMenu,
+    /// The system folder dialog, starting in this folder. Its answer comes
+    /// back as `SearchMessage::FolderPicked`.
+    PickFolder(PathBuf),
     /// The Reports page after the search handed its criteria over: with the
     /// criteria of a new report, or for the report the search changed.
     HandToReports {

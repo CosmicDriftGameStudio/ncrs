@@ -11,7 +11,7 @@ use tokio::time::{timeout, timeout_at};
 use super::session::{Pool, RemoteError};
 use super::{is_deceptive, RemotePath};
 use crate::reader::Listing;
-use crate::{sort_entries, FileEntry, ReadError, SortKey};
+use crate::{sort_entries, EntryDetails, FileEntry, ReadError, SortKey};
 
 /// How many links in one folder are followed to learn whether they lead to a
 /// folder. Each costs a request, and a folder of thousands of links must still
@@ -121,6 +121,10 @@ fn entry_of(
             .mtime
             .map(|secs| UNIX_EPOCH + Duration::from_secs(u64::from(secs))),
         folder_size: None,
+        details: EntryDetails {
+            mode: shown.permissions.map(|bits| bits & 0o7777),
+            ..EntryDetails::default()
+        },
     }
 }
 

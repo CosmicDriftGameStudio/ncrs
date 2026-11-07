@@ -10,7 +10,7 @@ use ncrs_config::palette::Palette;
 use ncrs_i18n::{Language, Msg};
 use ncrs_ui_kit::format;
 use ncrs_ui_kit::kit::{self, Tone};
-use ncrs_ui_kit::setting_rows::{Group, SettingRow};
+use ncrs_ui_kit::setting_rows::{Group, RowButton, SettingRow};
 
 use crate::filing_status::FilingStatus;
 use crate::message::{FilingStatusMessage, Message};
@@ -34,26 +34,24 @@ pub fn groups<'a>(
     let mut rows: Vec<SettingRow<'a, Message>> = status
         .errors_newest_first()
         .map(|error| {
-            SettingRow::listed(
+            SettingRow::listed_buttons(
                 file_label(&error.file),
                 Some(reason_of(&error.file, &error.message)),
                 Some(age_label(status, error.at, lang)),
                 vec![
-                    kit::button(
+                    RowButton::new(
                         lang.text(Msg::FilingStatusShowFile),
                         Some(send(FilingStatusMessage::ErrorActivated(
                             error.file.clone(),
                         ))),
                         Tone::Secondary,
-                        palette,
                     ),
-                    kit::button(
+                    RowButton::new(
                         lang.text(Msg::FilingStatusProcessAgain),
                         Some(send(FilingStatusMessage::ProcessOneAgain(
                             error.file.clone(),
                         ))),
                         Tone::Secondary,
-                        palette,
                     ),
                 ],
                 palette,
@@ -67,15 +65,15 @@ pub fn groups<'a>(
             Vec::new(),
         ));
     } else if rows.len() >= MIN_ROWS_FOR_ALL_AT_ONCE {
-        rows.push(SettingRow::adding(
+        rows.push(SettingRow::adding_buttons(
             None,
             None,
-            vec![kit::button(
+            vec![RowButton::new(
                 lang.text(Msg::FilingStatusProcessAllAgain),
                 Some(send(FilingStatusMessage::ProcessAllAgain)),
                 Tone::Secondary,
-                palette,
             )],
+            palette,
         ));
     }
     vec![Group {

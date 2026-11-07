@@ -247,6 +247,7 @@ fn entry_at(path: PathBuf) -> FileEntry {
         size: 1,
         modified: None,
         folder_size: None,
+        details: Default::default(),
     }
 }
 
@@ -341,4 +342,33 @@ fn a_refused_clipboard_shows_the_reason() {
         .app
         .status_error()
         .is_some_and(|text| text.contains("no display")));
+}
+
+#[tokio::test]
+async fn paste_with_the_command_line_focused_creates_no_file_and_the_menu_leaves_the_key_to_the_field(
+) {
+    let mut case = pasting();
+    case.app.read_clipboard = || Task::done(pasted_text());
+    drop(
+        case.app
+            .update(Message::CommandLine(CommandLineMessage::Focus)),
+    );
+
+    assert!(!case.app.menu_state().availability.enables(KeyAction::Paste));
+    deliver(&mut case.app, Message::Paste).await;
+
+    assert!(case.app.ops.prompt.is_none());
+    assert!(case.app.ops.pending_paste.is_none());
+    assert!(std::fs::read_dir(&case.target).unwrap().next().is_none());
+}
+
+#[tokio::test]
+async fn paste_with_the_panel_focused_still_pastes_the_content_and_the_menu_enables_it() {
+    let mut case = pasting();
+    case.app.read_clipboard = || Task::done(pasted_text());
+
+    assert!(case.app.menu_state().availability.enables(KeyAction::Paste));
+    deliver(&mut case.app, Message::Paste).await;
+
+    assert!(case.app.ops.prompt.is_some());
 }

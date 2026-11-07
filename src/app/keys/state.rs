@@ -25,12 +25,13 @@ impl App {
             .is_some_and(|shortcuts| !shortcuts.is_recording());
         input.theme_fetch = self.settings.theme_fetch.is_some();
         input.transfer_dialog = self.ops.transfer_dialog.is_some();
-        input.settings = self.settings.page.is_some() && !self.blocking_overlay_is_open();
-        input.monitor = self.monitor.is_open();
-        input.monitor_filter = self.monitor.is_open()
+        input.permissions_dialog = self.ops.permissions_dialog.is_some();
+        input.settings = self.settings_shown() && !self.blocking_overlay_is_open();
+        input.monitor = self.monitor_shown();
+        input.monitor_filter = self.monitor_shown()
             && self.monitor.filter_has_focus()
             && !self.blocking_overlay_is_open();
-        input.monitor_menu = self.monitor.is_open()
+        input.monitor_menu = self.monitor_shown()
             && !self.monitor.filter_has_focus()
             && !self.blocking_overlay_is_open();
         drop(input);
@@ -85,13 +86,14 @@ impl App {
         let ai_model = self.settings.ai_card_is_shown();
         let grant_dialog = self.grant_dialog;
         let connect_dialog = self.remote_ui.dialog.is_some();
-        let settings = self.settings.page.is_some();
-        let monitor = self.monitor.is_open();
+        let settings = self.settings_shown();
+        let monitor = self.monitor_shown();
         let monitor_filter = monitor && self.monitor.filter_has_focus();
         let monitor_dialog = monitor && self.monitor.dialog_is_open();
         let monitor_menu = monitor && self.monitor.menu_is_open();
         let transfer_dialog = self.ops.transfer_dialog.is_some();
         let transfer_progress = self.ops.progress_mask_is_open();
+        let permissions_dialog = self.ops.permissions_dialog.is_some();
         let start_over_dialog = self.start_over_dialog;
         let delete_dialog = match &self.ops.delete_dialog {
             None => DeleteKeys::Closed,
@@ -137,6 +139,7 @@ impl App {
                 conflict_open: self.ops.conflict_is_open(),
                 transfer_dialog,
                 transfer_progress,
+                permissions_dialog,
                 ..PromptKeyState::default()
             },
             Some(prompt) => PromptKeyState {
@@ -175,6 +178,7 @@ impl App {
                 conflict_open: self.ops.conflict_is_open(),
                 transfer_dialog,
                 transfer_progress,
+                permissions_dialog,
                 busy: prompt.busy(),
                 typed: prompt.name().into(),
             },

@@ -34,8 +34,12 @@ use crate::keymap::{KeyAction, Keymap};
 use crate::palette::{
     ColorRole, Palette, PaletteFromSection as _, ThemePreset, PRESET_KEY, VSCODE_KEY,
 };
+use crate::panel_columns::{
+    columns_from_keys, Appearance, DateFormat, FontChoice, FontSizeChoice, PanelColumns, SizeFormat,
+};
 use crate::system_monitor::SystemSettings;
 use crate::vscode_theme::VscodeTheme;
+use ncrs_core::Column;
 use ncrs_fs::OpenKind;
 use ncrs_i18n::Language;
 
@@ -114,6 +118,18 @@ pub struct Config {
     pub file_list_tags: FileListTags,
     #[serde(default)]
     pub system: SystemSettings,
+    /// The `[columns]` section as written; `load` checks it into `columns`.
+    #[serde(default, rename = "columns")]
+    pub columns_section: ColumnsSection,
+    /// The columns the file panels show and how they write dates and sizes.
+    #[serde(skip)]
+    pub columns: PanelColumns,
+    /// The `[appearance]` section as written; `load` checks it into `appearance`.
+    #[serde(default, rename = "appearance")]
+    pub appearance_section: AppearanceSection,
+    /// The font of the window.
+    #[serde(skip)]
+    pub appearance: Appearance,
     /// The `[[kinds]]` entries as written; `load` checks them into `kinds`.
     #[serde(default, rename = "kinds")]
     pub kind_sections: Vec<KindSection>,
@@ -183,16 +199,17 @@ pub use self::paths::{
 use self::resolving::*;
 pub use self::resolving::{check_ai_endpoint, AiEndpointProblem};
 pub use self::sections::{
-    AiProviderName, AiSection, AiSetting, ContrastWarning, FileListTagsSection, Filing,
-    FilingLocation, FilingSection, KeyEntry, KeySection, KindSection, KindWarning, LanguageWarning,
-    LoadValue, LocationEntry, LocationModeName, LocationTransfer, ModulesSection, ServerEntry,
-    ServerSection, ThemeEntry, ThemeSection, VscodeWarning,
+    AiProviderName, AiSection, AiSetting, AppearanceSection, ColumnsSection, ContrastWarning,
+    FileListTagsSection, Filing, FilingLocation, FilingSection, KeyEntry, KeySection, KindSection,
+    KindWarning, LanguageWarning, LoadValue, LocationEntry, LocationModeName, LocationTransfer,
+    ModulesSection, ServerEntry, ServerSection, ThemeEntry, ThemeSection, VscodeWarning,
 };
 pub use self::setting_writes::{
-    remove_vscode_theme, write_ai_enabled, write_ai_provider, write_check_for_updates, write_color,
-    write_default_pattern, write_file_list_tags, write_filing_enabled, write_filing_load,
-    write_keys, write_language, write_own_details, write_program, write_system_settings,
-    write_theme_preset, AiProviderChoice, KeyChange, OwnDetail,
+    remove_vscode_theme, write_ai_enabled, write_ai_provider, write_appearance,
+    write_check_for_updates, write_color, write_columns, write_default_pattern,
+    write_file_list_tags, write_filing_enabled, write_filing_load, write_keys, write_language,
+    write_own_details, write_program, write_system_settings, write_theme_preset, AiProviderChoice,
+    KeyChange, OwnDetail,
 };
 pub use self::write_support::one_config_writer;
 use self::write_support::*;

@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use crate::context_menu::{ContextAction, HermesAction};
 use iced::Point;
-use ncrs_core::{PanelSide, TransferKind};
+use ncrs_core::{Column, PanelSide, TransferKind};
 use ncrs_fs::remote::{RemoteUrl, ServerId};
 
 /// What a panel asks the app for, because it reaches outside the panels. The
@@ -54,7 +54,9 @@ pub enum Action {
     /// Enter on the cursor row, through the app's own message so that the
     /// refusals of archives and hit lists apply.
     OpenSelected,
-    CloseSettings,
+    /// A click on a panel: the panels are what the window shows again, while
+    /// the pages stay open as tabs.
+    ShowPanels,
     /// Shows `text` in the status bar for a while.
     ShowNotice(String),
     /// Shows `text` as the error of the status bar.
@@ -67,6 +69,23 @@ pub enum Action {
     ReleaseFocus,
     /// The connect dialog for an address typed without a user.
     OpenConnectDialog(RemoteUrl),
+    /// The shown columns of `side` changed (ticked, unticked, moved). The app
+    /// stores them; with the same columns in both panels they hold for both.
+    ColumnsChanged {
+        side: PanelSide,
+        columns: Vec<Column>,
+    },
+    /// A column was dragged to `width` pixels.
+    ColumnWidth {
+        column: Column,
+        width: u16,
+    },
+    /// The "same columns in both panels" entry of the header menu.
+    SameColumnsInBoth(bool),
+    /// Back to the default columns and widths.
+    RestoreColumnDefaults,
+    /// Shows the Columns page of the settings.
+    OpenColumnSettings,
     /// Enter in the name input: rename `from` to `new_name` in its folder.
     SubmitRename {
         side: PanelSide,

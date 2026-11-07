@@ -1,12 +1,12 @@
 //! The Updates page of the settings tab: the installed version, the switch of
 //! the check, and what to do about a newer release.
 
-use iced::widget::{column, row};
+use iced::widget::column;
 use iced::Element;
 use ncrs_i18n::{fill_template, Language, Msg};
 use ncrs_ui_kit::kit::{self, Tone};
 use ncrs_ui_kit::palette::Palette;
-use ncrs_ui_kit::setting_rows::{self, Group, SettingRow};
+use ncrs_ui_kit::setting_rows::{self, Group, RowButton, RowKey, SettingRow};
 use ncrs_ui_kit::theme::spacing;
 
 use crate::channel::Channel;
@@ -42,22 +42,30 @@ fn news_rows<'a>(
     match state.channel() {
         // A development build with the check switched on gets the same news
         // as the status bar dot, so the two never disagree.
-        Channel::Direct | Channel::Development => vec![SettingRow::text(
-            available,
-            None,
-            row![
-                button(Msg::UpdatesReleaseNotes, Message::OpenReleaseNotes),
-                button(Msg::UpdatesSkipVersion, Message::SkipThisVersion),
-            ]
-            .spacing(spacing::S)
-            .into(),
-        )],
+        Channel::Direct | Channel::Development => {
+            let buttons = [
+                RowButton::new(
+                    lang.text(Msg::UpdatesReleaseNotes),
+                    Some(Message::OpenReleaseNotes),
+                    Tone::Secondary,
+                ),
+                RowButton::new(
+                    lang.text(Msg::UpdatesSkipVersion),
+                    Some(Message::SkipThisVersion),
+                    Tone::Secondary,
+                ),
+            ];
+            let build = |marked| setting_rows::button_row(None, &buttons, marked, palette);
+            vec![SettingRow::text(available, None, build(None))
+                .with_buttons(setting_rows::pressable(&buttons), build)]
+        }
         Channel::PackageManager(manager) => vec![
             SettingRow::text(
                 available,
                 None,
                 button(Msg::UpdatesSkipVersion, Message::SkipThisVersion),
-            ),
+            )
+            .keyed(RowKey::Press(Message::SkipThisVersion)),
             SettingRow::text(
                 lang.text(Msg::UpdatesRunCommand).to_owned(),
                 None,
@@ -75,12 +83,12 @@ fn news_rows<'a>(
 }
 
 /// The page content under the heading the settings tab draws.
-pub fn view<'a>(state: &State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
+fn groups<'a>(state: &State, ctx: &ViewCtx<'a>) -> Vec<Group<'a, Message>> {
     let ViewCtx {
         lang,
         palette,
         enabled,
-    } = ctx;
+    } = *ctx;
     let mut rows = vec![
         setting_rows::simple_row(
             Msg::UpdatesInstalledVersion,
@@ -93,23 +101,42 @@ pub fn view<'a>(state: &State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
             Some(Msg::SettingsRowUpdateCheckNote),
             setting_rows::switch(enabled, Message::SetEnabled(!enabled), lang, palette),
             lang,
-        ),
+        )
+        .keyed(RowKey::Press(Message::SetEnabled(!enabled))),
     ];
     // What a check found earlier stays in updates.toml; with the check off it
     // is not news any more.
     if enabled {
         rows.extend(news_rows(state, lang, palette));
     }
-    let sections = setting_rows::sections(
-        vec![Group {
-            intro: None,
-            title: String::new(),
-            rows,
-        }],
-        |_| true,
-        None,
-        palette,
-    );
+    vec![Group {
+        intro: None,
+        title: String::new(),
+        rows,
+    }]
+}
+
+/// The rows of the page that answer the keyboard.
+pub fn keys(state: &State, ctx: &ViewCtx<'_>) -> Vec<RowKey<Message>> {
+    setting_rows::keyed_rows(groups(state, ctx), |_| true)
+}
+
+/// The page for the messages `wrap` makes of its own; a click on a row sends
+/// what `on_focus` makes of the row's number.
+pub fn view<'a, M: Clone + 'a>(
+    state: &State,
+    ctx: ViewCtx<'a>,
+    focus: Option<setting_rows::RowFocus>,
+    wrap: impl Fn(Message) -> M + Copy + 'a,
+    on_focus: impl Fn(usize, Option<M>) -> Option<M> + Copy + 'a,
+) -> Element<'a, M> {
+    let groups = groups(state, &ctx)
+        .into_iter()
+        .map(|group| group.map(wrap))
+        .collect();
+    let sections =
+        setting_rows::sections_with_focus(groups, |_| true, None, focus, on_focus, ctx.palette);
+    let (lang, palette, enabled) = (ctx.lang, ctx.palette, ctx.enabled);
     let mut page = column(sections).spacing(spacing::XS);
     if enabled && state.newer_release().is_none() {
         page = page.push(kit::dim(lang.text(Msg::UpdatesUpToDate), palette));

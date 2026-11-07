@@ -250,6 +250,19 @@ pub fn default_bindings() -> Vec<(KeyAction, Binding)> {
             Binding::with_modifiers(Character("c".into()), Modifiers::CTRL),
         ));
     }
+    // Option+Cmd+R on a Mac; Ctrl+Alt+R elsewhere, where bare Alt+R is already
+    // the regex toggle of the search.
+    bindings.push((
+        A::Permissions,
+        Binding::with_modifiers(
+            Character("r".into()),
+            if cfg!(target_os = "macos") {
+                Modifiers::ALT | Modifiers::COMMAND
+            } else {
+                Modifiers::CTRL | Modifiers::ALT
+            },
+        ),
+    ));
     // Safari's and Finder's back and forward; elsewhere Alt+arrows are enough.
     if cfg!(target_os = "macos") {
         bindings.push((

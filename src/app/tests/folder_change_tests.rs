@@ -15,6 +15,7 @@ fn entries_in(folder: &Path, names: &[&str]) -> Vec<FileEntry> {
             size: 1,
             modified: None,
             folder_size: None,
+            details: Default::default(),
         })
         .collect()
 }

@@ -15,4 +15,4 @@ scripts/icon.sh
 The panels and rows sit on a 32-unit grid, one pixel of the 32 px icon, so the
 small sizes stay sharp; keep new shapes on it.
 
-`icons/` holds the Lucide icons the main window draws, unchanged; their license (ISC, with the MIT part for the Feather icons they derive from) is `icons/LICENSE`.
+`icons/` holds the Lucide icons the main window draws, unchanged; their license (ISC, with the MIT part for the Feather icons they derive from) is `icons/LICENSE`. The file and folder symbols of the panels (`crates/ncrs-ui-kit/src/file_icon.rs`) are Lucide shapes written inline, under the same license.

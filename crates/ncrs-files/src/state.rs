@@ -10,10 +10,13 @@ use ncrs_core::PanelSide;
 
 use crate::context_menu::ContextMenu;
 use crate::folder_size::{FolderSizeRun, FolderSizes};
+use crate::header_drag::HeaderPress;
+use crate::header_menu::HeaderMenu;
 use crate::panel::PanelState;
 use crate::panel_drag::{self, PanelDrag};
 use crate::reload::PendingReload;
 use crate::volumes::VolumeMenu;
+use ncrs_ui_kit::column_header::HeaderDrag;
 
 /// How long a typed character still belongs to the same prefix.
 const TYPE_AHEAD_WINDOW: Duration = Duration::from_secs(1);
@@ -65,6 +68,10 @@ pub struct Panels {
     pub context_menu: Option<ContextMenu>,
     /// The drive menu, while it is up.
     pub volume_menu: Option<VolumeMenu>,
+    /// A column title is held with the left button.
+    pub header_press: Option<HeaderPress>,
+    /// The menu of columns, while it is up.
+    pub header_menu: Option<HeaderMenu>,
     /// The path as typed while the status bar's path field is being edited.
     pub path_field: Option<String>,
     /// Id of the latest path check; an older answer is ignored.
@@ -89,11 +96,20 @@ impl Panels {
             folder_size_runs_started: 0,
             context_menu: None,
             volume_menu: None,
+            header_press: None,
+            header_menu: None,
             path_field: None,
             path_check_id: 0,
             pending_reload: None,
             favourites: Vec::new(),
         }
+    }
+
+    /// What the header of `side` draws of a title being dragged; `None` when
+    /// the held title is in another panel or has not been moved yet.
+    pub fn header_drag_view(&self, side: PanelSide) -> Option<HeaderDrag> {
+        let held = self.header_press.filter(|press| press.side == side)?;
+        held.view()
     }
 
     pub fn panel(&self, side: PanelSide) -> &PanelState {
