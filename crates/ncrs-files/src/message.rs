@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use iced::Point;
-use ncrs_core::{FileEntry, PanelSide};
+use ncrs_core::{Column, FileEntry, PanelSide};
 use ncrs_fs::{ReadError, SortColumn, SortKey};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -99,6 +99,28 @@ pub enum PanelMessage {
     },
     /// Ctrl+F3, Ctrl+F5 or Ctrl+F6: sort the active panel.
     SortActive(SortColumn),
+
+    // --- The column titles ---
+    /// The left button went down on a title: a click sorts, a drag moves the
+    /// column. The pointer events that follow are `PanelDragMoved` and
+    /// `PanelDragReleased`.
+    HeaderPressed {
+        side: PanelSide,
+        column: Column,
+    },
+    /// The left button went down at the right edge of a title: a drag resizes.
+    HeaderResizePressed {
+        side: PanelSide,
+        column: Column,
+    },
+    /// Right click on the header of a panel: opens the menu of columns.
+    HeaderContext(PanelSide),
+    /// A column ticked or unticked in the header menu.
+    HeaderMenuToggleColumn(Column),
+    HeaderMenuSameInBoth,
+    HeaderMenuConfigure,
+    HeaderMenuRestore,
+    HeaderMenuClose,
 
     // --- Renaming in place ---
     /// Shift+F6: the name of the cursor entry becomes an input.

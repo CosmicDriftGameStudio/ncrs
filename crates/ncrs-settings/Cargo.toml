@@ -26,6 +26,7 @@ serde_spanned = { version = "1.1", features = ["serde"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
 ncrs-ai = { path = "../ncrs-ai", version = "0.0.0" }
 ncrs-config = { path = "../ncrs-config", version = "0.0.0" }
+ncrs-core = { path = "../ncrs-core", version = "0.0.0" }
 ncrs-fs = { path = "../ncrs-fs", version = "0.0.0" }
 ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
 ncrs-intake = { path = "../ncrs-intake", version = "0.0.0" }

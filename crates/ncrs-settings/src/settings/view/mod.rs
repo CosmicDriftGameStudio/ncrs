@@ -1,9 +1,13 @@
+mod columns_page;
+mod font_rows;
 mod groups;
 mod hermes_page;
 mod index_page;
 mod page;
 mod system_page;
 
+use columns_page::columns_groups;
+use font_rows::font_rows;
 pub use groups::server_dialog_body;
 use groups::*;
 use hermes_page::hermes_groups;
@@ -295,7 +299,7 @@ fn groups_of<'a>(feature: SettingsFeature, view: &SettingsView<'a>) -> Vec<Group
         SettingsFeature::Programs => programs_groups(view),
         SettingsFeature::Keys => keys_groups(view),
         SettingsFeature::Servers => servers_groups(view),
-        SettingsFeature::Columns => Vec::new(),
+        SettingsFeature::Columns => columns_groups(view),
         SettingsFeature::System => system_groups(view),
         SettingsFeature::Index => index_groups(view),
         SettingsFeature::Hermes => hermes_groups(view),

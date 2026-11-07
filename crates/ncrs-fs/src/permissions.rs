@@ -166,7 +166,75 @@ fn walk(
 }
 
 /// `Ok(true)` when something was written, `Ok(false)` when the entry already
-/// had the wanted permissions or is a link.
+/// had the wanted permissions or is a link or another kind of file.
+///
+/// The entry is opened without following links and changed through that
+/// handle: a path-based check followed by a path-based chmod would let someone
+/// who can write in the folder swap a file for a link in between.
+#[cfg(unix)]
+fn apply(path: &Path, edit: &PermissionEdit) -> io::Result<bool> {
+    use std::os::unix::fs::OpenOptionsExt as _;
+
+    // O_NONBLOCK: opening a pipe must not wait for a writer. A file that cannot
+    // be opened (no read right) is reported, not changed by path: not changing
+    // is safe, changing by path is not.
+    let opened = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK)
+        .open(path);
+    let handle = match opened {
+        Ok(handle) => handle,
+        Err(err) if err.raw_os_error() == Some(libc::ELOOP) => return Ok(false),
+        Err(err) if err.raw_os_error() == Some(libc::EACCES) => {
+            return apply_without_opening(path, edit, err)
+        }
+        Err(err) => return Err(err),
+    };
+    let metadata = handle.metadata()?;
+    if !metadata.is_file() && !metadata.is_dir() {
+        return Ok(false);
+    }
+    let mut permissions = metadata.permissions();
+    if !edited(&mut permissions, edit) {
+        return Ok(false);
+    }
+    handle.set_permissions(permissions)?;
+    Ok(true)
+}
+
+/// For an entry the user owns but cannot open (mode 000): making it readable
+/// again is the typical chmod. `fchmodat` with `NoFollowSymlink` does not follow
+/// the last path part either, so it is as safe as the `O_NOFOLLOW` open. Where
+/// the system cannot do that (`EOPNOTSUPP`), the open error is the result.
+#[cfg(unix)]
+fn apply_without_opening(
+    path: &Path,
+    edit: &PermissionEdit,
+    open_error: io::Error,
+) -> io::Result<bool> {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    use nix::fcntl::AT_FDCWD;
+    use nix::sys::stat::{fchmodat, FchmodatFlags, Mode};
+
+    let metadata = fs::symlink_metadata(path)?;
+    if !metadata.is_file() && !metadata.is_dir() {
+        return Ok(false);
+    }
+    let mut permissions = metadata.permissions();
+    if !edited(&mut permissions, edit) {
+        return Ok(false);
+    }
+    // mode_t is u16 on macOS and u32 on Linux; the mask keeps the cast lossless.
+    let mode = Mode::from_bits_truncate((permissions.mode() & 0o7777) as libc::mode_t);
+    match fchmodat(AT_FDCWD, path, mode, FchmodatFlags::NoFollowSymlink) {
+        Ok(()) => Ok(true),
+        Err(nix::errno::Errno::EOPNOTSUPP) => Err(open_error),
+        Err(errno) => Err(io::Error::from(errno)),
+    }
+}
+
+#[cfg(not(unix))]
 fn apply(path: &Path, edit: &PermissionEdit) -> io::Result<bool> {
     let metadata = fs::symlink_metadata(path)?;
     if metadata.file_type().is_symlink() {
@@ -288,7 +356,10 @@ mod tests {
             edit: edit(0o044, 0),
             recurse: Some((files, folders)),
         };
-        let outcome = run(&[top.clone()], plan(ForFiles::WithoutExecute, ForFolders::AsAbove));
+        let outcome = run(
+            &[top.clone()],
+            plan(ForFiles::WithoutExecute, ForFolders::AsAbove),
+        );
         assert_eq!(mode(&top), 0o744);
         assert_eq!(mode(&inner), 0o744);
         assert_eq!(mode(&file), 0o644);
@@ -379,5 +450,36 @@ mod tests {
         );
         assert!(outcome.cancelled);
         assert_eq!(mode(&a), 0o600);
+    }
+}
+
+#[cfg(all(test, unix))]
+mod unreadable_tests {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    use super::*;
+
+    #[test]
+    fn a_file_with_mode_000_can_be_made_readable_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("locked");
+        fs::write(&path, "x").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
+        let (sender, _receiver) = mpsc::unbounded_channel();
+        let outcome = change_permissions(
+            &[path.clone()],
+            &PermissionPlan {
+                edit: PermissionEdit {
+                    set: 0o004,
+                    clear: 0,
+                    read_only: None,
+                },
+                recurse: None,
+            },
+            &sender,
+        );
+        let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o7777;
+        assert!(outcome.failures.is_empty(), "{:?}", outcome.failures);
+        assert_eq!(mode, 0o004);
     }
 }

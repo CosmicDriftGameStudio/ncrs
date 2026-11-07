@@ -56,7 +56,10 @@ pub fn look_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
         Group {
             intro: None,
             title: String::new(),
-            rows: vec![preset_row, vscode_row(view), open_vsx_row],
+            rows: [preset_row, vscode_row(view), open_vsx_row]
+                .into_iter()
+                .chain(font_rows(view))
+                .collect(),
         },
         Group {
             intro: None,

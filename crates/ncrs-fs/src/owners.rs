@@ -15,7 +15,8 @@ pub(crate) fn fill_owners(entries: &mut [FileEntry]) {
     let mut users: HashMap<u32, String> = HashMap::new();
     let mut groups: HashMap<u32, String> = HashMap::new();
     for entry in entries.iter_mut().filter(|entry| !entry.is_parent) {
-        let Ok(metadata) = std::fs::metadata(&entry.path).or_else(|_| entry.path.symlink_metadata())
+        let Ok(metadata) =
+            std::fs::metadata(&entry.path).or_else(|_| entry.path.symlink_metadata())
         else {
             continue;
         };

@@ -9,8 +9,8 @@ pub mod folder_watch;
 mod grants;
 mod open;
 mod open_programs;
-mod owners;
 mod ops;
+mod owners;
 pub mod permissions;
 mod reader;
 #[cfg(any(test, feature = "test-support"))]

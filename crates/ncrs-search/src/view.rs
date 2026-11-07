@@ -11,7 +11,7 @@ use iced::{alignment, Element, Length};
 use ncrs_core::{PanelSide, Selection};
 use ncrs_i18n::{fill_template, FuturamaName, Language, Msg};
 use ncrs_index::QueryHit;
-use ncrs_ui_kit::column_header::column_header;
+use ncrs_ui_kit::column_header::{plain_column_header, ColumnLayout};
 use ncrs_ui_kit::file_row::{hit_row, tag_star, HitRow, RowClick};
 use ncrs_ui_kit::format::{self, amount_text};
 use ncrs_ui_kit::hermes_kit::{self, ChipKind, MenuItem};
@@ -77,7 +77,7 @@ pub fn view<'a>(
 
     let framed = column![
         header(search, lang, palette, &toggle_for_press, &shortcuts),
-        column_header(lang, palette, None, false, |_| None),
+        plain_column_header(palette, ColumnLayout::standard(lang)),
         container(body).height(Length::Fill).width(Length::Fill),
     ];
     mouse_area(
@@ -618,6 +618,7 @@ fn result_row<'a>(
             mark,
             scope: &search.root,
             height,
+            lang,
             third_line,
             on_context: Some(SearchMessage::ContextAt(index)),
         },

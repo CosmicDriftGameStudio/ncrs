@@ -19,6 +19,8 @@ pub enum ContextAction {
     Copy,
     Move,
     Rename,
+    /// Not in the menu of a hit list or of the search results.
+    Permissions,
     NewFolder,
     CopyPath,
     CopyName,
@@ -37,7 +39,7 @@ pub enum ContextAction {
 
 impl ContextAction {
     #[cfg(any(test, feature = "test-support"))]
-    pub const ALL: [ContextAction; 17] = [
+    pub const ALL: [ContextAction; 18] = [
         ContextAction::Open,
         ContextAction::View,
         ContextAction::Edit,
@@ -45,6 +47,7 @@ impl ContextAction {
         ContextAction::Copy,
         ContextAction::Move,
         ContextAction::Rename,
+        ContextAction::Permissions,
         ContextAction::NewFolder,
         ContextAction::CopyPath,
         ContextAction::CopyName,
@@ -75,6 +78,7 @@ impl ContextAction {
             | ContextAction::OpenTerminal
             | ContextAction::Move
             | ContextAction::Rename
+            | ContextAction::Permissions
             | ContextAction::NewFolder
             | ContextAction::AddFavourite
             | ContextAction::RemoveFavourite
@@ -98,6 +102,7 @@ impl ContextAction {
             ContextAction::Edit
             | ContextAction::OpenTerminal
             | ContextAction::Move
+            | ContextAction::Permissions
             | ContextAction::NewFolder
             | ContextAction::ComputeFolderSizes
             | ContextAction::AddFavourite
@@ -116,6 +121,7 @@ impl ContextAction {
             ContextAction::Copy => Msg::ContextMenuCopy,
             ContextAction::Move => Msg::ContextMenuMove,
             ContextAction::Rename => Msg::ContextMenuRename,
+            ContextAction::Permissions => Msg::ActionPermissions,
             ContextAction::NewFolder => Msg::ContextMenuNewFolder,
             ContextAction::CopyPath => Msg::ContextMenuCopyPath,
             ContextAction::CopyName => Msg::ContextMenuCopyName,
@@ -141,6 +147,7 @@ pub const GROUPS: [&[ContextAction]; 5] = [
         ContextAction::Copy,
         ContextAction::Move,
         ContextAction::Rename,
+        ContextAction::Permissions,
         ContextAction::NewFolder,
     ],
     &[ContextAction::CopyPath, ContextAction::CopyName],

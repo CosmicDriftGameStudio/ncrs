@@ -1,12 +1,14 @@
-//! One row of a file list: the star, the name with its chips, size, date and,
+//! One row of a file list: the star, the cells of the shown columns and,
 //! in a panel, the Hermes cell. Also the rows of a hit list.
 use std::path::Path;
 
 use iced::widget::{button, column, container, mouse_area, row, text, tooltip, Row, Space};
 use iced::{alignment, Element, Font, Length};
-use ncrs_core::{FileEntry, Selection};
+use ncrs_core::{Column, FileEntry, Selection};
 use ncrs_i18n::{Language, Msg};
 
+use crate::column_header::{column_alignment, ColumnLayout};
+use crate::file_icon::{file_icon, icon_color, icon_kind, IconKind, SpecialFolder};
 use crate::format;
 use crate::hermes_state::{
     abbreviated, role_message, state_label, summary_items, FolderRole, FolderSummary,
@@ -14,8 +16,7 @@ use crate::hermes_state::{
 };
 use crate::kit::{self, Icon};
 use crate::layout::{
-    DATE_COLUMN_WIDTH, HERMES_CELL_GAP, HERMES_COLUMN_WIDTH, ROW_HEIGHT, SIZE_COLUMN_WIDTH,
-    TAG_COLUMN_WIDTH,
+    FILE_ICON_SIZE, HERMES_CELL_GAP, HERMES_COLUMN_WIDTH, ROW_HEIGHT, TAG_COLUMN_WIDTH,
 };
 use crate::palette::Palette;
 use crate::tags::ShownTags;
@@ -55,6 +56,7 @@ pub struct HitRow<'a, M> {
     pub mark: Selection,
     pub scope: &'a Path,
     pub height: f32,
+    pub lang: Language,
     pub third_line: Option<Element<'a, M>>,
     /// What a right click on the row sends.
     pub on_context: Option<M>,
@@ -78,6 +80,7 @@ pub fn hit_row<'a, M: Clone + 'a>(
         mark,
         scope,
         height,
+        lang,
         third_line,
         on_context,
     } = hit;
@@ -92,6 +95,8 @@ pub fn hit_row<'a, M: Clone + 'a>(
             hermes: None,
             hit_scope: Some((scope, height)),
             third_line,
+            columns: ColumnLayout::standard(lang),
+            special: None,
         },
     );
     match on_context {
@@ -111,9 +116,13 @@ pub enum RowClick {
     Open,
 }
 
-/// What only some rows have: the filing cell, and for a hit list the folder
+/// What the rows of a list differ in: the columns, the filing cell, the
+/// symbol of a folder with a place of its own, and for a hit list the folder
 /// the scope is measured from with the row height.
 pub struct RowExtras<'a, M> {
+    pub columns: ColumnLayout<'a>,
+    /// What the caller knows about this row's folder from its path.
+    pub special: Option<SpecialFolder>,
     pub hermes: Option<HermesCell<'a, M>>,
     pub hit_scope: Option<(&'a Path, f32)>,
     /// Under the folder of a hit.
@@ -140,10 +149,13 @@ pub fn file_row<'a, M: Clone + 'a>(
     extras: RowExtras<'a, M>,
 ) -> Element<'a, M> {
     let RowExtras {
+        columns,
+        special,
         hermes,
         hit_scope,
         third_line,
     } = extras;
+    let kind = icon_kind(entry, special);
     // The cursor row of the active panel is the one drawn as highlighted; a
     // tagged row is marked in its own column and tinted by the row style.
     let highlighted = mark.cursor && panel_active;
@@ -174,12 +186,18 @@ pub fn file_row<'a, M: Clone + 'a>(
     };
 
     let fitted = hermes.as_ref().map(|cell_of| {
-        HermesCell::<M>::fit_tags(cell_of.tags(), cell_of.panel_width(), name.chars().count())
+        HermesCell::<M>::fit_tags(
+            cell_of.tags(),
+            cell_of.panel_width(),
+            columns.fixed_width(),
+            name.chars().count(),
+        )
     });
     let shown_name = match hermes.as_ref() {
-        Some(cell_of) if cell_of.has_tags() => {
-            format::ellipsize_middle(&name, HermesCell::<M>::name_room(cell_of.panel_width()))
-        }
+        Some(cell_of) if cell_of.has_tags() => format::ellipsize_middle(
+            &name,
+            HermesCell::<M>::name_room(cell_of.panel_width(), columns.fixed_width()),
+        ),
         _ => name,
     };
     let name_cell = row![cell(shown_name)]
@@ -205,26 +223,43 @@ pub fn file_row<'a, M: Clone + 'a>(
         .into(),
         None => name_cell.into(),
     };
-    let name_element: Element<'a, M> = container(name_column).width(Length::Fill).clip(true).into();
-    let size_cell: Element<'a, M> = cell(format::entry_size(entry))
-        .width(SIZE_COLUMN_WIDTH)
-        .align_x(alignment::Horizontal::Right)
-        .into();
-    let date_cell: Element<'a, M> = cell(format::time(entry.modified))
-        .width(DATE_COLUMN_WIDTH)
-        .align_x(alignment::Horizontal::Right)
-        .into();
-    // The third line runs under size and date too, beside the tag column.
+    let mut name_element: Option<Element<'a, M>> =
+        Some(container(name_column).width(Length::Fill).clip(true).into());
+    // On the cursor row and on a tagged row the symbol has the color of the name.
+    let symbol_color = icon_color(
+        kind,
+        palette,
+        color,
+        highlighted || (mark.tagged && panel_active),
+    );
+    let cells: Vec<Element<'a, M>> = columns
+        .shown()
+        .map(|shown| match shown {
+            Column::Name => name_element.take().unwrap_or_else(|| Space::new().into()),
+            Column::Icon => container(file_icon(kind, symbol_color, FILE_ICON_SIZE))
+                .width(columns.width_of(Column::Icon))
+                .into(),
+            other => container(
+                cell(cell_text(entry, other, &columns, kind))
+                    .width(Length::Fill)
+                    .align_x(column_alignment(other)),
+            )
+            .width(columns.width_of(other))
+            .clip(true)
+            .into(),
+        })
+        .collect();
+    // The third line runs under the cells too, beside the tag column.
     let mut content = match third_line {
         Some(third) => row![
             prefix,
             column![
-                row![name_element, size_cell, date_cell].align_y(alignment::Vertical::Center),
+                Row::with_children(cells).align_y(alignment::Vertical::Center),
                 container(third).width(Length::Fill).clip(true),
             ]
             .width(Length::Fill),
         ],
-        None => row![prefix, name_element, size_cell, date_cell],
+        None => row![prefix].extend(cells),
     }
     .align_y(alignment::Vertical::Center);
     if let Some(status_cell) = hermes {
@@ -242,6 +277,38 @@ pub fn file_row<'a, M: Clone + 'a>(
         .width(Length::Fill)
         .style(theme::row(palette, mark.tagged, mark.cursor, panel_active))
         .into()
+}
+
+/// What a cell besides the name and the symbol says. Unknown is empty.
+fn cell_text(
+    entry: &FileEntry,
+    column: Column,
+    layout: &ColumnLayout<'_>,
+    kind: IconKind,
+) -> String {
+    let date = |time| format::time_in(time, layout.date_format, layout.lang);
+    // `..` is only a way up: it has a size marker and nothing else.
+    if entry.is_parent && column != Column::Size {
+        return String::new();
+    }
+    match column {
+        Column::Icon | Column::Name => String::new(),
+        Column::Size => format::entry_size_in(entry, layout.size_format),
+        Column::Modified => date(entry.modified),
+        Column::Created => date(entry.details.created),
+        Column::Accessed => date(entry.details.accessed),
+        Column::Type => layout.lang.text(kind.type_message()).to_owned(),
+        Column::Extension => format::extension(entry),
+        Column::Permissions => format::permissions(entry),
+        Column::Owner => entry.details.owner.clone().unwrap_or_default(),
+        Column::Group => entry.details.group.clone().unwrap_or_default(),
+        Column::LinkTarget => entry
+            .details
+            .link_target
+            .as_ref()
+            .map(|target| target.to_string_lossy().into_owned())
+            .unwrap_or_default(),
+    }
 }
 
 /// Width of a digit in the small font, in font sizes, to see what fits.
@@ -317,18 +384,19 @@ impl<'a, M: 'a> HermesCell<'a, M> {
 
     /// How many characters of the name fit in the row. The font of the name
     /// is monospaced, so this is exact enough; the row clips what is left.
-    fn name_room(panel_width: f32) -> usize {
-        (Self::room_beside_name(panel_width) / Self::name_char_width()).max(MIN_NAME_CHARS) as usize
+    fn name_room(panel_width: f32, columns_width: f32) -> usize {
+        (Self::room_beside_name(panel_width, columns_width) / Self::name_char_width())
+            .max(MIN_NAME_CHARS) as usize
     }
 
     const fn name_char_width() -> f32 {
         font_size::FILE * DIGIT_WIDTH_PER_SIZE
     }
 
-    fn room_beside_name(panel_width: f32) -> f32 {
+    /// `columns_width` is what the columns besides the name take.
+    fn room_beside_name(panel_width: f32, columns_width: f32) -> f32 {
         let fixed = TAG_COLUMN_WIDTH
-            + SIZE_COLUMN_WIDTH
-            + DATE_COLUMN_WIDTH
+            + columns_width
             + HERMES_COLUMN_WIDTH
             + 2.0 * spacing::CELL_PADDING_X
             + NAME_SAFETY_MARGIN;
@@ -344,9 +412,14 @@ impl<'a, M: 'a> HermesCell<'a, M> {
     /// The chips that fit behind a name of `name_chars` characters, in order.
     /// The name keeps its width; the chips left out are counted in `more`, and
     /// the count shows only when it fits as well.
-    fn fit_tags(tags: &ShownTags, panel_width: f32, name_chars: usize) -> ShownTags {
-        let left =
-            Self::room_beside_name(panel_width) - name_chars as f32 * Self::name_char_width();
+    fn fit_tags(
+        tags: &ShownTags,
+        panel_width: f32,
+        columns_width: f32,
+        name_chars: usize,
+    ) -> ShownTags {
+        let left = Self::room_beside_name(panel_width, columns_width)
+            - name_chars as f32 * Self::name_char_width();
         let total = tags.chips.len() + tags.more;
         let fits = |kept: usize| {
             let chips: f32 = tags
@@ -566,7 +639,10 @@ fn hint<'a, M: 'a>(content: Element<'a, M>, label: String, palette: &Palette) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::layout::{DATE_COLUMN_WIDTH, SIZE_COLUMN_WIDTH};
     use crate::tags::FileChip;
+
+    const STANDARD_COLUMNS: f32 = SIZE_COLUMN_WIDTH + DATE_COLUMN_WIDTH;
 
     fn chips_of(labels: &[&str], more: usize) -> ShownTags {
         ShownTags {
@@ -584,15 +660,15 @@ mod tests {
     #[test]
     fn a_short_name_keeps_all_its_chips() {
         let tags = chips_of(&["invoice", "telekom", "2026"], 0);
-        let fitted = HermesCell::<()>::fit_tags(&tags, 1200.0, 10);
+        let fitted = HermesCell::<()>::fit_tags(&tags, 1200.0, STANDARD_COLUMNS, 10);
         assert_eq!(fitted, tags);
     }
 
     #[test]
     fn a_long_name_keeps_its_text_and_the_chips_turn_into_a_count() {
         let tags = chips_of(&["invoice", "telekom", "2026"], 0);
-        let room = HermesCell::<()>::name_room(600.0);
-        let fitted = HermesCell::<()>::fit_tags(&tags, 600.0, room - 6);
+        let room = HermesCell::<()>::name_room(600.0, STANDARD_COLUMNS);
+        let fitted = HermesCell::<()>::fit_tags(&tags, 600.0, STANDARD_COLUMNS, room - 6);
         assert!(fitted.chips.len() < 3);
         assert_eq!(fitted.chips.len() + fitted.more, 3);
         assert!(fitted.more > 0);
@@ -617,10 +693,41 @@ mod tests {
     }
 
     #[test]
+    fn the_cells_of_a_row_follow_the_columns() {
+        let layout = ColumnLayout::standard(Language::English);
+        let mut entry = FileEntry {
+            name: "report.pdf".into(),
+            path: "/r/report.pdf".into(),
+            is_dir: false,
+            is_symlink: false,
+            is_parent: false,
+            size: 2048,
+            modified: None,
+            folder_size: None,
+            details: Default::default(),
+        };
+        entry.details.owner = Some("marc".to_owned());
+        entry.details.link_target = Some("/elsewhere".into());
+        let text_of = |column| cell_text(&entry, column, &layout, IconKind::Pdf);
+        assert_eq!(text_of(Column::Size), "2.0 KB");
+        assert_eq!(text_of(Column::Modified), "");
+        assert_eq!(text_of(Column::Type), "PDF");
+        assert_eq!(text_of(Column::Extension), "pdf");
+        assert_eq!(text_of(Column::Owner), "marc");
+        assert_eq!(text_of(Column::Group), "");
+        assert_eq!(text_of(Column::LinkTarget), "/elsewhere");
+
+        entry.is_parent = true;
+        let text_of = |column| cell_text(&entry, column, &layout, IconKind::Pdf);
+        assert_eq!(text_of(Column::Owner), "");
+        assert_eq!(text_of(Column::Size), Msg::MarkerUp.text());
+    }
+
+    #[test]
     fn a_name_wider_than_the_room_has_no_chips() {
         let tags = chips_of(&["invoice", "2026"], 1);
-        let room = HermesCell::<()>::name_room(600.0);
-        let fitted = HermesCell::<()>::fit_tags(&tags, 600.0, room + 5);
+        let room = HermesCell::<()>::name_room(600.0, STANDARD_COLUMNS);
+        let fitted = HermesCell::<()>::fit_tags(&tags, 600.0, STANDARD_COLUMNS, room + 5);
         assert_eq!(fitted, ShownTags::default());
     }
 }

@@ -1,10 +1,11 @@
 //! Presentation helpers for sizes and dates.
+use std::fmt::Write;
 use std::path::Path;
 use std::time::SystemTime;
 
-use chrono::{DateTime, Local};
-use ncrs_core::FileEntry;
-use ncrs_i18n::{Language, Msg};
+use chrono::{DateTime, Datelike, Local};
+use ncrs_core::{DateFormat, FileEntry, SizeFormat, WindowsAttributes};
+use ncrs_i18n::{fill_template, Language, Msg};
 use ncrs_index::Amount;
 
 /// How many minor units (cents) make one unit of an amount.
@@ -37,10 +38,15 @@ const PARTIAL_SIZE_MARK: char = '+';
 /// The markers are a classic dual-panel convention and are deliberately not
 /// translated, so this takes no `Language`.
 pub fn entry_size(entry: &FileEntry) -> String {
+    entry_size_in(entry, SizeFormat::Readable)
+}
+
+/// [`entry_size`] with the sizes written as `format` says.
+pub fn entry_size_in(entry: &FileEntry, format: SizeFormat) -> String {
     if entry.is_parent {
         Msg::MarkerUp.text().into()
     } else if let (true, Some(computed)) = (entry.is_dir, entry.folder_size) {
-        let text = size(computed.bytes);
+        let text = size_in(computed.bytes, format);
         if computed.partial {
             format!("{text}{PARTIAL_SIZE_MARK}")
         } else {
@@ -49,8 +55,119 @@ pub fn entry_size(entry: &FileEntry) -> String {
     } else if entry.is_dir {
         Msg::MarkerDir.text().into()
     } else {
-        size(entry.size)
+        size_in(entry.size, format)
     }
+}
+
+/// `1 234 567 B`, `1 206 KB` or `1.2 MB`, as the Size setting says. A file
+/// with content is never shown as 0 KB.
+pub fn size_in(bytes: u64, format: SizeFormat) -> String {
+    match format {
+        SizeFormat::Bytes => format!("{} B", grouped(bytes)),
+        SizeFormat::Kilobytes => {
+            let rounded = bytes.saturating_add(512).div_euclid(1024);
+            let kilobytes = if bytes == 0 { 0 } else { rounded.max(1) };
+            format!("{} KB", grouped(kilobytes))
+        }
+        SizeFormat::Readable => size(bytes),
+    }
+}
+
+/// The extension of a file without its dot; empty for a folder and for a name
+/// without one.
+pub fn extension(entry: &FileEntry) -> String {
+    if entry.is_dir || entry.is_parent {
+        return String::new();
+    }
+    Path::new(&entry.name)
+        .extension()
+        .map(|extension| extension.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
+/// `drwxr-xr-x`, `-rw-r--r--` or `lrwxrwxrwx`; `s`/`S` and `t`/`T` mark the
+/// set-id and sticky bits with and without the execute bit below them. On
+/// Windows the attributes: `R--`, `-H-`, `--S`. Empty when the source knows
+/// neither.
+pub fn permissions(entry: &FileEntry) -> String {
+    if let Some(attributes) = entry.details.windows {
+        return windows_attributes(attributes);
+    }
+    let Some(mode) = entry.details.mode else {
+        return String::new();
+    };
+    let kind = if entry.is_symlink {
+        'l'
+    } else if entry.is_dir {
+        'd'
+    } else {
+        '-'
+    };
+    permission_string(mode, kind)
+}
+
+/// The nine permission characters of `mode` behind `kind` (`d`, `l` or `-`).
+pub fn permission_string(mode: u32, kind: char) -> String {
+    struct Class {
+        read: u32,
+        write: u32,
+        execute: u32,
+        special: u32,
+        special_executable: char,
+        special_not_executable: char,
+    }
+    const CLASSES: [Class; 3] = [
+        Class {
+            read: 0o400,
+            write: 0o200,
+            execute: 0o100,
+            special: 0o4000,
+            special_executable: 's',
+            special_not_executable: 'S',
+        },
+        Class {
+            read: 0o040,
+            write: 0o020,
+            execute: 0o010,
+            special: 0o2000,
+            special_executable: 's',
+            special_not_executable: 'S',
+        },
+        Class {
+            read: 0o004,
+            write: 0o002,
+            execute: 0o001,
+            special: 0o1000,
+            special_executable: 't',
+            special_not_executable: 'T',
+        },
+    ];
+    let mut text = String::with_capacity(10);
+    text.push(kind);
+    for class in CLASSES {
+        text.push(if mode & class.read != 0 { 'r' } else { '-' });
+        text.push(if mode & class.write != 0 { 'w' } else { '-' });
+        text.push(
+            match (mode & class.execute != 0, mode & class.special != 0) {
+                (true, true) => class.special_executable,
+                (false, true) => class.special_not_executable,
+                (true, false) => 'x',
+                (false, false) => '-',
+            },
+        );
+    }
+    text
+}
+
+fn windows_attributes(attributes: WindowsAttributes) -> String {
+    let flag = |set: bool, letter: char| if set { letter } else { '-' };
+    [
+        flag(attributes.read_only, 'R'),
+        flag(attributes.hidden, 'H'),
+        flag(attributes.system, 'S'),
+    ]
+    .into_iter()
+    .collect()
 }
 
 /// Whole megabytes (1 MB = 1,000,000 bytes), rounded: the one unit and rounding
@@ -119,6 +236,60 @@ pub fn time(time: Option<SystemTime>) -> String {
             .to_string()
     })
     .unwrap_or_default()
+}
+
+/// A time as a date column writes it. Empty when unknown.
+pub fn time_in(time: Option<SystemTime>, format: DateFormat, lang: Language) -> String {
+    time.map(|time| date_text(DateTime::<Local>::from(time), Local::now(), format, lang))
+        .unwrap_or_default()
+}
+
+/// `at` written as `format` says, seen from `now`.
+pub fn date_text(
+    at: DateTime<Local>,
+    now: DateTime<Local>,
+    format: DateFormat,
+    lang: Language,
+) -> String {
+    match format {
+        DateFormat::Iso => at.format("%Y-%m-%d %H:%M").to_string(),
+        DateFormat::Short => short_date(at, now, lang),
+        DateFormat::Relative => relative_date(at, now, lang),
+    }
+}
+
+fn relative_date(at: DateTime<Local>, now: DateTime<Local>, lang: Language) -> String {
+    let age = now.signed_duration_since(at);
+    if age >= chrono::Duration::zero() {
+        if age < chrono::Duration::hours(1) {
+            let minutes = age.num_minutes().max(1).to_string();
+            return fill_template(lang.text(Msg::FormatDateMinutesAgo), &[("{n}", &minutes)]);
+        }
+        if age < chrono::Duration::hours(24) {
+            let hours = age.num_hours().to_string();
+            return fill_template(lang.text(Msg::FormatDateHoursAgo), &[("{n}", &hours)]);
+        }
+        if at.date_naive().succ_opt() == Some(now.date_naive()) {
+            let time = at.format("%H:%M").to_string();
+            return fill_template(lang.text(Msg::FormatDateYesterday), &[("{time}", &time)]);
+        }
+    }
+    short_date(at, now, lang)
+}
+
+fn short_date(at: DateTime<Local>, now: DateTime<Local>, lang: Language) -> String {
+    let pattern = if at.year() == now.year() {
+        lang.text(Msg::FormatDateShort)
+    } else {
+        lang.text(Msg::FormatDateShortWithYear)
+    };
+    let mut written = String::new();
+    // A pattern chrono cannot write fails here instead of panicking in
+    // `to_string`; the fixed ISO form stands in.
+    if write!(written, "{}", at.format(pattern)).is_err() {
+        return at.format("%Y-%m-%d %H:%M").to_string();
+    }
+    written
 }
 
 const ELLIPSIS: char = '…';
@@ -502,6 +673,132 @@ mod tests {
             "{cut}"
         );
         assert_eq!(fit_middle(LONG_PATH, 3.0, BODY), "");
+    }
+
+    fn plain_file(name: &str) -> FileEntry {
+        FileEntry {
+            name: name.into(),
+            path: name.into(),
+            is_dir: false,
+            is_symlink: false,
+            is_parent: false,
+            size: 0,
+            modified: None,
+            folder_size: None,
+            details: Default::default(),
+        }
+    }
+
+    #[test]
+    fn sizes_follow_the_size_setting() {
+        assert_eq!(
+            size_in(1_234_567, SizeFormat::Bytes),
+            "1\u{a0}234\u{a0}567 B"
+        );
+        assert_eq!(size_in(1_234_567, SizeFormat::Kilobytes), "1\u{a0}206 KB");
+        assert_eq!(size_in(1_234_567, SizeFormat::Readable), "1.2 MB");
+        assert_eq!(size_in(0, SizeFormat::Kilobytes), "0 KB");
+        assert_eq!(size_in(10, SizeFormat::Kilobytes), "1 KB");
+        assert_eq!(
+            size_in(u64::MAX, SizeFormat::Kilobytes).chars().last(),
+            Some('B')
+        );
+    }
+
+    #[test]
+    fn permissions_show_type_bits_and_the_special_bits() {
+        assert_eq!(permission_string(0o755, 'd'), "drwxr-xr-x");
+        assert_eq!(permission_string(0o644, '-'), "-rw-r--r--");
+        assert_eq!(permission_string(0o777, 'l'), "lrwxrwxrwx");
+        assert_eq!(permission_string(0o4755, '-'), "-rwsr-xr-x");
+        assert_eq!(permission_string(0o4644, '-'), "-rwSr--r--");
+        assert_eq!(permission_string(0o2755, 'd'), "drwxr-sr-x");
+        assert_eq!(permission_string(0o1777, 'd'), "drwxrwxrwt");
+        assert_eq!(permission_string(0o1776, 'd'), "drwxrwxrwT");
+
+        let mut entry = plain_file("a");
+        assert_eq!(permissions(&entry), "");
+        entry.details.mode = Some(0o640);
+        assert_eq!(permissions(&entry), "-rw-r-----");
+        entry.is_symlink = true;
+        assert!(permissions(&entry).starts_with('l'));
+    }
+
+    #[test]
+    fn windows_attributes_are_three_letters() {
+        let mut entry = plain_file("a");
+        let attributes = |read_only, hidden, system| {
+            Some(WindowsAttributes {
+                read_only,
+                hidden,
+                system,
+            })
+        };
+        entry.details.windows = attributes(true, false, false);
+        assert_eq!(permissions(&entry), "R--");
+        entry.details.windows = attributes(false, true, false);
+        assert_eq!(permissions(&entry), "-H-");
+        entry.details.windows = attributes(false, false, true);
+        assert_eq!(permissions(&entry), "--S");
+    }
+
+    #[test]
+    fn the_extension_is_empty_for_folders_and_names_without_a_dot() {
+        assert_eq!(extension(&plain_file("report.final.PDF")), "PDF");
+        assert_eq!(extension(&plain_file("Makefile")), "");
+        assert_eq!(extension(&plain_file(".bashrc")), "");
+        let mut folder = plain_file("archive.d");
+        folder.is_dir = true;
+        assert_eq!(extension(&folder), "");
+    }
+
+    fn local(year: i32, month: u32, day: u32, hour: u32, minute: u32) -> DateTime<Local> {
+        use chrono::TimeZone;
+        Local
+            .with_ymd_and_hms(year, month, day, hour, minute, 0)
+            .single()
+            .unwrap()
+    }
+
+    #[test]
+    fn dates_are_written_in_the_chosen_format() {
+        let now = local(2026, 11, 7, 15, 0);
+        let written = |at, format| date_text(at, now, format, Language::English);
+
+        assert_eq!(
+            written(local(2026, 11, 7, 14, 3), DateFormat::Iso),
+            "2026-11-07 14:03"
+        );
+        assert_eq!(
+            written(local(2026, 11, 5, 16, 12), DateFormat::Short),
+            "Nov 5 16:12"
+        );
+        assert_eq!(
+            written(local(2025, 11, 5, 16, 12), DateFormat::Short),
+            "Nov 5 2025"
+        );
+        assert_eq!(
+            date_text(
+                local(2026, 11, 5, 16, 12),
+                now,
+                DateFormat::Short,
+                Language::German
+            ),
+            "05.11. 16:12"
+        );
+    }
+
+    #[test]
+    fn relative_dates_step_from_minutes_to_hours_to_yesterday_to_the_short_date() {
+        let now = local(2026, 11, 7, 15, 0);
+        let relative = |at| date_text(at, now, DateFormat::Relative, Language::English);
+
+        assert_eq!(relative(local(2026, 11, 7, 14, 55)), "5 min ago");
+        assert_eq!(relative(local(2026, 11, 7, 15, 0)), "1 min ago");
+        assert_eq!(relative(local(2026, 11, 7, 12, 0)), "3 h ago");
+        assert_eq!(relative(local(2026, 11, 6, 9, 30)), "yesterday 09:30");
+        assert_eq!(relative(local(2026, 11, 5, 9, 30)), "Nov 5 09:30");
+        assert_eq!(relative(local(2026, 11, 8, 9, 30)), "Nov 8 09:30");
     }
 
     #[test]

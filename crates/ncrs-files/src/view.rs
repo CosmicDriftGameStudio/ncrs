@@ -12,7 +12,8 @@ use crate::ctx::ViewCtx;
 use crate::message::PanelMessage;
 use crate::panel::PanelState;
 use crate::panel_totals::{footer_text, panel_totals};
-use ncrs_ui_kit::column_header::column_header;
+use crate::special_folders::special_folder_of;
+use ncrs_ui_kit::column_header::{column_header, HeaderEvents};
 
 /// Renders one panel.
 ///
@@ -23,6 +24,7 @@ pub fn view<'a>(state: &'a PanelState, ctx: ViewCtx<'a>) -> Element<'a, PanelMes
     let lang = ctx.lang;
     let palette = &ctx.palette;
     let hermes_cell = ctx.hermes_cell.as_deref();
+    let layout = ctx.columns.layout(side, lang);
     let on_row_click = move |index, click| match click {
         RowClick::Open => PanelMessage::RowActivated { side, index },
         RowClick::Tag | RowClick::Cursor => PanelMessage::RowClicked {
@@ -80,6 +82,9 @@ pub fn view<'a>(state: &'a PanelState, ctx: ViewCtx<'a>) -> Element<'a, PanelMes
                 |click| on_row_click(index, click),
                 row,
                 RowExtras {
+                    columns: layout,
+                    special: special_folder_of(ctx.special_folders, &entry.path)
+                        .filter(|_| entry.is_dir),
                     third_line: None,
                     hermes: hermes_cell.map(|cell| cell(entry)),
                     hit_scope: state
@@ -98,11 +103,19 @@ pub fn view<'a>(state: &'a PanelState, ctx: ViewCtx<'a>) -> Element<'a, PanelMes
     mouse_area(
         column![
             column_header(
-                lang,
                 palette,
+                layout,
                 Some(state.sort),
                 hermes_cell.is_some(),
-                move |column| Some(PanelMessage::SortBy { side, column }),
+                ctx.header_drag,
+                Some(HeaderEvents {
+                    on_press: Box::new(move |column| PanelMessage::HeaderPressed { side, column }),
+                    on_resize: Box::new(move |column| PanelMessage::HeaderResizePressed {
+                        side,
+                        column
+                    }),
+                    on_context: PanelMessage::HeaderContext(side),
+                }),
             ),
             Column::with_children(rows).height(Length::Fill).clip(true),
             panel_footer(footer_text(&panel_totals(state), lang), palette),

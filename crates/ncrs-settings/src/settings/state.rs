@@ -8,9 +8,12 @@ use ncrs_config::config::{
     ConfigError, OwnDetail, ProgramLine, ProgramLineProblem,
 };
 use ncrs_config::file_list_tags::FileListTags;
+use ncrs_config::panel_columns::{Appearance, PanelColumns};
 use ncrs_config::system_monitor::SystemSettings;
 use ncrs_config::SettingsFeature;
+use ncrs_core::PanelSide;
 use ncrs_fs::{KnownTerminal, OpenKind};
+use ncrs_ui_kit::font::SystemFont;
 use ncrs_ui_kit::palette::{parse_color, ColorRole};
 
 /// The id of the search field above the feature list.
@@ -93,6 +96,12 @@ pub struct SettingsState {
     pub loaded: Option<LoadedFacts>,
     /// The app was asked to read it, so it does not ask again.
     pub facts_requested: bool,
+    /// The list of the Columns page that is edited while each panel has its own.
+    pub columns_side: PanelSide,
+    /// The monospace families found when the tab opened, for the font list.
+    pub installed_fonts: Vec<String>,
+    /// What the desktop says about its fonts, for the "System" entries.
+    pub system_font: Option<SystemFont>,
 }
 
 /// Why the value of a field was not written.
@@ -138,6 +147,9 @@ impl SettingsState {
             folder_note: None,
             loaded: None,
             facts_requested: false,
+            columns_side: PanelSide::Left,
+            installed_fonts: Vec::new(),
+            system_font: None,
         }
     }
 
@@ -276,6 +288,30 @@ impl SettingsState {
         self.config()
             .map(|config| config.system.clone())
             .unwrap_or_default()
+    }
+
+    /// The `[columns]` section as the file says.
+    pub fn panel_columns(&self) -> PanelColumns {
+        self.config()
+            .map(|config| config.columns.clone())
+            .unwrap_or_default()
+    }
+
+    /// The `[appearance]` section as the file says.
+    pub fn appearance(&self) -> Appearance {
+        self.config()
+            .map(|config| config.appearance.clone())
+            .unwrap_or_default()
+    }
+
+    /// The list of the Columns page that is edited: the left one while both
+    /// panels share it.
+    pub fn edited_columns_side(&self) -> PanelSide {
+        if self.panel_columns().same_in_both {
+            PanelSide::Left
+        } else {
+            self.columns_side
+        }
     }
 
     /// What the file lists for `detail`.
@@ -495,6 +531,8 @@ fn fields_of(change: &SettingChange) -> Vec<SettingField> {
         | SettingChange::Servers(_)
         | SettingChange::Locations(_)
         | SettingChange::FileListTags(_)
+        | SettingChange::Columns(_)
+        | SettingChange::Appearance(_)
         | SettingChange::System(_) => Vec::new(),
         SettingChange::OwnDetails { detail, .. } => vec![SettingField::Own(*detail)],
     }

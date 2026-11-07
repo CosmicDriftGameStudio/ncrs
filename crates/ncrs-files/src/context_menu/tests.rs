@@ -30,7 +30,7 @@ fn the_menu_has_the_five_groups_with_separators() {
         .filter(|entry| **entry == MenuEntry::Separator)
         .count();
     assert_eq!(separators, 4);
-    assert_eq!(menu.entries().len(), 13 + 4);
+    assert_eq!(menu.entries().len(), 14 + 4);
     assert_eq!(selected_action(&menu), ContextAction::Open);
 }
 
@@ -285,4 +285,40 @@ fn the_submenu_folds_to_the_left_where_there_is_no_room() {
             ..
         }
     )));
+}
+
+fn actions_of(menu: &ContextMenu) -> Vec<ContextAction> {
+    menu.entries()
+        .iter()
+        .filter_map(|entry| match entry {
+            MenuEntry::Item { action, .. } => Some(*action),
+            MenuEntry::Separator | MenuEntry::Hermes => None,
+        })
+        .collect()
+}
+
+#[test]
+fn permissions_sit_after_rename_in_the_menu_of_a_folder() {
+    let actions = actions_of(&menu_with(&[]));
+    let rename = actions
+        .iter()
+        .position(|action| *action == ContextAction::Rename)
+        .unwrap();
+    assert_eq!(actions[rename + 1], ContextAction::Permissions);
+}
+
+#[test]
+fn hit_lists_and_search_results_do_not_offer_permissions() {
+    let point = Point::new(10.0, 10.0);
+    let hits = ContextMenu::for_hit_list(point, WINDOW, |_| true, None);
+    let results = ContextMenu::for_search_results(point, WINDOW, |_| true);
+    assert!(!actions_of(&hits).contains(&ContextAction::Permissions));
+    assert!(!actions_of(&results).contains(&ContextAction::Permissions));
+}
+
+#[test]
+fn archives_and_servers_do_not_run_permissions() {
+    assert!(!ContextAction::Permissions.allowed_in_archive());
+    assert!(!ContextAction::Permissions.allowed_on_server());
+    assert_eq!(ContextAction::Permissions.label(), Msg::ActionPermissions);
 }

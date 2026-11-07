@@ -4,16 +4,17 @@ use ncrs_config::SettingsFeature;
 use ncrs_fs::runs_in_app_sandbox;
 use ncrs_i18n::{fill_template, Msg};
 use ncrs_ui_kit::focus::release_focus;
+use ncrs_ui_kit::font;
 
 use super::{documents, keys, models, theme};
 use crate::action::Action;
 use crate::ai_model::InstallOutcome;
 use crate::ctx::Ctx;
 use crate::message::{
-    KeyBindingsMessage, Message, OcrModelsMessage, SettingChange, SettingsMessage,
+    ColumnsEdit, KeyBindingsMessage, Message, OcrModelsMessage, SettingChange, SettingsMessage,
     ThemeFetchMessage,
 };
-use crate::settings::SettingsState;
+use crate::settings::{columns, SettingsState};
 use crate::state::Settings;
 use crate::theme_file::{
     copy_picked_theme_file, theme_file_entry, IncludeNotCopied, IncludeProblem,
@@ -149,10 +150,27 @@ pub fn update(
             documents::update(settings, forwarded, ctx, actions)
         }
         SettingsMessage::Change(change) => write_setting(settings, change, ctx),
+        SettingsMessage::Columns(edit) => columns_edit(settings, edit, ctx),
         SettingsMessage::Written { change, result } => {
             written(settings, change, result, ctx, actions)
         }
     }
+}
+
+fn columns_edit(settings: &mut Settings, edit: ColumnsEdit, ctx: &Ctx<'_>) -> Task<Message> {
+    let Some(state) = settings.page.as_mut() else {
+        return Task::none();
+    };
+    if let ColumnsEdit::Side(side) = edit {
+        state.columns_side = side;
+        return Task::none();
+    }
+    let current = state.panel_columns();
+    let changed = columns::edited(&current, state.edited_columns_side(), edit);
+    if changed == current {
+        return Task::none();
+    }
+    write_setting(settings, SettingChange::Columns(changed), ctx)
 }
 
 /// Writes the values typed on the page without Enter, one after the
@@ -294,6 +312,8 @@ pub fn fresh_settings_state(ctx: &Ctx<'_>) -> SettingsState {
     };
     let mut state = SettingsState::new(ocr_models_present, file, runs_in_app_sandbox());
     state.terminals = ncrs_fs::detect_terminals();
+    state.installed_fonts = font::installed_monospace();
+    state.system_font = font::system_font();
     state.ai_model_present = ctx
         .ai_models_dir
         .as_deref()

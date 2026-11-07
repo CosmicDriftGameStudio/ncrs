@@ -9331,6 +9331,18 @@
       "de": "Je Panel"
     },
     {
+      "key": "settings.columns_side_left",
+      "context": "Option of the segment on the Columns page that picks which list is edited while each panel has its own columns: the left panel.",
+      "en": "Left panel",
+      "de": "Linkes Panel"
+    },
+    {
+      "key": "settings.columns_side_right",
+      "context": "Option of the segment on the Columns page that picks which list is edited while each panel has its own columns: the right panel.",
+      "en": "Right panel",
+      "de": "Rechtes Panel"
+    },
+    {
       "key": "settings.row_columns_list",
       "context": "Label of the row on the Columns page that lists every column with a switch and a handle to change the order.",
       "en": "Columns and order",

@@ -31,11 +31,11 @@ use serde_spanned::Spanned;
 
 use crate::file_list_tags::{FileListTags, TagGroup};
 use crate::keymap::{KeyAction, Keymap};
-use crate::panel_columns::{
-    columns_from_keys, Appearance, DateFormat, FontChoice, FontSizeChoice, PanelColumns, SizeFormat,
-};
 use crate::palette::{
     ColorRole, Palette, PaletteFromSection as _, ThemePreset, PRESET_KEY, VSCODE_KEY,
+};
+use crate::panel_columns::{
+    columns_from_keys, Appearance, DateFormat, FontChoice, FontSizeChoice, PanelColumns, SizeFormat,
 };
 use crate::system_monitor::SystemSettings;
 use crate::vscode_theme::VscodeTheme;
@@ -199,17 +199,17 @@ pub use self::paths::{
 use self::resolving::*;
 pub use self::resolving::{check_ai_endpoint, AiEndpointProblem};
 pub use self::sections::{
-    AiProviderName, AiSection, AiSetting, AppearanceSection, ColumnsSection, ContrastWarning, FileListTagsSection, Filing,
-    FilingLocation, FilingSection, KeyEntry, KeySection, KindSection, KindWarning, LanguageWarning,
-    LoadValue, LocationEntry, LocationModeName, LocationTransfer, ModulesSection, ServerEntry,
-    ServerSection, ThemeEntry, ThemeSection, VscodeWarning,
+    AiProviderName, AiSection, AiSetting, AppearanceSection, ColumnsSection, ContrastWarning,
+    FileListTagsSection, Filing, FilingLocation, FilingSection, KeyEntry, KeySection, KindSection,
+    KindWarning, LanguageWarning, LoadValue, LocationEntry, LocationModeName, LocationTransfer,
+    ModulesSection, ServerEntry, ServerSection, ThemeEntry, ThemeSection, VscodeWarning,
 };
 pub use self::setting_writes::{
     remove_vscode_theme, write_ai_enabled, write_ai_provider, write_appearance,
-    write_check_for_updates, write_color, write_columns,
-    write_default_pattern, write_file_list_tags, write_filing_enabled, write_filing_load,
-    write_keys, write_language, write_own_details, write_program, write_system_settings,
-    write_theme_preset, AiProviderChoice, KeyChange, OwnDetail,
+    write_check_for_updates, write_color, write_columns, write_default_pattern,
+    write_file_list_tags, write_filing_enabled, write_filing_load, write_keys, write_language,
+    write_own_details, write_program, write_system_settings, write_theme_preset, AiProviderChoice,
+    KeyChange, OwnDetail,
 };
 pub use self::write_support::one_config_writer;
 use self::write_support::*;

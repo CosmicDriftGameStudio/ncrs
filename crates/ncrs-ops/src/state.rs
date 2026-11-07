@@ -10,6 +10,7 @@ use ncrs_fs::TrashedItem;
 
 use crate::clipboard_paste::PastedContent;
 use crate::message::ConflictChoice;
+use crate::permissions::PermissionsDialog;
 use crate::prompt::Prompt;
 use crate::transfer::TransferDialog;
 use crate::trash::TrashView;
@@ -114,6 +115,10 @@ pub struct Ops {
     pub rename_request_id: u64,
     /// The delete confirmation dialog, while it is up.
     pub delete_dialog: Option<Deletion>,
+    /// The permissions dialog, while it is up.
+    pub permissions_dialog: Option<PermissionsDialog>,
+    /// A permissions change, while its job runs.
+    pub permissions_running: bool,
     /// The delete that is running.
     pub deleting: Option<Deletion>,
     /// What the latest F8 run moved to the trash, for the restore key.

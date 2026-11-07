@@ -1,5 +1,6 @@
 //! Layout metrics the kit components and the app share.
 use iced::{Point, Size};
+use ncrs_core::Column;
 
 use super::theme::{size, spacing};
 
@@ -32,6 +33,31 @@ pub const SETTINGS_WIDE_CONTROL_WIDTH: f32 = 460.0;
 
 pub const SIZE_COLUMN_WIDTH: f32 = 90.0;
 pub const DATE_COLUMN_WIDTH: f32 = 150.0;
+/// The symbol column: the 16 px symbol and the gap to the next column.
+pub const ICON_COLUMN_WIDTH: f32 = 24.0;
+pub const FILE_ICON_SIZE: f32 = 16.0;
+/// A column dragged narrower or wider stops here.
+pub const MIN_COLUMN_WIDTH: f32 = 40.0;
+pub const MAX_COLUMN_WIDTH: f32 = 600.0;
+/// The strip at the right edge of a title that resizes the column.
+pub const COLUMN_GRIP_WIDTH: f32 = 6.0;
+/// The line in the accent color where a dragged title would land.
+pub const COLUMN_DROP_LINE_WIDTH: f32 = 2.0;
+
+/// The width a column has until the user drags it. The name column has none:
+/// it takes what the others leave.
+pub fn standard_column_width(column: Column) -> f32 {
+    match column {
+        Column::Icon => ICON_COLUMN_WIDTH,
+        Column::Name => 0.0,
+        Column::Size => SIZE_COLUMN_WIDTH,
+        Column::Modified | Column::Created | Column::Accessed => DATE_COLUMN_WIDTH,
+        Column::Type => 110.0,
+        Column::Extension => 80.0,
+        Column::Permissions | Column::Owner | Column::Group => 100.0,
+        Column::LinkTarget => 200.0,
+    }
+}
 /// The Hermes status column, after the date: an icon for a file, a summary
 /// of icons and counts for a folder.
 pub const HERMES_COLUMN_WIDTH: f32 = 124.0;
