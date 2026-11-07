@@ -114,17 +114,18 @@ struct Read {
 
 fn read_sync(path: &Path, sorted_by: SortKey) -> Read {
     match std::fs::read_dir(path) {
-        Ok(dir) => Read {
-            entries: with_parent(
-                dir.filter_map(Result::ok)
-                    .map(|e| FileEntry::from_dir_entry(&e))
-                    .collect(),
-                path,
-                sorted_by,
-            ),
-            error: None,
-            archive: None,
-        },
+        Ok(dir) => {
+            let mut entries: Vec<FileEntry> = dir
+                .filter_map(Result::ok)
+                .map(|e| FileEntry::from_dir_entry(&e))
+                .collect();
+            crate::owners::fill_owners(&mut entries);
+            Read {
+                entries: with_parent(entries, path, sorted_by),
+                error: None,
+                archive: None,
+            }
+        }
         Err(err) => match archive::locate_in_archive(path) {
             Some(location) => read_archive(path, &location, sorted_by),
             None => Read {

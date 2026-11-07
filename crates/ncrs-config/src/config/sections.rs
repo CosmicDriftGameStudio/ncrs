@@ -30,6 +30,39 @@ pub struct FileListTagsSection {
     pub _only: Option<serde::de::IgnoredAny>,
 }
 
+/// The `[columns]` section, unchecked.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ColumnsSection {
+    #[serde(default)]
+    pub same_in_both: Option<bool>,
+    /// Checked by `resolve_columns`: a name that is no column is dropped.
+    #[serde(default)]
+    pub left: Option<Vec<String>>,
+    #[serde(default)]
+    pub right: Option<Vec<String>>,
+    /// Checked by `resolve_columns`: a name that is no column, and a width
+    /// that is no pixel count, is dropped.
+    #[serde(default)]
+    pub widths: std::collections::BTreeMap<String, i64>,
+    #[serde(default)]
+    pub date_format: Option<DateFormat>,
+    #[serde(default)]
+    pub size_format: Option<SizeFormat>,
+}
+
+/// The `[appearance]` section, unchecked.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AppearanceSection {
+    /// Empty or missing is the system font.
+    #[serde(default)]
+    pub font: Option<String>,
+    /// Checked by `resolve_appearance`: a size outside the range is the system's.
+    #[serde(default)]
+    pub font_size: Option<i64>,
+}
+
 /// One `[[servers]]` entry, unchecked. The password is not part of it: it is
 /// asked for, or comes from the keychain.
 #[derive(Debug, Clone, PartialEq, Deserialize)]

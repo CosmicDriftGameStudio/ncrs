@@ -25,6 +25,7 @@ pub const OPEN_SECTION: &str = "[open]";
 pub const KEYS_SECTION: &str = "[keys]";
 pub const SERVERS_SECTION: &str = "[[servers]]";
 pub const SYSTEM_SECTION: &str = "[system]";
+pub const COLUMNS_SECTION: &str = "[columns]";
 
 pub const VIEWER_FIELD_ID: &str = "settings-program-view";
 pub const EDITOR_FIELD_ID: &str = "settings-program-edit";

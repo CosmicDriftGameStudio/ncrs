@@ -358,6 +358,7 @@ mod tests {
                 size: 0,
                 modified: None,
                 folder_size: None,
+                details: Default::default(),
             })
             .collect();
         p
@@ -409,6 +410,7 @@ mod tagging_tests {
             size: 0,
             modified: None,
             folder_size: None,
+            details: Default::default(),
         }
     }
 
@@ -538,6 +540,7 @@ mod sort_tests {
             size,
             modified: Some(SystemTime::UNIX_EPOCH),
             folder_size: None,
+            details: Default::default(),
         }
     }
 

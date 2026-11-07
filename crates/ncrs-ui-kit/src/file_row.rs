@@ -609,6 +609,7 @@ mod tests {
             size: 0,
             modified: None,
             folder_size: None,
+            details: Default::default(),
         };
         assert_eq!(display_name(&entry), "~Dokumente");
         entry.is_symlink = false;

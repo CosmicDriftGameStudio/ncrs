@@ -110,6 +110,7 @@ mod tests {
             size,
             modified: None,
             folder_size: None,
+            details: Default::default(),
         }
     }
 

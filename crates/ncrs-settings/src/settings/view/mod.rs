@@ -146,6 +146,7 @@ fn feature_label(feature: SettingsFeature) -> Msg {
         SettingsFeature::Programs => Msg::SettingsFeaturePrograms,
         SettingsFeature::Keys => Msg::SettingsFeatureKeys,
         SettingsFeature::Servers => Msg::SettingsFeatureServers,
+        SettingsFeature::Columns => Msg::SettingsFeatureColumns,
         SettingsFeature::System => Msg::SettingsFeatureSystem,
         SettingsFeature::Updates => Msg::SettingsFeatureUpdates,
         SettingsFeature::Index => Msg::SettingsFeatureIndex,
@@ -165,6 +166,7 @@ fn feature_theme_name(feature: SettingsFeature) -> Option<FuturamaName> {
         | SettingsFeature::Programs
         | SettingsFeature::Keys
         | SettingsFeature::Servers
+        | SettingsFeature::Columns
         | SettingsFeature::System
         | SettingsFeature::Updates
         | SettingsFeature::Index
@@ -193,6 +195,7 @@ fn feature_suffix(feature: SettingsFeature) -> Option<Msg> {
         | SettingsFeature::Programs
         | SettingsFeature::Keys
         | SettingsFeature::Servers
+        | SettingsFeature::Columns
         | SettingsFeature::System
         | SettingsFeature::Updates
         | SettingsFeature::Index
@@ -211,6 +214,7 @@ fn feature_beta_mark(feature: SettingsFeature) -> Option<Msg> {
         | SettingsFeature::Programs
         | SettingsFeature::Keys
         | SettingsFeature::Servers
+        | SettingsFeature::Columns
         | SettingsFeature::System
         | SettingsFeature::Updates
         | SettingsFeature::Index
@@ -228,6 +232,7 @@ fn feature_intro(feature: SettingsFeature) -> Msg {
         SettingsFeature::Programs => Msg::SettingsFeatureProgramsIntro,
         SettingsFeature::Keys => Msg::SettingsFeatureKeysIntro,
         SettingsFeature::Servers => Msg::SettingsFeatureServersIntro,
+        SettingsFeature::Columns => Msg::SettingsFeatureColumnsIntro,
         SettingsFeature::System => Msg::SettingsFeatureSystemIntro,
         SettingsFeature::Updates => Msg::SettingsFeatureUpdatesIntro,
         SettingsFeature::Index => Msg::SettingsFeatureIndexIntro,
@@ -248,6 +253,7 @@ fn feature_config_place(feature: SettingsFeature) -> Option<&'static str> {
         SettingsFeature::Programs => Some(OPEN_SECTION),
         SettingsFeature::Keys => Some(KEYS_SECTION),
         SettingsFeature::Servers => Some(SERVERS_SECTION),
+        SettingsFeature::Columns => Some(COLUMNS_SECTION),
         SettingsFeature::System => Some(SYSTEM_SECTION),
         SettingsFeature::Index | SettingsFeature::Hermes => Some(FILING_SECTION),
         SettingsFeature::Rules
@@ -289,6 +295,7 @@ fn groups_of<'a>(feature: SettingsFeature, view: &SettingsView<'a>) -> Vec<Group
         SettingsFeature::Programs => programs_groups(view),
         SettingsFeature::Keys => keys_groups(view),
         SettingsFeature::Servers => servers_groups(view),
+        SettingsFeature::Columns => Vec::new(),
         SettingsFeature::System => system_groups(view),
         SettingsFeature::Index => index_groups(view),
         SettingsFeature::Hermes => hermes_groups(view),

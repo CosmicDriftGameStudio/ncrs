@@ -9,7 +9,9 @@ pub mod folder_watch;
 mod grants;
 mod open;
 mod open_programs;
+mod owners;
 mod ops;
+pub mod permissions;
 mod reader;
 #[cfg(any(test, feature = "test-support"))]
 pub mod real_trash_tests;
@@ -30,7 +32,7 @@ pub use delete::{
     is_same_place, remove_permanently, system_trash, RestoreError, Trash, TrashReach, TrashedItem,
 };
 pub use folder_size::measure_folder;
-pub use ncrs_core::{FileEntry, FolderSize};
+pub use ncrs_core::{EntryDetails, FileEntry, FolderSize, WindowsAttributes};
 #[cfg(any(test, feature = "test-support"))]
 pub use open::OpenCommand;
 pub use open::{

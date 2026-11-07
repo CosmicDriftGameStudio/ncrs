@@ -452,6 +452,7 @@ impl App {
                 self.open_prompt(Prompt::create_file(parent))
             }
             Message::PackPrompt => self.open_pack_prompt(),
+            Message::PermissionsPrompt => Task::none(),
             Message::ArchiveWritten { result, generation } => {
                 self.with_ops(|ops, ctx| ncrs_ops::archive_written(ops, generation, result, ctx))
             }

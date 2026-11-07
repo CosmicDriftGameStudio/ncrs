@@ -172,6 +172,7 @@ mod tests {
             size: 0,
             modified: None,
             folder_size: None,
+            details: Default::default(),
         }
     }
 

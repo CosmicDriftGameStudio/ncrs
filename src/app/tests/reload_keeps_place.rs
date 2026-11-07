@@ -15,6 +15,7 @@ fn panel_with(names: &[&str]) -> PanelState {
             size: 1,
             modified: None,
             folder_size: None,
+            details: Default::default(),
         })
         .collect();
     p

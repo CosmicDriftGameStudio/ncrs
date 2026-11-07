@@ -17,6 +17,8 @@ pub const AI_TABLE: &str = "ai";
 pub const OPEN_TABLE: &str = "open";
 pub const FILE_LIST_TAGS_TABLE: &str = "file_list_tags";
 pub const SYSTEM_TABLE: &str = "system";
+pub const COLUMNS_TABLE: &str = "columns";
+pub const APPEARANCE_TABLE: &str = "appearance";
 pub const AI_TABLES: &[&str] = &[MODULES_TABLE, FILING_TABLE, AI_TABLE];
 
 pub fn theme_preset_setting(preset: ThemePreset) -> Setting {
@@ -178,6 +180,57 @@ pub fn system_settings(settings: &SystemSettings) -> [Setting; 8] {
     ]
 }
 
+/// The whole `[columns]` section. No widths drops the `widths` line.
+pub fn columns_settings(columns: &PanelColumns) -> [Setting; 6] {
+    let list = |entries: &[Column]| {
+        toml_edit::Value::Array(entries.iter().map(|column| column.key()).collect())
+    };
+    let setting = |key: &'static str, value: Option<toml_edit::Value>| Setting {
+        tables: &[COLUMNS_TABLE],
+        key,
+        value,
+    };
+    let widths = (!columns.widths.is_empty()).then(|| {
+        let mut table = toml_edit::InlineTable::new();
+        for (column, pixels) in &columns.widths {
+            table.insert(column.key(), i64::from(*pixels).into());
+        }
+        toml_edit::Value::InlineTable(table)
+    });
+    [
+        setting("same_in_both", Some(columns.same_in_both.into())),
+        setting("left", Some(list(&columns.left))),
+        setting("right", Some(list(&columns.right))),
+        setting("widths", widths),
+        setting("date_format", Some(columns.date_format.name().into())),
+        setting("size_format", Some(columns.size_format.name().into())),
+    ]
+}
+
+/// The whole `[appearance]` section; the system's choice drops its line.
+pub fn appearance_settings(appearance: &Appearance) -> [Setting; 2] {
+    let font = match &appearance.font {
+        FontChoice::System => None,
+        FontChoice::Named(name) => Some(name.as_str().into()),
+    };
+    let font_size = match appearance.font_size {
+        FontSizeChoice::System => None,
+        FontSizeChoice::Points(points) => Some(i64::from(points).into()),
+    };
+    [
+        Setting {
+            tables: &[APPEARANCE_TABLE],
+            key: "font",
+            value: font,
+        },
+        Setting {
+            tables: &[APPEARANCE_TABLE],
+            key: "font_size",
+            value: font_size,
+        },
+    ]
+}
+
 pub fn ai_enabled_setting(enabled: bool) -> Setting {
     Setting {
         tables: AI_TABLES,
@@ -275,6 +328,22 @@ pub fn write_system_settings(
     settings: &SystemSettings,
 ) -> Result<Config, FilingWriteError> {
     write_settings(path, &system_settings(settings), home_from_env().as_deref())
+}
+
+/// Writes the whole `[columns]` section; same guarantees as
+/// [`write_theme_preset`].
+pub fn write_columns(path: &Path, columns: &PanelColumns) -> Result<Config, FilingWriteError> {
+    write_settings(path, &columns_settings(columns), home_from_env().as_deref())
+}
+
+/// Writes the whole `[appearance]` section; same guarantees as
+/// [`write_theme_preset`].
+pub fn write_appearance(path: &Path, appearance: &Appearance) -> Result<Config, FilingWriteError> {
+    write_settings(
+        path,
+        &appearance_settings(appearance),
+        home_from_env().as_deref(),
+    )
 }
 
 /// Sets `enabled` in `[modules.filing.ai]`; same guarantees as [`write_theme_preset`].

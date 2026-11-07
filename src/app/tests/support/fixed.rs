@@ -86,5 +86,6 @@ pub fn fixed_result_entry(
             .single()
             .map(std::time::SystemTime::from),
         folder_size: None,
+        details: Default::default(),
     }
 }

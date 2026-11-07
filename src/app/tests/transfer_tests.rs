@@ -12,6 +12,7 @@ fn file(name: &str) -> FileEntry {
         size: 1,
         modified: None,
         folder_size: None,
+        details: Default::default(),
     }
 }
 

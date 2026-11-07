@@ -88,6 +88,7 @@ mod tests {
             size,
             modified: age_secs.map(|secs| SystemTime::UNIX_EPOCH + Duration::from_secs(secs)),
             folder_size: None,
+            details: Default::default(),
         }
     }
 

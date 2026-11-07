@@ -223,6 +223,7 @@ fn app_with_entries(names: &[&str]) -> App {
             size: 1,
             modified: None,
             folder_size: None,
+            details: Default::default(),
         })
         .collect();
     app

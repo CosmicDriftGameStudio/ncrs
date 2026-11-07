@@ -138,6 +138,8 @@ pub fn parse_config(source: &str, path: &Path, home: Option<&Path>) -> Result<Co
             reason: err.reason,
         })?;
     config.file_list_tags = resolve_file_list_tags(&config.file_list_tags_section);
+    config.columns = resolve_columns(&config.columns_section);
+    config.appearance = resolve_appearance(&config.appearance_section);
     config.servers =
         resolve_servers(&config.server_sections).map_err(|err| ConfigError::Invalid {
             path: path.to_path_buf(),
@@ -180,6 +182,49 @@ pub fn resolve_file_list_tags(section: &FileListTagsSection) -> FileListTags {
     FileListTags {
         show: section.show.unwrap_or(defaults.show),
         groups,
+    }
+}
+
+pub fn resolve_columns(section: &ColumnsSection) -> PanelColumns {
+    let defaults = PanelColumns::default();
+    let list = |names: &Option<Vec<String>>, fallback: Vec<Column>| {
+        names.as_ref().map_or(fallback, |names| {
+            columns_from_keys(names.iter().map(String::as_str))
+        })
+    };
+    let mut widths: Vec<(Column, u16)> = Vec::new();
+    for (key, pixels) in &section.widths {
+        let (Some(column), Ok(pixels)) = (Column::from_key(key.trim()), u16::try_from(*pixels))
+        else {
+            continue;
+        };
+        if pixels > 0 {
+            widths.push((column, pixels));
+        }
+    }
+    PanelColumns {
+        same_in_both: section.same_in_both.unwrap_or(defaults.same_in_both),
+        left: list(&section.left, defaults.left),
+        right: list(&section.right, defaults.right),
+        widths,
+        date_format: section.date_format.unwrap_or(defaults.date_format),
+        size_format: section.size_format.unwrap_or(defaults.size_format),
+    }
+}
+
+pub fn resolve_appearance(section: &AppearanceSection) -> Appearance {
+    Appearance {
+        font: section
+            .font
+            .as_deref()
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .map_or(FontChoice::System, |name| {
+                FontChoice::Named(name.to_owned())
+            }),
+        font_size: section
+            .font_size
+            .map_or(FontSizeChoice::System, FontSizeChoice::from_points),
     }
 }
 

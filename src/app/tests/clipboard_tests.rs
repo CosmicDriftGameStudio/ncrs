@@ -247,6 +247,7 @@ fn entry_at(path: PathBuf) -> FileEntry {
         size: 1,
         modified: None,
         folder_size: None,
+        details: Default::default(),
     }
 }
 

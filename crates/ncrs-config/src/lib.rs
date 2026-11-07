@@ -6,6 +6,7 @@ pub mod commands;
 pub mod config;
 pub mod file_list_tags;
 pub mod keymap;
+pub mod panel_columns;
 pub mod palette;
 pub mod settings_page;
 pub mod system_monitor;

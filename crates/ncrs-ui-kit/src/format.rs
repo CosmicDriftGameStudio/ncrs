@@ -515,6 +515,7 @@ mod tests {
             size: 0,
             modified: None,
             folder_size,
+            details: Default::default(),
         };
         let computed = |bytes, partial| Some(ncrs_core::FolderSize { bytes, partial });
 

@@ -119,6 +119,7 @@ impl App {
                     size: if i == 0 { 0 } else { 1024 * (i as u64 * 4096) },
                     modified: None,
                     folder_size: None,
+                    details: Default::default(),
                 })
                 .collect();
         }
@@ -277,6 +278,7 @@ impl App {
             size: if is_dir { 0 } else { 183_000 },
             modified: None,
             folder_size: None,
+            details: Default::default(),
         };
         app.panels.left.entries = [".."]
             .into_iter()

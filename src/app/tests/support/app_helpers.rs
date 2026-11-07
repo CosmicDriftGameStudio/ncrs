@@ -622,6 +622,7 @@ impl App {
             size,
             modified: None,
             folder_size: None,
+            details: Default::default(),
         };
         let mut panel = PanelState::new(folder.clone());
         panel.archive = Some(PathBuf::from("/home/test/fotos.zip"));

@@ -82,6 +82,7 @@ impl FileResult {
             size: self.size,
             modified: self.modified,
             folder_size: None,
+            details: Default::default(),
         })
     }
 }

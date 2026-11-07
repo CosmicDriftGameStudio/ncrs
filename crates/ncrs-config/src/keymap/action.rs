@@ -60,6 +60,7 @@ key_actions! {
     Mkdir => "mkdir",
     NewFile => "new_file",
     Pack => "pack",
+    Permissions => "permissions",
     DriveMenuLeft => "drive_menu_left",
     DriveMenuRight => "drive_menu_right",
     HistoryBack => "history_back",
@@ -194,6 +195,7 @@ impl KeyAction {
             | Self::NewFile
             | Self::Rename
             | Self::Pack
+            | Self::Permissions
             | Self::QuickOpen
             | Self::CommandLine
             | Self::HermesChat
@@ -389,6 +391,7 @@ impl KeyAction {
             | Self::Mkdir
             | Self::NewFile
             | Self::Pack
+            | Self::Permissions
             | Self::ComputeFolderSizes
             | Self::AddFavourite
             | Self::RemoveFavourite
@@ -480,6 +483,7 @@ impl KeyAction {
             | Self::Mkdir
             | Self::NewFile
             | Self::Pack
+            | Self::Permissions
             | Self::ComputeFolderSizes
             | Self::AddFavourite
             | Self::RemoveFavourite

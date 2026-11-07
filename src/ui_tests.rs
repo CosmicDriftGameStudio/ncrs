@@ -572,6 +572,7 @@ mod tagging {
             size: 100,
             modified: None,
             folder_size: None,
+            details: Default::default(),
         }
     }
 

@@ -16,6 +16,7 @@ fn app_with_files() -> App {
             size: 1,
             modified: None,
             folder_size: None,
+            details: Default::default(),
         })
         .collect();
     app

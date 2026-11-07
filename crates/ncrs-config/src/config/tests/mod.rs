@@ -8,6 +8,7 @@ struct SetupFolders {
     target: PathBuf,
 }
 
+mod columns;
 mod loading_and_filing;
 mod paths_and_servers;
 mod writing;
