@@ -257,7 +257,7 @@ pub fn ui_scale(points: Option<u8>, system: Option<&SystemFont>) -> f32 {
 
 fn scale_with(points: Option<u8>, system: Option<&SystemFont>, pixels_per_point: f32) -> f32 {
     let wanted = match (points, system) {
-        (Some(points), _) => f32::from(points),
+        (Some(set), _) => f32::from(set),
         (None, Some(font)) => font.effective_points(),
         (None, None) => return 1.0,
     };

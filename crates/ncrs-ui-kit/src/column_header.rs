@@ -244,19 +244,19 @@ pub fn column_header<'a, M: Clone + 'a>(
             .width(length)
             .height(Length::Fill)
             .clip(true);
-        let Some(events) = events.as_ref().filter(|_| column != Column::Icon) else {
+        let Some(handlers) = events.as_ref().filter(|_| column != Column::Icon) else {
             cells.push(cell.into());
             continue;
         };
         let pressable = mouse_area(cell)
-            .on_press((events.on_press)(column))
+            .on_press((handlers.on_press)(column))
             .interaction(Interaction::Pointer);
         if column == Column::Name {
             cells.push(pressable.into());
             continue;
         }
         let grip = mouse_area(Space::new().width(COLUMN_GRIP_WIDTH).height(Length::Fill))
-            .on_press((events.on_resize)(column))
+            .on_press((handlers.on_resize)(column))
             .interaction(Interaction::ResizingHorizontally);
         cells.push(
             stack![
@@ -290,7 +290,7 @@ pub fn column_header<'a, M: Clone + 'a>(
             .into()
         }))
         .align_y(alignment::Vertical::Center);
-    let bar: Element<'a, M> = container(titles)
+    let titles_bar: Element<'a, M> = container(titles)
         .padding([0.0, spacing::CELL_PADDING_X])
         .height(Length::Fill)
         .align_y(alignment::Vertical::Center)
@@ -310,7 +310,7 @@ pub fn column_header<'a, M: Clone + 'a>(
             .padding([1.0, spacing::XS])
             .style(theme::outlined_in(palette.accent));
             stack![
-                bar,
+                titles_bar,
                 pin(ghost)
                     .x(ghost_x)
                     .y(spacing::XS)
@@ -319,14 +319,16 @@ pub fn column_header<'a, M: Clone + 'a>(
             ]
             .into()
         }
-        _ => bar,
+        _ => titles_bar,
     };
 
     let header = column![bar, theme::horizontal_rule(palette.border_inactive)]
         .height(COLUMN_HEADER_HEIGHT)
         .width(Length::Fill);
     match events {
-        Some(events) => mouse_area(header).on_right_press(events.on_context).into(),
+        Some(handlers) => mouse_area(header)
+            .on_right_press(handlers.on_context)
+            .into(),
         None => header.into(),
     }
 }
@@ -531,8 +533,8 @@ mod tests {
         let spans = column_spans(layout(&columns, &[]), 800.0, false);
         let order: Vec<Column> = spans.iter().map(|span| span.column).collect();
         assert_eq!(order, columns);
-        for pair in spans.windows(2) {
-            assert_eq!(pair[0].left + pair[0].width, pair[1].left);
+        for (first, second) in spans.iter().zip(spans.iter().skip(1)) {
+            assert_eq!(first.left + first.width, second.left);
         }
     }
 

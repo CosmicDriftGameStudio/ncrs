@@ -77,7 +77,7 @@ impl FontSizeChoice {
     pub fn from_points(points: i64) -> Self {
         u8::try_from(points)
             .ok()
-            .filter(|points| FONT_POINTS.contains(points))
+            .filter(|size| FONT_POINTS.contains(size))
             .map_or(Self::System, Self::Points)
     }
 }

@@ -397,9 +397,7 @@ fn tab_walks_the_circle_of_panels_settings_and_monitor_and_back() {
     let mut session = session_in(dir.path());
     focus_the_window(&mut session);
     open_settings(&mut session);
-    // F12 does not reach through while the settings are shown (the page owns
-    // the keyboard), so the monitor is opened with the message F12 sends.
-    session.send(Message::Monitor(ncrs_monitor::MonitorMessage::Toggle));
+    session.press(Key::Named(Named::F12));
     session.settle();
     redraw(&mut session);
     assert!(session.app.monitor_for_test().is_open(), "no monitor");
@@ -443,6 +441,18 @@ fn tab_walks_the_circle_of_panels_settings_and_monitor_and_back() {
             assert_eq!(stop(&session).1, expected.1);
         }
     }
+    assert!(session.app.settings_for_test().is_some(), "Settings closed");
+    assert!(session.app.monitor_for_test().is_open(), "Monitor closed");
+
+    // On the monitor tab the settings key shows the open settings tab, and
+    // F12 on the settings tab shows the open monitor tab; neither closes.
+    assert_eq!(session.app.shown_tab_for_test(), ShownTab::Monitor);
+    session.press_with(Key::Character(",".into()), Modifiers::COMMAND);
+    session.settle();
+    assert_eq!(session.app.shown_tab_for_test(), ShownTab::Settings);
+    session.press(Key::Named(Named::F12));
+    session.settle();
+    assert_eq!(session.app.shown_tab_for_test(), ShownTab::Monitor);
     assert!(session.app.settings_for_test().is_some(), "Settings closed");
     assert!(session.app.monitor_for_test().is_open(), "Monitor closed");
 }
@@ -558,5 +568,94 @@ fn the_settings_keys_toggle_the_type_column() {
             Column::Modified,
             Column::Type
         ]
+    );
+}
+
+/// Where the focused settings row lies in the page, and how much of the page
+/// shows: the row's top and bottom, the scroll, the window's height.
+type RowAndScroll = (Option<Rectangle>, Option<(f32, f32, f32)>);
+
+struct FindFocusedRow {
+    found: Arc<Mutex<RowAndScroll>>,
+}
+
+impl Operation for FindFocusedRow {
+    fn traverse(&mut self, operate: &mut dyn FnMut(&mut dyn Operation)) {
+        operate(self);
+    }
+
+    fn container(&mut self, id: Option<&Id>, bounds: Rectangle) {
+        if id == Some(&Id::new(ncrs_ui_kit::row_scroll::FOCUSED_ROW_ID)) {
+            if let Ok(mut slot) = self.found.lock() {
+                slot.0 = Some(bounds);
+            }
+        }
+    }
+
+    fn scrollable(
+        &mut self,
+        id: Option<&Id>,
+        bounds: Rectangle,
+        content_bounds: Rectangle,
+        translation: iced::Vector,
+        _state: &mut dyn iced_test::core::widget::operation::Scrollable,
+    ) {
+        if id == Some(&Id::new("settings-page-scroll")) {
+            if let Ok(mut slot) = self.found.lock() {
+                slot.1 = Some((content_bounds.y, translation.y, bounds.height));
+            }
+        }
+    }
+}
+
+/// Walks down every row of a settings page and checks that the focused row
+/// lies wholly in the window after each key. Returns whether the page scrolled.
+fn walk_page_checking_the_row_shows(feature: ncrs_config::SettingsFeature) -> bool {
+    let dir = scratch("settings-scroll");
+    let mut session = session_in(dir.path());
+    opened_settings(&mut session);
+    for _ in 0..20 {
+        if session.app.settings_for_test().map(|state| state.feature) == Some(feature) {
+            break;
+        }
+        session.press(Key::Named(Named::ArrowDown));
+    }
+    session.press(Key::Named(Named::ArrowRight));
+    assert_eq!(session.app.settings_for_test().unwrap().focus.row, 0);
+
+    let mut scrolled_at_some_point = false;
+    for step in 0..40 {
+        let found = Arc::new(Mutex::new((None, None)));
+        session.operate(Box::new(FindFocusedRow {
+            found: Arc::clone(&found),
+        }));
+        let (row, scroll) = *found.lock().unwrap();
+        let (row_bounds, (content_top, scrolled, height)) =
+            (row.expect("focused row"), scroll.unwrap());
+        let (top, bottom) = (
+            row_bounds.y - content_top,
+            row_bounds.y - content_top + row_bounds.height,
+        );
+        assert!(
+            top >= scrolled && bottom <= scrolled + height,
+            "{feature:?} step {step}: row {top}..{bottom} outside the window {scrolled}..{}",
+            scrolled + height
+        );
+        scrolled_at_some_point |= scrolled > 0.0;
+        session.press(Key::Named(Named::ArrowDown));
+    }
+    scrolled_at_some_point
+}
+
+#[test]
+fn the_focused_settings_row_stays_wholly_in_view_on_long_pages() {
+    use ncrs_config::SettingsFeature::{Columns, Hermes, Keys, Look, Programs};
+    let scrolled: Vec<bool> = [Look, Keys, Programs, Columns, Hermes]
+        .into_iter()
+        .map(walk_page_checking_the_row_shows)
+        .collect();
+    assert!(
+        scrolled.contains(&true),
+        "no page was long enough to scroll: {scrolled:?}"
     );
 }

@@ -38,7 +38,7 @@ pub(in crate::app) fn next_stop(
         TabDirection::Forward => (at + 1) % open.len(),
         TabDirection::Backward => (at + open.len() - 1) % open.len(),
     };
-    open[next]
+    open.get(next).copied().unwrap_or(current)
 }
 
 impl App {

@@ -4,7 +4,7 @@
 use ncrs_core::FileEntry;
 
 #[cfg(unix)]
-pub(crate) fn fill_owners(entries: &mut [FileEntry]) {
+pub fn fill_owners(entries: &mut [FileEntry]) {
     use std::collections::HashMap;
     use std::os::unix::fs::MetadataExt as _;
 

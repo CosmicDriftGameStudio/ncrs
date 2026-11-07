@@ -3,7 +3,7 @@
 //! type, so a feature crate maps them into its own messages.
 
 /// Family name inside the embedded DejaVu Sans Mono files.
-pub(crate) const BUNDLED_FAMILY: &str = "DejaVu Sans Mono";
+pub const BUNDLED_FAMILY: &str = "DejaVu Sans Mono";
 
 /// The font of all text in the app: the window's default font and the base of
 /// every weight variant, so a bold part never switches family. It is the
@@ -53,6 +53,7 @@ pub mod permission_grid;
 pub mod picker;
 pub mod popup_menu;
 pub mod rename_row;
+pub mod row_scroll;
 pub mod setting_rows;
 pub mod tags;
 pub mod theme;

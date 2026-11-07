@@ -227,7 +227,26 @@ impl App {
         task
     }
 
+    /// Toggling a page that is open but behind the other tab shows it.
+    fn show_hidden_tab(&mut self, message: &Message) -> bool {
+        let tab = match message {
+            Message::Monitor(MonitorMessage::Toggle) if self.monitor.is_open() => ShownTab::Monitor,
+            Message::Settings(SettingsMessage::Toggle) if self.settings.page.is_some() => {
+                ShownTab::Settings
+            }
+            _ => return false,
+        };
+        let hidden = self.shown_tab != tab;
+        if hidden {
+            self.shown_tab = tab;
+        }
+        hidden
+    }
+
     fn apply(&mut self, message: Message) -> Task<Message> {
+        if self.show_hidden_tab(&message) {
+            return Task::none();
+        }
         let task = match message {
             // A raw key press. Routed here rather than in the subscription,
             // because that one cannot see whether a prompt is open.
@@ -551,7 +570,7 @@ impl App {
             Message::FocusPageThen(row, inner) => {
                 let focused = self.update_settings(SettingsMessage::FocusThen(row, None));
                 match inner {
-                    Some(inner) => Task::batch([focused, self.update(*inner)]),
+                    Some(then) => Task::batch([focused, self.update(*then)]),
                     None => focused,
                 }
             }

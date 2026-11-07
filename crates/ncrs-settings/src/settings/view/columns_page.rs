@@ -112,7 +112,7 @@ fn panels_row<'a>(
         lang,
     );
     row.control_width = Some(SETTINGS_WIDE_CONTROL_WIDTH);
-    row.keyed(panels_key)
+    row.keyed_maybe(panels_key)
 }
 
 fn list_rows<'a>(
@@ -186,7 +186,7 @@ fn format_row<'a, F: Copy + PartialEq>(
     let control: Element<'a, Message> = kit::segmented(&options, chosen, true, view.palette);
     let mut row = simple_row(label, Some(note), control, lang);
     row.control_width = Some(SETTINGS_WIDE_CONTROL_WIDTH);
-    row.keyed(choice_key(
+    row.keyed_maybe(choice_key(
         formats
             .iter()
             .map(|&(_, format)| edit(make(format)))

@@ -498,7 +498,7 @@ fn state_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
             kit::segmented(&options, chosen, true, palette),
             lang,
         )
-        .keyed(choice_key(
+        .keyed_maybe(choice_key(
             options.iter().map(|(_, message)| message.clone()).collect(),
             chosen,
         )),

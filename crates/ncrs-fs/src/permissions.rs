@@ -269,7 +269,16 @@ fn edited(permissions: &mut fs::Permissions, edit: &PermissionEdit) -> bool {
     }
 }
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
+#[cfg(unix)]
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use std::os::unix::fs::{symlink, PermissionsExt as _};
 
@@ -326,7 +335,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let a = file_with(dir.path(), "a", 0o644);
         let outcome = run(
-            &[a.clone()],
+            std::slice::from_ref(&a),
             PermissionPlan {
                 edit: edit(0o004, 0o002),
                 recurse: None,
@@ -357,7 +366,7 @@ mod tests {
             recurse: Some((files, folders)),
         };
         let outcome = run(
-            &[top.clone()],
+            std::slice::from_ref(&top),
             plan(ForFiles::WithoutExecute, ForFolders::AsAbove),
         );
         assert_eq!(mode(&top), 0o744);
@@ -370,7 +379,7 @@ mod tests {
     fn unchanged_files_and_folders_are_skipped_but_still_walked() {
         let (_dir, top, inner, file) = tree();
         let outcome = run(
-            &[top.clone()],
+            std::slice::from_ref(&top),
             PermissionPlan {
                 edit: edit(0o004, 0),
                 recurse: Some((ForFiles::AsAbove, ForFolders::Unchanged)),
@@ -381,8 +390,8 @@ mod tests {
         assert_eq!(mode(&file), 0o604);
         assert_eq!(outcome.changed, 2);
 
-        let outcome = run(
-            &[top.clone()],
+        let second = run(
+            std::slice::from_ref(&top),
             PermissionPlan {
                 edit: edit(0o040, 0),
                 recurse: Some((ForFiles::Unchanged, ForFolders::AsAbove)),
@@ -390,7 +399,7 @@ mod tests {
         );
         assert_eq!(mode(&inner), 0o740);
         assert_eq!(mode(&file), 0o604);
-        assert_eq!(outcome.changed, 2);
+        assert_eq!(second.changed, 2);
     }
 
     #[test]
@@ -423,7 +432,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let missing = dir.path().join("gone");
         let outcome = run(
-            &[missing.clone()],
+            std::slice::from_ref(&missing),
             PermissionPlan {
                 edit: edit(0o004, 0),
                 recurse: None,
@@ -441,7 +450,7 @@ mod tests {
         let (sender, receiver) = mpsc::unbounded_channel();
         drop(receiver);
         let outcome = change_permissions(
-            &[a.clone()],
+            std::slice::from_ref(&a),
             &PermissionPlan {
                 edit: edit(0o004, 0),
                 recurse: None,
@@ -453,7 +462,16 @@ mod tests {
     }
 }
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
+#[cfg(unix)]
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod unreadable_tests {
     use std::os::unix::fs::PermissionsExt as _;
 
@@ -467,7 +485,7 @@ mod unreadable_tests {
         fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
         let (sender, _receiver) = mpsc::unbounded_channel();
         let outcome = change_permissions(
-            &[path.clone()],
+            std::slice::from_ref(&path),
             &PermissionPlan {
                 edit: PermissionEdit {
                     set: 0o004,

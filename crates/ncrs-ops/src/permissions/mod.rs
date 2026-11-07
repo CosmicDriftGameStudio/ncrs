@@ -18,9 +18,9 @@ use ncrs_ui_kit::kit::Check;
 const MASKS: [u32; 12] = [
     0o400, 0o200, 0o100, 0o040, 0o020, 0o010, 0o004, 0o002, 0o001, 0o4000, 0o2000, 0o1000,
 ];
-pub(crate) const SETUID: usize = 9;
-pub(crate) const SETGID: usize = 10;
-pub(crate) const STICKY: usize = 11;
+pub const SETUID: usize = 9;
+pub const SETGID: usize = 10;
+pub const STICKY: usize = 11;
 /// The read-only attribute, the one box on Windows.
 pub const READ_ONLY: usize = MASKS.len();
 
@@ -129,12 +129,12 @@ fn aggregate(values: impl Iterator<Item = bool>) -> Check {
 
 /// Three or four octal digits, nothing else.
 fn parse_octal(text: &str) -> Option<u32> {
-    let text = text.trim();
-    let digits_only = text.chars().all(|digit| ('0'..='7').contains(&digit));
-    if !(3..=4).contains(&text.len()) || !digits_only {
+    let trimmed = text.trim();
+    let digits_only = trimmed.chars().all(|digit| ('0'..='7').contains(&digit));
+    if !(3..=4).contains(&trimmed.len()) || !digits_only {
         return None;
     }
-    u32::from_str_radix(text, 8).ok()
+    u32::from_str_radix(trimmed, 8).ok()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -320,8 +320,8 @@ impl PermissionsDialog {
                 .unwrap_or_default();
             return fill_template(lang.text(Msg::PermissionsTitleOne), &[("{name}", &name)]);
         }
-        let folders = self.targets.iter().filter(|target| target.is_dir).count();
-        let files = self.targets.len() - folders;
+        let folder_count = self.targets.iter().filter(|target| target.is_dir).count();
+        let file_count = self.targets.len() - folder_count;
         let counted = |count: usize, one: Msg, many: Msg| match count {
             0 => None,
             1 => Some(lang.text(one).to_owned()),
@@ -330,17 +330,17 @@ impl PermissionsDialog {
                 &[("{count}", &count.to_string())],
             )),
         };
-        let files = counted(
-            files,
+        let files_text = counted(
+            file_count,
             Msg::PermissionsTitleFileOne,
             Msg::PermissionsTitleFiles,
         );
-        let folders = counted(
-            folders,
+        let folders_text = counted(
+            folder_count,
             Msg::PermissionsTitleFolderOne,
             Msg::PermissionsTitleFolders,
         );
-        let parts = match (files, folders) {
+        let parts = match (files_text, folders_text) {
             (Some(files), Some(folders)) => fill_template(
                 lang.text(Msg::PermissionsTitlePartsJoined),
                 &[("{files}", &files), ("{folders}", &folders)],

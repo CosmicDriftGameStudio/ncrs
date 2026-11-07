@@ -188,18 +188,18 @@ pub fn resolve_file_list_tags(section: &FileListTagsSection) -> FileListTags {
 pub fn resolve_columns(section: &ColumnsSection) -> PanelColumns {
     let defaults = PanelColumns::default();
     let list = |names: &Option<Vec<String>>, fallback: Vec<Column>| {
-        names.as_ref().map_or(fallback, |names| {
-            columns_from_keys(names.iter().map(String::as_str))
+        names.as_ref().map_or(fallback, |listed| {
+            columns_from_keys(listed.iter().map(String::as_str))
         })
     };
     let mut widths: Vec<(Column, u16)> = Vec::new();
     for (key, pixels) in &section.widths {
-        let (Some(column), Ok(pixels)) = (Column::from_key(key.trim()), u16::try_from(*pixels))
+        let (Some(column), Ok(width)) = (Column::from_key(key.trim()), u16::try_from(*pixels))
         else {
             continue;
         };
-        if pixels > 0 {
-            widths.push((column, pixels));
+        if width > 0 {
+            widths.push((column, width));
         }
     }
     PanelColumns {

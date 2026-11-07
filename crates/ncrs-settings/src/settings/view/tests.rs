@@ -587,3 +587,30 @@ fn the_look_page_has_the_font_size_and_preview_rows_one_after_the_other() {
         assert_eq!(found, expected, "{lang:?}");
     }
 }
+
+#[test]
+fn the_keyboard_starts_the_hermes_page_on_its_first_row() {
+    let state = state_of("");
+    let filing = Filing::default();
+    let palette = Palette::default();
+    let view = SettingsView {
+        state: &state,
+        preset: ThemePreset::Cosmic,
+        vscode_theme: None,
+        filing: &filing,
+        servers: &[],
+        protection: None,
+        home: Path::new("/home/test"),
+        keys_changed: 0,
+        updates_listed: true,
+        facts: DocumentsFacts::default(),
+        lang: Language::English,
+        palette: &palette,
+    };
+    let hermes_keys =
+        ncrs_ui_kit::setting_rows::keyed_rows(groups_of(SettingsFeature::Hermes, &view), |_| true);
+    assert!(matches!(
+        hermes_keys.first(),
+        Some(ncrs_ui_kit::setting_rows::RowKey::Press(_))
+    ));
+}

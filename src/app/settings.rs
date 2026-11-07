@@ -195,21 +195,20 @@ impl App {
             return Task::none();
         };
         let view = self.settings_view(state);
-        let facts = settings_ui::focus_facts(&view).map(|(listed, current, rows)| {
-            let rows = match self.app_page_keys(current) {
+        let facts = settings_ui::focus_facts(&view).map(|(listed, current, page_rows)| {
+            let keyed_rows = match self.app_page_keys(current) {
                 Some(keys) => keys,
-                None => rows
+                None => page_rows
                     .into_iter()
                     .map(|row| row.map(Message::Settings))
                     .collect(),
             };
-            (listed, current, rows)
+            (listed, current, keyed_rows)
         });
-        let step = facts.as_ref().and_then(|(listed, current, rows)| {
+        let stepped = facts.as_ref().and_then(|(listed, current, rows)| {
             ncrs_settings::focus::step(state.focus, key, listed, *current, rows)
         });
-        let rows = facts.map_or(0, |(_, _, rows)| rows.len());
-        let Some(step) = step else {
+        let Some(step) = stepped else {
             return if key == FocusKey::Escape {
                 self.update(Message::Settings(SettingsMessage::Close))
             } else {
@@ -230,7 +229,7 @@ impl App {
             tasks.push(release_focus());
         }
         if step.focus.area == ncrs_settings::focus::Area::Rows {
-            tasks.push(settings_ui::scroll_to_row(step.focus.row, rows));
+            tasks.push(settings_ui::scroll_to_row());
         }
         Task::batch(tasks)
     }

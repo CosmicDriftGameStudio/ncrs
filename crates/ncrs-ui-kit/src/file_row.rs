@@ -718,9 +718,9 @@ mod tests {
         assert_eq!(text_of(Column::LinkTarget), "/elsewhere");
 
         entry.is_parent = true;
-        let text_of = |column| cell_text(&entry, column, &layout, IconKind::Pdf);
-        assert_eq!(text_of(Column::Owner), "");
-        assert_eq!(text_of(Column::Size), Msg::MarkerUp.text());
+        let parent_text_of = |column| cell_text(&entry, column, &layout, IconKind::Pdf);
+        assert_eq!(parent_text_of(Column::Owner), "");
+        assert_eq!(parent_text_of(Column::Size), Msg::MarkerUp.text());
     }
 
     #[test]

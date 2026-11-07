@@ -89,12 +89,12 @@ fn step(list: &mut [Column], column: Column, down: bool) {
         return;
     };
     let can_show = |index: &usize| list.get(*index).is_some_and(|other| other.on_this_system());
-    let target = if down {
+    let to = if down {
         (at + 1..list.len()).find(can_show)
     } else {
         (0..at).rev().find(can_show)
     };
-    if let Some(target) = target {
+    if let Some(target) = to {
         list.swap(at, target);
     }
 }

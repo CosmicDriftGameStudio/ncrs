@@ -292,12 +292,13 @@ use ncrs_ui_kit::setting_rows::{
 };
 
 /// Left and Right step through `messages`, one per value, and stop at the ends.
-fn choice_key(messages: Vec<Message>, selected: usize) -> RowKey<Message> {
-    let at = |index: usize| messages[index.min(messages.len() - 1)].clone();
-    RowKey::Choice {
-        previous: at(selected.saturating_sub(1)),
-        next: at(selected + 1),
-    }
+fn choice_key(messages: Vec<Message>, selected: usize) -> Option<RowKey<Message>> {
+    let last = messages.len().saturating_sub(1);
+    let at = |index: usize| messages.get(index.min(last)).cloned();
+    Some(RowKey::Choice {
+        previous: at(selected.saturating_sub(1))?,
+        next: at(selected + 1)?,
+    })
 }
 
 /// The keyboard on a dropdown that offers `items`.
@@ -490,17 +491,10 @@ pub fn view_with<'a, M: 'a>(
 
 const PAGE_SCROLL_ID: &str = "settings-page-scroll";
 
-/// Scrolls the page so that its row number `row` of `count` is about in view.
-pub fn scroll_to_row<T: Send + 'static>(row: usize, count: usize) -> iced::Task<T> {
-    let last = count.saturating_sub(1).max(1);
-    let y = (row.min(last) as f32 / last as f32).clamp(0.0, 1.0);
-    iced::widget::operation::snap_to(
-        PAGE_SCROLL_ID,
-        scrollable::RelativeOffset {
-            x: None,
-            y: Some(y),
-        },
-    )
+/// Scrolls the page just far enough that the row the keyboard is on shows
+/// whole.
+pub fn scroll_to_row<T: Send + 'static>() -> iced::Task<T> {
+    ncrs_ui_kit::row_scroll::focused_row_into_view(PAGE_SCROLL_ID)
 }
 
 /// What the status bar shows while the tab is open.

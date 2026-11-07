@@ -17,9 +17,6 @@ use crate::message::{OpsMessage, PermissionsMessage};
 /// The id of the octal field.
 pub const OCTAL_FIELD_ID: &str = "permissions-octal";
 
-/// Technical names of the three special bits; they are the same in every
-/// language.
-
 fn send(message: PermissionsMessage) -> OpsMessage {
     OpsMessage::Permissions(message)
 }
@@ -81,7 +78,7 @@ pub fn view<'a>(
 
 /// The grid, the octal line, the note and the folded extra bits.
 fn rights<'a>(
-    body: iced::widget::Column<'a, OpsMessage>,
+    mut body: iced::widget::Column<'a, OpsMessage>,
     dialog: &PermissionsDialog,
     lang: Language,
     palette: &Palette,
@@ -105,17 +102,21 @@ fn rights<'a>(
         |row, column| send(PermissionsMessage::Toggle(row * 3 + column)),
         palette,
     );
+    let octal_text = dialog.octal_text(lang);
+    let symbolic = dialog.symbolic().unwrap_or_default();
     let octal = permission_grid::octal_row(
-        lang.text(Msg::PermissionsOctal),
+        &permission_grid::OctalTexts {
+            label: lang.text(Msg::PermissionsOctal),
+            value: &octal_text,
+            symbolic: &symbolic,
+            note: lang.text(Msg::PermissionsOctalNote),
+        },
         OCTAL_FIELD_ID,
-        &dialog.octal_text(lang),
-        &dialog.symbolic().unwrap_or_default(),
-        lang.text(Msg::PermissionsOctalNote),
         |text| send(PermissionsMessage::OctalInput(text)),
         send(PermissionsMessage::Confirm),
         palette,
     );
-    let mut body = body
+    body = body
         .push(grid)
         .push(octal)
         .push(kit::dim(lang.text(Msg::PermissionsCheckboxNote), palette));

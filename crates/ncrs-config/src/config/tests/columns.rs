@@ -49,8 +49,8 @@ fn the_right_panel_has_its_own_columns_only_when_they_are_not_the_same() {
 
 #[test]
 fn an_unknown_format_is_an_error() {
-    assert!(from_text("[columns]\ndate_format = \"long\"\n").is_err());
-    assert!(from_text("[columns]\nsize_format = \"huge\"\n").is_err());
+    from_text("[columns]\ndate_format = \"long\"\n").unwrap_err();
+    from_text("[columns]\nsize_format = \"huge\"\n").unwrap_err();
 }
 
 #[test]

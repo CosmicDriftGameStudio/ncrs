@@ -79,9 +79,6 @@ pub struct RowButton<M> {
     pub tone: Tone,
     /// A tick box in this state instead of a button.
     pub check: Option<Check>,
-    /// Whether Left and Right reach it; a mouse-only one is drawn and pressed
-    /// by click.
-    pub keyboard: bool,
 }
 
 impl<M> RowButton<M> {
@@ -91,7 +88,6 @@ impl<M> RowButton<M> {
             message,
             tone,
             check: None,
-            keyboard: true,
         }
     }
 
@@ -102,15 +98,8 @@ impl<M> RowButton<M> {
         }
     }
 
-    pub fn mouse_only(self) -> Self {
-        Self {
-            keyboard: false,
-            ..self
-        }
-    }
-
     fn reachable(&self) -> bool {
-        self.keyboard && self.message.is_some()
+        self.message.is_some()
     }
 }
 
@@ -135,8 +124,8 @@ pub fn button_row<'a, M: Clone + 'a>(
     let mut strip = Row::new()
         .spacing(spacing::S)
         .align_y(alignment::Vertical::Center);
-    if let Some(leading) = leading {
-        strip = strip.push(leading);
+    if let Some(lead) = leading {
+        strip = strip.push(lead);
     }
     for button in buttons {
         let is_marked = button.reachable() && marked == Some(on);
@@ -336,6 +325,14 @@ impl<'a, M: Clone + 'a> SettingRow<'a, M> {
         }
     }
 
+    /// Like [`Self::keyed`], for a key that may not exist.
+    pub fn keyed_maybe(self, key: Option<RowKey<M>>) -> Self {
+        match key {
+            Some(row_key) => self.keyed(row_key),
+            None => self,
+        }
+    }
+
     /// Like [`Self::keyed`], only while `when` holds: a row whose buttons are
     /// off answers no key either.
     pub fn keyed_if(self, when: bool, key: RowKey<M>) -> Self {
@@ -526,14 +523,14 @@ pub fn sections_with_focus<'a, M: Clone + 'a>(
                 let is_marked = marked == Some(setting.label.as_str());
                 let has_focus = number.is_some() && number == focused;
                 let mut marked_controls = setting.marked_controls;
-                let control = match focus {
+                let marked_control = match focus {
                     Some(at) if has_focus && !marked_controls.is_empty() => {
                         let last = marked_controls.len() - 1;
                         marked_controls.swap_remove(at.button.min(last))
                     }
                     _ => setting.control,
                 };
-                let control = match (&setting.key, focus) {
+                let opened_control = match (&setting.key, focus) {
                     (
                         Some(RowKey::Dropdown {
                             labels,
@@ -552,12 +549,12 @@ pub fn sections_with_focus<'a, M: Clone + 'a>(
                         setting.control_width.unwrap_or(size::CONTROL_WIDTH),
                         palette,
                     ),
-                    _ => control,
+                    _ => marked_control,
                 };
-                let control = match number {
-                    Some(at) => control
+                let row_control = match number {
+                    Some(at) => opened_control
                         .map(move |message| on_focus(at, Some(message.clone())).unwrap_or(message)),
-                    None => control,
+                    None => opened_control,
                 };
                 let lines_below: Vec<Element<'a, M>> = setting
                     .problem
@@ -578,7 +575,7 @@ pub fn sections_with_focus<'a, M: Clone + 'a>(
                         .or(setting.config_key.as_deref()),
                     setting.description.as_deref(),
                     lines_below,
-                    control,
+                    row_control,
                     if setting.list_indent.is_some() {
                         Length::Shrink
                     } else {
@@ -598,6 +595,7 @@ pub fn sections_with_focus<'a, M: Clone + 'a>(
                 let row: Element<'a, M> = if has_focus {
                     // Like the mark: drawn over the content, which keeps clear.
                     container(form_row)
+                        .id(crate::row_scroll::FOCUSED_ROW_ID)
                         .padding([0.0, spacing::XS])
                         .style(theme::focused_setting(palette))
                         .into()

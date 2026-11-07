@@ -33,14 +33,14 @@ pub fn look_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
         .iter()
         .position(|&preset| preset == view.preset)
         .unwrap_or_default();
-    let mut preset_row = simple_row(
+    let mut plain_preset_row = simple_row(
         Msg::SettingsRowPreset,
         Some(Msg::SettingsRowPresetNote),
         kit::segmented(&options, chosen, true, palette),
         lang,
     );
-    preset_row.control_width = Some(SETTINGS_WIDE_CONTROL_WIDTH);
-    let preset_row = preset_row.keyed(choice_key(
+    plain_preset_row.control_width = Some(SETTINGS_WIDE_CONTROL_WIDTH);
+    let preset_row = plain_preset_row.keyed_maybe(choice_key(
         options.iter().map(|(_, message)| message.clone()).collect(),
         chosen,
     ));
@@ -263,14 +263,14 @@ pub fn program_row<'a>(kind: OpenKind, view: &SettingsView<'a>) -> SettingRow<'a
         ));
     }
     let build = |marked| {
-        let field = setting_field(
+        let program_field = setting_field(
             field,
             id,
             lang.text(Msg::SettingsProgramPlaceholder),
             !state.sandboxed,
             view,
         );
-        button_row(Some(field), &buttons, marked, palette)
+        button_row(Some(program_field), &buttons, marked, palette)
     };
     let mut description = lang.text(note).to_owned();
     if state.sandboxed {
@@ -523,7 +523,7 @@ pub fn language_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
                 kit::segmented(&options, chosen, true, view.palette),
                 lang,
             )
-            .keyed(language_key),
+            .keyed_maybe(language_key),
             simple_row(
                 Msg::SettingsRowFuturamaNames,
                 Some(Msg::SettingsRowFuturamaNamesNote),
@@ -585,7 +585,7 @@ pub fn provider_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
         kit::segmented(&options, chosen, true, view.palette),
         lang,
     )
-    .keyed(choice_key(
+    .keyed_maybe(choice_key(
         options.iter().map(|(_, message)| message.clone()).collect(),
         chosen,
     ))];

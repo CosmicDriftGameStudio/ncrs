@@ -15,7 +15,7 @@ pub const OPEN_LIST_ROWS: usize = 8;
 /// `highlighted` in it, as near the middle as the ends of the list allow.
 pub fn window_start(count: usize, highlighted: usize) -> usize {
     highlighted
-        .saturating_sub(OPEN_LIST_ROWS / 2)
+        .saturating_sub(OPEN_LIST_ROWS.div_euclid(2))
         .min(count.saturating_sub(OPEN_LIST_ROWS))
 }
 

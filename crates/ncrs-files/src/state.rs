@@ -108,9 +108,8 @@ impl Panels {
     /// What the header of `side` draws of a title being dragged; `None` when
     /// the held title is in another panel or has not been moved yet.
     pub fn header_drag_view(&self, side: PanelSide) -> Option<HeaderDrag> {
-        self.header_press
-            .filter(|press| press.side == side)
-            .and_then(|press| press.view())
+        let held = self.header_press.filter(|press| press.side == side)?;
+        held.view()
     }
 
     pub fn panel(&self, side: PanelSide) -> &PanelState {

@@ -265,7 +265,7 @@ fn the_keyboard_moves_the_focus_frame_to_the_font_size_row() {
         }
         let focus = app.settings.page.as_ref().map(|page| page.focus);
         assert_eq!(
-            focus.map(|focus| (focus.area, focus.row)),
+            focus.map(|held| (held.area, held.row)),
             Some((Area::Rows, 4))
         );
         matches_snapshot(&app, PAGE_WINDOW, &format!("settings_font_focus_{suffix}"));
@@ -307,9 +307,9 @@ fn the_font_dropdown_opens_on_the_keyboard_and_shows_the_highlighted_row() {
         focus_key(&mut app, FocusKey::Press);
         focus_key(&mut app, FocusKey::Down);
         let focus = app.settings.page.as_ref().map(|page| page.focus);
-        let focus = focus.expect("the tab is open");
-        assert_eq!((focus.area, focus.row), (Area::Rows, 3));
-        assert_eq!(focus.open, Some(1));
+        let open_focus = focus.expect("the tab is open");
+        assert_eq!((open_focus.area, open_focus.row), (Area::Rows, 3));
+        assert_eq!(open_focus.open, Some(1));
         matches_snapshot(
             &app,
             PAGE_WINDOW,
@@ -317,8 +317,8 @@ fn the_font_dropdown_opens_on_the_keyboard_and_shows_the_highlighted_row() {
         );
 
         focus_key(&mut app, FocusKey::Escape);
-        let focus = app.settings.page.as_ref().map(|page| page.focus);
-        assert_eq!(focus.map(|focus| focus.open), Some(None));
+        let focus_after_escape = app.settings.page.as_ref().map(|page| page.focus);
+        assert_eq!(focus_after_escape.map(|held| held.open), Some(None));
         assert!(app.settings.page.is_some(), "Escape closes the list only");
     }
 }

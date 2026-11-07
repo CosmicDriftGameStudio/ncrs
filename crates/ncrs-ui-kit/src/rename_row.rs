@@ -65,11 +65,11 @@ pub fn rename_row<'a, M: Clone + 'a>(
     if !busy {
         input = input.on_input(on_input).on_submit(on_submit);
     }
-    let mut input = Some(input);
+    let mut name_input = Some(input);
     let cells: Vec<Element<'a, M>> = columns
         .shown()
         .map(|shown| match shown {
-            Column::Name => input
+            Column::Name => name_input
                 .take()
                 .map_or_else(|| Space::new().into(), Element::from),
             Column::Icon => container(file_icon(

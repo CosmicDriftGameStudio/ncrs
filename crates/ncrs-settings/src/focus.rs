@@ -122,7 +122,10 @@ fn step_in_pages<M: Clone>(
 }
 
 fn step_in_rows<M: Clone>(focus: Focus, key: FocusKey, rows: &[RowKey<M>]) -> Step<M> {
-    let row = focus.row.min(rows.len() - 1);
+    let row = focus.row.min(rows.len().saturating_sub(1));
+    let Some(current) = rows.get(row) else {
+        return Step::to(Focus::default());
+    };
     let here = Focus::in_rows(row);
     let to_pages = Step {
         release_field: true,
@@ -132,10 +135,10 @@ fn step_in_rows<M: Clone>(focus: Focus, key: FocusKey, rows: &[RowKey<M>]) -> St
         press: Some(message.clone()),
         ..Step::to(here)
     };
-    if let (Some(highlighted), RowKey::Dropdown { choices, .. }) = (focus.open, &rows[row]) {
+    if let (Some(highlighted), RowKey::Dropdown { choices, .. }) = (focus.open, current) {
         return step_in_open_list(here, highlighted, key, choices);
     }
-    match (key, &rows[row]) {
+    match (key, current) {
         (FocusKey::Up, _) => Step {
             release_field: true,
             ..Step::to(Focus::in_rows(row.saturating_sub(1)))
@@ -177,7 +180,7 @@ fn step_in_rows<M: Clone>(focus: Focus, key: FocusKey, rows: &[RowKey<M>]) -> St
         (FocusKey::Press, RowKey::Buttons(messages)) => {
             let button = focus.button.min(messages.len() - 1);
             Step {
-                press: Some(messages[button].clone()),
+                press: messages.get(button).cloned(),
                 ..Step::to(Focus { button, ..here })
             }
         }
@@ -220,6 +223,9 @@ fn step_in_open_list<M: Clone>(
 }
 
 #[cfg(test)]
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use SettingsFeature::{Columns, Language, Look};

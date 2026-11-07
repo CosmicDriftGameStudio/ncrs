@@ -80,31 +80,37 @@ pub fn labelled_box<'a, M: Clone + 'a>(
     .into()
 }
 
+/// The words of the octal line.
+#[derive(Debug)]
+pub struct OctalTexts<'a> {
+    pub label: &'a str,
+    pub value: &'a str,
+    pub symbolic: &'a str,
+    pub note: &'a str,
+}
+
 /// The line with the octal field: the label, the field, the rights spelled
 /// like `ls -l` and a dimmed note.
 pub fn octal_row<'a, M: Clone + 'a>(
-    label: &str,
+    texts: &OctalTexts<'_>,
     field_id: &'static str,
-    value: &str,
-    symbolic: &str,
-    note: &str,
     on_input: impl Fn(String) -> M + 'a,
     on_submit: M,
     palette: &Palette,
 ) -> Element<'a, M> {
     row![
-        container(kit::paragraph(label.to_owned(), palette)).width(LABEL_WIDTH),
+        container(kit::paragraph(texts.label.to_owned(), palette)).width(LABEL_WIDTH),
         container(kit::text_field(
             "",
-            value,
+            texts.value,
             field_id,
             Some(on_input),
             on_submit,
             palette,
         ))
         .width(OCTAL_WIDTH),
-        kit::dim(symbolic.to_owned(), palette),
-        container(kit::dim(note.to_owned(), palette)).width(Length::Fill),
+        kit::dim(texts.symbolic.to_owned(), palette),
+        container(kit::dim(texts.note.to_owned(), palette)).width(Length::Fill),
     ]
     .spacing(spacing::LINE_GAP)
     .align_y(alignment::Vertical::Center)

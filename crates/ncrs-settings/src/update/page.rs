@@ -77,7 +77,7 @@ pub fn update(
             state.focus = focus;
             None
         }),
-        SettingsMessage::FocusThen(row, inner) => {
+        SettingsMessage::FocusThen(row, then) => {
             let focused = in_settings(settings, ctx, |state| {
                 let same_row =
                     state.focus.area == crate::focus::Area::Rows && state.focus.row == row;
@@ -86,7 +86,7 @@ pub fn update(
                 }
                 None
             });
-            match inner {
+            match then {
                 Some(inner) => Task::batch([focused, update(settings, *inner, ctx, actions)]),
                 None => focused,
             }

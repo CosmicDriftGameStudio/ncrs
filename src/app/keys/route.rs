@@ -13,14 +13,7 @@ fn keys_without_prompt(
     // The menu takes the arrows and Enter that would otherwise move the panel
     // behind it; any other key does nothing until it is closed.
     if prompt.volume_menu {
-        return ncrs_files::keys::volume_menu_key(&key).map(|pressed| match pressed {
-            VolumeMenuKey::Close => Message::VolumeMenuClose,
-            VolumeMenuKey::Activate => Message::VolumeMenuActivate,
-            VolumeMenuKey::Move(delta) => Message::VolumeMenuMove(delta),
-            VolumeMenuKey::First => Message::VolumeMenuFirst,
-            VolumeMenuKey::Last => Message::VolumeMenuLast,
-            VolumeMenuKey::Remove => Message::VolumeMenuRemove,
-        });
+        return ncrs_files::keys::volume_menu_key(&key).map(volume_menu_message);
     }
     if prompt.quick_fix {
         return ncrs_hermes_ui::keys::quick_fix_key(&key).map(Message::from);
@@ -49,7 +42,7 @@ fn keys_without_prompt(
     }
 
     if prompt.permissions_dialog {
-        return ncrs_ops::keys::permissions_key(&key).map(|pressed| Message::Permissions(pressed));
+        return ncrs_ops::keys::permissions_key(&key).map(Message::Permissions);
     }
 
     if prompt.key_bindings {
@@ -143,13 +136,7 @@ fn keys_without_prompt(
         && !(prompt.monitor_filter || prompt.monitor_dialog || prompt.monitor_menu))
         || prompt.settings;
     if page_tab_stop && matches!(key.as_ref(), Key::Named(Named::Tab)) {
-        return if key_modifiers == Modifiers::SHIFT {
-            Some(Message::TabInPage { backward: true })
-        } else if key_modifiers.is_empty() {
-            Some(Message::TabInPage { backward: false })
-        } else {
-            None
-        };
+        return page_tab_message(key_modifiers);
     }
 
     if prompt.monitor {
@@ -472,5 +459,26 @@ pub fn route_key(prompt: &PromptKeyState, key: Key, modifiers: Modifiers) -> Opt
             Some(Message::PromptInput(name))
         }
         _ => None,
+    }
+}
+
+fn volume_menu_message(pressed: VolumeMenuKey) -> Message {
+    match pressed {
+        VolumeMenuKey::Close => Message::VolumeMenuClose,
+        VolumeMenuKey::Activate => Message::VolumeMenuActivate,
+        VolumeMenuKey::Move(delta) => Message::VolumeMenuMove(delta),
+        VolumeMenuKey::First => Message::VolumeMenuFirst,
+        VolumeMenuKey::Last => Message::VolumeMenuLast,
+        VolumeMenuKey::Remove => Message::VolumeMenuRemove,
+    }
+}
+
+fn page_tab_message(key_modifiers: Modifiers) -> Option<Message> {
+    if key_modifiers == Modifiers::SHIFT {
+        Some(Message::TabInPage { backward: true })
+    } else if key_modifiers.is_empty() {
+        Some(Message::TabInPage { backward: false })
+    } else {
+        None
     }
 }

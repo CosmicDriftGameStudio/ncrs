@@ -1,9 +1,9 @@
 //! Presentation helpers for sizes and dates.
-use std::fmt::Write;
+use std::fmt::Write as _;
 use std::path::Path;
 use std::time::SystemTime;
 
-use chrono::{DateTime, Datelike, Local};
+use chrono::{DateTime, Datelike as _, Local};
 use ncrs_core::{DateFormat, FileEntry, SizeFormat, WindowsAttributes};
 use ncrs_i18n::{fill_template, Language, Msg};
 use ncrs_index::Amount;
@@ -240,7 +240,7 @@ pub fn time(time: Option<SystemTime>) -> String {
 
 /// A time as a date column writes it. Empty when unknown.
 pub fn time_in(time: Option<SystemTime>, format: DateFormat, lang: Language) -> String {
-    time.map(|time| date_text(DateTime::<Local>::from(time), Local::now(), format, lang))
+    time.map(|moment| date_text(DateTime::<Local>::from(moment), Local::now(), format, lang))
         .unwrap_or_default()
 }
 
@@ -753,7 +753,7 @@ mod tests {
     }
 
     fn local(year: i32, month: u32, day: u32, hour: u32, minute: u32) -> DateTime<Local> {
-        use chrono::TimeZone;
+        use chrono::TimeZone as _;
         Local
             .with_ymd_and_hms(year, month, day, hour, minute, 0)
             .single()

@@ -24,7 +24,7 @@ pub fn system_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
                 kit::segmented(&options, chosen, true, view.palette),
                 lang,
             )
-            .keyed(choice_key(
+            .keyed_maybe(choice_key(
                 options.iter().map(|(_, message)| message.clone()).collect(),
                 chosen,
             ))

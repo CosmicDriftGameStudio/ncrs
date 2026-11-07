@@ -224,6 +224,7 @@ pub(in crate::app) fn settings_key(
                 *message == Message::Quit
                     || *message == KeyAction::CommandPalette.message()
                     || *message == KeyAction::Settings.message()
+                    || *message == KeyAction::SystemMonitor.message()
                     || *message == KeyAction::KeyBindings.message()
             })
             .filter(|_| is_not_typed_by_text_field(key, key_modifiers))
@@ -253,6 +254,7 @@ pub(in crate::app) fn monitor_page_key(
         *message == Message::Quit
             || *message == KeyAction::CommandPalette.message()
             || *message == KeyAction::SystemMonitor.message()
+            || *message == KeyAction::Settings.message()
             || *message == KeyAction::KeyBindings.message()
     };
     let facts = ncrs_monitor::KeyFacts {
