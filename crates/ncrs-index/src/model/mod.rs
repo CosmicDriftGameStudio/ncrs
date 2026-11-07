@@ -641,7 +641,8 @@ impl SenderAliases {
 /// equals the value, without regard to case. SenderAddress: an e-mail domain or
 /// address found in the text. Iban and TaxId: the number occurs in the text,
 /// whatever the spacing. Recipient: the name or address stands in the addressee
-/// block. Folder: the folder the document lies in.
+/// block. Folder: the folder the document lies in. ReadFolder: the document
+/// lies under the read folder whose path is the value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ConditionKind {
     Substring,
@@ -657,10 +658,12 @@ pub enum ConditionKind {
     Tag,
     /// The kind field of the document is this kind; the value is the kind key.
     Kind,
+    /// The document's current path lies under this read folder (the value is its absolute path).
+    ReadFolder,
 }
 
 impl ConditionKind {
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 12] = [
         Self::Substring,
         Self::Word,
         Self::Regex,
@@ -672,6 +675,7 @@ impl ConditionKind {
         Self::Folder,
         Self::Tag,
         Self::Kind,
+        Self::ReadFolder,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -687,6 +691,7 @@ impl ConditionKind {
             Self::Folder => "folder",
             Self::Tag => "tag",
             Self::Kind => "kind",
+            Self::ReadFolder => "read_folder",
         }
     }
 
@@ -703,6 +708,7 @@ impl ConditionKind {
             "folder" => Ok(Self::Folder),
             "tag" => Ok(Self::Tag),
             "kind" => Ok(Self::Kind),
+            "read_folder" => Ok(Self::ReadFolder),
             other => Err(corrupt("rule_condition.kind", other)),
         }
     }

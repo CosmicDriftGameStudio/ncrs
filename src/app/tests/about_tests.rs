@@ -3,7 +3,7 @@ use std::sync::Mutex;
 use crate::app::*;
 
 #[derive(Default)]
-struct RecordingLauncher(Mutex<Vec<fs::OpenCommand>>);
+pub(in crate::app::tests) struct RecordingLauncher(Mutex<Vec<fs::OpenCommand>>);
 
 impl fs::Launcher for RecordingLauncher {
     fn launch(&self, command: &fs::OpenCommand) -> Result<(), String> {
@@ -14,7 +14,7 @@ impl fs::Launcher for RecordingLauncher {
     }
 }
 
-fn calls(launcher: &RecordingLauncher) -> Vec<fs::OpenCommand> {
+pub(in crate::app::tests) fn calls(launcher: &RecordingLauncher) -> Vec<fs::OpenCommand> {
     launcher
         .0
         .lock()
@@ -26,7 +26,9 @@ fn send(app: &mut App, message: AboutMessage) {
     drop(app.update(Message::About(message)));
 }
 
-fn app_with_launcher(finder: fn() -> Option<PathBuf>) -> (App, Arc<RecordingLauncher>) {
+pub(in crate::app::tests) fn app_with_launcher(
+    finder: fn() -> Option<PathBuf>,
+) -> (App, Arc<RecordingLauncher>) {
     let launcher = Arc::new(RecordingLauncher::default());
     let mut app = App::with_fixed_panels()
         .with_licenses_finder(finder)

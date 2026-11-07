@@ -112,6 +112,7 @@ fn plan_for(spec: RuleSpec, text: &str, fields: &DocumentFields) -> Planning {
             text,
             fields,
             path: None,
+            location: None,
             sender_aliases: &SenderAliases::default(),
             manual_fields: &[],
             kinds: &Kinds::built_in(KindLanguage::English),
@@ -140,6 +141,7 @@ fn plan_keeping(fields: &DocumentFields, manual_fields: &[Field]) -> FilingPlan 
             text: TEXT,
             fields,
             path: None,
+            location: None,
             sender_aliases: &SenderAliases::default(),
             manual_fields,
             kinds: &Kinds::built_in(KindLanguage::English),
@@ -231,6 +233,7 @@ fn the_kind_folder_is_written_in_the_language_of_the_plan() {
                 text: "",
                 fields: &fields,
                 path: None,
+                location: None,
                 sender_aliases: &SenderAliases::default(),
                 manual_fields: &[],
                 kinds: &kinds,
@@ -504,6 +507,7 @@ fn a_sender_condition_follows_a_confirmed_name_alias_only() {
                     text: "",
                     fields: &fields,
                     path: None,
+                    location: None,
                     sender_aliases: aliases,
                     manual_fields: &[],
                     kinds: &Kinds::built_in(KindLanguage::English),
@@ -527,6 +531,15 @@ fn a_sender_condition_follows_a_confirmed_name_alias_only() {
 
 /// The rule found the document; fields it cannot fill do not matter here.
 fn matched_at(condition: Condition, text: &str, path: Option<&Path>) -> bool {
+    matched_in(condition, text, path, None)
+}
+
+fn matched_in(
+    condition: Condition,
+    text: &str,
+    path: Option<&Path>,
+    location: Option<&Path>,
+) -> bool {
     let rules = rules_from(&[with_conditions(Combinator::AllOf, vec![condition])]);
     let fields = DocumentFields::default();
     let planning = plan(
@@ -535,6 +548,7 @@ fn matched_at(condition: Condition, text: &str, path: Option<&Path>) -> bool {
             text,
             fields: &fields,
             path,
+            location,
             sender_aliases: &SenderAliases::default(),
             manual_fields: &[],
             kinds: &Kinds::built_in(KindLanguage::English),
@@ -611,6 +625,37 @@ fn a_folder_condition_needs_a_path_even_when_negated() {
 }
 
 #[test]
+fn a_read_folder_condition_holds_for_the_location_the_document_lies_under() {
+    let scans = Path::new("/a/Scans");
+    let neighbour = Path::new("/a/Scans2");
+    let read_folder = Condition::new(ConditionKind::ReadFolder, "/a/Scans");
+    let not_read_folder = Condition::not(ConditionKind::ReadFolder, "/a/Scans");
+    let path = Some(Path::new("2025/bill.pdf"));
+
+    assert!(matched_in(read_folder.clone(), TEXT, path, Some(scans)));
+    assert!(!matched_in(
+        read_folder.clone(),
+        TEXT,
+        path,
+        Some(neighbour)
+    ));
+    assert!(!matched_in(
+        not_read_folder.clone(),
+        TEXT,
+        path,
+        Some(scans)
+    ));
+    assert!(matched_in(
+        not_read_folder.clone(),
+        TEXT,
+        path,
+        Some(neighbour)
+    ));
+    assert!(!matched_in(read_folder, TEXT, path, None));
+    assert!(!matched_in(not_read_folder, TEXT, path, None));
+}
+
+#[test]
 fn the_sender_is_only_filled_from_a_plain_sender_condition_under_all_of() {
     let unconfirmed_sender = |combinator, condition| {
         let mut spec = with_conditions(combinator, vec![substring("invoice 4711"), condition]);
@@ -648,6 +693,7 @@ fn a_rule_without_a_condition_matches_nothing() {
             text: TEXT,
             fields: &fields,
             path: None,
+            location: None,
             sender_aliases: &SenderAliases::default(),
             manual_fields: &[],
             kinds: &Kinds::built_in(KindLanguage::English),
@@ -670,6 +716,7 @@ fn the_first_confirmed_rule_wins_over_an_earlier_unconfirmed_one() {
             text: TEXT,
             fields: &fields,
             path: None,
+            location: None,
             sender_aliases: &SenderAliases::default(),
             manual_fields: &[],
             kinds: &Kinds::built_in(KindLanguage::English),
@@ -686,6 +733,7 @@ fn plan_all(rules: &[Rule]) -> Planning {
             text: TEXT,
             fields: &DocumentFields::default(),
             path: None,
+            location: None,
             sender_aliases: &SenderAliases::default(),
             manual_fields: &[],
             kinds: &Kinds::built_in(KindLanguage::English),

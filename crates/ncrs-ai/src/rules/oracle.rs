@@ -35,6 +35,7 @@ pub fn filed_at(spec: &RuleSpec, fixture: &Fixture, kinds: &Kinds) -> Option<Pat
         text: &fixture.text,
         fields: &fixture.fields,
         path: Some(&fixture.path),
+        location: None,
         sender_aliases: &aliases,
         manual_fields: &[],
         kinds,

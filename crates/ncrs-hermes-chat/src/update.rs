@@ -885,6 +885,8 @@ pub fn handle_reply(state: &mut State, ctx: &Ctx, reply: ChipReply) -> Option<Ac
         ChipReply::RuleWhat(description) => crate::rule_flow::described(state, ctx, &description),
         ChipReply::RuleCreate => crate::rule_flow::create(state),
         ChipReply::RuleCondition => crate::rule_flow::edit(state, ctx),
+        ChipReply::OnlyFrom(source) => crate::rule_flow::limit_to_source(state, ctx, Some(source)),
+        ChipReply::FromAllSources => crate::rule_flow::limit_to_source(state, ctx, None),
         ChipReply::RuleNow => return crate::rule_flow::file_now(state, ctx),
         ChipReply::RuleOnlyNew => crate::rule_flow::only_new(state, ctx),
         ChipReply::PutBack => undo::put_back(state, ctx),

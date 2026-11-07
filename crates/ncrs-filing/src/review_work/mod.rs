@@ -17,8 +17,9 @@ use ncrs_index::{
     KindCatalog, KindLanguage, Kinds, ReviewEntryId, ReviewReason, Rule, RuleId, SenderAliases,
 };
 use ncrs_intake::{
-    condition_match_ranges, location_documents, location_structure, plan, relative_to_location,
-    render_pattern_in, text_is_readable, NeighbourIndex, OwnNames, Placement, PlanInput, Planning,
+    condition_match_ranges, location_documents, location_of, location_structure, plan,
+    relative_to_location, render_pattern_in, text_is_readable, NeighbourIndex, OwnNames, Placement,
+    PlanInput, Planning,
 };
 use ncrs_pipeline::OwnDetails;
 
@@ -474,6 +475,7 @@ fn review_item(
             text: &text,
             fields: &document.fields,
             path: Some(relative_to_location(&document.path, location_roots)),
+            location: location_of(&document.path, location_roots),
             sender_aliases,
             manual_fields: &manual_fields,
             kinds: &kinds,

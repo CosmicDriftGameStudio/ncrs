@@ -14,7 +14,7 @@ use ncrs_index::{
     BatchKind, Document, DocumentStatus, FieldOrigin, Index, IndexError, KindLanguage, Kinds,
     ReviewReason, Rule, SenderAliases,
 };
-use ncrs_intake::{plan, relative_to_location, PlanInput, Planning};
+use ncrs_intake::{location_of, plan, relative_to_location, PlanInput, Planning};
 
 use crate::execute::{
     execute_copying, execute_with, ExecuteError, ExecutionItem, ExecutionReport, ItemOutcome,
@@ -140,6 +140,7 @@ fn decide(
             text: &text,
             fields: &document.fields,
             path: Some(relative_to_location(&document.path, location_roots)),
+            location: location_of(&document.path, location_roots),
             sender_aliases,
             manual_fields: &manual_fields,
             kinds: &kinds,
@@ -693,5 +694,86 @@ mod tests {
         );
         assert_eq!(setup.index.documents_under(&setup.inbox).unwrap().len(), 0);
         assert!(setup.index.duplicate_paths(document.id).unwrap().is_empty());
+    }
+
+    /// Two read folders, the rule limited to the first, which is configured
+    /// through a link: only its file is filed.
+    #[cfg(unix)]
+    #[test]
+    fn a_rule_limited_to_a_read_folder_files_only_documents_from_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(dir.path()).unwrap();
+        let (first, second, archive) = (
+            root.join("first"),
+            root.join("second"),
+            root.join("archive"),
+        );
+        for folder in [&first, &second, &archive] {
+            fs::create_dir_all(folder).unwrap();
+        }
+        let link = root.join("link_to_first");
+        std::os::unix::fs::symlink(&first, &link).unwrap();
+        let limit = fs::canonicalize(&link).unwrap();
+        let mut index = Index::create_plain(&root.join("index.db")).unwrap();
+        index
+            .create_rule(&RuleSpec {
+                name: None,
+                conditions: RuleConditions::all_of(vec![
+                    Condition::new(ConditionKind::Substring, "company a"),
+                    Condition::new(ConditionKind::ReadFolder, limit.to_string_lossy()),
+                ]),
+                extract_number: None,
+                extract_date: None,
+                extract_amount: None,
+                kind: Some("invoice".to_owned()),
+                tags: BTreeSet::new(),
+                filing_pattern: "Insurance/{kind}.pdf".to_owned(),
+                confirmed: true,
+                enabled: true,
+            })
+            .unwrap();
+        for folder in [&first, &second] {
+            let path = folder.join("scan.pdf");
+            fs::write(
+                &path,
+                format!("Invoice from Company A in {}", folder.display()),
+            )
+            .unwrap();
+            let metadata = fs::metadata(&path).unwrap();
+            let id = index
+                .insert_document(&NewDocument {
+                    hash: hash_path(&path).unwrap(),
+                    path: path.clone(),
+                    source: DocumentSource::Inbox,
+                    received_at: Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap(),
+                    stamp: Some(ncrs_index::FileStamp {
+                        size: metadata.len(),
+                        mtime: metadata.modified().unwrap(),
+                    }),
+                })
+                .unwrap();
+            index
+                .set_document_text(id, "Invoice from Company A")
+                .unwrap();
+            index
+                .set_document_status(id, DocumentStatus::Planned)
+                .unwrap();
+        }
+
+        let summary = file_planned(
+            &mut index,
+            &archive,
+            &[first.clone(), second.clone(), archive.clone()],
+            &[],
+            &mut Counting,
+            &Move,
+            KindLanguage::English,
+        )
+        .unwrap();
+
+        assert_eq!(summary.filed, 1);
+        assert!(archive.join("Insurance").join("Invoice.pdf").is_file());
+        assert!(!first.join("scan.pdf").exists());
+        assert!(second.join("scan.pdf").is_file());
     }
 }

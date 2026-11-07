@@ -121,6 +121,7 @@ fn leaves_bar_fields(message: &Message) -> bool {
             | Message::HermesPage(_)
             | Message::OcrModels(OcrModelsMessage::Open)
             | Message::About(AboutMessage::Open)
+            | Message::VersionPressed
             | Message::AiModel(AiModelMessage::Open)
             | Message::Grant(GrantMessage::Open)
             | Message::Remote(RemoteMessage::OpenConnect)
@@ -575,6 +576,8 @@ impl App {
             Message::Rules(rules) => self.update_rules(rules),
             Message::SavedQueries(queries) => self.update_saved_queries(queries),
             Message::Monitor(monitor_message) => self.update_monitor(monitor_message),
+            Message::Updates(updates_message) => self.update_updates(updates_message),
+            Message::VersionPressed => self.open_version_info(),
             Message::Tags(tags) => self.update_tags(tags),
             Message::HermesPage(page) => self.show_hermes_page(page),
             Message::DocumentsFiled(result) => self.documents_filed(result),

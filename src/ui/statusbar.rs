@@ -2,6 +2,9 @@
 use iced::widget::{button, column, container, row, text, text_input, tooltip, Space, Stack};
 use iced::{alignment, Element, Length, Padding};
 
+use ncrs_i18n::fill_template;
+use ncrs_ui_kit::badge_dot::badge_dot;
+
 use super::format;
 use super::layout::STATUSBAR_HEIGHT;
 use super::panel::PanelState;
@@ -158,10 +161,16 @@ pub struct FilingBadge<M> {
     pub on_press: M,
 }
 
+/// The dot after the version number while a newer release is known.
+const UPDATE_DOT_SIZE: f32 = 7.0;
+
 /// The app version at the very right of the bar; pressing it sends `on_press`.
 pub struct VersionBadge<M> {
     pub text: String,
     pub on_press: M,
+    /// The version of a newer release the update check found: a dot in the
+    /// accent color follows the number and the tooltip names it.
+    pub update: Option<String>,
 }
 
 /// The short text of the System page at the far right of the bar; pressing it
@@ -202,6 +211,53 @@ pub struct Activity<'a, M> {
     /// Set while ncrs runs on a throwaway data folder (`--data-dir`): the
     /// bar says so at its right end.
     pub test_folder: Option<String>,
+}
+
+/// The tooltip of the version: the newer release when the update check
+/// knows one, else what the number opens.
+fn version_tooltip(newer: Option<&str>, lang: Language) -> String {
+    match newer {
+        Some(version) => fill_template(
+            lang.text(Msg::StatusVersionUpdateTooltip),
+            &[("{version}", version)],
+        ),
+        None => lang.text(Msg::StatusVersionTooltip).to_owned(),
+    }
+}
+
+fn version_badge<'a, M: Clone + 'a>(
+    badge: VersionBadge<M>,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let number = text(badge.text)
+        .size(font_size::SMALL)
+        .color(palette.dim_text)
+        .wrapping(text::Wrapping::None);
+    let tip = version_tooltip(badge.update.as_deref(), lang);
+    let label: Element<'a, M> = if badge.update.is_some() {
+        row![number, badge_dot(palette.accent, UPDATE_DOT_SIZE)]
+            .spacing(spacing::XS)
+            .align_y(alignment::Vertical::Center)
+            .into()
+    } else {
+        number.into()
+    };
+    tooltip(
+        button(label)
+            .on_press(badge.on_press)
+            .padding([0.0, FIELD_PADDING_X])
+            .style(theme::icon_button(palette)),
+        container(
+            text(tip)
+                .size(font_size::SMALL)
+                .wrapping(text::Wrapping::None),
+        )
+        .padding([2.0, 6.0])
+        .style(theme::dialog(palette)),
+        tooltip::Position::Top,
+    )
+    .into()
 }
 
 /// The bottom bar: path, then the running job, then the failure of the last
@@ -422,25 +478,7 @@ pub fn view<'a, M: Clone + 'a>(
         );
     }
     if let Some(badge) = version {
-        bar = bar.push(tooltip(
-            button(
-                text(badge.text)
-                    .size(font_size::SMALL)
-                    .color(palette.dim_text)
-                    .wrapping(text::Wrapping::None),
-            )
-            .on_press(badge.on_press)
-            .padding([0.0, FIELD_PADDING_X])
-            .style(theme::icon_button(palette)),
-            container(
-                text(lang.text(Msg::StatusVersionTooltip))
-                    .size(font_size::SMALL)
-                    .wrapping(text::Wrapping::None),
-            )
-            .padding([2.0, 6.0])
-            .style(theme::dialog(palette)),
-            tooltip::Position::Top,
-        ));
+        bar = bar.push(version_badge(badge, lang, palette));
     }
     if let Some(badge) = monitor {
         bar = bar.push(tooltip(
@@ -543,6 +581,18 @@ fn format_error(
 mod tests {
     use super::*;
     use std::path::Path;
+
+    #[test]
+    fn the_version_tooltip_names_a_newer_release_else_the_about_card() {
+        assert_eq!(
+            version_tooltip(Some("1.3.0"), Language::English),
+            "Version 1.3.0 is available"
+        );
+        assert_eq!(
+            version_tooltip(None, Language::English),
+            Language::English.text(Msg::StatusVersionTooltip)
+        );
+    }
 
     fn cannot_read() -> ReadError {
         ReadError::CannotRead {

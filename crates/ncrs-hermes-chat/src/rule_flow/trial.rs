@@ -160,7 +160,7 @@ pub fn trial_done(state: &mut State, ctx: &Ctx, tried: Result<RuleTrial, String>
             ),
         ),
     ];
-    if let Some(from) = super::source::from_fact(ctx) {
+    if let Some(from) = super::source::from_fact(ctx, &spec) {
         facts.insert(1, from);
     }
     let rows: Vec<MoveRow> = trial
@@ -207,6 +207,7 @@ pub fn trial_done(state: &mut State, ctx: &Ctx, tried: Result<RuleTrial, String>
             false,
         ),
     ];
+    chips.extend(super::source::source_chips(ctx, &spec));
     chips.push(chip(
         ctx,
         Msg::HermesChatLevelsChange,

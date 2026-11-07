@@ -125,6 +125,7 @@ pub fn trial(
                 aliases: &aliases,
                 neighbours: &neighbours,
                 kinds: &kinds,
+                location: &source.root,
                 layout,
             };
             decided = decide(&ctx, file, &name, &mut taken);
@@ -170,6 +171,8 @@ struct Deciding<'a> {
     aliases: &'a SenderAliases,
     neighbours: &'a NeighbourIndex,
     kinds: &'a Kinds,
+    /// The read folder the files lie in.
+    location: &'a Path,
     /// How to file into a target no neighbour points the way in.
     layout: Option<&'a [PatternLevel]>,
 }
@@ -216,6 +219,7 @@ fn decide(
             text,
             fields: &file.fields,
             path: Some(&file.relative_path),
+            location: Some(ctx.location),
             sender_aliases: ctx.aliases,
             manual_fields: &[],
             kinds: ctx.kinds,

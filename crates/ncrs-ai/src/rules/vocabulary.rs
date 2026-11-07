@@ -5,6 +5,21 @@ use ncrs_index::{Combinator, ConditionKind};
 
 pub const COMBINATORS: [Combinator; 2] = [Combinator::AllOf, Combinator::AnyOf];
 
+/// The condition kinds the model may write; `ReadFolder` is only set by the chat chips.
+pub const MODEL_CONDITIONS: [ConditionKind; 11] = [
+    ConditionKind::Substring,
+    ConditionKind::Word,
+    ConditionKind::Regex,
+    ConditionKind::Sender,
+    ConditionKind::SenderAddress,
+    ConditionKind::Iban,
+    ConditionKind::TaxId,
+    ConditionKind::Recipient,
+    ConditionKind::Folder,
+    ConditionKind::Tag,
+    ConditionKind::Kind,
+];
+
 /// A new `ConditionKind` variant stops compiling here until the prompt can
 /// explain it.
 pub fn condition_meaning(kind: ConditionKind) -> &'static str {
@@ -22,6 +37,7 @@ pub fn condition_meaning(kind: ConditionKind) -> &'static str {
         ConditionKind::Folder => "the document lies in the folder with this name",
         ConditionKind::Tag => "the document has this tag",
         ConditionKind::Kind => "the document is of this kind (invoice, contract, ...)",
+        ConditionKind::ReadFolder => "the document lies under the read folder with this path",
     }
 }
 

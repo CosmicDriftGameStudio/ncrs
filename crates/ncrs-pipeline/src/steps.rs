@@ -331,6 +331,7 @@ impl Step for RulesStep {
                         &item.path,
                         std::slice::from_ref(&item.location.path),
                     )),
+                    location: Some(&item.location.path),
                     sender_aliases: &aliases,
                     manual_fields: &manual_fields,
                     kinds: &kinds,

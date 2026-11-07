@@ -18,7 +18,7 @@ use ncrs_index::{
 use ncrs_intake::{render_pattern_in, FILING_PLACEHOLDERS};
 
 pub use super::fixtures::{archive_kinds, fixtures, spaced, Fixture};
-use super::vocabulary::COMBINATORS;
+use super::vocabulary::{COMBINATORS, MODEL_CONDITIONS};
 
 /// The file name separators; case number `n` of the file name axis takes the
 /// `n`th, round and round.
@@ -341,6 +341,7 @@ fn condition_value(kind: ConditionKind, fixture: &Fixture, language: Language) -
             .unwrap_or_default()
             .to_owned(),
         ConditionKind::Tag => fixture.tag.to_owned(),
+        ConditionKind::ReadFolder => fixture.folder.to_owned(),
         ConditionKind::Kind => {
             let stored = fixture.fields.kind.clone().unwrap_or_default();
             Kinds::built_in(language.kind_language())
@@ -420,6 +421,12 @@ fn condition_phrase(kind: ConditionKind, negated: bool, language: Language, valu
             "the kind is \"V\"",
             "the kind is not \"V\"",
         ],
+        ConditionKind::ReadFolder => [
+            "das Dokument im Lesen-Ordner \"V\" liegt",
+            "das Dokument nicht im Lesen-Ordner \"V\" liegt",
+            "the document lies in the read folder \"V\"",
+            "the document does not lie in the read folder \"V\"",
+        ],
     };
     let template = match (language, negated) {
         (Language::German, false) => german,
@@ -486,7 +493,7 @@ fn condition_case(index: usize, list: Vec<Condition>, combinator: Combinator) ->
 fn condition_cases() -> Vec<Case> {
     let documents = fixtures();
     let mut cases = Vec::new();
-    for kind in ConditionKind::ALL {
+    for kind in MODEL_CONDITIONS {
         for negated in [false, true] {
             let index = cases.len();
             let language = Language::alternating(index);
@@ -499,8 +506,8 @@ fn condition_cases() -> Vec<Case> {
             cases.push(condition_case(index, vec![condition], Combinator::AllOf));
         }
     }
-    for (first_position, first) in ConditionKind::ALL.into_iter().enumerate() {
-        for second in ConditionKind::ALL.into_iter().skip(first_position + 1) {
+    for (first_position, first) in MODEL_CONDITIONS.into_iter().enumerate() {
+        for second in MODEL_CONDITIONS.into_iter().skip(first_position + 1) {
             for combinator in COMBINATORS {
                 let index = cases.len();
                 let language = Language::alternating(index);
@@ -716,7 +723,7 @@ mod tests {
     #[test]
     fn the_counts_follow_from_the_constants() {
         let placeholders = FILING_PLACEHOLDERS.len();
-        let kinds = ConditionKind::ALL.len();
+        let kinds = MODEL_CONDITIONS.len();
         let selections = placeholders
             + placeholders * (placeholders - 1)
             + placeholders * (placeholders - 1) * (placeholders - 2);

@@ -804,6 +804,9 @@ jobs:
     needs: release
     if: ${{ !cancelled() && needs.release.outputs.published == 'success' && startsWith(github.ref, 'refs/tags/v') }}
     uses: ./.github/workflows/package-repos.yml
+    # Without inherit the called job ran with an empty PACKAGES_GPG_PRIVATE_KEY
+    # although it names the environment; a dispatch by hand had the key.
+    secrets: inherit
     with:
       tag: ${{ github.ref_name }}
     permissions:

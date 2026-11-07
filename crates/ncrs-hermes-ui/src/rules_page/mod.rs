@@ -261,12 +261,20 @@ fn condition_template(kind: ConditionKind, negated: bool) -> Msg {
         (ConditionKind::Tag, true) => Msg::RulesSentenceTagNot,
         (ConditionKind::Kind, false) => Msg::RulesSentenceKind,
         (ConditionKind::Kind, true) => Msg::RulesSentenceKindNot,
+        (ConditionKind::ReadFolder, false) => Msg::RulesSentenceReadFolder,
+        (ConditionKind::ReadFolder, true) => Msg::RulesSentenceReadFolderNot,
     }
 }
 
 fn condition_sentence(condition: &Condition, lang: Language, kinds: &KindCatalog) -> String {
     let value = match condition.kind {
         ConditionKind::Kind => lang.kind_label(kinds, &condition.value),
+        ConditionKind::ReadFolder => std::borrow::Cow::Borrowed(
+            std::path::Path::new(condition.value.trim())
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or(condition.value.as_str()),
+        ),
         _ => std::borrow::Cow::Borrowed(condition.value.as_str()),
     };
     fill_template(

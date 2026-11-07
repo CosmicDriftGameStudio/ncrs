@@ -150,7 +150,8 @@ impl App {
                             hermes_line: self.hermes_line(),
                             version: Some(statusbar::VersionBadge {
                                 text: self.app_version.to_owned(),
-                                on_press: Message::About(AboutMessage::Open),
+                                on_press: Message::VersionPressed,
+                                update: self.newer_version_text(),
                             }),
                             monitor: self.monitor_badge(),
                             test_folder: config::data_dir_override().map(|dir| {

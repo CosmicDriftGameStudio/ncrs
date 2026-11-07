@@ -60,7 +60,7 @@ pub use filing_plan::{
     PlanInput, Planning, AI_FIELD_ORDER, FIELD_ORDER, FILING_PLACEHOLDERS,
 };
 pub use image_text::ImageFileText;
-pub use location::{relative_to_location, Location, LocationMode};
+pub use location::{location_of, relative_to_location, Location, LocationMode};
 pub use ocr::{
     install_model, verify_model_bytes, LazyOcrText, OcrModelError, OcrModelFile, OcrText,
     OCR_MODELS_FOLDER, OCR_MODELS_HOST, OCR_MODELS_PROJECT, OCR_MODEL_FILES,

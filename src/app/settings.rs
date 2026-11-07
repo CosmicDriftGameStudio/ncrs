@@ -24,6 +24,7 @@ impl App {
                 .iter()
                 .filter(|&&action| !self.keymap.has_built_in_keys(action))
                 .count(),
+            updates_listed: ncrs_updates::CHECK_AVAILABLE,
             protection: Some(self.protection_panel(&overview)),
             lang: self.lang,
             palette: &self.palette,
@@ -235,6 +236,9 @@ impl App {
         let hermes_ctx = self.hermes_view_ctx();
         let page =
             settings_ui::view_with(&self.settings_view(state), Message::Settings, |feature| {
+                if feature == crate::messages::SettingsFeature::Updates {
+                    return Some(self.updates_page());
+                }
                 let page = hermes_page_of(feature)?;
                 Some(
                     ncrs_hermes_ui::page_content(&self.hermes, page, &hermes_ctx)
@@ -270,6 +274,10 @@ impl App {
             SettingChange::Language(lang) => {
                 self.set_language(lang);
                 Task::none()
+            }
+            SettingChange::CheckForUpdates(_) => {
+                self.update_check = config.check_for_updates;
+                self.update_updates(ncrs_updates::Message::CheckDue)
             }
             SettingChange::Load(load) => {
                 self.hermes.filing_config.load = load;

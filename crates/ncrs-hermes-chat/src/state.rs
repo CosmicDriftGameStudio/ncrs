@@ -57,6 +57,10 @@ pub enum ChipReply {
     /// One of the folders a name the model heard can mean.
     NamedFolder(PathBuf),
     GroupNewFolder,
+    /// Limits the proposed rule to documents from this read folder.
+    OnlyFrom(PathBuf),
+    /// Lifts the limit to one read folder from the proposed rule.
+    FromAllSources,
     GroupLeave,
     RoleSource,
     RoleTarget,
@@ -217,6 +221,8 @@ impl ChipReply {
             | Self::LevelsDone
             | Self::RuleWhat(_)
             | Self::RuleCondition
+            | Self::OnlyFrom(_)
+            | Self::FromAllSources
             | Self::RuleOnlyNew
             | Self::WaitingOtherFolder
             | Self::TrialOtherTarget => false,

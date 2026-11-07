@@ -166,6 +166,14 @@ impl App {
             [saved.left.start_cursor(), saved.right.start_cursor()],
         );
         panels.config_path = config_path;
+        panels.updates = ncrs_updates::State::new(
+            panels.app_version,
+            ncrs_updates::Channel::detect_here(panels.app_version != env!("CARGO_PKG_VERSION")),
+            state_path
+                .as_deref()
+                .map(ncrs_updates::file_beside)
+                .as_deref(),
+        );
         panels.state_path = state_path;
         panels.trash = fs::system_trash(journal_path);
         panels.sandbox = fs::SandboxAccess::detect(index_path.as_deref());
@@ -182,7 +190,8 @@ impl App {
         let (app, filing_start) = panels
             .with_config(loaded)
             .with_filing(&filing, index_path, key_store);
-        (app, Task::batch([panel_loads, filing_start]))
+        let first_check = Task::done(Message::Updates(ncrs_updates::Message::CheckDue));
+        (app, Task::batch([panel_loads, filing_start, first_check]))
     }
 
     /// Starts the filing module when `filing` switches it on. The module
@@ -217,6 +226,7 @@ impl App {
                 self.kinds = Kinds::new(config.kinds, self.lang.kind_language());
                 self.keymap = config.keymap;
                 self.monitor.set_settings(config.system);
+                self.update_check = config.check_for_updates;
                 self.refresh_function_keys();
                 self.palette = config.palette;
                 self.report_look_warnings(config.contrast_warning, config.vscode_warning);
@@ -454,6 +464,13 @@ impl App {
             list_volumes: Arc::new(fs::list_volumes),
             search: ncrs_search::Search::new(layout::INITIAL_WINDOW_SIZE),
             monitor: ncrs_monitor::State::default(),
+            updates: ncrs_updates::State::new(
+                env!("NCRS_DISPLAY_VERSION"),
+                ncrs_updates::Channel::Direct,
+                None,
+            ),
+            update_check: None,
+            fetch_latest_release: ncrs_updates::latest_release,
             hermes_chat: ncrs_hermes_chat::State::default(),
             chat_model: None,
             turning_hermes_on: false,

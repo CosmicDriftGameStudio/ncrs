@@ -27,6 +27,7 @@ pub fn write_setting_change(
     let written = match change {
         SettingChange::Preset(preset) => config::write_theme_preset(path, preset),
         SettingChange::Language(lang) => config::write_language(path, lang),
+        SettingChange::CheckForUpdates(enabled) => config::write_check_for_updates(path, enabled),
         SettingChange::HermesEnabled(enabled) => config::write_filing_enabled(path, enabled),
         SettingChange::Load(load) => config::write_filing_load(path, load),
         SettingChange::AiEnabled(enabled) => config::write_ai_enabled(path, enabled),
