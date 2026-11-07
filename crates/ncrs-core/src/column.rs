@@ -59,10 +59,7 @@ impl Column {
 
     /// Owner and group exist only where files have a numeric owner.
     pub fn on_this_system(self) -> bool {
-        match self {
-            Column::Owner | Column::Group => cfg!(unix),
-            _ => true,
-        }
+        cfg!(unix) || !matches!(self, Column::Owner | Column::Group)
     }
 
     pub fn sort_column(self) -> Option<SortColumn> {
