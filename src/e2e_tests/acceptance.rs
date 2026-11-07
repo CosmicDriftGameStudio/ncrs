@@ -368,7 +368,6 @@ fn the_font_size_is_chosen_by_keyboard_and_saved() {
 
     let mut session = session_with_config_file(dir.path(), &config);
     opened_settings(&mut session);
-    let before = session.app.scale_factor();
     // Appearance is the first page; into its rows, down to the size row (the
     // fifth keyed row: look, VS Code theme, Open VSX, font, size).
     session.press(Key::Named(Named::ArrowRight));
@@ -383,9 +382,12 @@ fn the_font_size_is_chosen_by_keyboard_and_saved() {
         on_disk.contains("[appearance]") && on_disk.contains("font_size = 10"),
         "config.toml: {on_disk}"
     );
+    // Points to pixels differ per platform, so 10 pt is smaller than the
+    // default on one and larger on another.
+    let wanted = ncrs_ui_kit::font::ui_scale(Some(10), ncrs_ui_kit::font::system_font().as_ref());
     assert!(
-        session.app.scale_factor() < before,
-        "the scale did not follow: {before} -> {}",
+        (session.app.scale_factor() - wanted).abs() < f32::EPSILON,
+        "the scale did not follow: {} instead of {wanted}",
         session.app.scale_factor()
     );
 }

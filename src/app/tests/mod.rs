@@ -494,7 +494,7 @@ mod settings_pages_ui_tests;
     clippy::indexing_slicing
 )]
 #[cfg(test)]
-mod panel_columns_shots;
+mod panel_columns_ui_tests;
 pub(in crate::app) mod support;
 // reason: a failing assertion is the signal in a test, so unwrap belongs here
 #[allow(

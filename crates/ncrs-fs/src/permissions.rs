@@ -453,15 +453,15 @@ fn walk_root(run: &mut Run<'_>, root: &Path, edits: &Edits) -> bool {
         let Ok(kind) = child.file_type() else {
             continue;
         };
-        let edit = if kind.is_dir() {
+        if kind.is_symlink() {
+            continue;
+        }
+        let kind_edit = if kind.is_dir() {
             edits.folders
         } else {
             edits.files
         };
-        if kind.is_symlink() {
-            continue;
-        }
-        if let Some(edit) = edit {
+        if let Some(edit) = kind_edit {
             if !run.tick() {
                 return false;
             }

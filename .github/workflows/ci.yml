@@ -268,8 +268,11 @@ jobs:
       # tests/snapshots/ were produced. They are skipped above so a font
       # difference on another operating system cannot fail the build. They
       # render with tiny-skia whatever the build, see .cargo/config.toml.
+      # Dates are drawn in local time and the references were made in Berlin.
       - name: Snapshot tests (macOS)
         if: runner.os == 'macOS'
+        env:
+          TZ: Europe/Berlin
         run: cargo test --workspace ui_tests
 
       # The backend differs per feature set, so the app has to build and its

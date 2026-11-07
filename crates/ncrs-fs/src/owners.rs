@@ -35,4 +35,4 @@ pub fn fill_owners(entries: &mut [FileEntry]) {
 }
 
 #[cfg(not(unix))]
-pub(crate) fn fill_owners(_entries: &mut [FileEntry]) {}
+pub fn fill_owners(_entries: &mut [FileEntry]) {}
