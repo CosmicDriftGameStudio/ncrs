@@ -359,7 +359,7 @@ fn change_handle(
     if SFlag::from_bits_truncate(stat.st_mode) & SFlag::S_IFMT != wanted_kind {
         return Ok(false);
     }
-    let Some(after) = mode_after(u32::from(stat.st_mode), edit) else {
+    let Some(after) = mode_after(stat.st_mode, edit) else {
         return Ok(false);
     };
     fchmod(handle, mode_of_bits(after))?;
@@ -395,7 +395,7 @@ fn change_unopenable(
     if SFlag::from_bits_truncate(stat.st_mode) & SFlag::S_IFMT != wanted_kind {
         return (false, Ok(None));
     }
-    let Some(after) = mode_after(u32::from(stat.st_mode), edit) else {
+    let Some(after) = mode_after(stat.st_mode, edit) else {
         return (false, Err(open_error()));
     };
     match fchmodat(
@@ -419,11 +419,13 @@ fn change_unopenable(
 }
 
 /// The permission bits after `edit`; `None` when they already fit.
+/// Generic because `st_mode` is u16 on macOS and u32 on Linux: a `u32::from`
+/// at the call is a useless conversion on Linux.
 #[cfg(unix)]
-fn mode_after(before: u32, edit: &PermissionEdit) -> Option<u32> {
+fn mode_after(before: impl Into<u32>, edit: &PermissionEdit) -> Option<u32> {
     use std::os::unix::fs::PermissionsExt as _;
 
-    let mut permissions = fs::Permissions::from_mode(before & 0o7777);
+    let mut permissions = fs::Permissions::from_mode(before.into() & 0o7777);
     edited(&mut permissions, edit).then(|| permissions.mode() & 0o7777)
 }
 
@@ -456,7 +458,7 @@ fn walk_root(run: &mut Run<'_>, root: &Path, edits: &Edits) -> bool {
         } else {
             edits.files
         };
-        if kind.is_symlink() || !(kind.is_dir() || kind.is_file()) {
+        if kind.is_symlink() {
             continue;
         }
         if let Some(edit) = edit {
