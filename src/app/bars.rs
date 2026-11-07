@@ -177,8 +177,16 @@ impl App {
         })
     }
 
+    pub(in crate::app) fn open_pages(&self) -> tab_stops::OpenPages {
+        tab_stops::OpenPages {
+            settings: self.settings.page.is_some(),
+            monitor: self.monitor.is_open(),
+            hermes: self.hermes_chat.open,
+        }
+    }
+
     pub(in crate::app) fn page_tab_is_open(&self) -> bool {
-        self.monitor.is_open() || self.settings.page.is_some()
+        self.open_pages() != tab_stops::OpenPages::default()
     }
 
     pub(in crate::app) fn settings_shown(&self) -> bool {
@@ -187,6 +195,11 @@ impl App {
 
     pub(in crate::app) fn monitor_shown(&self) -> bool {
         self.monitor.is_open() && self.shown_tab == ShownTab::Monitor
+    }
+
+    /// The chat is what the user sees and what takes the keys.
+    pub(in crate::app) fn hermes_chat_shown(&self) -> bool {
+        self.hermes_chat.open && self.shown_tab == ShownTab::Hermes
     }
 
     fn page_tabs(&self) -> Vec<titlebar::PageTabState> {
@@ -201,6 +214,12 @@ impl App {
             tabs.push(titlebar::PageTabState {
                 page: titlebar::PageTab::System,
                 active: self.shown_tab == ShownTab::Monitor,
+            });
+        }
+        if self.hermes_chat.open {
+            tabs.push(titlebar::PageTabState {
+                page: titlebar::PageTab::Hermes,
+                active: self.shown_tab == ShownTab::Hermes,
             });
         }
         tabs

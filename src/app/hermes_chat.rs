@@ -11,6 +11,10 @@ impl App {
             if self.blocking_overlay_is_open() {
                 return Task::none();
             }
+            if self.hermes_chat.open && !self.hermes_chat_shown() {
+                self.shown_tab = ShownTab::Hermes;
+                return ncrs_hermes_chat::focus_input();
+            }
             self.panels.context_menu = None;
             let filing = &self.hermes.filing_config;
             if filing.first_run && !filing.enabled && self.hermes.filing.is_none() {
@@ -31,9 +35,11 @@ impl App {
         }
         self.ensure_chat_model();
         let ctx = self.hermes_chat_ctx();
+        let was_open = self.hermes_chat.open;
         let (task, asked) = ncrs_hermes_chat::update(&mut self.hermes_chat, message, &ctx);
         let mapped = task.map(Message::HermesChat);
-        let focus = if self.hermes_chat.open {
+        // A hidden chat must not take the focus from the page that is shown.
+        let focus = if self.hermes_chat.open && (!was_open || self.hermes_chat_shown()) {
             ncrs_hermes_chat::focus_input()
         } else {
             Task::none()

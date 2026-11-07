@@ -195,6 +195,27 @@ fn hermes_chat_key(
             .filter(|message| *message == Message::Quit)
             .filter(|_| is_not_typed_by_text_field(key, key_modifiers))
     };
+    // The chat has one field and no use for Tab: it goes on to the next tab.
+    if matches!(key.as_ref(), Key::Named(Named::Tab)) {
+        return if key_modifiers == Modifiers::SHIFT {
+            Some(Message::SwitchTabBack)
+        } else if key_modifiers.is_empty() {
+            Some(Message::Panel(PanelMessage::SwitchPanel))
+        } else {
+            None
+        };
+    }
+    let other_page = || {
+        bound_message(&prompt.keymap, key, key_modifiers, scope)
+            .filter(|message| {
+                *message == KeyAction::Settings.message()
+                    || *message == KeyAction::SystemMonitor.message()
+            })
+            .filter(|_| is_not_typed_by_text_field(key, key_modifiers))
+    };
+    if let Some(page) = other_page() {
+        return Some(page);
+    }
     match ncrs_hermes_chat::chat_key(key, key_modifiers) {
         ncrs_hermes_chat::ChatKey::Close => Some(Message::HermesChat(HermesChatMessage::Close)),
         ncrs_hermes_chat::ChatKey::CloseToCommandLine => Some(Message::HermesChatToCommandLine),

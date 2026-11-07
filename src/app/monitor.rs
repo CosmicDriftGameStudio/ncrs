@@ -35,18 +35,16 @@ impl App {
         if opening && self.dialog_is_open() {
             return Task::none();
         }
-        let left = if opening {
-            self.leave_pages_for_monitor()
-        } else {
-            Task::none()
-        };
+        if opening {
+            self.leave_panels_for_monitor();
+        }
         let ctx = self.monitor_ctx();
         let (task, asked) = ncrs_monitor::update(&mut self.monitor, message, &ctx);
         let action_task = match asked {
             Some(action) => self.run_monitor_action(action),
             None => Task::none(),
         };
-        Task::batch([left, task.map(Message::Monitor), action_task])
+        Task::batch([task.map(Message::Monitor), action_task])
     }
 
     /// A click that no widget took may have taken the focus from the filter.
@@ -58,27 +56,12 @@ impl App {
         }
     }
 
-    /// The System page stands in for the panels, like the settings tab, and
-    /// replaces whichever of them is up.
-    fn leave_pages_for_monitor(&mut self) -> Task<Message> {
-        let mut tasks = Vec::new();
-        if self.hermes_chat.open {
-            tasks.push(self.update_hermes_chat(HermesChatMessage::Close));
-        }
+    /// The System page stands in for the panels and replaces whatever covers
+    /// them.
+    fn leave_panels_for_monitor(&mut self) {
         self.panels.context_menu = None;
         self.panels.set_path_field(None);
         self.notice = None;
-        Task::batch(tasks)
-    }
-
-    /// A page opened over the System page, from a menu or a key: it wins.
-    pub(in crate::app) fn monitor_yields_to_other_pages(&mut self) -> Task<Message> {
-        if !(self.monitor.is_open() && self.hermes_chat.open) {
-            return Task::none();
-        }
-        let ctx = self.monitor_ctx();
-        let (task, _) = ncrs_monitor::update(&mut self.monitor, MonitorMessage::Close, &ctx);
-        task.map(Message::Monitor)
     }
 
     fn run_monitor_action(&mut self, action: Ask) -> Task<Message> {

@@ -1,6 +1,6 @@
 //! The list of a dropdown while the keyboard has it open: a few rows around
-//! the highlighted one, drawn in the place of the closed field. The caller
-//! holds which row is highlighted.
+//! the highlighted one. The caller holds which row is highlighted and floats
+//! the list below the closed field (`list_below`).
 
 use iced::widget::{button, container, text, Column};
 use iced::{Element, Length};

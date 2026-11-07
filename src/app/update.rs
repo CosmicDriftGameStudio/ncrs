@@ -161,7 +161,7 @@ impl App {
     // -----------------------------------------------------------------------
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
-        let was_open = (self.settings.page.is_some(), self.monitor.is_open());
+        let was_open = self.open_pages();
         let task = self.update_message(message);
         self.follow_opened_pages(was_open);
         self.refresh_special_folders();
@@ -208,7 +208,6 @@ impl App {
         let applied = self.apply_unless_refused(message);
         let task = Task::batch([
             applied,
-            self.monitor_yields_to_other_pages(),
             self.with_hermes(Vec::new(), ncrs_hermes_ui::request_hermes_column)
                 .map(Message::from),
             self.schedule_session_save(),

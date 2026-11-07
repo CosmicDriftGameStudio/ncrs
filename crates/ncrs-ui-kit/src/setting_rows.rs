@@ -541,13 +541,16 @@ pub fn sections_with_focus<'a, M: Clone + 'a>(
                             open: Some(highlighted),
                             ..
                         }),
-                    ) if has_focus => crate::open_list::open_list(
-                        labels,
-                        choices,
-                        highlighted,
-                        *selected,
-                        setting.control_width.unwrap_or(size::CONTROL_WIDTH),
-                        palette,
+                    ) if has_focus => crate::list_below::list_below(
+                        marked_control,
+                        crate::open_list::open_list(
+                            labels,
+                            choices,
+                            highlighted,
+                            *selected,
+                            setting.control_width.unwrap_or(size::CONTROL_WIDTH),
+                            palette,
+                        ),
                     ),
                     _ => marked_control,
                 };

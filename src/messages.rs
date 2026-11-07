@@ -387,14 +387,15 @@ pub enum Message {
 pub use ncrs_config::SettingsFeature;
 
 /// What the title bar asks of the window.
-/// What the area under the title bar shows. Settings and the System page stay
-/// open while the panels are shown.
+/// What the area under the title bar shows. Settings, the System page and the
+/// Hermes chat stay open while the panels are shown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ShownTab {
     #[default]
     Panels,
     Settings,
     Monitor,
+    Hermes,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

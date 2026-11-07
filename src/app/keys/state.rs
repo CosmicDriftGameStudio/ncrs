@@ -14,7 +14,7 @@ impl App {
         input.path_editing = state.path_editing;
         input.command_line = state.command_line;
         input.search_open = search_open;
-        input.hermes_chat = self.hermes_chat.open;
+        input.hermes_chat = self.hermes_chat_shown();
         input.job_running = job_running;
         input.quick_open = self.quick_open.is_some();
         input.command_palette = self.command_palette.is_some();
@@ -64,7 +64,7 @@ impl App {
             self.panels.path_field.is_some() || self.panels.renaming_side().is_some();
         let command_line = self.command_line.is_focused();
         let search = self.search_has_keys();
-        let hermes_chat = self.hermes_chat.open;
+        let hermes_chat = self.hermes_chat_shown();
         let trash = self.trash_has_keys();
         let hit_list = self.active_panel().is_hit_list();
         let quick_open = self.quick_open.is_some();

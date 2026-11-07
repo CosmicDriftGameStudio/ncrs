@@ -64,7 +64,9 @@ pub(in crate::app::tests) fn ready(lang: Language) -> Ctx {
 }
 
 pub(in crate::app::tests) fn send(app: &mut App, ctx: &Ctx, message: HermesChatMessage) {
+    let was_open = app.open_pages();
     drop(ncrs_hermes_chat::update(&mut app.hermes_chat, message, ctx));
+    app.follow_opened_pages(was_open);
 }
 
 fn type_and_submit(app: &mut App, ctx: &Ctx, text: &str) {

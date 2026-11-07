@@ -29,7 +29,7 @@ impl App {
         self.command_line.is_focused()
             || self.panels.path_field.is_some()
             || self.panels.renaming_side().is_some()
-            || self.hermes_chat.open
+            || self.hermes_chat_shown()
             || self.settings_shown()
             || (self.monitor_shown() && self.monitor.filter_has_focus())
     }
