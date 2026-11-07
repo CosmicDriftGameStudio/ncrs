@@ -347,6 +347,27 @@ mod tests {
                 | Msg::QuickFixLoading
                 | Msg::MarkerDir
                 | Msg::MarkerUp
+                // Loanwords German uses for these file kinds, as in "Kaputter Link".
+                | Msg::ColumnTypeLink
+                | Msg::ColumnTypeAudio
+                | Msg::ColumnTypeVideo
+                | Msg::ColumnTypeCode
+                | Msg::ColumnTypePdf
+                // The Unix names of the special permission bits.
+                | Msg::PermissionsSetuid
+                | Msg::PermissionsSetgid
+                | Msg::PermissionsSticky
+                // Only placeholders and a comma.
+                | Msg::PermissionsTitlePartsJoined
+                // Units, a standard's name and "System", written alike in German.
+                | Msg::SettingsDateIso
+                | Msg::SettingsSizeBytes
+                | Msg::SettingsSizeKilobytes
+                | Msg::SettingsFontSizePoints
+                | Msg::SettingsFontSizeSystem
+                | Msg::SettingsFontSystem
+                // The German plural of Panel, as in "Panel wechseln".
+                | Msg::SettingsRowColumnsPanels
                 | Msg::DialogMkdirLabel
                 // A bare placeholder: the dialog frames the name around it, so
                 // there is nothing to translate in the string itself.

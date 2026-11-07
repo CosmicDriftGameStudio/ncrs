@@ -345,6 +345,7 @@ impl App {
     }
 
     /// Whether the permissions dialog is up.
+    #[cfg(unix)]
     pub fn permissions_dialog_is_open(&self) -> bool {
         self.ops.permissions_dialog.is_some()
     }

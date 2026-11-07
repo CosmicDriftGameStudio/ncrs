@@ -45,6 +45,7 @@ fn bounds_of<P: iced::Program<State = App, Message = Message> + 'static>(
 }
 
 /// The chord that opens the permissions dialog.
+#[cfg(unix)]
 fn permissions_chord() -> Modifiers {
     if cfg!(target_os = "macos") {
         Modifiers::ALT | Modifiers::COMMAND
@@ -70,6 +71,7 @@ fn set_mode(path: &Path, mode: u32) {
 }
 
 /// Opens the dialog on the row under the cursor with the real chord.
+#[cfg(unix)]
 fn open_permissions<P: iced::Program<State = App, Message = Message> + 'static>(
     session: &mut Session<P>,
 ) {
@@ -82,6 +84,7 @@ fn open_permissions<P: iced::Program<State = App, Message = Message> + 'static>(
 }
 
 /// Types an octal number into the dialog's field and confirms with Enter.
+#[cfg(unix)]
 fn type_octal_and_confirm<P: iced::Program<State = App, Message = Message> + 'static>(
     session: &mut Session<P>,
     octal: &str,
