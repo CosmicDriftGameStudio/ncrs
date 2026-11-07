@@ -22,10 +22,6 @@ pub(in crate::app) fn blocked_access_press(
 }
 
 impl App {
-    /// What the menu bar shows: what it lets the user run, which is nothing
-    /// while a dialog or box is open and otherwise what works in the area the
-    /// keys go to, and the state of its check items.
-    #[cfg(any(target_os = "macos", test))]
     /// A text field outside the dialogs may have the focus: the command line,
     /// the path field, a name being edited, the search query, the chat, a
     /// settings page or the filter of the System page.
@@ -38,6 +34,10 @@ impl App {
             || (self.monitor_shown() && self.monitor.filter_has_focus())
     }
 
+    /// What the menu bar shows: what it lets the user run, which is nothing
+    /// while a dialog or box is open and otherwise what works in the area the
+    /// keys go to, and the state of its check items.
+    #[cfg(any(target_os = "macos", test))]
     pub(in crate::app) fn menu_state(&self) -> crate::menu::MenuState {
         let scope = if self.search_has_keys() {
             KeyScope::Search
