@@ -164,12 +164,13 @@ pub fn installed_monospace() -> Vec<String> {
     let db = system.raw().db();
     let mut names: Vec<String> = db
         .faces()
-        .filter(|face| face.monospaced && draws_text(db, face.id))
+        .filter(|face| face.monospaced)
         .filter_map(|face| face.families.first().map(|(name, _)| name.clone()))
         .filter(|name| !INTERNAL_FAMILIES.contains(&name.as_str()))
         .collect();
     names.sort_by_key(|name| name.to_lowercase());
     names.dedup();
+    names.retain(|name| family_draws(db, name));
     names
 }
 
@@ -206,9 +207,17 @@ pub fn system_points(system: Option<&SystemFont>) -> f32 {
 }
 
 fn is_installed(system: &mut FontSystem, name: &str) -> bool {
-    let db = system.raw().db();
-    db.faces()
-        .any(|face| face.families.iter().any(|(known, _)| known == name) && draws_text(db, face.id))
+    family_draws(system.raw().db(), name)
+}
+
+/// Whether the family is installed and every face of it draws: bold or italic
+/// text may pick any of them.
+fn family_draws(db: &Database, name: &str) -> bool {
+    let mut faces = db
+        .faces()
+        .filter(|face| face.families.iter().any(|(known, _)| known == name))
+        .peekable();
+    faces.peek().is_some() && faces.all(|face| draws_text(db, face.id))
 }
 
 /// Whether the face has outlines and horizontal metrics. A bitmap-only font
@@ -394,7 +403,12 @@ mod tests {
             .position(|tag| tag == b"hmtx")
             .unwrap();
         font[hmtx..hmtx + 4].copy_from_slice(b"xxxx");
-        let (bitmap_db, bitmap_id) = database_with(font);
+        let (mut bitmap_db, bitmap_id) = database_with(font);
         assert!(!draws_text(&bitmap_db, bitmap_id));
+
+        let family = outline_db.faces().next().unwrap().families[0].0.clone();
+        assert!(family_draws(&outline_db, &family));
+        bitmap_db.load_font_data(crate::BUNDLED_REGULAR.to_vec());
+        assert!(!family_draws(&bitmap_db, &family));
     }
 }

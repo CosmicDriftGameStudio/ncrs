@@ -19,7 +19,5 @@ ncrs-index = { path = "../ncrs-index", version = "0.0.0" }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 ttf-parser = "0.25"
 
-[dev-dependencies]
-
 [lints]
 workspace = true
