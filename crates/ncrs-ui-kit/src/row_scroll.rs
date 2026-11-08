@@ -15,16 +15,16 @@ pub const FOCUSED_ROW_ID: &str = "settings-focused-row";
 /// zero when it does.
 pub fn scroll_delta(scrolled: f32, viewport_height: f32, row_top: f32, row_height: f32) -> f32 {
     let row_bottom = row_top + row_height;
-    if row_top - spacing::S < scrolled {
+    if row_top - spacing::M < scrolled {
         // Rows near the top bring the page heading back with them.
-        if row_bottom + spacing::S <= viewport_height {
+        if row_bottom + spacing::M <= viewport_height {
             -scrolled
         } else {
-            row_top - spacing::S - scrolled
+            row_top - spacing::M - scrolled
         }
-    } else if row_bottom + spacing::S > scrolled + viewport_height {
+    } else if row_bottom + spacing::M > scrolled + viewport_height {
         // A row taller than the window shows its top.
-        (row_bottom + spacing::S - viewport_height - scrolled).min(row_top - spacing::S - scrolled)
+        (row_bottom + spacing::M - viewport_height - scrolled).min(row_top - spacing::M - scrolled)
     } else {
         0.0
     }

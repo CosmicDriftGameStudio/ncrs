@@ -176,7 +176,8 @@ pub fn highlight_spans<'a>(
         }
         spans.push(
             span(hit.to_owned())
-                .color(if selected { plain } else { palette.accent })
+                .color(if selected { plain } else { palette.text })
+                .font(crate::APP_FONT_BOLD)
                 .underline(true),
         );
         at = range.end;

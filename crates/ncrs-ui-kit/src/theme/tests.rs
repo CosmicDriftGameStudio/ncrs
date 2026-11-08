@@ -84,7 +84,6 @@ fn the_default_preset_styles_the_window_as_it_always_looked() {
     let teal = rgb(0.110, 0.420, 0.520);
     let bar = rgb(0.070, 0.125, 0.270);
     let cursor = rgb(0.180, 0.690, 0.760);
-    let border = rgb(0.310, 0.840, 0.910);
 
     let style_root = root(&p)(&theme);
     assert_eq!(
@@ -152,7 +151,7 @@ fn the_default_preset_styles_the_window_as_it_always_looked() {
             style_dialog_box.text_color,
             style_dialog_box.border.color
         ),
-        (Some(teal), Some(text), border)
+        (Some(teal), Some(text), p.border_inactive)
     );
     let style_menu_box = menu(&p)(&theme);
     assert_eq!(
@@ -161,6 +160,6 @@ fn the_default_preset_styles_the_window_as_it_always_looked() {
             style_menu_box.text_color,
             style_menu_box.border.color
         ),
-        (Some(bar), Some(text), border)
+        (Some(bar), Some(text), p.border_inactive)
     );
 }

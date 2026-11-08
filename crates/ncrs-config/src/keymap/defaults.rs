@@ -21,7 +21,8 @@ pub fn default_bindings() -> Vec<(KeyAction, Binding)> {
         (A::GoUp, Binding::key(KeyNamed(Backspace))),
         (A::Open, Binding::key(KeyNamed(Enter))),
         (A::SwitchPanel, Binding::key(KeyNamed(Tab))),
-        // Ctrl+Tab walks every open tab, the panels and the pages. Ctrl, not
+        // Tab (and Shift+Tab, which falls back to it) stays inside the shown
+        // tab; Ctrl+Tab walks the open tabs: panels, then the pages. Ctrl, not
         // Cmd: Cmd+Tab is the application switcher on a Mac.
         (
             A::NextTab,

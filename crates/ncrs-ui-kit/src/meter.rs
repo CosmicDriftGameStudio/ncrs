@@ -34,17 +34,14 @@ pub fn meter_level(percent: f32) -> MeterLevel {
 pub fn level_text_color(level: MeterLevel, palette: &Palette) -> Color {
     match level {
         MeterLevel::Normal => palette.text,
-        MeterLevel::Warning => palette.accent,
+        MeterLevel::Warning => palette.text,
         MeterLevel::Critical => palette.error,
     }
 }
 
-fn level_color(level: MeterLevel, palette: &Palette) -> Color {
-    match level {
-        MeterLevel::Normal => palette.border,
-        MeterLevel::Warning => palette.accent,
-        MeterLevel::Critical => palette.error,
-    }
+/// Every level fills its bar with the "on" role; the level shows in the value.
+fn level_color(palette: &Palette) -> Color {
+    palette.primary_button().0
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -58,7 +55,7 @@ pub struct Meter<'a> {
 }
 
 pub fn meter<'a, M: 'a>(meter: Meter<'_>, palette: &Palette) -> Element<'a, M> {
-    let fill_color = level_color(meter.level, palette);
+    let fill_color = level_color(palette);
     let value_color = level_text_color(meter.level, palette);
     let filled = (meter.fraction.clamp(0.0, 1.0) * PORTIONS).round() as u16;
     let empty = PORTIONS as u16 - filled;

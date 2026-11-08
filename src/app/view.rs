@@ -74,7 +74,7 @@ impl App {
                     container(Space::new())
                         .width(Length::Fill)
                         .height(Length::Fill)
-                        .style(theme::outlined_in(self.palette.accent))
+                        .style(theme::outlined_in(self.palette.border))
                         .into(),
                 ])
                 .into()

@@ -322,3 +322,19 @@ fn the_font_dropdown_opens_on_the_keyboard_and_shows_the_highlighted_row() {
         assert!(app.settings.page.is_some(), "Escape closes the list only");
     }
 }
+
+#[test]
+fn a_smaller_font_size_lets_the_panels_count_the_rows_that_now_fit() {
+    let mut app = panel_app(Language::English);
+    let rows_before = app.visible_rows;
+    app.take_over_appearance(ncrs_config::panel_columns::Appearance {
+        font_size: ncrs_config::panel_columns::FontSizeChoice::Points(10),
+        ..ncrs_config::panel_columns::Appearance::default()
+    });
+    assert!(app.scale_factor() < 1.0);
+    assert_eq!(
+        app.visible_rows,
+        crate::ui::layout::visible_rows(WINDOW * (1.0 / app.scale_factor()))
+    );
+    assert!(app.visible_rows > rows_before);
+}

@@ -19,5 +19,10 @@ ncrs-index = { path = "../ncrs-index", version = "0.0.0" }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 ttf-parser = "0.25"
 
+[dev-dependencies]
+# The snapshot test of the style guide gallery renders headless.
+iced = { version = "0.14", default-features = false, features = ["tokio", "advanced", "svg", "tiny-skia"] }
+iced_test = "0.14"
+
 [lints]
 workspace = true

@@ -13,6 +13,9 @@ use crate::palette::Palette;
 use crate::theme::{self, font_size, size, spacing};
 use ncrs_i18n::{Language, Msg};
 
+/// How much of the cursor ink a hint keeps on the cursor fill.
+const HINT_ON_CURSOR_ALPHA: f32 = 0.7;
+
 /// What the keyboard can do on a row; a row without one is skipped by it.
 #[derive(Debug, Clone, PartialEq)]
 pub enum RowKey<M> {
@@ -122,7 +125,7 @@ pub fn button_row<'a, M: Clone + 'a>(
 ) -> Element<'a, M> {
     let mut on = 0;
     let mut strip = Row::new()
-        .spacing(spacing::S)
+        .spacing(spacing::M)
         .align_y(alignment::Vertical::Center);
     if let Some(lead) = leading {
         strip = strip.push(lead);
@@ -362,7 +365,7 @@ impl<'a, M: Clone + 'a> SettingRow<'a, M> {
         palette: &Palette,
     ) -> Self {
         let mut control = Row::new()
-            .spacing(spacing::S)
+            .spacing(spacing::M)
             .align_y(alignment::Vertical::Center);
         if let Some(shown) = status {
             control = control.push(status_text(shown, palette.dim_text));
@@ -390,7 +393,7 @@ impl<'a, M: Clone + 'a> SettingRow<'a, M> {
                 String::new(),
                 empty,
                 Row::with_children(buttons)
-                    .spacing(spacing::S)
+                    .spacing(spacing::M)
                     .align_y(alignment::Vertical::Center)
                     .into(),
             )
@@ -441,7 +444,7 @@ pub fn with_button<'a, M: Clone + 'a>(
         value,
         kit::button(label, Some(on_press), Tone::Secondary, palette)
     ]
-    .spacing(spacing::S)
+    .spacing(spacing::M)
     .align_y(alignment::Vertical::Center)
     .into()
 }
@@ -463,7 +466,7 @@ pub fn switch<'a, M: Clone + 'a>(
         kit::checkbox(state, Some(on_press), palette),
         status_text(word.to_owned(), palette.dim_text),
     ]
-    .spacing(spacing::S)
+    .spacing(spacing::M)
     .align_y(alignment::Vertical::Center)
     .into()
 }
@@ -570,6 +573,17 @@ pub fn sections_with_focus<'a, M: Clone + 'a>(
                             .map(|caution| kit::warning_line(caution.clone(), palette)),
                     )
                     .collect();
+                // On the cursor fill the text takes the cursor's ink, the hint a
+                // fainter one of it.
+                let row_palette = if has_focus {
+                    Palette {
+                        text: palette.cursor_text,
+                        dim_text: palette.cursor_text.scale_alpha(HINT_ON_CURSOR_ALPHA),
+                        ..*palette
+                    }
+                } else {
+                    *palette
+                };
                 let plain_row = kit::form_row_with_problem(
                     &setting.label,
                     setting
@@ -584,7 +598,7 @@ pub fn sections_with_focus<'a, M: Clone + 'a>(
                     } else {
                         Length::Fixed(setting.control_width.unwrap_or(size::CONTROL_WIDTH))
                     },
-                    palette,
+                    &row_palette,
                 );
                 let form_row = match setting.list_indent.filter(|indent| *indent > 0.0) {
                     Some(indent) => container(plain_row)

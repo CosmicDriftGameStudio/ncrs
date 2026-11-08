@@ -179,7 +179,7 @@ fn submenu<'a>(
                     shortcut
                         .map(|caps| kit::key_cap_in_row(&caps, is_selected && *enabled, palette)),
                 )
-                .spacing(spacing::S)
+                .spacing(spacing::XS)
                 .align_y(alignment::Vertical::Center);
                 let item = button(content)
                     .on_press_maybe(enabled.then_some(ContextMenuMessage::SubClick(index)))

@@ -5,11 +5,11 @@ use ncrs_ui_kit::layout::ROW_HEIGHT;
 use ncrs_ui_kit::theme::{size, spacing};
 
 /// Host line and meters, with their padding.
-pub const TOP_BAND_HEIGHT: f32 = 124.0;
+pub const TOP_BAND_HEIGHT: f32 = 140.0;
 /// The line with the heading, the counts and the filter above the table.
 pub const TASKS_HEAD_HEIGHT: f32 = 28.0;
-pub const TASKS_HEAD_GAP: f32 = spacing::S;
-pub const PAGE_PADDING: f32 = spacing::XL;
+pub const TASKS_HEAD_GAP: f32 = spacing::M;
+pub const PAGE_PADDING: f32 = spacing::XXL;
 
 /// From the top of the window to the first task row: the title bar of the
 /// window, the top band and its rule, the head of the tasks and the table's

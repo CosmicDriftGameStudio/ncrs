@@ -100,7 +100,7 @@ fn tick<'a>(
         kit::checkbox(state, toggle, palette),
         paragraph(label.to_owned(), palette)
     ]
-    .spacing(spacing::S);
+    .spacing(spacing::XS);
     row.into()
 }
 
@@ -115,7 +115,7 @@ fn form<'a>(
         labelled(ConnectField::Host, dialog, lang, palette),
         column![labelled(ConnectField::Port, dialog, lang, palette)].width(PORT_WIDTH),
     ]
-    .spacing(spacing::S);
+    .spacing(spacing::M);
     let mut body = column![
         host_and_port,
         labelled(ConnectField::User, dialog, lang, palette),

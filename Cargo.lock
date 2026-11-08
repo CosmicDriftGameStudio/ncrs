@@ -3772,6 +3772,7 @@ version = "0.0.0"
 dependencies = [
  "chrono",
  "iced",
+ "iced_test",
  "ncrs-core",
  "ncrs-i18n",
  "ncrs-index",

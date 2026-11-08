@@ -241,7 +241,7 @@ fn item<'a>(
             .wrapping(text::Wrapping::None),
     ]
     .extend(key.map(|cap_text| kit::key_cap_in_row(cap_text, is_selected, palette)))
-    .spacing(spacing::S)
+    .spacing(spacing::M)
     .align_y(alignment::Vertical::Center);
     let button = button(content)
         .on_press(Message::QuickFix(QuickFixMessage::Click(index)))

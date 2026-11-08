@@ -81,8 +81,13 @@ pub fn data_table<'a, M: Clone + 'a>(
         let active = column.sort != SortMark::None;
         let label = text(format!("{}{}", column.title, column.sort.suffix()))
             .size(font_size::COLUMN_HEADER)
+            .font(if active {
+                crate::APP_FONT_BOLD
+            } else {
+                crate::APP_FONT
+            })
             .color(if active {
-                palette.accent
+                palette.text
             } else {
                 palette.dim_text
             })

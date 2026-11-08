@@ -11,7 +11,6 @@ use super::*;
 const INPUT_PAD_Y: f32 = 10.0;
 const INPUT_PAD_X: f32 = 18.0;
 const SEND_SIZE: f32 = 38.0;
-const PILL: f32 = 999.0;
 const SEND_ARROW: &str = "↑";
 
 fn field_style(palette: &Palette) -> impl Fn(&Theme, text_input::Status) -> text_input::Style {
@@ -20,7 +19,7 @@ fn field_style(palette: &Palette) -> impl Fn(&Theme, text_input::Status) -> text
     move |theme, status| {
         let mut style = base(theme, status);
         style.background = Background::Color(background);
-        style.border.radius = PILL.into();
+        style.border.radius = theme::radius::CORNER.into();
         style
     }
 }
@@ -38,7 +37,7 @@ fn send_style(palette: &Palette) -> impl Fn(&Theme, button::Status) -> button::S
             })),
             text_color: ink,
             border: Border {
-                radius: PILL.into(),
+                radius: theme::radius::CORNER.into(),
                 ..Border::default()
             },
             ..button::Style::default()

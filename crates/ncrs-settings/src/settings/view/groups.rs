@@ -123,7 +123,7 @@ pub fn vscode_row<'a>(view: &SettingsView<'a>) -> SettingRow<'a> {
             palette,
         ),
     ]
-    .spacing(spacing::S)
+    .spacing(spacing::M)
     .align_y(alignment::Vertical::Center);
     if view.vscode_theme.is_some() {
         control = control.push(kit::button(
@@ -210,7 +210,7 @@ pub fn color_row<'a>(role: ColorRole, view: &SettingsView<'a>) -> SettingRow<'a>
         swatch,
         setting_field(field, role.field_id(), &hex(shown), true, view)
     ]
-    .spacing(spacing::S)
+    .spacing(spacing::M)
     .align_y(alignment::Vertical::Center);
     SettingRow {
         key: Some(RowKey::Text(role.field_id())),
@@ -335,7 +335,7 @@ pub fn terminal_row<'a>(view: &SettingsView<'a>) -> SettingRow<'a> {
         selected,
         view.palette
     )]
-    .spacing(spacing::S);
+    .spacing(spacing::M);
     if choice == TerminalChoice::Own {
         let mut own = row![setting_field(
             field,
@@ -344,7 +344,7 @@ pub fn terminal_row<'a>(view: &SettingsView<'a>) -> SettingRow<'a> {
             !state.sandboxed,
             view,
         )]
-        .spacing(spacing::S)
+        .spacing(spacing::M)
         .align_y(alignment::Vertical::Center);
         if state.can_reset_program(OpenKind::Terminal) {
             own = own.push(kit::button(
@@ -648,11 +648,11 @@ pub fn protection_group<'a>(view: &SettingsView<'a>) -> Option<Group<'a>> {
     let color = if panel.good {
         palette.success
     } else {
-        palette.accent
+        palette.text
     };
     let build = |marked: Option<usize>| {
         let mut control = column![status_text(panel.state.clone(), color)]
-            .spacing(spacing::S)
+            .spacing(spacing::M)
             .align_x(alignment::Horizontal::Right);
         let mut on = 0;
         for (position, button) in panel.buttons.iter().enumerate() {

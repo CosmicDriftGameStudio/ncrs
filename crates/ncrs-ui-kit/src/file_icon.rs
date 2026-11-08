@@ -256,7 +256,7 @@ pub fn icon_color(
         palette.directory
     } else {
         match kind {
-            IconKind::ReadFolder | IconKind::WriteFolder => palette.accent,
+            IconKind::ReadFolder | IconKind::WriteFolder => palette.primary_button().0,
             IconKind::BrokenLink => palette.error,
             _ => palette.dim_text,
         }

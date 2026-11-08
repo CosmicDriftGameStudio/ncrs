@@ -214,7 +214,7 @@ fn model_control<'a>(
         .fold(
             Row::new()
                 .push(status_text(state, color))
-                .spacing(spacing::S)
+                .spacing(spacing::M)
                 .align_y(alignment::Vertical::Center),
             |controls, button| controls.push(button),
         )
@@ -263,7 +263,7 @@ fn ocr_section_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
     } else {
         (
             Msg::SettingsModelsMissing,
-            palette.accent,
+            palette.text,
             load_button(SettingsMessage::OpenOcrModels, view),
         )
     };
@@ -310,7 +310,7 @@ fn ai_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
         ),
         AiState::Missing => (
             lang.text(Msg::SettingsIndexAiMissing).to_owned(),
-            palette.accent,
+            palette.text,
         ),
         AiState::Downloading => (
             lang.text(Msg::SettingsIndexAiDownloading).to_owned(),
@@ -425,7 +425,7 @@ pub fn own_detail_row<'a>(detail: OwnDetail, view: &SettingsView<'a>) -> Setting
             view.palette,
         ),
     ]
-    .spacing(spacing::S)
+    .spacing(spacing::M)
     .align_y(alignment::Vertical::Center);
     let control: Element<'a, Message> = if chips.is_empty() {
         input.into()

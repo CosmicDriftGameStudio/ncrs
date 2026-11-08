@@ -72,7 +72,7 @@ fn panels_row<'a>(
         ),
     ];
     let mut control = Row::new()
-        .spacing(spacing::S)
+        .spacing(spacing::M)
         .align_y(iced::alignment::Vertical::Center)
         .push(kit::segmented(
             &panels,

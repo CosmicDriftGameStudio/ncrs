@@ -134,7 +134,6 @@ fn leaves_bar_fields(message: &Message) -> bool {
             | Message::CopyToClipboard(_)
             | Message::CopyFilesToClipboard
             | Message::Panel(PanelMessage::SwitchPanel)
-            | Message::SwitchTabBack
             | Message::NextTab
             | Message::PreviousTab
             | Message::Panel(PanelMessage::ActivatePanel(_))
@@ -556,16 +555,7 @@ impl App {
                 result,
             } => self.finish_prompt(kind, request_id, result),
 
-            Message::Panel(PanelMessage::SwitchPanel) if self.shown_tab != ShownTab::Panels => {
-                self.switch_tab(tab_stops::TabDirection::Forward)
-            }
-            Message::SwitchTabBack if self.shown_tab == ShownTab::Panels => {
-                self.panels.active = self.panels.active.other();
-                Task::none()
-            }
-            Message::SwitchTabBack | Message::PreviousTab => {
-                self.switch_tab(tab_stops::TabDirection::Backward)
-            }
+            Message::PreviousTab => self.switch_tab(tab_stops::TabDirection::Backward),
             Message::NextTab => self.switch_tab(tab_stops::TabDirection::Forward),
             Message::TabInPage { backward } => {
                 ncrs_ui_kit::focus::field_has_focus().map(move |field_focused| {
@@ -585,15 +575,7 @@ impl App {
             Message::TabInPageAnswered {
                 backward,
                 field_focused,
-            } => match (field_focused, backward) {
-                (true, true) => iced::widget::operation::focus_previous(),
-                (true, false) => iced::widget::operation::focus_next(),
-                (false, _) => self.switch_tab(if backward {
-                    tab_stops::TabDirection::Backward
-                } else {
-                    tab_stops::TabDirection::Forward
-                }),
-            },
+            } => self.tab_inside_page(backward, field_focused),
             Message::ShowTab(tab) => {
                 self.shown_tab = tab;
                 Task::none()

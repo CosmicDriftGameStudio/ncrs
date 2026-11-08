@@ -395,11 +395,12 @@ fn the_font_size_is_chosen_by_keyboard_and_saved() {
     );
 }
 
-#[test]
-fn tab_walks_the_circle_of_panels_settings_monitor_and_chat_and_back() {
+/// A session with the settings, the monitor and the chat open, the chat shown.
+fn session_with_every_tab_open(
+    dir: &Path,
+) -> Session<impl iced::Program<State = App, Message = Message> + 'static> {
     use crate::messages::ShownTab;
-    let dir = scratch("tab-circle");
-    let mut session = session_in(dir.path());
+    let mut session = session_in(dir);
     focus_the_window(&mut session);
     open_settings(&mut session);
     session.press(Key::Named(Named::F12));
@@ -415,16 +416,25 @@ fn tab_walks_the_circle_of_panels_settings_monitor_and_chat_and_back() {
         session.app.monitor_for_test().is_open(),
         "the chat closed the monitor"
     );
+    session
+}
 
+#[test]
+fn ctrl_tab_walks_the_circle_of_panels_settings_monitor_and_chat_and_back() {
+    use crate::messages::ShownTab;
+    let dir = scratch("tab-circle");
+    let mut session = session_with_every_tab_open(dir.path());
     let stop = |shown: &Session<_>| {
         (
             shown.app.shown_tab_for_test(),
             shown.app.active_panel_side_for_test(),
         )
     };
-    // On the chat tab Tab goes back to the panels; there it only switches
-    // between them, and Ctrl+Tab walks every open tab.
+    // Tab stays inside the shown tab; only Ctrl+Tab walks the open tabs.
     session.press(Key::Named(Named::Tab));
+    session.settle();
+    assert_eq!(stop(&session).0, ShownTab::Hermes);
+    session.press_with(Key::Named(Named::Tab), Modifiers::CTRL);
     session.settle();
     assert_eq!(stop(&session), (ShownTab::Panels, PanelSide::Left));
     session.press(Key::Named(Named::Tab));
@@ -447,8 +457,14 @@ fn tab_walks_the_circle_of_panels_settings_monitor_and_chat_and_back() {
         session.settle();
         assert_eq!(stop(&session).0, expected, "forward, wanted {expected:?}");
     }
-    assert_eq!(stop(&session), (ShownTab::Panels, PanelSide::Left));
-    let backward = [ShownTab::Hermes, ShownTab::Monitor, ShownTab::Settings];
+    // Changing the tab keeps the active panel.
+    assert_eq!(stop(&session), (ShownTab::Panels, PanelSide::Right));
+    let backward = [
+        ShownTab::Hermes,
+        ShownTab::Monitor,
+        ShownTab::Settings,
+        ShownTab::Panels,
+    ];
     for expected in backward {
         session.press_with(Key::Named(Named::Tab), Modifiers::CTRL | Modifiers::SHIFT);
         session.settle();
@@ -456,7 +472,7 @@ fn tab_walks_the_circle_of_panels_settings_monitor_and_chat_and_back() {
     }
     session.press_with(Key::Named(Named::Tab), Modifiers::SHIFT);
     session.settle();
-    assert_eq!(stop(&session), (ShownTab::Panels, PanelSide::Right));
+    assert_eq!(stop(&session), (ShownTab::Panels, PanelSide::Left));
     session.press_with(Key::Named(Named::Tab), Modifiers::CTRL);
     session.press_with(Key::Named(Named::Tab), Modifiers::CTRL);
     session.press_with(Key::Named(Named::Tab), Modifiers::CTRL);

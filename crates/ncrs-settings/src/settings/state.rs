@@ -15,6 +15,7 @@ use ncrs_core::PanelSide;
 use ncrs_fs::{KnownTerminal, OpenKind};
 use ncrs_ui_kit::font::SystemFont;
 use ncrs_ui_kit::palette::{parse_color, ColorRole};
+use ncrs_ui_kit::theme::spacing;
 
 /// The id of the search field above the feature list.
 pub const SEARCH_FIELD_ID: &str = "settings-search";
@@ -43,7 +44,7 @@ pub const SWATCH_SIZE: f32 = 16.0;
 /// How many characters of the theme file name fit beside its button.
 pub const THEME_FILE_CHARS: usize = 26;
 /// Room the feature list keeps around its entries.
-pub const NAV_PADDING_Y: f32 = 10.0;
+pub const NAV_PADDING_Y: f32 = spacing::L;
 
 /// What the tab remembers while it is open.
 #[derive(Debug, Clone, PartialEq)]

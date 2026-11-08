@@ -23,7 +23,7 @@ use std::path::Path;
 use iced::widget::scrollable::{Direction, Scrollbar};
 use iced::widget::text::Wrapping;
 use iced::widget::{container, row, scrollable, text, Column};
-use iced::{Color, Element, Length, Padding};
+use iced::{Color, Element, Length};
 
 use crate::facts::DocumentsFacts;
 use crate::message::{SettingChange, SettingField, SettingsMessage};
@@ -463,12 +463,7 @@ pub fn view_with<'a, M: 'a>(
     let content = scrollable(
         container(body)
             .max_width(SETTINGS_PAGE_MAX_WIDTH)
-            .padding(Padding {
-                top: spacing::XL,
-                bottom: spacing::XL,
-                left: spacing::XL * 2.0,
-                right: spacing::XL * 2.0,
-            }),
+            .padding(spacing::XXL),
     )
     .direction(Direction::Vertical(
         Scrollbar::new()

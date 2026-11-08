@@ -205,7 +205,7 @@ fn name_list<'a>(
             palette,
         ));
     }
-    container(scrollable(container(lines).padding([spacing::S, spacing::M])).height(LIST_HEIGHT))
+    container(scrollable(container(lines).padding([spacing::M, spacing::M])).height(LIST_HEIGHT))
         .width(Length::Fill)
         .style(theme::outlined(palette))
         .into()
@@ -225,7 +225,7 @@ fn names_directly<'a>(
     }))
     .spacing(spacing::XS / 2.0);
     container(lines)
-        .padding([spacing::S, spacing::M])
+        .padding([spacing::M, spacing::M])
         .width(Length::Fill)
         .style(theme::outlined(palette))
         .into()
@@ -287,7 +287,7 @@ pub fn confirm<'a>(
             figures(dialog, line_chars, lang, palette),
             name_list(dialog, line_chars, lang, palette)
         ]
-        .spacing(spacing::S)
+        .spacing(spacing::M)
         .into()
     } else {
         figures(dialog, line_chars, lang, palette)

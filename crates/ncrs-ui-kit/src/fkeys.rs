@@ -12,7 +12,7 @@ use crate::palette::Palette;
 
 const HINT_GAP: f32 = 14.0;
 const CAP_GAP: f32 = 4.0;
-const ROW_PADDING_X: f32 = 10.0;
+const ROW_PADDING_X: f32 = spacing::L;
 const DIMMED_ALPHA: f32 = 0.4;
 
 pub fn view<'a, M: 'a>(

@@ -116,10 +116,18 @@ impl App {
         if appearance.font != self.appearance.font {
             font::apply_font(family_of(&appearance.font));
         }
-        self.ui_scale = font::ui_scale(
+        let scale = font::ui_scale(
             points_of(appearance.font_size),
             font::system_font().as_ref(),
         );
+        // iced reports the window size in units of the scale and sends no
+        // resize when only the scale changes, so the rows that fit are
+        // counted again here.
+        if scale != self.ui_scale {
+            let size = self.window_size * (self.ui_scale / scale);
+            self.ui_scale = scale;
+            self.apply_window_size(size);
+        }
         self.appearance = appearance;
     }
 

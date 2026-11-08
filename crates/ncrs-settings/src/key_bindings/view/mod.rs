@@ -122,7 +122,7 @@ fn header<'a>(lang: Language, palette: &Palette) -> Element<'a, Message> {
         title(Msg::KeyBindingsColumnGroup, GROUP_PORTION),
         title(Msg::KeyBindingsColumnKeys, KEYS_PORTION),
     ]
-    .spacing(spacing::S)
+    .spacing(spacing::M)
     .padding([0.0, spacing::CELL_PADDING_X])
     .height(size::COLUMN_HEADER)
     .align_y(alignment::Vertical::Center)
@@ -133,7 +133,7 @@ fn header<'a>(lang: Language, palette: &Palette) -> Element<'a, Message> {
 fn action_width(window: Size) -> f32 {
     let row_width = frame::content_width(DialogSize::Large, window)
         - 2.0 * spacing::CELL_PADDING_X
-        - 2.0 * spacing::S;
+        - 2.0 * spacing::M;
     let portions = f32::from(ACTION_PORTION + GROUP_PORTION + KEYS_PORTION);
     row_width * f32::from(ACTION_PORTION) / portions
 }
@@ -147,11 +147,11 @@ fn fitted_theme_name(
     changed_mark: Option<&str>,
     width: f32,
 ) -> Option<String> {
-    let taken_by = |part: &str| format::estimated_width(part, font_size::ROW) + spacing::S;
+    let taken_by = |part: &str| format::estimated_width(part, font_size::ROW) + spacing::M;
     let room = width
         - format::estimated_width(label, font_size::ROW)
         - changed_mark.map_or(0.0, taken_by)
-        - spacing::S;
+        - spacing::M;
     let fitted = format::fit_end(theme_name, room, font_size::ROW);
     (fitted.chars().count() >= MIN_THEME_NAME_CHARS).then_some(fitted)
 }
@@ -177,7 +177,7 @@ fn action_row<'a>(
             .wrapping(Wrapping::None)
     };
     let changed_mark = (!entry.is_built_in).then(|| lang.text(Msg::KeyBindingsChanged));
-    let mut name = row![one_line(entry.label.to_owned(), color)].spacing(spacing::S);
+    let mut name = row![one_line(entry.label.to_owned(), color)].spacing(spacing::M);
     if let Some(theme_name) = entry
         .theme_name
         .and_then(|theme_name| fitted_theme_name(entry.label, theme_name, changed_mark, width))
@@ -190,7 +190,7 @@ fn action_row<'a>(
             if selected {
                 palette.cursor_text
             } else {
-                palette.accent
+                palette.text
             },
         ));
     }
@@ -208,7 +208,7 @@ fn action_row<'a>(
             .width(Length::FillPortion(KEYS_PORTION))
             .clip(true),
     ]
-    .spacing(spacing::S)
+    .spacing(spacing::M)
     .align_y(alignment::Vertical::Center);
     kit::list_row(
         content.into(),

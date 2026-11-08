@@ -33,6 +33,6 @@ pub fn segmented_some_unavailable<'a, M: Clone + 'a>(
         .into()
     });
     container(Row::with_children(segments))
-        .style(theme::outlined(palette))
+        .style(theme::segment_group(palette))
         .into()
 }

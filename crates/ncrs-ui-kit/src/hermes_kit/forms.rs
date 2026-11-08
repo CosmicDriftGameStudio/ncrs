@@ -4,7 +4,7 @@ use iced::widget::text::Wrapping;
 use iced::widget::{
     button, column, container, mouse_area, row, text, text_input, Column, Row, Space,
 };
-use iced::{alignment, Background, Border, Color, Element, Length, Pixels, Theme};
+use iced::{alignment, Background, Color, Element, Length, Pixels, Theme};
 
 use crate::kit::{self, Check};
 use crate::palette::Palette;
@@ -252,35 +252,100 @@ pub fn segmented<'a, M: Clone + 'a>(
     selected: usize,
     palette: &Palette,
 ) -> Element<'a, M> {
-    let colors = *palette;
     let buttons = options.iter().enumerate().map(|(index, (label, message))| {
-        let chosen = index == selected;
         button(container(label_text(label)).center_y(Length::Fill))
             .padding([0.0, BUTTON_PAD_X])
             .height(CONTROL_HEIGHT)
             .on_press(message.clone())
-            .style(move |_, status| {
-                let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-                button::Style {
-                    background: (chosen || hovered).then_some(Background::Color(colors.title)),
-                    text_color: if chosen { colors.text } else { colors.dim_text },
-                    border: Border {
-                        color: if chosen {
-                            colors.success
-                        } else {
-                            colors.border
-                        },
-                        width: 1.0,
-                        radius: RADIUS.into(),
-                    },
-                    ..button::Style::default()
-                }
-            })
+            .style(theme::segment_button(palette, index == selected))
             .into()
     });
-    Row::with_children(buttons)
-        .spacing(GAP_XS)
-        .wrap()
-        .vertical_spacing(GAP_XS)
+    container(Row::with_children(buttons).wrap())
+        .style(theme::segment_group(palette))
         .into()
+}
+
+/// How much of the on color the field under the marked key block takes.
+const MARKED_BLOCK_TINT: f32 = 0.22;
+
+/// A recovery key on one line with one block marked: the marked block sits in
+/// a frame on a tinted field in bold, the other blocks and the dashes stay dim.
+pub fn key_with_marked_block<'a, M: 'a>(
+    key_text: &str,
+    marked_block: usize,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let (on, _) = palette.primary_button();
+    let spans: Vec<iced::widget::text::Span<'a, (), iced::Font>> =
+        key_parts(key_text, marked_block)
+            .into_iter()
+            .map(|(part, marked)| {
+                let piece = iced::widget::span(part);
+                if marked {
+                    piece
+                        .color(palette.text)
+                        .font(crate::APP_FONT_BOLD)
+                        .background(on.scale_alpha(MARKED_BLOCK_TINT))
+                        .border(iced::Border {
+                            color: on,
+                            width: 1.0,
+                            radius: theme::radius::CORNER.into(),
+                        })
+                        .padding([0.0, theme::spacing::XS])
+                } else {
+                    piece.color(palette.dim_text)
+                }
+            })
+            .collect();
+    iced::widget::rich_text(spans)
+        .font(crate::APP_FONT)
+        .size(theme::font_size::BODY)
+        .wrapping(Wrapping::None)
+        .into()
+}
+
+/// The key split into its blocks and the dashes between them, each part with
+/// whether it is the marked block.
+fn key_parts(key_text: &str, marked_block: usize) -> Vec<(String, bool)> {
+    let mut parts = Vec::new();
+    for (index, block) in key_text.split('-').enumerate() {
+        if index > 0 {
+            parts.push(("-".to_owned(), false));
+        }
+        parts.push((block.to_owned(), index == marked_block));
+    }
+    parts
+}
+
+// reason: a failing assertion is the signal in a test
+#[allow(clippy::unwrap_used)]
+#[cfg(test)]
+mod key_tests {
+    use super::key_parts;
+
+    #[test]
+    fn only_the_four_characters_of_the_requested_block_are_marked() {
+        let key = "AAAA-BBBB-CCCC-DDDD";
+        for block in 0..4 {
+            let parts = key_parts(key, block);
+            let texts: Vec<&str> = parts.iter().map(|(part, _)| part.as_str()).collect();
+            assert_eq!(texts, ["AAAA", "-", "BBBB", "-", "CCCC", "-", "DDDD"]);
+            let marked: Vec<&str> = parts
+                .iter()
+                .filter(|(_, marked)| *marked)
+                .map(|(part, _)| part.as_str())
+                .collect();
+            assert_eq!(marked, [key.split('-').nth(block).unwrap()]);
+        }
+    }
+
+    #[test]
+    fn the_parts_join_to_the_key_unchanged() {
+        let key = "H7QM-3IEN-VGN6-F5A2";
+        let joined: String = key_parts(key, 2)
+            .into_iter()
+            .map(|(part, _)| part)
+            .collect();
+        assert_eq!(joined, key);
+    }
 }

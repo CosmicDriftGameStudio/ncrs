@@ -35,21 +35,17 @@ pub(in crate::hermes_kit) fn button_style(
                 background: Some(Background::Color(fill)),
                 text_color: ink,
                 border: Border {
-                    color: if hovered { colors.accent } else { fill },
+                    color: fill,
                     width: 1.0,
                     radius: RADIUS.into(),
                 },
                 ..button::Style::default()
             },
             ButtonLook::Secondary => button::Style {
-                background: hovered.then_some(Background::Color(colors.title)),
+                background: hovered.then(|| theme::hover_fill(&colors)),
                 text_color: colors.text,
                 border: Border {
-                    color: if hovered {
-                        colors.accent
-                    } else {
-                        colors.border
-                    },
+                    color: theme::control_outline(&colors, colors.panel),
                     width: 1.0,
                     radius: RADIUS.into(),
                 },
@@ -57,7 +53,11 @@ pub(in crate::hermes_kit) fn button_style(
             },
             ButtonLook::Link => button::Style {
                 background: None,
-                text_color: if hovered { colors.text } else { colors.accent },
+                text_color: if hovered {
+                    colors.text
+                } else {
+                    colors.dim_text
+                },
                 border: Border::default(),
                 ..button::Style::default()
             },
@@ -125,7 +125,7 @@ pub fn secondary<'a, M: Clone + 'a>(
     sized_button(label_text(label), on_press, ButtonLook::Secondary, palette)
 }
 
-/// Text in the accent colour, without frame.
+/// Dimmed text without a frame, lit while the pointer is over it.
 pub fn link<'a, M: Clone + 'a>(
     label: &str,
     on_press: Option<M>,
@@ -202,12 +202,10 @@ pub(in crate::hermes_kit) fn pick_style(
                 style.placeholder_color = colors.text;
             }
             MenuLook::PieceAdd => {
-                style.placeholder_color = colors.accent;
-                style.border.color = if matches!(status, pick_list::Status::Active) {
-                    colors.border_inactive
-                } else {
-                    colors.accent
-                };
+                style.placeholder_color = colors.text;
+                if !matches!(status, pick_list::Status::Active) {
+                    style.border = theme::focus_border(&colors);
+                }
             }
         }
         style

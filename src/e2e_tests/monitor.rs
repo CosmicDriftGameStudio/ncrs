@@ -175,7 +175,7 @@ fn a_click_on_a_column_title_gives_the_keys_back() {
         bounds.center_x(),
         bounds.y
             + bounds.height
-            + ncrs_ui_kit::theme::spacing::S
+            + ncrs_ui_kit::theme::spacing::M
             + ncrs_ui_kit::layout::ROW_HEIGHT / 2.0,
     );
     session.click_at(title);

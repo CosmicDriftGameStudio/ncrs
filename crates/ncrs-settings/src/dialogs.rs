@@ -88,7 +88,7 @@ pub fn folder_dialog<'a>(
             .size(font_size::BODY)
             .color(palette.text),
     ]
-    .spacing(spacing::S);
+    .spacing(spacing::M);
     let body = column![
         kit::paragraph(lang.text(Msg::SettingsFolderDialogWhen), palette),
         when,

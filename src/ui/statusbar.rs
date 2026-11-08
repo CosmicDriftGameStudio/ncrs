@@ -40,7 +40,7 @@ const HIT_HINT_WIDTH: f32 = 150.0;
 const HIT_LINE_MAX_WIDTH: f32 = 900.0;
 
 /// Room left and right of each field of the bar.
-const FIELD_PADDING_X: f32 = 10.0;
+const FIELD_PADDING_X: f32 = spacing::M;
 /// Width of a character of the monospace font, in font sizes.
 const GLYPH_WIDTH_PER_SIZE: f32 = 0.6;
 /// The path field is as wide as its text, so the entry info stands right after
@@ -88,7 +88,7 @@ fn path_bar<'a, M: Clone + 'a>(
                 .size(font_size::KEY_CAP)
                 .wrapping(text::Wrapping::None),
         )
-        .padding([0.0, spacing::XS - 1.0])
+        .padding([0.0, spacing::XS])
         .style(theme::key_cap(palette, false));
         return row![
             text(hit.text)
@@ -129,7 +129,7 @@ fn path_bar<'a, M: Clone + 'a>(
                 .size(font_size::SMALL)
                 .wrapping(text::Wrapping::None),
         )
-        .padding([2.0, 6.0])
+        .padding([spacing::XS, spacing::M])
         .style(theme::dialog(palette)),
         tooltip::Position::Top,
     );
@@ -169,7 +169,7 @@ pub struct VersionBadge<M> {
     pub text: String,
     pub on_press: M,
     /// The version of a newer release the update check found: a dot in the
-    /// accent color follows the number and the tooltip names it.
+    /// purple dot follows the number and the tooltip names it.
     pub update: Option<String>,
 }
 
@@ -236,7 +236,7 @@ fn version_badge<'a, M: Clone + 'a>(
         .wrapping(text::Wrapping::None);
     let tip = version_tooltip(badge.update.as_deref(), lang);
     let label: Element<'a, M> = if badge.update.is_some() {
-        row![number, badge_dot(palette.accent, UPDATE_DOT_SIZE)]
+        row![number, badge_dot(palette.border, UPDATE_DOT_SIZE)]
             .spacing(spacing::XS)
             .align_y(alignment::Vertical::Center)
             .into()
@@ -253,7 +253,7 @@ fn version_badge<'a, M: Clone + 'a>(
                 .size(font_size::SMALL)
                 .wrapping(text::Wrapping::None),
         )
-        .padding([2.0, 6.0])
+        .padding([spacing::XS, spacing::M])
         .style(theme::dialog(palette)),
         tooltip::Position::Top,
     )
@@ -398,7 +398,7 @@ pub fn view<'a, M: Clone + 'a>(
         }
         text(line)
             .size(font_size::SMALL)
-            .color(palette.accent)
+            .color(palette.text)
             .wrapping(text::Wrapping::None)
             .into()
     }
@@ -457,12 +457,12 @@ pub fn view<'a, M: Clone + 'a>(
                     .color(if badge.failing {
                         palette.error
                     } else {
-                        palette.accent
+                        palette.text
                     })
                     .wrapping(text::Wrapping::None),
             )
             .on_press(badge.on_press)
-            .padding([0.0, 3.0])
+            .padding([0.0, spacing::XS])
             .style(theme::icon_button(palette)),
         );
     }
@@ -503,7 +503,7 @@ pub fn view<'a, M: Clone + 'a>(
                     .size(font_size::SMALL)
                     .wrapping(text::Wrapping::None),
             )
-            .padding([2.0, 6.0])
+            .padding([spacing::XS, spacing::M])
             .style(theme::dialog(palette)),
             tooltip::Position::Top,
         ));

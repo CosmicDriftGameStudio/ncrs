@@ -5,7 +5,7 @@ use iced::widget::{button, checkbox, container, pick_list, text_input, Space};
 use iced::{Background, Border, Color, Element, Length, Theme};
 
 use crate::hermes_state::{FolderRole, HermesFileState};
-use crate::palette::Palette;
+use crate::palette::{contrast_ratio, Palette};
 
 mod settings;
 pub use settings::{feature_item, focused_setting, marked_setting};
@@ -24,14 +24,13 @@ pub mod spacing {
     pub const SECTION_GAP: f32 = 6.0;
     pub const CELL_PADDING_X: f32 = 8.0;
     pub const BORDER_WIDTH: f32 = 1.0;
-    pub const BORDER_RADIUS: f32 = 3.0;
 
     /// The scale of the dialogs and the kit.
     pub const XS: f32 = 4.0;
-    pub const S: f32 = 6.0;
     pub const M: f32 = 8.0;
     pub const L: f32 = 12.0;
     pub const XL: f32 = 16.0;
+    pub const XXL: f32 = 24.0;
 
     /// The one gap between the lines and rows of a dialog's content.
     pub const LINE_GAP: f32 = 6.0;
@@ -66,10 +65,9 @@ pub mod size {
 }
 
 pub mod radius {
-    pub const FRAME: f32 = 6.0;
-    pub const CONTROL: f32 = 4.0;
-    pub const KEY_CAP: f32 = 3.0;
-    pub const CHIP: f32 = 8.0;
+    /// The one corner radius of frames, controls, chips and key caps. List
+    /// rows, tabs and bars are square.
+    pub const CORNER: f32 = 4.0;
 }
 
 /// How much of a button's look stays while it is disabled.
@@ -97,6 +95,55 @@ pub mod font_size {
 /// Base theme handed to iced (our widgets override most colors).
 pub fn app_theme() -> Theme {
     Theme::Dark
+}
+
+/// How much of the accent the outline of the element with the keyboard focus
+/// keeps; the rest is the panel color.
+const FOCUS_ACCENT_SHARE: f32 = 0.6;
+
+/// How strongly the cursor color shows behind a hovered control.
+const HOVER_ALPHA: f32 = 0.55;
+
+fn mix(from: Color, to: Color, share: f32) -> Color {
+    Color {
+        r: from.r * share + to.r * (1.0 - share),
+        g: from.g * share + to.g * (1.0 - share),
+        b: from.b * share + to.b * (1.0 - share),
+        a: from.a * share + to.a * (1.0 - share),
+    }
+}
+
+/// The one look of keyboard focus: a 1 px outline in the accent, mixed with
+/// the panel color. Yellow means focus and nothing else.
+pub fn focus_border(palette: &Palette) -> Border {
+    Border {
+        color: mix(palette.accent, palette.panel, FOCUS_ACCENT_SHARE),
+        width: spacing::BORDER_WIDTH,
+        radius: radius::CORNER.into(),
+    }
+}
+
+/// What lies behind a control while the pointer is over it. Hover is not focus,
+/// so it never takes the accent.
+pub fn hover_fill(palette: &Palette) -> Background {
+    Background::Color(palette.cursor.scale_alpha(HOVER_ALPHA))
+}
+
+/// The lowest contrast a control outline may have against what it sits on.
+const OUTLINE_CONTRAST: f32 = 3.0;
+
+/// The grey outline of a control: the dim text color, or, where that is too
+/// faint against `ground`, blended towards the text color in steps of 10 %
+/// until it reaches [`OUTLINE_CONTRAST`].
+pub fn control_outline(palette: &Palette, ground: Color) -> Color {
+    let mut outline = palette.dim_text;
+    for step in 1..=10 {
+        if contrast_ratio(outline, ground) >= OUTLINE_CONTRAST {
+            break;
+        }
+        outline = mix(palette.text, palette.dim_text, step as f32 / 10.0);
+    }
+    outline
 }
 
 fn filled(bg: Color, text: Color) -> container::Style {
@@ -164,17 +211,27 @@ pub fn status_dot<'a, M: 'a>(color: Color) -> Element<'a, M> {
 }
 
 /// The mode field at the left end of the status bar: names the active panel.
+/// Filled with the "on" role, like every other thing that is switched on.
 pub fn mode_field(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
-    let colors = *palette;
-    move |_theme| filled(colors.cursor, colors.cursor_text)
+    let (fill, ink) = palette.primary_button();
+    move |_theme| filled(fill, ink)
 }
 
-/// The mode field while the settings tab is open: the accent instead of the
-/// cursor color, so it cannot be taken for a panel.
-pub fn mode_field_accent(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
-    let colors = *palette;
-    move |_theme| filled(colors.accent, colors.cursor_text)
+/// The 2 px line across the top of the active tab; the inactive one has none.
+pub fn tab_top_line<'a, M: 'a>(palette: &Palette, active: bool) -> Element<'a, M> {
+    let color = if active {
+        palette.primary_button().0
+    } else {
+        Color::TRANSPARENT
+    };
+    container(Space::new())
+        .width(Length::Fill)
+        .height(TAB_LINE_HEIGHT)
+        .style(line(color))
+        .into()
 }
+
+const TAB_LINE_HEIGHT: f32 = 2.0;
 
 /// A path tab in the title bar: the active one has the panel's fill, the
 /// inactive one shows the bar through.
@@ -211,7 +268,7 @@ pub fn title_command_button(palette: &Palette) -> impl Fn(&Theme, button::Status
             })),
             text_color: colors.text,
             border: Border {
-                radius: radius::CONTROL.into(),
+                radius: radius::CORNER.into(),
                 ..Border::default()
             },
             ..button::Style::default()
@@ -230,10 +287,10 @@ pub fn title_button(palette: &Palette) -> impl Fn(&Theme, button::Status) -> but
             text_color: if hovered {
                 colors.title_text
             } else {
-                colors.accent
+                colors.text
             },
             border: Border {
-                radius: spacing::BORDER_RADIUS.into(),
+                radius: radius::CORNER.into(),
                 ..Border::default()
             },
             ..button::Style::default()
@@ -262,7 +319,11 @@ pub fn row(
         let outline = cursor && !panel_active;
         button::Style {
             background,
-            text_color: colors.text,
+            text_color: if cursor && panel_active {
+                colors.cursor_text
+            } else {
+                colors.text
+            },
             border: if outline {
                 Border {
                     color: colors.cursor,
@@ -297,13 +358,13 @@ pub fn row_text_color(
 }
 
 /// The star in front of a tagged row. The tint of the tagged row in the
-/// active panel has its own color; on the cursor row and in the inactive panel
-/// the star keeps the accent.
+/// active panel has its own color; on the cursor row the star takes the cursor
+/// text and in the inactive panel the plain text color.
 pub fn tag_star_color(colors: &Palette, cursor_row: bool, panel_active: bool) -> Color {
-    if panel_active && !cursor_row {
-        colors.tagged_mark
-    } else {
-        colors.accent
+    match (cursor_row, panel_active) {
+        (true, _) => colors.cursor_text,
+        (false, true) => colors.tagged_mark,
+        (false, false) => colors.text,
     }
 }
 
@@ -324,16 +385,17 @@ pub fn dialog(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
         background: Some(Background::Color(colors.dialog)),
         text_color: Some(colors.text),
         border: Border {
-            color: colors.border,
+            color: colors.border_inactive,
             width: spacing::BORDER_WIDTH,
-            radius: radius::FRAME.into(),
+            radius: radius::CORNER.into(),
         },
         ..container::Style::default()
     }
 }
 
 /// Buttons in the prompt. `primary` is the action the user most likely wants
-/// and is filled; the others are outlined. Only a disabled button is dimmed,
+/// and is filled in the "on" role; the others rest in a grey outline and light up
+/// with the hover fill. Only a disabled button is dimmed,
 /// so a card without a focused button does not look switched off.
 pub fn dialog_button(
     palette: &Palette,
@@ -341,13 +403,15 @@ pub fn dialog_button(
 ) -> impl Fn(&Theme, button::Status) -> button::Style {
     let colors = *palette;
     let (fill, text) = colors.primary_button();
+    let outline = control_outline(&colors, colors.dialog);
     move |_theme, status| {
         let (background, text_color, border_color) = match status {
             button::Status::Disabled => (None, colors.dim_text, colors.border_inactive),
-            button::Status::Active if primary => (Some(Background::Color(fill)), text, fill),
-            _ if primary => (Some(Background::Color(fill)), text, colors.accent),
-            button::Status::Hovered | button::Status::Pressed => (None, colors.text, colors.accent),
-            button::Status::Active => (None, colors.text, colors.border),
+            _ if primary => (Some(Background::Color(fill)), text, fill),
+            button::Status::Hovered | button::Status::Pressed => {
+                (Some(hover_fill(&colors)), colors.text, outline)
+            }
+            button::Status::Active => (None, colors.text, outline),
         };
         button::Style {
             background,
@@ -355,7 +419,7 @@ pub fn dialog_button(
             border: Border {
                 color: border_color,
                 width: spacing::BORDER_WIDTH,
-                radius: radius::CONTROL.into(),
+                radius: radius::CORNER.into(),
             },
             ..button::Style::default()
         }
@@ -381,7 +445,7 @@ pub fn danger_button(palette: &Palette) -> impl Fn(&Theme, button::Status) -> bu
                     colors.error
                 },
                 width: spacing::BORDER_WIDTH,
-                radius: radius::CONTROL.into(),
+                radius: radius::CORNER.into(),
             },
             ..button::Style::default()
         }
@@ -402,7 +466,7 @@ pub fn close_button(palette: &Palette) -> impl Fn(&Theme, button::Status) -> but
                 colors.dim_text
             },
             border: Border {
-                radius: radius::CONTROL.into(),
+                radius: radius::CORNER.into(),
                 ..Border::default()
             },
             ..button::Style::default()
@@ -414,6 +478,7 @@ pub fn close_button(palette: &Palette) -> impl Fn(&Theme, button::Status) -> but
 /// button, so it takes the text color of that button.
 pub fn key_cap(palette: &Palette, on_fill: bool) -> impl Fn(&Theme) -> container::Style {
     let colors = *palette;
+    let outline = control_outline(&colors, colors.panel);
     move |_theme| container::Style {
         text_color: Some(if on_fill {
             colors.cursor_text
@@ -421,92 +486,100 @@ pub fn key_cap(palette: &Palette, on_fill: bool) -> impl Fn(&Theme) -> container
             colors.dim_text
         }),
         border: Border {
-            color: if on_fill {
-                colors.cursor_text
-            } else {
-                colors.border
-            },
+            color: if on_fill { colors.cursor_text } else { outline },
             width: spacing::BORDER_WIDTH,
-            radius: radius::KEY_CAP.into(),
+            radius: radius::CORNER.into(),
         },
         ..container::Style::default()
     }
 }
 
-/// A chip: a short label on a tinted ground without an outline. On a filled
+/// A chip: a short label in a grey outline, no fill. On a filled
 /// (highlighted) row it takes the colors of the highlight.
 pub fn chip(palette: &Palette, on_fill: bool) -> impl Fn(&Theme) -> container::Style {
     let colors = *palette;
+    let grey = control_outline(&colors, colors.panel);
     move |_theme| {
-        let (ink, tint) = if on_fill {
+        let (ink, outline) = if on_fill {
             (colors.cursor_text, colors.cursor_text)
         } else {
-            (colors.text, colors.dim_text)
+            (colors.text, grey)
         };
         container::Style {
             text_color: Some(ink),
-            background: Some(tint.scale_alpha(CHIP_TINT_ALPHA).into()),
             border: Border {
-                radius: radius::CHIP.into(),
-                ..Border::default()
+                color: outline,
+                width: spacing::BORDER_WIDTH,
+                radius: radius::CORNER.into(),
             },
             ..container::Style::default()
         }
     }
 }
 
-/// How strongly the tint of a chip shows against its ground.
-/// A chip the user added himself: the tint of a chip with an accent outline.
+/// A chip the user added himself: outlined in the "on" role instead of grey.
 pub fn own_chip(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
     let colors = *palette;
+    let (on, _) = colors.primary_button();
     move |_theme| container::Style {
         text_color: Some(colors.text),
-        background: Some(colors.dim_text.scale_alpha(CHIP_TINT_ALPHA).into()),
         border: Border {
-            color: colors.accent,
+            color: on,
             width: spacing::BORDER_WIDTH,
-            radius: radius::CHIP.into(),
+            radius: radius::CORNER.into(),
         },
         ..container::Style::default()
     }
 }
 
-const CHIP_TINT_ALPHA: f32 = 0.25;
-
-/// One option of a segmented control: flat, the chosen one outlined in the
-/// cursor color.
+/// One option of a segmented control: the chosen one is filled with the "on"
+/// role, the others rest as dim text. The outline belongs to the group.
 pub fn segment_button(
     palette: &Palette,
     chosen: bool,
 ) -> impl Fn(&Theme, button::Status) -> button::Style {
     let colors = *palette;
+    let (on, on_text) = colors.primary_button();
     move |_theme, status| {
         let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
         button::Style {
-            background: hovered.then_some(Background::Color(colors.title)),
-            text_color: if chosen { colors.text } else { colors.dim_text },
+            background: if chosen {
+                Some(Background::Color(on))
+            } else {
+                hovered.then(|| hover_fill(&colors))
+            },
+            text_color: if chosen { on_text } else { colors.dim_text },
             border: Border {
-                color: if chosen {
-                    colors.cursor
-                } else {
-                    Color::TRANSPARENT
-                },
-                width: spacing::BORDER_WIDTH,
-                radius: radius::CONTROL.into(),
+                radius: radius::CORNER.into(),
+                ..Border::default()
             },
             ..button::Style::default()
         }
     }
 }
 
-/// A flat button in the accent color, for an action inside the content.
+/// The one grey outline around a group of segments.
+pub fn segment_group(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
+    let colors = *palette;
+    let outline = control_outline(&colors, colors.panel);
+    move |_theme| container::Style {
+        border: Border {
+            color: outline,
+            width: spacing::BORDER_WIDTH,
+            radius: radius::CORNER.into(),
+        },
+        ..container::Style::default()
+    }
+}
+
+/// A flat button in the text color, for an action inside the content.
 pub fn link_button(palette: &Palette) -> impl Fn(&Theme, button::Status) -> button::Style {
     let colors = *palette;
     move |_theme, status| {
         let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
         button::Style {
-            background: hovered.then_some(Background::Color(colors.title)),
-            text_color: colors.accent,
+            background: hovered.then(|| hover_fill(&colors)),
+            text_color: colors.text,
             border: Border::default(),
             ..button::Style::default()
         }
@@ -532,7 +605,7 @@ pub fn outlined(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
         border: Border {
             color: colors.border_inactive,
             width: spacing::BORDER_WIDTH,
-            radius: radius::CONTROL.into(),
+            radius: radius::CORNER.into(),
         },
         ..container::Style::default()
     }
@@ -544,7 +617,7 @@ pub fn outlined_in(outline: Color) -> impl Fn(&Theme) -> container::Style {
         border: Border {
             color: outline,
             width: spacing::BORDER_WIDTH,
-            radius: radius::CONTROL.into(),
+            radius: radius::CORNER.into(),
         },
         ..container::Style::default()
     }
@@ -558,7 +631,7 @@ pub fn swatch(fill: Color, outline: Color) -> impl Fn(&Theme) -> container::Styl
         border: Border {
             color: outline,
             width: spacing::BORDER_WIDTH,
-            radius: radius::CONTROL.into(),
+            radius: radius::CORNER.into(),
         },
         ..container::Style::default()
     }
@@ -579,7 +652,7 @@ const EXCLUDED_OPACITY: f32 = 0.55;
 pub fn hermes_state_color(palette: &Palette, state: HermesFileState) -> Color {
     match state {
         HermesFileState::Unread | HermesFileState::Planned => palette.dim_text,
-        HermesFileState::Reading => palette.accent,
+        HermesFileState::Reading => palette.primary_button().0,
         HermesFileState::Filed => palette.success,
         HermesFileState::Inquiry => INQUIRY_YELLOW,
         HermesFileState::Error => palette.error,
@@ -593,7 +666,7 @@ pub fn hermes_state_color(palette: &Palette, state: HermesFileState) -> Color {
 /// The color of a folder's role tag.
 pub fn hermes_role_color(palette: &Palette, role: FolderRole) -> Color {
     match role {
-        FolderRole::Inbox => palette.accent,
+        FolderRole::Inbox => palette.primary_button().0,
         FolderRole::FilingLocation => palette.success,
         FolderRole::Archive => palette.dim_text,
     }
@@ -606,7 +679,7 @@ pub fn progress(palette: &Palette) -> impl Fn(&Theme) -> iced::widget::progress_
         background: Background::Color(colors.border_inactive),
         bar: Background::Color(colors.success),
         border: Border {
-            radius: radius::KEY_CAP.into(),
+            radius: radius::CORNER.into(),
             ..Border::default()
         },
     }
@@ -619,12 +692,12 @@ pub fn tag_button(
     tagged: bool,
 ) -> impl Fn(&Theme, button::Status) -> button::Style {
     let colors = *palette;
-    // Tagged rows are accent-coloured, an untagged star is dim. Which panel is
-    // active does not change this — the cursor highlight elsewhere says that.
+    // A tagged star takes the marked-files color, an untagged one is dim. Which
+    // panel is active does not change this — the cursor highlight says that.
     move |_theme, _status| button::Style {
         background: None,
         text_color: if tagged {
-            colors.accent
+            colors.tagged_mark
         } else {
             colors.dim_text
         },
@@ -636,6 +709,7 @@ pub fn tag_button(
 /// The "for all files" checkbox in the conflict dialog.
 pub fn dialog_checkbox(palette: &Palette) -> impl Fn(&Theme, checkbox::Status) -> checkbox::Style {
     let colors = *palette;
+    let (on, on_text) = colors.primary_button();
     move |_theme, status| {
         let checked = match status {
             checkbox::Status::Active { is_checked }
@@ -643,12 +717,12 @@ pub fn dialog_checkbox(palette: &Palette) -> impl Fn(&Theme, checkbox::Status) -
             | checkbox::Status::Disabled { is_checked } => is_checked,
         };
         checkbox::Style {
-            background: Background::Color(if checked { colors.cursor } else { colors.panel }),
-            icon_color: colors.cursor_text,
+            background: Background::Color(if checked { on } else { colors.panel }),
+            icon_color: on_text,
             border: Border {
-                color: colors.border,
+                color: if checked { on } else { colors.dim_text },
                 width: spacing::BORDER_WIDTH,
-                radius: radius::CONTROL.into(),
+                radius: radius::CORNER.into(),
             },
             text_color: Some(colors.text),
         }
@@ -662,9 +736,9 @@ pub fn menu(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
         background: Some(Background::Color(colors.menu)),
         text_color: Some(colors.text),
         border: Border {
-            color: colors.border,
-            width: 2.0,
-            radius: spacing::BORDER_RADIUS.into(),
+            color: colors.border_inactive,
+            width: spacing::BORDER_WIDTH,
+            radius: radius::CORNER.into(),
         },
         ..container::Style::default()
     }
@@ -677,11 +751,22 @@ pub fn menu_item(
     selected: bool,
 ) -> impl Fn(&Theme, button::Status) -> button::Style {
     let colors = *palette;
-    move |_theme, _status| button::Style {
-        background: selected.then_some(Background::Color(colors.cursor)),
-        text_color: colors.text,
-        border: Border::default(),
-        ..button::Style::default()
+    move |_theme, status| {
+        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        button::Style {
+            background: if selected {
+                Some(Background::Color(colors.cursor))
+            } else {
+                hovered.then(|| hover_fill(&colors))
+            },
+            text_color: if selected {
+                colors.cursor_text
+            } else {
+                colors.text
+            },
+            border: Border::default(),
+            ..button::Style::default()
+        }
     }
 }
 
@@ -698,9 +783,9 @@ pub fn path_input(palette: &Palette) -> impl Fn(&Theme, text_input::Status) -> t
     move |_theme, _status| text_input::Style {
         background: Background::Color(Color::TRANSPARENT),
         border: Border::default(),
-        icon: colors.accent,
+        icon: colors.dim_text,
         placeholder: colors.dim_text,
-        value: colors.accent,
+        value: colors.text,
         selection: colors.cursor,
     }
 }
@@ -711,16 +796,16 @@ pub fn search_input(palette: &Palette) -> impl Fn(&Theme, text_input::Status) ->
     let colors = *palette;
     move |_theme, status| text_input::Style {
         background: Background::Color(colors.status_bar),
-        border: Border {
-            color: if matches!(status, text_input::Status::Focused { .. }) {
-                colors.accent
-            } else {
-                colors.border_inactive
-            },
-            width: spacing::BORDER_WIDTH,
-            radius: spacing::BORDER_RADIUS.into(),
+        border: if matches!(status, text_input::Status::Focused { .. }) {
+            focus_border(&colors)
+        } else {
+            Border {
+                color: colors.border_inactive,
+                width: spacing::BORDER_WIDTH,
+                radius: radius::CORNER.into(),
+            }
         },
-        icon: colors.accent,
+        icon: colors.dim_text,
         placeholder: colors.dim_text,
         value: colors.text,
         selection: colors.cursor,
@@ -732,35 +817,33 @@ pub fn search_input(palette: &Palette) -> impl Fn(&Theme, text_input::Status) ->
 pub fn field_input(palette: &Palette) -> impl Fn(&Theme, text_input::Status) -> text_input::Style {
     let colors = *palette;
     let base = search_input(palette);
+    let outline = control_outline(&colors, colors.status_bar);
     move |theme, status| {
         let mut style = base(theme, status);
-        style.border.radius = radius::CONTROL.into();
-        style.border.color = if matches!(status, text_input::Status::Focused { .. }) {
-            colors.accent
-        } else {
-            colors.border
-        };
+        if !matches!(status, text_input::Status::Focused { .. }) {
+            style.border.color = outline;
+        }
         style
     }
 }
 
-/// The closed field of a dropdown: outlined like the other controls, the
-/// outline in the accent color while it is hovered or open.
+/// The closed field of a dropdown: outlined in grey like the other controls;
+/// open, it has the keys and takes the focus outline.
 pub fn dropdown_field(palette: &Palette) -> impl Fn(&Theme, pick_list::Status) -> pick_list::Style {
     let colors = *palette;
+    let outline = control_outline(&colors, colors.dialog);
     move |_theme, status| pick_list::Style {
         text_color: colors.text,
         placeholder_color: colors.dim_text,
         handle_color: colors.dim_text,
         background: Background::Color(colors.dialog),
-        border: Border {
-            color: if matches!(status, pick_list::Status::Active) {
-                colors.border
-            } else {
-                colors.accent
+        border: match status {
+            pick_list::Status::Opened { .. } => focus_border(&colors),
+            pick_list::Status::Active | pick_list::Status::Hovered => Border {
+                color: outline,
+                width: spacing::BORDER_WIDTH,
+                radius: radius::CORNER.into(),
             },
-            width: spacing::BORDER_WIDTH,
-            radius: radius::CONTROL.into(),
         },
     }
 }
@@ -771,9 +854,9 @@ pub fn dropdown_menu(palette: &Palette) -> impl Fn(&Theme) -> menu::Style {
     move |_theme| menu::Style {
         background: Background::Color(colors.menu),
         border: Border {
-            color: colors.border,
+            color: colors.border_inactive,
             width: spacing::BORDER_WIDTH,
-            radius: radius::CONTROL.into(),
+            radius: radius::CORNER.into(),
         },
         text_color: colors.text,
         selected_text_color: colors.cursor_text,
@@ -796,13 +879,9 @@ pub fn search_toggle(
             } else {
                 colors.title
             })),
-            text_color: if on {
-                colors.cursor_text
-            } else {
-                colors.accent
-            },
+            text_color: if on { colors.cursor_text } else { colors.text },
             border: Border {
-                radius: spacing::BORDER_RADIUS.into(),
+                radius: radius::CORNER.into(),
                 ..Border::default()
             },
             ..button::Style::default()
@@ -850,10 +929,10 @@ pub fn icon_button(palette: &Palette) -> impl Fn(&Theme, button::Status) -> butt
     move |_theme, status| {
         let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
         button::Style {
-            background: hovered.then_some(Background::Color(colors.title)),
-            text_color: colors.accent,
+            background: hovered.then(|| hover_fill(&colors)),
+            text_color: colors.text,
             border: Border {
-                radius: spacing::BORDER_RADIUS.into(),
+                radius: radius::CORNER.into(),
                 ..Border::default()
             },
             ..button::Style::default()
@@ -867,7 +946,7 @@ pub fn icon_square(palette: &Palette, filled: bool) -> impl Fn(&Theme) -> contai
     move |_theme| container::Style {
         background: filled.then_some(Background::Color(colors.status_bar)),
         border: Border {
-            color: colors.accent,
+            color: colors.text,
             width: spacing::BORDER_WIDTH,
             radius: 1.0.into(),
         },
