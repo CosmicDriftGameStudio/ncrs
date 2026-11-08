@@ -35,6 +35,10 @@ key_actions! {
     GoUp => "go_up",
     Open => "open",
     SwitchPanel => "switch_panel",
+    NextTab => "next_tab",
+    PreviousTab => "previous_tab",
+    ActivateLeftPanel => "activate_left_panel",
+    ActivateRightPanel => "activate_right_panel",
     SwitchLanguage => "switch_language",
     ToggleTag => "toggle_tag",
     TagDown => "tag_down",
@@ -176,6 +180,8 @@ impl KeyAction {
             | Self::SwitchLanguage
             | Self::SystemMonitor
             | Self::SwitchPanel
+            | Self::NextTab
+            | Self::PreviousTab
             | Self::ToggleTag
             | Self::TagDown
             | Self::TagUp
@@ -234,6 +240,8 @@ impl KeyAction {
             | Self::SortBySize
             | Self::ComputeFolderSizes
             | Self::ContextMenu
+            | Self::ActivateLeftPanel
+            | Self::ActivateRightPanel
             | Self::CursorUp
             | Self::CursorDown
             | Self::PageUp
@@ -252,7 +260,7 @@ impl KeyAction {
     /// Keys that became defaults after a config could already have given them
     /// to another action: bare F2 in 0.6, Shift+F4, the history keys and
     /// primary+D in 0.7, primary+K in 0.8, primary+C (`copy_files`) and primary+Z
-    /// (`restore_last_deletion`) after 1.0, Shift+F6 (`rename`) after 1.2, F12 (`system_monitor`) after the 0.7.0 example config.
+    /// (`restore_last_deletion`) after 1.0, Shift+F6 (`rename`) after 1.2, F12 (`system_monitor`) after the 0.7.0 example config, Ctrl+Tab and the left and right arrows (`next_tab`, `previous_tab`, `activate_left_panel`, `activate_right_panel`) after 1.2.
     /// Such a config keeps working: its binding wins over the built-in one,
     /// and the action keeps its other keys.
     pub fn yields_its_built_in_key(self) -> bool {
@@ -270,6 +278,10 @@ impl KeyAction {
                 | Self::CopyFiles
                 | Self::RestoreLastDeletion
                 | Self::SystemMonitor
+                | Self::NextTab
+                | Self::PreviousTab
+                | Self::ActivateLeftPanel
+                | Self::ActivateRightPanel
         )
     }
 
@@ -328,6 +340,10 @@ impl KeyAction {
             | Self::GoUp
             | Self::Open
             | Self::SwitchPanel
+            | Self::NextTab
+            | Self::PreviousTab
+            | Self::ActivateLeftPanel
+            | Self::ActivateRightPanel
             | Self::SwitchLanguage
             | Self::SystemMonitor
             | Self::ToggleTag
@@ -423,6 +439,10 @@ impl KeyAction {
             | Self::GoUp
             | Self::Open
             | Self::SwitchPanel
+            | Self::NextTab
+            | Self::PreviousTab
+            | Self::ActivateLeftPanel
+            | Self::ActivateRightPanel
             | Self::SwitchLanguage
             | Self::ToggleTag
             | Self::TagDown

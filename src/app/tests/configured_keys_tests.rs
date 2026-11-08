@@ -611,3 +611,20 @@ fn without_ctrl_alt_or_super_a_typed_character_is_left_alone() {
         character("*")
     );
 }
+
+#[test]
+fn a_config_binding_left_or_ctrl_tab_takes_the_key_from_the_new_defaults() {
+    let state = state_for("[keys]\ngo_up = \"left\"\nopen = \"ctrl+tab\"\n");
+    assert_eq!(
+        route_key(&state, named(Named::ArrowLeft), Modifiers::default()),
+        Some(KeyAction::GoUp.message())
+    );
+    assert_eq!(
+        route_key(&state, named(Named::Tab), Modifiers::CTRL),
+        Some(KeyAction::Open.message())
+    );
+    assert_eq!(
+        route_key(&state, named(Named::ArrowRight), Modifiers::default()),
+        Some(KeyAction::ActivateRightPanel.message())
+    );
+}

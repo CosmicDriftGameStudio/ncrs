@@ -67,8 +67,13 @@ pub enum Message {
     /// Cmd+V / Ctrl+V: read the system clipboard and bring what it holds into
     /// the active panel.
     Paste,
-    /// Shift+Tab: the previous tab; Tab is `PanelMessage::SwitchPanel`.
+    /// Shift+Tab: the other panel, or the previous tab on a page; Tab is
+    /// `PanelMessage::SwitchPanel`.
     SwitchTabBack,
+    /// Ctrl+Tab: the next of all open tabs, the panels included.
+    NextTab,
+    /// Ctrl+Shift+Tab: the previous of all open tabs.
+    PreviousTab,
     /// A click on the tab of an open page.
     ShowTab(ShownTab),
     /// Tab or Shift+Tab on a page that stands in for the panels: asks the

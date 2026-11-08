@@ -185,10 +185,6 @@ impl App {
         }
     }
 
-    pub(in crate::app) fn page_tab_is_open(&self) -> bool {
-        self.open_pages() != tab_stops::OpenPages::default()
-    }
-
     pub(in crate::app) fn settings_shown(&self) -> bool {
         self.settings.page.is_some() && self.shown_tab == ShownTab::Settings
     }

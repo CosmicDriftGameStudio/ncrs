@@ -49,38 +49,102 @@ fn f2_with_the_settings_tab_shown_shows_the_chat_and_the_monitor_does_not_close_
 }
 
 #[test]
-fn tab_walks_all_five_stops_and_back() {
+fn ctrl_tab_walks_all_five_stops_and_back_from_the_panels_too() {
     let mut app = App::with_fixed_panels();
     app.panels.active = PanelSide::Left;
     open_settings(&mut app);
     f2(&mut app);
     drop(app.update(Message::Monitor(MonitorMessage::Toggle)));
-    assert_eq!(app.shown_tab, ShownTab::Monitor);
+    drop(app.update(Message::ShowTab(ShownTab::Panels)));
+    assert_eq!(stop(&app), (ShownTab::Panels, PanelSide::Left));
 
-    // Monitor -> Chat -> Left -> Right -> Settings -> Monitor.
+    // Left -> Right -> Settings -> Monitor -> Chat -> Left.
     let forward = [
-        (ShownTab::Hermes, PanelSide::Left),
-        (ShownTab::Panels, PanelSide::Left),
         (ShownTab::Panels, PanelSide::Right),
         (ShownTab::Settings, PanelSide::Right),
         (ShownTab::Monitor, PanelSide::Right),
+        (ShownTab::Hermes, PanelSide::Right),
+        (ShownTab::Panels, PanelSide::Left),
     ];
     for expected in forward {
-        tab(&mut app, Modifiers::empty());
+        tab(&mut app, Modifiers::CTRL);
         assert_eq!(stop(&app), expected);
     }
     let backward = [
-        (ShownTab::Settings, PanelSide::Right),
-        (ShownTab::Panels, PanelSide::Right),
-        (ShownTab::Panels, PanelSide::Left),
         (ShownTab::Hermes, PanelSide::Left),
         (ShownTab::Monitor, PanelSide::Left),
+        (ShownTab::Settings, PanelSide::Left),
+        (ShownTab::Panels, PanelSide::Right),
+        (ShownTab::Panels, PanelSide::Left),
     ];
     for expected in backward {
-        tab(&mut app, Modifiers::SHIFT);
+        tab(&mut app, Modifiers::CTRL | Modifiers::SHIFT);
         assert_eq!(stop(&app), expected);
     }
     assert!(app.hermes_chat.open && app.monitor.is_open() && app.settings.page.is_some());
+}
+
+#[test]
+fn tab_on_the_panels_only_switches_panel_and_on_a_page_walks_the_circle() {
+    let mut app = App::with_fixed_panels();
+    app.panels.active = PanelSide::Left;
+    open_settings(&mut app);
+    f2(&mut app);
+    drop(app.update(Message::Monitor(MonitorMessage::Toggle)));
+    drop(app.update(Message::ShowTab(ShownTab::Panels)));
+
+    for (modifiers, expected) in [
+        (Modifiers::empty(), PanelSide::Right),
+        (Modifiers::empty(), PanelSide::Left),
+        (Modifiers::SHIFT, PanelSide::Right),
+        (Modifiers::SHIFT, PanelSide::Left),
+    ] {
+        tab(&mut app, modifiers);
+        assert_eq!(stop(&app), (ShownTab::Panels, expected));
+    }
+
+    // On a page Tab goes on round the circle, back to the panels.
+    drop(app.update(Message::ShowTab(ShownTab::Monitor)));
+    for expected in [
+        (ShownTab::Hermes, PanelSide::Left),
+        (ShownTab::Panels, PanelSide::Left),
+    ] {
+        tab(&mut app, Modifiers::empty());
+        assert_eq!(stop(&app), expected);
+    }
+    drop(app.update(Message::ShowTab(ShownTab::Settings)));
+    tab(&mut app, Modifiers::SHIFT);
+    assert_eq!(stop(&app), (ShownTab::Panels, PanelSide::Right));
+}
+
+#[test]
+fn the_arrows_pick_a_panel_unless_the_command_line_has_the_keys() {
+    let mut app = App::with_fixed_panels();
+    app.panels.active = PanelSide::Left;
+    let arrow = |named| Key::Named(named);
+    press_and_run(&mut app, arrow(Named::ArrowRight), Modifiers::empty());
+    assert_eq!(app.panels.active, PanelSide::Right);
+    press_and_run(&mut app, arrow(Named::ArrowRight), Modifiers::empty());
+    assert_eq!(
+        app.panels.active,
+        PanelSide::Right,
+        "directional, no toggle"
+    );
+    press_and_run(&mut app, arrow(Named::ArrowLeft), Modifiers::empty());
+    assert_eq!(app.panels.active, PanelSide::Left);
+
+    drop(app.update(Message::CommandLine(CommandLineMessage::Input(
+        "ls".to_owned(),
+    ))));
+    assert!(app.prompt_key_state().command_line);
+    assert_eq!(
+        press(&app, arrow(Named::ArrowRight), Modifiers::empty()),
+        None
+    );
+    assert_eq!(
+        press(&app, arrow(Named::ArrowLeft), Modifiers::empty()),
+        None
+    );
 }
 
 #[test]

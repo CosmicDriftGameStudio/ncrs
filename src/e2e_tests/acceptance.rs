@@ -422,40 +422,45 @@ fn tab_walks_the_circle_of_panels_settings_monitor_and_chat_and_back() {
             shown.app.active_panel_side_for_test(),
         )
     };
+    // On the chat tab Tab goes back to the panels; there it only switches
+    // between them, and Ctrl+Tab walks every open tab.
+    session.press(Key::Named(Named::Tab));
+    session.settle();
+    assert_eq!(stop(&session), (ShownTab::Panels, PanelSide::Left));
+    session.press(Key::Named(Named::Tab));
+    session.settle();
+    assert_eq!(stop(&session), (ShownTab::Panels, PanelSide::Right));
+    session.press(Key::Named(Named::ArrowLeft));
+    session.settle();
+    assert_eq!(stop(&session), (ShownTab::Panels, PanelSide::Left));
+    session.press(Key::Named(Named::ArrowRight));
+    session.settle();
+    assert_eq!(stop(&session), (ShownTab::Panels, PanelSide::Right));
     let forward = [
-        (ShownTab::Panels, PanelSide::Left),
-        (ShownTab::Panels, PanelSide::Right),
-        (ShownTab::Settings, PanelSide::Right),
-        (ShownTab::Monitor, PanelSide::Right),
-        (ShownTab::Hermes, PanelSide::Right),
+        ShownTab::Settings,
+        ShownTab::Monitor,
+        ShownTab::Hermes,
+        ShownTab::Panels,
     ];
     for expected in forward {
-        session.press(Key::Named(Named::Tab));
+        session.press_with(Key::Named(Named::Tab), Modifiers::CTRL);
         session.settle();
-        assert_eq!(stop(&session).0, expected.0, "forward, wanted {expected:?}");
-        if expected.0 == ShownTab::Panels {
-            assert_eq!(stop(&session).1, expected.1);
-        }
+        assert_eq!(stop(&session).0, expected, "forward, wanted {expected:?}");
     }
-    let backward = [
-        (ShownTab::Monitor, PanelSide::Right),
-        (ShownTab::Settings, PanelSide::Right),
-        (ShownTab::Panels, PanelSide::Right),
-        (ShownTab::Panels, PanelSide::Left),
-        (ShownTab::Hermes, PanelSide::Left),
-    ];
+    assert_eq!(stop(&session), (ShownTab::Panels, PanelSide::Left));
+    let backward = [ShownTab::Hermes, ShownTab::Monitor, ShownTab::Settings];
     for expected in backward {
-        session.press_with(Key::Named(Named::Tab), Modifiers::SHIFT);
+        session.press_with(Key::Named(Named::Tab), Modifiers::CTRL | Modifiers::SHIFT);
         session.settle();
-        assert_eq!(
-            stop(&session).0,
-            expected.0,
-            "backward, wanted {expected:?}"
-        );
-        if expected.0 == ShownTab::Panels {
-            assert_eq!(stop(&session).1, expected.1);
-        }
+        assert_eq!(stop(&session).0, expected, "backward, wanted {expected:?}");
     }
+    session.press_with(Key::Named(Named::Tab), Modifiers::SHIFT);
+    session.settle();
+    assert_eq!(stop(&session), (ShownTab::Panels, PanelSide::Right));
+    session.press_with(Key::Named(Named::Tab), Modifiers::CTRL);
+    session.press_with(Key::Named(Named::Tab), Modifiers::CTRL);
+    session.press_with(Key::Named(Named::Tab), Modifiers::CTRL);
+    session.settle();
     assert!(session.app.settings_for_test().is_some(), "Settings closed");
     assert!(session.app.monitor_for_test().is_open(), "Monitor closed");
     assert!(session.app.hermes_chat_open_for_test(), "Hermes closed");

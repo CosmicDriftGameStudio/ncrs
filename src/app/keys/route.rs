@@ -136,7 +136,9 @@ fn keys_without_prompt(
         && !(prompt.monitor_filter || prompt.monitor_dialog || prompt.monitor_menu))
         || prompt.settings;
     if page_tab_stop && matches!(key.as_ref(), Key::Named(Named::Tab)) {
-        return page_tab_message(key_modifiers);
+        if let Some(message) = page_tab_message(key_modifiers) {
+            return Some(message);
+        }
     }
 
     if prompt.monitor {
@@ -197,19 +199,20 @@ fn hermes_chat_key(
     };
     // The chat has one field and no use for Tab: it goes on to the next tab.
     if matches!(key.as_ref(), Key::Named(Named::Tab)) {
-        return if key_modifiers == Modifiers::SHIFT {
-            Some(Message::SwitchTabBack)
-        } else if key_modifiers.is_empty() {
-            Some(Message::Panel(PanelMessage::SwitchPanel))
-        } else {
-            None
-        };
+        if key_modifiers == Modifiers::SHIFT {
+            return Some(Message::SwitchTabBack);
+        }
+        if key_modifiers.is_empty() {
+            return Some(Message::Panel(PanelMessage::SwitchPanel));
+        }
     }
     let other_page = || {
         bound_message(&prompt.keymap, key, key_modifiers, scope)
             .filter(|message| {
                 *message == KeyAction::Settings.message()
                     || *message == KeyAction::SystemMonitor.message()
+                    || *message == KeyAction::NextTab.message()
+                    || *message == KeyAction::PreviousTab.message()
             })
             .filter(|_| is_not_typed_by_text_field(key, key_modifiers))
     };

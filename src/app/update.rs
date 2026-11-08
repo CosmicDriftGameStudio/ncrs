@@ -135,6 +135,8 @@ fn leaves_bar_fields(message: &Message) -> bool {
             | Message::CopyFilesToClipboard
             | Message::Panel(PanelMessage::SwitchPanel)
             | Message::SwitchTabBack
+            | Message::NextTab
+            | Message::PreviousTab
             | Message::Panel(PanelMessage::ActivatePanel(_))
             | Message::Panel(PanelMessage::SortBy { .. })
             | Message::Panel(PanelMessage::HeaderPressed { .. })
@@ -554,10 +556,17 @@ impl App {
                 result,
             } => self.finish_prompt(kind, request_id, result),
 
-            Message::Panel(PanelMessage::SwitchPanel) if self.page_tab_is_open() => {
+            Message::Panel(PanelMessage::SwitchPanel) if self.shown_tab != ShownTab::Panels => {
                 self.switch_tab(tab_stops::TabDirection::Forward)
             }
-            Message::SwitchTabBack => self.switch_tab(tab_stops::TabDirection::Backward),
+            Message::SwitchTabBack if self.shown_tab == ShownTab::Panels => {
+                self.panels.active = self.panels.active.other();
+                Task::none()
+            }
+            Message::SwitchTabBack | Message::PreviousTab => {
+                self.switch_tab(tab_stops::TabDirection::Backward)
+            }
+            Message::NextTab => self.switch_tab(tab_stops::TabDirection::Forward),
             Message::TabInPage { backward } => {
                 ncrs_ui_kit::focus::field_has_focus().map(move |field_focused| {
                     Message::TabInPageAnswered {
