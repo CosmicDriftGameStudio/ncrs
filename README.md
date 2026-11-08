@@ -151,7 +151,12 @@ The same window in German, switched with F9.
 - Multi-selection: tag rows with `Insert` or `Space` (or `Shift`+`Up`/`Down`, or Cmd/Ctrl-click), an operation applies to the tagged rows, or to
   the single row under the cursor when nothing is tagged
 - Keyboard navigation, selection highlighting, auto-scrolling
-- Name / Size / Modified columns, directories first, case-insensitive sort
+- Columns per panel: name, icon, size, modified, created, type, extension, permissions, owner, group,
+  access and link target, chosen from the header's context menu or the Columns settings page; drag a
+  title edge for its width. Directories first, case-insensitive sort
+- Font and size on the Appearance settings page; everything scales with the size
+- "Permissions…" (`Alt`+`Cmd`+`R`) changes access rights of one or many entries, optionally of a
+  folder's contents, in the background and without following links
 - Folder sizes on request: "Compute folder sizes" in the command list or the
   context menu measures the tagged folders, the folder under the cursor, or every
   folder of the listing when the cursor is on `..`. The size column shows the
@@ -162,7 +167,7 @@ The same window in German, switched with F9.
 - Stale-result protection (fast navigation cannot show an outdated listing)
 - Errors (e.g. *Permission denied*) are shown in the status bar – no panics
 - Confirmations (e.g. *Path copied*) appear at the right of the status bar for three seconds
-- The right end of the status bar shows the language, the theme and the app version; the version opens the About card
+- The right end of the status bar shows the language, the theme and the app version; the version opens the Updates settings page, and a dot on it marks a newer release
 - Mouse click selects a row and activates its panel; the wheel and the trackpad scroll the panel under the pointer
 - Drive menu (`Alt`+`F1` / `Alt`+`F2`): jump a panel to the system volume, home, iCloud Drive and
   cloud storage folders such as Google Drive, OneDrive or Dropbox (macOS), mounted volumes or

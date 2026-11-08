@@ -6,6 +6,63 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-11-08
+
+### Added
+
+- Panel columns: name, icon, size, modified, created, type, extension,
+  permissions, owner, group, access and link target. Choose them from the
+  context menu of a panel header or on the new Columns settings page, for both
+  panels or per panel. Drag a title edge to change a width; widths are saved.
+  The date and size formats are settings.
+- An icon column in front of the name, with distinct icons for folder kinds,
+  links, broken links and file types.
+- The Appearance settings page chooses the font (the system monospace font, the
+  bundled font or any installed monospace family) and its size, with a live
+  preview. Everything in the window scales with the size.
+- "Permissions…" in the context menu, the File menu, the command list and on
+  `Alt`+`Cmd`+`R` shows and changes the access rights of one or many entries,
+  as checkboxes or an octal value. For folders it can also change their
+  contents (files as above or without execute, folders as above or
+  unchanged). It runs in the background with progress and cancel, and never
+  follows links. On Windows only read-only can be changed.
+- Update check: an Updates settings page with the installed version, a switch
+  for the check, and how to install a newer release (release notes or the
+  package manager command). ncrs asks GitHub at most once a day; the check is
+  on by default only for direct downloads, and the App Store build has none.
+  A dot on the status bar version marks a newer release; pressing the version
+  opens the Updates page.
+- A rule can be limited to one read folder: with more than one read folder,
+  the Hermes chat proposal offers "Only from …".
+- The search has a folder row that shows where it looks. Type a path there
+  (`~` for home) or pick one with "Choose…"; a folder that does not exist or
+  may not be read says so. A search without hits names its folder.
+- Settings, the system monitor and the Hermes chat stay open as tabs in the
+  title bar. F12, `Cmd`+`,` and F2 switch to an open tab.
+- With the panels shown, `Tab` and `Shift`+`Tab` switch between the left and
+  right panel, and `Left` and `Right` pick a panel. `Ctrl`+`Tab` and
+  `Ctrl`+`Shift`+`Tab` walk all open tabs. All of them are key actions in the
+  new Go menu; your own bindings of these keys win.
+- Every settings page works with the arrow keys: rows, dropdowns, each button
+  of a row. A dropdown opened by keyboard floats below its field.
+
+### Changed
+
+- Pressing the version in the status bar opens the Updates page instead of
+  the About card.
+- A link to a folder shows as `~name` like any other link, not as `/name`.
+- Picking a setting in the command list (F1) brings a hidden settings tab
+  forward.
+
+### Fixed
+
+- Pasting a path into the command line no longer creates a file.
+- Bitmap-only fonts (such as "GB18030 Bitmap" on macOS) are left out of the
+  font list; drawing them crashed the app.
+- `install.ps1` on Windows on ARM installs the x64 build instead of asking for
+  an archive that does not exist.
+- The README lists `brew trust` for the tap, which newer Homebrew needs.
+
 ## [1.2.0] — 2026-11-06
 
 ### Added
