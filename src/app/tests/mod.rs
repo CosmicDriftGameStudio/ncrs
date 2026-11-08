@@ -474,6 +474,11 @@ mod hit_list_tests;
 mod monitor_tests;
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+#[cfg(test)]
+mod hermes_tab_tests;
+#[cfg(test)]
+mod hermes_tab_ui_tests;
 #[allow(
     clippy::unwrap_used,
     clippy::expect_used,

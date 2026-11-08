@@ -103,7 +103,7 @@ impl App {
         let below_title_bar =
             if self.monitor_shown() {
                 self.monitor_area()
-            } else if self.hermes_chat.open {
+            } else if self.hermes_chat_shown() {
                 self.hermes_chat_area()
             } else if let Some(state) = self
                 .settings

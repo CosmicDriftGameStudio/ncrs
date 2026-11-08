@@ -156,6 +156,9 @@ impl App {
         let task = self.with_settings(|settings, ctx| {
             ncrs_settings::show_setting(settings, ctx, feature, row)
         });
+        if self.settings.page.is_some() && !self.dialog_is_open() {
+            self.shown_tab = ShownTab::Settings;
+        }
         self.run_settings_actions(task, Vec::new())
     }
 

@@ -91,9 +91,10 @@ pub fn update(
         }
         SearchMessage::FolderChanged(text) => {
             view.focused = SearchField::Folder;
-            match resolve_folder(&text, &view.root) {
+            match resolve_folder(&text, &view.relative_base) {
                 Some(folder) => {
-                    view.set_root(folder);
+                    view.root = folder;
+                    view.folder_missing = false;
                     view.folder_text = text;
                     only(search.schedule())
                 }
@@ -504,7 +505,7 @@ mod tests {
     }
 
     #[test]
-    fn a_relative_folder_is_taken_from_the_current_root() {
+    fn a_relative_folder_is_taken_from_where_the_search_started() {
         let from = tempfile::tempdir().unwrap();
         std::fs::create_dir(from.path().join("sub")).unwrap();
         let mut search = open_search(from.path());
@@ -516,12 +517,13 @@ mod tests {
         );
         assert_eq!(view(&search).root, from.path().join("sub"));
 
+        std::fs::create_dir(from.path().join("sub").join("deeper")).unwrap();
         send(
             &mut search,
-            SearchMessage::FolderChanged("..".to_owned()),
+            SearchMessage::FolderChanged("sub/deeper".to_owned()),
             &ctx(false),
         );
-        assert_eq!(view(&search).root, from.path().join("sub").join(".."));
+        assert_eq!(view(&search).root, from.path().join("sub/deeper"));
         assert!(!view(&search).folder_missing);
     }
 

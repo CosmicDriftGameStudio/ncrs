@@ -14,8 +14,8 @@ use crate::i18n::{Language, Msg};
 use crate::messages::PanelMessage;
 use crate::messages::ShownTab;
 use crate::messages::{
-    CommandPaletteMessage, FilingStatusMessage, HitListMessage, Message, PanelSide, ResizeEdge,
-    SettingsMessage, TitleBarMessage,
+    CommandPaletteMessage, FilingStatusMessage, HermesChatMessage, HitListMessage, Message,
+    PanelSide, ResizeEdge, SettingsMessage, TitleBarMessage,
 };
 use crate::palette::Palette;
 
@@ -24,6 +24,7 @@ pub const RIGHT_TAB_ID: &str = "title-tab-right";
 pub const HERMES_CHIP_ID: &str = "title-hermes-chip";
 pub const SETTINGS_TAB_ID: &str = "title-tab-settings";
 pub const MONITOR_TAB_ID: &str = "title-tab-monitor";
+pub const HERMES_TAB_ID: &str = "title-tab-hermes";
 const CLOSE_CROSS: &str = "×";
 /// Characters of room the cross of a hit list tab takes from its title.
 const CROSS_CHARS: usize = 3;
@@ -72,6 +73,7 @@ pub use crate::hermes_status::Tone as HermesTone;
 pub enum PageTab {
     Settings,
     System,
+    Hermes,
 }
 
 pub struct PageTabState {
@@ -231,6 +233,16 @@ pub fn view<'a>(bar: &TitleBar<'a>) -> Element<'a, Message> {
                 (
                     ShownTab::Monitor,
                     Message::Monitor(ncrs_monitor::MonitorMessage::Close),
+                ),
+                palette,
+            ),
+            PageTab::Hermes => page_tab(
+                lang.text(Msg::HermesChatTitle),
+                HERMES_TAB_ID,
+                open.active,
+                (
+                    ShownTab::Hermes,
+                    Message::HermesChat(HermesChatMessage::Close),
                 ),
                 palette,
             ),

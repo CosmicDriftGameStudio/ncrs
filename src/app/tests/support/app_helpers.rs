@@ -329,6 +329,11 @@ impl App {
         self.shown_tab
     }
 
+    /// Whether the Hermes chat tab exists, shown or not.
+    pub fn hermes_chat_open_for_test(&self) -> bool {
+        self.hermes_chat.open
+    }
+
     /// Replaces the clipboard read, so a paste never touches the developer's
     /// real clipboard.
     pub fn with_clipboard_reader_for_test(

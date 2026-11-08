@@ -222,13 +222,17 @@ fn menu_place_of(action: KeyAction) -> MenuPlace {
         | KeyAction::SwitchPanel
         | KeyAction::HistoryBack
         | KeyAction::HistoryForward => at(0),
-        KeyAction::CommandLine | KeyAction::HermesChat | KeyAction::QuickOpen => at(1),
+        KeyAction::NextTab
+        | KeyAction::PreviousTab
+        | KeyAction::ActivateLeftPanel
+        | KeyAction::ActivateRightPanel => at(1),
+        KeyAction::CommandLine | KeyAction::HermesChat | KeyAction::QuickOpen => at(2),
         KeyAction::DriveMenuLeft | KeyAction::DriveMenuRight | KeyAction::DisconnectServer => {
-            at(2).within(Places)
+            at(3).within(Places)
         }
-        KeyAction::ConnectServer => at(2).dialog().within(Places),
-        KeyAction::AddFavourite | KeyAction::RemoveFavourite => at(2).within(Bookmarks),
-        KeyAction::Favourites => at(2).dialog().within(Bookmarks),
+        KeyAction::ConnectServer => at(3).dialog().within(Places),
+        KeyAction::AddFavourite | KeyAction::RemoveFavourite => at(3).within(Bookmarks),
+        KeyAction::Favourites => at(3).dialog().within(Bookmarks),
         KeyAction::Search | KeyAction::SearchDocuments => at(0),
         KeyAction::SearchCase | KeyAction::SearchWholeWord | KeyAction::SearchRegex => {
             at(1).toggle()
@@ -330,6 +334,10 @@ fn command_without_place(action: KeyAction) -> Option<Command> {
         KeyAction::KeyBindings => Command::plain(action, View, Msg::ActionKeyBindings),
         KeyAction::GoUp => Command::plain(action, Go, Msg::ActionGoUp),
         KeyAction::SwitchPanel => Command::plain(action, Go, Msg::ActionSwitchPanel),
+        KeyAction::NextTab => Command::plain(action, Go, Msg::ActionNextTab),
+        KeyAction::PreviousTab => Command::plain(action, Go, Msg::ActionPreviousTab),
+        KeyAction::ActivateLeftPanel => Command::plain(action, Go, Msg::ActionActivateLeftPanel),
+        KeyAction::ActivateRightPanel => Command::plain(action, Go, Msg::ActionActivateRightPanel),
         KeyAction::DriveMenuLeft => Command::themed(
             action,
             Go,

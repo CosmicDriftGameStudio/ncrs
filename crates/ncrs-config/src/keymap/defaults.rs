@@ -21,6 +21,20 @@ pub fn default_bindings() -> Vec<(KeyAction, Binding)> {
         (A::GoUp, Binding::key(KeyNamed(Backspace))),
         (A::Open, Binding::key(KeyNamed(Enter))),
         (A::SwitchPanel, Binding::key(KeyNamed(Tab))),
+        // Ctrl+Tab walks every open tab, the panels and the pages. Ctrl, not
+        // Cmd: Cmd+Tab is the application switcher on a Mac.
+        (
+            A::NextTab,
+            Binding::with_modifiers(KeyNamed(Tab), Modifiers::CTRL),
+        ),
+        (
+            A::PreviousTab,
+            Binding::with_modifiers(KeyNamed(Tab), Modifiers::CTRL | Modifiers::SHIFT),
+        ),
+        // The arrows pick a panel when the panels have the keys; the text
+        // fields keep them for the caret.
+        (A::ActivateLeftPanel, Binding::key(KeyNamed(ArrowLeft))),
+        (A::ActivateRightPanel, Binding::key(KeyNamed(ArrowRight))),
         (A::SwitchLanguage, Binding::key(KeyNamed(F9))),
         // --- selection: tagged rows, not advertised ---
         (A::ToggleTag, Binding::key(KeyNamed(Insert))),
@@ -108,7 +122,7 @@ pub fn default_bindings() -> Vec<(KeyAction, Binding)> {
         ),
         // Alt (Option on macOS) with F1 or F2 picks the drive of the left or
         // right panel, as in classic dual-panel file managers. Not advertised: the bar shows
-        // bare keys only, and NC does not list these either.
+        // bare keys only.
         (
             A::DriveMenuLeft,
             Binding::with_modifiers(KeyNamed(F1), Modifiers::ALT),

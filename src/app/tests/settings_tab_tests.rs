@@ -37,7 +37,12 @@ fn escape_closes_it_and_a_panel_tab_only_shows_the_panels() {
 }
 
 fn tab(app: &mut App, modifiers: Modifiers) {
-    let routed = press(app, Key::Named(Named::Tab), modifiers).expect("Tab is routed");
+    let routed = press(app, Key::Named(Named::Tab), modifiers).unwrap_or_else(|| {
+        panic!(
+            "Tab {modifiers:?} not routed at {:?} {:?}",
+            app.shown_tab, app.panels.active
+        )
+    });
     match routed {
         // The page asks iced whether a text field has the keyboard; none has.
         Message::TabInPage { backward } => drop(app.update(Message::TabInPageAnswered {
@@ -49,43 +54,38 @@ fn tab(app: &mut App, modifiers: Modifiers) {
 }
 
 #[test]
-fn tab_walks_the_circle_with_both_pages_open_and_closes_none() {
+fn tab_walks_the_circle_from_a_page_and_ctrl_tab_from_the_panels_and_closes_none() {
     let mut app = App::with_fixed_panels();
     app.panels.active = PanelSide::Left;
     open(&mut app);
     drop(app.update(Message::Monitor(MonitorMessage::Toggle)));
     assert!(app.settings.page.is_some() && app.monitor.is_open());
     assert_eq!(app.shown_tab, ShownTab::Monitor);
-    // Monitor -> Left -> Right -> Settings -> Monitor.
+    let at = |shown: &App| (shown.shown_tab, shown.panels.active);
+    // Monitor -> Left; on the panels Tab only switches the panel.
     tab(&mut app, Modifiers::empty());
-    assert_eq!(
-        (app.shown_tab, app.panels.active),
-        (ShownTab::Panels, PanelSide::Left)
-    );
+    assert_eq!(at(&app), (ShownTab::Panels, PanelSide::Left));
     tab(&mut app, Modifiers::empty());
-    assert_eq!(
-        (app.shown_tab, app.panels.active),
-        (ShownTab::Panels, PanelSide::Right)
-    );
+    assert_eq!(at(&app), (ShownTab::Panels, PanelSide::Right));
     tab(&mut app, Modifiers::empty());
-    assert_eq!(app.shown_tab, ShownTab::Settings);
-    tab(&mut app, Modifiers::empty());
-    assert_eq!(app.shown_tab, ShownTab::Monitor);
-    // And back.
+    assert_eq!(at(&app), (ShownTab::Panels, PanelSide::Left));
+    // Ctrl+Tab goes on through the pages: Right -> Settings -> Monitor -> Left.
+    for expected in [
+        (ShownTab::Panels, PanelSide::Right),
+        (ShownTab::Settings, PanelSide::Right),
+        (ShownTab::Monitor, PanelSide::Right),
+        (ShownTab::Panels, PanelSide::Left),
+    ] {
+        tab(&mut app, Modifiers::CTRL);
+        assert_eq!(at(&app), expected);
+    }
+    // And back with Ctrl+Shift+Tab, then Shift+Tab on a page.
+    tab(&mut app, Modifiers::CTRL | Modifiers::SHIFT);
+    assert_eq!(at(&app), (ShownTab::Monitor, PanelSide::Left));
     tab(&mut app, Modifiers::SHIFT);
-    assert_eq!(app.shown_tab, ShownTab::Settings);
+    assert_eq!(at(&app), (ShownTab::Settings, PanelSide::Left));
     tab(&mut app, Modifiers::SHIFT);
-    assert_eq!(
-        (app.shown_tab, app.panels.active),
-        (ShownTab::Panels, PanelSide::Right)
-    );
-    tab(&mut app, Modifiers::SHIFT);
-    assert_eq!(
-        (app.shown_tab, app.panels.active),
-        (ShownTab::Panels, PanelSide::Left)
-    );
-    tab(&mut app, Modifiers::SHIFT);
-    assert_eq!(app.shown_tab, ShownTab::Monitor);
+    assert_eq!(at(&app), (ShownTab::Panels, PanelSide::Right));
     assert!(app.settings.page.is_some() && app.monitor.is_open());
 }
 

@@ -135,6 +135,8 @@ fn leaves_bar_fields(message: &Message) -> bool {
             | Message::CopyFilesToClipboard
             | Message::Panel(PanelMessage::SwitchPanel)
             | Message::SwitchTabBack
+            | Message::NextTab
+            | Message::PreviousTab
             | Message::Panel(PanelMessage::ActivatePanel(_))
             | Message::Panel(PanelMessage::SortBy { .. })
             | Message::Panel(PanelMessage::HeaderPressed { .. })
@@ -161,7 +163,7 @@ impl App {
     // -----------------------------------------------------------------------
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
-        let was_open = (self.settings.page.is_some(), self.monitor.is_open());
+        let was_open = self.open_pages();
         let task = self.update_message(message);
         self.follow_opened_pages(was_open);
         self.refresh_special_folders();
@@ -208,7 +210,6 @@ impl App {
         let applied = self.apply_unless_refused(message);
         let task = Task::batch([
             applied,
-            self.monitor_yields_to_other_pages(),
             self.with_hermes(Vec::new(), ncrs_hermes_ui::request_hermes_column)
                 .map(Message::from),
             self.schedule_session_save(),
@@ -555,10 +556,17 @@ impl App {
                 result,
             } => self.finish_prompt(kind, request_id, result),
 
-            Message::Panel(PanelMessage::SwitchPanel) if self.page_tab_is_open() => {
+            Message::Panel(PanelMessage::SwitchPanel) if self.shown_tab != ShownTab::Panels => {
                 self.switch_tab(tab_stops::TabDirection::Forward)
             }
-            Message::SwitchTabBack => self.switch_tab(tab_stops::TabDirection::Backward),
+            Message::SwitchTabBack if self.shown_tab == ShownTab::Panels => {
+                self.panels.active = self.panels.active.other();
+                Task::none()
+            }
+            Message::SwitchTabBack | Message::PreviousTab => {
+                self.switch_tab(tab_stops::TabDirection::Backward)
+            }
+            Message::NextTab => self.switch_tab(tab_stops::TabDirection::Forward),
             Message::TabInPage { backward } => {
                 ncrs_ui_kit::focus::field_has_focus().map(move |field_focused| {
                     Message::TabInPageAnswered {

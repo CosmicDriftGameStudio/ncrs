@@ -52,8 +52,8 @@ impl SearchField {
 
 /// The folder a typed text names: `~` stands for the home folder. `None` when
 /// it is not an existing folder this user may read. A relative text is taken
-/// from `root`, the folder the search is in now.
-pub fn resolve_folder(text: &str, root: &Path) -> Option<PathBuf> {
+/// from `base`.
+pub fn resolve_folder(text: &str, base: &Path) -> Option<PathBuf> {
     let trimmed = text.trim();
     let typed = match trimmed.strip_prefix('~') {
         Some("") => ncrs_fs::home_dir(),
@@ -63,7 +63,7 @@ pub fn resolve_folder(text: &str, root: &Path) -> Option<PathBuf> {
         _ if trimmed.is_empty() => return None,
         _ => PathBuf::from(trimmed),
     };
-    let expanded = root.join(typed);
+    let expanded = base.join(typed);
     std::fs::read_dir(&expanded).is_ok().then_some(expanded)
 }
 
@@ -110,6 +110,10 @@ impl FileResult {
 #[derive(Debug, Clone)]
 pub struct SearchView {
     pub root: PathBuf,
+    /// A typed relative folder is taken from here: the folder the search was
+    /// opened in or picked. Not `root`, which follows each typed folder, so
+    /// "sub" then "sub/x" would otherwise look for "sub/sub/x".
+    pub relative_base: PathBuf,
     /// What the folder field shows: `root`, or what the user typed on the way
     /// to another folder.
     pub folder_text: String,
@@ -173,6 +177,7 @@ impl SearchView {
         Self {
             folder_text: root.display().to_string(),
             folder_missing: false,
+            relative_base: root.clone(),
             root,
             names: String::new(),
             in_files: false,
@@ -203,6 +208,7 @@ impl SearchView {
     /// Searches below `folder` from now on.
     pub fn set_root(&mut self, folder: PathBuf) {
         self.folder_text = folder.display().to_string();
+        self.relative_base.clone_from(&folder);
         self.root = folder;
         self.folder_missing = false;
     }

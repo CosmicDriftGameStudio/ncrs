@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{OnceLock, PoisonError, RwLockWriteGuard};
 
-use iced::advanced::graphics::text::cosmic_text::fontdb::Family;
+use iced::advanced::graphics::text::cosmic_text::fontdb::{Database, Family, ID};
 use iced::advanced::graphics::text::{font_system, FontSystem};
 
 use crate::BUNDLED_FAMILY;
@@ -161,9 +161,8 @@ fn lock() -> RwLockWriteGuard<'static, FontSystem> {
 /// The monospace families the font database holds, sorted and without repeats.
 pub fn installed_monospace() -> Vec<String> {
     let mut system = lock();
-    let mut names: Vec<String> = system
-        .raw()
-        .db()
+    let db = system.raw().db();
+    let mut names: Vec<String> = db
         .faces()
         .filter(|face| face.monospaced)
         .filter_map(|face| face.families.first().map(|(name, _)| name.clone()))
@@ -171,6 +170,7 @@ pub fn installed_monospace() -> Vec<String> {
         .collect();
     names.sort_by_key(|name| name.to_lowercase());
     names.dedup();
+    names.retain(|name| family_draws(db, name));
     names
 }
 
@@ -207,11 +207,30 @@ pub fn system_points(system: Option<&SystemFont>) -> f32 {
 }
 
 fn is_installed(system: &mut FontSystem, name: &str) -> bool {
-    system
-        .raw()
-        .db()
+    family_draws(system.raw().db(), name)
+}
+
+/// Whether the family is installed and every face of it draws: bold or italic
+/// text may pick any of them.
+fn family_draws(db: &Database, name: &str) -> bool {
+    let mut faces = db
         .faces()
-        .any(|face| face.families.iter().any(|(known, _)| known == name))
+        .filter(|face| face.families.iter().any(|(known, _)| known == name))
+        .peekable();
+    faces.peek().is_some() && faces.all(|face| draws_text(db, face.id))
+}
+
+/// Whether the face has outlines and horizontal metrics. A bitmap-only font
+/// such as macOS' "GB18030 Bitmap" has neither, and swash panics drawing it.
+fn draws_text(db: &Database, id: ID) -> bool {
+    db.with_face_data(id, |data, index| {
+        ttf_parser::Face::parse(data, index).is_ok_and(|face| {
+            let tables = face.tables();
+            tables.hmtx.is_some()
+                && (tables.glyf.is_some() || tables.cff.is_some() || tables.cff2.is_some())
+        })
+    })
+    .unwrap_or(false)
 }
 
 /// Makes `family` the monospace font of the whole window, `None` the font of
@@ -265,7 +284,12 @@ fn scale_with(points: Option<u8>, system: Option<&SystemFont>, pixels_per_point:
 }
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here.
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -357,5 +381,34 @@ mod tests {
         };
         assert_eq!(scale_with(None, Some(&huge), 1.0), MAX_SCALE);
         assert_eq!(scale_with(Some(1), None, 1.0), MIN_SCALE);
+    }
+
+    fn database_with(font: Vec<u8>) -> (Database, ID) {
+        let mut db = Database::new();
+        db.load_font_data(font);
+        let id = db.faces().next().map(|face| face.id).unwrap();
+        (db, id)
+    }
+
+    #[test]
+    fn a_font_without_horizontal_metrics_draws_no_text() {
+        let (outline_db, outline_id) = database_with(crate::BUNDLED_REGULAR.to_vec());
+        assert!(draws_text(&outline_db, outline_id));
+
+        // Renaming the tag in the table directory hides the table, as in a
+        // bitmap-only font.
+        let mut font = crate::BUNDLED_REGULAR.to_vec();
+        let hmtx = font[..512]
+            .windows(4)
+            .position(|tag| tag == b"hmtx")
+            .unwrap();
+        font[hmtx..hmtx + 4].copy_from_slice(b"xxxx");
+        let (mut bitmap_db, bitmap_id) = database_with(font);
+        assert!(!draws_text(&bitmap_db, bitmap_id));
+
+        let family = outline_db.faces().next().unwrap().families[0].0.clone();
+        assert!(family_draws(&outline_db, &family));
+        bitmap_db.load_font_data(crate::BUNDLED_REGULAR.to_vec());
+        assert!(!family_draws(&bitmap_db, &family));
     }
 }

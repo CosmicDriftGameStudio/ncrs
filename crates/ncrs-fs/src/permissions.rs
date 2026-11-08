@@ -396,7 +396,13 @@ fn change_unopenable(
         return (false, Ok(None));
     }
     let Some(after) = mode_after(stat.st_mode, edit) else {
-        return (false, Err(open_error()));
+        // A file whose bits already fit is done; a folder still cannot be walked.
+        let fitting = if is_folder {
+            Err(open_error())
+        } else {
+            Ok(None)
+        };
+        return (false, fitting);
     };
     match fchmodat(
         dirfd,
@@ -840,6 +846,33 @@ mod unreadable_tests {
         let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o7777;
         assert!(outcome.failures.is_empty(), "{:?}", outcome.failures);
         assert_eq!(mode, 0o004);
+    }
+
+    #[test]
+    fn a_file_with_mode_000_in_a_folder_whose_bits_already_fit_is_no_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let top = dir.path().join("top");
+        fs::create_dir(&top).unwrap();
+        fs::set_permissions(&top, fs::Permissions::from_mode(0o755)).unwrap();
+        let file = top.join("locked");
+        fs::write(&file, "x").unwrap();
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o000)).unwrap();
+        let (sender, _receiver) = mpsc::unbounded_channel();
+        let outcome = change_permissions(
+            std::slice::from_ref(&top),
+            &PermissionPlan {
+                edit: PermissionEdit {
+                    set: 0o111,
+                    clear: 0,
+                    read_only: None,
+                },
+                recurse: Some((ForFiles::WithoutExecute, ForFolders::AsAbove)),
+            },
+            &sender,
+        );
+        let mode = fs::metadata(&file).unwrap().permissions().mode() & 0o7777;
+        assert!(outcome.failures.is_empty(), "{:?}", outcome.failures);
+        assert_eq!(mode, 0o000);
     }
 }
 

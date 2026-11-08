@@ -396,7 +396,7 @@ fn the_font_size_is_chosen_by_keyboard_and_saved() {
 }
 
 #[test]
-fn tab_walks_the_circle_of_panels_settings_and_monitor_and_back() {
+fn tab_walks_the_circle_of_panels_settings_monitor_and_chat_and_back() {
     use crate::messages::ShownTab;
     let dir = scratch("tab-circle");
     let mut session = session_in(dir.path());
@@ -407,6 +407,14 @@ fn tab_walks_the_circle_of_panels_settings_and_monitor_and_back() {
     redraw(&mut session);
     assert!(session.app.monitor_for_test().is_open(), "no monitor");
     assert_eq!(session.app.shown_tab_for_test(), ShownTab::Monitor);
+    session.press(Key::Named(Named::F2));
+    session.settle();
+    redraw(&mut session);
+    assert_eq!(session.app.shown_tab_for_test(), ShownTab::Hermes);
+    assert!(
+        session.app.monitor_for_test().is_open(),
+        "the chat closed the monitor"
+    );
 
     let stop = |shown: &Session<_>| {
         (
@@ -414,52 +422,66 @@ fn tab_walks_the_circle_of_panels_settings_and_monitor_and_back() {
             shown.app.active_panel_side_for_test(),
         )
     };
+    // On the chat tab Tab goes back to the panels; there it only switches
+    // between them, and Ctrl+Tab walks every open tab.
+    session.press(Key::Named(Named::Tab));
+    session.settle();
+    assert_eq!(stop(&session), (ShownTab::Panels, PanelSide::Left));
+    session.press(Key::Named(Named::Tab));
+    session.settle();
+    assert_eq!(stop(&session), (ShownTab::Panels, PanelSide::Right));
+    session.press(Key::Named(Named::ArrowLeft));
+    session.settle();
+    assert_eq!(stop(&session), (ShownTab::Panels, PanelSide::Left));
+    session.press(Key::Named(Named::ArrowRight));
+    session.settle();
+    assert_eq!(stop(&session), (ShownTab::Panels, PanelSide::Right));
     let forward = [
-        (ShownTab::Panels, PanelSide::Left),
-        (ShownTab::Panels, PanelSide::Right),
-        (ShownTab::Settings, PanelSide::Right),
-        (ShownTab::Monitor, PanelSide::Right),
+        ShownTab::Settings,
+        ShownTab::Monitor,
+        ShownTab::Hermes,
+        ShownTab::Panels,
     ];
     for expected in forward {
-        session.press(Key::Named(Named::Tab));
+        session.press_with(Key::Named(Named::Tab), Modifiers::CTRL);
         session.settle();
-        assert_eq!(stop(&session).0, expected.0, "forward, wanted {expected:?}");
-        if expected.0 == ShownTab::Panels {
-            assert_eq!(stop(&session).1, expected.1);
-        }
+        assert_eq!(stop(&session).0, expected, "forward, wanted {expected:?}");
     }
-    let backward = [
-        (ShownTab::Settings, PanelSide::Right),
-        (ShownTab::Panels, PanelSide::Right),
-        (ShownTab::Panels, PanelSide::Left),
-        (ShownTab::Monitor, PanelSide::Left),
-    ];
+    assert_eq!(stop(&session), (ShownTab::Panels, PanelSide::Left));
+    let backward = [ShownTab::Hermes, ShownTab::Monitor, ShownTab::Settings];
     for expected in backward {
-        session.press_with(Key::Named(Named::Tab), Modifiers::SHIFT);
+        session.press_with(Key::Named(Named::Tab), Modifiers::CTRL | Modifiers::SHIFT);
         session.settle();
-        assert_eq!(
-            stop(&session).0,
-            expected.0,
-            "backward, wanted {expected:?}"
-        );
-        if expected.0 == ShownTab::Panels {
-            assert_eq!(stop(&session).1, expected.1);
-        }
+        assert_eq!(stop(&session).0, expected, "backward, wanted {expected:?}");
     }
+    session.press_with(Key::Named(Named::Tab), Modifiers::SHIFT);
+    session.settle();
+    assert_eq!(stop(&session), (ShownTab::Panels, PanelSide::Right));
+    session.press_with(Key::Named(Named::Tab), Modifiers::CTRL);
+    session.press_with(Key::Named(Named::Tab), Modifiers::CTRL);
+    session.press_with(Key::Named(Named::Tab), Modifiers::CTRL);
+    session.settle();
     assert!(session.app.settings_for_test().is_some(), "Settings closed");
     assert!(session.app.monitor_for_test().is_open(), "Monitor closed");
+    assert!(session.app.hermes_chat_open_for_test(), "Hermes closed");
 
-    // On the monitor tab the settings key shows the open settings tab, and
-    // F12 on the settings tab shows the open monitor tab; neither closes.
-    assert_eq!(session.app.shown_tab_for_test(), ShownTab::Monitor);
+    // On the chat tab the settings key shows the open settings tab, and F12
+    // on the settings tab shows the open monitor tab; neither closes.
+    assert_eq!(session.app.shown_tab_for_test(), ShownTab::Hermes);
     session.press_with(Key::Character(",".into()), Modifiers::COMMAND);
     session.settle();
+    redraw(&mut session);
     assert_eq!(session.app.shown_tab_for_test(), ShownTab::Settings);
     session.press(Key::Named(Named::F12));
     session.settle();
+    redraw(&mut session);
     assert_eq!(session.app.shown_tab_for_test(), ShownTab::Monitor);
+    session.press(Key::Named(Named::F2));
+    session.settle();
+    assert_eq!(session.app.shown_tab_for_test(), ShownTab::Hermes);
     assert!(session.app.settings_for_test().is_some(), "Settings closed");
     assert!(session.app.monitor_for_test().is_open(), "Monitor closed");
+    assert!(session.app.hermes_chat_open_for_test(), "Hermes closed");
 }
 
 fn pasted_text() -> iced::Task<Option<crate::clipboard_paste::PastedContent>> {

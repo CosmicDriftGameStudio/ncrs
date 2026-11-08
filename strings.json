@@ -1375,6 +1375,30 @@
       "de": "Panel wechseln"
     },
     {
+      "key": "action.next_tab",
+      "context": "Entry of the command palette that runs the key action next_tab. Moves on to the next open tab: the left panel, the right panel, then the Settings, System and chat pages that are open; as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Next tab",
+      "de": "Nächster Tab"
+    },
+    {
+      "key": "action.previous_tab",
+      "context": "Entry of the command palette that runs the key action previous_tab. Goes back to the previous open tab: the left panel, the right panel, then the Settings, System and chat pages that are open; as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Previous tab",
+      "de": "Vorheriger Tab"
+    },
+    {
+      "key": "action.activate_left_panel",
+      "context": "Entry of the command palette that runs the key action activate_left_panel. Makes the left file panel the active one; as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Activate left panel",
+      "de": "Linkes Panel aktivieren"
+    },
+    {
+      "key": "action.activate_right_panel",
+      "context": "Entry of the command palette that runs the key action activate_right_panel. Makes the right file panel the active one; as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Activate right panel",
+      "de": "Rechtes Panel aktivieren"
+    },
+    {
       "key": "action.switch_language",
       "context": "Entry of the command palette that runs the key action switch_language. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
       "en": "Switch language",

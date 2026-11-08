@@ -33,6 +33,12 @@ impl KeyActionMessage for KeyAction {
             Self::GoUp => Message::Panel(PanelMessage::GoUp),
             Self::Open => Message::Panel(PanelMessage::OpenSelected),
             Self::SwitchPanel => Message::Panel(PanelMessage::SwitchPanel),
+            Self::NextTab => Message::NextTab,
+            Self::PreviousTab => Message::PreviousTab,
+            Self::ActivateLeftPanel => Message::Panel(PanelMessage::ActivatePanel(PanelSide::Left)),
+            Self::ActivateRightPanel => {
+                Message::Panel(PanelMessage::ActivatePanel(PanelSide::Right))
+            }
             Self::SwitchLanguage => Message::SwitchLanguage,
             Self::ToggleTag => Message::Panel(PanelMessage::ToggleTag),
             Self::TagDown => Message::Panel(PanelMessage::TagMove(1)),
