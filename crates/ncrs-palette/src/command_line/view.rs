@@ -17,7 +17,7 @@ const COMMAND_LINE_HEIGHT: f32 = size::COMMAND_LINE;
 pub const COMMAND_LINE_ID: &str = "command-line";
 
 const PROMPT_MAX_WIDTH: f32 = 360.0;
-const ROW_PADDING_X: f32 = 10.0;
+const ROW_PADDING_X: f32 = spacing::L;
 
 #[derive(Debug)]
 pub struct Props<'a> {
@@ -63,7 +63,7 @@ pub fn view<'a>(props: Props<'a>) -> Element<'a, CommandLineMessage> {
     let chevron = kit::icon(
         Icon::ChevronRight,
         if focused {
-            palette.accent
+            theme::focus_border(palette).color
         } else {
             palette.dim_text
         },
@@ -95,7 +95,7 @@ pub fn view<'a>(props: Props<'a>) -> Element<'a, CommandLineMessage> {
 
     let bar = column![
         theme::horizontal_rule(if focused {
-            palette.accent
+            theme::focus_border(palette).color
         } else {
             palette.border_inactive
         }),

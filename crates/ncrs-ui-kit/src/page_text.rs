@@ -1,5 +1,5 @@
 //! Single-line texts of the full-window pages (System): a line in a chosen
-//! size and color, and the accent heading of a block.
+//! size and color, and the heading of a block.
 
 use iced::widget::text::Wrapping;
 use iced::widget::{container, text, Container};
@@ -17,9 +17,14 @@ pub fn page_line<'a, M: 'a>(content: impl Into<String>, size: f32, color: Color)
         .into()
 }
 
-/// The heading of a block of a page, in the accent color.
+/// The heading of a block of a page: bold, in the text color.
 pub fn page_heading<'a, M: 'a>(content: &str, palette: &Palette) -> Element<'a, M> {
-    page_line(content, font_size::ROW, palette.accent)
+    text(content.to_owned())
+        .size(font_size::ROW)
+        .font(crate::APP_FONT_BOLD)
+        .color(palette.text)
+        .wrapping(Wrapping::None)
+        .into()
 }
 
 /// A region of a full-window page on the darker surface of the bars, so the

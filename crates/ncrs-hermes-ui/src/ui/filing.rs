@@ -5,11 +5,9 @@
 //! keys. Pure function, like the other components: module state in,
 //! `Element` out.
 
-use iced::widget::span;
-use iced::widget::text::Span;
 use iced::widget::text::Wrapping;
-use iced::widget::{checkbox, column, container, radio, rich_text, text, Column, Row};
-use iced::{Background, Color, Element, Font, Length, Size, Theme};
+use iced::widget::{checkbox, column, container, text, Column, Row};
+use iced::{Element, Size};
 
 use crate::message::Message;
 use ncrs_config::palette::Palette;
@@ -125,49 +123,6 @@ fn quiet_action<'a>(
     )
 }
 
-pub fn radio_look(palette: &Palette) -> impl Fn(&Theme, radio::Status) -> radio::Style {
-    let colors = *palette;
-    move |_theme, _status| radio::Style {
-        background: Background::Color(colors.panel),
-        dot_color: colors.accent,
-        border_width: 1.0,
-        border_color: colors.border,
-        text_color: Some(colors.text),
-    }
-}
-
-/// The key split into its blocks and the dashes between them. The block the
-/// user has to type back gets the accent color, everything else the plain text
-/// color.
-fn key_parts(key_text: &str, group: usize, palette: &Palette) -> Vec<(String, Color)> {
-    let mut parts = Vec::new();
-    for (index, block) in key_text.split('-').enumerate() {
-        if index > 0 {
-            parts.push(("-".to_owned(), palette.text));
-        }
-        let color = if index == group {
-            palette.accent
-        } else {
-            palette.text
-        };
-        parts.push((block.to_owned(), color));
-    }
-    parts
-}
-
-fn key_text_view<'a>(key_text: &str, group: usize, palette: &Palette) -> Element<'a, Message> {
-    let spans: Vec<Span<'a, (), Font>> = key_parts(key_text, group, palette)
-        .into_iter()
-        .map(|(part, color)| span(part).color(color))
-        .collect();
-    rich_text(spans)
-        .font(ncrs_ui_kit::APP_FONT)
-        .size(font_size::TITLE)
-        .wrapping(Wrapping::Word)
-        .width(Length::Fill)
-        .into()
-}
-
 fn show_recovery_key<'a>(
     key_text: &str,
     group: usize,
@@ -188,16 +143,7 @@ fn show_recovery_key<'a>(
     .width(GROUP_FIELD_WIDTH);
     let mut body = column![
         paragraph(lang.text(Msg::FilingKeyExplain), palette),
-        Row::with_children([
-            key_text_view(key_text, group, palette),
-            action(
-                lang.text(Msg::FilingKeyCopy),
-                Some(FilingMessage::CopyRecoveryKey),
-                false,
-                palette,
-            ),
-        ])
-        .spacing(spacing::M),
+        ncrs_ui_kit::hermes_kit::key_with_marked_block(key_text, group, palette),
         paragraph(
             fill_template(
                 lang.text(Msg::FilingKeyGroupPrompt),
@@ -220,12 +166,20 @@ fn show_recovery_key<'a>(
     Card {
         title: lang.text(Msg::FilingKeyTitle),
         body,
-        buttons: vec![action(
-            lang.text(Msg::FilingKeyContinue),
-            Some(FilingMessage::GroupSubmit),
-            true,
-            palette,
-        )],
+        buttons: vec![
+            action(
+                lang.text(Msg::FilingKeyCopy),
+                Some(FilingMessage::CopyRecoveryKey),
+                false,
+                palette,
+            ),
+            action(
+                lang.text(Msg::FilingKeyContinue),
+                Some(FilingMessage::GroupSubmit),
+                true,
+                palette,
+            ),
+        ],
         enter_submits: true,
     }
 }
@@ -356,26 +310,6 @@ fn failed<'a>(reason: &str, lang: Language, palette: &Palette) -> Card<'a> {
 )]
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use ncrs_config::palette::ThemePreset;
-
-    #[test]
-    fn only_the_four_characters_of_the_requested_block_are_highlighted() {
-        let palette = ThemePreset::Cosmic.palette();
-        let key = "AAAA-BBBB-CCCC-DDDD";
-        for group in 0..4 {
-            let parts = key_parts(key, group, &palette);
-            let texts: Vec<&str> = parts.iter().map(|(part, _)| part.as_str()).collect();
-            assert_eq!(texts, ["AAAA", "-", "BBBB", "-", "CCCC", "-", "DDDD"]);
-            let highlighted: Vec<&str> = parts
-                .iter()
-                .filter(|(_, color)| *color == palette.accent)
-                .map(|(part, _)| part.as_str())
-                .collect();
-            assert_eq!(highlighted, [key.split('-').nth(group).unwrap()]);
-        }
-    }
-
     #[test]
     fn the_blocks_of_the_dummy_key_are_pairwise_different() {
         let shown = ncrs_filing::filing::FilingModule::varied_recovery_key().display_text();
@@ -383,16 +317,5 @@ mod tests {
         assert_eq!(blocks.len(), 13);
         let distinct: std::collections::HashSet<&str> = blocks.iter().copied().collect();
         assert_eq!(distinct.len(), blocks.len(), "{shown}");
-    }
-
-    #[test]
-    fn the_parts_join_to_the_key_unchanged() {
-        let palette = ThemePreset::Cosmic.palette();
-        let shown = ncrs_filing::filing::FilingModule::varied_recovery_key().display_text();
-        let joined: String = key_parts(&shown, 7, &palette)
-            .into_iter()
-            .map(|(part, _)| part)
-            .collect();
-        assert_eq!(joined, shown);
     }
 }

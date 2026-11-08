@@ -104,7 +104,7 @@ pub fn heading<'a>(feature: SettingsFeature, view: &SettingsView<'a>) -> Element
     let lang = view.lang;
     let mut title = row![text(lang.text(feature_label(feature)).to_owned())
         .size(font_size::FIGURE)
-        .font(ncrs_ui_kit::APP_FONT)]
+        .font(ncrs_ui_kit::APP_FONT_BOLD)]
     .spacing(spacing::M)
     .align_y(alignment::Vertical::Center);
     if let Some(suffix) = feature_suffix(feature) {

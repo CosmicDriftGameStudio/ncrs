@@ -54,39 +54,54 @@ fn tab(app: &mut App, modifiers: Modifiers) {
 }
 
 #[test]
-fn tab_walks_the_circle_from_a_page_and_ctrl_tab_from_the_panels_and_closes_none() {
+fn tab_stays_on_the_page_and_ctrl_tab_walks_the_tabs_and_closes_none() {
     let mut app = App::with_fixed_panels();
     app.panels.active = PanelSide::Left;
     open(&mut app);
     drop(app.update(Message::Monitor(MonitorMessage::Toggle)));
     assert!(app.settings.page.is_some() && app.monitor.is_open());
     assert_eq!(app.shown_tab, ShownTab::Monitor);
-    let at = |shown: &App| (shown.shown_tab, shown.panels.active);
-    // Monitor -> Left; on the panels Tab only switches the panel.
-    tab(&mut app, Modifiers::empty());
-    assert_eq!(at(&app), (ShownTab::Panels, PanelSide::Left));
-    tab(&mut app, Modifiers::empty());
-    assert_eq!(at(&app), (ShownTab::Panels, PanelSide::Right));
-    tab(&mut app, Modifiers::empty());
-    assert_eq!(at(&app), (ShownTab::Panels, PanelSide::Left));
-    // Ctrl+Tab goes on through the pages: Right -> Settings -> Monitor -> Left.
-    for expected in [
-        (ShownTab::Panels, PanelSide::Right),
-        (ShownTab::Settings, PanelSide::Right),
-        (ShownTab::Monitor, PanelSide::Right),
-        (ShownTab::Panels, PanelSide::Left),
-    ] {
+    // Monitor -> Panels -> Settings -> Monitor, Ctrl+Tab each time.
+    for expected in [ShownTab::Panels, ShownTab::Settings, ShownTab::Monitor] {
         tab(&mut app, Modifiers::CTRL);
-        assert_eq!(at(&app), expected);
+        assert_eq!(app.shown_tab, expected);
     }
-    // And back with Ctrl+Shift+Tab, then Shift+Tab on a page.
+    // Back with Ctrl+Shift+Tab.
     tab(&mut app, Modifiers::CTRL | Modifiers::SHIFT);
-    assert_eq!(at(&app), (ShownTab::Monitor, PanelSide::Left));
-    tab(&mut app, Modifiers::SHIFT);
-    assert_eq!(at(&app), (ShownTab::Settings, PanelSide::Left));
-    tab(&mut app, Modifiers::SHIFT);
-    assert_eq!(at(&app), (ShownTab::Panels, PanelSide::Right));
+    assert_eq!(app.shown_tab, ShownTab::Settings);
+    // Tab on the page never changes the tab.
+    for modifiers in [Modifiers::empty(), Modifiers::empty(), Modifiers::SHIFT] {
+        tab(&mut app, modifiers);
+        assert_eq!(app.shown_tab, ShownTab::Settings);
+    }
     assert!(app.settings.page.is_some() && app.monitor.is_open());
+}
+
+#[test]
+fn tab_on_the_page_moves_between_the_page_list_and_the_rows() {
+    use ncrs_settings::focus::Area;
+    let mut app = App::with_fixed_panels();
+    open(&mut app);
+    assert_eq!(app.settings.page.as_ref().unwrap().focus.area, Area::Pages);
+    tab(&mut app, Modifiers::empty());
+    assert_eq!(app.settings.page.as_ref().unwrap().focus.area, Area::Rows);
+    tab(&mut app, Modifiers::SHIFT);
+    assert_eq!(app.settings.page.as_ref().unwrap().focus.area, Area::Pages);
+    assert_eq!(app.shown_tab, ShownTab::Settings);
+}
+
+#[test]
+fn ctrl_tab_changes_the_tab_while_a_settings_text_field_has_the_keyboard() {
+    let mut app = App::with_fixed_panels();
+    open(&mut app);
+    app.settings.page.as_mut().unwrap().focus.field = true;
+    assert_eq!(
+        press(&app, Key::Named(Named::Tab), Modifiers::CTRL),
+        Some(Message::NextTab)
+    );
+    tab(&mut app, Modifiers::CTRL);
+    assert_eq!(app.shown_tab, ShownTab::Panels);
+    assert!(app.settings.page.is_some());
 }
 
 #[test]
@@ -107,23 +122,20 @@ fn a_click_on_a_page_tab_shows_it_and_a_panel_click_shows_the_panels() {
 }
 
 #[test]
-fn a_text_field_that_has_the_keyboard_keeps_tab() {
+fn tab_on_the_page_is_routed_to_the_page_and_never_switches_the_tab() {
     let mut app = App::with_fixed_panels();
     open(&mut app);
     assert_eq!(
         press(&app, Key::Named(Named::Tab), Modifiers::empty()),
         Some(Message::TabInPage { backward: false })
     );
-    drop(app.update(Message::TabInPageAnswered {
-        backward: false,
-        field_focused: true,
-    }));
-    assert_eq!(app.shown_tab, ShownTab::Settings);
-    drop(app.update(Message::TabInPageAnswered {
-        backward: false,
-        field_focused: false,
-    }));
-    assert_eq!(app.shown_tab, ShownTab::Panels);
+    for field_focused in [true, false] {
+        drop(app.update(Message::TabInPageAnswered {
+            backward: false,
+            field_focused,
+        }));
+        assert_eq!(app.shown_tab, ShownTab::Settings);
+    }
 }
 
 #[test]

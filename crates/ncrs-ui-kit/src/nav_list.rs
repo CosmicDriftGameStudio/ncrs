@@ -2,7 +2,7 @@
 //! capitals, the pages under it, a divider between the groups.
 
 use iced::widget::text::Wrapping;
-use iced::widget::{button, container, row, stack, text, Column, Space};
+use iced::widget::{button, container, row, text, Column};
 use iced::{alignment, Element, Length, Padding};
 
 use crate::kit;
@@ -10,10 +10,6 @@ use crate::palette::Palette;
 use crate::theme::{self, font_size, size, spacing};
 
 const ITEM_GAP: f32 = 2.0;
-const CHOSEN_BAR_WIDTH: f32 = 2.0;
-const CHOSEN_BAR_HEIGHT: f32 = 14.0;
-/// From the left edge of the item to the bar, which ends before the label.
-const CHOSEN_BAR_INSET: f32 = 2.0;
 
 #[derive(Debug)]
 pub struct NavItem<M> {
@@ -66,7 +62,7 @@ fn head<'a, M: 'a>(group: &NavGroup<M>, palette: &Palette) -> Element<'a, M> {
             .color(palette.dim_text)
             .wrapping(Wrapping::None)
     };
-    let mut line = row![dim(group.head.to_uppercase())].spacing(spacing::S);
+    let mut line = row![dim(group.head.to_uppercase())].spacing(spacing::XS);
     if let Some(mark) = &group.mark {
         line = line.push(dim(mark.clone()));
     }
@@ -80,45 +76,36 @@ fn head<'a, M: 'a>(group: &NavGroup<M>, palette: &Palette) -> Element<'a, M> {
 }
 
 fn item_button<'a, M: Clone + 'a>(item: NavItem<M>, palette: &Palette) -> Element<'a, M> {
+    // On the cursor fill the label takes the cursor's ink.
+    let ink = if item.chosen && !item.dimmed {
+        palette.cursor_text
+    } else {
+        palette.text
+    };
     let mut label_row = row![text(item.label)
         .size(font_size::BODY)
-        .color(palette.text)
+        .color(ink)
         .wrapping(Wrapping::None)]
-    .spacing(spacing::S)
+    .spacing(spacing::M)
     .align_y(alignment::Vertical::Center);
     if let Some(suffix) = item.suffix {
         label_row = label_row.push(
             text(suffix)
                 .size(font_size::SMALL)
-                .color(palette.dim_text)
+                .color(if item.chosen && !item.dimmed {
+                    palette.cursor_text
+                } else {
+                    palette.dim_text
+                })
                 .wrapping(Wrapping::None),
         );
     }
-    // The label sits at the same x whether the bar is drawn or not.
-    let label = container(label_row)
+    let content = container(label_row)
         .padding(Padding {
             left: spacing::CELL_PADDING_X,
             ..Padding::ZERO
         })
         .center_y(Length::Fill);
-    let content: Element<'a, M> = if item.chosen {
-        let bar = container(Space::new())
-            .width(CHOSEN_BAR_WIDTH)
-            .height(CHOSEN_BAR_HEIGHT)
-            .style(theme::line(palette.accent));
-        let bar_layer = container(bar)
-            .padding(Padding {
-                left: CHOSEN_BAR_INSET,
-                ..Padding::ZERO
-            })
-            .center_y(Length::Fill);
-        stack![label, bar_layer]
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .into()
-    } else {
-        label.into()
-    };
     button(content)
         .on_press(item.on_press)
         .width(Length::Fill)

@@ -15,9 +15,9 @@ use super::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChipKind {
-    /// Set by Hermes: a grey fill.
+    /// Set by Hermes: a grey outline.
     Automatic,
-    /// Set by the user: an accent outline.
+    /// Set by the user: outlined in the "on" role.
     Own,
 }
 
@@ -43,8 +43,9 @@ pub fn chip<'a, M: Clone + 'a>(
     let colors = *palette;
     let ink = match kind {
         ChipKind::Automatic => colors.dim_text,
-        ChipKind::Own => colors.accent,
+        ChipKind::Own => colors.text,
     };
+    let on_role = colors.primary_button().0;
     let mut line = Row::new()
         .push(small(label.to_owned(), ink))
         .spacing(GAP_XS)
@@ -57,16 +58,14 @@ pub fn chip<'a, M: Clone + 'a>(
         .height(CHIP_HEIGHT)
         .align_y(alignment::Vertical::Center)
         .style(move |_| container::Style {
-            background: (kind == ChipKind::Automatic)
-                .then_some(Background::Color(colors.border_inactive)),
             border: Border {
                 color: if kind == ChipKind::Own {
-                    colors.accent
+                    on_role
                 } else {
-                    Color::TRANSPARENT
+                    theme::control_outline(&colors, colors.panel)
                 },
                 width: 1.0,
-                radius: (CHIP_HEIGHT / 2.0).into(),
+                radius: theme::radius::CORNER.into(),
             },
             ..container::Style::default()
         })
@@ -166,7 +165,7 @@ fn chosen_frame<'a, M: Clone + 'a>(
             border: Border {
                 color: colors.success,
                 width: FILTER_BORDER,
-                radius: theme::radius::CONTROL.into(),
+                radius: theme::radius::CORNER.into(),
             },
             ..container::Style::default()
         })

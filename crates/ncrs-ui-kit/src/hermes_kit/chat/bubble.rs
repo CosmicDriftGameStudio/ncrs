@@ -21,7 +21,6 @@ const CHIP_PAD_Y: f32 = 6.0;
 const CHIP_PAD_X: f32 = 14.0;
 const SMALL_CHIP_PAD_Y: f32 = 2.0;
 const SMALL_CHIP_PAD_X: f32 = 10.0;
-const PILL: f32 = 999.0;
 /// Puts the avatar level with the first line of a bubble.
 const AVATAR_TOP_NUDGE: f32 = BUBBLE_PAD_Y + (CHAT_LINE - AVATAR_SIZE) / 2.0;
 const BOLD_MARK: &str = "**";
@@ -70,7 +69,7 @@ pub fn avatar<'a, M: 'a>(letter: &str, palette: &Palette) -> Element<'a, M> {
     .style(move |_: &Theme| container::Style {
         background: Some(Background::Color(fill)),
         border: Border {
-            radius: PILL.into(),
+            radius: theme::radius::CORNER.into(),
             ..Border::default()
         },
         ..container::Style::default()
@@ -205,9 +204,9 @@ fn chip_style(
                 background: Some(Background::Color(fill)),
                 text_color: ink,
                 border: Border {
-                    color: if hovered { colors.accent } else { fill },
+                    color: fill,
                     width: 1.0,
-                    radius: PILL.into(),
+                    radius: theme::radius::CORNER.into(),
                 },
                 ..button::Style::default()
             }
@@ -216,13 +215,9 @@ fn chip_style(
                 background: hovered.then_some(Background::Color(colors.title)),
                 text_color: colors.text,
                 border: Border {
-                    color: if hovered {
-                        colors.accent
-                    } else {
-                        colors.border
-                    },
+                    color: colors.border,
                     width: 1.0,
-                    radius: PILL.into(),
+                    radius: theme::radius::CORNER.into(),
                 },
                 ..button::Style::default()
             }

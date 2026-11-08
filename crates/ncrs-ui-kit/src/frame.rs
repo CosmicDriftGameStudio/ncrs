@@ -126,7 +126,7 @@ pub fn chars_that_fit(width: f32) -> usize {
 /// [`size::SIDEBAR_WIDTH`] and its line more: pass them as `reserved` to
 /// [`content_chars`].
 pub fn content_width(size: DialogSize, window: Size) -> f32 {
-    frame_size(size, window).width - FRAME_BORDER - spacing::L - SCROLLBAR_ROOM
+    frame_size(size, window).width - FRAME_BORDER - spacing::XL - SCROLLBAR_ROOM
 }
 
 /// The characters one line of the content of a frame holds, with `reserved`
@@ -255,7 +255,7 @@ impl<'a, M: Clone + 'a> Frame<'a, M> {
             .size(font_size::HEADER)
             .color(palette.text)
             .wrapping(Wrapping::None)]
-        .spacing(spacing::S)
+        .spacing(spacing::M)
         .align_y(alignment::Vertical::Center);
         for part in [&self.title_theme, &self.subtitle].into_iter().flatten() {
             title = title.push(
@@ -266,12 +266,12 @@ impl<'a, M: Clone + 'a> Frame<'a, M> {
             );
         }
         let mut header = row![container(title).width(Length::Fill).clip(true)]
-            .spacing(spacing::S)
+            .spacing(spacing::M)
             .align_y(alignment::Vertical::Center)
             .height(size::HEADER)
             .padding(Padding {
                 left: spacing::L,
-                right: spacing::S,
+                right: spacing::M,
                 ..Padding::ZERO
             });
         if let Some(message) = self.on_close.clone() {
@@ -324,10 +324,10 @@ impl<'a, M: Clone + 'a> Frame<'a, M> {
         row![
             container(left).width(Length::Fill).clip(true),
             row(std::mem::take(&mut self.buttons))
-                .spacing(spacing::S)
+                .spacing(spacing::M)
                 .align_y(alignment::Vertical::Center),
         ]
-        .spacing(spacing::S)
+        .spacing(spacing::M)
         .align_y(alignment::Vertical::Center)
         .height(size::FOOTER)
         .padding(Padding {
@@ -348,12 +348,7 @@ impl<'a, M: Clone + 'a> Frame<'a, M> {
         let page = scrollable(
             container(self.content)
                 .width(Length::Fill)
-                .padding(Padding {
-                    left: spacing::L,
-                    right: spacing::L,
-                    top: spacing::L,
-                    bottom: spacing::L,
-                }),
+                .padding(spacing::XL),
         )
         .direction(Direction::Vertical(
             Scrollbar::new()
@@ -370,7 +365,7 @@ impl<'a, M: Clone + 'a> Frame<'a, M> {
                 container(sidebar)
                     .width(size::SIDEBAR_WIDTH)
                     .height(Length::Fill)
-                    .padding(spacing::S)
+                    .padding(spacing::M)
                     .style(theme::sidebar(&palette)),
                 container("")
                     .width(spacing::BORDER_WIDTH)

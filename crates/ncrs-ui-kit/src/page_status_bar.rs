@@ -42,7 +42,7 @@ pub fn page_status_bar<'a, M: 'a>(bar: PageStatusBar<'_>, palette: &Palette) -> 
     .padding([0.0, spacing::L])
     .height(Length::Fill)
     .align_y(alignment::Vertical::Center)
-    .style(theme::mode_field_accent(palette));
+    .style(theme::mode_field(palette));
     let middle = match bar.line {
         PageStatusLine::Failure(failure) => small(failure.to_owned(), palette.error),
         PageStatusLine::Notice(notice) => small(format!("\u{2713} {notice}"), palette.success),

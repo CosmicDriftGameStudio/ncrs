@@ -225,6 +225,7 @@ pub fn column_header<'a, M: Clone + 'a>(
         };
         let dimmed =
             matches!(drag, Some(HeaderDrag::Reorder { column: dragged, .. }) if dragged == column);
+        let sorted = sort.is_some_and(|key| column.sort_column() == Some(key.column));
         let length = if column == Column::Name {
             Length::Fill
         } else {
@@ -234,8 +235,15 @@ pub fn column_header<'a, M: Clone + 'a>(
             .size(font_size::SMALL)
             .color(if dimmed {
                 palette.menu_disabled
+            } else if sorted {
+                palette.text
             } else {
                 palette.dim_text
+            })
+            .font(if sorted {
+                crate::APP_FONT_BOLD
+            } else {
+                crate::APP_FONT
             })
             .wrapping(text::Wrapping::None)
             .width(Length::Fill)
@@ -304,11 +312,11 @@ pub fn column_header<'a, M: Clone + 'a>(
             let ghost = container(
                 text(lang.text(column_message(column)))
                     .size(font_size::SMALL)
-                    .color(palette.accent)
+                    .color(palette.border)
                     .wrapping(text::Wrapping::None),
             )
             .padding([1.0, spacing::XS])
-            .style(theme::outlined_in(palette.accent));
+            .style(theme::outlined_in(palette.border));
             stack![
                 titles_bar,
                 pin(ghost)
@@ -337,7 +345,7 @@ fn drop_line<'a, M: 'a>(palette: &Palette) -> Element<'a, M> {
     container(Space::new())
         .width(COLUMN_DROP_LINE_WIDTH)
         .height(Length::Fill)
-        .style(theme::line(palette.accent))
+        .style(theme::line(palette.border))
         .into()
 }
 

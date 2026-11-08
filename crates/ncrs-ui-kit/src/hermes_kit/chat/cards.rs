@@ -382,14 +382,16 @@ fn path_pieces<'a, M: 'a>(
         }
         let shown = format::ellipsize_keeping_both_ends(segment, SEGMENT_MAX_CHARS);
         if highlighted == Some(index) {
-            let marked = container(mono(shown.clone(), TEXT_BODY, colors.accent))
+            let marked = container(mono(shown.clone(), TEXT_BODY, colors.text))
                 .padding([0.0, SEGMENT_PAD_X])
                 .style(move |_: &Theme| container::Style {
-                    background: Some(Background::Color(colors.accent.scale_alpha(SEGMENT_TINT))),
+                    background: Some(Background::Color(
+                        colors.primary_button().0.scale_alpha(SEGMENT_TINT),
+                    )),
                     border: Border {
-                        color: colors.accent,
+                        color: colors.primary_button().0,
                         width: 1.0,
-                        radius: theme::radius::CONTROL.into(),
+                        radius: theme::radius::CORNER.into(),
                     },
                     ..container::Style::default()
                 })
@@ -482,7 +484,7 @@ fn trial_row<'a, M: Clone + 'a>(line: TrialLine<M>, palette: &Palette) -> Elemen
                         .push(name_cell(&name, palette))
                         .push(card_text(
                             QUESTION_MARK,
-                            palette.accent,
+                            palette.primary_button().0,
                             Wrapping::None,
                             true,
                         ))

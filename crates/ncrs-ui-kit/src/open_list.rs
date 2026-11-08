@@ -46,7 +46,7 @@ pub fn open_list<'a, M: Clone + 'a>(
                     .wrapping(text::Wrapping::None),
             )
             .on_press(choice.clone())
-            .padding([2.0, spacing::S])
+            .padding([2.0, spacing::M])
             .width(Length::Fill)
             .style(theme::menu_item(palette, index == highlighted))
             .into()

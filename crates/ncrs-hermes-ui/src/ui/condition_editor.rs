@@ -134,7 +134,7 @@ fn condition_row<'a>(
     };
     let mut cells = row![page_kit::dropdown(KIND_WIDTH, &kinds, selected, palette)]
         .width(Length::Fill)
-        .spacing(spacing::S)
+        .spacing(spacing::M)
         .align_y(alignment::Vertical::Center);
     if editor.negation {
         let has = [

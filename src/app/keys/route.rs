@@ -129,9 +129,9 @@ fn keys_without_prompt(
         };
     }
 
-    // Tab leaves the page for the next tab, unless a text field has the
-    // keyboard: the widgets are asked (`TabInPage`). The System page's own
-    // filter, a dialog or a menu keep the key.
+    // Tab moves inside the shown page, never to another tab (Ctrl+Tab does
+    // that): the widgets are asked whether a text field has the keyboard
+    // (`TabInPage`). The System page's own filter, a dialog or a menu keep the key.
     let page_tab_stop = (prompt.monitor
         && !(prompt.monitor_filter || prompt.monitor_dialog || prompt.monitor_menu))
         || prompt.settings;
@@ -178,10 +178,6 @@ fn keys_without_prompt(
     if matches!(key.as_ref(), Key::Named(Named::Escape)) {
         return escape_message(prompt);
     }
-    // Shift+Tab is Tab backwards; with a rebound Tab it still means "previous".
-    if matches!(key.as_ref(), Key::Named(Named::Tab)) && key_modifiers == Modifiers::SHIFT {
-        return Some(Message::SwitchTabBack);
-    }
     bound_message(&prompt.keymap, &key, key_modifiers, scope)
         .or_else(|| type_ahead_message(&key, key_modifiers))
 }
@@ -197,13 +193,9 @@ fn hermes_chat_key(
             .filter(|message| *message == Message::Quit)
             .filter(|_| is_not_typed_by_text_field(key, key_modifiers))
     };
-    // The chat has one field and no use for Tab: it goes on to the next tab.
     if matches!(key.as_ref(), Key::Named(Named::Tab)) {
-        if key_modifiers == Modifiers::SHIFT {
-            return Some(Message::SwitchTabBack);
-        }
-        if key_modifiers.is_empty() {
-            return Some(Message::Panel(PanelMessage::SwitchPanel));
+        if let Some(message) = page_tab_message(key_modifiers) {
+            return Some(message);
         }
     }
     let other_page = || {

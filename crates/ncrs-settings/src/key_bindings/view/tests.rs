@@ -13,7 +13,7 @@ fn a_theme_name_without_room_is_cut_with_an_ellipsis() {
     let label = "Unmark all";
     let theme_name = "Remove every stamp from the crates";
     let width = format::estimated_width(label, font_size::ROW)
-        + spacing::S
+        + spacing::M
         + format::estimated_width("Remove every", font_size::ROW);
     let fitted = fitted_theme_name(label, theme_name, None, width).unwrap();
     assert!(fitted.ends_with('…'), "{fitted}");
@@ -31,7 +31,7 @@ fn a_theme_name_that_would_show_only_a_stub_is_left_out() {
 fn the_changed_mark_takes_its_room_before_the_theme_name() {
     let label = "Copy";
     let width = format::estimated_width(label, font_size::ROW)
-        + spacing::S
+        + spacing::M
         + format::estimated_width("Teleporter", font_size::ROW)
         + 1.0;
     assert_eq!(

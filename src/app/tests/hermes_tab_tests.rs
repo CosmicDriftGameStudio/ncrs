@@ -48,50 +48,47 @@ fn f2_with_the_settings_tab_shown_shows_the_chat_and_the_monitor_does_not_close_
     assert!(app.settings.page.is_some());
 }
 
-#[test]
-fn ctrl_tab_walks_all_five_stops_and_back_from_the_panels_too() {
-    let mut app = App::with_fixed_panels();
+fn open_all_pages(app: &mut App) {
     app.panels.active = PanelSide::Left;
-    open_settings(&mut app);
-    f2(&mut app);
+    open_settings(app);
+    f2(app);
     drop(app.update(Message::Monitor(MonitorMessage::Toggle)));
     drop(app.update(Message::ShowTab(ShownTab::Panels)));
-    assert_eq!(stop(&app), (ShownTab::Panels, PanelSide::Left));
+}
 
-    // Left -> Right -> Settings -> Monitor -> Chat -> Left.
-    let forward = [
-        (ShownTab::Panels, PanelSide::Right),
-        (ShownTab::Settings, PanelSide::Right),
-        (ShownTab::Monitor, PanelSide::Right),
-        (ShownTab::Hermes, PanelSide::Right),
-        (ShownTab::Panels, PanelSide::Left),
-    ];
-    for expected in forward {
+#[test]
+fn ctrl_tab_walks_the_four_tabs_forward_and_back_and_wraps() {
+    let mut app = App::with_fixed_panels();
+    open_all_pages(&mut app);
+    assert_eq!(app.shown_tab, ShownTab::Panels);
+
+    for expected in [
+        ShownTab::Settings,
+        ShownTab::Monitor,
+        ShownTab::Hermes,
+        ShownTab::Panels,
+    ] {
         tab(&mut app, Modifiers::CTRL);
-        assert_eq!(stop(&app), expected);
+        assert_eq!(app.shown_tab, expected);
     }
-    let backward = [
-        (ShownTab::Hermes, PanelSide::Left),
-        (ShownTab::Monitor, PanelSide::Left),
-        (ShownTab::Settings, PanelSide::Left),
-        (ShownTab::Panels, PanelSide::Right),
-        (ShownTab::Panels, PanelSide::Left),
-    ];
-    for expected in backward {
+    for expected in [
+        ShownTab::Hermes,
+        ShownTab::Monitor,
+        ShownTab::Settings,
+        ShownTab::Panels,
+        ShownTab::Hermes,
+    ] {
         tab(&mut app, Modifiers::CTRL | Modifiers::SHIFT);
-        assert_eq!(stop(&app), expected);
+        assert_eq!(app.shown_tab, expected);
     }
+    assert_eq!(app.panels.active, PanelSide::Left, "the tabs keep the side");
     assert!(app.hermes_chat.open && app.monitor.is_open() && app.settings.page.is_some());
 }
 
 #[test]
-fn tab_on_the_panels_only_switches_panel_and_on_a_page_walks_the_circle() {
+fn tab_never_leaves_the_shown_tab_and_on_the_panels_it_switches_panel() {
     let mut app = App::with_fixed_panels();
-    app.panels.active = PanelSide::Left;
-    open_settings(&mut app);
-    f2(&mut app);
-    drop(app.update(Message::Monitor(MonitorMessage::Toggle)));
-    drop(app.update(Message::ShowTab(ShownTab::Panels)));
+    open_all_pages(&mut app);
 
     for (modifiers, expected) in [
         (Modifiers::empty(), PanelSide::Right),
@@ -103,18 +100,13 @@ fn tab_on_the_panels_only_switches_panel_and_on_a_page_walks_the_circle() {
         assert_eq!(stop(&app), (ShownTab::Panels, expected));
     }
 
-    // On a page Tab goes on round the circle, back to the panels.
-    drop(app.update(Message::ShowTab(ShownTab::Monitor)));
-    for expected in [
-        (ShownTab::Hermes, PanelSide::Left),
-        (ShownTab::Panels, PanelSide::Left),
-    ] {
-        tab(&mut app, Modifiers::empty());
-        assert_eq!(stop(&app), expected);
+    for shown in [ShownTab::Settings, ShownTab::Monitor, ShownTab::Hermes] {
+        drop(app.update(Message::ShowTab(shown)));
+        for modifiers in [Modifiers::empty(), Modifiers::empty(), Modifiers::SHIFT] {
+            tab(&mut app, modifiers);
+            assert_eq!(app.shown_tab, shown, "Tab {modifiers:?} on {shown:?}");
+        }
     }
-    drop(app.update(Message::ShowTab(ShownTab::Settings)));
-    tab(&mut app, Modifiers::SHIFT);
-    assert_eq!(stop(&app), (ShownTab::Panels, PanelSide::Right));
 }
 
 #[test]

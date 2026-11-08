@@ -1,12 +1,11 @@
-//! Tab and Shift+Tab walk through the open tabs: the left panel, the right
-//! one, then the pages that stand in for the panels.
+//! Ctrl+Tab and Ctrl+Shift+Tab walk through the open tabs: the panels, then
+//! the pages that stand in for them. Tab itself stays inside the shown tab.
 
 use crate::app::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::app) enum TabStop {
-    Left,
-    Right,
+    Panels,
     Settings,
     Monitor,
     Hermes,
@@ -33,8 +32,7 @@ pub(in crate::app) fn next_stop(
     direction: TabDirection,
 ) -> TabStop {
     let open: Vec<TabStop> = [
-        (true, TabStop::Left),
-        (true, TabStop::Right),
+        (true, TabStop::Panels),
         (pages.settings, TabStop::Settings),
         (pages.monitor, TabStop::Monitor),
         (pages.hermes, TabStop::Hermes),
@@ -56,8 +54,7 @@ impl App {
             ShownTab::Monitor => TabStop::Monitor,
             ShownTab::Hermes => TabStop::Hermes,
             ShownTab::Settings => TabStop::Settings,
-            ShownTab::Panels if self.panels.active == PanelSide::Left => TabStop::Left,
-            ShownTab::Panels => TabStop::Right,
+            ShownTab::Panels => TabStop::Panels,
         }
     }
 
@@ -85,18 +82,39 @@ impl App {
         }
     }
 
+    /// Tab inside a shown page: from field to field while a text field has the
+    /// keyboard; on the settings tab otherwise between the page list and the
+    /// rows; on the other pages to the next widget that takes the keyboard.
+    pub(in crate::app) fn tab_inside_page(
+        &mut self,
+        backward: bool,
+        field_focused: bool,
+    ) -> Task<Message> {
+        let in_widgets = || {
+            if backward {
+                iced::widget::operation::focus_previous()
+            } else {
+                iced::widget::operation::focus_next()
+            }
+        };
+        if self.shown_tab != ShownTab::Settings || field_focused {
+            return in_widgets();
+        }
+        let Some(page) = self.settings.page.as_ref() else {
+            return Task::none();
+        };
+        let key = match page.focus.area {
+            ncrs_settings::focus::Area::Pages => FocusKey::Right,
+            ncrs_settings::focus::Area::Rows => FocusKey::Escape,
+        };
+        self.settings_focus_key(key)
+    }
+
     pub(in crate::app) fn switch_tab(&mut self, direction: TabDirection) -> Task<Message> {
         let current = self.current_stop();
         let target = next_stop(self.open_pages(), current, direction);
         match target {
-            TabStop::Left | TabStop::Right => {
-                self.panels.active = if target == TabStop::Left {
-                    PanelSide::Left
-                } else {
-                    PanelSide::Right
-                };
-                self.shown_tab = ShownTab::Panels;
-            }
+            TabStop::Panels => self.shown_tab = ShownTab::Panels,
             TabStop::Settings => self.shown_tab = ShownTab::Settings,
             TabStop::Monitor => self.shown_tab = ShownTab::Monitor,
             TabStop::Hermes => self.shown_tab = ShownTab::Hermes,
@@ -109,7 +127,7 @@ impl App {
 mod tests {
     use super::*;
     use TabDirection::{Backward, Forward};
-    use TabStop::{Hermes, Left, Monitor, Right, Settings};
+    use TabStop::{Hermes, Monitor, Panels, Settings};
 
     const ALL: OpenPages = OpenPages {
         settings: true,
@@ -123,19 +141,18 @@ mod tests {
     };
 
     #[test]
-    fn without_pages_the_panels_alternate() {
-        assert_eq!(next_stop(NONE, Left, Forward), Right);
-        assert_eq!(next_stop(NONE, Right, Forward), Left);
-        assert_eq!(next_stop(NONE, Left, Backward), Right);
+    fn without_pages_the_panels_are_the_only_stop() {
+        assert_eq!(next_stop(NONE, Panels, Forward), Panels);
+        assert_eq!(next_stop(NONE, Panels, Backward), Panels);
     }
 
     #[test]
-    fn open_pages_come_after_the_right_panel_and_wrap_to_the_left() {
-        assert_eq!(next_stop(ALL, Right, Forward), Settings);
+    fn open_pages_come_after_the_panels_and_wrap() {
+        assert_eq!(next_stop(ALL, Panels, Forward), Settings);
         assert_eq!(next_stop(ALL, Settings, Forward), Monitor);
         assert_eq!(next_stop(ALL, Monitor, Forward), Hermes);
-        assert_eq!(next_stop(ALL, Hermes, Forward), Left);
-        assert_eq!(next_stop(ALL, Left, Backward), Hermes);
+        assert_eq!(next_stop(ALL, Hermes, Forward), Panels);
+        assert_eq!(next_stop(ALL, Panels, Backward), Hermes);
         assert_eq!(next_stop(ALL, Hermes, Backward), Monitor);
         assert_eq!(next_stop(ALL, Monitor, Backward), Settings);
     }
@@ -151,9 +168,9 @@ mod tests {
             hermes: true,
             ..NONE
         };
-        assert_eq!(next_stop(monitor_only, Right, Forward), Monitor);
+        assert_eq!(next_stop(monitor_only, Panels, Forward), Monitor);
         assert_eq!(next_stop(chat_and_settings, Settings, Forward), Hermes);
-        assert_eq!(next_stop(chat_and_settings, Left, Backward), Hermes);
+        assert_eq!(next_stop(chat_and_settings, Panels, Backward), Hermes);
         assert_eq!(next_stop(chat_and_settings, Hermes, Backward), Settings);
     }
 }

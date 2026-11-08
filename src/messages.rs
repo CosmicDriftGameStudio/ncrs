@@ -67,16 +67,13 @@ pub enum Message {
     /// Cmd+V / Ctrl+V: read the system clipboard and bring what it holds into
     /// the active panel.
     Paste,
-    /// Shift+Tab: the other panel, or the previous tab on a page; Tab is
-    /// `PanelMessage::SwitchPanel`.
-    SwitchTabBack,
-    /// Ctrl+Tab: the next of all open tabs, the panels included.
+    /// Ctrl+Tab: the next of all open tabs.
     NextTab,
     /// Ctrl+Shift+Tab: the previous of all open tabs.
     PreviousTab,
     /// A click on the tab of an open page.
     ShowTab(ShownTab),
-    /// Tab or Shift+Tab on a page that stands in for the panels: asks the
+    /// Tab or Shift+Tab inside a page that stands in for the panels: asks the
     /// widgets whether a text field has the keyboard.
     TabInPage {
         backward: bool,
@@ -84,8 +81,8 @@ pub enum Message {
     /// A click on a row of a page the app fills, or on its control: the
     /// keyboard focus moves to the row and the control's message is handled.
     FocusPageThen(usize, Option<Box<Message>>),
-    /// The answer: a field keeps Tab for moving between fields, else the tab
-    /// changes.
+    /// The answer: a field keeps Tab for moving between fields, else Tab moves
+    /// between the stops of the page.
     TabInPageAnswered {
         backward: bool,
         field_focused: bool,

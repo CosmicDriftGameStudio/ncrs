@@ -203,14 +203,14 @@ pub fn list_and_detail<'a, M: Clone + 'a>(
         .into()
 }
 
-/// A path in monospace; the parts that stand for a field are in the accent.
+/// A path in monospace; the parts that stand for a field are in the on color.
 pub fn path<'a, M: 'a>(parts: Vec<(String, bool)>, palette: &Palette) -> Element<'a, M> {
     let texts = parts.into_iter().map(|(part, is_field)| {
         mono(
             part,
             TEXT_SMALL,
             if is_field {
-                palette.accent
+                palette.primary_button().0
             } else {
                 palette.text
             },
@@ -305,7 +305,7 @@ pub fn field_dropdown<'a, M: Clone + 'a>(
         items,
         selected,
         palette,
-        [theme::spacing::XS, theme::spacing::S],
+        [theme::spacing::XS, theme::spacing::M],
         (theme::font_size::BODY, kit::FIELD_LINE_HEIGHT),
     )
 }

@@ -5,7 +5,7 @@
 use std::path::{Path, MAIN_SEPARATOR};
 
 use iced::widget::{button, column, container, mouse_area, row, text, Space};
-use iced::{alignment, mouse, Color, Element, Length, Padding};
+use iced::{alignment, mouse, Element, Length, Padding};
 
 use super::format::ellipsize_middle;
 use super::layout::{TITLE_BAR_HEIGHT, TRAFFIC_LIGHTS_INSET};
@@ -33,14 +33,14 @@ const CROSS_CHARS: usize = 3;
 /// ours.
 const OWN_WINDOW_BUTTONS: bool = cfg!(not(target_os = "macos"));
 const WINDOW_BUTTON_WIDTH: f32 = 44.0;
-const TAB_PADDING_X: f32 = 12.0;
-const TAB_GAP: f32 = 8.0;
+const TAB_PADDING_X: f32 = spacing::L;
+const TAB_GAP: f32 = spacing::M;
 /// Room the panel letter at the right end of a tab takes.
 const TAB_LETTER_WIDTH: f32 = 8.0;
 const RIGHT_GAP: f32 = 2.0;
-const RIGHT_PADDING: f32 = 8.0;
-const BUTTON_PADDING_X: f32 = 8.0;
-const BUTTON_CONTENT_GAP: f32 = 6.0;
+const RIGHT_PADDING: f32 = spacing::M;
+const BUTTON_PADDING_X: f32 = spacing::M;
+const BUTTON_CONTENT_GAP: f32 = spacing::XS;
 /// Width of a character of the monospace font, in font sizes.
 const GLYPH_WIDTH_PER_SIZE: f32 = 0.6;
 const LOADING_MARK: &str = "  …";
@@ -188,11 +188,6 @@ pub fn view<'a>(bar: &TitleBar<'a>) -> Element<'a, Message> {
                 .height(Length::Fill)
                 .clip(true)
                 .style(theme::title_tab(palette, tab.active));
-        let top_line = if tab.active {
-            palette.accent
-        } else {
-            Color::TRANSPARENT
-        };
         let left_edge: Element<'a, Message> = if tab.active {
             theme::vertical_rule(palette.border_inactive)
         } else {
@@ -200,7 +195,7 @@ pub fn view<'a>(bar: &TitleBar<'a>) -> Element<'a, Message> {
         };
         container(row![
             left_edge,
-            column![theme::horizontal_rule(top_line), content],
+            column![theme::tab_top_line(palette, tab.active), content],
             theme::vertical_rule(palette.border_inactive),
         ])
         .id(id)
@@ -255,9 +250,9 @@ pub fn view<'a>(bar: &TitleBar<'a>) -> Element<'a, Message> {
     if let Some(chip) = bar.hermes.clone() {
         let dot_color = match bar.hermes_tone {
             HermesTone::Failing => palette.error,
-            // The palette has no warning colour; `kit::warning_box` uses the
-            // accent for warnings, so the dot does too.
-            HermesTone::Stuck => palette.accent,
+            // The accent is for keyboard focus only, so a stuck Hermes is the
+            // text color, between the dim paused and the red failing dot.
+            HermesTone::Stuck => palette.text,
             HermesTone::Paused => palette.dim_text,
             HermesTone::Fine => palette.success,
         };
@@ -356,15 +351,10 @@ fn page_tab<'a>(
     .spacing(TAB_GAP)
     .height(Length::Fill)
     .align_y(alignment::Vertical::Center);
-    let top_line = if active {
-        palette.accent
-    } else {
-        Color::TRANSPARENT
-    };
     container(row![
         theme::vertical_rule(palette.border_inactive),
         column![
-            theme::horizontal_rule(top_line),
+            theme::tab_top_line(palette, active),
             button(label)
                 .on_press(Message::ShowTab(shown))
                 .padding([0.0, TAB_PADDING_X])

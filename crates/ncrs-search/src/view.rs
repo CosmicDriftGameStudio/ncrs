@@ -134,7 +134,7 @@ fn header<'a>(
                 .on_input(changed)
                 .on_submit(submit)
                 .size(font_size::ROW)
-                .padding([3.0, 6.0])
+                .padding([spacing::XS, spacing::M])
                 .style(theme::search_input(palette))
                 .width(Length::Fill),
             move |key, physical_key, modifiers| press(key.clone(), physical_key, modifiers),
@@ -161,7 +161,7 @@ fn header<'a>(
                     .width(Length::Fill),
             )
             .width(TOGGLE_WIDTH)
-            .padding(3.0)
+            .padding(spacing::XS)
             .style(move |theme, status| {
                 let mut style = look(theme, status);
                 if toggles_disabled {
@@ -171,7 +171,7 @@ fn header<'a>(
             })
             .on_press_maybe((!toggles_disabled).then_some(message)),
             container(text(tip_text).size(font_size::COLUMN_HEADER))
-                .padding(4.0)
+                .padding(spacing::XS)
                 .style(theme::menu(palette)),
             tooltip::Position::Bottom,
         )
@@ -263,7 +263,7 @@ fn header<'a>(
             SearchMessage::ToggleRegex
         ),
     ]
-    .spacing(2.0)
+    .spacing(spacing::XS)
     .align_y(alignment::Vertical::Center);
 
     let exclude = field(
@@ -284,7 +284,7 @@ fn header<'a>(
         container(labelled(Msg::SearchFolderLabel, folder)).height(FIELD_ROW_HEIGHT),
         container(in_files_box).height(FIELD_ROW_HEIGHT),
     ]
-    .spacing(4.0);
+    .spacing(spacing::XS);
     if search.in_files {
         fields = fields.push(container(query_row).height(FIELD_ROW_HEIGHT));
     }
@@ -732,7 +732,7 @@ fn third_line<'a>(
             .font(ncrs_ui_kit::APP_FONT)
             .wrapping(Wrapping::None)]
         .extend(more)
-        .spacing(8.0)
+        .spacing(spacing::M)
         .align_y(alignment::Vertical::Center)
         .into(),
     )
@@ -788,12 +788,12 @@ fn index_details<'a>(
             .color(dim)
             .wrapping(Wrapping::None),
     ]
-    .spacing(8.0)
+    .spacing(spacing::M)
     .align_y(alignment::Vertical::Center)
     .into()
 }
 
-/// The line cut at the matches, which are drawn in the accent color. Ranges
+/// The line cut at the matches, which are drawn bold and underlined. Ranges
 /// come from the engine as byte offsets into the stored text; one that does not
 /// fall on characters of it is skipped rather than trusted.
 fn match_spans<'a>(
@@ -820,7 +820,8 @@ fn match_spans<'a>(
         }
         spans.push(
             span(hit)
-                .color(if highlighted { plain } else { palette.accent })
+                .color(if highlighted { plain } else { palette.text })
+                .font(ncrs_ui_kit::APP_FONT_BOLD)
                 .underline(true),
         );
         at = range.end;

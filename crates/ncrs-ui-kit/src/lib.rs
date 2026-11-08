@@ -12,6 +12,12 @@ pub const BUNDLED_FAMILY: &str = "DejaVu Sans Mono";
 /// none to ship, or the user's choice).
 pub const APP_FONT: iced::Font = iced::Font::MONOSPACE;
 
+/// [`APP_FONT`] in bold: headings and the sorted column.
+pub const APP_FONT_BOLD: iced::Font = iced::Font {
+    weight: iced::font::Weight::Bold,
+    ..APP_FONT
+};
+
 /// Font files the app must load for `APP_FONT`; empty on macOS.
 pub const BUNDLED_FONTS: &[&[u8]] = if cfg!(target_os = "macos") {
     &[]
@@ -33,6 +39,8 @@ pub mod focus;
 pub mod font;
 pub mod format;
 pub mod frame;
+#[cfg(test)]
+mod gallery_tests;
 pub mod hermes_kit;
 pub mod hermes_state;
 pub mod key_intercept;

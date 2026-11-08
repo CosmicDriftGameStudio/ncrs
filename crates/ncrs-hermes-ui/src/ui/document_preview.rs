@@ -119,7 +119,7 @@ fn note<'a, M: 'a>(content: impl text::IntoFragment<'a>, palette: &Palette) -> E
     .into()
 }
 
-/// The lines of the excerpt, the highlighted places drawn in the accent color.
+/// The lines of the excerpt, the highlighted places drawn bold and underlined.
 fn excerpt_lines<'a, M: 'a>(
     excerpt: &'a str,
     highlights: &[Range<usize>],
