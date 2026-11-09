@@ -18,6 +18,9 @@ fn keys_without_prompt(
     if prompt.quick_fix {
         return ncrs_hermes_ui::keys::quick_fix_key(&key).map(Message::from);
     }
+    if prompt.favourite_menu {
+        return super::super::favourites_bar::favourite_menu_key(&key);
+    }
     if prompt.context_menu {
         return context_menu_key(prompt, &key);
     }
@@ -38,6 +41,13 @@ fn keys_without_prompt(
                         == Some(Message::Delete { permanent: true }))
                 .then_some(Message::DeleteConfirm)
             }),
+        };
+    }
+
+    if prompt.open_file_dialog {
+        return match key.as_ref() {
+            Key::Named(Named::Escape) => Some(Message::OpenFileCancel),
+            _ => dialog_focus_key(key.clone(), key_modifiers),
         };
     }
 

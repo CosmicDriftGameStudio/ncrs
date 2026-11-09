@@ -73,6 +73,9 @@ pub struct Config {
     /// installed.
     #[serde(default)]
     pub check_for_updates: Option<bool>,
+    /// The `favourites_bar` switch; `None` shows the bar.
+    #[serde(default)]
+    pub favourites_bar: Option<bool>,
     #[serde(default)]
     pub open: OpenPrograms,
     /// The `[keys]` section as written; `load` turns it into `keymap`.
@@ -207,9 +210,9 @@ pub use self::sections::{
 pub use self::setting_writes::{
     remove_vscode_theme, write_ai_enabled, write_ai_provider, write_appearance,
     write_check_for_updates, write_color, write_columns, write_default_pattern,
-    write_file_list_tags, write_filing_enabled, write_filing_load, write_keys, write_language,
-    write_own_details, write_program, write_system_settings, write_theme_preset, AiProviderChoice,
-    KeyChange, OwnDetail,
+    write_favourites_bar, write_file_list_tags, write_filing_enabled, write_filing_load,
+    write_keys, write_language, write_own_details, write_program, write_system_settings,
+    write_theme_preset, AiProviderChoice, KeyChange, OwnDetail,
 };
 pub use self::write_support::one_config_writer;
 use self::write_support::*;

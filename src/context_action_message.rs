@@ -17,6 +17,7 @@ impl ContextActionMessage for ContextAction {
     fn message(self) -> Message {
         match self {
             ContextAction::Open => Message::Panel(PanelMessage::OpenSelected),
+            ContextAction::ShowPackageContents => Message::Panel(PanelMessage::ShowPackageContents),
             ContextAction::View => Message::OpenExternal(OpenKind::View),
             ContextAction::Edit => Message::OpenExternal(OpenKind::Edit),
             ContextAction::OpenTerminal => Message::OpenTerminal,
@@ -87,7 +88,9 @@ mod tests {
             .filter(|action| {
                 !matches!(
                     action,
-                    ContextAction::ComputeFolderSizes | ContextAction::RemoveFavourite
+                    ContextAction::ComputeFolderSizes
+                        | ContextAction::RemoveFavourite
+                        | ContextAction::ShowPackageContents
                 )
             })
         {

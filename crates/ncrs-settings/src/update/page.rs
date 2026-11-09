@@ -172,6 +172,10 @@ pub fn update(
         }
         SettingsMessage::Change(change) => write_setting(settings, change, ctx),
         SettingsMessage::Columns(edit) => columns_edit(settings, edit, ctx),
+        SettingsMessage::Favourites(edit) => {
+            actions.push(Action::EditFavourites(edit));
+            Task::none()
+        }
         SettingsMessage::Written { change, result } => {
             written(settings, change, result, ctx, actions)
         }

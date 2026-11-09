@@ -32,6 +32,7 @@ pub mod badge_dot;
 pub mod choice_rows;
 pub mod column_header;
 pub mod data_table;
+pub mod favourites_bar;
 pub mod file_icon;
 pub mod file_row;
 pub mod fkeys;

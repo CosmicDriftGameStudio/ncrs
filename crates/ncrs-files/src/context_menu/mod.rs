@@ -11,6 +11,8 @@ use ncrs_ui_kit::layout::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ContextAction {
     Open,
+    /// Only on an app bundle in a local folder: enters it as a folder.
+    ShowPackageContents,
     View,
     Edit,
     /// Not in the menu of a list of hits or of the search results: they have
@@ -39,8 +41,9 @@ pub enum ContextAction {
 
 impl ContextAction {
     #[cfg(any(test, feature = "test-support"))]
-    pub const ALL: [ContextAction; 18] = [
+    pub const ALL: [ContextAction; 19] = [
         ContextAction::Open,
+        ContextAction::ShowPackageContents,
         ContextAction::View,
         ContextAction::Edit,
         ContextAction::OpenTerminal,
@@ -75,6 +78,7 @@ impl ContextAction {
             | ContextAction::ShowOnOtherSide
             | ContextAction::RemoveFromList => true,
             ContextAction::Edit
+            | ContextAction::ShowPackageContents
             | ContextAction::OpenTerminal
             | ContextAction::Move
             | ContextAction::Rename
@@ -100,6 +104,7 @@ impl ContextAction {
             | ContextAction::ShowOnOtherSide
             | ContextAction::RemoveFromList => true,
             ContextAction::Edit
+            | ContextAction::ShowPackageContents
             | ContextAction::OpenTerminal
             | ContextAction::Move
             | ContextAction::Permissions
@@ -115,6 +120,7 @@ impl ContextAction {
     pub fn label(self) -> Msg {
         match self {
             ContextAction::Open => Msg::ContextMenuOpen,
+            ContextAction::ShowPackageContents => Msg::ContextMenuShowPackageContents,
             ContextAction::View => Msg::ContextMenuView,
             ContextAction::Edit => Msg::ContextMenuEdit,
             ContextAction::OpenTerminal => Msg::ContextMenuOpenTerminal,
@@ -139,6 +145,7 @@ impl ContextAction {
 pub const GROUPS: [&[ContextAction]; 5] = [
     &[
         ContextAction::Open,
+        ContextAction::ShowPackageContents,
         ContextAction::View,
         ContextAction::Edit,
         ContextAction::OpenTerminal,
@@ -459,6 +466,10 @@ impl ContextMenu {
                 group
                     .iter()
                     .filter(|action| !left_out.contains(action))
+                    // Left out, not greyed out, where it is not about the row.
+                    .filter(|&&action| {
+                        action != ContextAction::ShowPackageContents || is_enabled(action)
+                    })
                     .map(|&action| MenuEntry::Item {
                         action,
                         enabled: is_enabled(action),

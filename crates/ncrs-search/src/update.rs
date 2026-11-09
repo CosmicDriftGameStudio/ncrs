@@ -346,6 +346,7 @@ mod tests {
     fn ctx(side_is_remote: bool) -> Ctx {
         Ctx {
             window_size: Size::new(1200.0, 800.0),
+            favourites_bar_height: 0.0,
             side_is_remote,
             has_keys: true,
             index: None,

@@ -156,6 +156,10 @@ pub enum Message {
     DeleteConfirm,
     /// The user dismissed the delete dialog.
     DeleteCancel,
+    /// The user confirmed the open-file question.
+    OpenFileConfirm,
+    /// The user dismissed the open-file question.
+    OpenFileCancel,
     /// A message of the permissions dialog.
     Permissions(PermissionsMessage),
     /// The permissions change is over; the result of a stopped one is dropped.
@@ -199,6 +203,11 @@ pub enum Message {
     RemoveFavourite,
     /// Opens the drive menu on the first favourite.
     OpenFavourites,
+    /// Opens favourite N (counted from 0) in the active panel: a key, the
+    /// command list or the menu bar, only while the panels have the keys.
+    OpenFavourite(usize),
+    /// The bar under the path tabs and the menu of its slots.
+    FavouritesBar(FavouritesBarMessage),
 
     // --- context menu (right click, Option tap, Shift+F10) ---
     /// Right click (or Ctrl+click on a Mac) on a row: open the menu at the pointer.
@@ -514,6 +523,8 @@ impl From<OpsMessage> for Message {
             OpsMessage::ToggleConflictAll => Self::ToggleConflictAll,
             OpsMessage::DeleteCancel => Self::DeleteCancel,
             OpsMessage::DeleteConfirm => Self::DeleteConfirm,
+            OpsMessage::OpenFileCancel => Self::OpenFileCancel,
+            OpsMessage::OpenFileConfirm => Self::OpenFileConfirm,
             OpsMessage::DeleteRowDone {
                 result,
                 index,
@@ -588,4 +599,21 @@ impl From<ncrs_files::context_menu_view::ContextMenuMessage> for Message {
             Menu::SubHover(index) => Self::ContextMenuSubHover(index),
         }
     }
+}
+
+/// What the favourites bar sends: a click on a slot and the entries of its
+/// right-click menu. The number is the favourite's place in the list, from 0.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FavouritesBarMessage {
+    Open(usize),
+    /// A right click: the menu of this slot at the pointer.
+    Menu(usize),
+    CloseMenu,
+    OpenInOtherPanel(usize),
+    Move {
+        index: usize,
+        step: isize,
+    },
+    Remove(usize),
+    Manage,
 }

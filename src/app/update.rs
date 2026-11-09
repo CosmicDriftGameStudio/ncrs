@@ -29,6 +29,7 @@ pub(in crate::app) fn archive_refusal(panel: &PanelState, message: &Message) -> 
         Message::Transfer(TransferKind::Move)
         | Message::PermissionsPrompt
         | Message::Panel(PanelMessage::RenameStart)
+        | Message::Panel(PanelMessage::ShowPackageContents)
         | Message::OpenExternal(fs::OpenKind::Edit)
         | Message::CreateDirPrompt
         | Message::CreateFilePrompt
@@ -75,6 +76,7 @@ pub(in crate::app) fn remote_refusal(panel: &PanelState, message: &Message) -> O
         | Message::CreateFilePrompt
         | Message::ComputeFolderSizes
         | Message::OpenSearch
+        | Message::Panel(PanelMessage::ShowPackageContents)
         | Message::AddFavourite
         | Message::RemoveFavourite
         | Message::QuickFix(QuickFixMessage::Open)
@@ -165,6 +167,7 @@ impl App {
         let was_open = self.open_pages();
         let task = self.update_message(message);
         self.follow_opened_pages(was_open);
+        self.refit_for_favourites_bar();
         self.refresh_special_folders();
         let chat = self.tell_chat_hermes_is_ready();
         Task::batch([task, chat])
@@ -388,6 +391,8 @@ impl App {
                     .open_favourites(self.lang, overlay_is_open, facts);
                 self.run_panel_actions(actions)
             }
+            Message::OpenFavourite(index) => self.open_favourite_by_key(index),
+            Message::FavouritesBar(bar_message) => self.update_favourites_bar(bar_message),
             Message::VolumeMenuActivate => {
                 let actions = self.panels.go_to_selected_volume(self.lang);
                 self.run_panel_actions(actions)
@@ -441,6 +446,11 @@ impl App {
             Message::Paste => self.paste_from_clipboard(),
             Message::ClipboardRead(content) => self.paste_content(content),
             Message::CopyFilesToClipboard => self.copy_files_to_clipboard(),
+            Message::OpenFileConfirm => self.with_ops(|ops, _| ncrs_ops::confirm_open_file(ops)),
+            Message::OpenFileCancel => {
+                self.ops.open_file_dialog = None;
+                Task::none()
+            }
             Message::DeleteCancel => {
                 self.ops.delete_dialog = None;
                 Task::none()

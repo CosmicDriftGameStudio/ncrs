@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::facts::DocumentsFacts;
+use crate::facts::{DocumentsFacts, FavouritesFacts};
 use crate::message::{SettingChange, SettingField};
 use ncrs_config::config::{
     AiEndpointProblem, AiProviderChoice, AiProviderName, Filing, OwnDetail, ProgramLine,
@@ -44,6 +44,7 @@ fn searching_the_page_name_lists_the_page_and_shows_all_its_rows() {
             keys_changed: 0,
             updates_listed: true,
             facts: DocumentsFacts::default(),
+            favourites: FavouritesFacts::default(),
             lang: Language::EnglishFuturama,
             palette: &palette,
         };
@@ -78,6 +79,7 @@ fn the_command_list_gets_every_page_and_every_row_the_tab_search_filters() {
         keys_changed: 0,
         updates_listed: true,
         facts: DocumentsFacts::default(),
+        favourites: FavouritesFacts::default(),
         lang: Language::English,
         palette: &palette,
     };
@@ -540,6 +542,7 @@ fn rows_of(feature: SettingsFeature, state: &SettingsState, lang: Language) -> V
         keys_changed: 0,
         updates_listed: true,
         facts: DocumentsFacts::default(),
+        favourites: FavouritesFacts::default(),
         lang,
         palette: &palette,
     };
@@ -604,6 +607,7 @@ fn the_keyboard_starts_the_hermes_page_on_its_first_row() {
         keys_changed: 0,
         updates_listed: true,
         facts: DocumentsFacts::default(),
+        favourites: FavouritesFacts::default(),
         lang: Language::English,
         palette: &palette,
     };

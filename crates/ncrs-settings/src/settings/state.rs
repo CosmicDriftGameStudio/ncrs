@@ -24,6 +24,8 @@ pub const SEARCH_FIELD_ID: &str = "settings-search";
 /// right of its heading. These are file syntax, not words to translate.
 pub const THEME_SECTION: &str = "[theme]";
 pub const LANGUAGE_KEY: &str = "lang";
+/// The top-level key behind the Favourites page's switch.
+pub const FAVOURITES_BAR_KEY: &str = "favourites_bar";
 pub const FILING_SECTION: &str = "[modules.filing]";
 pub const OPEN_SECTION: &str = "[open]";
 pub const KEYS_SECTION: &str = "[keys]";
@@ -528,6 +530,7 @@ fn fields_of(change: &SettingChange) -> Vec<SettingField> {
         SettingChange::Preset(_)
         | SettingChange::Language(_)
         | SettingChange::CheckForUpdates(_)
+        | SettingChange::FavouritesBar(_)
         | SettingChange::HermesEnabled(_)
         | SettingChange::Load(_)
         | SettingChange::AiEnabled(_)

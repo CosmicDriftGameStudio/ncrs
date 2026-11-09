@@ -54,6 +54,7 @@ impl App {
         let config_error = self.config_error.is_some();
         let volume_menu = self.panels.volume_menu.is_some();
         let context_menu = self.panels.context_menu.is_some();
+        let favourite_menu = self.favourite_menu.is_some();
         let context_submenu = self
             .panels
             .context_menu
@@ -95,6 +96,7 @@ impl App {
         let transfer_progress = self.ops.progress_mask_is_open();
         let permissions_dialog = self.ops.permissions_dialog.is_some();
         let start_over_dialog = self.start_over_dialog;
+        let open_file_dialog = self.ops.open_file_dialog.is_some();
         let delete_dialog = match &self.ops.delete_dialog {
             None => DeleteKeys::Closed,
             Some(deletion) if deletion.permanent => DeleteKeys::Permanent,
@@ -106,9 +108,11 @@ impl App {
                 job_running,
                 config_error,
                 delete_dialog,
+                open_file_dialog,
                 start_over_dialog,
                 volume_menu,
                 context_menu,
+                favourite_menu,
                 context_submenu,
                 quick_fix,
                 path_editing,
@@ -148,9 +152,11 @@ impl App {
                 job_running,
                 config_error,
                 delete_dialog,
+                open_file_dialog,
                 start_over_dialog,
                 volume_menu,
                 context_menu,
+                favourite_menu,
                 context_submenu,
                 quick_fix,
                 path_editing,

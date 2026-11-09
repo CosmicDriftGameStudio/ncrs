@@ -589,6 +589,12 @@
       "de": "Öffnen"
     },
     {
+      "key": "context_menu.show_package_contents",
+      "context": "Entry of the context menu on a macOS app bundle (a folder ending in .app, which Enter starts as a program): enters the bundle as an ordinary folder. Same wording as the Finder's entry of the same name. Verb phrase, imperative.",
+      "en": "Show package contents",
+      "de": "Paketinhalt anzeigen"
+    },
+    {
       "key": "context_menu.view",
       "context": "Entry of the context menu: opens the file under the cursor in an external viewer (key F3). Verb, imperative; the function key bar has a shorter label.",
       "en": "View",
@@ -821,6 +827,24 @@
       "context": "Default button of the trash dialog: move the entries to the trash. Verb phrase.",
       "en": "Move to trash",
       "de": "In den Papierkorb"
+    },
+    {
+      "key": "open_file.title",
+      "context": "Title of the question that appears when Enter or a double click opens a file that can run as a program (a script, an executable, an installer). Takes the file name, which is put in typographic quotes here; the question mark ends the sentence.",
+      "en": "Open “{name}”?",
+      "de": "„{name}“ öffnen?"
+    },
+    {
+      "key": "open_file.hint",
+      "context": "Line under the title of the open-file question: the file can run as a program, so the user should only go on for a source they trust. One short sentence, plain and calm.",
+      "en": "This file can run as a program. Only continue if you trust it.",
+      "de": "Diese Datei kann als Programm laufen. Mach nur weiter, wenn du ihr vertraust."
+    },
+    {
+      "key": "open_file.confirm",
+      "context": "Button of the open-file question that hands the file to the system, which may run it. Verb, imperative; the other button is Cancel and has the focus when the question opens.",
+      "en": "Open",
+      "de": "Öffnen"
     },
     {
       "key": "delete.confirm_permanent",
@@ -1315,10 +1339,10 @@
       "de": "NC-rs"
     },
     {
-      "key": "menu.submenu_bookmarks",
-      "context": "Title of a submenu of the Go menu that holds the commands for bookmarks: add the current folder, remove it and show the list.",
-      "en": "Bookmarks",
-      "de": "Lesezeichen"
+      "key": "menu.submenu_favourites",
+      "context": "Title of a submenu of the Go menu that holds the commands for favourites: add the current folder, remove it and show the list.",
+      "en": "Favourites",
+      "de": "Favoriten"
     },
     {
       "key": "menu.submenu_places",
@@ -9827,6 +9851,132 @@
       "context": "Button of the permissions dialog that applies the rights. One word, verb.",
       "en": "Apply",
       "de": "Übernehmen"
+    },
+    {
+      "key": "action.open_favourite_1",
+      "context": "Entry of the command palette that runs the key action open_favourite_1: opens the first favourite in the active panel. The key bound to it is shown beside it.",
+      "en": "Open favourite 1",
+      "de": "Favorit 1 öffnen"
+    },
+    {
+      "key": "action.open_favourite_2",
+      "context": "Entry of the command palette that runs the key action open_favourite_2: opens the second favourite in the active panel. The key bound to it is shown beside it.",
+      "en": "Open favourite 2",
+      "de": "Favorit 2 öffnen"
+    },
+    {
+      "key": "action.open_favourite_3",
+      "context": "Entry of the command palette that runs the key action open_favourite_3: opens the third favourite in the active panel. The key bound to it is shown beside it.",
+      "en": "Open favourite 3",
+      "de": "Favorit 3 öffnen"
+    },
+    {
+      "key": "action.open_favourite_4",
+      "context": "Entry of the command palette that runs the key action open_favourite_4: opens the fourth favourite in the active panel. The key bound to it is shown beside it.",
+      "en": "Open favourite 4",
+      "de": "Favorit 4 öffnen"
+    },
+    {
+      "key": "action.open_favourite_5",
+      "context": "Entry of the command palette that runs the key action open_favourite_5: opens the fifth favourite in the active panel. The key bound to it is shown beside it.",
+      "en": "Open favourite 5",
+      "de": "Favorit 5 öffnen"
+    },
+    {
+      "key": "favourites_bar.open_in_other",
+      "context": "Entry of the menu of a slot of the favourites bar under the tabs: opens that favourite in the panel that is not active. Verb, imperative.",
+      "en": "Open in the other panel",
+      "de": "Im anderen Panel öffnen"
+    },
+    {
+      "key": "favourites_bar.move_left",
+      "context": "Entry of the menu of a slot of the favourites bar: moves the favourite one place to the left, so it gets a lower number. Verb, imperative.",
+      "en": "Move left",
+      "de": "Nach links"
+    },
+    {
+      "key": "favourites_bar.move_right",
+      "context": "Entry of the menu of a slot of the favourites bar: moves the favourite one place to the right, so it gets a higher number. Verb, imperative.",
+      "en": "Move right",
+      "de": "Nach rechts"
+    },
+    {
+      "key": "favourites_bar.manage",
+      "context": "Last entry of the menu of a slot of the favourites bar: opens the Favourites page of the settings. The ellipsis belongs to the label.",
+      "en": "Manage favourites …",
+      "de": "Favoriten verwalten …"
+    },
+    {
+      "key": "settings.feature_favourites",
+      "context": "Entry of the feature list on the settings tab, in the group of the files: the page for the favourite folders. One word, plural noun.",
+      "en": "Favourites",
+      "de": "Favoriten"
+    },
+    {
+      "key": "settings.feature_favourites_intro",
+      "context": "Line under the heading of the Favourites page on the settings tab. The bar is the row of numbered favourites under the path tabs.",
+      "en": "Folders you reach in one step. The first five sit in the bar under the tabs.",
+      "de": "Ordner, die du in einem Schritt erreichst. Die ersten fünf stehen in der Leiste unter den Tabs."
+    },
+    {
+      "key": "settings.favourites_bar_title",
+      "context": "Heading of the first group on the Favourites page: the settings of the bar under the path tabs. One word, noun.",
+      "en": "Bar",
+      "de": "Leiste"
+    },
+    {
+      "key": "settings.favourites_bar_switch",
+      "context": "Label of the switch on the Favourites page that shows or hides the favourites bar under the path tabs.",
+      "en": "Show the bar under the tabs",
+      "de": "Leiste unter den Tabs zeigen"
+    },
+    {
+      "key": "settings.favourites_bar_switch_note_keys",
+      "context": "Description of the switch for the favourites bar. {first} and {last} are the key chords that open the first and the fifth favourite, for example Cmd+1 and Cmd+5.",
+      "en": "{first} to {last} open the first five. The keys can be changed under Keyboard shortcuts.",
+      "de": "{first} bis {last} öffnen die ersten fünf. Die Tasten lassen sich unter Tastenkürzel ändern."
+    },
+    {
+      "key": "settings.favourites_bar_switch_note",
+      "context": "Description of the switch for the favourites bar when the keys of the first five favourites are not numbered one after the other.",
+      "en": "Keys open the first five. They can be changed under Keyboard shortcuts.",
+      "de": "Tasten öffnen die ersten fünf. Sie lassen sich unter Tastenkürzel ändern."
+    },
+    {
+      "key": "settings.favourites_folders_title",
+      "context": "Heading of the second group on the Favourites page: the list of favourite folders. One word, plural noun.",
+      "en": "Folders",
+      "de": "Ordner"
+    },
+    {
+      "key": "settings.favourites_folders_intro",
+      "context": "Sentence under the heading of the folder list on the Favourites page. {key} is the key chord that adds the current folder, for example Cmd+D.",
+      "en": "The order sets the number. {key} adds the folder you are in at the end.",
+      "de": "Die Reihenfolge bestimmt die Nummer. {key} fügt den Ordner, in dem du bist, am Ende an."
+    },
+    {
+      "key": "settings.favourites_folders_intro_unbound",
+      "context": "Sentence under the heading of the folder list on the Favourites page when no key is bound to adding the current folder.",
+      "en": "The order sets the number. The add-favourite action puts the folder you are in at the end.",
+      "de": "Die Reihenfolge bestimmt die Nummer. Die Aktion Favorit hinzufügen fügt den Ordner, in dem du bist, am Ende an."
+    },
+    {
+      "key": "settings.favourites_menu_only",
+      "context": "Dim tag after a favourite on the Favourites page that has no slot in the bar (the sixth and later): it is listed in the drive menu only. Short, lowercase.",
+      "en": "drive menu only",
+      "de": "nur im Laufwerksmenü"
+    },
+    {
+      "key": "settings.favourites_up",
+      "context": "Button in the row of a favourite on the Favourites page: moves the folder one place up the list. One word.",
+      "en": "Up",
+      "de": "Hoch"
+    },
+    {
+      "key": "settings.favourites_down",
+      "context": "Button in the row of a favourite on the Favourites page: moves the folder one place down the list. One word.",
+      "en": "Down",
+      "de": "Runter"
     }
   ]
 }

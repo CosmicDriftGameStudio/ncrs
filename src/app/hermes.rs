@@ -211,6 +211,7 @@ impl App {
                 panel.selected.saturating_sub(panel.scroll_offset),
                 panel.row_height(),
                 self.window_size,
+                self.favourites_bar_height(),
             ),
             inquiry_paths,
             now: self.wall_clock.now(),

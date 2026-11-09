@@ -67,6 +67,7 @@ impl Ops {
         self.prompt.is_some()
             || self.conflict_is_open()
             || self.delete_dialog.is_some()
+            || self.open_file_dialog.is_some()
             || self.transfer_dialog.is_some()
             || self.archive_write.is_some()
     }

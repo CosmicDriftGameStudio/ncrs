@@ -3,12 +3,17 @@
 //! The programs are configurable (`[open]` in the config file); the system's
 //! own are the defaults.
 //!
-//! Opening must never run anything. The system opener performs the default
+//! F3 and F4 never run anything. The system opener performs the default
 //! action, and for a script, an app bundle or a shortcut that is "run it".
 //! Such a file (`could_execute`) goes to the edit program instead, which is
 //! therefore expected to be a text editor, or is refused where there is none.
 //! An extension list is never complete: on Unix the exec bit catches the
 //! rest, Windows depends on the list alone.
+//!
+//! Enter and a double click hand a file to the system opener, as the Finder
+//! does. They can therefore run something, but only after a confirmation for
+//! a file that `could_execute`, or without one for an app bundle on macOS
+//! (`is_app_bundle`), which is what the user asked for by opening it.
 //!
 //! Starting is not blocking: the program is spawned and reaped on a thread of
 //! its own, so the window stays usable while a viewer is open.
@@ -242,10 +247,22 @@ const EXECUTABLE_EXTENSIONS: &[&str] = &[
 ];
 
 /// Whether the system opener might run `path` instead of showing it: an
-/// executable file (the link is followed, as the opener follows it) or an
-/// extension from `EXECUTABLE_EXTENSIONS`.
+/// executable file or an extension from `EXECUTABLE_EXTENSIONS`, of the path
+/// or of what a link points to, since the opener follows the link.
 pub fn could_execute(path: &Path) -> bool {
-    listed_extension(path) || has_exec_bit(path)
+    listed_extension(path)
+        || std::fs::canonicalize(path).is_ok_and(|target| listed_extension(&target))
+        || has_exec_bit(path)
+}
+
+/// Whether `name` is an app bundle, a folder the macOS Finder starts instead
+/// of entering. Always `false` elsewhere, where `.app` means nothing.
+pub fn is_app_bundle(name: impl AsRef<Path>) -> bool {
+    cfg!(target_os = "macos")
+        && name
+            .as_ref()
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("app"))
 }
 
 /// The extension is read after trailing dots and spaces are cut off, as
@@ -696,6 +713,18 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn a_link_with_a_harmless_name_counts_by_what_it_points_to() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("tool.jar");
+        std::fs::write(&target, "x").unwrap();
+        let link = dir.path().join("notes.txt");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        assert!(could_execute(&link));
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn the_exec_bit_makes_a_file_executable_even_without_an_extension() {
         use std::os::unix::fs::PermissionsExt as _;
         let dir = tempfile::tempdir().unwrap();
@@ -723,5 +752,12 @@ mod tests {
             let absolute = command(kind, Path::new("/tmp/-x"), false).unwrap().args;
             assert_eq!(absolute.last().unwrap(), "/tmp/-x");
         }
+    }
+
+    #[test]
+    fn an_app_bundle_is_only_one_on_macos_and_whatever_the_case() {
+        assert_eq!(is_app_bundle("Tool.APP"), cfg!(target_os = "macos"));
+        assert!(!is_app_bundle("Tool.application"));
+        assert!(!is_app_bundle("app"));
     }
 }

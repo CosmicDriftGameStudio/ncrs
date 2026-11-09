@@ -165,6 +165,7 @@ impl App {
         } else if self.settings.model_card_has_one_button() {
             1
         } else if self.ops.delete_dialog.is_some()
+            || self.ops.open_file_dialog.is_some()
             || self.start_over_dialog
             || self.settings.ocr_models.is_some()
             || self.settings.ai_card_is_shown()
@@ -193,6 +194,14 @@ impl App {
                 self.confirm_delete()
             } else {
                 self.ops.delete_dialog = None;
+                Task::none()
+            };
+        }
+        if self.ops.open_file_dialog.is_some() {
+            return if self.dialog_focus == ncrs_ops::open_file::CONFIRM_FOCUS {
+                self.with_ops(|ops, _| ncrs_ops::confirm_open_file(ops))
+            } else {
+                self.ops.open_file_dialog = None;
                 Task::none()
             };
         }
@@ -288,9 +297,11 @@ impl App {
             || self.ops.transfer_dialog.is_some()
             || self.ops.progress_mask_is_open()
             || self.ops.delete_dialog.is_some()
+            || self.ops.open_file_dialog.is_some()
             || self.ops.permissions_dialog.is_some()
             || self.start_over_dialog
             || self.panels.volume_menu.is_some()
+            || self.favourite_menu.is_some()
             || self.quick_open.is_some()
             || self.command_palette.is_some()
             || self.settings.key_bindings.is_some()

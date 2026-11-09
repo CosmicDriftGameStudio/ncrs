@@ -387,3 +387,28 @@ async fn confirming_a_move_from_a_server_shows_the_refusal_and_keeps_the_dialog(
     );
     assert!(app.ops.transfer.is_none());
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn enter_on_a_server_file_fetches_a_copy_like_f3() {
+    let fixture = Fixture::connected().await;
+    std::fs::write(
+        fixture.server.local("/home/tester/notes.txt"),
+        "from the server",
+    )
+    .unwrap();
+    let cache = tempfile::tempdir().unwrap();
+    let launcher = Arc::new(Recorded::default());
+    let mut app = app_over(&fixture)
+        .with_launcher(Arc::clone(&launcher) as Arc<dyn fs::Launcher>)
+        .with_view_copies_in(&cache.path().join("view"));
+    open(&mut app, PanelSide::Left, url("/home/tester"), None).await;
+    select(&mut app, PanelSide::Left, "notes.txt");
+
+    settle(&mut app, Message::Panel(PanelMessage::OpenSelected)).await;
+
+    let launched = launcher.0.lock().unwrap().clone();
+    assert_eq!(launched.len(), 1);
+    let copy = PathBuf::from(launched[0].args.last().unwrap());
+    assert!(copy.starts_with(cache.path()), "{copy:?}");
+    assert!(app.ops.open_file_dialog.is_none());
+}

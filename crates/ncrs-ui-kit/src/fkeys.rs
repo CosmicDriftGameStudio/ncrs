@@ -10,9 +10,9 @@ use super::layout::{FKEYBAR_HEIGHT, FUNCTION_KEY_COUNT};
 use super::theme::{self, font_size, spacing};
 use crate::palette::Palette;
 
-const HINT_GAP: f32 = 14.0;
-const CAP_GAP: f32 = 4.0;
-const ROW_PADDING_X: f32 = spacing::L;
+pub const HINT_GAP: f32 = 14.0;
+pub const CAP_GAP: f32 = 4.0;
+pub const ROW_PADDING_X: f32 = spacing::L;
 const DIMMED_ALPHA: f32 = 0.4;
 
 pub fn view<'a, M: 'a>(
@@ -54,13 +54,12 @@ fn bar<'a, M: 'a>(
         .filter_map(|(index, slot)| slot.map(|label| (index, label)))
         .map(|(index, label)| {
             let is_dimmed = dimmed.get(index).copied().unwrap_or(false);
-            let cap = container(
-                text((index + 1).to_string())
-                    .size(font_size::KEY_CAP)
-                    .wrapping(text::Wrapping::None),
-            )
-            .padding([0.0, spacing::XS - 1.0])
-            .style(marked_cap(palette, marked == Some(index), is_dimmed));
+            let cap = numbered_cap(
+                (index + 1).to_string(),
+                marked == Some(index),
+                is_dimmed,
+                palette,
+            );
             let hint: Element<'a, M> = row![
                 cap,
                 text(label)
@@ -90,6 +89,24 @@ fn bar<'a, M: 'a>(
             .align_y(alignment::Vertical::Center),
     ]
     .height(FKEYBAR_HEIGHT)
+    .into()
+}
+
+/// The key cap of a hint: filled on the cursor colour when `marked`, faint
+/// when `dimmed`. The favourites bar draws its numbers the same way.
+pub fn numbered_cap<'a, M: 'a>(
+    number: String,
+    marked: bool,
+    dimmed: bool,
+    palette: &Palette,
+) -> Element<'a, M> {
+    container(
+        text(number)
+            .size(font_size::KEY_CAP)
+            .wrapping(text::Wrapping::None),
+    )
+    .padding([0.0, spacing::XS - 1.0])
+    .style(marked_cap(palette, marked, dimmed))
     .into()
 }
 

@@ -213,9 +213,9 @@ fn a_batch_of_an_older_search_is_dropped() {
 fn the_visible_rows_follow_the_row_height_of_the_kind_of_search() {
     let mut app = App::with_fixed_panels();
     drop(app.update(Message::OpenSearch));
-    let rows_of = |current: &App, height| {
+    let rows_of = |current: &App, height: f32| {
         let in_files = current.search_for_test().unwrap().in_files;
-        layout::search_visible_rows(current.window_size, false, in_files, height)
+        layout::search_visible_rows(current.window_size, 0.0, false, in_files, height)
     };
     assert_eq!(
         app.search_rows_for_test(),

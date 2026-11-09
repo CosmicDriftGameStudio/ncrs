@@ -112,9 +112,18 @@ pub fn hit_list_rows(normal_rows: usize) -> usize {
 /// Number of result rows of `row_height` that fit into the search view: the
 /// panel's room, less the difference between the search header and the column
 /// header.
-pub fn search_visible_rows(window: Size, filtered: bool, in_files: bool, row_height: f32) -> usize {
+///
+/// `bar_height` is the favourites bar's height while it is shown, else 0; it is
+/// not part of `CHROME` because the bar comes and goes.
+pub fn search_visible_rows(
+    window: Size,
+    bar_height: f32,
+    filtered: bool,
+    in_files: bool,
+    row_height: f32,
+) -> usize {
     let header = search_header_height(filtered, in_files);
-    let rows = ((window.height - CHROME - header) / row_height).floor();
+    let rows = ((window.height - CHROME - bar_height - header) / row_height).floor();
     (rows as isize).max(1) as usize
 }
 
@@ -149,6 +158,7 @@ pub fn cursor_row_anchor(
     row_in_view: usize,
     row_height: f32,
     window: Size,
+    bar_height: f32,
 ) -> Point {
     let panel_width = (window.width - spacing::BORDER_WIDTH) / 2.0;
     let panel_left = if right_panel {
@@ -156,7 +166,7 @@ pub fn cursor_row_anchor(
     } else {
         0.0
     };
-    let rows_top = size::TITLE_BAR + COLUMN_HEADER_HEIGHT;
+    let rows_top = size::TITLE_BAR + bar_height + COLUMN_HEADER_HEIGHT;
     Point::new(
         panel_left + 3.0 * TAG_COLUMN_WIDTH,
         rows_top + (row_in_view + 1) as f32 * row_height,

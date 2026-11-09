@@ -147,6 +147,26 @@ pub fn default_bindings() -> Vec<(KeyAction, Binding)> {
             A::AddFavourite,
             Binding::with_modifiers(Character("d".into()), Modifiers::COMMAND),
         ),
+        (
+            A::OpenFavourite1,
+            Binding::with_modifiers(Character("1".into()), Modifiers::COMMAND),
+        ),
+        (
+            A::OpenFavourite2,
+            Binding::with_modifiers(Character("2".into()), Modifiers::COMMAND),
+        ),
+        (
+            A::OpenFavourite3,
+            Binding::with_modifiers(Character("3".into()), Modifiers::COMMAND),
+        ),
+        (
+            A::OpenFavourite4,
+            Binding::with_modifiers(Character("4".into()), Modifiers::COMMAND),
+        ),
+        (
+            A::OpenFavourite5,
+            Binding::with_modifiers(Character("5".into()), Modifiers::COMMAND),
+        ),
         (A::SortByName, sort_binding(SortColumn::Name)),
         (A::SortByModified, sort_binding(SortColumn::Modified)),
         (A::SortBySize, sort_binding(SortColumn::Size)),
@@ -293,7 +313,8 @@ pub fn default_bindings() -> Vec<(KeyAction, Binding)> {
 }
 
 /// Ctrl+F3, Ctrl+F5 and Ctrl+F6 as in classic dual-panel file managers. A Mac takes Ctrl+F-keys
-/// for itself, so there it is Cmd+1 (name), Cmd+2 (size) and Cmd+3 (modified).
+/// for itself, so there it is Option+Cmd+1 (name), Option+Cmd+2 (size) and Option+Cmd+3
+/// (modified); plain Cmd+1 to Cmd+5 open the favourites.
 pub fn sort_binding(column: SortColumn) -> Binding {
     use key::Named::{F3, F5, F6};
     if cfg!(target_os = "macos") {
@@ -302,7 +323,10 @@ pub fn sort_binding(column: SortColumn) -> Binding {
             SortColumn::Size => "2",
             SortColumn::Modified => "3",
         };
-        Binding::with_modifiers(Key::Character(digit.into()), Modifiers::COMMAND)
+        Binding::with_modifiers(
+            Key::Character(digit.into()),
+            Modifiers::ALT | Modifiers::COMMAND,
+        )
     } else {
         let function_key = match column {
             SortColumn::Name => F3,

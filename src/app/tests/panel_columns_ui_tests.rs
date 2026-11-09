@@ -334,7 +334,7 @@ fn a_smaller_font_size_lets_the_panels_count_the_rows_that_now_fit() {
     assert!(app.scale_factor() < 1.0);
     assert_eq!(
         app.visible_rows,
-        crate::ui::layout::visible_rows(WINDOW * (1.0 / app.scale_factor()))
+        crate::ui::layout::visible_rows(WINDOW * (1.0 / app.scale_factor()), 0.0)
     );
     assert!(app.visible_rows > rows_before);
 }

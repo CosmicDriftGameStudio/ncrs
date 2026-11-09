@@ -7,7 +7,7 @@ use ncrs_fs::OpenKind;
 
 use crate::facts::AreaFacts;
 use crate::folders::AddAs;
-use crate::message::SettingChange;
+use crate::message::{FavouritesEdit, SettingChange};
 
 /// What the settings ask of the app, which they cannot do themselves. The app
 /// runs the actions in order, right after `update`.
@@ -28,6 +28,10 @@ pub enum Action {
     Protection(usize),
     /// The system folder dialog for a read folder.
     PickFolder(AddAs),
+    /// A picked folder joins the favourites, at the end.
+    AddFavourite(PathBuf),
+    /// A move or removal on the Favourites page.
+    EditFavourites(FavouritesEdit),
     /// Keeps the access to a picked folder for the next start (sandbox).
     GrantFolder {
         kind: AddAs,

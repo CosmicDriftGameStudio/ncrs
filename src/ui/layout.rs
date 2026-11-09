@@ -4,6 +4,8 @@ use iced::Size;
 
 use super::theme::size;
 
+#[cfg(test)]
+pub use ncrs_ui_kit::favourites_bar::FAVOURITES_BAR_HEIGHT;
 pub use ncrs_ui_kit::layout::{cursor_row_anchor, CHROME, INITIAL_WINDOW_SIZE, ROW_HEIGHT};
 #[cfg(test)]
 pub use ncrs_ui_kit::layout::{
@@ -20,14 +22,14 @@ pub const TRAFFIC_LIGHTS_INSET: f32 = 78.0;
 
 /// Number of file rows that fit into a panel for a given window size: the
 /// room less the chrome and the totals line under the rows.
-pub fn visible_rows(window: Size) -> usize {
-    rows_below_chrome(window, size::PANEL_FOOTER)
+pub fn visible_rows(window: Size, bar_height: f32) -> usize {
+    rows_below_chrome(window, bar_height, size::PANEL_FOOTER)
 }
 
 /// Rows of `ROW_HEIGHT` that fit under the chrome once `reserved` height is
 /// taken off.
-fn rows_below_chrome(window: Size, reserved: f32) -> usize {
-    let rows = ((window.height - CHROME - reserved) / ROW_HEIGHT).floor();
+fn rows_below_chrome(window: Size, bar_height: f32, reserved: f32) -> usize {
+    let rows = ((window.height - CHROME - bar_height - reserved) / ROW_HEIGHT).floor();
     // `max(1)`: a window too small for the chrome still has to show one row,
     // otherwise the panel renders nothing and the user cannot move the cursor.
     (rows as isize).max(1) as usize
@@ -36,8 +38,10 @@ fn rows_below_chrome(window: Size, reserved: f32) -> usize {
 /// Rows the trash view shows: the room of a panel without the totals line,
 /// which the trash has none of, less its title line and the two hint lines at
 /// the bottom.
-pub fn trash_visible_rows(window: Size) -> usize {
-    rows_below_chrome(window, 0.0).saturating_sub(3).max(1)
+pub fn trash_visible_rows(window: Size, bar_height: f32) -> usize {
+    rows_below_chrome(window, bar_height, 0.0)
+        .saturating_sub(3)
+        .max(1)
 }
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
@@ -65,7 +69,7 @@ mod tests {
         // Chrome: status 22 + function keys 24 + command line 24 + title bar 34
         // + column header 22 + panel footer 22 = 148. 760 - 148 = 612;
         // 612 / 22 = 27.8, so 27 rows.
-        assert_eq!(visible_rows(window), 27);
+        assert_eq!(visible_rows(window, 0.0), 27);
     }
 
     /// The trash has no totals line, so it keeps the row the panels give up.
@@ -73,7 +77,7 @@ mod tests {
     fn the_trash_view_has_the_panel_rows_back_that_the_footer_takes() {
         let window = Size::new(1200.0, 760.0);
         // 760 - 126 = 634; 634 / 22 = 28 rows, less title and two hints.
-        assert_eq!(trash_visible_rows(window), 28 - 3);
+        assert_eq!(trash_visible_rows(window, 0.0), 28 - 3);
     }
 
     #[test]
@@ -81,24 +85,30 @@ mod tests {
         let window = Size::new(1200.0, 760.0);
         // (634 - 188) / 44 = 10.1 and (634 - 188) / 66 = 6.8
         assert_eq!(
-            search_visible_rows(window, false, false, HIT_LIST_ROW_HEIGHT),
+            search_visible_rows(window, 0.0, false, false, HIT_LIST_ROW_HEIGHT),
             10
         );
         assert_eq!(
-            search_visible_rows(window, false, false, SEARCH_CONTENT_ROW_HEIGHT),
+            search_visible_rows(window, 0.0, false, false, SEARCH_CONTENT_ROW_HEIGHT),
             6
         );
         // (634 - 252) / 44 = 8.7 and (634 - 252) / 66 = 5.8
         assert_eq!(
-            search_visible_rows(window, true, false, HIT_LIST_ROW_HEIGHT),
+            search_visible_rows(window, 0.0, true, false, HIT_LIST_ROW_HEIGHT),
             8
         );
         assert_eq!(
-            search_visible_rows(window, true, false, SEARCH_CONTENT_ROW_HEIGHT),
+            search_visible_rows(window, 0.0, true, false, SEARCH_CONTENT_ROW_HEIGHT),
             5
         );
         assert_eq!(
-            search_visible_rows(Size::new(1200.0, 10.0), false, false, HIT_LIST_ROW_HEIGHT),
+            search_visible_rows(
+                Size::new(1200.0, 10.0),
+                0.0,
+                false,
+                false,
+                HIT_LIST_ROW_HEIGHT
+            ),
             1
         );
     }
@@ -108,7 +118,7 @@ mod tests {
     #[test]
     fn the_initial_window_shows_the_same_rows() {
         assert_eq!(
-            visible_rows(INITIAL_WINDOW_SIZE),
+            visible_rows(INITIAL_WINDOW_SIZE, 0.0),
             27,
             "the initial size no longer matches the documented row count"
         );
@@ -117,11 +127,11 @@ mod tests {
     #[test]
     fn one_row_fits_exactly_at_the_chrome_height() {
         let window = Size::new(800.0, CHROME + size::PANEL_FOOTER + ROW_HEIGHT);
-        assert_eq!(visible_rows(window), 1);
+        assert_eq!(visible_rows(window, 0.0), 1);
 
         // A partial row does not count.
         let a_bit_taller = Size::new(800.0, CHROME + ROW_HEIGHT + 1.0);
-        assert_eq!(visible_rows(a_bit_taller), 1);
+        assert_eq!(visible_rows(a_bit_taller, 0.0), 1);
     }
 
     /// The chrome sum has to match what the view actually spends, or the last
@@ -144,15 +154,32 @@ mod tests {
     #[test]
     fn the_keyboard_anchor_is_below_the_row_in_the_right_panel() {
         let window = Size::new(1200.0, 760.0);
-        let left = cursor_row_anchor(false, 0, ROW_HEIGHT, window);
-        let right = cursor_row_anchor(true, 0, ROW_HEIGHT, window);
+        let left = cursor_row_anchor(false, 0, ROW_HEIGHT, window, 0.0);
+        let right = cursor_row_anchor(true, 0, ROW_HEIGHT, window, 0.0);
         let first_row_top = TITLE_BAR_HEIGHT + COLUMN_HEADER_HEIGHT;
         assert_eq!(left.y, first_row_top + ROW_HEIGHT);
         assert!(right.x > window.width / 2.0);
         assert_eq!(
-            cursor_row_anchor(false, 2, ROW_HEIGHT, window).y,
+            cursor_row_anchor(false, 2, ROW_HEIGHT, window, 0.0).y,
             left.y + 2.0 * ROW_HEIGHT
         );
+    }
+
+    /// The bar is not in `CHROME`: it is an input, so a window with the bar
+    /// shows fewer rows in every view that lists rows under it.
+    #[test]
+    fn the_favourites_bar_takes_rows_from_every_view() {
+        let window = Size::new(1200.0, 760.0);
+        let bar = FAVOURITES_BAR_HEIGHT;
+        assert_eq!(visible_rows(window, bar), 26);
+        assert_eq!(trash_visible_rows(window, bar), 27 - 3);
+        assert_eq!(
+            search_visible_rows(window, bar, false, false, ROW_HEIGHT),
+            search_visible_rows(window, 0.0, false, false, ROW_HEIGHT) - 1
+        );
+        let without = cursor_row_anchor(false, 0, ROW_HEIGHT, window, 0.0);
+        let with = cursor_row_anchor(false, 0, ROW_HEIGHT, window, bar);
+        assert_eq!(with.y, without.y + bar);
     }
 
     /// A window too small for the chrome must still leave room for one row:
@@ -162,7 +189,7 @@ mod tests {
     fn a_tiny_window_still_shows_one_row() {
         for height in [0.0, 10.0, 100.0, 124.0] {
             assert_eq!(
-                visible_rows(Size::new(400.0, height)),
+                visible_rows(Size::new(400.0, height), 0.0),
                 1,
                 "a {height}px window should still show one row"
             );
@@ -175,7 +202,7 @@ mod tests {
     fn row_count_grows_with_the_window() {
         let mut previous = 0;
         for height in (100..=1200).step_by(20) {
-            let rows = visible_rows(Size::new(1200.0, height as f32));
+            let rows = visible_rows(Size::new(1200.0, height as f32), 0.0);
             assert!(
                 rows >= previous,
                 "row count went down at {height}px: {previous} -> {rows}"

@@ -23,6 +23,7 @@ impl App {
     fn search_ctx(&self) -> ncrs_search::Ctx {
         ncrs_search::Ctx {
             window_size: self.window_size,
+            favourites_bar_height: self.favourites_bar_height(),
             side_is_remote: self.panel(self.search.side).remote().is_some(),
             has_keys: self.search_has_keys(),
             index: self
@@ -36,7 +37,8 @@ impl App {
 
     /// The rows of the search after its filters changed what they offer.
     pub(in crate::app) fn refresh_search_rows(&mut self) {
-        self.search.resize(self.window_size);
+        self.search
+            .resize(self.window_size, self.favourites_bar_height());
     }
 
     fn focus_search_field(&self) -> Task<Message> {

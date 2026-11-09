@@ -219,7 +219,38 @@ impl App {
             }
             None => OpenSource::ActivePanel,
         };
-        match self.panels.plan_open(kind, source) {
+        let plan = self.panels.plan_open(kind, source);
+        self.run_open_plan(plan, |app, path, line| {
+            app.launch_external(kind, path, line, CopyOf::Nothing);
+            Task::none()
+        })
+    }
+
+    /// Enter or a double click on a file: opened as the Finder does, by the
+    /// system opener whatever `[open]` says. A file that could run asks first.
+    /// A file in an archive or on a server is viewed, as with F3.
+    pub(in crate::app) fn open_like_the_finder(&mut self) -> Task<Message> {
+        let plan = self
+            .panels
+            .plan_open(fs::OpenKind::View, OpenSource::ActivePanel);
+        self.run_open_plan(plan, |app, path, _| {
+            // ponytail: the exec bit alone also asks for files on exFAT or a NAS share,
+            // where every file has it; narrow it if that becomes a nuisance.
+            if fs::could_execute(&path) {
+                app.with_ops(|ops, _| ncrs_ops::open_open_file_dialog(ops, path))
+            } else {
+                app.open_with_system(&path);
+                Task::none()
+            }
+        })
+    }
+
+    fn run_open_plan(
+        &mut self,
+        plan: OpenPlan,
+        launch: impl FnOnce(&mut Self, PathBuf, Option<u64>) -> Task<Message>,
+    ) -> Task<Message> {
+        match plan {
             OpenPlan::Nothing => Task::none(),
             OpenPlan::Refused(msg) => {
                 let text = self.lang.text(msg).to_owned();
@@ -231,10 +262,30 @@ impl App {
                 source: packed,
                 archive,
             } => self.view_from_archive(packed, archive),
-            OpenPlan::Launch { path, line } => {
-                self.launch_external(kind, path, line, CopyOf::Nothing);
-                Task::none()
-            }
+            OpenPlan::Launch { path, line } => launch(self, path, line),
+        }
+    }
+
+    /// Hands `path` to the system's own opener, never to a configured program.
+    pub(in crate::app) fn open_with_system(&mut self, path: &Path) {
+        self.job_error = None;
+        self.notice = None;
+        self.start_command(&fs::system_open_command(path), path);
+    }
+
+    /// Starts `command`; a refusal of the system is the error of the status bar.
+    fn start_command(&mut self, command: &fs::OpenCommand, path: &Path) {
+        if let Err(reason) = self.launcher.launch(command) {
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let message = self
+                .lang
+                .text(Msg::ErrorOpenFailed)
+                .replace("{name}", &name)
+                .replace("{reason}", &reason);
+            self.set_status_error(&message);
         }
     }
 
@@ -338,14 +389,7 @@ impl App {
             self.set_status_error(&message);
             return;
         };
-        if let Err(reason) = self.launcher.launch(&command) {
-            let message = self
-                .lang
-                .text(Msg::ErrorOpenFailed)
-                .replace("{name}", &name)
-                .replace("{reason}", &reason);
-            self.set_status_error(&message);
-        }
+        self.start_command(&command, &path);
     }
 
     /// "Open terminal here": the terminal from `[open] terminal`, else the
@@ -639,6 +683,11 @@ impl App {
             Action::StartDragOut => self.start_drag_out(),
             Action::OpenTransferDialog(kind) => self.open_transfer_dialog_to(kind, None),
             Action::OpenSelected => self.update(Message::Panel(PanelMessage::OpenSelected)),
+            Action::OpenFile => self.open_like_the_finder(),
+            Action::OpenBundle(path) => {
+                self.open_with_system(&path);
+                Task::none()
+            }
             Action::ShowPanels => {
                 self.shown_tab = ShownTab::Panels;
                 Task::none()

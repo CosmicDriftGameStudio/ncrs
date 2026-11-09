@@ -316,6 +316,8 @@ mod archive_view_tests;
 )]
 #[cfg(test)]
 mod favourites_and_history_tests;
+#[cfg(test)]
+mod favourites_bar_tests;
 #[allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -362,6 +364,14 @@ mod about_tests;
 )]
 #[cfg(test)]
 mod grant_tests;
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod open_file_tests;
 #[allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -509,6 +519,15 @@ mod panel_columns_ui_tests;
 )]
 #[cfg(test)]
 mod search_folder_ui_tests;
+// reason: a failing assertion is the signal in a test, so unwrap belongs here
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod open_file_ui_tests;
 pub(in crate::app) mod support;
 // reason: a failing assertion is the signal in a test, so unwrap belongs here
 #[allow(

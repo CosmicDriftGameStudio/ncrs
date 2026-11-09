@@ -135,6 +135,10 @@ impl App {
                 self.dialog_focus = button;
                 Task::none()
             }
+            Ask::OpenWithSystem(path) => {
+                self.open_with_system(&path);
+                Task::none()
+            }
             Ask::StartJob(start) => self.start_job(start.job, start.build),
             Ask::StartJobWithProgress(start) => {
                 self.start_job_with_progress(start.job, start.build)
@@ -265,7 +269,7 @@ impl App {
 
     /// Rows of the trash view that fit the window.
     pub(in crate::app) fn trash_rows(&self) -> usize {
-        layout::trash_visible_rows(self.window_size)
+        layout::trash_visible_rows(self.window_size, self.favourites_bar_height())
     }
 
     /// Shows the trash in place of the panel on `side` and reads it. Where the

@@ -33,11 +33,10 @@ pub use delete::{
 };
 pub use folder_size::measure_folder;
 pub use ncrs_core::{EntryDetails, FileEntry, FolderSize, WindowsAttributes};
-#[cfg(any(test, feature = "test-support"))]
 pub use open::OpenCommand;
 pub use open::{
-    could_execute, open_command, runs_in_app_sandbox, system_open_command, Launcher, OpenKind,
-    SystemLauncher,
+    could_execute, is_app_bundle, open_command, runs_in_app_sandbox, system_open_command, Launcher,
+    OpenKind, SystemLauncher,
 };
 #[cfg(target_os = "macos")]
 pub use open::{privacy_settings_command, trash_in_finder_command};

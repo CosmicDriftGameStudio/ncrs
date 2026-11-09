@@ -14,6 +14,8 @@ use crate::message::SearchMessage;
 /// What `update` reads from the app.
 pub struct Ctx {
     pub window_size: Size,
+    /// Height of the favourites bar above the panels, 0 while it is hidden.
+    pub favourites_bar_height: f32,
     /// The panel the search stands in for shows a server, which the search
     /// cannot walk.
     pub side_is_remote: bool,
@@ -27,6 +29,7 @@ impl std::fmt::Debug for Ctx {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Ctx")
             .field("window_size", &self.window_size)
+            .field("favourites_bar_height", &self.favourites_bar_height)
             .field("side_is_remote", &self.side_is_remote)
             .field("has_keys", &self.has_keys)
             .field("has_index", &self.index.is_some())

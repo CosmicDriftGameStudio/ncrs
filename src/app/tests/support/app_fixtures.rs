@@ -95,6 +95,9 @@ impl App {
             app_version: "1.2.3",
             updates: ncrs_updates::State::new("1.2.3", ncrs_updates::Channel::Direct, None),
             update_check: None,
+            favourites_bar_on: true,
+            favourites_bar_applied: 0.0,
+            favourite_menu: None,
             fetch_latest_release: || Err("no network in tests".to_owned()),
             download_ocr_models: |_, _| Err(DownloadError::NoDataFolder),
             download_ai_model: |_| Err(AiDownloadError::NoDataFolder),
@@ -438,6 +441,7 @@ impl App {
                 .saturating_sub(app.panels.right.scroll_offset),
             layout::ROW_HEIGHT,
             app.window_size,
+            0.0,
         );
         let mut menu = QuickFix::new(anchor, app.window_size);
         menu.loaded(vec![item]);

@@ -54,6 +54,8 @@ pub mod size {
     pub const TITLE_BAR: f32 = 34.0;
     pub const STATUS_BAR: f32 = 22.0;
     pub const FKEY_BAR: f32 = 24.0;
+    /// The row of numbered favourites under the path tabs.
+    pub const FAVOURITES_BAR: f32 = 24.0;
     pub const COMMAND_LINE: f32 = 24.0;
     pub const COLUMN_HEADER: f32 = 22.0;
     /// The line of totals under the rows of a file panel.
@@ -267,6 +269,31 @@ pub fn title_command_button(palette: &Palette) -> impl Fn(&Theme, button::Status
                 colors.border_inactive
             })),
             text_color: colors.text,
+            border: Border {
+                radius: radius::CORNER.into(),
+                ..Border::default()
+            },
+            ..button::Style::default()
+        }
+    }
+}
+
+/// A slot of the favourites bar: flat, the label in the text color while the
+/// pointer is over it or the slot is the active panel's folder, dim otherwise.
+pub fn favourite_slot(
+    palette: &Palette,
+    is_current: bool,
+) -> impl Fn(&Theme, button::Status) -> button::Style {
+    let colors = *palette;
+    move |_theme, status| {
+        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        button::Style {
+            background: hovered.then_some(Background::Color(colors.border_inactive)),
+            text_color: if hovered || is_current {
+                colors.text
+            } else {
+                colors.dim_text
+            },
             border: Border {
                 radius: radius::CORNER.into(),
                 ..Border::default()

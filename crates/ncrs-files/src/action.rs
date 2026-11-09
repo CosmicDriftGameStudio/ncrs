@@ -54,6 +54,11 @@ pub enum Action {
     /// Enter on the cursor row, through the app's own message so that the
     /// refusals of archives and hit lists apply.
     OpenSelected,
+    /// Enter on a file: the app hands it to the system opener, or asks first
+    /// when it could run. A file in an archive or on a server is viewed (F3).
+    OpenFile,
+    /// Enter on an app bundle in a local folder: the system opener starts it.
+    OpenBundle(PathBuf),
     /// A click on a panel: the panels are what the window shows again, while
     /// the pages stay open as tabs.
     ShowPanels,
