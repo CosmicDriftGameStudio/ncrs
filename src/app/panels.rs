@@ -549,12 +549,19 @@ impl App {
         if message == PanelMessage::RenameStart && rename_has_no_row {
             return Task::none();
         }
+        if message == PanelMessage::RenameStart {
+            let tagged = self.tagged_entries_to_rename();
+            if tagged.len() >= 2 {
+                return self.open_batch_rename_dialog(tagged);
+            }
+        }
         let overlay_is_open = self.overlay_is_open();
         let context_menu_is_open = self.panels.context_menu.is_some();
         let pointer = self.input.lock().pointer;
         let ctx = ncrs_files::Ctx {
             columns: column_settings_of(&self.columns),
-            has_hermes_column: self.hermes.is_active(),
+            has_hermes_column: self.hermes.is_active()
+                || self.compare.marks(PanelSide::Left).is_some(),
             visible_rows: self.visible_rows,
             window_size: self.window_size,
             modifiers: self.modifiers,

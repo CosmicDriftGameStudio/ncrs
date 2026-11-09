@@ -318,6 +318,7 @@ pub fn entry(name: Option<&str>, host: &str, port: u16, path: Option<&str>) -> S
         port,
         user: "marc".to_owned(),
         path: path.map(str::to_owned),
+        key_file: None,
     }
 }
 
@@ -360,6 +361,24 @@ fn servers_section_round_trips_and_keeps_comments() {
         !left.contains("servers") && left.contains("# my config"),
         "{left}"
     );
+}
+
+#[test]
+fn a_servers_key_file_is_optional_and_survives_writing() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = write(
+        &dir,
+        b"[[servers]]\nhost = \"old.example.org\"\nuser = \"marc\"\n\n[[servers]]\nhost = \"new.example.org\"\nuser = \"marc\"\nkey_file = \" ~/.ssh/work \"\n",
+    );
+
+    let loaded = load_with_home(&path, None).unwrap();
+
+    assert_eq!(loaded.servers[0].key_file, None, "an old entry stays valid");
+    assert_eq!(loaded.servers[1].key_file.as_deref(), Some("~/.ssh/work"));
+    let written = write_servers_with_home(&path, &loaded.servers, None).unwrap();
+    assert_eq!(written.servers, loaded.servers);
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert_eq!(text.matches("key_file").count(), 1, "{text}");
 }
 
 #[test]
@@ -528,7 +547,7 @@ fn the_http_provider_accepts_every_way_to_say_this_machine() {
 
 #[test]
 fn ai_errors_name_the_exact_line() {
-    let cases: [(&str, &str, usize, &str); 9] = [
+    let cases: [(&str, &str, usize, &str); 8] = [
         (
             "http without an endpoint",
             "enabled = true\nprovider = \"http\"\nmodel = \"qwen\"\n",
@@ -546,12 +565,6 @@ fn ai_errors_name_the_exact_line() {
             "enabled = true\nprovider = \"http\"\nmodel = \"q\"\nendpoint = \"http://example.com/v1\"\n",
             5,
             "needs https",
-        ),
-        (
-            "an endpoint on another machine",
-            "enabled = true\nprovider = \"http\"\nmodel = \"q\"\nendpoint = \"https://api.example.com/v1\"\n",
-            5,
-            "must be on this machine",
         ),
         (
             "threads of zero",

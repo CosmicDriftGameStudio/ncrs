@@ -8,6 +8,7 @@ use ncrs_core::{Column, FileEntry, Selection};
 use ncrs_i18n::{Language, Msg};
 
 use crate::column_header::{column_alignment, ColumnLayout};
+use crate::compare_cell::{blank_compare_cell, compare_cell, CompareCell};
 use crate::file_icon::{file_icon, icon_color, icon_kind, IconKind, SpecialFolder};
 use crate::format;
 use crate::hermes_state::{
@@ -93,6 +94,7 @@ pub fn hit_row<'a, M: Clone + 'a>(
         prefix,
         RowExtras {
             hermes: None,
+            compare: CompareCell::Off,
             hit_scope: Some((scope, height)),
             third_line,
             columns: ColumnLayout::standard(lang),
@@ -124,6 +126,8 @@ pub struct RowExtras<'a, M> {
     /// What the caller knows about this row's folder from its path.
     pub special: Option<SpecialFolder>,
     pub hermes: Option<HermesCell<'a, M>>,
+    /// The Compare column, which replaces the Hermes column.
+    pub compare: CompareCell,
     pub hit_scope: Option<(&'a Path, f32)>,
     /// Under the folder of a hit.
     pub third_line: Option<Element<'a, M>>,
@@ -152,6 +156,7 @@ pub fn file_row<'a, M: Clone + 'a>(
         columns,
         special,
         hermes,
+        compare,
         hit_scope,
         third_line,
     } = extras;
@@ -264,6 +269,14 @@ pub fn file_row<'a, M: Clone + 'a>(
     .align_y(alignment::Vertical::Center);
     if let Some(status_cell) = hermes {
         content = content.push(status_cell.status());
+    }
+    match compare {
+        CompareCell::Off => {}
+        CompareCell::Blank => content = content.push(blank_compare_cell()),
+        CompareCell::Mark(compared) => {
+            let on_cursor = highlighted.then_some(color);
+            content = content.push(compare_cell(compared, on_cursor, columns.lang, palette));
+        }
     }
 
     // A button captures the press, so the double click is read inside it: the

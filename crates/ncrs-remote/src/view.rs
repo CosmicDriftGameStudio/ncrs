@@ -2,6 +2,8 @@
 //! whether to trust a server for the first time. Modal. A pure view over
 //! [`ConnectDialog`]; what the buttons do is decided by `update`.
 
+use std::path::Path;
+
 use iced::widget::{column, row, Row};
 use iced::{Element, Length, Size};
 
@@ -20,6 +22,9 @@ const SIZE: DialogSize = DialogSize::Medium;
 /// The width of the port field.
 const PORT_WIDTH: f32 = 90.0;
 
+/// The id of the field of the passphrase stage.
+pub const PASSPHRASE_ID: &str = "remote-passphrase";
+
 /// The id of a field, so the app can put the focus on it and a test can find it.
 pub const fn field_id(field: ConnectField) -> &'static str {
     match field {
@@ -27,6 +32,7 @@ pub const fn field_id(field: ConnectField) -> &'static str {
         ConnectField::Port => "remote-port",
         ConnectField::User => "remote-user",
         ConnectField::Password => "remote-password",
+        ConnectField::KeyFile => "remote-key-file",
         ConnectField::StartPath => "remote-start-path",
     }
 }
@@ -37,6 +43,7 @@ const fn field_label(field: ConnectField) -> Msg {
         ConnectField::Port => Msg::RemotePort,
         ConnectField::User => Msg::RemoteUser,
         ConnectField::Password => Msg::RemotePassword,
+        ConnectField::KeyFile => Msg::RemoteKeyFile,
         ConnectField::StartPath => Msg::RemoteStartPath,
     }
 }
@@ -49,6 +56,7 @@ pub fn view<'a>(
 ) -> Element<'a, Message> {
     match dialog.stage() {
         Stage::HostKey { fingerprint, .. } => host_key(dialog, fingerprint, window, lang, palette),
+        Stage::Passphrase { key_file } => passphrase(dialog, key_file, window, lang, palette),
         Stage::Editing | Stage::Connecting => form(dialog, window, lang, palette),
     }
 }
@@ -71,6 +79,31 @@ fn labelled<'a>(
             submit,
             palette,
         )
+    } else if field == ConnectField::KeyFile {
+        // The App Store build finds nothing by itself, so nothing is promised.
+        let placeholder = if dialog.sandboxed() {
+            ""
+        } else {
+            lang.text(Msg::RemoteKeyFilePlaceholder)
+        };
+        row![
+            kit::mono_text_field(
+                placeholder,
+                dialog.value(field),
+                field_id(field),
+                typing.then_some(move |text: String| Message::Field(field, text)),
+                submit,
+                palette,
+            ),
+            kit::button(
+                lang.text(Msg::RemoteKeyFileChoose),
+                typing.then_some(Message::ChooseKeyFile),
+                Tone::Secondary,
+                palette,
+            ),
+        ]
+        .spacing(spacing::XS)
+        .into()
     } else {
         kit::mono_text_field(
             label,
@@ -116,27 +149,33 @@ fn form<'a>(
         column![labelled(ConnectField::Port, dialog, lang, palette)].width(PORT_WIDTH),
     ]
     .spacing(spacing::M);
-    let mut body = column![
-        host_and_port,
-        labelled(ConnectField::User, dialog, lang, palette),
-        labelled(ConnectField::Password, dialog, lang, palette),
-        labelled(ConnectField::StartPath, dialog, lang, palette),
-        tick(
+    let mut body = column![host_and_port].spacing(spacing::LINE_GAP);
+    if let Some(line) = ssh_config_line(dialog, lang) {
+        body = body.push(dim(line, palette));
+    }
+    body = body
+        .push(labelled(ConnectField::User, dialog, lang, palette))
+        .push(labelled(ConnectField::Password, dialog, lang, palette))
+        .push(labelled(ConnectField::KeyFile, dialog, lang, palette));
+    if dialog.sandboxed() {
+        body = body.push(dim(lang.text(Msg::RemoteKeyFileStoreNote), palette));
+    }
+    body = body
+        .push(labelled(ConnectField::StartPath, dialog, lang, palette))
+        .push(tick(
             lang.text(Msg::RemoteRemember),
             dialog.remember(),
             Message::ToggleRemember,
             locked,
             palette,
-        ),
-        tick(
+        ))
+        .push(tick(
             lang.text(Msg::RemoteSave),
             dialog.save(),
             Message::ToggleSave,
             locked,
             palette,
-        ),
-    ]
-    .spacing(spacing::LINE_GAP);
+        ));
     if locked {
         body = body.push(dim(lang.text(Msg::RemoteConnecting), palette));
     }
@@ -231,6 +270,99 @@ fn host_key<'a>(
     .on_close(cancel)
     .hints(KeyHints {
         enter: false,
+        tab: false,
+    })
+    .into_element()
+}
+
+/// What `~/.ssh/config` gives for the typed host, as one line; `None` when it
+/// gives nothing.
+fn ssh_config_line(dialog: &ConnectDialog, lang: Language) -> Option<String> {
+    let hint = dialog.ssh_hint();
+    let parts: Vec<String> = [
+        hint.host_name.clone(),
+        hint.port.map(|port| {
+            fill_template(
+                lang.text(Msg::RemoteSshConfigPort),
+                &[("{port}", &port.to_string())],
+            )
+        }),
+        hint.user
+            .as_ref()
+            .map(|user| fill_template(lang.text(Msg::RemoteSshConfigUser), &[("{user}", user)])),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    (!parts.is_empty()).then(|| {
+        fill_template(
+            lang.text(Msg::RemoteSshConfig),
+            &[("{details}", &parts.join(", "))],
+        )
+    })
+}
+
+fn passphrase<'a>(
+    dialog: &'a ConnectDialog,
+    key_file: &Path,
+    window: Size,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let mut body = column![
+        paragraph(
+            fill_template(
+                lang.text(Msg::RemotePassphraseBody),
+                &[("{key}", &dialog.shown_path(key_file))],
+            ),
+            palette,
+        ),
+        kit::secret_field(
+            lang.text(Msg::RemotePassphraseTitle),
+            dialog.passphrase().expose(),
+            PASSPHRASE_ID,
+            Some(|text: String| Message::Passphrase(Secret::new(text))),
+            Message::Unlock,
+            palette,
+        ),
+        tick(
+            lang.text(Msg::RemotePassphraseRemember),
+            dialog.remember_passphrase(),
+            Message::ToggleRememberPassphrase,
+            false,
+            palette,
+        ),
+    ]
+    .spacing(spacing::LINE_GAP);
+    if let Some(error) = dialog.error() {
+        body = body.push(error_line(error.to_owned(), palette));
+    }
+    let cancel = Message::Cancel;
+    Frame::new(
+        lang.text(Msg::RemotePassphraseTitle),
+        body,
+        SIZE,
+        window,
+        lang,
+        palette,
+    )
+    .buttons(vec![
+        kit::button(
+            lang.text(Msg::DialogCancel),
+            Some(cancel.clone()),
+            Tone::Secondary,
+            palette,
+        ),
+        kit::enter_button(
+            lang.text(Msg::RemotePassphraseUnlock),
+            Some(Message::Unlock),
+            Tone::Primary,
+            palette,
+        ),
+    ])
+    .on_close(cancel)
+    .hints(KeyHints {
+        enter: true,
         tab: false,
     })
     .into_element()

@@ -36,6 +36,14 @@ pub fn connect_failure_text(lang: Language, failure: &ConnectFailure, host: &str
             &[("{host}", host)],
         ),
         ConnectFailure::AuthFailed => lang.text(Msg::ErrorRemoteAuthFailed).to_owned(),
+        ConnectFailure::PassphraseNeeded { key_file } => fill_template(
+            lang.text(Msg::ErrorRemotePassphraseNeeded),
+            &[("{file}", &key_file.display().to_string())],
+        ),
+        ConnectFailure::WrongPassphrase { key_file } => fill_template(
+            lang.text(Msg::ErrorRemoteWrongPassphrase),
+            &[("{file}", &key_file.display().to_string())],
+        ),
         ConnectFailure::Timeout => {
             fill_template(lang.text(Msg::ErrorRemoteTimeout), &[("{host}", host)])
         }

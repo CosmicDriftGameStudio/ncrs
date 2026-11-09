@@ -18,6 +18,7 @@ pub enum SettingsFeature {
     Tags,
     Reports,
     ReadErrors,
+    Usage,
 }
 
 /// The heading over a run of pages in the feature list.
@@ -30,7 +31,7 @@ pub enum SettingsGroup {
 }
 
 impl SettingsFeature {
-    pub const ALL: [Self; 15] = [
+    pub const ALL: [Self; 16] = [
         Self::Look,
         Self::Language,
         Self::Keys,
@@ -46,6 +47,7 @@ impl SettingsFeature {
         Self::Hermes,
         Self::Rules,
         Self::Tags,
+        Self::Usage,
     ];
 
     /// Pages whose rows the app puts in: they belong to the Hermes module,
@@ -66,7 +68,7 @@ impl SettingsFeature {
                 SettingsGroup::Files
             }
             Self::Index | Self::ReadErrors | Self::Reports => SettingsGroup::Documents,
-            Self::Hermes | Self::Rules | Self::Tags => SettingsGroup::Hermes,
+            Self::Hermes | Self::Rules | Self::Tags | Self::Usage => SettingsGroup::Hermes,
         }
     }
 }
@@ -92,7 +94,7 @@ mod tests {
             SettingsFeature::ALL,
             [
                 Look, Language, Keys, System, Updates, Programs, Servers, Columns, Favourites,
-                Index, ReadErrors, Reports, Hermes, Rules, Tags
+                Index, ReadErrors, Reports, Hermes, Rules, Tags, Usage
             ]
         );
         let expected = [
@@ -111,6 +113,7 @@ mod tests {
             (Hermes, SettingsGroup::Hermes),
             (Rules, SettingsGroup::Hermes),
             (Tags, SettingsGroup::Hermes),
+            (Usage, SettingsGroup::Hermes),
         ];
         for (feature, group) in expected {
             assert_eq!(feature.group(), group, "{feature:?}");

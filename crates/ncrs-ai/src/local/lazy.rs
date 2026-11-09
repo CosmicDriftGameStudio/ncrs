@@ -20,10 +20,9 @@ use crate::error::AiError;
 use crate::model_file::ModelPin;
 use crate::rules::{
     annotated_paths, repair_note_for, revise_question, ContextDocument, Levels, Mismatch, Revision,
+    RECOGNIZE_QUESTION,
 };
 use crate::status::LocalModelStatus;
-
-const RECOGNIZE_QUESTION: &str = "Which pattern wrote these paths?";
 
 /// The local model, loaded when the first job needs it and only if its file
 /// is there. Without the file a call fails at once and does nothing else.

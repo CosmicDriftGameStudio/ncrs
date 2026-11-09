@@ -107,6 +107,16 @@ pub struct SettingsState {
     pub system_font: Option<SystemFont>,
     /// Where the keyboard is: the list of pages or the rows of the page.
     pub focus: crate::focus::Focus,
+    /// The API key typed in the dialog of the own server and not kept yet.
+    /// `Secret` prints as `***`, so the state can be logged.
+    pub ai_key: Option<ncrs_ai::Secret>,
+    pub ai_check: crate::settings::AiCheck,
+    /// "I understand" is ticked for the address typed.
+    pub ai_understood: bool,
+    /// The period the Usage page shows, in days.
+    pub usage_days: u32,
+    /// The sums of the usage log per period; `None` until it was read.
+    pub usage: Option<Vec<(u32, ncrs_ai::UsageSummary)>>,
 }
 
 /// Why the value of a field was not written.
@@ -119,6 +129,8 @@ pub enum FieldProblem {
     Endpoint(AiEndpointProblem),
     /// Empty, but an own server needs it.
     Needed,
+    /// The address is off this computer and "I understand" is not ticked.
+    NotUnderstood,
     NotAnIban,
     /// The write failed; the text is already worded.
     Write(String),
@@ -156,6 +168,11 @@ impl SettingsState {
             installed_fonts: Vec::new(),
             system_font: None,
             focus: crate::focus::Focus::default(),
+            ai_key: None,
+            ai_check: crate::settings::AiCheck::Idle,
+            ai_understood: false,
+            usage_days: crate::settings::DEFAULT_USAGE_DAYS,
+            usage: None,
         }
     }
 
@@ -167,6 +184,8 @@ impl SettingsState {
 
     pub fn close_dialog(&mut self) {
         self.server_dialog = false;
+        self.ai_key = None;
+        self.ai_check = crate::settings::AiCheck::Idle;
         self.folder_dialog = None;
         self.model_to_remove = None;
     }
@@ -336,6 +355,10 @@ impl SettingsState {
     }
 
     pub fn edit(&mut self, field: SettingField, text: String) {
+        if field == SettingField::AiEndpoint {
+            self.ai_check = crate::settings::AiCheck::Idle;
+            self.ai_understood = false;
+        }
         self.problems.remove(&field);
         self.drafts.insert(field, text);
     }
@@ -415,6 +438,9 @@ impl SettingsState {
         }
         check_ai_endpoint(&endpoint)
             .map_err(|problem| (SettingField::AiEndpoint, FieldProblem::Endpoint(problem)))?;
+        if self.save_is_blocked() {
+            return Err((SettingField::AiEndpoint, FieldProblem::NotUnderstood));
+        }
         if model.is_empty() {
             return Err((SettingField::AiModel, FieldProblem::Needed));
         }

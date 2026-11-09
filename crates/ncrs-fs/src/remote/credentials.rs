@@ -1,9 +1,10 @@
-//! The passwords of saved servers, one keychain entry per account. A password
-//! is only ever written to the keychain, never to a file or a log, and only
-//! after the user ticked "remember". The calls block; the app makes them on
-//! the blocking pool.
+//! The passwords of saved servers, one keychain entry per account, and the
+//! passphrases of key files, one entry per absolute path. A secret is only ever
+//! written to the keychain, never to a file or a log, and only after the user
+//! ticked "remember". The calls block; the app makes them on the blocking pool.
 
 use std::fmt;
+use std::path::Path;
 
 use zeroize::Zeroizing;
 
@@ -94,6 +95,124 @@ impl PasswordStore for KeyringPasswords {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
             Err(error) => Err(error.to_string()),
         }
+    }
+}
+
+/// Where the passphrases of key files are kept, by the absolute path of the
+/// key. A trait so tests never reach the real keychain. The errors are text and
+/// never contain a passphrase.
+pub trait PassphraseStore: Send + Sync + fmt::Debug {
+    fn get(&self, key_file: &Path) -> Result<Option<Secret>, String>;
+    fn set(&self, key_file: &Path, passphrase: &Secret) -> Result<(), String>;
+    /// Removes the entry; none there is not an error.
+    fn forget(&self, key_file: &Path) -> Result<(), String>;
+}
+
+/// The account of a key file's passphrase. A password account is
+/// `user@host:port` and a user name has no `:`, so the prefix keeps the two
+/// apart whatever the path holds.
+fn passphrase_account(key_file: &Path) -> String {
+    format!("key-file:{}", key_file.display())
+}
+
+/// The operating system's credential store, for passphrases.
+#[derive(Debug)]
+pub struct KeyringPassphrases {
+    service: String,
+}
+
+impl KeyringPassphrases {
+    pub fn new() -> Self {
+        Self::with_service(service_for(crate::sandbox_active()))
+    }
+
+    pub fn with_service(service: &str) -> Self {
+        Self {
+            service: service.to_owned(),
+        }
+    }
+
+    fn entry(&self, key_file: &Path) -> Result<keyring::Entry, String> {
+        crate::forbid_user_machine_in_tests("the system keychain for key passphrases");
+        keyring::Entry::new(&self.service, &passphrase_account(key_file))
+            .map_err(|error| error.to_string())
+    }
+}
+
+impl Default for KeyringPassphrases {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl PassphraseStore for KeyringPassphrases {
+    fn get(&self, key_file: &Path) -> Result<Option<Secret>, String> {
+        match self.entry(key_file)?.get_secret() {
+            Ok(stored) => {
+                let wiped = Zeroizing::new(stored);
+                let text = std::str::from_utf8(&wiped)
+                    .map_err(|_not_text| "the entry is not text".to_owned())?;
+                Ok(Some(Secret::new(text.to_owned())))
+            }
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(error) => Err(error.to_string()),
+        }
+    }
+
+    fn set(&self, key_file: &Path, passphrase: &Secret) -> Result<(), String> {
+        self.entry(key_file)?
+            .set_secret(passphrase.expose().as_bytes())
+            .map_err(|error| error.to_string())
+    }
+
+    fn forget(&self, key_file: &Path) -> Result<(), String> {
+        match self.entry(key_file)?.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(error) => Err(error.to_string()),
+        }
+    }
+}
+
+/// Passphrases in memory, for tests. Prints no content.
+#[cfg(any(test, feature = "test-support"))]
+#[derive(Default)]
+pub struct InMemoryPassphrases {
+    entries: std::sync::Mutex<std::collections::HashMap<std::path::PathBuf, Secret>>,
+}
+
+#[cfg(any(test, feature = "test-support"))]
+impl fmt::Debug for InMemoryPassphrases {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("InMemoryPassphrases")
+    }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+impl InMemoryPassphrases {
+    fn entries(
+        &self,
+    ) -> std::sync::MutexGuard<'_, std::collections::HashMap<std::path::PathBuf, Secret>> {
+        self.entries
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+impl PassphraseStore for InMemoryPassphrases {
+    fn get(&self, key_file: &Path) -> Result<Option<Secret>, String> {
+        Ok(self.entries().get(key_file).cloned())
+    }
+
+    fn set(&self, key_file: &Path, passphrase: &Secret) -> Result<(), String> {
+        self.entries()
+            .insert(key_file.to_path_buf(), passphrase.clone());
+        Ok(())
+    }
+
+    fn forget(&self, key_file: &Path) -> Result<(), String> {
+        self.entries().remove(key_file);
+        Ok(())
     }
 }
 
@@ -196,6 +315,25 @@ mod tests {
             "another port is another entry"
         );
         assert_eq!(store.names(&home).1, "marc@files.example.org:22");
+    }
+
+    #[test]
+    fn a_passphrase_account_cannot_be_a_password_account() {
+        let account = passphrase_account(Path::new("/home/marc/.ssh/a@b:22"));
+        assert_eq!(account, "key-file:/home/marc/.ssh/a@b:22");
+        assert_ne!(account, ServerId::new("key-file", "x", 22).account());
+    }
+
+    #[test]
+    fn in_memory_passphrases_round_trip_per_path() {
+        let store = InMemoryPassphrases::default();
+        let key = Path::new("/k/a");
+        assert_eq!(store.get(key).unwrap(), None);
+        store.set(key, &Secret::new("pp".to_owned())).unwrap();
+        assert_eq!(store.get(key).unwrap().unwrap().expose(), "pp");
+        assert_eq!(store.get(Path::new("/k/b")).unwrap(), None);
+        store.forget(key).unwrap();
+        assert_eq!(store.get(key).unwrap(), None);
     }
 
     #[test]

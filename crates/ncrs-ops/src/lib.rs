@@ -3,6 +3,7 @@
 
 pub mod action;
 pub mod archive_flow;
+pub mod batch_rename;
 pub mod clipboard_flow;
 pub mod clipboard_paste;
 pub mod clipboard_text;
@@ -42,6 +43,10 @@ pub use archive_flow::{
     abort_archive_write, archive_written, begin_copy_into_archive, start_archive_delete,
     start_pack, PackRequest,
 };
+pub use batch_rename::flow::{
+    abort_batch_rename, open_batch_rename, update_batch_rename, BatchRenameRequest,
+};
+pub use batch_rename::state::BatchRenameMessage;
 pub use clipboard_flow::copy_files_to_clipboard;
 pub use clipboard_text::{
     clipboard_text, clipboard_text_of_files, copied_notice, ClipboardKind, ClipboardText, PanelRows,
@@ -71,8 +76,8 @@ pub use restore_flow::{
 };
 pub use row_failure::RowFailure;
 pub use state::{
-    ArchiveWrite, ArchiveWriteKind, Deletion, Extracting, Ops, PendingConflict, Restoration,
-    Transfer,
+    ArchiveWrite, ArchiveWriteKind, BatchRun, Deletion, Extracting, Ops, PendingConflict,
+    Restoration, Transfer,
 };
 pub use transfer::{Policy, Refusal, Scan, TransferDialog};
 pub use transfer_flow::{

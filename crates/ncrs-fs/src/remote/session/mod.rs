@@ -1,7 +1,9 @@
 //! Connections to servers, one per account, kept for the run. A connection is
 //! made in steps, each of them under a time limit, and the host key is judged
-//! before the password is sent: an unknown or changed key stops the login with
-//! nothing sent.
+//! before anything secret is sent: an unknown or changed key stops the login
+//! with nothing sent.
+
+mod login;
 
 use std::collections::HashMap;
 use std::fmt;
@@ -20,8 +22,11 @@ use russh_sftp::protocol::StatusCode;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::time::timeout;
 
+use super::credentials::{KeyringPassphrases, PassphraseStore};
 use super::known_hosts::{self, HostVerdict, KnownHosts};
-use super::{KnownHostsFiles, Secret, ServerId, Timeouts};
+use super::ssh_config::{self, HostSettings};
+use super::{KnownHostsFiles, ServerId, Timeouts};
+pub use login::{Login, LoginEnv};
 
 pub trait AsyncReadWrite: AsyncRead + AsyncWrite + Unpin + Send {}
 
@@ -108,6 +113,14 @@ pub enum ConnectFailure {
     },
     HostKeyRevoked,
     AuthFailed,
+    /// A key file is encrypted and no passphrase was given or kept for it.
+    PassphraseNeeded {
+        key_file: PathBuf,
+    },
+    /// The passphrase that was given does not open the key file.
+    WrongPassphrase {
+        key_file: PathBuf,
+    },
     /// The server does not take a password at all (key or keyboard-interactive
     /// login only), so a wrong one is not the matter.
     PasswordNotOffered,
@@ -148,6 +161,12 @@ impl fmt::Debug for ConnectFailure {
             }
             Self::HostKeyRevoked => f.write_str("HostKeyRevoked"),
             Self::AuthFailed => f.write_str("AuthFailed"),
+            Self::PassphraseNeeded { key_file } => {
+                write!(f, "PassphraseNeeded({})", key_file.display())
+            }
+            Self::WrongPassphrase { key_file } => {
+                write!(f, "WrongPassphrase({})", key_file.display())
+            }
             Self::PasswordNotOffered => f.write_str("PasswordNotOffered"),
             Self::Timeout => f.write_str("Timeout"),
             Self::NoCommonAlgorithm => f.write_str("NoCommonAlgorithm"),
@@ -289,6 +308,8 @@ impl client::Handler for HostCheck {
 /// A step of the connection that went wrong, before it is named for the user.
 enum Step {
     PasswordNotOffered,
+    PassphraseNeeded(PathBuf),
+    WrongPassphrase(PathBuf),
     Io(io::Error),
     Ssh(russh::Error),
     Sftp(SftpError),
@@ -319,6 +340,8 @@ pub struct Pool {
     dial: Arc<dyn Dial>,
     known: KnownHostsFiles,
     timeouts: Timeouts,
+    env: LoginEnv,
+    passphrases: Arc<dyn PassphraseStore>,
     /// The runtime the connections run on, noted when one is made, so that
     /// closing them can send its goodbye from a thread that is not in it.
     runtime: Mutex<Option<tokio::runtime::Handle>>,
@@ -339,8 +362,30 @@ impl Pool {
             dial,
             known,
             timeouts,
+            // In the tests nothing reads the machine of the developer: a test
+            // that wants a home folder or an agent puts one in.
+            env: if cfg!(any(test, feature = "test-support")) {
+                LoginEnv::default()
+            } else {
+                LoginEnv::from_process()
+            },
+            passphrases: Arc::new(KeyringPassphrases::new()),
             runtime: Mutex::new(None),
         }
+    }
+
+    /// The same pool reading its home folder, agent and user name from `env`.
+    #[must_use]
+    pub fn with_login_env(mut self, env: LoginEnv) -> Self {
+        self.env = env;
+        self
+    }
+
+    /// The same pool keeping key passphrases in `passphrases`.
+    #[must_use]
+    pub fn with_passphrases(mut self, passphrases: Arc<dyn PassphraseStore>) -> Self {
+        self.passphrases = passphrases;
+        self
     }
 
     /// The pool the app runs with: real sockets and the limits of
@@ -453,33 +498,44 @@ impl Pool {
         Err(error)
     }
 
-    /// Connects and logs in. The host key is judged first; the password is sent
-    /// only to a server whose key is known.
-    pub async fn connect(
-        &self,
-        server: &ServerId,
-        password: &Secret,
-    ) -> Result<(), ConnectFailure> {
+    /// Connects and logs in. The address may be an alias of `~/.ssh/config`;
+    /// the connection is kept under `server` as given. The host key is judged
+    /// first, by the host and port the alias resolves to; nothing secret is
+    /// sent to a server whose key is not known.
+    pub async fn connect(&self, server: &ServerId, login: &Login) -> Result<(), ConnectFailure> {
         if self.is_connected(server) {
             return Ok(());
         }
-        let files = self.known.clone();
-        let known = tokio::task::spawn_blocking(move || KnownHosts::load(&files))
-            .await
-            .map_err(|error| ConnectFailure::Unreachable(error.to_string()))?;
+        let (files, home, alias) = (
+            self.known.clone(),
+            self.env.home.clone(),
+            server.host.clone(),
+        );
+        let (known, settings) = tokio::task::spawn_blocking(move || {
+            (
+                KnownHosts::load(&files),
+                ssh_config::read_settings(home.as_deref(), &alias),
+            )
+        })
+        .await
+        .map_err(|error| ConnectFailure::Unreachable(error.to_string()))?;
+        let Some(target) = login::effective_server(server, &settings, self.env.os_user.as_deref())
+        else {
+            return Err(ConnectFailure::AuthFailed);
+        };
         *self.runtime.lock().unwrap_or_else(PoisonError::into_inner) =
             Some(tokio::runtime::Handle::current());
         let seen = Arc::new(Mutex::new(None));
-        let on_record = known.algorithms_for(&server.host, server.port);
+        let on_record = known.algorithms_for(&target.host, target.port);
         let check = HostCheck {
             known: Arc::new(known),
-            host: server.host.clone(),
-            port: server.port,
+            host: target.host.clone(),
+            port: target.port,
             seen: Arc::clone(&seen),
         };
         let opened = timeout(
             self.timeouts.connect,
-            self.open(server, password, check, &on_record),
+            self.open(&target, login, &settings, check, &on_record),
         )
         .await;
         match opened {
@@ -505,7 +561,8 @@ impl Pool {
     async fn open(
         &self,
         server: &ServerId,
-        password: &Secret,
+        login: &Login,
+        settings: &HostSettings,
         check: HostCheck,
         on_record: &[Algorithm],
     ) -> Result<Session, Step> {
@@ -523,23 +580,20 @@ impl Pool {
         // Ask what the server takes before anything secret is sent: a server
         // that offers no password login gets none, and the user hears why
         // instead of "wrong password". A server that names no methods is tried
-        // with the password all the same.
+        // with everything all the same.
         let probe = handle.authenticate_none(server.user.clone()).await?;
         if let client::AuthResult::Failure {
             remaining_methods, ..
         } = &probe
         {
-            if !remaining_methods.is_empty()
-                && !remaining_methods.contains(&russh::MethodKind::Password)
-            {
-                return Err(Step::PasswordNotOffered);
-            }
-            let login = handle
-                .authenticate_password(server.user.clone(), password.expose().to_owned())
-                .await?;
-            if !login.success() {
-                return Err(Step::AuthFailed);
-            }
+            let attempt = login::Attempt {
+                user: &server.user,
+                login,
+                env: &self.env,
+                identity_files: &settings.identity_files,
+                passphrases: &self.passphrases,
+            };
+            login::sign_in(&mut handle, remaining_methods, &attempt).await?;
         }
         let channel = handle.channel_open_session().await?;
         channel.request_subsystem(true, "sftp").await?;
@@ -549,14 +603,22 @@ impl Pool {
         Ok(Session { handle, sftp, home })
     }
 
-    /// Writes the key the user confirmed to the file of ncrs. Blocking.
+    /// Writes the key the user confirmed to the file of ncrs, under the host
+    /// and port the address resolves to: the ones `connect` judges the key by.
+    /// Blocking.
     pub fn trust(&self, server: &ServerId, key: &PublicKey) -> io::Result<()> {
         let own = self
             .known
             .own
             .as_deref()
             .ok_or_else(|| io::Error::other("there is no place to keep the host key"))?;
-        known_hosts::learn(own, &server.host, server.port, key)
+        let settings = ssh_config::read_settings(self.env.home.as_deref(), &server.host);
+        let (host, port) = login::effective_server(server, &settings, self.env.os_user.as_deref())
+            .map_or_else(
+                || (server.host.clone(), server.port),
+                |at| (at.host, at.port),
+            );
+        known_hosts::learn(own, &host, port, key)
     }
 }
 
@@ -581,6 +643,8 @@ fn failure_of(step: Step, seen: &Mutex<Option<Seen>>) -> ConnectFailure {
     match step {
         Step::AuthFailed => ConnectFailure::AuthFailed,
         Step::PasswordNotOffered => ConnectFailure::PasswordNotOffered,
+        Step::PassphraseNeeded(key_file) => ConnectFailure::PassphraseNeeded { key_file },
+        Step::WrongPassphrase(key_file) => ConnectFailure::WrongPassphrase { key_file },
         Step::Ssh(russh::Error::UnknownKey) => {
             let offered = seen.lock().unwrap_or_else(PoisonError::into_inner).take();
             match offered {
@@ -628,3 +692,12 @@ fn failure_of(step: Step, seen: &Mutex<Option<Seen>>) -> ConnectFailure {
     clippy::indexing_slicing
 )]
 mod tests;
+
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+mod login_tests;

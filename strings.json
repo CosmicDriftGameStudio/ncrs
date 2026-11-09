@@ -445,6 +445,12 @@
       "de": "Packe…"
     },
     {
+      "key": "job.rename",
+      "context": "Status bar while the entries of a batch rename are being renamed. Same shape as job.copy.",
+      "en": "Renaming…",
+      "de": "Benenne um…"
+    },
+    {
       "key": "job.extract",
       "context": "Status bar while a file is being unpacked from an archive into a temporary copy so the viewer can open it. Same shape as job.copy.",
       "en": "Extracting…",
@@ -3091,6 +3097,132 @@
       "de": "Dateien, die ncrs nicht lesen konnte, und warum. Erneut verarbeiten versucht es noch einmal."
     },
     {
+      "key": "settings.feature_usage",
+      "context": "Entry of the feature list on the settings tab and title of its page: what Hermes used on the own AI server, in requests, tokens and money.",
+      "en": "Usage",
+      "de": "Verbrauch"
+    },
+    {
+      "key": "settings.feature_usage_intro",
+      "context": "Line under the heading of the usage page on the settings tab. Hermes is the module that sorts documents; the own server is an AI server the user set up.",
+      "en": "What Hermes used on your own server. Kept only on this computer.",
+      "de": "Was Hermes auf deinem eigenen Server verbraucht hat. Bleibt nur auf diesem Rechner."
+    },
+    {
+      "key": "settings.usage_none",
+      "context": "Shown on the usage page when Hermes has not yet asked the own server anything.",
+      "en": "No requests yet.",
+      "de": "Noch keine Anfragen."
+    },
+    {
+      "key": "settings.usage_overview",
+      "context": "Heading of the first section of the usage page: the main numbers of the chosen period.",
+      "en": "Overview",
+      "de": "Überblick"
+    },
+    {
+      "key": "settings.usage_period",
+      "context": "Label before the buttons that choose how far back the usage page looks.",
+      "en": "Period",
+      "de": "Zeitraum"
+    },
+    {
+      "key": "settings.usage_period_days",
+      "context": "Button that chooses a period on the usage page. {days} is a number.",
+      "en": "{days} days",
+      "de": "{days} Tage"
+    },
+    {
+      "key": "settings.usage_spend",
+      "context": "Label over a number on the usage page: the money the server charged in the period.",
+      "en": "Spend",
+      "de": "Kosten"
+    },
+    {
+      "key": "settings.usage_requests",
+      "context": "Label over a number on the usage page: how many times Hermes asked the server.",
+      "en": "Requests",
+      "de": "Anfragen"
+    },
+    {
+      "key": "settings.usage_tokens",
+      "context": "Label over a number on the usage page: tokens are the pieces of text an AI model reads and writes, what servers count and charge for.",
+      "en": "Tokens",
+      "de": "Tokens"
+    },
+    {
+      "key": "settings.usage_cache_rate",
+      "context": "Label over a number on the usage page: the share of the text sent that the server had already seen and served from its cache, which is cheaper and faster.",
+      "en": "Cache hit rate",
+      "de": "Cache-Trefferquote"
+    },
+    {
+      "key": "settings.usage_cost_per_million",
+      "context": "Label over a number on the usage page: the money per one million tokens.",
+      "en": "Cost per 1M",
+      "de": "Kosten pro 1 Mio."
+    },
+    {
+      "key": "settings.usage_not_reported",
+      "context": "Shown in place of a money number on the usage page when the server does not say what a request cost.",
+      "en": "not reported",
+      "de": "nicht gemeldet"
+    },
+    {
+      "key": "settings.usage_priced_line",
+      "context": "Line under the numbers on the usage page. {priced} and {total} are numbers of requests.",
+      "en": "Money only where the server reports a price: {priced} of {total} requests.",
+      "de": "Kosten nur dort, wo der Server einen Preis meldet: {priced} von {total} Anfragen."
+    },
+    {
+      "key": "settings.usage_per_day",
+      "context": "Heading of the section of the usage page with a bar chart: the tokens of each day.",
+      "en": "Tokens per day",
+      "de": "Tokens pro Tag"
+    },
+    {
+      "key": "settings.usage_peak",
+      "context": "Line under the bar chart on the usage page: the busiest day. {tokens} is a short number such as 12.4k, {day} a date.",
+      "en": "Peak {tokens} on {day}",
+      "de": "Spitze {tokens} am {day}"
+    },
+    {
+      "key": "settings.usage_other",
+      "context": "Legend entry of the bar chart on the usage page: all models that do not have a colour of their own.",
+      "en": "Other",
+      "de": "Andere"
+    },
+    {
+      "key": "settings.usage_by_model",
+      "context": "Heading of the last section of the usage page: one bar for each AI model that was used.",
+      "en": "By model",
+      "de": "Nach Modell"
+    },
+    {
+      "key": "settings.usage_model_detail",
+      "context": "Line under the bar of a model on the usage page. {requests} is a number, {percent} a number from 0 to 100, {cost} an amount of money.",
+      "en": "{requests} requests · {percent} % from cache · {cost}",
+      "de": "{requests} Anfragen · {percent} % aus dem Cache · {cost}"
+    },
+    {
+      "key": "settings.usage_model_detail_no_price",
+      "context": "Line under the bar of a model on the usage page when the server reports no price. {requests} is a number, {percent} a number from 0 to 100.",
+      "en": "{requests} requests · {percent} % from cache · no price reported",
+      "de": "{requests} Anfragen · {percent} % aus dem Cache · kein Preis gemeldet"
+    },
+    {
+      "key": "settings.usage_model_detail_one",
+      "context": "Like the usage model detail line, for a model that was asked exactly once. {percent} a number from 0 to 100, {cost} an amount of money.",
+      "en": "1 request · {percent} % from cache · {cost}",
+      "de": "1 Anfrage · {percent} % aus dem Cache · {cost}"
+    },
+    {
+      "key": "settings.usage_model_detail_no_price_one",
+      "context": "Like the usage model detail line without a price, for a model that was asked exactly once. {percent} a number from 0 to 100.",
+      "en": "1 request · {percent} % from cache · no price reported",
+      "de": "1 Anfrage · {percent} % aus dem Cache · kein Preis gemeldet"
+    },
+    {
       "key": "settings.row_preset",
       "context": "Name of a setting on the appearance page: which built-in color scheme the look starts from.",
       "en": "Color scheme",
@@ -3560,9 +3692,15 @@
     },
     {
       "key": "settings.problem_endpoint_not_local",
-      "context": "Shown under the endpoint setting when the address is not on this machine, which is all that is allowed for now.",
-      "en": "Must be on this machine for now: localhost, 127.0.0.1 or ::1.",
-      "de": "Muss vorerst auf diesem Rechner liegen: localhost, 127.0.0.1 oder ::1."
+      "context": "Shown under the endpoint setting when the address starts with http:// and names another computer. Only https is allowed for another computer; plain http is for this computer only.",
+      "en": "Plain http is only for this computer. Use https.",
+      "de": "Einfaches http gilt nur für diesen Rechner. Nimm https."
+    },
+    {
+      "key": "settings.problem_not_understood",
+      "context": "Shown under the endpoint setting of the own server dialog when Save was pressed for a server on another computer but the box \"I understand\" is not ticked.",
+      "en": "Tick \"I understand\" below first.",
+      "de": "Setze unten zuerst den Haken bei \"Ich verstehe\"."
     },
     {
       "key": "settings.problem_needed",
@@ -3578,9 +3716,87 @@
     },
     {
       "key": "settings.row_ai_endpoint_note",
-      "context": "Explanation under the endpoint setting: the address of the server, which must be on this machine for now.",
-      "en": "An address on this machine, such as http://localhost:11434.",
-      "de": "Eine Adresse auf diesem Rechner, etwa http://localhost:11434."
+      "context": "Explanation under the endpoint setting of the own AI server: the address of a server that speaks the OpenAI API, which many AI services and programs do.",
+      "en": "The address of a server that speaks the OpenAI API.",
+      "de": "Die Adresse eines Servers, der die OpenAI-Schnittstelle spricht."
+    },
+    {
+      "key": "settings.row_ai_key",
+      "context": "Name of a setting in the own server dialog: the API key, a secret password that the server asks for. Shortest word for it.",
+      "en": "Key",
+      "de": "Schlüssel"
+    },
+    {
+      "key": "settings.row_ai_key_note",
+      "context": "Explanation under the key field in the own server dialog. The keychain is the password store of the operating system.",
+      "en": "Kept in the keychain of this computer. Empty for a server without a key.",
+      "de": "Liegt im Schlüsselbund dieses Rechners. Leer für einen Server ohne Schlüssel."
+    },
+    {
+      "key": "settings.ai_test",
+      "context": "Button in the own server dialog: asks the server whether it answers and which models it offers.",
+      "en": "Test connection",
+      "de": "Verbindung testen"
+    },
+    {
+      "key": "settings.ai_test_asking",
+      "context": "Status beside the Test connection button while the server has not answered yet.",
+      "en": "Asking the server …",
+      "de": "Frage den Server …"
+    },
+    {
+      "key": "settings.ai_test_listed",
+      "context": "Status beside the Test connection button: the server answered and lists its models. {count} is a number.",
+      "en": "Connected. The server offers {count} models.",
+      "de": "Verbunden. Der Server bietet {count} Modelle."
+    },
+    {
+      "key": "settings.ai_test_not_listed",
+      "context": "Status beside the Test connection button: the server answered but cannot tell which models it has, so the model name is typed by hand.",
+      "en": "Connected. The server does not list its models.",
+      "de": "Verbunden. Der Server nennt seine Modelle nicht."
+    },
+    {
+      "key": "settings.ai_test_key_refused",
+      "context": "Status beside the Test connection button: the server said the API key is wrong or missing.",
+      "en": "The server refused the key.",
+      "de": "Der Server hat den Schlüssel abgelehnt."
+    },
+    {
+      "key": "settings.ai_test_no_answer",
+      "context": "Status beside the Test connection button: no connection could be made or the server was too slow.",
+      "en": "The server did not answer.",
+      "de": "Der Server hat nicht geantwortet."
+    },
+    {
+      "key": "settings.ai_choose_model",
+      "context": "Caption of the model menu in the own server dialog while no model is chosen yet. The menu lists the models the server offers.",
+      "en": "Choose a model",
+      "de": "Modell wählen"
+    },
+    {
+      "key": "settings.ai_leaving_warning",
+      "context": "Warning in the own server dialog when the server is on another computer. Hermes is the module that sorts documents. {host} is the name of that computer.",
+      "en": "Your documents leave this computer. When Hermes uses this server, the text of the documents it reads and your chat go to {host}.",
+      "de": "Deine Dokumente verlassen diesen Rechner. Wenn Hermes diesen Server nutzt, gehen der Text der Dokumente, die er liest, und dein Chat an {host}."
+    },
+    {
+      "key": "settings.ai_understand",
+      "context": "Label of a checkbox in the own server dialog, under the warning that documents leave the computer. Saving needs it ticked.",
+      "en": "I understand",
+      "de": "Ich verstehe"
+    },
+    {
+      "key": "settings.ai_key_not_stored",
+      "context": "Shown when the API key could not be put in the keychain (the password store of the operating system). {reason} is the system's explanation.",
+      "en": "The address was saved, but the key could not be stored in the keychain: {reason}",
+      "de": "Die Adresse ist gespeichert, aber der Schlüssel konnte nicht im Schlüsselbund abgelegt werden: {reason}"
+    },
+    {
+      "key": "settings.server_dialog_save",
+      "context": "Button of the own server dialog that writes address, key and model. Verb.",
+      "en": "Save",
+      "de": "Speichern"
     },
     {
       "key": "settings.row_ai_model_name",
@@ -4591,6 +4807,18 @@
       "de": "Benutzername oder Passwort falsch"
     },
     {
+      "key": "error.remote_passphrase_needed",
+      "context": "Error in the connect dialog when the server would accept a key file, but the key file is protected by a passphrase and none was given or kept. Takes the path of the key file.",
+      "en": "The key file {file} is protected by a passphrase",
+      "de": "Die Schlüsseldatei {file} ist durch eine Passphrase geschützt"
+    },
+    {
+      "key": "error.remote_wrong_passphrase",
+      "context": "Error in the connect dialog when the passphrase typed for a key file does not open it. Takes the path of the key file.",
+      "en": "The passphrase does not open the key file {file}",
+      "de": "Die Passphrase öffnet die Schlüsseldatei {file} nicht"
+    },
+    {
       "key": "error.remote_timeout",
       "context": "Error when a server did not answer in time, in the connect dialog and in the status bar of a panel. Takes the host.",
       "en": "{host} did not answer in time",
@@ -4688,7 +4916,7 @@
     },
     {
       "key": "remote.password",
-      "context": "Label and placeholder of the password field in the connect dialog. The text typed there is hidden. Only passwords are supported, no key files.",
+      "context": "Label and placeholder of the password field in the connect dialog. The text typed there is hidden. Optional: the ssh agent and key files are tried first.",
       "en": "Password",
       "de": "Passwort"
     },
@@ -4709,6 +4937,78 @@
       "context": "Label and placeholder of the optional field in the connect dialog for the folder on the server to open first. Left empty, the home folder of the login opens.",
       "en": "Start folder (optional)",
       "de": "Startordner (optional)"
+    },
+    {
+      "key": "remote.key_file",
+      "context": "Label of the optional field in the connect dialog for a key file (an ssh private key) to log in with instead of a password. Left empty, ncrs tries the ssh agent and the keys of ~/.ssh by itself.",
+      "en": "Key file (optional)",
+      "de": "Schlüsseldatei (optional)"
+    },
+    {
+      "key": "remote.key_file_placeholder",
+      "context": "Placeholder of the empty key file field in the connect dialog. Says what ncrs tries without being told: the ssh agent, the entries of ~/.ssh/config and the default key files such as ~/.ssh/id_ed25519. Keep ~/.ssh/config and id_ed25519 as they are.",
+      "en": "Found by itself: ssh agent, ~/.ssh/config, id_ed25519 …",
+      "de": "Wird selbst gefunden: ssh-Agent, ~/.ssh/config, id_ed25519 …"
+    },
+    {
+      "key": "remote.key_file_choose",
+      "context": "Button next to the key file field in the connect dialog; opens the system dialog to pick the key file. The trailing dots show that a dialog follows.",
+      "en": "Choose …",
+      "de": "Wählen …"
+    },
+    {
+      "key": "remote.key_file_store_note",
+      "context": "Dimmed line under the key file field in the connect dialog of the App Store version only. The sandbox of that version blocks the ssh agent, so the key file has to be chosen by hand. The field is empty there, since nothing is found by itself.",
+      "en": "The App Store version cannot use the ssh agent. Choose the key file here.",
+      "de": "Die App-Store-Version kann den ssh-Agent nicht nutzen. Schlüsseldatei hier wählen."
+    },
+    {
+      "key": "remote.ssh_config",
+      "context": "Dimmed line under host and port in the connect dialog when ~/.ssh/config has an entry for the typed host name. Takes the details {details}, a comma-separated list of the host name, the port and the user from remote.ssh_config_port and remote.ssh_config_user. Keep ~/.ssh/config as it is.",
+      "en": "From ~/.ssh/config: {details}",
+      "de": "Aus ~/.ssh/config: {details}"
+    },
+    {
+      "key": "remote.ssh_config_port",
+      "context": "Part of the line remote.ssh_config: the port the ssh config gives for the host. Takes the port number.",
+      "en": "port {port}",
+      "de": "Port {port}"
+    },
+    {
+      "key": "remote.ssh_config_user",
+      "context": "Part of the line remote.ssh_config: the user name the ssh config gives for the host. Takes the user name.",
+      "en": "user {user}",
+      "de": "Benutzer {user}"
+    },
+    {
+      "key": "remote.passphrase_title",
+      "context": "Title of the dialog stage that asks for the passphrase of a key file. A passphrase is the password that protects an ssh private key.",
+      "en": "Passphrase for the key",
+      "de": "Passphrase für den Schlüssel"
+    },
+    {
+      "key": "remote.passphrase_body",
+      "context": "Text of the dialog stage that asks for the passphrase of a key file. Takes the path of the key file, with ~ for the home folder.",
+      "en": "{key} is locked. The server asks for this key.",
+      "de": "{key} ist gesperrt. Der Server verlangt diesen Schlüssel."
+    },
+    {
+      "key": "remote.passphrase_remember",
+      "context": "Label of the checkbox in the passphrase stage of the connect dialog that stores the passphrase in the system keychain, so the key opens without asking next time.",
+      "en": "Remember passphrase in the keychain",
+      "de": "Passphrase im Schlüsselbund merken"
+    },
+    {
+      "key": "remote.passphrase_unlock",
+      "context": "Button of the passphrase stage of the connect dialog: opens the key file with the typed passphrase and connects. Verb, one word.",
+      "en": "Unlock",
+      "de": "Entsperren"
+    },
+    {
+      "key": "remote.passphrase_wrong",
+      "context": "Error line in the passphrase stage of the connect dialog when the typed passphrase does not open the key file.",
+      "en": "That passphrase did not unlock the key.",
+      "de": "Diese Passphrase hat den Schlüssel nicht entsperrt."
     },
     {
       "key": "remote.connect",
@@ -5201,6 +5501,282 @@
       "context": "Theme name of the key action restore_last_deletion, shown dimmed after its plain name in the command palette, and matched when typing. Plays on action.delete.theme, the garbage ball.",
       "en": "back from the garbage ball",
       "de": "zurück vom Müllball"
+    },
+    {
+      "key": "action.undo_rename",
+      "context": "Command that takes back the latest batch rename (the rename of several tagged entries at once). Plain name. Only offered while there is a batch to take back.",
+      "en": "Undo rename",
+      "de": "Umbenennen zurücknehmen"
+    },
+    {
+      "key": "batch_rename.title",
+      "context": "Batch rename dialog. Title; {count} is how many entries are renamed, always 2 or more.",
+      "en": "Rename {count} entries",
+      "de": "{count} Einträge umbenennen"
+    },
+    {
+      "key": "batch_rename.new_name",
+      "context": "Batch rename dialog. Label of the field that holds the pattern for the new names.",
+      "en": "New name",
+      "de": "Neuer Name"
+    },
+    {
+      "key": "batch_rename.add",
+      "context": "Batch rename dialog. Label of the row of buttons that insert a part into the pattern (name, counter, date, extension).",
+      "en": "Add",
+      "de": "Einfügen"
+    },
+    {
+      "key": "batch_rename.document",
+      "context": "Batch rename dialog. Label of the row of buttons that insert a field Hermes read from the document (sender, date, kind, amount).",
+      "en": "Document",
+      "de": "Dokument"
+    },
+    {
+      "key": "batch_rename.token_name",
+      "context": "Batch rename dialog. Button that inserts the old name of the entry into the pattern.",
+      "en": "Name",
+      "de": "Name"
+    },
+    {
+      "key": "batch_rename.token_part",
+      "context": "Batch rename dialog. Button that inserts the first characters of the old name into the pattern.",
+      "en": "Part of name",
+      "de": "Namensteil"
+    },
+    {
+      "key": "batch_rename.token_counter",
+      "context": "Batch rename dialog. Button that inserts a running number into the pattern.",
+      "en": "Counter",
+      "de": "Zähler"
+    },
+    {
+      "key": "batch_rename.token_modified",
+      "context": "Batch rename dialog. Button that inserts the date the file was last changed into the pattern.",
+      "en": "Date modified",
+      "de": "Änderungsdatum"
+    },
+    {
+      "key": "batch_rename.token_taken",
+      "context": "Batch rename dialog. Button that inserts the date a photo was taken into the pattern; the modified date stands in when the file has none.",
+      "en": "Date taken",
+      "de": "Aufnahmedatum"
+    },
+    {
+      "key": "batch_rename.token_extension",
+      "context": "Batch rename dialog. Button that inserts the file extension, with its dot, into the pattern.",
+      "en": "Extension",
+      "de": "Endung"
+    },
+    {
+      "key": "batch_rename.token_sender",
+      "context": "Batch rename dialog. Button that inserts the sender of the document, as Hermes read it, into the pattern.",
+      "en": "Sender",
+      "de": "Absender"
+    },
+    {
+      "key": "batch_rename.token_document_date",
+      "context": "Batch rename dialog. Button that inserts the date printed on the document into the pattern.",
+      "en": "Document date",
+      "de": "Dokumentdatum"
+    },
+    {
+      "key": "batch_rename.token_kind",
+      "context": "Batch rename dialog. Button that inserts the kind of the document (invoice, contract) into the pattern.",
+      "en": "Kind",
+      "de": "Art"
+    },
+    {
+      "key": "batch_rename.token_amount",
+      "context": "Batch rename dialog. Button that inserts the amount of the document into the pattern.",
+      "en": "Amount",
+      "de": "Betrag"
+    },
+    {
+      "key": "batch_rename.start",
+      "context": "Batch rename dialog. Label above the field for the number the counter starts at.",
+      "en": "Start",
+      "de": "Start"
+    },
+    {
+      "key": "batch_rename.digits",
+      "context": "Batch rename dialog. Label above the field for how many digits the counter is padded to with zeros.",
+      "en": "Digits",
+      "de": "Stellen"
+    },
+    {
+      "key": "batch_rename.find",
+      "context": "Batch rename dialog. Label above the field for the text to look for in the new names.",
+      "en": "Find",
+      "de": "Suchen"
+    },
+    {
+      "key": "batch_rename.replace",
+      "context": "Batch rename dialog. Label above the field for the text that replaces what Find matched.",
+      "en": "Replace",
+      "de": "Ersetzen"
+    },
+    {
+      "key": "batch_rename.case",
+      "context": "Batch rename dialog. Label above the choice of upper and lower case for the new names.",
+      "en": "Case",
+      "de": "Schreibweise"
+    },
+    {
+      "key": "batch_rename.case_keep",
+      "context": "Batch rename dialog. Choice: leave upper and lower case as they are.",
+      "en": "Keep",
+      "de": "Belassen"
+    },
+    {
+      "key": "batch_rename.case_lower",
+      "context": "Batch rename dialog. Choice: make the new names lower case.",
+      "en": "lower",
+      "de": "klein"
+    },
+    {
+      "key": "batch_rename.case_upper",
+      "context": "Batch rename dialog. Choice: make the new names upper case.",
+      "en": "UPPER",
+      "de": "GROSS"
+    },
+    {
+      "key": "batch_rename.regex",
+      "context": "Batch rename dialog. Checkbox: Find is a regular expression.",
+      "en": "Regular expression",
+      "de": "Regulärer Ausdruck"
+    },
+    {
+      "key": "batch_rename.column_old",
+      "context": "Batch rename dialog. Header of the preview column with the current names.",
+      "en": "Old name",
+      "de": "Alter Name"
+    },
+    {
+      "key": "batch_rename.column_new",
+      "context": "Batch rename dialog. Header of the preview column with the names the pattern gives.",
+      "en": "New name",
+      "de": "Neuer Name"
+    },
+    {
+      "key": "batch_rename.column_problem",
+      "context": "Batch rename dialog. Header of the preview column that says what is wrong with a name.",
+      "en": "Problem",
+      "de": "Problem"
+    },
+    {
+      "key": "batch_rename.clashes",
+      "context": "Batch rename dialog. Shown under the preview while names clash or are not allowed; {count} is how many rows have a problem. The Rename button stays off until they are fixed.",
+      "en": "{count} names clash. Change the pattern to go on.",
+      "de": "{count} Namen kollidieren. Ändere das Muster, um fortzufahren."
+    },
+    {
+      "key": "batch_rename.regex_error",
+      "context": "Batch rename dialog. Shown under the preview when Find is not a valid regular expression. {reason} is the parser's message.",
+      "en": "Not a valid regular expression: {reason}",
+      "de": "Kein gültiger regulärer Ausdruck: {reason}"
+    },
+    {
+      "key": "batch_rename.hermes",
+      "context": "Batch rename dialog. What Hermes thinks the names of this folder follow. {pattern} is a pattern with tokens in braces; keep it unchanged.",
+      "en": "Hermes: {pattern} fits this folder",
+      "de": "Hermes: {pattern} passt zu diesem Ordner"
+    },
+    {
+      "key": "batch_rename.hermes_use",
+      "context": "Batch rename dialog. Button that puts the pattern Hermes proposes into the field.",
+      "en": "Use",
+      "de": "Übernehmen"
+    },
+    {
+      "key": "batch_rename.confirm",
+      "context": "Batch rename dialog. Button that renames the entries.",
+      "en": "Rename",
+      "de": "Umbenennen"
+    },
+    {
+      "key": "batch_rename.problem_same",
+      "context": "Batch rename dialog. Problem of a row whose new name is already given to an earlier row; {n} is that row's line number.",
+      "en": "Same as line {n}",
+      "de": "Wie Zeile {n}"
+    },
+    {
+      "key": "batch_rename.problem_exists",
+      "context": "Batch rename dialog. Problem of a row whose new name belongs to another entry of the folder.",
+      "en": "Exists in this folder",
+      "de": "Gibt es schon in diesem Ordner"
+    },
+    {
+      "key": "batch_rename.problem_missing",
+      "context": "Batch rename dialog. Problem of a row whose pattern uses a field that is not known for it; {field} is the field's name from the field_* strings.",
+      "en": "No {field} known",
+      "de": "Kein {field} bekannt"
+    },
+    {
+      "key": "batch_rename.field_modified",
+      "context": "Batch rename dialog. Name of the modified date, filled into problem_missing.",
+      "en": "date modified",
+      "de": "Änderungsdatum"
+    },
+    {
+      "key": "batch_rename.field_sender",
+      "context": "Batch rename dialog. Name of the sender, filled into problem_missing.",
+      "en": "sender",
+      "de": "Absender"
+    },
+    {
+      "key": "batch_rename.field_document_date",
+      "context": "Batch rename dialog. Name of the document date, filled into problem_missing.",
+      "en": "document date",
+      "de": "Dokumentdatum"
+    },
+    {
+      "key": "batch_rename.field_kind",
+      "context": "Batch rename dialog. Name of the document kind, filled into problem_missing.",
+      "en": "kind",
+      "de": "Art"
+    },
+    {
+      "key": "batch_rename.field_amount",
+      "context": "Batch rename dialog. Name of the amount, filled into problem_missing.",
+      "en": "amount",
+      "de": "Betrag"
+    },
+    {
+      "key": "batch_rename.done",
+      "context": "Notice after a batch rename. {count} is how many entries were renamed. F1 opens the command list, where Undo rename takes it back.",
+      "en": "{count} entries renamed. To take it back: F1, Undo rename.",
+      "de": "{count} Einträge umbenannt. Zum Zurücknehmen: F1, Umbenennen zurücknehmen."
+    },
+    {
+      "key": "batch_rename.undone",
+      "context": "Notice after Undo rename took the names of the last batch back. {count} is how many entries.",
+      "en": "{count} entries have their old names back.",
+      "de": "{count} Einträge haben ihre alten Namen zurück."
+    },
+    {
+      "key": "batch_rename.failed",
+      "context": "Error when a batch rename stopped. {name} is the entry that failed, {reason} the system's reason. Everything renamed before it was put back.",
+      "en": "Could not rename {name}: {reason}. Nothing was changed.",
+      "de": "{name} konnte nicht umbenannt werden: {reason}. Es wurde nichts geändert."
+    },
+    {
+      "key": "batch_rename.rollback_failed",
+      "context": "Error when a batch rename stopped and the names changed before it could not all be put back. {name} is the entry that failed, {reason} the system's reason.",
+      "en": "Could not rename {name}: {reason}. Some entries keep their new names.",
+      "de": "{name} konnte nicht umbenannt werden: {reason}. Einige Einträge behalten ihre neuen Namen."
+    },
+    {
+      "key": "batch_rename.undo_gone",
+      "context": "Error of Undo rename when an entry of the batch has been moved or deleted since. {name} is its name. Nothing is changed.",
+      "en": "{name} is gone. Nothing was changed.",
+      "de": "{name} gibt es nicht mehr. Es wurde nichts geändert."
+    },
+    {
+      "key": "batch_rename.undo_taken",
+      "context": "Error of Undo rename when the old name of an entry belongs to another entry now. {name} is the old name. Nothing is changed.",
+      "en": "{name} is taken by another entry. Nothing was changed.",
+      "de": "{name} ist von einem anderen Eintrag belegt. Es wurde nichts geändert."
     },
     {
       "key": "action.open_trash_in_finder",
@@ -9977,6 +10553,222 @@
       "context": "Button in the row of a favourite on the Favourites page: moves the folder one place down the list. One word.",
       "en": "Down",
       "de": "Runter"
+    },
+    {
+      "key": "action.compare_folders",
+      "context": "Command and context menu entry, also the title of its first dialog: compares the folders shown in the left and the right panel and marks what differs. Verb phrase, imperative.",
+      "en": "Compare folders",
+      "de": "Ordner vergleichen"
+    },
+    {
+      "key": "column.compare",
+      "context": "Column header above the comparison marks of a file panel while two folders are compared; it takes the place of the Hermes column. A noun.",
+      "en": "Compare",
+      "de": "Vergleich"
+    },
+    {
+      "key": "compare.left",
+      "context": "Compare folders dialog: label before the folder of the left panel. One word.",
+      "en": "Left",
+      "de": "Links"
+    },
+    {
+      "key": "compare.right",
+      "context": "Compare folders dialog: label before the folder of the right panel. One word.",
+      "en": "Right",
+      "de": "Rechts"
+    },
+    {
+      "key": "compare.criteria",
+      "context": "Compare folders dialog: heading above the checkboxes that say what two files must have in common to count as the same file.",
+      "en": "Files count as the same when these match",
+      "de": "Dateien gelten als gleich, wenn diese übereinstimmen"
+    },
+    {
+      "key": "compare.criterion_date",
+      "context": "Compare folders dialog: checkbox. The modification dates of two files must match, within a couple of seconds. Otherwise the newer file is marked.",
+      "en": "Date modified",
+      "de": "Änderungsdatum"
+    },
+    {
+      "key": "compare.criterion_content",
+      "context": "Compare folders dialog: checkbox. The content of two files of the same size must match.",
+      "en": "Content",
+      "de": "Inhalt"
+    },
+    {
+      "key": "compare.content_note",
+      "context": "Compare folders dialog: dim note under the Content checkbox. A server is an SFTP server the panel shows.",
+      "en": "Reads every file on both sides, so it takes longer. On a server it downloads them.",
+      "de": "Liest jede Datei auf beiden Seiten, das dauert länger. Auf einem Server werden sie heruntergeladen."
+    },
+    {
+      "key": "compare.subfolders",
+      "context": "Compare folders dialog: checkbox. The folders below the two folders are compared too; a folder is marked when something below it differs.",
+      "en": "Include subfolders",
+      "de": "Unterordner einbeziehen"
+    },
+    {
+      "key": "compare.start",
+      "context": "Compare folders dialog: the button that starts the comparison. Verb, imperative.",
+      "en": "Compare",
+      "de": "Vergleichen"
+    },
+    {
+      "key": "compare.bar_title",
+      "context": "Bar above the panels while two folders are compared: its heading. A noun.",
+      "en": "Compare",
+      "de": "Vergleich"
+    },
+    {
+      "key": "compare.tally_only_left",
+      "context": "Compare bar: after a plus sign and a count, the entries that exist only in the left folder. Short, lowercase.",
+      "en": "only left",
+      "de": "nur links"
+    },
+    {
+      "key": "compare.tally_newer_left",
+      "context": "Compare bar: after an up triangle and a count, the files that are newer in the left folder. Short, lowercase.",
+      "en": "newer left",
+      "de": "links neuer"
+    },
+    {
+      "key": "compare.tally_only_right",
+      "context": "Compare bar: after a plus sign and a count, the entries that exist only in the right folder. Short, lowercase.",
+      "en": "only right",
+      "de": "nur rechts"
+    },
+    {
+      "key": "compare.tally_newer_right",
+      "context": "Compare bar: after an up triangle and a count, the files that are newer in the right folder. Short, lowercase.",
+      "en": "newer right",
+      "de": "rechts neuer"
+    },
+    {
+      "key": "compare.tally_different",
+      "context": "Compare bar: after an unequal sign and a count, the entries that differ without one being newer. Short, lowercase.",
+      "en": "different",
+      "de": "unterschiedlich"
+    },
+    {
+      "key": "compare.tally_same",
+      "context": "Compare bar: after an equals sign and a count, the entries that are the same on both sides. Short, lowercase.",
+      "en": "same",
+      "de": "gleich"
+    },
+    {
+      "key": "compare.only_differences",
+      "context": "Compare bar: checkbox. Both panels then show only the entries that are not the same.",
+      "en": "Only differences",
+      "de": "Nur Unterschiede"
+    },
+    {
+      "key": "compare.sync_right",
+      "context": "Compare bar: button that copies what is missing or newer on the left to the right folder. The arrow points at the right; {count} is how many entries it copies.",
+      "en": "Sync → {count}",
+      "de": "Abgleich → {count}"
+    },
+    {
+      "key": "compare.sync_left",
+      "context": "Compare bar: button that copies what is missing or newer on the right to the left folder. The arrow points at the left; {count} is how many entries it copies.",
+      "en": "← Sync {count}",
+      "de": "← Abgleich {count}"
+    },
+    {
+      "key": "compare.again",
+      "context": "Compare bar: button that compares the two folders again, with the same settings.",
+      "en": "Compare again",
+      "de": "Erneut vergleichen"
+    },
+    {
+      "key": "compare.running",
+      "context": "Compare bar: shown instead of the counts while the folders are being read and compared.",
+      "en": "Comparing…",
+      "de": "Vergleiche…"
+    },
+    {
+      "key": "compare.failed",
+      "context": "Status line when a folder could not be read during the comparison; the comparison ends and nothing is marked. {reason} is the system's explanation.",
+      "en": "Comparison stopped: {reason}",
+      "de": "Vergleich abgebrochen: {reason}"
+    },
+    {
+      "key": "compare.mark_only_here",
+      "context": "Compare column of a file panel: the entry exists only in this panel's folder. Starts with a plus sign.",
+      "en": "+ only here",
+      "de": "+ nur hier"
+    },
+    {
+      "key": "compare.mark_newer_here",
+      "context": "Compare column of a file panel: the file is newer than the one in the other panel. Starts with an up triangle.",
+      "en": "▲ newer here",
+      "de": "▲ hier neuer"
+    },
+    {
+      "key": "compare.mark_older_here",
+      "context": "Compare column of a file panel: the file is older than the one in the other panel. Starts with a down triangle.",
+      "en": "▽ older here",
+      "de": "▽ hier älter"
+    },
+    {
+      "key": "compare.mark_different",
+      "context": "Compare column of a file panel: the entry exists on both sides and differs, without one being newer. Starts with an unequal sign.",
+      "en": "≠ different",
+      "de": "≠ unterschiedlich"
+    },
+    {
+      "key": "compare.mark_same",
+      "context": "Compare column of a file panel: the entry is the same on both sides. Starts with an equals sign.",
+      "en": "= same",
+      "de": "= gleich"
+    },
+    {
+      "key": "compare.sync_title",
+      "context": "Sync dialog title; {path} is the folder the entries are copied to.",
+      "en": "Sync to {path}",
+      "de": "Abgleichen nach {path}"
+    },
+    {
+      "key": "compare.sync_intro",
+      "context": "Sync dialog: line under the title; {count} is how many entries are copied, {source} the folder they come from. The copy asks about files that already exist, as every copy does.",
+      "en": "{count} entries from {source}. Files that already exist are asked about, one by one or for all.",
+      "de": "{count} Einträge aus {source}. Bei Dateien, die es schon gibt, wird nachgefragt, einzeln oder für alle."
+    },
+    {
+      "key": "compare.sync_delete_right",
+      "context": "Sync dialog: checkbox when syncing to the right. Off every time the dialog opens.",
+      "en": "Also delete on the right what is not on the left",
+      "de": "Auch rechts löschen, was links nicht da ist"
+    },
+    {
+      "key": "compare.sync_delete_left",
+      "context": "Sync dialog: checkbox when syncing to the left. Off every time the dialog opens.",
+      "en": "Also delete on the left what is not on the right",
+      "de": "Auch links löschen, was rechts nicht da ist"
+    },
+    {
+      "key": "compare.sync_delete_heading",
+      "context": "Sync dialog, in the error color above the list of what would be deleted; {count} is how many entries, {path} the folder they are deleted from.",
+      "en": "{count} entries will be deleted from {path}:",
+      "de": "{count} Einträge werden aus {path} gelöscht:"
+    },
+    {
+      "key": "compare.sync_delete_unavailable",
+      "context": "Sync dialog: dim note under the disabled delete checkbox, when the target folder is on a server or in an archive.",
+      "en": "Nothing is deleted on a server or in an archive.",
+      "de": "Auf einem Server oder in einem Archiv wird nichts gelöscht."
+    },
+    {
+      "key": "compare.sync_copy_and_delete",
+      "context": "Sync dialog: the button when the delete box is ticked; {copies} and {deletions} are counts of entries.",
+      "en": "Copy {copies}, delete {deletions}",
+      "de": "{copies} kopieren, {deletions} löschen"
+    },
+    {
+      "key": "compare.sync_copy_only",
+      "context": "Sync dialog: the button when nothing is deleted; {copies} is the count of entries copied.",
+      "en": "Copy {copies}",
+      "de": "{copies} kopieren"
     }
   ]
 }

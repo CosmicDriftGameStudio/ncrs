@@ -55,6 +55,7 @@ pub const NO_DATA_DIRECTORY: &str = "no data directory";
 type SharedStore = Arc<dyn KeyStore + Send + Sync>;
 type IndexSlot = Arc<Mutex<Option<Index>>>;
 
+pub use ai::http_ai_provider;
 #[cfg(feature = "local-ai")]
 pub use ai::shared_local_model;
 pub use ai::AiStatus;

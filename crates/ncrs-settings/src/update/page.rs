@@ -1,12 +1,12 @@
 use iced::Task;
-use ncrs_config::config::{self, Config, FilingWriteError};
+use ncrs_config::config::{self, AiProviderChoice, Config, FilingWriteError};
 use ncrs_config::SettingsFeature;
 use ncrs_fs::runs_in_app_sandbox;
 use ncrs_i18n::{fill_template, Msg};
 use ncrs_ui_kit::focus::release_focus;
 use ncrs_ui_kit::font;
 
-use super::{documents, keys, models, theme};
+use super::{documents, keys, models, own_server, theme};
 use crate::action::Action;
 use crate::ai_model::InstallOutcome;
 use crate::ctx::Ctx;
@@ -60,14 +60,16 @@ pub fn update(
                 .as_ref()
                 .is_some_and(|state| state.feature != feature) =>
         {
-            leave_page(settings, ctx, |held| {
+            let reading = page_data(feature, ctx);
+            let left = leave_page(settings, ctx, |held| {
                 if let Some(state) = held.page.as_mut() {
                     state.feature = feature;
                     state.marked_row = None;
                     state.focus = crate::focus::Focus::default();
                 }
                 Task::none()
-            })
+            });
+            Task::batch([left, reading])
         }
         SettingsMessage::Select(_) => in_settings(settings, ctx, |state| {
             state.marked_row = None;
@@ -170,6 +172,14 @@ pub fn update(
         | SettingsMessage::ModelRemoved { .. }) => {
             documents::update(settings, forwarded, ctx, actions)
         }
+        own @ (SettingsMessage::AiKey(_)
+        | SettingsMessage::TestAiServer
+        | SettingsMessage::AiChecked { .. }
+        | SettingsMessage::UnderstandLeaving(_)
+        | SettingsMessage::SaveServer
+        | SettingsMessage::AiKeyStored(_)
+        | SettingsMessage::UsagePeriod(_)
+        | SettingsMessage::UsageLoaded(_)) => own_server::update(settings, own, ctx),
         SettingsMessage::Change(change) => write_setting(settings, change, ctx),
         SettingsMessage::Columns(edit) => columns_edit(settings, edit, ctx),
         SettingsMessage::Favourites(edit) => {
@@ -284,10 +294,18 @@ fn written(
     match result {
         Ok(config) => {
             settings.failure = None;
+            let mut keeping = Task::none();
             if let Some(state) = settings.page.as_mut() {
                 state.written(&change, &config);
+                if let SettingChange::AiProvider(AiProviderChoice::Http { endpoint, .. }) = &change
+                {
+                    if let Some(key) = state.ai_key.take() {
+                        keeping = own_server::keep_key(endpoint.clone(), key, state.sandboxed, ctx);
+                    }
+                }
             }
             actions.push(Action::Apply { change, config });
+            return keeping;
         }
         Err(error) => {
             if matches!(change, SettingChange::AiEnabled(true)) {
@@ -363,17 +381,27 @@ pub fn show_setting(
     feature: SettingsFeature,
     row: Option<String>,
 ) -> Task<Message> {
+    let reading = page_data(feature, ctx);
     if settings.page.is_some() {
-        return leave_page(settings, ctx, |held| {
+        let left = leave_page(settings, ctx, |held| {
             if let Some(state) = held.page.as_mut() {
                 state.show(feature, row);
             }
             Task::none()
         });
+        return Task::batch([left, reading]);
     }
     let opened = open_settings(settings, ctx);
     if let Some(state) = settings.page.as_mut() {
         state.show(feature, row);
     }
-    opened
+    Task::batch([opened, reading])
+}
+
+/// What a page reads when it is shown: the Usage page, its log.
+fn page_data(feature: SettingsFeature, ctx: &Ctx<'_>) -> Task<Message> {
+    match feature {
+        SettingsFeature::Usage => own_server::load_usage(ctx),
+        _ => Task::none(),
+    }
 }

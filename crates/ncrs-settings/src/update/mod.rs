@@ -4,6 +4,7 @@
 mod documents;
 mod keys;
 mod models;
+mod own_server;
 mod page;
 mod theme;
 

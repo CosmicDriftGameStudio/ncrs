@@ -286,6 +286,11 @@ pub fn resolve_servers(sections: &[ServerSection]) -> Result<Vec<ServerEntry>, F
                 port,
                 user,
                 path,
+                key_file: section
+                    .key_file
+                    .as_ref()
+                    .map(|file| file.get_ref().trim().to_owned())
+                    .filter(|file| !file.is_empty()),
             })
         })
         .collect()

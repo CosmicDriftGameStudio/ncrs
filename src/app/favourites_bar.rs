@@ -24,9 +24,19 @@ const OPEN_ACTIONS: [KeyAction; FAVOURITES_BAR_SLOTS] = [
 ];
 
 impl App {
-    /// What the bar takes off the panels: nothing while it is off or there is
-    /// no favourite to show.
+    /// What the bars above the panels take off them: the favourites bar,
+    /// nothing while it is off or there is no favourite to show, and the
+    /// compare bar while a comparison is up.
     pub(in crate::app) fn favourites_bar_height(&self) -> f32 {
+        let compare_bar = if self.compare.run.is_some() {
+            ncrs_ui_kit::compare_bar::COMPARE_BAR_HEIGHT
+        } else {
+            0.0
+        };
+        self.favourites_own_height() + compare_bar
+    }
+
+    fn favourites_own_height(&self) -> f32 {
         if self.favourites_bar_on && !self.panels.favourites.is_empty() {
             bar::FAVOURITES_BAR_HEIGHT
         } else {
@@ -84,7 +94,7 @@ impl App {
 
     /// The bar, or `None` where it is not drawn.
     pub(in crate::app) fn favourites_bar_view(&self) -> Option<Element<'_, Message>> {
-        if self.favourites_bar_height() == 0.0 {
+        if self.favourites_own_height() == 0.0 {
             return None;
         }
         let labels = ncrs_files::favourites::slot_labels(&self.panels.favourites, Some(&self.home));

@@ -17,15 +17,16 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use russh::keys::ssh_key::private::Ed25519Keypair;
-use russh::keys::PrivateKey;
-use russh::server::{Auth, ChannelOpenHandle, Msg, Session};
+use russh::keys::{PrivateKey, PublicKey};
+use russh::server::{Auth, ChannelOpenHandle, Msg, PublicKeyOffer, Session, VerifiedPublicKey};
 use russh::{Channel, ChannelId};
 use russh_sftp::protocol::{
     Attrs, Data, File, FileAttributes, Handle, Name, OpenFlags, Status, StatusCode,
 };
 
+use super::credentials::PassphraseStore;
 use super::known_hosts::KnownHostsFiles;
-use super::session::{AsyncReadWrite, BoxFuture, Dial, Pool};
+use super::session::{AsyncReadWrite, BoxFuture, Dial, Login, LoginEnv, Pool};
 use super::{ServerId, Timeouts};
 
 pub const USER: &str = "tester";
@@ -97,11 +98,47 @@ pub fn other_public_key_text() -> String {
         .unwrap_or_default()
 }
 
+/// Writes the ed25519 key of `seed` into `folder` as `name`, in the OpenSSH
+/// format, encrypted with `passphrase` when there is one (one round of the
+/// key derivation, so that a debug build is not slow). Returns the file.
+pub fn write_client_key(
+    folder: &Path,
+    name: &str,
+    seed: &[u8; 32],
+    passphrase: Option<&str>,
+) -> PathBuf {
+    use russh::keys::ssh_key::{Cipher, Kdf, LineEnding};
+    let plain = host_key(seed);
+    let key = match passphrase {
+        None => plain,
+        Some(secret) => plain
+            .encrypt_with(
+                Cipher::Aes256Ctr,
+                Kdf::Bcrypt {
+                    salt: vec![3; 16],
+                    rounds: 1,
+                },
+                0x0102_0304,
+                secret,
+            )
+            .unwrap(),
+    };
+    let file = folder.join(name);
+    std::fs::write(&file, key.to_openssh(LineEnding::LF).unwrap().as_bytes()).unwrap();
+    file
+}
+
+/// The public half of the key `write_client_key` writes for `seed`.
+pub fn client_public_key(seed: &[u8; 32]) -> PublicKey {
+    host_key(seed).public_key().clone()
+}
+
 /// What the server saw and how it misbehaves on request.
 #[derive(Debug, Default)]
 pub struct Control {
-    /// "password" is recorded when a client sends one, so a test can tell that
-    /// none was sent to a server it did not trust.
+    /// "none", "publickey" (a key offered) and "password" are recorded when a
+    /// client tries them, so a test can tell that nothing was sent to a server
+    /// it did not trust.
     events: Mutex<Vec<&'static str>>,
     served: AtomicU64,
     stall_after: AtomicU64,
@@ -169,6 +206,10 @@ pub struct TestServer {
     pub keys: Vec<PrivateKey>,
     /// Whether it takes a password; without, only keyboard-interactive.
     pub password_login: bool,
+    /// Whether it takes public keys only.
+    pub key_login_only: bool,
+    /// The keys that may log in.
+    pub authorized_keys: Arc<Mutex<Vec<PublicKey>>>,
 }
 
 impl TestServer {
@@ -192,7 +233,24 @@ impl TestServer {
         Self::with_keys(vec![host_key(&KEY_SEED)], false)
     }
 
+    /// A server that takes only public keys.
+    pub fn key_login_only() -> Arc<Self> {
+        Self::build(vec![host_key(&KEY_SEED)], true, true)
+    }
+
+    /// Lets the owner of `key` log in as the tester.
+    pub fn authorize(&self, key: &PublicKey) {
+        self.authorized_keys
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(key.clone());
+    }
+
     fn with_keys(keys: Vec<PrivateKey>, password_login: bool) -> Arc<Self> {
+        Self::build(keys, password_login, false)
+    }
+
+    fn build(keys: Vec<PrivateKey>, password_login: bool, key_login_only: bool) -> Arc<Self> {
         let root = tempfile::tempdir().unwrap_or_else(|error| panic!("a scratch folder: {error}"));
         std::fs::create_dir_all(root.path().join("home/tester"))
             .unwrap_or_else(|error| panic!("the home folder: {error}"));
@@ -202,6 +260,8 @@ impl TestServer {
             password: Arc::new(Mutex::new(PASSWORD.to_owned())),
             keys,
             password_login,
+            key_login_only,
+            authorized_keys: Arc::new(Mutex::new(Vec::new())),
         })
     }
 
@@ -216,6 +276,21 @@ impl TestServer {
 
     pub fn pool(self: &Arc<Self>, known: KnownHostsFiles) -> Arc<Pool> {
         self.pool_with(known, timeouts())
+    }
+
+    /// A pool that reads its home folder, agent and user name from the given
+    /// login environment and keeps passphrases in `passphrases`.
+    pub fn pool_logging_in(
+        self: &Arc<Self>,
+        known: KnownHostsFiles,
+        login_env: LoginEnv,
+        passphrases: Arc<dyn PassphraseStore>,
+    ) -> Arc<Pool> {
+        Arc::new(
+            Pool::new(Arc::new(DuplexDial(Arc::clone(self))), known, timeouts())
+                .with_login_env(login_env)
+                .with_passphrases(passphrases),
+        )
     }
 
     pub fn pool_with(self: &Arc<Self>, known: KnownHostsFiles, limits: Timeouts) -> Arc<Pool> {
@@ -240,7 +315,9 @@ impl Dial for DuplexDial {
             let (client, served) = tokio::io::duplex(1 << 16);
             let config = Arc::new(russh::server::Config {
                 keys: server.keys.clone(),
-                methods: if server.password_login {
+                methods: if server.key_login_only {
+                    russh::MethodSet::from(&[russh::MethodKind::PublicKey][..])
+                } else if server.password_login {
                     russh::MethodSet::from(
                         &[
                             russh::MethodKind::Password,
@@ -259,6 +336,7 @@ impl Dial for DuplexDial {
                 root: server.root.path().to_path_buf(),
                 control: Arc::clone(&server.control),
                 password: Arc::clone(&server.password),
+                authorized_keys: Arc::clone(&server.authorized_keys),
                 channels: HashMap::new(),
             };
             // The server waits for the client's greeting before it returns, so
@@ -284,11 +362,54 @@ struct Ssh {
     root: PathBuf,
     control: Arc<Control>,
     password: Arc<Mutex<String>>,
+    authorized_keys: Arc<Mutex<Vec<PublicKey>>>,
     channels: HashMap<ChannelId, Channel<Msg>>,
+}
+
+impl Ssh {
+    fn may_log_in(&self, user: &str, key: &PublicKey) -> bool {
+        user == USER
+            && self
+                .authorized_keys
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .iter()
+                .any(|allowed| allowed.key_data() == key.key_data())
+    }
 }
 
 impl russh::server::Handler for Ssh {
     type Error = russh::Error;
+
+    async fn auth_none(&mut self, _user: &str) -> Result<Auth, Self::Error> {
+        self.control.log("none");
+        Ok(Auth::reject())
+    }
+
+    async fn auth_publickey_offered(
+        &mut self,
+        user: &str,
+        offer: PublicKeyOffer<'_>,
+    ) -> Result<Auth, Self::Error> {
+        self.control.log("publickey");
+        if self.may_log_in(user, offer.public_key) {
+            Ok(Auth::Accept)
+        } else {
+            Ok(Auth::reject())
+        }
+    }
+
+    async fn auth_publickey(
+        &mut self,
+        user: &str,
+        key: VerifiedPublicKey<'_>,
+    ) -> Result<Auth, Self::Error> {
+        if self.may_log_in(user, key.public_key) {
+            Ok(Auth::Accept)
+        } else {
+            Ok(Auth::reject())
+        }
+    }
 
     async fn auth_password(&mut self, user: &str, password: &str) -> Result<Auth, Self::Error> {
         self.control.log("password");
@@ -609,7 +730,7 @@ impl Fixture {
         let fixture = Self::trusted_with(limits);
         fixture
             .pool
-            .connect(&Self::id(), &Self::password())
+            .connect(&Self::id(), &Self::login())
             .await
             .unwrap();
         fixture
@@ -638,12 +759,20 @@ impl Fixture {
         super::Secret::new(PASSWORD.to_owned())
     }
 
+    /// A login with the right password and nothing else.
+    pub fn login() -> Login {
+        Login {
+            password: Self::password(),
+            ..Login::default()
+        }
+    }
+
     /// Trusted, and logged in.
     pub async fn connected() -> Self {
         let fixture = Self::trusted();
         fixture
             .pool
-            .connect(&Self::id(), &Self::password())
+            .connect(&Self::id(), &Self::login())
             .await
             .unwrap();
         fixture

@@ -27,6 +27,7 @@ pub enum ContextAction {
     CopyPath,
     CopyName,
     ComputeFolderSizes,
+    CompareFolders,
     /// Only for a folder that is not a favourite yet.
     AddFavourite,
     /// Only for a folder that is a favourite.
@@ -41,7 +42,7 @@ pub enum ContextAction {
 
 impl ContextAction {
     #[cfg(any(test, feature = "test-support"))]
-    pub const ALL: [ContextAction; 19] = [
+    pub const ALL: [ContextAction; 20] = [
         ContextAction::Open,
         ContextAction::ShowPackageContents,
         ContextAction::View,
@@ -55,6 +56,7 @@ impl ContextAction {
         ContextAction::CopyPath,
         ContextAction::CopyName,
         ContextAction::ComputeFolderSizes,
+        ContextAction::CompareFolders,
         ContextAction::AddFavourite,
         ContextAction::RemoveFavourite,
         ContextAction::Trash,
@@ -74,6 +76,7 @@ impl ContextAction {
             | ContextAction::Trash
             | ContextAction::DeletePermanently
             | ContextAction::View
+            | ContextAction::CompareFolders
             // Only a hit list offers these, and that is neither.
             | ContextAction::ShowOnOtherSide
             | ContextAction::RemoveFromList => true,
@@ -100,6 +103,7 @@ impl ContextAction {
             | ContextAction::CopyPath
             | ContextAction::CopyName
             | ContextAction::View
+            | ContextAction::CompareFolders
             | ContextAction::Rename
             | ContextAction::ShowOnOtherSide
             | ContextAction::RemoveFromList => true,
@@ -132,6 +136,7 @@ impl ContextAction {
             ContextAction::CopyPath => Msg::ContextMenuCopyPath,
             ContextAction::CopyName => Msg::ContextMenuCopyName,
             ContextAction::ComputeFolderSizes => Msg::ContextMenuComputeFolderSizes,
+            ContextAction::CompareFolders => Msg::ActionCompareFolders,
             ContextAction::AddFavourite => Msg::ContextMenuAddFavourite,
             ContextAction::RemoveFavourite => Msg::ContextMenuRemoveFavourite,
             ContextAction::Trash => Msg::ContextMenuTrash,
@@ -160,6 +165,7 @@ pub const GROUPS: [&[ContextAction]; 5] = [
     &[ContextAction::CopyPath, ContextAction::CopyName],
     &[
         ContextAction::ComputeFolderSizes,
+        ContextAction::CompareFolders,
         ContextAction::AddFavourite,
         ContextAction::RemoveFavourite,
     ],

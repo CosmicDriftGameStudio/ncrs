@@ -8,6 +8,7 @@ fn saved(name: Option<&str>, host: &str, path: Option<&str>) -> ServerEntry {
         port: 22,
         user: USER.to_owned(),
         path: path.map(str::to_owned),
+        key_file: None,
     }
 }
 

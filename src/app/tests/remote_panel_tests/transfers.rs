@@ -251,7 +251,6 @@ fn an_sftp_text_that_is_no_address_is_refused_and_never_looked_up_on_the_disk() 
     let local = vec![std::env::temp_dir().join("ncrs-never-read.txt")];
     for typed in [
         "sftp://host:99999/x",
-        "SFTP://no-user.example.org/x",
         "sftp://u:secret@host/x",
         "sftp:// u@h/x",
         "sftp://",

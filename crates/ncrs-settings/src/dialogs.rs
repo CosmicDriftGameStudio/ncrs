@@ -168,24 +168,31 @@ pub fn remove_model_dialog<'a>(
     .into_element()
 }
 
-/// The own server: the switch back to the local model, address and model
-/// name. Every entry is written when it is confirmed, so the one button only
-/// closes the dialog.
+/// The own server: the switch back to the local model, address, key and model
+/// name. Save writes the address and model and keeps the key.
 pub fn server_dialog<'a>(view: &SettingsView<'a>, window: Size) -> Element<'a, Message> {
     Frame::new(
         view.lang.text(Msg::SettingsServerDialogTitle),
         server_dialog_body(view),
-        SIZE,
+        DialogSize::Wide,
         window,
         view.lang,
         view.palette,
     )
-    .buttons(vec![kit::button(
-        view.lang.text(Msg::DialogDone),
-        Some(SettingsMessage::ServerDialog(false)),
-        Tone::Primary,
-        view.palette,
-    )])
+    .buttons(vec![
+        kit::button(
+            view.lang.text(Msg::DialogCancel),
+            Some(SettingsMessage::ServerDialog(false)),
+            Tone::Secondary,
+            view.palette,
+        ),
+        kit::button(
+            view.lang.text(Msg::SettingsServerDialogSave),
+            (!view.state.save_is_blocked()).then_some(SettingsMessage::SaveServer),
+            Tone::Primary,
+            view.palette,
+        ),
+    ])
     .on_close(SettingsMessage::ServerDialog(false))
     .hints(KeyHints {
         enter: false,

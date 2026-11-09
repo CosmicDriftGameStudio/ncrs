@@ -3,6 +3,7 @@
 
 use iced::widget::{column, container, mouse_area, Column, Row};
 use iced::{Element, Length};
+use ncrs_ui_kit::compare_cell::CompareCell;
 use ncrs_ui_kit::file_row::{file_row, tag_star, RowClick, RowExtras};
 use ncrs_ui_kit::panel_footer::panel_footer;
 use ncrs_ui_kit::rename_row::{rename_row, RenameRow};
@@ -13,7 +14,7 @@ use crate::message::PanelMessage;
 use crate::panel::PanelState;
 use crate::panel_totals::{footer_text, panel_totals};
 use crate::special_folders::special_folder_of;
-use ncrs_ui_kit::column_header::{column_header, HeaderEvents};
+use ncrs_ui_kit::column_header::{column_header, HeaderEvents, TrailingColumn};
 
 /// Renders one panel.
 ///
@@ -23,7 +24,18 @@ pub fn view<'a>(state: &'a PanelState, ctx: ViewCtx<'a>) -> Element<'a, PanelMes
     let side = ctx.side;
     let lang = ctx.lang;
     let palette = &ctx.palette;
-    let hermes_cell = ctx.hermes_cell.as_deref();
+    let compare_marks = ctx.compare_marks;
+    let hermes_cell = ctx
+        .hermes_cell
+        .as_deref()
+        .filter(|_| compare_marks.is_none());
+    let trailing = if compare_marks.is_some() {
+        TrailingColumn::Compare
+    } else if hermes_cell.is_some() {
+        TrailingColumn::Hermes
+    } else {
+        TrailingColumn::None
+    };
     let layout = ctx.columns.layout(side, lang);
     let on_row_click = move |index, click| match click {
         RowClick::Open => PanelMessage::RowActivated { side, index },
@@ -90,6 +102,11 @@ pub fn view<'a>(state: &'a PanelState, ctx: ViewCtx<'a>) -> Element<'a, PanelMes
                         .filter(|_| entry.is_dir),
                     third_line: None,
                     hermes: hermes_cell.map(|cell| cell(entry)),
+                    compare: compare_marks.map_or(CompareCell::Off, |marks| {
+                        marks
+                            .get(&entry.name)
+                            .map_or(CompareCell::Blank, |found| CompareCell::Mark(*found))
+                    }),
                     hit_scope: state
                         .hit_list
                         .as_ref()
@@ -109,7 +126,7 @@ pub fn view<'a>(state: &'a PanelState, ctx: ViewCtx<'a>) -> Element<'a, PanelMes
                 palette,
                 layout,
                 Some(state.sort),
-                hermes_cell.is_some(),
+                trailing,
                 ctx.header_drag,
                 Some(HeaderEvents {
                     on_press: Box::new(move |column| PanelMessage::HeaderPressed { side, column }),

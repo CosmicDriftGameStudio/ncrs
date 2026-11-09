@@ -1383,7 +1383,7 @@ mod tests {
 
         let index = Index::open(&path, &InMemoryKeyStore::empty()).unwrap();
 
-        assert_eq!(user_version(&index), 25);
+        assert_eq!(user_version(&index), 26);
         assert!(index.file_list_tag_exceptions().unwrap().is_empty());
         index.set_file_list_tag("steuer", Some(false)).unwrap();
         assert_eq!(index.file_list_tag_exceptions().unwrap().len(), 1);
@@ -1400,7 +1400,7 @@ mod tests {
         let (_dir, index) = migrated_from_19();
 
         assert_eq!(user_version(&index), latest_version());
-        assert_eq!(user_version(&index), 25);
+        assert_eq!(user_version(&index), 26);
         let violations = index
             .conn
             .prepare("PRAGMA foreign_key_check")

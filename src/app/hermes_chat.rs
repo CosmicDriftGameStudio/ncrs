@@ -80,33 +80,36 @@ impl App {
                 || chat.waits_for_hermes())
     }
 
-    #[cfg(feature = "local-ai")]
+    /// The model the chat asks: the server of an own-server setting, else the
+    /// local model. A cached one is dropped when the setting changes.
     fn ensure_chat_model(&mut self) {
+        let setting = self.hermes.filing_config.ai.clone();
         if !self.chat_ai_on() {
             self.chat_model = None;
+            self.chat_model_setting = None;
             return;
         }
-        if self.chat_model.is_some() {
+        if self.chat_model.is_some() && self.chat_model_setting.as_ref() == Some(&setting) {
             return;
         }
         let Some(index_path) = self.hermes.index_path.as_deref() else {
             return;
         };
-        let threads = match self.hermes.filing_config.ai {
-            crate::config::AiSetting::Local { threads } => threads,
-            _ => None,
+        let model: Option<Arc<dyn ncrs_ai::ChatModel>> = match &setting {
+            crate::config::AiSetting::Http { endpoint, model } => {
+                crate::filing::http_ai_provider(endpoint, model, index_path)
+                    .map(|server| server as Arc<dyn ncrs_ai::ChatModel>)
+            }
+            crate::config::AiSetting::Local { threads } => {
+                local_chat_model(index_path, self.hermes.filing_config.load, *threads)
+            }
+            crate::config::AiSetting::Off => None,
         };
-        self.chat_model = Some(crate::filing::shared_local_model(
-            index_path,
-            self.hermes.filing_config.load,
-            threads,
-        ));
+        self.chat_model_setting = model.is_some().then_some(setting);
+        self.chat_model = model;
     }
 
-    #[cfg(not(feature = "local-ai"))]
-    fn ensure_chat_model(&mut self) {}
-
-    fn chat_ai_on(&self) -> bool {
+    pub(in crate::app) fn chat_ai_on(&self) -> bool {
         self.hermes.filing_config.ai != crate::config::AiSetting::Off
     }
 
@@ -259,4 +262,22 @@ impl App {
         .width(Length::Fill)
         .height(Length::Fill)
     }
+}
+
+#[cfg(feature = "local-ai")]
+fn local_chat_model(
+    index_path: &std::path::Path,
+    load: ncrs_pipeline::Load,
+    threads: Option<std::num::NonZeroU32>,
+) -> Option<Arc<dyn ncrs_ai::ChatModel>> {
+    Some(crate::filing::shared_local_model(index_path, load, threads))
+}
+
+#[cfg(not(feature = "local-ai"))]
+fn local_chat_model(
+    _index_path: &std::path::Path,
+    _load: ncrs_pipeline::Load,
+    _threads: Option<std::num::NonZeroU32>,
+) -> Option<Arc<dyn ncrs_ai::ChatModel>> {
+    None
 }

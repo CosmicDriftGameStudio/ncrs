@@ -8,14 +8,16 @@ pub trait ConsentLedger: Send + Sync + fmt::Debug {
     fn granted(&self, endpoint_origin: &str, source: &Path) -> bool;
 }
 
-/// Grants nothing. For as long as there is no way to ask the user, a document
-/// goes only to an endpoint on this machine, which needs no consent.
+/// Grants every call. An address off this computer gets into the settings
+/// through the dialog whose "I understand" tick is the consent, or by the user
+/// editing config.toml by hand; both are the user's own decision, so the saved
+/// server is the one the user agreed to.
 #[derive(Debug, Clone, Copy, Default)]
-pub struct NoConsentGiven;
+pub struct ConsentGivenInSettings;
 
-impl ConsentLedger for NoConsentGiven {
+impl ConsentLedger for ConsentGivenInSettings {
     fn granted(&self, _endpoint_origin: &str, _source: &Path) -> bool {
-        false
+        true
     }
 }
 

@@ -1,6 +1,7 @@
 use super::super::test_server::{other_public_key_text, public_key_text, Fixture, TestServer};
 use super::*;
 use crate::reader::Listing;
+use crate::remote::Secret;
 use crate::{ReadError, SortKey};
 
 async fn listing(fixture: &Fixture) -> Listing {
@@ -12,7 +13,7 @@ async fn host_key_is_checked_before_the_password_is_sent() {
     let unknown = Fixture::untrusted();
     let refused = unknown
         .pool
-        .connect(&Fixture::id(), &Fixture::password())
+        .connect(&Fixture::id(), &Fixture::login())
         .await;
     assert!(
         matches!(refused, Err(ConnectFailure::UnknownHost { .. })),
@@ -26,7 +27,7 @@ async fn host_key_is_checked_before_the_password_is_sent() {
     let known = Fixture::trusted();
     known
         .pool
-        .connect(&Fixture::id(), &Fixture::password())
+        .connect(&Fixture::id(), &Fixture::login())
         .await
         .unwrap();
     assert!(known.server.control.events().contains(&"password"));
@@ -40,7 +41,7 @@ async fn two_connects_to_one_server_leave_one_session() {
     let connect = || {
         let pool = Arc::clone(&fixture.pool);
         let server = id.clone();
-        tokio::spawn(async move { pool.connect(&server, &Fixture::password()).await })
+        tokio::spawn(async move { pool.connect(&server, &Fixture::login()).await })
     };
     let (first, second) = (connect(), connect());
     first.await.unwrap().unwrap();
@@ -54,7 +55,7 @@ async fn unknown_host_reports_sha256_fingerprint() {
 
     let refused = fixture
         .pool
-        .connect(&Fixture::id(), &Fixture::password())
+        .connect(&Fixture::id(), &Fixture::login())
         .await
         .unwrap_err();
 
@@ -76,7 +77,7 @@ async fn trusting_the_key_lets_the_next_connect_through() {
     let fixture = Fixture::untrusted();
     let ConnectFailure::UnknownHost { key, .. } = fixture
         .pool
-        .connect(&Fixture::id(), &Fixture::password())
+        .connect(&Fixture::id(), &Fixture::login())
         .await
         .unwrap_err()
     else {
@@ -86,7 +87,7 @@ async fn trusting_the_key_lets_the_next_connect_through() {
     fixture.pool.trust(&Fixture::id(), &key).unwrap();
     fixture
         .pool
-        .connect(&Fixture::id(), &Fixture::password())
+        .connect(&Fixture::id(), &Fixture::login())
         .await
         .unwrap();
 
@@ -102,7 +103,7 @@ async fn changed_host_key_is_refused_without_auth() {
 
     let refused = fixture
         .pool
-        .connect(&Fixture::id(), &Fixture::password())
+        .connect(&Fixture::id(), &Fixture::login())
         .await
         .unwrap_err();
 
@@ -135,7 +136,7 @@ async fn a_revoked_key_is_refused_without_auth() {
 
     let refused = fixture
         .pool
-        .connect(&Fixture::id(), &Fixture::password())
+        .connect(&Fixture::id(), &Fixture::login())
         .await;
 
     assert_eq!(refused, Err(ConnectFailure::HostKeyRevoked));
@@ -148,7 +149,13 @@ async fn wrong_password_is_auth_failed() {
 
     let refused = fixture
         .pool
-        .connect(&Fixture::id(), &Secret::new("not it".to_owned()))
+        .connect(
+            &Fixture::id(),
+            &Login {
+                password: Secret::new("not it".to_owned()),
+                ..Login::default()
+            },
+        )
         .await;
 
     assert_eq!(refused, Err(ConnectFailure::AuthFailed));
@@ -197,7 +204,7 @@ async fn a_server_that_never_answers_is_a_timeout() {
         },
     );
 
-    let result = pool.connect(&Fixture::id(), &Fixture::password()).await;
+    let result = pool.connect(&Fixture::id(), &Fixture::login()).await;
 
     assert_eq!(result, Err(ConnectFailure::Timeout));
 }
@@ -210,7 +217,7 @@ async fn a_refused_connection_is_unreachable_with_the_reason() {
         super::super::test_server::timeouts(),
     );
 
-    let result = pool.connect(&Fixture::id(), &Fixture::password()).await;
+    let result = pool.connect(&Fixture::id(), &Fixture::login()).await;
 
     assert!(
         matches!(&result, Err(ConnectFailure::Unreachable(reason)) if reason.contains("refused")),
@@ -222,6 +229,10 @@ async fn a_refused_connection_is_unreachable_with_the_reason() {
 /// password that is easy to find in any text it might leak into.
 async fn failures_with(secret: &Secret) -> Vec<Result<(), ConnectFailure>> {
     let id = Fixture::id();
+    let login = &Login {
+        password: secret.clone(),
+        ..Login::default()
+    };
     let mut results = Vec::new();
     // Refused before anything: unreachable.
     let refused = Pool::new(
@@ -229,11 +240,11 @@ async fn failures_with(secret: &Secret) -> Vec<Result<(), ConnectFailure>> {
         KnownHostsFiles::default(),
         super::super::test_server::timeouts(),
     );
-    results.push(refused.connect(&id, secret).await);
+    results.push(refused.connect(&id, login).await);
     // The server says the password is wrong.
-    results.push(Fixture::trusted().pool.connect(&id, secret).await);
+    results.push(Fixture::trusted().pool.connect(&id, login).await);
     // The server is not known: the password stays here.
-    results.push(Fixture::untrusted().pool.connect(&id, secret).await);
+    results.push(Fixture::untrusted().pool.connect(&id, login).await);
     // The server takes no password.
     let keyboard_only = Fixture::over(TestServer::without_password_login());
     std::fs::write(
@@ -241,7 +252,7 @@ async fn failures_with(secret: &Secret) -> Vec<Result<(), ConnectFailure>> {
         format!("test.invalid {}\n", public_key_text()),
     )
     .unwrap();
-    results.push(keyboard_only.pool.connect(&id, secret).await);
+    results.push(keyboard_only.pool.connect(&id, login).await);
     results
 }
 
@@ -289,7 +300,7 @@ async fn a_server_that_offers_no_password_login_gets_no_password_and_is_named() 
 
     let refused = fixture
         .pool
-        .connect(&Fixture::id(), &Fixture::password())
+        .connect(&Fixture::id(), &Fixture::login())
         .await;
 
     assert_eq!(refused, Err(ConnectFailure::PasswordNotOffered));
@@ -311,7 +322,7 @@ async fn a_key_of_another_type_than_the_one_on_record_is_refused_without_auth() 
 
     let refused = fixture
         .pool
-        .connect(&Fixture::id(), &Fixture::password())
+        .connect(&Fixture::id(), &Fixture::login())
         .await
         .unwrap_err();
 
@@ -335,7 +346,7 @@ async fn the_server_is_asked_for_the_key_type_on_record_first() {
 
     fixture
         .pool
-        .connect(&Fixture::id(), &Fixture::password())
+        .connect(&Fixture::id(), &Fixture::login())
         .await
         .unwrap();
 
@@ -367,7 +378,7 @@ async fn a_host_key_file_that_cannot_be_read_gives_no_way_to_trust_and_sends_not
 
     let refused = fixture
         .pool
-        .connect(&Fixture::id(), &Fixture::password())
+        .connect(&Fixture::id(), &Fixture::login())
         .await
         .unwrap_err();
 
@@ -452,7 +463,7 @@ async fn cut_connection_reports_disconnected_then_reconnects() {
 
     fixture
         .pool
-        .connect(&Fixture::id(), &Fixture::password())
+        .connect(&Fixture::id(), &Fixture::login())
         .await
         .unwrap();
     assert_eq!(fixture.server.control.dials(), 2);

@@ -146,7 +146,7 @@ impl Index {
             .to_str()
             .ok_or_else(|| IndexError::NonUtf8Path(path.to_path_buf()))?;
         self.load_document(
-            &format!("{DOCUMENT_COLUMNS} WHERE d.path = ?1 AND d.missing_since IS NULL ORDER BY d.id LIMIT 1"),
+            &format!("{DOCUMENT_COLUMNS} WHERE d.path = ?1 AND d.origin_kind = 'file' AND d.missing_since IS NULL ORDER BY d.id LIMIT 1"),
             path_text,
         )
     }

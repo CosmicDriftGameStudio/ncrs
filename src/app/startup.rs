@@ -481,6 +481,7 @@ impl App {
             fetch_latest_release: ncrs_updates::latest_release,
             hermes_chat: ncrs_hermes_chat::State::default(),
             chat_model: None,
+            chat_model_setting: None,
             turning_hermes_on: false,
             quick_open: None,
             quick_open_walk_generation: 0,
@@ -523,6 +524,7 @@ impl App {
             remote: Arc::new(Pool::over_tcp(KnownHostsFiles::default())),
             passwords: Arc::new(KeyringPasswords::new()),
             remote_ui: ncrs_remote::Remote::default(),
+            compare: ncrs_compare::Compare::default(),
             saved_servers: Vec::new(),
         };
 

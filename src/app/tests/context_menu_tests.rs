@@ -148,6 +148,7 @@ fn the_parent_row_offers_only_what_makes_sense() {
             ContextAction::CopyPath,
             ContextAction::CopyName,
             ContextAction::ComputeFolderSizes,
+            ContextAction::CompareFolders,
             ContextAction::AddFavourite
         ]
     );
@@ -210,6 +211,7 @@ fn an_empty_panel_still_offers_a_new_folder() {
         [
             ContextAction::OpenTerminal,
             ContextAction::NewFolder,
+            ContextAction::CompareFolders,
             ContextAction::AddFavourite
         ]
     );
@@ -492,7 +494,11 @@ fn in_an_archive_the_f4_slot_is_dimmed_and_the_palette_drops_the_command() {
     let mut app = App::with_fixed_panels();
     let plain = app.function_key_dimmed();
     assert!(plain.iter().all(|dimmed| !dimmed));
-    assert!(app.commands_the_panel_refuses().is_empty());
+    assert_eq!(
+        app.commands_the_panel_refuses(),
+        vec![ncrs_config::keymap::KeyAction::UndoRename],
+        "no batch is remembered, so only the undo is refused"
+    );
 
     app.panel_mut(LEFT).archive = Some(PathBuf::from("/x/fotos.zip"));
     let dimmed = app.function_key_dimmed();

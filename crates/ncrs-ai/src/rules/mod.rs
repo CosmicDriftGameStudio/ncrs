@@ -30,7 +30,7 @@ mod oracle;
 pub use annotate::{annotated_paths, folder_depth};
 pub use levels::{Level, Levels, Part};
 pub use parse::{parse_generate, parse_levels, parse_revision, Revision};
-pub use prompt::{prefix_text, ContextDocument, END_OF_TURN};
+pub use prompt::{prefix_text, ContextDocument, END_OF_TURN, RECOGNIZE_QUESTION};
 pub use revise::revise_question;
 pub use session::RuleRequest;
 pub use verify::{

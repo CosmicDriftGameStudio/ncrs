@@ -643,6 +643,11 @@ fn create_entry(source: &Path, meta: &std::fs::Metadata, target: &Path) -> io::R
             .create_new(true)
             .open(target)?;
         io::copy(&mut from, &mut to)?;
+        // The copy keeps the date of the original, as in the Finder: a folder
+        // comparison after a sync must not find every copy newer.
+        if let Ok(modified) = meta.modified() {
+            to.set_modified(modified)?;
+        }
         to.set_permissions(copied_permissions(meta))
     }
 }

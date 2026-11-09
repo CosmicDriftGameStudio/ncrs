@@ -95,6 +95,7 @@ impl MenuFacts {
                 | ContextAction::OpenTerminal
                 | ContextAction::ShowPackageContents
                 | ContextAction::ComputeFolderSizes
+                | ContextAction::CompareFolders
                 | ContextAction::AddFavourite
                 | ContextAction::RemoveFavourite
                 | ContextAction::RemoveFromList => false,
@@ -121,7 +122,7 @@ impl MenuFacts {
             | ContextAction::DeletePermanently
             | ContextAction::Permissions => self.has_sources,
             ContextAction::Rename => cursor_row.is_some_and(|entry| !entry.is_parent),
-            ContextAction::NewFolder => true,
+            ContextAction::NewFolder | ContextAction::CompareFolders => true,
             ContextAction::OpenTerminal => panels.local_folder_target().is_some(),
             ContextAction::CopyPath => self.can_copy_path,
             ContextAction::CopyName => self.can_copy_name,

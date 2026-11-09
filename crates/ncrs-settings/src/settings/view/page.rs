@@ -139,6 +139,16 @@ pub fn page<'a>(shown: Option<SettingsFeature>, view: &SettingsView<'a>) -> Elem
     let Some(feature) = shown else {
         return kit::dim(lang.text(Msg::SettingsNothingFound).to_owned(), palette);
     };
+    if feature == SettingsFeature::Usage {
+        return usage_sections(view)
+            .into_iter()
+            .fold(
+                Column::new().push(heading(feature, view)),
+                |column, section| column.push(section),
+            )
+            .spacing(spacing::XS)
+            .into();
+    }
     let query = view.state.query.trim().to_lowercase();
     let whole_feature = query.is_empty() || feature_name_matches(feature, &query, lang);
     let mut body = Column::new().push(heading(feature, view));

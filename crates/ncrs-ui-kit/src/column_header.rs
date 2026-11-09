@@ -108,6 +108,25 @@ pub const fn column_message(column: Column) -> Msg {
     }
 }
 
+/// The cell after the shown columns, which is as wide as the Hermes column.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TrailingColumn {
+    #[default]
+    None,
+    Hermes,
+    Compare,
+}
+
+impl TrailingColumn {
+    const fn title(self) -> Option<Msg> {
+        match self {
+            Self::None => None,
+            Self::Hermes => Some(Msg::ColumnHermes),
+            Self::Compare => Some(Msg::ColumnCompare),
+        }
+    }
+}
+
 /// Where a column lies in a list `panel_width` wide, counted from the left
 /// edge of the panel.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -191,7 +210,7 @@ pub fn column_header<'a, M: Clone + 'a>(
     palette: &Palette,
     layout: ColumnLayout<'a>,
     sort: Option<SortKey>,
-    with_hermes: bool,
+    trailing: TrailingColumn,
     drag: Option<HeaderDrag>,
     events: Option<HeaderEvents<'a, M>>,
 ) -> Element<'a, M> {
@@ -286,9 +305,9 @@ pub fn column_header<'a, M: Clone + 'a>(
     let titles = Row::new()
         .push(Space::new().width(TAG_COLUMN_WIDTH))
         .extend(cells)
-        .extend(with_hermes.then(|| {
+        .extend(trailing.title().map(|title| {
             container(
-                text(lang.text(Msg::ColumnHermes))
+                text(lang.text(title))
                     .size(font_size::SMALL)
                     .color(palette.dim_text)
                     .wrapping(text::Wrapping::None),
@@ -468,7 +487,7 @@ pub fn plain_column_header<'a, M: Clone + 'a>(
     palette: &Palette,
     layout: ColumnLayout<'a>,
 ) -> Element<'a, M> {
-    column_header(palette, layout, None, false, None, None)
+    column_header(palette, layout, None, TrailingColumn::None, None, None)
 }
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here.

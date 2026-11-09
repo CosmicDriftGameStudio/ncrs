@@ -153,6 +153,7 @@ pub enum OpsMessage {
     OpenFileConfirm,
     DeleteConfirm,
     Permissions(PermissionsMessage),
+    BatchRename(crate::batch_rename::state::BatchRenameMessage),
     /// The permissions change is over. Dropped when `generation` is not the
     /// current one.
     PermissionsDone {

@@ -111,6 +111,22 @@ pub(in crate::app) fn context_menu_key(prompt: &PromptKeyState, key: &Key) -> Op
     })
 }
 
+/// The keys of the dialogs of the folder comparison: Enter does what the
+/// button does, Escape closes. Of the bindings only quitting reaches past them.
+pub(in crate::app) fn compare_dialog_key(
+    prompt: &PromptKeyState,
+    key: &Key,
+    key_modifiers: Modifiers,
+    scope: KeyScope,
+) -> Option<Message> {
+    match key.as_ref() {
+        Key::Named(Named::Escape) => Some(Message::Compare(CompareMessage::Cancel)),
+        Key::Named(Named::Enter) => Some(Message::Compare(CompareMessage::Confirm)),
+        _ => bound_message(&prompt.keymap, key, key_modifiers, scope)
+            .filter(|message| *message == Message::Quit),
+    }
+}
+
 /// The keys of the connect dialog: its fields take the typing and Enter, Tab
 /// goes from one to the next, Escape closes it. Of the bindings only quitting
 /// reaches past it.

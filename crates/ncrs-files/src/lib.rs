@@ -3,6 +3,8 @@
 //! and the list of search hits a panel can show.
 
 pub mod action;
+#[cfg(test)]
+mod compare_column_ui_tests;
 pub mod context_menu;
 pub mod context_menu_flow;
 pub mod context_menu_view;

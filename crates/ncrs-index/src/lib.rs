@@ -15,6 +15,8 @@ mod locations;
 mod migrations;
 mod model;
 mod names;
+#[cfg(test)]
+mod origin_migration_tests;
 mod profile;
 mod query_hit;
 mod regex_limits;

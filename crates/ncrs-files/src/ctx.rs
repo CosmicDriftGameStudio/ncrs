@@ -5,7 +5,7 @@ use std::time::Instant;
 
 use iced::keyboard::Modifiers;
 use iced::{Point, Size};
-use ncrs_core::{Column, DateFormat, FileEntry, PanelSide, SizeFormat};
+use ncrs_core::{Column, CompareMarks, DateFormat, FileEntry, PanelSide, SizeFormat};
 use ncrs_i18n::Language;
 use ncrs_ui_kit::column_header::{ColumnLayout, HeaderDrag};
 use ncrs_ui_kit::file_icon::SpecialFolder;
@@ -106,6 +106,8 @@ pub struct ViewCtx<'a> {
     pub palette: Palette,
     pub is_active: bool,
     pub visible_rows: usize,
+    /// Marks of a running folder comparison for this panel; they take the place of the Hermes column.
+    pub compare_marks: Option<&'a CompareMarks>,
     /// `None` leaves the Hermes column out.
     pub hermes_cell: Option<HermesCellOf<'a>>,
     pub columns: ColumnSettings<'a>,

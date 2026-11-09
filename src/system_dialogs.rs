@@ -25,6 +25,8 @@ pub enum FilePick {
     Program { apps_only: bool },
     /// A VS Code color theme.
     ThemeFile,
+    /// The key file of an SFTP login: starts in `~/.ssh`.
+    KeyFile,
 }
 
 /// Opens the system file dialog for `pick` and yields the file picked, or
@@ -50,6 +52,7 @@ pub fn pick_file_with_system_dialog(pick: FilePick) -> Task<Option<PathBuf>> {
             }
         }
         FilePick::ThemeFile => plain_dialog.add_filter("JSON", &["json"]),
+        FilePick::KeyFile => plain_dialog.set_directory(ncrs_fs::home_dir().join(".ssh")),
     };
     Task::perform(dialog.pick_file(), |chosen| {
         chosen.map(|handle| handle.path().to_path_buf())

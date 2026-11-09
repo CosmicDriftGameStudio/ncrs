@@ -29,6 +29,7 @@ pub enum JobKind {
     Extract,
     Pack,
     Permissions,
+    Rename,
 }
 
 impl JobKind {
@@ -43,6 +44,7 @@ impl JobKind {
             JobKind::Extract => ncrs_i18n::Msg::JobExtract,
             JobKind::Pack => ncrs_i18n::Msg::JobPack,
             JobKind::Permissions => ncrs_i18n::Msg::PermissionsProgress,
+            JobKind::Rename => ncrs_i18n::Msg::JobRename,
         }
     }
 }

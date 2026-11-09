@@ -59,6 +59,9 @@ pub struct PanelState {
     pub hit_list: Option<HitList>,
     /// The name input of the row being renamed.
     pub rename: Option<RenameState>,
+    /// Rows a folder comparison keeps out of the list ("only differences");
+    /// a new listing drops them, the app filters again.
+    pub compare_hidden: Vec<FileEntry>,
 }
 
 impl PanelState {
@@ -80,6 +83,7 @@ impl PanelState {
             archive: None,
             hit_list: None,
             rename: None,
+            compare_hidden: Vec::new(),
         }
     }
 
@@ -169,6 +173,27 @@ impl PanelState {
         self.select(self.selected, visible_rows);
     }
 
+    /// Takes the rows out of the list for which `keep` is false.
+    pub fn hide_rows_except(&mut self, keep: impl Fn(&FileEntry) -> bool, visible_rows: usize) {
+        self.restore_hidden_rows(visible_rows);
+        let (kept, hidden) = std::mem::take(&mut self.entries)
+            .into_iter()
+            .partition(|entry| entry.is_parent || keep(entry));
+        self.entries = kept;
+        self.compare_hidden = hidden;
+        self.selection.retain_present(&self.entries);
+        self.select(self.selected, visible_rows);
+    }
+
+    /// Puts the rows `hide_rows_except` took out back into the list.
+    pub fn restore_hidden_rows(&mut self, visible_rows: usize) {
+        if self.compare_hidden.is_empty() {
+            return;
+        }
+        self.entries.append(&mut self.compare_hidden);
+        self.resort(visible_rows);
+    }
+
     pub fn selected_entry(&self) -> Option<&FileEntry> {
         self.entries.get(self.selected)
     }
@@ -237,6 +262,7 @@ impl PanelState {
         if sorted_by != Some(self.sort) {
             sort_entries(&mut entries, self.sort);
         }
+        self.compare_hidden.clear();
         let same_directory = self.path == path;
         self.path = path;
         // Read the name under the cursor *before* the rows are replaced. After
@@ -590,5 +616,49 @@ mod sort_tests {
         assert_eq!(names(&panel), ["b", "c", "a"]);
         panel.apply_listing(PathBuf::from("/e"), files(), None, None, 5);
         assert_eq!(names(&panel), ["b", "c", "a"]);
+    }
+
+    #[test]
+    fn hiding_rows_keeps_the_wanted_ones_and_the_parent_row() {
+        let mut panel = loaded(5);
+        panel.entries.insert(0, FileEntry::parent(Path::new("/")));
+        panel.hide_rows_except(|entry| entry.name == "b", 5);
+        assert_eq!(names(&panel), ["..", "b"]);
+        assert_eq!(panel.compare_hidden.len(), 2);
+    }
+
+    #[test]
+    fn hiding_again_starts_from_the_full_list() {
+        let mut panel = loaded(5);
+        panel.hide_rows_except(|entry| entry.name == "a", 5);
+        panel.hide_rows_except(|entry| entry.name == "c", 5);
+        assert_eq!(names(&panel), ["c"]);
+        panel.restore_hidden_rows(5);
+        assert_eq!(names(&panel), ["a", "b", "c"]);
+    }
+
+    #[test]
+    fn restoring_puts_the_hidden_rows_back_in_sort_order_and_keeps_the_cursor_row() {
+        let mut panel = loaded(5);
+        panel.hide_rows_except(|entry| entry.name == "c", 5);
+        panel.select(0, 5);
+        panel.restore_hidden_rows(5);
+        assert_eq!(names(&panel), ["a", "b", "c"]);
+        assert!(panel.compare_hidden.is_empty());
+        assert_eq!(panel.selected_entry().unwrap().name, "c");
+    }
+
+    #[test]
+    fn a_tag_on_a_hidden_row_is_dropped_and_restoring_with_nothing_hidden_changes_nothing() {
+        let mut panel = loaded(5);
+        panel.selection.toggle(Path::new("/d/a"));
+        panel.selection.toggle(Path::new("/d/b"));
+        panel.hide_rows_except(|entry| entry.name == "b", 5);
+        assert!(!panel.selection.is_tagged(Path::new("/d/a")));
+        assert!(panel.selection.is_tagged(Path::new("/d/b")));
+        panel.restore_hidden_rows(5);
+        let before = names(&panel);
+        panel.restore_hidden_rows(5);
+        assert_eq!(names(&panel), before);
     }
 }

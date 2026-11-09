@@ -72,11 +72,19 @@ impl App {
                 .and_then(crate::filing::ai_models_dir),
             file_list_tags: &self.file_list_tags,
             ai_is_on: self.hermes.filing_config.ai != crate::config::AiSetting::Off,
+            usage_log: self
+                .hermes
+                .index_path
+                .as_deref()
+                .and_then(std::path::Path::parent)
+                .map(ncrs_ai::usage_log_path),
             services: ncrs_settings::Services {
                 fetch_extension: self.fetch_extension,
                 install_theme: self.install_theme,
                 download_ocr_models: self.download_ocr_models,
                 download_ai_model: self.download_ai_model,
+                check_ai_server: ncrs_settings::check_ai_server,
+                store_ai_key: ncrs_settings::store_ai_key,
             },
         }
     }

@@ -1,5 +1,26 @@
 use crate::app::*;
 
+fn delete_dialog_key(
+    prompt: &PromptKeyState,
+    key: &Key,
+    key_modifiers: Modifiers,
+    scope: KeyScope,
+) -> Option<Message> {
+    let permanent = prompt.delete_dialog == DeleteKeys::Permanent;
+    match key.as_ref() {
+        Key::Named(Named::Escape) => Some(Message::DeleteCancel),
+        // The fixed dialog keys come first: a configured chord must not
+        // take Enter or an arrow, or one press could confirm a deletion.
+        // Only then the chord that started the permanent delete confirms it.
+        _ => dialog_focus_key(key.clone(), key_modifiers).or_else(|| {
+            (permanent
+                && bound_message(&prompt.keymap, key, key_modifiers, scope)
+                    == Some(Message::Delete { permanent: true }))
+            .then_some(Message::DeleteConfirm)
+        }),
+    }
+}
+
 fn keys_without_prompt(
     prompt: &PromptKeyState,
     key: Key,
@@ -29,19 +50,7 @@ fn keys_without_prompt(
     // neither is there, so there is nothing to disambiguate, but it must not
     // be possible for Escape to mean "stop the job" while a question is open.
     if prompt.delete_dialog != DeleteKeys::Closed {
-        let permanent = prompt.delete_dialog == DeleteKeys::Permanent;
-        return match key.as_ref() {
-            Key::Named(Named::Escape) => Some(Message::DeleteCancel),
-            // The fixed dialog keys come first: a configured chord must not
-            // take Enter or an arrow, or one press could confirm a deletion.
-            // Only then the chord that started the permanent delete confirms it.
-            _ => dialog_focus_key(key.clone(), key_modifiers).or_else(|| {
-                (permanent
-                    && bound_message(&prompt.keymap, &key, key_modifiers, scope)
-                        == Some(Message::Delete { permanent: true }))
-                .then_some(Message::DeleteConfirm)
-            }),
-        };
+        return delete_dialog_key(prompt, &key, key_modifiers, scope);
     }
 
     if prompt.open_file_dialog {
@@ -49,6 +58,10 @@ fn keys_without_prompt(
             Key::Named(Named::Escape) => Some(Message::OpenFileCancel),
             _ => dialog_focus_key(key.clone(), key_modifiers),
         };
+    }
+
+    if prompt.batch_rename_dialog {
+        return ncrs_ops::keys::batch_rename_key(&key).map(Message::BatchRename);
     }
 
     if prompt.permissions_dialog {
@@ -61,6 +74,10 @@ fn keys_without_prompt(
 
     // The fields take the typing and Enter; Tab goes from one to the next. Of
     // the bindings only quitting reaches past the dialog.
+    if prompt.compare_dialog {
+        return compare_dialog_key(prompt, &key, key_modifiers, scope);
+    }
+
     if prompt.connect_dialog {
         return connect_dialog_key(prompt, &key, key_modifiers, scope);
     }
