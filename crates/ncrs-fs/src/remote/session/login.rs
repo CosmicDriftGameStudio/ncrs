@@ -5,10 +5,12 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use russh::client::{AuthResult, Handle};
-use russh::keys::{
-    decode_secret_key, Error as KeyError, HashAlg, PrivateKey, PrivateKeyWithHashAlg,
-};
+#[cfg(unix)]
+use russh::client::AuthResult;
+use russh::client::Handle;
+#[cfg(unix)]
+use russh::keys::HashAlg;
+use russh::keys::{decode_secret_key, Error as KeyError, PrivateKey, PrivateKeyWithHashAlg};
 use russh::{MethodKind, MethodSet};
 use tokio::task::spawn_blocking;
 
