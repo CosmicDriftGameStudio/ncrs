@@ -230,6 +230,7 @@ impl App {
                 self.keymap = config.keymap;
                 self.monitor.set_settings(config.system);
                 self.update_check = config.check_for_updates;
+                self.favourites_bar_on = config.favourites_bar.unwrap_or(true);
                 self.refresh_function_keys();
                 self.palette = config.palette;
                 self.report_look_warnings(config.contrast_warning, config.vscode_warning);
@@ -429,7 +430,7 @@ impl App {
                 PanelState::new(right.clone()),
                 PanelSide::Left,
             ),
-            visible_rows: layout::visible_rows(layout::INITIAL_WINDOW_SIZE),
+            visible_rows: layout::visible_rows(layout::INITIAL_WINDOW_SIZE, 0.0),
             lang: Language::default(),
             function_keys: Keymap::built_in().function_keys(Language::default(), KeyScope::Panel),
             search_function_keys: Keymap::built_in()
@@ -474,6 +475,9 @@ impl App {
                 None,
             ),
             update_check: None,
+            favourites_bar_on: true,
+            favourites_bar_applied: 0.0,
+            favourite_menu: None,
             fetch_latest_release: ncrs_updates::latest_release,
             hermes_chat: ncrs_hermes_chat::State::default(),
             chat_model: None,

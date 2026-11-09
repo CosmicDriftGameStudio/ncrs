@@ -115,6 +115,8 @@ pub struct Ops {
     pub rename_request_id: u64,
     /// The delete confirmation dialog, while it is up.
     pub delete_dialog: Option<Deletion>,
+    /// The file the open-file question is about, while it is up.
+    pub open_file_dialog: Option<PathBuf>,
     /// The permissions dialog, while it is up.
     pub permissions_dialog: Option<PermissionsDialog>,
     /// A permissions change, while its job runs.

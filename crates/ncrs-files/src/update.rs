@@ -143,6 +143,7 @@ pub fn update(
         }
 
         PanelMessage::OpenSelected => actions.extend(open_selected(panels)),
+        PanelMessage::ShowPackageContents => actions.extend(show_package_contents(panels)),
         PanelMessage::GoUp => actions.extend(go_up(panels, panels.active)),
         PanelMessage::TypeAhead(typed) => jump_to_typed(panels, ctx, &typed),
         PanelMessage::HistoryBack => {
@@ -439,8 +440,9 @@ fn step_history(panels: &mut Panels, ctx: &Ctx<'_>, direction: HistoryDirection)
     ]
 }
 
-/// Enter: up, into a folder, or into an archive file. An archive inside an
-/// archive is refused before this runs.
+/// Enter: up, into a folder or an archive file, starts an app bundle on macOS
+/// and opens a file like the Finder does. An archive inside an archive is
+/// refused before this runs.
 fn open_selected(panels: &Panels) -> Option<Action> {
     let side = panels.active;
     let panel = panels.active_panel();
@@ -448,16 +450,37 @@ fn open_selected(panels: &Panels) -> Option<Action> {
     if entry.is_parent {
         return go_up(panels, side);
     }
+    if entry.is_dir && is_local_app_bundle(panel, &entry.name) {
+        return Some(Action::OpenBundle(entry.path.clone()));
+    }
     let opens_as_folder =
         entry.is_dir || (!panel.is_virtual() && ncrs_fs::archive::is_archive_name(&entry.name));
     if !opens_as_folder {
-        // Placeholder for file actions (view / edit / open with …).
-        return None;
+        return Some(Action::OpenFile);
     }
     let path = entry.path.clone();
     Some(Action::Load {
         side,
         path,
+        select: None,
+    })
+}
+
+/// A bundle in an archive or on a server cannot be started: there it is a folder.
+fn is_local_app_bundle(panel: &PanelState, name: impl AsRef<std::path::Path>) -> bool {
+    !panel.is_virtual() && ncrs_fs::is_app_bundle(name)
+}
+
+/// The context menu entry on an app bundle: goes into it like into a folder.
+fn show_package_contents(panels: &Panels) -> Option<Action> {
+    let panel = panels.active_panel();
+    let entry = panel.selected_entry()?;
+    if !entry.is_dir || !is_local_app_bundle(panel, &entry.name) {
+        return None;
+    }
+    Some(Action::Load {
+        side: panels.active,
+        path: entry.path.clone(),
         select: None,
     })
 }
@@ -618,4 +641,93 @@ fn finish_panel_drag(panels: &mut Panels, ctx: &Ctx<'_>, actions: &mut Vec<Actio
         TransferKind::Copy
     };
     actions.push(Action::OpenTransferDialog(kind));
+}
+
+#[cfg(test)]
+mod open_selected_tests {
+    use super::*;
+
+    fn entry(name: &str, is_dir: bool) -> FileEntry {
+        FileEntry {
+            name: name.into(),
+            path: Path::new("/data").join(name),
+            is_dir,
+            is_symlink: false,
+            is_parent: false,
+            size: 0,
+            modified: None,
+            folder_size: None,
+            details: Default::default(),
+        }
+    }
+
+    fn open(name: &str, is_dir: bool, in_archive: bool) -> Option<Action> {
+        let mut left = PanelState::new(PathBuf::from("/data"));
+        left.entries = vec![entry(name, is_dir)];
+        if in_archive {
+            left.archive = Some(PathBuf::from("/data/x.zip"));
+        }
+        let panels = Panels::new(
+            left,
+            PanelState::new(PathBuf::from("/other")),
+            PanelSide::Left,
+        );
+        open_selected(&panels)
+    }
+
+    fn load(name: &str) -> Option<Action> {
+        Some(Action::Load {
+            side: PanelSide::Left,
+            path: Path::new("/data").join(name),
+            select: None,
+        })
+    }
+
+    #[test]
+    fn a_file_is_opened_by_the_app() {
+        assert_eq!(open("report.pdf", false, false), Some(Action::OpenFile));
+    }
+
+    #[test]
+    fn a_folder_and_a_zip_are_entered() {
+        assert_eq!(open("docs", true, false), load("docs"));
+        assert_eq!(open("pack.zip", false, false), load("pack.zip"));
+    }
+
+    #[test]
+    fn a_local_app_bundle_starts_on_macos_and_is_a_folder_elsewhere() {
+        let expected = if cfg!(target_os = "macos") {
+            Some(Action::OpenBundle(Path::new("/data").join("Tool.APP")))
+        } else {
+            load("Tool.APP")
+        };
+        assert_eq!(open("Tool.APP", true, false), expected);
+    }
+
+    #[test]
+    fn an_app_bundle_in_an_archive_is_only_a_folder() {
+        assert_eq!(open("Tool.app", true, true), load("Tool.app"));
+    }
+
+    #[test]
+    fn show_package_contents_enters_a_local_bundle_only() {
+        let shown = |name, is_dir, in_archive| {
+            let mut left = PanelState::new(PathBuf::from("/data"));
+            left.entries = vec![entry(name, is_dir)];
+            if in_archive {
+                left.archive = Some(PathBuf::from("/data/x.zip"));
+            }
+            let panels = Panels::new(
+                left,
+                PanelState::new(PathBuf::from("/other")),
+                PanelSide::Left,
+            );
+            show_package_contents(&panels)
+        };
+        if cfg!(target_os = "macos") {
+            assert_eq!(shown("Tool.app", true, false), load("Tool.app"));
+        }
+        assert_eq!(shown("Tool.app", true, true), None);
+        assert_eq!(shown("plain", true, false), None);
+    }
 }

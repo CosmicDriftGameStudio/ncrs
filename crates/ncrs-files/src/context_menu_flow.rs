@@ -21,6 +21,8 @@ pub struct MenuOpenCtx {
     pub search_side: Option<PanelSide>,
     pub visible_rows: usize,
     pub window: Size,
+    /// Height of the favourites bar above the panels, 0 while it is hidden.
+    pub favourites_bar_height: f32,
 }
 
 /// The Hermes column as the menu sees the file under the cursor.
@@ -91,6 +93,7 @@ impl MenuFacts {
                 | ContextAction::Permissions
                 | ContextAction::NewFolder
                 | ContextAction::OpenTerminal
+                | ContextAction::ShowPackageContents
                 | ContextAction::ComputeFolderSizes
                 | ContextAction::AddFavourite
                 | ContextAction::RemoveFavourite
@@ -106,6 +109,9 @@ impl MenuFacts {
             ContextAction::Open
             | ContextAction::ShowOnOtherSide
             | ContextAction::RemoveFromList => cursor_row.is_some(),
+            ContextAction::ShowPackageContents => cursor_row.is_some_and(|entry| {
+                entry.is_dir && !panel.is_virtual() && ncrs_fs::is_app_bundle(&entry.name)
+            }),
             ContextAction::View | ContextAction::Edit => {
                 cursor_row.is_some_and(|entry| !entry.is_dir && !entry.is_parent)
             }
@@ -194,6 +200,7 @@ impl Panels {
                     .saturating_sub(cursor_panel.scroll_offset),
                 cursor_panel.row_height(),
                 ctx.window,
+                ctx.favourites_bar_height,
             )
         }))
     }

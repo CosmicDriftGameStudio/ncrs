@@ -586,7 +586,7 @@ mod tests {
     }
 
     #[test]
-    fn hermes_keeps_review_and_setup_in_submenus_and_go_its_bookmarks_and_places() {
+    fn hermes_keeps_review_and_setup_in_submenus_and_go_its_favourites_and_places() {
         let model = english();
         let hermes = menu_of(&model, CommandGroup::Hermes);
         let review = submenu_of(hermes, Submenu::HermesReview);
@@ -605,8 +605,8 @@ mod tests {
             .iter()
             .any(|entry| matches!(entry, MenuEntry::Item(i) if i.action == KeyAction::Rules)));
         let go = menu_of(&model, CommandGroup::Go);
-        let bookmarks = submenu_of(go, Submenu::Bookmarks);
-        assert!(bookmarks
+        let favourites = submenu_of(go, Submenu::Favourites);
+        assert!(favourites
             .items
             .iter()
             .any(|i| i.action == KeyAction::Favourites));
@@ -621,8 +621,8 @@ mod tests {
             .any(|entry| matches!(entry, MenuEntry::Item(i) if i.action == KeyAction::Favourites)));
         let german = MenuModel::build(Language::German, &Keymap::default(), Toggles::default());
         assert_eq!(
-            submenu_of(menu_of(&german, CommandGroup::Go), Submenu::Bookmarks).title,
-            "Lesezeichen"
+            submenu_of(menu_of(&german, CommandGroup::Go), Submenu::Favourites).title,
+            "Favoriten"
         );
     }
 

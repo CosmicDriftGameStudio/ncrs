@@ -25,8 +25,8 @@ pub mod write;
 pub use action::Action;
 pub use ctx::{Ctx, Services};
 pub use message::{
-    AiModelMessage, KeyBindingsMessage, Message, OcrModelsMessage, SettingChange, SettingField,
-    SettingsMessage, TerminalChoice, ThemeFetchMessage,
+    AiModelMessage, FavouritesEdit, KeyBindingsMessage, Message, OcrModelsMessage, SettingChange,
+    SettingField, SettingsMessage, TerminalChoice, ThemeFetchMessage,
 };
 pub use state::Settings;
 pub use update::{

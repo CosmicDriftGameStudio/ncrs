@@ -6,6 +6,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- A favourites bar between the path tabs and the column headers: one slot per
+  favourite (the first five), opened by click or Cmd/Ctrl+1 to 5. Right-click a
+  slot to open it in the other panel, move it or remove it. The new Favourites
+  settings page switches the bar and orders the folders.
+
+### Changed
+
+- Enter and a double click open a file like the Finder does, with the system's
+  own program. A file that could run (a script, an executable, an installer)
+  asks first, with Cancel selected. On macOS an app bundle starts directly, and
+  "Show package contents" in its context menu enters it as a folder.
+- On macOS the sort keys are now Option+Cmd+1 (name), Option+Cmd+2 (size) and
+  Option+Cmd+3 (modified), because Cmd+1 to 5 open the favourites.
+
 ## [1.3.0] — 2026-11-08
 
 ### Added

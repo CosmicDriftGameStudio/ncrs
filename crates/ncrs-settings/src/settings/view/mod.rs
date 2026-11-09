@@ -1,4 +1,5 @@
 mod columns_page;
+mod favourites_page;
 mod font_rows;
 mod groups;
 mod hermes_page;
@@ -7,6 +8,7 @@ mod page;
 mod system_page;
 
 use columns_page::columns_groups;
+use favourites_page::favourites_groups;
 use font_rows::font_rows;
 pub use groups::server_dialog_body;
 use groups::*;
@@ -25,7 +27,7 @@ use iced::widget::text::Wrapping;
 use iced::widget::{container, row, scrollable, text, Column};
 use iced::{Color, Element, Length};
 
-use crate::facts::DocumentsFacts;
+use crate::facts::{DocumentsFacts, FavouritesFacts};
 use crate::message::{SettingChange, SettingField, SettingsMessage};
 use ncrs_config::config::{AiEndpointProblem, Filing, ProgramLineProblem, ServerEntry};
 use ncrs_config::{SettingsFeature, SettingsGroup};
@@ -72,6 +74,8 @@ pub struct SettingsView<'a> {
     pub protection: Option<ProtectionPanel>,
     /// What the Index and Hermes pages show that the config does not say.
     pub facts: DocumentsFacts,
+    /// The folders of the Favourites page.
+    pub favourites: FavouritesFacts,
     pub home: &'a Path,
     /// How many actions have keys other than their built-in ones.
     pub keys_changed: usize,
@@ -152,6 +156,7 @@ fn feature_label(feature: SettingsFeature) -> Msg {
         SettingsFeature::Keys => Msg::SettingsFeatureKeys,
         SettingsFeature::Servers => Msg::SettingsFeatureServers,
         SettingsFeature::Columns => Msg::SettingsFeatureColumns,
+        SettingsFeature::Favourites => Msg::SettingsFeatureFavourites,
         SettingsFeature::System => Msg::SettingsFeatureSystem,
         SettingsFeature::Updates => Msg::SettingsFeatureUpdates,
         SettingsFeature::Index => Msg::SettingsFeatureIndex,
@@ -172,6 +177,7 @@ fn feature_theme_name(feature: SettingsFeature) -> Option<FuturamaName> {
         | SettingsFeature::Keys
         | SettingsFeature::Servers
         | SettingsFeature::Columns
+        | SettingsFeature::Favourites
         | SettingsFeature::System
         | SettingsFeature::Updates
         | SettingsFeature::Index
@@ -201,6 +207,7 @@ fn feature_suffix(feature: SettingsFeature) -> Option<Msg> {
         | SettingsFeature::Keys
         | SettingsFeature::Servers
         | SettingsFeature::Columns
+        | SettingsFeature::Favourites
         | SettingsFeature::System
         | SettingsFeature::Updates
         | SettingsFeature::Index
@@ -220,6 +227,7 @@ fn feature_beta_mark(feature: SettingsFeature) -> Option<Msg> {
         | SettingsFeature::Keys
         | SettingsFeature::Servers
         | SettingsFeature::Columns
+        | SettingsFeature::Favourites
         | SettingsFeature::System
         | SettingsFeature::Updates
         | SettingsFeature::Index
@@ -238,6 +246,7 @@ fn feature_intro(feature: SettingsFeature) -> Msg {
         SettingsFeature::Keys => Msg::SettingsFeatureKeysIntro,
         SettingsFeature::Servers => Msg::SettingsFeatureServersIntro,
         SettingsFeature::Columns => Msg::SettingsFeatureColumnsIntro,
+        SettingsFeature::Favourites => Msg::SettingsFeatureFavouritesIntro,
         SettingsFeature::System => Msg::SettingsFeatureSystemIntro,
         SettingsFeature::Updates => Msg::SettingsFeatureUpdatesIntro,
         SettingsFeature::Index => Msg::SettingsFeatureIndexIntro,
@@ -259,6 +268,7 @@ fn feature_config_place(feature: SettingsFeature) -> Option<&'static str> {
         SettingsFeature::Keys => Some(KEYS_SECTION),
         SettingsFeature::Servers => Some(SERVERS_SECTION),
         SettingsFeature::Columns => Some(COLUMNS_SECTION),
+        SettingsFeature::Favourites => None,
         SettingsFeature::System => Some(SYSTEM_SECTION),
         SettingsFeature::Index | SettingsFeature::Hermes => Some(FILING_SECTION),
         SettingsFeature::Rules
@@ -325,6 +335,7 @@ fn groups_of<'a>(feature: SettingsFeature, view: &SettingsView<'a>) -> Vec<Group
         SettingsFeature::Keys => keys_groups(view),
         SettingsFeature::Servers => servers_groups(view),
         SettingsFeature::Columns => columns_groups(view),
+        SettingsFeature::Favourites => favourites_groups(view),
         SettingsFeature::System => system_groups(view),
         SettingsFeature::Index => index_groups(view),
         SettingsFeature::Hermes => hermes_groups(view),

@@ -407,3 +407,20 @@ async fn a_script_without_an_editor_is_refused_without_naming_the_edit_key() {
         )
     );
 }
+
+/// Enter on a file in an archive takes the path of F3: no unpacking without a
+/// place for the copies, and nothing is started in place.
+#[tokio::test]
+async fn enter_on_a_file_in_an_archive_takes_the_f3_path() {
+    let dir = scratch("enter-in-zip");
+    let (mut app, launcher) = app_in_zip(dir.path(), None);
+
+    drop(app.update(Message::Panel(PanelMessage::OpenSelected)));
+
+    assert_eq!(
+        app.job_error.as_deref(),
+        Some(app.lang.text(Msg::ErrorArchiveViewUnavailable))
+    );
+    assert!(app.ops.open_file_dialog.is_none());
+    assert!(launcher.0.lock().unwrap().is_empty());
+}

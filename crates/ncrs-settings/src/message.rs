@@ -33,6 +33,8 @@ pub enum SettingChange {
     Language(Language),
     /// The `check_for_updates` switch.
     CheckForUpdates(bool),
+    /// The top-level `favourites_bar` switch.
+    FavouritesBar(bool),
     HermesEnabled(bool),
     Load(Load),
     AiEnabled(bool),
@@ -85,6 +87,15 @@ pub enum ColumnsEdit {
     Size(SizeFormat),
 }
 
+/// An edit on the Favourites page: the favourite at this position of the list.
+/// The app changes the list, which it keeps, and saves it with the session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FavouritesEdit {
+    Up(usize),
+    Down(usize),
+    Remove(usize),
+}
+
 /// A text field of the settings tab. What is typed stays a draft until
 /// Enter, which checks it and writes it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -129,6 +140,7 @@ pub enum SettingsMessage {
     SearchChanged(String),
     Change(SettingChange),
     Columns(ColumnsEdit),
+    Favourites(FavouritesEdit),
     Edit {
         field: SettingField,
         text: String,

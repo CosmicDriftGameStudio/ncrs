@@ -48,6 +48,18 @@ pub fn server_rows(saved: Vec<ServerRow>, connected: &[ServerId]) -> Vec<ServerR
     rows
 }
 
+/// Where a favourite leads, or the error to show when the folder is gone.
+/// The drive menu and the favourites bar open a favourite through this.
+pub fn favourite_target(favourite: &FavouriteRow, lang: Language) -> Result<PathBuf, Action> {
+    if favourite.present {
+        return Ok(favourite.path.clone());
+    }
+    Err(Action::ShowError(fill_template(
+        lang.text(Msg::ErrorFavouriteGone),
+        &[("{path}", &favourite.path.display().to_string())],
+    )))
+}
+
 fn favourite_notice(lang: Language, msg: Msg, path: &Path) -> Action {
     Action::ShowNotice(fill_template(
         lang.text(msg),
@@ -227,14 +239,10 @@ impl Panels {
                 else {
                     return Vec::new();
                 };
-                if !favourite.present {
-                    let text = fill_template(
-                        lang.text(Msg::ErrorFavouriteGone),
-                        &[("{path}", &favourite.path.display().to_string())],
-                    );
-                    return vec![Action::ShowError(text)];
+                match favourite_target(favourite, lang) {
+                    Ok(path) => path,
+                    Err(error) => return vec![error],
                 }
-                favourite.path.clone()
             }
         };
         self.active = menu.side;

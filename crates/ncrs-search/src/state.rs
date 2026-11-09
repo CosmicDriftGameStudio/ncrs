@@ -72,14 +72,14 @@ impl Search {
             view: None,
             open: false,
             side: PanelSide::Left,
-            rows: layout::search_visible_rows(window, false, false, HIT_LIST_ROW_HEIGHT),
+            rows: layout::search_visible_rows(window, 0.0, false, false, HIT_LIST_ROW_HEIGHT),
             generation: 0,
             handle: None,
         }
     }
 
-    pub fn resize(&mut self, window: Size) {
-        self.rows = self.rows_for(window);
+    pub fn resize(&mut self, window: Size, bar_height: f32) {
+        self.rows = self.rows_for(window, bar_height);
         if let Some(view) = self.view.as_mut() {
             view.ensure_visible(self.rows);
         }
@@ -87,12 +87,18 @@ impl Search {
 
     /// The result rows that fit in `window` at the height the search's rows
     /// have now.
-    pub fn rows_for(&self, window: Size) -> usize {
+    pub fn rows_for(&self, window: Size, bar_height: f32) -> usize {
         let row_height = self
             .view
             .as_ref()
             .map_or(HIT_LIST_ROW_HEIGHT, SearchView::row_height);
-        layout::search_visible_rows(window, self.filtered(), self.in_files(), row_height)
+        layout::search_visible_rows(
+            window,
+            bar_height,
+            self.filtered(),
+            self.in_files(),
+            row_height,
+        )
     }
 
     /// Whether the search shows its filters.
@@ -109,7 +115,7 @@ impl Search {
 
     /// The rows of the search after its filters changed what they offer.
     pub fn refresh_rows(&mut self, ctx: &Ctx) {
-        self.resize(ctx.window_size);
+        self.resize(ctx.window_size, ctx.favourites_bar_height);
     }
 
     pub fn focus_field<T: Send + 'static>(&self) -> Task<T> {

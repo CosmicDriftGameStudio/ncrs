@@ -182,6 +182,9 @@ pub struct SettingRow<'a, M> {
     /// Set with [`RowKey::Buttons`]: the control once for each button, with
     /// that button marked.
     pub marked_controls: Vec<Element<'a, M>>,
+    /// Set at the left of the whole row, before its label (the number of a
+    /// favourite).
+    pub leading: Option<Element<'a, M>>,
 }
 
 pub struct Group<'a, M> {
@@ -242,6 +245,7 @@ impl<'a, M: Clone + 'a> SettingRow<'a, M> {
                 .into_iter()
                 .map(|control| control.map(wrap.clone()))
                 .collect(),
+            leading: self.leading.map(|lead| lead.map(wrap.clone())),
         }
     }
 
@@ -261,6 +265,7 @@ impl<'a, M: Clone + 'a> SettingRow<'a, M> {
             in_command_list: false,
             list_indent: None,
             marked_controls: Vec::new(),
+            leading: None,
         }
     }
 
@@ -316,6 +321,14 @@ impl<'a, M: Clone + 'a> SettingRow<'a, M> {
             control: build(None),
             marked_controls: (0..messages.len()).map(|at| build(Some(at))).collect(),
             key: Some(RowKey::Buttons(messages)),
+            ..self
+        }
+    }
+
+    /// `lead` stands at the left of the row, before its label.
+    pub fn with_leading(self, lead: Element<'a, M>) -> Self {
+        Self {
+            leading: Some(lead),
             ..self
         }
     }
@@ -421,6 +434,7 @@ pub fn simple_row<'a, M: Clone + 'a>(
         in_command_list: true,
         list_indent: None,
         marked_controls: Vec::new(),
+        leading: None,
     }
 }
 
@@ -600,14 +614,23 @@ pub fn sections_with_focus<'a, M: Clone + 'a>(
                     },
                     &row_palette,
                 );
+                let led_row = match setting.leading {
+                    Some(lead) => {
+                        iced::widget::row![lead, container(plain_row).width(Length::Fill)]
+                            .spacing(spacing::M)
+                            .align_y(alignment::Vertical::Center)
+                            .into()
+                    }
+                    None => plain_row,
+                };
                 let form_row = match setting.list_indent.filter(|indent| *indent > 0.0) {
-                    Some(indent) => container(plain_row)
+                    Some(indent) => container(led_row)
                         .padding(Padding {
                             left: indent,
                             ..Padding::ZERO
                         })
                         .into(),
-                    None => plain_row,
+                    None => led_row,
                 };
                 let row: Element<'a, M> = if has_focus {
                     // Like the mark: drawn over the content, which keeps clear.

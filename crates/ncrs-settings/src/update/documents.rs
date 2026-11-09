@@ -12,7 +12,7 @@ use super::page::in_settings;
 use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::facts::ModelKind;
-use crate::folders;
+use crate::folders::{self, AddAs};
 use crate::message::{AiModelMessage, Message, SettingChange, SettingsMessage};
 use crate::model_removal::remove_model_files;
 use crate::state::Settings;
@@ -35,6 +35,18 @@ pub fn update(
             path: Some(path),
         } if ctx.sandbox_active => {
             actions.push(Action::GrantFolder { kind, path });
+            Task::none()
+        }
+        SettingsMessage::FolderPicked {
+            kind: AddAs::Favourite,
+            path: Some(path),
+        }
+        | SettingsMessage::FolderGranted {
+            kind: AddAs::Favourite,
+            path,
+            result: Ok(()),
+        } => {
+            actions.push(Action::AddFavourite(canonical(path)));
             Task::none()
         }
         SettingsMessage::FolderPicked {

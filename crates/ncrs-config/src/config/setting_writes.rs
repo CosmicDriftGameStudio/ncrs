@@ -55,6 +55,24 @@ pub fn write_check_for_updates(path: &Path, enabled: bool) -> Result<Config, Fil
     )
 }
 
+pub fn favourites_bar_setting(shown: bool) -> Setting {
+    Setting {
+        tables: &[],
+        key: "favourites_bar",
+        value: Some(shown.into()),
+    }
+}
+
+/// Sets the top-level `favourites_bar`; same guarantees as
+/// [`write_theme_preset`].
+pub fn write_favourites_bar(path: &Path, shown: bool) -> Result<Config, FilingWriteError> {
+    write_setting(
+        path,
+        favourites_bar_setting(shown),
+        home_from_env().as_deref(),
+    )
+}
+
 pub fn filing_enabled_setting(enabled: bool) -> Setting {
     Setting {
         tables: &[MODULES_TABLE, FILING_TABLE],

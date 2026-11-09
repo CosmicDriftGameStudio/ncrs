@@ -15,6 +15,7 @@ pub mod drag_out;
 pub mod drop_paste;
 pub mod keys;
 pub mod message;
+pub mod open_file;
 pub mod open_flow;
 pub mod permissions;
 pub mod permissions_flow;
@@ -53,6 +54,7 @@ pub use delete_flow::{
 pub use message::{
     ConflictChoice, OpsMessage, PermissionsMessage, TransferDialogMessage, TrashMessage,
 };
+pub use open_file::{confirm_open_file, open_open_file_dialog};
 pub use open_flow::{
     confirm_transfer, copy_external_files, open_pack_prompt, open_transfer_dialog, paste_content,
     start_prompt_job, suggested_archive_name, update_transfer_dialog_flow, HitListFacts,

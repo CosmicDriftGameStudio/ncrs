@@ -388,6 +388,20 @@ impl App {
         self
     }
 
+    /// Keeps the session in `path`, so a test can read what was saved.
+    pub fn with_state_path(mut self, path: PathBuf) -> Self {
+        self.state_path = Some(path);
+        self
+    }
+
+    pub fn visible_rows_for_test(&self) -> usize {
+        self.visible_rows
+    }
+
+    pub fn favourites_for_test(&self) -> &[PathBuf] {
+        &self.panels.favourites
+    }
+
     /// Replaces the launcher, so a test never starts a real program.
     pub fn with_launcher(mut self, launcher: Arc<dyn fs::Launcher>) -> Self {
         self.launcher = launcher;
@@ -567,6 +581,13 @@ impl App {
             permanent,
             side: PanelSide::Left,
         });
+    }
+
+    /// Puts the open-file question in front of the user for a fixed script,
+    /// for the snapshot tests.
+    pub fn open_open_file_dialog_for_test(&mut self) {
+        self.dialog_focus = ncrs_ops::open_file::CANCEL_FOCUS;
+        self.ops.open_file_dialog = Some(PathBuf::from("/left/install-tools.command"));
     }
 
     /// Puts the copy confirmation in front of the user for `count` fixed

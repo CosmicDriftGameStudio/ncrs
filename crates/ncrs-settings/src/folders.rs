@@ -13,6 +13,8 @@ pub enum AddAs {
     ReadFolder,
     /// Index: a folder that is only read where it is.
     Indexed,
+    /// Favourites: a folder for the bar under the tabs and the drive menu.
+    Favourite,
 }
 
 /// `path` joins the list. An indexed folder becomes the filing target when
@@ -23,12 +25,15 @@ pub fn added(locations: &[FilingLocation], path: PathBuf, kind: AddAs) -> Vec<Fi
         return list;
     }
     let is_target = kind == AddAs::Indexed && !list.iter().any(|known| known.is_target);
+    let mode = match kind {
+        AddAs::ReadFolder => LocationMode::Inbox,
+        AddAs::Indexed => LocationMode::Archive,
+        // A favourite is not a location of the filing.
+        AddAs::Favourite => return list,
+    };
     list.push(FilingLocation {
         path,
-        mode: match kind {
-            AddAs::ReadFolder => LocationMode::Inbox,
-            AddAs::Indexed => LocationMode::Archive,
-        },
+        mode,
         images: false,
         is_target,
         transfer: LocationTransfer::default(),

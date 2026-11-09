@@ -331,7 +331,7 @@ fn the_keyboard_opens_the_menu_at_the_cursor_row_of_the_active_panel() {
     drop(app.update(Message::ContextMenuKey));
 
     let menu = app.context_menu_for_test().unwrap();
-    let anchor = layout::cursor_row_anchor(true, 2, layout::ROW_HEIGHT, app.window_size);
+    let anchor = layout::cursor_row_anchor(true, 2, layout::ROW_HEIGHT, app.window_size, 0.0);
     assert_eq!(menu.origin(), anchor);
     assert_eq!(app.active_panel_side_for_test(), PanelSide::Right);
     assert_eq!(app.panel(PanelSide::Right).selected, 2);

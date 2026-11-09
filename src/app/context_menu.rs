@@ -50,6 +50,7 @@ impl App {
             search_side: self.search.open.then_some(self.search.side),
             visible_rows: self.visible_rows,
             window: self.window_size,
+            favourites_bar_height: self.favourites_bar_height(),
         }
     }
 

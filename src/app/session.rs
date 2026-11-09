@@ -21,8 +21,9 @@ impl App {
     pub(in crate::app) fn apply_window_size(&mut self, size: Size) {
         self.window_size = size;
         self.resize_command_palette(size);
-        self.visible_rows = layout::visible_rows(size);
-        self.search.resize(size);
+        self.favourites_bar_applied = self.favourites_bar_height();
+        self.visible_rows = layout::visible_rows(size, self.favourites_bar_applied);
+        self.search.resize(size, self.favourites_bar_applied);
         self.panels.left.ensure_visible(self.visible_rows);
         self.panels.right.ensure_visible(self.visible_rows);
     }

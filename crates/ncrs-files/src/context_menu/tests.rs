@@ -11,9 +11,10 @@ use super::*;
 
 const WINDOW: Size = Size::new(1200.0, 760.0);
 
+/// The menu of an ordinary row: the bundle entry is left out.
 fn menu_with(disabled: &[ContextAction]) -> ContextMenu {
     ContextMenu::new(Point::new(10.0, 10.0), WINDOW, |action| {
-        !disabled.contains(&action)
+        action != ContextAction::ShowPackageContents && !disabled.contains(&action)
     })
 }
 
@@ -156,7 +157,7 @@ fn the_menu_folds_back_into_the_window() {
     let corner = ContextMenu::new(
         Point::new(WINDOW.width - 5.0, WINDOW.height - 5.0),
         WINDOW,
-        |_| true,
+        |action| action != ContextAction::ShowPackageContents,
     );
     assert_eq!(
         corner.origin(),
@@ -321,4 +322,29 @@ fn archives_and_servers_do_not_run_permissions() {
     assert!(!ContextAction::Permissions.allowed_in_archive());
     assert!(!ContextAction::Permissions.allowed_on_server());
     assert_eq!(ContextAction::Permissions.label(), Msg::ActionPermissions);
+}
+
+#[test]
+fn show_package_contents_follows_open_only_where_it_applies() {
+    let entries_where = |applies: bool| {
+        ContextMenu::new(Point::new(10.0, 10.0), WINDOW, |action| {
+            action != ContextAction::ShowPackageContents || applies
+        })
+        .entries()
+        .iter()
+        .filter_map(|entry| match entry {
+            MenuEntry::Item { action, .. } => Some(*action),
+            _ => None,
+        })
+        .take(2)
+        .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        entries_where(true),
+        [ContextAction::Open, ContextAction::ShowPackageContents]
+    );
+    assert_eq!(
+        entries_where(false),
+        [ContextAction::Open, ContextAction::View]
+    );
 }

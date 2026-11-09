@@ -35,6 +35,8 @@ pub enum PanelMessage {
     SelectFirst,
     SelectLast,
     OpenSelected,
+    /// "Show package contents" on an app bundle: enters it as a folder.
+    ShowPackageContents,
     GoUp,
     /// A printable key: jump to the first entry that starts with what was
     /// typed in the last second.

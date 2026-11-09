@@ -2330,7 +2330,7 @@ mod tests {
             write(&dir.path().join(format!("f{i:03}.txt")), "x");
         }
         let mut session = session_in(dir.path());
-        let rows = crate::ui::layout::visible_rows(crate::ui::layout::INITIAL_WINDOW_SIZE);
+        let rows = crate::ui::layout::visible_rows(crate::ui::layout::INITIAL_WINDOW_SIZE, 0.0);
         assert_eq!(
             selected(&session.app, PanelSide::Left).as_deref(),
             Some("..")
@@ -2653,6 +2653,9 @@ fn the_sort_keys_sort_the_active_panel_and_a_second_press_reverses() {
 
 #[cfg(test)]
 mod acceptance;
+
+#[cfg(test)]
+mod favourites;
 
 #[cfg(test)]
 mod monitor;

@@ -72,6 +72,11 @@ impl KeyActionMessage for KeyAction {
             Self::AddFavourite => Message::AddFavourite,
             Self::RemoveFavourite => Message::RemoveFavourite,
             Self::Favourites => Message::OpenFavourites,
+            Self::OpenFavourite1 => Message::OpenFavourite(0),
+            Self::OpenFavourite2 => Message::OpenFavourite(1),
+            Self::OpenFavourite3 => Message::OpenFavourite(2),
+            Self::OpenFavourite4 => Message::OpenFavourite(3),
+            Self::OpenFavourite5 => Message::OpenFavourite(4),
             Self::SortByName => Message::Panel(PanelMessage::SortActive(SortColumn::Name)),
             Self::SortByModified => Message::Panel(PanelMessage::SortActive(SortColumn::Modified)),
             Self::SortBySize => Message::Panel(PanelMessage::SortActive(SortColumn::Size)),
@@ -281,13 +286,20 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     #[test]
-    fn cmd_1_2_3_sort_by_name_size_modified() {
+    fn alt_cmd_1_2_3_sort_by_name_size_modified() {
         for (digit, column) in [
             ("1", SortColumn::Name),
             ("2", SortColumn::Size),
             ("3", SortColumn::Modified),
         ] {
             assert_eq!(
+                map_key(
+                    Key::Character(digit.into()),
+                    Modifiers::ALT | Modifiers::COMMAND
+                ),
+                Some(Message::Panel(PanelMessage::SortActive(column)))
+            );
+            assert_ne!(
                 map_key(Key::Character(digit.into()), Modifiers::COMMAND),
                 Some(Message::Panel(PanelMessage::SortActive(column)))
             );
@@ -312,9 +324,10 @@ mod tests {
                 Some(Message::Panel(PanelMessage::SortActive(column)))
             );
         }
+        // The digits are the favourites', not a sort chord, here and on a Mac.
         assert_eq!(
             map_key(Key::Character("1".into()), Modifiers::COMMAND),
-            None
+            Some(Message::OpenFavourite(0))
         );
     }
 

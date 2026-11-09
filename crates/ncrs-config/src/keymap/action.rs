@@ -72,6 +72,11 @@ key_actions! {
     AddFavourite => "add_favourite",
     RemoveFavourite => "remove_favourite",
     Favourites => "favourites",
+    OpenFavourite1 => "open_favourite_1",
+    OpenFavourite2 => "open_favourite_2",
+    OpenFavourite3 => "open_favourite_3",
+    OpenFavourite4 => "open_favourite_4",
+    OpenFavourite5 => "open_favourite_5",
     SortByName => "sort_by_name",
     SortByModified => "sort_by_modified",
     SortBySize => "sort_by_size",
@@ -235,6 +240,11 @@ impl KeyAction {
             | Self::AddFavourite
             | Self::RemoveFavourite
             | Self::Favourites
+            | Self::OpenFavourite1
+            | Self::OpenFavourite2
+            | Self::OpenFavourite3
+            | Self::OpenFavourite4
+            | Self::OpenFavourite5
             | Self::SortByName
             | Self::SortByModified
             | Self::SortBySize
@@ -365,6 +375,11 @@ impl KeyAction {
             | Self::HistoryBack
             | Self::HistoryForward
             | Self::Favourites
+            | Self::OpenFavourite1
+            | Self::OpenFavourite2
+            | Self::OpenFavourite3
+            | Self::OpenFavourite4
+            | Self::OpenFavourite5
             | Self::SortByName
             | Self::SortByModified
             | Self::SortBySize
@@ -462,6 +477,11 @@ impl KeyAction {
             | Self::HistoryBack
             | Self::HistoryForward
             | Self::Favourites
+            | Self::OpenFavourite1
+            | Self::OpenFavourite2
+            | Self::OpenFavourite3
+            | Self::OpenFavourite4
+            | Self::OpenFavourite5
             | Self::SortByName
             | Self::SortByModified
             | Self::SortBySize

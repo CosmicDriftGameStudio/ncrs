@@ -14,6 +14,7 @@ impl App {
         let overview = self.overview_facts(state.ocr_models_present);
         settings_ui::SettingsView {
             facts: self.documents_facts(&overview, state),
+            favourites: self.favourites_facts(),
             state,
             preset: self.theme_preset,
             vscode_theme: self.vscode_theme.as_deref(),
@@ -168,6 +169,11 @@ impl App {
                 Task::none()
             }
             Ask::PickFolder(kind) => self.pick_read_folder(kind),
+            Ask::AddFavourite(path) => self.add_picked_favourite(path),
+            Ask::EditFavourites(edit) => {
+                self.edit_favourites(edit);
+                Task::none()
+            }
             Ask::GrantFolder { kind, path } => self.grant_read_folder(kind, path),
             Ask::OpenChat { area } => self.open_chat_from_settings(area),
             Ask::HermesNotTurnedOn(reason) => self.hermes_not_turned_on(reason),
@@ -346,6 +352,10 @@ impl App {
             }
             SettingChange::Language(lang) => {
                 self.set_language(lang);
+                Task::none()
+            }
+            SettingChange::FavouritesBar(_) => {
+                self.favourites_bar_on = config.favourites_bar.unwrap_or(true);
                 Task::none()
             }
             SettingChange::CheckForUpdates(_) => {

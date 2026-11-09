@@ -149,6 +149,8 @@ pub enum OpsMessage {
     /// Ticks or unticks "for all files" in the conflict dialog.
     ToggleConflictAll,
     DeleteCancel,
+    OpenFileCancel,
+    OpenFileConfirm,
     DeleteConfirm,
     Permissions(PermissionsMessage),
     /// The permissions change is over. Dropped when `generation` is not the

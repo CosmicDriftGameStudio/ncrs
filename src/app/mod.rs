@@ -170,6 +170,7 @@ mod bars;
 mod columns;
 mod context_menu;
 mod dialogs;
+mod favourites_bar;
 mod hermes;
 mod hermes_chat;
 mod hermes_pages;
@@ -346,6 +347,12 @@ pub struct App {
     updates: ncrs_updates::State,
     /// The `check_for_updates` setting; `None` follows how ncrs was installed.
     update_check: Option<bool>,
+    /// The `favourites_bar` setting: the bar under the tabs is wanted.
+    favourites_bar_on: bool,
+    /// The bar height the lists were last sized for.
+    favourites_bar_applied: f32,
+    /// The menu of a favourites bar slot, while it is up.
+    favourite_menu: Option<favourites_bar::FavouriteMenu>,
     /// Asks GitHub for the newest release. Injected so tests need no network.
     fetch_latest_release: ncrs_updates::FetchFn,
     /// The Hermes chat (F2): its thread is kept when it is closed.
@@ -522,12 +529,16 @@ pub struct PromptKeyState {
     pub monitor_menu: bool,
     /// The delete dialog is up, so keys answer it.
     pub delete_dialog: DeleteKeys,
+    /// The question before a file that can run is opened is up, so keys answer it.
+    pub open_file_dialog: bool,
     /// The question whether to remove the Hermes index is up: keys answer it.
     pub start_over_dialog: bool,
     /// The drive menu is up, so keys move its highlight.
     pub volume_menu: bool,
     /// The context menu is up, so keys move its highlight.
     pub context_menu: bool,
+    /// A slot menu of the favourites bar is up: Escape closes it.
+    pub favourite_menu: bool,
     /// Its Hermes submenu is up too: Escape and Left go back to the menu.
     pub context_submenu: bool,
     /// The quick-fix menu is up, so keys move its highlight.
@@ -572,9 +583,11 @@ impl Default for PromptKeyState {
             monitor_dialog: false,
             monitor_menu: false,
             delete_dialog: DeleteKeys::default(),
+            open_file_dialog: false,
             start_over_dialog: false,
             volume_menu: false,
             context_menu: false,
+            favourite_menu: false,
             context_submenu: false,
             quick_fix: false,
             busy: false,

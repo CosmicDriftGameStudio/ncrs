@@ -7,6 +7,7 @@ pub mod context_menu;
 pub mod context_menu_flow;
 pub mod context_menu_view;
 pub mod ctx;
+pub mod favourites;
 pub mod folder_size;
 pub mod folder_watch;
 pub mod header_drag;

@@ -113,8 +113,14 @@ impl App {
             {
                 self.settings_area(state)
             } else {
+                let panels_area: Element<'_, Message> = match self.favourites_bar_view() {
+                    Some(favourites_bar) => {
+                        column![favourites_bar, panels].height(Length::Fill).into()
+                    }
+                    None => panels.into(),
+                };
                 container(column![
-                    panels,
+                    panels_area,
                     command_line_ui::view(command_line_ui::Props {
                         prompt: self.active_panel().path.display().to_string(),
                         typed: self.command_line.typed(),
@@ -253,6 +259,10 @@ impl App {
             .into();
         }
 
+        if let Some(menu) = self.favourite_menu_view() {
+            return Stack::with_children([root, menu]).into();
+        }
+
         if let Some(menu) = self.panels.context_menu.as_ref() {
             // A left press anywhere beside the menu closes it, the path field
             // and the column titles included: those take their own clicks and
@@ -306,6 +316,22 @@ impl App {
             let dialog_element = delete_dialog_view::view(
                 &ncrs_ops::delete_subject(self.lang, deletion),
                 deletion.permanent,
+                self.dialog_focus,
+                self.window_size,
+                self.lang,
+                &self.palette,
+            )
+            .map(Message::from);
+            return Stack::with_children([root, dialog::scrim(dialog_element)]).into();
+        }
+
+        if let Some(path) = self.ops.open_file_dialog.as_ref() {
+            let name = path
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let dialog_element = ncrs_ops::open_file::view(
+                &name,
                 self.dialog_focus,
                 self.window_size,
                 self.lang,

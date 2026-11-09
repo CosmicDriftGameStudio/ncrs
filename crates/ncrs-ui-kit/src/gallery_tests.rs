@@ -430,3 +430,62 @@ mod ui_tests {
         }
     }
 }
+
+/// The favourites bar apart from the grid: so adding it left the grid alone.
+mod favourites_bar_ui_tests {
+    use super::*;
+    use crate::favourites_bar::{self, Slot};
+
+    fn slot(number: usize, label: &str, is_current: bool) -> Slot<()> {
+        Slot {
+            number,
+            label: label.to_owned(),
+            is_current,
+            tooltip: String::new(),
+            on_press: (),
+            on_right_press: (),
+        }
+    }
+
+    fn bar_picture(preset: ThemePreset) {
+        let palette = preset.palette();
+        let full = favourites_bar::view(
+            vec![
+                slot(1, "~", false),
+                slot(2, "Documents", true),
+                slot(3, "work/src", false),
+                slot(4, "Downloads", false),
+                slot(5, "projects/ncrs", false),
+            ],
+            Some("Cmd+1 … 5".to_owned()),
+            &palette,
+        );
+        let few = favourites_bar::view(
+            vec![slot(1, "~", true), slot(2, "Documents", false)],
+            None,
+            &palette,
+        );
+        let content: Element<'_, ()> = iced::widget::column![full, few].spacing(spacing::L).into();
+        let name = format!("favourites-bar-{}", format!("{preset:?}").to_lowercase());
+        let matches = Simulator::with_size(
+            iced::Settings {
+                default_font: crate::APP_FONT,
+                ..iced::Settings::default()
+            },
+            Size::new(700.0, 80.0),
+            container(content).style(theme::panel(&palette)),
+        )
+        .snapshot(&iced::Theme::Dark)
+        .unwrap()
+        .matches_image(format!("tests/snapshots/{name}.png"))
+        .unwrap();
+        assert!(matches, "{name} differs from its image");
+    }
+
+    #[test]
+    fn the_favourites_bar_looks_the_same_in_every_preset() {
+        for preset in ThemePreset::ALL {
+            bar_picture(preset);
+        }
+    }
+}

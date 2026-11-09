@@ -62,7 +62,7 @@ impl CommandGroup {
 /// used. The order is the order the submenus have within a section.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Submenu {
-    Bookmarks,
+    Favourites,
     Places,
     HermesReview,
     HermesSetup,
@@ -71,7 +71,7 @@ pub enum Submenu {
 impl Submenu {
     pub fn label(self) -> Msg {
         match self {
-            Self::Bookmarks => Msg::MenuSubmenuBookmarks,
+            Self::Favourites => Msg::MenuSubmenuFavourites,
             Self::Places => Msg::MenuSubmenuPlaces,
             Self::HermesReview => Msg::MenuSubmenuHermesReview,
             Self::HermesSetup => Msg::MenuSubmenuHermesSetup,
@@ -178,7 +178,7 @@ pub fn command_of(action: KeyAction) -> Option<Command> {
 /// The place in the menu. No catch-all arm: a new action has to say where it
 /// belongs. The sections are in the order the menu shows them.
 fn menu_place_of(action: KeyAction) -> MenuPlace {
-    use Submenu::{Bookmarks, HermesReview, HermesSetup, Places};
+    use Submenu::{Favourites, HermesReview, HermesSetup, Places};
     let at = MenuPlace::section;
     match action {
         KeyAction::CursorUp
@@ -231,8 +231,13 @@ fn menu_place_of(action: KeyAction) -> MenuPlace {
             at(3).within(Places)
         }
         KeyAction::ConnectServer => at(3).dialog().within(Places),
-        KeyAction::AddFavourite | KeyAction::RemoveFavourite => at(3).within(Bookmarks),
-        KeyAction::Favourites => at(3).dialog().within(Bookmarks),
+        KeyAction::AddFavourite | KeyAction::RemoveFavourite => at(3).within(Favourites),
+        KeyAction::Favourites => at(3).dialog().within(Favourites),
+        KeyAction::OpenFavourite1
+        | KeyAction::OpenFavourite2
+        | KeyAction::OpenFavourite3
+        | KeyAction::OpenFavourite4
+        | KeyAction::OpenFavourite5 => at(3).within(Favourites),
         KeyAction::Search | KeyAction::SearchDocuments => at(0),
         KeyAction::SearchCase | KeyAction::SearchWholeWord | KeyAction::SearchRegex => {
             at(1).toggle()
@@ -355,6 +360,11 @@ fn command_without_place(action: KeyAction) -> Option<Command> {
         KeyAction::AddFavourite => Command::plain(action, Go, Msg::ActionAddFavourite),
         KeyAction::RemoveFavourite => Command::plain(action, Go, Msg::ActionRemoveFavourite),
         KeyAction::Favourites => Command::plain(action, Go, Msg::ActionFavourites),
+        KeyAction::OpenFavourite1 => Command::plain(action, Go, Msg::ActionOpenFavourite1),
+        KeyAction::OpenFavourite2 => Command::plain(action, Go, Msg::ActionOpenFavourite2),
+        KeyAction::OpenFavourite3 => Command::plain(action, Go, Msg::ActionOpenFavourite3),
+        KeyAction::OpenFavourite4 => Command::plain(action, Go, Msg::ActionOpenFavourite4),
+        KeyAction::OpenFavourite5 => Command::plain(action, Go, Msg::ActionOpenFavourite5),
         KeyAction::CommandLine => Command::plain(action, Go, Msg::ActionCommandLine),
         KeyAction::HermesChat => Command::plain(action, Go, Msg::ActionHermesChat),
         KeyAction::QuickOpen => Command::themed(

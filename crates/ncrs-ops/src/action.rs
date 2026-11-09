@@ -99,6 +99,8 @@ pub enum Action {
     ShowError(String),
     /// Move the keyboard focus to this button of the open dialog.
     FocusDialogButton(usize),
+    /// The open-file question was confirmed: hand the file to the system opener.
+    OpenWithSystem(PathBuf),
     /// Put the job into the queue and start it if nothing runs.
     StartJob(StartJob),
     /// As `StartJob`, for work that sends its progress through the app's

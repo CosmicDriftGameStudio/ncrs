@@ -102,3 +102,16 @@ pub struct LoadedFacts {
     pub understood: Option<u64>,
     pub disconnected: Vec<PathBuf>,
 }
+
+/// What the Favourites page shows: the app keeps the list, the page reports
+/// edits as actions.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct FavouritesFacts {
+    pub folders: Vec<PathBuf>,
+    pub bar_shown: bool,
+    /// The first and the last key of the five that open a favourite, when
+    /// they are one run of keys; `None` when they are not.
+    pub open_keys: Option<(String, String)>,
+    /// The key that adds the current folder, when one is bound.
+    pub add_key: Option<String>,
+}

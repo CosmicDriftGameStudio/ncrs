@@ -628,3 +628,36 @@ fn a_config_binding_left_or_ctrl_tab_takes_the_key_from_the_new_defaults() {
         Some(KeyAction::ActivateRightPanel.message())
     );
 }
+
+#[test]
+fn cmd_1_to_5_open_the_favourites_on_every_platform() {
+    for (digit, code, index) in [
+        ("1", Code::Digit1, 0),
+        ("2", Code::Digit2, 1),
+        ("3", Code::Digit3, 2),
+        ("4", Code::Digit4, 3),
+        ("5", Code::Digit5, 4),
+    ] {
+        assert_eq!(
+            press_physical(digit, code, Modifiers::COMMAND),
+            Some(Message::OpenFavourite(index))
+        );
+    }
+}
+
+/// The key as the system delivers it: Option turns the 1 into `¡`, so the
+/// sort chord is found by the physical key.
+#[cfg(target_os = "macos")]
+#[test]
+fn alt_cmd_1_to_3_sort_by_name_size_modified_as_the_system_delivers_them() {
+    for (typed, code, column) in [
+        ("¡", Code::Digit1, crate::fs::SortColumn::Name),
+        ("™", Code::Digit2, crate::fs::SortColumn::Size),
+        ("£", Code::Digit3, crate::fs::SortColumn::Modified),
+    ] {
+        assert_eq!(
+            press_physical(typed, code, Modifiers::ALT | Modifiers::COMMAND),
+            Some(Message::Panel(PanelMessage::SortActive(column)))
+        );
+    }
+}
