@@ -717,7 +717,7 @@ impl App {
             Action::ColumnsChanged { side, columns } => self.panel_columns_changed(side, columns),
             Action::ColumnWidth { column, width } => self.panel_column_resized(column, width),
             Action::SameColumnsInBoth(same) => self.panel_columns_same_in_both(same),
-            Action::RestoreColumnDefaults => self.panel_column_defaults_restored(),
+            Action::RestoreColumnDefaults(side) => self.panel_column_defaults_restored(side),
             Action::OpenColumnSettings => self.open_column_settings(),
         }
     }

@@ -291,13 +291,14 @@ pub fn update(
             actions.push(Action::OpenColumnSettings);
         }
         PanelMessage::HeaderMenuRestore => {
-            panels.header_menu = None;
-            actions.push(Action::RestoreColumnDefaults);
+            if let Some(menu) = panels.header_menu.take() {
+                actions.push(Action::RestoreColumnDefaults(menu.side));
+            }
         }
         PanelMessage::HeaderMenuClose => panels.header_menu = None,
 
-        PanelMessage::RowActivated { side, index } => {
-            activate_row(panels, ctx, side, index, &mut actions);
+        PanelMessage::RowActivated { side, index, name } => {
+            activate_row(panels, ctx, (side, index, &name), &mut actions);
         }
 
         PanelMessage::RenameStart => task = panels.begin_rename(),
