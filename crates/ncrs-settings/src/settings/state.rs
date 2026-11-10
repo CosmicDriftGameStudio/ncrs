@@ -244,7 +244,6 @@ impl SettingsState {
                 .iter()
                 .position(|terminal| terminal.line == *saved)
                 .map_or(TerminalChoice::Own, TerminalChoice::Detected),
-            None if self.terminal_own => TerminalChoice::Own,
             None => TerminalChoice::Automatic,
         }
     }
