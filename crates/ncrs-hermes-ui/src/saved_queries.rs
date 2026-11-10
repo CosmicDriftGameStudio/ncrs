@@ -285,6 +285,11 @@ impl SavedQueries {
         self.confirming_delete || self.export.is_some() || self.edit_is_open()
     }
 
+    /// The dialog of the name and criteria holds something that is not saved.
+    pub fn holds_unsaved_input(&self) -> bool {
+        self.edit_is_open() && (self.unsaved().is_some() || self.name_is_changed())
+    }
+
     /// Backs out of the dialog that is up; a search that was not saved is
     /// dropped. Whether there was one.
     pub fn cancel_step(&mut self) -> bool {
@@ -852,6 +857,18 @@ mod tests {
         assert_eq!(request.id, Some(id));
         assert_eq!(request.name, "Renamed");
         assert!(list.is_busy());
+    }
+
+    #[test]
+    fn a_renamed_report_in_its_dialog_holds_unsaved_input() {
+        let mut list = loaded_list();
+        list.begin_edit(0);
+        assert!(list.edit_is_open());
+        assert!(!list.holds_unsaved_input());
+
+        list.set_name("Renamed".to_owned());
+
+        assert!(list.holds_unsaved_input());
     }
 
     #[test]
