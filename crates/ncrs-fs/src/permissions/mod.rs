@@ -272,8 +272,8 @@ fn walk_folder(
         }
     };
     let mut names: Vec<std::ffi::CString> = Vec::new();
-    for child in dir.iter() {
-        match child {
+    for entry in dir.iter() {
+        match entry {
             Ok(child) => {
                 let name = child.file_name();
                 if !matches!(name.to_bytes(), b"." | b"..") {
@@ -324,12 +324,12 @@ fn walk_folder(
         let (mut changed, opened) = change_in(dir.as_fd(), &name, is_folder, first.as_ref());
         match opened {
             Ok(Some(child)) if is_folder => {
-                let held = last.map(|_| child.try_clone());
+                let cloned = last.map(|_| child.try_clone());
                 if !walk_folder(run, child, &path, edits) {
                     return false;
                 }
-                if let (Some(turn_off), Some(held)) = (last, held) {
-                    match held.and_then(|held| change_handle(&held, true, &turn_off)) {
+                if let (Some(turn_off), Some(kept_dir)) = (last, cloned) {
+                    match kept_dir.and_then(|held| change_handle(&held, true, &turn_off)) {
                         Ok(did) => changed |= did,
                         Err(err) => run.fail(path, &err),
                     }

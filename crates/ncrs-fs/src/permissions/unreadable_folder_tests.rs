@@ -90,5 +90,8 @@ fn a_folder_that_cannot_be_searched_is_a_failure_not_silence() {
     );
     fs::set_permissions(&top, fs::Permissions::from_mode(0o700)).unwrap();
     assert_eq!(outcome.failures.len(), 1, "{:?}", outcome.failures);
-    assert!(outcome.failures[0].path.ends_with("f"));
+    assert!(outcome
+        .failures
+        .first()
+        .is_some_and(|failure| failure.path.ends_with("f")));
 }

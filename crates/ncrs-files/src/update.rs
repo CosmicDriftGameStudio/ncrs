@@ -467,7 +467,7 @@ fn open_selected(panels: &Panels) -> Option<Action> {
 }
 
 /// A bundle in an archive or on a server cannot be started: there it is a folder.
-pub(crate) fn is_local_app_bundle(panel: &PanelState, name: impl AsRef<std::path::Path>) -> bool {
+pub fn is_local_app_bundle(panel: &PanelState, name: impl AsRef<std::path::Path>) -> bool {
     !panel.is_virtual() && ncrs_fs::is_app_bundle(name)
 }
 
