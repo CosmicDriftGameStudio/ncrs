@@ -15,7 +15,12 @@ use ncrs_i18n::Language;
 use crate::app::{fixed_result_entry, App};
 use crate::fs::search::LineMatch;
 use crate::fs::{FileEntry, Volume};
-use crate::messages::{Message, PanelSide};
+use crate::messages::{
+    BatchRenameMessage, FavouritesBarMessage, Message, PanelMessage, PanelSide, SettingField,
+    SettingsFeature, SettingsMessage,
+};
+use ncrs_core::CompareMark;
+use ncrs_settings::AiCheckResult;
 
 const OUTPUT_DIRECTORY: &str = "docs/screenshots";
 const WINDOW_SIZE: iced::Size = iced::Size::new(1280.0, 640.0);
@@ -144,6 +149,7 @@ fn position_of(entries: &[FileEntry], name: &str) -> usize {
 fn showcase_app() -> App {
     let mut app = App::with_fixed_panels().with_version_for_test(env!("CARGO_PKG_VERSION"));
     app.set_visible_rows_for_test(VISIBLE_ROWS);
+    app = app.with_favourites_for_test(FAVOURITES);
 
     let project = app.panel_mut_for_test(PanelSide::Left);
     project.path = PathBuf::from(PROJECT_DIRECTORY);
@@ -159,6 +165,144 @@ fn showcase_app() -> App {
     downloads.path = PathBuf::from(DOWNLOADS_DIRECTORY);
     downloads.entries = entries_of(DOWNLOADS_DIRECTORY, DOWNLOADS_ROWS);
     downloads.selected = position_of(&downloads.entries, "project-backup.zip");
+    app
+}
+
+const BACKUP_DIRECTORY: &str = "/Volumes/Backup/ncrs";
+
+const BACKUP_ROWS: &[Row] = &[
+    dir("assets", (2026, 9, 14, 18, 2)),
+    dir("docs", (2026, 9, 20, 9, 12)),
+    dir("src", (2026, 9, 30, 17, 3)),
+    dir(".github", (2026, 8, 30, 21, 5)),
+    file(".gitignore", 41, (2026, 7, 3, 12, 30)),
+    file("build.rs", 3_212, (2026, 9, 2, 10, 12)),
+    file("Cargo.lock", 91_200, (2026, 9, 25, 8, 30)),
+    file("Cargo.toml", 1_902, (2026, 10, 2, 7, 10)),
+    file("CHANGELOG.md", 7_980, (2026, 10, 2, 7, 12)),
+    file("LICENSE", 1_068, (2026, 7, 3, 12, 30)),
+    file("notes.txt", 2_204, (2026, 9, 27, 20, 40)),
+    file("README.md", 13_100, (2026, 9, 29, 12, 0)),
+    file("strings.json", 52_980, (2026, 9, 30, 19, 33)),
+    file("todo-old.md", 874, (2026, 6, 14, 10, 5)),
+];
+
+const FAVOURITES: &[&str] = &[
+    "/Users/alex/Projects/ncrs",
+    "/Users/alex/Downloads",
+    "/Users/alex/Documents",
+    "/Users/alex/Downloads/Invoices",
+    "/Users/alex/Pictures",
+];
+
+/// Left rows with the mark the left side gets; the right side's marks follow.
+const LEFT_MARKS: &[(&str, CompareMark)] = &[
+    ("assets", CompareMark::Same),
+    ("docs", CompareMark::NewerHere),
+    ("src", CompareMark::NewerHere),
+    ("target", CompareMark::OnlyHere),
+    (".github", CompareMark::Same),
+    (".gitignore", CompareMark::Same),
+    ("build.rs", CompareMark::Same),
+    ("Cargo.lock", CompareMark::NewerHere),
+    ("Cargo.toml", CompareMark::OlderHere),
+    ("CHANGELOG.md", CompareMark::OlderHere),
+    ("deny.toml", CompareMark::OnlyHere),
+    ("LICENSE", CompareMark::Same),
+    ("README.md", CompareMark::NewerHere),
+    ("rust-toolchain.toml", CompareMark::OnlyHere),
+    ("strings.json", CompareMark::Same),
+];
+const RIGHT_ONLY: &[&str] = &["notes.txt", "todo-old.md"];
+
+fn compared_showcase() -> ncrs_compare::Compared {
+    let mut left = ncrs_core::CompareMarks::new();
+    let mut right = ncrs_core::CompareMarks::new();
+    for &(name, mark) in LEFT_MARKS {
+        left.insert(OsString::from(name), mark);
+        let right_mark = match mark {
+            CompareMark::NewerHere => Some(CompareMark::OlderHere),
+            CompareMark::OlderHere => Some(CompareMark::NewerHere),
+            CompareMark::OnlyHere => None,
+            same_or_different => Some(same_or_different),
+        };
+        if let Some(other) = right_mark {
+            right.insert(OsString::from(name), other);
+        }
+    }
+    for name in RIGHT_ONLY {
+        right.insert(OsString::from(*name), CompareMark::OnlyHere);
+    }
+    let rows = |directory: &str, rows: &[Row]| {
+        entries_of(directory, rows)
+            .into_iter()
+            .filter(|entry| !entry.is_parent)
+            .collect()
+    };
+    ncrs_compare::Compared {
+        left,
+        right,
+        left_rows: rows(PROJECT_DIRECTORY, PROJECT_ROWS),
+        right_rows: rows(BACKUP_DIRECTORY, BACKUP_ROWS),
+    }
+}
+
+fn compare_app() -> App {
+    let mut app = showcase_app();
+    let backup = app.panel_mut_for_test(PanelSide::Right);
+    backup.path = PathBuf::from(BACKUP_DIRECTORY);
+    backup.entries = entries_of(BACKUP_DIRECTORY, BACKUP_ROWS);
+    backup.selected = 0;
+    app.with_comparison_for_test(compared_showcase())
+}
+
+fn batch_rename_app() -> App {
+    let mut app = showcase_app();
+    app.activate_panel_for_test(PanelSide::Right);
+    for name in ["holiday-001.jpg", "holiday-002.jpg", "holiday-003.jpg"] {
+        app.panel_mut_for_test(PanelSide::Right)
+            .selection
+            .toggle(&PathBuf::from(DOWNLOADS_DIRECTORY).join(name));
+    }
+    let _opened = app.update(Message::Panel(PanelMessage::RenameStart));
+    let _typed = app.update(Message::BatchRename(BatchRenameMessage::PatternInput(
+        "Holiday {date modified} {counter}{extension}".to_owned(),
+    )));
+    app
+}
+
+fn own_server_app() -> App {
+    let mut app = showcase_app().showing_setting(SettingsFeature::Index);
+    drop(app.update(Message::Settings(SettingsMessage::ServerDialog(true))));
+    drop(
+        app.update(Message::Settings(SettingsMessage::ChooseProvider(
+            ncrs_config::config::AiProviderName::Http,
+        ))),
+    );
+    for (field, text) in [
+        (SettingField::AiEndpoint, "https://openrouter.ai/api/v1"),
+        (SettingField::AiModel, "openai/gpt-5-mini"),
+    ] {
+        drop(app.update(Message::Settings(SettingsMessage::Edit {
+            field,
+            text: text.to_owned(),
+        })));
+    }
+    drop(app.update(Message::Settings(SettingsMessage::UnderstandLeaving(true))));
+    let runtime = tokio::runtime::Runtime::new().expect("runtime");
+    let _entered = runtime.enter();
+    drop(app.update(Message::Settings(SettingsMessage::TestAiServer)));
+    let models = [
+        "openai/gpt-5-mini",
+        "openai/gpt-5",
+        "anthropic/claude-sonnet-4.5",
+        "google/gemini-2.5-flash",
+        "meta-llama/llama-3.3-70b-instruct",
+    ];
+    drop(app.update(Message::Settings(SettingsMessage::AiChecked {
+        endpoint: "https://openrouter.ai/api/v1".to_owned(),
+        result: AiCheckResult::Listed(models.map(str::to_owned).to_vec()),
+    })));
     app
 }
 
@@ -276,6 +420,27 @@ mod tests {
             crate::config::Filing::default(),
         );
         write_screenshot_to(&filing, OUTPUT_DIRECTORY, FILING_WINDOW_SIZE, "filing.png");
+
+        let mut favourites = showcase_app();
+        favourites.set_pointer_for_test(iced::Point::new(105.0, 58.0));
+        drop(favourites.update(Message::FavouritesBar(FavouritesBarMessage::Menu(1))));
+        write_screenshot(&favourites, "favourites.png");
+
+        write_screenshot(&compare_app(), "compare.png");
+
+        write_screenshot_to(
+            &batch_rename_app(),
+            OUTPUT_DIRECTORY,
+            FILING_WINDOW_SIZE,
+            "batch-rename.png",
+        );
+
+        write_screenshot_to(
+            &own_server_app(),
+            OUTPUT_DIRECTORY,
+            FILING_WINDOW_SIZE,
+            "own-server.png",
+        );
     }
 
     #[test]
