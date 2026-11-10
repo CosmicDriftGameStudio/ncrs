@@ -2658,6 +2658,9 @@ mod acceptance;
 mod favourites;
 
 #[cfg(test)]
+mod fonts;
+
+#[cfg(test)]
 mod monitor;
 
 #[cfg(test)]
