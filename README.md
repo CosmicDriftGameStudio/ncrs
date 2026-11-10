@@ -112,6 +112,30 @@ binary, so ncrs reads PDFs without anything else installed. `install.sh` and
 
 ## Screenshots
 
+![The favourites bar](docs/screenshots/favourites.png)
+
+The favourites bar between the path tabs and the column headers: one slot per
+favourite folder (the first five), opened by a click or `Cmd`+`1` to `5`
+(`Ctrl`+`1` to `5` on Linux and Windows). Right-click a slot to open it in the
+other panel, move it or remove it. The Favourites settings page switches the bar
+off and orders the folders.
+
+![Two folders compared](docs/screenshots/compare.png)
+
+"Compare folders" in the command list (`F1`) compares the two panels. A Compare
+column marks what is the same, newer on one side or only on one side; the bar
+above counts them, and "Only differences" hides the rest. Sync copies in either
+or both directions; what it would delete is a list of its own you confirm, and
+it goes to the trash. Deleting is off on servers and in archives.
+
+![Batch rename with preview](docs/screenshots/batch-rename.png)
+
+`Shift`+`F6` with two or more tagged entries renames them by a pattern: the
+name or a part of it, a counter, the date modified, the date a photo was taken,
+and for documents ncrs has read the sender, document date, kind and amount.
+Find and replace takes regular expressions. The preview shows every new name
+and marks clashes; "Undo rename" in the command list puts the old names back.
+
 ![The drive menu on Alt+F1](docs/screenshots/drive-menu.png)
 
 The drive menu (`Alt+F1` for the left panel, `Alt+F2` for the right).
@@ -203,7 +227,14 @@ The same window in German, switched with F9.
   space of about its size is needed) and replaces the original only when that succeeded; a
   7z archive is recompressed completely, and tar extras (extended attributes, sub-second
   times) are not kept. Links and special files in the selection are skipped and counted.
-- SFTP servers open like folders (password login): "Connect to server…" in the command
+- A favourites bar with the first five favourite folders, `Cmd`+`1` to `5` (`Ctrl` on Linux and Windows)
+- `Enter` and a double click open a file with the system's own program, like the Finder; a file
+  that could run asks first. On macOS an app starts directly, and "Show package contents" enters it
+- Compare two folders: a Compare column, counts, "Only differences" and a sync with an explicit
+  delete list (to the trash)
+- Batch rename (`Shift`+`F6` on two or more tagged entries) by a pattern with a preview and undo
+- SFTP servers open like folders, with a password, an ssh key or the ssh-agent, and the host
+  aliases of `~/.ssh/config`: "Connect to server…" in the command
   list, a saved server in the drive menu, or `sftp://user@host/path` in the path field.
   Browse, view (`F3`) and copy (`F5`) in both directions; see [SFTP servers](#sftp-servers)
 - Localized UI (English/German) with a translator note on every string, so the UI can
@@ -221,7 +252,8 @@ The defaults. Most of them can be changed in the keyboard shortcuts dialog (`Cmd
 | `PgUp` / `PgDn`    | Move selection by one page (`Fn`+`↑`/`↓` on a Mac)  |
 | `Cmd`+`↑` / `Cmd`+`↓` | Page up / down (`Ctrl` on Linux and Windows) |
 | `Home` / `End`     | First / last entry                       |
-| `Enter`            | Open directory (files: placeholder)      |
+| `Enter`            | Open the directory, or the file with the system's own program (a file that could run asks first) |
+| `Cmd`+`1` … `5` / `Ctrl`+`1` … `5` | Open favourite 1 to 5 of the favourites bar in the active panel |
 | Any letter or digit | Jump to the first entry whose name starts with what you type (a character within one second extends the prefix, `Q` included) |
 | `Insert` / `Space` | Tag / untag the row, move down one      |
 | `Shift`+`Up`/`Down`| Tag / untag the row, move up / down     |
@@ -237,7 +269,7 @@ The defaults. Most of them can be changed in the keyboard shortcuts dialog (`Cmd
 | `Shift`+`F2`       | Focus the command line below the panels: `cd` changes the active panel's folder, any other command runs in the shell in that folder (the status bar shows its exit status; its output is not shown). `↑`/`↓` walk the commands of this session, `Esc` or `Shift`+`F2` goes back to the panels |
 | `F3` / `F4`        | View / edit the file under the cursor in an external program (programs configurable, see [Configuration](#configuration)) |
 | `F5` / `F6`        | Copy / move to the other panel          |
-| `Shift`+`F6`       | Rename the row under the cursor in place: `Enter` renames, `Esc` cancels |
+| `Shift`+`F6`       | Rename the row under the cursor in place: `Enter` renames, `Esc` cancels. With two or more tagged entries: batch rename by a pattern |
 | `Alt`+`F5`         | Pack the tagged rows (else the cursor row) into a new archive in the other panel's folder; asks for the name (ends in `.zip`, `.tar`, `.tar.gz`, `.tgz`, `.tar.zst`, `.tzst` or `.7z`) |
 | `F7`               | Create directory                        |
 | `Shift`+`F4`       | New file: creates an empty file under the name asked for and opens it in the editor like `F4`; an existing name is never overwritten |
@@ -248,7 +280,7 @@ The defaults. Most of them can be changed in the keyboard shortcuts dialog (`Cmd
 | `Ctrl`+`D` (`Cmd`+`D` on macOS) | Add the active panel's folder to the favourites (`remove_favourite` and `favourites` have no default key); the right-click menu has "Add to favourites" / "Remove from favourites" for the folder under the cursor |
 | Right click / `Shift`+`F10` / `Option` tapped alone | Context menu at the pointer or the cursor row (`↑`/`↓`, `Home`/`End`, `Enter` runs, `Esc` closes; `Ctrl`+click also on a Mac) |
 | Click a column title | Sort that panel by Name / Size / Modified; a second click reverses the order (▲ / ▼). `..` and folders stay on top |
-| `Ctrl`+`F3` / `Ctrl`+`F5` / `Ctrl`+`F6` (macOS: `Cmd`+`1` / `Cmd`+`3` / `Cmd`+`2`) | Sort the active panel by name / modification time / size; again reverses. macOS uses `Cmd`+digit because the system takes `Ctrl`+`F`-keys |
+| `Ctrl`+`F3` / `Ctrl`+`F5` / `Ctrl`+`F6` (macOS: `Option`+`Cmd`+`1` / `3` / `2`) | Sort the active panel by name / modification time / size; again reverses. macOS uses `Option`+`Cmd`+digit because the system takes `Ctrl`+`F`-keys and `Cmd`+digit opens the favourites |
 | `Alt`+`F7` / `Cmd`+`Shift`+`F` (`Ctrl`+`Shift`+`F` on Linux and Windows) | Search below the directory of the active panel; pressed again, it moves to the next field. See [Search](#search) |
 | `F1` / `Cmd`+`Shift`+`P` / `Ctrl`+`Shift`+`P` | Lab (command palette): lists the actions that work where you are, with their keys; type to filter, `↑`/`↓` move, `Enter` runs, `Esc` closes |
 | `Cmd`+`P` / `Ctrl`+`P` | Quick Open: jump to a file by a few letters of its path. See [Quick Open](#quick-open) |
@@ -362,8 +394,13 @@ System Settings > Privacy & Security > Full Disk Access.
 
 A server opens in a panel like any folder. Connect with "Connect to server…" (command
 list, no key by default), pick a saved server in the drive menu (`Alt`+`F1`/`F2`), or
-type `sftp://user@host[:port]/path` into the path field. Login is by password only: no
-key files and no ssh-agent.
+type `sftp://user@host[:port]/path` into the path field. A host alias from
+`~/.ssh/config` works too, with its `HostName`, `User`, `Port` and `IdentityFile`.
+
+- **Login.** A remembered password goes first, so refused keys do not use up the
+  server's attempts. Then the ssh-agent and the key files, asking for the passphrase
+  of an encrypted key. RSA key files are not read; an RSA key works through the
+  ssh-agent.
 
 - **Host keys.** The first time ncrs meets a server it shows the SHA256 fingerprint and
   asks before it sends the password. Confirmed keys go to `known_hosts` next to the
@@ -373,8 +410,8 @@ key files and no ssh-agent.
   `@revoked` are refused without a way to trust them. A `known_hosts` file that exists
   but cannot be read (permissions; in the App Store version, before the home folder is
   allowed) leaves an unknown server unchecked, and ncrs does not offer to trust it.
-  Servers that offer only RSA host keys, and servers that take no password (key or
-  keyboard-interactive login only), are not supported yet.
+  Servers that offer only RSA host keys, and servers with keyboard-interactive login
+  only, are not supported yet.
 - **Passwords.** "Remember password in the keychain" keeps it in the system credential
   store, one entry per `user@host:port` (service `ncrs-sftp`, `ncrs-appstore-sftp` in the
   App Store build, which never touches the entries of an installed ncrs). It is never
@@ -389,7 +426,7 @@ key files and no ssh-agent.
   `.ncrs-partial-…` name and renamed when complete; when the connection breaks during an
   upload, such a leftover can stay on the server and is safe to delete. Everything that would change something on a server, the command
   line, search and Quick Open say so instead of running. Not supported yet: moving,
-  copying between servers, counting ahead, resuming, public-key login, `ssh_config`.
+  copying between servers, counting ahead, resuming.
 - **Saved servers** are `[[servers]]` entries in `config.toml` (or the Servers page of
   the settings tab, which also forgets the password of a removed one):
 
@@ -526,6 +563,7 @@ Actions: `quit`, `open`, `go_up`, `switch_panel`, `next_tab`, `previous_tab`,
 `copy`, `move`, `pack`, `mkdir`, `new_file`, `delete`, `delete_permanently`, `abort_job`,
 `copy_path`, `copy_name`, `copy_files`, `paste`, `trash`, `restore_last_deletion`, `undo_rename` (no default key), `open_trash_in_finder`, `drive_menu_left`, `drive_menu_right`,
 `history_back`, `history_forward`, `add_favourite`, `remove_favourite`, `favourites`,
+`open_favourite_1` … `open_favourite_5`, `compare_folders` (no default key),
 `sort_by_name`, `sort_by_modified`, `sort_by_size`, `compute_folder_sizes`, `context_menu`, `search`, `quick_open`, `command_line`, `command_palette`, `search_case`,
 `search_whole_word`, `search_regex`, `open_hits_left`, `open_hits_right`, `filing_status`, `key_bindings`,
 `settings`, `about`, `fetch_theme`, `download_ocr_models`, `download_ai_model`,
@@ -778,11 +816,21 @@ threads = 4
   x86_64 Linux the model runs on a Vulkan GPU if a driver is present and on the
   CPU otherwise; macOS uses Metal and aarch64 Linux the CPU. The row "AI model"
   in Settings › Index says which ("runs on" the GPU's name or CPU).
-- `http` sends text to the server at `endpoint`, which must be on this machine
-  for now (`localhost`, `127.0.0.1` or `::1`); `endpoint` and `model` are
-  required and `threads` is not allowed. Without a consent given for that
-  server, nothing is sent.
-- Settings › Index shows a row "AI model" with the state while the AI is on.
+- `http` sends text to an OpenAI-compatible server at `endpoint`: one on this
+  machine, or OpenAI, OpenRouter, Anthropic and the like. `endpoint` and `model`
+  are required and `threads` is not allowed. Plain `http://` is only allowed
+  on this machine (`localhost`, `127.0.0.1` or `::1`), and redirects are not
+  followed. Without a consent given for that server, nothing is sent.
+- Settings › Index › "Own server instead of the local model" sets it up: the
+  address, the key (kept in the keychain, never in the file), "Test connection"
+  with the server's model list, and the model. A server off this machine needs
+  the "I understand" tick first, because documents then leave the computer.
+
+  ![The own server dialog](docs/screenshots/own-server.png)
+- Settings › Usage counts the requests and tokens sent to the own server, with
+  the tokens per day and the cost where the server reports a price.
+- Settings › Index shows a row "AI model" with the state while the AI is on. When
+  the own server fails, that row and the Hermes chip in the title bar say why.
 
 **Recognition baseline.** How often the filing reads a field right is measured
 against a synthetic corpus: 26 documents (invoices, contracts, letters, tax

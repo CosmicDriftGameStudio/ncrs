@@ -6,21 +6,58 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.4.0] — 2026-11-10
+
 ### Added
 
 - A favourites bar between the path tabs and the column headers: one slot per
   favourite (the first five), opened by click or Cmd/Ctrl+1 to 5. Right-click a
   slot to open it in the other panel, move it or remove it. The new Favourites
   settings page switches the bar and orders the folders.
+- Compare folders (in the command list): a Compare column marks entries that
+  are the same, newer on one side or only on one side, a bar counts them and
+  "Only differences" hides the rest. Sync copies in either or both directions;
+  what it would delete is listed for confirmation and goes to the trash.
+  Deleting is off on servers and in archives.
+- Batch rename: Shift+F6 with two or more tagged entries renames them by a
+  pattern of name, part of the name, counter, date modified, date taken,
+  extension and, for read documents, sender, document date, kind and amount.
+  Find and replace takes regular expressions, the preview marks clashes, and
+  "Undo rename" in the command list puts the old names back.
+- Own AI server: Hermes can use any OpenAI-compatible server instead of the
+  local model, including OpenAI, OpenRouter and Anthropic. The key is kept in
+  the keychain, "Test connection" lists the server's models, and a server off
+  this machine needs the "I understand" tick first. Plain http only on this
+  machine; redirects are not followed. When the server fails, the "AI model"
+  row on the Index page and the Hermes chip in the title bar say why.
+- The Usage settings page counts requests and tokens sent to the own server,
+  with tokens per day and the cost where the server reports a price.
+- Server login with ssh keys: the ssh-agent, key files with a passphrase
+  dialog, and host aliases from `~/.ssh/config`. A remembered password goes
+  first. RSA key files are not read; RSA keys work through the ssh-agent.
+- The index records where every document came from.
 
 ### Changed
 
+- The 1.4.0 style guide: yellow only marks keyboard focus (a 1 px border),
+  switched-on states use the primary fill, the rest stays grey, and danger
+  buttons are red. One corner radius and one spacing scale everywhere,
+  headings are bold, and tagged rows, chips and tag buttons share the tagged
+  colour. The recovery key shows on one line with the requested block framed.
+- Tab stays inside the shown tab; Ctrl+Tab and Ctrl+Shift+Tab walk the open
+  tabs and keep the active panel.
 - Enter and a double click open a file like the Finder does, with the system's
   own program. A file that could run (a script, an executable, an installer)
   asks first, with Cancel selected. On macOS an app bundle starts directly, and
   "Show package contents" in its context menu enters it as a folder.
 - On macOS the sort keys are now Option+Cmd+1 (name), Option+Cmd+2 (size) and
   Option+Cmd+3 (modified), because Cmd+1 to 5 open the favourites.
+
+### Fixed
+
+- Panels count their rows again when the font size changes, so the file list
+  reaches the bottom after a smaller size.
+- Copied files keep their modification time.
 
 ## [1.3.0] — 2026-11-08
 

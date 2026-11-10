@@ -398,6 +398,31 @@ impl App {
         self.visible_rows
     }
 
+    pub fn with_favourites_for_test(mut self, list: &[&str]) -> Self {
+        self.panels.favourites = list.iter().map(PathBuf::from).collect();
+        self
+    }
+
+    pub fn activate_panel_for_test(&mut self, side: PanelSide) {
+        self.panels.active = side;
+    }
+
+    /// A finished comparison of the two panels' folders, as if it had been scanned.
+    pub fn with_comparison_for_test(mut self, compared: ncrs_compare::Compared) -> Self {
+        self.compare.run = Some(ncrs_compare::state::Run {
+            folders: ncrs_compare::state::Folders {
+                left: self.panels.left.path.clone(),
+                right: self.panels.right.path.clone(),
+            },
+            generation: 1,
+            stop: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            result: Some(compared),
+            only_differences: false,
+        });
+        self.refit_for_favourites_bar();
+        self
+    }
+
     pub fn favourites_for_test(&self) -> &[PathBuf] {
         &self.panels.favourites
     }
