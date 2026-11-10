@@ -327,7 +327,11 @@ pub enum ModelList {
 /// does not answer is `AiError::Transport`.
 pub fn list_models(config: &OpenAiCompatibleConfig) -> Result<ModelList, AiError> {
     let endpoint = Endpoint::parse(&config.endpoint).map_err(AiError::BadEndpoint)?;
-    let call = agent().get(&endpoint.models_url);
+    // Anthropic serves `/models` from its own API, which answers a request
+    // without this header with a 400; other servers ignore it.
+    let call = agent()
+        .get(&endpoint.models_url)
+        .header("anthropic-version", "2023-06-01");
     let key = key_of(config.api_key.as_ref(), config.key_lookup.as_deref());
     let mut response = with_key(call, key.as_ref())
         .call()
@@ -856,6 +860,7 @@ mod tests {
         let received = server.join().unwrap().to_ascii_lowercase();
         assert!(received.starts_with("get /v1/models "));
         assert!(received.contains(&format!("authorization: bearer {KEY}")));
+        assert!(received.contains("anthropic-version: 2023-06-01"));
     }
 
     #[test]
