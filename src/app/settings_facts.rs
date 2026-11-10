@@ -84,7 +84,15 @@ impl App {
                 crate::hermes_overview::AiTile::NotLoaded => AiState::Missing,
                 crate::hermes_overview::AiTile::Downloading { .. } => AiState::Downloading,
                 crate::hermes_overview::AiTile::Ready => AiState::Ready,
-                crate::hermes_overview::AiTile::OwnServer { model } => AiState::OwnServer { model },
+                crate::hermes_overview::AiTile::OwnServer {
+                    model,
+                    last_failure,
+                } => AiState::OwnServer {
+                    model,
+                    failure: last_failure.map(|failure| {
+                        crate::hermes_overview::server_failure_text(failure, self.lang)
+                    }),
+                },
                 crate::hermes_overview::AiTile::TakesEffectAtRestart => AiState::NextStart,
                 crate::hermes_overview::AiTile::Failed(_) => AiState::Failed,
             },

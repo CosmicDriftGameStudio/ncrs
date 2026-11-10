@@ -21,6 +21,8 @@ pub enum AiState {
     Ready,
     OwnServer {
         model: String,
+        /// Why the last request to the server failed, worded.
+        failure: Option<String>,
     },
     Failed,
     NextStart,

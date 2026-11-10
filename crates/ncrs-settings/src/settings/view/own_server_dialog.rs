@@ -89,6 +89,13 @@ fn test_row<'a>(view: &SettingsView<'a>) -> Element<'a, Message> {
             lang.text(Msg::SettingsAiTestKeyRefused).to_owned(),
             palette.error,
         )),
+        AiCheck::Done(AiCheckResult::ServerError(code)) => Some((
+            fill_template(
+                lang.text(Msg::SettingsAiTestServerError),
+                &[("{status}", &code.to_string())],
+            ),
+            palette.error,
+        )),
         AiCheck::Done(AiCheckResult::NoAnswer) => Some((
             lang.text(Msg::SettingsAiTestNoAnswer).to_owned(),
             palette.error,

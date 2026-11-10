@@ -247,6 +247,38 @@ fn the_index_page_keeps_the_ai_line_on_the_processor() -> TestResult {
     )
 }
 
+#[test]
+fn the_index_page_names_a_failing_own_server() -> TestResult {
+    let app = App::with_settings_file(SettingsFeature::Index, Ok(from_text("")?))
+        .in_language(Language::German);
+    let state = app.settings.page.as_ref().ok_or("no settings page")?;
+    let mut view = app.settings_view(state);
+    view.facts.ai = ncrs_settings::facts::AiState::OwnServer {
+        model: "claude-sonnet-5-5".to_owned(),
+        failure: Some(crate::hermes_overview::server_failure_text(
+            ncrs_ai::ReplyFailure::Status(400),
+            Language::German,
+        )),
+    };
+    let mut simulator = Simulator::with_size(
+        iced::Settings {
+            default_font: ncrs_ui_kit::APP_FONT,
+            ..iced::Settings::default()
+        },
+        iced::Size::new(1200.0, 1100.0),
+        crate::ui::settings::view(&view),
+    );
+    let name = "settings_index_own_server_failing_de";
+    let matches = simulator
+        .snapshot(&iced::Theme::Dark)?
+        .matches_image(format!("tests/snapshots/{name}.png"))?;
+    assert!(
+        matches,
+        "the page does not match tests/snapshots/{name}.png"
+    );
+    Ok(())
+}
+
 fn saved_queries_message(message: SavedQueriesMessage) -> Message {
     Message::SavedQueries(message)
 }

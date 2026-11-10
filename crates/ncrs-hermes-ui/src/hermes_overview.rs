@@ -4,9 +4,23 @@
 //! The state only. Nothing here touches the disk or the module; the app
 //! gathers the facts and the page draws them.
 
+use ncrs_ai::ReplyFailure;
+use ncrs_i18n::{fill_template, Language, Msg};
 use ncrs_index::HermesCounts;
 
 use ncrs_filing::filing::{AiStatus, KeyProblem, Phase, ProtectionNote};
+
+/// The sentence for a failed request to the own server.
+pub fn server_failure_text(failure: ReplyFailure, lang: Language) -> String {
+    match failure {
+        ReplyFailure::Status(401 | 403) => lang.text(Msg::SettingsAiTestKeyRefused).to_owned(),
+        ReplyFailure::Status(status) => fill_template(
+            lang.text(Msg::SettingsAiTestServerError),
+            &[("{status}", &status.to_string())],
+        ),
+        ReplyFailure::NoAnswer => lang.text(Msg::SettingsAiTestNoAnswer).to_owned(),
+    }
+}
 
 /// Where the module stands, as far as the overview tells.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -129,6 +143,7 @@ pub enum AiTile {
     Ready,
     OwnServer {
         model: String,
+        last_failure: Option<ReplyFailure>,
     },
     /// On in the config; the module takes it up when it restarts.
     TakesEffectAtRestart,
@@ -195,8 +210,13 @@ impl OverviewFacts {
             AiStatus::Off => AiTile::TakesEffectAtRestart,
             AiStatus::NotDownloaded => AiTile::NotLoaded,
             AiStatus::NotLoadedYet | AiStatus::Loaded { .. } => AiTile::Ready,
-            AiStatus::Http { model, .. } => AiTile::OwnServer {
+            AiStatus::Http {
+                model,
+                last_failure,
+                ..
+            } => AiTile::OwnServer {
                 model: model.clone(),
+                last_failure: *last_failure,
             },
             AiStatus::Failed(reason) => AiTile::Failed((*reason).to_owned()),
         }

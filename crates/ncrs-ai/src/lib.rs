@@ -36,7 +36,8 @@ pub use contract::{
 pub use error::{AiError, EndpointProblem};
 pub use http::{
     check_endpoint, endpoint_host, endpoint_is_local, endpoint_key_name, endpoint_origin,
-    list_models, ModelList, OpenAiCompatible, OpenAiCompatibleConfig, Secret, MAX_REPLY_BYTES,
+    list_models, ModelList, OpenAiCompatible, OpenAiCompatibleConfig, ReplyFailure, Secret,
+    MAX_REPLY_BYTES,
 };
 #[cfg(feature = "llama")]
 pub use local::{

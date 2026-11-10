@@ -1951,6 +1951,12 @@
       "de": "Hermes {rate}/Min. verarbeitet"
     },
     {
+      "key": "title_bar.hermes_server_problem",
+      "context": "Chip in the title bar while the own AI server of Hermes failed on the last request. Takes the reason as a sentence, for example 'The server reported error 400.'",
+      "en": "Hermes: {problem}",
+      "de": "Hermes: {problem}"
+    },
+    {
       "key": "title_bar.hermes_paused",
       "context": "Chip in the title bar while the filing module (Hermes) is paused; pressing it opens the Inspection.",
       "en": "Hermes paused",
@@ -3761,6 +3767,12 @@
       "context": "Status beside the Test connection button: the server said the API key is wrong or missing.",
       "en": "The server refused the key.",
       "de": "Der Server hat den Schlüssel abgelehnt."
+    },
+    {
+      "key": "settings.ai_test_server_error",
+      "context": "Status beside the Test connection button: the server answered, but with an HTTP error. Takes the status code, for example 400.",
+      "en": "The server reported error {status}.",
+      "de": "Der Server meldet Fehler {status}."
     },
     {
       "key": "settings.ai_test_no_answer",
@@ -8369,6 +8381,12 @@
       "context": "Description under the row about the AI model on the Index page. Qwen3-4B is the name of the model.",
       "en": "Qwen3-4B. Without a model only file names and dates.",
       "de": "Qwen3-4B. Ohne Modell nur Dateinamen und Datum."
+    },
+    {
+      "key": "settings.index_row_ai_note_server",
+      "context": "Description under the row about the AI model on the Index page while Hermes uses the own server instead of the local model; the server and its model are named beside it.",
+      "en": "Hermes uses your own server. Without a model only file names and dates.",
+      "de": "Hermes nutzt deinen eigenen Server. Ohne Modell nur Dateinamen und Datum."
     },
     {
       "key": "settings.index_ai_off",

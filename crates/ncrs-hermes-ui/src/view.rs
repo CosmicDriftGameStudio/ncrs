@@ -9,12 +9,14 @@ use iced::{Element, Size};
 use ncrs_config::config::AiSetting;
 use ncrs_config::file_list_tags::FileListTags;
 use ncrs_config::palette::Palette;
-use ncrs_filing::filing::{FilingModule, Phase};
+use ncrs_filing::filing::{AiStatus, FilingModule, Phase};
 use ncrs_i18n::{fill_template, FuturamaName, Language, Msg};
 use ncrs_pipeline::RunnerState;
 use ncrs_ui_kit::setting_rows;
 
-use crate::hermes_overview::{ModuleState, OcrFacts, OverviewFacts, Protection};
+use crate::hermes_overview::{
+    server_failure_text, ModuleState, OcrFacts, OverviewFacts, Protection,
+};
 use crate::hermes_status::HermesStatus;
 use crate::message::{HermesPage, Message};
 use crate::state::Hermes;
@@ -187,6 +189,13 @@ pub fn hermes_status(hermes: &Hermes) -> Option<HermesStatus> {
     )
 }
 
+fn server_failure(hermes: &Hermes) -> Option<ncrs_ai::ReplyFailure> {
+    match hermes.filing.as_ref()?.ai_status() {
+        AiStatus::Http { last_failure, .. } => last_failure,
+        _ => None,
+    }
+}
+
 /// The title bar chip: Hermes is on, and how fast it files. Absent while the
 /// module is off.
 pub fn hermes_chip(hermes: &Hermes, lang: Language) -> Option<String> {
@@ -194,6 +203,12 @@ pub fn hermes_chip(hermes: &Hermes, lang: Language) -> Option<String> {
         RunnerState::Off => return None,
         RunnerState::Paused => lang.text(Msg::TitleBarHermesPaused).to_owned(),
         RunnerState::Running | RunnerState::Idle => {
+            if let Some(failure) = server_failure(hermes) {
+                return Some(fill_template(
+                    lang.text(Msg::TitleBarHermesServerProblem),
+                    &[("{problem}", &server_failure_text(failure, lang))],
+                ));
+            }
             let busy = hermes_status(hermes).is_some_and(|status| status.is_busy());
             match hermes.filing_status.documents_per_minute().filter(|_| busy) {
                 Some(rate) => fill_template(

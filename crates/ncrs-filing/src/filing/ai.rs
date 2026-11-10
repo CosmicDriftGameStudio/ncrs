@@ -41,6 +41,8 @@ pub enum AiStatus {
     Http {
         origin: String,
         model: String,
+        /// How the last request to the server went wrong; none when it was answered.
+        last_failure: Option<ncrs_ai::ReplyFailure>,
     },
 }
 
