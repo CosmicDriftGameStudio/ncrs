@@ -79,8 +79,16 @@ for (const scene of scenes) {
   if (say) voiceLength.set(scene.id, await speak(scene.id, say));
 }
 
+const sceneById = (id: string): Scene => {
+  const scene = scenes.find((candidate) => candidate.id === id);
+  if (!scene) throw new Error(`unknown scene "${id}" (known: ${scenes.map((s) => s.id).join(", ")})`);
+  return scene;
+};
 const sceneItem = (scene: Scene, stepLimit = Infinity): Item => {
   const steps = scene.steps.map((step) => ({ ...step, seconds: Math.min(step.seconds, stepLimit) }));
+  for (const st of story[scene.id]?.stamps ?? []) {
+    if (st.step >= steps.length || st.step < -steps.length) throw new Error(`story ${scene.id}: stamp step ${st.step} out of range`);
+  }
   const voice = voiceLength.get(scene.id) ?? 0;
   const lack = VOICE_DELAY + voice + VOICE_TAIL - steps.reduce((sum, step) => sum + step.seconds, 0);
   if (voice > 0 && lack > 0) steps[steps.length - 1].seconds += lack;
@@ -101,10 +109,13 @@ function wallFrames(): string[] {
     return `wall/${scene.id}.jpg`;
   });
 }
+let wallCache: Item | undefined;
 const wallItem = (): Item => {
+  if (wallCache) return wallCache;
   const voice = voiceLength.get("wall") ?? 0;
   const dur = Math.max(WALL_MIN_SECONDS, VOICE_DELAY + voice + VOICE_TAIL);
-  return { type: "wall", id: "wall", dur, say: WALL_SAY, voice, stamps: WALL_STAMPS, entries: WALL, frames: wallFrames(), drift: WALL_DRIFT_PER_SECOND * dur };
+  wallCache = { type: "wall", id: "wall", dur, say: WALL_SAY, voice, stamps: WALL_STAMPS, entries: WALL, frames: wallFrames(), drift: WALL_DRIFT_PER_SECOND * dur };
+  return wallCache;
 };
 const creditsItem = (): Item => ({ type: "credits", dur: CREDITS_SECONDS, cast: CAST, entries: CREDITS, notice: AI_NOTICE });
 const itemSeconds = (item: Item) => (item.type === "scene" ? item.steps.reduce((s, step) => s + step.seconds, 0) : item.dur);
@@ -126,6 +137,7 @@ function voiceTrack(items: Item[], target: string) {
     }
     at += itemSeconds(item);
   }
+  if (filters.length === 0) return null;
   const labels = filters.map((_, n) => `[v${n}]`).join("");
   ffmpeg([...inputs, "-filter_complex", `${filters.join(";")};${labels}amix=inputs=${filters.length}:normalize=0[a]`, "-map", "[a]", target]);
   return { file: target, windows };
@@ -149,21 +161,6 @@ function writeCaptions(items: Item[], target: string) {
   }
   writeFileSync(target, `WEBVTT\n\n${cues.join("\n\n")}\n`);
 }
-
-// no title card in the hero cut: the ident leads straight into the first scene and the end card names the app
-const hero: Item[] = [
-  { type: "ident", dur: IDENT_SECONDS },
-  ...scenes.map((scene) => sceneItem(scene)),
-  wallItem(),
-  endItem(false),
-  creditsItem(),
-];
-const social: Item[] = [
-  { type: "title", dur: 1.4 },
-  ...SOCIAL_SCENES.map((id) => sceneItem(scenes.find((scene) => scene.id === id)!, SOCIAL_STEP_LIMIT)),
-  wallItem(),
-  endItem(true),
-];
 
 function ffmpeg(args: string[]) {
   const run = Bun.spawnSync(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", ...args], { stderr: "inherit" });
@@ -200,22 +197,27 @@ async function capture(items: Item[], target: string) {
  * Mixes the voice over the music (music ducked while the voice plays). A cut that opens with the ident gets the
  * ident sting first and the trailer music starting as the sting fades out.
  */
-function finish(silent: string, target: string, length: number, items: Item[], voice: { file: string; windows: [number, number][] }, video: string[], extra: string[] = []) {
+function finish(silent: string, target: string, length: number, items: Item[], voice: { file: string; windows: [number, number][] } | null, video: string[], extra: string[] = []) {
   const lead = items[0].type === "ident" ? items[0].dur : 0;
-  const duck = voice.windows.map(([from, to]) => `volume=${DUCKED_MUSIC}:enable='between(t,${from.toFixed(3)},${to.toFixed(3)})'`).join(",");
+  const duck = (voice?.windows ?? []).map(([from, to]) => `volume=${DUCKED_MUSIC}:enable='between(t,${from.toFixed(3)},${to.toFixed(3)})'`).join(",");
   const musicStart = Math.max(0, lead - 0.4);
   const musicChain = `adelay=${Math.round(musicStart * 1000)}:all=1,afade=t=in:st=${musicStart.toFixed(3)}:d=0.8,afade=t=out:st=${(length - 1.5).toFixed(3)}:d=1.5${duck ? "," + duck : ""},apad`;
-  const inputs = ["-i", silent, "-i", voice.file];
+  const inputs = ["-i", silent];
+  const lastInput = () => inputs.filter((x) => x === "-i").length - 1;
   const filters: string[] = [];
-  const mixed = ["[1:a]"];
+  const mixed: string[] = [];
+  if (voice) {
+    inputs.push("-i", voice.file);
+    mixed.push(`[${lastInput()}:a]`);
+  }
   if (hasMusic) {
     inputs.push("-i", music);
-    filters.push(`[${inputs.length / 2 - 1}:a]${musicChain}[m]`);
+    filters.push(`[${lastInput()}:a]${musicChain}[m]`);
     mixed.push("[m]");
   }
   if (lead > 0 && existsSync(identMusic)) {
     inputs.push("-ss", IDENT_MUSIC_FROM_S.toString(), "-t", lead.toFixed(3), "-i", identMusic);
-    filters.push(`[${inputs.filter((x) => x === "-i").length - 1}:a]afade=t=in:d=0.3,afade=t=out:st=${(lead - IDENT_MUSIC_FADE).toFixed(3)}:d=${IDENT_MUSIC_FADE}[id]`);
+    filters.push(`[${lastInput()}:a]afade=t=in:d=0.3,afade=t=out:st=${(lead - IDENT_MUSIC_FADE).toFixed(3)}:d=${IDENT_MUSIC_FADE}[id]`);
     mixed.push("[id]");
   }
   filters.push(`${mixed.join("")}amix=inputs=${mixed.length}:duration=longest:normalize=0[a]`);
@@ -228,7 +230,7 @@ const only = process.env.TRAILER_SCENES;
 if (only) {
   const wanted = only.split(",");
   const cut = wanted.flatMap((id): Item[] =>
-    id === "ident" ? [{ type: "ident", dur: IDENT_SECONDS }] : id === "wall" ? [wallItem()] : id === "end" ? [endItem(false), creditsItem()] : [sceneItem(scenes.find((scene) => scene.id === id)!)],
+    id === "ident" ? [{ type: "ident", dur: IDENT_SECONDS }] : id === "wall" ? [wallItem()] : id === "end" ? [endItem(false), creditsItem()] : [sceneItem(sceneById(id))],
   );
   const length = await capture(cut, join(work, "test.silent.mp4"));
   finish(join(work, "test.silent.mp4"), join(out, "test.mp4"), length, cut, voiceTrack(cut, join(voiceWork, "test.wav")), ["-c:v", "copy"]);
@@ -236,6 +238,20 @@ if (only) {
   console.log(`test.mp4 ${seconds(cut).toFixed(1)} s`);
   process.exit(0);
 }
+// no title card in the hero cut: the ident leads straight into the first scene and the end card names the app
+const hero: Item[] = [
+  { type: "ident", dur: IDENT_SECONDS },
+  ...scenes.map((scene) => sceneItem(scene)),
+  wallItem(),
+  endItem(false),
+  creditsItem(),
+];
+const social: Item[] = [
+  { type: "title", dur: 1.4 },
+  ...SOCIAL_SCENES.map((id) => sceneItem(sceneById(id), SOCIAL_STEP_LIMIT)),
+  wallItem(),
+  endItem(true),
+];
 const heroLength = await capture(hero, join(work, "hero.silent.mp4"));
 const heroVoice = voiceTrack(hero, join(voiceWork, "hero.wav"));
 finish(join(work, "hero.silent.mp4"), join(out, "ncrs-trailer.mp4"), heroLength, hero, heroVoice, ["-c:v", "copy"]);

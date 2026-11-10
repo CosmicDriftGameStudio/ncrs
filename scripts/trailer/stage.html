@@ -47,12 +47,11 @@
   .wall .label { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 0 12px; text-align: center; }
   .wall .keycap { padding: 4px 16px; font: 700 34px App, monospace; color: #faf7f0; background: #1a1920; border: 2px solid #85828f; border-radius: 4px; white-space: nowrap; }
   .wall .action { font: 600 22px/1.15 Futura, "Helvetica Neue", sans-serif; color: #faf7f0; text-shadow: 2px 2px 0 #1f1b16; }
-  .bare .stamps,
   .credits .line { display: flex; gap: 40px; align-items: baseline; margin: 0 260px 26px; opacity: 0; }
   .credits .line .role { flex: 1; text-align: right; color: #f59e0b; font: 500 28px Futura, "Helvetica Neue", sans-serif; letter-spacing: .18em; text-transform: uppercase; }
   .credits .who { flex: 1; text-align: left; }
   .credits .name { color: #faf7f0; font: 600 46px Futura, "Helvetica Neue", sans-serif; }
-  .credits .note { color: rgba(250, 247, 240, .55); font: italic 26px Georgia, serif; margin-top: 4px; }
+  .credits .who .note { color: rgba(250, 247, 240, .55); font: italic 26px Georgia, serif; margin-top: 4px; }
   .bare .stamps, .bare .cap { display: none !important; }
 </style>
 <div id="stage"></div>
@@ -64,10 +63,8 @@
   const ramp = (t, from, length) => ease(clamp((t - from) / length));
   const FULL = { z: 1, left: 0, top: 0 };
 
-  const same = (a, b) => a.z === b.z && a.left === b.left && a.top === b.top;
-
   const stage = document.getElementById("stage");
-  function makeCard(kind) {
+  function makeCard() {
     const card = document.createElement("div");
     card.className = "card";
     const rows = [`<img src="__ROOT__/assets/icon.svg" />`, `<div class="name">ncrs</div>`];
@@ -250,12 +247,12 @@
     const el = document.createElement("div");
     el.className = "layer";
     el.innerHTML = `<img class="app" /><div class="stamps"></div><div class="cap"></div>`;
-    const title = makeCard("title");
+    const title = makeCard();
     const end = makeEnd(), credits = makeCredits(), ident = makeIdent(), wall = makeWall();
     el.append(title, ident.el, end.el, credits.el);
     el.querySelector(".stamps").before(wall.el);
     stage.append(el);
-    return { ident, end, credits, wall, el, img: el.querySelector(".app"), stamps: el.querySelector(".stamps"), stampsFor: null, cap: el.querySelector(".cap"), title, credits, file: "" };
+    return { ident, end, credits, wall, el, img: el.querySelector(".app"), stamps: el.querySelector(".stamps"), stampsFor: null, cap: el.querySelector(".cap"), title, file: "" };
   }
   const below = makeLayer(), above = makeLayer();
   let items = [], total = 0;
@@ -321,12 +318,8 @@
     }
     item.stamps.forEach((st, n) => {
       const node = layer.stamps.children[n];
-      const age = lt - st.at;
-      if (outgoing || age < 0) { node.style.opacity = 0; return; }
-      const p = easeOutBack(clamp(age / SLAM_TIME));
-      const rot = st.rot ?? -3;
-      node.style.opacity = clamp(age / 0.06);
-      node.style.transform = `scale(${SLAM_SCALE + (1 - SLAM_SCALE) * p}) rotate(${rot - SLAM_TURN * (1 - p)}deg)`;
+      if (outgoing) { node.style.opacity = 0; return; }
+      stampSlam(node, lt - st.at, st.rot ?? -3);
     });
   }
 
