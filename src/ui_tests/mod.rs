@@ -3651,11 +3651,8 @@ mod rules_card {
     }
 
     #[test]
-    fn escape_closes_the_dialog_first_saves_nothing_and_then_closes_the_settings() {
+    fn escape_closes_an_untouched_dialog_first_saves_nothing_and_then_closes_the_settings() {
         let mut app = App::with_rules(with_edit_form());
-        let _ = app.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Name(
-            "Contract".to_owned(),
-        ))));
 
         let _ = app.update(Message::Settings(SettingsMessage::Close));
 
@@ -3668,6 +3665,20 @@ mod rules_card {
         assert!(app.open_hermes_page().is_some());
         let _ = app.update(Message::Settings(SettingsMessage::Close));
         assert!(app.open_hermes_page().is_none());
+    }
+
+    #[test]
+    fn escape_keeps_a_dialog_with_typed_input_open() {
+        let mut app = App::with_rules(with_edit_form());
+        let _ = app.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Name(
+            "Contract".to_owned(),
+        ))));
+
+        let _ = app.update(Message::Settings(SettingsMessage::Close));
+
+        let page = app.rules_for_test().unwrap();
+        assert_eq!(page.form().unwrap().name, "Contract");
+        assert!(app.open_hermes_page().is_some());
     }
 
     #[test]
