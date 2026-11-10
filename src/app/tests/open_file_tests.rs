@@ -81,12 +81,27 @@ fn a_pdf_starts_the_system_opener_even_with_a_configured_viewer() {
 }
 
 #[test]
+fn a_double_click_on_a_row_that_moved_since_the_first_click_opens_nothing() {
+    let (mut app, launcher) = app_on("setup.command", None);
+
+    drop(app.update(Message::Panel(PanelMessage::RowActivated {
+        side: PanelSide::Left,
+        index: 0,
+        name: "notes.txt".into(),
+    })));
+
+    assert_eq!(app.ops.open_file_dialog, None);
+    assert!(started(&launcher).is_empty());
+}
+
+#[test]
 fn a_double_click_on_a_file_that_could_run_asks_first() {
     let (mut app, launcher) = app_on("setup.command", None);
 
     drop(app.update(Message::Panel(PanelMessage::RowActivated {
         side: PanelSide::Left,
         index: 0,
+        name: "setup.command".into(),
     })));
 
     assert_eq!(app.ops.open_file_dialog, Some(file_at("setup.command")));

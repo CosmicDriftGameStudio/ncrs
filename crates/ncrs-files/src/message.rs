@@ -1,5 +1,6 @@
 //! Everything a file panel sends.
 
+use std::ffi::OsString;
 use std::path::PathBuf;
 
 use iced::Point;
@@ -88,10 +89,13 @@ pub enum PanelMessage {
     /// The window lost the focus while a row was held: the release may never
     /// arrive, so the drag ends without a drop.
     PanelDragCancelled,
-    /// Double click on a row of a panel: the row's Enter.
+    /// Double click on a row of a panel: the row's Enter. `name` is the
+    /// entry the row showed: a reload between the two clicks may have moved
+    /// the rows, and then the click is dropped instead of opening another entry.
     RowActivated {
         side: PanelSide,
         index: usize,
+        name: OsString,
     },
 
     /// A click on a column title: sort that panel by the column.

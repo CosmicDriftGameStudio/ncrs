@@ -1,5 +1,6 @@
 //! What a panel message does to the panels, and what it asks the app for.
 
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use iced::Task;
@@ -519,11 +520,19 @@ pub fn go_up(panels: &Panels, side: PanelSide) -> Option<Action> {
 fn activate_row(
     panels: &mut Panels,
     ctx: &Ctx<'_>,
-    side: PanelSide,
-    index: usize,
+    (side, index, name): (PanelSide, usize, &OsStr),
     actions: &mut Vec<Action>,
 ) {
     if ctx.is_context_click || ctx.context_menu_is_open {
+        return;
+    }
+    // A reload between the two clicks may have moved the rows.
+    let still_there = panels
+        .panel(side)
+        .entries
+        .get(index)
+        .is_some_and(|entry| entry.name == name);
+    if !still_there {
         return;
     }
     panels.active = side;

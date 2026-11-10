@@ -219,6 +219,7 @@ async fn a_double_click_on_a_folder_opens_it_like_enter() {
     let opening = app.update(Message::Panel(PanelMessage::RowActivated {
         side: PanelSide::Left,
         index,
+        name: "sub".into(),
     }));
     let mut opened = iced_test::runtime::task::into_stream(opening).unwrap();
     while let Some(action) = futures::StreamExt::next(&mut opened).await {
