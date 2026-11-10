@@ -22,6 +22,15 @@ const LOCK_FILE: &str = ".lock";
 /// A folder this young may belong to a start that has not locked it yet.
 const SWEEP_MIN_AGE: Duration = Duration::from_secs(10 * 60);
 
+/// A file unpacked for the viewer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ViewCopy {
+    pub path: PathBuf,
+    /// The entry had an executable bit in the archive. The copy does not keep
+    /// it, so the launcher cannot see it on the file.
+    pub was_executable: bool,
+}
+
 /// The folders holding the copies of one running ncrs, one slot per unpacked
 /// file, grouped by the archive the file came from.
 #[derive(Debug)]
@@ -33,7 +42,7 @@ pub struct ViewCopies {
     slots: HashMap<PathBuf, Vec<PathBuf>>,
     /// The finished copy of each entry shown so far, by the path it was shown
     /// under, so a second look at the same entry does not unpack it again.
-    ready: HashMap<PathBuf, PathBuf>,
+    ready: HashMap<PathBuf, ViewCopy>,
     /// Slots that could not be removed, a viewer on Windows still has the file
     /// open. Tried again on the next release and on close.
     pending: Vec<PathBuf>,
@@ -86,7 +95,7 @@ impl ViewCopies {
     /// Stops tracking `slot` without touching the disk, for a slot whose
     /// owner removes it itself.
     pub fn forget_slot(&mut self, slot: &Path) {
-        self.ready.retain(|_, copy| !copy.starts_with(slot));
+        self.ready.retain(|_, copy| !copy.path.starts_with(slot));
         self.slots.retain(|_, slots| {
             slots.retain(|known| known != slot);
             !slots.is_empty()
@@ -115,12 +124,15 @@ impl ViewCopies {
 
     /// The copy made earlier for the entry shown as `shown`, if it is still
     /// there.
-    pub fn ready_copy(&self, shown: &Path) -> Option<PathBuf> {
-        self.ready.get(shown).filter(|copy| copy.is_file()).cloned()
+    pub fn ready_copy(&self, shown: &Path) -> Option<ViewCopy> {
+        self.ready
+            .get(shown)
+            .filter(|copy| copy.path.is_file())
+            .cloned()
     }
 
     /// Notes that `copy` is the finished copy of the entry shown as `shown`.
-    pub fn remember_copy(&mut self, shown: PathBuf, copy: PathBuf) {
+    pub fn remember_copy(&mut self, shown: PathBuf, copy: ViewCopy) {
         self.ready.insert(shown, copy);
     }
 
@@ -132,7 +144,7 @@ impl ViewCopies {
     }
 
     fn remove(&mut self, slot: PathBuf) {
-        self.ready.retain(|_, copy| !copy.starts_with(&slot));
+        self.ready.retain(|_, copy| !copy.path.starts_with(&slot));
         match std::fs::remove_dir_all(&slot) {
             Ok(()) => {}
             Err(err) if err.kind() == io::ErrorKind::NotFound => {}
@@ -229,7 +241,8 @@ pub fn restrict_to_owner(_path: &Path, _mode: u32) -> io::Result<()> {
 
 /// Unpacks the archive entry `source` into `slot` and returns the path of the
 /// copy, readable by its owner only: a file that ran in the archive must not
-/// run from here. Blocking.
+/// run from here. Whether the entry was executable is told in the result, for
+/// the launcher to refuse it. Blocking.
 ///
 /// Whatever goes wrong, `slot` is gone when this returns an error; the thread
 /// that unpacks owns it, so a cancel cannot race with a removal elsewhere.
@@ -237,7 +250,7 @@ pub fn extract_for_view<P: Progress>(
     source: &Path,
     slot: &Path,
     progress: &mut P,
-) -> io::Result<PathBuf> {
+) -> io::Result<ViewCopy> {
     let result = unpack_for_view(source, slot, progress);
     if result.is_err() {
         let _best_effort = std::fs::remove_dir_all(slot);
@@ -245,11 +258,23 @@ pub fn extract_for_view<P: Progress>(
     result
 }
 
+#[cfg(unix)]
+fn has_exec_bit(copy: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt as _;
+    std::fs::metadata(copy)
+        .is_ok_and(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
+}
+
+#[cfg(not(unix))]
+fn has_exec_bit(_copy: &Path) -> bool {
+    false
+}
+
 fn unpack_for_view<P: Progress>(
     source: &Path,
     slot: &Path,
     progress: &mut P,
-) -> io::Result<PathBuf> {
+) -> io::Result<ViewCopy> {
     let name = source
         .file_name()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "the entry has no name"))?;
@@ -260,10 +285,14 @@ fn unpack_for_view<P: Progress>(
             carry_zone_mark(&location.archive, &copy)?;
         }
     }
+    let was_executable = has_exec_bit(&copy);
     restrict_to_owner(&copy, 0o600)?;
     // A cancel that came while the last block was written ends here.
     progress.keep_going()?;
-    Ok(copy)
+    Ok(ViewCopy {
+        path: copy,
+        was_executable,
+    })
 }
 
 #[allow(
@@ -462,33 +491,38 @@ mod tests {
             let copy = extract_for_view(&archive.join("docs").join("a.txt"), &slot, &mut Counting)
                 .unwrap();
 
-            assert_eq!(copy, slot.join("a.txt"), "{file}");
-            assert_eq!(std::fs::read(&copy).unwrap(), b"inside", "{file}");
+            assert_eq!(copy.path, slot.join("a.txt"), "{file}");
+            assert_eq!(std::fs::read(&copy.path).unwrap(), b"inside", "{file}");
             assert_eq!(names_in(&slot), ["a.txt"], "{file}");
         }
     }
 
     #[cfg(unix)]
     #[test]
-    fn the_copy_is_private_even_when_the_file_ran_in_the_archive() {
+    fn the_copy_is_private_and_tells_whether_the_entry_was_executable() {
         use std::os::unix::fs::PermissionsExt as _;
         let dir = scratch("view-mode");
         let archive = dir.path().join("m.tar");
         let mut builder = tar::Builder::new(File::create(&archive).unwrap());
-        let mut header = tar::Header::new_gnu();
-        header.set_size(9);
-        header.set_mode(0o755);
-        builder
-            .append_data(&mut header, "run.sh", &b"#!/bin/sh"[..])
-            .unwrap();
+        for (name, mode) in [("install", 0o755), ("notes", 0o644)] {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(9);
+            header.set_mode(mode);
+            builder
+                .append_data(&mut header, name, &b"#!/bin/sh"[..])
+                .unwrap();
+        }
         builder.finish().unwrap();
         let mut copies = ViewCopies::open(&dir.path().join("view")).unwrap();
-        let slot = copies.slot(&archive).unwrap();
+        let mut unpacked = |name: &str| {
+            let slot = copies.slot(&archive).unwrap();
+            let copy = extract_for_view(&archive.join(name), &slot, &mut Counting).unwrap();
+            let mode = std::fs::metadata(&copy.path).unwrap().permissions().mode() & 0o777;
+            (mode, copy.was_executable)
+        };
 
-        let copy = extract_for_view(&archive.join("run.sh"), &slot, &mut Counting).unwrap();
-
-        let mode = std::fs::metadata(&copy).unwrap().permissions().mode();
-        assert_eq!(mode & 0o777, 0o600);
+        assert_eq!(unpacked("install"), (0o600, true));
+        assert_eq!(unpacked("notes"), (0o600, false));
     }
 
     #[cfg(windows)]
@@ -504,7 +538,7 @@ mod tests {
 
         let copy = extract_for_view(&archive.join("a.docm"), &slot, &mut Counting).unwrap();
 
-        let stream = format!("{}:Zone.Identifier", copy.display());
+        let stream = format!("{}:Zone.Identifier", copy.path.display());
         assert_eq!(std::fs::read_to_string(stream).unwrap(), mark);
     }
 

@@ -126,6 +126,8 @@ pub enum Action {
     /// Open the copy made for the viewer in the viewer.
     LaunchViewCopy {
         path: PathBuf,
+        /// The entry was executable where the copy comes from.
+        was_executable: bool,
         origin: ViewOrigin,
     },
     RestartSearch,

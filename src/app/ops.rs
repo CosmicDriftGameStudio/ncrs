@@ -194,12 +194,16 @@ impl App {
                 self.job_done = 0;
                 Task::none()
             }
-            Ask::LaunchViewCopy { path, origin } => {
+            Ask::LaunchViewCopy {
+                path,
+                was_executable,
+                origin,
+            } => {
                 let from = match origin {
                     ncrs_ops::ViewOrigin::Archive => CopyOf::Archive,
                     ncrs_ops::ViewOrigin::Server => CopyOf::Server,
                 };
-                self.launch_external(fs::OpenKind::View, path, None, from);
+                self.launch_external(fs::OpenKind::View, path, None, from, was_executable);
                 Task::none()
             }
             Ask::ReloadPanels => {

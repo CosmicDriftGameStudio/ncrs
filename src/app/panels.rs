@@ -221,7 +221,7 @@ impl App {
         };
         let plan = self.panels.plan_open(kind, source);
         self.run_open_plan(plan, |app, path, line| {
-            app.launch_external(kind, path, line, CopyOf::Nothing);
+            app.launch_external(kind, path, line, CopyOf::Nothing, false);
             Task::none()
         })
     }
@@ -323,6 +323,10 @@ impl App {
                 move |slot, tx| {
                     let mut progress = fs::transfer::Reporting::new(tx);
                     fs::remote::transfer::download_for_view(&pool, &source, slot, &mut progress)
+                        .map(|path| fs::archive::ViewCopy {
+                            path,
+                            was_executable: false,
+                        })
                 },
                 ctx,
             )
@@ -361,13 +365,15 @@ impl App {
 
     /// Hands `path` to the program for `kind`, at `line` when the program
     /// takes one. `from` says whether `path` is a temporary copy made for
-    /// viewing, and of what.
+    /// viewing, and of what; `was_executable` that the file it was copied
+    /// from could run, which the copy no longer shows.
     pub(in crate::app) fn launch_external(
         &mut self,
         kind: fs::OpenKind,
         path: PathBuf,
         line: Option<u64>,
         from: CopyOf,
+        was_executable: bool,
     ) {
         self.job_error = None;
         self.notice = None;
@@ -375,7 +381,7 @@ impl App {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let executable = fs::could_execute(&path);
+        let executable = was_executable || fs::could_execute(&path);
         let Some(command) = fs::open_command(&self.open_programs, kind, &path, executable, line)
         else {
             let label = |opener| self.keymap.shortcut_label(&Message::OpenExternal(opener));

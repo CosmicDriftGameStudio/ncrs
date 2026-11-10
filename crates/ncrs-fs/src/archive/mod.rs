@@ -24,7 +24,7 @@ pub use index::{ArchiveIndex, Totals};
 pub use names::safe_components;
 pub use sevenz::{refusal_of, SevenZipRefusal};
 pub use view::restrict_to_owner;
-pub use view::{extract_for_view, ViewCopies};
+pub use view::{extract_for_view, ViewCopies, ViewCopy};
 pub use write::{add, delete, pack, pack_named, WriteReport};
 
 use super::{EntryDetails, FileEntry};

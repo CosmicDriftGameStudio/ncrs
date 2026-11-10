@@ -125,8 +125,8 @@ pub enum Message {
         /// The copy's folder, so a result that arrives after its job was
         /// stopped can still clean up after itself.
         slot: std::path::PathBuf,
-        /// The path of the copy.
-        result: Result<std::path::PathBuf, RowFailure>,
+        /// The copy.
+        result: Result<crate::fs::archive::ViewCopy, RowFailure>,
         /// The run it belongs to; a result of a stopped one only removes its slot.
         generation: u64,
     },

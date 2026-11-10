@@ -243,7 +243,10 @@ async fn a_copy_started_while_a_file_is_unpacked_is_refused_and_the_queue_surviv
     std::fs::write(&copy, "x").unwrap();
     drop(app.update(Message::ViewExtracted {
         slot,
-        result: Ok(copy),
+        result: Ok(fs::archive::ViewCopy {
+            path: copy,
+            was_executable: false,
+        }),
         generation: app.ops.generation,
     }));
 
@@ -378,7 +381,10 @@ async fn a_result_of_a_stopped_run_removes_its_copy_and_starts_nothing() {
 
     drop(app.update(Message::ViewExtracted {
         slot: slot.clone(),
-        result: Ok(copy),
+        result: Ok(fs::archive::ViewCopy {
+            path: copy,
+            was_executable: false,
+        }),
         generation: stale,
     }));
 
@@ -399,7 +405,10 @@ async fn a_copy_that_arrives_after_the_panel_left_is_removed_unseen() {
 
     drop(app.update(Message::ViewExtracted {
         slot: slot.clone(),
-        result: Ok(copy),
+        result: Ok(fs::archive::ViewCopy {
+            path: copy,
+            was_executable: false,
+        }),
         generation: app.ops.generation,
     }));
 
@@ -421,7 +430,7 @@ async fn a_script_without_an_editor_is_refused_without_naming_the_edit_key() {
         .0
         .with_launcher(Arc::clone(&launcher) as Arc<dyn fs::Launcher>);
 
-    app.launch_external(fs::OpenKind::View, script, None, CopyOf::Archive);
+    app.launch_external(fs::OpenKind::View, script, None, CopyOf::Archive, false);
 
     assert!(launcher.0.lock().unwrap().is_empty());
     let shown = app.job_error.unwrap();
@@ -485,4 +494,36 @@ async fn f3_after_ncrs_rewrote_the_archive_unpacks_the_entry_again() {
         .and_then(|command| command.args.last())
         .unwrap();
     assert_eq!(std::fs::read(copy).unwrap(), b"overwritten");
+}
+
+/// The copy of an executable entry has no exec bit, so the flag the unpacking
+/// reported is what keeps it from the system opener.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_copy_of_an_executable_entry_is_not_handed_to_the_system_opener() {
+    let dir = scratch("view-was-exec");
+    let copy = dir.path().join("install");
+    std::fs::write(&copy, "#!/bin/sh").unwrap();
+    let launcher = Arc::new(Recorded::default());
+    let mut app = App::with_environment(Environment::isolated())
+        .0
+        .with_launcher(Arc::clone(&launcher) as Arc<dyn fs::Launcher>);
+
+    app.launch_external(
+        fs::OpenKind::View,
+        copy.clone(),
+        None,
+        CopyOf::Archive,
+        false,
+    );
+    let for_a_plain_file = launcher.0.lock().unwrap().clone();
+    launcher.0.lock().unwrap().clear();
+    app.launch_external(fs::OpenKind::View, copy, None, CopyOf::Archive, true);
+    let for_an_executable = launcher.0.lock().unwrap().clone();
+
+    assert_eq!(for_a_plain_file.len(), 1);
+    assert!(
+        !for_an_executable.contains(&for_a_plain_file[0]),
+        "{for_an_executable:?}"
+    );
 }
