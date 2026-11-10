@@ -13,6 +13,7 @@ use ncrs_filing::filing::{AiStatus, KeyProblem, Phase, ProtectionNote};
 /// The sentence for a failed request to the own server.
 pub fn server_failure_text(failure: ReplyFailure, lang: Language) -> String {
     match failure {
+        ReplyFailure::Status(401 | 403) => lang.text(Msg::SettingsAiTestKeyRefused).to_owned(),
         ReplyFailure::Status(status) => fill_template(
             lang.text(Msg::SettingsAiTestServerError),
             &[("{status}", &status.to_string())],

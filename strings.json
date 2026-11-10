@@ -8385,8 +8385,8 @@
     {
       "key": "settings.index_row_ai_note_server",
       "context": "Description under the row about the AI model on the Index page while Hermes uses the own server instead of the local model; the server and its model are named beside it.",
-      "en": "Your own server answers. Without a model only file names and dates.",
-      "de": "Dein eigener Server antwortet. Ohne Modell nur Dateinamen und Datum."
+      "en": "Hermes uses your own server. Without a model only file names and dates.",
+      "de": "Hermes nutzt deinen eigenen Server. Ohne Modell nur Dateinamen und Datum."
     },
     {
       "key": "settings.index_ai_off",

@@ -201,8 +201,6 @@ pub struct OpenAiCompatible {
     key_lookup: Option<Arc<dyn KeyLookup>>,
     usage_log: Option<PathBuf>,
     ledger: Arc<dyn ConsentLedger>,
-    /// The server refuses a `response_format`: decided once from the host.
-    omits_response_format: bool,
     last_failure: Mutex<Option<ReplyFailure>>,
 }
 
@@ -212,7 +210,6 @@ impl OpenAiCompatible {
         ledger: Arc<dyn ConsentLedger>,
     ) -> Result<Self, AiError> {
         let endpoint = Endpoint::parse(&config.endpoint).map_err(AiError::BadEndpoint)?;
-        let omits_response_format = is_anthropic(&endpoint.host);
         Ok(Self {
             endpoint,
             model: config.model,
@@ -220,7 +217,6 @@ impl OpenAiCompatible {
             key_lookup: config.key_lookup,
             usage_log: config.usage_log,
             ledger,
-            omits_response_format,
             last_failure: Mutex::new(None),
         })
     }
@@ -292,7 +288,7 @@ impl OpenAiCompatible {
     }
 
     fn add_response_format(&self, body: &mut Json, format: impl FnOnce() -> Json) {
-        if self.omits_response_format {
+        if is_anthropic(&self.endpoint.host) {
             return;
         }
         if let Json::Object(entries) = body {
@@ -990,23 +986,20 @@ mod tests {
         assert!(is_anthropic("eu.anthropic.com"));
         assert!(!is_anthropic("notanthropic.com"));
         assert!(!is_anthropic("openrouter.ai"));
-        let ledger = Arc::new(Ledger::default());
-        assert!(provider("https://api.anthropic.com/v1", &ledger).omits_response_format);
-        assert!(!provider("https://api.example.com/v1", &ledger).omits_response_format);
     }
 
     #[test]
     fn a_server_that_refuses_response_format_is_sent_none() {
         let ledger = Arc::new(Ledger::default());
-        let mut own = provider("http://127.0.0.1:1/v1", &ledger);
+        let own = provider("http://127.0.0.1:1/v1", &ledger);
         assert!(own
             .request_body(&request())
             .pretty()
             .contains("response_format"));
 
-        own.omits_response_format = true;
+        let anthropic = provider("https://api.anthropic.com/v1", &ledger);
 
-        let body = own.request_body(&request()).pretty();
+        let body = anthropic.request_body(&request()).pretty();
         assert!(!body.contains("response_format"));
         assert!(body.contains("model-x"));
     }
