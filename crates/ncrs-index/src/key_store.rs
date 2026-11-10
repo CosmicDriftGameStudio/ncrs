@@ -113,13 +113,75 @@ fn existing_folder_account(id_file: &Path) -> Result<Option<String>, KeyStoreErr
     }
 }
 
+/// How often a missing or blank ID file is written again before giving up: a
+/// file that stays blank after a write is not a race but a broken folder.
+const ID_FILE_ATTEMPTS: usize = 5;
+
 fn created_folder_account(id_file: &Path) -> Result<String, KeyStoreError> {
-    loop {
+    for _ in 0..ID_FILE_ATTEMPTS {
         match read_key_id_file(id_file)? {
             KeyIdFile::Id(text) => return parse_key_id(&text, id_file),
-            KeyIdFile::Missing => write_new_key_id(id_file, false)?,
-            KeyIdFile::Blank => write_new_key_id(id_file, true)?,
+            KeyIdFile::Missing => write_new_key_id(id_file)?,
+            KeyIdFile::Blank => {
+                remove_if_still_blank(id_file)?;
+                write_new_key_id(id_file)?;
+            }
         }
+    }
+    Err(id_file_error(id_file, "could not create a stable ID"))
+}
+
+/// A blank file is removed, never cut short and written into: whoever sees
+/// it blank while another creator is writing would overwrite that creator's ID.
+/// Reading and removing are two steps, so the file is first moved to a name of
+/// its own: what the move caught is looked at there, and an ID that a creator
+/// finished writing in the meantime is linked back.
+fn remove_if_still_blank(id_file: &Path) -> Result<(), KeyStoreError> {
+    let mut caught_name = id_file.as_os_str().to_owned();
+    caught_name.push(format!(
+        ".{}-{}.blank",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.as_nanos())
+    ));
+    let caught = PathBuf::from(caught_name);
+    match std::fs::rename(id_file, &caught) {
+        Ok(()) => {}
+        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(()),
+        Err(err) => return Err(id_file_error(id_file, &err.to_string())),
+    }
+    let put_back = match read_key_id_file(&caught)? {
+        KeyIdFile::Id(text) => restore_key_id(&caught, id_file, &text),
+        KeyIdFile::Missing | KeyIdFile::Blank => Ok(()),
+    };
+    match std::fs::remove_file(&caught) {
+        Ok(()) => {}
+        Err(err) if err.kind() == ErrorKind::NotFound => {}
+        Err(err) => return Err(id_file_error(&caught, &err.to_string())),
+    }
+    put_back
+}
+
+/// Gives an ID back its name unless another creator took the name meanwhile:
+/// a link, or where links are not possible an exclusive create and write.
+fn restore_key_id(caught: &Path, id_file: &Path, content: &str) -> Result<(), KeyStoreError> {
+    match std::fs::hard_link(caught, id_file) {
+        Ok(()) => return Ok(()),
+        Err(err) if err.kind() == ErrorKind::AlreadyExists => return Ok(()),
+        Err(_) => {}
+    }
+    let created = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(id_file);
+    match created {
+        Ok(mut file) => file
+            .write_all(content.as_bytes())
+            .and_then(|()| file.sync_all())
+            .map_err(|err| id_file_error(id_file, &err.to_string())),
+        Err(err) if err.kind() == ErrorKind::AlreadyExists => Ok(()),
+        Err(err) => Err(id_file_error(id_file, &err.to_string())),
     }
 }
 
@@ -158,9 +220,12 @@ fn parse_key_id(content: &str, id_file: &Path) -> Result<String, KeyStoreError> 
     }
 }
 
-/// A missing file is created exclusively; a blank one is overwritten. Losing
-/// a race to another creator is fine: the caller reads the file again.
-fn write_new_key_id(id_file: &Path, overwrite_blank: bool) -> Result<(), KeyStoreError> {
+/// The ID is written to a file of its own and linked to the name of the ID
+/// file, so the name never exists without its content. Losing a race to
+/// another creator is fine: the caller reads the file again. Where links are
+/// not possible (exFAT, some network shares) the file is created exclusively
+/// and written in place.
+fn write_new_key_id(id_file: &Path) -> Result<(), KeyStoreError> {
     let mut bytes: [u8; KEY_ID_BYTES] = [0; KEY_ID_BYTES];
     getrandom::fill(&mut bytes)
         .map_err(|err| id_file_error(id_file, &format!("no random ID available: {err}")))?;
@@ -168,19 +233,30 @@ fn write_new_key_id(id_file: &Path, overwrite_blank: bool) -> Result<(), KeyStor
     for byte in bytes {
         write!(line, "{byte:02x}").map_err(|err| id_file_error(id_file, &err.to_string()))?;
     }
+    let tag = line.clone();
     line.push('\n');
 
-    let mut options = OpenOptions::new();
-    if overwrite_blank {
-        options.write(true).truncate(true);
-    } else {
-        options.write(true).create_new(true);
+    let mut staged_name = id_file.as_os_str().to_owned();
+    staged_name.push(format!(".{tag}.new"));
+    let staged = PathBuf::from(staged_name);
+    let outcome = write_synced(&staged, &line).and_then(|()| std::fs::hard_link(&staged, id_file));
+    drop(std::fs::remove_file(&staged));
+    match outcome {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == ErrorKind::AlreadyExists => Ok(()),
+        Err(_) => write_in_place(id_file, &line),
     }
-    match options.open(id_file) {
-        Ok(mut file) => file
-            .write_all(line.as_bytes())
-            .and_then(|()| file.sync_all())
-            .map_err(|err| id_file_error(id_file, &err.to_string())),
+}
+
+fn write_synced(path: &Path, line: &str) -> std::io::Result<()> {
+    let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
+    file.write_all(line.as_bytes())?;
+    file.sync_all()
+}
+
+fn write_in_place(id_file: &Path, line: &str) -> Result<(), KeyStoreError> {
+    match write_synced(id_file, line) {
+        Ok(()) => Ok(()),
         Err(err) if err.kind() == ErrorKind::AlreadyExists => Ok(()),
         Err(err) => Err(id_file_error(id_file, &err.to_string())),
     }
@@ -315,6 +391,36 @@ impl FileKeyStore {
         std::os::unix::fs::OpenOptionsExt::mode(options, 0o600);
         options.write(true).open(&self.path)?.write_all(key)
     }
+
+    /// The key goes into a file next to `path` first and is renamed over it,
+    /// so an abort leaves the old key whole.
+    fn write_over(&self, key: &[u8]) -> std::io::Result<()> {
+        let mut name = self.path.as_os_str().to_owned();
+        name.push(".new");
+        let next = PathBuf::from(name);
+        match std::fs::remove_file(&next) {
+            Ok(()) => {}
+            Err(err) if err.kind() == ErrorKind::NotFound => {}
+            Err(err) => return Err(err),
+        }
+        let written = self
+            .create_synced(&next, key)
+            .and_then(|()| std::fs::rename(&next, &self.path));
+        if written.is_err() {
+            drop(std::fs::remove_file(&next));
+        }
+        written
+    }
+
+    fn create_synced(&self, next: &Path, key: &[u8]) -> std::io::Result<()> {
+        let mut options = OpenOptions::new();
+        options.create_new(true);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        let mut file = options.write(true).open(next)?;
+        file.write_all(key)?;
+        file.sync_all()
+    }
 }
 
 impl KeyStore for FileKeyStore {
@@ -335,7 +441,7 @@ impl KeyStore for FileKeyStore {
     }
 
     fn replace(&self, key: &[u8]) -> Result<(), KeyStoreError> {
-        self.create(OpenOptions::new().create(true).truncate(true), key)
+        self.write_over(key)
             .map_err(|err| KeyStoreError::Unavailable(err.to_string()))
     }
 
@@ -446,6 +552,60 @@ mod tests {
     }
 
     #[test]
+    fn creators_at_the_same_time_end_up_with_one_account() {
+        use std::sync::{Arc, Barrier};
+        for round in 0..40 {
+            let dir = tempfile::tempdir().unwrap();
+            let id_file = id_file_in(&dir);
+            let start = Arc::new(Barrier::new(4));
+            let creators: Vec<_> = std::iter::repeat_with(|| {
+                let (file, gate) = (id_file.clone(), Arc::clone(&start));
+                std::thread::spawn(move || {
+                    gate.wait();
+                    created_folder_account(&file).unwrap()
+                })
+            })
+            .take(4)
+            .collect();
+            let accounts: Vec<String> = creators.into_iter().map(|c| c.join().unwrap()).collect();
+
+            let kept = existing_folder_account(&id_file).unwrap().unwrap();
+            assert!(
+                accounts.iter().all(|account| *account == kept),
+                "round {round}"
+            );
+            let leftovers = std::fs::read_dir(dir.path()).unwrap().count();
+            assert_eq!(leftovers, 1, "no staging file stays behind");
+        }
+    }
+
+    #[test]
+    fn an_id_that_arrived_after_the_blank_was_seen_stays() {
+        let dir = tempfile::tempdir().unwrap();
+        let id_file = id_file_in(&dir);
+        std::fs::write(&id_file, "0123456789abcdef0123456789abcdef\n").unwrap();
+
+        remove_if_still_blank(&id_file).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(&id_file).unwrap(),
+            "0123456789abcdef0123456789abcdef\n"
+        );
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn a_blank_file_is_removed_without_leftovers() {
+        let dir = tempfile::tempdir().unwrap();
+        let id_file = id_file_in(&dir);
+        std::fs::write(&id_file, "\n\0 ").unwrap();
+
+        remove_if_still_blank(&id_file).unwrap();
+
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+    }
+
+    #[test]
     fn id_with_trailing_newline_is_accepted() {
         let dir = tempfile::tempdir().unwrap();
         let id_file = id_file_in(&dir);
@@ -530,6 +690,34 @@ mod tests {
         store.delete().unwrap();
         assert_eq!(store.load().unwrap(), None);
         store.delete().unwrap();
+    }
+
+    #[test]
+    fn replacing_the_key_leaves_no_second_file_and_keeps_the_new_content() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("index.key");
+        let store = FileKeyStore::new(path.clone());
+        store.store_new(&[1; 32]).unwrap();
+
+        store.replace(&[2; 32]).unwrap();
+
+        assert_eq!(std::fs::read(&path).unwrap(), vec![2; 32]);
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_replaced_key_file_is_private() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("index.key");
+        let store = FileKeyStore::new(path.clone());
+        store.store_new(&[1; 32]).unwrap();
+
+        store.replace(&[2; 32]).unwrap();
+
+        let mode = std::fs::metadata(path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
     }
 
     #[cfg(unix)]
