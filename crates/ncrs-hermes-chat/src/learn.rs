@@ -65,6 +65,7 @@ pub fn read_done(state: &mut State, ctx: &Ctx, result: Result<Arc<FolderReading>
             state.session.retry = can_retry.then(|| Retry {
                 folder: requested.clone(),
                 purpose,
+                unresolved_in: None,
             });
             let sentence = match error {
                 ReadError::Gone => fill(
@@ -100,6 +101,11 @@ pub fn retry(state: &mut State, ctx: &Ctx) {
     let Some(failed) = state.session.retry.take() else {
         return;
     };
+    if let Some(step) = failed.unresolved_in {
+        state.resolving = Some((failed.folder, step));
+        state.fresh_resolve = true;
+        return;
+    }
     match failed.purpose {
         ReadFor::Source => tidy::begin(state, ctx, failed.folder),
         ReadFor::Open => {

@@ -7178,13 +7178,13 @@
     },
     {
       "key": "hermes_chat.read_summary",
-      "context": "Hermes chat (F2): Hermes' report after reading a folder that has several areas (top-level folders with their own order). **Double asterisks** mark bold text and must stay around the same words. {count} is the number of files, {areas} the number of areas, for example '3 areas'. A list of areas follows.",
+      "context": "Hermes chat (F2): Hermes' report after reading a folder that has several areas (top-level folders with their own order). {count} is the number of files, {areas} the number of areas, for example '3 areas'. A list of areas follows.",
       "en": "Done reading: {count} files in {areas} areas. This is the order I see:",
       "de": "Hab ich gelesen: {count} Dateien in {areas} Bereichen. Die Ordnung sieht so aus:"
     },
     {
       "key": "hermes_chat.read_summary_one_area",
-      "context": "Hermes chat (F2): Hermes' report after reading a folder that has exactly one area (a top-level folder with its own order). **Double asterisks** mark bold text and must stay around the same words. {count} is the number of files.",
+      "context": "Hermes chat (F2): Hermes' report after reading a folder that has exactly one area (a top-level folder with its own order). {count} is the number of files.",
       "en": "Done reading: {count} files in one area. This is the order I see:",
       "de": "Hab ich gelesen: {count} Dateien in einem Bereich. Die Ordnung sieht so aus:"
     },
@@ -7484,7 +7484,7 @@
     },
     {
       "key": "hermes_chat.ask_once",
-      "context": "Hermes chat (F2): Hermes asks whether to tidy a folder only now or on every new file. **Double asterisks** mark bold text and must stay around the same words. {folder} is the folder name.",
+      "context": "Hermes chat (F2): Hermes asks whether to tidy a folder only now or on every new file. {folder} is the folder name.",
       "en": "Shall I tidy up “{folder}” just now, or from now on whenever something arrives?",
       "de": "Soll ich „{folder}“ nur jetzt aufräumen oder ab sofort immer, sobald etwas reinkommt?"
     },

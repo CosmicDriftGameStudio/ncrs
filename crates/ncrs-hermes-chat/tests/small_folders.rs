@@ -692,6 +692,73 @@ mod tests {
     }
 
     #[test]
+    fn retrying_a_typed_folder_that_was_missing_resolves_and_confirms_it_again() {
+        for asking in [ChipReply::IntentTidy, ChipReply::IntentStructure] {
+            let (mut talk, _) = asking_for_the_source();
+            talk.type_text_understood("hmmmm", r#"{"intent":"other"}"#);
+            talk.press(&asking);
+            let typed = talk.path("a").join("..").join("later");
+            talk.type_text(&typed.to_string_lossy());
+            assert_eq!(
+                talk.last_texts(),
+                vec![say(Msg::HermesChatNotAFolder, &[("name", "later")])]
+            );
+
+            std::fs::create_dir_all(talk.path("later")).unwrap();
+            talk.press(&ChipReply::Retry);
+
+            assert_eq!(
+                talk.last_texts(),
+                vec![say(Msg::HermesChatConfirmTypedFolder, &[("name", "later")])],
+                "{asking:?}"
+            );
+            assert!(talk.state.pending_work().is_none());
+        }
+    }
+
+    #[test]
+    fn retrying_a_folder_that_could_not_be_read_reads_it_again() {
+        let mut talk = small_talk();
+        talk.open();
+        talk.type_text_understood("hmmmm", r#"{"intent":"other"}"#);
+        talk.press(&ChipReply::IntentStructure);
+        let gone = talk.path("gone");
+        talk.send(Message::ChipPressed {
+            label: "gone".to_owned(),
+            reply: ChipReply::Folder(gone.clone()),
+        });
+        assert_eq!(
+            talk.last_texts(),
+            vec![say(
+                Msg::HermesChatFolderGone,
+                &[("path", &gone.to_string_lossy())]
+            )]
+        );
+
+        std::fs::create_dir_all(gone.join("Alfa")).unwrap();
+        talk.write(
+            "gone/Alfa/x.pdf",
+            &letter("Alfa AG", "01.01.2020", "Rechnung", 1),
+        );
+        talk.press(&ChipReply::Retry);
+
+        assert!(talk
+            .state
+            .session
+            .readings
+            .contains_key(&canonical_path(&gone)));
+        assert!(talk
+            .state
+            .chips()
+            .iter()
+            .all(|chip| chip.reply != ChipReply::Retry));
+    }
+
+    fn canonical_path(path: &std::path::Path) -> std::path::PathBuf {
+        std::fs::canonicalize(path).unwrap()
+    }
+
+    #[test]
     fn a_typed_other_target_is_asked_before_the_proposal_changes() {
         let mut talk = small_talk();
         std::fs::create_dir_all(talk.path("b")).unwrap();

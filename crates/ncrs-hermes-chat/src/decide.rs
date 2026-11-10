@@ -257,14 +257,22 @@ pub fn run_done(state: &mut State, ctx: &Ctx, result: Result<RunReport, String>)
             run_next(state, ctx);
         }
         Err(reason) => {
+            let failure = fill(ctx.lang, Msg::HermesChatReadFailed, &[("reason", &reason)]);
+            let filed_before = state
+                .session
+                .deciding
+                .as_ref()
+                .is_some_and(|deciding| deciding.done > 0);
+            if filed_before {
+                say(state, failure, Vec::new());
+                summary(state, ctx);
+                return;
+            }
             state.session.deciding = None;
             state.session.tidy = None;
+            state.session.readings.clear();
             state.step = Step::Idle;
-            say(
-                state,
-                fill(ctx.lang, Msg::HermesChatReadFailed, &[("reason", &reason)]),
-                crate::update::fallback_chips(ctx),
-            );
+            say(state, failure, crate::update::fallback_chips(ctx));
         }
     }
 }

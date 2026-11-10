@@ -39,17 +39,28 @@ pub fn has_open_questions(state: &State) -> bool {
 }
 
 /// The name of a sender the model read together with the label printed in
-/// front of it ("Account holder: Example GmbH"). Only the first short,
-/// digit-free word group before a colon counts as a label, so a colon inside
-/// the name stays. The stored value and the rule keep the raw text.
+/// front of it ("Account holder: Example GmbH"). Only a known label word
+/// before the first colon counts, so a name like "Stadtwerke München: Abrechnung"
+/// and a colon inside the name stay. The stored value and the rule keep the
+/// raw text.
 fn sender_without_label(sender: &str) -> &str {
+    const LABELS: [&str; 9] = [
+        "account holder",
+        "accountholder",
+        "sender",
+        "from",
+        "kontoinhaber",
+        "kontoinhaberin",
+        "inhaber",
+        "absender",
+        "von",
+    ];
     let Some((label, after_colon)) = sender.split_once(':') else {
         return sender;
     };
     let name = after_colon.trim();
-    let label_like = !label.trim().is_empty()
-        && label.split_whitespace().count() <= 2
-        && !label.chars().any(|letter| letter.is_ascii_digit());
+    let label = label.split_whitespace().collect::<Vec<_>>().join(" ");
+    let label_like = LABELS.contains(&label.to_lowercase().as_str());
     if label_like && !name.is_empty() {
         name
     } else {
@@ -442,6 +453,14 @@ mod tests {
         assert_eq!(
             sender_without_label("Example one two three: Branch"),
             "Example one two three: Branch"
+        );
+        assert_eq!(
+            sender_without_label("Muster AG: Niederlassung Berlin"),
+            "Muster AG: Niederlassung Berlin"
+        );
+        assert_eq!(
+            sender_without_label("Stadtwerke München: Abrechnung"),
+            "Stadtwerke München: Abrechnung"
         );
         assert_eq!(sender_without_label("Example GmbH:"), "Example GmbH:");
         assert_eq!(sender_without_label("Example GmbH"), "Example GmbH");

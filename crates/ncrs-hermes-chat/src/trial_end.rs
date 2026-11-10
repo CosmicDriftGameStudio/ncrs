@@ -169,24 +169,21 @@ pub fn show_staying(state: &mut State, ctx: &Ctx) {
 /// The files that are in the filing folder already go to the trash, as one
 /// run that can be undone.
 pub fn trash_duplicates(state: &mut State, ctx: &Ctx) {
-    let ready = state.session.trial.is_some()
-        && state
-            .session
-            .tidy
-            .as_ref()
-            .is_some_and(|tidy| tidy.target.is_some());
-    if !ready {
+    let target = state
+        .session
+        .tidy
+        .as_ref()
+        .and_then(|tidy| tidy.target.clone());
+    let ready = state.session.trial.is_some() && can_trash_duplicates(state, ctx);
+    let (Some(target), true) = (target, ready) else {
         say(
             state,
             text(ctx.lang, Msg::HermesChatFallback),
             fallback_chips(ctx),
         );
         return;
-    }
-    let (Some(trial), Some(tidy)) = (state.session.trial.take(), state.session.tidy.take()) else {
-        return;
     };
-    let Some(target) = tidy.target.clone() else {
+    let (Some(trial), Some(tidy)) = (state.session.trial.take(), state.session.tidy.take()) else {
         return;
     };
     let items: Vec<TrashItem> = trial

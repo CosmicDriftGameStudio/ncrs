@@ -12,7 +12,7 @@ use crate::page_trim::trim_to_content;
 use crate::text::{Extracted, PageImage, TextError, TextSource, MAX_SCAN_SIDE_PIXELS};
 
 /// The image formats this source decodes; heic is not among them.
-pub(crate) const EXTENSIONS: [&str; 5] = ["jpg", "jpeg", "png", "tif", "tiff"];
+pub const EXTENSIONS: [&str; 5] = ["jpg", "jpeg", "png", "tif", "tiff"];
 const MAX_FILE_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_SIDE_PIXELS: u32 = 0x4000;
 const MAX_DECODE_BYTES: u64 = 256 * 1024 * 1024;

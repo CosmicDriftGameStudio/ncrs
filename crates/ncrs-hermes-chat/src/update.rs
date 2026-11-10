@@ -113,6 +113,14 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
                 return None;
             }
             let Some(path) = picked else {
+                let step = state.step;
+                if step == Step::WaitingFolder && crate::waiting::ask_again(state, ctx) {
+                    return None;
+                }
+                if step == Step::NewTarget {
+                    tidy::ask_target_again(state, ctx);
+                    return None;
+                }
                 reset_flow(state);
                 say(
                     state,
@@ -325,6 +333,7 @@ fn typed_folder_resolved(
             .map(|purpose| Retry {
                 folder: typed.to_path_buf(),
                 purpose,
+                unresolved_in: Some(step),
             });
             say(
                 state,

@@ -14,6 +14,7 @@ mod common;
 mod tests {
 
     use crate::common::{letter, Talk};
+    use ncrs_filing::chat_work::ChatResult;
     use ncrs_hermes_chat::{Action, ChipReply, Message, NewLayout, Part};
 
     const TIDY_INBOX: &str = r#"{"intent":"tidy_folder","source":"Inbox"}"#;
@@ -136,6 +137,45 @@ mod tests {
             "{:?}",
             talk.labels()
         );
+    }
+
+    #[test]
+    fn closing_the_dialog_of_the_new_folder_asks_where_the_files_go_again() {
+        let mut talk = asking_where();
+        let question: Vec<ChipReply> = talk
+            .state
+            .chips()
+            .iter()
+            .map(|chip| chip.reply.clone())
+            .collect();
+        talk.press(&ChipReply::NewTarget);
+        talk.send(Message::FolderPicked(None));
+        let again: Vec<ChipReply> = talk
+            .state
+            .chips()
+            .iter()
+            .map(|chip| chip.reply.clone())
+            .collect();
+        assert_eq!(again, question);
+        assert!(talk.state.session.tidy.is_some());
+    }
+
+    #[test]
+    fn a_failing_run_while_deciding_reports_what_was_filed_and_offers_undo() {
+        let mut talk = asking_where();
+        talk.press(&ChipReply::DecidePerFile);
+        talk.press(&ChipReply::ModeCopy);
+        talk.state.session.deciding.as_mut().expect("deciding").done = 1;
+        talk.send(Message::Done(Box::new(ChatResult::Filed(Err(
+            "disk full".to_owned()
+        )))));
+        assert!(talk.state.session.deciding.is_none());
+        assert!(talk.state.session.readings.is_empty());
+        assert!(talk
+            .state
+            .chips()
+            .iter()
+            .any(|chip| chip.reply == ChipReply::Undo));
     }
 
     #[test]
