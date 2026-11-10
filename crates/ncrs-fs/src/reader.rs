@@ -96,9 +96,25 @@ pub async fn read_directory(path: PathBuf, sorted_by: SortKey) -> Listing {
 /// raw code is compared.
 const EPERM: i32 = 1;
 
-fn read_error(err: &io::Error) -> ReadError {
+/// Places macOS privacy protection guards. NFS servers and some FUSE file
+/// systems also answer `EPERM`, and for those Full Disk Access changes nothing.
+fn is_privacy_protected(path: &Path, home: &Path) -> bool {
+    path.starts_with("/Volumes")
+        || ["Desktop", "Documents", "Downloads", "Library", ".Trash"]
+            .iter()
+            .any(|folder| path.starts_with(home.join(folder)))
+}
+
+fn read_error(err: &io::Error, path: &Path) -> ReadError {
+    read_error_at(err, path, &home_dir())
+}
+
+fn read_error_at(err: &io::Error, path: &Path, home: &Path) -> ReadError {
     let reason = err.to_string();
-    if cfg!(target_os = "macos") && err.raw_os_error() == Some(EPERM) {
+    if cfg!(target_os = "macos")
+        && err.raw_os_error() == Some(EPERM)
+        && is_privacy_protected(path, home)
+    {
         ReadError::AccessBlocked { reason }
     } else {
         ReadError::CannotRead { reason }
@@ -130,7 +146,7 @@ fn read_sync(path: &Path, sorted_by: SortKey) -> Read {
             Some(location) => read_archive(path, &location, sorted_by),
             None => Read {
                 entries: parent_only(path),
-                error: Some(read_error(&err)),
+                error: Some(read_error(&err, path)),
                 archive: None,
             },
         },
@@ -272,7 +288,11 @@ mod tests {
     #[test]
     fn ordinary_permission_denied_stays_cannot_read() {
         assert!(matches!(
-            read_error(&io::Error::from_raw_os_error(13)),
+            read_error_at(
+                &io::Error::from_raw_os_error(13),
+                Path::new("/Users/a/Documents"),
+                Path::new("/Users/a")
+            ),
             ReadError::CannotRead { .. }
         ));
     }
@@ -281,16 +301,50 @@ mod tests {
     #[test]
     fn eperm_on_macos_means_access_blocked() {
         assert!(matches!(
-            read_error(&io::Error::from_raw_os_error(EPERM)),
+            read_error_at(
+                &io::Error::from_raw_os_error(EPERM),
+                Path::new("/Users/a/Documents/x"),
+                Path::new("/Users/a")
+            ),
             ReadError::AccessBlocked { .. }
         ));
+    }
+
+    #[test]
+    fn eperm_outside_the_protected_places_stays_cannot_read() {
+        for path in ["/mnt/nfs/share", "/Users/a/code", "/Users/b/Documents"] {
+            assert!(
+                matches!(
+                    read_error_at(
+                        &io::Error::from_raw_os_error(EPERM),
+                        Path::new(path),
+                        Path::new("/Users/a")
+                    ),
+                    ReadError::CannotRead { .. }
+                ),
+                "{path}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_places_macos_protects_include_the_trash() {
+        let home = Path::new("/Users/a");
+        for path in ["/Users/a/.Trash", "/Users/a/.Trash/x", "/Users/a/Library/y"] {
+            assert!(is_privacy_protected(Path::new(path), home), "{path}");
+        }
+        assert!(!is_privacy_protected(Path::new("/Users/b/.Trash"), home));
     }
 
     #[cfg(not(target_os = "macos"))]
     #[test]
     fn eperm_elsewhere_stays_cannot_read() {
         assert!(matches!(
-            read_error(&io::Error::from_raw_os_error(EPERM)),
+            read_error_at(
+                &io::Error::from_raw_os_error(EPERM),
+                Path::new("/Users/a/Documents/x"),
+                Path::new("/Users/a")
+            ),
             ReadError::CannotRead { .. }
         ));
     }
