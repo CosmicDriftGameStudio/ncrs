@@ -166,6 +166,23 @@ pub fn other_folder(state: &mut State) -> Option<Action> {
     Some(Action::PickFolder)
 }
 
+/// The folder dialog was closed: the document in question is asked about
+/// again. `false` when no walk is running.
+pub fn ask_again(state: &mut State, ctx: &Ctx) -> bool {
+    let Some((parts, chips)) = state
+        .session
+        .waiting
+        .as_ref()
+        .and_then(|walk| walk.current.as_ref())
+        .and_then(|group| question(ctx, group))
+    else {
+        return false;
+    };
+    state.step = Step::Idle;
+    hermes(state, parts, chips);
+    true
+}
+
 /// Files the document in question in `folder`: below the target when relative.
 pub fn file_into(state: &mut State, ctx: &Ctx, folder: PathBuf) {
     let Some(group) = state

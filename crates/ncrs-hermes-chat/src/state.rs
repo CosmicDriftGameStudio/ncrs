@@ -396,6 +396,9 @@ pub enum ReadFor {
 pub struct Retry {
     pub folder: PathBuf,
     pub purpose: ReadFor,
+    /// The step a typed path failed to resolve in: the retry resolves and
+    /// confirms it again instead of reading the path as typed.
+    pub unresolved_in: Option<Step>,
 }
 
 #[derive(Debug, Clone)]

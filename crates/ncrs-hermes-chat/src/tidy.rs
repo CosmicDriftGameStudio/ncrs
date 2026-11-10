@@ -133,6 +133,21 @@ pub fn choose_where(state: &mut State, ctx: &Ctx, reading: &Arc<FolderReading>) 
         return;
     }
     state.step = Step::Target;
+    let chips = target_question_chips(ctx, candidates);
+    say(
+        state,
+        fill(
+            ctx.lang,
+            Msg::HermesChatSourceSummary,
+            &[("folder", &folder), ("count", &number(reading.files.len()))],
+        ),
+        chips,
+    );
+}
+
+/// The buttons of the question where the files go: the known targets, a new
+/// folder, or deciding file by file.
+pub fn target_question_chips(ctx: &Ctx, candidates: Vec<PathBuf>) -> Vec<Chip> {
     let only_one = candidates.len() == 1;
     let mut chips = candidates
         .into_iter()
@@ -150,15 +165,15 @@ pub fn choose_where(state: &mut State, ctx: &Ctx, reading: &Arc<FolderReading>) 
         ChipReply::DecidePerFile,
         false,
     ));
-    say(
-        state,
-        fill(
-            ctx.lang,
-            Msg::HermesChatSourceSummary,
-            &[("folder", &folder), ("count", &number(reading.files.len()))],
-        ),
-        chips,
-    );
+    chips
+}
+
+/// The folder dialog of "New folder" was closed: the question where the files
+/// go is asked again.
+pub fn ask_target_again(state: &mut State, ctx: &Ctx) {
+    state.step = Step::Target;
+    let chips = target_question_chips(ctx, targets(state, ctx));
+    say(state, text(ctx.lang, Msg::HermesChatAskOtherTarget), chips);
 }
 
 /// The target was just learned: go on with the tidy-up it interrupted.

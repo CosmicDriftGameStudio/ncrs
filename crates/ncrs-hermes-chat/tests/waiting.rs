@@ -273,6 +273,22 @@ mod tests {
     }
 
     #[test]
+    fn closing_the_folder_dialog_asks_about_the_same_document_again() {
+        let mut talk = unsure_talk();
+        let question = talk.labels();
+
+        talk.press(&ChipReply::WaitingOtherFolder);
+        talk.send(Message::FolderPicked(None));
+
+        assert_eq!(talk.labels(), question);
+        talk.press(&ChipReply::WaitingOtherFolder);
+        talk.send(Message::FolderPicked(Some(
+            talk.path("archive/Insurance/2024"),
+        )));
+        assert!(talk.path("archive/Insurance/2024/scan-1.pdf").exists());
+    }
+
+    #[test]
     fn documents_that_arrive_while_the_chat_is_open_and_idle_are_offered() {
         let mut talk = talk_with(0);
         talk.open();

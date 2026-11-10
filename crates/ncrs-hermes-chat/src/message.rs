@@ -64,11 +64,14 @@ pub enum Message {
 
 impl Message {
     /// The report of work the chat launched. It is delivered even when the
-    /// chat is closed, else the wait it ends would never end.
+    /// chat is closed, else the wait it ends would never end. The finished
+    /// model download counts: a sentence that waited for the model is sent
+    /// again then, not only after the chat is opened.
     pub fn is_work_result(&self) -> bool {
         matches!(
             self,
-            Self::Done(_)
+            Self::ModelReady
+                | Self::Done(_)
                 | Self::Failed(_)
                 | Self::Understood(_)
                 | Self::RuleAnswered(_)
@@ -153,5 +156,16 @@ impl PartialEq for Message {
             }
             _ => false,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Message;
+
+    #[test]
+    fn a_finished_model_download_reaches_a_closed_chat() {
+        assert!(Message::ModelReady.is_work_result());
+        assert!(!Message::Submit.is_work_result());
     }
 }
