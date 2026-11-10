@@ -5,17 +5,18 @@ use std::time::SystemTime;
 
 use ncrs_ai::Provider;
 use ncrs_index::{
-    ContentHash, DocumentId, DocumentStatus, Field, FieldOrigin, IndexError, KindLanguage, Kinds, ReviewReason,
+    ContentHash, DocumentId, DocumentStatus, Field, FieldOrigin, IndexError, KindLanguage, Kinds,
+    ReviewReason,
 };
 use ncrs_intake::{
     detect_fields, plan, OwnNames, PlanInput, Planning, StabilityTracker, TextChain, TextError,
     FIELDS_READ_VERSION,
 };
-use ncrs_intake::{relative_to_location, text_is_readable};
 use ncrs_intake::{
-    finish_take_in, prepare_take_in, settle_location, IntakeError, Location, LocationMode,
-    Outcome, PendingHash, Prepared,
+    finish_take_in, prepare_take_in, settle_location, IntakeError, Location, LocationMode, Outcome,
+    PendingHash, Prepared,
 };
+use ncrs_intake::{relative_to_location, text_is_readable};
 
 use crate::ai_step::{clear_field, AiStep, AI_READ_VERSION};
 use crate::step::{with_index_value, IndexAccess, Item, Step, StepOutcome};

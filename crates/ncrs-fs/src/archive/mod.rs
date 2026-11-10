@@ -10,8 +10,8 @@ mod index;
 mod names;
 mod sevenz;
 mod view;
-mod zone_mark;
 mod write;
+mod zone_mark;
 
 use std::ffi::{OsStr, OsString};
 use std::io;
