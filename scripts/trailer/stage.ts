@@ -1,7 +1,7 @@
 // Renders the trailer: the app pictures from `cargo test -p ncrs trailer_frames -- --ignored`
 // (target/trailer/timeline.json) get camera moves, titles, key caps and cross-fades on an HTML
 // stage (stage.html, one render(t) function), captured frame by frame into ffmpeg.
-// Outputs in target/trailer/out/: ncrs-trailer.mp4, web/en.mp4, web/en.jpg, social.mp4.
+// Outputs in target/trailer/out/: ncrs-trailer.mp4, web/en.mp4, web/en.jpg, social.mp4, appstore.mp4.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { chromium } from "playwright";
@@ -12,7 +12,7 @@ type Scene = { id: string; title: string; subtitle: string; steps: Step[] };
 type Item =
   | { type: "title" | "ident"; dur: number }
   | { type: "credits"; dur: number; cast: string[][]; entries: string[][]; notice: string }
-  | { type: "end"; id: "end"; dur: number; say: string; voice: number; logo: boolean; notice: string }
+  | { type: "end"; id: "end"; dur: number; say: string; voice: number; logo: boolean; links: boolean; notice: string }
   | { type: "wall"; id: "wall"; dur: number; say: string; voice: number; stamps: Stamp[]; entries: string[][]; frames: string[]; drift: number }
   | { type: "scene"; id: string; title: string; subtitle: string; steps: Step[]; say: string; voice: number; stamps: Stamp[]; camera: Camera };
 
@@ -94,9 +94,9 @@ const sceneItem = (scene: Scene, stepLimit = Infinity): Item => {
   if (voice > 0 && lack > 0) steps[steps.length - 1].seconds += lack;
   return { type: "scene", id: scene.id, title: scene.title, subtitle: scene.subtitle, steps, say: story[scene.id]?.say ?? "", voice, stamps: story[scene.id]?.stamps ?? [], camera: story[scene.id]?.camera ?? WIDE_CAMERA };
 };
-const endItem = (logo: boolean): Item => {
+const endItem = (logo: boolean, links = true): Item => {
   const voice = voiceLength.get("end") ?? 0;
-  return { type: "end", id: "end", dur: Math.max(END_MIN_SECONDS, VOICE_DELAY + voice + VOICE_TAIL + 0.5), say: END_SAY, voice, logo, notice: AI_NOTICE };
+  return { type: "end", id: "end", dur: Math.max(END_MIN_SECONDS, VOICE_DELAY + voice + VOICE_TAIL + 0.5), say: END_SAY, voice, logo, links, notice: AI_NOTICE };
 };
 /** One small still per scene (its middle step) for the shortcut wall. */
 function wallFrames(): string[] {
@@ -260,6 +260,12 @@ finish(join(work, "hero.silent.mp4"), join(out, "web/en.mp4"), heroLength, hero,
 
 const socialLength = await capture(social, join(work, "social.silent.mp4"));
 finish(join(work, "social.silent.mp4"), join(out, "social.mp4"), socialLength, social, voiceTrack(social, join(voiceWork, "social.wav")), ["-c:v", "copy"]);
+
+// Mac App Store preview: the social cut without the URL and the other download channels (Apple rejects
+// previews that name other platforms); Apple asks for 256 kbit/s AAC
+const appStore = social.map((item) => (item.type === "end" ? endItem(true, false) : item));
+const appStoreLength = await capture(appStore, join(work, "appstore.silent.mp4"));
+finish(join(work, "appstore.silent.mp4"), join(out, "appstore.mp4"), appStoreLength, appStore, voiceTrack(appStore, join(voiceWork, "appstore.wav")), ["-c:v", "copy"], ["-b:a", "256k"]);
 
 // poster: the whole window at the end of the panels scene, no title, no cap
 await page.evaluate((cut) => (globalThis as any).setup(cut), hero);

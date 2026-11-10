@@ -181,6 +181,7 @@
   function showEnd(end, item, lt) {
     end.notice.textContent = item.notice;
     end.logo.style.display = item.logo ? "block" : "none";
+    end.rest[1].style.display = end.rest[2].style.display = item.links ? "" : "none";
     stampSlam(end.big, lt - 0.25, -3);
     [0.9, 1.5, 1.9, 2.3, 0.3].forEach((at, i) => {
       const n = end.rest[i], p = ramp(lt, at, 0.4);
