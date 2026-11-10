@@ -209,6 +209,36 @@ async fn a_late_answer_for_another_entry_leaves_the_open_input_alone() {
 }
 
 #[tokio::test]
+async fn the_answer_of_a_replaced_rename_still_reloads_the_panel() {
+    let dir = scratch();
+    let mut app = app_in(dir.path()).await;
+    put_cursor_on(&mut app, "a.txt");
+    let _focus = app.update(Message::Panel(PanelMessage::RenameStart));
+    let stale_id = app.ops.rename_request_id.wrapping_sub(1);
+    let from = dir.path().join("a.txt");
+    let to = dir.path().join("z.txt");
+    std::fs::rename(&from, &to).unwrap();
+
+    settle(
+        &mut app,
+        Message::Renamed {
+            request_id: stale_id,
+            side: PanelSide::Left,
+            from,
+            result: Ok(to),
+        },
+    )
+    .await;
+
+    assert!(app
+        .panels
+        .left
+        .entries
+        .iter()
+        .any(|entry| entry.name == "z.txt"));
+}
+
+#[tokio::test]
 async fn the_other_panel_inside_a_renamed_folder_follows_it() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(dir.path().join("photos").join("2026")).unwrap();

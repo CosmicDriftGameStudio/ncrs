@@ -116,14 +116,15 @@ fn compare_folders(scan: &Scan, left: PathBuf, right: PathBuf) -> Pending<'_> {
 }
 
 /// The marks of the left and the right entry of one name. `None` for two
-/// folders that are not looked into.
+/// folders that are not looked into: with subfolders off, and links to
+/// folders, which can lead back into the folder they are in.
 async fn compare_pair(
     scan: &Scan,
     left: &FileEntry,
     right: &FileEntry,
 ) -> Result<Option<(CompareMark, CompareMark)>, ScanError> {
     match (left.is_dir, right.is_dir) {
-        (true, true) if scan.choices.subfolders => {
+        (true, true) if scan.choices.subfolders && !left.is_symlink && !right.is_symlink => {
             let below = compare_folders(scan, left.path.clone(), right.path.clone()).await?;
             let mark = if below.differs {
                 CompareMark::Different
@@ -438,5 +439,26 @@ mod tests {
         let result = compare(stopped, left.path().to_owned(), left.path().to_owned()).await;
 
         assert_eq!(result, Err(ScanError::Cancelled));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_link_back_to_the_parent_on_both_sides_is_not_followed() {
+        let left = tempfile::tempdir().unwrap();
+        let right = tempfile::tempdir().unwrap();
+        for side in [left.path(), right.path()] {
+            write(side, "sub/file.txt", "same", 500);
+            std::os::unix::fs::symlink("..", side.join("sub/loop")).unwrap();
+        }
+
+        let compared = compare(
+            scan(Choices::default()),
+            left.path().to_owned(),
+            right.path().to_owned(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(mark(&compared, true, "sub"), Some(CompareMark::Same));
     }
 }

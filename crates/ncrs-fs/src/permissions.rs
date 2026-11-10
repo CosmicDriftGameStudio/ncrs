@@ -33,6 +33,19 @@ impl PermissionEdit {
             ..self
         }
     }
+
+    /// The edit as two: turning bits on, and turning bits off. A folder gets the
+    /// first before it is walked and the second after, so removing its own
+    /// read or execute bit does not lock the walk out of it.
+    fn split_set_and_clear(self) -> (Self, Self) {
+        let turn_on = Self { clear: 0, ..self };
+        let turn_off = Self {
+            set: 0,
+            clear: self.clear & !self.set,
+            read_only: None,
+        };
+        (turn_on, turn_off)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -188,15 +201,26 @@ fn apply_counted(
         if !run.tick() {
             return run.outcome;
         }
-        match apply(path, &plan.edit) {
-            Ok(true) => run.outcome.changed += 1,
-            Ok(false) => {}
+        let (first, last) = match below {
+            Some(_) => plan.edit.split_set_and_clear(),
+            None => (plan.edit, PermissionEdit::default()),
+        };
+        let mut changed = false;
+        match apply(path, &first) {
+            Ok(did) => changed = did,
             Err(err) => run.fail(path.clone(), &err),
         }
         if let Some(edits) = &below {
             if !walk_root(&mut run, path, edits) {
                 return run.outcome;
             }
+            match apply(path, &last) {
+                Ok(did) => changed |= did,
+                Err(err) => run.fail(path.clone(), &err),
+            }
+        }
+        if changed {
+            run.outcome.changed += 1;
         }
     }
     // Ignored on purpose: the work is done whether or not anyone still listens.
@@ -247,15 +271,31 @@ fn walk_folder(
             return true;
         }
     };
-    let names: Vec<std::ffi::CString> = dir
-        .iter()
-        .filter_map(Result::ok)
-        .map(|child| child.file_name().to_owned())
-        .filter(|name| !matches!(name.to_bytes(), b"." | b".."))
-        .collect();
+    let mut names: Vec<std::ffi::CString> = Vec::new();
+    for child in dir.iter() {
+        match child {
+            Ok(child) => {
+                let name = child.file_name();
+                if !matches!(name.to_bytes(), b"." | b"..") {
+                    names.push(name.to_owned());
+                }
+            }
+            Err(errno) => {
+                run.fail(folder.to_path_buf(), &io::Error::from(errno));
+                break;
+            }
+        }
+    }
     for name in names {
-        let Ok(stat) = fstatat(&dir, name.as_c_str(), AtFlags::AT_SYMLINK_NOFOLLOW) else {
-            continue;
+        let path = folder.join(std::ffi::OsStr::from_bytes(name.to_bytes()));
+        let stat = match fstatat(&dir, name.as_c_str(), AtFlags::AT_SYMLINK_NOFOLLOW) {
+            Ok(stat) => stat,
+            // Gone since the listing.
+            Err(nix::errno::Errno::ENOENT) => continue,
+            Err(errno) => {
+                run.fail(path, &io::Error::from(errno));
+                continue;
+            }
         };
         let kind = SFlag::from_bits_truncate(stat.st_mode) & SFlag::S_IFMT;
         let is_folder = match kind {
@@ -274,19 +314,32 @@ fn walk_folder(
         if edit.is_some() && !run.tick() {
             return false;
         }
-        let path = folder.join(std::ffi::OsStr::from_bytes(name.to_bytes()));
-        let (changed, opened) = change_in(dir.as_fd(), &name, is_folder, edit.as_ref());
-        if changed {
-            run.outcome.changed += 1;
-        }
+        let (first, last) = match edit {
+            Some(whole) if is_folder => {
+                let (turn_on, turn_off) = whole.split_set_and_clear();
+                (Some(turn_on), Some(turn_off))
+            }
+            other => (other, None),
+        };
+        let (mut changed, opened) = change_in(dir.as_fd(), &name, is_folder, first.as_ref());
         match opened {
             Ok(Some(child)) if is_folder => {
+                let held = last.map(|_| child.try_clone());
                 if !walk_folder(run, child, &path, edits) {
                     return false;
+                }
+                if let (Some(turn_off), Some(held)) = (last, held) {
+                    match held.and_then(|held| change_handle(&held, true, &turn_off)) {
+                        Ok(did) => changed |= did,
+                        Err(err) => run.fail(path, &err),
+                    }
                 }
             }
             Ok(_) => {}
             Err(err) => run.fail(path, &err),
+        }
+        if changed {
+            run.outcome.changed += 1;
         }
     }
     true
@@ -913,5 +966,67 @@ mod unreadable_folder_tests {
         assert!(outcome.failures.is_empty(), "{:?}", outcome.failures);
         assert_eq!(mode(&locked), 0o700);
         assert_eq!(mode(&file), 0o700);
+    }
+
+    fn mode_of(path: &Path) -> u32 {
+        fs::metadata(path).unwrap().permissions().mode() & 0o7777
+    }
+
+    #[test]
+    fn removing_read_and_execute_from_folders_still_reaches_everything_below() {
+        let dir = tempfile::tempdir().unwrap();
+        let top = dir.path().join("top");
+        let inner = top.join("inner");
+        fs::create_dir_all(&inner).unwrap();
+        let file = inner.join("f");
+        fs::write(&file, "x").unwrap();
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o644)).unwrap();
+        let (sender, _receiver) = mpsc::unbounded_channel();
+        let outcome = change_permissions(
+            std::slice::from_ref(&top),
+            &PermissionPlan {
+                edit: PermissionEdit {
+                    set: 0,
+                    clear: 0o500,
+                    read_only: None,
+                },
+                recurse: Some((ForFiles::AsAbove, ForFolders::AsAbove)),
+            },
+            &sender,
+        );
+        let open_up = |path: &Path| {
+            let before = mode_of(path);
+            fs::set_permissions(path, fs::Permissions::from_mode(0o700)).unwrap();
+            before
+        };
+        let top_mode = open_up(&top);
+        let inner_mode = open_up(&inner);
+        let file_mode = mode_of(&file);
+        assert!(outcome.failures.is_empty(), "{:?}", outcome.failures);
+        assert_eq!(top_mode & 0o500, 0);
+        assert_eq!(inner_mode & 0o500, 0);
+        assert_eq!(file_mode, 0o244);
+        assert_eq!(outcome.changed, 3);
+    }
+
+    #[test]
+    fn a_folder_that_cannot_be_searched_is_a_failure_not_silence() {
+        let dir = tempfile::tempdir().unwrap();
+        let top = dir.path().join("top");
+        fs::create_dir_all(&top).unwrap();
+        fs::write(top.join("f"), "x").unwrap();
+        fs::set_permissions(&top, fs::Permissions::from_mode(0o600)).unwrap();
+        let (sender, _receiver) = mpsc::unbounded_channel();
+        let outcome = change_permissions(
+            std::slice::from_ref(&top),
+            &PermissionPlan {
+                edit: PermissionEdit::default(),
+                recurse: Some((ForFiles::AsAbove, ForFolders::Unchanged)),
+            },
+            &sender,
+        );
+        fs::set_permissions(&top, fs::Permissions::from_mode(0o700)).unwrap();
+        assert_eq!(outcome.failures.len(), 1, "{:?}", outcome.failures);
+        assert!(outcome.failures[0].path.ends_with("f"));
     }
 }

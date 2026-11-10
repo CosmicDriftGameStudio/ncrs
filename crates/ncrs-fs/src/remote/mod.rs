@@ -8,7 +8,7 @@
 //! collapsed, and on Windows `join` would add a backslash. [`RemotePath`] does
 //! it as text. Nothing here reaches `std::fs` with a server path.
 //!
-//! Login is by ssh-agent, key file or password, in that order, and the host key
+//! Login is by password, then ssh-agent, then key files, and the host key
 //! is checked before anything is sent.
 
 // The layer is built up in steps; what the app does not call yet is not dead
