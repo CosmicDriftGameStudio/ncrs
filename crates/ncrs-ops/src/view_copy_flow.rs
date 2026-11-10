@@ -37,6 +37,23 @@ pub fn start_view_copy(
         + 'static,
     ctx: &FlowCtx<'_>,
 ) -> Outcome {
+    // A server file may have changed since it was fetched; an archive entry
+    // is read from an archive that stays as it was while a panel is in it.
+    if !group_is_server(&group) {
+        let ready = ops
+            .view_copies
+            .as_ref()
+            .and_then(|copies| copies.ready_copy(&shown));
+        if let Some(copy) = ready {
+            return actions(vec![
+                Action::ClearStatus,
+                Action::LaunchViewCopy {
+                    path: copy,
+                    origin: ViewOrigin::Archive,
+                },
+            ]);
+        }
+    }
     // A transfer or delete under way, or a dialog about to start one, owns
     // the queue and `generation`; unpacking beside it would lose its result.
     if ctx.jobs_busy
@@ -67,6 +84,7 @@ pub fn start_view_copy(
     let generation = ops.generation;
     ops.extracting = Some(Extracting {
         archive: group,
+        shown: shown.clone(),
         slot: slot.clone(),
     });
     let job = Job {
@@ -130,6 +148,9 @@ pub fn view_extracted(
                 } else {
                     ViewOrigin::Archive
                 };
+                if let Some(copies) = ops.view_copies.as_mut() {
+                    copies.remember_copy(job.shown, copy.clone());
+                }
                 asked.push(Action::LaunchViewCopy { path: copy, origin });
             } else {
                 discard_view_slot(ops, &slot);

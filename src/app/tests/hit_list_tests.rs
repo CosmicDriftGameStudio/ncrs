@@ -270,6 +270,33 @@ fn remove_from_list_takes_the_tagged_rows_else_the_cursor_row() {
 }
 
 #[test]
+fn renaming_a_hit_lists_it_under_the_new_path_before_the_list_is_read_again() {
+    let mut hits = opened(&["a.txt", "b.txt"], PanelSide::Left);
+    let from = hits.files[0].clone();
+    let to = from.with_file_name("renamed.txt");
+    std::fs::rename(&from, &to).unwrap();
+    let request_id = hits.app.ops.rename_request_id;
+
+    drop(hits.app.update(Message::Renamed {
+        request_id,
+        side: PanelSide::Left,
+        from: from.clone(),
+        result: Ok(to.clone()),
+    }));
+
+    let panel = hits.app.panel(PanelSide::Left);
+    assert!(panel.is_hit_list());
+    let renamed = panel
+        .entries
+        .iter()
+        .find(|entry| entry.path == to)
+        .expect("the hit is listed under its new path");
+    assert_eq!(renamed.name, "renamed.txt");
+    assert!(panel.entries.iter().all(|entry| entry.path != from));
+    assert_eq!(panel.entries.len(), 2);
+}
+
+#[test]
 fn show_on_the_other_side_loads_the_folder_and_keeps_the_list() {
     let mut hits = opened(&["a.txt"], PanelSide::Left);
     drop(

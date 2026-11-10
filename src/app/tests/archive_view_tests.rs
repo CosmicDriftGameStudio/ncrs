@@ -43,6 +43,7 @@ fn pretend_extracting(app: &mut App, archive: &Path) -> PathBuf {
     let slot = app.ops.view_copies.as_mut().unwrap().slot(archive).unwrap();
     app.ops.extracting = Some(Extracting {
         archive: archive.to_path_buf(),
+        shown: archive.join("a.txt"),
         slot: slot.clone(),
     });
     app.jobs.enqueue(jobs::Job {
@@ -81,6 +82,33 @@ fn app_in_zip(dir: &Path, copies: Option<&Path>) -> (App, Arc<Recorded>) {
     }];
     panel.selected = 0;
     (app, launcher)
+}
+
+#[tokio::test]
+async fn f3_twice_on_the_same_entry_unpacks_it_once_and_opens_the_same_copy() {
+    use super::settings_pages_tests::settle;
+    let dir = scratch("view-twice");
+    let cache = dir.path().join("cache");
+    let (mut app, launcher) = app_in_zip(dir.path(), Some(&cache));
+
+    settle(&mut app, Message::OpenExternal(fs::OpenKind::View)).await;
+    settle(&mut app, Message::OpenExternal(fs::OpenKind::View)).await;
+
+    let launched = launcher.0.lock().unwrap().clone();
+    assert_eq!(launched.len(), 2, "one launch per press");
+    assert_eq!(launched[0].args.last(), launched[1].args.last());
+    let instance = std::fs::read_dir(&cache)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let slots = std::fs::read_dir(instance)
+        .unwrap()
+        .flatten()
+        .filter(|entry| entry.file_name().to_string_lossy().starts_with("slot-"))
+        .count();
+    assert_eq!(slots, 1, "the second press unpacked the entry again");
 }
 
 #[tokio::test]

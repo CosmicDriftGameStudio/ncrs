@@ -523,12 +523,14 @@ impl SearchView {
         if !tagged.is_empty() {
             // A folder found by name comes with the files inside it: acting
             // on both would copy or delete the same file twice.
+            let tagged_set: HashSet<&Path> = tagged.iter().map(PathBuf::as_path).collect();
             return tagged
                 .iter()
                 .filter(|path| {
-                    !tagged
-                        .iter()
-                        .any(|other| *other != **path && path.starts_with(other))
+                    !path
+                        .ancestors()
+                        .skip(1)
+                        .any(|ancestor| tagged_set.contains(ancestor))
                 })
                 .cloned()
                 .collect();

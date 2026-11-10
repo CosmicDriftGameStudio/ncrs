@@ -182,43 +182,62 @@ fn assert_sandboxed(lines: &[String]) {
     );
 }
 
-/// Removes what the probe left in the user's trash. Never panics.
-struct LeftInTheTrash(Vec<PathBuf>);
+/// Removes what the probe leaves behind, also when a step fails halfway: its
+/// items in the user's trash and its files in the container. Created before
+/// the first step. Never panics.
+struct ProbeLeftovers {
+    run: String,
+}
 
-impl LeftInTheTrash {
-    /// Only what the child reported landing in `~/.Trash` under the name of
-    /// this run; a Finder rename such as "… 2.txt" keeps the name.
-    fn of_this_run(lines: &[String], folder: &Path) -> Self {
-        let run = folder.file_name().unwrap().to_string_lossy().into_owned();
-        let user_trash = std::fs::canonicalize(crate::fs::home_dir().join(".Trash")).ok();
-        Self(
-            lines
-                .iter()
-                .filter_map(|line| line.strip_prefix("landed="))
-                .map(PathBuf::from)
-                .filter(|landed| {
-                    landed
-                        .file_name()
-                        .is_some_and(|name| name.to_string_lossy().contains(&run))
-                        && landed
-                            .parent()
-                            .and_then(|holder| std::fs::canonicalize(holder).ok())
-                            .is_some_and(|holder| Some(holder) == user_trash)
-                })
-                .collect(),
-        )
+impl ProbeLeftovers {
+    fn of_run_in(folder: &Path) -> Self {
+        Self {
+            run: folder.file_name().unwrap().to_string_lossy().into_owned(),
+        }
+    }
+
+    /// Everything in `~/.Trash` under the name of this run; a Finder rename
+    /// such as "… 2.txt" keeps the name.
+    fn remove_from_the_trash(&self) {
+        let trash = crate::fs::home_dir().join(".Trash");
+        let Ok(entries) = std::fs::read_dir(&trash) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            if entry.file_name().to_string_lossy().contains(&self.run) {
+                remove_ignoring_missing(&entry.path());
+            }
+        }
+    }
+
+    fn remove_from_the_container(&self) {
+        let data = crate::fs::home_dir()
+            .join("Library/Containers")
+            .join(BUNDLE_ID)
+            .join("Data");
+        for ending in ["txt", "toml"] {
+            remove_ignoring_missing(&data.join(format!("{}.{ending}", self.run)));
+        }
     }
 }
 
-impl Drop for LeftInTheTrash {
+fn remove_ignoring_missing(path: &Path) {
+    let removed = if path.is_dir() {
+        std::fs::remove_dir_all(path)
+    } else {
+        std::fs::remove_file(path)
+    };
+    match removed {
+        Ok(()) => {}
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+        Err(err) => eprintln!("cleanup: {} stays: {err}", path.display()),
+    }
+}
+
+impl Drop for ProbeLeftovers {
     fn drop(&mut self) {
-        for path in &self.0 {
-            match std::fs::remove_file(path) {
-                Ok(()) => {}
-                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
-                Err(err) => eprintln!("cleanup: {} stays in the trash: {err}", path.display()),
-            }
-        }
+        self.remove_from_the_trash();
+        self.remove_from_the_container();
     }
 }
 
@@ -238,13 +257,9 @@ fn the_store_sandbox_allows_what_ncrs_relies_on() {
     std::fs::write(folder.path().join("control.txt"), "control").unwrap();
     let executable = sandboxed_copy(folder.path());
 
+    let _leftovers = ProbeLeftovers::of_run_in(folder.path());
+
     let trashed = run_step(&executable, "trash", folder.path());
-    let left_in_the_trash = LeftInTheTrash::of_this_run(&trashed, folder.path());
-    assert_eq!(
-        left_in_the_trash.0.len(),
-        1,
-        "the cleanup would miss what landed: {trashed:#?}"
-    );
     let restored = run_step(&executable, "restore", folder.path());
 
     let pasted_file = folder.path().join("pasted.txt");
