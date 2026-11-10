@@ -209,6 +209,9 @@ pub fn update(
                 return Task::none();
             };
             view.select(index);
+            if view.cursor() != Some(index) {
+                return Task::none();
+            }
             view.export_when_ready(folder);
             if view.results().is_some() {
                 return Task::none();

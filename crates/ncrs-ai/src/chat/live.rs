@@ -190,7 +190,11 @@ fn with_model_the_protocol_sentences_print_their_intent() {
             previous_request: None,
             previous_message: None,
         };
-        println!("intent {sentence:?} => {:?}", model.understand(&turn));
+        let intent = model.understand(&turn);
+        println!("intent {sentence:?} => {intent:?}");
+        if matches!(sentence, "Was kannst du?" | "What can you do?") {
+            assert_eq!(intent, Ok(ChatIntent::SmallTalk), "{sentence:?}");
+        }
     }
     model.shutdown();
 }

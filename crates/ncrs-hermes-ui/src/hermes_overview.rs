@@ -350,6 +350,26 @@ mod tests {
     }
 
     #[test]
+    fn a_failed_request_to_the_server_is_told_by_its_cause() {
+        let lang = Language::English;
+
+        assert_eq!(
+            server_failure_text(ReplyFailure::Status(401), lang),
+            lang.text(Msg::SettingsAiTestKeyRefused)
+        );
+        assert_eq!(
+            server_failure_text(ReplyFailure::Status(403), lang),
+            lang.text(Msg::SettingsAiTestKeyRefused)
+        );
+        let server_error = server_failure_text(ReplyFailure::Status(503), lang);
+        assert!(server_error.contains("503"), "{server_error}");
+        assert_eq!(
+            server_failure_text(ReplyFailure::NoAnswer, lang),
+            lang.text(Msg::SettingsAiTestNoAnswer)
+        );
+    }
+
+    #[test]
     fn the_phases_of_the_module_map_to_what_the_page_calls_them() {
         assert_eq!(ModuleState::of(&Phase::Ready), ModuleState::Ready);
         assert_eq!(ModuleState::of(&Phase::Dismissed), ModuleState::Dismissed);

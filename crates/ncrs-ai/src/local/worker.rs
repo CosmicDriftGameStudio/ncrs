@@ -189,7 +189,8 @@ impl Shared {
         *locked(&self.threads) = threads;
     }
 
-    /// Used from the next document on; the chat always runs at full priority.
+    /// Used from the next document on. The chat asks for full priority, but on
+    /// Linux a thread cannot get back from a higher nice value without rights.
     pub fn set_extraction_priority(&self, priority: ThreadPriority) {
         *locked(&self.extraction_priority) = priority;
     }
