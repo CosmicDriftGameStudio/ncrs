@@ -168,17 +168,14 @@ pub fn file(access: &ChatAccess, run: &RunPlan) -> Result<RunReport, String> {
         )
         .map_err(|err| err.to_string())?;
         let moved = |reports: &[execute::ItemReport]| {
-            reports
-                .iter()
-                .filter(|item| item.outcome == execute::ItemOutcome::Moved)
-                .count()
+            reports.iter().filter(|item| item.was_moved()).count()
         };
         let (carried_items, inside_items) = report.items.split_at(carried);
         remove_emptied_folders(
             &run.target_root,
             inside_items
                 .iter()
-                .filter(|item| item.outcome == execute::ItemOutcome::Moved)
+                .filter(|item| item.was_moved())
                 .map(|item| item.from.as_path()),
         );
         Ok(RunReport {

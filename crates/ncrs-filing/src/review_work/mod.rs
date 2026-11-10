@@ -186,7 +186,7 @@ impl ReviewAccess {
     }
 
     pub fn load(&self) -> Result<Vec<ReviewItem>, String> {
-        self.with_index_text(|index| {
+        self.with_index(|index| {
             let neighbours = self.neighbours(index)?;
             load_matching(
                 index,
@@ -202,7 +202,7 @@ impl ReviewAccess {
     /// The open reviews, each with the folder below the target where the rule
     /// or the neighbours would file it; `None` when nothing is sure.
     pub fn load_with_folders(&self) -> Result<Vec<(ReviewItem, Option<PathBuf>)>, String> {
-        self.with_index_text(|index| {
+        self.with_index(|index| {
             let neighbours = self.neighbours(index)?;
             let items = load_matching(
                 index,
@@ -213,21 +213,23 @@ impl ReviewAccess {
             )
             .map_err(|err| err.to_string())?;
             let kinds = Kinds::new(Arc::clone(index.kinds()), self.kind_language);
-            Ok(items
-                .into_iter()
-                .map(|item| {
-                    let folder = item
-                        .suggested_target(&kinds)
-                        .and_then(|target| target.parent().map(Path::to_path_buf));
-                    (item, folder)
-                })
-                .collect())
+            Ok::<_, String>(
+                items
+                    .into_iter()
+                    .map(|item| {
+                        let folder = item
+                            .suggested_target(&kinds)
+                            .and_then(|target| target.parent().map(Path::to_path_buf));
+                        (item, folder)
+                    })
+                    .collect(),
+            )
         })
     }
 
     /// How many documents wait; reads no neighbours, so it is cheap.
     pub fn waiting_count(&self) -> Result<usize, String> {
-        self.with_index_text(|index| {
+        self.with_index(|index| {
             load_matching(
                 index,
                 |_path| true,
@@ -254,7 +256,7 @@ impl ReviewAccess {
 
     /// The open reviews of these files, in the order of `paths`.
     pub fn items_for(&self, paths: &[PathBuf]) -> Result<Vec<ReviewItem>, String> {
-        self.with_index_text(|index| {
+        self.with_index(|index| {
             let neighbours = self.neighbours(index)?;
             load_for_paths(
                 index,
@@ -289,9 +291,13 @@ impl ReviewAccess {
         let mut summary = AcceptSummary::default();
         for item in items {
             let outcome = match item.path.file_stem().and_then(|stem| stem.to_str()) {
-                Some(stem) => {
-                    self.confirm_in(&root, item.entry, item.document_id, &item.fields, stem)
-                }
+                Some(stem) => self.confirm_in(
+                    &root,
+                    item.entry,
+                    item.document_id,
+                    &item.fields,
+                    Naming::Fixed(stem),
+                ),
                 None => Err(PATTERN_DOES_NOT_FIT.to_owned()),
             };
             summary.record(outcome);
@@ -329,7 +335,13 @@ impl ReviewAccess {
         fields: &DocumentFields,
         pattern: &str,
     ) -> Result<ConfirmOutcome, String> {
-        self.confirm_in(&self.target_root, entry, document_id, fields, pattern)
+        self.confirm_in(
+            &self.target_root,
+            entry,
+            document_id,
+            fields,
+            Naming::Pattern(pattern),
+        )
     }
 
     fn confirm_in(
@@ -338,7 +350,7 @@ impl ReviewAccess {
         entry: ReviewEntryId,
         document_id: DocumentId,
         fields: &DocumentFields,
-        pattern: &str,
+        naming: Naming<'_>,
     ) -> Result<ConfirmOutcome, String> {
         let mut guard = self.slot.lock().unwrap_or_else(PoisonError::into_inner);
         let index = guard.as_mut().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
@@ -347,24 +359,15 @@ impl ReviewAccess {
             root,
             (entry, document_id),
             fields,
-            pattern,
+            naming,
             &Move,
             self.kind_language,
         )
     }
 
-    fn with_index_text<T>(
+    fn with_index<T, E: ToString>(
         &self,
-        work: impl FnOnce(&mut Index) -> Result<T, String>,
-    ) -> Result<T, String> {
-        let mut guard = self.slot.lock().unwrap_or_else(PoisonError::into_inner);
-        let index = guard.as_mut().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
-        work(index)
-    }
-
-    fn with_index<T>(
-        &self,
-        work: impl FnOnce(&mut Index) -> Result<T, IndexError>,
+        work: impl FnOnce(&mut Index) -> Result<T, E>,
     ) -> Result<T, String> {
         let mut guard = self.slot.lock().unwrap_or_else(PoisonError::into_inner);
         let index = guard.as_mut().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
@@ -654,19 +657,31 @@ fn suggestion_for(
     Ok(Some((item.text_state, target)))
 }
 
+/// How the name below the root of a filed document comes about.
+#[derive(Clone, Copy)]
+enum Naming<'a> {
+    /// Rendered from a filing pattern.
+    Pattern(&'a str),
+    /// Taken as it is: a file name may hold braces that are no placeholders.
+    Fixed(&'a str),
+}
+
 fn confirm<S: Source>(
     index: &mut Index,
     root: &Path,
     (entry, document_id): (ReviewEntryId, DocumentId),
     fields: &DocumentFields,
-    pattern: &str,
+    naming: Naming<'_>,
     effect: &S,
     kind_language: KindLanguage,
 ) -> Result<ConfirmOutcome, String> {
     let failed = |err: IndexError| err.to_string();
     let kinds = Kinds::new(Arc::clone(index.kinds()), kind_language);
-    let relative = render_pattern_in(pattern, fields, &kinds)
-        .ok_or_else(|| PATTERN_DOES_NOT_FIT.to_owned())?;
+    let relative = match naming {
+        Naming::Pattern(pattern) => render_pattern_in(pattern, fields, &kinds)
+            .ok_or_else(|| PATTERN_DOES_NOT_FIT.to_owned())?,
+        Naming::Fixed(name) => PathBuf::from(name),
+    };
     let document = index
         .document(document_id)
         .map_err(failed)?

@@ -95,6 +95,7 @@ pub fn trash_run(
     let batch = index.begin_named_batch(BatchKind::Hermes, name, Transfer::Trash)?;
     index.set_batch_source_root(batch, &source)?;
     let mut report = TrashReport::default();
+    let mut trashed = Vec::new();
     for item in items {
         if let Some(reason) = refusal(root, item) {
             skip(index, batch, item, reason)?;
@@ -109,22 +110,21 @@ pub fn trash_run(
             report.skipped += 1;
             continue;
         }
-        if let Some(key) = newest_entry_of(trash, &item.path) {
-            // A key that is not text cannot be journaled; the undo then finds
-            // the entry by its old place.
-            let _best_effort = index.set_journal_target(batch, seq, &PathBuf::from(key));
-        }
         index.set_journal_state(batch, seq, JournalState::Moved, None)?;
+        trashed.push((seq, &item.path));
         report.trashed += 1;
+    }
+    if let Ok(listed) = trash.list() {
+        for (seq, original) in trashed {
+            if let Some(entry) = newest_listed(&listed, |entry| entry.original == *original) {
+                // A key that is not text cannot be journaled; the undo then
+                // finds the entry by its old place.
+                let _best_effort = index.set_journal_target(batch, seq, &PathBuf::from(&entry.key));
+            }
+        }
     }
     index.finish_batch(batch)?;
     Ok(report)
-}
-
-/// The entry of the newest deletion of `original`.
-fn newest_entry_of(trash: &dyn Trash, original: &Path) -> Option<std::ffi::OsString> {
-    newest_listed(&trash.list().ok()?, |entry| entry.original == original)
-        .map(|entry| entry.key.clone())
 }
 
 fn newest_listed(
