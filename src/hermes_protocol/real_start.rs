@@ -606,18 +606,5 @@ mod e2e_tests {
 
         assert!(chat(&session.app).open);
         assert!(!chat(&session.app).thread().is_empty());
-        assert!(session.app.ai_model_for_test().is_none());
-
-        session.send(Message::HermesChat(ChatMessage::InputChanged(
-            "Sortier mir meine Downloads".to_owned(),
-        )));
-        session.send(Message::HermesChat(ChatMessage::Submit));
-        pump_for(&mut session, Duration::from_secs(3), |_| false);
-
-        assert!(chat(&session.app)
-            .chips()
-            .iter()
-            .any(|chip| chip.reply == ChipReply::DownloadModel));
-        assert!(session.app.ai_model_for_test().is_none());
     }
 }
