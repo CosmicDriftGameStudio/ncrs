@@ -12,5 +12,6 @@ use iced_test::runtime::{task, Action};
 mod common;
 mod dialog;
 mod monitor_jump;
+mod rename;
 mod saved_servers;
 mod transfers;

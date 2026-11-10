@@ -30,6 +30,9 @@ pub struct ViewCopies {
     /// start that the folder is in use.
     lock: Option<File>,
     slots: HashMap<PathBuf, Vec<PathBuf>>,
+    /// The finished copy of each entry shown so far, by the path it was shown
+    /// under, so a second look at the same entry does not unpack it again.
+    ready: HashMap<PathBuf, PathBuf>,
     /// Slots that could not be removed, a viewer on Windows still has the file
     /// open. Tried again on the next release and on close.
     pending: Vec<PathBuf>,
@@ -55,6 +58,7 @@ impl ViewCopies {
             instance,
             lock: Some(lock),
             slots: HashMap::new(),
+            ready: HashMap::new(),
             pending: Vec::new(),
         })
     }
@@ -81,6 +85,7 @@ impl ViewCopies {
     /// Stops tracking `slot` without touching the disk, for a slot whose
     /// owner removes it itself.
     pub fn forget_slot(&mut self, slot: &Path) {
+        self.ready.retain(|_, copy| !copy.starts_with(slot));
         self.slots.retain(|_, slots| {
             slots.retain(|known| known != slot);
             !slots.is_empty()
@@ -107,7 +112,19 @@ impl ViewCopies {
         let _best_effort = std::fs::remove_dir_all(&self.instance);
     }
 
+    /// The copy made earlier for the entry shown as `shown`, if it is still
+    /// there.
+    pub fn ready_copy(&self, shown: &Path) -> Option<PathBuf> {
+        self.ready.get(shown).filter(|copy| copy.is_file()).cloned()
+    }
+
+    /// Notes that `copy` is the finished copy of the entry shown as `shown`.
+    pub fn remember_copy(&mut self, shown: PathBuf, copy: PathBuf) {
+        self.ready.insert(shown, copy);
+    }
+
     fn remove(&mut self, slot: PathBuf) {
+        self.ready.retain(|_, copy| !copy.starts_with(&slot));
         match std::fs::remove_dir_all(&slot) {
             Ok(()) => {}
             Err(err) if err.kind() == io::ErrorKind::NotFound => {}

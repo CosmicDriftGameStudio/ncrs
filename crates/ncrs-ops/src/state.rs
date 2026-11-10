@@ -52,6 +52,8 @@ pub struct PendingConflict {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Extracting {
     pub archive: PathBuf,
+    /// The path the file is shown under, the key of its copy.
+    pub shown: PathBuf,
     pub slot: PathBuf,
 }
 
