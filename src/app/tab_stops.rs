@@ -117,7 +117,10 @@ impl App {
             TabStop::Panels => self.shown_tab = ShownTab::Panels,
             TabStop::Settings => self.shown_tab = ShownTab::Settings,
             TabStop::Monitor => self.shown_tab = ShownTab::Monitor,
-            TabStop::Hermes => self.shown_tab = ShownTab::Hermes,
+            TabStop::Hermes => {
+                self.shown_tab = ShownTab::Hermes;
+                return ncrs_hermes_chat::focus_input();
+            }
         }
         Task::none()
     }

@@ -5,12 +5,13 @@ use std::time::Duration;
 
 const UNITS: [char; 5] = ['K', 'M', 'G', 'T', 'P'];
 
-/// `3.9K`, `88.1M`, `824G`; below 1 KiB just the number.
+/// `3.9K`, `88.1M`, `824G`; below 1000 just the number. The unit is chosen by
+/// what is shown, so rounding never leaves `1024K` or four raw digits.
 pub fn short_size(bytes: u64) -> String {
     let mut value = bytes as f64;
     let mut unit = None;
     for candidate in UNITS {
-        if value < 1024.0 {
+        if shown_value(value) < 1000.0 {
             break;
         }
         value /= 1024.0;
@@ -19,8 +20,19 @@ pub fn short_size(bytes: u64) -> String {
     let Some(suffix) = unit else {
         return bytes.to_string();
     };
-    let decimals = usize::from(value < 100.0);
-    format!("{value:.decimals$}{suffix}")
+    let shown = shown_value(value);
+    let decimals = usize::from(shown < 100.0);
+    format!("{shown:.decimals$}{suffix}")
+}
+
+/// `value` rounded the way `short_size` writes it: one decimal below 100, none above.
+fn shown_value(value: f64) -> f64 {
+    let one_decimal = (value * 10.0).round() / 10.0;
+    if one_decimal < 100.0 {
+        one_decimal
+    } else {
+        value.round()
+    }
 }
 
 /// Bytes a second in the unit the setting asks for; bits get a `b`.
@@ -95,6 +107,19 @@ mod tests {
         assert_eq!(short_size(4_000), "3.9K");
         assert_eq!(short_size(88 * 1024 * 1024 + 100_000), "88.1M");
         assert_eq!(short_size(824 * 1024 * 1024 * 1024), "824G");
+    }
+
+    #[test]
+    fn the_unit_is_picked_by_the_rounded_value() {
+        assert_eq!(short_size(999), "999");
+        assert_eq!(short_size(1000), "1.0K");
+        assert_eq!(short_size(1023), "1.0K");
+        assert_eq!(short_size(1024), "1.0K");
+        assert_eq!(short_size(102_349), "100K");
+        assert_eq!(short_size(1_023 * 1024 + 900), "1.0M");
+        assert_eq!(short_size(1_000 * 1024), "1.0M");
+        assert_eq!(short_size(999 * 1024), "999K");
+        assert_eq!(short_size(u64::MAX), "16384P");
     }
 
     #[test]

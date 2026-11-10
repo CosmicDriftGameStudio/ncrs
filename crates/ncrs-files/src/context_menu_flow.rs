@@ -11,6 +11,7 @@ use crate::action::Action;
 use crate::context_menu::{ContextAction, ContextMenu, HermesAction, HermesMenu};
 use crate::folder_size::folder_size_targets;
 use crate::state::Panels;
+use crate::update::is_local_app_bundle;
 
 /// What decides whether a menu may open on a row.
 #[derive(Debug, Clone, Copy)]
@@ -110,9 +111,8 @@ impl MenuFacts {
             ContextAction::Open
             | ContextAction::ShowOnOtherSide
             | ContextAction::RemoveFromList => cursor_row.is_some(),
-            ContextAction::ShowPackageContents => cursor_row.is_some_and(|entry| {
-                entry.is_dir && !panel.is_virtual() && ncrs_fs::is_app_bundle(&entry.name)
-            }),
+            ContextAction::ShowPackageContents => cursor_row
+                .is_some_and(|entry| entry.is_dir && is_local_app_bundle(panel, &entry.name)),
             ContextAction::View | ContextAction::Edit => {
                 cursor_row.is_some_and(|entry| !entry.is_dir && !entry.is_parent)
             }

@@ -43,10 +43,6 @@ impl Panels {
     /// Tags are ignored, as in classic dual-panel file managers; `..` and directories have
     /// nothing to view or edit.
     pub fn plan_open(&self, kind: OpenKind, source: OpenSource) -> OpenPlan {
-        // A terminal takes a folder, which is `local_folder_target`'s business.
-        if kind == OpenKind::Terminal {
-            return OpenPlan::Nothing;
-        }
         let target = match source {
             OpenSource::Search(target) => target,
             OpenSource::ActivePanel => self

@@ -57,6 +57,20 @@ fn open_all_pages(app: &mut App) {
 }
 
 #[test]
+fn ctrl_tab_onto_the_chat_focuses_its_input_and_onto_the_others_does_not() {
+    let mut app = App::with_fixed_panels();
+    open_all_pages(&mut app);
+    let to_settings = app.update(Message::NextTab);
+    assert_eq!(app.shown_tab, ShownTab::Settings);
+    assert_eq!(to_settings.units(), 0);
+    drop(app.update(Message::NextTab));
+    assert_eq!(app.shown_tab, ShownTab::Monitor);
+    let to_hermes = app.update(Message::NextTab);
+    assert_eq!(app.shown_tab, ShownTab::Hermes);
+    assert!(to_hermes.units() > 0, "the chat input takes the focus");
+}
+
+#[test]
 fn ctrl_tab_walks_the_four_tabs_forward_and_back_and_wraps() {
     let mut app = App::with_fixed_panels();
     open_all_pages(&mut app);

@@ -148,19 +148,29 @@ impl<M> Widget<M, Theme, Renderer> for ListBelow<'_, M> {
         &'b mut self,
         tree: &'b mut Tree,
         layout: Layout<'b>,
-        _renderer: &Renderer,
-        _viewport: &Rectangle,
+        renderer: &Renderer,
+        viewport: &Rectangle,
         translation: Vector,
     ) -> Option<overlay::Element<'b, M, Theme, Renderer>> {
-        let [_, list_tree] = tree.children.as_mut_slice() else {
+        let [field_tree, list_tree] = tree.children.as_mut_slice() else {
             return None;
         };
-        let field = Rectangle::new(layout.position() + translation, layout.bounds().size());
-        Some(overlay::Element::new(Box::new(FloatingList {
+        let field_bounds = Rectangle::new(layout.position() + translation, layout.bounds().size());
+        let field_overlay =
+            self.field
+                .as_widget_mut()
+                .overlay(field_tree, layout, renderer, viewport, translation);
+        let list_overlay = overlay::Element::new(Box::new(FloatingList {
             list: &mut self.list,
             tree: list_tree,
-            field,
-        })))
+            field: field_bounds,
+        }));
+        Some(
+            overlay::Group::with_children(
+                field_overlay.into_iter().chain([list_overlay]).collect(),
+            )
+            .overlay(),
+        )
     }
 }
 
