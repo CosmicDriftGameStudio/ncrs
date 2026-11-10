@@ -292,6 +292,45 @@ fn a_wrong_value_typed_without_enter_keeps_the_page_and_the_tab() {
     );
 }
 
+#[tokio::test]
+async fn quitting_writes_a_right_value_typed_without_enter() -> super::settings_pages_tests::TestResult
+{
+    let dir = tempfile::tempdir()?;
+    let mut app = super::settings_pages_tests::app_with_file(
+        SettingsFeature::Look,
+        "[open]\n",
+        &dir,
+    )?;
+    typed_without_enter(&mut app, SettingField::Color(ColorRole::Accent), "#ff0");
+    super::settings_pages_tests::settle(&mut app, Message::Quit).await;
+
+    assert!(app.settings.page.is_none());
+    let file = std::fs::read_to_string(dir.path().join("config.toml"))?;
+    assert!(file.contains("accent"), "the typed colour was lost: {file}");
+    Ok(())
+}
+
+#[tokio::test]
+async fn quitting_keeps_the_page_open_for_a_wrong_value_typed_without_enter(
+) -> super::settings_pages_tests::TestResult {
+    let dir = tempfile::tempdir()?;
+    let mut app = super::settings_pages_tests::app_with_file(
+        SettingsFeature::Look,
+        "[open]\n",
+        &dir,
+    )?;
+    let accent = SettingField::Color(ColorRole::Accent);
+    typed_without_enter(&mut app, accent, "red");
+    super::settings_pages_tests::settle(&mut app, Message::Quit).await;
+
+    let state = app.settings.page.as_ref().ok_or("the page closed")?;
+    assert_eq!(
+        state.problems.get(&accent),
+        Some(&settings_ui::FieldProblem::Color)
+    );
+    Ok(())
+}
+
 #[test]
 fn a_right_value_typed_without_enter_lets_the_page_change_and_the_tab_close() {
     let mut app = App::with_settings_file(SettingsFeature::Look, Ok(Config::default()));
