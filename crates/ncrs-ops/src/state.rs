@@ -2,13 +2,16 @@
 
 use std::ffi::OsString;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use ncrs_core::{PanelSide, TransferKind};
 use ncrs_fs::archive::ViewCopies;
 use ncrs_fs::transfer::OnConflict;
 use ncrs_fs::TrashedItem;
+use tokio::sync::watch;
 
-use crate::batch_rename::state::BatchRename;
+use crate::batch_rename::state::{ApplyFailure, BatchRename};
 use crate::clipboard_paste::PastedContent;
 use crate::message::ConflictChoice;
 use crate::permissions::PermissionsDialog;
@@ -102,6 +105,64 @@ pub struct Restoration {
     pub rule: Option<OnConflict>,
 }
 
+/// Tells a running batch rename to stop between two renames and put back what
+/// it did: an abort that dropped it in the middle would leave a name that is
+/// only a temporary one.
+#[derive(Debug, Clone, Default)]
+pub struct StopFlag(Arc<AtomicBool>);
+
+impl StopFlag {
+    pub fn raise(&self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+
+    pub fn is_raised(&self) -> bool {
+        self.0.load(Ordering::SeqCst)
+    }
+}
+
+impl PartialEq for StopFlag {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl Eq for StopFlag {}
+
+/// How a batch rename ended, kept apart from the job's future: an abort drops
+/// that future while the renames are still being put back, and the app waits
+/// for the end here instead.
+#[derive(Debug, Clone)]
+pub struct RunOutcome(Arc<watch::Sender<Option<Result<(), ApplyFailure>>>>);
+
+impl Default for RunOutcome {
+    fn default() -> Self {
+        Self(Arc::new(watch::channel(None).0))
+    }
+}
+
+impl RunOutcome {
+    pub fn report(&self, result: Result<(), ApplyFailure>) {
+        self.0.send_replace(Some(result));
+    }
+
+    pub async fn arrived(&self) -> Result<(), ApplyFailure> {
+        let mut receiver = self.0.subscribe();
+        let Ok(seen) = receiver.wait_for(Option::is_some).await else {
+            return Err(ApplyFailure::Stopped);
+        };
+        seen.clone().unwrap_or(Err(ApplyFailure::Stopped))
+    }
+}
+
+impl PartialEq for RunOutcome {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl Eq for RunOutcome {}
+
 /// A batch rename while its job runs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BatchRun {
@@ -110,6 +171,8 @@ pub struct BatchRun {
     /// Taking the last batch back.
     pub undo: bool,
     pub side: PanelSide,
+    pub stop: StopFlag,
+    pub outcome: RunOutcome,
 }
 
 /// The state of the transfer, delete, restore and archive flows and the count that tells a

@@ -28,7 +28,7 @@ use crate::action::{Action, StartJob};
 use crate::ctx::FlowCtx;
 use crate::delete_flow::{actions, idle, Outcome};
 use crate::message::OpsMessage;
-use crate::state::{BatchRun, Ops};
+use crate::state::{BatchRun, Ops, RunOutcome, StopFlag};
 use crate::transfer_flow::child_path;
 
 /// What the rename key found: the tagged entries of the active panel.
@@ -302,6 +302,8 @@ fn confirm(ops: &mut Ops, ctx: &FlowCtx<'_>) -> Outcome {
         pairs: done,
         undo: false,
         side: dialog.side,
+        stop: StopFlag::default(),
+        outcome: RunOutcome::default(),
     };
     let (task, asked) = start_run(ops, run, dialog.folder, steps, ctx);
     (Task::batch([release_focus(), task]), asked)
@@ -335,6 +337,8 @@ fn undo_last_batch(ops: &mut Ops, ctx: &FlowCtx<'_>) -> Outcome {
         pairs: ops.last_batch.clone(),
         undo: true,
         side: ctx.source_side,
+        stop: StopFlag::default(),
+        outcome: RunOutcome::default(),
     };
     start_run(ops, run, folder, steps, ctx)
 }
@@ -355,11 +359,14 @@ fn start_run(
     };
     let pool = Arc::clone(ctx.remote);
     let check = run.undo.then(|| run.pairs.clone());
+    let stop = run.stop.clone();
+    let outcome = run.outcome.clone();
     ops.batch_running = Some(run);
     let build = Box::new(move || {
-        Task::perform(run_steps(pool, folder, steps, check), move |result| {
-            send(BatchRenameMessage::Applied { generation, result })
-        })
+        Task::perform(
+            run_detached(pool, folder, steps, check, stop, outcome),
+            move |result| send(BatchRenameMessage::Applied { generation, result }),
+        )
     });
     actions(vec![
         Action::ClearStatus,
@@ -367,21 +374,59 @@ fn start_run(
     ])
 }
 
+/// `run_steps` on a task of its own: an abort drops the future the job was
+/// started with, which on its own task goes on to the next stop check, puts
+/// back what was renamed and reports in `outcome`.
+async fn run_detached(
+    pool: Arc<Pool>,
+    folder: PathBuf,
+    steps: Vec<Step>,
+    check: Option<Vec<(PathBuf, PathBuf)>>,
+    stop: StopFlag,
+    outcome: RunOutcome,
+) -> Result<(), ApplyFailure> {
+    let name = folder.to_string_lossy().into_owned();
+    let work =
+        tokio::spawn(
+            async move { run_steps(pool, folder, steps, check, || stop.is_raised()).await },
+        );
+    let reporter = outcome.clone();
+    tokio::spawn(async move {
+        let result = work.await.unwrap_or_else(|crashed| {
+            Err(ApplyFailure::Failed {
+                name,
+                reason: crashed.to_string(),
+                rollback_failed: true,
+            })
+        });
+        reporter.report(result);
+    });
+    outcome.arrived().await
+}
+
 /// Renames the entries step by step. A failure puts back what was done, so
 /// the folder is as it was. With `check` (taking a batch back) the entries
 /// are first looked for, local ones only: there is nothing to change when one
-/// is gone or its old name is taken.
+/// is gone or its old name is taken. `stop` is asked before each rename; when
+/// it says yes the same happens as for a failure.
 pub async fn run_steps(
     pool: Arc<Pool>,
     folder: PathBuf,
     steps: Vec<Step>,
     check: Option<Vec<(PathBuf, PathBuf)>>,
+    stop: impl Fn() -> bool,
 ) -> Result<(), ApplyFailure> {
     if let Some(pairs) = check.filter(|_| RemotePath::parse(&folder).is_none()) {
         check_before_undo(&pairs)?;
     }
     let mut done: Vec<&Step> = Vec::new();
     for step in &steps {
+        if stop() {
+            return match put_back(&pool, &folder, &done).await {
+                true => Err(ApplyFailure::Stopped),
+                false => Err(ApplyFailure::StoppedRollbackFailed(step.from.clone())),
+            };
+        }
         let from = child_path(&folder, OsStr::new(&step.from));
         if let Err(error) = fs::rename(Arc::clone(&pool), from, step.to.clone()).await {
             let rollback_failed = !put_back(&pool, &folder, &done).await;
@@ -439,7 +484,11 @@ fn applied(
         return idle();
     };
     ops.bump_generation();
-    let mut asked = vec![Action::FinishJob, Action::ClearJobProgress];
+    // An aborted job was finished by the abort; the queue may run another by now.
+    let mut asked = match run.stop.is_raised() {
+        true => Vec::new(),
+        false => vec![Action::FinishJob, Action::ClearJobProgress],
+    };
     let count = run.pairs.len().to_string();
     match result {
         Ok(()) if run.undo => {
@@ -456,6 +505,7 @@ fn applied(
                 &[("{count}", &count)],
             )));
         }
+        Err(ApplyFailure::Stopped) => {}
         Err(failure) => asked.push(Action::ShowError(failure_text(&failure, ctx))),
     }
     asked.extend([
@@ -466,15 +516,30 @@ fn applied(
     actions(asked)
 }
 
-/// The job was aborted: what was renamed stays, the panels are read again.
+/// The job was aborted: the rename stops before its next entry and puts back
+/// what it renamed. The panels are read when that is done, which the returned
+/// task waits for.
 pub fn abort_batch_rename(ops: &mut Ops) -> Option<Outcome> {
-    ops.batch_running.take()?;
-    ops.bump_generation();
-    Some(actions(vec![Action::ReloadPanels, Action::RestartSearch]))
+    let run = ops.batch_running.as_ref()?;
+    if run.stop.is_raised() {
+        return None;
+    }
+    run.stop.raise();
+    let generation = ops.generation;
+    let outcome = run.outcome.clone();
+    let wait = Task::perform(async move { outcome.arrived().await }, move |result| {
+        send(BatchRenameMessage::Applied { generation, result })
+    });
+    Some((wait, Vec::new()))
 }
 
 pub fn failure_text(failure: &ApplyFailure, ctx: &FlowCtx<'_>) -> String {
     match failure {
+        ApplyFailure::Stopped => String::new(),
+        ApplyFailure::StoppedRollbackFailed(name) => fill_template(
+            ctx.lang.text(Msg::BatchRenameStoppedRollbackFailed),
+            &[("{name}", name)],
+        ),
         ApplyFailure::Gone(name) => {
             fill_template(ctx.lang.text(Msg::BatchRenameUndoGone), &[("{name}", name)])
         }

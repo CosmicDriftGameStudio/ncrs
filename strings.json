@@ -5779,6 +5779,12 @@
       "de": "{name} konnte nicht umbenannt werden: {reason}. Einige Einträge behalten ihre neuen Namen."
     },
     {
+      "key": "batch_rename.stopped_rollback_failed",
+      "context": "Error when a batch rename was aborted and the names changed so far could not all be put back. {name} is the entry the rename was about to change.",
+      "en": "Stopped before {name}, but some entries keep their new names.",
+      "de": "Vor {name} abgebrochen, aber einige Einträge behalten ihre neuen Namen."
+    },
+    {
       "key": "batch_rename.undo_gone",
       "context": "Error of Undo rename when an entry of the batch has been moved or deleted since. {name} is its name. Nothing is changed.",
       "en": "{name} is gone. Nothing was changed.",

@@ -64,6 +64,11 @@ pub enum ApplyFailure {
     Gone(String),
     /// Taking back: the old name belongs to another entry now.
     Taken(String),
+    /// The job was aborted; what was renamed has been put back.
+    Stopped,
+    /// The job was aborted and the renames before the entry `name` could not
+    /// all be put back.
+    StoppedRollbackFailed(String),
     Failed {
         name: String,
         reason: String,
