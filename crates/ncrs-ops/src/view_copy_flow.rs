@@ -37,8 +37,9 @@ pub fn start_view_copy(
         + 'static,
     ctx: &FlowCtx<'_>,
 ) -> Outcome {
-    // A server file may have changed since it was fetched; an archive entry
-    // is read from an archive that stays as it was while a panel is in it.
+    // A server file may have changed since it was fetched. An archive entry's
+    // copy is forgotten when ncrs rewrites the archive; a change by another
+    // program while a panel is in it is not noticed.
     if !group_is_server(&group) {
         let ready = ops
             .view_copies

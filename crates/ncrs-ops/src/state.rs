@@ -63,6 +63,8 @@ pub struct ArchiveWrite {
     /// The panel the entries came from, which is cleared and reloaded at the
     /// end even if the user switches panels meanwhile.
     pub side: PanelSide,
+    /// The archive that is written.
+    pub archive: PathBuf,
     pub what: ArchiveWriteKind,
 }
 

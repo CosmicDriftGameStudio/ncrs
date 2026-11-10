@@ -311,19 +311,6 @@ impl App {
         self.update_settings(SettingsMessage::Close)
     }
 
-    /// Values typed on the open page without Enter are written before the app
-    /// ends. A wrong one keeps the page open, with the problem at its row.
-    pub(in crate::app) fn quit_after_settings_page(&mut self) -> Task<Message> {
-        if self.settings.page.is_none() || self.page_dialog_is_open() {
-            return self.quit();
-        }
-        let written = self.leave_settings_page();
-        if self.settings.page.is_some() {
-            return written;
-        }
-        written.chain(Task::done(Message::Quit))
-    }
-
     pub(in crate::app) fn settings_area<'a>(
         &'a self,
         state: &'a settings_ui::SettingsState,

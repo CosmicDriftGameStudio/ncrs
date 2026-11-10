@@ -297,6 +297,36 @@ fn renaming_a_hit_lists_it_under_the_new_path_before_the_list_is_read_again() {
 }
 
 #[test]
+fn renaming_a_folder_lists_its_hits_under_the_new_path_in_either_panel() {
+    let mut hits = opened(&["a.txt", "b.txt"], PanelSide::Right);
+    let folder = hits.files[0].parent().unwrap().to_path_buf();
+    let renamed = folder.with_file_name("renamed-dir");
+    std::fs::rename(&folder, &renamed).unwrap();
+    let request_id = hits.app.ops.rename_request_id;
+
+    drop(hits.app.update(Message::Renamed {
+        request_id,
+        side: PanelSide::Left,
+        from: folder.clone(),
+        result: Ok(renamed.clone()),
+    }));
+
+    let panel = hits.app.panel(PanelSide::Right);
+    assert!(panel.is_hit_list());
+    let moved = panel
+        .entries
+        .iter()
+        .find(|entry| entry.path == renamed.join("a.txt"))
+        .expect("the hit inside the folder follows it");
+    assert_eq!(moved.name, "a.txt");
+    assert!(panel
+        .entries
+        .iter()
+        .all(|entry| !entry.path.starts_with(&folder)));
+    assert_eq!(panel.entries.len(), 2);
+}
+
+#[test]
 fn show_on_the_other_side_loads_the_folder_and_keeps_the_list() {
     let mut hits = opened(&["a.txt"], PanelSide::Left);
     drop(

@@ -34,14 +34,19 @@ impl PermissionEdit {
         }
     }
 
-    /// The edit as two: turning bits on, and turning bits off. A folder gets the
-    /// first before it is walked and the second after, so removing its own
-    /// read or execute bit does not lock the walk out of it.
+    /// The edit as two: everything now, and the owner's read and execute bits
+    /// to clear afterwards. A folder gets the first before it is walked and the
+    /// second after, so removing those bits, which the walk itself needs, does
+    /// not lock it out. All other bits are changed at once.
     fn split_set_and_clear(self) -> (Self, Self) {
-        let turn_on = Self { clear: 0, ..self };
+        const WALK_NEEDS: u32 = 0o500;
+        let turn_on = Self {
+            clear: self.clear & !WALK_NEEDS,
+            ..self
+        };
         let turn_off = Self {
             set: 0,
-            clear: self.clear & !self.set,
+            clear: self.clear & WALK_NEEDS & !self.set,
             read_only: None,
         };
         (turn_on, turn_off)
@@ -210,10 +215,9 @@ fn apply_counted(
             Ok(did) => changed = did,
             Err(err) => run.fail(path.clone(), &err),
         }
+        let mut walked = true;
         if let Some(edits) = &below {
-            if !walk_root(&mut run, path, edits) {
-                return run.outcome;
-            }
+            walked = walk_root(&mut run, path, edits);
             match apply(path, &last) {
                 Ok(did) => changed |= did,
                 Err(err) => run.fail(path.clone(), &err),
@@ -221,6 +225,9 @@ fn apply_counted(
         }
         if changed {
             run.outcome.changed += 1;
+        }
+        if !walked {
+            return run.outcome;
         }
     }
     // Ignored on purpose: the work is done whether or not anyone still listens.
@@ -325,14 +332,18 @@ fn walk_folder(
         match opened {
             Ok(Some(child)) if is_folder => {
                 let cloned = last.map(|_| child.try_clone());
-                if !walk_folder(run, child, &path, edits) {
-                    return false;
-                }
+                let walked = walk_folder(run, child, &path, edits);
                 if let (Some(turn_off), Some(kept_dir)) = (last, cloned) {
                     match kept_dir.and_then(|held| change_handle(&held, true, &turn_off)) {
                         Ok(did) => changed |= did,
                         Err(err) => run.fail(path, &err),
                     }
+                }
+                if !walked {
+                    if changed {
+                        run.outcome.changed += 1;
+                    }
+                    return false;
                 }
             }
             Ok(_) => {}

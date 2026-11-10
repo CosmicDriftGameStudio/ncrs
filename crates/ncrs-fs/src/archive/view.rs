@@ -123,6 +123,13 @@ impl ViewCopies {
         self.ready.insert(shown, copy);
     }
 
+    /// Forgets the copies of entries of `archive`, which was written and may
+    /// differ from what they were unpacked from. The files stay until their
+    /// slot is released.
+    pub fn forget_ready_under(&mut self, archive: &Path) {
+        self.ready.retain(|shown, _| !shown.starts_with(archive));
+    }
+
     fn remove(&mut self, slot: PathBuf) {
         self.ready.retain(|_, copy| !copy.starts_with(&slot));
         match std::fs::remove_dir_all(&slot) {

@@ -245,7 +245,7 @@ impl App {
         let Some(to) = renamed_to else {
             return release_focus();
         };
-        self.panels.rename_hit(side, from, &to);
+        self.panels.rename_hits(from, &to);
         self.panels.folder_sizes.clear();
         let name = to
             .file_name()
