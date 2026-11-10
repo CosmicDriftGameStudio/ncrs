@@ -293,42 +293,52 @@ fn a_wrong_value_typed_without_enter_keeps_the_page_and_the_tab() {
 }
 
 #[tokio::test]
-async fn quitting_writes_a_right_value_typed_without_enter() -> super::settings_pages_tests::TestResult
-{
-    let dir = tempfile::tempdir()?;
-    let mut app = super::settings_pages_tests::app_with_file(
-        SettingsFeature::Look,
-        "[open]\n",
-        &dir,
-    )?;
+async fn quitting_writes_a_right_value_typed_without_enter() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app =
+        super::settings_pages_tests::app_with_file(SettingsFeature::Look, "[open]\n", &dir)
+            .unwrap();
     typed_without_enter(&mut app, SettingField::Color(ColorRole::Accent), "#ff0");
     super::settings_pages_tests::settle(&mut app, Message::Quit).await;
 
     assert!(app.settings.page.is_none());
-    let file = std::fs::read_to_string(dir.path().join("config.toml"))?;
+    let file = std::fs::read_to_string(dir.path().join("config.toml")).unwrap();
     assert!(file.contains("accent"), "the typed colour was lost: {file}");
-    Ok(())
 }
 
 #[tokio::test]
-async fn quitting_keeps_the_page_open_for_a_wrong_value_typed_without_enter(
-) -> super::settings_pages_tests::TestResult {
-    let dir = tempfile::tempdir()?;
-    let mut app = super::settings_pages_tests::app_with_file(
-        SettingsFeature::Look,
-        "[open]\n",
-        &dir,
-    )?;
+async fn quitting_keeps_the_page_open_for_a_wrong_value_typed_without_enter() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app =
+        super::settings_pages_tests::app_with_file(SettingsFeature::Look, "[open]\n", &dir)
+            .unwrap();
     let accent = SettingField::Color(ColorRole::Accent);
     typed_without_enter(&mut app, accent, "red");
-    super::settings_pages_tests::settle(&mut app, Message::Quit).await;
+    assert!(!ends_the_app(&mut app, Message::Quit).await);
 
-    let state = app.settings.page.as_ref().ok_or("the page closed")?;
+    let state = app.settings.page.as_ref().expect("the page closed");
     assert_eq!(
         state.problems.get(&accent),
         Some(&settings_ui::FieldProblem::Color)
     );
-    Ok(())
+    assert!(
+        ends_the_app(&mut app, Message::Quit).await,
+        "a second quit with the problem shown must not be refused"
+    );
+}
+
+/// Whether the tasks of `message` ask the runtime to exit.
+async fn ends_the_app(app: &mut App, message: Message) -> bool {
+    use iced_test::futures::futures::StreamExt as _;
+    use iced_test::runtime::{task, Action};
+    let Some(mut stream) = task::into_stream(app.update(message)) else {
+        return false;
+    };
+    let mut exits = false;
+    while let Some(action) = stream.next().await {
+        exits |= matches!(action, Action::Exit);
+    }
+    exits
 }
 
 #[test]
