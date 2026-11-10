@@ -277,6 +277,19 @@ async fn leaving_the_folder_stops_the_walk_and_a_late_result_changes_nothing() {
 }
 
 #[tokio::test]
+async fn the_abort_key_stops_a_running_walk() {
+    let mut app = app_in_links();
+    put_cursor_on(&mut app, "gamma");
+    drop(app.update(Message::ComputeFolderSizes));
+    let stop = Arc::clone(&app.panels.folder_size_run.as_ref().unwrap().stop);
+
+    drop(app.update(Message::AbortJob));
+
+    assert!(stop.load(Ordering::Relaxed));
+    assert!(app.panels.folder_size_run.is_none());
+}
+
+#[tokio::test]
 async fn a_reload_of_the_same_folder_keeps_the_walk() {
     let mut app = app_in_links();
     put_cursor_on(&mut app, "gamma");

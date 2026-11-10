@@ -425,6 +425,8 @@ impl App {
 
     /// Stops the running job, see `Message::AbortJob`.
     pub(in crate::app) fn abort_job(&mut self) -> Task<Message> {
+        // The folder size walks do not run through the queue.
+        self.panels.stop_folder_size_run();
         if !self.jobs.abort_running() {
             return Task::none();
         }
