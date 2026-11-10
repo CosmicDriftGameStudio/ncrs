@@ -3810,6 +3810,53 @@ mod title_bar {
     }
 
     #[test]
+    fn a_failed_request_to_the_own_server_shows_in_the_chip() {
+        let provider = crate::filing::http_ai_provider(
+            "http://127.0.0.1:1/v1",
+            "model-x",
+            std::path::Path::new("index.db"),
+        )
+        .unwrap();
+        let mut snapshot = Snapshot::off();
+        snapshot.state = RunnerState::Running;
+        snapshot.documents_per_minute[1] = 78;
+        let app = App::with_filing_snapshot(snapshot, taken_at())
+            .in_language(Language::English)
+            .with_filing_module_for_test(crate::filing::FilingModule::in_phase_with_own_server(
+                crate::filing::Phase::Ready,
+                std::sync::Arc::clone(&provider),
+                "http://127.0.0.1:1",
+                "model-x",
+            ));
+        let chip_before = app.hermes_chip_for_test();
+
+        ncrs_ai::Provider::extract(
+            provider.as_ref(),
+            &ncrs_ai::ExtractionRequest {
+                text: "Invoice 4711".to_owned(),
+                open_fields: Vec::new(),
+                known: ncrs_index::DocumentFields::default(),
+                source: std::path::PathBuf::from("inbox"),
+                kinds: std::sync::Arc::default(),
+            },
+        )
+        .unwrap_err();
+
+        let problem = ncrs_i18n::fill_template(
+            Language::English.text(ncrs_i18n::Msg::TitleBarHermesServerProblem),
+            &[(
+                "{problem}",
+                &crate::hermes_overview::server_failure_text(
+                    ncrs_ai::ReplyFailure::NoAnswer,
+                    Language::English,
+                ),
+            )],
+        );
+        assert_eq!(chip_before.as_deref(), Some("Hermes"));
+        assert_eq!(app.hermes_chip_for_test(), Some(problem));
+    }
+
+    #[test]
     fn the_tabs_show_the_paths_below_the_home_folder() {
         let app = App::with_fixed_panels();
         let sep = std::path::MAIN_SEPARATOR;

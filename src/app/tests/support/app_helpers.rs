@@ -170,6 +170,12 @@ impl App {
         self
     }
 
+    /// Hermes with `module` as its filing module.
+    pub fn with_filing_module_for_test(mut self, module: FilingModule) -> Self {
+        self.hermes.filing = Some(module);
+        self
+    }
+
     /// A ready Hermes module without an index, so Quick Open asks for documents.
     pub fn with_ready_hermes_for_test(mut self) -> Self {
         self.hermes.filing = Some(FilingModule::in_phase_with_index(Phase::Ready, false));

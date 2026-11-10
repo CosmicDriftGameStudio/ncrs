@@ -29,6 +29,23 @@ impl FilingModule {
         }
     }
 
+    /// Like `in_phase`, with the own server `provider` as the AI behind it.
+    pub fn in_phase_with_own_server(
+        phase: Phase,
+        provider: Arc<ncrs_ai::OpenAiCompatible>,
+        origin: &str,
+        model: &str,
+    ) -> Self {
+        Self {
+            ai: AiWiring::Http {
+                provider,
+                origin: origin.to_owned(),
+                model: model.to_owned(),
+            },
+            ..Self::in_phase(phase)
+        }
+    }
+
     /// Like `in_phase`, with `index` open behind it.
     pub fn in_phase_over_index(phase: Phase, index: Index) -> Self {
         Self {
