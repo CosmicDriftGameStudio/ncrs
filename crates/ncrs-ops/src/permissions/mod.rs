@@ -11,6 +11,7 @@ use std::path::PathBuf;
 use ncrs_core::FileEntry;
 use ncrs_fs::permissions::{ForFiles, ForFolders, PermissionEdit, PermissionPlan};
 use ncrs_i18n::{fill_template, Language, Msg};
+use ncrs_ui_kit::format::permission_string;
 use ncrs_ui_kit::kit::Check;
 
 /// The nine rights in the order of the grid: owner, group, others, each read,
@@ -293,21 +294,8 @@ impl PermissionsDialog {
             Some(typed) => parse_octal(typed)?,
             None => self.value()?,
         };
-        let has = |mask: u32| value & mask != 0;
-        let mut text = String::new();
-        for (offset, special) in [(0o100, 0o4000), (0o010, 0o2000), (0o001, 0o1000)] {
-            let class = [offset * 4, offset * 2, offset];
-            text.push(if has(class[0]) { 'r' } else { '-' });
-            text.push(if has(class[1]) { 'w' } else { '-' });
-            text.push(match (has(class[2]), has(special)) {
-                (true, true) if special == 0o1000 => 't',
-                (false, true) if special == 0o1000 => 'T',
-                (true, true) => 's',
-                (false, true) => 'S',
-                (true, false) => 'x',
-                (false, false) => '-',
-            });
-        }
+        let mut text = permission_string(value, '-');
+        text.remove(0);
         Some(text)
     }
 

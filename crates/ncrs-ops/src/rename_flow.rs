@@ -12,7 +12,7 @@ use ncrs_i18n::{fill_template, Language, Msg};
 
 use crate::action::Action;
 use crate::ctx::FlowCtx;
-use crate::delete_flow::{actions, idle, Outcome};
+use crate::delete_flow::{actions, Outcome};
 use crate::message::OpsMessage;
 use crate::row_failure::RowFailure;
 use crate::state::Ops;
@@ -104,7 +104,8 @@ pub fn start_rename(
 }
 
 /// The rename has finished. A late answer, for a rename the user has since
-/// replaced by another, is dropped.
+/// replaced by another, still reloads the panels after a success and shows a
+/// failure, but leaves the input of the newer rename alone.
 pub fn rename_done(
     ops: &Ops,
     request_id: u64,
@@ -113,14 +114,15 @@ pub fn rename_done(
     result: Result<PathBuf, RowFailure>,
     ctx: &FlowCtx<'_>,
 ) -> Outcome {
-    if request_id != ops.rename_request_id {
-        return idle();
-    }
+    let late = request_id != ops.rename_request_id;
     let old_name = from
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default();
     let failed = |text: String| {
+        if late {
+            return actions(vec![Action::ShowError(text)]);
+        }
         actions(vec![
             Action::ShowError(text),
             Action::RenameEnded {
@@ -136,6 +138,9 @@ pub fn rename_done(
             from: from.to_path_buf(),
             renamed_to: Some(to),
         }]),
+        Err(RowFailure::Conflict(_reason)) if late => actions(vec![Action::ShowError(
+            ctx.lang.text(Msg::ErrorRenameTaken).to_owned(),
+        )]),
         Err(RowFailure::Conflict(_reason)) => refused(
             from.to_path_buf(),
             ctx.lang.text(Msg::ErrorRenameTaken).to_owned(),
