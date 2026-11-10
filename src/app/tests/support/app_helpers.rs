@@ -423,6 +423,38 @@ impl App {
         self
     }
 
+    /// The commands the command list shows under "Recent", most recent first.
+    pub fn with_recent_commands_for_test(mut self, recent: &[KeyAction]) -> Self {
+        self.recent_commands = recent.to_vec();
+        self
+    }
+
+    /// Shows the look of `preset`, as the settings page does after a change.
+    pub fn show_theme_preset_for_test(&mut self, preset: ThemePreset) {
+        self.theme_preset = preset;
+        self.palette = preset.palette();
+    }
+
+    /// The settings tab on the colour scheme row, as running "Color scheme"
+    /// from the command list opens it, on a config that loads.
+    pub fn with_colour_scheme_row_for_test() -> Self {
+        let mut app = Self::with_settings_file(
+            crate::messages::SettingsFeature::Look,
+            Ok(Config::default()),
+        );
+        let label = app.lang.text(Msg::SettingsRowPreset).to_owned();
+        if let Some(state) = app.settings.page.as_mut() {
+            state.show(crate::messages::SettingsFeature::Look, Some(label));
+        }
+        app
+    }
+
+    /// What the key subscription would know now, so a recorded key takes the
+    /// route it takes in the window.
+    pub fn prompt_key_state_for_test(&self) -> PromptKeyState {
+        self.prompt_key_state()
+    }
+
     pub fn favourites_for_test(&self) -> &[PathBuf] {
         &self.panels.favourites
     }
@@ -724,6 +756,7 @@ impl App {
     /// Shows the progress mask of a fixed copy that is `done` of `total`
     /// items in, for the snapshot tests.
     pub fn show_progress_for_test(&mut self, done: usize, total: usize) {
+        self.ops.transfer_dialog = None;
         self.ops.transfer = Some(Transfer {
             kind: TransferKind::Copy,
             sources: vec![PathBuf::from("/home/test/links/entry-1")],
@@ -732,6 +765,13 @@ impl App {
         });
         self.job_progress = Some(fs::transfer::Tick { done, total });
         self.ops.transfer_mask_visible = true;
+    }
+
+    /// Takes the progress mask of a finished copy away again.
+    pub fn finish_progress_for_test(&mut self) {
+        self.ops.transfer = None;
+        self.job_progress = None;
+        self.ops.transfer_mask_visible = false;
     }
 
     /// The text of the status-line error, for the end-to-end tests.

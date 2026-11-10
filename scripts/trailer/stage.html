@@ -1,0 +1,173 @@
+<!doctype html>
+<meta charset="utf-8" />
+<style>
+  @font-face { font-family: App; src: url("__ROOT__/assets/fonts/DejaVuSansMono.ttf"); font-weight: 400; }
+  @font-face { font-family: App; src: url("__ROOT__/assets/fonts/DejaVuSansMono-Bold.ttf"); font-weight: 700; }
+  html, body { margin: 0; background: #141318; overflow: hidden; }
+  #stage { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #141318; font-family: App, monospace; color: #cfcdd6; }
+  .layer { position: absolute; inset: 0; overflow: hidden; background: #141318; }
+  .app { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
+  .band { position: absolute; left: 0; right: 0; bottom: 0; height: 190px; background: linear-gradient(to bottom, rgba(20, 19, 24, 0) 0, #141318 40px, #141318 100%); font-family: "Helvetica Neue", Helvetica, Arial, "Segoe UI", sans-serif; }
+  .band .text { position: absolute; left: 64px; bottom: 26px; }
+  .band h1 { margin: 0; font-size: 60px; line-height: 1.1; font-weight: 700; white-space: nowrap; color: #f0eef5; }
+  .band p { margin: 8px 0 0; font-size: 30px; white-space: nowrap; color: #a9a6b4; }
+  .cap { position: absolute; right: 64px; bottom: 30px; padding: 12px 30px; font-family: App, monospace; font-size: 44px; line-height: 1.2; white-space: nowrap; background: #1a1920; border: 2px solid #85828f; border-radius: 4px; color: #cfcdd6; }
+  .card { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #141318; font-family: "Helvetica Neue", Helvetica, Arial, "Segoe UI", sans-serif; }
+  .card > * { opacity: 0; }
+  .card img { width: 240px; height: 240px; margin-bottom: 28px; }
+  .card .name { font-size: 132px; font-weight: 700; line-height: 1.1; color: #cfcdd6; }
+  .card .line { font-size: 46px; margin-top: 22px; color: #cfcdd6; }
+  .card .dim { color: #85828f; }
+  .card .address { color: #b39ddb; }
+  .card .small { font-size: 26px; margin-top: 44px; color: #85828f; }
+  .bare .band, .bare .cap { display: none !important; }
+</style>
+<div id="stage"></div>
+<script>
+  const W = 1920, H = 1080, BAND = 190, AVAIL = H - BAND, MARGIN = 1.15, ZOOM_MAX = 1.25, CAMERA_ENABLED = false, ZOOM_MIN_GROUP = 1.2, WIDE_HOLD = 0.7, PUSH_TIME = 1.2, FOLLOW_TIME = 1.0, FADE = 0.6, CAP_TIME = 0.8, BAND_FADE = 0.4, BAND_DELAY = 0.2;
+  const clamp = (v, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v));
+  const ease = (p) => (p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2);
+  const easeOutBack = (p) => 1 + 2.2 * Math.pow(p - 1, 3) + 1.2 * Math.pow(p - 1, 2);
+  const ramp = (t, from, length) => ease(clamp((t - from) / length));
+  const FULL = { z: 1, left: 0, top: 0 };
+
+  const rawZoom = (f) => Math.min(W / (f.w * MARGIN), AVAIL / (f.h * MARGIN));
+  function camFor(f) {
+    const z = Math.min(ZOOM_MAX, Math.max(1, rawZoom(f)));
+    const vw = W / z, vh = H / z;
+    const left = clamp(f.x + f.w / 2 - vw / 2, 0, W - vw);
+    const centred = f.y + f.h / 2 - AVAIL / z / 2;
+    const top = z === 1 ? 0 : clamp(Math.max(centred, f.y - Math.min(20, 0.1 * f.h)), 0, H - AVAIL / z);
+    return { z, left, top };
+  }
+  function centreCam(f) { const z = ZOOM_MAX, vw = W / z; return { z, left: clamp(f.x + f.w / 2 - vw / 2, 0, W - vw), top: clamp(f.y + f.h / 2 - AVAIL / z / 2, 0, H - AVAIL / z) }; }
+  const isWhole = (f) => f.w >= 1900 && f.h >= 1000;
+  const unite = (a, b) => { const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y); return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y }; };
+  const seen = (cam, f) => f.x >= cam.left - 1 && f.x + f.w <= cam.left + W / cam.z + 1 && f.y >= cam.top - 1 && f.y + f.h <= cam.top + AVAIL / cam.z + 1;
+  const mixCam = (a, b, e) => ({ z: a.z + (b.z - a.z) * e, left: a.left + (b.left - a.left) * e, top: a.top + (b.top - a.top) * e });
+  const same = (a, b) => a.z === b.z && a.left === b.left && a.top === b.top;
+
+  const stage = document.getElementById("stage");
+  function makeCard(kind) {
+    const card = document.createElement("div");
+    card.className = "card";
+    const rows = [`<img src="__ROOT__/assets/icon.svg" />`, `<div class="name">ncrs</div>`];
+    if (kind === "title") rows.push(`<div class="line dim">The dual-pane file manager</div>`);
+    else rows.push(`<div class="line">Free · Open Source · macOS, Linux, Windows</div>`, `<div class="line address">ncrs.cosmicdriftgamestudio.com</div>`, `<div class="small">Music generated with AI</div>`);
+    card.innerHTML = rows.join("");
+    return card;
+  }
+  function makeLayer() {
+    const el = document.createElement("div");
+    el.className = "layer";
+    el.innerHTML = `<img class="app" /><div class="band"><div class="text"><h1></h1><p></p></div></div><div class="cap"></div>`;
+    const title = makeCard("title"), credits = makeCard("credits");
+    el.append(title, credits);
+    stage.append(el);
+    return { el, img: el.querySelector(".app"), lower: el.querySelector(".band .text"), band: el.querySelector(".band"), cap: el.querySelector(".cap"), title, credits, file: "" };
+  }
+  const below = makeLayer(), above = makeLayer();
+  let items = [], total = 0;
+
+  function setup(cut) {
+    items = [];
+    let start = 0;
+    for (const raw of cut) {
+      const item = { ...raw, start };
+      if (raw.type === "scene") {
+        item.steps = raw.steps.map((s) => ({ ...s, start: 0, end: 0 }));
+        let at = 0;
+        for (const s of item.steps) { s.start = at; at += s.seconds; s.end = at; }
+        item.dur = at;
+        // one camera for the scene: wide, one push onto the group of foci, a single follow only when a focus lies outside
+        const named = item.steps.filter((s) => !isWhole(s.focus));
+        const group = named.map((s) => s.focus).reduce((a, b) => unite(a, b), named[0]?.focus);
+        const base = group ? centreCam(group) : FULL;
+        const keyframes = [{ t: 0, dur: 0, cam: FULL }];
+        if (CAMERA_ENABLED && !same(base, FULL)) keyframes.push({ t: WIDE_HOLD, dur: PUSH_TIME, cam: base });
+        item.keyframes = keyframes;
+        item.caps = [];
+        for (const s of item.steps) {
+          if (!s.key) continue;
+          const cur = item.caps[item.caps.length - 1];
+          if (cur && cur.key === s.key && s.start < cur.end) cur.end = s.start + CAP_TIME;
+          else item.caps.push({ key: s.key, start: s.start, end: s.start + CAP_TIME });
+        }
+      } else item.dur = raw.dur;
+      start += item.dur;
+      items.push(item);
+    }
+    total = start;
+    return total;
+  }
+
+  function cameraAt(item, lt, wide) {
+    if (wide) return FULL;
+    const kf = item.keyframes;
+    let i = 0;
+    for (let k = 0; k < kf.length; k++) if (kf[k].t <= lt) i = k;
+    if (i === 0) return kf[0].cam;
+    return mixCam(kf[i - 1].cam, kf[i].cam, ease(clamp((lt - kf[i].t) / kf[i].dur)));
+  }
+
+  async function showItem(layer, item, lt, opacity, opts) {
+    layer.el.style.opacity = opacity;
+    layer.el.style.display = item ? "block" : "none";
+    if (!item) return;
+    const isScene = item.type === "scene";
+    layer.img.style.display = isScene ? "block" : "none";
+    layer.band.style.display = "none";
+    layer.cap.style.display = "none";
+    layer.title.style.display = item.type === "title" ? "flex" : "none";
+    layer.credits.style.display = item.type === "credits" ? "flex" : "none";
+    if (item.type !== "scene") {
+      const card = item.type === "title" ? layer.title : layer.credits;
+      const times = item.type === "title" ? [0, 0.5, 0.9] : [0, 0.3, 0.6, 1.0, 1.4];
+      const lines = [...card.children];
+      lines.forEach((child, n) => {
+        const p = ramp(lt, times[n] ?? 0, n === 0 ? 0.6 : 0.4);
+        child.style.opacity = p;
+        child.style.transform = n === 0 ? `scale(${0.85 + 0.15 * p})` : `translateY(${(1 - p) * 22}px)`;
+      });
+      return;
+    }
+    const step = item.steps.find((s) => lt >= s.start && lt < s.end) ?? item.steps[item.steps.length - 1];
+    if (layer.file !== step.file) {
+      layer.file = step.file;
+      layer.img.src = step.file;
+      await layer.img.decode();
+    }
+    const cam = cameraAt(item, lt, opts.wide);
+    layer.img.style.transform = `scale(${cam.z}) translate(${-cam.left}px, ${-cam.top}px)`;
+    const show = ramp(lt, BAND_DELAY, BAND_FADE);
+    layer.band.style.display = "block";
+    layer.lower.querySelector("h1").textContent = item.title;
+    layer.lower.querySelector("p").textContent = item.subtitle;
+    layer.lower.style.opacity = show;
+    layer.lower.style.transform = `translateY(${(1 - show) * 20}px)`;
+    const cap = item.caps.find((c) => lt >= c.start && lt < c.end);
+    if (cap) {
+      const age = lt - cap.start;
+      layer.cap.style.display = "block";
+      layer.cap.textContent = cap.key;
+      layer.cap.style.opacity = clamp((cap.end - lt) / 0.15) * clamp(age / 0.06);
+      layer.cap.style.transform = `scale(${age < 0.16 ? 0.72 + 0.28 * easeOutBack(age / 0.16) : 1})`;
+      layer.cap.style.transformOrigin = "100% 100%";
+    }
+  }
+
+  function sceneEnd(id) {
+    const item = items.find((candidate) => candidate.id === id);
+    return item.start + item.dur;
+  }
+
+  async function render(t, opts = {}) {
+    stage.className = opts.bare ? "bare" : "";
+    let k = items.findIndex((item) => t >= item.start && t < item.start + item.dur);
+    if (k < 0) k = items.length - 1;
+    const item = items[k], lt = t - item.start;
+    const fading = k > 0 && lt < FADE;
+    await showItem(below, fading ? items[k - 1] : null, fading ? items[k - 1].dur : 0, 1, { wide: opts.wide });
+    await showItem(above, item, lt, fading ? ease(lt / FADE) : 1, { wide: opts.wide });
+  }
+</script>

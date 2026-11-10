@@ -15,6 +15,10 @@ mod hermes_protocol;
 #[cfg(test)]
 mod screenshot_tests;
 #[cfg(test)]
+mod trailer;
+#[cfg(test)]
+mod trailer_data;
+#[cfg(test)]
 mod ui_tests;
 
 mod about;
