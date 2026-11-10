@@ -60,9 +60,14 @@ impl FilingModule {
                 },
                 ncrs_ai::LocalModelStatus::Failed(reason) => AiStatus::Failed(reason),
             },
-            AiWiring::Http { origin, model, .. } => AiStatus::Http {
+            AiWiring::Http {
+                provider,
+                origin,
+                model,
+            } => AiStatus::Http {
                 origin: origin.clone(),
                 model: model.clone(),
+                last_failure: provider.last_failure(),
             },
         }
     }

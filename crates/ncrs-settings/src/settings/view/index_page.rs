@@ -320,7 +320,14 @@ fn ai_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
             lang.text(Msg::SettingsIndexAiReady).to_owned(),
             palette.success,
         ),
-        AiState::OwnServer { model } => (
+        AiState::OwnServer {
+            failure: Some(failure),
+            ..
+        } => (failure.clone(), palette.error),
+        AiState::OwnServer {
+            model,
+            failure: None,
+        } => (
             fill_template(lang.text(Msg::SettingsIndexAiServer), &[("{model}", model)]),
             palette.success,
         ),

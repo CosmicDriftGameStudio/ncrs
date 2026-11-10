@@ -53,11 +53,10 @@ impl OpenAiCompatible {
                     Json::object([("role", Json::text("user")), ("content", Json::text(user))]),
                 ]),
             ),
-            (
-                "response_format",
-                Json::object([("type", Json::text("json_object"))]),
-            ),
         ]);
+        self.add_response_format(&mut body, || {
+            Json::object([("type", Json::text("json_object"))])
+        });
         self.include_usage(&mut body);
         let reply = self.post(&body.pretty())?;
         self.log_usage(&reply);

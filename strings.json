@@ -1951,6 +1951,12 @@
       "de": "Hermes {rate}/Min. verarbeitet"
     },
     {
+      "key": "title_bar.hermes_server_problem",
+      "context": "Chip in the title bar while the own AI server of Hermes failed on the last request. Takes the reason as a sentence, for example 'The server reported error 400.'",
+      "en": "Hermes: {problem}",
+      "de": "Hermes: {problem}"
+    },
+    {
       "key": "title_bar.hermes_paused",
       "context": "Chip in the title bar while the filing module (Hermes) is paused; pressing it opens the Inspection.",
       "en": "Hermes paused",

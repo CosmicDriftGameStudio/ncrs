@@ -5,7 +5,7 @@
 use std::fmt;
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use jsonc_parser::{parse_to_value, JsonValue, ParseOptions};
@@ -160,6 +160,30 @@ fn is_openrouter(host: &str) -> bool {
     host == "openrouter.ai" || host.ends_with(".openrouter.ai")
 }
 
+/// Anthropic's compatible endpoint answers every `response_format` but a strict
+/// JSON schema with a 400, so the format is left out for this host.
+fn is_anthropic(host: &str) -> bool {
+    host == "api.anthropic.com" || host.ends_with(".anthropic.com")
+}
+
+/// How the last request of a provider went wrong.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReplyFailure {
+    /// The server answered with this HTTP status.
+    Status(u16),
+    /// No connection, no answer in time, or a reply that could not be read.
+    NoAnswer,
+}
+
+/// The part of a reply content from the first `{` to the last `}`: a model may
+/// wrap its JSON in a code fence or a sentence. Unchanged without braces.
+fn outermost_object(content: &str) -> &str {
+    match (content.find('{'), content.rfind('}')) {
+        (Some(first), Some(last)) if first < last => content.get(first..=last).unwrap_or(content),
+        _ => content,
+    }
+}
+
 /// `localhost` or a loopback address (127.0.0.0/8, ::1), judged on the host of
 /// the parsed address, not on the text around it.
 fn is_loopback(host: &str) -> bool {
@@ -177,6 +201,9 @@ pub struct OpenAiCompatible {
     key_lookup: Option<Arc<dyn KeyLookup>>,
     usage_log: Option<PathBuf>,
     ledger: Arc<dyn ConsentLedger>,
+    /// The server refuses a `response_format`: decided once from the host.
+    omits_response_format: bool,
+    last_failure: Mutex<Option<ReplyFailure>>,
 }
 
 impl OpenAiCompatible {
@@ -185,6 +212,7 @@ impl OpenAiCompatible {
         ledger: Arc<dyn ConsentLedger>,
     ) -> Result<Self, AiError> {
         let endpoint = Endpoint::parse(&config.endpoint).map_err(AiError::BadEndpoint)?;
+        let omits_response_format = is_anthropic(&endpoint.host);
         Ok(Self {
             endpoint,
             model: config.model,
@@ -192,7 +220,29 @@ impl OpenAiCompatible {
             key_lookup: config.key_lookup,
             usage_log: config.usage_log,
             ledger,
+            omits_response_format,
+            last_failure: Mutex::new(None),
         })
+    }
+
+    /// What went wrong with the last request; none when it was answered.
+    pub fn last_failure(&self) -> Option<ReplyFailure> {
+        *self
+            .last_failure
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn remember(&self, outcome: &Result<String, AiError>) {
+        let failure = match outcome {
+            Ok(_) => None,
+            Err(AiError::Status(status)) => Some(ReplyFailure::Status(*status)),
+            Err(_) => Some(ReplyFailure::NoAnswer),
+        };
+        *self
+            .last_failure
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = failure;
     }
 
     /// What a call for this request would send, for a person to read first.
@@ -218,28 +268,36 @@ impl OpenAiCompatible {
                     Json::object([("role", Json::text("user")), ("content", Json::Text(user))]),
                 ]),
             ),
-            (
-                "response_format",
-                Json::object([
-                    ("type", Json::text("json_schema")),
-                    (
-                        "json_schema",
-                        // Not strict: strict mode wants every property required,
-                        // and a field the model cannot find is left out.
-                        Json::object([
-                            ("name", Json::text("document_fields")),
-                            ("strict", Json::Bool(false)),
-                            (
-                                "schema",
-                                output_schema(&request.open_fields, &request.kinds),
-                            ),
-                        ]),
-                    ),
-                ]),
-            ),
         ]);
+        self.add_response_format(&mut body, || {
+            Json::object([
+                ("type", Json::text("json_schema")),
+                (
+                    "json_schema",
+                    // Not strict: strict mode wants every property required,
+                    // and a field the model cannot find is left out.
+                    Json::object([
+                        ("name", Json::text("document_fields")),
+                        ("strict", Json::Bool(false)),
+                        (
+                            "schema",
+                            output_schema(&request.open_fields, &request.kinds),
+                        ),
+                    ]),
+                ),
+            ])
+        });
         self.include_usage(&mut body);
         body
+    }
+
+    fn add_response_format(&self, body: &mut Json, format: impl FnOnce() -> Json) {
+        if self.omits_response_format {
+            return;
+        }
+        if let Json::Object(entries) = body {
+            entries.push(("response_format".to_owned(), format()));
+        }
     }
 
     fn include_usage(&self, body: &mut Json) {
@@ -273,7 +331,9 @@ impl OpenAiCompatible {
             .post(&self.endpoint.chat_url)
             .header("Content-Type", "application/json");
         let key = key_of(self.api_key.as_ref(), self.key_lookup.as_deref());
-        read_reply(with_key(call, key.as_ref()).send(body))
+        let outcome = read_reply(with_key(call, key.as_ref()).send(body));
+        self.remember(&outcome);
+        outcome
     }
 }
 
@@ -412,7 +472,7 @@ fn message_content(reply: &str) -> Result<String, AiError> {
             _ => None,
         })
         .and_then(|message| message.get_string("content"))
-        .map(|content| content.to_string())
+        .map(|content| outermost_object(content).to_owned())
         .ok_or(AiError::BadReply("no message in the reply"))
 }
 
@@ -922,5 +982,83 @@ mod tests {
         )
         .unwrap();
         broken.log_usage("{}");
+    }
+
+    #[test]
+    fn an_anthropic_host_is_told_apart_from_other_servers() {
+        assert!(is_anthropic("api.anthropic.com"));
+        assert!(is_anthropic("eu.anthropic.com"));
+        assert!(!is_anthropic("notanthropic.com"));
+        assert!(!is_anthropic("openrouter.ai"));
+        let ledger = Arc::new(Ledger::default());
+        assert!(provider("https://api.anthropic.com/v1", &ledger).omits_response_format);
+        assert!(!provider("https://api.example.com/v1", &ledger).omits_response_format);
+    }
+
+    #[test]
+    fn a_server_that_refuses_response_format_is_sent_none() {
+        let ledger = Arc::new(Ledger::default());
+        let mut own = provider("http://127.0.0.1:1/v1", &ledger);
+        assert!(own
+            .request_body(&request())
+            .pretty()
+            .contains("response_format"));
+
+        own.omits_response_format = true;
+
+        let body = own.request_body(&request()).pretty();
+        assert!(!body.contains("response_format"));
+        assert!(body.contains("model-x"));
+    }
+
+    #[test]
+    fn json_in_a_fence_or_a_sentence_is_cut_to_its_braces() {
+        assert_eq!(
+            outermost_object("```json\n{\"a\": {\"b\": 1}}\n```"),
+            "{\"a\": {\"b\": 1}}"
+        );
+        assert_eq!(outermost_object("Here: {\"a\": 1} done."), "{\"a\": 1}");
+        assert_eq!(outermost_object("no object"), "no object");
+        let reply =
+            chat_reply("```json\n{\"sender\": {\"value\": \"A\", \"confidence\": 0.9}}\n```");
+        assert!(message_content(&reply).unwrap().starts_with('{'));
+    }
+
+    #[test]
+    fn the_last_failure_is_kept_until_the_next_answer() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let ledger = Arc::new(Ledger::default());
+        let own = provider(&format!("http://127.0.0.1:{port}/v1"), &ledger);
+        assert_eq!(own.last_failure(), None);
+
+        let refused = serve_once(
+            listener.try_clone().unwrap(),
+            http_response("400 Bad Request", "", "{}"),
+        );
+        own.extract(&request()).unwrap_err();
+        refused.join().unwrap();
+        assert_eq!(own.last_failure(), Some(ReplyFailure::Status(400)));
+
+        let reply = chat_reply(r#"{"sender": {"value": "A", "confidence": 0.9}}"#);
+        let answered = serve_once(listener, http_response("200 OK", "", &reply));
+        own.extract(&request()).unwrap();
+        answered.join().unwrap();
+        assert_eq!(own.last_failure(), None);
+    }
+
+    #[test]
+    fn a_server_that_is_not_there_is_no_answer() {
+        let port = TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let ledger = Arc::new(Ledger::default());
+        let own = provider(&format!("http://127.0.0.1:{port}/v1"), &ledger);
+
+        own.extract(&request()).unwrap_err();
+
+        assert_eq!(own.last_failure(), Some(ReplyFailure::NoAnswer));
     }
 }
