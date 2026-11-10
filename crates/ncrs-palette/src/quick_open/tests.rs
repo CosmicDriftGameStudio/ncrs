@@ -477,6 +477,17 @@ fn at_most_five_documents_are_kept() {
 }
 
 #[test]
+fn a_lookup_for_older_text_is_not_worth_running() {
+    let mut quick_open = with_documents_on(&["a.txt"], "a");
+    let old = quick_open.request_documents().unwrap();
+    assert!(old.is_current());
+    type_and_rank(&mut quick_open, "ab");
+    let new = quick_open.request_documents().unwrap();
+    assert!(!old.is_current());
+    assert!(new.is_current());
+}
+
+#[test]
 fn an_answer_for_older_text_is_dropped() {
     let mut quick_open = with_documents_on(&["a.txt"], "a");
     let old = quick_open.request_documents().unwrap();
@@ -501,7 +512,7 @@ fn an_answer_for_older_text_is_dropped() {
 fn without_documents_enabled_nothing_is_requested() {
     let mut quick_open = open("/r", &["a.txt"]);
     type_and_rank(&mut quick_open, "a");
-    assert_eq!(quick_open.request_documents(), None);
+    assert!(quick_open.request_documents().is_none());
     assert_eq!(quick_open.documents_state(), DocumentsState::Idle);
 }
 
@@ -515,7 +526,7 @@ fn an_empty_text_requests_nothing_and_drops_old_documents() {
         Ok(vec![document("/d/a.pdf")]),
     );
     assert_eq!(quick_open.set_query("  ".to_owned()).map(|_| ()), None);
-    assert_eq!(quick_open.request_documents(), None);
+    assert!(quick_open.request_documents().is_none());
     assert!(quick_open.documents().is_empty());
 }
 

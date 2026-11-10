@@ -6,7 +6,7 @@
 //! Stale data keeps being shown until the new reading replaces it, so a file
 //! that changes does not flicker through an empty state.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 
 use ncrs_index::{DocumentStatus, FileTags, Kinds, PathState};
@@ -20,6 +20,8 @@ use ncrs_filing::review_work::TextState;
 use ncrs_i18n::fill_template;
 use ncrs_i18n::{Language, Msg};
 use ncrs_ui_kit::format;
+
+const MAX_REMEMBERED_INVALIDATIONS: usize = 256;
 
 pub use ncrs_filing::column_reading::{ColumnReading, ColumnRequest, ColumnStage, DirectoryStates};
 pub use ncrs_ui_kit::hermes_state::{state_label, FolderRole, FolderSummary, HermesFileState};
@@ -69,6 +71,9 @@ pub struct HermesColumn {
     seen_sequence: u64,
     /// Counts up whenever cached data was invalidated.
     epoch: u64,
+    /// What each of the latest epochs invalidated, `None` for everything: a
+    /// reading is stale only when a later entry touches its directory.
+    invalidations: VecDeque<(u64, Option<PathBuf>)>,
     /// What the status bar needs for the file under the cursor.
     details: HashMap<PathBuf, FileDetail>,
 }
@@ -125,7 +130,7 @@ impl HermesColumn {
     /// folder is read again, and so are the counts of every folder around it
     /// (and of the path itself, if it is a folder).
     pub fn invalidate_path(&mut self, path: &Path) {
-        self.epoch += 1;
+        self.next_epoch(Some(path.to_path_buf()));
         self.details.remove(path);
         if let Some(cached) = path
             .parent()
@@ -144,8 +149,38 @@ impl HermesColumn {
         }
     }
 
-    pub fn invalidate_all(&mut self) {
+    fn next_epoch(&mut self, invalidated: Option<PathBuf>) {
         self.epoch += 1;
+        self.invalidations.push_back((self.epoch, invalidated));
+        if self.invalidations.len() > MAX_REMEMBERED_INVALIDATIONS {
+            self.invalidations.pop_front();
+        }
+    }
+
+    /// Whether something that reaches `directory` was invalidated after a
+    /// reading was asked for at `epoch`. A change elsewhere leaves it valid.
+    fn invalidated_since(&self, epoch: u64, directory: &Path) -> bool {
+        if epoch == self.epoch {
+            return false;
+        }
+        let forgotten = self
+            .invalidations
+            .front()
+            .is_none_or(|(oldest, _)| *oldest > epoch + 1);
+        forgotten
+            || self
+                .invalidations
+                .iter()
+                .filter(|(at, _)| *at > epoch)
+                .any(|(_, invalidated)| {
+                    invalidated.as_deref().is_none_or(|path| {
+                        path.starts_with(directory) || directory.starts_with(path)
+                    })
+                })
+    }
+
+    pub fn invalidate_all(&mut self) {
+        self.next_epoch(None);
         self.directories.clear();
         self.folders.clear();
         self.details.clear();
@@ -181,7 +216,7 @@ impl HermesColumn {
     /// Stores a reading unless something was invalidated since it was asked
     /// for; `false` then, and the caller asks again.
     pub fn apply(&mut self, reading: ColumnReading) -> bool {
-        if reading.epoch != self.epoch {
+        if self.invalidated_since(reading.epoch, &reading.directory) {
             return false;
         }
         if let Some(states) = reading.states {
@@ -828,6 +863,26 @@ mod tests {
             column.wanted_counts(&directories(&["/a", "/a/sub", "/b"]), ColumnStage::Listing),
             directories(&["/a", "/a/sub"])
         );
+    }
+
+    #[test]
+    fn a_reading_survives_a_change_elsewhere_and_not_one_in_its_own_directory() {
+        let mut column = loaded();
+        let asked_at = column.epoch();
+        column.invalidate_path(&p("/other/x.pdf"));
+        let mut elsewhere = listing("/d", &[("x.pdf", DocumentStatus::Filed)]);
+        elsewhere.epoch = asked_at;
+        assert!(column.apply(elsewhere));
+
+        column.invalidate_path(&p("/d/x.pdf"));
+        let mut inside = listing("/d", &[("x.pdf", DocumentStatus::New)]);
+        inside.epoch = asked_at;
+        assert!(!column.apply(inside));
+
+        column.invalidate_all();
+        let mut everywhere = listing("/d", &[]);
+        everywhere.epoch = asked_at;
+        assert!(!column.apply(everywhere));
     }
 
     #[test]

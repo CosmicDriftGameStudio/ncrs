@@ -28,7 +28,7 @@ pub fn refresh_hermes_column(hermes: &mut Hermes, ctx: &Ctx<'_>) {
         .hermes_column
         .set_snapshot(hermes.filing_status.snapshot());
     if hermes.hermes_column.epoch() != epoch {
-        hermes.hermes_reads.clear();
+        hermes.hermes_failed_reads.clear();
         hermes.hermes_detail_reads.clear();
     }
     if visible_row_is_reading(hermes, ctx) {
@@ -91,13 +91,15 @@ fn request_panel_column(hermes: &mut Hermes, panel: &PanelFacts<'_>) -> Option<T
         }
         (ColumnStage::Deep, deep_wanted)
     };
-    if !hermes.hermes_reads.insert((directory.clone(), stage)) {
+    let read = (directory.clone(), stage);
+    if hermes.hermes_failed_reads.contains(&read) || hermes.hermes_reads.contains(&read) {
         return None;
     }
     let reader = hermes
         .filing
         .as_ref()
         .and_then(FilingModule::column_reader)?;
+    hermes.hermes_reads.insert(read);
     let request = ColumnRequest {
         generation,
         epoch: hermes.hermes_column.epoch(),
@@ -157,12 +159,13 @@ pub fn update_hermes_column(
             stage,
             result,
         } => {
+            hermes.hermes_reads.remove(&(directory.clone(), stage));
             let Ok(reading) = result else {
-                // Stays in `hermes_reads`: not asked again until the next
-                // invalidation, so a broken index is not hammered.
+                // Not asked again until the next invalidation, so a broken
+                // index is not hammered.
+                hermes.hermes_failed_reads.insert((directory, stage));
                 return Task::none();
             };
-            hermes.hermes_reads.remove(&(directory, stage));
             if let Some(panel) = ctx.panel(side) {
                 if reading.generation == panel.request_id && reading.directory == panel.directory {
                     hermes.hermes_column.apply(reading);

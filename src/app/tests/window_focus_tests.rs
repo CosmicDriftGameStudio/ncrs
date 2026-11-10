@@ -74,3 +74,12 @@ async fn focus_returning_leaves_a_panel_inside_an_archive_alone() {
     assert_eq!(app.panels.left.request_id, request_before);
     assert_ne!(app.panels.right.request_id, 0);
 }
+
+#[tokio::test]
+async fn focus_returning_leaves_a_panel_that_is_still_being_read_alone() {
+    let mut app = App::with_fixed_panels();
+    app.panels.left.loading = true;
+    let request_before = app.panels.left.request_id;
+    drop(app.update(Message::WindowFocused));
+    assert_eq!(app.panels.left.request_id, request_before);
+}

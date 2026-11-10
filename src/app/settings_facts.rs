@@ -123,6 +123,7 @@ impl App {
             return Task::none();
         };
         state.facts_requested = true;
+        state.facts_in_flight = true;
         let lang = self.lang;
         let now = self.wall_clock.now();
         self.facts_requested_at = Some(now);
@@ -150,7 +151,11 @@ impl App {
         let Some(state) = self.settings.page.as_mut() else {
             return Task::none();
         };
-        if !due || state.feature != SettingsFeature::Index || state.loaded.is_none() {
+        if !due
+            || state.facts_in_flight
+            || state.feature != SettingsFeature::Index
+            || state.loaded.is_none()
+        {
             return Task::none();
         }
         state.facts_requested = false;

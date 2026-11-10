@@ -93,9 +93,10 @@ pub fn update(
             )));
             Task::none()
         }
-        SettingsMessage::FactsLoaded(loaded) => {
-            page_flag(settings, |state| state.loaded = Some(loaded))
-        }
+        SettingsMessage::FactsLoaded(loaded) => page_flag(settings, |state| {
+            state.loaded = Some(loaded);
+            state.facts_in_flight = false;
+        }),
         SettingsMessage::ToggleAllAreas => {
             page_flag(settings, |state| state.all_areas = !state.all_areas)
         }

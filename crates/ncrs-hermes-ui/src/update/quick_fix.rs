@@ -262,7 +262,7 @@ fn accept_notice(summary: &AcceptSummary, lang: ncrs_i18n::Language) -> Option<S
 /// and the panels read their folders.
 fn filed(hermes: &mut Hermes, summary: &AcceptSummary, ctx: &Ctx<'_>, actions: &mut Vec<Action>) {
     hermes.hermes_column.invalidate_all();
-    hermes.hermes_reads.clear();
+    hermes.hermes_failed_reads.clear();
     hermes.hermes_detail_reads.clear();
     match accept_notice(summary, ctx.lang) {
         Some(text) => actions.push(Action::ShowNotice(text)),

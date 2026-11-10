@@ -48,14 +48,14 @@ impl Hermes {
     pub fn live_pipeline(&self) -> Option<&Runner> {
         self.pipeline
             .as_ref()
-            .filter(|runner| runner.snapshot().state != RunnerState::Off)
+            .filter(|runner| runner.state() != RunnerState::Off)
     }
 
     pub fn set_pipeline_load(&mut self, load: Load, now: SystemTime) {
         let Some(runner) = self
             .pipeline
             .as_ref()
-            .filter(|runner| runner.snapshot().state != RunnerState::Off)
+            .filter(|runner| runner.state() != RunnerState::Off)
         else {
             return;
         };

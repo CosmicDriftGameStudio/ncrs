@@ -33,13 +33,14 @@ impl Panels {
     }
 
     /// The panels that are folders of this computer, with their paths: the
-    /// ones in an archive or on a server are left out.
+    /// ones in an archive or on a server are left out, and so are the ones
+    /// already being read: a second read would shift the rows under a click.
     pub fn local_folders(&self) -> Vec<(PanelSide, PathBuf)> {
         [PanelSide::Left, PanelSide::Right]
             .into_iter()
             .filter_map(|side| {
                 let panel = self.panel(side);
-                (!panel.is_virtual()).then(|| (side, panel.path.clone()))
+                (!panel.is_virtual() && !panel.loading).then(|| (side, panel.path.clone()))
             })
             .collect()
     }

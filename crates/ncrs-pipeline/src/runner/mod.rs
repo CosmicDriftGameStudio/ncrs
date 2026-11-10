@@ -464,9 +464,12 @@ impl Shared {
         self.snapshot_of(&state)
     }
 
-    fn snapshot_of(&self, state: &State) -> Snapshot {
-        let now = self.clock.now();
-        let runner_state = if state.stopping {
+    fn runner_state(&self) -> RunnerState {
+        Self::runner_state_of(&self.lock())
+    }
+
+    fn runner_state_of(state: &State) -> RunnerState {
+        if state.stopping {
             RunnerState::Off
         } else if state.paused {
             RunnerState::Paused
@@ -474,7 +477,12 @@ impl Shared {
             RunnerState::Running
         } else {
             RunnerState::Idle
-        };
+        }
+    }
+
+    fn snapshot_of(&self, state: &State) -> Snapshot {
+        let now = self.clock.now();
+        let runner_state = Self::runner_state_of(state);
         let mut waiting: Vec<usize> = vec![0; self.steps.len()];
         if let Some(first) = waiting.first_mut() {
             *first = state.first_step.len();
@@ -1030,6 +1038,11 @@ impl Runner {
     /// a worker holds the index.
     pub fn snapshot(&self) -> Snapshot {
         self.shared.snapshot()
+    }
+
+    /// Only the state of `snapshot`, without copying steps, workers and errors.
+    pub fn state(&self) -> RunnerState {
+        self.shared.runner_state()
     }
 
     /// Waits for the running steps to finish. Can be called again.

@@ -353,6 +353,23 @@ fn the_index_page_reads_its_facts_again_after_ten_seconds_and_not_before() -> Te
 }
 
 #[test]
+fn the_tick_does_not_read_the_facts_again_while_a_read_is_under_way() -> TestResult {
+    let mut app = page(
+        SettingsFeature::Index,
+        filled_config(),
+        Some(loaded_areas()),
+    )?;
+    let asked_long_ago = long_ago();
+    app.facts_requested_at = Some(asked_long_ago);
+    if let Some(state) = app.settings.page.as_mut() {
+        state.facts_in_flight = true;
+    }
+    drop(app.refresh_documents_facts());
+    assert_eq!(app.facts_requested_at, Some(asked_long_ago));
+    Ok(())
+}
+
+#[test]
 fn another_page_does_not_read_its_facts_on_the_tick() -> TestResult {
     let mut app = page(
         SettingsFeature::Hermes,

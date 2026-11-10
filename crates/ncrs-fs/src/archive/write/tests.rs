@@ -805,6 +805,24 @@ fn a_cancelled_pack_creates_no_archive_also_inside_a_large_file() {
 }
 
 #[test]
+fn a_cancel_after_the_last_entry_still_stops_before_the_archive_is_replaced() {
+    for (file, _) in ALL_FORMATS {
+        let dir = scratch("cancel-last");
+        let note = dir.path().join("note.txt");
+        std::fs::write(&note, b"n").unwrap();
+        let archive = dir.path().join(file);
+        let mut counting = CancelAfter::new(usize::MAX);
+        pack(std::slice::from_ref(&note), &archive, &mut counting).unwrap();
+        std::fs::remove_file(&archive).unwrap();
+
+        let err = pack(&[note], &archive, &mut CancelAfter::new(counting.calls)).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::ConnectionAborted, "{file}");
+        assert!(!archive.exists(), "{file}");
+        assert!(leftovers(dir.path()).is_empty(), "{file}");
+    }
+}
+
+#[test]
 fn a_7z_rewrite_keeps_every_entry() {
     let dir = scratch("sevenz-rewrite");
     let archive = dir.path().join("keep.7z");
