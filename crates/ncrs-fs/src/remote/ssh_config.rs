@@ -197,10 +197,19 @@ fn glob(pattern: &[char], text: &[char]) -> bool {
 mod tests {
     use super::*;
 
-    const HOME: &str = "/home/marc";
+    // Identity files must be absolute, and `/home/marc` is not on Windows.
+    const HOME: &str = if cfg!(windows) {
+        r"C:\home\marc"
+    } else {
+        "/home/marc"
+    };
 
     fn settings(text: &str, alias: &str) -> HostSettings {
         settings_for(text, alias, Some(Path::new(HOME)))
+    }
+
+    fn below_home(path: &str) -> PathBuf {
+        Path::new(HOME).join(path)
     }
 
     #[test]
@@ -215,10 +224,7 @@ mod tests {
         assert_eq!(found.port, Some(2222));
         assert_eq!(
             found.identity_files,
-            [
-                PathBuf::from("/home/marc/.ssh/a"),
-                PathBuf::from("/home/marc/.ssh/b")
-            ]
+            [below_home(".ssh/a"), below_home(".ssh/b")]
         );
     }
 
@@ -249,21 +255,18 @@ mod tests {
 
     #[test]
     fn keywords_ignore_case_and_values_may_use_equals_quotes_and_comments() {
-        let text = "# a comment\n\nHOST=files\n  hostname = \"my host.example\" # trailing\n  PORT=2022\n  IdentityFile \"/keys/with space\"\n";
+        let text = "# a comment\n\nHOST=files\n  hostname = \"my host.example\" # trailing\n  PORT=2022\n  IdentityFile \"~/keys/with space\"\n";
         let found = settings(text, "files");
         assert_eq!(found.host_name.as_deref(), Some("my host.example"));
         assert_eq!(found.port, Some(2022));
-        assert_eq!(found.identity_files, [PathBuf::from("/keys/with space")]);
+        assert_eq!(found.identity_files, [below_home("keys/with space")]);
     }
 
     #[test]
     fn identity_files_with_tokens_or_without_a_place_are_dropped() {
         let text =
             "Host a\n  IdentityFile ~/.ssh/%h_key\n  IdentityFile relative\n  IdentityFile ~/ok\n";
-        assert_eq!(
-            settings(text, "a").identity_files,
-            [PathBuf::from("/home/marc/ok")]
-        );
+        assert_eq!(settings(text, "a").identity_files, [below_home("ok")]);
         assert!(settings_for(text, "a", None).identity_files.is_empty());
     }
 
