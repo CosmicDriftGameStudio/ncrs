@@ -40,6 +40,21 @@ impl Index {
         Ok(())
     }
 
+    /// Makes a recorded copy the document's file: the copy row goes and the
+    /// document points at the path, together or not at all.
+    pub fn promote_copy_to_document_path(
+        &self,
+        id: DocumentId,
+        path: &Path,
+        stamp: FileStamp,
+    ) -> Result<(), IndexError> {
+        let tx = self.connection().unchecked_transaction()?;
+        self.remove_duplicate_path(path)?;
+        self.set_document_path(id, path, stamp)?;
+        tx.commit()?;
+        Ok(())
+    }
+
     /// The file is gone, or no longer has the document's content. Remembers
     /// the first time it was noticed.
     pub fn mark_document_missing(&self, id: DocumentId) -> Result<(), IndexError> {
@@ -535,6 +550,38 @@ mod tests {
             index.document_by_duplicate_path(copy).unwrap(),
             Some((id, Some(stamp(2, 2))))
         );
+    }
+
+    #[test]
+    fn promoting_a_copy_swaps_it_for_the_document_path() {
+        let (_dir, index) = encrypted_index();
+        let id = index.insert_document(&new_document(1)).unwrap();
+        let copy = Path::new("archive/copy.pdf");
+        index.record_duplicate_path(id, copy, stamp(1, 1)).unwrap();
+
+        index
+            .promote_copy_to_document_path(id, copy, stamp(3, 3))
+            .unwrap();
+
+        assert!(index.duplicate_paths(id).unwrap().is_empty());
+        let document = index.document(id).unwrap().unwrap();
+        assert_eq!(document.path, copy.to_path_buf());
+        assert_eq!(document.stamp, Some(stamp(3, 3)));
+    }
+
+    #[test]
+    fn a_failed_promotion_keeps_the_copy_recorded() {
+        let (_dir, index) = encrypted_index();
+        let id = index.insert_document(&new_document(1)).unwrap();
+        let copy = Path::new("archive/copy.pdf");
+        index.record_duplicate_path(id, copy, stamp(1, 1)).unwrap();
+
+        let err = index
+            .promote_copy_to_document_path(DocumentId::new(99), copy, stamp(3, 3))
+            .unwrap_err();
+
+        assert!(matches!(err, IndexError::DocumentNotFound(_)), "{err}");
+        assert_eq!(index.duplicate_paths(id).unwrap(), vec![copy.to_path_buf()]);
     }
 
     #[test]

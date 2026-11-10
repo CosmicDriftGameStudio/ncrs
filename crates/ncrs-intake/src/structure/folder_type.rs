@@ -24,10 +24,11 @@ impl FolderType {
     }
 }
 
-const MONTH_NAMES: [&str; 23] = [
+const MONTH_NAMES: [&str; 36] = [
     "januar",
     "februar",
     "märz",
+    "maerz",
     "april",
     "mai",
     "juni",
@@ -48,6 +49,18 @@ const MONTH_NAMES: [&str; 23] = [
     "jan",
     "feb",
     "mar",
+    "mrz",
+    "apr",
+    "jun",
+    "jul",
+    "aug",
+    "sep",
+    "sept",
+    "okt",
+    "oct",
+    "nov",
+    "dez",
+    "dec",
 ];
 
 /// What a folder name is, judged from the documents below the folder.
@@ -108,4 +121,19 @@ fn dominant_sender(documents: &[&StructureDocument]) -> Option<String> {
         .into_iter()
         .max_by(|left, right| left.1.cmp(&right.1).then_with(|| right.0.cmp(left.0)))
         .map(|(sender, _)| sender.to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_month_name;
+
+    #[test]
+    fn german_and_english_month_names_and_abbreviations_are_months() {
+        for name in [
+            "Maerz", "März", "Apr", "Jun", "Aug", "Sep", "Okt", "Oct", "Nov", "Dez", "Dec", "Mrz",
+        ] {
+            assert!(is_month_name(name), "{name}");
+        }
+        assert!(!is_month_name("Rechnungen"));
+    }
 }

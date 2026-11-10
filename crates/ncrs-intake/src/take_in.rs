@@ -143,8 +143,7 @@ pub fn promote_first_copy(index: &Index, document: &Document) -> Result<bool, In
         if !metadata.is_file() || current != recorded {
             continue;
         }
-        index.remove_duplicate_path(&copy)?;
-        index.set_document_path(document.id, &copy, current)?;
+        index.promote_copy_to_document_path(document.id, &copy, current)?;
         return Ok(true);
     }
     Ok(false)
@@ -313,9 +312,10 @@ fn file_with_known_hash(
     let recorded_copy = index.document_by_duplicate_path(path)?;
     if known.missing_since.is_some() || has_moved_here(&known.path, path)? {
         if recorded_copy.is_some() {
-            index.remove_duplicate_path(path)?;
+            index.promote_copy_to_document_path(known.id, path, stamp)?;
+        } else {
+            index.set_document_path(known.id, path, stamp)?;
         }
-        index.set_document_path(known.id, path, stamp)?;
         if location.mode == LocationMode::Archive && known.status != DocumentStatus::Filed {
             index.set_document_status(known.id, DocumentStatus::Filed)?;
         }

@@ -1,11 +1,10 @@
 use std::ffi::OsStr;
 use std::path::{Component, Path};
 
+use crate::image_text;
 use crate::location::Location;
 
 const DOCUMENT_EXTENSIONS: [&str; 5] = ["pdf", "docx", "odt", "txt", "md"];
-/// The image formats the image file source decodes; heic is not among them.
-const DECODABLE_IMAGE_EXTENSIONS: [&str; 5] = ["jpg", "jpeg", "png", "tif", "tiff"];
 const IMAGE_EXTENSIONS: [&str; 6] = ["jpg", "jpeg", "png", "heic", "tif", "tiff"];
 const TEMPORARY_SUFFIXES: [&str; 3] = [".part", ".crdownload", ".tmp"];
 
@@ -88,7 +87,7 @@ pub fn is_image_file(path: &Path) -> bool {
 pub fn text_is_readable(path: &Path) -> bool {
     let extension = lowercase_extension(path);
     DOCUMENT_EXTENSIONS.contains(&extension.as_str())
-        || DECODABLE_IMAGE_EXTENSIONS.contains(&extension.as_str())
+        || image_text::EXTENSIONS.contains(&extension.as_str())
 }
 
 #[cfg(test)]
