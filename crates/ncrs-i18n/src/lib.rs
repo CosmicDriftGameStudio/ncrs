@@ -347,6 +347,8 @@ mod tests {
                 | Msg::BatchRenameTokenName
                 | Msg::BatchRenameStart
                 | Msg::BatchRenameColumnProblem
+                // A name and a placeholder for an already translated sentence.
+                | Msg::TitleBarHermesServerProblem
                 // The same word, in a field that asks for a piece of text.
                 | Msg::FilingPiecesNameTextPlaceholder
                 | Msg::QuickFixLoading

@@ -356,15 +356,21 @@ fn ai_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
         ),
         AiButton::Load => load_button(SettingsMessage::OpenAiModel, view),
     });
+    // The local model's name would be wrong while the own server answers.
+    let note_msg = if matches!(view.facts.ai, AiState::OwnServer { .. }) {
+        Msg::SettingsIndexRowAiNoteServer
+    } else {
+        Msg::SettingsIndexRowAiNote
+    };
     let mut model = simple_row(
         Msg::SettingsIndexRowAi,
-        Some(Msg::SettingsIndexRowAiNote),
+        Some(note_msg),
         model_control(state, color, button.into_iter().collect()),
         lang,
     );
     model.key = ai_press.map(RowKey::Press);
     if let Some(detail) = &view.facts.ai_detail {
-        let note = lang.text(Msg::SettingsIndexRowAiNote);
+        let note = lang.text(note_msg);
         model.description = Some(format!("{note}\n{detail}"));
     }
     let server = simple_row(
