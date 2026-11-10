@@ -48,8 +48,30 @@ pub struct FlowCtx<'a> {
     pub restore_last_key: Option<String>,
     /// The index that knows sender, kind and amount of the documents.
     pub index: Option<Arc<dyn SearchIndex>>,
-    /// The model Hermes asks for a pattern; `None` while the AI is off.
-    pub model: Option<Arc<dyn ChatModel>>,
+    /// The model Hermes asks for a pattern, and where it runs.
+    pub model: NamesModel,
+}
+
+/// The model that may read the file names of a folder the user did not hand to
+/// Hermes, by where it runs.
+#[derive(Debug, Clone, Default)]
+pub enum NamesModel {
+    /// The AI is off.
+    #[default]
+    None,
+    /// Runs on this computer: asked on its own.
+    Local(Arc<dyn ChatModel>),
+    /// Runs on another computer: the names leave this one, so only on a click.
+    Remote(Arc<dyn ChatModel>),
+}
+
+impl NamesModel {
+    pub fn model(&self) -> Option<&Arc<dyn ChatModel>> {
+        match self {
+            Self::None => None,
+            Self::Local(model) | Self::Remote(model) => Some(model),
+        }
+    }
 }
 
 impl std::fmt::Debug for FlowCtx<'_> {

@@ -9,7 +9,7 @@ use std::sync::Arc;
 use chrono::NaiveDate;
 use iced::widget::operation;
 use iced::Task;
-use ncrs_ai::{propose_name_spec, NameBlock, NameSpec};
+use ncrs_ai::{propose_name_spec, ChatModel, NameBlock, NameSpec};
 use ncrs_core::{FileEntry, PanelSide};
 use ncrs_fs as fs;
 use ncrs_fs::remote::session::Pool;
@@ -21,11 +21,12 @@ use ncrs_ui_kit::focus::release_focus;
 
 use super::pattern::{plan, split_name, EntryFacts, NameRules, Step};
 use super::state::{
-    digits_only, ApplyFailure, BatchRename, BatchRenameMessage, Extras, Opening, VISIBLE_ROWS,
+    digits_only, ApplyFailure, BatchRename, BatchRenameMessage, Extras, HermesAsk, Opening,
+    VISIBLE_ROWS,
 };
 use super::view::PATTERN_FIELD_ID;
 use crate::action::{Action, StartJob};
-use crate::ctx::FlowCtx;
+use crate::ctx::{FlowCtx, NamesModel};
 use crate::delete_flow::{actions, idle, Outcome};
 use crate::message::OpsMessage;
 use crate::state::{BatchRun, Ops, RunOutcome, StopFlag};
@@ -94,7 +95,12 @@ pub fn open_batch_rename(ops: &mut Ops, request: BatchRenameRequest, ctx: &FlowC
         folder_names: request.folder_names,
     };
     let names = opening.folder_names.clone();
-    ops.batch_rename = Some(BatchRename::new(opening));
+    let mut dialog = BatchRename::new(opening);
+    dialog.ask = match ctx.model {
+        NamesModel::Remote(_) => HermesAsk::Offered,
+        NamesModel::None | NamesModel::Local(_) => HermesAsk::Unavailable,
+    };
+    ops.batch_rename = Some(dialog);
 
     let mut tasks = vec![focus_pattern()];
     if !on_server {
@@ -108,25 +114,39 @@ pub fn open_batch_rename(ops: &mut Ops, request: BatchRenameRequest, ctx: &FlowC
             move |extras| send(BatchRenameMessage::ExtrasLoaded { dialog: id, extras }),
         ));
     }
-    if let Some(model) = ctx.model.clone() {
-        tasks.push(Task::perform(
-            async move {
-                tokio::task::spawn_blocking(move || {
-                    let spec = propose_name_spec(model.as_ref(), &names).ok().flatten()?;
-                    pattern_of(&spec)
-                })
-                .await
-                .unwrap_or_default()
-            },
-            move |pattern| {
-                send(BatchRenameMessage::Proposed {
-                    dialog: id,
-                    pattern,
-                })
-            },
-        ));
+    if let NamesModel::Local(model) = &ctx.model {
+        tasks.push(propose_pattern(Arc::clone(model), names, id));
     }
     (Task::batch(tasks), vec![Action::ClearStatus])
+}
+
+/// Sends up to the first names of the folder to `model` in the background.
+fn propose_pattern(model: Arc<dyn ChatModel>, names: Vec<String>, dialog: u64) -> Task<OpsMessage> {
+    Task::perform(
+        async move {
+            tokio::task::spawn_blocking(move || {
+                let spec = propose_name_spec(model.as_ref(), &names).ok().flatten()?;
+                pattern_of(&spec)
+            })
+            .await
+            .unwrap_or_default()
+        },
+        move |pattern| send(BatchRenameMessage::Proposed { dialog, pattern }),
+    )
+}
+
+/// The click on the button: the one way the names reach a model that runs on
+/// another computer.
+fn ask_hermes(ops: &mut Ops, ctx: &FlowCtx<'_>) -> Outcome {
+    let Some(dialog) = ops.batch_rename.as_mut() else {
+        return idle();
+    };
+    let (HermesAsk::Offered, Some(model)) = (dialog.ask, ctx.model.model()) else {
+        return idle();
+    };
+    dialog.ask = HermesAsk::Asked;
+    let task = propose_pattern(Arc::clone(model), dialog.folder_names.clone(), dialog.id);
+    (task, Vec::new())
 }
 
 fn focus_pattern() -> Task<OpsMessage> {
@@ -211,6 +231,7 @@ pub fn update_batch_rename(
             (release_focus(), Vec::new())
         }
         BatchRenameMessage::Confirm => confirm(ops, ctx),
+        BatchRenameMessage::AskHermes => ask_hermes(ops, ctx),
         other => match ops.batch_rename.as_mut() {
             Some(dialog) => edit(dialog, other),
             None => idle(),
@@ -264,6 +285,7 @@ fn edit(dialog: &mut BatchRename, message: BatchRenameMessage) -> Outcome {
             return idle();
         }
         BatchRenameMessage::Confirm
+        | BatchRenameMessage::AskHermes
         | BatchRenameMessage::Cancel
         | BatchRenameMessage::Applied { .. }
         | BatchRenameMessage::Undo => return idle(),

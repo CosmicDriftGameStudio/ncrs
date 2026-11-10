@@ -51,6 +51,8 @@ drag = { version = "=2.1.1", default-features = false }
 [dev-dependencies]
 # The archive fixtures and the temporary folders of the dialog tests.
 ncrs-fs = { path = "../ncrs-fs", version = "0.0.0", features = ["test-support"] }
+# The scripted model that counts what it is asked.
+ncrs-ai = { path = "../ncrs-ai", version = "0.0.0", features = ["testing"] }
 # The snapshot of the batch rename dialog.
 iced_test = "0.14"
 iced = { version = "0.14", default-features = false, features = ["tokio", "advanced", "tiny-skia"] }

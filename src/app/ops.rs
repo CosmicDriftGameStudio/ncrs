@@ -95,7 +95,7 @@ impl App {
                     .as_ref()
                     .and_then(FilingModule::query_access)
                     .map(|access| Arc::new(access) as Arc<dyn ncrs_index::SearchIndex>),
-                model: self.chat_ai_on().then(|| self.chat_model.clone()).flatten(),
+                model: self.chat_model_for_names(),
             },
             &self.panels,
         );
