@@ -27,6 +27,8 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 regex = "1.13"
 # The key comes from the OS random number generator, never from a seeded one.
 getrandom = "0.4"
+# The key bytes and the texts made from them are wiped when they are dropped.
+zeroize = "1"
 
 [dev-dependencies]
 tempfile = "3.27"
