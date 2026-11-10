@@ -327,9 +327,7 @@ impl OpenAiCompatible {
             .post(&self.endpoint.chat_url)
             .header("Content-Type", "application/json");
         let key = key_of(self.api_key.as_ref(), self.key_lookup.as_deref());
-        let outcome = read_reply(with_key(call, key.as_ref()).send(body));
-        self.remember(&outcome);
-        outcome
+        read_reply(with_key(call, key.as_ref()).send(body))
     }
 }
 
@@ -448,7 +446,9 @@ impl Provider for OpenAiCompatible {
         if !self.may_send(&request.source) {
             return Err(AiError::ConsentRequired(self.preview(request)));
         }
-        let reply = self.post(&self.request_body(request).pretty())?;
+        let outcome = self.post(&self.request_body(request).pretty());
+        self.remember(&outcome);
+        let reply = outcome?;
         self.log_usage(&reply);
         parse_reply(&message_content(&reply)?, request)
     }
@@ -1042,16 +1042,32 @@ mod tests {
 
     #[test]
     fn a_server_that_is_not_there_is_no_answer() {
-        let port = TcpListener::bind("127.0.0.1:0")
-            .unwrap()
-            .local_addr()
-            .unwrap()
-            .port();
         let ledger = Arc::new(Ledger::default());
-        let own = provider(&format!("http://127.0.0.1:{port}/v1"), &ledger);
+        let own = provider("http://127.0.0.1:1/v1", &ledger);
 
         own.extract(&request()).unwrap_err();
 
         assert_eq!(own.last_failure(), Some(ReplyFailure::NoAnswer));
+    }
+
+    #[test]
+    fn a_chat_answer_does_not_clear_the_failure_of_an_extraction() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let ledger = Arc::new(Ledger::default());
+        let own = provider(&format!("http://127.0.0.1:{port}/v1"), &ledger);
+        let refused = serve_once(
+            listener.try_clone().unwrap(),
+            http_response("400 Bad Request", "", "{}"),
+        );
+        own.extract(&request()).unwrap_err();
+        refused.join().unwrap();
+
+        let answered = serve_once(listener, http_response("200 OK", "", &chat_reply("{}")));
+        crate::chat::ChatModel::generate_rule(&own, "any", &[], &ncrs_index::Kinds::default())
+            .unwrap_err();
+        answered.join().unwrap();
+
+        assert_eq!(own.last_failure(), Some(ReplyFailure::Status(400)));
     }
 }

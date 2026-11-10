@@ -141,19 +141,21 @@ pub struct Totals {
 
 impl Totals {
     fn add(&mut self, usage: &Usage) {
-        self.requests += 1;
-        self.tokens_in += usage.tokens_in;
-        self.tokens_out += usage.tokens_out;
-        self.cached += usage.cached;
+        self.requests = self.requests.saturating_add(1);
+        self.tokens_in = self.tokens_in.saturating_add(usage.tokens_in);
+        self.tokens_out = self.tokens_out.saturating_add(usage.tokens_out);
+        self.cached = self.cached.saturating_add(usage.cached);
         if let Some(cost) = usage.cost {
-            self.priced_requests += 1;
-            self.priced_tokens += usage.tokens_in + usage.tokens_out;
+            self.priced_requests = self.priced_requests.saturating_add(1);
+            self.priced_tokens = self
+                .priced_tokens
+                .saturating_add(usage.tokens_in.saturating_add(usage.tokens_out));
             self.cost += cost;
         }
     }
 
     pub fn tokens(&self) -> u64 {
-        self.tokens_in + self.tokens_out
+        self.tokens_in.saturating_add(self.tokens_out)
     }
 
     /// The share of the tokens in that came from the cache.
@@ -256,7 +258,12 @@ pub fn summarize<'a>(
             .get_mut(&record.time.with_timezone(&Local).date_naive())
             .and_then(|tokens| tokens.get_mut(series))
         {
-            *slot += record.usage.tokens_in + record.usage.tokens_out;
+            *slot = slot.saturating_add(
+                record
+                    .usage
+                    .tokens_in
+                    .saturating_add(record.usage.tokens_out),
+            );
         }
     }
     UsageSummary {
@@ -417,6 +424,21 @@ mod tests {
         assert_eq!(summary.days.len(), 7);
         assert_eq!(summary.days[0].date, at(3, 12).date_naive());
         assert_eq!(summary.days[6].date, at(9, 12).date_naive());
+    }
+
+    #[test]
+    fn token_counts_beyond_the_range_stop_at_the_maximum() {
+        let lines = [
+            record(9, "a", u64::MAX, u64::MAX, Some(0.1)),
+            record(9, "a", u64::MAX, u64::MAX, Some(0.1)),
+        ];
+
+        let summary = summarize(lines.iter().map(String::as_str), 7, at(9, 20));
+
+        assert_eq!(summary.totals.tokens_in, u64::MAX);
+        assert_eq!(summary.totals.tokens(), u64::MAX);
+        assert_eq!(summary.totals.priced_tokens, u64::MAX);
+        assert_eq!(summary.days[6].tokens.first(), Some(&u64::MAX));
     }
 
     #[test]

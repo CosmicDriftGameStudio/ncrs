@@ -20,6 +20,27 @@ pub const MODEL_CONDITIONS: [ConditionKind; 11] = [
     ConditionKind::Kind,
 ];
 
+/// Decides for every kind whether the model writes it, without a catch-all:
+/// a new `ConditionKind` variant stops compiling the tests until someone decides,
+/// and a test keeps [`MODEL_CONDITIONS`] equal to this answer.
+#[cfg(test)]
+const fn is_written_by_model(kind: ConditionKind) -> bool {
+    match kind {
+        ConditionKind::Substring
+        | ConditionKind::Word
+        | ConditionKind::Regex
+        | ConditionKind::Sender
+        | ConditionKind::SenderAddress
+        | ConditionKind::Iban
+        | ConditionKind::TaxId
+        | ConditionKind::Recipient
+        | ConditionKind::Folder
+        | ConditionKind::Tag
+        | ConditionKind::Kind => true,
+        ConditionKind::ReadFolder => false,
+    }
+}
+
 /// A new `ConditionKind` variant stops compiling here until the prompt can
 /// explain it.
 pub fn condition_meaning(kind: ConditionKind) -> &'static str {
@@ -78,6 +99,15 @@ mod tests {
     use ncrs_intake::FILING_PLACEHOLDERS;
 
     use super::*;
+
+    #[test]
+    fn the_model_conditions_are_the_kinds_the_model_may_write() {
+        let written: Vec<ConditionKind> = ConditionKind::ALL
+            .into_iter()
+            .filter(|kind| is_written_by_model(*kind))
+            .collect();
+        assert_eq!(written, MODEL_CONDITIONS);
+    }
 
     #[test]
     fn every_placeholder_has_a_meaning() {
