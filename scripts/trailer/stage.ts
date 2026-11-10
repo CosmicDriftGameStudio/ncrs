@@ -231,9 +231,9 @@ if (only) {
     id === "ident" ? [{ type: "ident", dur: IDENT_SECONDS }] : id === "wall" ? [wallItem()] : id === "end" ? [endItem(false), creditsItem()] : [sceneItem(scenes.find((scene) => scene.id === id)!)],
   );
   const length = await capture(cut, join(work, "test.silent.mp4"));
-  finish(join(work, "test.silent.mp4"), join(out, "test-camera.mp4"), length, cut, voiceTrack(cut, join(voiceWork, "test.wav")), ["-c:v", "copy"]);
+  finish(join(work, "test.silent.mp4"), join(out, "test.mp4"), length, cut, voiceTrack(cut, join(voiceWork, "test.wav")), ["-c:v", "copy"]);
   await browser.close();
-  console.log(`test-camera.mp4 ${seconds(cut).toFixed(1)} s`);
+  console.log(`test.mp4 ${seconds(cut).toFixed(1)} s`);
   process.exit(0);
 }
 const heroLength = await capture(hero, join(work, "hero.silent.mp4"));
