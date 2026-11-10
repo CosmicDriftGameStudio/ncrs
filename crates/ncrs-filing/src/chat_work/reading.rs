@@ -107,6 +107,16 @@ fn read_error(folder: &Path, err: &io::Error) -> ReadError {
     }
 }
 
+/// A folder or entry that vanishes below the root while it is walked is
+/// skipped; only the root being gone ends the read.
+fn walk_error(folder: &Path, relative: &Path, err: &io::Error) -> Result<(), ReadError> {
+    if err.kind() == io::ErrorKind::NotFound && !relative.as_os_str().is_empty() {
+        Ok(())
+    } else {
+        Err(read_error(folder, err))
+    }
+}
+
 fn walk(
     base: &Path,
     relative: &Path,
@@ -114,9 +124,18 @@ fn walk(
     progress: &ReadProgress,
 ) -> Result<(), ReadError> {
     let folder = base.join(relative);
-    let entries = fs::read_dir(&folder).map_err(|err| read_error(&folder, &err))?;
+    let entries = match fs::read_dir(&folder) {
+        Ok(entries) => entries,
+        Err(err) => return walk_error(&folder, relative, &err),
+    };
     for entry in entries {
-        let dir_entry = entry.map_err(|err| read_error(&folder, &err))?;
+        let dir_entry = match entry {
+            Ok(dir_entry) => dir_entry,
+            Err(err) => {
+                walk_error(&folder, relative, &err)?;
+                continue;
+            }
+        };
         let name = dir_entry.file_name();
         if name.to_string_lossy().starts_with('.') {
             continue;
@@ -346,7 +365,7 @@ pub fn read_folder(
         structure,
         duplicates,
         hashes,
-        ai: ai_coverage(access, folder),
+        ai: ai_coverage(access, folder).map_err(ReadError::Io)?,
         kinds: kinds.clone(),
     };
     Ok(reading)
@@ -381,7 +400,7 @@ pub fn known_structure(access: &ChatAccess, folder: &Path) -> Result<LocationStr
     Ok(location_structure(&files, &kinds.catalog))
 }
 
-fn ai_coverage(access: &ChatAccess, folder: &Path) -> AiCoverage {
+fn ai_coverage(access: &ChatAccess, folder: &Path) -> Result<AiCoverage, String> {
     access
         .with_index(|index| {
             index
@@ -392,7 +411,6 @@ fn ai_coverage(access: &ChatAccess, folder: &Path) -> AiCoverage {
             with_text,
             understood,
         })
-        .unwrap_or_default()
 }
 
 /// One query for the documents under the folder and one for their texts; a
@@ -517,6 +535,23 @@ fn duplicates_of(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_vanished_subfolder_is_skipped_but_a_vanished_root_ends_the_read() {
+        let gone = io::Error::from(io::ErrorKind::NotFound);
+        let denied = io::Error::from(io::ErrorKind::PermissionDenied);
+        let folder = Path::new("/archive/sub");
+
+        assert_eq!(walk_error(folder, Path::new("sub"), &gone), Ok(()));
+        assert_eq!(
+            walk_error(Path::new("/archive"), Path::new(""), &gone),
+            Err(ReadError::Gone)
+        );
+        assert!(matches!(
+            walk_error(folder, Path::new("sub"), &denied),
+            Err(ReadError::Io(_))
+        ));
+    }
 
     #[test]
     fn in_threads_keeps_the_order_for_any_thread_count() {

@@ -90,12 +90,15 @@ pub struct ExecutionReport {
     pub items: Vec<ItemReport>,
 }
 
+impl ItemReport {
+    pub fn was_moved(&self) -> bool {
+        self.outcome == ItemOutcome::Moved
+    }
+}
+
 impl ExecutionReport {
     pub fn moved(&self) -> usize {
-        self.items
-            .iter()
-            .filter(|item| item.outcome == ItemOutcome::Moved)
-            .count()
+        self.items.iter().filter(|item| item.was_moved()).count()
     }
 
     pub fn skipped(&self) -> usize {

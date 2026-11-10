@@ -225,8 +225,10 @@ impl NeighbourIndex {
         let features = features_of(text, &self.own_ibans, &self.own_tax_ids);
         let same_sender =
             |neighbour: &&Neighbour| fields.sender.is_some() && neighbour.sender == fields.sender;
-        let same_kind =
-            |neighbour: &&Neighbour| fields.kind.is_some() && neighbour.kind == fields.kind;
+        let wanted_kind = fields.kind.as_deref().map(str::to_lowercase);
+        let same_kind = |neighbour: &&Neighbour| {
+            wanted_kind.is_some() && neighbour.kind.as_deref().map(str::to_lowercase) == wanted_kind
+        };
 
         let numbered = features
             .numbers

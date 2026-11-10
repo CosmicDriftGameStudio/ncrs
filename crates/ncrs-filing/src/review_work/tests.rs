@@ -478,6 +478,23 @@ fn a_sure_placement_is_accepted_into_the_folder_of_its_neighbours() {
 }
 
 #[test]
+fn accepting_into_a_folder_keeps_braces_of_the_file_name() {
+    let setup = Setup::new();
+    let id = setup.in_review("Notiz {sender}.pdf");
+    setup.with_index(|index| {
+        index
+            .set_document_fields(id, &Setup::fields("Telekom"), |_| FieldOrigin::Unknown)
+            .unwrap();
+    });
+    let item = first(&setup.access());
+
+    let summary = setup.access().accept_into(&[item], Path::new("Inbox"));
+
+    assert_eq!(summary.filed, 1, "{:?}", summary.first_failure);
+    assert!(setup.archive.join("Inbox/Notiz {sender}.pdf").exists());
+}
+
+#[test]
 fn a_split_placement_proposes_nothing_and_accept_leaves_the_file_in_review() {
     let setup = Setup::new();
     setup.neighbours_in("Insurance/2024", "Company A");

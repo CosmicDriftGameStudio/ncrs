@@ -254,6 +254,21 @@ fn the_same_sender_and_kind_need_three_documents() {
 }
 
 #[test]
+fn the_kind_of_a_neighbour_counts_in_any_case() {
+    let documents = filed(
+        "Invoices",
+        1..4,
+        &fields(Some("Firma"), Some("Invoice")),
+        None,
+    );
+    let typed = fields(Some("Firma"), Some("invoice"));
+
+    let placement = place(&documents, &ordered(), &typed, None).unwrap();
+
+    assert_eq!(placement.signal, Signal::SameSenderAndKind);
+}
+
+#[test]
 fn the_same_sender_counts_without_a_kind() {
     let documents = filed("Firma", 1..4, &fields(Some("Firma"), None), None);
 

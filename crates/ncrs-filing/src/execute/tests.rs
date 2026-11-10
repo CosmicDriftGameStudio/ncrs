@@ -691,6 +691,50 @@ mod trash_runs {
     }
 
     #[test]
+    fn a_run_reads_the_trash_list_once_however_many_files_it_trashes() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct ListCounting<'a> {
+            inner: &'a JournaledTrash<FolderBackend>,
+            lists: AtomicUsize,
+        }
+        impl ncrs_fs::Trash for ListCounting<'_> {
+            fn trash(&self, path: &Path) -> Result<(), String> {
+                self.inner.trash(path)
+            }
+            fn reach(&self) -> ncrs_fs::TrashReach {
+                self.inner.reach()
+            }
+            fn list(&self) -> Result<Vec<ncrs_fs::TrashedItem>, String> {
+                self.lists.fetch_add(1, Ordering::SeqCst);
+                self.inner.list()
+            }
+            fn restore(&self, item: &ncrs_fs::TrashedItem) -> Result<(), ncrs_fs::RestoreError> {
+                self.inner.restore(item)
+            }
+        }
+
+        let setup = Setup::new();
+        let bin = bin(&setup);
+        let counting = ListCounting {
+            inner: &bin.trash,
+            lists: AtomicUsize::new(0),
+        };
+        let items: Vec<TrashItem> = ["a", "b", "c"]
+            .iter()
+            .map(|name| duplicate(&setup, &format!("{name}.pdf"), name).0)
+            .collect();
+
+        trash_run(&setup.index, "Cleared", &setup.root, &items, &counting).unwrap();
+
+        assert_eq!(counting.lists.load(Ordering::SeqCst), 1);
+        let journaled = setup.index.journal_items(last_batch(&setup)).unwrap();
+        assert!(journaled
+            .iter()
+            .all(|item| item.to.starts_with(&bin.folder)));
+    }
+
+    #[test]
     fn a_changed_file_a_missing_keeper_or_a_path_outside_the_root_is_skipped() {
         let setup = Setup::new();
         let bin = bin(&setup);
