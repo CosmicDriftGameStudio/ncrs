@@ -692,8 +692,7 @@ impl App {
             Action::OpenSelected => self.update(Message::Panel(PanelMessage::OpenSelected)),
             Action::OpenFile => self.open_like_the_finder(),
             Action::OpenBundle(path) => {
-                self.open_with_system(&path);
-                Task::none()
+                self.with_ops(|ops, _| ncrs_ops::open_open_file_dialog(ops, path))
             }
             Action::ShowPanels => {
                 self.shown_tab = ShownTab::Panels;

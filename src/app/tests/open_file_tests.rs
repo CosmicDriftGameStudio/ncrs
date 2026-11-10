@@ -187,15 +187,12 @@ fn a_refusal_of_the_system_is_shown_in_the_status_bar() {
 
 #[cfg(target_os = "macos")]
 #[test]
-fn an_app_bundle_starts_without_a_question_on_macos() {
+fn an_app_bundle_asks_first_on_macos() {
     let (mut app, launcher) = app_on("Tool.app", None);
     app.panels.left.entries[0].is_dir = true;
 
     press(&mut app, Named::Enter);
 
-    assert_eq!(
-        started(&launcher),
-        vec![fs::system_open_command(file_at("Tool.app"))]
-    );
-    assert!(app.ops.open_file_dialog.is_none());
+    assert_eq!(app.ops.open_file_dialog, Some(file_at("Tool.app")));
+    assert!(started(&launcher).is_empty());
 }

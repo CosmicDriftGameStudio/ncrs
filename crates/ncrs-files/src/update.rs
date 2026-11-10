@@ -440,7 +440,7 @@ fn step_history(panels: &mut Panels, ctx: &Ctx<'_>, direction: HistoryDirection)
     ]
 }
 
-/// Enter: up, into a folder or an archive file, starts an app bundle on macOS
+/// Enter: up, into a folder or an archive file, asks before it starts an app bundle on macOS
 /// and opens a file like the Finder does. An archive inside an archive is
 /// refused before this runs.
 fn open_selected(panels: &Panels) -> Option<Action> {
