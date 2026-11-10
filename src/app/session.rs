@@ -134,3 +134,23 @@ impl App {
         Some((self.state_path.clone()?, self.session_scheduled.clone()))
     }
 }
+
+/// The messages that arrive many times a second and never touch what the
+/// session remembers: building the whole snapshot for each would be waste.
+pub(in crate::app) fn cannot_change_session_state(message: &Message) -> bool {
+    match message {
+        Message::JobProgress(_)
+        | Message::ModifiersChanged(_)
+        | Message::Monitor(ncrs_monitor::MonitorMessage::Tick)
+        | Message::FilingStatus(FilingStatusMessage::Tick)
+        | Message::HermesChat(HermesChatMessage::WorkTick) => true,
+        Message::Panel(panel) => matches!(
+            panel,
+            PanelMessage::PanelDragMoved(_)
+                | PanelMessage::PanelEntered(_)
+                | PanelMessage::PanelExited(_)
+                | PanelMessage::PanelScrolled { .. }
+        ),
+        _ => false,
+    }
+}

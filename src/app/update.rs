@@ -211,12 +211,17 @@ impl App {
             };
         }
         let had_search_keys = self.search_has_keys();
+        let session_unchanged = cannot_change_session_state(&message);
         let applied = self.apply_unless_refused(message);
         let task = Task::batch([
             applied,
             self.with_hermes(Vec::new(), ncrs_hermes_ui::request_hermes_column)
                 .map(Message::from),
-            self.schedule_session_save(),
+            if session_unchanged {
+                Task::none()
+            } else {
+                self.schedule_session_save()
+            },
         ]);
         // A dialog that opens while a line is being typed gets the keys, not the field.
         if self.command_line.is_focused() && self.command_line_is_blocked() {
