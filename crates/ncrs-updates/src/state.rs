@@ -126,9 +126,15 @@ pub fn update(
             state.save(ctx.state_file);
             state.checking = true;
             let fetch = ctx.fetch;
-            let task = Task::perform(tokio::task::spawn_blocking(fetch), |joined| {
-                Message::Checked(joined.unwrap_or_else(|join| Err(join.to_string())))
-            });
+            let running = state
+                .running
+                .as_ref()
+                .map(ToString::to_string)
+                .unwrap_or_default();
+            let task = Task::perform(
+                tokio::task::spawn_blocking(move || fetch(&running)),
+                |joined| Message::Checked(joined.unwrap_or_else(|join| Err(join.to_string()))),
+            );
             (task, None)
         }
         Message::Checked(result) => {
@@ -182,7 +188,7 @@ mod tests {
         }
     }
 
-    fn never_fetch() -> Result<LatestRelease, String> {
+    fn never_fetch(_app_version: &str) -> Result<LatestRelease, String> {
         Err("no network in tests".to_owned())
     }
 

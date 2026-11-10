@@ -26,7 +26,7 @@ fn app_with_files() -> App {
     app
 }
 
-/// NC's rule: nothing tagged means the row under the cursor. F5 on one file
+/// The classic rule: nothing tagged means the row under the cursor. F5 on one file
 /// has to work or the key does nothing.
 #[tokio::test]
 async fn an_untagged_panel_transfers_the_cursor_row() {

@@ -12,10 +12,10 @@ F7=MkDir, F8=Delete, F9=Menu, F10=Quit, Alt+F1..F10 = Panels/Ziele, Tab = Switch
 
 An der arbeiten wir uns ab. Zwei Konsequenzen daraus:
 
-- **Vergangenheit wohnt in der Konfiguration.** NC hat sich als „installierbares Produkt"
+- **Vergangenheit wohnt in der Konfiguration.** Ein klassischer Dateimanager hat sich als „installierbares Produkt"
   verkauft; die Belegung lag in `FMPROG.DAT`. „Pluginable" und „configurable keymap" sind
   damit **ein** Feature, nicht zwei — siehe 3.1.
-- **Der Umfang ist eine Größenordnung größer als meine erste Schätzung.** NC 5.0 waren
+- **Der Umfang ist eine Größenordnung größer als meine erste Schätzung.** Ein klassischer Dateimanager hatte
   etwa 25 Tastenbelegungen, davon ~10 Operationen. Siehe Abschnitt 4.
 
 ## 2. Was die Faktenlage trägt (verifiziert, nicht geschätzt)
@@ -201,7 +201,7 @@ Die laufende Liste mit dem Stand steht am Dokumentende. Hier der Kurzstand:
 
 ## 7. Nicht im Plan, mit Begründung
 
-- **Terminal-UI statt iced**: wäre näher an NC, aber du hast ein natives Fenster gewählt
+- **Terminal-UI statt iced**: wäre näher an klassischen Dateimanagern, aber du hast ein natives Fenster gewählt
   und `iced` ist die einzige getestete Basis. Wechsel nicht.
 - **Rust-Komponenten-Crests** (`filesystem`, `dunce`): lösbar, aber Netzwerk ist
   Phase 3 und du brauchst es jetzt nicht.
@@ -359,7 +359,7 @@ unterscheidet sich, also gelten macOS-Referenzen nicht für Windows. Gelöst üb
   Software-Build.
 
 - [x] **T6c – Mehrfachauswahl (Voraussetzung für F5/F6)**
-  F5 „Copy" ohne Auswahl wäre nutzlos oder gefährlich. Drei Zustände wie in NC: Cursor,
+  F5 „Copy" ohne Auswahl wäre nutzlos oder gefährlich. Drei Zustände wie in klassischen Dateimanagern: Cursor,
   getaggt, beides. Die Regel: **sind etwas getaggt, gilt die Operation für die Tags; sonst
   für die Cursor-Zeile.** Ohne die Vorrang-Regel wäre F5 ein Würfelwurf.
   - `src/selection.rs`: `SelectionSet` (Index-Menge, überlebt kein Listing ohne Prüfung)
@@ -387,7 +387,7 @@ unterscheidet sich, also gelten macOS-Referenzen nicht für Windows. Gelöst üb
   und Shell-Befehle, Verlauf pro Sitzung; die Statusbar bleibt). Punkt 5 (Favoriten und Verlauf pro Panel) kam mit 0.7.0 (#123).
 
   **1. Command-Line unten (ersetzt die Statusbar)**
-  In NC ist die untere Leiste die *Kommandozeile*, nicht eine Statusanzeige: man tippt
+  In klassischen Dateimanagern ist die untere Leiste die *Kommandozeile*, nicht eine Statusanzeige: man tippt
   Befehle und Pfade. Das ersetzt `statusbar::view`, erweitert es nicht.
 
   *Der Konflikt, der vorher gelöst werden muss:* heute bekommt `keymap::map_key` jede
@@ -395,7 +395,7 @@ unterscheidet sich, also gelten macOS-Referenzen nicht für Windows. Gelöst üb
   Message.
   **Die Lösung steht schon im Code:** `route_key` entscheidet heute, ob eine Taste zum
   offenen Prompt gehört. Die Leiste ist derselbe Mechanismus — Esc nimmt den Fokus,
-  zweites Esc löst aus (NC-Verhalten). Keine neue Mechanik, dieselbe für ein anderes
+  zweites Esc löst aus (klassisches Verhalten). Keine neue Mechanik, dieselbe für ein anderes
   Ziel. Das `When`-Feld der Command-Registry bekommt damit seinen ersten echten Nutzer.
 
   **2. Task-Queue (Kopieren blockiert nicht)**
@@ -405,7 +405,7 @@ unterscheidet sich, also gelten macOS-Referenzen nicht für Windows. Gelöst üb
   Punkte hängen zusammen.
 
   **3. Überschreiben/Ersetzen immer als „für alle"**
-  NC fragt bei Namenskollision und bietet *Alle überschreiben / Alle behalten /
+  Klassische Dateimanager fragen bei Namenskollision und bietet *Alle überschreiben / Alle behalten /
   Überschreiben / Behalten / Abbrechen*. Die Entscheidung ist ein `Command` im Dialog, keine
   Bedingung im Code — sonst braucht jede Operation ihre eigene Kopie des Dialogs. Gehört in
   die Command-Schicht, nicht in `fs`.
@@ -413,7 +413,7 @@ unterscheidet sich, also gelten macOS-Referenzen nicht für Windows. Gelöst üb
   **4. Spaltensortierung**
   `fs::entry::listing_order` ist heute fest auf Name. Sortierbare Spalten heißt
   `SortKey { Name, Size, Modified, Extension }` plus Richtung, und `listing_order` wird ein
-  Funktor über `(SortKey, bool)`. NC-Sonderregeln: Verzeichnisse immer zuerst
+  Funktor über `(SortKey, bool)`. Klassische Sonderregeln: Verzeichnisse immer zuerst
   (unabhängig vom Schlüssel), `..` immer oben.
   *Besteht auf P3:* `to_lowercase()` pro Vergleich ist O(n log n) Allokationen —
   `sort_by_cached_key` kommt mit.
@@ -421,7 +421,7 @@ unterscheidet sich, also gelten macOS-Referenzen nicht für Windows. Gelöst üb
   **5. Favoriten / Historie — zwei verschiedene Dinge, hier getrennt**
   - *Favoriten* (Total Commander: Leiste zwischen Header und Liste) — feste, benannte
     Sprungziele. Kleine Liste, gehört in die Config.
-  - *Historie* (NC: Verzeichnis-Rückwärts) — pro Panel; ein Zurück-Schritt geht einen
+  - *Historie* (klassisch: Verzeichnis-Rückwärts) — pro Panel; ein Zurück-Schritt geht einen
     Eintrag zurück statt eine Ebene nach oben.
   Beide brauchen einen Stack, aber unterschiedliche. **Empfehlung:** Historie zuerst, weil
   sie ohne Konfiguration auskommt. Favoriten als reine Config-Liste darüber.
@@ -443,7 +443,7 @@ unterscheidet sich, also gelten macOS-Referenzen nicht für Windows. Gelöst üb
 - [x] **T11 – Keymap aus Config** – `Msg` bleibt, Tasten kommen aus der Datei
   Ergebnis: `[keys]` Aktion → Taste(n), `primary` = Cmd/Ctrl, nicht genannte Aktionen behalten ihre Defaults; Konflikte (auch mit verdrängten Defaults), unbekannte Aktionen/Tasten, Escape und nackte Buchstaben/Ziffern sind Config-Fehler mit Zeile. Leiste, Kontextmenü und Statustexte zeigen die wirksame Belegung.
 - [x] **T12 – Theming aus Config** – `theme.rs` liest Colors aus TOML
-  Ergebnis: `[theme]` mit `preset = "default"` oder `"classic"` (NC-Blau) und 17 semantischen Rollen (`panel`, `text`, `cursor`, `tagged`, `directory`, `status_bar`, `dialog`, `error`, …) als `"#rrggbb"`/`"#rgb"`; ohne Eintrag pixelgleich zu vorher. Unbekannte Rollen und Presets und ungültige Farben sind Config-Fehler mit Zeile; Text unter 3:1 Kontrast lädt trotzdem und nennt Paar und Zeile in der Statuszeile.
+  Ergebnis: `[theme]` mit `preset = "default"` oder `"classic"` (Classic-Blau) und 17 semantischen Rollen (`panel`, `text`, `cursor`, `tagged`, `directory`, `status_bar`, `dialog`, `error`, …) als `"#rrggbb"`/`"#rgb"`; ohne Eintrag pixelgleich zu vorher. Unbekannte Rollen und Presets und ungültige Farben sind Config-Fehler mit Zeile; Text unter 3:1 Kontrast lädt trotzdem und nennt Paar und Zeile in der Statuszeile.
 - [x] **T13 – Sprachauswahl persistent** – `lang = "de"` in der Config, statt F9
   Ergebnis: `lang = "en"|"de"` auf oberster Ebene setzt die Startsprache; fehlt der Schlüssel, bleibt es Englisch. F9 schaltet nur die laufende Sitzung um, die Config wird nie zurückgeschrieben (bewusst read-only). Ein anderer Wert ist ein Config-Fehler mit Zeile, der die erlaubten Werte nennt.
 - [x] **T14 – Suche über Dateien und Inhalte (VS-Code-Stil)**, Tracking #36: T14a Suchmaschine (#33, erledigt), T14b Suchansicht (#34, erledigt), T14c Quick Open (#35, erledigt)

@@ -8,7 +8,7 @@
 //! - a row can be both: tagged *and* under the cursor
 //!
 //! Without this, "Copy" would either do nothing or copy something the user did
-//! not mark. The rule is the one from NC: if anything is tagged, the operation
+//! not mark. The rule is the classic dual-panel one: if anything is tagged, the operation
 //! applies to the tagged rows; otherwise to the single row under the cursor.
 //!
 //! Tags are **paths, not indices**. An index is a position in a list that a
@@ -90,7 +90,7 @@ impl SelectionSet {
         self.tagged.contains(path)
     }
 
-    /// Drops every tag. `Ctrl+*` in NC.
+    /// Drops every tag. `Ctrl+*` in classic dual-panel file managers.
     pub fn clear(&mut self) {
         self.tagged.clear();
     }

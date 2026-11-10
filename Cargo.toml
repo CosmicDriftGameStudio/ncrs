@@ -28,7 +28,7 @@ license = "MIT"
 [lints]
 workspace = true
 
-[target.'cfg(windows)'.build-dependencies]
+[build-dependencies]
 # build.rs embeds the icon and the version info into ncrs.exe with the Windows
 # resource compiler (MIT).
 embed-resource = "3"

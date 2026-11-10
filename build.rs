@@ -45,8 +45,29 @@ fn git(args: &[&str]) -> Option<String> {
         .then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
 }
 
+/// A source tarball or vendored copy inside some other repository must not
+/// show that repository's commit.
+fn manifest_dir_is_git_root() -> bool {
+    let Some(manifest_path) = env::var_os("CARGO_MANIFEST_DIR") else {
+        return false;
+    };
+    let Some(top_level_path) = git(&["rev-parse", "--show-toplevel"]) else {
+        return false;
+    };
+    match (
+        std::fs::canonicalize(manifest_path),
+        std::fs::canonicalize(top_level_path),
+    ) {
+        (Ok(manifest_dir), Ok(top_level)) => manifest_dir == top_level,
+        _ => false,
+    }
+}
+
 fn display_version() -> String {
     let version = env::var("CARGO_PKG_VERSION").unwrap_or_default();
+    if !manifest_dir_is_git_root() {
+        return version;
+    }
     // The HEAD reflog changes with every commit and checkout, the tag refs
     // when a built commit is tagged, so the version follows both without
     // rebuilding on every file change. A path that does not exist would make
@@ -69,12 +90,8 @@ fn display_version() -> String {
     }
 }
 
-#[cfg(not(windows))]
-fn embed_windows_resources() {}
-
 // A build script reports a failure by panicking.
 #[allow(clippy::expect_used)]
-#[cfg(windows)]
 fn embed_windows_resources() {
     use std::fmt::Write as _;
     use std::path::PathBuf;

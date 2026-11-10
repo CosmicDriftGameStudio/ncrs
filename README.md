@@ -25,7 +25,7 @@ behind the order.
 
 | System | Command |
 | --- | --- |
-| macOS | `brew install --cask ncrs`, after adding the tap below |
+| macOS | `brew install --cask cosmicdriftgamestudio/ncrs/ncrs`, after adding the tap below |
 | Debian, Ubuntu | `sudo apt install ncrs`, after adding the repository below |
 | Fedora | `sudo dnf install ncrs`, after adding the repository below |
 | openSUSE | `sudo zypper install ncrs`, after adding the repository below |
@@ -36,7 +36,7 @@ to trust:
 ```bash
 brew tap CosmicDriftGameStudio/ncrs
 brew trust --cask cosmicdriftgamestudio/ncrs/ncrs
-brew install --cask ncrs
+brew install --cask cosmicdriftgamestudio/ncrs/ncrs
 ```
 
 On Debian and Ubuntu, add the key and the repository once:

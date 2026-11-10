@@ -3,7 +3,13 @@
 use crate::release::LatestRelease;
 
 /// The look-up as a plain function, so `update` is tested without a network.
-pub type FetchFn = fn() -> Result<LatestRelease, String>;
+/// The argument is the running app's version, sent in the User-Agent.
+pub type FetchFn = fn(&str) -> Result<LatestRelease, String>;
+
+#[cfg(not(feature = "sandbox"))]
+fn user_agent(app_version: &str) -> String {
+    format!("ncrs/{app_version}")
+}
 
 #[cfg(not(feature = "sandbox"))]
 pub const LATEST_RELEASE_URL: &str =
@@ -14,11 +20,11 @@ const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 const MAX_ANSWER_BYTES: u64 = 256 * 1024;
 
 #[cfg(not(feature = "sandbox"))]
-pub fn latest_release() -> Result<LatestRelease, String> {
+pub fn latest_release(app_version: &str) -> Result<LatestRelease, String> {
     let config = ureq::Agent::config_builder()
         .https_only(true)
         .timeout_global(Some(TIMEOUT))
-        .user_agent(concat!("ncrs/", env!("CARGO_PKG_VERSION")))
+        .user_agent(user_agent(app_version))
         .max_redirects(0)
         .build();
     let agent = ureq::Agent::new_with_config(config);
@@ -37,6 +43,18 @@ pub fn latest_release() -> Result<LatestRelease, String> {
 }
 
 #[cfg(feature = "sandbox")]
-pub fn latest_release() -> Result<LatestRelease, String> {
+pub fn latest_release(_app_version: &str) -> Result<LatestRelease, String> {
     Err("the update check is not part of the sandboxed build".to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(not(feature = "sandbox"))]
+    use super::user_agent;
+
+    #[cfg(not(feature = "sandbox"))]
+    #[test]
+    fn user_agent_names_the_given_app_version() {
+        assert_eq!(user_agent("1.4.0"), "ncrs/1.4.0");
+    }
 }

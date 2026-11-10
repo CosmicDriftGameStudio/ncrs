@@ -55,7 +55,7 @@ pub fn view<'a>(state: &'a PanelState, ctx: ViewCtx<'a>) -> Element<'a, PanelMes
             let mark = state
                 .selection
                 .state_of(index, &state.entries, state.selected);
-            // Two targets per row, as in NC: the star itself toggles the tag,
+            // Two targets per row, as in classic dual-panel file managers: the star itself toggles the tag,
             // the rest of the row moves the cursor. iced gives a button one
             // message and no click position, so the star has to be its own
             // button rather than a region of the row button.

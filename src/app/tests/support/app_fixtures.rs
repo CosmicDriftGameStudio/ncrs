@@ -99,7 +99,7 @@ impl App {
             favourites_bar_on: true,
             favourites_bar_applied: 0.0,
             favourite_menu: None,
-            fetch_latest_release: || Err("no network in tests".to_owned()),
+            fetch_latest_release: |_| Err("no network in tests".to_owned()),
             download_ocr_models: |_, _| Err(DownloadError::NoDataFolder),
             download_ai_model: |_| Err(AiDownloadError::NoDataFolder),
             grant_dialog: false,
