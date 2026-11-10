@@ -146,7 +146,7 @@ fn position_of(entries: &[FileEntry], name: &str) -> usize {
 
 /// Two realistic panels. The cursor is on `README.md`, `Cargo.toml` and
 /// `CHANGELOG.md` are tagged.
-fn showcase_app() -> App {
+pub fn showcase_app() -> App {
     let mut app = App::with_fixed_panels().with_version_for_test(env!("CARGO_PKG_VERSION"));
     app.set_visible_rows_for_test(VISIBLE_ROWS);
     app = app.with_favourites_for_test(FAVOURITES);
@@ -247,7 +247,7 @@ fn compared_showcase() -> ncrs_compare::Compared {
     }
 }
 
-fn compare_app() -> App {
+pub fn compare_app() -> App {
     let mut app = showcase_app();
     let backup = app.panel_mut_for_test(PanelSide::Right);
     backup.path = PathBuf::from(BACKUP_DIRECTORY);
@@ -306,7 +306,7 @@ fn own_server_app() -> App {
     app
 }
 
-fn showcase_search_results() -> Vec<(FileEntry, Vec<LineMatch>)> {
+pub fn showcase_search_results() -> Vec<(FileEntry, Vec<LineMatch>)> {
     let root = PathBuf::from(PROJECT_DIRECTORY);
     let hit = |number: u64, text: &str, from: usize, to: usize| LineMatch {
         number,
@@ -359,8 +359,17 @@ fn write_screenshot(app: &App, file_name: &str) {
 }
 
 pub fn write_screenshot_to(app: &App, directory: &str, size: iced::Size, file_name: &str) {
+    write_view_to(app.view(), directory, size, file_name);
+}
+
+pub fn write_view_to(
+    view: iced::Element<'_, Message>,
+    directory: &str,
+    size: iced::Size,
+    file_name: &str,
+) {
     let scratch = tempfile::tempdir().expect("scratch directory");
-    let mut simulator = Simulator::with_size(iced::Settings::default(), size, app.view());
+    let mut simulator = Simulator::with_size(iced::Settings::default(), size, view);
     simulator
         .snapshot(&iced::Theme::Dark)
         .expect("the view should render")
