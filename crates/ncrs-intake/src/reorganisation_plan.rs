@@ -24,6 +24,15 @@ pub fn location_structure(files: &[PlanFile], kinds: &KindCatalog) -> LocationSt
     learn_structure(&documents, kinds)
 }
 
+/// Where releases 1.1.x moved the copies of a duplicate to, at the root of a
+/// location. What lies there is not part of the archive: it is neither laid
+/// out by a structure nor planned again.
+const LEGACY_DUPLICATES_FOLDER: &str = "duplicates";
+
+fn is_in_legacy_duplicates_folder(relative: &Path) -> bool {
+    relative.starts_with(LEGACY_DUPLICATES_FOLDER) && relative.components().count() > 1
+}
+
 /// Every document below `root` with its fields and text, and each of its
 /// known copies as a file of its own.
 pub fn location_documents(index: &Index, root: &Path) -> Result<Vec<PlanFile>, IntakeError> {
@@ -40,13 +49,17 @@ pub fn location_documents(index: &Index, root: &Path) -> Result<Vec<PlanFile>, I
             text: text.clone(),
             recorded_at,
         };
-        files.push(shared(
-            relative.to_path_buf(),
-            document.received_at.timestamp(),
-        ));
+        if !is_in_legacy_duplicates_folder(relative) {
+            files.push(shared(
+                relative.to_path_buf(),
+                document.received_at.timestamp(),
+            ));
+        }
         for (copy, seen_at) in index.duplicate_copies(id)? {
             if let Ok(relative_copy) = copy.strip_prefix(root) {
-                files.push(shared(relative_copy.to_path_buf(), seen_at.timestamp()));
+                if !is_in_legacy_duplicates_folder(relative_copy) {
+                    files.push(shared(relative_copy.to_path_buf(), seen_at.timestamp()));
+                }
             }
         }
     }
@@ -617,6 +630,39 @@ mod tests {
         for item in plan.values() {
             assert!(!only_findings(item).contains(&FindingKind::Duplicate));
         }
+    }
+
+    #[test]
+    fn files_a_release_1_1_plan_moved_to_the_duplicates_folder_are_left_out() {
+        let mut archive = insurance_archive();
+        let first = archive.add(
+            "Insurance/2024/2024-04-01_invoice.pdf",
+            day(2024, 4, 1),
+            "Company A policy letter",
+        );
+        archive.add_copy(
+            first,
+            "duplicates/Insurance/2024/2024-04-01_invoice.pdf",
+            "Insurance/2024/2024-04-01_invoice.pdf",
+        );
+        archive.add(
+            "duplicates/Downloads/old.pdf",
+            day(2024, 4, 2),
+            "Company A policy letter",
+        );
+
+        let files = location_documents(&archive.index, &archive.root).unwrap();
+
+        let paths: Vec<_> = files
+            .iter()
+            .map(|file| file.relative_path.clone())
+            .collect();
+        assert!(paths.contains(&PathBuf::from("Insurance/2024/2024-04-01_invoice.pdf")));
+        assert!(!paths.iter().any(|path| path.starts_with("duplicates")));
+        assert!(!archive
+            .plan()
+            .keys()
+            .any(|key| key.starts_with("duplicates")));
     }
 
     #[test]
