@@ -42,6 +42,7 @@ pub fn take_in(
     take_in_counted(index, location, path, tracker, now).map(|taken| taken.outcome)
 }
 
+#[derive(Debug)]
 pub struct Taken {
     pub outcome: Outcome,
     pub hashed: bool,
@@ -54,9 +55,52 @@ pub fn take_in_counted(
     tracker: &mut StabilityTracker,
     now: SystemTime,
 ) -> Result<Taken, IntakeError> {
-    let without_hash = |outcome| Taken {
-        outcome,
-        hashed: false,
+    match prepare_take_in(index, location, path, tracker, now)? {
+        Prepared::Done(taken) => Ok(taken),
+        Prepared::Hash(pending) => match pending.hash(path)? {
+            Some(hash) => finish_take_in(index, location, path, pending, hash, now),
+            None => Ok(Taken {
+                outcome: Outcome::NotStableYet,
+                hashed: false,
+            }),
+        },
+    }
+}
+
+/// A file that passed everything up to its hash. Hashing reads the whole file
+/// and needs no index, so a caller that shares the index can let go of it
+/// between [`prepare_take_in`] and [`finish_take_in`].
+#[derive(Debug, Clone, Copy)]
+pub struct PendingHash {
+    stamp: FileStamp,
+}
+
+impl PendingHash {
+    /// `None` when the file changed since it was stamped.
+    pub fn hash(&self, path: &Path) -> Result<Option<ContentHash>, IntakeError> {
+        hash_file(path, self.stamp)
+    }
+}
+
+#[derive(Debug)]
+pub enum Prepared {
+    Done(Taken),
+    Hash(PendingHash),
+}
+
+/// The part of taking a file in that comes before its hash.
+pub fn prepare_take_in(
+    index: &Index,
+    location: &Location,
+    path: &Path,
+    tracker: &mut StabilityTracker,
+    now: SystemTime,
+) -> Result<Prepared, IntakeError> {
+    let without_hash = |outcome| {
+        Prepared::Done(Taken {
+            outcome,
+            hashed: false,
+        })
     };
     if let Err(skip) = classify(location, path) {
         return Ok(without_hash(Outcome::Skipped(skip)));
@@ -90,9 +134,19 @@ pub fn take_in_counted(
     if !tracker.observe(path, stamp.size, stamp.mtime, now) {
         return Ok(without_hash(Outcome::NotStableYet));
     }
-    let Some(hash) = hash_file(path, stamp)? else {
-        return Ok(without_hash(Outcome::NotStableYet));
-    };
+    Ok(Prepared::Hash(PendingHash { stamp }))
+}
+
+/// The part of taking a file in that comes after its hash.
+pub fn finish_take_in(
+    index: &mut Index,
+    location: &Location,
+    path: &Path,
+    pending: PendingHash,
+    hash: ContentHash,
+    now: SystemTime,
+) -> Result<Taken, IntakeError> {
+    let stamp = pending.stamp;
     let outcome = file_with_hash(index, location, path, stamp, hash, now)?;
     Ok(Taken {
         outcome,
