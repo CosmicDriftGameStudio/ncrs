@@ -47,6 +47,7 @@ fn a_cd_inside_a_longer_shell_line_goes_to_the_shell() {
         "cd a > out",
         "cd `pwd`",
         "cd $(pwd)",
+        "cd \"a\" && make \"b\"",
     ] {
         assert_eq!(parse(line), Submission::Shell(line), "{line:?}");
     }

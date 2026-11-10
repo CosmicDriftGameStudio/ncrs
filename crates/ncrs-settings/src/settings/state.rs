@@ -99,6 +99,8 @@ pub struct SettingsState {
     pub loaded: Option<LoadedFacts>,
     /// The app was asked to read it, so it does not ask again.
     pub facts_requested: bool,
+    /// A read of the facts is under way; the tick does not start another one.
+    pub facts_in_flight: bool,
     /// The list of the Columns page that is edited while each panel has its own.
     pub columns_side: PanelSide,
     /// The monospace families found when the tab opened, for the font list.
@@ -164,6 +166,7 @@ impl SettingsState {
             folder_note: None,
             loaded: None,
             facts_requested: false,
+            facts_in_flight: false,
             columns_side: PanelSide::Left,
             installed_fonts: Vec::new(),
             system_font: None,

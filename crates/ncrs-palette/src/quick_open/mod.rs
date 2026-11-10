@@ -72,11 +72,29 @@ pub enum DocumentsState {
 }
 
 /// What the app needs to start the full-text search for the typed text.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct DocumentRequest {
     pub walk_generation: u64,
     pub generation: u64,
     pub words: String,
+    pub newest_generation: Arc<AtomicU64>,
+}
+
+impl PartialEq for DocumentRequest {
+    fn eq(&self, other: &Self) -> bool {
+        (self.walk_generation, self.generation, &self.words)
+            == (other.walk_generation, other.generation, &other.words)
+    }
+}
+
+impl Eq for DocumentRequest {}
+
+impl DocumentRequest {
+    /// False once a newer search was asked for: its answer would be dropped,
+    /// so the lookup, which holds the index, is not worth running.
+    pub fn is_current(&self) -> bool {
+        self.newest_generation.load(atomic::Ordering::Relaxed) == self.generation
+    }
 }
 
 #[derive(Debug)]
@@ -105,6 +123,8 @@ pub struct QuickOpen {
     documents: Vec<FoundDocument>,
     /// Counts the full-text searches; an answer of an older one is dropped.
     documents_generation: u64,
+    /// `documents_generation` shared with the lookups on worker threads.
+    newest_documents_generation: Arc<AtomicU64>,
     documents_state: DocumentsState,
     /// Off without Hermes or an index: then there is no documents section.
     documents_enabled: bool,
@@ -302,6 +322,7 @@ impl QuickOpen {
             pending_rescore: None,
             documents: Vec::new(),
             documents_generation: 0,
+            newest_documents_generation: Arc::new(AtomicU64::new(0)),
             documents_state: DocumentsState::Idle,
             documents_enabled: false,
         }
@@ -333,6 +354,8 @@ impl QuickOpen {
     /// documents of an earlier text are dropped then.
     pub fn request_documents(&mut self) -> Option<DocumentRequest> {
         self.documents_generation = self.documents_generation.wrapping_add(1);
+        self.newest_documents_generation
+            .store(self.documents_generation, atomic::Ordering::Relaxed);
         self.documents.clear();
         self.clamp_cursor();
         let words = self.query.trim();
@@ -345,6 +368,7 @@ impl QuickOpen {
             walk_generation: self.walk_generation,
             generation: self.documents_generation,
             words: words.to_owned(),
+            newest_generation: Arc::clone(&self.newest_documents_generation),
         })
     }
 

@@ -12,16 +12,18 @@ pub fn find_documents(
     request: DocumentRequest,
     find: impl FnOnce(&str, usize) -> Result<Vec<FoundDocument>, String> + Send + 'static,
 ) -> Task<QuickOpenMessage> {
-    let DocumentRequest {
-        walk_generation,
-        generation,
-        words,
-    } = request;
+    let (walk_generation, generation) = (request.walk_generation, request.generation);
     Task::perform(
         async move {
-            tokio::task::spawn_blocking(move || find(&words, MAX_DOCUMENT_HITS))
-                .await
-                .unwrap_or_else(|failure| Err(failure.to_string()))
+            tokio::task::spawn_blocking(move || {
+                if request.is_current() {
+                    find(&request.words, MAX_DOCUMENT_HITS)
+                } else {
+                    Ok(Vec::new())
+                }
+            })
+            .await
+            .unwrap_or_else(|failure| Err(failure.to_string()))
         },
         move |result| QuickOpenMessage::DocumentsFound {
             walk_generation,

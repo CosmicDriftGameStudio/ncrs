@@ -99,6 +99,7 @@ fn pack_planned<P: Progress>(
     }
     report.entries = job.done;
     sink.finish()?.sync_all()?;
+    job.progress.keep_going()?;
     temp.persist_noclobber(archive)
         .map_err(|failed| failed.error)?;
     forget(archive);
@@ -324,6 +325,7 @@ fn rewrite<P: Progress>(
     let entries = job.done;
     sink.finish()?.sync_all()?;
     temp.as_file().set_permissions(original.permissions())?;
+    job.progress.keep_going()?;
     temp.persist(&real).map_err(|failed| failed.error)?;
     forget(archive);
     forget(&real);

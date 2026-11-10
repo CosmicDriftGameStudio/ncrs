@@ -68,7 +68,10 @@ fn without_drive_switch(path: &str) -> &str {
 fn strip_matching_quotes(text: &str) -> &str {
     ['"', '\'']
         .into_iter()
-        .find_map(|quote| text.strip_prefix(quote)?.strip_suffix(quote))
+        .find_map(|quote| {
+            let inner = text.strip_prefix(quote)?.strip_suffix(quote)?;
+            (!inner.contains(quote)).then_some(inner)
+        })
         .unwrap_or(text)
 }
 

@@ -35,9 +35,12 @@ pub struct Hermes {
     pub filing_status: FilingStatus,
     /// What the index says about the files and folders the panels show.
     pub hermes_column: HermesColumn,
-    /// Reads of the column that are under way or gave up, until something
-    /// is invalidated.
+    /// Reads of the column that are under way. An invalidation does not
+    /// remove them: their answer is judged when it arrives, and a stale one is
+    /// asked for again then, so no second read runs next to a first.
     pub hermes_reads: HashSet<(PathBuf, ColumnStage)>,
+    /// Reads of the column that gave up, until something is invalidated.
+    pub hermes_failed_reads: HashSet<(PathBuf, ColumnStage)>,
     /// Files whose status bar detail is being read.
     pub hermes_detail_reads: HashSet<PathBuf>,
     /// How far the spinner of a file being read has turned, in radians.
@@ -102,7 +105,7 @@ impl Hermes {
     /// The column asks again for everything that depends on `path`.
     pub fn invalidate_hermes_path(&mut self, path: &Path) {
         self.hermes_column.invalidate_path(path);
-        self.hermes_reads.clear();
+        self.hermes_failed_reads.clear();
         self.hermes_detail_reads.remove(path);
     }
 

@@ -220,7 +220,7 @@ pub fn role_saved(
         Ok(filing) => {
             let (applies, task) = super::lifecycle::apply_saved_filing(hermes, filing, ctx);
             hermes.hermes_column.invalidate_all();
-            hermes.hermes_reads.clear();
+            hermes.hermes_failed_reads.clear();
             actions.push(Action::ShowNotice(super::lifecycle::saved_filing_notice(
                 applies, ctx,
             )));
