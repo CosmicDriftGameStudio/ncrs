@@ -3763,6 +3763,12 @@
       "de": "Der Server hat den Schlüssel abgelehnt."
     },
     {
+      "key": "settings.ai_test_server_error",
+      "context": "Status beside the Test connection button: the server answered, but with an HTTP error. Takes the status code, for example 400.",
+      "en": "The server reported error {status}.",
+      "de": "Der Server meldet Fehler {status}."
+    },
+    {
       "key": "settings.ai_test_no_answer",
       "context": "Status beside the Test connection button: no connection could be made or the server was too slow.",
       "en": "The server did not answer.",

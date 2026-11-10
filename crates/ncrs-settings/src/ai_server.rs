@@ -22,6 +22,8 @@ pub enum AiCheckResult {
     /// The server answers, but has no list.
     NotListed,
     KeyRefused,
+    /// The server answered with this error status.
+    ServerError(u16),
     NoAnswer,
 }
 
@@ -51,6 +53,7 @@ fn answer_of(listed: Result<ModelList, AiError>) -> AiCheckResult {
         Ok(ModelList::Listed(models)) => AiCheckResult::Listed(models),
         Ok(ModelList::NotListed) => AiCheckResult::NotListed,
         Err(AiError::Status(401 | 403)) => AiCheckResult::KeyRefused,
+        Err(AiError::Status(status)) => AiCheckResult::ServerError(status),
         Err(_other) => AiCheckResult::NoAnswer,
     }
 }
@@ -93,7 +96,7 @@ mod tests {
         );
         assert_eq!(
             answer_of(Err(AiError::Status(500))),
-            AiCheckResult::NoAnswer
+            AiCheckResult::ServerError(500)
         );
         assert_eq!(
             answer_of(Err(AiError::Transport("the request timed out"))),
