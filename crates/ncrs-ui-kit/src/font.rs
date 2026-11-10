@@ -3,9 +3,10 @@
 //! database of iced, so the ~200 places that use `APP_FONT` stay as they are.
 
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Command;
-use std::sync::{OnceLock, PoisonError, RwLockWriteGuard};
+use std::sync::{Mutex, OnceLock, PoisonError, RwLockWriteGuard};
 
 use iced::advanced::graphics::text::cosmic_text::fontdb::{Database, Family, ID};
 use iced::advanced::graphics::text::{font_system, FontSystem};
@@ -213,16 +214,40 @@ fn is_installed(system: &mut FontSystem, name: &str) -> bool {
 /// Whether the family is installed and every face of it draws: bold or italic
 /// text may pick any of them.
 fn family_draws(db: &Database, name: &str) -> bool {
+    family_draws_by(db, name, draws_text)
+}
+
+fn family_draws_by(db: &Database, name: &str, draws: impl Fn(&Database, ID) -> bool) -> bool {
     let mut faces = db
         .faces()
         .filter(|face| face.families.iter().any(|(known, _)| known == name))
         .peekable();
-    faces.peek().is_some() && faces.all(|face| draws_text(db, face.id))
+    faces.peek().is_some() && faces.all(|face| draws(db, face.id))
 }
 
 /// Whether the face has outlines and horizontal metrics. A bitmap-only font
 /// such as macOS' "GB18030 Bitmap" has neither, and swash panics drawing it.
+/// Answered once per face: it reads and parses the whole font file.
 fn draws_text(db: &Database, id: ID) -> bool {
+    static ANSWERS: OnceLock<Mutex<HashMap<ID, bool>>> = OnceLock::new();
+    let answers = ANSWERS.get_or_init(Mutex::default);
+    let known = answers
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(&id)
+        .copied();
+    if let Some(answer) = known {
+        return answer;
+    }
+    let answer = face_draws_text(db, id);
+    answers
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .insert(id, answer);
+    answer
+}
+
+fn face_draws_text(db: &Database, id: ID) -> bool {
     db.with_face_data(id, |data, index| {
         ttf_parser::Face::parse(data, index).is_ok_and(|face| {
             let tables = face.tables();
@@ -293,6 +318,16 @@ fn scale_with(points: Option<u8>, system: Option<&SystemFont>, pixels_per_point:
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_listed_families_draw_and_a_second_listing_gives_the_same_answer() {
+        let first = installed_monospace();
+        assert_eq!(installed_monospace(), first);
+        let mut system = lock();
+        for name in &first {
+            assert!(is_installed(&mut system, name), "{name}");
+        }
+    }
 
     #[test]
     fn a_gsettings_font_is_the_family_and_the_size() {
@@ -393,7 +428,7 @@ mod tests {
     #[test]
     fn a_font_without_horizontal_metrics_draws_no_text() {
         let (outline_db, outline_id) = database_with(crate::BUNDLED_REGULAR.to_vec());
-        assert!(draws_text(&outline_db, outline_id));
+        assert!(face_draws_text(&outline_db, outline_id));
 
         // Renaming the tag in the table directory hides the table, as in a
         // bitmap-only font.
@@ -404,11 +439,11 @@ mod tests {
             .unwrap();
         font[hmtx..hmtx + 4].copy_from_slice(b"xxxx");
         let (mut bitmap_db, bitmap_id) = database_with(font);
-        assert!(!draws_text(&bitmap_db, bitmap_id));
+        assert!(!face_draws_text(&bitmap_db, bitmap_id));
 
         let family = outline_db.faces().next().unwrap().families[0].0.clone();
-        assert!(family_draws(&outline_db, &family));
+        assert!(family_draws_by(&outline_db, &family, face_draws_text));
         bitmap_db.load_font_data(crate::BUNDLED_REGULAR.to_vec());
-        assert!(!family_draws(&bitmap_db, &family));
+        assert!(!family_draws_by(&bitmap_db, &family, face_draws_text));
     }
 }
