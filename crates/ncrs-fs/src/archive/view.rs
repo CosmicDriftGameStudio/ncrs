@@ -12,7 +12,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
-use super::copy_out;
+use super::zone_mark::carry_zone_mark;
+use super::{copy_out, locate_in_archive};
 use crate::transfer::{OnConflict, Progress};
 
 const INSTANCE_PREFIX: &str = "run-";
@@ -254,6 +255,11 @@ fn unpack_for_view<P: Progress>(
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "the entry has no name"))?;
     copy_out(source, slot, progress, OnConflict::Fail)?;
     let copy = slot.join(name);
+    if cfg!(windows) {
+        if let Some(location) = locate_in_archive(source) {
+            carry_zone_mark(&location.archive, &copy)?;
+        }
+    }
     restrict_to_owner(&copy, 0o600)?;
     // A cancel that came while the last block was written ends here.
     progress.keep_going()?;
@@ -483,6 +489,23 @@ mod tests {
 
         let mode = std::fs::metadata(&copy).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o600);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn the_copy_of_a_marked_archive_carries_its_zone_mark() {
+        let dir = scratch("view-zone");
+        let archive = dir.path().join("z.zip");
+        write_archive(&archive, &[Item::File("a.docm", b"inside")]);
+        let mark = "[ZoneTransfer]\r\nZoneId=3\r\n";
+        std::fs::write(dir.path().join("z.zip:Zone.Identifier"), mark).unwrap();
+        let mut copies = ViewCopies::open(&dir.path().join("view")).unwrap();
+        let slot = copies.slot(&archive).unwrap();
+
+        let copy = extract_for_view(&archive.join("a.docm"), &slot, &mut Counting).unwrap();
+
+        let stream = format!("{}:Zone.Identifier", copy.display());
+        assert_eq!(std::fs::read_to_string(stream).unwrap(), mark);
     }
 
     struct Cancelled;
