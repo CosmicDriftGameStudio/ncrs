@@ -16,7 +16,7 @@ use crate::{Channel, LatestRelease, PackageManager};
 
 const PAGE: Size = Size::new(900.0, 330.0);
 
-fn never_fetch() -> Result<LatestRelease, String> {
+fn never_fetch(_app_version: &str) -> Result<LatestRelease, String> {
     Err("no network in tests".to_owned())
 }
 

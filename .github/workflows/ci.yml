@@ -463,13 +463,19 @@ jobs:
           scripts/package.sh archive ${{ matrix.target }} "$binary" target/pdfium . \
             --licenses THIRD_PARTY_LICENSES.html "${llama[@]}"
 
+      - name: Read the model pin
+        id: model-pin
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        shell: bash
+        run: echo "sha=$(sed -n 's/^SHA256="\(.*\)"$/\1/p' scripts/fetch-ai-model.sh)" >> "$GITHUB_OUTPUT"
+
       # Only restores, never saves: the ai-model workflow owns the cache. On a
       # miss the script below downloads the model.
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: matrix.target == 'x86_64-unknown-linux-gnu'
         with:
           path: .ai-models
-          key: ai-model-7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5
+          key: ai-model-${{ steps.model-pin.outputs.sha }}
 
       - name: Fetch the AI model for the start test
         if: matrix.target == 'x86_64-unknown-linux-gnu' || matrix.target == 'x86_64-pc-windows-msvc'

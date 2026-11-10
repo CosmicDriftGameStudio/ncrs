@@ -16,10 +16,10 @@ body:
       label: What should ncrs do about it?
 
   - type: textarea
-    id: nc
+    id: reference
     attributes:
       label: How do classic dual-panel file managers do it?
-      description: ncrs is a clone, so the original is a useful reference. A keybinding and the behaviour it triggers is ideal.
+      description: Classic dual-panel file managers are a useful reference. A keybinding and the behaviour it triggers is ideal.
 
   - type: checkboxes
     id: destructive

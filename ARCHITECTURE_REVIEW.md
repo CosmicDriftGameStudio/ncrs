@@ -39,7 +39,7 @@ Weichen.
 
 Kurz: **Richtung ja, Schnitt noch nicht.**
 
-Was ein NC-2026-Clone braucht, das heute nicht vorgesehen ist:
+Was ein klassischer Dateimanager 2026 braucht, das heute nicht vorgesehen ist:
 
 | Anforderung | Heute | Konsequenz |
 |---|---|---|
@@ -96,7 +96,7 @@ TEA**: jede Domäne (`Panel`, `Prompt`, `Jobs`, `Config`) hat eigene `State`,
   `JobId`, `PanelId`, `RequestId`. Ungültige Werte sind nicht konstruierbar,
   nicht nur „werden geprüft“.
 - **Modal-Stack statt `Option<Prompt>`:** `Vec<Modal>`; Konflikt-Dialog über
-  Fortschritts-Dialog über Panel ist in NC normal.
+  Fortschritts-Dialog über Panel ist in klassischen Dateimanagern normal.
 
 **Nein (bewusst):**
 

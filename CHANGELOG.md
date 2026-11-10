@@ -891,7 +891,7 @@ All notable changes to this project are documented here. The format follows
   Any other value is an error with the line that names the allowed ones, handled
   like any other config error.
 - Colors from the config file: `[theme]` picks a palette with
-  `preset = "default"` or `"classic"` (Norton Commander blue) and changes single
+  `preset = "default"` or `"classic"` (classic blue) and changes single
   roles on top of it as `"#rrggbb"` or `"#rgb"`:
 
   ```toml
@@ -986,8 +986,7 @@ All notable changes to this project are documented here. The format follows
 - Quit is `F10` or `Cmd`+`Q` (`Ctrl`+`Q` on Linux and Windows); a bare `Q` no
   longer quits and takes part in type-ahead like any other letter.
 - Started from Finder (working directory `/`), the left panel opens in `$HOME`.
-- ncrs is described as "inspired by Norton Commander", with a trademark notice
-  in the README.
+- ncrs is described as a dual-panel file manager in the classic style.
 
 ## [0.2.0] — 2026-10-02
 
@@ -1013,7 +1012,7 @@ The file operations: copy, move, delete, view and edit.
   A file that could run (exec bit, or an extension such as `.app`,
   `.command`, `.exe`, `.bat`) opens in the text editor on macOS and Windows
   and is refused on Linux.
-- A Norton-style function key bar at the bottom.
+- A classic-style function key bar at the bottom.
 - Tagging with Space and Shift+arrows, and Cmd/Ctrl-click, since Macs have
   no Insert key.
 - Dialogs are centred and work from the keyboard: arrows and Tab move the
@@ -1048,7 +1047,7 @@ milestone, and the architecture review that precedes them is in
   in `$HOME`, so the two are not the same place on launch.
 - Keyboard navigation: arrows, PgUp/PgDn, Home/End, Tab to switch panels,
   Backspace to go up. The directory you came from is re-selected.
-- Multi-selection with three distinct states, as in Norton Commander: cursor,
+- Multi-selection with three distinct states, as in classic dual-panel file managers: cursor,
   tagged with Insert, and both. If anything is tagged an operation applies to
   the tagged rows, otherwise to the row under the cursor.
 - Name / Size / Modified columns, directories first, case-insensitive sort,

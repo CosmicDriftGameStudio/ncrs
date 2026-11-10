@@ -18,6 +18,7 @@ on:
       - rust-toolchain*
       - .cargo/**
       - .github/workflows/ai-model.yml
+      - .github/actions/ai-model-setup/**
   push:
     branches: [main]
     paths:
@@ -32,6 +33,7 @@ on:
       - rust-toolchain*
       - .cargo/**
       - .github/workflows/ai-model.yml
+      - .github/actions/ai-model-setup/**
   schedule:
     - cron: "0 3 * * 1"
   workflow_dispatch:
@@ -65,40 +67,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Install Rust
-        run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
-
-      - name: Install the Vulkan build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libvulkan-dev glslc spirv-headers
-
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
-        with:
-          shared-key: ai-model
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-
-      # llama-cpp-sys-2 hard-links its `lib*.so` symlinks into target/debug and
-      # deps, where they dangle. A later build of it in the same target folder
-      # sees them as missing and fails on hard_link with AlreadyExists.
-      - name: Remove dangling llama.cpp links
-        run: '[ ! -d target/debug ] || find target/debug -maxdepth 2 -name "lib*.so*" -xtype l -delete'
-
-      # The cache key is the pinned checksum of the model, so a new pin means a
-      # new download; the script checks size and checksum on a hit as well. The
-      # folder sits outside target/ because rust-cache prunes and saves that.
-      # The `targets` job of ci.yml restores this cache.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: .ai-models
-          key: ai-model-7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5
-
-      - name: Fetch the AI model
-        run: |
-          bash scripts/fetch-ai-model.sh .ai-models
-          echo "NCRS_AI_MODELS_DIR=$GITHUB_WORKSPACE/.ai-models" >> "$GITHUB_ENV"
+      - uses: ./.github/actions/ai-model-setup
 
       # --show-output puts the time of every sentence and the compute (GPU or
       # CPU) into the log.
@@ -186,33 +155,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Install Rust
-        run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
-
-      - name: Install the Vulkan build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libvulkan-dev glslc spirv-headers
-
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
-        with:
-          shared-key: ai-model
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-
-      - name: Remove dangling llama.cpp links
-        run: '[ ! -d target/debug ] || find target/debug -maxdepth 2 -name "lib*.so*" -xtype l -delete'
-
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: .ai-models
-          key: ai-model-7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5
-
-      - name: Fetch the AI model
-        run: |
-          bash scripts/fetch-ai-model.sh .ai-models
-          echo "NCRS_AI_MODELS_DIR=$GITHUB_WORKSPACE/.ai-models" >> "$GITHUB_ENV"
+      - uses: ./.github/actions/ai-model-setup
 
       # The count is checked in the source and in the log: a wrong filter or a
       # missing feature would run no test and still pass. Six `with_model_`

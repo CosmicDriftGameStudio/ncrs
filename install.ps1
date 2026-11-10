@@ -44,15 +44,28 @@ if ($Uninstall) {
 
 # --- platform ---------------------------------------------------------------
 
-$arch = $env:PROCESSOR_ARCHITECTURE
+# PROCESSOR_ARCHITECTURE reports the architecture of the running process, so a
+# 32-bit PowerShell on 64-bit Windows would say x86. The OS architecture is
+# what decides which build runs.
+$arch = $null
+try { $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString() } catch { }
+if (-not $arch) {
+    $arch = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
+}
+# Only an x86_64 Windows build is released.
 switch ($arch) {
-    'AMD64' { $cpu = 'x86_64' }
-    # There is no ARM64 build for Windows; Windows on ARM runs the x64 one
-    # under its built-in emulation.
-    'ARM64' { $cpu = 'x86_64' }
-    'x86'   { $cpu = 'i686' }
+    { $_ -in 'X64', 'AMD64' } { $cpu = 'x86_64' }
+    # Windows on ARM runs the x64 build under its emulation, which exists from
+    # Windows 11 (build 22000) on.
+    { $_ -in 'Arm64', 'ARM64' } {
+        if ([System.Environment]::OSVersion.Version.Build -lt 22000) {
+            Write-Error "ncrs needs Windows 11 on ARM64 (x64 emulation); this is build $([System.Environment]::OSVersion.Version.Build)"
+            return
+        }
+        $cpu = 'x86_64'
+    }
     default {
-        Write-Error "unsupported architecture: $arch"
+        Write-Error "unsupported architecture: $arch (ncrs is built for 64-bit Windows only)"
         return
     }
 }

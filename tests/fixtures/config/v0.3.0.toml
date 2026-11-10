@@ -24,7 +24,7 @@ view = "F4"
 edit = "F3"
 
 [theme]
-# "default" (the dark teal look) or "classic" (Norton Commander blue).
+# "default" (the dark teal look) or "classic" (classic blue).
 preset = "classic"
 # Then single roles, as "#rrggbb" or "#rgb".
 directory = "#ffff55"

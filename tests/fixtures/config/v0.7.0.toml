@@ -28,7 +28,7 @@ edit = "F3"
 
 [theme]
 # "cosmic" (the default), "default" (the earlier dark teal look), "classic"
-# (Norton Commander blue) or "dracula".
+# (classic blue) or "dracula".
 preset = "classic"
 # Then single roles, as "#rrggbb" or "#rgb".
 directory = "#ffff55"

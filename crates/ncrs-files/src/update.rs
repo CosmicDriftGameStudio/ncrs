@@ -354,7 +354,7 @@ fn update_sort(
     }
 }
 
-/// Toggles the tag on the cursor row and moves by `delta`, as NC does. The
+/// Toggles the tag on the cursor row and moves by `delta`, as classic dual-panel file managers do. The
 /// `..` entry cannot be tagged but the cursor still moves past it.
 fn tag_and_move(panels: &mut Panels, ctx: &Ctx<'_>, delta: isize) {
     let rows = ctx.visible_rows;

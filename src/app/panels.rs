@@ -164,7 +164,7 @@ impl App {
         self.panel_mut(self.panels.active.other())
     }
 
-    /// NC's rule for F5, F6 and F8: tagged rows win, otherwise the row under
+    /// The classic rule for F5, F6 and F8: tagged rows win, otherwise the row under
     /// the cursor. The `..` entry is never a thing to act on. In the search
     /// view the same holds for its files, and never for all files found.
     pub(in crate::app) fn action_sources(&self) -> Vec<PathBuf> {

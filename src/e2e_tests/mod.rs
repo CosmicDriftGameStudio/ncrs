@@ -2011,7 +2011,7 @@ mod tests {
         );
     }
 
-    /// As in NC: tagged rows do not turn F3 into "view all of them".
+    /// As in classic dual-panel file managers: tagged rows do not turn F3 into "view all of them".
     #[test]
     fn tags_do_not_change_what_f3_opens() {
         let dir = scratch("open-tagged");
