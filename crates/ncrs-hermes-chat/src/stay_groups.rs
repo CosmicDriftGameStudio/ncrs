@@ -55,11 +55,11 @@ fn sender_without_label(sender: &str) -> &str {
         "absender",
         "von",
     ];
-    let Some((label, after_colon)) = sender.split_once(':') else {
+    let Some((raw_label, after_colon)) = sender.split_once(':') else {
         return sender;
     };
     let name = after_colon.trim();
-    let label = label.split_whitespace().collect::<Vec<_>>().join(" ");
+    let label = raw_label.split_whitespace().collect::<Vec<_>>().join(" ");
     let label_like = LABELS.contains(&label.to_lowercase().as_str());
     if label_like && !name.is_empty() {
         name

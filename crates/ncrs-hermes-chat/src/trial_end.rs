@@ -169,13 +169,13 @@ pub fn show_staying(state: &mut State, ctx: &Ctx) {
 /// The files that are in the filing folder already go to the trash, as one
 /// run that can be undone.
 pub fn trash_duplicates(state: &mut State, ctx: &Ctx) {
-    let target = state
+    let configured_target = state
         .session
         .tidy
         .as_ref()
         .and_then(|tidy| tidy.target.clone());
     let ready = state.session.trial.is_some() && can_trash_duplicates(state, ctx);
-    let (Some(target), true) = (target, ready) else {
+    let (Some(target), true) = (configured_target, ready) else {
         say(
             state,
             text(ctx.lang, Msg::HermesChatFallback),
