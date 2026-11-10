@@ -5,10 +5,12 @@ use std::sync::Arc;
 
 use iced::{widget::operation, Task};
 
+use super::connect::show_failure;
 use super::connect_failure_text;
+use super::prepare_dialog;
 use crate::action::Action;
 use crate::ctx::Ctx;
-use crate::dialog::{ConnectDialog, Stage, Then};
+use crate::dialog::{ConnectDialog, Then};
 use crate::message::{ConnectField, Message};
 use crate::state::Remote;
 use crate::view::field_id;
@@ -49,12 +51,16 @@ pub fn password_loaded(
         return Task::none();
     }
     match stored {
-        Ok(Some(password)) => {
+        // Without a stored password the keys come first: the agent, the key
+        // files. The dialog opens only when they do not get in.
+        Ok(stored_password) => {
+            let password = stored_password.unwrap_or_default();
             let pool = Arc::clone(ctx.pool);
             let server = place.server().clone();
+            let login = ctx.login(&server, password.clone());
             Task::perform(
                 async move {
-                    let outcome = pool.connect(&server, &password).await;
+                    let outcome = pool.connect(&server, &login).await;
                     (password, outcome)
                 },
                 move |(kept, result)| Message::AutoConnected {
@@ -67,14 +73,6 @@ pub fn password_loaded(
                 },
             )
         }
-        Ok(None) => ask_for_password(
-            remote,
-            ctx,
-            (side, request_id, place, select),
-            None,
-            None,
-            actions,
-        ),
         Err(reason) => ask_for_password(
             remote,
             ctx,
@@ -109,15 +107,21 @@ pub fn auto_connected(
             Task::none()
         }
         // A password that no longer fits is not kept, so that it is not
-        // tried again with every folder, and not offered again.
+        // tried again with every folder, and not offered again. Keys that did
+        // not get in say nothing yet: the dialog asks for a password plainly.
         Err(ConnectFailure::AuthFailed) => {
-            let forget = forget_remembered_password(ctx, place.server());
+            let had_password = !password.is_empty();
+            let forget = if had_password {
+                forget_remembered_password(ctx, place.server())
+            } else {
+                Task::none()
+            };
             let ask = ask_for_password(
                 remote,
                 ctx,
                 (side, request_id, place, select),
                 None,
-                Some(ConnectFailure::AuthFailed),
+                had_password.then_some(ConnectFailure::AuthFailed),
                 actions,
             );
             Task::batch([forget, ask])
@@ -179,16 +183,17 @@ fn ask_for_password(
         request_id,
     };
     let mut dialog = ConnectDialog::for_server(attempt, &server, Some(then));
+    prepare_dialog(&mut dialog, ctx);
+    if let Some(file) = ctx.key_file_of(&server) {
+        dialog.set(ConnectField::KeyFile, file.display().to_string());
+    }
     if let Some(remembered) = password {
         dialog.keep_password(remembered);
     }
-    match (failure, failure_text) {
-        (Some(ConnectFailure::UnknownHost { fingerprint, key }), _) => {
-            dialog.set_stage(Stage::HostKey { fingerprint, key });
-        }
-        (Some(_), Some(text)) => dialog.set_error(text),
-        _ => {}
-    }
+    let focus = match (failure, failure_text) {
+        (Some(reason), Some(text)) => show_failure(&mut dialog, reason, text, ctx.lang),
+        _ => operation::focus(field_id(ConnectField::Password)),
+    };
     remote.dialog = Some(dialog);
-    operation::focus(field_id(ConnectField::Password))
+    focus
 }

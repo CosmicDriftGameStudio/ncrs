@@ -60,7 +60,9 @@ impl App {
         let start_blocked = self.jobs.is_busy()
             || self.ops.prompt.is_some()
             || self.ops.conflict_is_open()
-            || self.ops.permissions_dialog.is_some();
+            || self.ops.permissions_dialog.is_some()
+            || self.ops.batch_rename.is_some()
+            || self.ops.batch_running.is_some();
         let transfer_dialog_open = self.ops.transfer_dialog.is_some();
         let permanent_delete_key = self
             .keymap
@@ -87,6 +89,13 @@ impl App {
                 remote: &self.remote,
                 permanent_delete_key,
                 restore_last_key,
+                index: self
+                    .hermes
+                    .filing
+                    .as_ref()
+                    .and_then(FilingModule::query_access)
+                    .map(|access| Arc::new(access) as Arc<dyn ncrs_index::SearchIndex>),
+                model: self.chat_ai_on().then(|| self.chat_model.clone()).flatten(),
             },
             &self.panels,
         );
@@ -369,6 +378,46 @@ impl App {
         self.with_ops(|ops, ctx| ncrs_ops::open_permissions(ops, targets, ctx))
     }
 
+    /// The entries to rename together: two or more tagged. With fewer the
+    /// rename stays inline on the row.
+    pub(in crate::app) fn tagged_entries_to_rename(&self) -> Vec<fs::FileEntry> {
+        let panel = self.active_panel();
+        if !panel.selection.any_tagged() {
+            return Vec::new();
+        }
+        panel
+            .selection
+            .ordered(&panel.entries)
+            .into_iter()
+            .filter(|entry| !entry.is_parent)
+            .cloned()
+            .collect()
+    }
+
+    /// The rename key with two or more entries tagged: one dialog for all.
+    pub(in crate::app) fn open_batch_rename_dialog(
+        &mut self,
+        entries: Vec<fs::FileEntry>,
+    ) -> Task<Message> {
+        let side = self.panels.active;
+        let panel = self.panel(side);
+        let folder = panel.path.clone();
+        let folder_names = panel
+            .entries
+            .iter()
+            .chain(&panel.compare_hidden)
+            .filter(|entry| !entry.is_parent)
+            .map(|entry| entry.name.to_string_lossy().into_owned())
+            .collect();
+        let request = ncrs_ops::BatchRenameRequest {
+            side,
+            folder,
+            entries,
+            folder_names,
+        };
+        self.with_ops(|ops, ctx| ncrs_ops::open_batch_rename(ops, request, ctx))
+    }
+
     pub(in crate::app) fn toggle_keep_folders(&mut self) -> Task<Message> {
         self.ops.toggle_keep_folders();
         Task::none()
@@ -384,6 +433,8 @@ impl App {
             ncrs_ops::end_extraction(&mut self.ops);
             Task::none()
         } else if let Some(outcome) = ncrs_ops::abort_archive_write(&mut self.ops) {
+            self.run_ops_outcome(outcome)
+        } else if let Some(outcome) = ncrs_ops::abort_batch_rename(&mut self.ops) {
             self.run_ops_outcome(outcome)
         } else if let Some(outcome) = ncrs_ops::abort_permissions(&mut self.ops) {
             self.run_ops_outcome(outcome)

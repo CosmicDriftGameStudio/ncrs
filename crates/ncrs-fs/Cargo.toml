@@ -42,7 +42,7 @@ sevenz-rust2 = { version = "0.24.1", default-features = false, features = ["comp
 # The real home folder and the bookmarks that keep a folder grant in the App
 # Sandbox. Only the `sandbox` feature (the App Store build) brings it in.
 ncrs-sandbox = { path = "../ncrs-sandbox", version = "0.0.0", optional = true }
-# SFTP, password login only. ring as crypto backend (the default aws-lc-rs would
+# SFTP. ring as crypto backend (the default aws-lc-rs would
 # add a second C library), no `rsa` feature: the rsa crate behind it has an open
 # advisory (RUSTSEC-2023-0071), so servers that offer only RSA host keys are not
 # supported yet. Both are pinned, and russh pins ssh-key to a release candidate

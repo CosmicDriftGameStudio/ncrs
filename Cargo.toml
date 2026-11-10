@@ -102,6 +102,7 @@ ncrs-palette = { path = "crates/ncrs-palette", version = "0.0.0" }
 ncrs-settings = { path = "crates/ncrs-settings", version = "0.0.0" }
 # The SFTP connect feature: the connect dialog, the host key question and the keychain passwords.
 ncrs-remote = { path = "crates/ncrs-remote", version = "0.0.0" }
+ncrs-compare = { path = "crates/ncrs-compare", version = "0.0.0" }
 # The filing logic: the filing module, the work behind the Hermes pages and the reading of the column.
 ncrs-filing = { path = "crates/ncrs-filing", version = "0.0.0" }
 # The Hermes pages: filing setup and status, overview, review, rules, tags, reorganisation.
@@ -124,7 +125,7 @@ tempfile = "3.27"
 # own fallback), so Linux needs neither GTK nor an async runtime. "wayland" only
 # serves a parent window, and the dialog is opened without one.
 rfd = { version = "=0.17.2", default-features = false, features = ["xdg-portal"] }
-# SFTP, password login only. ring as crypto backend (the default aws-lc-rs would
+# SFTP. ring as crypto backend (the default aws-lc-rs would
 # add a second C library), no `rsa` feature: the rsa crate behind it has an open
 # advisory (RUSTSEC-2023-0071), so servers that offer only RSA host keys are not
 # supported yet. Both are pinned, and russh pins ssh-key to a release candidate

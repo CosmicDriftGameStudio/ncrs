@@ -26,7 +26,8 @@ pub use ncrs_hermes_ui::message::{
     QuickFixMessage, RulesMessage, SavedQueriesMessage, TagsMessage,
 };
 pub use ncrs_ops::{
-    ConflictChoice, OpsMessage, PermissionsMessage, TransferDialogMessage, TrashMessage,
+    BatchRenameMessage, ConflictChoice, OpsMessage, PermissionsMessage, TransferDialogMessage,
+    TrashMessage,
 };
 pub use ncrs_search::message::SearchMessage;
 #[cfg(test)]
@@ -162,6 +163,8 @@ pub enum Message {
     OpenFileCancel,
     /// A message of the permissions dialog.
     Permissions(PermissionsMessage),
+    /// A message of the batch rename dialog, or its undo.
+    BatchRename(BatchRenameMessage),
     /// The permissions change is over; the result of a stopped one is dropped.
     PermissionsDone {
         generation: u64,
@@ -369,6 +372,9 @@ pub enum Message {
     // --- SFTP servers ---
     Remote(RemoteMessage),
 
+    // --- Folder comparison ---
+    Compare(CompareMessage),
+
     // --- Settings tab ---
     Settings(SettingsMessage),
     KeyBindings(KeyBindingsMessage),
@@ -481,6 +487,7 @@ pub enum GrantMessage {
     },
 }
 
+pub use ncrs_compare::Message as CompareMessage;
 #[cfg(test)]
 pub use ncrs_remote::ConnectField;
 pub use ncrs_remote::Message as RemoteMessage;
@@ -489,6 +496,12 @@ pub use ncrs_ops::ClipboardKind;
 
 pub use ncrs_core::TransferKind;
 pub use ncrs_palette::{CommandLineMessage, CommandPaletteMessage, QuickOpenMessage};
+
+impl From<ncrs_compare::Message> for Message {
+    fn from(message: ncrs_compare::Message) -> Self {
+        Self::Compare(message)
+    }
+}
 
 impl From<ncrs_remote::Message> for Message {
     fn from(message: ncrs_remote::Message) -> Self {
@@ -569,6 +582,7 @@ impl From<OpsMessage> for Message {
             },
             OpsMessage::Trash(trash) => Self::Trash(trash),
             OpsMessage::Permissions(permissions) => Self::Permissions(permissions),
+            OpsMessage::BatchRename(batch) => Self::BatchRename(batch),
             OpsMessage::PermissionsDone { generation, result } => {
                 Self::PermissionsDone { generation, result }
             }

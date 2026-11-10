@@ -54,5 +54,5 @@ pub use terminal::{detect_terminals, terminal_command, KnownTerminal, NoTerminal
 #[cfg(any(test, feature = "test-support"))]
 pub use trash_journal::{FolderBackend, JournaledTrash};
 pub use typed_path::{locate, resolve as resolve_typed_path, Destination, PathProblem};
-pub use user_machine::forbid_user_machine_in_tests;
+pub use user_machine::{forbid_user_machine_in_tests, user_machine_is_off_limits};
 pub use volumes::{list_volumes, Volume};

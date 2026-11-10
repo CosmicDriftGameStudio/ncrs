@@ -56,6 +56,8 @@ pub mod size {
     pub const FKEY_BAR: f32 = 24.0;
     /// The row of numbered favourites under the path tabs.
     pub const FAVOURITES_BAR: f32 = 24.0;
+    /// The bar of a running folder comparison under the favourites bar.
+    pub const COMPARE_BAR: f32 = 32.0;
     pub const COMMAND_LINE: f32 = 24.0;
     pub const COLUMN_HEADER: f32 = 22.0;
     /// The line of totals under the rows of a file panel.

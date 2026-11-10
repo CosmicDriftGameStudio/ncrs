@@ -15,7 +15,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use chrono::NaiveDateTime;
-use ncrs_index::{DocumentId, Index, IndexError, QuerySpec, SavedQuery, SavedQueryId};
+use ncrs_index::{
+    DocumentFields, DocumentId, Index, IndexError, QuerySpec, SavedQuery, SavedQueryId,
+};
 
 pub use ncrs_index::QueryHit;
 
@@ -139,6 +141,18 @@ impl ncrs_index::SearchIndex for QueryAccess {
                 .into_iter()
                 .filter_map(|(id, snippet)| Some(((*path_of.get(&id)?).clone(), snippet)))
                 .collect())
+        })
+    }
+
+    fn document_fields(&self, paths: &[PathBuf]) -> Result<Vec<(PathBuf, DocumentFields)>, String> {
+        self.with_index(|index| {
+            let mut found = Vec::new();
+            for path in paths {
+                if let Some(document) = index.document_by_path(path)? {
+                    found.push((path.clone(), document.fields));
+                }
+            }
+            Ok(found)
         })
     }
 

@@ -23,5 +23,10 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"
 # `PanelState::apply_listing`, for the tests of the app.
 test-support = []
 
+[dev-dependencies]
+# The snapshot test of the Compare column renders headless.
+iced = { version = "0.14", default-features = false, features = ["tokio", "advanced", "svg", "tiny-skia"] }
+iced_test = "0.14"
+
 [lints]
 workspace = true

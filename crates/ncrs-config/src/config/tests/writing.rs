@@ -741,11 +741,12 @@ fn an_inline_ai_table_loses_a_dropped_key_too() {
 }
 
 #[test]
-fn an_endpoint_off_this_machine_is_refused_before_the_write() {
+fn plain_http_off_this_machine_is_refused_before_the_write() {
     assert_eq!(check_ai_endpoint("http://localhost:11434"), Ok(()));
+    assert_eq!(check_ai_endpoint("https://example.com:11434"), Ok(()));
     assert_eq!(
-        check_ai_endpoint("https://example.com:11434"),
-        Err(AiEndpointProblem::NotLocal)
+        check_ai_endpoint("http://example.com:11434"),
+        Err(AiEndpointProblem::PlainHttpFar)
     );
     assert!(matches!(
         check_ai_endpoint("ftp://localhost"),

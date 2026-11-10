@@ -156,6 +156,7 @@ fn preview_panel<'a>(view: &SettingsView<'a>) -> Element<'a, Message> {
                     columns: ColumnLayout::standard(view.lang),
                     special: None,
                     hermes: None,
+                    compare: ncrs_ui_kit::compare_cell::CompareCell::Off,
                     hit_scope: None,
                     third_line: None,
                 },

@@ -129,6 +129,7 @@ fn leaves_bar_fields(message: &Message) -> bool {
             | Message::AiModel(AiModelMessage::Open)
             | Message::Grant(GrantMessage::Open)
             | Message::Remote(RemoteMessage::OpenConnect)
+            | Message::Compare(CompareMessage::Open)
             | Message::Settings(_)
             | Message::FilingStatus(FilingStatusMessage::Open)
             | Message::ContextMenuAt { .. }
@@ -166,11 +167,12 @@ impl App {
     pub fn update(&mut self, message: Message) -> Task<Message> {
         let was_open = self.open_pages();
         let task = self.update_message(message);
+        let compare = self.follow_compare();
         self.follow_opened_pages(was_open);
         self.refit_for_favourites_bar();
         self.refresh_special_folders();
         let chat = self.tell_chat_hermes_is_ready();
-        Task::batch([task, chat])
+        Task::batch([task, compare, chat])
     }
 
     fn update_message(&mut self, message: Message) -> Task<Message> {
@@ -491,6 +493,9 @@ impl App {
             }
             Message::PackPrompt => self.open_pack_prompt(),
             Message::PermissionsPrompt => self.open_permissions_dialog(),
+            Message::BatchRename(batch_message) => {
+                self.with_ops(|ops, ctx| ncrs_ops::update_batch_rename(ops, batch_message, ctx))
+            }
             Message::Permissions(permissions_message) => {
                 self.with_ops(|ops, _| ncrs_ops::update_permissions(ops, permissions_message))
             }
@@ -655,6 +660,7 @@ impl App {
             Message::OcrModels(models_message) => self.update_ocr_models(models_message),
             Message::AiModel(model_message) => self.update_ai_model(model_message),
             Message::Grant(grant_message) => self.update_grant(grant_message),
+            Message::Compare(compare_message) => self.update_compare(compare_message),
             Message::Remote(remote_message) => {
                 let outcome = self.with_connect_feature(|remote, ctx| {
                     ncrs_remote::update(remote, remote_message, ctx)

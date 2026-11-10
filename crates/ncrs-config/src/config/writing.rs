@@ -178,6 +178,9 @@ pub fn with_servers(
         if let Some(folder) = &server.path {
             entry.insert("path", toml_edit::value(folder.as_str()));
         }
+        if let Some(file) = &server.key_file {
+            entry.insert("key_file", toml_edit::value(file.as_str()));
+        }
         if entries.is_empty() {
             if let Some(prefix) = first_prefix.clone() {
                 entry.decor_mut().set_prefix(prefix);

@@ -45,6 +45,16 @@ impl App {
                 blocking_overlay_open,
                 active_side: self.panels.active,
                 active_panel_server: self.active_panel().remote(),
+                key_files: self
+                    .saved_servers
+                    .iter()
+                    .filter_map(|entry| {
+                        let file = entry.key_file.as_deref()?;
+                        Some((entry.server_id(), std::path::PathBuf::from(file)))
+                    })
+                    .collect(),
+                login_env: fs::remote::session::LoginEnv::from_process(),
+                sandboxed: self.sandbox.active,
                 left_request_id: self.panel(PanelSide::Left).request_id,
                 right_request_id: self.panel(PanelSide::Right).request_id,
             },
@@ -87,9 +97,12 @@ impl App {
                 self.load(side, url, None)
             }
             Ask::LoadFolder { side, path, select } => self.load(side, path, select),
-            Ask::SaveServer { server, typed_path } => {
-                self.save_server(&server, typed_path.as_deref())
-            }
+            Ask::PickKeyFile => self.pick_key_file(),
+            Ask::SaveServer {
+                server,
+                typed_path,
+                key_file,
+            } => self.save_server(&server, typed_path.as_deref(), key_file),
             Ask::StopWaiting { side, request_id } => {
                 let panel = self.panel_mut(side);
                 if panel.request_id == request_id {
@@ -149,7 +162,12 @@ impl App {
 
     /// Puts the server into `[[servers]]`, or updates its start folder when it
     /// is there. Never the password.
-    fn save_server(&mut self, server: &ServerId, typed_path: Option<&str>) -> Task<Message> {
+    fn save_server(
+        &mut self,
+        server: &ServerId,
+        typed_path: Option<&str>,
+        key_file: Option<String>,
+    ) -> Task<Message> {
         if self.config_path.is_none() {
             let text = self.lang.text(Msg::FilingSetupNoConfigPath).to_owned();
             self.set_status_error(&text);
@@ -167,6 +185,9 @@ impl App {
                 if path.is_some() {
                     existing.path = path;
                 }
+                if key_file.is_some() {
+                    existing.key_file = key_file;
+                }
             }
             None => servers.push(ServerEntry {
                 name: None,
@@ -174,8 +195,27 @@ impl App {
                 port: server.port,
                 user: server.user.clone(),
                 path,
+                key_file,
             }),
         }
         self.update_settings(SettingsMessage::Change(SettingChange::Servers(servers)))
+    }
+
+    /// The system dialog for a key file. In the App Store build the file is
+    /// kept as a grant right away, while the access the dialog gave is fresh;
+    /// a file that cannot be kept would not open again, so it counts as not
+    /// chosen.
+    fn pick_key_file(&self) -> Task<Message> {
+        let sandbox = self.sandbox.clone();
+        (self.pick_file)(FilePick::KeyFile).map(move |picked| {
+            let kept = picked.filter(|file| {
+                !sandbox.active
+                    || sandbox
+                        .grants_dir
+                        .as_deref()
+                        .is_some_and(|dir| (sandbox.grant)(dir, file).is_ok())
+            });
+            Message::Remote(RemoteMessage::KeyFilePicked(kept))
+        })
     }
 }

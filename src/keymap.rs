@@ -9,12 +9,13 @@ pub use ncrs_config::keymap::*;
 
 use crate::fs::OpenKind;
 use crate::hermes_column::FolderRole;
+use crate::messages::BatchRenameMessage;
 use crate::messages::Message;
 use crate::messages::PanelMessage;
 use crate::messages::{
     AboutMessage, AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage,
-    FilingStatusMessage, GrantMessage, HermesChatMessage, HermesFileMessage, HermesPage,
-    KeyBindingsMessage, OcrModelsMessage, PanelSide, QuickFixMessage, QuickOpenMessage,
+    CompareMessage, FilingStatusMessage, GrantMessage, HermesChatMessage, HermesFileMessage,
+    HermesPage, KeyBindingsMessage, OcrModelsMessage, PanelSide, QuickFixMessage, QuickOpenMessage,
     RemoteMessage, SearchMessage, SettingsMessage, ThemeFetchMessage, TransferKind, TrashMessage,
 };
 use ncrs_fs::SortColumn;
@@ -51,6 +52,8 @@ impl KeyActionMessage for KeyAction {
             Self::CopyFiles => Message::CopyFilesToClipboard,
             Self::Trash => Message::Trash(TrashMessage::Open),
             Self::RestoreLastDeletion => Message::Trash(TrashMessage::RestoreLast),
+            Self::UndoRename => Message::BatchRename(BatchRenameMessage::Undo),
+            Self::CompareFolders => Message::Compare(CompareMessage::Open),
             Self::OpenTrashInFinder => Message::Trash(TrashMessage::OpenInFinder),
             Self::Paste => Message::Paste,
             Self::View => Message::OpenExternal(OpenKind::View),

@@ -11,9 +11,11 @@ publish = false
 [dependencies]
 # Same as the kit: no renderer or window system, the app picks them.
 iced = { version = "0.14", default-features = false, features = ["tokio", "advanced"] }
+ncrs-ai = { path = "../ncrs-ai", version = "0.0.0" }
 ncrs-core = { path = "../ncrs-core", version = "0.0.0" }
 ncrs-fs = { path = "../ncrs-fs", version = "0.0.0" }
 ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
+ncrs-index = { path = "../ncrs-index", version = "0.0.0" }
 ncrs-jobs = { path = "../ncrs-jobs", version = "0.0.0" }
 ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0" }
 
@@ -31,6 +33,9 @@ png = "0.18"
 tempfile = "3.27"
 # The name of a pasted file carries the time.
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+# Batch rename: the find and replace of a pattern, and the date a photo was taken.
+regex = "1.13"
+kamadak-exif = "=0.6.1"
 
 [target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
 # Without the data-control protocol the clipboard cannot be read or written on
@@ -46,6 +51,9 @@ drag = { version = "=2.1.1", default-features = false }
 [dev-dependencies]
 # The archive fixtures and the temporary folders of the dialog tests.
 ncrs-fs = { path = "../ncrs-fs", version = "0.0.0", features = ["test-support"] }
+# The snapshot of the batch rename dialog.
+iced_test = "0.14"
+iced = { version = "0.14", default-features = false, features = ["tokio", "advanced", "tiny-skia"] }
 
 [lints]
 workspace = true

@@ -11,6 +11,7 @@ pub enum ConnectField {
     Port,
     User,
     Password,
+    KeyFile,
     StartPath,
 }
 
@@ -23,6 +24,15 @@ pub enum Message {
     Field(ConnectField, String),
     Password(Secret),
     ToggleRemember,
+    /// What was typed into the passphrase field of the passphrase stage.
+    Passphrase(Secret),
+    ToggleRememberPassphrase,
+    /// The button of the passphrase stage: opens the key and connects.
+    Unlock,
+    /// The button next to the key file field: asks for a file.
+    ChooseKeyFile,
+    /// The file the system dialog gave, `None` when it was cancelled.
+    KeyFilePicked(Option<PathBuf>),
     /// Tab: the next field, or the one before it.
     FocusField {
         backwards: bool,

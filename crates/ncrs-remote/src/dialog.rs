@@ -5,11 +5,12 @@
 //! the dialog or of a message that carries it can leak it.
 
 use std::fmt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use russh::keys::PublicKey;
 
 use ncrs_core::PanelSide;
+use ncrs_fs::remote::session::Login;
 use ncrs_fs::remote::{plain_word, RemoteUrl, Secret, ServerId};
 
 use crate::message::ConnectField;
@@ -36,6 +37,11 @@ pub enum Stage {
         fingerprint: String,
         key: Box<PublicKey>,
     },
+    /// The server asks for a key file that is locked. The user types its
+    /// passphrase.
+    Passphrase {
+        key_file: PathBuf,
+    },
 }
 
 /// Why the typed values cannot be used yet.
@@ -44,7 +50,15 @@ pub enum Missing {
     Host,
     Port,
     User,
-    Password,
+}
+
+/// What `~/.ssh/config` says about the typed host: the dialog tells the user
+/// what a connection will use that the fields do not show.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SshHint {
+    pub host_name: Option<String>,
+    pub port: Option<u16>,
+    pub user: Option<String>,
 }
 
 #[derive(Clone)]
@@ -56,10 +70,20 @@ pub struct ConnectDialog {
     password: Secret,
     remember: bool,
     save: bool,
+    key_file: String,
+    passphrase: Secret,
+    remember_passphrase: bool,
     start_path: String,
     stage: Stage,
     error: Option<String>,
     then: Option<Then>,
+    ssh_hint: SshHint,
+    /// A login name is known without the user field: `~/.ssh/config` gives
+    /// one for the host, or the account of this computer.
+    login_user_known: bool,
+    /// The App Store build: no ssh agent, so the key file has to be chosen.
+    sandboxed: bool,
+    home: Option<PathBuf>,
 }
 
 impl fmt::Debug for ConnectDialog {
@@ -71,6 +95,8 @@ impl fmt::Debug for ConnectDialog {
             .field("password", &"***")
             .field("remember", &self.remember)
             .field("save", &self.save)
+            .field("key_file", &self.key_file)
+            .field("passphrase", &"***")
             .field("start_path", &self.start_path)
             .field("stage", &self.stage)
             .field("error", &self.error)
@@ -89,10 +115,17 @@ impl ConnectDialog {
             password: Secret::default(),
             remember: false,
             save: false,
+            key_file: String::new(),
+            passphrase: Secret::default(),
+            remember_passphrase: true,
             start_path: String::new(),
             stage: Stage::Editing,
             error: None,
             then: None,
+            ssh_hint: SshHint::default(),
+            login_user_known: false,
+            sandboxed: false,
+            home: None,
         }
     }
 
@@ -134,8 +167,94 @@ impl ConnectDialog {
         &self.stage
     }
 
+    /// A passphrase does not outlive the stage that asked for it.
     pub fn set_stage(&mut self, stage: Stage) {
+        if !matches!(stage, Stage::Passphrase { .. } | Stage::Connecting) {
+            self.passphrase = Secret::default();
+        }
         self.stage = stage;
+    }
+
+    /// What the dialog knows of the machine: whether this is the App Store
+    /// build and the home folder, which paths are shown relative to.
+    pub fn set_surroundings(&mut self, sandboxed: bool, home: Option<PathBuf>) {
+        self.sandboxed = sandboxed;
+        self.home = home;
+    }
+
+    /// What `~/.ssh/config` and the account give for the typed host.
+    pub fn set_ssh(&mut self, hint: SshHint, login_user_known: bool) {
+        self.ssh_hint = hint;
+        self.login_user_known = login_user_known;
+    }
+
+    pub const fn ssh_hint(&self) -> &SshHint {
+        &self.ssh_hint
+    }
+
+    pub const fn sandboxed(&self) -> bool {
+        self.sandboxed
+    }
+
+    /// `path` with `~` for the home folder.
+    pub fn shown_path(&self, path: &Path) -> String {
+        match self
+            .home
+            .as_deref()
+            .and_then(|home| path.strip_prefix(home).ok())
+        {
+            Some(rest) => PathBuf::from("~").join(rest).display().to_string(),
+            None => path.display().to_string(),
+        }
+    }
+
+    /// The typed key file, if there is one.
+    pub fn key_file(&self) -> Option<PathBuf> {
+        match self.key_file.trim() {
+            "" => None,
+            typed => Some(PathBuf::from(typed)),
+        }
+    }
+
+    pub fn passphrase(&self) -> &Secret {
+        &self.passphrase
+    }
+
+    /// Only the passphrase stage takes a passphrase.
+    pub fn set_passphrase(&mut self, passphrase: Secret) {
+        if matches!(self.stage, Stage::Passphrase { .. }) {
+            self.passphrase = passphrase;
+        }
+    }
+
+    pub const fn remember_passphrase(&self) -> bool {
+        self.remember_passphrase
+    }
+
+    pub fn toggle_remember_passphrase(&mut self) {
+        if matches!(self.stage, Stage::Passphrase { .. }) {
+            self.remember_passphrase = !self.remember_passphrase;
+        }
+    }
+
+    /// `base` with what the dialog adds: the typed key file over the saved one
+    /// and the passphrase, which leaves the dialog with it. Call it while the
+    /// passphrase stage is shown: the passphrase belongs to the key file of
+    /// that stage.
+    pub fn take_login(&mut self, base: Login) -> Login {
+        let passphrase = std::mem::take(&mut self.passphrase);
+        let for_key_file = match &self.stage {
+            Stage::Passphrase { key_file } if !passphrase.is_empty() => {
+                Some((key_file.clone(), passphrase))
+            }
+            _ => None,
+        };
+        Login {
+            key_file: self.key_file().or(base.key_file),
+            passphrase: for_key_file,
+            remember_passphrase: self.remember_passphrase,
+            ..base
+        }
     }
 
     pub fn is_locked(&self) -> bool {
@@ -157,6 +276,7 @@ impl ConnectDialog {
             ConnectField::Port => &self.port,
             ConnectField::User => &self.user,
             ConnectField::Password => self.password.expose(),
+            ConnectField::KeyFile => &self.key_file,
             ConnectField::StartPath => &self.start_path,
         }
     }
@@ -172,6 +292,7 @@ impl ConnectDialog {
             ConnectField::Port => self.port = text,
             ConnectField::User => self.user = text,
             ConnectField::Password => self.password = Secret::new(text),
+            ConnectField::KeyFile => self.key_file = text,
             ConnectField::StartPath => self.start_path = text,
         }
     }
@@ -246,11 +367,9 @@ impl ConnectDialog {
                 .ok_or(Missing::Port)?,
         };
         let user = self.user.trim();
-        if !plain_word(user) || user.contains(['/', '@', ':']) {
+        let user_asked_elsewhere = user.is_empty() && self.login_user_known;
+        if !user_asked_elsewhere && (!plain_word(user) || user.contains(['/', '@', ':'])) {
             return Err(Missing::User);
-        }
-        if self.password.is_empty() {
-            return Err(Missing::Password);
         }
         let path = match self.start_path.trim() {
             "" => None,
@@ -317,14 +436,61 @@ mod tests {
         dialog.set(ConnectField::Host, "h".to_owned());
         assert_eq!(dialog.target().unwrap_err(), Missing::User);
         dialog.set(ConnectField::User, "u".to_owned());
-        assert_eq!(dialog.target().unwrap_err(), Missing::Password);
-        dialog.set_password(Secret::new("p".to_owned()));
+        assert!(dialog.target().is_ok(), "no password is needed to try keys");
         dialog.set(ConnectField::Port, "x".to_owned());
         assert_eq!(dialog.target().unwrap_err(), Missing::Port);
         dialog.set(ConnectField::Port, "70000".to_owned());
         assert_eq!(dialog.target().unwrap_err(), Missing::Port);
         dialog.set(ConnectField::Host, "a b".to_owned());
         assert_eq!(dialog.target().unwrap_err(), Missing::Host);
+    }
+
+    #[test]
+    fn no_user_is_needed_when_the_ssh_config_or_the_account_gives_one() {
+        let mut dialog = ConnectDialog::new(1);
+        dialog.set(ConnectField::Host, "alias".to_owned());
+        assert_eq!(dialog.target().unwrap_err(), Missing::User);
+        dialog.set_ssh(SshHint::default(), true);
+        let (server, _) = dialog.target().unwrap();
+        assert_eq!(server, ServerId::new("", "alias", 22));
+        dialog.set(ConnectField::User, "a b".to_owned());
+        assert_eq!(dialog.target().unwrap_err(), Missing::User);
+    }
+
+    #[test]
+    fn the_typed_key_file_goes_over_the_saved_one_and_the_passphrase_leaves_with_the_login() {
+        let mut dialog = filled();
+        let saved = Login {
+            key_file: Some(PathBuf::from("/saved")),
+            ..Login::default()
+        };
+        assert_eq!(
+            dialog.take_login(saved.clone()).key_file,
+            Some(PathBuf::from("/saved"))
+        );
+        dialog.set(ConnectField::KeyFile, " /typed ".to_owned());
+        dialog.set_stage(Stage::Passphrase {
+            key_file: PathBuf::from("/typed"),
+        });
+        dialog.set_passphrase(Secret::new("open sesame".to_owned()));
+        let login = dialog.take_login(saved);
+        assert_eq!(login.key_file, Some(PathBuf::from("/typed")));
+        assert_eq!(login.passphrase.unwrap().1.expose(), "open sesame");
+        assert!(dialog.passphrase().is_empty());
+        assert!(!format!("{dialog:?}").contains("open sesame"));
+    }
+
+    #[test]
+    fn a_passphrase_is_typed_only_in_its_stage_and_wiped_when_the_stage_ends() {
+        let mut dialog = filled();
+        dialog.set_passphrase(Secret::new("early".to_owned()));
+        assert!(dialog.passphrase().is_empty());
+        dialog.set_stage(Stage::Passphrase {
+            key_file: PathBuf::from("/k"),
+        });
+        dialog.set_passphrase(Secret::new("late".to_owned()));
+        dialog.set_stage(Stage::Editing);
+        assert!(dialog.passphrase().is_empty());
     }
 
     #[test]

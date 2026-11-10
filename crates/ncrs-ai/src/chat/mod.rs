@@ -10,6 +10,7 @@ mod grammar;
 mod intent;
 #[cfg(all(test, feature = "llama"))]
 mod live;
+mod name_proposal;
 mod parse;
 #[cfg(all(test, feature = "llama"))]
 mod scoring;
@@ -25,6 +26,7 @@ pub use intent::{
     ChatIntent, ChatModel, NameBlock, NameSpec, Order, QuestionKind, Schedule, Transfer,
     EVERY_AREA, NAME_SEPARATORS,
 };
+pub use name_proposal::propose_name_spec;
 pub use parse::parse_chat_reply;
 pub use turn::{chat_user_message, intent_json, search_json, ChatQuestion, ChatTurn, SearchQuery};
 

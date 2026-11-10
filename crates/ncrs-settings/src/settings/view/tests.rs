@@ -275,10 +275,10 @@ fn an_own_server_waits_for_its_address_and_model() {
         state.problems.get(&SettingField::AiModel),
         Some(&FieldProblem::Needed)
     );
-    assert_eq!(typed(&mut state, endpoint, "https://example.com"), None);
+    assert_eq!(typed(&mut state, endpoint, "http://example.com"), None);
     assert_eq!(
         state.problems.get(&endpoint),
-        Some(&FieldProblem::Endpoint(AiEndpointProblem::NotLocal))
+        Some(&FieldProblem::Endpoint(AiEndpointProblem::PlainHttpFar))
     );
     state.edit(endpoint, "http://127.0.0.1:8080".to_owned());
     assert_eq!(

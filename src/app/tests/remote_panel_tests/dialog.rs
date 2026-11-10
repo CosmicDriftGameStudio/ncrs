@@ -93,7 +93,7 @@ fn a_server_panel_is_remembered_as_home_and_history_drops_server_paths() {
 }
 
 #[tokio::test]
-async fn typing_an_sftp_address_opens_the_connect_dialog_without_touching_the_disk() {
+async fn typing_an_sftp_address_tries_the_keys_and_opens_the_dialog_when_they_fail() {
     let fixture = Fixture::trusted();
     let mut app = app_over(&fixture);
     drop(app.update(Message::PathFieldInput(
@@ -102,17 +102,51 @@ async fn typing_an_sftp_address_opens_the_connect_dialog_without_touching_the_di
 
     let reported = reports(&mut app, Message::PathFieldSubmit).await;
 
-    let dialog = app.remote_ui.dialog.as_ref().unwrap();
-    assert_eq!(dialog.value(ConnectField::Host), "example.org");
-    assert_eq!(dialog.value(ConnectField::Port), "2222");
-    assert_eq!(dialog.value(ConnectField::User), "");
-    assert_eq!(dialog.value(ConnectField::StartPath), "/srv/files");
     assert_eq!(app.path_field_for_test(), None);
     assert!(
         !reported
             .iter()
             .any(|message| matches!(message, Message::PathChecked { .. })),
         "no look at the disk was started: {reported:?}"
+    );
+    assert!(app.remote_ui.dialog.is_none(), "the keys come first");
+    let Some(Message::Remote(RemoteMessage::PasswordLoaded {
+        side,
+        request_id,
+        remote,
+        select,
+        ..
+    })) = reported.into_iter().find(|message| {
+        matches!(
+            message,
+            Message::Remote(RemoteMessage::PasswordLoaded { .. })
+        )
+    })
+    else {
+        panic!("the keychain was not asked");
+    };
+
+    settle(
+        &mut app,
+        Message::Remote(RemoteMessage::AutoConnected {
+            side,
+            request_id,
+            remote,
+            select,
+            password: Secret::default(),
+            result: Err(ConnectFailure::AuthFailed),
+        }),
+    )
+    .await;
+
+    let dialog = app.remote_ui.dialog.as_ref().unwrap();
+    assert_eq!(dialog.value(ConnectField::Host), "example.org");
+    assert_eq!(dialog.value(ConnectField::Port), "2222");
+    assert_eq!(dialog.value(ConnectField::User), "");
+    assert_eq!(
+        dialog.then().unwrap().path,
+        PathBuf::from("sftp://example.org:2222/srv/files"),
+        "the typed folder is kept for after the login"
     );
 }
 
@@ -291,12 +325,16 @@ async fn a_server_without_password_login_says_so() {
 #[tokio::test]
 async fn the_password_is_in_no_debug_text_of_a_message_either() {
     let secret = Secret::new("hunter2-the-password".to_owned());
+    let login = ncrs_fs::remote::session::Login {
+        password: secret.clone(),
+        ..Default::default()
+    };
     let fixture = Fixture::trusted();
-    let failed = fixture.pool.connect(&Fixture::id(), &secret).await;
+    let failed = fixture.pool.connect(&Fixture::id(), &login).await;
     assert_eq!(failed, Err(ConnectFailure::AuthFailed));
     let unknown = Fixture::untrusted()
         .pool
-        .connect(&Fixture::id(), &secret)
+        .connect(&Fixture::id(), &login)
         .await;
     let mut shown = String::new();
     for result in [failed, unknown] {

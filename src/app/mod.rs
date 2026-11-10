@@ -56,11 +56,11 @@ use crate::keymap::{KeyActionMessage as _, KeymapMessages as _};
 use crate::menu::Availability;
 use crate::messages::{
     AboutMessage, AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage,
-    ConflictChoice, FilingStatusMessage, GrantMessage, HermesChatMessage, HermesFileMessage,
-    HermesOverviewMessage, HermesPage, HitListMessage, KeyBindingsMessage, Message,
-    OcrModelsMessage, PanelSide, QuickFixMessage, QuickOpenMessage, RemoteMessage, RulesMessage,
-    SavedQueriesMessage, SearchMessage, SettingChange, SettingsMessage, ShownTab, TagsMessage,
-    ThemeFetchMessage, TitleBarMessage, TransferKind, TrashMessage,
+    CompareMessage, ConflictChoice, FilingStatusMessage, GrantMessage, HermesChatMessage,
+    HermesFileMessage, HermesOverviewMessage, HermesPage, HitListMessage, KeyBindingsMessage,
+    Message, OcrModelsMessage, PanelSide, QuickFixMessage, QuickOpenMessage, RemoteMessage,
+    RulesMessage, SavedQueriesMessage, SearchMessage, SettingChange, SettingsMessage, ShownTab,
+    TagsMessage, ThemeFetchMessage, TitleBarMessage, TransferKind, TrashMessage,
 };
 #[cfg(target_os = "macos")]
 use crate::native_menu;
@@ -168,6 +168,7 @@ use tokio::sync::mpsc;
 
 mod bars;
 mod columns;
+mod compare;
 mod context_menu;
 mod dialogs;
 mod favourites_bar;
@@ -359,6 +360,8 @@ pub struct App {
     hermes_chat: ncrs_hermes_chat::State,
     /// The local model the chat talks to; shared with the field AI, created on first use.
     chat_model: Option<Arc<dyn ncrs_ai::ChatModel>>,
+    /// The setting `chat_model` was built for.
+    chat_model_setting: Option<crate::config::AiSetting>,
     /// The setting that switches Hermes on is being written; the chat counts
     /// Hermes as starting meanwhile.
     turning_hermes_on: bool,
@@ -448,6 +451,7 @@ pub struct App {
     /// The dialog that connects to a server, while it is up, and the count of
     /// its attempts.
     remote_ui: ncrs_remote::Remote,
+    compare: ncrs_compare::Compare,
     /// The servers of `[[servers]]`, as last loaded or written.
     saved_servers: Vec<ServerEntry>,
     /// Downloads the AI model, on a blocking thread. Injected so tests need no
@@ -480,6 +484,8 @@ pub struct PromptKeyState {
     pub transfer_progress: bool,
     /// The permissions dialog is up: Escape closes it, Enter applies.
     pub permissions_dialog: bool,
+    /// The batch rename dialog is up: Escape closes it, Enter renames.
+    pub batch_rename_dialog: bool,
     /// The path field or the name input of a row is being edited: its keys
     /// are the text field's.
     pub path_editing: bool,
@@ -517,6 +523,8 @@ pub struct PromptKeyState {
     /// The dialog that connects to a server is up, so the text fields take the
     /// typing and Tab moves between them.
     pub connect_dialog: bool,
+    /// A dialog of the folder comparison is up: Enter confirms, Escape closes it.
+    pub compare_dialog: bool,
     /// The settings tab is up, so the panel keys are inert and Escape closes it.
     pub settings: bool,
     /// The System page is up: its keys are the list's, and Escape closes it.
@@ -560,6 +568,7 @@ impl Default for PromptKeyState {
             transfer_dialog: false,
             transfer_progress: false,
             permissions_dialog: false,
+            batch_rename_dialog: false,
             path_editing: false,
             command_line: false,
             search: false,
@@ -577,6 +586,7 @@ impl Default for PromptKeyState {
             ai_model: false,
             grant_dialog: false,
             connect_dialog: false,
+            compare_dialog: false,
             settings: false,
             monitor: false,
             monitor_filter: false,

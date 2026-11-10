@@ -102,9 +102,16 @@ pub fn update(
         SettingsMessage::ToggleAllRuns => {
             page_flag(settings, |state| state.all_runs = !state.all_runs)
         }
-        SettingsMessage::ServerDialog(open) => {
-            page_flag(settings, |state| state.server_dialog = open)
-        }
+        SettingsMessage::ServerDialog(open) => page_flag(settings, |state| {
+            state.server_dialog = open;
+            if !open {
+                // Cancelled: the typed key, the test and the tick belong to
+                // this opening of the dialog only.
+                state.ai_key = None;
+                state.ai_check = crate::settings::AiCheck::Idle;
+                state.ai_understood = false;
+            }
+        }),
         SettingsMessage::OpenChat(area) => {
             actions.push(Action::OpenChat { area });
             Task::none()

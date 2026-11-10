@@ -3378,6 +3378,7 @@ dependencies = [
  "image",
  "muda",
  "ncrs-ai",
+ "ncrs-compare",
  "ncrs-config",
  "ncrs-console",
  "ncrs-core",
@@ -3417,7 +3418,9 @@ dependencies = [
 name = "ncrs-ai"
 version = "0.0.0"
 dependencies = [
+ "chrono",
  "jsonc-parser",
+ "keyring",
  "llama-cpp-2",
  "llama-cpp-sys-2",
  "ncrs-index",
@@ -3426,6 +3429,20 @@ dependencies = [
  "sha2 0.11.1",
  "tempfile",
  "ureq",
+]
+
+[[package]]
+name = "ncrs-compare"
+version = "0.0.0"
+dependencies = [
+ "iced",
+ "iced_test",
+ "ncrs-core",
+ "ncrs-fs",
+ "ncrs-i18n",
+ "ncrs-ui-kit",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]
@@ -3467,6 +3484,7 @@ name = "ncrs-files"
 version = "0.0.0"
 dependencies = [
  "iced",
+ "iced_test",
  "ncrs-core",
  "ncrs-fs",
  "ncrs-i18n",
@@ -3654,12 +3672,17 @@ dependencies = [
  "chrono",
  "drag",
  "iced",
+ "iced_test",
+ "kamadak-exif",
+ "ncrs-ai",
  "ncrs-core",
  "ncrs-fs",
  "ncrs-i18n",
+ "ncrs-index",
  "ncrs-jobs",
  "ncrs-ui-kit",
  "png 0.18.1",
+ "regex",
  "tempfile",
  "tokio",
 ]

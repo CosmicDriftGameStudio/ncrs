@@ -60,6 +60,8 @@ key_actions! {
     DeletePermanently => "delete_permanently",
     Trash => "trash",
     RestoreLastDeletion => "restore_last_deletion",
+    UndoRename => "undo_rename",
+    CompareFolders => "compare_folders",
     OpenTrashInFinder => "open_trash_in_finder",
     Mkdir => "mkdir",
     NewFile => "new_file",
@@ -200,6 +202,8 @@ impl KeyAction {
             | Self::CopyFiles
             | Self::Trash
             | Self::RestoreLastDeletion
+            | Self::UndoRename
+            | Self::CompareFolders
             | Self::OpenTrashInFinder
             | Self::Paste
             | Self::Mkdir
@@ -367,6 +371,8 @@ impl KeyAction {
             | Self::CopyFiles
             | Self::Trash
             | Self::RestoreLastDeletion
+            | Self::UndoRename
+            | Self::CompareFolders
             | Self::OpenTrashInFinder
             | Self::Paste
             | Self::Copy
@@ -470,6 +476,8 @@ impl KeyAction {
             | Self::CopyFiles
             | Self::Trash
             | Self::RestoreLastDeletion
+            | Self::UndoRename
+            | Self::CompareFolders
             | Self::OpenTrashInFinder
             | Self::Paste
             | Self::DriveMenuLeft

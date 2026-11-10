@@ -4,19 +4,22 @@ mod font_rows;
 mod groups;
 mod hermes_page;
 mod index_page;
+mod own_server_dialog;
 mod page;
 mod system_page;
+mod usage_page;
 
 use columns_page::columns_groups;
 use favourites_page::favourites_groups;
 use font_rows::font_rows;
-pub use groups::server_dialog_body;
 use groups::*;
 use hermes_page::hermes_groups;
 use index_page::index_groups;
+pub use own_server_dialog::server_dialog_body;
 pub use page::focus_facts;
 use page::*;
 use system_page::system_groups;
+use usage_page::usage_sections;
 
 use crate::settings::*;
 
@@ -133,8 +136,11 @@ fn problem_text(problem: &FieldProblem, lang: Language) -> String {
                 &[("{reason}", reason)],
             );
         }
-        FieldProblem::Endpoint(AiEndpointProblem::NotLocal) => Msg::SettingsProblemEndpointNotLocal,
+        FieldProblem::Endpoint(AiEndpointProblem::PlainHttpFar) => {
+            Msg::SettingsProblemEndpointNotLocal
+        }
         FieldProblem::Needed => Msg::SettingsProblemNeeded,
+        FieldProblem::NotUnderstood => Msg::SettingsProblemNotUnderstood,
         FieldProblem::NotAnIban => Msg::SettingsProblemIban,
         FieldProblem::Write(failure) => return failure.clone(),
     };
@@ -165,6 +171,7 @@ fn feature_label(feature: SettingsFeature) -> Msg {
         SettingsFeature::Tags => Msg::SettingsFeatureTags,
         SettingsFeature::Reports => Msg::SettingsFeatureReports,
         SettingsFeature::ReadErrors => Msg::SettingsFeatureReadErrors,
+        SettingsFeature::Usage => Msg::SettingsFeatureUsage,
     }
 }
 
@@ -184,7 +191,8 @@ fn feature_theme_name(feature: SettingsFeature) -> Option<FuturamaName> {
         | SettingsFeature::Rules
         | SettingsFeature::Tags
         | SettingsFeature::Reports
-        | SettingsFeature::ReadErrors => None,
+        | SettingsFeature::ReadErrors
+        | SettingsFeature::Usage => None,
     }
 }
 
@@ -214,7 +222,8 @@ fn feature_suffix(feature: SettingsFeature) -> Option<Msg> {
         | SettingsFeature::Rules
         | SettingsFeature::Tags
         | SettingsFeature::Reports
-        | SettingsFeature::ReadErrors => None,
+        | SettingsFeature::ReadErrors
+        | SettingsFeature::Usage => None,
     }
 }
 
@@ -234,7 +243,8 @@ fn feature_beta_mark(feature: SettingsFeature) -> Option<Msg> {
         | SettingsFeature::Rules
         | SettingsFeature::Tags
         | SettingsFeature::Reports
-        | SettingsFeature::ReadErrors => None,
+        | SettingsFeature::ReadErrors
+        | SettingsFeature::Usage => None,
     }
 }
 
@@ -255,6 +265,7 @@ fn feature_intro(feature: SettingsFeature) -> Msg {
         SettingsFeature::Tags => Msg::SettingsFeatureTagsIntro,
         SettingsFeature::Reports => Msg::SettingsFeatureReportsIntro,
         SettingsFeature::ReadErrors => Msg::SettingsFeatureReadErrorsIntro,
+        SettingsFeature::Usage => Msg::SettingsFeatureUsageIntro,
     }
 }
 
@@ -275,7 +286,8 @@ fn feature_config_place(feature: SettingsFeature) -> Option<&'static str> {
         | SettingsFeature::Tags
         | SettingsFeature::Reports
         | SettingsFeature::ReadErrors
-        | SettingsFeature::Updates => None,
+        | SettingsFeature::Updates
+        | SettingsFeature::Usage => None,
     }
 }
 
@@ -343,7 +355,8 @@ fn groups_of<'a>(feature: SettingsFeature, view: &SettingsView<'a>) -> Vec<Group
         | SettingsFeature::Tags
         | SettingsFeature::Reports
         | SettingsFeature::ReadErrors
-        | SettingsFeature::Updates => Vec::new(),
+        | SettingsFeature::Updates
+        | SettingsFeature::Usage => Vec::new(),
     }
 }
 

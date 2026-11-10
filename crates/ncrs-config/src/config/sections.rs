@@ -77,6 +77,9 @@ pub struct ServerSection {
     /// The folder to open first, an absolute path on the server.
     #[serde(default)]
     pub path: Option<Spanned<String>>,
+    /// A key file for this server, as typed; `~` leads to the home folder.
+    #[serde(default)]
+    pub key_file: Option<Spanned<String>>,
 }
 
 /// A saved SFTP server as `load` checked it.
@@ -88,6 +91,8 @@ pub struct ServerEntry {
     pub port: u16,
     pub user: String,
     pub path: Option<String>,
+    /// The key file to log in with, as typed.
+    pub key_file: Option<String>,
 }
 
 impl ServerEntry {

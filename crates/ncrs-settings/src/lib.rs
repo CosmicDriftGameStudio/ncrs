@@ -3,6 +3,7 @@
 
 pub mod action;
 pub mod ai_model;
+pub mod ai_server;
 pub mod ctx;
 pub mod dialogs;
 pub mod facts;
@@ -23,6 +24,7 @@ pub mod vsix;
 pub mod write;
 
 pub use action::Action;
+pub use ai_server::{check_ai_server, store_ai_key, AiCheckJob, AiCheckResult};
 pub use ctx::{Ctx, Services};
 pub use message::{
     AiModelMessage, FavouritesEdit, KeyBindingsMessage, Message, OcrModelsMessage, SettingChange,

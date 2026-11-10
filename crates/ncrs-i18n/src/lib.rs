@@ -339,9 +339,14 @@ mod tests {
             Msg::ColumnName
                 // The same word in both languages, like ColumnName.
                 | Msg::TrashColumnName
+                | Msg::SettingsUsageTokens
                 | Msg::RulesFormName
                 | Msg::RulesFormTagsOptional
                 | Msg::RuleSuggestionsConditionText
+                // The same words in German: Name, Start, Problem.
+                | Msg::BatchRenameTokenName
+                | Msg::BatchRenameStart
+                | Msg::BatchRenameColumnProblem
                 // The same word, in a field that asks for a piece of text.
                 | Msg::FilingPiecesNameTextPlaceholder
                 | Msg::QuickFixLoading

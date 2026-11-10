@@ -2,6 +2,7 @@
 //! to be built, and no UI.
 
 mod column;
+mod compare_mark;
 mod details;
 mod entry;
 mod folder_size;
@@ -14,6 +15,7 @@ mod sort_key;
 mod transfer_kind;
 
 pub use column::{Column, DateFormat, SizeFormat};
+pub use compare_mark::{CompareMark, CompareMarks};
 pub use details::{EntryDetails, WindowsAttributes};
 pub use entry::FileEntry;
 pub use folder_size::FolderSize;

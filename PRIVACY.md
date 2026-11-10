@@ -15,7 +15,7 @@ ncrs only connects to the network when you ask it to:
 - **SFTP:** when you open an SFTP server, ncrs connects to that server.
 - **Themes:** when you download a theme, ncrs fetches it from Open VSX (open-vsx.org).
 - **Models:** when you download a text recognition or AI model for Hermes, ncrs fetches it from Hugging Face (huggingface.co).
-- **Hermes AI server:** when you point Hermes at a model server, ncrs sends the text of the documents you file to that server. You choose and run that server yourself; it can be on your own computer.
+- **Hermes AI server:** when you point Hermes at a model server, ncrs sends the text of the documents you file to that server. You choose that server; it can be on your own computer or on another one. When it is on another computer, the text of the documents Hermes reads and your chat with Hermes leave your computer and go to that server, over https. ncrs says so in the server dialog. The API key for the server is kept in the system's credential store, not in the settings file.
 
 - **Update check:** when the check is on, ncrs asks GitHub (api.github.com) for the newest release of ncrs, at most once a day. See below.
 
@@ -35,7 +35,8 @@ ncrs can tell you when a newer version exists. If the check is on, ncrs sends on
 
 - Settings, favourites and folder history are stored in ncrs's settings file on your computer.
 - The index behind Quick Open, the content search and Hermes is an encrypted database on your computer.
-- SFTP passwords and the key of that index are stored in the system's credential store (Keychain on macOS).
+- What Hermes used on your own AI server (requests, tokens, the price when the server reports one, no document text) is counted in a small log file on your computer, shown on the Usage page of the settings tab. It is never sent anywhere.
+- SFTP passwords, the API key of an AI server and the key of that index are stored in the system's credential store (Keychain on macOS).
 
 ## Contact
 

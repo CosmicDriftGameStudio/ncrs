@@ -512,14 +512,15 @@ Entschieden:
   Store-Fassung nie den Eintrag einer normalen Installation anfasst; alles hängt am
   Cargo-Feature `sandbox` plus Laufzeitcheck.
 - **Netzwerk:** eigener Client (SFTP zuerst), braucht nur `network.client`.
-  **Umgesetzt (K4, #125):** nur Passwort-Anmeldung (kein ssh-agent, keine Schlüsseldateien),
-  Durchsuchen, F3 und F5 in beide Richtungen; F4/F6/F7/F8, Suche, Quick Open, Hermes und die
-  Kommandozeile sagen auf dem Server nur Bescheid. Hostschlüssel werden vor dem Passwort
+  **Umgesetzt (K4, #125):** Anmeldung per Passwort, Durchsuchen, F3 und F5 in beide
+  Richtungen; F4/F6/F7/F8, Suche, Quick Open, Hermes und die Kommandozeile sagen auf dem Server nur Bescheid. Hostschlüssel werden vor dem Passwort
   geprüft (`~/.ssh/known_hosts` nur gelesen, eigene Datei daneben), Passwörter liegen je
-  Server im Schlüsselbund. Für die Store-Fassung fehlt noch das Entitlement `network.client`
+  Server im Schlüsselbund. Die Schlüssel-Anmeldung (ssh-agent, Schlüsseldateien mit
+  Passphrase aus dem Schlüsselbund, Aliase aus `~/.ssh/config`) ist in der Anwendungsschicht,
+  die Maske dafür fehlt noch. Für die Store-Fassung fehlt noch das Entitlement `network.client`
   (kommt mit #133), und `~/.ssh/known_hosts` ist im Sandbox nur nach der Home-Freigabe lesbar.
-  Offen für später: Verschieben, Server-zu-Server, RSA-only-Hostkeys, Schlüssel-Anmeldung,
-  Fortsetzen, Vorab-Zählung.
+  Offen für später: Verschieben, Server-zu-Server, RSA-only-Hostkeys, Maske für Schlüsseldatei und
+  Passphrase, Fortsetzen, Vorab-Zählung.
 - **Hermes** ist in der Store-Fassung als Beta dabei.
 - **Einstellungen und Tasten in der App (#142, #143):** In der Store-Fassung liegt
   `config.toml` im Sandbox-Container, also muss alles darin auch in der App einstellbar

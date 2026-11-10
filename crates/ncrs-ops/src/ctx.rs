@@ -3,10 +3,12 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use ncrs_ai::ChatModel;
 use ncrs_core::PanelSide;
 use ncrs_fs::remote::session::Pool;
 use ncrs_fs::{SandboxAccess, Trash};
 use ncrs_i18n::Language;
+use ncrs_index::SearchIndex;
 
 /// The facts about the app that the trash view's update reads.
 #[derive(Debug, Clone, Copy)]
@@ -44,6 +46,10 @@ pub struct FlowCtx<'a> {
     pub permanent_delete_key: Option<String>,
     /// The key that puts the latest deletion back.
     pub restore_last_key: Option<String>,
+    /// The index that knows sender, kind and amount of the documents.
+    pub index: Option<Arc<dyn SearchIndex>>,
+    /// The model Hermes asks for a pattern; `None` while the AI is off.
+    pub model: Option<Arc<dyn ChatModel>>,
 }
 
 impl std::fmt::Debug for FlowCtx<'_> {

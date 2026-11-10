@@ -8,6 +8,7 @@ use ncrs_fs::archive::ViewCopies;
 use ncrs_fs::transfer::OnConflict;
 use ncrs_fs::TrashedItem;
 
+use crate::batch_rename::state::BatchRename;
 use crate::clipboard_paste::PastedContent;
 use crate::message::ConflictChoice;
 use crate::permissions::PermissionsDialog;
@@ -97,6 +98,16 @@ pub struct Restoration {
     pub rule: Option<OnConflict>,
 }
 
+/// A batch rename while its job runs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BatchRun {
+    /// Old and new path of each renamed entry.
+    pub pairs: Vec<(PathBuf, PathBuf)>,
+    /// Taking the last batch back.
+    pub undo: bool,
+    pub side: PanelSide,
+}
+
 /// The state of the transfer, delete, restore and archive flows and the count that tells a
 /// late result from a current one. Every operation of the app bumps `generation` when it starts or
 /// ends, so a result that arrives after that is dropped.
@@ -121,6 +132,15 @@ pub struct Ops {
     pub permissions_dialog: Option<PermissionsDialog>,
     /// A permissions change, while its job runs.
     pub permissions_running: bool,
+    /// The batch rename dialog, while it is up.
+    pub batch_rename: Option<BatchRename>,
+    /// Counts the batch rename dialogs opened, so a late read of the files
+    /// can tell if its dialog is still the one on screen.
+    pub batch_dialogs_opened: u64,
+    /// Old and new path of each entry the latest batch renamed, for the undo.
+    pub last_batch: Vec<(PathBuf, PathBuf)>,
+    /// A batch rename or its undo, while its job runs.
+    pub batch_running: Option<BatchRun>,
     /// The delete that is running.
     pub deleting: Option<Deletion>,
     /// What the latest F8 run moved to the trash, for the restore key.
@@ -224,5 +244,12 @@ impl Ops {
     /// Whether the progress mask is up over a running transfer.
     pub fn progress_mask_is_open(&self) -> bool {
         self.transfer_mask_visible && self.transfer.is_some()
+    }
+}
+
+impl Ops {
+    /// Whether the last batch rename can still be taken back.
+    pub fn can_undo_rename(&self) -> bool {
+        !self.last_batch.is_empty()
     }
 }

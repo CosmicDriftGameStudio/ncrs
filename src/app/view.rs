@@ -32,6 +32,7 @@ impl App {
                     palette: self.palette,
                     is_active: self.panels.active == side,
                     visible_rows: self.visible_rows,
+                    compare_marks: self.compare.marks(side),
                     hermes_cell,
                     columns: self.column_settings(),
                     special_folders: &self.special_folders,
@@ -113,11 +114,21 @@ impl App {
             {
                 self.settings_area(state)
             } else {
-                let panels_area: Element<'_, Message> = match self.favourites_bar_view() {
-                    Some(favourites_bar) => {
-                        column![favourites_bar, panels].height(Length::Fill).into()
-                    }
-                    None => panels.into(),
+                let bars: Vec<Element<'_, Message>> = self
+                    .favourites_bar_view()
+                    .into_iter()
+                    .chain(
+                        ncrs_compare::view::bar(&self.compare, self.lang, &self.palette)
+                            .map(|bar| bar.map(Message::from)),
+                    )
+                    .collect();
+                let panels_area: Element<'_, Message> = if bars.is_empty() {
+                    panels.into()
+                } else {
+                    iced::widget::Column::with_children(bars)
+                        .push(panels)
+                        .height(Length::Fill)
+                        .into()
                 };
                 container(column![
                     panels_area,
@@ -341,6 +352,17 @@ impl App {
             return Stack::with_children([root, dialog::scrim(dialog_element)]).into();
         }
 
+        if let Some(dialog) = self.ops.batch_rename.as_ref() {
+            let dialog_element = ncrs_ops::batch_rename::view::view(
+                dialog,
+                self.window_size,
+                self.lang,
+                &self.palette,
+            )
+            .map(Message::from);
+            return Stack::with_children([root, dialog::scrim(dialog_element)]).into();
+        }
+
         if let Some(dialog) = self.ops.permissions_dialog.as_ref() {
             let dialog_element = ncrs_ops::permissions::view::view(
                 dialog,
@@ -424,6 +446,13 @@ impl App {
             )
             .map(Message::from);
             return Stack::with_children([root, dialog::scrim(question)]).into();
+        }
+
+        if let Some(dialog_element) =
+            ncrs_compare::view::dialog(&self.compare, self.window_size, self.lang, &self.palette)
+        {
+            return Stack::with_children([root, dialog::scrim(dialog_element.map(Message::from))])
+                .into();
         }
 
         if let Some(dialog) = self.remote_ui.dialog.as_ref() {

@@ -61,6 +61,7 @@ impl App {
             shown_tab: crate::messages::ShownTab::default(),
             hermes_chat: ncrs_hermes_chat::State::default(),
             chat_model: None,
+            chat_model_setting: None,
             turning_hermes_on: false,
             quick_open: None,
             quick_open_walk_generation: 0,
@@ -106,6 +107,7 @@ impl App {
             remote: Arc::new(Pool::over_tcp(KnownHostsFiles::default())),
             passwords: Arc::new(fs::remote::credentials::InMemoryPasswords::default()),
             remote_ui: ncrs_remote::Remote::default(),
+            compare: ncrs_compare::Compare::default(),
             saved_servers: Vec::new(),
         };
         for (side, names) in [

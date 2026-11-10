@@ -189,6 +189,25 @@ pub enum SettingsMessage {
     ToggleAllRuns,
     /// Opens the dialog of the own server, or closes it.
     ServerDialog(bool),
+    /// The API key typed in the dialog of the own server.
+    AiKey(ncrs_ai::Secret),
+    /// "Test connection": asks the server for its models.
+    TestAiServer,
+    /// What the server said to the test for this address.
+    AiChecked {
+        endpoint: String,
+        result: crate::ai_server::AiCheckResult,
+    },
+    /// The "I understand" tick: documents go to another computer.
+    UnderstandLeaving(bool),
+    /// Save of the dialog: address, model and key together.
+    SaveServer,
+    /// The key was kept in the keychain, or why not.
+    AiKeyStored(Result<(), String>),
+    /// The period of the Usage page, in days.
+    UsagePeriod(u32),
+    /// The sums of the usage log, per period.
+    UsageLoaded(Vec<(u32, ncrs_ai::UsageSummary)>),
     /// Opens the chat (F2), at the change of this area when one is named.
     OpenChat(Option<AreaFacts>),
     TogglePause,

@@ -8,10 +8,10 @@ use crate::ctx::Ctx;
 use crate::dialog::{ConnectDialog, Missing, Stage, Then};
 use crate::message::{ConnectField, Message};
 use crate::state::Remote;
-use crate::view::field_id;
+use crate::view::{field_id, PASSPHRASE_ID};
 use ncrs_fs::remote::session::ConnectFailure;
 use ncrs_fs::remote::RemotePath;
-use ncrs_i18n::{fill_template, Msg};
+use ncrs_i18n::{fill_template, Language, Msg};
 
 pub fn submit(remote: &mut Remote, ctx: &Ctx<'_>) -> Task<Message> {
     let Some(dialog) = remote.dialog.as_ref() else {
@@ -26,7 +26,6 @@ pub fn submit(remote: &mut Remote, ctx: &Ctx<'_>) -> Task<Message> {
             Missing::Host => ConnectField::Host,
             Missing::Port => ConnectField::Port,
             Missing::User => ConnectField::User,
-            Missing::Password => ConnectField::Password,
         })),
     }
 }
@@ -41,11 +40,11 @@ fn start_connecting(remote: &mut Remote, ctx: &Ctx<'_>) -> Task<Message> {
         return Task::none();
     };
     dialog.next_attempt(attempt);
+    let login = dialog.take_login(ctx.login(&server, dialog.password().clone()));
     dialog.set_stage(Stage::Connecting);
-    let password = dialog.password().clone();
     let pool = Arc::clone(ctx.pool);
     Task::perform(
-        async move { pool.connect(&server, &password).await },
+        async move { pool.connect(&server, &login).await },
         move |result| Message::Connected { attempt, result },
     )
 }
@@ -77,16 +76,13 @@ pub fn connection_made(
     }
     match result {
         Ok(()) => finish_connect(remote, ctx, actions),
-        Err(failure) => {
-            connect_failed(remote, ctx, failure);
-            Task::none()
-        }
+        Err(failure) => connect_failed(remote, ctx, failure),
     }
 }
 
 /// Back to editing with the reason, or on to the question about an unknown
-/// server.
-fn connect_failed(remote: &mut Remote, ctx: &Ctx<'_>, failure: ConnectFailure) {
+/// server or about the passphrase of a key.
+fn connect_failed(remote: &mut Remote, ctx: &Ctx<'_>, failure: ConnectFailure) -> Task<Message> {
     let host = remote
         .dialog
         .as_ref()
@@ -94,16 +90,50 @@ fn connect_failed(remote: &mut Remote, ctx: &Ctx<'_>, failure: ConnectFailure) {
         .unwrap_or_default();
     let text = connect_failure_text(ctx.lang, &failure, &host);
     let Some(dialog) = remote.dialog.as_mut() else {
-        return;
+        return Task::none();
     };
+    show_failure(dialog, failure, text, ctx.lang)
+}
+
+/// Puts the dialog in the stage a failure leads to: the question about an
+/// unknown server, the passphrase of a locked key, or editing with `text`.
+pub(in crate::update) fn show_failure(
+    dialog: &mut ConnectDialog,
+    failure: ConnectFailure,
+    text: String,
+    lang: Language,
+) -> Task<Message> {
     match failure {
         ConnectFailure::UnknownHost { fingerprint, key } => {
             dialog.set_stage(Stage::HostKey { fingerprint, key });
+            Task::none()
+        }
+        ConnectFailure::PassphraseNeeded { key_file } => {
+            dialog.set_stage(Stage::Passphrase { key_file });
+            operation::focus(PASSPHRASE_ID)
+        }
+        ConnectFailure::WrongPassphrase { key_file } => {
+            dialog.set_stage(Stage::Passphrase { key_file });
+            dialog.set_error(lang.text(Msg::RemotePassphraseWrong).to_owned());
+            operation::focus(PASSPHRASE_ID)
         }
         _ => {
             dialog.set_stage(Stage::Editing);
             dialog.set_error(text);
+            operation::focus(field_id(ConnectField::Password))
         }
+    }
+}
+
+/// The button of the passphrase stage: connects again with the passphrase.
+pub fn unlock(remote: &mut Remote, ctx: &Ctx<'_>) -> Task<Message> {
+    let ready = remote.dialog.as_ref().is_some_and(|dialog| {
+        matches!(dialog.stage(), Stage::Passphrase { .. }) && !dialog.passphrase().is_empty()
+    });
+    if ready {
+        start_connecting(remote, ctx)
+    } else {
+        Task::none()
     }
 }
 
@@ -123,9 +153,10 @@ fn finish_connect(remote: &mut Remote, ctx: &Ctx<'_>, actions: &mut Vec<Action>)
         actions.push(Action::SaveServer {
             server: server.clone(),
             typed_path: typed_path.clone(),
+            key_file: dialog.key_file().map(|file| file.display().to_string()),
         });
     }
-    if dialog.remember() {
+    if dialog.remember() && !dialog.password().is_empty() {
         let passwords = Arc::clone(ctx.passwords);
         let (stored_for, password) = (server.clone(), dialog.password().clone());
         tasks.push(Task::perform(

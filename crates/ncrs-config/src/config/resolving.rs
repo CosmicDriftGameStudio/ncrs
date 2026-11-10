@@ -157,8 +157,8 @@ pub fn resolve_ai(section: Option<&Spanned<AiSection>>) -> Result<AiSetting, Fil
 pub enum AiEndpointProblem {
     /// Not an address the client takes; the text says why.
     Unusable(String),
-    /// Not on this machine.
-    NotLocal,
+    /// Plain http to a host that is not this machine.
+    PlainHttpFar,
 }
 
 impl AiEndpointProblem {
@@ -166,8 +166,8 @@ impl AiEndpointProblem {
     fn reason(&self) -> String {
         match self {
             Self::Unusable(problem) => format!("endpoint is not usable: {problem}"),
-            Self::NotLocal => {
-                "endpoint must be on this machine (localhost, 127.0.0.1 or ::1) for now".to_owned()
+            Self::PlainHttpFar => {
+                "endpoint is not usable: an endpoint outside this machine needs https".to_owned()
             }
         }
     }
@@ -176,14 +176,10 @@ impl AiEndpointProblem {
 /// The checks `load` makes on `endpoint`, for the settings tab to make them
 /// before anything is written.
 pub fn check_ai_endpoint(endpoint: &str) -> Result<(), AiEndpointProblem> {
-    let unusable =
-        |problem: ncrs_ai::EndpointProblem| AiEndpointProblem::Unusable(problem.to_string());
-    ncrs_ai::check_endpoint(endpoint).map_err(unusable)?;
-    if ncrs_ai::endpoint_is_local(endpoint).map_err(unusable)? {
-        Ok(())
-    } else {
-        Err(AiEndpointProblem::NotLocal)
-    }
+    ncrs_ai::check_endpoint(endpoint).map_err(|problem| match problem {
+        ncrs_ai::EndpointProblem::NotLocalAndNotHttps => AiEndpointProblem::PlainHttpFar,
+        other => AiEndpointProblem::Unusable(other.to_string()),
+    })
 }
 
 pub const fn provider_text(provider: AiProviderName) -> &'static str {

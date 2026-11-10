@@ -81,7 +81,10 @@ impl App {
         let panel = self.active_panel();
         ncrs_config::commands::all()
             .map(|command| command.action)
-            .filter(|action| archive_refusal(panel, &action.message()).is_some())
+            .filter(|action| {
+                archive_refusal(panel, &action.message()).is_some()
+                    || (*action == KeyAction::UndoRename && !self.ops.can_undo_rename())
+            })
             .collect()
     }
 

@@ -23,6 +23,8 @@
 //!   them rather than by name.
 //! - `Snapshot` exposes no bytes, only a comparison against a file. The
 //!   reference is written on the first run.
+mod own_server;
+
 use iced_test::Simulator;
 
 use crate::app::App;

@@ -26,6 +26,7 @@ impl App {
         input.theme_fetch = self.settings.theme_fetch.is_some();
         input.transfer_dialog = self.ops.transfer_dialog.is_some();
         input.permissions_dialog = self.ops.permissions_dialog.is_some();
+        input.batch_rename_dialog = self.ops.batch_rename.is_some();
         input.settings = self.settings_shown() && !self.blocking_overlay_is_open();
         input.monitor = self.monitor_shown();
         input.monitor_filter = self.monitor_shown()
@@ -87,6 +88,7 @@ impl App {
         let ai_model = self.settings.ai_card_is_shown();
         let grant_dialog = self.grant_dialog;
         let connect_dialog = self.remote_ui.dialog.is_some();
+        let compare_dialog = self.compare.dialog_is_open();
         let settings = self.settings_shown();
         let monitor = self.monitor_shown();
         let monitor_filter = monitor && self.monitor.filter_has_focus();
@@ -95,6 +97,7 @@ impl App {
         let transfer_dialog = self.ops.transfer_dialog.is_some();
         let transfer_progress = self.ops.progress_mask_is_open();
         let permissions_dialog = self.ops.permissions_dialog.is_some();
+        let batch_rename_dialog = self.ops.batch_rename.is_some();
         let start_over_dialog = self.start_over_dialog;
         let open_file_dialog = self.ops.open_file_dialog.is_some();
         let delete_dialog = match &self.ops.delete_dialog {
@@ -132,6 +135,7 @@ impl App {
                 ai_model,
                 grant_dialog,
                 connect_dialog,
+                compare_dialog,
                 settings,
                 monitor,
                 monitor_filter,
@@ -144,6 +148,7 @@ impl App {
                 transfer_dialog,
                 transfer_progress,
                 permissions_dialog,
+                batch_rename_dialog,
                 ..PromptKeyState::default()
             },
             Some(prompt) => PromptKeyState {
@@ -176,6 +181,7 @@ impl App {
                 ai_model,
                 grant_dialog,
                 connect_dialog,
+                compare_dialog,
                 settings,
                 monitor,
                 monitor_filter,
@@ -185,6 +191,7 @@ impl App {
                 transfer_dialog,
                 transfer_progress,
                 permissions_dialog,
+                batch_rename_dialog,
                 busy: prompt.busy(),
                 typed: prompt.name().into(),
             },

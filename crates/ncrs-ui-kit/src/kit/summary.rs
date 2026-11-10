@@ -36,6 +36,17 @@ fn figure_cells<'a, M: Clone + 'a>(figures: &[(&str, Figure)], palette: &Palette
     Row::with_children(cells)
 }
 
+/// The numbers of [`count_summary`] alone, in the same outlined box and without
+/// the button.
+pub fn figure_row<'a, M: Clone + 'a>(
+    figures: &[(&str, Figure)],
+    palette: &Palette,
+) -> Element<'a, M> {
+    container(figure_cells(figures, palette))
+        .style(theme::outlined(palette))
+        .into()
+}
+
 /// The size of a selection in a few numbers, with a button that shows or hides
 /// the list behind them; `note` goes between the two, set off by a divider.
 pub fn count_summary<'a, M: Clone + 'a>(

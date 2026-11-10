@@ -4,18 +4,23 @@
 
 use std::fmt;
 use std::net::IpAddr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
 use jsonc_parser::{parse_to_value, JsonValue, ParseOptions};
 use ureq::http::Uri;
 
+use crate::api_key::KeyLookup;
 use crate::consent::{ConsentLedger, OutgoingPreview};
 use crate::contract::{output_schema, parse_reply, Extraction, ExtractionRequest, Provider};
 use crate::error::{AiError, EndpointProblem};
 use crate::json::Json;
 use crate::prompt::{user_message, SYSTEM_PROMPT};
+use crate::usage_log::{append_usage, parse_usage, UsageRecord};
+use chrono::Utc;
+
+mod chat;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 /// A model can take its time on a long document.
@@ -25,7 +30,7 @@ pub const MAX_REPLY_BYTES: u64 = 256 * 1024;
 
 /// An API key. Debug and Display print `***`, and nothing else in this crate
 /// has a way to show it.
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Secret(String);
 
 impl Secret {
@@ -33,7 +38,8 @@ impl Secret {
         Self(key)
     }
 
-    fn expose(&self) -> &str {
+    /// For the field that shows the key as dots and for the header it travels in.
+    pub fn expose(&self) -> &str {
         &self.0
     }
 }
@@ -56,15 +62,25 @@ pub struct OpenAiCompatibleConfig {
     /// added.
     pub endpoint: String,
     pub model: String,
+    /// A key to send as it is, over the lookup: the one typed into a test.
     pub api_key: Option<Secret>,
+    /// Asked for the key of every request when `api_key` is none.
+    pub key_lookup: Option<Arc<dyn KeyLookup>>,
+    /// The file one line per answered request is added to; none logs nothing.
+    pub usage_log: Option<PathBuf>,
 }
 
 /// The endpoint, parsed once.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Endpoint {
     chat_url: String,
+    models_url: String,
     /// `scheme://host[:port]`, what consent is given for.
     origin: String,
+    /// The host alone, lower case and without brackets.
+    host: String,
+    /// `host[:port]`, lower case: what an API key is kept under.
+    authority: String,
     /// This machine: no document leaves it, so no consent is needed.
     local: bool,
 }
@@ -96,14 +112,15 @@ impl Endpoint {
             return Err(EndpointProblem::NotLocalAndNotHttps);
         }
         let scheme = if secure { "https" } else { "http" };
-        let origin = format!("{scheme}://{}", authority.as_str().to_ascii_lowercase());
-        let chat_url = format!(
-            "{origin}{}/chat/completions",
-            uri.path().trim_end_matches('/')
-        );
+        let authority_text = authority.as_str().to_ascii_lowercase();
+        let origin = format!("{scheme}://{authority_text}");
+        let base = format!("{origin}{}", uri.path().trim_end_matches('/'));
         Ok(Self {
-            chat_url,
+            chat_url: format!("{base}/chat/completions"),
+            models_url: format!("{base}/models"),
             origin,
+            host,
+            authority: authority_text,
             local,
         })
     }
@@ -126,6 +143,23 @@ pub fn endpoint_origin(text: &str) -> Result<String, EndpointProblem> {
     Endpoint::parse(text).map(|endpoint| endpoint.origin)
 }
 
+/// The host alone of an accepted endpoint, for the sentence that says where
+/// documents go.
+pub fn endpoint_host(text: &str) -> Result<String, EndpointProblem> {
+    Endpoint::parse(text).map(|endpoint| endpoint.host)
+}
+
+/// What an API key for this endpoint is kept under: `host[:port]`.
+pub fn endpoint_key_name(text: &str) -> Result<String, EndpointProblem> {
+    Endpoint::parse(text).map(|endpoint| endpoint.authority)
+}
+
+/// OpenRouter reports the price of a request when asked; other servers may
+/// refuse a field they do not know, so only this host is asked.
+fn is_openrouter(host: &str) -> bool {
+    host == "openrouter.ai" || host.ends_with(".openrouter.ai")
+}
+
 /// `localhost` or a loopback address (127.0.0.0/8, ::1), judged on the host of
 /// the parsed address, not on the text around it.
 fn is_loopback(host: &str) -> bool {
@@ -140,6 +174,8 @@ pub struct OpenAiCompatible {
     endpoint: Endpoint,
     model: String,
     api_key: Option<Secret>,
+    key_lookup: Option<Arc<dyn KeyLookup>>,
+    usage_log: Option<PathBuf>,
     ledger: Arc<dyn ConsentLedger>,
 }
 
@@ -153,6 +189,8 @@ impl OpenAiCompatible {
             endpoint,
             model: config.model,
             api_key: config.api_key,
+            key_lookup: config.key_lookup,
+            usage_log: config.usage_log,
             ledger,
         })
     }
@@ -168,7 +206,7 @@ impl OpenAiCompatible {
 
     fn request_body(&self, request: &ExtractionRequest) -> Json {
         let user = user_message(request);
-        Json::object([
+        let mut body = Json::object([
             ("model", Json::text(&self.model)),
             (
                 "messages",
@@ -199,30 +237,138 @@ impl OpenAiCompatible {
                     ),
                 ]),
             ),
-        ])
+        ]);
+        self.include_usage(&mut body);
+        body
+    }
+
+    fn include_usage(&self, body: &mut Json) {
+        if is_openrouter(&self.endpoint.host) {
+            if let Json::Object(entries) = body {
+                entries.push((
+                    "usage".to_owned(),
+                    Json::object([("include", Json::Bool(true))]),
+                ));
+            }
+        }
+    }
+
+    fn log_usage(&self, reply: &str) {
+        let Some(path) = &self.usage_log else {
+            return;
+        };
+        let record = UsageRecord {
+            time: Utc::now(),
+            model: self.model.clone(),
+            usage: parse_usage(reply),
+        };
+        // The answer is already here: a log that cannot be written must not
+        // take it away.
+        let _ignored = append_usage(path, &record);
     }
 
     fn post(&self, body: &str) -> Result<String, AiError> {
         let agent = agent();
-        let mut call = agent
+        let call = agent
             .post(&self.endpoint.chat_url)
             .header("Content-Type", "application/json");
-        if let Some(key) = &self.api_key {
-            call = call.header("Authorization", format!("Bearer {}", key.expose()));
-        }
-        let mut response = call.send(body).map_err(transport_error)?;
-        let status = response.status().as_u16();
-        if status != 200 {
-            return Err(AiError::Status(status));
-        }
-        let bytes = response
-            .body_mut()
-            .with_config()
-            .limit(MAX_REPLY_BYTES)
-            .read_to_vec()
-            .map_err(transport_error)?;
-        String::from_utf8(bytes).map_err(|_not_utf8| AiError::BadReply("not valid UTF-8"))
+        let key = key_of(self.api_key.as_ref(), self.key_lookup.as_deref());
+        read_reply(with_key(call, key.as_ref()).send(body))
     }
+}
+
+/// The explicit key, else what the lookup finds right now.
+fn key_of(explicit: Option<&Secret>, lookup: Option<&dyn KeyLookup>) -> Option<Secret> {
+    explicit
+        .cloned()
+        .or_else(|| lookup.and_then(KeyLookup::key))
+}
+
+fn with_key<B>(call: ureq::RequestBuilder<B>, key: Option<&Secret>) -> ureq::RequestBuilder<B> {
+    match key {
+        Some(secret) => call.header("Authorization", format!("Bearer {}", secret.expose())),
+        None => call,
+    }
+}
+
+/// The body of a 200 answer; any other status is an error.
+fn read_reply(
+    sent: Result<ureq::http::Response<ureq::Body>, ureq::Error>,
+) -> Result<String, AiError> {
+    let mut response = sent.map_err(transport_error)?;
+    let status = response.status().as_u16();
+    if status != 200 {
+        return Err(AiError::Status(status));
+    }
+    read_body(&mut response)
+}
+
+fn read_body(response: &mut ureq::http::Response<ureq::Body>) -> Result<String, AiError> {
+    let bytes = response
+        .body_mut()
+        .with_config()
+        .limit(MAX_REPLY_BYTES)
+        .read_to_vec()
+        .map_err(transport_error)?;
+    String::from_utf8(bytes).map_err(|_not_utf8| AiError::BadReply("not valid UTF-8"))
+}
+
+/// The models a server lists.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModelList {
+    /// The ids, sorted.
+    Listed(Vec<String>),
+    /// The server answers, but has no list to offer.
+    NotListed,
+}
+
+/// `GET {endpoint}/models` with the key. Sends no document, so it needs no
+/// consent. A refused key is `AiError::Status(401 or 403)`; a server that
+/// does not answer is `AiError::Transport`.
+pub fn list_models(config: &OpenAiCompatibleConfig) -> Result<ModelList, AiError> {
+    let endpoint = Endpoint::parse(&config.endpoint).map_err(AiError::BadEndpoint)?;
+    let call = agent().get(&endpoint.models_url);
+    let key = key_of(config.api_key.as_ref(), config.key_lookup.as_deref());
+    let mut response = with_key(call, key.as_ref())
+        .call()
+        .map_err(transport_error)?;
+    let status = response.status().as_u16();
+    // A refusal or a missing list has no body worth reading.
+    let body = if status == 200 {
+        read_body(&mut response)?
+    } else {
+        String::new()
+    };
+    models_from_answer(status, &body)
+}
+
+fn models_from_answer(status: u16, body: &str) -> Result<ModelList, AiError> {
+    match status {
+        200 => Ok(model_ids(body).map_or(ModelList::NotListed, ModelList::Listed)),
+        404 => Ok(ModelList::NotListed),
+        other => Err(AiError::Status(other)),
+    }
+}
+
+/// `data[].id` of a models reply, sorted; `None` when there is none to read.
+fn model_ids(body: &str) -> Option<Vec<String>> {
+    let Ok(Some(JsonValue::Object(root))) = parse_to_value(body, &ParseOptions::default()) else {
+        return None;
+    };
+    let mut ids: Vec<String> = root
+        .get_array("data")?
+        .iter()
+        .filter_map(|entry| match entry {
+            JsonValue::Object(model) => model.get_string("id").map(|id| id.to_string()),
+            _ => None,
+        })
+        .collect();
+    if ids.is_empty() {
+        return None;
+    }
+    ids.sort();
+    ids.dedup();
+    Some(ids)
 }
 
 impl OpenAiCompatible {
@@ -243,6 +389,7 @@ impl Provider for OpenAiCompatible {
             return Err(AiError::ConsentRequired(self.preview(request)));
         }
         let reply = self.post(&self.request_body(request).pretty())?;
+        self.log_usage(&reply);
         parse_reply(&message_content(&reply)?, request)
     }
 }
@@ -350,10 +497,22 @@ mod tests {
                 endpoint: endpoint.to_owned(),
                 model: "model-x".to_owned(),
                 api_key: Some(Secret::new(KEY.to_owned())),
+                key_lookup: None,
+                usage_log: None,
             },
             Arc::clone(ledger) as Arc<dyn ConsentLedger>,
         )
         .unwrap()
+    }
+
+    fn config(endpoint: &str, usage_log: Option<PathBuf>) -> OpenAiCompatibleConfig {
+        OpenAiCompatibleConfig {
+            endpoint: endpoint.to_owned(),
+            model: "model-x".to_owned(),
+            api_key: Some(Secret::new(KEY.to_owned())),
+            key_lookup: None,
+            usage_log,
+        }
     }
 
     /// Answers one request with `response` and returns what it received.
@@ -526,6 +685,42 @@ mod tests {
         assert!(received.contains("invoice 4711 from company a"));
     }
 
+    #[derive(Debug, Default)]
+    struct LateKey(Mutex<Option<Secret>>);
+
+    impl KeyLookup for LateKey {
+        fn key(&self) -> Option<Secret> {
+            self.0.lock().unwrap().clone()
+        }
+    }
+
+    #[test]
+    fn a_provider_built_before_the_key_exists_sends_it_once_it_is_saved() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let later = Arc::new(LateKey::default());
+        let ledger = Arc::new(Ledger::default());
+        let mut own = config(&format!("http://127.0.0.1:{port}/v1"), None);
+        own.api_key = None;
+        own.key_lookup = Some(Arc::clone(&later) as Arc<dyn KeyLookup>);
+        let server = OpenAiCompatible::new(own, ledger as Arc<dyn ConsentLedger>).unwrap();
+        let reply = chat_reply(r#"{"sender": {"value": "A", "confidence": 0.9}}"#);
+
+        let before = serve_once(
+            listener.try_clone().unwrap(),
+            http_response("200 OK", "", &reply),
+        );
+        server.extract(&request()).unwrap();
+        let without = before.join().unwrap().to_ascii_lowercase();
+        *later.0.lock().unwrap() = Some(Secret::new(KEY.to_owned()));
+        let after = serve_once(listener, http_response("200 OK", "", &reply));
+        server.extract(&request()).unwrap();
+        let with = after.join().unwrap().to_ascii_lowercase();
+
+        assert!(!without.contains("authorization"));
+        assert!(with.contains(&format!("authorization: bearer {KEY}")));
+    }
+
     #[test]
     fn a_redirect_is_not_followed() {
         let target = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -568,5 +763,159 @@ mod tests {
 
         server.join().unwrap();
         assert!(matches!(err, AiError::BadReply(_)), "{err}");
+    }
+
+    #[test]
+    fn https_goes_to_any_host_and_plain_http_only_to_this_computer() {
+        for accepted in [
+            "https://api.openai.com/v1",
+            "https://openrouter.ai/api/v1",
+            "http://localhost:1234/v1",
+            "http://[::1]:8080",
+        ] {
+            assert!(check_endpoint(accepted).is_ok(), "{accepted}");
+        }
+        for refused in ["http://api.openai.com/v1", "http://192.168.1.5:8080/v1"] {
+            assert_eq!(
+                check_endpoint(refused),
+                Err(EndpointProblem::NotLocalAndNotHttps),
+                "{refused}"
+            );
+        }
+        assert_eq!(
+            endpoint_host("https://OpenRouter.ai:8443/api/v1").unwrap(),
+            "openrouter.ai"
+        );
+        assert_eq!(
+            endpoint_key_name("https://OpenRouter.ai:8443/api/v1").unwrap(),
+            "openrouter.ai:8443"
+        );
+    }
+
+    #[test]
+    fn only_openrouter_is_asked_for_the_usage() {
+        let ledger = Arc::new(Ledger::default());
+
+        let asked = provider("https://openrouter.ai/api/v1", &ledger)
+            .preview(&request())
+            .body;
+        let other = provider("https://api.openai.com/v1", &ledger)
+            .preview(&request())
+            .body;
+        let local = provider("http://localhost:11434/v1", &ledger)
+            .preview(&request())
+            .body;
+
+        assert!(
+            asked.contains("\"usage\": {\n    \"include\": true\n  }"),
+            "{asked}"
+        );
+        assert!(!other.contains("\"usage\""));
+        assert!(!local.contains("\"usage\""));
+    }
+
+    #[test]
+    fn models_are_read_sorted_and_the_statuses_are_told_apart() {
+        let body =
+            r#"{"data": [{"id": "b-model"}, {"id": "a-model"}, {"id": "b-model"}, {"name": "x"}]}"#;
+
+        assert_eq!(
+            models_from_answer(200, body),
+            Ok(ModelList::Listed(vec![
+                "a-model".to_owned(),
+                "b-model".to_owned()
+            ]))
+        );
+        assert_eq!(
+            models_from_answer(200, "not json"),
+            Ok(ModelList::NotListed)
+        );
+        assert_eq!(
+            models_from_answer(200, "{\"data\": []}"),
+            Ok(ModelList::NotListed)
+        );
+        assert_eq!(models_from_answer(404, ""), Ok(ModelList::NotListed));
+        assert_eq!(models_from_answer(401, ""), Err(AiError::Status(401)));
+        assert_eq!(models_from_answer(403, ""), Err(AiError::Status(403)));
+        assert_eq!(models_from_answer(500, ""), Err(AiError::Status(500)));
+    }
+
+    #[test]
+    fn the_model_list_is_asked_for_with_the_key() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let reply = r#"{"data": [{"id": "qwen"}, {"id": "llama"}]}"#;
+        let server = serve_once(listener, http_response("200 OK", "", reply));
+
+        let models = list_models(&config(&format!("http://127.0.0.1:{port}/v1/"), None)).unwrap();
+
+        assert_eq!(
+            models,
+            ModelList::Listed(vec!["llama".to_owned(), "qwen".to_owned()])
+        );
+        let received = server.join().unwrap().to_ascii_lowercase();
+        assert!(received.starts_with("get /v1/models "));
+        assert!(received.contains(&format!("authorization: bearer {KEY}")));
+    }
+
+    #[test]
+    fn a_refused_key_and_a_dead_server_are_errors() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = serve_once(listener, http_response("401 Unauthorized", "", ""));
+
+        let refused = list_models(&config(&format!("http://127.0.0.1:{port}/v1"), None));
+
+        server.join().unwrap();
+        assert_eq!(refused, Err(AiError::Status(401)));
+        let closed = TcpListener::bind("127.0.0.1:0").unwrap();
+        let dead_port = closed.local_addr().unwrap().port();
+        drop(closed);
+        let unreachable = list_models(&config(&format!("http://127.0.0.1:{dead_port}/v1"), None));
+        assert!(matches!(unreachable, Err(AiError::Transport(_))));
+    }
+
+    #[test]
+    fn an_answer_adds_one_line_to_the_usage_log_and_a_broken_log_changes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("usage.jsonl");
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let content = Json::text("{}").pretty();
+        let reply = format!(
+            "{{\"choices\": [{{\"message\": {{\"content\": {content}}}}}], \"usage\": {{\"prompt_tokens\": 12, \"completion_tokens\": 3, \"prompt_tokens_details\": {{\"cached_tokens\": 8}}, \"cost\": 0.002}}}}"
+        );
+        let server = serve_once(listener, http_response("200 OK", "", &reply));
+        let ledger = Arc::new(Ledger::default());
+        let endpoint = format!("http://127.0.0.1:{port}/v1");
+        let provider = OpenAiCompatible::new(config(&endpoint, Some(log.clone())), ledger).unwrap();
+
+        let _extraction = provider.extract(&request());
+
+        server.join().unwrap();
+        let written = std::fs::read_to_string(&log).unwrap();
+        let record = crate::usage_log::UsageRecord::from_line(written.trim_end()).unwrap();
+        assert_eq!(written.lines().count(), 1);
+        assert_eq!(record.model, "model-x");
+        assert_eq!(
+            record.usage,
+            crate::usage_log::Usage {
+                tokens_in: 12,
+                tokens_out: 3,
+                cached: 8,
+                cost: Some(0.002),
+            }
+        );
+        assert!(!written.contains(KEY));
+
+        let broken = OpenAiCompatible::new(
+            config(
+                &endpoint,
+                Some(dir.path().join("no-folder").join("usage.jsonl")),
+            ),
+            Arc::new(Ledger::default()),
+        )
+        .unwrap();
+        broken.log_usage("{}");
     }
 }

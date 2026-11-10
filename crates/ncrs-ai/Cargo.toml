@@ -25,6 +25,12 @@ jsonc-parser = { version = "=0.34.0", default-features = false }
 # The HTTP provider only; same version and features as the app's theme download.
 ureq = { version = "=3.5.0", default-features = false, features = ["rustls"] }
 
+# The time of a request in the usage log, and the days the usage page adds up.
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+# The API key of an own server lives in the keychain; same crate and version as
+# the index key in ncrs-index.
+keyring = "4.2"
+
 # Checks the model file against its pinned checksum before it is loaded.
 sha2 = "0.11"
 # The built-in model provider: llama.cpp runs in this process. Versions and

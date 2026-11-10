@@ -13,6 +13,9 @@ use super::vocabulary::{condition_meaning, condition_word, placeholder_meaning, 
 
 const SYSTEM_PROMPT_TEXT: &str = include_str!("prompt.txt");
 
+/// What the model is asked above the paths of a folder.
+pub const RECOGNIZE_QUESTION: &str = "Which pattern wrote these paths?";
+
 /// The end of the user's turn and the start of the answer, without thinking.
 pub const END_OF_TURN: &str = "<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
 

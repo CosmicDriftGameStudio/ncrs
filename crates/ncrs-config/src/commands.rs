@@ -207,7 +207,8 @@ fn menu_place_of(action: KeyAction) -> MenuPlace {
         KeyAction::CopyPath | KeyAction::CopyName | KeyAction::CopyFiles | KeyAction::Paste => {
             at(1)
         }
-        KeyAction::RestoreLastDeletion | KeyAction::ContextMenu => at(2),
+        KeyAction::RestoreLastDeletion | KeyAction::UndoRename | KeyAction::ContextMenu => at(2),
+        KeyAction::CompareFolders => at(1).dialog(),
         KeyAction::SortByName
         | KeyAction::SortByModified
         | KeyAction::SortBySize
@@ -320,6 +321,8 @@ fn command_without_place(action: KeyAction) -> Option<Command> {
             FuturamaName::ActionRestoreLastDeletion,
         ),
         KeyAction::ContextMenu => Command::plain(action, Edit, Msg::ActionContextMenu),
+        KeyAction::UndoRename => Command::plain(action, Edit, Msg::ActionUndoRename),
+        KeyAction::CompareFolders => Command::plain(action, View, Msg::ActionCompareFolders),
         KeyAction::SortByName => Command::plain(action, View, Msg::ActionSortByName),
         KeyAction::SortByModified => Command::plain(action, View, Msg::ActionSortByModified),
         KeyAction::SortBySize => Command::plain(action, View, Msg::ActionSortBySize),

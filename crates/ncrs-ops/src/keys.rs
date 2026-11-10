@@ -6,6 +6,7 @@
 use iced::keyboard::key::Named;
 use iced::keyboard::{Key, Modifiers};
 
+use crate::batch_rename::state::BatchRenameMessage;
 use crate::message::{ConflictChoice, PermissionsMessage, TransferDialogMessage, TrashMessage};
 
 /// The keys every button dialog shares.
@@ -164,6 +165,15 @@ pub fn permissions_key(key: &Key) -> Option<PermissionsMessage> {
     match key.as_ref() {
         Key::Named(Named::Escape) => Some(PermissionsMessage::Cancel),
         Key::Named(Named::Enter) => Some(PermissionsMessage::Confirm),
+        _ => None,
+    }
+}
+
+/// Keys while the batch rename dialog is up: Escape closes it, Enter renames.
+pub fn batch_rename_key(key: &Key) -> Option<BatchRenameMessage> {
+    match key.as_ref() {
+        Key::Named(Named::Escape) => Some(BatchRenameMessage::Cancel),
+        Key::Named(Named::Enter) => Some(BatchRenameMessage::Confirm),
         _ => None,
     }
 }

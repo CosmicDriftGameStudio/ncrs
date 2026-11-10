@@ -299,6 +299,7 @@ impl App {
             || self.ops.delete_dialog.is_some()
             || self.ops.open_file_dialog.is_some()
             || self.ops.permissions_dialog.is_some()
+            || self.ops.batch_rename.is_some()
             || self.start_over_dialog
             || self.panels.volume_menu.is_some()
             || self.favourite_menu.is_some()
@@ -311,6 +312,7 @@ impl App {
             || self.settings.ai_card_is_shown()
             || self.grant_dialog
             || self.remote_ui.dialog.is_some()
+            || self.compare.dialog_is_open()
     }
 
     /// The create of the name prompt has reported: close the prompt or show

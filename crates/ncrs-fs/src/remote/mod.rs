@@ -8,8 +8,8 @@
 //! collapsed, and on Windows `join` would add a backslash. [`RemotePath`] does
 //! it as text. Nothing here reaches `std::fs` with a server path.
 //!
-//! Login is by password only, and the host key is checked before the password
-//! is sent.
+//! Login is by ssh-agent, key file or password, in that order, and the host key
+//! is checked before anything is sent.
 
 // The layer is built up in steps; what the app does not call yet is not dead
 // for long.
@@ -22,6 +22,7 @@ pub mod credentials;
 pub mod known_hosts;
 pub mod list;
 pub mod session;
+pub mod ssh_config;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_server;
 pub mod transfer;
@@ -153,12 +154,18 @@ impl ServerId {
         format!("{}@{}:{}", self.user, self.host_text(), self.port)
     }
 
-    /// `user@host`, and `:port` unless it is 22.
+    /// `user@host`, and `:port` unless it is 22. The user is left out when empty:
+    /// an alias of `~/.ssh/config` names it.
     pub fn authority(&self) -> String {
-        if self.port == DEFAULT_PORT {
-            format!("{}@{}", self.user, self.host_text())
+        let user = if self.user.is_empty() {
+            String::new()
         } else {
-            format!("{}@{}:{}", self.user, self.host_text(), self.port)
+            format!("{}@", self.user)
+        };
+        if self.port == DEFAULT_PORT {
+            format!("{user}{}", self.host_text())
+        } else {
+            format!("{user}{}:{}", self.host_text(), self.port)
         }
     }
 
@@ -207,9 +214,13 @@ impl RemoteUrl {
             .map(|user| ServerId::new(user, &self.host, self.port))
     }
 
+    /// The place the address names. Without a user the server has an empty one:
+    /// a host alias of `~/.ssh/config` or the login name fills it in when
+    /// connecting.
     pub fn remote_path(&self) -> Option<RemotePath> {
+        let user = self.user.as_deref().unwrap_or_default();
         Some(RemotePath {
-            server: self.server()?,
+            server: ServerId::new(user, &self.host, self.port),
             path: self.path.clone(),
         })
     }
@@ -309,10 +320,15 @@ pub struct RemotePath {
 }
 
 impl RemotePath {
-    /// `Some` when `path` is the text of a server address with a user. Looks at
-    /// the text only.
+    /// `Some` when `path` is the text of a server address. Without a user the
+    /// server has an empty one, which a host alias of `~/.ssh/config` or the
+    /// login name fills in. Looks at the text only.
     pub fn parse(path: &Path) -> Option<Self> {
-        parse_url(path.to_str()?).ok()?.remote_path()
+        let url = parse_url(path.to_str()?).ok()?;
+        Some(Self {
+            server: ServerId::new(url.user.as_deref().unwrap_or_default(), &url.host, url.port),
+            path: url.path,
+        })
     }
 
     pub fn new(server: ServerId, path: &str) -> Self {
@@ -459,10 +475,20 @@ mod tests {
         assert_eq!(RemotePath::parse(Path::new(unix)), None);
         assert_eq!(RemotePath::parse(Path::new(r"C:\sftp:")), None);
         assert_eq!(RemotePath::parse(Path::new("/sftp://m@h/a")), None);
+    }
+
+    #[test]
+    fn an_address_without_a_user_is_an_alias_with_an_empty_one() {
+        let alias = parsed("sftp://myalias/a");
+        assert_eq!(alias.server(), &ServerId::new("", "myalias", 22));
+        assert_eq!(alias.to_path_buf(), PathBuf::from("sftp://myalias/a"));
         assert_eq!(
-            RemotePath::parse(Path::new("sftp://host/a")),
-            None,
-            "no user"
+            parsed("sftp://myalias:2200/").to_path_buf(),
+            PathBuf::from("sftp://myalias:2200/")
+        );
+        assert_eq!(
+            ServerId::new("", "myalias", 22).root_path(),
+            alias.join("..").to_path_buf()
         );
     }
 

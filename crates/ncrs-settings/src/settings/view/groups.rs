@@ -621,28 +621,6 @@ pub fn provider_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
     rows
 }
 
-/// The body of the dialog of the own server: the switch back to the local
-/// model, and the address and model name while the own server is chosen.
-pub fn server_dialog_body<'a>(view: &SettingsView<'a>) -> Element<'a, Message> {
-    let palette = view.palette;
-    provider_rows(view)
-        .into_iter()
-        .fold(column![].spacing(spacing::LINE_GAP), |body, setting| {
-            let described = match setting.description {
-                Some(description) => body
-                    .push(kit::paragraph(setting.label, palette))
-                    .push(kit::dim(description, palette)),
-                None => body.push(kit::paragraph(setting.label, palette)),
-            };
-            let with_control = described.push(setting.control);
-            match setting.problem {
-                Some(problem) => with_control.push(kit::error_line(problem, palette)),
-                None => with_control,
-            }
-        })
-        .into()
-}
-
 /// The protection of the index: its state and the buttons that change it. The
 /// question before the index is removed is asked by the app.
 pub fn protection_group<'a>(view: &SettingsView<'a>) -> Option<Group<'a>> {

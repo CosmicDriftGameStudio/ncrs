@@ -58,28 +58,52 @@ pub(in crate::filing) fn wire_ai(setting: &AiSetting, load: Load, db_path: &Path
             let _ = (db_path, load);
             AiWiring::Off
         }
-        AiSetting::Http { endpoint, model } => {
-            let config = ncrs_ai::OpenAiCompatibleConfig {
-                endpoint: endpoint.clone(),
-                model: model.clone(),
-                api_key: None,
-            };
-            // No way to ask for consent yet: a far endpoint is refused at the
-            // first document, a local one needs none.
-            let ledger = Arc::new(ncrs_ai::NoConsentGiven);
-            match (
-                ncrs_ai::OpenAiCompatible::new(config, ledger),
-                ncrs_ai::endpoint_origin(endpoint),
-            ) {
-                (Ok(provider), Ok(origin)) => AiWiring::Http {
-                    provider: Arc::new(provider),
+        AiSetting::Http { endpoint, model } => match http_ai_provider(endpoint, model, db_path) {
+            Some(provider) => match ncrs_ai::endpoint_origin(endpoint) {
+                Ok(origin) => AiWiring::Http {
+                    provider,
                     origin,
                     model: model.clone(),
                 },
-                (Err(_), _) | (_, Err(_)) => AiWiring::Off,
-            }
-        }
+                Err(_) => AiWiring::Off,
+            },
+            None => AiWiring::Off,
+        },
     }
+}
+
+/// The server of the setting: its key is read from the keychain at every
+/// request (never here, this runs on the update path), the usage log sits
+/// next to the index. The documents and the chat both go through it. A far
+/// address gets into the settings through the dialog whose "I understand" tick
+/// is the consent, or by hand in config.toml; the ledger grants either way.
+pub fn http_ai_provider(
+    endpoint: &str,
+    model: &str,
+    db_path: &Path,
+) -> Option<Arc<ncrs_ai::OpenAiCompatible>> {
+    // Tests must not read the keychain of whoever runs them.
+    let key_lookup: Option<Arc<dyn ncrs_ai::KeyLookup>> = if ncrs_fs::user_machine_is_off_limits() {
+        None
+    } else {
+        Some(Arc::new(ncrs_ai::KeychainKey {
+            endpoint: endpoint.to_owned(),
+            sandboxed: ncrs_fs::runs_in_app_sandbox(),
+        }))
+    };
+    let config = ncrs_ai::OpenAiCompatibleConfig {
+        endpoint: endpoint.to_owned(),
+        model: model.to_owned(),
+        api_key: None,
+        key_lookup,
+        usage_log: db_path
+            .parent()
+            .filter(|dir| !dir.as_os_str().is_empty())
+            .map(ncrs_ai::usage_log_path),
+    };
+    ncrs_ai::OpenAiCompatible::new(config, Arc::new(ncrs_ai::ConsentGivenInSettings))
+        .ok()
+        .map(Arc::new)
 }
 
 /// The local model of this index. The path keys the instance, so the fields

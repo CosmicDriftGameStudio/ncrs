@@ -84,6 +84,8 @@ pub struct InputState {
     pub transfer_dialog: bool,
     /// The permissions dialog is up: its octal field takes Escape.
     pub permissions_dialog: bool,
+    /// The batch rename dialog is up: Escape closes it, Enter renames.
+    pub batch_rename_dialog: bool,
     /// The settings tab is up with nothing on top: Escape closes it, even from
     /// its search field, and an Option tap opens no menu.
     pub settings: bool,
@@ -139,6 +141,10 @@ impl InputState {
             (
                 self.permissions_dialog,
                 Message::Permissions(PermissionsMessage::Cancel),
+            ),
+            (
+                self.batch_rename_dialog,
+                Message::BatchRename(ncrs_ops::BatchRenameMessage::Cancel),
             ),
             (
                 self.settings,
@@ -206,6 +212,7 @@ impl InputState {
                     && !self.theme_fetch
                     && !self.transfer_dialog
                     && !self.permissions_dialog
+                    && !self.batch_rename_dialog
                     && !self.settings;
                 if self.monitor {
                     return (nothing_else_up && self.monitor_menu)

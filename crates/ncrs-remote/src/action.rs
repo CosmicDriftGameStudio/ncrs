@@ -8,6 +8,9 @@ use ncrs_fs::remote::{RemotePath, ServerId};
 #[derive(Debug)]
 pub enum Action {
     CloseContextMenu,
+    /// The system dialog that picks a key file; its answer comes back as
+    /// `Message::KeyFilePicked`.
+    PickKeyFile,
     ClearJobError,
     ShowNotice(String),
     ShowError(String),
@@ -24,6 +27,8 @@ pub enum Action {
     SaveServer {
         server: ServerId,
         typed_path: Option<String>,
+        /// The key file typed for it; `None` when none was.
+        key_file: Option<String>,
     },
     /// The dialog that was to open a folder is gone: the panel stops waiting
     /// for it, unless it has asked for something else since.
