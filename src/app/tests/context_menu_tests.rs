@@ -461,6 +461,23 @@ fn a_folder_row_offers_its_folder_as_a_favourite_and_then_to_remove_it() {
 }
 
 #[test]
+fn the_favourites_key_and_the_menu_entry_act_on_the_same_folder_row() {
+    let mut by_menu = App::with_fixed_panels();
+    let folder = by_menu.panel(LEFT).entries[DIRECTORY].path.clone();
+    open_at(&mut by_menu, LEFT, DIRECTORY);
+    let add = index_of(&by_menu, ContextAction::AddFavourite);
+    drop(by_menu.update(Message::ContextMenuClick(add)));
+
+    let mut by_key = App::with_fixed_panels();
+    open_at(&mut by_key, LEFT, DIRECTORY);
+    drop(by_key.update(Message::ContextMenuClose));
+    drop(by_key.update(Message::AddFavourite));
+
+    assert_eq!(by_menu.panels.favourites, [folder]);
+    assert_eq!(by_key.panels.favourites, by_menu.panels.favourites);
+}
+
+#[test]
 fn a_file_row_offers_the_folder_it_lies_in_as_a_favourite() {
     let mut app = App::with_fixed_panels();
     let folder = app.panel(LEFT).path.clone();
