@@ -4,9 +4,12 @@
 use std::time::{Duration, SystemTime};
 
 use ncrs_index::HermesCounts;
-use ncrs_pipeline::{ErrorEntry, Snapshot, RATE_MINUTES};
+use ncrs_pipeline::{ErrorEntry, RunnerState, Snapshot, RATE_MINUTES};
 
 pub const SNAPSHOT_EVERY: Duration = Duration::from_secs(1);
+/// While nothing runs and no page shows the numbers, the tick only has to
+/// notice new work; every tick rebuilds the whole view.
+pub const IDLE_SNAPSHOT_EVERY: Duration = Duration::from_secs(5);
 /// The counts of Hermes are read this often, also while its page is closed.
 pub const HERMES_COUNTS_EVERY_TICKS: u32 = 5;
 
@@ -42,6 +45,16 @@ impl FilingStatus {
 
     pub fn snapshot(&self) -> &Snapshot {
         &self.snapshot
+    }
+
+    /// How often the snapshot is taken: every second while a run or an open
+    /// page shows it, slowly while the pipeline idles.
+    pub fn tick_every(&self) -> Duration {
+        if self.page_open || self.snapshot.state == RunnerState::Running {
+            SNAPSHOT_EVERY
+        } else {
+            IDLE_SNAPSHOT_EVERY
+        }
     }
 
     pub fn taken_at(&self) -> SystemTime {
@@ -145,6 +158,18 @@ mod tests {
         let mut status = FilingStatus::default();
         status.set_snapshot(snapshot, at());
         status
+    }
+
+    #[test]
+    fn the_tick_slows_down_only_while_nothing_runs_and_no_page_is_open() {
+        let mut status = FilingStatus::default();
+        status.set_snapshot(snapshot(RunnerState::Idle, 0, 0), at());
+        assert_eq!(status.tick_every(), IDLE_SNAPSHOT_EVERY);
+        status.open_page();
+        assert_eq!(status.tick_every(), SNAPSHOT_EVERY);
+        status.close_page();
+        status.set_snapshot(snapshot(RunnerState::Running, 0, 1), at());
+        assert_eq!(status.tick_every(), SNAPSHOT_EVERY);
     }
 
     #[test]
