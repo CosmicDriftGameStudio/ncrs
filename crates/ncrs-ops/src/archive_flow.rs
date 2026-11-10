@@ -51,6 +51,7 @@ pub fn start_pack(ops: &mut Ops, request: PackRequest, ctx: &FlowCtx<'_>) -> Out
         .unwrap_or_default();
     let write = ArchiveWrite {
         side: target_side.other(),
+        archive: archive.clone(),
         what: ArchiveWriteKind::Pack { name, folder },
     };
     let packed = archive.clone();
@@ -80,12 +81,13 @@ pub fn begin_copy_into_archive(
     policy: Policy,
     ctx: &FlowCtx<'_>,
 ) -> Outcome {
-    let write = ArchiveWrite {
-        side: ctx.source_side,
-        what: ArchiveWriteKind::CopyIn,
-    };
     let conflict = policy.on_conflict();
     let fs::archive::ArchiveLocation { archive, inner, .. } = location;
+    let write = ArchiveWrite {
+        side: ctx.source_side,
+        archive: archive.clone(),
+        what: ArchiveWriteKind::CopyIn,
+    };
     let shown = archive.clone();
     start_archive_write(
         ops,
@@ -106,6 +108,7 @@ pub fn start_archive_delete(
 ) -> Outcome {
     let write = ArchiveWrite {
         side: deletion.side,
+        archive: archive.clone(),
         what: ArchiveWriteKind::Delete,
     };
     let shown = archive.clone();
@@ -212,7 +215,7 @@ pub fn archive_written(
             None
         }
     };
-    asked.extend(end_archive_write(&write).1);
+    asked.extend(end_archive_write(ops, &write).1);
     if let Some(text) = notice {
         asked.push(Action::ShowNotice(text));
     }
@@ -261,13 +264,17 @@ fn write_failure_text(lang: Language, write: &ArchiveWrite, failure: RowFailure)
 pub fn abort_archive_write(ops: &mut Ops) -> Option<Outcome> {
     let write = ops.archive_write.take()?;
     ops.bump_generation();
-    Some(end_archive_write(&write))
+    Some(end_archive_write(ops, &write))
 }
 
 /// Ends the bookkeeping of a write that finished, failed or was stopped:
 /// the tags of a delete refer to entries that may be gone, and both panels
-/// are read again, the new archive of a pack selected.
-fn end_archive_write(write: &ArchiveWrite) -> Outcome {
+/// are read again, the new archive of a pack selected. Copies unpacked for
+/// viewing may show the archive as it was before, so they are forgotten.
+fn end_archive_write(ops: &mut Ops, write: &ArchiveWrite) -> Outcome {
+    if let Some(copies) = ops.view_copies.as_mut() {
+        copies.forget_ready_under(&write.archive);
+    }
     let mut asked = Vec::new();
     if write.what == ArchiveWriteKind::Delete {
         asked.push(Action::ClearSelection(write.side));

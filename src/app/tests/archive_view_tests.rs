@@ -452,3 +452,37 @@ async fn enter_on_a_file_in_an_archive_takes_the_f3_path() {
     assert!(app.ops.open_file_dialog.is_none());
     assert!(launcher.0.lock().unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn f3_after_ncrs_rewrote_the_archive_unpacks_the_entry_again() {
+    use super::settings_pages_tests::settle;
+    let dir = scratch("view-rewritten");
+    let cache = dir.path().join("cache");
+    let (mut app, launcher) = app_in_zip(dir.path(), Some(&cache));
+    let archive = dir.path().join("v.zip");
+
+    settle(&mut app, Message::OpenExternal(fs::OpenKind::View)).await;
+    write_archive(&archive, &[Item::File("a.txt", b"overwritten")]);
+    app.ops.archive_write = Some(ncrs_ops::ArchiveWrite {
+        side: PanelSide::Left,
+        archive,
+        what: ncrs_ops::ArchiveWriteKind::CopyIn,
+    });
+    let generation = app.ops.generation;
+    settle(
+        &mut app,
+        Message::ArchiveWritten {
+            result: Ok(fs::archive::WriteReport::default()),
+            generation,
+        },
+    )
+    .await;
+    settle(&mut app, Message::OpenExternal(fs::OpenKind::View)).await;
+
+    let launched = launcher.0.lock().unwrap().clone();
+    let copy = launched
+        .last()
+        .and_then(|command| command.args.last())
+        .unwrap();
+    assert_eq!(std::fs::read(copy).unwrap(), b"overwritten");
+}

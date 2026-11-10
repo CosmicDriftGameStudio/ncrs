@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use ncrs_filing::chat_work::{ChatWork, WaitingGroup};
 use ncrs_filing::review_work::AcceptSummary;
-use ncrs_i18n::Msg;
+use ncrs_i18n::{Language, Msg};
 
 use crate::action::Action;
 use crate::ctx::Ctx;
@@ -217,17 +217,7 @@ pub fn filed(state: &mut State, ctx: &Ctx, result: Result<AcceptSummary, String>
             if let Some(walk) = state.session.waiting.as_mut() {
                 walk.filed += summary.filed;
             }
-            let unfiled = summary.total() - summary.filed;
-            (unfiled > 0).then(|| {
-                text_with(
-                    ctx,
-                    Msg::HermesChatWaitingFailed,
-                    &[
-                        ("count", &number(unfiled)),
-                        ("reason", &summary.first_failure.unwrap_or_default()),
-                    ],
-                )
-            })
+            unfiled_note(ctx.lang, &summary)
         }
         Err(reason) => Some(text_with(
             ctx,
@@ -354,4 +344,75 @@ fn question(ctx: &Ctx, group: &WaitingGroup) -> Option<(Vec<Part>, Vec<Chip>)> {
             (parts, chips)
         }
     })
+}
+
+/// What Hermes says about the documents that were not filed: the failures with
+/// their first reason, or else which of them found the place taken or were read
+/// again. `None` when all were filed.
+fn unfiled_note(lang: Language, summary: &AcceptSummary) -> Option<String> {
+    if summary.failed > 0 {
+        return Some(fill(
+            lang,
+            Msg::HermesChatWaitingFailed,
+            &[
+                ("count", &number(summary.failed)),
+                (
+                    "reason",
+                    summary.first_failure.as_deref().unwrap_or_default(),
+                ),
+            ],
+        ));
+    }
+    (summary.target_exists + summary.requeued > 0).then(|| {
+        fill(
+            lang,
+            Msg::StatusQuickFixSummary,
+            &[
+                ("filed", &number(summary.filed)),
+                ("taken", &number(summary.target_exists)),
+                ("requeued", &number(summary.requeued)),
+                ("failed", &number(summary.failed)),
+            ],
+        )
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_taken_place_is_named_and_not_reported_as_a_failure_without_reason() {
+        let summary = AcceptSummary {
+            target_exists: 1,
+            ..AcceptSummary::default()
+        };
+        assert_eq!(
+            unfiled_note(Language::English, &summary).as_deref(),
+            Some("0 filed, 1 place taken, 0 read again, 0 failed")
+        );
+    }
+
+    #[test]
+    fn failures_come_with_their_reason() {
+        let summary = AcceptSummary {
+            failed: 2,
+            target_exists: 1,
+            first_failure: Some("disk full".to_owned()),
+            ..AcceptSummary::default()
+        };
+        assert_eq!(
+            unfiled_note(Language::English, &summary).as_deref(),
+            Some("2 could not be filed: disk full")
+        );
+    }
+
+    #[test]
+    fn nothing_is_said_when_all_were_filed() {
+        let summary = AcceptSummary {
+            filed: 3,
+            ..AcceptSummary::default()
+        };
+        assert_eq!(unfiled_note(Language::English, &summary), None);
+    }
 }

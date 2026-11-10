@@ -131,17 +131,27 @@ impl Panels {
         self.right.rename = None;
     }
 
-    /// A hit list is a snapshot of paths, so a renamed file is looked for under
-    /// its new path when the list is read again.
-    pub fn rename_hit(&mut self, side: PanelSide, from: &Path, to: &Path) {
-        let panel = self.panel_mut(side);
-        if !panel.is_hit_list() {
-            return;
-        }
-        for entry in panel.entries.iter_mut().filter(|entry| entry.path == from) {
-            entry.path = to.to_path_buf();
-            if let Some(name) = to.file_name() {
-                entry.name = name.to_os_string();
+    /// A hit list is a snapshot of paths, so what was renamed, and what lies in
+    /// a renamed folder, is looked for under its new path when either panel's
+    /// list is read again.
+    pub fn rename_hits(&mut self, from: &Path, to: &Path) {
+        for side in [PanelSide::Left, PanelSide::Right] {
+            let panel = self.panel_mut(side);
+            if !panel.is_hit_list() {
+                continue;
+            }
+            for entry in panel.entries.iter_mut() {
+                let Ok(rest) = entry.path.strip_prefix(from) else {
+                    continue;
+                };
+                if rest.as_os_str().is_empty() {
+                    entry.path = to.to_path_buf();
+                    if let Some(name) = to.file_name() {
+                        entry.name = name.to_os_string();
+                    }
+                } else {
+                    entry.path = to.join(rest);
+                }
             }
         }
     }

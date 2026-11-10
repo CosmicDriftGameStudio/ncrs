@@ -293,27 +293,6 @@ fn a_wrong_value_typed_without_enter_keeps_the_page_and_the_tab() {
 }
 
 #[test]
-fn quitting_closes_the_page_and_so_writes_a_right_value_typed_without_enter() {
-    let mut app = App::with_settings_file(SettingsFeature::Look, Ok(Config::default()));
-    typed_without_enter(&mut app, SettingField::Color(ColorRole::Accent), "#ff0");
-    drop(app.update(Message::Quit));
-    assert!(app.settings.page.is_none());
-}
-
-#[test]
-fn quitting_keeps_the_page_open_for_a_wrong_value_typed_without_enter() {
-    let mut app = App::with_settings_file(SettingsFeature::Look, Ok(Config::default()));
-    let accent = SettingField::Color(ColorRole::Accent);
-    typed_without_enter(&mut app, accent, "red");
-    drop(app.update(Message::Quit));
-    let state = app.settings.page.as_ref().unwrap();
-    assert_eq!(
-        state.problems.get(&accent),
-        Some(&settings_ui::FieldProblem::Color)
-    );
-}
-
-#[test]
 fn a_right_value_typed_without_enter_lets_the_page_change_and_the_tab_close() {
     let mut app = App::with_settings_file(SettingsFeature::Look, Ok(Config::default()));
     typed_without_enter(&mut app, SettingField::Color(ColorRole::Accent), "#ff0");

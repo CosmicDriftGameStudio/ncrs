@@ -203,3 +203,32 @@ fn dropping_the_receiver_cancels() {
     assert!(outcome.cancelled);
     assert_eq!(mode(&a), 0o600);
 }
+
+#[test]
+fn only_the_owner_read_and_execute_bits_are_cleared_after_the_walk() {
+    let (now, later) = edit(0o004, 0o577).split_set_and_clear();
+    assert_eq!((now.set, now.clear), (0o004, 0o077));
+    assert_eq!((later.set, later.clear), (0, 0o500));
+
+    let (_, owner_read_kept) = edit(0o400, 0o700).split_set_and_clear();
+    assert_eq!(owner_read_kept.clear, 0o100);
+}
+
+#[test]
+fn closing_a_tree_for_group_and_others_closes_every_folder() {
+    let (_dir, top, inner, file) = tree();
+    put(&top, 0o755);
+    put(&inner, 0o755);
+    put(&file, 0o644);
+    let outcome = run(
+        std::slice::from_ref(&top),
+        PermissionPlan {
+            edit: edit(0, 0o077),
+            recurse: Some((ForFiles::AsAbove, ForFolders::AsAbove)),
+        },
+    );
+    assert_eq!(mode(&top), 0o700);
+    assert_eq!(mode(&inner), 0o700);
+    assert_eq!(mode(&file), 0o600);
+    assert_eq!(outcome.changed, 3);
+}
