@@ -3617,6 +3617,7 @@ dependencies = [
  "libc",
  "ncrs-i18n",
  "ncrs-index",
+ "nix",
  "notify",
  "ocrs",
  "pdfium-render",

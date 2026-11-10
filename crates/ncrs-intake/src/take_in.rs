@@ -1,6 +1,6 @@
 use std::fs::{self, File, OpenOptions};
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chrono::{DateTime, Utc};
@@ -70,15 +70,16 @@ pub fn take_in_counted(
 /// A file that passed everything up to its hash. Hashing reads the whole file
 /// and needs no index, so a caller that shares the index can let go of it
 /// between [`prepare_take_in`] and [`finish_take_in`].
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct PendingHash {
     stamp: FileStamp,
+    root: PathBuf,
 }
 
 impl PendingHash {
     /// `None` when the file changed since it was stamped.
     pub fn hash(&self, path: &Path) -> Result<Option<ContentHash>, IntakeError> {
-        hash_file(path, self.stamp)
+        hash_file(&self.root, path, self.stamp)
     }
 }
 
@@ -134,7 +135,10 @@ pub fn prepare_take_in(
     if !tracker.observe(path, stamp.size, stamp.mtime, now) {
         return Ok(without_hash(Outcome::NotStableYet));
     }
-    Ok(Prepared::Hash(PendingHash { stamp }))
+    Ok(Prepared::Hash(PendingHash {
+        stamp,
+        root: location.path.clone(),
+    }))
 }
 
 /// The part of taking a file in that comes after its hash.
@@ -265,6 +269,49 @@ pub fn open_without_following(path: &Path) -> io::Result<File> {
     options.open(path)
 }
 
+/// [`open_without_following`] for a file below `root`, where no folder on the
+/// way may be a link either: `O_NOFOLLOW` guards the last part only, and a
+/// folder swapped for a link after [`has_symlink_ancestor_under`] looked would
+/// lead the open out of the location. Each part is opened relative to the one
+/// before it, so a swap cannot redirect the walk.
+#[cfg(unix)]
+fn open_below(root: &Path, path: &Path) -> io::Result<File> {
+    use nix::fcntl::{openat, OFlag};
+    use nix::sys::stat::Mode;
+    use std::path::Component;
+
+    let Ok(relative) = path.strip_prefix(root) else {
+        return open_without_following(path);
+    };
+    let parts: Vec<&std::ffi::OsStr> = relative
+        .components()
+        .filter_map(|part| match part {
+            Component::Normal(name) => Some(name),
+            _ => None,
+        })
+        .collect();
+    if parts.is_empty() || parts.len() != relative.components().count() {
+        return open_without_following(path);
+    }
+    let mut current = std::os::fd::OwnedFd::from(File::open(root)?);
+    let folder_flags = OFlag::O_RDONLY | OFlag::O_DIRECTORY | OFlag::O_NOFOLLOW | OFlag::O_CLOEXEC;
+    for (position, name) in parts.iter().enumerate() {
+        let last = position + 1 == parts.len();
+        let flags = if last {
+            OFlag::O_RDONLY | OFlag::O_NOFOLLOW | OFlag::O_NONBLOCK | OFlag::O_CLOEXEC
+        } else {
+            folder_flags
+        };
+        current = openat(&current, *name, flags, Mode::empty()).map_err(io::Error::from)?;
+    }
+    Ok(File::from(current))
+}
+
+#[cfg(not(unix))]
+fn open_below(_root: &Path, path: &Path) -> io::Result<File> {
+    open_without_following(path)
+}
+
 fn hash_open(file: &mut File, path: &Path) -> Result<ContentHash, IntakeError> {
     let mut hasher = Sha256::new();
     let mut chunk: [u8; 64 * 1024] = [0; 64 * 1024];
@@ -281,8 +328,12 @@ fn hash_open(file: &mut File, path: &Path) -> Result<ContentHash, IntakeError> {
 
 /// `None` when what was opened is not the file that was stamped: it is still
 /// changing.
-fn hash_file(path: &Path, stamp: FileStamp) -> Result<Option<ContentHash>, IntakeError> {
-    let mut file = open_regular(path)?;
+fn hash_file(
+    root: &Path,
+    path: &Path,
+    stamp: FileStamp,
+) -> Result<Option<ContentHash>, IntakeError> {
+    let mut file = open_below(root, path).map_err(IntakeError::io(path))?;
     let opened = file.metadata().map_err(IntakeError::io(path))?;
     let unchanged = opened.is_file()
         && opened.len() == stamp.size
@@ -448,5 +499,40 @@ mod tests {
             hex,
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_folder_swapped_for_a_link_after_the_check_is_not_followed_when_hashing() {
+        let location = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let folder = location.path().join("scans");
+        fs::create_dir(&folder).unwrap();
+        let path = folder.join("a.txt");
+        fs::write(&path, b"inside").unwrap();
+        let metadata = fs::metadata(&path).unwrap();
+        let stamp = FileStamp {
+            size: metadata.len(),
+            mtime: metadata.modified().unwrap(),
+        };
+        let pending = PendingHash {
+            stamp,
+            root: location.path().to_path_buf(),
+        };
+        assert!(pending.hash(&path).unwrap().is_some());
+
+        // Same name, size and mtime behind the link: only the walk can tell.
+        let secret = outside.path().join("a.txt");
+        fs::write(&secret, b"secret").unwrap();
+        File::options()
+            .write(true)
+            .open(&secret)
+            .unwrap()
+            .set_modified(stamp.mtime)
+            .unwrap();
+        fs::remove_dir_all(&folder).unwrap();
+        std::os::unix::fs::symlink(outside.path(), &folder).unwrap();
+
+        pending.hash(&path).unwrap_err();
     }
 }

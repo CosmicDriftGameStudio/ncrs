@@ -49,6 +49,8 @@ tempfile = { version = "3.27", optional = true }
 # a link or a FIFO since it was looked at. Already in the lock through notify.
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+# openat, to open a file folder by folder without following a link on the way.
+nix = { version = "0.31", default-features = false, features = ["fs"] }
 
 [features]
 # The PDF page helpers of the tests, for crates that test image text sources.
