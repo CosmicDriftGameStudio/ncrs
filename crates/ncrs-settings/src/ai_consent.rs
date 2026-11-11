@@ -166,8 +166,10 @@ mod tests {
             .map(|file| {
                 file.strip_prefix(&root)
                     .unwrap()
-                    .to_string_lossy()
-                    .into_owned()
+                    .components()
+                    .map(|part| part.as_os_str().to_string_lossy())
+                    .collect::<Vec<_>>()
+                    .join("/")
             })
             .collect();
         calling.sort();
