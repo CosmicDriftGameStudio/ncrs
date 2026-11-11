@@ -70,7 +70,7 @@ fn an_own_ai_server_on_another_computer_matches_its_snapshots_with_the_warning()
             let mut app = settings_with(
                 SettingsFeature::Hermes,
                 "[modules.filing.ai]\nprovider = \"http\"\n\
-                 endpoint = \"https://api.example.com/v1\"\nmodel = \"gpt-5\"\n\n\
+                 endpoint = \"https://api.example.com/v1\"\nmodel = \"gpt-5\"\nconsented_origins = [\"https://api.example.com\"]\n\n\
                  [theme]\npreset = \"cosmic\"\n",
             );
             drop(app.update(Message::Settings(SettingsMessage::ServerDialog(true))));
@@ -125,7 +125,7 @@ fn usage_page_app() -> App {
     let mut app = settings_with(
         SettingsFeature::Usage,
         "[modules.filing.ai]\nprovider = \"http\"\n\
-         endpoint = \"https://api.example.com/v1\"\nmodel = \"gpt-5\"\n\n\
+         endpoint = \"https://api.example.com/v1\"\nmodel = \"gpt-5\"\nconsented_origins = [\"https://api.example.com\"]\n\n\
          [theme]\npreset = \"cosmic\"\n",
     );
     drop(app.update(Message::Settings(SettingsMessage::UsageLoaded(summaries))));
@@ -243,6 +243,23 @@ fn the_hermes_page_with_the_model_switch_matches_its_snapshots() {
         (Language::English, "settings_hermes_switch_en"),
     ] {
         let mut app = from_this_computer(language);
+        matches_snapshot_in_marcs_window(&mut app, name);
+    }
+}
+
+#[test]
+fn the_index_page_with_a_server_not_allowed_yet_matches_its_snapshots() {
+    for (language, name) in [
+        (Language::German, "settings_index_not_allowed_de"),
+        (Language::English, "settings_index_not_allowed_en"),
+    ] {
+        let mut app = settings_with(
+            SettingsFeature::Index,
+            "[modules.filing.ai]\nenabled = false\nprovider = \"http\"\n\
+             endpoint = \"https://unreachable.invalid\"\nmodel = \"m\"\n\n\
+             [theme]\npreset = \"cosmic\"\n",
+        )
+        .in_language(language);
         matches_snapshot_in_marcs_window(&mut app, name);
     }
 }
