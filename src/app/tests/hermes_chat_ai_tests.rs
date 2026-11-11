@@ -40,6 +40,8 @@ fn chat_with_ai_off(config_dir: &tempfile::TempDir) -> App {
     std::fs::write(&config_path, "[hermes]\nenabled = false\n").unwrap();
     app.config_path = Some(config_path);
     app.hermes.filing_config.ai = AiSetting::Off;
+    app.hermes.filing_config.enabled = false;
+    app.hermes.filing_config.first_run = false;
     app
 }
 
@@ -109,11 +111,14 @@ fn with_the_ai_off_the_chat_gets_no_model() {
         [],
     )));
     app.hermes.filing_config.ai = AiSetting::Off;
+    app.hermes.filing_config.enabled = false;
+    app.hermes.filing_config.first_run = false;
     let ctx_off = app.hermes_chat_ctx();
     assert!(!ctx_off.ai_on);
     assert!(ctx_off.model.is_none());
 
     app.hermes.filing_config.ai = AiSetting::Local { threads: None };
+    app.hermes.filing_config.enabled = true;
     let ctx_on = app.hermes_chat_ctx();
     assert!(ctx_on.ai_on);
     assert!(ctx_on.model.is_some());

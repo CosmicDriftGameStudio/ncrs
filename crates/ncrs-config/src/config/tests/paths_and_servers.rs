@@ -498,9 +498,9 @@ fn without_an_ai_table_or_an_old_enabled_key_the_hermes_ai_is_on_with_the_local_
     );
     assert_eq!(ai_setting(""), local);
     assert_eq!(ai_setting("provider = \"local\"\n"), local);
-    assert_eq!(ai_setting("enabled = false\n"), local);
+    assert_eq!(ai_setting("enabled = false\n"), AiSetting::Off);
     assert_eq!(
-        ai_setting("enabled = false\nthreads = 2\n"),
+        ai_setting("threads = 2\n"),
         AiSetting::Local {
             threads: NonZeroU32::new(2)
         }
@@ -588,7 +588,6 @@ fn a_remote_server_from_before_the_dialog_is_consented_only_when_the_old_file_sw
         };
         consented_origins
     };
-    assert!(consented("enabled = false\n").is_empty());
     assert!(consented("").is_empty());
     assert_eq!(consented("enabled = true\n"), ["https://ai.example.com"]);
 }
@@ -887,4 +886,24 @@ pub fn one_of_each(folders: &SetupFolders) -> Vec<FilingLocation> {
         chosen(&folders.archive, LocationMode::Archive, false, false),
         chosen(&folders.target, LocationMode::Archive, true, true),
     ]
+}
+
+#[test]
+fn locations_without_an_enabled_key_are_watched_and_hermes_is_on() {
+    let filing = load_filing(
+        "[[modules.filing.locations]]\npath = \"/tmp\"\nmode = \"inbox\"\n",
+        None,
+    )
+    .unwrap()
+    .filing;
+    assert!(filing.enabled && filing.hermes_on());
+}
+
+#[test]
+fn the_hermes_key_wins_over_an_old_ai_enabled_flag() {
+    let filing = |text: &str| crate::config::from_text(text).unwrap().filing;
+    let old_off = filing("[modules.filing.ai]\nenabled = false\n");
+    assert!(old_off.hermes_on() && old_off.ai == AiSetting::Off);
+    let flipped = filing("[hermes]\nenabled = true\n[modules.filing.ai]\nenabled = false\n");
+    assert!(flipped.hermes_on() && flipped.ai != AiSetting::Off);
 }

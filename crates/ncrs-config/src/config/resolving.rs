@@ -22,12 +22,18 @@ pub fn resolve_filing(
     // Files from before `[hermes]` carry the switch in `modules.filing.enabled`.
     let switch = hermes.enabled.or(section.enabled);
     let mut ai = resolve_ai(section.ai.as_ref())?;
-    if switch == Some(false) {
+    let legacy_ai_off = section
+        .ai
+        .as_ref()
+        .is_some_and(|ai| ai.get_ref().legacy_enabled == Some(false));
+    if switch == Some(false) || (switch.is_none() && legacy_ai_off) {
         ai = AiSetting::Off;
     }
+    let first_run = *section == FilingSection::default() && hermes.enabled.is_none();
     let mut filing = Filing {
-        enabled: switch.unwrap_or(false),
-        first_run: *section == FilingSection::default() && hermes.enabled.is_none(),
+        // A first run has nothing to watch yet; a file with locations and no key is on.
+        enabled: switch.unwrap_or(!first_run),
+        first_run,
         locations: Vec::new(),
         load: resolve_load(section.load.as_ref())?,
         ai,

@@ -336,9 +336,10 @@ pub struct Filing {
 }
 
 impl Filing {
-    /// The `[hermes]` switch: off, no model is called at all.
+    /// The `[hermes]` switch, from the one value `enabled` is read from; a
+    /// first run has it on while there is nothing to watch yet.
     pub fn hermes_on(&self) -> bool {
-        self.ai != AiSetting::Off
+        self.enabled || self.first_run
     }
 }
 

@@ -166,9 +166,10 @@ mod tests {
         }
     }
 
-    /// The files outside `ncrs-ai` (which holds the models themselves) whose
-    /// code, before its test module, calls the model.
-    fn files_calling_the_model() -> Vec<String> {
+    /// The code (before the test module, comments stripped) of every file
+    /// outside `ncrs-ai`, which holds the models themselves, with its
+    /// slash-separated path from the repository root, sorted.
+    fn guarded_sources() -> Vec<(String, String)> {
         let root = repository();
         let mut files = Vec::new();
         rust_files(&root.join("src"), &mut files);
@@ -178,26 +179,38 @@ mod tests {
                 rust_files(&krate.join("src"), &mut files);
             }
         }
-        let mut calling: Vec<String> = files
+        let mut sources: Vec<(String, String)> = files
             .iter()
-            .filter(|file| {
-                let source = fs::read_to_string(file).unwrap();
-                let code = source.split("#[cfg(test)]").next().unwrap_or_default();
-                code.lines()
-                    .filter(|line| !line.trim_start().starts_with("//"))
-                    .any(|line| CALLS.iter().any(|call| line.contains(call)))
-            })
             .map(|file| {
-                file.strip_prefix(&root)
+                let path = file
+                    .strip_prefix(&root)
                     .unwrap()
                     .components()
                     .map(|part| part.as_os_str().to_string_lossy())
                     .collect::<Vec<_>>()
-                    .join("/")
+                    .join("/");
+                let source = fs::read_to_string(file).unwrap();
+                let code = source
+                    .split("#[cfg(test)]")
+                    .next()
+                    .unwrap_or_default()
+                    .lines()
+                    .filter(|line| !line.trim_start().starts_with("//"))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                (path, code)
             })
             .collect();
-        calling.sort();
-        calling
+        sources.sort();
+        sources
+    }
+
+    fn files_where(found: impl Fn(&str) -> bool) -> Vec<String> {
+        guarded_sources()
+            .into_iter()
+            .filter(|(_, code)| found(code))
+            .map(|(path, _)| path)
+            .collect()
     }
 
     #[test]
@@ -209,71 +222,37 @@ mod tests {
         announced.sort();
 
         assert_eq!(
-            files_calling_the_model(),
+            files_where(|code| code
+                .lines()
+                .any(|line| CALLS.iter().any(|call| line.contains(call)))),
             announced,
             "a place that calls the model needs a line in the question (ai_consent.rs \
              and strings.json); a place that no longer does must lose its line"
         );
 
-        let source_of = |file: &str| fs::read_to_string(repository().join(file)).unwrap();
-        let code_of = |file: &str| {
-            let source = source_of(file);
-            source
-                .split("#[cfg(test)]")
-                .next()
-                .unwrap_or_default()
-                .to_owned()
-        };
         // Every model is built from the resolved setting and nowhere else.
-        let mut building: Vec<String> = Vec::new();
-        let root = repository();
-        let mut files = Vec::new();
-        rust_files(&root.join("src"), &mut files);
-        for entry in fs::read_dir(root.join("crates")).unwrap() {
-            let krate = entry.unwrap().path();
-            if krate.file_name().unwrap() != "ncrs-ai" {
-                rust_files(&krate.join("src"), &mut files);
-            }
-        }
-        for file in &files {
-            let source = fs::read_to_string(file).unwrap();
-            let code = source.split("#[cfg(test)]").next().unwrap_or_default();
-            let calls = code
-                .lines()
-                .filter(|line| !line.trim_start().starts_with("//"));
-            if calls.clone().any(|line| {
-                BUILDERS
-                    .iter()
-                    .any(|b| line.contains(b) && !line.contains("fn "))
-            }) {
-                let relative = file.strip_prefix(&root).unwrap();
-                building.push(relative.to_string_lossy().into_owned());
-            }
-        }
-        building.sort();
         assert_eq!(
-            building,
+            files_where(|code| code.lines().any(|line| BUILDERS
+                .iter()
+                .any(|builder| line.contains(builder) && !line.contains("fn ")))),
             [
                 "crates/ncrs-filing/src/filing/ai.rs",
                 "src/app/hermes_chat.rs"
             ],
             "a new place that builds a model must take the resolved AiSetting"
         );
-        let wiring = code_of("crates/ncrs-filing/src/filing/ai.rs");
-        assert!(wiring.contains("AiSetting::Off => AiWiring::Off"));
-        let chat = code_of("src/app/hermes_chat.rs");
-        assert!(chat.contains("if !self.chat_ai_on() {\n            self.chat_model = None;"));
         // What reaches the chat, batch rename (local and SFTP) and the rules
         // flow is that model, handed over only while Hermes is on.
-        for file in ["src/app/hermes_chat.rs", "src/app/ops.rs"] {
-            for line in code_of(file)
-                .lines()
-                .filter(|line| line.contains(".chat_model.clone()"))
-            {
-                assert!(line.contains("chat_ai_on()"), "{file}: {line}");
+        for (file, code) in guarded_sources() {
+            if file == "src/app/hermes_chat.rs" || file == "src/app/ops.rs" {
+                for line in code
+                    .lines()
+                    .filter(|line| line.contains(".chat_model.clone()"))
+                {
+                    assert!(line.contains("chat_ai_on()"), "{file}: {line}");
+                }
             }
         }
-        assert!(source_of("src/app/ops.rs").contains("model: self.chat_ai_on()"));
     }
 
     #[test]

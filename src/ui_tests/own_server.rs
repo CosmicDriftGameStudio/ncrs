@@ -255,7 +255,7 @@ fn the_index_page_with_a_server_not_allowed_yet_matches_its_snapshots() {
     ] {
         let mut app = settings_with(
             SettingsFeature::Index,
-            "[modules.filing.ai]\nenabled = false\nprovider = \"http\"\n\
+            "[modules.filing.ai]\nprovider = \"http\"\n\
              endpoint = \"https://unreachable.invalid\"\nmodel = \"m\"\n\n\
              [theme]\npreset = \"cosmic\"\n",
         )

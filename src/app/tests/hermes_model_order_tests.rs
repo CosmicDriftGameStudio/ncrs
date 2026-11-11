@@ -208,12 +208,15 @@ async fn a_download_does_not_flip_the_switch() {
 }
 
 /// A server on 127.0.0.1 that answers one request with a minimal
-/// OpenAI-compatible reply and tells whether a request came in.
-fn stub_server() -> (u16, std::thread::JoinHandle<bool>) {
+/// OpenAI-compatible reply and reports on the channel once it has served it.
+/// A channel, not `join`: without a request the thread blocks in `accept`
+/// forever, and the test has to fail rather than hang.
+fn stub_server() -> (u16, std::sync::mpsc::Receiver<()>) {
     use std::io::{BufRead as _, BufReader, Read as _, Write as _};
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
-    let handle = std::thread::spawn(move || {
+    let (served, served_rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
         let (mut stream, _) = listener.accept().unwrap();
         let mut reader = BufReader::new(stream.try_clone().unwrap());
         let mut length = 0;
@@ -234,9 +237,9 @@ fn stub_server() -> (u16, std::thread::JoinHandle<bool>) {
             body.len()
         );
         stream.write_all(reply.as_bytes()).unwrap();
-        true
+        let _ = served.send(());
     });
-    (port, handle)
+    (port, served_rx)
 }
 
 #[tokio::test]
@@ -288,7 +291,11 @@ async fn the_reported_bug_download_then_a_server_on_127_0_0_1_gets_the_chat_call
         previous_message: None,
     };
     drop(model.understand(&turn));
-    assert!(stub.join().unwrap(), "the request reached the server");
+    assert!(
+        stub.recv_timeout(std::time::Duration::from_secs(10))
+            .is_ok(),
+        "the request reached the server"
+    );
 }
 
 #[tokio::test]
@@ -319,7 +326,7 @@ fn the_index_ai_state(app: &App) -> ncrs_settings::facts::AiState {
 
 #[tokio::test]
 async fn an_unconsented_remote_server_is_not_allowed_and_saving_it_unchanged_asks_once() {
-    let source = "[modules.filing.ai]\nenabled = false\nprovider = \"http\"\n\
+    let source = "[modules.filing.ai]\nprovider = \"http\"\n\
                   endpoint = \"https://unreachable.invalid\"\nmodel = \"m\"\n";
     let config_dir = tempfile::tempdir().unwrap();
     let config_path = config_dir.path().join("config.toml");
