@@ -361,3 +361,30 @@ fn hits_are_counted_in_singular_and_plural() {
     assert_eq!(hits_text(0, Language::English), "0 hits");
     assert_eq!(hits_text(12, Language::German), "12 Treffer");
 }
+
+#[test]
+fn escape_keeps_a_form_with_typed_changes_and_closes_an_untouched_one() {
+    let mut hermes = crate::state::Hermes {
+        rules: Some(page()),
+        ..crate::state::Hermes::default()
+    };
+
+    rules_of(&mut hermes).begin_edit(0);
+
+    assert!(crate::update::close_dialog(&mut hermes).is_some());
+    assert!(rules_of(&mut hermes).form().is_none());
+
+    rules_of(&mut hermes).begin_edit(0);
+    rules_of(&mut hermes)
+        .form_mut()
+        .unwrap()
+        .update(crate::message::RuleFormMessage::Name("Changed".to_owned()));
+    assert!(rules_of(&mut hermes).form().unwrap().is_edited());
+
+    assert!(crate::update::close_dialog(&mut hermes).is_some());
+    assert!(rules_of(&mut hermes).form().is_some());
+}
+
+fn rules_of(hermes: &mut crate::state::Hermes) -> &mut RulesPage {
+    hermes.rules.as_mut().unwrap()
+}

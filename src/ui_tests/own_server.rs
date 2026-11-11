@@ -134,3 +134,29 @@ fn usage_page_app() -> App {
 fn the_usage_page_matches_its_snapshots() {
     both_languages(usage_page_app, "settings_usage");
 }
+
+#[test]
+fn an_own_ai_server_that_answers_with_an_error_shows_its_status_in_the_dialog() {
+    let mut app = settings_with(
+        SettingsFeature::Hermes,
+        "[modules.filing.ai]\nprovider = \"http\"\n\
+         endpoint = \"http://localhost:11434\"\nmodel = \"qwen2.5:7b\"\n",
+    )
+    .in_language(Language::English);
+    drop(app.update(Message::Settings(SettingsMessage::ServerDialog(true))));
+    // The test starts a request task, which needs a runtime to be built; it is dropped unrun.
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let _entered = runtime.enter();
+    drop(app.update(Message::Settings(SettingsMessage::TestAiServer)));
+    drop(app.update(Message::Settings(SettingsMessage::AiChecked {
+        endpoint: "http://localhost:11434".to_owned(),
+        result: AiCheckResult::ServerError(500),
+    })));
+
+    let shown = ncrs_i18n::fill_template(
+        Language::English.text(ncrs_i18n::Msg::SettingsAiTestServerError),
+        &[("{status}", "500")],
+    );
+
+    simulator(&app).find(shown.as_str()).unwrap();
+}

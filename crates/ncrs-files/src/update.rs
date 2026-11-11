@@ -1,5 +1,6 @@
 //! What a panel message does to the panels, and what it asks the app for.
 
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use iced::Task;
@@ -290,13 +291,14 @@ pub fn update(
             actions.push(Action::OpenColumnSettings);
         }
         PanelMessage::HeaderMenuRestore => {
-            panels.header_menu = None;
-            actions.push(Action::RestoreColumnDefaults);
+            if let Some(menu) = panels.header_menu.take() {
+                actions.push(Action::RestoreColumnDefaults(menu.side));
+            }
         }
         PanelMessage::HeaderMenuClose => panels.header_menu = None,
 
-        PanelMessage::RowActivated { side, index } => {
-            activate_row(panels, ctx, side, index, &mut actions);
+        PanelMessage::RowActivated { side, index, name } => {
+            activate_row(panels, ctx, (side, index, &name), &mut actions);
         }
 
         PanelMessage::RenameStart => task = panels.begin_rename(),
@@ -440,7 +442,7 @@ fn step_history(panels: &mut Panels, ctx: &Ctx<'_>, direction: HistoryDirection)
     ]
 }
 
-/// Enter: up, into a folder or an archive file, starts an app bundle on macOS
+/// Enter: up, into a folder or an archive file, asks before it starts an app bundle on macOS
 /// and opens a file like the Finder does. An archive inside an archive is
 /// refused before this runs.
 fn open_selected(panels: &Panels) -> Option<Action> {
@@ -519,11 +521,19 @@ pub fn go_up(panels: &Panels, side: PanelSide) -> Option<Action> {
 fn activate_row(
     panels: &mut Panels,
     ctx: &Ctx<'_>,
-    side: PanelSide,
-    index: usize,
+    (side, index, name): (PanelSide, usize, &OsStr),
     actions: &mut Vec<Action>,
 ) {
     if ctx.is_context_click || ctx.context_menu_is_open {
+        return;
+    }
+    // A reload between the two clicks may have moved the rows.
+    let still_there = panels
+        .panel(side)
+        .entries
+        .get(index)
+        .is_some_and(|entry| entry.name == name);
+    if !still_there {
         return;
     }
     panels.active = side;

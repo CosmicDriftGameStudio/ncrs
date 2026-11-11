@@ -95,7 +95,7 @@ impl App {
                     .as_ref()
                     .and_then(FilingModule::query_access)
                     .map(|access| Arc::new(access) as Arc<dyn ncrs_index::SearchIndex>),
-                model: self.chat_ai_on().then(|| self.chat_model.clone()).flatten(),
+                model: self.chat_model_for_names(),
             },
             &self.panels,
         );
@@ -194,12 +194,16 @@ impl App {
                 self.job_done = 0;
                 Task::none()
             }
-            Ask::LaunchViewCopy { path, origin } => {
+            Ask::LaunchViewCopy {
+                path,
+                was_executable,
+                origin,
+            } => {
                 let from = match origin {
                     ncrs_ops::ViewOrigin::Archive => CopyOf::Archive,
                     ncrs_ops::ViewOrigin::Server => CopyOf::Server,
                 };
-                self.launch_external(fs::OpenKind::View, path, None, from);
+                self.launch_external(fs::OpenKind::View, path, None, from, was_executable);
                 Task::none()
             }
             Ask::ReloadPanels => {
@@ -425,6 +429,8 @@ impl App {
 
     /// Stops the running job, see `Message::AbortJob`.
     pub(in crate::app) fn abort_job(&mut self) -> Task<Message> {
+        // The folder size walks do not run through the queue.
+        self.panels.stop_folder_size_run();
         if !self.jobs.abort_running() {
             return Task::none();
         }

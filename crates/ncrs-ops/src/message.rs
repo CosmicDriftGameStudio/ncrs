@@ -178,7 +178,7 @@ pub enum OpsMessage {
     ViewExtracted {
         generation: u64,
         slot: std::path::PathBuf,
-        result: Result<std::path::PathBuf, RowFailure>,
+        result: Result<ncrs_fs::archive::ViewCopy, RowFailure>,
     },
     /// A pack, a copy into an archive or a delete from one is over.
     ArchiveWritten {

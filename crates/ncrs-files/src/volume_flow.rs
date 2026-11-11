@@ -142,8 +142,15 @@ impl Panels {
         })
     }
 
+    /// What the favourites key and the context menu entry act on: the same
+    /// folder, so the shortcut shown beside the entry does what the entry does.
+    fn favourite_target(&self) -> PathBuf {
+        self.local_folder_target()
+            .unwrap_or_else(|| self.active_panel().path.clone())
+    }
+
     pub fn add_favourite(&mut self, lang: Language) -> Action {
-        let path = self.active_panel().path.clone();
+        let path = self.favourite_target();
         self.add_favourite_at(lang, path)
     }
 
@@ -158,7 +165,7 @@ impl Panels {
     }
 
     pub fn remove_favourite(&mut self, lang: Language) -> Action {
-        let path = self.active_panel().path.clone();
+        let path = self.favourite_target();
         self.remove_favourite_at(lang, &path)
     }
 

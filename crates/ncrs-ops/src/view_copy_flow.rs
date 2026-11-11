@@ -32,7 +32,10 @@ pub fn start_view_copy(
     group: PathBuf,
     shown: PathBuf,
     kind: JobKind,
-    work: impl FnOnce(&Path, &UnboundedSender<fs::transfer::Tick>) -> std::io::Result<PathBuf>
+    work: impl FnOnce(
+            &Path,
+            &UnboundedSender<fs::transfer::Tick>,
+        ) -> std::io::Result<fs::archive::ViewCopy>
         + Send
         + 'static,
     ctx: &FlowCtx<'_>,
@@ -49,7 +52,8 @@ pub fn start_view_copy(
             return actions(vec![
                 Action::ClearStatus,
                 Action::LaunchViewCopy {
-                    path: copy,
+                    path: copy.path,
+                    was_executable: copy.was_executable,
                     origin: ViewOrigin::Archive,
                 },
             ]);
@@ -126,7 +130,7 @@ pub fn view_extracted(
     ops: &mut Ops,
     generation: u64,
     slot: PathBuf,
-    result: Result<PathBuf, RowFailure>,
+    result: Result<fs::archive::ViewCopy, RowFailure>,
     ctx: &FlowCtx<'_>,
 ) -> Outcome {
     if generation != ops.generation {
@@ -152,7 +156,11 @@ pub fn view_extracted(
                 if let Some(copies) = ops.view_copies.as_mut() {
                     copies.remember_copy(job.shown, copy.clone());
                 }
-                asked.push(Action::LaunchViewCopy { path: copy, origin });
+                asked.push(Action::LaunchViewCopy {
+                    path: copy.path,
+                    was_executable: copy.was_executable,
+                    origin,
+                });
             } else {
                 discard_view_slot(ops, &slot);
             }

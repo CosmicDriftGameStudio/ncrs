@@ -5,14 +5,18 @@ use std::time::SystemTime;
 
 use ncrs_ai::Provider;
 use ncrs_index::{
-    DocumentId, DocumentStatus, Field, FieldOrigin, IndexError, KindLanguage, Kinds, ReviewReason,
+    ContentHash, DocumentId, DocumentStatus, Field, FieldOrigin, IndexError, KindLanguage, Kinds,
+    ReviewReason,
 };
 use ncrs_intake::{
     detect_fields, plan, OwnNames, PlanInput, Planning, StabilityTracker, TextChain, TextError,
     FIELDS_READ_VERSION,
 };
+use ncrs_intake::{
+    finish_take_in, prepare_take_in, settle_location, IntakeError, Location, LocationMode, Outcome,
+    PendingHash, Prepared,
+};
 use ncrs_intake::{relative_to_location, text_is_readable};
-use ncrs_intake::{settle_location, take_in, IntakeError, Location, LocationMode, Outcome};
 
 use crate::ai_step::{clear_field, AiStep, AI_READ_VERSION};
 use crate::step::{with_index_value, IndexAccess, Item, Step, StepOutcome};
@@ -67,6 +71,11 @@ pub fn intake_steps(
     steps
 }
 
+enum Ready {
+    Outcome(Outcome),
+    Hashed(PendingHash, ContentHash),
+}
+
 /// Takes the file into the index, once it has held still.
 #[derive(Debug)]
 struct IntakeStep {
@@ -90,9 +99,27 @@ impl Step for IntakeStep {
     }
 
     fn run(&self, item: &mut Item, now: SystemTime) -> Result<StepOutcome, String> {
-        let taken = with_index_value(self.index.as_ref(), |index| {
+        // The hash reads the whole file, so the index is let go of meanwhile:
+        // every worker shares it, and the UI reaches it too.
+        let prepared = with_index_value(self.index.as_ref(), |index| {
             let mut tracker = self.tracker.lock().unwrap_or_else(PoisonError::into_inner);
-            let outcome = take_in(index, &item.location, &item.path, &mut tracker, now)?;
+            prepare_take_in(index, &item.location, &item.path, &mut tracker, now)
+        })
+        .ok_or_else(|| NO_INDEX.to_owned())?;
+        let ready = prepared.and_then(|step| match step {
+            Prepared::Done(taken) => Ok(Ready::Outcome(taken.outcome)),
+            Prepared::Hash(pending) => Ok(match pending.hash(&item.path)? {
+                Some(hash) => Ready::Hashed(pending, hash),
+                None => Ready::Outcome(Outcome::NotStableYet),
+            }),
+        });
+        let taken = with_index_value(self.index.as_ref(), |index| {
+            let outcome = match ready? {
+                Ready::Outcome(outcome) => outcome,
+                Ready::Hashed(pending, hash) => {
+                    finish_take_in(index, &item.location, &item.path, pending, hash, now)?.outcome
+                }
+            };
             // An inbox document taken in but never reviewed (the app quit in
             // between) goes on again, and so does an archive document whose
             // text was never read, for example for lack of the PDF library.
@@ -426,3 +453,6 @@ impl Step for ReviewStep {
             .map_err(|err| err.to_string())
     }
 }
+
+#[cfg(test)]
+mod intake_step_tests;

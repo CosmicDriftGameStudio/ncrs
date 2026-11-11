@@ -117,6 +117,14 @@ fn is_plain_absolute(path: &Path) -> bool {
         })
 }
 
+/// Why the journal file gives no entries.
+enum Unusable {
+    /// Not valid TOML for a journal; the file is no use to any version.
+    Garbled(String),
+    /// Not readable, or written by a newer ncrs, which must find it as it was.
+    Other(String),
+}
+
 fn failed(reason: impl Into<String>) -> RestoreError {
     RestoreError::Failed(reason.into())
 }
@@ -145,21 +153,35 @@ impl<B: TrashBackend> JournaledTrash<B> {
     /// A missing file is an empty journal. One that cannot be read, or that a
     /// newer ncrs wrote, is an error, so it is neither used nor overwritten.
     fn load(&self) -> Result<Vec<JournalEntry>, String> {
+        self.read_journal().map_err(|failure| match failure {
+            Unusable::Garbled(reason) | Unusable::Other(reason) => reason,
+        })
+    }
+
+    fn read_journal(&self) -> Result<Vec<JournalEntry>, Unusable> {
         let shown = self.journal.display();
         let text = match std::fs::read_to_string(&self.journal) {
             Ok(text) => text,
             Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(err) => return Err(format!("{shown}: {err}")),
+            Err(err) => return Err(Unusable::Other(format!("{shown}: {err}"))),
         };
-        let file: JournalFile =
-            toml_edit::de::from_str(&text).map_err(|err| format!("{shown}: {err}"))?;
+        let file: JournalFile = toml_edit::de::from_str(&text)
+            .map_err(|err| Unusable::Garbled(format!("{shown}: {err}")))?;
         if file.version > JOURNAL_VERSION {
-            return Err(format!(
+            return Err(Unusable::Other(format!(
                 "{shown} is version {}, written by a newer ncrs",
                 file.version
-            ));
+            )));
         }
         Ok(file.entries)
+    }
+
+    /// A journal that cannot be parsed would make every later deletion go
+    /// unrecorded. Its file is kept under another name and a new one starts.
+    fn set_aside_unusable(&self) -> io::Result<Vec<JournalEntry>> {
+        let mut name = self.journal.as_os_str().to_owned();
+        name.push(format!(".broken-{}", now()));
+        std::fs::rename(&self.journal, PathBuf::from(name)).map(|()| Vec::new())
     }
 
     fn save(&self, mut entries: Vec<JournalEntry>) -> io::Result<()> {
@@ -205,7 +227,11 @@ impl<B: TrashBackend> Trash for JournaledTrash<B> {
     fn trash(&self, path: &Path) -> Result<(), String> {
         let landed = self.backend.move_to_trash(path)?;
         let _writing = self.lock();
-        if let Ok(mut entries) = self.load() {
+        let loaded = match self.read_journal() {
+            Err(Unusable::Garbled(_)) => self.set_aside_unusable().ok(),
+            other => other.ok(),
+        };
+        if let Some(mut entries) = loaded {
             entries.push(JournalEntry::Trash {
                 at: now(),
                 original: path.to_path_buf(),
@@ -550,6 +576,19 @@ mod tests {
         assert!(!stranger.original.exists());
     }
 
+    fn set_aside_files(scene: &Scene) -> Vec<PathBuf> {
+        std::fs::read_dir(scene.journal.parent().unwrap())
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| {
+                path.file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .starts_with("journal.toml.broken-")
+            })
+            .collect()
+    }
+
     #[test]
     fn a_journal_of_a_newer_ncrs_is_left_alone() {
         let scene = scene();
@@ -564,10 +603,11 @@ mod tests {
         assert!(listed.contains("newer ncrs"), "{listed}");
         assert!(scene.bin.join("a.txt").is_file());
         assert_eq!(std::fs::read_to_string(&scene.journal).unwrap(), text);
+        assert!(set_aside_files(&scene).is_empty());
     }
 
     #[test]
-    fn a_broken_journal_is_not_overwritten() {
+    fn a_broken_journal_is_set_aside_and_the_deletion_recorded() {
         let scene = scene();
         write_journal(&scene, "this is [not toml");
         let file = scene.work.join("a.txt");
@@ -577,10 +617,15 @@ mod tests {
         scene.trash.trash(&file).unwrap();
 
         assert!(scene.bin.join("a.txt").is_file());
+        let kept = set_aside_files(&scene);
+        assert_eq!(kept.len(), 1);
         assert_eq!(
-            std::fs::read_to_string(&scene.journal).unwrap(),
+            std::fs::read_to_string(&kept[0]).unwrap(),
             "this is [not toml"
         );
+        let items = scene.trash.list().unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].original, file);
     }
 
     #[test]

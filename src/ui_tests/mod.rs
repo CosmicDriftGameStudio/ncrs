@@ -3651,11 +3651,8 @@ mod rules_card {
     }
 
     #[test]
-    fn escape_closes_the_dialog_first_saves_nothing_and_then_closes_the_settings() {
+    fn escape_closes_an_untouched_dialog_first_saves_nothing_and_then_closes_the_settings() {
         let mut app = App::with_rules(with_edit_form());
-        let _ = app.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Name(
-            "Contract".to_owned(),
-        ))));
 
         let _ = app.update(Message::Settings(SettingsMessage::Close));
 
@@ -3668,6 +3665,20 @@ mod rules_card {
         assert!(app.open_hermes_page().is_some());
         let _ = app.update(Message::Settings(SettingsMessage::Close));
         assert!(app.open_hermes_page().is_none());
+    }
+
+    #[test]
+    fn escape_keeps_a_dialog_with_typed_input_open() {
+        let mut app = App::with_rules(with_edit_form());
+        let _ = app.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Name(
+            "Contract".to_owned(),
+        ))));
+
+        let _ = app.update(Message::Settings(SettingsMessage::Close));
+
+        let page = app.rules_for_test().unwrap();
+        assert_eq!(page.form().unwrap().name, "Contract");
+        assert!(app.open_hermes_page().is_some());
     }
 
     #[test]
@@ -3796,6 +3807,53 @@ mod title_bar {
         let themed = App::with_filing_snapshot(snapshot_again, taken_at())
             .in_language(Language::EnglishFuturama);
         assert_eq!(themed.hermes_chip_for_test().as_deref(), Some("Hermes"));
+    }
+
+    #[test]
+    fn a_failed_request_to_the_own_server_shows_in_the_chip() {
+        let provider = crate::filing::http_ai_provider(
+            "http://127.0.0.1:1/v1",
+            "model-x",
+            std::path::Path::new("index.db"),
+        )
+        .unwrap();
+        let mut snapshot = Snapshot::off();
+        snapshot.state = RunnerState::Running;
+        snapshot.documents_per_minute[1] = 78;
+        let app = App::with_filing_snapshot(snapshot, taken_at())
+            .in_language(Language::English)
+            .with_filing_module_for_test(crate::filing::FilingModule::in_phase_with_own_server(
+                crate::filing::Phase::Ready,
+                std::sync::Arc::clone(&provider),
+                "http://127.0.0.1:1",
+                "model-x",
+            ));
+        let chip_before = app.hermes_chip_for_test();
+
+        ncrs_ai::Provider::extract(
+            provider.as_ref(),
+            &ncrs_ai::ExtractionRequest {
+                text: "Invoice 4711".to_owned(),
+                open_fields: Vec::new(),
+                known: ncrs_index::DocumentFields::default(),
+                source: std::path::PathBuf::from("inbox"),
+                kinds: std::sync::Arc::default(),
+            },
+        )
+        .unwrap_err();
+
+        let problem = ncrs_i18n::fill_template(
+            Language::English.text(ncrs_i18n::Msg::TitleBarHermesServerProblem),
+            &[(
+                "{problem}",
+                &crate::hermes_overview::server_failure_text(
+                    ncrs_ai::ReplyFailure::NoAnswer,
+                    Language::English,
+                ),
+            )],
+        );
+        assert_eq!(chip_before.as_deref(), Some("Hermes"));
+        assert_eq!(app.hermes_chip_for_test(), Some(problem));
     }
 
     #[test]

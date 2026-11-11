@@ -167,6 +167,10 @@ USAGE:
         prints the compute devices, GPU or CPU and the time of three
         sentences, and exits 0 if all went well, 1 if not, 2 on a usage
         error.
+        On Windows ncrs is a window program, so cmd.exe and PowerShell do not
+        wait for it: run it as start /wait ncrs --check-ai <models-dir>
+        (PowerShell: Start-Process -Wait -PassThru) to get the exit code in
+        %ERRORLEVEL% (.ExitCode).
 
 KEYS (the defaults; [keys] in the config file changes them):
     up/down    move selection      Tab       switch panel

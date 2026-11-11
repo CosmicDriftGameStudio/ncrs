@@ -294,3 +294,21 @@ fn without_a_state_path_nothing_is_scheduled() {
     assert_eq!(app.session_save_generation, 0);
     assert!(app.due_session_state(0).is_none());
 }
+
+#[test]
+fn a_message_that_cannot_touch_the_state_does_not_build_a_snapshot() {
+    let scratch = tempfile::tempdir().unwrap();
+    let mut app = started(&scratch);
+    app.panels.active = PanelSide::Left;
+
+    for ticking in [
+        Message::Monitor(ncrs_monitor::MonitorMessage::Tick),
+        Message::Panel(PanelMessage::PanelEntered(PanelSide::Right)),
+    ] {
+        drop(app.update(ticking));
+    }
+    assert_eq!(app.session_save_generation, 0, "no snapshot, no schedule");
+
+    drop(app.update(Message::WindowResized(Size::new(900.0, 600.0))));
+    assert_eq!(app.session_save_generation, 1);
+}

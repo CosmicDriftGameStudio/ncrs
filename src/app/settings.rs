@@ -311,6 +311,29 @@ impl App {
         self.update_settings(SettingsMessage::Close)
     }
 
+    /// Values typed on the open page without Enter are written before the app
+    /// ends. A wrong one keeps the page open, with the problem at its row; a
+    /// second quit with the problem already shown ends the app anyway, so a
+    /// wrong value can never make the app impossible to close.
+    pub(in crate::app) fn quit_after_settings_page(&mut self) -> Task<Message> {
+        let Some(page) = self.settings.page.as_ref() else {
+            return self.quit();
+        };
+        if self.page_dialog_is_open() {
+            return self.quit();
+        }
+        let problem_was_shown = !page.problems.is_empty();
+        let written = self.leave_settings_page();
+        if self.settings.page.is_some() {
+            return if problem_was_shown {
+                self.quit()
+            } else {
+                written
+            };
+        }
+        written.chain(Task::done(Message::Quit))
+    }
+
     pub(in crate::app) fn settings_area<'a>(
         &'a self,
         state: &'a settings_ui::SettingsState,

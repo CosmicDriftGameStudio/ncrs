@@ -335,7 +335,7 @@ impl App {
         let reload = pending.map(|due| self.load(due.side, due.path, Some(due.name)));
         let lang = self.lang;
         if let Some(path) = self.ops.finish_prompt(kind, result, created, lang) {
-            self.launch_external(fs::OpenKind::Edit, path, None, CopyOf::Nothing);
+            self.launch_external(fs::OpenKind::Edit, path, None, CopyOf::Nothing, false);
         }
         reload.unwrap_or_else(Task::none)
     }

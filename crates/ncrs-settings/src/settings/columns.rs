@@ -51,10 +51,20 @@ pub fn edited(current: &PanelColumns, side: PanelSide, edit: ColumnsEdit) -> Pan
         ColumnsEdit::Toggle(column) => edit_list(&mut columns, side, |list| toggle(list, column)),
         ColumnsEdit::Up(column) => edit_list(&mut columns, side, |list| step(list, column, false)),
         ColumnsEdit::Down(column) => edit_list(&mut columns, side, |list| step(list, column, true)),
+        // The list of the side and the widths; the formats stay.
         ColumnsEdit::Restore => {
             edit_list(&mut columns, side, |list| *list = Column::DEFAULT.to_vec());
+            columns.widths.clear();
         }
     }
+    columns
+}
+
+/// `current` with the list `side` edits replaced; with one list for both panels
+/// that is the list of both.
+pub fn with_list(current: &PanelColumns, side: PanelSide, list: Vec<Column>) -> PanelColumns {
+    let mut columns = current.clone();
+    edit_list(&mut columns, side, |shown| *shown = list);
     columns
 }
 
@@ -180,9 +190,11 @@ mod tests {
         let mut changed = PanelColumns::default();
         changed.left = vec![Column::Name, Column::Created];
         changed.right = changed.left.clone();
+        changed.widths.push((Column::Size, 90));
         let restored = edited(&changed, PanelSide::Left, ColumnsEdit::Restore);
         assert_eq!(restored.left, Column::DEFAULT);
         assert_eq!(restored.right, Column::DEFAULT);
+        assert!(restored.widths.is_empty());
     }
 
     #[test]

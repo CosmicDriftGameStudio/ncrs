@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use rusqlite::{Connection, ErrorCode};
+use zeroize::Zeroizing;
 
 use crate::error::IndexError;
 use crate::key::{IndexKey, RecoveryKey};
@@ -120,7 +121,7 @@ impl Index {
         }
         let copy_path = path_with_suffix(db_path, ENCRYPTING_SUFFIX)?;
         remove_file_if_present(&copy_path)?;
-        let (key, entry_is_new) = match store.load()? {
+        let (key, entry_is_new) = match store.load()?.map(Zeroizing::new) {
             Some(stored) => (IndexKey::from_stored(&stored)?, false),
             None => (IndexKey::generate()?, true),
         };
@@ -230,7 +231,10 @@ impl Index {
         if encrypted {
             // A key is never made for a file that exists: a new key could not
             // open it, and the data would be gone for good.
-            let stored = store.load()?.ok_or(IndexError::KeyMissing)?;
+            let stored = store
+                .load()?
+                .map(Zeroizing::new)
+                .ok_or(IndexError::KeyMissing)?;
             unlock(&conn, &IndexKey::from_stored(&stored)?)?;
         }
         run_migrations(&mut conn, migrations)?;
@@ -284,7 +288,7 @@ fn starts_with_plaintext_header(db_path: &Path) -> Result<bool, IndexError> {
 /// leaves an entry behind. The user has already saved its recovery key, and an
 /// old database moved back into place opens with it, so it is reused.
 fn key_for_new_database(store: &dyn KeyStore) -> Result<IndexKey, IndexError> {
-    if let Some(stored) = store.load()? {
+    if let Some(stored) = store.load()?.map(Zeroizing::new) {
         return IndexKey::from_stored(&stored);
     }
     let key = IndexKey::generate()?;
@@ -298,10 +302,12 @@ fn store_and_verify(store: &dyn KeyStore, key: &IndexKey) -> Result<(), IndexErr
 }
 
 fn verify_stored(store: &dyn KeyStore, key: &IndexKey) -> Result<(), IndexError> {
-    let read_back = store
-        .load()?
-        .ok_or(IndexError::KeyStoreVerificationFailed)?;
-    if read_back == key.as_bytes() {
+    let read_back = Zeroizing::new(
+        store
+            .load()?
+            .ok_or(IndexError::KeyStoreVerificationFailed)?,
+    );
+    if read_back.as_slice() == key.as_bytes() {
         Ok(())
     } else {
         Err(IndexError::KeyStoreVerificationFailed)
@@ -387,7 +393,7 @@ fn export_encrypted_copy(
     let user_version: u32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
     conn.execute(
         "ATTACH DATABASE ?1 AS encrypted KEY ?2",
-        (copy_text, raw_key_text(key)),
+        (copy_text, raw_key_text(key).as_str()),
     )?;
     conn.execute_batch("PRAGMA encrypted.cipher_compatibility = 4;")?;
     conn.query_row("SELECT sqlcipher_export('encrypted')", [], |_| Ok(()))?;
@@ -423,12 +429,13 @@ fn sync_parent_directory(db_path: &Path) {
 
 /// The `x'..'` form skips the passphrase key derivation: the key is already 32
 /// random bytes, so stretching it would only cost start-up time.
-fn raw_key_text(key: &IndexKey) -> String {
-    format!("x'{}'", key.to_hex())
+fn raw_key_text(key: &IndexKey) -> Zeroizing<String> {
+    Zeroizing::new(format!("x'{}'", *key.to_hex()))
 }
 
 fn unlock(conn: &Connection, key: &IndexKey) -> Result<(), IndexError> {
-    conn.execute_batch(&format!("PRAGMA key = \"{}\";", raw_key_text(key)))?;
+    let statement = Zeroizing::new(format!("PRAGMA key = \"{}\";", *raw_key_text(key)));
+    conn.execute_batch(&statement)?;
     // Pins the SQLCipher 4 file format. Without it a later SQLCipher major
     // version would apply its own defaults and fail to open existing files.
     conn.execute_batch("PRAGMA cipher_compatibility = 4;")?;

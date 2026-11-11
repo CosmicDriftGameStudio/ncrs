@@ -87,8 +87,9 @@ pub enum Action {
     },
     /// The "same columns in both panels" entry of the header menu.
     SameColumnsInBoth(bool),
-    /// Back to the default columns and widths.
-    RestoreColumnDefaults,
+    /// Back to the default columns and widths of the panel whose header menu
+    /// was used.
+    RestoreColumnDefaults(PanelSide),
     /// Shows the Columns page of the settings.
     OpenColumnSettings,
     /// Enter in the name input: rename `from` to `new_name` in its folder.

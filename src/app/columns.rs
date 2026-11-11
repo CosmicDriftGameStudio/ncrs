@@ -7,6 +7,8 @@ use ncrs_config::config::FilingLocation;
 use ncrs_config::panel_columns::{Appearance, FontChoice, FontSizeChoice, PanelColumns};
 use ncrs_core::Column;
 use ncrs_files::special_folders::system_folders;
+use ncrs_settings::message::ColumnsEdit;
+use ncrs_settings::settings::columns as columns_page;
 use ncrs_ui_kit::file_icon::SpecialFolder;
 use ncrs_ui_kit::font;
 
@@ -41,24 +43,6 @@ pub(in crate::app) fn column_settings_of(columns: &PanelColumns) -> ncrs_files::
     }
 }
 
-/// `columns` with the list of `side` replaced; with one list for both panels
-/// that is the list of both.
-pub(in crate::app) fn with_side_columns(
-    columns: &PanelColumns,
-    side: PanelSide,
-    list: Vec<Column>,
-) -> PanelColumns {
-    let mut changed = columns.clone();
-    match side {
-        PanelSide::Right if !changed.same_in_both => changed.right = list,
-        PanelSide::Left | PanelSide::Right => {
-            changed.right.clone_from(&list);
-            changed.left = list;
-        }
-    }
-    changed
-}
-
 pub(in crate::app) fn with_column_width(
     columns: &PanelColumns,
     column: Column,
@@ -70,24 +54,6 @@ pub(in crate::app) fn with_column_width(
         None => changed.widths.push((column, width)),
     }
     changed
-}
-
-/// Both panels start from what the left one shows, whichever way it is turned.
-pub(in crate::app) fn with_same_in_both(columns: &PanelColumns, same: bool) -> PanelColumns {
-    let mut changed = columns.clone();
-    changed.same_in_both = same;
-    changed.right.clone_from(&changed.left);
-    changed
-}
-
-/// Built-in lists and widths back; the formats stay.
-pub(in crate::app) fn with_default_columns(columns: &PanelColumns) -> PanelColumns {
-    PanelColumns {
-        same_in_both: columns.same_in_both,
-        date_format: columns.date_format,
-        size_format: columns.size_format,
-        ..PanelColumns::default()
-    }
 }
 
 fn family_of(font: &FontChoice) -> Option<&str> {
@@ -180,7 +146,7 @@ impl App {
         side: PanelSide,
         list: Vec<Column>,
     ) -> Task<Message> {
-        let columns = with_side_columns(&self.columns, side, list);
+        let columns = columns_page::with_list(&self.columns, side, list);
         self.save_columns(columns)
     }
 
@@ -194,12 +160,19 @@ impl App {
     }
 
     pub(in crate::app) fn panel_columns_same_in_both(&mut self, same: bool) -> Task<Message> {
-        let columns = with_same_in_both(&self.columns, same);
+        let columns = columns_page::edited(
+            &self.columns,
+            PanelSide::Left,
+            ColumnsEdit::SameInBoth(same),
+        );
         self.save_columns(columns)
     }
 
-    pub(in crate::app) fn panel_column_defaults_restored(&mut self) -> Task<Message> {
-        let columns = with_default_columns(&self.columns);
+    pub(in crate::app) fn panel_column_defaults_restored(
+        &mut self,
+        side: PanelSide,
+    ) -> Task<Message> {
+        let columns = columns_page::edited(&self.columns, side, ColumnsEdit::Restore);
         self.save_columns(columns)
     }
 
@@ -212,21 +185,37 @@ impl App {
 mod tests {
     use super::*;
 
+    fn per_panel_with_changes() -> PanelColumns {
+        let mut start = PanelColumns {
+            same_in_both: false,
+            ..PanelColumns::default()
+        };
+        start.left.push(Column::Created);
+        start.right.push(Column::Owner);
+        start.widths.push((Column::Size, 90));
+        start.date_format = ncrs_core::DateFormat::Short;
+        start
+    }
+
     #[test]
     fn one_list_for_both_panels_changes_both() {
         let start = PanelColumns::default();
         let list = vec![Column::Icon, Column::Name, Column::Owner];
-        let changed = with_side_columns(&start, PanelSide::Right, list.clone());
+        let changed = columns_page::with_list(&start, PanelSide::Right, list.clone());
         assert_eq!((changed.left, changed.right), (list.clone(), list));
     }
 
     #[test]
     fn per_panel_lists_change_one_side() {
-        let start = with_same_in_both(&PanelColumns::default(), false);
+        let start = per_panel_with_changes();
         let list = vec![Column::Name, Column::Type];
-        let changed = with_side_columns(&start, PanelSide::Right, list.clone());
-        assert_eq!(changed.right, list);
-        assert_eq!(changed.left, Column::DEFAULT.to_vec());
+        let right = columns_page::with_list(&start, PanelSide::Right, list.clone());
+        assert_eq!(
+            (right.right, right.left),
+            (list.clone(), start.left.clone())
+        );
+        let left = columns_page::with_list(&start, PanelSide::Left, list.clone());
+        assert_eq!((left.left, left.right), (list, start.right));
     }
 
     #[test]
@@ -238,13 +227,11 @@ mod tests {
     }
 
     #[test]
-    fn restoring_keeps_the_formats() {
-        let mut start = PanelColumns::default();
-        start.left.push(Column::Owner);
-        start.widths.push((Column::Size, 90));
-        start.date_format = ncrs_core::DateFormat::Short;
-        let restored = with_default_columns(&start);
-        assert_eq!(restored.left, Column::DEFAULT.to_vec());
+    fn the_header_menu_and_the_settings_page_restore_the_same_way() {
+        let start = per_panel_with_changes();
+        let restored = columns_page::edited(&start, PanelSide::Right, ColumnsEdit::Restore);
+        assert_eq!(restored.right, Column::DEFAULT.to_vec());
+        assert_eq!(restored.left, start.left, "the other panel keeps its list");
         assert!(restored.widths.is_empty());
         assert_eq!(restored.date_format, ncrs_core::DateFormat::Short);
     }

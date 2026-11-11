@@ -27,6 +27,7 @@ use crate::message::{
     HermesColumnMessage, HermesOverviewMessage, HermesPage, Message, QuickFixMessage, RulesMessage,
     SavedQueriesMessage, TagsMessage,
 };
+use crate::rule_form::RuleForm;
 use crate::rules_page::RulesPage;
 use crate::saved_queries::SavedQueries;
 use crate::state::Hermes;
@@ -75,10 +76,27 @@ pub fn dialog_is_open(hermes: &Hermes) -> bool {
             .is_some_and(SavedQueries::dialog_is_open)
 }
 
-/// Closes the dialog that is up; `None` when there was none.
+/// Closing the dialog that is up would throw away typed input.
+fn dialog_holds_unsaved_input(hermes: &Hermes) -> bool {
+    hermes
+        .rules
+        .as_ref()
+        .and_then(RulesPage::form)
+        .is_some_and(RuleForm::is_edited)
+        || hermes
+            .saved_queries
+            .as_ref()
+            .is_some_and(SavedQueries::holds_unsaved_input)
+}
+
+/// Closes the dialog that is up; `None` when there was none. A dialog with
+/// typed input stays up, its own Cancel button is the way to drop it.
 pub fn close_dialog(hermes: &mut Hermes) -> Option<Task<Message>> {
     if !dialog_is_open(hermes) {
         return None;
+    }
+    if dialog_holds_unsaved_input(hermes) {
+        return Some(Task::none());
     }
     Some(Task::batch([
         rules::close_dialog(hermes),

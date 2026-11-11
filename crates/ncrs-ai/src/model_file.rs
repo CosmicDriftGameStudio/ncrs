@@ -111,7 +111,7 @@ pub fn verify_model_file(path: &Path, pin: &ModelPin) -> Result<(), AiError> {
     if known {
         return Ok(());
     }
-    hash_matches(path, pin)?;
+    hash_matches(path, pin, &identity)?;
     verified_files()
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
@@ -119,11 +119,20 @@ pub fn verify_model_file(path: &Path, pin: &ModelPin) -> Result<(), AiError> {
     Ok(())
 }
 
-fn hash_matches(path: &Path, pin: &ModelPin) -> Result<(), AiError> {
+/// Hashes the file behind `path` and checks that the handle it read is the
+/// file `identity` was taken from: a link or a file put in its place between
+/// the check of the path and this open is not hashed as if it were the model.
+fn hash_matches(path: &Path, pin: &ModelPin, identity: &FileIdentity) -> Result<(), AiError> {
     #[cfg(test)]
     HASHED_FILES.with(|count| count.set(count.get() + 1));
     let unreadable = |_err: std::io::Error| AiError::Model("the model file could not be read");
     let mut file = File::open(path).map_err(unreadable)?;
+    let opened = file.metadata().map_err(unreadable)?;
+    if FileIdentity::of(&opened) != *identity {
+        return Err(AiError::Model(
+            "the model file changed while it was checked",
+        ));
+    }
     let mut hasher = Sha256::new();
     let mut buffer = vec![u8::MIN; 1 << 20];
     let mut read_total: u64 = 0;
@@ -436,6 +445,24 @@ mod tests {
         assert_eq!(
             verify_model_file(&link, &pin_of(b"model bytes")),
             Err(AiError::Model("the model file is not a regular file"))
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_file_put_in_place_after_the_path_was_checked_is_not_hashed_as_the_model() {
+        let dir = TempDir::new().unwrap();
+        let checked = write(&dir, b"model bytes");
+        let identity = FileIdentity::of(&fs::symlink_metadata(&checked).unwrap());
+        let other = dir.path().join("other.gguf");
+        fs::write(&other, b"model bytes").unwrap();
+        fs::rename(&other, &checked).unwrap();
+
+        assert_eq!(
+            hash_matches(&checked, &pin_of(b"model bytes"), &identity),
+            Err(AiError::Model(
+                "the model file changed while it was checked"
+            ))
         );
     }
 

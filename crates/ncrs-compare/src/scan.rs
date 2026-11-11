@@ -211,7 +211,7 @@ fn local_file(
     }
     if ncrs_fs::archive::locate_in_archive(path).is_some_and(|place| !place.inner.is_empty()) {
         std::fs::create_dir_all(slot)?;
-        return ncrs_fs::archive::extract_for_view(path, slot, &mut progress);
+        return ncrs_fs::archive::extract_for_view(path, slot, &mut progress).map(|copy| copy.path);
     }
     Ok(path.to_owned())
 }

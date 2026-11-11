@@ -174,6 +174,20 @@ where
     }
 }
 
+fn talk_ready(data: &Path, store: Store, label: &str) {
+    assert!(
+        talk(data, store, label),
+        "{label}: Hermes never became ready"
+    );
+}
+
+fn talk_not_ready(data: &Path, store: Store, label: &str) {
+    assert!(
+        !talk(data, store, label),
+        "{label}: Hermes became ready without its key"
+    );
+}
+
 /// F2, then a sentence; a card that can be left is left and the chat tried again.
 fn talk(data: &Path, store: Store, label: &str) -> bool {
     println!("\n[{label}]");
@@ -294,37 +308,38 @@ fn hermes_real_start() {
     let models = super::env_path("NCRS_AI_MODELS_DIR");
 
     let no_config = fresh(&root, "no-config", None, None);
-    talk(&no_config, empty_store(), "first start");
+    talk_ready(&no_config, empty_store(), "first start");
     let switched_off = fresh(&root, "switched-off", Some(SWITCHED_OFF), None);
-    talk(&switched_off, empty_store(), "first start");
+    talk_ready(&switched_off, empty_store(), "first start");
     let without_model = fresh(&root, "ai-without-model", Some(FILING_AI), None);
     let without_model_keys = empty_store();
-    talk(
+    talk_ready(
         &without_model,
         Arc::clone(&without_model_keys),
         "first start",
     );
-    talk(&without_model, without_model_keys, "second start");
+    talk_ready(&without_model, without_model_keys, "second start");
     let with_model = fresh(&root, "ai-with-model", Some(FILING_AI), models.as_ref());
     let with_model_keys = empty_store();
-    talk(&with_model, Arc::clone(&with_model_keys), "first start");
-    talk(&with_model, with_model_keys, "second start");
+    talk_ready(&with_model, Arc::clone(&with_model_keys), "first start");
+    talk_ready(&with_model, with_model_keys, "second start");
 
+    // A lost or refused key leaves the index closed: Hermes is not ready.
     let key_missing = fresh(&root, "key-missing", Some(FILING_ONLY), None);
-    talk(&key_missing, empty_store(), "index made");
-    talk(&key_missing, empty_store(), "key gone");
+    talk_ready(&key_missing, empty_store(), "index made");
+    talk_not_ready(&key_missing, empty_store(), "key gone");
     let refused_new = fresh(&root, "keychain-refused-new-index", Some(FILING_ONLY), None);
-    talk(&refused_new, Arc::new(RefusingStore), "refused");
+    talk_not_ready(&refused_new, Arc::new(RefusingStore), "refused");
     let refused_old = fresh(&root, "keychain-refused-old-index", Some(FILING_ONLY), None);
-    talk(&refused_old, empty_store(), "index made");
-    talk(&refused_old, Arc::new(RefusingStore), "refused");
+    talk_ready(&refused_old, empty_store(), "index made");
+    talk_not_ready(&refused_old, Arc::new(RefusingStore), "refused");
 
     let data = fresh(&root, "archive-gone", None, models.as_ref());
     let inbox = data.join("inbox");
     std::fs::create_dir_all(&inbox).unwrap();
     let gone = locations(&inbox, Path::new("/Volumes/ncrs-not-mounted/archive"));
     std::fs::write(data.join("config.toml"), gone).unwrap();
-    talk(&data, empty_store(), "first start");
+    talk_ready(&data, empty_store(), "first start");
     println!("\nshots below {}", root.display());
 }
 
@@ -568,7 +583,9 @@ mod e2e_tests {
 
     use ncrs_hermes_chat::{ChipReply, Message as ChatMessage};
 
-    use super::{boot, chat, empty_store, is_ready, phase_name, pump_for, FILING_AI, FILING_ONLY};
+    use super::{boot, chat, empty_store, is_ready, pump_for, FILING_ONLY};
+    #[cfg(feature = "local-ai")]
+    use super::{phase_name, FILING_AI};
     use crate::messages::Message;
 
     #[test]
@@ -591,7 +608,10 @@ mod e2e_tests {
     }
 
     /// A missing model used to open its window at the start, and F2 did nothing
-    /// behind it. The chat offers the download itself.
+    /// behind it. The chat offers the download itself. Only the `local-ai`
+    /// build has a built-in model that can be missing; without it there is
+    /// nothing to download and no chip to offer.
+    #[cfg(feature = "local-ai")]
     #[test]
     fn a_missing_model_leaves_f2_to_the_chat() {
         let scratch = tempfile::tempdir().unwrap();
@@ -605,6 +625,10 @@ mod e2e_tests {
         session.send(Message::HermesChat(ChatMessage::Open));
 
         assert!(chat(&session.app).open);
-        assert!(!chat(&session.app).thread().is_empty());
+        assert!(chat(&session.app)
+            .chips()
+            .iter()
+            .any(|chip| chip.reply == ChipReply::DownloadModel));
+        assert!(session.app.ai_model_for_test().is_none());
     }
 }

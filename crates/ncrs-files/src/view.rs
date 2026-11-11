@@ -38,7 +38,15 @@ pub fn view<'a>(state: &'a PanelState, ctx: ViewCtx<'a>) -> Element<'a, PanelMes
     };
     let layout = ctx.columns.layout(side, lang);
     let on_row_click = move |index, click| match click {
-        RowClick::Open => PanelMessage::RowActivated { side, index },
+        RowClick::Open => PanelMessage::RowActivated {
+            side,
+            index,
+            name: state
+                .entries
+                .get(index)
+                .map(|entry| entry.name.clone())
+                .unwrap_or_default(),
+        },
         RowClick::Tag | RowClick::Cursor => PanelMessage::RowClicked {
             side,
             index,

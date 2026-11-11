@@ -85,7 +85,8 @@ pub use structure::{
     NameScheme, Placeholder, PlaceholderKind, PlaceholderLabel, StructureDocument, UnorderedFolder,
 };
 pub use take_in::{
-    has_symlink_ancestor_under, hash_path, open_without_following, take_in, Outcome,
+    finish_take_in, has_symlink_ancestor_under, hash_path, open_without_following, prepare_take_in,
+    take_in, Outcome, PendingHash, Prepared, Taken,
 };
 pub use text::{
     pdfium_library_candidates, pdfium_library_dir, Extracted, ImageTextSource,

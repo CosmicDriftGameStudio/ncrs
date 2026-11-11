@@ -2,6 +2,8 @@ use std::fmt;
 
 use std::str::FromStr;
 
+use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
+
 use crate::error::{IndexError, RecoveryKeyError};
 
 pub const KEY_LEN: usize = 32;
@@ -31,10 +33,24 @@ impl IndexKey {
         RecoveryKey(Self(self.0))
     }
 
-    pub fn to_hex(&self) -> String {
-        self.0.iter().map(|byte| format!("{byte:02x}")).collect()
+    pub fn to_hex(&self) -> Zeroizing<String> {
+        Zeroizing::new(self.0.iter().map(|byte| format!("{byte:02x}")).collect())
     }
 }
+
+impl Zeroize for IndexKey {
+    fn zeroize(&mut self) {
+        self.0.zeroize();
+    }
+}
+
+impl Drop for IndexKey {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
+
+impl ZeroizeOnDrop for IndexKey {}
 
 impl fmt::Debug for IndexKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -103,7 +119,7 @@ impl FromStr for RecoveryKey {
                 found: cleaned.len(),
             });
         }
-        let mut bytes = Vec::with_capacity(KEY_LEN);
+        let mut bytes = Zeroizing::new(Vec::with_capacity(KEY_LEN));
         let mut buffer: u16 = 0;
         let mut bits: u32 = 0;
         for ch in cleaned {
@@ -161,6 +177,15 @@ mod tests {
         }
     }
 
+    #[test]
+    fn the_key_bytes_are_wiped_by_zeroize_and_on_drop() {
+        fn wiped_on_drop<T: ZeroizeOnDrop>() {}
+        wiped_on_drop::<IndexKey>();
+
+        let mut key = IndexKey::from_stored(&[0xab; 32]).unwrap();
+        key.zeroize();
+        assert_eq!(key.as_bytes(), &[0; KEY_LEN]);
+    }
     #[test]
     fn recovery_key_is_grouped_in_fours_with_a_short_last_group() {
         let shown = RecoveryKey::from_str_for_test(&[0; 32]).to_string();

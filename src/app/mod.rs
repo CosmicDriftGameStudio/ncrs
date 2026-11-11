@@ -32,7 +32,6 @@ use crate::file_list_tags::{FileListTags, TagExceptions};
 use crate::filing::Phase;
 use crate::filing::{DocumentFinder, FilingMessage, FilingModule};
 use crate::filing_setup;
-use crate::filing_status::SNAPSHOT_EVERY;
 use crate::filing_work::FilingSummary;
 use crate::fs;
 use crate::fs::remote::credentials::KeyringPasswords;
