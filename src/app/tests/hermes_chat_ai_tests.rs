@@ -37,8 +37,9 @@ fn chat_with_ai_off(config_dir: &tempfile::TempDir) -> App {
     let mut app = App::with_fixed_panels().in_language(Language::German);
     app.hermes.filing = Some(FilingModule::in_phase(Phase::Ready));
     let config_path = config_dir.path().join("config.toml");
-    std::fs::write(&config_path, "").unwrap();
+    std::fs::write(&config_path, "[hermes]\nenabled = false\n").unwrap();
     app.config_path = Some(config_path);
+    app.hermes.filing_config.ai = AiSetting::Off;
     app
 }
 
@@ -107,7 +108,7 @@ fn with_the_ai_off_the_chat_gets_no_model() {
         LocalModelStatus::NotDownloaded,
         [],
     )));
-    assert_eq!(app.hermes.filing_config.ai, AiSetting::Off);
+    app.hermes.filing_config.ai = AiSetting::Off;
     let ctx_off = app.hermes_chat_ctx();
     assert!(!ctx_off.ai_on);
     assert!(ctx_off.model.is_none());

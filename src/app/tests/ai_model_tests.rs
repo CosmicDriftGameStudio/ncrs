@@ -78,6 +78,7 @@ async fn the_download_button_starts_one_download_and_closing_waits() {
 #[tokio::test]
 async fn a_finished_download_keeps_the_card_and_says_what_happened() {
     let mut app = app_with_data_folder();
+    app.hermes.filing_config.ai = crate::config::AiSetting::Off;
     send(&mut app, AiModelMessage::Open);
     send(&mut app, AiModelMessage::Download);
     let generation = app.settings.ai_model_generation;
@@ -93,7 +94,7 @@ async fn a_finished_download_keeps_the_card_and_says_what_happened() {
     assert_eq!(
         card.outcome(),
         Some(InstallOutcome::StillOff),
-        "the config of this app cannot be written, so the AI stays off"
+        "Hermes is switched off, so the model waits"
     );
 }
 
@@ -123,23 +124,19 @@ async fn the_bar_ticks_only_while_the_download_runs() {
 }
 
 #[tokio::test]
-async fn a_finished_download_turns_the_ai_on_when_the_config_can_be_written() {
+async fn a_finished_download_does_not_touch_the_switch_of_hermes() {
     let mut app = app_with_data_folder();
+    app.hermes.filing_config.ai = crate::config::AiSetting::Off;
     app.config_path = Some(PathBuf::from("/example/config.toml"));
     send(&mut app, AiModelMessage::Open);
     send(&mut app, AiModelMessage::Download);
     let generation = app.settings.ai_model_generation;
-    send(
-        &mut app,
-        AiModelMessage::Downloaded {
-            generation,
-            result: Ok(()),
-        },
-    );
-    assert_eq!(
-        app.ai_model_for_test().unwrap().outcome(),
-        Some(InstallOutcome::TurningOn)
-    );
+    let task = app.update(Message::AiModel(AiModelMessage::Downloaded {
+        generation,
+        result: Ok(()),
+    }));
+    assert_eq!(task.units(), 0, "nothing is written");
+    assert_eq!(app.hermes.filing_config.ai, crate::config::AiSetting::Off);
 }
 
 #[test]

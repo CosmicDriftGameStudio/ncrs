@@ -56,39 +56,22 @@ pub fn not_a_table(path: &Path, key: &str) -> FilingWriteError {
     })
 }
 
-/// `source` with `enabled = true` and `locations` in `[modules.filing]`. The
-/// first setup (no `locations` yet) also turns the AI on unless the file has
-/// an `[modules.filing.ai]` table: a user who set it, even to off, keeps it.
+/// `source` with `enabled = true` in `[hermes]` and `locations` in
+/// `[modules.filing]`.
 pub fn with_filing_locations(
     source: &str,
     path: &Path,
     locations: &[FilingLocation],
 ) -> Result<String, FilingWriteError> {
     let mut document = parse_document(source, path)?;
+    let hermes = sub_table(document.as_table_mut(), "hermes", false)
+        .ok_or_else(|| not_a_table(path, "hermes"))?;
+    hermes.insert("enabled", toml_edit::value(true));
     let modules = sub_table(document.as_table_mut(), "modules", true)
         .ok_or_else(|| not_a_table(path, "modules"))?;
     let filing =
         sub_table(modules, "filing", false).ok_or_else(|| not_a_table(path, "modules.filing"))?;
-    match filing
-        .get_mut("enabled")
-        .and_then(toml_edit::Item::as_value_mut)
-    {
-        Some(enabled) => {
-            let decor = enabled.decor().clone();
-            *enabled = toml_edit::Value::from(true);
-            *enabled.decor_mut() = decor;
-        }
-        None => {
-            filing.insert("enabled", toml_edit::value(true));
-        }
-    }
-    let first_setup = filing.get("locations").is_none();
     set_locations(filing, locations)?;
-    if first_setup && filing.get("ai").is_none() {
-        let ai =
-            sub_table(filing, "ai", false).ok_or_else(|| not_a_table(path, "modules.filing.ai"))?;
-        ai.insert("enabled", toml_edit::value(true));
-    }
     Ok(document.to_string())
 }
 

@@ -70,6 +70,7 @@ impl App {
         let restore_last_key = self
             .keymap
             .shortcut_label(&KeyAction::RestoreLastDeletion.message());
+        self.ensure_chat_model();
         let mut ops = std::mem::take(&mut self.ops);
         let outcome = step(
             &mut ops,

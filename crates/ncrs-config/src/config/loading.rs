@@ -132,10 +132,12 @@ pub fn parse_config(source: &str, path: &Path, home: Option<&Path>) -> Result<Co
         config.palette = configured.palette;
     }
     config.filing =
-        resolve_filing(&config.modules.filing, home).map_err(|err| ConfigError::Invalid {
-            path: path.to_path_buf(),
-            line: line_at(source.as_bytes(), err.span.start),
-            reason: err.reason,
+        resolve_filing(&config.modules.filing, &config.hermes, home).map_err(|err| {
+            ConfigError::Invalid {
+                path: path.to_path_buf(),
+                line: line_at(source.as_bytes(), err.span.start),
+                reason: err.reason,
+            }
         })?;
     config.file_list_tags = resolve_file_list_tags(&config.file_list_tags_section);
     config.columns = resolve_columns(&config.columns_section);

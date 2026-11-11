@@ -303,7 +303,12 @@ pub fn ai_button(ai: &AiState, model_present: bool) -> Option<AiButton> {
 fn ai_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
     let lang = view.lang;
     let palette = view.palette;
-    let (state, color) = match &view.facts.ai {
+    // Without a running module the file on disk tells whether the model is there.
+    let ai = match (&view.facts.ai, view.state.ai_model_present) {
+        (AiState::Missing, true) => &AiState::Ready,
+        (other, _) => other,
+    };
+    let (state, color) = match ai {
         AiState::Off => (
             lang.text(Msg::SettingsIndexAiOff).to_owned(),
             palette.dim_text,
@@ -340,24 +345,24 @@ fn ai_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
             palette.dim_text,
         ),
     };
-    let ai_kind = ai_button(&view.facts.ai, view.state.ai_model_present);
+    let ai_kind = ai_button(ai, view.state.ai_model_present);
     let ai_press = ai_kind.as_ref().map(|kind| match kind {
         AiButton::Remove => SettingsMessage::AskRemoveModel(ModelKind::Ai),
-        AiButton::TurnOn => SettingsMessage::Change(SettingChange::AiEnabled(true)),
+        AiButton::TurnOn => SettingsMessage::Change(SettingChange::HermesSwitch(true)),
         AiButton::Load => SettingsMessage::OpenAiModel,
     });
     let button = ai_kind.map(|kind| match kind {
         AiButton::Remove => remove_model_button(ModelKind::Ai, view),
         AiButton::TurnOn => kit::button(
             lang.text(Msg::AiModelTurnOn),
-            Some(SettingsMessage::Change(SettingChange::AiEnabled(true))),
+            Some(SettingsMessage::Change(SettingChange::HermesSwitch(true))),
             Tone::Secondary,
             palette,
         ),
         AiButton::Load => load_button(SettingsMessage::OpenAiModel, view),
     });
     // The local model's name would be wrong while the own server answers.
-    let note_msg = if matches!(view.facts.ai, AiState::OwnServer { .. }) {
+    let note_msg = if matches!(ai, AiState::OwnServer { .. }) {
         Msg::SettingsIndexRowAiNoteServer
     } else {
         Msg::SettingsIndexRowAiNote

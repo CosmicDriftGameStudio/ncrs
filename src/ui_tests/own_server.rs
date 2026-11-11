@@ -235,3 +235,14 @@ fn the_question_before_a_server_on_another_computer_matches_its_snapshots() {
         matches_snapshot_in_marcs_window(&mut app, name);
     }
 }
+
+#[test]
+fn the_hermes_page_with_the_model_switch_matches_its_snapshots() {
+    for (language, name) in [
+        (Language::German, "settings_hermes_switch_de"),
+        (Language::English, "settings_hermes_switch_en"),
+    ] {
+        let mut app = from_this_computer(language);
+        matches_snapshot_in_marcs_window(&mut app, name);
+    }
+}

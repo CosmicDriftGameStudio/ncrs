@@ -701,12 +701,11 @@ color theme from [Open VSX](https://open-vsx.org) and switches it on at once.
 
 ### Filing
 
-`[modules.filing]` switches the filing module on and lists the folders it works
-on:
+`[hermes]` switches Hermes on or off as a whole (see below); `[modules.filing]`
+lists the folders the filing module works on:
 
 ```toml
 [modules.filing]
-enabled = true
 # "gentle", "balanced", "full" or a number of workers.
 load = "balanced"
 
@@ -790,12 +789,22 @@ adding a second one. "New chat" starts over.
 
 ![Settings › Hermes](docs/screenshots/filing.png)
 
+**On/off.** One switch for all of Hermes: "Hermes" at the top of Settings ›
+Hermes. A file without the key has it on. Off, no read folder is watched and no
+model is called (sorting, chat, name suggestions, learning rules). Files from
+before this key keep their old `[modules.filing] enabled`, which is read once
+when `[hermes] enabled` is missing; ncrs writes only `[hermes] enabled`.
+
 **AI.** Documents the rules cannot read can be handed to a small language
-model. It is off until switched on:
+model. The switch above decides whether Hermes calls any model at all (sorting, the
+chat, name suggestions, learning rules); off, no model is called, whatever is
+set up below:
 
 ```toml
-[modules.filing.ai]
+[hermes]
 enabled = true
+
+[modules.filing.ai]
 # "local" (default) runs a model on this machine; "http" talks to a server.
 provider = "local"
 # local only: threads for the model, 1 or more; left out, ncrs picks.
@@ -979,7 +988,7 @@ to `data\`.
 
 ## What ncrs encrypts
 
-This applies to the filing module (`[modules.filing] enabled = true`). With the
+This applies to the filing module (`[hermes] enabled`, on unless set to `false`). With the
 module off, ncrs opens and creates no index.
 
 ncrs is a file manager with a convenience index for your documents. It is not a

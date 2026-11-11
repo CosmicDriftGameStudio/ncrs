@@ -309,12 +309,10 @@ fn written(
             return keeping;
         }
         Err(error) => {
-            if matches!(change, SettingChange::AiEnabled(true)) {
+            if matches!(change, SettingChange::HermesSwitch(true)) {
                 if let Some(card) = settings.ai_model.as_mut() {
                     card.set_outcome(InstallOutcome::StillOff);
                 }
-            }
-            if matches!(change, SettingChange::HermesEnabled(true)) {
                 actions.push(Action::HermesNotTurnedOn(error.to_string()));
                 if settings.page.is_none() {
                     return Task::none();

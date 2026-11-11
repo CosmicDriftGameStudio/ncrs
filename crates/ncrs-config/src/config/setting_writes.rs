@@ -14,6 +14,7 @@ pub const THEME_TABLE: &str = "theme";
 pub const MODULES_TABLE: &str = "modules";
 pub const FILING_TABLE: &str = "filing";
 pub const AI_TABLE: &str = "ai";
+pub const HERMES_TABLE: &str = "hermes";
 pub const OPEN_TABLE: &str = "open";
 pub const FILE_LIST_TAGS_TABLE: &str = "file_list_tags";
 pub const SYSTEM_TABLE: &str = "system";
@@ -71,14 +72,6 @@ pub fn write_favourites_bar(path: &Path, shown: bool) -> Result<Config, FilingWr
         favourites_bar_setting(shown),
         home_from_env().as_deref(),
     )
-}
-
-pub fn filing_enabled_setting(enabled: bool) -> Setting {
-    Setting {
-        tables: &[MODULES_TABLE, FILING_TABLE],
-        key: "enabled",
-        value: Some(enabled.into()),
-    }
 }
 
 pub fn filing_load_setting(load: Load) -> Setting {
@@ -249,9 +242,9 @@ pub fn appearance_settings(appearance: &Appearance) -> [Setting; 2] {
     ]
 }
 
-pub fn ai_enabled_setting(enabled: bool) -> Setting {
+pub fn hermes_enabled_setting(enabled: bool) -> Setting {
     Setting {
-        tables: AI_TABLES,
+        tables: &[HERMES_TABLE],
         key: "enabled",
         value: Some(enabled.into()),
     }
@@ -270,15 +263,6 @@ pub fn write_theme_preset(path: &Path, preset: ThemePreset) -> Result<Config, Fi
 /// Sets the top-level `lang`; same guarantees as [`write_theme_preset`].
 pub fn write_language(path: &Path, language: Language) -> Result<Config, FilingWriteError> {
     write_setting(path, language_setting(language), home_from_env().as_deref())
-}
-
-/// Sets `enabled` in `[modules.filing]`; same guarantees as [`write_theme_preset`].
-pub fn write_filing_enabled(path: &Path, enabled: bool) -> Result<Config, FilingWriteError> {
-    write_setting(
-        path,
-        filing_enabled_setting(enabled),
-        home_from_env().as_deref(),
-    )
 }
 
 /// Sets `load` in `[modules.filing]` and drops the old `threads` line of
@@ -364,11 +348,12 @@ pub fn write_appearance(path: &Path, appearance: &Appearance) -> Result<Config, 
     )
 }
 
-/// Sets `enabled` in `[modules.filing.ai]`; same guarantees as [`write_theme_preset`].
-pub fn write_ai_enabled(path: &Path, enabled: bool) -> Result<Config, FilingWriteError> {
+/// Sets `enabled` in `[hermes]`, the switch for every call to a model; same
+/// guarantees as [`write_theme_preset`].
+pub fn write_hermes_enabled(path: &Path, enabled: bool) -> Result<Config, FilingWriteError> {
     write_setting(
         path,
-        ai_enabled_setting(enabled),
+        hermes_enabled_setting(enabled),
         home_from_env().as_deref(),
     )
 }

@@ -35,9 +35,9 @@ pub enum SettingChange {
     CheckForUpdates(bool),
     /// The top-level `favourites_bar` switch.
     FavouritesBar(bool),
-    HermesEnabled(bool),
     Load(Load),
-    AiEnabled(bool),
+    /// The `[hermes]` switch: off, nothing is watched and no model is called.
+    HermesSwitch(bool),
     /// `None` hands the file to the system default again.
     Program {
         kind: OpenKind,

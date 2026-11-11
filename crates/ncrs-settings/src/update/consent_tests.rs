@@ -75,7 +75,7 @@ impl World {
             ocr_models_dir: None,
             ai_models_dir: None,
             file_list_tags: &self.tags,
-            ai_is_on: true,
+            hermes_on: true,
             usage_log: None,
             services: services(),
         };

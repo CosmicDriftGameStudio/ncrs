@@ -220,7 +220,7 @@ pub fn ai_consent_dialog<'a>(
             announced_items().map(|item| lang.text(item).to_owned()),
             palette,
         ),
-        kit::warning_box(lang.text(Msg::SettingsAiConsentOutro), palette),
+        kit::dim(lang.text(Msg::SettingsAiConsentOutro), palette),
     ]
     .spacing(spacing::LINE_GAP);
     Frame::new(

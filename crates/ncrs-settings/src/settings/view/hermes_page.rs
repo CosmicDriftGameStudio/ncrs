@@ -31,19 +31,7 @@ pub fn hermes_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
         Group {
             intro: None,
             title: String::new(),
-            rows: vec![simple_row(
-                Msg::SettingsHermesRowOn,
-                Some(Msg::SettingsHermesRowOnNote),
-                switch(
-                    view.filing.enabled,
-                    SettingChange::HermesEnabled(!view.filing.enabled),
-                    view,
-                ),
-                lang,
-            )
-            .keyed(RowKey::Press(change(SettingChange::HermesEnabled(
-                !view.filing.enabled,
-            ))))],
+            rows: vec![model_switch_row(view)],
         },
         group(
             Msg::SettingsHermesSectionFolders,
@@ -57,6 +45,34 @@ pub fn hermes_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
         ),
         group(Msg::SettingsHermesSectionHistory, None, history_rows(view)),
     ]
+}
+
+/// The one switch of Hermes: off, no read folder is watched and no model is
+/// called; on, both, with the model that is set up (the own server, else the
+/// one on this computer).
+fn model_switch_row<'a>(view: &SettingsView<'a>) -> SettingRow<'a> {
+    let on = view.filing.hermes_on();
+    let options = [
+        (
+            view.lang.text(Msg::SettingsHermesSwitchOn),
+            change(SettingChange::HermesSwitch(true)),
+        ),
+        (
+            view.lang.text(Msg::SettingsHermesSwitchOff),
+            change(SettingChange::HermesSwitch(false)),
+        ),
+    ];
+    let chosen = usize::from(!on);
+    simple_row(
+        Msg::SettingsHermesRowSwitch,
+        Some(Msg::SettingsHermesRowSwitchNote),
+        kit::segmented(&options, chosen, true, view.palette),
+        view.lang,
+    )
+    .keyed_maybe(choice_key(
+        options.iter().map(|(_, message)| message.clone()).collect(),
+        chosen,
+    ))
 }
 
 /// "always · move · also images", in the words of the page.

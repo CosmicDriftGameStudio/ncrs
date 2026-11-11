@@ -14,13 +14,23 @@ pub fn own_entries(entries: &[String], is_valid: impl Fn(&str) -> bool) -> Vec<S
 
 /// Text rules only, no file system access: a dead mount must not block the
 /// start or cost the user the rest of the config.
-pub fn resolve_filing(section: &FilingSection, home: Option<&Path>) -> Result<Filing, FilingError> {
+pub fn resolve_filing(
+    section: &FilingSection,
+    hermes: &HermesSection,
+    home: Option<&Path>,
+) -> Result<Filing, FilingError> {
+    // Files from before `[hermes]` carry the switch in `modules.filing.enabled`.
+    let switch = hermes.enabled.or(section.enabled);
+    let mut ai = resolve_ai(section.ai.as_ref())?;
+    if switch == Some(false) {
+        ai = AiSetting::Off;
+    }
     let mut filing = Filing {
-        enabled: section.enabled.unwrap_or(false),
-        first_run: *section == FilingSection::default(),
+        enabled: switch.unwrap_or(false),
+        first_run: *section == FilingSection::default() && hermes.enabled.is_none(),
         locations: Vec::new(),
         load: resolve_load(section.load.as_ref())?,
-        ai: resolve_ai(section.ai.as_ref())?,
+        ai,
         default_pattern: section
             .default_pattern
             .as_deref()
@@ -91,7 +101,7 @@ pub fn resolve_filing(section: &FilingSection, home: Option<&Path>) -> Result<Fi
 
 pub fn resolve_ai(section: Option<&Spanned<AiSection>>) -> Result<AiSetting, FilingError> {
     let Some(spanned) = section else {
-        return Ok(AiSetting::Off);
+        return Ok(AiSetting::default());
     };
     let ai = spanned.get_ref();
     let provider = ai
@@ -128,9 +138,6 @@ pub fn resolve_ai(section: Option<&Spanned<AiSection>>) -> Result<AiSetting, Fil
     };
     only_for(&ai.endpoint, "endpoint", AiProviderName::Http)?;
     only_for(&ai.model, "model", AiProviderName::Http)?;
-    if !ai.enabled {
-        return Ok(AiSetting::Off);
-    }
     match provider {
         AiProviderName::Local => Ok(AiSetting::Local { threads }),
         AiProviderName::Http => {

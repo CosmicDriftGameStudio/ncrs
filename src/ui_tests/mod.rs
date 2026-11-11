@@ -4674,11 +4674,11 @@ mod settings_tab {
     #[test]
     fn the_search_filters_the_rows_by_label() {
         let mut app = App::with_settings_open(SettingsFeature::Hermes, hermes_config());
-        simulator(&app).find("Hermes on").expect("the switch");
+        simulator(&app).find("On").expect("the switch");
         drop(app.update(Message::Settings(SettingsMessage::SearchChanged(
             "rules".to_owned(),
         ))));
-        let switch_hidden = simulator(&app).find("Hermes on").is_err();
+        let switch_hidden = simulator(&app).find("On").is_err();
         assert!(switch_hidden);
         simulator(&app).find("Rules").expect("the rules row");
     }

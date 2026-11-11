@@ -153,12 +153,23 @@ pub struct FilingSection {
     pub own_tax_ids: Vec<String>,
 }
 
+/// The `[hermes]` section: the one switch for every call to a model.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HermesSection {
+    /// A file without the key has Hermes on.
+    #[serde(default)]
+    pub enabled: Option<bool>,
+}
+
 /// The `[modules.filing.ai]` section, unchecked.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AiSection {
-    #[serde(default)]
-    pub enabled: bool,
+    /// Older files switch the model here; the switch in `[hermes]` decides
+    /// now, so the key is accepted, whatever it holds, and never written.
+    #[serde(default, rename = "enabled")]
+    pub _enabled: Option<serde::de::IgnoredAny>,
     #[serde(default)]
     pub provider: Option<Spanned<AiProviderName>>,
     #[serde(default)]
@@ -200,18 +211,28 @@ pub enum AiProviderName {
 }
 
 /// What the filing module may ask for a document the rules could not read.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// `Off` is the switch of the `[hermes]` section: no model is called at all.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AiSetting {
-    #[default]
     Off,
     /// The model on this machine. `None` leaves the thread count to the module.
-    Local { threads: Option<NonZeroU32> },
+    Local {
+        threads: Option<NonZeroU32>,
+    },
     Http {
         endpoint: String,
         model: String,
         /// The servers the user agreed to send documents to.
         consented_origins: Vec<String>,
     },
+}
+
+/// Hermes on, with the model of this machine, as a file without a word about
+/// it has it.
+impl Default for AiSetting {
+    fn default() -> Self {
+        Self::Local { threads: None }
+    }
 }
 
 /// The spelling of `load` in the file; `resolve_filing` maps it to `Load`.
@@ -309,6 +330,13 @@ pub struct Filing {
     pub own_names: Vec<String>,
     pub own_ibans: Vec<String>,
     pub own_tax_ids: Vec<String>,
+}
+
+impl Filing {
+    /// The `[hermes]` switch: off, no model is called at all.
+    pub fn hermes_on(&self) -> bool {
+        self.ai != AiSetting::Off
+    }
 }
 
 /// What a config with nothing about filing resolves to.

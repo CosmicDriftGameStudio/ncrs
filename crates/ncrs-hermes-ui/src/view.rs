@@ -6,7 +6,6 @@ use std::path::Path;
 
 use iced::widget::Column;
 use iced::{Element, Size};
-use ncrs_config::config::AiSetting;
 use ncrs_config::file_list_tags::FileListTags;
 use ncrs_config::palette::Palette;
 use ncrs_filing::filing::{AiStatus, FilingModule, Phase};
@@ -73,7 +72,7 @@ pub fn overview_facts(
         failure,
         has_locations: !hermes.filing_config.locations.is_empty(),
         counts: hermes.filing_status.hermes_counts().copied(),
-        ai_on: hermes.filing_config.ai != AiSetting::Off,
+        ai_on: hermes.filing_config.hermes_on(),
         ai_status: module.map(FilingModule::ai_status).unwrap_or_default(),
         ai_download: ctx.ai_download,
         ocr: OcrFacts::of(ctx.system_reads_scans, ocr_models_present),

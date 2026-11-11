@@ -71,7 +71,7 @@ impl App {
                 .as_deref()
                 .and_then(crate::filing::ai_models_dir),
             file_list_tags: &self.file_list_tags,
-            ai_is_on: self.hermes.filing_config.ai != crate::config::AiSetting::Off,
+            hermes_on: self.hermes.filing_config.hermes_on(),
             usage_log: self
                 .hermes
                 .index_path
@@ -420,8 +420,9 @@ impl App {
                 self.file_list_tags = config.file_list_tags;
                 Task::none()
             }
-            SettingChange::AiEnabled(_) | SettingChange::AiProvider(_) => {
-                let turned_on = matches!(change, SettingChange::AiEnabled(true));
+            SettingChange::HermesSwitch(_) | SettingChange::AiProvider(_) => {
+                self.turning_hermes_on = false;
+                let turned_on = matches!(change, SettingChange::HermesSwitch(true));
                 let (applies, task) = self.apply_ai_change(config.filing);
                 let outcome = if matches!(applies, SavedFilingApplies::Now) {
                     InstallOutcome::TurnedOn
@@ -455,7 +456,7 @@ impl App {
                     task
                 }
             }
-            SettingChange::HermesEnabled(_) | SettingChange::Locations(_) => {
+            SettingChange::Locations(_) => {
                 self.turning_hermes_on = false;
                 let (applies, task) = self.apply_saved_filing(config.filing);
                 if matches!(applies, SavedFilingApplies::AtNextStart) {

@@ -2540,9 +2540,9 @@
     },
     {
       "key": "ai_model.still_off",
-      "context": "Sentence in the AI model card after the download ended when the AI switch could not be turned on by itself. The button below opens the setting.",
-      "en": "The AI model is installed. The AI is still off; turn it on in the settings.",
-      "de": "Das KI-Modell ist installiert. Die KI ist noch aus; schalte sie in den Einstellungen ein."
+      "context": "Sentence in the AI model card after the download ended while the Hermes switch on the Hermes page is off. The button below turns it on.",
+      "en": "The AI model is installed. Hermes is switched off, so it is not used yet.",
+      "de": "Das KI-Modell ist installiert. Hermes ist ausgeschaltet, daher wird es noch nicht genutzt."
     },
     {
       "key": "ai_model.turn_on",
@@ -7916,7 +7916,7 @@
     },
     {
       "key": "hermes_chat.ai_off",
-      "context": "Hermes chat (F2): Hermes says the AI setting is off, so it cannot understand typed sentences, and offers to switch it on. A button to switch it on follows. 'AI' is the same term as the 'Use AI' checkbox in the Hermes overview.",
+      "context": "Hermes chat (F2): Hermes says the Hermes switch of the Hermes page in the settings is off, so it cannot understand typed sentences, and offers to switch it on. A button to switch it on follows.",
       "en": "My AI is switched off, so I can't understand sentences. Shall I switch it on?",
       "de": "Meine KI ist ausgeschaltet, so verstehe ich keine Sätze. Soll ich sie einschalten?"
     },
@@ -8432,9 +8432,9 @@
     },
     {
       "key": "settings.index_ai_off",
-      "context": "State of the AI model on the Index page: the AI is switched off. One word.",
-      "en": "off",
-      "de": "aus"
+      "context": "State of the AI model on the Index page while the Hermes switch on the Hermes page is off. Short phrase; Hermes is the name of the filing assistant.",
+      "en": "Hermes off",
+      "de": "Hermes aus"
     },
     {
       "key": "settings.index_ai_missing",
@@ -8575,16 +8575,28 @@
       "de": "Zeigen"
     },
     {
-      "key": "settings.hermes_row_on",
-      "context": "Label of the switch on the Hermes page of the settings tab that turns Hermes on or off.",
-      "en": "Hermes on",
-      "de": "Hermes an"
+      "key": "settings.hermes_row_switch",
+      "context": "Label of the switch at the top of the Hermes page of the settings tab that turns Hermes, the filing assistant, on or off as a whole.",
+      "en": "Hermes",
+      "de": "Hermes"
     },
     {
-      "key": "settings.hermes_row_on_note",
-      "context": "Description under the switch on the Hermes page. Read folders are the folders Hermes picks up new documents from.",
-      "en": "Watches the read folders while ncrs runs.",
-      "de": "Beobachtet die Lesen-Ordner, solange ncrs läuft."
+      "key": "settings.hermes_row_switch_note",
+      "context": "Description under the Hermes switch at the top of the Hermes page. Off: Hermes watches no read folders and asks no AI model for sorting documents, the chat, rename suggestions or learning rules. On: it uses the own server if one is set up, else the model on this computer.",
+      "en": "Off: Hermes watches no folders and asks no AI model. On: own server if set up, else the model on this computer.",
+      "de": "Aus: Hermes beobachtet keine Ordner und fragt kein KI-Modell. An: eigener Server, wenn eingerichtet, sonst das Modell auf diesem Computer."
+    },
+    {
+      "key": "settings.hermes_switch_on",
+      "context": "Option of the segment at the top of the Hermes page: Hermes works. One word.",
+      "en": "On",
+      "de": "An"
+    },
+    {
+      "key": "settings.hermes_switch_off",
+      "context": "Option of the segment at the top of the Hermes page: Hermes watches no folders and calls no AI model. One word.",
+      "en": "Off",
+      "de": "Aus"
     },
     {
       "key": "settings.hermes_section_folders",
