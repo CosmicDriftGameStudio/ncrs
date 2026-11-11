@@ -7,10 +7,6 @@
   #stage { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #141318; font-family: App, monospace; color: #cfcdd6; }
   .layer { position: absolute; inset: 0; overflow: hidden; background: #141318; }
   .app { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
-  .band { position: absolute; left: 0; right: 0; bottom: 0; height: 190px; background: linear-gradient(to bottom, rgba(20, 19, 24, 0) 0, #141318 40px, #141318 100%); font-family: "Helvetica Neue", Helvetica, Arial, "Segoe UI", sans-serif; }
-  .band .text { position: absolute; left: 64px; bottom: 26px; }
-  .band h1 { margin: 0; font-size: 60px; line-height: 1.1; font-weight: 700; white-space: nowrap; color: #f0eef5; }
-  .band p { margin: 8px 0 0; font-size: 30px; white-space: nowrap; color: #a9a6b4; }
   .cap { position: absolute; right: 64px; bottom: 30px; padding: 12px 30px; font-family: App, monospace; font-size: 44px; line-height: 1.2; white-space: nowrap; background: #1a1920; border: 2px solid #85828f; border-radius: 4px; color: #cfcdd6; }
   .card { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #141318; font-family: "Helvetica Neue", Helvetica, Arial, "Segoe UI", sans-serif; }
   .card > * { opacity: 0; }
@@ -20,51 +16,244 @@
   .card .dim { color: #85828f; }
   .card .address { color: #b39ddb; }
   .card .small { font-size: 26px; margin-top: 44px; color: #85828f; }
-  .bare .band, .bare .cap { display: none !important; }
+  .stamps { position: absolute; inset: 0; pointer-events: none; }
+  .stamp { position: absolute; font: 150px Impact, "Haettenschweif", sans-serif; white-space: nowrap; paint-order: stroke fill; transform-origin: 50% 60%; }
+  .sans { font-family: Futura, "Helvetica Neue", Helvetica, Arial, sans-serif; }
+  .screen { position: absolute; inset: 0; background: #141318; }
+  .ident { background: #000; }
+  .ident > * { position: absolute; }
+  .end { background: radial-gradient(ellipse at 50% 40%, #4a4338, #141318 75%); display: flex; flex-direction: column; align-items: center; }
+  .end .big { margin-top: 280px; font: 330px/1 Impact, "Haettenschweif", sans-serif; color: #f59e0b; paint-order: stroke fill; -webkit-text-stroke: 20px #1f1b16; text-shadow: 22px 22px 0 #1f1b16; transform-origin: 50% 60%; }
+  .end .tag { margin-top: 40px; font: 600 74px Futura, "Helvetica Neue", sans-serif; color: #faf7f0; }
+  .end .url { margin-top: 26px; font: 600 44px Futura, "Helvetica Neue", sans-serif; color: #f59e0b; }
+  .end .row { margin-top: 34px; font: 500 34px Futura, "Helvetica Neue", sans-serif; letter-spacing: .06em; color: #a9a6b4; }
+  .end .logo { position: absolute; left: 910px; top: 900px; width: 100px; height: 54px; }
+  .notice { position: absolute; left: 0; right: 0; bottom: 28px; text-align: center; font: italic 24px Georgia, serif; color: rgba(250, 247, 240, .5); }
+  .credits { padding-bottom: 40px; box-sizing: border-box; }
+  .credits .page { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; padding-bottom: 40px; box-sizing: border-box; opacity: 0; }
+  .credits .heading { text-align: center; color: #f59e0b; font: 500 30px Futura, "Helvetica Neue", sans-serif; letter-spacing: .4em; margin-bottom: 44px; }
+  .credits .cast { display: grid; grid-template-columns: 1fr auto 1.6fr; gap: 0 34px; align-items: baseline; margin: 0 150px 34px; opacity: 0; }
+  .credits .cast .key { justify-self: end; padding: 4px 22px; font: 700 40px App, monospace; color: #faf7f0; background: #1a1920; border: 2px solid #85828f; border-radius: 4px; white-space: nowrap; }
+  .credits .cast .as { font: italic 28px Georgia, serif; color: rgba(250, 247, 240, .55); }
+  .credits .cast .role { font: 600 46px Futura, "Helvetica Neue", sans-serif; color: #faf7f0; }
+  .credits .cast .note { font: italic 26px Georgia, serif; color: rgba(250, 247, 240, .55); margin-left: 16px; }
+  .wall { position: absolute; inset: 0; overflow: hidden; background: #141318; }
+  .wall .tilt { position: absolute; inset: -12%; transform: rotate(-6deg); }
+  .wall .strip { position: absolute; left: -300px; background: #0e0c09; border-top: 3px solid #f59e0b; border-bottom: 3px solid #f59e0b; }
+  .wall .holes { height: 22px; background: repeating-linear-gradient(90deg, transparent 0 12px, rgba(250, 247, 240, .85) 12px 30px, transparent 30px 44px); }
+  .wall .frames { display: flex; padding: 8px 0; }
+  .wall .frame { flex: none; position: relative; width: 300px; height: 160px; margin-right: 14px; overflow: hidden; border-radius: 4px; background: #000; }
+  .wall .frame img { width: 100%; height: 100%; object-fit: cover; filter: brightness(.42); }
+  .wall .label { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 0 12px; text-align: center; }
+  .wall .keycap { padding: 4px 16px; font: 700 34px App, monospace; color: #faf7f0; background: #1a1920; border: 2px solid #85828f; border-radius: 4px; white-space: nowrap; }
+  .wall .action { font: 600 22px/1.15 Futura, "Helvetica Neue", sans-serif; color: #faf7f0; text-shadow: 2px 2px 0 #1f1b16; }
+  .credits .line { display: flex; gap: 40px; align-items: baseline; margin: 0 260px 26px; opacity: 0; }
+  .credits .line .role { flex: 1; text-align: right; color: #f59e0b; font: 500 28px Futura, "Helvetica Neue", sans-serif; letter-spacing: .18em; text-transform: uppercase; }
+  .credits .who { flex: 1; text-align: left; }
+  .credits .name { color: #faf7f0; font: 600 46px Futura, "Helvetica Neue", sans-serif; }
+  .credits .who .note { color: rgba(250, 247, 240, .55); font: italic 26px Georgia, serif; margin-top: 4px; }
+  .bare .stamps, .bare .cap { display: none !important; }
 </style>
 <div id="stage"></div>
 <script>
-  const W = 1920, H = 1080, BAND = 190, AVAIL = H - BAND, MARGIN = 1.15, ZOOM_MAX = 1.25, CAMERA_ENABLED = false, ZOOM_MIN_GROUP = 1.2, WIDE_HOLD = 0.7, PUSH_TIME = 1.2, FOLLOW_TIME = 1.0, FADE = 0.6, CAP_TIME = 0.8, BAND_FADE = 0.4, BAND_DELAY = 0.2;
+  const W = 1920, H = 1080, ZOOM_MAX = 1.25, CAMERA_ENABLED = true, PUSH_DELAY = 0.3, PUSH_MIN_TIME = 1.2, PUSH_SHARE = 0.55, FADE = 0.6, CAP_TIME = 0.8, SLAM_TIME = 0.24, SLAM_SCALE = 3.2, SLAM_TURN = 10, STAMP_MIN_START = 0.2, INK = "#1f1b16", CREAM = "#faf7f0";
   const clamp = (v, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v));
   const ease = (p) => (p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2);
   const easeOutBack = (p) => 1 + 2.2 * Math.pow(p - 1, 3) + 1.2 * Math.pow(p - 1, 2);
   const ramp = (t, from, length) => ease(clamp((t - from) / length));
   const FULL = { z: 1, left: 0, top: 0 };
 
-  const rawZoom = (f) => Math.min(W / (f.w * MARGIN), AVAIL / (f.h * MARGIN));
-  function camFor(f) {
-    const z = Math.min(ZOOM_MAX, Math.max(1, rawZoom(f)));
-    const vw = W / z, vh = H / z;
-    const left = clamp(f.x + f.w / 2 - vw / 2, 0, W - vw);
-    const centred = f.y + f.h / 2 - AVAIL / z / 2;
-    const top = z === 1 ? 0 : clamp(Math.max(centred, f.y - Math.min(20, 0.1 * f.h)), 0, H - AVAIL / z);
-    return { z, left, top };
-  }
-  function centreCam(f) { const z = ZOOM_MAX, vw = W / z; return { z, left: clamp(f.x + f.w / 2 - vw / 2, 0, W - vw), top: clamp(f.y + f.h / 2 - AVAIL / z / 2, 0, H - AVAIL / z) }; }
-  const isWhole = (f) => f.w >= 1900 && f.h >= 1000;
-  const unite = (a, b) => { const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y); return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y }; };
-  const seen = (cam, f) => f.x >= cam.left - 1 && f.x + f.w <= cam.left + W / cam.z + 1 && f.y >= cam.top - 1 && f.y + f.h <= cam.top + AVAIL / cam.z + 1;
-  const mixCam = (a, b, e) => ({ z: a.z + (b.z - a.z) * e, left: a.left + (b.left - a.left) * e, top: a.top + (b.top - a.top) * e });
-  const same = (a, b) => a.z === b.z && a.left === b.left && a.top === b.top;
-
   const stage = document.getElementById("stage");
-  function makeCard(kind) {
+  function makeCard() {
     const card = document.createElement("div");
     card.className = "card";
     const rows = [`<img src="__ROOT__/assets/icon.svg" />`, `<div class="name">ncrs</div>`];
-    if (kind === "title") rows.push(`<div class="line dim">The dual-pane file manager</div>`);
-    else rows.push(`<div class="line">Free · Open Source · macOS, Linux, Windows</div>`, `<div class="line address">ncrs.cosmicdriftgamestudio.com</div>`, `<div class="small">Music generated with AI</div>`);
+    rows.push(`<div class="line dim">The dual-pane file manager</div>`);
     card.innerHTML = rows.join("");
     return card;
   }
+  const SVG = "http://www.w3.org/2000/svg";
+  function seeded(seed) { let a = seed; return () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+  const CYAN = "#00D9FF", PURPLE = "#A855F7";
+  const node = (tag, css = "", html = "") => { const n = document.createElement(tag); n.style.cssText = css; n.innerHTML = html; return n; };
+
+  // Cosmic Drift ident: orbit rings drawn, core flash, letters flying in. Timings are the Kumiko ident compressed to ~3 s.
+  const IDENT = { core: 0.35, title: 0.8, fadeAt: 2.6 };
+  let gradientCount = 0;
+  function makeIdent() {
+    const uid = "g" + gradientCount++;
+    const rand = seeded(7);
+    const el = node("div", "position:absolute;inset:0;background:#000;display:none");
+    const cx = 960, cy = 380;
+    const stars = node("div", "position:absolute;inset:0;opacity:0");
+    const starList = Array.from({ length: 36 }, () => {
+      const size = 2 + rand() * 3, color = rand() < 0.65 ? CYAN : PURPLE, period = 0.9 + rand() * 1.6;
+      const n = node("div", `position:absolute;left:${Math.round(rand() * 2100)}px;top:${Math.round(rand() * 1080)}px;width:${size}px;height:${size}px;border-radius:50%;background:${color};box-shadow:0 0 ${size * 3}px ${color}`);
+      stars.append(n);
+      return { n, period, phase: rand() };
+    });
+    const warpList = Array.from({ length: 110 }, () => {
+      const len = 60 + rand() * 180, color = rand() < 0.7 ? CYAN : "#fff", rot = Math.round(rand() * 360);
+      const holder = node("div", `position:absolute;left:${cx}px;top:${cy}px;transform:rotate(${rot}deg)`);
+      const line = node("div", `position:absolute;left:0;top:-1px;width:${Math.round(len)}px;height:2px;border-radius:2px;transform-origin:0 50%;background:linear-gradient(90deg,transparent,${color});opacity:0`);
+      holder.append(line);
+      return { holder, line, start: rand() * 0.35, dur: 0.14 + rand() * 0.09 };
+    });
+    const push = node("div", "position:absolute;inset:0");
+    const glow = node("div", `position:absolute;left:${cx - 450}px;top:${cy - 450}px;width:900px;height:900px;border-radius:50%;background:radial-gradient(circle,rgba(0,217,255,.22),rgba(168,85,247,.1) 40%,transparent 68%);opacity:0`);
+    const tilt = node("div", "position:absolute;inset:0");
+    tilt.style.transformOrigin = cx + "px " + cy + "px";
+    const ringSvg = node("div", `position:absolute;left:${cx - 450}px;top:${cy - 230}px;width:900px;height:460px;filter:drop-shadow(0 0 10px ${CYAN}) drop-shadow(0 0 28px ${PURPLE})`,
+      `<svg viewBox="-450 -230 900 460" width="900" height="460" style="overflow:visible"><defs><linearGradient id="${uid}a" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${CYAN}"/><stop offset="1" stop-color="${PURPLE}"/></linearGradient><linearGradient id="${uid}b" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${PURPLE}"/><stop offset="1" stop-color="${CYAN}"/></linearGradient></defs>
+      <ellipse class="r1" rx="380" ry="165" transform="rotate(-15)" fill="none" stroke="url(#${uid}a)" stroke-width="9" stroke-linecap="round" pathLength="100" stroke-dasharray="100"/>
+      <ellipse class="r2" rx="250" ry="104" transform="rotate(-15)" fill="none" stroke="url(#${uid}b)" stroke-width="6" stroke-linecap="round" pathLength="100" stroke-dasharray="100"/>
+      <circle class="s0" cx="-320" cy="-150" r="9" fill="${CYAN}"/><circle class="s1" cx="290" cy="160" r="11" fill="${PURPLE}"/><circle class="s2" cx="260" cy="-190" r="7" fill="${CYAN}"/></svg>`);
+    tilt.append(ringSvg);
+    const core = node("div", `position:absolute;left:${cx - 22}px;top:${cy - 22}px;width:44px;height:44px;border-radius:50%;background:radial-gradient(circle,#fff,${CYAN} 45%,${PURPLE} 75%,transparent);box-shadow:0 0 60px ${CYAN}`);
+    const flare = (width) => node("div", `position:absolute;left:${cx - width / 2}px;top:${cy - 3}px;width:${width}px;height:6px;border-radius:50%;mix-blend-mode:screen;background:radial-gradient(ellipse,#fff,rgba(0,217,255,.8) 30%,transparent 70%);opacity:0`);
+    const flare1 = flare(1700), flare2 = flare(1300);
+    const word = node("div", "position:absolute;left:0;right:0;top:640px;text-align:center;white-space:nowrap;font:700 112px Futura,sans-serif;letter-spacing:.22em;color:#f4fbff;text-shadow:0 0 26px rgba(0,217,255,.75)");
+    const letters = [..."COSMIC DRIFT"].map((ch) => {
+      const span = node("span", "display:inline-block", ch === " " ? "&nbsp;" : ch);
+      word.append(span);
+      return { span, dx: Math.round(-700 + rand() * 1400), dy: Math.round(-400 + rand() * 800), rot: Math.round(-180 + rand() * 360), blank: ch === " " };
+    });
+    const studio = node("div", `position:absolute;left:0;right:0;top:800px;text-align:center;color:${CYAN};font:600 40px Futura,sans-serif;opacity:0`, "GAME STUDIO");
+    const presents = node("div", "position:absolute;left:0;right:0;top:870px;text-align:center;color:#c9b8ff;font:italic 32px Georgia,serif;letter-spacing:.2em;opacity:0", "presents");
+    push.append(glow, tilt, core, flare1, word, flare2, studio, presents);
+    const black = node("div", "position:absolute;inset:0;background:#000;opacity:0");
+    el.append(stars, ...warpList.map((w) => w.holder), push, black);
+    const r1 = ringSvg.querySelector(".r1"), r2 = ringSvg.querySelector(".r2");
+    const sparkles = [".s0", ".s1", ".s2"].map((q) => ringSvg.querySelector(q));
+    const flareAt = (n, p) => { n.style.opacity = p <= 0 || p >= 1 ? 0 : p < 0.25 ? p / 0.25 : 1 - (p - 0.25) / 0.75; n.style.transform = `scaleX(${0.2 + (p < 0.25 ? p / 0.25 * 0.8 : 0.8 + (p - 0.25) / 0.75 * 0.25)})`; };
+    function update(lt, dur) {
+      const C = IDENT.core, T = IDENT.title;
+      stars.style.opacity = ramp(lt, C, 0.25);
+      stars.style.transform = `translateX(${-60 * lt / dur}px)`;
+      for (const st of starList) st.n.style.opacity = 0.75 + 0.25 * Math.sin(2 * Math.PI * (lt / st.period + st.phase));
+      for (const w of warpList) {
+        const p = clamp((lt - w.start) / w.dur);
+        w.line.style.opacity = p <= 0 || p >= 1 ? 0 : p < 0.3 ? p / 0.3 : 1 - (p - 0.3) / 0.7;
+        w.line.style.transform = `translateX(${30 + 1120 * p * p}px) scaleX(${0.1 + 1.5 * p})`;
+      }
+      push.style.transform = `scale(${0.97 + 0.08 * lt / dur})`;
+      push.style.transformOrigin = "50% 50%";
+      glow.style.opacity = ramp(lt, C, 0.3);
+      tilt.style.transform = `rotate(${-4 + 7 * clamp((lt - C) / (dur - C))}deg)`;
+      r1.style.strokeDashoffset = 100 * (1 - ramp(lt, C, 0.4)) + "px";
+      r2.style.strokeDashoffset = 100 * (1 - ramp(lt, C + 0.06, 0.4)) + "px";
+      sparkles.forEach((n, i) => { const p = clamp((lt - (C + 0.3 + i * 0.05)) / 0.12); n.style.transformBox = "fill-box"; n.style.transformOrigin = "center"; n.style.opacity = p * (0.7 + 0.3 * Math.sin(lt * 9 + i)); n.style.transform = `scale(${1 + (1 - p) * 1.2})`; });
+      const cp = clamp((lt - (C - 0.05)) / 0.25);
+      core.style.transform = `scale(${cp < 0.45 ? cp / 0.45 * 3.2 : 3.2 - (cp - 0.45) / 0.55 * 2.2})`;
+      flareAt(flare1, (lt - (C - 0.03)) / 0.25);
+      flareAt(flare2, (lt - (T + 0.3)) / 0.25);
+      letters.forEach((l, i) => {
+        if (l.blank) return;
+        const p = 1 - Math.pow(1 - clamp((lt - (T + i * 0.02)) / 0.35), 3);
+        l.span.style.opacity = p;
+        l.span.style.transform = `translate(${l.dx * (1 - p)}px, ${l.dy * (1 - p)}px) rotate(${l.rot * (1 - p)}deg) scale(${0.4 + 0.6 * p})`;
+        l.span.style.filter = p < 1 ? `blur(${10 * (1 - p)}px)` : "none";
+      });
+      const sp = clamp((lt - (T + 0.3)) / 0.2);
+      studio.style.opacity = sp;
+      studio.style.letterSpacing = (0.9 - 0.58 * ease(clamp((lt - (T + 0.3)) / 0.7))) + "em";
+      presents.style.opacity = clamp((lt - (T + 0.5)) / 0.2);
+      black.style.opacity = ramp(lt, IDENT.fadeAt, dur - IDENT.fadeAt);
+    }
+    return { el, update };
+  }
+
+  function stampSlam(n, age, rot) {
+    if (age < 0) { n.style.opacity = 0; return; }
+    const p = easeOutBack(clamp(age / SLAM_TIME));
+    n.style.opacity = clamp(age / 0.06);
+    n.style.transform = `scale(${SLAM_SCALE + (1 - SLAM_SCALE) * p}) rotate(${rot - SLAM_TURN * (1 - p)}deg)`;
+  }
+
+  function makeEnd() {
+    const uid = "g" + gradientCount++;
+    const el = node("div", "display:none", "");
+    el.className = "screen end";
+    el.innerHTML = `<div class="big">ncrs</div><div class="tag">Two panels. Every key.</div><div class="url">ncrs.cosmicdriftgamestudio.com</div><div class="row">App Store · Homebrew · Linux · Windows</div>
+      <svg class="logo" viewBox="-60 -32 120 64"><defs><linearGradient id="${uid}l" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${CYAN}"/><stop offset="1" stop-color="${PURPLE}"/></linearGradient></defs><ellipse rx="52" ry="22" transform="rotate(-15)" fill="none" stroke="url(#${uid}l)" stroke-width="5" stroke-linecap="round"/><ellipse rx="34" ry="14" transform="rotate(-15)" fill="none" stroke="url(#${uid}l)" stroke-width="4" stroke-linecap="round"/><circle r="5" fill="#fff"/></svg><div class="notice"></div>`;
+    return { el, big: el.querySelector(".big"), rest: ["tag", "url", "row", "logo", "notice"].map((c) => el.querySelector("." + c)), logo: el.querySelector(".logo"), notice: el.querySelector(".notice") };
+  }
+  function showEnd(end, item, lt) {
+    end.notice.textContent = item.notice;
+    end.logo.style.display = item.logo ? "block" : "none";
+    end.rest[1].style.display = end.rest[2].style.display = item.links ? "" : "none";
+    stampSlam(end.big, lt - 0.25, -3);
+    [0.9, 1.5, 1.9, 2.3, 0.3].forEach((at, i) => {
+      const n = end.rest[i], p = ramp(lt, at, 0.4);
+      n.style.opacity = p;
+      if (i < 3) n.style.transform = `translateY(${(1 - p) * 22}px)`;
+    });
+  }
+
+  const PAGE_TIME = 5, PAGE_FADE = 0.5, LINE_STAGGER = 0.35;
+  function makeCredits() {
+    const el = node("div", "display:none");
+    el.className = "screen credits";
+    return { el, built: null };
+  }
+  function showCredits(credits, item, lt) {
+    if (credits.built !== item) {
+      credits.built = item;
+      const cast = item.cast.map(([key, role, note]) => `<div class="cast"><div class="key">${key}</div><div class="as">as</div><div class="role">${role}${note ? `<span class="note">(${note})</span>` : ""}</div></div>`).join("");
+      const crew = item.entries.map(([role, name, note]) => `<div class="line"><div class="role">${role}</div><div class="who"><div class="name">${name}</div>${note ? `<div class="note">${note}</div>` : ""}</div></div>`).join("");
+      credits.el.innerHTML = `<div class="page"><div class="heading">CAST</div>${cast}</div><div class="page">${crew}</div><div class="notice">${item.notice}</div>`;
+    }
+    const pages = [...credits.el.querySelectorAll(".page")];
+    pages.forEach((page, n) => {
+      const local = lt - n * PAGE_TIME;
+      page.style.opacity = n === 0 ? 1 - ramp(local, PAGE_TIME - PAGE_FADE, PAGE_FADE) : ramp(local, 0, PAGE_FADE);
+      [...page.querySelectorAll(".cast, .line")].forEach((line, i) => {
+        const p = ramp(local, 0.2 + i * LINE_STAGGER, 0.4);
+        line.style.opacity = p;
+        line.style.transform = `translateY(${(1 - p) * 18}px)`;
+      });
+    });
+  }
+
+  // film strips with the default key bindings, six rows rotated -6deg and drifting in alternate directions
+  const WALL_ROWS = 6;
+  function makeWall() {
+    const el = node("div", "display:none");
+    el.className = "wall";
+    return { el, built: null, strips: [] };
+  }
+  function showWall(wall, item, lt) {
+    if (wall.built !== item) {
+      wall.built = item;
+      const tilt = node("div");
+      tilt.className = "tilt";
+      wall.strips = Array.from({ length: WALL_ROWS }, (_, row) => {
+        const frames = item.entries.filter((_, i) => i % WALL_ROWS === row).map(([key, label], i) =>
+          `<div class="frame"><img src="${item.frames[(i + row * 2) % item.frames.length]}"><div class="label"><div class="keycap">${key}</div><div class="action">${label}</div></div></div>`).join("");
+        const strip = node("div", `top:${row * 222 - 40}px`, `<div class="holes"></div><div class="frames">${frames}${frames}</div><div class="holes"></div>`);
+        strip.className = "strip";
+        tilt.append(strip);
+        return strip;
+      });
+      wall.el.replaceChildren(tilt);
+    }
+    wall.strips.forEach((strip, row) => {
+      const leftward = row % 2 === 0;
+      const x = (leftward ? 0 : -item.drift) + (leftward ? -item.drift : item.drift) * (lt / item.dur);
+      strip.style.transform = `translateX(${x}px)`;
+    });
+  }
+
   function makeLayer() {
     const el = document.createElement("div");
     el.className = "layer";
-    el.innerHTML = `<img class="app" /><div class="band"><div class="text"><h1></h1><p></p></div></div><div class="cap"></div>`;
-    const title = makeCard("title"), credits = makeCard("credits");
-    el.append(title, credits);
+    el.innerHTML = `<img class="app" /><div class="stamps"></div><div class="cap"></div>`;
+    const title = makeCard();
+    const end = makeEnd(), credits = makeCredits(), ident = makeIdent(), wall = makeWall();
+    el.append(title, ident.el, end.el, credits.el);
+    el.querySelector(".stamps").before(wall.el);
     stage.append(el);
-    return { el, img: el.querySelector(".app"), lower: el.querySelector(".band .text"), band: el.querySelector(".band"), cap: el.querySelector(".cap"), title, credits, file: "" };
+    return { ident, end, credits, wall, el, img: el.querySelector(".app"), stamps: el.querySelector(".stamps"), stampsFor: null, cap: el.querySelector(".cap"), title, file: "" };
   }
   const below = makeLayer(), above = makeLayer();
   let items = [], total = 0;
@@ -79,13 +268,12 @@
         let at = 0;
         for (const s of item.steps) { s.start = at; at += s.seconds; s.end = at; }
         item.dur = at;
-        // one camera for the scene: wide, one push onto the group of foci, a single follow only when a focus lies outside
-        const named = item.steps.filter((s) => !isWhole(s.focus));
-        const group = named.map((s) => s.focus).reduce((a, b) => unite(a, b), named[0]?.focus);
-        const base = group ? centreCam(group) : FULL;
-        const keyframes = [{ t: 0, dur: 0, cam: FULL }];
-        if (CAMERA_ENABLED && !same(base, FULL)) keyframes.push({ t: WIDE_HOLD, dur: PUSH_TIME, cam: base });
-        item.keyframes = keyframes;
+        item.stamps = (raw.stamps ?? []).map((st) => {
+          const step = item.steps[st.step < 0 ? item.steps.length + st.step : st.step];
+          return { ...st, at: Math.max(step.start, STAMP_MIN_START) };
+        });
+        item.target = targetCam(raw.camera);
+        item.pushTime = Math.max(PUSH_MIN_TIME, PUSH_SHARE * item.dur);
         item.caps = [];
         for (const s of item.steps) {
           if (!s.key) continue;
@@ -93,7 +281,10 @@
           if (cur && cur.key === s.key && s.start < cur.end) cur.end = s.start + CAP_TIME;
           else item.caps.push({ key: s.key, start: s.start, end: s.start + CAP_TIME });
         }
-      } else item.dur = raw.dur;
+      } else {
+        item.dur = raw.dur;
+        if (raw.type === "wall") item.stamps = raw.stamps.map((st) => ({ ...st }));
+      }
       start += item.dur;
       items.push(item);
     }
@@ -101,13 +292,36 @@
     return total;
   }
 
+  // hand-picked focus per scene (story.ts): one push-in from the wide frame, then held; the window never leaves the frame
+  function targetCam({ cx, cy, zoom }) {
+    const z = Math.min(ZOOM_MAX, Math.max(1, zoom));
+    return { z, left: clamp(cx - W / z / 2, 0, W - W / z), top: clamp(cy - H / z / 2, 0, H - H / z) };
+  }
+  const easeInOutCubic = (p) => (p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2);
   function cameraAt(item, lt, wide) {
-    if (wide) return FULL;
-    const kf = item.keyframes;
-    let i = 0;
-    for (let k = 0; k < kf.length; k++) if (kf[k].t <= lt) i = k;
-    if (i === 0) return kf[0].cam;
-    return mixCam(kf[i - 1].cam, kf[i].cam, ease(clamp((lt - kf[i].t) / kf[i].dur)));
+    if (wide || !CAMERA_ENABLED) return FULL;
+    const e = easeInOutCubic(clamp((lt - PUSH_DELAY) / item.pushTime)), t = item.target;
+    return { z: 1 + (t.z - 1) * e, left: t.left * e, top: t.top * e };
+  }
+
+  // comic stamps: Impact, cream fill, ink stroke and hard shadow, slammed in by time (no CSS clock, so frames stay deterministic)
+  function showStamps(layer, item, lt, outgoing) {
+    if (layer.stampsFor !== item) {
+      layer.stampsFor = item;
+      layer.stamps.replaceChildren(...item.stamps.map((st) => {
+        const node = document.createElement("div");
+        const size = st.size ?? 150;
+        node.className = "stamp";
+        node.textContent = st.text;
+        Object.assign(node.style, { left: st.left + "px", top: st.top + "px", fontSize: size + "px", color: st.color ?? CREAM, webkitTextStroke: Math.round(size / 16) + "px " + INK, textShadow: `${Math.round(size / 15)}px ${Math.round(size / 15)}px 0 ${INK}` });
+        return node;
+      }));
+    }
+    item.stamps.forEach((st, n) => {
+      const node = layer.stamps.children[n];
+      if (outgoing) { node.style.opacity = 0; return; }
+      stampSlam(node, lt - st.at, st.rot ?? -3);
+    });
   }
 
   async function showItem(layer, item, lt, opacity, opts) {
@@ -116,21 +330,29 @@
     if (!item) return;
     const isScene = item.type === "scene";
     layer.img.style.display = isScene ? "block" : "none";
-    layer.band.style.display = "none";
     layer.cap.style.display = "none";
     layer.title.style.display = item.type === "title" ? "flex" : "none";
-    layer.credits.style.display = item.type === "credits" ? "flex" : "none";
-    if (item.type !== "scene") {
-      const card = item.type === "title" ? layer.title : layer.credits;
-      const times = item.type === "title" ? [0, 0.5, 0.9] : [0, 0.3, 0.6, 1.0, 1.4];
+    layer.ident.el.style.display = item.type === "ident" ? "block" : "none";
+    layer.end.el.style.display = item.type === "end" ? "flex" : "none";
+    layer.credits.el.style.display = item.type === "credits" ? "block" : "none";
+    const isWall = item.type === "wall";
+    layer.wall.el.style.display = isWall ? "block" : "none";
+    layer.stamps.style.display = isScene || isWall ? "block" : "none";
+    if (isWall) { showWall(layer.wall, item, lt); showStamps(layer, item, lt, opts.outgoing); }
+    if (item.type === "ident") layer.ident.update(lt, item.dur);
+    if (item.type === "end") showEnd(layer.end, item, lt);
+    if (item.type === "credits") showCredits(layer.credits, item, lt);
+    if (item.type === "title") {
+      const card = layer.title;
+      const times = [0, 0.5, 0.9];
       const lines = [...card.children];
       lines.forEach((child, n) => {
         const p = ramp(lt, times[n] ?? 0, n === 0 ? 0.6 : 0.4);
         child.style.opacity = p;
         child.style.transform = n === 0 ? `scale(${0.85 + 0.15 * p})` : `translateY(${(1 - p) * 22}px)`;
       });
-      return;
     }
+    if (!isScene) return;
     const step = item.steps.find((s) => lt >= s.start && lt < s.end) ?? item.steps[item.steps.length - 1];
     if (layer.file !== step.file) {
       layer.file = step.file;
@@ -139,12 +361,7 @@
     }
     const cam = cameraAt(item, lt, opts.wide);
     layer.img.style.transform = `scale(${cam.z}) translate(${-cam.left}px, ${-cam.top}px)`;
-    const show = ramp(lt, BAND_DELAY, BAND_FADE);
-    layer.band.style.display = "block";
-    layer.lower.querySelector("h1").textContent = item.title;
-    layer.lower.querySelector("p").textContent = item.subtitle;
-    layer.lower.style.opacity = show;
-    layer.lower.style.transform = `translateY(${(1 - show) * 20}px)`;
+    showStamps(layer, item, lt, opts.outgoing);
     const cap = item.caps.find((c) => lt >= c.start && lt < c.end);
     if (cap) {
       const age = lt - cap.start;
@@ -167,7 +384,7 @@
     if (k < 0) k = items.length - 1;
     const item = items[k], lt = t - item.start;
     const fading = k > 0 && lt < FADE;
-    await showItem(below, fading ? items[k - 1] : null, fading ? items[k - 1].dur : 0, 1, { wide: opts.wide });
+    await showItem(below, fading ? items[k - 1] : null, fading ? items[k - 1].dur : 0, 1, { wide: opts.wide, outgoing: true });
     await showItem(above, item, lt, fading ? ease(lt / FADE) : 1, { wide: opts.wide });
   }
 </script>

@@ -805,8 +805,12 @@ static GROWN_WHILE_NOT_READY: AtomicUsize = AtomicUsize::new(0);
 
 fn not_ready_once_while_the_file_grows(path: &Path) -> Result<StepOutcome, String> {
     if GROWN_WHILE_NOT_READY.fetch_add(1, Ordering::SeqCst) == 0 {
-        fs::write(path, b"a body that grew while the step was not ready")
+        // Replaced in one rename: fs::write truncates first, and on Windows the runner can
+        // fingerprint that empty in-between state.
+        let mut grown = tempfile::NamedTempFile::new().map_err(|error| error.to_string())?;
+        std::io::Write::write_all(&mut grown, b"a body that grew while the step was not ready")
             .map_err(|error| error.to_string())?;
+        grown.persist(path).map_err(|error| error.to_string())?;
         return Ok(StepOutcome::NotReady);
     }
     Ok(StepOutcome::Continue)
