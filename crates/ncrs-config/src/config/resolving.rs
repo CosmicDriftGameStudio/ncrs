@@ -19,14 +19,18 @@ pub fn resolve_filing(
     hermes: &HermesSection,
     home: Option<&Path>,
 ) -> Result<Filing, FilingError> {
-    // Files from before `[hermes]` carry the switch in `modules.filing.enabled`.
-    let switch = hermes.enabled.or(section.enabled);
-    let mut ai = resolve_ai(section.ai.as_ref())?;
     let legacy_ai_off = section
         .ai
         .as_ref()
         .is_some_and(|old_ai| old_ai.get_ref().legacy_enabled == Some(false));
-    if switch == Some(false) || (switch.is_none() && legacy_ai_off) {
+    // Files from before `[hermes]` carry the switch in `modules.filing.enabled`,
+    // or only a hand-set `[modules.filing.ai] enabled = false`: no model, so off.
+    let switch = hermes
+        .enabled
+        .or(section.enabled)
+        .or_else(|| legacy_ai_off.then_some(false));
+    let mut ai = resolve_ai(section.ai.as_ref())?;
+    if switch == Some(false) {
         ai = AiSetting::Off;
     }
     let first_run = *section == FilingSection::default() && hermes.enabled.is_none();

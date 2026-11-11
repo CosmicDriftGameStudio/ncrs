@@ -335,8 +335,9 @@ async fn an_unconsented_remote_server_is_not_allowed_and_agreeing_inline_writes_
     );
 
     settle(&mut app, Message::Settings(SettingsMessage::SaveServer)).await;
-    let agreed = |app: &App| {
-        app.settings
+    let agreed = |current: &App| {
+        current
+            .settings
             .page
             .as_ref()
             .and_then(ncrs_settings::settings::SettingsState::server_agreed)

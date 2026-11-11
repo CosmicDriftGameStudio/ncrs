@@ -903,7 +903,21 @@ fn locations_without_an_enabled_key_are_watched_and_hermes_is_on() {
 fn the_hermes_key_wins_over_an_old_ai_enabled_flag() {
     let filing = |text: &str| crate::config::from_text(text).unwrap().filing;
     let old_off = filing("[modules.filing.ai]\nenabled = false\n");
-    assert!(old_off.hermes_on() && old_off.ai == AiSetting::Off);
+    assert!(!old_off.hermes_on() && old_off.ai == AiSetting::Off);
     let flipped = filing("[hermes]\nenabled = true\n[modules.filing.ai]\nenabled = false\n");
     assert!(flipped.hermes_on() && flipped.ai != AiSetting::Off);
+}
+
+#[test]
+fn the_switch_shown_and_the_model_given_out_agree_for_old_files() {
+    for text in [
+        "",
+        "[modules.filing.ai]\nenabled = false\n",
+        "[modules.filing]\nenabled = false\n",
+        "[modules.filing]\nenabled = true\n[modules.filing.ai]\nenabled = false\n",
+        "[hermes]\nenabled = false\n[modules.filing.ai]\nenabled = true\n",
+    ] {
+        let filing = crate::config::from_text(text).unwrap().filing;
+        assert_eq!(filing.hermes_on(), filing.ai != AiSetting::Off, "{text:?}");
+    }
 }
