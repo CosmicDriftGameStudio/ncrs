@@ -583,7 +583,9 @@ mod e2e_tests {
 
     use ncrs_hermes_chat::{ChipReply, Message as ChatMessage};
 
-    use super::{boot, chat, empty_store, is_ready, phase_name, pump_for, FILING_AI, FILING_ONLY};
+    use super::{boot, chat, empty_store, is_ready, pump_for, FILING_ONLY};
+    #[cfg(feature = "local-ai")]
+    use super::{phase_name, FILING_AI};
     use crate::messages::Message;
 
     #[test]
@@ -606,7 +608,10 @@ mod e2e_tests {
     }
 
     /// A missing model used to open its window at the start, and F2 did nothing
-    /// behind it. The chat offers the download itself.
+    /// behind it. The chat offers the download itself. Only the `local-ai`
+    /// build has a built-in model that can be missing; without it there is
+    /// nothing to download and no chip to offer.
+    #[cfg(feature = "local-ai")]
     #[test]
     fn a_missing_model_leaves_f2_to_the_chat() {
         let scratch = tempfile::tempdir().unwrap();
