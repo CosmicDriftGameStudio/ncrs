@@ -123,6 +123,7 @@ fn leaves_bar_fields(message: &Message) -> bool {
             | Message::KeyBindings(KeyBindingsMessage::Open)
             | Message::ThemeFetch(ThemeFetchMessage::Open)
             | Message::HermesPage(_)
+            | Message::ShowAiSettings
             | Message::OcrModels(OcrModelsMessage::Open)
             | Message::About(AboutMessage::Open)
             | Message::VersionPressed
@@ -660,6 +661,9 @@ impl App {
             Message::VersionPressed => self.open_version_info(),
             Message::Tags(tags) => self.update_tags(tags),
             Message::HermesPage(page) => self.show_hermes_page(page),
+            Message::ShowAiSettings => {
+                self.show_setting(crate::messages::SettingsFeature::Ai, None)
+            }
             Message::DocumentsFiled(result) => self.documents_filed(result),
             Message::About(about_message) => self.update_about(about_message),
             Message::OcrModels(models_message) => self.update_ocr_models(models_message),

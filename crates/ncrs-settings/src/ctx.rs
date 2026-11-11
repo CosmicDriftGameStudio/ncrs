@@ -30,7 +30,7 @@ pub struct Ctx<'a> {
     pub ocr_models_dir: Option<PathBuf>,
     pub ai_models_dir: Option<PathBuf>,
     pub file_list_tags: &'a FileListTags,
-    pub ai_is_on: bool,
+    pub hermes_on: bool,
     /// The log of what the own server used, next to the index; none while
     /// there is no index.
     pub usage_log: Option<PathBuf>,

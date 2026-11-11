@@ -1,5 +1,5 @@
-//! The one question before a model on another computer gets anything: what
-//! goes to it, asked once for each server.
+//! What goes to a model on another computer, and the agreement to it, given
+//! once for each server.
 
 use ncrs_config::config::AiProviderChoice;
 use ncrs_i18n::Msg;
@@ -33,23 +33,59 @@ pub const MODEL_CALL_SITES: &[ModelCallSite] = &[
     },
 ];
 
-/// What the question lists, in this order.
+/// The set-up server is off this computer and not agreed to: nothing is sent
+/// to it.
+pub fn server_is_not_allowed(setting: &ncrs_config::config::AiSetting) -> bool {
+    let ncrs_config::config::AiSetting::Http {
+        endpoint,
+        consented_origins,
+        ..
+    } = setting
+    else {
+        return false;
+    };
+    unagreed_origin(endpoint, consented_origins).is_some()
+}
+
+/// The origin of `endpoint` when it is a server off this computer that is not
+/// among the `consented` ones.
+fn unagreed_origin(endpoint: &str, consented: &[String]) -> Option<String> {
+    if ncrs_ai::endpoint_is_local(endpoint) != Ok(false) {
+        return None;
+    }
+    let origin = ncrs_ai::endpoint_origin(endpoint).ok()?;
+    let granted = ncrs_ai::ConsentGivenInSettings::new(consented);
+    if ncrs_ai::ConsentLedger::granted(&granted, &origin, std::path::Path::new("")) {
+        return None;
+    }
+    Some(origin)
+}
+
+/// What the AI page lists under the server, in this order.
 pub fn announced_items() -> impl Iterator<Item = Msg> {
     MODEL_CALL_SITES.iter().map(|site| site.announced_as)
 }
 
-/// The switch that waits for the user's yes.
+/// The agreement a server still needs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConsentAsk {
     pub choice: AiProviderChoice,
     /// `scheme://host[:port]`, what the consent is kept for.
     pub origin: String,
-    /// The computer the documents would go to.
-    pub host: String,
+}
+
+/// Whether the user agreed to send to the server at `endpoint`: `None` for a
+/// server on this computer or an address that is no server, which need no
+/// agreement.
+pub fn server_agreed(endpoint: &str, consented_origins: &[String]) -> Option<bool> {
+    if ncrs_ai::endpoint_is_local(endpoint) != Ok(false) {
+        return None;
+    }
+    Some(unagreed_origin(endpoint, consented_origins).is_none())
 }
 
 impl ConsentAsk {
-    /// The question `choice` needs before it is written: its server is not on
+    /// What `choice` still needs before it may send: its server is not on
     /// this computer and not among the ones agreed to.
     pub fn needed_for(choice: &AiProviderChoice) -> Option<Self> {
         let AiProviderChoice::Http {
@@ -60,19 +96,10 @@ impl ConsentAsk {
         else {
             return None;
         };
-        if ncrs_ai::endpoint_is_local(endpoint) != Ok(false) {
-            return None;
-        }
-        let origin = ncrs_ai::endpoint_origin(endpoint).ok()?;
-        let host = ncrs_ai::endpoint_host(endpoint).ok()?;
-        let granted = ncrs_ai::ConsentGivenInSettings::new(consented_origins);
-        if ncrs_ai::ConsentLedger::granted(&granted, &origin, std::path::Path::new("")) {
-            return None;
-        }
+        let origin = unagreed_origin(endpoint, consented_origins)?;
         Some(Self {
             choice: choice.clone(),
             origin,
-            host,
         })
     }
 
@@ -142,9 +169,10 @@ mod tests {
         }
     }
 
-    /// The files outside `ncrs-ai` (which holds the models themselves) whose
-    /// code, before its test module, calls the model.
-    fn files_calling_the_model() -> Vec<String> {
+    /// The code (before the test module, comments stripped) of every file
+    /// outside `ncrs-ai`, which holds the models themselves, with its
+    /// slash-separated path from the repository root, sorted.
+    fn guarded_sources() -> Vec<(String, String)> {
         let root = repository();
         let mut files = Vec::new();
         rust_files(&root.join("src"), &mut files);
@@ -154,30 +182,42 @@ mod tests {
                 rust_files(&krate.join("src"), &mut files);
             }
         }
-        let mut calling: Vec<String> = files
+        let mut sources: Vec<(String, String)> = files
             .iter()
-            .filter(|file| {
-                let source = fs::read_to_string(file).unwrap();
-                let code = source.split("#[cfg(test)]").next().unwrap_or_default();
-                code.lines()
-                    .filter(|line| !line.trim_start().starts_with("//"))
-                    .any(|line| CALLS.iter().any(|call| line.contains(call)))
-            })
             .map(|file| {
-                file.strip_prefix(&root)
+                let path = file
+                    .strip_prefix(&root)
                     .unwrap()
                     .components()
                     .map(|part| part.as_os_str().to_string_lossy())
                     .collect::<Vec<_>>()
-                    .join("/")
+                    .join("/");
+                let source = fs::read_to_string(file).unwrap();
+                let code = source
+                    .split("#[cfg(test)]")
+                    .next()
+                    .unwrap_or_default()
+                    .lines()
+                    .filter(|line| !line.trim_start().starts_with("//"))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                (path, code)
             })
             .collect();
-        calling.sort();
-        calling
+        sources.sort();
+        sources
+    }
+
+    fn files_where(found: impl Fn(&str) -> bool) -> Vec<String> {
+        guarded_sources()
+            .into_iter()
+            .filter(|(_, code)| found(code))
+            .map(|(path, _)| path)
+            .collect()
     }
 
     #[test]
-    fn every_place_that_calls_the_model_is_announced_in_the_question_and_only_those() {
+    fn every_place_that_calls_the_model_is_announced_on_the_ai_page_and_only_those() {
         let mut announced: Vec<String> = MODEL_CALL_SITES
             .iter()
             .map(|site| site.file.to_owned())
@@ -185,15 +225,26 @@ mod tests {
         announced.sort();
 
         assert_eq!(
-            files_calling_the_model(),
+            files_where(|code| code
+                .lines()
+                .any(|line| CALLS.iter().any(|call| line.contains(call)))),
             announced,
-            "a place that calls the model needs a line in the question (ai_consent.rs \
-             and strings.json); a place that no longer does must lose its line"
+            "a place that calls the model needs a line in the list on the AI page \
+             (ai_consent.rs and strings.json); a place that no longer does must lose its line"
+        );
+
+        // The list the user agrees to is the one drawn from the call sites.
+        let page = "crates/ncrs-settings/src/settings/view/ai_page.rs";
+        assert!(
+            guarded_sources()
+                .iter()
+                .any(|(file, code)| file == page && code.contains("announced_items()")),
+            "the AI page must list every announced item"
         );
     }
 
     #[test]
-    fn every_line_of_the_question_is_announced_once() {
+    fn every_line_of_the_list_is_announced_once() {
         let mut lines: Vec<&str> = announced_items().map(|item| item.key()).collect();
         lines.sort_unstable();
         lines.dedup();
@@ -212,11 +263,10 @@ mod tests {
     }
 
     #[test]
-    fn a_server_off_this_computer_needs_the_question_until_its_origin_is_agreed() {
+    fn a_server_off_this_computer_needs_the_agreement_until_its_origin_is_agreed() {
         let far = http("https://ai.example.com/v1", &[]);
         let ask = ConsentAsk::needed_for(&far).unwrap();
         assert_eq!(ask.origin, "https://ai.example.com");
-        assert_eq!(ask.host, "ai.example.com");
 
         let AiProviderChoice::Http {
             consented_origins, ..
@@ -245,7 +295,45 @@ mod tests {
     }
 
     #[test]
-    fn the_model_on_this_computer_never_needs_the_question() {
+    fn the_agreement_is_asked_of_a_server_off_this_computer_only() {
+        let given = vec!["https://ai.example.com".to_owned()];
+        assert_eq!(
+            server_agreed("https://ai.example.com/v1", &given),
+            Some(true)
+        );
+        assert_eq!(server_agreed("https://ai.example.com/v1", &[]), Some(false));
+        assert_eq!(server_agreed("http://localhost:11434", &[]), None);
+        assert_eq!(server_agreed("not an address", &[]), None);
+    }
+
+    #[test]
+    fn only_a_server_off_this_computer_without_consent_is_not_allowed() {
+        use ncrs_config::config::AiSetting;
+        let server = |endpoint: &str, consented: &[&str]| AiSetting::Http {
+            endpoint: endpoint.to_owned(),
+            model: "m".to_owned(),
+            consented_origins: consented
+                .iter()
+                .map(|origin| (*origin).to_owned())
+                .collect(),
+        };
+        assert!(server_is_not_allowed(&server(
+            "https://ai.example.com/v1",
+            &[]
+        )));
+        assert!(!server_is_not_allowed(&server(
+            "https://ai.example.com/v1",
+            &["https://ai.example.com"]
+        )));
+        assert!(!server_is_not_allowed(&server(
+            "http://localhost:11434",
+            &[]
+        )));
+        assert!(!server_is_not_allowed(&AiSetting::Off));
+    }
+
+    #[test]
+    fn the_model_on_this_computer_never_needs_the_agreement() {
         assert_eq!(
             ConsentAsk::needed_for(&AiProviderChoice::Local { threads: None }),
             None

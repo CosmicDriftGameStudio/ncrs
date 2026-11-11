@@ -27,6 +27,7 @@ pub const LANGUAGE_KEY: &str = "lang";
 /// The top-level key behind the Favourites page's switch.
 pub const FAVOURITES_BAR_KEY: &str = "favourites_bar";
 pub const FILING_SECTION: &str = "[modules.filing]";
+pub const AI_PAGE_SECTIONS: &str = "[hermes], [modules.filing.ai]";
 pub const OPEN_SECTION: &str = "[open]";
 pub const KEYS_SECTION: &str = "[keys]";
 pub const SERVERS_SECTION: &str = "[[servers]]";
@@ -91,8 +92,6 @@ pub struct SettingsState {
     pub all_areas: bool,
     /// The History section lists every run it knows, not the last three.
     pub all_runs: bool,
-    /// The dialog of the own server is open.
-    pub server_dialog: bool,
     /// Why the last change of the folder lists was refused, worded.
     pub folder_note: Option<String>,
     /// What the app read for the Index and Hermes pages; `None` until it did.
@@ -109,13 +108,10 @@ pub struct SettingsState {
     pub system_font: Option<SystemFont>,
     /// Where the keyboard is: the list of pages or the rows of the page.
     pub focus: crate::focus::Focus,
-    /// The API key typed in the dialog of the own server and not kept yet.
+    /// The API key typed on the AI page and not kept yet.
     /// `Secret` prints as `***`, so the state can be logged.
     pub ai_key: Option<ncrs_ai::Secret>,
     pub ai_check: crate::settings::AiCheck,
-    /// The switch to a server on another computer that waits for the user's
-    /// yes.
-    pub consent_pending: Option<crate::ai_consent::ConsentAsk>,
     /// The period the Usage page shows, in days.
     pub usage_days: u32,
     /// The sums of the usage log per period; `None` until it was read.
@@ -161,7 +157,6 @@ impl SettingsState {
             model_to_remove: None,
             all_areas: false,
             all_runs: false,
-            server_dialog: false,
             folder_note: None,
             loaded: None,
             facts_requested: false,
@@ -172,7 +167,6 @@ impl SettingsState {
             focus: crate::focus::Focus::default(),
             ai_key: None,
             ai_check: crate::settings::AiCheck::Idle,
-            consent_pending: None,
             usage_days: crate::settings::DEFAULT_USAGE_DAYS,
             usage: None,
         }
@@ -181,20 +175,10 @@ impl SettingsState {
     /// A small dialog of the Index or Hermes page is up; Escape closes it
     /// and not the page.
     pub fn dialog_is_open(&self) -> bool {
-        self.folder_dialog.is_some()
-            || self.model_to_remove.is_some()
-            || self.server_dialog
-            || self.consent_pending.is_some()
+        self.folder_dialog.is_some() || self.model_to_remove.is_some()
     }
 
     pub fn close_dialog(&mut self) {
-        if self.consent_pending.is_some() {
-            self.cancel_consent();
-            return;
-        }
-        self.server_dialog = false;
-        self.ai_key = None;
-        self.ai_check = crate::settings::AiCheck::Idle;
         self.folder_dialog = None;
         self.model_to_remove = None;
     }
@@ -458,15 +442,38 @@ impl SettingsState {
         }))
     }
 
-    /// "No" to the question before a switch: the model stays as it is, and
-    /// what was typed for the other one is dropped.
-    pub fn cancel_consent(&mut self) {
-        self.consent_pending = None;
-        self.provider = None;
-        self.drafts.remove(&SettingField::AiEndpoint);
-        self.drafts.remove(&SettingField::AiModel);
-        self.ai_key = None;
-        self.ai_check = crate::settings::AiCheck::Idle;
+    /// Whether the user agreed to send to the server shown on the AI page:
+    /// `None` while the model on this computer is chosen or the address is
+    /// none off this computer.
+    pub fn server_agreed(&self) -> Option<bool> {
+        if self.provider() != AiProviderName::Http {
+            return None;
+        }
+        let consented = self
+            .ai_section()
+            .map(AiSection::consented)
+            .unwrap_or_default();
+        crate::ai_consent::server_agreed(&self.typed_endpoint(), &consented)
+    }
+
+    /// "Allow" on the AI page: the server as typed is saved with its origin
+    /// among the ones agreed to. A wrong address or an empty model shows at
+    /// its row instead.
+    pub fn agree_to_server(&mut self) -> Option<SettingChange> {
+        match self.http_change() {
+            Ok(SettingChange::AiProvider(choice)) => {
+                let agreed = match crate::ai_consent::ConsentAsk::needed_for(&choice) {
+                    Some(ask) => ask.agreed(),
+                    None => choice,
+                };
+                Some(SettingChange::AiProvider(agreed))
+            }
+            Ok(other) => Some(other),
+            Err((field, problem)) => {
+                self.problems.insert(field, problem);
+                None
+            }
+        }
     }
 
     /// A click on a provider. The model on this machine needs nothing more
@@ -474,6 +481,10 @@ impl SettingsState {
     pub fn choose_provider(&mut self, chosen: AiProviderName) -> Option<SettingChange> {
         let saved = self.saved_provider();
         self.provider = (chosen != saved).then_some(chosen);
+        if chosen == AiProviderName::Local {
+            self.ai_key = None;
+            self.ai_check = crate::settings::AiCheck::Idle;
+        }
         match chosen {
             AiProviderName::Local if saved != AiProviderName::Local => {
                 Some(SettingChange::AiProvider(AiProviderChoice::Local {
@@ -559,9 +570,8 @@ fn page_of(field: SettingField) -> SettingsFeature {
     match field {
         SettingField::Color(_) => SettingsFeature::Look,
         SettingField::Program(_) => SettingsFeature::Programs,
-        SettingField::AiEndpoint | SettingField::AiModel | SettingField::Own(_) => {
-            SettingsFeature::Index
-        }
+        SettingField::AiEndpoint | SettingField::AiModel => SettingsFeature::Ai,
+        SettingField::Own(_) => SettingsFeature::Index,
     }
 }
 
@@ -576,9 +586,8 @@ fn fields_of(change: &SettingChange) -> Vec<SettingField> {
         | SettingChange::Language(_)
         | SettingChange::CheckForUpdates(_)
         | SettingChange::FavouritesBar(_)
-        | SettingChange::HermesEnabled(_)
         | SettingChange::Load(_)
-        | SettingChange::AiEnabled(_)
+        | SettingChange::HermesSwitch(_)
         | SettingChange::VscodeTheme(_)
         | SettingChange::Servers(_)
         | SettingChange::Locations(_)

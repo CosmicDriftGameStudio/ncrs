@@ -200,13 +200,14 @@ impl OverviewFacts {
     }
 
     pub fn ai_tile(&self) -> AiTile {
-        if !self.ai_on || self.module == ModuleState::Off {
+        if !self.ai_on {
             return AiTile::Off;
         }
         if let Some((received, total)) = self.ai_download {
             return AiTile::Downloading { received, total };
         }
         match &self.ai_status {
+            AiStatus::Off if self.module == ModuleState::Off => AiTile::NotLoaded,
             AiStatus::Off => AiTile::TakesEffectAtRestart,
             AiStatus::NotDownloaded => AiTile::NotLoaded,
             AiStatus::NotLoadedYet | AiStatus::Loaded { .. } => AiTile::Ready,

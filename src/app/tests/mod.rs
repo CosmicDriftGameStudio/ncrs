@@ -451,6 +451,14 @@ mod folder_size_tests;
 )]
 #[cfg(test)]
 mod hermes_chat_ai_tests;
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod hermes_model_order_tests;
 
 #[cfg(test)]
 #[allow(

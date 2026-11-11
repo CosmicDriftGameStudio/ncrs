@@ -14,13 +14,33 @@ pub fn own_entries(entries: &[String], is_valid: impl Fn(&str) -> bool) -> Vec<S
 
 /// Text rules only, no file system access: a dead mount must not block the
 /// start or cost the user the rest of the config.
-pub fn resolve_filing(section: &FilingSection, home: Option<&Path>) -> Result<Filing, FilingError> {
+pub fn resolve_filing(
+    section: &FilingSection,
+    hermes: &HermesSection,
+    home: Option<&Path>,
+) -> Result<Filing, FilingError> {
+    let legacy_ai_off = section
+        .ai
+        .as_ref()
+        .is_some_and(|old_ai| old_ai.get_ref().legacy_enabled == Some(false));
+    // Files from before `[hermes]` carry the switch in `modules.filing.enabled`;
+    // a hand-set `[modules.filing.ai] enabled = false` there means no model, so off.
+    let switch = hermes
+        .enabled
+        .or_else(|| legacy_ai_off.then_some(false))
+        .or(section.enabled);
+    let mut ai = resolve_ai(section.ai.as_ref())?;
+    if switch == Some(false) {
+        ai = AiSetting::Off;
+    }
+    let first_run = *section == FilingSection::default() && hermes.enabled.is_none();
     let mut filing = Filing {
-        enabled: section.enabled.unwrap_or(false),
-        first_run: *section == FilingSection::default(),
+        // A first run has nothing to watch yet; a file with locations and no key is on.
+        enabled: switch.unwrap_or(!first_run),
+        first_run,
         locations: Vec::new(),
         load: resolve_load(section.load.as_ref())?,
-        ai: resolve_ai(section.ai.as_ref())?,
+        ai,
         default_pattern: section
             .default_pattern
             .as_deref()
@@ -91,7 +111,7 @@ pub fn resolve_filing(section: &FilingSection, home: Option<&Path>) -> Result<Fi
 
 pub fn resolve_ai(section: Option<&Spanned<AiSection>>) -> Result<AiSetting, FilingError> {
     let Some(spanned) = section else {
-        return Ok(AiSetting::Off);
+        return Ok(AiSetting::default());
     };
     let ai = spanned.get_ref();
     let provider = ai
@@ -128,9 +148,6 @@ pub fn resolve_ai(section: Option<&Spanned<AiSection>>) -> Result<AiSetting, Fil
     };
     only_for(&ai.endpoint, "endpoint", AiProviderName::Http)?;
     only_for(&ai.model, "model", AiProviderName::Http)?;
-    if !ai.enabled {
-        return Ok(AiSetting::Off);
-    }
     match provider {
         AiProviderName::Local => Ok(AiSetting::Local { threads }),
         AiProviderName::Http => {

@@ -199,7 +199,7 @@ fn the_settings_search_finds_the_four_pages() {
 }
 
 fn matches_ai_snapshot(status: &AiStatus, name: &str) -> TestResult {
-    let app = App::with_settings_file(SettingsFeature::Index, Ok(from_text("")?))
+    let app = App::with_settings_file(SettingsFeature::Ai, Ok(from_text("")?))
         .in_language(Language::German);
     let state = app.settings.page.as_ref().ok_or("no settings page")?;
     let mut view = app.settings_view(state);
@@ -249,7 +249,7 @@ fn the_index_page_keeps_the_ai_line_on_the_processor() -> TestResult {
 
 #[test]
 fn the_index_page_names_a_failing_own_server() -> TestResult {
-    let app = App::with_settings_file(SettingsFeature::Index, Ok(from_text("")?))
+    let app = App::with_settings_file(SettingsFeature::Ai, Ok(from_text("")?))
         .in_language(Language::German);
     let state = app.settings.page.as_ref().ok_or("no settings page")?;
     let mut view = app.settings_view(state);

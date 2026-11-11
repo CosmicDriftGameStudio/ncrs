@@ -205,7 +205,7 @@ async fn zeigen_on_the_unreadable_files_opens_the_inspection_page() -> TestResul
     let messages: Vec<Message> = simulator.into_messages().collect();
     let show = settings(SettingsMessage::Select(SettingsFeature::ReadErrors));
     let focused = settings(SettingsMessage::FocusThen(
-        13,
+        11,
         Some(Box::new(SettingsMessage::Select(
             SettingsFeature::ReadErrors,
         ))),
@@ -288,7 +288,7 @@ fn only_a_run_that_can_be_put_back_has_the_undo_button() -> TestResult {
     assert_eq!(
         messages,
         vec![settings(SettingsMessage::FocusThen(
-            7,
+            6,
             Some(Box::new(SettingsMessage::UndoRun(2)))
         ))]
     );

@@ -75,7 +75,7 @@ impl World {
             ocr_models_dir: None,
             ai_models_dir: None,
             file_list_tags: &self.tags,
-            ai_is_on: true,
+            hermes_on: true,
             usage_log: None,
             services: services(),
         };
@@ -122,52 +122,42 @@ fn remote_saved(origin_listed: Option<&str>) -> String {
 }
 
 #[test]
-fn from_this_computer_to_a_far_server_the_question_comes_first_and_nothing_is_written() {
+fn saving_a_far_server_writes_it_without_the_agreement_and_asks_for_it_on_the_page() {
     let mut world = World::saved(LOCAL);
     world.send(SettingsMessage::ChooseProvider(AiProviderName::Http));
     world.type_server(FAR, "gpt-5");
 
     let (writes, _) = world.send(SettingsMessage::SaveServer);
+    assert_eq!(writes, 1);
+    let change = world.page().clone().save_server().unwrap();
+    world.written(change);
 
-    assert_eq!(writes, 0);
-    let ask = world.page().consent_pending.as_ref().unwrap();
-    assert_eq!(
-        (ask.origin.as_str(), ask.host.as_str()),
-        (FAR_ORIGIN, "ai.example.com")
-    );
-    assert_eq!(world.saved_ai(), AiSetting::Local { threads: None });
+    let AiSetting::Http {
+        endpoint,
+        consented_origins,
+        ..
+    } = world.saved_ai()
+    else {
+        panic!("the server was not written");
+    };
+    assert_eq!(endpoint, FAR);
+    assert!(consented_origins.is_empty());
+    assert_eq!(world.page().server_agreed(), Some(false));
+    assert!(!world.page().dialog_is_open());
 }
 
 #[test]
-fn cancelling_keeps_the_old_model_and_forgets_what_was_typed_for_the_other() {
+fn allowing_writes_the_server_with_the_agreement_for_that_server_only() {
     let mut world = World::saved(LOCAL);
     world.send(SettingsMessage::ChooseProvider(AiProviderName::Http));
     world.type_server(FAR, "gpt-5");
-    world.send(SettingsMessage::SaveServer);
-
-    let (writes, _) = world.send(SettingsMessage::CancelAiConsent);
-
-    assert_eq!(writes, 0);
-    let page = world.page();
-    assert_eq!(page.consent_pending, None);
-    assert_eq!(page.provider(), AiProviderName::Local);
-    assert!(page.drafts.is_empty());
-    assert_eq!(world.saved_ai(), AiSetting::Local { threads: None });
-}
-
-#[test]
-fn confirming_writes_the_switch_with_the_consent_for_that_server_only() {
-    let mut world = World::saved(LOCAL);
-    world.send(SettingsMessage::ChooseProvider(AiProviderName::Http));
-    world.type_server(FAR, "gpt-5");
-    world.send(SettingsMessage::SaveServer);
-    let ask = world.page().consent_pending.clone().unwrap();
+    assert_eq!(world.page().server_agreed(), Some(false));
+    let change = world.page().clone().agree_to_server().unwrap();
 
     let (writes, _) = world.send(SettingsMessage::ConfirmAiConsent);
 
     assert_eq!(writes, 1);
-    assert_eq!(world.page().consent_pending, None);
-    let actions = world.written(SettingChange::AiProvider(ask.agreed()));
+    let actions = world.written(change);
     assert!(actions
         .iter()
         .any(|action| matches!(action, Action::Apply { .. })));
@@ -177,87 +167,61 @@ fn confirming_writes_the_switch_with_the_consent_for_that_server_only() {
         ..
     } = world.saved_ai()
     else {
-        panic!("the switch was not written");
+        panic!("the server was not written");
     };
     assert_eq!(model, "gpt-5");
     assert_eq!(consented_origins, [FAR_ORIGIN]);
+    assert_eq!(world.page().server_agreed(), Some(true));
     let ledger = ncrs_ai::ConsentGivenInSettings::new(&consented_origins);
     assert!(ledger.granted(FAR_ORIGIN, Path::new("")));
     assert!(!ledger.granted("https://other.example.org", Path::new("")));
 }
 
 #[test]
-fn the_same_server_is_not_asked_again_but_another_one_is() {
+fn allowing_a_server_with_a_wrong_address_writes_nothing_and_shows_the_problem() {
+    let mut world = World::saved(LOCAL);
+    world.send(SettingsMessage::ChooseProvider(AiProviderName::Http));
+    world.type_server("not an address", "gpt-5");
+
+    let (writes, _) = world.send(SettingsMessage::ConfirmAiConsent);
+
+    assert_eq!(writes, 0);
+    assert!(world
+        .page()
+        .problems
+        .contains_key(&SettingField::AiEndpoint));
+    assert_eq!(world.saved_ai(), AiSetting::Local { threads: None });
+}
+
+#[test]
+fn the_same_server_is_agreed_to_already_but_another_one_is_not() {
     let mut world = World::saved(&remote_saved(Some(FAR_ORIGIN)));
+    assert_eq!(world.page().server_agreed(), Some(true));
 
     world.type_server("https://ai.example.com/v2", "other-model");
-    let (writes, _) = world.send(SettingsMessage::SaveServer);
-    assert_eq!((writes, world.page().consent_pending.is_none()), (1, true));
+    assert_eq!(world.page().server_agreed(), Some(true));
 
     world.type_server("https://other.example.org/v1", "m");
-    let (writes_for_other, _) = world.send(SettingsMessage::SaveServer);
-    assert_eq!(writes_for_other, 0);
-    assert_eq!(
-        world
-            .page()
-            .consent_pending
-            .as_ref()
-            .map(|ask| ask.origin.as_str()),
-        Some("https://other.example.org")
-    );
+    assert_eq!(world.page().server_agreed(), Some(false));
 }
 
 #[test]
-fn going_back_to_a_server_agreed_to_earlier_asks_nothing() {
-    let mut world = World::saved(&format!("{LOCAL}consented_origins = [\"{FAR_ORIGIN}\"]\n"));
-    world.send(SettingsMessage::ChooseProvider(AiProviderName::Http));
-    world.type_server(FAR, "gpt-5");
-
-    let (writes, _) = world.send(SettingsMessage::SaveServer);
-
-    assert_eq!(writes, 1);
-    assert_eq!(world.page().consent_pending, None);
+fn a_file_from_before_the_agreement_keeps_its_saved_server_agreed() {
+    let world = World::saved(&remote_saved(None));
+    assert_eq!(world.page().server_agreed(), Some(true));
 }
 
 #[test]
-fn a_file_from_before_the_question_keeps_its_saved_server_without_asking() {
-    let mut world = World::saved(&remote_saved(None));
-
-    world.type_server(FAR, "a-new-model");
-    let (writes, _) = world.send(SettingsMessage::SaveServer);
-
-    assert_eq!((writes, world.page().consent_pending.is_none()), (1, true));
-}
-
-#[test]
-fn the_model_on_this_computer_is_never_asked_about() {
+fn the_model_on_this_computer_needs_no_agreement() {
     let mut from_far = World::saved(&remote_saved(Some(FAR_ORIGIN)));
     let (switch_writes, _) = from_far.send(SettingsMessage::ChooseProvider(AiProviderName::Local));
-    assert_eq!(
-        (switch_writes, from_far.page().consent_pending.is_none()),
-        (1, true)
-    );
+    assert_eq!(switch_writes, 1);
+    assert_eq!(from_far.page().server_agreed(), None);
 
     let mut from_local = World::saved(LOCAL);
     from_local.send(SettingsMessage::ChooseProvider(AiProviderName::Http));
     from_local.type_server("http://localhost:11434", "qwen");
+    assert_eq!(from_local.page().server_agreed(), None);
     let (save_writes, _) = from_local.send(SettingsMessage::SaveServer);
-    assert_eq!(
-        (save_writes, from_local.page().consent_pending.is_none()),
-        (1, true)
-    );
-}
-
-#[test]
-fn escape_on_the_question_cancels_it() {
-    let mut world = World::saved(LOCAL);
-    world.send(SettingsMessage::ChooseProvider(AiProviderName::Http));
-    world.type_server(FAR, "gpt-5");
-    world.send(SettingsMessage::SaveServer);
-    assert!(world.page().dialog_is_open());
-
-    world.send(SettingsMessage::Close);
-
-    assert_eq!(world.page().consent_pending, None);
-    assert_eq!(world.saved_ai(), AiSetting::Local { threads: None });
+    assert_eq!(save_writes, 1);
 }

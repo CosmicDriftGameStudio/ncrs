@@ -82,7 +82,7 @@ impl App {
 
     /// The model the chat asks: the server of an own-server setting, else the
     /// local model. A cached one is dropped when the setting changes.
-    fn ensure_chat_model(&mut self) {
+    pub(in crate::app) fn ensure_chat_model(&mut self) {
         let setting = self.hermes.filing_config.ai.clone();
         if !self.chat_ai_on() {
             self.chat_model = None;
@@ -112,7 +112,7 @@ impl App {
     }
 
     pub(in crate::app) fn chat_ai_on(&self) -> bool {
-        self.hermes.filing_config.ai != crate::config::AiSetting::Off
+        self.hermes.filing_config.hermes_on()
     }
 
     pub(in crate::app) fn chat_availability(&self) -> ncrs_hermes_chat::Availability {
@@ -221,7 +221,7 @@ impl App {
             return self.hermes_not_turned_on(reason);
         }
         self.turning_hermes_on = true;
-        self.update_settings(SettingsMessage::Change(SettingChange::HermesEnabled(true)))
+        self.update_settings(SettingsMessage::Change(SettingChange::HermesSwitch(true)))
     }
 
     /// The setting could not be saved: the chat says why, or the notice does
@@ -239,7 +239,7 @@ impl App {
     }
 
     fn turn_on_ai(&mut self) -> Task<Message> {
-        self.update_settings(SettingsMessage::Change(SettingChange::AiEnabled(true)))
+        self.update_settings(SettingsMessage::Change(SettingChange::HermesSwitch(true)))
     }
 
     /// Shift+F2: the chat closes and the command line takes the keys.

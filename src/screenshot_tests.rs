@@ -272,8 +272,7 @@ fn batch_rename_app() -> App {
 }
 
 fn own_server_app() -> App {
-    let mut app = showcase_app().showing_setting(SettingsFeature::Index);
-    drop(app.update(Message::Settings(SettingsMessage::ServerDialog(true))));
+    let mut app = showcase_app().showing_setting(SettingsFeature::Ai);
     drop(
         app.update(Message::Settings(SettingsMessage::ChooseProvider(
             ncrs_config::config::AiProviderName::Http,

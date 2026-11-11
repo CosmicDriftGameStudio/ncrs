@@ -1,4 +1,4 @@
-//! Snapshots of the own AI server: its dialog and the Usage page.
+//! Snapshots of the own AI server: the KI page and the Usage page.
 
 // reason: a failing assertion is the signal in a test
 #![allow(
@@ -13,7 +13,7 @@ use iced_test::Simulator;
 use super::app_simulator as simulator;
 use crate::app::App;
 use crate::i18n::Language;
-use crate::messages::{Message, SettingField, SettingsFeature, SettingsMessage};
+use crate::messages::{Message, SettingsFeature, SettingsMessage};
 use ncrs_settings::AiCheckResult;
 
 fn matches_snapshot(app: &App, name: &str) {
@@ -39,12 +39,11 @@ fn an_own_ai_server_after_a_test_offers_its_models_in_a_dropdown() {
     both_languages(
         || {
             let mut app = settings_with(
-                SettingsFeature::Hermes,
+                SettingsFeature::Ai,
                 "[modules.filing.ai]\nprovider = \"http\"\n\
                  endpoint = \"http://localhost:11434\"\nmodel = \"qwen2.5:7b\"\n\n\
                  [theme]\npreset = \"cosmic\"\n",
             );
-            drop(app.update(Message::Settings(SettingsMessage::ServerDialog(true))));
             // The test starts a request task, which needs a runtime to be built; it is dropped unrun.
             let runtime = tokio::runtime::Runtime::new().unwrap();
             let _entered = runtime.enter();
@@ -63,24 +62,27 @@ fn an_own_ai_server_after_a_test_offers_its_models_in_a_dropdown() {
     );
 }
 
+fn remote_server_app(consented: &str) -> App {
+    settings_with(
+        SettingsFeature::Ai,
+        &format!(
+            "[modules.filing.ai]\nprovider = \"http\"\n\
+             endpoint = \"https://api.example.com/v1\"\nmodel = \"gpt-5\"\n{consented}\n\
+             [theme]\npreset = \"cosmic\"\n"
+        ),
+    )
+}
+
 #[test]
-fn an_own_ai_server_on_another_computer_matches_its_snapshots_with_the_warning() {
+fn a_server_on_another_computer_not_allowed_yet_matches_its_snapshots() {
+    both_languages(|| remote_server_app(""), "settings_ki_remote_not_allowed");
+}
+
+#[test]
+fn a_server_on_another_computer_that_is_allowed_matches_its_snapshots() {
     both_languages(
-        || {
-            let mut app = settings_with(
-                SettingsFeature::Hermes,
-                "[modules.filing.ai]\nprovider = \"http\"\n\
-                 endpoint = \"https://api.example.com/v1\"\nmodel = \"gpt-5\"\n\n\
-                 [theme]\npreset = \"cosmic\"\n",
-            );
-            drop(app.update(Message::Settings(SettingsMessage::ServerDialog(true))));
-            drop(app.update(Message::Settings(SettingsMessage::Edit {
-                field: SettingField::AiEndpoint,
-                text: "https://models.example.org/v1".to_owned(),
-            })));
-            app
-        },
-        "settings_ai_server_remote",
+        || remote_server_app("consented_origins = [\"https://api.example.com\"]\n"),
+        "settings_ki_remote_allowed",
     );
 }
 
@@ -125,7 +127,7 @@ fn usage_page_app() -> App {
     let mut app = settings_with(
         SettingsFeature::Usage,
         "[modules.filing.ai]\nprovider = \"http\"\n\
-         endpoint = \"https://api.example.com/v1\"\nmodel = \"gpt-5\"\n\n\
+         endpoint = \"https://api.example.com/v1\"\nmodel = \"gpt-5\"\nconsented_origins = [\"https://api.example.com\"]\n\n\
          [theme]\npreset = \"cosmic\"\n",
     );
     drop(app.update(Message::Settings(SettingsMessage::UsageLoaded(summaries))));
@@ -140,12 +142,11 @@ fn the_usage_page_matches_its_snapshots() {
 #[test]
 fn an_own_ai_server_that_answers_with_an_error_shows_its_status_in_the_dialog() {
     let mut app = settings_with(
-        SettingsFeature::Hermes,
+        SettingsFeature::Ai,
         "[modules.filing.ai]\nprovider = \"http\"\n\
          endpoint = \"http://localhost:11434\"\nmodel = \"qwen2.5:7b\"\n",
     )
     .in_language(Language::English);
-    drop(app.update(Message::Settings(SettingsMessage::ServerDialog(true))));
     // The test starts a request task, which needs a runtime to be built; it is dropped unrun.
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let _entered = runtime.enter();
@@ -185,7 +186,7 @@ fn matches_snapshot_in_marcs_window(app: &mut App, name: &str) {
 
 fn from_this_computer(language: Language) -> App {
     settings_with(
-        SettingsFeature::Hermes,
+        SettingsFeature::Ai,
         "[modules.filing]\nenabled = true\n\n[modules.filing.ai]\nenabled = true\n\
          provider = \"local\"\n\n[theme]\npreset = \"cosmic\"\n",
     )
@@ -193,45 +194,27 @@ fn from_this_computer(language: Language) -> App {
 }
 
 #[test]
-fn the_model_switch_on_the_index_page_matches_its_snapshots() {
+fn the_ki_page_with_the_model_on_this_computer_matches_its_snapshots() {
     for (language, name) in [
-        (Language::German, "settings_model_switch_de"),
-        (Language::English, "settings_model_switch_en"),
+        (Language::German, "settings_ki_de"),
+        (Language::English, "settings_ki_en"),
     ] {
         let mut app = from_this_computer(language);
-        drop(app.update(Message::Settings(SettingsMessage::Select(
-            SettingsFeature::Index,
-        ))));
         matches_snapshot_in_marcs_window(&mut app, name);
     }
 }
 
 #[test]
-fn the_question_before_a_server_on_another_computer_matches_its_snapshots() {
+fn the_ki_page_with_the_switch_off_shows_the_chip_hermes_off() {
     for (language, name) in [
-        (Language::German, "settings_model_switch_ask_de"),
-        (Language::English, "settings_model_switch_ask_en"),
+        (Language::German, "settings_ki_off_de"),
+        (Language::English, "settings_ki_off_en"),
     ] {
-        let mut app = from_this_computer(language);
-        drop(app.update(Message::Settings(SettingsMessage::Select(
-            SettingsFeature::Index,
-        ))));
-        drop(app.update(Message::Settings(SettingsMessage::ServerDialog(true))));
-        drop(
-            app.update(Message::Settings(SettingsMessage::ChooseProvider(
-                ncrs_config::config::AiProviderName::Http,
-            ))),
-        );
-        for (field, text) in [
-            (SettingField::AiEndpoint, "https://openrouter.ai/api/v1"),
-            (SettingField::AiModel, "anthropic/claude-sonnet-4.5"),
-        ] {
-            drop(app.update(Message::Settings(SettingsMessage::Edit {
-                field,
-                text: text.to_owned(),
-            })));
-        }
-        drop(app.update(Message::Settings(SettingsMessage::SaveServer)));
+        let mut app = settings_with(
+            SettingsFeature::Ai,
+            "[hermes]\nenabled = false\n\n[theme]\npreset = \"cosmic\"\n",
+        )
+        .in_language(language);
         matches_snapshot_in_marcs_window(&mut app, name);
     }
 }

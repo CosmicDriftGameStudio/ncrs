@@ -487,17 +487,65 @@ pub fn ai_setting(table: &str) -> AiSetting {
 }
 
 #[test]
-fn without_an_ai_table_or_when_not_enabled_the_ai_is_off() {
+fn without_an_ai_table_or_an_old_enabled_key_the_hermes_ai_is_on_with_the_local_model() {
+    let local = AiSetting::Local { threads: None };
     assert_eq!(
         load_filing("[modules.filing]\nenabled = true\n", None)
             .unwrap()
             .filing
             .ai,
-        AiSetting::Off
+        local
     );
-    assert_eq!(ai_setting(""), AiSetting::Off);
-    assert_eq!(ai_setting("provider = \"local\"\n"), AiSetting::Off);
-    assert_eq!(ai_setting("enabled = false\nthreads = 2\n"), AiSetting::Off);
+    assert_eq!(ai_setting(""), local);
+    assert_eq!(ai_setting("provider = \"local\"\n"), local);
+    assert_eq!(ai_setting("enabled = false\n"), AiSetting::Off);
+    assert_eq!(
+        ai_setting("threads = 2\n"),
+        AiSetting::Local {
+            threads: NonZeroU32::new(2)
+        }
+    );
+}
+
+#[test]
+fn the_hermes_section_switches_every_model_off_and_a_file_without_the_key_has_it_on() {
+    let ai = "[modules.filing.ai]\nprovider = \"http\"\nendpoint = \"http://localhost:8080/v1\"\nmodel = \"qwen\"\n";
+    for (hermes, on) in [
+        ("", true),
+        ("[hermes]\n", true),
+        ("[hermes]\nenabled = true\n", true),
+        ("[hermes]\nenabled = false\n", false),
+    ] {
+        for modules in [ai, ""] {
+            let config = crate::config::from_text(&format!("{hermes}{modules}")).unwrap();
+            assert_eq!(config.filing.hermes_on(), on, "{hermes}{modules}");
+            assert_eq!(config.filing.ai == AiSetting::Off, !on);
+        }
+    }
+    let on = crate::config::from_text(&format!("[hermes]\nenabled = true\n{ai}")).unwrap();
+    assert!(matches!(on.filing.ai, AiSetting::Http { .. }));
+}
+
+#[test]
+fn a_missing_hermes_key_takes_the_old_filing_switch_and_otherwise_means_on() {
+    let hermes = |text: &str| crate::config::from_text(text).unwrap().filing;
+    let off = hermes("[modules.filing]\nenabled = false\n");
+    assert!(!off.hermes_on() && !off.enabled && off.ai == AiSetting::Off);
+    let on = hermes("[modules.filing]\nenabled = true\n");
+    assert!(on.hermes_on() && on.enabled && on.ai != AiSetting::Off);
+    let neither = hermes("");
+    assert!(neither.hermes_on() && neither.ai != AiSetting::Off && neither.first_run);
+    let new_key_wins = hermes("[hermes]\nenabled = true\n[modules.filing]\nenabled = false\n");
+    assert!(new_key_wins.hermes_on() && new_key_wins.enabled && !new_key_wins.first_run);
+    let switched_off = hermes("[hermes]\nenabled = false\n[modules.filing]\nenabled = true\n");
+    assert!(!switched_off.hermes_on() && !switched_off.enabled);
+}
+
+#[test]
+fn the_hermes_switch_stops_the_watching_and_every_model() {
+    let off = crate::config::from_text("[hermes]\nenabled = false\n[modules.filing]\nenabled = true\n[modules.filing.ai]\nprovider = \"local\"\n").unwrap().filing;
+    assert!(!off.enabled);
+    assert_eq!(off.ai, AiSetting::Off);
 }
 
 #[test]
@@ -526,6 +574,32 @@ fn the_http_provider_needs_an_endpoint_and_a_model() {
             consented_origins: vec!["http://localhost:8080".to_owned()],
         }
     );
+}
+
+#[test]
+fn a_remote_server_from_before_the_dialog_is_consented_only_when_the_old_file_switched_the_ai_on() {
+    let remote = "provider = \"http\"\nmodel = \"m\"\nendpoint = \"https://ai.example.com/v1\"\n";
+    let consented = |old_switch: &str| {
+        let AiSetting::Http {
+            consented_origins, ..
+        } = ai_setting(&format!("{old_switch}{remote}"))
+        else {
+            panic!("not the http provider");
+        };
+        consented_origins
+    };
+    assert!(consented("").is_empty());
+    assert_eq!(consented("enabled = true\n"), ["https://ai.example.com"]);
+}
+
+#[test]
+fn a_server_on_this_machine_is_kept_with_nothing_set_and_needs_no_consent_to_be_used() {
+    let local = "provider = \"http\"\nmodel = \"m\"\nendpoint = \"http://localhost:11434/v1\"\n";
+    let AiSetting::Http { endpoint, .. } = ai_setting(local) else {
+        panic!("not the http provider");
+    };
+    // The one place that checks the consent lets this machine through.
+    assert!(ncrs_ai::endpoint_is_local(&endpoint).unwrap());
 }
 
 #[test]
@@ -812,4 +886,42 @@ pub fn one_of_each(folders: &SetupFolders) -> Vec<FilingLocation> {
         chosen(&folders.archive, LocationMode::Archive, false, false),
         chosen(&folders.target, LocationMode::Archive, true, true),
     ]
+}
+
+#[test]
+fn locations_without_an_enabled_key_are_watched_and_hermes_is_on() {
+    let home = tempfile::tempdir().unwrap();
+    let filing = load_filing(
+        "[[modules.filing.locations]]\npath = \"~/Scans\"\nmode = \"inbox\"\n",
+        Some(home.path()),
+    )
+    .unwrap()
+    .filing;
+    assert!(filing.enabled && filing.hermes_on());
+}
+
+#[test]
+fn the_hermes_key_wins_over_an_old_ai_enabled_flag() {
+    let filing = |text: &str| crate::config::from_text(text).unwrap().filing;
+    let old_off = filing("[modules.filing.ai]\nenabled = false\n");
+    assert!(!old_off.hermes_on() && old_off.ai == AiSetting::Off);
+    let old_filing_on =
+        filing("[modules.filing]\nenabled = true\n[modules.filing.ai]\nenabled = false\n");
+    assert!(!old_filing_on.hermes_on() && old_filing_on.ai == AiSetting::Off);
+    let flipped = filing("[hermes]\nenabled = true\n[modules.filing.ai]\nenabled = false\n");
+    assert!(flipped.hermes_on() && flipped.ai != AiSetting::Off);
+}
+
+#[test]
+fn the_switch_shown_and_the_model_given_out_agree_for_old_files() {
+    for text in [
+        "",
+        "[modules.filing.ai]\nenabled = false\n",
+        "[modules.filing]\nenabled = false\n",
+        "[modules.filing]\nenabled = true\n[modules.filing.ai]\nenabled = false\n",
+        "[hermes]\nenabled = false\n[modules.filing.ai]\nenabled = true\n",
+    ] {
+        let filing = crate::config::from_text(text).unwrap().filing;
+        assert_eq!(filing.hermes_on(), filing.ai != AiSetting::Off, "{text:?}");
+    }
 }

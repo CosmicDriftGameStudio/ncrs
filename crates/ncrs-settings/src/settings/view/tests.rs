@@ -508,7 +508,7 @@ fn own_command_shows_its_field_before_anything_is_saved_and_reset_drops_it() {
 
 #[test]
 fn an_off_ai_with_the_model_on_disk_offers_the_switch_not_the_download() {
-    use super::index_page::{ai_button, AiButton};
+    use super::ai_page::{ai_button, AiButton};
     use crate::facts::AiState;
 
     assert_eq!(ai_button(&AiState::Off, true), Some(AiButton::TurnOn));
@@ -593,16 +593,17 @@ fn the_look_page_has_the_font_size_and_preview_rows_one_after_the_other() {
     }
 }
 
-#[test]
-fn the_keyboard_starts_the_hermes_page_on_its_first_row() {
-    let state = state_of("");
-    let filing = Filing::default();
-    let palette = Palette::default();
-    let view = SettingsView {
-        state: &state,
+fn ai_view<'a>(
+    state: &'a SettingsState,
+    filing: &'a Filing,
+    palette: &'a Palette,
+    lang: Language,
+) -> SettingsView<'a> {
+    SettingsView {
+        state,
         preset: ThemePreset::Cosmic,
         vscode_theme: None,
-        filing: &filing,
+        filing,
         servers: &[],
         protection: None,
         home: Path::new("/home/test"),
@@ -610,13 +611,70 @@ fn the_keyboard_starts_the_hermes_page_on_its_first_row() {
         updates_listed: true,
         facts: DocumentsFacts::default(),
         favourites: FavouritesFacts::default(),
-        lang: Language::English,
-        palette: &palette,
-    };
-    let hermes_keys =
-        ncrs_ui_kit::setting_rows::keyed_rows(groups_of(SettingsFeature::Hermes, &view), |_| true);
+        lang,
+        palette,
+    }
+}
+
+#[test]
+fn the_keyboard_starts_the_ai_page_on_the_hermes_switch() {
+    let state = state_of("");
+    let (filing, palette) = (Filing::default(), Palette::default());
+    let view = ai_view(&state, &filing, &palette, Language::English);
+    let keys =
+        ncrs_ui_kit::setting_rows::keyed_rows(groups_of(SettingsFeature::Ai, &view), |_| true);
     assert!(matches!(
-        hermes_keys.first(),
-        Some(ncrs_ui_kit::setting_rows::RowKey::Press(_))
+        keys.first(),
+        Some(ncrs_ui_kit::setting_rows::RowKey::Choice { .. })
     ));
+    let hermes_labels = rows_of(SettingsFeature::Hermes, &state, Language::English);
+    assert!(!hermes_labels.contains(&Language::English.text(Msg::GroupHermes).to_owned()));
+}
+
+const FAR_SERVER: &str = "[modules.filing.ai]\nenabled = true\nprovider = \"http\"\n\
+                          endpoint = \"https://ai.example.com/v1\"\nmodel = \"m\"\n";
+
+#[test]
+fn the_ai_page_shows_the_list_of_what_goes_to_a_far_server_only() {
+    let (filing, palette) = (Filing::default(), Palette::default());
+    for lang in [Language::English, Language::German] {
+        let local = state_of("");
+        let local_view = ai_view(&local, &filing, &palette, lang);
+        let titles = |view: &SettingsView<'_>| -> Vec<String> {
+            groups_of(SettingsFeature::Ai, view)
+                .into_iter()
+                .map(|group| group.title)
+                .collect()
+        };
+        assert!(!titles(&local_view).contains(&lang.text(Msg::SettingsAiSectionSent).to_owned()));
+
+        let far = state_of(FAR_SERVER);
+        let far_view = ai_view(&far, &filing, &palette, lang);
+        assert!(titles(&far_view).contains(&lang.text(Msg::SettingsAiSectionSent).to_owned()));
+    }
+}
+
+#[test]
+fn the_ai_page_is_found_by_ai_model_server_and_hermes() {
+    let (filing, palette) = (Filing::default(), Palette::default());
+    for (lang, queries) in [
+        (Language::English, ["ai", "model", "server", "hermes"]),
+        (Language::German, ["ki", "modell", "server", "hermes"]),
+    ] {
+        for state_source in ["", FAR_SERVER] {
+            let mut state = state_of(state_source);
+            for query in queries {
+                // The server rows only exist while a server is chosen.
+                if query == "server" && state_source.is_empty() {
+                    continue;
+                }
+                state.query = query.to_owned();
+                let view = ai_view(&state, &filing, &palette, lang);
+                assert!(
+                    listed_features(&view).contains(&SettingsFeature::Ai),
+                    "{lang:?} {query:?} {state_source:?}"
+                );
+            }
+        }
+    }
 }

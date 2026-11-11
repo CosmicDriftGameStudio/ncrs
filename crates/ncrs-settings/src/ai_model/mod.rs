@@ -86,7 +86,7 @@ pub enum InstallOutcome {
     TurnedOnAtNextStart,
     /// The AI was on and waited for the file.
     InUse,
-    /// The AI is still off: the switch could not be written.
+    /// Hermes is off by its switch, so the model waits.
     StillOff,
 }
 

@@ -13,6 +13,8 @@ pub enum SettingsFeature {
     System,
     Updates,
     Index,
+    /// The one model of Hermes and the switch that turns him on.
+    Ai,
     Hermes,
     Rules,
     Tags,
@@ -31,7 +33,7 @@ pub enum SettingsGroup {
 }
 
 impl SettingsFeature {
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 17] = [
         Self::Look,
         Self::Language,
         Self::Keys,
@@ -44,6 +46,7 @@ impl SettingsFeature {
         Self::Index,
         Self::ReadErrors,
         Self::Reports,
+        Self::Ai,
         Self::Hermes,
         Self::Rules,
         Self::Tags,
@@ -68,7 +71,9 @@ impl SettingsFeature {
                 SettingsGroup::Files
             }
             Self::Index | Self::ReadErrors | Self::Reports => SettingsGroup::Documents,
-            Self::Hermes | Self::Rules | Self::Tags | Self::Usage => SettingsGroup::Hermes,
+            Self::Ai | Self::Hermes | Self::Rules | Self::Tags | Self::Usage => {
+                SettingsGroup::Hermes
+            }
         }
     }
 }
@@ -94,7 +99,7 @@ mod tests {
             SettingsFeature::ALL,
             [
                 Look, Language, Keys, System, Updates, Programs, Servers, Columns, Favourites,
-                Index, ReadErrors, Reports, Hermes, Rules, Tags, Usage
+                Index, ReadErrors, Reports, Ai, Hermes, Rules, Tags, Usage
             ]
         );
         let expected = [
@@ -110,6 +115,7 @@ mod tests {
             (Index, SettingsGroup::Documents),
             (ReadErrors, SettingsGroup::Documents),
             (Reports, SettingsGroup::Documents),
+            (Ai, SettingsGroup::Hermes),
             (Hermes, SettingsGroup::Hermes),
             (Rules, SettingsGroup::Hermes),
             (Tags, SettingsGroup::Hermes),

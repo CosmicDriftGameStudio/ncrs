@@ -110,7 +110,14 @@ pub fn apply_ai_change(
     };
     let rebuildable = hermes.key_store.is_some() && module.can_be_replaced() && !ctx.jobs_busy;
     if !rebuildable {
+        let switched_off = !filing.hermes_on();
         hermes.filing_config = filing;
+        if switched_off {
+            if let Some(runner) = hermes.live_pipeline() {
+                runner.pause();
+            }
+            hermes.refresh_filing_snapshot(ctx.now);
+        }
         return (SavedFilingApplies::AtNextStart, Task::none());
     }
     hermes.filing_restart_generation = hermes.filing_restart_generation.wrapping_add(1);

@@ -114,7 +114,7 @@ pub fn update_ai(
         AiModelMessage::Progress => Task::none(),
         AiModelMessage::TurnOn => {
             settings.ai_model = None;
-            write_setting(settings, SettingChange::AiEnabled(true), ctx)
+            write_setting(settings, SettingChange::HermesSwitch(true), ctx)
         }
         AiModelMessage::Open => open_ai(settings, ctx, actions),
         AiModelMessage::Close => close_ai(settings),
@@ -143,7 +143,7 @@ fn open_ai(settings: &mut Settings, ctx: &Ctx<'_>, actions: &mut Vec<Action>) ->
         .as_deref()
         .is_some_and(|dir| ncrs_ai::has_partial_download(dir, &ncrs_ai::LOCAL_MODEL));
     settings.ai_model = Some(if target.as_deref().is_some_and(model_is_installed) {
-        AiModelCard::installed(target).offering_turn_on(!ctx.ai_is_on)
+        AiModelCard::installed(target).offering_turn_on(!ctx.hermes_on)
     } else {
         AiModelCard::new(target, has_partial)
     });
@@ -210,19 +210,14 @@ fn ai_downloaded(
     }
     actions.push(Action::SetDialogFocus(AI_CANCEL_FOCUS));
     actions.push(Action::RefreshAiModel);
-    let can_write = ctx.config_path.is_some();
-    let (outcome, task) = if ctx.ai_is_on {
-        (InstallOutcome::InUse, Task::none())
-    } else if can_write {
-        (
-            InstallOutcome::TurningOn,
-            write_setting(settings, SettingChange::AiEnabled(true), ctx),
-        )
+    // The switch is the user's: a download does not flip it.
+    let outcome = if ctx.hermes_on {
+        InstallOutcome::InUse
     } else {
-        (InstallOutcome::StillOff, Task::none())
+        InstallOutcome::StillOff
     };
     if let Some(open_card) = settings.ai_model.as_mut() {
         open_card.set_outcome(outcome);
     }
-    task
+    Task::none()
 }

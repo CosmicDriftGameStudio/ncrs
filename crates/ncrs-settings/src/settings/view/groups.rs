@@ -4,7 +4,7 @@ use iced::{alignment, Length};
 use super::*;
 use crate::message::{SettingChange, SettingField, SettingsMessage, TerminalChoice};
 use crate::settings::*;
-use ncrs_config::config::{AiProviderName, ServerEntry};
+use ncrs_config::config::ServerEntry;
 use ncrs_config::file_list_tags::FileListTags;
 use ncrs_fs::OpenKind;
 use ncrs_i18n::fill_template;
@@ -545,80 +545,6 @@ pub fn language_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
             )))),
         ],
     }]
-}
-
-/// A text row of the AI group.
-pub fn ai_field_row<'a>(
-    field: SettingField,
-    (label, note, id): (Msg, Msg, &'static str),
-    placeholder: &str,
-    view: &SettingsView<'a>,
-) -> SettingRow<'a> {
-    SettingRow {
-        key: Some(RowKey::Text(id)),
-        problem: field_problem(field, view),
-        ..simple_row(
-            label,
-            Some(note),
-            setting_field(field, id, placeholder, true, view),
-            view.lang,
-        )
-    }
-}
-
-/// The provider and the keys that belong to it. They can be set while the
-/// AI is off, so that switching it on finds them ready.
-pub fn provider_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
-    let lang = view.lang;
-    let providers = [
-        (Msg::SettingsProviderLocal, AiProviderName::Local),
-        (Msg::SettingsProviderHttp, AiProviderName::Http),
-    ];
-    let options: Vec<(&str, Message)> = providers
-        .iter()
-        .map(|&(label, provider)| (lang.text(label), SettingsMessage::ChooseProvider(provider)))
-        .collect();
-    let provider = view.state.provider();
-    let chosen = providers
-        .iter()
-        .position(|&(_, listed)| listed == provider)
-        .unwrap_or_default();
-    let mut rows = vec![simple_row(
-        Msg::SettingsRowAiProvider,
-        Some(Msg::SettingsRowAiProviderNote),
-        kit::segmented(&options, chosen, true, view.palette),
-        lang,
-    )
-    .keyed_maybe(choice_key(
-        options.iter().map(|(_, message)| message.clone()).collect(),
-        chosen,
-    ))];
-    match provider {
-        AiProviderName::Local => {}
-        AiProviderName::Http => {
-            rows.push(ai_field_row(
-                SettingField::AiEndpoint,
-                (
-                    Msg::SettingsRowAiEndpoint,
-                    Msg::SettingsRowAiEndpointNote,
-                    ENDPOINT_FIELD_ID,
-                ),
-                "",
-                view,
-            ));
-            rows.push(ai_field_row(
-                SettingField::AiModel,
-                (
-                    Msg::SettingsRowAiModelName,
-                    Msg::SettingsRowAiModelNameNote,
-                    MODEL_FIELD_ID,
-                ),
-                "",
-                view,
-            ));
-        }
-    }
-    rows
 }
 
 /// The protection of the index: its state and the buttons that change it. The

@@ -153,12 +153,24 @@ pub struct FilingSection {
     pub own_tax_ids: Vec<String>,
 }
 
+/// The `[hermes]` section: the one switch for every call to a model.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HermesSection {
+    /// A file without the key has Hermes on.
+    #[serde(default)]
+    pub enabled: Option<bool>,
+}
+
 /// The `[modules.filing.ai]` section, unchecked.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AiSection {
-    #[serde(default)]
-    pub enabled: bool,
+    /// Older files switch the model here; the switch in `[hermes]` decides
+    /// now. Never written, only read: it tells whether a file from before the
+    /// consent dialog meant its server to get documents.
+    #[serde(default, rename = "enabled")]
+    pub legacy_enabled: Option<bool>,
     #[serde(default)]
     pub provider: Option<Spanned<AiProviderName>>,
     #[serde(default)]
@@ -175,11 +187,13 @@ pub struct AiSection {
 
 impl AiSection {
     /// The servers documents may go to: the listed ones, or, in a file from
-    /// before the dialog asked for the consent, the server the user ticked
-    /// "I understand" for.
+    /// before the dialog asked for the consent, the server of an AI that was
+    /// switched on there. A file that never switched it on grants nothing, so
+    /// the dialog asks once; a server on this machine needs no consent.
     pub fn consented(&self) -> Vec<String> {
         match &self.consented_origins {
             Some(listed) => listed.clone(),
+            None if self.legacy_enabled != Some(true) => Vec::new(),
             None => self
                 .endpoint
                 .as_ref()
@@ -200,18 +214,28 @@ pub enum AiProviderName {
 }
 
 /// What the filing module may ask for a document the rules could not read.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// `Off` is the switch of the `[hermes]` section: no model is called at all.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AiSetting {
-    #[default]
     Off,
     /// The model on this machine. `None` leaves the thread count to the module.
-    Local { threads: Option<NonZeroU32> },
+    Local {
+        threads: Option<NonZeroU32>,
+    },
     Http {
         endpoint: String,
         model: String,
         /// The servers the user agreed to send documents to.
         consented_origins: Vec<String>,
     },
+}
+
+/// Hermes on, with the model of this machine, as a file without a word about
+/// it has it.
+impl Default for AiSetting {
+    fn default() -> Self {
+        Self::Local { threads: None }
+    }
 }
 
 /// The spelling of `load` in the file; `resolve_filing` maps it to `Load`.
@@ -309,6 +333,14 @@ pub struct Filing {
     pub own_names: Vec<String>,
     pub own_ibans: Vec<String>,
     pub own_tax_ids: Vec<String>,
+}
+
+impl Filing {
+    /// The `[hermes]` switch, from the one value `enabled` is read from; a
+    /// first run has it on while there is nothing to watch yet.
+    pub fn hermes_on(&self) -> bool {
+        self.enabled || self.first_run
+    }
 }
 
 /// What a config with nothing about filing resolves to.

@@ -1,5 +1,5 @@
-//! The Hermes page: whether he works, which folders he reads, the order he
-//! learned from the user's files, and what he did last.
+//! The Hermes page: which folders he reads, the order he learned from the
+//! user's files, and what he did last.
 
 use iced::widget::container;
 use iced::Element;
@@ -28,23 +28,6 @@ pub fn hermes_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
         rows,
     };
     vec![
-        Group {
-            intro: None,
-            title: String::new(),
-            rows: vec![simple_row(
-                Msg::SettingsHermesRowOn,
-                Some(Msg::SettingsHermesRowOnNote),
-                switch(
-                    view.filing.enabled,
-                    SettingChange::HermesEnabled(!view.filing.enabled),
-                    view,
-                ),
-                lang,
-            )
-            .keyed(RowKey::Press(change(SettingChange::HermesEnabled(
-                !view.filing.enabled,
-            ))))],
-        },
         group(
             Msg::SettingsHermesSectionFolders,
             Some(Msg::SettingsHermesSectionFoldersIntro),

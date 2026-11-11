@@ -17,7 +17,7 @@ fn the_setup_writes_the_locations_and_they_load_back() {
 }
 
 #[test]
-fn read_folders_are_written_without_switching_hermes_or_the_ai_on() {
+fn read_folders_are_written_without_switching_a_hermes_that_was_off_on() {
     let folders = setup_folders();
     let path = folders.base.path().join("config.toml");
     std::fs::write(&path, "[modules.filing]\nenabled = false\n").unwrap();
@@ -68,7 +68,7 @@ fn read_folders_that_overlap_are_refused_and_the_file_stays() {
 }
 
 #[test]
-fn the_first_setup_turns_the_ai_on() {
+fn the_first_setup_writes_no_ai_table_and_leaves_hermes_on() {
     let folders = setup_folders();
     let path = folders.base.path().join("config.toml");
     std::fs::write(&path, "lang = \"de\"\n").unwrap();
@@ -76,24 +76,26 @@ fn the_first_setup_turns_the_ai_on() {
     let written = write_filing_locations_with_home(&path, &one_of_each(&folders), None).unwrap();
 
     let text = std::fs::read_to_string(&path).unwrap();
-    assert!(
-        text.contains("[modules.filing.ai]\nenabled = true"),
-        "{text}"
-    );
+    assert!(!text.contains("[modules.filing.ai]"), "{text}");
+    assert!(text.contains("[hermes]\nenabled = true\n"), "{text}");
     assert_eq!(written.filing.ai, AiSetting::Local { threads: None });
 }
 
 #[test]
-fn a_setup_keeps_an_ai_the_user_switched_off() {
+fn a_setup_switches_hermes_on_that_was_off() {
     let folders = setup_folders();
     let path = folders.base.path().join("config.toml");
-    std::fs::write(&path, "[modules.filing.ai]\nenabled = false\n").unwrap();
+    std::fs::write(&path, "[hermes]\nenabled = false\n").unwrap();
 
     let written = write_filing_locations_with_home(&path, &one_of_each(&folders), None).unwrap();
 
-    assert_eq!(written.filing.ai, AiSetting::Off);
+    assert!(written.filing.enabled);
+    assert_eq!(written.filing.ai, AiSetting::Local { threads: None });
     let text = std::fs::read_to_string(&path).unwrap();
-    assert!(text.contains("enabled = false"), "{text}");
+    assert!(
+        text.contains("enabled = true") && !text.contains("enabled = false"),
+        "{text}"
+    );
 }
 
 #[test]
@@ -112,7 +114,7 @@ fn a_setup_over_existing_locations_does_not_add_an_ai_table() {
 
     let written = write_filing_locations_with_home(&path, &one_of_each(&folders), None).unwrap();
 
-    assert_eq!(written.filing.ai, AiSetting::Off);
+    assert_eq!(written.filing.ai, AiSetting::Local { threads: None });
     let text = std::fs::read_to_string(&path).unwrap();
     assert!(!text.contains("[modules.filing.ai]"), "{text}");
 }
@@ -140,7 +142,7 @@ fn comments_and_other_sections_survive_the_write() {
         "# my settings\n",
         "lang = \"en\" # English for now\n",
         "[open]\n# the viewer I like\nview = [\"viewer\"]\n",
-        "# off until the drive is set up\nenabled = true # later\n",
+        "# off until the drive is set up\nenabled = false # later\n",
         "load = \"gentle\"\n",
         "# where documents live\n[[modules.filing.locations]]\n",
         "[theme]\n# the older look\npreset = \"classic\"\n",
@@ -450,25 +452,6 @@ fn the_language_is_written_at_the_top_and_round_trips() {
 }
 
 #[test]
-fn filing_enabled_creates_its_table_and_keeps_the_rest() {
-    let base = tempfile::tempdir().unwrap();
-    let path = base.path().join("config.toml");
-    std::fs::write(&path, "[open]\nview = [\"viewer\"] # mine\n").unwrap();
-
-    let written = write_setting(&path, filing_enabled_setting(true), None).unwrap();
-
-    let text = lines_of(&path);
-    assert!(text.contains("view = [\"viewer\"] # mine\n"), "{text}");
-    assert!(
-        text.contains("[modules.filing]\nenabled = true\n"),
-        "{text}"
-    );
-    assert!(written.filing.enabled);
-    let off = write_setting(&path, filing_enabled_setting(false), None).unwrap();
-    assert!(!off.filing.enabled);
-}
-
-#[test]
 fn the_load_is_written_as_a_name_or_a_number_and_reads_back() {
     let base = tempfile::tempdir().unwrap();
     let path = base.path().join("config.toml");
@@ -529,22 +512,19 @@ fn writing_the_load_to_a_file_without_ai_table_adds_none() {
 }
 
 #[test]
-fn ai_enabled_creates_the_nested_table_and_keeps_the_filing_keys() {
+fn the_hermes_switch_creates_its_table_and_keeps_the_filing_keys() {
     let base = tempfile::tempdir().unwrap();
     let path = base.path().join("config.toml");
     std::fs::write(&path, "[modules.filing]\nenabled = true\nload = \"full\"\n").unwrap();
 
-    let written = write_setting(&path, ai_enabled_setting(true), None).unwrap();
+    let off = write_setting(&path, hermes_enabled_setting(false), None).unwrap();
 
     let text = lines_of(&path);
     assert!(text.contains("load = \"full\"\n"), "{text}");
-    assert!(
-        text.contains("[modules.filing.ai]\nenabled = true\n"),
-        "{text}"
-    );
-    assert!(matches!(written.filing.ai, AiSetting::Local { .. }));
-    let off = write_setting(&path, ai_enabled_setting(false), None).unwrap();
+    assert!(text.contains("[hermes]\nenabled = false\n"), "{text}");
     assert_eq!(off.filing.ai, AiSetting::Off);
+    let on = write_setting(&path, hermes_enabled_setting(true), None).unwrap();
+    assert!(matches!(on.filing.ai, AiSetting::Local { .. }));
 }
 
 #[test]
@@ -735,7 +715,7 @@ fn an_inline_ai_table_loses_a_dropped_key_too() {
 
     let written = write_settings(&path, &ai_provider_settings(&local), None).unwrap();
 
-    assert_eq!(written.filing.ai, AiSetting::Off);
+    assert_eq!(written.filing.ai, AiSetting::Local { threads: None });
     let text = lines_of(&path);
     assert!(
         !text.contains("endpoint") && !text.contains("model"),
@@ -835,7 +815,7 @@ fn a_setting_is_created_with_its_config_and_a_broken_config_is_left_alone() {
     let broken = base.path().join("broken.toml");
     let text = "[open\nview = [\"viewer\"]\n";
     std::fs::write(&broken, text).unwrap();
-    let result = write_setting(&broken, filing_enabled_setting(true), None);
+    let result = write_setting(&broken, hermes_enabled_setting(true), None);
     assert!(
         matches!(
             result,

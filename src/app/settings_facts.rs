@@ -65,6 +65,7 @@ impl App {
         let counts = overview.counts.unwrap_or_default();
         let loaded = state.loaded.clone().unwrap_or_default();
         let status = &self.hermes.filing_status;
+        let tile = overview.ai_tile();
         DocumentsFacts {
             documents: counts.archive_documents,
             understood: loaded
@@ -79,7 +80,16 @@ impl App {
             system_reads_scans: self.system_reads_scans,
             ai_detail: ai_detail(&overview.ai_status, self.lang),
             rules: usize::try_from(counts.confirmed_rules).unwrap_or(usize::MAX),
-            ai: match overview.ai_tile() {
+            ai: match tile {
+                // Nothing is sent to a server that was not agreed to, whether or not
+                // the module runs.
+                _ if tile != crate::hermes_overview::AiTile::Off
+                    && ncrs_settings::ai_consent::server_is_not_allowed(
+                        &self.hermes.filing_config.ai,
+                    ) =>
+                {
+                    AiState::NotAllowed
+                }
                 crate::hermes_overview::AiTile::Off => AiState::Off,
                 crate::hermes_overview::AiTile::NotLoaded => AiState::Missing,
                 crate::hermes_overview::AiTile::Downloading { .. } => AiState::Downloading,

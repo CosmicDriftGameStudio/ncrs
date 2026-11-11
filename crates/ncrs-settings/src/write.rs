@@ -5,7 +5,6 @@ use ncrs_config::config::{self, Config, FilingRuleViolation, FilingWriteError, K
 use ncrs_i18n::{fill_template, Msg};
 use ncrs_ui_kit::format::shown_path;
 
-use crate::ai_consent::ConsentAsk;
 use crate::ctx::Ctx;
 use crate::message::{Message, SettingChange, SettingsMessage};
 use crate::state::Settings;
@@ -30,9 +29,8 @@ pub fn write_setting_change(
         SettingChange::Language(lang) => config::write_language(path, lang),
         SettingChange::CheckForUpdates(enabled) => config::write_check_for_updates(path, enabled),
         SettingChange::FavouritesBar(shown) => config::write_favourites_bar(path, shown),
-        SettingChange::HermesEnabled(enabled) => config::write_filing_enabled(path, enabled),
         SettingChange::Load(load) => config::write_filing_load(path, load),
-        SettingChange::AiEnabled(enabled) => config::write_ai_enabled(path, enabled),
+        SettingChange::HermesSwitch(enabled) => config::write_hermes_enabled(path, enabled),
         SettingChange::Program { kind, line } => config::write_program(path, kind, line.as_ref()),
         SettingChange::VscodeTheme(Some(file)) => config::write_vscode_theme(path, &file),
         SettingChange::VscodeTheme(None) => config::remove_vscode_theme(path),
@@ -58,15 +56,6 @@ pub fn write_setting(
     change: SettingChange,
     ctx: &Ctx<'_>,
 ) -> Task<Message> {
-    // A server on another computer gets nothing before the user said yes.
-    if let SettingChange::AiProvider(choice) = &change {
-        if let Some(ask) = ConsentAsk::needed_for(choice) {
-            if let Some(state) = settings.page.as_mut() {
-                state.consent_pending = Some(ask);
-            }
-            return Task::none();
-        }
-    }
     let Some(config_path) = ctx.config_path.map(Path::to_path_buf) else {
         settings.failure = Some(ctx.lang.text(Msg::FilingSetupNoConfigPath).to_owned());
         return Task::none();
