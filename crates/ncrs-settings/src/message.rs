@@ -187,8 +187,6 @@ pub enum SettingsMessage {
     AddOwnDetail(OwnDetail),
     ToggleAllAreas,
     ToggleAllRuns,
-    /// Opens the dialog of the own server, or closes it.
-    ServerDialog(bool),
     /// The API key typed in the dialog of the own server.
     AiKey(ncrs_ai::Secret),
     /// "Test connection": asks the server for its models.
@@ -198,12 +196,10 @@ pub enum SettingsMessage {
         endpoint: String,
         result: crate::ai_server::AiCheckResult,
     },
-    /// "Allow and switch" in the question before a server on another
-    /// computer gets anything.
+    /// "Allow" under the list of what goes to a server on another computer:
+    /// the server as typed is saved and agreed to.
     ConfirmAiConsent,
-    /// "Cancel" in the same question: the model stays.
-    CancelAiConsent,
-    /// Save of the dialog: address, model and key together.
+    /// Save on the AI page: address, model and key together.
     SaveServer,
     /// The key was kept in the keychain, or why not.
     AiKeyStored(Result<(), String>),

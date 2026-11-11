@@ -161,14 +161,19 @@ impl App {
                 active: self.panels.active == side && self.shown_tab == ShownTab::Panels,
             }
         };
+        let switched_off = !self.hermes.filing_config.hermes_on();
         titlebar::view(&titlebar::TitleBar {
             tabs: [tab(PanelSide::Left), tab(PanelSide::Right)],
             page_tabs: self.page_tabs(),
             home: &self.home,
             hermes: self.hermes_chip(),
-            hermes_tone: self
-                .hermes_status()
-                .map_or(titlebar::HermesTone::Fine, |status| status.tone()),
+            hermes_switched_off: switched_off,
+            hermes_tone: if switched_off {
+                titlebar::HermesTone::Paused
+            } else {
+                self.hermes_status()
+                    .map_or(titlebar::HermesTone::Fine, |status| status.tone())
+            },
             lab_shortcut: self
                 .keymap
                 .shortcut_label(&KeyAction::CommandPalette.message()),

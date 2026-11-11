@@ -3776,14 +3776,40 @@ mod title_bar {
     }
 
     #[test]
-    fn the_chip_is_absent_while_hermes_is_off() {
+    fn the_chip_says_hermes_is_off_while_the_switch_is_off() {
         let shows_chip = |app: &App| {
             simulator(app)
                 .find(iced::widget::Id::new(HERMES_CHIP_ID))
                 .is_ok()
         };
-        assert!(!shows_chip(&App::with_fixed_panels()));
+        let switched_off = || {
+            App::with_settings_file(
+                crate::messages::SettingsFeature::Look,
+                Ok(crate::config::from_text("[hermes]\nenabled = false\n").unwrap()),
+            )
+        };
+        let off = switched_off();
+        assert!(shows_chip(&off));
+        assert_eq!(off.hermes_chip_for_test().as_deref(), Some("Hermes off"));
+        let german = switched_off().in_language(Language::German);
+        assert_eq!(german.hermes_chip_for_test().as_deref(), Some("Hermes aus"));
         assert!(shows_chip(&with_hermes()));
+    }
+
+    #[test]
+    fn a_click_on_the_off_chip_opens_the_ai_settings() {
+        let mut app = App::with_settings_file(
+            crate::messages::SettingsFeature::Look,
+            Ok(crate::config::from_text("[hermes]\nenabled = false\n").unwrap()),
+        );
+        let messages = messages_after_click(&app, HERMES_CHIP_ID);
+        assert_eq!(messages, vec![Message::ShowAiSettings]);
+        for message in messages {
+            drop(app.update(message));
+        }
+        simulator(&app)
+            .find("One model for everything: sorting, chat (F2), rules, name suggestions.")
+            .unwrap();
     }
 
     #[test]
@@ -4614,23 +4640,6 @@ mod settings_tab {
     }
 
     #[test]
-    fn an_own_ai_server_matches_its_snapshots() {
-        both_languages(
-            || {
-                let mut app = settings_with(
-                    SettingsFeature::Hermes,
-                    "[modules.filing.ai]\nprovider = \"http\"\n\
-                     endpoint = \"http://localhost:11434\"\nmodel = \"qwen2.5:7b\"\n\n\
-                     [theme]\npreset = \"cosmic\"\n",
-                );
-                drop(app.update(Message::Settings(SettingsMessage::ServerDialog(true))));
-                app
-            },
-            "settings_ai_server",
-        );
-    }
-
-    #[test]
     fn a_config_that_does_not_load_is_named_at_the_top() {
         both_languages(
             || {
@@ -4673,7 +4682,7 @@ mod settings_tab {
 
     #[test]
     fn the_search_filters_the_rows_by_label() {
-        let mut app = App::with_settings_open(SettingsFeature::Hermes, hermes_config());
+        let mut app = App::with_settings_open(SettingsFeature::Ai, hermes_config());
         simulator(&app).find("On").expect("the switch");
         drop(app.update(Message::Settings(SettingsMessage::SearchChanged(
             "rules".to_owned(),
@@ -5300,7 +5309,7 @@ mod settings_index_page {
         assert_eq!(
             sim.into_messages().collect::<Vec<_>>(),
             [Message::Settings(SettingsMessage::FocusThen(
-                8,
+                6,
                 Some(Box::new(SettingsMessage::Protection(2)))
             ))]
         );

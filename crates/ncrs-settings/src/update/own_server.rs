@@ -1,4 +1,4 @@
-//! The dialog of the own server (key, test, save) and the Usage page's log.
+//! The own server of the AI page (key, test, save, agreement) and the Usage page's log.
 
 use iced::Task;
 use ncrs_ai::Secret;
@@ -8,16 +8,16 @@ use ncrs_i18n::{fill_template, Msg};
 use super::page::in_settings;
 use crate::ai_server::{AiCheckJob, AiCheckResult};
 use crate::ctx::Ctx;
-use crate::message::{Message, SettingChange, SettingField, SettingsMessage};
+use crate::message::{Message, SettingField, SettingsMessage};
 use crate::settings::{AiCheck, FieldProblem, SettingsState, USAGE_PERIODS};
 use crate::state::Settings;
-use crate::write::write_setting;
 
 pub fn update(settings: &mut Settings, message: SettingsMessage, ctx: &Ctx<'_>) -> Task<Message> {
     match message {
         SettingsMessage::AiKey(key) => in_page(settings, |state| state.type_key(key)),
-        SettingsMessage::ConfirmAiConsent => confirm_consent(settings, ctx),
-        SettingsMessage::CancelAiConsent => in_page(settings, SettingsState::cancel_consent),
+        SettingsMessage::ConfirmAiConsent => {
+            in_settings(settings, ctx, SettingsState::agree_to_server)
+        }
         SettingsMessage::TestAiServer => test_server(settings, ctx),
         SettingsMessage::AiChecked { endpoint, result } => {
             in_page(settings, |state| state.checked(&endpoint, result))
@@ -35,19 +35,6 @@ pub fn update(settings: &mut Settings, message: SettingsMessage, ctx: &Ctx<'_>) 
         SettingsMessage::UsageLoaded(sums) => in_page(settings, |state| state.usage = Some(sums)),
         _ => Task::none(),
     }
-}
-
-/// The user said yes: the server joins the ones agreed to and the switch is
-/// written with it.
-fn confirm_consent(settings: &mut Settings, ctx: &Ctx<'_>) -> Task<Message> {
-    let Some(ask) = settings
-        .page
-        .as_mut()
-        .and_then(|state| state.consent_pending.take())
-    else {
-        return Task::none();
-    };
-    write_setting(settings, SettingChange::AiProvider(ask.agreed()), ctx)
 }
 
 fn in_page(settings: &mut Settings, edit: impl FnOnce(&mut SettingsState)) -> Task<Message> {

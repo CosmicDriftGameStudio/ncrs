@@ -1957,6 +1957,12 @@
       "de": "Hermes: {problem}"
     },
     {
+      "key": "title_bar.hermes_off",
+      "context": "Chip in the title bar while the Hermes switch (the module that sorts documents) is off; pressing it opens the AI page of the settings, where the switch is.",
+      "en": "Hermes off",
+      "de": "Hermes aus"
+    },
+    {
       "key": "title_bar.hermes_paused",
       "context": "Chip in the title bar while the filing module (Hermes) is paused; pressing it opens the Inspection.",
       "en": "Hermes paused",
@@ -3350,21 +3356,21 @@
     },
     {
       "key": "settings.row_ai_provider",
-      "context": "Name of the setting on the filing page that tells where the AI runs. Shown read only.",
-      "en": "Provider",
-      "de": "Anbieter"
+      "context": "Label of the choice on the AI page of the settings tab that tells where the AI model runs: on this computer or on a server. Question; the two answers are the segments beside it, the word server is meant to be searchable.",
+      "en": "Where does the model run?",
+      "de": "Wo läuft das Modell?"
     },
     {
       "key": "settings.row_ai_provider_note",
-      "context": "Explanation under the AI provider setting: the model can run on this machine or on a server of the user's own.",
-      "en": "Where the model runs.",
-      "de": "Wo das Modell läuft."
+      "context": "Description under the choice on the AI page of the settings tab that tells where the AI model runs. The words computer and server are meant to be searchable.",
+      "en": "On this computer or on your own server.",
+      "de": "Auf diesem Computer oder auf deinem eigenen Server."
     },
     {
       "key": "settings.provider_local",
-      "context": "Value of the AI provider setting when the model runs on this machine.",
-      "en": "Local model",
-      "de": "Lokales Modell"
+      "context": "Segment of the choice where the AI model runs: on this computer. Short.",
+      "en": "This computer",
+      "de": "Dieser Computer"
     },
     {
       "key": "settings.provider_http",
@@ -3710,9 +3716,9 @@
     },
     {
       "key": "settings.row_ai_endpoint",
-      "context": "Name of a setting in the AI group of the filing page: the web address of the own AI server.",
-      "en": "Endpoint",
-      "de": "Endpunkt"
+      "context": "Name of a setting on the AI page of the settings tab: the web address of the own AI server.",
+      "en": "Address",
+      "de": "Adresse"
     },
     {
       "key": "settings.row_ai_endpoint_note",
@@ -3781,22 +3787,28 @@
       "de": "Modell wählen"
     },
     {
-      "key": "settings.ai_leaving_warning",
-      "context": "Warning in the own server dialog when the server is on another computer. Hermes is the module that sorts documents. {host} is the name of that computer.",
-      "en": "Your documents leave this computer. When Hermes uses this server, the text of the documents it reads and your chat go to {host}.",
-      "de": "Deine Dokumente verlassen diesen Rechner. Wenn Hermes diesen Server nutzt, gehen der Text der Dokumente, die er liest, und dein Chat an {host}."
+      "key": "settings.ai_section_sent",
+      "context": "Heading of the section of the AI page of the settings tab that lists what goes to an AI server on another computer. Only shown for such a server.",
+      "en": "What goes to the server",
+      "de": "Was an den Server geht"
     },
     {
-      "key": "settings.ai_consent_title",
-      "context": "Title of the question that opens when the user switches Hermes (the module that sorts documents) from a model on this computer to a server on another computer. Noun phrase.",
-      "en": "Send data to another computer",
-      "de": "Daten an einen anderen Rechner senden"
+      "key": "settings.ai_consent_row",
+      "context": "Label of the row under the list of what goes to an AI server on another computer: whether the user agreed to send it. Agreement is given for each server. The word server is meant to be searchable.",
+      "en": "Agreed for this server",
+      "de": "Freigabe für diesen Server"
     },
     {
-      "key": "settings.ai_consent_intro",
-      "context": "First line of the question about switching to a server on another computer. A list of what is sent follows. {host} is the name of that computer. The AI model is the program that reads documents and answers in the chat.",
-      "en": "If you switch to this model, the following goes to {host}. The model runs there, not on this computer:",
-      "de": "Wenn du zu diesem Modell wechselst, geht Folgendes an {host}. Das Modell läuft dort, nicht auf diesem Rechner:"
+      "key": "settings.ai_consent_state_given",
+      "context": "Status in the row about sending data to an AI server on another computer: the user agreed. Short, dim.",
+      "en": "allowed",
+      "de": "freigegeben"
+    },
+    {
+      "key": "settings.ai_consent_state_missing",
+      "context": "Status in the row about sending data to an AI server on another computer: the user has not agreed yet, so nothing is sent. The button Allow follows. Short.",
+      "en": "not allowed yet",
+      "de": "nicht freigegeben"
     },
     {
       "key": "settings.ai_consent_item_documents",
@@ -3824,15 +3836,15 @@
     },
     {
       "key": "settings.ai_consent_outro",
-      "context": "Last paragraph of the question about switching to a server on another computer, below the list of what is sent.",
-      "en": "What the server does with this is up to whoever runs it. You can switch back to the model on this computer at any time. You are asked once for each server.",
-      "de": "Was der Server damit macht, entscheidet, wer ihn betreibt. Du kannst jederzeit zum Modell auf diesem Rechner zurückwechseln. Du wirst einmal pro Server gefragt."
+      "context": "Last paragraph of the section about sending data to a server on another computer, below the list of what is sent.",
+      "en": "What the server does with this is up to whoever runs it. You can switch back to the model on this computer at any time. The approval holds for this one server only.",
+      "de": "Was der Server damit macht, entscheidet, wer ihn betreibt. Du kannst jederzeit zum Modell auf diesem Rechner zurückwechseln. Die Freigabe gilt nur für diesen einen Server."
     },
     {
       "key": "settings.ai_consent_confirm",
-      "context": "Button that confirms the question about sending data to a server on another computer and switches the model. Verb phrase.",
-      "en": "Allow and switch",
-      "de": "Erlauben und wechseln"
+      "context": "Button beside the status not allowed yet: the user agrees that the listed data is sent to the AI server on another computer. Saves the server too. Verb.",
+      "en": "Allow",
+      "de": "Freigeben"
     },
     {
       "key": "settings.ai_key_not_stored",
@@ -3842,7 +3854,7 @@
     },
     {
       "key": "settings.server_dialog_save",
-      "context": "Button of the own server dialog that writes address, key and model. Verb.",
+      "context": "Button in the Connection row of the AI page that writes address, key and model of the own server. Verb.",
       "en": "Save",
       "de": "Speichern"
     },
@@ -8299,10 +8311,34 @@
       "de": "Texterkennung"
     },
     {
-      "key": "settings.index_section_ai",
-      "context": "Heading of the section of the Index page of the settings tab about the AI model that understands documents.",
-      "en": "AI model",
-      "de": "KI-Modell"
+      "key": "settings.feature_ai",
+      "context": "Entry of the feature list on the settings tab and title of its page: the AI model Hermes (the module that sorts documents) uses, and the switch that turns Hermes on. German KI is short for künstliche Intelligenz. Short.",
+      "en": "AI",
+      "de": "KI"
+    },
+    {
+      "key": "settings.feature_ai_intro",
+      "context": "Sentence under the title of the AI page of the settings tab. Hermes is the module that sorts documents; the chat is opened with F2.",
+      "en": "One model for everything: sorting, chat (F2), rules, name suggestions.",
+      "de": "Ein Modell für alles: Sortieren, Chat (F2), Regeln, Namensvorschläge."
+    },
+    {
+      "key": "settings.ai_section_model",
+      "context": "Heading of the section of the AI page of the settings tab about the AI model: where it runs and how it is set up.",
+      "en": "Model",
+      "de": "Modell"
+    },
+    {
+      "key": "settings.ai_row_local",
+      "context": "Label of the row of the AI page about the AI model on this computer; its state and the button to load it follow. The word model is meant to be searchable.",
+      "en": "Model on this computer",
+      "de": "Modell auf diesem Computer"
+    },
+    {
+      "key": "settings.ai_row_connection",
+      "context": "Label of the row of the AI page with the buttons that test the own AI server and save its address, model and key. Its status line tells what the test found.",
+      "en": "Connection",
+      "de": "Verbindung"
     },
     {
       "key": "settings.index_section_own",
@@ -8395,12 +8431,6 @@
       "de": "Springt ein, wenn macOS eine Seite nicht lesen kann. 2 Dateien, 40 MB. Auf Linux und Windows der einzige Erkenner."
     },
     {
-      "key": "settings.index_row_ai",
-      "context": "Label of the row of the Index page about the AI model on this computer.",
-      "en": "Understands documents and the chat",
-      "de": "Versteht Dokumente und den Chat"
-    },
-    {
       "key": "filing_status.ai_loaded",
       "context": "Second line under the AI model row of the Index page of the settings tab when the model is in memory. Takes the file name, the memory it uses with its unit (for example 2.5 GB) and what it computes on: the name of the graphics device, or the word for the processor.",
       "en": "{name} · {memory} in memory · runs on {compute}",
@@ -8420,15 +8450,9 @@
     },
     {
       "key": "settings.index_row_ai_note",
-      "context": "Description under the row about the AI model on the Index page. Qwen3-4B is the name of the model.",
+      "context": "Description under the row about the AI model on this computer on the AI page. Qwen3-4B is the name of the model.",
       "en": "Qwen3-4B. Without a model only file names and dates.",
       "de": "Qwen3-4B. Ohne Modell nur Dateinamen und Datum."
-    },
-    {
-      "key": "settings.index_row_ai_note_server",
-      "context": "Description under the row about the AI model on the Index page while Hermes uses the own server instead of the local model; the server and its model are named beside it.",
-      "en": "Hermes uses your own server. Without a model only file names and dates.",
-      "de": "Hermes nutzt deinen eigenen Server. Ohne Modell nur Dateinamen und Datum."
     },
     {
       "key": "settings.index_ai_off",
@@ -8441,12 +8465,6 @@
       "context": "State of the AI model on the Index page: the model is not on this computer.",
       "en": "not loaded",
       "de": "nicht geladen"
-    },
-    {
-      "key": "settings.index_ai_not_allowed",
-      "context": "State of the AI on the Index page: an own server on another computer is set up, but the user has not agreed yet that documents are sent to it, so nothing is sent. Saving the server again asks. Short phrase.",
-      "en": "not allowed yet",
-      "de": "nicht freigegeben"
     },
     {
       "key": "settings.index_ai_downloading",
@@ -8477,24 +8495,6 @@
       "context": "State of the AI on the Index page: it was switched on and starts when ncrs is started the next time.",
       "en": "starts at the next start",
       "de": "startet beim nächsten Start"
-    },
-    {
-      "key": "settings.index_row_server",
-      "context": "Label of the row of the Index page that sets up an own AI server in place of the model on this computer.",
-      "en": "Own server instead of the local model",
-      "de": "Eigener Server statt lokalem Modell"
-    },
-    {
-      "key": "settings.index_row_server_note",
-      "context": "Description under the row about the own AI server on the Index page.",
-      "en": "Address and model name. Only if you run one.",
-      "de": "Adresse und Modellname. Nur, wenn du einen betreibst."
-    },
-    {
-      "key": "settings.index_server_setup",
-      "context": "Button in the row about the own AI server on the Index page: shows the fields for address and model name.",
-      "en": "Set up …",
-      "de": "Einrichten …"
     },
     {
       "key": "settings.index_own_note",
@@ -8581,26 +8581,20 @@
       "de": "Zeigen"
     },
     {
-      "key": "settings.hermes_row_switch",
-      "context": "Label of the switch at the top of the Hermes page of the settings tab that turns Hermes, the filing assistant, on or off as a whole.",
-      "en": "Hermes",
-      "de": "Hermes"
-    },
-    {
       "key": "settings.hermes_row_switch_note",
-      "context": "Description under the Hermes switch at the top of the Hermes page. Off: Hermes watches no read folders and asks no AI model for sorting documents, the chat, rename suggestions or learning rules. On: it uses the own server if one is set up, else the model on this computer.",
-      "en": "Off: Hermes watches no folders and asks no AI model. On: own server if set up, else the model on this computer.",
-      "de": "Aus: Hermes beobachtet keine Ordner und fragt kein KI-Modell. An: eigener Server, wenn eingerichtet, sonst das Modell auf diesem Computer."
+      "context": "Description under the Hermes switch at the top of the AI page of the settings tab. Off: Hermes watches no read folders and asks no AI model for sorting documents, the chat, rename suggestions or learning rules.",
+      "en": "Off: no folders watched, no model asked.",
+      "de": "Aus: keine Ordner beobachtet, kein Modell gefragt."
     },
     {
       "key": "settings.hermes_switch_on",
-      "context": "Option of the segment at the top of the Hermes page: Hermes works. One word.",
+      "context": "Option of the segment at the top of the AI page: Hermes works. One word.",
       "en": "On",
       "de": "An"
     },
     {
       "key": "settings.hermes_switch_off",
-      "context": "Option of the segment at the top of the Hermes page: Hermes watches no folders and calls no AI model. One word.",
+      "context": "Option of the segment at the top of the AI page: Hermes watches no folders and calls no AI model. One word.",
       "en": "Off",
       "de": "Aus"
     },
@@ -8837,12 +8831,6 @@
       "context": "Label of the row of the Index page that shows whether the index is encrypted. Noun.",
       "en": "Encryption",
       "de": "Verschlüsselung"
-    },
-    {
-      "key": "settings.server_dialog_title",
-      "context": "Title of the small dialog opened with Set up on the own server row of the Index page. Noun phrase.",
-      "en": "Own server",
-      "de": "Eigener Server"
     },
     {
       "key": "settings.folder_dialog_transfer",

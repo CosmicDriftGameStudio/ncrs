@@ -1,5 +1,5 @@
-//! The one question before a model on another computer gets anything: what
-//! goes to it, asked once for each server.
+//! What goes to a model on another computer, and the agreement to it, given
+//! once for each server.
 
 use ncrs_config::config::AiProviderChoice;
 use ncrs_i18n::Msg;
@@ -34,7 +34,7 @@ pub const MODEL_CALL_SITES: &[ModelCallSite] = &[
 ];
 
 /// The set-up server is off this computer and not agreed to: nothing is sent
-/// to it. The same check as the question before a switch.
+/// to it.
 pub fn server_is_not_allowed(setting: &ncrs_config::config::AiSetting) -> bool {
     let ncrs_config::config::AiSetting::Http {
         endpoint,
@@ -52,23 +52,36 @@ pub fn server_is_not_allowed(setting: &ncrs_config::config::AiSetting) -> bool {
     .is_some()
 }
 
-/// What the question lists, in this order.
+/// What the AI page lists under the server, in this order.
 pub fn announced_items() -> impl Iterator<Item = Msg> {
     MODEL_CALL_SITES.iter().map(|site| site.announced_as)
 }
 
-/// The switch that waits for the user's yes.
+/// The agreement a server still needs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConsentAsk {
     pub choice: AiProviderChoice,
     /// `scheme://host[:port]`, what the consent is kept for.
     pub origin: String,
-    /// The computer the documents would go to.
-    pub host: String,
+}
+
+/// Whether the user agreed to send to the server at `endpoint`: `None` for a
+/// server on this computer or an address that is no server, which need no
+/// agreement.
+pub fn server_agreed(endpoint: &str, consented_origins: &[String]) -> Option<bool> {
+    if ncrs_ai::endpoint_is_local(endpoint) != Ok(false) {
+        return None;
+    }
+    let asked = ConsentAsk::needed_for(&AiProviderChoice::Http {
+        endpoint: endpoint.to_owned(),
+        model: String::new(),
+        consented_origins: consented_origins.to_vec(),
+    });
+    Some(asked.is_none())
 }
 
 impl ConsentAsk {
-    /// The question `choice` needs before it is written: its server is not on
+    /// What `choice` still needs before it may send: its server is not on
     /// this computer and not among the ones agreed to.
     pub fn needed_for(choice: &AiProviderChoice) -> Option<Self> {
         let AiProviderChoice::Http {
@@ -83,7 +96,6 @@ impl ConsentAsk {
             return None;
         }
         let origin = ncrs_ai::endpoint_origin(endpoint).ok()?;
-        let host = ncrs_ai::endpoint_host(endpoint).ok()?;
         let granted = ncrs_ai::ConsentGivenInSettings::new(consented_origins);
         if ncrs_ai::ConsentLedger::granted(&granted, &origin, std::path::Path::new("")) {
             return None;
@@ -91,7 +103,6 @@ impl ConsentAsk {
         Some(Self {
             choice: choice.clone(),
             origin,
-            host,
         })
     }
 
@@ -214,7 +225,7 @@ mod tests {
     }
 
     #[test]
-    fn every_place_that_calls_the_model_is_announced_in_the_question_and_only_those() {
+    fn every_place_that_calls_the_model_is_announced_on_the_ai_page_and_only_those() {
         let mut announced: Vec<String> = MODEL_CALL_SITES
             .iter()
             .map(|site| site.file.to_owned())
@@ -226,8 +237,8 @@ mod tests {
                 .lines()
                 .any(|line| CALLS.iter().any(|call| line.contains(call)))),
             announced,
-            "a place that calls the model needs a line in the question (ai_consent.rs \
-             and strings.json); a place that no longer does must lose its line"
+            "a place that calls the model needs a line in the list on the AI page \
+             (ai_consent.rs and strings.json); a place that no longer does must lose its line"
         );
 
         // Every model is built from the resolved setting and nowhere else.
@@ -240,6 +251,14 @@ mod tests {
                 "src/app/hermes_chat.rs"
             ],
             "a new place that builds a model must take the resolved AiSetting"
+        );
+        // The list the user agrees to is the one drawn from the call sites.
+        let page = "crates/ncrs-settings/src/settings/view/ai_page.rs";
+        assert!(
+            guarded_sources()
+                .iter()
+                .any(|(file, code)| file == page && code.contains("announced_items()")),
+            "the AI page must list every announced item"
         );
         // What reaches the chat, batch rename (local and SFTP) and the rules
         // flow is that model, handed over only while Hermes is on.
@@ -256,7 +275,7 @@ mod tests {
     }
 
     #[test]
-    fn every_line_of_the_question_is_announced_once() {
+    fn every_line_of_the_list_is_announced_once() {
         let mut lines: Vec<&str> = announced_items().map(|item| item.key()).collect();
         lines.sort_unstable();
         lines.dedup();
@@ -275,11 +294,10 @@ mod tests {
     }
 
     #[test]
-    fn a_server_off_this_computer_needs_the_question_until_its_origin_is_agreed() {
+    fn a_server_off_this_computer_needs_the_agreement_until_its_origin_is_agreed() {
         let far = http("https://ai.example.com/v1", &[]);
         let ask = ConsentAsk::needed_for(&far).unwrap();
         assert_eq!(ask.origin, "https://ai.example.com");
-        assert_eq!(ask.host, "ai.example.com");
 
         let AiProviderChoice::Http {
             consented_origins, ..
@@ -305,6 +323,18 @@ mod tests {
             &["https://ai.example.com"]
         ))
         .is_some());
+    }
+
+    #[test]
+    fn the_agreement_is_asked_of_a_server_off_this_computer_only() {
+        let given = vec!["https://ai.example.com".to_owned()];
+        assert_eq!(
+            server_agreed("https://ai.example.com/v1", &given),
+            Some(true)
+        );
+        assert_eq!(server_agreed("https://ai.example.com/v1", &[]), Some(false));
+        assert_eq!(server_agreed("http://localhost:11434", &[]), None);
+        assert_eq!(server_agreed("not an address", &[]), None);
     }
 
     #[test]
@@ -334,7 +364,7 @@ mod tests {
     }
 
     #[test]
-    fn the_model_on_this_computer_never_needs_the_question() {
+    fn the_model_on_this_computer_never_needs_the_agreement() {
         assert_eq!(
             ConsentAsk::needed_for(&AiProviderChoice::Local { threads: None }),
             None

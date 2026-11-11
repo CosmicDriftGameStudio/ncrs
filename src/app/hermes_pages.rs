@@ -98,7 +98,7 @@ impl App {
     /// Sends the user to the Hermes settings, where Hermes is switched on,
     /// with the reason in the status bar.
     pub(in crate::app) fn explain_hermes_is_off(&mut self) -> Task<Message> {
-        let shown = self.show_setting(crate::messages::SettingsFeature::Hermes, None);
+        let shown = self.show_setting(crate::messages::SettingsFeature::Ai, None);
         let reason = self.lang.text(Msg::StatusHermesIsOff).to_owned();
         self.set_status_error(&reason);
         shown

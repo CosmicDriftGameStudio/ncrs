@@ -32,7 +32,7 @@ fn app_on_the_index_page(config_dir: &tempfile::TempDir) -> App {
     let config_path = config_dir.path().join("config.toml");
     std::fs::write(&config_path, source).unwrap();
     let config = crate::config::from_text(source).unwrap();
-    let mut app = App::with_settings_file(SettingsFeature::Index, Ok(config));
+    let mut app = App::with_settings_file(SettingsFeature::Ai, Ok(config));
     app.config_path = Some(config_path);
     app.hermes.index_path = Some(config_dir.path().join("index.db"));
     app.download_ai_model = quiet_download;
@@ -45,7 +45,6 @@ async fn load_the_local_model(app: &mut App) {
 }
 
 async fn set_up_the_server_on_localhost(app: &mut App) {
-    settle(app, Message::Settings(SettingsMessage::ServerDialog(true))).await;
     settle(
         app,
         Message::Settings(SettingsMessage::ChooseProvider(
@@ -250,11 +249,6 @@ async fn the_reported_bug_download_then_a_server_on_127_0_0_1_gets_the_chat_call
     load_the_local_model(&mut app).await;
     settle(
         &mut app,
-        Message::Settings(SettingsMessage::ServerDialog(true)),
-    )
-    .await;
-    settle(
-        &mut app,
         Message::Settings(SettingsMessage::ChooseProvider(
             crate::config::AiProviderName::Http,
         )),
@@ -325,14 +319,14 @@ fn the_index_ai_state(app: &App) -> ncrs_settings::facts::AiState {
 }
 
 #[tokio::test]
-async fn an_unconsented_remote_server_is_not_allowed_and_saving_it_unchanged_asks_once() {
+async fn an_unconsented_remote_server_is_not_allowed_and_agreeing_inline_writes_the_origin() {
     let source = "[modules.filing.ai]\nprovider = \"http\"\n\
                   endpoint = \"https://unreachable.invalid\"\nmodel = \"m\"\n";
     let config_dir = tempfile::tempdir().unwrap();
     let config_path = config_dir.path().join("config.toml");
     std::fs::write(&config_path, source).unwrap();
     let config = crate::config::from_text(source).unwrap();
-    let mut app = App::with_settings_file(SettingsFeature::Index, Ok(config));
+    let mut app = App::with_settings_file(SettingsFeature::Ai, Ok(config));
     app.config_path = Some(config_path);
     app.hermes.index_path = Some(config_dir.path().join("index.db"));
     assert_eq!(
@@ -340,20 +334,15 @@ async fn an_unconsented_remote_server_is_not_allowed_and_saving_it_unchanged_ask
         ncrs_settings::facts::AiState::NotAllowed
     );
 
-    settle(
-        &mut app,
-        Message::Settings(SettingsMessage::ServerDialog(true)),
-    )
-    .await;
     settle(&mut app, Message::Settings(SettingsMessage::SaveServer)).await;
-    let asked = app
-        .settings
-        .page
-        .as_ref()
-        .and_then(|state| state.consent_pending.as_ref())
-        .map(|ask| ask.origin.clone());
-    assert_eq!(asked.as_deref(), Some("https://unreachable.invalid"));
-    assert!(!config_text(&config_dir).contains("consented_origins"));
+    let agreed = |app: &App| {
+        app.settings
+            .page
+            .as_ref()
+            .and_then(ncrs_settings::settings::SettingsState::server_agreed)
+    };
+    assert_eq!(agreed(&app), Some(false));
+    assert!(!config_text(&config_dir).contains("consented_origins = [\""));
 
     settle(
         &mut app,
@@ -368,4 +357,5 @@ async fn an_unconsented_remote_server_is_not_allowed_and_saving_it_unchanged_ask
         the_index_ai_state(&app),
         ncrs_settings::facts::AiState::NotAllowed
     );
+    assert_eq!(agreed(&app), Some(true));
 }

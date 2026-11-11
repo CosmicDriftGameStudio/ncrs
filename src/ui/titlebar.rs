@@ -84,8 +84,10 @@ pub struct PageTabState {
 pub struct TitleBar<'a> {
     pub tabs: [Tab<'a>; 2],
     pub home: &'a Path,
-    /// The Hermes text while it is on; `None` hides it.
+    /// The Hermes text; `None` hides it.
     pub hermes: Option<String>,
+    /// The Hermes switch is off: the chip opens the AI page, where it is.
+    pub hermes_switched_off: bool,
     /// How the dot of Hermes is coloured.
     pub hermes_tone: HermesTone,
     /// The key of the command palette, if it has one.
@@ -266,7 +268,11 @@ pub fn view<'a>(bar: &TitleBar<'a>) -> Element<'a, Message> {
                     .spacing(BUTTON_CONTENT_GAP)
                     .align_y(alignment::Vertical::Center),
                 )
-                .on_press(Message::FilingStatus(FilingStatusMessage::Open))
+                .on_press(if bar.hermes_switched_off {
+                    Message::ShowAiSettings
+                } else {
+                    Message::FilingStatus(FilingStatusMessage::Open)
+                })
                 .padding([0.0, BUTTON_PADDING_X])
                 .height(size::BUTTON)
                 .style(theme::icon_button(palette)),

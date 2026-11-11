@@ -195,9 +195,12 @@ fn server_failure(hermes: &Hermes) -> Option<ncrs_ai::ReplyFailure> {
     }
 }
 
-/// The title bar chip: Hermes is on, and how fast it files. Absent while the
-/// module is off.
+/// The title bar chip: how fast Hermes files, or that its switch is off.
+/// Absent while the module is not running for another reason.
 pub fn hermes_chip(hermes: &Hermes, lang: Language) -> Option<String> {
+    if !hermes.filing_config.hermes_on() {
+        return Some(lang.text(Msg::TitleBarHermesOff).to_owned());
+    }
     let text = match hermes.filing_status.snapshot().state {
         RunnerState::Off => return None,
         RunnerState::Paused => lang.text(Msg::TitleBarHermesPaused).to_owned(),

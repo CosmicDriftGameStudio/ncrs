@@ -5,7 +5,7 @@ use iced::widget::{column, row, Row};
 use iced::{alignment, Element};
 
 use super::*;
-use crate::facts::{AiState, ModelKind};
+use crate::facts::ModelKind;
 use crate::folders::AddAs;
 use crate::message::{SettingChange, SettingsMessage};
 use ncrs_config::config::{FilingLocation, OwnDetail};
@@ -23,7 +23,6 @@ pub fn index_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
             ocr_section_rows(view),
             view,
         ),
-        titled(Msg::SettingsIndexSectionAi, None, ai_rows(view), view),
         titled(
             Msg::SettingsIndexSectionOwn,
             Some(Msg::SettingsGroupOwnDetailsIntro),
@@ -204,7 +203,7 @@ fn read_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
 }
 
 /// A state word with a model's buttons beside it.
-fn model_control<'a>(
+pub fn model_control<'a>(
     state: String,
     color: iced::Color,
     buttons: Vec<Element<'a, Message>>,
@@ -221,7 +220,7 @@ fn model_control<'a>(
         .into()
 }
 
-fn load_button<'a>(on_press: Message, view: &SettingsView<'a>) -> Element<'a, Message> {
+pub fn load_button<'a>(on_press: Message, view: &SettingsView<'a>) -> Element<'a, Message> {
     kit::button(
         view.lang.text(Msg::SettingsModelsDownload),
         Some(on_press),
@@ -230,7 +229,7 @@ fn load_button<'a>(on_press: Message, view: &SettingsView<'a>) -> Element<'a, Me
     )
 }
 
-fn remove_model_button<'a>(kind: ModelKind, view: &SettingsView<'a>) -> Element<'a, Message> {
+pub fn remove_model_button<'a>(kind: ModelKind, view: &SettingsView<'a>) -> Element<'a, Message> {
     kit::button(
         view.lang.text(Msg::SettingsRemove),
         Some(SettingsMessage::AskRemoveModel(kind)),
@@ -281,120 +280,6 @@ fn ocr_section_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
         })),
     );
     rows
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum AiButton {
-    Remove,
-    /// The model is on disk and only the switch is off.
-    TurnOn,
-    Load,
-}
-
-pub fn ai_button(ai: &AiState, model_present: bool) -> Option<AiButton> {
-    match ai {
-        AiState::Ready | AiState::NextStart => Some(AiButton::Remove),
-        AiState::Off if model_present => Some(AiButton::TurnOn),
-        AiState::Off | AiState::Missing | AiState::Failed => Some(AiButton::Load),
-        AiState::Downloading | AiState::NotAllowed | AiState::OwnServer { .. } => None,
-    }
-}
-
-fn ai_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
-    let lang = view.lang;
-    let palette = view.palette;
-    // Without a running module the file on disk tells whether the model is there.
-    let ai = match (&view.facts.ai, view.state.ai_model_present) {
-        (AiState::Missing, true) => &AiState::Ready,
-        (other, _) => other,
-    };
-    let (state, color) = match ai {
-        AiState::Off => (
-            lang.text(Msg::SettingsIndexAiOff).to_owned(),
-            palette.dim_text,
-        ),
-        AiState::Missing => (
-            lang.text(Msg::SettingsIndexAiMissing).to_owned(),
-            palette.text,
-        ),
-        AiState::Downloading => (
-            lang.text(Msg::SettingsIndexAiDownloading).to_owned(),
-            palette.dim_text,
-        ),
-        AiState::Ready => (
-            lang.text(Msg::SettingsIndexAiReady).to_owned(),
-            palette.success,
-        ),
-        AiState::OwnServer {
-            failure: Some(failure),
-            ..
-        } => (failure.clone(), palette.error),
-        AiState::OwnServer {
-            model,
-            failure: None,
-        } => (
-            fill_template(lang.text(Msg::SettingsIndexAiServer), &[("{model}", model)]),
-            palette.success,
-        ),
-        AiState::NotAllowed => (
-            lang.text(Msg::SettingsIndexAiNotAllowed).to_owned(),
-            palette.text,
-        ),
-        AiState::Failed => (
-            lang.text(Msg::SettingsIndexAiFailed).to_owned(),
-            palette.error,
-        ),
-        AiState::NextStart => (
-            lang.text(Msg::SettingsIndexAiNextStart).to_owned(),
-            palette.dim_text,
-        ),
-    };
-    let ai_kind = ai_button(ai, view.state.ai_model_present);
-    let ai_press = ai_kind.as_ref().map(|kind| match kind {
-        AiButton::Remove => SettingsMessage::AskRemoveModel(ModelKind::Ai),
-        AiButton::TurnOn => SettingsMessage::Change(SettingChange::HermesSwitch(true)),
-        AiButton::Load => SettingsMessage::OpenAiModel,
-    });
-    let button = ai_kind.map(|kind| match kind {
-        AiButton::Remove => remove_model_button(ModelKind::Ai, view),
-        AiButton::TurnOn => kit::button(
-            lang.text(Msg::AiModelTurnOn),
-            Some(SettingsMessage::Change(SettingChange::HermesSwitch(true))),
-            Tone::Secondary,
-            palette,
-        ),
-        AiButton::Load => load_button(SettingsMessage::OpenAiModel, view),
-    });
-    // The local model's name would be wrong while the own server answers.
-    let note_msg = if matches!(ai, AiState::OwnServer { .. } | AiState::NotAllowed) {
-        Msg::SettingsIndexRowAiNoteServer
-    } else {
-        Msg::SettingsIndexRowAiNote
-    };
-    let mut model = simple_row(
-        Msg::SettingsIndexRowAi,
-        Some(note_msg),
-        model_control(state, color, button.into_iter().collect()),
-        lang,
-    );
-    model.key = ai_press.map(RowKey::Press);
-    if let Some(detail) = &view.facts.ai_detail {
-        let note = lang.text(note_msg);
-        model.description = Some(format!("{note}\n{detail}"));
-    }
-    let server = simple_row(
-        Msg::SettingsIndexRowServer,
-        Some(Msg::SettingsIndexRowServerNote),
-        kit::button(
-            lang.text(Msg::SettingsIndexServerSetup),
-            Some(SettingsMessage::ServerDialog(true)),
-            Tone::Secondary,
-            palette,
-        ),
-        lang,
-    )
-    .keyed(RowKey::Press(SettingsMessage::ServerDialog(true)));
-    vec![model, server]
 }
 
 /// The list of one own detail as chips with a cross, the field for the next

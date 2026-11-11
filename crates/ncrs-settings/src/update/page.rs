@@ -159,7 +159,6 @@ pub fn update(
         | SettingsMessage::AddOwnDetail(_)
         | SettingsMessage::ToggleAllAreas
         | SettingsMessage::ToggleAllRuns
-        | SettingsMessage::ServerDialog(_)
         | SettingsMessage::OpenChat(_)
         | SettingsMessage::TogglePause
         | SettingsMessage::UndoRun(_)
@@ -176,7 +175,6 @@ pub fn update(
         | SettingsMessage::TestAiServer
         | SettingsMessage::AiChecked { .. }
         | SettingsMessage::ConfirmAiConsent
-        | SettingsMessage::CancelAiConsent
         | SettingsMessage::SaveServer
         | SettingsMessage::AiKeyStored(_)
         | SettingsMessage::UsagePeriod(_)

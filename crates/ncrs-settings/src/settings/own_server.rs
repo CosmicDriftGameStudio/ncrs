@@ -1,5 +1,5 @@
-//! What the dialog of the own server remembers: the key typed in it, the answer
-//! of the connection test and the host documents would go to.
+//! What the own server on the AI page remembers: the key typed there and the
+//! answer of the connection test.
 
 use ncrs_ai::Secret;
 
@@ -20,16 +20,6 @@ impl SettingsState {
     /// The address as typed, else the saved one.
     pub fn typed_endpoint(&self) -> String {
         self.field_text(SettingField::AiEndpoint).trim().to_owned()
-    }
-
-    /// The host the documents would go to, when the typed address is a usable
-    /// one that is not on this computer.
-    pub fn host_documents_go_to(&self) -> Option<String> {
-        let typed = self.typed_endpoint();
-        match ncrs_ai::endpoint_is_local(&typed) {
-            Ok(false) => ncrs_ai::endpoint_host(&typed).ok(),
-            Ok(true) | Err(_) => None,
-        }
     }
 
     /// The key is typed again: what the test said about the old one is stale.
@@ -56,18 +46,14 @@ impl SettingsState {
 }
 
 impl SettingsState {
-    /// Save in the dialog: address, model and key are written together. The
-    /// dialog closes unless something is wrong, which then shows at its row.
+    /// Save on the AI page: address, model and key are written together. A
+    /// wrong value shows at its row.
     pub fn save_server(&mut self) -> Option<crate::message::SettingChange> {
         if self.provider() == ncrs_config::config::AiProviderName::Local {
-            self.server_dialog = false;
             return None;
         }
         match self.http_change() {
-            Ok(change) => {
-                self.server_dialog = false;
-                Some(change)
-            }
+            Ok(change) => Some(change),
             Err((field, problem)) => {
                 self.problems.insert(field, problem);
                 None
@@ -105,27 +91,6 @@ mod tests {
     }
 
     #[test]
-    fn the_host_documents_go_to_is_named_only_for_an_address_off_this_computer() {
-        let mut state = state_of(SAVED);
-        typed(
-            &mut state,
-            SettingField::AiEndpoint,
-            "https://other.example.org",
-        );
-        assert_eq!(
-            state.host_documents_go_to().as_deref(),
-            Some("other.example.org")
-        );
-
-        typed(
-            &mut state,
-            SettingField::AiEndpoint,
-            "http://localhost:11434",
-        );
-        assert_eq!(state.host_documents_go_to(), None);
-    }
-
-    #[test]
     fn saving_a_new_address_hands_the_change_on_with_the_servers_agreed_to_so_far() {
         let mut state = state_of(SAVED);
         typed(
@@ -133,7 +98,6 @@ mod tests {
             SettingField::AiEndpoint,
             "https://other.example.org",
         );
-        state.server_dialog = true;
         assert_eq!(
             state.save_server(),
             Some(SettingChange::AiProvider(AiProviderChoice::Http {
@@ -142,7 +106,6 @@ mod tests {
                 consented_origins: vec!["https://api.example.com".to_owned()],
             }))
         );
-        assert!(!state.server_dialog);
     }
 
     #[test]
@@ -177,12 +140,12 @@ mod tests {
     }
 
     #[test]
-    fn leaving_the_dialog_for_the_local_model_writes_nothing() {
+    fn choosing_the_local_model_forgets_the_key_and_the_test_and_saving_writes_nothing() {
         let mut state = state_of(SAVED);
-        state.server_dialog = true;
+        state.type_key(Secret::new("sk-new".to_owned()));
+        state.ai_check = AiCheck::Asking;
         assert!(state.choose_provider(AiProviderName::Local).is_some());
-        state.server_dialog = true;
+        assert!(state.ai_key.is_none() && state.ai_check == AiCheck::Idle);
         assert_eq!(state.save_server(), None);
-        assert!(!state.server_dialog);
     }
 }

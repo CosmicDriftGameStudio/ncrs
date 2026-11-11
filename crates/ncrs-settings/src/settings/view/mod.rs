@@ -1,21 +1,21 @@
+mod ai_page;
 mod columns_page;
 mod favourites_page;
 mod font_rows;
 mod groups;
 mod hermes_page;
 mod index_page;
-mod own_server_dialog;
 mod page;
 mod system_page;
 mod usage_page;
 
+use ai_page::ai_groups;
 use columns_page::columns_groups;
 use favourites_page::favourites_groups;
 use font_rows::font_rows;
 use groups::*;
 use hermes_page::hermes_groups;
 use index_page::index_groups;
-pub use own_server_dialog::server_dialog_body;
 pub use page::focus_facts;
 use page::*;
 use system_page::system_groups;
@@ -165,6 +165,7 @@ fn feature_label(feature: SettingsFeature) -> Msg {
         SettingsFeature::System => Msg::SettingsFeatureSystem,
         SettingsFeature::Updates => Msg::SettingsFeatureUpdates,
         SettingsFeature::Index => Msg::SettingsFeatureIndex,
+        SettingsFeature::Ai => Msg::SettingsFeatureAi,
         SettingsFeature::Hermes => Msg::SettingsFeatureHermes,
         SettingsFeature::Rules => Msg::SettingsFeatureRules,
         SettingsFeature::Tags => Msg::SettingsFeatureTags,
@@ -177,7 +178,8 @@ fn feature_label(feature: SettingsFeature) -> Msg {
 fn feature_theme_name(feature: SettingsFeature) -> Option<FuturamaName> {
     match feature {
         SettingsFeature::Hermes => Some(FuturamaName::GroupHermes),
-        SettingsFeature::Look
+        SettingsFeature::Ai
+        | SettingsFeature::Look
         | SettingsFeature::Language
         | SettingsFeature::Programs
         | SettingsFeature::Keys
@@ -208,7 +210,8 @@ fn group_label(group: SettingsGroup) -> Msg {
 fn feature_suffix(feature: SettingsFeature) -> Option<Msg> {
     match feature {
         SettingsFeature::Hermes => Some(Msg::SettingsFeatureHermesSorting),
-        SettingsFeature::Look
+        SettingsFeature::Ai
+        | SettingsFeature::Look
         | SettingsFeature::Language
         | SettingsFeature::Programs
         | SettingsFeature::Keys
@@ -229,7 +232,8 @@ fn feature_suffix(feature: SettingsFeature) -> Option<Msg> {
 fn feature_beta_mark(feature: SettingsFeature) -> Option<Msg> {
     match feature {
         SettingsFeature::Hermes => Some(Msg::HermesBeta),
-        SettingsFeature::Look
+        SettingsFeature::Ai
+        | SettingsFeature::Look
         | SettingsFeature::Language
         | SettingsFeature::Programs
         | SettingsFeature::Keys
@@ -259,6 +263,7 @@ fn feature_intro(feature: SettingsFeature) -> Msg {
         SettingsFeature::System => Msg::SettingsFeatureSystemIntro,
         SettingsFeature::Updates => Msg::SettingsFeatureUpdatesIntro,
         SettingsFeature::Index => Msg::SettingsFeatureIndexIntro,
+        SettingsFeature::Ai => Msg::SettingsFeatureAiIntro,
         SettingsFeature::Hermes => Msg::SettingsFeatureHermesIntro,
         SettingsFeature::Rules => Msg::SettingsFeatureRulesIntro,
         SettingsFeature::Tags => Msg::SettingsFeatureTagsIntro,
@@ -281,7 +286,8 @@ fn feature_config_place(feature: SettingsFeature) -> Option<&'static str> {
         SettingsFeature::Favourites => None,
         SettingsFeature::System => Some(SYSTEM_SECTION),
         SettingsFeature::Index => Some(FILING_SECTION),
-        SettingsFeature::Hermes => Some(HERMES_PAGE_SECTIONS),
+        SettingsFeature::Ai => Some(AI_PAGE_SECTIONS),
+        SettingsFeature::Hermes => Some(FILING_SECTION),
         SettingsFeature::Rules
         | SettingsFeature::Tags
         | SettingsFeature::Reports
@@ -350,6 +356,7 @@ fn groups_of<'a>(feature: SettingsFeature, view: &SettingsView<'a>) -> Vec<Group
         SettingsFeature::Favourites => favourites_groups(view),
         SettingsFeature::System => system_groups(view),
         SettingsFeature::Index => index_groups(view),
+        SettingsFeature::Ai => ai_groups(view),
         SettingsFeature::Hermes => hermes_groups(view),
         SettingsFeature::Rules
         | SettingsFeature::Tags
