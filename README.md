@@ -737,7 +737,7 @@ behaviour, rules and screens of filing may still change before it leaves beta.
 1.0 does not wait for it.
 
 In the app the module is called Hermes (the config section is still `[modules.filing]`). It is set up and managed in Settings
-(Index and Hermes), and it sorts in the chat (`F2`). The settings name the
+(Index, AI and Hermes), and it sorts in the chat (`F2`). The settings name the
 config terms like this:
 
 | Config | English | German |
@@ -762,9 +762,9 @@ names from the show beside the plain ones:
 | Full / Volle Last (`full`) | Grade 36 / Grad 36 |
 
 **Where things are.** Settings › Index holds what ncrs reads, text recognition,
-the AI model, your own names, the protection of the index and its state.
-Settings › Hermes holds the read folders, the order Hermes learned per area,
-and the runs it can undo. Hermes asks in the chat before it moves
+your own names, the protection of the index and its state. Settings › AI holds
+the Hermes switch and the one AI model. Settings › Hermes ("Sorting") holds
+the read folders, the order Hermes learned per area, and the runs it can undo. Hermes asks in the chat before it moves
 anything; documents it is unsure about wait there ("3 documents are waiting
 for you") and are gone through one question at a time. Four more pages are in
 the same Settings list: Rules (`rules`), Tags (`file_list_tags_choose`),
@@ -789,8 +789,9 @@ adding a second one. "New chat" starts over.
 
 ![Settings › Hermes](docs/screenshots/filing.png)
 
-**On/off.** One switch for all of Hermes: "Hermes" at the top of Settings ›
-Hermes. A file without the key has it on. Off, no read folder is watched and no
+**On/off.** One switch for all of Hermes: "Hermes" (On | Off) at the top of
+Settings › AI. While it is off, a dim "Hermes off" chip in the title bar opens
+that page. A file without the key has it on. Off, no read folder is watched and no
 model is called (sorting, chat, name suggestions, learning rules). Files from
 before this key keep their old `[modules.filing] enabled`, which is read once
 when `[hermes] enabled` is missing; ncrs writes only `[hermes] enabled`. An old `[modules.filing.ai] enabled = false` without a `[hermes]` key still means Hermes is off, even with `[modules.filing] enabled = true`; once the switch has been used, `[hermes] enabled` decides.
@@ -823,23 +824,28 @@ threads = 4
   at any time. An interrupted download continues where it stopped, and the file
   is checked against its size and checksum before it is used. On Windows and
   x86_64 Linux the model runs on a Vulkan GPU if a driver is present and on the
-  CPU otherwise; macOS uses Metal and aarch64 Linux the CPU. The row "AI model"
-  in Settings › Index says which ("runs on" the GPU's name or CPU).
+  CPU otherwise; macOS uses Metal and aarch64 Linux the CPU. The row "Model on
+  this computer" in Settings › AI says which ("runs on" the GPU's name or CPU).
 - `http` sends text to an OpenAI-compatible server at `endpoint`: one on this
   machine, or OpenAI, OpenRouter, Anthropic and the like. `endpoint` and `model`
   are required and `threads` is not allowed. Plain `http://` is only allowed
   on this machine (`localhost`, `127.0.0.1` or `::1`), and redirects are not
   followed. Without a consent given for that server, nothing is sent.
-- Settings › Index › "Own server instead of the local model" sets it up: the
-  address, the key (kept in the keychain, never in the file), "Test connection"
-  with the server's model list, and the model. A server off this machine needs
-  the "I understand" tick first, because documents then leave the computer.
+- Settings › AI sets it up: "Where does the model run?" with "This computer" or
+  "Own server". For the own server the page has the address, the key (kept in
+  the keychain, never in the file), the model, which "Test connection" can fill
+  from the server's model list, and the buttons that test and save. A server saved
+  here is used right away. For a server off this machine the page lists what
+  goes out (document text, chat, rule samples, file names for batch rename) under
+  "What goes to the server", and nothing is sent until you press "Allow" for
+  that server; the approval holds for that one server only.
 
-  ![The own server dialog](docs/screenshots/own-server.png)
+  ![Settings › AI with an own server](docs/screenshots/own-server.png)
 - Settings › Usage counts the requests and tokens sent to the own server, with
   the tokens per day and the cost where the server reports a price.
-- Settings › Index shows a row "AI model" with the state while the AI is on. When
-  the own server fails, that row and the Hermes chip in the title bar say why.
+- Settings › AI shows the state of the model in the row "Model on this computer"
+  or, for an own server, in the row "Connection". When the own server fails, that
+  row and the Hermes chip in the title bar say why.
 
 **Recognition baseline.** How often the filing reads a field right is measured
 against a synthetic corpus: 26 documents (invoices, contracts, letters, tax

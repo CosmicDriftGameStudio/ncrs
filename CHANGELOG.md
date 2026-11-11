@@ -6,6 +6,40 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.4.1] — 2026-11-11
+
+### Changed
+
+- One AI page in Settings. At the top, one switch turns Hermes On or Off: off,
+  no read folder is watched and no model is asked. Below it, "Where does the
+  model run?" chooses "This computer" or "Own server"; address, model and key
+  of the own server are fields on the page instead of a dialog. A server you
+  saved is used right away, without another switch. Index now shows only what
+  the index reads, Sorting only the read folders, the order and the history.
+- While Hermes is off, a dim "Hermes off" chip in the title bar opens the AI
+  page. Switching Hermes off while it reads pauses the reader at once.
+- Before anything goes to a server on another computer, the AI page lists what
+  would be sent and asks once for each server ("Allow"). Without that
+  approval nothing is sent, also for a server saved before this version.
+- Enter on an app bundle on macOS asks first, like for any file that could run.
+
+### Fixed
+
+- Values typed in Settings are saved when ncrs quits, and a second quit works
+  although a typed value is still wrong.
+- Escape no longer closes a rule or report dialog that has typed input.
+- Compare folders no longer loops on symbolic links.
+- Stopping a batch rename with the abort key leaves the remaining entries
+  alone and puts the names back.
+- The abort key also stops a folder size count that is running.
+- The favourites key and the menu entry act on the same folder.
+- Copies made from inside an archive keep the mark of a downloaded file on
+  Windows and still refuse to run as programs.
+- A trash journal that cannot be read is set aside and deletions are recorded
+  again.
+- The privacy block message appears only for places macOS protects.
+- A double click is ignored when the row moved since the first click.
+
 ## [1.4.0] — 2026-11-10
 
 ### Added
