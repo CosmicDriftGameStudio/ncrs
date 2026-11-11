@@ -6,7 +6,6 @@ use iced_test::runtime::{task, Action};
 use ncrs_ai::{LocalModelStatus, ScriptedChatModel};
 
 use crate::config::AiSetting;
-use ncrs_ops::NamesModel;
 
 fn quiet_download(_: &DownloadJob) -> Result<(), AiDownloadError> {
     Ok(())
@@ -302,26 +301,4 @@ async fn a_refused_grant_for_a_picked_folder_is_said_in_the_chat() {
     );
     assert_eq!(user_entries(&app), 0);
     assert!(!app.hermes_chat.chips().is_empty());
-}
-
-#[test]
-fn the_batch_rename_tells_a_model_on_this_computer_from_one_elsewhere() {
-    let mut app = App::with_fixed_panels();
-    app.chat_model = Some(Arc::new(ScriptedChatModel::new(
-        LocalModelStatus::NotDownloaded,
-        [],
-    )));
-    let setting = |endpoint: &str| AiSetting::Http {
-        endpoint: endpoint.to_owned(),
-        model: "m".to_owned(),
-    };
-
-    app.hermes.filing_config.ai = AiSetting::Local { threads: None };
-    assert!(matches!(app.chat_model_for_names(), NamesModel::Local(_)));
-    app.hermes.filing_config.ai = setting("http://localhost:11434/v1");
-    assert!(matches!(app.chat_model_for_names(), NamesModel::Local(_)));
-    app.hermes.filing_config.ai = setting("https://models.example.org/v1");
-    assert!(matches!(app.chat_model_for_names(), NamesModel::Remote(_)));
-    app.hermes.filing_config.ai = AiSetting::Off;
-    assert!(matches!(app.chat_model_for_names(), NamesModel::None));
 }

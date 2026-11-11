@@ -5701,18 +5701,6 @@
       "de": "Übernehmen"
     },
     {
-      "key": "batch_rename.hermes_ask",
-      "context": "Batch rename dialog. Button that sends the file names of this folder to the AI model and asks Hermes for a naming pattern. Only shown when the model runs on another computer.",
-      "en": "Ask Hermes",
-      "de": "Hermes fragen"
-    },
-    {
-      "key": "batch_rename.hermes_ask_hint",
-      "context": "Batch rename dialog. Next to the button that asks Hermes for a pattern. Says what the click sends and where: up to 30 file names of this folder go to the AI server the user set up, which runs on another computer.",
-      "en": "Hermes can suggest a pattern. Up to 30 file names go to your AI server.",
-      "de": "Hermes kann ein Muster vorschlagen. Bis zu 30 Dateinamen gehen an deinen KI-Server."
-    },
-    {
       "key": "batch_rename.confirm",
       "context": "Batch rename dialog. Button that renames the entries.",
       "en": "Rename",

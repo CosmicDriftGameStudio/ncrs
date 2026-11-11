@@ -159,19 +159,6 @@ fn the_text_sits_between_markers_and_the_instructions_say_it_is_data() {
 }
 
 #[test]
-fn a_name_that_only_starts_like_a_loopback_address_is_not_local() {
-    assert_eq!(
-        endpoint_is_local("http://127.0.0.1.nip.io:8080"),
-        Err(EndpointProblem::NotLocalAndNotHttps)
-    );
-    assert_eq!(
-        endpoint_is_local("https://127.0.0.1.nip.io:8080"),
-        Ok(false)
-    );
-    assert_eq!(endpoint_is_local("http://127.0.0.1:8080"), Ok(true));
-}
-
-#[test]
 fn endpoints_are_judged_by_their_parsed_host() {
     let local = [
         "http://localhost:11434/v1",

@@ -113,23 +113,6 @@ impl App {
         self.hermes.filing_config.ai != crate::config::AiSetting::Off
     }
 
-    /// The model that may read the file names of a folder the user did not
-    /// hand to Hermes, and whether it runs on this computer.
-    pub(in crate::app) fn chat_model_for_names(&self) -> ncrs_ops::NamesModel {
-        let stays_here = match &self.hermes.filing_config.ai {
-            crate::config::AiSetting::Local { .. } => true,
-            crate::config::AiSetting::Http { endpoint, .. } => {
-                ncrs_ai::endpoint_is_local(endpoint).unwrap_or(false)
-            }
-            crate::config::AiSetting::Off => return ncrs_ops::NamesModel::None,
-        };
-        match self.chat_model.clone() {
-            None => ncrs_ops::NamesModel::None,
-            Some(model) if stays_here => ncrs_ops::NamesModel::Local(model),
-            Some(model) => ncrs_ops::NamesModel::Remote(model),
-        }
-    }
-
     pub(in crate::app) fn chat_availability(&self) -> ncrs_hermes_chat::Availability {
         match self.hermes.filing.as_ref() {
             None if self.hermes.filing_config.enabled

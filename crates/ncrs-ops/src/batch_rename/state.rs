@@ -87,8 +87,6 @@ pub enum BatchRenameMessage {
     Insert(Token),
     SetCase(Case),
     ToggleRegex,
-    /// Send the folder's names to the model, which runs on another computer.
-    AskHermes,
     UseHermes,
     Scrolled(ScrollDelta),
     Confirm,
@@ -112,18 +110,6 @@ pub enum BatchRenameMessage {
     Undo,
 }
 
-/// Whether the dialog may ask a model for a pattern.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum HermesAsk {
-    /// No model, or one on this computer that was asked on opening.
-    #[default]
-    Unavailable,
-    /// A model on another computer: nothing is sent until the user clicks.
-    Offered,
-    /// The names went to the model.
-    Asked,
-}
-
 #[derive(Debug, Clone)]
 pub struct BatchRename {
     pub id: u64,
@@ -143,7 +129,6 @@ pub struct BatchRename {
     pub case: Case,
     /// The pattern Hermes proposes for this folder.
     pub suggestion: Option<String>,
-    pub ask: HermesAsk,
     pub preview: Preview,
     pub window: ListWindow,
 }
@@ -176,7 +161,6 @@ impl BatchRename {
             regex: false,
             case: Case::Keep,
             suggestion: None,
-            ask: HermesAsk::Unavailable,
             preview: Preview::default(),
             window: ListWindow::default(),
         };

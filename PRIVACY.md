@@ -15,7 +15,7 @@ ncrs only connects to the network when you ask it to:
 - **SFTP:** when you open an SFTP server, ncrs connects to that server.
 - **Themes:** when you download a theme, ncrs fetches it from Open VSX (open-vsx.org).
 - **Models:** when you download a text recognition or AI model for Hermes, ncrs fetches it from Hugging Face (huggingface.co).
-- **Hermes AI server:** when you point Hermes at a model server, ncrs sends the text of the documents you file to that server. You choose that server; it can be on your own computer or on another one. When it is on another computer, the text of the documents Hermes reads and your chat with Hermes leave your computer and go to that server, over https. ncrs says so in the server dialog. The batch rename sends up to 30 file names of the folder to a model on another computer only after you click "Ask Hermes" in its dialog; a model on your own computer is asked when the dialog opens. The API key for the server is kept in the system's credential store, not in the settings file.
+- **Hermes AI server:** when you point Hermes at a model server, ncrs sends the text of the documents you file to that server. You choose that server; it can be on your own computer or on another one. When it is on another computer, the text of the documents Hermes reads and your chat with Hermes leave your computer and go to that server, over https. ncrs says so in the server dialog. The API key for the server is kept in the system's credential store, not in the settings file.
 
 - **Update check:** when the check is on, ncrs asks GitHub (api.github.com) for the newest release of ncrs, at most once a day. See below.
 

@@ -13,7 +13,7 @@ use ncrs_ui_kit::palette::ThemePreset;
 use ncrs_ui_kit::APP_FONT;
 
 use super::pattern::{split_name, EntryFacts, NameRules};
-use super::state::{BatchRename, HermesAsk, Opening};
+use super::state::{BatchRename, Opening};
 use super::view::view;
 
 const WINDOW: Size = Size::new(1200.0, 800.0);
@@ -56,7 +56,10 @@ fn dialog_with_clashes() -> BatchRename {
 mod ui_tests {
     use super::*;
 
-    fn matches_snapshot(dialog: &BatchRename, path: &str) -> bool {
+    #[test]
+    fn the_dialog_with_clashes_and_eighteen_rows_matches_its_image() {
+        let dialog = dialog_with_clashes();
+        assert!(dialog.preview.clashes() > 0);
         let palette = ThemePreset::Cosmic.palette();
         let mut simulator = Simulator::with_size(
             iced::Settings {
@@ -64,45 +67,15 @@ mod ui_tests {
                 ..iced::Settings::default()
             },
             WINDOW,
-            view(dialog, WINDOW, Language::English, &palette),
+            view(&dialog, WINDOW, Language::English, &palette),
         );
-        simulator
+
+        let matches = simulator
             .snapshot(&iced::Theme::Dark)
             .unwrap()
-            .matches_image(path)
-            .unwrap()
-    }
+            .matches_image("tests/snapshots/batch-rename-clashes.png")
+            .unwrap();
 
-    #[test]
-    fn the_dialog_with_clashes_and_eighteen_rows_matches_its_image() {
-        let dialog = dialog_with_clashes();
-        assert!(dialog.preview.clashes() > 0);
-
-        assert!(
-            matches_snapshot(&dialog, "tests/snapshots/batch-rename-clashes.png"),
-            "the batch rename dialog differs from its image"
-        );
-    }
-
-    #[test]
-    fn the_dialog_offers_to_ask_a_model_on_another_computer() {
-        let mut dialog = dialog_with_clashes();
-        dialog.ask = HermesAsk::Offered;
-
-        assert!(
-            matches_snapshot(&dialog, "tests/snapshots/batch-rename-ask-hermes.png"),
-            "the dialog with the Ask Hermes button differs from its image"
-        );
-    }
-
-    #[test]
-    fn the_dialog_shows_the_pattern_a_model_on_this_computer_proposed() {
-        let mut dialog = dialog_with_clashes();
-        dialog.suggestion = Some("{year}-{month}_{sender}{extension}".to_owned());
-
-        assert!(
-            matches_snapshot(&dialog, "tests/snapshots/batch-rename-local-proposal.png"),
-            "the dialog with a proposed pattern differs from its image"
-        );
+        assert!(matches, "the batch rename dialog differs from its image");
     }
 }
