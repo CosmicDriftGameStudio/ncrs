@@ -25,7 +25,7 @@ pub fn resolve_filing(
     let legacy_ai_off = section
         .ai
         .as_ref()
-        .is_some_and(|ai| ai.get_ref().legacy_enabled == Some(false));
+        .is_some_and(|old_ai| old_ai.get_ref().legacy_enabled == Some(false));
     if switch == Some(false) || (switch.is_none() && legacy_ai_off) {
         ai = AiSetting::Off;
     }

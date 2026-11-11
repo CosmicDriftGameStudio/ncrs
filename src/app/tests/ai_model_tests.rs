@@ -79,6 +79,8 @@ async fn the_download_button_starts_one_download_and_closing_waits() {
 async fn a_finished_download_keeps_the_card_and_says_what_happened() {
     let mut app = app_with_data_folder();
     app.hermes.filing_config.ai = crate::config::AiSetting::Off;
+    app.hermes.filing_config.enabled = false;
+    app.hermes.filing_config.first_run = false;
     send(&mut app, AiModelMessage::Open);
     send(&mut app, AiModelMessage::Download);
     let generation = app.settings.ai_model_generation;
