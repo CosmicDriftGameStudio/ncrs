@@ -15,7 +15,13 @@ ncrs only connects to the network when you ask it to:
 - **SFTP:** when you open an SFTP server, ncrs connects to that server.
 - **Themes:** when you download a theme, ncrs fetches it from Open VSX (open-vsx.org).
 - **Models:** when you download a text recognition or AI model for Hermes, ncrs fetches it from Hugging Face (huggingface.co).
-- **Hermes AI server:** when you point Hermes at a model server, ncrs sends the text of the documents you file to that server. You choose that server; it can be on your own computer or on another one. When it is on another computer, the text of the documents Hermes reads and your chat with Hermes leave your computer and go to that server, over https. ncrs says so in the server dialog. The API key for the server is kept in the system's credential store, not in the settings file.
+- **Hermes AI server:** when you point Hermes at a model server, ncrs sends the text of the documents you file to that server. You choose that server; it can be on your own computer or on another one. When it is on another computer, ncrs asks once for each server before it switches, and lists what then goes to that server, over https:
+  - the text of every document Hermes reads to sort it, including the text recognised in scans and photos;
+  - everything you write to Hermes in the chat, and the last question, search and answer your message refers to;
+  - when Hermes learns a filing rule or reads how a folder is organised: the paths of sample documents in your archive and what Hermes found in them (sender, date, kind, amount, number);
+  - when you rename several files at once: the names of up to 30 files of the folder, also in folders on another computer (SFTP).
+
+  Cancelling keeps the model you had. Nothing goes to a server on another computer that you did not agree to. The API key for the server is kept in the system's credential store, not in the settings file.
 
 - **Update check:** when the check is on, ncrs asks GitHub (api.github.com) for the newest release of ncrs, at most once a day. See below.
 

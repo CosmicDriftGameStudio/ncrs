@@ -1,6 +1,5 @@
 //! What the dialog of the own server remembers: the key typed in it, the answer
-//! of the connection test and whether the user understood that documents go
-//! to another computer.
+//! of the connection test and the host documents would go to.
 
 use ncrs_ai::Secret;
 
@@ -31,20 +30,6 @@ impl SettingsState {
             Ok(false) => ncrs_ai::endpoint_host(&typed).ok(),
             Ok(true) | Err(_) => None,
         }
-    }
-
-    /// "I understand" is ticked, or the address is the one already saved,
-    /// which was understood when it was saved.
-    pub fn understood_leaving(&self) -> bool {
-        let typed = self.typed_endpoint();
-        self.ai_understood
-            || (!typed.is_empty() && typed == self.saved_text(SettingField::AiEndpoint).trim())
-    }
-
-    /// An address off this computer that was not understood yet: it is not
-    /// written.
-    pub fn save_is_blocked(&self) -> bool {
-        self.host_documents_go_to().is_some() && !self.understood_leaving()
     }
 
     /// The key is typed again: what the test said about the old one is stale.
@@ -120,58 +105,41 @@ mod tests {
     }
 
     #[test]
-    fn the_saved_address_starts_understood_and_a_new_one_off_this_computer_does_not() {
+    fn the_host_documents_go_to_is_named_only_for_an_address_off_this_computer() {
         let mut state = state_of(SAVED);
-        assert!(!state.save_is_blocked());
-
         typed(
             &mut state,
             SettingField::AiEndpoint,
             "https://other.example.org",
         );
-        assert!(state.save_is_blocked());
         assert_eq!(
             state.host_documents_go_to().as_deref(),
             Some("other.example.org")
         );
 
-        state.ai_understood = true;
-        assert!(!state.save_is_blocked());
-    }
-
-    #[test]
-    fn an_address_on_this_computer_needs_no_tick() {
-        let mut state = state_of(SAVED);
         typed(
             &mut state,
             SettingField::AiEndpoint,
             "http://localhost:11434",
         );
         assert_eq!(state.host_documents_go_to(), None);
-        assert!(!state.save_is_blocked());
     }
 
     #[test]
-    fn saving_an_address_that_was_not_understood_writes_nothing_and_says_why() {
+    fn saving_a_new_address_hands_the_change_on_with_the_servers_agreed_to_so_far() {
         let mut state = state_of(SAVED);
         typed(
             &mut state,
             SettingField::AiEndpoint,
             "https://other.example.org",
         );
-        assert_eq!(state.save_server(), None);
-        assert_eq!(
-            state.problems.get(&SettingField::AiEndpoint),
-            Some(&crate::settings::FieldProblem::NotUnderstood)
-        );
-
-        state.ai_understood = true;
         state.server_dialog = true;
         assert_eq!(
             state.save_server(),
             Some(SettingChange::AiProvider(AiProviderChoice::Http {
                 endpoint: "https://other.example.org".to_owned(),
                 model: "gpt-5".to_owned(),
+                consented_origins: vec!["https://api.example.com".to_owned()],
             }))
         );
         assert!(!state.server_dialog);

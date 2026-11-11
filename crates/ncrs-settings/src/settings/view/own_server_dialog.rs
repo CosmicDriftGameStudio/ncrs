@@ -8,7 +8,7 @@ use super::*;
 use ncrs_ai::Secret;
 use ncrs_config::config::AiProviderName;
 use ncrs_ui_kit::hermes_kit::{field_dropdown, MenuItem};
-use ncrs_ui_kit::kit::{self, Check, Tone};
+use ncrs_ui_kit::kit::{self, Tone};
 use ncrs_ui_kit::setting_rows::{simple_row, status_text};
 use ncrs_ui_kit::theme::spacing;
 
@@ -146,36 +146,13 @@ fn with_model_menu<'a>(mut model: SettingRow<'a>, view: &SettingsView<'a>) -> Se
 fn leaving_notice<'a>(view: &SettingsView<'a>) -> Option<Element<'a, Message>> {
     let (lang, palette) = (view.lang, view.palette);
     let host = view.state.host_documents_go_to()?;
-    let understood = if view.state.understood_leaving() {
-        Check::On
-    } else {
-        Check::Off
-    };
-    Some(
-        column![
-            kit::warning_box(
-                fill_template(
-                    lang.text(Msg::SettingsAiLeavingWarning),
-                    &[("{host}", &host)]
-                ),
-                palette,
-            ),
-            row![
-                kit::checkbox(
-                    understood,
-                    Some(SettingsMessage::UnderstandLeaving(
-                        !view.state.understood_leaving()
-                    )),
-                    palette,
-                ),
-                kit::paragraph(lang.text(Msg::SettingsAiUnderstand).to_owned(), palette),
-            ]
-            .spacing(spacing::M)
-            .align_y(iced::alignment::Vertical::Center),
-        ]
-        .spacing(spacing::M)
-        .into(),
-    )
+    Some(kit::warning_box(
+        fill_template(
+            lang.text(Msg::SettingsAiLeavingWarning),
+            &[("{host}", &host)],
+        ),
+        palette,
+    ))
 }
 
 /// The switch back to the local model, and while the own server is chosen

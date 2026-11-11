@@ -2,6 +2,7 @@
 //! themes and the pages of the text recognition and AI models.
 
 pub mod action;
+pub mod ai_consent;
 pub mod ai_model;
 pub mod ai_server;
 pub mod ctx;

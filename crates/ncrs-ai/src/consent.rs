@@ -8,16 +8,47 @@ pub trait ConsentLedger: Send + Sync + fmt::Debug {
     fn granted(&self, endpoint_origin: &str, source: &Path) -> bool;
 }
 
-/// Grants every call. An address off this computer gets into the settings
-/// through the dialog whose "I understand" tick is the consent, or by the user
-/// editing config.toml by hand; both are the user's own decision, so the saved
-/// server is the one the user agreed to.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ConsentGivenInSettings;
+/// Grants the servers the user agreed to in the settings, when the model was
+/// switched to them, and no other. The source does not matter: the consent is
+/// for the server.
+#[derive(Debug, Clone, Default)]
+pub struct ConsentGivenInSettings {
+    origins: Vec<String>,
+}
+
+impl ConsentGivenInSettings {
+    pub fn new(origins: &[String]) -> Self {
+        Self {
+            origins: origins.iter().map(|origin| normalized(origin)).collect(),
+        }
+    }
+}
 
 impl ConsentLedger for ConsentGivenInSettings {
-    fn granted(&self, _endpoint_origin: &str, _source: &Path) -> bool {
-        true
+    fn granted(&self, endpoint_origin: &str, _source: &Path) -> bool {
+        self.origins.contains(&normalized(endpoint_origin))
+    }
+}
+
+/// A hand-written origin may differ in case or carry a closing slash.
+fn normalized(origin: &str) -> String {
+    origin.trim().trim_end_matches('/').to_ascii_lowercase()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_a_server_the_user_agreed_to_is_granted() {
+        let ledger = ConsentGivenInSettings::new(&["https://ai.example.com".to_owned()]);
+        let source = Path::new("inbox");
+
+        assert!(ledger.granted("https://ai.example.com", source));
+        assert!(ledger.granted("HTTPS://AI.example.com/", source));
+        assert!(!ledger.granted("https://other.example.org", source));
+        assert!(!ledger.granted("https://ai.example.com:8443", source));
+        assert!(!ConsentGivenInSettings::default().granted("https://ai.example.com", source));
     }
 }
 

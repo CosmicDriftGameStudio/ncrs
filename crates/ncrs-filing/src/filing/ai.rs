@@ -60,7 +60,11 @@ pub(in crate::filing) fn wire_ai(setting: &AiSetting, load: Load, db_path: &Path
             let _ = (db_path, load);
             AiWiring::Off
         }
-        AiSetting::Http { endpoint, model } => match http_ai_provider(endpoint, model, db_path) {
+        AiSetting::Http {
+            endpoint,
+            model,
+            consented_origins,
+        } => match http_ai_provider(endpoint, model, consented_origins, db_path) {
             Some(provider) => match ncrs_ai::endpoint_origin(endpoint) {
                 Ok(origin) => AiWiring::Http {
                     provider,
@@ -77,11 +81,12 @@ pub(in crate::filing) fn wire_ai(setting: &AiSetting, load: Load, db_path: &Path
 /// The server of the setting: its key is read from the keychain at every
 /// request (never here, this runs on the update path), the usage log sits
 /// next to the index. The documents and the chat both go through it. A far
-/// address gets into the settings through the dialog whose "I understand" tick
-/// is the consent, or by hand in config.toml; the ledger grants either way.
+/// address only gets documents once the user agreed to its origin in the
+/// settings (`consented_origins`); the ledger grants no other.
 pub fn http_ai_provider(
     endpoint: &str,
     model: &str,
+    consented_origins: &[String],
     db_path: &Path,
 ) -> Option<Arc<ncrs_ai::OpenAiCompatible>> {
     // Tests must not read the keychain of whoever runs them.
@@ -103,9 +108,12 @@ pub fn http_ai_provider(
             .filter(|dir| !dir.as_os_str().is_empty())
             .map(ncrs_ai::usage_log_path),
     };
-    ncrs_ai::OpenAiCompatible::new(config, Arc::new(ncrs_ai::ConsentGivenInSettings))
-        .ok()
-        .map(Arc::new)
+    ncrs_ai::OpenAiCompatible::new(
+        config,
+        Arc::new(ncrs_ai::ConsentGivenInSettings::new(consented_origins)),
+    )
+    .ok()
+    .map(Arc::new)
 }
 
 /// The local model of this index. The path keys the instance, so the fields

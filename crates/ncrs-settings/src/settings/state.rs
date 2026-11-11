@@ -113,8 +113,9 @@ pub struct SettingsState {
     /// `Secret` prints as `***`, so the state can be logged.
     pub ai_key: Option<ncrs_ai::Secret>,
     pub ai_check: crate::settings::AiCheck,
-    /// "I understand" is ticked for the address typed.
-    pub ai_understood: bool,
+    /// The switch to a server on another computer that waits for the user's
+    /// yes.
+    pub consent_pending: Option<crate::ai_consent::ConsentAsk>,
     /// The period the Usage page shows, in days.
     pub usage_days: u32,
     /// The sums of the usage log per period; `None` until it was read.
@@ -131,8 +132,6 @@ pub enum FieldProblem {
     Endpoint(AiEndpointProblem),
     /// Empty, but an own server needs it.
     Needed,
-    /// The address is off this computer and "I understand" is not ticked.
-    NotUnderstood,
     NotAnIban,
     /// The write failed; the text is already worded.
     Write(String),
@@ -173,7 +172,7 @@ impl SettingsState {
             focus: crate::focus::Focus::default(),
             ai_key: None,
             ai_check: crate::settings::AiCheck::Idle,
-            ai_understood: false,
+            consent_pending: None,
             usage_days: crate::settings::DEFAULT_USAGE_DAYS,
             usage: None,
         }
@@ -182,10 +181,17 @@ impl SettingsState {
     /// A small dialog of the Index or Hermes page is up; Escape closes it
     /// and not the page.
     pub fn dialog_is_open(&self) -> bool {
-        self.folder_dialog.is_some() || self.model_to_remove.is_some() || self.server_dialog
+        self.folder_dialog.is_some()
+            || self.model_to_remove.is_some()
+            || self.server_dialog
+            || self.consent_pending.is_some()
     }
 
     pub fn close_dialog(&mut self) {
+        if self.consent_pending.is_some() {
+            self.cancel_consent();
+            return;
+        }
         self.server_dialog = false;
         self.ai_key = None;
         self.ai_check = crate::settings::AiCheck::Idle;
@@ -359,7 +365,6 @@ impl SettingsState {
     pub fn edit(&mut self, field: SettingField, text: String) {
         if field == SettingField::AiEndpoint {
             self.ai_check = crate::settings::AiCheck::Idle;
-            self.ai_understood = false;
         }
         self.problems.remove(&field);
         self.drafts.insert(field, text);
@@ -440,16 +445,28 @@ impl SettingsState {
         }
         check_ai_endpoint(&endpoint)
             .map_err(|problem| (SettingField::AiEndpoint, FieldProblem::Endpoint(problem)))?;
-        if self.save_is_blocked() {
-            return Err((SettingField::AiEndpoint, FieldProblem::NotUnderstood));
-        }
         if model.is_empty() {
             return Err((SettingField::AiModel, FieldProblem::Needed));
         }
         Ok(SettingChange::AiProvider(AiProviderChoice::Http {
             endpoint,
             model,
+            consented_origins: self
+                .ai_section()
+                .map(AiSection::consented)
+                .unwrap_or_default(),
         }))
+    }
+
+    /// "No" to the question before a switch: the model stays as it is, and
+    /// what was typed for the other one is dropped.
+    pub fn cancel_consent(&mut self) {
+        self.consent_pending = None;
+        self.provider = None;
+        self.drafts.remove(&SettingField::AiEndpoint);
+        self.drafts.remove(&SettingField::AiModel);
+        self.ai_key = None;
+        self.ai_check = crate::settings::AiCheck::Idle;
     }
 
     /// A click on a provider. The model on this machine needs nothing more

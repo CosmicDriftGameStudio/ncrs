@@ -96,10 +96,12 @@ impl App {
             return;
         };
         let model: Option<Arc<dyn ncrs_ai::ChatModel>> = match &setting {
-            crate::config::AiSetting::Http { endpoint, model } => {
-                crate::filing::http_ai_provider(endpoint, model, index_path)
-                    .map(|server| server as Arc<dyn ncrs_ai::ChatModel>)
-            }
+            crate::config::AiSetting::Http {
+                endpoint,
+                model,
+                consented_origins,
+            } => crate::filing::http_ai_provider(endpoint, model, consented_origins, index_path)
+                .map(|server| server as Arc<dyn ncrs_ai::ChatModel>),
             crate::config::AiSetting::Local { threads } => {
                 local_chat_model(index_path, self.hermes.filing_config.load, *threads)
             }

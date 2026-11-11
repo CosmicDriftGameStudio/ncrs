@@ -8,6 +8,8 @@
     clippy::indexing_slicing
 )]
 
+use iced_test::Simulator;
+
 use super::app_simulator as simulator;
 use crate::app::App;
 use crate::i18n::Language;
@@ -159,4 +161,77 @@ fn an_own_ai_server_that_answers_with_an_error_shows_its_status_in_the_dialog() 
     );
 
     simulator(&app).find(shown.as_str()).unwrap();
+}
+
+/// Marc's window: the dialogs sit in the middle of this, not of the test size.
+const MARCS_WINDOW: iced::Size = iced::Size::new(1740.0, 1130.0);
+
+fn matches_snapshot_in_marcs_window(app: &mut App, name: &str) {
+    drop(app.update(Message::WindowResized(MARCS_WINDOW)));
+    let matches = Simulator::with_size(
+        iced::Settings {
+            default_font: ncrs_ui_kit::APP_FONT,
+            ..iced::Settings::default()
+        },
+        MARCS_WINDOW,
+        app.view(),
+    )
+    .snapshot(&iced::Theme::Dark)
+    .unwrap()
+    .matches_image(format!("tests/snapshots/{name}.png"))
+    .expect("snapshot comparison");
+    assert!(matches, "the tab does not match tests/snapshots/{name}.png");
+}
+
+fn from_this_computer(language: Language) -> App {
+    settings_with(
+        SettingsFeature::Hermes,
+        "[modules.filing]\nenabled = true\n\n[modules.filing.ai]\nenabled = true\n\
+         provider = \"local\"\n\n[theme]\npreset = \"cosmic\"\n",
+    )
+    .in_language(language)
+}
+
+#[test]
+fn the_model_switch_on_the_index_page_matches_its_snapshots() {
+    for (language, name) in [
+        (Language::German, "settings_model_switch_de"),
+        (Language::English, "settings_model_switch_en"),
+    ] {
+        let mut app = from_this_computer(language);
+        drop(app.update(Message::Settings(SettingsMessage::Select(
+            SettingsFeature::Index,
+        ))));
+        matches_snapshot_in_marcs_window(&mut app, name);
+    }
+}
+
+#[test]
+fn the_question_before_a_server_on_another_computer_matches_its_snapshots() {
+    for (language, name) in [
+        (Language::German, "settings_model_switch_ask_de"),
+        (Language::English, "settings_model_switch_ask_en"),
+    ] {
+        let mut app = from_this_computer(language);
+        drop(app.update(Message::Settings(SettingsMessage::Select(
+            SettingsFeature::Index,
+        ))));
+        drop(app.update(Message::Settings(SettingsMessage::ServerDialog(true))));
+        drop(
+            app.update(Message::Settings(SettingsMessage::ChooseProvider(
+                ncrs_config::config::AiProviderName::Http,
+            ))),
+        );
+        for (field, text) in [
+            (SettingField::AiEndpoint, "https://openrouter.ai/api/v1"),
+            (SettingField::AiModel, "anthropic/claude-sonnet-4.5"),
+        ] {
+            drop(app.update(Message::Settings(SettingsMessage::Edit {
+                field,
+                text: text.to_owned(),
+            })));
+        }
+        drop(app.update(Message::Settings(SettingsMessage::SaveServer)));
+        matches_snapshot_in_marcs_window(&mut app, name);
+    }
 }

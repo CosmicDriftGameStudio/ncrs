@@ -563,3 +563,29 @@ fn a_chat_answer_does_not_clear_the_failure_of_an_extraction() {
 
     assert_eq!(own.last_failure(), Some(ReplyFailure::Status(400)));
 }
+
+#[test]
+fn the_chat_and_the_rule_questions_to_a_far_server_need_its_consent_too() {
+    let ledger = Arc::new(Ledger::default());
+    let far = provider("https://AI.example.invalid/v1/", &ledger);
+
+    let err = crate::chat::ChatModel::generate_rule(
+        &far,
+        "File invoices by year",
+        &[],
+        &ncrs_index::Kinds::default(),
+    )
+    .unwrap_err();
+
+    let AiError::ConsentRequired(preview) = &err else {
+        panic!("expected ConsentRequired, got {err}");
+    };
+    assert_eq!(preview.endpoint, "https://ai.example.invalid");
+    assert!(preview.body.contains("File invoices by year"));
+    assert!(!preview.body.contains(KEY));
+    assert_eq!(far.last_failure(), None);
+    assert_eq!(
+        *ledger.asked.lock().unwrap(),
+        vec![("https://ai.example.invalid".to_owned(), PathBuf::new())]
+    );
+}

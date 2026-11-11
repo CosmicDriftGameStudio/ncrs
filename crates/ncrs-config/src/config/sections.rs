@@ -167,6 +167,27 @@ pub struct AiSection {
     pub endpoint: Option<Spanned<String>>,
     #[serde(default)]
     pub model: Option<Spanned<String>>,
+    /// The servers (`scheme://host[:port]`) the user agreed documents may be
+    /// sent to. Absent in a file from before the dialog asked for it.
+    #[serde(default)]
+    pub consented_origins: Option<Vec<String>>,
+}
+
+impl AiSection {
+    /// The servers documents may go to: the listed ones, or, in a file from
+    /// before the dialog asked for the consent, the server the user ticked
+    /// "I understand" for.
+    pub fn consented(&self) -> Vec<String> {
+        match &self.consented_origins {
+            Some(listed) => listed.clone(),
+            None => self
+                .endpoint
+                .as_ref()
+                .and_then(|endpoint| ncrs_ai::endpoint_origin(endpoint.get_ref()).ok())
+                .into_iter()
+                .collect(),
+        }
+    }
 }
 
 /// The spelling of `provider` in the file.
@@ -184,12 +205,12 @@ pub enum AiSetting {
     #[default]
     Off,
     /// The model on this machine. `None` leaves the thread count to the module.
-    Local {
-        threads: Option<NonZeroU32>,
-    },
+    Local { threads: Option<NonZeroU32> },
     Http {
         endpoint: String,
         model: String,
+        /// The servers the user agreed to send documents to.
+        consented_origins: Vec<String>,
     },
 }
 

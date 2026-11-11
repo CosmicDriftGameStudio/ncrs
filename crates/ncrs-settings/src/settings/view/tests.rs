@@ -184,6 +184,7 @@ fn leaving_writes_an_own_server_once() {
         Some(vec![SettingChange::AiProvider(AiProviderChoice::Http {
             endpoint: "http://localhost:11434".to_owned(),
             model: "qwen".to_owned(),
+            consented_origins: Vec::new(),
         })])
     );
 }
@@ -286,6 +287,7 @@ fn an_own_server_waits_for_its_address_and_model() {
         Some(SettingChange::AiProvider(AiProviderChoice::Http {
             endpoint: "http://127.0.0.1:8080".to_owned(),
             model: "qwen".to_owned(),
+            consented_origins: Vec::new(),
         }))
     );
 }
