@@ -890,9 +890,10 @@ pub fn one_of_each(folders: &SetupFolders) -> Vec<FilingLocation> {
 
 #[test]
 fn locations_without_an_enabled_key_are_watched_and_hermes_is_on() {
+    let home = tempfile::tempdir().unwrap();
     let filing = load_filing(
-        "[[modules.filing.locations]]\npath = \"/tmp\"\nmode = \"inbox\"\n",
-        None,
+        "[[modules.filing.locations]]\npath = \"~/Scans\"\nmode = \"inbox\"\n",
+        Some(home.path()),
     )
     .unwrap()
     .filing;
