@@ -577,6 +577,33 @@ fn the_http_provider_needs_an_endpoint_and_a_model() {
 }
 
 #[test]
+fn a_remote_server_from_before_the_dialog_is_consented_only_when_the_old_file_switched_the_ai_on() {
+    let remote = "provider = \"http\"\nmodel = \"m\"\nendpoint = \"https://ai.example.com/v1\"\n";
+    let consented = |old_switch: &str| {
+        let AiSetting::Http {
+            consented_origins, ..
+        } = ai_setting(&format!("{old_switch}{remote}"))
+        else {
+            panic!("not the http provider");
+        };
+        consented_origins
+    };
+    assert!(consented("enabled = false\n").is_empty());
+    assert!(consented("").is_empty());
+    assert_eq!(consented("enabled = true\n"), ["https://ai.example.com"]);
+}
+
+#[test]
+fn a_server_on_this_machine_is_kept_with_nothing_set_and_needs_no_consent_to_be_used() {
+    let local = "provider = \"http\"\nmodel = \"m\"\nendpoint = \"http://localhost:11434/v1\"\n";
+    let AiSetting::Http { endpoint, .. } = ai_setting(local) else {
+        panic!("not the http provider");
+    };
+    // The one place that checks the consent lets this machine through.
+    assert!(ncrs_ai::endpoint_is_local(&endpoint).unwrap());
+}
+
+#[test]
 fn a_file_without_consent_keeps_the_saved_server_and_a_listed_consent_is_the_whole_list() {
     let saved = "enabled = true\nprovider = \"http\"\nmodel = \"m\"\n\
                  endpoint = \"https://ai.example.com/v1\"\n";

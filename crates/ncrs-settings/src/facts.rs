@@ -24,6 +24,8 @@ pub enum AiState {
         /// Why the last request to the server failed, worded.
         failure: Option<String>,
     },
+    /// An own server on another computer that was not agreed to yet.
+    NotAllowed,
     Failed,
     NextStart,
 }

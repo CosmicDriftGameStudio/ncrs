@@ -280,7 +280,8 @@ fn feature_config_place(feature: SettingsFeature) -> Option<&'static str> {
         SettingsFeature::Columns => Some(COLUMNS_SECTION),
         SettingsFeature::Favourites => None,
         SettingsFeature::System => Some(SYSTEM_SECTION),
-        SettingsFeature::Index | SettingsFeature::Hermes => Some(FILING_SECTION),
+        SettingsFeature::Index => Some(FILING_SECTION),
+        SettingsFeature::Hermes => Some(HERMES_PAGE_SECTIONS),
         SettingsFeature::Rules
         | SettingsFeature::Tags
         | SettingsFeature::Reports

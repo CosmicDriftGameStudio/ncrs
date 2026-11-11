@@ -89,7 +89,7 @@ mod tests {
     use super::*;
     use crate::message::SettingChange;
 
-    const SAVED: &str = "[modules.filing.ai]\nprovider = \"http\"\n\
+    const SAVED: &str = "[modules.filing.ai]\nenabled = true\nprovider = \"http\"\n\
                          endpoint = \"https://api.example.com/v1\"\nmodel = \"gpt-5\"\n";
 
     fn state_of(source: &str) -> SettingsState {

@@ -8443,6 +8443,12 @@
       "de": "nicht geladen"
     },
     {
+      "key": "settings.index_ai_not_allowed",
+      "context": "State of the AI on the Index page: an own server on another computer is set up, but the user has not agreed yet that documents are sent to it, so nothing is sent. Saving the server again asks. Short phrase.",
+      "en": "not allowed yet",
+      "de": "nicht freigegeben"
+    },
+    {
       "key": "settings.index_ai_downloading",
       "context": "State of the AI model on the Index page: the model is being downloaded right now.",
       "en": "loading …",

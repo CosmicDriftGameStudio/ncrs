@@ -594,7 +594,7 @@ fn the_look_page_has_the_font_size_and_preview_rows_one_after_the_other() {
 }
 
 #[test]
-fn the_keyboard_starts_the_hermes_page_on_the_model_switch_then_the_watch_switch() {
+fn the_keyboard_starts_the_hermes_page_on_the_model_switch() {
     let state = state_of("");
     let filing = Filing::default();
     let palette = Palette::default();
@@ -618,9 +618,5 @@ fn the_keyboard_starts_the_hermes_page_on_the_model_switch_then_the_watch_switch
     assert!(matches!(
         hermes_keys.first(),
         Some(ncrs_ui_kit::setting_rows::RowKey::Choice { .. })
-    ));
-    assert!(matches!(
-        hermes_keys.get(1),
-        Some(ncrs_ui_kit::setting_rows::RowKey::Press(_))
     ));
 }

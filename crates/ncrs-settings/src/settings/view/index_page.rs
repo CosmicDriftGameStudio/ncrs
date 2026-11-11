@@ -296,7 +296,7 @@ pub fn ai_button(ai: &AiState, model_present: bool) -> Option<AiButton> {
         AiState::Ready | AiState::NextStart => Some(AiButton::Remove),
         AiState::Off if model_present => Some(AiButton::TurnOn),
         AiState::Off | AiState::Missing | AiState::Failed => Some(AiButton::Load),
-        AiState::Downloading | AiState::OwnServer { .. } => None,
+        AiState::Downloading | AiState::NotAllowed | AiState::OwnServer { .. } => None,
     }
 }
 
@@ -336,6 +336,10 @@ fn ai_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
             fill_template(lang.text(Msg::SettingsIndexAiServer), &[("{model}", model)]),
             palette.success,
         ),
+        AiState::NotAllowed => (
+            lang.text(Msg::SettingsIndexAiNotAllowed).to_owned(),
+            palette.text,
+        ),
         AiState::Failed => (
             lang.text(Msg::SettingsIndexAiFailed).to_owned(),
             palette.error,
@@ -362,7 +366,7 @@ fn ai_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
         AiButton::Load => load_button(SettingsMessage::OpenAiModel, view),
     });
     // The local model's name would be wrong while the own server answers.
-    let note_msg = if matches!(ai, AiState::OwnServer { .. }) {
+    let note_msg = if matches!(ai, AiState::OwnServer { .. } | AiState::NotAllowed) {
         Msg::SettingsIndexRowAiNoteServer
     } else {
         Msg::SettingsIndexRowAiNote

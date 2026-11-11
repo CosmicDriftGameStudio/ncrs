@@ -27,6 +27,7 @@ pub const LANGUAGE_KEY: &str = "lang";
 /// The top-level key behind the Favourites page's switch.
 pub const FAVOURITES_BAR_KEY: &str = "favourites_bar";
 pub const FILING_SECTION: &str = "[modules.filing]";
+pub const HERMES_PAGE_SECTIONS: &str = "[hermes], [modules.filing]";
 pub const OPEN_SECTION: &str = "[open]";
 pub const KEYS_SECTION: &str = "[keys]";
 pub const SERVERS_SECTION: &str = "[[servers]]";

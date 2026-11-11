@@ -167,9 +167,10 @@ pub struct HermesSection {
 #[serde(deny_unknown_fields)]
 pub struct AiSection {
     /// Older files switch the model here; the switch in `[hermes]` decides
-    /// now, so the key is accepted, whatever it holds, and never written.
+    /// now. Never written, only read: it tells whether a file from before the
+    /// consent dialog meant its server to get documents.
     #[serde(default, rename = "enabled")]
-    pub _enabled: Option<serde::de::IgnoredAny>,
+    pub legacy_enabled: Option<bool>,
     #[serde(default)]
     pub provider: Option<Spanned<AiProviderName>>,
     #[serde(default)]
@@ -186,11 +187,13 @@ pub struct AiSection {
 
 impl AiSection {
     /// The servers documents may go to: the listed ones, or, in a file from
-    /// before the dialog asked for the consent, the server the user ticked
-    /// "I understand" for.
+    /// before the dialog asked for the consent, the server of an AI that was
+    /// switched on there. A file that never switched it on grants nothing, so
+    /// the dialog asks once; a server on this machine needs no consent.
     pub fn consented(&self) -> Vec<String> {
         match &self.consented_origins {
             Some(listed) => listed.clone(),
+            None if self.legacy_enabled != Some(true) => Vec::new(),
             None => self
                 .endpoint
                 .as_ref()
