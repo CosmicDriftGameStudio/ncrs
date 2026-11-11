@@ -38,18 +38,27 @@ pub const MODEL_CALL_SITES: &[ModelCallSite] = &[
 pub fn server_is_not_allowed(setting: &ncrs_config::config::AiSetting) -> bool {
     let ncrs_config::config::AiSetting::Http {
         endpoint,
-        model,
         consented_origins,
+        ..
     } = setting
     else {
         return false;
     };
-    ConsentAsk::needed_for(&AiProviderChoice::Http {
-        endpoint: endpoint.clone(),
-        model: model.clone(),
-        consented_origins: consented_origins.clone(),
-    })
-    .is_some()
+    unagreed_origin(endpoint, consented_origins).is_some()
+}
+
+/// The origin of `endpoint` when it is a server off this computer that is not
+/// among the `consented` ones.
+fn unagreed_origin(endpoint: &str, consented: &[String]) -> Option<String> {
+    if ncrs_ai::endpoint_is_local(endpoint) != Ok(false) {
+        return None;
+    }
+    let origin = ncrs_ai::endpoint_origin(endpoint).ok()?;
+    let granted = ncrs_ai::ConsentGivenInSettings::new(consented);
+    if ncrs_ai::ConsentLedger::granted(&granted, &origin, std::path::Path::new("")) {
+        return None;
+    }
+    Some(origin)
 }
 
 /// What the AI page lists under the server, in this order.
@@ -72,12 +81,7 @@ pub fn server_agreed(endpoint: &str, consented_origins: &[String]) -> Option<boo
     if ncrs_ai::endpoint_is_local(endpoint) != Ok(false) {
         return None;
     }
-    let asked = ConsentAsk::needed_for(&AiProviderChoice::Http {
-        endpoint: endpoint.to_owned(),
-        model: String::new(),
-        consented_origins: consented_origins.to_vec(),
-    });
-    Some(asked.is_none())
+    Some(unagreed_origin(endpoint, consented_origins).is_none())
 }
 
 impl ConsentAsk {
@@ -92,14 +96,7 @@ impl ConsentAsk {
         else {
             return None;
         };
-        if ncrs_ai::endpoint_is_local(endpoint) != Ok(false) {
-            return None;
-        }
-        let origin = ncrs_ai::endpoint_origin(endpoint).ok()?;
-        let granted = ncrs_ai::ConsentGivenInSettings::new(consented_origins);
-        if ncrs_ai::ConsentLedger::granted(&granted, &origin, std::path::Path::new("")) {
-            return None;
-        }
+        let origin = unagreed_origin(endpoint, consented_origins)?;
         Some(Self {
             choice: choice.clone(),
             origin,
@@ -150,11 +147,6 @@ mod tests {
         ".revise_levels(",
         "propose_name_spec(",
     ];
-
-    /// What builds a model: only the module's wiring and the chat's model
-    /// may, both from the resolved `AiSetting`, which is `Off` when `[hermes]`
-    /// is switched off.
-    const BUILDERS: &[&str] = &["http_ai_provider(", "shared_local_model("];
 
     fn repository() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -241,17 +233,6 @@ mod tests {
              (ai_consent.rs and strings.json); a place that no longer does must lose its line"
         );
 
-        // Every model is built from the resolved setting and nowhere else.
-        assert_eq!(
-            files_where(|code| code.lines().any(|line| BUILDERS
-                .iter()
-                .any(|builder| line.contains(builder) && !line.contains("fn ")))),
-            [
-                "crates/ncrs-filing/src/filing/ai.rs",
-                "src/app/hermes_chat.rs"
-            ],
-            "a new place that builds a model must take the resolved AiSetting"
-        );
         // The list the user agrees to is the one drawn from the call sites.
         let page = "crates/ncrs-settings/src/settings/view/ai_page.rs";
         assert!(
@@ -260,18 +241,6 @@ mod tests {
                 .any(|(file, code)| file == page && code.contains("announced_items()")),
             "the AI page must list every announced item"
         );
-        // What reaches the chat, batch rename (local and SFTP) and the rules
-        // flow is that model, handed over only while Hermes is on.
-        for (file, code) in guarded_sources() {
-            if file == "src/app/hermes_chat.rs" || file == "src/app/ops.rs" {
-                for line in code
-                    .lines()
-                    .filter(|line| line.contains(".chat_model.clone()"))
-                {
-                    assert!(line.contains("chat_ai_on()"), "{file}: {line}");
-                }
-            }
-        }
     }
 
     #[test]

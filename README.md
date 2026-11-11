@@ -793,7 +793,7 @@ adding a second one. "New chat" starts over.
 Hermes. A file without the key has it on. Off, no read folder is watched and no
 model is called (sorting, chat, name suggestions, learning rules). Files from
 before this key keep their old `[modules.filing] enabled`, which is read once
-when `[hermes] enabled` is missing; ncrs writes only `[hermes] enabled`. An old `[modules.filing.ai] enabled = false` without a `[hermes]` key still means no model; once the switch has been used, `[hermes] enabled` decides.
+when `[hermes] enabled` is missing; ncrs writes only `[hermes] enabled`. An old `[modules.filing.ai] enabled = false` without a `[hermes]` key still means Hermes is off, even with `[modules.filing] enabled = true`; once the switch has been used, `[hermes] enabled` decides.
 
 **AI.** Documents the rules cannot read can be handed to a small language
 model. The switch above decides whether Hermes calls any model at all (sorting, the

@@ -904,6 +904,9 @@ fn the_hermes_key_wins_over_an_old_ai_enabled_flag() {
     let filing = |text: &str| crate::config::from_text(text).unwrap().filing;
     let old_off = filing("[modules.filing.ai]\nenabled = false\n");
     assert!(!old_off.hermes_on() && old_off.ai == AiSetting::Off);
+    let old_filing_on =
+        filing("[modules.filing]\nenabled = true\n[modules.filing.ai]\nenabled = false\n");
+    assert!(!old_filing_on.hermes_on() && old_filing_on.ai == AiSetting::Off);
     let flipped = filing("[hermes]\nenabled = true\n[modules.filing.ai]\nenabled = false\n");
     assert!(flipped.hermes_on() && flipped.ai != AiSetting::Off);
 }

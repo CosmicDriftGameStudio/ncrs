@@ -429,8 +429,10 @@ impl App {
                 } else {
                     InstallOutcome::TurnedOnAtNextStart
                 };
-                if let Some(card) = self.settings.ai_model.as_mut() {
-                    card.set_outcome(outcome);
+                if !matches!(change, SettingChange::HermesSwitch(false)) {
+                    if let Some(card) = self.settings.ai_model.as_mut() {
+                        card.set_outcome(outcome);
+                    }
                 }
                 let with_notice = if matches!(applies, SavedFilingApplies::AtNextStart) {
                     let notice = self.lang.text(Msg::SettingsSavedNextStart).to_owned();

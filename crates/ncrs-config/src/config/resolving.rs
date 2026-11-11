@@ -23,12 +23,12 @@ pub fn resolve_filing(
         .ai
         .as_ref()
         .is_some_and(|old_ai| old_ai.get_ref().legacy_enabled == Some(false));
-    // Files from before `[hermes]` carry the switch in `modules.filing.enabled`,
-    // or only a hand-set `[modules.filing.ai] enabled = false`: no model, so off.
+    // Files from before `[hermes]` carry the switch in `modules.filing.enabled`;
+    // a hand-set `[modules.filing.ai] enabled = false` there means no model, so off.
     let switch = hermes
         .enabled
-        .or(section.enabled)
-        .or_else(|| legacy_ai_off.then_some(false));
+        .or_else(|| legacy_ai_off.then_some(false))
+        .or(section.enabled);
     let mut ai = resolve_ai(section.ai.as_ref())?;
     if switch == Some(false) {
         ai = AiSetting::Off;
