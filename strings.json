@@ -8456,7 +8456,7 @@
     },
     {
       "key": "settings.index_ai_off",
-      "context": "State of the AI model on the Index page while the Hermes switch on the Hermes page is off. Short phrase; Hermes is the name of the filing assistant.",
+      "context": "State of the AI model on the AI page while the Hermes switch there is off. Short phrase; Hermes is the name of the filing assistant.",
       "en": "Hermes off",
       "de": "Hermes aus"
     },
