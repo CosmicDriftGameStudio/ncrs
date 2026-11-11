@@ -147,6 +147,7 @@ pub fn resolve_ai(section: Option<&Spanned<AiSection>>) -> Result<AiSetting, Fil
             Ok(AiSetting::Http {
                 endpoint: endpoint.get_ref().clone(),
                 model: model.get_ref().clone(),
+                consented_origins: ai.consented(),
             })
         }
     }

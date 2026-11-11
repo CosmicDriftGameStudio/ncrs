@@ -96,10 +96,12 @@ impl App {
             return;
         };
         let model: Option<Arc<dyn ncrs_ai::ChatModel>> = match &setting {
-            crate::config::AiSetting::Http { endpoint, model } => {
-                crate::filing::http_ai_provider(endpoint, model, index_path)
-                    .map(|server| server as Arc<dyn ncrs_ai::ChatModel>)
-            }
+            crate::config::AiSetting::Http {
+                endpoint,
+                model,
+                consented_origins,
+            } => crate::filing::http_ai_provider(endpoint, model, consented_origins, index_path)
+                .map(|server| server as Arc<dyn ncrs_ai::ChatModel>),
             crate::config::AiSetting::Local { threads } => {
                 local_chat_model(index_path, self.hermes.filing_config.load, *threads)
             }
@@ -111,23 +113,6 @@ impl App {
 
     pub(in crate::app) fn chat_ai_on(&self) -> bool {
         self.hermes.filing_config.ai != crate::config::AiSetting::Off
-    }
-
-    /// The model that may read the file names of a folder the user did not
-    /// hand to Hermes, and whether it runs on this computer.
-    pub(in crate::app) fn chat_model_for_names(&self) -> ncrs_ops::NamesModel {
-        let stays_here = match &self.hermes.filing_config.ai {
-            crate::config::AiSetting::Local { .. } => true,
-            crate::config::AiSetting::Http { endpoint, .. } => {
-                ncrs_ai::endpoint_is_local(endpoint).unwrap_or(false)
-            }
-            crate::config::AiSetting::Off => return ncrs_ops::NamesModel::None,
-        };
-        match self.chat_model.clone() {
-            None => ncrs_ops::NamesModel::None,
-            Some(model) if stays_here => ncrs_ops::NamesModel::Local(model),
-            Some(model) => ncrs_ops::NamesModel::Remote(model),
-        }
     }
 
     pub(in crate::app) fn chat_availability(&self) -> ncrs_hermes_chat::Availability {

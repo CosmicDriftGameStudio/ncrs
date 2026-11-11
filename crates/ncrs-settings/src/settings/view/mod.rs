@@ -140,7 +140,6 @@ fn problem_text(problem: &FieldProblem, lang: Language) -> String {
             Msg::SettingsProblemEndpointNotLocal
         }
         FieldProblem::Needed => Msg::SettingsProblemNeeded,
-        FieldProblem::NotUnderstood => Msg::SettingsProblemNotUnderstood,
         FieldProblem::NotAnIban => Msg::SettingsProblemIban,
         FieldProblem::Write(failure) => return failure.clone(),
     };

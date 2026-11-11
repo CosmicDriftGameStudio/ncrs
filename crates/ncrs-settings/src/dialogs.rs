@@ -5,13 +5,14 @@
 use iced::widget::{column, row, text};
 use iced::{Element, Size};
 use ncrs_config::config::{FilingLocation, LocationTransfer};
-use ncrs_i18n::{Language, Msg};
+use ncrs_i18n::{fill_template, Language, Msg};
 use ncrs_intake::LocationMode;
 use ncrs_ui_kit::frame::{DialogSize, Frame, KeyHints};
 use ncrs_ui_kit::kit::{self, Check, Tone};
 use ncrs_ui_kit::palette::Palette;
 use ncrs_ui_kit::theme::{font_size, spacing};
 
+use crate::ai_consent::announced_items;
 use crate::facts::ModelKind;
 use crate::message::SettingsMessage;
 use crate::settings::view::{server_dialog_body, SettingsView};
@@ -188,7 +189,7 @@ pub fn server_dialog<'a>(view: &SettingsView<'a>, window: Size) -> Element<'a, M
         ),
         kit::button(
             view.lang.text(Msg::SettingsServerDialogSave),
-            (!view.state.save_is_blocked()).then_some(SettingsMessage::SaveServer),
+            Some(SettingsMessage::SaveServer),
             Tone::Primary,
             view.palette,
         ),
@@ -201,9 +202,63 @@ pub fn server_dialog<'a>(view: &SettingsView<'a>, window: Size) -> Element<'a, M
     .into_element()
 }
 
+/// The question before the model is switched to a server on another
+/// computer: everything that would go there. Nothing is written before the
+/// yes.
+pub fn ai_consent_dialog<'a>(
+    host: &str,
+    window: Size,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let body = column![
+        kit::paragraph(
+            fill_template(lang.text(Msg::SettingsAiConsentIntro), &[("{host}", host)]),
+            palette,
+        ),
+        kit::bullet_list(
+            announced_items().map(|item| lang.text(item).to_owned()),
+            palette,
+        ),
+        kit::warning_box(lang.text(Msg::SettingsAiConsentOutro), palette),
+    ]
+    .spacing(spacing::LINE_GAP);
+    Frame::new(
+        lang.text(Msg::SettingsAiConsentTitle),
+        body,
+        DialogSize::Wide,
+        window,
+        lang,
+        palette,
+    )
+    .buttons(vec![
+        kit::button(
+            lang.text(Msg::DialogCancel),
+            Some(SettingsMessage::CancelAiConsent),
+            Tone::Secondary,
+            palette,
+        ),
+        kit::button(
+            lang.text(Msg::SettingsAiConsentConfirm),
+            Some(SettingsMessage::ConfirmAiConsent),
+            Tone::Primary,
+            palette,
+        ),
+    ])
+    .on_close(SettingsMessage::CancelAiConsent)
+    .hints(KeyHints {
+        enter: false,
+        tab: false,
+    })
+    .into_element()
+}
+
 /// The dialog the open page asks for, if any.
 pub fn open_dialog<'a>(view: &SettingsView<'a>, window: Size) -> Option<Element<'a, Message>> {
     let (state, lang, palette) = (view.state, view.lang, view.palette);
+    if let Some(ask) = &state.consent_pending {
+        return Some(ai_consent_dialog(&ask.host, window, lang, palette));
+    }
     if state.server_dialog {
         return Some(server_dialog(view, window));
     }

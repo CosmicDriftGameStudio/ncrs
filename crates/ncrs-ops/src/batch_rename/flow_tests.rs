@@ -304,7 +304,7 @@ mod abort {
             permanent_delete_key: None,
             restore_last_key: None,
             index: None,
-            model: crate::ctx::NamesModel::None,
+            model: None,
         })
     }
 

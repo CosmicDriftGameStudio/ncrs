@@ -3703,12 +3703,6 @@
       "de": "Einfaches http gilt nur für diesen Rechner. Nimm https."
     },
     {
-      "key": "settings.problem_not_understood",
-      "context": "Shown under the endpoint setting of the own server dialog when Save was pressed for a server on another computer but the box \"I understand\" is not ticked.",
-      "en": "Tick \"I understand\" below first.",
-      "de": "Setze unten zuerst den Haken bei \"Ich verstehe\"."
-    },
-    {
       "key": "settings.problem_needed",
       "context": "Shown under the endpoint or model name setting when it is empty but the own server needs it.",
       "en": "Needed for an own server.",
@@ -3793,10 +3787,52 @@
       "de": "Deine Dokumente verlassen diesen Rechner. Wenn Hermes diesen Server nutzt, gehen der Text der Dokumente, die er liest, und dein Chat an {host}."
     },
     {
-      "key": "settings.ai_understand",
-      "context": "Label of a checkbox in the own server dialog, under the warning that documents leave the computer. Saving needs it ticked.",
-      "en": "I understand",
-      "de": "Ich verstehe"
+      "key": "settings.ai_consent_title",
+      "context": "Title of the question that opens when the user switches Hermes (the module that sorts documents) from a model on this computer to a server on another computer. Noun phrase.",
+      "en": "Send data to another computer",
+      "de": "Daten an einen anderen Rechner senden"
+    },
+    {
+      "key": "settings.ai_consent_intro",
+      "context": "First line of the question about switching to a server on another computer. A list of what is sent follows. {host} is the name of that computer. The AI model is the program that reads documents and answers in the chat.",
+      "en": "If you switch to this model, the following goes to {host}. The model runs there, not on this computer:",
+      "de": "Wenn du zu diesem Modell wechselst, geht Folgendes an {host}. Das Modell läuft dort, nicht auf diesem Rechner:"
+    },
+    {
+      "key": "settings.ai_consent_item_documents",
+      "context": "One point of the list of what goes to the AI model on another computer: the documents Hermes sorts into folders. Hermes is the module that sorts documents. Text recognition turns scans and photos into text.",
+      "en": "The text of every document Hermes reads to sort it, including the text recognised in scans and photos.",
+      "de": "Der Text jedes Dokuments, das Hermes zum Einsortieren liest, auch der Text, der in Scans und Fotos erkannt wurde."
+    },
+    {
+      "key": "settings.ai_consent_item_chat",
+      "context": "One point of the list of what goes to the AI model on another computer: the chat with Hermes (the module that sorts documents).",
+      "en": "Everything you write to Hermes in the chat, and the last question, search and answer your message refers to.",
+      "de": "Alles, was du im Chat an Hermes schreibst, und die letzte Frage, Suche und Antwort, auf die sich deine Nachricht bezieht."
+    },
+    {
+      "key": "settings.ai_consent_item_rules",
+      "context": "One point of the list of what goes to the AI model on another computer: what Hermes (the module that sorts documents) shows the model when it learns a filing rule or works out how a folder is organised. The archive is the folder where filed documents are kept.",
+      "en": "When Hermes learns a filing rule or reads how a folder is organised: the paths of sample documents in your archive and what Hermes found in them (sender, date, kind, amount, number).",
+      "de": "Wenn Hermes eine Ablageregel lernt oder erkennt, wie ein Ordner aufgebaut ist: die Pfade von Beispieldokumenten aus deinem Archiv und was Hermes darin gefunden hat (Absender, Datum, Art, Betrag, Nummer)."
+    },
+    {
+      "key": "settings.ai_consent_item_names",
+      "context": "One point of the list of what goes to the AI model on another computer: the file names the batch rename dialog shows the model to propose a name pattern. SFTP is a way to reach files on a server.",
+      "en": "When you rename several files at once: the names of up to 30 files of the folder, also in folders on another computer (SFTP).",
+      "de": "Wenn du mehrere Dateien auf einmal umbenennst: die Namen von bis zu 30 Dateien des Ordners, auch in Ordnern auf einem anderen Rechner (SFTP)."
+    },
+    {
+      "key": "settings.ai_consent_outro",
+      "context": "Last paragraph of the question about switching to a server on another computer, below the list of what is sent.",
+      "en": "What the server does with this is up to whoever runs it. You can switch back to the model on this computer at any time. You are asked once for each server.",
+      "de": "Was der Server damit macht, entscheidet, wer ihn betreibt. Du kannst jederzeit zum Modell auf diesem Rechner zurückwechseln. Du wirst einmal pro Server gefragt."
+    },
+    {
+      "key": "settings.ai_consent_confirm",
+      "context": "Button that confirms the question about sending data to a server on another computer and switches the model. Verb phrase.",
+      "en": "Allow and switch",
+      "de": "Erlauben und wechseln"
     },
     {
       "key": "settings.ai_key_not_stored",
@@ -5699,18 +5735,6 @@
       "context": "Batch rename dialog. Button that puts the pattern Hermes proposes into the field.",
       "en": "Use",
       "de": "Übernehmen"
-    },
-    {
-      "key": "batch_rename.hermes_ask",
-      "context": "Batch rename dialog. Button that sends the file names of this folder to the AI model and asks Hermes for a naming pattern. Only shown when the model runs on another computer.",
-      "en": "Ask Hermes",
-      "de": "Hermes fragen"
-    },
-    {
-      "key": "batch_rename.hermes_ask_hint",
-      "context": "Batch rename dialog. Next to the button that asks Hermes for a pattern. Says what the click sends and where: up to 30 file names of this folder go to the AI server the user set up, which runs on another computer.",
-      "en": "Hermes can suggest a pattern. Up to 30 file names go to your AI server.",
-      "de": "Hermes kann ein Muster vorschlagen. Bis zu 30 Dateinamen gehen an deinen KI-Server."
     },
     {
       "key": "batch_rename.confirm",

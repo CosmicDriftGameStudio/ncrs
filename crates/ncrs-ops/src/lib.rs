@@ -51,7 +51,7 @@ pub use clipboard_flow::copy_files_to_clipboard;
 pub use clipboard_text::{
     clipboard_text, clipboard_text_of_files, copied_notice, ClipboardKind, ClipboardText, PanelRows,
 };
-pub use ctx::{Ctx, FlowCtx, NamesModel};
+pub use ctx::{Ctx, FlowCtx};
 pub use delete_flow::{
     confirm_delete, delete_failure, delete_row_done, delete_subject, end_delete, open_delete,
     DeleteRequest, Outcome,

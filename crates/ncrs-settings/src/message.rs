@@ -198,8 +198,11 @@ pub enum SettingsMessage {
         endpoint: String,
         result: crate::ai_server::AiCheckResult,
     },
-    /// The "I understand" tick: documents go to another computer.
-    UnderstandLeaving(bool),
+    /// "Allow and switch" in the question before a server on another
+    /// computer gets anything.
+    ConfirmAiConsent,
+    /// "Cancel" in the same question: the model stays.
+    CancelAiConsent,
     /// Save of the dialog: address, model and key together.
     SaveServer,
     /// The key was kept in the keychain, or why not.

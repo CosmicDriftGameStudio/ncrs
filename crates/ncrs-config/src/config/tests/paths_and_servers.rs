@@ -522,9 +522,34 @@ fn the_http_provider_needs_an_endpoint_and_a_model() {
         ),
         AiSetting::Http {
             endpoint: "http://localhost:8080/v1".to_owned(),
-            model: "qwen".to_owned()
+            model: "qwen".to_owned(),
+            consented_origins: vec!["http://localhost:8080".to_owned()],
         }
     );
+}
+
+#[test]
+fn a_file_without_consent_keeps_the_saved_server_and_a_listed_consent_is_the_whole_list() {
+    let saved = "enabled = true\nprovider = \"http\"\nmodel = \"m\"\n\
+                 endpoint = \"https://ai.example.com/v1\"\n";
+    let AiSetting::Http {
+        consented_origins, ..
+    } = ai_setting(saved)
+    else {
+        panic!("not the http provider");
+    };
+    assert_eq!(consented_origins, ["https://ai.example.com"]);
+
+    let AiSetting::Http {
+        consented_origins: listed,
+        ..
+    } = ai_setting(&format!(
+        "{saved}consented_origins = [\"https://other.example.org\"]\n"
+    ))
+    else {
+        panic!("not the http provider");
+    };
+    assert_eq!(listed, ["https://other.example.org"]);
 }
 
 #[test]

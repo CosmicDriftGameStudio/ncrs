@@ -58,6 +58,15 @@ impl OpenAiCompatible {
             Json::object([("type", Json::text("json_object"))])
         });
         self.include_usage(&mut body);
+        // The chat and the rule questions have no inbox location; the consent
+        // is for the server.
+        if !self.may_send(Path::new("")) {
+            return Err(AiError::ConsentRequired(OutgoingPreview {
+                endpoint: self.endpoint.origin.clone(),
+                model: self.model.clone(),
+                body: body.pretty(),
+            }));
+        }
         let reply = self.post(&body.pretty())?;
         self.log_usage(&reply);
         message_content(&reply)

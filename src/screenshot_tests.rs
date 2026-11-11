@@ -288,7 +288,6 @@ fn own_server_app() -> App {
             text: text.to_owned(),
         })));
     }
-    drop(app.update(Message::Settings(SettingsMessage::UnderstandLeaving(true))));
     let runtime = tokio::runtime::Runtime::new().expect("runtime");
     let _entered = runtime.enter();
     drop(app.update(Message::Settings(SettingsMessage::TestAiServer)));

@@ -106,11 +106,10 @@ pub fn update(
         SettingsMessage::ServerDialog(open) => page_flag(settings, |state| {
             state.server_dialog = open;
             if !open {
-                // Cancelled: the typed key, the test and the tick belong to
-                // this opening of the dialog only.
+                // Cancelled: the typed key and the test belong to this
+                // opening of the dialog only.
                 state.ai_key = None;
                 state.ai_check = crate::settings::AiCheck::Idle;
-                state.ai_understood = false;
             }
         }),
         SettingsMessage::OpenChat(area) => {

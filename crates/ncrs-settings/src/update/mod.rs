@@ -1,6 +1,8 @@
 //! The state changes of the settings. What reaches outside them comes back as
 //! actions.
 
+#[cfg(test)]
+mod consent_tests;
 mod documents;
 mod keys;
 mod models;

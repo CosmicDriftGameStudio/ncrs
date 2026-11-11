@@ -12,7 +12,7 @@ use ncrs_ui_kit::palette::Palette;
 use ncrs_ui_kit::theme::spacing;
 
 use super::pattern::{Case, Field, Problem};
-use super::state::{BatchRename, BatchRenameMessage, HermesAsk, Token, VISIBLE_ROWS};
+use super::state::{BatchRename, BatchRenameMessage, Token, VISIBLE_ROWS};
 use crate::message::OpsMessage;
 
 pub const PATTERN_FIELD_ID: &str = "batch-rename-pattern";
@@ -113,32 +113,16 @@ fn hermes_line<'a>(
     lang: Language,
     palette: &Palette,
 ) -> Option<Element<'a, OpsMessage>> {
-    let (text, label, on_press) = match (dialog.suggestion.as_deref(), dialog.ask) {
-        (Some(pattern), _) => (
-            fill_template(lang.text(Msg::BatchRenameHermes), &[("{pattern}", pattern)]),
-            Msg::BatchRenameHermesUse,
-            Some(BatchRenameMessage::UseHermes),
-        ),
-        (None, HermesAsk::Offered) => (
-            lang.text(Msg::BatchRenameHermesAskHint).to_owned(),
-            Msg::BatchRenameHermesAsk,
-            Some(BatchRenameMessage::AskHermes),
-        ),
-        (None, HermesAsk::Asked) => (
-            lang.text(Msg::BatchRenameHermesAskHint).to_owned(),
-            Msg::BatchRenameHermesAsk,
-            None,
-        ),
-        (None, HermesAsk::Unavailable) => return None,
-    };
+    let pattern = dialog.suggestion.as_deref()?;
+    let text = fill_template(lang.text(Msg::BatchRenameHermes), &[("{pattern}", pattern)]);
     Some(
         row![
             kit::dim(text, palette),
             kit::button(
-                lang.text(label),
-                on_press.map(send),
+                lang.text(Msg::BatchRenameHermesUse),
+                Some(send(BatchRenameMessage::UseHermes)),
                 Tone::Secondary,
-                palette
+                palette,
             ),
         ]
         .spacing(spacing::LINE_GAP)
@@ -327,7 +311,7 @@ pub fn view<'a>(
         lang,
         palette,
     );
-    let document = token_row(
+    let mut document = token_row(
         lang.text(Msg::BatchRenameDocument),
         &[
             Token::Sender,
@@ -339,15 +323,19 @@ pub fn view<'a>(
         palette,
     )
     .push(Space::new().width(Length::Fill));
-    let regex_state = if dialog.regex { Check::On } else { Check::Off };
-    let mut body = column![pattern, add, document].spacing(spacing::LINE_GAP);
     if let Some(hermes) = hermes_line(dialog, lang, palette) {
-        body = body.push(hermes);
+        document = document.push(hermes);
     }
-    body = body
-        .push(settings_row(dialog, lang, palette))
-        .push(regex_check(regex_state, lang, palette))
-        .push(table(dialog, window, lang, palette));
+    let regex_state = if dialog.regex { Check::On } else { Check::Off };
+    let mut body = column![
+        pattern,
+        add,
+        document,
+        settings_row(dialog, lang, palette),
+        regex_check(regex_state, lang, palette),
+        table(dialog, window, lang, palette),
+    ]
+    .spacing(spacing::LINE_GAP);
     let clashes = dialog.preview.clashes();
     if let Some(reason) = dialog.preview.regex_error.as_deref() {
         body = body.push(kit::error_line(

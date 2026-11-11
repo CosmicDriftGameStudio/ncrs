@@ -56,6 +56,27 @@ pub fn paragraph<'a, M: Clone + 'a>(
         .into()
 }
 
+/// Running text lines under a bullet each; a long one wraps under its own
+/// first word.
+pub fn bullet_list<'a, M: Clone + 'a>(
+    items: impl IntoIterator<Item = String>,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let mut list = Column::new().spacing(spacing::XS);
+    for item in items {
+        list = list.push(
+            row![
+                text("\u{2022}")
+                    .size(font_size::BODY)
+                    .color(palette.dim_text),
+                paragraph(item, palette),
+            ]
+            .spacing(spacing::M),
+        );
+    }
+    list.into()
+}
+
 pub fn error_line<'a, M: Clone + 'a>(
     content: impl IntoFragment<'a>,
     palette: &Palette,

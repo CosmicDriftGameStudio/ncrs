@@ -690,6 +690,7 @@ fn switching_the_ai_provider_takes_the_keys_of_the_other_one_away() {
     let http = AiProviderChoice::Http {
         endpoint: "http://127.0.0.1:11434".to_owned(),
         model: "llama".to_owned(),
+        consented_origins: vec!["https://ai.example.com".to_owned()],
     };
 
     let written = write_settings(&path, &ai_provider_settings(&http), None).unwrap();
@@ -699,6 +700,7 @@ fn switching_the_ai_provider_takes_the_keys_of_the_other_one_away() {
         AiSetting::Http {
             endpoint: "http://127.0.0.1:11434".to_owned(),
             model: "llama".to_owned(),
+            consented_origins: vec!["https://ai.example.com".to_owned()],
         }
     );
     assert!(!lines_of(&path).contains("threads"));
@@ -717,6 +719,7 @@ fn switching_the_ai_provider_takes_the_keys_of_the_other_one_away() {
         !text.contains("endpoint") && !text.contains("model"),
         "{text}"
     );
+    assert!(text.contains("https://ai.example.com"), "{text}");
 }
 
 #[test]

@@ -403,19 +403,29 @@ pub fn color_setting(role: ColorRole, color: Option<&str>) -> Setting {
 
 /// The provider and the keys that belong to it; the keys of the other
 /// provider are dropped, since the loader refuses them next to this one.
-pub fn ai_provider_settings(choice: &AiProviderChoice) -> [Setting; 4] {
-    let (provider, threads, endpoint, model) = match choice {
+/// The consented servers stay when the provider goes back to the local one,
+/// so that a later switch to the same server does not ask again.
+pub fn ai_provider_settings(choice: &AiProviderChoice) -> Vec<Setting> {
+    let (provider, threads, endpoint, model, consented) = match choice {
         AiProviderChoice::Local { threads } => (
             AiProviderName::Local,
             threads.map(|count| NonZeroI64::from(count).get().into()),
             None,
             None,
+            None,
         ),
-        AiProviderChoice::Http { endpoint, model } => (
+        AiProviderChoice::Http {
+            endpoint,
+            model,
+            consented_origins,
+        } => (
             AiProviderName::Http,
             None,
             Some(endpoint.as_str().into()),
             Some(model.as_str().into()),
+            Some(toml_edit::Value::Array(
+                consented_origins.iter().map(String::as_str).collect(),
+            )),
         ),
     };
     let setting = |key, value| Setting {
@@ -423,24 +433,28 @@ pub fn ai_provider_settings(choice: &AiProviderChoice) -> [Setting; 4] {
         key,
         value,
     };
-    [
+    let mut settings = vec![
         setting("provider", Some(provider_text(provider).into())),
         setting("threads", threads),
         setting("endpoint", endpoint),
         setting("model", model),
-    ]
+    ];
+    if consented.is_some() {
+        settings.push(setting("consented_origins", consented));
+    }
+    settings
 }
 
 /// What the settings tab sets in `[modules.filing.ai]` besides `enabled`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AiProviderChoice {
     /// `None` leaves the thread count to the module.
-    Local {
-        threads: Option<NonZeroU32>,
-    },
+    Local { threads: Option<NonZeroU32> },
     Http {
         endpoint: String,
         model: String,
+        /// Every server documents may go to, the new one included.
+        consented_origins: Vec<String>,
     },
 }
 

@@ -175,7 +175,8 @@ pub fn update(
         own @ (SettingsMessage::AiKey(_)
         | SettingsMessage::TestAiServer
         | SettingsMessage::AiChecked { .. }
-        | SettingsMessage::UnderstandLeaving(_)
+        | SettingsMessage::ConfirmAiConsent
+        | SettingsMessage::CancelAiConsent
         | SettingsMessage::SaveServer
         | SettingsMessage::AiKeyStored(_)
         | SettingsMessage::UsagePeriod(_)
