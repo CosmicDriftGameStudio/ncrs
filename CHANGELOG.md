@@ -9,7 +9,8 @@ All notable changes to this project are documented here. The format follows
 ### Changed
 
 - The built-in AI model is now Qwen3.5 4B (about 2.7 GB, one download) instead
-  of Qwen3 4B. The old file is left in the `ai-models` folder.
+  of Qwen3 4B. Once the new model is checked and loaded, the file of the old
+  one is deleted from the `ai-models` folder.
 
 ### Fixed
 

@@ -24,7 +24,7 @@ use llama_cpp_2::vocab::LlamaVocab;
 use crate::contract::{parse_reply, Extraction, ExtractionRequest, Provider};
 use crate::error::AiError;
 use crate::grammar::reply_grammar;
-use crate::model_file::{verify_model_file, ModelPin};
+use crate::model_file::{remove_previous_models, verify_model_file, ModelPin};
 use crate::prompt::{user_message_prefix, user_message_suffix, SYSTEM_PROMPT};
 use crate::status::Compute;
 
@@ -89,6 +89,9 @@ impl LocalModel {
     /// reaches llama.cpp, then loads it.
     pub fn load(config: LocalModelConfig, pin: &ModelPin) -> Result<Self, AiError> {
         verify_model_file(&config.path, pin)?;
+        if let Some(dir) = config.path.parent() {
+            remove_previous_models(dir);
+        }
         let backend = backend()?;
         let (model, compute) = match gpu_attempt() {
             Some((params, device)) => LlamaModel::load_from_file(backend, &config.path, &params)

@@ -38,6 +38,22 @@ pub const LOCAL_MODEL: ModelPin = ModelPin {
 /// The folder inside the data folder that holds the model.
 pub const LOCAL_MODEL_FOLDER: &str = "ai-models";
 
+/// The files of the models earlier versions shipped.
+const PREVIOUS_MODEL_FILES: [&str; 2] = ["Qwen3-4B-Q4_K_M.gguf", "Qwen3-0.6B-Q8_0.gguf"];
+
+/// Deletes the files of earlier built-in models from `dir`. Call it only once
+/// the current model there is verified: until then an older version may still
+/// need its file. Links and folders with those names stay.
+pub fn remove_previous_models(dir: &Path) {
+    for name in PREVIOUS_MODEL_FILES {
+        let path = dir.join(name);
+        if fs::symlink_metadata(&path).is_ok_and(|metadata| metadata.is_file()) {
+            // A file that cannot be deleted stays; the next load tries again.
+            let _ = fs::remove_file(&path);
+        }
+    }
+}
+
 /// What tells a file from another one on the same path: if none of this
 /// changed, the bytes that were verified are still the bytes there.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -422,6 +438,26 @@ mod tests {
             verify_model_file(&path, &pin_of(b"model bytes")),
             Err(AiError::Model("the model file is not the expected one"))
         );
+    }
+
+    #[test]
+    fn only_the_files_of_earlier_models_are_removed() {
+        let dir = TempDir::new().unwrap();
+        for name in PREVIOUS_MODEL_FILES {
+            fs::write(dir.path().join(name), b"old").unwrap();
+        }
+        let current = dir.path().join(LOCAL_MODEL.name);
+        let own = dir.path().join("my-model.gguf");
+        fs::write(&current, b"new").unwrap();
+        fs::write(&own, b"mine").unwrap();
+
+        remove_previous_models(dir.path());
+
+        for name in PREVIOUS_MODEL_FILES {
+            assert!(!dir.path().join(name).exists(), "{name} is still there");
+        }
+        assert!(current.exists());
+        assert!(own.exists());
     }
 
     #[test]
