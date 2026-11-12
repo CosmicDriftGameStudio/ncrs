@@ -271,16 +271,17 @@ fn read_documents_facts(
     let mut folder_files = BTreeMap::new();
     let mut read_folders = ReadFolderCoverage::default();
     for location in locations {
-        if !disconnected.contains(&location.path) {
-            if let Ok(files) = access.documents_under(&location.path) {
+        if let Ok(files) = access.documents_under(&location.path) {
+            if !disconnected.contains(&location.path) {
                 folder_files.insert(location.path.clone(), files);
-                if location.mode == LocationMode::Archive {
-                    if let Ok((with_text, understood)) = access.ai_coverage_under(&location.path) {
-                        let wide = |count: usize| u64::try_from(count).unwrap_or(u64::MAX);
-                        read_folders.documents += wide(files);
-                        read_folders.with_text += wide(with_text);
-                        read_folders.understood += wide(understood);
-                    }
+            }
+            // Counted from the index alone, so an unplugged drive keeps its numbers.
+            if location.mode == LocationMode::Archive {
+                if let Ok((with_text, understood)) = access.ai_coverage_under(&location.path) {
+                    let wide = |count: usize| u64::try_from(count).unwrap_or(u64::MAX);
+                    read_folders.documents += wide(files);
+                    read_folders.with_text += wide(with_text);
+                    read_folders.understood += wide(understood);
                 }
             }
         }
@@ -453,6 +454,8 @@ mod tests {
             Some("Bill"),
             true,
         );
+        let unplugged = dir.path().join("unplugged");
+        index_document(&mut index, 5, unplugged.join("old.pdf"), Some("Tax"), true);
         let bin = dir.path().join("bin");
         std::fs::create_dir_all(&bin).expect("bin");
         let access = ChatAccess::new(
@@ -466,6 +469,7 @@ mod tests {
         let locations = [
             filing_location(archive, LocationMode::Archive),
             filing_location(inbox, LocationMode::Inbox),
+            filing_location(unplugged, LocationMode::Archive),
         ];
         let loaded = read_documents_facts(
             Some(access),
@@ -476,10 +480,11 @@ mod tests {
         assert_eq!(
             loaded.read_folders,
             Some(ReadFolderCoverage {
-                documents: 3,
-                with_text: 2,
-                understood: 1,
+                documents: 4,
+                with_text: 3,
+                understood: 2,
             })
         );
+        assert_eq!(loaded.disconnected.len(), 1);
     }
 }
