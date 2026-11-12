@@ -263,6 +263,7 @@ fn ai_fields_on_archive_pdfs() {
             known: DocumentFields::default(),
             source: archive.clone(),
             kinds: Arc::clone(&kinds),
+            judge_document: false,
         });
         let secs = started.elapsed().as_secs_f64();
         asked += 1;

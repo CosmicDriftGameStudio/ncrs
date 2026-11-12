@@ -3865,6 +3865,7 @@ mod title_bar {
                 known: ncrs_index::DocumentFields::default(),
                 source: std::path::PathBuf::from("inbox"),
                 kinds: std::sync::Arc::default(),
+                judge_document: false,
             },
         )
         .unwrap_err();

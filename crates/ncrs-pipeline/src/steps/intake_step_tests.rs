@@ -55,6 +55,7 @@ fn the_index_is_free_for_others_while_the_intake_step_hashes_a_file() {
         plan: None,
         force: false,
         stored_text_is_current: false,
+        not_a_document: false,
     };
     let first_seen = UNIX_EPOCH + Duration::from_secs(1_800_000_000);
     assert_eq!(

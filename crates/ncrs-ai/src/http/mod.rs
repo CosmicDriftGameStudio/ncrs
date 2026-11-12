@@ -277,7 +277,11 @@ impl OpenAiCompatible {
                         ("strict", Json::Bool(false)),
                         (
                             "schema",
-                            output_schema(&request.open_fields, &request.kinds),
+                            output_schema(
+                                &request.open_fields,
+                                &request.kinds,
+                                request.judge_document,
+                            ),
                         ),
                     ]),
                 ),

@@ -158,15 +158,15 @@ jobs:
       - uses: ./.github/actions/ai-model-setup
 
       # The count is checked in the source and in the log: a wrong filter or a
-      # missing feature would run no test and still pass. Six `with_model_`
+      # missing feature would run no test and still pass. Seven `with_model_`
       # tests, one of them the chat evaluation.
       - name: Tests with the local AI model
         run: |
           set -o pipefail
-          [ "$(grep -rhoE 'fn with_model_[a-z0-9_]+' crates/ncrs-ai/src | wc -l)" -eq 6 ]
+          [ "$(grep -rhoE 'fn with_model_[a-z0-9_]+' crates/ncrs-ai/src | wc -l)" -eq 7 ]
           [ "$(grep -rhoE 'fn with_model_chat_eval[a-z0-9_]*' crates/ncrs-ai/src | wc -l)" -eq 1 ]
           cargo test -p ncrs-ai --features llama with_model_ -- --ignored --show-output --skip chat_eval 2>&1 | tee ai-tests.log
-          grep -q 'test result: ok. 5 passed' ai-tests.log
+          grep -q 'test result: ok. 6 passed' ai-tests.log
 
   # Only on main, the schedule and by hand: a pull request would wait another
   # 22 minutes for it, and the Linux shards already check the evaluation. It

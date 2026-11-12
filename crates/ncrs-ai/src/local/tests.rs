@@ -59,6 +59,7 @@ fn request(text: &str, open_fields: &[Field]) -> ExtractionRequest {
         known: DocumentFields::default(),
         source: PathBuf::from("inbox-one"),
         kinds: std::sync::Arc::default(),
+        judge_document: false,
     }
 }
 
@@ -219,6 +220,29 @@ fn with_model_only_the_open_fields_come_back() {
 
     assert!(extraction.fields.len() <= 1);
     assert_only_open_fields_once(&extraction, &open);
+}
+
+#[test]
+#[ignore = "needs the AI model: bash scripts/fetch-ai-model.sh target/ai-models"]
+fn with_model_judges_what_is_not_a_document() {
+    let rust_source = "use std::collections::HashMap;\n\nfn count_words(text: &str) -> HashMap<String, usize> {\n    let mut counts = HashMap::new();\n    for word in text.split_whitespace() {\n        *counts.entry(word.to_owned()).or_insert(0) += 1;\n    }\n    counts\n}\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n\n    #[test]\n    fn counts_a_word() {\n        assert_eq!(count_words(\"a a\")[\"a\"], 2);\n    }\n}\n";
+    let chat_export = "[12.03.24, 09:14:02] Anna: Bist du heute im Büro?\n[12.03.24, 09:14:40] Ben: Ja, bin gegen zehn da\n[12.03.24, 09:15:11] Anna: Super, dann bring bitte den Kaffee mit\n[12.03.24, 09:15:30] Ben: Mach ich 👍\n[12.03.24, 09:16:02] Anna: Danke!\n";
+    let invoice = "Muster GmbH\nHauptstraße 1, 12345 Musterstadt\n\nRechnung Nr. 4711\nDatum: 05.03.2024\n\nBeratungsleistung März 2024\nGesamtbetrag: 119,00 EUR inkl. 19 % MwSt.\nBitte überweisen Sie den Betrag innerhalb von 14 Tagen.";
+    let judge = |text: &str| {
+        model()
+            .extract(&ExtractionRequest {
+                judge_document: true,
+                ..request(text, &[])
+            })
+            .unwrap()
+            .not_a_document
+    };
+
+    for (name, text) in [("source code", rust_source), ("chat export", chat_export)] {
+        let confidence = judge(text).unwrap_or_else(|| panic!("{name} is judged a document"));
+        assert!(confidence >= 0.9, "{name}: {confidence}");
+    }
+    assert_eq!(judge(invoice), None, "an invoice is a document");
 }
 
 fn open_fields_of(known: &DocumentFields) -> Vec<Field> {

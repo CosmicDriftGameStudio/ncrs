@@ -104,12 +104,21 @@ fn count_columns() -> String {
     )
 }
 
+/// The excluded paths that are folders: no document lies at exactly that path.
+/// A query that uses [`is_excluded_sql`] starts with this, so the folder rows
+/// are found once instead of once per document row.
+pub const EXCLUDED_FOLDERS_CTE: &str = "WITH excluded_folder AS MATERIALIZED (
+    SELECT e.path FROM excluded_path e
+    WHERE NOT EXISTS (SELECT 1 FROM document x WHERE x.path = e.path))";
+
 /// SQL that is true when the document path in `path_column` is excluded,
-/// itself or by a folder around it.
+/// itself or by a folder around it. Needs [`EXCLUDED_FOLDERS_CTE`] in front
+/// of the query.
 pub fn is_excluded_sql(path_column: &str) -> String {
     format!(
-        "EXISTS (SELECT 1 FROM excluded_path e WHERE e.path = {path_column}
-            OR e.path || '{MAIN_SEPARATOR}' = substr({path_column}, 1, length(e.path) + 1))"
+        "(EXISTS (SELECT 1 FROM excluded_path e WHERE e.path = {path_column})
+          OR EXISTS (SELECT 1 FROM excluded_folder f
+                     WHERE f.path || '{MAIN_SEPARATOR}' = substr({path_column}, 1, length(f.path) + 1)))"
     )
 }
 
@@ -299,7 +308,7 @@ impl Index {
         directories: &[PathBuf],
     ) -> Result<Vec<StatusCounts>, IndexError> {
         let mut deep = self.connection().prepare(&format!(
-            "SELECT {} FROM document
+            "{EXCLUDED_FOLDERS_CTE} SELECT {} FROM document
              WHERE missing_since IS NULL AND path >= ?1 AND path < ?2",
             count_columns()
         ))?;
@@ -319,7 +328,7 @@ impl Index {
         directories: &[PathBuf],
     ) -> Result<Vec<StatusCounts>, IndexError> {
         let mut direct = self.connection().prepare(&format!(
-            "SELECT {} FROM document
+            "{EXCLUDED_FOLDERS_CTE} SELECT {} FROM document
              WHERE missing_since IS NULL AND path >= ?1 AND path < ?2 AND {IS_DIRECT}",
             count_columns()
         ))?;

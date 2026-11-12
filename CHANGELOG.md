@@ -14,8 +14,15 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
-- The Index page counts only the documents in read folders. "The rest runs in
-  the background" shows only while documents are still waiting for the AI.
+- The Index page counts only the documents in "Read only" folders. "The rest
+  runs in the background" shows only while documents are still waiting for the
+  AI.
+- Documents waiting in a read folder for an answer that were never read are now
+  read in the background. Their question stays open and nothing is moved.
+- Pictures without any text and files that are no documents (code, chat
+  exports, screenshots) no longer become questions: Hermes excludes them, as if
+  you had excluded them yourself.
+- A folder whose files were all excluded no longer shows them as questions.
 
 ## [1.4.1] — 2026-11-11
 

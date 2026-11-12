@@ -31,7 +31,7 @@ pub use chat::{
 pub use consent::{ConsentGivenInSettings, ConsentLedger, OutgoingPreview};
 pub use contract::{
     output_schema, parse_reply, ExtractedField, Extraction, ExtractionRequest, Provider, CONFIDENT,
-    MAX_VALUE_CHARS,
+    MAX_VALUE_CHARS, NOT_A_DOCUMENT_HINT, NOT_A_DOCUMENT_KEY,
 };
 pub use error::{AiError, EndpointProblem};
 pub use http::{

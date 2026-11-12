@@ -759,6 +759,7 @@ mod archive_fields;
 
 mod review_tests;
 use review_tests::{archive_scan, first_document_status, reviewed_once, FixedText};
+mod inquiry_tests;
 mod rule_tests;
 
 fn handled_everything(runner: &Runner, count: usize) -> Snapshot {

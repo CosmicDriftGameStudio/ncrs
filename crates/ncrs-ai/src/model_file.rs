@@ -39,11 +39,13 @@ pub const LOCAL_MODEL: ModelPin = ModelPin {
 pub const LOCAL_MODEL_FOLDER: &str = "ai-models";
 
 /// The files of the models earlier versions shipped.
+#[cfg(any(test, feature = "llama"))]
 const PREVIOUS_MODEL_FILES: [&str; 2] = ["Qwen3-4B-Q4_K_M.gguf", "Qwen3-0.6B-Q8_0.gguf"];
 
 /// Deletes the files of earlier built-in models from `dir`. Call it only once
 /// the current model there is verified: until then an older version may still
 /// need its file. Links and folders with those names stay.
+#[cfg(any(test, feature = "llama"))]
 pub fn remove_previous_models(dir: &Path) {
     for name in PREVIOUS_MODEL_FILES {
         let path = dir.join(name);

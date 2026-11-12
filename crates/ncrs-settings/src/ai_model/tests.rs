@@ -650,6 +650,7 @@ fn lazy_model_stays_not_downloaded(dir: &Path) {
         known: ncrs_index::DocumentFields::default(),
         source: PathBuf::from("inbox-one"),
         kinds: Arc::default(),
+        judge_document: false,
     };
 
     let error = lazy.extract(&request).unwrap_err();

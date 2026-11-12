@@ -28,7 +28,16 @@ pub struct ExtractionRequest {
     pub source: PathBuf,
     /// The kinds the document may be named as.
     pub kinds: Arc<KindCatalog>,
+    /// Also ask whether the text is a document at all; the answer comes back
+    /// as `Extraction::not_a_document`, never as a field.
+    pub judge_document: bool,
 }
+
+/// The key of the answer to `ExtractionRequest::judge_document`.
+pub const NOT_A_DOCUMENT_KEY: &str = "not_a_document";
+
+/// What the provider is told `not_a_document` means.
+pub const NOT_A_DOCUMENT_HINT: &str = "true only when the text is clearly not a document to keep on paper or file away (letter, invoice, contract, statement, receipt, certificate, form, ticket): for example program code, a chat or log export, an app or website screenshot, a web page, personal notes; false when unsure";
 
 /// A value the provider found, checked: it reads as the type of its field.
 #[derive(Debug, Clone, PartialEq)]
@@ -110,6 +119,9 @@ pub fn clean_value(value: &str) -> Option<String> {
 pub struct Extraction {
     /// In the order of `AI_FIELD_ORDER`, each field at most once.
     pub fields: Vec<ExtractedField>,
+    /// The confidence of the provider that the text is no document, only when
+    /// it was asked and said so.
+    pub not_a_document: Option<f32>,
 }
 
 /// The only thing a provider can do: name values for fields. It cannot
@@ -129,15 +141,45 @@ pub trait Provider: Send + Sync + fmt::Debug {
 /// open field, each `{ "value": string, "confidence": number }`, and nothing
 /// else. A provider that enforces schemas then cannot answer with more; one
 /// that does not is handled by `parse_reply`, which drops what is not asked.
-pub fn output_schema(open_fields: &[Field], kinds: &KindCatalog) -> Json {
-    let properties = AI_FIELD_ORDER
+pub fn output_schema(open_fields: &[Field], kinds: &KindCatalog, judge_document: bool) -> Json {
+    let mut properties: Vec<(String, Json)> = AI_FIELD_ORDER
         .into_iter()
         .filter(|field| open_fields.contains(field))
         .map(|field| (field.as_str().to_owned(), field_schema(field, kinds)))
         .collect();
+    if judge_document {
+        properties.push((NOT_A_DOCUMENT_KEY.to_owned(), not_a_document_schema()));
+    }
     Json::object([
         ("type", Json::text("object")),
         ("properties", Json::Object(properties)),
+        ("additionalProperties", Json::Bool(false)),
+    ])
+}
+
+fn confidence_schema() -> Json {
+    Json::object([
+        ("type", Json::text("number")),
+        ("minimum", Json::Int(0)),
+        ("maximum", Json::Int(1)),
+    ])
+}
+
+fn not_a_document_schema() -> Json {
+    Json::object([
+        ("type", Json::text("object")),
+        ("description", Json::text(NOT_A_DOCUMENT_HINT)),
+        (
+            "properties",
+            Json::object([
+                ("value", Json::object([("type", Json::text("boolean"))])),
+                ("confidence", confidence_schema()),
+            ]),
+        ),
+        (
+            "required",
+            Json::List(vec![Json::text("value"), Json::text("confidence")]),
+        ),
         ("additionalProperties", Json::Bool(false)),
     ])
 }
@@ -158,14 +200,7 @@ fn field_schema(field: Field, kinds: &KindCatalog) -> Json {
             "properties",
             Json::object([
                 ("value", Json::object([("type", Json::text("string"))])),
-                (
-                    "confidence",
-                    Json::object([
-                        ("type", Json::text("number")),
-                        ("minimum", Json::Int(0)),
-                        ("maximum", Json::Int(1)),
-                    ]),
-                ),
+                ("confidence", confidence_schema()),
             ]),
         ),
         (
@@ -200,7 +235,25 @@ pub fn parse_reply(raw: &str, request: &ExtractionRequest) -> Result<Extraction,
         .filter_map(|field| field_of(&reply, field))
         .filter(|found| found.field != Field::Amount || amount_is_in(&request.text, found))
         .collect();
-    Ok(Extraction { fields })
+    let not_a_document = request
+        .judge_document
+        .then(|| not_a_document_of(&reply))
+        .flatten();
+    Ok(Extraction {
+        fields,
+        not_a_document,
+    })
+}
+
+/// The confidence of a "true" with a confidence in 0.0..=1.0; anything else
+/// counts as no verdict.
+fn not_a_document_of(reply: &JsonObject<'_>) -> Option<f32> {
+    let entry = reply.get_object(NOT_A_DOCUMENT_KEY)?;
+    if !entry.get_boolean("value")? {
+        return None;
+    }
+    let confidence = entry.get_number("confidence")?.parse::<f32>().ok()?;
+    (0.0..=1.0).contains(&confidence).then_some(confidence)
 }
 
 /// Whether some number written in `text` is the amount `found` names.
@@ -268,6 +321,7 @@ mod tests {
             known: DocumentFields::default(),
             source: PathBuf::new(),
             kinds: Arc::default(),
+            judge_document: false,
         }
     }
 
@@ -388,7 +442,7 @@ mod tests {
 
     #[test]
     fn the_recipient_is_asked_and_filled_only_while_empty() {
-        let schema = output_schema(&[Field::Recipient], &KindCatalog::built_in()).pretty();
+        let schema = output_schema(&[Field::Recipient], &KindCatalog::built_in(), false).pretty();
         let found = ExtractedField::new(Field::Recipient, "Erika Beispiel", 0.9).unwrap();
         let mut fields = DocumentFields::default();
 
@@ -400,13 +454,82 @@ mod tests {
 
     #[test]
     fn the_schema_asks_for_the_open_fields_only() {
-        let schema =
-            output_schema(&[Field::Date, Field::Sender], &KindCatalog::built_in()).pretty();
+        let schema = output_schema(
+            &[Field::Date, Field::Sender],
+            &KindCatalog::built_in(),
+            false,
+        )
+        .pretty();
 
         assert!(schema.contains("\"sender\""));
         assert!(schema.contains("\"date\""));
         assert!(!schema.contains("\"amount\""));
         assert!(schema.contains("\"additionalProperties\": false"));
+    }
+
+    #[test]
+    fn the_judgement_is_in_the_schema_only_when_asked() {
+        let kinds = KindCatalog::built_in();
+
+        let without = output_schema(&[Field::Date], &kinds, false).pretty();
+        let with = output_schema(&[Field::Date], &kinds, true).pretty();
+
+        assert!(!without.contains("not_a_document"));
+        assert!(with.contains("\"not_a_document\""));
+        assert!(with.contains("\"boolean\""));
+        assert!(with.contains(NOT_A_DOCUMENT_HINT));
+    }
+
+    fn judging(text: &str) -> ExtractionRequest {
+        ExtractionRequest {
+            judge_document: true,
+            ..request(text, &[Field::Sender])
+        }
+    }
+
+    #[test]
+    fn a_sure_not_a_document_is_read_only_when_asked() {
+        let raw = r#"{"not_a_document": {"value": true, "confidence": 0.95}}"#;
+
+        assert_eq!(
+            parse_reply(raw, &judging("fn main() {}"))
+                .unwrap()
+                .not_a_document,
+            Some(0.95)
+        );
+        assert_eq!(
+            parse_reply(raw, &request("fn main() {}", &[Field::Sender]))
+                .unwrap()
+                .not_a_document,
+            None
+        );
+    }
+
+    #[test]
+    fn a_false_or_malformed_judgement_is_no_verdict() {
+        for raw in [
+            r#"{"not_a_document": {"value": false, "confidence": 0.95}}"#,
+            r#"{"not_a_document": {"value": "true", "confidence": 0.95}}"#,
+            r#"{"not_a_document": {"value": true, "confidence": 1.5}}"#,
+            r#"{"not_a_document": {"value": true}}"#,
+            r#"{"not_a_document": true}"#,
+        ] {
+            assert_eq!(
+                parse_reply(raw, &judging("x")).unwrap().not_a_document,
+                None
+            );
+        }
+    }
+
+    #[test]
+    fn the_judgement_is_never_a_field() {
+        let raw = r#"{"not_a_document": {"value": true, "confidence": 0.95},
+                      "sender": {"value": "Agency B", "confidence": 0.9}}"#;
+
+        let extraction = parse_reply(raw, &judging("x")).unwrap();
+
+        assert_eq!(extraction.fields.len(), 1);
+        assert_eq!(extraction.fields[0].field, Field::Sender);
     }
 
     #[test]
@@ -416,7 +539,7 @@ mod tests {
             ..ncrs_index::CustomKind::default()
         }]);
 
-        let schema = output_schema(&[Field::Kind], &kinds).pretty();
+        let schema = output_schema(&[Field::Kind], &kinds, false).pretty();
 
         assert!(schema.contains(
             "one of: invoice, credit_note, reminder, contract, notice, receipt, letter, insurance, quote, delivery_note, termination, bank_statement, payslip, or another short word"

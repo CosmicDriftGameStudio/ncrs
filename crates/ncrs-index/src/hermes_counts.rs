@@ -1,7 +1,7 @@
 use rusqlite::{params, OptionalExtension as _};
 
 use crate::error::IndexError;
-use crate::hermes_column::is_excluded_sql;
+use crate::hermes_column::{is_excluded_sql, EXCLUDED_FOLDERS_CTE};
 use crate::index::Index;
 use crate::model::{DocumentId, DocumentSource, DocumentStatus, HermesCounts, StatusCounts};
 
@@ -77,7 +77,7 @@ impl Index {
         let excluded = is_excluded_sql("d.path");
         let open_reviews_without_text = self.count(
             &format!(
-                "SELECT COUNT(*) FROM review_entry r
+                "{EXCLUDED_FOLDERS_CTE} SELECT COUNT(*) FROM review_entry r
                  JOIN document d ON d.id = r.document_id
                  LEFT JOIN document_text t ON t.rowid = r.document_id
                  WHERE r.resolved_at IS NULL AND d.missing_since IS NULL
@@ -90,7 +90,7 @@ impl Index {
             archive: self.status_counts(DocumentSource::Archive)?,
             open_reviews: self.count(
                 &format!(
-                    "SELECT COUNT(*) FROM review_entry r
+                    "{EXCLUDED_FOLDERS_CTE} SELECT COUNT(*) FROM review_entry r
                      JOIN document d ON d.id = r.document_id
                      WHERE r.resolved_at IS NULL AND d.missing_since IS NULL
                        AND NOT {excluded}"
