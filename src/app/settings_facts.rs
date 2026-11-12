@@ -15,9 +15,11 @@ use ncrs_filing::chat_work::{ChatAccess, ChatResult, ChatWork, RecentRun};
 use ncrs_filing::filing::AiStatus;
 use ncrs_i18n::{fill_template, Language, Msg};
 use ncrs_index::BatchId;
-use ncrs_intake::area_order_plain;
+use ncrs_intake::{area_order_plain, LocationMode};
 use ncrs_pipeline::RunnerState;
-use ncrs_settings::facts::{AiState, AreaFacts, DocumentsFacts, LoadedFacts, RunDay, RunFacts};
+use ncrs_settings::facts::{
+    AiState, AreaFacts, DocumentsFacts, LoadedFacts, ReadFolderCoverage, RunDay, RunFacts,
+};
 use ncrs_settings::folders::AddAs;
 
 /// How often the Index page may read its facts again while filing runs.
@@ -66,12 +68,20 @@ impl App {
         let loaded = state.loaded.clone().unwrap_or_default();
         let status = &self.hermes.filing_status;
         let tile = overview.ai_tile();
+        let paused = status.snapshot().state == RunnerState::Paused;
+        let (documents, with_text, understood) = match loaded.read_folders {
+            Some(read) => (read.documents, read.with_text, read.understood),
+            None => (
+                counts.archive_documents,
+                counts.archive_documents_with_text,
+                counts.archive_documents_with_text,
+            ),
+        };
         DocumentsFacts {
-            documents: counts.archive_documents,
-            understood: loaded
-                .understood
-                .unwrap_or(counts.archive_documents_with_text),
-            paused: status.snapshot().state == RunnerState::Paused,
+            documents,
+            understood,
+            work_left: !paused && with_text > understood,
+            paused,
             unreadable: status.errors_newest_first().count(),
             disconnected: loaded.disconnected,
             areas: state.loaded.as_ref().map(|_| loaded.areas),
@@ -259,10 +269,19 @@ fn read_documents_facts(
     };
     let mut areas = Vec::new();
     let mut folder_files = BTreeMap::new();
+    let mut read_folders = ReadFolderCoverage::default();
     for location in locations {
         if !disconnected.contains(&location.path) {
             if let Ok(files) = access.documents_under(&location.path) {
                 folder_files.insert(location.path.clone(), files);
+                if location.mode == LocationMode::Archive {
+                    if let Ok((with_text, understood)) = access.ai_coverage_under(&location.path) {
+                        let wide = |count: usize| u64::try_from(count).unwrap_or(u64::MAX);
+                        read_folders.documents += wide(files);
+                        read_folders.with_text += wide(with_text);
+                        read_folders.understood += wide(understood);
+                    }
+                }
             }
         }
         let Ok(structure) = access.known_structure(&location.path) else {
@@ -292,7 +311,7 @@ fn read_documents_facts(
         areas,
         runs,
         folder_files,
-        understood: access.understood_documents().ok(),
+        read_folders: Some(read_folders),
         disconnected,
     }
 }
@@ -373,6 +392,94 @@ mod tests {
         assert_eq!(
             run_day_and_time(at(1, 14), now),
             (RunDay::On("2026-11-01".to_owned()), "14:02".to_owned())
+        );
+    }
+
+    fn filing_location(path: PathBuf, mode: LocationMode) -> FilingLocation {
+        FilingLocation {
+            path,
+            mode,
+            images: false,
+            is_target: false,
+            transfer: ncrs_config::config::LocationTransfer::Move,
+        }
+    }
+
+    fn index_document(
+        index: &mut ncrs_index::Index,
+        seed: u8,
+        path: PathBuf,
+        text: Option<&str>,
+        understood: bool,
+    ) {
+        let id = index
+            .insert_document(&ncrs_index::NewDocument {
+                hash: ncrs_index::ContentHash([seed; 32]),
+                path,
+                source: ncrs_index::DocumentSource::Archive,
+                received_at: chrono::Utc::now(),
+                stamp: None,
+            })
+            .expect("insert");
+        if let Some(body) = text {
+            index.set_document_text(id, body).expect("text");
+        }
+        if understood {
+            index.set_ai_read_version(id, 2).expect("asked");
+        }
+    }
+
+    #[test]
+    fn read_folder_coverage_counts_only_what_lies_below_read_folders() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let (archive, inbox) = (dir.path().join("archive"), dir.path().join("inbox"));
+        std::fs::create_dir_all(&archive).expect("archive");
+        std::fs::create_dir_all(&inbox).expect("inbox");
+        let mut index =
+            ncrs_index::Index::create_plain(&dir.path().join("index.db")).expect("index");
+        index_document(&mut index, 1, archive.join("read.pdf"), Some("Rent"), true);
+        index_document(
+            &mut index,
+            2,
+            archive.join("open.pdf"),
+            Some("Letter"),
+            false,
+        );
+        index_document(&mut index, 3, archive.join("scan.png"), None, false);
+        index_document(
+            &mut index,
+            4,
+            inbox.join("former-archive.pdf"),
+            Some("Bill"),
+            true,
+        );
+        let bin = dir.path().join("bin");
+        std::fs::create_dir_all(&bin).expect("bin");
+        let access = ChatAccess::new(
+            Arc::new(std::sync::Mutex::new(Some(index))),
+            Arc::new(ncrs_intake::TextChain::new().with_source(ncrs_intake::PlainText)),
+            Arc::new(ncrs_fs::JournaledTrash::new(
+                dir.path().join("trash.toml"),
+                ncrs_fs::FolderBackend(bin),
+            )),
+        );
+        let locations = [
+            filing_location(archive, LocationMode::Archive),
+            filing_location(inbox, LocationMode::Inbox),
+        ];
+        let loaded = read_documents_facts(
+            Some(access),
+            &locations,
+            Language::English,
+            SystemTime::now(),
+        );
+        assert_eq!(
+            loaded.read_folders,
+            Some(ReadFolderCoverage {
+                documents: 3,
+                with_text: 2,
+                understood: 1,
+            })
         );
     }
 }

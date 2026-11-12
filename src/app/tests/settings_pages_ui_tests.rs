@@ -91,7 +91,11 @@ fn loaded_areas() -> LoadedFacts {
             PathBuf::from("/home/test/Downloads/Scans"),
             214,
         )]),
-        understood: None,
+        read_folders: Some(ncrs_settings::facts::ReadFolderCoverage {
+            documents: 312,
+            with_text: 300,
+            understood: 298,
+        }),
         disconnected: vec![PathBuf::from("/home/test/Documents/Filed")],
     }
 }

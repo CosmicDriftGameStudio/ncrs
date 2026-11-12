@@ -242,11 +242,12 @@ impl ChatAccess {
         })
     }
 
-    /// How many archive documents the AI has read and sorted.
-    pub fn understood_documents(&self) -> Result<u64, String> {
+    /// How many documents below `folder` have a text, and how many of them
+    /// the AI has read and sorted.
+    pub fn ai_coverage_under(&self, folder: &std::path::Path) -> Result<(usize, usize), String> {
         self.with_index(|index| {
             index
-                .archive_documents_understood()
+                .ai_coverage_beneath(folder)
                 .map_err(|err| err.to_string())
         })
     }

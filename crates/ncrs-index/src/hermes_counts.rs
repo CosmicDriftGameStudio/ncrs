@@ -110,18 +110,6 @@ impl Index {
         })
     }
 
-    /// How many archive documents the AI understood: they have a text, and a
-    /// sender or kind is set, or it was asked without result.
-    pub fn archive_documents_understood(&self) -> Result<u64, IndexError> {
-        self.count(
-            "SELECT COUNT(*) FROM document d JOIN document_text t ON t.rowid = d.id
-             WHERE d.source = 'archive' AND d.missing_since IS NULL
-               AND trim(t.body) <> ''
-               AND (d.sender_id IS NOT NULL OR d.kind_id IS NOT NULL OR d.ai_asked > 0)",
-            [],
-        )
-    }
-
     fn status_counts(&self, source: DocumentSource) -> Result<StatusCounts, IndexError> {
         let of_status = |status: DocumentStatus| {
             self.count(
@@ -215,7 +203,7 @@ mod tests {
     }
 
     #[test]
-    fn understood_archive_documents_have_a_text_and_were_asked_about() {
+    fn archive_documents_with_text_leave_out_empty_texts_and_inbox_documents() {
         let (_dir, mut index) = plain_index();
         let asked = index.insert_document(&archive_document(1)).unwrap();
         index.set_document_text(asked, "Rent").unwrap();
@@ -227,7 +215,6 @@ mod tests {
         let inbox = index.insert_document(&new_document(4)).unwrap();
         index.set_document_text(inbox, "Bill").unwrap();
         index.set_ai_read_version(inbox, 2).unwrap();
-        assert_eq!(index.archive_documents_understood().unwrap(), 1);
         assert_eq!(
             index.hermes_counts().unwrap().archive_documents_with_text,
             2

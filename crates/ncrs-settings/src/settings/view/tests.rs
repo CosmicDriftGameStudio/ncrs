@@ -678,3 +678,25 @@ fn the_ai_page_is_found_by_ai_model_server_and_hermes() {
         }
     }
 }
+
+#[test]
+fn the_index_page_promises_background_work_only_while_there_is_some_left() {
+    let state = state_of("");
+    let (filing, palette) = (Filing::default(), Palette::default());
+    let lang = Language::English;
+    let note = lang.text(Msg::SettingsIndexStateNote);
+    for (work_left, shown) in [(true, true), (false, false)] {
+        let mut view = ai_view(&state, &filing, &palette, lang);
+        view.facts = DocumentsFacts {
+            documents: 10,
+            understood: 7,
+            work_left,
+            ..DocumentsFacts::default()
+        };
+        let described = groups_of(SettingsFeature::Index, &view)
+            .into_iter()
+            .flat_map(|group| group.rows)
+            .any(|row| row.description.as_deref() == Some(note));
+        assert_eq!(described, shown, "work_left {work_left}");
+    }
+}
