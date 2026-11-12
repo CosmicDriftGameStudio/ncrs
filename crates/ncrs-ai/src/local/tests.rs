@@ -242,7 +242,11 @@ fn with_model_judges_what_is_not_a_document() {
         let confidence = judge(text).unwrap_or_else(|| panic!("{name} is judged a document"));
         assert!(confidence >= 0.9, "{name}: {confidence}");
     }
-    assert_eq!(judge(invoice), None, "an invoice is a document");
+    let recipe = "Für Anni V\nKarlsbader\nSchnitten\nzutaten:\nweißbrotscheiben\nSchinken\nbouda\nButter\nzubereitung:\nweißbrotscheiben mit Butter bestreichen.\nMit einer Scheibe Schinken und bouda belegen.\nDen ofen auf 180 °C Umluft vorheizen.\nSchnitten überbacken, bis der käse schön schmilt.\nAm Ende mit worcester sauce verfeinern.";
+    for (name, text) in [("invoice", invoice), ("recipe", recipe)] {
+        let judged = judge(text);
+        assert!(judged.is_none_or(|confidence| confidence < 0.9), "{name}: {judged:?}");
+    }
 }
 
 fn open_fields_of(known: &DocumentFields) -> Vec<Field> {

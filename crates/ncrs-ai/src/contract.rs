@@ -37,7 +37,7 @@ pub struct ExtractionRequest {
 pub const NOT_A_DOCUMENT_KEY: &str = "not_a_document";
 
 /// What the provider is told `not_a_document` means.
-pub const NOT_A_DOCUMENT_HINT: &str = "true only when the text is clearly not a document to keep on paper or file away (letter, invoice, contract, statement, receipt, certificate, form, ticket): for example program code, a chat or log export, an app or website screenshot, a web page, personal notes; false when unsure";
+pub const NOT_A_DOCUMENT_HINT: &str = "true only when the text is clearly not a document to keep on paper or file away (letter, invoice, contract, statement, receipt, certificate, form, ticket): for example program code, a chat or log export, an app or website screenshot, a web page; false for notes, recipes and photographed papers, and when unsure";
 
 /// A value the provider found, checked: it reads as the type of its field.
 #[derive(Debug, Clone, PartialEq)]
