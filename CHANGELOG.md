@@ -24,6 +24,11 @@ All notable changes to this project are documented here. The format follows
   you had excluded them yourself.
 - A folder whose files were all excluded no longer shows them as questions.
 
+### Security
+
+- The index uses SQLCipher 4.20 on SQLite 3.54.1, which fixes RUSTSEC-2026-0502
+  (uninitialized memory read for a database opened with a foreign `-wal` file).
+
 ## [1.4.1] — 2026-11-11
 
 ### Changed
