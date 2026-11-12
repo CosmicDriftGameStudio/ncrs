@@ -1,6 +1,7 @@
 use rusqlite::{params, OptionalExtension as _};
 
 use crate::error::IndexError;
+use crate::hermes_column::is_excluded_sql;
 use crate::index::Index;
 use crate::model::{DocumentId, DocumentSource, DocumentStatus, HermesCounts, StatusCounts};
 
@@ -73,13 +74,14 @@ impl Index {
     /// Counts for the display of the automatic filing. Documents that are
     /// missing are left out. Cheaper than `statistics`: no page statistics.
     pub fn hermes_counts(&self) -> Result<HermesCounts, IndexError> {
+        let excluded = is_excluded_sql("d.path");
         let open_reviews_without_text = self.count(
             &format!(
                 "SELECT COUNT(*) FROM review_entry r
                  JOIN document d ON d.id = r.document_id
                  LEFT JOIN document_text t ON t.rowid = r.document_id
                  WHERE r.resolved_at IS NULL AND d.missing_since IS NULL
-                   AND {WITHOUT_TEXT}"
+                   AND {WITHOUT_TEXT} AND NOT {excluded}"
             ),
             [],
         )?;
@@ -87,9 +89,12 @@ impl Index {
             inbox: self.status_counts(DocumentSource::Inbox)?,
             archive: self.status_counts(DocumentSource::Archive)?,
             open_reviews: self.count(
-                "SELECT COUNT(*) FROM review_entry r
-                 JOIN document d ON d.id = r.document_id
-                 WHERE r.resolved_at IS NULL AND d.missing_since IS NULL",
+                &format!(
+                    "SELECT COUNT(*) FROM review_entry r
+                     JOIN document d ON d.id = r.document_id
+                     WHERE r.resolved_at IS NULL AND d.missing_since IS NULL
+                       AND NOT {excluded}"
+                ),
                 [],
             )?,
             open_reviews_without_text,
