@@ -18,7 +18,7 @@ use super::{cursor_to, write, Session};
 use crate::app::App;
 use crate::filing::{FilingMessage, Phase};
 use crate::hermes_protocol::real_start::{boot_with, empty_store, pump_for};
-use crate::hermes_protocol::thread::{documents_indexed, is_ready};
+use crate::hermes_protocol::thread::is_ready;
 use crate::messages::{Message, PanelSide};
 use crate::session_state::SessionState;
 
@@ -36,6 +36,15 @@ pub(in crate::e2e_tests) struct NoteOnIndexedFile {
     pub notes: PathBuf,
     pub before: PathBuf,
     pub after: PathBuf,
+}
+
+/// Whether the index has a document at `file`. The scan indexes the 82 files in
+/// no fixed order, so a count of documents does not say `file` is among them.
+fn index_knows(app: &App, file: &std::path::Path) -> bool {
+    app.filing_module_for_test()
+        .and_then(|module| module.note_link_finder())
+        .and_then(|finder| finder.resolve(&[(None, file.to_path_buf())]).ok())
+        .is_some_and(|resolved| resolved.first().is_some_and(|(id, _)| id.is_some()))
 }
 
 fn has_document(app: &App, file: &std::path::Path) -> bool {
@@ -99,18 +108,19 @@ pub(in crate::e2e_tests) fn boot_with_a_note_on_an_indexed_file(
         }
     }
     assert!(is_ready(&session.app), "Hermes never got ready");
+    let offer = root.join("offer.txt");
     for _ in 0..300 {
         pump_for(&mut session, Duration::from_millis(200), |_| false);
-        if documents_indexed(&session.app) >= Some(2) {
+        if index_knows(&session.app, &offer) {
             break;
         }
     }
     assert!(
-        documents_indexed(&session.app) >= Some(2),
-        "the index never learned the documents"
+        index_knows(&session.app, &offer),
+        "the index never learned offer.txt"
     );
 
-    let before = root.join("offer.txt");
+    let before = offer;
     session.press(Key::Named(Named::Home));
     cursor_to(&mut session, "offer.txt");
     session.press_with(
