@@ -108,6 +108,23 @@ pub trait TextSource: Send + Sync + fmt::Debug {
 /// finds none.
 pub trait ImageTextSource: Send + Sync + fmt::Debug {
     fn recognise(&self, images: &[PageImage]) -> Result<Option<String>, TextError>;
+
+    /// False when `recognise` answers `Ok(None)` for lack of an engine (models
+    /// not downloaded), not because the images hold no text. Asked after
+    /// `recognise`.
+    fn engine_ready(&self) -> bool {
+        true
+    }
+}
+
+/// What the text chain found in a file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChainReading {
+    Text(String),
+    NoText {
+        /// An image source read the page images and found no text.
+        recognition_ran: bool,
+    },
 }
 
 /// Asks `preferred` first; when it fails, `fallback` gets the same pages. The
@@ -133,6 +150,10 @@ impl<P: ImageTextSource, F: ImageTextSource> ImageTextSource for ImageTextWithFa
         self.preferred
             .recognise(images)
             .or_else(|_failed| self.fallback.recognise(images))
+    }
+
+    fn engine_ready(&self) -> bool {
+        self.preferred.engine_ready() || self.fallback.engine_ready()
     }
 }
 
@@ -162,25 +183,44 @@ impl TextChain {
     /// The text of the file, `None` when no source finds any. The first error
     /// stops the chain.
     pub fn extract(&self, path: &Path) -> Result<Option<String>, TextError> {
+        Ok(match self.read(path)? {
+            ChainReading::Text(text) => Some(text),
+            ChainReading::NoText { .. } => None,
+        })
+    }
+
+    /// Like [`Self::extract`], and says whether a file without text was
+    /// really read by text recognition, or never reached an engine that could
+    /// read it (no image source, models not downloaded, picture not decodable).
+    pub fn read(&self, path: &Path) -> Result<ChainReading, TextError> {
         let mut images = Vec::new();
         for source in &self.sources {
             match source.extract(path)? {
-                Extracted::Text(text) if !text.trim().is_empty() => return Ok(Some(text)),
+                Extracted::Text(text) if !text.trim().is_empty() => {
+                    return Ok(ChainReading::Text(text))
+                }
                 Extracted::Text(_) | Extracted::NotApplicable => {}
                 Extracted::PageImages(found) => images.extend(found),
             }
         }
         if images.is_empty() {
-            return Ok(None);
+            return Ok(ChainReading::NoText {
+                recognition_ran: false,
+            });
         }
         for source in &self.image_sources {
             if let Some(text) = source.recognise(&images)? {
                 if !text.trim().is_empty() {
-                    return Ok(Some(text));
+                    return Ok(ChainReading::Text(text));
                 }
             }
         }
-        Ok(None)
+        Ok(ChainReading::NoText {
+            recognition_ran: self
+                .image_sources
+                .iter()
+                .any(|source| source.engine_ready()),
+        })
     }
 }
 
@@ -1019,6 +1059,33 @@ mod tests {
         let chain =
             TextChain::new().with_source(Fixed(Ok(Extracted::PageImages(vec![some_image()]))));
         assert_eq!(chain.extract(Path::new("x")), Ok(None));
+    }
+
+    #[test]
+    fn a_file_without_text_says_whether_text_recognition_read_it() {
+        let images = || Fixed(Ok(Extracted::PageImages(vec![some_image()])));
+        let ran = TextChain::new()
+            .with_source(images())
+            .with_image_source(FixedImageSource(Ok(None)));
+        let without_source = TextChain::new().with_source(images());
+        let undecodable = TextChain::new()
+            .with_source(Fixed(Ok(Extracted::NotApplicable)))
+            .with_image_source(FixedImageSource(Ok(None)));
+
+        assert_eq!(
+            ran.read(Path::new("x")),
+            Ok(ChainReading::NoText {
+                recognition_ran: true
+            })
+        );
+        for chain in [without_source, undecodable] {
+            assert_eq!(
+                chain.read(Path::new("x")),
+                Ok(ChainReading::NoText {
+                    recognition_ran: false
+                })
+            );
+        }
     }
 
     #[test]

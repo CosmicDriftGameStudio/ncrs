@@ -25,18 +25,36 @@ pub struct ModelPin {
     pub url: &'static str,
 }
 
-/// Qwen3 4B (Apache-2.0), 4-bit (Q4_K_M, about 2.5 GB), at a fixed revision of
+/// Qwen3.5 4B (Apache-2.0), 4-bit (Q4_K_M, about 2.7 GB), at a fixed revision of
 /// its Hugging Face repository. scripts/fetch-ai-model.sh carries the same
 /// values; change both together.
 pub const LOCAL_MODEL: ModelPin = ModelPin {
-    name: "Qwen3-4B-Q4_K_M.gguf",
-    size: 2_497_280_256,
-    sha256: "7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5",
-    url: "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/bc640142c66e1fdd12af0bd68f40445458f3869b/Qwen3-4B-Q4_K_M.gguf",
+    name: "Qwen3.5-4B-Q4_K_M.gguf",
+    size: 2_740_937_888,
+    sha256: "00fe7986ff5f6b463e62455821146049db6f9313603938a70800d1fb69ef11a4",
+    url: "https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/e87f176479d0855a907a41277aca2f8ee7a09523/Qwen3.5-4B-Q4_K_M.gguf",
 };
 
 /// The folder inside the data folder that holds the model.
 pub const LOCAL_MODEL_FOLDER: &str = "ai-models";
+
+/// The files of the models earlier versions shipped.
+#[cfg(any(test, feature = "llama"))]
+const PREVIOUS_MODEL_FILES: [&str; 2] = ["Qwen3-4B-Q4_K_M.gguf", "Qwen3-0.6B-Q8_0.gguf"];
+
+/// Deletes the files of earlier built-in models from `dir`. Call it only once
+/// the current model there is verified: until then an older version may still
+/// need its file. Links and folders with those names stay.
+#[cfg(any(test, feature = "llama"))]
+pub fn remove_previous_models(dir: &Path) {
+    for name in PREVIOUS_MODEL_FILES {
+        let path = dir.join(name);
+        if fs::symlink_metadata(&path).is_ok_and(|metadata| metadata.is_file()) {
+            // A file that cannot be deleted stays; the next load tries again.
+            let _ = fs::remove_file(&path);
+        }
+    }
+}
 
 /// What tells a file from another one on the same path: if none of this
 /// changed, the bytes that were verified are still the bytes there.
@@ -78,7 +96,7 @@ impl FileIdentity {
 }
 
 /// Files whose checksum matched in this process, with the identity they had.
-/// Hashing 2.5 GB takes seconds, and the model is checked at every load.
+/// Hashing 2.7 GB takes seconds, and the model is checked at every load.
 fn verified_files() -> &'static Mutex<HashMap<PathBuf, FileIdentity>> {
     static VERIFIED: OnceLock<Mutex<HashMap<PathBuf, FileIdentity>>> = OnceLock::new();
     VERIFIED.get_or_init(Mutex::default)
@@ -422,6 +440,26 @@ mod tests {
             verify_model_file(&path, &pin_of(b"model bytes")),
             Err(AiError::Model("the model file is not the expected one"))
         );
+    }
+
+    #[test]
+    fn only_the_files_of_earlier_models_are_removed() {
+        let dir = TempDir::new().unwrap();
+        for name in PREVIOUS_MODEL_FILES {
+            fs::write(dir.path().join(name), b"old").unwrap();
+        }
+        let current = dir.path().join(LOCAL_MODEL.name);
+        let own = dir.path().join("my-model.gguf");
+        fs::write(&current, b"new").unwrap();
+        fs::write(&own, b"mine").unwrap();
+
+        remove_previous_models(dir.path());
+
+        for name in PREVIOUS_MODEL_FILES {
+            assert!(!dir.path().join(name).exists(), "{name} is still there");
+        }
+        assert!(current.exists());
+        assert!(own.exists());
     }
 
     #[test]

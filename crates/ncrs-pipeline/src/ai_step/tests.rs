@@ -118,6 +118,7 @@ impl Fixture {
             plan: None,
             force: false,
             stored_text_is_current: false,
+            not_a_document: false,
         }
     }
 
@@ -542,6 +543,7 @@ impl Provider for UnaskedFieldsProvider {
     fn extract(&self, _request: &ExtractionRequest) -> Result<ncrs_ai::Extraction, AiError> {
         Ok(ncrs_ai::Extraction {
             fields: self.0.clone(),
+            not_a_document: None,
         })
     }
 }

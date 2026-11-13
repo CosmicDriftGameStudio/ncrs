@@ -24,7 +24,7 @@ use llama_cpp_2::vocab::LlamaVocab;
 use crate::contract::{parse_reply, Extraction, ExtractionRequest, Provider};
 use crate::error::AiError;
 use crate::grammar::reply_grammar;
-use crate::model_file::{verify_model_file, ModelPin};
+use crate::model_file::{remove_previous_models, verify_model_file, ModelPin};
 use crate::prompt::{user_message_prefix, user_message_suffix, SYSTEM_PROMPT};
 use crate::status::Compute;
 
@@ -89,6 +89,9 @@ impl LocalModel {
     /// reaches llama.cpp, then loads it.
     pub fn load(config: LocalModelConfig, pin: &ModelPin) -> Result<Self, AiError> {
         verify_model_file(&config.path, pin)?;
+        if let Some(dir) = config.path.parent() {
+            remove_previous_models(dir);
+        }
         let backend = backend()?;
         let (model, compute) = match gpu_attempt() {
             Some((params, device)) => LlamaModel::load_from_file(backend, &config.path, &params)
@@ -164,7 +167,7 @@ impl LocalModel {
         self.sample_reply(
             &mut context,
             &mut batch,
-            &reply_grammar(&request.open_fields),
+            &reply_grammar(&request.open_fields, request.judge_document),
             prompt.len(),
             MAX_NEW_TOKENS,
         )
@@ -290,7 +293,7 @@ pub fn document_tokens(vocab: &LlamaVocab<'_>, text: &str) -> Vec<LlamaToken> {
     vocab.tokenize(text.as_bytes(), false, false)
 }
 
-/// The prompt in the ChatML of the pinned Qwen3, written here and not read
+/// The prompt in the ChatML of the pinned Qwen3.5, written here and not read
 /// from the model file. The fixed parts are tokenized with special tokens, the
 /// document alone without, and the document is cut so the whole fits `limit`.
 pub fn prompt_tokens(
@@ -300,7 +303,7 @@ pub fn prompt_tokens(
 ) -> Result<Vec<LlamaToken>, AiError> {
     let head = format!(
         "<|im_start|>system\n{SYSTEM_PROMPT}<|im_end|>\n<|im_start|>user\n{}",
-        user_message_prefix(&request.open_fields)
+        user_message_prefix(&request.open_fields, request.judge_document)
     );
     let tail = format!(
         "{}<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",

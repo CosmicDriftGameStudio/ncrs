@@ -285,7 +285,7 @@ fn with_model(status: LocalModelStatus) -> (App, Ctx) {
 
 fn tidy_confirmation_scene() -> App {
     let (mut app, ctx) = with_model(LocalModelStatus::Loaded {
-        name: "Qwen3-4B-Q4_K_M.gguf".to_owned(),
+        name: "Qwen3.5-4B-Q4_K_M.gguf".to_owned(),
         memory_bytes: 2_700_000_000,
         compute: Compute::Cpu,
     });
@@ -313,7 +313,7 @@ fn tidy_confirmation_scene() -> App {
 
 fn meant_folder_scene() -> App {
     let (mut app, ctx) = with_model(LocalModelStatus::Loaded {
-        name: "Qwen3-4B-Q4_K_M.gguf".to_owned(),
+        name: "Qwen3.5-4B-Q4_K_M.gguf".to_owned(),
         memory_bytes: 2_700_000_000,
         compute: Compute::Cpu,
     });
@@ -341,7 +341,7 @@ fn meant_folder_scene() -> App {
 
 fn which_folder_scene() -> App {
     let (mut app, ctx) = with_model(LocalModelStatus::Loaded {
-        name: "Qwen3-4B-Q4_K_M.gguf".to_owned(),
+        name: "Qwen3.5-4B-Q4_K_M.gguf".to_owned(),
         memory_bytes: 2_700_000_000,
         compute: Compute::Cpu,
     });
@@ -399,7 +399,7 @@ fn typed_folder_confirmation_scene() -> App {
 
 fn thinking_scene() -> App {
     let (mut app, ctx) = with_model(LocalModelStatus::Loaded {
-        name: "Qwen3-4B-Q4_K_M.gguf".to_owned(),
+        name: "Qwen3.5-4B-Q4_K_M.gguf".to_owned(),
         memory_bytes: 2_700_000_000,
         compute: Compute::Cpu,
     });

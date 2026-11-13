@@ -1,6 +1,7 @@
 use rusqlite::{params, OptionalExtension as _};
 
 use crate::error::IndexError;
+use crate::hermes_column::{is_excluded_sql, EXCLUDED_FOLDERS_CTE};
 use crate::index::Index;
 use crate::model::{DocumentId, DocumentSource, DocumentStatus, HermesCounts, StatusCounts};
 
@@ -73,13 +74,14 @@ impl Index {
     /// Counts for the display of the automatic filing. Documents that are
     /// missing are left out. Cheaper than `statistics`: no page statistics.
     pub fn hermes_counts(&self) -> Result<HermesCounts, IndexError> {
+        let excluded = is_excluded_sql("d.path");
         let open_reviews_without_text = self.count(
             &format!(
-                "SELECT COUNT(*) FROM review_entry r
+                "{EXCLUDED_FOLDERS_CTE} SELECT COUNT(*) FROM review_entry r
                  JOIN document d ON d.id = r.document_id
                  LEFT JOIN document_text t ON t.rowid = r.document_id
                  WHERE r.resolved_at IS NULL AND d.missing_since IS NULL
-                   AND {WITHOUT_TEXT}"
+                   AND {WITHOUT_TEXT} AND NOT {excluded}"
             ),
             [],
         )?;
@@ -87,9 +89,12 @@ impl Index {
             inbox: self.status_counts(DocumentSource::Inbox)?,
             archive: self.status_counts(DocumentSource::Archive)?,
             open_reviews: self.count(
-                "SELECT COUNT(*) FROM review_entry r
-                 JOIN document d ON d.id = r.document_id
-                 WHERE r.resolved_at IS NULL AND d.missing_since IS NULL",
+                &format!(
+                    "{EXCLUDED_FOLDERS_CTE} SELECT COUNT(*) FROM review_entry r
+                     JOIN document d ON d.id = r.document_id
+                     WHERE r.resolved_at IS NULL AND d.missing_since IS NULL
+                       AND NOT {excluded}"
+                ),
                 [],
             )?,
             open_reviews_without_text,
@@ -108,18 +113,6 @@ impl Index {
                 [],
             )?,
         })
-    }
-
-    /// How many archive documents the AI understood: they have a text, and a
-    /// sender or kind is set, or it was asked without result.
-    pub fn archive_documents_understood(&self) -> Result<u64, IndexError> {
-        self.count(
-            "SELECT COUNT(*) FROM document d JOIN document_text t ON t.rowid = d.id
-             WHERE d.source = 'archive' AND d.missing_since IS NULL
-               AND trim(t.body) <> ''
-               AND (d.sender_id IS NOT NULL OR d.kind_id IS NOT NULL OR d.ai_asked > 0)",
-            [],
-        )
     }
 
     fn status_counts(&self, source: DocumentSource) -> Result<StatusCounts, IndexError> {
@@ -215,7 +208,7 @@ mod tests {
     }
 
     #[test]
-    fn understood_archive_documents_have_a_text_and_were_asked_about() {
+    fn archive_documents_with_text_leave_out_empty_texts_and_inbox_documents() {
         let (_dir, mut index) = plain_index();
         let asked = index.insert_document(&archive_document(1)).unwrap();
         index.set_document_text(asked, "Rent").unwrap();
@@ -227,7 +220,6 @@ mod tests {
         let inbox = index.insert_document(&new_document(4)).unwrap();
         index.set_document_text(inbox, "Bill").unwrap();
         index.set_ai_read_version(inbox, 2).unwrap();
-        assert_eq!(index.archive_documents_understood().unwrap(), 1);
         assert_eq!(
             index.hermes_counts().unwrap().archive_documents_with_text,
             2

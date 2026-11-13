@@ -25,6 +25,9 @@ pub struct Item {
     /// Set by the intake step when the stored text of an unchanged document
     /// can be used as it is.
     pub stored_text_is_current: bool,
+    /// Set when the file is judged to be no document (a picture without text,
+    /// program code, a chat export): it is no inquiry, Hermes leaves it alone.
+    pub not_a_document: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

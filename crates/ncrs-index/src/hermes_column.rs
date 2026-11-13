@@ -92,10 +92,35 @@ fn stored(path: &Path) -> PathBuf {
         .collect()
 }
 
-const COUNT_COLUMNS: &str = "COALESCE(SUM(status = 'new'), 0),
-     COALESCE(SUM(status = 'planned'), 0),
-     COALESCE(SUM(status = 'in_review'), 0),
-     COALESCE(SUM(status = 'filed'), 0)";
+/// The status counts of `document`. An excluded document is no inquiry
+/// any more, so it is not counted as one.
+fn count_columns() -> String {
+    format!(
+        "COALESCE(SUM(status = 'new'), 0),
+         COALESCE(SUM(status = 'planned'), 0),
+         COALESCE(SUM(status = 'in_review' AND NOT {}), 0),
+         COALESCE(SUM(status = 'filed'), 0)",
+        is_excluded_sql("document.path")
+    )
+}
+
+/// The excluded paths that are folders: no document lies at exactly that path.
+/// A query that uses [`is_excluded_sql`] starts with this, so the folder rows
+/// are found once instead of once per document row.
+pub const EXCLUDED_FOLDERS_CTE: &str = "WITH excluded_folder AS MATERIALIZED (
+    SELECT e.path FROM excluded_path e
+    WHERE NOT EXISTS (SELECT 1 FROM document x WHERE x.path = e.path))";
+
+/// SQL that is true when the document path in `path_column` is excluded,
+/// itself or by a folder around it. Needs [`EXCLUDED_FOLDERS_CTE`] in front
+/// of the query.
+pub fn is_excluded_sql(path_column: &str) -> String {
+    format!(
+        "(EXISTS (SELECT 1 FROM excluded_path e WHERE e.path = {path_column})
+          OR EXISTS (SELECT 1 FROM excluded_folder f
+                     WHERE f.path || '{MAIN_SEPARATOR}' = substr({path_column}, 1, length(f.path) + 1)))"
+    )
+}
 
 const IS_DIRECT: &str = "instr(substr(path, ?3 + 1), char(?4)) = 0";
 
@@ -258,7 +283,8 @@ impl Index {
     }
 
     /// Counts of the documents, not missing, for every folder, in the order
-    /// given. Excluded documents are counted like the others.
+    /// given. Excluded documents are counted like the others, except as an
+    /// inquiry.
     pub fn status_counts_under(
         &self,
         directories: &[PathBuf],
@@ -282,8 +308,9 @@ impl Index {
         directories: &[PathBuf],
     ) -> Result<Vec<StatusCounts>, IndexError> {
         let mut deep = self.connection().prepare(&format!(
-            "SELECT {COUNT_COLUMNS} FROM document
-             WHERE missing_since IS NULL AND path >= ?1 AND path < ?2"
+            "{EXCLUDED_FOLDERS_CTE} SELECT {} FROM document
+             WHERE missing_since IS NULL AND path >= ?1 AND path < ?2",
+            count_columns()
         ))?;
         directories
             .iter()
@@ -301,8 +328,9 @@ impl Index {
         directories: &[PathBuf],
     ) -> Result<Vec<StatusCounts>, IndexError> {
         let mut direct = self.connection().prepare(&format!(
-            "SELECT {COUNT_COLUMNS} FROM document
-             WHERE missing_since IS NULL AND path >= ?1 AND path < ?2 AND {IS_DIRECT}"
+            "{EXCLUDED_FOLDERS_CTE} SELECT {} FROM document
+             WHERE missing_since IS NULL AND path >= ?1 AND path < ?2 AND {IS_DIRECT}",
+            count_columns()
         ))?;
         directories
             .iter()
@@ -479,6 +507,31 @@ mod tests {
         assert_eq!(counts[1].direct.filed, 1);
         assert_eq!(counts[1].deep.filed, 1);
         assert_eq!(counts[2], FolderCounts::default());
+    }
+
+    #[test]
+    fn an_excluded_inquiry_is_no_longer_counted_as_one() {
+        let (_dir, mut index) = plain_index();
+        for (seed, path) in [
+            (1, "/d/icons/a.png"),
+            (2, "/d/icons/b.png"),
+            (3, "/d/c.pdf"),
+        ] {
+            let id = document_at(&index, seed, path);
+            index.add_review(id, ReviewReason::NoMatchingRule).unwrap();
+        }
+        index.exclude_path(&p("/d/icons/a.png")).unwrap();
+        index.exclude_path(&p("/d/icons")).unwrap();
+
+        let counts = index
+            .status_counts_under(&[p("/d"), p("/d/icons")])
+            .unwrap();
+
+        assert_eq!(counts[0].deep.in_review, 1);
+        assert_eq!(counts[0].direct.in_review, 1);
+        assert_eq!(counts[1].direct.in_review, 0);
+        assert_eq!(index.hermes_counts().unwrap().open_reviews, 1);
+        assert_eq!(index.hermes_counts().unwrap().open_reviews_without_text, 1);
     }
 
     #[test]

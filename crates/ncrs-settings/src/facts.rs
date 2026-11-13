@@ -75,6 +75,8 @@ pub struct DocumentsFacts {
     pub documents: u64,
     /// Documents the AI has read and sorted.
     pub understood: u64,
+    /// Documents with a text are left for the AI and the index is not paused.
+    pub work_left: bool,
     pub paused: bool,
     /// Files the index could not read.
     pub unreadable: usize,
@@ -96,14 +98,24 @@ pub struct DocumentsFacts {
     pub system_reads_scans: bool,
 }
 
+/// The documents below the read folders and how far the AI got with them.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ReadFolderCoverage {
+    pub documents: u64,
+    /// Documents that have a text.
+    pub with_text: u64,
+    /// Documents with a text that the AI has read and sorted.
+    pub understood: u64,
+}
+
 /// What the app reads in the background for the Index and Hermes pages.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LoadedFacts {
     pub areas: Vec<AreaFacts>,
     pub runs: Vec<RunFacts>,
     pub folder_files: BTreeMap<PathBuf, usize>,
-    /// Documents the AI read and sorted; `None` without an index.
-    pub understood: Option<u64>,
+    /// What the read folders hold; `None` without an index.
+    pub read_folders: Option<ReadFolderCoverage>,
     pub disconnected: Vec<PathBuf>,
 }
 

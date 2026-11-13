@@ -227,7 +227,7 @@ fn matches_ai_snapshot(status: &AiStatus, name: &str) -> TestResult {
 fn the_index_page_keeps_the_ai_line_on_the_graphics_card() -> TestResult {
     matches_ai_snapshot(
         &AiStatus::Loaded {
-            name: "Qwen3 4B".to_owned(),
+            name: "Qwen3.5 4B".to_owned(),
             memory_bytes: 2_700_000_000,
             compute: Compute::Gpu("Apple M2 Pro".to_owned()),
         },
@@ -239,7 +239,7 @@ fn the_index_page_keeps_the_ai_line_on_the_graphics_card() -> TestResult {
 fn the_index_page_keeps_the_ai_line_on_the_processor() -> TestResult {
     matches_ai_snapshot(
         &AiStatus::Loaded {
-            name: "Qwen3 4B".to_owned(),
+            name: "Qwen3.5 4B".to_owned(),
             memory_bytes: 2_700_000_000,
             compute: Compute::Cpu,
         },

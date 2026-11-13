@@ -394,6 +394,7 @@ mod queue_tests {
                 known: DocumentFields::default(),
                 source: PathBuf::new(),
                 kinds: Arc::default(),
+                judge_document: false,
             },
             reply: channel().0,
         })

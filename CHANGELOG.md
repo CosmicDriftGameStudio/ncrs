@@ -6,6 +6,29 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- The built-in AI model is now Qwen3.5 4B (about 2.7 GB, one download) instead
+  of Qwen3 4B. Once the new model is checked and loaded, the file of the old
+  one is deleted from the `ai-models` folder.
+
+### Fixed
+
+- The Index page counts only the documents in "Read only" folders. "The rest
+  runs in the background" shows only while documents are still waiting for the
+  AI.
+- Documents waiting in a read folder for an answer that were never read are now
+  read in the background. Their question stays open and nothing is moved.
+- Pictures without any text and files that are no documents (code, chat
+  exports, screenshots) no longer become questions: Hermes excludes them, as if
+  you had excluded them yourself.
+- A folder whose files were all excluded no longer shows them as questions.
+
+### Security
+
+- The index uses SQLCipher 4.20 on SQLite 3.54.1, which fixes RUSTSEC-2026-0502
+  (uninitialized memory read for a database opened with a foreign `-wal` file).
+
 ## [1.4.1] — 2026-11-11
 
 ### Changed

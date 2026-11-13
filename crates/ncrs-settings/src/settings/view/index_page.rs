@@ -396,7 +396,9 @@ fn state_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
     let mut rows = vec![
         text_row(
             counts,
-            Some(lang.text(Msg::SettingsIndexStateNote).to_owned()),
+            facts
+                .work_left
+                .then(|| lang.text(Msg::SettingsIndexStateNote).to_owned()),
             pause,
         )
         .keyed(RowKey::Press(SettingsMessage::TogglePause)),

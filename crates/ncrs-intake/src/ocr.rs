@@ -329,6 +329,10 @@ impl ImageTextSource for LazyOcrText {
             None => Ok(None),
         }
     }
+
+    fn engine_ready(&self) -> bool {
+        self.engine().is_ok_and(|engine| engine.is_some())
+    }
 }
 
 #[cfg(test)]

@@ -3865,6 +3865,7 @@ mod title_bar {
                 known: ncrs_index::DocumentFields::default(),
                 source: std::path::PathBuf::from("inbox"),
                 kinds: std::sync::Arc::default(),
+                judge_document: false,
             },
         )
         .unwrap_err();
@@ -4420,7 +4421,7 @@ mod ai_model_card {
         assert!(shows(
             downloading(),
             &format!(
-                "312 / {} · 12 %",
+                "312 / {} · 11 %",
                 crate::ui::format::megabytes(ncrs_ai::LOCAL_MODEL.size)
             )
         ));

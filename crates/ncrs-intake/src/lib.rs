@@ -89,7 +89,7 @@ pub use take_in::{
     take_in, Outcome, PendingHash, Prepared, Taken,
 };
 pub use text::{
-    pdfium_library_candidates, pdfium_library_dir, Extracted, ImageTextSource,
+    pdfium_library_candidates, pdfium_library_dir, ChainReading, Extracted, ImageTextSource,
     ImageTextWithFallback, PageImage, PdfText, PdfUnavailable, PreviewPage, TextChain, TextError,
     TextSource,
 };

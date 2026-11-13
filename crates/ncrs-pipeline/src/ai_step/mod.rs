@@ -6,13 +6,19 @@ use ncrs_index::{
     Document, DocumentFields, DocumentStatus, Field, FieldOrigin, FieldOrigins, IndexError,
     KindCatalog, KindLanguage, Kinds, ReviewReason,
 };
-use ncrs_intake::{plan, relative_to_location, PlanInput, Planning, AI_FIELD_ORDER, FIELD_ORDER};
+use ncrs_intake::{
+    plan, relative_to_location, LocationMode, PlanInput, Planning, AI_FIELD_ORDER, FIELD_ORDER,
+};
 
 use crate::step::{with_index_value, IndexAccess, Item, Step, StepOutcome};
 use crate::steps::NO_INDEX;
 
 /// Bump when the AI reads more or better: archive documents are asked again.
 pub const AI_READ_VERSION: u32 = 2;
+
+/// How sure the provider must be that a file is no document for Hermes to
+/// exclude it.
+pub const NOT_A_DOCUMENT_CONFIDENCE: f32 = 0.9;
 
 /// Asks the provider for the fields that are empty or hold a value the rules
 /// only guessed (`FieldOrigin::is_heuristic`): for documents the rules could
@@ -159,6 +165,12 @@ impl Step for AiStep {
         if review_reason.is_none() && !fields_only {
             return Ok(StepOutcome::Continue);
         }
+        if item.not_a_document {
+            if fields_only {
+                self.remember_asked(item)?;
+            }
+            return Ok(StepOutcome::Continue);
+        }
         let Some(text) = item.text.as_deref() else {
             if fields_only {
                 self.remember_asked(item)?;
@@ -190,6 +202,7 @@ impl Step for AiStep {
             known,
             source: item.location.path.clone(),
             kinds,
+            judge_document: item.location.mode == LocationMode::Inbox,
         };
         let extraction = match self.provider.extract(&request) {
             Ok(extraction) => extraction,
@@ -201,6 +214,18 @@ impl Step for AiStep {
             // list, so it continues with its reason and fields as they were.
             Err(_) => return Ok(StepOutcome::Continue),
         };
+        // Nothing it read is worth keeping from a file that is no document,
+        // and a rule must not plan it.
+        if extraction
+            .not_a_document
+            .is_some_and(|sure| sure >= NOT_A_DOCUMENT_CONFIDENCE)
+        {
+            item.not_a_document = true;
+            if fields_only {
+                self.remember_asked(item)?;
+            }
+            return Ok(StepOutcome::Continue);
+        }
         let (confident, mut unsure): (Vec<&ExtractedField>, Vec<&ExtractedField>) = extraction
             .fields
             .iter()

@@ -1,6 +1,6 @@
 use super::*;
 
-fn invoice_rule(filing_pattern: &str, confirmed: bool) -> ncrs_index::RuleSpec {
+pub fn invoice_rule(filing_pattern: &str, confirmed: bool) -> ncrs_index::RuleSpec {
     ncrs_index::RuleSpec {
         name: None,
         conditions: ncrs_index::RuleConditions::all_of(vec![ncrs_index::Condition::new(

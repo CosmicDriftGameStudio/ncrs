@@ -5,8 +5,8 @@ use std::time::SystemTime;
 
 use ncrs_ai::Provider;
 use ncrs_index::{
-    ContentHash, DocumentId, DocumentStatus, Field, FieldOrigin, IndexError, KindLanguage, Kinds,
-    ReviewReason,
+    ContentHash, DocumentId, DocumentStatus, Field, FieldOrigin, Index, IndexError, KindLanguage,
+    Kinds, ReviewReason,
 };
 use ncrs_intake::{
     detect_fields, plan, OwnNames, PlanInput, Planning, StabilityTracker, TextChain, TextError,
@@ -16,7 +16,7 @@ use ncrs_intake::{
     finish_take_in, prepare_take_in, settle_location, IntakeError, Location, LocationMode, Outcome,
     PendingHash, Prepared,
 };
-use ncrs_intake::{relative_to_location, text_is_readable};
+use ncrs_intake::{is_image_file, relative_to_location, text_is_readable, ChainReading};
 
 use crate::ai_step::{clear_field, AiStep, AI_READ_VERSION};
 use crate::step::{with_index_value, IndexAccess, Item, Step, StepOutcome};
@@ -91,6 +91,34 @@ impl IntakeStep {
     fn can_ask_ai(&self, source: &Path) -> bool {
         self.ai.as_ref().is_some_and(|ai| ai.can_answer(source))
     }
+
+    /// A new inbox document goes on. One whose question is open goes on only
+    /// to be read: its text was never stored, or the AI was never asked. Its
+    /// review stays open and it is never planned: the rules step leaves a
+    /// document that is not new alone.
+    fn inbox_document_continues(
+        &self,
+        index: &Index,
+        id: DocumentId,
+        item: &mut Item,
+    ) -> Result<bool, IndexError> {
+        let Some(document) = index.document(id)? else {
+            return Ok(false);
+        };
+        match document.status {
+            DocumentStatus::New => Ok(true),
+            DocumentStatus::InReview => {
+                let has_text = index.has_document_text_row(id)?;
+                let continues = text_is_readable(&item.path)
+                    && (!has_text
+                        || (self.can_ask_ai(&item.location.path)
+                            && index.ai_read_version(id)? < AI_READ_VERSION));
+                item.stored_text_is_current = continues && has_text;
+                Ok(continues)
+            }
+            DocumentStatus::Planned | DocumentStatus::Filed => Ok(false),
+        }
+    }
 }
 
 impl Step for IntakeStep {
@@ -137,9 +165,7 @@ impl Step for IntakeStep {
                     true
                 }
                 Outcome::Unchanged(id) => match item.location.mode {
-                    LocationMode::Inbox => index
-                        .document(id)?
-                        .is_some_and(|document| document.status == DocumentStatus::New),
+                    LocationMode::Inbox => self.inbox_document_continues(index, id, item)?,
                     LocationMode::Archive => {
                         let has_text = index.has_document_text_row(id)?;
                         let continues = text_is_readable(&item.path)
@@ -217,16 +243,20 @@ impl Step for TextStep {
                 .filter(|text| !text.is_empty());
             return Ok(StepOutcome::Continue);
         }
-        item.text = match self.chain.extract(&item.path) {
-            Ok(text) => text,
+        item.text = match self.chain.read(&item.path) {
+            Ok(ChainReading::Text(text)) => Some(text),
+            Ok(ChainReading::NoText { recognition_ran }) => {
+                item.not_a_document = recognition_ran
+                    && item.location.mode == LocationMode::Inbox
+                    && is_image_file(&item.path);
+                None
+            }
             Err(TextError::LibraryMissing { .. }) => return Ok(StepOutcome::Unchanged),
             Err(err) => {
-                // Without a stored text the archive document would be read
-                // (and fail) again on every scan. Only the file itself being
-                // unreadable is permanent: once the models work, it is read.
-                if item.location.mode == LocationMode::Archive
-                    && matches!(err, TextError::Unreadable { .. })
-                {
+                // Without a stored text the document would be read (and fail)
+                // again on every scan. Only the file itself being unreadable
+                // is permanent: once the models work, it is read.
+                if matches!(err, TextError::Unreadable { .. }) {
                     let stored = with_index_value(self.index.as_ref(), |index| {
                         index.set_document_text(id, "")
                     });
@@ -321,6 +351,10 @@ impl Step for RulesStep {
         let text = item.text.as_deref().unwrap_or_default();
         if item.location.mode == LocationMode::Archive {
             return self.read_archive_fields(id, text);
+        }
+        // No inquiry to plan: the review step excludes it.
+        if item.not_a_document {
+            return Ok(StepOutcome::Continue);
         }
         let planning = with_index_value(self.index.as_ref(), |index| {
             let Some(document) = index.document(id)? else {
@@ -429,9 +463,8 @@ impl Step for ReviewStep {
             .ok_or_else(|| "the file has no document".to_owned())?;
         let reason = item.review.unwrap_or(ReviewReason::NoMatchingRule);
         let added = with_index_value(self.index.as_ref(), |index| {
-            let needs_review = index
-                .document(id)?
-                .is_some_and(|document| document.status == DocumentStatus::New);
+            let status = index.document(id)?.map(|document| document.status);
+            let needs_review = status == Some(DocumentStatus::New);
             if needs_review {
                 match index.add_review(id, reason) {
                     // Processed again while its review was still open: the
@@ -444,6 +477,12 @@ impl Step for ReviewStep {
                         other?;
                     }
                 }
+            }
+            // The same as the user's "exclude from Hermes": no inquiry any more.
+            let still_an_inquiry =
+                matches!(status, Some(DocumentStatus::New | DocumentStatus::InReview));
+            if item.not_a_document && still_an_inquiry {
+                index.exclude_path(&item.path)?;
             }
             Ok::<_, IndexError>(())
         })
