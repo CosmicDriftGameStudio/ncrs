@@ -766,7 +766,11 @@ your own names, the protection of the index and its state. Settings › AI holds
 the Hermes switch and the one AI model. Settings › Hermes ("Sorting") holds
 the read folders, the order Hermes learned per area, and the runs it can undo. Hermes asks in the chat before it moves
 anything; documents it is unsure about wait there ("3 documents are waiting
-for you") and are gone through one question at a time. Four more pages are in
+for you") and are gone through one question at a time. Waiting documents that
+were never read are read in the background without being moved. Pictures
+without any text and files that are no documents (code, chat exports,
+screenshots) do not become questions: Hermes excludes them, and "Exclude from
+Hermes" takes them back. Four more pages are in
 the same Settings list: Rules (`rules`), Tags (`file_list_tags_choose`),
 Reports (`saved_queries`) and Read errors (`Cmd`+`Shift`+`D`,
 `filing_status`; also behind "Show" on the unreadable files in Settings ›
