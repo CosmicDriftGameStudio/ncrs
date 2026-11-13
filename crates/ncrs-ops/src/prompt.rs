@@ -263,6 +263,7 @@ mod tests {
         use archive::ArchiveFormat;
         let mut prompt = Prompt::pack(PathBuf::from("/x"), vec![], "fotos.zip");
         assert_eq!(prompt.archive_format(), Some(ArchiveFormat::Zip));
+        let stem = PathBuf::from("/x").join("fotos");
 
         for format in [
             ArchiveFormat::TarGz,
@@ -273,7 +274,10 @@ mod tests {
         ] {
             prompt.set_archive_format(format);
             assert_eq!(prompt.archive_format(), Some(format));
-            assert_eq!(archive::without_archive_ending(prompt.name()), "/x/fotos");
+            assert_eq!(
+                archive::without_archive_ending(prompt.name()),
+                stem.to_string_lossy()
+            );
         }
 
         prompt.set_name("/x/fotos.tar.zst".to_string());
