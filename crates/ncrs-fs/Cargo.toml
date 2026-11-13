@@ -47,7 +47,7 @@ ncrs-sandbox = { path = "../ncrs-sandbox", version = "0.0.0", optional = true }
 # advisory (RUSTSEC-2023-0071), so servers that offer only RSA host keys are not
 # supported yet. Both are pinned, and russh pins ssh-key to a release candidate
 # that must match.
-russh = { version = "=0.65.0", default-features = false, features = ["ring"] }
+russh = { version = "=0.65.1", default-features = false, features = ["ring"] }
 russh-sftp = "=3.0.1"
 # The login passwords of saved servers, one keychain entry per server; the same
 # crate and version as the index key in ncrs-index.

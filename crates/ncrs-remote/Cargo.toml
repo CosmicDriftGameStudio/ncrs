@@ -13,7 +13,7 @@ publish = false
 iced = { version = "0.14", default-features = false, features = ["tokio", "advanced"] }
 # The host key the dialog asks about is a russh key. Same build as ncrs-fs: ring
 # as crypto backend, no `rsa` feature.
-russh = { version = "=0.65.0", default-features = false, features = ["ring"] }
+russh = { version = "=0.65.1", default-features = false, features = ["ring"] }
 # The keychain is read and written on the blocking pool.
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
 ncrs-core = { path = "../ncrs-core", version = "0.0.0" }
