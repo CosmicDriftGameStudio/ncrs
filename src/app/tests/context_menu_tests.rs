@@ -525,3 +525,20 @@ fn in_an_archive_the_f4_slot_is_dimmed_and_the_palette_drops_the_command() {
         .commands_the_panel_refuses()
         .contains(&ncrs_config::keymap::KeyAction::Edit));
 }
+
+#[test]
+fn extract_here_is_in_the_menu_of_an_archive_file_only_and_packing_is_not_for_archive_panels() {
+    let mut app = App::with_fixed_panels();
+    open_at(&mut app, LEFT, FILE);
+    assert!(!enabled_actions(&app).contains(&ContextAction::ExtractHere));
+    assert!(enabled_actions(&app).contains(&ContextAction::Pack));
+
+    app.panel_mut(LEFT).entries[FILE].name = "pack.zip".into();
+    open_at(&mut app, LEFT, FILE);
+    assert!(enabled_actions(&app).contains(&ContextAction::ExtractHere));
+
+    app.panel_mut(LEFT).archive = Some(PathBuf::from("/x/fotos.zip"));
+    open_at(&mut app, LEFT, FILE);
+    assert!(!enabled_actions(&app).contains(&ContextAction::ExtractHere));
+    assert!(!enabled_actions(&app).contains(&ContextAction::Pack));
+}

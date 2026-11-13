@@ -5,6 +5,7 @@
 
 use iced::{Point, Size};
 use ncrs_core::PanelSide;
+use ncrs_fs::archive::is_archive_name;
 use ncrs_ui_kit::layout;
 
 use crate::action::Action;
@@ -100,6 +101,8 @@ impl MenuFacts {
                 | ContextAction::AddFavourite
                 | ContextAction::RemoveFavourite
                 | ContextAction::NoteOnFile
+                | ContextAction::ExtractHere
+                | ContextAction::Pack
                 | ContextAction::RemoveFromList => false,
             };
         }
@@ -122,6 +125,18 @@ impl MenuFacts {
             | ContextAction::Trash
             | ContextAction::DeletePermanently
             | ContextAction::Permissions => self.has_sources,
+            ContextAction::ExtractHere => {
+                let acts_on: Vec<_> = if panel.selection.any_tagged() {
+                    panel.selection.ordered(&panel.entries)
+                } else {
+                    cursor_row.into_iter().collect()
+                };
+                !panel.is_virtual()
+                    && acts_on.iter().any(|entry| {
+                        !entry.is_dir && !entry.is_parent && is_archive_name(&entry.name)
+                    })
+            }
+            ContextAction::Pack => self.has_sources && !panel.is_virtual(),
             ContextAction::Rename => cursor_row.is_some_and(|entry| !entry.is_parent),
             ContextAction::NewFolder | ContextAction::CompareFolders => true,
             ContextAction::OpenTerminal => panels.local_folder_target().is_some(),

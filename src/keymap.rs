@@ -67,6 +67,7 @@ impl KeyActionMessage for KeyAction {
             Self::Mkdir => Message::CreateDirPrompt,
             Self::NewFile => Message::CreateFilePrompt,
             Self::Pack => Message::PackPrompt,
+            Self::ExtractHere => Message::ExtractHere,
             Self::Permissions => Message::PermissionsPrompt,
             Self::DriveMenuLeft => Message::VolumeMenu(PanelSide::Left),
             Self::DriveMenuRight => Message::VolumeMenu(PanelSide::Right),

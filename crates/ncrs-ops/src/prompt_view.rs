@@ -6,6 +6,7 @@
 use iced::widget::{column, row};
 use iced::{alignment, Element, Size};
 
+use ncrs_fs::archive::ArchiveFormat;
 use ncrs_i18n::{fill_template, Language, Msg};
 use ncrs_ui_kit::frame::{DialogSize, Frame, KeyHints};
 use ncrs_ui_kit::hermes_kit;
@@ -31,6 +32,7 @@ pub struct PromptMessages<'a, Message> {
     pub on_submit: Message,
     pub on_cancel: Message,
     pub on_toggle_keep_folders: Message,
+    pub on_format: Box<dyn Fn(ArchiveFormat) -> Message + 'a>,
 }
 
 impl<Message> std::fmt::Debug for PromptMessages<'_, Message> {
@@ -51,6 +53,7 @@ pub fn view<'a, Message: Clone + 'a>(
         on_submit,
         on_cancel,
         on_toggle_keep_folders,
+        on_format,
     } = messages;
     let (title, label, confirm) = match state.kind() {
         PromptKind::CreateDir => (
@@ -103,6 +106,9 @@ pub fn view<'a, Message: Clone + 'a>(
     );
 
     let mut body = column![field].spacing(spacing::LINE_GAP);
+    if state.kind() == PromptKind::Pack {
+        body = body.push(format_choice(state.archive_format(), &on_format, palette));
+    }
     let hits = state.hits().filter(|_| state.kind() == PromptKind::Pack);
     if let Some(pack) = hits {
         body = body.push(keep_folders_row(
@@ -151,6 +157,29 @@ fn subtitle_of_hits(state: &Prompt, lang: Language) -> String {
         lang.text(Msg::DialogPackSubtitleHits),
         &[("{count}", &state.sources().len().to_string())],
     )
+}
+
+const PACK_FORMATS: [ArchiveFormat; 5] = [
+    ArchiveFormat::Zip,
+    ArchiveFormat::SevenZip,
+    ArchiveFormat::Tar,
+    ArchiveFormat::TarGz,
+    ArchiveFormat::TarZst,
+];
+
+/// One segment per archive format; none is selected while the typed ending is
+/// none of them.
+fn format_choice<'a, Message: Clone + 'a>(
+    selected: Option<ArchiveFormat>,
+    on_format: &dyn Fn(ArchiveFormat) -> Message,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let options: Vec<(&str, Message)> = PACK_FORMATS
+        .iter()
+        .map(|&format| (format.ending().trim_start_matches('.'), on_format(format)))
+        .collect();
+    let position = selected.and_then(|format| PACK_FORMATS.iter().position(|&each| each == format));
+    kit::segmented(&options, position.unwrap_or(usize::MAX), true, palette)
 }
 
 /// The checkbox that keeps the folders of the hits in the archive.

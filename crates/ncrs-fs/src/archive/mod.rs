@@ -6,6 +6,7 @@
 //! a complete new archive next to it and replaces the old one at the end.
 
 mod extract;
+mod extract_here;
 mod index;
 mod names;
 mod sevenz;
@@ -20,6 +21,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::SystemTime;
 
 pub use extract::copy_out;
+pub use extract_here::{extract_here, Extracted};
 pub use index::{ArchiveIndex, Totals};
 pub use names::safe_components;
 pub use sevenz::{refusal_of, SevenZipRefusal};
@@ -56,6 +58,35 @@ impl ArchiveFormat {
             None
         }
     }
+}
+
+impl ArchiveFormat {
+    /// The ending a new archive of this format gets.
+    pub const fn ending(self) -> &'static str {
+        match self {
+            Self::Zip => ".zip",
+            Self::Tar => ".tar",
+            Self::TarGz => ".tar.gz",
+            Self::TarZst => ".tar.zst",
+            Self::SevenZip => ".7z",
+        }
+    }
+}
+
+const KNOWN_ENDINGS: [&str; 7] = [
+    ".tar.gz", ".tar.zst", ".tgz", ".tzst", ".zip", ".tar", ".7z",
+];
+
+/// The name without its archive ending: `x.tar.gz` gives `x`. A name that has
+/// none, or is nothing but the ending, stays as it is.
+pub fn without_archive_ending(name: &str) -> &str {
+    let lowered = name.to_lowercase();
+    KNOWN_ENDINGS
+        .iter()
+        .find(|ending| lowered.ends_with(*ending))
+        .and_then(|ending| name.get(..name.len() - ending.len()))
+        .filter(|stem| !stem.is_empty())
+        .unwrap_or(name)
 }
 
 pub fn is_archive_name(name: &OsStr) -> bool {
@@ -470,6 +501,16 @@ mod tests {
         let plain = dir.path().join("plain.txt");
         std::fs::write(&plain, b"x").unwrap();
         assert_eq!(locate_in_archive(&plain.join("x")), None);
+    }
+
+    #[test]
+    fn the_archive_ending_comes_off_the_name() {
+        assert_eq!(without_archive_ending("x.tar.gz"), "x");
+        assert_eq!(without_archive_ending("X.TGZ"), "X");
+        assert_eq!(without_archive_ending("a.b.zip"), "a.b");
+        assert_eq!(without_archive_ending("x.7z"), "x");
+        assert_eq!(without_archive_ending("plain"), "plain");
+        assert_eq!(without_archive_ending(".zip"), ".zip");
     }
 
     #[test]

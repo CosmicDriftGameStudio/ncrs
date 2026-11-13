@@ -40,11 +40,14 @@ pub enum ContextAction {
     RemoveFromList,
     /// Only for a file: the note that belongs to it.
     NoteOnFile,
+    /// Only on archive files: unpacks them next to themselves.
+    ExtractHere,
+    Pack,
 }
 
 impl ContextAction {
     #[cfg(any(test, feature = "test-support"))]
-    pub const ALL: [ContextAction; 21] = [
+    pub const ALL: [ContextAction; 23] = [
         ContextAction::Open,
         ContextAction::ShowPackageContents,
         ContextAction::View,
@@ -66,6 +69,8 @@ impl ContextAction {
         ContextAction::ShowOnOtherSide,
         ContextAction::RemoveFromList,
         ContextAction::NoteOnFile,
+        ContextAction::ExtractHere,
+        ContextAction::Pack,
     ];
 
     /// Whether a panel inside an archive may run the entry; see
@@ -93,6 +98,8 @@ impl ContextAction {
             | ContextAction::AddFavourite
             | ContextAction::RemoveFavourite
             | ContextAction::NoteOnFile
+            | ContextAction::ExtractHere
+            | ContextAction::Pack
             | ContextAction::ComputeFolderSizes => false,
         }
     }
@@ -122,6 +129,8 @@ impl ContextAction {
             | ContextAction::RemoveFavourite
             | ContextAction::Trash
             | ContextAction::NoteOnFile
+            | ContextAction::ExtractHere
+            | ContextAction::Pack
             | ContextAction::DeletePermanently => false,
         }
     }
@@ -149,11 +158,13 @@ impl ContextAction {
             ContextAction::ShowOnOtherSide => Msg::ContextMenuShowOnOtherSide,
             ContextAction::RemoveFromList => Msg::ContextMenuRemoveFromList,
             ContextAction::NoteOnFile => Msg::ActionNoteOnFile,
+            ContextAction::ExtractHere => Msg::ContextMenuExtractHere,
+            ContextAction::Pack => Msg::ContextMenuPack,
         }
     }
 }
 
-pub const GROUPS: [&[ContextAction]; 5] = [
+pub const GROUPS: [&[ContextAction]; 6] = [
     &[
         ContextAction::Open,
         ContextAction::ShowPackageContents,
@@ -168,6 +179,7 @@ pub const GROUPS: [&[ContextAction]; 5] = [
         ContextAction::Permissions,
         ContextAction::NewFolder,
     ],
+    &[ContextAction::ExtractHere, ContextAction::Pack],
     &[
         ContextAction::CopyPath,
         ContextAction::CopyName,
@@ -202,6 +214,13 @@ const HIT_LIST_GROUPS: [&[ContextAction]; 5] = [
     &[ContextAction::CopyPath, ContextAction::CopyName],
     &[ContextAction::Trash, ContextAction::DeletePermanently],
 ];
+
+fn is_left_out_unless_enabled(action: ContextAction) -> bool {
+    matches!(
+        action,
+        ContextAction::ShowPackageContents | ContextAction::ExtractHere
+    )
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MenuEntry {
@@ -483,9 +502,7 @@ impl ContextMenu {
                     .iter()
                     .filter(|action| !left_out.contains(action))
                     // Left out, not greyed out, where it is not about the row.
-                    .filter(|&&action| {
-                        action != ContextAction::ShowPackageContents || is_enabled(action)
-                    })
+                    .filter(|&&action| !is_left_out_unless_enabled(action) || is_enabled(action))
                     .map(|&action| MenuEntry::Item {
                         action,
                         enabled: is_enabled(action),

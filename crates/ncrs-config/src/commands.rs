@@ -196,6 +196,7 @@ fn menu_place_of(action: KeyAction) -> MenuPlace {
         KeyAction::Copy | KeyAction::Move => at(1),
         KeyAction::Rename | KeyAction::Mkdir | KeyAction::NewFile => at(1).dialog(),
         KeyAction::Pack | KeyAction::Permissions => at(2).dialog(),
+        KeyAction::ExtractHere => at(2),
         KeyAction::Trash
         | KeyAction::Delete
         | KeyAction::DeletePermanently
@@ -290,6 +291,7 @@ fn command_without_place(action: KeyAction) -> Option<Command> {
         KeyAction::Mkdir => Command::plain(action, File, Msg::ActionMkdir),
         KeyAction::NewFile => Command::plain(action, File, Msg::ActionNewFile),
         KeyAction::Pack => Command::themed(action, File, Msg::ActionPack, FuturamaName::ActionPack),
+        KeyAction::ExtractHere => Command::plain(action, File, Msg::ActionExtractHere),
         KeyAction::Permissions => Command::plain(action, File, Msg::ActionPermissions),
         KeyAction::Delete => {
             Command::themed(action, File, Msg::ActionDelete, FuturamaName::ActionDelete)

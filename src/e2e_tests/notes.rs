@@ -46,3 +46,28 @@ fn command_shift_n_makes_a_note_on_the_file_and_the_note_follows_a_moved_file() 
     session.press(Key::Named(Named::Escape));
     assert!(!session.app.notes_are_shown_for_test());
 }
+
+#[test]
+fn a_note_typed_in_the_last_pause_is_on_disk_when_the_app_quits() {
+    let dir = scratch("notes-quit");
+    write(&dir.path().join("offer.pdf"), "pdf");
+
+    let mut session = session_in(dir.path());
+    cursor_to(&mut session, "offer.pdf");
+    session.press_with(Key::Character("n".into()), note_on_file_keys());
+    session.settle();
+    let note = session
+        .app
+        .notes_for_test()
+        .current
+        .clone()
+        .expect("the note is shown");
+
+    session.send(Message::Notes(ncrs_notes::Message::Edited(Action::Edit(
+        Edit::Paste("typed just before quitting".to_owned().into()),
+    ))));
+    session.app.quit_for_test();
+
+    let on_disk = std::fs::read_to_string(note).unwrap();
+    assert!(on_disk.contains("typed just before quitting"), "{on_disk}");
+}

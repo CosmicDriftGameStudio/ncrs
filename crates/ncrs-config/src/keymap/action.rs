@@ -66,6 +66,7 @@ key_actions! {
     Mkdir => "mkdir",
     NewFile => "new_file",
     Pack => "pack",
+    ExtractHere => "extract_here",
     Permissions => "permissions",
     DriveMenuLeft => "drive_menu_left",
     DriveMenuRight => "drive_menu_right",
@@ -212,6 +213,7 @@ impl KeyAction {
             | Self::NewFile
             | Self::Rename
             | Self::Pack
+            | Self::ExtractHere
             | Self::Permissions
             | Self::QuickOpen
             | Self::CommandLine
@@ -433,6 +435,7 @@ impl KeyAction {
             | Self::Mkdir
             | Self::NewFile
             | Self::Pack
+            | Self::ExtractHere
             | Self::Permissions
             | Self::ComputeFolderSizes
             | Self::AddFavourite
@@ -538,6 +541,7 @@ impl KeyAction {
             | Self::Mkdir
             | Self::NewFile
             | Self::Pack
+            | Self::ExtractHere
             | Self::Permissions
             | Self::ComputeFolderSizes
             | Self::AddFavourite

@@ -17,7 +17,7 @@ use crate::frontmatter::{compose, split, FrontMatter};
 use crate::search::search;
 use crate::store::{self, file_note_path, scan, Kind, FILES_DIR};
 use crate::tree::RowKey;
-use crate::{notes_key, update, Action, Ctx, Message, Mode, State};
+use crate::{flush_now, notes_key, update, Action, Ctx, Message, Mode, State};
 
 const CTX: Ctx = Ctx {
     lang: Language::English,
@@ -268,4 +268,32 @@ fn keys_arrows_and_enter_only_outside_the_editor() {
         notes_key(&Key::Character("n".into()), Modifiers::COMMAND, true),
         Some(Message::NewNote)
     );
+}
+
+#[tokio::test]
+async fn flushing_now_writes_the_pending_edit_without_waiting_for_the_pause() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "Reisen.md", "Italien");
+    let mut state = loaded(dir.path());
+    state.open = true;
+    let note = dir.path().join("Reisen.md");
+    let _ = update(
+        &mut state,
+        Message::Pressed(RowKey::Note(note.clone())),
+        &CTX,
+    );
+    let _ = update(&mut state, Message::Enter, &CTX);
+    let _ = update(
+        &mut state,
+        Message::Edited(iced::widget::text_editor::Action::Edit(
+            iced::widget::text_editor::Edit::Paste(" und Spanien".to_owned().into()),
+        )),
+        &CTX,
+    );
+    assert!(state.dirty);
+
+    flush_now(&mut state).unwrap();
+
+    assert!(fs::read_to_string(note).unwrap().contains("und Spanien"));
+    assert!(!state.dirty);
 }

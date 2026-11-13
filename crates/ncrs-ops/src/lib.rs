@@ -41,7 +41,7 @@ pub use action::{
 };
 pub use archive_flow::{
     abort_archive_write, archive_written, begin_copy_into_archive, start_archive_delete,
-    start_pack, PackRequest,
+    start_extract_here, start_pack, PackRequest,
 };
 pub use batch_rename::flow::{
     abort_batch_rename, open_batch_rename, update_batch_rename, BatchRenameRequest,

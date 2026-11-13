@@ -93,12 +93,28 @@ fn unpack_into_staging<P: Progress>(
     Ok(written)
 }
 
-struct Plan<'a> {
+pub(in crate::archive) struct Plan<'a> {
     inner: &'a [String],
     /// The entry asked for is a folder, so its contents come along.
     wants_folder: bool,
     root_out: PathBuf,
     total: usize,
+}
+
+impl<'a> Plan<'a> {
+    pub(in crate::archive) fn new(
+        inner: &'a [String],
+        wants_folder: bool,
+        root_out: PathBuf,
+        total: usize,
+    ) -> Self {
+        Self {
+            inner,
+            wants_folder,
+            root_out,
+            total,
+        }
+    }
 }
 
 impl Plan<'_> {
@@ -142,7 +158,7 @@ fn join_inside(root: &Path, parts: &[String]) -> io::Result<PathBuf> {
     Ok(path)
 }
 
-fn unpack<P: Progress>(
+pub(in crate::archive) fn unpack<P: Progress>(
     location: &ArchiveLocation,
     plan: &Plan,
     progress: &mut P,

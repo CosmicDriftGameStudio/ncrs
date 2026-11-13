@@ -230,6 +230,7 @@ fn every_action_has_a_default_key_and_no_key_is_twice_bound() {
         KeyAction::UndoRename,
         KeyAction::CompareFolders,
         KeyAction::Notes,
+        KeyAction::ExtractHere,
     ];
     // Ctrl+C is copy_files there; Escape and the cancel button stop a job.
     if !cfg!(target_os = "macos") {

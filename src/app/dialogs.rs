@@ -345,6 +345,10 @@ impl App {
     /// Writes the session state here and now, then ends the app: the runtime
     /// stops right after, so no task would run.
     pub(in crate::app) fn quit(&mut self) -> Task<Message> {
+        // A note typed in the last pause before its save is still only in memory.
+        if let Err(reason) = ncrs_notes::flush_now(&mut self.notes) {
+            eprintln!("ncrs: the note could not be saved on quit: {reason}");
+        }
         if let Some(path) = &self.state_path {
             write_session_state(
                 &self.session_writes,

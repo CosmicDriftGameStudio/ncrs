@@ -142,20 +142,33 @@ fn loaded(
 /// Writes the shown note when it has changes. A note made here that takes its
 /// title from its first line is renamed with the write.
 fn flush(state: &mut State) -> Task<Message> {
+    match pending_write(state) {
+        Some((path, text, replaces)) => written(path, text, replaces),
+        None => Task::none(),
+    }
+}
+
+/// Writes the shown note now, on this thread, for the moment the app ends and
+/// no task would run any more.
+pub fn flush_now(state: &mut State) -> Result<(), String> {
+    match pending_write(state) {
+        Some((path, text, replaces)) => store::write_note(&path, &text, replaces.as_deref()),
+        None => Ok(()),
+    }
+}
+
+/// What a write of the shown note would write: the file, its text and the file
+/// a rename leaves behind. `None` when there is nothing to write.
+fn pending_write(state: &mut State) -> Option<(PathBuf, String, Option<PathBuf>)> {
     if !state.dirty {
-        return Task::none();
+        return None;
     }
     state.dirty = false;
-    let Some(old) = state.current.clone() else {
-        return Task::none();
-    };
+    let old = state.current.clone()?;
     let new = renamed(state, &old).unwrap_or_else(|| old.clone());
-    let Some(note) = state.note(&new) else {
-        return Task::none();
-    };
-    let text = note.file_text();
+    let text = state.note(&new)?.file_text();
     let replaces = (new != old).then_some(old);
-    written(new, text, replaces)
+    Some((new, text, replaces))
 }
 
 /// The new path of the note at `old` when its first line gives it a new title.

@@ -1,5 +1,7 @@
 //! The notes tab: tree or search hits on the left, the note on the right.
 
+use std::path::Path;
+
 use iced::widget::{column, container, row};
 use iced::{alignment, Element, Length};
 use ncrs_i18n::{fill_template, Msg};
@@ -106,7 +108,10 @@ fn tree<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
             RowKey::Files => ctx.lang.text(Msg::NotesFilesGroup).to_owned(),
             RowKey::Note(path) => state
                 .note(path)
-                .map(|note| note.title.clone())
+                .map(|note| match &note.kind {
+                    Kind::File { file, .. } => path_below_home(file, ctx.home),
+                    Kind::Topic => note.title.clone(),
+                })
                 .unwrap_or_default(),
         };
         tree_row(
@@ -122,6 +127,17 @@ fn tree<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         )
     });
     column(rows).into()
+}
+
+/// The file as the tree lists it: below home with a leading slash, elsewhere
+/// in full.
+fn path_below_home(file: &Path, home: &Path) -> String {
+    match file.strip_prefix(home) {
+        Ok(relative) if !relative.as_os_str().is_empty() => {
+            format!("/{}", relative.to_string_lossy())
+        }
+        _ => file.to_string_lossy().into_owned(),
+    }
 }
 
 fn place(note: &Note, ctx: ViewCtx<'_>) -> String {
@@ -179,11 +195,17 @@ fn note_pane<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         .padding(spacing::XXL)
         .into();
     };
-    let changed = fill_template(
-        ctx.lang.text(Msg::NotesChanged),
-        &[("{time}", &format::time(note.modified))],
-    );
-    let meta = format!("{} \u{b7} {changed}", place(note, ctx));
+    let meta = match note.modified {
+        Some(modified) => format!(
+            "{} \u{b7} {}",
+            place(note, ctx),
+            fill_template(
+                ctx.lang.text(Msg::NotesChanged),
+                &[("{time}", &format::time(Some(modified)))],
+            )
+        ),
+        None => place(note, ctx),
+    };
     let titles = column![
         page_heading(&note.title, palette),
         page_line(meta, font_size::SMALL, palette.dim_text),

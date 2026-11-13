@@ -23,16 +23,40 @@ fn selected_action(menu: &ContextMenu) -> ContextAction {
 }
 
 #[test]
-fn the_menu_has_the_five_groups_with_separators() {
+fn the_menu_has_the_six_groups_with_separators() {
     let menu = menu_with(&[]);
     let separators = menu
         .entries()
         .iter()
         .filter(|entry| **entry == MenuEntry::Separator)
         .count();
-    assert_eq!(separators, 4);
-    assert_eq!(menu.entries().len(), 16 + 4);
+    assert_eq!(separators, 5);
+    assert_eq!(menu.entries().len(), 18 + 5);
     assert_eq!(selected_action(&menu), ContextAction::Open);
+}
+
+#[test]
+fn extract_here_is_only_in_the_menu_of_an_archive_and_packing_has_its_own_group() {
+    let actions = |menu: &ContextMenu| {
+        menu.entries()
+            .iter()
+            .filter_map(|entry| match entry {
+                MenuEntry::Item { action, .. } => Some(*action),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    let on_a_plain_file = actions(&menu_with(&[ContextAction::ExtractHere]));
+    assert!(!on_a_plain_file.contains(&ContextAction::ExtractHere));
+    assert!(on_a_plain_file.contains(&ContextAction::Pack));
+
+    let on_an_archive = actions(&menu_with(&[]));
+    let extract = on_an_archive
+        .iter()
+        .position(|action| *action == ContextAction::ExtractHere)
+        .unwrap();
+    assert_eq!(on_an_archive[extract + 1], ContextAction::Pack);
+    assert_eq!(on_an_archive[extract - 1], ContextAction::NewFolder);
 }
 
 #[test]

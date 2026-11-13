@@ -36,6 +36,7 @@ pub(in crate::app) fn archive_refusal(panel: &PanelState, message: &Message) -> 
         | Message::ComputeFolderSizes
         | Message::OpenSearch
         | Message::NoteOnFile
+        | Message::ExtractHere
         | Message::AddFavourite
         | Message::RemoveFavourite
         | Message::QuickFix(QuickFixMessage::Open)
@@ -79,6 +80,7 @@ pub(in crate::app) fn remote_refusal(panel: &PanelState, message: &Message) -> O
         | Message::OpenSearch
         | Message::Panel(PanelMessage::ShowPackageContents)
         | Message::NoteOnFile
+        | Message::ExtractHere
         | Message::AddFavourite
         | Message::RemoveFavourite
         | Message::QuickFix(QuickFixMessage::Open)
@@ -500,6 +502,7 @@ impl App {
                 self.open_prompt(Prompt::create_file(parent))
             }
             Message::PackPrompt => self.open_pack_prompt(),
+            Message::ExtractHere => self.extract_here(),
             Message::PermissionsPrompt => self.open_permissions_dialog(),
             Message::BatchRename(batch_message) => {
                 self.with_ops(|ops, ctx| ncrs_ops::update_batch_rename(ops, batch_message, ctx))
@@ -520,6 +523,12 @@ impl App {
                 Task::none()
             }
             Message::PromptToggleKeepFolders => self.toggle_keep_folders(),
+            Message::PromptFormat(format) => {
+                if let Some(prompt) = self.ops.prompt.as_mut() {
+                    prompt.set_archive_format(format);
+                }
+                Task::none()
+            }
             // Its own arm, not an early return: starting the job changes what the
             // keys mean, and the routing state is published after the match.
             Message::PromptSubmit if self.ops.valid_prompt_has_its_own_job() => {

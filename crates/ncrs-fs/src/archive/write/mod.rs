@@ -25,7 +25,7 @@ use crate::remote::RemotePath;
 use crate::transfer::{OnConflict, Progress};
 
 /// What a write did besides the entries it wrote.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct WriteReport {
     /// Entries now in the archive that this call wrote or kept.
     pub entries: usize,
@@ -34,6 +34,8 @@ pub struct WriteReport {
     pub skipped: usize,
     /// Sources not added because the name was already in the archive.
     pub kept_existing: usize,
+    /// What an unpack made new, the last one when it unpacked several.
+    pub placed: Option<PathBuf>,
 }
 
 /// A new archive at `archive` holding `sources`, each under its own name.

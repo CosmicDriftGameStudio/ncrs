@@ -563,6 +563,7 @@ impl App {
                 on_submit: Message::PromptSubmit,
                 on_cancel: Message::PromptCancel,
                 on_toggle_keep_folders: Message::PromptToggleKeepFolders,
+                on_format: Box::new(Message::PromptFormat),
             },
         );
         let Some(prompt_element) = overlay else {

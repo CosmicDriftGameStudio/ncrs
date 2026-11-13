@@ -18,7 +18,7 @@ pub use ctx::{Ctx, ViewCtx};
 pub use keys::notes_key;
 pub use message::{Message, Mode};
 pub use state::State;
-pub use update::{load, open, update};
+pub use update::{flush_now, load, open, update};
 pub use view::view;
 
 #[cfg(test)]

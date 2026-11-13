@@ -357,6 +357,23 @@ mod tests {
     }
 
     #[test]
+    fn the_pack_prompt_shows_the_chosen_format() {
+        let mut app = App::with_fixed_pack_prompt().in_language(Language::English);
+        drop(app.update(Message::PromptFormat(
+            crate::fs::archive::ArchiveFormat::TarGz,
+        )));
+        let matches = simulator(&app)
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image("tests/snapshots/pack_prompt_tar_gz_en.png")
+            .expect("snapshot comparison");
+        assert!(
+            matches,
+            "the pack prompt does not match pack_prompt_tar_gz_en.png"
+        );
+    }
+
+    #[test]
     fn the_new_file_prompt_matches_its_snapshot() {
         let app = App::with_fixed_new_file_prompt();
         let matches = simulator(&app)

@@ -80,6 +80,10 @@ pub enum ArchiveWriteKind {
     },
     CopyIn,
     Delete,
+    /// Each archive unpacked next to itself.
+    ExtractHere {
+        archives: usize,
+    },
 }
 
 /// What a delete works on, resolved once when F8 is pressed: by the time the

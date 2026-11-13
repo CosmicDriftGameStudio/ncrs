@@ -271,12 +271,16 @@ pub enum Message {
     CreateFilePrompt,
     /// Alt+F5: ask for the name of a new archive in the other panel's folder.
     PackPrompt,
+    /// Unpack the archives under the cursor or tagged next to themselves.
+    ExtractHere,
     /// Option+Cmd+R (Ctrl+Alt+R elsewhere): open the permissions dialog for the tagged entries.
     PermissionsPrompt,
     /// A keystroke went to the open prompt.
     PromptInput(String),
     /// The "Keep folders" box of the pack prompt for a hit list was clicked.
     PromptToggleKeepFolders,
+    /// A format of the pack dialog was chosen.
+    PromptFormat(crate::fs::archive::ArchiveFormat),
     /// The user confirmed the prompt.
     PromptSubmit,
     /// The user dismissed the prompt.

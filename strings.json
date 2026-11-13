@@ -493,6 +493,18 @@
       "de": "In {name} gepackt"
     },
     {
+      "key": "status.extracted",
+      "context": "Status bar notice after one archive was unpacked next to itself (context menu entry Extract here). Takes the file or folder name that is new.",
+      "en": "Unpacked to {name}",
+      "de": "Entpackt nach {name}"
+    },
+    {
+      "key": "status.extracted_many",
+      "context": "Status bar notice after several archives were each unpacked next to themselves. Takes the number of archives.",
+      "en": "{count} archives unpacked",
+      "de": "{count} Archive entpackt"
+    },
+    {
       "key": "status.archive_copied_in",
       "context": "Status bar notice after files were copied into an archive (F5 with an archive as the target).",
       "en": "Copied into the archive",
@@ -629,6 +641,18 @@
       "context": "Entry of the context menu: turns the name of the cursor row into an input, so the file or folder can be renamed in place (key Shift+F6). Verb, imperative.",
       "en": "Rename",
       "de": "Umbenennen"
+    },
+    {
+      "key": "context_menu.extract_here",
+      "context": "Entry of the context menu on an archive file: unpacks it next to itself, into a new folder named after the archive unless it holds exactly one top-level entry. Only shown on archives. Verb, imperative.",
+      "en": "Extract here",
+      "de": "Hier entpacken"
+    },
+    {
+      "key": "context_menu.pack",
+      "context": "Entry of the context menu on files and folders: opens the dialog that packs the tagged rows, or the cursor row, into a new archive, where the format is chosen. Verb, imperative; the dots mean a dialog follows.",
+      "en": "Pack…",
+      "de": "Packen…"
     },
     {
       "key": "context_menu.new_folder",
@@ -1541,6 +1565,12 @@
       "context": "Entry of the command palette that runs the key action pack. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
       "en": "Pack into archive",
       "de": "In Archiv packen"
+    },
+    {
+      "key": "action.extract_here",
+      "context": "Entry of the command palette that runs the key action extract_here: unpacks the archives under the cursor or tagged next to themselves. The plain name of what the action does, as short as a menu entry.",
+      "en": "Extract archive here",
+      "de": "Archiv hier entpacken"
     },
     {
       "key": "action.pack.theme",
