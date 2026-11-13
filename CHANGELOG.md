@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.4.2] — 2026-11-13
+
 ### Changed
 
 - The built-in AI model is now Qwen3.5 4B (about 2.7 GB, one download) instead
