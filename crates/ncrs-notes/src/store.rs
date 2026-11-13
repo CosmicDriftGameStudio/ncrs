@@ -261,22 +261,22 @@ fn default_permissions() -> Option<fs::Permissions> {
 
 /// Whether both names lead to one file: on a case-insensitive disk a title that
 /// only changes its case names the note's own file.
+#[cfg(unix)]
 pub fn is_same_file(first: &Path, second: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt as _;
     match (fs::metadata(first), fs::metadata(second)) {
-        (Ok(left), Ok(right)) => same_identity(&left, &right),
+        (Ok(left), Ok(right)) => left.dev() == right.dev() && left.ino() == right.ino(),
         _ => false,
     }
 }
 
-#[cfg(unix)]
-fn same_identity(first: &fs::Metadata, second: &fs::Metadata) -> bool {
-    use std::os::unix::fs::MetadataExt as _;
-    first.dev() == second.dev() && first.ino() == second.ino()
-}
-
+/// Windows has no inode; its canonical path carries the case stored on disk.
 #[cfg(not(unix))]
-fn same_identity(_first: &fs::Metadata, _second: &fs::Metadata) -> bool {
-    false
+pub fn is_same_file(first: &Path, second: &Path) -> bool {
+    match (fs::canonicalize(first), fs::canonicalize(second)) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => false,
+    }
 }
 
 /// The newest generation written per note file, shared with the blocking tasks
