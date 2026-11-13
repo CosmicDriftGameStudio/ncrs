@@ -24,6 +24,7 @@ pub const RIGHT_TAB_ID: &str = "title-tab-right";
 pub const HERMES_CHIP_ID: &str = "title-hermes-chip";
 pub const SETTINGS_TAB_ID: &str = "title-tab-settings";
 pub const MONITOR_TAB_ID: &str = "title-tab-monitor";
+pub const VIEWER_TAB_ID: &str = "title-tab-viewer";
 pub const HERMES_TAB_ID: &str = "title-tab-hermes";
 const CLOSE_CROSS: &str = "×";
 /// Characters of room the cross of a hit list tab takes from its title.
@@ -73,6 +74,8 @@ pub use crate::hermes_status::Tone as HermesTone;
 pub enum PageTab {
     Settings,
     System,
+    /// The file viewer; the title is the file name.
+    Viewer(String),
     Hermes,
 }
 
@@ -212,7 +215,7 @@ pub fn view<'a>(bar: &TitleBar<'a>) -> Element<'a, Message> {
     ]
     .height(Length::Fill);
     for open in &bar.page_tabs {
-        tabs = tabs.push(match open.page {
+        tabs = tabs.push(match &open.page {
             PageTab::Settings => page_tab(
                 lang.text(Msg::SettingsTab),
                 SETTINGS_TAB_ID,
@@ -230,6 +233,16 @@ pub fn view<'a>(bar: &TitleBar<'a>) -> Element<'a, Message> {
                 (
                     ShownTab::Monitor,
                     Message::Monitor(ncrs_monitor::MonitorMessage::Close),
+                ),
+                palette,
+            ),
+            PageTab::Viewer(title) => page_tab(
+                title,
+                VIEWER_TAB_ID,
+                open.active,
+                (
+                    ShownTab::Viewer,
+                    Message::Viewer(ncrs_viewer::Message::Close),
                 ),
                 palette,
             ),

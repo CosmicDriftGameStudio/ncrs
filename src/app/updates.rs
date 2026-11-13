@@ -38,7 +38,7 @@ impl App {
         }
     }
 
-    fn open_release_page(&mut self, url: &str) {
+    pub(in crate::app) fn open_release_page(&mut self, url: &str) {
         let command = fs::system_open_command(std::ffi::OsString::from(url));
         if let Err(reason) = self.launcher.launch(&command) {
             let failure = self

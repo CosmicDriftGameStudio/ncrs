@@ -288,7 +288,9 @@ impl App {
 
     /// Every dialog and card that covers the panels and the pages.
     pub(in crate::app) fn dialog_is_open(&self) -> bool {
-        self.dialog_apart_from_hermes_is_open() || self.hermes.quick_fix.is_some()
+        self.dialog_apart_from_hermes_is_open()
+            || self.hermes.quick_fix.is_some()
+            || self.hermes.confirm_again.is_some()
     }
 
     pub(in crate::app) fn dialog_apart_from_hermes_is_open(&self) -> bool {

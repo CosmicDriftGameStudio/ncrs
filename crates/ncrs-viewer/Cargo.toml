@@ -1,0 +1,25 @@
+[package]
+name = "ncrs-viewer"
+version = "0.0.0"
+edition = "2021"
+# Same as the root package: one place decides the compiler.
+rust-version = "1.98"
+description = "The viewer tab: a file shown rendered or as text"
+license = "MIT"
+publish = false
+
+[dependencies]
+# Same as the kit: no renderer or window system, the app picks them.
+iced = { version = "0.14", default-features = false, features = ["tokio", "advanced", "markdown"] }
+tokio = { version = "1", features = ["rt-multi-thread"] }
+ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
+ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0" }
+
+[dev-dependencies]
+iced = { version = "0.14", default-features = false, features = ["tokio", "advanced", "markdown", "tiny-skia"] }
+iced_test = "0.14"
+tempfile = "3.27"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+
+[lints]
+workspace = true

@@ -9,6 +9,7 @@ use ncrs_core::INDEX_NOT_OPEN;
 use ncrs_filing::filing::FilingModule;
 use ncrs_i18n::{fill_template, Msg};
 use ncrs_index::IncludeOutcome;
+use ncrs_intake::LocationMode;
 
 use crate::action::Action;
 use crate::ctx::Ctx;
@@ -90,17 +91,48 @@ pub fn process_again(
     )
 }
 
+/// More files than this in the inboxes are asked about first: Hermes
+/// may move them out.
+const FILES_WITHOUT_QUESTION: usize = 1;
+
+fn lies_in_an_inbox(hermes: &Hermes, path: &Path) -> bool {
+    hermes
+        .filing_config
+        .locations
+        .iter()
+        .any(|location| location.mode == LocationMode::Inbox && path.starts_with(&location.path))
+}
+
 pub fn process_found_again(
     hermes: &mut Hermes,
     result: Result<Vec<PathBuf>, String>,
     ctx: &Ctx<'_>,
     actions: &mut Vec<Action>,
 ) {
+    let found = result.unwrap_or_default();
+    let in_inboxes = found
+        .iter()
+        .filter(|path| lies_in_an_inbox(hermes, path))
+        .count();
+    if in_inboxes > FILES_WITHOUT_QUESTION {
+        hermes.confirm_again = Some(found);
+        return;
+    }
+    queue_again(hermes, found, ctx, actions);
+}
+
+/// The answer yes to the question about many files.
+pub fn confirm_process_again(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) {
+    if let Some(found) = hermes.confirm_again.take() {
+        queue_again(hermes, found, ctx, actions);
+    }
+}
+
+fn queue_again(hermes: &mut Hermes, found: Vec<PathBuf>, ctx: &Ctx<'_>, actions: &mut Vec<Action>) {
     let since = hermes
         .live_pipeline()
         .map_or(0, |runner| runner.snapshot().changed_sequence);
-    let queued: Vec<PathBuf> = result
-        .unwrap_or_default()
+    let queued: Vec<PathBuf> = found
         .into_iter()
         .filter(|path| {
             hermes

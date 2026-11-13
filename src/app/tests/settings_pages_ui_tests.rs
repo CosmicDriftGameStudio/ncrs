@@ -386,3 +386,15 @@ fn another_page_does_not_read_its_facts_on_the_tick() -> TestResult {
     assert_eq!(app.facts_requested_at, Some(asked_long_ago));
     Ok(())
 }
+
+#[test]
+fn the_programs_page_with_type_rows_matches_its_snapshot() -> TestResult {
+    let source = "[open]\nview = [\"less\"]\n\
+        by_type = [\n\
+        { extensions = [\"md\", \"markdown\"], with = \"internal\" },\n\
+        { extensions = [\"pdf\"], with = \"system\" },\n\
+        { extensions = [\"log\", \"txt\"], with = \"program\", program = \"code --goto {path}:{line}\" },\n\
+        ]\n";
+    let app = page(SettingsFeature::Programs, source, None)?;
+    matches_snapshot(&app, "settings_programs_by_type", WHOLE_PAGE_HEIGHT)
+}

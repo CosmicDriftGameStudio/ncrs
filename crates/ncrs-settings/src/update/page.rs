@@ -14,6 +14,7 @@ use crate::message::{
     ColumnsEdit, KeyBindingsMessage, Message, OcrModelsMessage, SettingChange, SettingsMessage,
     ThemeFetchMessage,
 };
+use crate::settings::TypeRuleEdit;
 use crate::settings::{columns, SettingsState};
 use crate::state::Settings;
 use crate::theme_file::{
@@ -105,6 +106,14 @@ pub fn update(
             None
         }),
         SettingsMessage::Submit(field) => in_settings(settings, ctx, |state| state.submit(field)),
+        SettingsMessage::TypeRule(TypeRuleEdit::Pick(row)) => {
+            let apps_only = settings.page.as_ref().is_some_and(|state| state.sandboxed);
+            actions.push(Action::PickRuleProgram { row, apps_only });
+            Task::none()
+        }
+        SettingsMessage::TypeRule(edit) => {
+            in_settings(settings, ctx, |state| state.edit_type_rule(edit))
+        }
         SettingsMessage::ChooseProvider(provider) => {
             in_settings(settings, ctx, |state| state.choose_provider(provider))
         }

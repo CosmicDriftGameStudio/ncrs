@@ -380,15 +380,16 @@ pub fn terminal_row<'a>(view: &SettingsView<'a>) -> SettingRow<'a> {
 }
 
 pub fn programs_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
-    vec![Group {
+    let plain = |rows| Group {
         intro: None,
         title: String::new(),
-        rows: vec![
-            program_row(OpenKind::View, view),
-            program_row(OpenKind::Edit, view),
-            terminal_row(view),
-        ],
-    }]
+        rows,
+    };
+    vec![
+        plain(vec![program_row(OpenKind::View, view)]),
+        by_type_group(view),
+        plain(vec![program_row(OpenKind::Edit, view), terminal_row(view)]),
+    ]
 }
 
 pub fn keys_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {

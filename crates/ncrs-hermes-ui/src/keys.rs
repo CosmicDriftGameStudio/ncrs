@@ -4,7 +4,7 @@
 use iced::keyboard::key::Named;
 use iced::keyboard::Key;
 
-use crate::message::{HermesOverviewMessage, Message, QuickFixMessage};
+use crate::message::{HermesFileMessage, HermesOverviewMessage, Message, QuickFixMessage};
 
 /// What the keys read of the state of the app.
 #[derive(Debug, Clone, Copy, Default)]
@@ -23,6 +23,17 @@ pub fn quick_fix_key(key: &Key) -> Option<Message> {
         Key::Named(Named::ArrowDown) => fix(QuickFixMessage::Move(1)),
         Key::Named(Named::Home) => fix(QuickFixMessage::First),
         Key::Named(Named::End) => fix(QuickFixMessage::Last),
+        _ => None,
+    }
+}
+
+/// The question about many files to process again: Enter says yes, Escape no;
+/// any other key does nothing until it is answered.
+pub fn confirm_again_key(key: &Key) -> Option<Message> {
+    let file = |message| Some(Message::HermesFile(message));
+    match key.as_ref() {
+        Key::Named(Named::Escape) => file(HermesFileMessage::CancelProcessAgain),
+        Key::Named(Named::Enter) => file(HermesFileMessage::ConfirmProcessAgain),
         _ => None,
     }
 }

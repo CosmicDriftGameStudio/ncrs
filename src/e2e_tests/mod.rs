@@ -2658,6 +2658,9 @@ mod acceptance;
 mod process_again;
 
 #[cfg(test)]
+mod viewer;
+
+#[cfg(test)]
 mod favourites;
 
 #[cfg(test)]

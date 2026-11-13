@@ -53,6 +53,8 @@ pub enum SettingChange {
     AiProvider(AiProviderChoice),
     /// The whole list of saved SFTP servers, as it is to be written.
     Servers(Vec<ServerEntry>),
+    /// The whole list of `[[open.by_type]]` rules, as it is to be written.
+    OpenRules(Vec<ncrs_fs::OpenRule>),
     /// One whole list of the user's own names, accounts or tax numbers.
     OwnDetails {
         detail: OwnDetail,
@@ -145,6 +147,8 @@ pub enum SettingsMessage {
         field: SettingField,
         text: String,
     },
+    /// A row of "F3 by file type".
+    TypeRule(crate::settings::TypeRuleEdit),
     Submit(SettingField),
     /// Opens the system file dialog for the program behind F3 or F4.
     PickProgram(OpenKind),

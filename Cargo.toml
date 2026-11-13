@@ -47,7 +47,7 @@ embed-resource = "3"
 # the real `main` wiring and would have to duplicate it.
 # "image-without-codecs" is the image widget and handle of the document preview;
 # the preview decodes the files itself (see `image` below).
-iced = { version = "0.14", default-features = false, features = ["tokio", "fira-sans", "x11", "wayland", "advanced", "svg", "image-without-codecs"] }
+iced = { version = "0.14", default-features = false, features = ["tokio", "fira-sans", "x11", "wayland", "advanced", "svg", "image-without-codecs", "markdown"] }
 # Only what the code uses: spawn_blocking, #[tokio::test], the multi-thread
 # runtime iced's executor needs and, for the SFTP connection, TCP ("net", which
 # russh switches on as well). "full" also pulls signal-hook-registry and wasi,
@@ -103,6 +103,8 @@ ncrs-settings = { path = "crates/ncrs-settings", version = "0.0.0" }
 # The SFTP connect feature: the connect dialog, the host key question and the keychain passwords.
 ncrs-remote = { path = "crates/ncrs-remote", version = "0.0.0" }
 ncrs-compare = { path = "crates/ncrs-compare", version = "0.0.0" }
+# The viewer tab: a file shown rendered or as text.
+ncrs-viewer = { path = "crates/ncrs-viewer", version = "0.0.0" }
 # The filing logic: the filing module, the work behind the Hermes pages and the reading of the column.
 ncrs-filing = { path = "crates/ncrs-filing", version = "0.0.0" }
 # The Hermes pages: filing setup and status, overview, review, rules, tags, reorganisation.

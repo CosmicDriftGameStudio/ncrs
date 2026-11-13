@@ -191,6 +191,19 @@ pub fn process_found_again(
     (Task::none(), actions)
 }
 
+/// The question about many files to process again: yes queues them.
+pub fn confirm_process_again(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Outcome {
+    let mut actions = Vec::new();
+    hermes_file::confirm_process_again(hermes, ctx, &mut actions);
+    (Task::none(), actions)
+}
+
+/// The question about many files to process again: no, they are dropped.
+pub fn cancel_process_again(hermes: &mut Hermes) -> Outcome {
+    hermes.confirm_again = None;
+    (Task::none(), Vec::new())
+}
+
 pub fn set_folder_role(hermes: &Hermes, folder: &Path, role: FolderRole, ctx: &Ctx<'_>) -> Outcome {
     let mut actions = Vec::new();
     let task = hermes_file::set_folder_role(hermes, folder, role, ctx, &mut actions);

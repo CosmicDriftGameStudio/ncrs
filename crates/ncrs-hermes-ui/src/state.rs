@@ -23,6 +23,9 @@ pub struct Hermes {
     /// The fixes for an inquiry; at most one of it and the context menu.
     pub quick_fix: Option<QuickFix>,
     pub quick_fix_generation: u64,
+    /// The files "process again" found, held while the question about many
+    /// files of the Lesen folders is up.
+    pub confirm_again: Option<Vec<PathBuf>>,
     pub rules: Option<RulesPage>,
     pub rules_generation: u64,
     pub saved_queries: Option<SavedQueries>,

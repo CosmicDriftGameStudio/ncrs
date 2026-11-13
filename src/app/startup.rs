@@ -468,6 +468,7 @@ impl App {
             list_volumes: Arc::new(fs::list_volumes),
             search: ncrs_search::Search::new(layout::INITIAL_WINDOW_SIZE),
             monitor: ncrs_monitor::State::default(),
+            viewer: ncrs_viewer::State::default(),
             shown_tab: crate::messages::ShownTab::default(),
             updates: ncrs_updates::State::new(
                 env!("NCRS_DISPLAY_VERSION"),

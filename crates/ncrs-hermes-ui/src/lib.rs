@@ -34,14 +34,15 @@ pub use message::{
 };
 pub use state::{Hermes, KeyStoreHandle};
 pub use update::{
-    apply_ai_change, apply_saved_filing, change_protection, close_dialog, dialog_is_open,
-    documents_filed, exclude_from_hermes, filing_restarted, hermes_included, hermes_role_saved,
-    leave_pages, open_filing_status_page, process_again, process_found_again, read_paths_again,
-    refresh_hermes_column, request_hermes_column, request_hermes_counts, restart_hermes_module,
-    role_save_failed, run_filing, run_filing_work, run_filing_work_after, set_folder_role,
-    show_in_inspection, show_page, start_filing_module, toggle_hermes_exclusion, update_filing,
-    update_filing_status, update_hermes_column, update_hermes_overview, update_quick_fix,
-    update_rules, update_saved_queries, update_tags, Outcome, SavedFilingApplies,
+    apply_ai_change, apply_saved_filing, cancel_process_again, change_protection, close_dialog,
+    confirm_process_again, dialog_is_open, documents_filed, exclude_from_hermes, filing_restarted,
+    hermes_included, hermes_role_saved, leave_pages, open_filing_status_page, process_again,
+    process_found_again, read_paths_again, refresh_hermes_column, request_hermes_column,
+    request_hermes_counts, restart_hermes_module, role_save_failed, run_filing, run_filing_work,
+    run_filing_work_after, set_folder_role, show_in_inspection, show_page, start_filing_module,
+    toggle_hermes_exclusion, update_filing, update_filing_status, update_hermes_column,
+    update_hermes_overview, update_quick_fix, update_rules, update_saved_queries, update_tags,
+    Outcome, SavedFilingApplies,
 };
 pub use view::{
     dialogs, filing_badge, hermes_chip, hermes_line, hermes_status, overview_facts, page_content,

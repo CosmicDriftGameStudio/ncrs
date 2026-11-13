@@ -19,8 +19,8 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
 pub use ncrs_fs::{
-    forbid_user_machine_in_tests, is_separator, replace_file_atomically, OpenPrograms, ProgramLine,
-    ProgramLineProblem,
+    forbid_user_machine_in_tests, is_separator, parse_extensions, replace_file_atomically,
+    OpenPrograms, OpenRule, OpenWith, ProgramLine, ProgramLineProblem,
 };
 use ncrs_index::{iban_is_valid, CustomKind, KindCatalog, KindSkip};
 use ncrs_intake::{pattern_is_valid, LocationMode};
@@ -214,9 +214,9 @@ pub use self::sections::{
 pub use self::setting_writes::{
     remove_vscode_theme, write_ai_provider, write_appearance, write_check_for_updates, write_color,
     write_columns, write_default_pattern, write_favourites_bar, write_file_list_tags,
-    write_filing_load, write_hermes_enabled, write_keys, write_language, write_own_details,
-    write_program, write_system_settings, write_theme_preset, AiProviderChoice, KeyChange,
-    OwnDetail,
+    write_filing_load, write_hermes_enabled, write_keys, write_language, write_open_rules,
+    write_own_details, write_program, write_system_settings, write_theme_preset, AiProviderChoice,
+    KeyChange, OwnDetail,
 };
 pub use self::write_support::one_config_writer;
 use self::write_support::*;

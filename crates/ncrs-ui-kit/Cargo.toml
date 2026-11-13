@@ -12,7 +12,7 @@ publish = false
 # Same version as the app. No default features and none of the renderer, font
 # or window-system features: the app picks the backend. iced refuses to build
 # without an executor, so "tokio" stays on, as in the app.
-iced = { version = "0.14", default-features = false, features = ["tokio", "advanced", "svg"] }
+iced = { version = "0.14", default-features = false, features = ["tokio", "advanced", "svg", "markdown"] }
 ncrs-core = { path = "../ncrs-core", version = "0.0.0" }
 ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
 ncrs-index = { path = "../ncrs-index", version = "0.0.0" }

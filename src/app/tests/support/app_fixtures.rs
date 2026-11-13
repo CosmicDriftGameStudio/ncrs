@@ -58,6 +58,7 @@ impl App {
             list_volumes: Arc::new(fs::list_volumes),
             search: ncrs_search::Search::new(layout::INITIAL_WINDOW_SIZE),
             monitor: ncrs_monitor::State::default(),
+            viewer: ncrs_viewer::State::default(),
             shown_tab: crate::messages::ShownTab::default(),
             hermes_chat: ncrs_hermes_chat::State::default(),
             chat_model: None,
@@ -629,6 +630,18 @@ impl App {
 
     pub fn settings_for_test(&self) -> Option<&settings_ui::SettingsState> {
         self.settings.page.as_ref()
+    }
+
+    pub fn viewer_for_test(&self) -> &ncrs_viewer::State {
+        &self.viewer
+    }
+
+    pub fn viewer_is_shown_for_test(&self) -> bool {
+        self.viewer_shown()
+    }
+
+    pub fn confirm_again_for_test(&self) -> Option<&Vec<PathBuf>> {
+        self.hermes.confirm_again.as_ref()
     }
 
     pub fn monitor_for_test(&self) -> &ncrs_monitor::State {

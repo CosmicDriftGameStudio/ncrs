@@ -102,7 +102,9 @@ impl App {
         .height(Length::Fill);
 
         let below_title_bar =
-            if self.monitor_shown() {
+            if self.viewer_shown() {
+                self.viewer_area()
+            } else if self.monitor_shown() {
                 self.monitor_area()
             } else if self.hermes_chat_shown() {
                 self.hermes_chat_area()

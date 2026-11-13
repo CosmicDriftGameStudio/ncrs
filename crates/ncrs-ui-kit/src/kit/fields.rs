@@ -57,7 +57,7 @@ pub fn secret_field<'a, M: Clone + 'a>(
 pub fn mono_text_field<'a, M: Clone + 'a>(
     placeholder: &str,
     value: &str,
-    id: &'static str,
+    id: impl Into<iced::widget::Id>,
     on_input: Option<impl Fn(String) -> M + 'a>,
     on_submit: M,
     palette: &Palette,
@@ -86,7 +86,7 @@ enum Look {
 fn field_in<'a, M: Clone + 'a>(
     placeholder: &str,
     value: &str,
-    id: &'static str,
+    id: impl Into<iced::widget::Id>,
     on_input: Option<impl Fn(String) -> M + 'a>,
     on_submit: M,
     look: Look,

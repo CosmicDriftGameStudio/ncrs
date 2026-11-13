@@ -21,6 +21,12 @@ pub enum Action {
         kind: OpenKind,
         apps_only: bool,
     },
+    /// The same dialog for the program of a row of "F3 by file type"; the
+    /// answer is `TypeRuleEdit::Picked`.
+    PickRuleProgram {
+        row: usize,
+        apps_only: bool,
+    },
     PickThemeFile,
     OpenServerAdd,
     OpenServer(PathBuf),

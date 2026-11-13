@@ -3416,9 +3416,9 @@
     },
     {
       "key": "settings.row_viewer_note",
-      "context": "Explanation under the viewer setting: an empty field means the system opens the file with its own program; a word with spaces must be put in quotes.",
-      "en": "Empty: the system default. Put a word with spaces in quotes.",
-      "de": "Leer: das System entscheidet. Wörter mit Leerzeichen in Anführungszeichen."
+      "context": "Explanation under the viewer setting: it applies to file types without a row of their own in the F3-by-file-type block below; an empty field means the system opens the file with its own program.",
+      "en": "For all file types without a row of their own below. Empty: the system default.",
+      "de": "Für alle Dateitypen ohne eigene Zeile unten. Leer: das System entscheidet."
     },
     {
       "key": "settings.row_editor",
@@ -10841,6 +10841,180 @@
       "context": "Sync dialog: the button when nothing is deleted; {copies} is the count of entries copied.",
       "en": "Copy {copies}",
       "de": "{copies} kopieren"
+    },
+    {
+      "key": "viewer.mode_rendered",
+      "context": "Viewer tab: the segment that shows a Markdown file formatted (headings, lists, links). Noun, short.",
+      "en": "Rendered",
+      "de": "Ansicht"
+    },
+    {
+      "key": "viewer.mode_source",
+      "context": "Viewer tab: the segment that shows the file as plain monospace text, the way it is on disk. Noun, short.",
+      "en": "Source",
+      "de": "Quelltext"
+    },
+    {
+      "key": "viewer.open_external",
+      "context": "Viewer tab: button that opens the shown file in the program the system has for it. Verb, imperative.",
+      "en": "Open externally",
+      "de": "Extern öffnen"
+    },
+    {
+      "key": "viewer.edit",
+      "context": "Viewer tab: button that opens the shown file in the editor (key F4). Verb, imperative; the key cap is shown next to it.",
+      "en": "Edit",
+      "de": "Bearbeiten"
+    },
+    {
+      "key": "viewer.status_markdown",
+      "context": "Status line of the viewer tab while a Markdown file is shown. The keys are written as they are on the keyboard.",
+      "en": "Esc closes · ↑ ↓ PgUp PgDn scroll · Tab switches between rendered and source",
+      "de": "Esc schließt · ↑ ↓ Bild↑ Bild↓ blättern · Tab wechselt zwischen Ansicht und Quelltext"
+    },
+    {
+      "key": "viewer.status_text",
+      "context": "Status line of the viewer tab while a file other than Markdown is shown. The keys are written as they are on the keyboard.",
+      "en": "Esc closes · ↑ ↓ PgUp PgDn scroll",
+      "de": "Esc schließt · ↑ ↓ Bild↑ Bild↓ blättern"
+    },
+    {
+      "key": "viewer.too_large",
+      "context": "Notice when F3 meets a file too big for the viewer tab; it is opened with the system instead. {name} is the file name, {limit} the limit with its unit.",
+      "en": "{name} is larger than {limit}: opened with the system program instead.",
+      "de": "{name} ist größer als {limit}: stattdessen mit dem System geöffnet."
+    },
+    {
+      "key": "viewer.read_failed",
+      "context": "Error when the viewer tab cannot read the file. {name} is the file name, {reason} the system's reason.",
+      "en": "Cannot read {name}: {reason}",
+      "de": "{name} lässt sich nicht lesen: {reason}"
+    },
+    {
+      "key": "settings.by_type_title",
+      "context": "Heading of a block on the programs page of the settings: one row per file type that says what F3 does with it. Upper case in German as the other block headings.",
+      "en": "F3 BY FILE TYPE",
+      "de": "F3 JE DATEITYP"
+    },
+    {
+      "key": "settings.by_type_intro",
+      "context": "Explanation under the heading of the F3-by-file-type block. 'Internal' is the viewer tab of ncrs.",
+      "en": "The first matching row wins. \"Internal\" shows the file in a tab of ncrs: Markdown rendered, other text as text.",
+      "de": "Die erste passende Zeile gilt. „Intern“ zeigt die Datei in einem Tab von ncrs: Markdown gerendert, andere Texte als Text."
+    },
+    {
+      "key": "settings.by_type_new",
+      "context": "Small badge on the F3-by-file-type heading that marks it as a new feature. One word.",
+      "en": "new",
+      "de": "neu"
+    },
+    {
+      "key": "settings.by_type_extensions",
+      "context": "Label of the field in a file type row where the file name endings are typed, separated by commas, for example md, markdown.",
+      "en": "Extensions",
+      "de": "Endungen"
+    },
+    {
+      "key": "settings.by_type_extensions_placeholder",
+      "context": "Placeholder in the extensions field of a file type row; the words are examples of file name endings.",
+      "en": "md, markdown",
+      "de": "md, markdown"
+    },
+    {
+      "key": "settings.by_type_open_with",
+      "context": "Label of the choice in a file type row for what F3 opens the file with.",
+      "en": "Open with",
+      "de": "Öffnen mit"
+    },
+    {
+      "key": "settings.by_type_internal",
+      "context": "Segment of the 'open with' choice: the viewer tab of ncrs itself.",
+      "en": "Internal",
+      "de": "Intern"
+    },
+    {
+      "key": "settings.by_type_system",
+      "context": "Segment of the 'open with' choice: the program the operating system has for the file.",
+      "en": "System",
+      "de": "System"
+    },
+    {
+      "key": "settings.by_type_program",
+      "context": "Segment of the 'open with' choice: a program the user names, as in the viewer and editor settings.",
+      "en": "Own program",
+      "de": "Eigenes Programm"
+    },
+    {
+      "key": "settings.by_type_program_label",
+      "context": "Label of the program field in a file type row; it only matters when 'own program' is chosen.",
+      "en": "Program",
+      "de": "Programm"
+    },
+    {
+      "key": "settings.by_type_program_hint_internal",
+      "context": "Hint in the place of the program field of a file type row that opens internally: no program is needed.",
+      "en": "Not needed: ncrs shows the file itself.",
+      "de": "Nicht nötig: ncrs zeigt die Datei selbst."
+    },
+    {
+      "key": "settings.by_type_program_hint_system",
+      "context": "Hint in the place of the program field of a file type row that opens with the system: no program is needed.",
+      "en": "Not needed: the system decides.",
+      "de": "Nicht nötig: das System entscheidet."
+    },
+    {
+      "key": "settings.by_type_program_pick",
+      "context": "Button next to the program field of a file type row that opens a file dialog to pick the program. Verb, imperative, with an ellipsis because a dialog follows.",
+      "en": "Choose…",
+      "de": "Auswählen…"
+    },
+    {
+      "key": "settings.by_type_remove",
+      "context": "Button that deletes a file type row of the F3-by-file-type block. Verb, imperative.",
+      "en": "Remove",
+      "de": "Entfernen"
+    },
+    {
+      "key": "settings.by_type_add",
+      "context": "Button that adds an empty file type row to the F3-by-file-type block. Verb, imperative.",
+      "en": "Add file type",
+      "de": "Dateityp hinzufügen"
+    },
+    {
+      "key": "settings.by_type_problem_no_extension",
+      "context": "Shown under a file type row whose extensions field has no extension, so the row is not saved.",
+      "en": "Type at least one extension.",
+      "de": "Mindestens eine Endung eingeben."
+    },
+    {
+      "key": "settings.by_type_problem_no_program",
+      "context": "Shown under a file type row that opens with an own program but has no program yet, so the row is not saved.",
+      "en": "Type the program or choose another way to open.",
+      "de": "Das Programm eingeben oder eine andere Art zu öffnen wählen."
+    },
+    {
+      "key": "status.hermes_confirm_again_title",
+      "context": "Title of the question before Hermes processes many files in the Lesen folders again. {count} is the number of files, always more than one.",
+      "en": "Process {count} files again?",
+      "de": "{count} Dateien erneut verarbeiten?"
+    },
+    {
+      "key": "status.hermes_confirm_again_note",
+      "context": "Line under the question before Hermes processes many files in the Lesen folders again: it explains that Hermes may move them.",
+      "en": "Hermes reads them again and may move them out of the Lesen folder.",
+      "de": "Hermes liest sie neu und verschiebt sie womöglich aus dem Lesen-Ordner."
+    },
+    {
+      "key": "status.hermes_confirm_again_yes",
+      "context": "Button that confirms processing the files again. Verb, imperative.",
+      "en": "Process again",
+      "de": "Erneut verarbeiten"
+    },
+    {
+      "key": "status.hermes_confirm_again_no",
+      "context": "Button that cancels processing the files again. Verb, imperative.",
+      "en": "Cancel",
+      "de": "Abbrechen"
     }
   ]
 }

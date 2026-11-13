@@ -220,10 +220,37 @@ impl App {
             None => OpenSource::ActivePanel,
         };
         let plan = self.panels.plan_open(kind, source);
-        self.run_open_plan(plan, |app, path, line| {
+        self.run_open_plan(plan, move |app, path, line| {
+            if kind == fs::OpenKind::View {
+                if let Some(with) = app.open_programs.open_with_for(&path) {
+                    return app.open_by_type(with, path, line);
+                }
+            }
             app.launch_external(kind, path, line, CopyOf::Nothing, false);
             Task::none()
         })
+    }
+
+    /// F3 on a local file a `[[open.by_type]]` rule names.
+    fn open_by_type(
+        &mut self,
+        with: fs::OpenWith,
+        path: PathBuf,
+        line: Option<u64>,
+    ) -> Task<Message> {
+        match with {
+            fs::OpenWith::Internal => self.open_in_viewer(path),
+            fs::OpenWith::System => {
+                self.open_with_system(&path);
+                Task::none()
+            }
+            fs::OpenWith::Program(program) => {
+                self.job_error = None;
+                self.notice = None;
+                self.start_command(&fs::program_command(&program, &path, line), &path);
+                Task::none()
+            }
+        }
     }
 
     /// Enter or a double click on a file: opened as the Finder does, by the

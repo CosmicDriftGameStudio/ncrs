@@ -215,6 +215,10 @@ pub enum HermesFileMessage {
     /// The files "process again" stands for: folders resolved to their
     /// documents, excluded ones left out.
     ProcessAgainFound(Result<Vec<PathBuf>, String>),
+    /// The question about many files of the Lesen folders: yes.
+    ConfirmProcessAgain,
+    /// The question about many files of the Lesen folders: no, or Escape.
+    CancelProcessAgain,
     Included {
         path: PathBuf,
         result: Result<IncludeOutcome, String>,

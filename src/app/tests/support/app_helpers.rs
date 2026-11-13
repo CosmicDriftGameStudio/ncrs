@@ -38,6 +38,10 @@ impl App {
             app.apply_look(config.clone());
         }
         if let Some(state) = app.settings.page.as_mut() {
+            state.type_rows = file
+                .as_ref()
+                .map(|config| settings_ui::rows_of(&config.open.type_rules()))
+                .unwrap_or_default();
             state.file = file.map(Box::new);
         }
         app

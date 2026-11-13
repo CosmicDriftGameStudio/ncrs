@@ -147,6 +147,13 @@ impl App {
                 apps_only,
             })
             .map(move |path| Message::Settings(SettingsMessage::ProgramPicked { kind, path })),
+            Ask::PickRuleProgram { row, apps_only } => {
+                (self.pick_file)(FilePick::Program { apps_only }).map(move |path| {
+                    Message::Settings(SettingsMessage::TypeRule(
+                        settings_ui::TypeRuleEdit::Picked { row, path },
+                    ))
+                })
+            }
             Ask::PickThemeFile => (self.pick_file)(FilePick::ThemeFile)
                 .map(|path| Message::Settings(SettingsMessage::ThemeFilePicked(path))),
             Ask::OpenServerAdd => self.update(Message::Remote(RemoteMessage::OpenAdd)),
@@ -377,7 +384,7 @@ impl App {
                 self.apply_look(config);
                 Task::none()
             }
-            SettingChange::Program { .. } => {
+            SettingChange::Program { .. } | SettingChange::OpenRules(_) => {
                 self.open_programs = config.open;
                 Task::none()
             }

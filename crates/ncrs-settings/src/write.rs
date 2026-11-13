@@ -37,6 +37,7 @@ pub fn write_setting_change(
         SettingChange::Color { role, color } => config::write_color(path, role, color.as_deref()),
         SettingChange::AiProvider(choice) => config::write_ai_provider(path, &choice),
         SettingChange::Servers(servers) => config::write_servers(path, &servers),
+        SettingChange::OpenRules(rules) => config::write_open_rules(path, &rules),
         SettingChange::OwnDetails { detail, entries } => {
             config::write_own_details(path, detail, &entries)
         }

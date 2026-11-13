@@ -315,6 +315,8 @@ pub enum Message {
     Search(SearchMessage),
     // --- The System page (F12) ---
     Monitor(ncrs_monitor::MonitorMessage),
+    // --- The file viewer tab (F3 on a file the config opens internally) ---
+    Viewer(ncrs_viewer::Message),
     // --- The check for a newer release ---
     Updates(ncrs_updates::Message),
     /// The version at the right of the status bar: the Updates page, or the
@@ -414,6 +416,7 @@ pub enum ShownTab {
     Panels,
     Settings,
     Monitor,
+    Viewer,
     Hermes,
 }
 

@@ -199,6 +199,20 @@ pub fn enter_button<'a, M: Clone + 'a>(
     sized_button(content.into(), on_press, tone, palette)
 }
 
+/// Like [`button`], with a small cap that names the key that presses it.
+pub fn key_button<'a, M: Clone + 'a>(
+    label: &str,
+    key: &str,
+    on_press: Option<M>,
+    tone: Tone,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let content = row![label_text(label), cap(key, on_press.is_some(), palette)]
+        .spacing(spacing::XS)
+        .align_y(alignment::Vertical::Center);
+    sized_button(content.into(), on_press, tone, palette)
+}
+
 /// The label of the Enter key, on its cap and in the hints.
 pub const ENTER_KEY: &str = "↵";
 

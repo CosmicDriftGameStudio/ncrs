@@ -36,8 +36,8 @@ fn keys_without_prompt(
     if prompt.volume_menu {
         return ncrs_files::keys::volume_menu_key(&key).map(volume_menu_message);
     }
-    if prompt.quick_fix {
-        return ncrs_hermes_ui::keys::quick_fix_key(&key).map(Message::from);
+    if prompt.quick_fix || prompt.confirm_again {
+        return hermes_popup_key(prompt, &key);
     }
     if prompt.favourite_menu {
         return super::super::favourites_bar::favourite_menu_key(&key);
@@ -168,8 +168,8 @@ fn keys_without_prompt(
         }
     }
 
-    if prompt.monitor {
-        return monitor_page_key(prompt, &key, key_modifiers, scope);
+    if prompt.shows_viewer_or_monitor() {
+        return viewer_or_monitor_key(prompt, &key, key_modifiers, scope);
     }
 
     if prompt.settings {

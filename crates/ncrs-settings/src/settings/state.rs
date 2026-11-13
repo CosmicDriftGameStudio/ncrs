@@ -73,6 +73,8 @@ pub struct SettingsState {
     /// Text typed into a field and not written yet.
     pub drafts: HashMap<SettingField, String>,
     pub problems: HashMap<SettingField, FieldProblem>,
+    /// The rows of "F3 by file type", including those not valid yet.
+    pub type_rows: Vec<crate::settings::TypeRow>,
     /// A provider picked but not written: an own server needs its address
     /// and model first.
     pub provider: Option<AiProviderName>,
@@ -128,6 +130,10 @@ pub enum FieldProblem {
     Endpoint(AiEndpointProblem),
     /// Empty, but an own server needs it.
     Needed,
+    /// A file type row without an extension.
+    NoExtension,
+    /// A file type row that opens with an own program, but names none.
+    NoProgram,
     NotAnIban,
     /// The write failed; the text is already worded.
     Write(String),
@@ -146,9 +152,13 @@ impl SettingsState {
             changed: 0,
             ocr_models_present,
             ai_model_present: false,
-            file,
             drafts: HashMap::new(),
             problems: HashMap::new(),
+            type_rows: file
+                .as_deref()
+                .map(|config| crate::settings::rows_of(&config.open.type_rules()))
+                .unwrap_or_default(),
+            file,
             provider: None,
             sandboxed,
             terminals: Vec::new(),
@@ -499,21 +509,12 @@ impl SettingsState {
     /// other file is the program itself, which the App Store build refuses.
     pub fn picked_program(&mut self, kind: OpenKind, path: &Path) -> Option<SettingChange> {
         let field = SettingField::Program(kind);
-        let Some(text) = path.to_str() else {
-            self.problems.insert(field, FieldProblem::PathNotText);
-            return None;
-        };
-        let is_app = cfg!(target_os = "macos")
-            && path
-                .extension()
-                .is_some_and(|extension| extension.eq_ignore_ascii_case("app"));
-        let line = if is_app {
-            ProgramLine::opening_app(text)
-        } else if self.sandboxed {
-            self.problems.insert(field, FieldProblem::OnlyApps);
-            return None;
-        } else {
-            ProgramLine::new(text, &[])
+        let line = match crate::settings::picked_program_line(path, self.sandboxed) {
+            Ok(line) => line,
+            Err(problem) => {
+                self.problems.insert(field, problem);
+                return None;
+            }
         };
         Some(SettingChange::Program {
             kind,
@@ -590,6 +591,7 @@ fn fields_of(change: &SettingChange) -> Vec<SettingField> {
         | SettingChange::HermesSwitch(_)
         | SettingChange::VscodeTheme(_)
         | SettingChange::Servers(_)
+        | SettingChange::OpenRules(_)
         | SettingChange::Locations(_)
         | SettingChange::FileListTags(_)
         | SettingChange::Columns(_)

@@ -9,6 +9,7 @@ pub mod folder_watch;
 mod grants;
 mod open;
 mod open_programs;
+mod open_rules;
 mod ops;
 mod owners;
 pub mod permissions;
@@ -35,12 +36,13 @@ pub use folder_size::measure_folder;
 pub use ncrs_core::{EntryDetails, FileEntry, FolderSize, WindowsAttributes};
 pub use open::OpenCommand;
 pub use open::{
-    could_execute, is_app_bundle, open_command, runs_in_app_sandbox, system_open_command, Launcher,
-    OpenKind, SystemLauncher,
+    could_execute, is_app_bundle, open_command, program_command, runs_in_app_sandbox,
+    system_open_command, Launcher, OpenKind, SystemLauncher,
 };
 #[cfg(target_os = "macos")]
 pub use open::{privacy_settings_command, trash_in_finder_command};
 pub use open_programs::{is_separator, OpenPrograms, ProgramLine, ProgramLineProblem};
+pub use open_rules::{default_rules, matching_with, parse_extensions, OpenRule, OpenWith};
 pub use ops::{create_dir, create_file, CreateDirError};
 pub use reader::{home_dir, read_directory, start_dir, ReadError};
 pub use rename::rename;

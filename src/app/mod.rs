@@ -190,6 +190,7 @@ mod tab_stops;
 mod update;
 mod updates;
 mod view;
+mod viewer;
 
 use self::columns::column_settings_of;
 use self::dialogs::*;
@@ -341,6 +342,7 @@ pub struct App {
     search: ncrs_search::Search,
     /// The System page (F12) and the badge in the status bar.
     monitor: ncrs_monitor::State,
+    viewer: ncrs_viewer::State,
     /// Which of the open tabs the area under the title bar shows.
     shown_tab: ShownTab,
     /// The check for a newer release and what it found.
@@ -534,6 +536,10 @@ pub struct PromptKeyState {
     pub monitor_dialog: bool,
     /// Its context menu is up.
     pub monitor_menu: bool,
+    /// The viewer tab is up: its keys scroll and Escape closes it.
+    pub viewer: bool,
+    /// The viewer shows Markdown, so Tab switches rendered and source.
+    pub viewer_markdown: bool,
     /// The delete dialog is up, so keys answer it.
     pub delete_dialog: DeleteKeys,
     /// The question before a file that can run is opened is up, so keys answer it.
@@ -550,10 +556,19 @@ pub struct PromptKeyState {
     pub context_submenu: bool,
     /// The quick-fix menu is up, so keys move its highlight.
     pub quick_fix: bool,
+    /// The question about many files to process again is up.
+    pub confirm_again: bool,
     /// Whether the operation is running; keys are ignored then.
     pub busy: bool,
     /// The name typed so far.
     pub typed: std::sync::Arc<str>,
+}
+
+impl PromptKeyState {
+    /// The viewer or the System page is up and takes the keys.
+    pub fn shows_viewer_or_monitor(&self) -> bool {
+        self.viewer || self.monitor
+    }
 }
 
 impl Default for PromptKeyState {
@@ -591,6 +606,8 @@ impl Default for PromptKeyState {
             monitor_filter: false,
             monitor_dialog: false,
             monitor_menu: false,
+            viewer: false,
+            viewer_markdown: false,
             delete_dialog: DeleteKeys::default(),
             open_file_dialog: false,
             start_over_dialog: false,
@@ -599,6 +616,7 @@ impl Default for PromptKeyState {
             favourite_menu: false,
             context_submenu: false,
             quick_fix: false,
+            confirm_again: false,
             busy: false,
             typed: Arc::default(),
         }
