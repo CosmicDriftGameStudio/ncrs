@@ -6,6 +6,29 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.5.0] — 2026-11-13
+
+### Added
+
+- F3 on a Markdown file opens it in a viewer tab, rendered or as source, with
+  "Open externally" and "Edit F4". Links to other Markdown files open in the
+  tab, web links in the browser and links to other files in the active panel.
+- Settings › Programs has "F3 by file type": for each set of endings, F3 opens
+  the file in the viewer, with the system or with a program of your choice.
+  Markdown opens in the viewer unless you change it.
+- Notes: a tab with Markdown notes kept as `.md` files in a folder (`~/Notes`
+  by default, created with the first note), a folder tree, full-text search,
+  and editing with a live view beside it on wide windows.
+- "Note on file" (⇧⌘N) in the context menu writes a note about a file. The file
+  row shows a mark and the status bar the note's first line. The note follows
+  the file when Hermes sees it moved.
+- "Process again" on marked files and folders. When more than one file in a
+  read folder would be processed again, ncrs asks first.
+- "Extract here" in the context menu of an archive: one top entry lands next to
+  the archive, several land in a folder named after it.
+- "Pack…" in the context menu. The pack dialog has a format choice (zip, 7z,
+  tar, tar.gz, tar.zst) that changes the ending of the name.
+
 ## [1.4.2] — 2026-11-13
 
 ### Changed
