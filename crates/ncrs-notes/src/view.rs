@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use iced::widget::{column, container, row};
+use iced::widget::{column, container, responsive, row};
 use iced::{alignment, Element, Length};
 use ncrs_i18n::{fill_template, Msg};
 use ncrs_ui_kit::format;
@@ -11,6 +11,7 @@ use ncrs_ui_kit::markdown_view::markdown_view;
 use ncrs_ui_kit::page_scroll::page_scroll;
 use ncrs_ui_kit::page_status_bar::{page_status_bar, PageStatusBar, PageStatusLine};
 use ncrs_ui_kit::page_text::{page_heading, page_line};
+use ncrs_ui_kit::palette::Palette;
 use ncrs_ui_kit::theme::{self, font_size, spacing};
 use ncrs_ui_kit::tree_list::{result_row, tree_row, ResultRow, TreeRow};
 
@@ -27,6 +28,8 @@ const TREE_ID: &str = "notes-tree";
 const NOTE_ID: &str = "notes-note";
 
 const SIDEBAR_WIDTH: f32 = 300.0;
+/// From this width of the note pane the editor and the rendered note sit side by side.
+const SPLIT_MIN_WIDTH: f32 = 1100.0;
 
 pub fn view<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     let palette = ctx.palette;
@@ -270,20 +273,27 @@ fn note_pane<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
         palette,
     ));
     let content: Element<'a, Message> = match state.mode {
-        Mode::View => page_scroll(
-            NOTE_ID,
-            container(markdown_view(&state.items, palette, Message::LinkClicked))
-                .padding([0.0, spacing::XXL])
-                .into(),
-        ),
-        Mode::Edit => container(text_area(
-            &state.editor,
-            EDITOR_ID,
-            Message::Edited,
-            palette,
-        ))
-        .padding([0.0, spacing::XXL])
-        .height(Length::Fill)
+        Mode::View => rendered(state, palette),
+        Mode::Edit => responsive(move |room| {
+            let editor = container(text_area(
+                &state.editor,
+                EDITOR_ID,
+                Message::Edited,
+                palette,
+            ))
+            .padding([0.0, spacing::XXL])
+            .height(Length::Fill);
+            if room.width >= SPLIT_MIN_WIDTH {
+                row![
+                    editor.width(Length::FillPortion(1)),
+                    theme::vertical_rule(palette.border_inactive),
+                    container(rendered(state, palette)).width(Length::FillPortion(1)),
+                ]
+                .into()
+            } else {
+                editor.into()
+            }
+        })
         .into(),
     };
     column![
@@ -293,4 +303,13 @@ fn note_pane<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
     ]
     .height(Length::Fill)
     .into()
+}
+
+fn rendered<'a>(state: &'a State, palette: &'a Palette) -> Element<'a, Message> {
+    page_scroll(
+        NOTE_ID,
+        container(markdown_view(&state.items, palette, Message::LinkClicked))
+            .padding([0.0, spacing::XXL])
+            .into(),
+    )
 }

@@ -148,3 +148,19 @@ fn external_and_edit_name_the_file() {
     );
     assert_eq!(action(&mut state, Message::Edit), Some(Action::Edit(path)));
 }
+
+#[test]
+fn a_read_that_answers_after_a_newer_request_is_dropped() {
+    let dir = tempfile::tempdir().unwrap();
+    let first = dir.path().join("first.md");
+    let second = dir.path().join("second.md");
+    fs::write(&first, "first").unwrap();
+    fs::write(&second, "second").unwrap();
+    let mut state = State {
+        requested: Some(second.clone()),
+        ..State::default()
+    };
+    let _ = update(&mut state, Message::Loaded(Box::new(load(second))), &CTX);
+    let _ = update(&mut state, Message::Loaded(Box::new(load(first))), &CTX);
+    assert_eq!(state.title(), Some("second.md"));
+}

@@ -1,8 +1,10 @@
 //! The notes folder on disk: reading it, naming files, writing them.
 
+use std::collections::HashMap;
 use std::fs;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::SystemTime;
 
 use crate::frontmatter::{self, FrontMatter};
@@ -226,22 +228,79 @@ pub fn write_atomic(path: &Path, content: &str) -> Result<(), String> {
     let describe = |err: std::io::Error| format!("{}: {err}", path.display());
     let folder = path.parent().ok_or_else(|| path.display().to_string())?;
     fs::create_dir_all(folder).map_err(describe)?;
-    let name = path
-        .file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    let partial = folder.join(format!(".{name}.partial"));
-    let mut file = fs::File::create(&partial).map_err(describe)?;
+    let mut file = tempfile::NamedTempFile::new_in(folder).map_err(describe)?;
     file.write_all(content.as_bytes()).map_err(describe)?;
-    file.sync_all().map_err(describe)?;
-    fs::rename(&partial, path).map_err(describe)
+    file.as_file().sync_all().map_err(describe)?;
+    if let Some(rights) = target_permissions(path) {
+        file.as_file().set_permissions(rights).map_err(describe)?;
+    }
+    file.persist(path)
+        .map(drop)
+        .map_err(|err| describe(err.error))
 }
 
+/// The rights of the file being replaced; a new file gets the usual 0644, not
+/// the 0600 of a temporary file.
+fn target_permissions(path: &Path) -> Option<fs::Permissions> {
+    match fs::metadata(path) {
+        Ok(meta) => Some(meta.permissions()),
+        Err(_) => default_permissions(),
+    }
+}
+
+#[cfg(unix)]
+fn default_permissions() -> Option<fs::Permissions> {
+    use std::os::unix::fs::PermissionsExt as _;
+    Some(fs::Permissions::from_mode(0o644))
+}
+
+#[cfg(not(unix))]
+fn default_permissions() -> Option<fs::Permissions> {
+    None
+}
+
+/// Whether both names lead to one file: on a case-insensitive disk a title that
+/// only changes its case names the note's own file.
+pub fn is_same_file(first: &Path, second: &Path) -> bool {
+    match (fs::metadata(first), fs::metadata(second)) {
+        (Ok(left), Ok(right)) => same_identity(&left, &right),
+        _ => false,
+    }
+}
+
+#[cfg(unix)]
+fn same_identity(first: &fs::Metadata, second: &fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt as _;
+    first.dev() == second.dev() && first.ino() == second.ino()
+}
+
+#[cfg(not(unix))]
+fn same_identity(_first: &fs::Metadata, _second: &fs::Metadata) -> bool {
+    false
+}
+
+/// The newest generation written per note file, shared with the blocking tasks
+/// so a write that was slow cannot land over a newer one.
+pub type Ledger = Arc<Mutex<HashMap<PathBuf, u64>>>;
+
 /// What the blocking task of a write does: the file, then removing the one it
-/// replaces when a note was renamed.
-pub fn write_note(path: &Path, content: &str, replaces: Option<&Path>) -> Result<(), String> {
-    write_atomic(path, content)?;
-    if let Some(old) = replaces.filter(|old| *old != path) {
+/// replaces when a note was renamed. A write older than one already done for
+/// the same file is not written, but the removal still happens.
+pub fn write_note(
+    path: &Path,
+    content: &str,
+    replaces: Option<&Path>,
+    generation: u64,
+    ledger: &Ledger,
+) -> Result<(), String> {
+    {
+        let mut newest = ledger.lock().unwrap_or_else(PoisonError::into_inner);
+        if newest.get(path).is_none_or(|last| generation > *last) {
+            write_atomic(path, content)?;
+            newest.insert(path.to_owned(), generation);
+        }
+    }
+    if let Some(old) = replaces.filter(|old| *old != path && !is_same_file(old, path)) {
         match fs::remove_file(old) {
             Ok(()) => {}
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}

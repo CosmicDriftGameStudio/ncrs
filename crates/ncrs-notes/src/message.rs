@@ -43,8 +43,8 @@ pub enum Message {
     LinkClicked(String),
     /// Show the file a note on a file is about.
     ShowFile,
-    /// The answer to `Action::ResolveLinks`, in the order asked.
-    LinksResolved(Result<Vec<(Option<i64>, PathBuf)>, String>),
+    /// The paths asked about in `Action::ResolveLinks` and the answer, in the order asked.
+    LinksResolved(Vec<PathBuf>, Result<Vec<(Option<i64>, PathBuf)>, String>),
     /// Open the note on this file, make it when there is none, and edit it.
     EditNoteOn(PathBuf),
     Up,

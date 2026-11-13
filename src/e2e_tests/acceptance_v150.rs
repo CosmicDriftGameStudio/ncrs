@@ -605,3 +605,42 @@ fn pack_three_files_as_7z() {
         3
     );
 }
+
+#[test]
+#[ignore = "acceptance shots, run by hand"]
+fn a_note_follows_its_file_when_it_is_moved() {
+    let (moved, mut session) = super::notes_move::boot_with_a_note_on_an_indexed_file("de");
+    let front_before = std::fs::read_to_string(
+        std::fs::read_dir(moved.notes.join(".files"))
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path(),
+    )
+    .unwrap();
+    super::notes_move::move_the_file_and_let_the_note_follow(&moved, &mut session);
+    super::notes_move::assert_the_note_followed(&moved, &session.app, &front_before);
+    go_to_right(&mut session, "offer.txt");
+    shoot(&session.app, "14-notiz-nach-verschieben");
+}
+
+/// The cursor of the right panel on `name`, with the keys a user presses.
+fn go_to_right<P: Live>(session: &mut Session<P>, name: &str) {
+    session.press(Key::Named(Named::Tab));
+    session.press(Key::Named(Named::Home));
+    let row = session
+        .app
+        .panel(PanelSide::Right)
+        .entries
+        .iter()
+        .position(|entry| entry.name.to_string_lossy() == name)
+        .unwrap();
+    for _ in 0..row {
+        session.press(Key::Named(Named::ArrowDown));
+    }
+    assert_eq!(
+        super::selected(&session.app, PanelSide::Right).as_deref(),
+        Some(name)
+    );
+}

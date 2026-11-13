@@ -25,7 +25,7 @@ impl App {
     pub(in crate::app) fn open_in_viewer(&mut self, path: PathBuf) -> Task<Message> {
         self.job_error = None;
         self.notice = None;
-        ncrs_viewer::open(path).map(Message::Viewer)
+        ncrs_viewer::open(&mut self.viewer, path).map(Message::Viewer)
     }
 
     pub(in crate::app) fn update_viewer(&mut self, message: ncrs_viewer::Message) -> Task<Message> {
@@ -47,15 +47,7 @@ impl App {
                 self.open_release_page(&url);
                 Task::none()
             }
-            Ask::Reveal(file) => {
-                let folder = file.parent().map(Path::to_path_buf).unwrap_or_default();
-                let name = file
-                    .file_name()
-                    .map(|name| name.to_string_lossy().into_owned());
-                self.shown_tab = ShownTab::Panels;
-                let side = self.panels.active;
-                self.load(side, folder, name)
-            }
+            Ask::Reveal(file) => self.reveal_in_active_panel(&file),
             Ask::OpenExternal(path) => {
                 self.open_with_system(&path);
                 Task::none()

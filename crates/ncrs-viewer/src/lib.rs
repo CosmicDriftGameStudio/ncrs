@@ -4,7 +4,6 @@
 pub mod action;
 pub mod ctx;
 pub mod keys;
-pub mod link;
 pub mod load;
 pub mod message;
 pub mod state;

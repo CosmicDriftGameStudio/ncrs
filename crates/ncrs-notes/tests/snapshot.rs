@@ -60,6 +60,10 @@ fn notes_state(root: &Path) -> State {
 }
 
 fn picture(state: &State, home: &Path, image: &str) {
+    picture_sized(state, home, image, Size::new(1100.0, 640.0));
+}
+
+fn picture_sized(state: &State, home: &Path, image: &str, size: Size) {
     let palette = ThemePreset::Cosmic.palette();
     let ctx = ViewCtx {
         lang: Language::English,
@@ -71,7 +75,7 @@ fn picture(state: &State, home: &Path, image: &str) {
             default_font: ncrs_ui_kit::APP_FONT,
             ..iced::Settings::default()
         },
-        Size::new(1100.0, 640.0),
+        size,
         view(state, ctx).map(|message: Message| message),
     );
     let matches = simulator
@@ -118,5 +122,18 @@ async fn notes_tab_search_picture() {
         &state,
         Path::new("/home/anna"),
         "tests/snapshots/notes-search-cosmic",
+    );
+}
+
+#[tokio::test]
+async fn notes_tab_edit_picture_wide_shows_editor_and_preview_side_by_side() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut state = notes_state(dir.path());
+    let _ = update(&mut state, Message::SetMode(Mode::Edit), &CTX);
+    picture_sized(
+        &state,
+        Path::new("/home/anna"),
+        "tests/snapshots/notes-edit-split-cosmic",
+        Size::new(1700.0, 640.0),
     );
 }

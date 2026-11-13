@@ -32,10 +32,9 @@ pub fn split(text: &str) -> (Option<FrontMatter>, &str) {
         let Some((key, raw_value)) = line.split_once(':') else {
             continue;
         };
-        // A comment after the value, as in the spec's example.
-        let value = raw_value.split(" #").next().unwrap_or(raw_value).trim();
+        let value = raw_value.trim();
         match key.trim() {
-            "file" if !value.is_empty() => file = Some(PathBuf::from(value)),
+            "file" if !value.is_empty() => file = Some(PathBuf::from(unquoted(value))),
             "document" => document = value.parse().ok(),
             _ => {}
         }
@@ -52,9 +51,49 @@ pub fn split(text: &str) -> (Option<FrontMatter>, &str) {
     }
 }
 
+/// A path that would not read back as written (line breaks, edge spaces, a
+/// leading quote) is kept in quotes with escapes; any other path is plain.
+fn quoted_if_needed(path: &str) -> String {
+    let plain = path.trim() == path && !path.starts_with('"') && !path.contains(['\n', '\r']);
+    if plain {
+        return path.to_owned();
+    }
+    let escaped = path
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r");
+    format!("\"{escaped}\"")
+}
+
+fn unquoted(value: &str) -> String {
+    let Some(inner) = value
+        .strip_prefix('"')
+        .and_then(|rest| rest.strip_suffix('"'))
+    else {
+        return value.to_owned();
+    };
+    let mut out = String::new();
+    let mut chars = inner.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        match chars.next() {
+            Some('n') => out.push('\n'),
+            Some('r') => out.push('\r'),
+            Some(other) => out.push(other),
+            None => out.push('\\'),
+        }
+    }
+    out
+}
+
 /// The text of the file on disk: the header, then `body`.
 pub fn compose(front: &FrontMatter, body: &str) -> String {
-    let mut text = format!("{FENCE}\nfile: {}\n", front.file.display());
+    let file = quoted_if_needed(&front.file.to_string_lossy());
+    let mut text = format!("{FENCE}\nfile: {file}\n");
     if let Some(document) = front.document {
         text.push_str(&format!("document: {document}\n"));
     }

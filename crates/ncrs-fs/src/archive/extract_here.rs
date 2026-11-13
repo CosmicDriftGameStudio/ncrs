@@ -16,9 +16,16 @@ pub struct Extracted {
     pub written: usize,
 }
 
+/// The folder name when the archive's own name gives none.
+const FALLBACK_FOLDER: &str = "archive";
+
 /// Unpacks `archive` next to itself and returns what was made. Nothing
 /// appears under its final name until everything is written, and a taken
-/// name is never overwritten: it becomes `x 2`, `x 3`.
+/// name becomes `x 2`, `x 3`.
+// ponytail: the free name is checked and then renamed to, two steps; a name
+// that appears in between is replaced if it is a file or an empty folder. An
+// atomic no-replace rename needs `unsafe` (macOS `renamex_np`), which the
+// workspace forbids, and `nix` wraps only the Linux one.
 pub fn extract_here<P: Progress>(archive: &Path, progress: &mut P) -> io::Result<Extracted> {
     let location = locate_in_archive(archive)
         .filter(|location| location.inner.is_empty())
@@ -34,6 +41,7 @@ pub fn extract_here<P: Progress>(archive: &Path, progress: &mut P) -> io::Result
         .children_of(&[])
         .filter(|top| top.len() == 1)
         .and_then(|top| top.iter().next())
+        .filter(|(name, _)| is_usable_name(name))
         .map(|(name, node)| (name.clone(), node.is_dir));
 
     let staging = tempfile::Builder::new()
@@ -50,7 +58,16 @@ pub fn extract_here<P: Progress>(archive: &Path, progress: &mut P) -> io::Result
             let file_name = archive.file_name().map(|each| each.to_string_lossy());
             let stem =
                 file_name.map_or_else(String::new, |each| without_archive_ending(&each).to_owned());
-            (content, stem, true)
+            let named = match archive.file_name() {
+                Some(own) if stem.as_str() == own.to_string_lossy() => FALLBACK_FOLDER.to_owned(),
+                _ => stem,
+            };
+            let wanted = if is_usable_name(&named) {
+                named
+            } else {
+                FALLBACK_FOLDER.to_owned()
+            };
+            (content, wanted, true)
         }
     };
     let placed = free_name_in(parent, &wanted, is_dir);
@@ -58,6 +75,11 @@ pub fn extract_here<P: Progress>(archive: &Path, progress: &mut P) -> io::Result
     let finished = total.max(written);
     let _best_effort = progress.advanced(finished, finished);
     Ok(Extracted { placed, written })
+}
+
+/// A name that is one real entry in a folder: not empty and not made of dots only.
+fn is_usable_name(name: &str) -> bool {
+    !name.is_empty() && !name.chars().all(|c| c == '.')
 }
 
 fn free_name_in(folder: &Path, wanted: &str, is_dir: bool) -> PathBuf {
@@ -173,6 +195,126 @@ mod tests {
 
             assert_eq!(done.placed, dir.path().join("pack 3"), "{file}");
             assert!(names_in(&dir.path().join("pack")).is_empty());
+        }
+    }
+
+    /// An archive in `inner` inside a scratch folder, so what escapes lands in `base`.
+    fn hostile_setup(label: &str, file: &str) -> (tempfile::TempDir, PathBuf, PathBuf) {
+        let base = scratch(label);
+        let inner = base.path().join("inner");
+        std::fs::create_dir(&inner).unwrap();
+        let archive = inner.join(file);
+        (base, inner, archive)
+    }
+
+    fn assert_contained(base: &Path, inner: &Path) {
+        assert_eq!(names_in(base), ["inner"], "something was written outside");
+        let leftovers: Vec<_> = names_in(inner)
+            .into_iter()
+            .filter(|name| name.starts_with(".ncrs-partial-"))
+            .collect();
+        assert!(leftovers.is_empty(), "staging left behind: {leftovers:?}");
+    }
+
+    #[test]
+    fn a_hostile_tar_writes_nothing_outside_and_leaves_no_staging() {
+        let absolute = format!("/tmp/ncrs-evil-{}", std::process::id());
+        let cases: [(&str, Vec<Item>); 5] = [
+            (
+                "dotdot",
+                vec![Item::File("../evil", b"x"), Item::File("ok.txt", b"y")],
+            ),
+            ("only-dotdot", vec![Item::File("../evil", b"x")]),
+            (
+                "absolute",
+                vec![Item::File(&absolute, b"x"), Item::File("ok.txt", b"y")],
+            ),
+            (
+                "symlink",
+                vec![
+                    Item::Link("out", "../.."),
+                    Item::File("out/pwned.txt", b"x"),
+                    Item::File("ok.txt", b"y"),
+                ],
+            ),
+            (
+                "nested-dotdot",
+                vec![Item::File("a/../../evil", b"x"), Item::File("ok.txt", b"y")],
+            ),
+        ];
+        for (label, items) in cases {
+            for file in ["pack.tar", "pack.tar.gz"] {
+                let (base, inner, archive) = hostile_setup(label, file);
+                write_archive(&archive, &items);
+                let _result = extract_here(&archive, &mut Counting);
+                assert_contained(base.path(), &inner);
+                assert!(
+                    !Path::new(&absolute).exists(),
+                    "{label}: {absolute} written"
+                );
+            }
+        }
+        let _best_effort = std::fs::remove_file(&absolute);
+    }
+
+    #[test]
+    fn a_hostile_zip_writes_nothing_outside_and_leaves_no_staging() {
+        let cases: [(&str, Vec<Item>); 3] = [
+            (
+                "dotdot",
+                vec![Item::File("../evil", b"x"), Item::File("ok.txt", b"y")],
+            ),
+            ("only-dotdot", vec![Item::File("../evil", b"x")]),
+            (
+                "symlink",
+                vec![
+                    Item::Link("out", "../.."),
+                    Item::File("out/pwned.txt", b"x"),
+                    Item::File("ok.txt", b"y"),
+                ],
+            ),
+        ];
+        for (label, items) in cases {
+            let (base, inner, archive) = hostile_setup(label, "pack.zip");
+            write_archive(&archive, &items);
+            let _result = extract_here(&archive, &mut Counting);
+            assert_contained(base.path(), &inner);
+        }
+    }
+
+    #[test]
+    fn an_archive_without_a_stem_gets_a_real_folder_name() {
+        for file in [".zip", "..zip", "...tar.gz"] {
+            let dir = scratch("stemless");
+            let archive = dir.path().join(file);
+            write_archive(
+                &archive,
+                &[Item::File("a.txt", b"a"), Item::File("b.txt", b"b")],
+            );
+
+            let done = extract_here(&archive, &mut Counting).unwrap();
+
+            assert_eq!(done.placed, dir.path().join("archive"), "{file}");
+            assert_eq!(std::fs::read(done.placed.join("b.txt")).unwrap(), b"b");
+            assert!(archive.is_file(), "{file} is still there");
+        }
+    }
+
+    #[test]
+    fn a_single_top_entry_named_with_dots_is_not_the_placed_name() {
+        for name in ["..", "."] {
+            let dir = scratch("dots");
+            let archive = dir.path().join("pack.tar");
+            write_archive(&archive, &[Item::Dir(name)]);
+
+            let _result = extract_here(&archive, &mut Counting);
+
+            let names = names_in(dir.path());
+            assert!(names.contains(&"pack.tar".to_owned()), "{name}: {names:?}");
+            assert!(
+                names.iter().all(|n| !n.starts_with(".ncrs-partial-")),
+                "{names:?}"
+            );
         }
     }
 

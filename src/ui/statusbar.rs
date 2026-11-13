@@ -364,7 +364,7 @@ pub fn view<'a, M: Clone + 'a>(
             info = info.push(dim(ENTRY_SEPARATOR.to_owned())).push(
                 text(note)
                     .size(font_size::SMALL)
-                    .color(palette.accent)
+                    .color(palette.primary_button().0)
                     .wrapping(text::Wrapping::None),
             );
         }

@@ -2659,6 +2659,7 @@ mod process_again;
 
 #[cfg(test)]
 mod notes;
+mod notes_move;
 mod viewer;
 
 #[cfg(test)]

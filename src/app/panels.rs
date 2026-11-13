@@ -767,6 +767,17 @@ impl App {
         Task::batch([left, self.load(self.panels.active, directory, Some(name))])
     }
 
+    /// Switches to the panels and shows the file's directory in the active one, cursor on the file.
+    pub(in crate::app) fn reveal_in_active_panel(&mut self, file: &Path) -> Task<Message> {
+        let folder = file.parent().map(Path::to_path_buf).unwrap_or_default();
+        let name = file
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned());
+        self.shown_tab = ShownTab::Panels;
+        let side = self.panels.active;
+        self.load(side, folder, name)
+    }
+
     /// Starts an async directory read for `side`.
     pub(in crate::app) fn load(
         &mut self,

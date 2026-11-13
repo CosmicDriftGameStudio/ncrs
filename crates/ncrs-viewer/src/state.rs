@@ -1,5 +1,7 @@
 //! The state of the viewer tab.
 
+use std::path::PathBuf;
+
 use crate::load::Doc;
 use crate::message::Mode;
 
@@ -8,6 +10,8 @@ use crate::message::Mode;
 pub struct State {
     pub doc: Option<Doc>,
     pub mode: Mode,
+    /// The file read last asked for; an answer for another one is stale.
+    pub requested: Option<PathBuf>,
 }
 
 impl State {

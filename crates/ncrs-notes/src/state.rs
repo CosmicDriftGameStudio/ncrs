@@ -1,6 +1,6 @@
 //! The state of the notes tab.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 
 use iced::widget::text_editor;
@@ -8,7 +8,7 @@ use ncrs_ui_kit::markdown_view::{parse_markdown, MarkdownItem};
 
 use crate::message::Mode;
 use crate::search::{search, Hit};
-use crate::store::{Kind, Note, Scan};
+use crate::store::{Kind, Ledger, Note, Scan};
 use crate::tree::{rows, Row, RowKey};
 
 /// Everything the tab keeps. The notes are held in memory: the folder is read
@@ -42,9 +42,24 @@ pub struct State {
     pub auto_title: bool,
     /// A note on this file is to be shown as soon as the folder is read.
     pub pending_file: Option<PathBuf>,
-    /// The file notes asked about, to match the answer.
-    pub asked: Vec<PathBuf>,
     pub open: bool,
+    /// A write is running on a blocking thread.
+    pub writing: bool,
+    /// Writes asked for while one was running, oldest first.
+    pub queued: VecDeque<Write>,
+    /// Numbers the writes in the order they were asked for.
+    pub write_counter: u64,
+    /// The newest write done per file, shared with the blocking tasks.
+    pub ledger: Ledger,
+}
+
+/// One note file to write, and the file a rename leaves behind.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Write {
+    pub path: PathBuf,
+    pub text: String,
+    pub replaces: Option<PathBuf>,
+    pub generation: u64,
 }
 
 impl State {
@@ -102,18 +117,32 @@ impl State {
             .collect()
     }
 
-    /// The first line of the note on each file, for the status bar.
-    pub fn first_lines(&self) -> HashMap<PathBuf, String> {
-        self.notes
-            .iter()
-            .filter_map(|note| match &note.kind {
-                Kind::File { file, .. } => Some((
-                    file.clone(),
-                    note.first_line().unwrap_or_default().to_owned(),
-                )),
-                Kind::Topic => None,
-            })
-            .collect()
+    /// A write numbered after all earlier ones.
+    pub fn next_write(&mut self, path: PathBuf, text: String, replaces: Option<PathBuf>) -> Write {
+        self.write_counter += 1;
+        Write {
+            path,
+            text,
+            replaces,
+            generation: self.write_counter,
+        }
+    }
+
+    /// Keeps `write` behind the running one; a queued write of the same note
+    /// gives way to the newer text and hands over the file it removes.
+    pub fn queue(&mut self, write: Write) {
+        match self
+            .queued
+            .iter_mut()
+            .find(|older| older.path == write.path)
+        {
+            Some(older) => {
+                older.text = write.text;
+                older.generation = write.generation;
+                older.replaces = older.replaces.take().or(write.replaces);
+            }
+            None => self.queued.push_back(write),
+        }
     }
 
     pub fn apply_scan(&mut self, scan: Scan) {

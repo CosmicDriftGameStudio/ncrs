@@ -5,11 +5,11 @@ use std::path::{Path, PathBuf};
 use iced::Task;
 use ncrs_i18n::{fill_template, Msg};
 use ncrs_ui_kit::format;
+use ncrs_ui_kit::markdown_view::{classify, Link};
 use ncrs_ui_kit::page_scroll::{scroll_page_by, scroll_page_to_edge};
 
 use crate::action::Action;
 use crate::ctx::Ctx;
-use crate::link::{classify, Link};
 use crate::load::{load, Loaded, MAX_BYTES};
 use crate::message::{Message, Mode, Scroll};
 use crate::state::State;
@@ -21,7 +21,8 @@ const LINE_PX: f32 = 48.0;
 const PAGE_SHARE: f32 = 0.9;
 
 /// Reads `path` on a blocking thread; the answer is [`Message::Loaded`].
-pub fn open(path: PathBuf) -> Task<Message> {
+pub fn open(state: &mut State, path: PathBuf) -> Task<Message> {
+    state.requested = Some(path.clone());
     let fallback = path.clone();
     Task::perform(
         tokio::task::spawn_blocking(move || load(path)),
@@ -71,7 +72,7 @@ fn set_mode(state: &mut State, mode: Mode) {
     }
 }
 
-fn link_clicked(state: &State, target: &str) -> (Task<Message>, Option<Action>) {
+fn link_clicked(state: &mut State, target: &str) -> (Task<Message>, Option<Action>) {
     let Some(doc) = state.doc.as_ref() else {
         return (Task::none(), None);
     };
@@ -79,12 +80,23 @@ fn link_clicked(state: &State, target: &str) -> (Task<Message>, Option<Action>) 
     match classify(target, base) {
         Link::Ignore => (Task::none(), None),
         Link::Url(url) => (Task::none(), Some(Action::OpenUrl(url))),
-        Link::Markdown(next) => (open(next), None),
+        Link::Markdown(next) => (open(state, next), None),
         Link::File(file) => (Task::none(), Some(Action::Reveal(file))),
     }
 }
 
 fn loaded_file(state: &mut State, loaded: Loaded, ctx: &Ctx) -> (Task<Message>, Option<Action>) {
+    let answered = match &loaded {
+        Loaded::Doc(doc) => &doc.path,
+        Loaded::TooLarge { path, .. } | Loaded::Failed { path, .. } => path,
+    };
+    if state
+        .requested
+        .as_ref()
+        .is_some_and(|asked| asked != answered)
+    {
+        return (Task::none(), None);
+    }
     match loaded {
         Loaded::Doc(doc) => {
             state.mode = if doc.markdown {

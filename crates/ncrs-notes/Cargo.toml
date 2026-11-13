@@ -14,6 +14,7 @@ iced = { version = "0.14", default-features = false, features = ["tokio", "advan
 tokio = { version = "1", features = ["rt-multi-thread", "time"] }
 ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
 ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0" }
+tempfile = "3.27"
 
 [dev-dependencies]
 iced = { version = "0.14", default-features = false, features = ["tokio", "advanced", "markdown", "tiny-skia"] }

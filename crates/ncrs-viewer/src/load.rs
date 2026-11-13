@@ -5,12 +5,11 @@ use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
+pub use ncrs_ui_kit::markdown_view::is_markdown;
 use ncrs_ui_kit::markdown_view::{parse_markdown, MarkdownItem};
 
 /// Files above this are not shown in the tab.
 pub const MAX_BYTES: u64 = 5 * 1024 * 1024;
-
-const MARKDOWN_EXTENSIONS: [&str; 2] = ["md", "markdown"];
 
 /// A file read and, when it is Markdown, parsed.
 #[derive(Debug, Clone)]
@@ -29,12 +28,6 @@ pub enum Loaded {
     Doc(Doc),
     TooLarge { path: PathBuf, size: u64 },
     Failed { path: PathBuf, reason: String },
-}
-
-pub fn is_markdown(path: &Path) -> bool {
-    path.extension()
-        .map(|extension| extension.to_string_lossy().to_lowercase())
-        .is_some_and(|extension| MARKDOWN_EXTENSIONS.contains(&extension.as_str()))
 }
 
 /// Reads `path`; a text that is not UTF-8 is shown with replacement characters.

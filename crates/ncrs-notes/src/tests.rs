@@ -212,7 +212,7 @@ async fn the_resolved_path_replaces_the_one_in_the_note() {
     let _ = update(&mut state, Message::SetMode(Mode::View), &CTX);
     let _ = update(
         &mut state,
-        Message::LinksResolved(Ok(vec![(Some(5), moved.clone())])),
+        Message::LinksResolved(vec![old.clone()], Ok(vec![(Some(5), moved.clone())])),
         &CTX,
     );
     assert!(state.note_on(&old).is_none());
@@ -296,4 +296,295 @@ async fn flushing_now_writes_the_pending_edit_without_waiting_for_the_pause() {
 
     assert!(fs::read_to_string(note).unwrap().contains("und Spanien"));
     assert!(!state.dirty);
+}
+
+fn type_first_line(state: &mut State, text: &str) {
+    let _ = update(
+        state,
+        Message::Edited(iced::widget::text_editor::Action::SelectAll),
+        &CTX,
+    );
+    let _ = update(
+        state,
+        Message::Edited(iced::widget::text_editor::Action::Edit(
+            iced::widget::text_editor::Edit::Paste(text.to_owned().into()),
+        )),
+        &CTX,
+    );
+    flush_now(state).unwrap();
+}
+
+/// Every note file the program wrote, and proof that nothing else appeared outside `root`.
+fn assert_only_plain_notes_in(base: &Path, root: &Path) {
+    let outside: Vec<_> = fs::read_dir(base)
+        .unwrap()
+        .flatten()
+        .map(|entry| entry.file_name())
+        .collect();
+    assert_eq!(
+        outside,
+        [root.file_name().unwrap()],
+        "wrote outside the notes folder"
+    );
+    let canonical = root.canonicalize().unwrap();
+    for entry in fs::read_dir(root).unwrap().flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        assert!(!name.starts_with('.'), "dot file {name}");
+        assert!(!entry.file_type().unwrap().is_dir(), "{name} is not a file");
+        assert_eq!(
+            entry.path().canonicalize().unwrap().parent().unwrap(),
+            canonical
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_first_line_never_makes_a_note_land_outside_the_notes_folder() {
+    for line in [
+        "../../x",
+        "/etc/passwd",
+        "..",
+        ".hidden",
+        "a/b\\c",
+        "../",
+        "...",
+        "",
+        "   \n  ",
+    ] {
+        let base = tempfile::tempdir().unwrap();
+        let root = base.path().join("notes");
+        fs::create_dir_all(&root).unwrap();
+        let mut state = loaded(&root);
+        state.open = true;
+        let _ = update(&mut state, Message::NewNote, &CTX);
+        first_write_done(&root).await;
+        type_first_line(&mut state, line);
+        assert_only_plain_notes_in(base.path(), &root);
+        let path = state.current.clone().unwrap();
+        assert_eq!(path.parent().unwrap(), root, "{line:?}");
+        assert!(path.exists(), "{line:?}");
+        if line.trim().is_empty() {
+            assert_eq!(state.shown().unwrap().title, "New note");
+        }
+    }
+}
+
+#[tokio::test]
+async fn renaming_by_a_changed_first_line_stays_in_the_notes_folder() {
+    let base = tempfile::tempdir().unwrap();
+    let root = base.path().join("notes");
+    fs::create_dir_all(&root).unwrap();
+    let mut state = loaded(&root);
+    state.open = true;
+    let _ = update(&mut state, Message::NewNote, &CTX);
+    first_write_done(&root).await;
+    type_first_line(&mut state, "Plain");
+    for line in ["../../x", "/etc/passwd", "..", ".hidden", "a/b\\c"] {
+        type_first_line(&mut state, line);
+        assert_only_plain_notes_in(base.path(), &root);
+        assert_eq!(state.current.as_ref().unwrap().parent().unwrap(), root);
+    }
+}
+
+/// `NewNote` starts its first write on a blocking thread at once; wait for it so it does not race the test's own writes.
+async fn first_write_done(root: &Path) {
+    for _ in 0..200 {
+        let settled = fs::read_dir(root)
+            .unwrap()
+            .flatten()
+            .all(|entry| !entry.file_name().to_string_lossy().starts_with('.'));
+        if settled && root.join("New note.md").exists() {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    panic!("the first write of the new note did not finish");
+}
+
+#[test]
+fn a_path_with_a_hash_spaces_or_a_line_break_reads_back_as_written() {
+    for name in [
+        "/x/Rechnung #12.pdf",
+        "/x/a #b #c .pdf",
+        "/x/two\nlines.pdf",
+        "/x/carriage\rreturn \\ \"q\".pdf",
+        "\"/quoted",
+        " /lead and trail ",
+    ] {
+        let front = FrontMatter {
+            file: PathBuf::from(name),
+            document: Some(3),
+        };
+        let text = compose(&front, "Body\n---\nmore\n");
+        let (read, body) = split(&text);
+        assert_eq!(read, Some(front), "{name:?}");
+        assert_eq!(body, "Body\n---\nmore\n");
+    }
+}
+
+#[tokio::test]
+async fn two_overlapping_answers_each_note_keeps_its_own_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut state = loaded(dir.path());
+    let (a, b) = (PathBuf::from("/docs/a.pdf"), PathBuf::from("/docs/b.pdf"));
+    let _ = action(&mut state, Message::EditNoteOn(a.clone()));
+    let _ = action(&mut state, Message::EditNoteOn(b.clone()));
+    let (a_moved, b_moved) = (PathBuf::from("/new/a.pdf"), PathBuf::from("/new/b.pdf"));
+    let _ = update(
+        &mut state,
+        Message::LinksResolved(vec![b.clone()], Ok(vec![(Some(2), b_moved.clone())])),
+        &CTX,
+    );
+    let _ = update(
+        &mut state,
+        Message::LinksResolved(vec![a.clone()], Ok(vec![(Some(1), a_moved.clone())])),
+        &CTX,
+    );
+    assert!(state.note_on(&a).is_none() && state.note_on(&b).is_none());
+    assert_eq!(
+        state.note_on(&a_moved).unwrap().kind,
+        Kind::File {
+            file: a_moved.clone(),
+            document: Some(1)
+        }
+    );
+    assert_eq!(
+        state.note_on(&b_moved).unwrap().kind,
+        Kind::File {
+            file: b_moved.clone(),
+            document: Some(2)
+        }
+    );
+}
+
+fn paste(state: &mut State, text: &str) {
+    let _ = update(
+        state,
+        Message::Edited(iced::widget::text_editor::Action::Edit(
+            iced::widget::text_editor::Edit::Paste(text.to_owned().into()),
+        )),
+        &CTX,
+    );
+}
+
+async fn wait_for(what: &str, condition: impl Fn() -> bool) {
+    for _ in 0..300 {
+        if condition() {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    panic!("never happened: {what}");
+}
+
+#[tokio::test]
+async fn a_second_write_waits_for_the_first_and_the_rename_leaves_one_file() {
+    let base = tempfile::tempdir().unwrap();
+    let root = base.path().join("notes");
+    fs::create_dir_all(&root).unwrap();
+    let mut state = loaded(&root);
+    state.open = true;
+    let _ = update(&mut state, Message::NewNote, &CTX);
+    assert!(state.writing, "the first write of the new note runs");
+    paste(&mut state, "Plan");
+    let first_generation = state.generation;
+    let _ = update(&mut state, Message::SaveDue(first_generation), &CTX);
+    paste(&mut state, " B");
+    let second_generation = state.generation;
+    let _ = update(&mut state, Message::SaveDue(second_generation), &CTX);
+    assert_eq!(
+        state.queued.len(),
+        2,
+        "both renames wait behind the first write"
+    );
+    wait_for("the first write", || root.join("New note.md").exists()).await;
+    assert!(
+        !root.join("Plan.md").exists(),
+        "nothing overtakes the first write"
+    );
+
+    let _ = update(&mut state, Message::Saved(Ok(())), &CTX);
+    wait_for("the second write", || {
+        root.join("Plan.md").exists() && !root.join("New note.md").exists()
+    })
+    .await;
+    let _ = update(&mut state, Message::Saved(Ok(())), &CTX);
+    let written = root.join("Plan B.md");
+    wait_for("the third write", || {
+        written.exists() && !root.join("Plan.md").exists()
+    })
+    .await;
+    let _ = update(&mut state, Message::Saved(Ok(())), &CTX);
+    assert!(!state.writing && state.queued.is_empty());
+    let names: Vec<_> = fs::read_dir(&root)
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name())
+        .collect();
+    assert_eq!(names, ["Plan B.md"]);
+    assert_eq!(fs::read_to_string(written).unwrap().trim(), "Plan B");
+}
+
+#[tokio::test]
+async fn a_title_that_only_changes_its_case_keeps_the_one_file() {
+    let base = tempfile::tempdir().unwrap();
+    let root = base.path().join("notes");
+    fs::create_dir_all(&root).unwrap();
+    let mut state = loaded(&root);
+    state.open = true;
+    let _ = update(&mut state, Message::NewNote, &CTX);
+    first_write_done(&root).await;
+    type_first_line(&mut state, "foo");
+    type_first_line(&mut state, "Foo");
+    let notes: Vec<_> = fs::read_dir(&root).unwrap().flatten().collect();
+    assert_eq!(notes.len(), 1, "{notes:?}");
+    assert_eq!(state.shown().unwrap().title, "Foo");
+    assert_eq!(
+        fs::read_to_string(state.current.clone().unwrap()).unwrap(),
+        "Foo"
+    );
+}
+
+#[test]
+fn a_slow_older_write_does_not_land_over_a_newer_one() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("Plan.md");
+    let ledger = store::Ledger::default();
+    store::write_note(&path, "second", None, 2, &ledger).unwrap();
+    store::write_note(&path, "first", None, 1, &ledger).unwrap();
+    assert_eq!(fs::read_to_string(&path).unwrap(), "second");
+}
+
+#[test]
+fn a_skipped_older_write_still_removes_the_file_it_replaces() {
+    let dir = tempfile::tempdir().unwrap();
+    let old = dir.path().join("Old.md");
+    let path = dir.path().join("New.md");
+    fs::write(&old, "x").unwrap();
+    let ledger = store::Ledger::default();
+    store::write_note(&path, "second", None, 2, &ledger).unwrap();
+    store::write_note(&path, "first", Some(&old), 1, &ledger).unwrap();
+    assert_eq!(fs::read_to_string(&path).unwrap(), "second");
+    assert!(!old.exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn a_written_note_is_readable_by_others_and_keeps_the_rights_of_an_existing_file() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = tempfile::tempdir().unwrap();
+    let fresh = dir.path().join("Fresh.md");
+    store::write_atomic(&fresh, "a").unwrap();
+    assert_eq!(
+        fs::metadata(&fresh).unwrap().permissions().mode() & 0o777,
+        0o644
+    );
+    let existing = dir.path().join("Own.md");
+    fs::write(&existing, "a").unwrap();
+    fs::set_permissions(&existing, fs::Permissions::from_mode(0o600)).unwrap();
+    store::write_atomic(&existing, "b").unwrap();
+    assert_eq!(
+        fs::metadata(&existing).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
 }

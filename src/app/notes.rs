@@ -85,15 +85,7 @@ impl App {
                 self.open_release_page(&url);
                 Task::none()
             }
-            Ask::Reveal(file) => {
-                let folder = file.parent().map(Path::to_path_buf).unwrap_or_default();
-                let name = file
-                    .file_name()
-                    .map(|name| name.to_string_lossy().into_owned());
-                self.shown_tab = ShownTab::Panels;
-                let side = self.panels.active;
-                self.load(side, folder, name)
-            }
+            Ask::Reveal(file) => self.reveal_in_active_panel(&file),
             Ask::ResolveLinks(links) => {
                 let Some(finder) = self
                     .hermes
@@ -103,10 +95,12 @@ impl App {
                 else {
                     return Task::none();
                 };
+                let asked: Vec<PathBuf> = links.iter().map(|(_, path)| path.clone()).collect();
                 Task::perform(
                     tokio::task::spawn_blocking(move || finder.resolve(&links)),
-                    |joined| {
+                    move |joined| {
                         Message::Notes(ncrs_notes::Message::LinksResolved(
+                            asked.clone(),
                             joined.unwrap_or_else(|err| Err(err.to_string())),
                         ))
                     },
@@ -124,8 +118,7 @@ impl App {
     /// What the status bar says about the note on the file under the cursor.
     pub(in crate::app) fn note_line(&self) -> Option<String> {
         let file = self.file_under_cursor()?;
-        let lines = self.notes.first_lines();
-        let first = lines.get(&file)?;
+        let first = self.notes.note_on(&file)?.first_line().unwrap_or_default();
         let short = ncrs_ui_kit::format::ellipsize_end(first, NOTE_LINE_CHARS);
         Some(ncrs_i18n::fill_template(
             self.lang.text(Msg::NotesStatusNote),
