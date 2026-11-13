@@ -5,6 +5,7 @@
 
 use iced::{Point, Size};
 use ncrs_core::PanelSide;
+use ncrs_fs::archive::is_archive_name;
 use ncrs_ui_kit::layout;
 
 use crate::action::Action;
@@ -99,6 +100,9 @@ impl MenuFacts {
                 | ContextAction::CompareFolders
                 | ContextAction::AddFavourite
                 | ContextAction::RemoveFavourite
+                | ContextAction::NoteOnFile
+                | ContextAction::ExtractHere
+                | ContextAction::Pack
                 | ContextAction::RemoveFromList => false,
             };
         }
@@ -113,7 +117,7 @@ impl MenuFacts {
             | ContextAction::RemoveFromList => cursor_row.is_some(),
             ContextAction::ShowPackageContents => cursor_row
                 .is_some_and(|entry| entry.is_dir && is_local_app_bundle(panel, &entry.name)),
-            ContextAction::View | ContextAction::Edit => {
+            ContextAction::View | ContextAction::Edit | ContextAction::NoteOnFile => {
                 cursor_row.is_some_and(|entry| !entry.is_dir && !entry.is_parent)
             }
             ContextAction::Copy
@@ -121,6 +125,18 @@ impl MenuFacts {
             | ContextAction::Trash
             | ContextAction::DeletePermanently
             | ContextAction::Permissions => self.has_sources,
+            ContextAction::ExtractHere => {
+                let acts_on: Vec<_> = if panel.selection.any_tagged() {
+                    panel.selection.ordered(&panel.entries)
+                } else {
+                    cursor_row.into_iter().collect()
+                };
+                !panel.is_virtual()
+                    && acts_on.iter().any(|entry| {
+                        !entry.is_dir && !entry.is_parent && is_archive_name(&entry.name)
+                    })
+            }
+            ContextAction::Pack => self.has_sources && !panel.is_virtual(),
             ContextAction::Rename => cursor_row.is_some_and(|entry| !entry.is_parent),
             ContextAction::NewFolder | ContextAction::CompareFolders => true,
             ContextAction::OpenTerminal => panels.local_folder_target().is_some(),
@@ -150,10 +166,7 @@ impl HermesFacts {
             HermesAction::ShowSuggestion => self.has_inquiry_paths,
             HermesAction::HandToInbox => cursor.can_be_handed_to_inbox,
             HermesAction::ProcessAgain => {
-                !cursor.is_dir
-                    && self.has_live_pipeline
-                    && !cursor.excluded
-                    && cursor.lies_in_a_filing_location
+                self.has_live_pipeline && !cursor.excluded && cursor.lies_in_a_filing_location
             }
             HermesAction::SetInbox => cursor.is_dir && cursor.inbox_role_is_free,
             HermesAction::SetFilingLocation => cursor.is_dir && cursor.filing_location_role_is_free,

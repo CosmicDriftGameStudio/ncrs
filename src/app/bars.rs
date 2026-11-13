@@ -186,6 +186,8 @@ impl App {
         tab_stops::OpenPages {
             settings: self.settings.page.is_some(),
             monitor: self.monitor.is_open(),
+            viewer: self.viewer.is_open(),
+            notes: self.notes.is_open(),
             hermes: self.hermes_chat.open,
         }
     }
@@ -196,6 +198,14 @@ impl App {
 
     pub(in crate::app) fn monitor_shown(&self) -> bool {
         self.monitor.is_open() && self.shown_tab == ShownTab::Monitor
+    }
+
+    pub(in crate::app) fn viewer_shown(&self) -> bool {
+        self.viewer.is_open() && self.shown_tab == ShownTab::Viewer
+    }
+
+    pub(in crate::app) fn notes_shown(&self) -> bool {
+        self.notes.is_open() && self.shown_tab == ShownTab::Notes
     }
 
     /// The chat is what the user sees and what takes the keys.
@@ -215,6 +225,18 @@ impl App {
             tabs.push(titlebar::PageTabState {
                 page: titlebar::PageTab::System,
                 active: self.shown_tab == ShownTab::Monitor,
+            });
+        }
+        if self.viewer.is_open() {
+            tabs.push(titlebar::PageTabState {
+                page: titlebar::PageTab::Viewer(self.viewer.title().unwrap_or_default().to_owned()),
+                active: self.shown_tab == ShownTab::Viewer,
+            });
+        }
+        if self.notes.is_open() {
+            tabs.push(titlebar::PageTabState {
+                page: titlebar::PageTab::Notes,
+                active: self.shown_tab == ShownTab::Notes,
             });
         }
         if self.hermes_chat.open {

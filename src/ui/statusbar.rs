@@ -206,6 +206,8 @@ pub struct Activity<'a, M> {
     /// What Hermes says about the file under the cursor: its state, why, and
     /// where it would go. Shown in place of the entry info.
     pub hermes_line: Option<String>,
+    /// "Note: …": the first line of the note on the file under the cursor.
+    pub note_line: Option<String>,
     pub version: Option<VersionBadge<M>>,
     pub monitor: Option<MonitorBadge<M>>,
     /// Set while ncrs runs on a throwaway data folder (`--data-dir`): the
@@ -286,6 +288,7 @@ pub fn view<'a, M: Clone + 'a>(
         blocked_by_sandbox,
         notice,
         hermes_line,
+        note_line,
         version,
         monitor,
         test_folder,
@@ -356,6 +359,14 @@ pub fn view<'a, M: Clone + 'a>(
             info = info
                 .push(dim(ENTRY_SEPARATOR.to_owned()))
                 .push(dim(modified));
+        }
+        if let Some(note) = note_line {
+            info = info.push(dim(ENTRY_SEPARATOR.to_owned())).push(
+                text(note)
+                    .size(font_size::SMALL)
+                    .color(palette.primary_button().0)
+                    .wrapping(text::Wrapping::None),
+            );
         }
         info.into()
     } else {

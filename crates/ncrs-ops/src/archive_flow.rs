@@ -71,6 +71,42 @@ pub fn start_pack(ops: &mut Ops, request: PackRequest, ctx: &FlowCtx<'_>) -> Out
     )
 }
 
+/// "Extract here": one job unpacks each archive next to itself, one after the
+/// other. The cursor lands on what the last one made.
+pub fn start_extract_here(
+    ops: &mut Ops,
+    archives: Vec<PathBuf>,
+    side: PanelSide,
+    ctx: &FlowCtx<'_>,
+) -> Outcome {
+    let Some(first) = archives.first().cloned() else {
+        return idle();
+    };
+    let write = ArchiveWrite {
+        side,
+        archive: first.clone(),
+        what: ArchiveWriteKind::ExtractHere {
+            archives: archives.len(),
+        },
+    };
+    start_archive_write(
+        ops,
+        JobKind::Extract,
+        first,
+        write,
+        move |progress| {
+            let mut report = fs::archive::WriteReport::default();
+            for archive in &archives {
+                let done = fs::archive::extract_here(archive, progress)?;
+                report.entries += done.written;
+                report.placed = Some(done.placed);
+            }
+            Ok(report)
+        },
+        ctx,
+    )
+}
+
 /// F5 with an archive, or a folder in one, as the target: one job rewrites
 /// the archive with the selection added. `Ask` cannot ask per file here, so
 /// it stops at the first name in the way and says what the dialog offers.
@@ -206,8 +242,12 @@ pub fn archive_written(
         return actions(asked);
     };
     ops.bump_generation();
+    let mut placed = None;
     let notice = match result {
-        Ok(report) => Some(written_text(ctx.lang, &write, report)),
+        Ok(report) => {
+            placed.clone_from(&report.placed);
+            Some(written_text(ctx.lang, &write, &report))
+        }
         Err(failure) => {
             asked.push(Action::ShowError(write_failure_text(
                 ctx.lang, &write, failure,
@@ -215,20 +255,28 @@ pub fn archive_written(
             None
         }
     };
-    asked.extend(end_archive_write(ops, &write).1);
+    asked.extend(end_archive_write(ops, &write, placed.as_deref()).1);
     if let Some(text) = notice {
         asked.push(Action::ShowNotice(text));
     }
     actions(asked)
 }
 
-fn written_text(lang: Language, write: &ArchiveWrite, report: fs::archive::WriteReport) -> String {
+fn written_text(lang: Language, write: &ArchiveWrite, report: &fs::archive::WriteReport) -> String {
     let mut text = match &write.what {
         ArchiveWriteKind::Pack { name, .. } => {
             fill_template(lang.text(Msg::StatusPacked), &[("{name}", name)])
         }
         ArchiveWriteKind::CopyIn => lang.text(Msg::StatusArchiveCopiedIn).to_owned(),
         ArchiveWriteKind::Delete => lang.text(Msg::StatusArchiveDeleted).to_owned(),
+        ArchiveWriteKind::ExtractHere { archives: 1 } => fill_template(
+            lang.text(Msg::StatusExtracted),
+            &[("{name}", &placed_name(report.placed.as_deref()))],
+        ),
+        ArchiveWriteKind::ExtractHere { archives } => fill_template(
+            lang.text(Msg::StatusExtractedMany),
+            &[("{count}", &archives.to_string())],
+        ),
     };
     for (count, template) in [
         (report.skipped, Msg::StatusArchiveSkipped),
@@ -242,6 +290,13 @@ fn written_text(lang: Language, write: &ArchiveWrite, report: fs::archive::Write
         }
     }
     text
+}
+
+fn placed_name(placed: Option<&std::path::Path>) -> String {
+    placed
+        .and_then(std::path::Path::file_name)
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default()
 }
 
 fn write_failure_text(lang: Language, write: &ArchiveWrite, failure: RowFailure) -> String {
@@ -264,14 +319,18 @@ fn write_failure_text(lang: Language, write: &ArchiveWrite, failure: RowFailure)
 pub fn abort_archive_write(ops: &mut Ops) -> Option<Outcome> {
     let write = ops.archive_write.take()?;
     ops.bump_generation();
-    Some(end_archive_write(ops, &write))
+    Some(end_archive_write(ops, &write, None))
 }
 
 /// Ends the bookkeeping of a write that finished, failed or was stopped:
 /// the tags of a delete refer to entries that may be gone, and both panels
 /// are read again, the new archive of a pack selected. Copies unpacked for
 /// viewing may show the archive as it was before, so they are forgotten.
-fn end_archive_write(ops: &mut Ops, write: &ArchiveWrite) -> Outcome {
+fn end_archive_write(
+    ops: &mut Ops,
+    write: &ArchiveWrite,
+    placed: Option<&std::path::Path>,
+) -> Outcome {
     if let Some(copies) = ops.view_copies.as_mut() {
         copies.forget_ready_under(&write.archive);
     }
@@ -283,6 +342,12 @@ fn end_archive_write(ops: &mut Ops, write: &ArchiveWrite) -> Outcome {
         ArchiveWriteKind::Pack { name, folder } => Action::ReloadPanelsSelecting {
             folder: folder.clone(),
             name: name.clone(),
+        },
+        ArchiveWriteKind::ExtractHere { .. } => match placed
+            .and_then(|path| Some((path.parent()?.to_path_buf(), placed_name(Some(path)))))
+        {
+            Some((folder, name)) => Action::ReloadPanelsSelecting { folder, name },
+            None => Action::ReloadPanels,
         },
         ArchiveWriteKind::CopyIn | ArchiveWriteKind::Delete => Action::ReloadPanels,
     });

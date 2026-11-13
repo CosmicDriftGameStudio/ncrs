@@ -373,6 +373,9 @@ mod tests {
                 | Msg::SettingsFontSizePoints
                 | Msg::SettingsFontSizeSystem
                 | Msg::SettingsFontSystem
+                // File name endings, the same in every language.
+                | Msg::SettingsByTypeExtensionsPlaceholder
+                | Msg::SettingsByTypeSystem
                 // The German plural of Panel, as in "Panel wechseln".
                 | Msg::SettingsRowColumnsPanels
                 | Msg::DialogMkdirLabel

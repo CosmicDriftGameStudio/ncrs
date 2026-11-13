@@ -39,3 +39,14 @@ pub fn page_band<'a, M: 'a>(
         .clip(true)
         .style(theme::statusbar(palette))
 }
+
+/// A text that wraps at the width of the page and keeps its line breaks and
+/// spaces: a file shown as it is on disk.
+pub fn page_source<'a, M: 'a>(content: &str, palette: &Palette) -> Element<'a, M> {
+    text(content.to_owned())
+        .size(font_size::ROW)
+        .font(crate::APP_FONT)
+        .color(palette.text)
+        .wrapping(Wrapping::WordOrGlyph)
+        .into()
+}

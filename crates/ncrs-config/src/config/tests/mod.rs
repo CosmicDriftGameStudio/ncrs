@@ -10,6 +10,7 @@ struct SetupFolders {
 
 mod columns;
 mod loading_and_filing;
+mod open_rules;
 mod paths_and_servers;
 mod writing;
 

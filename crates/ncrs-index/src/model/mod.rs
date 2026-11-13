@@ -47,6 +47,18 @@ impl BatchId {
         self.get()
     }
 }
+
+impl DocumentId {
+    /// A note on a file keeps the number of its document, to find the file
+    /// again after it moved.
+    pub fn from_number(number: i64) -> Self {
+        Self::new(number)
+    }
+
+    pub fn number(self) -> i64 {
+        self.get()
+    }
+}
 id_newtype!(SavedQueryId);
 id_newtype!(SenderAliasId);
 

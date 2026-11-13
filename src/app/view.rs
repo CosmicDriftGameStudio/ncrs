@@ -36,6 +36,7 @@ impl App {
                     hermes_cell,
                     columns: self.column_settings(),
                     special_folders: &self.special_folders,
+                    noted: &self.noted,
                     header_drag: self.panels.header_drag_view(side),
                 },
             )
@@ -102,7 +103,11 @@ impl App {
         .height(Length::Fill);
 
         let below_title_bar =
-            if self.monitor_shown() {
+            if self.notes_shown() {
+                self.notes_area()
+            } else if self.viewer_shown() {
+                self.viewer_area()
+            } else if self.monitor_shown() {
                 self.monitor_area()
             } else if self.hermes_chat_shown() {
                 self.hermes_chat_area()
@@ -174,6 +179,7 @@ impl App {
                             blocked_by_sandbox: cfg!(target_os = "macos") && self.sandbox.active,
                             notice: self.notice.as_deref(),
                             hermes_line: self.hermes_line(),
+                            note_line: self.note_line(),
                             version: Some(statusbar::VersionBadge {
                                 text: self.app_version.to_owned(),
                                 on_press: Message::VersionPressed,
@@ -557,6 +563,7 @@ impl App {
                 on_submit: Message::PromptSubmit,
                 on_cancel: Message::PromptCancel,
                 on_toggle_keep_folders: Message::PromptToggleKeepFolders,
+                on_format: Box::new(Message::PromptFormat),
             },
         );
         let Some(prompt_element) = overlay else {

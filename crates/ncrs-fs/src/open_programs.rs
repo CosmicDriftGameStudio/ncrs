@@ -5,6 +5,8 @@ use std::path::{Component, Path};
 use serde::de::{Deserializer, Error as _};
 use serde::Deserialize;
 
+use crate::open_rules::{default_rules, matching_with, OpenRule, OpenWith};
+
 /// The `[open]` section: the programs behind F3, F4 and the terminal. A missing one means
 /// the system default of the platform.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
@@ -19,6 +21,26 @@ pub struct OpenPrograms {
     /// the other two, `{path}` is not appended when no argument has it.
     #[serde(default)]
     pub terminal: Option<ProgramLine>,
+    /// The `[[open.by_type]]` rules as written; `None` when the key is absent,
+    /// which means [`default_rules`]. Read them through [`Self::type_rules`].
+    #[serde(default)]
+    pub by_type: Option<Vec<OpenRule>>,
+}
+
+impl OpenPrograms {
+    /// The rules in effect, in order: the written ones, else the defaults.
+    pub fn type_rules(&self) -> Vec<OpenRule> {
+        self.by_type.clone().unwrap_or_else(default_rules)
+    }
+
+    /// What F3 does with `path` by its extension; `None` when no rule names
+    /// it, so the `view` program or the system decides.
+    pub fn open_with_for(&self, path: &Path) -> Option<OpenWith> {
+        match &self.by_type {
+            Some(rules) => matching_with(rules, path),
+            None => matching_with(&default_rules(), path),
+        }
+    }
 }
 
 /// Program plus leading arguments. `{path}` and `{line}` in an argument are

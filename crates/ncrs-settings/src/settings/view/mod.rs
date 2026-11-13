@@ -7,6 +7,7 @@ mod hermes_page;
 mod index_page;
 mod page;
 mod system_page;
+mod type_rows;
 mod usage_page;
 
 use ai_page::ai_groups;
@@ -19,6 +20,7 @@ use index_page::index_groups;
 pub use page::focus_facts;
 use page::*;
 use system_page::system_groups;
+use type_rows::by_type_group;
 use usage_page::usage_sections;
 
 use crate::settings::*;
@@ -140,6 +142,8 @@ fn problem_text(problem: &FieldProblem, lang: Language) -> String {
             Msg::SettingsProblemEndpointNotLocal
         }
         FieldProblem::Needed => Msg::SettingsProblemNeeded,
+        FieldProblem::NoExtension => Msg::SettingsByTypeProblemNoExtension,
+        FieldProblem::NoProgram => Msg::SettingsByTypeProblemNoProgram,
         FieldProblem::NotAnIban => Msg::SettingsProblemIban,
         FieldProblem::Write(failure) => return failure.clone(),
     };

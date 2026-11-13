@@ -455,3 +455,121 @@ fn spellings_that_differ_in_case_overlap_on_case_insensitive_systems() {
 
     assert_both_overlap(&resolved, &real, &lower);
 }
+
+#[test]
+fn process_again_finds_the_documents_below_a_folder_and_skips_the_excluded() {
+    use ncrs_index::{ContentHash, DocumentSource, NewDocument};
+
+    let dir = TempDir::new().unwrap();
+    let root = dir.path().join("scans");
+    let kept_folder = root.join("kept");
+    let excluded_folder = root.join("skipped");
+    fs::create_dir_all(&kept_folder).unwrap();
+    fs::create_dir_all(&excluded_folder).unwrap();
+    let index = Index::create_plain(&dir.path().join("index.db")).unwrap();
+    let add = |seed: u8, path: &Path| {
+        index
+            .insert_document(&NewDocument {
+                hash: ContentHash([seed; 32]),
+                path: path.to_path_buf(),
+                source: DocumentSource::Inbox,
+                received_at: chrono::Utc::now(),
+                stamp: None,
+            })
+            .unwrap();
+    };
+    let first = kept_folder.join("a.pdf");
+    let second = kept_folder.join("b.pdf");
+    let excluded_file = kept_folder.join("c.pdf");
+    let inside_excluded = excluded_folder.join("d.pdf");
+    add(1, &first);
+    add(2, &second);
+    add(3, &excluded_file);
+    add(4, &inside_excluded);
+    index.exclude_path(&excluded_file).unwrap();
+    index.exclude_path(&excluded_folder).unwrap();
+    let module = FilingModule::in_phase(Phase::Ready);
+    put_index(&module.index, index);
+    let unknown = root.join("new.pdf");
+
+    let found = module
+        .process_again_finder()
+        .unwrap()
+        .find(&[
+            root.clone(),
+            first.clone(),
+            excluded_file,
+            inside_excluded,
+            unknown.clone(),
+        ])
+        .unwrap();
+
+    assert_eq!(found, vec![first, second, unknown]);
+}
+
+#[test]
+fn the_process_again_finder_exists_in_ready_only_and_fails_without_an_index() {
+    assert!(FilingModule::in_phase(Phase::Starting)
+        .process_again_finder()
+        .is_none());
+    let finder = FilingModule::in_phase(Phase::Ready)
+        .process_again_finder()
+        .unwrap();
+    assert_eq!(finder.find(&[]), Err(INDEX_NOT_OPEN.to_owned()));
+}
+
+#[test]
+fn the_note_link_finder_follows_a_moved_file_by_its_id_and_falls_back_to_the_path() {
+    use ncrs_index::{ContentHash, DocumentSource, FileStamp, NewDocument};
+
+    let dir = TempDir::new().unwrap();
+    let module = FilingModule::in_phase(Phase::Ready);
+    let index = Index::create_plain(&dir.path().join("index.db")).unwrap();
+    let old = PathBuf::from("/inbox/offer.pdf");
+    let id = index
+        .insert_document(&NewDocument {
+            hash: ContentHash([9; 32]),
+            path: old.clone(),
+            source: DocumentSource::Inbox,
+            received_at: chrono::Utc::now(),
+            stamp: None,
+        })
+        .unwrap();
+    put_index(&module.index, index);
+    let finder = || module.note_link_finder().unwrap();
+    let stranger = PathBuf::from("/elsewhere/other.pdf");
+
+    let by_path = finder()
+        .resolve(&[(None, old.clone()), (None, stranger.clone())])
+        .unwrap();
+    assert_eq!(
+        by_path,
+        vec![(Some(id.number()), old.clone()), (None, stranger)]
+    );
+
+    let moved = PathBuf::from("/archive/2026/offer.pdf");
+    let stamp = FileStamp {
+        size: 1,
+        mtime: std::time::UNIX_EPOCH,
+    };
+    let guard = lock(&module.index);
+    guard
+        .as_ref()
+        .unwrap()
+        .set_document_path(id, &moved, stamp)
+        .unwrap();
+    drop(guard);
+    let after_move = finder().resolve(&[(Some(id.number()), old)]).unwrap();
+    assert_eq!(after_move, vec![(Some(id.number()), moved)]);
+}
+
+#[test]
+fn the_note_link_finder_exists_in_ready_only() {
+    assert!(FilingModule::in_phase(Phase::Starting)
+        .note_link_finder()
+        .is_none());
+    let finder = FilingModule::in_phase(Phase::Ready)
+        .note_link_finder()
+        .unwrap();
+    assert_eq!(finder.resolve(&[]), Err(INDEX_NOT_OPEN.to_owned()));
+}

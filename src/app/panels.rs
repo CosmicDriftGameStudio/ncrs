@@ -220,10 +220,37 @@ impl App {
             None => OpenSource::ActivePanel,
         };
         let plan = self.panels.plan_open(kind, source);
-        self.run_open_plan(plan, |app, path, line| {
+        self.run_open_plan(plan, move |app, path, line| {
+            if kind == fs::OpenKind::View {
+                if let Some(with) = app.open_programs.open_with_for(&path) {
+                    return app.open_by_type(with, path, line);
+                }
+            }
             app.launch_external(kind, path, line, CopyOf::Nothing, false);
             Task::none()
         })
+    }
+
+    /// F3 on a local file a `[[open.by_type]]` rule names.
+    fn open_by_type(
+        &mut self,
+        with: fs::OpenWith,
+        path: PathBuf,
+        line: Option<u64>,
+    ) -> Task<Message> {
+        match with {
+            fs::OpenWith::Internal => self.open_in_viewer(path),
+            fs::OpenWith::System => {
+                self.open_with_system(&path);
+                Task::none()
+            }
+            fs::OpenWith::Program(program) => {
+                self.job_error = None;
+                self.notice = None;
+                self.start_command(&fs::program_command(&program, &path, line), &path);
+                Task::none()
+            }
+        }
     }
 
     /// Enter or a double click on a file: opened as the Finder does, by the
@@ -738,6 +765,17 @@ impl App {
         let name = file.to_string_lossy().into_owned();
         let left = self.leave_settings_page();
         Task::batch([left, self.load(self.panels.active, directory, Some(name))])
+    }
+
+    /// Switches to the panels and shows the file's directory in the active one, cursor on the file.
+    pub(in crate::app) fn reveal_in_active_panel(&mut self, file: &Path) -> Task<Message> {
+        let folder = file.parent().map(Path::to_path_buf).unwrap_or_default();
+        let name = file
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned());
+        self.shown_tab = ShownTab::Panels;
+        let side = self.panels.active;
+        self.load(side, folder, name)
     }
 
     /// Starts an async directory read for `side`.

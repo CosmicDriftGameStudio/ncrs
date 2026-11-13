@@ -66,6 +66,7 @@ key_actions! {
     Mkdir => "mkdir",
     NewFile => "new_file",
     Pack => "pack",
+    ExtractHere => "extract_here",
     Permissions => "permissions",
     DriveMenuLeft => "drive_menu_left",
     DriveMenuRight => "drive_menu_right",
@@ -106,6 +107,8 @@ key_actions! {
     HermesExclude => "hermes_exclude",
     HermesInspect => "hermes_inspect",
     SavedQueries => "saved_queries",
+    Notes => "notes",
+    NoteOnFile => "note_on_file",
     SearchDocuments => "search_documents",
     FetchTheme => "fetch_theme",
     Settings => "settings",
@@ -210,6 +213,7 @@ impl KeyAction {
             | Self::NewFile
             | Self::Rename
             | Self::Pack
+            | Self::ExtractHere
             | Self::Permissions
             | Self::QuickOpen
             | Self::CommandLine
@@ -225,6 +229,8 @@ impl KeyAction {
             | Self::HermesExclude
             | Self::HermesInspect
             | Self::SavedQueries
+            | Self::Notes
+            | Self::NoteOnFile
             | Self::SearchDocuments
             | Self::FileListTagsToggle
             | Self::FileListTagsChoose
@@ -402,6 +408,7 @@ impl KeyAction {
             | Self::FilingStatus
             | Self::Rules
             | Self::SavedQueries
+            | Self::Notes
             | Self::FileListTagsToggle
             | Self::FileListTagsChoose
             | Self::FetchTheme
@@ -428,9 +435,11 @@ impl KeyAction {
             | Self::Mkdir
             | Self::NewFile
             | Self::Pack
+            | Self::ExtractHere
             | Self::Permissions
             | Self::ComputeFolderSizes
             | Self::AddFavourite
+            | Self::NoteOnFile
             | Self::RemoveFavourite
             | Self::Search
             | Self::SearchDocuments
@@ -504,6 +513,7 @@ impl KeyAction {
             | Self::FilingStatus
             | Self::Rules
             | Self::SavedQueries
+            | Self::Notes
             | Self::FileListTagsToggle
             | Self::FileListTagsChoose
             | Self::FetchTheme
@@ -531,9 +541,11 @@ impl KeyAction {
             | Self::Mkdir
             | Self::NewFile
             | Self::Pack
+            | Self::ExtractHere
             | Self::Permissions
             | Self::ComputeFolderSizes
             | Self::AddFavourite
+            | Self::NoteOnFile
             | Self::RemoveFavourite
             | Self::Search
             | Self::SearchDocuments

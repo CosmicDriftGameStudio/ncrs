@@ -53,11 +53,13 @@ pub mod layout;
 pub mod list_below;
 pub mod list_kit;
 pub mod list_window;
+pub mod markdown_view;
 mod menu_button;
 pub mod meter;
 pub mod nav_list;
 pub mod numbered_hint;
 pub mod open_list;
+pub mod page_scroll;
 pub mod page_status_bar;
 pub mod page_text;
 pub mod palette;
@@ -70,6 +72,7 @@ pub mod row_scroll;
 pub mod setting_rows;
 pub mod tags;
 pub mod theme;
+pub mod tree_list;
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here.
 #[allow(

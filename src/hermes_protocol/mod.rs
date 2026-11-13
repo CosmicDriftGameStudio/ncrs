@@ -52,9 +52,9 @@ use crate::filing::FilingMessage;
 use crate::messages::{Message, SettingsMessage};
 
 mod free_sentences;
-mod real_start;
+pub mod real_start;
 mod scratch;
-mod thread;
+pub mod thread;
 mod tidy_flows;
 mod waiting;
 

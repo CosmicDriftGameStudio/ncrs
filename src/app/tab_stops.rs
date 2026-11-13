@@ -8,6 +8,8 @@ pub(in crate::app) enum TabStop {
     Panels,
     Settings,
     Monitor,
+    Viewer,
+    Notes,
     Hermes,
 }
 
@@ -22,6 +24,8 @@ pub enum TabDirection {
 pub(in crate::app) struct OpenPages {
     pub settings: bool,
     pub monitor: bool,
+    pub viewer: bool,
+    pub notes: bool,
     pub hermes: bool,
 }
 
@@ -35,6 +39,8 @@ pub(in crate::app) fn next_stop(
         (true, TabStop::Panels),
         (pages.settings, TabStop::Settings),
         (pages.monitor, TabStop::Monitor),
+        (pages.viewer, TabStop::Viewer),
+        (pages.notes, TabStop::Notes),
         (pages.hermes, TabStop::Hermes),
     ]
     .into_iter()
@@ -52,6 +58,8 @@ impl App {
     fn current_stop(&self) -> TabStop {
         match self.shown_tab {
             ShownTab::Monitor => TabStop::Monitor,
+            ShownTab::Viewer => TabStop::Viewer,
+            ShownTab::Notes => TabStop::Notes,
             ShownTab::Hermes => TabStop::Hermes,
             ShownTab::Settings => TabStop::Settings,
             ShownTab::Panels => TabStop::Panels,
@@ -62,6 +70,12 @@ impl App {
     /// way to the panels. `was_open` is the pages before the update.
     pub(in crate::app) fn follow_opened_pages(&mut self, was_open: OpenPages) {
         let now = self.open_pages();
+        if now.viewer && !was_open.viewer {
+            self.shown_tab = ShownTab::Viewer;
+        }
+        if now.notes && !was_open.notes {
+            self.shown_tab = ShownTab::Notes;
+        }
         if now.hermes && !was_open.hermes {
             self.shown_tab = ShownTab::Hermes;
         }
@@ -74,6 +88,8 @@ impl App {
         let shown_is_closed = match self.shown_tab {
             ShownTab::Settings => !now.settings,
             ShownTab::Monitor => !now.monitor,
+            ShownTab::Viewer => !now.viewer,
+            ShownTab::Notes => !now.notes,
             ShownTab::Hermes => !now.hermes,
             ShownTab::Panels => false,
         };
@@ -117,6 +133,8 @@ impl App {
             TabStop::Panels => self.shown_tab = ShownTab::Panels,
             TabStop::Settings => self.shown_tab = ShownTab::Settings,
             TabStop::Monitor => self.shown_tab = ShownTab::Monitor,
+            TabStop::Viewer => self.shown_tab = ShownTab::Viewer,
+            TabStop::Notes => self.shown_tab = ShownTab::Notes,
             TabStop::Hermes => {
                 self.shown_tab = ShownTab::Hermes;
                 return ncrs_hermes_chat::focus_input();
@@ -130,16 +148,20 @@ impl App {
 mod tests {
     use super::*;
     use TabDirection::{Backward, Forward};
-    use TabStop::{Hermes, Monitor, Panels, Settings};
+    use TabStop::{Hermes, Monitor, Notes, Panels, Settings, Viewer};
 
     const ALL: OpenPages = OpenPages {
         settings: true,
         monitor: true,
+        viewer: true,
+        notes: true,
         hermes: true,
     };
     const NONE: OpenPages = OpenPages {
         settings: false,
         monitor: false,
+        viewer: false,
+        notes: false,
         hermes: false,
     };
 
@@ -153,10 +175,14 @@ mod tests {
     fn open_pages_come_after_the_panels_and_wrap() {
         assert_eq!(next_stop(ALL, Panels, Forward), Settings);
         assert_eq!(next_stop(ALL, Settings, Forward), Monitor);
-        assert_eq!(next_stop(ALL, Monitor, Forward), Hermes);
+        assert_eq!(next_stop(ALL, Monitor, Forward), Viewer);
+        assert_eq!(next_stop(ALL, Viewer, Forward), Notes);
+        assert_eq!(next_stop(ALL, Notes, Forward), Hermes);
         assert_eq!(next_stop(ALL, Hermes, Forward), Panels);
         assert_eq!(next_stop(ALL, Panels, Backward), Hermes);
-        assert_eq!(next_stop(ALL, Hermes, Backward), Monitor);
+        assert_eq!(next_stop(ALL, Hermes, Backward), Notes);
+        assert_eq!(next_stop(ALL, Notes, Backward), Viewer);
+        assert_eq!(next_stop(ALL, Viewer, Backward), Monitor);
         assert_eq!(next_stop(ALL, Monitor, Backward), Settings);
     }
 

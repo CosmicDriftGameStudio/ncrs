@@ -112,6 +112,21 @@ impl App {
                     ncrs_hermes_ui::hermes_role_saved(hermes, result, ctx)
                 })
             }
+            HermesFileMessage::ProcessAgainFound(result) => {
+                return self.run_hermes_flow(Vec::new(), |hermes, ctx| {
+                    ncrs_hermes_ui::process_found_again(hermes, result, ctx)
+                })
+            }
+            HermesFileMessage::ConfirmProcessAgain => {
+                return self.run_hermes_flow(Vec::new(), |hermes, ctx| {
+                    ncrs_hermes_ui::confirm_process_again(hermes, ctx)
+                })
+            }
+            HermesFileMessage::CancelProcessAgain => {
+                return self.run_hermes_flow(Vec::new(), |hermes, _| {
+                    ncrs_hermes_ui::cancel_process_again(hermes)
+                })
+            }
             HermesFileMessage::Included { path, result } => {
                 return self.run_hermes_flow(Vec::new(), |hermes, ctx| {
                     ncrs_hermes_ui::hermes_included(hermes, &path, result, ctx)
@@ -145,9 +160,12 @@ impl App {
                 };
                 self.open_transfer_dialog_to(TransferKind::Move, Some(inbox))
             }
-            HermesFileMessage::ProcessAgain => self.run_hermes_flow(Vec::new(), |hermes, ctx| {
-                ncrs_hermes_ui::process_again(hermes, &path, ctx)
-            }),
+            HermesFileMessage::ProcessAgain => {
+                let sources = self.action_sources();
+                self.run_hermes_flow(Vec::new(), |hermes, ctx| {
+                    ncrs_hermes_ui::process_again(hermes, sources, ctx)
+                })
+            }
             HermesFileMessage::SetRole(role) if is_dir => self
                 .run_hermes_flow(Vec::new(), |hermes, ctx| {
                     ncrs_hermes_ui::set_folder_role(hermes, &path, role, ctx)
@@ -163,6 +181,9 @@ impl App {
             }
             HermesFileMessage::SetRole(_)
             | HermesFileMessage::RoleSaved(_)
+            | HermesFileMessage::ProcessAgainFound(_)
+            | HermesFileMessage::ConfirmProcessAgain
+            | HermesFileMessage::CancelProcessAgain
             | HermesFileMessage::Included { .. } => Task::none(),
         }
     }

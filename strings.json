@@ -493,6 +493,18 @@
       "de": "In {name} gepackt"
     },
     {
+      "key": "status.extracted",
+      "context": "Status bar notice after one archive was unpacked next to itself (context menu entry Extract here). Takes the file or folder name that is new.",
+      "en": "Unpacked to {name}",
+      "de": "Entpackt nach {name}"
+    },
+    {
+      "key": "status.extracted_many",
+      "context": "Status bar notice after several archives were each unpacked next to themselves. Takes the number of archives.",
+      "en": "{count} archives unpacked",
+      "de": "{count} Archive entpackt"
+    },
+    {
       "key": "status.archive_copied_in",
       "context": "Status bar notice after files were copied into an archive (F5 with an archive as the target).",
       "en": "Copied into the archive",
@@ -629,6 +641,18 @@
       "context": "Entry of the context menu: turns the name of the cursor row into an input, so the file or folder can be renamed in place (key Shift+F6). Verb, imperative.",
       "en": "Rename",
       "de": "Umbenennen"
+    },
+    {
+      "key": "context_menu.extract_here",
+      "context": "Entry of the context menu on an archive file: unpacks it next to itself, into a new folder named after the archive unless it holds exactly one top-level entry. Only shown on archives. Verb, imperative.",
+      "en": "Extract here",
+      "de": "Hier entpacken"
+    },
+    {
+      "key": "context_menu.pack",
+      "context": "Entry of the context menu on files and folders: opens the dialog that packs the tagged rows, or the cursor row, into a new archive, where the format is chosen. Verb, imperative; the dots mean a dialog follows.",
+      "en": "Pack…",
+      "de": "Packen…"
     },
     {
       "key": "context_menu.new_folder",
@@ -1541,6 +1565,12 @@
       "context": "Entry of the command palette that runs the key action pack. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
       "en": "Pack into archive",
       "de": "In Archiv packen"
+    },
+    {
+      "key": "action.extract_here",
+      "context": "Entry of the command palette that runs the key action extract_here: unpacks the archives under the cursor or tagged next to themselves. The plain name of what the action does, as short as a menu entry.",
+      "en": "Extract archive here",
+      "de": "Archiv hier entpacken"
     },
     {
       "key": "action.pack.theme",
@@ -3416,9 +3446,9 @@
     },
     {
       "key": "settings.row_viewer_note",
-      "context": "Explanation under the viewer setting: an empty field means the system opens the file with its own program; a word with spaces must be put in quotes.",
-      "en": "Empty: the system default. Put a word with spaces in quotes.",
-      "de": "Leer: das System entscheidet. Wörter mit Leerzeichen in Anführungszeichen."
+      "context": "Explanation under the viewer setting: it applies to file types without a row of their own in the F3-by-file-type block below; an empty field means the system opens the file with its own program.",
+      "en": "For all file types without a row of their own below. Empty: the system default.",
+      "de": "Für alle Dateitypen ohne eigene Zeile unten. Leer: das System entscheidet."
     },
     {
       "key": "settings.row_editor",
@@ -4361,6 +4391,12 @@
       "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Opens the Hermes inspection page, at the file's error if it has one.",
       "en": "Show in Status and errors",
       "de": "In Status und Fehler zeigen"
+    },
+    {
+      "key": "status.hermes_processing_again_many",
+      "context": "Status bar message after several files, or the documents of a folder, were queued to run through the Hermes steps again. Takes the number of files (more than one).",
+      "en": "{count} files are being processed again",
+      "de": "{count} Dateien werden erneut verarbeitet"
     },
     {
       "key": "status.hermes_processing_again",
@@ -10835,6 +10871,288 @@
       "context": "Sync dialog: the button when nothing is deleted; {copies} is the count of entries copied.",
       "en": "Copy {copies}",
       "de": "{copies} kopieren"
+    },
+    {
+      "key": "viewer.mode_rendered",
+      "context": "Viewer tab: the segment that shows a Markdown file formatted (headings, lists, links). Noun, short.",
+      "en": "Rendered",
+      "de": "Ansicht"
+    },
+    {
+      "key": "viewer.mode_source",
+      "context": "Viewer tab: the segment that shows the file as plain monospace text, the way it is on disk. Noun, short.",
+      "en": "Source",
+      "de": "Quelltext"
+    },
+    {
+      "key": "viewer.open_external",
+      "context": "Viewer tab: button that opens the shown file in the program the system has for it. Verb, imperative.",
+      "en": "Open externally",
+      "de": "Extern öffnen"
+    },
+    {
+      "key": "viewer.edit",
+      "context": "Viewer tab: button that opens the shown file in the editor (key F4). Verb, imperative; the key cap is shown next to it.",
+      "en": "Edit",
+      "de": "Bearbeiten"
+    },
+    {
+      "key": "viewer.status_markdown",
+      "context": "Status line of the viewer tab while a Markdown file is shown. The keys are written as they are on the keyboard.",
+      "en": "Esc closes · ↑ ↓ PgUp PgDn scroll · Tab switches between rendered and source",
+      "de": "Esc schließt · ↑ ↓ Bild↑ Bild↓ blättern · Tab wechselt zwischen Ansicht und Quelltext"
+    },
+    {
+      "key": "viewer.status_text",
+      "context": "Status line of the viewer tab while a file other than Markdown is shown. The keys are written as they are on the keyboard.",
+      "en": "Esc closes · ↑ ↓ PgUp PgDn scroll",
+      "de": "Esc schließt · ↑ ↓ Bild↑ Bild↓ blättern"
+    },
+    {
+      "key": "viewer.too_large",
+      "context": "Notice when F3 meets a file too big for the viewer tab; it is opened with the system instead. {name} is the file name, {limit} the limit with its unit.",
+      "en": "{name} is larger than {limit}: opened with the system program instead.",
+      "de": "{name} ist größer als {limit}: stattdessen mit dem System geöffnet."
+    },
+    {
+      "key": "viewer.read_failed",
+      "context": "Error when the viewer tab cannot read the file. {name} is the file name, {reason} the system's reason.",
+      "en": "Cannot read {name}: {reason}",
+      "de": "{name} lässt sich nicht lesen: {reason}"
+    },
+    {
+      "key": "action.notes",
+      "context": "Entry of the command list that runs the key action notes: it opens the notes tab. Also the title of that tab, the name of the top of its tree and the key of its status bar. Noun, plural.",
+      "en": "Notes",
+      "de": "Notizen"
+    },
+    {
+      "key": "action.note_on_file",
+      "context": "Entry of the command list and of the context menu of a file that runs the key action note_on_file: it opens the note that belongs to the file in the notes tab, made if there is none, ready to type. The shortcut is shown next to it.",
+      "en": "Note on file",
+      "de": "Notiz zur Datei"
+    },
+    {
+      "key": "notes.search_placeholder",
+      "context": "Notes tab: placeholder of the search field above the tree; the search looks through the text of all notes.",
+      "en": "Search notes",
+      "de": "Notizen durchsuchen"
+    },
+    {
+      "key": "notes.new_note",
+      "context": "Notes tab: button that makes a new note, and the title a new note starts with until its first line gives it one. Verb, imperative, short.",
+      "en": "New note",
+      "de": "Neue Notiz"
+    },
+    {
+      "key": "notes.new_folder",
+      "context": "Notes tab: button that makes a new folder in the tree, and the name the new folder starts with. Short.",
+      "en": "New folder",
+      "de": "Neuer Ordner"
+    },
+    {
+      "key": "notes.files_group",
+      "context": "Notes tab: the made-up group in the tree that lists the notes on files, and the word before the path of the file in the line under a note's title. Kept short, in brackets, because it is not a folder on disk.",
+      "en": "(Files)",
+      "de": "(Dateien)"
+    },
+    {
+      "key": "notes.mode_view",
+      "context": "Notes tab: the segment that shows the note formatted (headings, lists, links). Noun, short.",
+      "en": "View",
+      "de": "Ansicht"
+    },
+    {
+      "key": "notes.mode_edit",
+      "context": "Notes tab: the segment that puts the note in an editor, where it is saved while typing. Noun, short.",
+      "en": "Edit",
+      "de": "Bearbeiten"
+    },
+    {
+      "key": "notes.show_file",
+      "context": "Notes tab: button on a note on a file that shows that file in the active panel. Verb, imperative.",
+      "en": "Show file",
+      "de": "Datei zeigen"
+    },
+    {
+      "key": "notes.changed",
+      "context": "Notes tab: part of the line under a note's title; {time} is the date and time the note was last changed.",
+      "en": "changed {time}",
+      "de": "geändert {time}"
+    },
+    {
+      "key": "notes.none_shown",
+      "context": "Notes tab: what the right side says while no note is chosen.",
+      "en": "Choose a note or make a new one.",
+      "de": "Eine Notiz wählen oder eine neue anlegen."
+    },
+    {
+      "key": "notes.search_none",
+      "context": "Notes tab: what the list says when the search finds no note.",
+      "en": "No note found.",
+      "de": "Keine Notiz gefunden."
+    },
+    {
+      "key": "notes.status_view",
+      "context": "Status line of the notes tab while a note is shown. The keys are written as they are on the keyboard; ⌘ is the Command key.",
+      "en": "⌘N new note · Enter edits · Esc closes",
+      "de": "⌘N neue Notiz · Enter bearbeitet · Esc schließt"
+    },
+    {
+      "key": "notes.status_edit",
+      "context": "Status line of the notes tab while a note is edited.",
+      "en": "Saves while you type · Esc back to the view",
+      "de": "Speichert beim Tippen · Esc zurück zur Ansicht"
+    },
+    {
+      "key": "notes.status_search",
+      "context": "Status line of the notes tab while the search shows hits.",
+      "en": "Full text over all notes · Enter opens the hit",
+      "de": "Volltext über alle Notizen · Enter öffnet den Treffer"
+    },
+    {
+      "key": "notes.problem",
+      "context": "Notes tab: shown in the status line when the notes folder cannot be read. {path} is the folder, {reason} the system's reason.",
+      "en": "The notes folder {path} cannot be used: {reason}",
+      "de": "Der Notizen-Ordner {path} lässt sich nicht verwenden: {reason}"
+    },
+    {
+      "key": "notes.write_failed",
+      "context": "Error when a note or a folder of the notes cannot be written. {reason} is the system's reason with the path.",
+      "en": "Cannot save the note: {reason}",
+      "de": "Die Notiz lässt sich nicht speichern: {reason}"
+    },
+    {
+      "key": "notes.status_note",
+      "context": "Status bar of the file panels: the note that belongs to the file under the cursor. {line} is the first line of the note, cut short.",
+      "en": "Note: {line}",
+      "de": "Notiz: {line}"
+    },
+    {
+      "key": "settings.by_type_title",
+      "context": "Heading of a block on the programs page of the settings: one row per file type that says what F3 does with it. Upper case in German as the other block headings.",
+      "en": "F3 BY FILE TYPE",
+      "de": "F3 JE DATEITYP"
+    },
+    {
+      "key": "settings.by_type_intro",
+      "context": "Explanation under the heading of the F3-by-file-type block. 'Internal' is the viewer tab of ncrs.",
+      "en": "The first matching row wins. \"Internal\" shows the file in a tab of ncrs: Markdown rendered, other text as text.",
+      "de": "Die erste passende Zeile gilt. „Intern“ zeigt die Datei in einem Tab von ncrs: Markdown gerendert, andere Texte als Text."
+    },
+    {
+      "key": "settings.by_type_new",
+      "context": "Small badge on the F3-by-file-type heading that marks it as a new feature. One word.",
+      "en": "new",
+      "de": "neu"
+    },
+    {
+      "key": "settings.by_type_extensions",
+      "context": "Label of the field in a file type row where the file name endings are typed, separated by commas, for example md, markdown.",
+      "en": "Extensions",
+      "de": "Endungen"
+    },
+    {
+      "key": "settings.by_type_extensions_placeholder",
+      "context": "Placeholder in the extensions field of a file type row; the words are examples of file name endings.",
+      "en": "md, markdown",
+      "de": "md, markdown"
+    },
+    {
+      "key": "settings.by_type_open_with",
+      "context": "Label of the choice in a file type row for what F3 opens the file with.",
+      "en": "Open with",
+      "de": "Öffnen mit"
+    },
+    {
+      "key": "settings.by_type_internal",
+      "context": "Segment of the 'open with' choice: the viewer tab of ncrs itself.",
+      "en": "Internal",
+      "de": "Intern"
+    },
+    {
+      "key": "settings.by_type_system",
+      "context": "Segment of the 'open with' choice: the program the operating system has for the file.",
+      "en": "System",
+      "de": "System"
+    },
+    {
+      "key": "settings.by_type_program",
+      "context": "Segment of the 'open with' choice: a program the user names, as in the viewer and editor settings.",
+      "en": "Own program",
+      "de": "Eigenes Programm"
+    },
+    {
+      "key": "settings.by_type_program_label",
+      "context": "Label of the program field in a file type row; it only matters when 'own program' is chosen.",
+      "en": "Program",
+      "de": "Programm"
+    },
+    {
+      "key": "settings.by_type_program_hint_internal",
+      "context": "Hint in the place of the program field of a file type row that opens internally: no program is needed.",
+      "en": "Not needed: ncrs shows the file itself.",
+      "de": "Nicht nötig: ncrs zeigt die Datei selbst."
+    },
+    {
+      "key": "settings.by_type_program_hint_system",
+      "context": "Hint in the place of the program field of a file type row that opens with the system: no program is needed.",
+      "en": "Not needed: the system decides.",
+      "de": "Nicht nötig: das System entscheidet."
+    },
+    {
+      "key": "settings.by_type_program_pick",
+      "context": "Button next to the program field of a file type row that opens a file dialog to pick the program. Verb, imperative, with an ellipsis because a dialog follows.",
+      "en": "Choose…",
+      "de": "Auswählen…"
+    },
+    {
+      "key": "settings.by_type_remove",
+      "context": "Button that deletes a file type row of the F3-by-file-type block. Verb, imperative.",
+      "en": "Remove",
+      "de": "Entfernen"
+    },
+    {
+      "key": "settings.by_type_add",
+      "context": "Button that adds an empty file type row to the F3-by-file-type block. Verb, imperative.",
+      "en": "Add file type",
+      "de": "Dateityp hinzufügen"
+    },
+    {
+      "key": "settings.by_type_problem_no_extension",
+      "context": "Shown under a file type row whose extensions field has no extension, so the row is not saved.",
+      "en": "Type at least one extension.",
+      "de": "Mindestens eine Endung eingeben."
+    },
+    {
+      "key": "settings.by_type_problem_no_program",
+      "context": "Shown under a file type row that opens with an own program but has no program yet, so the row is not saved.",
+      "en": "Type the program or choose another way to open.",
+      "de": "Das Programm eingeben oder eine andere Art zu öffnen wählen."
+    },
+    {
+      "key": "status.hermes_confirm_again_title",
+      "context": "Title of the question before Hermes processes many files in the Lesen folders again. {count} is the number of files, always more than one.",
+      "en": "Process {count} files again?",
+      "de": "{count} Dateien erneut verarbeiten?"
+    },
+    {
+      "key": "status.hermes_confirm_again_note",
+      "context": "Line under the question before Hermes processes many files in the Lesen folders again: it explains that Hermes may move them.",
+      "en": "Hermes reads them again and may move them out of the Lesen folder.",
+      "de": "Hermes liest sie neu und verschiebt sie womöglich aus dem Lesen-Ordner."
+    },
+    {
+      "key": "status.hermes_confirm_again_yes",
+      "context": "Button that confirms processing the files again. Verb, imperative.",
+      "en": "Process again",
+      "de": "Erneut verarbeiten"
+    },
+    {
+      "key": "status.hermes_confirm_again_no",
+      "context": "Button that cancels processing the files again. Verb, imperative.",
+      "en": "Cancel",
+      "de": "Abbrechen"
     }
   ]
 }

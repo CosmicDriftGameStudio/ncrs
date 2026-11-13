@@ -346,29 +346,35 @@ pub fn open_command(
         (OpenKind::View, false) => view,
         (OpenKind::Edit, false) => edit.unwrap_or(view),
     };
+    Some(program_command(&chosen, path, line))
+}
+
+/// The command that opens `path` with `program`, with `{path}` and `{line}`
+/// filled in as [`open_command`] does it.
+pub fn program_command(program: &ProgramLine, path: &Path, line: Option<u64>) -> OpenCommand {
     let anchored: PathBuf = if path.is_absolute() {
         path.to_path_buf()
     } else {
         Path::new(".").join(path)
     };
     let line_number = line.unwrap_or(1);
-    let mut args: Vec<OsString> = chosen
+    let mut args: Vec<OsString> = program
         .args()
         .iter()
         .map(|template| substitute(template, anchored.as_os_str(), line_number))
         .collect();
-    if !chosen
+    if !program
         .args()
         .iter()
         .any(|arg| arg.contains(PATH_PLACEHOLDER))
     {
         args.push(anchored.into_os_string());
     }
-    Some(OpenCommand {
-        program: chosen.program().into(),
+    OpenCommand {
+        program: program.program().into(),
         args,
         ..OpenCommand::default()
-    })
+    }
 }
 
 const PATH_PLACEHOLDER: &str = "{path}";

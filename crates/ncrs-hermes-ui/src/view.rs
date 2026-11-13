@@ -20,8 +20,8 @@ use crate::hermes_status::HermesStatus;
 use crate::message::{HermesPage, Message};
 use crate::state::Hermes;
 use crate::ui::{
-    filing_status as filing_status_ui, rules as rules_ui, saved_queries as saved_queries_ui,
-    tags as tags_ui,
+    confirm_again as confirm_again_ui, filing_status as filing_status_ui, rules as rules_ui,
+    saved_queries as saved_queries_ui, tags as tags_ui,
 };
 
 /// What drawing the Hermes pages reads from the app.
@@ -174,6 +174,10 @@ pub fn dialogs<'a>(hermes: &'a Hermes, ctx: &ViewCtx<'a>) -> Vec<Element<'a, Mes
             .tags
             .as_ref()
             .and_then(|state| tags_ui::dialog(state, window, lang, palette)),
+        hermes
+            .confirm_again
+            .as_ref()
+            .map(|paths| confirm_again_ui::dialog(paths.len(), window, lang, palette)),
     ]
     .into_iter()
     .flatten()

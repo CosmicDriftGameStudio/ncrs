@@ -37,6 +37,9 @@ impl ContextActionMessage for ContextAction {
             ContextAction::DeletePermanently => Message::Delete { permanent: true },
             ContextAction::ShowOnOtherSide => Message::HitList(HitListMessage::ShowOnOtherSide),
             ContextAction::RemoveFromList => Message::HitList(HitListMessage::RemoveFromList),
+            ContextAction::NoteOnFile => Message::NoteOnFile,
+            ContextAction::ExtractHere => Message::ExtractHere,
+            ContextAction::Pack => Message::PackPrompt,
         }
     }
 }
@@ -94,6 +97,7 @@ mod tests {
                         | ContextAction::CompareFolders
                         | ContextAction::RemoveFavourite
                         | ContextAction::ShowPackageContents
+                        | ContextAction::ExtractHere
                 )
             })
         {

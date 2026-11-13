@@ -147,6 +147,19 @@ impl Prompt {
         self.error = None;
     }
 
+    /// The format the typed ending selects; `None` while it is none we know.
+    pub fn archive_format(&self) -> Option<archive::ArchiveFormat> {
+        archive::ArchiveFormat::of_name(std::ffi::OsStr::new(self.name.trim()))
+    }
+
+    /// Puts the ending of `format` on the typed name in place of the one it
+    /// has, or after the name when it has none.
+    pub fn set_archive_format(&mut self, format: archive::ArchiveFormat) {
+        let typed = self.name.trim();
+        let stem = archive::without_archive_ending(typed);
+        self.set_name(format!("{stem}{}", format.ending()));
+    }
+
     /// The text the user typed.
     pub fn name(&self) -> &str {
         &self.name
@@ -243,6 +256,36 @@ mod tests {
         let mut prompt = Prompt::create_dir(PathBuf::from("/tmp"));
         prompt.set_name(name.to_string());
         prompt
+    }
+
+    #[test]
+    fn choosing_a_format_swaps_the_ending_and_typing_one_selects_it() {
+        use archive::ArchiveFormat;
+        let mut prompt = Prompt::pack(PathBuf::from("/x"), vec![], "fotos.zip");
+        assert_eq!(prompt.archive_format(), Some(ArchiveFormat::Zip));
+        let stem = PathBuf::from("/x").join("fotos");
+
+        for format in [
+            ArchiveFormat::TarGz,
+            ArchiveFormat::SevenZip,
+            ArchiveFormat::TarZst,
+            ArchiveFormat::Tar,
+            ArchiveFormat::Zip,
+        ] {
+            prompt.set_archive_format(format);
+            assert_eq!(prompt.archive_format(), Some(format));
+            assert_eq!(
+                archive::without_archive_ending(prompt.name()),
+                stem.to_string_lossy()
+            );
+        }
+
+        prompt.set_name("/x/fotos.tar.zst".to_string());
+        assert_eq!(prompt.archive_format(), Some(ArchiveFormat::TarZst));
+        prompt.set_name("/x/fotos".to_string());
+        assert_eq!(prompt.archive_format(), None);
+        prompt.set_archive_format(ArchiveFormat::SevenZip);
+        assert_eq!(prompt.name(), "/x/fotos.7z");
     }
 
     #[test]

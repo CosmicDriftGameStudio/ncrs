@@ -114,6 +114,8 @@ pub struct ViewCtx<'a> {
     /// Folders that get a symbol of their own, by path: home, desktop,
     /// downloads, and the folders Hermes reads and files.
     pub special_folders: &'a [(PathBuf, SpecialFolder)],
+    /// The files that have a note, by path; their rows carry a marker.
+    pub noted: &'a std::collections::HashSet<PathBuf>,
     /// The title being dragged in this panel's header, from
     /// [`crate::state::Panels::header_drag_view`].
     pub header_drag: Option<HeaderDrag>,

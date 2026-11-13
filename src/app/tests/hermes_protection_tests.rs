@@ -553,3 +553,94 @@ async fn a_key_store_that_refuses_ends_in_the_error_card_not_in_a_plain_index() 
         !index_in(&dir).exists() || !ncrs_index::Index::file_is_plain(&index_in(&dir)).unwrap()
     );
 }
+
+fn found_in(location_dir: &str, count: usize) -> Vec<PathBuf> {
+    (0..count)
+        .map(|n| PathBuf::from(location_dir).join(format!("scan{n}.pdf")))
+        .collect()
+}
+
+fn app_with_read_and_archive_folder() -> App {
+    let mut app = App::with_fixed_panels();
+    app.hermes.filing_config.locations = vec![
+        location("/home/test/Scans", LocationMode::Inbox, false),
+        location("/home/test/Archive", LocationMode::Archive, true),
+    ];
+    app
+}
+
+#[tokio::test]
+async fn several_files_in_a_read_folder_ask_before_they_are_processed_again() {
+    let mut app = app_with_read_and_archive_folder();
+    let found = found_in("/home/test/Scans", 3);
+
+    settle(
+        &mut app,
+        Message::HermesFile(HermesFileMessage::ProcessAgainFound(Ok(found.clone()))),
+    )
+    .await;
+
+    assert_eq!(app.confirm_again_for_test(), Some(&found));
+    assert!(app.notice_for_test().is_none(), "nothing is queued yet");
+}
+
+#[tokio::test]
+async fn cancelling_the_question_queues_nothing() {
+    let mut app = app_with_read_and_archive_folder();
+    settle(
+        &mut app,
+        Message::HermesFile(HermesFileMessage::ProcessAgainFound(Ok(found_in(
+            "/home/test/Scans",
+            3,
+        )))),
+    )
+    .await;
+
+    settle(
+        &mut app,
+        Message::HermesFile(HermesFileMessage::CancelProcessAgain),
+    )
+    .await;
+
+    assert!(app.confirm_again_for_test().is_none());
+    assert!(app.notice_for_test().is_none());
+}
+
+#[tokio::test]
+async fn confirming_the_question_queues_the_files() {
+    let mut app = app_with_read_and_archive_folder();
+    settle(
+        &mut app,
+        Message::HermesFile(HermesFileMessage::ProcessAgainFound(Ok(found_in(
+            "/home/test/Scans",
+            3,
+        )))),
+    )
+    .await;
+
+    settle(
+        &mut app,
+        Message::HermesFile(HermesFileMessage::ConfirmProcessAgain),
+    )
+    .await;
+
+    assert!(app.confirm_again_for_test().is_none());
+    // No pipeline runs in this app: the queueing was tried and said so.
+    assert!(app.notice_for_test().is_some());
+}
+
+#[tokio::test]
+async fn one_file_or_files_outside_read_folders_are_processed_without_a_question() {
+    let mut app = app_with_read_and_archive_folder();
+    for found in [
+        found_in("/home/test/Scans", 1),
+        found_in("/home/test/Archive", 3),
+    ] {
+        settle(
+            &mut app,
+            Message::HermesFile(HermesFileMessage::ProcessAgainFound(Ok(found))),
+        )
+        .await;
+        assert!(app.confirm_again_for_test().is_none());
+    }
+}

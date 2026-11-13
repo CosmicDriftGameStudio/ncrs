@@ -140,6 +140,56 @@ impl DocumentFinder {
     }
 }
 
+/// Finds the files that "process again" stands for, on a blocking thread like
+/// [`ColumnReader`].
+pub struct ProcessAgainFinder {
+    slot: IndexSlot,
+}
+
+impl fmt::Debug for ProcessAgainFinder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ProcessAgainFinder").finish_non_exhaustive()
+    }
+}
+
+impl ProcessAgainFinder {
+    /// A folder stands for the documents below it, a file for itself (also
+    /// when the index does not know it yet). Excluded ones are left out; no
+    /// path comes twice.
+    pub fn find(self, paths: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
+        let guard = lock(&self.slot);
+        let index = guard.as_ref().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
+        let mut found: Vec<PathBuf> = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for path in paths {
+            let candidates = if path.is_dir() {
+                index
+                    .documents_under(path)
+                    .map_err(|err| err.to_string())?
+                    .into_iter()
+                    .map(|(_, document_path)| document_path)
+                    .collect()
+            } else {
+                vec![path.clone()]
+            };
+            for candidate in candidates {
+                if seen.contains(&candidate) {
+                    continue;
+                }
+                if index
+                    .is_excluded(&candidate)
+                    .map_err(|err| err.to_string())?
+                {
+                    continue;
+                }
+                seen.insert(candidate.clone());
+                found.push(candidate);
+            }
+        }
+        Ok(found)
+    }
+}
+
 impl FilingModule {
     /// Only looks at the phase and never at the index, so it is safe on the UI
     /// thread; `read` then runs elsewhere.
@@ -177,6 +227,72 @@ impl FilingModule {
     pub fn document_finder(&self) -> Option<DocumentFinder> {
         match self.phase {
             Phase::Ready => Some(DocumentFinder {
+                slot: Arc::clone(&self.index),
+            }),
+            _ => None,
+        }
+    }
+
+    /// Like [`Self::column_reader`]: looks at the phase only.
+    pub fn process_again_finder(&self) -> Option<ProcessAgainFinder> {
+        match self.phase {
+            Phase::Ready => Some(ProcessAgainFinder {
+                slot: Arc::clone(&self.index),
+            }),
+            _ => None,
+        }
+    }
+}
+
+/// Looks up what the index knows about the files that have a note, on a
+/// blocking thread like [`ColumnReader`].
+pub struct NoteLinkFinder {
+    slot: IndexSlot,
+}
+
+impl fmt::Debug for NoteLinkFinder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NoteLinkFinder").finish_non_exhaustive()
+    }
+}
+
+impl NoteLinkFinder {
+    /// For each `(document id, file path)` as the note has it, the id and the
+    /// current path of the file, in the same order. The id survives a move, so
+    /// it wins over the path; a note without an id gets the id of the document
+    /// at its path, and a file the index does not know keeps what it had.
+    pub fn resolve(
+        self,
+        links: &[(Option<i64>, PathBuf)],
+    ) -> Result<Vec<(Option<i64>, PathBuf)>, String> {
+        let guard = lock(&self.slot);
+        let index = guard.as_ref().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
+        links
+            .iter()
+            .map(|(known, file)| {
+                let document = match known {
+                    Some(id) => index
+                        .document(ncrs_index::DocumentId::from_number(*id))
+                        .map_err(|err| err.to_string())?
+                        .filter(|document| document.missing_since.is_none()),
+                    None => index
+                        .document_by_path(file)
+                        .map_err(|err| err.to_string())?,
+                };
+                Ok(match document {
+                    Some(found) => (Some(found.id.number()), found.path),
+                    None => (*known, file.clone()),
+                })
+            })
+            .collect()
+    }
+}
+
+impl FilingModule {
+    /// Like [`Self::process_again_finder`]: looks at the phase only.
+    pub fn note_link_finder(&self) -> Option<NoteLinkFinder> {
+        match self.phase {
+            Phase::Ready => Some(NoteLinkFinder {
                 slot: Arc::clone(&self.index),
             }),
             _ => None,

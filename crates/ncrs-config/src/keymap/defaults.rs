@@ -257,6 +257,12 @@ pub fn default_bindings() -> Vec<(KeyAction, Binding)> {
             A::HermesProcessAgain,
             Binding::with_modifiers(Character("h".into()), Modifiers::COMMAND | Modifiers::SHIFT),
         ),
+        // The note on the file under the cursor, N for note; Cmd+Shift+N,
+        // Ctrl+Shift+N elsewhere.
+        (
+            A::NoteOnFile,
+            Binding::with_modifiers(Character("n".into()), Modifiers::COMMAND | Modifiers::SHIFT),
+        ),
         // The saved queries, A for abfragen; Cmd+Shift+A, Ctrl+Shift+A elsewhere.
         (
             A::SavedQueries,

@@ -288,7 +288,9 @@ impl App {
 
     /// Every dialog and card that covers the panels and the pages.
     pub(in crate::app) fn dialog_is_open(&self) -> bool {
-        self.dialog_apart_from_hermes_is_open() || self.hermes.quick_fix.is_some()
+        self.dialog_apart_from_hermes_is_open()
+            || self.hermes.quick_fix.is_some()
+            || self.hermes.confirm_again.is_some()
     }
 
     pub(in crate::app) fn dialog_apart_from_hermes_is_open(&self) -> bool {
@@ -343,6 +345,10 @@ impl App {
     /// Writes the session state here and now, then ends the app: the runtime
     /// stops right after, so no task would run.
     pub(in crate::app) fn quit(&mut self) -> Task<Message> {
+        // A note typed in the last pause before its save is still only in memory.
+        if let Err(reason) = ncrs_notes::flush_now(&mut self.notes) {
+            eprintln!("ncrs: the note could not be saved on quit: {reason}");
+        }
         if let Some(path) = &self.state_path {
             write_session_state(
                 &self.session_writes,

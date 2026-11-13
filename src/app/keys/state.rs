@@ -29,6 +29,8 @@ impl App {
         input.batch_rename_dialog = self.ops.batch_rename.is_some();
         input.settings = self.settings_shown() && !self.blocking_overlay_is_open();
         input.monitor = self.monitor_shown();
+        input.viewer = self.viewer_shown();
+        input.notes = self.notes_shown() && !self.blocking_overlay_is_open();
         input.monitor_filter = self.monitor_shown()
             && self.monitor.filter_has_focus()
             && !self.blocking_overlay_is_open();
@@ -62,6 +64,7 @@ impl App {
             .as_ref()
             .is_some_and(ContextMenu::submenu_is_open);
         let quick_fix = self.hermes.quick_fix.is_some();
+        let confirm_again = self.hermes.confirm_again.is_some();
         let path_editing =
             self.panels.path_field.is_some() || self.panels.renaming_side().is_some();
         let command_line = self.command_line.is_focused();
@@ -94,6 +97,10 @@ impl App {
         let monitor_filter = monitor && self.monitor.filter_has_focus();
         let monitor_dialog = monitor && self.monitor.dialog_is_open();
         let monitor_menu = monitor && self.monitor.menu_is_open();
+        let viewer = self.viewer_shown();
+        let viewer_markdown = viewer && self.viewer.shows_markdown();
+        let notes = self.notes_shown();
+        let notes_editing = notes && self.notes.editing();
         let transfer_dialog = self.ops.transfer_dialog.is_some();
         let transfer_progress = self.ops.progress_mask_is_open();
         let permissions_dialog = self.ops.permissions_dialog.is_some();
@@ -118,6 +125,7 @@ impl App {
                 favourite_menu,
                 context_submenu,
                 quick_fix,
+                confirm_again,
                 path_editing,
                 command_line,
                 search,
@@ -141,6 +149,10 @@ impl App {
                 monitor_filter,
                 monitor_dialog,
                 monitor_menu,
+                viewer,
+                viewer_markdown,
+                notes,
+                notes_editing,
                 // A conflict is asked while no prompt is open — the prompt is
                 // gone by then, the transfer is what is running. Without this
                 // the dialog's keys would fall through to the panels.
@@ -164,6 +176,7 @@ impl App {
                 favourite_menu,
                 context_submenu,
                 quick_fix,
+                confirm_again,
                 path_editing,
                 command_line,
                 search,
@@ -187,6 +200,10 @@ impl App {
                 monitor_filter,
                 monitor_dialog,
                 monitor_menu,
+                viewer,
+                viewer_markdown,
+                notes,
+                notes_editing,
                 conflict_open: self.ops.conflict_is_open(),
                 transfer_dialog,
                 transfer_progress,

@@ -227,6 +227,21 @@ The same window in German, switched with F9.
   space of about its size is needed) and replaces the original only when that succeeded; a
   7z archive is recompressed completely, and tar extras (extended attributes, sub-second
   times) are not kept. Links and special files in the selection are skipped and counted.
+  "Extract here" in the context menu unpacks an archive next to itself: one top-level entry lands
+  as it is, anything else goes into a folder named after the archive; a name that is taken becomes
+  `x 2`, never overwritten. "Pack…" in the context menu opens the pack dialog, where the format
+  (zip, tar, tar.gz, tar.zst, 7z) is chosen
+- Internal viewer: `F3` can show a file in a tab of ncrs instead of an external program, Markdown
+  rendered (`Tab` switches to the source) and other text as text. Settings › Programs has "F3 by
+  file type": for each list of extensions the first matching row says "Internal", "System" or an
+  own program
+- Notes: the "Notes" tab (command list, `F1`) keeps Markdown files in a folder as a tree, with a
+  full-text search over all of them. "Note on file" (`Shift`+`Cmd`+`N`, `Shift`+`Ctrl`+`N` on Linux
+  and Windows) opens a note that belongs to the file under the cursor, marks the file in the
+  panel and, for a file in a place Hermes indexes, follows it when it is moved. A note is written
+  while you type.
+  On a wide window the editor sits left and the rendered note right; on a narrow one "View" and
+  "Edit" switch
 - A favourites bar with the first five favourite folders, `Cmd`+`1` to `5` (`Ctrl` on Linux and Windows)
 - `Enter` and a double click open a file with the system's own program, like the Finder; a file
   that could run asks first. On macOS an app starts directly, and "Show package contents" enters it
@@ -267,9 +282,10 @@ The defaults. Most of them can be changed in the keyboard shortcuts dialog (`Cmd
 | Click the path in the status bar | Edit the path (`Enter` goes there, `~` is home, `Esc` puts the current path back); the icon beside it copies the folder path |
 | `F2`               | Open the Hermes chat (Beta): open a folder and Hermes shows how it is ordered, makes a rule from it and files only after you confirm; runs can be undone; `Esc` closes it |
 | `Shift`+`F2`       | Focus the command line below the panels: `cd` changes the active panel's folder, any other command runs in the shell in that folder (the status bar shows its exit status; its output is not shown). `↑`/`↓` walk the commands of this session, `Esc` or `Shift`+`F2` goes back to the panels |
-| `F3` / `F4`        | View / edit the file under the cursor in an external program (programs configurable, see [Configuration](#configuration)) |
+| `F3` / `F4`        | View / edit the file under the cursor: `F3` in the internal viewer or an external program, per file type (Settings › Programs, see [Configuration](#configuration)); `F4` in an external program. In the viewer tab `Tab` switches rendered / source, `Esc` closes it |
 | `F5` / `F6`        | Copy / move to the other panel          |
 | `Shift`+`F6`       | Rename the row under the cursor in place: `Enter` renames, `Esc` cancels. With two or more tagged entries: batch rename by a pattern |
+| `Shift`+`Cmd`+`N` / `Shift`+`Ctrl`+`N` | Note on file: opens the note that belongs to the file under the cursor in the Notes tab, made if there is none, ready to type; `Esc` leaves the editor, then the tab |
 | `Alt`+`F5`         | Pack the tagged rows (else the cursor row) into a new archive in the other panel's folder; asks for the name (ends in `.zip`, `.tar`, `.tar.gz`, `.tgz`, `.tar.zst`, `.tzst` or `.7z`) |
 | `F7`               | Create directory                        |
 | `Shift`+`F4`       | New file: creates an empty file under the name asked for and opens it in the editor like `F4`; an existing name is never overwritten |

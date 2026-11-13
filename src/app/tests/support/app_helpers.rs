@@ -38,6 +38,10 @@ impl App {
             app.apply_look(config.clone());
         }
         if let Some(state) = app.settings.page.as_mut() {
+            state.type_rows = file
+                .as_ref()
+                .map(|config| settings_ui::rows_of(&config.open.type_rules()))
+                .unwrap_or_default();
             state.file = file.map(Box::new);
         }
         app
@@ -267,6 +271,10 @@ impl App {
     /// Whether F3 is unpacking a file out of an archive.
     ///
     /// Read by the end-to-end tests, which cannot reach the private field.
+    pub fn quit_for_test(&mut self) {
+        drop(self.quit());
+    }
+
     pub fn is_extracting_for_test(&self) -> bool {
         self.ops.extracting.is_some()
     }

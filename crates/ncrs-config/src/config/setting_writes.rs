@@ -370,6 +370,34 @@ pub fn program_setting(kind: OpenKind, line: Option<&ProgramLine>) -> Setting {
     }
 }
 
+/// `by_type` in `[open]` as one array of inline tables, which reads back the
+/// same as `[[open.by_type]]`. An empty list is written too: it switches the
+/// default rule off.
+pub fn open_rules_setting(rules: &[OpenRule]) -> Setting {
+    let entry = |rule: &OpenRule| {
+        let mut table = toml_edit::InlineTable::new();
+        table.insert(
+            "extensions",
+            toml_edit::Value::Array(rule.extensions.iter().map(String::as_str).collect()),
+        );
+        let (with, program) = match &rule.with {
+            OpenWith::Internal => ("internal", None),
+            OpenWith::System => ("system", None),
+            OpenWith::Program(line) => ("program", Some(line.to_text())),
+        };
+        table.insert("with", with.into());
+        if let Some(line) = program {
+            table.insert("program", line.as_str().into());
+        }
+        toml_edit::Value::InlineTable(table)
+    };
+    Setting {
+        tables: &[OPEN_TABLE],
+        key: "by_type",
+        value: Some(toml_edit::Value::Array(rules.iter().map(entry).collect())),
+    }
+}
+
 pub fn vscode_theme_setting(file: Option<&str>) -> Setting {
     Setting {
         tables: &[THEME_TABLE],
@@ -455,6 +483,12 @@ pub fn write_program(
         program_setting(kind, line),
         home_from_env().as_deref(),
     )
+}
+
+/// Sets the `[[open.by_type]]` rules of F3; same guarantees as
+/// [`write_theme_preset`].
+pub fn write_open_rules(path: &Path, rules: &[OpenRule]) -> Result<Config, FilingWriteError> {
+    write_setting(path, open_rules_setting(rules), home_from_env().as_deref())
 }
 
 /// Drops `vscode` from `[theme]`; same guarantees as [`write_theme_preset`].

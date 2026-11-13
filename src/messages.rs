@@ -271,12 +271,16 @@ pub enum Message {
     CreateFilePrompt,
     /// Alt+F5: ask for the name of a new archive in the other panel's folder.
     PackPrompt,
+    /// Unpack the archives under the cursor or tagged next to themselves.
+    ExtractHere,
     /// Option+Cmd+R (Ctrl+Alt+R elsewhere): open the permissions dialog for the tagged entries.
     PermissionsPrompt,
     /// A keystroke went to the open prompt.
     PromptInput(String),
     /// The "Keep folders" box of the pack prompt for a hit list was clicked.
     PromptToggleKeepFolders,
+    /// A format of the pack dialog was chosen.
+    PromptFormat(crate::fs::archive::ArchiveFormat),
     /// The user confirmed the prompt.
     PromptSubmit,
     /// The user dismissed the prompt.
@@ -315,6 +319,13 @@ pub enum Message {
     Search(SearchMessage),
     // --- The System page (F12) ---
     Monitor(ncrs_monitor::MonitorMessage),
+    // --- The file viewer tab (F3 on a file the config opens internally) ---
+    Viewer(ncrs_viewer::Message),
+    // --- The notes tab, opened from the command list or on a file ---
+    Notes(ncrs_notes::Message),
+    OpenNotes,
+    /// The note on the file under the cursor, made when there is none.
+    NoteOnFile,
     // --- The check for a newer release ---
     Updates(ncrs_updates::Message),
     /// The version at the right of the status bar: the Updates page, or the
@@ -414,6 +425,8 @@ pub enum ShownTab {
     Panels,
     Settings,
     Monitor,
+    Viewer,
+    Notes,
     Hermes,
 }
 

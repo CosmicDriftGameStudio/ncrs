@@ -408,3 +408,73 @@ pub fn search_toggle_for_press(
         _ => None,
     }
 }
+
+/// The viewer tab is up: it takes its own keys; of the bindings only the ones
+/// that switch pages or quit pass.
+pub(in crate::app) fn viewer_page_key(
+    prompt: &PromptKeyState,
+    key: &Key,
+    key_modifiers: Modifiers,
+    scope: KeyScope,
+) -> Option<Message> {
+    if let Some(message) = ncrs_viewer::viewer_key(key, key_modifiers, prompt.viewer_markdown) {
+        return Some(Message::Viewer(message));
+    }
+    bound_message(&prompt.keymap, key, key_modifiers, scope).filter(|message| {
+        *message == Message::Quit
+            || *message == KeyAction::CommandPalette.message()
+            || *message == KeyAction::SystemMonitor.message()
+            || *message == KeyAction::Settings.message()
+            || *message == KeyAction::HermesChat.message()
+            || *message == KeyAction::NextTab.message()
+            || *message == KeyAction::PreviousTab.message()
+            || *message == KeyAction::KeyBindings.message()
+    })
+}
+
+/// The notes tab is up: it takes its own keys; of the bindings only the ones
+/// that switch pages or quit pass.
+pub(in crate::app) fn notes_page_key(
+    prompt: &PromptKeyState,
+    key: &Key,
+    key_modifiers: Modifiers,
+    scope: KeyScope,
+) -> Option<Message> {
+    if let Some(message) = ncrs_notes::notes_key(key, key_modifiers, prompt.notes_editing) {
+        return Some(Message::Notes(message));
+    }
+    bound_message(&prompt.keymap, key, key_modifiers, scope).filter(|message| {
+        *message == Message::Quit
+            || *message == KeyAction::CommandPalette.message()
+            || *message == KeyAction::SystemMonitor.message()
+            || *message == KeyAction::Settings.message()
+            || *message == KeyAction::HermesChat.message()
+            || *message == KeyAction::NextTab.message()
+            || *message == KeyAction::PreviousTab.message()
+            || *message == KeyAction::KeyBindings.message()
+    })
+}
+
+pub(in crate::app) fn viewer_or_monitor_key(
+    prompt: &PromptKeyState,
+    key: &Key,
+    key_modifiers: Modifiers,
+    scope: KeyScope,
+) -> Option<Message> {
+    if prompt.notes {
+        notes_page_key(prompt, key, key_modifiers, scope)
+    } else if prompt.viewer {
+        viewer_page_key(prompt, key, key_modifiers, scope)
+    } else {
+        monitor_page_key(prompt, key, key_modifiers, scope)
+    }
+}
+
+/// The question about many files, else the quick-fix menu, takes the keys.
+pub(in crate::app) fn hermes_popup_key(prompt: &PromptKeyState, key: &Key) -> Option<Message> {
+    if prompt.confirm_again {
+        ncrs_hermes_ui::keys::confirm_again_key(key).map(Message::from)
+    } else {
+        ncrs_hermes_ui::keys::quick_fix_key(key).map(Message::from)
+    }
+}

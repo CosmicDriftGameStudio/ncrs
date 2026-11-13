@@ -9,7 +9,7 @@ use ncrs_i18n::{Language, Msg};
 
 use crate::column_header::{column_alignment, ColumnLayout};
 use crate::compare_cell::{blank_compare_cell, compare_cell, CompareCell};
-use crate::file_icon::{file_icon, icon_color, icon_kind, IconKind, SpecialFolder};
+use crate::file_icon::{file_icon, icon_color, icon_kind, note_marker, IconKind, SpecialFolder};
 use crate::format;
 use crate::hermes_state::{
     abbreviated, role_message, state_label, summary_items, FolderRole, FolderSummary,
@@ -97,6 +97,7 @@ pub fn hit_row<'a, M: Clone + 'a>(
             compare: CompareCell::Off,
             hit_scope: Some((scope, height)),
             third_line,
+            has_note: false,
             columns: ColumnLayout::standard(lang),
             special: None,
         },
@@ -131,6 +132,8 @@ pub struct RowExtras<'a, M> {
     pub hit_scope: Option<(&'a Path, f32)>,
     /// Under the folder of a hit.
     pub third_line: Option<Element<'a, M>>,
+    /// A note belongs to this file: a small marker follows the name.
+    pub has_note: bool,
 }
 
 impl<M> std::fmt::Debug for RowExtras<'_, M> {
@@ -159,6 +162,7 @@ pub fn file_row<'a, M: Clone + 'a>(
         compare,
         hit_scope,
         third_line,
+        has_note,
     } = extras;
     let kind = icon_kind(entry, special);
     // The cursor row of the active panel is the one drawn as highlighted; a
@@ -205,7 +209,9 @@ pub fn file_row<'a, M: Clone + 'a>(
         ),
         _ => name,
     };
+    let note_color = if highlighted { color } else { palette.accent };
     let name_cell = row![cell(shown_name)]
+        .extend(has_note.then(|| note_marker(note_color, font_size::FILE)))
         .extend(hermes.as_ref().and_then(HermesCell::role_tag))
         .extend(
             hermes

@@ -18,7 +18,7 @@ use crate::e2e_tests::{Outcome, Session};
 use crate::filing::{FilingMessage, Phase};
 use crate::messages::Message;
 
-type Store = Arc<dyn KeyStore + Send + Sync>;
+pub type Store = Arc<dyn KeyStore + Send + Sync>;
 
 const FILING_ONLY: &str = "version = 1\n[modules.filing]\nenabled = true\n";
 const FILING_AI: &str = "version = 1\n[modules.filing]\nenabled = true\n[modules.filing.ai]\nenabled = true\nprovider = \"local\"\n";
@@ -47,13 +47,22 @@ impl KeyStore for RefusingStore {
     }
 }
 
-fn empty_store() -> Store {
+pub fn empty_store() -> Store {
     Arc::new(InMemoryKeyStore::empty())
 }
 
-fn boot(
+pub fn boot(
     data: &Path,
     store: Store,
+) -> Session<impl iced::Program<State = App, Message = Message> + 'static> {
+    boot_with(data, store, crate::session_state::SessionState::default())
+}
+
+/// Like [`boot`], with the saved session the panels start from.
+pub fn boot_with(
+    data: &Path,
+    store: Store,
+    saved: crate::session_state::SessionState,
 ) -> Session<impl iced::Program<State = App, Message = Message> + 'static> {
     let boot_data = data.to_path_buf();
     // iced boots inside its runtime; `Session::boot` does not.
@@ -79,8 +88,7 @@ fn boot(
                 ssh_known_hosts: None,
                 own_known_hosts: None,
             };
-            let (app, task) =
-                App::restored(environment, crate::session_state::SessionState::default());
+            let (app, task) = App::restored(environment, saved.clone());
             (
                 app.with_trash(Arc::clone(&trash))
                     .with_folder_picker(picker),
@@ -90,7 +98,7 @@ fn boot(
     ))
 }
 
-fn pump_for<P>(session: &mut Session<P>, span: Duration, until: fn(&App) -> bool)
+pub fn pump_for<P>(session: &mut Session<P>, span: Duration, until: fn(&App) -> bool)
 where
     P: iced::Program<State = App, Message = Message> + 'static,
 {

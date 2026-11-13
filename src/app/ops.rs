@@ -361,6 +361,25 @@ impl App {
         })
     }
 
+    /// "Extract here": the tagged archives, else the one under the cursor.
+    pub(in crate::app) fn extract_here(&mut self) -> Task<Message> {
+        let panel = self.active_panel();
+        let rows: Vec<&fs::FileEntry> = if panel.selection.any_tagged() {
+            panel.selection.ordered(&panel.entries)
+        } else {
+            panel.selected_entry().into_iter().collect()
+        };
+        let archives: Vec<PathBuf> = rows
+            .into_iter()
+            .filter(|entry| {
+                !entry.is_dir && !entry.is_parent && fs::archive::is_archive_name(&entry.name)
+            })
+            .map(|entry| entry.path.clone())
+            .collect();
+        let side = self.panels.active;
+        self.with_ops(|ops, ctx| ncrs_ops::start_extract_here(ops, archives, side, ctx))
+    }
+
     /// The rights key or menu entry: the dialog for the tagged entries, else
     /// the one under the cursor. The search and trash views have no entries
     /// of a folder to change.

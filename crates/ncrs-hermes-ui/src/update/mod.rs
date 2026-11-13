@@ -175,10 +175,33 @@ pub fn read_paths_again(hermes: &mut Hermes, paths: Vec<PathBuf>, ctx: &Ctx<'_>)
     (Task::none(), actions)
 }
 
-pub fn process_again(hermes: &mut Hermes, path: &Path, ctx: &Ctx<'_>) -> Outcome {
+pub fn process_again(hermes: &Hermes, paths: Vec<PathBuf>, ctx: &Ctx<'_>) -> Outcome {
     let mut actions = Vec::new();
-    hermes_file::process_again(hermes, path, ctx, &mut actions);
+    let task = hermes_file::process_again(hermes, paths, ctx, &mut actions);
+    (task, actions)
+}
+
+pub fn process_found_again(
+    hermes: &mut Hermes,
+    result: Result<Vec<PathBuf>, String>,
+    ctx: &Ctx<'_>,
+) -> Outcome {
+    let mut actions = Vec::new();
+    hermes_file::process_found_again(hermes, result, ctx, &mut actions);
     (Task::none(), actions)
+}
+
+/// The question about many files to process again: yes queues them.
+pub fn confirm_process_again(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Outcome {
+    let mut actions = Vec::new();
+    hermes_file::confirm_process_again(hermes, ctx, &mut actions);
+    (Task::none(), actions)
+}
+
+/// The question about many files to process again: no, they are dropped.
+pub fn cancel_process_again(hermes: &mut Hermes) -> Outcome {
+    hermes.confirm_again = None;
+    (Task::none(), Vec::new())
 }
 
 pub fn set_folder_role(hermes: &Hermes, folder: &Path, role: FolderRole, ctx: &Ctx<'_>) -> Outcome {
