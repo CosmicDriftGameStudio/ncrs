@@ -124,7 +124,7 @@ fn german_labels_match_in_german() {
     assert!(labels(&palette).contains(&"In Dateien suchen"));
     assert_eq!(
         labels(&asked(Language::German, "zu datei")),
-        ["Zu Datei springen"]
+        ["Zu Datei springen", "Notiz zur Datei"]
     );
 }
 
