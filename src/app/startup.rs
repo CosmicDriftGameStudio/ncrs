@@ -192,7 +192,11 @@ impl App {
             .with_filing(&filing, index_path, key_store);
         app.refresh_special_folders();
         let first_check = Task::done(Message::Updates(ncrs_updates::Message::CheckDue));
-        (app, Task::batch([panel_loads, filing_start, first_check]))
+        let notes_start = app.start_notes();
+        (
+            app,
+            Task::batch([panel_loads, filing_start, first_check, notes_start]),
+        )
     }
 
     /// Starts the filing module when `filing` switches it on. The module
@@ -222,6 +226,9 @@ impl App {
                 self.theme_preset = config.theme_preset();
                 self.vscode_theme = config.vscode_theme_path().map(str::to_owned);
                 self.open_programs = config.open;
+                if let Some(folder) = config.notes.folder {
+                    self.notes = ncrs_notes::State::new(folder);
+                }
                 self.saved_servers = config.servers;
                 self.file_list_tags = config.file_list_tags;
                 self.columns = config.columns;
@@ -424,6 +431,7 @@ impl App {
         cursors: [Option<String>; 2],
     ) -> (Self, Task<Message>) {
         let [left_cursor, right_cursor] = cursors;
+        let notes_root = home.join("Notes");
         let mut app = Self {
             panels: Panels::new(
                 PanelState::new(left.clone()),
@@ -469,6 +477,8 @@ impl App {
             search: ncrs_search::Search::new(layout::INITIAL_WINDOW_SIZE),
             monitor: ncrs_monitor::State::default(),
             viewer: ncrs_viewer::State::default(),
+            notes: ncrs_notes::State::new(notes_root),
+            noted: Default::default(),
             shown_tab: crate::messages::ShownTab::default(),
             updates: ncrs_updates::State::new(
                 env!("NCRS_DISPLAY_VERSION"),

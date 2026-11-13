@@ -2658,6 +2658,7 @@ mod acceptance;
 mod process_again;
 
 #[cfg(test)]
+mod notes;
 mod viewer;
 
 #[cfg(test)]

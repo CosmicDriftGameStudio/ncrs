@@ -41,6 +41,7 @@ fn rows_without_a_mark_keep_the_compare_column_free() {
         entry("unmarked.txt", false, 4_096),
     ];
     let marks = CompareMarks::from([(OsString::from("marked.txt"), CompareMark::NewerHere)]);
+    let noted = std::collections::HashSet::new();
     let mut simulator = Simulator::with_size(
         iced::Settings {
             default_font: ncrs_ui_kit::APP_FONT,
@@ -59,6 +60,7 @@ fn rows_without_a_mark_keep_the_compare_column_free() {
                 hermes_cell: None,
                 columns: ColumnSettings::STANDARD,
                 special_folders: &[],
+                noted: &noted,
                 header_drag: None,
             },
         ),

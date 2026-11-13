@@ -2,7 +2,7 @@
 
 use iced::widget::checkbox as widget_checkbox;
 use iced::widget::text::{LineHeight, Shaping};
-use iced::widget::text_input;
+use iced::widget::{text_editor, text_input};
 use iced::{Element, Length, Pixels};
 
 use crate::palette::Palette;
@@ -148,4 +148,41 @@ pub fn checkbox<'a, M: Clone + 'a>(
         boxed = boxed.on_toggle(move |_| message.clone());
     }
     boxed.into()
+}
+
+/// A field for a longer text that wraps and takes lines, set in the monospace
+/// font, as a note is edited. It fills the room it is given.
+pub fn text_area<'a, M: Clone + 'a>(
+    content: &'a text_editor::Content,
+    id: &'static str,
+    on_action: impl Fn(text_editor::Action) -> M + 'a,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let base = theme::field_input(palette);
+    text_editor(content)
+        .id(id)
+        .on_action(on_action)
+        .font(crate::APP_FONT)
+        .size(font_size::BODY)
+        .padding(spacing::L)
+        .height(Length::Fill)
+        .style(move |theme, status| {
+            let input_status = match status {
+                text_editor::Status::Active => text_input::Status::Active,
+                text_editor::Status::Hovered => text_input::Status::Hovered,
+                text_editor::Status::Focused { is_hovered } => {
+                    text_input::Status::Focused { is_hovered }
+                }
+                text_editor::Status::Disabled => text_input::Status::Disabled,
+            };
+            let style = base(theme, input_status);
+            text_editor::Style {
+                background: style.background,
+                border: style.border,
+                placeholder: style.placeholder,
+                value: style.value,
+                selection: style.selection,
+            }
+        })
+        .into()
 }

@@ -106,6 +106,8 @@ key_actions! {
     HermesExclude => "hermes_exclude",
     HermesInspect => "hermes_inspect",
     SavedQueries => "saved_queries",
+    Notes => "notes",
+    NoteOnFile => "note_on_file",
     SearchDocuments => "search_documents",
     FetchTheme => "fetch_theme",
     Settings => "settings",
@@ -225,6 +227,8 @@ impl KeyAction {
             | Self::HermesExclude
             | Self::HermesInspect
             | Self::SavedQueries
+            | Self::Notes
+            | Self::NoteOnFile
             | Self::SearchDocuments
             | Self::FileListTagsToggle
             | Self::FileListTagsChoose
@@ -402,6 +406,7 @@ impl KeyAction {
             | Self::FilingStatus
             | Self::Rules
             | Self::SavedQueries
+            | Self::Notes
             | Self::FileListTagsToggle
             | Self::FileListTagsChoose
             | Self::FetchTheme
@@ -431,6 +436,7 @@ impl KeyAction {
             | Self::Permissions
             | Self::ComputeFolderSizes
             | Self::AddFavourite
+            | Self::NoteOnFile
             | Self::RemoveFavourite
             | Self::Search
             | Self::SearchDocuments
@@ -504,6 +510,7 @@ impl KeyAction {
             | Self::FilingStatus
             | Self::Rules
             | Self::SavedQueries
+            | Self::Notes
             | Self::FileListTagsToggle
             | Self::FileListTagsChoose
             | Self::FetchTheme
@@ -534,6 +541,7 @@ impl KeyAction {
             | Self::Permissions
             | Self::ComputeFolderSizes
             | Self::AddFavourite
+            | Self::NoteOnFile
             | Self::RemoveFavourite
             | Self::Search
             | Self::SearchDocuments

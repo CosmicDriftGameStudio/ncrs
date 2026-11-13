@@ -243,3 +243,59 @@ impl FilingModule {
         }
     }
 }
+
+/// Looks up what the index knows about the files that have a note, on a
+/// blocking thread like [`ColumnReader`].
+pub struct NoteLinkFinder {
+    slot: IndexSlot,
+}
+
+impl fmt::Debug for NoteLinkFinder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NoteLinkFinder").finish_non_exhaustive()
+    }
+}
+
+impl NoteLinkFinder {
+    /// For each `(document id, file path)` as the note has it, the id and the
+    /// current path of the file, in the same order. The id survives a move, so
+    /// it wins over the path; a note without an id gets the id of the document
+    /// at its path, and a file the index does not know keeps what it had.
+    pub fn resolve(
+        self,
+        links: &[(Option<i64>, PathBuf)],
+    ) -> Result<Vec<(Option<i64>, PathBuf)>, String> {
+        let guard = lock(&self.slot);
+        let index = guard.as_ref().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
+        links
+            .iter()
+            .map(|(known, file)| {
+                let document = match known {
+                    Some(id) => index
+                        .document(ncrs_index::DocumentId::from_number(*id))
+                        .map_err(|err| err.to_string())?
+                        .filter(|document| document.missing_since.is_none()),
+                    None => index
+                        .document_by_path(file)
+                        .map_err(|err| err.to_string())?,
+                };
+                Ok(match document {
+                    Some(found) => (Some(found.id.number()), found.path),
+                    None => (*known, file.clone()),
+                })
+            })
+            .collect()
+    }
+}
+
+impl FilingModule {
+    /// Like [`Self::process_again_finder`]: looks at the phase only.
+    pub fn note_link_finder(&self) -> Option<NoteLinkFinder> {
+        match self.phase {
+            Phase::Ready => Some(NoteLinkFinder {
+                slot: Arc::clone(&self.index),
+            }),
+            _ => None,
+        }
+    }
+}

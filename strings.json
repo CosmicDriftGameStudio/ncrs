@@ -10891,6 +10891,114 @@
       "de": "{name} lässt sich nicht lesen: {reason}"
     },
     {
+      "key": "action.notes",
+      "context": "Entry of the command list that runs the key action notes: it opens the notes tab. Also the title of that tab, the name of the top of its tree and the key of its status bar. Noun, plural.",
+      "en": "Notes",
+      "de": "Notizen"
+    },
+    {
+      "key": "action.note_on_file",
+      "context": "Entry of the command list and of the context menu of a file that runs the key action note_on_file: it opens the note that belongs to the file in the notes tab, made if there is none, ready to type. The shortcut is shown next to it.",
+      "en": "Note on file",
+      "de": "Notiz zur Datei"
+    },
+    {
+      "key": "notes.search_placeholder",
+      "context": "Notes tab: placeholder of the search field above the tree; the search looks through the text of all notes.",
+      "en": "Search notes",
+      "de": "Notizen durchsuchen"
+    },
+    {
+      "key": "notes.new_note",
+      "context": "Notes tab: button that makes a new note, and the title a new note starts with until its first line gives it one. Verb, imperative, short.",
+      "en": "New note",
+      "de": "Neue Notiz"
+    },
+    {
+      "key": "notes.new_folder",
+      "context": "Notes tab: button that makes a new folder in the tree, and the name the new folder starts with. Short.",
+      "en": "New folder",
+      "de": "Neuer Ordner"
+    },
+    {
+      "key": "notes.files_group",
+      "context": "Notes tab: the made-up group in the tree that lists the notes on files, and the word before the path of the file in the line under a note's title. Kept short, in brackets, because it is not a folder on disk.",
+      "en": "(Files)",
+      "de": "(Dateien)"
+    },
+    {
+      "key": "notes.mode_view",
+      "context": "Notes tab: the segment that shows the note formatted (headings, lists, links). Noun, short.",
+      "en": "View",
+      "de": "Ansicht"
+    },
+    {
+      "key": "notes.mode_edit",
+      "context": "Notes tab: the segment that puts the note in an editor, where it is saved while typing. Noun, short.",
+      "en": "Edit",
+      "de": "Bearbeiten"
+    },
+    {
+      "key": "notes.show_file",
+      "context": "Notes tab: button on a note on a file that shows that file in the active panel. Verb, imperative.",
+      "en": "Show file",
+      "de": "Datei zeigen"
+    },
+    {
+      "key": "notes.changed",
+      "context": "Notes tab: part of the line under a note's title; {time} is the date and time the note was last changed.",
+      "en": "changed {time}",
+      "de": "geändert {time}"
+    },
+    {
+      "key": "notes.none_shown",
+      "context": "Notes tab: what the right side says while no note is chosen.",
+      "en": "Choose a note or make a new one.",
+      "de": "Eine Notiz wählen oder eine neue anlegen."
+    },
+    {
+      "key": "notes.search_none",
+      "context": "Notes tab: what the list says when the search finds no note.",
+      "en": "No note found.",
+      "de": "Keine Notiz gefunden."
+    },
+    {
+      "key": "notes.status_view",
+      "context": "Status line of the notes tab while a note is shown. The keys are written as they are on the keyboard; ⌘ is the Command key.",
+      "en": "⌘N new note · Enter edits · Esc closes",
+      "de": "⌘N neue Notiz · Enter bearbeitet · Esc schließt"
+    },
+    {
+      "key": "notes.status_edit",
+      "context": "Status line of the notes tab while a note is edited.",
+      "en": "Saves while you type · Esc back to the view",
+      "de": "Speichert beim Tippen · Esc zurück zur Ansicht"
+    },
+    {
+      "key": "notes.status_search",
+      "context": "Status line of the notes tab while the search shows hits.",
+      "en": "Full text over all notes · Enter opens the hit",
+      "de": "Volltext über alle Notizen · Enter öffnet den Treffer"
+    },
+    {
+      "key": "notes.problem",
+      "context": "Notes tab: shown in the status line when the notes folder cannot be read. {path} is the folder, {reason} the system's reason.",
+      "en": "The notes folder {path} cannot be used: {reason}",
+      "de": "Der Notizen-Ordner {path} lässt sich nicht verwenden: {reason}"
+    },
+    {
+      "key": "notes.write_failed",
+      "context": "Error when a note or a folder of the notes cannot be written. {reason} is the system's reason with the path.",
+      "en": "Cannot save the note: {reason}",
+      "de": "Die Notiz lässt sich nicht speichern: {reason}"
+    },
+    {
+      "key": "notes.status_note",
+      "context": "Status bar of the file panels: the note that belongs to the file under the cursor. {line} is the first line of the note, cut short.",
+      "en": "Note: {line}",
+      "de": "Notiz: {line}"
+    },
+    {
       "key": "settings.by_type_title",
       "context": "Heading of a block on the programs page of the settings: one row per file type that says what F3 does with it. Upper case in German as the other block headings.",
       "en": "F3 BY FILE TYPE",

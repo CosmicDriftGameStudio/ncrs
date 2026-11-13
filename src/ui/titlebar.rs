@@ -25,6 +25,7 @@ pub const HERMES_CHIP_ID: &str = "title-hermes-chip";
 pub const SETTINGS_TAB_ID: &str = "title-tab-settings";
 pub const MONITOR_TAB_ID: &str = "title-tab-monitor";
 pub const VIEWER_TAB_ID: &str = "title-tab-viewer";
+pub const NOTES_TAB_ID: &str = "title-tab-notes";
 pub const HERMES_TAB_ID: &str = "title-tab-hermes";
 const CLOSE_CROSS: &str = "×";
 /// Characters of room the cross of a hit list tab takes from its title.
@@ -76,6 +77,7 @@ pub enum PageTab {
     System,
     /// The file viewer; the title is the file name.
     Viewer(String),
+    Notes,
     Hermes,
 }
 
@@ -244,6 +246,13 @@ pub fn view<'a>(bar: &TitleBar<'a>) -> Element<'a, Message> {
                     ShownTab::Viewer,
                     Message::Viewer(ncrs_viewer::Message::Close),
                 ),
+                palette,
+            ),
+            PageTab::Notes => page_tab(
+                lang.text(Msg::ActionNotes),
+                NOTES_TAB_ID,
+                open.active,
+                (ShownTab::Notes, Message::Notes(ncrs_notes::Message::Close)),
                 palette,
             ),
             PageTab::Hermes => page_tab(

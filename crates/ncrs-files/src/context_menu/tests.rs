@@ -31,7 +31,7 @@ fn the_menu_has_the_five_groups_with_separators() {
         .filter(|entry| **entry == MenuEntry::Separator)
         .count();
     assert_eq!(separators, 4);
-    assert_eq!(menu.entries().len(), 15 + 4);
+    assert_eq!(menu.entries().len(), 16 + 4);
     assert_eq!(selected_action(&menu), ContextAction::Open);
 }
 
@@ -90,7 +90,7 @@ fn navigation_skips_separators_and_greyed_out_entries() {
     menu.move_by(-1);
     assert_eq!(selected_action(&menu), ContextAction::ComputeFolderSizes);
     menu.move_by(-1);
-    assert_eq!(selected_action(&menu), ContextAction::CopyName);
+    assert_eq!(selected_action(&menu), ContextAction::NoteOnFile);
     menu.select_first();
     assert_eq!(selected_action(&menu), ContextAction::Open);
 }

@@ -35,6 +35,7 @@ pub(in crate::app) fn archive_refusal(panel: &PanelState, message: &Message) -> 
         | Message::CreateFilePrompt
         | Message::ComputeFolderSizes
         | Message::OpenSearch
+        | Message::NoteOnFile
         | Message::AddFavourite
         | Message::RemoveFavourite
         | Message::QuickFix(QuickFixMessage::Open)
@@ -77,6 +78,7 @@ pub(in crate::app) fn remote_refusal(panel: &PanelState, message: &Message) -> O
         | Message::ComputeFolderSizes
         | Message::OpenSearch
         | Message::Panel(PanelMessage::ShowPackageContents)
+        | Message::NoteOnFile
         | Message::AddFavourite
         | Message::RemoveFavourite
         | Message::QuickFix(QuickFixMessage::Open)
@@ -658,6 +660,9 @@ impl App {
             Message::SavedQueries(queries) => self.update_saved_queries(queries),
             Message::Monitor(monitor_message) => self.update_monitor(monitor_message),
             Message::Viewer(viewer_message) => self.update_viewer(viewer_message),
+            Message::Notes(notes_message) => self.update_notes(notes_message),
+            Message::OpenNotes => self.open_notes(),
+            Message::NoteOnFile => self.note_on_file(),
             Message::Updates(updates_message) => self.update_updates(updates_message),
             Message::VersionPressed => self.open_version_info(),
             Message::Tags(tags) => self.update_tags(tags),

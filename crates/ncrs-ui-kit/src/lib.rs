@@ -72,6 +72,7 @@ pub mod row_scroll;
 pub mod setting_rows;
 pub mod tags;
 pub mod theme;
+pub mod tree_list;
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here.
 #[allow(

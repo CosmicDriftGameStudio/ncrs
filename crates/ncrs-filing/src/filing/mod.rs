@@ -67,7 +67,7 @@ pub use locations::{resolve_locations, LocationStatus, ResolvedLocation};
 pub use messages::{FilingMessage, OpenOutcome, WorkOutcome};
 pub use readers::{
     ColumnReader, DocumentFinder, FoundDocument, HermesCountsReader, IndexFigures,
-    IndexFiguresReader, TextSource,
+    IndexFiguresReader, NoteLinkFinder, TextSource,
 };
 pub use secrets::{SecretText, ShownRecoveryKey};
 use state::{next_generation, own_details};

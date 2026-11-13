@@ -317,6 +317,11 @@ pub enum Message {
     Monitor(ncrs_monitor::MonitorMessage),
     // --- The file viewer tab (F3 on a file the config opens internally) ---
     Viewer(ncrs_viewer::Message),
+    // --- The notes tab, opened from the command list or on a file ---
+    Notes(ncrs_notes::Message),
+    OpenNotes,
+    /// The note on the file under the cursor, made when there is none.
+    NoteOnFile,
     // --- The check for a newer release ---
     Updates(ncrs_updates::Message),
     /// The version at the right of the status bar: the Updates page, or the
@@ -417,6 +422,7 @@ pub enum ShownTab {
     Settings,
     Monitor,
     Viewer,
+    Notes,
     Hermes,
 }
 

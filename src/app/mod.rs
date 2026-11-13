@@ -176,6 +176,7 @@ mod hermes_chat;
 mod hermes_pages;
 mod keys;
 mod monitor;
+mod notes;
 mod ops;
 mod palette;
 mod panels;
@@ -343,6 +344,10 @@ pub struct App {
     /// The System page (F12) and the badge in the status bar.
     monitor: ncrs_monitor::State,
     viewer: ncrs_viewer::State,
+    /// The notes tab; also read at start for the note marker of the file rows.
+    notes: ncrs_notes::State,
+    /// The files that have a note, kept for the rows of the panels.
+    noted: std::collections::HashSet<PathBuf>,
     /// Which of the open tabs the area under the title bar shows.
     shown_tab: ShownTab,
     /// The check for a newer release and what it found.
@@ -540,6 +545,10 @@ pub struct PromptKeyState {
     pub viewer: bool,
     /// The viewer shows Markdown, so Tab switches rendered and source.
     pub viewer_markdown: bool,
+    /// The notes tab is up: its keys move in the tree and Escape leaves it.
+    pub notes: bool,
+    /// A note is being edited, so the arrow keys are the text's.
+    pub notes_editing: bool,
     /// The delete dialog is up, so keys answer it.
     pub delete_dialog: DeleteKeys,
     /// The question before a file that can run is opened is up, so keys answer it.
@@ -565,9 +574,9 @@ pub struct PromptKeyState {
 }
 
 impl PromptKeyState {
-    /// The viewer or the System page is up and takes the keys.
+    /// The viewer, the notes or the System page is up and takes the keys.
     pub fn shows_viewer_or_monitor(&self) -> bool {
-        self.viewer || self.monitor
+        self.viewer || self.monitor || self.notes
     }
 }
 
@@ -608,6 +617,8 @@ impl Default for PromptKeyState {
             monitor_menu: false,
             viewer: false,
             viewer_markdown: false,
+            notes: false,
+            notes_editing: false,
             delete_dialog: DeleteKeys::default(),
             open_file_dialog: false,
             start_over_dialog: false,

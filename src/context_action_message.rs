@@ -37,6 +37,7 @@ impl ContextActionMessage for ContextAction {
             ContextAction::DeletePermanently => Message::Delete { permanent: true },
             ContextAction::ShowOnOtherSide => Message::HitList(HitListMessage::ShowOnOtherSide),
             ContextAction::RemoveFromList => Message::HitList(HitListMessage::RemoveFromList),
+            ContextAction::NoteOnFile => Message::NoteOnFile,
         }
     }
 }

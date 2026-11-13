@@ -30,6 +30,7 @@ impl App {
         input.settings = self.settings_shown() && !self.blocking_overlay_is_open();
         input.monitor = self.monitor_shown();
         input.viewer = self.viewer_shown();
+        input.notes = self.notes_shown() && !self.blocking_overlay_is_open();
         input.monitor_filter = self.monitor_shown()
             && self.monitor.filter_has_focus()
             && !self.blocking_overlay_is_open();
@@ -98,6 +99,8 @@ impl App {
         let monitor_menu = monitor && self.monitor.menu_is_open();
         let viewer = self.viewer_shown();
         let viewer_markdown = viewer && self.viewer.shows_markdown();
+        let notes = self.notes_shown();
+        let notes_editing = notes && self.notes.editing();
         let transfer_dialog = self.ops.transfer_dialog.is_some();
         let transfer_progress = self.ops.progress_mask_is_open();
         let permissions_dialog = self.ops.permissions_dialog.is_some();
@@ -148,6 +151,8 @@ impl App {
                 monitor_menu,
                 viewer,
                 viewer_markdown,
+                notes,
+                notes_editing,
                 // A conflict is asked while no prompt is open — the prompt is
                 // gone by then, the transfer is what is running. Without this
                 // the dialog's keys would fall through to the panels.
@@ -197,6 +202,8 @@ impl App {
                 monitor_menu,
                 viewer,
                 viewer_markdown,
+                notes,
+                notes_editing,
                 conflict_open: self.ops.conflict_is_open(),
                 transfer_dialog,
                 transfer_progress,

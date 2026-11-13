@@ -109,6 +109,7 @@ pub fn view<'a>(state: &'a PanelState, ctx: ViewCtx<'a>) -> Element<'a, PanelMes
                     special: special_folder_of(ctx.special_folders, &entry.path)
                         .filter(|_| entry.is_dir),
                     third_line: None,
+                    has_note: ctx.noted.contains(&entry.path),
                     hermes: hermes_cell.map(|cell| cell(entry)),
                     compare: compare_marks.map_or(CompareCell::Off, |marks| {
                         marks

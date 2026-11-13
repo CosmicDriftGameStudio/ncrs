@@ -59,6 +59,8 @@ impl App {
             search: ncrs_search::Search::new(layout::INITIAL_WINDOW_SIZE),
             monitor: ncrs_monitor::State::default(),
             viewer: ncrs_viewer::State::default(),
+            notes: ncrs_notes::State::new(PathBuf::from("/home/test/Notes")),
+            noted: Default::default(),
             shown_tab: crate::messages::ShownTab::default(),
             hermes_chat: ncrs_hermes_chat::State::default(),
             chat_model: None,
@@ -630,6 +632,18 @@ impl App {
 
     pub fn settings_for_test(&self) -> Option<&settings_ui::SettingsState> {
         self.settings.page.as_ref()
+    }
+
+    pub fn notes_for_test(&self) -> &ncrs_notes::State {
+        &self.notes
+    }
+
+    pub fn notes_are_shown_for_test(&self) -> bool {
+        self.notes_shown()
+    }
+
+    pub fn noted_for_test(&self) -> &std::collections::HashSet<PathBuf> {
+        &self.noted
     }
 
     pub fn viewer_for_test(&self) -> &ncrs_viewer::State {

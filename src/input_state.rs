@@ -98,6 +98,9 @@ pub struct InputState {
     pub monitor_menu: bool,
     /// The viewer tab is up: an Option tap opens no menu on the panel it hides.
     pub viewer: bool,
+    /// The notes tab is up with nothing over it: Escape is its own, whatever
+    /// field took it, and an Option tap opens no menu.
+    pub notes: bool,
     /// A row is held with the left button: the pointer and the button decide
     /// whether it becomes a drag.
     pub panel_drag_armed: bool,
@@ -152,6 +155,7 @@ impl InputState {
                 self.settings,
                 Message::Settings(SettingsMessage::FocusKey(FocusKey::Escape)),
             ),
+            (self.notes, Message::Notes(ncrs_notes::Message::Escape)),
         ]
         .into_iter()
         .find_map(|(open, close)| open.then_some(close))
@@ -216,7 +220,7 @@ impl InputState {
                     && !self.permissions_dialog
                     && !self.batch_rename_dialog
                     && !self.settings;
-                if self.viewer {
+                if self.viewer || self.notes {
                     return None;
                 }
                 if self.monitor {

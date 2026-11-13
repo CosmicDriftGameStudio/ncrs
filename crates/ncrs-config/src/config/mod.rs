@@ -54,6 +54,15 @@ pub const CURRENT_VERSION: u32 = 1;
 /// only delay the start. A VS Code theme file is held to the same limit.
 pub const SIZE_LIMIT: u64 = 1024 * 1024;
 
+/// The `[notes]` section. A missing section or key leaves the folder to the
+/// app: `Notes` in the home folder.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NotesSection {
+    #[serde(default)]
+    pub folder: Option<PathBuf>,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
@@ -81,6 +90,9 @@ pub struct Config {
     pub hermes: HermesSection,
     #[serde(default)]
     pub open: OpenPrograms,
+    /// The `[notes]` section: where the notes tab keeps its files.
+    #[serde(default)]
+    pub notes: NotesSection,
     /// The `[keys]` section as written; `load` turns it into `keymap`.
     #[serde(default)]
     pub keys: KeySection,

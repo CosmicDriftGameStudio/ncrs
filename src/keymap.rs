@@ -114,6 +114,8 @@ impl KeyActionMessage for KeyAction {
             Self::HermesExclude => Message::HermesFile(HermesFileMessage::ToggleExclusion),
             Self::HermesInspect => Message::HermesFile(HermesFileMessage::ShowInInspection),
             Self::SavedQueries => Message::HermesPage(HermesPage::SavedQueries),
+            Self::Notes => Message::OpenNotes,
+            Self::NoteOnFile => Message::NoteOnFile,
             Self::SearchDocuments => Message::OpenSearch,
             Self::FetchTheme => Message::ThemeFetch(ThemeFetchMessage::Open),
             Self::Settings => Message::Settings(SettingsMessage::Toggle),

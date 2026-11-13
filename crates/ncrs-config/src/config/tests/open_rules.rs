@@ -104,3 +104,11 @@ fn written_rules_read_back_the_same() {
     let none = write_setting(&path, open_rules_setting(&[]), None).unwrap();
     assert_eq!(none.open.by_type, Some(Vec::new()));
 }
+
+#[test]
+fn the_notes_folder_is_read_from_its_section_and_left_to_the_app_without_one() {
+    assert_eq!(load_text("version = 1\n").notes.folder, None);
+    let config = load_text("[notes]\nfolder = \"/data/Notes\"\n");
+    assert_eq!(config.notes.folder, Some(PathBuf::from("/data/Notes")));
+    from_text("[notes]\nfolders = \"x\"\n").unwrap_err();
+}

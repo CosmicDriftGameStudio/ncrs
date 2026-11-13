@@ -207,7 +207,10 @@ fn menu_place_of(action: KeyAction) -> MenuPlace {
         KeyAction::CopyPath | KeyAction::CopyName | KeyAction::CopyFiles | KeyAction::Paste => {
             at(1)
         }
-        KeyAction::RestoreLastDeletion | KeyAction::UndoRename | KeyAction::ContextMenu => at(2),
+        KeyAction::RestoreLastDeletion
+        | KeyAction::UndoRename
+        | KeyAction::ContextMenu
+        | KeyAction::NoteOnFile => at(2),
         KeyAction::CompareFolders => at(1).dialog(),
         KeyAction::SortByName
         | KeyAction::SortByModified
@@ -227,7 +230,10 @@ fn menu_place_of(action: KeyAction) -> MenuPlace {
         | KeyAction::PreviousTab
         | KeyAction::ActivateLeftPanel
         | KeyAction::ActivateRightPanel => at(1),
-        KeyAction::CommandLine | KeyAction::HermesChat | KeyAction::QuickOpen => at(2),
+        KeyAction::CommandLine
+        | KeyAction::HermesChat
+        | KeyAction::QuickOpen
+        | KeyAction::Notes => at(2),
         KeyAction::DriveMenuLeft | KeyAction::DriveMenuRight | KeyAction::DisconnectServer => {
             at(3).within(Places)
         }
@@ -333,6 +339,8 @@ fn command_without_place(action: KeyAction) -> Option<Command> {
         KeyAction::SwitchLanguage => Command::plain(action, View, Msg::ActionSwitchLanguage),
         KeyAction::Settings => Command::plain(action, View, Msg::ActionSettings),
         KeyAction::SystemMonitor => Command::plain(action, View, Msg::ActionSystemMonitor),
+        KeyAction::Notes => Command::plain(action, Go, Msg::ActionNotes),
+        KeyAction::NoteOnFile => Command::plain(action, File, Msg::ActionNoteOnFile),
         KeyAction::FileListTagsToggle => {
             Command::plain(action, View, Msg::ActionFileListTagsToggle)
         }

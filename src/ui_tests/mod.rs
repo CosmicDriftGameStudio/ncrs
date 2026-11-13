@@ -1294,6 +1294,7 @@ mod status_notice {
                 blocked_by_sandbox: false,
                 notice: app.notice_for_test(),
                 hermes_line: None,
+                note_line: None,
                 version: None,
                 monitor: None,
                 test_folder: None,

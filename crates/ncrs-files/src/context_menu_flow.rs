@@ -99,6 +99,7 @@ impl MenuFacts {
                 | ContextAction::CompareFolders
                 | ContextAction::AddFavourite
                 | ContextAction::RemoveFavourite
+                | ContextAction::NoteOnFile
                 | ContextAction::RemoveFromList => false,
             };
         }
@@ -113,7 +114,7 @@ impl MenuFacts {
             | ContextAction::RemoveFromList => cursor_row.is_some(),
             ContextAction::ShowPackageContents => cursor_row
                 .is_some_and(|entry| entry.is_dir && is_local_app_bundle(panel, &entry.name)),
-            ContextAction::View | ContextAction::Edit => {
+            ContextAction::View | ContextAction::Edit | ContextAction::NoteOnFile => {
                 cursor_row.is_some_and(|entry| !entry.is_dir && !entry.is_parent)
             }
             ContextAction::Copy

@@ -272,6 +272,21 @@ pub fn file_icon<'a, M: 'a>(kind: IconKind, color: Color, size: f32) -> Element<
         .into()
 }
 
+/// The small sheet after the name of a file that has a note.
+pub fn note_marker<'a, M: 'a>(color: Color, size: f32) -> Element<'a, M> {
+    static HANDLE: LazyLock<svg::Handle> = LazyLock::new(|| {
+        svg::Handle::from_memory(
+            document(r#"<path d="M5 3h10l4 4v14H5z"/><path d="M14 3v5h5"/><path d="M8.5 13h7M8.5 17h5"/>"#)
+                .into_bytes(),
+        )
+    });
+    Svg::new(LazyLock::force(&HANDLE).clone())
+        .width(size)
+        .height(size)
+        .style(move |_: &Theme, _| svg::Style { color: Some(color) })
+        .into()
+}
+
 // A failing assertion in a test is the signal, so `unwrap` belongs here.
 #[allow(
     clippy::unwrap_used,

@@ -517,3 +517,59 @@ fn the_process_again_finder_exists_in_ready_only_and_fails_without_an_index() {
         .unwrap();
     assert_eq!(finder.find(&[]), Err(INDEX_NOT_OPEN.to_owned()));
 }
+
+#[test]
+fn the_note_link_finder_follows_a_moved_file_by_its_id_and_falls_back_to_the_path() {
+    use ncrs_index::{ContentHash, DocumentSource, FileStamp, NewDocument};
+
+    let dir = TempDir::new().unwrap();
+    let module = FilingModule::in_phase(Phase::Ready);
+    let index = Index::create_plain(&dir.path().join("index.db")).unwrap();
+    let old = PathBuf::from("/inbox/offer.pdf");
+    let id = index
+        .insert_document(&NewDocument {
+            hash: ContentHash([9; 32]),
+            path: old.clone(),
+            source: DocumentSource::Inbox,
+            received_at: chrono::Utc::now(),
+            stamp: None,
+        })
+        .unwrap();
+    put_index(&module.index, index);
+    let finder = || module.note_link_finder().unwrap();
+    let stranger = PathBuf::from("/elsewhere/other.pdf");
+
+    let by_path = finder()
+        .resolve(&[(None, old.clone()), (None, stranger.clone())])
+        .unwrap();
+    assert_eq!(
+        by_path,
+        vec![(Some(id.number()), old.clone()), (None, stranger)]
+    );
+
+    let moved = PathBuf::from("/archive/2026/offer.pdf");
+    let stamp = FileStamp {
+        size: 1,
+        mtime: std::time::UNIX_EPOCH,
+    };
+    let guard = lock(&module.index);
+    guard
+        .as_ref()
+        .unwrap()
+        .set_document_path(id, &moved, stamp)
+        .unwrap();
+    drop(guard);
+    let after_move = finder().resolve(&[(Some(id.number()), old)]).unwrap();
+    assert_eq!(after_move, vec![(Some(id.number()), moved)]);
+}
+
+#[test]
+fn the_note_link_finder_exists_in_ready_only() {
+    assert!(FilingModule::in_phase(Phase::Starting)
+        .note_link_finder()
+        .is_none());
+    let finder = FilingModule::in_phase(Phase::Ready)
+        .note_link_finder()
+        .unwrap();
+    assert_eq!(finder.resolve(&[]), Err(INDEX_NOT_OPEN.to_owned()));
+}

@@ -38,11 +38,13 @@ pub enum ContextAction {
     ShowOnOtherSide,
     /// Only in the menu of a search-hit list.
     RemoveFromList,
+    /// Only for a file: the note that belongs to it.
+    NoteOnFile,
 }
 
 impl ContextAction {
     #[cfg(any(test, feature = "test-support"))]
-    pub const ALL: [ContextAction; 20] = [
+    pub const ALL: [ContextAction; 21] = [
         ContextAction::Open,
         ContextAction::ShowPackageContents,
         ContextAction::View,
@@ -63,6 +65,7 @@ impl ContextAction {
         ContextAction::DeletePermanently,
         ContextAction::ShowOnOtherSide,
         ContextAction::RemoveFromList,
+        ContextAction::NoteOnFile,
     ];
 
     /// Whether a panel inside an archive may run the entry; see
@@ -89,6 +92,7 @@ impl ContextAction {
             | ContextAction::NewFolder
             | ContextAction::AddFavourite
             | ContextAction::RemoveFavourite
+            | ContextAction::NoteOnFile
             | ContextAction::ComputeFolderSizes => false,
         }
     }
@@ -117,6 +121,7 @@ impl ContextAction {
             | ContextAction::AddFavourite
             | ContextAction::RemoveFavourite
             | ContextAction::Trash
+            | ContextAction::NoteOnFile
             | ContextAction::DeletePermanently => false,
         }
     }
@@ -143,6 +148,7 @@ impl ContextAction {
             ContextAction::DeletePermanently => Msg::ContextMenuDeletePermanently,
             ContextAction::ShowOnOtherSide => Msg::ContextMenuShowOnOtherSide,
             ContextAction::RemoveFromList => Msg::ContextMenuRemoveFromList,
+            ContextAction::NoteOnFile => Msg::ActionNoteOnFile,
         }
     }
 }
@@ -162,7 +168,11 @@ pub const GROUPS: [&[ContextAction]; 5] = [
         ContextAction::Permissions,
         ContextAction::NewFolder,
     ],
-    &[ContextAction::CopyPath, ContextAction::CopyName],
+    &[
+        ContextAction::CopyPath,
+        ContextAction::CopyName,
+        ContextAction::NoteOnFile,
+    ],
     &[
         ContextAction::ComputeFolderSizes,
         ContextAction::CompareFolders,
