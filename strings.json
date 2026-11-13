@@ -4363,6 +4363,12 @@
       "de": "In Status und Fehler zeigen"
     },
     {
+      "key": "status.hermes_processing_again_many",
+      "context": "Status bar message after several files, or the documents of a folder, were queued to run through the Hermes steps again. Takes the number of files (more than one).",
+      "en": "{count} files are being processed again",
+      "de": "{count} Dateien werden erneut verarbeitet"
+    },
+    {
       "key": "status.hermes_processing_again",
       "context": "Status bar message after a file was queued to run through the Hermes steps again. {name} is the file name.",
       "en": "Processing again: {name}",

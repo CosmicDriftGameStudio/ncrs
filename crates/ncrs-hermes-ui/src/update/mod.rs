@@ -175,9 +175,19 @@ pub fn read_paths_again(hermes: &mut Hermes, paths: Vec<PathBuf>, ctx: &Ctx<'_>)
     (Task::none(), actions)
 }
 
-pub fn process_again(hermes: &mut Hermes, path: &Path, ctx: &Ctx<'_>) -> Outcome {
+pub fn process_again(hermes: &Hermes, paths: Vec<PathBuf>, ctx: &Ctx<'_>) -> Outcome {
     let mut actions = Vec::new();
-    hermes_file::process_again(hermes, path, ctx, &mut actions);
+    let task = hermes_file::process_again(hermes, paths, ctx, &mut actions);
+    (task, actions)
+}
+
+pub fn process_found_again(
+    hermes: &mut Hermes,
+    result: Result<Vec<PathBuf>, String>,
+    ctx: &Ctx<'_>,
+) -> Outcome {
+    let mut actions = Vec::new();
+    hermes_file::process_found_again(hermes, result, ctx, &mut actions);
     (Task::none(), actions)
 }
 

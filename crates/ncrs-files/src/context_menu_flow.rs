@@ -150,10 +150,7 @@ impl HermesFacts {
             HermesAction::ShowSuggestion => self.has_inquiry_paths,
             HermesAction::HandToInbox => cursor.can_be_handed_to_inbox,
             HermesAction::ProcessAgain => {
-                !cursor.is_dir
-                    && self.has_live_pipeline
-                    && !cursor.excluded
-                    && cursor.lies_in_a_filing_location
+                self.has_live_pipeline && !cursor.excluded && cursor.lies_in_a_filing_location
             }
             HermesAction::SetInbox => cursor.is_dir && cursor.inbox_role_is_free,
             HermesAction::SetFilingLocation => cursor.is_dir && cursor.filing_location_role_is_free,

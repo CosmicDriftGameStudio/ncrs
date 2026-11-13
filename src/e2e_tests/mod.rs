@@ -2655,6 +2655,9 @@ fn the_sort_keys_sort_the_active_panel_and_a_second_press_reverses() {
 mod acceptance;
 
 #[cfg(test)]
+mod process_again;
+
+#[cfg(test)]
 mod favourites;
 
 #[cfg(test)]

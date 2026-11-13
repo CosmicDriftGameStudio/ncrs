@@ -140,6 +140,56 @@ impl DocumentFinder {
     }
 }
 
+/// Finds the files that "process again" stands for, on a blocking thread like
+/// [`ColumnReader`].
+pub struct ProcessAgainFinder {
+    slot: IndexSlot,
+}
+
+impl fmt::Debug for ProcessAgainFinder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ProcessAgainFinder").finish_non_exhaustive()
+    }
+}
+
+impl ProcessAgainFinder {
+    /// A folder stands for the documents below it, a file for itself (also
+    /// when the index does not know it yet). Excluded ones are left out; no
+    /// path comes twice.
+    pub fn find(self, paths: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
+        let guard = lock(&self.slot);
+        let index = guard.as_ref().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
+        let mut found: Vec<PathBuf> = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for path in paths {
+            let candidates = if path.is_dir() {
+                index
+                    .documents_under(path)
+                    .map_err(|err| err.to_string())?
+                    .into_iter()
+                    .map(|(_, document_path)| document_path)
+                    .collect()
+            } else {
+                vec![path.clone()]
+            };
+            for candidate in candidates {
+                if seen.contains(&candidate) {
+                    continue;
+                }
+                if index
+                    .is_excluded(&candidate)
+                    .map_err(|err| err.to_string())?
+                {
+                    continue;
+                }
+                seen.insert(candidate.clone());
+                found.push(candidate);
+            }
+        }
+        Ok(found)
+    }
+}
+
 impl FilingModule {
     /// Only looks at the phase and never at the index, so it is safe on the UI
     /// thread; `read` then runs elsewhere.
@@ -177,6 +227,16 @@ impl FilingModule {
     pub fn document_finder(&self) -> Option<DocumentFinder> {
         match self.phase {
             Phase::Ready => Some(DocumentFinder {
+                slot: Arc::clone(&self.index),
+            }),
+            _ => None,
+        }
+    }
+
+    /// Like [`Self::column_reader`]: looks at the phase only.
+    pub fn process_again_finder(&self) -> Option<ProcessAgainFinder> {
+        match self.phase {
+            Phase::Ready => Some(ProcessAgainFinder {
                 slot: Arc::clone(&self.index),
             }),
             _ => None,
