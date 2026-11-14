@@ -91,7 +91,7 @@ mod tests {
         assert_eq!((plan.filed, plan.unsure), (1, 1), "{:?}", plan.entries);
         assert_eq!(
             talk.labels()[0],
-            say(Msg::HermesChatFileAll, &[("count", "1")])
+            say(Msg::HermesChatFileAll, &[("count", "2")])
         );
 
         let Some(Part::Trial(card)) = talk.last_parts().get(1).cloned() else {
@@ -940,5 +940,51 @@ mod tests {
         let filed_as = format!("archive/{}", picked.label.replace('\\', "/"));
         assert!(files.contains_key(&filed_as), "{filed_as}: {files:?}");
         assert!(!files.contains_key("inbox/scan.pdf"));
+    }
+
+    #[test]
+    fn file_all_files_unsure_rows_into_their_first_choice() {
+        let mut talk = Talk::in_dir(tempfile::tempdir().unwrap(), &["archive"], &["inbox"]);
+        for (area, base) in [("Haus", 20), ("Firma", 30)] {
+            for (month, day) in [(1, 10), (3, 11), (6, 12)] {
+                talk.write(
+                    &format!("archive/{area}/Alfa/2020/2020-{month:02}-{day} Alfa Rechnung.pdf"),
+                    &letter(
+                        "Alfa AG",
+                        &format!("{day}.{month:02}.2020"),
+                        "Rechnung",
+                        base + day,
+                    ),
+                );
+            }
+        }
+        talk.write(
+            "inbox/eins.pdf",
+            &letter("Alfa AG", "05.03.2021", "Rechnung", 77),
+        );
+        talk.write(
+            "inbox/zwei.pdf",
+            &letter("Alfa AG", "06.04.2021", "Rechnung", 78),
+        );
+        talk.open();
+        tidy_until_trial(&mut talk, &ChipReply::ModeMove);
+        assert_eq!(talk.plan().unsure, 2, "{:?}", talk.plan().entries);
+        assert_eq!(
+            talk.labels()[0],
+            say(Msg::HermesChatFileAll, &[("count", "2")])
+        );
+
+        talk.press(&ChipReply::FileAll);
+
+        let files = talk.files();
+        assert!(!files.contains_key("inbox/eins.pdf"), "{files:?}");
+        assert!(!files.contains_key("inbox/zwei.pdf"), "{files:?}");
+        assert_eq!(
+            talk.last_texts()[0],
+            say(
+                Msg::HermesChatFiled,
+                &[("done", "2"), ("stays", "0"), ("folder", "inbox")]
+            )
+        );
     }
 }

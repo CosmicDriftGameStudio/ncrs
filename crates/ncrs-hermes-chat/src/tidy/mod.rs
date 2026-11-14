@@ -318,7 +318,13 @@ pub fn mode(state: &mut State, ctx: &Ctx, transfer: Transfer) {
 }
 
 pub fn filed_count(trial: &TrialSession) -> usize {
-    trial.plan.filed + trial.resolved.len()
+    let with_choice = trial
+        .plan
+        .entries
+        .iter()
+        .filter(|entry| matches!(&entry.outcome, TrialOutcome::Unsure { choices, .. } if !choices.is_empty()))
+        .count();
+    trial.plan.filed + with_choice
 }
 
 pub fn trial_chips(ctx: &Ctx, trial: &TrialSession) -> Vec<Chip> {
@@ -705,11 +711,17 @@ pub fn file_all(state: &mut State, ctx: &Ctx) {
         }
         let to = match &entry.outcome {
             TrialOutcome::Filed { to } => to.clone(),
-            TrialOutcome::Unsure { .. } => {
-                let Some(folder) = trial.resolved.get(&position) else {
+            TrialOutcome::Unsure { choices, .. } => {
+                // A row the user did not touch goes to its first choice.
+                let Some(folder) = trial
+                    .resolved
+                    .get(&position)
+                    .or_else(|| choices.first())
+                    .cloned()
+                else {
                     continue;
                 };
-                let to = folder.join(chosen_name(entry, folder));
+                let to = folder.join(chosen_name(entry, &folder));
                 if !trial.plan.claim(&to) {
                     continue;
                 }
