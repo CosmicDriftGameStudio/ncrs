@@ -21,6 +21,7 @@ use tempfile::TempDir;
 use super::*;
 
 mod diagnosis;
+mod eval;
 mod recent_runs;
 
 struct Setup {

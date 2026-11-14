@@ -1,0 +1,58 @@
+//! The reading half of the filing eval: the real program with the local model
+//! reads a copy of an archive and of a source folder, and the folder it worked
+//! in is kept. `brother_eval_trial` in `ncrs-filing` then plans the source into
+//! the archive from that folder and counts the hits.
+//!
+//! ```text
+//! NCRS_EVAL_ARCHIVE=<archive, only read> NCRS_EVAL_SOURCE=<scans, only read>
+//! NCRS_AI_MODELS_DIR=<models> NCRS_OCR_MODELS_DIR=<models> NCRS_PDFIUM_DIR=<pdfium>
+//! cargo test --release -p ncrs brother_eval_read -- --ignored --nocapture
+//! ```
+//!
+//! The folder is `target/eval/<stamp>/`: `master` and `run/archive` (the archive),
+//! `run/downloads` (the source) and `index.db` (the index with the fields the
+//! model read). `NCRS_PROTOCOL_AI_WAIT_SECS` limits the wait for the model.
+
+use std::path::Path;
+
+use ncrs_i18n::Language;
+
+use super::scratch::{copy_tree, count_files};
+use super::{env_path, start_protocol};
+
+#[test]
+#[ignore = "reads NCRS_EVAL_ARCHIVE and NCRS_EVAL_SOURCE with the real local model; see the module doc"]
+fn brother_eval_read() {
+    let (Some(archive), Some(source)) =
+        (env_path("NCRS_EVAL_ARCHIVE"), env_path("NCRS_EVAL_SOURCE"))
+    else {
+        println!(
+            "brother_eval_read: NCRS_EVAL_ARCHIVE or NCRS_EVAL_SOURCE is not set, nothing to run"
+        );
+        return;
+    };
+    let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+    let kept = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("target")
+        .join("eval")
+        .join(stamp);
+    std::fs::create_dir_all(&kept).unwrap();
+    copy_tree(&archive, &kept.join("master")).unwrap();
+    println!(
+        "copied the archive: {} files",
+        count_files(&kept.join("master"))
+    );
+    let mut run = start_protocol(
+        &archive,
+        &kept,
+        &kept.join("scratch"),
+        &kept.join("out"),
+        Language::German,
+        false,
+        Some(&source),
+    );
+    run.flow_1_greeting_while_starting();
+    run.wait_for_indexing();
+    drop(run);
+    println!("NCRS_EVAL_SCRATCH={}", kept.display());
+}

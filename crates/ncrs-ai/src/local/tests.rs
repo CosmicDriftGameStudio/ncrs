@@ -59,6 +59,7 @@ fn request(text: &str, open_fields: &[Field]) -> ExtractionRequest {
         known: DocumentFields::default(),
         source: PathBuf::from("inbox-one"),
         kinds: std::sync::Arc::default(),
+        language: ncrs_index::KindLanguage::default(),
         judge_document: false,
     }
 }

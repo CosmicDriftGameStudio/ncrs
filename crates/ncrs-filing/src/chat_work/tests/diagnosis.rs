@@ -22,11 +22,16 @@ use crate::chat_work::change::segments;
 use crate::chat_work::{TrialOutcome, TrialPlan};
 
 fn scratch_access(scratch: &Path, work: &Path) -> ChatAccess {
+    access_over(&scratch.join("data/index.db"), work)
+}
+
+/// An access over a copy of the plain index at `index`, made in `work`.
+pub fn access_over(index_path: &Path, work: &Path) -> ChatAccess {
     let copy = work.join("index.db");
     let index = if std::env::var_os("NCRS_DIAGNOSIS_COLD").is_some() {
         Index::create_plain(&copy).unwrap()
     } else {
-        fs::copy(scratch.join("data/index.db"), &copy).unwrap();
+        fs::copy(index_path, &copy).unwrap();
         Index::open(&copy, &InMemoryKeyStore::empty()).unwrap()
     };
     let bin = work.join("bin");
@@ -41,7 +46,7 @@ fn scratch_access(scratch: &Path, work: &Path) -> ChatAccess {
     )
 }
 
-fn read(access: &ChatAccess, folder: &Path) -> FolderReading {
+pub fn read(access: &ChatAccess, folder: &Path) -> FolderReading {
     let started = std::time::Instant::now();
     let reading = match access.run(ChatWork::Read {
         folder: folder.to_path_buf(),
@@ -263,6 +268,7 @@ fn ai_fields_on_archive_pdfs() {
             known: DocumentFields::default(),
             source: archive.clone(),
             kinds: Arc::clone(&kinds),
+            language: ncrs_index::KindLanguage::German,
             judge_document: false,
         });
         let secs = started.elapsed().as_secs_f64();

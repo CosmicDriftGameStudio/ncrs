@@ -303,7 +303,12 @@ pub fn prompt_tokens(
 ) -> Result<Vec<LlamaToken>, AiError> {
     let head = format!(
         "<|im_start|>system\n{SYSTEM_PROMPT}<|im_end|>\n<|im_start|>user\n{}",
-        user_message_prefix(&request.open_fields, request.judge_document)
+        user_message_prefix(
+            &request.open_fields,
+            &request.kinds,
+            request.language,
+            request.judge_document
+        )
     );
     let tail = format!(
         "{}<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",

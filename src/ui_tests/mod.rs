@@ -3883,6 +3883,7 @@ mod title_bar {
                 known: ncrs_index::DocumentFields::default(),
                 source: std::path::PathBuf::from("inbox"),
                 kinds: std::sync::Arc::default(),
+                language: ncrs_index::KindLanguage::default(),
                 judge_document: false,
             },
         )
