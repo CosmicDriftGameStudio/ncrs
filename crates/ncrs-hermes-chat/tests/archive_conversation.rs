@@ -535,7 +535,7 @@ mod tests {
         assert_eq!(talk.files(), before, "asking and the trial move nothing");
         let sentence = talk.last_texts();
         assert!(
-            sentence[0].starts_with("27 Dateien von Finanzamt Chemnitz-Süd"),
+            sentence[0].starts_with("Alle 27 Dateien von Finanzamt Chemnitz-Süd"),
             "the next group is asked about: {sentence:?}"
         );
         assert_eq!(after_first.groups.asked.len(), 4);

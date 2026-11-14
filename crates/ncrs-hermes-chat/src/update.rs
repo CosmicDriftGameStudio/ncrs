@@ -268,7 +268,7 @@ fn launch_work(state: &mut State, ctx: &Ctx) -> Task<Message> {
         );
         return Task::none();
     };
-    let access = ready.clone();
+    let access = ready.clone().with_model(ctx.model.clone());
     Task::perform(
         async move { tokio::task::spawn_blocking(move || access.run(work)).await },
         |joined| match joined {

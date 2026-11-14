@@ -513,6 +513,7 @@ fn the_trial_files_finds_duplicates_and_names_what_stays() {
         outcome(&plan, "beta.pdf"),
         &TrialOutcome::Unsure {
             choices: vec![PathBuf::from("Firma/Beta"), PathBuf::from("Privat/Beta")],
+            file_names: vec!["beta.pdf".to_owned(), "beta.pdf".to_owned()],
             kind_label: Some("Invoice".to_owned()),
         }
     );
@@ -966,4 +967,103 @@ fn a_rule_the_form_would_refuse_is_refused_and_nothing_is_stored() {
         )))
     );
     assert_eq!(stored(&setup), 0);
+}
+
+/// Alfa documents filed by year in two areas, three each, so a new one is
+/// unsure which area it belongs to.
+fn alfa_in_two_areas() -> FolderReading {
+    let mut files = Vec::new();
+    for (area, base) in [("Haus", 10), ("Firma", 20)] {
+        for (offset, year) in [2019, 2020, 2021].into_iter().enumerate() {
+            files.push(plan_file(
+                &format!("{area}/Alfa/{year}/{year}-03-10 Alfa Rechnung.pdf"),
+                base + u8::try_from(offset).unwrap(),
+                Some("Alfa AG"),
+                date(year, 3, 10),
+            ));
+        }
+    }
+    reading("/archive", files)
+}
+
+fn unsure_in_two_areas(file: PlanFile) -> (Vec<PathBuf>, Vec<String>) {
+    let setup = Setup::new();
+    let plan = match setup.access.run(ChatWork::Trial {
+        source: Arc::new(reading("/inbox", vec![file])),
+        target: Arc::new(alfa_in_two_areas()),
+        answered: AnsweredGroups::default(),
+        layout: None,
+    }) {
+        ChatResult::Trial(plan) => plan.unwrap(),
+        other => panic!("{other:?}"),
+    };
+    match &plan.entries[0].outcome {
+        TrialOutcome::Unsure {
+            choices,
+            file_names,
+            ..
+        } => (choices.clone(), file_names.clone()),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn an_unsure_file_is_offered_the_folders_with_the_year_of_its_own_date() {
+    let (choices, file_names) =
+        unsure_in_two_areas(plan_file("new.pdf", 100, Some("Alfa AG"), date(2022, 7, 4)));
+
+    assert_eq!(
+        choices,
+        [
+            PathBuf::from("Firma/Alfa/2022"),
+            PathBuf::from("Haus/Alfa/2022")
+        ]
+    );
+    assert_eq!(file_names.len(), 2);
+    assert!(
+        file_names.iter().all(|name| name.contains("2022-07-04")),
+        "{file_names:?}"
+    );
+}
+
+#[test]
+fn an_unsure_file_without_a_date_is_offered_folders_without_a_year_level() {
+    let mut file = plan_file("new.pdf", 100, Some("Alfa AG"), date(2022, 7, 4));
+    file.fields.date = None;
+
+    let (choices, file_names) = unsure_in_two_areas(file);
+
+    assert_eq!(
+        choices,
+        [PathBuf::from("Firma/Alfa"), PathBuf::from("Haus/Alfa")]
+    );
+    assert_eq!(file_names, ["new.pdf", "new.pdf"]);
+}
+
+#[test]
+fn an_unsure_file_names_the_kind_only_when_the_catalog_knows_it() {
+    let setup = Setup::new();
+    let label = |kind: &str| {
+        let mut file = plan_file("new.pdf", 100, Some("Alfa AG"), date(2022, 7, 4));
+        file.fields.kind = Some(kind.to_owned());
+        let plan = match setup.access.run(ChatWork::Trial {
+            source: Arc::new(reading("/inbox", vec![file])),
+            target: Arc::new(alfa_in_two_areas()),
+            answered: AnsweredGroups::default(),
+            layout: None,
+        }) {
+            ChatResult::Trial(plan) => plan.unwrap(),
+            other => panic!("{other:?}"),
+        };
+        match &plan.entries[0].outcome {
+            TrialOutcome::Unsure { kind_label, .. } => kind_label.clone(),
+            other => panic!("{other:?}"),
+        }
+    };
+
+    assert_eq!(label("invoice").as_deref(), Some("Invoice"));
+    assert_eq!(
+        label("Steuerbescheid-Entwurf-xyz").as_deref(),
+        Some("Alfa AG")
+    );
 }

@@ -31,6 +31,7 @@ use crate::status::Compute;
 mod backends;
 mod chat_session;
 mod check;
+mod folder_choice;
 mod lazy;
 mod rule_session;
 mod worker;

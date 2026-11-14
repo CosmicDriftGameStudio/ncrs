@@ -7,9 +7,11 @@
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 
-use ncrs_index::{compile_bounded_regex, DocumentFields, Field, SenderAliasKind, SubtreePattern};
+use ncrs_index::{
+    compile_bounded_regex, DocumentFields, Field, KindCatalog, SenderAliasKind, SubtreePattern,
+};
 use regex::Regex;
 
 use crate::archive_profile::{learn_archive, subtree_per_document, ArchiveDocument};
@@ -45,6 +47,10 @@ const MIN_SENDER_NEIGHBOURS: usize = 3;
 /// sender tier asks for still decide, as the kind is more specific.
 const MIN_NARROWED_NEIGHBOURS: usize = 2;
 const SURE_PERCENT: usize = 80;
+/// How many folders an unsure placement offers at most.
+const MAX_CANDIDATES: usize = 4;
+/// The numbers a folder name counts as a year level for.
+const YEAR_LEVELS: std::ops::RangeInclusive<u32> = 1900..=2100;
 
 static LABELLED_NUMBER: LazyLock<Option<Regex>> = LazyLock::new(|| {
     let labels: Vec<String> = NUMBER_LABELS
@@ -88,6 +94,7 @@ struct Neighbour {
 pub struct NeighbourIndex {
     neighbours: Vec<Neighbour>,
     patterns: Vec<SubtreePattern>,
+    catalog: Arc<KindCatalog>,
     own_ibans: BTreeSet<String>,
     own_tax_ids: BTreeSet<String>,
 }
@@ -118,6 +125,21 @@ pub struct Placement {
     /// For an unsure placement, the folder with the next most similar
     /// documents; ties go to the path that sorts first.
     pub runner_up: Option<PathBuf>,
+    /// For an unsure placement, where the document could go: the folders of
+    /// the similar documents without their date levels, the one with most of
+    /// them first. Empty for a sure placement.
+    pub candidates: Vec<Candidate>,
+}
+
+/// A folder an unsure document could go to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Candidate {
+    /// Below the root of the location, without date levels (year, month).
+    pub folder: PathBuf,
+    /// What the similar documents of this folder follow, when they follow
+    /// one; rendered with the date of the document it gives the folder with
+    /// the year of that document.
+    pub pattern: Option<String>,
 }
 
 impl Placement {
@@ -214,9 +236,22 @@ impl NeighbourIndex {
         Self {
             neighbours,
             patterns,
+            catalog: Arc::new(KindCatalog::built_in()),
             own_ibans,
             own_tax_ids,
         }
+    }
+
+    /// Compares kinds by the ID the catalog gives them, so kinds written
+    /// differently but meaning the same are the same kind.
+    #[must_use]
+    pub fn with_kinds(mut self, catalog: Arc<KindCatalog>) -> Self {
+        self.catalog = catalog;
+        self
+    }
+
+    fn kind_key(&self, kind: &str) -> String {
+        self.catalog.kind_key(kind)
     }
 
     /// Where similar documents lie, or `None` when none are similar enough to
@@ -225,9 +260,10 @@ impl NeighbourIndex {
         let features = features_of(text, &self.own_ibans, &self.own_tax_ids);
         let same_sender =
             |neighbour: &&Neighbour| fields.sender.is_some() && neighbour.sender == fields.sender;
-        let wanted_kind = fields.kind.as_deref().map(str::to_lowercase);
+        let wanted_kind = fields.kind.as_deref().map(|kind| self.kind_key(kind));
         let same_kind = |neighbour: &&Neighbour| {
-            wanted_kind.is_some() && neighbour.kind.as_deref().map(str::to_lowercase) == wanted_kind
+            wanted_kind.is_some()
+                && neighbour.kind.as_deref().map(|kind| self.kind_key(kind)) == wanted_kind
         };
 
         let numbered = features
@@ -289,6 +325,7 @@ impl NeighbourIndex {
         let Some(folder) = shared_folder(group) else {
             let (folder, agreeing, runner_up) = busiest_folders(group);
             return Placement {
+                candidates: self.candidates(group),
                 folder,
                 signal,
                 agreeing: count(agreeing),
@@ -305,7 +342,7 @@ impl NeighbourIndex {
             .collect();
         let pattern = self
             .followed_pattern(&agreeing)
-            .filter(|_| kind_allows_pattern(&signal, fields, &agreeing));
+            .filter(|_| self.kind_allows_pattern(&signal, fields, &agreeing));
         let missing = pattern
             .as_deref()
             .and_then(|followed| missing_field(followed, fields));
@@ -317,6 +354,7 @@ impl NeighbourIndex {
             pattern,
             missing,
             runner_up: None,
+            candidates: Vec::new(),
         }
     }
 
@@ -345,33 +383,81 @@ impl NeighbourIndex {
 /// A number or an account is shared by documents of several kinds, so the
 /// name of the folder is not offered to a document of another kind than the
 /// one lying there. Of the same sender alone, only to a document of that kind.
-fn kind_allows_pattern(
-    signal: &Signal,
-    fields: &DocumentFields,
-    neighbours: &[&Neighbour],
-) -> bool {
-    let common = most_common_kind(neighbours);
-    let kind = fields.kind.as_deref().map(str::to_lowercase);
-    match signal {
-        Signal::SameSender => kind.is_some() && kind == common,
-        Signal::SameNumber { .. } | Signal::SameIban | Signal::SameSenderAndKind => {
-            kind.is_none() || common.is_none() || kind == common
+impl NeighbourIndex {
+    fn kind_allows_pattern(
+        &self,
+        signal: &Signal,
+        fields: &DocumentFields,
+        neighbours: &[&Neighbour],
+    ) -> bool {
+        let common = self.most_common_kind(neighbours);
+        let kind = fields.kind.as_deref().map(|kind| self.kind_key(kind));
+        match signal {
+            Signal::SameSender => kind.is_some() && kind == common,
+            Signal::SameNumber { .. } | Signal::SameIban | Signal::SameSenderAndKind => {
+                kind.is_none() || common.is_none() || kind == common
+            }
         }
+    }
+
+    fn most_common_kind(&self, neighbours: &[&Neighbour]) -> Option<String> {
+        let mut per_kind: BTreeMap<String, usize> = BTreeMap::new();
+        for kind in neighbours
+            .iter()
+            .filter_map(|neighbour| neighbour.kind.as_deref())
+        {
+            *per_kind.entry(self.kind_key(kind)).or_default() += 1;
+        }
+        per_kind
+            .into_iter()
+            .max_by_key(|(name, count)| (*count, Reverse(name.clone())))
+            .map(|(name, _)| name)
+    }
+
+    /// The folders of `group` cut at their first date level, the one with
+    /// most documents first, each with the pattern its documents follow.
+    fn candidates(&self, group: &[&Neighbour]) -> Vec<Candidate> {
+        let mut per_folder: BTreeMap<PathBuf, Vec<&Neighbour>> = BTreeMap::new();
+        for neighbour in group {
+            per_folder
+                .entry(without_date_levels(&neighbour.folder))
+                .or_default()
+                .push(neighbour);
+        }
+        let mut ranked: Vec<(PathBuf, Vec<&Neighbour>)> = per_folder.into_iter().collect();
+        ranked.sort_by_key(|(folder, members)| (Reverse(members.len()), folder.clone()));
+        ranked
+            .into_iter()
+            .take(MAX_CANDIDATES)
+            .map(|(folder, members)| Candidate {
+                pattern: self.followed_pattern(&members),
+                folder,
+            })
+            .collect()
     }
 }
 
-fn most_common_kind(neighbours: &[&Neighbour]) -> Option<String> {
-    let mut per_kind: BTreeMap<String, usize> = BTreeMap::new();
-    for kind in neighbours
-        .iter()
-        .filter_map(|neighbour| neighbour.kind.as_deref())
-    {
-        *per_kind.entry(kind.to_lowercase()).or_default() += 1;
-    }
-    per_kind
-        .into_iter()
-        .max_by_key(|(name, count)| (*count, Reverse(name.clone())))
-        .map(|(name, _)| name)
+fn is_year_level(segment: &str) -> bool {
+    let Some(year) = segment
+        .get(..4)
+        .and_then(|digits| digits.parse::<u32>().ok())
+    else {
+        return false;
+    };
+    let rest = segment.get(4..).unwrap_or_default();
+    YEAR_LEVELS.contains(&year)
+        && rest
+            .chars()
+            .next()
+            .is_none_or(|next| matches!(next, '-' | '.' | '_' | ' '))
+}
+
+/// The folder up to its first year level.
+fn without_date_levels(folder: &Path) -> PathBuf {
+    folder
+        .components()
+        .take_while(|component| !is_year_level(&component.as_os_str().to_string_lossy()))
+        .collect()
 }
 
 fn features_of(

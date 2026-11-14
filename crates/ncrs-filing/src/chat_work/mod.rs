@@ -8,6 +8,7 @@
 use std::fmt;
 use std::sync::{Arc, Mutex, PoisonError};
 
+use ncrs_ai::ChatModel;
 use ncrs_core::INDEX_NOT_OPEN;
 use ncrs_fs::Trash;
 use ncrs_index::{BatchId, Index, KindLanguage, Kinds, Rule, RuleOrigin, RuleSpec, SenderAliases};
@@ -18,6 +19,7 @@ use crate::review_work::{AcceptSummary, ReviewAccess, ReviewItem};
 use crate::rules_work::{ArchiveMove, RuleTry, RulesAccess, TriedDocument, TryFile};
 
 mod change;
+mod folder_list;
 mod groups;
 mod pattern;
 mod reading;
@@ -150,6 +152,7 @@ pub struct ChatAccess {
     review: Option<ReviewAccess>,
     rules: Option<RulesAccess>,
     load: Load,
+    model: Option<Arc<dyn ChatModel>>,
 }
 
 impl fmt::Debug for ChatAccess {
@@ -172,7 +175,15 @@ impl ChatAccess {
             review: None,
             rules: None,
             load: Load::default(),
+            model: None,
         }
+    }
+
+    /// The model that picks a folder for the files the neighbours cannot place.
+    #[must_use]
+    pub fn with_model(mut self, model: Option<Arc<dyn ChatModel>>) -> Self {
+        self.model = model;
+        self
     }
 
     /// How many threads and at which priority a folder is read.
@@ -268,6 +279,7 @@ impl ChatAccess {
                 &target,
                 &answered,
                 layout.as_deref(),
+                self.model.as_deref(),
             )),
             ChatWork::SaveGroupRule {
                 target,

@@ -880,4 +880,65 @@ mod tests {
             .any(|entry| matches!(entry, Entry::Hermes { parts, .. }
                 if parts.contains(&Part::Text(say(Msg::HermesChatRuleRefused, &[("reason", &reason)]))))));
     }
+
+    #[test]
+    fn an_unsure_row_shows_the_year_folder_and_name_of_the_document_and_files_under_them() {
+        let mut talk = Talk::in_dir(tempfile::tempdir().unwrap(), &["archive"], &["inbox"]);
+        for (area, base) in [("Haus", 20), ("Firma", 30)] {
+            for (month, day) in [(1, 10), (3, 11), (6, 12)] {
+                talk.write(
+                    &format!("archive/{area}/Alfa/2020/2020-{month:02}-{day} Alfa Rechnung.pdf"),
+                    &letter(
+                        "Alfa AG",
+                        &format!("{day}.{month:02}.2020"),
+                        "Rechnung",
+                        base + day,
+                    ),
+                );
+            }
+        }
+        talk.write(
+            "inbox/scan.pdf",
+            &letter("Alfa AG", "05.03.2021", "Rechnung", 77),
+        );
+        talk.open();
+        tidy_until_trial(&mut talk, &ChipReply::ModeMove);
+
+        let Some(Part::Trial(card)) = talk.last_parts().get(1).cloned() else {
+            panic!("{:?}", talk.last_parts())
+        };
+        let row = card.rows.iter().find(|row| row.name == "scan.pdf").unwrap();
+        let RowOutcome::Unsure { choices, .. } = &row.outcome else {
+            panic!("{row:?}")
+        };
+        let labels: Vec<String> = choices
+            .iter()
+            .map(|choice| choice.label.replace('\\', "/"))
+            .collect();
+        assert!(
+            labels.iter().all(|label| label.contains("/2021")),
+            "the year of the document, never another: {labels:?}"
+        );
+        assert!(
+            labels.iter().all(|label| !label.contains("2020")),
+            "{labels:?}"
+        );
+        assert!(
+            labels
+                .iter()
+                .all(|label| label.ends_with("Alfa Rechnung.pdf")),
+            "the row shows the name it would get: {labels:?}"
+        );
+
+        let picked = choices[0].clone();
+        talk.send(Message::ChipPressed {
+            label: picked.label.clone(),
+            reply: picked.reply.clone(),
+        });
+        talk.press(&ChipReply::FileAll);
+        let files = talk.files();
+        let filed_as = format!("archive/{}", picked.label.replace('\\', "/"));
+        assert!(files.contains_key(&filed_as), "{filed_as}: {files:?}");
+        assert!(!files.contains_key("inbox/scan.pdf"));
+    }
 }

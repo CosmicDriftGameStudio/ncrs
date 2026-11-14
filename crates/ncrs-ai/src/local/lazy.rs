@@ -282,6 +282,27 @@ impl ChatModel for LazyLocalModel {
             session.revise(&question)
         })
     }
+    fn choose_folders(
+        &self,
+        folders: &[(String, Vec<String>)],
+        documents: &[String],
+    ) -> Result<Vec<Option<usize>>, AiError> {
+        self.ensure_worker()?;
+        let (reply, answer) = channel();
+        let owned_folders = folders.to_vec();
+        let owned_documents = documents.to_vec();
+        self.shared.submit(Job::Rule(RuleJob {
+            task: Box::new(move |model| {
+                let outcome = model
+                    .and_then(|loaded| loaded.choose_folders(&owned_folders, &owned_documents));
+                drop(reply.send(outcome));
+            }),
+        }));
+        answer
+            .recv()
+            .map_err(|_stopped| AiError::Model("the model stopped before it answered"))?
+    }
+
     /// Reads a snapshot only, never the disk and never the worker. While the
     /// model is being loaded, or asleep, it reports `NotLoadedYet`.
     fn status(&self) -> LocalModelStatus {

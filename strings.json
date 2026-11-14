@@ -7436,15 +7436,15 @@
     },
     {
       "key": "hermes_chat.group_where",
-      "context": "Hermes chat (F2): Hermes asks where a group of files from one sender goes. {count} is the number of files, {label} the sender name, {examples} up to three file names separated by commas.",
-      "en": "{count} files from {label}, e.g. {examples}. Where should they go?",
-      "de": "{count} Dateien von {label}, z. B. {examples}. Wohin damit?"
+      "context": "Hermes chat (F2): Hermes asks where a group of files from one sender goes. {count} is the number of files, {label} the sender name, {examples} up to three file names separated by commas. The answer is saved as a rule for all future documents of this sender, so the text says that it covers every file of the group and is remembered.",
+      "en": "All {count} files from {label}, e.g. {examples}: where should they go? Hermes remembers your answer as a rule for future documents from {label}.",
+      "de": "Alle {count} Dateien von {label}, z. B. {examples}: Wohin sollen sie? Hermes merkt sich deine Antwort als Regel für künftige Dokumente von {label}."
     },
     {
       "key": "hermes_chat.group_where_kind",
-      "context": "Hermes chat (F2): Hermes asks where a group of files of one kind of document goes, files that have no known sender. {count} is the number of files, {kind} the kind of document (for example invoice), {examples} up to three file names separated by commas.",
-      "en": "{count} {kind} documents, e.g. {examples}. Where should they go?",
-      "de": "{count} {kind}-Dokumente, z. B. {examples}. Wohin damit?"
+      "context": "Hermes chat (F2): Hermes asks where a group of files of one kind of document goes, files that have no known sender. {count} is the number of files, {kind} the kind of document (for example invoice), {examples} up to three file names separated by commas. The answer is saved as a rule for all future documents of this kind, so the text says that it covers every file of the group and is remembered.",
+      "en": "All {count} {kind} documents, e.g. {examples}: where should they go? Hermes remembers your answer as a rule for future {kind} documents.",
+      "de": "Alle {count} {kind}-Dokumente, z. B. {examples}: Wohin sollen sie? Hermes merkt sich deine Antwort als Regel für künftige {kind}-Dokumente."
     },
     {
       "key": "hermes_chat.new_folder",

@@ -11,7 +11,9 @@
 //!
 //! The folder is `target/eval/<stamp>/`: `master` and `run/archive` (the archive),
 //! `run/downloads` (the source) and `index.db` (the index with the fields the
-//! model read). `NCRS_PROTOCOL_AI_WAIT_SECS` limits the wait for the model.
+//! model read). `NCRS_PROTOCOL_AI_WAIT_SECS` limits the wait for the model;
+//! `NCRS_EVAL_RESUME=<that folder>` continues a run the wait cut short, and
+//! `NCRS_EVAL_TIDY=1` then tidies the source in the chat, with screenshots in `out`.
 
 use std::path::Path;
 
@@ -31,13 +33,23 @@ fn brother_eval_read() {
         );
         return;
     };
-    let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
-    let kept = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("target")
-        .join("eval")
-        .join(stamp);
-    std::fs::create_dir_all(&kept).unwrap();
-    copy_tree(&archive, &kept.join("master")).unwrap();
+    let resumed = env_path("NCRS_EVAL_RESUME");
+    let kept = if let Some(kept) = resumed.clone() {
+        // `run` and `scratch` are rebuilt from `master` and the source at the
+        // same paths, so the kept index knows the documents read before.
+        std::fs::remove_dir_all(kept.join("run")).unwrap();
+        std::fs::remove_dir_all(kept.join("scratch")).unwrap();
+        kept
+    } else {
+        let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+        let kept = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join("eval")
+            .join(stamp);
+        std::fs::create_dir_all(&kept).unwrap();
+        copy_tree(&archive, &kept.join("master")).unwrap();
+        kept
+    };
     println!(
         "copied the archive: {} files",
         count_files(&kept.join("master"))
@@ -48,11 +60,14 @@ fn brother_eval_read() {
         &kept.join("scratch"),
         &kept.join("out"),
         Language::German,
-        false,
+        resumed.is_some(),
         Some(&source),
     );
     run.flow_1_greeting_while_starting();
     run.wait_for_indexing();
+    if env_path("NCRS_EVAL_TIDY").is_some() {
+        run.flow_5_tidy();
+    }
     drop(run);
     println!("NCRS_EVAL_SCRATCH={}", kept.display());
 }

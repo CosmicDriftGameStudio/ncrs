@@ -30,7 +30,7 @@ pub fn models_dir() -> PathBuf {
 }
 
 /// Loaded once: a second copy would cost the memory of the model again.
-fn model() -> &'static LocalModel {
+pub fn model() -> &'static LocalModel {
     static MODEL: OnceLock<LocalModel> = OnceLock::new();
     MODEL.get_or_init(|| {
         let path = models_dir().join(LOCAL_MODEL.name);

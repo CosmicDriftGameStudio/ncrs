@@ -3,12 +3,16 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
+use ncrs_ai::ChatModel;
 use ncrs_index::{ContentHash, DocumentFields, Field, Kinds, Rule, SenderAliases};
 use ncrs_intake::{
-    plan, render_pattern_in, NeighbourIndex, OwnNames, PlanFile, PlanInput, Planning,
+    plan, render_complete_pattern, render_pattern_folder, render_pattern_in, Candidate,
+    NeighbourIndex, OwnNames, PlanFile, PlanInput, Planning,
 };
 
+use super::folder_list::FolderList;
 use super::groups::{stay_groups, AnsweredGroups, StayGroups};
 use super::pattern::{layout_path, PatternLevel};
 use super::{ChatAccess, FolderReading};
@@ -27,9 +31,11 @@ pub enum TrialOutcome {
     Filed {
         to: PathBuf,
     },
-    /// Folders below the target, the one with most similar files first.
+    /// Folders below the target, the one with most similar files first, and
+    /// for each the name the file gets there: the same position in both.
     Unsure {
         choices: Vec<PathBuf>,
+        file_names: Vec<String>,
         kind_label: Option<String>,
     },
     /// Relative to the target.
@@ -94,6 +100,7 @@ pub fn trial(
     target: &FolderReading,
     answered: &AnsweredGroups,
     layout: Option<&[PatternLevel]>,
+    model: Option<&dyn ChatModel>,
 ) -> Result<TrialPlan, String> {
     let kinds = access.kinds()?;
     let (rules, aliases) = access.rules_and_aliases()?;
@@ -102,13 +109,16 @@ pub fn trial(
         ibans: &access.own.ibans,
         tax_ids: &access.own.tax_ids,
     };
-    let neighbours = NeighbourIndex::new(&target.files, &own, &target.structure);
+    let neighbours = NeighbourIndex::new(&target.files, &own, &target.structure)
+        .with_kinds(Arc::clone(&kinds.catalog));
     let mut taken: BTreeSet<PathBuf> = target
         .files
         .iter()
         .map(|file| file.relative_path.clone())
         .collect();
 
+    let folder_list = FolderList::of(&target.files);
+    let mut candidate_lists = Vec::with_capacity(source.files.len());
     let mut entries = Vec::with_capacity(source.files.len());
     for file in &source.files {
         let name = file
@@ -127,9 +137,11 @@ pub fn trial(
                 kinds: &kinds,
                 location: &source.root,
                 layout,
+                folder_list: &folder_list,
             };
             decided = decide(&ctx, file, &name, &mut taken);
         }
+        candidate_lists.push(decided.candidates);
         entries.push(TrialEntry {
             from: source.root.join(&file.relative_path),
             name,
@@ -139,6 +151,17 @@ pub fn trial(
             neighbour: decided.neighbour,
             wanted: decided.wanted,
         });
+    }
+
+    if let Some(model) = model {
+        let asked = ModelAsk {
+            model,
+            folders: &folder_list,
+            kinds: &kinds,
+            files: &source.files,
+            candidates: &candidate_lists,
+        };
+        ask_model(&asked, &mut entries);
     }
 
     let count = |matches_outcome: fn(&TrialOutcome) -> bool| {
@@ -175,12 +198,15 @@ struct Deciding<'a> {
     location: &'a Path,
     /// How to file into a target no neighbour points the way in.
     layout: Option<&'a [PatternLevel]>,
+    folder_list: &'a FolderList,
 }
 
 struct Decided {
     outcome: TrialOutcome,
     neighbour: Option<PathBuf>,
     wanted: Option<PathBuf>,
+    /// The folders the neighbours offered for an unsure file.
+    candidates: Vec<Candidate>,
 }
 
 impl Decided {
@@ -189,6 +215,7 @@ impl Decided {
             outcome,
             neighbour: None,
             wanted: None,
+            candidates: Vec::new(),
         }
     }
 
@@ -200,6 +227,7 @@ impl Decided {
                 outcome: TrialOutcome::Stays(StayReason::NameTaken),
                 neighbour: None,
                 wanted: Some(to),
+                candidates: Vec::new(),
             }
         }
     }
@@ -239,22 +267,36 @@ fn decide(
         };
     };
     if !placement.is_sure() {
-        let mut choices = vec![placement.folder];
-        choices.extend(placement.runner_up);
-        return Decided::outcome(TrialOutcome::Unsure {
-            choices,
-            kind_label: file
-                .fields
-                .kind
-                .as_deref()
-                .map(|kind| ctx.kinds.kind_word(kind).into_owned()),
-        });
+        let mut offers = unsure_offers(
+            &placement.candidates,
+            &file.fields,
+            ctx.kinds,
+            name,
+            ctx.folder_list,
+        );
+        if offers.is_empty() {
+            let mut folders = vec![placement.folder];
+            folders.extend(placement.runner_up);
+            offers = folders
+                .into_iter()
+                .map(|folder| (folder, name.to_owned()))
+                .collect();
+        }
+        let (choices, file_names) = offers.into_iter().unzip();
+        return Decided {
+            candidates: placement.candidates,
+            ..Decided::outcome(TrialOutcome::Unsure {
+                choices,
+                file_names,
+                kind_label: known_kind_label(ctx.kinds, &file.fields)
+                    .or_else(|| file.fields.sender.clone()),
+            })
+        };
     }
     if let Some(field) = placement.missing {
         return Decided {
-            outcome: TrialOutcome::Stays(StayReason::MissingField(field)),
             neighbour: Some(placement.folder),
-            wanted: None,
+            ..Decided::outcome(TrialOutcome::Stays(StayReason::MissingField(field)))
         };
     }
     let Some(rendered) = placement
@@ -263,9 +305,8 @@ fn decide(
         .and_then(|pattern| render_pattern_in(pattern, &file.fields, ctx.kinds))
     else {
         return Decided {
-            outcome: TrialOutcome::Stays(StayReason::NoPattern),
             neighbour: Some(placement.folder),
-            wanted: None,
+            ..Decided::outcome(TrialOutcome::Stays(StayReason::NoPattern))
         };
     };
     let to = with_extension_of(rendered, name);
@@ -274,6 +315,195 @@ fn decide(
         decided.neighbour = Some(placement.folder);
     }
     decided
+}
+
+/// The kind as a word of the user's language, only when the catalog knows it.
+fn known_kind_label(kinds: &Kinds, fields: &DocumentFields) -> Option<String> {
+    let kind = fields.kind.as_deref()?;
+    kinds.catalog.resolve(kind)?;
+    Some(kinds.kind_word(kind).into_owned())
+}
+
+/// The most folders an unsure row offers.
+const MAX_OFFERS: usize = 2;
+
+/// Each candidate as the folder the document would go to, with the year of
+/// the document, and the name it would get there; two candidates of one
+/// folder are one.
+fn unsure_offers(
+    candidates: &[Candidate],
+    fields: &DocumentFields,
+    kinds: &Kinds,
+    name: &str,
+    folders: &FolderList,
+) -> Vec<(PathBuf, String)> {
+    let extension = Path::new(name).extension().and_then(|ext| ext.to_str());
+    let mut offers: Vec<(PathBuf, String)> = Vec::new();
+    for candidate in candidates {
+        let Some((folder, file_name)) =
+            offer_of(candidate, fields, kinds, name, extension, folders)
+        else {
+            continue;
+        };
+        if offers.iter().all(|(known, _)| *known != folder) {
+            offers.push((folder, file_name));
+        }
+    }
+    offers.truncate(MAX_OFFERS);
+    offers
+}
+
+fn offer_of(
+    candidate: &Candidate,
+    fields: &DocumentFields,
+    kinds: &Kinds,
+    name: &str,
+    extension: Option<&str>,
+    folders: &FolderList,
+) -> Option<(PathBuf, String)> {
+    let kept = || {
+        Some(candidate.folder.clone())
+            .filter(|folder| !folder.as_os_str().is_empty())
+            .map(|folder| (folders.with_year(folder, fields), name.to_owned()))
+    };
+    let Some(pattern) = candidate.pattern.as_deref() else {
+        return kept();
+    };
+    let complete = extension
+        .and_then(|extension| render_complete_pattern(pattern, fields, kinds, extension))
+        .and_then(|path| {
+            let file_name = path.file_name()?.to_string_lossy().into_owned();
+            Some((path.parent()?.to_path_buf(), file_name))
+        })
+        .filter(|(folder, _)| !folder.as_os_str().is_empty());
+    complete
+        .or_else(|| {
+            render_pattern_folder(pattern, fields, kinds).map(|folder| (folder, name.to_owned()))
+        })
+        .or_else(kept)
+}
+
+struct ModelAsk<'a> {
+    model: &'a dyn ChatModel,
+    folders: &'a FolderList,
+    kinds: &'a Kinds,
+    /// The files of the source, in the order of the entries.
+    files: &'a [PlanFile],
+    /// The neighbours' candidates of each file, in the same order.
+    candidates: &'a [Vec<Candidate>],
+}
+
+/// What the model reads of a file: the start of its text.
+const MODEL_TEXT_CHARS: usize = 2000;
+
+/// The files that did not get a sure place go to the model once, as a batch.
+/// A file it picks a folder for is unsure: the model's folder first, then the
+/// one the neighbours offered. A model that fails changes nothing.
+fn ask_model(ask: &ModelAsk<'_>, entries: &mut [TrialEntry]) {
+    let asked: Vec<usize> = entries
+        .iter()
+        .enumerate()
+        .filter(|(_, entry)| needs_model(&entry.outcome))
+        .map(|(position, _)| position)
+        .collect();
+    if asked.is_empty() || ask.folders.entries.is_empty() {
+        return;
+    }
+    let documents: Vec<String> = asked
+        .iter()
+        .filter_map(|position| ask.files.get(*position))
+        .map(document_text)
+        .collect();
+    let Ok(picks) = ask.model.choose_folders(&ask.folders.entries, &documents) else {
+        return;
+    };
+    for (position, pick) in asked.into_iter().zip(picks) {
+        let (Some(entry), Some(candidates), Some(folder)) = (
+            entries.get_mut(position),
+            ask.candidates.get(position),
+            pick.and_then(|number| ask.folders.folder(number)),
+        ) else {
+            continue;
+        };
+        let extension = Path::new(&entry.name)
+            .extension()
+            .and_then(|ext| ext.to_str());
+        let from_model = candidates
+            .iter()
+            .find(|candidate| candidate.folder == folder)
+            .and_then(|candidate| {
+                offer_of(
+                    candidate,
+                    &entry.fields,
+                    ask.kinds,
+                    &entry.name,
+                    extension,
+                    ask.folders,
+                )
+            })
+            .unwrap_or_else(|| {
+                (
+                    ask.folders.with_year(folder, &entry.fields),
+                    entry.name.clone(),
+                )
+            });
+        let mut offers = vec![from_model];
+        let mut kind_label = None;
+        if let TrialOutcome::Unsure {
+            choices,
+            file_names,
+            kind_label: known_label,
+        } = &entry.outcome
+        {
+            offers.extend(choices.iter().cloned().zip(file_names.iter().cloned()));
+            kind_label.clone_from(known_label);
+        } else {
+            kind_label =
+                known_kind_label(ask.kinds, &entry.fields).or_else(|| entry.fields.sender.clone());
+        }
+        let mut distinct: Vec<(PathBuf, String)> = Vec::new();
+        for offer in offers {
+            if distinct.iter().all(|(known, _)| *known != offer.0) {
+                distinct.push(offer);
+            }
+        }
+        distinct.truncate(MAX_OFFERS);
+        let (choices, file_names) = distinct.into_iter().unzip();
+        entry.outcome = TrialOutcome::Unsure {
+            choices,
+            file_names,
+            kind_label,
+        };
+    }
+}
+
+/// Sure places stay as they are; a taken name or a missing field is no
+/// question of which folder.
+fn needs_model(outcome: &TrialOutcome) -> bool {
+    match outcome {
+        TrialOutcome::Filed { .. } | TrialOutcome::AlreadyThere { .. } => false,
+        TrialOutcome::Stays(reason) => {
+            matches!(reason, StayReason::NoNeighbours | StayReason::NoPattern)
+        }
+        TrialOutcome::Unsure { .. } => true,
+    }
+}
+
+fn document_text(file: &PlanFile) -> String {
+    let fields = &file.fields;
+    let text: String = file
+        .text
+        .as_deref()
+        .unwrap_or_default()
+        .chars()
+        .take(MODEL_TEXT_CHARS)
+        .collect();
+    format!(
+        "Absender: {}\nArt: {}\nDatum: {}\n\n{text}",
+        fields.sender.as_deref().unwrap_or_default(),
+        fields.kind.as_deref().unwrap_or_default(),
+        fields.date.map(|date| date.to_string()).unwrap_or_default(),
+    )
 }
 
 fn first_segment(to: &Path) -> String {

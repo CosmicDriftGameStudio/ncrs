@@ -171,6 +171,16 @@ pub trait ChatModel: Send + Sync + fmt::Debug {
         previous: &Levels,
         sentence: &str,
     ) -> Result<Revision, AiError>;
+    /// For each document the index of the folder it belongs in, or `None`
+    /// when no folder fits or the model cannot say. Each folder comes with a
+    /// few names of files already in it.
+    fn choose_folders(
+        &self,
+        _folders: &[(String, Vec<String>)],
+        documents: &[String],
+    ) -> Result<Vec<Option<usize>>, AiError> {
+        Ok(vec![None; documents.len()])
+    }
     /// Never blocks and never reads the disk.
     fn status(&self) -> LocalModelStatus;
     /// Looks for the model file again (after a download).

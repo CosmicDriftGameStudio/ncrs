@@ -222,9 +222,15 @@ fn share(part: usize, whole: usize) -> String {
     }
 }
 
-fn report_of(plan: &TrialPlan, scans: &[Scan], kinds_outside: usize, kinds_long: usize) -> String {
+fn report_of(
+    plan: &TrialPlan,
+    scans: &[Scan],
+    kinds_outside: usize,
+    kinds_long: usize,
+    with_model: bool,
+) -> String {
     let mut text = String::from(
-        "| Scan | Sender / Art / Datum | Ergebnis | Vorschlag | Name | Soll | Treffer |\n|---|---|---|---|---|---|---|\n",
+        "| Scan | Sender / Art / Datum | Ergebnis | Modell | Vorschlag | Name | Soll | Treffer |\n|---|---|---|---|---|---|---|---|\n",
     );
     let cell = |value: &str| value.replace('|', "/").replace('\n', " ");
     for scan in scans {
@@ -241,6 +247,13 @@ fn report_of(plan: &TrialPlan, scans: &[Scan], kinds_outside: usize, kinds_long:
                     .join(" ; ")
             },
         );
+        let modelled = if with_model && scan.outcome == "unsicher" {
+            scan.candidates
+                .first()
+                .map_or_else(String::new, |folder| shown(folder))
+        } else {
+            String::new()
+        };
         let hit = match scan.hit() {
             Some(true) => "ja",
             Some(false) => "nein",
@@ -248,10 +261,11 @@ fn report_of(plan: &TrialPlan, scans: &[Scan], kinds_outside: usize, kinds_long:
         };
         writeln!(
             text,
-            "| {} | {} | {} | {} | {} | {} | {hit} |",
+            "| {} | {} | {} | {} | {} | {} | {} | {hit} |",
             cell(&scan.name),
             cell(&scan.fields),
             scan.outcome,
+            cell(&modelled),
             cell(&proposal),
             cell(&scan.proposed_name),
             cell(&soll),
@@ -298,6 +312,27 @@ fn report_of(plan: &TrialPlan, scans: &[Scan], kinds_outside: usize, kinds_long:
     text
 }
 
+/// The local model, when `NCRS_AI_MODELS_DIR` names the folder with it and the
+/// build has it.
+#[cfg(feature = "local-ai")]
+fn local_model() -> Option<Arc<dyn ncrs_ai::ChatModel>> {
+    let dir = std::env::var_os("NCRS_AI_MODELS_DIR").map(PathBuf::from)?;
+    let path = dir.join(ncrs_ai::LOCAL_MODEL.name);
+    let threads = std::num::NonZeroU32::new(4)?;
+    let context = std::num::NonZeroU32::new(2048)?;
+    Some(Arc::new(ncrs_ai::LazyLocalModel::new(
+        path,
+        ncrs_ai::LOCAL_MODEL,
+        threads,
+        context,
+    )))
+}
+
+#[cfg(not(feature = "local-ai"))]
+fn local_model() -> Option<Arc<dyn ncrs_ai::ChatModel>> {
+    None
+}
+
 #[test]
 #[ignore = "reads the folder brother_eval_read kept (NCRS_EVAL_SCRATCH); see the module doc"]
 fn brother_eval_trial() {
@@ -315,7 +350,9 @@ fn brother_eval_trial() {
     let source_before = file_list(&source_folder);
 
     let work = tempfile::tempdir().unwrap();
-    let access = access_over(&kept.join("index.db"), work.path());
+    let model = local_model();
+    let with_model = model.is_some();
+    let access = access_over(&kept.join("index.db"), work.path()).with_model(model);
     let archive = read(&access, &archive_folder);
     let source = read(&access, &source_folder);
     let plan: TrialPlan = match access.run(ChatWork::Trial {
@@ -362,7 +399,7 @@ fn brother_eval_trial() {
         .filter(|kind| kind.chars().count() > MAX_FREE_KIND_CHARS)
         .count();
 
-    let report = report_of(&plan, &scans, kinds_outside, kinds_long);
+    let report = report_of(&plan, &scans, kinds_outside, kinds_long, with_model);
     fs::write(&report_file, &report).unwrap();
     println!("{report}");
     println!("report: {}", report_file.display());

@@ -625,3 +625,97 @@ fn on_the_test_archive_only_the_scans_folder_knows_the_city_letters() {
 
     assert_eq!(placement, None);
 }
+
+fn dated(sender: &str, kind: &str, year: i32) -> DocumentFields {
+    DocumentFields {
+        date: NaiveDate::from_ymd_opt(year, 3, 10),
+        ..fields(Some(sender), Some(kind))
+    }
+}
+
+/// Three letters per area, filed by year with the date in the name.
+fn two_areas_by_year() -> Vec<PlanFile> {
+    let mut documents = Vec::new();
+    for (area, base) in [("Haus", 10), ("Firma", 20)] {
+        for (offset, year) in [2019, 2020, 2021].into_iter().enumerate() {
+            documents.push(file(
+                &format!("{area}/Alfa/{year}/{year}-03-10 Alfa Rechnung.pdf"),
+                base + u8::try_from(offset).unwrap(),
+                dated("Alfa", "invoice", year),
+                None,
+            ));
+        }
+    }
+    documents
+}
+
+#[test]
+fn an_unsure_placement_offers_the_areas_without_their_year_levels() {
+    let documents = two_areas_by_year();
+    let placement = place(&documents, &ordered(), &fields(Some("Alfa"), None), None).unwrap();
+
+    assert!(!placement.is_sure());
+    let folders: Vec<&Path> = placement
+        .candidates
+        .iter()
+        .map(|candidate| candidate.folder.as_path())
+        .collect();
+    assert_eq!(folders, [Path::new("Firma/Alfa"), Path::new("Haus/Alfa")]);
+}
+
+#[test]
+fn a_sure_placement_offers_no_candidates() {
+    let sure = place(
+        &filed("Alpha", 1..6, &fields(Some("Firma"), None), None),
+        &ordered(),
+        &fields(Some("Firma"), None),
+        None,
+    )
+    .unwrap();
+
+    assert!(sure.is_sure());
+    assert!(sure.candidates.is_empty());
+}
+
+#[test]
+fn candidates_carry_the_pattern_the_year_of_the_document_is_rendered_with() {
+    let documents = two_areas_by_year();
+    let placement = place(&documents, &ordered(), &fields(Some("Alfa"), None), None).unwrap();
+    let kinds = Kinds::built_in(KindLanguage::German);
+    let document = dated("Alfa", "invoice", 2024);
+
+    let folders: Vec<PathBuf> = placement
+        .candidates
+        .iter()
+        .filter_map(|candidate| candidate.pattern.as_deref())
+        .filter_map(|pattern| crate::filing_plan::render_pattern_folder(pattern, &document, &kinds))
+        .collect();
+
+    assert_eq!(
+        folders,
+        [
+            PathBuf::from("Firma/Alfa/2024"),
+            PathBuf::from("Haus/Alfa/2024")
+        ]
+    );
+}
+
+#[test]
+fn kinds_written_differently_but_known_as_one_kind_are_the_same_kind() {
+    let sender = fields(Some("Alfa"), Some("Rechnung"));
+    let mut documents = filed("Konto", 1..4, &sender, None);
+    documents.extend(filed(
+        "Sonstiges",
+        4..9,
+        &fields(Some("Alfa"), Some("Brief")),
+        None,
+    ));
+
+    let index = NeighbourIndex::new(&documents, &no_own(), &ordered());
+    let placement = index
+        .place(&fields(Some("Alfa"), Some("invoice")), None)
+        .unwrap();
+
+    assert_eq!(placement.signal, Signal::SameSenderAndKind);
+    assert_eq!(placement.folder, Path::new("Konto"));
+}
