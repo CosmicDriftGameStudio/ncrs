@@ -1,22 +1,18 @@
 //! The chat as a messenger column, built from the kit.
 
-use std::path::Path;
-
 use iced::widget::operation;
 use iced::{Element, Task};
 use ncrs_i18n::{Language, Msg};
 use ncrs_ui_kit::hermes_kit::{
     areas_card, chat_chip, chat_header, chat_input, chat_page, chat_text, chip_row, file_card,
-    folder_mention, hermes_bubble, levels_card, proposal_card, trial_card, user_bubble,
-    user_folder_bubble, working_bubble, AreaLine, ChatInput, Choice, TrialLine, TrialTarget,
+    folder_mention, hermes_bubble, levels_card, proposal_card, user_bubble, user_folder_bubble,
+    working_bubble, AreaLine, ChatInput,
 };
 use ncrs_ui_kit::palette::Palette;
 
 use crate::message::Message;
-use crate::state::{
-    AreasCard, Chip, CountRow, Entry, FileCard, Part, RowOutcome, State, TrialCard,
-};
-use crate::texts::{documents_label, segments};
+use crate::state::{AreasCard, CountRow, Entry, FileCard, Part, State};
+use crate::texts::documents_label;
 
 pub const INPUT_ID: &str = "hermes-chat-input";
 pub const SCROLL_ID: &str = "hermes-chat-thread";
@@ -70,50 +66,6 @@ fn file<'a>(card: &FileCard, ctx: ViewCtx<'_>) -> Element<'a, Message> {
     file_card(&card.segments, card.highlighted, ctx.palette)
 }
 
-fn choice_of(chip: &Chip, selected: bool) -> Choice<Message> {
-    Choice {
-        label: chip.label.clone(),
-        selected,
-        on_press: Message::ChipPressed {
-            label: chip.label.clone(),
-            reply: chip.reply.clone(),
-        },
-    }
-}
-
-fn trial<'a>(card: &TrialCard, ctx: ViewCtx<'_>) -> Element<'a, Message> {
-    let lines = card
-        .rows
-        .iter()
-        .map(|row| TrialLine {
-            source: row.source.clone(),
-            facts: row.facts.clone(),
-            target: match &row.outcome {
-                RowOutcome::Filed { segments } => TrialTarget::Path(segments.clone()),
-                RowOutcome::Unsure { choices, .. } if choices.len() == 1 => TrialTarget::Path(
-                    choices
-                        .iter()
-                        .flat_map(|chip| segments(Path::new(&chip.label)))
-                        .collect(),
-                ),
-                RowOutcome::Unsure {
-                    choices, chosen, ..
-                } => TrialTarget::Choices(
-                    choices
-                        .iter()
-                        .enumerate()
-                        .map(|(index, chip)| choice_of(chip, *chosen == Some(index)))
-                        .collect(),
-                ),
-                RowOutcome::AlreadyThere(note) | RowOutcome::Stays(note) => {
-                    TrialTarget::Note(note.clone())
-                }
-            },
-        })
-        .collect();
-    trial_card(&card.header, lines, card.more.as_deref(), ctx.palette)
-}
-
 fn part<'a>(part: &Part, ctx: ViewCtx<'_>) -> Element<'a, Message> {
     match part {
         Part::Text(content) => chat_text(content, ctx.palette.text),
@@ -133,7 +85,6 @@ fn part<'a>(part: &Part, ctx: ViewCtx<'_>) -> Element<'a, Message> {
             ctx.palette,
         ),
         Part::File(card) => file(card, ctx),
-        Part::Trial(card) => trial(card, ctx),
         Part::Folder(mention) => folder_mention(&mention.name, &mention.path, ctx.palette),
     }
 }

@@ -14,9 +14,8 @@ mod common;
 mod tests {
 
     use crate::common::{letter, say, Talk};
-    use ncrs_hermes_chat::{Action, Availability, ChipReply, Entry, Message, Part, RowOutcome};
+    use ncrs_hermes_chat::{Action, Availability, ChipReply, Entry, Message, Part};
     use ncrs_i18n::Msg;
-    use ncrs_index::BatchKind;
 
     /// An archive that files Alfa by year and holds Beta in two places, and an
     /// inbox with one letter of each.
@@ -65,134 +64,6 @@ mod tests {
         talk.choose_archive_if_asked();
     }
 
-    fn tidy_until_trial(talk: &mut Talk, transfer: &ChipReply) {
-        tidy_until_once(talk);
-        talk.press(&ChipReply::Once);
-        talk.press(transfer);
-    }
-
-    fn user_bubbles(talk: &Talk) -> Vec<&str> {
-        talk.state
-            .thread()
-            .iter()
-            .filter_map(|entry| match entry {
-                Entry::User(text) => Some(text.as_str()),
-                _ => None,
-            })
-            .collect()
-    }
-
-    #[test]
-    fn an_unsure_file_is_decided_in_its_row_and_filed_where_the_user_chose() {
-        let mut talk = small_talk();
-        talk.open();
-        tidy_until_trial(&mut talk, &ChipReply::ModeMove);
-        let plan = talk.plan();
-        assert_eq!((plan.filed, plan.unsure), (1, 1), "{:?}", plan.entries);
-        assert_eq!(
-            talk.labels()[0],
-            say(Msg::HermesChatFileAll, &[("count", "2")])
-        );
-
-        let Some(Part::Trial(card)) = talk.last_parts().get(1).cloned() else {
-            panic!("{:?}", talk.last_parts())
-        };
-        let row = card
-            .rows
-            .iter()
-            .find(|row| row.source.ends_with("/neu_beta.pdf"))
-            .unwrap();
-        let RowOutcome::Unsure {
-            choices, chosen, ..
-        } = &row.outcome
-        else {
-            panic!("{row:?}")
-        };
-        assert_eq!(chosen, &None);
-        assert_eq!(choices.len(), 2);
-        assert_eq!(row.source, "inbox/neu_beta.pdf");
-        assert_eq!(row.facts, "06.03.2021 · Beta GmbH · Invoice");
-
-        let picked = choices[1].clone();
-        talk.entries += 1;
-        talk.send(Message::ChipPressed {
-            label: picked.label.clone(),
-            reply: picked.reply.clone(),
-        });
-        assert_eq!(
-            user_bubbles(&talk).last().copied(),
-            Some(picked.label.as_str())
-        );
-        assert_eq!(
-            talk.last_texts(),
-            vec![say(
-                Msg::HermesChatUnsureChosen,
-                &[
-                    ("name", "neu_beta.pdf"),
-                    (
-                        "path",
-                        &std::path::Path::new(&picked.label)
-                            .parent()
-                            .unwrap()
-                            .display()
-                            .to_string()
-                    )
-                ]
-            )]
-        );
-        assert_eq!(
-            talk.labels()[0],
-            say(Msg::HermesChatFileAll, &[("count", "2")])
-        );
-        let marked = talk.state.thread().iter().any(|entry| {
-            matches!(entry, Entry::Hermes { parts, .. } if parts.iter().any(|part| matches!(part,
-            Part::Trial(shown) if shown.rows.iter().any(|listed| matches!(
-                listed.outcome, RowOutcome::Unsure { chosen: Some(1), .. })))))
-        });
-        assert!(marked, "the row shows the choice");
-
-        talk.press(&ChipReply::FileAll);
-        let files = talk.files();
-        let chosen_folder = picked.label.replace('\\', "/");
-        assert!(files.contains_key(&format!("archive/{chosen_folder}")));
-        assert!(!files.contains_key("inbox/neu_beta.pdf"));
-        assert!(!files.contains_key("inbox/neu_alfa.pdf"));
-        assert_eq!(
-            talk.last_texts()[0],
-            say(
-                Msg::HermesChatFiled,
-                &[("done", "2"), ("stays", "0"), ("folder", "inbox")]
-            )
-        );
-    }
-
-    #[test]
-    fn more_of_the_trial_comes_ten_at_a_time_until_the_end() {
-        let mut talk = small_talk();
-        for number in 0..23 {
-            talk.write(&format!("inbox/junk{number:02}.txt"), "nothing to see");
-        }
-        talk.open();
-        tidy_until_trial(&mut talk, &ChipReply::ModeCopy);
-        assert_eq!(talk.plan().entries.len(), 25);
-        // The junk has no sender and no kind: 23 single pieces stay without a question.
-        assert!(talk
-            .state
-            .chips()
-            .iter()
-            .any(|chip| chip.reply == ChipReply::ShowMore));
-        for expected in ["10", "5"] {
-            talk.press(&ChipReply::ShowMore);
-            assert_eq!(
-                talk.last_texts(),
-                vec![say(Msg::HermesChatTrialNext, &[("count", expected)])]
-            );
-        }
-        talk.press(&ChipReply::ShowMore);
-        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatTrialEnd, &[])]);
-        assert_eq!(talk.labels().len(), 2, "file and cancel stay");
-    }
-
     #[test]
     fn show_all_lists_every_area_and_asks_again() {
         let mut talk = small_talk();
@@ -239,20 +110,22 @@ mod tests {
     }
 
     #[test]
-    fn always_on_a_source_the_app_already_watches_asks_for_the_mode_and_changes_no_setting() {
+    fn always_on_a_source_the_app_already_watches_hands_over_and_changes_no_setting() {
         let mut talk = small_talk();
         tidy_until_once(&mut talk);
         talk.press(&ChipReply::Always);
-        assert_eq!(
-            talk.last_texts(),
-            vec![
-                say(Msg::HermesChatAskMode, &[("folder", "inbox")]),
-                say(Msg::HermesChatModeConsequence, &[("folder", "inbox")])
-            ]
+        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatHandover, &[])]);
+        assert!(
+            matches!(
+                talk.actions.as_slice(),
+                [Action::OpenFiling {
+                    watch_source: false,
+                    ..
+                }]
+            ),
+            "{:?}",
+            talk.actions
         );
-        assert!(talk.actions.is_empty(), "{:?}", talk.actions);
-        talk.press(&ChipReply::ModeMove);
-        assert!(talk.state.trial_plan().is_some());
     }
 
     #[test]
@@ -273,30 +146,14 @@ mod tests {
         talk.actions.clear();
         talk.press(&ChipReply::Folder(talk.path("archive")));
         talk.press(&ChipReply::Always);
-        assert_eq!(
-            talk.actions,
-            vec![Action::SetFolderRole {
-                folder: downloads,
-                role: ncrs_ui_kit::hermes_state::FolderRole::Inbox,
-            }]
+        assert!(
+            matches!(
+                talk.actions.as_slice(),
+                [Action::OpenFiling { source, watch_source: true, .. }] if *source == downloads
+            ),
+            "{:?}",
+            talk.actions
         );
-    }
-
-    #[test]
-    fn cancel_leaves_everything_and_no_run_behind() {
-        let mut talk = small_talk();
-        let before = talk.files();
-        tidy_until_trial(&mut talk, &ChipReply::ModeMove);
-        talk.press(&ChipReply::Cancel);
-        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatCancelled, &[])]);
-        assert_eq!(talk.files(), before);
-        let guard = talk.index.lock().unwrap();
-        let batch = guard
-            .as_ref()
-            .unwrap()
-            .last_undoable_batch(BatchKind::Hermes)
-            .unwrap();
-        assert_eq!(batch, None);
     }
 
     #[test]
@@ -860,134 +717,5 @@ mod tests {
             )]
         );
         assert!(talk.actions.is_empty());
-    }
-
-    #[test]
-    fn a_refused_rule_says_what_does_not_fit() {
-        use ncrs_filing::chat_work::{ChatResult, RuleSaveFailure};
-        use ncrs_intake::{ConditionProblem, RuleProblem};
-
-        let mut talk = small_talk();
-        talk.send(Message::Done(Box::new(ChatResult::RuleSaved(Err(
-            RuleSaveFailure::Refused(RuleProblem::Condition(ConditionProblem::Empty)),
-        )))));
-        let reason = say(Msg::HermesChatRuleProblemEmptyValue, &[]);
-        assert!(talk
-            .state
-            .thread()
-            .iter()
-            .any(|entry| matches!(entry, Entry::Hermes { parts, .. }
-                if parts.contains(&Part::Text(say(Msg::HermesChatRuleRefused, &[("reason", &reason)]))))));
-    }
-
-    #[test]
-    fn an_unsure_row_shows_the_year_folder_and_name_of_the_document_and_files_under_them() {
-        let mut talk = Talk::in_dir(tempfile::tempdir().unwrap(), &["archive"], &["inbox"]);
-        for (area, base) in [("Haus", 20), ("Firma", 30)] {
-            for (month, day) in [(1, 10), (3, 11), (6, 12)] {
-                talk.write(
-                    &format!("archive/{area}/Alfa/2020/2020-{month:02}-{day} Alfa Rechnung.pdf"),
-                    &letter(
-                        "Alfa AG",
-                        &format!("{day}.{month:02}.2020"),
-                        "Rechnung",
-                        base + day,
-                    ),
-                );
-            }
-        }
-        talk.write(
-            "inbox/scan.pdf",
-            &letter("Alfa AG", "05.03.2021", "Rechnung", 77),
-        );
-        talk.open();
-        tidy_until_trial(&mut talk, &ChipReply::ModeMove);
-
-        let Some(Part::Trial(card)) = talk.last_parts().get(1).cloned() else {
-            panic!("{:?}", talk.last_parts())
-        };
-        let row = card
-            .rows
-            .iter()
-            .find(|row| row.source.ends_with("/scan.pdf"))
-            .unwrap();
-        let RowOutcome::Unsure { choices, .. } = &row.outcome else {
-            panic!("{row:?}")
-        };
-        let labels: Vec<String> = choices
-            .iter()
-            .map(|choice| choice.label.replace('\\', "/"))
-            .collect();
-        assert!(
-            labels.iter().all(|label| label.contains("/2021")),
-            "the year of the document, never another: {labels:?}"
-        );
-        assert!(
-            labels.iter().all(|label| !label.contains("2020")),
-            "{labels:?}"
-        );
-        assert!(
-            labels
-                .iter()
-                .all(|label| label.ends_with("Alfa Rechnung.pdf")),
-            "the row shows the name it would get: {labels:?}"
-        );
-
-        let picked = choices[0].clone();
-        talk.send(Message::ChipPressed {
-            label: picked.label.clone(),
-            reply: picked.reply.clone(),
-        });
-        talk.press(&ChipReply::FileAll);
-        let files = talk.files();
-        let filed_as = format!("archive/{}", picked.label.replace('\\', "/"));
-        assert!(files.contains_key(&filed_as), "{filed_as}: {files:?}");
-        assert!(!files.contains_key("inbox/scan.pdf"));
-    }
-
-    #[test]
-    fn file_all_files_unsure_rows_into_their_first_choice() {
-        let mut talk = Talk::in_dir(tempfile::tempdir().unwrap(), &["archive"], &["inbox"]);
-        for (area, base) in [("Haus", 20), ("Firma", 30)] {
-            for (month, day) in [(1, 10), (3, 11), (6, 12)] {
-                talk.write(
-                    &format!("archive/{area}/Alfa/2020/2020-{month:02}-{day} Alfa Rechnung.pdf"),
-                    &letter(
-                        "Alfa AG",
-                        &format!("{day}.{month:02}.2020"),
-                        "Rechnung",
-                        base + day,
-                    ),
-                );
-            }
-        }
-        talk.write(
-            "inbox/eins.pdf",
-            &letter("Alfa AG", "05.03.2021", "Rechnung", 77),
-        );
-        talk.write(
-            "inbox/zwei.pdf",
-            &letter("Alfa AG", "06.04.2021", "Rechnung", 78),
-        );
-        talk.open();
-        tidy_until_trial(&mut talk, &ChipReply::ModeMove);
-        assert_eq!(talk.plan().unsure, 2, "{:?}", talk.plan().entries);
-        assert_eq!(
-            talk.labels()[0],
-            say(Msg::HermesChatFileAll, &[("count", "2")])
-        );
-
-        talk.press(&ChipReply::FileAll);
-
-        let files = talk.files();
-        assert!(!files.contains_key("inbox/eins.pdf"), "{files:?}");
-        assert!(!files.contains_key("inbox/zwei.pdf"), "{files:?}");
-        assert_eq!(
-            talk.last_texts()[0],
-            say(
-                Msg::HermesChatFiled,
-                &[("done", "2"), ("stays", "0"), ("folder", "inbox")]
-            )
-        );
     }
 }

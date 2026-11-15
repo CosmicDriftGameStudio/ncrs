@@ -10,7 +10,7 @@ use ncrs_index::Transfer;
 
 use super::inside_items;
 use crate::ctx::Ctx;
-use crate::state::{Chip, ChipReply, GroupFlow, Offer, Part, State, Step, Tidy};
+use crate::state::{Chip, ChipReply, Offer, Part, State, Step, Tidy};
 use crate::texts::{self, fill, folder_name, number, text};
 use crate::update::{access, chip, hermes, say, work};
 
@@ -108,7 +108,6 @@ fn filed_report(state: &mut State, ctx: &Ctx, result: Result<RunReport, String>)
         .get(&tidy.source)
         .map_or(0, |reading| reading.files.len());
     state.session.readings.clear();
-    state.session.groups = GroupFlow::default();
     let mut parts = Vec::new();
     if report.done > 0 || report.inside_done == 0 {
         parts.push(Part::Text(fill(

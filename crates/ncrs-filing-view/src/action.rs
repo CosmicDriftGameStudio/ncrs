@@ -18,6 +18,6 @@ pub enum Action {
         transfer: Transfer,
         filed: usize,
         left: Vec<PathBuf>,
-        batch: Option<BatchId>,
+        batch: BatchId,
     },
 }

@@ -612,17 +612,11 @@ fn files_inside_the_target_are_renamed_in_the_same_run_and_undone_with_it() {
     outside(&|plan| plan.inside[0].to = PathBuf::from("../escape.txt"));
     assert!(old.exists());
 
-    let ChatResult::Filed(report) = setup.access.run(ChatWork::File { run }) else {
+    let ChatResult::Filed(filed) = setup.access.run(ChatWork::File { run }) else {
         panic!("not a filing result");
     };
-    assert_eq!(
-        report.unwrap(),
-        RunReport {
-            done: 2,
-            skipped: 0,
-            inside_done: 1,
-        }
-    );
+    let report = filed.unwrap();
+    assert_eq!((report.done, report.skipped, report.inside_done), (2, 0, 1));
     assert!(!old.exists());
     assert!(archive.join("Beta/new.txt").exists());
     assert!(!archive.join("Gehalt").exists(), "the emptied folders go");
@@ -655,17 +649,11 @@ fn a_move_run_is_summarised_and_undone_from_the_journal() {
     fs::create_dir_all(setup.dir.path().join("archive")).unwrap();
     assert_eq!(last_run(&setup), None);
     let run = run_plan(&setup, Transfer::Move);
-    let ChatResult::Filed(report) = setup.access.run(ChatWork::File { run }) else {
+    let ChatResult::Filed(filed) = setup.access.run(ChatWork::File { run }) else {
         panic!("not a filing result");
     };
-    assert_eq!(
-        report.unwrap(),
-        RunReport {
-            done: 2,
-            skipped: 0,
-            inside_done: 0,
-        }
-    );
+    let report = filed.unwrap();
+    assert_eq!((report.done, report.skipped, report.inside_done), (2, 0, 0));
     assert!(!setup.dir.path().join("inbox/a.txt").exists());
     assert!(setup.dir.path().join("archive/Alfa/a.txt").exists());
 

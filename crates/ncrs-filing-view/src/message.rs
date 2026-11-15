@@ -12,7 +12,7 @@ pub struct FiledReport {
     pub trashed: usize,
     /// The files, relative to the source, that stay there.
     pub left: Vec<PathBuf>,
-    pub batch: Option<BatchId>,
+    pub batch: BatchId,
 }
 
 #[derive(Debug, Clone, PartialEq)]

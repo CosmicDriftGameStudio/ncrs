@@ -298,7 +298,6 @@ fn safe_to_press(reply: &ChipReply, data: &Path) -> bool {
         ChipReply::PickFolder
         | ChipReply::NewTarget
         | ChipReply::TrialOtherTarget
-        | ChipReply::GroupNewFolder
         | ChipReply::IntentSearch
         | ChipReply::Cancel
         | ChipReply::Later => false,

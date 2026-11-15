@@ -5,7 +5,6 @@ use std::time::{Duration, SystemTime};
 
 use ncrs_filing::chat_work::{branch_example, FolderReading};
 use ncrs_i18n::{fill_template, Language, Msg};
-use ncrs_index::Field;
 use ncrs_intake::{branch_plain, Area, Branch, ConditionProblem, RuleProblem};
 use ncrs_ui_kit::format;
 
@@ -87,17 +86,6 @@ pub fn shown_folder(ctx: &Ctx, path: &Path) -> String {
         Ok(rest) if !rest.as_os_str().is_empty() => format!("~/{}", rest.display()),
         _ => path.to_string_lossy().into_owned(),
     }
-}
-
-pub fn field_label(lang: Language, field: Field) -> &'static str {
-    lang.text(match field {
-        Field::Sender => Msg::ReviewListFieldSender,
-        Field::Recipient => Msg::ReviewListFieldRecipient,
-        Field::Kind => Msg::ReviewListFieldKind,
-        Field::Date => Msg::ReviewListFieldDate,
-        Field::Number => Msg::ReviewListFieldNumber,
-        Field::Amount => Msg::ReviewListFieldAmount,
-    })
 }
 
 /// "12 files" / "1 file".

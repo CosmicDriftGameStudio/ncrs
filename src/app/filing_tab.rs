@@ -69,20 +69,33 @@ impl App {
                 left,
                 batch,
             } => {
-                self.filing_finished(&source, transfer, filed, &left, batch);
+                self.filing_finished(source, transfer, filed, left.len(), batch);
                 Task::none()
             }
         }
     }
 
-    /// Wave 3 hooks in here: what the chat says after a run in the tab.
+    /// The chat says what the run did; the user stays where they are.
     fn filing_finished(
         &mut self,
-        _source: &Path,
-        _transfer: ncrs_index::Transfer,
-        _filed: usize,
-        _left: &[PathBuf],
-        _batch: Option<ncrs_index::BatchId>,
+        source: PathBuf,
+        transfer: ncrs_index::Transfer,
+        filed: usize,
+        left: usize,
+        batch: ncrs_index::BatchId,
     ) {
+        self.ensure_chat_model();
+        let ctx = self.hermes_chat_ctx();
+        ncrs_hermes_chat::filed_in_tab(
+            &mut self.hermes_chat,
+            &ctx,
+            ncrs_hermes_chat::FiledInTab {
+                source,
+                transfer,
+                filed,
+                left,
+                batch,
+            },
+        );
     }
 }

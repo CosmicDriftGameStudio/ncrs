@@ -5,32 +5,25 @@ use std::sync::Arc;
 
 use ncrs_ai::Schedule;
 use ncrs_filing::chat_work::{
-    AnsweredGroups, ChatWork, FolderReading, ModelScope, RunItem, RunPlan, StayReason, TrialEntry,
+    AnsweredGroups, ChatWork, FolderReading, ModelScope, RunItem, RunPlan, TrialEntry,
     TrialOutcome, TrialPlan,
 };
 use ncrs_filing::rules_work::ArchiveMove;
-use ncrs_i18n::{Language, Msg};
+use ncrs_i18n::Msg;
 use ncrs_index::Transfer;
 
 use ncrs_ui_kit::hermes_state::FolderRole;
 
 use crate::action::Action;
 use crate::ctx::Ctx;
-use crate::state::{
-    Chip, ChipReply, Entry, GroupFlow, Part, ReadFor, RowOutcome, State, Step, Tidy, TrialCard,
-    TrialRow, TrialSession,
-};
-use crate::texts::{field_label, fill, folder_name, number, segments, text};
-use crate::update::{cancel_chip, chip, chip_labelled, hermes, say, work};
-use crate::{learn, stay_groups, trial_end};
+use crate::learn;
+use crate::state::{Chip, ChipReply, Part, ReadFor, State, Step, Tidy, TrialSession};
+use crate::texts::{fill, folder_name, number, text};
+use crate::update::{chip, chip_labelled, hermes, say, work};
 
 mod filed;
-mod rest;
 
 pub use filed::{archive_run, filed_done, trash_offer, trashed_done};
-pub use rest::{done as trial_rest_done, progress_line as trial_progress_line};
-
-pub const PAGE: usize = 10;
 
 pub fn targets(state: &State, ctx: &Ctx) -> Vec<PathBuf> {
     let mut found: Vec<PathBuf> = Vec::new();
@@ -238,8 +231,11 @@ pub fn once(state: &mut State, ctx: &Ctx, always: bool) {
         .proposal
         .as_ref()
         .and_then(|proposal| proposal.transfer);
+    let (source, chosen_target) = (tidy.source.clone(), tidy.target.clone());
+    let watch_source = always && !ctx.sources.contains(&source);
+    let deciding = state.session.deciding.is_some();
     if always {
-        if !ctx.sources.contains(&tidy.source) {
+        if deciding && watch_source {
             state.queued_action = Some(Action::SetFolderRole {
                 folder: tidy.source.clone(),
                 role: FolderRole::Inbox,
@@ -252,11 +248,25 @@ pub fn once(state: &mut State, ctx: &Ctx, always: bool) {
             Vec::new(),
         );
     }
-    if let Some(transfer) = said {
-        mode(state, ctx, transfer);
+    if deciding {
+        match said {
+            Some(transfer) => mode(state, ctx, transfer),
+            None => ask_mode(state, ctx),
+        }
         return;
     }
-    ask_mode(state, ctx);
+    let Some(target) = chosen_target else {
+        return;
+    };
+    state.session.tidy = None;
+    state.session.proposal = None;
+    state.session.readings.clear();
+    crate::in_tab::hand_over(state, ctx);
+    state.queued_action = Some(Action::OpenFiling {
+        source,
+        target,
+        watch_source,
+    });
 }
 
 pub fn ask_mode(state: &mut State, ctx: &Ctx) {
@@ -296,7 +306,6 @@ pub fn mode(state: &mut State, ctx: &Ctx, transfer: Transfer) {
     };
     tidy.transfer = Some(transfer);
     state.session.proposal = None;
-    state.session.groups = GroupFlow::default();
     let (Some(source), Some(target)) = (
         state.session.readings.get(&tidy.source).cloned(),
         tidy.target
@@ -320,182 +329,6 @@ pub fn mode(state: &mut State, ctx: &Ctx, transfer: Transfer) {
     );
 }
 
-pub fn filed_count(trial: &TrialSession) -> usize {
-    let with_choice = trial
-        .plan
-        .entries
-        .iter()
-        .filter(|entry| matches!(&entry.outcome, TrialOutcome::Unsure { choices, .. } if !choices.is_empty()))
-        .count();
-    trial.plan.filed + with_choice
-}
-
-pub fn trial_chips(ctx: &Ctx, trial: &TrialSession) -> Vec<Chip> {
-    let mut chips = vec![chip_labelled(
-        fill(
-            ctx.lang,
-            Msg::HermesChatFileAll,
-            &[("count", &number(filed_count(trial)))],
-        ),
-        ChipReply::FileAll,
-        true,
-    )];
-    if trial.shown < trial.plan.entries.len() {
-        chips.push(chip(
-            ctx,
-            Msg::HermesChatShowMore,
-            ChipReply::ShowMore,
-            false,
-        ));
-    }
-    chips.push(cancel_chip(ctx));
-    chips
-}
-
-/// The read folder's name and the path of the file in it, as it lies on the
-/// disk.
-fn source_shown(plan: &TrialPlan, entry: &TrialEntry) -> String {
-    let inside_root = entry.from.strip_prefix(&plan.source_root).ok();
-    let root_name = plan.source_root.file_name();
-    let shown = match (root_name, inside_root) {
-        (Some(root), Some(relative)) => Path::new(root).join(relative),
-        _ => PathBuf::from(&entry.name),
-    };
-    shown.to_string_lossy().replace('\\', "/")
-}
-
-/// Sender, kind and date of a file, in the user's language.
-fn facts_shown(ctx: &Ctx, entry: &TrialEntry) -> String {
-    let date_format = match ctx.lang.base() {
-        Language::German => "%d.%m.%Y",
-        _ => "%Y-%m-%d",
-    };
-    // The date first: a long sender or kind is what the card cuts.
-    [
-        entry
-            .fields
-            .date
-            .map(|date| date.format(date_format).to_string()),
-        entry.fields.sender.clone(),
-        entry.kind_word.clone(),
-    ]
-    .into_iter()
-    .flatten()
-    .map(|part| without_aside(&part).to_owned())
-    .filter(|part| !part.is_empty())
-    .collect::<Vec<_>>()
-    .join(" · ")
-}
-
-/// Senders and kinds the model read often carry an aside in brackets, such as
-/// a branch office or an English gloss; the card shows the name before it.
-fn without_aside(text: &str) -> &str {
-    text.split(" (").next().unwrap_or(text).trim()
-}
-
-pub fn row_of(ctx: &Ctx, trial: &TrialSession, position: usize) -> Option<TrialRow> {
-    let entry = trial.plan.entries.get(position)?;
-    let outcome = match &entry.outcome {
-        TrialOutcome::Filed { to } => RowOutcome::Filed {
-            segments: segments(to),
-        },
-        TrialOutcome::Unsure {
-            choices,
-            file_names,
-            ..
-        } => RowOutcome::Unsure {
-            choices: choices
-                .iter()
-                .zip(file_names)
-                .enumerate()
-                .map(|(choice, (folder, file_name))| {
-                    chip_labelled(
-                        folder.join(file_name).to_string_lossy().into_owned(),
-                        ChipReply::UnsureChoice {
-                            entry: position,
-                            choice,
-                        },
-                        false,
-                    )
-                })
-                .collect(),
-            chosen: trial
-                .resolved
-                .get(&position)
-                .and_then(|folder| choices.iter().position(|choice| choice == folder)),
-        },
-        TrialOutcome::AlreadyThere { at } => RowOutcome::AlreadyThere(fill(
-            ctx.lang,
-            Msg::HermesChatTrialAlreadyThere,
-            &[("path", &at.to_string_lossy())],
-        )),
-        TrialOutcome::Stays(reason) => {
-            let described = match reason {
-                StayReason::NoNeighbours => text(ctx.lang, Msg::HermesChatStayNoNeighbours),
-                StayReason::MissingField(field) => fill(
-                    ctx.lang,
-                    Msg::HermesChatStayMissingField,
-                    &[("field", field_label(ctx.lang, *field))],
-                ),
-                StayReason::NoPattern => text(ctx.lang, Msg::HermesChatStayNoPattern),
-                StayReason::NameTaken => text(ctx.lang, Msg::HermesChatStayNameTaken),
-            };
-            RowOutcome::Stays(fill(
-                ctx.lang,
-                Msg::HermesChatTrialStays,
-                &[("reason", &described)],
-            ))
-        }
-    };
-    Some(TrialRow {
-        entry: position,
-        source: source_shown(&trial.plan, entry),
-        facts: facts_shown(ctx, entry),
-        outcome,
-    })
-}
-
-fn page_card(state: &State, ctx: &Ctx, from: usize, to: usize) -> Option<TrialCard> {
-    let left = state
-        .session
-        .trial
-        .as_ref()?
-        .plan
-        .entries
-        .len()
-        .saturating_sub(to);
-    card_of(state, ctx, (from..to).collect(), left)
-}
-
-/// A card with the rows of these positions in the plan; `left` is how many
-/// more the user can still ask for.
-pub fn card_of(state: &State, ctx: &Ctx, positions: Vec<usize>, left: usize) -> Option<TrialCard> {
-    let trial = state.session.trial.as_ref()?;
-    let transfer = state.session.tidy.as_ref()?.transfer?;
-    let rows: Vec<TrialRow> = positions
-        .into_iter()
-        .filter_map(|at| row_of(ctx, trial, at))
-        .collect();
-    Some(TrialCard {
-        header: text(
-            ctx.lang,
-            if transfer == Transfer::Copy {
-                Msg::HermesChatTrialHeaderCopy
-            } else {
-                Msg::HermesChatTrialHeaderMove
-            },
-        ),
-        rows,
-        more: (left > 0).then(|| {
-            fill(
-                ctx.lang,
-                Msg::HermesChatTrialMore,
-                &[("count", &number(left))],
-            )
-        }),
-    })
-}
-
 pub fn trial_done(state: &mut State, ctx: &Ctx, result: Result<TrialPlan, String>) {
     let plan = match result {
         Ok(plan) => plan,
@@ -510,187 +343,8 @@ pub fn trial_done(state: &mut State, ctx: &Ctx, result: Result<TrialPlan, String
             return;
         }
     };
-    let total = plan.entries.len();
-    let shown = total.min(PAGE);
-    let carried = std::mem::take(&mut state.session.groups.carried);
-    let resolved = carried
-        .into_iter()
-        .filter_map(|(from, folder)| {
-            let (position, entry) = plan
-                .entries
-                .iter()
-                .enumerate()
-                .find(|(_, entry)| entry.from == from)?;
-            matches!(&entry.outcome, TrialOutcome::Unsure { choices, .. } if choices.contains(&folder))
-                .then_some((position, folder))
-        })
-        .collect();
-    state.session.trial = Some(TrialSession {
-        plan,
-        resolved,
-        shown,
-    });
-    if state
-        .session
-        .tidy
-        .as_ref()
-        .is_some_and(|tidy| tidy.rule_now.is_some())
-    {
-        crate::rule_flow::trial::file_rule_trial(state, ctx);
-        return;
-    }
-    state.step = Step::Trial;
-    rest::start(state);
-    if state.looks_at_files() {
-        if let Some(open) = state.session.trial.as_ref() {
-            let line = rest::progress_line(ctx, &open.plan);
-            state.thread.push(Entry::Working(line));
-        }
-        return;
-    }
-    post_trial(state, ctx);
-}
-
-/// Posts the trial once the model has looked at every file: the card of the
-/// first page, then the questions about staying groups or the chips.
-pub fn post_trial(state: &mut State, ctx: &Ctx) {
-    let lead: Vec<Part> = state
-        .session
-        .groups
-        .fresh_rule
-        .take()
-        .map(|name| Part::Text(fill(ctx.lang, Msg::HermesChatRuleSaved, &[("name", &name)])))
-        .into_iter()
-        .collect();
-    let Some(trial) = state.session.trial.as_ref() else {
-        return;
-    };
-    let (total, shown) = (trial.plan.entries.len(), trial.shown);
-    let open_questions = stay_groups::has_open_questions(state);
-    if filed_count(trial) == 0 && trial.plan.unsure == 0 {
-        if let Some(tidy) = state
-            .session
-            .tidy
-            .as_ref()
-            .filter(|tidy| !tidy.inside.is_empty())
-        {
-            let (source, moves) = (tidy.source.clone(), tidy.inside.clone());
-            archive_run(state, ctx, source, moves);
-            return;
-        }
-        if !open_questions {
-            trial_end::without_filing(state, ctx, lead);
-            return;
-        }
-        let mut parts = lead;
-        parts.push(Part::Text(fill(
-            ctx.lang,
-            Msg::HermesChatStaysOnly,
-            &[("count", &number(total))],
-        )));
-        hermes(state, parts, Vec::new());
-        stay_groups::ask_next(state, ctx);
-        return;
-    }
-    let chips = if open_questions {
-        Vec::new()
-    } else {
-        trial_chips(ctx, trial)
-    };
-    let Some(card) = page_card(state, ctx, 0, shown) else {
-        return;
-    };
-    let mut parts = lead;
-    parts.push(Part::Text(fill(
-        ctx.lang,
-        Msg::HermesChatTrialIntro,
-        &[("count", &number(shown))],
-    )));
-    parts.push(Part::Trial(card));
-    hermes(state, parts, chips);
-    if open_questions {
-        stay_groups::ask_next(state, ctx);
-    }
-}
-
-pub fn show_more(state: &mut State, ctx: &Ctx) {
-    let Some(trial) = state.session.trial.as_ref() else {
-        return;
-    };
-    let (shown, total) = (trial.shown, trial.plan.entries.len());
-    let chips = trial_chips(ctx, trial);
-    if shown >= total {
-        say(state, text(ctx.lang, Msg::HermesChatTrialEnd), chips);
-        return;
-    }
-    let to = total.min(shown + PAGE);
-    let Some(card) = page_card(state, ctx, shown, to) else {
-        return;
-    };
-    if let Some(running) = state.session.trial.as_mut() {
-        running.shown = to;
-    }
-    hermes(
-        state,
-        vec![
-            Part::Text(fill(
-                ctx.lang,
-                Msg::HermesChatTrialNext,
-                &[("count", &number(to - shown))],
-            )),
-            Part::Trial(card),
-        ],
-        chips,
-    );
-}
-
-pub fn unsure(state: &mut State, ctx: &Ctx, entry: usize, choice: usize) {
-    let Some(trial) = state.session.trial.as_mut() else {
-        return;
-    };
-    let Some(found) = trial.plan.entries.get(entry) else {
-        return;
-    };
-    let TrialOutcome::Unsure { choices, .. } = &found.outcome else {
-        return;
-    };
-    let Some(folder) = choices.get(choice).cloned() else {
-        return;
-    };
-    let name = found.name.clone();
-    trial.resolved.insert(entry, folder.clone());
-    for thread_entry in &mut state.thread {
-        let Entry::Hermes { parts, .. } = thread_entry else {
-            continue;
-        };
-        for part in parts {
-            let Part::Trial(card) = part else {
-                continue;
-            };
-            for row in &mut card.rows {
-                if let (true, RowOutcome::Unsure { chosen, .. }) =
-                    (row.entry == entry, &mut row.outcome)
-                {
-                    *chosen = Some(choice);
-                }
-            }
-        }
-    }
-    let chips = state
-        .session
-        .trial
-        .as_ref()
-        .map(|current| trial_chips(ctx, current))
-        .unwrap_or_default();
-    say(
-        state,
-        fill(
-            ctx.lang,
-            Msg::HermesChatUnsureChosen,
-            &[("name", &name), ("path", &folder.to_string_lossy())],
-        ),
-        chips,
-    );
+    state.session.trial = Some(TrialSession { plan });
+    crate::rule_flow::trial::file_rule_trial(state, ctx);
 }
 
 /// The archive documents of this target as items of the run.
@@ -735,7 +389,7 @@ pub fn file_all(state: &mut State, ctx: &Ctx) {
     let mut items = Vec::new();
     let entries = trial.plan.entries.clone();
     let rule_prefix = tidy.rule_now.as_deref();
-    for (position, entry) in entries.iter().enumerate() {
+    for entry in &entries {
         if !crate::rule_flow::trial::rule_keeps(rule_prefix, &entry.outcome) {
             continue;
         }
@@ -743,12 +397,7 @@ pub fn file_all(state: &mut State, ctx: &Ctx) {
             TrialOutcome::Filed { to } => to.clone(),
             TrialOutcome::Unsure { choices, .. } => {
                 // A row the user did not touch goes to its first choice.
-                let Some(folder) = trial
-                    .resolved
-                    .get(&position)
-                    .or_else(|| choices.first())
-                    .cloned()
-                else {
+                let Some(folder) = choices.first().cloned() else {
                     continue;
                 };
                 let to = folder.join(chosen_name(entry, &folder));

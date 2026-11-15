@@ -17,7 +17,7 @@ use std::sync::{Arc, Mutex};
 
 use chrono::{Local, TimeZone as _};
 use ncrs_ai::{ChatModel, Compute, LocalModelStatus, ScriptedChatModel};
-use ncrs_filing::chat_work::{ChatAccess, TrialPlan};
+use ncrs_filing::chat_work::ChatAccess;
 use ncrs_fs::{FolderBackend, JournaledTrash};
 use ncrs_hermes_chat::{update, Action, Availability, ChipReply, Ctx, Entry, Message, Part, State};
 use ncrs_i18n::{fill_template, Language, Msg};
@@ -329,20 +329,6 @@ impl Talk {
         });
     }
 
-    /// Leaves every question about the staying files as it is, up to the
-    /// offer to file. These presses are not counted in `entries`.
-    pub fn leave_stay_questions(&mut self) {
-        let leaving = [ChipReply::GroupLeave, ChipReply::NamesLeave];
-        let counted = self.entries;
-        while let Some(reply) = leaving
-            .iter()
-            .find(|reply| self.state.chips().iter().any(|chip| &chip.reply == *reply))
-        {
-            self.press(&reply.clone());
-        }
-        self.entries = counted;
-    }
-
     pub fn type_text(&mut self, typed: &str) {
         self.entries += 1;
         self.send(Message::InputChanged(typed.to_owned()));
@@ -415,10 +401,6 @@ impl Talk {
         let formatted = format::time(Some(at));
         let (date, time) = formatted.split_once(' ').unwrap();
         say(Msg::HermesChatWhenDate, &[("date", date), ("time", time)])
-    }
-
-    pub fn plan(&self) -> &TrialPlan {
-        self.state.trial_plan().unwrap()
     }
 
     pub fn labels(&self) -> Vec<String> {

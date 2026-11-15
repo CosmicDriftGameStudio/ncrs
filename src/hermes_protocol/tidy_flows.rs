@@ -1,6 +1,6 @@
 //! The flows that file, change and answer: 5 tidy, 6 structure, 7 unknown.
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use ncrs_hermes_chat::{ChipReply, Step};
 use ncrs_i18n::Msg;
@@ -19,6 +19,8 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         last_text(self.app()).contains(fixed)
     }
 
+    /// The chat asks for the folders and hands over to the tab; the tab plans
+    /// live. Nothing is filed: the run never presses copy or move.
     pub fn flow_5_tidy(&mut self) {
         self.back_to_start();
         let before_downloads = self.files_below(&self.downloads);
@@ -28,31 +30,14 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         self.type_sentence(sentence);
         let (_, _, mut limit) = self.wait_idle(READ_LIMIT, None);
         let mut questions = Vec::new();
-        let mut stuck_chips_ok: Option<bool> = None;
-        let later_again = self.language.text(Msg::HermesChatLaterAgain);
         let archive = self.archive.clone();
-        for round in 1..=80 {
-            let image = if round <= 25 {
-                self.shot(&format!("tidy-{round:02}"))
-            } else {
-                format!("round {round}")
-            };
+        for round in 1..=20 {
             let labels = chip_labels(self.app());
             questions.push(format!(
-                "{image}: {} => {labels}",
+                "round {round}: {} => {labels}",
                 last_text(self.app()).chars().take(80).collect::<String>()
             ));
-            if has_chip(self.app(), |reply| *reply == ChipReply::Undo) {
-                break;
-            }
-            if has_chip(self.app(), |reply| *reply == ChipReply::TrialOtherTarget) {
-                let chips = chat(self.app()).chips();
-                stuck_chips_ok = Some(
-                    chips.len() >= 3
-                        && chips.iter().any(|chip| {
-                            chip.reply == ChipReply::Later && chip.label == later_again
-                        }),
-                );
+            if self.app().filing_session_for_test().is_some() {
                 break;
             }
             let first_press = self.press_chip(|reply| match reply {
@@ -61,75 +46,108 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
             });
             let pressed = first_press
                 .or_else(|_| self.press_chip(|reply| *reply == ChipReply::Once))
-                .or_else(|_| self.press_chip(|reply| *reply == ChipReply::ModeMove))
                 .or_else(|_| self.press_chip(|reply| *reply == ChipReply::ConfirmTidy))
-                .or_else(|_| self.press_chip(|reply| matches!(reply, ChipReply::GroupArea(_))))
-                .or_else(|_| self.press_chip(|reply| *reply == ChipReply::FileAll))
-                .or_else(|_| self.press_chip(|reply| matches!(reply, ChipReply::DecideTarget(_))))
-                .or_else(|_| self.press_chip(|reply| *reply == ChipReply::NamesLeave))
                 .or_else(|_| self.press_chip(|reply| *reply == ChipReply::PhotosNo))
                 .or_else(|_| self.press_chip(|reply| *reply == ChipReply::KeepYes));
             if pressed.is_err() {
                 break;
             }
-            let (_, _, again) =
-                self.wait_idle(READ_LIMIT, Some(("tidy-rest-running", rest_still_running)));
+            let (_, _, again) = self.wait_idle(READ_LIMIT, None);
             limit = again;
             if limit.is_err() {
                 break;
             }
         }
+        let handed_over = self.last_says(Msg::HermesChatHandover);
+        // The tab is the shown page now; the chat is the next tab after it.
+        self.deliver(Message::NextTab);
+        let chat_image = self.shot("tidy-handover");
+        self.deliver(Message::PreviousTab);
+
+        let mid_image = self.plan_in_tab_until_done();
+        let done_image = self.shot("filing-done");
+        let tally = self.filing_tally();
+        println!("[{}] 5 tidy filing tally: {tally}", self.language.code());
+
+        let planned = self
+            .app()
+            .filing_session_for_test()
+            .is_some_and(|session| session.plan_is_done());
         let moved = before_downloads.saturating_sub(self.files_below(&self.downloads));
         let arrived = self
             .files_below(&self.archive)
             .saturating_sub(before_archive);
         let result = all([
             limit,
+            expect(handed_over, "the chat did not say it hands over to the tab"),
+            expect(planned, "the tab did not finish planning"),
             expect(
-                moved > 0 && arrived > 0,
-                format!("{moved} left downloads, {arrived} reached the archive"),
+                mid_image.is_some(),
+                "no screenshot of the tab at about half decided",
             ),
             expect(
-                stuck_chips_ok.unwrap_or(true),
+                moved == 0 && arrived == 0,
                 format!(
-                    "the end of a trial without filing needs at least 3 buttons including '{later_again}'; labels: {}",
-                    chip_labels(self.app())
+                    "{moved} left downloads, {arrived} reached the archive: nothing may be filed"
                 ),
             ),
         ]);
         self.record(
             "5 tidy",
-            &format!("questions: {}", questions.join(" ;; ")),
+            &format!("questions: {} ;; tally: {tally}", questions.join(" ;; ")),
             started.elapsed().as_secs_f64(),
-            "tidy-NN",
-            "files move from downloads to the archive",
+            &format!(
+                "{chat_image}, {}, {done_image}",
+                mid_image.unwrap_or_else(|| "no mid shot".to_owned())
+            ),
+            "the chat hands over; the tab plans every file; nothing is filed",
             result,
         );
+    }
 
-        let undo_started = Instant::now();
-        let asked = self.press_chip(|reply| *reply == ChipReply::Undo);
-        let (_, _, asked_limit) = self.wait_idle(READ_LIMIT, None);
-        let confirmed = self.press_chip(|reply| *reply == ChipReply::PutBack);
-        let (_, _, undo_limit) = self.wait_idle(READ_LIMIT, None);
-        let undone = all([asked, asked_limit, confirmed]);
-        let image = self.shot("tidy-undone");
-        let restored = self.files_below(&self.downloads);
-        let undo_result = all([
-            undone,
-            undo_limit,
-            expect(
-                restored >= before_downloads,
-                format!("{restored} of {before_downloads} files back in downloads"),
-            ),
-        ]);
-        self.record(
-            "5 undo",
-            "pressed undo",
-            undo_started.elapsed().as_secs_f64(),
-            &image,
-            "the files are back in downloads",
-            undo_result,
-        );
+    /// Feeds the tab its ticks until the plan is done. The first screenshot
+    /// is taken once half of the files are decided.
+    fn plan_in_tab_until_done(&mut self) -> Option<String> {
+        let started = Instant::now();
+        let mut mid = None;
+        while started.elapsed() < READ_LIMIT {
+            self.deliver(Message::FilingView(ncrs_filing_view::Message::Tick));
+            self.pump(Duration::from_millis(100));
+            let Some(session) = self.app().filing_session_for_test() else {
+                return mid;
+            };
+            let (looked_at, all_files) = session.read_count();
+            if session.plan_is_done() {
+                break;
+            }
+            if mid.is_none() && all_files > 0 && looked_at * 2 >= all_files {
+                mid = Some(self.shot("filing-mid"));
+            }
+        }
+        self.deliver(Message::FilingView(ncrs_filing_view::Message::Tick));
+        mid
+    }
+
+    /// One line: how many files, and where the plan puts them.
+    fn filing_tally(&self) -> String {
+        use ncrs_filing::chat_work::LiveState;
+        let Some(plan) = self
+            .app()
+            .filing_session_for_test()
+            .and_then(|session| session.shown_plan())
+        else {
+            return "no plan".to_owned();
+        };
+        let count = |is: fn(&LiveState) -> bool| plan.files.iter().filter(|f| is(&f.state)).count();
+        format!(
+            "{} files, {} filed ({} unsure), {} already there, {} without folder, {} unreadable",
+            plan.files.len(),
+            count(|state| matches!(state, LiveState::Filed { .. })),
+            count(|state| matches!(state, LiveState::Filed { unsure: true, .. })),
+            count(|state| matches!(state, LiveState::AlreadyThere { .. })),
+            count(|state| matches!(state, LiveState::NoFolder)),
+            count(|state| matches!(state, LiveState::Unreadable)),
+        )
     }
 
     pub fn flow_6_structure(&mut self) {
@@ -227,18 +245,4 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
             );
         }
     }
-}
-
-/// The model is still looking at the files: the progress line is the last
-/// entry.
-fn rest_still_running(app: &App) -> bool {
-    let shown = last_text(app);
-    [ncrs_i18n::Language::German, ncrs_i18n::Language::English]
-        .into_iter()
-        .any(|language| {
-            let line = language.text(Msg::HermesChatWorkingTrialProgress);
-            line.split("{done}")
-                .next()
-                .is_some_and(|before_done| shown.contains(before_done))
-        })
 }

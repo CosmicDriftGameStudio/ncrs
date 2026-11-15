@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use ncrs_ai::ChatIntent;
-use ncrs_filing::chat_work::{ChatResult, TrialPlan};
+use ncrs_filing::chat_work::ChatResult;
 
 use crate::state::{ChipReply, Step};
 
@@ -19,9 +19,6 @@ pub enum Message {
     },
     Done(Box<ChatResult>),
     Failed(String),
-    /// The model's look at the files beyond the first page of the trial, or
-    /// why it failed.
-    TrialRestDone(u64, Box<Result<TrialPlan, String>>),
     FolderPicked(Option<PathBuf>),
     /// A picked folder was kept for the sandbox, or the system refused it;
     /// sent by the app in place of `FolderPicked` when the build is sandboxed.
@@ -81,7 +78,6 @@ impl Message {
             Self::ModelReady
                 | Self::Done(_)
                 | Self::Failed(_)
-                | Self::TrialRestDone(..)
                 | Self::PicksRemembered
                 | Self::ReadingSettled(_)
                 | Self::Understood(_)

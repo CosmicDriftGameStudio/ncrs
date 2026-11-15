@@ -384,7 +384,7 @@ fn carry_out(
         done: carried.done,
         trashed,
         left,
-        batch: None,
+        batch: carried.batch,
     })
 }
 
