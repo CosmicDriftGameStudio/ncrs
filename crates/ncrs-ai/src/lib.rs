@@ -25,8 +25,8 @@ mod usage_log;
 pub use api_key::{api_key_account, load_api_key, store_api_key, KeyLookup, KeychainKey};
 pub use chat::{
     chat_grammar, chat_user_message, intent_json, parse_chat_reply, propose_name_spec, search_json,
-    ChatIntent, ChatModel, ChatQuestion, ChatTurn, NameBlock, NameSpec, Order, QuestionKind,
-    Schedule, SearchQuery, Transfer, CHAT_SYSTEM_PROMPT, EVERY_AREA, NAME_SEPARATORS,
+    ChatIntent, ChatModel, ChatQuestion, ChatTurn, FolderChoiceLane, NameBlock, NameSpec, Order,
+    QuestionKind, Schedule, SearchQuery, Transfer, CHAT_SYSTEM_PROMPT, EVERY_AREA, NAME_SEPARATORS,
 };
 pub use consent::{ConsentGivenInSettings, ConsentLedger, OutgoingPreview};
 pub use contract::{

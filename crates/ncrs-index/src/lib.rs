@@ -4,6 +4,7 @@
 mod condition_store;
 mod documents;
 mod error;
+mod folder_pick;
 mod hermes_column;
 mod hermes_counts;
 mod index;

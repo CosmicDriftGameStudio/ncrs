@@ -88,12 +88,6 @@ impl FolderList {
         }
     }
 
-    pub fn folder(&self, number: usize) -> Option<PathBuf> {
-        self.entries
-            .get(number)
-            .map(|(folder, _)| PathBuf::from(folder))
-    }
-
     /// `folder` with the year of the document put back where its files had
     /// it: the most common place, the earliest on a tie.
     pub fn with_year(&self, folder: PathBuf, fields: &DocumentFields) -> PathBuf {

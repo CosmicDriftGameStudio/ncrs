@@ -23,8 +23,8 @@ mod tests;
 
 pub use grammar::chat_grammar;
 pub use intent::{
-    ChatIntent, ChatModel, NameBlock, NameSpec, Order, QuestionKind, Schedule, Transfer,
-    EVERY_AREA, NAME_SEPARATORS,
+    ChatIntent, ChatModel, FolderChoiceLane, NameBlock, NameSpec, Order, QuestionKind, Schedule,
+    Transfer, EVERY_AREA, NAME_SEPARATORS,
 };
 pub use name_proposal::propose_name_spec;
 pub use parse::parse_chat_reply;

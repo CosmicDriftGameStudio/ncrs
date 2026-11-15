@@ -10,6 +10,15 @@ use crate::error::AiError;
 use crate::rules::{ContextDocument, Levels, Mismatch, Revision};
 use crate::status::LocalModelStatus;
 
+/// Where a folder choice queues for the model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FolderChoiceLane {
+    /// A person waits for the answer: ahead of the document reading.
+    Waiting,
+    /// Nobody waits: in line with the document reading, at its priority.
+    Background,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Schedule {
     Once,
@@ -178,6 +187,7 @@ pub trait ChatModel: Send + Sync + fmt::Debug {
         &self,
         _folders: &[(String, Vec<String>)],
         documents: &[String],
+        _lane: FolderChoiceLane,
     ) -> Result<Vec<Option<usize>>, AiError> {
         Ok(vec![None; documents.len()])
     }

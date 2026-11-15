@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use ncrs_ai::ChatModel;
+use ncrs_ai::{ChatModel, FolderChoiceLane};
 use ncrs_index::{ContentHash, DocumentFields, Field, Kinds, Rule, SenderAliases};
 use ncrs_intake::{
     plan, render_complete_pattern, render_pattern_folder, render_pattern_in, Candidate,
@@ -180,7 +180,9 @@ pub fn trial(
     let mut model_left = BTreeSet::new();
     if let Some(model) = model {
         let asked = ModelAsk {
+            access,
             model,
+            target_root: &target.root,
             folders: &folder_list,
             kinds: &kinds,
             files: &source.files,
@@ -410,9 +412,11 @@ fn offer_of(
 }
 
 struct ModelAsk<'a> {
+    access: &'a ChatAccess,
     model: &'a dyn ChatModel,
     folders: &'a FolderList,
     kinds: &'a Kinds,
+    target_root: &'a Path,
     /// The files of the source, in the order of the entries.
     files: &'a [PlanFile],
     /// The neighbours' candidates of each file, in the same order.
@@ -422,9 +426,15 @@ struct ModelAsk<'a> {
 /// What the model reads of a file: the start of its text.
 const MODEL_TEXT_CHARS: usize = 2000;
 
+/// Bump when the folder-choice prompt changes: the stored picks of an older
+/// version are asked again.
+const FOLDER_PICK_VERSION: i64 = 1;
+
 /// The files that did not get a sure place go to the model once, as a batch.
 /// A file it picks a folder for is unsure: the model's folder first, then the
-/// one the neighbours offered. A model that fails changes nothing.
+/// one the neighbours offered. A model that fails changes nothing. Picks
+/// stored by an earlier trial count as the model's answer and are not asked
+/// again.
 /// Returns the files that needed the model but were not asked this time.
 fn ask_model(
     ask: &ModelAsk<'_>,
@@ -440,6 +450,7 @@ fn ask_model(
     if wanting.is_empty() || ask.folders.entries.is_empty() {
         return BTreeSet::new();
     }
+    let wanting = apply_stored_picks(ask, entries, wanting);
     let (asked, not_asked): (Vec<usize>, Vec<usize>) = match scope {
         ModelScope::All => (wanting, Vec::new()),
         ModelScope::FirstPage => {
@@ -470,68 +481,135 @@ fn ask_model(
         .filter_map(|position| ask.files.get(*position))
         .map(document_text)
         .collect();
-    let Ok(picks) = ask.model.choose_folders(&ask.folders.entries, &documents) else {
+    let lane = match scope {
+        ModelScope::Only(_) => FolderChoiceLane::Background,
+        ModelScope::FirstPage | ModelScope::All => FolderChoiceLane::Waiting,
+    };
+    let Ok(picks) = ask
+        .model
+        .choose_folders(&ask.folders.entries, &documents, lane)
+    else {
         return left;
     };
+    let mut to_remember: Vec<(ContentHash, Option<String>)> = Vec::new();
     for (position, pick) in asked.into_iter().zip(picks) {
-        let (Some(entry), Some(candidates), Some(folder)) = (
-            entries.get_mut(position),
-            ask.candidates.get(position),
-            pick.and_then(|number| ask.folders.folder(number)),
-        ) else {
+        let folder_name = pick
+            .and_then(|number| ask.folders.entries.get(number))
+            .map(|(folder, _)| folder.clone());
+        if let Some(entry) = entries.get(position) {
+            to_remember.push((entry.hash, folder_name.clone()));
+        }
+        if let Some(folder) = folder_name {
+            offer_model_folder(ask, entries, position, PathBuf::from(folder));
+        }
+    }
+    // The picks are a cache: a trial without them is only slower next time.
+    let _ = ask.access.with_index(|index| {
+        index
+            .store_folder_picks(ask.target_root, &to_remember, FOLDER_PICK_VERSION)
+            .map_err(|err| err.to_string())
+    });
+    left
+}
+
+/// Offers the stored folder to every file that has one, and returns the
+/// files that still need the model. A stored "none fits" settles the file; a
+/// stored folder that is no longer in the list is asked again.
+fn apply_stored_picks(
+    ask: &ModelAsk<'_>,
+    entries: &mut [TrialEntry],
+    wanting: Vec<usize>,
+) -> Vec<usize> {
+    let hashes: Vec<ContentHash> = wanting
+        .iter()
+        .filter_map(|position| entries.get(*position))
+        .map(|entry| entry.hash)
+        .collect();
+    let stored = ask
+        .access
+        .with_index(|index| {
+            index
+                .folder_picks(ask.target_root, &hashes, FOLDER_PICK_VERSION)
+                .map_err(|err| err.to_string())
+        })
+        .unwrap_or_default();
+    let mut remaining = Vec::new();
+    for position in wanting {
+        let Some(entry) = entries.get(position) else {
             continue;
         };
-        let extension = Path::new(&entry.name)
-            .extension()
-            .and_then(|ext| ext.to_str());
-        let from_model = candidates
-            .iter()
-            .find(|candidate| candidate.folder == folder)
-            .and_then(|candidate| {
-                offer_of(
-                    candidate,
-                    &entry.fields,
-                    ask.kinds,
-                    &entry.name,
-                    extension,
-                    ask.folders,
-                )
-            })
-            .unwrap_or_else(|| {
-                (
-                    ask.folders.with_year(folder, &entry.fields),
-                    entry.name.clone(),
-                )
-            });
-        let mut offers = vec![from_model];
-        let mut kind_label = None;
-        if let TrialOutcome::Unsure {
-            choices,
-            file_names,
-            kind_label: known_label,
-        } = &entry.outcome
-        {
-            offers.extend(choices.iter().cloned().zip(file_names.iter().cloned()));
-            kind_label.clone_from(known_label);
-        } else {
-            kind_label =
-                known_kind_label(ask.kinds, &entry.fields).or_else(|| entry.fields.sender.clone());
-        }
-        let mut distinct: Vec<(PathBuf, String)> = Vec::new();
-        for offer in offers {
-            if distinct.iter().all(|(known, _)| *known != offer.0) {
-                distinct.push(offer);
+        match stored.get(&entry.hash) {
+            Some(None) => {}
+            Some(Some(folder)) if ask.folders.entries.iter().any(|(known, _)| known == folder) => {
+                offer_model_folder(ask, entries, position, PathBuf::from(folder));
             }
+            Some(Some(_)) | None => remaining.push(position),
         }
-        distinct.truncate(MAX_OFFERS);
-        let (choices, file_names) = distinct.into_iter().unzip();
-        entry.outcome = TrialOutcome::Unsure {
-            choices,
-            file_names,
-            kind_label,
-        };
     }
-    left
+    remaining
+}
+
+/// Makes the file unsure with the model's `folder` first, then what the
+/// neighbours offered.
+fn offer_model_folder(
+    ask: &ModelAsk<'_>,
+    entries: &mut [TrialEntry],
+    position: usize,
+    folder: PathBuf,
+) {
+    let (Some(entry), Some(candidates)) = (entries.get_mut(position), ask.candidates.get(position))
+    else {
+        return;
+    };
+    let extension = Path::new(&entry.name)
+        .extension()
+        .and_then(|ext| ext.to_str());
+    let from_model = candidates
+        .iter()
+        .find(|candidate| candidate.folder == folder)
+        .and_then(|candidate| {
+            offer_of(
+                candidate,
+                &entry.fields,
+                ask.kinds,
+                &entry.name,
+                extension,
+                ask.folders,
+            )
+        })
+        .unwrap_or_else(|| {
+            (
+                ask.folders.with_year(folder, &entry.fields),
+                entry.name.clone(),
+            )
+        });
+    let mut offers = vec![from_model];
+    let mut kind_label = None;
+    if let TrialOutcome::Unsure {
+        choices,
+        file_names,
+        kind_label: known_label,
+    } = &entry.outcome
+    {
+        offers.extend(choices.iter().cloned().zip(file_names.iter().cloned()));
+        kind_label.clone_from(known_label);
+    } else {
+        kind_label =
+            known_kind_label(ask.kinds, &entry.fields).or_else(|| entry.fields.sender.clone());
+    }
+    let mut distinct: Vec<(PathBuf, String)> = Vec::new();
+    for offer in offers {
+        if distinct.iter().all(|(known, _)| *known != offer.0) {
+            distinct.push(offer);
+        }
+    }
+    distinct.truncate(MAX_OFFERS);
+    let (choices, file_names) = distinct.into_iter().unzip();
+    entry.outcome = TrialOutcome::Unsure {
+        choices,
+        file_names,
+        kind_label,
+    };
 }
 
 /// Sure places stay as they are; a taken name or a missing field is no
