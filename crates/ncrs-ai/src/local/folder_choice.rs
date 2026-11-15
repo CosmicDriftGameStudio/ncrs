@@ -19,11 +19,13 @@ const DOCUMENT_TOKENS: usize = 1500;
 
 impl LocalModel {
     /// For each document the index of the folder it belongs in, or `None`
-    /// when the model says none fits.
+    /// when the model says none fits. `closed` is asked before each document:
+    /// a long list must not keep the app from quitting.
     pub fn choose_folders(
         &self,
         folders: &[(String, Vec<String>)],
         documents: &[String],
+        closed: &dyn Fn() -> bool,
     ) -> Result<Vec<Option<usize>>, AiError> {
         if documents.is_empty() {
             return Ok(Vec::new());
@@ -71,6 +73,9 @@ impl LocalModel {
         let grammar = format!("root ::= {}", numbers.join(" | "));
         let mut chosen = Vec::with_capacity(documents.len());
         for document in documents {
+            if closed() {
+                return Err(AiError::Model("the model is closed"));
+            }
             // The document is the user's text: special tokens in it stay plain text.
             let mut suffix = vocab.tokenize(document.as_bytes(), false, false);
             suffix.truncate(room);
@@ -212,7 +217,7 @@ mod tests {
         }
 
         let started = Instant::now();
-        let picks = local.choose_folders(&choices, &documents).unwrap();
+        let picks = local.choose_folders(&choices, &documents, &|| false).unwrap();
         let seconds = started.elapsed().as_secs_f64();
         let (mut exact, mut area, mut none, mut total) = (0, 0, 0, 0);
         for (name, chosen) in names.iter().zip(picks) {
@@ -244,5 +249,40 @@ mod tests {
             "exakt {exact}/{total}, Bereich {area}/{total}, keiner {none}/{total}, {:.1} s je Scan",
             seconds / total.max(1) as f64
         );
+    }
+
+    #[test]
+    #[ignore = "loads the real local model from NCRS_AI_MODELS_DIR"]
+    fn quitting_does_not_wait_for_a_long_folder_choice() {
+        use std::num::NonZeroU32;
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        use crate::chat::ChatModel as _;
+        use crate::model_file::LOCAL_MODEL;
+
+        let lazy = Arc::new(crate::LazyLocalModel::new(
+            super::super::tests::models_dir().join(LOCAL_MODEL.name),
+            LOCAL_MODEL,
+            NonZeroU32::new(4).unwrap(),
+            NonZeroU32::new(2048).unwrap(),
+        ));
+        let folders = vec![
+            ("Bank".to_owned(), Vec::new()),
+            ("Steuer".to_owned(), Vec::new()),
+        ];
+        let documents = vec!["Absender: Bank\nArt: Kontoauszug\n\nSaldo ".repeat(100); 200];
+        let asking = Arc::clone(&lazy);
+        let choosing = std::thread::spawn(move || asking.choose_folders(&folders, &documents));
+        // The model loads and works through the first documents.
+        std::thread::sleep(Duration::from_secs(20));
+        assert!(!choosing.is_finished(), "200 documents take minutes");
+
+        let started = Instant::now();
+        lazy.shutdown();
+        let waited = started.elapsed();
+        assert!(choosing.join().unwrap().is_err());
+        println!("quit waited {waited:?}");
+        assert!(waited < Duration::from_secs(10), "quit waited {waited:?}");
     }
 }

@@ -23,6 +23,8 @@ const AREA_NAME_MAX_WIDTH: f32 = 2.0 * NAME_MAX_WIDTH;
 /// A path segment longer than this is cut in the middle so a path wraps
 /// between segments instead of running out of the card.
 const SEGMENT_MAX_CHARS: usize = 28;
+/// About what fits next to a scanner's file name in the chat column.
+const FACTS_MAX_CHARS: usize = 36;
 const TOOLTIP_PAD: [f32; 2] = [2.0, 6.0];
 
 fn card<'a, M: 'a>(content: Element<'a, M>, palette: &Palette) -> Element<'a, M> {
@@ -442,6 +444,16 @@ pub struct TrialLine<M> {
     pub target: TrialTarget<M>,
 }
 
+/// What the model read, on one line next to the file; the whole text on hover.
+fn facts_cell<'a, M: 'a>(facts: &str, palette: &Palette) -> Element<'a, M> {
+    let shown = format::ellipsize_end(facts, FACTS_MAX_CHARS);
+    let cell = container(card_text(&shown, palette.dim_text, Wrapping::None, false))
+        .width(Length::Fill)
+        .clip(true)
+        .into();
+    with_full_name(cell, &shown, facts, palette)
+}
+
 fn trial_row<'a, M: Clone + 'a>(line: TrialLine<M>, palette: &Palette) -> Element<'a, M> {
     let TrialLine {
         source,
@@ -450,11 +462,7 @@ fn trial_row<'a, M: Clone + 'a>(line: TrialLine<M>, palette: &Palette) -> Elemen
     } = line;
     let first = Row::new()
         .push(mono(source, TEXT_BODY, palette.text))
-        .push(
-            container(card_text(&facts, palette.dim_text, Wrapping::Word, false))
-                .width(Length::Fill)
-                .align_x(alignment::Horizontal::Right),
-        )
+        .push(facts_cell(&facts, palette))
         .spacing(GAP_S);
     let arrow = card_text(ARROW, palette.dim_text, Wrapping::None, false);
     let second: Element<'a, M> = match target {

@@ -111,7 +111,7 @@ mod tests {
         assert_eq!(chosen, &None);
         assert_eq!(choices.len(), 2);
         assert_eq!(row.source, "inbox/neu_beta.pdf");
-        assert_eq!(row.facts, "Beta GmbH · Invoice · 06.03.2021");
+        assert_eq!(row.facts, "06.03.2021 · Beta GmbH · Invoice");
 
         let picked = choices[1].clone();
         talk.entries += 1;

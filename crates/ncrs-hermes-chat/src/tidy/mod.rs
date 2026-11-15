@@ -370,19 +370,27 @@ fn facts_shown(ctx: &Ctx, entry: &TrialEntry) -> String {
         Language::German => "%d.%m.%Y",
         _ => "%Y-%m-%d",
     };
+    // The date first: a long sender or kind is what the card cuts.
     [
-        entry.fields.sender.clone(),
-        entry.kind_word.clone(),
         entry
             .fields
             .date
             .map(|date| date.format(date_format).to_string()),
+        entry.fields.sender.clone(),
+        entry.kind_word.clone(),
     ]
     .into_iter()
     .flatten()
+    .map(|part| without_aside(&part).to_owned())
     .filter(|part| !part.is_empty())
     .collect::<Vec<_>>()
     .join(" · ")
+}
+
+/// Senders and kinds the model read often carry an aside in brackets, such as
+/// a branch office or an English gloss; the card shows the name before it.
+fn without_aside(text: &str) -> &str {
+    text.split(" (").next().unwrap_or(text).trim()
 }
 
 pub fn row_of(ctx: &Ctx, trial: &TrialSession, position: usize) -> Option<TrialRow> {

@@ -291,10 +291,12 @@ impl ChatModel for LazyLocalModel {
         let (reply, answer) = channel();
         let owned_folders = folders.to_vec();
         let owned_documents = documents.to_vec();
+        let shared = Arc::clone(&self.shared);
         self.shared.submit(Job::Rule(RuleJob {
             task: Box::new(move |model| {
-                let outcome = model
-                    .and_then(|loaded| loaded.choose_folders(&owned_folders, &owned_documents));
+                let outcome = model.and_then(|loaded| {
+                    loaded.choose_folders(&owned_folders, &owned_documents, &|| shared.is_closed())
+                });
                 drop(reply.send(outcome));
             }),
         }));

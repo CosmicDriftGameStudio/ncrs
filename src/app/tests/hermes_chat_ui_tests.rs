@@ -186,15 +186,15 @@ fn trial_scene(lang: Language) -> App {
                     TrialRow {
                         entry: 0,
                         source: "Downloads/Alt/Bescheid.pdf".to_owned(),
-                        facts: "Finanzamt · Bescheid · 21.12.2019".to_owned(),
+                        facts: "21.12.2019 · Finanzamt · Bescheid".to_owned(),
                         outcome: RowOutcome::Filed {
                             segments: segments(&["Steuern", "2025", "Bescheid.pdf"]),
                         },
                     },
                     TrialRow {
                         entry: 1,
-                        source: "Downloads/Police.pdf".to_owned(),
-                        facts: "Allianz · Police · 03.02.2020".to_owned(),
+                        source: "Downloads/20200202110510_001.pdf".to_owned(),
+                        facts: "03.02.2020 · Muster Versicherungs-Aktiengesellschaft · Nachtrag zum Versicherungsschein".to_owned(),
                         outcome: RowOutcome::AlreadyThere(
                             pick(lang, "liegt schon im Archiv", "is already in the archive")
                                 .to_owned(),
@@ -203,7 +203,7 @@ fn trial_scene(lang: Language) -> App {
                     unsure(
                         2,
                         "Downloads/20200124_Scan_0042_001.pdf",
-                        "Deutsche Bank · Mitteilung · 24.01.2020",
+                        "24.01.2020 · Deutsche Bank · Mitteilung",
                     ),
                     TrialRow {
                         entry: 3,
