@@ -103,6 +103,161 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
             "the chat hands over; the tab plans every file; nothing is filed",
             result,
         );
+        if std::env::var("NCRS_EVAL_FILE").is_ok_and(|value| value == "copy") {
+            self.copy_planned_files();
+        }
+    }
+
+    /// `NCRS_EVAL_FILE=copy`: presses copy in the tab and checks the archive,
+    /// the source, the index and the chat, then undoes the run in the chat.
+    fn copy_planned_files(&mut self) {
+        use ncrs_filing::chat_work::LiveState;
+        let started = Instant::now();
+        let Some(plan) = self
+            .app()
+            .filing_session_for_test()
+            .and_then(|session| session.shown_plan())
+        else {
+            self.record(
+                "5 tidy copy",
+                "no plan in the tab",
+                started.elapsed().as_secs_f64(),
+                "",
+                "the plan is copied",
+                Err("no plan in the tab".to_owned()),
+            );
+            return;
+        };
+        let rows: Vec<std::path::PathBuf> = plan
+            .files
+            .iter()
+            .filter_map(|file| match &file.state {
+                LiveState::Filed { folder, name, .. } => Some(folder.join(name)),
+                _ => None,
+            })
+            .collect();
+        let unreadable: Vec<ncrs_index::ContentHash> = plan
+            .files
+            .iter()
+            .filter(|file| file.state == LiveState::Unreadable)
+            .filter_map(|file| file.hash)
+            .collect();
+        let filed = rows.len();
+        let downloads_before = self.files_below(&self.downloads);
+        let archive_before = self.files_below(&self.archive);
+
+        self.deliver(Message::FilingView(ncrs_filing_view::Message::File(
+            ncrs_index::Transfer::Copy,
+        )));
+        let copy_started = Instant::now();
+        while copy_started.elapsed() < Duration::from_secs(300)
+            && self.app().filing_session_for_test().is_some()
+        {
+            self.deliver(Message::FilingView(ncrs_filing_view::Message::Tick));
+            self.pump(Duration::from_millis(100));
+        }
+        let copied = self.app().filing_session_for_test().is_none();
+        let (_, _, idle) = self.wait_idle(READ_LIMIT, None);
+        let archive_after = self.files_below(&self.archive);
+        let downloads_after = self.files_below(&self.downloads);
+        let samples: Vec<&std::path::PathBuf> = [
+            rows.first(),
+            rows.get(rows.len().div_euclid(2)),
+            rows.last(),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        let missing: Vec<String> = samples
+            .iter()
+            .filter(|row| !self.archive.join(row).is_file())
+            .map(|row| row.display().to_string())
+            .collect();
+        let tag = self.language.text(Msg::FilingViewTagUnreadable);
+        let tagged = self.own_tagged_count(&unreadable, tag);
+        let says_filed = self.last_says(Msg::HermesChatFiledInTabCopy);
+        let copied_image = self.shot("filing-copied");
+        let copy_result = all([
+            idle,
+            expect(copied, "the tab still had its session after 300 s"),
+            expect(
+                archive_after == archive_before + filed,
+                format!("the archive went from {archive_before} to {archive_after}, planned {filed}"),
+            ),
+            expect(
+                downloads_after == downloads_before,
+                format!(
+                    "downloads went from {downloads_before} to {downloads_after}: copy leaves the source"
+                ),
+            ),
+            expect(
+                missing.is_empty(),
+                format!("sample rows missing in the archive: {}", missing.join(", ")),
+            ),
+            expect(
+                tagged == Some(unreadable.len()),
+                format!(
+                    "{tagged:?} of {} unreadable files carry the tag (own)",
+                    unreadable.len()
+                ),
+            ),
+            expect(
+                says_filed,
+                format!(
+                    "the chat's last message is not the filed text: {}",
+                    last_text(self.app())
+                ),
+            ),
+        ]);
+
+        let undo = self.press_chip(|reply| *reply == ChipReply::PutBack);
+        let (_, _, undo_idle) = self.wait_idle(READ_LIMIT, None);
+        let archive_undone = self.files_below(&self.archive);
+        let undone_image = self.shot("filing-undone");
+        let undo_result = all([
+            undo,
+            undo_idle,
+            expect(
+                archive_undone == archive_before,
+                format!(
+                    "after undo the archive has {archive_undone}, before it had {archive_before}"
+                ),
+            ),
+        ]);
+        let summary = format!(
+            "{filed} planned, archive {archive_before} -> {archive_after} -> {archive_undone}, downloads {downloads_before} -> {downloads_after}, {} of {} unreadable tagged",
+            tagged.map_or_else(|| "?".to_owned(), |count| count.to_string()),
+            unreadable.len()
+        );
+        println!("[{}] 5 tidy copy: {summary}", self.language.code());
+        self.record(
+            "5 tidy copy",
+            &summary,
+            started.elapsed().as_secs_f64(),
+            &format!("{copied_image}, {undone_image}"),
+            "the files are copied, tagged and announced in the chat; undo removes the copies",
+            all([copy_result, undo_result]),
+        );
+    }
+
+    /// How many of the files with these hashes carry the tag as the user's
+    /// own; `None` when the index does not open.
+    fn own_tagged_count(&self, hashes: &[ncrs_index::ContentHash], tag: &str) -> Option<usize> {
+        let index =
+            ncrs_index::Index::open(&self.index_path, &ncrs_index::InMemoryKeyStore::empty())
+                .ok()?;
+        Some(
+            hashes
+                .iter()
+                .filter(|hash| {
+                    index
+                        .document_by_hash(hash)
+                        .ok()
+                        .flatten()
+                        .is_some_and(|document| document.fields.tags.contains(tag))
+                })
+                .count(),
+        )
     }
 
     /// Feeds the tab its ticks and reads its snapshot between pumps until the
