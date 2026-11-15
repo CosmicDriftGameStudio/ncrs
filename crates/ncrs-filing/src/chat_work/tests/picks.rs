@@ -171,13 +171,9 @@ fn the_last_page_asks_the_last_ten_files_and_leaves_the_first_ones() {
     let plan = plan_with(&setup, &source_of(25), &model, &ModelScope::LastPage);
 
     assert_eq!(model.calls(), vec![(10, FolderChoiceLane::Background)]);
-    let left: Vec<String> = plan
-        .model_left
-        .iter()
-        .map(|path| path.to_string_lossy().into_owned())
-        .collect();
-    let first_fifteen: Vec<String> = (0..15)
-        .map(|seed| format!("/inbox/unknown{seed:02}.pdf"))
+    let left: Vec<PathBuf> = plan.model_left.iter().cloned().collect();
+    let first_fifteen: Vec<PathBuf> = (0..15)
+        .map(|seed| Path::new("/inbox").join(format!("unknown{seed:02}.pdf")))
         .collect();
     assert_eq!(left, first_fifteen);
 }
