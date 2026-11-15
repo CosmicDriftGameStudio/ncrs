@@ -597,6 +597,12 @@ pub struct State {
     pub trial_rest_run: u64,
     /// The rest set during this `update` that no task runs yet.
     pub fresh_trial_rest: bool,
+    /// A background job is making the model's folder picks of the read folders.
+    pub picks_running: bool,
+    /// The pipeline sequence the last job was started for.
+    pub picks_settled_at: Option<usize>,
+    /// The job set during this `update` that no task runs yet.
+    pub picks_job: Option<crate::picks::PicksJob>,
     /// The folders a sentence named, being checked off the UI thread.
     pub naming: Option<crate::named_folders::Naming>,
     /// The check set during this `update` that no task runs yet.
@@ -635,6 +641,9 @@ impl Default for State {
             trial_rest_line: None,
             trial_rest_run: 0,
             fresh_trial_rest: false,
+            picks_running: false,
+            picks_settled_at: None,
+            picks_job: None,
             naming: None,
             fresh_naming: false,
             step: Step::Idle,

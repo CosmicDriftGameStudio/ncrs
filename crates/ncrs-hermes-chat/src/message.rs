@@ -63,6 +63,11 @@ pub enum Message {
     WaitingCheck,
     /// A beat while work runs; sent by the app twice a second or so.
     WorkTick,
+    /// The pipeline is idle; `sequence` changes whenever what it handled
+    /// changes. Sent by the app on its tick.
+    ReadingSettled(usize),
+    /// The background picks of the read folders are done.
+    PicksRemembered,
 }
 
 impl Message {
@@ -77,6 +82,8 @@ impl Message {
                 | Self::Done(_)
                 | Self::Failed(_)
                 | Self::TrialRestDone(..)
+                | Self::PicksRemembered
+                | Self::ReadingSettled(_)
                 | Self::Understood(_)
                 | Self::RuleAnswered(_)
                 | Self::TypedFolderResolved { .. }
@@ -98,7 +105,9 @@ impl PartialEq for Message {
             | (Self::AiTurnedOn, Self::AiTurnedOn)
             | (Self::HermesReady, Self::HermesReady)
             | (Self::WaitingCheck, Self::WaitingCheck)
-            | (Self::WorkTick, Self::WorkTick) => true,
+            | (Self::WorkTick, Self::WorkTick)
+            | (Self::PicksRemembered, Self::PicksRemembered) => true,
+            (Self::ReadingSettled(left), Self::ReadingSettled(right)) => left == right,
             (Self::InputChanged(left), Self::InputChanged(right))
             | (Self::Failed(left), Self::Failed(right))
             | (Self::TurnOnFailed(left), Self::TurnOnFailed(right)) => left == right,

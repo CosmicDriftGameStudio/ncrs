@@ -22,6 +22,7 @@ mod change;
 mod folder_list;
 mod groups;
 mod pattern;
+mod picks;
 mod reading;
 mod runs;
 mod trial;
@@ -37,6 +38,7 @@ pub use groups::{
     RuleSaveFailure, StayGroup, StayGroups, MAX_GROUP_QUESTIONS,
 };
 pub use pattern::PatternLevel;
+pub use picks::remember_folder_picks;
 pub use reading::{AiCoverage, FolderReading, ReadError, ReadProgress, FILE_LIMIT};
 pub use runs::{RecentRun, RunItem, RunPlan, RunReport, RunSummary};
 pub use trial::{ModelScope, StayReason, TrialEntry, TrialOutcome, TrialPlan, MODEL_FIRST_PAGE};

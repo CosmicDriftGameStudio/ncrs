@@ -92,6 +92,9 @@ pub enum ModelScope {
     FirstPage,
     /// Only these files, by their source path.
     Only(BTreeSet<PathBuf>),
+    /// The last files in source order, as many as a page, in the background
+    /// lane; the files before them are left for later.
+    LastPage,
     All,
 }
 
@@ -458,6 +461,11 @@ fn ask_model(
             let rest = asked.split_off(MODEL_FIRST_PAGE.min(asked.len()));
             (asked, rest)
         }
+        ModelScope::LastPage => {
+            let mut rest = wanting;
+            let asked = rest.split_off(rest.len().saturating_sub(MODEL_FIRST_PAGE));
+            (asked, rest)
+        }
         ModelScope::Only(files) => wanting.into_iter().partition(|position| {
             entries
                 .get(*position)
@@ -482,7 +490,7 @@ fn ask_model(
         .map(document_text)
         .collect();
     let lane = match scope {
-        ModelScope::Only(_) => FolderChoiceLane::Background,
+        ModelScope::Only(_) | ModelScope::LastPage => FolderChoiceLane::Background,
         ModelScope::FirstPage | ModelScope::All => FolderChoiceLane::Waiting,
     };
     let Ok(picks) = ask

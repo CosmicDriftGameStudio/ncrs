@@ -174,6 +174,14 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
             crate::working::tick(state, ctx);
             None
         }
+        Message::ReadingSettled(sequence) => {
+            state.picks_job = crate::picks::begin(state, ctx, sequence);
+            None
+        }
+        Message::PicksRemembered => {
+            state.picks_running = false;
+            None
+        }
     }
 }
 
@@ -252,6 +260,7 @@ fn launch(state: &mut State, ctx: &Ctx) -> Task<Message> {
         launch_resolve(state, ctx),
         launch_trial_rest(state, ctx),
         named_folders::launch(state, ctx),
+        crate::picks::launch(state),
     ])
 }
 

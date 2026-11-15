@@ -35,11 +35,10 @@ pub fn start(state: &mut State) {
     };
     let page: BTreeSet<_> = trial
         .plan
-        .entries
+        .model_left
         .iter()
-        .filter(|entry| trial.plan.model_left.contains(&entry.from))
         .take(MODEL_FIRST_PAGE)
-        .map(|entry| entry.from.clone())
+        .cloned()
         .collect();
     state.trial_rest = Some(ChatWork::Trial {
         source,

@@ -711,11 +711,27 @@ impl App {
                 let status = self.run_hermes_flow(Vec::new(), |hermes, ctx| {
                     ncrs_hermes_ui::update_filing_status(hermes, page_message, ctx)
                 });
+                let settled = if is_tick {
+                    self.ensure_chat_model();
+                    self.hermes
+                        .live_pipeline()
+                        .map(|runner| runner.snapshot())
+                        .filter(|snapshot| snapshot.state == ncrs_pipeline::RunnerState::Idle)
+                        .map(|snapshot| snapshot.left_pipeline)
+                } else {
+                    None
+                };
+                let picks = match settled {
+                    Some(sequence) => {
+                        self.update_hermes_chat(HermesChatMessage::ReadingSettled(sequence))
+                    }
+                    None => Task::none(),
+                };
                 if looks_for_waiting {
                     let chat = self.update_hermes_chat(HermesChatMessage::WaitingCheck);
-                    Task::batch([status, chat, facts])
+                    Task::batch([status, chat, picks, facts])
                 } else {
-                    Task::batch([status, facts])
+                    Task::batch([status, picks, facts])
                 }
             }
             Message::HermesColumn(column_message) => self
