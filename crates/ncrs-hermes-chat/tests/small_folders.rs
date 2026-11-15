@@ -129,7 +129,14 @@ mod tests {
                 Msg::HermesChatUnsureChosen,
                 &[
                     ("name", "neu_beta.pdf"),
-                    ("path", picked.label.trim_end_matches("/neu_beta.pdf"))
+                    (
+                        "path",
+                        &std::path::Path::new(&picked.label)
+                            .parent()
+                            .unwrap()
+                            .display()
+                            .to_string()
+                    )
                 ]
             )]
         );
