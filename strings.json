@@ -8036,21 +8036,21 @@
     },
     {
       "key": "hermes_chat.ask_role",
-      "context": "Hermes chat (F2): Hermes does not know yet what a folder is for and asks. Two buttons follow. {folder} is the folder name.",
-      "en": "Is {folder} where new documents arrive, or where your documents are kept?",
-      "de": "Landen in {folder} neue Dokumente, oder sind dort deine Dokumente abgelegt?"
+      "context": "Hermes chat (F2): Hermes does not know yet what a folder is for and asks whether it is a read folder (Hermes takes documents from it and sorts them) or a write folder (Hermes files documents into it). Two buttons follow. {folder} is the folder name.",
+      "en": "What is {folder} for: shall I read documents from it or write documents into it?",
+      "de": "Wofür ist {folder}: Soll ich von dort Dokumente lesen oder dorthin Dokumente schreiben?"
     },
     {
       "key": "hermes_chat.role_source",
-      "context": "Hermes chat (F2): button answering what a folder is for: new documents arrive there (an inbox such as Downloads).",
-      "en": "Documents arrive here",
-      "de": "Hier landen neue Dokumente"
+      "context": "Hermes chat (F2): button: the folder becomes a read folder, Hermes takes documents from it and sorts them (an inbox such as Downloads).",
+      "en": "Read documents from here",
+      "de": "Von hier Dokumente lesen"
     },
     {
       "key": "hermes_chat.role_target",
-      "context": "Hermes chat (F2): button answering what a folder is for: the user's documents are kept there (the archive).",
-      "en": "My documents are kept here",
-      "de": "Hier sind meine Dokumente abgelegt"
+      "context": "Hermes chat (F2): button: the folder becomes a write folder, Hermes files documents into it.",
+      "en": "Write documents here",
+      "de": "Hierhin Dokumente schreiben"
     },
     {
       "key": "hermes_chat.ask_photos",
