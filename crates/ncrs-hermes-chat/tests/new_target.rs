@@ -13,9 +13,10 @@ mod common;
 #[cfg(test)]
 mod tests {
 
-    use crate::common::{letter, Talk};
+    use crate::common::{letter, say, Talk};
     use ncrs_filing::chat_work::ChatResult;
     use ncrs_hermes_chat::{Action, ChipReply, Message, NewLayout, Part};
+    use ncrs_i18n::Msg;
 
     const TIDY_INBOX: &str = r#"{"intent":"tidy_folder","source":"Inbox"}"#;
 
@@ -75,7 +76,7 @@ mod tests {
     }
 
     #[test]
-    fn a_new_empty_folder_asks_for_its_order_and_the_trial_files_by_it() {
+    fn a_new_empty_folder_asks_for_its_order_and_hands_the_plan_to_the_tab() {
         let mut talk = asking_where();
         talk.press(&ChipReply::NewTarget);
         assert!(talk.actions.contains(&Action::PickFolder));
@@ -100,12 +101,15 @@ mod tests {
         );
         talk.press(&ChipReply::NewLayout(NewLayout::Year));
         talk.press(&ChipReply::Once);
-        talk.press(&ChipReply::ModeCopy);
-        let plan = talk.plan();
-        assert_eq!(plan.filed, 2, "{plan:?}");
-        talk.press(&ChipReply::FileAll);
-        let filed = std::fs::read_dir(fresh.join("2021")).unwrap().count();
-        assert_eq!(filed, 2);
+        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatHandover, &[])]);
+        assert!(
+            talk.actions.iter().any(|action| matches!(
+                action,
+                Action::OpenFiling { target, .. } if target.ends_with("fresh")
+            )),
+            "{:?}",
+            talk.actions
+        );
     }
 
     #[test]

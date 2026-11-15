@@ -8,7 +8,6 @@ pub mod ctx;
 pub mod keys;
 pub mod message;
 mod state;
-mod stay_groups;
 mod update;
 mod view;
 
@@ -16,6 +15,7 @@ mod decide;
 mod fallback;
 mod follow_up;
 mod greeting;
+mod in_tab;
 mod learn;
 mod named_folders;
 mod photos;
@@ -31,12 +31,13 @@ mod working;
 
 pub use action::Action;
 pub use ctx::{Availability, Ctx};
+pub use in_tab::{filed_in_tab, FiledInTab};
 pub use keys::{chat_key, ChatKey};
 pub use message::Message;
 pub use rule_flow::{RuleAnswer, RuleAsk};
 pub use state::{
     AreaRow, AreasCard, Chip, ChipReply, CountRow, Entry, FileCard, FolderMention, LevelsCard,
-    NewLayout, Part, ProposalCard, RowOutcome, State, Step, TrialCard, TrialRow,
+    NewLayout, Part, ProposalCard, State, Step,
 };
 pub use update::update;
 pub use view::{focus_input, view, ViewCtx, INPUT_ID, SCROLL_ID};

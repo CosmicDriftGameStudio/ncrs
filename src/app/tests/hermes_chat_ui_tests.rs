@@ -3,13 +3,12 @@ use std::sync::Mutex;
 use chrono::TimeZone as _;
 use iced_test::Simulator;
 use ncrs_ai::{ChatIntent, Compute, LocalModelStatus, ScriptedChatModel};
-use ncrs_filing::chat_work::{ChatAccess, ChatResult, RuleSaveFailure, RunSummary};
+use ncrs_filing::chat_work::{ChatAccess, ChatResult, RunSummary};
 use ncrs_hermes_chat::{
-    Availability, Chip, ChipReply, Ctx, Entry, FileCard, LevelsCard, Part, ProposalCard,
-    RowOutcome, Step, TrialCard, TrialRow,
+    Availability, Chip, ChipReply, Ctx, Entry, FileCard, LevelsCard, Part, ProposalCard, Step,
 };
 use ncrs_index::{BatchKind, Index, Transfer};
-use ncrs_intake::{RuleProblem, TextChain};
+use ncrs_intake::TextChain;
 use ncrs_ui_kit::hermes_kit::{FactRow, LevelRow, MoveRow, MovesBlock};
 
 use crate::app::*;
@@ -147,113 +146,6 @@ fn change_scene(lang: Language) -> App {
     app
 }
 
-fn trial_scene(lang: Language) -> App {
-    let (mut app, _) = opened(lang);
-    let unsure = |entry, source: &str, facts: &str| TrialRow {
-        entry,
-        source: source.to_owned(),
-        facts: facts.to_owned(),
-        outcome: RowOutcome::Unsure {
-            choices: vec![
-                chip(
-                    "Steuern/2020/Scan_0042.pdf",
-                    ChipReply::UnsureChoice { entry, choice: 0 },
-                    false,
-                ),
-                chip(
-                    "Wohnung/Kredit/Scan_0042.pdf",
-                    ChipReply::UnsureChoice { entry, choice: 1 },
-                    false,
-                ),
-            ],
-            chosen: None,
-        },
-    };
-    hermes_says(
-        &mut app,
-        vec![
-            Part::Text(
-                pick(
-                    lang,
-                    "Probelauf: **5 Dateien** aus Downloads, nichts wird verschoben.",
-                    "Trial: **5 files** from Downloads, nothing is moved.",
-                )
-                .to_owned(),
-            ),
-            Part::Trial(TrialCard {
-                header: pick(lang, "Aus Downloads", "From Downloads").to_owned(),
-                rows: vec![
-                    TrialRow {
-                        entry: 0,
-                        source: "Downloads/Alt/Bescheid.pdf".to_owned(),
-                        facts: "21.12.2019 · Finanzamt · Bescheid".to_owned(),
-                        outcome: RowOutcome::Filed {
-                            segments: segments(&["Steuern", "2025", "Bescheid.pdf"]),
-                        },
-                    },
-                    TrialRow {
-                        entry: 1,
-                        source: "Downloads/20200202110510_001.pdf".to_owned(),
-                        facts: "03.02.2020 · Muster Versicherungs-Aktiengesellschaft · Nachtrag zum Versicherungsschein".to_owned(),
-                        outcome: RowOutcome::AlreadyThere(
-                            pick(lang, "liegt schon im Archiv", "is already in the archive")
-                                .to_owned(),
-                        ),
-                    },
-                    unsure(
-                        2,
-                        "Downloads/20200124_Scan_0042_001.pdf",
-                        "24.01.2020 · Deutsche Bank · Mitteilung",
-                    ),
-                    TrialRow {
-                        entry: 3,
-                        source: "Downloads/notizen.txt".to_owned(),
-                        facts: String::new(),
-                        outcome: RowOutcome::Stays(
-                            pick(lang, "bleibt liegen", "stays where it is").to_owned(),
-                        ),
-                    },
-                ],
-                more: Some(pick(lang, "und 1 weitere", "and 1 more").to_owned()),
-            }),
-        ],
-        vec![
-            chip(
-                pick(lang, "Alle ablegen", "File all"),
-                ChipReply::FileAll,
-                true,
-            ),
-            chip(pick(lang, "Abbrechen", "Cancel"), ChipReply::Cancel, false),
-        ],
-    );
-    app
-}
-
-fn group_scene() -> App {
-    let (mut app, _) = opened(Language::German);
-    user_says(&mut app, "Räum Inbox auf");
-    hermes_says(
-        &mut app,
-        vec![Part::Text(
-            "37 Dateien von Vodafone GmbH, z. B. Dokument (100).pdf, Dokument (14).pdf, \
-             Dokument (16).pdf. Wohin damit?"
-                .to_owned(),
-        )],
-        vec![
-            chip("Bank", ChipReply::GroupArea("Bank".to_owned()), false),
-            chip("Steuer", ChipReply::GroupArea("Steuer".to_owned()), false),
-            chip(
-                "Versicherung",
-                ChipReply::GroupArea("Versicherung".to_owned()),
-                false,
-            ),
-            chip("Neuer Ordner …", ChipReply::GroupNewFolder, false),
-            chip("Liegen lassen", ChipReply::GroupLeave, false),
-        ],
-    );
-    app
-}
-
 fn undo_scene() -> App {
     let (mut app, ctx) = opened(Language::German);
     user_says(&mut app, "Mach das rückgängig");
@@ -373,18 +265,6 @@ fn which_folder_scene() -> App {
             ],
             target: None,
         },
-    );
-    app
-}
-
-fn rule_refused_scene() -> App {
-    let (mut app, ctx) = opened(Language::German);
-    send(
-        &mut app,
-        &ctx,
-        HermesChatMessage::Done(Box::new(ChatResult::RuleSaved(Err(
-            RuleSaveFailure::Refused(RuleProblem::NoFilingTarget),
-        )))),
     );
     app
 }
@@ -632,17 +512,6 @@ fn the_change_preview_matches_its_snapshot() {
 }
 
 #[test]
-fn the_trial_with_an_unsure_row_matches_its_snapshots() {
-    matches_snapshot(&trial_scene(Language::German), "hermes_chat_trial_de");
-    matches_snapshot(&trial_scene(Language::English), "hermes_chat_trial_en");
-}
-
-#[test]
-fn the_question_about_a_group_of_staying_files_matches_its_snapshot() {
-    matches_snapshot(&group_scene(), "hermes_chat_group_de");
-}
-
-#[test]
 fn the_undo_question_matches_its_snapshot() {
     matches_snapshot(&undo_scene(), "hermes_chat_undo_de");
 }
@@ -678,11 +547,6 @@ fn the_meant_folder_question_matches_its_snapshot() {
 #[test]
 fn the_which_folder_question_matches_its_snapshot() {
     matches_snapshot(&which_folder_scene(), "hermes_chat_which_folder_de");
-}
-
-#[test]
-fn the_refused_rule_matches_its_snapshot() {
-    matches_snapshot(&rule_refused_scene(), "hermes_chat_rule_refused_de");
 }
 
 #[test]

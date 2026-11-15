@@ -7099,12 +7099,6 @@
       "de": "Ich probiere es mit 10 Dateien aus …"
     },
     {
-      "key": "hermes_chat.working_trial_progress",
-      "context": "Hermes chat (F2): Temporary line while the model looks at the files of the trial run, replaced as it goes. {done} is the number of files it is through, {total} the number of files of the run.",
-      "en": "Looking at the files: {done} of {total}",
-      "de": "Ich sehe mir die Dateien an: {done} von {total}"
-    },
-    {
       "key": "hermes_chat.working_filing",
       "context": "Hermes chat (F2): Temporary line while Hermes moves or copies files into the target folder.",
       "en": "Sorting …",
@@ -7441,66 +7435,6 @@
       "de": "Liegen lassen"
     },
     {
-      "key": "hermes_chat.group_where",
-      "context": "Hermes chat (F2): Hermes asks where a group of files from one sender goes. {count} is the number of files, {label} the sender name, {examples} up to three file names separated by commas. The answer is saved as a rule for all future documents of this sender, so the text says that it covers every file of the group and is remembered.",
-      "en": "All {count} files from {label}, e.g. {examples}: where should they go? Hermes remembers your answer as a rule for future documents from {label}.",
-      "de": "Alle {count} Dateien von {label}, z. B. {examples}: Wohin sollen sie? Hermes merkt sich deine Antwort als Regel für künftige Dokumente von {label}."
-    },
-    {
-      "key": "hermes_chat.group_where_kind",
-      "context": "Hermes chat (F2): Hermes asks where a group of files of one kind of document goes, files that have no known sender. {count} is the number of files, {kind} the kind of document (for example invoice), {examples} up to three file names separated by commas. The answer is saved as a rule for all future documents of this kind, so the text says that it covers every file of the group and is remembered.",
-      "en": "All {count} {kind} documents, e.g. {examples}: where should they go? Hermes remembers your answer as a rule for future {kind} documents.",
-      "de": "Alle {count} {kind}-Dokumente, z. B. {examples}: Wohin sollen sie? Hermes merkt sich deine Antwort als Regel für künftige {kind}-Dokumente."
-    },
-    {
-      "key": "hermes_chat.new_folder",
-      "context": "Hermes chat (F2): Answer button: put the group into a new folder that the user names next.",
-      "en": "New folder …",
-      "de": "Neuer Ordner …"
-    },
-    {
-      "key": "hermes_chat.new_folder_name",
-      "context": "Hermes chat (F2): Hermes asks for the name of the new folder. The next thing the user types is the name.",
-      "en": "What should the folder be called?",
-      "de": "Wie soll der Ordner heißen?"
-    },
-    {
-      "key": "hermes_chat.folder_name_bad",
-      "context": "Hermes chat (F2): The folder name the user typed cannot be used: it is empty, has a slash or points outside the archive.",
-      "en": "That name does not work as a folder name. Please use a plain name without slashes.",
-      "de": "Das geht nicht als Ordnername. Bitte nimm einen einfachen Namen ohne Schrägstriche."
-    },
-    {
-      "key": "hermes_chat.name_taken",
-      "context": "Hermes chat (F2): Hermes says some files cannot be filed because a file of that name is already in the folder. {count} is the number of files, {name} the name of one file, {suggested} the free name with a number that Hermes proposes.",
-      "en": "Name already taken for {count} of the files, e.g. {name} → {suggested}",
-      "de": "Bei {count} der Dateien ist der Name schon vergeben, z. B. {name} → {suggested}"
-    },
-    {
-      "key": "hermes_chat.file_numbered",
-      "context": "Hermes chat (F2): Answer button: file the files whose name is taken with a number added to the name.",
-      "en": "File with a number",
-      "de": "Mit Nummer ablegen"
-    },
-    {
-      "key": "hermes_chat.rule_saved",
-      "context": "Hermes chat (F2): Hermes tells that it stored a filing rule for a group. {name} is the name of the rule. The user can take the rule back on the rules page. **Double asterisks** mark bold text.",
-      "en": "I saved the rule **{name}**. You can take it back under Rules.",
-      "de": "Ich habe die Regel **{name}** gespeichert. Unter „Regeln“ kannst du sie wieder entfernen."
-    },
-    {
-      "key": "hermes_chat.stays_only",
-      "context": "Hermes chat (F2): Hermes reports a trial run in which no file could be placed yet. {count} is the number of files that stay where they are.",
-      "en": "None of the {count} files could be placed so far.",
-      "de": "Bisher konnte ich keine der {count} Dateien zuordnen."
-    },
-    {
-      "key": "hermes_chat.groups_done",
-      "context": "Hermes chat (F2): Hermes has asked everything and offers to file now. {count} is the number of files that will be filed.",
-      "en": "That was everything I wanted to ask. {count} files are ready to be filed.",
-      "de": "Das war alles, was ich fragen wollte. {count} Dateien sind bereit zum Ablegen."
-    },
-    {
       "key": "hermes_chat.trashed",
       "context": "Hermes chat (F2): Hermes reports files moved to the trash. **Double asterisks** mark bold text and must stay around the same words. {count} is the number of files. The quoted phrase is what the user can type to undo.",
       "en": "Done: **{count} files** are in the trash. “Undo that” brings them back.",
@@ -7603,96 +7537,6 @@
       "de": "Verschieben"
     },
     {
-      "key": "hermes_chat.trial_intro",
-      "context": "Hermes chat (F2): Hermes introduces the trial run card. {count} is the number of files tried.",
-      "en": "I tried it with {count} files. This is where I'd put them:",
-      "de": "Ich hab's mit {count} Dateien ausprobiert. So würde ich sie ablegen:"
-    },
-    {
-      "key": "hermes_chat.trial_header_move",
-      "context": "Hermes chat (F2): Header of the trial run card when the files would be moved. Nothing has been moved.",
-      "en": "Trial run · nothing moved yet",
-      "de": "Probelauf · noch nichts verschoben"
-    },
-    {
-      "key": "hermes_chat.trial_header_copy",
-      "context": "Hermes chat (F2): Header of the trial run card when the files would be copied. Nothing has been copied.",
-      "en": "Trial run · nothing copied yet",
-      "de": "Probelauf · noch nichts kopiert"
-    },
-    {
-      "key": "hermes_chat.trial_already_there",
-      "context": "Hermes chat (F2): Row of the trial run card: the same file already exists in the archive. {path} is its path in the archive.",
-      "en": "already in {path}",
-      "de": "liegt schon in {path}"
-    },
-    {
-      "key": "hermes_chat.trial_stays",
-      "context": "Hermes chat (F2): Row of the trial run card: Hermes leaves the file where it is. {reason} is one of the reasons below.",
-      "en": "stays: {reason}",
-      "de": "bleibt liegen: {reason}"
-    },
-    {
-      "key": "hermes_chat.stay_no_neighbours",
-      "context": "Hermes chat (F2): Reason in the trial run card: no similar file exists in the archive.",
-      "en": "nothing similar found",
-      "de": "nichts Ähnliches gefunden"
-    },
-    {
-      "key": "hermes_chat.stay_missing_field",
-      "context": "Hermes chat (F2): Reason in the trial run card: a detail needed for the file name was not found in the file. {field} is the name of the detail, for example 'Date'.",
-      "en": "{field} missing",
-      "de": "{field} fehlt"
-    },
-    {
-      "key": "hermes_chat.stay_no_pattern",
-      "context": "Hermes chat (F2): Reason in the trial run card: the folder is clear, but Hermes has no naming scheme for the file.",
-      "en": "folder clear, name not",
-      "de": "Ordner klar, Name nicht"
-    },
-    {
-      "key": "hermes_chat.stay_name_taken",
-      "context": "Hermes chat (F2): Reason in the trial run card: a file with the new name already exists.",
-      "en": "name already taken",
-      "de": "Name schon vergeben"
-    },
-    {
-      "key": "hermes_chat.trial_more",
-      "context": "Hermes chat (F2): Last row of the trial run card: how many more files there are than shown. {count} is a number.",
-      "en": "… {count} more",
-      "de": "… {count} weitere"
-    },
-    {
-      "key": "hermes_chat.file_all",
-      "context": "Hermes chat (F2): Primary answer button under the trial run: file all files. {count} is the number of files.",
-      "en": "Looks good, file all {count}",
-      "de": "Passt, alle {count} ablegen"
-    },
-    {
-      "key": "hermes_chat.show_more",
-      "context": "Hermes chat (F2): Answer button under the trial run: show the next ten files.",
-      "en": "Show 10 more",
-      "de": "Noch 10 zeigen"
-    },
-    {
-      "key": "hermes_chat.trial_next",
-      "context": "Hermes chat (F2): Hermes introduces the next page of the trial run. {count} is the number of files on it.",
-      "en": "The next {count}:",
-      "de": "Die nächsten {count}:"
-    },
-    {
-      "key": "hermes_chat.trial_end",
-      "context": "Hermes chat (F2): Hermes says there are no more files to show in the trial run.",
-      "en": "That was all of them.",
-      "de": "Das waren alle."
-    },
-    {
-      "key": "hermes_chat.unsure_chosen",
-      "context": "Hermes chat (F2): Hermes confirms the user's choice for an unsure file. {name} is the file name, {path} the folder.",
-      "en": "Good, {name} goes to {path}.",
-      "de": "Gut, {name} kommt nach {path}."
-    },
-    {
       "key": "hermes_chat.cancelled",
       "context": "Hermes chat (F2): Hermes confirms that the plan was dropped and nothing was changed.",
       "en": "Fine, I'll leave everything as it is.",
@@ -7715,6 +7559,24 @@
       "context": "Hermes chat (F2): Added to the filing report when some files were skipped. {skipped} is a number.",
       "en": "I skipped {skipped} because they changed in the meantime.",
       "de": "{skipped} habe ich übersprungen, weil sie sich inzwischen geändert haben."
+    },
+    {
+      "key": "hermes_chat.handover",
+      "context": "Hermes chat (F2): Hermes says it hands the tidy-up over to the \"Filing\" tab (German: \"Ablegen\") once the source and the target folder are known. The tab name must match the tab title.",
+      "en": "I'm planning this in the \"Filing\" tab. There you see live what goes where, and you file it with one click.",
+      "de": "Ich plane das im Tab „Ablegen“. Dort siehst du live, was wohin kommt, und legst mit einem Klick ab."
+    },
+    {
+      "key": "hermes_chat.filed_in_tab_copy",
+      "context": "Hermes chat (F2): Hermes reports a run that was done in the \"Filing\" tab and copied the files. **Double asterisks** mark bold text and must stay around the same words. {filed} is the number of files copied, {left} the number that are left, {folder} the source folder name.",
+      "en": "Done: **{filed} files** copied. {left} are still in {folder}.",
+      "de": "Fertig: **{filed} Dateien** kopiert. {left} liegen noch in {folder}."
+    },
+    {
+      "key": "hermes_chat.filed_in_tab_move",
+      "context": "Hermes chat (F2): Hermes reports a run that was done in the \"Filing\" tab and moved the files. **Double asterisks** mark bold text and must stay around the same words. {filed} is the number of files moved, {left} the number that are left, {folder} the source folder name.",
+      "en": "Done: **{filed} files** moved. {left} are still in {folder}.",
+      "de": "Fertig: **{filed} Dateien** verschoben. {left} liegen noch in {folder}."
     },
     {
       "key": "hermes_chat.already_there_offer",
@@ -8251,22 +8113,10 @@
       "de": "Später nochmal"
     },
     {
-      "key": "hermes_chat.show_staying",
-      "context": "Hermes chat (F2): Answer button at the end of a trial run that files nothing: list the files that cannot be placed, one by one. {count} is their number.",
-      "en": "Show the {count} one by one",
-      "de": "Die {count} einzeln zeigen"
-    },
-    {
       "key": "hermes_chat.delete_dupes",
       "context": "Hermes chat (F2): Answer button at the end of a trial run: move the files that are in the filing folder already to the trash. {count} is their number.",
       "en": "Delete {count} duplicates",
       "de": "{count} Doppelte löschen"
-    },
-    {
-      "key": "hermes_chat.staying_intro",
-      "context": "Hermes chat (F2): Line above the list of files that cannot be placed. {count} is how many files are listed.",
-      "en": "These {count} stay where they are for now:",
-      "de": "Diese {count} bleiben vorerst liegen:"
     },
     {
       "key": "settings.group_general",
@@ -11129,6 +10979,186 @@
       "context": "Button that cancels processing the files again. Verb, imperative.",
       "en": "Cancel",
       "de": "Abbrechen"
+    },
+    {
+      "key": "filing_view.title",
+      "context": "Filing tab: title of the bar under the two lists. Noun, the work of putting the files of a read folder into the write folder.",
+      "en": "Filing",
+      "de": "Ablegen"
+    },
+    {
+      "key": "filing_view.tab_running",
+      "context": "Filing tab: title of the tab while Hermes still reads the files. {folder} is the name of the read folder, {done} the files looked at so far, {total} all files of the read folder.",
+      "en": "Filing · {folder} {done}/{total}",
+      "de": "Ablegen · {folder} {done}/{total}"
+    },
+    {
+      "key": "filing_view.tab_ready",
+      "context": "Filing tab: title of the tab when every file is looked at and the plan can be carried out. {folder} is the name of the read folder.",
+      "en": "Filing · {folder} ✓ ready",
+      "de": "Ablegen · {folder} ✓ bereit"
+    },
+    {
+      "key": "filing_view.tab_failed",
+      "context": "Filing tab: title of the tab when the plan could not be made. {folder} is the name of the read folder.",
+      "en": "Filing · {folder} ✕",
+      "de": "Ablegen · {folder} ✕"
+    },
+    {
+      "key": "filing_view.read_folder",
+      "context": "Filing tab: heading over the left list, the folder the files are taken from (read folder). {path} is its path.",
+      "en": "Read folder · {path}",
+      "de": "Lesen-Ordner · {path}"
+    },
+    {
+      "key": "filing_view.write_folder",
+      "context": "Filing tab: heading over the right tree, the folder the files go into (write folder). {path} is its path.",
+      "en": "Write folder · {path}",
+      "de": "Schreib-Ordner · {path}"
+    },
+    {
+      "key": "filing_view.column_what",
+      "context": "Filing tab: column header over what happens to each file of the read folder. Short phrase.",
+      "en": "What happens",
+      "de": "Was passiert"
+    },
+    {
+      "key": "filing_view.state_waiting",
+      "context": "Filing tab: a file of the read folder that Hermes has not looked at yet. Starts with a dot as the mark of the state.",
+      "en": "· waiting",
+      "de": "· wartet"
+    },
+    {
+      "key": "filing_view.state_looking",
+      "context": "Filing tab: a file Hermes is looking at right now. Starts with a half circle as the mark of the state.",
+      "en": "◐ reading …",
+      "de": "◐ liest …"
+    },
+    {
+      "key": "filing_view.state_filed",
+      "context": "Filing tab: where a file will be filed. {path} is the folder and the file name below the write folder. Starts with an arrow.",
+      "en": "→ {path}",
+      "de": "→ {path}"
+    },
+    {
+      "key": "filing_view.state_already",
+      "context": "Filing tab: a file whose content is already in the write folder. {at} is where, below the write folder.",
+      "en": "= already there: {at}",
+      "de": "= schon da: {at}"
+    },
+    {
+      "key": "filing_view.state_no_folder",
+      "context": "Filing tab: a file for which no folder fits; it stays in the read folder.",
+      "en": "? no matching folder · stays",
+      "de": "? kein passender Ordner · bleibt liegen"
+    },
+    {
+      "key": "filing_view.state_unreadable",
+      "context": "Filing tab: a file Hermes could not read any text from; it stays in the read folder.",
+      "en": "✕ unreadable · stays",
+      "de": "✕ nicht lesbar · bleibt liegen"
+    },
+    {
+      "key": "filing_view.by_user",
+      "context": "Filing tab: appended to the state of a file the user changed by hand. Starts with a space.",
+      "en": " (by you)",
+      "de": " (von dir)"
+    },
+    {
+      "key": "filing_view.tag_unreadable",
+      "context": "Filing tab: the tag put on a file that could not be read; also shown as a chip in its row. Keep the prefix.",
+      "en": "Hermes: unreadable",
+      "de": "Hermes: nicht lesbar"
+    },
+    {
+      "key": "filing_view.tag_no_folder",
+      "context": "Filing tab: the tag put on a file for which no folder fits; also shown as a chip in its row. Keep the prefix.",
+      "en": "Hermes: no folder",
+      "de": "Hermes: kein Ordner"
+    },
+    {
+      "key": "filing_view.only_new",
+      "context": "Filing tab: checkbox label over the write folder tree. On shows only the folders that get new files.",
+      "en": "Only folders with something new",
+      "de": "Nur Ordner mit Neuem"
+    },
+    {
+      "key": "filing_view.more_there",
+      "context": "Filing tab: line under the existing files of a folder of the write folder, grey. {count} is how many more files are there that are not listed.",
+      "en": "… {count} more already there",
+      "de": "… {count} weitere schon da"
+    },
+    {
+      "key": "filing_view.tally_read",
+      "context": "Filing tab: figure in the bar. {done} files looked at of {total} files in the read folder.",
+      "en": "{done} of {total} read",
+      "de": "{done} von {total} gelesen"
+    },
+    {
+      "key": "filing_view.tally_goes",
+      "context": "Filing tab: figure in the bar. {count} files will be filed into {folders} folders of the write folder.",
+      "en": "{count} go into {folders} folders",
+      "de": "{count} kommen in {folders} Ordner"
+    },
+    {
+      "key": "filing_view.tally_already",
+      "context": "Filing tab: figure in the bar. {count} files are already in the write folder.",
+      "en": "{count} already there",
+      "de": "{count} schon da"
+    },
+    {
+      "key": "filing_view.tally_no_folder",
+      "context": "Filing tab: figure in the bar. {count} files have no matching folder.",
+      "en": "{count} without a folder",
+      "de": "{count} ohne Ordner"
+    },
+    {
+      "key": "filing_view.tally_unreadable",
+      "context": "Filing tab: figure in the bar. {count} files could not be read.",
+      "en": "{count} unreadable",
+      "de": "{count} nicht lesbar"
+    },
+    {
+      "key": "filing_view.trash_dupes",
+      "context": "Filing tab: checkbox label in the bar. When on, the files of the read folder that are already in the write folder are moved to the trash.",
+      "en": "Delete duplicates in the read folder",
+      "de": "Doppelte im Lesen-Ordner löschen"
+    },
+    {
+      "key": "filing_view.copy",
+      "context": "Filing tab: button that copies the planned files into the write folder. {count} is how many.",
+      "en": "Copy {count}",
+      "de": "{count} kopieren"
+    },
+    {
+      "key": "filing_view.move",
+      "context": "Filing tab: button that moves the planned files into the write folder. {count} is how many.",
+      "en": "Move {count}",
+      "de": "{count} verschieben"
+    },
+    {
+      "key": "filing_view.error_outside",
+      "context": "Filing tab: error line when the user picked a folder that is not inside the write folder. {target} is the write folder.",
+      "en": "The folder is not inside the write folder {target}.",
+      "de": "Der Ordner liegt nicht im Schreib-Ordner {target}."
+    },
+    {
+      "key": "filing_view.error_not_ready",
+      "context": "Filing tab: error line when the plan cannot start because Hermes or its language model is not ready.",
+      "en": "Hermes or its language model is not ready, so the files cannot be planned.",
+      "de": "Hermes oder sein Sprachmodell ist nicht bereit, darum lassen sich die Dateien nicht planen."
+    },
+    {
+      "key": "filing_view.error_name",
+      "context": "Filing tab: error line when a new file name is empty or has a slash in it.",
+      "en": "A file name must not be empty or contain a slash.",
+      "de": "Ein Dateiname darf nicht leer sein und keinen Schrägstrich enthalten."
+    },
+    {
+      "key": "filing_view.rename_placeholder",
+      "context": "Filing tab: placeholder of the field in which the new name of a file is typed.",
+      "en": "New file name",
+      "de": "Neuer Dateiname"
     }
   ]
 }

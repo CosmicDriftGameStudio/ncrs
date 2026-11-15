@@ -7,10 +7,9 @@ use ncrs_index::Transfer;
 
 use crate::action::Action;
 use crate::ctx::Ctx;
-use crate::state::{Chip, ChipReply, GroupFlow, Offer, Part, Proposal, State, Step, TrialSession};
+use crate::state::{Chip, ChipReply, Offer, Part, Proposal, State, Step, TrialSession};
 use crate::texts::{fill, folder_name, number, text};
 use crate::tidy;
-use crate::tidy::{card_of, PAGE};
 use crate::update::{access, cancel_chip, chip, chip_labelled, fallback_chips, hermes, say};
 
 /// The files of the trial that are in the filing folder already.
@@ -56,19 +55,8 @@ fn can_trash_duplicates(state: &State, ctx: &Ctx) -> bool {
         && access(ctx).is_some_and(|access| access.trash_can_restore())
 }
 
-fn ways_on(state: &State, ctx: &Ctx, rest: usize, dupes: usize) -> Vec<Chip> {
+fn ways_on(state: &State, ctx: &Ctx, dupes: usize) -> Vec<Chip> {
     let mut chips = vec![chip(ctx, Msg::HermesChatLaterAgain, ChipReply::Later, true)];
-    if rest > 0 && !state.session.groups.singles_done {
-        chips.push(chip_labelled(
-            fill(
-                ctx.lang,
-                Msg::HermesChatShowStaying,
-                &[("count", &number(rest))],
-            ),
-            ChipReply::ShowStaying,
-            false,
-        ));
-    }
     chips.push(chip(
         ctx,
         Msg::HermesChatOtherFolder,
@@ -120,50 +108,8 @@ pub fn without_filing(state: &mut State, ctx: &Ctx, mut parts: Vec<Part>) {
     };
     parts.push(Part::Text(sentence));
     state.step = Step::Trial;
-    let chips = ways_on(state, ctx, rest, dupes);
+    let chips = ways_on(state, ctx, dupes);
     hermes(state, parts, chips);
-}
-
-/// The files that stay, one by one.
-pub fn show_staying(state: &mut State, ctx: &Ctx) {
-    let Some(trial) = state.session.trial.as_ref() else {
-        return;
-    };
-    let dupes = duplicates(trial);
-    let staying: Vec<usize> = trial
-        .plan
-        .entries
-        .iter()
-        .enumerate()
-        .filter(|(_, entry)| !matches!(entry.outcome, TrialOutcome::AlreadyThere { .. }))
-        .map(|(position, _)| position)
-        .collect();
-    let rest = staying.len();
-    let listed: Vec<usize> = staying.into_iter().take(PAGE).collect();
-    let left = rest.saturating_sub(listed.len());
-    let count = listed.len();
-    let Some(card) = card_of(state, ctx, listed, left) else {
-        say(
-            state,
-            text(ctx.lang, Msg::HermesChatFallback),
-            fallback_chips(ctx),
-        );
-        return;
-    };
-    state.session.groups.singles_done = true;
-    let chips = ways_on(state, ctx, rest, dupes);
-    hermes(
-        state,
-        vec![
-            Part::Text(fill(
-                ctx.lang,
-                Msg::HermesChatStayingIntro,
-                &[("count", &number(count))],
-            )),
-            Part::Trial(card),
-        ],
-        chips,
-    );
 }
 
 /// The files that are in the filing folder already go to the trash, as one
@@ -199,7 +145,6 @@ pub fn trash_duplicates(state: &mut State, ctx: &Ctx) {
             _ => None,
         })
         .collect();
-    state.session.groups = GroupFlow::default();
     state.step = Step::AfterRun;
     state.session.offer = Some(Offer {
         name: fill(
@@ -224,7 +169,6 @@ pub fn other_target(state: &mut State) -> Option<Action> {
         transfer: tidy.transfer,
     });
     state.session.trial = None;
-    state.session.groups = GroupFlow::default();
     state.step = Step::Target;
     Some(Action::PickFolder)
 }

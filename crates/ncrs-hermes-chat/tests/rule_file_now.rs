@@ -173,7 +173,6 @@ mod tests {
                         | ChipReply::Always
                         | ChipReply::ModeMove
                         | ChipReply::ModeCopy
-                        | ChipReply::FileAll
                 )
             })
             .collect();
@@ -274,14 +273,6 @@ mod tests {
         );
 
         assert_eq!(talk.files(), before, "nothing moved");
-        assert!(
-            !talk
-                .state
-                .chips()
-                .iter()
-                .any(|chip| chip.reply == ChipReply::FileAll),
-            "no trial filed anything"
-        );
         assert!(talk.actions.is_empty());
     }
 

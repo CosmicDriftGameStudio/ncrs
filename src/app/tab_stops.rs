@@ -10,6 +10,7 @@ pub(in crate::app) enum TabStop {
     Monitor,
     Viewer,
     Notes,
+    Filing,
     Hermes,
 }
 
@@ -26,6 +27,7 @@ pub(in crate::app) struct OpenPages {
     pub monitor: bool,
     pub viewer: bool,
     pub notes: bool,
+    pub filing: bool,
     pub hermes: bool,
 }
 
@@ -41,6 +43,7 @@ pub(in crate::app) fn next_stop(
         (pages.monitor, TabStop::Monitor),
         (pages.viewer, TabStop::Viewer),
         (pages.notes, TabStop::Notes),
+        (pages.filing, TabStop::Filing),
         (pages.hermes, TabStop::Hermes),
     ]
     .into_iter()
@@ -60,6 +63,7 @@ impl App {
             ShownTab::Monitor => TabStop::Monitor,
             ShownTab::Viewer => TabStop::Viewer,
             ShownTab::Notes => TabStop::Notes,
+            ShownTab::Filing => TabStop::Filing,
             ShownTab::Hermes => TabStop::Hermes,
             ShownTab::Settings => TabStop::Settings,
             ShownTab::Panels => TabStop::Panels,
@@ -76,6 +80,9 @@ impl App {
         if now.notes && !was_open.notes {
             self.shown_tab = ShownTab::Notes;
         }
+        if now.filing && !was_open.filing {
+            self.shown_tab = ShownTab::Filing;
+        }
         if now.hermes && !was_open.hermes {
             self.shown_tab = ShownTab::Hermes;
         }
@@ -90,6 +97,7 @@ impl App {
             ShownTab::Monitor => !now.monitor,
             ShownTab::Viewer => !now.viewer,
             ShownTab::Notes => !now.notes,
+            ShownTab::Filing => !now.filing,
             ShownTab::Hermes => !now.hermes,
             ShownTab::Panels => false,
         };
@@ -135,6 +143,7 @@ impl App {
             TabStop::Monitor => self.shown_tab = ShownTab::Monitor,
             TabStop::Viewer => self.shown_tab = ShownTab::Viewer,
             TabStop::Notes => self.shown_tab = ShownTab::Notes,
+            TabStop::Filing => self.shown_tab = ShownTab::Filing,
             TabStop::Hermes => {
                 self.shown_tab = ShownTab::Hermes;
                 return ncrs_hermes_chat::focus_input();
@@ -155,6 +164,7 @@ mod tests {
         monitor: true,
         viewer: true,
         notes: true,
+        filing: false,
         hermes: true,
     };
     const NONE: OpenPages = OpenPages {
@@ -162,6 +172,7 @@ mod tests {
         monitor: false,
         viewer: false,
         notes: false,
+        filing: false,
         hermes: false,
     };
 

@@ -600,6 +600,12 @@ impl App {
         &self.hermes_chat
     }
 
+    /// The filing tab: the protocol run reads what it plans.
+    #[cfg(unix)]
+    pub fn filing_session_for_test(&self) -> Option<&ncrs_filing_view::Session> {
+        self.filing_view.session.as_ref()
+    }
+
     /// The same, writable: the protocol run clears the readings to measure a
     /// cold read again.
     #[cfg(unix)]

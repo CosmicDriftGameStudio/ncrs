@@ -76,7 +76,6 @@ impl App {
         let chat = &self.hermes_chat;
         chat.open
             && (chat.pending_work().is_some()
-                || chat.looks_at_files()
                 || chat.pending_turn().is_some()
                 || chat.waits_for_hermes())
     }
@@ -201,6 +200,20 @@ impl App {
                 .run_hermes_flow(Vec::new(), |hermes, ctx| {
                     ncrs_hermes_ui::set_folder_role(hermes, &folder, role, ctx)
                 }),
+            ncrs_hermes_chat::Action::OpenFiling {
+                source,
+                target,
+                watch_source,
+            } => {
+                let watch = if watch_source {
+                    self.run_hermes_flow(Vec::new(), |hermes, ctx| {
+                        ncrs_hermes_ui::set_folder_role(hermes, &source, FolderRole::Inbox, ctx)
+                    })
+                } else {
+                    Task::none()
+                };
+                Task::batch([watch, self.open_filing(source, target)])
+            }
             ncrs_hermes_chat::Action::OpenOcrModels => {
                 self.update_ocr_models(OcrModelsMessage::Open)
             }

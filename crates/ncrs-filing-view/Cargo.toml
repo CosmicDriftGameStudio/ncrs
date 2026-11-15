@@ -1,0 +1,27 @@
+[package]
+name = "ncrs-filing-view"
+version = "0.0.0"
+edition = "2021"
+# Same as the root package: one place decides the compiler.
+rust-version = "1.98"
+description = "The filing tab: a source folder planned live into the write folder, with the user's changes and one run"
+license = "MIT"
+publish = false
+
+[dependencies]
+# Same as the kit: no renderer or window system, the app picks them.
+iced = { version = "0.14", default-features = false, features = ["tokio", "advanced"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
+ncrs-ai = { path = "../ncrs-ai", version = "0.0.0" }
+ncrs-filing = { path = "../ncrs-filing", version = "0.0.0" }
+ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
+ncrs-index = { path = "../ncrs-index", version = "0.0.0" }
+ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0" }
+
+[dev-dependencies]
+iced = { version = "0.14", default-features = false, features = ["tokio", "advanced", "tiny-skia"] }
+iced_test = "0.14"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+
+[lints]
+workspace = true

@@ -34,6 +34,8 @@ pub struct RunPlan {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RunReport {
+    /// The batch the run wrote its journal under, for putting it back.
+    pub batch: BatchId,
     /// The files carried out of the source folder.
     pub done: usize,
     pub skipped: usize,
@@ -179,6 +181,7 @@ pub fn file(access: &ChatAccess, run: &RunPlan) -> Result<RunReport, String> {
                 .map(|item| item.from.as_path()),
         );
         Ok(RunReport {
+            batch: report.batch,
             done: moved(carried_items),
             skipped: report.skipped(),
             inside_done: moved(inside_items),

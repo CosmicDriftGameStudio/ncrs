@@ -1,11 +1,11 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use ncrs_ai::{ChatIntent, ChatTurn, Schedule};
 use ncrs_filing::chat_work::{
-    AnsweredGroups, ChatWork, FolderReading, PatternLevel, ReadProgress, RunPlan, RunSummary,
-    TrashItem, TrialPlan, WaitingGroup,
+    ChatWork, FolderReading, PatternLevel, ReadProgress, RunPlan, RunSummary, TrashItem, TrialPlan,
+    WaitingGroup,
 };
 use ncrs_index::Transfer;
 
@@ -50,18 +50,12 @@ pub enum ChipReply {
     Always,
     ModeCopy,
     ModeMove,
-    FileAll,
-    ShowMore,
-    /// Files the group in question below this first-level folder.
-    GroupArea(String),
     /// One of the folders a name the model heard can mean.
     NamedFolder(PathBuf),
-    GroupNewFolder,
     /// Limits the proposed rule to documents from this read folder.
     OnlyFrom(PathBuf),
     /// Lifts the limit to one read folder from the proposed rule.
     FromAllSources,
-    GroupLeave,
     RoleSource,
     RoleTarget,
     PhotosYes,
@@ -72,12 +66,6 @@ pub enum ChipReply {
     DecideTarget(PathBuf),
     DecideSkip,
     NewLayout(NewLayout),
-    NamesNumbered,
-    NamesLeave,
-    UnsureChoice {
-        entry: usize,
-        choice: usize,
-    },
     PutBack,
     Undo,
     OpenSearch,
@@ -95,8 +83,6 @@ pub enum ChipReply {
     Retry,
     /// Moves the files that are in the filing folder already to the trash.
     TrashDuplicatesNow,
-    /// Lists the files of the trial that stay.
-    ShowStaying,
     /// Runs the trial again against a folder the user picks.
     TrialOtherTarget,
     /// Goes through the documents that wait, group by group.
@@ -156,12 +142,9 @@ impl ChipReply {
             Self::KeepYes
             | Self::FineAsIs
             | Self::ToTrash
-            | Self::FileAll
-            | Self::GroupArea(_)
             | Self::RoleSource
             | Self::DecideTarget(_)
             | Self::NewLayout(_)
-            | Self::NamesNumbered
             | Self::PutBack
             | Self::TrashDuplicatesNow
             | Self::WaitingFile
@@ -181,18 +164,13 @@ impl ChipReply {
             | Self::Always
             | Self::ModeCopy
             | Self::ModeMove
-            | Self::ShowMore
             | Self::NamedFolder(_)
-            | Self::GroupNewFolder
-            | Self::GroupLeave
             | Self::RoleTarget
             | Self::PhotosYes
             | Self::NewTarget
             | Self::DecidePerFile
             | Self::DecideSkip
             | Self::PhotosNo
-            | Self::NamesLeave
-            | Self::UnsureChoice { .. }
             | Self::OpenSearch
             | Self::IntentSearch
             | Self::IntentTidy
@@ -205,7 +183,6 @@ impl ChipReply {
             | Self::SwitchToCopy
             | Self::SwitchToMove
             | Self::Retry
-            | Self::ShowStaying
             | Self::WaitingShow
             | Self::WaitingSkip
             | Self::LevelsKeep
@@ -282,37 +259,6 @@ pub struct FileCard {
     pub highlighted: Option<usize>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RowOutcome {
-    Filed {
-        segments: Vec<String>,
-    },
-    Unsure {
-        choices: Vec<Chip>,
-        chosen: Option<usize>,
-    },
-    AlreadyThere(String),
-    Stays(String),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TrialRow {
-    /// Position in the trial plan.
-    pub entry: usize,
-    /// The file as it lies on the disk: the read folder and the path in it.
-    pub source: String,
-    /// Sender, kind and date, as far as they are known.
-    pub facts: String,
-    pub outcome: RowOutcome,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TrialCard {
-    pub header: String,
-    pub rows: Vec<TrialRow>,
-    pub more: Option<String>,
-}
-
 /// A folder named in the chat: its name, and where it lies.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FolderMention {
@@ -327,7 +273,6 @@ pub enum Part {
     Proposal(ProposalCard),
     Areas(AreasCard),
     File(FileCard),
-    Trial(TrialCard),
     Folder(FolderMention),
 }
 
@@ -368,7 +313,6 @@ pub enum Step {
     Mode,
     Trial,
     /// The next typed text is the name of a new folder, not for the model.
-    GroupFolderName,
     AfterRun,
     UndoAsk,
     /// Typed words change the levels shown.
@@ -433,23 +377,7 @@ impl RuleMoves {
 #[derive(Debug, Clone)]
 pub struct TrialSession {
     pub plan: TrialPlan,
-    pub resolved: BTreeMap<usize, PathBuf>,
-    pub shown: usize,
 }
-
-/// Where the questions about the staying files stand.
-#[derive(Debug, Default)]
-pub struct GroupFlow {
-    pub answered: AnsweredGroups,
-    /// The unsure files the user decided, as source path and chosen folder,
-    /// to carry over when the trial runs again.
-    pub carried: Vec<(PathBuf, PathBuf)>,
-    /// The rule stored last, announced with the next trial.
-    pub fresh_rule: Option<String>,
-    pub singles_done: bool,
-    pub names_done: bool,
-}
-
 /// Duplicates the chat offers to trash.
 #[derive(Debug, Clone)]
 pub struct Offer {
@@ -527,7 +455,6 @@ pub struct Session {
     pub requested: PathBuf,
     pub retry: Option<Retry>,
     pub trial: Option<TrialSession>,
-    pub groups: GroupFlow,
     pub offer: Option<Offer>,
     pub last_run: Option<RunSummary>,
     /// A typed folder waiting for a yes, and the step it was typed in.
@@ -586,15 +513,6 @@ pub struct State {
     pub unresolved_sentence: Option<(String, Asked)>,
     /// The check set during this `update` that no task runs yet.
     pub fresh_resolve: bool,
-    /// The rest of the trial the model looks at page by page; the chat shows
-    /// a progress line meanwhile and posts the trial when it is done.
-    pub trial_rest: Option<ChatWork>,
-    /// The files of the page the model has in flight.
-    pub trial_rest_page: BTreeSet<PathBuf>,
-    /// Bumped by each start of the rest, so a page of an earlier trial run is told apart.
-    pub trial_rest_run: u64,
-    /// The rest set during this `update` that no task runs yet.
-    pub fresh_trial_rest: bool,
     /// A background job is making the model's folder picks of the read folders.
     pub picks_running: bool,
     /// The pipeline sequence the last job was started for.
@@ -634,10 +552,6 @@ impl Default for State {
             resolving: None,
             unresolved_sentence: None,
             fresh_resolve: false,
-            trial_rest: None,
-            trial_rest_page: BTreeSet::new(),
-            trial_rest_run: 0,
-            fresh_trial_rest: false,
             picks_running: false,
             picks_settled_at: None,
             picks_job: None,
@@ -656,12 +570,6 @@ impl Default for State {
 impl State {
     pub fn thread(&self) -> &[Entry] {
         &self.thread
-    }
-
-    /// The model looks at the files of the trial page by page; the chat shows
-    /// a progress line and nothing else until it is done.
-    pub fn looks_at_files(&self) -> bool {
-        !self.trial_rest_page.is_empty()
     }
 
     /// Something the user asked waits for the filing module to start.
@@ -696,11 +604,6 @@ impl State {
     /// The names the app waits to have checked.
     pub fn pending_naming(&self) -> Option<&crate::named_folders::Naming> {
         self.naming.as_ref()
-    }
-
-    /// The plan of the trial that is on screen.
-    pub fn trial_plan(&self) -> Option<&TrialPlan> {
-        self.session.trial.as_ref().map(|trial| &trial.plan)
     }
 
     /// Whether the newest entry is Hermes', so its chips are the ones on screen.

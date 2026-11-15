@@ -1,0 +1,261 @@
+//! Update and title of the filing tab on a hand-built plan, without a model.
+
+// reason: a failing assertion is the signal in a test
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use ncrs_filing::chat_work::{LiveFile, LivePlan, LiveRun, LiveState, Override};
+use ncrs_i18n::Language;
+use ncrs_index::{ContentHash, Transfer};
+
+use crate::footer::figures;
+use crate::{tab_title, update, Action, Ctx, Message, Session, State};
+
+const TARGET: &str = "/archive";
+
+fn ctx() -> Ctx {
+    Ctx {
+        lang: Language::German,
+        access: None,
+        model: None,
+    }
+}
+
+fn file(from: &str, state: LiveState) -> LiveFile {
+    LiveFile {
+        from: PathBuf::from(from),
+        hash: Some(ContentHash([1; 32])),
+        state,
+        by_user: false,
+    }
+}
+
+fn filed(folder: &str, name: &str) -> LiveState {
+    LiveState::Filed {
+        folder: PathBuf::from(folder),
+        name: name.to_owned(),
+        unsure: false,
+    }
+}
+
+fn state_with(files: Vec<LiveFile>, done: bool) -> State {
+    let mut session = Session::new(
+        PathBuf::from("/inbox"),
+        PathBuf::from(TARGET),
+        Arc::new(LiveRun::default()),
+    );
+    session.plan = Some(LivePlan {
+        source_root: PathBuf::from("/inbox"),
+        target_root: PathBuf::from(TARGET),
+        files,
+        done,
+    });
+    session.selected = Some(PathBuf::from("a.pdf"));
+    State {
+        session: Some(session),
+    }
+}
+
+fn session(state: &State) -> &Session {
+    state.session.as_ref().unwrap()
+}
+
+fn simple(done: bool) -> State {
+    state_with(
+        vec![
+            file("a.pdf", filed("Rechnungen", "a.pdf")),
+            file("b.pdf", LiveState::NoFolder),
+            file(
+                "c.pdf",
+                LiveState::AlreadyThere {
+                    at: PathBuf::from("x/c.pdf"),
+                },
+            ),
+        ],
+        done,
+    )
+}
+
+fn send(state: &mut State, message: Message) -> Option<Action> {
+    update(state, message, &ctx()).1
+}
+
+fn shown_name(state: &State) -> String {
+    let plan = session(state).shown_plan().unwrap();
+    match &plan.files[0].state {
+        LiveState::Filed { name, .. } => name.clone(),
+        other => panic!("not filed: {other:?}"),
+    }
+}
+
+#[test]
+fn a_typed_name_replaces_the_name_of_the_file() {
+    let mut state = simple(true);
+    send(&mut state, Message::StartRename);
+    assert_eq!(session(&state).renaming.as_deref(), Some("a.pdf"));
+    send(
+        &mut state,
+        Message::RenameInput("Rechnung Muster GmbH.pdf".into()),
+    );
+    send(&mut state, Message::RenameSubmit);
+    assert_eq!(session(&state).renaming, None);
+    assert_eq!(shown_name(&state), "Rechnung Muster GmbH.pdf");
+}
+
+#[test]
+fn escape_while_renaming_keeps_the_name() {
+    let mut state = simple(true);
+    send(&mut state, Message::StartRename);
+    send(&mut state, Message::RenameInput("other.pdf".into()));
+    send(&mut state, Message::RenameCancel);
+    assert_eq!(session(&state).renaming, None);
+    assert!(session(&state).overrides.is_empty());
+    assert_eq!(shown_name(&state), "a.pdf");
+}
+
+#[test]
+fn an_empty_name_or_one_with_a_separator_keeps_the_field_open() {
+    for bad in ["", "  ", "x/y.pdf"] {
+        let mut state = simple(true);
+        send(&mut state, Message::StartRename);
+        send(&mut state, Message::RenameInput(bad.into()));
+        send(&mut state, Message::RenameSubmit);
+        assert!(session(&state).renaming.is_some(), "{bad:?}");
+        assert!(session(&state).overrides.is_empty(), "{bad:?}");
+        assert!(session(&state).error.is_some(), "{bad:?}");
+    }
+}
+
+#[test]
+fn a_file_that_is_not_filed_cannot_be_renamed() {
+    let mut state = simple(true);
+    send(&mut state, Message::Select(PathBuf::from("b.pdf")));
+    send(&mut state, Message::StartRename);
+    assert_eq!(session(&state).renaming, None);
+}
+
+#[test]
+fn f8_leaves_the_file_where_it_is() {
+    let mut state = simple(true);
+    send(&mut state, Message::Stay);
+    let plan = session(&state).shown_plan().unwrap();
+    assert_eq!(plan.files[0].state, LiveState::NoFolder);
+    assert!(plan.files[0].by_user);
+}
+
+#[test]
+fn a_folder_inside_the_write_folder_becomes_the_folder_of_the_file() {
+    let mut state = simple(true);
+    send(
+        &mut state,
+        Message::FolderPicked(Some(Path::new(TARGET).join("Verträge/2026"))),
+    );
+    assert_eq!(
+        session(&state).overrides.get(Path::new("a.pdf")),
+        Some(&Override::Folder(PathBuf::from("Verträge/2026")))
+    );
+    assert_eq!(session(&state).error, None);
+}
+
+#[test]
+fn a_folder_outside_the_write_folder_is_an_error_and_changes_nothing() {
+    let mut state = simple(true);
+    send(
+        &mut state,
+        Message::FolderPicked(Some(PathBuf::from("/elsewhere"))),
+    );
+    assert!(session(&state).overrides.is_empty());
+    assert!(session(&state).error.is_some());
+}
+
+#[test]
+fn picking_a_folder_asks_the_app_starting_in_the_write_folder() {
+    let mut state = simple(true);
+    let action = send(&mut state, Message::PickFolder);
+    assert_eq!(
+        action,
+        Some(Action::PickFolder {
+            start: PathBuf::from(TARGET)
+        })
+    );
+}
+
+#[test]
+fn filing_waits_until_the_plan_is_done() {
+    let mut state = simple(false);
+    let (_, action) = update(&mut state, Message::File(Transfer::Copy), &ctx());
+    assert_eq!(action, None);
+    assert!(!session(&state).filing);
+    assert!(!crate::update::can_file(session(&state)));
+    assert!(crate::update::can_file(session(&simple(true))));
+}
+
+#[test]
+fn the_figures_add_up_to_the_files() {
+    let mut state = state_with(
+        vec![
+            file("a.pdf", filed("R", "a.pdf")),
+            file("b.pdf", LiveState::NoFolder),
+            file(
+                "c.pdf",
+                LiveState::AlreadyThere {
+                    at: PathBuf::from("c.pdf"),
+                },
+            ),
+            file("d.pdf", LiveState::Unreadable),
+            file("e.pdf", LiveState::Waiting),
+            file("f.pdf", LiveState::Looking),
+        ],
+        false,
+    );
+    let plan = session(&state).shown_plan().unwrap();
+    let counts = ncrs_filing::chat_work::tally(&plan);
+    assert_eq!(
+        counts.filed
+            + counts.already_there
+            + counts.no_folder
+            + counts.unreadable
+            + counts.waiting
+            + counts.looking,
+        plan.files.len()
+    );
+    let texts = figures(session(&state), &plan, Language::German);
+    assert_eq!(texts[0], "4 von 6 gelesen");
+    assert_eq!(texts[1], "1 kommen in 1 Ordner");
+    state.session = None;
+}
+
+#[test]
+fn the_title_counts_while_reading_and_says_ready_when_done() {
+    let running = state_with(
+        vec![
+            file("a.pdf", filed("R", "a.pdf")),
+            file("b.pdf", LiveState::Looking),
+            file("c.pdf", LiveState::Waiting),
+        ],
+        false,
+    );
+    assert_eq!(
+        tab_title(&running, Language::German).as_deref(),
+        Some("Ablegen · inbox 1/3")
+    );
+    let done = simple(true);
+    assert_eq!(
+        tab_title(&done, Language::German).as_deref(),
+        Some("Ablegen · inbox ✓ bereit")
+    );
+    let mut failed = simple(false);
+    failed.session.as_mut().unwrap().finished = Some(Err("boom".into()));
+    assert_eq!(
+        tab_title(&failed, Language::German).as_deref(),
+        Some("Ablegen · inbox ✕")
+    );
+    assert_eq!(tab_title(&State::default(), Language::German), None);
+}

@@ -224,11 +224,14 @@ fn in_threads<T: Sync, R: Send>(
     })
 }
 
-pub fn read_folder(
-    access: &ChatAccess,
-    folder: &Path,
-    progress: &ReadProgress,
-) -> Result<FolderReading, ReadError> {
+/// The files `read_folder` walks, relative to the folder and in its order;
+/// files that cannot be hashed are still among them.
+pub fn list_files(folder: &Path) -> Result<Vec<PathBuf>, ReadError> {
+    let walked = walk_sorted(folder, &ReadProgress::default())?;
+    Ok(walked.into_iter().map(|file| file.relative).collect())
+}
+
+fn walk_sorted(folder: &Path, progress: &ReadProgress) -> Result<Vec<Walked>, ReadError> {
     match fs::metadata(folder) {
         Ok(metadata) if metadata.is_dir() => {}
         Ok(_) => return Err(ReadError::NotADirectory),
@@ -237,6 +240,15 @@ pub fn read_folder(
     let mut walked = Vec::new();
     walk(folder, Path::new(""), &mut walked, progress)?;
     walked.sort_by(|left, right| left.relative.cmp(&right.relative));
+    Ok(walked)
+}
+
+pub fn read_folder(
+    access: &ChatAccess,
+    folder: &Path,
+    progress: &ReadProgress,
+) -> Result<FolderReading, ReadError> {
+    let walked = walk_sorted(folder, progress)?;
     progress.total.store(walked.len(), Ordering::Relaxed);
 
     // Whatever the index has under the folder with the same size and mtime is

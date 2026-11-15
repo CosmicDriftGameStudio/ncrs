@@ -8,7 +8,8 @@ use rusqlite::{params, Connection, OptionalExtension as _, Transaction};
 
 use crate::error::IndexError;
 use crate::index::Index;
-use crate::model::{tag_name, ConditionKind, RuleId};
+use crate::model::{tag_name, ConditionKind, ContentHash, RuleId};
+use crate::names::{name_id, NameTable};
 
 /// Per group of tags, each tag with the number of documents that have it,
 /// the most used first and then by name. Grouped and spelled as
@@ -136,6 +137,39 @@ impl Index {
         })
     }
 
+    /// Adds a tag to the document with this content as one the user set, so it
+    /// shows in the tag list and outlives a change of the fields; false when no
+    /// document has the hash. A tag the document already has stays as it is.
+    pub fn add_document_tag(&self, hash: &ContentHash, tag: &str) -> Result<bool, IndexError> {
+        let conn = self.connection();
+        let Some(document_id) = document_id_of(conn, hash)? else {
+            return Ok(false);
+        };
+        let tag_id = name_id(conn, NameTable::Tag, tag)?;
+        conn.execute(
+            "INSERT OR IGNORE INTO document_tag (document_id, tag_id, automatic)
+             VALUES (?1, ?2, 0)",
+            [document_id, tag_id],
+        )?;
+        Ok(true)
+    }
+
+    /// Removes the tag from the document with this content; a document or tag
+    /// that is not there is not an error.
+    pub fn remove_document_tag(&self, hash: &ContentHash, tag: &str) -> Result<(), IndexError> {
+        let conn = self.connection();
+        let (Some(document_id), Some(found_tag)) =
+            (document_id_of(conn, hash)?, tag_id(conn, tag)?)
+        else {
+            return Ok(());
+        };
+        conn.execute(
+            "DELETE FROM document_tag WHERE document_id = ?1 AND tag_id = ?2",
+            [document_id, found_tag],
+        )?;
+        Ok(())
+    }
+
     /// Renames a tag the user set, everywhere it stands, in one transaction.
     /// A name that already exists is merged into.
     pub fn rename_own_tag(&mut self, old_name: &str, new_name: &str) -> Result<(), IndexError> {
@@ -216,6 +250,16 @@ impl Index {
     }
 }
 
+fn document_id_of(conn: &Connection, hash: &ContentHash) -> Result<Option<i64>, IndexError> {
+    Ok(conn
+        .query_row(
+            "SELECT id FROM document WHERE hash = ?1",
+            [hash.0.as_slice()],
+            |row| row.get(0),
+        )
+        .optional()?)
+}
+
 fn tag_id(conn: &Connection, tag: &str) -> Result<Option<i64>, IndexError> {
     Ok(conn
         .query_row(
@@ -278,6 +322,61 @@ mod tests {
             tags: own(names),
             ..DocumentFields::default()
         }
+    }
+
+    fn stored_tags(index: &Index) -> Vec<(String, i64)> {
+        let mut statement = index
+            .connection()
+            .prepare(
+                "SELECT t.name, dt.automatic FROM document_tag dt
+                 JOIN tag t ON t.id = dt.tag_id ORDER BY t.name",
+            )
+            .unwrap();
+        statement
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap()
+    }
+
+    #[test]
+    fn a_tag_is_added_once_as_the_users_and_removed_again() {
+        let (_dir, index) = encrypted_index();
+        let hash = new_document(1).hash;
+        index.insert_document(&new_document(1)).unwrap();
+
+        assert!(index.add_document_tag(&hash, "Unreadable").unwrap());
+        assert!(index.add_document_tag(&hash, "unreadable").unwrap());
+        assert_eq!(stored_tags(&index), vec![("Unreadable".to_owned(), 0)]);
+
+        index.remove_document_tag(&hash, "UNREADABLE").unwrap();
+        assert!(stored_tags(&index).is_empty());
+        index.remove_document_tag(&hash, "unreadable").unwrap();
+    }
+
+    #[test]
+    fn a_tag_for_an_unknown_hash_is_not_added() {
+        let (_dir, index) = encrypted_index();
+        let unknown = new_document(9).hash;
+
+        assert!(!index.add_document_tag(&unknown, "x").unwrap());
+        index.remove_document_tag(&unknown, "x").unwrap();
+        assert!(stored_tags(&index).is_empty());
+    }
+
+    #[test]
+    fn adding_a_tag_keeps_the_tags_the_user_set() {
+        let (_dir, mut index) = encrypted_index();
+        document(&mut index, 1, tagged(&["steuer"]));
+        let hash = new_document(1).hash;
+
+        index.add_document_tag(&hash, "steuer").unwrap();
+        index.add_document_tag(&hash, "other").unwrap();
+
+        assert_eq!(
+            stored_tags(&index),
+            vec![("other".to_owned(), 0), ("steuer".to_owned(), 0)]
+        );
     }
 
     fn count(index: &Index, sql: &str) -> i64 {

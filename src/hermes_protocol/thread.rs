@@ -46,15 +46,6 @@ pub fn entry_text(entry: &Entry) -> String {
                     .collect::<Vec<_>>()
                     .join(" "),
                 Part::Folder(mention) => format!("{} ({})", mention.name, mention.path),
-                Part::Trial(card) => format!(
-                    "{} {}",
-                    card.header,
-                    card.rows
-                        .iter()
-                        .map(|row| row.source.clone())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                ),
             })
             .collect::<Vec<_>>()
             .join(" "),

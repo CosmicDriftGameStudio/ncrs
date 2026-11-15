@@ -123,6 +123,12 @@ impl App {
             } else {
                 Subscription::none()
             },
+            if ncrs_filing_view::is_running(&self.filing_view) {
+                iced::time::every(HERMES_CHAT_TICK_EVERY)
+                    .map(|_| Message::FilingView(ncrs_filing_view::Message::Tick))
+            } else {
+                Subscription::none()
+            },
             if self.hermes_chat_is_working() {
                 iced::time::every(HERMES_CHAT_TICK_EVERY)
                     .map(|_| Message::HermesChat(HermesChatMessage::WorkTick))

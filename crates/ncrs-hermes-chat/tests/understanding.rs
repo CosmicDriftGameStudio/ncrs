@@ -473,7 +473,7 @@ mod tests {
     }
 
     #[test]
-    fn yes_reads_and_tries_with_what_was_said_and_files_nothing() {
+    fn yes_reads_and_hands_the_plan_to_the_tab_with_nothing_filed() {
         let mut talk = small_talk();
         let before = talk.files();
         talk.type_text_understood(
@@ -482,18 +482,21 @@ mod tests {
         );
         talk.press(&ChipReply::ConfirmTidy);
         talk.choose_archive_if_asked();
-        assert_eq!(talk.plan().filed, 1);
-        assert_eq!(talk.files(), before, "the trial moves nothing");
-        assert_eq!(
-            talk.state.chips()[0].label,
-            say(Msg::HermesChatFileAll, &[("count", "1")])
+        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatHandover, &[])]);
+        assert!(
+            talk.actions.iter().any(|action| matches!(
+                action,
+                Action::OpenFiling { source, target, .. }
+                    if source.ends_with("inbox") && target.ends_with("archive")
+            )),
+            "{:?}",
+            talk.actions
         );
-        talk.press(&ChipReply::FileAll);
-        assert_eq!(talk.files().len(), before.len() + 1);
+        assert_eq!(talk.files(), before, "the chat moves nothing");
     }
 
     #[test]
-    fn an_always_in_the_sentence_goes_straight_on_with_the_trial() {
+    fn an_always_in_the_sentence_goes_straight_on_to_the_tab() {
         let mut talk = small_talk();
         talk.type_text_understood(
             "räum die Inbox immer auf",
@@ -501,6 +504,10 @@ mod tests {
         );
         talk.press(&ChipReply::ConfirmTidy);
         talk.choose_archive_if_asked();
-        assert!(talk.plan().filed > 0);
+        assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatHandover, &[])]);
+        assert!(talk
+            .actions
+            .iter()
+            .any(|action| matches!(action, Action::OpenFiling { .. })));
     }
 }

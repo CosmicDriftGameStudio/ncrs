@@ -10,15 +10,20 @@ use super::*;
 use crate::chat_work::picks::remember_from_readings;
 
 /// Records each folder choice it is asked and answers the first folder, or
-/// fails.
+/// fails, or picks no folder. With a `run`, it notes the plan that is
+/// published while it is asked, and can stop that run.
 #[derive(Debug, Default)]
-struct RecordingModel {
-    calls: StdMutex<Vec<(usize, FolderChoiceLane)>>,
-    fails: bool,
+pub struct RecordingModel {
+    pub calls: StdMutex<Vec<(usize, FolderChoiceLane)>>,
+    pub fails: bool,
+    pub declines: bool,
+    pub run: Option<Arc<LiveRun>>,
+    pub stops_the_run: bool,
+    pub seen: StdMutex<Vec<Option<LivePlan>>>,
 }
 
 impl RecordingModel {
-    fn calls(&self) -> Vec<(usize, FolderChoiceLane)> {
+    pub fn calls(&self) -> Vec<(usize, FolderChoiceLane)> {
         self.calls.lock().unwrap().clone()
     }
 }
@@ -77,10 +82,25 @@ impl ChatModel for RecordingModel {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .push((documents.len(), lane));
+        if let Some(run) = &self.run {
+            self.seen
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(
+                    run.plan
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .clone(),
+                );
+            if self.stops_the_run {
+                run.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
         if self.fails {
             return Err(AiError::Model("closed"));
         }
-        Ok(vec![Some(0); documents.len()])
+        let pick = if self.declines { None } else { Some(0) };
+        Ok(vec![pick; documents.len()])
     }
 
     fn status(&self) -> LocalModelStatus {

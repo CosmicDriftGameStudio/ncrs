@@ -101,6 +101,10 @@ pub struct InputState {
     /// The notes tab is up with nothing over it: Escape is its own, whatever
     /// field took it, and an Option tap opens no menu.
     pub notes: bool,
+    /// The filing tab is up and a name is typed in it: Escape leaves the field.
+    pub filing_renaming: bool,
+    /// The filing tab is up with nothing over it: an Option tap opens no menu.
+    pub filing: bool,
     /// A row is held with the left button: the pointer and the button decide
     /// whether it becomes a drag.
     pub panel_drag_armed: bool,
@@ -156,6 +160,10 @@ impl InputState {
                 Message::Settings(SettingsMessage::FocusKey(FocusKey::Escape)),
             ),
             (self.notes, Message::Notes(ncrs_notes::Message::Escape)),
+            (
+                self.filing_renaming,
+                Message::FilingView(ncrs_filing_view::Message::RenameCancel),
+            ),
         ]
         .into_iter()
         .find_map(|(open, close)| open.then_some(close))
@@ -220,7 +228,7 @@ impl InputState {
                     && !self.permissions_dialog
                     && !self.batch_rename_dialog
                     && !self.settings;
-                if self.viewer || self.notes {
+                if self.viewer || self.notes || self.filing {
                     return None;
                 }
                 if self.monitor {

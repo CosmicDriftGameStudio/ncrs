@@ -21,6 +21,7 @@ use crate::rules_work::{ArchiveMove, RuleTry, RulesAccess, TriedDocument, TryFil
 mod change;
 mod folder_list;
 mod groups;
+mod live;
 mod pattern;
 mod picks;
 mod reading;
@@ -36,6 +37,10 @@ pub use change::branch_example;
 pub use groups::{
     area_pattern, group_rule, numbered_name, stay_groups, AnsweredGroups, GroupKey, NameTaken,
     RuleSaveFailure, StayGroup, StayGroups, MAX_GROUP_QUESTIONS,
+};
+pub use live::{
+    apply_overrides, classify, mark_files, plan_live, run_plan, tally, LiveFile, LivePlan, LiveRun,
+    LiveState, LiveTags, Override, Tally,
 };
 pub use pattern::PatternLevel;
 pub use picks::remember_folder_picks;

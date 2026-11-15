@@ -15,11 +15,10 @@ pub use crate::fallback::{
 };
 use crate::message::Message;
 use crate::state::{
-    Asked, Chip, ChipReply, Entry, FolderMention, GroupFlow, Part, ReadFor, Retry, State, Step,
-    Unsent,
+    Asked, Chip, ChipReply, Entry, FolderMention, Part, ReadFor, Retry, State, Step, Unsent,
 };
 use crate::texts::{fill, folder_name, shown_folder, text};
-use crate::{learn, named_folders, photos, stay_groups, tidy, trial_end, understand, undo};
+use crate::{learn, named_folders, photos, tidy, trial_end, understand, undo};
 
 pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> (Task<Message>, Option<Action>) {
     let action = route(state, message, ctx).or_else(|| state.queued_action.take());
@@ -105,10 +104,6 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
                 text_with(ctx, Msg::HermesChatReadFailed, &[("reason", &reason)]),
                 fallback_chips(ctx),
             );
-            None
-        }
-        Message::TrialRestDone(run, result) => {
-            tidy::trial_rest_done(state, ctx, run, *result);
             None
         }
         Message::FolderPicked(picked) => {
@@ -231,17 +226,13 @@ fn new_chat(state: &mut State, ctx: &Ctx) {
 /// In these steps every typed text is for the flow, so a text that looks like
 /// a path is no folder the user picked.
 fn words_are_taken_as_text(step: Step) -> bool {
-    matches!(
-        step,
-        Step::RuleLevels | Step::RuleWhat | Step::GroupFolderName
-    )
+    matches!(step, Step::RuleLevels | Step::RuleWhat)
 }
 
 /// Work or the model is running, or something waits for Hermes to start;
 /// typing and buttons wait for it.
 fn is_busy(state: &State) -> bool {
     state.waits_for_hermes()
-        || state.looks_at_files()
         || state.pending.is_some()
         || state.thinking.is_some()
         || state.rule_ask.is_some()
@@ -259,30 +250,9 @@ fn launch(state: &mut State, ctx: &Ctx) -> Task<Message> {
         understand::launch(state, ctx),
         crate::rule_flow::launch(state, ctx),
         launch_resolve(state, ctx),
-        launch_trial_rest(state, ctx),
         named_folders::launch(state, ctx),
         crate::picks::launch(state),
     ])
-}
-
-fn launch_trial_rest(state: &mut State, ctx: &Ctx) -> Task<Message> {
-    if !std::mem::take(&mut state.fresh_trial_rest) {
-        return Task::none();
-    }
-    let (Some(work), Availability::Ready(ready)) = (state.trial_rest.take(), &ctx.availability)
-    else {
-        return Task::none();
-    };
-    let access = ready.clone().with_model(ctx.model.clone());
-    let run = state.trial_rest_run;
-    Task::perform(
-        async move { tokio::task::spawn_blocking(move || access.run(work)).await },
-        move |joined| match joined {
-            Ok(ChatResult::Trial(plan)) => Message::TrialRestDone(run, Box::new(plan)),
-            Ok(_) => Message::TrialRestDone(run, Box::new(Err(String::new()))),
-            Err(error) => Message::TrialRestDone(run, Box::new(Err(error.to_string()))),
-        },
-    )
 }
 
 fn launch_work(state: &mut State, ctx: &Ctx) -> Task<Message> {
@@ -418,7 +388,8 @@ fn handle_done(state: &mut State, ctx: &Ctx, result: ChatResult) -> Option<Actio
     match result {
         ChatResult::Read(read) => learn::read_done(state, ctx, read),
         ChatResult::Trial(trial) => tidy::trial_done(state, ctx, trial),
-        ChatResult::RuleSaved(saved) => stay_groups::rule_saved(state, ctx, saved),
+        // The chat no longer asks for group rules; the work stays in ncrs-filing.
+        ChatResult::RuleSaved(_) => {}
         ChatResult::RuleTried(tried) => crate::rule_flow::trial_done(state, ctx, tried),
         ChatResult::RuleStored(stored) => crate::rule_flow::stored(state, ctx, stored),
         ChatResult::Filed(filed) => tidy::filed_done(state, ctx, filed),
@@ -782,9 +753,6 @@ pub fn looks_like_typed_path(text: &str) -> bool {
 /// A typed path is taken literally while a folder is asked for, and anywhere
 /// when it is an existing folder; every other sentence goes to the model.
 fn handle_text(state: &mut State, ctx: &Ctx, typed: &str, asked: Asked) -> Option<Action> {
-    if state.step == Step::GroupFolderName {
-        return stay_groups::folder_named(state, ctx, typed);
-    }
     if matches!(state.step, Step::RuleLevels | Step::RuleWhat) {
         crate::rule_flow::typed(state, ctx, typed);
         return None;
@@ -864,7 +832,6 @@ pub fn handle_reply(state: &mut State, ctx: &Ctx, reply: ChipReply) -> Option<Ac
         }
         ChipReply::Retry => learn::retry(state, ctx),
         ChipReply::TrashDuplicatesNow => trial_end::trash_duplicates(state, ctx),
-        ChipReply::ShowStaying => trial_end::show_staying(state, ctx),
         ChipReply::TrialOtherTarget => return trial_end::other_target(state),
         ChipReply::Once => tidy::once(state, ctx, false),
         ChipReply::Always => tidy::once(state, ctx, true),
@@ -880,10 +847,6 @@ pub fn handle_reply(state: &mut State, ctx: &Ctx, reply: ChipReply) -> Option<Ac
         }
         ChipReply::ModeCopy => tidy::mode(state, ctx, ncrs_index::Transfer::Copy),
         ChipReply::ModeMove => tidy::mode(state, ctx, ncrs_index::Transfer::Move),
-        ChipReply::FileAll => tidy::file_all(state, ctx),
-        ChipReply::ShowMore => tidy::show_more(state, ctx),
-        ChipReply::GroupArea(area) => stay_groups::area_chosen(state, ctx, area),
-        ChipReply::GroupNewFolder => stay_groups::new_folder(state, ctx),
         ChipReply::PhotosYes => return photos::yes(state, ctx),
         ChipReply::PhotosNo => photos::no(state, ctx),
         ChipReply::RoleSource => return crate::greeting::role_chosen(state, ctx, true),
@@ -893,10 +856,6 @@ pub fn handle_reply(state: &mut State, ctx: &Ctx, reply: ChipReply) -> Option<Ac
         ChipReply::DecideTarget(path) => crate::decide::target_chosen(state, ctx, path),
         ChipReply::DecideSkip => crate::decide::skipped(state, ctx),
         ChipReply::NewLayout(layout) => crate::decide::layout_chosen(state, ctx, layout),
-        ChipReply::GroupLeave => stay_groups::leave_group(state, ctx),
-        ChipReply::NamesNumbered => stay_groups::names_numbered(state, ctx),
-        ChipReply::NamesLeave => stay_groups::names_leave(state, ctx),
-        ChipReply::UnsureChoice { entry, choice } => tidy::unsure(state, ctx, entry, choice),
         ChipReply::WaitingShow => crate::waiting::show(state),
         ChipReply::WaitingFile => crate::waiting::file_current(state, ctx),
         ChipReply::WaitingFileInto(folder) => crate::waiting::file_into(state, ctx, folder),
@@ -944,12 +903,6 @@ fn reset_flow(state: &mut State) {
     state.session.rule_queue = None;
     state.session.retry = None;
     state.session.trial = None;
-    if state.looks_at_files() {
-        drop_working(state);
-    }
-    state.trial_rest = None;
-    state.trial_rest_page.clear();
-    state.session.groups = GroupFlow::default();
     state.session.offer = None;
     state.session.resume_tidy = false;
     state.session.role_asked = None;

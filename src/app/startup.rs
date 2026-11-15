@@ -478,6 +478,7 @@ impl App {
             monitor: ncrs_monitor::State::default(),
             viewer: ncrs_viewer::State::default(),
             notes: ncrs_notes::State::new(notes_root),
+            filing_view: ncrs_filing_view::State::default(),
             noted: Default::default(),
             shown_tab: crate::messages::ShownTab::default(),
             updates: ncrs_updates::State::new(

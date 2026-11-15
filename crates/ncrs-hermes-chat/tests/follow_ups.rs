@@ -151,7 +151,17 @@ mod tests {
         talk.press(&ChipReply::ConfirmTidy);
         talk.choose_archive_if_asked();
         talk.press(&ChipReply::Always);
-        assert!(talk.actions.is_empty(), "{:?}", talk.actions);
+        assert!(
+            matches!(
+                talk.actions.as_slice(),
+                [Action::OpenFiling {
+                    watch_source: false,
+                    ..
+                }]
+            ),
+            "{:?}",
+            talk.actions
+        );
         assert!(all_texts(&talk).contains(&say(Msg::HermesChatAlwaysSet, &[("folder", "inbox")])));
     }
 

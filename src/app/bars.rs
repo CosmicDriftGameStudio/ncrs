@@ -188,6 +188,7 @@ impl App {
             monitor: self.monitor.is_open(),
             viewer: self.viewer.is_open(),
             notes: self.notes.is_open(),
+            filing: self.filing_view.session.is_some(),
             hermes: self.hermes_chat.open,
         }
     }
@@ -206,6 +207,10 @@ impl App {
 
     pub(in crate::app) fn notes_shown(&self) -> bool {
         self.notes.is_open() && self.shown_tab == ShownTab::Notes
+    }
+
+    pub(in crate::app) fn filing_shown(&self) -> bool {
+        self.filing_view.session.is_some() && self.shown_tab == ShownTab::Filing
     }
 
     /// The chat is what the user sees and what takes the keys.
@@ -237,6 +242,12 @@ impl App {
             tabs.push(titlebar::PageTabState {
                 page: titlebar::PageTab::Notes,
                 active: self.shown_tab == ShownTab::Notes,
+            });
+        }
+        if let Some(title) = ncrs_filing_view::tab_title(&self.filing_view, self.lang) {
+            tabs.push(titlebar::PageTabState {
+                page: titlebar::PageTab::Filing(title),
+                active: self.shown_tab == ShownTab::Filing,
             });
         }
         if self.hermes_chat.open {

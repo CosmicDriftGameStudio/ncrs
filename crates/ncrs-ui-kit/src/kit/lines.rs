@@ -44,6 +44,15 @@ pub fn one_line<'a, M: Clone + 'a>(content: String, palette: &Palette) -> Elemen
         .into()
 }
 
+/// Dim text that stays on one line; the caller has cut it to fit.
+pub fn dim_line<'a, M: Clone + 'a>(content: String, palette: &Palette) -> Element<'a, M> {
+    text(content)
+        .size(font_size::BODY)
+        .color(palette.dim_text)
+        .wrapping(Wrapping::None)
+        .into()
+}
+
 /// Running text.
 pub fn paragraph<'a, M: Clone + 'a>(
     content: impl IntoFragment<'a>,

@@ -3394,6 +3394,7 @@ dependencies = [
  "ncrs-core",
  "ncrs-files",
  "ncrs-filing",
+ "ncrs-filing-view",
  "ncrs-fs",
  "ncrs-hermes-chat",
  "ncrs-hermes-ui",
@@ -3522,6 +3523,20 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "same-file",
  "tempfile",
+]
+
+[[package]]
+name = "ncrs-filing-view"
+version = "0.0.0"
+dependencies = [
+ "iced",
+ "iced_test",
+ "ncrs-ai",
+ "ncrs-filing",
+ "ncrs-i18n",
+ "ncrs-index",
+ "ncrs-ui-kit",
+ "tokio",
 ]
 
 [[package]]

@@ -1,7 +1,7 @@
-//! The cards inside a bubble: the areas of a folder, one path with a part
-//! marked, and the rows of a trial.
+//! The cards inside a bubble: the areas of a folder and one path with a part
+//! marked.
 use iced::widget::text::{LineHeight, Wrapping};
-use iced::widget::{container, text, tooltip, Column, Row, Space};
+use iced::widget::{container, text, tooltip, Column, Row};
 use iced::{alignment, Background, Border, Color, Element, Length, Pixels, Theme};
 
 use crate::format;
@@ -17,14 +17,11 @@ const CARD_LINE: f32 = 20.0;
 const SEGMENT_PAD_X: f32 = 4.0;
 const SEGMENT_TINT: f32 = 0.22;
 const PATH_SEPARATOR: &str = "/";
-const ARROW: &str = "→";
 const NAME_MAX_WIDTH: f32 = 160.0;
 const AREA_NAME_MAX_WIDTH: f32 = 2.0 * NAME_MAX_WIDTH;
 /// A path segment longer than this is cut in the middle so a path wraps
 /// between segments instead of running out of the card.
 const SEGMENT_MAX_CHARS: usize = 28;
-/// About what fits next to a scanner's file name in the chat column.
-const FACTS_MAX_CHARS: usize = 36;
 const TOOLTIP_PAD: [f32; 2] = [2.0, 6.0];
 
 fn card<'a, M: 'a>(content: Element<'a, M>, palette: &Palette) -> Element<'a, M> {
@@ -414,103 +411,4 @@ pub fn file_card<'a, M: 'a>(
     palette: &Palette,
 ) -> Element<'a, M> {
     card(path_pieces(segments, highlighted, palette), palette)
-}
-
-/// A choice below an unsure row.
-#[derive(Debug, Clone)]
-pub struct Choice<M> {
-    pub label: String,
-    pub selected: bool,
-    pub on_press: M,
-}
-
-/// Where a file of the trial would go.
-#[derive(Debug, Clone)]
-pub enum TrialTarget<M> {
-    /// One place, as a path in segments.
-    Path(Vec<String>),
-    /// Several places to pick from, each as a full path.
-    Choices(Vec<Choice<M>>),
-    /// A file that is not filed: why.
-    Note(String),
-}
-
-/// A file of the trial card: where it lies, what is known of it, where it
-/// would go.
-#[derive(Debug, Clone)]
-pub struct TrialLine<M> {
-    pub source: String,
-    pub facts: String,
-    pub target: TrialTarget<M>,
-}
-
-/// What the model read, on one line next to the file; the whole text on hover.
-fn facts_cell<'a, M: 'a>(facts: &str, palette: &Palette) -> Element<'a, M> {
-    let shown = format::ellipsize_end(facts, FACTS_MAX_CHARS);
-    let cell = container(card_text(&shown, palette.dim_text, Wrapping::None, false))
-        .width(Length::Fill)
-        .clip(true)
-        .into();
-    with_full_name(cell, &shown, facts, palette)
-}
-
-fn trial_row<'a, M: Clone + 'a>(line: TrialLine<M>, palette: &Palette) -> Element<'a, M> {
-    let TrialLine {
-        source,
-        facts,
-        target,
-    } = line;
-    let first = Row::new()
-        .push(mono(source, TEXT_BODY, palette.text))
-        .push(facts_cell(&facts, palette))
-        .spacing(GAP_S);
-    let arrow = card_text(ARROW, palette.dim_text, Wrapping::None, false);
-    let second: Element<'a, M> = match target {
-        TrialTarget::Path(segments) => Row::new()
-            .push(arrow)
-            .push(path_pieces(&segments, None, palette))
-            .spacing(GAP_S)
-            .into(),
-        TrialTarget::Choices(choices) => {
-            let chips = choices.into_iter().map(|choice| {
-                chat_chip_small(&choice.label, choice.selected, choice.on_press, palette)
-            });
-            Row::new()
-                .push(arrow)
-                .push(chip_row(chips.collect()))
-                .spacing(GAP_S)
-                .into()
-        }
-        TrialTarget::Note(note) => Row::new()
-            .push(arrow)
-            .push(card_text(&note, palette.dim_text, Wrapping::Word, false))
-            .spacing(GAP_S)
-            .into(),
-    };
-    Column::new()
-        .push(first)
-        .push(second)
-        .spacing(GAP_XS)
-        .into()
-}
-
-/// What a trial would do with the files of a page, row by row. `more` closes
-/// the card when there are more files than the page shows.
-pub fn trial_card<'a, M: Clone + 'a>(
-    header: &str,
-    lines: Vec<TrialLine<M>>,
-    more: Option<&str>,
-    palette: &Palette,
-) -> Element<'a, M> {
-    let mut rows = Column::new()
-        .push(card_text(header, palette.dim_text, Wrapping::Word, true))
-        .push(Space::new().height(GAP_XS))
-        .spacing(GAP_S);
-    for line in lines {
-        rows = rows.push(trial_row(line, palette));
-    }
-    if let Some(rest) = more {
-        rows = rows.push(card_text(rest, palette.dim_text, Wrapping::Word, false));
-    }
-    card(rows.into(), palette)
 }

@@ -21,6 +21,14 @@ pub enum Action {
     /// Switches the AI setting on; `Message::AiTurnedOn` follows once it is
     /// applied.
     TurnOnAi,
+    /// The source and the target are chosen: the plan goes on in the "Filing"
+    /// tab. `watch_source` also marks the source as a folder where new files
+    /// arrive.
+    OpenFiling {
+        source: PathBuf,
+        target: PathBuf,
+        watch_source: bool,
+    },
     /// Opens the card that downloads the text recognition models.
     OpenOcrModels,
 }
