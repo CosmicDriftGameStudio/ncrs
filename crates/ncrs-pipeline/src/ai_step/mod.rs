@@ -202,6 +202,7 @@ impl Step for AiStep {
             known,
             source: item.location.path.clone(),
             kinds,
+            language: self.kind_language,
             judge_document: item.location.mode == LocationMode::Inbox,
         };
         let extraction = match self.provider.extract(&request) {

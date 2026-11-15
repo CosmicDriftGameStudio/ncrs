@@ -51,7 +51,7 @@ pub fn entry_text(entry: &Entry) -> String {
                     card.header,
                     card.rows
                         .iter()
-                        .map(|row| row.name.clone())
+                        .map(|row| row.source.clone())
                         .collect::<Vec<_>>()
                         .join(", ")
                 ),

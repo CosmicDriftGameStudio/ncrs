@@ -40,10 +40,19 @@ fn reading_line(state: &State, ctx: &Ctx) -> Option<String> {
     })
 }
 
+fn trial_line(state: &State, ctx: &Ctx) -> Option<String> {
+    let trial = state
+        .session
+        .trial
+        .as_ref()
+        .filter(|_| state.looks_at_files())?;
+    Some(crate::tidy::trial_progress_line(ctx, &trial.plan))
+}
+
 /// A beat: the last working line gets its next dots, and a read its counts.
 pub fn tick(state: &mut State, ctx: &Ctx) {
     state.tick = state.tick.wrapping_add(1);
-    let reading = reading_line(state, ctx);
+    let reading = reading_line(state, ctx).or_else(|| trial_line(state, ctx));
     let tick = state.tick;
     let Some(Entry::Working(line)) = state
         .thread

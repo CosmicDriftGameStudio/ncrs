@@ -51,6 +51,7 @@ use crate::e2e_tests::{Outcome, Session};
 use crate::filing::FilingMessage;
 use crate::messages::{Message, SettingsMessage};
 
+mod eval;
 mod free_sentences;
 pub mod real_start;
 mod scratch;
@@ -140,6 +141,7 @@ fn hermes_chat_protocol() {
             &root.join(code),
             language,
             reuse,
+            None,
         );
         run.flows();
     }
@@ -204,6 +206,7 @@ fn start_protocol(
     out: &Path,
     language: Language,
     reuse: bool,
+    inbox_copy_of: Option<&Path>,
 ) -> Protocol<impl iced::Program<State = App, Message = Message> + 'static> {
     std::fs::create_dir_all(out).unwrap();
     // The same paths in every language and run, so the index kept in the
@@ -212,18 +215,22 @@ fn start_protocol(
     link_tree(&workspace.join("master"), &archive).unwrap();
     let downloads = workspace.join("run").join("downloads");
     std::fs::create_dir_all(&downloads).unwrap();
-    let mut pdfs = Vec::new();
-    pdfs_below(&archive, &mut pdfs, usize::MAX);
-    let every = pdfs.len().div_euclid(40).max(1);
-    // New documents of the kinds the archive holds: moved out of the copy
-    // before it is indexed, so they have neighbours but are no duplicates.
-    for pdf in pdfs.iter().step_by(every).take(40) {
-        std::fs::rename(pdf, downloads.join(pdf.file_name().unwrap())).unwrap();
-    }
     let toomany = scratch.join("toomany");
     std::fs::create_dir_all(&toomany).unwrap();
-    for number in 0..20_001 {
-        std::fs::write(toomany.join(format!("file-{number}.txt")), "").unwrap();
+    if let Some(source) = inbox_copy_of {
+        copy_tree(source, &downloads).unwrap();
+    } else {
+        let mut pdfs = Vec::new();
+        pdfs_below(&archive, &mut pdfs, usize::MAX);
+        let every = pdfs.len().div_euclid(40).max(1);
+        // New documents of the kinds the archive holds: moved out of the copy
+        // before it is indexed, so they have neighbours but are no duplicates.
+        for pdf in pdfs.iter().step_by(every).take(40) {
+            std::fs::rename(pdf, downloads.join(pdf.file_name().unwrap())).unwrap();
+        }
+        for number in 0..20_001 {
+            std::fs::write(toomany.join(format!("file-{number}.txt")), "").unwrap();
+        }
     }
     let data = scratch.join("data");
     std::fs::create_dir_all(&data).unwrap();
@@ -514,7 +521,6 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
                 .or_else(|_| self.press_chip(|reply| *reply == ChipReply::FineAsIs))
                 .or_else(|_| self.press_chip(|reply| *reply == ChipReply::Later))
                 .or_else(|_| self.press_chip(|reply| *reply == ChipReply::LeaveThem))
-                .or_else(|_| self.press_chip(|reply| *reply == ChipReply::SinglesLeave))
                 .or_else(|_| self.press_chip(|reply| *reply == ChipReply::NamesLeave))
                 .or_else(|_| self.press_chip(|reply| *reply == ChipReply::PhotosNo));
             if pressed.is_err() {

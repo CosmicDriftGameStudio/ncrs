@@ -332,11 +332,7 @@ impl Talk {
     /// Leaves every question about the staying files as it is, up to the
     /// offer to file. These presses are not counted in `entries`.
     pub fn leave_stay_questions(&mut self) {
-        let leaving = [
-            ChipReply::GroupLeave,
-            ChipReply::SinglesLeave,
-            ChipReply::NamesLeave,
-        ];
+        let leaving = [ChipReply::GroupLeave, ChipReply::NamesLeave];
         let counted = self.entries;
         while let Some(reply) = leaving
             .iter()

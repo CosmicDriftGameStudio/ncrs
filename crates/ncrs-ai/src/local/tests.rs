@@ -30,7 +30,7 @@ pub fn models_dir() -> PathBuf {
 }
 
 /// Loaded once: a second copy would cost the memory of the model again.
-fn model() -> &'static LocalModel {
+pub fn model() -> &'static LocalModel {
     static MODEL: OnceLock<LocalModel> = OnceLock::new();
     MODEL.get_or_init(|| {
         let path = models_dir().join(LOCAL_MODEL.name);
@@ -45,6 +45,7 @@ fn model() -> &'static LocalModel {
                 path,
                 threads: NonZeroU32::new(4).unwrap(),
                 context_tokens: NonZeroU32::new(2048).unwrap(),
+                stop: Default::default(),
             },
             &LOCAL_MODEL,
         )
@@ -59,6 +60,7 @@ fn request(text: &str, open_fields: &[Field]) -> ExtractionRequest {
         known: DocumentFields::default(),
         source: PathBuf::from("inbox-one"),
         kinds: std::sync::Arc::default(),
+        language: ncrs_index::KindLanguage::default(),
         judge_document: false,
     }
 }
@@ -407,4 +409,46 @@ fn recognition_measured_against_the_model() {
 
     let chosen = at_threshold(&corpus, &answers, CONFIDENT);
     println!("rules + AI at {CONFIDENT}\n{}", chosen.report);
+}
+
+#[test]
+#[ignore = "loads the real local model from NCRS_AI_MODELS_DIR"]
+fn quitting_does_not_wait_for_a_document_read_in_the_background() {
+    use std::sync::Arc;
+    use std::time::{Duration, Instant};
+
+    let lazy = Arc::new(LazyLocalModel::new(
+        models_dir().join(LOCAL_MODEL.name),
+        LOCAL_MODEL,
+        NonZeroU32::new(4).unwrap(),
+        NonZeroU32::new(2048).unwrap(),
+    ));
+    // As the app reads its index: few threads, on the efficiency cores.
+    lazy.set_extraction(
+        NonZeroU32::new(2).unwrap(),
+        ncrs_priority::ThreadPriority::Background,
+    );
+    let open = [Field::Sender, Field::Kind, Field::Date, Field::Amount];
+    let text =
+        "Rechnung Nr. 4711 vom 05.03.2024 über Heizungswartung, Betrag 812,50 EUR. ".repeat(80);
+    let reading = Arc::clone(&lazy);
+    let documents = std::thread::spawn(move || {
+        std::iter::repeat_with(|| reading.extract(&request(&text, &open)))
+            .take(20)
+            .collect::<Vec<_>>()
+    });
+    // The model loads and reads the first documents.
+    std::thread::sleep(Duration::from_secs(20));
+    assert!(!documents.is_finished(), "20 long documents take minutes");
+
+    let started = Instant::now();
+    lazy.shutdown();
+    let waited = started.elapsed();
+    assert!(documents.join().unwrap().iter().any(Result::is_err));
+    println!("quit waited {} s", waited.as_secs_f32());
+    assert!(
+        waited < Duration::from_secs(3),
+        "quit waited {} s",
+        waited.as_secs_f32()
+    );
 }

@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -72,8 +72,6 @@ pub enum ChipReply {
     DecideTarget(PathBuf),
     DecideSkip,
     NewLayout(NewLayout),
-    SinglesShow,
-    SinglesLeave,
     NamesNumbered,
     NamesLeave,
     UnsureChoice {
@@ -193,8 +191,6 @@ impl ChipReply {
             | Self::DecidePerFile
             | Self::DecideSkip
             | Self::PhotosNo
-            | Self::SinglesShow
-            | Self::SinglesLeave
             | Self::NamesLeave
             | Self::UnsureChoice { .. }
             | Self::OpenSearch
@@ -292,7 +288,6 @@ pub enum RowOutcome {
         segments: Vec<String>,
     },
     Unsure {
-        question: String,
         choices: Vec<Chip>,
         chosen: Option<usize>,
     },
@@ -304,7 +299,10 @@ pub enum RowOutcome {
 pub struct TrialRow {
     /// Position in the trial plan.
     pub entry: usize,
-    pub name: String,
+    /// The file as it lies on the disk: the read folder and the path in it.
+    pub source: String,
+    /// Sender, kind and date, as far as they are known.
+    pub facts: String,
     pub outcome: RowOutcome,
 }
 
@@ -449,7 +447,6 @@ pub struct GroupFlow {
     /// The rule stored last, announced with the next trial.
     pub fresh_rule: Option<String>,
     pub singles_done: bool,
-    pub singles_shown: usize,
     pub names_done: bool,
 }
 
@@ -589,6 +586,21 @@ pub struct State {
     pub unresolved_sentence: Option<(String, Asked)>,
     /// The check set during this `update` that no task runs yet.
     pub fresh_resolve: bool,
+    /// The rest of the trial the model looks at page by page; the chat shows
+    /// a progress line meanwhile and posts the trial when it is done.
+    pub trial_rest: Option<ChatWork>,
+    /// The files of the page the model has in flight.
+    pub trial_rest_page: BTreeSet<PathBuf>,
+    /// Bumped by each start of the rest, so a page of an earlier trial run is told apart.
+    pub trial_rest_run: u64,
+    /// The rest set during this `update` that no task runs yet.
+    pub fresh_trial_rest: bool,
+    /// A background job is making the model's folder picks of the read folders.
+    pub picks_running: bool,
+    /// The pipeline sequence the last job was started for.
+    pub picks_settled_at: Option<usize>,
+    /// The job set during this `update` that no task runs yet.
+    pub picks_job: Option<crate::picks::PicksJob>,
     /// The folders a sentence named, being checked off the UI thread.
     pub naming: Option<crate::named_folders::Naming>,
     /// The check set during this `update` that no task runs yet.
@@ -622,6 +634,13 @@ impl Default for State {
             resolving: None,
             unresolved_sentence: None,
             fresh_resolve: false,
+            trial_rest: None,
+            trial_rest_page: BTreeSet::new(),
+            trial_rest_run: 0,
+            fresh_trial_rest: false,
+            picks_running: false,
+            picks_settled_at: None,
+            picks_job: None,
             naming: None,
             fresh_naming: false,
             step: Step::Idle,
@@ -637,6 +656,12 @@ impl Default for State {
 impl State {
     pub fn thread(&self) -> &[Entry] {
         &self.thread
+    }
+
+    /// The model looks at the files of the trial page by page; the chat shows
+    /// a progress line and nothing else until it is done.
+    pub fn looks_at_files(&self) -> bool {
+        !self.trial_rest_page.is_empty()
     }
 
     /// Something the user asked waits for the filing module to start.

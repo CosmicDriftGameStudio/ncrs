@@ -84,8 +84,7 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
                     user_folder(state, ctx, path);
                 }
                 _ => {
-                    let bubble = bubble_text(state, &label, &reply);
-                    user(state, bubble);
+                    user(state, label);
                 }
             }
             if !reply.needs_no_hermes() && hold_until_ready(state, ctx, Held::Reply(reply.clone()))
@@ -106,6 +105,10 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
                 text_with(ctx, Msg::HermesChatReadFailed, &[("reason", &reason)]),
                 fallback_chips(ctx),
             );
+            None
+        }
+        Message::TrialRestDone(run, result) => {
+            tidy::trial_rest_done(state, ctx, run, *result);
             None
         }
         Message::FolderPicked(picked) => {
@@ -171,6 +174,14 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
             crate::working::tick(state, ctx);
             None
         }
+        Message::ReadingSettled(sequence) => {
+            state.picks_job = crate::picks::begin(state, ctx, sequence);
+            None
+        }
+        Message::PicksRemembered => {
+            state.picks_running = false;
+            None
+        }
     }
 }
 
@@ -230,6 +241,7 @@ fn words_are_taken_as_text(step: Step) -> bool {
 /// typing and buttons wait for it.
 fn is_busy(state: &State) -> bool {
     state.waits_for_hermes()
+        || state.looks_at_files()
         || state.pending.is_some()
         || state.thinking.is_some()
         || state.rule_ask.is_some()
@@ -247,8 +259,30 @@ fn launch(state: &mut State, ctx: &Ctx) -> Task<Message> {
         understand::launch(state, ctx),
         crate::rule_flow::launch(state, ctx),
         launch_resolve(state, ctx),
+        launch_trial_rest(state, ctx),
         named_folders::launch(state, ctx),
+        crate::picks::launch(state),
     ])
+}
+
+fn launch_trial_rest(state: &mut State, ctx: &Ctx) -> Task<Message> {
+    if !std::mem::take(&mut state.fresh_trial_rest) {
+        return Task::none();
+    }
+    let (Some(work), Availability::Ready(ready)) = (state.trial_rest.take(), &ctx.availability)
+    else {
+        return Task::none();
+    };
+    let access = ready.clone().with_model(ctx.model.clone());
+    let run = state.trial_rest_run;
+    Task::perform(
+        async move { tokio::task::spawn_blocking(move || access.run(work)).await },
+        move |joined| match joined {
+            Ok(ChatResult::Trial(plan)) => Message::TrialRestDone(run, Box::new(plan)),
+            Ok(_) => Message::TrialRestDone(run, Box::new(Err(String::new()))),
+            Err(error) => Message::TrialRestDone(run, Box::new(Err(error.to_string()))),
+        },
+    )
 }
 
 fn launch_work(state: &mut State, ctx: &Ctx) -> Task<Message> {
@@ -268,7 +302,7 @@ fn launch_work(state: &mut State, ctx: &Ctx) -> Task<Message> {
         );
         return Task::none();
     };
-    let access = ready.clone();
+    let access = ready.clone().with_model(ctx.model.clone());
     Task::perform(
         async move { tokio::task::spawn_blocking(move || access.run(work)).await },
         |joined| match joined {
@@ -479,7 +513,7 @@ pub fn user(state: &mut State, typed: String) {
     state.thread.push(Entry::User(typed));
 }
 
-fn clear_chips(state: &mut State) {
+pub fn clear_chips(state: &mut State) {
     for entry in &mut state.thread {
         if let Entry::Hermes { chips, .. } = entry {
             chips.clear();
@@ -516,21 +550,6 @@ pub fn work(state: &mut State, work: ChatWork, working: Option<String>) {
     }
     state.pending = Some(work);
     state.fresh = true;
-}
-
-fn bubble_text(state: &State, label: &str, reply: &ChipReply) -> String {
-    if let ChipReply::UnsureChoice { entry, .. } = reply {
-        if let Some(name) = state
-            .session
-            .trial
-            .as_ref()
-            .and_then(|trial| trial.plan.entries.get(*entry))
-            .map(|planned| planned.name.as_str())
-        {
-            return format!("{name}: {label}");
-        }
-    }
-    label.to_owned()
 }
 
 // Folders.
@@ -875,8 +894,6 @@ pub fn handle_reply(state: &mut State, ctx: &Ctx, reply: ChipReply) -> Option<Ac
         ChipReply::DecideSkip => crate::decide::skipped(state, ctx),
         ChipReply::NewLayout(layout) => crate::decide::layout_chosen(state, ctx, layout),
         ChipReply::GroupLeave => stay_groups::leave_group(state, ctx),
-        ChipReply::SinglesShow => stay_groups::singles_show(state, ctx),
-        ChipReply::SinglesLeave => stay_groups::singles_leave(state, ctx),
         ChipReply::NamesNumbered => stay_groups::names_numbered(state, ctx),
         ChipReply::NamesLeave => stay_groups::names_leave(state, ctx),
         ChipReply::UnsureChoice { entry, choice } => tidy::unsure(state, ctx, entry, choice),
@@ -927,6 +944,11 @@ fn reset_flow(state: &mut State) {
     state.session.rule_queue = None;
     state.session.retry = None;
     state.session.trial = None;
+    if state.looks_at_files() {
+        drop_working(state);
+    }
+    state.trial_rest = None;
+    state.trial_rest_page.clear();
     state.session.groups = GroupFlow::default();
     state.session.offer = None;
     state.session.resume_tidy = false;

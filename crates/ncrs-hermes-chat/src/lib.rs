@@ -19,6 +19,7 @@ mod greeting;
 mod learn;
 mod named_folders;
 mod photos;
+mod picks;
 mod rule_flow;
 mod texts;
 mod tidy;

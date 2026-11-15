@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use jsonc_parser::{parse_to_value, JsonObject, JsonValue, ParseOptions};
-use ncrs_index::{Currency, DocumentFields, Field, KindCatalog};
+use ncrs_index::{Currency, DocumentFields, Field, KindCatalog, KindLanguage};
 use ncrs_intake::{parse_amount, parse_date, AI_FIELD_ORDER};
 
 use crate::error::AiError;
@@ -28,6 +28,8 @@ pub struct ExtractionRequest {
     pub source: PathBuf,
     /// The kinds the document may be named as.
     pub kinds: Arc<KindCatalog>,
+    /// The language of the user, which a kind outside the catalog is named in.
+    pub language: KindLanguage,
     /// Also ask whether the text is a document at all; the answer comes back
     /// as `Extraction::not_a_document`, never as a field.
     pub judge_document: bool,
@@ -83,6 +85,7 @@ impl ExtractedField {
         match self.field {
             Field::Sender => set_slot(&mut fields.sender, Some(self.value.clone()), replace),
             Field::Recipient => set_slot(&mut fields.recipient, Some(self.value.clone()), replace),
+            Field::Kind if !kinds.is_storable_kind(&self.value) => false,
             Field::Kind => set_slot(
                 &mut fields.kind,
                 Some(kinds.detected_kind(&self.value)),
@@ -141,11 +144,21 @@ pub trait Provider: Send + Sync + fmt::Debug {
 /// open field, each `{ "value": string, "confidence": number }`, and nothing
 /// else. A provider that enforces schemas then cannot answer with more; one
 /// that does not is handled by `parse_reply`, which drops what is not asked.
-pub fn output_schema(open_fields: &[Field], kinds: &KindCatalog, judge_document: bool) -> Json {
+pub fn output_schema(
+    open_fields: &[Field],
+    kinds: &KindCatalog,
+    language: KindLanguage,
+    judge_document: bool,
+) -> Json {
     let mut properties: Vec<(String, Json)> = AI_FIELD_ORDER
         .into_iter()
         .filter(|field| open_fields.contains(field))
-        .map(|field| (field.as_str().to_owned(), field_schema(field, kinds)))
+        .map(|field| {
+            (
+                field.as_str().to_owned(),
+                field_schema(field, kinds, language),
+            )
+        })
         .collect();
     if judge_document {
         properties.push((NOT_A_DOCUMENT_KEY.to_owned(), not_a_document_schema()));
@@ -184,11 +197,11 @@ fn not_a_document_schema() -> Json {
     ])
 }
 
-fn field_schema(field: Field, kinds: &KindCatalog) -> Json {
+fn field_schema(field: Field, kinds: &KindCatalog, language: KindLanguage) -> Json {
     let hint: &str = match field {
         Field::Sender => "who issued the document: the letterhead, company or sender line; never the addressee or recipient, never the name after Mr/Mrs/Herr/Frau in the address block",
         Field::Recipient => "to whom the document is addressed: the person or company in the address block, never the sender",
-        Field::Kind => &kind_hint(kinds),
+        Field::Kind => &kind_hint(kinds, language),
         Field::Date => "the document date as YYYY-MM-DD",
         Field::Number => "the document or invoice number",
         Field::Amount => "the total with its currency code, for example 12.50 EUR",
@@ -211,10 +224,14 @@ fn field_schema(field: Field, kinds: &KindCatalog) -> Json {
     ])
 }
 
-fn kind_hint(kinds: &KindCatalog) -> String {
+pub fn kind_hint(kinds: &KindCatalog, language: KindLanguage) -> String {
     let ids: Vec<&str> = kinds.ids().collect();
+    let language_name = match language {
+        KindLanguage::English => "English",
+        KindLanguage::German => "German",
+    };
     format!(
-        "what kind of document it is, one of: {}, or another short word",
+        "what kind of document it is, one of: {}, or a short noun in {language_name} (at most three words, no translation, no parentheses)",
         ids.join(", ")
     )
 }
@@ -234,6 +251,7 @@ pub fn parse_reply(raw: &str, request: &ExtractionRequest) -> Result<Extraction,
         .filter(|field| request.open_fields.contains(field))
         .filter_map(|field| field_of(&reply, field))
         .filter(|found| found.field != Field::Amount || amount_is_in(&request.text, found))
+        .filter(|found| found.field != Field::Kind || request.kinds.is_storable_kind(&found.value))
         .collect();
     let not_a_document = request
         .judge_document
@@ -321,6 +339,7 @@ mod tests {
             known: DocumentFields::default(),
             source: PathBuf::new(),
             kinds: Arc::default(),
+            language: KindLanguage::default(),
             judge_document: false,
         }
     }
@@ -442,7 +461,13 @@ mod tests {
 
     #[test]
     fn the_recipient_is_asked_and_filled_only_while_empty() {
-        let schema = output_schema(&[Field::Recipient], &KindCatalog::built_in(), false).pretty();
+        let schema = output_schema(
+            &[Field::Recipient],
+            &KindCatalog::built_in(),
+            KindLanguage::English,
+            false,
+        )
+        .pretty();
         let found = ExtractedField::new(Field::Recipient, "Erika Beispiel", 0.9).unwrap();
         let mut fields = DocumentFields::default();
 
@@ -457,6 +482,7 @@ mod tests {
         let schema = output_schema(
             &[Field::Date, Field::Sender],
             &KindCatalog::built_in(),
+            KindLanguage::English,
             false,
         )
         .pretty();
@@ -471,8 +497,8 @@ mod tests {
     fn the_judgement_is_in_the_schema_only_when_asked() {
         let kinds = KindCatalog::built_in();
 
-        let without = output_schema(&[Field::Date], &kinds, false).pretty();
-        let with = output_schema(&[Field::Date], &kinds, true).pretty();
+        let without = output_schema(&[Field::Date], &kinds, KindLanguage::English, false).pretty();
+        let with = output_schema(&[Field::Date], &kinds, KindLanguage::English, true).pretty();
 
         assert!(!without.contains("not_a_document"));
         assert!(with.contains("\"not_a_document\""));
@@ -533,16 +559,30 @@ mod tests {
     }
 
     #[test]
+    fn a_kind_that_explains_instead_of_naming_is_not_recognised() {
+        let long = r#"{"kind": {"value": "Saldenmitteilung (loan balance statement)", "confidence": 0.95}}"#;
+        let plain = r#"{"kind": {"value": "Saldenmitteilung", "confidence": 0.95}}"#;
+
+        assert!(parse(long, &[Field::Kind]).fields.is_empty());
+        assert_eq!(parse(plain, &[Field::Kind]).fields.len(), 1);
+
+        let wordy = ExtractedField::new(Field::Kind, &"a".repeat(41), 0.9).unwrap();
+        let mut fields = DocumentFields::default();
+        assert!(!wordy.fill(&mut fields, &KindCatalog::built_in()));
+        assert_eq!(fields.kind, None);
+    }
+
+    #[test]
     fn the_kind_hint_names_the_known_and_custom_ids() {
         let (kinds, _) = KindCatalog::built_in().extended(&[ncrs_index::CustomKind {
             id: "payslip".to_owned(),
             ..ncrs_index::CustomKind::default()
         }]);
 
-        let schema = output_schema(&[Field::Kind], &kinds, false).pretty();
+        let schema = output_schema(&[Field::Kind], &kinds, KindLanguage::German, false).pretty();
 
         assert!(schema.contains(
-            "one of: invoice, credit_note, reminder, contract, notice, receipt, letter, insurance, quote, delivery_note, termination, bank_statement, payslip, or another short word"
+            "one of: invoice, credit_note, reminder, contract, notice, receipt, letter, insurance, quote, delivery_note, termination, bank_statement, payslip, or a short noun in German (at most three words, no translation, no parentheses)"
         ));
     }
 

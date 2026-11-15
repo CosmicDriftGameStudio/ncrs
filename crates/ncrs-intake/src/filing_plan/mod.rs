@@ -330,6 +330,24 @@ pub fn render_pattern_in(source: &str, fields: &DocumentFields, kinds: &Kinds) -
         .filter(|path| stays_below(path))
 }
 
+/// The folders `source` gives for these fields, without a file name; `None`
+/// when a value a folder needs is missing, the result is empty or would not
+/// stay below the root.
+pub fn render_pattern_folder(
+    source: &str,
+    fields: &DocumentFields,
+    kinds: &Kinds,
+) -> Option<PathBuf> {
+    let pattern = Pattern::parse(source)?;
+    let folders = pattern
+        .folders()
+        .iter()
+        .map(|component| render_tokens(component, fields, false, Some(kinds)))
+        .collect::<Option<Vec<_>>>()?;
+    let path = path_of(&folders);
+    (!path.as_os_str().is_empty() && stays_below(&path)).then_some(path)
+}
+
 /// [`render_pattern_in`] with `extension` appended to the file name, and only
 /// when every placeholder of the pattern has a value: no partial names.
 pub fn render_complete_pattern(

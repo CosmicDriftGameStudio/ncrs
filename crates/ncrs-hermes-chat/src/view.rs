@@ -1,12 +1,14 @@
 //! The chat as a messenger column, built from the kit.
 
+use std::path::Path;
+
 use iced::widget::operation;
 use iced::{Element, Task};
 use ncrs_i18n::{Language, Msg};
 use ncrs_ui_kit::hermes_kit::{
     areas_card, chat_chip, chat_header, chat_input, chat_page, chat_text, chip_row, file_card,
     folder_mention, hermes_bubble, levels_card, proposal_card, trial_card, user_bubble,
-    user_folder_bubble, working_bubble, AreaLine, ChatInput, Choice, TrialLine,
+    user_folder_bubble, working_bubble, AreaLine, ChatInput, Choice, TrialLine, TrialTarget,
 };
 use ncrs_ui_kit::palette::Palette;
 
@@ -14,7 +16,7 @@ use crate::message::Message;
 use crate::state::{
     AreasCard, Chip, CountRow, Entry, FileCard, Part, RowOutcome, State, TrialCard,
 };
-use crate::texts::documents_label;
+use crate::texts::{documents_label, segments};
 
 pub const INPUT_ID: &str = "hermes-chat-input";
 pub const SCROLL_ID: &str = "hermes-chat-thread";
@@ -83,27 +85,29 @@ fn trial<'a>(card: &TrialCard, ctx: ViewCtx<'_>) -> Element<'a, Message> {
     let lines = card
         .rows
         .iter()
-        .map(|row| match &row.outcome {
-            RowOutcome::Filed { segments } => TrialLine::Filed {
-                name: row.name.clone(),
-                segments: segments.clone(),
-            },
-            RowOutcome::Unsure {
-                question,
-                choices,
-                chosen,
-            } => TrialLine::Unsure {
-                name: row.name.clone(),
-                question: question.clone(),
-                choices: choices
-                    .iter()
-                    .enumerate()
-                    .map(|(index, chip)| choice_of(chip, *chosen == Some(index)))
-                    .collect(),
-            },
-            RowOutcome::AlreadyThere(note) | RowOutcome::Stays(note) => TrialLine::Note {
-                name: row.name.clone(),
-                note: note.clone(),
+        .map(|row| TrialLine {
+            source: row.source.clone(),
+            facts: row.facts.clone(),
+            target: match &row.outcome {
+                RowOutcome::Filed { segments } => TrialTarget::Path(segments.clone()),
+                RowOutcome::Unsure { choices, .. } if choices.len() == 1 => TrialTarget::Path(
+                    choices
+                        .iter()
+                        .flat_map(|chip| segments(Path::new(&chip.label)))
+                        .collect(),
+                ),
+                RowOutcome::Unsure {
+                    choices, chosen, ..
+                } => TrialTarget::Choices(
+                    choices
+                        .iter()
+                        .enumerate()
+                        .map(|(index, chip)| choice_of(chip, *chosen == Some(index)))
+                        .collect(),
+                ),
+                RowOutcome::AlreadyThere(note) | RowOutcome::Stays(note) => {
+                    TrialTarget::Note(note.clone())
+                }
             },
         })
         .collect();

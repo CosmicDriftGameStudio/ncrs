@@ -4,6 +4,7 @@
 mod condition_store;
 mod documents;
 mod error;
+mod folder_pick;
 mod hermes_column;
 mod hermes_counts;
 mod index;
@@ -40,7 +41,9 @@ pub use journal::{
 };
 pub use key::RecoveryKey;
 pub use key_store::{FileKeyStore, InMemoryKeyStore, KeyStore, KeyringKeyStore};
-pub use kinds::{CustomKind, KindCatalog, KindEntry, KindLanguage, KindSkip, Kinds};
+pub use kinds::{
+    CustomKind, KindCatalog, KindEntry, KindLanguage, KindSkip, Kinds, MAX_FREE_KIND_CHARS,
+};
 pub use model::{iban_is_valid, is_iban_separator, is_tax_id_separator, tag_name};
 pub use model::{
     Amount, BatchId, Combinator, Condition, ConditionKind, ConflictReason, ContentHash, Currency,

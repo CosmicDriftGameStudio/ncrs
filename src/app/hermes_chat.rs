@@ -76,6 +76,7 @@ impl App {
         let chat = &self.hermes_chat;
         chat.open
             && (chat.pending_work().is_some()
+                || chat.looks_at_files()
                 || chat.pending_turn().is_some()
                 || chat.waits_for_hermes())
     }

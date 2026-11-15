@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use ncrs_ai::ChatIntent;
-use ncrs_filing::chat_work::ChatResult;
+use ncrs_filing::chat_work::{ChatResult, TrialPlan};
 
 use crate::state::{ChipReply, Step};
 
@@ -19,6 +19,9 @@ pub enum Message {
     },
     Done(Box<ChatResult>),
     Failed(String),
+    /// The model's look at the files beyond the first page of the trial, or
+    /// why it failed.
+    TrialRestDone(u64, Box<Result<TrialPlan, String>>),
     FolderPicked(Option<PathBuf>),
     /// A picked folder was kept for the sandbox, or the system refused it;
     /// sent by the app in place of `FolderPicked` when the build is sandboxed.
@@ -60,6 +63,11 @@ pub enum Message {
     WaitingCheck,
     /// A beat while work runs; sent by the app twice a second or so.
     WorkTick,
+    /// The pipeline is idle; `sequence` changes whenever what it handled
+    /// changes. Sent by the app on its tick.
+    ReadingSettled(usize),
+    /// The background picks of the read folders are done.
+    PicksRemembered,
 }
 
 impl Message {
@@ -73,6 +81,9 @@ impl Message {
             Self::ModelReady
                 | Self::Done(_)
                 | Self::Failed(_)
+                | Self::TrialRestDone(..)
+                | Self::PicksRemembered
+                | Self::ReadingSettled(_)
                 | Self::Understood(_)
                 | Self::RuleAnswered(_)
                 | Self::TypedFolderResolved { .. }
@@ -94,7 +105,9 @@ impl PartialEq for Message {
             | (Self::AiTurnedOn, Self::AiTurnedOn)
             | (Self::HermesReady, Self::HermesReady)
             | (Self::WaitingCheck, Self::WaitingCheck)
-            | (Self::WorkTick, Self::WorkTick) => true,
+            | (Self::WorkTick, Self::WorkTick)
+            | (Self::PicksRemembered, Self::PicksRemembered) => true,
+            (Self::ReadingSettled(left), Self::ReadingSettled(right)) => left == right,
             (Self::InputChanged(left), Self::InputChanged(right))
             | (Self::Failed(left), Self::Failed(right))
             | (Self::TurnOnFailed(left), Self::TurnOnFailed(right)) => left == right,

@@ -280,6 +280,7 @@ impl OpenAiCompatible {
                             output_schema(
                                 &request.open_fields,
                                 &request.kinds,
+                                request.language,
                                 request.judge_document,
                             ),
                         ),

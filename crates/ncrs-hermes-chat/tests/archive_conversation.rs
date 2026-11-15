@@ -535,7 +535,7 @@ mod tests {
         assert_eq!(talk.files(), before, "asking and the trial move nothing");
         let sentence = talk.last_texts();
         assert!(
-            sentence[0].starts_with("27 Dateien von Finanzamt Chemnitz-Süd"),
+            sentence[0].starts_with("Alle 27 Dateien von Finanzamt Chemnitz-Süd"),
             "the next group is asked about: {sentence:?}"
         );
         assert_eq!(after_first.groups.asked.len(), 4);
@@ -666,7 +666,7 @@ mod tests {
             .keys()
             .any(|path| path.starts_with("archive/Handy")));
 
-        // The groups left, then the single pieces shown ten at a time.
+        // The groups left; the single pieces just stay.
         while talk
             .state
             .chips()
@@ -675,20 +675,6 @@ mod tests {
         {
             talk.press(&ChipReply::GroupLeave);
         }
-        let pieces = talk.plan().groups.rest.len();
-        assert_eq!(
-            talk.last_texts(),
-            vec![say(
-                Msg::HermesChatSinglePieces,
-                &[("count", &count(pieces))]
-            )]
-        );
-        talk.press(&ChipReply::SinglesShow);
-        let Some(Part::Trial(card)) = talk.last_parts().get(1) else {
-            panic!("{:?}", talk.last_parts())
-        };
-        assert_eq!(card.rows.len(), 10);
-        talk.press(&ChipReply::SinglesLeave);
 
         // Taken names are filed with a number; no rule is stored for that.
         let taken = talk.plan().groups.name_taken.clone();

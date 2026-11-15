@@ -42,6 +42,7 @@ fn request() -> ExtractionRequest {
         known: DocumentFields::default(),
         source: PathBuf::from("inbox-one"),
         kinds: Arc::default(),
+        language: ncrs_index::KindLanguage::default(),
         judge_document: false,
     }
 }

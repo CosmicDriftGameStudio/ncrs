@@ -15,6 +15,9 @@ pub enum KindLanguage {
     German,
 }
 
+/// The longest free-text kind a model may name, in characters.
+pub const MAX_FREE_KIND_CHARS: usize = 40;
+
 struct BuiltIn {
     id: &'static str,
     english: &'static str,
@@ -362,6 +365,16 @@ impl KindCatalog {
         first.ends_with(NOTICE_SUFFIX).then(|| NOTICE_ID.to_owned())
     }
 
+    /// Whether a kind named by a model may be stored: a known kind, or a
+    /// short plain noun. A sentence, a translation in brackets or several
+    /// lines is the model explaining, not naming.
+    pub fn is_storable_kind(&self, text: &str) -> bool {
+        let trimmed = text.trim();
+        self.resolve(trimmed).is_some()
+            || (trimmed.chars().count() <= MAX_FREE_KIND_CHARS
+                && !trimmed.contains(['(', ')', '\n', '\r']))
+    }
+
     /// What is stored for a kind: the ID of a known kind, otherwise the text.
     pub fn stored_kind(&self, text: &str) -> String {
         self.resolve(text)
@@ -674,5 +687,16 @@ mod tests {
         assert_eq!(catalog.detected_kind("Steuerbescheid"), "notice");
         assert_eq!(catalog.stored_kind("Steuerbescheid"), "Steuerbescheid");
         assert!(!catalog.tag_matches("steuerbescheid", "bescheid"));
+    }
+
+    #[test]
+    fn a_model_may_name_a_known_or_a_short_plain_kind_only() {
+        let catalog = KindCatalog::built_in();
+        assert!(catalog.is_storable_kind("Rechnung"));
+        assert!(catalog.is_storable_kind("Saldenmitteilung"));
+        assert!(!catalog.is_storable_kind("Saldenmitteilung (loan balance statement)"));
+        assert!(!catalog.is_storable_kind("Saldenmitteilung\nZinsbescheinigung"));
+        assert!(!catalog.is_storable_kind(&"a".repeat(MAX_FREE_KIND_CHARS + 1)));
+        assert!(catalog.is_storable_kind(&"a".repeat(MAX_FREE_KIND_CHARS)));
     }
 }

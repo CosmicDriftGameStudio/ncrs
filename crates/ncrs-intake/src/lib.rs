@@ -55,9 +55,10 @@ pub use extract::{
 };
 pub use field_detection::{detect_fields, DetectedFields, OwnNames, FIELDS_READ_VERSION};
 pub use filing_plan::{
-    contains_condition_holds, missing_field, pattern_is_valid, plan, render_pattern,
-    render_pattern_in, render_pattern_parts, unknown_placeholder, FilingPlan, PatternPart,
-    PlanInput, Planning, AI_FIELD_ORDER, FIELD_ORDER, FILING_PLACEHOLDERS,
+    contains_condition_holds, missing_field, pattern_is_valid, plan, render_complete_pattern,
+    render_pattern, render_pattern_folder, render_pattern_in, render_pattern_parts,
+    unknown_placeholder, FilingPlan, PatternPart, PlanInput, Planning, AI_FIELD_ORDER, FIELD_ORDER,
+    FILING_PLACEHOLDERS,
 };
 pub use image_text::ImageFileText;
 pub use location::{location_of, relative_to_location, Location, LocationMode};
@@ -66,7 +67,7 @@ pub use ocr::{
     OCR_MODELS_FOLDER, OCR_MODELS_HOST, OCR_MODELS_PROJECT, OCR_MODEL_FILES,
 };
 pub use office::{extract_text_from_bytes, OfficeText, PlainText};
-pub use placement::{NeighbourIndex, Placement, Signal};
+pub use placement::{Candidate, NeighbourIndex, Placement, Signal};
 pub use plain_words::{area_order_plain, branch_plain, label_text, levels_plain};
 pub use recipient_detection::{detect_recipient, kind_from_heading};
 pub use reorganisation::{plan_reorganisation, PlanFile, ReorganisationInput};

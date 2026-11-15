@@ -7099,6 +7099,12 @@
       "de": "Ich probiere es mit 10 Dateien aus …"
     },
     {
+      "key": "hermes_chat.working_trial_progress",
+      "context": "Hermes chat (F2): Temporary line while the model looks at the files of the trial run, replaced as it goes. {done} is the number of files it is through, {total} the number of files of the run.",
+      "en": "Looking at the files: {done} of {total}",
+      "de": "Ich sehe mir die Dateien an: {done} von {total}"
+    },
+    {
       "key": "hermes_chat.working_filing",
       "context": "Hermes chat (F2): Temporary line while Hermes moves or copies files into the target folder.",
       "en": "Sorting …",
@@ -7436,15 +7442,15 @@
     },
     {
       "key": "hermes_chat.group_where",
-      "context": "Hermes chat (F2): Hermes asks where a group of files from one sender goes. {count} is the number of files, {label} the sender name, {examples} up to three file names separated by commas.",
-      "en": "{count} files from {label}, e.g. {examples}. Where should they go?",
-      "de": "{count} Dateien von {label}, z. B. {examples}. Wohin damit?"
+      "context": "Hermes chat (F2): Hermes asks where a group of files from one sender goes. {count} is the number of files, {label} the sender name, {examples} up to three file names separated by commas. The answer is saved as a rule for all future documents of this sender, so the text says that it covers every file of the group and is remembered.",
+      "en": "All {count} files from {label}, e.g. {examples}: where should they go? Hermes remembers your answer as a rule for future documents from {label}.",
+      "de": "Alle {count} Dateien von {label}, z. B. {examples}: Wohin sollen sie? Hermes merkt sich deine Antwort als Regel für künftige Dokumente von {label}."
     },
     {
       "key": "hermes_chat.group_where_kind",
-      "context": "Hermes chat (F2): Hermes asks where a group of files of one kind of document goes, files that have no known sender. {count} is the number of files, {kind} the kind of document (for example invoice), {examples} up to three file names separated by commas.",
-      "en": "{count} {kind} documents, e.g. {examples}. Where should they go?",
-      "de": "{count} {kind}-Dokumente, z. B. {examples}. Wohin damit?"
+      "context": "Hermes chat (F2): Hermes asks where a group of files of one kind of document goes, files that have no known sender. {count} is the number of files, {kind} the kind of document (for example invoice), {examples} up to three file names separated by commas. The answer is saved as a rule for all future documents of this kind, so the text says that it covers every file of the group and is remembered.",
+      "en": "All {count} {kind} documents, e.g. {examples}: where should they go? Hermes remembers your answer as a rule for future {kind} documents.",
+      "de": "Alle {count} {kind}-Dokumente, z. B. {examples}: Wohin sollen sie? Hermes merkt sich deine Antwort als Regel für künftige {kind}-Dokumente."
     },
     {
       "key": "hermes_chat.new_folder",
@@ -7463,18 +7469,6 @@
       "context": "Hermes chat (F2): The folder name the user typed cannot be used: it is empty, has a slash or points outside the archive.",
       "en": "That name does not work as a folder name. Please use a plain name without slashes.",
       "de": "Das geht nicht als Ordnername. Bitte nimm einen einfachen Namen ohne Schrägstriche."
-    },
-    {
-      "key": "hermes_chat.single_pieces",
-      "context": "Hermes chat (F2): Hermes says how many files are left that belong to no group and asks what to do. {count} is the number of files.",
-      "en": "Files that fit no group: {count}. What shall I do with them?",
-      "de": "Dateien, die in keine Gruppe passen: {count}. Was soll ich mit ihnen tun?"
-    },
-    {
-      "key": "hermes_chat.show_singly",
-      "context": "Hermes chat (F2): Answer button: list the single pieces one by one.",
-      "en": "Show them one by one",
-      "de": "Einzeln zeigen"
     },
     {
       "key": "hermes_chat.name_taken",
@@ -7625,24 +7619,6 @@
       "context": "Hermes chat (F2): Header of the trial run card when the files would be copied. Nothing has been copied.",
       "en": "Trial run · nothing copied yet",
       "de": "Probelauf · noch nichts kopiert"
-    },
-    {
-      "key": "hermes_chat.trial_unsure",
-      "context": "Hermes chat (F2): Question in a row of the trial run card when Hermes is not sure which of two folders a file belongs in. {kind} is the kind of document or the word for 'file', {first} and {second} are folder names.",
-      "en": "{kind}: {first} or {second}?",
-      "de": "{kind}: {first} oder {second}?"
-    },
-    {
-      "key": "hermes_chat.trial_unsure_one",
-      "context": "Hermes chat (F2): Question in a row of the trial run card when Hermes is not sure about one folder for a file. {kind} is the kind of document or the word for 'file', {first} a folder name.",
-      "en": "{kind}: {first}?",
-      "de": "{kind}: {first}?"
-    },
-    {
-      "key": "hermes_chat.trial_file",
-      "context": "Hermes chat (F2): Word for 'file' used instead of a kind of document in the question of an unsure row. Singular, capitalised.",
-      "en": "File",
-      "de": "Datei"
     },
     {
       "key": "hermes_chat.trial_already_there",
@@ -8060,21 +8036,21 @@
     },
     {
       "key": "hermes_chat.ask_role",
-      "context": "Hermes chat (F2): Hermes does not know yet what a folder is for and asks. Two buttons follow. {folder} is the folder name.",
-      "en": "Is {folder} where new documents arrive, or where your documents are kept?",
-      "de": "Landen in {folder} neue Dokumente, oder sind dort deine Dokumente abgelegt?"
+      "context": "Hermes chat (F2): Hermes does not know yet what a folder is for and asks whether it is a read folder (Hermes takes documents from it and sorts them) or a write folder (Hermes files documents into it). Two buttons follow. {folder} is the folder name.",
+      "en": "What is {folder} for: shall I read documents from it or write documents into it?",
+      "de": "Wofür ist {folder}: Soll ich von dort Dokumente lesen oder dorthin Dokumente schreiben?"
     },
     {
       "key": "hermes_chat.role_source",
-      "context": "Hermes chat (F2): button answering what a folder is for: new documents arrive there (an inbox such as Downloads).",
-      "en": "Documents arrive here",
-      "de": "Hier landen neue Dokumente"
+      "context": "Hermes chat (F2): button: the folder becomes a read folder, Hermes takes documents from it and sorts them (an inbox such as Downloads).",
+      "en": "Read documents from here",
+      "de": "Von hier Dokumente lesen"
     },
     {
       "key": "hermes_chat.role_target",
-      "context": "Hermes chat (F2): button answering what a folder is for: the user's documents are kept there (the archive).",
-      "en": "My documents are kept here",
-      "de": "Hier sind meine Dokumente abgelegt"
+      "context": "Hermes chat (F2): button: the folder becomes a write folder, Hermes files documents into it.",
+      "en": "Write documents here",
+      "de": "Hierhin Dokumente schreiben"
     },
     {
       "key": "hermes_chat.ask_photos",

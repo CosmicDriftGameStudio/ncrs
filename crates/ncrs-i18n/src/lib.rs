@@ -438,7 +438,6 @@ mod tests {
                 | Msg::ShortcutHermesChat
                 | Msg::HermesChatFolderDownloads
                 | Msg::HermesChatWhenDate
-                | Msg::HermesChatTrialUnsureOne
                 // Names of color schemes.
                 | Msg::SettingsPresetCosmic
                 | Msg::SettingsPresetDracula

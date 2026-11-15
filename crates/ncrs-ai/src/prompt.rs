@@ -1,9 +1,9 @@
 //! The words every provider asks with, so a hosted model and the built-in one
 //! get the same instructions.
 
-use ncrs_index::Field;
+use ncrs_index::{Field, KindCatalog, KindLanguage};
 
-use crate::contract::{ExtractionRequest, NOT_A_DOCUMENT_HINT, NOT_A_DOCUMENT_KEY};
+use crate::contract::{kind_hint, ExtractionRequest, NOT_A_DOCUMENT_HINT, NOT_A_DOCUMENT_KEY};
 
 pub const SYSTEM_PROMPT: &str =
     "You read the text of one document and report the requested fields. \
@@ -15,7 +15,12 @@ pub const TEXT_START: &str = "<<<DOCUMENT TEXT>>>";
 pub const TEXT_END: &str = "<<<END OF DOCUMENT TEXT>>>";
 
 /// Everything of the user message before the document text.
-pub fn user_message_prefix(open_fields: &[Field], judge_document: bool) -> String {
+pub fn user_message_prefix(
+    open_fields: &[Field],
+    kinds: &KindCatalog,
+    language: KindLanguage,
+    judge_document: bool,
+) -> String {
     let mut names: Vec<&str> = open_fields.iter().map(|field| field.as_str()).collect();
     if judge_document {
         names.push(NOT_A_DOCUMENT_KEY);
@@ -26,7 +31,12 @@ pub fn user_message_prefix(open_fields: &[Field], judge_document: bool) -> Strin
     } else {
         String::new()
     };
-    format!("Requested fields: {wanted}\n{judgement}{TEXT_START}\n")
+    let kind = if open_fields.contains(&Field::Kind) {
+        format!("{}: {}\n", Field::Kind.as_str(), kind_hint(kinds, language))
+    } else {
+        String::new()
+    };
+    format!("Requested fields: {wanted}\n{kind}{judgement}{TEXT_START}\n")
 }
 
 /// Everything of the user message after the document text.
@@ -37,7 +47,12 @@ pub fn user_message_suffix() -> String {
 pub fn user_message(request: &ExtractionRequest) -> String {
     format!(
         "{}{}{}",
-        user_message_prefix(&request.open_fields, request.judge_document),
+        user_message_prefix(
+            &request.open_fields,
+            &request.kinds,
+            request.language,
+            request.judge_document
+        ),
         request.text,
         user_message_suffix()
     )
@@ -47,30 +62,46 @@ pub fn user_message(request: &ExtractionRequest) -> String {
 mod tests {
     use super::*;
 
+    static KINDS: std::sync::LazyLock<KindCatalog> =
+        std::sync::LazyLock::new(KindCatalog::built_in);
+    const LANGUAGE: KindLanguage = KindLanguage::German;
+
     #[test]
     fn the_prefix_names_the_recipient_like_any_other_field() {
         assert_eq!(
-            user_message_prefix(&[Field::Sender, Field::Recipient], false),
+            user_message_prefix(&[Field::Sender, Field::Recipient], &KINDS, LANGUAGE, false),
             "Requested fields: sender, recipient\n<<<DOCUMENT TEXT>>>\n"
         );
     }
 
     #[test]
     fn the_judgement_is_asked_only_on_request() {
-        let prefix = user_message_prefix(&[Field::Sender], true);
+        let prefix = user_message_prefix(&[Field::Sender], &KINDS, LANGUAGE, true);
 
         assert!(prefix.starts_with("Requested fields: sender, not_a_document\n"));
         assert!(prefix.contains(NOT_A_DOCUMENT_HINT));
-        assert!(!user_message_prefix(&[Field::Sender], false).contains("not_a_document"));
+        assert!(
+            !user_message_prefix(&[Field::Sender], &KINDS, LANGUAGE, false)
+                .contains("not_a_document")
+        );
     }
 
     #[test]
     fn the_prefix_names_the_requested_fields() {
-        let prefix = user_message_prefix(&[Field::Sender, Field::Date], false);
+        let prefix = user_message_prefix(&[Field::Sender, Field::Date], &KINDS, LANGUAGE, false);
 
         assert_eq!(
             prefix,
             "Requested fields: sender, date\n<<<DOCUMENT TEXT>>>\n"
         );
+    }
+
+    #[test]
+    fn the_kind_is_asked_in_the_language_of_the_user() {
+        let german = user_message_prefix(&[Field::Kind], &KINDS, KindLanguage::German, false);
+        let english = user_message_prefix(&[Field::Kind], &KINDS, KindLanguage::English, false);
+
+        assert!(german.contains("a short noun in German (at most three words, no translation"));
+        assert!(english.contains("a short noun in English"));
     }
 }
