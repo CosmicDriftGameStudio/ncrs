@@ -74,6 +74,10 @@ fn classified() -> LivePlan {
             readable("h.pdf", 8),
             readable("i.pdf", 9),
             readable("j.pdf", 10),
+            PlanFile {
+                text: None,
+                ..readable("k.pdf", 11)
+            },
         ],
     );
     let mut no_pattern = entry_for("e.pdf", 5, TrialOutcome::Stays(StayReason::NoPattern));
@@ -138,7 +142,7 @@ fn classified() -> LivePlan {
 fn classify_maps_every_row_of_the_table() {
     let plan = classified();
 
-    assert_eq!(plan.files.len(), 11);
+    assert_eq!(plan.files.len(), 12);
     assert_eq!(
         state_of(&plan, "a.pdf"),
         LiveState::AlreadyThere {
@@ -169,6 +173,7 @@ fn classify_maps_every_row_of_the_table() {
     assert_eq!(state_of(&plan, "h.pdf"), LiveState::NoFolder);
     assert_eq!(state_of(&plan, "i.pdf"), LiveState::Looking);
     assert_eq!(state_of(&plan, "j.pdf"), LiveState::NoFolder);
+    assert_eq!(state_of(&plan, "k.pdf"), LiveState::Unreadable);
 }
 
 #[test]
@@ -178,7 +183,7 @@ fn the_tally_buckets_add_up_to_the_files() {
     assert_eq!(counted.filed, 4);
     assert_eq!(counted.folders, 4);
     assert_eq!(counted.already_there, 2);
-    assert_eq!(counted.unreadable, 1);
+    assert_eq!(counted.unreadable, 2);
     assert_eq!(counted.looking, 1);
     assert_eq!(counted.no_folder, 3);
     assert_eq!(
@@ -188,7 +193,7 @@ fn the_tally_buckets_add_up_to_the_files() {
             + counted.already_there
             + counted.no_folder
             + counted.unreadable,
-        11
+        12
     );
 }
 
@@ -467,6 +472,14 @@ fn a_file_that_would_keep_its_scan_name_gets_one_from_its_fields() {
         scan_named("2020092_002.pdf", Some("Alfa"), Some("Rechnung"), Some(4)),
         scan_named("2020092_003.pdf", Some("Alfa"), None, None),
         scan_named("2020092_004.pdf", None, Some("Rechnung"), None),
+        TrialEntry {
+            outcome: TrialOutcome::Unsure {
+                choices: vec![PathBuf::from("Bank/2020")],
+                file_names: vec!["2020092_005.pdf".to_owned()],
+                kind_label: None,
+            },
+            ..scan_named("2020092_005.pdf", Some("Alfa"), Some("Rechnung"), Some(4))
+        },
     ]);
     let source = reading(
         "/inbox",
@@ -475,6 +488,7 @@ fn a_file_that_would_keep_its_scan_name_gets_one_from_its_fields() {
             "2020092_002.pdf",
             "2020092_003.pdf",
             "2020092_004.pdf",
+            "2020092_005.pdf",
         ]
         .iter()
         .zip(1..)
@@ -498,5 +512,9 @@ fn a_file_that_would_keep_its_scan_name_gets_one_from_its_fields() {
     assert_eq!(
         state_of(&live, "2020092_004.pdf"),
         filed("Bank/2020", "2020092_004.pdf", false)
+    );
+    assert_eq!(
+        state_of(&live, "2020092_005.pdf"),
+        filed("Bank/2020", "2020-04-04 Alfa Rechnung (3).pdf", true)
     );
 }

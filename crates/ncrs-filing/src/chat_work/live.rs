@@ -194,6 +194,7 @@ pub fn classify(plan: &TrialPlan, source: &FolderReading) -> LivePlan {
             } else {
                 match entries.get(from.as_path()) {
                     Some(entry) => state_of(entry, file.text.is_none(), &mut taken),
+                    None if file.text.is_none() => LiveState::Unreadable,
                     None => LiveState::NoFolder,
                 }
             };
@@ -236,7 +237,10 @@ fn state_of(entry: &TrialEntry, without_text: bool, taken: &mut BTreeSet<PathBuf
             file_names,
             ..
         } => match (choices.first(), file_names.first()) {
-            (Some(folder), Some(name)) => unsure(folder.clone(), name.clone()),
+            (Some(folder), Some(name)) => unsure(
+                folder.clone(),
+                name_in(folder, entry, name.clone(), taken),
+            ),
             _ => LiveState::NoFolder,
         },
         TrialOutcome::Stays(StayReason::NoPattern) => match &entry.neighbour {
