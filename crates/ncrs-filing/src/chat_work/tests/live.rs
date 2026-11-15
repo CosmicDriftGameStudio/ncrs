@@ -152,12 +152,18 @@ fn classify_maps_every_row_of_the_table() {
             at: PathBuf::from("Alfa/b2.pdf")
         }
     );
-    assert_eq!(state_of(&plan, "c.pdf"), filed("Alfa/2022", "c.pdf", false));
+    assert_eq!(
+        state_of(&plan, "c.pdf"),
+        filed("Alfa/2022", "Alfa AG.pdf", false)
+    );
     assert_eq!(
         state_of(&plan, "d.pdf"),
         filed("First", "d first.pdf", true)
     );
-    assert_eq!(state_of(&plan, "e.pdf"), filed("Neighbour", "e.pdf", true));
+    assert_eq!(
+        state_of(&plan, "e.pdf"),
+        filed("Neighbour", "Alfa AG.pdf", true)
+    );
     assert_eq!(state_of(&plan, "f.pdf"), filed("Alfa", "f (3).pdf", true));
     assert_eq!(state_of(&plan, "g.pdf"), LiveState::NoFolder);
     assert_eq!(state_of(&plan, "h.pdf"), LiveState::NoFolder);
@@ -432,4 +438,65 @@ fn the_run_holds_only_the_filed_files_with_their_overridden_names_and_folders() 
     assert_eq!(run.source_root, PathBuf::from("/inbox"));
     assert_eq!(run.target_root, PathBuf::from("/archive"));
     assert!(run.inside.is_empty());
+}
+
+fn scan_named(
+    name: &str,
+    sender: Option<&str>,
+    kind: Option<&str>,
+    day: Option<u32>,
+) -> TrialEntry {
+    TrialEntry {
+        fields: DocumentFields {
+            sender: sender.map(str::to_owned),
+            kind: kind.map(str::to_owned),
+            date: day.and_then(|of_april| chrono::NaiveDate::from_ymd_opt(2020, 4, of_april)),
+            ..DocumentFields::default()
+        },
+        outcome: TrialOutcome::Filed {
+            to: PathBuf::from("Bank/2020").join(name),
+        },
+        ..staying(name, sender, kind)
+    }
+}
+
+#[test]
+fn a_file_that_would_keep_its_scan_name_gets_one_from_its_fields() {
+    let plan = plan_of(vec![
+        scan_named("2020092_001.pdf", Some("Alfa"), Some("Rechnung"), Some(4)),
+        scan_named("2020092_002.pdf", Some("Alfa"), Some("Rechnung"), Some(4)),
+        scan_named("2020092_003.pdf", Some("Alfa"), None, None),
+        scan_named("2020092_004.pdf", None, Some("Rechnung"), None),
+    ]);
+    let source = reading(
+        "/inbox",
+        [
+            "2020092_001.pdf",
+            "2020092_002.pdf",
+            "2020092_003.pdf",
+            "2020092_004.pdf",
+        ]
+        .iter()
+        .zip(1..)
+        .map(|(name, seed)| readable(name, seed))
+        .collect(),
+    );
+    let live = classify(&plan, &source);
+
+    assert_eq!(
+        state_of(&live, "2020092_001.pdf"),
+        filed("Bank/2020", "2020-04-04 Alfa Rechnung.pdf", false)
+    );
+    assert_eq!(
+        state_of(&live, "2020092_002.pdf"),
+        filed("Bank/2020", "2020-04-04 Alfa Rechnung (2).pdf", false)
+    );
+    assert_eq!(
+        state_of(&live, "2020092_003.pdf"),
+        filed("Bank/2020", "Alfa.pdf", false)
+    );
+    assert_eq!(
+        state_of(&live, "2020092_004.pdf"),
+        filed("Bank/2020", "2020092_004.pdf", false)
+    );
 }

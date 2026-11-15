@@ -105,26 +105,67 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         );
     }
 
-    /// Feeds the tab its ticks until the plan is done. The first screenshot
-    /// is taken once half of the files are decided.
+    /// Feeds the tab its ticks and reads its snapshot between pumps until the
+    /// plan is done. The mid shot is the first snapshot with 30 % or more of
+    /// the files decided (neither waiting nor looked at) and not all of them;
+    /// when the plan jumps past that, the first partial snapshot stands in,
+    /// and with none the shot is taken once the plan is done. The case is
+    /// printed.
     fn plan_in_tab_until_done(&mut self) -> Option<String> {
+        use ncrs_filing::chat_work::LiveState;
         let started = Instant::now();
         let mut mid = None;
+        let mut first_partial = None;
         while started.elapsed() < READ_LIMIT {
             self.deliver(Message::FilingView(ncrs_filing_view::Message::Tick));
             self.pump(Duration::from_millis(100));
             let Some(session) = self.app().filing_session_for_test() else {
-                return mid;
+                break;
             };
-            let (looked_at, all_files) = session.read_count();
-            if session.plan_is_done() {
+            let done = session.plan_is_done();
+            let (decided, all_files) = session.shown_plan().map_or((0, 0), |plan| {
+                let decided = plan
+                    .files
+                    .iter()
+                    .filter(|file| !matches!(file.state, LiveState::Waiting | LiveState::Looking))
+                    .count();
+                (decided, plan.files.len())
+            });
+            if done {
                 break;
             }
-            if mid.is_none() && all_files > 0 && looked_at * 2 >= all_files {
+            let partial = decided > 0 && decided < all_files;
+            if partial && decided * 10 >= all_files * 3 {
                 mid = Some(self.shot("filing-mid"));
+                println!(
+                    "[{}] 5 tidy mid shot: {decided} of {all_files} decided",
+                    self.language.code()
+                );
+                break;
+            }
+            if partial && first_partial.is_none() {
+                first_partial = Some(self.shot("filing-mid-early"));
             }
         }
         self.deliver(Message::FilingView(ncrs_filing_view::Message::Tick));
+        if mid.is_none() {
+            let case = if first_partial.is_some() {
+                "the plan jumped past 30 %: the first partial snapshot stands in"
+            } else {
+                "the plan jumped from nothing to done: the shot is of the done plan"
+            };
+            println!("[{}] 5 tidy mid shot: {case}", self.language.code());
+            mid = first_partial.or_else(|| Some(self.shot("filing-mid-done")));
+        }
+        while started.elapsed() < READ_LIMIT
+            && self
+                .app()
+                .filing_session_for_test()
+                .is_some_and(|session| !session.plan_is_done())
+        {
+            self.deliver(Message::FilingView(ncrs_filing_view::Message::Tick));
+            self.pump(Duration::from_millis(100));
+        }
         mid
     }
 

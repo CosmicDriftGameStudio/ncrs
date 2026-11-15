@@ -3,7 +3,9 @@
 use iced::widget::{column, row};
 use iced::{Element, Length};
 use ncrs_i18n::{Language, Msg};
-use ncrs_ui_kit::kit::{checkbox, dim, paragraph, text_field, Check};
+use ncrs_ui_kit::format::ellipsize_middle;
+use ncrs_ui_kit::frame::{chars_that_fit, AVERAGE_GLYPH_WIDTH};
+use ncrs_ui_kit::kit::{checkbox, dim_line, one_line, text_field, Check};
 use ncrs_ui_kit::palette::Palette;
 use ncrs_ui_kit::plan_rows::{editing_row, new_file_row, pane_scroll, NewFileRow};
 use ncrs_ui_kit::theme::spacing;
@@ -11,7 +13,7 @@ use ncrs_ui_kit::tree_list::{tree_row, TreeRow};
 
 use crate::message::Message;
 use crate::state::Session;
-use crate::texts::say;
+use crate::texts::{say, HEADER_MARGIN};
 use crate::tree::{tree_items, Item};
 use crate::update::RENAME_FIELD;
 
@@ -35,9 +37,12 @@ fn folder_label(session: &Session, path: &std::path::Path, new_files: usize) -> 
 pub fn right<'a>(
     session: &'a Session,
     plan: &ncrs_filing::chat_work::LivePlan,
+    half_width: f32,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
+    let only_new_label = lang.text(Msg::FilingViewOnlyNew);
+    let label_width = only_new_label.chars().count() as f32 * AVERAGE_GLYPH_WIDTH;
     let rows = tree_items(session, plan)
         .into_iter()
         .map(|item| match item {
@@ -127,11 +132,14 @@ pub fn right<'a>(
         .collect();
     column![
         row![
-            dim(
-                say(
-                    lang,
-                    Msg::FilingViewWriteFolder,
-                    &[("path", &session.target.display().to_string())],
+            dim_line(
+                ellipsize_middle(
+                    &say(
+                        lang,
+                        Msg::FilingViewWriteFolder,
+                        &[("path", &session.target.display().to_string())],
+                    ),
+                    chars_that_fit(half_width - label_width - HEADER_MARGIN),
                 ),
                 palette,
             ),
@@ -145,7 +153,7 @@ pub fn right<'a>(
                 Some(Message::ToggleOnlyNew),
                 palette,
             ),
-            paragraph(lang.text(Msg::FilingViewOnlyNew), palette),
+            one_line(only_new_label.to_owned(), palette),
         ]
         .spacing(spacing::XS),
         pane_scroll(rows),

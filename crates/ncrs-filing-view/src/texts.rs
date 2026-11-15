@@ -21,3 +21,7 @@ pub fn tags(lang: Language) -> LiveTags {
         no_folder: lang.text(Msg::FilingViewTagNoFolder).to_owned(),
     }
 }
+
+/// The room a half's header leaves besides its text: padding, the checkbox
+/// and the gaps.
+pub const HEADER_MARGIN: f32 = 48.0;

@@ -4,14 +4,15 @@ use iced::widget::column;
 use iced::Element;
 use ncrs_filing::chat_work::{LiveFile, LivePlan, LiveState};
 use ncrs_i18n::{Language, Msg};
-use ncrs_ui_kit::frame::AVERAGE_GLYPH_WIDTH;
-use ncrs_ui_kit::kit::{dim, Columns};
+use ncrs_ui_kit::format::ellipsize_middle;
+use ncrs_ui_kit::frame::{chars_that_fit, AVERAGE_GLYPH_WIDTH};
+use ncrs_ui_kit::kit::{dim_line, Columns};
 use ncrs_ui_kit::palette::Palette;
 use ncrs_ui_kit::plan_rows::{pane_scroll, plan_file_row, PlanFileRow};
 
 use crate::message::Message;
 use crate::state::Session;
-use crate::texts::say;
+use crate::texts::{say, HEADER_MARGIN};
 
 /// The portions of the name and the what-happens column.
 const PORTIONS: [u16; 2] = [1, 1];
@@ -100,11 +101,14 @@ pub fn left<'a>(
         })
         .collect();
     column![
-        dim(
-            say(
-                lang,
-                Msg::FilingViewReadFolder,
-                &[("path", &session.source.display().to_string())],
+        dim_line(
+            ellipsize_middle(
+                &say(
+                    lang,
+                    Msg::FilingViewReadFolder,
+                    &[("path", &session.source.display().to_string())],
+                ),
+                chars_that_fit(half_width - HEADER_MARGIN),
             ),
             palette,
         ),

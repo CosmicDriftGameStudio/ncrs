@@ -28,7 +28,7 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'_>) -> Element<'a, Message> {
     let halves = row![
         container(left(session, &plan, half, ctx.lang, ctx.palette)).width(Length::FillPortion(1)),
         theme::vertical_rule(ctx.palette.border),
-        container(right(session, &plan, ctx.lang, ctx.palette)).width(Length::FillPortion(1)),
+        container(right(session, &plan, half, ctx.lang, ctx.palette)).width(Length::FillPortion(1)),
     ]
     .height(Length::Fill);
     let mut page = column![halves];
