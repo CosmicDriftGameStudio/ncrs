@@ -190,7 +190,10 @@ pub fn classify(plan: &TrialPlan, source: &FolderReading) -> LivePlan {
         .map(|file| {
             let from = source.root.join(&file.relative_path);
             // A broken PDF comes back with an empty text, not with none.
-            let without_text = file.text.as_deref().is_none_or(|text| text.trim().is_empty());
+            let without_text = file
+                .text
+                .as_deref()
+                .is_none_or(|text| text.trim().is_empty());
             let state = if plan.model_left.contains(&from) {
                 LiveState::Looking
             } else {
@@ -239,10 +242,9 @@ fn state_of(entry: &TrialEntry, without_text: bool, taken: &mut BTreeSet<PathBuf
             file_names,
             ..
         } => match (choices.first(), file_names.first()) {
-            (Some(folder), Some(name)) => unsure(
-                folder.clone(),
-                name_in(folder, entry, name.clone(), taken),
-            ),
+            (Some(folder), Some(name)) => {
+                unsure(folder.clone(), name_in(folder, entry, name.clone(), taken))
+            }
             _ => LiveState::NoFolder,
         },
         TrialOutcome::Stays(StayReason::NoPattern) => match &entry.neighbour {
