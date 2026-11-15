@@ -1,12 +1,13 @@
 //! The flows that file, change and answer: 5 tidy, 6 structure, 7 unknown.
 
+use std::collections::BTreeSet;
 use std::time::{Duration, Instant};
 
 use ncrs_hermes_chat::{ChipReply, Step};
 use ncrs_i18n::Msg;
 
 use super::thread::{chat, chip_labels, has_chip, last_hermes_has_chips, last_text};
-use super::{all, expect, Protocol, READ_LIMIT};
+use super::{all, expect, Check, Protocol, READ_LIMIT};
 use crate::app::App;
 use crate::messages::Message;
 
@@ -103,8 +104,10 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
             "the chat hands over; the tab plans every file; nothing is filed",
             result,
         );
-        if std::env::var("NCRS_EVAL_FILE").is_ok_and(|value| value == "copy") {
-            self.copy_planned_files();
+        match std::env::var("NCRS_EVAL_FILE").as_deref() {
+            Ok("copy") => self.copy_planned_files(),
+            Ok("move") => self.move_planned_files(),
+            _ => {}
         }
     }
 
@@ -146,33 +149,11 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
         let downloads_before = self.files_below(&self.downloads);
         let archive_before = self.files_below(&self.archive);
 
-        self.deliver(Message::FilingView(ncrs_filing_view::Message::File(
-            ncrs_index::Transfer::Copy,
-        )));
-        let copy_started = Instant::now();
-        while copy_started.elapsed() < Duration::from_secs(300)
-            && self.app().filing_session_for_test().is_some()
-        {
-            self.deliver(Message::FilingView(ncrs_filing_view::Message::Tick));
-            self.pump(Duration::from_millis(100));
-        }
-        let copied = self.app().filing_session_for_test().is_none();
+        let copied = self.press_and_wait(ncrs_index::Transfer::Copy);
         let (_, _, idle) = self.wait_idle(READ_LIMIT, None);
         let archive_after = self.files_below(&self.archive);
         let downloads_after = self.files_below(&self.downloads);
-        let samples: Vec<&std::path::PathBuf> = [
-            rows.first(),
-            rows.get(rows.len().div_euclid(2)),
-            rows.last(),
-        ]
-        .into_iter()
-        .flatten()
-        .collect();
-        let missing: Vec<String> = samples
-            .iter()
-            .filter(|row| !self.archive.join(row).is_file())
-            .map(|row| row.display().to_string())
-            .collect();
+        let missing = self.missing_samples(&rows);
         let tag = self.language.text(Msg::FilingViewTagUnreadable);
         let tagged = self.own_tagged_count(&unreadable, tag);
         let says_filed = self.last_says(Msg::HermesChatFiledInTabCopy);
@@ -210,8 +191,7 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
             ),
         ]);
 
-        let undo = self.press_chip(|reply| *reply == ChipReply::PutBack);
-        let (_, _, undo_idle) = self.wait_idle(READ_LIMIT, None);
+        let (undo, undo_idle) = self.undo_in_chat();
         let archive_undone = self.files_below(&self.archive);
         let undone_image = self.shot("filing-undone");
         let undo_result = all([
@@ -237,6 +217,170 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
             &format!("{copied_image}, {undone_image}"),
             "the files are copied, tagged and announced in the chat; undo removes the copies",
             all([copy_result, undo_result]),
+        );
+    }
+
+    /// Presses `transfer` in the tab and ticks until its session is gone;
+    /// false when 300 s were not enough.
+    fn press_and_wait(&mut self, transfer: ncrs_index::Transfer) -> bool {
+        self.deliver(Message::FilingView(ncrs_filing_view::Message::File(
+            transfer,
+        )));
+        let started = Instant::now();
+        while started.elapsed() < Duration::from_secs(300)
+            && self.app().filing_session_for_test().is_some()
+        {
+            self.deliver(Message::FilingView(ncrs_filing_view::Message::Tick));
+            self.pump(Duration::from_millis(100));
+        }
+        self.app().filing_session_for_test().is_none()
+    }
+
+    /// The first, middle and last of the planned rows that are not in the
+    /// archive.
+    fn missing_samples(&self, rows: &[std::path::PathBuf]) -> Vec<String> {
+        [
+            rows.first(),
+            rows.get(rows.len().div_euclid(2)),
+            rows.last(),
+        ]
+        .into_iter()
+        .flatten()
+        .filter(|row| !self.archive.join(row).is_file())
+        .map(|row| row.display().to_string())
+        .collect()
+    }
+
+    /// Presses the chat's undo chip and waits for the chat.
+    fn undo_in_chat(&mut self) -> (Check, Check) {
+        let undo = self.press_chip(|reply| *reply == ChipReply::PutBack);
+        let (_, _, idle) = self.wait_idle(READ_LIMIT, None);
+        (undo, idle)
+    }
+
+    /// `NCRS_EVAL_FILE=move`: moves the planned files with the duplicates in
+    /// the source trashed, checks archive and source, then undoes the run in
+    /// the chat and records what came back.
+    fn move_planned_files(&mut self) {
+        use ncrs_filing::chat_work::LiveState;
+        let started = Instant::now();
+        let Some(plan) = self
+            .app()
+            .filing_session_for_test()
+            .and_then(|session| session.shown_plan())
+        else {
+            self.record(
+                "5 tidy move",
+                "no plan in the tab",
+                started.elapsed().as_secs_f64(),
+                "",
+                "the plan is moved",
+                Err("no plan in the tab".to_owned()),
+            );
+            return;
+        };
+        let mut rows = Vec::new();
+        let mut moved_sources = BTreeSet::new();
+        let mut duplicates = Vec::new();
+        for file in &plan.files {
+            match &file.state {
+                LiveState::Filed { folder, name, .. } => {
+                    rows.push(folder.join(name));
+                    moved_sources.insert(file.from.clone());
+                }
+                LiveState::AlreadyThere { at } => {
+                    moved_sources.insert(file.from.clone());
+                    let keeper = self.archive.join(at);
+                    duplicates.push((file.from.clone(), keeper.clone(), file_stamp(&keeper)));
+                }
+                _ => {}
+            }
+        }
+        let filed = rows.len();
+        let downloads_before = self.files_below(&self.downloads);
+        let archive_before = self.files_below(&self.archive);
+        let source_before = relative_files(&self.downloads);
+        let staying: BTreeSet<_> = source_before.difference(&moved_sources).cloned().collect();
+
+        self.deliver(Message::FilingView(
+            ncrs_filing_view::Message::ToggleTrashDupes,
+        ));
+        let done = self.press_and_wait(ncrs_index::Transfer::Move);
+        let (_, _, idle) = self.wait_idle(READ_LIMIT, None);
+        let archive_after = self.files_below(&self.archive);
+        let downloads_after = self.files_below(&self.downloads);
+        let source_after = relative_files(&self.downloads);
+        let changed: Vec<String> = duplicates
+            .iter()
+            .filter(|(_, keeper, stamp)| file_stamp(keeper) != *stamp || stamp.is_none())
+            .map(|(_, keeper, _)| keeper.display().to_string())
+            .collect();
+        let missing = self.missing_samples(&rows);
+        let moved_image = self.shot("filing-moved");
+        let move_result = all([
+            idle,
+            expect(done, "the tab still had its session after 300 s"),
+            expect(
+                archive_after == archive_before + filed,
+                format!(
+                    "the archive went from {archive_before} to {archive_after}, planned {filed}"
+                ),
+            ),
+            expect(
+                source_after == staying,
+                format!(
+                    "downloads hold {:?}, only {:?} may stay",
+                    source_after, staying
+                ),
+            ),
+            expect(
+                changed.is_empty(),
+                format!(
+                    "archive files of already-there rows changed or are gone: {}",
+                    changed.join(", ")
+                ),
+            ),
+            expect(
+                missing.is_empty(),
+                format!("sample rows missing in the archive: {}", missing.join(", ")),
+            ),
+        ]);
+
+        let (undo, undo_idle) = self.undo_in_chat();
+        let archive_undone = self.files_below(&self.archive);
+        let downloads_undone = self.files_below(&self.downloads);
+        let back: Vec<String> = duplicates
+            .iter()
+            .filter(|(from, _, _)| self.downloads.join(from).is_file())
+            .map(|(from, _, _)| from.display().to_string())
+            .collect();
+        let undone_image = self.shot("filing-move-undone");
+        let undo_result = all([
+            undo,
+            undo_idle,
+            expect(
+                archive_undone == archive_before,
+                format!(
+                    "after undo the archive has {archive_undone}, before it had {archive_before}"
+                ),
+            ),
+        ]);
+        let summary = format!(
+            "{filed} planned, {} already there; archive {archive_before} -> {archive_after} -> {archive_undone}, downloads {downloads_before} -> {downloads_after} -> {downloads_undone}, staying {}; already-there sources back after undo: {} of {} ({})",
+            duplicates.len(),
+            staying.len(),
+            back.len(),
+            duplicates.len(),
+            back.join(", ")
+        );
+        println!("[{}] 5 tidy move: {summary}", self.language.code());
+        self.record(
+            "5 tidy move",
+            &summary,
+            started.elapsed().as_secs_f64(),
+            &format!("{moved_image}, {undone_image}"),
+            "the planned files move, duplicates are trashed, the archive keeps its files; undo empties the archive of them",
+            all([move_result, undo_result]),
         );
     }
 
@@ -448,4 +592,34 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
             );
         }
     }
+}
+
+/// Size and modification time, to tell an untouched file from a changed one.
+fn file_stamp(path: &std::path::Path) -> Option<(u64, std::time::SystemTime)> {
+    let meta = std::fs::metadata(path).ok()?;
+    Some((meta.len(), meta.modified().ok()?))
+}
+
+/// The files below `root`, relative to it.
+fn relative_files(root: &std::path::Path) -> BTreeSet<std::path::PathBuf> {
+    fn walk(
+        root: &std::path::Path,
+        dir: &std::path::Path,
+        found: &mut BTreeSet<std::path::PathBuf>,
+    ) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                walk(root, &path, found);
+            } else if let Ok(relative) = path.strip_prefix(root) {
+                found.insert(relative.to_path_buf());
+            }
+        }
+    }
+    let mut found = BTreeSet::new();
+    walk(root, root, &mut found);
+    found
 }
