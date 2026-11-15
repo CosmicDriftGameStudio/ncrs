@@ -112,6 +112,7 @@ fn brother_eval_read() {
     drop(run);
     // The background folder picks may still hold the model; a process that
     // ends with it loaded makes the GPU backend abort.
+    #[cfg(feature = "local-ai")]
     ncrs_ai::LazyLocalModel::shutdown_all();
     println!("NCRS_EVAL_SCRATCH={}", kept.display());
 }
