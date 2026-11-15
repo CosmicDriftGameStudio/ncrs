@@ -22,6 +22,7 @@ use super::*;
 
 mod diagnosis;
 mod eval;
+mod live;
 mod model_scope;
 mod picks;
 mod recent_runs;

@@ -1,0 +1,354 @@
+//! The live plan of the filing tab: every file of the source with the state
+//! it has right now, from "waiting" to where it would be filed.
+
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
+use std::sync::{Mutex, PoisonError};
+
+use ncrs_ai::ChatModel;
+use ncrs_index::{ContentHash, Transfer};
+
+use super::groups::numbered_name;
+use super::picks::ask_until_done;
+use super::reading::{list_files, read_folder};
+use super::trial::{StayReason, TrialEntry, TrialOutcome, TrialPlan};
+use super::{ChatAccess, FolderReading, ModelScope, ReadProgress, RunItem, RunPlan};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LiveState {
+    Waiting,
+    Looking,
+    /// `folder` is relative to the target.
+    Filed {
+        folder: PathBuf,
+        name: String,
+        unsure: bool,
+    },
+    AlreadyThere {
+        at: PathBuf,
+    },
+    NoFolder,
+    Unreadable,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiveFile {
+    /// Relative to the source.
+    pub from: PathBuf,
+    pub hash: Option<ContentHash>,
+    pub state: LiveState,
+    pub by_user: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LivePlan {
+    pub source_root: PathBuf,
+    pub target_root: PathBuf,
+    pub files: Vec<LiveFile>,
+    pub done: bool,
+}
+
+/// What the user decided for a file, by its path relative to the source.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Override {
+    Folder(PathBuf),
+    Name(String),
+    Stay,
+}
+
+/// A running plan, shared with the UI that polls it on a tick.
+#[derive(Debug, Default)]
+pub struct LiveRun {
+    pub progress: ReadProgress,
+    pub plan: Mutex<Option<LivePlan>>,
+    pub stop: AtomicBool,
+}
+
+impl LiveRun {
+    fn publish(&self, plan: LivePlan) {
+        *self.plan.lock().unwrap_or_else(PoisonError::into_inner) = Some(plan);
+    }
+}
+
+/// The tag names, in the user's language, that mark files nothing could be
+/// done with.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiveTags {
+    pub unreadable: String,
+    pub no_folder: String,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Tally {
+    pub waiting: usize,
+    pub looking: usize,
+    pub filed: usize,
+    /// The distinct folders the filed files go to.
+    pub folders: usize,
+    pub already_there: usize,
+    pub no_folder: usize,
+    pub unreadable: usize,
+}
+
+fn read_failed(err: impl std::fmt::Debug) -> String {
+    format!("{err:?}")
+}
+
+/// Walks the source and publishes every file as waiting, then reads both
+/// folders and lets the model pick page by page, publishing after each round.
+/// Ends early, without error, when `run.stop` is set. At the end the files
+/// that are unreadable or have no folder get their tag (see `mark_files`),
+/// also after a stop.
+pub fn plan_live(
+    access: &ChatAccess,
+    source: &Path,
+    target: &Path,
+    model: &dyn ChatModel,
+    tags: &LiveTags,
+    run: &LiveRun,
+) -> Result<(), String> {
+    let waiting: Vec<LiveFile> = list_files(source)
+        .map_err(read_failed)?
+        .into_iter()
+        .map(|from| LiveFile {
+            from,
+            hash: None,
+            state: LiveState::Waiting,
+            by_user: false,
+        })
+        .collect();
+    run.publish(LivePlan {
+        source_root: source.to_path_buf(),
+        target_root: target.to_path_buf(),
+        files: waiting,
+        done: false,
+    });
+
+    let source_reading = read_folder(access, source, &run.progress).map_err(read_failed)?;
+    let target_reading =
+        read_folder(access, target, &ReadProgress::default()).map_err(read_failed)?;
+    let mut last: Option<LivePlan> = None;
+    ask_until_done(
+        access,
+        &source_reading,
+        &target_reading,
+        model,
+        &ModelScope::FirstPage,
+        Some(&run.stop),
+        &mut |trial_plan| {
+            let mut live = classify(trial_plan, &source_reading);
+            live.done = trial_plan.model_left.is_empty();
+            run.publish(live.clone());
+            last = Some(live);
+        },
+    )?;
+    match last {
+        Some(planned) => mark_files(access, &planned, tags),
+        None => Ok(()),
+    }
+}
+
+/// Tags the unreadable and folderless files of `plan` and takes both tags off
+/// the files that are filed or already there; waiting and looking files keep
+/// what they have. Call it again with the user's overrides applied.
+pub fn mark_files(access: &ChatAccess, plan: &LivePlan, tags: &LiveTags) -> Result<(), String> {
+    access.with_index(|index| {
+        for file in &plan.files {
+            let Some(hash) = &file.hash else { continue };
+            let marked = match file.state {
+                LiveState::Unreadable => Some(&tags.unreadable),
+                LiveState::NoFolder => Some(&tags.no_folder),
+                LiveState::Filed { .. } | LiveState::AlreadyThere { .. } => None,
+                LiveState::Waiting | LiveState::Looking => continue,
+            };
+            for tag in [&tags.unreadable, &tags.no_folder] {
+                if Some(tag) == marked {
+                    index.add_document_tag(hash, tag)
+                } else {
+                    index.remove_document_tag(hash, tag).map(|()| true)
+                }
+                .map_err(|err| err.to_string())?;
+            }
+        }
+        Ok(())
+    })
+}
+
+/// The state of each file of `source`, in its order. A file the trial has no
+/// entry for stays without a folder, so the plan has every file of the read.
+pub fn classify(plan: &TrialPlan, source: &FolderReading) -> LivePlan {
+    let entries: BTreeMap<&Path, &TrialEntry> = plan
+        .entries
+        .iter()
+        .map(|entry| (entry.from.as_path(), entry))
+        .collect();
+    let mut taken = plan.taken.clone();
+    let files = source
+        .files
+        .iter()
+        .map(|file| {
+            let from = source.root.join(&file.relative_path);
+            let state = if plan.model_left.contains(&from) {
+                LiveState::Looking
+            } else {
+                match entries.get(from.as_path()) {
+                    Some(entry) => state_of(entry, file.text.is_none(), &mut taken),
+                    None => LiveState::NoFolder,
+                }
+            };
+            LiveFile {
+                from: file.relative_path.clone(),
+                hash: Some(file.hash),
+                state,
+                by_user: false,
+            }
+        })
+        .collect();
+    LivePlan {
+        source_root: plan.source_root.clone(),
+        target_root: plan.target_root.clone(),
+        files,
+        done: false,
+    }
+}
+
+fn state_of(entry: &TrialEntry, without_text: bool, taken: &mut BTreeSet<PathBuf>) -> LiveState {
+    let unsure = |folder: PathBuf, name: String| LiveState::Filed {
+        folder,
+        name,
+        unsure: true,
+    };
+    match &entry.outcome {
+        TrialOutcome::AlreadyThere { at } => LiveState::AlreadyThere { at: at.clone() },
+        _ if without_text => LiveState::Unreadable,
+        TrialOutcome::Filed { to } => LiveState::Filed {
+            folder: parent_of(to),
+            name: file_name_of(to),
+            unsure: false,
+        },
+        TrialOutcome::Unsure {
+            choices,
+            file_names,
+            ..
+        } => match (choices.first(), file_names.first()) {
+            (Some(folder), Some(name)) => unsure(folder.clone(), name.clone()),
+            _ => LiveState::NoFolder,
+        },
+        TrialOutcome::Stays(StayReason::NoPattern) => match &entry.neighbour {
+            Some(folder) => unsure(folder.clone(), entry.name.clone()),
+            None => LiveState::NoFolder,
+        },
+        TrialOutcome::Stays(StayReason::NameTaken) => match &entry.wanted {
+            Some(wanted) => {
+                let free = numbered_name(wanted, taken);
+                unsure(parent_of(&free), file_name_of(&free))
+            }
+            None => LiveState::NoFolder,
+        },
+        TrialOutcome::Stays(_) => LiveState::NoFolder,
+    }
+}
+
+fn parent_of(path: &Path) -> PathBuf {
+    path.parent().map(Path::to_path_buf).unwrap_or_default()
+}
+
+fn file_name_of(path: &Path) -> String {
+    path.file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
+/// The plan with the user's decisions on top; a changed file is `by_user`.
+pub fn apply_overrides(plan: &LivePlan, overrides: &BTreeMap<PathBuf, Override>) -> LivePlan {
+    let files = plan
+        .files
+        .iter()
+        .map(|file| {
+            let Some(decision) = overrides.get(&file.from) else {
+                return file.clone();
+            };
+            let state = match (decision, &file.state) {
+                (Override::Folder(folder), LiveState::Filed { name, .. }) => LiveState::Filed {
+                    folder: folder.clone(),
+                    name: name.clone(),
+                    unsure: false,
+                },
+                (Override::Folder(folder), _) => LiveState::Filed {
+                    folder: folder.clone(),
+                    name: file_name_of(&file.from),
+                    unsure: false,
+                },
+                (Override::Name(new_name), LiveState::Filed { folder, .. }) => LiveState::Filed {
+                    folder: folder.clone(),
+                    name: new_name.clone(),
+                    unsure: false,
+                },
+                (Override::Name(_), _) => return file.clone(),
+                (Override::Stay, _) => LiveState::NoFolder,
+            };
+            LiveFile {
+                state,
+                by_user: true,
+                ..file.clone()
+            }
+        })
+        .collect();
+    LivePlan {
+        files,
+        ..plan.clone()
+    }
+}
+
+/// The run that files every `Filed` file; the others stay where they are.
+/// `to` is below the target root, `from` is absolute, as the chat's runs have it.
+pub fn run_plan(plan: &LivePlan, transfer: Transfer, run_name: String) -> RunPlan {
+    let items = plan
+        .files
+        .iter()
+        .filter_map(|file| match (&file.state, file.hash) {
+            (
+                LiveState::Filed {
+                    folder,
+                    name: file_name,
+                    ..
+                },
+                Some(hash),
+            ) => Some(RunItem {
+                from: plan.source_root.join(&file.from),
+                to: folder.join(file_name),
+                hash,
+            }),
+            _ => None,
+        })
+        .collect();
+    RunPlan {
+        name: run_name,
+        transfer,
+        source_root: plan.source_root.clone(),
+        target_root: plan.target_root.clone(),
+        items,
+        inside: Vec::new(),
+    }
+}
+
+pub fn tally(plan: &LivePlan) -> Tally {
+    let mut tally = Tally::default();
+    let mut folders = BTreeSet::new();
+    for file in &plan.files {
+        match &file.state {
+            LiveState::Waiting => tally.waiting += 1,
+            LiveState::Looking => tally.looking += 1,
+            LiveState::Filed { folder, .. } => {
+                tally.filed += 1;
+                folders.insert(folder);
+            }
+            LiveState::AlreadyThere { .. } => tally.already_there += 1,
+            LiveState::NoFolder => tally.no_folder += 1,
+            LiveState::Unreadable => tally.unreadable += 1,
+        }
+    }
+    tally.folders = folders.len();
+    tally
+}
