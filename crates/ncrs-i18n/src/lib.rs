@@ -364,6 +364,8 @@ mod tests {
                 | Msg::PermissionsSetuid
                 | Msg::PermissionsSetgid
                 | Msg::PermissionsSticky
+                // An arrow and a placeholder, the same in every language.
+                | Msg::FilingViewStateFiled
                 // Only placeholders and a comma.
                 | Msg::PermissionsTitlePartsJoined
                 // Units, a standard's name and "System", written alike in German.
