@@ -53,6 +53,44 @@ pub fn start(state: &mut State) {
     state.fresh_trial_rest = true;
 }
 
+pub fn running_line(ctx: &Ctx, waiting: usize) -> String {
+    fill(
+        ctx.lang,
+        Msg::HermesChatTrialRestRunning,
+        &[("count", &number(waiting))],
+    )
+}
+
+/// Swaps the progress line in the trial message for `next`, or takes it out.
+fn replace_running_line(state: &mut State, next: Option<String>) {
+    let Some(previous) = state.trial_rest_line.take() else {
+        return;
+    };
+    for entry in state.thread.iter_mut().rev() {
+        let Entry::Hermes { parts, .. } = entry else {
+            continue;
+        };
+        let Some(at) = parts
+            .iter()
+            .position(|part| matches!(part, Part::Text(text) if *text == previous))
+        else {
+            continue;
+        };
+        match &next {
+            Some(line) => {
+                if let Some(part) = parts.get_mut(at) {
+                    *part = Part::Text(line.clone());
+                }
+            }
+            None => {
+                parts.remove(at);
+            }
+        }
+        break;
+    }
+    state.trial_rest_line = next;
+}
+
 pub fn done(state: &mut State, ctx: &Ctx, run: u64, result: Result<TrialPlan, String>) {
     if run != state.trial_rest_run {
         return;
@@ -62,6 +100,7 @@ pub fn done(state: &mut State, ctx: &Ctx, run: u64, result: Result<TrialPlan, St
             trial.plan.model_left.clear();
         }
         state.trial_rest_page.clear();
+        replace_running_line(state, None);
         return;
     };
     if state.step != Step::Trial {
@@ -100,8 +139,12 @@ pub fn done(state: &mut State, ctx: &Ctx, run: u64, result: Result<TrialPlan, St
     plan.already_there = count(|outcome| matches!(outcome, TrialOutcome::AlreadyThere { .. }));
     plan.stays = count(|outcome| matches!(outcome, TrialOutcome::Stays(_)));
     let more_pages = !plan.model_left.is_empty();
+    let waiting = plan.model_left.len();
     if more_pages {
         start(state);
+        replace_running_line(state, Some(running_line(ctx, waiting)));
+    } else {
+        replace_running_line(state, None);
     }
     if stay_groups::has_open_questions(state) {
         return;
@@ -298,8 +341,10 @@ mod tests {
             .readings
             .insert(PathBuf::from("/archive"), reading("/archive"));
         let first = trial_chips(&ctx(), state.session.trial.as_ref().unwrap());
+        let line = running_line(&ctx(), 12);
+        state.trial_rest_line = Some(line.clone());
         state.thread.push(Entry::Hermes {
-            parts: Vec::new(),
+            parts: vec![Part::Text(line)],
             chips: first,
         });
         start(&mut state);
@@ -340,6 +385,63 @@ mod tests {
         assert_eq!(trial.plan.model_left.len(), 2);
         assert!(state.trial_rest.is_some());
         assert_eq!(state.trial_rest_page.len(), 2);
+    }
+
+    fn finish_page(state: &mut State) {
+        let page_entries = state
+            .trial_rest_page
+            .iter()
+            .map(|from| {
+                let name = from.file_name().unwrap().to_string_lossy().into_owned();
+                entry(&name, filed_outcome())
+            })
+            .collect();
+        let run = state.trial_rest_run;
+        done(
+            state,
+            &ctx(),
+            run,
+            Ok(plan_of(page_entries, BTreeSet::new())),
+        );
+    }
+
+    fn texts_of_first_entry(state: &State) -> Vec<String> {
+        let Some(Entry::Hermes { parts, .. }) = state.thread.first() else {
+            panic!("no Hermes entry");
+        };
+        parts
+            .iter()
+            .filter_map(|part| match part {
+                Part::Text(text) => Some(text.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_progress_line_counts_down_in_the_same_entry_and_is_gone_after_the_last_page() {
+        let mut state = state_with_twelve_waiting();
+        assert_eq!(texts_of_first_entry(&state), [running_line(&ctx(), 12)]);
+
+        finish_page(&mut state);
+        assert_eq!(state.thread.len(), 1);
+        assert_eq!(texts_of_first_entry(&state), [running_line(&ctx(), 2)]);
+        assert_eq!(state.trial_rest_line, Some(running_line(&ctx(), 2)));
+
+        finish_page(&mut state);
+        assert!(texts_of_first_entry(&state).is_empty());
+        assert_eq!(state.trial_rest_line, None);
+    }
+
+    #[test]
+    fn a_failed_page_takes_the_progress_line_away() {
+        let mut state = state_with_twelve_waiting();
+        let run = state.trial_rest_run;
+
+        done(&mut state, &ctx(), run, Err("model".to_owned()));
+
+        assert!(texts_of_first_entry(&state).is_empty());
+        assert_eq!(state.trial_rest_line, None);
     }
 
     #[test]

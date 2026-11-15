@@ -591,6 +591,8 @@ pub struct State {
     pub trial_rest: Option<ChatWork>,
     /// The files of the page the model has in flight.
     pub trial_rest_page: BTreeSet<PathBuf>,
+    /// The progress line shown in the trial message while the rest runs.
+    pub trial_rest_line: Option<String>,
     /// Bumped by each start of the rest, so a page of an earlier trial run is told apart.
     pub trial_rest_run: u64,
     /// The rest set during this `update` that no task runs yet.
@@ -630,6 +632,7 @@ impl Default for State {
             fresh_resolve: false,
             trial_rest: None,
             trial_rest_page: BTreeSet::new(),
+            trial_rest_line: None,
             trial_rest_run: 0,
             fresh_trial_rest: false,
             naming: None,

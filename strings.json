@@ -7681,6 +7681,12 @@
       "de": "Ich habe jetzt alle Dateien durchgesehen: {count} kann ich ablegen."
     },
     {
+      "key": "hermes_chat.trial_rest_running",
+      "context": "Hermes chat (F2): last line of the trial message while the model still looks at the files beyond the first ten in the background. {count} is how many files it has yet to look at; the number on the filing button rises meanwhile.",
+      "en": "I'm still looking at the other {count} files; the number on the button rises as I go.",
+      "de": "Die übrigen {count} Dateien sehe ich mir noch an, die Zahl auf dem Knopf steigt mit."
+    },
+    {
       "key": "hermes_chat.trial_end",
       "context": "Hermes chat (F2): Hermes says there are no more files to show in the trial run.",
       "en": "That was all of them.",

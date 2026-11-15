@@ -593,6 +593,12 @@ pub fn trial_done(state: &mut State, ctx: &Ctx, result: Result<TrialPlan, String
         &[("count", &number(shown))],
     )));
     parts.push(Part::Trial(card));
+    let waiting = trial.plan.model_left.len();
+    if waiting > 0 {
+        let line = rest::running_line(ctx, waiting);
+        state.trial_rest_line = Some(line.clone());
+        parts.push(Part::Text(line));
+    }
     hermes(state, parts, chips);
     if open_questions {
         stay_groups::ask_next(state, ctx);

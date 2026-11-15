@@ -71,13 +71,15 @@ impl Job {
 }
 
 /// A person is typing in the chat, a document waits in the pipeline: the
-/// person goes first. Background tasks share one line with the documents, in
-/// the order they came, so neither starves the other.
+/// person goes first. A background task (one page at a time) comes before the
+/// documents, so it moves on while the reading goes on; chat and waiting tasks
+/// still go first between pages.
 #[derive(Debug, Default)]
 pub struct Queue {
     chat: VecDeque<ChatJob>,
     rule: VecDeque<RuleJob>,
-    reading: VecDeque<Job>,
+    background: VecDeque<RuleJob>,
+    extract: VecDeque<ExtractJob>,
     closed: bool,
 }
 
@@ -86,7 +88,8 @@ impl Queue {
         match job {
             Job::Chat(chat) => self.chat.push_back(chat),
             Job::Rule(rule) => self.rule.push_back(rule),
-            Job::Background(_) | Job::Extract(_) => self.reading.push_back(job),
+            Job::Background(background) => self.background.push_back(background),
+            Job::Extract(extract) => self.extract.push_back(extract),
         }
     }
 
@@ -95,7 +98,8 @@ impl Queue {
             .pop_front()
             .map(Job::Chat)
             .or_else(|| self.rule.pop_front().map(Job::Rule))
-            .or_else(|| self.reading.pop_front())
+            .or_else(|| self.background.pop_front().map(Job::Background))
+            .or_else(|| self.extract.pop_front().map(Job::Extract))
     }
 }
 
@@ -459,7 +463,7 @@ mod queue_tests {
     }
 
     #[test]
-    fn background_tasks_follow_rule_tasks_and_share_the_line_with_documents() {
+    fn background_tasks_follow_rule_tasks_and_come_before_documents() {
         let ran = Arc::new(std::sync::Mutex::new(Vec::new()));
         let mut queue = Queue::default();
         queue.push(extract_job("first document"));
@@ -484,10 +488,10 @@ mod queue_tests {
             order,
             [
                 "rule",
-                "first document",
                 "background",
-                "second document",
-                "later background"
+                "later background",
+                "first document",
+                "second document"
             ]
         );
     }
