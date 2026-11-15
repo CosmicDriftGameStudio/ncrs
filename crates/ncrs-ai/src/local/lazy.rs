@@ -78,7 +78,7 @@ impl LazyLocalModel {
     /// Ends every model made by `shared` and waits for each worker to free it:
     /// the app calls this on quit, because background threads that still hold
     /// a model never drop it and the GPU backend aborts a process that ends
-    /// with a model loaded. Waits for a running job.
+    /// with a model loaded. A running job stops at its next batch or token.
     pub fn shutdown_all() {
         let live: Vec<Arc<Self>> = registry()
             .lock()
@@ -291,12 +291,10 @@ impl ChatModel for LazyLocalModel {
         let (reply, answer) = channel();
         let owned_folders = folders.to_vec();
         let owned_documents = documents.to_vec();
-        let shared = Arc::clone(&self.shared);
         self.shared.submit(Job::Rule(RuleJob {
             task: Box::new(move |model| {
-                let outcome = model.and_then(|loaded| {
-                    loaded.choose_folders(&owned_folders, &owned_documents, &|| shared.is_closed())
-                });
+                let outcome = model
+                    .and_then(|loaded| loaded.choose_folders(&owned_folders, &owned_documents));
                 drop(reply.send(outcome));
             }),
         }));

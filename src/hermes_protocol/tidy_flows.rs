@@ -65,7 +65,6 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
                 .or_else(|_| self.press_chip(|reply| *reply == ChipReply::ConfirmTidy))
                 .or_else(|_| self.press_chip(|reply| matches!(reply, ChipReply::GroupArea(_))))
                 .or_else(|_| self.press_chip(|reply| *reply == ChipReply::FileAll))
-                .or_else(|_| self.press_chip(|reply| *reply == ChipReply::SinglesLeave))
                 .or_else(|_| self.press_chip(|reply| matches!(reply, ChipReply::DecideTarget(_))))
                 .or_else(|_| self.press_chip(|reply| *reply == ChipReply::NamesLeave))
                 .or_else(|_| self.press_chip(|reply| *reply == ChipReply::PhotosNo))

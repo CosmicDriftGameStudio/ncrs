@@ -883,8 +883,6 @@ pub fn handle_reply(state: &mut State, ctx: &Ctx, reply: ChipReply) -> Option<Ac
         ChipReply::DecideSkip => crate::decide::skipped(state, ctx),
         ChipReply::NewLayout(layout) => crate::decide::layout_chosen(state, ctx, layout),
         ChipReply::GroupLeave => stay_groups::leave_group(state, ctx),
-        ChipReply::SinglesShow => stay_groups::singles_show(state, ctx),
-        ChipReply::SinglesLeave => stay_groups::singles_leave(state, ctx),
         ChipReply::NamesNumbered => stay_groups::names_numbered(state, ctx),
         ChipReply::NamesLeave => stay_groups::names_leave(state, ctx),
         ChipReply::UnsureChoice { entry, choice } => tidy::unsure(state, ctx, entry, choice),

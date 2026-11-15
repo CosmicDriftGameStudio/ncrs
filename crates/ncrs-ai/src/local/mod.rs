@@ -8,7 +8,8 @@
 
 use std::num::{NonZeroU32, NonZeroUsize};
 use std::path::PathBuf;
-use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, OnceLock};
 
 use llama_cpp_2::context::params::LlamaContextParams;
 use llama_cpp_2::context::LlamaContext;
@@ -57,6 +58,7 @@ pub struct LocalModelConfig {
     pub threads: NonZeroU32,
     /// The prompt (instructions and document) and the reply share this.
     pub context_tokens: NonZeroU32,
+    pub stop: Arc<AtomicBool>,
 }
 
 /// The runtime exists once per process: a second `init` is an error, and the
@@ -83,6 +85,9 @@ pub struct LocalModel {
     threads: NonZeroU32,
     context_tokens: NonZeroU32,
     compute: Compute,
+    /// Set when the app quits: the running job ends at the next batch or
+    /// token instead of keeping the quit waiting for a whole document.
+    stop: Arc<AtomicBool>,
 }
 
 impl LocalModel {
@@ -106,6 +111,7 @@ impl LocalModel {
             threads: config.threads,
             context_tokens: config.context_tokens,
             compute,
+            stop: config.stop,
         })
     }
 
@@ -164,7 +170,7 @@ impl LocalModel {
 
         let mut context = self.new_context(self.context_tokens, batch_tokens, threads)?;
         let mut batch = LlamaBatch::new(batch_len, 1);
-        decode_tokens(&mut context, &mut batch, &prompt, 0, batch_len)?;
+        self.decode_tokens(&mut context, &mut batch, &prompt, 0, batch_len)?;
         self.sample_reply(
             &mut context,
             &mut batch,
@@ -192,6 +198,7 @@ impl LocalModel {
 
         let mut reply = Vec::new();
         for _ in 0..max_new_tokens {
+            self.not_stopped()?;
             let token = sampler.sample(context, batch.n_tokens() - 1);
             if vocab.is_eog(token) {
                 break;
@@ -247,29 +254,40 @@ fn load_on_cpu(
         .map_err(|_refused| AiError::Model("llama.cpp could not load the model file"))
 }
 
-/// Feeds `tokens` to the context starting at `first_position`, in batches.
-/// Only the last token asks for logits, which is where sampling starts.
-fn decode_tokens(
-    context: &mut LlamaContext<'_>,
-    batch: &mut LlamaBatch<'_>,
-    tokens: &[LlamaToken],
-    first_position: usize,
-    batch_len: usize,
-) -> Result<(), AiError> {
-    let last = tokens.len().saturating_sub(1);
-    for (chunk_number, chunk) in tokens.chunks(batch_len).enumerate() {
-        batch.clear();
-        for (offset, token) in chunk.iter().enumerate() {
-            let index = chunk_number * batch_len + offset;
-            let position = i32::try_from(first_position + index)
-                .map_err(|_too_long| AiError::Model("the prompt is too long"))?;
-            batch
-                .add(*token, position, &[0], index == last)
-                .map_err(|_full| AiError::Model("the prompt is too long"))?;
+impl LocalModel {
+    fn not_stopped(&self) -> Result<(), AiError> {
+        if self.stop.load(Ordering::Relaxed) {
+            return Err(AiError::Model("the model is closed"));
         }
-        context.decode(batch).map_err(decoding_failed)?;
+        Ok(())
     }
-    Ok(())
+
+    /// Feeds `tokens` to the context starting at `first_position`, in batches.
+    /// Only the last token asks for logits, which is where sampling starts.
+    fn decode_tokens(
+        &self,
+        context: &mut LlamaContext<'_>,
+        batch: &mut LlamaBatch<'_>,
+        tokens: &[LlamaToken],
+        first_position: usize,
+        batch_len: usize,
+    ) -> Result<(), AiError> {
+        let last = tokens.len().saturating_sub(1);
+        for (chunk_number, chunk) in tokens.chunks(batch_len).enumerate() {
+            self.not_stopped()?;
+            batch.clear();
+            for (offset, token) in chunk.iter().enumerate() {
+                let index = chunk_number * batch_len + offset;
+                let position = i32::try_from(first_position + index)
+                    .map_err(|_too_long| AiError::Model("the prompt is too long"))?;
+                batch
+                    .add(*token, position, &[0], index == last)
+                    .map_err(|_full| AiError::Model("the prompt is too long"))?;
+            }
+            context.decode(batch).map_err(decoding_failed)?;
+        }
+        Ok(())
+    }
 }
 
 impl Provider for LocalModel {

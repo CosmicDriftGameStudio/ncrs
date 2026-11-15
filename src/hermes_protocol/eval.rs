@@ -14,10 +14,15 @@
 //! model read). `NCRS_PROTOCOL_AI_WAIT_SECS` limits the wait for the model;
 //! `NCRS_EVAL_RESUME=<that folder>` continues a run the wait cut short, and
 //! `NCRS_EVAL_TIDY=1` then tidies the source in the chat, with screenshots in `out`.
+//! `NCRS_EVAL_QUIT_AFTER_SECS=<n>` quits n seconds into the reading instead and
+//! prints how long the quit and the end of the app took.
 
 use std::path::Path;
+use std::time::{Duration, Instant};
 
 use ncrs_i18n::Language;
+
+use crate::messages::Message;
 
 use super::scratch::{copy_tree, count_files};
 use super::{env_path, start_protocol};
@@ -69,6 +74,34 @@ fn brother_eval_read() {
         Some(&source),
     );
     run.flow_1_greeting_while_starting();
+    if let Some(seconds) = std::env::var("NCRS_EVAL_QUIT_AFTER_SECS")
+        .ok()
+        .and_then(|text| text.parse().ok())
+    {
+        let reading_until = Instant::now() + Duration::from_secs(seconds);
+        while Instant::now() < reading_until {
+            run.pump(Duration::from_millis(200));
+        }
+        let load = std::process::Command::new("ps")
+            .args(["-Ao", "pcpu,comm", "-r"])
+            .output()
+            .map(|out| {
+                String::from_utf8_lossy(&out.stdout)
+                    .lines()
+                    .take(8)
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            })
+            .unwrap_or_default();
+        println!("load while reading:\n{load}");
+        let started = Instant::now();
+        run.deliver(Message::Quit);
+        println!("quit returned after {:?}", started.elapsed());
+        let started = Instant::now();
+        drop(run);
+        println!("the app ended after another {:?}", started.elapsed());
+        return;
+    }
     run.wait_for_indexing();
     if env_path("NCRS_EVAL_TIDY").is_some() {
         run.flow_5_tidy();

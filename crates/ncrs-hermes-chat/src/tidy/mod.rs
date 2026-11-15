@@ -564,7 +564,7 @@ pub fn trial_done(state: &mut State, ctx: &Ctx, result: Result<TrialPlan, String
             archive_run(state, ctx, source, moves);
             return;
         }
-        if !open_questions || stay_groups::only_singles_open(state) {
+        if !open_questions {
             trial_end::without_filing(state, ctx, lead);
             return;
         }

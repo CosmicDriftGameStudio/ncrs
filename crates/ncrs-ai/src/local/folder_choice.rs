@@ -7,7 +7,7 @@ use std::num::NonZeroU32;
 use llama_cpp_2::context::session::LlamaStateSeqFlags;
 use llama_cpp_2::llama_batch::LlamaBatch;
 
-use super::{chat_threads, decode_tokens, LocalModel, MAX_BATCH_TOKENS};
+use super::{chat_threads, LocalModel, MAX_BATCH_TOKENS};
 use crate::error::AiError;
 
 const SYSTEM_PROMPT: &str = "Du legst ein Dokument in ein Ablagearchiv. Wähle den Ordner, in den es gehört, nach Inhalt: Objekt/Adresse, Absender, Thema. Nimm den genauesten Ordner: einen Unterordner, wenn das Dokument zu ihm passt. Antworte nur mit der Nummer; 0, wenn keiner passt.";
@@ -19,13 +19,11 @@ const DOCUMENT_TOKENS: usize = 1500;
 
 impl LocalModel {
     /// For each document the index of the folder it belongs in, or `None`
-    /// when the model says none fits. `closed` is asked before each document:
-    /// a long list must not keep the app from quitting.
+    /// when the model says none fits.
     pub fn choose_folders(
         &self,
         folders: &[(String, Vec<String>)],
         documents: &[String],
-        closed: &dyn Fn() -> bool,
     ) -> Result<Vec<Option<usize>>, AiError> {
         if documents.is_empty() {
             return Ok(Vec::new());
@@ -64,7 +62,7 @@ impl LocalModel {
 
         let mut context = self.new_context(n_ctx, batch_tokens, chat_threads())?;
         let mut batch = LlamaBatch::new(batch_len, 1);
-        decode_tokens(&mut context, &mut batch, &prefix, 0, batch_len)?;
+        self.decode_tokens(&mut context, &mut batch, &prefix, 0, batch_len)?;
         let after_list = context
             .state_seq_get(0, LlamaStateSeqFlags::empty())
             .map_err(|_refused| AiError::Model("the model could not keep the folder list"))?;
@@ -73,9 +71,6 @@ impl LocalModel {
         let grammar = format!("root ::= {}", numbers.join(" | "));
         let mut chosen = Vec::with_capacity(documents.len());
         for document in documents {
-            if closed() {
-                return Err(AiError::Model("the model is closed"));
-            }
             // The document is the user's text: special tokens in it stay plain text.
             let mut suffix = vocab.tokenize(document.as_bytes(), false, false);
             suffix.truncate(room);
@@ -85,7 +80,7 @@ impl LocalModel {
             context
                 .state_seq_set(&after_list, 0)
                 .map_err(|_refused| AiError::Model("the model could not start a document"))?;
-            decode_tokens(&mut context, &mut batch, &suffix, prefix.len(), batch_len)?;
+            self.decode_tokens(&mut context, &mut batch, &suffix, prefix.len(), batch_len)?;
             let raw = self.sample_reply(
                 &mut context,
                 &mut batch,
@@ -217,7 +212,7 @@ mod tests {
         }
 
         let started = Instant::now();
-        let picks = local.choose_folders(&choices, &documents, &|| false).unwrap();
+        let picks = local.choose_folders(&choices, &documents).unwrap();
         let seconds = started.elapsed().as_secs_f64();
         let (mut exact, mut area, mut none, mut total) = (0, 0, 0, 0);
         for (name, chosen) in names.iter().zip(picks) {

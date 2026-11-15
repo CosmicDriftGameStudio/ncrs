@@ -5,8 +5,9 @@ use std::collections::VecDeque;
 use std::fs;
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
-use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant, SystemTime};
 
 use ncrs_priority::{set_current_thread_priority, ThreadPriority};
@@ -135,6 +136,8 @@ pub struct Shared {
     extraction_priority: Mutex<ThreadPriority>,
     context_tokens: NonZeroU32,
     idle_unload: Duration,
+    /// Handed to every loaded model, set by `close`.
+    stop: Arc<AtomicBool>,
 }
 
 fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -164,6 +167,7 @@ impl Shared {
             extraction_priority: Mutex::new(ThreadPriority::Utility),
             context_tokens,
             idle_unload,
+            stop: Arc::default(),
         }
     }
 
@@ -224,6 +228,7 @@ impl Shared {
         {
             let mut queue = locked(&self.queue);
             queue.closed = true;
+            self.stop.store(true, Ordering::Relaxed);
             while let Some(job) = queue.pop() {
                 waiting.push(job);
             }
@@ -284,6 +289,7 @@ impl Shared {
             path: self.path.clone(),
             threads: *locked(&self.threads),
             context_tokens: self.context_tokens,
+            stop: Arc::clone(&self.stop),
         };
         match LocalModel::load(config, &self.pin) {
             Ok(model) => {

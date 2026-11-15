@@ -9,7 +9,7 @@ use llama_cpp_2::context::session::{LlamaStateSeqFlags, SeqState};
 use llama_cpp_2::context::LlamaContext;
 use llama_cpp_2::llama_batch::LlamaBatch;
 
-use super::{chat_threads, decode_tokens, LocalModel, MAX_BATCH_TOKENS};
+use super::{chat_threads, LocalModel, MAX_BATCH_TOKENS};
 use crate::chat::{
     chat_grammar, chat_user_message, parse_chat_reply, ChatIntent, ChatTurn, CHAT_SYSTEM_PROMPT,
 };
@@ -52,7 +52,7 @@ impl<'model> ChatSession<'model> {
 
         let mut context = model.new_context(n_ctx, batch_tokens, chat_threads())?;
         let mut batch = LlamaBatch::new(batch_len, 1);
-        decode_tokens(&mut context, &mut batch, &prefix, 0, batch_len)?;
+        model.decode_tokens(&mut context, &mut batch, &prefix, 0, batch_len)?;
         let after_instructions = context
             .state_seq_get(0, LlamaStateSeqFlags::empty())
             .map_err(|_refused| AiError::Model("the model could not keep the instructions"))?;
@@ -86,7 +86,7 @@ impl<'model> ChatSession<'model> {
         self.context
             .state_seq_set(&self.after_instructions, 0)
             .map_err(|_refused| AiError::Model("the model could not start a new turn"))?;
-        decode_tokens(
+        self.model.decode_tokens(
             &mut self.context,
             &mut self.batch,
             &suffix,

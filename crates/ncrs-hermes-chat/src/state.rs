@@ -72,8 +72,6 @@ pub enum ChipReply {
     DecideTarget(PathBuf),
     DecideSkip,
     NewLayout(NewLayout),
-    SinglesShow,
-    SinglesLeave,
     NamesNumbered,
     NamesLeave,
     UnsureChoice {
@@ -193,8 +191,6 @@ impl ChipReply {
             | Self::DecidePerFile
             | Self::DecideSkip
             | Self::PhotosNo
-            | Self::SinglesShow
-            | Self::SinglesLeave
             | Self::NamesLeave
             | Self::UnsureChoice { .. }
             | Self::OpenSearch
@@ -451,7 +447,6 @@ pub struct GroupFlow {
     /// The rule stored last, announced with the next trial.
     pub fresh_rule: Option<String>,
     pub singles_done: bool,
-    pub singles_shown: usize,
     pub names_done: bool,
 }
 

@@ -1,8 +1,7 @@
 //! The questions about the files that stay in the trial: one per group of
-//! files from the same sender or of the same kind, then the single pieces,
-//! then the files whose name is taken. An answer to a group becomes a rule.
+//! files from the same sender or of the same kind, then the files whose name
+//! is taken. Single pieces just stay. An answer to a group becomes a rule.
 
-use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
 
 use ncrs_filing::chat_work::{
@@ -13,20 +12,10 @@ use ncrs_intake::is_windows_device_name;
 
 use crate::action::Action;
 use crate::ctx::Ctx;
-use crate::state::{Chip, ChipReply, Part, State, Step};
+use crate::state::{Chip, ChipReply, State, Step};
 use crate::texts::{fill, number, rule_problem_text, text};
-use crate::tidy::{card_of, filed_count, trial_chips, PAGE};
-use crate::update::{cancel_chip, chip, chip_labelled, hermes, say, work};
-
-/// Whether nothing is open but the single pieces, which the closing message
-/// of the trial offers to list.
-pub fn only_singles_open(state: &State) -> bool {
-    let Some(trial) = state.session.trial.as_ref() else {
-        return false;
-    };
-    let groups = &trial.plan.groups;
-    groups.asked.is_empty() && (groups.name_taken.is_empty() || state.session.groups.names_done)
-}
+use crate::tidy::{filed_count, trial_chips};
+use crate::update::{cancel_chip, chip, chip_labelled, say, work};
 
 /// Whether the trial still has something to ask about the staying files.
 pub fn has_open_questions(state: &State) -> bool {
@@ -35,9 +24,7 @@ pub fn has_open_questions(state: &State) -> bool {
     };
     let flow = &state.session.groups;
     let groups = &trial.plan.groups;
-    !groups.asked.is_empty()
-        || (!groups.rest.is_empty() && !flow.singles_done)
-        || (!groups.name_taken.is_empty() && !flow.names_done)
+    !groups.asked.is_empty() || (!groups.name_taken.is_empty() && !flow.names_done)
 }
 
 /// The name of a sender the model read together with the label printed in
@@ -123,28 +110,6 @@ pub fn ask_next(state: &mut State, ctx: &Ctx) {
     state.step = Step::Trial;
     let question = if let Some(group) = groups.asked.first() {
         group_question(ctx, group)
-    } else if !groups.rest.is_empty() && !flow.singles_done {
-        (
-            fill(
-                ctx.lang,
-                Msg::HermesChatSinglePieces,
-                &[("count", &number(groups.rest.len()))],
-            ),
-            vec![
-                chip(
-                    ctx,
-                    Msg::HermesChatLeaveThem,
-                    ChipReply::SinglesLeave,
-                    false,
-                ),
-                chip(
-                    ctx,
-                    Msg::HermesChatShowSingly,
-                    ChipReply::SinglesShow,
-                    false,
-                ),
-            ],
-        )
     } else if let (Some(first), false) = (groups.name_taken.first(), flow.names_done) {
         let suggested = first
             .suggested
@@ -337,70 +302,6 @@ pub fn leave_group(state: &mut State, ctx: &Ctx) {
     flow.answered.left.push(left.key);
     flow.answered.questions += 1;
     ask_next(state, ctx);
-}
-
-pub fn singles_leave(state: &mut State, ctx: &Ctx) {
-    state.session.groups.singles_done = true;
-    ask_next(state, ctx);
-}
-
-/// Lists the single pieces with the paging of the trial list.
-pub fn singles_show(state: &mut State, ctx: &Ctx) {
-    let Some(trial) = state.session.trial.as_ref() else {
-        return;
-    };
-    let position_of: HashMap<&PathBuf, usize> = trial
-        .plan
-        .entries
-        .iter()
-        .enumerate()
-        .map(|(position, entry)| (&entry.from, position))
-        .collect();
-    let positions: Vec<usize> = trial
-        .plan
-        .groups
-        .rest
-        .iter()
-        .filter_map(|entry| position_of.get(&entry.from).copied())
-        .collect();
-    let from = state.session.groups.singles_shown;
-    let to = positions.len().min(from + PAGE);
-    let page: Vec<usize> = positions
-        .get(from..to)
-        .map(<[usize]>::to_vec)
-        .unwrap_or_default();
-    let left = positions.len().saturating_sub(to);
-    let Some(card) = card_of(state, ctx, page, left) else {
-        return;
-    };
-    state.session.groups.singles_shown = to;
-    let mut chips = Vec::new();
-    if left > 0 {
-        chips.push(chip(
-            ctx,
-            Msg::HermesChatShowMore,
-            ChipReply::SinglesShow,
-            false,
-        ));
-    }
-    chips.push(chip(
-        ctx,
-        Msg::HermesChatLeaveThem,
-        ChipReply::SinglesLeave,
-        false,
-    ));
-    hermes(
-        state,
-        vec![
-            Part::Text(fill(
-                ctx.lang,
-                Msg::HermesChatTrialNext,
-                &[("count", &number(to - from))],
-            )),
-            Part::Trial(card),
-        ],
-        chips,
-    );
 }
 
 /// Files the files with a taken name under the free name, for this session

@@ -7,7 +7,7 @@ use llama_cpp_2::context::LlamaContext;
 use llama_cpp_2::llama_batch::LlamaBatch;
 use ncrs_index::{Kinds, RuleSpec};
 
-use super::{chat_threads, decode_tokens, LocalModel, MAX_BATCH_TOKENS};
+use super::{chat_threads, LocalModel, MAX_BATCH_TOKENS};
 use crate::error::AiError;
 use crate::rules::{
     parse_generate, parse_levels, parse_revision, prefix_text, ContextDocument, Levels, Revision,
@@ -56,7 +56,7 @@ impl<'model> RuleSession<'model> {
 
         let mut context = model.new_context(n_ctx, batch_tokens, chat_threads())?;
         let mut batch = LlamaBatch::new(batch_len, 1);
-        decode_tokens(&mut context, &mut batch, &tokens, 0, batch_len)?;
+        model.decode_tokens(&mut context, &mut batch, &tokens, 0, batch_len)?;
         Ok(Self {
             model,
             context,
@@ -122,7 +122,7 @@ impl<'model> RuleSession<'model> {
         if !cleared {
             return Err(AiError::Model("the model could not start a new turn"));
         }
-        decode_tokens(
+        self.model.decode_tokens(
             &mut self.context,
             &mut self.batch,
             &suffix,

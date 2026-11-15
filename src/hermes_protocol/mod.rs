@@ -521,7 +521,6 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
                 .or_else(|_| self.press_chip(|reply| *reply == ChipReply::FineAsIs))
                 .or_else(|_| self.press_chip(|reply| *reply == ChipReply::Later))
                 .or_else(|_| self.press_chip(|reply| *reply == ChipReply::LeaveThem))
-                .or_else(|_| self.press_chip(|reply| *reply == ChipReply::SinglesLeave))
                 .or_else(|_| self.press_chip(|reply| *reply == ChipReply::NamesLeave))
                 .or_else(|_| self.press_chip(|reply| *reply == ChipReply::PhotosNo));
             if pressed.is_err() {

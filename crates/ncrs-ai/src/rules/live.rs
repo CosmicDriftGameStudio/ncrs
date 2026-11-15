@@ -100,6 +100,7 @@ fn load_model() -> LocalModel {
             path,
             threads: NonZeroU32::new(THREADS).unwrap(),
             context_tokens: NonZeroU32::new(CONTEXT_TOKENS).unwrap(),
+            stop: Default::default(),
         },
         &LOCAL_MODEL,
     )
