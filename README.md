@@ -807,6 +807,17 @@ renames them on disk, the index follows, and undo puts everything back. A
 folder that already has a rule from the chat changes that rule instead of
 adding a second one. "New chat" starts over.
 
+**Filing a folder.** Tell the chat which read folder to file and where to; Hermes
+then plans it in the "Filing" tab: the read folder on the left, the write
+folder as a tree on the right, filled in live while the model reads (the tab
+title shows how far it is). Each file shows where it goes, with its new name
+and the old one beside it, or that it is already there, has no matching
+folder or is unreadable; files that stay get the tag "Hermes: no folder" or
+"Hermes: unreadable". `F2` renames a file, `F6` picks another folder inside the
+write folder, `F8` leaves it where it is. "Copy N" or "Move N" files them in one
+run, "Delete duplicates in the read folder" trashes the files that are already
+there, and the chat reports the run with its undo.
+
 ![Settings › Hermes](docs/screenshots/filing.png)
 
 **On/off.** One switch for all of Hermes: "Hermes" (On | Off) at the top of

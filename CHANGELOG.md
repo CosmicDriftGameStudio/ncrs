@@ -6,6 +6,26 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.5.1] — 2026-11-15
+
+### Added
+
+- A "Filing" tab: the read folder on the left, the write folder as a tree on
+  the right, planned live while the model reads. The tab title shows how far
+  it is. New names are shown with the old scan name beside them.
+- In the Filing tab, `F2` renames a file, `F6` picks another folder inside the
+  write folder and `F8` leaves it where it is. "Copy N" or "Move N" files them
+  in one run, "Delete duplicates in the read folder" trashes files that are
+  already in the write folder, and the chat reports the run with its undo.
+
+### Changed
+
+- Filing a read folder from the Hermes chat hands over to the Filing tab
+  instead of showing trial cards in the chat.
+- Files Hermes files without a naming pattern get a name from their date,
+  sender and kind, numbered when two would collide.
+- Files that stay get a tag, "Hermes: unreadable" or "Hermes: no folder".
+
 ## [1.5.0] — 2026-11-13
 
 ### Added
