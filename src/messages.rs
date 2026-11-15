@@ -324,6 +324,8 @@ pub enum Message {
     // --- The notes tab, opened from the command list or on a file ---
     Notes(ncrs_notes::Message),
     OpenNotes,
+    // --- The filing tab, a source folder planned live into the write folder ---
+    FilingView(ncrs_filing_view::Message),
     /// The note on the file under the cursor, made when there is none.
     NoteOnFile,
     // --- The check for a newer release ---
@@ -427,6 +429,7 @@ pub enum ShownTab {
     Monitor,
     Viewer,
     Notes,
+    Filing,
     Hermes,
 }
 

@@ -66,6 +66,7 @@ pub mod palette;
 pub mod panel_footer;
 pub mod permission_grid;
 pub mod picker;
+pub mod plan_rows;
 pub mod popup_menu;
 pub mod rename_row;
 pub mod row_scroll;

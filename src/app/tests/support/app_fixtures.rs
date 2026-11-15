@@ -60,6 +60,7 @@ impl App {
             monitor: ncrs_monitor::State::default(),
             viewer: ncrs_viewer::State::default(),
             notes: ncrs_notes::State::new(PathBuf::from("/home/test/Notes")),
+            filing_view: ncrs_filing_view::State::default(),
             noted: Default::default(),
             shown_tab: crate::messages::ShownTab::default(),
             hermes_chat: ncrs_hermes_chat::State::default(),

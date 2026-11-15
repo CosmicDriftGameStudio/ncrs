@@ -455,13 +455,39 @@ pub(in crate::app) fn notes_page_key(
     })
 }
 
+/// The filing tab is up: it takes its own keys; of the bindings only the ones
+/// that switch pages or quit pass.
+pub(in crate::app) fn filing_page_key(
+    prompt: &PromptKeyState,
+    key: &Key,
+    key_modifiers: Modifiers,
+    scope: KeyScope,
+) -> Option<Message> {
+    if let Some(message) = ncrs_filing_view::filing_key(key, key_modifiers, prompt.filing_renaming)
+    {
+        return Some(Message::FilingView(message));
+    }
+    bound_message(&prompt.keymap, key, key_modifiers, scope).filter(|message| {
+        *message == Message::Quit
+            || *message == KeyAction::CommandPalette.message()
+            || *message == KeyAction::SystemMonitor.message()
+            || *message == KeyAction::Settings.message()
+            || *message == KeyAction::HermesChat.message()
+            || *message == KeyAction::NextTab.message()
+            || *message == KeyAction::PreviousTab.message()
+            || *message == KeyAction::KeyBindings.message()
+    })
+}
+
 pub(in crate::app) fn viewer_or_monitor_key(
     prompt: &PromptKeyState,
     key: &Key,
     key_modifiers: Modifiers,
     scope: KeyScope,
 ) -> Option<Message> {
-    if prompt.notes {
+    if prompt.filing {
+        filing_page_key(prompt, key, key_modifiers, scope)
+    } else if prompt.notes {
         notes_page_key(prompt, key, key_modifiers, scope)
     } else if prompt.viewer {
         viewer_page_key(prompt, key, key_modifiers, scope)

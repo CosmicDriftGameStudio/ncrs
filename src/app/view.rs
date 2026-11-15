@@ -103,7 +103,9 @@ impl App {
         .height(Length::Fill);
 
         let below_title_bar =
-            if self.notes_shown() {
+            if self.filing_shown() {
+                self.filing_area()
+            } else if self.notes_shown() {
                 self.notes_area()
             } else if self.viewer_shown() {
                 self.viewer_area()

@@ -11129,6 +11129,186 @@
       "context": "Button that cancels processing the files again. Verb, imperative.",
       "en": "Cancel",
       "de": "Abbrechen"
+    },
+    {
+      "key": "filing_view.title",
+      "context": "Filing tab: title of the bar under the two lists. Noun, the work of putting the files of a read folder into the write folder.",
+      "en": "Filing",
+      "de": "Ablegen"
+    },
+    {
+      "key": "filing_view.tab_running",
+      "context": "Filing tab: title of the tab while Hermes still reads the files. {folder} is the name of the read folder, {done} the files looked at so far, {total} all files of the read folder.",
+      "en": "Filing · {folder} {done}/{total}",
+      "de": "Ablegen · {folder} {done}/{total}"
+    },
+    {
+      "key": "filing_view.tab_ready",
+      "context": "Filing tab: title of the tab when every file is looked at and the plan can be carried out. {folder} is the name of the read folder.",
+      "en": "Filing · {folder} ✓ ready",
+      "de": "Ablegen · {folder} ✓ bereit"
+    },
+    {
+      "key": "filing_view.tab_failed",
+      "context": "Filing tab: title of the tab when the plan could not be made. {folder} is the name of the read folder.",
+      "en": "Filing · {folder} ✕",
+      "de": "Ablegen · {folder} ✕"
+    },
+    {
+      "key": "filing_view.read_folder",
+      "context": "Filing tab: heading over the left list, the folder the files are taken from (read folder). {path} is its path.",
+      "en": "Read folder · {path}",
+      "de": "Lesen-Ordner · {path}"
+    },
+    {
+      "key": "filing_view.write_folder",
+      "context": "Filing tab: heading over the right tree, the folder the files go into (write folder). {path} is its path.",
+      "en": "Write folder · {path}",
+      "de": "Schreib-Ordner · {path}"
+    },
+    {
+      "key": "filing_view.column_what",
+      "context": "Filing tab: column header over what happens to each file of the read folder. Short phrase.",
+      "en": "What happens",
+      "de": "Was passiert"
+    },
+    {
+      "key": "filing_view.state_waiting",
+      "context": "Filing tab: a file of the read folder that Hermes has not looked at yet. Starts with a dot as the mark of the state.",
+      "en": "· waiting",
+      "de": "· wartet"
+    },
+    {
+      "key": "filing_view.state_looking",
+      "context": "Filing tab: a file Hermes is looking at right now. Starts with a half circle as the mark of the state.",
+      "en": "◐ reading …",
+      "de": "◐ liest …"
+    },
+    {
+      "key": "filing_view.state_filed",
+      "context": "Filing tab: where a file will be filed. {path} is the folder and the file name below the write folder. Starts with an arrow.",
+      "en": "→ {path}",
+      "de": "→ {path}"
+    },
+    {
+      "key": "filing_view.state_already",
+      "context": "Filing tab: a file whose content is already in the write folder. {at} is where, below the write folder.",
+      "en": "= already there: {at}",
+      "de": "= schon da: {at}"
+    },
+    {
+      "key": "filing_view.state_no_folder",
+      "context": "Filing tab: a file for which no folder fits; it stays in the read folder.",
+      "en": "? no matching folder · stays",
+      "de": "? kein passender Ordner · bleibt liegen"
+    },
+    {
+      "key": "filing_view.state_unreadable",
+      "context": "Filing tab: a file Hermes could not read any text from; it stays in the read folder.",
+      "en": "✕ unreadable · stays",
+      "de": "✕ nicht lesbar · bleibt liegen"
+    },
+    {
+      "key": "filing_view.by_user",
+      "context": "Filing tab: appended to the state of a file the user changed by hand. Starts with a space.",
+      "en": " (by you)",
+      "de": " (von dir)"
+    },
+    {
+      "key": "filing_view.tag_unreadable",
+      "context": "Filing tab: the tag put on a file that could not be read; also shown as a chip in its row. Keep the prefix.",
+      "en": "Hermes: unreadable",
+      "de": "Hermes: nicht lesbar"
+    },
+    {
+      "key": "filing_view.tag_no_folder",
+      "context": "Filing tab: the tag put on a file for which no folder fits; also shown as a chip in its row. Keep the prefix.",
+      "en": "Hermes: no folder",
+      "de": "Hermes: kein Ordner"
+    },
+    {
+      "key": "filing_view.only_new",
+      "context": "Filing tab: checkbox label over the write folder tree. On shows only the folders that get new files.",
+      "en": "Only folders with something new",
+      "de": "Nur Ordner mit Neuem"
+    },
+    {
+      "key": "filing_view.more_there",
+      "context": "Filing tab: line under the existing files of a folder of the write folder, grey. {count} is how many more files are there that are not listed.",
+      "en": "… {count} more already there",
+      "de": "… {count} weitere schon da"
+    },
+    {
+      "key": "filing_view.tally_read",
+      "context": "Filing tab: figure in the bar. {done} files looked at of {total} files in the read folder.",
+      "en": "{done} of {total} read",
+      "de": "{done} von {total} gelesen"
+    },
+    {
+      "key": "filing_view.tally_goes",
+      "context": "Filing tab: figure in the bar. {count} files will be filed into {folders} folders of the write folder.",
+      "en": "{count} go into {folders} folders",
+      "de": "{count} kommen in {folders} Ordner"
+    },
+    {
+      "key": "filing_view.tally_already",
+      "context": "Filing tab: figure in the bar. {count} files are already in the write folder.",
+      "en": "{count} already there",
+      "de": "{count} schon da"
+    },
+    {
+      "key": "filing_view.tally_no_folder",
+      "context": "Filing tab: figure in the bar. {count} files have no matching folder.",
+      "en": "{count} without a folder",
+      "de": "{count} ohne Ordner"
+    },
+    {
+      "key": "filing_view.tally_unreadable",
+      "context": "Filing tab: figure in the bar. {count} files could not be read.",
+      "en": "{count} unreadable",
+      "de": "{count} nicht lesbar"
+    },
+    {
+      "key": "filing_view.trash_dupes",
+      "context": "Filing tab: checkbox label in the bar. When on, the files of the read folder that are already in the write folder are moved to the trash.",
+      "en": "Delete duplicates in the read folder",
+      "de": "Doppelte im Lesen-Ordner löschen"
+    },
+    {
+      "key": "filing_view.copy",
+      "context": "Filing tab: button that copies the planned files into the write folder. {count} is how many.",
+      "en": "Copy {count}",
+      "de": "{count} kopieren"
+    },
+    {
+      "key": "filing_view.move",
+      "context": "Filing tab: button that moves the planned files into the write folder. {count} is how many.",
+      "en": "Move {count}",
+      "de": "{count} verschieben"
+    },
+    {
+      "key": "filing_view.error_outside",
+      "context": "Filing tab: error line when the user picked a folder that is not inside the write folder. {target} is the write folder.",
+      "en": "The folder is not inside the write folder {target}.",
+      "de": "Der Ordner liegt nicht im Schreib-Ordner {target}."
+    },
+    {
+      "key": "filing_view.error_not_ready",
+      "context": "Filing tab: error line when the plan cannot start because Hermes or its language model is not ready.",
+      "en": "Hermes or its language model is not ready, so the files cannot be planned.",
+      "de": "Hermes oder sein Sprachmodell ist nicht bereit, darum lassen sich die Dateien nicht planen."
+    },
+    {
+      "key": "filing_view.error_name",
+      "context": "Filing tab: error line when a new file name is empty or has a slash in it.",
+      "en": "A file name must not be empty or contain a slash.",
+      "de": "Ein Dateiname darf nicht leer sein und keinen Schrägstrich enthalten."
+    },
+    {
+      "key": "filing_view.rename_placeholder",
+      "context": "Filing tab: placeholder of the field in which the new name of a file is typed.",
+      "en": "New file name",
+      "de": "Neuer Dateiname"
     }
   ]
 }
