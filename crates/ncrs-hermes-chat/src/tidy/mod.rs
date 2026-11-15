@@ -355,9 +355,9 @@ pub fn trial_chips(ctx: &Ctx, trial: &TrialSession) -> Vec<Chip> {
 /// The read folder's name and the path of the file in it, as it lies on the
 /// disk.
 fn source_shown(plan: &TrialPlan, entry: &TrialEntry) -> String {
-    let relative = entry.from.strip_prefix(&plan.source_root).ok();
-    let root = plan.source_root.file_name();
-    let shown = match (root, relative) {
+    let inside_root = entry.from.strip_prefix(&plan.source_root).ok();
+    let root_name = plan.source_root.file_name();
+    let shown = match (root_name, inside_root) {
         (Some(root), Some(relative)) => Path::new(root).join(relative),
         _ => PathBuf::from(&entry.name),
     };

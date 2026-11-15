@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use chrono::Datelike;
+use chrono::Datelike as _;
 use ncrs_index::DocumentFields;
 use ncrs_intake::PlanFile;
 
@@ -24,7 +24,7 @@ pub struct FolderList {
     pub entries: Vec<(String, Vec<String>)>,
     /// For folders whose files lay in year folders: how often the year
     /// folder stood after how many of the folder's own segments.
-    year_places: BTreeMap<PathBuf, BTreeMap<usize, usize>>,
+    pub year_places: BTreeMap<PathBuf, BTreeMap<usize, usize>>,
 }
 
 impl FolderList {
@@ -61,10 +61,10 @@ impl FolderList {
                 ancestor.push(segment);
                 names.entry(ancestor.clone()).or_default();
             }
-            if let (false, Some(name)) =
+            if let (false, Some(raw_name)) =
                 (kept.as_os_str().is_empty(), file.relative_path.file_name())
             {
-                let name = name.to_string_lossy();
+                let name = raw_name.to_string_lossy();
                 if !name.starts_with('.') {
                     names.entry(kept).or_default().push(name.into_owned());
                 }
@@ -136,15 +136,15 @@ mod tests {
     #[test]
     fn the_year_goes_back_where_the_files_had_it() {
         let list = FolderList::of(&[
-            file("Steuer/2022/Leipzig/a.pdf"),
+            file("Steuer/2022/Musterstadt/a.pdf"),
             file("Bank/Giro/2021/b.pdf"),
             file("Bank/Giro/2020/c.pdf"),
             file("Post/d.pdf"),
         ]);
 
         assert_eq!(
-            list.with_year(PathBuf::from("Steuer/Leipzig"), &dated(2020)),
-            PathBuf::from("Steuer/2020/Leipzig")
+            list.with_year(PathBuf::from("Steuer/Musterstadt"), &dated(2020)),
+            PathBuf::from("Steuer/2020/Musterstadt")
         );
         assert_eq!(
             list.with_year(PathBuf::from("Bank/Giro"), &dated(2020)),

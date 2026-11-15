@@ -73,7 +73,10 @@ impl ChatModel for RecordingModel {
         documents: &[String],
         lane: FolderChoiceLane,
     ) -> Result<Vec<Option<usize>>, AiError> {
-        self.calls.lock().unwrap().push((documents.len(), lane));
+        self.calls
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push((documents.len(), lane));
         if self.fails {
             return Err(AiError::Model("closed"));
         }

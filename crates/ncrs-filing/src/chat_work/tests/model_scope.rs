@@ -76,8 +76,8 @@ impl ChatModel for CountingModel {
 }
 
 fn unknown_files() -> Vec<PlanFile> {
-    (0..15_u8)
-        .map(|seed| {
+    (0..15)
+        .map(|seed: u8| {
             plan_file(
                 &format!("unknown{seed:02}.pdf"),
                 100 + seed,
@@ -90,8 +90,11 @@ fn unknown_files() -> Vec<PlanFile> {
 
 /// The directory of the index has to outlive the access.
 fn access_with(model: &Arc<CountingModel>) -> (TempDir, ChatAccess) {
-    let Setup { dir, access } = Setup::new();
-    let access = access.with_model(Some(Arc::clone(model) as Arc<dyn ChatModel>));
+    let Setup {
+        dir,
+        access: plain_access,
+    } = Setup::new();
+    let access = plain_access.with_model(Some(Arc::clone(model) as Arc<dyn ChatModel>));
     (dir, access)
 }
 

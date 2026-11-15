@@ -433,8 +433,8 @@ fn quitting_does_not_wait_for_a_document_read_in_the_background() {
         "Rechnung Nr. 4711 vom 05.03.2024 über Heizungswartung, Betrag 812,50 EUR. ".repeat(80);
     let reading = Arc::clone(&lazy);
     let documents = std::thread::spawn(move || {
-        (0..20)
-            .map(|_| reading.extract(&request(&text, &open)))
+        std::iter::repeat_with(|| reading.extract(&request(&text, &open)))
+            .take(20)
             .collect::<Vec<_>>()
     });
     // The model loads and reads the first documents.
@@ -445,6 +445,10 @@ fn quitting_does_not_wait_for_a_document_read_in_the_background() {
     lazy.shutdown();
     let waited = started.elapsed();
     assert!(documents.join().unwrap().iter().any(Result::is_err));
-    println!("quit waited {waited:?}");
-    assert!(waited < Duration::from_secs(3), "quit waited {waited:?}");
+    println!("quit waited {} s", waited.as_secs_f32());
+    assert!(
+        waited < Duration::from_secs(3),
+        "quit waited {} s",
+        waited.as_secs_f32()
+    );
 }

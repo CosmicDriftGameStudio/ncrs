@@ -10,7 +10,7 @@ use crate::model::ContentHash;
 /// A cache of what the model answered, so it is not asked again. It is no
 /// numbered migration: that would raise `user_version`, and the installed
 /// older app would then refuse the index (`IndexError::SchemaTooNew`).
-pub(crate) fn create_folder_pick_table(conn: &Connection) -> Result<(), IndexError> {
+pub fn create_folder_pick_table(conn: &Connection) -> Result<(), IndexError> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS folder_pick (
              hash BLOB NOT NULL,
@@ -79,6 +79,7 @@ impl Index {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use std::path::PathBuf;
 

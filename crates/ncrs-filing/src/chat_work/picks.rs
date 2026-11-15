@@ -15,20 +15,20 @@ use super::{
 /// is an error (the model failed or was closed).
 pub fn remember_folder_picks(
     access: &ChatAccess,
-    source: &Path,
-    target: &Path,
+    source_path: &Path,
+    target_path: &Path,
     model: &dyn ChatModel,
 ) -> Result<(), String> {
     let progress = ReadProgress::default();
-    let source = read_folder(access, source, &progress).map_err(|err| format!("{err:?}"))?;
-    let target = read_folder(access, target, &progress).map_err(|err| format!("{err:?}"))?;
+    let source = read_folder(access, source_path, &progress).map_err(|err| format!("{err:?}"))?;
+    let target = read_folder(access, target_path, &progress).map_err(|err| format!("{err:?}"))?;
     remember_from_readings(access, &source, &target, model)
 }
 
 // ponytail: it goes from the end because the chat's rest pages go from the
 // start, so both never ask the same files. Each round re-runs the whole
 // trial, which is cheap against a model call.
-pub(super) fn remember_from_readings(
+pub(in crate::chat_work) fn remember_from_readings(
     access: &ChatAccess,
     source: &FolderReading,
     target: &FolderReading,

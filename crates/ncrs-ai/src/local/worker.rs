@@ -455,8 +455,8 @@ mod queue_tests {
         );
     }
 
-    fn rule_job(label: &'static str, ran: &Arc<std::sync::Mutex<Vec<&'static str>>>) -> RuleJob {
-        let ran = Arc::clone(ran);
+    fn rule_job(label: &'static str, log: &Arc<std::sync::Mutex<Vec<&'static str>>>) -> RuleJob {
+        let ran = Arc::clone(log);
         RuleJob {
             task: Box::new(move |_model| ran.lock().unwrap().push(label)),
         }

@@ -181,10 +181,10 @@ pub fn trial(
     }
 
     let mut model_left = BTreeSet::new();
-    if let Some(model) = model {
+    if let Some(chat_model) = model {
         let asked = ModelAsk {
             access,
-            model,
+            model: chat_model,
             target_root: &target.root,
             folders: &folder_list,
             kinds: &kinds,
@@ -401,7 +401,7 @@ fn offer_of(
         return kept();
     };
     let complete = extension
-        .and_then(|extension| render_complete_pattern(pattern, fields, kinds, extension))
+        .and_then(|ext| render_complete_pattern(pattern, fields, kinds, ext))
         .and_then(|path| {
             let file_name = path.file_name()?.to_string_lossy().into_owned();
             Some((path.parent()?.to_path_buf(), file_name))
@@ -444,16 +444,16 @@ fn ask_model(
     entries: &mut [TrialEntry],
     scope: &ModelScope,
 ) -> BTreeSet<PathBuf> {
-    let wanting: Vec<usize> = entries
+    let needing_model: Vec<usize> = entries
         .iter()
         .enumerate()
         .filter(|(_, entry)| needs_model(&entry.outcome))
         .map(|(position, _)| position)
         .collect();
-    if wanting.is_empty() || ask.folders.entries.is_empty() {
+    if needing_model.is_empty() || ask.folders.entries.is_empty() {
         return BTreeSet::new();
     }
-    let wanting = apply_stored_picks(ask, entries, wanting);
+    let wanting = apply_stored_picks(ask, entries, needing_model);
     let (asked, not_asked): (Vec<usize>, Vec<usize>) = match scope {
         ModelScope::All => (wanting, Vec::new()),
         ModelScope::FirstPage => {

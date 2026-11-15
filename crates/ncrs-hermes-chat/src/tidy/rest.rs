@@ -390,7 +390,7 @@ mod tests {
         assert_eq!(trial_cards(&state), 1);
         assert_eq!(state.thread.len(), 1);
         let chips = state.chips();
-        assert!(chips[0].label.contains("12"), "{}", chips[0].label);
+        assert!(chips.first().is_some_and(|chip| chip.label.contains("12")));
     }
 
     #[test]
@@ -413,7 +413,10 @@ mod tests {
         assert!(working_lines(&state).is_empty());
         assert!(!state.looks_at_files());
         assert_eq!(trial_cards(&state), 1);
-        assert!(state.chips()[0].label.contains("10"));
+        assert!(state
+            .chips()
+            .first()
+            .is_some_and(|chip| chip.label.contains("10")));
     }
 
     #[test]

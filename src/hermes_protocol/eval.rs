@@ -96,10 +96,13 @@ fn brother_eval_read() {
         println!("load while reading:\n{load}");
         let started = Instant::now();
         run.deliver(Message::Quit);
-        println!("quit returned after {:?}", started.elapsed());
-        let started = Instant::now();
+        println!("quit returned after {} s", started.elapsed().as_secs_f32());
+        let drop_started = Instant::now();
         drop(run);
-        println!("the app ended after another {:?}", started.elapsed());
+        println!(
+            "the app ended after another {} s",
+            drop_started.elapsed().as_secs_f32()
+        );
         return;
     }
     run.wait_for_indexing();

@@ -268,7 +268,9 @@ mod tests {
         ];
         let documents = vec!["Absender: Bank\nArt: Kontoauszug\n\nSaldo ".repeat(100); 200];
         let asking = Arc::clone(&lazy);
-        let choosing = std::thread::spawn(move || asking.choose_folders(&folders, &documents));
+        let choosing = std::thread::spawn(move || {
+            asking.choose_folders(&folders, &documents, crate::FolderChoiceLane::Waiting)
+        });
         // The model loads and works through the first documents.
         std::thread::sleep(Duration::from_secs(20));
         assert!(!choosing.is_finished(), "200 documents take minutes");
@@ -276,8 +278,12 @@ mod tests {
         let started = Instant::now();
         lazy.shutdown();
         let waited = started.elapsed();
-        assert!(choosing.join().unwrap().is_err());
-        println!("quit waited {waited:?}");
-        assert!(waited < Duration::from_secs(10), "quit waited {waited:?}");
+        assert!(matches!(choosing.join(), Ok(Err(_))));
+        println!("quit waited {} s", waited.as_secs_f32());
+        assert!(
+            waited < Duration::from_secs(10),
+            "quit waited {} s",
+            waited.as_secs_f32()
+        );
     }
 }
