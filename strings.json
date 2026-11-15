@@ -7099,6 +7099,12 @@
       "de": "Ich probiere es mit 10 Dateien aus …"
     },
     {
+      "key": "hermes_chat.working_trial_progress",
+      "context": "Hermes chat (F2): Temporary line while the model looks at the files of the trial run, replaced as it goes. {done} is the number of files it is through, {total} the number of files of the run.",
+      "en": "Looking at the files: {done} of {total}",
+      "de": "Ich sehe mir die Dateien an: {done} von {total}"
+    },
+    {
       "key": "hermes_chat.working_filing",
       "context": "Hermes chat (F2): Temporary line while Hermes moves or copies files into the target folder.",
       "en": "Sorting …",
@@ -7673,24 +7679,6 @@
       "context": "Hermes chat (F2): Hermes introduces the next page of the trial run. {count} is the number of files on it.",
       "en": "The next {count}:",
       "de": "Die nächsten {count}:"
-    },
-    {
-      "key": "hermes_chat.trial_rest_done",
-      "context": "Hermes chat (F2): shown when the model has finished the files beyond the first ten of the trial run in the background. {count} is how many files can now be filed.",
-      "en": "I've now looked through all files: {count} can be filed.",
-      "de": "Ich habe jetzt alle Dateien durchgesehen: {count} kann ich ablegen."
-    },
-    {
-      "key": "hermes_chat.trial_rest_running",
-      "context": "Hermes chat (F2): last line of the trial message while the model still looks at the files beyond the first ten in the background. {count} is how many files it has yet to look at; the number on the filing button rises meanwhile.",
-      "en": "I'm still looking at the other {count} files; the number on the button rises as I go.",
-      "de": "Die übrigen {count} Dateien sehe ich mir noch an, die Zahl auf dem Knopf steigt mit."
-    },
-    {
-      "key": "hermes_chat.trial_file_all_after_rest",
-      "context": "Hermes chat (F2): Hermes answers the user's request to file everything while the model still looks at the files beyond the first ten in the background; it files all together when it is done. {count} is how many files it has yet to look at.",
-      "en": "Will do. I'm still looking at the other {count} files, then I'll file them all together.",
-      "de": "Mach ich. Die übrigen {count} Dateien sehe ich mir noch an, dann lege ich alle zusammen ab."
     },
     {
       "key": "hermes_chat.trial_end",

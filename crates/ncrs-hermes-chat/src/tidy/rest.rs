@@ -1,6 +1,6 @@
-//! The files beyond the first page of the trial: the model looks at them in
-//! the background, page by page, so the count rises while it runs; their
-//! outcomes are mixed into the open trial.
+//! The files beyond the first page of the trial: the model looks at them page
+//! by page while the chat shows how far it is; their outcomes are mixed into
+//! the open trial, which is posted once when the last page is in.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -9,11 +9,10 @@ use ncrs_filing::chat_work::{ChatWork, ModelScope, TrialOutcome, TrialPlan, MODE
 use ncrs_i18n::Msg;
 
 use crate::ctx::Ctx;
-use crate::state::{Entry, Part, State, Step};
-use crate::stay_groups;
+use crate::state::{Entry, State, Step};
 use crate::texts::{fill, number};
-use crate::tidy::{self, filed_count, trial_chips};
-use crate::update::{clear_chips, hermes};
+use crate::tidy;
+use crate::update::drop_working;
 
 /// Queues the look at the next page of the files the first run left for the
 /// model.
@@ -52,75 +51,63 @@ pub fn start(state: &mut State) {
     state.fresh_trial_rest = true;
 }
 
-pub fn running_line(ctx: &Ctx, waiting: usize) -> String {
+/// The line shown while the model looks at the files: how many it is through.
+pub fn progress_line(ctx: &Ctx, plan: &TrialPlan) -> String {
+    let total = plan.entries.len();
+    let done = total.saturating_sub(plan.model_left.len());
     fill(
         ctx.lang,
-        Msg::HermesChatTrialRestRunning,
-        &[("count", &number(waiting))],
+        Msg::HermesChatWorkingTrialProgress,
+        &[("done", &number(done)), ("total", &number(total))],
     )
 }
 
-/// Swaps the progress line in the trial message for `next`, or takes it out.
-fn replace_running_line(state: &mut State, next: Option<String>) {
-    let Some(previous) = state.trial_rest_line.take() else {
-        return;
-    };
-    for entry in state.thread.iter_mut().rev() {
-        let Entry::Hermes { parts, .. } = entry else {
-            continue;
-        };
-        let Some(at) = parts
-            .iter()
-            .position(|part| matches!(part, Part::Text(text) if *text == previous))
-        else {
-            continue;
-        };
-        match &next {
-            Some(line) => {
-                if let Some(part) = parts.get_mut(at) {
-                    *part = Part::Text(line.clone());
-                }
-            }
-            None => {
-                parts.remove(at);
-            }
-        }
-        break;
-    }
-    state.trial_rest_line = next;
+/// Takes the progress line out and posts the trial with what is decided.
+fn finish(state: &mut State, ctx: &Ctx) {
+    state.trial_rest_page.clear();
+    drop_working(state);
+    tidy::post_trial(state, ctx);
 }
 
-/// Files everything now that the last page is in, when the user asked for
-/// it meanwhile. True when it did.
-fn file_all_if_asked(state: &mut State, ctx: &Ctx) -> bool {
-    if !std::mem::take(&mut state.file_all_after_rest) {
-        return false;
+/// Swaps the progress line for one with the new count.
+fn show_progress(state: &mut State, line: String) {
+    if let Some(Entry::Working(shown)) = state
+        .thread
+        .iter_mut()
+        .rev()
+        .find(|entry| matches!(entry, Entry::Working(_)))
+    {
+        *shown = line;
     }
-    tidy::file_all(state, ctx);
-    true
 }
 
 pub fn done(state: &mut State, ctx: &Ctx, run: u64, result: Result<TrialPlan, String>) {
     if run != state.trial_rest_run {
         return;
     }
-    let Ok(rest) = result else {
-        if let Some(trial) = state.session.trial.as_mut() {
-            trial.plan.model_left.clear();
+    let trial_is_open = state.step == Step::Trial && state.session.trial.is_some();
+    let rest = match result {
+        Ok(rest) if trial_is_open => rest,
+        Err(_) if trial_is_open => {
+            if let Some(trial) = state.session.trial.as_mut() {
+                trial.plan.model_left.clear();
+            }
+            finish(state, ctx);
+            return;
         }
-        state.trial_rest_page.clear();
-        replace_running_line(state, None);
-        file_all_if_asked(state, ctx);
-        return;
+        _ => {
+            state.trial_rest_page.clear();
+            drop_working(state);
+            return;
+        }
     };
-    if state.step != Step::Trial {
-        return;
-    }
     let Some(trial) = state.session.trial.as_mut() else {
         return;
     };
     let plan = &mut trial.plan;
     if plan.source_root != rest.source_root || plan.model_left.is_empty() {
+        state.trial_rest_page.clear();
+        drop_working(state);
         return;
     }
     let decided: BTreeMap<&Path, &TrialOutcome> = rest
@@ -148,40 +135,13 @@ pub fn done(state: &mut State, ctx: &Ctx, run: u64, result: Result<TrialPlan, St
     plan.unsure = count(|outcome| matches!(outcome, TrialOutcome::Unsure { .. }));
     plan.already_there = count(|outcome| matches!(outcome, TrialOutcome::AlreadyThere { .. }));
     plan.stays = count(|outcome| matches!(outcome, TrialOutcome::Stays(_)));
-    let more_pages = !plan.model_left.is_empty();
-    let waiting = plan.model_left.len();
-    if more_pages {
-        start(state);
-        replace_running_line(state, Some(running_line(ctx, waiting)));
-    } else {
-        replace_running_line(state, None);
-        if file_all_if_asked(state, ctx) {
-            return;
-        }
-    }
-    if stay_groups::has_open_questions(state) {
+    if plan.model_left.is_empty() {
+        finish(state, ctx);
         return;
     }
-    let Some(open) = state.session.trial.as_ref() else {
-        return;
-    };
-    let chips = trial_chips(ctx, open);
-    if more_pages {
-        // The last entry is the answer to "file all", which has only cancel.
-        if let (false, Some(Entry::Hermes { chips: shown, .. })) =
-            (state.file_all_after_rest, state.thread.last_mut())
-        {
-            *shown = chips;
-        }
-        return;
-    }
-    let line = fill(
-        ctx.lang,
-        Msg::HermesChatTrialRestDone,
-        &[("count", &number(filed_count(open)))],
-    );
-    clear_chips(state);
-    hermes(state, vec![Part::Text(line)], chips);
+    let line = progress_line(ctx, plan);
+    start(state);
+    show_progress(state, line);
 }
 
 #[cfg(test)]
@@ -191,13 +151,13 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Arc;
 
-    use ncrs_filing::chat_work::{FolderReading, RunItem, StayGroups, StayReason, TrialEntry};
+    use ncrs_filing::chat_work::{FolderReading, StayGroups, StayReason, TrialEntry};
     use ncrs_i18n::Language;
     use ncrs_index::{ContentHash, DocumentFields};
 
     use super::*;
     use crate::ctx::Availability;
-    use crate::state::{ChipReply, Tidy, TrialSession};
+    use crate::state::{Part, Tidy, TrialSession};
 
     fn entry(name: &str, outcome: TrialOutcome) -> TrialEntry {
         TrialEntry {
@@ -241,43 +201,6 @@ mod tests {
             ocr_models_present: true,
             model: None,
         }
-    }
-
-    #[test]
-    fn the_rest_is_mixed_into_the_open_trial_and_the_count_on_the_chip_rises() {
-        let stays = || TrialOutcome::Stays(StayReason::NoNeighbours);
-        let unsure = TrialOutcome::Unsure {
-            choices: vec![PathBuf::from("Alfa")],
-            file_names: vec!["b.pdf".to_owned()],
-            kind_label: None,
-        };
-        let waiting = entry("b.pdf", stays());
-        let open = plan_of(
-            vec![entry("a.pdf", stays()), waiting.clone()],
-            BTreeSet::from([waiting.from.clone()]),
-        );
-        let rest = plan_of(vec![entry("b.pdf", unsure)], BTreeSet::new());
-        let mut state = State {
-            step: Step::Trial,
-            ..State::default()
-        };
-        state.session.trial = Some(TrialSession {
-            plan: open,
-            resolved: BTreeMap::new(),
-            shown: 2,
-        });
-        state.trial_rest_page = BTreeSet::from([waiting.from]);
-        assert_eq!(filed_count(state.session.trial.as_ref().unwrap()), 0);
-
-        done(&mut state, &ctx(), 0, Ok(rest));
-
-        let trial = state.session.trial.as_ref().unwrap();
-        assert_eq!(filed_count(trial), 1);
-        assert_eq!((trial.plan.unsure, trial.plan.stays), (1, 1));
-        assert!(trial.plan.model_left.is_empty());
-        assert!(
-            matches!(state.thread.last(), Some(Entry::Hermes { chips, .. }) if !chips.is_empty())
-        );
     }
 
     #[test]
@@ -326,10 +249,13 @@ mod tests {
     }
 
     fn state_with_twelve_waiting() -> State {
-        let names: Vec<String> = (0..12).map(|number| format!("f{number:02}.pdf")).collect();
-        let entries: Vec<TrialEntry> = names
-            .iter()
-            .map(|name| entry(name, TrialOutcome::Stays(StayReason::NoNeighbours)))
+        let entries: Vec<TrialEntry> = (0..12)
+            .map(|number| {
+                entry(
+                    &format!("f{number:02}.pdf"),
+                    TrialOutcome::Stays(StayReason::NoNeighbours),
+                )
+            })
             .collect();
         let waiting = entries.iter().map(|entry| entry.from.clone()).collect();
         let mut state = State {
@@ -345,7 +271,7 @@ mod tests {
             rule_now: None,
             source: PathBuf::from("/inbox"),
             target: Some(PathBuf::from("/archive")),
-            transfer: None,
+            transfer: Some(ncrs_index::Transfer::Move),
             inside: Vec::new(),
         });
         state
@@ -356,14 +282,37 @@ mod tests {
             .session
             .readings
             .insert(PathBuf::from("/archive"), reading("/archive"));
-        let first = trial_chips(&ctx(), state.session.trial.as_ref().unwrap());
-        let line = running_line(&ctx(), 12);
-        state.trial_rest_line = Some(line.clone());
-        state.thread.push(Entry::Hermes {
-            parts: vec![Part::Text(line)],
-            chips: first,
-        });
-        start(&mut state);
+        state
+    }
+
+    /// The trial as the first run returns it: `waiting` of the twelve files
+    /// still wait for the model.
+    fn first_trial(waiting: usize) -> TrialPlan {
+        let entries: Vec<TrialEntry> = (0..12)
+            .map(|number| {
+                let outcome = if number < 12 - waiting {
+                    filed_outcome()
+                } else {
+                    TrialOutcome::Stays(StayReason::NoNeighbours)
+                };
+                entry(&format!("f{number:02}.pdf"), outcome)
+            })
+            .collect();
+        let left = entries
+            .iter()
+            .skip(12 - waiting)
+            .map(|entry| entry.from.clone())
+            .collect();
+        let mut plan = plan_of(entries, left);
+        plan.filed = 12 - waiting;
+        plan.stays = waiting;
+        plan
+    }
+
+    fn state_after_first_trial(waiting: usize) -> State {
+        let mut state = state_with_twelve_waiting();
+        state.session.trial = None;
+        tidy::trial_done(&mut state, &ctx(), Ok(first_trial(waiting)));
         state
     }
 
@@ -371,36 +320,6 @@ mod tests {
         TrialOutcome::Filed {
             to: PathBuf::from("Alfa"),
         }
-    }
-
-    #[test]
-    fn a_page_raises_the_count_in_place_and_the_next_page_is_queued() {
-        let mut state = state_with_twelve_waiting();
-        assert_eq!(state.trial_rest_page.len(), MODEL_FIRST_PAGE);
-        let page_entries = state
-            .trial_rest_page
-            .iter()
-            .map(|from| {
-                let name = from.file_name().unwrap().to_string_lossy().into_owned();
-                entry(&name, filed_outcome())
-            })
-            .collect();
-        let rest = plan_of(page_entries, BTreeSet::new());
-        let before = state.chips()[0].label.clone();
-        let thread_len = state.thread.len();
-
-        let run = state.trial_rest_run;
-        done(&mut state, &ctx(), run, Ok(rest));
-
-        assert_eq!(state.thread.len(), thread_len);
-        assert_ne!(state.chips()[0].label, before);
-        assert!(state.chips()[0]
-            .label
-            .contains(&MODEL_FIRST_PAGE.to_string()));
-        let trial = state.session.trial.as_ref().unwrap();
-        assert_eq!(trial.plan.model_left.len(), 2);
-        assert!(state.trial_rest.is_some());
-        assert_eq!(state.trial_rest_page.len(), 2);
     }
 
     fn finish_page(state: &mut State) {
@@ -421,48 +340,85 @@ mod tests {
         );
     }
 
-    fn texts_of_first_entry(state: &State) -> Vec<String> {
-        let Some(Entry::Hermes { parts, .. }) = state.thread.first() else {
-            panic!("no Hermes entry");
-        };
-        parts
+    fn working_lines(state: &State) -> Vec<&str> {
+        state
+            .thread
             .iter()
-            .filter_map(|part| match part {
-                Part::Text(text) => Some(text.clone()),
+            .filter_map(|entry| match entry {
+                Entry::Working(line) => Some(line.as_str()),
                 _ => None,
             })
             .collect()
     }
 
-    #[test]
-    fn the_progress_line_counts_down_in_the_same_entry_and_is_gone_after_the_last_page() {
-        let mut state = state_with_twelve_waiting();
-        assert_eq!(texts_of_first_entry(&state), [running_line(&ctx(), 12)]);
-
-        finish_page(&mut state);
-        assert_eq!(state.thread.len(), 1);
-        assert_eq!(texts_of_first_entry(&state), [running_line(&ctx(), 2)]);
-        assert_eq!(state.trial_rest_line, Some(running_line(&ctx(), 2)));
-
-        finish_page(&mut state);
-        assert!(texts_of_first_entry(&state).is_empty());
-        assert_eq!(state.trial_rest_line, None);
+    fn trial_cards(state: &State) -> usize {
+        state
+            .thread
+            .iter()
+            .filter(|entry| match entry {
+                Entry::Hermes { parts, .. } => {
+                    parts.iter().any(|part| matches!(part, Part::Trial(_)))
+                }
+                _ => false,
+            })
+            .count()
     }
 
     #[test]
-    fn a_failed_page_takes_the_progress_line_away() {
-        let mut state = state_with_twelve_waiting();
+    fn while_the_model_looks_only_a_progress_line_is_shown() {
+        let state = state_after_first_trial(12);
+
+        assert_eq!(working_lines(&state), ["Looking at the files: 0 of 12"]);
+        assert_eq!(state.thread.len(), 1);
+        assert_eq!(trial_cards(&state), 0);
+        assert!(state.looks_at_files());
+        assert_eq!(state.trial_rest_page.len(), MODEL_FIRST_PAGE);
+    }
+
+    #[test]
+    fn a_page_moves_the_count_and_the_last_page_posts_the_trial_once() {
+        let mut state = state_after_first_trial(12);
+
+        finish_page(&mut state);
+        assert_eq!(working_lines(&state), ["Looking at the files: 10 of 12"]);
+        assert_eq!(state.thread.len(), 1);
+        assert_eq!(trial_cards(&state), 0);
+
+        finish_page(&mut state);
+        assert!(working_lines(&state).is_empty());
+        assert!(!state.looks_at_files());
+        assert_eq!(trial_cards(&state), 1);
+        assert_eq!(state.thread.len(), 1);
+        let chips = state.chips();
+        assert!(chips[0].label.contains("12"), "{}", chips[0].label);
+    }
+
+    #[test]
+    fn picks_that_cover_everything_post_the_trial_at_once() {
+        let state = state_after_first_trial(0);
+
+        assert!(working_lines(&state).is_empty());
+        assert_eq!(trial_cards(&state), 1);
+        assert!(!state.looks_at_files());
+    }
+
+    #[test]
+    fn a_failed_page_posts_the_trial_with_what_is_decided() {
+        let mut state = state_after_first_trial(12);
+        finish_page(&mut state);
         let run = state.trial_rest_run;
 
         done(&mut state, &ctx(), run, Err("model".to_owned()));
 
-        assert!(texts_of_first_entry(&state).is_empty());
-        assert_eq!(state.trial_rest_line, None);
+        assert!(working_lines(&state).is_empty());
+        assert!(!state.looks_at_files());
+        assert_eq!(trial_cards(&state), 1);
+        assert!(state.chips()[0].label.contains("10"));
     }
 
     #[test]
     fn a_page_of_an_earlier_run_changes_nothing() {
-        let mut state = state_with_twelve_waiting();
+        let mut state = state_after_first_trial(12);
         let stale_run = state.trial_rest_run - 1;
         let page = state.trial_rest_page.clone();
 
@@ -471,129 +427,14 @@ mod tests {
             &ctx(),
             stale_run,
             Ok(plan_of(
-                vec![entry("f00.pdf", filed_outcome())],
+                vec![entry("f10.pdf", filed_outcome())],
                 BTreeSet::new(),
             )),
         );
 
         let trial = state.session.trial.as_ref().unwrap();
         assert_eq!(trial.plan.model_left.len(), 12);
-        assert_eq!(trial.plan.filed, 0);
         assert_eq!(state.trial_rest_page, page);
-        assert_eq!(state.thread.len(), 1);
-    }
-
-    fn with_move(mut state: State) -> State {
-        if let Some(tidy) = state.session.tidy.as_mut() {
-            tidy.transfer = Some(ncrs_index::Transfer::Move);
-        }
-        state
-    }
-
-    fn unsure_outcome(name: &str) -> TrialOutcome {
-        TrialOutcome::Unsure {
-            choices: vec![PathBuf::from("Modelfolder")],
-            file_names: vec![name.to_owned()],
-            kind_label: None,
-        }
-    }
-
-    fn filed_items(state: &State) -> Option<Vec<RunItem>> {
-        match state.pending_work() {
-            Some(ChatWork::File { run }) => Some(run.items.clone()),
-            _ => None,
-        }
-    }
-
-    fn finish_page_with(state: &mut State, outcome: fn(&str) -> TrialOutcome) {
-        let page_entries = state
-            .trial_rest_page
-            .iter()
-            .map(|from| {
-                let name = from.file_name().unwrap().to_string_lossy().into_owned();
-                entry(&name, outcome(&name))
-            })
-            .collect();
-        let run = state.trial_rest_run;
-        done(
-            state,
-            &ctx(),
-            run,
-            Ok(plan_of(page_entries, BTreeSet::new())),
-        );
-    }
-
-    #[test]
-    fn file_all_during_the_rest_waits_for_the_last_page_and_files_everything() {
-        let mut state = with_move(state_with_twelve_waiting());
-        finish_page_with(&mut state, |_| filed_outcome());
-
-        tidy::file_all(&mut state, &ctx());
-
-        assert!(state.file_all_after_rest);
-        assert_eq!(state.chips().len(), 1);
-        assert_eq!(state.chips()[0].reply, ChipReply::Cancel);
-        assert!(filed_items(&state).is_none());
-        let waiting = fill(
-            Language::English,
-            Msg::HermesChatTrialFileAllAfterRest,
-            &[("count", "2")],
-        );
-        assert!(
-            matches!(state.thread.last(), Some(Entry::Hermes { parts, .. })
-            if matches!(parts.as_slice(), [Part::Text(text)] if *text == waiting))
-        );
-
-        finish_page_with(&mut state, unsure_outcome);
-
-        assert!(!state.file_all_after_rest);
-        let items = filed_items(&state).unwrap();
-        assert_eq!(items.len(), 12);
-        assert!(items
-            .iter()
-            .any(|item| item.to.starts_with("Modelfolder") && item.from.ends_with("f11.pdf")));
-        let done_text = fill(
-            Language::English,
-            Msg::HermesChatTrialRestDone,
-            &[("count", "12")],
-        );
-        let said_done = state.thread.iter().any(|entry| {
-            matches!(entry, Entry::Hermes { parts, .. }
-                if parts.iter().any(|part| matches!(part, Part::Text(text) if *text == done_text)))
-        });
-        assert!(!said_done);
-    }
-
-    #[test]
-    fn a_failed_page_files_what_is_decided_when_file_all_was_asked() {
-        let mut state = with_move(state_with_twelve_waiting());
-        finish_page_with(&mut state, |_| filed_outcome());
-        tidy::file_all(&mut state, &ctx());
-        let run = state.trial_rest_run;
-
-        done(&mut state, &ctx(), run, Err("model".to_owned()));
-
-        assert!(!state.file_all_after_rest);
-        assert_eq!(filed_items(&state).unwrap().len(), 10);
-    }
-
-    #[test]
-    fn file_all_without_a_running_rest_files_at_once() {
-        let mut state = with_move(state_with_twelve_waiting());
-        finish_page_with(&mut state, |_| filed_outcome());
-        finish_page_with(&mut state, |_| filed_outcome());
-        assert!(state
-            .session
-            .trial
-            .as_ref()
-            .unwrap()
-            .plan
-            .model_left
-            .is_empty());
-
-        tidy::file_all(&mut state, &ctx());
-
-        assert!(!state.file_all_after_rest);
-        assert_eq!(filed_items(&state).unwrap().len(), 12);
+        assert_eq!(working_lines(&state).len(), 1);
     }
 }

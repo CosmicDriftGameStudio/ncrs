@@ -241,6 +241,7 @@ fn words_are_taken_as_text(step: Step) -> bool {
 /// typing and buttons wait for it.
 fn is_busy(state: &State) -> bool {
     state.waits_for_hermes()
+        || state.looks_at_files()
         || state.pending.is_some()
         || state.thinking.is_some()
         || state.rule_ask.is_some()
@@ -943,10 +944,11 @@ fn reset_flow(state: &mut State) {
     state.session.rule_queue = None;
     state.session.retry = None;
     state.session.trial = None;
+    if state.looks_at_files() {
+        drop_working(state);
+    }
     state.trial_rest = None;
     state.trial_rest_page.clear();
-    state.trial_rest_line = None;
-    state.file_all_after_rest = false;
     state.session.groups = GroupFlow::default();
     state.session.offer = None;
     state.session.resume_tidy = false;

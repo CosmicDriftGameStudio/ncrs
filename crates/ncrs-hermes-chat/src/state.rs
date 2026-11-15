@@ -586,20 +586,15 @@ pub struct State {
     pub unresolved_sentence: Option<(String, Asked)>,
     /// The check set during this `update` that no task runs yet.
     pub fresh_resolve: bool,
-    /// The rest of the trial the model looks at in the background; it does
-    /// not hold the chat back.
+    /// The rest of the trial the model looks at page by page; the chat shows
+    /// a progress line meanwhile and posts the trial when it is done.
     pub trial_rest: Option<ChatWork>,
     /// The files of the page the model has in flight.
     pub trial_rest_page: BTreeSet<PathBuf>,
-    /// The progress line shown in the trial message while the rest runs.
-    pub trial_rest_line: Option<String>,
     /// Bumped by each start of the rest, so a page of an earlier trial run is told apart.
     pub trial_rest_run: u64,
     /// The rest set during this `update` that no task runs yet.
     pub fresh_trial_rest: bool,
-    /// The user asked to file everything while the rest still runs: it is
-    /// filed when the last page is in.
-    pub file_all_after_rest: bool,
     /// A background job is making the model's folder picks of the read folders.
     pub picks_running: bool,
     /// The pipeline sequence the last job was started for.
@@ -641,10 +636,8 @@ impl Default for State {
             fresh_resolve: false,
             trial_rest: None,
             trial_rest_page: BTreeSet::new(),
-            trial_rest_line: None,
             trial_rest_run: 0,
             fresh_trial_rest: false,
-            file_all_after_rest: false,
             picks_running: false,
             picks_settled_at: None,
             picks_job: None,
@@ -663,6 +656,12 @@ impl Default for State {
 impl State {
     pub fn thread(&self) -> &[Entry] {
         &self.thread
+    }
+
+    /// The model looks at the files of the trial page by page; the chat shows
+    /// a progress line and nothing else until it is done.
+    pub fn looks_at_files(&self) -> bool {
+        !self.trial_rest_page.is_empty()
     }
 
     /// Something the user asked waits for the filing module to start.

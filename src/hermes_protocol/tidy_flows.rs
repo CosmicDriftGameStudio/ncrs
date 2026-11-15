@@ -72,7 +72,8 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
             if pressed.is_err() {
                 break;
             }
-            let (_, _, again) = self.wait_idle(READ_LIMIT, None);
+            let (_, _, again) =
+                self.wait_idle(READ_LIMIT, Some(("tidy-rest-running", rest_still_running)));
             limit = again;
             if limit.is_err() {
                 break;
@@ -226,4 +227,18 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
             );
         }
     }
+}
+
+/// The model is still looking at the files: the progress line is the last
+/// entry.
+fn rest_still_running(app: &App) -> bool {
+    let shown = last_text(app);
+    [ncrs_i18n::Language::German, ncrs_i18n::Language::English]
+        .into_iter()
+        .any(|language| {
+            let line = language.text(Msg::HermesChatWorkingTrialProgress);
+            line.split("{done}")
+                .next()
+                .is_some_and(|before_done| shown.contains(before_done))
+        })
 }

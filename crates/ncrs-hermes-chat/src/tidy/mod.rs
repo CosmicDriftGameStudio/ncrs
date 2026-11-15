@@ -28,7 +28,7 @@ mod filed;
 mod rest;
 
 pub use filed::{archive_run, filed_done, trash_offer, trashed_done};
-pub use rest::done as trial_rest_done;
+pub use rest::{done as trial_rest_done, progress_line as trial_progress_line};
 
 pub const PAGE: usize = 10;
 
@@ -541,6 +541,19 @@ pub fn trial_done(state: &mut State, ctx: &Ctx, result: Result<TrialPlan, String
     }
     state.step = Step::Trial;
     rest::start(state);
+    if state.looks_at_files() {
+        if let Some(open) = state.session.trial.as_ref() {
+            let line = rest::progress_line(ctx, &open.plan);
+            state.thread.push(Entry::Working(line));
+        }
+        return;
+    }
+    post_trial(state, ctx);
+}
+
+/// Posts the trial once the model has looked at every file: the card of the
+/// first page, then the questions about staying groups or the chips.
+pub fn post_trial(state: &mut State, ctx: &Ctx) {
     let lead: Vec<Part> = state
         .session
         .groups
@@ -552,6 +565,7 @@ pub fn trial_done(state: &mut State, ctx: &Ctx, result: Result<TrialPlan, String
     let Some(trial) = state.session.trial.as_ref() else {
         return;
     };
+    let (total, shown) = (trial.plan.entries.len(), trial.shown);
     let open_questions = stay_groups::has_open_questions(state);
     if filed_count(trial) == 0 && trial.plan.unsure == 0 {
         if let Some(tidy) = state
@@ -593,12 +607,6 @@ pub fn trial_done(state: &mut State, ctx: &Ctx, result: Result<TrialPlan, String
         &[("count", &number(shown))],
     )));
     parts.push(Part::Trial(card));
-    let waiting = trial.plan.model_left.len();
-    if waiting > 0 {
-        let line = rest::running_line(ctx, waiting);
-        state.trial_rest_line = Some(line.clone());
-        parts.push(Part::Text(line));
-    }
     hermes(state, parts, chips);
     if open_questions {
         stay_groups::ask_next(state, ctx);
@@ -717,26 +725,6 @@ fn chosen_name<'a>(entry: &'a TrialEntry, folder: &Path) -> &'a str {
 }
 
 pub fn file_all(state: &mut State, ctx: &Ctx) {
-    let still_looking = state
-        .session
-        .trial
-        .as_ref()
-        .map(|trial| trial.plan.model_left.len())
-        .filter(|left| *left > 0 && state.trial_rest_line.is_some());
-    if let Some(count) = still_looking {
-        state.file_all_after_rest = true;
-        crate::update::clear_chips(state);
-        say(
-            state,
-            fill(
-                ctx.lang,
-                Msg::HermesChatTrialFileAllAfterRest,
-                &[("count", &number(count))],
-            ),
-            vec![cancel_chip(ctx)],
-        );
-        return;
-    }
     let (Some(trial), Some(tidy)) = (state.session.trial.as_mut(), state.session.tidy.as_ref())
     else {
         return;
