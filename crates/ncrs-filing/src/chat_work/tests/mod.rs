@@ -22,6 +22,7 @@ use super::*;
 
 mod diagnosis;
 mod eval;
+mod model_scope;
 mod recent_runs;
 
 struct Setup {
@@ -411,6 +412,7 @@ fn trial_of(setup: &Setup, source: FolderReading, answered: AnsweredGroups) -> T
         target: Arc::new(target_reading()),
         answered,
         layout: None,
+        scope: crate::chat_work::ModelScope::FirstPage,
     }) {
         ChatResult::Trial(plan) => plan.unwrap(),
         other => panic!("{other:?}"),
@@ -434,6 +436,7 @@ fn staying(name: &str, sender: Option<&str>, kind: Option<&str>) -> TrialEntry {
         from: PathBuf::from("/inbox").join(name),
         name: name.to_owned(),
         hash: ContentHash([7; 32]),
+        kind_word: kind.map(str::to_owned),
         fields: DocumentFields {
             sender: sender.map(str::to_owned),
             kind: kind.map(str::to_owned),
@@ -456,6 +459,7 @@ fn plan_of(entries: Vec<TrialEntry>) -> TrialPlan {
         already_there: 0,
         taken: std::collections::BTreeSet::new(),
         groups: StayGroups::default(),
+        model_left: std::collections::BTreeSet::new(),
     }
 }
 
@@ -993,6 +997,7 @@ fn unsure_in_two_areas(file: PlanFile) -> (Vec<PathBuf>, Vec<String>) {
         target: Arc::new(alfa_in_two_areas()),
         answered: AnsweredGroups::default(),
         layout: None,
+        scope: crate::chat_work::ModelScope::FirstPage,
     }) {
         ChatResult::Trial(plan) => plan.unwrap(),
         other => panic!("{other:?}"),
@@ -1051,6 +1056,7 @@ fn an_unsure_file_names_the_kind_only_when_the_catalog_knows_it() {
             target: Arc::new(alfa_in_two_areas()),
             answered: AnsweredGroups::default(),
             layout: None,
+            scope: crate::chat_work::ModelScope::FirstPage,
         }) {
             ChatResult::Trial(plan) => plan.unwrap(),
             other => panic!("{other:?}"),

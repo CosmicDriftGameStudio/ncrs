@@ -100,29 +100,18 @@ mod tests {
         let row = card
             .rows
             .iter()
-            .find(|row| row.name == "neu_beta.pdf")
+            .find(|row| row.source.ends_with("/neu_beta.pdf"))
             .unwrap();
         let RowOutcome::Unsure {
-            question,
-            choices,
-            chosen,
+            choices, chosen, ..
         } = &row.outcome
         else {
             panic!("{row:?}")
         };
         assert_eq!(chosen, &None);
         assert_eq!(choices.len(), 2);
-        assert_eq!(
-            question,
-            &say(
-                Msg::HermesChatTrialUnsure,
-                &[
-                    ("kind", "Invoice"),
-                    ("first", &choices[0].label),
-                    ("second", &choices[1].label)
-                ]
-            )
-        );
+        assert_eq!(row.source, "inbox/neu_beta.pdf");
+        assert_eq!(row.facts, "Beta GmbH · Invoice · 06.03.2021");
 
         let picked = choices[1].clone();
         talk.entries += 1;
@@ -132,13 +121,16 @@ mod tests {
         });
         assert_eq!(
             user_bubbles(&talk).last().copied(),
-            Some(format!("neu_beta.pdf: {}", picked.label).as_str())
+            Some(picked.label.as_str())
         );
         assert_eq!(
             talk.last_texts(),
             vec![say(
                 Msg::HermesChatUnsureChosen,
-                &[("name", "neu_beta.pdf"), ("path", &picked.label)]
+                &[
+                    ("name", "neu_beta.pdf"),
+                    ("path", picked.label.trim_end_matches("/neu_beta.pdf"))
+                ]
             )]
         );
         assert_eq!(
@@ -155,7 +147,7 @@ mod tests {
         talk.press(&ChipReply::FileAll);
         let files = talk.files();
         let chosen_folder = picked.label.replace('\\', "/");
-        assert!(files.contains_key(&format!("archive/{chosen_folder}/neu_beta.pdf")));
+        assert!(files.contains_key(&format!("archive/{chosen_folder}")));
         assert!(!files.contains_key("inbox/neu_beta.pdf"));
         assert!(!files.contains_key("inbox/neu_alfa.pdf"));
         assert_eq!(
@@ -907,7 +899,11 @@ mod tests {
         let Some(Part::Trial(card)) = talk.last_parts().get(1).cloned() else {
             panic!("{:?}", talk.last_parts())
         };
-        let row = card.rows.iter().find(|row| row.name == "scan.pdf").unwrap();
+        let row = card
+            .rows
+            .iter()
+            .find(|row| row.source.ends_with("/scan.pdf"))
+            .unwrap();
         let RowOutcome::Unsure { choices, .. } = &row.outcome else {
             panic!("{row:?}")
         };

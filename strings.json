@@ -7627,24 +7627,6 @@
       "de": "Probelauf · noch nichts kopiert"
     },
     {
-      "key": "hermes_chat.trial_unsure",
-      "context": "Hermes chat (F2): Question in a row of the trial run card when Hermes is not sure which of two folders a file belongs in. {kind} is the kind of document or the word for 'file', {first} and {second} are folder names.",
-      "en": "{kind}: {first} or {second}?",
-      "de": "{kind}: {first} oder {second}?"
-    },
-    {
-      "key": "hermes_chat.trial_unsure_one",
-      "context": "Hermes chat (F2): Question in a row of the trial run card when Hermes is not sure about one folder for a file. {kind} is the kind of document or the word for 'file', {first} a folder name.",
-      "en": "{kind}: {first}?",
-      "de": "{kind}: {first}?"
-    },
-    {
-      "key": "hermes_chat.trial_file",
-      "context": "Hermes chat (F2): Word for 'file' used instead of a kind of document in the question of an unsure row. Singular, capitalised.",
-      "en": "File",
-      "de": "Datei"
-    },
-    {
       "key": "hermes_chat.trial_already_there",
       "context": "Hermes chat (F2): Row of the trial run card: the same file already exists in the archive. {path} is its path in the archive.",
       "en": "already in {path}",
@@ -7703,6 +7685,12 @@
       "context": "Hermes chat (F2): Hermes introduces the next page of the trial run. {count} is the number of files on it.",
       "en": "The next {count}:",
       "de": "Die nächsten {count}:"
+    },
+    {
+      "key": "hermes_chat.trial_rest_done",
+      "context": "Hermes chat (F2): shown when the model has finished the files beyond the first ten of the trial run in the background. {count} is how many files can now be filed.",
+      "en": "I've now looked through all files: {count} can be filed.",
+      "de": "Ich habe jetzt alle Dateien durchgesehen: {count} kann ich ablegen."
     },
     {
       "key": "hermes_chat.trial_end",

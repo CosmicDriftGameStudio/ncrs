@@ -360,6 +360,7 @@ fn brother_eval_trial() {
         target: Arc::new(archive.clone()),
         answered: AnsweredGroups::default(),
         layout: None,
+        scope: crate::chat_work::ModelScope::All,
     }) {
         ChatResult::Trial(Ok(plan)) => plan,
         other => panic!("{other:?}"),

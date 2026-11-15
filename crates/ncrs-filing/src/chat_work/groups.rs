@@ -260,6 +260,9 @@ pub fn stay_groups(
     let mut name_taken = Vec::new();
     let mut taken = plan.taken.clone();
     for (position, entry) in plan.entries.iter().enumerate() {
+        if plan.model_left.contains(&entry.from) {
+            continue;
+        }
         if entry.outcome == TrialOutcome::Stays(StayReason::NameTaken) {
             if let Some(wanted) = entry.wanted.as_deref() {
                 name_taken.push(NameTaken {

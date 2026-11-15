@@ -149,19 +149,19 @@ fn change_scene(lang: Language) -> App {
 
 fn trial_scene(lang: Language) -> App {
     let (mut app, _) = opened(lang);
-    let unsure = |entry, name: &str| TrialRow {
+    let unsure = |entry, source: &str, facts: &str| TrialRow {
         entry,
-        name: name.to_owned(),
+        source: source.to_owned(),
+        facts: facts.to_owned(),
         outcome: RowOutcome::Unsure {
-            question: pick(lang, "Wohin damit?", "Where does it go?").to_owned(),
             choices: vec![
                 chip(
-                    "Steuern",
+                    "Steuern/2020/Scan_0042.pdf",
                     ChipReply::UnsureChoice { entry, choice: 0 },
                     false,
                 ),
                 chip(
-                    "Wohnung",
+                    "Wohnung/Kredit/Scan_0042.pdf",
                     ChipReply::UnsureChoice { entry, choice: 1 },
                     false,
                 ),
@@ -185,23 +185,30 @@ fn trial_scene(lang: Language) -> App {
                 rows: vec![
                     TrialRow {
                         entry: 0,
-                        name: "Bescheid.pdf".to_owned(),
+                        source: "Downloads/Alt/Bescheid.pdf".to_owned(),
+                        facts: "Finanzamt · Bescheid · 21.12.2019".to_owned(),
                         outcome: RowOutcome::Filed {
                             segments: segments(&["Steuern", "2025", "Bescheid.pdf"]),
                         },
                     },
                     TrialRow {
                         entry: 1,
-                        name: "Police.pdf".to_owned(),
+                        source: "Downloads/Police.pdf".to_owned(),
+                        facts: "Allianz · Police · 03.02.2020".to_owned(),
                         outcome: RowOutcome::AlreadyThere(
                             pick(lang, "liegt schon im Archiv", "is already in the archive")
                                 .to_owned(),
                         ),
                     },
-                    unsure(2, "Scan_0042.pdf"),
+                    unsure(
+                        2,
+                        "Downloads/20200124_Scan_0042_001.pdf",
+                        "Deutsche Bank · Mitteilung · 24.01.2020",
+                    ),
                     TrialRow {
                         entry: 3,
-                        name: "notizen.txt".to_owned(),
+                        source: "Downloads/notizen.txt".to_owned(),
+                        facts: String::new(),
                         outcome: RowOutcome::Stays(
                             pick(lang, "bleibt liegen", "stays where it is").to_owned(),
                         ),

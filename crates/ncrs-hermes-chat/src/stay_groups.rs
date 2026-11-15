@@ -5,7 +5,9 @@
 use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
 
-use ncrs_filing::chat_work::{ChatWork, GroupKey, RuleSaveFailure, StayGroup, TrialOutcome};
+use ncrs_filing::chat_work::{
+    ChatWork, GroupKey, ModelScope, RuleSaveFailure, StayGroup, TrialOutcome,
+};
 use ncrs_i18n::Msg;
 use ncrs_intake::is_windows_device_name;
 
@@ -316,6 +318,7 @@ fn rerun(state: &mut State, ctx: &Ctx) {
             target,
             answered,
             layout: state.session.layout.clone(),
+            scope: ModelScope::FirstPage,
         },
         Some(text(ctx.lang, Msg::HermesChatWorkingTrial)),
     );

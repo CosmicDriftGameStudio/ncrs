@@ -18,11 +18,7 @@ const SEGMENT_PAD_X: f32 = 4.0;
 const SEGMENT_TINT: f32 = 0.22;
 const PATH_SEPARATOR: &str = "/";
 const ARROW: &str = "→";
-const QUESTION_MARK: &str = "?";
 const NAME_MAX_WIDTH: f32 = 160.0;
-/// The bold face renders wider than the width estimate of the UI font, and the
-/// clip took the end of the extension. Counted at 0.6 em per glyph.
-const NAME_MAX_CHARS: usize = 19;
 const AREA_NAME_MAX_WIDTH: f32 = 2.0 * NAME_MAX_WIDTH;
 /// A path segment longer than this is cut in the middle so a path wraps
 /// between segments instead of running out of the card.
@@ -426,77 +422,68 @@ pub struct Choice<M> {
     pub on_press: M,
 }
 
-/// A row of the trial card.
+/// Where a file of the trial would go.
 #[derive(Debug, Clone)]
-pub enum TrialLine<M> {
-    Filed {
-        name: String,
-        segments: Vec<String>,
-    },
-    Unsure {
-        name: String,
-        question: String,
-        choices: Vec<Choice<M>>,
-    },
+pub enum TrialTarget<M> {
+    /// One place, as a path in segments.
+    Path(Vec<String>),
+    /// Several places to pick from, each as a full path.
+    Choices(Vec<Choice<M>>),
     /// A file that is not filed: why.
-    Note {
-        name: String,
-        note: String,
-    },
+    Note(String),
 }
 
-fn name_cell<'a, M: 'a>(name: &str, palette: &Palette) -> Element<'a, M> {
-    let shown = format::ellipsize_keeping_both_ends(name, NAME_MAX_CHARS);
-    let cell = container(card_text(&shown, palette.text, Wrapping::None, true))
-        .max_width(NAME_MAX_WIDTH)
-        .clip(true)
-        .into();
-    with_full_name(cell, &shown, name, palette)
+/// A file of the trial card: where it lies, what is known of it, where it
+/// would go.
+#[derive(Debug, Clone)]
+pub struct TrialLine<M> {
+    pub source: String,
+    pub facts: String,
+    pub target: TrialTarget<M>,
 }
 
 fn trial_row<'a, M: Clone + 'a>(line: TrialLine<M>, palette: &Palette) -> Element<'a, M> {
-    match line {
-        TrialLine::Filed { name, segments } => Row::new()
-            .push(name_cell(&name, palette))
-            .push(card_text(ARROW, palette.dim_text, Wrapping::None, false))
+    let TrialLine {
+        source,
+        facts,
+        target,
+    } = line;
+    let first = Row::new()
+        .push(mono(source, TEXT_BODY, palette.text))
+        .push(
+            container(card_text(&facts, palette.dim_text, Wrapping::Word, false))
+                .width(Length::Fill)
+                .align_x(alignment::Horizontal::Right),
+        )
+        .spacing(GAP_S);
+    let arrow = card_text(ARROW, palette.dim_text, Wrapping::None, false);
+    let second: Element<'a, M> = match target {
+        TrialTarget::Path(segments) => Row::new()
+            .push(arrow)
             .push(path_pieces(&segments, None, palette))
             .spacing(GAP_S)
-            .align_y(alignment::Vertical::Center)
             .into(),
-        TrialLine::Note { name, note } => Row::new()
-            .push(name_cell(&name, palette))
-            .push(card_text(ARROW, palette.dim_text, Wrapping::None, false))
-            .push(card_text(&note, palette.dim_text, Wrapping::Word, false))
-            .spacing(GAP_S)
-            .align_y(alignment::Vertical::Center)
-            .into(),
-        TrialLine::Unsure {
-            name,
-            question,
-            choices,
-        } => {
+        TrialTarget::Choices(choices) => {
             let chips = choices.into_iter().map(|choice| {
                 chat_chip_small(&choice.label, choice.selected, choice.on_press, palette)
             });
-            Column::new()
-                .push(
-                    Row::new()
-                        .push(name_cell(&name, palette))
-                        .push(card_text(
-                            QUESTION_MARK,
-                            palette.primary_button().0,
-                            Wrapping::None,
-                            true,
-                        ))
-                        .push(card_text(&question, palette.text, Wrapping::Word, false))
-                        .spacing(GAP_S)
-                        .align_y(alignment::Vertical::Center),
-                )
+            Row::new()
+                .push(arrow)
                 .push(chip_row(chips.collect()))
-                .spacing(GAP_XS)
+                .spacing(GAP_S)
                 .into()
         }
-    }
+        TrialTarget::Note(note) => Row::new()
+            .push(arrow)
+            .push(card_text(&note, palette.dim_text, Wrapping::Word, false))
+            .spacing(GAP_S)
+            .into(),
+    };
+    Column::new()
+        .push(first)
+        .push(second)
+        .spacing(GAP_XS)
+        .into()
 }
 
 /// What a trial would do with the files of a page, row by row. `more` closes
@@ -510,7 +497,7 @@ pub fn trial_card<'a, M: Clone + 'a>(
     let mut rows = Column::new()
         .push(card_text(header, palette.dim_text, Wrapping::Word, true))
         .push(Space::new().height(GAP_XS))
-        .spacing(GAP_XS);
+        .spacing(GAP_S);
     for line in lines {
         rows = rows.push(trial_row(line, palette));
     }

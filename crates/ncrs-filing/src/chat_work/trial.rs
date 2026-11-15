@@ -51,6 +51,8 @@ pub struct TrialEntry {
     pub name: String,
     pub hash: ContentHash,
     pub fields: DocumentFields,
+    /// The kind as a word of the user's language, as typed when unknown.
+    pub kind_word: Option<String>,
     pub outcome: TrialOutcome,
     /// Relative to the target: the folder the neighbours pointed to, where
     /// there was one.
@@ -75,6 +77,22 @@ pub struct TrialPlan {
     pub taken: BTreeSet<PathBuf>,
     /// The staying files, grouped for the questions.
     pub groups: StayGroups,
+    /// The files that still need the model's folder: they are not decided yet
+    /// and get no group question.
+    pub model_left: BTreeSet<PathBuf>,
+}
+
+/// How many files the model looks at for the first trial page.
+pub const MODEL_FIRST_PAGE: usize = 10;
+
+/// Which of the files that need the model are asked now.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModelScope {
+    /// The first files in source order, as many as the trial page shows.
+    FirstPage,
+    /// Only these files, by their source path.
+    Only(BTreeSet<PathBuf>),
+    All,
 }
 
 impl TrialPlan {
@@ -101,6 +119,7 @@ pub fn trial(
     answered: &AnsweredGroups,
     layout: Option<&[PatternLevel]>,
     model: Option<&dyn ChatModel>,
+    scope: &ModelScope,
 ) -> Result<TrialPlan, String> {
     let kinds = access.kinds()?;
     let (rules, aliases) = access.rules_and_aliases()?;
@@ -146,6 +165,11 @@ pub fn trial(
             from: source.root.join(&file.relative_path),
             name,
             hash: file.hash,
+            kind_word: file
+                .fields
+                .kind
+                .as_deref()
+                .map(|kind| kinds.kind_word(kind).into_owned()),
             fields: file.fields.clone(),
             outcome: decided.outcome,
             neighbour: decided.neighbour,
@@ -153,6 +177,7 @@ pub fn trial(
         });
     }
 
+    let mut model_left = BTreeSet::new();
     if let Some(model) = model {
         let asked = ModelAsk {
             model,
@@ -161,7 +186,7 @@ pub fn trial(
             files: &source.files,
             candidates: &candidate_lists,
         };
-        ask_model(&asked, &mut entries);
+        model_left = ask_model(&asked, &mut entries, scope);
     }
 
     let count = |matches_outcome: fn(&TrialOutcome) -> bool| {
@@ -184,6 +209,7 @@ pub fn trial(
         stays,
         taken,
         groups: StayGroups::default(),
+        model_left,
     };
     plan.groups = stay_groups(&plan, &kinds, &aliases, target, answered);
     Ok(plan)
@@ -399,15 +425,45 @@ const MODEL_TEXT_CHARS: usize = 2000;
 /// The files that did not get a sure place go to the model once, as a batch.
 /// A file it picks a folder for is unsure: the model's folder first, then the
 /// one the neighbours offered. A model that fails changes nothing.
-fn ask_model(ask: &ModelAsk<'_>, entries: &mut [TrialEntry]) {
-    let asked: Vec<usize> = entries
+/// Returns the files that needed the model but were not asked this time.
+fn ask_model(
+    ask: &ModelAsk<'_>,
+    entries: &mut [TrialEntry],
+    scope: &ModelScope,
+) -> BTreeSet<PathBuf> {
+    let wanting: Vec<usize> = entries
         .iter()
         .enumerate()
         .filter(|(_, entry)| needs_model(&entry.outcome))
         .map(|(position, _)| position)
         .collect();
-    if asked.is_empty() || ask.folders.entries.is_empty() {
-        return;
+    if wanting.is_empty() || ask.folders.entries.is_empty() {
+        return BTreeSet::new();
+    }
+    let (asked, not_asked): (Vec<usize>, Vec<usize>) = match scope {
+        ModelScope::All => (wanting, Vec::new()),
+        ModelScope::FirstPage => {
+            let mut asked = wanting;
+            let rest = asked.split_off(MODEL_FIRST_PAGE.min(asked.len()));
+            (asked, rest)
+        }
+        ModelScope::Only(files) => wanting.into_iter().partition(|position| {
+            entries
+                .get(*position)
+                .is_some_and(|entry| files.contains(&entry.from))
+        }),
+    };
+    // A named set is the rest itself: what it leaves out was settled before.
+    let left: BTreeSet<PathBuf> = if matches!(scope, ModelScope::Only(_)) {
+        BTreeSet::new()
+    } else {
+        not_asked
+            .into_iter()
+            .filter_map(|position| entries.get(position).map(|entry| entry.from.clone()))
+            .collect()
+    };
+    if asked.is_empty() {
+        return left;
     }
     let documents: Vec<String> = asked
         .iter()
@@ -415,7 +471,7 @@ fn ask_model(ask: &ModelAsk<'_>, entries: &mut [TrialEntry]) {
         .map(document_text)
         .collect();
     let Ok(picks) = ask.model.choose_folders(&ask.folders.entries, &documents) else {
-        return;
+        return left;
     };
     for (position, pick) in asked.into_iter().zip(picks) {
         let (Some(entry), Some(candidates), Some(folder)) = (
@@ -475,6 +531,7 @@ fn ask_model(ask: &ModelAsk<'_>, entries: &mut [TrialEntry]) {
             kind_label,
         };
     }
+    left
 }
 
 /// Sure places stay as they are; a taken name or a missing field is no

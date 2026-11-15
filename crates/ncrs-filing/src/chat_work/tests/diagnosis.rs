@@ -126,6 +126,7 @@ fn trial_report(access: &ChatAccess, downloads: &FolderReading, archive: &Folder
         target: Arc::new(archive.clone()),
         answered: AnsweredGroups::default(),
         layout: None,
+        scope: crate::chat_work::ModelScope::FirstPage,
     }) {
         ChatResult::Trial(Ok(plan)) => plan,
         other => panic!("{other:?}"),

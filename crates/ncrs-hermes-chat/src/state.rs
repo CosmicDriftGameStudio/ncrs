@@ -292,7 +292,6 @@ pub enum RowOutcome {
         segments: Vec<String>,
     },
     Unsure {
-        question: String,
         choices: Vec<Chip>,
         chosen: Option<usize>,
     },
@@ -304,7 +303,10 @@ pub enum RowOutcome {
 pub struct TrialRow {
     /// Position in the trial plan.
     pub entry: usize,
-    pub name: String,
+    /// The file as it lies on the disk: the read folder and the path in it.
+    pub source: String,
+    /// Sender, kind and date, as far as they are known.
+    pub facts: String,
     pub outcome: RowOutcome,
 }
 
@@ -589,6 +591,11 @@ pub struct State {
     pub unresolved_sentence: Option<(String, Asked)>,
     /// The check set during this `update` that no task runs yet.
     pub fresh_resolve: bool,
+    /// The rest of the trial the model looks at in the background; it does
+    /// not hold the chat back.
+    pub trial_rest: Option<ChatWork>,
+    /// The rest set during this `update` that no task runs yet.
+    pub fresh_trial_rest: bool,
     /// The folders a sentence named, being checked off the UI thread.
     pub naming: Option<crate::named_folders::Naming>,
     /// The check set during this `update` that no task runs yet.
@@ -622,6 +629,8 @@ impl Default for State {
             resolving: None,
             unresolved_sentence: None,
             fresh_resolve: false,
+            trial_rest: None,
+            fresh_trial_rest: false,
             naming: None,
             fresh_naming: false,
             step: Step::Idle,

@@ -39,7 +39,7 @@ pub use groups::{
 pub use pattern::PatternLevel;
 pub use reading::{AiCoverage, FolderReading, ReadError, ReadProgress, FILE_LIMIT};
 pub use runs::{RecentRun, RunItem, RunPlan, RunReport, RunSummary};
-pub use trial::{StayReason, TrialEntry, TrialOutcome, TrialPlan};
+pub use trial::{ModelScope, StayReason, TrialEntry, TrialOutcome, TrialPlan};
 pub use waiting::WaitingGroup;
 pub use words::{normalize_word, same_word, word_within};
 
@@ -60,6 +60,8 @@ pub enum ChatWork {
         answered: AnsweredGroups,
         /// The order a new target without neighbours gets.
         layout: Option<Vec<PatternLevel>>,
+        /// Which files the model is asked about now.
+        scope: ModelScope,
     },
     SaveGroupRule {
         target: Arc<FolderReading>,
@@ -273,6 +275,7 @@ impl ChatAccess {
                 target,
                 answered,
                 layout,
+                scope,
             } => ChatResult::Trial(trial::trial(
                 self,
                 &source,
@@ -280,6 +283,7 @@ impl ChatAccess {
                 &answered,
                 layout.as_deref(),
                 self.model.as_deref(),
+                &scope,
             )),
             ChatWork::SaveGroupRule {
                 target,

@@ -37,6 +37,11 @@ fn brother_eval_read() {
     let kept = if let Some(kept) = resumed.clone() {
         // `run` and `scratch` are rebuilt from `master` and the source at the
         // same paths, so the kept index knows the documents read before.
+        assert!(
+            kept.join("index.db").is_file() && kept.join("master").is_dir(),
+            "NCRS_EVAL_RESUME is not a folder brother_eval_read kept: {}",
+            kept.display()
+        );
         std::fs::remove_dir_all(kept.join("run")).unwrap();
         std::fs::remove_dir_all(kept.join("scratch")).unwrap();
         kept

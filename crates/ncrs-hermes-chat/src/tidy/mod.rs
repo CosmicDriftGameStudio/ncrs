@@ -5,11 +5,11 @@ use std::sync::Arc;
 
 use ncrs_ai::Schedule;
 use ncrs_filing::chat_work::{
-    AnsweredGroups, ChatWork, FolderReading, RunItem, RunPlan, StayReason, TrialEntry,
+    AnsweredGroups, ChatWork, FolderReading, ModelScope, RunItem, RunPlan, StayReason, TrialEntry,
     TrialOutcome, TrialPlan,
 };
 use ncrs_filing::rules_work::ArchiveMove;
-use ncrs_i18n::Msg;
+use ncrs_i18n::{Language, Msg};
 use ncrs_index::Transfer;
 
 use ncrs_ui_kit::hermes_state::FolderRole;
@@ -25,8 +25,10 @@ use crate::update::{cancel_chip, chip, chip_labelled, hermes, say, work};
 use crate::{learn, stay_groups, trial_end};
 
 mod filed;
+mod rest;
 
 pub use filed::{archive_run, filed_done, trash_offer, trashed_done};
+pub use rest::done as trial_rest_done;
 
 pub const PAGE: usize = 10;
 
@@ -312,6 +314,7 @@ pub fn mode(state: &mut State, ctx: &Ctx, transfer: Transfer) {
             target,
             answered: AnsweredGroups::default(),
             layout: state.session.layout.clone(),
+            scope: ModelScope::FirstPage,
         },
         Some(text(ctx.lang, Msg::HermesChatWorkingTrial)),
     );
@@ -349,6 +352,39 @@ pub fn trial_chips(ctx: &Ctx, trial: &TrialSession) -> Vec<Chip> {
     chips
 }
 
+/// The read folder's name and the path of the file in it, as it lies on the
+/// disk.
+fn source_shown(plan: &TrialPlan, entry: &TrialEntry) -> String {
+    let relative = entry.from.strip_prefix(&plan.source_root).ok();
+    let root = plan.source_root.file_name();
+    let shown = match (root, relative) {
+        (Some(root), Some(relative)) => Path::new(root).join(relative),
+        _ => PathBuf::from(&entry.name),
+    };
+    shown.to_string_lossy().replace('\\', "/")
+}
+
+/// Sender, kind and date of a file, in the user's language.
+fn facts_shown(ctx: &Ctx, entry: &TrialEntry) -> String {
+    let date_format = match ctx.lang.base() {
+        Language::German => "%d.%m.%Y",
+        _ => "%Y-%m-%d",
+    };
+    [
+        entry.fields.sender.clone(),
+        entry.kind_word.clone(),
+        entry
+            .fields
+            .date
+            .map(|date| date.format(date_format).to_string()),
+    ]
+    .into_iter()
+    .flatten()
+    .filter(|part| !part.is_empty())
+    .collect::<Vec<_>>()
+    .join(" · ")
+}
+
 pub fn row_of(ctx: &Ctx, trial: &TrialSession, position: usize) -> Option<TrialRow> {
     let entry = trial.plan.entries.get(position)?;
     let outcome = match &entry.outcome {
@@ -358,58 +394,28 @@ pub fn row_of(ctx: &Ctx, trial: &TrialSession, position: usize) -> Option<TrialR
         TrialOutcome::Unsure {
             choices,
             file_names,
-            kind_label,
-        } => {
-            let kind = kind_label
-                .clone()
-                .unwrap_or_else(|| text(ctx.lang, Msg::HermesChatTrialFile));
-            let shown: Vec<String> = choices
+            ..
+        } => RowOutcome::Unsure {
+            choices: choices
                 .iter()
                 .zip(file_names)
-                .map(|(choice, file_name)| {
-                    let shown = if *file_name == entry.name {
-                        choice.clone()
-                    } else {
-                        choice.join(file_name)
-                    };
-                    shown.to_string_lossy().into_owned()
+                .enumerate()
+                .map(|(choice, (folder, file_name))| {
+                    chip_labelled(
+                        folder.join(file_name).to_string_lossy().into_owned(),
+                        ChipReply::UnsureChoice {
+                            entry: position,
+                            choice,
+                        },
+                        false,
+                    )
                 })
-                .collect();
-            let question = match shown.as_slice() {
-                [first, second, ..] => fill(
-                    ctx.lang,
-                    Msg::HermesChatTrialUnsure,
-                    &[("kind", &kind), ("first", first), ("second", second)],
-                ),
-                [first] => fill(
-                    ctx.lang,
-                    Msg::HermesChatTrialUnsureOne,
-                    &[("kind", &kind), ("first", first)],
-                ),
-                [] => kind,
-            };
-            RowOutcome::Unsure {
-                question,
-                choices: shown
-                    .into_iter()
-                    .enumerate()
-                    .map(|(choice, label)| {
-                        chip_labelled(
-                            label,
-                            ChipReply::UnsureChoice {
-                                entry: position,
-                                choice,
-                            },
-                            false,
-                        )
-                    })
-                    .collect(),
-                chosen: trial
-                    .resolved
-                    .get(&position)
-                    .and_then(|folder| choices.iter().position(|choice| choice == folder)),
-            }
-        }
+                .collect(),
+            chosen: trial
+                .resolved
+                .get(&position)
+                .and_then(|folder| choices.iter().position(|choice| choice == folder)),
+        },
         TrialOutcome::AlreadyThere { at } => RowOutcome::AlreadyThere(fill(
             ctx.lang,
             Msg::HermesChatTrialAlreadyThere,
@@ -435,7 +441,8 @@ pub fn row_of(ctx: &Ctx, trial: &TrialSession, position: usize) -> Option<TrialR
     };
     Some(TrialRow {
         entry: position,
-        name: entry.name.clone(),
+        source: source_shown(&trial.plan, entry),
+        facts: facts_shown(ctx, entry),
         outcome,
     })
 }
@@ -525,6 +532,7 @@ pub fn trial_done(state: &mut State, ctx: &Ctx, result: Result<TrialPlan, String
         return;
     }
     state.step = Step::Trial;
+    rest::start(state);
     let lead: Vec<Part> = state
         .session
         .groups
