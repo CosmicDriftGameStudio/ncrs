@@ -1,20 +1,22 @@
 //! The files beyond the first page of the trial: the model looks at them in
-//! the background and their outcomes are mixed into the open trial.
+//! the background, page by page, so the count rises while it runs; their
+//! outcomes are mixed into the open trial.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use ncrs_filing::chat_work::{ChatWork, ModelScope, TrialOutcome, TrialPlan};
+use ncrs_filing::chat_work::{ChatWork, ModelScope, TrialOutcome, TrialPlan, MODEL_FIRST_PAGE};
 use ncrs_i18n::Msg;
 
 use crate::ctx::Ctx;
-use crate::state::{Part, State, Step};
+use crate::state::{Entry, Part, State, Step};
 use crate::stay_groups;
 use crate::texts::{fill, number};
 use crate::tidy::{filed_count, trial_chips};
 use crate::update::{clear_chips, hermes};
 
-/// Queues the look at the files the first run left for the model.
+/// Queues the look at the next page of the files the first run left for the
+/// model.
 pub fn start(state: &mut State) {
     let (Some(trial), Some(tidy)) = (state.session.trial.as_ref(), state.session.tidy.as_ref())
     else {
@@ -31,18 +33,35 @@ pub fn start(state: &mut State) {
     ) else {
         return;
     };
+    let page: BTreeSet<_> = trial
+        .plan
+        .entries
+        .iter()
+        .filter(|entry| trial.plan.model_left.contains(&entry.from))
+        .take(MODEL_FIRST_PAGE)
+        .map(|entry| entry.from.clone())
+        .collect();
     state.trial_rest = Some(ChatWork::Trial {
         source,
         target,
         answered: state.session.groups.answered.clone(),
         layout: state.session.layout.clone(),
-        scope: ModelScope::Only(trial.plan.model_left.clone()),
+        scope: ModelScope::Only(page.clone()),
     });
+    state.trial_rest_page = page;
+    state.trial_rest_run += 1;
     state.fresh_trial_rest = true;
 }
 
-pub fn done(state: &mut State, ctx: &Ctx, result: Result<TrialPlan, String>) {
+pub fn done(state: &mut State, ctx: &Ctx, run: u64, result: Result<TrialPlan, String>) {
+    if run != state.trial_rest_run {
+        return;
+    }
     let Ok(rest) = result else {
+        if let Some(trial) = state.session.trial.as_mut() {
+            trial.plan.model_left.clear();
+        }
+        state.trial_rest_page.clear();
         return;
     };
     if state.step != Step::Trial {
@@ -60,15 +79,16 @@ pub fn done(state: &mut State, ctx: &Ctx, result: Result<TrialPlan, String>) {
         .iter()
         .map(|entry| (entry.from.as_path(), &entry.outcome))
         .collect();
-    let left = std::mem::take(&mut plan.model_left);
+    let page = std::mem::take(&mut state.trial_rest_page);
     for entry in &mut plan.entries {
         if let (true, Some(outcome)) = (
-            left.contains(&entry.from),
+            page.contains(&entry.from),
             decided.get(entry.from.as_path()),
         ) {
             entry.outcome = (*outcome).clone();
         }
     }
+    plan.model_left.retain(|path| !page.contains(path));
     let count = |matches_outcome: fn(&TrialOutcome) -> bool| {
         plan.entries
             .iter()
@@ -79,18 +99,28 @@ pub fn done(state: &mut State, ctx: &Ctx, result: Result<TrialPlan, String>) {
     plan.unsure = count(|outcome| matches!(outcome, TrialOutcome::Unsure { .. }));
     plan.already_there = count(|outcome| matches!(outcome, TrialOutcome::AlreadyThere { .. }));
     plan.stays = count(|outcome| matches!(outcome, TrialOutcome::Stays(_)));
+    let more_pages = !plan.model_left.is_empty();
+    if more_pages {
+        start(state);
+    }
     if stay_groups::has_open_questions(state) {
         return;
     }
     let Some(open) = state.session.trial.as_ref() else {
         return;
     };
+    let chips = trial_chips(ctx, open);
+    if more_pages {
+        if let Some(Entry::Hermes { chips: shown, .. }) = state.thread.last_mut() {
+            *shown = chips;
+        }
+        return;
+    }
     let line = fill(
         ctx.lang,
         Msg::HermesChatTrialRestDone,
         &[("count", &number(filed_count(open)))],
     );
-    let chips = trial_chips(ctx, open);
     clear_chips(state);
     hermes(state, vec![Part::Text(line)], chips);
 }
@@ -100,14 +130,15 @@ pub fn done(state: &mut State, ctx: &Ctx, result: Result<TrialPlan, String>) {
 mod tests {
     use std::collections::BTreeSet;
     use std::path::PathBuf;
+    use std::sync::Arc;
 
-    use ncrs_filing::chat_work::{StayGroups, StayReason, TrialEntry};
+    use ncrs_filing::chat_work::{FolderReading, StayGroups, StayReason, TrialEntry};
     use ncrs_i18n::Language;
     use ncrs_index::{ContentHash, DocumentFields};
 
     use super::*;
     use crate::ctx::Availability;
-    use crate::state::{Entry, TrialSession};
+    use crate::state::{Tidy, TrialSession};
 
     fn entry(name: &str, outcome: TrialOutcome) -> TrialEntry {
         TrialEntry {
@@ -176,9 +207,10 @@ mod tests {
             resolved: BTreeMap::new(),
             shown: 2,
         });
+        state.trial_rest_page = BTreeSet::from([waiting.from]);
         assert_eq!(filed_count(state.session.trial.as_ref().unwrap()), 0);
 
-        done(&mut state, &ctx(), Ok(rest));
+        done(&mut state, &ctx(), 0, Ok(rest));
 
         let trial = state.session.trial.as_ref().unwrap();
         assert_eq!(filed_count(trial), 1);
@@ -206,6 +238,7 @@ mod tests {
         done(
             &mut state,
             &ctx(),
+            0,
             Ok(plan_of(vec![waiting], BTreeSet::new())),
         );
 
@@ -214,5 +247,121 @@ mod tests {
             1
         );
         assert!(state.thread.is_empty());
+    }
+
+    fn reading(root: &str) -> Arc<FolderReading> {
+        Arc::new(FolderReading {
+            ai: Default::default(),
+            kinds: Default::default(),
+            root: root.into(),
+            files: Vec::new(),
+            photos: 0,
+            without_text: 0,
+            structure: ncrs_intake::LocationStructure {
+                areas: Vec::new(),
+                unordered: Vec::new(),
+            },
+            duplicates: Vec::new(),
+            hashes: Default::default(),
+        })
+    }
+
+    fn state_with_twelve_waiting() -> State {
+        let names: Vec<String> = (0..12).map(|number| format!("f{number:02}.pdf")).collect();
+        let entries: Vec<TrialEntry> = names
+            .iter()
+            .map(|name| entry(name, TrialOutcome::Stays(StayReason::NoNeighbours)))
+            .collect();
+        let waiting = entries.iter().map(|entry| entry.from.clone()).collect();
+        let mut state = State {
+            step: Step::Trial,
+            ..State::default()
+        };
+        state.session.trial = Some(TrialSession {
+            plan: plan_of(entries, waiting),
+            resolved: BTreeMap::new(),
+            shown: 2,
+        });
+        state.session.tidy = Some(Tidy {
+            rule_now: None,
+            source: PathBuf::from("/inbox"),
+            target: Some(PathBuf::from("/archive")),
+            transfer: None,
+            inside: Vec::new(),
+        });
+        state
+            .session
+            .readings
+            .insert(PathBuf::from("/inbox"), reading("/inbox"));
+        state
+            .session
+            .readings
+            .insert(PathBuf::from("/archive"), reading("/archive"));
+        let first = trial_chips(&ctx(), state.session.trial.as_ref().unwrap());
+        state.thread.push(Entry::Hermes {
+            parts: Vec::new(),
+            chips: first,
+        });
+        start(&mut state);
+        state
+    }
+
+    fn filed_outcome() -> TrialOutcome {
+        TrialOutcome::Filed {
+            to: PathBuf::from("Alfa"),
+        }
+    }
+
+    #[test]
+    fn a_page_raises_the_count_in_place_and_the_next_page_is_queued() {
+        let mut state = state_with_twelve_waiting();
+        assert_eq!(state.trial_rest_page.len(), MODEL_FIRST_PAGE);
+        let page_entries = state
+            .trial_rest_page
+            .iter()
+            .map(|from| {
+                let name = from.file_name().unwrap().to_string_lossy().into_owned();
+                entry(&name, filed_outcome())
+            })
+            .collect();
+        let rest = plan_of(page_entries, BTreeSet::new());
+        let before = state.chips()[0].label.clone();
+        let thread_len = state.thread.len();
+
+        let run = state.trial_rest_run;
+        done(&mut state, &ctx(), run, Ok(rest));
+
+        assert_eq!(state.thread.len(), thread_len);
+        assert_ne!(state.chips()[0].label, before);
+        assert!(state.chips()[0]
+            .label
+            .contains(&MODEL_FIRST_PAGE.to_string()));
+        let trial = state.session.trial.as_ref().unwrap();
+        assert_eq!(trial.plan.model_left.len(), 2);
+        assert!(state.trial_rest.is_some());
+        assert_eq!(state.trial_rest_page.len(), 2);
+    }
+
+    #[test]
+    fn a_page_of_an_earlier_run_changes_nothing() {
+        let mut state = state_with_twelve_waiting();
+        let stale_run = state.trial_rest_run - 1;
+        let page = state.trial_rest_page.clone();
+
+        done(
+            &mut state,
+            &ctx(),
+            stale_run,
+            Ok(plan_of(
+                vec![entry("f00.pdf", filed_outcome())],
+                BTreeSet::new(),
+            )),
+        );
+
+        let trial = state.session.trial.as_ref().unwrap();
+        assert_eq!(trial.plan.model_left.len(), 12);
+        assert_eq!(trial.plan.filed, 0);
+        assert_eq!(state.trial_rest_page, page);
+        assert_eq!(state.thread.len(), 1);
     }
 }

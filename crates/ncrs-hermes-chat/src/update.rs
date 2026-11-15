@@ -107,8 +107,8 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
             );
             None
         }
-        Message::TrialRestDone(result) => {
-            tidy::trial_rest_done(state, ctx, *result);
+        Message::TrialRestDone(run, result) => {
+            tidy::trial_rest_done(state, ctx, run, *result);
             None
         }
         Message::FolderPicked(picked) => {
@@ -264,12 +264,13 @@ fn launch_trial_rest(state: &mut State, ctx: &Ctx) -> Task<Message> {
         return Task::none();
     };
     let access = ready.clone().with_model(ctx.model.clone());
+    let run = state.trial_rest_run;
     Task::perform(
         async move { tokio::task::spawn_blocking(move || access.run(work)).await },
-        |joined| match joined {
-            Ok(ChatResult::Trial(plan)) => Message::TrialRestDone(Box::new(plan)),
-            Ok(_) => Message::TrialRestDone(Box::new(Err(String::new()))),
-            Err(error) => Message::TrialRestDone(Box::new(Err(error.to_string()))),
+        move |joined| match joined {
+            Ok(ChatResult::Trial(plan)) => Message::TrialRestDone(run, Box::new(plan)),
+            Ok(_) => Message::TrialRestDone(run, Box::new(Err(String::new()))),
+            Err(error) => Message::TrialRestDone(run, Box::new(Err(error.to_string()))),
         },
     )
 }
@@ -934,6 +935,7 @@ fn reset_flow(state: &mut State) {
     state.session.retry = None;
     state.session.trial = None;
     state.trial_rest = None;
+    state.trial_rest_page.clear();
     state.session.groups = GroupFlow::default();
     state.session.offer = None;
     state.session.resume_tidy = false;

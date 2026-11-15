@@ -39,7 +39,7 @@ pub use groups::{
 pub use pattern::PatternLevel;
 pub use reading::{AiCoverage, FolderReading, ReadError, ReadProgress, FILE_LIMIT};
 pub use runs::{RecentRun, RunItem, RunPlan, RunReport, RunSummary};
-pub use trial::{ModelScope, StayReason, TrialEntry, TrialOutcome, TrialPlan};
+pub use trial::{MODEL_FIRST_PAGE, ModelScope, StayReason, TrialEntry, TrialOutcome, TrialPlan};
 pub use waiting::WaitingGroup;
 pub use words::{normalize_word, same_word, word_within};
 
