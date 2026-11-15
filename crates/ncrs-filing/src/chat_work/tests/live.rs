@@ -75,7 +75,7 @@ fn classified() -> LivePlan {
             readable("i.pdf", 9),
             readable("j.pdf", 10),
             PlanFile {
-                text: None,
+                text: Some(" \n".to_owned()),
                 ..readable("k.pdf", 11)
             },
         ],

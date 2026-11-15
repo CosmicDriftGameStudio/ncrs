@@ -180,14 +180,21 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
             return "no plan".to_owned();
         };
         let count = |is: fn(&LiveState) -> bool| plan.files.iter().filter(|f| is(&f.state)).count();
+        let staying: Vec<String> = plan
+            .files
+            .iter()
+            .filter(|file| matches!(file.state, LiveState::NoFolder | LiveState::Unreadable))
+            .map(|file| format!("{} {:?}", file.from.display(), file.state))
+            .collect();
         format!(
-            "{} files, {} filed ({} unsure), {} already there, {} without folder, {} unreadable",
+            "{} files, {} filed ({} unsure), {} already there, {} without folder, {} unreadable; staying: {}",
             plan.files.len(),
             count(|state| matches!(state, LiveState::Filed { .. })),
             count(|state| matches!(state, LiveState::Filed { unsure: true, .. })),
             count(|state| matches!(state, LiveState::AlreadyThere { .. })),
             count(|state| matches!(state, LiveState::NoFolder)),
             count(|state| matches!(state, LiveState::Unreadable)),
+            staying.join(", "),
         )
     }
 

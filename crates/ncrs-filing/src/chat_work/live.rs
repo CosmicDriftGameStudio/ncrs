@@ -189,12 +189,14 @@ pub fn classify(plan: &TrialPlan, source: &FolderReading) -> LivePlan {
         .iter()
         .map(|file| {
             let from = source.root.join(&file.relative_path);
+            // A broken PDF comes back with an empty text, not with none.
+            let without_text = file.text.as_deref().is_none_or(|text| text.trim().is_empty());
             let state = if plan.model_left.contains(&from) {
                 LiveState::Looking
             } else {
                 match entries.get(from.as_path()) {
-                    Some(entry) => state_of(entry, file.text.is_none(), &mut taken),
-                    None if file.text.is_none() => LiveState::Unreadable,
+                    Some(entry) => state_of(entry, without_text, &mut taken),
+                    None if without_text => LiveState::Unreadable,
                     None => LiveState::NoFolder,
                 }
             };
