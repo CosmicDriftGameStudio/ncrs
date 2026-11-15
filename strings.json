@@ -7687,6 +7687,12 @@
       "de": "Die übrigen {count} Dateien sehe ich mir noch an, die Zahl auf dem Knopf steigt mit."
     },
     {
+      "key": "hermes_chat.trial_file_all_after_rest",
+      "context": "Hermes chat (F2): Hermes answers the user's request to file everything while the model still looks at the files beyond the first ten in the background; it files all together when it is done. {count} is how many files it has yet to look at.",
+      "en": "Will do. I'm still looking at the other {count} files, then I'll file them all together.",
+      "de": "Mach ich. Die übrigen {count} Dateien sehe ich mir noch an, dann lege ich alle zusammen ab."
+    },
+    {
       "key": "hermes_chat.trial_end",
       "context": "Hermes chat (F2): Hermes says there are no more files to show in the trial run.",
       "en": "That was all of them.",

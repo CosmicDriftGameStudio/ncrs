@@ -12,7 +12,7 @@ use crate::ctx::Ctx;
 use crate::state::{Entry, Part, State, Step};
 use crate::stay_groups;
 use crate::texts::{fill, number};
-use crate::tidy::{filed_count, trial_chips};
+use crate::tidy::{self, filed_count, trial_chips};
 use crate::update::{clear_chips, hermes};
 
 /// Queues the look at the next page of the files the first run left for the
@@ -90,6 +90,16 @@ fn replace_running_line(state: &mut State, next: Option<String>) {
     state.trial_rest_line = next;
 }
 
+/// Files everything now that the last page is in, when the user asked for
+/// it meanwhile. True when it did.
+fn file_all_if_asked(state: &mut State, ctx: &Ctx) -> bool {
+    if !std::mem::take(&mut state.file_all_after_rest) {
+        return false;
+    }
+    tidy::file_all(state, ctx);
+    true
+}
+
 pub fn done(state: &mut State, ctx: &Ctx, run: u64, result: Result<TrialPlan, String>) {
     if run != state.trial_rest_run {
         return;
@@ -100,6 +110,7 @@ pub fn done(state: &mut State, ctx: &Ctx, run: u64, result: Result<TrialPlan, St
         }
         state.trial_rest_page.clear();
         replace_running_line(state, None);
+        file_all_if_asked(state, ctx);
         return;
     };
     if state.step != Step::Trial {
@@ -144,6 +155,9 @@ pub fn done(state: &mut State, ctx: &Ctx, run: u64, result: Result<TrialPlan, St
         replace_running_line(state, Some(running_line(ctx, waiting)));
     } else {
         replace_running_line(state, None);
+        if file_all_if_asked(state, ctx) {
+            return;
+        }
     }
     if stay_groups::has_open_questions(state) {
         return;
@@ -153,7 +167,10 @@ pub fn done(state: &mut State, ctx: &Ctx, run: u64, result: Result<TrialPlan, St
     };
     let chips = trial_chips(ctx, open);
     if more_pages {
-        if let Some(Entry::Hermes { chips: shown, .. }) = state.thread.last_mut() {
+        // The last entry is the answer to "file all", which has only cancel.
+        if let (false, Some(Entry::Hermes { chips: shown, .. })) =
+            (state.file_all_after_rest, state.thread.last_mut())
+        {
             *shown = chips;
         }
         return;
@@ -174,13 +191,13 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Arc;
 
-    use ncrs_filing::chat_work::{FolderReading, StayGroups, StayReason, TrialEntry};
+    use ncrs_filing::chat_work::{FolderReading, RunItem, StayGroups, StayReason, TrialEntry};
     use ncrs_i18n::Language;
     use ncrs_index::{ContentHash, DocumentFields};
 
     use super::*;
     use crate::ctx::Availability;
-    use crate::state::{Tidy, TrialSession};
+    use crate::state::{ChipReply, Tidy, TrialSession};
 
     fn entry(name: &str, outcome: TrialOutcome) -> TrialEntry {
         TrialEntry {
@@ -464,5 +481,119 @@ mod tests {
         assert_eq!(trial.plan.filed, 0);
         assert_eq!(state.trial_rest_page, page);
         assert_eq!(state.thread.len(), 1);
+    }
+
+    fn with_move(mut state: State) -> State {
+        if let Some(tidy) = state.session.tidy.as_mut() {
+            tidy.transfer = Some(ncrs_index::Transfer::Move);
+        }
+        state
+    }
+
+    fn unsure_outcome(name: &str) -> TrialOutcome {
+        TrialOutcome::Unsure {
+            choices: vec![PathBuf::from("Modelfolder")],
+            file_names: vec![name.to_owned()],
+            kind_label: None,
+        }
+    }
+
+    fn filed_items(state: &State) -> Option<Vec<RunItem>> {
+        match state.pending_work() {
+            Some(ChatWork::File { run }) => Some(run.items.clone()),
+            _ => None,
+        }
+    }
+
+    fn finish_page_with(state: &mut State, outcome: fn(&str) -> TrialOutcome) {
+        let page_entries = state
+            .trial_rest_page
+            .iter()
+            .map(|from| {
+                let name = from.file_name().unwrap().to_string_lossy().into_owned();
+                entry(&name, outcome(&name))
+            })
+            .collect();
+        let run = state.trial_rest_run;
+        done(
+            state,
+            &ctx(),
+            run,
+            Ok(plan_of(page_entries, BTreeSet::new())),
+        );
+    }
+
+    #[test]
+    fn file_all_during_the_rest_waits_for_the_last_page_and_files_everything() {
+        let mut state = with_move(state_with_twelve_waiting());
+        finish_page_with(&mut state, |_| filed_outcome());
+
+        tidy::file_all(&mut state, &ctx());
+
+        assert!(state.file_all_after_rest);
+        assert_eq!(state.chips().len(), 1);
+        assert_eq!(state.chips()[0].reply, ChipReply::Cancel);
+        assert!(filed_items(&state).is_none());
+        let waiting = fill(
+            Language::English,
+            Msg::HermesChatTrialFileAllAfterRest,
+            &[("count", "2")],
+        );
+        assert!(
+            matches!(state.thread.last(), Some(Entry::Hermes { parts, .. })
+            if matches!(parts.as_slice(), [Part::Text(text)] if *text == waiting))
+        );
+
+        finish_page_with(&mut state, unsure_outcome);
+
+        assert!(!state.file_all_after_rest);
+        let items = filed_items(&state).unwrap();
+        assert_eq!(items.len(), 12);
+        assert!(items
+            .iter()
+            .any(|item| item.to.starts_with("Modelfolder") && item.from.ends_with("f11.pdf")));
+        let done_text = fill(
+            Language::English,
+            Msg::HermesChatTrialRestDone,
+            &[("count", "12")],
+        );
+        let said_done = state.thread.iter().any(|entry| {
+            matches!(entry, Entry::Hermes { parts, .. }
+                if parts.iter().any(|part| matches!(part, Part::Text(text) if *text == done_text)))
+        });
+        assert!(!said_done);
+    }
+
+    #[test]
+    fn a_failed_page_files_what_is_decided_when_file_all_was_asked() {
+        let mut state = with_move(state_with_twelve_waiting());
+        finish_page_with(&mut state, |_| filed_outcome());
+        tidy::file_all(&mut state, &ctx());
+        let run = state.trial_rest_run;
+
+        done(&mut state, &ctx(), run, Err("model".to_owned()));
+
+        assert!(!state.file_all_after_rest);
+        assert_eq!(filed_items(&state).unwrap().len(), 10);
+    }
+
+    #[test]
+    fn file_all_without_a_running_rest_files_at_once() {
+        let mut state = with_move(state_with_twelve_waiting());
+        finish_page_with(&mut state, |_| filed_outcome());
+        finish_page_with(&mut state, |_| filed_outcome());
+        assert!(state
+            .session
+            .trial
+            .as_ref()
+            .unwrap()
+            .plan
+            .model_left
+            .is_empty());
+
+        tidy::file_all(&mut state, &ctx());
+
+        assert!(!state.file_all_after_rest);
+        assert_eq!(filed_items(&state).unwrap().len(), 12);
     }
 }

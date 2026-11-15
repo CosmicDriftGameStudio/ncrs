@@ -597,6 +597,9 @@ pub struct State {
     pub trial_rest_run: u64,
     /// The rest set during this `update` that no task runs yet.
     pub fresh_trial_rest: bool,
+    /// The user asked to file everything while the rest still runs: it is
+    /// filed when the last page is in.
+    pub file_all_after_rest: bool,
     /// A background job is making the model's folder picks of the read folders.
     pub picks_running: bool,
     /// The pipeline sequence the last job was started for.
@@ -641,6 +644,7 @@ impl Default for State {
             trial_rest_line: None,
             trial_rest_run: 0,
             fresh_trial_rest: false,
+            file_all_after_rest: false,
             picks_running: false,
             picks_settled_at: None,
             picks_job: None,

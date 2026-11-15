@@ -946,6 +946,7 @@ fn reset_flow(state: &mut State) {
     state.trial_rest = None;
     state.trial_rest_page.clear();
     state.trial_rest_line = None;
+    state.file_all_after_rest = false;
     state.session.groups = GroupFlow::default();
     state.session.offer = None;
     state.session.resume_tidy = false;

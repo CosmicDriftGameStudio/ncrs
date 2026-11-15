@@ -717,6 +717,26 @@ fn chosen_name<'a>(entry: &'a TrialEntry, folder: &Path) -> &'a str {
 }
 
 pub fn file_all(state: &mut State, ctx: &Ctx) {
+    let still_looking = state
+        .session
+        .trial
+        .as_ref()
+        .map(|trial| trial.plan.model_left.len())
+        .filter(|left| *left > 0 && state.trial_rest_line.is_some());
+    if let Some(count) = still_looking {
+        state.file_all_after_rest = true;
+        crate::update::clear_chips(state);
+        say(
+            state,
+            fill(
+                ctx.lang,
+                Msg::HermesChatTrialFileAllAfterRest,
+                &[("count", &number(count))],
+            ),
+            vec![cancel_chip(ctx)],
+        );
+        return;
+    }
     let (Some(trial), Some(tidy)) = (state.session.trial.as_mut(), state.session.tidy.as_ref())
     else {
         return;
