@@ -8018,9 +8018,9 @@
     },
     {
       "key": "hermes_chat.always_set",
-      "context": "Hermes chat (F2): Hermes says what the answer Always does. {folder} is the folder whose new files are filed.",
-      "en": "Understood: new files in {folder} are filed automatically from now on.",
-      "de": "Verstanden: neue Dateien in {folder} werden ab jetzt automatisch abgelegt."
+      "context": "Hermes chat (F2): Hermes says what the answer Always does: it watches the folder, files at once what a confirmed rule of the user matches, and leaves everything else waiting for the user's OK. {folder} is the watched folder.",
+      "en": "Understood: I'm watching {folder}. What one of your rules matches I file; everything else waits for your OK.",
+      "de": "Verstanden: ich beobachte {folder}. Was eine deiner Regeln trifft, lege ich ab; alles andere wartet auf dein OK."
     },
     {
       "key": "hermes_chat.small_talk",

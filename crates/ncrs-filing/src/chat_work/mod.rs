@@ -6,7 +6,7 @@
 //! through the journal, so `Undo` can put them back.
 
 use std::fmt;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError, TryLockError};
 
 use ncrs_ai::ChatModel;
 use ncrs_core::INDEX_NOT_OPEN;
@@ -53,6 +53,9 @@ pub use words::{normalize_word, same_word, word_within};
 pub use crate::execute::{TrashItem, TrashReport, UndoReport};
 
 type IndexSlot = Arc<Mutex<Option<Index>>>;
+
+/// Never shown: the UI treats it like "no answer now" and tries again later.
+const INDEX_BUSY: &str = "the index is busy with a run";
 
 /// One piece of work for the chat.
 #[derive(Debug, Clone)]
@@ -401,16 +404,34 @@ impl ChatAccess {
         work(index)
     }
 
-    pub fn rules(&self) -> Result<Vec<Rule>, String> {
-        self.with_index(|index| index.rules().map_err(|err| err.to_string()))
+    /// For the UI thread: `Err` at once while a run holds the index.
+    pub fn try_rules(&self) -> Result<Vec<Rule>, String> {
+        self.try_with_index(|index| index.rules().map_err(|err| err.to_string()))
+    }
+
+    /// For the UI thread: `Err` at once while a run holds the index.
+    pub fn try_kinds(&self) -> Result<Kinds, String> {
+        self.try_with_index(|index| Ok(self.kinds_of(index)))
     }
 
     pub fn kinds(&self) -> Result<Kinds, String> {
-        self.with_index(|index| {
-            Ok(Kinds::new(
-                Arc::clone(index.kinds()),
-                self.own.kind_language,
-            ))
-        })
+        self.with_index(|index| Ok(self.kinds_of(index)))
+    }
+
+    fn kinds_of(&self, index: &Index) -> Kinds {
+        Kinds::new(Arc::clone(index.kinds()), self.own.kind_language)
+    }
+
+    fn try_with_index<T>(
+        &self,
+        work: impl FnOnce(&Index) -> Result<T, String>,
+    ) -> Result<T, String> {
+        let guard = match self.slot.try_lock() {
+            Ok(guard) => guard,
+            Err(TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
+            Err(TryLockError::WouldBlock) => return Err(INDEX_BUSY.to_owned()),
+        };
+        let index = guard.as_ref().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
+        work(index)
     }
 }

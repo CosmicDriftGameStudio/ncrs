@@ -573,3 +573,62 @@ fn the_note_link_finder_exists_in_ready_only() {
         .unwrap();
     assert_eq!(finder.resolve(&[]), Err(INDEX_NOT_OPEN.to_owned()));
 }
+
+/// Holds the slot in another thread until the returned sender fires.
+fn hold_slot(slot: &IndexSlot) -> (std::sync::mpsc::Sender<()>, thread::JoinHandle<()>) {
+    let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+    let held = Arc::clone(slot);
+    let holder = thread::spawn(move || {
+        let _guard = lock(&held);
+        locked_tx.send(()).unwrap();
+        let _ = release_rx.recv();
+    });
+    locked_rx.recv().unwrap();
+    (release_tx, holder)
+}
+
+#[test]
+fn the_ui_keeps_the_known_encryption_while_a_run_holds_the_index() {
+    let dir = TempDir::new().unwrap();
+    let mut module = FilingModule::in_phase_with_index(Phase::Ready, true);
+    put_index(
+        &module.index,
+        Index::create_plain(&dir.path().join("index.db")).unwrap(),
+    );
+    let (release, holder) = hold_slot(&module.index);
+
+    module.refresh_index_encrypted();
+
+    assert_eq!(module.index_encrypted, Some(true));
+    release.send(()).unwrap();
+    holder.join().unwrap();
+    module.refresh_index_encrypted();
+    assert_eq!(module.index_encrypted, Some(false));
+}
+
+#[test]
+fn new_kinds_wait_for_the_index_while_a_run_holds_it() {
+    let dir = TempDir::new().unwrap();
+    let mut module = FilingModule::in_phase(Phase::Ready);
+    put_index(
+        &module.index,
+        Index::create_plain(&dir.path().join("index.db")).unwrap(),
+    );
+    let kinds = Arc::new(ncrs_index::KindCatalog::built_in());
+    let (release, holder) = hold_slot(&module.index);
+
+    module.set_kinds(Arc::clone(&kinds));
+
+    release.send(()).unwrap();
+    holder.join().unwrap();
+    assert!(!Arc::ptr_eq(
+        lock(&module.index).as_ref().unwrap().kinds(),
+        &kinds
+    ));
+    module.give_kinds_to_index();
+    assert!(Arc::ptr_eq(
+        lock(&module.index).as_ref().unwrap().kinds(),
+        &kinds
+    ));
+}

@@ -76,7 +76,7 @@ use text_chain::shipped_text_chain;
 pub use text_chain::{ai_models_dir, ocr_models_dir};
 use update::random_group;
 pub use work::Work;
-use work::{lock, Job};
+use work::{lock, try_lock, Job};
 
 mod access;
 mod ai;
