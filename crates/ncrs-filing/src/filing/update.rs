@@ -178,10 +178,15 @@ impl FilingModule {
             WorkOutcome::StartedOver(report) => self.finish_start_over(report),
             WorkOutcome::Crashed(reason) => self.finish_crashed(reason),
         }
-        // Safe on the UI thread: no pipeline holds the index before `Ready`,
-        // and no work is running once its result is here.
-        self.index_encrypted = lock(&self.index).as_ref().map(Index::is_encrypted);
+        self.refresh_index_encrypted();
         self.give_kinds_to_index();
+    }
+
+    /// Keeps the last known value while a run holds the index.
+    pub(in crate::filing) fn refresh_index_encrypted(&mut self) {
+        if let Some(guard) = try_lock(&self.index) {
+            self.index_encrypted = guard.as_ref().map(Index::is_encrypted);
+        }
     }
 
     fn enter(&mut self, opened: OpenOutcome) {

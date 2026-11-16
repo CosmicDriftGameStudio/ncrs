@@ -1063,3 +1063,52 @@ fn an_unsure_file_names_the_kind_only_when_the_catalog_knows_it() {
         Some("Alfa AG")
     );
 }
+
+#[test]
+fn a_mail_text_beside_its_eml_is_not_a_document_of_its_own() {
+    let setup = Setup::new();
+    setup.write("in/mail/email.eml", "From: a@b.c");
+    setup.write("in/mail/Body.TXT", "the mail text");
+    setup.write("in/mail/a.pdf", "attachment");
+    setup.write("in/loose/body.txt", "a text without a mail");
+
+    let read = setup.read(&setup.dir.path().join("in")).unwrap();
+    let paths: Vec<&Path> = read
+        .files
+        .iter()
+        .map(|file| file.relative_path.as_path())
+        .collect();
+
+    assert_eq!(
+        paths,
+        [
+            Path::new("loose/body.txt"),
+            Path::new("mail/a.pdf"),
+            Path::new("mail/email.eml")
+        ]
+    );
+}
+
+#[test]
+fn the_ui_gets_no_answer_instead_of_waiting_while_a_run_holds_the_index() {
+    let setup = Setup::new();
+    let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+    let slot = Arc::clone(&setup.access.slot);
+    let holder = std::thread::spawn(move || {
+        let _guard = slot.lock().unwrap();
+        locked_tx.send(()).unwrap();
+        let _ = release_rx.recv();
+    });
+    locked_rx.recv().unwrap();
+
+    let kinds = setup.access.try_kinds();
+    let rules = setup.access.try_rules();
+
+    release_tx.send(()).unwrap();
+    holder.join().unwrap();
+    assert_eq!(kinds.err(), Some(super::INDEX_BUSY.to_owned()));
+    assert_eq!(rules.err(), Some(super::INDEX_BUSY.to_owned()));
+    assert_eq!(setup.access.try_kinds().err(), None);
+    assert_eq!(setup.access.try_rules().unwrap().len(), 0);
+}

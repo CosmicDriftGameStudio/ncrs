@@ -148,7 +148,7 @@ fn sample<T: Clone>(items: &[T], most: usize) -> Vec<T> {
 
 fn kinds_of(ctx: &Ctx) -> Kinds {
     access(ctx)
-        .and_then(|access| access.kinds().ok())
+        .and_then(|access| access.try_kinds().ok())
         .unwrap_or_else(|| learn::word_kinds(ctx))
 }
 
@@ -531,7 +531,7 @@ fn levels_card(
 /// proposal is made.
 fn existing_rule_note(ctx: &Ctx, flow: &RuleFlow) -> Option<String> {
     let name = trial::rule_name(flow);
-    let rules = access(ctx)?.rules().ok()?;
+    let rules = access(ctx)?.try_rules().ok()?;
     rules
         .iter()
         .any(|rule| rule.spec.name.as_deref() == Some(name.as_str()))

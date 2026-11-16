@@ -21,6 +21,29 @@ pub enum Skip {
     OutsideLocation,
     /// The user excluded the file or a folder around it from filing.
     Excluded,
+    /// The `body.txt` of a mail export: its folder holds the `.eml`, and the
+    /// text belongs to that mail.
+    MailBody,
+}
+
+/// A mail export keeps the mail text as `body.txt` beside its `.eml`; the text
+/// belongs to the mail and is not a document of its own.
+pub fn is_mail_body(name: &OsStr, folder_has_eml: bool) -> bool {
+    folder_has_eml && name.eq_ignore_ascii_case("body.txt")
+}
+
+pub fn is_eml_file(name: &OsStr) -> bool {
+    Path::new(name)
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("eml"))
+}
+
+fn folder_has_eml(folder: &Path) -> bool {
+    std::fs::read_dir(folder).is_ok_and(|entries| {
+        entries
+            .filter_map(Result::ok)
+            .any(|entry| is_eml_file(&entry.file_name()))
+    })
 }
 
 pub fn is_hidden_name(name: &OsStr) -> bool {
@@ -56,6 +79,9 @@ pub fn classify(location: &Location, path: &Path) -> Result<(), Skip> {
             .any(|suffix| name.ends_with(suffix))
     {
         return Err(Skip::Temporary);
+    }
+    if name == "body.txt" && path.parent().is_some_and(folder_has_eml) {
+        return Err(Skip::MailBody);
     }
     let extension = lowercase_extension(path);
     if DOCUMENT_EXTENSIONS.contains(&extension.as_str()) {
@@ -186,6 +212,29 @@ mod tests {
         ] {
             assert_eq!(verdict(true, name), Err(Skip::Temporary), "{name}");
         }
+    }
+
+    #[test]
+    fn a_body_text_beside_an_eml_is_skipped_and_a_lone_one_is_taken_in() {
+        let dir = tempfile::tempdir().unwrap();
+        let inbox = Location {
+            path: dir.path().to_path_buf(),
+            mode: LocationMode::Inbox,
+            images: false,
+        };
+        let mail = dir.path().join("mail");
+        let lone = dir.path().join("lone");
+        std::fs::create_dir_all(&mail).unwrap();
+        std::fs::create_dir_all(&lone).unwrap();
+        std::fs::write(mail.join("mail.eml"), "x").unwrap();
+        std::fs::write(mail.join("Body.TXT"), "x").unwrap();
+        std::fs::write(lone.join("body.txt"), "x").unwrap();
+
+        assert_eq!(
+            classify(&inbox, &mail.join("Body.TXT")),
+            Err(Skip::MailBody)
+        );
+        assert_eq!(classify(&inbox, &lone.join("body.txt")), Ok(()));
     }
 
     #[test]

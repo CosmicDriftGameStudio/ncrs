@@ -84,6 +84,16 @@ pub(in crate::filing) fn lock(slot: &IndexSlot) -> MutexGuard<'_, Option<Index>>
     slot.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+/// For the UI thread: a pipeline or a run may hold the index for minutes, so
+/// the UI never waits for it. `None` when the slot is busy.
+pub(in crate::filing) fn try_lock(slot: &IndexSlot) -> Option<MutexGuard<'_, Option<Index>>> {
+    match slot.try_lock() {
+        Ok(guard) => Some(guard),
+        Err(TryLockError::Poisoned(poisoned)) => Some(poisoned.into_inner()),
+        Err(TryLockError::WouldBlock) => None,
+    }
+}
+
 /// What the runner works through. Private to this module so that nothing else
 /// can build one around the slot.
 pub(in crate::filing) struct IntakeIndex(IndexSlot);

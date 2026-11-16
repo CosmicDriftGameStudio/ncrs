@@ -58,8 +58,13 @@ impl FilingModule {
         self.give_kinds_to_index();
     }
 
+    /// Skipped while a pipeline or a run holds the index; the next call
+    /// hands them over.
     pub(in crate::filing) fn give_kinds_to_index(&self) {
-        if let Some(index) = lock(&self.index).as_mut() {
+        let Some(mut guard) = try_lock(&self.index) else {
+            return;
+        };
+        if let Some(index) = guard.as_mut() {
             if !Arc::ptr_eq(index.kinds(), &self.kinds) {
                 index.set_kinds(Arc::clone(&self.kinds));
             }

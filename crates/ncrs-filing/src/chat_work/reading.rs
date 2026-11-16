@@ -15,9 +15,9 @@ use ncrs_index::{
     SenderAliases,
 };
 use ncrs_intake::{
-    date_in_file_stem, detect_fields, hash_path, is_image_file, learn_archive, location_structure,
-    plan_reorganisation, ArchiveDocument, LocationStructure, OwnNames, PlanFile,
-    ReorganisationInput,
+    date_in_file_stem, detect_fields, hash_path, is_eml_file, is_image_file, is_mail_body,
+    learn_archive, location_structure, plan_reorganisation, ArchiveDocument, LocationStructure,
+    OwnNames, PlanFile, ReorganisationInput,
 };
 use ncrs_pipeline::Load;
 use ncrs_priority::{set_current_thread_priority, ThreadPriority};
@@ -128,14 +128,17 @@ fn walk(
         Ok(entries) => entries,
         Err(err) => return walk_error(&folder, relative, &err),
     };
+    let mut dir_entries = Vec::new();
     for entry in entries {
-        let dir_entry = match entry {
-            Ok(dir_entry) => dir_entry,
-            Err(err) => {
-                walk_error(&folder, relative, &err)?;
-                continue;
-            }
-        };
+        match entry {
+            Ok(dir_entry) => dir_entries.push(dir_entry),
+            Err(err) => walk_error(&folder, relative, &err)?,
+        }
+    }
+    let has_eml = dir_entries
+        .iter()
+        .any(|dir_entry| is_eml_file(&dir_entry.file_name()));
+    for dir_entry in dir_entries {
         let name = dir_entry.file_name();
         if name.to_string_lossy().starts_with('.') {
             continue;
@@ -146,7 +149,7 @@ fn walk(
         let path = relative.join(&name);
         if file_type.is_dir() {
             walk(base, &path, found, progress)?;
-        } else if !file_type.is_symlink() {
+        } else if !file_type.is_symlink() && !is_mail_body(&name, has_eml) {
             // A file that cannot be stat'ed cannot be read or filed either.
             let Some(stamp) = dir_entry.metadata().ok().and_then(|metadata| {
                 Some(FileStamp {
