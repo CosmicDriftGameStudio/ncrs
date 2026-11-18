@@ -9,7 +9,6 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::SystemTime;
 
-use chrono::{DateTime, Local};
 use ncrs_index::{
     ContentHash, Document, DocumentFields, FileStamp, Finding, Kinds, NoActionReason, PlanOutcome,
     SenderAliases,
@@ -172,8 +171,8 @@ fn walk(
     Ok(())
 }
 
-fn modified_date(mtime: SystemTime) -> chrono::NaiveDate {
-    DateTime::<Local>::from(mtime).date_naive()
+fn modified_date(mtime: SystemTime) -> Option<chrono::NaiveDate> {
+    ncrs_ui_kit::format::local_time(mtime).map(|time| time.date_naive())
 }
 
 fn date_in_file_name(relative: &Path) -> Option<chrono::NaiveDate> {
@@ -347,7 +346,7 @@ pub fn read_folder(
             .fields
             .date
             .or_else(|| date_in_file_name(&file.relative))
-            .or_else(|| Some(modified_date(file.stamp.mtime)));
+            .or_else(|| modified_date(file.stamp.mtime));
         if record.text.is_none() {
             if is_image_file(&file.relative) {
                 photos += 1;

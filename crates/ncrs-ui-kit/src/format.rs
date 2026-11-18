@@ -1,7 +1,7 @@
 //! Presentation helpers for sizes and dates.
 use std::fmt::Write as _;
 use std::path::Path;
-use std::time::SystemTime;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use chrono::{DateTime, Datelike as _, Local};
 use ncrs_core::{DateFormat, FileEntry, SizeFormat, WindowsAttributes};
@@ -228,19 +228,43 @@ pub fn folder_below(path: &std::path::Path, scope: &std::path::Path) -> String {
     }
 }
 
+/// Seconds from 0001-01-01 to the epoch, and from the epoch to 9999-12-31: the
+/// years a date can be shown in.
+const EARLIEST_SHOWN_SECONDS: i64 = -62_135_596_800;
+const LATEST_SHOWN_SECONDS: i64 = 253_402_300_799;
+
+/// `time` in the local zone, or `None` for a time outside the years 1 to 9999.
+/// A file's time is whatever the file system or an archive says, and
+/// `DateTime::from(SystemTime)` panics on a value it cannot hold.
+pub fn local_time(time: SystemTime) -> Option<DateTime<Local>> {
+    let (seconds, nanos) = match time.duration_since(UNIX_EPOCH) {
+        Ok(after) => (i64::try_from(after.as_secs()).ok()?, after.subsec_nanos()),
+        Err(earlier) => {
+            let before = earlier.duration();
+            let seconds = i64::try_from(before.as_secs()).ok()?;
+            match before.subsec_nanos() {
+                0 => (-seconds, 0),
+                nanos => (-seconds - 1, 1_000_000_000 - nanos),
+            }
+        }
+    };
+    if !(EARLIEST_SHOWN_SECONDS..=LATEST_SHOWN_SECONDS).contains(&seconds) {
+        return None;
+    }
+    Some(DateTime::from_timestamp(seconds, nanos)?.with_timezone(&Local))
+}
+
 /// Local timestamp `YYYY-MM-DD HH:MM`, or empty if unknown.
 pub fn time(time: Option<SystemTime>) -> String {
-    time.map(|t| {
-        DateTime::<Local>::from(t)
-            .format("%Y-%m-%d %H:%M")
-            .to_string()
-    })
-    .unwrap_or_default()
+    time.and_then(local_time)
+        .map(|at| at.format("%Y-%m-%d %H:%M").to_string())
+        .unwrap_or_default()
 }
 
 /// A time as a date column writes it. Empty when unknown.
 pub fn time_in(time: Option<SystemTime>, format: DateFormat, lang: Language) -> String {
-    time.map(|moment| date_text(DateTime::<Local>::from(moment), Local::now(), format, lang))
+    time.and_then(local_time)
+        .map(|moment| date_text(moment, Local::now(), format, lang))
         .unwrap_or_default()
 }
 
@@ -819,5 +843,30 @@ mod tests {
         assert_eq!(entry_size(&folder(None)), Msg::MarkerDir.text());
         assert_eq!(entry_size(&folder(computed(1536, false))), "1.5 KB");
         assert_eq!(entry_size(&folder(computed(1536, true))), "1.5 KB+");
+    }
+}
+
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+#[cfg(test)]
+mod local_time_tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn a_time_chrono_cannot_hold_is_no_date_and_does_not_panic() {
+        let far_future = UNIX_EPOCH + Duration::from_secs(u64::MAX / 2);
+        assert!(local_time(far_future).is_none());
+        assert_eq!(time(Some(far_future)), "");
+        assert_eq!(
+            time_in(Some(far_future), DateFormat::default(), Language::English),
+            ""
+        );
+    }
+
+    #[test]
+    fn ordinary_times_before_and_after_the_epoch_are_dates() {
+        assert!(local_time(UNIX_EPOCH + Duration::from_secs(1_700_000_000)).is_some());
+        assert!(local_time(UNIX_EPOCH - Duration::from_secs(86_400 * 365)).is_some());
+        assert!(!time(Some(UNIX_EPOCH + Duration::from_secs(1_700_000_000))).is_empty());
     }
 }
