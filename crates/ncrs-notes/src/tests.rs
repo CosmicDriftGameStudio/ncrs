@@ -15,7 +15,8 @@ use ncrs_i18n::Language;
 
 use crate::frontmatter::{compose, split, FrontMatter};
 use crate::search::search;
-use crate::store::{self, file_note_path, scan, Kind, FILES_DIR};
+use crate::state::Write;
+use crate::store::{self, file_note_path, scan, Expect, Kind, Replaced, WriteError, FILES_DIR};
 use crate::tree::RowKey;
 use crate::{flush_now, notes_key, update, Action, Ctx, Message, Mode, State};
 
@@ -33,6 +34,36 @@ fn loaded(root: &Path) -> State {
     let mut state = State::new(root.to_owned());
     let _ = update(&mut state, Message::Loaded(Box::new(scan(root))), &CTX);
     state
+}
+
+fn flush_all(state: &mut State) {
+    assert_eq!(flush_now(state, &CTX), Vec::<String>::new());
+}
+
+fn job(path: &Path, text: &str, expect: Expect, generation: u64) -> Write {
+    Write {
+        path: path.to_owned(),
+        text: text.to_owned(),
+        expect,
+        replaces: None,
+        generation,
+        background: false,
+    }
+}
+
+fn hash_of(text: &str) -> u64 {
+    store::content_hash(text.as_bytes())
+}
+
+/// Answers the write that runs, as the runtime would.
+fn saved_ok(state: &mut State) {
+    let running = state.running.clone().expect("a write runs");
+    let hash = hash_of(&running.text);
+    let _ = update(
+        state,
+        Message::Saved(running.path, running.generation, Ok(hash)),
+        &CTX,
+    );
 }
 
 fn action(state: &mut State, message: Message) -> Option<Action> {
@@ -292,7 +323,7 @@ async fn flushing_now_writes_the_pending_edit_without_waiting_for_the_pause() {
     );
     assert!(state.dirty);
 
-    flush_now(&mut state).unwrap();
+    flush_all(&mut state);
 
     assert!(fs::read_to_string(note).unwrap().contains("und Spanien"));
     assert!(!state.dirty);
@@ -311,7 +342,7 @@ fn type_first_line(state: &mut State, text: &str) {
         )),
         &CTX,
     );
-    flush_now(state).unwrap();
+    flush_all(state);
 }
 
 /// Every note file the program wrote, and proof that nothing else appeared outside `root`.
@@ -485,7 +516,7 @@ async fn a_second_write_waits_for_the_first_and_the_rename_leaves_one_file() {
     let mut state = loaded(&root);
     state.open = true;
     let _ = update(&mut state, Message::NewNote, &CTX);
-    assert!(state.writing, "the first write of the new note runs");
+    assert!(state.writing(), "the first write of the new note runs");
     paste(&mut state, "Plan");
     let first_generation = state.generation;
     let _ = update(&mut state, Message::SaveDue(first_generation), &CTX);
@@ -503,19 +534,19 @@ async fn a_second_write_waits_for_the_first_and_the_rename_leaves_one_file() {
         "nothing overtakes the first write"
     );
 
-    let _ = update(&mut state, Message::Saved(Ok(())), &CTX);
+    saved_ok(&mut state);
     wait_for("the second write", || {
         root.join("Plan.md").exists() && !root.join("New note.md").exists()
     })
     .await;
-    let _ = update(&mut state, Message::Saved(Ok(())), &CTX);
+    saved_ok(&mut state);
     let written = root.join("Plan B.md");
     wait_for("the third write", || {
         written.exists() && !root.join("Plan.md").exists()
     })
     .await;
-    let _ = update(&mut state, Message::Saved(Ok(())), &CTX);
-    assert!(!state.writing && state.queued.is_empty());
+    saved_ok(&mut state);
+    assert!(!state.writing() && state.queued.is_empty());
     let names: Vec<_> = fs::read_dir(&root)
         .unwrap()
         .flatten()
@@ -550,8 +581,8 @@ fn a_slow_older_write_does_not_land_over_a_newer_one() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("Plan.md");
     let ledger = store::Ledger::default();
-    store::write_note(&path, "second", None, 2, &ledger).unwrap();
-    store::write_note(&path, "first", None, 1, &ledger).unwrap();
+    store::write_note(&job(&path, "second", Expect::Absent, 2), &ledger).unwrap();
+    store::write_note(&job(&path, "first", Expect::Absent, 1), &ledger).unwrap();
     assert_eq!(fs::read_to_string(&path).unwrap(), "second");
 }
 
@@ -562,29 +593,261 @@ fn a_skipped_older_write_still_removes_the_file_it_replaces() {
     let path = dir.path().join("New.md");
     fs::write(&old, "x").unwrap();
     let ledger = store::Ledger::default();
-    store::write_note(&path, "second", None, 2, &ledger).unwrap();
-    store::write_note(&path, "first", Some(&old), 1, &ledger).unwrap();
+    store::write_note(&job(&path, "second", Expect::Absent, 2), &ledger).unwrap();
+    let mut older = job(&path, "first", Expect::Absent, 1);
+    older.replaces = Some(Replaced {
+        path: old.clone(),
+        base: Some(hash_of("x")),
+    });
+    store::write_note(&older, &ledger).unwrap();
     assert_eq!(fs::read_to_string(&path).unwrap(), "second");
     assert!(!old.exists());
 }
 
 #[cfg(unix)]
 #[test]
-fn a_written_note_is_readable_by_others_and_keeps_the_rights_of_an_existing_file() {
+fn a_written_note_gets_the_umask_and_an_existing_file_keeps_its_rights() {
     use std::os::unix::fs::PermissionsExt as _;
     let dir = tempfile::tempdir().unwrap();
+    let probe = dir.path().join("probe");
+    fs::write(&probe, "a").unwrap();
+    let usual = fs::metadata(&probe).unwrap().permissions().mode() & 0o777;
+    let ledger = store::Ledger::default();
     let fresh = dir.path().join("Fresh.md");
-    store::write_atomic(&fresh, "a").unwrap();
+    store::write_note(&job(&fresh, "a", Expect::Absent, 1), &ledger).unwrap();
     assert_eq!(
         fs::metadata(&fresh).unwrap().permissions().mode() & 0o777,
-        0o644
+        usual
     );
     let existing = dir.path().join("Own.md");
     fs::write(&existing, "a").unwrap();
     fs::set_permissions(&existing, fs::Permissions::from_mode(0o600)).unwrap();
-    store::write_atomic(&existing, "b").unwrap();
+    store::write_note(
+        &job(&existing, "b", Expect::Content(hash_of("a")), 1),
+        &ledger,
+    )
+    .unwrap();
     assert_eq!(
         fs::metadata(&existing).unwrap().permissions().mode() & 0o777,
         0o600
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_note_that_is_a_link_is_written_through_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("elsewhere.md");
+    fs::write(&target, "old").unwrap();
+    let link = dir.path().join("Linked.md");
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+    let ledger = store::Ledger::default();
+    store::write_note(
+        &job(&link, "new", Expect::Content(hash_of("old")), 1),
+        &ledger,
+    )
+    .unwrap();
+    assert!(fs::symlink_metadata(&link)
+        .unwrap()
+        .file_type()
+        .is_symlink());
+    assert_eq!(fs::read_to_string(&target).unwrap(), "new");
+}
+
+#[tokio::test]
+async fn a_file_note_with_windows_line_ends_and_a_mark_is_read_and_never_emptied() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = Path::new("/docs/Offer.pdf");
+    let path = file_note_path(dir.path(), file);
+    let original =
+        "\u{feff}---\r\nfile: /docs/Offer.pdf\r\ndocument: 4\r\n---\r\nValid until May\r\n";
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(&path, original).unwrap();
+    let mut state = loaded(dir.path());
+    let note = state.note_on(file).expect("the note is read");
+    assert_eq!(note.text, "Valid until May\r\n");
+    let _ = action(&mut state, Message::EditNoteOn(file.to_owned()));
+    flush_all(&mut state);
+    assert_eq!(fs::read_to_string(&path).unwrap(), original);
+    assert_eq!(state.notes.len(), 1);
+}
+
+#[tokio::test]
+async fn a_file_that_is_not_a_note_where_a_file_note_would_go_is_left_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = Path::new("/docs/Offer.pdf");
+    let path = file_note_path(dir.path(), file);
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let bytes: &[u8] = &[0xff, 0xfe, b'x', 0x80];
+    fs::write(&path, bytes).unwrap();
+    let mut state = loaded(dir.path());
+    assert!(state.notes.is_empty());
+    let asked = action(&mut state, Message::EditNoteOn(file.to_owned()));
+    assert!(matches!(asked, Some(Action::Error(_))), "{asked:?}");
+    assert!(state.notes.is_empty());
+    flush_all(&mut state);
+    assert_eq!(fs::read(&path).unwrap(), bytes);
+}
+
+#[test]
+fn a_write_over_a_file_that_changed_outside_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("Plan.md");
+    fs::write(&path, "theirs").unwrap();
+    let ledger = store::Ledger::default();
+    let stale = store::write_note(
+        &job(&path, "mine", Expect::Content(hash_of("ours")), 1),
+        &ledger,
+    );
+    assert_eq!(stale, Err(WriteError::Conflict(path.clone())));
+    let taken = store::write_note(&job(&path, "mine", Expect::Absent, 2), &ledger);
+    assert_eq!(taken, Err(WriteError::Conflict(path.clone())));
+    assert_eq!(fs::read_to_string(&path).unwrap(), "theirs");
+}
+
+#[test]
+fn two_own_writes_in_a_row_are_no_conflict_even_with_a_stale_base() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("Plan.md");
+    let ledger = store::Ledger::default();
+    store::write_note(&job(&path, "one", Expect::Absent, 1), &ledger).unwrap();
+    store::write_note(&job(&path, "two", Expect::Absent, 2), &ledger).unwrap();
+    assert_eq!(fs::read_to_string(&path).unwrap(), "two");
+}
+
+#[test]
+fn a_rename_onto_a_name_that_appeared_meanwhile_overwrites_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let old = dir.path().join("Old.md");
+    let wanted = dir.path().join("Plan.md");
+    fs::write(&old, "mine").unwrap();
+    fs::write(&wanted, "theirs").unwrap();
+    let mut rename = job(&wanted, "mine", Expect::Absent, 1);
+    rename.replaces = Some(Replaced {
+        path: old.clone(),
+        base: Some(hash_of("mine")),
+    });
+    let result = store::write_note(&rename, &store::Ledger::default());
+    assert!(matches!(result, Err(WriteError::Conflict(_))));
+    assert_eq!(fs::read_to_string(&wanted).unwrap(), "theirs");
+    assert!(old.exists());
+}
+
+#[test]
+fn a_replaced_file_that_changed_outside_stays() {
+    let dir = tempfile::tempdir().unwrap();
+    let old = dir.path().join("Old.md");
+    fs::write(&old, "theirs").unwrap();
+    let mut rename = job(&dir.path().join("New.md"), "mine", Expect::Absent, 1);
+    rename.replaces = Some(Replaced {
+        path: old.clone(),
+        base: Some(hash_of("ours")),
+    });
+    store::write_note(&rename, &store::Ledger::default()).unwrap();
+    assert!(old.exists());
+}
+
+#[tokio::test]
+async fn an_edit_over_a_note_changed_outside_is_saved_as_a_copy() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "Trips.md", "Italy");
+    let mut state = loaded(dir.path());
+    state.open = true;
+    let note = dir.path().join("Trips.md");
+    let _ = update(
+        &mut state,
+        Message::Pressed(RowKey::Note(note.clone())),
+        &CTX,
+    );
+    let _ = update(&mut state, Message::Enter, &CTX);
+    fs::write(&note, "Italy and spring").unwrap();
+    paste(&mut state, " and Spain");
+    flush_all(&mut state);
+    assert_eq!(fs::read_to_string(&note).unwrap(), "Italy and spring");
+    let copy = dir.path().join("Trips (conflict).md");
+    assert!(fs::read_to_string(&copy).unwrap().contains("and Spain"));
+    assert_eq!(state.current.as_ref(), Some(&copy));
+}
+
+#[tokio::test]
+async fn a_failed_write_is_kept_and_the_note_shown_now_is_not_marked() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "A.md", "a");
+    write(dir.path(), "B.md", "b");
+    let mut state = loaded(dir.path());
+    state.open = true;
+    let a = dir.path().join("A.md");
+    let b = dir.path().join("B.md");
+    let _ = update(&mut state, Message::Pressed(RowKey::Note(a.clone())), &CTX);
+    let _ = update(&mut state, Message::Enter, &CTX);
+    paste(&mut state, "1");
+    let failing = Write {
+        path: a.clone(),
+        text: state.shown().unwrap().file_text(),
+        expect: Expect::Content(hash_of("a")),
+        replaces: None,
+        generation: 1,
+        background: false,
+    };
+    state.dirty = false;
+    state.running = Some(failing);
+    let _ = update(&mut state, Message::Pressed(RowKey::Note(b)), &CTX);
+    let _ = update(
+        &mut state,
+        Message::Saved(a.clone(), 1, Err(WriteError::Io("disk full".into()))),
+        &CTX,
+    );
+    assert!(!state.dirty, "the note shown now is not marked");
+    assert_eq!(state.unsaved.len(), 1);
+    flush_all(&mut state);
+    assert!(fs::read_to_string(&a).unwrap().contains('1'));
+    assert!(state.unsaved.is_empty());
+}
+
+#[tokio::test]
+async fn a_read_of_the_folder_is_thrown_away_while_a_write_is_on_its_way() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "A.md", "a");
+    let mut state = loaded(dir.path());
+    state.running = Some(job(&dir.path().join("A.md"), "a", Expect::Absent, 1));
+    write(dir.path(), "Other.md", "x");
+    let _ = update(
+        &mut state,
+        Message::Loaded(Box::new(scan(dir.path()))),
+        &CTX,
+    );
+    assert_eq!(state.notes.len(), 1);
+    assert!(state.reload_after_writes);
+}
+
+#[tokio::test]
+async fn a_read_that_started_before_a_write_was_asked_for_is_thrown_away() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut state = loaded(dir.path());
+    state.open = true;
+    let old_read = scan(dir.path()).unwrap();
+    let _ = update(&mut state, Message::NewNote, &CTX);
+    assert_eq!(state.notes.len(), 1);
+    saved_ok(&mut state);
+    let _ = update(&mut state, Message::Loaded(Box::new(Ok(old_read))), &CTX);
+    assert_eq!(state.notes.len(), 1, "the new note stays");
+    assert!(state.current.is_some());
+}
+
+#[test]
+fn titles_stay_within_what_a_file_system_takes() {
+    assert!(store::clean_title(&"ä".repeat(300)).len() <= 200);
+    assert_eq!(store::clean_title("con"), "con_");
+    assert_eq!(store::clean_title("NUL.txt"), "NUL_.txt");
+    assert_eq!(store::clean_title("Plan."), "Plan");
+    let long = PathBuf::from(format!("/x/{}.pdf", "é".repeat(200)));
+    let name = file_note_path(Path::new("/n"), &long);
+    assert!(name.file_name().unwrap().len() <= 255);
+}
+
+#[test]
+fn front_matter_accepts_windows_line_ends_and_a_mark() {
+    let (front, body) = split("\u{feff}---\r\nfile: /a.pdf\r\n---\r\ntext");
+    assert_eq!(front.unwrap().file, PathBuf::from("/a.pdf"));
+    assert_eq!(body, "text");
 }

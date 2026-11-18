@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use iced::widget::text_editor;
 
-use crate::store::Scan;
+use crate::store::{Scan, WriteError};
 use crate::tree::RowKey;
 
 /// How the shown note is drawn.
@@ -37,8 +37,9 @@ pub enum Message {
     Edited(text_editor::Action),
     /// The pause after the last edit is over: write the note.
     SaveDue(u64),
-    /// A blocking write is done.
-    Saved(Result<(), String>),
+    /// A blocking write of this file is done: its number and the hash of what
+    /// the file holds now, or why it was not written.
+    Saved(PathBuf, u64, Result<u64, WriteError>),
     /// A link of the rendered note, as written there.
     LinkClicked(String),
     /// Show the file a note on a file is about.

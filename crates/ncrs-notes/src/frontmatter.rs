@@ -14,17 +14,30 @@ pub struct FrontMatter {
 }
 
 /// The header and the text after it. A text without a complete header of a
-/// note on a file is all text.
+/// note on a file is all text. A leading byte order mark and Windows line ends
+/// in the header are accepted, as an editor may have saved the file that way.
 pub fn split(text: &str) -> (Option<FrontMatter>, &str) {
-    let Some(rest) = text.strip_prefix("---\n") else {
+    let unmarked = text.strip_prefix('\u{feff}').unwrap_or(text);
+    let Some(rest) = unmarked
+        .strip_prefix("---\n")
+        .or_else(|| unmarked.strip_prefix("---\r\n"))
+    else {
         return (None, text);
     };
-    let (header, body) = match rest.split_once("\n---\n") {
-        Some(parts) => parts,
-        None => match rest.strip_suffix("\n---") {
-            Some(header) => (header, ""),
-            None => return (None, text),
-        },
+    let mut offset = 0;
+    let mut closing = None;
+    for line in rest.split_inclusive('\n') {
+        if line.trim_end_matches(['\r', '\n']) == FENCE {
+            closing = Some((offset, offset + line.len()));
+            break;
+        }
+        offset += line.len();
+    }
+    let Some((header_end, body_start)) = closing else {
+        return (None, text);
+    };
+    let (Some(header), Some(body)) = (rest.get(..header_end), rest.get(body_start..)) else {
+        return (None, text);
     };
     let mut file = None;
     let mut document = None;

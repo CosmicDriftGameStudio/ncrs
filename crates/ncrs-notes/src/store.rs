@@ -2,12 +2,13 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::io::Write as _;
+use std::io::{ErrorKind, Write as _};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::SystemTime;
 
 use crate::frontmatter::{self, FrontMatter};
+use crate::state::Write;
 
 /// The folder of the notes on files; never shown as a folder.
 pub const FILES_DIR: &str = ".files";
@@ -15,6 +16,13 @@ pub const FILES_DIR: &str = ".files";
 const MARKDOWN: &str = "md";
 const MAX_DEPTH: usize = 16;
 const MAX_TITLE_CHARS: usize = 80;
+/// File systems cap a name at 255 bytes; a title leaves room for a number and the extension.
+const MAX_TITLE_BYTES: usize = 200;
+const MAX_NAME_BYTES: usize = 255;
+const RESERVED_NAMES: [&str; 22] = [
+    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+    "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Kind {
@@ -37,8 +45,9 @@ pub struct Note {
     /// Without the header of a note on a file.
     pub text: String,
     pub modified: Option<SystemTime>,
-    /// False for a note made in the tab and not written yet.
-    pub on_disk: bool,
+    /// The hash of the bytes this note was read from or last written as;
+    /// `None` for a note made in the tab and not written yet.
+    pub base: Option<u64>,
 }
 
 impl Note {
@@ -72,6 +81,9 @@ pub struct Scan {
     pub notes: Vec<Note>,
     /// Below the notes folder, `.files` and dot folders left out.
     pub folders: Vec<PathBuf>,
+    /// How many writes had been asked for when the read started; a read that
+    /// started before a later write may not have seen it.
+    pub epoch: u64,
 }
 
 fn is_markdown(path: &Path) -> bool {
@@ -86,7 +98,9 @@ fn stem_of(path: &Path) -> String {
 }
 
 fn read_note(path: &Path, folder: PathBuf, files_dir: bool) -> Option<Note> {
-    let text = fs::read_to_string(path).ok()?;
+    let bytes = fs::read(path).ok()?;
+    let base = Some(content_hash(&bytes));
+    let text = String::from_utf8(bytes).ok()?;
     let modified = fs::metadata(path).and_then(|meta| meta.modified()).ok();
     if files_dir {
         let (parsed, body) = frontmatter::split(&text);
@@ -105,7 +119,7 @@ fn read_note(path: &Path, folder: PathBuf, files_dir: bool) -> Option<Note> {
             },
             text: body.to_owned(),
             modified,
-            on_disk: true,
+            base,
         });
     }
     Some(Note {
@@ -115,7 +129,7 @@ fn read_note(path: &Path, folder: PathBuf, files_dir: bool) -> Option<Note> {
         kind: Kind::Topic,
         text,
         modified,
-        on_disk: true,
+        base,
     })
 }
 
@@ -172,13 +186,29 @@ pub fn scan(root: &Path) -> Result<Scan, String> {
 
 /// FNV-1a, so the name of a note on a file stays the same across versions of
 /// the program and of Rust.
-fn short_hash(path: &Path) -> String {
+pub fn content_hash(bytes: &[u8]) -> u64 {
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for byte in path.to_string_lossy().bytes() {
-        hash ^= u64::from(byte);
+    for byte in bytes {
+        hash ^= u64::from(*byte);
         hash = hash.wrapping_mul(0x0100_0000_01b3);
     }
-    format!("{:08x}", hash >> 32)
+    hash
+}
+
+fn short_hash(path: &Path) -> String {
+    format!(
+        "{:08x}",
+        content_hash(path.to_string_lossy().as_bytes()) >> 32
+    )
+}
+
+/// The longest start of `text` that is at most `bytes` long and ends at a character border.
+fn cut_to_bytes(text: &str, bytes: usize) -> &str {
+    let mut end = bytes.min(text.len());
+    while !text.is_char_boundary(end) {
+        end = end.saturating_sub(1);
+    }
+    text.get(..end).unwrap_or_default()
 }
 
 /// Where the note on `file` lives.
@@ -187,8 +217,9 @@ pub fn file_note_path(root: &Path, file: &Path) -> PathBuf {
         || "file".to_owned(),
         |name| name.to_string_lossy().into_owned(),
     );
-    root.join(FILES_DIR)
-        .join(format!("{name}-{}.{MARKDOWN}", short_hash(file)))
+    let suffix = format!("-{}.{MARKDOWN}", short_hash(file));
+    let name = cut_to_bytes(&name, MAX_NAME_BYTES - suffix.len());
+    root.join(FILES_DIR).join(format!("{name}{suffix}"))
 }
 
 /// A title that is a safe file name.
@@ -204,7 +235,21 @@ pub fn clean_title(title: &str) -> String {
         })
         .take(MAX_TITLE_CHARS)
         .collect();
-    cleaned.trim().trim_start_matches('.').trim().to_owned()
+    let cleaned = cut_to_bytes(&cleaned, MAX_TITLE_BYTES)
+        .trim()
+        .trim_start_matches('.')
+        .trim_end_matches(['.', ' '])
+        .trim()
+        .to_owned();
+    // Windows cannot create these names, with or without an extension.
+    let stem = cleaned.split('.').next().unwrap_or_default();
+    if RESERVED_NAMES
+        .iter()
+        .any(|reserved| reserved.eq_ignore_ascii_case(stem))
+    {
+        return format!("{stem}_{}", &cleaned[stem.len()..]);
+    }
+    cleaned
 }
 
 /// `title` with a number when `taken` says the name is in use.
@@ -222,41 +267,124 @@ pub fn topic_path(root: &Path, folder: &Path, title: &str) -> PathBuf {
     root.join(folder).join(format!("{title}.{MARKDOWN}"))
 }
 
-/// Writes `content` next to `path` and moves it into place, so a crash leaves
-/// the old file or the new one.
-pub fn write_atomic(path: &Path, content: &str) -> Result<(), String> {
-    let describe = |err: std::io::Error| format!("{}: {err}", path.display());
-    let folder = path.parent().ok_or_else(|| path.display().to_string())?;
-    fs::create_dir_all(folder).map_err(describe)?;
-    let mut file = tempfile::NamedTempFile::new_in(folder).map_err(describe)?;
-    file.write_all(content.as_bytes()).map_err(describe)?;
-    file.as_file().sync_all().map_err(describe)?;
-    if let Some(rights) = target_permissions(path) {
-        file.as_file().set_permissions(rights).map_err(describe)?;
-    }
-    file.persist(path)
-        .map(drop)
-        .map_err(|err| describe(err.error))
+/// The disk state a write is based on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Expect {
+    /// There is no file at the path.
+    Absent,
+    /// The file there has the content with this hash.
+    Content(u64),
 }
 
-/// The rights of the file being replaced; a new file gets the usual 0644, not
-/// the 0600 of a temporary file.
-fn target_permissions(path: &Path) -> Option<fs::Permissions> {
-    match fs::metadata(path) {
-        Ok(meta) => Some(meta.permissions()),
-        Err(_) => default_permissions(),
+impl Expect {
+    pub fn of(base: Option<u64>) -> Self {
+        base.map_or(Self::Absent, Self::Content)
     }
+}
+
+/// The file a rename leaves behind, and what was last known to be in it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Replaced {
+    pub path: PathBuf,
+    pub base: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WriteError {
+    /// The file is not what the write was based on; nothing was written.
+    Conflict(PathBuf),
+    Io(String),
+}
+
+/// Where a path that is a link leads; links are written through, not replaced.
+fn followed(path: &Path) -> PathBuf {
+    let is_link = fs::symlink_metadata(path).is_ok_and(|meta| meta.file_type().is_symlink());
+    if is_link {
+        return fs::canonicalize(path).unwrap_or_else(|_| path.to_owned());
+    }
+    path.to_owned()
 }
 
 #[cfg(unix)]
-fn default_permissions() -> Option<fs::Permissions> {
+fn new_file_builder() -> tempfile::Builder<'static, 'static> {
     use std::os::unix::fs::PermissionsExt as _;
-    Some(fs::Permissions::from_mode(0o644))
+    let mut builder = tempfile::Builder::new();
+    // tempfile defaults to 0600; asking for 0666 gets the umask applied, so a
+    // new note is readable like any other new file.
+    builder.permissions(fs::Permissions::from_mode(0o666));
+    builder
 }
 
 #[cfg(not(unix))]
-fn default_permissions() -> Option<fs::Permissions> {
-    None
+fn new_file_builder() -> tempfile::Builder<'static, 'static> {
+    tempfile::Builder::new()
+}
+
+/// Writes `content` next to `path` and moves it into place, so a crash leaves
+/// the old file or the new one. Refuses when the disk does not match `expect`.
+/// Returns the hash of what was written.
+fn write_atomic(path: &Path, content: &str, expect: Expect) -> Result<u64, WriteError> {
+    let describe = |err: std::io::Error| WriteError::Io(format!("{}: {err}", path.display()));
+    let target = followed(path);
+    let folder = target
+        .parent()
+        .ok_or_else(|| WriteError::Io(path.display().to_string()))?;
+    fs::create_dir_all(folder).map_err(describe)?;
+    let existing = match fs::read(&target) {
+        Ok(bytes) => Some(bytes),
+        Err(err) if err.kind() == ErrorKind::NotFound => None,
+        Err(err) => return Err(describe(err)),
+    };
+    let expected = match (&existing, expect) {
+        (None, _) => true,
+        (Some(_), Expect::Absent) => false,
+        (Some(bytes), Expect::Content(hash)) => content_hash(bytes) == hash,
+    };
+    if !expected {
+        return Err(WriteError::Conflict(path.to_owned()));
+    }
+    let builder = if existing.is_some() {
+        tempfile::Builder::new()
+    } else {
+        new_file_builder()
+    };
+    let mut file = builder.tempfile_in(folder).map_err(describe)?;
+    file.write_all(content.as_bytes()).map_err(describe)?;
+    file.as_file().sync_all().map_err(describe)?;
+    if existing.is_some() {
+        let rights = fs::metadata(&target).map_err(describe)?.permissions();
+        file.as_file().set_permissions(rights).map_err(describe)?;
+        file.persist(&target).map_err(|err| describe(err.error))?;
+    } else {
+        persist_new(file, &target, path)?;
+    }
+    Ok(content_hash(content.as_bytes()))
+}
+
+/// Moves the temporary file to a name nobody has taken; a file system that
+/// cannot refuse an existing name is checked first, which leaves a small gap.
+fn persist_new(
+    file: tempfile::NamedTempFile,
+    target: &Path,
+    shown: &Path,
+) -> Result<(), WriteError> {
+    let describe = |err: std::io::Error| WriteError::Io(format!("{}: {err}", shown.display()));
+    match file.persist_noclobber(target) {
+        Ok(_) => Ok(()),
+        Err(err) if err.error.kind() == ErrorKind::AlreadyExists => {
+            Err(WriteError::Conflict(shown.to_owned()))
+        }
+        Err(err) if err.error.kind() == ErrorKind::Unsupported => {
+            if fs::symlink_metadata(target).is_ok() {
+                return Err(WriteError::Conflict(shown.to_owned()));
+            }
+            err.file
+                .persist(target)
+                .map(drop)
+                .map_err(|failed| describe(failed.error))
+        }
+        Err(err) => Err(describe(err.error)),
+    }
 }
 
 /// Whether both names lead to one file: on a case-insensitive disk a title that
@@ -279,35 +407,80 @@ pub fn is_same_file(first: &Path, second: &Path) -> bool {
     }
 }
 
-/// The newest generation written per note file, shared with the blocking tasks
-/// so a write that was slow cannot land over a newer one.
-pub type Ledger = Arc<Mutex<HashMap<PathBuf, u64>>>;
+/// What was last written to a note file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Written {
+    pub generation: u64,
+    pub hash: u64,
+}
+
+/// The newest write done per note file, shared with the blocking tasks so a
+/// write that was slow cannot land over a newer one, and so a write is checked
+/// against what this program wrote last rather than against a stale base.
+pub type Ledger = Arc<Mutex<HashMap<PathBuf, Written>>>;
 
 /// What the blocking task of a write does: the file, then removing the one it
 /// replaces when a note was renamed. A write older than one already done for
-/// the same file is not written, but the removal still happens.
-pub fn write_note(
-    path: &Path,
-    content: &str,
-    replaces: Option<&Path>,
-    generation: u64,
-    ledger: &Ledger,
-) -> Result<(), String> {
+/// the same file is not written, but the removal still happens. Returns the
+/// hash of what the file holds now.
+pub fn write_note(write: &Write, ledger: &Ledger) -> Result<u64, WriteError> {
+    let mut done = ledger.lock().unwrap_or_else(PoisonError::into_inner);
+    let path = write.path.as_path();
+    // A case-only rename names the file it replaces.
+    let other_name_of_path = write
+        .replaces
+        .as_ref()
+        .filter(|old| old.path != path && is_same_file(&old.path, path));
+    let hash = match done.get(path).copied() {
+        Some(last) if write.generation <= last.generation => last.hash,
+        known => {
+            let expect = known
+                .or_else(|| other_name_of_path.and_then(|old| done.get(&old.path).copied()))
+                .map_or(write.expect, |last| Expect::Content(last.hash));
+            let hash = write_atomic(path, &write.text, expect)?;
+            done.insert(
+                path.to_owned(),
+                Written {
+                    generation: write.generation,
+                    hash,
+                },
+            );
+            hash
+        }
+    };
+    if let Some(old) = write
+        .replaces
+        .as_ref()
+        .filter(|old| old.path != path && other_name_of_path.is_none())
     {
-        let mut newest = ledger.lock().unwrap_or_else(PoisonError::into_inner);
-        if newest.get(path).is_none_or(|last| generation > *last) {
-            write_atomic(path, content)?;
-            newest.insert(path.to_owned(), generation);
-        }
+        remove_replaced(old, &mut done)?;
     }
-    if let Some(old) = replaces.filter(|old| *old != path && !is_same_file(old, path)) {
-        match fs::remove_file(old) {
-            Ok(()) => {}
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
-            Err(err) => return Err(format!("{}: {err}", old.display())),
-        }
+    Ok(hash)
+}
+
+/// Removes the file a rename left behind, unless it changed since this program
+/// last saw it: that version stays.
+fn remove_replaced(old: &Replaced, done: &mut HashMap<PathBuf, Written>) -> Result<(), WriteError> {
+    let describe = |err: std::io::Error| WriteError::Io(format!("{}: {err}", old.path.display()));
+    let known = done.get(&old.path).map(|last| last.hash).or(old.base);
+    match fs::read(&old.path) {
+        Ok(bytes) if Some(content_hash(&bytes)) == known => {}
+        Ok(_) => return Ok(()),
+        Err(err) if err.kind() == ErrorKind::NotFound => {}
+        Err(err) => return Err(describe(err)),
     }
+    match fs::remove_file(&old.path) {
+        Ok(()) => {}
+        Err(err) if err.kind() == ErrorKind::NotFound => {}
+        Err(err) => return Err(describe(err)),
+    }
+    done.remove(&old.path);
     Ok(())
+}
+
+/// Whether something is at `path`, a link that leads nowhere included.
+pub fn is_taken(path: &Path) -> bool {
+    fs::symlink_metadata(path).is_ok()
 }
 
 pub fn make_folder(path: &Path) -> Result<(), String> {

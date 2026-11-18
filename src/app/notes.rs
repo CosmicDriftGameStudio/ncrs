@@ -23,7 +23,7 @@ impl App {
     /// The first read of the notes folder, at start, so the file rows know
     /// which files have a note before the tab is ever opened.
     pub(in crate::app) fn start_notes(&mut self) -> Task<Message> {
-        ncrs_notes::load(self.notes.root.clone()).map(Message::Notes)
+        ncrs_notes::reload(&mut self.notes).map(Message::Notes)
     }
 
     /// The command list's "Notes": shows the tab and reads the folder again.
@@ -57,10 +57,10 @@ impl App {
         };
         let task = self.update_notes(ncrs_notes::Message::EditNoteOn(file));
         self.shown_tab = ShownTab::Notes;
-        let reload = ncrs_notes::load(self.notes.root.clone()).map(Message::Notes);
-        if self.notes.loaded {
+        if self.notes.loaded || self.notes.loading {
             task
         } else {
+            let reload = ncrs_notes::reload(&mut self.notes).map(Message::Notes);
             Task::batch([task, reload])
         }
     }
