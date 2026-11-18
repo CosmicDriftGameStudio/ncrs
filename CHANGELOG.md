@@ -25,6 +25,36 @@ All notable changes to this project are documented here. The format follows
   still being written, and a folder is looked through at most once an hour.
 - Copying onto FAT or exFAT drives no longer fails for files that carry a
   download mark on Windows.
+- A `body.txt` beside its `.eml` is the mail's text, not a document: the Filing
+  tab and the watched-folder intake leave it alone.
+- The window no longer waits for the index while a filing run or the intake
+  holds it.
+- The chat's answer to "Always" says that rules file at once and everything
+  else waits for your OK.
+- The Filing tab no longer tags files "no folder" when the model on your own
+  server cannot choose folders; it says so and leaves the files alone, and the
+  Copy and Move buttons work again.
+- Hermes says in your language why its model failed: not reachable, answered
+  nothing usable, no consent, or could not be loaded.
+- The Updates page shows the day of the last check when an older settings file
+  has no result of it, instead of "No check for updates has finished yet."
+- A refused API key is tried again once you correct it, without waiting out the
+  pause.
+- A file that was being read when you closed ncrs is read again at the next
+  start; only a file that crashed the reader at two starts in a row is skipped,
+  and "Process again" reads it anyway.
+- SFTP: `known_hosts` lines with `*`, `?` and `!` host patterns and revoked keys
+  are honoured.
+- `ncrs --version` prints the same version the About card shows.
+- The install scripts are attached to each release and listed in
+  `SHA256SUMS`; `install.sh --uninstall` removes only the files its install
+  wrote.
+
+### Changed
+
+- `PRIVACY.md`, `SECURITY.md`, the README and the consent card for an AI server
+  on another computer now list what is sent and where to, and what ncrs keeps
+  on your computer.
 
 ## [1.5.1] — 2026-11-15
 
