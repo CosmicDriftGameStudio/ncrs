@@ -9,7 +9,7 @@ use ncrs_i18n::{fill_template, Msg};
 use ncrs_jobs::{Job, JobKind};
 
 use crate::action::{Action, StartJob};
-use crate::conflict::OVERWRITE_FOCUS;
+use crate::conflict::KEEP_FOCUS;
 use crate::ctx::FlowCtx;
 use crate::delete_flow::{idle, Outcome};
 use crate::message::{ConflictChoice, OpsMessage, TrashMessage};
@@ -148,8 +148,9 @@ pub fn restore_row_done(
             Some(_) => skip_restore_row(ops, index, ctx),
             None => {
                 ops.restore_conflict = Some(index);
+                ops.conflict_folder = false;
                 actions(vec![
-                    Action::FocusDialogButton(OVERWRITE_FOCUS),
+                    Action::FocusDialogButton(KEEP_FOCUS),
                     Action::CloseQuickOpenAndPalette,
                 ])
             }
@@ -233,6 +234,7 @@ pub fn end_restore(ops: &mut Ops, ctx: &FlowCtx<'_>, error_set: bool) -> Outcome
     ops.restore_conflict = None;
     ops.bump_generation();
     ops.conflict_all = false;
+    ops.conflict_folder = false;
     let mut asked = vec![Action::ClearJobProgress];
     if let Some(done) = outcome {
         if !ctx.has_job_error && !error_set && (done.restored > 0 || done.skipped > 0) {

@@ -262,6 +262,7 @@ fn make_busy_with(name: &str, app: &mut App, folder: &Path) {
         sources: vec![file.clone()],
         target: folder.to_path_buf(),
         names: Vec::new(),
+        targets: Vec::new(),
     };
     let deletion = Deletion {
         sources: vec![file.clone()],

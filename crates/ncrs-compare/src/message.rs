@@ -34,5 +34,9 @@ pub enum Message {
     /// The panels moved, maybe out of the compared folders.
     PanelsChanged,
     /// The copy queue and the delete dialog have nothing left to do.
-    OpsIdle,
+    /// `completed` is whether the copies ran to the end, without a cancel or
+    /// an error; only then does the sync go on to delete.
+    OpsIdle {
+        completed: bool,
+    },
 }

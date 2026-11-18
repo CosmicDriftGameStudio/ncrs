@@ -1,7 +1,7 @@
 //! What the flows of the file operations keep between two messages.
 
 use std::ffi::OsString;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -32,9 +32,17 @@ pub struct Transfer {
     /// source keeps its own. Differs only where sources from several folders
     /// share a name.
     pub names: Vec<OsString>,
+    /// The folder each source goes into, by position; empty when all go into
+    /// `target`. Set by a sync, whose files belong in different folders.
+    pub targets: Vec<PathBuf>,
 }
 
 impl Transfer {
+    /// The folder the source at `index` is put into.
+    pub fn target_of(&self, index: usize) -> &Path {
+        self.targets.get(index).unwrap_or(&self.target)
+    }
+
     /// The name the source at `index` gets in the target, when it is not its own.
     pub fn name_in_target(&self, index: usize) -> Option<OsString> {
         let name = self.names.get(index).filter(|name| !name.is_empty())?;
@@ -228,6 +236,13 @@ pub struct Ops {
     /// Whether "for all files" is ticked in the conflict dialog. Lives here so
     /// the tick survives the dialog being rebuilt every frame.
     pub conflict_all: bool,
+    /// Whether the latest transfer went through all its rows, as opposed to
+    /// being cancelled or stopped by an error.
+    pub transfer_completed: bool,
+    /// Quitting was asked once while a job ran; asking again quits.
+    pub quit_asked: bool,
+    /// Whether the open transfer conflict is a folder onto a folder.
+    pub conflict_folder: bool,
     /// The conflict rule from a previous "for all" answer, applied to the rest
     /// without asking again.
     pub conflict_rule: Option<OnConflict>,

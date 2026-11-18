@@ -13,7 +13,7 @@ use ncrs_fs::remote::session::Pool;
 use ncrs_fs::remote::KnownHostsFiles;
 use ncrs_index::{Amount, Currency};
 
-use super::flow::{amount_text, pattern_of, run_steps};
+use super::flow::{amount_text, facts_of, pattern_of, run_steps};
 use super::pattern::{plan, NameRules, Step};
 use super::state::ApplyFailure;
 
@@ -416,4 +416,21 @@ mod abort {
         assert!(abort_batch_rename(&mut ops).is_some());
         assert!(abort_batch_rename(&mut ops).is_none());
     }
+}
+
+#[test]
+fn a_modification_time_no_calendar_holds_gives_no_date_instead_of_a_panic() {
+    let entry = ncrs_core::FileEntry {
+        name: "a.txt".into(),
+        path: PathBuf::from("/x/a.txt"),
+        is_dir: false,
+        is_symlink: false,
+        is_parent: false,
+        size: 0,
+        modified: Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(u64::MAX / 2)),
+        folder_size: None,
+        details: Default::default(),
+    };
+
+    assert_eq!(facts_of(&entry).modified, None);
 }

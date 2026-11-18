@@ -129,6 +129,7 @@ fn a_conflict_closes_it() {
         sources: vec![PathBuf::from("/left/a.txt")],
         target: PathBuf::from("/right"),
         names: Vec::new(),
+        targets: Vec::new(),
     };
     app.ops.transfer = Some(transfer);
     drop(app.update(Message::TransferRowDone {

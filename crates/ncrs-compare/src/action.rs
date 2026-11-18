@@ -10,11 +10,10 @@ pub enum Action {
     ShowError(String),
     /// The marks or the filter changed: the panels take them again.
     MarksChanged,
-    /// Copies `sources` into the folder `target` through the copy queue, which
-    /// asks about files that exist.
+    /// Copies each source into its own folder through the copy queue, which
+    /// asks about files that exist. Pairs of source and target folder.
     Copy {
-        sources: Vec<PathBuf>,
-        target: PathBuf,
+        rows: Vec<(PathBuf, PathBuf)>,
     },
     /// Asks, in the delete dialog, to delete `sources` of the panel on `side`.
     Delete {

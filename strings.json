@@ -541,8 +541,14 @@
       "de": "Das Archiv wurde nicht verändert: {reason}"
     },
     {
+      "key": "status.quit_busy",
+      "context": "Status bar notice when the user quits while a copy, move or other job still runs. Quitting would stop the job half done; asking to quit a second time does it anyway.",
+      "en": "A job is still running; quit again to stop it and leave",
+      "de": "Ein Auftrag läuft noch; noch einmal beenden, um ihn abzubrechen und zu schließen"
+    },
+    {
       "key": "status.archive_write_busy",
-      "context": "Status bar notice when a pack, a copy into an archive or a delete from one is asked for while another job still runs. Only one job runs at a time; the user can try again when it is done.",
+      "context": "Status bar notice when any job (pack, copy, move, delete, open, rename and so on) is asked for while another job still runs. Only one job runs at a time; the user can try again when it is done.",
       "en": "Another job is still running; try again when it is done",
       "de": "Ein anderer Auftrag läuft noch; später noch einmal versuchen"
     },
@@ -781,6 +787,12 @@
       "de": "Datei existiert bereits"
     },
     {
+      "key": "conflict.subtitle_folder",
+      "context": "Line below the title of the conflict dialog when the name that is taken is a folder and a folder is being copied or moved onto it. States the problem plainly; no punctuation.",
+      "en": "Folder already exists",
+      "de": "Ordner existiert bereits"
+    },
+    {
       "key": "conflict.name",
       "context": "The name that is taken, shown as the subject of the conflict dialog. Just the name, no quotes needed — the dialog frames it.",
       "en": "{name}",
@@ -791,6 +803,12 @@
       "context": "Button: replace the existing file with the one being copied or moved. Verb.",
       "en": "Overwrite",
       "de": "Überschreiben"
+    },
+    {
+      "key": "conflict.merge",
+      "context": "Button in the conflict dialog for a folder that already exists at the target: copy the contents into it, replacing files with the same name and leaving everything else there. Verb. Replaces conflict.overwrite when the name taken is a folder.",
+      "en": "Merge",
+      "de": "Zusammenführen"
     },
     {
       "key": "conflict.keep",
@@ -4077,8 +4095,8 @@
     {
       "key": "transfer.policy",
       "context": "Label of the choice in the copy and move dialog for what happens when the target already has a name. Reads as the start of a sentence.",
-      "en": "If the file exists",
-      "de": "Wenn es die Datei gibt"
+      "en": "If the name exists",
+      "de": "Wenn es den Namen schon gibt"
     },
     {
       "key": "transfer.policy_ask",
@@ -6965,6 +6983,12 @@
       "context": "Hint at the right end of the line that names a search-hit list: what the Esc key does there.",
       "en": "back to the search",
       "de": "zurück zur Suche"
+    },
+    {
+      "key": "status.hit_list_batch_rename",
+      "context": "Notice in the status bar when the rename key is pressed with several hits tagged in a search result list. The hits live in different folders, so they cannot be renamed together; the text says what to do instead.",
+      "en": "Hits from different folders cannot be renamed together. Open their folder first.",
+      "de": "Treffer aus verschiedenen Ordnern lassen sich nicht zusammen umbenennen. Öffne zuerst ihren Ordner."
     },
     {
       "key": "status.hit_list_not_a_folder",
@@ -10847,6 +10871,42 @@
       "context": "Error when a note or a folder of the notes cannot be written. {reason} is the system's reason with the path.",
       "en": "Cannot save the note: {reason}",
       "de": "Die Notiz lässt sich nicht speichern: {reason}"
+    },
+    {
+      "key": "notes.conflict",
+      "context": "Error line in the notes tab: the file of a note was changed outside the program while it was open, so the program did not overwrite it and saved the user's version as a second note next to it. {name} is the title of that second note.",
+      "en": "The note was changed outside ncrs. Your version was saved as \"{name}\" next to it.",
+      "de": "Die Notiz wurde außerhalb von ncrs geändert. Deine Fassung wurde als „{name}“ daneben gespeichert."
+    },
+    {
+      "key": "notes.conflict_suffix",
+      "context": "Notes tab: word in brackets after the title of the copy that keeps the user's version when the note was changed outside the program, as in 'Shopping list (conflict)'. One word, lower case in English, no brackets.",
+      "en": "conflict",
+      "de": "Konflikt"
+    },
+    {
+      "key": "notes.file_note_unreadable",
+      "context": "Error line in the notes tab: the note for a file cannot be made because a file is already where it would go and the program cannot read it as a note. The file is left untouched. {path} is that file.",
+      "en": "The note for this file was not made: {path} exists and is not a note ncrs can read. It was left as it is.",
+      "de": "Die Notiz zu dieser Datei wurde nicht angelegt: {path} existiert und ist keine Notiz, die ncrs lesen kann. Sie wurde nicht verändert."
+    },
+    {
+      "key": "notes.quit_unsaved",
+      "context": "Error line when the user quits while a note could not be written. Quitting again ends the program and drops the unsaved text. {reason} is the system's reason with the path.",
+      "en": "A note could not be saved: {reason}. Quit again to discard it.",
+      "de": "Eine Notiz konnte nicht gespeichert werden: {reason}. Noch einmal beenden verwirft sie."
+    },
+    {
+      "key": "notes.loading",
+      "context": "Notes tab: line in the tree while the notes folder is being read for the first time.",
+      "en": "Reading the notes…",
+      "de": "Notizen werden gelesen …"
+    },
+    {
+      "key": "notes.empty",
+      "context": "Notes tab: line in the tree when the notes folder holds no note yet. 'New note' is the name of the button above the tree.",
+      "en": "No notes yet. Use \"New note\" to make one.",
+      "de": "Noch keine Notizen. Mit „Neue Notiz“ legst du eine an."
     },
     {
       "key": "notes.status_note",

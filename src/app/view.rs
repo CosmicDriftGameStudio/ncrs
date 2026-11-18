@@ -492,6 +492,7 @@ impl App {
                 self.lang,
                 &self.palette,
                 self.ops.conflict_all,
+                self.ops.conflict_folder,
                 self.dialog_focus,
                 self.window_size,
             )

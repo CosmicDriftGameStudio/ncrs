@@ -50,7 +50,7 @@ fn rules_for(folder: &Path) -> NameRules {
     }
 }
 
-fn facts_of(entry: &FileEntry) -> EntryFacts {
+pub(super) fn facts_of(entry: &FileEntry) -> EntryFacts {
     let name = entry.name.to_string_lossy();
     let (stem, extension) = split_name(&name, entry.is_dir);
     EntryFacts {
@@ -58,7 +58,8 @@ fn facts_of(entry: &FileEntry) -> EntryFacts {
         extension,
         modified: entry
             .modified
-            .map(|time| chrono::DateTime::<chrono::Local>::from(time).date_naive()),
+            .and_then(ncrs_ui_kit::format::local_time)
+            .map(|time| time.date_naive()),
         ..EntryFacts::default()
     }
 }

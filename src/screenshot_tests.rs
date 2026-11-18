@@ -244,6 +244,7 @@ fn compared_showcase() -> ncrs_compare::Compared {
         right,
         left_rows: rows(PROJECT_DIRECTORY, PROJECT_ROWS),
         right_rows: rows(BACKUP_DIRECTORY, BACKUP_ROWS),
+        ..ncrs_compare::Compared::default()
     }
 }
 

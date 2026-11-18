@@ -34,6 +34,9 @@ pub const OVERWRITE_FOCUS: usize = 2;
 /// ticked; the app holds it so the tick survives the dialog being rebuilt every
 /// frame.
 ///
+/// `folder` is whether a folder is copied onto a folder: the third button
+/// then merges instead of overwriting.
+///
 /// `focus` is the button Enter would press.
 ///
 /// The keys are routed in `app`, not here: Esc answers "keep", the abort key
@@ -44,6 +47,7 @@ pub fn view<'a>(
     lang: Language,
     palette: &Palette,
     all: bool,
+    folder: bool,
     focus: usize,
     window: Size,
 ) -> Element<'a, OpsMessage> {
@@ -87,7 +91,11 @@ pub fn view<'a>(
     };
 
     Frame::new(
-        lang.text(Msg::ConflictSubtitle),
+        lang.text(if folder {
+            Msg::ConflictSubtitleFolder
+        } else {
+            Msg::ConflictSubtitle
+        }),
         column![subject, all_row].spacing(spacing::LINE_GAP),
         SIZE,
         window,
@@ -99,7 +107,11 @@ pub fn view<'a>(
         choice_button(Msg::ConflictCancel, ConflictChoice::Cancel, CANCEL_FOCUS),
         choice_button(Msg::ConflictKeep, ConflictChoice::ThisKeep, KEEP_FOCUS),
         choice_button(
-            Msg::ConflictOverwrite,
+            if folder {
+                Msg::ConflictMerge
+            } else {
+                Msg::ConflictOverwrite
+            },
             ConflictChoice::ThisOverwrite,
             OVERWRITE_FOCUS,
         ),

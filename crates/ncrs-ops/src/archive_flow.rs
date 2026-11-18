@@ -12,7 +12,7 @@ use ncrs_jobs::{Job, JobKind};
 
 use crate::action::{Action, StartProgressJob};
 use crate::ctx::FlowCtx;
-use crate::delete_flow::{actions, idle, Outcome};
+use crate::delete_flow::{actions, busy_notice, idle, Outcome};
 use crate::message::OpsMessage;
 use crate::row_failure::RowFailure;
 use crate::state::{ArchiveWrite, ArchiveWriteKind, Deletion, Ops};
@@ -193,8 +193,7 @@ fn start_archive_write(
         || ops.extracting.is_some()
         || ops.archive_write.is_some()
     {
-        let text = ctx.lang.text(Msg::StatusArchiveWriteBusy).to_owned();
-        return actions(vec![Action::ShowNotice(text)]);
+        return busy_notice(ctx);
     }
     ops.bump_generation();
     let generation = ops.generation;
@@ -246,6 +245,9 @@ pub fn archive_written(
     let notice = match result {
         Ok(report) => {
             placed.clone_from(&report.placed);
+            if matches!(write.what, ArchiveWriteKind::CopyIn) {
+                ops.transfer_completed = true;
+            }
             Some(written_text(ctx.lang, &write, &report))
         }
         Err(failure) => {

@@ -253,11 +253,7 @@ impl App {
             };
         }
         if self.ops.conflict_is_open() {
-            let choice = match self.dialog_focus {
-                conflict::OVERWRITE_FOCUS => ConflictChoice::ThisOverwrite,
-                conflict::KEEP_FOCUS => ConflictChoice::ThisKeep,
-                _ => ConflictChoice::Cancel,
-            };
+            let choice = choice_of_focus(self.dialog_focus);
             return self.with_ops(|ops, ctx| ncrs_ops::answer_conflict(ops, choice, ctx));
         }
         Task::none()
@@ -345,11 +341,19 @@ impl App {
     /// Writes the session state here and now, then ends the app: the runtime
     /// stops right after, so no task would run.
     pub(in crate::app) fn quit(&mut self) -> Task<Message> {
-        ncrs_filing_view::stop(&self.filing_view);
         // A note typed in the last pause before its save is still only in memory.
-        if let Err(reason) = ncrs_notes::flush_now(&mut self.notes) {
-            eprintln!("ncrs: the note could not be saved on quit: {reason}");
+        // A note that cannot be saved holds the quit back once; asking again quits.
+        let ctx = ncrs_notes::Ctx { lang: self.lang };
+        let failures = ncrs_notes::flush_now(&mut self.notes, &ctx);
+        if !failures.is_empty() && !std::mem::replace(&mut self.notes.quit_warned, true) {
+            let text = ncrs_i18n::fill_template(
+                self.lang.text(Msg::NotesQuitUnsaved),
+                &[("{reason}", &failures.join("; "))],
+            );
+            self.set_status_error(&text);
+            return Task::none();
         }
+        ncrs_filing_view::stop(&self.filing_view);
         if let Some(path) = &self.state_path {
             write_session_state(
                 &self.session_writes,
@@ -425,5 +429,14 @@ impl App {
                 .replace("{reason}", &reason);
             self.set_status_error(&failure);
         }
+    }
+}
+
+/// The answer Enter gives for the button that has the focus.
+pub(in crate::app) fn choice_of_focus(focus: usize) -> ConflictChoice {
+    match focus {
+        conflict::OVERWRITE_FOCUS => ConflictChoice::ThisOverwrite,
+        conflict::KEEP_FOCUS => ConflictChoice::ThisKeep,
+        _ => ConflictChoice::Cancel,
     }
 }

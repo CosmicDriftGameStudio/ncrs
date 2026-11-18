@@ -2,7 +2,8 @@
 //! disk, no clock; the scan reads the listings and the content and asks.
 
 use std::cmp::Ordering;
-use std::ffi::OsString;
+use std::collections::BTreeMap;
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
@@ -117,9 +118,43 @@ pub struct Compared {
     pub right: CompareMarks,
     pub left_rows: Vec<FileEntry>,
     pub right_rows: Vec<FileEntry>,
+    pub left_folder: PathBuf,
+    pub right_folder: PathBuf,
+    /// What was found inside the folders that differ, by `name_key` of the
+    /// folder, so a sync copies their files and not the folders as a whole.
+    pub below: BTreeMap<OsString, Compared>,
+}
+
+/// The name as the two sides are matched by it: composed (NFC), because the
+/// same file reads decomposed on macOS, and on macOS and Windows also without
+/// case, since those keep one file system entry per name regardless of case.
+pub fn name_key(name: &OsStr) -> OsString {
+    use unicode_normalization::UnicodeNormalization as _;
+    let Some(text) = name.to_str() else {
+        return name.to_owned();
+    };
+    let composed: String = text.nfc().collect();
+    if cfg!(any(target_os = "macos", windows)) {
+        return OsString::from(composed.to_lowercase());
+    }
+    OsString::from(composed)
 }
 
 impl Compared {
+    fn rows(&self, side: PanelSide) -> &[FileEntry] {
+        match side {
+            PanelSide::Left => &self.left_rows,
+            PanelSide::Right => &self.right_rows,
+        }
+    }
+
+    fn folder(&self, side: PanelSide) -> &Path {
+        match side {
+            PanelSide::Left => &self.left_folder,
+            PanelSide::Right => &self.right_folder,
+        }
+    }
+
     pub const fn marks(&self, side: PanelSide) -> &CompareMarks {
         match side {
             PanelSide::Left => &self.left,
@@ -188,6 +223,8 @@ pub struct SyncRow {
     pub is_dir: bool,
     pub size: u64,
     pub mark: CompareMark,
+    /// The folder the entry is copied into; for a deletion, the folder it is in.
+    pub target_dir: PathBuf,
 }
 
 /// What a sync copies and, when asked, deletes.
@@ -197,45 +234,58 @@ pub struct SyncPlan {
     pub deletions: Vec<SyncRow>,
 }
 
-fn row_of(entry: &FileEntry, mark: CompareMark) -> SyncRow {
+fn row_of(entry: &FileEntry, mark: CompareMark, target_dir: &Path) -> SyncRow {
     SyncRow {
         name: entry.name.clone(),
         path: entry.path.clone(),
         is_dir: entry.is_dir,
         size: entry.size,
         mark,
+        target_dir: target_dir.to_owned(),
     }
 }
 
-/// Everything of the source that is only there, newer or different is copied,
-/// different entries too: the copy queue asks about each file that exists.
-/// What is only on the target is deleted only with `delete`.
+/// Everything of the source that is only there, newer or different is copied.
+/// A folder that is on both sides is not copied as a whole, its files are,
+/// each into the folder it belongs to: the copy of a folder onto its twin
+/// would otherwise be a replacement. What is only on the target is deleted
+/// only with `delete`.
 pub fn sync_plan(compared: &Compared, direction: Direction, delete: bool) -> SyncPlan {
-    let rows_of = |side: PanelSide| match side {
-        PanelSide::Left => &compared.left_rows,
-        PanelSide::Right => &compared.right_rows,
-    };
-    let marked = |side: PanelSide, wanted: &dyn Fn(CompareMark) -> bool| -> Vec<SyncRow> {
-        rows_of(side)
-            .iter()
-            .filter_map(|entry| {
-                let mark = *compared.marks(side).get(&entry.name)?;
-                wanted(mark).then(|| row_of(entry, mark))
-            })
-            .collect()
-    };
-    let copies = marked(direction.source(), &|mark| {
-        matches!(
+    let mut plan = SyncPlan::default();
+    plan_level(compared, direction, delete, &mut plan);
+    plan
+}
+
+fn plan_level(compared: &Compared, direction: Direction, delete: bool, plan: &mut SyncPlan) {
+    let (source, target) = (direction.source(), direction.target());
+    let target_dir = compared.folder(target);
+    // A folder in an archive is written as a whole by the archive's own copy.
+    let can_descend = ncrs_fs::archive::locate_in_archive(target_dir).is_none();
+    for entry in compared.rows(source) {
+        let Some(&mark) = compared.marks(source).get(&entry.name) else {
+            continue;
+        };
+        if can_descend && entry.is_dir && mark == CompareMark::Different {
+            if let Some(below) = compared.below.get(&name_key(&entry.name)) {
+                plan_level(below, direction, delete, plan);
+                continue;
+            }
+        }
+        if matches!(
             mark,
             CompareMark::OnlyHere | CompareMark::NewerHere | CompareMark::Different
-        )
-    });
-    let deletions = if delete {
-        marked(direction.target(), &|mark| mark == CompareMark::OnlyHere)
-    } else {
-        Vec::new()
-    };
-    SyncPlan { copies, deletions }
+        ) {
+            plan.copies.push(row_of(entry, mark, target_dir));
+        }
+    }
+    if delete {
+        for entry in compared.rows(target) {
+            if compared.marks(target).get(&entry.name) == Some(&CompareMark::OnlyHere) {
+                plan.deletions
+                    .push(row_of(entry, CompareMark::OnlyHere, target_dir));
+            }
+        }
+    }
 }
 
 /// Nothing is deleted on a server or inside an archive.
@@ -255,6 +305,14 @@ mod tests {
     use super::*;
 
     const EPOCH_SECONDS: u64 = 1_700_000_000;
+
+    #[test]
+    fn a_decomposed_and_a_composed_name_are_the_same_name() {
+        assert_eq!(
+            name_key(OsStr::new("e\u{301}")),
+            name_key(OsStr::new("\u{e9}"))
+        );
+    }
 
     fn at(seconds: u64) -> Option<SystemTime> {
         Some(SystemTime::UNIX_EPOCH + Duration::from_secs(EPOCH_SECONDS + seconds))
@@ -398,6 +456,7 @@ mod tests {
             right_rows: ["gone", "newer", "older", "differs", "same"]
                 .map(|text| entry(text, false))
                 .to_vec(),
+            ..Compared::default()
         }
     }
 

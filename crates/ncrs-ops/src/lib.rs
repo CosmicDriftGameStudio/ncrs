@@ -81,7 +81,7 @@ pub use state::{
 };
 pub use transfer::{Policy, Refusal, Scan, TransferDialog};
 pub use transfer_flow::{
-    answer_conflict, begin_transfer, child_path, end_transfer, refusal_text,
+    answer_conflict, begin_transfer, child_path, end_transfer, refusal_text, start_rows_transfer,
     start_validated_transfer, transfer_row_done,
 };
 pub use transfer_open::{conflicts_task, scan_task, unreachable_server_text, ValidTransfer};

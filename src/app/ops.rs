@@ -155,6 +155,7 @@ impl App {
             }
             Ask::FinishJob => {
                 self.jobs.finish();
+                self.ops.quit_asked = false;
                 Task::none()
             }
             Ask::SetJobProgress(tick) => {
@@ -547,8 +548,14 @@ impl App {
         self.ops.trash_view.is_some() && self.panels.active == self.ops.trash_side
     }
 
-    /// Puts the job into the queue and starts it if nothing runs.
-    fn start_job<M>(
+    fn show_busy_notice(&mut self) -> Task<Message> {
+        let text = ncrs_ops::delete_flow::busy_text(self.lang);
+        self.show_notice(text)
+    }
+
+    /// Starts the job if nothing runs; a job asked for while another runs is
+    /// refused with a notice.
+    pub(in crate::app) fn start_job<M>(
         &mut self,
         job: jobs::Job,
         build: impl FnOnce() -> Task<M> + 'static,
@@ -557,6 +564,12 @@ impl App {
         Message: From<M>,
         M: Send + 'static,
     {
+        // The queue keeps only the description of a job, never its work: a job
+        // queued behind a running one would be lost and would take the place
+        // of the next one that is started.
+        if self.jobs.is_busy() {
+            return self.show_busy_notice();
+        }
         self.jobs.enqueue(job);
         self.jobs
             .start_next(move |_| build().map(Message::from))
@@ -574,6 +587,9 @@ impl App {
         Message: From<M>,
         M: Send + 'static,
     {
+        if self.jobs.is_busy() {
+            return self.show_busy_notice();
+        }
         let progress_tx = self.progress_sender();
         self.jobs.enqueue(job);
         self.jobs

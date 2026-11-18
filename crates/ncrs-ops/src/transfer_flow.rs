@@ -15,9 +15,9 @@ use ncrs_jobs::{Job, JobKind};
 
 use crate::action::{Action, StartProgressJob};
 use crate::archive_flow::begin_copy_into_archive;
-use crate::conflict::OVERWRITE_FOCUS;
+use crate::conflict::KEEP_FOCUS;
 use crate::ctx::FlowCtx;
-use crate::delete_flow::{actions, idle, with_front, Outcome};
+use crate::delete_flow::{actions, busy_notice, idle, with_front, Outcome};
 use crate::message::{ConflictChoice, OpsMessage};
 use crate::restore_flow::resume_restore;
 use crate::row_failure::RowFailure;
@@ -58,11 +58,15 @@ pub fn start_validated_transfer(
     policy: Policy,
     ctx: &FlowCtx<'_>,
 ) -> Outcome {
+    ops.transfer_completed = false;
     let needs_numbering = fs::flat_names::from_several_folders(&sources)
         && fs::flat_names::flat_names(&sources)
             .iter()
             .zip(&sources)
             .any(|(name, source)| name.as_deref() != source.file_name());
+    if ctx.jobs_busy {
+        return busy_notice(ctx);
+    }
     let into_archive = fs::archive::locate_in_archive(&target);
     if needs_numbering && (into_archive.is_some() || RemotePath::parse(&target).is_some()) {
         let text = ctx.lang.text(Msg::StatusNumberingNeedsFolder).to_owned();
@@ -96,7 +100,50 @@ pub fn begin_transfer(
         sources,
         target,
         names,
+        targets: Vec::new(),
     };
+    launch(ops, transfer, policy, ctx)
+}
+
+/// Copies each source into its own folder, as a sync wants. Files that come
+/// from several folders keep their names, which numbering would not.
+pub fn start_rows_transfer(
+    ops: &mut Ops,
+    rows: Vec<(PathBuf, PathBuf)>,
+    policy: Policy,
+    ctx: &FlowCtx<'_>,
+) -> Outcome {
+    ops.transfer_completed = false;
+    let Some(first_target) = rows.first().map(|(_, target)| target.clone()) else {
+        return idle();
+    };
+    let (sources, targets): (Vec<_>, Vec<_>) = rows.into_iter().unzip();
+    let one_target = targets.iter().all(|target| *target == first_target);
+    if one_target && !fs::flat_names::from_several_folders(&sources) {
+        return start_validated_transfer(
+            ops,
+            TransferKind::Copy,
+            sources,
+            first_target,
+            policy,
+            ctx,
+        );
+    }
+    if ctx.jobs_busy {
+        return busy_notice(ctx);
+    }
+    let transfer = Transfer {
+        kind: TransferKind::Copy,
+        sources,
+        target: first_target,
+        names: Vec::new(),
+        targets,
+    };
+    launch(ops, transfer, policy, ctx)
+}
+
+fn launch(ops: &mut Ops, transfer: Transfer, policy: Policy, ctx: &FlowCtx<'_>) -> Outcome {
+    ops.transfer_completed = false;
     ops.transfer = Some(transfer.clone());
     ops.conflict_rule = policy.standing_rule();
     ops.bump_generation();
@@ -117,11 +164,12 @@ fn run_from(
     ctx: &FlowCtx<'_>,
 ) -> Outcome {
     let Some(source) = transfer.sources.get(index).cloned() else {
+        ops.transfer_completed = true;
         return end_transfer(ops);
     };
 
     let generation = ops.generation;
-    let target = transfer.target.clone();
+    let target = transfer.target_of(index).to_path_buf();
     let name_in_target = transfer.name_in_target(index);
     let pool = Arc::clone(ctx.remote);
     let job = Job {
@@ -228,9 +276,10 @@ pub fn transfer_row_done(
         // a hard failure. The dialog names the file itself, so the reason
         // travels no further; it stays in the payload for the status line.
         Err(RowFailure::Conflict(_reason)) => {
+            ops.conflict_folder = folder_onto_folder(&transfer, index);
             ops.pending_conflict = Some(PendingConflict { transfer, index });
             actions(vec![
-                Action::FocusDialogButton(OVERWRITE_FOCUS),
+                Action::FocusDialogButton(KEEP_FOCUS),
                 // Else the dialog would be asked behind the box.
                 Action::CloseQuickOpenAndPalette,
             ])
@@ -253,6 +302,26 @@ pub fn transfer_row_done(
     let mut asked = finished;
     asked.extend(rest);
     (task, asked)
+}
+
+/// Whether the row at `index` is a folder going onto a folder, which an
+/// overwrite merges. A server's folders are not looked at here.
+fn folder_onto_folder(transfer: &Transfer, index: usize) -> bool {
+    let Some(source) = transfer.sources.get(index) else {
+        return false;
+    };
+    if RemotePath::parse(source).is_some() || RemotePath::parse(transfer.target_of(index)).is_some()
+    {
+        return false;
+    }
+    let name = transfer
+        .name_in_target(index)
+        .or_else(|| source.file_name().map(OsStr::to_os_string))
+        .unwrap_or_default();
+    // Links are not followed: a link to a folder is a file here, and a merge
+    // through it would write into whatever it points at.
+    let is_folder = |path: &Path| std::fs::symlink_metadata(path).is_ok_and(|meta| meta.is_dir());
+    is_folder(source) && is_folder(&transfer.target_of(index).join(name))
 }
 
 /// Answers a conflict and remembers an "all" answer, so the next conflict
@@ -291,4 +360,193 @@ pub fn end_transfer(ops: &mut Ops) -> Outcome {
     ops.conflict_rule = None;
     ops.bump_generation();
     actions(vec![Action::ReloadSourceThenTarget, Action::RestartSearch])
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
+mod tests {
+    use super::*;
+    use ncrs_core::PanelSide;
+    use ncrs_fs::remote::session::Pool;
+    use ncrs_fs::remote::KnownHostsFiles;
+
+    fn with_ctx<R>(jobs_busy: bool, step: impl FnOnce(&FlowCtx<'_>) -> R) -> R {
+        let trash = fs::system_trash(None);
+        let sandbox = fs::SandboxAccess::inactive();
+        let remote = Arc::new(Pool::over_tcp(KnownHostsFiles::default()));
+        step(&FlowCtx {
+            lang: Language::default(),
+            trash: &trash,
+            jobs_busy,
+            start_blocked: false,
+            transfer_dialog_open: false,
+            has_job_error: false,
+            sandbox: &sandbox,
+            source_side: PanelSide::Left,
+            left_archive: None,
+            right_archive: None,
+            left_server: None,
+            right_server: None,
+            remote: &remote,
+            permanent_delete_key: None,
+            restore_last_key: None,
+            index: None,
+            model: None,
+        })
+    }
+
+    fn transfer_of(source: PathBuf, target: PathBuf) -> Transfer {
+        Transfer {
+            kind: TransferKind::Copy,
+            sources: vec![source],
+            target,
+            names: Vec::new(),
+            targets: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn a_taken_folder_asks_with_keep_in_focus_and_offers_to_merge() {
+        let from = tempfile::tempdir().unwrap();
+        let to = tempfile::tempdir().unwrap();
+        std::fs::create_dir(from.path().join("photos")).unwrap();
+        std::fs::create_dir(to.path().join("photos")).unwrap();
+        let transfer = transfer_of(from.path().join("photos"), to.path().to_owned());
+        let mut ops = Ops {
+            transfer: Some(transfer),
+            ..Ops::default()
+        };
+
+        let generation = ops.generation;
+        let (_task, asked) = with_ctx(false, |ctx| {
+            transfer_row_done(
+                &mut ops,
+                Err(RowFailure::Conflict("taken".to_owned())),
+                0,
+                generation,
+                ctx,
+            )
+        });
+
+        assert!(ops.conflict_folder);
+        assert!(asked.iter().any(
+            |action| matches!(action, Action::FocusDialogButton(button) if *button == KEEP_FOCUS)
+        ));
+    }
+
+    #[test]
+    fn a_taken_file_is_not_a_merge() {
+        let from = tempfile::tempdir().unwrap();
+        let to = tempfile::tempdir().unwrap();
+        std::fs::write(from.path().join("a.txt"), "new").unwrap();
+        std::fs::write(to.path().join("a.txt"), "old").unwrap();
+        let transfer = transfer_of(from.path().join("a.txt"), to.path().to_owned());
+
+        assert!(!folder_onto_folder(&transfer, 0));
+    }
+
+    #[test]
+    fn rows_go_each_into_their_own_folder() {
+        let transfer = Transfer {
+            targets: vec![PathBuf::from("/b/deep"), PathBuf::from("/b")],
+            ..transfer_of(PathBuf::from("/a/deep/x"), PathBuf::from("/b/deep"))
+        };
+
+        assert_eq!(transfer.target_of(0), Path::new("/b/deep"));
+        assert_eq!(transfer.target_of(1), Path::new("/b"));
+    }
+
+    #[test]
+    fn a_transfer_asked_for_while_a_job_runs_is_refused_and_not_queued() {
+        let from = tempfile::tempdir().unwrap();
+        let to = tempfile::tempdir().unwrap();
+        let mut ops = Ops::default();
+
+        let (_task, asked) = with_ctx(true, |ctx| {
+            start_validated_transfer(
+                &mut ops,
+                TransferKind::Copy,
+                vec![from.path().join("a.txt")],
+                to.path().to_owned(),
+                Policy::Ask,
+                ctx,
+            )
+        });
+
+        assert!(ops.transfer.is_none());
+        assert!(matches!(asked.as_slice(), [Action::ShowNotice(_)]));
+    }
+
+    #[test]
+    fn a_refused_transfer_does_not_leave_the_last_completion_standing() {
+        let from = tempfile::tempdir().unwrap();
+        let to = tempfile::tempdir().unwrap();
+        let mut ops = Ops {
+            transfer_completed: true,
+            ..Ops::default()
+        };
+
+        drop(with_ctx(true, |ctx| {
+            start_validated_transfer(
+                &mut ops,
+                TransferKind::Copy,
+                vec![from.path().join("a.txt")],
+                to.path().to_owned(),
+                Policy::Ask,
+                ctx,
+            )
+        }));
+        assert!(!ops.transfer_completed);
+
+        ops.transfer_completed = true;
+        drop(with_ctx(true, |ctx| {
+            start_rows_transfer(
+                &mut ops,
+                vec![
+                    (from.path().join("a.txt"), to.path().join("x")),
+                    (from.path().join("b.txt"), to.path().join("y")),
+                ],
+                Policy::Ask,
+                ctx,
+            )
+        }));
+        assert!(!ops.transfer_completed);
+    }
+
+    #[test]
+    fn a_finished_copy_into_an_archive_counts_as_completed() {
+        let mut ops = Ops {
+            archive_write: Some(crate::state::ArchiveWrite {
+                side: PanelSide::Left,
+                archive: PathBuf::from("/x/a.zip"),
+                what: crate::state::ArchiveWriteKind::CopyIn,
+            }),
+            ..Ops::default()
+        };
+        let generation = ops.generation;
+
+        drop(with_ctx(false, |ctx| {
+            crate::archive_flow::archive_written(
+                &mut ops,
+                generation,
+                Ok(fs::archive::WriteReport::default()),
+                ctx,
+            )
+        }));
+
+        assert!(ops.transfer_completed);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_link_to_a_folder_is_not_merged_into() {
+        let from = tempfile::tempdir().unwrap();
+        let to = tempfile::tempdir().unwrap();
+        let elsewhere = tempfile::tempdir().unwrap();
+        std::fs::create_dir(from.path().join("photos")).unwrap();
+        std::os::unix::fs::symlink(elsewhere.path(), to.path().join("photos")).unwrap();
+        let transfer = transfer_of(from.path().join("photos"), to.path().to_owned());
+
+        assert!(!folder_onto_folder(&transfer, 0));
+    }
 }

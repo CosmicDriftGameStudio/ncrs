@@ -749,6 +749,11 @@ impl App {
                 native_menu::install(self.lang, &self.keymap, self.menu_state());
                 Task::none()
             }
+            Message::Quit if self.jobs.is_busy() && !self.ops.quit_asked => {
+                self.ops.quit_asked = true;
+                let text = self.lang.text(Msg::StatusQuitBusy).to_owned();
+                self.show_notice(text)
+            }
             Message::Quit => self.quit_after_settings_page(),
             // Handled in `update`, which owns the timer's generation check.
             Message::NoticeExpired(_) | Message::SaveSessionState(_) => Task::none(),

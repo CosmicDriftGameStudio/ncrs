@@ -589,3 +589,25 @@ fn the_key_bar_of_a_list_leaves_out_new_folder() {
     hits.app.panel_mut(PanelSide::Left).hit_list = None;
     assert!(hits.app.function_key_bar()[keymap::NEW_FOLDER_SLOT].is_some());
 }
+
+#[test]
+fn renaming_two_tagged_hits_says_to_open_their_folder_first() {
+    let mut hits = opened(&["a.txt", "b.txt"], PanelSide::Left);
+    let panel = hits.app.panel_mut(PanelSide::Left);
+    let paths: Vec<PathBuf> = panel
+        .entries
+        .iter()
+        .map(|entry| entry.path.clone())
+        .collect();
+    for path in &paths {
+        panel.selection.toggle(path);
+    }
+
+    drop(hits.app.update(Message::Panel(PanelMessage::RenameStart)));
+
+    assert_eq!(
+        hits.app.notice.as_deref(),
+        Some(hits.app.lang.text(Msg::StatusHitListBatchRename))
+    );
+    assert!(hits.app.ops.batch_rename.is_none());
+}

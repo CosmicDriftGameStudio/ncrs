@@ -482,6 +482,7 @@ pub fn dense_compare_app() -> App {
         right: right_marks,
         left_rows: without_parent(listing(PROJECT_DIRECTORY, PROJECT_NAMES)),
         right_rows: without_parent(backup.clone()),
+        ..ncrs_compare::Compared::default()
     };
     let right = app.panel_mut_for_test(PanelSide::Right);
     right.path = PathBuf::from(BACKUP_DIRECTORY);

@@ -131,6 +131,9 @@ fn compared() -> Compared {
         right: marks(&right_rows),
         left_rows: rows(LEFT, &left_rows),
         right_rows: rows(RIGHT, &right_rows),
+        left_folder: PathBuf::from(LEFT),
+        right_folder: PathBuf::from(RIGHT),
+        ..Compared::default()
     }
 }
 
