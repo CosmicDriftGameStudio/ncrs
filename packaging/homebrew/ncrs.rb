@@ -27,5 +27,8 @@ cask "ncrs" do
   # terminal and the app in the Dock are the same signed executable.
   binary "#{appdir}/ncrs.app/Contents/MacOS/ncrs"
 
-  # No zap stanza: the app writes no preferences, caches or support files.
+  zap trash: [
+    "~/.config/ncrs",
+    "~/Library/Application Support/ncrs",
+  ]
 end

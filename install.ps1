@@ -6,7 +6,8 @@
     irm https://raw.githubusercontent.com/<owner>/ncrs/main/install.ps1 | iex
 
 Installs into %LOCALAPPDATA%\Programs\ncrs, which needs no administrator
-rights and is not removed on upgrade. Safe to re-run.
+rights. Re-running replaces the files of the previous install. -Uninstall
+removes the program files and leaves settings and data alone.
 #>
 
 [CmdletBinding()]
@@ -37,8 +38,25 @@ if ($Uninstall) {
         Remove-Item $libTarget
         Write-Info "removed $libTarget"
     }
+    foreach ($dll in 'llama.dll', 'ggml.dll', 'ggml-base.dll') {
+        $dllTarget = Join-Path $BinDir $dll
+        if (Test-Path $dllTarget) {
+            Remove-Item $dllTarget
+            Write-Info "removed $dllTarget"
+        }
+    }
+    foreach ($ggml in Get-ChildItem -Path $BinDir -Filter 'ggml*.dll' -ErrorAction SilentlyContinue) {
+        Remove-Item $ggml.FullName
+        Write-Info "removed $($ggml.FullName)"
+    }
+    $backends = Join-Path $BinDir 'backends'
+    if (Test-Path $backends) {
+        Remove-Item -Recurse -Force $backends
+        Write-Info "removed $backends"
+    }
     $config = Join-Path $env:APPDATA 'ncrs'
-    Write-Info "config, if any, is in $config"
+    Write-Info "settings and data (index, notes, models), if any, are in $config"
+    Write-Info 'these are kept; delete the folder by hand to remove everything'
     return
 }
 
@@ -79,7 +97,37 @@ Write-Host ''
 # --- download ---------------------------------------------------------------
 
 $archive = "ncrs-$target.zip"
-$base = if ($env:NCRS_BASE_URL) { $env:NCRS_BASE_URL } else { "https://github.com/$Repo/releases/latest/download" }
+
+# The tag the latest release has right now. The archive and the checksum list
+# are both fetched from that tag, so a release published in between cannot
+# leave them from two different releases.
+function Get-LatestTag($repo) {
+    $request = [System.Net.HttpWebRequest]::Create("https://github.com/$repo/releases/latest")
+    $request.AllowAutoRedirect = $false
+    $response = $request.GetResponse()
+    try {
+        $location = $response.Headers['Location']
+    }
+    finally {
+        $response.Close()
+    }
+    if ($location -and $location -match '/tag/(v[0-9][^/]*)$') { return $Matches[1] }
+    return $null
+}
+
+if ($env:NCRS_BASE_URL) {
+    $base = $env:NCRS_BASE_URL
+}
+else {
+    $tag = $null
+    try { $tag = Get-LatestTag $Repo } catch { }
+    if (-not $tag) {
+        Write-Error "could not find the latest release of $Repo"
+        return
+    }
+    Write-Info "release    $tag"
+    $base = "https://github.com/$Repo/releases/download/$tag"
+}
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("ncrs-" + [System.Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $tmp | Out-Null
 
@@ -98,26 +146,30 @@ try {
     # install.sh: a checksum that is skipped when it is inconvenient verifies
     # nothing. The download already succeeded at this point, so a failure to
     # fetch SHA256SUMS means the release is malformed, not that the network
-    # is down.
+    # is down. Each case names itself: Write-Error under 'Stop' would throw
+    # into a catch that cannot tell them apart.
+    $sumsPath = Join-Path $tmp 'SHA256SUMS'
+    $sumsFetched = $false
     try {
-        $sumsPath = Join-Path $tmp 'SHA256SUMS'
         Invoke-WebRequest -Uri "$base/SHA256SUMS" -OutFile $sumsPath -UseBasicParsing
-        $expected = (Get-Content $sumsPath | Where-Object { $_ -match " $archive$" } | Select-Object -First 1)
-        if (-not $expected) {
-            Write-Error "SHA256SUMS has no entry for $archive. The release is incomplete."
-            return
-        }
-        $actual = (Get-FileHash -Path $archivePath -Algorithm SHA256).Hash.ToLower()
-        if ($actual -ne $expected.Split(' ')[0]) {
-            Write-Error "checksum mismatch for $archive"
-            return
-        }
-        Write-Info 'checksum ok'
+        $sumsFetched = $true
     }
-    catch {
-        Write-Error "no SHA256SUMS published for the latest release. Refusing to install an unverified binary."
+    catch { }
+    if (-not $sumsFetched) {
+        Write-Error "no SHA256SUMS published for this release. Refusing to install an unverified binary."
         return
     }
+    $expected = (Get-Content $sumsPath | Where-Object { $_ -match " $archive$" } | Select-Object -First 1)
+    if (-not $expected) {
+        Write-Error "SHA256SUMS has no entry for $archive. The release is incomplete."
+        return
+    }
+    $actual = (Get-FileHash -Path $archivePath -Algorithm SHA256).Hash.ToLower()
+    if ($actual -ne $expected.Split(' ')[0]) {
+        Write-Error "checksum mismatch for $archive"
+        return
+    }
+    Write-Info 'checksum ok'
 
     # --- install ------------------------------------------------------------
 

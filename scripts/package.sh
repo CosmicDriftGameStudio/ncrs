@@ -197,7 +197,7 @@ package_archive() {
   mkdir -p "$stage"
   cp "$binary" "$stage/$binary_name"
   cp "$library" "$stage/$library_name"
-  cp "$repo_root/LICENSE" "$repo_root/README.md" "$repo_root/ROADMAP.md" "$stage/"
+  cp "$repo_root/LICENSE" "$repo_root/README.md" "$stage/"
   # The notices of pdfium and of the components built into it (FreeType, ICU,
   # zlib, ...) must ship with the library.
   [ -f "$pdfium_dir/LICENSE" ] && [ -d "$pdfium_dir/licenses" ] \
@@ -205,7 +205,7 @@ package_archive() {
   mkdir -p "$stage/licenses/pdfium"
   cp "$pdfium_dir/LICENSE" "$stage/licenses/pdfium/"
   cp -R "$pdfium_dir/licenses/." "$stage/licenses/pdfium/"
-  local expected=("$binary_name" "$library_name" LICENSE README.md ROADMAP.md licenses/pdfium/LICENSE)
+  local expected=("$binary_name" "$library_name" LICENSE README.md licenses/pdfium/LICENSE)
   case "$triple" in
     *-linux-*)
       # Laid out like /usr/share, so the .deb and .rpm take the tree as it is

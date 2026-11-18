@@ -12,15 +12,26 @@
 //!
 //! `NCRS_DISPLAY_VERSION` is the version the status bar shows: the plain
 //! version for a build of its release tag or outside git, otherwise
-//! `<version> (<short commit>)`. The app tells a development build from the
-//! release by the two differing.
+//! `<version> (<short commit>)`. CI sets `NCRS_RELEASE_BUILD=1` for the builds
+//! of main that are shipped, because the release tag does not exist yet when
+//! they are built. `NCRS_BUILD_KIND` (`release` or `development`) tells the app
+//! which one it is.
 
 use std::env;
 use std::process::Command;
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rustc-env=NCRS_DISPLAY_VERSION={}", display_version());
+    println!("cargo:rerun-if-env-changed=NCRS_RELEASE_BUILD");
+    let version = env::var("CARGO_PKG_VERSION").unwrap_or_default();
+    let display = display_version();
+    let kind = if display == version {
+        "release"
+    } else {
+        "development"
+    };
+    println!("cargo:rustc-env=NCRS_DISPLAY_VERSION={display}");
+    println!("cargo:rustc-env=NCRS_BUILD_KIND={kind}");
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     if target_os == "windows" {
         embed_windows_resources();
@@ -65,6 +76,9 @@ fn manifest_dir_is_git_root() -> bool {
 
 fn display_version() -> String {
     let version = env::var("CARGO_PKG_VERSION").unwrap_or_default();
+    if env::var("NCRS_RELEASE_BUILD").is_ok_and(|value| value == "1") {
+        return version;
+    }
     if !manifest_dir_is_git_root() {
         return version;
     }

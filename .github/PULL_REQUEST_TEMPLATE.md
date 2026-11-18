@@ -4,8 +4,7 @@
 
 ## Why
 
-<!-- The problem this solves. If it addresses a numbered finding from
-     ARCHITECTURE_REVIEW.md, name it here: "T1", "W4", "S2". -->
+<!-- The problem this solves. Link the issue if there is one. -->
 
 ## How it was verified
 
@@ -13,10 +12,10 @@
      running app. Snapshot tests compare pixels on macOS only; they are a
      floor, not a proof. -->
 
-- [ ] `cargo test` and the three feature combinations in `ci.yml` pass
-- [ ] `cargo clippy --all-targets -- -D warnings` is clean
+- [ ] `cargo test -p <crate>` passes for every crate the change touches
+- [ ] `cargo clippy -p <crate> --all-targets -- -D warnings` is clean
 - [ ] `cargo fmt --all --check` is clean
-- [ ] `ROADMAP.md` updated, if the change moves the plan
+- [ ] `PRIVACY.md` and `SECURITY.md` updated, if the change opens a connection or stores new data
 - [ ] `CHANGELOG.md` updated, if the change is user-visible
 
 ## Known limitations

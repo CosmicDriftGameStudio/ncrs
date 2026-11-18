@@ -73,6 +73,37 @@ jobs:
           emit homebrew touched "$homebrew_paths"
           emit winget touched "$winget_paths"
 
+  # Commit messages are public text. The three shapes of a tool's attribution
+  # (a co-author trailer, a session link, a session trailer) are written out
+  # here; only the tool's name is a repository variable (an extended regular
+  # expression, for example `name1|name2`), so it is not written into the
+  # repository.
+  commit-texts:
+    name: Commit messages
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check the commit messages of the pull request
+        env:
+          BLOCKED_BRAND: ${{ vars.BLOCKED_COMMIT_BRAND }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ -z "$BLOCKED_BRAND" ]; then
+            echo "::error::the repository variable BLOCKED_COMMIT_BRAND is not set; commit messages cannot be checked"
+            exit 1
+          fi
+          pattern="^co-authored-by:.*($BLOCKED_BRAND)|https?://[^[:space:]]*($BLOCKED_BRAND)[^[:space:]]*session|^($BLOCKED_BRAND)-session:"
+          if git log --format=%B "$BASE_SHA..$HEAD_SHA" | grep -Eiq -e "$pattern"; then
+            echo "::error::a commit message of this pull request carries a tool attribution"
+            exit 1
+          fi
+
   # The release generates THIRD_PARTY_LICENSES.html from about.toml. A
   # dependency under a license about.toml does not accept would only fail
   # at the release tag; here it fails on the pull request that adds it. The
@@ -86,11 +117,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Install Rust
         run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
+          rustup toolchain install --profile minimal
 
       # Prebuilt binary, pinned so the licenses file does not change with a new
       # cargo-about version. The release binary has the CLI that
@@ -127,11 +159,12 @@ jobs:
       CARGO_PROFILE_TEST_DEBUG: line-tables-only
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Install Rust
         run: |
-          rustup toolchain install stable --profile minimal --component rustfmt,clippy
-          rustup default stable
+          rustup toolchain install --profile minimal
 
       # llama.cpp is built with Vulkan on Linux x86_64 and Windows, see
       # crates/ncrs-ai/Cargo.toml.
@@ -351,11 +384,12 @@ jobs:
             os: windows-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Install Rust
         run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
+          rustup toolchain install --profile minimal
           rustup target add ${{ matrix.target }}
 
       - name: Install Linux build dependencies
@@ -468,8 +502,32 @@ jobs:
             *) echo "MACOSX_DEPLOYMENT_TARGET=10.15" >> "$GITHUB_ENV" ;;
           esac
 
+      # Only a push run builds what is shipped. The release tag does not exist
+      # yet at that point, so the build is told; without it every binary would
+      # carry a commit hash after its version and read as a development build.
       - name: Build
+        env:
+          NCRS_RELEASE_BUILD: ${{ github.event_name == 'push' && '1' || '' }}
         run: cargo build --release --features gpu-with-fallback --target ${{ matrix.target }}
+
+      # The aarch64 Linux binary cannot run on this x86_64 runner.
+      - name: Check the binary names its release version
+        if: github.event_name == 'push' && matrix.target != 'aarch64-unknown-linux-gnu'
+        shell: bash
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          exe=target/${{ matrix.target }}/release/ncrs
+          if [ -f "$exe.exe" ]; then exe="$exe.exe"; fi
+          said=$("$exe" --version)
+          echo "$said"
+          case "$said" in
+            "ncrs $version "*) ;;
+            *) echo "::error::--version does not start with the Cargo.toml version"; exit 1 ;;
+          esac
+          if printf '%s' "$said" | grep -Eq "^ncrs $version \([0-9a-f]{7,}\)"; then
+            echo "::error::the binary carries a commit hash, so the app would treat it as a development build"
+            exit 1
+          fi
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
@@ -619,6 +677,8 @@ jobs:
       - name: Build the sandboxed binary
         if: runner.os == 'macOS'
         shell: bash
+        env:
+          NCRS_RELEASE_BUILD: ${{ github.event_name == 'push' && '1' || '' }}
         run: |
           cargo build --release --features gpu-with-fallback,sandbox --target ${{ matrix.target }}
           mkdir -p sandbox-binary
@@ -713,6 +773,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          persist-credentials: false
           sparse-checkout: Cargo.toml
           sparse-checkout-cone-mode: false
 
@@ -824,6 +885,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
@@ -904,6 +967,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Render the manifests for the latest release
         shell: bash

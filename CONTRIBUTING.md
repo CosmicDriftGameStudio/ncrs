@@ -6,11 +6,12 @@ can be agreed before the work is done.
 
 ## Before you start
 
-- Read [ARCHITECTURE_REVIEW.md](ARCHITECTURE_REVIEW.md). It records why the
-  code is shaped the way it is and which decisions are still open. A change
-  that contradicts it should change that document too.
-- `ROADMAP.md` holds the planned order. A feature that is not on it is
-  welcome; a change that reorders it is a discussion, not a patch.
+- Read `CLAUDE.md`. It holds the crate layout and the rules the code follows.
+- [PRIVACY.md](PRIVACY.md) and [SECURITY.md](SECURITY.md) list what ncrs sends
+  over the network and what it stores. A change that opens a connection or
+  stores new data changes them too.
+- `docs/history/` (with `ROADMAP.md`) holds old snapshots, not maintained; the
+  issue tracker has the open work.
 
 ## Ground rules
 
@@ -31,11 +32,10 @@ can be agreed before the work is done.
 ## Building and testing
 
 ```sh
-cargo test                                    # the default feature set, gpu-with-fallback
-cargo test --no-default-features --features software-rendering
-cargo clippy --all-targets -- -D warnings
+cargo test -p <crate>                         # the crate you changed; CI runs the whole workspace
+cargo clippy -p <crate> --all-targets -- -D warnings
 cargo fmt --all --check
-cargo test readme_screenshots -- --ignored   # regenerates docs/screenshots/*.png for the README
+cargo test -p ncrs readme_screenshots -- --ignored   # regenerates docs/screenshots/*.png for the README
 ```
 
 The default build compiles llama.cpp (the built-in AI model), which needs cmake, a
@@ -77,8 +77,7 @@ not
 ## Pull requests
 
 - One change per pull request. Two unrelated fixes are two pull requests.
-- Say which review findings the change addresses (`T1`, `W4`, `S2` — they are
-  numbered in the review).
+- Link the issue the change addresses, if there is one.
 - If you change the UI, say what you checked in the running app. Snapshot
   tests compare rendered pixels on macOS; they are a floor, not a proof.
 - If a change is deliberate about a known limitation, name the limitation in
