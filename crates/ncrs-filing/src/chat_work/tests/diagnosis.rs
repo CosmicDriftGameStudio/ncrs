@@ -128,7 +128,7 @@ fn trial_report(access: &ChatAccess, downloads: &FolderReading, archive: &Folder
         layout: None,
         scope: crate::chat_work::ModelScope::FirstPage,
     }) {
-        ChatResult::Trial(Ok(plan)) => plan,
+        ChatResult::Trial(Ok(plan)) => *plan,
         other => panic!("{other:?}"),
     };
     let own = OwnNames {

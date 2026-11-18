@@ -16,6 +16,8 @@ use crate::chat_work::picks::remember_from_readings;
 pub struct RecordingModel {
     pub calls: StdMutex<Vec<(usize, FolderChoiceLane)>>,
     pub fails: bool,
+    /// Fails like a model that cannot answer the question at all.
+    pub unsupported: bool,
     pub declines: bool,
     pub run: Option<Arc<LiveRun>>,
     pub stops_the_run: bool,
@@ -96,6 +98,9 @@ impl ChatModel for RecordingModel {
                 run.stop.store(true, std::sync::atomic::Ordering::Relaxed);
             }
         }
+        if self.unsupported {
+            return Err(AiError::Unsupported);
+        }
         if self.fails {
             return Err(AiError::Model("closed"));
         }
@@ -150,7 +155,7 @@ fn remembering_asks_from_the_end_in_pages_and_the_chats_trial_finds_every_pick()
     let model = RecordingModel::default();
     let source = source_of(25);
 
-    remember_from_readings(&setup.access, &source, &target_reading(), &model).unwrap();
+    remember_from_readings(&setup.access, &source, &target_reading(), &model, None).unwrap();
 
     assert_eq!(
         model.calls(),
@@ -165,7 +170,7 @@ fn remembering_asks_from_the_end_in_pages_and_the_chats_trial_finds_every_pick()
     assert!(chat.model_left.is_empty());
     assert_eq!(chat.unsure, 25);
 
-    remember_from_readings(&setup.access, &source, &target_reading(), &model).unwrap();
+    remember_from_readings(&setup.access, &source, &target_reading(), &model, None).unwrap();
     assert_eq!(model.calls().len(), 3);
 }
 
@@ -177,10 +182,16 @@ fn a_failing_model_ends_the_remembering_with_an_error() {
         ..RecordingModel::default()
     };
 
-    let result = remember_from_readings(&setup.access, &source_of(25), &target_reading(), &model);
+    let result = remember_from_readings(
+        &setup.access,
+        &source_of(25),
+        &target_reading(),
+        &model,
+        None,
+    );
 
     assert!(result.is_err());
-    assert_eq!(model.calls().len(), 2);
+    assert_eq!(model.calls().len(), 1);
 }
 
 #[test]

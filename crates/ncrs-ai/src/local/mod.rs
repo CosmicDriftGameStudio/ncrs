@@ -26,7 +26,9 @@ use crate::contract::{parse_reply, Extraction, ExtractionRequest, Provider};
 use crate::error::AiError;
 use crate::grammar::reply_grammar;
 use crate::model_file::{remove_previous_models, verify_model_file, ModelPin};
-use crate::prompt::{user_message_prefix, user_message_suffix, SYSTEM_PROMPT};
+use crate::prompt::{
+    first_chars, user_message_prefix, user_message_suffix, MAX_SENT_TEXT_CHARS, SYSTEM_PROMPT,
+};
 use crate::status::Compute;
 
 mod backends;
@@ -340,7 +342,10 @@ pub fn prompt_tokens(
         .ok_or(AiError::Model(
             "the context is too small for the instructions",
         ))?;
-    tokens.extend(document_tokens(vocab, &request.text).into_iter().take(room));
+    // Cut before tokenizing: only the start of the text can fit, and a PDF
+    // text has megabytes.
+    let text = first_chars(&request.text, MAX_SENT_TEXT_CHARS);
+    tokens.extend(document_tokens(vocab, text).into_iter().take(room));
     tokens.extend(tail_tokens);
     Ok(tokens)
 }

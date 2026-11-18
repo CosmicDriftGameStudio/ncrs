@@ -371,6 +371,8 @@ pub struct App {
     chat_model: Option<Arc<dyn ncrs_ai::ChatModel>>,
     /// The setting `chat_model` was built for.
     chat_model_setting: Option<crate::config::AiSetting>,
+    /// Why `chat_model` could not be built, said in the chat.
+    chat_model_error: Option<ncrs_ai::ModelProblem>,
     /// The setting that switches Hermes on is being written; the chat counts
     /// Hermes as starting meanwhile.
     turning_hermes_on: bool,

@@ -44,6 +44,22 @@ pub fn user_message_suffix() -> String {
     format!("\n{TEXT_END}")
 }
 
+/// The most of a document text that is sent to a model, whichever one: the
+/// start of a letter holds what is asked for, and a longer text would not fit
+/// most context windows.
+pub const MAX_SENT_TEXT_CHARS: usize = 16_000;
+
+/// The most of a typed sentence (a rule description, a change to the levels)
+/// that goes into a prompt.
+pub const MAX_SENTENCE_CHARS: usize = 1000;
+
+/// `text` cut to the first `limit` characters.
+pub fn first_chars(text: &str, limit: usize) -> &str {
+    text.char_indices()
+        .nth(limit)
+        .map_or(text, |(end, _)| text.get(..end).unwrap_or(text))
+}
+
 pub fn user_message(request: &ExtractionRequest) -> String {
     format!(
         "{}{}{}",
@@ -53,7 +69,7 @@ pub fn user_message(request: &ExtractionRequest) -> String {
             request.language,
             request.judge_document
         ),
-        request.text,
+        first_chars(&request.text, MAX_SENT_TEXT_CHARS),
         user_message_suffix()
     )
 }
@@ -84,6 +100,16 @@ mod tests {
             !user_message_prefix(&[Field::Sender], &KINDS, LANGUAGE, false)
                 .contains("not_a_document")
         );
+    }
+
+    #[test]
+    fn a_text_longer_than_the_limit_is_cut_on_a_character_boundary() {
+        let text = "ä".repeat(MAX_SENT_TEXT_CHARS + 50);
+
+        let cut = first_chars(&text, MAX_SENT_TEXT_CHARS);
+
+        assert_eq!(cut.chars().count(), MAX_SENT_TEXT_CHARS);
+        assert_eq!(first_chars("short", MAX_SENT_TEXT_CHARS), "short");
     }
 
     #[test]

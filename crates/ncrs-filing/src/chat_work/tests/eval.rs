@@ -362,7 +362,7 @@ fn brother_eval_trial() {
         layout: None,
         scope: crate::chat_work::ModelScope::All,
     }) {
-        ChatResult::Trial(Ok(plan)) => plan,
+        ChatResult::Trial(Ok(plan)) => *plan,
         other => panic!("{other:?}"),
     };
 

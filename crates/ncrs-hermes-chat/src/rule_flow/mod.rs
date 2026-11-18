@@ -6,7 +6,9 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use iced::Task;
-use ncrs_ai::{pattern_mismatches, ContextDocument, Level, Levels, Part as LevelPart};
+use ncrs_ai::{
+    pattern_mismatches, ContextDocument, Level, Levels, ModelProblem, Part as LevelPart,
+};
 use ncrs_filing::chat_work::{ChatWork, FolderReading};
 use ncrs_filing::rules_work::TryFile;
 use ncrs_i18n::Msg;
@@ -19,7 +21,7 @@ use crate::ctx::Ctx;
 use crate::learn;
 use crate::message::Message;
 use crate::state::{Chip, ChipReply, Entry, LevelsCard, Part, ReadFor, RuleMoves, State, Step};
-use crate::texts::{fill, folder_name, number, rule_problem_text, segments, text};
+use crate::texts::{fill, folder_name, number, problem_text, rule_problem_text, segments, text};
 use crate::understand::{gate, Gate};
 use crate::update::{
     access, ask_read_folder, cancel_chip, chip, chip_labelled, drop_working, fallback,
@@ -281,7 +283,7 @@ pub fn launch(state: &mut State, ctx: &Ctx) -> Task<Message> {
         async move { tokio::task::spawn_blocking(move || ask.run(model.as_ref())).await },
         |joined| match joined {
             Ok(answer) => Message::RuleAnswered(answer),
-            Err(error) => Message::RuleAnswered(RuleAnswer::Failed(error.to_string())),
+            Err(_join) => Message::RuleAnswered(RuleAnswer::Failed(ModelProblem::Internal)),
         },
     )
 }
@@ -310,17 +312,13 @@ pub fn answered(state: &mut State, ctx: &Ctx, answer: RuleAnswer) -> Option<Acti
             levels_change(state, ctx);
         }
         RuleAnswer::Rule(Ok(spec)) => generated(state, ctx, spec),
-        RuleAnswer::Levels(Err(reason))
-        | RuleAnswer::Rule(Err(reason))
-        | RuleAnswer::Failed(reason) => {
+        RuleAnswer::Levels(Err(problem))
+        | RuleAnswer::Rule(Err(problem))
+        | RuleAnswer::Failed(problem) => {
             state.session.rule = None;
             state.step = Step::Idle;
             if gate(state, ctx, None) == Gate::Usable {
-                say(
-                    state,
-                    fill(ctx.lang, Msg::HermesChatModelFailed, &[("reason", &reason)]),
-                    fallback_chips(ctx),
-                );
+                say(state, problem_text(ctx.lang, problem), fallback_chips(ctx));
             }
         }
     }
@@ -830,7 +828,7 @@ fn ask_rule(state: &mut State, ctx: &Ctx, description: &str) -> bool {
         state,
         ctx,
         RuleAsk::Generate {
-            description: description.to_owned(),
+            description: ncrs_ai::first_chars(description, ncrs_ai::MAX_SENTENCE_CHARS).to_owned(),
             documents,
             kinds,
         },

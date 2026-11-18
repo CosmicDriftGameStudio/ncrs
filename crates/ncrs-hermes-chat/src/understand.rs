@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use iced::Task;
 use ncrs_ai::{
-    intent_json, ChatIntent, ChatQuestion, ChatTurn, LocalModelStatus, Schedule,
+    intent_json, ChatIntent, ChatQuestion, ChatTurn, LocalModelStatus, ModelProblem, Schedule,
     Transfer as SaidTransfer, LOCAL_MODEL,
 };
 use ncrs_i18n::Msg;
@@ -16,7 +16,7 @@ use crate::action::Action;
 use crate::ctx::{Availability, Ctx};
 use crate::message::Message;
 use crate::state::{Asked, Chip, ChipReply, Entry, Part, State, Step, Thinking, Unsent};
-use crate::texts::{fill, shown_folder, text};
+use crate::texts::{fill, problem_text, shown_folder, text};
 use crate::update::{
     batch_not_yet, cancel_chip, chip, drop_working, explain_not_yet, fallback, fallback_chips,
     handle_reply, hermes, open_thread, say, say_failed, say_off, search_not_yet,
@@ -185,8 +185,8 @@ pub fn launch(state: &mut State, ctx: &Ctx) -> Task<Message> {
         async move { tokio::task::spawn_blocking(move || model.understand(&turn)).await },
         |joined| match joined {
             Ok(Ok(intent)) => Message::Understood(Ok(intent)),
-            Ok(Err(error)) => Message::Understood(Err(error.to_string())),
-            Err(error) => Message::Understood(Err(error.to_string())),
+            Ok(Err(error)) => Message::Understood(Err(ModelProblem::from(&error))),
+            Err(_join) => Message::Understood(Err(ModelProblem::Internal)),
         },
     )
 }
@@ -194,7 +194,7 @@ pub fn launch(state: &mut State, ctx: &Ctx) -> Task<Message> {
 pub fn understood(
     state: &mut State,
     ctx: &Ctx,
-    result: Result<ChatIntent, String>,
+    result: Result<ChatIntent, ModelProblem>,
 ) -> Option<Action> {
     let thinking = state.thinking.take()?;
     drop_working(state);
@@ -206,13 +206,14 @@ pub fn understood(
             follow_up::remember(state, &intent, &thinking.turn.message);
             act_on(state, ctx, intent, &thinking.asked, &thinking.turn.message)
         }
-        Err(reason) => {
+        Err(problem) => {
+            // A text too long for the model must not be sent again as the
+            // "previous message" of every later turn.
+            if problem == ModelProblem::TooLong {
+                follow_up::forget(state);
+            }
             if gate(state, ctx, None) == Gate::Usable {
-                say(
-                    state,
-                    fill(ctx.lang, Msg::HermesChatModelFailed, &[("reason", &reason)]),
-                    fallback_chips(ctx),
-                );
+                say(state, problem_text(ctx.lang, problem), fallback_chips(ctx));
             }
             None
         }

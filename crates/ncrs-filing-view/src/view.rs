@@ -23,6 +23,7 @@ pub fn view<'a>(state: &'a State, ctx: ViewCtx<'_>) -> Element<'a, Message> {
             target_root: session.target.clone(),
             files: Vec::new(),
             done: false,
+            folder_choice_unsupported: false,
         });
     let half = ctx.window.width / 2.0;
     let halves = row![

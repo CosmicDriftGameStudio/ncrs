@@ -3,6 +3,7 @@
 //! count at once.
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use iced::Task;
@@ -21,6 +22,7 @@ pub struct PicksJob {
     model: Arc<dyn ChatModel>,
     target: PathBuf,
     sources: Vec<PathBuf>,
+    stop: Arc<AtomicBool>,
 }
 
 /// Starts a job for `sequence` of the pipeline unless one runs, this
@@ -44,11 +46,13 @@ pub fn begin(state: &mut State, ctx: &Ctx, sequence: usize) -> Option<PicksJob> 
     }
     state.picks_running = true;
     state.picks_settled_at = Some(sequence);
+    state.picks_stop = Arc::default();
     Some(PicksJob {
         access: (**access).clone(),
         model: Arc::clone(model),
         target,
         sources,
+        stop: Arc::clone(&state.picks_stop),
     })
 }
 
@@ -61,9 +65,17 @@ pub fn launch(state: &mut State) -> Task<Message> {
             // A failed spawn only means the picks are made when the chat asks.
             let _ = tokio::task::spawn_blocking(move || {
                 for source in &job.sources {
+                    if job.stop.load(Ordering::Relaxed) {
+                        break;
+                    }
                     // A cache: the chat asks itself for what is missing.
-                    let _ =
-                        remember_folder_picks(&job.access, source, &job.target, job.model.as_ref());
+                    let _ = remember_folder_picks(
+                        &job.access,
+                        source,
+                        &job.target,
+                        job.model.as_ref(),
+                        &job.stop,
+                    );
                 }
             })
             .await;
@@ -158,5 +170,20 @@ mod tests {
         let mut off = ctx(third.path(), true);
         off.ai_on = false;
         assert!(begin(&mut state, &off, 5).is_none());
+    }
+
+    #[test]
+    fn a_new_chat_keeps_the_job_that_runs_and_its_stop_flag() {
+        let dir = tempfile::tempdir().unwrap();
+        let ctx = ctx(dir.path(), true);
+        let mut state = State::default();
+        assert!(begin(&mut state, &ctx, 5).is_some());
+        let stop = Arc::clone(&state.picks_stop);
+
+        let _ = crate::update::update(&mut state, crate::Message::NewChat, &ctx);
+
+        assert!(state.picks_running);
+        assert!(Arc::ptr_eq(&state.picks_stop, &stop));
+        assert_eq!(state.picks_settled_at, Some(5));
     }
 }

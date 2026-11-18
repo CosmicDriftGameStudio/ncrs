@@ -89,6 +89,15 @@ pub fn http_ai_provider(
     consented_origins: &[String],
     db_path: &Path,
 ) -> Option<Arc<ncrs_ai::OpenAiCompatible>> {
+    checked_http_provider(endpoint, model, consented_origins, db_path).ok()
+}
+
+fn checked_http_provider(
+    endpoint: &str,
+    model: &str,
+    consented_origins: &[String],
+    db_path: &Path,
+) -> Result<Arc<ncrs_ai::OpenAiCompatible>, ncrs_ai::AiError> {
     // Tests must not read the keychain of whoever runs them.
     let key_lookup: Option<Arc<dyn ncrs_ai::KeyLookup>> = if ncrs_fs::user_machine_is_off_limits() {
         None
@@ -112,8 +121,34 @@ pub fn http_ai_provider(
         config,
         Arc::new(ncrs_ai::ConsentGivenInSettings::new(consented_origins)),
     )
-    .ok()
     .map(Arc::new)
+}
+
+/// The model the chat asks, or why there is none: a setting that is off, an
+/// endpoint that cannot be used, a build without the local model.
+pub fn chat_model(
+    setting: &AiSetting,
+    load: Load,
+    db_path: &Path,
+) -> Result<Arc<dyn ncrs_ai::ChatModel>, ncrs_ai::AiError> {
+    match setting {
+        AiSetting::Off => Err(ncrs_ai::AiError::Model("Hermes is switched off")),
+        AiSetting::Http {
+            endpoint,
+            model,
+            consented_origins,
+        } => checked_http_provider(endpoint, model, consented_origins, db_path)
+            .map(|server| server as Arc<dyn ncrs_ai::ChatModel>),
+        #[cfg(feature = "local-ai")]
+        AiSetting::Local { threads } => Ok(shared_local_model(db_path, load, *threads)),
+        #[cfg(not(feature = "local-ai"))]
+        AiSetting::Local { .. } => {
+            let _ = (db_path, load);
+            Err(ncrs_ai::AiError::Model(
+                "this build has no model for this machine",
+            ))
+        }
+    }
 }
 
 /// The local model of this index. The path keys the instance, so the fields

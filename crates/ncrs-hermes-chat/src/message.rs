@@ -29,7 +29,7 @@ pub enum Message {
     /// Switching Hermes on did not work: the reason; sent by the app.
     TurnOnFailed(String),
     /// What the language model made of a typed sentence, or why it failed.
-    Understood(Result<ChatIntent, String>),
+    Understood(Result<ChatIntent, ncrs_ai::ModelProblem>),
     /// What the model made of a rule or levels it was asked.
     RuleAnswered(crate::rule_flow::RuleAnswer),
     /// The check of a typed folder, for the step it was typed in.

@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use ncrs_ai::{ChatModel, FolderChoiceLane};
+use ncrs_ai::{AiError, ChatModel, FolderChoiceLane};
 use ncrs_index::{ContentHash, DocumentFields, Field, Kinds, Rule, SenderAliases};
 use ncrs_intake::{
     plan, render_complete_pattern, render_pattern_folder, render_pattern_in, Candidate,
@@ -80,6 +80,33 @@ pub struct TrialPlan {
     /// The files that still need the model's folder: they are not decided yet
     /// and get no group question.
     pub model_left: BTreeSet<PathBuf>,
+    /// Why the model could not answer for `model_left`, when it could not.
+    /// Those files keep what the neighbours gave them and are not stored as
+    /// "no folder fits".
+    pub model_failure: Option<AiError>,
+}
+
+/// What ends a planning run early.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PlanFailure {
+    /// The model could not answer; the plan so far is still good.
+    Model(AiError),
+    Other(String),
+}
+
+impl From<String> for PlanFailure {
+    fn from(reason: String) -> Self {
+        Self::Other(reason)
+    }
+}
+
+impl std::fmt::Display for PlanFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Model(error) => write!(f, "{error}"),
+            Self::Other(reason) => f.write_str(reason),
+        }
+    }
 }
 
 /// How many files the model looks at for the first trial page.
@@ -181,6 +208,7 @@ pub fn trial(
     }
 
     let mut model_left = BTreeSet::new();
+    let mut model_failure = None;
     if let Some(chat_model) = model {
         let asked = ModelAsk {
             access,
@@ -191,7 +219,7 @@ pub fn trial(
             files: &source.files,
             candidates: &candidate_lists,
         };
-        model_left = ask_model(&asked, &mut entries, scope);
+        (model_left, model_failure) = ask_model(&asked, &mut entries, scope);
     }
 
     let count = |matches_outcome: fn(&TrialOutcome) -> bool| {
@@ -215,6 +243,7 @@ pub fn trial(
         taken,
         groups: StayGroups::default(),
         model_left,
+        model_failure,
     };
     plan.groups = stay_groups(&plan, &kinds, &aliases, target, answered);
     Ok(plan)
@@ -431,19 +460,22 @@ const MODEL_TEXT_CHARS: usize = 2000;
 
 /// Bump when the folder-choice prompt changes: the stored picks of an older
 /// version are asked again.
-const FOLDER_PICK_VERSION: i64 = 1;
+/// Version 2: version 1 also held "no folder fits" for files the model never
+/// answered.
+const FOLDER_PICK_VERSION: i64 = 2;
 
 /// The files that did not get a sure place go to the model once, as a batch.
 /// A file it picks a folder for is unsure: the model's folder first, then the
-/// one the neighbours offered. A model that fails changes nothing. Picks
-/// stored by an earlier trial count as the model's answer and are not asked
-/// again.
-/// Returns the files that needed the model but were not asked this time.
+/// one the neighbours offered. A model that fails changes nothing and stores
+/// nothing: the files it was asked about stay among the ones that still need
+/// it, and the failure is returned. Picks stored by an earlier trial count as
+/// the model's answer and are not asked again.
+/// Returns the files that needed the model but were not answered this time.
 fn ask_model(
     ask: &ModelAsk<'_>,
     entries: &mut [TrialEntry],
     scope: &ModelScope,
-) -> BTreeSet<PathBuf> {
+) -> (BTreeSet<PathBuf>, Option<AiError>) {
     let needing_model: Vec<usize> = entries
         .iter()
         .enumerate()
@@ -451,7 +483,7 @@ fn ask_model(
         .map(|(position, _)| position)
         .collect();
     if needing_model.is_empty() || ask.folders.entries.is_empty() {
-        return BTreeSet::new();
+        return (BTreeSet::new(), None);
     }
     let wanting = apply_stored_picks(ask, entries, needing_model);
     let (asked, not_asked): (Vec<usize>, Vec<usize>) = match scope {
@@ -482,8 +514,12 @@ fn ask_model(
             .collect()
     };
     if asked.is_empty() {
-        return left;
+        return (left, None);
     }
+    let asked_files: Vec<PathBuf> = asked
+        .iter()
+        .filter_map(|position| entries.get(*position).map(|entry| entry.from.clone()))
+        .collect();
     let documents: Vec<String> = asked
         .iter()
         .filter_map(|position| ask.files.get(*position))
@@ -493,11 +529,16 @@ fn ask_model(
         ModelScope::Only(_) | ModelScope::LastPage => FolderChoiceLane::Background,
         ModelScope::FirstPage | ModelScope::All => FolderChoiceLane::Waiting,
     };
-    let Ok(picks) = ask
+    let picks = match ask
         .model
         .choose_folders(&ask.folders.entries, &documents, lane)
-    else {
-        return left;
+    {
+        Ok(picks) => picks,
+        Err(failure) => {
+            let mut left_over = left;
+            left_over.extend(asked_files);
+            return (left_over, Some(failure));
+        }
     };
     let mut to_remember: Vec<(ContentHash, Option<String>)> = Vec::new();
     for (position, pick) in asked.into_iter().zip(picks) {
@@ -517,7 +558,7 @@ fn ask_model(
             .store_folder_picks(ask.target_root, &to_remember, FOLDER_PICK_VERSION)
             .map_err(|err| err.to_string())
     });
-    left
+    (left, None)
 }
 
 /// Offers the stored folder to every file that has one, and returns the

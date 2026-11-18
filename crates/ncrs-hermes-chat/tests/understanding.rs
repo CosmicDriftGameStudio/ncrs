@@ -366,6 +366,21 @@ mod tests {
     }
 
     #[test]
+    fn a_text_too_long_for_the_model_is_said_and_not_kept_for_the_next_turn() {
+        let mut talk = small_talk();
+        talk.state.session.previous_message = Some("an earlier long text".to_owned());
+        talk.model.push_reply(Err(AiError::TooLong));
+
+        talk.type_text("hallo");
+
+        assert_eq!(
+            talk.last_texts(),
+            vec![say(Msg::HermesChatModelTooLong, &[])]
+        );
+        assert!(talk.state.session.previous_message.is_none());
+    }
+
+    #[test]
     fn a_failed_model_an_error_and_a_name_that_climbs_out_end_in_the_fallback() {
         let fallback = |talk: &Talk| {
             assert_eq!(talk.last_texts(), vec![say(Msg::HermesChatFallback, &[])]);
@@ -386,10 +401,9 @@ mod tests {
         talk.model.set_status(loaded());
         talk.model.push_reply(Err(AiError::Model("broken")));
         talk.type_text("hallo");
-        let reason = AiError::Model("broken").to_string();
         assert_eq!(
             talk.last_texts(),
-            vec![say(Msg::HermesChatModelFailed, &[("reason", &reason)])]
+            vec![say(Msg::HermesChatModelNotLoaded, &[])]
         );
         assert_eq!(talk.labels().len(), 4);
 

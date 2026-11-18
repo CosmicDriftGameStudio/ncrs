@@ -11,25 +11,31 @@ use ncrs_i18n::Msg;
 pub struct ModelCallSite {
     /// From the root of the repository.
     pub file: &'static str,
-    pub announced_as: Msg,
+    /// `None` while the call goes to no server (the own-server model cannot
+    /// choose folders yet), so the card must not announce it.
+    pub announced_as: Option<Msg>,
 }
 
 pub const MODEL_CALL_SITES: &[ModelCallSite] = &[
     ModelCallSite {
         file: "crates/ncrs-pipeline/src/ai_step/mod.rs",
-        announced_as: Msg::SettingsAiConsentItemDocuments,
+        announced_as: Some(Msg::SettingsAiConsentItemDocuments),
     },
     ModelCallSite {
         file: "crates/ncrs-hermes-chat/src/understand.rs",
-        announced_as: Msg::SettingsAiConsentItemChat,
+        announced_as: Some(Msg::SettingsAiConsentItemChat),
     },
     ModelCallSite {
         file: "crates/ncrs-hermes-chat/src/rule_flow/ask.rs",
-        announced_as: Msg::SettingsAiConsentItemRules,
+        announced_as: Some(Msg::SettingsAiConsentItemRules),
+    },
+    ModelCallSite {
+        file: "crates/ncrs-filing/src/chat_work/trial.rs",
+        announced_as: None,
     },
     ModelCallSite {
         file: "crates/ncrs-ops/src/batch_rename/flow.rs",
-        announced_as: Msg::SettingsAiConsentItemNames,
+        announced_as: Some(Msg::SettingsAiConsentItemNames),
     },
 ];
 
@@ -63,7 +69,7 @@ fn unagreed_origin(endpoint: &str, consented: &[String]) -> Option<String> {
 
 /// What the AI page lists under the server, in this order.
 pub fn announced_items() -> impl Iterator<Item = Msg> {
-    MODEL_CALL_SITES.iter().map(|site| site.announced_as)
+    MODEL_CALL_SITES.iter().filter_map(|site| site.announced_as)
 }
 
 /// The agreement a server still needs.
@@ -145,6 +151,7 @@ mod tests {
         ".recognize_levels(",
         ".recognize_levels_again(",
         ".revise_levels(",
+        ".choose_folders(",
         "propose_name_spec(",
     ];
 
@@ -248,7 +255,13 @@ mod tests {
         let mut lines: Vec<&str> = announced_items().map(|item| item.key()).collect();
         lines.sort_unstable();
         lines.dedup();
-        assert_eq!(lines.len(), MODEL_CALL_SITES.len());
+        assert_eq!(
+            lines.len(),
+            MODEL_CALL_SITES
+                .iter()
+                .filter(|site| site.announced_as.is_some())
+                .count()
+        );
     }
 
     fn http(endpoint: &str, consented: &[&str]) -> AiProviderChoice {

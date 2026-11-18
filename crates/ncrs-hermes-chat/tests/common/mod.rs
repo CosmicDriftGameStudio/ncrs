@@ -304,7 +304,7 @@ impl Talk {
         Some(Message::Understood(
             self.model_answering()
                 .understand(&turn)
-                .map_err(|error| error.to_string()),
+                .map_err(|error| ncrs_ai::ModelProblem::from(&error)),
         ))
     }
 
@@ -470,7 +470,7 @@ pub fn listing(root: &Path) -> BTreeMap<String, String> {
 /// A business letter like the ones of the test archive.
 pub fn letter(sender: &str, date: &str, title: &str, number: u32) -> String {
     format!(
-        "{sender}\nMoritzhof 1, 09111 Chemnitz\n\nMarc Beispiel\nAndrestr. 12\n09112 Chemnitz\n\n\
+        "{sender}\nMoritzhof 1, 09111 Chemnitz\n\nMarc Beispiel\nMusterweg 1\n00000 Musterstadt\n\n\
          Chemnitz, {date}\n\n{title}\n\nRechnungsnummer: {number}\n\n\
          Mit freundlichen Grüßen\n{sender}\nAmtsgericht Chemnitz HRB 11111\n"
     )

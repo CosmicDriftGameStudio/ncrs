@@ -6,7 +6,7 @@ use std::collections::VecDeque;
 
 use ncrs_index::{DocumentFields, Kinds, RuleSpec};
 
-use crate::chat::{parse_chat_reply, ChatIntent, ChatModel, ChatTurn};
+use crate::chat::{parse_chat_reply, ChatIntent, ChatModel, ChatTurn, FolderChoiceLane};
 use crate::contract::{parse_reply, Extraction, ExtractionRequest, Provider};
 use crate::error::AiError;
 use crate::rules::{ContextDocument, Levels, Mismatch, Revision};
@@ -277,6 +277,15 @@ impl ChatModel for ScriptedChatModel {
             .unwrap_or_else(PoisonError::into_inner)
             .pop_front()
             .unwrap_or(Err(AiError::Model("no scripted revision")))
+    }
+
+    fn choose_folders(
+        &self,
+        _folders: &[(String, Vec<String>)],
+        documents: &[String],
+        _lane: FolderChoiceLane,
+    ) -> Result<Vec<Option<usize>>, AiError> {
+        Ok(vec![None; documents.len()])
     }
 
     fn status(&self) -> LocalModelStatus {

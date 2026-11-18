@@ -416,7 +416,7 @@ fn trial_of(setup: &Setup, source: FolderReading, answered: AnsweredGroups) -> T
         layout: None,
         scope: crate::chat_work::ModelScope::FirstPage,
     }) {
-        ChatResult::Trial(plan) => plan.unwrap(),
+        ChatResult::Trial(plan) => *plan.unwrap(),
         other => panic!("{other:?}"),
     }
 }
@@ -462,6 +462,7 @@ fn plan_of(entries: Vec<TrialEntry>) -> TrialPlan {
         taken: std::collections::BTreeSet::new(),
         groups: StayGroups::default(),
         model_left: std::collections::BTreeSet::new(),
+        model_failure: None,
     }
 }
 
@@ -989,7 +990,7 @@ fn unsure_in_two_areas(file: PlanFile) -> (Vec<PathBuf>, Vec<String>) {
         layout: None,
         scope: crate::chat_work::ModelScope::FirstPage,
     }) {
-        ChatResult::Trial(plan) => plan.unwrap(),
+        ChatResult::Trial(plan) => *plan.unwrap(),
         other => panic!("{other:?}"),
     };
     match &plan.entries[0].outcome {
@@ -1048,7 +1049,7 @@ fn an_unsure_file_names_the_kind_only_when_the_catalog_knows_it() {
             layout: None,
             scope: crate::chat_work::ModelScope::FirstPage,
         }) {
-            ChatResult::Trial(plan) => plan.unwrap(),
+            ChatResult::Trial(plan) => *plan.unwrap(),
             other => panic!("{other:?}"),
         };
         match &plan.entries[0].outcome {

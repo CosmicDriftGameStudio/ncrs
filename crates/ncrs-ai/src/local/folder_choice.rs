@@ -49,14 +49,14 @@ impl LocalModel {
         let train_limit = usize::try_from(self.model.n_ctx_train()).unwrap_or(usize::MAX);
         let fixed = prefix.len() + tail.len() + MAX_REPLY_TOKENS;
         if fixed + 1 > train_limit {
-            return Err(AiError::Model("the folder list is too long"));
+            return Err(AiError::TooLong);
         }
         let room = DOCUMENT_TOKENS.min(train_limit - fixed);
         let context_tokens = fixed + room;
         let n_ctx = u32::try_from(context_tokens)
             .ok()
             .and_then(NonZeroU32::new)
-            .ok_or(AiError::Model("the prompt is too long"))?;
+            .ok_or(AiError::TooLong)?;
         let batch_tokens = n_ctx.get().min(MAX_BATCH_TOKENS);
         let batch_len = usize::try_from(batch_tokens).unwrap_or(1);
 

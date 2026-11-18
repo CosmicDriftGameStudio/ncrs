@@ -46,7 +46,9 @@ pub use pattern::PatternLevel;
 pub use picks::remember_folder_picks;
 pub use reading::{AiCoverage, FolderReading, ReadError, ReadProgress, FILE_LIMIT};
 pub use runs::{RecentRun, RunItem, RunPlan, RunReport, RunSummary};
-pub use trial::{ModelScope, StayReason, TrialEntry, TrialOutcome, TrialPlan, MODEL_FIRST_PAGE};
+pub use trial::{
+    ModelScope, PlanFailure, StayReason, TrialEntry, TrialOutcome, TrialPlan, MODEL_FIRST_PAGE,
+};
 pub use waiting::WaitingGroup;
 pub use words::{normalize_word, same_word, word_within};
 
@@ -118,7 +120,7 @@ pub enum ChatWork {
 #[derive(Debug, Clone)]
 pub enum ChatResult {
     Read(Result<Arc<FolderReading>, ReadError>),
-    Trial(Result<TrialPlan, String>),
+    Trial(Result<Box<TrialPlan>, String>),
     /// The name of the rule that was stored.
     RuleSaved(Result<String, RuleSaveFailure>),
     RuleTried(Result<RuleTrial, String>),
@@ -286,15 +288,18 @@ impl ChatAccess {
                 answered,
                 layout,
                 scope,
-            } => ChatResult::Trial(trial::trial(
-                self,
-                &source,
-                &target,
-                &answered,
-                layout.as_deref(),
-                self.model.as_deref(),
-                &scope,
-            )),
+            } => ChatResult::Trial(
+                trial::trial(
+                    self,
+                    &source,
+                    &target,
+                    &answered,
+                    layout.as_deref(),
+                    self.model.as_deref(),
+                    &scope,
+                )
+                .map(Box::new),
+            ),
             ChatWork::SaveGroupRule {
                 target,
                 key,

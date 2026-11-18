@@ -6,7 +6,7 @@ use std::fmt;
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use jsonc_parser::{parse_to_value, JsonValue, ParseOptions};
 use ureq::http::Uri;
@@ -14,11 +14,12 @@ use ureq::http::Uri;
 use crate::api_key::KeyLookup;
 use crate::consent::{ConsentLedger, OutgoingPreview};
 use crate::contract::{output_schema, parse_reply, Extraction, ExtractionRequest, Provider};
-use crate::error::{AiError, EndpointProblem};
+use crate::error::{AiError, EndpointProblem, FailureScope};
 use crate::json::Json;
 use crate::prompt::{user_message, SYSTEM_PROMPT};
 use crate::usage_log::{append_usage, parse_usage, UsageRecord};
 use chrono::Utc;
+use sha2::{Digest as _, Sha256};
 
 mod chat;
 
@@ -202,7 +203,32 @@ pub struct OpenAiCompatible {
     usage_log: Option<PathBuf>,
     ledger: Arc<dyn ConsentLedger>,
     last_failure: Mutex<Option<ReplyFailure>>,
+    health: Mutex<Health>,
 }
+
+/// What the calls of this provider so far say about the server. A provider is
+/// built anew when the setting changes, so a corrected key or model starts
+/// from a clean state.
+#[derive(Debug, Default)]
+struct Health {
+    /// A reply was parsed at least once.
+    answered: bool,
+    transient_streak: u32,
+    /// No document is sent before this time.
+    paused_until: Option<Instant>,
+    /// The key of the last request. A pause is lifted when the key differs:
+    /// the user corrected it in the settings, which does not rebuild the
+    /// provider.
+    key_fingerprint: Option<[u8; 32]>,
+}
+
+fn fingerprint_of(key: Option<&Secret>) -> Option<[u8; 32]> {
+    key.map(|secret| Sha256::digest(secret.expose().as_bytes()).into())
+}
+
+/// Wait after a failure that only the setting can fix.
+const PROVIDER_PAUSE: Duration = Duration::from_secs(60 * 60);
+const FIRST_TRANSIENT_PAUSE: Duration = Duration::from_secs(60);
 
 impl OpenAiCompatible {
     pub fn new(
@@ -218,7 +244,67 @@ impl OpenAiCompatible {
             usage_log: config.usage_log,
             ledger,
             last_failure: Mutex::new(None),
+            health: Mutex::default(),
         })
+    }
+
+    fn scope_of(&self, error: &AiError) -> FailureScope {
+        let scope = error.scope();
+        let answered = self
+            .health
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .answered;
+        // A server that never gave a usable reply and refuses every request
+        // is a wrong setting, not a wrong document.
+        if scope == FailureScope::Document && !answered {
+            FailureScope::Provider
+        } else {
+            scope
+        }
+    }
+
+    /// Learns from the end of a call: a usable reply, or the error it ended in.
+    fn account(&self, error: Option<&AiError>) {
+        let scope = error.map(|failed| self.scope_of(failed));
+        let mut health = self.health.lock().unwrap_or_else(PoisonError::into_inner);
+        match scope {
+            None => {
+                health.answered = true;
+                health.transient_streak = 0;
+                health.paused_until = None;
+            }
+            Some(FailureScope::Provider) => {
+                health.paused_until = Some(Instant::now() + PROVIDER_PAUSE);
+            }
+            Some(FailureScope::Transient) => {
+                health.transient_streak = health.transient_streak.saturating_add(1);
+                let doublings = health.transient_streak.saturating_sub(1).min(6);
+                let pause = (FIRST_TRANSIENT_PAUSE * u32::pow(2, doublings)).min(PROVIDER_PAUSE);
+                health.paused_until = Some(Instant::now() + pause);
+            }
+            Some(FailureScope::Document) => {}
+        }
+    }
+
+    fn is_paused(&self) -> bool {
+        let sent_with = {
+            let health = self.health.lock().unwrap_or_else(PoisonError::into_inner);
+            if !health
+                .paused_until
+                .is_some_and(|until| Instant::now() < until)
+            {
+                return false;
+            }
+            health.key_fingerprint
+        };
+        // Only a pause looks at the keychain, so a healthy provider does not.
+        let key = key_of(self.api_key.as_ref(), self.key_lookup.as_deref());
+        if fingerprint_of(key.as_ref()) == sent_with {
+            return true;
+        }
+        *self.health.lock().unwrap_or_else(PoisonError::into_inner) = Health::default();
+        false
     }
 
     /// What went wrong with the last request; none when it was answered.
@@ -232,13 +318,21 @@ impl OpenAiCompatible {
     fn remember(&self, outcome: &Result<String, AiError>) {
         let failure = match outcome {
             Ok(_) => None,
-            Err(AiError::Status(status)) => Some(ReplyFailure::Status(*status)),
-            Err(_) => Some(ReplyFailure::NoAnswer),
+            Err(failed) => Some(reply_failure(failed)),
         };
         *self
             .last_failure
             .lock()
             .unwrap_or_else(PoisonError::into_inner) = failure;
+    }
+
+    /// A failed chat or rule question shows in the settings too; an answered
+    /// one does not clear the failure of an extraction.
+    fn remember_failure(&self, failed: &AiError) {
+        *self
+            .last_failure
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(reply_failure(failed));
     }
 
     /// What a call for this request would send, for a person to read first.
@@ -332,7 +426,18 @@ impl OpenAiCompatible {
             .post(&self.endpoint.chat_url)
             .header("Content-Type", "application/json");
         let key = key_of(self.api_key.as_ref(), self.key_lookup.as_deref());
+        self.health
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .key_fingerprint = fingerprint_of(key.as_ref());
         read_reply(with_key(call, key.as_ref()).send(body))
+    }
+}
+
+fn reply_failure(failed: &AiError) -> ReplyFailure {
+    match failed {
+        AiError::Status(status) => ReplyFailure::Status(*status),
+        _ => ReplyFailure::NoAnswer,
     }
 }
 
@@ -442,7 +547,11 @@ impl OpenAiCompatible {
 
 impl Provider for OpenAiCompatible {
     fn can_answer(&self, source: &Path) -> bool {
-        self.may_send(source)
+        self.may_send(source) && !self.is_paused()
+    }
+
+    fn failure_scope(&self, error: &AiError) -> FailureScope {
+        self.scope_of(error)
     }
 
     fn extract(&self, request: &ExtractionRequest) -> Result<Extraction, AiError> {
@@ -453,9 +562,17 @@ impl Provider for OpenAiCompatible {
         }
         let outcome = self.post(&self.request_body(request).pretty());
         self.remember(&outcome);
-        let reply = outcome?;
+        let reply = match outcome {
+            Ok(reply) => reply,
+            Err(failed) => {
+                self.account(Some(&failed));
+                return Err(failed);
+            }
+        };
         self.log_usage(&reply);
-        parse_reply(&message_content(&reply)?, request)
+        let parsed = message_content(&reply).and_then(|content| parse_reply(&content, request));
+        self.account(parsed.as_ref().err());
+        parsed
     }
 }
 

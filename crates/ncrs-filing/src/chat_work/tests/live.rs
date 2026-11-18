@@ -9,7 +9,7 @@ use super::picks::RecordingModel;
 use super::*;
 use crate::chat_work::{
     apply_overrides, classify, mark_files, plan_live, tally, LiveFile, LivePlan, LiveRun,
-    LiveState, LiveTags, Override,
+    LiveState, LiveTags, Override, PlanFailure,
 };
 
 fn tags() -> LiveTags {
@@ -212,7 +212,7 @@ fn write_source(setup: &Setup) {
     setup.write("archive/Beta/old.txt", "Beta GmbH invoice");
 }
 
-fn run_live(setup: &Setup, model: &RecordingModel, run: &LiveRun) -> Result<(), String> {
+fn run_live(setup: &Setup, model: &RecordingModel, run: &LiveRun) -> Result<(), PlanFailure> {
     plan_live(
         &setup.access,
         &setup.dir.path().join("inbox"),
@@ -262,6 +262,36 @@ fn a_live_plan_starts_all_waiting_and_ends_done_with_every_bucket_counted() {
         last.files.len()
     );
     assert_eq!(state_of(&last, "blank.dat"), LiveState::Unreadable);
+}
+
+#[test]
+fn a_model_that_cannot_choose_folders_leaves_the_files_untagged_and_stores_nothing() {
+    let setup = Setup::new();
+    write_source(&setup);
+    let run = Arc::new(LiveRun::default());
+    let model = RecordingModel {
+        unsupported: true,
+        ..RecordingModel::default()
+    };
+
+    let result = run_live(&setup, &model, &run);
+
+    assert_eq!(result, Ok(()));
+    assert_eq!(tag_count(&setup, "no folder"), 0);
+    let stored: i64 = setup
+        .access
+        .with_index(|index| {
+            Ok(index
+                .connection()
+                .query_row("SELECT count(*) FROM folder_pick", (), |row| row.get(0))
+                .unwrap())
+        })
+        .unwrap();
+    assert_eq!(stored, 0);
+    let last = published(&run);
+    assert!(last.done);
+    assert!(last.folder_choice_unsupported);
+    assert_eq!(tally(&last).no_folder, 0);
 }
 
 #[test]
@@ -374,6 +404,7 @@ fn plan_to_override() -> LivePlan {
             file("e.pdf", 5, LiveState::Unreadable),
         ],
         done: true,
+        folder_choice_unsupported: false,
     }
 }
 

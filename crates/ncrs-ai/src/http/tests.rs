@@ -591,3 +591,108 @@ fn the_chat_and_the_rule_questions_to_a_far_server_need_its_consent_too() {
         vec![("https://ai.example.invalid".to_owned(), PathBuf::new())]
     );
 }
+
+fn answer_json() -> String {
+    http_response(
+        "200 OK",
+        "",
+        &chat_reply(r#"{"sender": {"value": "A", "confidence": 0.9}}"#),
+    )
+}
+
+fn local_provider(port: u16, key: Option<Arc<dyn KeyLookup>>) -> OpenAiCompatible {
+    let mut own = config(&format!("http://127.0.0.1:{port}/v1"), None);
+    own.api_key = None;
+    own.key_lookup = key;
+    OpenAiCompatible::new(own, Arc::new(Ledger::default()) as Arc<dyn ConsentLedger>).unwrap()
+}
+
+#[test]
+fn a_refusal_is_the_servers_until_it_has_answered_once_and_the_documents_after() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let own = local_provider(listener.local_addr().unwrap().port(), None);
+    let refusal = AiError::Status(400);
+    assert_eq!(own.failure_scope(&refusal), FailureScope::Provider);
+
+    let answered = serve_once(listener, answer_json());
+    own.extract(&request()).unwrap();
+    answered.join().unwrap();
+
+    assert_eq!(own.failure_scope(&refusal), FailureScope::Document);
+    assert_eq!(
+        own.failure_scope(&AiError::Status(401)),
+        FailureScope::Provider
+    );
+}
+
+#[test]
+fn a_transient_failure_pauses_the_provider_and_an_answer_lifts_the_pause() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let own = local_provider(listener.local_addr().unwrap().port(), None);
+    let source = Path::new("inbox-one");
+    assert!(own.can_answer(source));
+
+    let unavailable = serve_once(
+        listener.try_clone().unwrap(),
+        http_response("503 Service Unavailable", "", "{}"),
+    );
+    own.extract(&request()).unwrap_err();
+    unavailable.join().unwrap();
+    assert!(!own.can_answer(source));
+
+    let answered = serve_once(listener, answer_json());
+    own.extract(&request()).unwrap();
+    answered.join().unwrap();
+    assert!(own.can_answer(source));
+}
+
+#[test]
+fn a_server_that_is_not_there_pauses_the_provider() {
+    let own = local_provider(1, None);
+
+    own.extract(&request()).unwrap_err();
+
+    assert!(!own.can_answer(Path::new("inbox-one")));
+}
+
+#[test]
+fn a_corrected_key_lifts_the_pause_of_a_refused_one() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let keys = Arc::new(LateKey(Mutex::new(Some(Secret::new("wrong".to_owned())))));
+    let own = local_provider(
+        listener.local_addr().unwrap().port(),
+        Some(Arc::clone(&keys) as Arc<dyn KeyLookup>),
+    );
+    let source = Path::new("inbox-one");
+    let refused = serve_once(listener, http_response("401 Unauthorized", "", "{}"));
+    own.extract(&request()).unwrap_err();
+    refused.join().unwrap();
+    assert!(!own.can_answer(source));
+
+    assert!(!own.can_answer(source), "the same key stays refused");
+    *keys.0.lock().unwrap() = Some(Secret::new(KEY.to_owned()));
+
+    assert!(own.can_answer(source));
+}
+
+#[test]
+fn an_own_server_is_never_asked_to_choose_folders() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let own = local_provider(listener.local_addr().unwrap().port(), None);
+
+    let result = crate::chat::ChatModel::choose_folders(
+        &own,
+        &[("Invoices".to_owned(), vec!["a.pdf".to_owned()])],
+        &["b.pdf".to_owned()],
+        crate::chat::FolderChoiceLane::Waiting,
+    );
+
+    assert_eq!(result, Err(AiError::Unsupported));
+    let accepted = listener.accept();
+    assert_eq!(
+        accepted.unwrap_err().kind(),
+        std::io::ErrorKind::WouldBlock,
+        "nothing was sent"
+    );
+}

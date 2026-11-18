@@ -79,7 +79,7 @@ impl<'model> ChatSession<'model> {
             true,
         ));
         if self.prefix_len + suffix.len() + MAX_REPLY_TOKENS > self.context_tokens {
-            return Err(AiError::Model("the message is too long"));
+            return Err(AiError::TooLong);
         }
 
         self.context.clear_kv_cache();

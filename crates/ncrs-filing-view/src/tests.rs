@@ -56,6 +56,7 @@ fn state_with(files: Vec<LiveFile>, done: bool) -> State {
         target_root: PathBuf::from(TARGET),
         files,
         done,
+        folder_choice_unsupported: false,
     });
     session.selected = Some(PathBuf::from("a.pdf"));
     State {
@@ -258,4 +259,25 @@ fn the_title_counts_while_reading_and_says_ready_when_done() {
         Some("Ablegen · inbox ✕")
     );
     assert_eq!(tab_title(&State::default(), Language::German), None);
+}
+
+#[test]
+fn a_model_that_cannot_choose_folders_is_told_apart_from_one_that_failed() {
+    use ncrs_ai::AiError;
+    use ncrs_filing::chat_work::PlanFailure;
+
+    let unsupported =
+        crate::update::failure_text(Language::English, &PlanFailure::Model(AiError::Unsupported));
+    let failed = crate::update::failure_text(
+        Language::English,
+        &PlanFailure::Model(AiError::Transport("down")),
+    );
+    let other = crate::update::failure_text(
+        Language::English,
+        &PlanFailure::Other("disk full".to_owned()),
+    );
+
+    assert_ne!(unsupported, failed);
+    assert!(!failed.contains("down"));
+    assert_eq!(other, "disk full");
 }

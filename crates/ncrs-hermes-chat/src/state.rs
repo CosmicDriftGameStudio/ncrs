@@ -515,6 +515,8 @@ pub struct State {
     pub fresh_resolve: bool,
     /// A background job is making the model's folder picks of the read folders.
     pub picks_running: bool,
+    /// Set to end the running job: the AI went off. A new job gets a new flag.
+    pub picks_stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
     /// The pipeline sequence the last job was started for.
     pub picks_settled_at: Option<usize>,
     /// The job set during this `update` that no task runs yet.
@@ -553,6 +555,7 @@ impl Default for State {
             unresolved_sentence: None,
             fresh_resolve: false,
             picks_running: false,
+            picks_stop: std::sync::Arc::default(),
             picks_settled_at: None,
             picks_job: None,
             naming: None,

@@ -343,6 +343,23 @@ pub fn trial_done(state: &mut State, ctx: &Ctx, result: Result<TrialPlan, String
             return;
         }
     };
+    // A model that cannot choose folders counts as no model: the trial goes on.
+    if let Some(failure) = plan
+        .model_failure
+        .as_ref()
+        .filter(|failure| !matches!(failure, ncrs_ai::AiError::Unsupported))
+    {
+        // The files the model did not answer for would show up as "stays"
+        // in the group questions, as if the model had said so.
+        state.session.rule_queue = None;
+        state.step = Step::Idle;
+        say(
+            state,
+            crate::texts::problem_text(ctx.lang, ncrs_ai::ModelProblem::from(failure)),
+            crate::update::fallback_chips(ctx),
+        );
+        return;
+    }
     state.session.trial = Some(TrialSession { plan });
     crate::rule_flow::trial::file_rule_trial(state, ctx);
 }

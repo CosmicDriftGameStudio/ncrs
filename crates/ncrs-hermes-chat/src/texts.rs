@@ -11,6 +11,21 @@ use ncrs_ui_kit::format;
 use crate::ctx::Ctx;
 use crate::state::{AreaRow, AreasCard, CountRow};
 
+/// What Hermes says when a call to the model failed: one sentence for each
+/// thing the user can do about it. The technical reason is not shown.
+pub fn problem_text(lang: Language, problem: ncrs_ai::ModelProblem) -> String {
+    use ncrs_ai::ModelProblem;
+    match problem {
+        ModelProblem::TooLong => text(lang, Msg::HermesChatModelTooLong),
+        ModelProblem::Unsupported => text(lang, Msg::HermesChatModelUnsupported),
+        ModelProblem::BadReply => text(lang, Msg::HermesChatModelBadReply),
+        ModelProblem::Unreachable => text(lang, Msg::HermesChatModelUnreachable),
+        ModelProblem::ConsentMissing => text(lang, Msg::HermesChatModelConsentMissing),
+        ModelProblem::NotLoaded(_) => text(lang, Msg::HermesChatModelNotLoaded),
+        ModelProblem::Internal => text(lang, Msg::HermesChatModelInternal),
+    }
+}
+
 pub fn text(lang: Language, msg: Msg) -> String {
     lang.text(msg).to_owned()
 }

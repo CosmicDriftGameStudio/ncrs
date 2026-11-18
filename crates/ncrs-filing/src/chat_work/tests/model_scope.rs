@@ -106,7 +106,7 @@ fn trial_on(access: &ChatAccess, target: FolderReading, scope: ModelScope) -> Tr
         layout: None,
         scope,
     }) {
-        ChatResult::Trial(plan) => plan.unwrap(),
+        ChatResult::Trial(plan) => *plan.unwrap(),
         other => panic!("{other:?}"),
     }
 }
