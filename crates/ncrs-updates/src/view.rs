@@ -10,7 +10,7 @@ use ncrs_ui_kit::setting_rows::{self, Group, RowButton, RowKey, SettingRow};
 use ncrs_ui_kit::theme::spacing;
 
 use crate::channel::Channel;
-use crate::state::{Message, State};
+use crate::state::{CheckOutcome, Message, State};
 
 /// The id of the field that shows the update command, so it can be selected.
 pub const COMMAND_FIELD_ID: &str = "updates-command";
@@ -139,7 +139,22 @@ pub fn view<'a, M: Clone + 'a>(
     let (lang, palette, enabled) = (ctx.lang, ctx.palette, ctx.enabled);
     let mut page = column(sections).spacing(spacing::XS);
     if enabled && state.newer_release().is_none() {
-        page = page.push(kit::dim(lang.text(Msg::UpdatesUpToDate), palette));
+        let line = match state.check_outcome() {
+            CheckOutcome::Succeeded => lang.text(Msg::UpdatesUpToDate).to_owned(),
+            CheckOutcome::Failed => lang.text(Msg::UpdatesCheckFailed).to_owned(),
+            CheckOutcome::CheckedBefore(unix) => fill_template(
+                lang.text(Msg::UpdatesLastChecked),
+                &[("{date}", &date_of(unix))],
+            ),
+            CheckOutcome::Unknown => lang.text(Msg::UpdatesNotCheckedYet).to_owned(),
+        };
+        page = page.push(kit::dim(line, palette));
     }
     page.into()
+}
+
+/// `YYYY-MM-DD` of a Unix time, in UTC.
+pub fn date_of(unix: i64) -> String {
+    chrono::DateTime::from_timestamp(unix, 0)
+        .map_or_else(String::new, |time| time.format("%Y-%m-%d").to_string())
 }

@@ -3849,6 +3849,7 @@ dependencies = [
 name = "ncrs-updates"
 version = "0.0.0"
 dependencies = [
+ "chrono",
  "iced",
  "iced_test",
  "jsonc-parser",

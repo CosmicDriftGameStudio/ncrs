@@ -47,6 +47,17 @@ pub struct Ctx<'a> {
     pub state_file: Option<&'a Path>,
 }
 
+/// How the last check ended, as far as the page may tell the user.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CheckOutcome {
+    Succeeded,
+    Failed,
+    /// A file from before the two stamps: a check was made at this time, its
+    /// result was not kept.
+    CheckedBefore(i64),
+    Unknown,
+}
+
 #[derive(Debug)]
 pub struct State {
     display_version: String,
@@ -96,6 +107,20 @@ impl State {
             .filter(|release| is_news(release, running, self.stored.skipped_version.as_deref()))
     }
 
+    /// What the page may say when there is no newer release. A file from
+    /// before the two stamps existed has neither, so it says nothing is known.
+    pub fn check_outcome(&self) -> CheckOutcome {
+        match (self.stored.last_ok_unix, self.stored.last_failed_unix) {
+            (Some(ok), Some(failed)) if failed >= ok => CheckOutcome::Failed,
+            (Some(_), _) => CheckOutcome::Succeeded,
+            (None, Some(_)) => CheckOutcome::Failed,
+            (None, None) => match self.stored.last_checked_unix {
+                Some(unix) if !self.checking => CheckOutcome::CheckedBefore(unix),
+                _ => CheckOutcome::Unknown,
+            },
+        }
+    }
+
     fn should_check(&self, ctx: &Ctx<'_>) -> bool {
         !SANDBOXED
             && !self.checking
@@ -141,12 +166,17 @@ pub fn update(
             state.checking = false;
             match result {
                 Ok(release) => {
+                    state.stored.last_ok_unix = Some(ctx.now_unix);
                     state.stored.found_version = Some(release.version.to_string());
                     state.stored.found_notes_url = Some(release.notes_url.clone());
                     state.latest = Some(release);
                     state.save(ctx.state_file);
                 }
-                Err(err) => eprintln!("ncrs: update check failed: {err}"),
+                Err(err) => {
+                    eprintln!("ncrs: update check failed: {err}");
+                    state.stored.last_failed_unix = Some(ctx.now_unix);
+                    state.save(ctx.state_file);
+                }
             }
             (Task::none(), None)
         }
@@ -268,16 +298,41 @@ mod tests {
     }
 
     #[test]
-    fn a_failed_check_shows_nothing() {
+    fn a_failed_check_offers_nothing_and_is_not_an_answer() {
         let mut state = direct();
         state.checking = true;
         update(
             &mut state,
             Message::Checked(Err("offline".to_owned())),
-            &ctx(None, 0, None),
+            &ctx(None, 7, None),
         );
         assert!(!state.checking);
         assert!(state.newer_release().is_none());
+        assert_eq!(state.check_outcome(), CheckOutcome::Failed);
+    }
+
+    #[test]
+    fn the_outcome_follows_the_newer_of_answer_and_failure() {
+        let mut state = direct();
+        assert_eq!(state.check_outcome(), CheckOutcome::Unknown);
+        update(
+            &mut state,
+            Message::Checked(Ok(release("1.2.0"))),
+            &ctx(None, 10, None),
+        );
+        assert_eq!(state.check_outcome(), CheckOutcome::Succeeded);
+        update(
+            &mut state,
+            Message::Checked(Err("offline".to_owned())),
+            &ctx(None, 20, None),
+        );
+        assert_eq!(state.check_outcome(), CheckOutcome::Failed);
+        update(
+            &mut state,
+            Message::Checked(Ok(release("1.2.0"))),
+            &ctx(None, 30, None),
+        );
+        assert_eq!(state.check_outcome(), CheckOutcome::Succeeded);
     }
 
     #[test]
