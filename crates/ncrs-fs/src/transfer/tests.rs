@@ -267,44 +267,244 @@ fn a_failed_overwrite_keeps_the_old_target() {
     assert_eq!(leftovers.len(), 1, "a half-built copy was left behind");
 }
 
-/// A finished overwrite replaces the old tree entirely, for every pairing of
-/// file and directory, and leaves no scratch name behind.
+/// Overwriting a folder merges: files with the same name are replaced, what
+/// only the target holds stays, and no scratch name is left.
 #[test]
-fn an_overwrite_replaces_whatever_was_there() {
-    for (source_is_dir, target_is_dir) in
-        [(false, false), (true, true), (false, true), (true, false)]
-    {
-        let dir = scratch("replace");
+fn an_overwrite_of_a_folder_keeps_what_only_the_target_holds() {
+    for kind in [ncrs_core::TransferKind::Copy, ncrs_core::TransferKind::Move] {
+        let dir = scratch("merge");
+        let src = dir.path().join("src");
+        let dst = dir.path().join("dst");
+        fs::create_dir_all(src.join("sub")).unwrap();
+        fs::write(src.join("same.txt"), b"new").unwrap();
+        fs::write(src.join("sub/inner.txt"), b"new inner").unwrap();
+        fs::create_dir_all(dst.join("src/sub")).unwrap();
+        fs::write(dst.join("src/same.txt"), b"old").unwrap();
+        fs::write(dst.join("src/only-target.txt"), b"keep me").unwrap();
+        fs::write(dst.join("src/sub/only-target-inner.txt"), b"keep me too").unwrap();
+
+        match kind {
+            ncrs_core::TransferKind::Copy => {
+                transfer(&src, &dst, &Copy, &mut Counting, OnConflict::Overwrite).unwrap()
+            }
+            ncrs_core::TransferKind::Move => {
+                transfer(&src, &dst, &Move, &mut Counting, OnConflict::Overwrite).unwrap()
+            }
+        };
+
+        assert_eq!(fs::read(dst.join("src/same.txt")).unwrap(), b"new");
+        assert_eq!(
+            fs::read(dst.join("src/sub/inner.txt")).unwrap(),
+            b"new inner"
+        );
+        assert_eq!(
+            fs::read(dst.join("src/only-target.txt")).unwrap(),
+            b"keep me"
+        );
+        assert_eq!(
+            fs::read(dst.join("src/sub/only-target-inner.txt")).unwrap(),
+            b"keep me too"
+        );
+        assert_eq!(
+            fs::read_dir(&dst).unwrap().count(),
+            1,
+            "a scratch name is left"
+        );
+        assert_eq!(fs::read_dir(dst.join("src")).unwrap().count(), 3);
+        // A move empties the source and removes it; a copy leaves it whole.
+        assert_eq!(src.exists(), kind == ncrs_core::TransferKind::Copy);
+    }
+}
+
+/// A file against a folder, in either direction, is refused and both survive.
+#[test]
+fn a_file_and_a_folder_do_not_replace_each_other() {
+    for source_is_dir in [false, true] {
+        let dir = scratch("in-the-way");
         let src = dir.path().join("src");
         let dst = dir.path().join("dst");
         fs::create_dir_all(&dst).unwrap();
         if source_is_dir {
             fs::create_dir_all(&src).unwrap();
             fs::write(src.join("new.txt"), b"new").unwrap();
+            fs::write(dst.join("src"), b"old").unwrap();
         } else {
             fs::write(&src, b"new").unwrap();
-        }
-        if target_is_dir {
             fs::create_dir_all(dst.join("src")).unwrap();
             fs::write(dst.join("src/old.txt"), b"old").unwrap();
-        } else {
-            fs::write(dst.join("src"), b"old").unwrap();
         }
 
-        transfer(&src, &dst, &Copy, &mut Counting, OnConflict::Overwrite).unwrap();
+        let err = transfer(&src, &dst, &Copy, &mut Counting, OnConflict::Overwrite).unwrap_err();
 
-        if source_is_dir {
-            assert_eq!(fs::read(dst.join("src/new.txt")).unwrap(), b"new");
-            assert!(!dst.join("src/old.txt").exists(), "old contents survived");
+        let expected = if source_is_dir {
+            io::ErrorKind::NotADirectory
         } else {
-            assert_eq!(fs::read(dst.join("src")).unwrap(), b"new");
-        }
-        assert_eq!(
-            fs::read_dir(&dst).unwrap().count(),
-            1,
-            "a scratch name is left"
-        );
+            io::ErrorKind::IsADirectory
+        };
+        assert_eq!(err.kind(), expected);
+        assert!(src.exists());
+        assert_eq!(fs::read_dir(&dst).unwrap().count(), 1);
     }
+}
+
+/// A file onto a file is replaced by a rename, whichever way it got there.
+#[test]
+fn a_file_overwrites_a_file_for_copy_and_move() {
+    let dir = scratch("file-over-file");
+    let dst = dir.path().join("dst");
+    fs::create_dir_all(&dst).unwrap();
+    for (n, effect_moves) in [(0, false), (1, true)] {
+        let src = dir.path().join(format!("f{n}.txt"));
+        fs::write(&src, b"new").unwrap();
+        fs::write(dst.join(format!("f{n}.txt")), b"old").unwrap();
+        if effect_moves {
+            transfer(&src, &dst, &Move, &mut Counting, OnConflict::Overwrite).unwrap();
+        } else {
+            transfer(&src, &dst, &Copy, &mut Counting, OnConflict::Overwrite).unwrap();
+        }
+        assert_eq!(fs::read(dst.join(format!("f{n}.txt"))).unwrap(), b"new");
+        assert_eq!(src.exists(), !effect_moves);
+    }
+    assert_eq!(
+        fs::read_dir(&dst).unwrap().count(),
+        2,
+        "a scratch name is left"
+    );
+}
+
+/// A cancel arriving after the source went to a hidden name, as it used to
+/// during a move over an existing file, loses nothing.
+#[test]
+fn a_cancel_during_a_move_over_a_file_loses_no_content() {
+    let dir = scratch("cancel-move");
+    let src = dir.path().join("a.txt");
+    let dst = dir.path().join("dst");
+    fs::create_dir_all(&dst).unwrap();
+    fs::write(&src, b"new").unwrap();
+    fs::write(dst.join("a.txt"), b"old").unwrap();
+
+    let mut progress = Cancelled { after: 1, seen: 0 };
+    let _ = transfer(&src, &dst, &Move, &mut progress, OnConflict::Overwrite);
+
+    let names: Vec<_> = fs::read_dir(dir.path())
+        .unwrap()
+        .chain(fs::read_dir(&dst).unwrap())
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        names.iter().all(|name| !name.contains(".ncrs-")),
+        "a hidden name is left: {names:?}"
+    );
+    let kept = fs::read(dst.join("a.txt")).unwrap();
+    assert!(
+        kept == b"old" || kept == b"new",
+        "the target lost its content"
+    );
+    assert!(
+        src.exists() || kept == b"new",
+        "the moved content is nowhere"
+    );
+}
+
+/// A second hard link to the file is not replaced with the file itself.
+#[test]
+fn a_target_that_is_the_same_file_is_refused_and_keeps_its_content() {
+    let dir = scratch("same-file");
+    let src = dir.path().join("a.txt");
+    let dst = dir.path().join("dst");
+    fs::create_dir_all(&dst).unwrap();
+    fs::write(&src, b"data").unwrap();
+    fs::hard_link(&src, dst.join("a.txt")).unwrap();
+
+    let err = transfer(&src, &dst, &Move, &mut Counting, OnConflict::Overwrite).unwrap_err();
+
+    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    assert_eq!(fs::read(&src).unwrap(), b"data");
+    assert_eq!(fs::read(dst.join("a.txt")).unwrap(), b"data");
+}
+
+/// A copy never shows half a file under its real name: the data is written
+/// under a hidden name and renamed when complete.
+#[test]
+fn a_cancelled_copy_leaves_nothing_under_the_real_name() {
+    let dir = scratch("cancel-copy");
+    let src = dir.path().join("src");
+    let dst = dir.path().join("dst");
+    tree(&src);
+    fs::create_dir_all(&dst).unwrap();
+
+    let mut progress = Cancelled { after: 3, seen: 0 };
+    transfer(&src, &dst, &Copy, &mut progress, OnConflict::Fail).unwrap_err();
+
+    assert_eq!(
+        fs::read_dir(&dst).unwrap().count(),
+        0,
+        "a half copy was left"
+    );
+}
+
+/// The file is written in blocks and the channel is asked between them, so a
+/// large file stops soon after a cancel.
+#[test]
+fn a_cancel_stops_inside_a_large_file() {
+    struct StopAtOnce;
+    impl Progress for StopAtOnce {
+        fn advanced(&mut self, _done: usize, _total: usize) -> io::Result<()> {
+            Ok(())
+        }
+        fn keep_going(&mut self) -> io::Result<()> {
+            Err(io::Error::other("cancelled"))
+        }
+    }
+    let dir = scratch("cancel-big");
+    let src = dir.path().join("big.bin");
+    let dst = dir.path().join("dst");
+    fs::create_dir_all(&dst).unwrap();
+    fs::write(&src, vec![7_u8; 3 * 1024 * 1024]).unwrap();
+
+    let err = transfer(&src, &dst, &Copy, &mut StopAtOnce, OnConflict::Fail).unwrap_err();
+
+    assert_eq!(err.to_string(), "cancelled");
+    assert_eq!(fs::read_dir(&dst).unwrap().count(), 0);
+}
+
+/// The copy of a private file is never readable by others, and a folder
+/// keeps its permissions.
+#[cfg(unix)]
+#[test]
+fn a_copy_keeps_private_modes_of_files_and_folders() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = scratch("modes");
+    let src = dir.path().join("src");
+    let dst = dir.path().join("dst");
+    fs::create_dir_all(&src).unwrap();
+    fs::write(src.join("secret"), b"s").unwrap();
+    fs::set_permissions(src.join("secret"), fs::Permissions::from_mode(0o600)).unwrap();
+    fs::set_permissions(&src, fs::Permissions::from_mode(0o700)).unwrap();
+    fs::create_dir_all(&dst).unwrap();
+
+    transfer(&src, &dst, &Copy, &mut Counting, OnConflict::Fail).unwrap();
+
+    let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode(&dst.join("src")), 0o700);
+    assert_eq!(mode(&dst.join("src/secret")), 0o600);
+}
+
+/// A link that replaced the file since the listing is not followed.
+#[cfg(unix)]
+#[test]
+fn a_source_that_became_a_link_is_not_followed() {
+    let dir = scratch("nofollow");
+    let secret = dir.path().join("secret.txt");
+    fs::write(&secret, b"secret").unwrap();
+    let link = dir.path().join("link");
+    std::os::unix::fs::symlink(&secret, &link).unwrap();
+    let file_meta = fs::metadata(&secret).unwrap();
+
+    let err = create_entry(&link, &file_meta, &dir.path().join("out"), &mut Counting).unwrap_err();
+
+    assert!(err.kind() != io::ErrorKind::NotFound, "{err}");
+    assert!(!dir.path().join("out").exists());
 }
 
 /// A dangling symlink is in the way: copying through it would create the
@@ -342,43 +542,16 @@ fn a_new_entry_is_never_written_through_a_symlink() {
     let planted = dir.path().join("planted");
     std::os::unix::fs::symlink(&victim, &planted).unwrap();
 
-    let err = create_entry(&src, &fs::symlink_metadata(&src).unwrap(), &planted).unwrap_err();
+    let err = create_entry(
+        &src,
+        &fs::symlink_metadata(&src).unwrap(),
+        &planted,
+        &mut Counting,
+    )
+    .unwrap_err();
 
     assert_eq!(err.kind(), io::ErrorKind::AlreadyExists);
     assert_eq!(fs::read(&victim).unwrap(), b"untouched");
-}
-
-/// Once the new item is in place, an old target that cannot be removed
-/// does not undo the move: the new one stays, the old one is left aside.
-#[cfg(unix)]
-#[test]
-fn an_old_target_that_cannot_be_removed_does_not_undo_the_move() {
-    use std::os::unix::fs::PermissionsExt as _;
-    let dir = scratch("swap-leftover");
-    let src = dir.path().join("item");
-    let dst = dir.path().join("dst");
-    fs::write(&src, b"new").unwrap();
-    // The old target is a directory that cannot be emptied.
-    let locked = dst.join("item/locked");
-    fs::create_dir_all(&locked).unwrap();
-    fs::write(locked.join("f"), b"old").unwrap();
-    fs::set_permissions(&locked, fs::Permissions::from_mode(0o555)).unwrap();
-
-    let result = transfer(&src, &dst, &Move, &mut Counting, OnConflict::Overwrite);
-
-    let leftover: Vec<_> = fs::read_dir(&dst)
-        .unwrap()
-        .map(|entry| entry.unwrap().path())
-        .filter(|path| path.file_name() != Some(std::ffi::OsStr::new("item")))
-        .collect();
-    for path in &leftover {
-        let _ = fs::set_permissions(path.join("locked"), fs::Permissions::from_mode(0o755));
-    }
-    assert!(result.is_ok(), "the move itself succeeded: {result:?}");
-    assert!(!src.exists(), "a move keeps no source");
-    assert_eq!(fs::read(dst.join("item")).unwrap(), b"new");
-    assert_eq!(leftover.len(), 1, "the old target is set aside once");
-    assert_eq!(fs::read(leftover[0].join("locked/f")).unwrap(), b"old");
 }
 
 /// The target may be an ancestor of the source: replacing it would set the
@@ -621,4 +794,63 @@ fn reports_a_conflicting_name_before_starting() {
 
     assert_eq!(conflicts(&src, &dst), Some(dst.join("src")));
     assert_eq!(conflicts(&src, &dir.path().join("empty")), None);
+}
+
+/// What a download marks a file with (the macOS quarantine, Finder tags) must
+/// follow the copy, or the copy opens without the check the original has.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[test]
+fn a_copy_carries_the_extended_attributes() {
+    let dir = scratch("xattr");
+    let src = dir.path().join("a.txt");
+    let dst = dir.path().join("dst");
+    fs::create_dir_all(&dst).unwrap();
+    fs::write(&src, b"a").unwrap();
+    let name = if cfg!(target_os = "macos") {
+        "com.apple.quarantine"
+    } else {
+        "user.ncrs-test"
+    };
+    if rustix::fs::lsetxattr(
+        &src,
+        name,
+        b"0081;5f3a;Safari",
+        rustix::fs::XattrFlags::empty(),
+    )
+    .is_err()
+    {
+        // This file system holds no attributes.
+        return;
+    }
+
+    transfer(&src, &dst, &Copy, &mut Counting, OnConflict::Fail).unwrap();
+
+    let mut value = [0_u8; 64];
+    let got = rustix::fs::lgetxattr(dst.join("a.txt"), name, &mut value[..]).unwrap();
+    assert_eq!(value.get(..got), Some(&b"0081;5f3a;Safari"[..]));
+}
+
+/// The same file reached through a link to its folder is still the same file.
+#[cfg(unix)]
+#[test]
+fn a_target_that_is_the_source_by_another_route_is_refused() {
+    let dir = scratch("alias");
+    let real = dir.path().join("real");
+    fs::create_dir_all(&real).unwrap();
+    let alias = dir.path().join("alias");
+    std::os::unix::fs::symlink(&real, &alias).unwrap();
+    let src = real.join("a.txt");
+    fs::write(&src, b"x").unwrap();
+
+    let err = transfer_to(
+        &src,
+        &alias.join("a.txt"),
+        &Copy,
+        &mut Counting,
+        OnConflict::Overwrite,
+    )
+    .unwrap_err();
+
+    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    assert_eq!(fs::read(&src).unwrap(), b"x");
 }

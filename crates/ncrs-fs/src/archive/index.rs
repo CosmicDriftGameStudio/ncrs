@@ -228,10 +228,15 @@ pub fn zip_time(stamp: Option<zip::DateTime>) -> Option<SystemTime> {
     Some(SystemTime::from(local))
 }
 
+/// The latest time kept, the end of the year 9999. A tar header can hold any
+/// number of seconds, and a larger one is no date anyone can show.
+const LATEST_TAR_SECONDS: u64 = 253_402_300_799;
+
 pub fn tar_time(stored: io::Result<u64>) -> Option<SystemTime> {
     stored
         .ok()
-        .map(|seconds| UNIX_EPOCH + Duration::from_secs(seconds))
+        .filter(|seconds| *seconds <= LATEST_TAR_SECONDS)
+        .and_then(|seconds| UNIX_EPOCH.checked_add(Duration::from_secs(seconds)))
 }
 
 fn build_zip(path: &Path) -> io::Result<ArchiveIndex> {
@@ -311,4 +316,60 @@ fn build_tar(path: &Path, format: ArchiveFormat) -> io::Result<ArchiveIndex> {
         }
     }
     Ok(index)
+}
+
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+#[cfg(test)]
+mod tests {
+    use std::io::Write as _;
+
+    use super::super::fixtures::scratch;
+    use super::super::{list, ArchiveFormat, ArchiveLocation};
+    use super::*;
+
+    /// A header whose time is stored base-256, as GNU tar does for a value that
+    /// does not fit the octal field.
+    fn tar_with_stored_mtime(path: &Path, seconds: u64) {
+        let mut header = tar::Header::new_gnu();
+        header.set_entry_type(tar::EntryType::Regular);
+        header.set_path("a.txt").unwrap();
+        header.set_size(1);
+        header.set_mode(0o644);
+        let field = &mut header.as_old_mut().mtime;
+        field.fill(0);
+        field[0] = 0x80;
+        field[4..].copy_from_slice(&seconds.to_be_bytes());
+        header.set_cksum();
+        let mut out = std::fs::File::create(path).unwrap();
+        out.write_all(header.as_bytes()).unwrap();
+        out.write_all(&[b'x'; 512]).unwrap();
+        out.write_all(&[0; 1024]).unwrap();
+    }
+
+    #[test]
+    fn a_time_no_date_can_show_lists_without_a_date_and_without_a_panic() {
+        for (seconds, expected_date) in [
+            (u64::MAX, false),
+            (u64::MAX / 2, false),
+            (1_700_000_000, true),
+        ] {
+            let dir = scratch("tar-time");
+            let archive = dir.path().join("t.tar");
+            tar_with_stored_mtime(&archive, seconds);
+            let location = ArchiveLocation {
+                archive,
+                format: ArchiveFormat::Tar,
+                inner: Vec::new(),
+            };
+
+            let listing = list(&location).unwrap();
+
+            assert_eq!(listing.entries.len(), 1, "{seconds}");
+            assert_eq!(
+                listing.entries.first().unwrap().modified.is_some(),
+                expected_date,
+                "{seconds}"
+            );
+        }
+    }
 }

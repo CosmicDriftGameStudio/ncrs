@@ -223,6 +223,25 @@ async fn a_download_over_an_existing_name_follows_the_conflict_rule() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn a_download_over_a_folder_keeps_the_files_only_the_target_holds() {
+    let fixture = Fixture::connected().await;
+    let docs = fixture.server.local("/home/tester/docs");
+    std::fs::create_dir_all(&docs).unwrap();
+    std::fs::write(docs.join("a.txt"), "new").unwrap();
+    let out = out_dir(&fixture);
+    std::fs::create_dir_all(out.join("docs")).unwrap();
+    std::fs::write(out.join("docs/a.txt"), "old").unwrap();
+    std::fs::write(out.join("docs/mine.txt"), "mine").unwrap();
+
+    pull_with(&fixture, "/home/tester/docs", &out, OnConflict::Overwrite)
+        .await
+        .unwrap();
+
+    assert_eq!(std::fs::read(out.join("docs/a.txt")).unwrap(), b"new");
+    assert_eq!(std::fs::read(out.join("docs/mine.txt")).unwrap(), b"mine");
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn a_file_with_a_name_near_the_limit_can_be_uploaded() {
     let fixture = Fixture::connected().await;
     let name = format!("{}.bin", "n".repeat(250));

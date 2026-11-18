@@ -75,6 +75,10 @@ objc2-app-kit = { version = "0.3", default-features = false, features = ["std", 
 nix = { version = "0.31", default-features = false, features = ["user", "fs", "dir"] }
 # O_NOFOLLOW and friends for opening an entry without following a link.
 libc = "0.2"
+# Renaming without replacing (RENAME_NOREPLACE / RENAME_EXCL) and the extended
+# attributes a copy carries over, through safe wrappers. Already in the lock
+# file through other crates.
+rustix = { version = "1.1", default-features = false, features = ["std", "fs"] }
 
 [features]
 # The macOS App Store build: inside the App Sandbox the folder grants and the

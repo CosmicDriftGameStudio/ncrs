@@ -42,17 +42,19 @@ fn rename_local(from: &Path, new_name: &str) -> io::Result<PathBuf> {
     if to == from {
         return Ok(to);
     }
-    // The check and the rename are two steps; `rename` itself would replace a
-    // file, and there is no portable rename that refuses to.
-    if std::fs::symlink_metadata(&to).is_ok()
-        && !(differs_in_case_only(from, &to) && is_same_entry(from, &to))
-    {
+    if std::fs::symlink_metadata(&to).is_ok() {
+        // The entry itself under another case is the one name that may be
+        // renamed onto.
+        if differs_in_case_only(from, &to) && is_same_entry(from, &to) {
+            std::fs::rename(from, &to)?;
+            return Ok(to);
+        }
         return Err(io::Error::new(
             io::ErrorKind::AlreadyExists,
             "an entry with this name exists",
         ));
     }
-    std::fs::rename(from, &to)?;
+    crate::place_file::rename_no_replace(from, &to)?;
     Ok(to)
 }
 

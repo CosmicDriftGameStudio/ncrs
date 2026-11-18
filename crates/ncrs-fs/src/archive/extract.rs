@@ -649,7 +649,7 @@ mod tests {
             copy_out(&source, &out, &mut Counting, OnConflict::Overwrite).unwrap();
             assert_eq!(
                 names_in(&out.join("photos")),
-                ["2024", "b.jpg", "empty"],
+                ["2024", "b.jpg", "empty", "old.txt"],
                 "{file}"
             );
             assert_eq!(names_in(&out), ["photos"], "{file}");

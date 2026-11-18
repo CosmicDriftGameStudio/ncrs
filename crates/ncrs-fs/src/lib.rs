@@ -13,6 +13,7 @@ mod open_rules;
 mod ops;
 mod owners;
 pub mod permissions;
+mod place_file;
 mod reader;
 #[cfg(any(test, feature = "test-support"))]
 pub mod real_trash_tests;

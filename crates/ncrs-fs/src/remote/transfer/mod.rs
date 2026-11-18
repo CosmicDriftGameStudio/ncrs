@@ -218,7 +218,7 @@ pub fn download<P: Progress>(
     if kind.is_dir() {
         fetch_folder(&link, source, &staged, progress, &mut done)?;
     } else {
-        fetch_file(&link, source, &staged, meta.mtime, progress, &mut done)?;
+        fetch_file(&link, source, &staged, &meta, progress, &mut done)?;
     }
     let when_taken = if conflict == OnConflict::Overwrite {
         OnConflict::Overwrite
@@ -245,7 +245,7 @@ fn fetch_folder<P: Progress>(
         if kind.is_dir() {
             fetch_folder(link, &child, &local.join(&name), progress, done)?;
         } else if kind.is_file() {
-            fetch_file(link, &child, &local.join(&name), meta.mtime, progress, done)?;
+            fetch_file(link, &child, &local.join(&name), &meta, progress, done)?;
         }
     }
     Ok(())
@@ -255,7 +255,7 @@ fn fetch_file<P: Progress>(
     link: &Link<'_>,
     remote: &RemotePath,
     local: &Path,
-    mtime: Option<u32>,
+    meta: &Metadata,
     progress: &mut P,
     done: &mut usize,
 ) -> io::Result<()> {
@@ -277,9 +277,16 @@ fn fetch_file<P: Progress>(
     }
     // A close that fails changes nothing: every block is here.
     let _closed = link.call_io(link.timeouts.request, input.close());
-    if let Some(secs) = mtime {
+    if let Some(secs) = meta.mtime {
         // A time that cannot be set is a nicety lost, not a failed copy.
         let _dated = output.set_modified(UNIX_EPOCH + Duration::from_secs(u64::from(secs)));
+    }
+    #[cfg(unix)]
+    if let Some(bits) = meta.permissions {
+        use std::os::unix::fs::PermissionsExt as _;
+        // Without setuid, setgid and sticky; the server's file type bits are not
+        // permissions.
+        let _moded = output.set_permissions(std::fs::Permissions::from_mode(bits & 0o777));
     }
     *done += 1;
     progress.advanced(*done, 0)
@@ -548,6 +555,10 @@ impl<P: Progress> Upload<'_, '_, P> {
             };
             link.call_io(link.timeouts.block, output.write_all(data))?;
         }
+        // Date and permissions of the original, so a folder comparison after
+        // the upload finds the copy equal. A server that refuses them still
+        // has the file.
+        let _stamped = link.call(link.timeouts.request, output.set_metadata(stamp_of(local)));
         link.call_io(link.timeouts.request, output.shutdown())?;
         if replaces {
             let removed = link.call(link.timeouts.request, sftp.remove_file(remote.remote_str()));
@@ -584,9 +595,35 @@ impl<P: Progress> Upload<'_, '_, P> {
     }
 }
 
+/// The modification time and the plain permission bits of a local file, as an
+/// SFTP attribute set that changes nothing else.
+fn stamp_of(local: &Path) -> Metadata {
+    let mut stamp = Metadata::default();
+    let Ok(meta) = std::fs::metadata(local) else {
+        return stamp;
+    };
+    stamp.mtime = meta
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        .and_then(|since| u32::try_from(since.as_secs()).ok());
+    stamp.atime = stamp.mtime;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        stamp.permissions = Some(meta.permissions().mode() & 0o777);
+    }
+    stamp
+}
+
 fn in_the_way(what: &str) -> io::Error {
+    let kind = if what == "a folder" {
+        io::ErrorKind::IsADirectory
+    } else {
+        io::ErrorKind::NotADirectory
+    };
     io::Error::new(
-        io::ErrorKind::AlreadyExists,
+        kind,
         format!("{what} of that name is in the way on the server"),
     )
 }

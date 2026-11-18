@@ -3456,6 +3456,7 @@ dependencies = [
  "ncrs-ui-kit",
  "tempfile",
  "tokio",
+ "unicode-normalization",
 ]
 
 [[package]]
@@ -3558,6 +3559,7 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "russh",
  "russh-sftp",
+ "rustix 1.1.6",
  "same-file",
  "serde",
  "sevenz-rust2",
