@@ -19,6 +19,7 @@ mod office;
 mod page_trim;
 mod placement;
 mod plain_words;
+mod reading_marker;
 mod recipient_detection;
 #[cfg(any(test, feature = "test-support"))]
 pub mod recognition;

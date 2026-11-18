@@ -16,11 +16,15 @@ impl FilingModule {
         let (chain, pdf_library_missing) = shipped_text_chain(
             ocr_models_dir(&self.db_path).unwrap_or_else(|| PathBuf::from(OCR_MODELS_FOLDER)),
         );
+        let chain_to_run = match self.db_path.parent() {
+            Some(data_dir) => chain.with_crash_marker(data_dir.join("reading-now")),
+            None => chain,
+        };
         let runner = Runner::start(
             Settings::new(self.load, logical_cores),
             intake_steps(
                 Arc::new(handle),
-                Arc::new(chain),
+                Arc::new(chain_to_run),
                 self.ai_provider(),
                 self.own.clone(),
             ),

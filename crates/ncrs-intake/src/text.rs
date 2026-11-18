@@ -15,6 +15,7 @@ use pdfium_render::prelude::{
 };
 
 use crate::page_trim::trim_to_content;
+use crate::reading_marker::ReadingMarker;
 
 const PDF_HEADER: &[u8] = b"%PDF-";
 
@@ -67,6 +68,11 @@ pub enum TextError {
         path: PathBuf,
         reason: String,
     },
+    /// The app crashed while reading this file at two starts in a row, so it
+    /// is not read until a person asks for it.
+    Quarantined {
+        path: PathBuf,
+    },
     /// Opening or reading the file failed: the file itself may be fine, so it
     /// must be read again later.
     Io {
@@ -87,6 +93,11 @@ impl fmt::Display for TextError {
             Self::LibraryMissing { path } => write!(
                 f,
                 "the PDF library (pdfium) was not found or could not be loaded from {}",
+                path.display()
+            ),
+            Self::Quarantined { path } => write!(
+                f,
+                "{}: the app crashed while reading this file",
                 path.display()
             ),
             Self::Unreadable { path, reason }
@@ -147,9 +158,15 @@ impl<P, F> ImageTextWithFallback<P, F> {
 
 impl<P: ImageTextSource, F: ImageTextSource> ImageTextSource for ImageTextWithFallback<P, F> {
     fn recognise(&self, images: &[PageImage]) -> Result<Option<String>, TextError> {
-        self.preferred
-            .recognise(images)
-            .or_else(|_failed| self.fallback.recognise(images))
+        match self.preferred.recognise(images) {
+            Ok(text) => Ok(text),
+            // A fallback that finds nothing must not turn the failure into
+            // "the page is blank".
+            Err(failed) => match self.fallback.recognise(images)? {
+                Some(text) => Ok(Some(text)),
+                None => Err(failed),
+            },
+        }
     }
 
     fn engine_ready(&self) -> bool {
@@ -161,9 +178,24 @@ impl<P: ImageTextSource, F: ImageTextSource> ImageTextSource for ImageTextWithFa
 pub struct TextChain {
     sources: Vec<Box<dyn TextSource>>,
     image_sources: Vec<Box<dyn ImageTextSource>>,
+    marker: Option<ReadingMarker>,
 }
 
 impl TextChain {
+    /// Guards the reading of files with a marker file; see [`ReadingMarker`].
+    #[must_use]
+    pub fn with_crash_marker(mut self, file: PathBuf) -> Self {
+        self.marker = Some(ReadingMarker::open(file));
+        self
+    }
+
+    /// Reads `path` again even if the app crashed on it before.
+    pub fn forget_crash(&self, path: &Path) {
+        if let Some(marker) = &self.marker {
+            marker.forget_crash(path);
+        }
+    }
+
     pub fn new() -> Self {
         Self::default()
     }
@@ -193,6 +225,21 @@ impl TextChain {
     /// really read by text recognition, or never reached an engine that could
     /// read it (no image source, models not downloaded, picture not decodable).
     pub fn read(&self, path: &Path) -> Result<ChainReading, TextError> {
+        let Some(marker) = &self.marker else {
+            return self.read_sources(path);
+        };
+        if marker.is_quarantined(path) {
+            return Err(TextError::Quarantined {
+                path: path.to_path_buf(),
+            });
+        }
+        marker.begin(path);
+        let reading = self.read_sources(path);
+        marker.end(path);
+        reading
+    }
+
+    fn read_sources(&self, path: &Path) -> Result<ChainReading, TextError> {
         let mut images = Vec::new();
         for source in &self.sources {
             match source.extract(path)? {
@@ -209,7 +256,17 @@ impl TextChain {
             });
         }
         for source in &self.image_sources {
-            if let Some(text) = source.recognise(&images)? {
+            if let Some(text) = source.recognise(&images).map_err(|error| match error {
+                // The engines read pixels and do not know the file.
+                TextError::Unreadable {
+                    path: empty,
+                    reason,
+                } if empty.as_os_str().is_empty() => TextError::Unreadable {
+                    path: path.to_path_buf(),
+                    reason,
+                },
+                other => other,
+            })? {
                 if !text.trim().is_empty() {
                     return Ok(ChainReading::Text(text));
                 }
@@ -517,20 +574,39 @@ impl TextSource for PdfText {
             .load_pdf_from_file(path, None)
             .map_err(|err| unreadable(format!("cannot open the PDF: {err:?}")))?;
         let mut pages = Vec::new();
+        let mut collected: usize = 0;
         for page in document.pages().iter() {
             let text = page
                 .text()
                 .map_err(|err| unreadable(format!("cannot read a page: {err:?}")))?;
-            pages.push(text.all());
+            let page_text = text.all();
+            collected = collected.saturating_add(page_text.len());
+            pages.push(page_text);
+            if collected >= MAX_PDF_TEXT_BYTES {
+                break;
+            }
         }
         let joined = pages.join("\n");
-        let text = joined.trim();
+        let text = cut_at_boundary(joined.trim(), MAX_PDF_TEXT_BYTES);
         if text.is_empty() {
             Self::render_pages(&document, path).map(Extracted::PageImages)
         } else {
             Ok(Extracted::Text(text.to_owned()))
         }
     }
+}
+
+/// The most text kept of one PDF, as for the other formats: what lies beyond
+/// is not stored or searched, and memory does not grow with a book.
+const MAX_PDF_TEXT_BYTES: usize = 1 << 20;
+
+/// `text` cut to at most `max` bytes, on a character boundary.
+pub fn cut_at_boundary(text: &str, max: usize) -> &str {
+    let mut end = max.min(text.len());
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    text.get(..end).unwrap_or_default()
 }
 
 /// Stands in for [`PdfText`] when the library cannot be loaded: every PDF
@@ -668,6 +744,17 @@ mod tests {
 
     use super::*;
     use crate::test_support::{pdf_bytes, pdf_text, text_pdf, write};
+
+    #[test]
+    fn a_long_pdf_text_is_cut_on_a_character_boundary() {
+        let text = "ä".repeat(MAX_PDF_TEXT_BYTES);
+
+        let cut = cut_at_boundary(&text, MAX_PDF_TEXT_BYTES);
+
+        assert_eq!(cut.len(), MAX_PDF_TEXT_BYTES);
+        assert_eq!(cut_at_boundary("short", MAX_PDF_TEXT_BYTES), "short");
+        assert_eq!(cut_at_boundary("ä", 1), "");
+    }
 
     fn image_only_pdf() -> Vec<u8> {
         pdf_bytes(
@@ -865,6 +952,15 @@ mod tests {
     }
 
     #[test]
+    fn a_failure_of_the_preferred_source_is_not_hidden_by_a_fallback_that_finds_nothing() {
+        let source = ImageTextWithFallback::new(
+            FixedImageSource(Err(failure())),
+            FixedImageSource(Ok(None)),
+        );
+        assert_eq!(source.recognise(&one_page()), Err(failure()));
+    }
+
+    #[test]
     fn the_error_of_the_fallback_is_reported_when_both_fail() {
         let source = ImageTextWithFallback::new(
             FixedImageSource(Err(TextError::LibraryMissing {
@@ -993,6 +1089,75 @@ mod tests {
 
     #[derive(Debug)]
     struct Fixed(Result<Extracted, TextError>);
+
+    #[test]
+    fn a_file_in_the_marker_of_two_starts_in_a_row_is_quarantined_and_others_are_read() {
+        let dir = TempDir::new().unwrap();
+        let marker = dir.path().join("reading-now");
+        std::fs::write(&marker, "1\t/inbox/crashes.pdf").unwrap();
+        let chain = TextChain::new()
+            .with_source(Fixed(Ok(Extracted::Text("hello".to_owned()))))
+            .with_crash_marker(marker.clone());
+
+        assert!(!marker.exists(), "the old marker is consumed at start");
+        assert!(matches!(
+            chain.read(Path::new("/inbox/crashes.pdf")),
+            Err(TextError::Quarantined { .. })
+        ));
+        assert_eq!(
+            chain.read(Path::new("/inbox/fine.pdf")),
+            Ok(ChainReading::Text("hello".to_owned()))
+        );
+        assert!(
+            !marker.exists(),
+            "nothing is named once the reading is done"
+        );
+    }
+
+    #[test]
+    fn a_quarantined_file_is_read_again_after_forgetting_the_crash() {
+        let dir = TempDir::new().unwrap();
+        let marker = dir.path().join("reading-now");
+        std::fs::write(&marker, "1\t/inbox/crashes.pdf").unwrap();
+        let chain = TextChain::new()
+            .with_source(Fixed(Ok(Extracted::Text("hello".to_owned()))))
+            .with_crash_marker(marker);
+        let path = Path::new("/inbox/crashes.pdf");
+
+        chain.forget_crash(path);
+
+        assert_eq!(chain.read(path), Ok(ChainReading::Text("hello".to_owned())));
+    }
+
+    #[derive(Debug)]
+    struct SeesMarker(PathBuf);
+
+    impl TextSource for SeesMarker {
+        fn extract(&self, path: &Path) -> Result<Extracted, TextError> {
+            let named = std::fs::read_to_string(&self.0).unwrap_or_default();
+            let expected = format!("0\t{}", path.to_string_lossy());
+            if named != expected {
+                return Err(TextError::Unreadable {
+                    path: path.to_path_buf(),
+                    reason: format!("marker was {named:?}"),
+                });
+            }
+            Ok(Extracted::NotApplicable)
+        }
+    }
+
+    #[test]
+    fn the_file_being_read_is_named_in_the_marker_meanwhile() {
+        let dir = TempDir::new().unwrap();
+        let marker = dir.path().join("reading-now");
+        let chain = TextChain::new()
+            .with_source(SeesMarker(marker.clone()))
+            .with_crash_marker(marker.clone());
+
+        chain.read(Path::new("/inbox/a.pdf")).unwrap();
+
+        assert!(!marker.exists());
+    }
 
     impl TextSource for Fixed {
         fn extract(&self, _path: &Path) -> Result<Extracted, TextError> {

@@ -236,6 +236,9 @@ impl Step for TextStep {
         let id = item
             .document
             .ok_or_else(|| "the file has no document".to_owned())?;
+        if item.force {
+            self.chain.forget_crash(&item.path);
+        }
         if item.stored_text_is_current {
             item.text = with_index_value(self.index.as_ref(), |index| index.document_text(id))
                 .ok_or_else(|| NO_INDEX.to_owned())?
@@ -256,7 +259,10 @@ impl Step for TextStep {
                 // Without a stored text the document would be read (and fail)
                 // again on every scan. Only the file itself being unreadable
                 // is permanent: once the models work, it is read.
-                if matches!(err, TextError::Unreadable { .. }) {
+                if matches!(
+                    err,
+                    TextError::Unreadable { .. } | TextError::Quarantined { .. }
+                ) {
                     let stored = with_index_value(self.index.as_ref(), |index| {
                         index.set_document_text(id, "")
                     });
