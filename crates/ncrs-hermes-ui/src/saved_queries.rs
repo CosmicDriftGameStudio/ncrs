@@ -1,7 +1,7 @@
 //! State of the reports page: the list of saved queries, the one shown (or a
 //! search not saved yet), what running it found, and the dialogs of editing,
 //! deleting and exporting. The criteria are only shown here; they are changed
-//! in the search. No widgets and no tasks; `App` owns it and changes it from
+//! in the search. No widgets and no tasks; the Hermes UI state owns it and changes it from
 //! `update`, the view is `ui::saved_queries`.
 
 use std::collections::HashMap;

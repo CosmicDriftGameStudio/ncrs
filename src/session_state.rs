@@ -1,9 +1,9 @@
 //! What ncrs remembers between runs: the folders and sort of both panels, the
 //! active panel and the window size.
 //!
-//! Kept apart from the config on purpose. The config is read-only for ncrs and
-//! belongs to the user; this file is written by ncrs on every quit and shortly
-//! after changes, and may be deleted at any time to start fresh. Where it lives
+//! Kept apart from the config on purpose. The config belongs to the user and
+//! changes only when a setting is changed; this file is written by ncrs on every
+//! quit and shortly after changes, and may be deleted at any time to start fresh. Where it lives
 //! is decided once, by `config::default_state_path`.
 use std::io;
 use std::path::{Path, PathBuf};

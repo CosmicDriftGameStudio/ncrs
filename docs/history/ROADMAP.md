@@ -1,3 +1,7 @@
+> Historical snapshot from 2026-09-29, written when ncrs was a single crate. It is not maintained and
+> parts are out of date (for example the config file is no longer read-only). The code, `CLAUDE.md` and
+> `CONTRIBUTING.md` are the current state.
+
 # NC-rs: Bewertung und Planungsgrundlage
 
 Datum: 2026-09-29 · Stand: ein Commit, 1217 Zeilen, 9 Tests · noch kein Release, keine Nutzer

@@ -106,7 +106,7 @@ pub fn detect_fields(
 mod tests {
     use super::*;
 
-    const LETTER: &str = "Muster GmbH\nHauptstr. 1, 09111 Chemnitz\n\nMarc Beispiel\nAndrestr. 12\n09112 Chemnitz\n\nChemnitz, 28.01.2019\n\nRechnung\n\nBetrag 10 EUR\n\nMit freundlichen Grüßen\nMuster GmbH\n";
+    const LETTER: &str = "Muster GmbH\nHauptstr. 1, 09111 Chemnitz\n\nMarc Beispiel\nMusterweg 1\n00000 Musterstadt\n\nChemnitz, 28.01.2019\n\nRechnung\n\nBetrag 10 EUR\n\nMit freundlichen Grüßen\nMuster GmbH\n";
 
     fn own() -> OwnNames<'static> {
         OwnNames {

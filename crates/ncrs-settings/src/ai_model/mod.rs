@@ -2,8 +2,8 @@
 //! itself. Nothing here runs unless the user pressed the button of the card:
 //! the only way to a [`DownloadJob`] is [`AiModelCard::start`]. The download is
 //! blocking and belongs on a blocking thread; it continues where an earlier one
-//! stopped. The card's state has no widgets and no network: `App` owns it, the
-//! view is `ui::ai_model`.
+//! stopped. The card's state has no widgets and no network: it lives in the
+//! settings state, and the view is [`view`].
 
 pub mod view;
 

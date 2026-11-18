@@ -1,3 +1,6 @@
+> Historical snapshot from the single-crate time of ncrs. It is not maintained; the crate layout
+> described here no longer exists. The code, `CLAUDE.md` and `CONTRIBUTING.md` are the current state.
+
 # NC-rs – Architektur-Review
 
 Stand: Commit-Stand vom Review-Tag, 4.315 LOC Rust, 85 Tests grün, Clippy sauber

@@ -223,10 +223,8 @@ fn text_of_xml(xml: &[u8], package: Package, max_bytes: usize) -> Result<String,
         }
         buffer.clear();
     }
-    while !out.is_char_boundary(max_bytes.min(out.len())) {
-        out.pop();
-    }
-    out.truncate(max_bytes);
+    let kept = crate::text::cut_at_boundary(&out, max_bytes).len();
+    out.truncate(kept);
     Ok(out.trim().to_owned())
 }
 

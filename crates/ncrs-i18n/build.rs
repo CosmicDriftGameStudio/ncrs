@@ -2,7 +2,7 @@
 //!
 //! The JSON file is the source of truth: it holds the value, the stable key and
 //! the translator context together, so they cannot drift apart. Run
-//! `cargo build` after editing it; `cargo run --bin dump-strings` prints the
+//! `cargo build` after editing it; `cargo test -p ncrs-i18n dump -- --nocapture` prints the
 //! same data for translators.
 
 // A build script must stop on bad input. A strings.json with a missing
