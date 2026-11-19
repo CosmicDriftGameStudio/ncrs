@@ -78,9 +78,7 @@ pub use sanitise::{is_plain_literal, is_windows_device_name, sanitise_value, sta
 pub use scan::{
     scan_location, settle_location, walk_location, Found, ScanReport, MAX_REPORTED_ERRORS,
 };
-pub use sender_detection::{
-    detect_sender, AliasOffer, DetectedSender, OwnIdentifiers, SenderDetection, SenderSource,
-};
+pub use sender_detection::{detect_sender, DetectedSender, OwnIdentifiers, SenderSource};
 pub use stability::{StabilityTracker, STABLE_AFTER};
 pub use structure::{
     folder_label, learn_structure, Area, Branch, DateFormat, Level, LocationStructure, NamePart,

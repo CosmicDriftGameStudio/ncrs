@@ -307,8 +307,7 @@ impl RulesStep {
 
     /// Fills the empty fields of an archive document, reads again the ones
     /// that hold only a guess of an earlier detection, and notes which version
-    /// of the detection read it. Never plans, never changes the status and
-    /// offers no aliases: a whole archive would flood the alias list.
+    /// of the detection read it. Never plans and never changes the status.
     fn read_archive_fields(&self, id: DocumentId, text: &str) -> Result<StepOutcome, String> {
         with_index_value(self.index.as_ref(), |index| {
             let Some(document) = index.document(id)? else {
@@ -325,7 +324,6 @@ impl RulesStep {
                 text,
                 &current,
                 &index.confirmed_sender_aliases()?,
-                &index.sender_names()?,
                 &self.own_names(),
                 index.kinds(),
             );
@@ -377,16 +375,10 @@ impl Step for RulesStep {
                 text,
                 &document.fields,
                 &aliases,
-                &index.sender_names()?,
                 &self.own_names(),
                 index.kinds(),
             );
             let known = detected.fill(&document.fields);
-            // Offered even when the plan ends in review: the user confirms
-            // them from the alias list, not from this document.
-            for offer in &detected.offers {
-                index.offer_sender_alias(&offer.sender, offer.kind, &offer.value)?;
-            }
             let manual_fields = index.field_origins(id)?.manual_fields();
             let kinds = Kinds::new(Arc::clone(index.kinds()), self.own.kind_language);
             let planning = plan(

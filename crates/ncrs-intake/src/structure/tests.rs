@@ -27,14 +27,7 @@ fn archive_structure() -> (LocationStructure, Vec<StructureDocument>) {
         .iter()
         .map(|file| {
             let found = file.text().map(|text| {
-                detect_fields(
-                    text,
-                    &DocumentFields::default(),
-                    &aliases,
-                    &[],
-                    &own,
-                    &catalog,
-                )
+                detect_fields(text, &DocumentFields::default(), &aliases, &own, &catalog)
             });
             StructureDocument {
                 relative_path: file.relative_path.clone(),

@@ -73,7 +73,7 @@ fn a_document_matching_a_confirmed_rule_gets_its_fields_and_no_review() {
 }
 
 #[test]
-fn a_new_document_gets_the_sender_of_its_letterhead_and_offers_its_iban() {
+fn a_new_document_gets_the_sender_of_its_letterhead_and_offers_no_alias() {
     let text = "Nordlicht Energie GmbH\nMusterweg 1\nIBAN DE89 3704 0044 0532 0130 00\nInvoice 4711 Company A";
     let fixture = run_text_with_rule(&invoice_rule("{sender}/{number}.pdf", false), text);
 
@@ -91,12 +91,7 @@ fn a_new_document_gets_the_sender_of_its_letterhead_and_offers_its_iban() {
             .of(ncrs_index::Field::Sender),
         ncrs_index::FieldOrigin::Rule(None)
     );
-    let offers = index.sender_aliases().unwrap();
-    assert_eq!(offers.len(), 1);
-    assert_eq!(offers[0].sender, "Nordlicht Energie GmbH");
-    assert_eq!(offers[0].kind, ncrs_index::SenderAliasKind::Iban);
-    assert_eq!(offers[0].value, "DE89370400440532013000");
-    assert_eq!(offers[0].state, ncrs_index::SenderAliasState::Offered);
+    assert!(index.sender_aliases().unwrap().is_empty());
 }
 
 #[test]

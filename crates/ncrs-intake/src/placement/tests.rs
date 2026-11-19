@@ -480,14 +480,7 @@ fn archive_files() -> (Vec<PlanFile>, Vec<TestFile>) {
         .zip(0..)
         .map(|(file, recorded_at)| {
             let found = file.text().map(|text| {
-                detect_fields(
-                    text,
-                    &DocumentFields::default(),
-                    &aliases,
-                    &[],
-                    &own,
-                    &catalog,
-                )
+                detect_fields(text, &DocumentFields::default(), &aliases, &own, &catalog)
             });
             PlanFile {
                 relative_path: file.relative_path.clone(),
@@ -514,7 +507,6 @@ fn archive_fields(letter: &str) -> DocumentFields {
         letter,
         &DocumentFields::default(),
         &SenderAliases::default(),
-        &[],
         &OwnNames {
             names: &[OWN_NAME.to_owned()],
             ibans: &[],

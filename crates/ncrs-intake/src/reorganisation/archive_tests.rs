@@ -35,7 +35,6 @@ fn plan_of_the_test_archive() -> Vec<PlanItem> {
                     text,
                     &DocumentFields::default(),
                     &SenderAliases::default(),
-                    &[],
                     &own,
                     &catalog,
                 )
