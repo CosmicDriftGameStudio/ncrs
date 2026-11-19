@@ -77,6 +77,22 @@ pub enum ApplyFailure {
     },
 }
 
+/// The answer to the question what the names of the folder follow.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Proposal {
+    /// The pattern Hermes proposes, or none.
+    Pattern(Option<String>),
+    /// The server on another computer has no agreement for folders and file
+    /// names, so nothing was asked.
+    ConsentMissing,
+}
+
+impl Default for Proposal {
+    fn default() -> Self {
+        Self::Pattern(None)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum BatchRenameMessage {
     PatternInput(String),
@@ -99,7 +115,7 @@ pub enum BatchRenameMessage {
     /// What Hermes thinks the names of the folder follow, as a pattern.
     Proposed {
         dialog: u64,
-        pattern: Option<String>,
+        proposal: Proposal,
     },
     /// The renames are over. Dropped when `generation` is not the current one.
     Applied {
@@ -129,6 +145,9 @@ pub struct BatchRename {
     pub case: Case,
     /// The pattern Hermes proposes for this folder.
     pub suggestion: Option<String>,
+    /// Hermes was not asked: the server on another computer has no agreement
+    /// for folders and file names.
+    pub consent_missing: bool,
     pub preview: Preview,
     pub window: ListWindow,
 }
@@ -161,6 +180,7 @@ impl BatchRename {
             regex: false,
             case: Case::Keep,
             suggestion: None,
+            consent_missing: false,
             preview: Preview::default(),
             window: ListWindow::default(),
         };

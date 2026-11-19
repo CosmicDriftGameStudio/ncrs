@@ -437,3 +437,26 @@ fn a_modification_time_no_calendar_holds_gives_no_date_instead_of_a_panic() {
 
     assert_eq!(super::flow::facts_of(&entry).modified, None);
 }
+
+#[test]
+fn a_model_without_the_agreement_for_folders_is_not_asked_and_the_dialog_says_so() {
+    use ncrs_ai::{AiError, LocalModelStatus, OutgoingPreview, ScriptedChatModel};
+
+    use super::flow::proposal_for;
+    use super::state::Proposal;
+
+    let refused = ScriptedChatModel::new(
+        LocalModelStatus::NotDownloaded,
+        [Err(AiError::ConsentRequired(OutgoingPreview {
+            endpoint: "https://ai.example.com".to_owned(),
+            model: "m".to_owned(),
+            body: String::new(),
+        }))],
+    );
+    let names = vec!["2024-01-02_a.pdf".to_owned()];
+    assert_eq!(proposal_for(&refused, &names), Proposal::ConsentMissing);
+
+    let failing =
+        ScriptedChatModel::new(LocalModelStatus::NotDownloaded, [Err(AiError::Unsupported)]);
+    assert_eq!(proposal_for(&failing, &names), Proposal::Pattern(None));
+}

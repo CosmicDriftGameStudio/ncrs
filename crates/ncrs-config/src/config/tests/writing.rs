@@ -694,6 +694,47 @@ fn the_three_agreements_are_written_apart_and_replace_the_single_list_of_older_f
 }
 
 #[test]
+fn a_kind_withdrawn_from_the_single_agreement_of_an_older_file_stays_withdrawn() {
+    let base = tempfile::tempdir().unwrap();
+    let path = base.path().join("config.toml");
+    std::fs::write(
+        &path,
+        "[modules.filing.ai]\nprovider = \"http\"\nendpoint = \"https://ai.example.com/v1\"\n\
+         model = \"m\"\nconsented_origins = [\"https://ai.example.com\"]\n",
+    )
+    .unwrap();
+    let AiSetting::Http {
+        endpoint,
+        model,
+        mut consented_origins,
+    } = load(&path).unwrap().filing.ai
+    else {
+        panic!("not the http provider");
+    };
+    consented_origins.withdraw(ncrs_ai::ConsentPurpose::Archive, "https://ai.example.com");
+    let choice = AiProviderChoice::Http {
+        endpoint,
+        model,
+        consented_origins,
+    };
+
+    write_settings(&path, &ai_provider_settings(&choice), None).unwrap();
+
+    let text = lines_of(&path);
+    assert!(!text.contains("consented_origins"), "{text}");
+    let AiSetting::Http {
+        consented_origins: reloaded,
+        ..
+    } = load(&path).unwrap().filing.ai
+    else {
+        panic!("not the http provider");
+    };
+    assert_eq!(reloaded.inbox, ["https://ai.example.com"]);
+    assert!(reloaded.archive.is_empty(), "{text}");
+    assert_eq!(reloaded.folders, ["https://ai.example.com"]);
+}
+
+#[test]
 fn switching_the_ai_provider_takes_the_keys_of_the_other_one_away() {
     let base = tempfile::tempdir().unwrap();
     let path = base.path().join("config.toml");

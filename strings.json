@@ -3913,6 +3913,12 @@
       "de": "Server: Ordner und Dateinamen"
     },
     {
+      "key": "settings.ai_consent_rules_need_both",
+      "context": "Last line under the row about folders and file names in the AI page: learning a filing rule sends data of two kinds, so both agreements are needed. Filed documents is the name of the other row.",
+      "en": "Learning a filing rule needs this agreement and the one for filed documents.",
+      "de": "Eine Ablageregel zu lernen braucht diese Freigabe und die für abgelegte Dokumente."
+    },
+    {
       "key": "settings.ai_consent_state_given",
       "context": "Status in the row about sending data to an AI server on another computer: the user agreed. Short, dim.",
       "en": "allowed",
@@ -5885,6 +5891,12 @@
       "context": "Batch rename dialog. What Hermes thinks the names of this folder follow. {pattern} is a pattern with tokens in braces; keep it unchanged.",
       "en": "Hermes: {pattern} fits this folder",
       "de": "Hermes: {pattern} passt zu diesem Ordner"
+    },
+    {
+      "key": "batch_rename.hermes_consent_missing",
+      "context": "Batch rename dialog. Shown instead of a name proposal when the AI server is on another computer and the user has not allowed sending folders and file names. Points to the setting; do not name a button.",
+      "en": "Hermes did not look at this folder: sending folders and file names to the server is not allowed (Settings, AI).",
+      "de": "Hermes hat diesen Ordner nicht angesehen: Ordner und Dateinamen an den Server zu senden ist nicht freigegeben (Einstellungen, KI)."
     },
     {
       "key": "batch_rename.hermes_use",

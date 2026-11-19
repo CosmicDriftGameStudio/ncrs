@@ -433,10 +433,14 @@ fn consent_row<'a>(purpose: ConsentPurpose, view: &SettingsView<'a>) -> SettingR
         ConsentPurpose::Archive => Msg::SettingsAiConsentPurposeArchive,
         ConsentPurpose::Folders => Msg::SettingsAiConsentPurposeFolders,
     };
-    let covers = announced_items(purpose)
+    let mut covers = announced_items(purpose)
         .map(|item| format!("\u{2022} {}", lang.text(item)))
         .collect::<Vec<_>>()
         .join("\n");
+    if purpose == ConsentPurpose::Folders {
+        covers.push('\n');
+        covers.push_str(lang.text(Msg::SettingsAiConsentRulesNeedBoth));
+    }
     SettingRow {
         key: (!agreed).then_some(RowKey::Press(SettingsMessage::ConfirmAiConsent(purpose))),
         description: Some(format!(
