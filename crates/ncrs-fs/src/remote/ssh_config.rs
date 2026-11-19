@@ -98,11 +98,11 @@ pub fn settings_for(text: &str, alias: &str, home: Option<&Path>) -> HostSetting
             }
             "userknownhostsfile" => {
                 if found.user_known_hosts.is_none() {
-                    found.user_known_hosts = Some(files_of(&values, home));
+                    found.user_known_hosts = files_of(&values, home);
                 }
             }
             "globalknownhostsfile" if found.global_known_hosts.is_none() => {
-                found.global_known_hosts = Some(files_of(&values, home));
+                found.global_known_hosts = files_of(&values, home);
             }
             _ => {}
         }
@@ -110,15 +110,21 @@ pub fn settings_for(text: &str, alias: &str, home: Option<&Path>) -> HostSetting
     found
 }
 
-/// The absolute files a list value names. `none` and a name that needs
-/// OpenSSH's `%` expansion give no file.
-fn files_of(values: &[String], home: Option<&Path>) -> Vec<PathBuf> {
-    values
+/// The absolute files a list value names. Only the word `none` gives no file
+/// at all; names that cannot be used (`%` expansion, a relative path) are left
+/// out, and when nothing is left the config does not say: `None`, so the
+/// default file is read and a changed host key is not taken for an unknown one.
+fn files_of(values: &[String], home: Option<&Path>) -> Option<Vec<PathBuf>> {
+    if !values.is_empty() && values.iter().all(|file| file.eq_ignore_ascii_case("none")) {
+        return Some(Vec::new());
+    }
+    let files: Vec<PathBuf> = values
         .iter()
         .filter(|file| !file.eq_ignore_ascii_case("none") && !file.contains('%'))
         .filter_map(|file| expand_home(Path::new(file), home))
         .filter(|file| file.is_absolute())
-        .collect()
+        .collect();
+    (!files.is_empty()).then_some(files)
 }
 
 /// The keyword and the rest of a line: `key value` or `key=value`. `None` for
@@ -250,6 +256,16 @@ mod tests {
         );
         assert_eq!(found.global_known_hosts, Some(Vec::new()));
         assert_eq!(settings("Host x\n  User u\n", "x").user_known_hosts, None);
+    }
+
+    #[test]
+    fn known_hosts_names_that_cannot_be_used_leave_the_default_file_in_place() {
+        let found = settings(
+            "Host x\n  UserKnownHostsFile %d/known relative/file\n  GlobalKnownHostsFile %h\n",
+            "x",
+        );
+        assert_eq!(found.user_known_hosts, None);
+        assert_eq!(found.global_known_hosts, None);
     }
 
     #[test]

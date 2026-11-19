@@ -27,6 +27,20 @@ pub(in crate::execute) fn is_respelling(from: &Path, to: &Path) -> bool {
     same_folder && same_entry && !to_is_listed
 }
 
+/// Whether both paths lead to one file, whatever their spelling.
+pub(in crate::execute) fn is_same_entry(from: &Path, to: &Path) -> bool {
+    same_file::is_same_file(from, to).unwrap_or(false)
+}
+
+/// Gives a file that now has `current` its old spelling `original`.
+pub(in crate::execute) fn respell_back(original: &Path, current: &Path) -> std::io::Result<()> {
+    let hidden = respell_hidden_name(current);
+    fs::rename(current, &hidden)?;
+    fs::rename(&hidden, original).inspect_err(|_| {
+        let _put_back = fs::rename(&hidden, current);
+    })
+}
+
 fn respell_hidden_name(to: &Path) -> PathBuf {
     let name = to.file_name().unwrap_or_default().to_string_lossy();
     to.with_file_name(format!(".{name}.ncrs-respell"))

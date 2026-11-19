@@ -26,7 +26,7 @@ use ncrs_fs::transfer::{
 
 mod respell;
 mod trash;
-use respell::{is_respelling, respell, restore_respelled};
+use respell::{is_respelling, is_same_entry, respell, respell_back, restore_respelled};
 pub use trash::{trash_can_restore, trash_run, TrashItem, TrashReport};
 
 /// One move. Paths are absolute.
@@ -654,6 +654,10 @@ fn settle_move(
         return settle_moved(index, batch, item);
     }
     if target_intact && has_hash(&item.from, item.hash) {
+        if is_same_entry(&item.from, &item.to) {
+            // Another spelling of one file: removing the source removes the target.
+            return settle_moved(index, batch, item);
+        }
         if !within_recorded_roots(index, batch, item) {
             return skip_pending(
                 index,
@@ -690,9 +694,6 @@ fn settle_copy(
         return settle_copied(index, batch, item);
     }
     if has_hash(&item.from, item.hash) {
-        if within_recorded_roots(index, batch, item) && is_cut_short_copy(&item.to, &item.from) {
-            let _best_effort = fs::remove_file(&item.to);
-        }
         return skip_pending(index, batch, item, SkipReason::Interrupted);
     }
     skip_pending(
@@ -867,7 +868,20 @@ fn undo_item(
         Err(err) => return Ok(Some(SkipReason::Failed(err.to_string()))),
     }
     if fs::symlink_metadata(&item.from).is_ok() {
-        return Ok(Some(SkipReason::TargetExists));
+        if !is_respelling(&item.to, &item.from) {
+            return Ok(Some(SkipReason::TargetExists));
+        }
+        if let Err(err) = respell_back(&item.from, &item.to) {
+            return Ok(Some(SkipReason::Failed(err.to_string())));
+        }
+        repoint(
+            index,
+            item.document_id,
+            item.duplicate,
+            &item.to,
+            &item.from,
+        )?;
+        return Ok(None);
     }
     if let Some(parent) = item.from.parent() {
         if let Err(err) = fs::create_dir_all(parent) {
@@ -907,41 +921,6 @@ fn within_recorded_roots(index: &Index, batch: BatchId, item: &JournalItem) -> b
         .as_ref()
         .is_none_or(|root| lies_in(root, &item.to));
     from_fits && to_fits
-}
-
-/// What a copy that stopped half way leaves: a file that is only the start of
-/// its source. Anything else at the target is not ours to remove.
-fn is_cut_short_copy(copy: &Path, source: &Path) -> bool {
-    use std::io::Read as _;
-    let (Ok(copy_meta), Ok(source_meta)) =
-        (fs::symlink_metadata(copy), fs::symlink_metadata(source))
-    else {
-        return false;
-    };
-    if !copy_meta.is_file() || !source_meta.is_file() || copy_meta.len() >= source_meta.len() {
-        return false;
-    }
-    let (Ok(mut copied), Ok(mut original)) = (fs::File::open(copy), fs::File::open(source)) else {
-        return false;
-    };
-    let mut copied_block: [u8; 64 * 1024] = [0; 64 * 1024];
-    let mut original_block: [u8; 64 * 1024] = [0; 64 * 1024];
-    loop {
-        let Ok(read) = copied.read(&mut copied_block) else {
-            return false;
-        };
-        if read == 0 {
-            return true;
-        }
-        let (Some(copied_part), Some(original_part)) =
-            (copied_block.get(..read), original_block.get_mut(..read))
-        else {
-            return false;
-        };
-        if original.read_exact(original_part).is_err() || copied_part != original_part {
-            return false;
-        }
-    }
 }
 
 #[cfg(test)]

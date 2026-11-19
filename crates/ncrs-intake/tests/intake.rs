@@ -273,6 +273,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let archive = location(&dir, LocationMode::Archive, false);
         let path = put(&archive, "a.pdf", INVOICE);
+        put(&archive, "stays.pdf", REMINDER);
         fixture.scan_settled(&archive);
         let id = fixture.index.document_by_path(&path).unwrap().unwrap().id;
         fs::remove_file(&path).unwrap();
@@ -297,7 +298,7 @@ mod tests {
         assert_eq!(document.path, elsewhere);
         assert!(document.missing_since.is_none());
         let again = fixture.scan(&archive, t0() + STABLE_AFTER * 5);
-        assert_eq!((again.missing, again.unchanged_without_hash), (0, 1));
+        assert_eq!((again.missing, again.unchanged_without_hash), (0, 2));
     }
 
     #[test]
@@ -335,6 +336,34 @@ mod tests {
             .unwrap()
             .missing_since
             .is_none());
+    }
+
+    #[test]
+    fn an_empty_location_with_documents_in_the_index_fails_and_marks_nothing_missing() {
+        let mut fixture = Fixture::new();
+        let dir = TempDir::new().unwrap();
+        let archive = location(&dir, LocationMode::Archive, false);
+        let first = put(&archive, "a.pdf", INVOICE);
+        let second = put(&archive, "b.pdf", REMINDER);
+        fixture.scan_settled(&archive);
+        let ids: Vec<_> = [&first, &second]
+            .iter()
+            .map(|path| fixture.index.document_by_path(path).unwrap().unwrap().id)
+            .collect();
+        fs::remove_file(&first).unwrap();
+        fs::remove_file(&second).unwrap();
+
+        settle_location(&fixture.index, &archive).unwrap_err();
+
+        for id in ids {
+            assert!(fixture
+                .index
+                .document(id)
+                .unwrap()
+                .unwrap()
+                .missing_since
+                .is_none());
+        }
     }
 
     #[test]

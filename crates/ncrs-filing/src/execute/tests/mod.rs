@@ -622,7 +622,7 @@ fn pending_copy(setup: &Setup, item: &ExecutionItem) -> BatchId {
 }
 
 #[test]
-fn reconcile_removes_a_copy_that_stopped_half_way_and_keeps_the_source() {
+fn reconcile_keeps_a_file_at_the_target_that_is_the_start_of_the_source() {
     let setup = Setup::new();
     let item = setup.document("a.pdf", "alpha and the rest");
     let batch = pending_copy(&setup, &item);
@@ -635,8 +635,25 @@ fn reconcile_removes_a_copy_that_stopped_half_way_and_keeps_the_source() {
         state_of(&setup, batch).reason.as_deref(),
         Some("interrupted")
     );
-    assert!(!item.to.exists(), "the cut-short copy is gone");
+    assert_eq!(fs::read_to_string(&item.to).unwrap(), "alpha");
     assert!(item.from.exists());
+}
+
+#[test]
+fn reconcile_keeps_the_only_file_of_a_pending_move_whose_names_are_one_entry() {
+    let setup = Setup::new();
+    let item = setup.document("a.pdf", "alpha");
+    let (batch, _) = pending(&setup, &item);
+    fs::create_dir_all(item.to.parent().unwrap()).unwrap();
+    fs::hard_link(&item.from, &item.to).unwrap();
+
+    reconcile(&setup.index).unwrap();
+
+    assert!(
+        item.from.exists() && item.to.exists(),
+        "the file is still there"
+    );
+    assert_eq!(state_of(&setup, batch).state, JournalState::Moved);
 }
 
 #[test]
