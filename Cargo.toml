@@ -14,6 +14,17 @@ resolver = "2"
 # at the version llama-cpp-2 is pinned to (its own requirement is `^0.1.160`).
 llama-cpp-2 = { version = "=0.1.160", default-features = false }
 llama-cpp-sys-2 = { version = "=0.1.160", default-features = false }
+# SFTP. ring as crypto backend (the default aws-lc-rs would
+# add a second C library), no `rsa` feature: the rsa crate behind it has an open
+# advisory (RUSTSEC-2023-0071), so servers that offer only RSA host keys are not
+# supported yet. Both are pinned, and russh pins ssh-key to a release candidate
+# that must match.
+russh = { version = "=0.65.0", default-features = false, features = ["ring"] }
+russh-sftp = "=3.0.1"
+# Used by several crates; the pins live here once so that an update moves all of them.
+ureq = { version = "=3.5.0", default-features = false, features = ["rustls"] }
+zip = { version = "=9.1.2", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+jsonc-parser = { version = "=0.34.0", default-features = false }
 
 [package]
 name = "ncrs"
@@ -130,12 +141,6 @@ tempfile = "3.27"
 # own fallback), so Linux needs neither GTK nor an async runtime. "wayland" only
 # serves a parent window, and the dialog is opened without one.
 rfd = { version = "=0.17.2", default-features = false, features = ["xdg-portal"] }
-# SFTP. ring as crypto backend (the default aws-lc-rs would
-# add a second C library), no `rsa` feature: the rsa crate behind it has an open
-# advisory (RUSTSEC-2023-0071), so servers that offer only RSA host keys are not
-# supported yet. Both are pinned, and russh pins ssh-key to a release candidate
-# that must match.
-russh = { version = "=0.65.0", default-features = false, features = ["ring"] }
 # Cmd+V / Ctrl+V pastes files, an image or text from the system clipboard, and
 # "Copy files to the clipboard" puts a file list on it. "image-data" reads and
 # writes the picture; no other defaults.
@@ -203,6 +208,8 @@ gpu-rendering = ["iced/wgpu"]
 gpu-with-fallback = ["iced/wgpu", "iced/tiny-skia"]
 
 [dev-dependencies]
+# The host keys the dialog tests build.
+russh = { workspace = true }
 # iced's own UI testing: Simulator (headless), Emulator (end-to-end),
 # snapshot images, and Ice scripts.
 iced_test = "0.14"
