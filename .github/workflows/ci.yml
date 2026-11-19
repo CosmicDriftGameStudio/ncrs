@@ -367,6 +367,14 @@ jobs:
     if: needs.changes.outputs.build == 'true'
     name: build ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
+    # Only a push run builds what is shipped. The release tag does not exist
+    # yet at that point, so the build is told; without it every binary would
+    # carry a commit hash after its version and read as a development build.
+    # For the whole job: build.rs reruns when the variable changes, so a later
+    # cargo call without it (the llama runtime lookup in Package) would build
+    # ncrs a second time.
+    env:
+      NCRS_RELEASE_BUILD: ${{ github.event_name == 'push' && '1' || '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -504,12 +512,7 @@ jobs:
             *) echo "MACOSX_DEPLOYMENT_TARGET=10.15" >> "$GITHUB_ENV" ;;
           esac
 
-      # Only a push run builds what is shipped. The release tag does not exist
-      # yet at that point, so the build is told; without it every binary would
-      # carry a commit hash after its version and read as a development build.
       - name: Build
-        env:
-          NCRS_RELEASE_BUILD: ${{ github.event_name == 'push' && '1' || '' }}
         run: cargo build --release --features gpu-with-fallback --target ${{ matrix.target }}
 
       # The aarch64 Linux binary cannot run on this x86_64 runner.
@@ -679,8 +682,6 @@ jobs:
       - name: Build the sandboxed binary
         if: runner.os == 'macOS'
         shell: bash
-        env:
-          NCRS_RELEASE_BUILD: ${{ github.event_name == 'push' && '1' || '' }}
         run: |
           cargo build --release --features gpu-with-fallback,sandbox --target ${{ matrix.target }}
           mkdir -p sandbox-binary
