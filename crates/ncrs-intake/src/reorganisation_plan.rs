@@ -91,19 +91,19 @@ mod tests {
     use std::collections::BTreeSet;
     use std::sync::Arc;
 
-    use ncrs_index::{KindLanguage, Kinds, ReorganisationPlan};
+    use ncrs_index::{KindLanguage, Kinds};
     use walkdir::WalkDir;
 
     use crate::archive_profile::{learn_archive, ArchiveDocument};
     use crate::reorganisation::{plan_reorganisation, PlanRule, ReorganisationInput};
 
-    /// Plans and stores the reorganisation of the location at `root`, as the chat's
+    /// Plans the reorganisation of the location at `root`, as the chat's
     /// reading does, so the tests cover the whole planning.
     pub(in crate::reorganisation_plan) fn plan_location(
-        index: &mut Index,
+        index: &Index,
         root: &Path,
         language: KindLanguage,
-    ) -> Result<ReorganisationPlan, IntakeError> {
+    ) -> Result<Vec<PlanItem>, IntakeError> {
         let files = location_documents(index, root)?;
         let documents: Vec<ArchiveDocument> = files
             .iter()
@@ -118,7 +118,7 @@ mod tests {
         let kinds = Kinds::new(Arc::clone(index.kinds()), language);
         let unordered = location_structure(&files, &kinds.catalog);
         let sender_aliases = index.confirmed_sender_aliases()?;
-        let items = plan_reorganisation(&ReorganisationInput {
+        let mut items = plan_reorganisation(&ReorganisationInput {
             files: &files,
             profile: &profile,
             unordered: &unordered,
@@ -127,10 +127,8 @@ mod tests {
             existing: &existing,
             kinds: &kinds,
         });
-        index.replace_reorganisation_plan(root, &items)?;
-        index
-            .reorganisation_plan(root)?
-            .ok_or_else(|| IntakeError::io(root)(std::io::Error::other("the plan was not stored")))
+        items.sort_by(|left, right| left.source.cmp(&right.source));
+        Ok(items)
     }
 
     fn plan_rules(index: &Index) -> Result<Vec<PlanRule>, IntakeError> {
@@ -288,9 +286,8 @@ mod tests {
 
         /// Keyed the way the tests write paths, whatever the platform's separator.
         fn plan(&mut self) -> BTreeMap<String, PlanItem> {
-            plan_location(&mut self.index, &self.root, KindLanguage::English)
+            plan_location(&self.index, &self.root, KindLanguage::English)
                 .unwrap()
-                .items
                 .into_iter()
                 .map(|item| {
                     let key = item
@@ -894,7 +891,7 @@ mod tests {
     }
 
     #[test]
-    fn items_keep_hash_and_source_and_a_new_plan_replaces_the_old_one() {
+    fn items_keep_hash_and_source() {
         let mut archive = insurance_archive();
         let id = archive.add(
             "Insurance/2023/2024-05-01_invoice.pdf",
@@ -903,19 +900,13 @@ mod tests {
         );
         let hash = archive.index.document(id).unwrap().unwrap().hash;
 
-        let first =
-            plan_location(&mut archive.index, &archive.root, KindLanguage::English).unwrap();
-        let second =
-            plan_location(&mut archive.index, &archive.root, KindLanguage::English).unwrap();
+        let items = plan_location(&archive.index, &archive.root, KindLanguage::English).unwrap();
 
-        assert_eq!(first.items[0].hash, hash);
+        assert_eq!(items[0].hash, hash);
         assert_eq!(
-            first.items[0].source,
+            items[0].source,
             Path::new("Insurance/2023/2024-05-01_invoice.pdf")
         );
-        assert_ne!(first.id, second.id);
-        let stored = archive.index.reorganisation_plan(&archive.root).unwrap();
-        assert_eq!(stored.unwrap().id, second.id);
     }
 
     #[test]

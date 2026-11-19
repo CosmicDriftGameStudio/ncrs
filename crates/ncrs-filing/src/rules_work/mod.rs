@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use ncrs_index::{
     ContentHash, DocumentFields, DocumentId, Field, Index, IndexError, KindLanguage, Kinds,
-    ReviewReason, Rule, RuleId, RuleOrigin, RuleSpec,
+    ReviewReason, Rule, RuleId, RuleOrigin, RuleSpec, SenderAliases,
 };
 use ncrs_intake::{plan, Location, LocationMode, PlanInput, Planning};
 
@@ -132,6 +132,9 @@ pub struct TryResult {
     /// The archive matches whose path differs from where the rule would put
     /// them: filing moves them like the documents of the inbox.
     pub archive_moves: Vec<ArchiveMove>,
+    /// Archive matches that lie wrong but cannot be moved in one run: two want
+    /// the same name, or they swap names.
+    pub archive_blocked: usize,
     /// The given files that lie in a location but not in the index.
     pub not_indexed: usize,
     /// The 1-based place of each conflicting rule on the rules page.
@@ -164,6 +167,9 @@ struct Subject<'a> {
 pub struct RulesAccess {
     slot: IndexSlot,
     locations: Vec<Location>,
+    /// The root of the target archive: the only place a rule renames or moves
+    /// documents in. Without one no archive document is moved.
+    target: Option<PathBuf>,
     kind_language: KindLanguage,
 }
 
@@ -178,8 +184,13 @@ impl RulesAccess {
         Self {
             slot,
             locations,
+            target: None,
             kind_language: KindLanguage::default(),
         }
+    }
+
+    pub fn with_target(self, target: Option<PathBuf>) -> Self {
+        Self { target, ..self }
     }
 
     pub fn with_kind_language(self, kind_language: KindLanguage) -> Self {
@@ -197,12 +208,16 @@ impl RulesAccess {
 
     /// `try_rule`, with files the index may not know yet: the ones it does
     /// not know are tried from what the caller read of them.
+    ///
+    /// The index lock is held for one document at a time, so a try on a large
+    /// archive does not keep the intake and the search waiting; only the
+    /// documents the rule matches are kept.
     pub fn try_rule_with(
         &self,
         candidate: &RuleTry,
         files: &[TryFile],
     ) -> Result<TryResult, String> {
-        self.with_index(|index| {
+        let (mut trial, listed) = self.with_index(|index| {
             let rules_now = index.rules()?;
             let spec = RuleSpec {
                 confirmed: true,
@@ -210,135 +225,102 @@ impl RulesAccess {
                 ..candidate.spec.clone()
             };
             let (rules_after, candidate_id) = with_candidate(&rules_now, candidate.replaces, spec);
-            let aliases = index.confirmed_sender_aliases()?;
             let in_review: HashSet<_> = index
                 .open_reviews()?
                 .into_iter()
                 .map(|entry| entry.document_id)
                 .collect();
-            let mut tried = Vec::new();
-            let mut archive_moves: Vec<ArchiveMove> = Vec::new();
-            let kinds = Kinds::new(Arc::clone(index.kinds()), self.kind_language);
-            let mut seen: HashSet<PathBuf> = HashSet::new();
-            let mut subjects: Vec<Subject> = Vec::new();
-            for location in &self.locations {
+            let mut listed = Vec::new();
+            for (at, location) in self.locations.iter().enumerate() {
                 for (id, absolute) in index.documents_under(&location.path)? {
-                    seen.insert(absolute.clone());
-                    let Some(text) = index.document_text(id)? else {
-                        continue;
-                    };
-                    let Some(document) = index.document(id)? else {
-                        continue;
-                    };
-                    subjects.push(Subject {
-                        location,
-                        absolute,
-                        text,
-                        fields: document.fields,
-                        manual_fields: index.field_origins(id)?.manual_fields(),
-                        hash: document.hash,
-                        id: Some(id),
-                    });
+                    listed.push((at, id, absolute));
                 }
             }
-            let mut not_indexed = 0;
-            for file in files {
-                let Some(location) = self
-                    .locations
-                    .iter()
-                    .find(|location| file.path.starts_with(&location.path))
-                else {
-                    continue;
+            let trial = Trial {
+                rules_now,
+                rules_after,
+                candidate_id,
+                aliases: index.confirmed_sender_aliases()?,
+                in_review,
+                kinds: Kinds::new(Arc::clone(index.kinds()), self.kind_language),
+                movable_root: self.target.as_deref(),
+                tried: Vec::new(),
+                moves: Vec::new(),
+            };
+            Ok((trial, listed))
+        })?;
+        let mut seen: HashSet<PathBuf> = HashSet::new();
+        for (at, id, absolute) in listed {
+            seen.insert(absolute.clone());
+            let Some(location) = self.locations.get(at) else {
+                continue;
+            };
+            let subject = self.with_index(|index| {
+                let Some(text) = index.document_text(id)? else {
+                    return Ok(None);
                 };
-                if seen.contains(&file.path) {
-                    continue;
-                }
-                not_indexed += 1;
-                subjects.push(Subject {
+                let Some(document) = index.document(id)? else {
+                    return Ok(None);
+                };
+                Ok(Some(Subject {
                     location,
-                    absolute: file.path.clone(),
-                    text: file.text.clone(),
-                    fields: file.fields.clone(),
-                    manual_fields: Vec::new(),
-                    hash: file.hash,
-                    id: None,
-                });
+                    absolute,
+                    text,
+                    fields: document.fields,
+                    manual_fields: index.field_origins(id)?.manual_fields(),
+                    hash: document.hash,
+                    id: Some(id),
+                }))
+            })?;
+            if let Some(subject) = subject {
+                trial.consider(subject);
             }
-            for subject in subjects {
-                let location = subject.location;
-                let absolute = subject.absolute;
-                let path = absolute
-                    .strip_prefix(&location.path)
-                    .map_or_else(|_| absolute.clone(), std::path::Path::to_path_buf);
-                let input = PlanInput {
-                    text: &subject.text,
-                    fields: &subject.fields,
-                    path: Some(&path),
-                    location: Some(&location.path),
-                    sender_aliases: &aliases,
-                    manual_fields: &subject.manual_fields,
-                    kinds: &kinds,
-                };
-                let after = plan(&rules_after, &input);
-                let matching = matching_rules(&after);
-                if !matching.contains(&candidate_id) {
-                    continue;
-                }
-                let archived = location.mode == LocationMode::Archive;
-                let now = if archived {
-                    TryOutcome::Lies(path.clone())
-                } else {
-                    outcome(&plan(&rules_now, &input), &path)
-                };
-                let section = if archived {
-                    TrySection::Archive
-                } else if subject.id.is_some_and(|id| in_review.contains(&id)) {
-                    TrySection::Review
-                } else {
-                    TrySection::Inbox
-                };
-                let after_outcome = outcome(&after, &path);
-                if let (true, TryOutcome::Filed(target)) = (archived, &after_outcome) {
-                    if *target != path {
-                        archive_moves.push(ArchiveMove {
-                            root: location.path.clone(),
-                            from: path.clone(),
-                            to: target.clone(),
-                            hash: subject.hash,
-                        });
-                    }
-                }
-                tried.push(TriedDocument {
-                    section,
-                    path,
-                    now,
-                    after: after_outcome,
-                    conflicts: matching
-                        .iter()
-                        .copied()
-                        .filter(|other| *other != candidate_id)
-                        .collect(),
-                });
-            }
-            archive_moves
-                .sort_by(|left, right| (&left.root, &left.from).cmp(&(&right.root, &right.from)));
-            tried.sort_by(|left, right| {
-                (left.section, &left.path).cmp(&(right.section, &right.path))
-            });
-            let in_archive = tried
+        }
+        let mut not_indexed = 0;
+        for file in files {
+            let Some(location) = self
+                .locations
                 .iter()
-                .filter(|document| document.is_in_archive())
-                .count();
-            let more = tried.len().saturating_sub(MAX_TRIED_DOCUMENTS);
-            tried.truncate(MAX_TRIED_DOCUMENTS);
-            Ok(TryResult {
-                conflict_names: conflict_places(&rules_after, &tried),
-                documents: tried,
-                in_archive,
-                archive_moves,
-                not_indexed,
-                more,
-            })
+                .find(|location| file.path.starts_with(&location.path))
+            else {
+                continue;
+            };
+            if seen.contains(&file.path) {
+                continue;
+            }
+            not_indexed += 1;
+            trial.consider(Subject {
+                location,
+                absolute: file.path.clone(),
+                text: file.text.clone(),
+                fields: file.fields.clone(),
+                manual_fields: Vec::new(),
+                hash: file.hash,
+                id: None,
+            });
+        }
+        let Trial {
+            rules_after,
+            mut tried,
+            moves,
+            ..
+        } = trial;
+        let (archive_moves, archive_blocked) = order_moves(moves);
+        tried.sort_by(|left, right| (left.section, &left.path).cmp(&(right.section, &right.path)));
+        let in_archive = tried
+            .iter()
+            .filter(|document| document.is_in_archive())
+            .count();
+        let more = tried.len().saturating_sub(MAX_TRIED_DOCUMENTS);
+        tried.truncate(MAX_TRIED_DOCUMENTS);
+        Ok(TryResult {
+            conflict_names: conflict_places(&rules_after, &tried),
+            documents: tried,
+            in_archive,
+            archive_moves,
+            archive_blocked,
+            not_indexed,
+            more,
         })
     }
 
@@ -471,3 +453,107 @@ fn conflict_places(rules: &[Rule], tried: &[TriedDocument]) -> HashMap<RuleId, u
 
 #[cfg(test)]
 mod tests;
+
+/// What the rule is tried with, and what the documents tried so far came to.
+struct Trial<'a> {
+    rules_now: Vec<Rule>,
+    rules_after: Vec<Rule>,
+    candidate_id: RuleId,
+    aliases: SenderAliases,
+    in_review: HashSet<DocumentId>,
+    kinds: Kinds,
+    /// Only the documents of this archive are moved; the other archives are
+    /// read-only and only teach.
+    movable_root: Option<&'a Path>,
+    tried: Vec<TriedDocument>,
+    moves: Vec<ArchiveMove>,
+}
+
+impl Trial<'_> {
+    fn consider(&mut self, subject: Subject<'_>) {
+        let location = subject.location;
+        let absolute = subject.absolute;
+        let path = absolute
+            .strip_prefix(&location.path)
+            .map_or_else(|_| absolute.clone(), Path::to_path_buf);
+        let input = PlanInput {
+            text: &subject.text,
+            fields: &subject.fields,
+            path: Some(&path),
+            location: Some(&location.path),
+            sender_aliases: &self.aliases,
+            manual_fields: &subject.manual_fields,
+            kinds: &self.kinds,
+        };
+        let after = plan(&self.rules_after, &input);
+        let matching = matching_rules(&after);
+        if !matching.contains(&self.candidate_id) {
+            return;
+        }
+        let archived = location.mode == LocationMode::Archive;
+        let now = if archived {
+            TryOutcome::Lies(path.clone())
+        } else {
+            outcome(&plan(&self.rules_now, &input), &path)
+        };
+        let section = if archived {
+            TrySection::Archive
+        } else if subject.id.is_some_and(|id| self.in_review.contains(&id)) {
+            TrySection::Review
+        } else {
+            TrySection::Inbox
+        };
+        let after_outcome = outcome(&after, &path);
+        let movable = self.movable_root == Some(location.path.as_path());
+        if let (true, true, TryOutcome::Filed(target)) = (archived, movable, &after_outcome) {
+            if *target != path {
+                self.moves.push(ArchiveMove {
+                    root: location.path.clone(),
+                    from: path.clone(),
+                    to: target.clone(),
+                    hash: subject.hash,
+                });
+            }
+        }
+        self.tried.push(TriedDocument {
+            section,
+            path,
+            now,
+            after: after_outcome,
+            conflicts: matching
+                .iter()
+                .copied()
+                .filter(|other| *other != self.candidate_id)
+                .collect(),
+        });
+    }
+}
+
+/// The moves in the order they can run, and how many cannot run at all: a
+/// name that two documents want goes to the first, and a swap or a circle of
+/// renames has no first step. A move whose target is the source of another
+/// move waits for that one.
+fn order_moves(mut moves: Vec<ArchiveMove>) -> (Vec<ArchiveMove>, usize) {
+    moves.sort_by(|left, right| (&left.root, &left.from).cmp(&(&right.root, &right.from)));
+    let mut wanted: HashSet<(PathBuf, PathBuf)> = HashSet::new();
+    let total = moves.len();
+    moves.retain(|found| wanted.insert((found.root.clone(), found.to.clone())));
+    let mut blocked = total - moves.len();
+    let mut ordered = Vec::with_capacity(moves.len());
+    while !moves.is_empty() {
+        let leaving: HashSet<(PathBuf, PathBuf)> = moves
+            .iter()
+            .map(|found| (found.root.clone(), found.from.clone()))
+            .collect();
+        let (ready, waiting): (Vec<_>, Vec<_>) = moves
+            .into_iter()
+            .partition(|found| !leaving.contains(&(found.root.clone(), found.to.clone())));
+        if ready.is_empty() {
+            blocked += waiting.len();
+            break;
+        }
+        ordered.extend(ready);
+        moves = waiting;
+    }
+    (ordered, blocked)
+}

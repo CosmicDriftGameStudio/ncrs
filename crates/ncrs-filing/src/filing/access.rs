@@ -36,18 +36,15 @@ impl FilingModule {
         if !matches!(self.phase, Phase::Ready) {
             return None;
         }
-        let chain = self.chat_text_chain.get_or_init(|| {
-            let (chain, _library_missing) = shipped_text_chain(
-                ocr_models_dir(&self.db_path).unwrap_or_else(|| PathBuf::from(OCR_MODELS_FOLDER)),
-            );
-            Arc::new(chain)
-        });
+        let chain = chat_text_chain(&self.chat_text_chain, &self.db_path);
         Some(
             ChatAccess::new(Arc::clone(&self.index), Arc::clone(chain), trash)
                 .with_own(self.own.clone())
                 .with_load(self.load)
                 .with_review(self.review_access())
-                .with_rules(self.rules_access()),
+                .with_rules(self.rules_access())
+                .with_copy_roots(self.copy_roots())
+                .with_index_work(self.index_work.clone()),
         )
     }
 
@@ -98,7 +95,8 @@ impl FilingModule {
                 .with_location_roots(self.location_roots())
                 .with_copy_roots(self.copy_roots())
                 .with_kind_language(self.own.kind_language)
-                .with_own(self.own.clone()),
+                .with_own(self.own.clone())
+                .with_index_work(self.index_work.clone()),
         )
     }
 
@@ -123,6 +121,7 @@ impl FilingModule {
                 Arc::clone(&self.index),
                 self.reachable_locations().cloned().collect(),
             )
+            .with_target(self.target_root())
             .with_kind_language(self.own.kind_language)
         })
     }
@@ -174,5 +173,31 @@ impl FilingModule {
                 LocationStatus::Ready(location) => Some(location),
                 LocationStatus::NotReachable { .. } | LocationStatus::Overlaps { .. } => None,
             })
+    }
+}
+
+/// The chain the chat reads files with. Loading the PDF library is slow the
+/// first time, so a started module builds it on a thread of its own.
+fn chat_text_chain<'a>(cell: &'a OnceLock<Arc<TextChain>>, db_path: &Path) -> &'a Arc<TextChain> {
+    cell.get_or_init(|| {
+        let (chain, _library_missing) = shipped_text_chain(
+            ocr_models_dir(db_path).unwrap_or_else(|| PathBuf::from(OCR_MODELS_FOLDER)),
+        );
+        Arc::new(chain)
+    })
+}
+
+impl FilingModule {
+    /// The chat can get its handle: cheap, builds nothing.
+    pub fn chat_ready(&self) -> bool {
+        matches!(self.phase, Phase::Ready)
+    }
+
+    pub(in crate::filing) fn warm_chat_text_chain(&self) {
+        let cell = Arc::clone(&self.chat_text_chain);
+        let db_path = self.db_path.clone();
+        std::thread::spawn(move || {
+            chat_text_chain(&cell, &db_path);
+        });
     }
 }

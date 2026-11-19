@@ -1,6 +1,26 @@
-//! How an amount is written as text.
+//! An amount of money and how it is written as text.
 
-use super::Amount;
+/// Three ASCII upper-case letters.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Currency(String);
+
+impl Currency {
+    pub fn new(code: &str) -> Option<Self> {
+        (code.len() == 3 && code.bytes().all(|byte| byte.is_ascii_uppercase()))
+            .then(|| Self(code.to_owned()))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// `minor_units` is the smallest unit of the currency (cents for EUR).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Amount {
+    pub minor_units: i64,
+    pub currency: Currency,
+}
 
 /// How many minor units (cents) make one unit of an amount.
 pub const MINOR_UNITS_PER_UNIT: i64 = 100;
@@ -25,8 +45,8 @@ pub fn amount_digits(amount: &Amount) -> String {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
+    use super::Currency;
     use super::*;
-    use crate::Currency;
 
     #[test]
     fn negative_amounts_keep_their_sign_and_two_decimals() {

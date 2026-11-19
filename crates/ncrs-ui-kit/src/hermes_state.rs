@@ -1,7 +1,7 @@
 //! What the Hermes column shows for a file and a folder, as plain data.
 
 use ncrs_i18n::{Language, Msg};
-use ncrs_index::StatusCounts;
+use ncrs_index_types::StatusCounts;
 
 /// What the status column shows for a file, strongest first.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

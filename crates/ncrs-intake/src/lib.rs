@@ -87,8 +87,8 @@ pub use structure::{
     NameScheme, Placeholder, PlaceholderKind, PlaceholderLabel, StructureDocument, UnorderedFolder,
 };
 pub use take_in::{
-    finish_take_in, has_symlink_ancestor_under, hash_path, open_without_following, prepare_take_in,
-    take_in, Outcome, PendingHash, Prepared, Taken,
+    finish_take_in, has_symlink_ancestor_under, hash_path, open_below, open_without_following,
+    prepare_take_in, take_in, Outcome, PendingHash, Prepared, Taken,
 };
 pub use text::{
     ChainReading, Extracted, ImageTextSource, ImageTextWithFallback, PageImage, PreviewPage,

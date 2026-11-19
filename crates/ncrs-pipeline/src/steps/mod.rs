@@ -16,7 +16,9 @@ use ncrs_intake::{
     finish_take_in, prepare_take_in, settle_location, IntakeError, Location, LocationMode, Outcome,
     PendingHash, Prepared,
 };
-use ncrs_intake::{is_image_file, relative_to_location, text_is_readable, ChainReading};
+use ncrs_intake::{
+    is_image_file, open_below, relative_to_location, text_is_readable, ChainReading,
+};
 
 use crate::ai_step::{clear_field, AiStep, AI_READ_VERSION};
 use crate::step::{with_index_value, IndexAccess, Item, Step, StepOutcome};
@@ -264,7 +266,13 @@ impl Step for TextStep {
                 .filter(|text| !text.is_empty());
             return Ok(StepOutcome::Continue);
         }
-        item.text = match self.chain.read(&item.path) {
+        let reading = open_below(&item.location.path, &item.path)
+            .map_err(|err| TextError::Io {
+                path: item.path.clone(),
+                reason: err.to_string(),
+            })
+            .and_then(|file| self.chain.read_open(&item.path, &file));
+        item.text = match reading {
             Ok(ChainReading::Text(text)) => Some(text),
             Ok(ChainReading::NoText { recognition_ran }) => {
                 item.not_a_document = recognition_ran

@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use iced::widget::{operation, text_editor};
 use iced::Task;
+use ncrs_core::NoteLink;
 use ncrs_i18n::{fill_template, Msg};
 use ncrs_ui_kit::markdown_view::{classify, parse_markdown, Link};
 
@@ -55,6 +56,23 @@ pub fn open(state: &mut State) -> Task<Message> {
 }
 
 pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> (Task<Message>, Option<Action>) {
+    let changes_noted_files = !matches!(
+        message,
+        Message::Edited(_)
+            | Message::SearchChanged(_)
+            | Message::FocusSearch
+            | Message::SaveDue(_)
+            | Message::Up
+            | Message::Down
+    );
+    let result = update_inner(state, message, ctx);
+    if changes_noted_files {
+        state.refresh_noted();
+    }
+    result
+}
+
+fn update_inner(state: &mut State, message: Message, ctx: &Ctx) -> (Task<Message>, Option<Action>) {
     let nothing = (Task::none(), None);
     match message {
         Message::Reload => (reload(state), None),
@@ -251,7 +269,15 @@ fn resolve_all(state: &State) -> Option<Action> {
         .notes
         .iter()
         .filter_map(|note| match &note.kind {
-            Kind::File { file, document } => Some((*document, file.clone())),
+            Kind::File {
+                file,
+                document,
+                hash,
+            } => Some(NoteLink {
+                document: *document,
+                hash: hash.clone(),
+                file: file.clone(),
+            }),
             Kind::Topic => None,
         })
         .collect();
@@ -622,7 +648,7 @@ fn shown_file(state: &State) -> Option<PathBuf> {
 fn links_resolved(
     state: &mut State,
     asked: &[PathBuf],
-    answer: Result<Vec<(Option<i64>, PathBuf)>, String>,
+    answer: Result<Vec<NoteLink>, String>,
     ctx: &Ctx,
 ) -> (Task<Message>, Option<Action>) {
     let resolved = match answer {
@@ -631,7 +657,7 @@ fn links_resolved(
     };
     let typing = state.dirty.then(|| state.current.clone()).flatten();
     let mut writes = Vec::new();
-    for (was, (id, path)) in asked.iter().zip(resolved) {
+    for (was, link) in asked.iter().zip(resolved) {
         let Some(note) = state
             .notes
             .iter_mut()
@@ -639,14 +665,26 @@ fn links_resolved(
         else {
             continue;
         };
-        let Kind::File { file, document } = &mut note.kind else {
+        let Kind::File {
+            file,
+            document,
+            hash,
+        } = &mut note.kind
+        else {
             continue;
         };
-        if *file == path && (id.is_none() || *document == id) {
+        let same_on_disk = *file == link.file && (link.hash.is_none() || *hash == link.hash);
+        if same_on_disk && (link.document.is_none() || *document == link.document) {
             continue;
         }
-        *file = path;
-        *document = id.or(*document);
+        *file = link.file;
+        *document = link.document.or(*document);
+        *hash = link.hash.or_else(|| hash.take());
+        // Only the number differs: the file on disk says the same, and two
+        // computers sharing the folder would otherwise rewrite it in turns.
+        if same_on_disk {
+            continue;
+        }
         // A note being typed in is written with its next flush.
         if typing.as_ref() != Some(&note.path) {
             writes.push((note.path.clone(), note.file_text(), Expect::of(note.base)));
@@ -680,11 +718,16 @@ fn edit_note_on(state: &mut State, file: PathBuf, ctx: &Ctx) -> (Task<Message>, 
         Ok(task) => task,
         Err(problem) => return (Task::none(), Some(problem)),
     };
-    let document = match state.note_on(&file).map(|note| &note.kind) {
-        Some(Kind::File { document, .. }) => *document,
-        _ => None,
+    let (document, hash) = match state.note_on(&file).map(|note| &note.kind) {
+        Some(Kind::File { document, hash, .. }) => (*document, hash.clone()),
+        _ => (None, None),
     };
-    (task, Some(Action::ResolveLinks(vec![(document, file)])))
+    let link = NoteLink {
+        document,
+        hash,
+        file,
+    };
+    (task, Some(Action::ResolveLinks(vec![link])))
 }
 
 /// Shows the note on `file` in the editor, making it when there is none. A
@@ -716,6 +759,7 @@ fn make_file_note_current(
                 kind: Kind::File {
                     file,
                     document: None,
+                    hash: None,
                 },
                 text: String::new(),
                 modified: None,

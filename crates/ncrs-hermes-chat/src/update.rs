@@ -27,6 +27,9 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> (Task<Message>,
         state.picks_stop.store(true, Ordering::Relaxed);
     }
     let action = route(state, message, ctx).or_else(|| state.queued_action.take());
+    if state.restart_when_idle && !is_busy(state) {
+        restart_conversation(state, ctx);
+    }
     (launch(state, ctx), action)
 }
 
@@ -56,7 +59,11 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
             None
         }
         Message::IndexReplaced => {
-            restart_conversation(state, ctx);
+            if is_busy(state) {
+                state.restart_when_idle = true;
+            } else {
+                restart_conversation(state, ctx);
+            }
             None
         }
         Message::InputChanged(input) => {
@@ -221,11 +228,15 @@ fn change_area(state: &mut State, ctx: &Ctx, folder: PathBuf, area: String) -> O
 /// The conversation starts over as when Hermes was opened the first time:
 /// thread and flow are gone, the settings, the index and the rules are not
 /// touched. While work runs, its result would land in the new chat, so the
-/// button waits for it.
+/// button waits for it. The language model is the exception: a slow answer
+/// must not hold the chat, and it is dropped with the old conversation.
 fn new_chat(state: &mut State, ctx: &Ctx) {
+    let thinking = state.thinking.take();
     if is_busy(state) {
+        state.thinking = thinking;
         return;
     }
+    drop(thinking);
     restart_conversation(state, ctx);
 }
 

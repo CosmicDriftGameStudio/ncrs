@@ -665,8 +665,9 @@ impl App {
             }
             Message::KeyBindings(shortcuts) => self.update_key_bindings(shortcuts),
             Message::ThemeFetch(fetch_message) => self.update_theme_fetch(fetch_message),
-            Message::Rules(rules) => self.update_rules(rules),
-            Message::SavedQueries(queries) => self.update_saved_queries(queries),
+            plain @ (Message::Rules(_) | Message::SavedQueries(_) | Message::Tags(_)) => {
+                self.update_hermes_plain(plain)
+            }
             Message::Monitor(monitor_message) => self.update_monitor(monitor_message),
             Message::Viewer(viewer_message) => self.update_viewer(viewer_message),
             Message::Notes(notes_message) => self.update_notes(notes_message),
@@ -675,12 +676,11 @@ impl App {
             Message::NoteOnFile => self.note_on_file(),
             Message::Updates(updates_message) => self.update_updates(updates_message),
             Message::VersionPressed => self.open_version_info(),
-            Message::Tags(tags) => self.update_tags(tags),
             Message::HermesPage(page) => self.show_hermes_page(page),
             Message::ShowAiSettings => {
                 self.show_setting(crate::messages::SettingsFeature::Ai, None)
             }
-            Message::DocumentsFiled(result) => self.documents_filed(result),
+            plain @ Message::DocumentsFiled(_) => self.update_hermes_plain(plain),
             Message::About(about_message) => self.update_about(about_message),
             Message::OcrModels(models_message) => self.update_ocr_models(models_message),
             Message::AiModel(model_message) => self.update_ai_model(model_message),
@@ -700,7 +700,7 @@ impl App {
             }
             Message::Settings(SettingsMessage::FocusKey(key)) => self.settings_focus_key(key),
             Message::Settings(settings_message) => self.update_settings(settings_message),
-            Message::Filing(filing_message) => self.update_filing(filing_message),
+            plain @ Message::Filing(_) => self.update_hermes_plain(plain),
             Message::FilingStatus(page_message) => {
                 let is_tick = matches!(page_message, FilingStatusMessage::Tick);
                 let looks_for_waiting = is_tick && self.hermes_chat.open;
@@ -735,10 +735,7 @@ impl App {
                     Task::batch([status, picks, facts])
                 }
             }
-            Message::HermesColumn(column_message) => self
-                .run_hermes_flow(Vec::new(), |hermes, ctx| {
-                    ncrs_hermes_ui::update_hermes_column(hermes, column_message, ctx)
-                }),
+            plain @ Message::HermesColumn(_) => self.update_hermes_plain(plain),
             Message::HermesOverview(overview_message) => {
                 self.update_hermes_overview(overview_message)
             }

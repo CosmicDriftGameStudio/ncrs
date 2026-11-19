@@ -12,9 +12,12 @@ publish = false
 workspace = true
 
 [dependencies]
+ncrs-model-file = { path = "../ncrs-model-file", version = "0.0.0" }
 ncrs-index = { path = "../ncrs-index", version = "0.0.0" }
 ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
 sha2 = "0.11"
+# Text with decomposed umlauts is composed once before the fields are read.
+unicode-normalization = "0.1.26"
 walkdir = "2.5"
 same-file = "1.0"
 # One recursive watcher per location; the backends (FSEvents, inotify,

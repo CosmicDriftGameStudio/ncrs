@@ -529,3 +529,17 @@ fn a_saved_search_finds_the_documents_the_page_showed() {
 
     assert_eq!(rerun, shown);
 }
+
+#[test]
+fn an_answer_is_reused_only_for_the_same_words_and_folder() {
+    let root = PathBuf::from("/archive");
+    let mut search = SearchFilters::new(Arc::default());
+    search.ask("rent");
+    search.asking_under(&root);
+    assert!(!search.has_answer_for("rent", &root), "still asking");
+    search.ran(six_hits());
+
+    assert!(search.has_answer_for(" rent ", &root));
+    assert!(!search.has_answer_for("rents", &root));
+    assert!(!search.has_answer_for("rent", &PathBuf::from("/other")));
+}

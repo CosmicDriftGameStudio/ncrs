@@ -181,7 +181,10 @@ impl Search {
         if view.is_filtered() {
             // The index answers; the walk would find other things.
             self.handle = None;
-            view.running = true;
+            view.running = view
+                .filters
+                .as_ref()
+                .is_some_and(crate::filters::SearchFilters::is_busy);
             return asked;
         }
         let walk = match engine::compile(&view.query_for_engine()) {
@@ -221,7 +224,18 @@ impl Search {
         let Some(filters) = view.filters.as_mut() else {
             return Task::none();
         };
+        if filters.has_answer_for(&words, &root) {
+            // Only the name filter or the folder filter moved: the answer
+            // stands, the list is rebuilt from it.
+            let rows = self.rows;
+            if let Some(view) = self.view.as_mut().filter(|view| view.is_filtered()) {
+                view.mirror_index(rows);
+            }
+            self.refresh_rows(ctx);
+            return self.request_snippets(ctx);
+        }
         let (generation, spec) = filters.ask(&words);
+        filters.asking_under(&root);
         let Some(access) = ctx.index.clone() else {
             filters.failed(ncrs_core::INDEX_NOT_OPEN.to_owned());
             return Task::none();

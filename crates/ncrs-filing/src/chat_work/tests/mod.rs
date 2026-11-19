@@ -1164,3 +1164,45 @@ fn the_ui_gets_no_answer_instead_of_waiting_while_a_run_holds_the_index() {
     assert_eq!(setup.access.try_kinds().err(), None);
     assert_eq!(setup.access.try_rules().unwrap().len(), 0);
 }
+
+#[test]
+fn files_filed_by_hermes_itself_are_the_last_run_and_can_be_put_back() {
+    let setup = Setup::new();
+    let archive = setup.dir.path().join("archive");
+    fs::create_dir_all(&archive).unwrap();
+    let from = setup.write("inbox/a.txt", "first");
+    let item = crate::execute::ExecutionItem {
+        from: from.clone(),
+        to: archive.join("Alfa/a.txt"),
+        expected_hash: ncrs_intake::hash_path(&from).unwrap(),
+        document_id: None,
+        duplicate: false,
+    };
+    setup
+        .access
+        .with_index(|index| {
+            crate::execute::execute_with(
+                index,
+                ncrs_index::BatchKind::Filing,
+                &archive,
+                &[item],
+                &mut ncrs_fs::transfer::Counting,
+                &ncrs_fs::transfer::Move,
+            )
+            .map_err(|err| err.to_string())
+        })
+        .unwrap();
+
+    let summary = last_run(&setup).unwrap();
+    assert!(summary.automatic);
+    assert_eq!(summary.items, 1);
+    assert_eq!(summary.name, archive.to_string_lossy());
+    let ChatResult::Undone(undone) = setup.access.run(ChatWork::Undo {
+        batch: summary.batch,
+    }) else {
+        panic!("not an undo result");
+    };
+    assert_eq!(undone.unwrap().undone, 1);
+    assert!(from.exists());
+    assert_eq!(last_run(&setup), None);
+}

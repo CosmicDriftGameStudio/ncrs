@@ -159,7 +159,11 @@ fn think(state: &mut State, ctx: &Ctx, typed: &str, asked: Asked, loaded: bool) 
         Msg::HermesChatWaking
     };
     state.thread.push(Entry::Working(text(ctx.lang, line)));
-    state.thinking = Some(Thinking { turn, asked });
+    state.thinking = Some(Thinking {
+        turn,
+        asked,
+        discard_answer_on_drop: None,
+    });
     state.fresh_turn = true;
 }
 
@@ -168,9 +172,9 @@ pub fn launch(state: &mut State, ctx: &Ctx) -> Task<Message> {
     if !std::mem::take(&mut state.fresh_turn) {
         return Task::none();
     }
-    let Some(thinking) = state.thinking.as_ref() else {
+    if state.thinking.is_none() {
         return Task::none();
-    };
+    }
     let Some(model) = ctx.model.clone() else {
         // The model went away since the question: end the wait.
         state.thinking = None;
@@ -180,8 +184,11 @@ pub fn launch(state: &mut State, ctx: &Ctx) -> Task<Message> {
         }
         return Task::none();
     };
+    let Some(thinking) = state.thinking.as_mut() else {
+        return Task::none();
+    };
     let turn = thinking.turn.clone();
-    Task::perform(
+    let (task, handle) = Task::perform(
         async move { tokio::task::spawn_blocking(move || model.understand(&turn)).await },
         |joined| match joined {
             Ok(Ok(intent)) => Message::Understood(Ok(intent)),
@@ -189,6 +196,9 @@ pub fn launch(state: &mut State, ctx: &Ctx) -> Task<Message> {
             Err(_join) => Message::Understood(Err(ModelProblem::Internal)),
         },
     )
+    .abortable();
+    thinking.discard_answer_on_drop = Some(handle.abort_on_drop());
+    task
 }
 
 pub fn understood(

@@ -44,8 +44,16 @@ pub(in crate::e2e_tests) struct NoteOnIndexedFile {
 fn index_knows(app: &App, file: &std::path::Path) -> bool {
     app.filing_module_for_test()
         .and_then(|module| module.note_link_finder())
-        .and_then(|finder| finder.resolve(&[(None, file.to_path_buf())]).ok())
-        .is_some_and(|resolved| resolved.first().is_some_and(|(id, _)| id.is_some()))
+        .and_then(|finder| {
+            finder
+                .resolve(&[ncrs_core::NoteLink {
+                    document: None,
+                    hash: None,
+                    file: file.to_path_buf(),
+                }])
+                .ok()
+        })
+        .is_some_and(|resolved| resolved.first().is_some_and(|link| link.document.is_some()))
 }
 
 fn has_document(app: &App, file: &std::path::Path) -> bool {
@@ -54,6 +62,7 @@ fn has_document(app: &App, file: &std::path::Path) -> bool {
             note.kind,
             Kind::File {
                 document: Some(_),
+                hash: _,
                 ..
             }
         )

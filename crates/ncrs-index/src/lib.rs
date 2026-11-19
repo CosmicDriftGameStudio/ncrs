@@ -12,17 +12,15 @@ mod index;
 mod journal;
 mod key;
 mod key_store;
-mod kinds;
+use ncrs_index_types::kinds;
 mod locations;
 mod migrations;
 mod model;
 mod names;
 #[cfg(test)]
 mod origin_migration_tests;
-mod profile;
 mod query_hit;
 mod regex_limits;
-mod reorganisation;
 mod review;
 mod rule_suggestions;
 mod rules;
@@ -52,10 +50,10 @@ pub use model::{
     Amount, BatchId, Combinator, Condition, ConditionKind, ConflictReason, ContentHash, Currency,
     Document, DocumentFields, DocumentId, DocumentSource, DocumentStatus, Field, FieldOrigin,
     FieldOrigins, FileStamp, Finding, FindingKind, HermesCounts, IndexStatistics, NewDocument,
-    NoActionReason, PlanId, PlanItem, PlanOutcome, QuerySpec, ReorganisationPlan, ReviewEntry,
-    ReviewEntryId, ReviewReason, Rule, RuleConditions, RuleEvidence, RuleId, RuleOrigin, RuleSpec,
-    RuleSuggestion, SavedQuery, SavedQueryId, SenderAlias, SenderAliasId, SenderAliasKind,
-    SenderAliasState, SenderAliases, StatusCounts, SubtreePattern,
+    NoActionReason, PlanItem, PlanOutcome, QuerySpec, ReviewEntry, ReviewEntryId, ReviewReason,
+    Rule, RuleConditions, RuleEvidence, RuleId, RuleOrigin, RuleSpec, RuleSuggestion, SavedQuery,
+    SavedQueryId, SenderAlias, SenderAliasId, SenderAliasKind, SenderAliasState, SenderAliases,
+    StatusCounts, SubtreePattern,
 };
 pub use query_hit::QueryHit;
 pub use regex_limits::compile_bounded_regex;

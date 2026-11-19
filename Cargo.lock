@@ -3430,6 +3430,7 @@ dependencies = [
  "llama-cpp-sys-2",
  "ncrs-index",
  "ncrs-intake",
+ "ncrs-model-file",
  "ncrs-priority",
  "sha2 0.11.1",
  "tempfile",
@@ -3609,7 +3610,7 @@ dependencies = [
 name = "ncrs-i18n"
 version = "0.0.0"
 dependencies = [
- "ncrs-index",
+ "ncrs-index-types",
 ]
 
 [[package]]
@@ -3619,11 +3620,20 @@ dependencies = [
  "chrono",
  "getrandom 0.4.3",
  "keyring",
+ "ncrs-index-types",
  "regex",
  "rusqlite",
  "tempfile",
  "tokio",
+ "unicode-normalization",
  "zeroize",
+]
+
+[[package]]
+name = "ncrs-index-types"
+version = "0.0.0"
+dependencies = [
+ "unicode-normalization",
 ]
 
 [[package]]
@@ -3635,6 +3645,7 @@ dependencies = [
  "libc",
  "ncrs-i18n",
  "ncrs-index",
+ "ncrs-model-file",
  "nix",
  "notify",
  "ocrs",
@@ -3645,6 +3656,7 @@ dependencies = [
  "same-file",
  "sha2 0.11.1",
  "tempfile",
+ "unicode-normalization",
  "walkdir",
  "zip",
 ]
@@ -3655,6 +3667,13 @@ version = "0.0.0"
 dependencies = [
  "iced",
  "ncrs-i18n",
+]
+
+[[package]]
+name = "ncrs-model-file"
+version = "0.0.0"
+dependencies = [
+ "sha2 0.11.1",
 ]
 
 [[package]]
@@ -3676,6 +3695,7 @@ version = "0.0.0"
 dependencies = [
  "iced",
  "iced_test",
+ "ncrs-core",
  "ncrs-i18n",
  "ncrs-ui-kit",
  "tempfile",
@@ -3828,7 +3848,7 @@ dependencies = [
  "iced_test",
  "ncrs-core",
  "ncrs-i18n",
- "ncrs-index",
+ "ncrs-index-types",
  "ttf-parser",
 ]
 

@@ -56,10 +56,17 @@ pub fn read_done(state: &mut State, ctx: &Ctx, result: Result<Arc<FolderReading>
             deliver(state, ctx, purpose, &reading);
         }
         Err(error) => {
+            let requested = state.session.requested.clone();
+            if purpose == ReadFor::Source && archive_moves_wait(state) {
+                let sentence = read_error_text(ctx, &error, &requested);
+                say(state, sentence, Vec::new());
+                if crate::rule_flow::trial::empty_source(state, ctx) {
+                    return;
+                }
+            }
             state.session.tidy = None;
             state.session.resume_tidy = false;
             state.step = Step::Idle;
-            let requested = state.session.requested.clone();
             let can_retry = matches!(error, ReadError::Gone | ReadError::NotADirectory)
                 && matches!(purpose, ReadFor::Learn | ReadFor::Source | ReadFor::Open);
             state.session.retry = can_retry.then(|| Retry {
@@ -67,32 +74,46 @@ pub fn read_done(state: &mut State, ctx: &Ctx, result: Result<Arc<FolderReading>
                 purpose,
                 unresolved_in: None,
             });
-            let sentence = match error {
-                ReadError::Gone => fill(
-                    ctx.lang,
-                    Msg::HermesChatFolderGone,
-                    &[("path", &requested.to_string_lossy())],
-                ),
-                ReadError::NotADirectory => fill(
-                    ctx.lang,
-                    Msg::HermesChatNotAFolder,
-                    &[("name", &folder_name(ctx, &requested))],
-                ),
-                ReadError::TooMany { limit } => fill(
-                    ctx.lang,
-                    Msg::HermesChatTooMany,
-                    &[
-                        ("folder", &folder_name(ctx, &requested)),
-                        ("limit", &number(limit)),
-                    ],
-                ),
-                ReadError::Io(reason) => {
-                    fill(ctx.lang, Msg::HermesChatReadFailed, &[("reason", &reason)])
-                }
-            };
+            let sentence = read_error_text(ctx, &error, &requested);
             let chips = lost_folder_retry_chips(state, ctx);
             say(state, sentence, chips);
         }
+    }
+
+    fn read_error_text(ctx: &Ctx, error: &ReadError, requested: &std::path::Path) -> String {
+        match error {
+            ReadError::Gone => fill(
+                ctx.lang,
+                Msg::HermesChatFolderGone,
+                &[("path", &requested.to_string_lossy())],
+            ),
+            ReadError::NotADirectory => fill(
+                ctx.lang,
+                Msg::HermesChatNotAFolder,
+                &[("name", &folder_name(ctx, requested))],
+            ),
+            ReadError::TooMany { limit } => fill(
+                ctx.lang,
+                Msg::HermesChatTooMany,
+                &[
+                    ("folder", &folder_name(ctx, requested)),
+                    ("limit", &number(*limit)),
+                ],
+            ),
+            ReadError::Io(reason) => {
+                fill(ctx.lang, Msg::HermesChatReadFailed, &[("reason", reason)])
+            }
+        }
+    }
+
+    /// "Rearrange now" has archive moves that do not depend on the source that
+    /// could not be read.
+    fn archive_moves_wait(state: &State) -> bool {
+        state
+            .session
+            .tidy
+            .as_ref()
+            .is_some_and(|tidy| tidy.rule_now.is_some() && !tidy.inside.is_empty())
     }
 }
 

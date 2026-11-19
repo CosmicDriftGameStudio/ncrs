@@ -662,3 +662,31 @@ fn a_folder_outside_the_target_files_nothing() {
     assert!(!outside.exists());
     assert!(!setup._dir.path().join("outside").exists());
 }
+
+#[test]
+fn everything_one_accept_files_goes_into_one_batch_that_one_undo_takes_back() {
+    let setup = Setup::new();
+    setup.in_review("one.pdf");
+    setup.in_review("two.pdf");
+    let items = setup.access().load().unwrap();
+    assert_eq!(items.len(), 2);
+
+    let summary = setup.access().accept_into(&items, Path::new("Box"));
+
+    assert_eq!(summary.filed, 2, "{:?}", summary.first_failure);
+    let batches = setup.with_index(|index| index.undoable_batches(BatchKind::Filing, 10).unwrap());
+    assert_eq!(batches.len(), 1);
+    let batch = batches[0];
+    let info = setup.with_index(|index| index.batch_info(batch).unwrap().unwrap());
+    assert_eq!(
+        info.name,
+        Some(setup.archive.join("Box").to_string_lossy().into_owned())
+    );
+    let items = setup.with_index(|index| index.journal_items(batch).unwrap());
+    assert_eq!(items.len(), 2);
+
+    setup.with_index(|index| {
+        crate::execute::undo_with_trash(index, batch, &[], None).unwrap();
+    });
+    assert!(setup.inbox.join("one.pdf").exists() && setup.inbox.join("two.pdf").exists());
+}

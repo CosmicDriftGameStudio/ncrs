@@ -161,6 +161,7 @@ fn undo_scene() -> App {
             .unwrap()
             .timestamp(),
         source_folder: Some(PathBuf::from("/home/test/Downloads")),
+        automatic: false,
     };
     send(
         &mut app,

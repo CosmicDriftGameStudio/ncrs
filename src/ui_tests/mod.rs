@@ -3572,6 +3572,7 @@ mod rules_card {
             in_archive: 0,
             not_indexed: 0,
             archive_moves: Vec::new(),
+            archive_blocked: 0,
             conflict_names: [(rule_id(2), 2), (rule_id(3), 3)].into_iter().collect(),
         });
         page

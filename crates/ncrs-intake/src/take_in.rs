@@ -275,7 +275,7 @@ pub fn open_without_following(path: &Path) -> io::Result<File> {
 /// lead the open out of the location. Each part is opened relative to the one
 /// before it, so a swap cannot redirect the walk.
 #[cfg(unix)]
-fn open_below(root: &Path, path: &Path) -> io::Result<File> {
+pub fn open_below(root: &Path, path: &Path) -> io::Result<File> {
     use nix::fcntl::{openat, OFlag};
     use nix::sys::stat::Mode;
     use std::path::Component;
@@ -308,7 +308,7 @@ fn open_below(root: &Path, path: &Path) -> io::Result<File> {
 }
 
 #[cfg(not(unix))]
-fn open_below(_root: &Path, path: &Path) -> io::Result<File> {
+pub fn open_below(_root: &Path, path: &Path) -> io::Result<File> {
     open_without_following(path)
 }
 

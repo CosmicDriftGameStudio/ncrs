@@ -235,9 +235,10 @@ impl App {
         let ncrs_hermes_chat::Availability::Ready(access) = self.chat_availability() else {
             return Task::none();
         };
+        let lang = self.lang;
         Task::perform(
             async move {
-                tokio::task::spawn_blocking(move || undo_batch(&access, batch))
+                tokio::task::spawn_blocking(move || undo_batch(&access, batch, lang))
                     .await
                     .unwrap_or_else(|failure| Err(failure.to_string()))
             },
@@ -246,12 +247,14 @@ impl App {
     }
 }
 
-fn undo_batch(access: &ChatAccess, batch: i64) -> Result<usize, String> {
+fn undo_batch(access: &ChatAccess, batch: i64, lang: Language) -> Result<usize, String> {
     match access.run(ChatWork::Undo {
         batch: BatchId::from_number(batch),
     }) {
         ChatResult::Undone(undone) => undone.map(|report| report.left),
-        _ => Err("unexpected answer to the undo request".to_owned()),
+        _ => Err(lang
+            .text(Msg::SettingsHermesHistoryUndoUnexpected)
+            .to_string()),
     }
 }
 

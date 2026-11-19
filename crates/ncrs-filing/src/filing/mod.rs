@@ -27,10 +27,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError, TryLockError};
 use std::thread;
 
-use ncrs_core::INDEX_NOT_OPEN;
+use ncrs_core::{NoteLink, INDEX_NOT_OPEN};
 use ncrs_index::{
-    HermesCounts, Index, IndexError, IndexStatistics, KeyStore, KindCatalog, KindLanguage,
-    RecoveryKey,
+    ContentHash, Document, HermesCounts, Index, IndexError, IndexStatistics, KeyStore, KindCatalog,
+    KindLanguage, RecoveryKey,
 };
 #[cfg(target_os = "macos")]
 use ncrs_intake::ImageTextWithFallback;
@@ -165,12 +165,14 @@ pub struct FilingModule {
     kinds: Arc<KindCatalog>,
     /// Built when the chat first needs it; the models are only loaded when a
     /// scan has to be read.
-    chat_text_chain: OnceLock<Arc<TextChain>>,
+    chat_text_chain: Arc<OnceLock<Arc<TextChain>>>,
     /// The chain the pipeline reads with, kept so closing the app can clear
     /// its crash marker while a reading still holds the chain.
     pipeline_text_chain: Mutex<Option<Arc<TextChain>>>,
     /// What the last settling of an interrupted run could not do.
     settle_problem: SettleNote,
+    /// The chat, the review list and the filing tab count their work here.
+    index_work: crate::index_work::IndexWork,
     /// The plain file was confirmed and what a crash left is being settled;
     /// the module is ready when that is done.
     settling: bool,

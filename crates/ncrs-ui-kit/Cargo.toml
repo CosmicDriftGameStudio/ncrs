@@ -15,7 +15,7 @@ publish = false
 iced = { version = "0.14", default-features = false, features = ["tokio", "advanced", "svg", "markdown"] }
 ncrs-core = { path = "../ncrs-core", version = "0.0.0" }
 ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
-ncrs-index = { path = "../ncrs-index", version = "0.0.0" }
+ncrs-index-types = { path = "../ncrs-index-types", version = "0.0.0" }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 ttf-parser = "0.25"
 

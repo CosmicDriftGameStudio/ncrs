@@ -22,7 +22,7 @@ use ncrs_intake::{
 };
 use ncrs_pipeline::OwnDetails;
 
-use crate::execute::{execute_copying, execute_with, ItemOutcome, SkipReason};
+use crate::execute::{execute_copying_into, execute_into, FilingBatches, ItemOutcome, SkipReason};
 use crate::filing::lies_within;
 use crate::filing_work::target_of;
 use ncrs_core::INDEX_NOT_OPEN;
@@ -147,6 +147,7 @@ pub struct ReviewAccess {
     copy_roots: Vec<PathBuf>,
     kind_language: KindLanguage,
     own: OwnDetails,
+    index_work: crate::index_work::IndexWork,
 }
 
 impl std::fmt::Debug for ReviewAccess {
@@ -164,7 +165,13 @@ impl ReviewAccess {
             copy_roots: Vec::new(),
             kind_language: KindLanguage::default(),
             own: OwnDetails::default(),
+            index_work: crate::index_work::IndexWork::default(),
         }
+    }
+
+    /// The accepting of several items counts as running as a whole.
+    pub fn with_index_work(self, index_work: crate::index_work::IndexWork) -> Self {
+        Self { index_work, ..self }
     }
 
     /// The roots of the locations: the rules see a path relative to its root.
@@ -280,13 +287,20 @@ impl ReviewAccess {
     /// Files each item under the rule that came closest, one after the other,
     /// through the same journaled move as [`Self::confirm`].
     pub fn accept(&self, items: &[ReviewItem]) -> AcceptSummary {
+        let _running = self.index_work.begin();
         let mut summary = AcceptSummary::default();
+        let mut batches = FilingBatches::default();
         for item in items {
             let outcome = match (&item.proposed_pattern, self.still_describes(item)) {
                 (_, Err(detail)) => Err(detail),
-                (Some(pattern), Ok(())) => {
-                    self.confirm(item.entry, item.document_id, &item.fields, pattern)
-                }
+                (Some(pattern), Ok(())) => self.confirm_in(
+                    &self.target_root,
+                    &mut batches,
+                    item.entry,
+                    item.document_id,
+                    &item.fields,
+                    Naming::Pattern(pattern),
+                ),
                 (None, Ok(())) => Err(PATTERN_DOES_NOT_FIT.to_owned()),
             };
             summary.record(outcome);
@@ -313,15 +327,18 @@ impl ReviewAccess {
     /// other, through the same journaled move as [`Self::confirm`]. A relative
     /// `folder` lies below the target.
     pub fn accept_into(&self, items: &[ReviewItem], folder: &Path) -> AcceptSummary {
+        let _running = self.index_work.begin();
         let root = self.target_root.join(folder);
         let folder_fits = folder.as_os_str().is_empty() || stays_below(folder);
         let mut summary = AcceptSummary::default();
+        let mut batches = FilingBatches::default();
         for item in items {
             let outcome = match item.path.file_stem().and_then(|stem| stem.to_str()) {
                 _ if !folder_fits => Err(FOLDER_ESCAPES_TARGET.to_owned()),
                 Some(stem) => self.still_describes(item).and_then(|()| {
                     self.confirm_in(
                         &root,
+                        &mut batches,
                         item.entry,
                         item.document_id,
                         &item.fields,
@@ -367,6 +384,7 @@ impl ReviewAccess {
     ) -> Result<ConfirmOutcome, String> {
         self.confirm_in(
             &self.target_root,
+            &mut FilingBatches::default(),
             entry,
             document_id,
             fields,
@@ -377,6 +395,7 @@ impl ReviewAccess {
     fn confirm_in(
         &self,
         root: &Path,
+        batches: &mut FilingBatches,
         entry: ReviewEntryId,
         document_id: DocumentId,
         fields: &DocumentFields,
@@ -390,7 +409,7 @@ impl ReviewAccess {
             (entry, document_id),
             fields,
             naming,
-            (&Move, &self.copy_roots),
+            (&Move, &self.copy_roots, batches),
             self.kind_language,
         )
     }
@@ -702,7 +721,7 @@ fn confirm<S: Source>(
     (entry, document_id): (ReviewEntryId, DocumentId),
     fields: &DocumentFields,
     naming: Naming<'_>,
-    (effect, copy_roots): (&S, &[PathBuf]),
+    (effect, copy_roots, batches): (&S, &[PathBuf], &mut FilingBatches),
     kind_language: KindLanguage,
 ) -> Result<ConfirmOutcome, String> {
     let failed = |err: IndexError| err.to_string();
@@ -735,10 +754,18 @@ fn confirm<S: Source>(
         .iter()
         .any(|copy| lies_within(&document.path, copy));
     let report = if copying {
-        execute_copying(index, BatchKind::Filing, root, &[item], &mut Counting)
-    } else {
-        execute_with(
+        execute_copying_into(
             index,
+            batches,
+            BatchKind::Filing,
+            root,
+            &[item],
+            &mut Counting,
+        )
+    } else {
+        execute_into(
+            index,
+            batches,
             BatchKind::Filing,
             root,
             &[item],

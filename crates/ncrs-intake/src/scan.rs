@@ -5,6 +5,7 @@ use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
+use chrono::Utc;
 use ncrs_index::Index;
 use walkdir::WalkDir;
 
@@ -222,5 +223,11 @@ fn settle_vanished_documents(
             Err(_unreadable) => report.count_error(&path),
         }
     }
+    let cutoff = Utc::now().timestamp() - MISSING_DOCUMENTS_KEPT_DAYS * 24 * 60 * 60;
+    index.purge_missing_beneath(&location.path, cutoff)?;
     Ok(())
 }
+
+/// How long the text and fields of a document whose file is gone stay in the
+/// index, in case the file comes back or was only moved.
+const MISSING_DOCUMENTS_KEPT_DAYS: i64 = 30;

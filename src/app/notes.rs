@@ -75,7 +75,6 @@ impl App {
         let was_open = self.open_pages();
         let ctx = self.notes_ctx();
         let (task, asked) = ncrs_notes::update(&mut self.notes, message, &ctx);
-        self.noted = self.notes.noted_files();
         let action_task = match asked {
             Some(action) => self.run_notes_action(action),
             None => Task::none(),
@@ -101,7 +100,7 @@ impl App {
                 else {
                     return Task::none();
                 };
-                let asked: Vec<PathBuf> = links.iter().map(|(_, path)| path.clone()).collect();
+                let asked: Vec<PathBuf> = links.iter().map(|link| link.file.clone()).collect();
                 Task::perform(
                     tokio::task::spawn_blocking(move || finder.resolve(&links)),
                     move |joined| {

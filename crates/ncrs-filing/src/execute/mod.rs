@@ -217,6 +217,15 @@ pub(in crate::execute) fn remember_source_root(source: &Path) -> Result<SourceRo
     })
 }
 
+/// The batches of one filing pass: what moves goes into one, what is copied
+/// into another, however many calls bring the files. One undo then takes the
+/// whole pass back.
+#[derive(Debug, Default)]
+pub struct FilingBatches {
+    moved: Option<BatchId>,
+    copied: Option<BatchId>,
+}
+
 /// `execute` with the effect of the move given, so a test can stand in for a
 /// volume boundary or a failing delete.
 pub fn execute_with<P: Progress, S: Source>(
@@ -227,7 +236,36 @@ pub fn execute_with<P: Progress, S: Source>(
     progress: &mut P,
     effect: &S,
 ) -> Result<ExecutionReport, ExecuteError> {
-    let batch = index.begin_batch(kind)?;
+    execute_into(
+        index,
+        &mut FilingBatches::default(),
+        kind,
+        root,
+        items,
+        progress,
+        effect,
+    )
+}
+
+/// [`execute_with`] into the move batch of `batches`, which it opens when
+/// this is the first call.
+pub fn execute_into<P: Progress, S: Source>(
+    index: &Index,
+    batches: &mut FilingBatches,
+    kind: BatchKind,
+    root: &Path,
+    items: &[ExecutionItem],
+    progress: &mut P,
+    effect: &S,
+) -> Result<ExecutionReport, ExecuteError> {
+    let batch = match batches.moved {
+        Some(open) => open,
+        None => {
+            let opened = open_filing_batch(index, kind, root, Transfer::Move)?;
+            batches.moved = Some(opened);
+            opened
+        }
+    };
     let places = Places {
         target: root,
         source: None,
@@ -252,13 +290,55 @@ pub fn execute_copying<P: Progress>(
     items: &[ExecutionItem],
     progress: &mut P,
 ) -> Result<ExecutionReport, ExecuteError> {
-    let batch = index.begin_named_batch(kind, &root.to_string_lossy(), Transfer::Copy)?;
+    execute_copying_into(
+        index,
+        &mut FilingBatches::default(),
+        kind,
+        root,
+        items,
+        progress,
+    )
+}
+
+/// [`execute_copying`] into the copy batch of `batches`.
+pub fn execute_copying_into<P: Progress>(
+    index: &Index,
+    batches: &mut FilingBatches,
+    kind: BatchKind,
+    root: &Path,
+    items: &[ExecutionItem],
+    progress: &mut P,
+) -> Result<ExecutionReport, ExecuteError> {
+    let batch = match batches.copied {
+        Some(open) => open,
+        None => {
+            let opened = open_filing_batch(index, kind, root, Transfer::Copy)?;
+            batches.copied = Some(opened);
+            opened
+        }
+    };
     let places = Places {
         target: root,
         source: None,
         inside_target: false,
     };
     run_batch(index, batch, Transfer::Copy, places, items, progress, &Copy)
+}
+
+/// A batch named after the folder it files into, which it records so that an
+/// undo knows where the run worked. A folder that is not there yet has
+/// nothing to resolve; the undo then falls back on the places in the journal.
+fn open_filing_batch(
+    index: &Index,
+    kind: BatchKind,
+    root: &Path,
+    transfer: Transfer,
+) -> Result<BatchId, ExecuteError> {
+    let batch = index.begin_named_batch(kind, &root.to_string_lossy(), transfer)?;
+    if let Ok(target) = remember_source_root(root) {
+        index.set_batch_target_root(batch, &target)?;
+    }
+    Ok(batch)
 }
 
 fn run_batch<P: Progress, S: Source>(
@@ -496,7 +576,17 @@ fn settle_moved(
     if let (Some(BatchKind::Filing | BatchKind::Hermes), Some(id), false) =
         (index.batch_kind(batch)?, item.document_id, item.duplicate)
     {
-        index.set_document_status(id, DocumentStatus::Filed)?;
+        // Only what ends up in the folder the run files into counts as
+        // filed; a move inside a side archive does not.
+        let lands_in_target = index
+            .batch_info(batch)?
+            .and_then(|info| info.target_root)
+            .is_none_or(|root| {
+                item.to.starts_with(&root.given) || item.to.starts_with(&root.resolved)
+            });
+        if lands_in_target {
+            index.set_document_status(id, DocumentStatus::Filed)?;
+        }
     }
     index.set_journal_state(batch, item.seq, JournalState::Moved, None)?;
     Ok(ItemOutcome::Moved)

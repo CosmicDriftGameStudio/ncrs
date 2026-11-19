@@ -9,7 +9,7 @@ license = "MIT"
 publish = false
 
 [dependencies]
-ncrs-index = { path = "../ncrs-index", version = "0.0.0" }
+ncrs-index-types = { path = "../ncrs-index-types", version = "0.0.0" }
 
 [lints]
 workspace = true

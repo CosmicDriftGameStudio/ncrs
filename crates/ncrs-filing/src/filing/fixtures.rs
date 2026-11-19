@@ -23,11 +23,12 @@ impl FilingModule {
             after_recovery_key: None,
             dismissed_key_problem: None,
             kinds: Arc::default(),
-            chat_text_chain: OnceLock::new(),
+            chat_text_chain: Arc::default(),
             pipeline_text_chain: Mutex::new(None),
             ai: AiWiring::Off,
             own: OwnDetails::default(),
             settle_problem: SettleNote::default(),
+            index_work: crate::index_work::IndexWork::default(),
             settling: false,
         }
     }

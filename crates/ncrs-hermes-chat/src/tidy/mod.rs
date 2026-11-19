@@ -19,7 +19,7 @@ use crate::ctx::Ctx;
 use crate::learn;
 use crate::state::{Chip, ChipReply, Part, ReadFor, State, Step, Tidy, TrialSession};
 use crate::texts::{fill, folder_name, number, text};
-use crate::update::{chip, chip_labelled, hermes, say, work};
+use crate::update::{access, chip, chip_labelled, hermes, say, work};
 
 mod filed;
 
@@ -36,6 +36,7 @@ pub fn targets(state: &State, ctx: &Ctx) -> Vec<PathBuf> {
 }
 
 pub fn begin(state: &mut State, ctx: &Ctx, source: PathBuf) {
+    state.session.run_chain.clear();
     let is_target = targets(state, ctx)
         .iter()
         .any(|target| source.starts_with(target));
@@ -269,10 +270,24 @@ pub fn once(state: &mut State, ctx: &Ctx, always: bool) {
     });
 }
 
+/// What a read folder is set to wins over what was asked: files of a folder
+/// that is copied are never moved out of it.
+pub fn transfer_from(ctx: &Ctx, source: &Path, wanted: Transfer) -> Transfer {
+    if wanted == Transfer::Move && access(ctx).is_some_and(|access| access.copies_from(source)) {
+        Transfer::Copy
+    } else {
+        wanted
+    }
+}
+
 pub fn ask_mode(state: &mut State, ctx: &Ctx) {
     let Some(tidy) = state.session.tidy.as_ref() else {
         return;
     };
+    if transfer_from(ctx, &tidy.source, Transfer::Move) == Transfer::Copy {
+        mode(state, ctx, Transfer::Copy);
+        return;
+    }
     let folder = folder_name(ctx, &tidy.source);
     state.step = Step::Mode;
     hermes(
@@ -297,6 +312,11 @@ pub fn ask_mode(state: &mut State, ctx: &Ctx) {
 }
 
 pub fn mode(state: &mut State, ctx: &Ctx, transfer: Transfer) {
+    let transfer = state
+        .session
+        .tidy
+        .as_ref()
+        .map_or(transfer, |tidy| transfer_from(ctx, &tidy.source, transfer));
     if state.session.deciding.is_some() {
         crate::decide::start(state, ctx, transfer);
         return;

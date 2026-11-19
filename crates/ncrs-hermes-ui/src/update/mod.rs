@@ -112,6 +112,24 @@ pub fn close_dialog(hermes: &mut Hermes) -> Option<Task<Message>> {
     ]))
 }
 
+/// The one entry of the Hermes pages for the messages that need nothing but
+/// the state and the context. `None` for the messages the app answers itself:
+/// the file messages that need the cursor and the settings switch.
+pub fn update(hermes: &mut Hermes, message: Message, ctx: &Ctx<'_>) -> Option<Outcome> {
+    Some(match message {
+        Message::Filing(inner) => update_filing(hermes, inner, ctx),
+        Message::FilingStatus(inner) => update_filing_status(hermes, inner, ctx),
+        Message::HermesOverview(inner) => update_hermes_overview(hermes, inner, ctx),
+        Message::Rules(inner) => update_rules(hermes, inner),
+        Message::QuickFix(inner) => update_quick_fix(hermes, inner, ctx),
+        Message::SavedQueries(inner) => update_saved_queries(hermes, inner, ctx),
+        Message::Tags(inner) => update_tags(hermes, inner, ctx),
+        Message::DocumentsFiled(result) => documents_filed(result, ctx),
+        Message::HermesColumn(inner) => update_hermes_column(hermes, inner, ctx),
+        Message::HermesFile(_) | Message::ToggleFileListTags => return None,
+    })
+}
+
 pub fn update_hermes_overview(
     hermes: &mut Hermes,
     message: HermesOverviewMessage,

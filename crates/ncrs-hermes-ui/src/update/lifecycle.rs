@@ -43,14 +43,39 @@ pub fn start_filing_module(hermes: &mut Hermes, filing: &Filing, ctx: &Ctx<'_>) 
 }
 
 /// Dropping the runner stops it and lets go of the index before the new
-/// module opens it again.
+/// module opens it again. A runner that exists is joined on the blocking pool,
+/// so a step still running does not freeze the window; the new module starts
+/// when that is done.
 fn replace_module(hermes: &mut Hermes, filing: &Filing, ctx: &Ctx<'_>) -> Task<Message> {
+    if let Some((_, pending)) = hermes.filing_restart.as_mut() {
+        hermes.filing_config = filing.clone();
+        *pending = filing.clone();
+        return Task::none();
+    }
     drop(hermes.reading_again.give_up());
-    hermes.pipeline = None;
-    hermes.filing = None;
-    let task = start_filing_module(hermes, filing, ctx);
+    if hermes.pipeline.is_none() && hermes.filing.is_none() {
+        let task = start_filing_module(hermes, filing, ctx);
+        hermes.refresh_filing_snapshot(ctx.now);
+        return task;
+    }
+    restart_in_background(hermes, filing.clone(), ctx)
+}
+
+fn restart_in_background(hermes: &mut Hermes, filing: Filing, ctx: &Ctx<'_>) -> Task<Message> {
+    hermes.filing_restart_generation = hermes.filing_restart_generation.wrapping_add(1);
+    let generation = hermes.filing_restart_generation;
+    hermes.filing_config = filing.clone();
+    hermes.filing_restart = Some((generation, filing));
+    let pipeline = hermes.pipeline.take();
+    let old_module = hermes.filing.take();
     hermes.refresh_filing_snapshot(ctx.now);
-    task
+    Task::perform(
+        tokio::task::spawn_blocking(move || {
+            drop(pipeline);
+            drop(old_module);
+        }),
+        move |_| Message::FilingStatus(FilingStatusMessage::Restarted(generation)),
+    )
 }
 
 pub fn saved_filing_notice(applies: SavedFilingApplies, ctx: &Ctx<'_>) -> String {
@@ -121,22 +146,11 @@ pub fn apply_ai_change(
         }
         return (SavedFilingApplies::AtNextStart, Task::none());
     }
-    hermes.filing_restart_generation = hermes.filing_restart_generation.wrapping_add(1);
-    let generation = hermes.filing_restart_generation;
-    hermes.filing_config = filing.clone();
-    hermes.filing_restart = Some((generation, filing));
     drop(hermes.reading_again.give_up());
-    let pipeline = hermes.pipeline.take();
-    let old_module = hermes.filing.take();
-    hermes.refresh_filing_snapshot(ctx.now);
-    let dropped = Task::perform(
-        tokio::task::spawn_blocking(move || {
-            drop(pipeline);
-            drop(old_module);
-        }),
-        move |_| Message::FilingStatus(FilingStatusMessage::Restarted(generation)),
-    );
-    (SavedFilingApplies::Now, dropped)
+    (
+        SavedFilingApplies::Now,
+        restart_in_background(hermes, filing, ctx),
+    )
 }
 
 /// The old module and runner are gone from the blocking pool: the new one
@@ -177,7 +191,11 @@ pub fn change_protection(
     begin: ProtectionStep,
     ctx: &Ctx<'_>,
 ) -> Task<Message> {
-    if ctx.jobs_busy || hermes.is_restarting() {
+    let index_work_running = hermes
+        .filing
+        .as_ref()
+        .is_some_and(FilingModule::index_work_running);
+    if ctx.jobs_busy || hermes.is_restarting() || index_work_running {
         return Task::none();
     }
     let Some(work) = hermes.filing.as_mut().and_then(begin) else {

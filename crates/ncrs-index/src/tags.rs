@@ -264,7 +264,7 @@ fn tag_id(conn: &Connection, tag: &str) -> Result<Option<i64>, IndexError> {
     Ok(conn
         .query_row(
             "SELECT id FROM tag WHERE name_key = ?1",
-            [tag.to_lowercase()],
+            [crate::names::name_key(tag)],
             |row| row.get(0),
         )
         .optional()?)

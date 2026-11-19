@@ -39,6 +39,10 @@ pub fn start(state: &mut State, source: PathBuf, target: PathBuf, ctx: &Ctx) -> 
     crate::state::stop(state);
     let run = Arc::new(LiveRun::default());
     let mut session = Session::new(source.clone(), target.clone(), Arc::clone(&run));
+    session.copy_only = ctx
+        .access
+        .as_ref()
+        .is_some_and(|access| access.copies_from(&source));
     let (Some(access), Some(model)) = (ctx.access.clone(), ctx.model.clone()) else {
         let reason = ctx.lang.text(Msg::FilingViewErrorNotReady).to_owned();
         session.finished = Some(Err(reason.clone()));
@@ -157,7 +161,9 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Step {
                 }
             }
         }
-        Message::ToggleTrashDupes => session.trash_dupes = !session.trash_dupes,
+        Message::ToggleTrashDupes => {
+            session.trash_dupes = !session.trash_dupes && !session.copy_only;
+        }
         Message::ToggleFolder(folder) => {
             if !session.closed_folders.remove(&folder) {
                 session.closed_folders.insert(folder);
@@ -393,6 +399,9 @@ fn file(state: &mut State, transfer: Transfer, ctx: &Ctx) -> Step {
     if session.filing || !session.plan_is_done() {
         return nothing();
     }
+    if session.copy_only && transfer == Transfer::Move {
+        return nothing();
+    }
     if session
         .shown_ref()
         .is_none_or(|plan| tally(&plan).filed == 0)
@@ -446,6 +455,7 @@ fn carry_out(
     (tags, unexpected): (&ncrs_filing::chat_work::LiveTags, &str),
 ) -> Result<FiledReport, String> {
     let (run_name, trash_name) = names;
+    let _running = access.begin_work();
     mark_files(access, plan, tags)?;
     let ChatResult::Filed(report) = access.run(ChatWork::File {
         run: run_plan(plan, transfer, run_name),

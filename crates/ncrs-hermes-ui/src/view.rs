@@ -62,7 +62,9 @@ pub fn overview_facts(
             phase => ModuleState::of(phase),
         })
     };
-    let at_rest = !ctx.jobs_busy && !hermes.is_restarting();
+    let at_rest = !ctx.jobs_busy
+        && !hermes.is_restarting()
+        && !module.is_some_and(FilingModule::index_work_running);
     let failure = match module.map(FilingModule::phase) {
         Some(Phase::Failed(reason)) => Some(reason.clone()),
         _ => None,

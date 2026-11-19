@@ -188,15 +188,6 @@ impl App {
         }
     }
 
-    pub(in crate::app) fn documents_filed(
-        &mut self,
-        result: Result<FilingSummary, String>,
-    ) -> Task<Message> {
-        self.run_hermes_flow(Vec::new(), |_, ctx| {
-            ncrs_hermes_ui::documents_filed(result, ctx)
-        })
-    }
-
     fn hermes_ctx(
         &self,
         hermes: &ncrs_hermes_ui::Hermes,

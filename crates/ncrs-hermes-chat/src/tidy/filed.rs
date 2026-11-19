@@ -15,16 +15,20 @@ use crate::texts::{self, fill, folder_name, number, text};
 use crate::update::{access, chip, hermes, say, work};
 
 pub fn filed_done(state: &mut State, ctx: &Ctx, result: Result<RunReport, String>) {
+    if let Ok(report) = &result {
+        state.session.run_chain.push(report.batch);
+    }
+    let left: Vec<ArchiveMove> = match state.session.tidy.as_ref() {
+        Some(tidy) if state.session.deciding.is_none() => tidy
+            .inside
+            .iter()
+            .filter(|found| Some(&found.root) != tidy.target.as_ref())
+            .cloned()
+            .collect(),
+        _ => Vec::new(),
+    };
     let chained = match (&result, state.session.tidy.as_ref()) {
-        (Ok(_), Some(tidy)) if state.session.deciding.is_none() => {
-            let left: Vec<ArchiveMove> = tidy
-                .inside
-                .iter()
-                .filter(|found| Some(&found.root) != tidy.target.as_ref())
-                .cloned()
-                .collect();
-            Some((tidy.source.clone(), left)).filter(|(_, moves)| !moves.is_empty())
-        }
+        (Ok(_), Some(tidy)) if !left.is_empty() => Some((tidy.source.clone(), left)),
         _ => None,
     };
     let rule_prefix = state
@@ -56,7 +60,7 @@ pub fn archive_run(state: &mut State, ctx: &Ctx, source: PathBuf, moves: Vec<Arc
         name: fill(
             ctx.lang,
             Msg::HermesChatRunName,
-            &[("folder", &folder_name(ctx, &source))],
+            &[("folder", &folder_name(ctx, &target))],
         ),
         transfer: Transfer::Move,
         source_root: source.clone(),
@@ -93,11 +97,21 @@ fn filed_report(state: &mut State, ctx: &Ctx, result: Result<RunReport, String>)
         Ok(report) => report,
         Err(reason) => {
             state.step = Step::Idle;
-            say(
-                state,
-                fill(ctx.lang, Msg::HermesChatReadFailed, &[("reason", &reason)]),
-                crate::update::fallback_chips(ctx),
-            );
+            let mut sentence = fill(ctx.lang, Msg::HermesChatReadFailed, &[("reason", &reason)]);
+            let left = tidy
+                .inside
+                .iter()
+                .filter(|found| Some(&found.root) != tidy.target.as_ref())
+                .count();
+            if left > 0 {
+                sentence.push(' ');
+                sentence.push_str(&fill(
+                    ctx.lang,
+                    Msg::HermesChatChainStopped,
+                    &[("count", &number(left))],
+                ));
+            }
+            say(state, sentence, crate::update::fallback_chips(ctx));
             return;
         }
     };
@@ -108,6 +122,10 @@ fn filed_report(state: &mut State, ctx: &Ctx, result: Result<RunReport, String>)
         .get(&tidy.source)
         .map_or(0, |reading| reading.files.len());
     state.session.readings.clear();
+    let inside_folder = tidy
+        .inside
+        .first()
+        .map_or_else(|| folder.clone(), |found| folder_name(ctx, &found.root));
     let mut parts = Vec::new();
     if report.done > 0 || report.inside_done == 0 {
         parts.push(Part::Text(fill(
@@ -124,7 +142,10 @@ fn filed_report(state: &mut State, ctx: &Ctx, result: Result<RunReport, String>)
         parts.push(Part::Text(fill(
             ctx.lang,
             Msg::HermesChatFiledInside,
-            &[("count", &number(report.inside_done))],
+            &[
+                ("count", &number(report.inside_done)),
+                ("folder", &inside_folder),
+            ],
         )));
     }
     if report.skipped > 0 {

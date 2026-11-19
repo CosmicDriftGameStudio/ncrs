@@ -312,7 +312,7 @@ impl Index {
         }
         if let Some(sender) = blank_to_none(&spec.sender) {
             conditions.push("s.name_key = ?".to_owned());
-            values.push(Value::Text(sender.to_lowercase()));
+            values.push(Value::Text(crate::names::name_key(sender)));
         }
         if let Some(kind) = blank_to_none(&spec.kind) {
             let keys = self.kinds().kind_name_keys(kind);

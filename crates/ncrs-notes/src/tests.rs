@@ -102,7 +102,8 @@ fn the_scan_reads_topics_and_file_notes_and_hides_dot_entries() {
         on_file.kind,
         Kind::File {
             file: file.to_owned(),
-            document: Some(7)
+            document: Some(7),
+            hash: None
         }
     );
     assert_eq!(on_file.text, "Gilt bis Dezember\n");
@@ -120,6 +121,7 @@ fn front_matter_round_trips_and_text_without_it_stays_whole() {
     let front = FrontMatter {
         file: PathBuf::from("/a/b c.pdf"),
         document: Some(12),
+        hash: None,
     };
     let text = compose(&front, "Body\n");
     let (read, body) = split(&text);
@@ -223,12 +225,9 @@ async fn a_note_on_a_file_is_made_once_and_asks_the_index_for_the_document() {
     state.open = true;
     let file = PathBuf::from("/docs/a.pdf");
     let asked = action(&mut state, Message::EditNoteOn(file.clone()));
-    assert_eq!(
-        asked,
-        Some(Action::ResolveLinks(vec![(None, file.clone())]))
-    );
+    assert_eq!(asked, Some(Action::ResolveLinks(vec![link(None, &file)])));
     assert!(state.editing());
-    assert!(state.noted_files().contains(&file));
+    assert!(state.noted().contains(&file));
     let again = action(&mut state, Message::EditNoteOn(file.clone()));
     assert!(again.is_some());
     assert_eq!(state.notes.len(), 1);
@@ -244,7 +243,7 @@ async fn the_resolved_path_replaces_the_one_in_the_note() {
     let _ = update(&mut state, Message::SetMode(Mode::View), &CTX);
     let _ = update(
         &mut state,
-        Message::LinksResolved(vec![old.clone()], Ok(vec![(Some(5), moved.clone())])),
+        Message::LinksResolved(vec![old.clone()], Ok(vec![link(Some(5), &moved)])),
         &CTX,
     );
     assert!(state.note_on(&old).is_none());
@@ -253,7 +252,8 @@ async fn the_resolved_path_replaces_the_one_in_the_note() {
         note.kind,
         Kind::File {
             file: moved,
-            document: Some(5)
+            document: Some(5),
+            hash: None
         }
     );
 }
@@ -446,6 +446,7 @@ fn a_path_with_a_hash_spaces_or_a_line_break_reads_back_as_written() {
         let front = FrontMatter {
             file: PathBuf::from(name),
             document: Some(3),
+            hash: Some("ab12".to_owned()),
         };
         let text = compose(&front, "Body\n---\nmore\n");
         let (read, body) = split(&text);
@@ -464,12 +465,12 @@ async fn two_overlapping_answers_each_note_keeps_its_own_file() {
     let (a_moved, b_moved) = (PathBuf::from("/new/a.pdf"), PathBuf::from("/new/b.pdf"));
     let _ = update(
         &mut state,
-        Message::LinksResolved(vec![b.clone()], Ok(vec![(Some(2), b_moved.clone())])),
+        Message::LinksResolved(vec![b.clone()], Ok(vec![link(Some(2), &b_moved)])),
         &CTX,
     );
     let _ = update(
         &mut state,
-        Message::LinksResolved(vec![a.clone()], Ok(vec![(Some(1), a_moved.clone())])),
+        Message::LinksResolved(vec![a.clone()], Ok(vec![link(Some(1), &a_moved)])),
         &CTX,
     );
     assert!(state.note_on(&a).is_none() && state.note_on(&b).is_none());
@@ -477,14 +478,16 @@ async fn two_overlapping_answers_each_note_keeps_its_own_file() {
         state.note_on(&a_moved).unwrap().kind,
         Kind::File {
             file: a_moved.clone(),
-            document: Some(1)
+            document: Some(1),
+            hash: None
         }
     );
     assert_eq!(
         state.note_on(&b_moved).unwrap().kind,
         Kind::File {
             file: b_moved.clone(),
-            document: Some(2)
+            document: Some(2),
+            hash: None
         }
     );
 }
@@ -902,4 +905,12 @@ async fn a_failed_write_does_not_stop_the_folder_from_being_read_and_keeps_its_n
     assert_eq!(state.note(&a).unwrap().file_text(), typed);
     flush_all(&mut state);
     assert!(fs::read_to_string(&a).unwrap().contains('1'));
+}
+
+fn link(document: Option<i64>, file: &Path) -> ncrs_core::NoteLink {
+    ncrs_core::NoteLink {
+        document,
+        hash: None,
+        file: file.to_owned(),
+    }
 }

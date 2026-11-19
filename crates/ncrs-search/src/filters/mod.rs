@@ -371,6 +371,10 @@ fn display_order(first: &QueryHit, second: &QueryHit) -> std::cmp::Ordering {
 pub struct SearchFilters {
     /// The words the hits stand for.
     words: String,
+    /// The folder the last question was asked under, and the one the last
+    /// answer belongs to.
+    asked_under: Option<PathBuf>,
+    answered_under: Option<PathBuf>,
     /// What the index found for the words alone, in display order.
     hits: Vec<QueryHit>,
     /// Where a path is in `hits`.
@@ -395,6 +399,8 @@ impl SearchFilters {
     pub fn new(kinds: Arc<KindCatalog>) -> Self {
         Self {
             words: String::new(),
+            asked_under: None,
+            answered_under: None,
             hits: Vec::new(),
             position_of: HashMap::new(),
             selection: FacetSelection::default(),
@@ -498,6 +504,20 @@ impl SearchFilters {
         (self.asked, question)
     }
 
+    /// Remembers the folder the question being asked is for.
+    pub fn asking_under(&mut self, root: &Path) {
+        self.asked_under = Some(root.to_owned());
+    }
+
+    /// The index already answered exactly this question, so asking again
+    /// would only repeat a full scan.
+    pub fn has_answer_for(&self, words: &str, root: &Path) -> bool {
+        !self.busy
+            && self.problem.is_none()
+            && self.words == words.trim()
+            && self.answered_under.as_deref() == Some(root)
+    }
+
     pub fn generation(&self) -> u64 {
         self.asked
     }
@@ -581,11 +601,13 @@ impl SearchFilters {
         self.snippets.clear();
         self.busy = false;
         self.problem = None;
+        self.answered_under = self.asked_under.clone();
         self.refilter();
     }
 
     pub fn failed(&mut self, detail: String) {
         self.busy = false;
+        self.answered_under = None;
         self.problem = Some(detail);
     }
 

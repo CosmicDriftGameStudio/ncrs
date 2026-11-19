@@ -244,6 +244,7 @@ impl Index {
             crate::backup::before_migration(db_path, applied)?;
         }
         run_migrations(&mut conn, migrations)?;
+        crate::names::fold_name_keys(&mut conn)?;
         create_folder_pick_table(&conn)?;
         Ok(Self {
             conn,
@@ -1403,7 +1404,7 @@ mod tests {
 
         let index = Index::open(&path, &InMemoryKeyStore::empty()).unwrap();
 
-        assert_eq!(user_version(&index), 26);
+        assert_eq!(user_version(&index), latest_version());
         assert!(index.file_list_tag_exceptions().unwrap().is_empty());
         index.set_file_list_tag("steuer", Some(false)).unwrap();
         assert_eq!(index.file_list_tag_exceptions().unwrap().len(), 1);
@@ -1420,7 +1421,6 @@ mod tests {
         let (_dir, index) = migrated_from_19();
 
         assert_eq!(user_version(&index), latest_version());
-        assert_eq!(user_version(&index), 26);
         let violations = index
             .conn
             .prepare("PRAGMA foreign_key_check")
@@ -1728,6 +1728,11 @@ mod tests {
         "/tests/fixtures/index-v1.2.0.db"
     );
 
+    const FIXTURE_V1_5_1: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/index-v1.5.1.db"
+    );
+
     /// A copy of an index a release wrote, and the store holding the key it was
     /// written with (bytes 0x00 to 0x1f).
     fn copy_of_fixture(fixture: &str) -> (TempDir, PathBuf, InMemoryKeyStore) {
@@ -1746,8 +1751,13 @@ mod tests {
         copy_of_fixture(FIXTURE_V1_2_0)
     }
 
+    fn copy_of_the_v1_5_1_index() -> (TempDir, PathBuf, InMemoryKeyStore) {
+        copy_of_fixture(FIXTURE_V1_5_1)
+    }
+
     const FIXTURE_V0_6_0_VERSION: u32 = 9;
     const FIXTURE_V1_2_0_VERSION: u32 = 25;
+    const FIXTURE_V1_5_1_VERSION: u32 = 26;
 
     fn latest_version() -> u32 {
         u32::try_from(MIGRATIONS.len()).unwrap()
@@ -1857,10 +1867,15 @@ mod tests {
         assert_eq!(reviews[0].document_id, notice.id);
         assert_eq!(reviews[0].reason, ReviewReason::NoMatchingRule);
 
-        let profile = index.location_profile(Path::new("archive")).unwrap();
-        assert_eq!(profile.len(), 1);
-        assert_eq!(profile[0].subtree, "2026");
-        assert_eq!(profile[0].pattern.as_deref(), Some("{year}/{sender}/"));
+        let learned_pattern: String = index
+            .connection()
+            .query_row(
+                "SELECT pattern FROM location_subtree WHERE location = 'archive'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(learned_pattern, "{year}/{sender}/");
 
         let queries = index.saved_queries().unwrap();
         assert_eq!(queries.len(), 1);
@@ -2269,9 +2284,15 @@ mod tests {
             ]
         );
 
-        let profile = index.location_profile(Path::new("archive")).unwrap();
-        assert_eq!(profile.len(), 1);
-        assert_eq!(profile[0].pattern.as_deref(), Some("{year}/{sender}/"));
+        let learned_pattern: String = index
+            .connection()
+            .query_row(
+                "SELECT pattern FROM location_subtree WHERE location = 'archive'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(learned_pattern, "{year}/{sender}/");
 
         let queries = index.saved_queries().unwrap();
         assert_eq!(queries.len(), 1);
@@ -2320,6 +2341,32 @@ mod tests {
         drop(index);
         let reopened = Index::open_with_migrations(&path, &store, &steps).unwrap();
         assert_eq!(user_version(&reopened), probe_version());
+    }
+
+    #[test]
+    fn an_index_written_by_release_1_5_1_opens_with_all_its_content_and_applies_none_of_its_steps_again(
+    ) {
+        let (_dir, path, store) = copy_of_the_v1_5_1_index();
+        let applied = usize::try_from(FIXTURE_V1_5_1_VERSION).unwrap();
+        let mut steps = vec!["this is not sql"; applied];
+        steps.extend_from_slice(&MIGRATIONS[applied..]);
+
+        let index = Index::open_with_migrations(&path, &store, &steps).unwrap();
+
+        assert_eq!(user_version(&index), latest_version());
+        assert_v1_2_0_content(&index);
+    }
+
+    #[test]
+    fn a_later_step_migrates_the_release_1_5_1_index_and_keeps_its_content() {
+        let (_dir, path, store) = copy_of_the_v1_5_1_index();
+        let steps = migrations_and(&[PROBE_COLUMN]);
+
+        let index = Index::open_with_migrations(&path, &store, &steps).unwrap();
+
+        assert_eq!(user_version(&index), probe_version());
+        assert!(has_column(&index, "document", "probe"));
+        assert_v1_2_0_content(&index);
     }
 
     #[test]

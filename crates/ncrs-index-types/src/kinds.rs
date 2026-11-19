@@ -5,7 +5,7 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use crate::model::tag_name;
+use crate::names::tag_name;
 
 /// The language a kind is shown in.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -178,7 +178,7 @@ impl KindEntry {
         let mut keys: Vec<String> = Vec::new();
         for spelling in self.spellings() {
             let tag = tag_name(spelling);
-            keys.push(spelling.to_lowercase());
+            keys.push(crate::names::name_key(spelling));
             keys.push(tag.replace('-', "_"));
             keys.push(tag);
         }
@@ -396,14 +396,14 @@ impl KindCatalog {
     /// trimmed lower-case text.
     pub fn kind_key(&self, text: &str) -> String {
         self.resolve(text)
-            .map_or_else(|| text.trim().to_lowercase(), |entry| entry.id.clone())
+            .map_or_else(|| crate::names::name_key(text), |entry| entry.id.clone())
     }
 
     /// The lower-cased names a kind can be stored under in rows: every
     /// spelling of a known kind, otherwise the trimmed text.
     pub fn kind_name_keys(&self, text: &str) -> Vec<String> {
         self.resolve(text)
-            .map_or_else(|| vec![text.trim().to_lowercase()], KindEntry::name_keys)
+            .map_or_else(|| vec![crate::names::name_key(text)], KindEntry::name_keys)
     }
 
     /// The tag of every spelling of the kind a tag names; none for any

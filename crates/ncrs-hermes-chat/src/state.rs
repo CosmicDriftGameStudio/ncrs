@@ -366,6 +366,8 @@ pub struct RuleMoves {
     pub prefix: PathBuf,
     pub from_inbox: usize,
     pub archive: Vec<ncrs_filing::rules_work::ArchiveMove>,
+    /// Archive files that lie wrong but cannot move in one run.
+    pub archive_blocked: usize,
 }
 
 impl RuleMoves {
@@ -416,6 +418,9 @@ pub struct Unsent {
 pub struct Thinking {
     pub turn: ChatTurn,
     pub asked: Asked,
+    /// Leaving the conversation drops it, and the answer of the model that
+    /// is still being waited for then never arrives.
+    pub discard_answer_on_drop: Option<iced::task::Handle>,
 }
 
 /// The walk through the waiting documents: the groups still to ask about, the
@@ -457,6 +462,9 @@ pub struct Session {
     pub trial: Option<TrialSession>,
     pub offer: Option<Offer>,
     pub last_run: Option<RunSummary>,
+    /// The batches of the runs one tidy-up made, oldest first: one undo takes
+    /// them all back.
+    pub run_chain: Vec<ncrs_index::BatchId>,
     /// A typed folder waiting for a yes, and the step it was typed in.
     pub confirm: Option<(PathBuf, Step)>,
     pub proposal: Option<Proposal>,
@@ -519,6 +527,8 @@ pub struct State {
     pub picks_stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
     /// The pipeline sequence the last job was started for.
     pub picks_settled_at: Option<usize>,
+    /// The index was replaced while a turn ran: the chat starts over once it is idle.
+    pub restart_when_idle: bool,
     /// The job set during this `update` that no task runs yet.
     pub picks_job: Option<crate::picks::PicksJob>,
     /// The folders a sentence named, being checked off the UI thread.
@@ -557,6 +567,7 @@ impl Default for State {
             picks_running: false,
             picks_stop: std::sync::Arc::default(),
             picks_settled_at: None,
+            restart_when_idle: false,
             picks_job: None,
             naming: None,
             fresh_naming: false,

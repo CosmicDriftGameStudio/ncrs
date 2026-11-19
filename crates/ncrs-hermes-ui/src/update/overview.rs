@@ -26,6 +26,10 @@ pub fn update(
                 .as_ref()
                 .is_some_and(FilingModule::can_start_over)
                 && !ctx.jobs_busy
+                && !hermes
+                    .filing
+                    .as_ref()
+                    .is_some_and(FilingModule::index_work_running)
                 && !ctx.hermes_is_restarting;
             if can_ask {
                 actions.push(Action::OpenStartOverDialog(START_OVER_CANCEL_FOCUS));

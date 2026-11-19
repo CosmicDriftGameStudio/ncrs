@@ -2,7 +2,7 @@
 //! without one, and the search for the pdfium library.
 
 use std::fs::File;
-use std::io::Read as _;
+use std::io::{Read as _, Seek as _, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
@@ -309,16 +309,30 @@ fn scaled_pixels(points: f32, scale: f32) -> i32 {
 
 impl TextSource for PdfText {
     fn extract(&self, path: &Path) -> Result<Extracted, TextError> {
-        if !is_pdf(path)? {
+        let file = File::open(path).map_err(|err| TextError::Io {
+            path: path.to_path_buf(),
+            reason: err.to_string(),
+        })?;
+        self.extract_open(path, &file)
+    }
+
+    fn extract_open(&self, path: &Path, file: &File) -> Result<Extracted, TextError> {
+        if !is_pdf(path, file)? {
             return Ok(Extracted::NotApplicable);
         }
+        (&*file)
+            .seek(SeekFrom::Start(0))
+            .map_err(|err| TextError::Io {
+                path: path.to_path_buf(),
+                reason: err.to_string(),
+            })?;
         let unreadable = |reason: String| TextError::Unreadable {
             path: path.to_path_buf(),
             reason,
         };
         let document = self
             .pdfium
-            .load_pdf_from_file(path, None)
+            .load_pdf_from_reader(file, None)
             .map_err(|err| unreadable(format!("cannot open the PDF: {err:?}")))?;
         let mut pages = Vec::new();
         let mut collected: usize = 0;
@@ -371,7 +385,15 @@ impl PdfUnavailable {
 
 impl TextSource for PdfUnavailable {
     fn extract(&self, path: &Path) -> Result<Extracted, TextError> {
-        if is_pdf(path)? {
+        let file = File::open(path).map_err(|err| TextError::Io {
+            path: path.to_path_buf(),
+            reason: err.to_string(),
+        })?;
+        self.extract_open(path, &file)
+    }
+
+    fn extract_open(&self, path: &Path, file: &File) -> Result<Extracted, TextError> {
+        if is_pdf(path, file)? {
             Err(self.reason.clone())
         } else {
             Ok(Extracted::NotApplicable)
@@ -380,15 +402,13 @@ impl TextSource for PdfUnavailable {
 }
 
 /// By the first bytes, not the extension.
-fn is_pdf(path: &Path) -> Result<bool, TextError> {
+fn is_pdf(path: &Path, file: &File) -> Result<bool, TextError> {
     let unreadable = |err: std::io::Error| TextError::Io {
         path: path.to_path_buf(),
         reason: err.to_string(),
     };
     let mut header = Vec::with_capacity(PDF_HEADER_WINDOW as usize);
-    File::open(path)
-        .map_err(unreadable)?
-        .take(PDF_HEADER_WINDOW)
+    file.take(PDF_HEADER_WINDOW)
         .read_to_end(&mut header)
         .map_err(unreadable)?;
     Ok(header

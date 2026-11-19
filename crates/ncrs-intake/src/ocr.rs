@@ -5,11 +5,13 @@
 //! Text found here is data, like any other text of a document.
 
 use std::fmt;
-use std::fs::{self, File, OpenOptions};
-use std::io::{self, Read as _, Write};
+use std::fs::{self, File};
+use std::io::{self, Read as _};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex, PoisonError};
 
+use ncrs_model_file::{hex_of, ModelFileError, PartialDownload, PinnedFile};
 use ocrs::{ImageSource, OcrEngine, OcrEngineParams};
 use rten::Model;
 use sha2::{Digest as _, Sha256};
@@ -93,10 +95,6 @@ impl fmt::Display for OcrModelError {
 
 impl std::error::Error for OcrModelError {}
 
-fn hex_of(digest: &[u8]) -> String {
-    digest.iter().map(|byte| format!("{byte:02x}")).collect()
-}
-
 /// Size and checksum of bytes already in memory.
 pub fn verify_model_bytes(file: &OcrModelFile, bytes: &[u8]) -> Result<(), OcrModelError> {
     if u64::try_from(bytes.len()) != Ok(file.size) {
@@ -130,23 +128,13 @@ fn read_model(dir: &Path, file: &OcrModelFile) -> Result<Option<Vec<u8>>, OcrMod
     Ok(Some(bytes))
 }
 
-/// Counts and hashes what passes through on its way to the file.
-struct CheckingWriter<W> {
-    inner: W,
-    hasher: Sha256,
-    written: u64,
-}
-
-impl<W: Write> Write for CheckingWriter<W> {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let accepted = self.inner.write(buf)?;
-        self.hasher.update(buf.get(..accepted).unwrap_or_default());
-        self.written = self.written.saturating_add(accepted as u64);
-        Ok(accepted)
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        self.inner.flush()
+impl From<&OcrModelFile> for PinnedFile {
+    fn from(file: &OcrModelFile) -> Self {
+        Self {
+            name: file.name,
+            size: file.size,
+            sha256: file.sha256,
+        }
     }
 }
 
@@ -159,56 +147,43 @@ pub fn install_model(
     file: &OcrModelFile,
     source: impl io::Read,
 ) -> Result<(), OcrModelError> {
-    let temp_path = dir.join(format!("{}{DOWNLOAD_BUFFER_SUFFIX}", file.name));
-    let write_failed = |location: &Path| {
-        let path = location.to_path_buf();
-        move |err: io::Error| OcrModelError::WriteFailed {
-            path,
-            reason: err.to_string(),
-        }
-    };
-    let result = fs::create_dir_all(dir)
-        .map_err(write_failed(dir))
-        .and_then(|()| write_checked(&temp_path, file, source))
-        .and_then(|()| {
-            fs::rename(&temp_path, dir.join(file.name)).map_err(write_failed(&temp_path))
-        });
-    if result.is_err() {
-        let _ = fs::remove_file(&temp_path);
+    let mut download =
+        PartialDownload::open(dir, file).map_err(|error| model_error(file, error))?;
+    // The source always starts at the first byte: what an earlier try left is not continued.
+    if download.offset() > 0 {
+        download
+            .restart()
+            .map_err(|error| model_error(file, error))?;
     }
-    result
-}
-
-fn write_checked(
-    temp_path: &Path,
-    file: &OcrModelFile,
-    source: impl io::Read,
-) -> Result<(), OcrModelError> {
-    let write_failed = |err: io::Error| OcrModelError::WriteFailed {
-        path: temp_path.to_path_buf(),
-        reason: err.to_string(),
-    };
-    // A leftover of an earlier try, possibly a link: never written through.
-    let _ = fs::remove_file(temp_path);
-    let out = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(temp_path)
-        .map_err(write_failed)?;
-    let mut writer = CheckingWriter {
-        inner: out,
-        hasher: Sha256::new(),
-        written: 0,
-    };
-    io::copy(&mut source.take(file.size.saturating_add(1)), &mut writer).map_err(write_failed)?;
-    writer.inner.sync_all().map_err(write_failed)?;
-    if writer.written != file.size {
-        return Err(OcrModelError::WrongSize { file: file.name });
-    }
-    if hex_of(&writer.hasher.finalize()) != file.sha256 {
-        return Err(OcrModelError::WrongHash { file: file.name });
+    let finished = download
+        .append(source.take(file.size.saturating_add(1)), &NEVER_CANCELLED)
+        .and_then(|()| download.finish());
+    if let Err(error) = finished {
+        let _ = fs::remove_file(dir.join(format!("{}{DOWNLOAD_BUFFER_SUFFIX}", file.name)));
+        return Err(model_error(file, error));
     }
     Ok(())
+}
+
+static NEVER_CANCELLED: AtomicBool = AtomicBool::new(false);
+
+fn model_error(file: &OcrModelFile, error: ModelFileError) -> OcrModelError {
+    match error {
+        ModelFileError::WrongHash => OcrModelError::WrongHash { file: file.name },
+        ModelFileError::Incomplete
+        | ModelFileError::TooLarge
+        | ModelFileError::WrongSize
+        | ModelFileError::Cancelled => OcrModelError::WrongSize { file: file.name },
+        ModelFileError::WriteFailed { path, reason } => OcrModelError::WriteFailed { path, reason },
+        ModelFileError::Interrupted(reason) => OcrModelError::WriteFailed {
+            path: PathBuf::from(file.name),
+            reason,
+        },
+        ModelFileError::NotARegularFile => OcrModelError::WriteFailed {
+            path: PathBuf::from(file.name),
+            reason: ModelFileError::NotARegularFile.to_string(),
+        },
+    }
 }
 
 /// The ocrs engine with its two models loaded.

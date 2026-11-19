@@ -995,9 +995,10 @@ mod tests {
         assert_eq!(count("review_entry"), 0);
         assert!(index.search_text("rechnung", 10).unwrap().is_empty());
 
-        // The deleted id is reused; the old text must not find the new document.
-        let reused = index.insert_document(&new_document(2)).unwrap();
-        assert_eq!(reused, id);
+        // The deleted id is not given out again, so nothing that remembers it
+        // lands on the new document.
+        let next = index.insert_document(&new_document(2)).unwrap();
+        assert!(next.get() > id.get());
         assert!(index.search_text("rechnung", 10).unwrap().is_empty());
     }
 

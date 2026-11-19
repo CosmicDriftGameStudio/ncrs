@@ -7,9 +7,9 @@ use chrono::{DateTime, Datelike as _, Local};
 pub use ncrs_core::DateFormat;
 use ncrs_core::{FileEntry, SizeFormat, WindowsAttributes};
 use ncrs_i18n::{fill_template, Language, Msg};
-use ncrs_index::Amount;
+use ncrs_index_types::Amount;
 
-pub use ncrs_index::{amount_digits, amount_text, MINOR_UNITS_PER_UNIT};
+pub use ncrs_index_types::{amount_digits, amount_text, MINOR_UNITS_PER_UNIT};
 
 /// Appended to a computed folder size that missed unreadable parts. Untranslated
 /// like the markers.

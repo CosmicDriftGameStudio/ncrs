@@ -32,7 +32,6 @@ use crate::file_list_tags::{FileListTags, TagExceptions};
 use crate::filing::Phase;
 use crate::filing::{DocumentFinder, FilingMessage, FilingModule};
 use crate::filing_setup;
-use crate::filing_work::FilingSummary;
 use crate::fs;
 use crate::fs::remote::credentials::KeyringPasswords;
 use crate::fs::remote::credentials::PasswordStore;
@@ -58,8 +57,8 @@ use crate::messages::{
     CompareMessage, ConflictChoice, FilingStatusMessage, GrantMessage, HermesChatMessage,
     HermesFileMessage, HermesOverviewMessage, HermesPage, HitListMessage, KeyBindingsMessage,
     Message, OcrModelsMessage, PanelSide, QuickFixMessage, QuickOpenMessage, RemoteMessage,
-    RulesMessage, SavedQueriesMessage, SearchMessage, SettingChange, SettingsMessage, ShownTab,
-    TagsMessage, ThemeFetchMessage, TitleBarMessage, TransferKind, TrashMessage,
+    SavedQueriesMessage, SearchMessage, SettingChange, SettingsMessage, ShownTab,
+    ThemeFetchMessage, TitleBarMessage, TransferKind, TrashMessage,
 };
 #[cfg(target_os = "macos")]
 use crate::native_menu;
@@ -348,8 +347,6 @@ pub struct App {
     notes: ncrs_notes::State,
     /// The filing tab, shown while it has a session.
     filing_view: ncrs_filing_view::State,
-    /// The files that have a note, kept for the rows of the panels.
-    noted: std::collections::HashSet<PathBuf>,
     /// Which of the open tabs the area under the title bar shows.
     shown_tab: ShownTab,
     /// The check for a newer release and what it found.
@@ -377,7 +374,7 @@ pub struct App {
     turning_hermes_on: bool,
     /// A quit while the index protection changes or its recovery key is on
     /// screen was held back once; a second quit ends the app.
-    protection_quit_warned: bool,
+    protection_quit_warned: Option<std::mem::Discriminant<crate::filing::Phase>>,
     /// Quick Open (Cmd/Ctrl+P), while its box is up.
     quick_open: Option<QuickOpen>,
     /// Counts the walks started, so the late batches of a closed one are dropped.

@@ -38,6 +38,9 @@ pub struct Session {
     pub renaming: Option<String>,
     pub only_new: bool,
     pub trash_dupes: bool,
+    /// The read folder is set to copy: its files are not moved out and its
+    /// duplicates are not trashed.
+    pub copy_only: bool,
     pub closed_folders: BTreeSet<PathBuf>,
     pub filing: bool,
     pub error: Option<String>,
@@ -70,6 +73,7 @@ impl Session {
             renaming: None,
             only_new: true,
             trash_dupes: false,
+            copy_only: false,
             closed_folders: BTreeSet::new(),
             filing: false,
             error: None,

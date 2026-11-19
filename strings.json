@@ -7688,9 +7688,15 @@
     },
     {
       "key": "hermes_chat.filed_inside",
-      "context": "Hermes chat (F2): added to the report of a filing run when files that already lay in the archive were renamed or moved as well, because the folder levels changed. {count} is the number of those files.",
-      "en": "{count} files already in the target folder were renamed or moved.",
-      "de": "{count} Dateien, die schon im Zielordner lagen, wurden umbenannt oder verschoben."
+      "context": "Hermes chat (F2): added to the report of a filing run when files that already lay in an archive folder were renamed or moved as well, because the folder levels changed. {count} is the number of those files, {folder} the name of the archive folder they lie in.",
+      "en": "{count} files already in {folder} were renamed or moved.",
+      "de": "{count} Dateien, die schon in {folder} lagen, wurden umbenannt oder verschoben."
+    },
+    {
+      "key": "hermes_chat.chain_stopped",
+      "context": "Hermes chat (F2): added to the error message when a tidy-up over several archive folders stopped part-way. {count} is the number of files in the remaining archive folders that were not renamed or moved.",
+      "en": "{count} files in other archive folders were not renamed or moved.",
+      "de": "{count} Dateien in anderen Archivordnern wurden nicht umbenannt oder verschoben."
     },
     {
       "key": "hermes_chat.filed_skipped",
@@ -7721,6 +7727,12 @@
       "context": "Hermes chat (F2): Hermes offers to move files to the trash that already exist in the archive with the same content. **Double asterisks** mark bold text and must stay around the same words. {count} is a number, {folder} the source folder, {target} the archive folder.",
       "en": "**{count} files** from {folder} are already in {target} (same content). They can go. Move them to the trash?",
       "de": "**{count} Dateien** aus {folder} liegen schon in {target} (gleicher Inhalt). Die können weg. In den Papierkorb?"
+    },
+    {
+      "key": "hermes_chat.run_name_automatic",
+      "context": "Hermes chat (F2): Name of a run in the undo history for files Hermes filed by itself, without being asked in the chat. {folder} is the name of the folder the files went into.",
+      "en": "Filed by Hermes into {folder}",
+      "de": "Von Hermes in {folder} einsortiert"
     },
     {
       "key": "hermes_chat.run_name",
@@ -8621,6 +8633,12 @@
       "context": "Description under the Hermes switch at the top of the AI page of the settings tab. Off: Hermes watches no read folders and asks no AI model for sorting documents, the chat, rename suggestions or learning rules.",
       "en": "Off: no folders watched, no model asked.",
       "de": "Aus: keine Ordner beobachtet, kein Modell gefragt."
+    },
+    {
+      "key": "settings.hermes_history_undo_unexpected",
+      "context": "Error notice on the Index page when putting a run of Hermes back gets an answer of the wrong kind from Hermes, so nothing was undone. A short sentence without a reason.",
+      "en": "Hermes gave an unexpected answer, nothing was put back.",
+      "de": "Hermes hat unerwartet geantwortet, es wurde nichts zurückgelegt."
     },
     {
       "key": "settings.hermes_switch_on",
@@ -9821,6 +9839,18 @@
       "context": "Note under the levels card of an opened folder that an existing rule already files into. {folder} is the folder name, {name} the name of the rule. Creating the rule from the levels changes that rule instead of adding a second one.",
       "en": "{folder} already has the rule “{name}”. Creating the rule changes it.",
       "de": "Für {folder} gibt es schon die Regel „{name}“. Wenn du die Regel anlegst, wird sie angepasst."
+    },
+    {
+      "key": "hermes_chat.rule_archive_moves",
+      "context": "Sentence before the question after a rule was stored, when files that already lie in the archive would be renamed or moved too. {count} is the number of those files, {folder} the name of the archive folder they lie in.",
+      "en": "{count} files in {folder} would be renamed or moved.",
+      "de": "{count} Dateien in {folder} würden umbenannt oder verschoben."
+    },
+    {
+      "key": "hermes_chat.rule_archive_blocked",
+      "context": "Added to the sentence about archive files that would be renamed or moved: some files cannot be handled in this run because another file wants the same name or two files would swap names. They stay where they are. {count} is the number of those files.",
+      "en": "{count} more cannot be renamed now because their new name is taken or they would swap places; they stay.",
+      "de": "{count} weitere lassen sich jetzt nicht umbenennen, weil der neue Name vergeben ist oder sie die Plätze tauschen würden; sie bleiben liegen."
     },
     {
       "key": "hermes_chat.rule_move_question_one",

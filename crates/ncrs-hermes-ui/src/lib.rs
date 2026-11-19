@@ -39,9 +39,9 @@ pub use update::{
     process_again, process_found_again, read_paths_again, refresh_hermes_column,
     request_hermes_column, request_hermes_counts, restart_hermes_module, role_save_failed,
     run_filing, run_filing_work, run_filing_work_after, set_folder_role, show_in_inspection,
-    show_page, start_filing_module, toggle_hermes_exclusion, update_filing, update_filing_status,
-    update_hermes_column, update_hermes_overview, update_quick_fix, update_rules,
-    update_saved_queries, update_tags, Outcome, SavedFilingApplies,
+    show_page, start_filing_module, toggle_hermes_exclusion, update, update_filing,
+    update_filing_status, update_hermes_column, update_hermes_overview, update_quick_fix,
+    update_rules, update_saved_queries, update_tags, Outcome, SavedFilingApplies,
 };
 pub use view::{
     dialogs, filing_badge, hermes_chip, hermes_line, hermes_status, overview_facts, page_content,

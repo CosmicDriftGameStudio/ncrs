@@ -523,7 +523,6 @@ impl App {
             viewer: ncrs_viewer::State::default(),
             notes: ncrs_notes::State::new(notes_root),
             filing_view: ncrs_filing_view::State::default(),
-            noted: Default::default(),
             shown_tab: crate::messages::ShownTab::default(),
             updates: ncrs_updates::State::new(
                 env!("NCRS_DISPLAY_VERSION"),
@@ -540,7 +539,7 @@ impl App {
             chat_model_setting: None,
             chat_model_error: None,
             turning_hermes_on: false,
-            protection_quit_warned: false,
+            protection_quit_warned: None,
             quick_open: None,
             quick_open_walk_generation: 0,
             quick_open_walk: None,

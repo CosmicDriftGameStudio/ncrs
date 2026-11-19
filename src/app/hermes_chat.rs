@@ -58,12 +58,7 @@ impl App {
     /// The greeting or sentence that waited for Hermes' start follows once
     /// it is ready; a closed chat gets it when it is opened.
     pub(in crate::app) fn tell_chat_hermes_is_ready(&mut self) -> Task<Message> {
-        if self.hermes_chat.open
-            && self.hermes_chat.waiting_for_hermes
-            && !matches!(
-                self.chat_availability(),
-                ncrs_hermes_chat::Availability::Starting
-            )
+        if self.hermes_chat.open && self.hermes_chat.waiting_for_hermes && !self.chat_is_starting()
         {
             return self.update_hermes_chat(HermesChatMessage::HermesReady);
         }
@@ -114,6 +109,21 @@ impl App {
         self.hermes.filing_config.hermes_on()
     }
 
+    /// Same answer as `chat_availability() == Starting`, without building the
+    /// chat's handle.
+    fn chat_is_starting(&self) -> bool {
+        match self.hermes.filing.as_ref() {
+            None => {
+                self.hermes.filing_config.enabled
+                    || self.hermes.is_restarting()
+                    || self.turning_hermes_on
+            }
+            Some(module) => {
+                !module.chat_ready() && (self.hermes.is_restarting() || module.is_starting())
+            }
+        }
+    }
+
     pub(in crate::app) fn chat_availability(&self) -> ncrs_hermes_chat::Availability {
         match self.hermes.filing.as_ref() {
             None if self.hermes.filing_config.enabled
@@ -141,6 +151,28 @@ impl App {
         }
     }
 
+    /// The path the module resolved a configured folder to, so folders found
+    /// in the index compare equal to it; the configured one when it is not
+    /// resolved.
+    fn resolved_location_path(&self, configured: &std::path::Path) -> std::path::PathBuf {
+        self.hermes
+            .filing
+            .as_ref()
+            .and_then(|module| {
+                module
+                    .locations()
+                    .iter()
+                    .filter(|entry| entry.configured.path == configured)
+                    .find_map(|entry| match &entry.status {
+                        crate::filing::LocationStatus::Ready(location) => {
+                            Some(location.path.clone())
+                        }
+                        _ => None,
+                    })
+            })
+            .unwrap_or_else(|| configured.to_path_buf())
+    }
+
     pub(in crate::app) fn hermes_chat_ctx(&self) -> ncrs_hermes_chat::Ctx {
         let availability = self.chat_availability();
         let locations = &self.hermes.filing_config.locations;
@@ -151,7 +183,7 @@ impl App {
             targets: locations
                 .iter()
                 .filter(|location| location.is_target)
-                .map(|location| location.path.clone())
+                .map(|location| self.resolved_location_path(&location.path))
                 .collect(),
             sources: locations
                 .iter()

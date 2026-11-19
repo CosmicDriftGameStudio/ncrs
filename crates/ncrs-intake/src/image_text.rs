@@ -74,14 +74,23 @@ impl TextSource for ImageFileText {
         if !is_image_extension(path) {
             return Ok(Extracted::NotApplicable);
         }
+        let file = File::open(path).map_err(|err| TextError::Io {
+            path: path.to_path_buf(),
+            reason: err.to_string(),
+        })?;
+        self.extract_open(path, &file)
+    }
+
+    fn extract_open(&self, path: &Path, file: &File) -> Result<Extracted, TextError> {
+        if !is_image_extension(path) {
+            return Ok(Extracted::NotApplicable);
+        }
         let unreadable = |err: std::io::Error| TextError::Io {
             path: path.to_path_buf(),
             reason: err.to_string(),
         };
         let mut bytes = Vec::new();
-        File::open(path)
-            .map_err(unreadable)?
-            .take(MAX_FILE_BYTES + 1)
+        file.take(MAX_FILE_BYTES + 1)
             .read_to_end(&mut bytes)
             .map_err(unreadable)?;
         if bytes.len() as u64 > MAX_FILE_BYTES {

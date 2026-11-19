@@ -89,7 +89,8 @@ pub fn footer<'a>(
         key_button(
             &say(lang, label, &[("count", &filed.to_string())]),
             key,
-            ready.then_some(Message::File(transfer)),
+            (ready && !(session.copy_only && transfer == Transfer::Move))
+                .then_some(Message::File(transfer)),
             Tone::Primary,
             palette,
         )
@@ -102,7 +103,7 @@ pub fn footer<'a>(
                 } else {
                     Check::Off
                 },
-                Some(Message::ToggleTrashDupes),
+                (!session.copy_only).then_some(Message::ToggleTrashDupes),
                 palette,
             ),
             paragraph(lang.text(Msg::FilingViewTrashDupes), palette),

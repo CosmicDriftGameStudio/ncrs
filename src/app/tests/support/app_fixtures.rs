@@ -28,7 +28,7 @@ impl App {
             keymap: Keymap::built_in(),
             jobs: jobs::Queue::new(),
             start_over_dialog: false,
-            protection_quit_warned: false,
+            protection_quit_warned: None,
             dialog_focus: 0,
             modifiers: Modifiers::default(),
             trash: Arc::new(NoSystemTrash),
@@ -62,7 +62,6 @@ impl App {
             viewer: ncrs_viewer::State::default(),
             notes: ncrs_notes::State::new(PathBuf::from("/home/test/Notes")),
             filing_view: ncrs_filing_view::State::default(),
-            noted: Default::default(),
             shown_tab: crate::messages::ShownTab::default(),
             hermes_chat: ncrs_hermes_chat::State::default(),
             chat_model: None,
@@ -646,7 +645,7 @@ impl App {
     }
 
     pub fn noted_for_test(&self) -> &std::collections::HashSet<PathBuf> {
-        &self.noted
+        self.notes.noted()
     }
 
     pub fn viewer_for_test(&self) -> &ncrs_viewer::State {

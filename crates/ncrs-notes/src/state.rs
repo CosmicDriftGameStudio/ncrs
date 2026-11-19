@@ -18,6 +18,7 @@ use crate::tree::{rows, Row, RowKey};
 pub struct State {
     pub root: PathBuf,
     pub notes: Vec<Note>,
+    noted: HashSet<PathBuf>,
     pub folders: Vec<PathBuf>,
     pub expanded: HashSet<PathBuf>,
     pub files_open: bool,
@@ -122,8 +123,14 @@ impl State {
     }
 
     /// The files that have a note.
-    pub fn noted_files(&self) -> HashSet<PathBuf> {
-        self.notes
+    pub fn noted(&self) -> &HashSet<PathBuf> {
+        &self.noted
+    }
+
+    /// Rebuilds the set behind `noted` after the notes changed.
+    pub fn refresh_noted(&mut self) {
+        self.noted = self
+            .notes
             .iter()
             .filter_map(|note| match &note.kind {
                 Kind::File { file, .. } => Some(file.clone()),

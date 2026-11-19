@@ -1,0 +1,16 @@
+[package]
+name = "ncrs-index-types"
+version = "0.0.0"
+edition = "2021"
+# Same as the root package: one place decides the compiler.
+rust-version = "1.98"
+description = "Plain data types of the document index (amounts, kinds, conditions), without the database"
+license = "MIT"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+# Names are compared composed: a decomposed umlaut and its composed form are one.
+unicode-normalization = "0.1.26"

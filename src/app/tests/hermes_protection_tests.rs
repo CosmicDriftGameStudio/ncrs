@@ -394,6 +394,28 @@ async fn opening_the_chat_the_first_time_turns_hermes_on_and_makes_an_encrypted_
 }
 
 #[tokio::test]
+async fn a_quit_is_held_again_when_the_pending_phase_changed_since_the_warning() {
+    let dir = TempDir::new().unwrap();
+    let store = Arc::new(ncrs_index::InMemoryKeyStore::empty());
+    let mut app = started_in(environment_in(
+        &dir,
+        Arc::clone(&store) as Arc<dyn KeyStore + Send + Sync>,
+    ))
+    .await;
+    settle(&mut app, Message::HermesChat(HermesChatMessage::Open)).await;
+    assert!(matches!(phase_of(&app), Phase::ShowRecoveryKey { .. }));
+
+    app.protection_quit_warned = Some(std::mem::discriminant(&Phase::Encrypting));
+    let _ = app.quit();
+    assert_eq!(
+        app.protection_quit_warned,
+        Some(std::mem::discriminant(phase_of(&app))),
+        "the quit was held for the recovery key"
+    );
+    assert!(app.job_error.is_some());
+}
+
+#[tokio::test]
 async fn the_chat_greets_while_hermes_starts_and_the_first_folder_becomes_a_location() {
     let dir = TempDir::new().unwrap();
     let mut app = started_in(environment_in(

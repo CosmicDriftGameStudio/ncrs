@@ -32,6 +32,7 @@ pub enum Kind {
     File {
         file: PathBuf,
         document: Option<i64>,
+        hash: Option<String>,
     },
 }
 
@@ -55,10 +56,15 @@ impl Note {
     pub fn file_text(&self) -> String {
         match &self.kind {
             Kind::Topic => self.text.clone(),
-            Kind::File { file, document } => frontmatter::compose(
+            Kind::File {
+                file,
+                document,
+                hash,
+            } => frontmatter::compose(
                 &FrontMatter {
                     file: file.clone(),
                     document: *document,
+                    hash: hash.clone(),
                 },
                 &self.text,
             ),
@@ -116,6 +122,7 @@ fn read_note(path: &Path, folder: PathBuf, files_dir: bool) -> Option<Note> {
             kind: Kind::File {
                 file: front.file,
                 document: front.document,
+                hash: front.hash,
             },
             text: body.to_owned(),
             modified,

@@ -385,15 +385,21 @@ impl App {
     /// is on screen, a quit would lose the key. It is held back once; asking
     /// again quits.
     fn protection_holds_quit(&mut self) -> bool {
-        let pending = self.hermes.filing.as_ref().is_some_and(|module| {
+        let pending = self.hermes.filing.as_ref().and_then(|module| {
+            let phase = module.phase();
             matches!(
-                module.phase(),
+                phase,
                 crate::filing::Phase::ShowRecoveryKey { .. }
                     | crate::filing::Phase::Encrypting
                     | crate::filing::Phase::StartingOver
             )
+            .then(|| std::mem::discriminant(phase))
         });
-        if !pending || std::mem::replace(&mut self.protection_quit_warned, true) {
+        let Some(pending) = pending else {
+            self.protection_quit_warned = None;
+            return false;
+        };
+        if self.protection_quit_warned.replace(pending) == Some(pending) {
             return false;
         }
         let text = self.lang.text(Msg::HermesQuitProtectionPending).to_string();

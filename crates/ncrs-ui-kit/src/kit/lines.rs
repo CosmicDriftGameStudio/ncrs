@@ -3,7 +3,7 @@
 use iced::widget::text::{IntoFragment, Wrapping};
 use iced::widget::{button, column, container, row, rule, scrollable, text, Column, Row};
 use iced::{alignment, Element, Length};
-use ncrs_index::ConditionKind;
+use ncrs_index_types::ConditionKind;
 
 use crate::palette::Palette;
 use crate::theme::{self, font_size, spacing};
