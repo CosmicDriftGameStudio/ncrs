@@ -25,7 +25,7 @@ use super::archive;
 mod place;
 mod skipped;
 mod sweep;
-#[cfg(test)]
+#[cfg(all(test, unix))]
 use place::create_entry;
 use place::place;
 pub use skipped::{SkipKind, Skipped};
