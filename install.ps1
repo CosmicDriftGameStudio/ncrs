@@ -21,6 +21,8 @@ $Repo = if ($env:NCRS_REPO) { $env:NCRS_REPO } else { 'CosmicDriftGameStudio/ncr
 $BinName = 'ncrs.exe'
 # The PDF library sits next to the executable; ncrs looks for it there.
 $LibName = 'pdfium.dll'
+# One relative path per line of what an install put next to the executable.
+$ManifestName = '.ncrs-install-manifest'
 
 function Write-Info($message) { Write-Host "  $message" }
 
@@ -38,21 +40,30 @@ if ($Uninstall) {
         Remove-Item $libTarget
         Write-Info "removed $libTarget"
     }
-    foreach ($dll in 'llama.dll', 'ggml.dll', 'ggml-base.dll') {
-        $dllTarget = Join-Path $BinDir $dll
-        if (Test-Path $dllTarget) {
-            Remove-Item $dllTarget
-            Write-Info "removed $dllTarget"
-        }
-    }
-    foreach ($ggml in Get-ChildItem -Path $BinDir -Filter 'ggml*.dll' -ErrorAction SilentlyContinue) {
-        Remove-Item $ggml.FullName
-        Write-Info "removed $($ggml.FullName)"
-    }
+    # Only what the install listed: BinDir may be a folder other programs share.
+    $manifest = Join-Path $BinDir $ManifestName
     $backends = Join-Path $BinDir 'backends'
-    if (Test-Path $backends) {
-        Remove-Item -Recurse -Force $backends
-        Write-Info "removed $backends"
+    if (Test-Path $manifest) {
+        foreach ($listed in Get-Content $manifest) {
+            if (-not $listed -or [System.IO.Path]::IsPathRooted($listed) -or $listed -like '*..*') { continue }
+            $listedPath = Join-Path $BinDir $listed
+            if (Test-Path -LiteralPath $listedPath -PathType Leaf) {
+                Remove-Item -LiteralPath $listedPath
+                Write-Info "removed $listedPath"
+            }
+        }
+        if (Test-Path $backends) {
+            Get-ChildItem -Path $backends -Recurse -Directory |
+                Sort-Object { $_.FullName.Length } -Descending |
+                Where-Object { -not (Get-ChildItem -LiteralPath $_.FullName -Force) } |
+                ForEach-Object { Remove-Item -LiteralPath $_.FullName }
+            if (-not (Get-ChildItem -LiteralPath $backends -Force)) { Remove-Item -LiteralPath $backends }
+        }
+        Remove-Item $manifest
+    }
+    elseif ((Test-Path $backends) -or (Test-Path (Join-Path $BinDir 'llama.dll'))) {
+        Write-Info "left $backends and the llama and ggml DLLs in place:"
+        Write-Info 'this install did not list them, and other programs may use the same names'
     }
     $config = Join-Path $env:APPDATA 'ncrs'
     Write-Info "settings and data (index, notes, models), if any, are in $config"
@@ -195,6 +206,8 @@ try {
     # modules in backends\. Archives without backends\ (aarch64) link it in.
     $srcDir = $src.DirectoryName
     $backendsSrc = Join-Path $srcDir 'backends'
+    $manifestPath = Join-Path $BinDir $ManifestName
+    $listedNow = @($LibName)
     if (Test-Path $backendsSrc) {
         foreach ($dll in 'llama.dll', 'ggml.dll', 'ggml-base.dll') {
             $dllSrc = Join-Path $srcDir $dll
@@ -204,14 +217,26 @@ try {
             }
             Copy-Item $dllSrc (Join-Path $BinDir $dll) -Force
         }
-        $backendsNew = Join-Path $BinDir 'backends.new'
         $backendsDst = Join-Path $BinDir 'backends'
-        Remove-Item -Recurse -Force $backendsNew -ErrorAction SilentlyContinue
-        Copy-Item $backendsSrc $backendsNew -Recurse -Force
-        Remove-Item -Recurse -Force $backendsDst -ErrorAction SilentlyContinue
-        Move-Item $backendsNew $backendsDst
+        # Replace what the previous install listed; other files in a folder of
+        # the same name stay.
+        if (Test-Path $manifestPath) {
+            foreach ($old in Get-Content $manifestPath) {
+                if ($old -like 'backends\*' -and $old -notlike '*..*' -and -not [System.IO.Path]::IsPathRooted($old)) {
+                    Remove-Item -LiteralPath (Join-Path $BinDir $old) -ErrorAction SilentlyContinue
+                }
+            }
+        }
+        New-Item -ItemType Directory -Force -Path $backendsDst | Out-Null
+        Copy-Item (Join-Path $backendsSrc '*') $backendsDst -Recurse -Force
+        $listedNow += 'llama.dll', 'ggml.dll', 'ggml-base.dll'
+        $backendsRoot = (Resolve-Path $backendsSrc).Path.TrimEnd('\') + '\'
+        foreach ($file in Get-ChildItem -Path $backendsSrc -Recurse -File) {
+            $listedNow += 'backends\' + $file.FullName.Substring($backendsRoot.Length)
+        }
         $installed += ", the llama.cpp libraries and $backendsDst"
     }
+    Set-Content -Path $manifestPath -Value $listedNow
     Write-Info "installed $installed"
 }
 finally {

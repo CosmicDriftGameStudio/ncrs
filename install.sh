@@ -224,10 +224,15 @@ if [ -d "$backends_src" ]; then
         cp "$(dirname "$src")/$llama_lib" "$BIN_DIR/.$llama_lib.new"
         mv "$BIN_DIR/.$llama_lib.new" "$BIN_DIR/$llama_lib"
     done
-    rm -rf "$BIN_DIR/.backends.new"
-    cp -R "$backends_src" "$BIN_DIR/.backends.new"
-    rm -rf "$BIN_DIR/backends"
-    mv "$BIN_DIR/.backends.new" "$BIN_DIR/backends"
+    # Replace what the previous install listed; a folder of the same name that
+    # this program does not own keeps its other files.
+    if [ -f "$BIN_DIR/$MANIFEST_NAME" ]; then
+        while IFS= read -r listed; do
+            case "$listed" in backends/*) remove_listed "$listed" ;; esac
+        done < "$BIN_DIR/$MANIFEST_NAME"
+    fi
+    mkdir -p "$BIN_DIR/backends"
+    cp -R "$backends_src/." "$BIN_DIR/backends/"
     installed_what="$installed_what, the llama.cpp libraries and $BIN_DIR/backends"
 fi
 
