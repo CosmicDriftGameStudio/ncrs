@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use super::extract::{unpack, Plan};
 use super::{index_of, locate_in_archive, without_archive_ending};
 use crate::place_file::rename_no_replace;
-use crate::transfer::Progress;
+use crate::transfer::{sweep_partials, Progress};
 
 #[derive(Debug)]
 pub struct Extracted {
@@ -41,12 +41,13 @@ pub fn extract_here<P: Progress>(archive: &Path, progress: &mut P) -> io::Result
         .filter(|(name, _)| is_usable_name(name))
         .map(|(name, node)| (name.clone(), node.is_dir));
 
+    sweep_partials(parent);
     let staging = tempfile::Builder::new()
         .prefix(".ncrs-partial-")
         .tempdir_in(parent)?;
     let content = staging.path().join("content");
     std::fs::create_dir(&content)?;
-    let plan = Plan::new(&[], true, content.clone(), total);
+    let plan = Plan::new(&[], true, content.clone(), total, &location.archive);
     let written = unpack(&location, &plan, progress)?;
 
     let (from, wanted, is_dir) = match single_top_entry {

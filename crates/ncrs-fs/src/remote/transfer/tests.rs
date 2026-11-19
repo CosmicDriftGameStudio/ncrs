@@ -510,3 +510,98 @@ async fn rename_gives_an_entry_a_new_name_and_never_replaces_another() {
         "b"
     );
 }
+
+#[derive(Default)]
+struct Collect {
+    skipped: Vec<Skipped>,
+}
+
+impl Progress for Collect {
+    fn advanced(&mut self, _done: usize, _total: usize) -> io::Result<()> {
+        Ok(())
+    }
+
+    fn skipped(&mut self, skipped: Skipped) {
+        self.skipped.push(skipped);
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_download_reports_the_links_it_left_out_and_keeps_the_folder_date_and_mode() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let fixture = Fixture::connected().await;
+    let docs = fixture.server.local("/home/tester/docs");
+    std::fs::create_dir_all(&docs).unwrap();
+    std::fs::write(docs.join("a.txt"), "a").unwrap();
+    symlink(&fixture.server.local("/home"), &docs.join("dirlink"));
+    let dated = UNIX_EPOCH + Duration::from_secs(1_000_000_000);
+    std::fs::File::open(&docs)
+        .unwrap()
+        .set_modified(dated)
+        .unwrap();
+    std::fs::set_permissions(&docs, std::fs::Permissions::from_mode(0o750)).unwrap();
+    let out = out_dir(&fixture);
+    let (pool, target) = (Arc::clone(&fixture.pool), out.clone());
+    let source = Fixture::at("/home/tester/docs");
+
+    let skipped = blocking(move || {
+        let mut collect = Collect::default();
+        download(&pool, &source, &target, &mut collect, OnConflict::Fail).unwrap();
+        collect.skipped
+    })
+    .await;
+
+    assert_eq!(skipped.len(), 1);
+    assert_eq!(skipped[0].kind, SkipKind::Link);
+    assert!(skipped[0].path.ends_with("docs/dirlink"));
+    let meta = std::fs::metadata(out.join("docs")).unwrap();
+    assert_eq!(meta.modified().unwrap(), dated);
+    assert_eq!(meta.permissions().mode() & 0o777, 0o750);
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_download_never_gives_group_or_others_write_access() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let fixture = Fixture::connected().await;
+    let docs = fixture.server.local("/home/tester/docs");
+    std::fs::create_dir_all(&docs).unwrap();
+    std::fs::write(docs.join("a.txt"), "a").unwrap();
+    std::fs::set_permissions(docs.join("a.txt"), std::fs::Permissions::from_mode(0o777)).unwrap();
+    std::fs::set_permissions(&docs, std::fs::Permissions::from_mode(0o777)).unwrap();
+    let out = out_dir(&fixture);
+    let (pool, target) = (Arc::clone(&fixture.pool), out.clone());
+    let source = Fixture::at("/home/tester/docs");
+
+    blocking(move || {
+        download(&pool, &source, &target, &mut Counting, OnConflict::Fail).unwrap();
+    })
+    .await;
+
+    let folder = std::fs::metadata(out.join("docs")).unwrap();
+    let file = std::fs::metadata(out.join("docs/a.txt")).unwrap();
+    assert_eq!(folder.permissions().mode() & 0o777, 0o755);
+    assert_eq!(file.permissions().mode() & 0o777, 0o755);
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn an_upload_reports_the_links_it_left_out() {
+    let fixture = Fixture::connected().await;
+    let tree = fixture.scratch.path().join("tree");
+    std::fs::create_dir(&tree).unwrap();
+    std::fs::write(tree.join("a.txt"), "a").unwrap();
+    std::os::unix::fs::symlink(tree.join("a.txt"), tree.join("filelink")).unwrap();
+    let (pool, dir) = (Arc::clone(&fixture.pool), Fixture::at("/home/tester"));
+
+    let skipped = blocking(move || {
+        let mut collect = Collect::default();
+        upload(&pool, &tree, &dir, &mut collect, OnConflict::Fail).unwrap();
+        collect.skipped
+    })
+    .await;
+
+    assert_eq!(skipped.len(), 1);
+    assert_eq!(skipped[0].kind, SkipKind::Link);
+}

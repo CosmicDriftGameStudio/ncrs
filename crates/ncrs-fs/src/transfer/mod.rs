@@ -23,9 +23,15 @@ use tokio::sync::mpsc;
 use super::archive;
 
 mod place;
+mod skipped;
+mod sweep;
 #[cfg(test)]
 use place::create_entry;
 use place::place;
+pub use skipped::{SkipKind, Skipped};
+#[cfg(any(test, feature = "test-support"))]
+pub use sweep::let_time_pass_for_sweep;
+pub use sweep::sweep_partials;
 
 /// What to do with the source after a successful operation.
 ///
@@ -119,6 +125,10 @@ pub trait Progress {
     fn keep_going(&mut self) -> io::Result<()> {
         Ok(())
     }
+
+    /// Something was left out of the copy while the rest went on. The default
+    /// drops it; `Reporting` collects it for the caller.
+    fn skipped(&mut self, _skipped: Skipped) {}
 }
 
 /// Counts items and never stops.
@@ -150,6 +160,7 @@ pub struct Reporting<'a> {
     sender: &'a mpsc::UnboundedSender<Tick>,
     /// The last count sent, so a tick goes out only when the count changed.
     last_sent: usize,
+    skipped: Vec<Skipped>,
 }
 
 impl<'a> Reporting<'a> {
@@ -157,7 +168,13 @@ impl<'a> Reporting<'a> {
         Self {
             sender,
             last_sent: 0,
+            skipped: Vec::new(),
         }
+    }
+
+    /// What the run left out, in the order it met it. Empties the list.
+    pub fn take_skipped(&mut self) -> Vec<Skipped> {
+        std::mem::take(&mut self.skipped)
     }
 }
 
@@ -181,6 +198,10 @@ impl Progress for Reporting<'_> {
             return Err(io::Error::other("the app is gone"));
         }
         Ok(())
+    }
+
+    fn skipped(&mut self, skipped: Skipped) {
+        self.skipped.push(skipped);
     }
 }
 
@@ -217,6 +238,7 @@ pub fn transfer<S: Source, P: Progress>(
 
     refuse_onto_itself(source, target_dir, &target)?;
     refuse_same_entry(source, &target)?;
+    sweep_partials(target_dir);
     place(source, &target, effect, progress, conflict)
 }
 
@@ -231,6 +253,9 @@ pub fn transfer_to<S: Source, P: Progress>(
     conflict: OnConflict,
 ) -> io::Result<usize> {
     refuse_target_in_the_way(source, target)?;
+    if let Some(folder) = target.parent() {
+        sweep_partials(folder);
+    }
     place(source, target, effect, progress, conflict)
 }
 
@@ -307,10 +332,15 @@ pub fn resolve_conflict(target: &Path, conflict: OnConflict) -> io::Result<bool>
 /// The prefix of the hidden name a move across devices copies to first. A
 /// leftover of an interrupted move is found by it.
 pub fn partial_prefix(target: &Path) -> String {
-    format!(
-        ".ncrs-partial-{}-",
-        target.file_name().unwrap_or_default().to_string_lossy()
-    )
+    /// A file name may be 255 bytes; the prefix and the counters come on top
+    /// of the name, so a long name is cut to leave room for them.
+    const NAME_BYTES: usize = 100;
+    let name = target.file_name().unwrap_or_default().to_string_lossy();
+    let mut end = name.len().min(NAME_BYTES);
+    while !name.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!(".ncrs-partial-{}-", name.get(..end).unwrap_or_default())
 }
 
 /// Rejects the two requests that would destroy or never finish: a path onto
@@ -371,17 +401,30 @@ pub fn run_reporting(
     conflict: OnConflict,
     sender: &mpsc::UnboundedSender<Tick>,
 ) -> io::Result<usize> {
-    let mut reporting = Reporting::new(sender);
-    if let Some(result) = out_of_archive(source, target_dir, kind, &mut reporting, conflict) {
+    run_with(
+        source,
+        target_dir,
+        kind,
+        conflict,
+        &mut Reporting::new(sender),
+    )
+}
+
+/// As `run_reporting`, with the caller's own `Progress`, so it can read what
+/// the run left out ([`Reporting::take_skipped`]) afterwards.
+pub fn run_with<P: Progress>(
+    source: &Path,
+    target_dir: &Path,
+    kind: ncrs_core::TransferKind,
+    conflict: OnConflict,
+    progress: &mut P,
+) -> io::Result<usize> {
+    if let Some(result) = out_of_archive(source, target_dir, kind, progress, conflict) {
         return result;
     }
     match kind {
-        ncrs_core::TransferKind::Copy => {
-            transfer(source, target_dir, &Copy, &mut reporting, conflict)
-        }
-        ncrs_core::TransferKind::Move => {
-            transfer(source, target_dir, &Move, &mut reporting, conflict)
-        }
+        ncrs_core::TransferKind::Copy => transfer(source, target_dir, &Copy, progress, conflict),
+        ncrs_core::TransferKind::Move => transfer(source, target_dir, &Move, progress, conflict),
     }
 }
 
@@ -394,14 +437,20 @@ pub fn run_reporting_as(
     conflict: OnConflict,
     sender: &mpsc::UnboundedSender<Tick>,
 ) -> io::Result<usize> {
-    let mut reporting = Reporting::new(sender);
+    run_as_with(source, target, kind, conflict, &mut Reporting::new(sender))
+}
+
+/// As `run_reporting_as`, with the caller's own `Progress`.
+pub fn run_as_with<P: Progress>(
+    source: &Path,
+    target: &Path,
+    kind: ncrs_core::TransferKind,
+    conflict: OnConflict,
+    progress: &mut P,
+) -> io::Result<usize> {
     match kind {
-        ncrs_core::TransferKind::Copy => {
-            transfer_to(source, target, &Copy, &mut reporting, conflict)
-        }
-        ncrs_core::TransferKind::Move => {
-            transfer_to(source, target, &Move, &mut reporting, conflict)
-        }
+        ncrs_core::TransferKind::Copy => transfer_to(source, target, &Copy, progress, conflict),
+        ncrs_core::TransferKind::Move => transfer_to(source, target, &Move, progress, conflict),
     }
 }
 

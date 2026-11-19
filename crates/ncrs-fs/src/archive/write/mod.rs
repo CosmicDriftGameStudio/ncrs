@@ -354,7 +354,7 @@ fn rewrite<P: Progress>(
     let entries = job.done;
     sink.finish()?.sync_all()?;
     temp.as_file().set_permissions(original.permissions())?;
-    crate::place_file::copy_xattrs(&real, temp.path());
+    let _unreported = crate::place_file::copy_xattrs(&real, temp.path());
     job.progress.keep_going()?;
     temp.persist(&real).map_err(|failed| failed.error)?;
     forget(archive);

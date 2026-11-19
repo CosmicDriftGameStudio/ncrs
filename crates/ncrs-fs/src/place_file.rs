@@ -30,22 +30,54 @@ pub(crate) fn rename_no_replace(from: &Path, to: &Path) -> io::Result<()> {
     }
 }
 
+/// Sets the modification time of a folder, which cannot be opened like a file
+/// on Windows.
+pub(crate) fn set_folder_modified(
+    folder: &Path,
+    modified: std::time::SystemTime,
+) -> io::Result<()> {
+    #[cfg(windows)]
+    let handle = {
+        use std::os::windows::fs::OpenOptionsExt as _;
+        // FILE_WRITE_ATTRIBUTES, and FILE_FLAG_BACKUP_SEMANTICS, without which
+        // Windows does not open a folder at all.
+        std::fs::OpenOptions::new()
+            .access_mode(0x0100)
+            .custom_flags(0x0200_0000)
+            .open(folder)?
+    };
+    #[cfg(not(windows))]
+    let handle = std::fs::File::open(folder)?;
+    handle.set_modified(modified)
+}
+
 /// Copies the extended attributes of `source` to `target`: the download
 /// quarantine on macOS, Finder tags, the resource fork. A file system that
-/// cannot hold one (exFAT, a share) must not fail the copy, so a refused
-/// attribute is skipped.
-pub(crate) fn copy_xattrs(source: &Path, target: &Path) {
+/// cannot hold one (exFAT, a share) must not fail the copy, so the copy goes
+/// on, and the names of the attributes the target refused for another reason
+/// are returned for the caller to report. A refusal because the target holds no
+/// attributes at all, and `com.apple.provenance`, which only the system sets,
+/// are not reported.
+pub(crate) fn copy_xattrs(source: &Path, target: &Path) -> Vec<String> {
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     {
         use rustix::fs::{
             lgetxattr, lgetxattr_query, llistxattr, llistxattr_query, lsetxattr, XattrFlags,
         };
-        let Ok(size) = llistxattr_query(source) else {
-            return;
+        use rustix::io::Errno;
+        let mut refused = Vec::new();
+        let size = match llistxattr_query(source) {
+            Ok(size) => size,
+            Err(Errno::NOTSUP) => return refused,
+            Err(_) => {
+                refused.push("(list)".to_owned());
+                return refused;
+            }
         };
         let mut listed = vec![0_u8; size];
         let Ok(used) = llistxattr(source, &mut listed[..]) else {
-            return;
+            refused.push("(list)".to_owned());
+            return refused;
         };
         for name in listed
             .get(..used)
@@ -55,26 +87,36 @@ pub(crate) fn copy_xattrs(source: &Path, target: &Path) {
             let Ok(name) = std::ffi::CString::new(name) else {
                 continue;
             };
-            if name.as_bytes().is_empty() {
+            if name.as_bytes().is_empty() || name.as_bytes() == b"com.apple.provenance" {
                 continue;
             }
+            let shown = name.to_string_lossy().into_owned();
             let Ok(len) = lgetxattr_query(source, name.as_c_str()) else {
+                refused.push(shown);
                 continue;
             };
             let mut value = vec![0_u8; len];
             let Ok(got) = lgetxattr(source, name.as_c_str(), &mut value[..]) else {
+                refused.push(shown);
                 continue;
             };
-            let _skipped = lsetxattr(
+            match lsetxattr(
                 target,
                 name.as_c_str(),
                 value.get(..got).unwrap_or_default(),
                 XattrFlags::empty(),
-            );
+            ) {
+                Ok(()) | Err(Errno::NOTSUP) => {}
+                Err(_) => refused.push(shown),
+            }
         }
+        refused
     }
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-    let _ = (source, target);
+    {
+        let _ = (source, target);
+        Vec::new()
+    }
 }
 
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
@@ -135,7 +177,7 @@ mod tests {
             return;
         }
 
-        copy_xattrs(&from, &to);
+        assert!(copy_xattrs(&from, &to).is_empty());
 
         let mut value = [0_u8; 64];
         let got = rustix::fs::lgetxattr(&to, name, &mut value[..]).unwrap();

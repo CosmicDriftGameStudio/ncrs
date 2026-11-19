@@ -24,7 +24,7 @@ pub fn replace_file_atomically(
             .as_file()
             .set_permissions(previous.permissions())
             .map_err(|err| (target.to_path_buf(), err))?;
-        crate::place_file::copy_xattrs(&real, temporary.path());
+        let _unreported = crate::place_file::copy_xattrs(&real, temporary.path());
     }
     temporary
         .write_all(content.as_bytes())

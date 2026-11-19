@@ -31,7 +31,8 @@ use super::session::{Pool, RemoteError, Session};
 use super::{is_deceptive, RemotePath, ServerId, Timeouts, CHUNK};
 use crate::archive::{restrict_to_owner, safe_components};
 use crate::transfer::{
-    resolve_conflict, transfer, Counting, Move, OnConflict, Progress, Reporting, Tick,
+    resolve_conflict, sweep_partials, transfer, Counting, Move, OnConflict, Progress, Reporting,
+    SkipKind, Skipped, Tick,
 };
 use ncrs_core::TransferKind;
 
@@ -210,13 +211,14 @@ pub fn download<P: Progress>(
         ));
     }
 
+    sweep_partials(target_dir);
     let staging = tempfile::Builder::new()
         .prefix(".ncrs-partial-")
         .tempdir_in(target_dir)?;
     let staged = staging.path().join(name);
     let mut done = 0;
     if kind.is_dir() {
-        fetch_folder(&link, source, &staged, progress, &mut done)?;
+        fetch_folder(&link, source, &staged, &meta, progress, &mut done)?;
     } else {
         fetch_file(&link, source, &staged, &meta, progress, &mut done)?;
     }
@@ -233,6 +235,7 @@ fn fetch_folder<P: Progress>(
     link: &Link<'_>,
     remote: &RemotePath,
     local: &Path,
+    folder_meta: &Metadata,
     progress: &mut P,
     done: &mut usize,
 ) -> io::Result<()> {
@@ -243,12 +246,44 @@ fn fetch_folder<P: Progress>(
         let child = remote.join(&name);
         let kind = meta.file_type();
         if kind.is_dir() {
-            fetch_folder(link, &child, &local.join(&name), progress, done)?;
+            fetch_folder(link, &child, &local.join(&name), &meta, progress, done)?;
         } else if kind.is_file() {
             fetch_file(link, &child, &local.join(&name), &meta, progress, done)?;
+        } else {
+            progress.skipped(Skipped {
+                path: PathBuf::from(child.remote_str()),
+                kind: if kind.is_symlink() {
+                    SkipKind::Link
+                } else {
+                    SkipKind::Special
+                },
+                detail: String::new(),
+            });
         }
     }
+    finish_folder(local, folder_meta);
     Ok(())
+}
+
+/// The folder keeps the date and mode of the server's, set after its content
+/// because every entry added changes the date. The owner keeps full access,
+/// so the folder can still be moved into place and removed. Nobody else gets
+/// write access, whatever the server says.
+fn finish_folder(local: &Path, meta: &Metadata) {
+    #[cfg(unix)]
+    if let Some(bits) = meta.permissions {
+        use std::os::unix::fs::PermissionsExt as _;
+        let _moded = std::fs::set_permissions(
+            local,
+            std::fs::Permissions::from_mode((bits & 0o755) | 0o700),
+        );
+    }
+    if let Some(secs) = meta.mtime {
+        let _dated = crate::place_file::set_folder_modified(
+            local,
+            UNIX_EPOCH + Duration::from_secs(u64::from(secs)),
+        );
+    }
 }
 
 fn fetch_file<P: Progress>(
@@ -284,9 +319,9 @@ fn fetch_file<P: Progress>(
     #[cfg(unix)]
     if let Some(bits) = meta.permissions {
         use std::os::unix::fs::PermissionsExt as _;
-        // Without setuid, setgid and sticky; the server's file type bits are not
-        // permissions.
-        let _moded = output.set_permissions(std::fs::Permissions::from_mode(bits & 0o777));
+        // Without setuid, setgid, sticky and write for group or others; the
+        // server's file type bits are not permissions.
+        let _moded = output.set_permissions(std::fs::Permissions::from_mode(bits & 0o755));
     }
     *done += 1;
     progress.advanced(*done, 0)
@@ -337,6 +372,19 @@ pub fn run_reporting(
     conflict: OnConflict,
     sender: &mpsc::UnboundedSender<Tick>,
 ) -> Option<io::Result<usize>> {
+    run_with(pool, from, to, kind, conflict, &mut Reporting::new(sender))
+}
+
+/// As `run_reporting`, with the caller's own `Progress`, so it can read what
+/// the run left out afterwards.
+pub fn run_with<P: Progress>(
+    pool: &Pool,
+    from: &Path,
+    to: &Path,
+    kind: TransferKind,
+    conflict: OnConflict,
+    progress: &mut P,
+) -> Option<io::Result<usize>> {
     let (source, target) = (RemotePath::parse(from), RemotePath::parse(to));
     if source.is_none() && target.is_none() {
         return None;
@@ -350,11 +398,10 @@ pub fn run_reporting(
     if kind == TransferKind::Move {
         return unsupported("moving to or from a server is not supported; copy instead");
     }
-    let mut reporting = Reporting::new(sender);
     match (source, target) {
         (Some(_), Some(_)) => unsupported("copying between servers is not supported"),
-        (Some(there), None) => Some(download(pool, &there, to, &mut reporting, conflict)),
-        (None, Some(there)) => Some(upload(pool, from, &there, &mut reporting, conflict)),
+        (Some(there), None) => Some(download(pool, &there, to, progress, conflict)),
+        (None, Some(there)) => Some(upload(pool, from, &there, progress, conflict)),
         (None, None) => None,
     }
 }
@@ -494,6 +541,15 @@ impl<P: Progress> Upload<'_, '_, P> {
             let item = listed?;
             let meta = std::fs::symlink_metadata(item.path())?;
             if meta.file_type().is_symlink() || !(meta.is_dir() || meta.is_file()) {
+                self.progress.skipped(Skipped {
+                    path: item.path(),
+                    kind: if meta.file_type().is_symlink() {
+                        SkipKind::Link
+                    } else {
+                        SkipKind::Special
+                    },
+                    detail: String::new(),
+                });
                 continue;
             }
             let name = item
@@ -561,26 +617,53 @@ impl<P: Progress> Upload<'_, '_, P> {
         let _stamped = link.call(link.timeouts.request, output.set_metadata(stamp_of(local)));
         link.call_io(link.timeouts.request, output.shutdown())?;
         if replaces {
-            let removed = link.call(link.timeouts.request, sftp.remove_file(remote.remote_str()));
-            match removed {
-                Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
-                _ => {}
-            }
-        }
-        if let Err(error) = self.rename(&hidden, remote) {
-            if replaces {
-                // The old file is gone, so the new copy is all that is left.
-                self.partials.retain(|kept| *kept != hidden);
-                return Err(io::Error::other(format!(
-                    "the new copy stays on the server as {}: {error}",
-                    hidden.remote_str()
-                )));
-            }
-            return Err(error);
+            self.swap_in(&hidden, remote, &parent)?;
+        } else {
+            self.rename(&hidden, remote)?;
         }
         self.partials.retain(|kept| *kept != hidden);
         self.done += 1;
         self.progress.advanced(self.done, 0)
+    }
+
+    /// Puts the finished `hidden` file where `remote` is. The library offers no
+    /// rename over an existing file, so the old file is set aside under a
+    /// hidden name first and deleted only once the new one is in place: a
+    /// failure in between puts the old one back, and a dropped connection
+    /// leaves both on the server, none lost.
+    fn swap_in(
+        &mut self,
+        hidden: &RemotePath,
+        remote: &RemotePath,
+        parent: &RemotePath,
+    ) -> io::Result<()> {
+        let aside = parent.join(&format!(".ncrs-partial-{}", unique()));
+        match self.rename(remote, &aside) {
+            Ok(()) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                return self.rename(hidden, remote)
+            }
+            Err(error) => return Err(error),
+        }
+        if let Err(error) = self.rename(hidden, remote) {
+            return Err(match self.rename(&aside, remote) {
+                Ok(()) => error,
+                Err(_) => {
+                    self.partials.retain(|kept| *kept != *hidden);
+                    io::Error::other(format!(
+                        "the old file stays on the server as {} and the new copy as {}: {error}",
+                        aside.remote_str(),
+                        hidden.remote_str()
+                    ))
+                }
+            });
+        }
+        let sftp = self.link.session.sftp();
+        let _best_effort = self.link.call(
+            self.link.timeouts.request,
+            sftp.remove_file(aside.remote_str()),
+        );
+        Ok(())
     }
 
     /// Removes what this upload left under hidden names. Best effort: the

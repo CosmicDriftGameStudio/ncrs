@@ -67,6 +67,29 @@ fn copies_a_tree_and_keeps_the_source() {
 
 /// A move is the same walk; only the source is removed at the end.
 #[test]
+fn a_file_with_a_very_long_name_is_copied() {
+    let dir = scratch("long-name");
+    let src = dir.path().join("src");
+    let dst = dir.path().join("dst");
+    fs::create_dir_all(&src).unwrap();
+    fs::create_dir_all(&dst).unwrap();
+    let name = format!("{}.txt", "ä".repeat(125));
+    assert_eq!(name.len(), 254);
+    fs::write(src.join(&name), b"long").unwrap();
+
+    transfer(
+        &src.join(&name),
+        &dst,
+        &Copy,
+        &mut Recorder::default(),
+        OnConflict::Fail,
+    )
+    .unwrap();
+
+    assert_eq!(fs::read(dst.join(&name)).unwrap(), b"long");
+}
+
+#[test]
 fn moves_a_tree_and_removes_the_source() {
     let dir = scratch("move");
     let src = dir.path().join("src");

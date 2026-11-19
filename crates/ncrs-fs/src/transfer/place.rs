@@ -4,8 +4,9 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
-use super::{partial_prefix, OnConflict, Progress, Source};
-use crate::place_file::{copy_xattrs, rename_no_replace};
+use super::{partial_prefix, OnConflict, Progress, SkipKind, Skipped, Source};
+use crate::origin_mark::origin_mark;
+use crate::place_file::{copy_xattrs, rename_no_replace, set_folder_modified};
 
 /// How much of a file is written between two looks at the progress channel.
 const CHUNK: usize = 1024 * 1024;
@@ -100,11 +101,12 @@ impl<S: Source, P: Progress> Run<'_, S, P> {
 
         self.ensure_total(source);
         let staged = self.claim_partial(source, &source_meta, target)?;
+        let mut verified = Vec::new();
         let finished = self
             .descend(source, &staged, &source_meta)
             .and_then(|()| {
                 if self.effect.removes_source() {
-                    verify_copy(source, &staged)
+                    verify_copy(source, &staged, &mut verified)
                 } else {
                     Ok(())
                 }
@@ -121,7 +123,7 @@ impl<S: Source, P: Progress> Run<'_, S, P> {
             return Err(e);
         }
         if self.effect.removes_source() {
-            self.effect.remove(source)?;
+            remove_verified(&verified)?;
         }
         Ok(())
     }
@@ -193,7 +195,7 @@ impl<S: Source, P: Progress> Run<'_, S, P> {
                 create_entry(&entry.path(), &child_meta, &child, self.progress)?;
                 self.descend(&entry.path(), &child, &child_meta)?;
             }
-            finish_dir(source, meta, target);
+            finish_dir(source, meta, target, self.progress)?;
         }
         Ok(())
     }
@@ -214,9 +216,47 @@ fn already_exists(target: &Path) -> io::Error {
     )
 }
 
+/// What was seen of one source entry when the copy was verified. The source is
+/// only removed for what was verified and is still as it was.
+struct Seen {
+    path: PathBuf,
+    kind: SeenKind,
+    /// The entry as it was, to tell it from something put in its place.
+    #[cfg(unix)]
+    stat: rustix::fs::Stat,
+    #[cfg(not(unix))]
+    len: u64,
+    #[cfg(not(unix))]
+    modified: Option<std::time::SystemTime>,
+}
+
+enum SeenKind {
+    Dir,
+    Link,
+    File,
+}
+
+impl Seen {
+    fn of(path: &Path, kind: SeenKind) -> io::Result<Self> {
+        #[cfg(not(unix))]
+        let meta = std::fs::symlink_metadata(path)?;
+        Ok(Self {
+            path: path.to_path_buf(),
+            kind,
+            #[cfg(unix)]
+            stat: rustix::fs::lstat(path)?,
+            #[cfg(not(unix))]
+            len: meta.len(),
+            #[cfg(not(unix))]
+            modified: meta.modified().ok(),
+        })
+    }
+}
+
 /// Whether `copy` holds exactly what `source` holds: the same names, the same
-/// links and the same bytes in every regular file.
-fn verify_copy(source: &Path, copy: &Path) -> io::Result<()> {
+/// links and the same bytes in every regular file. Every source entry that
+/// passed is added to `seen`, folders before what is in them.
+fn verify_copy(source: &Path, copy: &Path, seen: &mut Vec<Seen>) -> io::Result<()> {
     let differs = || {
         io::Error::new(
             io::ErrorKind::InvalidData,
@@ -236,24 +276,149 @@ fn verify_copy(source: &Path, copy: &Path) -> io::Result<()> {
             names.sort();
             Ok(names)
         };
-        let listed = names(source)?;
-        if listed != names(copy)? {
+        let copied = names(copy)?;
+        // Without the right to create links, a link was left out and reported;
+        // it stays in the source and is not verified.
+        let left_out = |name: &std::ffi::OsString| {
+            cfg!(windows)
+                && !copied.contains(name)
+                && std::fs::symlink_metadata(source.join(name))
+                    .is_ok_and(|meta| meta.file_type().is_symlink())
+        };
+        let listed: Vec<_> = names(source)?
+            .into_iter()
+            .filter(|name| !left_out(name))
+            .collect();
+        if listed != copied {
             return Err(differs());
         }
+        seen.push(Seen::of(source, SeenKind::Dir)?);
         for name in listed {
-            verify_copy(&source.join(&name), &copy.join(&name))?;
+            verify_copy(&source.join(&name), &copy.join(&name), seen)?;
         }
         Ok(())
     } else if from.file_type().is_symlink() {
         if to.file_type().is_symlink() && std::fs::read_link(source)? == std::fs::read_link(copy)? {
+            seen.push(Seen::of(source, SeenKind::Link)?);
             Ok(())
         } else {
             Err(differs())
         }
     } else if to.is_file() && from.len() == to.len() && same_bytes(source, copy)? {
+        seen.push(Seen::of(source, SeenKind::File)?);
         Ok(())
     } else {
         Err(differs())
+    }
+}
+
+/// Removes the source entries that were verified, children before their
+/// folder. Whatever appeared or changed in the source since the verification is
+/// not in the copy, so it stays, and the move says so.
+fn remove_verified(seen: &[Seen]) -> io::Result<()> {
+    let mut left: Option<&Path> = None;
+    // The first entry is the source itself; everything below it is reached
+    // from its parent without following a link.
+    let base = seen.first().and_then(|root| root.path.parent());
+    for item in seen.iter().rev() {
+        if !remove_entry(item, base)? && left.is_none() {
+            left = Some(&item.path);
+        }
+    }
+    match left {
+        None => Ok(()),
+        Some(path) => Err(io::Error::other(format!(
+            "{} changed while it was moved; what changed was left where it was",
+            path.display()
+        ))),
+    }
+}
+
+/// Removes one verified entry if it is still the one that was verified and
+/// returns whether it is gone. The folders on the way are opened one by one
+/// without following links, so a folder swapped for a link meanwhile cannot
+/// steer the removal to somewhere else.
+#[cfg(unix)]
+fn remove_entry(item: &Seen, base: Option<&Path>) -> io::Result<bool> {
+    use rustix::fs::{openat, statat, unlinkat, AtFlags, FileType, Mode, OFlags};
+    use rustix::io::Errno;
+    use std::path::Component;
+
+    let (Some(root), Some(name)) = (base, item.path.file_name()) else {
+        return Ok(false);
+    };
+    let Some(parents) = item
+        .path
+        .parent()
+        .and_then(|dir| dir.strip_prefix(root).ok())
+    else {
+        return Ok(false);
+    };
+    let reading = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC;
+    let walked = (|| {
+        let mut dir = rustix::fs::open(root, reading, Mode::empty())?;
+        for part in parents.components() {
+            if let Component::Normal(step) = part {
+                dir = openat(&dir, step, reading | OFlags::NOFOLLOW, Mode::empty())?;
+            }
+        }
+        let now = statat(&dir, name, AtFlags::SYMLINK_NOFOLLOW)?;
+        let then = &item.stat;
+        let kind = FileType::from_raw_mode(now.st_mode);
+        let same = now.st_dev == then.st_dev
+            && now.st_ino == then.st_ino
+            && match item.kind {
+                SeenKind::Dir => kind.is_dir(),
+                SeenKind::Link => kind.is_symlink(),
+                SeenKind::File => {
+                    kind.is_file()
+                        && now.st_size == then.st_size
+                        && now.st_mtime == then.st_mtime
+                        && now.st_mtime_nsec == then.st_mtime_nsec
+                }
+            };
+        if !same {
+            return Ok(false);
+        }
+        let flags = if matches!(item.kind, SeenKind::Dir) {
+            AtFlags::REMOVEDIR
+        } else {
+            AtFlags::empty()
+        };
+        unlinkat(&dir, name, flags).map(|()| true)
+    })();
+    match walked {
+        Ok(gone) => Ok(gone),
+        // Gone already.
+        Err(Errno::NOENT) => Ok(true),
+        // A folder with something new in it, or one that became a link or a
+        // file: left where it is.
+        Err(Errno::NOTEMPTY | Errno::EXIST | Errno::LOOP | Errno::NOTDIR) => Ok(false),
+        Err(other) => Err(other.into()),
+    }
+}
+
+#[cfg(not(unix))]
+fn remove_entry(item: &Seen, _base: Option<&Path>) -> io::Result<bool> {
+    match (&item.kind, std::fs::symlink_metadata(&item.path)) {
+        (_, Err(e)) if e.kind() == io::ErrorKind::NotFound => Ok(true),
+        (_, Err(e)) => Err(e),
+        (SeenKind::Dir, Ok(meta)) if meta.is_dir() => match std::fs::remove_dir(&item.path) {
+            Ok(()) => Ok(true),
+            Err(e) if e.kind() == io::ErrorKind::DirectoryNotEmpty => Ok(false),
+            Err(e) => Err(e),
+        },
+        (SeenKind::Link, Ok(meta)) if meta.file_type().is_symlink() => {
+            std::fs::remove_file(&item.path).map(|()| true)
+        }
+        (SeenKind::File, Ok(meta))
+            if meta.is_file()
+                && meta.len() == item.len
+                && meta.modified().ok() == item.modified =>
+        {
+            std::fs::remove_file(&item.path).map(|()| true)
+        }
+        _ => Ok(false),
     }
 }
 
@@ -329,7 +494,17 @@ pub(super) fn create_entry<P: Progress>(
         // A symlink is copied as a symlink, not followed: following it would
         // copy whatever it points at, possibly outside the tree the user marked.
         let link = std::fs::read_link(source)?;
-        symlink(source, &link, target)
+        match symlink(source, &link, target) {
+            Err(e) if link_not_permitted(&e) => {
+                progress.skipped(Skipped {
+                    path: source.to_path_buf(),
+                    kind: SkipKind::Link,
+                    detail: e.to_string(),
+                });
+                Ok(())
+            }
+            other => other,
+        }
     } else {
         refuse_special_file(meta)?;
         let mut from = open_regular(source)?;
@@ -338,7 +513,8 @@ pub(super) fn create_entry<P: Progress>(
         // filled; the original's permissions come with the last step.
         let mut to = create_private(target)?;
         let filled = copy_in_chunks(&mut from, &mut to, progress).and_then(|()| {
-            copy_xattrs(source, target);
+            report_refused(progress, source, copy_xattrs(source, target));
+            origin_mark(source, target)?;
             // The copy keeps the date of the original, as in the Finder: a
             // folder comparison after a sync must not find every copy newer.
             if let Ok(modified) = meta.modified() {
@@ -376,6 +552,13 @@ fn open_regular(source: &Path) -> io::Result<std::fs::File> {
         use std::os::unix::fs::OpenOptionsExt as _;
         options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
     }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt as _;
+        // FILE_FLAG_OPEN_REPARSE_POINT: a link that replaced the file opens as
+        // the link itself, which the check below refuses.
+        options.custom_flags(0x0020_0000);
+    }
     let file = options.open(source)?;
     if !file.metadata()?.is_file() {
         return Err(io::Error::new(
@@ -409,13 +592,35 @@ fn copy_in_chunks<P: Progress>(
 /// permissions. Last, because the date changes with every entry added and a
 /// read-only folder cannot be filled. A folder that cannot take them is still
 /// a complete copy.
-fn finish_dir(source: &Path, meta: &std::fs::Metadata, target: &Path) {
-    copy_xattrs(source, target);
-    #[cfg(unix)]
-    if let (Ok(modified), Ok(handle)) = (meta.modified(), std::fs::File::open(target)) {
-        let _skipped = handle.set_modified(modified);
+fn finish_dir<P: Progress>(
+    source: &Path,
+    meta: &std::fs::Metadata,
+    target: &Path,
+    progress: &mut P,
+) -> io::Result<()> {
+    report_refused(progress, source, copy_xattrs(source, target));
+    origin_mark(source, target)?;
+    if let Ok(modified) = meta.modified() {
+        let _skipped = set_folder_modified(target, modified);
     }
     let _skipped = std::fs::set_permissions(target, copied_permissions(meta));
+    Ok(())
+}
+
+fn report_refused<P: Progress>(progress: &mut P, path: &Path, refused: Vec<String>) {
+    if !refused.is_empty() {
+        progress.skipped(Skipped {
+            path: path.to_path_buf(),
+            kind: SkipKind::Attributes,
+            detail: refused.join(", "),
+        });
+    }
+}
+
+/// Windows creates a link only with a privilege or in developer mode
+/// (ERROR_PRIVILEGE_NOT_HELD); without it the link is left out and reported.
+fn link_not_permitted(error: &io::Error) -> bool {
+    cfg!(windows) && error.raw_os_error() == Some(1314)
 }
 
 /// A FIFO would block the job forever when opened for reading, and sockets and
@@ -480,5 +685,79 @@ fn symlink(source: &Path, original: &Path, link: &Path) -> io::Result<()> {
         } else {
             std::os::windows::fs::symlink_file(original, link)
         }
+    }
+}
+
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pair(dir: &Path) -> (PathBuf, PathBuf) {
+        let (source, copy) = (dir.join("src"), dir.join("copy"));
+        for root in [&source, &copy] {
+            std::fs::create_dir_all(root.join("sub")).unwrap();
+            std::fs::write(root.join("a.txt"), "a").unwrap();
+            std::fs::write(root.join("sub/b.txt"), "b").unwrap();
+        }
+        (source, copy)
+    }
+
+    #[test]
+    fn a_verified_tree_is_removed_completely() {
+        let dir = tempfile::tempdir().unwrap();
+        let (source, copy) = pair(dir.path());
+        let mut seen = Vec::new();
+        verify_copy(&source, &copy, &mut seen).unwrap();
+
+        remove_verified(&seen).unwrap();
+
+        assert!(!source.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_folder_swapped_for_a_link_after_the_verification_costs_nothing_outside() {
+        let dir = tempfile::tempdir().unwrap();
+        let (source, copy) = pair(dir.path());
+        let outside = dir.path().join("outside");
+        std::fs::create_dir(&outside).unwrap();
+        std::fs::write(outside.join("b.txt"), "b").unwrap();
+        let mut seen = Vec::new();
+        verify_copy(&source, &copy, &mut seen).unwrap();
+        std::fs::rename(source.join("sub"), dir.path().join("moved-away")).unwrap();
+        std::os::unix::fs::symlink(&outside, source.join("sub")).unwrap();
+
+        let result = remove_verified(&seen);
+
+        assert!(
+            result.is_err(),
+            "what was swapped in is reported as changed"
+        );
+        assert_eq!(std::fs::read(outside.join("b.txt")).unwrap(), b"b");
+        assert!(source.join("sub").is_symlink());
+    }
+
+    #[test]
+    fn what_appeared_or_changed_after_the_verification_stays() {
+        let dir = tempfile::tempdir().unwrap();
+        let (source, copy) = pair(dir.path());
+        let mut seen = Vec::new();
+        verify_copy(&source, &copy, &mut seen).unwrap();
+        std::fs::write(source.join("new.txt"), "arrived meanwhile").unwrap();
+        std::fs::write(source.join("sub/b.txt"), "grown meanwhile").unwrap();
+
+        let error = remove_verified(&seen).unwrap_err();
+
+        assert!(error.to_string().contains("changed while it was moved"));
+        assert_eq!(
+            std::fs::read(source.join("new.txt")).unwrap(),
+            b"arrived meanwhile"
+        );
+        assert_eq!(
+            std::fs::read(source.join("sub/b.txt")).unwrap(),
+            b"grown meanwhile"
+        );
+        assert!(!source.join("a.txt").exists(), "the verified file is gone");
     }
 }
