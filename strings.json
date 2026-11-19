@@ -541,10 +541,52 @@
       "de": "Das Archiv wurde nicht verändert: {reason}"
     },
     {
-      "key": "status.quit_busy",
-      "context": "Status bar notice when the user quits while a copy, move or other job still runs. Quitting would stop the job half done; asking to quit a second time does it anyway.",
-      "en": "A job is still running; quit again to stop it and leave",
-      "de": "Ein Auftrag läuft noch; noch einmal beenden, um ihn abzubrechen und zu schließen"
+      "key": "transfer.skipped",
+      "context": "Status bar notice after a copy or move that finished but left some things out. {count} is a number, {kinds} a comma-separated list of what kind of things (see the skipped.kind keys), {examples} the first few names, ending in an ellipsis when there are more. Plain, calm; the rest was copied.",
+      "en": "{count} items were not copied ({kinds}): {examples}",
+      "de": "{count} Einträge wurden nicht kopiert ({kinds}): {examples}"
+    },
+    {
+      "key": "skipped.kind_link",
+      "context": "Plural noun in the list of what a copy left out: symbolic links that were not copied or could not be created. Lower case, used inside a comma-separated list.",
+      "en": "links",
+      "de": "Verknüpfungen"
+    },
+    {
+      "key": "skipped.kind_special",
+      "context": "Plural noun in the list of what a copy left out: special files such as sockets, devices and pipes. Lower case, used inside a comma-separated list.",
+      "en": "special files",
+      "de": "Spezialdateien"
+    },
+    {
+      "key": "skipped.kind_attributes",
+      "context": "Plural noun in the list of what a copy left out: extended file attributes (tags, metadata) that the target would not take. Lower case, used inside a comma-separated list.",
+      "en": "file attributes",
+      "de": "Dateiattribute"
+    },
+    {
+      "key": "quit_busy.title",
+      "context": "Title of the question that appears when the user quits while a copy, move or other job still runs. Short question; the buttons are 'keep running' and 'stop and quit'.",
+      "en": "A job is still running",
+      "de": "Ein Auftrag läuft noch"
+    },
+    {
+      "key": "quit_busy.hint",
+      "context": "Line under the title of the quit question: quitting stops the job half done, so files may be left incomplete. One or two short, calm sentences.",
+      "en": "If you quit now, the job stops half done and files may be left incomplete.",
+      "de": "Wenn du jetzt beendest, bricht der Auftrag ab und Dateien können unvollständig bleiben."
+    },
+    {
+      "key": "quit_busy.keep",
+      "context": "Button of the quit question that leaves the job running and does not quit. Short; it has the focus when the question opens.",
+      "en": "Keep running",
+      "de": "Weiterlaufen lassen"
+    },
+    {
+      "key": "quit_busy.confirm",
+      "context": "Button of the quit question that stops the running job and quits the app. Verb phrase, rightmost button.",
+      "en": "Stop and quit",
+      "de": "Abbrechen und beenden"
     },
     {
       "key": "status.archive_write_busy",

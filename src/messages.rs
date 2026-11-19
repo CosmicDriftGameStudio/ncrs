@@ -114,6 +114,8 @@ pub enum Message {
         /// cannot be told apart is the reason the overwrite dialog was
         /// unreachable.
         result: Result<Transfer, RowFailure>,
+        /// What the row left out while the rest went on.
+        skipped: Vec<ncrs_fs::transfer::Skipped>,
         /// Which row this was, so a conflict on the next one points at it.
         index: usize,
         /// The transfer it belongs to; a result from an earlier one is dropped.
@@ -161,6 +163,10 @@ pub enum Message {
     OpenFileConfirm,
     /// The user dismissed the open-file question.
     OpenFileCancel,
+    /// The user chose to stop the running job and quit.
+    QuitConfirm,
+    /// The user chose to let the running job finish.
+    QuitCancel,
     /// A message of the permissions dialog.
     Permissions(PermissionsMessage),
     /// A message of the batch rename dialog, or its undo.
@@ -556,6 +562,8 @@ impl From<OpsMessage> for Message {
             OpsMessage::DeleteConfirm => Self::DeleteConfirm,
             OpsMessage::OpenFileCancel => Self::OpenFileCancel,
             OpsMessage::OpenFileConfirm => Self::OpenFileConfirm,
+            OpsMessage::QuitCancel => Self::QuitCancel,
+            OpsMessage::QuitConfirm => Self::QuitConfirm,
             OpsMessage::DeleteRowDone {
                 result,
                 index,
@@ -567,10 +575,12 @@ impl From<OpsMessage> for Message {
             },
             OpsMessage::TransferRowDone {
                 result,
+                skipped,
                 index,
                 generation,
             } => Self::TransferRowDone {
                 result,
+                skipped,
                 index,
                 generation,
             },

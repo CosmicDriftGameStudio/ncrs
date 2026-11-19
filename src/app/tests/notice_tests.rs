@@ -85,21 +85,22 @@ fn a_job_asked_for_while_one_runs_gets_a_notice_and_is_not_queued() {
 }
 
 #[test]
-fn quitting_while_a_job_runs_asks_first_and_the_second_time_goes_on() {
+fn quitting_while_a_job_runs_opens_a_question_that_keeps_or_stops_it() {
     let mut app = App::with_fixed_panels();
     run_a_job(&mut app);
-    app.notice = None;
 
     drop(app.update(Message::Quit));
-    assert!(app.ops.quit_asked);
-    assert_eq!(
-        app.notice.as_deref(),
-        Some(app.lang.text(Msg::StatusQuitBusy))
-    );
+    assert!(app.ops.quit_dialog);
+    assert_eq!(app.dialog_focus, ncrs_ops::quit_dialog::CANCEL_FOCUS);
+    assert!(app.jobs.is_busy());
 
-    app.notice = None;
+    drop(app.update(Message::QuitCancel));
+    assert!(!app.ops.quit_dialog);
+    assert!(app.jobs.is_busy(), "keeping the job stopped it");
+
     drop(app.update(Message::Quit));
-    assert_eq!(app.notice, None, "the second quit asked again");
+    drop(app.update(Message::QuitConfirm));
+    assert!(!app.ops.quit_dialog);
 }
 
 #[test]
@@ -114,6 +115,7 @@ fn quitting_with_a_note_that_cannot_be_saved_warns_once() {
         expect: ncrs_notes::store::Expect::Absent,
         replaces: None,
         generation: 1,
+        root: scratch.path().to_owned(),
         background: false,
     });
 
@@ -131,4 +133,50 @@ fn quitting_with_a_note_that_cannot_be_saved_warns_once() {
         None,
         "the second quit warned again"
     );
+}
+
+fn unsaveable_note(app: &mut App, scratch: &std::path::Path) {
+    let blocker = scratch.join("blocker");
+    std::fs::write(&blocker, b"a file, not a folder").unwrap();
+    app.notes.unsaved.push(ncrs_notes::state::Write {
+        path: blocker.join("note.md"),
+        text: "unsaved".to_owned(),
+        expect: ncrs_notes::store::Expect::Absent,
+        replaces: None,
+        generation: 1,
+        root: scratch.to_owned(),
+        background: false,
+    });
+}
+
+#[test]
+fn a_quit_held_back_for_a_note_leaves_the_job_running() {
+    let scratch = tempfile::tempdir().unwrap();
+    let mut app = App::with_fixed_panels();
+    run_a_job(&mut app);
+    unsaveable_note(&mut app, scratch.path());
+
+    drop(app.update(Message::Quit));
+    drop(app.update(Message::QuitConfirm));
+
+    assert!(app.jobs.is_busy(), "the job was stopped, the app stayed");
+    assert!(!app.ops.quit_confirmed);
+}
+
+#[test]
+fn a_confirmed_quit_does_not_outlive_the_next_job() {
+    let mut app = App::with_fixed_panels();
+    app.ops.quit_confirmed = true;
+
+    drop(app.start_job(
+        jobs::Job {
+            kind: jobs::JobKind::Copy,
+            path: PathBuf::from("/x/b.txt"),
+            total: None,
+        },
+        || Task::<Message>::none(),
+    ));
+    drop(app.update(Message::Quit));
+
+    assert!(app.ops.quit_dialog, "the quit went through unasked");
 }

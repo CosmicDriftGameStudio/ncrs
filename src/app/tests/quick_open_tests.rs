@@ -133,6 +133,7 @@ fn a_conflict_closes_it() {
     };
     app.ops.transfer = Some(transfer);
     drop(app.update(Message::TransferRowDone {
+        skipped: Vec::new(),
         result: Err(RowFailure::Conflict("exists".to_string())),
         index: 0,
         generation: app.ops.generation,

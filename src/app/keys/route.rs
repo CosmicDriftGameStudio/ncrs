@@ -53,6 +53,13 @@ fn keys_without_prompt(
         return delete_dialog_key(prompt, &key, key_modifiers, scope);
     }
 
+    if prompt.quit_dialog {
+        return match key.as_ref() {
+            Key::Named(Named::Escape) => Some(Message::QuitCancel),
+            _ => dialog_focus_key(key.clone(), key_modifiers),
+        };
+    }
+
     if prompt.open_file_dialog {
         return match key.as_ref() {
             Key::Named(Named::Escape) => Some(Message::OpenFileCancel),

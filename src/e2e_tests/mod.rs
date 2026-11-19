@@ -2662,6 +2662,7 @@ mod acceptance;
 #[cfg(test)]
 mod process_again;
 
+mod folder_merge;
 #[cfg(test)]
 mod notes;
 mod notes_move;

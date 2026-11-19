@@ -155,7 +155,6 @@ impl App {
             }
             Ask::FinishJob => {
                 self.jobs.finish();
-                self.ops.quit_asked = false;
                 Task::none()
             }
             Ask::SetJobProgress(tick) => {
@@ -470,7 +469,7 @@ impl App {
         } else if self.ops.restoring.is_some() {
             self.end_restore()
         } else {
-            let outcome = ncrs_ops::end_transfer(&mut self.ops);
+            let outcome = ncrs_ops::end_transfer(&mut self.ops, self.lang);
             self.run_ops_outcome(outcome)
         }
     }
@@ -570,6 +569,7 @@ impl App {
         if self.jobs.is_busy() {
             return self.show_busy_notice();
         }
+        self.ops.quit_confirmed = false;
         self.jobs.enqueue(job);
         self.jobs
             .start_next(move |_| build().map(Message::from))
@@ -591,6 +591,7 @@ impl App {
             return self.show_busy_notice();
         }
         let progress_tx = self.progress_sender();
+        self.ops.quit_confirmed = false;
         self.jobs.enqueue(job);
         self.jobs
             .start_next(move |_| build(progress_tx).map(Message::from))

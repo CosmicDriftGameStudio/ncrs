@@ -21,6 +21,7 @@ use crate::delete_flow::{actions, busy_notice, idle, with_front, Outcome};
 use crate::message::{ConflictChoice, OpsMessage};
 use crate::restore_flow::resume_restore;
 use crate::row_failure::RowFailure;
+use crate::skipped_report::skipped_text;
 use crate::state::{Ops, PendingConflict, Transfer};
 use crate::transfer::Policy;
 
@@ -144,6 +145,7 @@ pub fn start_rows_transfer(
 
 fn launch(ops: &mut Ops, transfer: Transfer, policy: Policy, ctx: &FlowCtx<'_>) -> Outcome {
     ops.transfer_completed = false;
+    ops.transfer_skipped.clear();
     ops.transfer = Some(transfer.clone());
     ops.conflict_rule = policy.standing_rule();
     ops.bump_generation();
@@ -165,7 +167,7 @@ fn run_from(
 ) -> Outcome {
     let Some(source) = transfer.sources.get(index).cloned() else {
         ops.transfer_completed = true;
-        return end_transfer(ops);
+        return end_transfer(ops, ctx.lang);
     };
 
     let generation = ops.generation;
@@ -193,35 +195,41 @@ fn run_from(
                 let kind = transfer.kind;
                 let renamed = name_in_target.clone();
                 move || {
-                    if let Some(name) = renamed {
-                        return fs::transfer::run_reporting_as(
+                    // Reports as it goes, so the bar moves during a long
+                    // copy rather than jumping at the end.
+                    let mut report = fs::transfer::Reporting::new(&progress_tx);
+                    let result = match renamed {
+                        Some(name) => fs::transfer::run_as_with(
                             &from,
                             &to.join(name),
                             kind,
                             conflict,
-                            &progress_tx,
-                        );
-                    }
-                    // Reports as it goes, so the bar moves during a long
-                    // copy rather than jumping at the end. A server on
-                    // either side is the SFTP layer's.
-                    fs::remote::transfer::run_reporting(
-                        &pool,
-                        &from,
-                        &to,
-                        kind,
-                        conflict,
-                        &progress_tx,
-                    )
-                    .unwrap_or_else(|| {
-                        fs::transfer::run_reporting(&from, &to, kind, conflict, &progress_tx)
-                    })
+                            &mut report,
+                        ),
+                        // A server on either side is the SFTP layer's.
+                        None => fs::remote::transfer::run_with(
+                            &pool,
+                            &from,
+                            &to,
+                            kind,
+                            conflict,
+                            &mut report,
+                        )
+                        .unwrap_or_else(|| {
+                            fs::transfer::run_with(&from, &to, kind, conflict, &mut report)
+                        }),
+                    };
+                    (result, report.take_skipped())
                 }
             }),
             move |outcome| {
                 // Two failures collapse into one string here: the join error
                 // means the blocking task died, the other means the copy
                 // itself failed. The dialog cannot tell them apart anyway.
+                let (outcome, skipped) = match outcome {
+                    Ok((result, skipped)) => (Ok(result), skipped),
+                    Err(join) => (Err(join), Vec::new()),
+                };
                 let result = match outcome {
                     Ok(Ok(_)) => Ok(transfer.clone()),
                     // The kind travels with the message rather than being
@@ -234,6 +242,7 @@ fn run_from(
                 };
                 OpsMessage::TransferRowDone {
                     result,
+                    skipped,
                     index,
                     generation,
                 }
@@ -251,12 +260,18 @@ fn run_from(
 pub fn transfer_row_done(
     ops: &mut Ops,
     result: Result<Transfer, RowFailure>,
+    skipped: Vec<fs::transfer::Skipped>,
     index: usize,
     generation: u64,
     ctx: &FlowCtx<'_>,
 ) -> Outcome {
     if generation != ops.generation {
         return idle();
+    }
+    for item in skipped {
+        if !ops.transfer_skipped.contains(&item) {
+            ops.transfer_skipped.push(item);
+        }
     }
     let finished = vec![Action::FinishJob, Action::CountJobDone];
     let Some(transfer) = ops.transfer.clone() else {
@@ -288,16 +303,18 @@ pub fn transfer_row_done(
         // to show them.
         Err(RowFailure::Refused(refusal)) => with_front(
             Action::ShowError(refusal_text(ctx.lang, refusal)),
-            end_transfer(ops),
+            end_transfer(ops, ctx.lang),
         ),
         Err(RowFailure::UnsafeName(name)) => {
             let text = fill_template(
                 ctx.lang.text(Msg::ErrorRemoteUnsafeName),
                 &[("{name}", &name)],
             );
-            with_front(Action::ShowError(text), end_transfer(ops))
+            with_front(Action::ShowError(text), end_transfer(ops, ctx.lang))
         }
-        Err(RowFailure::Other(reason)) => with_front(Action::ShowError(reason), end_transfer(ops)),
+        Err(RowFailure::Other(reason)) => {
+            with_front(Action::ShowError(reason), end_transfer(ops, ctx.lang))
+        }
     };
     let mut asked = finished;
     asked.extend(rest);
@@ -337,7 +354,7 @@ pub fn answer_conflict(ops: &mut Ops, clicked: ConflictChoice, ctx: &FlowCtx<'_>
     let choice = ops.conflict_answer(clicked);
     // Cancel ends the transfer; the rows already done stay done.
     if choice == ConflictChoice::Cancel {
-        return end_transfer(ops);
+        return end_transfer(ops, ctx.lang);
     }
     if choice.applies_to_all() {
         ops.conflict_rule = Some(choice.conflict());
@@ -353,13 +370,18 @@ pub fn answer_conflict(ops: &mut Ops, clicked: ConflictChoice, ctx: &FlowCtx<'_>
 /// Ends the transfer, finished or not: forgets it and its "for all" rule, and
 /// reloads both panels, since a move changes the source directory as well as
 /// the target and rows before a failure or a cancel are already done.
-pub fn end_transfer(ops: &mut Ops) -> Outcome {
+pub fn end_transfer(ops: &mut Ops, lang: Language) -> Outcome {
     ops.transfer = None;
+    // A pasted clipboard file was staged only to be copied; it must not outlive the copy.
+    ops.paste_staging = None;
     ops.transfer_mask_visible = false;
     ops.transfer_rows_done = 0;
     ops.conflict_rule = None;
     ops.bump_generation();
-    actions(vec![Action::ReloadSourceThenTarget, Action::RestartSearch])
+    let skipped = std::mem::take(&mut ops.transfer_skipped);
+    let mut asked = vec![Action::ReloadSourceThenTarget, Action::RestartSearch];
+    asked.extend(skipped_text(lang, &skipped).map(Action::ShowNotice));
+    actions(asked)
 }
 
 #[cfg(test)]
@@ -422,6 +444,7 @@ mod tests {
             transfer_row_done(
                 &mut ops,
                 Err(RowFailure::Conflict("taken".to_owned())),
+                Vec::new(),
                 0,
                 generation,
                 ctx,
@@ -513,6 +536,45 @@ mod tests {
         assert!(!ops.transfer_completed);
     }
 
+    #[test]
+    fn what_a_finished_transfer_left_out_is_reported_at_its_end() {
+        let from = tempfile::tempdir().unwrap();
+        let to = tempfile::tempdir().unwrap();
+        let transfer = transfer_of(from.path().join("photos"), to.path().to_owned());
+        let mut ops = Ops {
+            transfer: Some(transfer.clone()),
+            ..Ops::default()
+        };
+        let skipped = vec![fs::transfer::Skipped {
+            path: from.path().join("photos/socket"),
+            kind: fs::transfer::SkipKind::Special,
+            detail: String::new(),
+        }];
+        let generation = ops.generation;
+
+        let (_task, asked) = with_ctx(false, |ctx| {
+            transfer_row_done(&mut ops, Ok(transfer), skipped, 0, generation, ctx)
+        });
+
+        assert!(asked
+            .iter()
+            .any(|action| matches!(action, Action::ShowNotice(text) if text.contains("socket"))));
+        assert!(ops.transfer_skipped.is_empty());
+    }
+    #[test]
+    fn the_staged_paste_is_removed_when_the_transfer_ends() {
+        let staging = tempfile::tempdir().unwrap();
+        let staged = staging.path().to_owned();
+        std::fs::write(staged.join("pasted.txt"), b"secret").unwrap();
+        let mut ops = Ops {
+            paste_staging: Some(staging),
+            ..Ops::default()
+        };
+
+        drop(end_transfer(&mut ops, Language::default()));
+
+        assert!(!staged.exists());
+    }
     #[test]
     fn a_finished_copy_into_an_archive_counts_as_completed() {
         let mut ops = Ops {

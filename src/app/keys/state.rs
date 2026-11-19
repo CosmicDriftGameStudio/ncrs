@@ -121,6 +121,7 @@ impl App {
         let batch_rename_dialog = self.ops.batch_rename.is_some();
         let start_over_dialog = self.start_over_dialog;
         let open_file_dialog = self.ops.open_file_dialog.is_some();
+        let quit_dialog = self.ops.quit_dialog;
         let delete_dialog = match &self.ops.delete_dialog {
             None => DeleteKeys::Closed,
             Some(deletion) if deletion.permanent => DeleteKeys::Permanent,
@@ -133,6 +134,7 @@ impl App {
                 config_error,
                 delete_dialog,
                 open_file_dialog,
+                quit_dialog,
                 start_over_dialog,
                 volume_menu,
                 context_menu,
@@ -186,6 +188,7 @@ impl App {
                 config_error,
                 delete_dialog,
                 open_file_dialog,
+                quit_dialog,
                 start_over_dialog,
                 volume_menu,
                 context_menu,

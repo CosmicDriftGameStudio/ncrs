@@ -50,6 +50,7 @@ fn with_conflict() -> (App, tempfile::TempDir) {
 /// covers the "for all" rule, which needs several conflicts in a row.
 fn deliver_conflict(app: &mut App) {
     let _task = app.update(Message::TransferRowDone {
+        skipped: Vec::new(),
         result: Err(RowFailure::from_io(std::io::Error::new(
             std::io::ErrorKind::AlreadyExists,
             "alpha.txt already exists",
@@ -188,6 +189,7 @@ async fn a_refused_7z_copy_shows_the_text_of_the_language() {
             let _started = app.start_transfer(TransferKind::Copy);
 
             let _task = app.update(Message::TransferRowDone {
+                skipped: Vec::new(),
                 result: Err(RowFailure::from_io(error)),
                 index: 0,
                 generation: app.ops.generation,
@@ -210,6 +212,7 @@ async fn a_late_result_of_a_stopped_transfer_is_ignored() {
     assert!(app.jobs.is_busy());
 
     let _task = app.update(Message::TransferRowDone {
+        skipped: Vec::new(),
         result: Err(RowFailure::Other("the app is gone".to_string())),
         index: 0,
         generation: stale,
@@ -234,6 +237,7 @@ async fn a_finished_transfer_forgets_its_rule() {
     let transfer = app.ops.transfer.clone().expect("a running transfer");
 
     let _task = app.update(Message::TransferRowDone {
+        skipped: Vec::new(),
         result: Ok(transfer),
         index: 0,
         generation: app.ops.generation,

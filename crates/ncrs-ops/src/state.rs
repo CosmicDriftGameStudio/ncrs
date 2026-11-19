@@ -239,8 +239,12 @@ pub struct Ops {
     /// Whether the latest transfer went through all its rows, as opposed to
     /// being cancelled or stopped by an error.
     pub transfer_completed: bool,
-    /// Quitting was asked once while a job ran; asking again quits.
-    pub quit_asked: bool,
+    /// What the rows of the running transfer left out, for the report at its end.
+    pub transfer_skipped: Vec<ncrs_fs::transfer::Skipped>,
+    /// The question whether to stop the running job and quit, while it is up.
+    pub quit_dialog: bool,
+    /// The user chose to stop the job and quit, so the quit that follows goes through.
+    pub quit_confirmed: bool,
     /// Whether the open transfer conflict is a folder onto a folder.
     pub conflict_folder: bool,
     /// The conflict rule from a previous "for all" answer, applied to the rest

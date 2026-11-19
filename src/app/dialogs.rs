@@ -166,6 +166,7 @@ impl App {
             1
         } else if self.ops.delete_dialog.is_some()
             || self.ops.open_file_dialog.is_some()
+            || self.ops.quit_dialog
             || self.start_over_dialog
             || self.settings.ocr_models.is_some()
             || self.settings.ai_card_is_shown()
@@ -194,6 +195,14 @@ impl App {
                 self.confirm_delete()
             } else {
                 self.ops.delete_dialog = None;
+                Task::none()
+            };
+        }
+        if self.ops.quit_dialog {
+            return if self.dialog_focus == ncrs_ops::quit_dialog::CONFIRM_FOCUS {
+                self.confirm_quit_with_job()
+            } else {
+                self.ops.quit_dialog = false;
                 Task::none()
             };
         }
@@ -296,6 +305,7 @@ impl App {
             || self.ops.progress_mask_is_open()
             || self.ops.delete_dialog.is_some()
             || self.ops.open_file_dialog.is_some()
+            || self.ops.quit_dialog
             || self.ops.permissions_dialog.is_some()
             || self.ops.batch_rename.is_some()
             || self.start_over_dialog
@@ -338,19 +348,38 @@ impl App {
         reload.unwrap_or_else(Task::none)
     }
 
+    /// The quit question was answered with "stop and quit".
+    pub(in crate::app) fn confirm_quit_with_job(&mut self) -> Task<Message> {
+        self.ops.quit_dialog = false;
+        // The job keeps running when the quit is held back for a note.
+        if self.notes_hold_quit() {
+            return Task::none();
+        }
+        self.ops.quit_confirmed = true;
+        let stopped = self.abort_job();
+        Task::batch([stopped, self.quit_after_settings_page()])
+    }
+
+    /// A note typed in the last pause before its save is still only in memory.
+    /// A note that cannot be saved holds the quit back once; asking again quits.
+    fn notes_hold_quit(&mut self) -> bool {
+        let ctx = ncrs_notes::Ctx { lang: self.lang };
+        let failures = ncrs_notes::flush_now(&mut self.notes, &ctx);
+        if failures.is_empty() || std::mem::replace(&mut self.notes.quit_warned, true) {
+            return false;
+        }
+        let text = ncrs_i18n::fill_template(
+            self.lang.text(Msg::NotesQuitUnsaved),
+            &[("{reason}", &failures.join("; "))],
+        );
+        self.set_status_error(&text);
+        true
+    }
+
     /// Writes the session state here and now, then ends the app: the runtime
     /// stops right after, so no task would run.
     pub(in crate::app) fn quit(&mut self) -> Task<Message> {
-        // A note typed in the last pause before its save is still only in memory.
-        // A note that cannot be saved holds the quit back once; asking again quits.
-        let ctx = ncrs_notes::Ctx { lang: self.lang };
-        let failures = ncrs_notes::flush_now(&mut self.notes, &ctx);
-        if !failures.is_empty() && !std::mem::replace(&mut self.notes.quit_warned, true) {
-            let text = ncrs_i18n::fill_template(
-                self.lang.text(Msg::NotesQuitUnsaved),
-                &[("{reason}", &failures.join("; "))],
-            );
-            self.set_status_error(&text);
+        if self.notes_hold_quit() {
             return Task::none();
         }
         ncrs_filing_view::stop(&self.filing_view);
