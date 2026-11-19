@@ -23,7 +23,7 @@ ncrs connects to the network only for the purposes below. The update check runs 
     - when Hermes learns a filing rule or reads how a folder is organised: the folders of sample documents in your archive and what Hermes found in them (sender, recipient, kind, date, number, tags);
     - when you rename several files at once: the names of up to 30 files of the folder, also in folders on another computer (SFTP).
 
-  Learning a filing rule sends both filed documents and folders and file names, so it needs both agreements. A settings file from before this split, with its single agreement for a server, counts as agreement to all three kinds for that server and nothing more. Of a document's text ncrs sends at most the first 16,000 characters. Cancelling keeps the model you had. Nothing goes to a server on another computer that you did not agree to. The API key for the server is kept in the system's credential store, not in the settings file.
+  Learning a filing rule sends both filed documents and folders and file names, so it needs both agreements. A settings file from before this split, with its single agreement for a server, no longer counts: you are asked again for each kind. Of a document's text ncrs sends at most the first 16,000 characters. Cancelling keeps the model you had. Nothing goes to a server on another computer that you did not agree to. The API key for the server is kept in the system's credential store, not in the settings file.
 
 - **Update check:** when the check is on, ncrs asks GitHub (api.github.com) for the newest release of ncrs, at most once a day, without a click. It is on by default for a download from the project's releases page. See below.
 

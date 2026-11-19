@@ -184,7 +184,7 @@ pub struct AiSection {
     #[serde(default)]
     pub consented_origins: Option<Vec<String>>,
     /// The servers new documents may be sent to. A file from before the
-    /// three agreements has `consented_origins` instead, which counts for all.
+    /// three agreements has `consented_origins` instead, which counts for none.
     #[serde(default)]
     pub consented_inbox: Option<Vec<String>>,
     /// The servers texts and data of filed documents may be sent to.
@@ -196,12 +196,11 @@ pub struct AiSection {
 }
 
 impl AiSection {
-    /// The servers agreed to for each kind of data. A kind without its own
-    /// list takes the servers of the single agreement older files have, which
-    /// covered all three, so nobody gains a permission by the update.
+    /// The servers agreed to for each kind of data. The single agreement of
+    /// older files (`consented_origins`, or an AI switched on in the file)
+    /// grants nothing: the user is asked again for each kind.
     pub fn consents(&self) -> ConsentedOrigins {
-        let shared = self.consented();
-        let of = |own: &Option<Vec<String>>| own.clone().unwrap_or_else(|| shared.clone());
+        let of = |own: &Option<Vec<String>>| own.clone().unwrap_or_default();
         ConsentedOrigins {
             inbox: of(&self.consented_inbox),
             archive: of(&self.consented_archive),
@@ -209,21 +208,18 @@ impl AiSection {
         }
     }
 
-    /// The servers documents may go to: the listed ones, or, in a file from
-    /// before the dialog asked for the consent, the server of an AI that was
-    /// switched on there. A file that never switched it on grants nothing, so
-    /// the dialog asks once; a server on this machine needs no consent.
-    pub fn consented(&self) -> Vec<String> {
-        match &self.consented_origins {
-            Some(listed) => listed.clone(),
-            None if self.legacy_enabled != Some(true) => Vec::new(),
-            None => self
-                .endpoint
-                .as_ref()
-                .and_then(|endpoint| ncrs_ai::endpoint_origin(endpoint.get_ref()).ok())
-                .into_iter()
-                .collect(),
-        }
+    /// An older file agreed to a server in one go, and no kind has been
+    /// agreed to since: the page tells the user that the agreement is dropped.
+    pub fn legacy_agreement_dropped(&self) -> bool {
+        let has_own = self.consented_inbox.is_some()
+            || self.consented_archive.is_some()
+            || self.consented_folders.is_some();
+        let agreed_before = self
+            .consented_origins
+            .as_ref()
+            .is_some_and(|listed| !listed.is_empty())
+            || (self.consented_origins.is_none() && self.legacy_enabled == Some(true));
+        agreed_before && !has_own
     }
 }
 

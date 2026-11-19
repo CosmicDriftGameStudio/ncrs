@@ -814,3 +814,27 @@ fn a_request_held_back_for_consent_shows_as_the_reason_the_documents_wait() {
     assert!(is_refused_for_consent(chat.understand(&a_turn())));
     assert_eq!(chat.last_failure(), Some(ReplyFailure::ConsentMissing));
 }
+
+#[test]
+fn a_file_that_agreed_to_nothing_holds_every_kind_back_and_says_so() {
+    use crate::chat::ChatModel as _;
+    let ledger = Arc::new(ConsentGivenInSettings::new(&ConsentedOrigins::default()));
+    let model = OpenAiCompatible::new(
+        OpenAiCompatibleConfig {
+            endpoint: "https://ai.example.invalid/v1".to_owned(),
+            model: "model-x".to_owned(),
+            api_key: Some(Secret::new(KEY.to_owned())),
+            key_lookup: None,
+            usage_log: None,
+        },
+        ledger as Arc<dyn ConsentLedger>,
+    )
+    .unwrap();
+
+    assert!(is_refused_for_consent(model.extract(&request())));
+    assert_eq!(model.last_failure(), Some(ReplyFailure::ConsentMissing));
+    assert!(is_refused_for_consent(model.understand(&a_turn())));
+    assert!(is_refused_for_consent(
+        model.understand_file_names(&a_turn())
+    ));
+}

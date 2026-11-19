@@ -466,6 +466,15 @@ impl SettingsState {
         crate::ai_consent::server_agreed(&self.typed_endpoint(), &self.consents(), purpose)
     }
 
+    /// The file has the single agreement of before, which no longer counts:
+    /// the page says so above the three rows until a kind is agreed to.
+    pub fn legacy_agreement_dropped(&self) -> bool {
+        self.server_agreed(ConsentPurpose::Inbox).is_some()
+            && self
+                .ai_section()
+                .is_some_and(AiSection::legacy_agreement_dropped)
+    }
+
     /// "Allow" on the AI page: the server as typed is saved with its origin
     /// among the ones agreed to for `purpose`. A wrong address or an empty
     /// model shows at its row instead.

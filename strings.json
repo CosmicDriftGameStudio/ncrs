@@ -3895,6 +3895,12 @@
       "de": "Du stimmst jeder Art von Daten einzeln zu. Von einer Art, die du nicht freigegeben hast, wird nichts gesendet."
     },
     {
+      "key": "settings.ai_consent_legacy_dropped",
+      "context": "Dim line above the three rows about sending data to an AI server on another computer, shown when the settings file had the one agreement of an older version. That agreement no longer counts; the user allows each kind again.",
+      "en": "Allowing a server is now split by kind of data. Please allow again what may go to this server.",
+      "de": "Die Freigabe ist jetzt nach Art getrennt. Bitte gib neu frei, was an den Server darf."
+    },
+    {
       "key": "settings.ai_consent_covers",
       "context": "First line under the label of one of three agreements about sending data to an AI server on another computer; the list of what the agreement covers follows. The agreement is given for each server. The word server is meant to be searchable.",
       "en": "Agreed for this server, covers:",

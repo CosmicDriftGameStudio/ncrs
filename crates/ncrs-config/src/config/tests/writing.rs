@@ -694,7 +694,8 @@ fn the_three_agreements_are_written_apart_and_replace_the_single_list_of_older_f
 }
 
 #[test]
-fn a_kind_withdrawn_from_the_single_agreement_of_an_older_file_stays_withdrawn() {
+fn the_single_agreement_of_an_older_file_is_gone_after_a_save_and_only_the_kind_given_since_stays()
+{
     let base = tempfile::tempdir().unwrap();
     let path = base.path().join("config.toml");
     std::fs::write(
@@ -711,7 +712,10 @@ fn a_kind_withdrawn_from_the_single_agreement_of_an_older_file_stays_withdrawn()
     else {
         panic!("not the http provider");
     };
-    consented_origins.withdraw(ncrs_ai::ConsentPurpose::Archive, "https://ai.example.com");
+    assert!(consented_origins.inbox.is_empty());
+    consented_origins
+        .inbox
+        .push("https://ai.example.com".to_owned());
     let choice = AiProviderChoice::Http {
         endpoint,
         model,
@@ -730,8 +734,10 @@ fn a_kind_withdrawn_from_the_single_agreement_of_an_older_file_stays_withdrawn()
         panic!("not the http provider");
     };
     assert_eq!(reloaded.inbox, ["https://ai.example.com"]);
-    assert!(reloaded.archive.is_empty(), "{text}");
-    assert_eq!(reloaded.folders, ["https://ai.example.com"]);
+    assert!(
+        reloaded.archive.is_empty() && reloaded.folders.is_empty(),
+        "{text}"
+    );
 }
 
 #[test]

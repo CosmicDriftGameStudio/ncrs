@@ -112,13 +112,23 @@ impl World {
 
 const LOCAL: &str = "[modules.filing.ai]\nenabled = true\nprovider = \"local\"\n";
 
-fn remote_saved(origin_listed: Option<&str>) -> String {
-    let listed = origin_listed.map_or_else(String::new, |origin| {
-        format!("consented_origins = [\"{origin}\"]\n")
-    });
+fn remote_with(lines: &str) -> String {
     format!(
-        "[modules.filing.ai]\nenabled = true\nprovider = \"http\"\nendpoint = \"{FAR}\"\nmodel = \"m\"\n{listed}"
+        "[modules.filing.ai]\nenabled = true\nprovider = \"http\"\nendpoint = \"{FAR}\"\nmodel = \"m\"\n{lines}"
     )
+}
+
+/// A file with an agreement to every kind.
+fn remote_agreed() -> String {
+    remote_with(&format!(
+        "consented_inbox = [\"{FAR_ORIGIN}\"]\nconsented_archive = [\"{FAR_ORIGIN}\"]\n\
+         consented_folders = [\"{FAR_ORIGIN}\"]\n"
+    ))
+}
+
+/// A file with the single agreement of before the split.
+fn remote_legacy() -> String {
+    remote_with(&format!("consented_origins = [\"{FAR_ORIGIN}\"]\n"))
 }
 
 #[test]
@@ -224,15 +234,38 @@ fn allowing_one_kind_of_data_leaves_the_other_two_unagreed() {
 }
 
 #[test]
-fn a_file_with_the_single_agreement_of_before_has_all_three_agreed() {
-    let world = World::saved(&remote_saved(Some(FAR_ORIGIN)));
+fn the_single_agreement_of_before_grants_nothing_and_the_page_says_it_was_dropped() {
+    let mut world = World::saved(&remote_legacy());
     for purpose in ConsentPurpose::ALL {
         assert_eq!(
             world.page().server_agreed(purpose),
-            Some(true),
+            Some(false),
             "{purpose:?}"
         );
     }
+    assert!(world.page().legacy_agreement_dropped());
+    let AiSetting::Http {
+        consented_origins, ..
+    } = world.saved_ai()
+    else {
+        panic!("not the http provider");
+    };
+    let ledger = ncrs_ai::ConsentGivenInSettings::new(&consented_origins);
+    for purpose in ConsentPurpose::ALL {
+        assert!(!ledger.granted(FAR_ORIGIN, Path::new(""), purpose));
+    }
+
+    let change = world
+        .page()
+        .clone()
+        .agree_to_server(ConsentPurpose::Inbox)
+        .unwrap();
+    world.written(change);
+    assert!(!world.page().legacy_agreement_dropped());
+    assert_eq!(
+        world.page().server_agreed(ConsentPurpose::Archive),
+        Some(false)
+    );
 }
 
 #[test]
@@ -253,7 +286,7 @@ fn allowing_a_server_with_a_wrong_address_writes_nothing_and_shows_the_problem()
 
 #[test]
 fn the_same_server_is_agreed_to_already_but_another_one_is_not() {
-    let mut world = World::saved(&remote_saved(Some(FAR_ORIGIN)));
+    let mut world = World::saved(&remote_agreed());
     assert_eq!(
         world.page().server_agreed(ConsentPurpose::Inbox),
         Some(true)
@@ -273,17 +306,18 @@ fn the_same_server_is_agreed_to_already_but_another_one_is_not() {
 }
 
 #[test]
-fn a_file_from_before_the_agreement_keeps_its_saved_server_agreed() {
-    let world = World::saved(&remote_saved(None));
+fn a_file_from_before_the_agreement_does_not_keep_its_saved_server_agreed() {
+    let world = World::saved(&remote_with(""));
     assert_eq!(
         world.page().server_agreed(ConsentPurpose::Inbox),
-        Some(true)
+        Some(false)
     );
+    assert!(world.page().legacy_agreement_dropped());
 }
 
 #[test]
 fn the_model_on_this_computer_needs_no_agreement() {
-    let mut from_far = World::saved(&remote_saved(Some(FAR_ORIGIN)));
+    let mut from_far = World::saved(&remote_agreed());
     let (switch_writes, _) = from_far.send(SettingsMessage::ChooseProvider(AiProviderName::Local));
     assert_eq!(switch_writes, 1);
     assert_eq!(from_far.page().server_agreed(ConsentPurpose::Inbox), None);
@@ -297,8 +331,8 @@ fn the_model_on_this_computer_needs_no_agreement() {
 }
 
 #[test]
-fn withdrawing_one_kind_of_a_legacy_agreement_keeps_the_other_two() {
-    let mut world = World::saved(&remote_saved(Some(FAR_ORIGIN)));
+fn withdrawing_one_kind_keeps_the_other_two() {
+    let mut world = World::saved(&remote_agreed());
     let change = world
         .page()
         .clone()
@@ -329,7 +363,7 @@ fn withdrawing_one_kind_of_a_legacy_agreement_keeps_the_other_two() {
 
 #[test]
 fn a_withdrawn_kind_can_be_allowed_again() {
-    let mut world = World::saved(&remote_saved(Some(FAR_ORIGIN)));
+    let mut world = World::saved(&remote_agreed());
     let change = world
         .page()
         .clone()

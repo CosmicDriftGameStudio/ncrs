@@ -32,9 +32,14 @@ pub fn ai_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
         },
     ];
     if view.state.server_agreed(ConsentPurpose::Inbox).is_some() {
+        let dropped = if view.state.legacy_agreement_dropped() {
+            format!("{}\n\n", lang.text(Msg::SettingsAiConsentLegacyDropped))
+        } else {
+            String::new()
+        };
         groups.push(Group {
             intro: Some(format!(
-                "{}\n\n{}",
+                "{dropped}{}\n\n{}",
                 lang.text(Msg::SettingsAiConsentIntro),
                 lang.text(Msg::SettingsAiConsentOutro)
             )),

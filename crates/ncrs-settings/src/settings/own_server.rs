@@ -76,7 +76,10 @@ mod tests {
     use crate::message::SettingChange;
 
     const SAVED: &str = "[modules.filing.ai]\nenabled = true\nprovider = \"http\"\n\
-                         endpoint = \"https://api.example.com/v1\"\nmodel = \"gpt-5\"\n";
+                         endpoint = \"https://api.example.com/v1\"\nmodel = \"gpt-5\"\n\
+                         consented_inbox = [\"https://api.example.com\"]\n\
+                         consented_archive = [\"https://api.example.com\"]\n\
+                         consented_folders = [\"https://api.example.com\"]\n";
 
     fn state_of(source: &str) -> SettingsState {
         SettingsState::new(
