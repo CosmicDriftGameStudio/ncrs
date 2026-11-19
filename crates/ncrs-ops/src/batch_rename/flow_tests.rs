@@ -13,7 +13,7 @@ use ncrs_fs::remote::session::Pool;
 use ncrs_fs::remote::KnownHostsFiles;
 use ncrs_index::{Amount, Currency};
 
-use super::flow::{amount_text, facts_of, pattern_of, run_steps};
+use super::flow::{amount_text, pattern_of, run_steps};
 use super::pattern::{plan, NameRules, Step};
 use super::state::ApplyFailure;
 
@@ -435,5 +435,5 @@ fn a_modification_time_no_calendar_holds_gives_no_date_instead_of_a_panic() {
         details: Default::default(),
     };
 
-    assert_eq!(facts_of(&entry).modified, None);
+    assert_eq!(super::flow::facts_of(&entry).modified, None);
 }
