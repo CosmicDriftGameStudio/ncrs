@@ -217,27 +217,19 @@ impl Language {
         let from_environment = ["LC_ALL", "LC_MESSAGES", "LANGUAGE", "LANG"]
             .into_iter()
             .filter_map(|name| std::env::var(name).ok())
-            .flat_map(|value| value.split(':').map(str::to_owned).collect::<Vec<_>>())
-            .find_map(|tag| Self::from_locale_tag(&tag));
-        from_environment
-            .or_else(Self::from_macos_preferences)
-            .unwrap_or_default()
+            .flat_map(|value| value.split(':').map(str::to_owned).collect::<Vec<_>>());
+        // An app started from the Finder or the Windows start menu has no
+        // locale in its environment; the preferred languages are in the
+        // system settings.
+        Self::first_known(from_environment.chain(sys_locale::get_locales()))
     }
 
-    /// An app started from the Finder has no locale in its environment; the
-    /// preferred languages are in the user defaults.
-    fn from_macos_preferences() -> Option<Self> {
-        if !cfg!(target_os = "macos") {
-            return None;
-        }
-        let output = std::process::Command::new("defaults")
-            .args(["read", "-g", "AppleLanguages"])
-            .output()
-            .ok()?;
-        String::from_utf8_lossy(&output.stdout)
-            .lines()
-            .map(|line| line.trim().trim_end_matches(',').trim_matches('"'))
-            .find_map(Self::from_locale_tag)
+    /// The first of `tags` that names a language the app has texts for,
+    /// English when none does.
+    pub fn first_known(tags: impl IntoIterator<Item = String>) -> Self {
+        tags.into_iter()
+            .find_map(|tag| Self::from_locale_tag(&tag))
+            .unwrap_or_default()
     }
 
     /// Switches between English and German, keeping the Futurama variant, for
@@ -593,6 +585,24 @@ mod tests {
         assert_eq!(Language::from_locale_tag("fr_FR"), None);
         assert_eq!(Language::from_locale_tag("C"), None);
         assert_eq!(Language::from_locale_tag(""), None);
+    }
+
+    #[test]
+    fn the_first_locale_the_app_has_texts_for_wins_and_english_is_the_fallback() {
+        let tags = |list: &[&str]| list.iter().map(|tag| (*tag).to_owned()).collect::<Vec<_>>();
+        assert_eq!(
+            Language::first_known(tags(&["fr-FR", "de-DE", "en-US"])),
+            Language::German
+        );
+        assert_eq!(
+            Language::first_known(tags(&["C", "en-GB", "de-AT"])),
+            Language::English
+        );
+        assert_eq!(
+            Language::first_known(tags(&["fr-FR", "ja-JP"])),
+            Language::English
+        );
+        assert_eq!(Language::first_known(Vec::new()), Language::English);
     }
 
     /// The marker convention is deliberately not translated.

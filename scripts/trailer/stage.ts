@@ -1,4 +1,4 @@
-// Renders the trailer: the app pictures from `cargo test -p ncrs trailer_frames -- --ignored`
+// Renders the trailer: the app pictures from `cargo test -p ncrs --features media-tools trailer_frames -- --ignored`
 // (target/trailer/timeline.json) get camera moves, titles, key caps and cross-fades on an HTML
 // stage (stage.html, one render(t) function), captured frame by frame into ffmpeg.
 // Outputs in target/trailer/out/: ncrs-trailer.mp4, web/en.mp4, web/en.jpg, social.mp4, appstore.mp4.

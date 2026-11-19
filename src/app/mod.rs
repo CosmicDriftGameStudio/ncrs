@@ -191,6 +191,7 @@ mod tab_stops;
 mod update;
 mod updates;
 mod view;
+mod view_modals;
 mod viewer;
 
 use self::columns::column_settings_of;

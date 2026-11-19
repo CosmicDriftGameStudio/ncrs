@@ -1,14 +1,13 @@
 //! Generator for the README screenshots. Not a test: it asserts nothing about
 //! the app and is ignored by default, so the normal suite never touches
 //! `docs/screenshots/`. Regenerate with
-//! `cargo test readme_screenshots -- --ignored`.
+//! `cargo test -p ncrs --features media-tools readme_screenshots -- --ignored`.
 
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
 use chrono::{Local, TimeZone as _};
-use iced_test::Simulator;
 use ncrs_i18n::Language;
 
 use crate::app::{fixed_result_entry, App};
@@ -17,6 +16,7 @@ use crate::messages::{
     BatchRenameMessage, FavouritesBarMessage, Message, PanelMessage, PanelSide, SettingField,
     SettingsFeature, SettingsMessage,
 };
+use crate::shot_file::write_screenshot_to;
 use ncrs_core::CompareMark;
 use ncrs_search::engine::LineMatch;
 use ncrs_settings::AiCheckResult;
@@ -349,48 +349,15 @@ fn drives() -> Vec<Volume> {
     .collect()
 }
 
-/// `matches_image` writes a missing reference and appends the renderer's name
-/// to the file name, so it renders into an empty directory and the single
-/// file that appears there is copied to the wanted name.
 fn write_screenshot(app: &App, file_name: &str) {
     write_screenshot_to(app, OUTPUT_DIRECTORY, WINDOW_SIZE, file_name);
-}
-
-pub fn write_screenshot_to(app: &App, directory: &str, size: iced::Size, file_name: &str) {
-    write_view_to(app.view(), directory, size, file_name);
-}
-
-pub fn write_view_to(
-    view: iced::Element<'_, Message>,
-    directory: &str,
-    size: iced::Size,
-    file_name: &str,
-) {
-    let scratch = tempfile::tempdir().expect("scratch directory");
-    let mut simulator = Simulator::with_size(iced::Settings::default(), size, view);
-    simulator
-        .snapshot(&iced::Theme::Dark)
-        .expect("the view should render")
-        .matches_image(scratch.path().join("shot.png"))
-        .expect("the screenshot should be written");
-    let written = std::fs::read_dir(scratch.path())
-        .expect("scratch directory")
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .find(|path| path.extension().is_some_and(|extension| extension == "png"))
-        .expect("the renderer wrote no png");
-
-    std::fs::create_dir_all(directory).expect("output directory");
-    let target = PathBuf::from(directory).join(file_name);
-    std::fs::copy(&written, &target).expect("copy the screenshot");
-    assert!(target.exists(), "{} was not written", target.display());
 }
 
 mod tests {
     use super::*;
 
     #[test]
-    #[ignore = "writes docs/screenshots; run with `cargo test readme_screenshots -- --ignored`"]
+    #[ignore = "writes docs/screenshots; run with `cargo test -p ncrs --features media-tools readme_screenshots -- --ignored`"]
     fn readme_screenshots() {
         let mut app = showcase_app();
         write_screenshot(&app, "main.png");
@@ -451,7 +418,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "writes docs/store-screenshots; run with `cargo test store_screenshots -- --ignored`"]
+    #[ignore = "writes docs/store-screenshots; run with `cargo test -p ncrs --features media-tools store_screenshots -- --ignored`"]
     fn store_screenshots() {
         for (file_prefix, language) in [("en", Language::English), ("de", Language::German)] {
             let showcase = || showcase_app().in_language(language);

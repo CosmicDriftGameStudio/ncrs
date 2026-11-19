@@ -21,113 +21,72 @@ fn delete_dialog_key(
     }
 }
 
-/// The dialogs whose only keys are Escape and moving the focus between buttons.
-fn escape_cancel_message(prompt: &PromptKeyState) -> Option<Message> {
-    if prompt.quit_dialog {
-        Some(Message::from(ncrs_ops::OpsMessage::QuitCancel))
-    } else if prompt.open_file_dialog {
-        Some(Message::from(ncrs_ops::OpsMessage::OpenFileCancel))
-    } else {
-        None
-    }
-}
-
-fn keys_without_prompt(
-    prompt: &PromptKeyState,
-    key: Key,
-    key_modifiers: Modifiers,
-) -> Option<Message> {
-    let scope = if prompt.search {
+fn key_scope(prompt: &PromptKeyState) -> KeyScope {
+    if prompt.search {
         KeyScope::Search
     } else {
         KeyScope::Panel
-    };
-    // The menu takes the arrows and Enter that would otherwise move the panel
-    // behind it; any other key does nothing until it is closed.
-    if prompt.header_menu {
-        return ncrs_files::keys::header_menu_key(&key).map(Message::Panel);
     }
-    if prompt.volume_menu {
-        return ncrs_files::keys::volume_menu_key(&key).map(volume_menu_message);
-    }
-    if prompt.quick_fix || prompt.confirm_again {
-        return hermes_popup_key(prompt, &key);
-    }
-    if prompt.favourite_menu {
-        return ncrs_files::favourites_bar::menu_key(&key).map(Message::FavouritesBar);
-    }
-    if prompt.context_menu {
-        return context_menu_key(prompt, &key);
-    }
+}
 
-    // Before the conflict dialog and the job: a delete is only offered when
-    // neither is there, so there is nothing to disambiguate, but it must not
-    // be possible for Escape to mean "stop the job" while a question is open.
-    if prompt.delete_dialog != DeleteKeys::Closed {
-        return delete_dialog_key(prompt, &key, key_modifiers, scope);
-    }
-
-    if let Some(cancel) = escape_cancel_message(prompt) {
-        return match key.as_ref() {
-            Key::Named(Named::Escape) => Some(cancel),
-            _ => dialog_focus_key(key.clone(), key_modifiers),
-        };
-    }
-
-    if prompt.batch_rename_dialog {
-        return ncrs_ops::keys::batch_rename_key(&key)
-            .map(|inner| Message::from(ncrs_ops::OpsMessage::BatchRename(inner)));
-    }
-
-    if prompt.permissions_dialog {
-        return ncrs_ops::keys::permissions_key(&key)
-            .map(|inner| Message::from(ncrs_ops::OpsMessage::Permissions(inner)));
-    }
-
-    if prompt.key_bindings {
-        return key_bindings_key(prompt, &key, key_modifiers);
-    }
-
-    // The fields take the typing and Enter; Tab goes from one to the next. Of
-    // the bindings only quitting reaches past the dialog.
-    if prompt.compare_dialog {
-        return compare_dialog_key(prompt, &key, key_modifiers, scope);
-    }
-
-    if prompt.connect_dialog {
-        return connect_dialog_key(prompt, &key, key_modifiers, scope);
-    }
-
-    // Cancel has the focus when a download card opens, so Enter alone never
-    // downloads.
-    if let Some(close) = card_close_message(prompt) {
-        return card_dialog_key(close, key, key_modifiers);
-    }
-
-    if prompt.conflict_open {
-        return conflict_key(prompt, key, key_modifiers, scope);
-    }
-
-    // The target field takes the typing and Enter on its own; Escape is
-    // `InputState`'s there and here. Tab switches between copy and move, as the
-    // footer says; of the bindings only quitting reaches past the dialog.
-    if prompt.transfer_dialog || prompt.transfer_progress {
-        return transfer_overlay_key(prompt, &key, key_modifiers, scope);
-    }
-
-    // The chat's field takes the typing and Enter; Escape is `InputState`'s
-    // there and here. Of the bindings only quitting reaches past the chat, and
-    // no other function key reaches the panels behind it.
-    if prompt.hermes_chat {
-        return hermes_chat_key(prompt, &key, key_modifiers, scope);
-    }
-
-    // The field takes the typing and Enter; Escape is `InputState`'s there and
-    // here, so it closes the palette with a job running too. The arrows are the
-    // entries'. Of the bindings only quitting and the palette's own chord (which
-    // gives the field the focus back) reach past it.
-    if prompt.command_palette {
-        return match key.as_ref() {
+/// The keys of the overlay on top, which takes them all.
+fn modal_key(
+    prompt: &PromptKeyState,
+    modal: Modal,
+    key: Key,
+    key_modifiers: Modifiers,
+) -> Option<Message> {
+    let scope = key_scope(prompt);
+    match modal {
+        // A menu takes the arrows and Enter that would otherwise move the
+        // panel behind it; any other key does nothing until it is closed.
+        Modal::HeaderMenu => ncrs_files::keys::header_menu_key(&key).map(Message::Panel),
+        Modal::VolumeMenu => ncrs_files::keys::volume_menu_key(&key).map(volume_menu_message),
+        Modal::QuickFix => ncrs_hermes_ui::keys::quick_fix_key(&key).map(Message::from),
+        Modal::ConfirmAgain => ncrs_hermes_ui::keys::confirm_again_key(&key).map(Message::from),
+        Modal::FavouriteMenu => {
+            ncrs_files::favourites_bar::menu_key(&key).map(Message::FavouritesBar)
+        }
+        Modal::ContextMenu => context_menu_key(prompt, &key),
+        Modal::Delete => delete_dialog_key(prompt, &key, key_modifiers, scope),
+        Modal::Quit => card_dialog_key(
+            Message::from(ncrs_ops::OpsMessage::QuitCancel),
+            key,
+            key_modifiers,
+        ),
+        Modal::OpenFile => card_dialog_key(
+            Message::from(ncrs_ops::OpsMessage::OpenFileCancel),
+            key,
+            key_modifiers,
+        ),
+        Modal::BatchRename => ncrs_ops::keys::batch_rename_key(&key)
+            .map(|inner| Message::from(ncrs_ops::OpsMessage::BatchRename(inner))),
+        Modal::Permissions => ncrs_ops::keys::permissions_key(&key)
+            .map(|inner| Message::from(ncrs_ops::OpsMessage::Permissions(inner))),
+        Modal::KeyBindings => key_bindings_key(prompt, &key, key_modifiers),
+        // The fields take the typing and Enter; Tab goes from one to the
+        // next. Of the bindings only quitting reaches past the dialog.
+        Modal::Compare => compare_dialog_key(prompt, &key, key_modifiers, scope),
+        Modal::Connect => connect_dialog_key(prompt, &key, key_modifiers, scope),
+        // Cancel has the focus when a download card opens, so Enter alone
+        // never downloads.
+        Modal::About | Modal::OcrModels | Modal::AiModel | Modal::Grant | Modal::StartOver => {
+            card_close_message(prompt).and_then(|close| card_dialog_key(close, key, key_modifiers))
+        }
+        Modal::Conflict => conflict_key(prompt, key, key_modifiers, scope),
+        // The target field takes the typing and Enter on its own; Escape is
+        // `InputState`'s there and here. Tab switches between copy and move,
+        // as the footer says; of the bindings only quitting reaches past the
+        // dialog.
+        Modal::TransferDialog | Modal::Progress => {
+            transfer_overlay_key(prompt, &key, key_modifiers, scope)
+        }
+        // The field takes the typing and Enter; Escape is `InputState`'s there
+        // and here, so it closes the palette with a job running too. The
+        // arrows are the entries'. Of the bindings only quitting and the
+        // palette's own chord (which gives the field the focus back) reach
+        // past it.
+        Modal::CommandPalette => match key.as_ref() {
             Key::Named(Named::Escape) => {
                 Some(Message::CommandPalette(CommandPaletteMessage::Close))
             }
@@ -146,20 +105,15 @@ fn keys_without_prompt(
                     )
                 })
                 .filter(|_| is_not_typed_by_text_field(&key, key_modifiers)),
-        };
-    }
-
-    // Like the command palette: the field takes the typing, the card the
-    // rest. Enter reaches the routing when the list has the keys, not the field.
-    if prompt.theme_fetch {
-        return theme_fetch_key(prompt, &key, key_modifiers, scope);
-    }
-
-    // The field takes the typing, Enter and Escape (`InputState`); the arrows
-    // are the hits'. Of the bindings only quitting reaches past it, as it does
-    // for the path field.
-    if prompt.quick_open {
-        return match key.as_ref() {
+        },
+        // Like the command palette: the field takes the typing, the card the
+        // rest. Enter reaches the routing when the list has the keys, not the
+        // field.
+        Modal::ThemeFetch => theme_fetch_key(prompt, &key, key_modifiers, scope),
+        // The field takes the typing, Enter and Escape (`InputState`); the
+        // arrows are the hits'. Of the bindings only quitting reaches past it,
+        // as it does for the path field.
+        Modal::QuickOpen => match key.as_ref() {
             Key::Named(Named::ArrowUp) if key_modifiers.is_empty() => {
                 Some(Message::QuickOpen(QuickOpenMessage::Move(-1)))
             }
@@ -169,7 +123,25 @@ fn keys_without_prompt(
             _ => bound_message(&prompt.keymap, &key, key_modifiers, scope)
                 .filter(|message| *message == Message::Quit)
                 .filter(|_| is_not_typed_by_text_field(&key, key_modifiers)),
-        };
+        },
+        Modal::Prompt => prompt_key(prompt, &key),
+    }
+}
+
+/// Keys while no overlay is up: the chat, the pages, the fields and the
+/// panels.
+fn keys_without_modal(
+    prompt: &PromptKeyState,
+    key: Key,
+    key_modifiers: Modifiers,
+) -> Option<Message> {
+    let scope = key_scope(prompt);
+    // The chat's field takes the typing and Enter; Escape is `InputState`'s
+    // there and here. Of the bindings only quitting and the keys of the other
+    // pages reach past the chat; no other function key reaches the panels
+    // behind it.
+    if prompt.hermes_chat {
+        return hermes_chat_key(prompt, &key, key_modifiers, scope);
     }
 
     // Tab moves inside the shown page, never to another tab (Ctrl+Tab does
@@ -243,11 +215,9 @@ fn hermes_chat_key(
     }
     let other_page = || {
         bound_message(&prompt.keymap, key, key_modifiers, scope)
+            // The chat's own key closes it; `chat_key` answers that below.
             .filter(|message| {
-                *message == KeyAction::Settings.message()
-                    || *message == KeyAction::SystemMonitor.message()
-                    || *message == KeyAction::NextTab.message()
-                    || *message == KeyAction::PreviousTab.message()
+                is_page_spanning(message) && *message != KeyAction::HermesChat.message()
             })
             .filter(|_| is_not_typed_by_text_field(key, key_modifiers))
     };
@@ -421,12 +391,18 @@ pub fn route_press(
 ) -> Option<Message> {
     // A text prompt types what the key produced, so only the bindings see the
     // physical letter.
-    let routed_key = if prompt.open {
-        key
+    let routed_key = if prompt.top_modal() == Some(Modal::Prompt) {
+        key.clone()
     } else {
-        binding_key(key, physical_key, modifiers)
+        binding_key(key.clone(), physical_key, modifiers)
     };
-    route_key(prompt, routed_key, modifiers).filter(|message| !repeat || repeats(message))
+    let routed = match route_key(prompt, routed_key, modifiers) {
+        // The jump looks for the character typed (Option+C is "ç" on a Mac),
+        // not for the key a binding is written against.
+        Some(Message::Panel(PanelMessage::TypeAhead(_))) => type_ahead_message(&key, modifiers),
+        other => other,
+    };
+    routed.filter(|message| !repeat || repeats(message))
 }
 
 pub(in crate::app) fn dialog_focus_key(key: Key, modifiers: Modifiers) -> Option<Message> {
@@ -491,9 +467,14 @@ pub(in crate::app) fn repeats(message: &Message) -> bool {
 }
 
 pub fn route_key(prompt: &PromptKeyState, key: Key, modifiers: Modifiers) -> Option<Message> {
-    if !prompt.open {
-        return keys_without_prompt(prompt, key, modifiers);
+    match prompt.top_modal() {
+        Some(modal) => modal_key(prompt, modal, key, modifiers),
+        None => keys_without_modal(prompt, key, modifiers),
     }
+}
+
+/// The create-directory prompt takes every key: it types the name.
+fn prompt_key(prompt: &PromptKeyState, key: &Key) -> Option<Message> {
     if prompt.busy {
         return None;
     }

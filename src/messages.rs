@@ -112,8 +112,8 @@ pub enum Message {
     /// "Open terminal here": the terminal starts in the folder under the
     /// cursor, else in the panel's folder.
     OpenTerminal,
-    /// Click on the "access blocked" error: open the system's privacy settings.
-    #[cfg(target_os = "macos")]
+    /// Click on the "access blocked" error or the command: open the system's
+    /// privacy settings. Only macOS has such a page; elsewhere it does nothing.
     OpenPrivacySettings,
 
     // --- delete (F8, Shift+F8) ---

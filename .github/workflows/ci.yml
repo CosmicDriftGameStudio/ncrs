@@ -330,6 +330,12 @@ jobs:
         if: runner.os != 'Linux'
         run: cargo test -p ncrs-index key_store -- --ignored
 
+      # The picture generators are left out of the normal test build; this
+      # keeps them compiling.
+      - name: Build the picture generators (Linux)
+        if: runner.os == 'Linux'
+        run: cargo test -p ncrs --features media-tools --no-run
+
       # iced_test writes a missing reference and passes. A reference that
       # appeared in this run was not compared with anything.
       - name: No snapshot reference was newly written (macOS)
@@ -366,6 +372,51 @@ jobs:
             exit 1
           fi
           echo "ok: the no-backend build fails its own test"
+
+  # The shipped targets that `check` does not run on, and the release profile.
+  # The file and filing code is what differs per architecture and optimisation
+  # (file identities, metadata, the path rules); the app's views do not.
+  platform-tests:
+    name: file and filing tests, ${{ matrix.os }}${{ matrix.release && ', release' || '' }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15-intel
+            release: false
+          - os: ubuntu-24.04-arm
+            release: false
+          - os: ubuntu-latest
+            release: true
+    env:
+      RUST_BACKTRACE: 1
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
+      CARGO_PROFILE_TEST_DEBUG: line-tables-only
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install --profile minimal
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Tests
+        if: ${{ !matrix.release }}
+        env:
+          TZ: Europe/Berlin
+        run: cargo test -p ncrs-fs -p ncrs-filing
+
+      - name: Tests, release profile
+        if: matrix.release
+        env:
+          TZ: Europe/Berlin
+        run: cargo test --release -p ncrs-fs -p ncrs-filing
 
   # The release builds nothing: it signs and publishes what this job built on
   # the push to main for the tagged commit. ncrs-index compiles SQLCipher and

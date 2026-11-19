@@ -70,7 +70,7 @@ fn a_failure_is_shown_with_its_detail() {
     )));
     assert!(shows(
         failed,
-        "Download failed (the server did not answer in time)"
+        "Download failed (The server did not answer in time)"
     ));
 }
 

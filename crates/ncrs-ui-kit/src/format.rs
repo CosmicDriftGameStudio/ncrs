@@ -15,6 +15,10 @@ pub use ncrs_index_types::{amount_digits, amount_text, MINOR_UNITS_PER_UNIT};
 /// like the markers.
 pub const PARTIAL_SIZE_MARK: char = '+';
 
+/// Sizes count in decimal units as the Finder does, so a size here matches the
+/// one a download source or another app names.
+const BYTES_PER_KILOBYTE: u64 = 1000;
+
 /// Size column text: `<UP>` / `<DIR>` for directories (the computed size once
 /// there is one), size otherwise.
 ///
@@ -48,7 +52,9 @@ pub fn size_in(bytes: u64, format: SizeFormat, lang: Language) -> String {
     match format {
         SizeFormat::Bytes => format!("{} B", grouped(bytes)),
         SizeFormat::Kilobytes => {
-            let rounded = bytes.saturating_add(512).div_euclid(1024);
+            let rounded = bytes
+                .saturating_add(BYTES_PER_KILOBYTE / 2)
+                .div_euclid(BYTES_PER_KILOBYTE);
             let kilobytes = if bytes == 0 { 0 } else { rounded.max(1) };
             format!("{} KB", grouped(kilobytes))
         }
@@ -153,10 +159,11 @@ fn windows_attributes(attributes: WindowsAttributes) -> String {
     .collect()
 }
 
-/// Whole megabytes (1 MB = 1,048,576 bytes like the file sizes), rounded: the
+/// Whole megabytes (1 MB = 1,000,000 bytes like the file sizes), rounded: the
 /// one unit and rounding of a download and of the model that is downloaded.
 fn whole_megabytes(bytes: u64) -> u64 {
-    bytes.saturating_add(524_288).div_euclid(1_048_576)
+    let megabyte = BYTES_PER_KILOBYTE * BYTES_PER_KILOBYTE;
+    bytes.saturating_add(megabyte / 2).div_euclid(megabyte)
 }
 
 /// `639 MB`: the size of a download as its card and its progress line say it.
@@ -189,14 +196,15 @@ pub fn size(bytes: u64) -> String {
 /// [`size`] with the decimal mark of `lang`.
 pub fn size_shown(bytes: u64, lang: Language) -> String {
     const UNITS: [&str; 6] = ["B", "KB", "MB", "GB", "TB", "PB"];
-    if bytes < 1024 {
+    if bytes < BYTES_PER_KILOBYTE {
         return format!("{bytes} B");
     }
+    let step = BYTES_PER_KILOBYTE as f64;
     let mut value = bytes as f64;
     let mut unit = 0;
-    // Round first: 1 048 575 bytes is 1023.999 KB, which prints as 1024.0.
-    while (value * 10.0).round() / 10.0 >= 1024.0 && unit < UNITS.len() - 1 {
-        value /= 1024.0;
+    // Round first: 999 999 bytes is 999.999 KB, which prints as 1000.0.
+    while (value * 10.0).round() / 10.0 >= step && unit < UNITS.len() - 1 {
+        value /= step;
         unit += 1;
     }
     // `get` rather than `[]`: the loop above keeps `unit` inside the array, but
@@ -439,6 +447,7 @@ pub const MONOSPACE_EM: f32 = 0.62;
 const FULL_WIDTH_EM: f32 = 1.0;
 /// Names without a separator keep this many glyphs before the extension.
 const KEPT_BEFORE_EXTENSION: f32 = 3.0;
+const SUMMING_SLACK_PX: f32 = 0.01;
 
 /// How wide `glyph` is at most, in ems. Deliberately on the wide side: a text
 /// that is estimated to fit must fit, so the cut loses a glyph now and then
@@ -534,7 +543,10 @@ pub fn fit_middle(text: &str, width_px: f32, font_size: f32) -> String {
     if width_px < ellipsis {
         return String::new();
     }
-    let budget = width_px - ellipsis;
+    // The widths are sums of floats added in different orders, so a tail that
+    // is exactly as wide as its budget can come out a hair above it. The
+    // tail gets that hair back, and the whole budget gives it up front.
+    let budget = width_px - ellipsis - SUMMING_SLACK_PX;
     let tail_wanted = match text.rfind(['/', '\\']) {
         Some(separator) => {
             let component = text.get(separator..).unwrap_or_default();
@@ -566,7 +578,7 @@ pub fn fit_middle(text: &str, width_px: f32, font_size: f32) -> String {
         .rev()
         .take_while(|glyph| {
             used += glyph_em(*glyph) * font_size;
-            used <= tail_budget
+            used <= tail_budget + SUMMING_SLACK_PX
         })
         .collect();
     tail.reverse();
@@ -594,7 +606,7 @@ mod tests {
         let figures = |received, total| download_figures(received, total);
         assert_eq!(
             figures(312_400_000, 639_000_000),
-            ("298".to_owned(), "609".to_owned(), "49".to_owned())
+            ("312".to_owned(), "639".to_owned(), "49".to_owned())
         );
         assert_eq!(figures(0, 0).2, "0");
         assert_eq!(figures(900, 600).2, "100");
@@ -612,9 +624,9 @@ mod tests {
     #[test]
     fn formats_sizes() {
         assert_eq!(size(0), "0 B");
-        assert_eq!(size(1023), "1023 B");
-        assert_eq!(size(1536), "1.5 KB");
-        assert_eq!(size(5 * 1024 * 1024), "5.0 MB");
+        assert_eq!(size(999), "999 B");
+        assert_eq!(size(1500), "1.5 KB");
+        assert_eq!(size(5_000_000), "5.0 MB");
     }
 
     #[test]
@@ -626,10 +638,10 @@ mod tests {
 
     #[test]
     fn a_size_just_below_a_unit_moves_up_and_german_gets_a_comma() {
-        assert_eq!(size(1_048_575), "1.0 MB");
-        assert_eq!(size(1_073_741_823), "1.0 GB");
-        assert_eq!(size_shown(1536, Language::German), "1,5 KB");
-        assert_eq!(size_shown(1536, Language::English), "1.5 KB");
+        assert_eq!(size(999_999), "1.0 MB");
+        assert_eq!(size(999_999_999), "1.0 GB");
+        assert_eq!(size_shown(1500, Language::German), "1,5 KB");
+        assert_eq!(size_shown(1500, Language::English), "1.5 KB");
     }
 
     const LONG_PATH: &str = "/home/user/documents/company-a/2024/invoices/invoice-0042.pdf";
@@ -759,7 +771,7 @@ mod tests {
         );
         assert_eq!(
             size_in(1_234_567, SizeFormat::Kilobytes, Language::English),
-            "1\u{a0}206 KB"
+            "1\u{a0}235 KB"
         );
         assert_eq!(
             size_in(1_234_567, SizeFormat::Readable, Language::English),
@@ -890,8 +902,8 @@ mod tests {
         let computed = |bytes, partial| Some(ncrs_core::FolderSize { bytes, partial });
 
         assert_eq!(entry_size(&folder(None)), Msg::MarkerDir.text());
-        assert_eq!(entry_size(&folder(computed(1536, false))), "1.5 KB");
-        assert_eq!(entry_size(&folder(computed(1536, true))), "1.5 KB+");
+        assert_eq!(entry_size(&folder(computed(1500, false))), "1.5 KB");
+        assert_eq!(entry_size(&folder(computed(1500, true))), "1.5 KB+");
     }
 }
 

@@ -363,7 +363,12 @@ pub fn open_settings(settings: &mut Settings, ctx: &Ctx<'_>) -> Task<Message> {
 /// them asks the system and parses font files.
 fn load_system_lists() -> Task<Message> {
     Task::perform(
-        tokio::task::spawn_blocking(|| (ncrs_fs::detect_terminals(), font::installed_monospace())),
+        async {
+            tokio::task::spawn_blocking(|| {
+                (ncrs_fs::detect_terminals(), font::installed_monospace())
+            })
+            .await
+        },
         |joined| {
             let (terminals, fonts) = joined.unwrap_or_default();
             Message::Settings(SettingsMessage::SystemLoaded { terminals, fonts })

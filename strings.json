@@ -4909,6 +4909,12 @@
       "de": "Ordner freigeben…"
     },
     {
+      "key": "action.open_privacy_settings",
+      "context": "Entry of the command list that runs the key action open_privacy_settings, which opens the Full Disk Access page of macOS System Settings so the app may read protected folders. The plain name of what the action does, as short as a menu entry; it has no key. Listed only on a Mac outside the App Store version.",
+      "en": "Open privacy settings",
+      "de": "Datenschutz-Einstellungen öffnen"
+    },
+    {
       "key": "grant.title",
       "context": "Title of the dialog shown at the start of the App Store version while the home folder cannot be opened. The app runs in the macOS App Sandbox and may open only folders the user allows.",
       "en": "Allow access to your files",
@@ -8873,6 +8879,12 @@
       "context": "Notice on the Index page when the numbers of the index could not be read, so the page shows nothing instead of the real figures. {reason} is the system's explanation.",
       "en": "The index could not be read: {reason}",
       "de": "Der Index konnte nicht gelesen werden: {reason}"
+    },
+    {
+      "key": "settings.background_work_stopped",
+      "context": "Reason inside the notices that the index could not be read or the last run could not be undone, when the work in the background ended without an answer. Short clause, no full stop.",
+      "en": "the work in the background stopped unexpectedly",
+      "de": "die Arbeit im Hintergrund ist unerwartet abgebrochen"
     },
     {
       "key": "settings.model_remove_title",

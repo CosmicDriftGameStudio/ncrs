@@ -12,11 +12,15 @@ mod e2e_tests;
 
 #[cfg(test)]
 mod hermes_protocol;
-#[cfg(test)]
+// The generators of the README, store and trailer pictures: they assert
+// nothing, so the normal test build leaves them out.
+#[cfg(all(test, feature = "media-tools"))]
 mod screenshot_tests;
 #[cfg(test)]
+mod shot_file;
+#[cfg(all(test, feature = "media-tools"))]
 mod trailer;
-#[cfg(test)]
+#[cfg(all(test, feature = "media-tools"))]
 mod trailer_data;
 #[cfg(test)]
 mod ui_tests;

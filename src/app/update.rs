@@ -341,6 +341,8 @@ impl App {
                 self.open_privacy_settings();
                 Task::none()
             }
+            #[cfg(not(target_os = "macos"))]
+            Message::OpenPrivacySettings => Task::none(),
 
             // --- drive menu ---
             Message::VolumeMenu(side) => self.request_volume_menu(side, false),

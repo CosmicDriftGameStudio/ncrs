@@ -149,6 +149,7 @@ impl App {
         let lang = self.lang;
         let now = self.wall_clock.now();
         self.facts_requested_at = Some(now);
+        let stopped = lang.text(Msg::SettingsBackgroundWorkStopped).to_owned();
         Task::perform(
             async move {
                 tokio::task::spawn_blocking(move || {
@@ -156,9 +157,9 @@ impl App {
                 })
                 .await
             },
-            |joined| {
-                let loaded = joined.unwrap_or_else(|failure| LoadedFacts {
-                    error: Some(failure.to_string()),
+            move |joined| {
+                let loaded = joined.unwrap_or_else(|_| LoadedFacts {
+                    error: Some(stopped),
                     ..LoadedFacts::default()
                 });
                 Message::Settings(SettingsMessage::FactsLoaded(loaded))
@@ -239,11 +240,15 @@ impl App {
             .lang
             .text(Msg::SettingsHermesHistoryUndoUnexpected)
             .to_owned();
+        let stopped = self
+            .lang
+            .text(Msg::SettingsBackgroundWorkStopped)
+            .to_owned();
         Task::perform(
             async move {
                 tokio::task::spawn_blocking(move || undo_batch(&access, batch, unexpected))
                     .await
-                    .unwrap_or_else(|failure| Err(failure.to_string()))
+                    .unwrap_or_else(|_| Err(stopped))
             },
             |result| Message::Settings(SettingsMessage::RunUndone(result)),
         )
@@ -308,8 +313,15 @@ fn read_documents_facts(
                 error.get_or_insert(failure);
             }
         }
-        let Ok(structure) = access.known_structure(&location.path) else {
-            continue;
+        let structure = match access.known_structure(&location.path) {
+            Ok(structure) => structure,
+            // Only a failed read is an error: a folder that is gone shows as disconnected,
+            // and one that is not a folder or is too big has no structure to show.
+            Err(ncrs_filing::chat_work::ReadError::Io(failure)) => {
+                error.get_or_insert(failure);
+                continue;
+            }
+            Err(_) => continue,
         };
         areas.extend(
             structure

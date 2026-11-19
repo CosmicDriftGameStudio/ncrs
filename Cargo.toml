@@ -191,6 +191,9 @@ gpu-rendering = ["iced/wgpu"]
 # Both: wgpu is tried first, tiny-skia takes over where there is no GPU.
 gpu-with-fallback = ["iced/wgpu", "iced/tiny-skia"]
 
+# The ignored tests that write the README, store and trailer pictures.
+media-tools = []
+
 [dev-dependencies]
 # The host keys the dialog tests build.
 russh = { workspace = true }

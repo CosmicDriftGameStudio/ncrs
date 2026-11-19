@@ -142,3 +142,32 @@ fn a_conflict_closes_it() {
     assert!(app.ops.pending_conflict.is_some());
     assert!(app.quick_open_for_test().is_none());
 }
+
+#[test]
+fn the_keys_go_to_the_overlay_the_view_draws_on_top() {
+    let none = Modifiers::default();
+    let both = PromptKeyState {
+        quick_open: true,
+        command_palette: true,
+        ..PromptKeyState::default()
+    };
+    assert_eq!(
+        both.modal_stack(),
+        vec![Modal::QuickOpen, Modal::CommandPalette]
+    );
+    assert_eq!(
+        route(&both, Named::ArrowDown, none),
+        Some(Message::QuickOpen(QuickOpenMessage::Move(1)))
+    );
+
+    let conflict_over_prompt = PromptKeyState {
+        open: true,
+        conflict_open: true,
+        ..PromptKeyState::default()
+    };
+    assert_eq!(conflict_over_prompt.top_modal(), Some(Modal::Conflict));
+    assert_ne!(
+        route_key(&conflict_over_prompt, Key::Character("x".into()), none),
+        Some(Message::PromptInput("x".to_owned()))
+    );
+}

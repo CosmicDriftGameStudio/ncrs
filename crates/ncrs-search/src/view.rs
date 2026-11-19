@@ -13,7 +13,7 @@ use ncrs_i18n::{fill_template, FuturamaName, Language, Msg};
 use ncrs_index::QueryHit;
 use ncrs_ui_kit::column_header::{plain_column_header, ColumnLayout};
 use ncrs_ui_kit::file_row::{hit_row, tag_star, HitRow, RowClick};
-use ncrs_ui_kit::format::{self, amount_text};
+use ncrs_ui_kit::format;
 use ncrs_ui_kit::hermes_kit::{self, ChipKind, MenuItem};
 use ncrs_ui_kit::key_intercept::key_intercept;
 use ncrs_ui_kit::kit::{self, Check, Tone};
@@ -764,7 +764,10 @@ fn index_details<'a>(
         .chain(own.into_iter().map(|tag| (tag, ChipKind::Own)));
     let facts = [
         fields.date.map(|day| day.format("%Y-%m-%d").to_string()),
-        fields.amount.as_ref().map(amount_text),
+        fields
+            .amount
+            .as_ref()
+            .map(|amount| format::amount_shown(amount, lang)),
     ]
     .into_iter()
     .flatten()

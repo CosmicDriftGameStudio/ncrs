@@ -142,7 +142,7 @@ async fn tagged_folders_are_measured_one_after_another_and_the_cursor_is_ignored
     measured(&mut app, id, "alpha", 10);
     measured(&mut app, id, "gamma", 3_000_000);
     assert_eq!(shown(&app, "alpha"), "10 B");
-    assert_eq!(shown(&app, "gamma"), "2.9 MB");
+    assert_eq!(shown(&app, "gamma"), "3.0 MB");
     assert_eq!(shown(&app, "beta"), "<DIR>");
 }
 
@@ -231,7 +231,7 @@ async fn the_values_come_back_when_the_folder_is_visited_again() {
     );
     load(&mut app, directory(), listing(), fs::SortKey::default());
 
-    assert_eq!(shown(&app, "gamma"), "4.0 KB");
+    assert_eq!(shown(&app, "gamma"), "4.1 KB");
     assert_eq!(shown(&app, "alpha"), "<DIR>");
 }
 

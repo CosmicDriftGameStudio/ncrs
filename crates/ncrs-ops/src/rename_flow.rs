@@ -239,7 +239,7 @@ mod tests {
     }
 
     #[test]
-    fn windows_refuses_its_reserved_characters_and_control_characters() {
+    fn windows_refuses_its_reserved_characters_and_every_system_control_characters() {
         for character in ['<', '>', ':', '"', '|', '?', '*'] {
             let name = format!("a{character}b");
             assert_eq!(
@@ -249,7 +249,11 @@ mod tests {
             assert_eq!(validate_name(&name, false), Ok(()));
         }
         assert_eq!(validate_name("a\u{7}b", true), Err(NameProblem::Control));
-        assert_eq!(validate_name("a\u{7}b", false), Ok(()));
+        assert_eq!(validate_name("a\u{7}b", false), Err(NameProblem::Control));
+        assert_eq!(
+            validate_name("a\u{202e}b", false),
+            Err(NameProblem::Control)
+        );
     }
 
     #[test]

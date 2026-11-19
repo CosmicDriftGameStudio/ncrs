@@ -10,6 +10,7 @@ publish = false
 
 [dependencies]
 ncrs-index-types = { path = "../ncrs-index-types", version = "0.0.0" }
+sys-locale = "0.3.2"
 
 [lints]
 workspace = true

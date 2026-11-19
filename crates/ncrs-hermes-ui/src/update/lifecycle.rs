@@ -260,15 +260,18 @@ const CLIPBOARD_KEY_LIFETIME: std::time::Duration = std::time::Duration::from_se
 /// unless the user copied something else meanwhile.
 fn copy_and_clear_later(key_text: String) -> Task<Message> {
     let copied = key_text.clone();
-    let clear = Task::perform(tokio::time::sleep(CLIPBOARD_KEY_LIFETIME), |()| ())
-        .then(|()| iced::clipboard::read())
-        .then(move |current| {
-            if current.as_deref() == Some(copied.as_str()) {
-                iced::clipboard::write(String::new())
-            } else {
-                Task::none()
-            }
-        });
+    let clear = Task::perform(
+        async { tokio::time::sleep(CLIPBOARD_KEY_LIFETIME).await },
+        |()| (),
+    )
+    .then(|()| iced::clipboard::read())
+    .then(move |current| {
+        if current.as_deref() == Some(copied.as_str()) {
+            iced::clipboard::write(String::new())
+        } else {
+            Task::none()
+        }
+    });
     Task::batch([iced::clipboard::write(key_text), clear])
 }
 

@@ -342,7 +342,7 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Protocol<P> {
     fn shot(&mut self, name: &str) -> String {
         self.images += 1;
         let file = format!("{:02}-{name}.png", self.images);
-        crate::screenshot_tests::write_screenshot_to(
+        crate::shot_file::write_screenshot_to(
             &self.session.app,
             &self.out.to_string_lossy(),
             WINDOW,
