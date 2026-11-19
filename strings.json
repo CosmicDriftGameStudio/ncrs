@@ -3961,6 +3961,12 @@
       "de": "Freigeben"
     },
     {
+      "key": "settings.ai_consent_withdraw",
+      "context": "Button beside the status allowed: the user takes back the agreement to send this kind of data to the AI server on another computer. Nothing of that kind is sent afterwards. Verb.",
+      "en": "Withdraw",
+      "de": "Zurückziehen"
+    },
+    {
       "key": "settings.ai_key_not_stored",
       "context": "Shown when the API key could not be put in the keychain (the password store of the operating system). {reason} is the system's explanation.",
       "en": "The address was saved, but the key could not be stored in the keychain: {reason}",

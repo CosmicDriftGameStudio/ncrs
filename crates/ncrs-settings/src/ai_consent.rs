@@ -153,6 +153,27 @@ impl ConsentAsk {
     }
 }
 
+/// The choice with the server taken out of the ones agreed to for `purpose`.
+pub fn withdrawn(choice: AiProviderChoice, purpose: ConsentPurpose) -> AiProviderChoice {
+    match choice {
+        AiProviderChoice::Http {
+            endpoint,
+            model,
+            mut consented_origins,
+        } => {
+            if let Ok(origin) = ncrs_ai::endpoint_origin(&endpoint) {
+                consented_origins.withdraw(purpose, &origin);
+            }
+            AiProviderChoice::Http {
+                endpoint,
+                model,
+                consented_origins,
+            }
+        }
+        local @ AiProviderChoice::Local { .. } => local,
+    }
+}
+
 #[cfg(test)]
 #[allow(
     clippy::unwrap_used,

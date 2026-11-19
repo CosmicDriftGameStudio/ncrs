@@ -295,3 +295,60 @@ fn the_model_on_this_computer_needs_no_agreement() {
     let (save_writes, _) = from_local.send(SettingsMessage::SaveServer);
     assert_eq!(save_writes, 1);
 }
+
+#[test]
+fn withdrawing_one_kind_of_a_legacy_agreement_keeps_the_other_two() {
+    let mut world = World::saved(&remote_saved(Some(FAR_ORIGIN)));
+    let change = world
+        .page()
+        .clone()
+        .withdraw_from_server(ConsentPurpose::Archive)
+        .unwrap();
+
+    let (writes, _) = world.send(SettingsMessage::WithdrawAiConsent(ConsentPurpose::Archive));
+    assert_eq!(writes, 1);
+    world.written(change);
+
+    let AiSetting::Http {
+        consented_origins, ..
+    } = world.saved_ai()
+    else {
+        panic!("the server was not written");
+    };
+    assert_eq!(consented_origins.inbox, [FAR_ORIGIN]);
+    assert!(consented_origins.archive.is_empty());
+    assert_eq!(consented_origins.folders, [FAR_ORIGIN]);
+    let page = world.page();
+    assert_eq!(page.server_agreed(ConsentPurpose::Archive), Some(false));
+    assert_eq!(page.server_agreed(ConsentPurpose::Inbox), Some(true));
+    assert_eq!(page.server_agreed(ConsentPurpose::Folders), Some(true));
+    let ledger = ncrs_ai::ConsentGivenInSettings::new(&consented_origins);
+    assert!(!ledger.granted(FAR_ORIGIN, Path::new(""), ConsentPurpose::Archive));
+    assert!(ledger.granted(FAR_ORIGIN, Path::new(""), ConsentPurpose::Inbox));
+}
+
+#[test]
+fn a_withdrawn_kind_can_be_allowed_again() {
+    let mut world = World::saved(&remote_saved(Some(FAR_ORIGIN)));
+    let change = world
+        .page()
+        .clone()
+        .withdraw_from_server(ConsentPurpose::Inbox)
+        .unwrap();
+    world.written(change);
+    assert_eq!(
+        world.page().server_agreed(ConsentPurpose::Inbox),
+        Some(false)
+    );
+
+    let allow_again = world
+        .page()
+        .clone()
+        .agree_to_server(ConsentPurpose::Inbox)
+        .unwrap();
+    world.written(allow_again);
+    assert_eq!(
+        world.page().server_agreed(ConsentPurpose::Inbox),
+        Some(true)
+    );
+}

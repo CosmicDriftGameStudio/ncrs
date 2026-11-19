@@ -486,6 +486,21 @@ impl SettingsState {
         }
     }
 
+    /// "Withdraw" on the AI page: the server as typed is saved without its
+    /// origin among the ones agreed to for `purpose`.
+    pub fn withdraw_from_server(&mut self, purpose: ConsentPurpose) -> Option<SettingChange> {
+        match self.http_change() {
+            Ok(SettingChange::AiProvider(choice)) => Some(SettingChange::AiProvider(
+                crate::ai_consent::withdrawn(choice, purpose),
+            )),
+            Ok(other) => Some(other),
+            Err((field, problem)) => {
+                self.problems.insert(field, problem);
+                None
+            }
+        }
+    }
+
     /// A click on a provider. The model on this machine needs nothing more
     /// and is written at once; an own server waits for its address and model.
     pub fn choose_provider(&mut self, chosen: AiProviderName) -> Option<SettingChange> {

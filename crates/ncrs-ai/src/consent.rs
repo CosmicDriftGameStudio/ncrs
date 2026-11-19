@@ -52,6 +52,14 @@ impl ConsentedOrigins {
             ConsentPurpose::Folders => &mut self.folders,
         }
     }
+
+    /// Takes back the agreement to send `purpose` to the server at `origin`,
+    /// however it was written. The other kinds stay.
+    pub fn withdraw(&mut self, purpose: ConsentPurpose, origin: &str) {
+        let wanted = normalized(origin);
+        self.of_mut(purpose)
+            .retain(|listed| normalized(listed) != wanted);
+    }
 }
 
 /// Whether the user allowed a kind of data of a source to go to an endpoint.

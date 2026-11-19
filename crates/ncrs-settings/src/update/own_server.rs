@@ -18,6 +18,9 @@ pub fn update(settings: &mut Settings, message: SettingsMessage, ctx: &Ctx<'_>) 
         SettingsMessage::ConfirmAiConsent(purpose) => {
             in_settings(settings, ctx, |state| state.agree_to_server(purpose))
         }
+        SettingsMessage::WithdrawAiConsent(purpose) => {
+            in_settings(settings, ctx, |state| state.withdraw_from_server(purpose))
+        }
         SettingsMessage::TestAiServer => test_server(settings, ctx),
         SettingsMessage::AiChecked { endpoint, result } => {
             in_page(settings, |state| state.checked(&endpoint, result))

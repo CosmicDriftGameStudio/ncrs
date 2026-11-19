@@ -14,6 +14,7 @@ use std::thread::{self, JoinHandle};
 use ncrs_index::{DocumentFields, Field};
 
 use super::*;
+use crate::consent::{ConsentGivenInSettings, ConsentedOrigins};
 use crate::prompt::TEXT_START;
 
 const KEY: &str = "test-key";
@@ -770,4 +771,31 @@ fn an_own_server_is_never_asked_to_choose_folders() {
         std::io::ErrorKind::WouldBlock,
         "nothing was sent"
     );
+}
+
+#[test]
+fn a_withdrawn_agreement_stops_that_kind_at_the_request() {
+    use crate::chat::ChatModel as _;
+    let origin = "https://ai.example.invalid";
+    let mut agreed = ConsentedOrigins::all(vec![origin.to_owned()]);
+    agreed.withdraw(ConsentPurpose::Archive, "HTTPS://ai.example.invalid/");
+    let ledger = Arc::new(ConsentGivenInSettings::new(&agreed));
+    let model = OpenAiCompatible::new(
+        OpenAiCompatibleConfig {
+            endpoint: format!("{origin}/v1"),
+            model: "model-x".to_owned(),
+            api_key: Some(Secret::new(KEY.to_owned())),
+            key_lookup: None,
+            usage_log: None,
+        },
+        ledger as Arc<dyn ConsentLedger>,
+    )
+    .unwrap();
+
+    assert!(is_refused_for_consent(model.understand(&a_turn())));
+    assert!(is_refused_for_consent(model.generate_rule(
+        "any",
+        &[],
+        &ncrs_index::Kinds::default()
+    )));
 }

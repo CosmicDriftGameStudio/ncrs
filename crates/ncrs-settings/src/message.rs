@@ -203,6 +203,9 @@ pub enum SettingsMessage {
     /// "Allow" for one kind of data that goes to a server on another computer:
     /// the server as typed is saved and agreed to for that kind.
     ConfirmAiConsent(ncrs_ai::ConsentPurpose),
+    /// "Withdraw" for one kind of data: only that kind is taken back for the
+    /// server as typed, and the change is saved.
+    WithdrawAiConsent(ncrs_ai::ConsentPurpose),
     /// Save on the AI page: address, model and key together.
     SaveServer,
     /// The key was kept in the keychain, or why not.

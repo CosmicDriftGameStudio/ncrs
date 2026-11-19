@@ -184,6 +184,7 @@ pub fn update(
         | SettingsMessage::TestAiServer
         | SettingsMessage::AiChecked { .. }
         | SettingsMessage::ConfirmAiConsent(_)
+        | SettingsMessage::WithdrawAiConsent(_)
         | SettingsMessage::SaveServer
         | SettingsMessage::AiKeyStored(_)
         | SettingsMessage::UsagePeriod(_)

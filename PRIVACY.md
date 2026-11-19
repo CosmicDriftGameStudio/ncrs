@@ -17,9 +17,11 @@ ncrs connects to the network only for the purposes below. The update check runs 
 - **AI model:** when you download the AI model for Hermes, ncrs fetches it from Hugging Face (huggingface.co and its download hosts below hf.co).
 - **Text recognition models (Windows and Linux):** when you download the text recognition models, ncrs fetches them from ocrs-models.s3-accelerate.amazonaws.com (Amazon S3). macOS recognises text with the system and downloads nothing.
 - **Hermes AI server:** when you point Hermes at a model server, ncrs sends the text of the documents you file to that server. You choose that server; it can be on your own computer or on another one. When it is on another computer, you agree to three kinds of data one by one in Settings, for that server. Of a kind you have not agreed to, nothing is sent. Over https, the three kinds are:
-  - incoming documents: the text of every document Hermes reads to sort it, including the text recognised in scans and photos;
-  - filed documents: everything you write to Hermes in the chat, the last question Hermes asked with its answer options, and your previous request and message that the new one refers to;
-  - folders and file names: when Hermes learns a filing rule or reads how a folder is organised, the folders of sample documents in your archive and what Hermes found in them (sender, recipient, kind, date, number, tags); and when you rename several files at once, the names of up to 30 files of the folder, also in folders on another computer (SFTP).
+  - incoming documents, the text of every document Hermes reads to sort it, including the text recognised in scans and photos;
+  - filed documents, everything you write to Hermes in the chat, the last question Hermes asked with its answer options, and your previous request and message that the new one refers to;
+  - folders and file names, in two cases:
+    - when Hermes learns a filing rule or reads how a folder is organised: the folders of sample documents in your archive and what Hermes found in them (sender, recipient, kind, date, number, tags);
+    - when you rename several files at once: the names of up to 30 files of the folder, also in folders on another computer (SFTP).
 
   A settings file from before this split, with its single agreement for a server, counts as agreement to all three kinds for that server and nothing more. Of a document's text ncrs sends at most the first 16,000 characters. Cancelling keeps the model you had. Nothing goes to a server on another computer that you did not agree to. The API key for the server is kept in the system's credential store, not in the settings file.
 

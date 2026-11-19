@@ -412,7 +412,13 @@ fn consent_row<'a>(purpose: ConsentPurpose, view: &SettingsView<'a>) -> SettingR
     let (lang, palette) = (view.lang, view.palette);
     let agreed = view.state.server_agreed(purpose).unwrap_or(false);
     let (state, buttons) = if agreed {
-        (Msg::SettingsAiConsentStateGiven, Vec::new())
+        let withdraw = kit::button(
+            lang.text(Msg::SettingsAiConsentWithdraw),
+            Some(SettingsMessage::WithdrawAiConsent(purpose)),
+            Tone::Secondary,
+            palette,
+        );
+        (Msg::SettingsAiConsentStateGiven, vec![withdraw])
     } else {
         let allow = kit::button(
             lang.text(Msg::SettingsAiConsentConfirm),

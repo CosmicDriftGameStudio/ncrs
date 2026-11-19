@@ -231,3 +231,18 @@ fn a_server_on_another_computer_allowed_for_one_kind_of_data_matches_its_snapsho
         "settings_ki_remote_partly_allowed",
     );
 }
+
+#[test]
+fn all_three_agreements_of_a_far_server_show_in_a_tall_window() {
+    for (language, name) in [
+        (Language::German, "settings_ki_remote_all_rows_de"),
+        (Language::English, "settings_ki_remote_all_rows_en"),
+    ] {
+        let mut app = remote_server_app(
+            "consented_inbox = [\"https://api.example.com\"]\n\
+             consented_archive = []\nconsented_folders = []\n",
+        )
+        .in_language(language);
+        matches_snapshot_in_marcs_window(&mut app, name);
+    }
+}
