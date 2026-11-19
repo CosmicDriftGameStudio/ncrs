@@ -82,7 +82,7 @@ fn finished_comparison() -> Compare {
         &mut compare,
         Message::Finished {
             generation,
-            result: Ok(compared()),
+            result: Ok(Box::new(compared())),
         },
         left,
         right,
@@ -142,7 +142,7 @@ fn the_marks_reach_the_panels_once_the_comparison_is_done() {
         &mut compare,
         Message::Finished {
             generation,
-            result: Ok(compared()),
+            result: Ok(Box::new(compared())),
         },
         left,
         right,
@@ -170,7 +170,7 @@ fn the_result_of_an_older_comparison_is_dropped() {
         &mut compare,
         Message::Finished {
             generation: first,
-            result: Ok(compared()),
+            result: Ok(Box::new(compared())),
         },
         left,
         right,

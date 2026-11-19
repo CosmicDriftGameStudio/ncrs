@@ -19,7 +19,7 @@ pub enum Message {
     /// A comparison ended; `generation` tells which one.
     Finished {
         generation: u64,
-        result: Result<Compared, ScanError>,
+        result: Result<Box<Compared>, ScanError>,
     },
     ToggleOnlyDifferences,
     Again,

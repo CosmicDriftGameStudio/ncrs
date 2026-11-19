@@ -10,7 +10,7 @@ use super::super::sevenz;
 use super::super::ArchiveFormat;
 use super::{Job, Selector, Sink, TarOut, Watched};
 
-pub(super) fn copy_original(
+pub(in crate::archive::write) fn copy_original(
     archive: &Path,
     format: ArchiveFormat,
     sink: &mut Sink,
@@ -56,11 +56,11 @@ fn pax_records<R: Read>(entry: &mut tar::Entry<'_, R>) -> io::Result<Vec<(String
         return Ok(Vec::new());
     };
     let mut kept = Vec::new();
-    for record in records {
-        let record = record?;
+    for pax_record in records {
+        let record = pax_record?;
         let key = record
             .key()
-            .map_err(|_| invalid("an extended header with a key that is not text"))?;
+            .map_err(|_unreadable| invalid("an extended header with a key that is not text"))?;
         if key.starts_with("GNU.sparse") {
             return Err(invalid("a sparse entry, which ncrs cannot rewrite"));
         }
@@ -264,14 +264,14 @@ mod tests {
         add(&archive, &[], &[note], OnConflict::Fail, &mut Counting).unwrap();
 
         let mut found = Vec::new();
-        for entry in tar::Archive::new(File::open(&archive).unwrap())
+        for listed in tar::Archive::new(File::open(&archive).unwrap())
             .entries()
             .unwrap()
         {
-            let mut entry = entry.unwrap();
+            let mut entry = listed.unwrap();
             if entry.path().unwrap().to_string_lossy() == "x.txt" {
-                for record in entry.pax_extensions().unwrap().unwrap() {
-                    let record = record.unwrap();
+                for pax in entry.pax_extensions().unwrap().unwrap() {
+                    let record = pax.unwrap();
                     found.push((
                         record.key().unwrap().to_owned(),
                         record.value().unwrap().to_owned(),

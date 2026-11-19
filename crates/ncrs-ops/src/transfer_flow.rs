@@ -222,11 +222,11 @@ fn run_from(
                     (result, report.take_skipped())
                 }
             }),
-            move |outcome| {
+            move |joined| {
                 // Two failures collapse into one string here: the join error
                 // means the blocking task died, the other means the copy
                 // itself failed. The dialog cannot tell them apart anyway.
-                let (outcome, skipped) = match outcome {
+                let (outcome, skipped) = match joined {
                     Ok((result, skipped)) => (Ok(result), skipped),
                     Err(join) => (Err(join), Vec::new()),
                 };

@@ -53,7 +53,7 @@ fn carry_quarantine(origin: &Path, copy: &Path) -> io::Result<()> {
         Err(Errno::NOATTR | Errno::NOTSUP) => return Ok(()),
         Err(other) => return Err(other.into()),
     };
-    let mut value = vec![0_u8; len];
+    let mut value = vec![0; len];
     let got = lgetxattr(origin, NAME, &mut value)?;
     match lsetxattr(
         copy,
@@ -70,7 +70,7 @@ fn carry_quarantine(origin: &Path, copy: &Path) -> io::Result<()> {
 /// Puts the origin mark of `origin` on `copy`. A mark that cannot be put on
 /// the copy is an error: an unmarked copy of a marked file is never shown.
 /// Linux has no such mark, and nothing is done there.
-pub(crate) fn origin_mark(origin: &Path, copy: &Path) -> io::Result<()> {
+pub fn origin_mark(origin: &Path, copy: &Path) -> io::Result<()> {
     #[cfg(windows)]
     carry_zone_stream(origin, copy)?;
     #[cfg(target_os = "macos")]
@@ -140,7 +140,7 @@ mod tests {
 
         origin_mark(&origin, &copy).unwrap();
 
-        let mut value = [0_u8; 64];
+        let mut value = [0; 64];
         let got = lgetxattr(&copy, name, &mut value[..]).unwrap();
         assert_eq!(value.get(..got), Some(&b"0081;5f3a;Safari"[..]));
     }

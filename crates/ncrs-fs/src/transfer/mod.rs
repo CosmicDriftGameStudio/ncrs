@@ -292,10 +292,13 @@ fn refuse_same_entry(source: &Path, target: &Path) -> io::Result<()> {
     Ok(())
 }
 
-fn refuse_target_in_the_way(source: &Path, target: &Path) -> io::Result<()> {
+fn refuse_target_in_the_way(given_source: &Path, given_target: &Path) -> io::Result<()> {
     let refused = |text: String| Err(io::Error::new(io::ErrorKind::InvalidInput, text));
-    let (source, target) = (with_resolved_folder(source), with_resolved_folder(target));
-    let (source, target) = (source.as_path(), target.as_path());
+    let (resolved_source, resolved_target) = (
+        with_resolved_folder(given_source),
+        with_resolved_folder(given_target),
+    );
+    let (source, target) = (resolved_source.as_path(), resolved_target.as_path());
     if target == source {
         return refused(format!("{} is already there", source.display()));
     }

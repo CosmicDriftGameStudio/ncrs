@@ -50,7 +50,7 @@ fn rules_for(folder: &Path) -> NameRules {
     }
 }
 
-pub(super) fn facts_of(entry: &FileEntry) -> EntryFacts {
+pub(in crate::batch_rename) fn facts_of(entry: &FileEntry) -> EntryFacts {
     let name = entry.name.to_string_lossy();
     let (stem, extension) = split_name(&name, entry.is_dir);
     EntryFacts {

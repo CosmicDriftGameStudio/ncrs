@@ -9,7 +9,7 @@ use std::path::Path;
 /// instead of replacing it. The kernel decides where it can (macOS and Linux);
 /// elsewhere, and on a file system that cannot, it is a check followed by the
 /// rename, which leaves a window for someone creating the name in between.
-pub(crate) fn rename_no_replace(from: &Path, to: &Path) -> io::Result<()> {
+pub fn rename_no_replace(from: &Path, to: &Path) -> io::Result<()> {
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     {
         use rustix::fs::{renameat_with, RenameFlags, CWD};
@@ -32,10 +32,7 @@ pub(crate) fn rename_no_replace(from: &Path, to: &Path) -> io::Result<()> {
 
 /// Sets the modification time of a folder, which cannot be opened like a file
 /// on Windows.
-pub(crate) fn set_folder_modified(
-    folder: &Path,
-    modified: std::time::SystemTime,
-) -> io::Result<()> {
+pub fn set_folder_modified(folder: &Path, modified: std::time::SystemTime) -> io::Result<()> {
     #[cfg(windows)]
     let handle = {
         use std::os::windows::fs::OpenOptionsExt as _;
@@ -58,7 +55,7 @@ pub(crate) fn set_folder_modified(
 /// are returned for the caller to report. A refusal because the target holds no
 /// attributes at all, and `com.apple.provenance`, which only the system sets,
 /// are not reported.
-pub(crate) fn copy_xattrs(source: &Path, target: &Path) -> Vec<String> {
+pub fn copy_xattrs(source: &Path, target: &Path) -> Vec<String> {
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     {
         use rustix::fs::{
@@ -74,17 +71,17 @@ pub(crate) fn copy_xattrs(source: &Path, target: &Path) -> Vec<String> {
                 return refused;
             }
         };
-        let mut listed = vec![0_u8; size];
-        let Ok(used) = llistxattr(source, &mut listed[..]) else {
+        let mut listed = vec![0; size];
+        let Ok(used) = llistxattr(source, &mut *listed) else {
             refused.push("(list)".to_owned());
             return refused;
         };
-        for name in listed
+        for raw_name in listed
             .get(..used)
             .unwrap_or_default()
             .split(|byte| *byte == 0)
         {
-            let Ok(name) = std::ffi::CString::new(name) else {
+            let Ok(name) = std::ffi::CString::new(raw_name) else {
                 continue;
             };
             if name.as_bytes().is_empty() || name.as_bytes() == b"com.apple.provenance" {
@@ -95,8 +92,8 @@ pub(crate) fn copy_xattrs(source: &Path, target: &Path) -> Vec<String> {
                 refused.push(shown);
                 continue;
             };
-            let mut value = vec![0_u8; len];
-            let Ok(got) = lgetxattr(source, name.as_c_str(), &mut value[..]) else {
+            let mut value = vec![0; len];
+            let Ok(got) = lgetxattr(source, name.as_c_str(), &mut *value) else {
                 refused.push(shown);
                 continue;
             };
@@ -179,8 +176,8 @@ mod tests {
 
         assert!(copy_xattrs(&from, &to).is_empty());
 
-        let mut value = [0_u8; 64];
-        let got = rustix::fs::lgetxattr(&to, name, &mut value[..]).unwrap();
+        let mut value = [0; 64];
+        let got = rustix::fs::lgetxattr(&to, name, &mut value).unwrap();
         assert_eq!(value.get(..got), Some(&b"0081;5f3a;Safari"[..]));
     }
 }

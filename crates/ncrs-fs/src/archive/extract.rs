@@ -564,7 +564,7 @@ mod tests {
         )
         .unwrap();
 
-        let mut value = [0_u8; 64];
+        let mut value = [0; 64];
         let got = lgetxattr(out.join("tool.command"), name, &mut value[..]).unwrap();
         assert_eq!(value.get(..got), Some(&b"0081;5f3a;Safari"[..]));
     }
@@ -597,7 +597,7 @@ mod tests {
         .unwrap();
 
         for folder in ["x.app", "x.app/Contents"] {
-            let mut value = [0_u8; 64];
+            let mut value = [0; 64];
             let got = lgetxattr(out.join(folder), name, &mut value[..]).unwrap();
             assert_eq!(value.get(..got), Some(&b"0081;5f3a;Safari"[..]), "{folder}");
         }

@@ -73,7 +73,7 @@ fn a_job_asked_for_while_one_runs_gets_a_notice_and_is_not_queued() {
             path: PathBuf::from("/x/b.txt"),
             total: None,
         },
-        || Task::<Message>::none(),
+        Task::<Message>::none,
     ));
 
     assert_eq!(
@@ -174,7 +174,7 @@ fn a_confirmed_quit_does_not_outlive_the_next_job() {
             path: PathBuf::from("/x/b.txt"),
             total: None,
         },
-        || Task::<Message>::none(),
+        Task::<Message>::none,
     ));
     drop(app.update(Message::Quit));
 

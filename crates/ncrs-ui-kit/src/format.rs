@@ -854,7 +854,7 @@ mod local_time_tests {
 
     #[test]
     fn a_time_chrono_cannot_hold_is_no_date_and_does_not_panic() {
-        let far_future = UNIX_EPOCH + Duration::from_secs(u64::MAX / 2);
+        let far_future = UNIX_EPOCH + Duration::from_secs(u64::MAX >> 1);
         assert!(local_time(far_future).is_none());
         assert_eq!(time(Some(far_future)), "");
         assert_eq!(

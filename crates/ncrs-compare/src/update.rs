@@ -55,7 +55,13 @@ pub fn update(compare: &mut Compare, message: Message, ctx: &Ctx<'_>) -> Outcome
             Task::none()
         }
         Message::Finished { generation, result } => {
-            finished(compare, generation, result, ctx, &mut actions);
+            finished(
+                compare,
+                generation,
+                result.map(|found| *found),
+                ctx,
+                &mut actions,
+            );
             Task::none()
         }
         Message::ToggleOnlyDifferences => {
@@ -157,7 +163,10 @@ fn start_run(
         only_differences,
     });
     Task::perform(scan::compare(scanning, left, right), move |result| {
-        Message::Finished { generation, result }
+        Message::Finished {
+            generation,
+            result: result.map(Box::new),
+        }
     })
 }
 

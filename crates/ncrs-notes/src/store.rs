@@ -213,18 +213,18 @@ fn cut_to_bytes(text: &str, bytes: usize) -> &str {
 
 /// Where the note on `file` lives.
 pub fn file_note_path(root: &Path, file: &Path) -> PathBuf {
-    let name = file.file_name().map_or_else(
+    let full_name = file.file_name().map_or_else(
         || "file".to_owned(),
         |name| name.to_string_lossy().into_owned(),
     );
     let suffix = format!("-{}.{MARKDOWN}", short_hash(file));
-    let name = cut_to_bytes(&name, MAX_NAME_BYTES - suffix.len());
+    let name = cut_to_bytes(&full_name, MAX_NAME_BYTES - suffix.len());
     root.join(FILES_DIR).join(format!("{name}{suffix}"))
 }
 
 /// A title that is a safe file name.
 pub fn clean_title(title: &str) -> String {
-    let cleaned: String = title
+    let limited: String = title
         .chars()
         .map(|c| {
             if "/\\:*?\"<>|".contains(c) || c.is_control() {
@@ -235,7 +235,7 @@ pub fn clean_title(title: &str) -> String {
         })
         .take(MAX_TITLE_CHARS)
         .collect();
-    let cleaned = cut_to_bytes(&cleaned, MAX_TITLE_BYTES)
+    let cleaned = cut_to_bytes(&limited, MAX_TITLE_BYTES)
         .trim()
         .trim_start_matches('.')
         .trim_end_matches(['.', ' '])
@@ -451,7 +451,7 @@ pub fn write_note(write: &Write, ledger: &Ledger) -> Result<u64, WriteError> {
         Some(last) if write.generation <= last.generation => last.hash,
         known => {
             let expect = known
-                .or_else(|| other_name_of_path.and_then(|old| done.get(&old.path).copied()))
+                .or_else(|| done.get(&other_name_of_path?.path).copied())
                 .map_or(write.expect, |last| Expect::Content(last.hash));
             let hash = write_atomic(path, &write.root, &write.text, expect)?;
             done.insert(

@@ -25,7 +25,7 @@ fn at(archive: &Path, inner: &[&str]) -> ArchiveLocation {
     }
 }
 
-pub(super) fn listing(archive: &Path, inner: &[&str]) -> Vec<String> {
+pub(in crate::archive::write) fn listing(archive: &Path, inner: &[&str]) -> Vec<String> {
     list(&at(archive, inner))
         .unwrap()
         .entries
@@ -41,7 +41,7 @@ pub(super) fn listing(archive: &Path, inner: &[&str]) -> Vec<String> {
         .collect()
 }
 
-pub(super) fn bytes_of(archive: &Path, inner: &[&str]) -> Vec<u8> {
+pub(in crate::archive::write) fn bytes_of(archive: &Path, inner: &[&str]) -> Vec<u8> {
     let out = scratch("bytes-of");
     let source = inner
         .iter()
@@ -54,7 +54,7 @@ fn inner(parts: &[&str]) -> Vec<String> {
     parts.iter().map(|part| (*part).to_owned()).collect()
 }
 
-pub(super) fn leftovers(dir: &Path) -> Vec<OsString> {
+pub(in crate::archive::write) fn leftovers(dir: &Path) -> Vec<OsString> {
     std::fs::read_dir(dir)
         .unwrap()
         .map(|entry| entry.unwrap().file_name())
@@ -62,7 +62,7 @@ pub(super) fn leftovers(dir: &Path) -> Vec<OsString> {
         .collect()
 }
 
-pub(super) fn names_in_file(archive: &Path) -> Vec<String> {
+pub(in crate::archive::write) fn names_in_file(archive: &Path) -> Vec<String> {
     let mut names: Vec<String> = match ArchiveFormat::of_name(archive.file_name().unwrap()).unwrap()
     {
         ArchiveFormat::Zip => {
@@ -105,7 +105,7 @@ pub(super) fn names_in_file(archive: &Path) -> Vec<String> {
     names
 }
 
-pub(super) fn make_tree(root: &Path) -> PathBuf {
+pub(in crate::archive::write) fn make_tree(root: &Path) -> PathBuf {
     let tree = root.join("pack-src");
     std::fs::create_dir_all(tree.join("sub")).unwrap();
     std::fs::create_dir(tree.join("empty")).unwrap();
@@ -901,7 +901,7 @@ fn a_link_to_a_folder_is_skipped_not_followed() {
 
 #[test]
 fn a_modification_time_no_calendar_holds_is_left_out_not_a_panic() {
-    let absurd = UNIX_EPOCH + std::time::Duration::from_secs(u64::MAX / 2);
+    let absurd = UNIX_EPOCH + std::time::Duration::from_secs(u64::MAX >> 1);
 
     assert!(zip_datetime(absurd).is_none());
     assert!(zip_datetime(UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000)).is_some());

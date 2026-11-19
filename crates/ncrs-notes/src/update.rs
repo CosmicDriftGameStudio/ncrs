@@ -136,22 +136,22 @@ fn saved(
     result: Result<u64, WriteError>,
     ctx: &Ctx,
 ) -> (Task<Message>, Option<Action>) {
-    let write = state
+    let finished = state
         .running
         .take_if(|running| running.path == path && running.generation == generation);
     let mut action = None;
     match result {
         Ok(hash) => state.set_base(path, hash),
         Err(WriteError::Io(reason)) => {
-            if let Some(write) = write.filter(|write| !write.background) {
-                state.keep_unsaved(write);
+            if let Some(lost) = finished.filter(|write| !write.background) {
+                state.keep_unsaved(lost);
             }
             action = Some(failed(ctx, &reason));
         }
         Err(WriteError::Conflict(_)) => {
-            if let Some(write) = write {
-                let (retry, copy) = resolve_conflict(state, &write, ctx);
-                if let Some(retry) = retry {
+            if let Some(conflicting) = finished {
+                let (retry_write, copy) = resolve_conflict(state, &conflicting, ctx);
+                if let Some(retry) = retry_write {
                     state.queue(retry);
                 }
                 action = copy.map(|name| conflicted(ctx, &name));
@@ -159,7 +159,7 @@ fn saved(
         }
     }
     let next = match state.queued.pop_front() {
-        Some(write) => start_write(state, write),
+        Some(queued) => start_write(state, queued),
         None => Task::none(),
     };
     let reread = if state.reload_after_writes && !state.busy() {

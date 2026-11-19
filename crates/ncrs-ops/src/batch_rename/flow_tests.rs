@@ -427,7 +427,7 @@ fn a_modification_time_no_calendar_holds_gives_no_date_instead_of_a_panic() {
         is_symlink: false,
         is_parent: false,
         size: 0,
-        modified: Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(u64::MAX / 2)),
+        modified: Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(u64::MAX >> 1)),
         folder_size: None,
         details: Default::default(),
     };

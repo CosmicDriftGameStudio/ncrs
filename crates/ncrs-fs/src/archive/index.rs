@@ -233,10 +233,10 @@ pub fn zip_time(stamp: Option<zip::DateTime>) -> Option<SystemTime> {
 const LATEST_TAR_SECONDS: u64 = 253_402_300_799;
 
 pub fn tar_time(stored: io::Result<u64>) -> Option<SystemTime> {
-    stored
+    let seconds = stored
         .ok()
-        .filter(|seconds| *seconds <= LATEST_TAR_SECONDS)
-        .and_then(|seconds| UNIX_EPOCH.checked_add(Duration::from_secs(seconds)))
+        .filter(|seconds| *seconds <= LATEST_TAR_SECONDS)?;
+    UNIX_EPOCH.checked_add(Duration::from_secs(seconds))
 }
 
 fn build_zip(path: &Path) -> io::Result<ArchiveIndex> {
@@ -338,7 +338,9 @@ mod tests {
         let field = &mut header.as_old_mut().mtime;
         field.fill(0);
         field[0] = 0x80;
-        field[4..].copy_from_slice(&seconds.to_be_bytes());
+        for (slot, shift) in field[4..].iter_mut().zip((0..8).rev()) {
+            *slot = u8::try_from((seconds >> (shift * 8)) & 0xff).unwrap();
+        }
         header.set_cksum();
         let mut out = std::fs::File::create(path).unwrap();
         out.write_all(header.as_bytes()).unwrap();
@@ -350,7 +352,7 @@ mod tests {
     fn a_time_no_date_can_show_lists_without_a_date_and_without_a_panic() {
         for (seconds, expected_date) in [
             (u64::MAX, false),
-            (u64::MAX / 2, false),
+            (u64::MAX >> 1, false),
             (1_700_000_000, true),
         ] {
             let dir = scratch("tar-time");

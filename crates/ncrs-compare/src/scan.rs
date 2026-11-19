@@ -105,8 +105,8 @@ fn compare_folders(scan: &Scan, left: PathBuf, right: PathBuf) -> Pending<'_> {
                 differs = true;
                 continue;
             };
-            let pair = compare_pair(scan, left_entry, right_entry).await?;
-            if let Some(pair) = pair {
+            let found = compare_pair(scan, left_entry, right_entry).await?;
+            if let Some(pair) = found {
                 differs |= pair.left.is_difference();
                 compared.left.insert(left_entry.name.clone(), pair.left);
                 compared.right.insert(right_entry.name.clone(), pair.right);
@@ -162,11 +162,11 @@ async fn compare_pair(
             } else {
                 true
             };
-            let (left, right) =
+            let (left_mark, right_mark) =
                 judge_files(scan.choices, left_facts, right_facts, same_content).marks();
             Ok(Some(Pair {
-                left,
-                right,
+                left: left_mark,
+                right: right_mark,
                 below: None,
             }))
         }

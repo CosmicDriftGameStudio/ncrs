@@ -694,8 +694,8 @@ fn stamp_of(local: &Path) -> Metadata {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt as _;
-        stamp.permissions = Some(meta.permissions().mode() & 0o777);
-    }
+        stamp.permissions = Some(meta.permissions().mode() & 0o777)
+    };
     stamp
 }
 
