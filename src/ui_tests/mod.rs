@@ -3858,7 +3858,7 @@ mod title_bar {
         let provider = crate::filing::http_ai_provider(
             "http://127.0.0.1:1/v1",
             "model-x",
-            &[],
+            &ncrs_ai::ConsentedOrigins::default(),
             std::path::Path::new("index.db"),
         )
         .unwrap();

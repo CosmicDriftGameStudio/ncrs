@@ -200,9 +200,9 @@ pub enum SettingsMessage {
         endpoint: String,
         result: crate::ai_server::AiCheckResult,
     },
-    /// "Allow" under the list of what goes to a server on another computer:
-    /// the server as typed is saved and agreed to.
-    ConfirmAiConsent,
+    /// "Allow" for one kind of data that goes to a server on another computer:
+    /// the server as typed is saved and agreed to for that kind.
+    ConfirmAiConsent(ncrs_ai::ConsentPurpose),
     /// Save on the AI page: address, model and key together.
     SaveServer,
     /// The key was kept in the keychain, or why not.

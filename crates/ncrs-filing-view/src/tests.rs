@@ -281,3 +281,25 @@ fn a_model_that_cannot_choose_folders_is_told_apart_from_one_that_failed() {
     assert!(!failed.contains("down"));
     assert_eq!(other, "disk full");
 }
+
+#[test]
+fn a_missing_agreement_to_send_folder_names_is_said_and_not_shown_as_no_folder() {
+    use ncrs_ai::{AiError, OutgoingPreview};
+    use ncrs_filing::chat_work::PlanFailure;
+
+    let refused = crate::update::failure_text(
+        Language::English,
+        &PlanFailure::Model(AiError::ConsentRequired(OutgoingPreview {
+            endpoint: "https://ai.example.com".to_owned(),
+            model: "m".to_owned(),
+            body: String::new(),
+        })),
+    );
+    let failed = crate::update::failure_text(
+        Language::English,
+        &PlanFailure::Model(AiError::Transport("down")),
+    );
+
+    assert!(refused.contains("agreement"), "{refused}");
+    assert_ne!(refused, failed);
+}

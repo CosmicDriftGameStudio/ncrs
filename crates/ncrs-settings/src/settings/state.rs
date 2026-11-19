@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use crate::facts::{LoadedFacts, ModelKind};
 use crate::message::{SettingChange, SettingField, TerminalChoice};
+use ncrs_ai::{ConsentPurpose, ConsentedOrigins};
 use ncrs_config::config::{
     check_ai_endpoint, AiEndpointProblem, AiProviderChoice, AiProviderName, AiSection, Config,
     ConfigError, OwnDetail, ProgramLine, ProgramLineProblem,
@@ -445,34 +446,33 @@ impl SettingsState {
         Ok(SettingChange::AiProvider(AiProviderChoice::Http {
             endpoint,
             model,
-            consented_origins: self
-                .ai_section()
-                .map(AiSection::consented)
-                .unwrap_or_default(),
+            consented_origins: self.consents(),
         }))
     }
 
-    /// Whether the user agreed to send to the server shown on the AI page:
-    /// `None` while the model on this computer is chosen or the address is
-    /// none off this computer.
-    pub fn server_agreed(&self) -> Option<bool> {
+    fn consents(&self) -> ConsentedOrigins {
+        self.ai_section()
+            .map(AiSection::consents)
+            .unwrap_or_default()
+    }
+
+    /// Whether the user agreed to send `purpose` to the server shown on the
+    /// AI page: `None` while the model on this computer is chosen or the
+    /// address is none off this computer.
+    pub fn server_agreed(&self, purpose: ConsentPurpose) -> Option<bool> {
         if self.provider() != AiProviderName::Http {
             return None;
         }
-        let consented = self
-            .ai_section()
-            .map(AiSection::consented)
-            .unwrap_or_default();
-        crate::ai_consent::server_agreed(&self.typed_endpoint(), &consented)
+        crate::ai_consent::server_agreed(&self.typed_endpoint(), &self.consents(), purpose)
     }
 
     /// "Allow" on the AI page: the server as typed is saved with its origin
-    /// among the ones agreed to. A wrong address or an empty model shows at
-    /// its row instead.
-    pub fn agree_to_server(&mut self) -> Option<SettingChange> {
+    /// among the ones agreed to for `purpose`. A wrong address or an empty
+    /// model shows at its row instead.
+    pub fn agree_to_server(&mut self, purpose: ConsentPurpose) -> Option<SettingChange> {
         match self.http_change() {
             Ok(SettingChange::AiProvider(choice)) => {
-                let agreed = match crate::ai_consent::ConsentAsk::needed_for(&choice) {
+                let agreed = match crate::ai_consent::ConsentAsk::needed_for(&choice, purpose) {
                     Some(ask) => ask.agreed(),
                     None => choice,
                 };

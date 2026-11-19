@@ -62,10 +62,13 @@ pub fn start(state: &mut State, source: PathBuf, target: PathBuf, ctx: &Ctx) -> 
 
 /// What the user reads when planning ends early. The technical reason of a
 /// model failure is not shown.
-pub(super) fn failure_text(lang: ncrs_i18n::Language, failure: &PlanFailure) -> String {
+pub fn failure_text(lang: ncrs_i18n::Language, failure: &PlanFailure) -> String {
     match failure {
         PlanFailure::Model(AiError::Unsupported) => {
             lang.text(Msg::FilingViewErrorFolderChoiceUnsupported)
+        }
+        PlanFailure::Model(AiError::ConsentRequired(_)) => {
+            lang.text(Msg::FilingViewErrorFolderConsentMissing)
         }
         PlanFailure::Model(_) => lang.text(Msg::FilingViewErrorModelFailed),
         PlanFailure::Other(reason) => reason.as_str(),

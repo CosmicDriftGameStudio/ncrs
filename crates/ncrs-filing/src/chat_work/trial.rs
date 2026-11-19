@@ -466,7 +466,7 @@ const MODEL_TEXT_CHARS: usize = 2000;
 /// version are asked again.
 /// Version 2: version 1 also held "no folder fits" for files the model never
 /// answered.
-pub(super) const FOLDER_PICK_VERSION: i64 = 2;
+pub(in crate::chat_work) const FOLDER_PICK_VERSION: i64 = 2;
 
 /// The files that did not get a sure place go to the model once, as a batch.
 /// A file it picks a folder for is unsure: the model's folder first, then the

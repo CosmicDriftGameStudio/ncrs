@@ -144,6 +144,11 @@ pub enum ChatIntent {
 
 pub trait ChatModel: Send + Sync + fmt::Debug {
     fn understand(&self, turn: &ChatTurn) -> Result<ChatIntent, AiError>;
+    /// Like `understand`, for a turn that carries the file names of a folder;
+    /// a server needs the agreement to file names for it.
+    fn understand_file_names(&self, turn: &ChatTurn) -> Result<ChatIntent, AiError> {
+        self.understand(turn)
+    }
     /// The rule a described filing means; `documents` are what the model is
     /// shown of the archive.
     fn generate_rule(

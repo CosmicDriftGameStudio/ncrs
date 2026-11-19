@@ -417,45 +417,49 @@ pub fn color_setting(role: ColorRole, color: Option<&str>) -> Setting {
 /// The provider and the keys that belong to it; the keys of the other
 /// provider are dropped, since the loader refuses them next to this one.
 /// The consented servers stay when the provider goes back to the local one,
-/// so that a later switch to the same server does not ask again.
+/// so that a later switch to the same server does not ask again. The three
+/// lists replace the single `consented_origins` of older files, which is
+/// dropped so that an older version asks again instead of reading it as
+/// everything agreed.
 pub fn ai_provider_settings(choice: &AiProviderChoice) -> Vec<Setting> {
-    let (provider, threads, endpoint, model, consented) = match choice {
-        AiProviderChoice::Local { threads } => (
-            AiProviderName::Local,
-            threads.map(|count| NonZeroI64::from(count).get().into()),
-            None,
-            None,
-            None,
-        ),
-        AiProviderChoice::Http {
-            endpoint,
-            model,
-            consented_origins,
-        } => (
-            AiProviderName::Http,
-            None,
-            Some(endpoint.as_str().into()),
-            Some(model.as_str().into()),
-            Some(toml_edit::Value::Array(
-                consented_origins.iter().map(String::as_str).collect(),
-            )),
-        ),
-    };
     let setting = |key, value| Setting {
         tables: AI_TABLES,
         key,
         value,
     };
-    let mut settings = vec![
-        setting("provider", Some(provider_text(provider).into())),
-        setting("threads", threads),
-        setting("endpoint", endpoint),
-        setting("model", model),
-    ];
-    if consented.is_some() {
-        settings.push(setting("consented_origins", consented));
+    let list = |origins: &[String]| {
+        Some(toml_edit::Value::Array(
+            origins.iter().map(String::as_str).collect(),
+        ))
+    };
+    match choice {
+        AiProviderChoice::Local { threads } => vec![
+            setting(
+                "provider",
+                Some(provider_text(AiProviderName::Local).into()),
+            ),
+            setting(
+                "threads",
+                threads.map(|count| NonZeroI64::from(count).get().into()),
+            ),
+            setting("endpoint", None),
+            setting("model", None),
+        ],
+        AiProviderChoice::Http {
+            endpoint,
+            model,
+            consented_origins,
+        } => vec![
+            setting("provider", Some(provider_text(AiProviderName::Http).into())),
+            setting("threads", None),
+            setting("endpoint", Some(endpoint.as_str().into())),
+            setting("model", Some(model.as_str().into())),
+            setting("consented_origins", None),
+            setting("consented_inbox", list(&consented_origins.inbox)),
+            setting("consented_archive", list(&consented_origins.archive)),
+            setting("consented_folders", list(&consented_origins.folders)),
+        ],
     }
-    settings
 }
 
 /// What the settings tab sets in `[modules.filing.ai]` besides `enabled`.
@@ -466,8 +470,8 @@ pub enum AiProviderChoice {
     Http {
         endpoint: String,
         model: String,
-        /// Every server documents may go to, the new one included.
-        consented_origins: Vec<String>,
+        /// Every server each kind of data may go to, the new one included.
+        consented_origins: ConsentedOrigins,
     },
 }
 

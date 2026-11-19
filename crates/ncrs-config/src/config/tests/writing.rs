@@ -659,6 +659,41 @@ fn the_vscode_theme_is_dropped_from_its_section() {
 }
 
 #[test]
+fn the_three_agreements_are_written_apart_and_replace_the_single_list_of_older_files() {
+    let base = tempfile::tempdir().unwrap();
+    let path = base.path().join("config.toml");
+    std::fs::write(
+        &path,
+        "[modules.filing.ai]\nprovider = \"http\"\nendpoint = \"https://ai.example.com/v1\"\n\
+         model = \"m\"\nconsented_origins = [\"https://ai.example.com\"]\n",
+    )
+    .unwrap();
+    let choice = AiProviderChoice::Http {
+        endpoint: "https://ai.example.com/v1".to_owned(),
+        model: "m".to_owned(),
+        consented_origins: ConsentedOrigins {
+            inbox: vec!["https://ai.example.com".to_owned()],
+            archive: Vec::new(),
+            folders: Vec::new(),
+        },
+    };
+
+    let written = write_settings(&path, &ai_provider_settings(&choice), None).unwrap();
+
+    let text = lines_of(&path);
+    assert!(!text.contains("consented_origins"), "{text}");
+    let AiSetting::Http {
+        consented_origins, ..
+    } = written.filing.ai
+    else {
+        panic!("not the http provider");
+    };
+    assert_eq!(consented_origins.inbox, ["https://ai.example.com"]);
+    assert!(consented_origins.archive.is_empty());
+    assert!(consented_origins.folders.is_empty());
+}
+
+#[test]
 fn switching_the_ai_provider_takes_the_keys_of_the_other_one_away() {
     let base = tempfile::tempdir().unwrap();
     let path = base.path().join("config.toml");
@@ -670,7 +705,7 @@ fn switching_the_ai_provider_takes_the_keys_of_the_other_one_away() {
     let http = AiProviderChoice::Http {
         endpoint: "http://127.0.0.1:11434".to_owned(),
         model: "llama".to_owned(),
-        consented_origins: vec!["https://ai.example.com".to_owned()],
+        consented_origins: ConsentedOrigins::all(vec!["https://ai.example.com".to_owned()]),
     };
 
     let written = write_settings(&path, &ai_provider_settings(&http), None).unwrap();
@@ -680,7 +715,7 @@ fn switching_the_ai_provider_takes_the_keys_of_the_other_one_away() {
         AiSetting::Http {
             endpoint: "http://127.0.0.1:11434".to_owned(),
             model: "llama".to_owned(),
-            consented_origins: vec!["https://ai.example.com".to_owned()],
+            consented_origins: ConsentedOrigins::all(vec!["https://ai.example.com".to_owned()]),
         }
     );
     assert!(!lines_of(&path).contains("threads"));

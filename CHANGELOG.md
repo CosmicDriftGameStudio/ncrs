@@ -77,6 +77,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- An AI server on another computer is now agreed to for three kinds of data
+  one by one: incoming documents, filed documents, and folders with file names.
+  Of a kind you have not agreed to, nothing is sent. A settings file with the
+  single agreement of before counts as agreement to all three kinds for that
+  server and nothing more.
 - Sender aliases can no longer be confirmed: the offers are gone. Earlier notes
   and the README described confirmed aliases as a feature; the sender is read
   from the letterhead or the footer, and an alias that was stored earlier is

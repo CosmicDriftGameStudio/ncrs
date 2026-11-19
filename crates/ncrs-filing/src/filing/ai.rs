@@ -82,11 +82,11 @@ pub(in crate::filing) fn wire_ai(setting: &AiSetting, load: Load, db_path: &Path
 /// request (never here, this runs on the update path), the usage log sits
 /// next to the index. The documents and the chat both go through it. A far
 /// address only gets documents once the user agreed to its origin in the
-/// settings (`consented_origins`); the ledger grants no other.
+/// settings (`consented_origins`), for each kind of data; the ledger grants no other.
 pub fn http_ai_provider(
     endpoint: &str,
     model: &str,
-    consented_origins: &[String],
+    consented_origins: &ncrs_ai::ConsentedOrigins,
     db_path: &Path,
 ) -> Option<Arc<ncrs_ai::OpenAiCompatible>> {
     checked_http_provider(endpoint, model, consented_origins, db_path).ok()
@@ -95,7 +95,7 @@ pub fn http_ai_provider(
 fn checked_http_provider(
     endpoint: &str,
     model: &str,
-    consented_origins: &[String],
+    consented_origins: &ncrs_ai::ConsentedOrigins,
     db_path: &Path,
 ) -> Result<Arc<ncrs_ai::OpenAiCompatible>, ncrs_ai::AiError> {
     // Tests must not read the keychain of whoever runs them.

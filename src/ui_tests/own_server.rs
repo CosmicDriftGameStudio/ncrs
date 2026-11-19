@@ -218,3 +218,16 @@ fn the_ki_page_with_the_switch_off_shows_the_chip_hermes_off() {
         matches_snapshot_in_marcs_window(&mut app, name);
     }
 }
+
+#[test]
+fn a_server_on_another_computer_allowed_for_one_kind_of_data_matches_its_snapshots() {
+    both_languages(
+        || {
+            remote_server_app(
+                "consented_inbox = [\"https://api.example.com\"]\n\
+                 consented_archive = []\nconsented_folders = []\n",
+            )
+        },
+        "settings_ki_remote_partly_allowed",
+    );
+}

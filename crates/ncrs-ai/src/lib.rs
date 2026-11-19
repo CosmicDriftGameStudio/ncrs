@@ -28,7 +28,9 @@ pub use chat::{
     ChatIntent, ChatModel, ChatQuestion, ChatTurn, FolderChoiceLane, NameBlock, NameSpec, Order,
     QuestionKind, Schedule, SearchQuery, Transfer, CHAT_SYSTEM_PROMPT, EVERY_AREA, NAME_SEPARATORS,
 };
-pub use consent::{ConsentGivenInSettings, ConsentLedger, OutgoingPreview};
+pub use consent::{
+    ConsentGivenInSettings, ConsentLedger, ConsentPurpose, ConsentedOrigins, OutgoingPreview,
+};
 pub use contract::{
     output_schema, parse_reply, ExtractedField, Extraction, ExtractionRequest, Provider, CONFIDENT,
     MAX_VALUE_CHARS, NOT_A_DOCUMENT_HINT, NOT_A_DOCUMENT_KEY,

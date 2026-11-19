@@ -11,7 +11,7 @@ use crate::reading_marker::ReadingMarker;
 
 /// The most text kept of one document, in every format: what lies beyond is
 /// not stored or searched, and memory does not grow with a book.
-pub(crate) const MAX_TEXT_BYTES: usize = 1 << 20;
+pub const MAX_TEXT_BYTES: usize = 1 << 20;
 
 /// One rendered page: `pixels` holds `width * height` bytes, one per pixel, row
 /// by row from the top left, without padding. 0 is black, 255 is white.

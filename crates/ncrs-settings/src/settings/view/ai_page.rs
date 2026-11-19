@@ -9,6 +9,7 @@ use super::*;
 use crate::ai_consent::announced_items;
 use crate::ai_server::AiCheckResult;
 use crate::facts::{AiState, ModelKind};
+use ncrs_ai::ConsentPurpose;
 use ncrs_ai::Secret;
 use ncrs_config::config::AiProviderName;
 use ncrs_ui_kit::hermes_kit::{field_dropdown, MenuItem};
@@ -30,18 +31,18 @@ pub fn ai_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
             rows: model_rows(view),
         },
     ];
-    if let Some(agreed) = view.state.server_agreed() {
-        let bullets = announced_items()
-            .map(|item| format!("\u{2022} {}", lang.text(item)))
-            .collect::<Vec<_>>()
-            .join("\n");
+    if view.state.server_agreed(ConsentPurpose::Inbox).is_some() {
         groups.push(Group {
             intro: Some(format!(
-                "{bullets}\n\n{}",
+                "{}\n\n{}",
+                lang.text(Msg::SettingsAiConsentIntro),
                 lang.text(Msg::SettingsAiConsentOutro)
             )),
             title: lang.text(Msg::SettingsAiSectionSent).to_owned(),
-            rows: vec![consent_row(agreed, view)],
+            rows: ConsentPurpose::ALL
+                .into_iter()
+                .map(|purpose| consent_row(purpose, view))
+                .collect(),
         });
     }
     groups
@@ -405,34 +406,41 @@ fn connection_row<'a>(view: &SettingsView<'a>) -> SettingRow<'a> {
     }
 }
 
-/// The agreement to send to a server off this computer.
-fn consent_row<'a>(agreed: bool, view: &SettingsView<'a>) -> SettingRow<'a> {
+/// The agreement to send one kind of data to a server off this computer: what
+/// it covers under the label, and the state with the button that allows it.
+fn consent_row<'a>(purpose: ConsentPurpose, view: &SettingsView<'a>) -> SettingRow<'a> {
     let (lang, palette) = (view.lang, view.palette);
-    let (state, color, buttons) = if agreed {
-        (
-            Msg::SettingsAiConsentStateGiven,
-            palette.dim_text,
-            Vec::new(),
-        )
+    let agreed = view.state.server_agreed(purpose).unwrap_or(false);
+    let (state, buttons) = if agreed {
+        (Msg::SettingsAiConsentStateGiven, Vec::new())
     } else {
         let allow = kit::button(
             lang.text(Msg::SettingsAiConsentConfirm),
-            Some(SettingsMessage::ConfirmAiConsent),
+            Some(SettingsMessage::ConfirmAiConsent(purpose)),
             Tone::Secondary,
             palette,
         );
-        (
-            Msg::SettingsAiConsentStateMissing,
-            palette.dim_text,
-            vec![allow],
-        )
+        (Msg::SettingsAiConsentStateMissing, vec![allow])
     };
+    let label = match purpose {
+        ConsentPurpose::Inbox => Msg::SettingsAiConsentPurposeInbox,
+        ConsentPurpose::Archive => Msg::SettingsAiConsentPurposeArchive,
+        ConsentPurpose::Folders => Msg::SettingsAiConsentPurposeFolders,
+    };
+    let covers = announced_items(purpose)
+        .map(|item| format!("\u{2022} {}", lang.text(item)))
+        .collect::<Vec<_>>()
+        .join("\n");
     SettingRow {
-        key: (!agreed).then_some(RowKey::Press(SettingsMessage::ConfirmAiConsent)),
+        key: (!agreed).then_some(RowKey::Press(SettingsMessage::ConfirmAiConsent(purpose))),
+        description: Some(format!(
+            "{}\n{covers}",
+            lang.text(Msg::SettingsAiConsentCovers)
+        )),
         ..simple_row(
-            Msg::SettingsAiConsentRow,
+            label,
             None,
-            model_control(lang.text(state).to_owned(), color, buttons),
+            model_control(lang.text(state).to_owned(), palette.dim_text, buttons),
             lang,
         )
     }

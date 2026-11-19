@@ -571,7 +571,7 @@ fn the_http_provider_needs_an_endpoint_and_a_model() {
         AiSetting::Http {
             endpoint: "http://localhost:8080/v1".to_owned(),
             model: "qwen".to_owned(),
-            consented_origins: vec!["http://localhost:8080".to_owned()],
+            consented_origins: ConsentedOrigins::all(vec!["http://localhost:8080".to_owned()]),
         }
     );
 }
@@ -588,8 +588,11 @@ fn a_remote_server_from_before_the_dialog_is_consented_only_when_the_old_file_sw
         };
         consented_origins
     };
-    assert!(consented("").is_empty());
-    assert_eq!(consented("enabled = true\n"), ["https://ai.example.com"]);
+    assert_eq!(consented(""), ConsentedOrigins::default());
+    assert_eq!(
+        consented("enabled = true\n"),
+        ConsentedOrigins::all(vec!["https://ai.example.com".to_owned()])
+    );
 }
 
 #[test]
@@ -606,24 +609,56 @@ fn a_server_on_this_machine_is_kept_with_nothing_set_and_needs_no_consent_to_be_
 fn a_file_without_consent_keeps_the_saved_server_and_a_listed_consent_is_the_whole_list() {
     let saved = "enabled = true\nprovider = \"http\"\nmodel = \"m\"\n\
                  endpoint = \"https://ai.example.com/v1\"\n";
+    let consents = |text: &str| {
+        let AiSetting::Http {
+            consented_origins, ..
+        } = ai_setting(text)
+        else {
+            panic!("not the http provider");
+        };
+        consented_origins
+    };
+    assert_eq!(
+        consents(saved),
+        ConsentedOrigins::all(vec!["https://ai.example.com".to_owned()])
+    );
+
+    assert_eq!(
+        consents(&format!(
+            "{saved}consented_origins = [\"https://other.example.org\"]\n"
+        )),
+        ConsentedOrigins::all(vec!["https://other.example.org".to_owned()])
+    );
+}
+
+#[test]
+fn the_single_agreement_of_an_older_file_covers_all_three_kinds_and_nothing_more() {
+    let old = "provider = \"http\"\nmodel = \"m\"\nendpoint = \"https://ai.example.com/v1\"\n\
+               consented_origins = [\"https://ai.example.com\"]\n";
     let AiSetting::Http {
         consented_origins, ..
-    } = ai_setting(saved)
+    } = ai_setting(old)
     else {
         panic!("not the http provider");
     };
-    assert_eq!(consented_origins, ["https://ai.example.com"]);
+    assert_eq!(
+        consented_origins,
+        ConsentedOrigins::all(vec!["https://ai.example.com".to_owned()])
+    );
 
+    let narrowed =
+        format!("{old}consented_inbox = [\"https://ai.example.com\"]\nconsented_archive = []\n");
     let AiSetting::Http {
-        consented_origins: listed,
+        consented_origins: narrowed_origins,
         ..
-    } = ai_setting(&format!(
-        "{saved}consented_origins = [\"https://other.example.org\"]\n"
-    ))
+    } = ai_setting(&narrowed)
     else {
         panic!("not the http provider");
     };
-    assert_eq!(listed, ["https://other.example.org"]);
+    assert_eq!(narrowed_origins.inbox, ["https://ai.example.com"]);
+    assert!(narrowed_origins.archive.is_empty());
+    // A kind without its own list keeps what the old agreement gave.
+    assert_eq!(narrowed_origins.folders, ["https://ai.example.com"]);
 }
 
 #[test]

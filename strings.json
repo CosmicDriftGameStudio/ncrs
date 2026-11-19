@@ -3883,10 +3883,34 @@
       "de": "Was an den Server geht"
     },
     {
-      "key": "settings.ai_consent_row",
-      "context": "Label of the row under the list of what goes to an AI server on another computer: whether the user agreed to send it. Agreement is given for each server. The word server is meant to be searchable.",
-      "en": "Agreed for this server",
-      "de": "Freigabe für diesen Server"
+      "key": "settings.ai_consent_intro",
+      "context": "First paragraph of the section about sending data to an AI server on another computer. The three rows below are three separate agreements; each lists what it covers.",
+      "en": "You agree to each kind of data on its own. Of a kind you have not allowed, nothing is sent.",
+      "de": "Du stimmst jeder Art von Daten einzeln zu. Von einer Art, die du nicht freigegeben hast, wird nichts gesendet."
+    },
+    {
+      "key": "settings.ai_consent_covers",
+      "context": "First line under the label of one of three agreements about sending data to an AI server on another computer; the list of what the agreement covers follows. The agreement is given for each server. The word server is meant to be searchable.",
+      "en": "Agreed for this server, covers:",
+      "de": "Freigabe für diesen Server, gilt für:"
+    },
+    {
+      "key": "settings.ai_consent_purpose_inbox",
+      "context": "Label of one of three agreements about sending data to an AI server on another computer: new documents that arrive in a folder Hermes watches and that Hermes reads to sort them. Hermes is the module that sorts documents.",
+      "en": "Server: incoming documents",
+      "de": "Server: eingehende Dokumente"
+    },
+    {
+      "key": "settings.ai_consent_purpose_archive",
+      "context": "Label of one of three agreements about sending data to an AI server on another computer: texts and data of documents that are already filed (the archive), which the chat and the rule learning of Hermes show to the model.",
+      "en": "Server: filed documents",
+      "de": "Server: abgelegte Dokumente"
+    },
+    {
+      "key": "settings.ai_consent_purpose_folders",
+      "context": "Label of one of three agreements about sending data to an AI server on another computer: the folder structure with the file names, which the model sees when it chooses a folder, learns how a folder is organised or proposes a file name pattern.",
+      "en": "Server: folders and file names",
+      "de": "Server: Ordner und Dateinamen"
     },
     {
       "key": "settings.ai_consent_state_given",
@@ -7941,8 +7965,8 @@
     {
       "key": "hermes_chat.model_consent_missing",
       "context": "Hermes chat (F2): Hermes says nothing was sent because the user has not agreed to send texts to the AI server yet.",
-      "en": "Nothing was sent: you have not agreed to send texts to this AI server yet. You can do that in the AI settings.",
-      "de": "Es wurde nichts gesendet: Du hast dem Senden von Texten an diesen KI-Server noch nicht zugestimmt. Das geht in den KI-Einstellungen."
+      "en": "Nothing was sent: you have not agreed to send this kind of data to this AI server yet. You can do that in the AI settings.",
+      "de": "Es wurde nichts gesendet: Du hast dem Senden dieser Art von Daten an diesen KI-Server noch nicht zugestimmt. Das geht in den KI-Einstellungen."
     },
     {
       "key": "hermes_chat.model_internal",
@@ -11315,6 +11339,12 @@
       "context": "Filing tab: error line when the AI is set up as a server of the user's own, which cannot choose the folder for a file yet. The files that need that choice stay unplanned.",
       "en": "Choosing the folder needs the built-in language model. With your own AI server, only the files the rules can place are planned.",
       "de": "Die Ordnerwahl braucht das eingebaute Sprachmodell. Mit einem eigenen KI-Server werden nur die Dateien geplant, die sich per Regel einordnen lassen."
+    },
+    {
+      "key": "filing_view.error_folder_consent_missing",
+      "context": "Filing tab: error line when the AI is set up as a server on another computer and the user has not agreed to send folder names and file names to it. Nothing was sent; the files that need the folder choice stay unplanned. The AI settings are where the agreement is given.",
+      "en": "Nothing was sent: choosing the folder needs your agreement to send folder names and file names to this AI server. You can give it in the AI settings.",
+      "de": "Es wurde nichts gesendet: Für die Ordnerwahl musst du dem Senden von Ordner- und Dateinamen an diesen KI-Server zustimmen. Das geht in den KI-Einstellungen."
     },
     {
       "key": "filing_view.error_model_failed",

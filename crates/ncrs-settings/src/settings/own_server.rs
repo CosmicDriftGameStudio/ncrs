@@ -103,7 +103,9 @@ mod tests {
             Some(SettingChange::AiProvider(AiProviderChoice::Http {
                 endpoint: "https://other.example.org".to_owned(),
                 model: "gpt-5".to_owned(),
-                consented_origins: vec!["https://api.example.com".to_owned()],
+                consented_origins: ncrs_ai::ConsentedOrigins::all(vec![
+                    "https://api.example.com".to_owned()
+                ]),
             }))
         );
     }

@@ -12,7 +12,7 @@ use jsonc_parser::{parse_to_value, JsonValue, ParseOptions};
 use ureq::http::Uri;
 
 use crate::api_key::KeyLookup;
-use crate::consent::{ConsentLedger, OutgoingPreview};
+use crate::consent::{ConsentLedger, ConsentPurpose, OutgoingPreview};
 use crate::contract::{output_schema, parse_reply, Extraction, ExtractionRequest, Provider};
 use crate::error::{AiError, EndpointProblem, FailureScope};
 use crate::json::Json;
@@ -551,14 +551,21 @@ fn model_ids(body: &str) -> Option<Vec<String>> {
 }
 
 impl OpenAiCompatible {
-    fn may_send(&self, source: &Path) -> bool {
-        self.endpoint.local || self.ledger.granted(&self.endpoint.origin, source)
+    fn may_send(&self, purpose: ConsentPurpose, source: &Path) -> bool {
+        self.endpoint.local || self.ledger.granted(&self.endpoint.origin, source, purpose)
+    }
+
+    /// Every kind of data a call carries must be agreed to.
+    fn may_send_all(&self, purposes: &[ConsentPurpose]) -> bool {
+        purposes
+            .iter()
+            .all(|purpose| self.may_send(*purpose, Path::new("")))
     }
 }
 
 impl Provider for OpenAiCompatible {
     fn can_answer(&self, source: &Path) -> bool {
-        self.may_send(source) && !self.is_paused()
+        self.may_send(ConsentPurpose::Inbox, source) && !self.is_paused()
     }
 
     fn failure_scope(&self, error: &AiError) -> FailureScope {
@@ -568,7 +575,7 @@ impl Provider for OpenAiCompatible {
     fn extract(&self, request: &ExtractionRequest) -> Result<Extraction, AiError> {
         // First, before an agent or a request exists: without consent nothing
         // is sent.
-        if !self.may_send(&request.source) {
+        if !self.may_send(ConsentPurpose::Inbox, &request.source) {
             return Err(AiError::ConsentRequired(self.preview(request)));
         }
         let outcome = self.post(&self.request_body(request).pretty());

@@ -195,13 +195,13 @@ pub fn set_folder_role(
     Task::perform(
         tokio::task::spawn_blocking(move || filing_setup::write_locations(&written_path, &chosen)),
         move |joined| {
-            Message::HermesFile(HermesFileMessage::RoleSaved(joined.unwrap_or_else(
-                |join| {
+            Message::HermesFile(HermesFileMessage::RoleSaved(Box::new(
+                joined.unwrap_or_else(|join| {
                     Err(FilingWriteError::Io {
                         path: config_path,
                         reason: join.to_string(),
                     })
-                },
+                }),
             )))
         },
     )

@@ -11,7 +11,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use ncrs_ai::ConsentLedger as _;
+use ncrs_ai::{ConsentLedger as _, ConsentPurpose, ConsentedOrigins};
 use ncrs_config::config::{self, AiProviderName, AiSetting};
 use ncrs_config::file_list_tags::FileListTags;
 use ncrs_config::keymap::Keymap;
@@ -141,8 +141,11 @@ fn saving_a_far_server_writes_it_without_the_agreement_and_asks_for_it_on_the_pa
         panic!("the server was not written");
     };
     assert_eq!(endpoint, FAR);
-    assert!(consented_origins.is_empty());
-    assert_eq!(world.page().server_agreed(), Some(false));
+    assert_eq!(consented_origins, ConsentedOrigins::default());
+    assert_eq!(
+        world.page().server_agreed(ConsentPurpose::Inbox),
+        Some(false)
+    );
     assert!(!world.page().dialog_is_open());
 }
 
@@ -151,10 +154,17 @@ fn allowing_writes_the_server_with_the_agreement_for_that_server_only() {
     let mut world = World::saved(LOCAL);
     world.send(SettingsMessage::ChooseProvider(AiProviderName::Http));
     world.type_server(FAR, "gpt-5");
-    assert_eq!(world.page().server_agreed(), Some(false));
-    let change = world.page().clone().agree_to_server().unwrap();
+    assert_eq!(
+        world.page().server_agreed(ConsentPurpose::Inbox),
+        Some(false)
+    );
+    let change = world
+        .page()
+        .clone()
+        .agree_to_server(ConsentPurpose::Inbox)
+        .unwrap();
 
-    let (writes, _) = world.send(SettingsMessage::ConfirmAiConsent);
+    let (writes, _) = world.send(SettingsMessage::ConfirmAiConsent(ConsentPurpose::Inbox));
 
     assert_eq!(writes, 1);
     let actions = world.written(change);
@@ -170,11 +180,59 @@ fn allowing_writes_the_server_with_the_agreement_for_that_server_only() {
         panic!("the server was not written");
     };
     assert_eq!(model, "gpt-5");
-    assert_eq!(consented_origins, [FAR_ORIGIN]);
-    assert_eq!(world.page().server_agreed(), Some(true));
+    assert_eq!(consented_origins.inbox, [FAR_ORIGIN]);
+    assert!(consented_origins.archive.is_empty() && consented_origins.folders.is_empty());
+    assert_eq!(
+        world.page().server_agreed(ConsentPurpose::Inbox),
+        Some(true)
+    );
     let ledger = ncrs_ai::ConsentGivenInSettings::new(&consented_origins);
-    assert!(ledger.granted(FAR_ORIGIN, Path::new("")));
-    assert!(!ledger.granted("https://other.example.org", Path::new("")));
+    assert!(ledger.granted(FAR_ORIGIN, Path::new(""), ConsentPurpose::Inbox));
+    assert!(!ledger.granted(
+        "https://other.example.org",
+        Path::new(""),
+        ConsentPurpose::Inbox
+    ));
+}
+
+#[test]
+fn allowing_one_kind_of_data_leaves_the_other_two_unagreed() {
+    let mut world = World::saved(LOCAL);
+    world.send(SettingsMessage::ChooseProvider(AiProviderName::Http));
+    world.type_server(FAR, "gpt-5");
+    let change = world
+        .page()
+        .clone()
+        .agree_to_server(ConsentPurpose::Folders)
+        .unwrap();
+    world.send(SettingsMessage::ConfirmAiConsent(ConsentPurpose::Folders));
+    world.written(change);
+
+    let AiSetting::Http {
+        consented_origins, ..
+    } = world.saved_ai()
+    else {
+        panic!("the server was not written");
+    };
+    assert_eq!(consented_origins.folders, [FAR_ORIGIN]);
+    assert!(consented_origins.inbox.is_empty());
+    assert!(consented_origins.archive.is_empty());
+    let page = world.page();
+    assert_eq!(page.server_agreed(ConsentPurpose::Folders), Some(true));
+    assert_eq!(page.server_agreed(ConsentPurpose::Inbox), Some(false));
+    assert_eq!(page.server_agreed(ConsentPurpose::Archive), Some(false));
+}
+
+#[test]
+fn a_file_with_the_single_agreement_of_before_has_all_three_agreed() {
+    let world = World::saved(&remote_saved(Some(FAR_ORIGIN)));
+    for purpose in ConsentPurpose::ALL {
+        assert_eq!(
+            world.page().server_agreed(purpose),
+            Some(true),
+            "{purpose:?}"
+        );
+    }
 }
 
 #[test]
@@ -183,7 +241,7 @@ fn allowing_a_server_with_a_wrong_address_writes_nothing_and_shows_the_problem()
     world.send(SettingsMessage::ChooseProvider(AiProviderName::Http));
     world.type_server("not an address", "gpt-5");
 
-    let (writes, _) = world.send(SettingsMessage::ConfirmAiConsent);
+    let (writes, _) = world.send(SettingsMessage::ConfirmAiConsent(ConsentPurpose::Inbox));
 
     assert_eq!(writes, 0);
     assert!(world
@@ -196,19 +254,31 @@ fn allowing_a_server_with_a_wrong_address_writes_nothing_and_shows_the_problem()
 #[test]
 fn the_same_server_is_agreed_to_already_but_another_one_is_not() {
     let mut world = World::saved(&remote_saved(Some(FAR_ORIGIN)));
-    assert_eq!(world.page().server_agreed(), Some(true));
+    assert_eq!(
+        world.page().server_agreed(ConsentPurpose::Inbox),
+        Some(true)
+    );
 
     world.type_server("https://ai.example.com/v2", "other-model");
-    assert_eq!(world.page().server_agreed(), Some(true));
+    assert_eq!(
+        world.page().server_agreed(ConsentPurpose::Inbox),
+        Some(true)
+    );
 
     world.type_server("https://other.example.org/v1", "m");
-    assert_eq!(world.page().server_agreed(), Some(false));
+    assert_eq!(
+        world.page().server_agreed(ConsentPurpose::Inbox),
+        Some(false)
+    );
 }
 
 #[test]
 fn a_file_from_before_the_agreement_keeps_its_saved_server_agreed() {
     let world = World::saved(&remote_saved(None));
-    assert_eq!(world.page().server_agreed(), Some(true));
+    assert_eq!(
+        world.page().server_agreed(ConsentPurpose::Inbox),
+        Some(true)
+    );
 }
 
 #[test]
@@ -216,12 +286,12 @@ fn the_model_on_this_computer_needs_no_agreement() {
     let mut from_far = World::saved(&remote_saved(Some(FAR_ORIGIN)));
     let (switch_writes, _) = from_far.send(SettingsMessage::ChooseProvider(AiProviderName::Local));
     assert_eq!(switch_writes, 1);
-    assert_eq!(from_far.page().server_agreed(), None);
+    assert_eq!(from_far.page().server_agreed(ConsentPurpose::Inbox), None);
 
     let mut from_local = World::saved(LOCAL);
     from_local.send(SettingsMessage::ChooseProvider(AiProviderName::Http));
     from_local.type_server("http://localhost:11434", "qwen");
-    assert_eq!(from_local.page().server_agreed(), None);
+    assert_eq!(from_local.page().server_agreed(ConsentPurpose::Inbox), None);
     let (save_writes, _) = from_local.send(SettingsMessage::SaveServer);
     assert_eq!(save_writes, 1);
 }

@@ -25,7 +25,7 @@ pub fn propose_name_spec(
         previous_request: None,
         previous_message: None,
     };
-    Ok(match model.understand(&turn)? {
+    Ok(match model.understand_file_names(&turn)? {
         ChatIntent::ChangeStructure { name, .. } => name,
         _ => None,
     })

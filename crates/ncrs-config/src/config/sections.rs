@@ -183,9 +183,32 @@ pub struct AiSection {
     /// sent to. Absent in a file from before the dialog asked for it.
     #[serde(default)]
     pub consented_origins: Option<Vec<String>>,
+    /// The servers new documents may be sent to. A file from before the
+    /// three agreements has `consented_origins` instead, which counts for all.
+    #[serde(default)]
+    pub consented_inbox: Option<Vec<String>>,
+    /// The servers texts and data of filed documents may be sent to.
+    #[serde(default)]
+    pub consented_archive: Option<Vec<String>>,
+    /// The servers folder structure and file names may be sent to.
+    #[serde(default)]
+    pub consented_folders: Option<Vec<String>>,
 }
 
 impl AiSection {
+    /// The servers agreed to for each kind of data. A kind without its own
+    /// list takes the servers of the single agreement older files have, which
+    /// covered all three, so nobody gains a permission by the update.
+    pub fn consents(&self) -> ConsentedOrigins {
+        let shared = self.consented();
+        let of = |own: &Option<Vec<String>>| own.clone().unwrap_or_else(|| shared.clone());
+        ConsentedOrigins {
+            inbox: of(&self.consented_inbox),
+            archive: of(&self.consented_archive),
+            folders: of(&self.consented_folders),
+        }
+    }
+
     /// The servers documents may go to: the listed ones, or, in a file from
     /// before the dialog asked for the consent, the server of an AI that was
     /// switched on there. A file that never switched it on grants nothing, so
@@ -225,8 +248,8 @@ pub enum AiSetting {
     Http {
         endpoint: String,
         model: String,
-        /// The servers the user agreed to send documents to.
-        consented_origins: Vec<String>,
+        /// The servers the user agreed to send each kind of data to.
+        consented_origins: ConsentedOrigins,
     },
 }
 
