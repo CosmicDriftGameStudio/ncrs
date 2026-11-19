@@ -15,7 +15,7 @@ use zip::ZipArchive;
 use crate::text::{Extracted, TextError, TextSource};
 
 /// Extraction stops here; what was read up to then is the text.
-const MAX_TEXT_BYTES: usize = 1 << 20;
+use crate::text::MAX_TEXT_BYTES;
 /// An entry of a package that inflates to more than this is refused, so a zip
 /// bomb cannot fill the memory.
 const MAX_ENTRY_BYTES: u64 = 32 << 20;
@@ -223,7 +223,7 @@ fn text_of_xml(xml: &[u8], package: Package, max_bytes: usize) -> Result<String,
         }
         buffer.clear();
     }
-    let kept = crate::text::cut_at_boundary(&out, max_bytes).len();
+    let kept = crate::pdf_text::cut_at_boundary(&out, max_bytes).len();
     out.truncate(kept);
     Ok(out.trim().to_owned())
 }

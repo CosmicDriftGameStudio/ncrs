@@ -17,6 +17,7 @@ mod location;
 mod ocr;
 mod office;
 mod page_trim;
+mod pdf_text;
 mod placement;
 mod plain_words;
 mod reading_marker;
@@ -68,6 +69,7 @@ pub use ocr::{
     OCR_MODELS_FOLDER, OCR_MODELS_HOST, OCR_MODELS_PROJECT, OCR_MODEL_FILES,
 };
 pub use office::{extract_text_from_bytes, OfficeText, PlainText};
+pub use pdf_text::{pdfium_library_candidates, pdfium_library_dir, PdfText, PdfUnavailable};
 pub use placement::{Candidate, NeighbourIndex, Placement, Signal};
 pub use plain_words::{area_order_plain, branch_plain, label_text, levels_plain};
 pub use recipient_detection::{detect_recipient, kind_from_heading};
@@ -89,8 +91,7 @@ pub use take_in::{
     take_in, Outcome, PendingHash, Prepared, Taken,
 };
 pub use text::{
-    pdfium_library_candidates, pdfium_library_dir, ChainReading, Extracted, ImageTextSource,
-    ImageTextWithFallback, PageImage, PdfText, PdfUnavailable, PreviewPage, TextChain, TextError,
-    TextSource,
+    ChainReading, Extracted, ImageTextSource, ImageTextWithFallback, PageImage, PreviewPage,
+    TextChain, TextError, TextSource,
 };
 pub use watcher::{LocationWatcher, WatchEvent};
