@@ -605,8 +605,8 @@ fn open_regular(source: &Path) -> io::Result<std::fs::File> {
         use std::os::windows::fs::OpenOptionsExt as _;
         // FILE_FLAG_OPEN_REPARSE_POINT: a link that replaced the file opens as
         // the link itself, which the check below refuses.
-        options.custom_flags(0x0020_0000);
-    }
+        options.custom_flags(0x0020_0000)
+    };
     let file = options.open(source)?;
     if !file.metadata()?.is_file() {
         return Err(io::Error::new(
