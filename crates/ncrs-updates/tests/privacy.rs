@@ -1,7 +1,10 @@
 //! PRIVACY.md names the host of the update check.
 
 #![cfg(not(feature = "sandbox"))]
-#![allow(clippy::expect_used, clippy::tests_outside_test_module)]
+#![allow(
+    clippy::tests_outside_test_module,
+    reason = "an integration test file: the tests are the file"
+)]
 
 use ncrs_updates::fetch::LATEST_RELEASE_URL;
 

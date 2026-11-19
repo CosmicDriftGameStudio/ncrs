@@ -1,13 +1,6 @@
 //! What the chat says when the "Filing" tab finished a run: the report and the
 //! button that puts that very run back.
 
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 mod common;
 
 #[cfg(test)]

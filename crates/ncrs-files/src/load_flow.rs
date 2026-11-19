@@ -22,22 +22,6 @@ pub enum LoadStart {
     Local(Task<PanelMessage>),
 }
 
-/// A pending reload that is due now.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ReloadNow {
-    pub side: PanelSide,
-    /// The folder the panel shows.
-    pub path: PathBuf,
-    /// The name to select, which is also the name just created in `path`.
-    pub name: String,
-}
-
-impl ReloadNow {
-    pub fn created(&self) -> PathBuf {
-        self.path.join(&self.name)
-    }
-}
-
 impl Panels {
     /// Starts the read of `path` into `side`.
     pub fn start_load(
@@ -72,15 +56,5 @@ impl Panels {
                 archive: listing.archive,
             },
         ))
-    }
-
-    /// Takes the reload that waited for its create to report.
-    pub fn take_pending_reload(&mut self) -> Option<ReloadNow> {
-        let pending = self.pending_reload.take()?;
-        Some(ReloadNow {
-            path: self.panel(pending.side).path.clone(),
-            side: pending.side,
-            name: pending.name,
-        })
     }
 }

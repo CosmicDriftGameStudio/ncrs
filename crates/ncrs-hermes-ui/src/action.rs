@@ -54,6 +54,15 @@ pub enum Action {
     ShowNotice(String),
     ShowError(String),
     RequestHermesCounts,
+    /// The settings page of the index reads its figures again, when they are due.
+    RefreshDocumentsFacts,
+    /// The chat has the model of the current AI setting.
+    EnsureChatModel,
+    /// The open chat looks for something that waits for the user.
+    CheckChatWaiting,
+    /// The pipeline has read everything in its queue; this is the number of
+    /// its left pipeline sequence.
+    ReadingSettled(usize),
     /// Hermes reads these files again.
     ReadPathsAgain(Vec<PathBuf>),
     /// Takes in the latest snapshot of the pipeline and of the module.

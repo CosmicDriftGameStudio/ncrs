@@ -745,14 +745,15 @@ async fn the_drive_menu_lists_connected_servers_and_delete_disconnects() {
     let mut app = app_over(&fixture).with_volumes(Vec::new);
     open(&mut app, PanelSide::Left, url("/home"), None).await;
 
-    drop(app.update(Message::VolumeMenu(PanelSide::Left)));
+    app.settle_checks_for_test(Message::VolumeMenu(PanelSide::Left))
+        .await;
     let menu = app.panels.volume_menu.as_ref().unwrap();
     assert_eq!(menu.servers.len(), 1);
     assert_eq!(menu.servers[0].label, "tester@test.invalid");
     assert!(menu.servers[0].connected);
     assert_eq!(menu.selected, 0, "a panel on a server opens the menu on it");
 
-    settle(&mut app, Message::VolumeMenuRemove).await;
+    settle(&mut app, Message::Panel(PanelMessage::VolumeMenuRemove)).await;
 
     assert!(!fixture.pool.is_connected(&Fixture::id()));
     assert!(
@@ -773,9 +774,10 @@ async fn the_drive_menu_lists_connected_servers_and_delete_disconnects() {
 async fn choosing_a_server_in_the_drive_menu_opens_its_root() {
     let fixture = Fixture::connected().await;
     let mut app = app_over(&fixture).with_volumes(Vec::new);
-    drop(app.update(Message::VolumeMenu(PanelSide::Right)));
+    app.settle_checks_for_test(Message::VolumeMenu(PanelSide::Right))
+        .await;
 
-    settle(&mut app, Message::VolumeMenuActivate).await;
+    settle(&mut app, Message::Panel(PanelMessage::VolumeMenuActivate)).await;
 
     assert_eq!(app.panels.right.path, url("/"));
     assert_eq!(app.panels.right.error, None);

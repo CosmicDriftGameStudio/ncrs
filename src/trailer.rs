@@ -8,9 +8,6 @@
 //! Where the end state of a key needs the disk or a server, the key is routed
 //! or noted and the state it would reach is set directly.
 
-// reason: test code; a failing setup is the signal.
-#![allow(clippy::unwrap_used, clippy::expect_used)]
-
 use std::ffi::OsString;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -434,8 +431,8 @@ fn batch_rename(recorder: &mut Recorder) {
         "Holiday {counter}{extension}",
         "Holiday {date modified} {counter}{extension}",
     ] {
-        recorder.send(Message::BatchRename(BatchRenameMessage::PatternInput(
-            pattern.to_owned(),
+        recorder.send(Message::from(ncrs_ops::OpsMessage::BatchRename(
+            BatchRenameMessage::PatternInput(pattern.to_owned()),
         )));
         recorder.frame(1.2);
     }

@@ -28,7 +28,7 @@ pub const VISIBLE_HITS: usize = 5;
 pub const NAME_ID: &str = "saved-query-name";
 
 /// The room of the list of templates in the dialog of a new report.
-const TEMPLATE_WIDTH: f32 = 280.0;
+const TEMPLATE_WIDTH: f32 = ncrs_ui_kit::theme::size::FIELD_WIDE;
 
 /// Characters of a file name in the list of hits, with the amount beside it,
 /// and of the target folder, in the value column of the medium dialog.

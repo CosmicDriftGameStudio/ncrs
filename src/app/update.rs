@@ -296,16 +296,6 @@ impl App {
                 Task::none()
             }
             Message::DialogActivate => self.activate_dialog_button(),
-            Message::ToggleConflictAll => {
-                self.ops.conflict_all = !self.ops.conflict_all;
-                Task::none()
-            }
-
-            // The user answered a conflict. The queue's pending job carries
-            // what was asked, so the answer lands on the right file.
-            Message::TransferConflict(choice) => {
-                self.with_ops(|ops, ctx| ncrs_ops::answer_conflict(ops, choice, ctx))
-            }
 
             // A tick from the copy on the blocking thread. The only thing the
             // status bar needs, and nothing more.
@@ -331,17 +321,6 @@ impl App {
             Message::Trash(trash_message) => self.update_trash(trash_message),
             Message::HitList(hit_message) => self.update_hit_list(hit_message),
 
-            // One row of a transfer finished. Continue with the next, or ask
-            // about a name that is in the way.
-            Message::TransferRowDone {
-                result,
-                skipped,
-                index,
-                generation,
-            } => self.with_ops(|ops, ctx| {
-                ncrs_ops::transfer_row_done(ops, result, skipped, index, generation, ctx)
-            }),
-
             Message::Renamed {
                 request_id,
                 side,
@@ -357,13 +336,6 @@ impl App {
                 Task::none()
             }
 
-            Message::ViewExtracted {
-                generation,
-                slot,
-                result,
-            } => self
-                .with_ops(|ops, ctx| ncrs_ops::view_extracted(ops, generation, slot, result, ctx)),
-
             #[cfg(target_os = "macos")]
             Message::OpenPrivacySettings => {
                 self.open_privacy_settings();
@@ -371,35 +343,19 @@ impl App {
             }
 
             // --- drive menu ---
-            Message::VolumeMenu(side) => {
-                let overlay_is_open = self.overlay_is_open();
-                let facts = self.volume_facts_source();
-                self.panels
-                    .open_volume_menu_on(side, false, overlay_is_open, facts);
-                Task::none()
-            }
-            Message::VolumeMenuMove(delta) => {
-                if let Some(menu) = self.panels.volume_menu.as_mut() {
-                    menu.move_by(delta);
+            Message::VolumeMenu(side) => self.request_volume_menu(side, false),
+            Message::VolumeMenuFacts {
+                request,
+                side,
+                on_favourites,
+                facts,
+            } => {
+                if request == self.panels.volume_menu_request {
+                    let overlay_is_open = self.overlay_is_open();
+                    self.panels
+                        .open_volume_menu_on(side, on_favourites, overlay_is_open, facts);
                 }
                 Task::none()
-            }
-            Message::VolumeMenuFirst => {
-                if let Some(menu) = self.panels.volume_menu.as_mut() {
-                    menu.selected = 0;
-                }
-                Task::none()
-            }
-            Message::VolumeMenuLast => {
-                if let Some(menu) = self.panels.volume_menu.as_mut() {
-                    menu.selected = menu.last_row();
-                }
-                Task::none()
-            }
-            Message::VolumeMenuRemove => {
-                let saved = self.saved_server_ids();
-                let actions = self.panels.remove_highlighted_row(&saved);
-                self.run_panel_actions(actions)
             }
             Message::AddFavourite => {
                 let action = self.panels.add_favourite(self.lang);
@@ -409,31 +365,12 @@ impl App {
                 let action = self.panels.remove_favourite(self.lang);
                 self.run_panel_actions(vec![action])
             }
-            Message::OpenFavourites => {
-                let overlay_is_open = self.overlay_is_open();
-                let facts = self.volume_facts_source();
-                let actions = self
-                    .panels
-                    .open_favourites(self.lang, overlay_is_open, facts);
-                self.run_panel_actions(actions)
-            }
+            Message::OpenFavourites => match self.panels.no_favourites_notice(self.lang) {
+                Some(notice) => self.run_panel_actions(vec![notice]),
+                None => self.request_volume_menu(self.panels.active, true),
+            },
             Message::OpenFavourite(index) => self.open_favourite_by_key(index),
             Message::FavouritesBar(bar_message) => self.update_favourites_bar(bar_message),
-            Message::VolumeMenuActivate => {
-                let actions = self.panels.go_to_selected_volume(self.lang);
-                self.run_panel_actions(actions)
-            }
-            Message::VolumeMenuClick(index) => {
-                if let Some(menu) = self.panels.volume_menu.as_mut() {
-                    menu.selected = index;
-                }
-                let actions = self.panels.go_to_selected_volume(self.lang);
-                self.run_panel_actions(actions)
-            }
-            Message::VolumeMenuClose => {
-                self.panels.volume_menu = None;
-                Task::none()
-            }
 
             // --- context menu ---
             menu_message @ (Message::ContextMenuAt { .. }
@@ -472,23 +409,7 @@ impl App {
             Message::Paste => self.paste_from_clipboard(),
             Message::ClipboardRead(content) => self.paste_content(content),
             Message::CopyFilesToClipboard => self.copy_files_to_clipboard(),
-            Message::OpenFileConfirm => self.with_ops(|ops, _| ncrs_ops::confirm_open_file(ops)),
-            Message::OpenFileCancel => {
-                self.ops.open_file_dialog = None;
-                Task::none()
-            }
-            Message::DeleteCancel => {
-                self.ops.delete_dialog = None;
-                Task::none()
-            }
             Message::DeleteConfirm => self.confirm_delete(),
-            Message::DeleteRowDone {
-                result,
-                index,
-                generation,
-            } => self.with_ops(|ops, ctx| {
-                ncrs_ops::delete_row_done(ops, result, index, generation, ctx)
-            }),
 
             // --- modal prompt ---
             // Handled before the panels: while a prompt is open every
@@ -504,17 +425,8 @@ impl App {
             Message::PackPrompt => self.open_pack_prompt(),
             Message::ExtractHere => self.extract_here(),
             Message::PermissionsPrompt => self.open_permissions_dialog(),
-            Message::BatchRename(batch_message) => {
-                self.with_ops(|ops, ctx| ncrs_ops::update_batch_rename(ops, batch_message, ctx))
-            }
-            Message::Permissions(permissions_message) => {
-                self.with_ops(|ops, _| ncrs_ops::update_permissions(ops, permissions_message))
-            }
-            Message::PermissionsDone { generation, result } => {
-                self.with_ops(|ops, ctx| ncrs_ops::permissions_done(ops, generation, result, ctx))
-            }
-            Message::ArchiveWritten { result, generation } => {
-                self.with_ops(|ops, ctx| ncrs_ops::archive_written(ops, generation, result, ctx))
+            Message::Ops(ops_message) => {
+                self.with_ops(|ops, ctx| ncrs_ops::update(ops, ops_message, ctx))
             }
             Message::PromptInput(text) => {
                 if let Some(prompt) = self.ops.prompt.as_mut() {
@@ -534,58 +446,12 @@ impl App {
             Message::PromptSubmit if self.ops.valid_prompt_has_its_own_job() => {
                 self.start_prompt_job()
             }
-            Message::PromptSubmit => {
-                let Some(prompt) = self.ops.prompt.as_ref() else {
-                    return Task::none();
-                };
-                if let Err(reason) = prompt.validate() {
-                    self.ops.set_prompt_error(reason);
-                    return Task::none();
-                }
-                let kind = prompt.kind();
-                let side = self.ops.prompt_side.unwrap_or(self.panels.active);
-                let parent = self.panel(side).path.clone();
-                let new_name = prompt.name().trim().to_string();
-                let request_id = self.ops.prompt_request_id.wrapping_add(1);
-                self.ops.prompt_request_id = request_id;
-                self.ops.set_prompt_busy(true);
-
-                // The new entry's name, carried through the task so the
-                // reload can select it.
-                let target = parent.join(&new_name);
-                let finished = move |result| Message::PromptFinished {
-                    prompt: kind,
-                    request_id,
-                    result,
-                };
-                let create = match kind {
-                    PromptKind::CreateDir => Task::perform(fs::create_dir(target), finished),
-                    PromptKind::CreateFile => Task::perform(fs::create_file(target), finished),
-                    // Taken out above: a pack and a paste have their own jobs.
-                    PromptKind::Pack | PromptKind::Paste => Task::none(),
-                };
-
-                // The reload belongs *after* the create, not beside it.
-                // Running both at once races: a read that finishes first sees a
-                // directory that does not contain the new entry yet, and the
-                // selection then points at whatever is there instead.
-                self.panels.pending_reload = Some(PendingReload {
-                    side,
-                    name: new_name,
-                });
-                create
-            }
-            Message::PromptCancel => {
-                self.ops.prompt = None;
-                self.ops.pending_paste = None;
-                self.ops.prompt_side = None;
-                Task::none()
-            }
-            Message::PromptFinished {
-                prompt: kind,
-                request_id,
-                result,
-            } => self.finish_prompt(kind, request_id, result),
+            Message::PromptSubmit => self.with_ops(|ops, ctx| {
+                ncrs_ops::update(ops, ncrs_ops::OpsMessage::PromptSubmit, ctx)
+            }),
+            Message::PromptCancel => self.with_ops(|ops, ctx| {
+                ncrs_ops::update(ops, ncrs_ops::OpsMessage::PromptCancel, ctx)
+            }),
 
             Message::PreviousTab => self.switch_tab(tab_stops::TabDirection::Backward),
             Message::NextTab => self.switch_tab(tab_stops::TabDirection::Forward),
@@ -701,40 +567,10 @@ impl App {
             Message::Settings(SettingsMessage::FocusKey(key)) => self.settings_focus_key(key),
             Message::Settings(settings_message) => self.update_settings(settings_message),
             plain @ Message::Filing(_) => self.update_hermes_plain(plain),
-            Message::FilingStatus(page_message) => {
-                let is_tick = matches!(page_message, FilingStatusMessage::Tick);
-                let looks_for_waiting = is_tick && self.hermes_chat.open;
-                let facts = if is_tick {
-                    self.refresh_documents_facts()
-                } else {
-                    Task::none()
-                };
-                let status = self.run_hermes_flow(Vec::new(), |hermes, ctx| {
+            Message::FilingStatus(page_message) => self
+                .run_hermes_flow(Vec::new(), |hermes, ctx| {
                     ncrs_hermes_ui::update_filing_status(hermes, page_message, ctx)
-                });
-                let settled = if is_tick {
-                    self.ensure_chat_model();
-                    self.hermes
-                        .live_pipeline()
-                        .map(|runner| runner.snapshot())
-                        .filter(|snapshot| snapshot.state == ncrs_pipeline::RunnerState::Idle)
-                        .map(|snapshot| snapshot.left_pipeline)
-                } else {
-                    None
-                };
-                let picks = match settled {
-                    Some(sequence) => {
-                        self.update_hermes_chat(HermesChatMessage::ReadingSettled(sequence))
-                    }
-                    None => Task::none(),
-                };
-                if looks_for_waiting {
-                    let chat = self.update_hermes_chat(HermesChatMessage::WaitingCheck);
-                    Task::batch([status, chat, picks, facts])
-                } else {
-                    Task::batch([status, picks, facts])
-                }
-            }
+                }),
             plain @ Message::HermesColumn(_) => self.update_hermes_plain(plain),
             Message::HermesOverview(overview_message) => {
                 self.update_hermes_overview(overview_message)
@@ -749,10 +585,6 @@ impl App {
             Message::Quit if self.jobs.is_busy() && !self.ops.quit_confirmed => {
                 self.ops.quit_dialog = true;
                 self.dialog_focus = ncrs_ops::quit_dialog::CANCEL_FOCUS;
-                Task::none()
-            }
-            Message::QuitCancel => {
-                self.ops.quit_dialog = false;
                 Task::none()
             }
             Message::QuitConfirm => self.confirm_quit_with_job(),

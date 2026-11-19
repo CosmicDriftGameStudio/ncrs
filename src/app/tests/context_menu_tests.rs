@@ -429,14 +429,14 @@ fn the_panels_do_not_scroll_under_the_menu() {
     assert_eq!(covered.panel(LEFT).scroll_offset, 0);
 }
 
-#[test]
-fn the_menu_is_an_overlay() {
+#[tokio::test]
+async fn the_menu_is_an_overlay() {
     let mut app = App::with_fixed_panels();
     assert!(!app.overlay_is_open());
     open_at(&mut app, LEFT, FILE);
     assert!(app.overlay_is_open());
     assert!(app.prompt_key_state().context_menu);
-    drop(app.update(Message::VolumeMenu(LEFT)));
+    app.settle_checks_for_test(Message::VolumeMenu(LEFT)).await;
     assert!(!app.volume_menu_is_open());
 }
 

@@ -241,14 +241,16 @@ async fn a_copy_started_while_a_file_is_unpacked_is_refused_and_the_queue_surviv
 
     let copy = slot.join("a.txt");
     std::fs::write(&copy, "x").unwrap();
-    drop(app.update(Message::ViewExtracted {
-        slot,
-        result: Ok(fs::archive::ViewCopy {
-            path: copy,
-            was_executable: false,
-        }),
-        generation: app.ops.generation,
-    }));
+    drop(
+        app.update(Message::from(ncrs_ops::OpsMessage::ViewExtracted {
+            slot,
+            result: Ok(fs::archive::ViewCopy {
+                path: copy,
+                was_executable: false,
+            }),
+            generation: app.ops.generation,
+        })),
+    );
 
     assert!(!app.jobs.is_busy(), "the queue is stuck");
     assert!(app.ops.extracting.is_none());
@@ -348,11 +350,13 @@ async fn a_refused_archive_is_named_when_unpacking_fails() {
     let mut app = app_with_copies(&dir.path().join("cache"));
     let slot = pretend_extracting(&mut app, &archive);
 
-    drop(app.update(Message::ViewExtracted {
-        slot,
-        result: Err(RowFailure::Refused(fs::archive::SevenZipRefusal::Encrypted)),
-        generation: app.ops.generation,
-    }));
+    drop(
+        app.update(Message::from(ncrs_ops::OpsMessage::ViewExtracted {
+            slot,
+            result: Err(RowFailure::Refused(fs::archive::SevenZipRefusal::Encrypted)),
+            generation: app.ops.generation,
+        })),
+    );
 
     assert_eq!(
         app.job_error.as_deref(),
@@ -380,14 +384,16 @@ async fn a_result_of_a_stopped_run_removes_its_copy_and_starts_nothing() {
     std::fs::write(&copy, "x").unwrap();
     let stale = app.ops.generation.wrapping_sub(1);
 
-    drop(app.update(Message::ViewExtracted {
-        slot: slot.clone(),
-        result: Ok(fs::archive::ViewCopy {
-            path: copy,
-            was_executable: false,
-        }),
-        generation: stale,
-    }));
+    drop(
+        app.update(Message::from(ncrs_ops::OpsMessage::ViewExtracted {
+            slot: slot.clone(),
+            result: Ok(fs::archive::ViewCopy {
+                path: copy,
+                was_executable: false,
+            }),
+            generation: stale,
+        })),
+    );
 
     assert!(!slot.exists());
     assert!(launcher.0.lock().unwrap().is_empty());
@@ -404,14 +410,16 @@ async fn a_copy_that_arrives_after_the_panel_left_is_removed_unseen() {
     let copy = slot.join("a.txt");
     std::fs::write(&copy, "x").unwrap();
 
-    drop(app.update(Message::ViewExtracted {
-        slot: slot.clone(),
-        result: Ok(fs::archive::ViewCopy {
-            path: copy,
-            was_executable: false,
-        }),
-        generation: app.ops.generation,
-    }));
+    drop(
+        app.update(Message::from(ncrs_ops::OpsMessage::ViewExtracted {
+            slot: slot.clone(),
+            result: Ok(fs::archive::ViewCopy {
+                path: copy,
+                was_executable: false,
+            }),
+            generation: app.ops.generation,
+        })),
+    );
 
     assert!(!slot.exists());
     assert!(launcher.0.lock().unwrap().is_empty());
@@ -481,10 +489,10 @@ async fn f3_after_ncrs_rewrote_the_archive_unpacks_the_entry_again() {
     let generation = app.ops.generation;
     settle(
         &mut app,
-        Message::ArchiveWritten {
+        Message::from(ncrs_ops::OpsMessage::ArchiveWritten {
             result: Ok(fs::archive::WriteReport::default()),
             generation,
-        },
+        }),
     )
     .await;
     settle(&mut app, Message::OpenExternal(fs::OpenKind::View)).await;

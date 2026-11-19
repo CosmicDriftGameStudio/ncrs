@@ -48,8 +48,21 @@ fn installed_by(manager: PackageManager, exe: Option<&Path>) -> bool {
         PackageManager::Apt | PackageManager::Dnf | PackageManager::Zypper => {
             exe.starts_with("/usr")
         }
-        PackageManager::Homebrew => exe.starts_with("/Applications"),
+        PackageManager::Homebrew => in_applications_folder(exe),
     }
+}
+
+/// `/Applications`, or the `Applications` folder of a user: a cask installed
+/// with `--appdir ~/Applications` lands there.
+fn in_applications_folder(exe: &Path) -> bool {
+    if exe.starts_with("/Applications") {
+        return true;
+    }
+    let mut parts = exe.components().skip(1);
+    parts.next().is_some_and(|top| top.as_os_str() == "Users")
+        && parts
+            .nth(1)
+            .is_some_and(|folder| folder.as_os_str() == "Applications")
 }
 
 impl Channel {
@@ -134,6 +147,16 @@ mod tests {
                 ))
             ),
             Channel::Direct
+        );
+        assert_eq!(
+            Channel::detect(
+                false,
+                &cask,
+                Some(Path::new(
+                    "/Users/me/Applications/ncrs.app/Contents/MacOS/ncrs"
+                ))
+            ),
+            Channel::PackageManager(PackageManager::Homebrew)
         );
     }
 

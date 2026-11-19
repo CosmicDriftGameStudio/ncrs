@@ -502,12 +502,6 @@ pub fn pdfium_library_dir() -> Option<PathBuf> {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     use tempfile::TempDir;
 

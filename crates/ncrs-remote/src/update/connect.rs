@@ -112,12 +112,14 @@ pub(in crate::update) fn show_failure(
             key,
             host,
             port,
+            cert_authority_listed,
         } => {
             dialog.set_stage(Stage::HostKey {
                 fingerprint,
                 key,
                 host,
                 port,
+                cert_authority_listed,
             });
             Task::none()
         }

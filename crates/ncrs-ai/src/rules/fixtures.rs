@@ -1,8 +1,6 @@
 //! The eight documents every case of the matrix is judged on: their fields,
 //! their text and the folder they lie in.
 
-#![allow(clippy::unwrap_used, clippy::indexing_slicing)]
-
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 

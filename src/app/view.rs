@@ -1,5 +1,6 @@
 use crate::app::*;
 use iced::widget::column;
+use ncrs_ui_kit::popup_menu::{popup_layer, RightPress};
 
 impl App {
     // -----------------------------------------------------------------------
@@ -241,12 +242,13 @@ impl App {
         };
 
         if let Some(menu) = self.hermes.quick_fix.as_ref() {
-            let click_catcher = mouse_area(Space::new().width(Length::Fill).height(Length::Fill))
-                .on_press(Message::QuickFix(QuickFixMessage::Close));
             return Stack::with_children([
                 root,
-                click_catcher.into(),
-                quick_fix_view::view(menu, self.lang, &self.palette).map(Message::from),
+                popup_layer(
+                    quick_fix_view::view(menu, self.lang, &self.palette).map(Message::from),
+                    Some(Message::QuickFix(QuickFixMessage::Close)),
+                    RightPress::PassThrough,
+                ),
             ])
             .into();
         }
@@ -289,24 +291,24 @@ impl App {
             // would never report one. A right press passes through, so another
             // row's menu replaces this one.
             // A Ctrl+click on a Mac is a right click and passes through too.
-            let mut click_catcher =
-                mouse_area(Space::new().width(Length::Fill).height(Length::Fill));
-            if !ncrs_files::ctx::is_context_click(self.modifiers) {
-                click_catcher = click_catcher.on_press(Message::ContextMenuClose);
-            }
+            let on_dismiss = (!ncrs_files::ctx::is_context_click(self.modifiers))
+                .then_some(Message::ContextMenuClose);
             return Stack::with_children([
                 root,
-                click_catcher.into(),
-                context_menu_view::view(
-                    menu,
-                    self.lang,
-                    &context_menu_view::EntryKeys {
-                        context: &|action| self.keymap.shortcut_label(&action.message()),
-                        hermes: &|action| self.keymap.shortcut_label(&action.message()),
-                    },
-                    &self.palette,
-                )
-                .map(Message::from),
+                popup_layer(
+                    context_menu_view::view(
+                        menu,
+                        self.lang,
+                        &context_menu_view::EntryKeys {
+                            context: &|action| self.keymap.shortcut_label(&action.message()),
+                            hermes: &|action| self.keymap.shortcut_label(&action.message()),
+                        },
+                        &self.palette,
+                    )
+                    .map(Message::from),
+                    on_dismiss,
+                    RightPress::PassThrough,
+                ),
             ])
             .into();
         }
@@ -325,8 +327,10 @@ impl App {
                 self.lang,
                 &self.palette,
                 volumes_view::MenuMessages {
-                    on_click: Box::new(Message::VolumeMenuClick),
-                    on_close: Message::VolumeMenuClose,
+                    on_click: Box::new(|index| {
+                        Message::Panel(PanelMessage::VolumeMenuClick(index))
+                    }),
+                    on_close: Message::Panel(PanelMessage::VolumeMenuClose),
                 },
             );
             return Stack::with_children([root, ncrs_ui_kit::kit::scrim(menu_element)]).into();
@@ -402,7 +406,8 @@ impl App {
                 self.window_size,
                 self.lang,
                 &self.palette,
-            );
+            )
+            .map(Message::About);
             return Stack::with_children([root, ncrs_ui_kit::kit::scrim(card_element)]).into();
         }
 

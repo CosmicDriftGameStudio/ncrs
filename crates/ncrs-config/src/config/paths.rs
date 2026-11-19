@@ -178,6 +178,23 @@ pub fn default_ssh_known_hosts_path() -> PathBuf {
     ncrs_fs::home_dir().join(".ssh").join("known_hosts")
 }
 
+/// The system-wide OpenSSH `ssh_known_hosts`, which ncrs only reads:
+/// `/etc/ssh` on Unix, `%PROGRAMDATA%\ssh` on Windows.
+pub fn default_global_ssh_known_hosts_path() -> Option<PathBuf> {
+    forbid_user_machine_in_tests("config::default_global_ssh_known_hosts_path");
+    global_ssh_known_hosts_path_in(|name| std::env::var_os(name))
+}
+
+#[cfg(windows)]
+fn global_ssh_known_hosts_path_in(var: impl Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
+    absolute(var("PROGRAMDATA")).map(|dir| dir.join("ssh").join("ssh_known_hosts"))
+}
+
+#[cfg(not(windows))]
+fn global_ssh_known_hosts_path_in(_var: impl Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
+    Some(PathBuf::from("/etc/ssh/ssh_known_hosts"))
+}
+
 /// Windows: `%APPDATA%\ncrs\index.db`.
 #[cfg(windows)]
 pub fn index_path_from_env(var: impl Fn(&str) -> Option<OsString>) -> Option<PathBuf> {

@@ -74,12 +74,6 @@ pub fn is_device_name(part: &str) -> bool {
         })
 }
 
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -201,11 +195,13 @@ mod tests {
     #[test]
     fn device_names_are_recognised_with_any_extension_or_case() {
         for name in [
-            "CON", "con", "Nul.txt", "AUX", "prn.a.b", "COM1", "com9", "LPT5.log",
+            "CON", "con", "Nul.txt", "AUX", "prn.a.b", "COM1", "com9", "LPT5.log", "CON .x",
         ] {
             assert!(is_device_name(name), "{name}");
         }
-        for name in ["CONSOLE", "COM0", "COM10", "LPT", "nulx", "xcon"] {
+        for name in [
+            "", "CONSOLE", "COM0", "COM10", "COM12", "LPT", "nulx", "xcon", "x.CON",
+        ] {
             assert!(!is_device_name(name), "{name}");
         }
     }

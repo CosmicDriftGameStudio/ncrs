@@ -11,7 +11,6 @@ use iced::keyboard::{self, key::Named, Key, Modifiers};
 use iced::widget::{container, mouse_area, operation, row, Column, Container, Space, Stack};
 use iced::{event, mouse, window, Element, Length, Point, Size, Subscription, Task, Theme};
 
-use crate::about::{AboutCard, REPOSITORY_URL};
 use crate::ai_model::{
     download_ai_model, AiModelCard, DownloadError as AiDownloadError, DownloadJob, InstallOutcome,
 };
@@ -26,7 +25,7 @@ use crate::config::{
 use crate::context_action_message::ContextActionMessage as _;
 use crate::context_menu::ContextAction;
 use crate::context_menu::{ContextMenu, HermesAction};
-use crate::dialog::{Prompt, PromptKind};
+use crate::dialog::Prompt;
 use crate::file_list_tags::{FileListTags, TagExceptions};
 #[cfg(test)]
 use crate::filing::Phase;
@@ -39,7 +38,7 @@ use crate::fs::remote::session::Pool;
 use crate::fs::remote::{KnownHostsFiles, RemotePath, ServerId};
 #[cfg(test)]
 use crate::fs::CreateDirError;
-use crate::hermes_column::{role_of, ColumnView, FolderRole, HermesFileState};
+use crate::hermes_column::{ColumnView, FolderRole, HermesFileState};
 use crate::hermes_overview::OverviewFacts;
 #[cfg(test)]
 use crate::hermes_overview::{ModuleState, Protection};
@@ -69,9 +68,7 @@ use crate::open_vsx::{self, ExtensionId, FetchError, FetchedExtension};
 use crate::palette::{Palette, ThemePreset};
 #[cfg(test)]
 use crate::quick_fix::QuickFix;
-use crate::quick_open::{
-    self, QuickOpen, QuickOpenAction, QuickOpenCtx, WalkEvent, QUICK_OPEN_FILE_LIMIT,
-};
+use crate::quick_open::{self, QuickOpen, QuickOpenAction, QuickOpenCtx};
 #[cfg(test)]
 use crate::review_work::ReviewItem;
 use crate::saved_queries::Draft;
@@ -79,7 +76,7 @@ use crate::saved_queries::Draft;
 use crate::saved_queries::SavedQueries;
 #[cfg(test)]
 use crate::search_view::SearchField;
-use crate::search_view::{stays_on_file_system, SearchView};
+use crate::search_view::SearchView;
 use crate::session_state::{self, PanelRecord, SessionState, WindowSize, WriteOrder};
 use crate::system_dialogs::FilePick;
 #[cfg(test)]
@@ -121,11 +118,11 @@ use ncrs_files::context_menu_flow::{HermesCursor, HermesFacts, MenuFacts, MenuNa
 use ncrs_files::hit_list::HitList;
 use ncrs_files::hit_list_flow::HitListAsk;
 use ncrs_files::keys::{ContextMenuKey, VolumeMenuKey};
-use ncrs_files::load_flow::{LoadStart, ReloadNow};
+use ncrs_files::load_flow::LoadStart;
 use ncrs_files::open_plan::{open_refused_text, CopyOf, OpenPlan, OpenSource};
 #[cfg(test)]
 use ncrs_files::volumes::VolumeMenu;
-use ncrs_files::{PanelMessage, Panels, PendingReload};
+use ncrs_files::{PanelMessage, Panels};
 use ncrs_hermes_ui::SavedFilingApplies;
 pub use ncrs_i18n::fill_template;
 use ncrs_index::{KeyStore, KeyringKeyStore, KindSkip, Kinds, QuerySpec, SavedQueryId};
@@ -135,11 +132,13 @@ use ncrs_ops::keys::{
 };
 use ncrs_ops::prompt_view::PromptMessages;
 use ncrs_ops::PanelRows;
+pub use ncrs_ops::RowFailure;
+#[cfg(test)]
+pub use ncrs_ops::Transfer;
 #[cfg(test)]
 use ncrs_ops::{restore_one, Restoration};
 #[cfg(test)]
 use ncrs_ops::{Deletion, Extracting, PendingConflict};
-pub use ncrs_ops::{RowFailure, Transfer};
 use ncrs_palette::command_list::{
     self, view as command_palette_ui, CommandPalette, CommandPaletteAction, CommandPaletteCtx,
     HermesCommands, RECENT_LIMIT,
@@ -148,10 +147,11 @@ use ncrs_palette::command_list::{
 use ncrs_pipeline::Load;
 #[cfg(test)]
 use ncrs_search::filters::SearchFilters;
+use ncrs_settings::about::AboutCard;
 
 use ncrs_monitor::MonitorMessage;
 use ncrs_palette::keys::{CommandLineBound, CommandLineKey};
-use ncrs_search::{search_events, SearchKey, SearchKeyFacts};
+use ncrs_search::{SearchKey, SearchKeyFacts};
 use ncrs_settings::focus::FocusKey;
 use ncrs_settings::keys::{SettingsKey, ThemeFetchKey};
 #[cfg(test)]
@@ -358,7 +358,7 @@ pub struct App {
     /// The bar height the lists were last sized for.
     favourites_bar_applied: f32,
     /// The menu of a favourites bar slot, while it is up.
-    favourite_menu: Option<favourites_bar::FavouriteMenu>,
+    favourite_menu: Option<ncrs_files::FavouriteMenu>,
     /// Asks GitHub for the newest release. Injected so tests need no network.
     fetch_latest_release: ncrs_updates::FetchFn,
     /// The Hermes chat (F2): its thread is kept when it is closed.
@@ -372,15 +372,11 @@ pub struct App {
     /// The setting that switches Hermes on is being written; the chat counts
     /// Hermes as starting meanwhile.
     turning_hermes_on: bool,
-    /// A quit while the index protection changes or its recovery key is on
-    /// screen was held back once; a second quit ends the app.
+    /// The protection phase a quit was held back in; a second quit in the
+    /// same phase ends the app, a quit in another phase is held back again.
     protection_quit_warned: Option<std::mem::Discriminant<crate::filing::Phase>>,
     /// Quick Open (Cmd/Ctrl+P), while its box is up.
     quick_open: Option<QuickOpen>,
-    /// Counts the walks started, so the late batches of a closed one are dropped.
-    quick_open_walk_generation: u64,
-    /// Stops the file walk when dropped.
-    quick_open_walk: Option<iced::task::Handle>,
     /// The command palette (Cmd/Ctrl+Shift+P), while its box is up.
     command_palette: Option<CommandPalette>,
     /// The commands run from the command list this session, most recent
@@ -571,6 +567,8 @@ pub struct PromptKeyState {
     pub start_over_dialog: bool,
     /// The drive menu is up, so keys move its highlight.
     pub volume_menu: bool,
+    /// The column menu over a panel header is up: arrows and Enter are its.
+    pub header_menu: bool,
     /// The context menu is up, so keys move its highlight.
     pub context_menu: bool,
     /// A slot menu of the favourites bar is up: Escape closes it.
@@ -642,6 +640,7 @@ impl Default for PromptKeyState {
             quit_dialog: false,
             start_over_dialog: false,
             volume_menu: false,
+            header_menu: false,
             context_menu: false,
             favourite_menu: false,
             context_submenu: false,

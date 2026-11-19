@@ -18,6 +18,7 @@ ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0" }
 [dev-dependencies]
 iced = { version = "0.14", default-features = false, features = ["tokio", "advanced", "markdown", "tiny-skia"] }
 iced_test = "0.14"
+ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0", features = ["test-support"] }
 tempfile = "3.27"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 

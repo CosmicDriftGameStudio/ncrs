@@ -324,12 +324,6 @@ fn field_of(reply: &JsonObject<'_>, field: Field) -> Option<ExtractedField> {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     use ncrs_index::Currency;
 

@@ -97,6 +97,10 @@ pub enum ConnectFailure {
         /// `Pool::trust` records the key under exactly these.
         host: String,
         port: u16,
+        /// A known_hosts file lists a certificate authority for the host.
+        /// ncrs does not check host certificates, so the server is asked
+        /// about like any other.
+        cert_authority_listed: bool,
     },
     HostKeyChanged {
         fingerprint: String,
@@ -284,6 +288,7 @@ struct Seen {
     key: PublicKey,
     host: String,
     port: u16,
+    cert_authority_listed: bool,
 }
 
 /// Judges the key of the server during the key exchange, before any login.
@@ -314,6 +319,7 @@ impl client::Handler for HostCheck {
             key,
             host: self.host.clone(),
             port: self.port,
+            cert_authority_listed: self.known.lists_cert_authority(&self.host, self.port),
         });
         Ok(trusted)
     }
@@ -536,10 +542,8 @@ impl Pool {
             server.host.clone(),
         );
         let (known, settings) = tokio::task::spawn_blocking(move || {
-            (
-                KnownHosts::load(&files),
-                ssh_config::read_settings(home.as_deref(), &alias),
-            )
+            let settings = ssh_config::read_settings(home.as_deref(), &alias);
+            (KnownHosts::load_with(&files, &settings), settings)
         })
         .await
         .map_err(|error| ConnectFailure::Unreachable(error.to_string()))?;
@@ -686,6 +690,7 @@ fn failure_of(step: Step, seen: &Mutex<Option<Seen>>) -> ConnectFailure {
                     key,
                     host,
                     port,
+                    cert_authority_listed,
                 }) => {
                     let fingerprint = key.fingerprint(HashAlg::Sha256).to_string();
                     match verdict {
@@ -710,6 +715,7 @@ fn failure_of(step: Step, seen: &Mutex<Option<Seen>>) -> ConnectFailure {
                             key: Box::new(key),
                             host,
                             port,
+                            cert_authority_listed,
                         },
                     }
                 }
@@ -725,19 +731,7 @@ fn failure_of(step: Step, seen: &Mutex<Option<Seen>>) -> ConnectFailure {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests;
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod login_tests;

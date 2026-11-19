@@ -3,13 +3,6 @@
 //! file, the prompt as the model reads it, the grammar and the length. Change
 //! any of them and an old answer is never reused.
 
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::fs::{self, OpenOptions};

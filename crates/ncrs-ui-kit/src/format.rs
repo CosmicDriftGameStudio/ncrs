@@ -585,12 +585,6 @@ pub fn shown_path(path: &Path, home: &Path) -> String {
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -901,7 +895,6 @@ mod tests {
     }
 }
 
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 #[cfg(test)]
 mod local_time_tests {
     use super::*;

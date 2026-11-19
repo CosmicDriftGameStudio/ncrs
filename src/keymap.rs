@@ -54,7 +54,9 @@ impl KeyActionMessage for KeyAction {
             Self::CopyFiles => Message::CopyFilesToClipboard,
             Self::Trash => Message::Trash(TrashMessage::Open),
             Self::RestoreLastDeletion => Message::Trash(TrashMessage::RestoreLast),
-            Self::UndoRename => Message::BatchRename(BatchRenameMessage::Undo),
+            Self::UndoRename => {
+                Message::from(ncrs_ops::OpsMessage::BatchRename(BatchRenameMessage::Undo))
+            }
             Self::CompareFolders => Message::Compare(CompareMessage::Open),
             Self::OpenTrashInFinder => Message::Trash(TrashMessage::OpenInFinder),
             Self::Paste => Message::Paste,
@@ -165,13 +167,6 @@ impl KeymapMessages for Keymap {
     }
 }
 
-// reason: a failing assertion is the signal in a test
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::*;

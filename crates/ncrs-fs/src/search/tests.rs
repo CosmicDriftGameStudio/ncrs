@@ -660,3 +660,13 @@ fn nothing_asked_is_an_empty_search() {
         Some(SearchError::Empty)
     );
 }
+
+#[test]
+fn only_the_macos_root_leaves_its_file_system() {
+    assert!(stays_on_file_system(Path::new("/Users")));
+    assert!(stays_on_file_system(Path::new("/tmp/x")));
+    assert_eq!(
+        stays_on_file_system(Path::new("/")),
+        !cfg!(target_os = "macos")
+    );
+}

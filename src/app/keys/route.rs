@@ -8,7 +8,7 @@ fn delete_dialog_key(
 ) -> Option<Message> {
     let permanent = prompt.delete_dialog == DeleteKeys::Permanent;
     match key.as_ref() {
-        Key::Named(Named::Escape) => Some(Message::DeleteCancel),
+        Key::Named(Named::Escape) => Some(Message::from(ncrs_ops::OpsMessage::DeleteCancel)),
         // The fixed dialog keys come first: a configured chord must not
         // take Enter or an arrow, or one press could confirm a deletion.
         // Only then the chord that started the permanent delete confirms it.
@@ -24,9 +24,9 @@ fn delete_dialog_key(
 /// The dialogs whose only keys are Escape and moving the focus between buttons.
 fn escape_cancel_message(prompt: &PromptKeyState) -> Option<Message> {
     if prompt.quit_dialog {
-        Some(Message::QuitCancel)
+        Some(Message::from(ncrs_ops::OpsMessage::QuitCancel))
     } else if prompt.open_file_dialog {
-        Some(Message::OpenFileCancel)
+        Some(Message::from(ncrs_ops::OpsMessage::OpenFileCancel))
     } else {
         None
     }
@@ -44,6 +44,9 @@ fn keys_without_prompt(
     };
     // The menu takes the arrows and Enter that would otherwise move the panel
     // behind it; any other key does nothing until it is closed.
+    if prompt.header_menu {
+        return ncrs_files::keys::header_menu_key(&key).map(Message::Panel);
+    }
     if prompt.volume_menu {
         return ncrs_files::keys::volume_menu_key(&key).map(volume_menu_message);
     }
@@ -51,7 +54,7 @@ fn keys_without_prompt(
         return hermes_popup_key(prompt, &key);
     }
     if prompt.favourite_menu {
-        return super::super::favourites_bar::favourite_menu_key(&key);
+        return ncrs_files::favourites_bar::menu_key(&key).map(Message::FavouritesBar);
     }
     if prompt.context_menu {
         return context_menu_key(prompt, &key);
@@ -72,11 +75,13 @@ fn keys_without_prompt(
     }
 
     if prompt.batch_rename_dialog {
-        return ncrs_ops::keys::batch_rename_key(&key).map(Message::BatchRename);
+        return ncrs_ops::keys::batch_rename_key(&key)
+            .map(|inner| Message::from(ncrs_ops::OpsMessage::BatchRename(inner)));
     }
 
     if prompt.permissions_dialog {
-        return ncrs_ops::keys::permissions_key(&key).map(Message::Permissions);
+        return ncrs_ops::keys::permissions_key(&key)
+            .map(|inner| Message::from(ncrs_ops::OpsMessage::Permissions(inner)));
     }
 
     if prompt.key_bindings {
@@ -458,13 +463,13 @@ pub(in crate::app) fn repeats(message: &Message) -> bool {
             | Message::Panel(PanelMessage::SelectLast)
             | Message::Panel(PanelMessage::ToggleTag)
             | Message::Panel(PanelMessage::TagMove(_))
+            | Message::Panel(PanelMessage::VolumeMenuMove(_))
+            | Message::Panel(PanelMessage::VolumeMenuFirst)
+            | Message::Panel(PanelMessage::VolumeMenuLast)
             | Message::PromptInput(_)
             | Message::CommandLine(
                 CommandLineMessage::HistoryPrevious | CommandLineMessage::HistoryNext,
             )
-            | Message::VolumeMenuMove(_)
-            | Message::VolumeMenuFirst
-            | Message::VolumeMenuLast
             | Message::ContextMenuMove(_)
             | Message::ContextMenuFirst
             | Message::ContextMenuLast
@@ -518,12 +523,12 @@ pub fn route_key(prompt: &PromptKeyState, key: Key, modifiers: Modifiers) -> Opt
 
 fn volume_menu_message(pressed: VolumeMenuKey) -> Message {
     match pressed {
-        VolumeMenuKey::Close => Message::VolumeMenuClose,
-        VolumeMenuKey::Activate => Message::VolumeMenuActivate,
-        VolumeMenuKey::Move(delta) => Message::VolumeMenuMove(delta),
-        VolumeMenuKey::First => Message::VolumeMenuFirst,
-        VolumeMenuKey::Last => Message::VolumeMenuLast,
-        VolumeMenuKey::Remove => Message::VolumeMenuRemove,
+        VolumeMenuKey::Close => Message::Panel(PanelMessage::VolumeMenuClose),
+        VolumeMenuKey::Activate => Message::Panel(PanelMessage::VolumeMenuActivate),
+        VolumeMenuKey::Move(delta) => Message::Panel(PanelMessage::VolumeMenuMove(delta)),
+        VolumeMenuKey::First => Message::Panel(PanelMessage::VolumeMenuFirst),
+        VolumeMenuKey::Last => Message::Panel(PanelMessage::VolumeMenuLast),
+        VolumeMenuKey::Remove => Message::Panel(PanelMessage::VolumeMenuRemove),
     }
 }
 

@@ -34,7 +34,7 @@ fn enter_presses_the_focused_button_and_escape_cancels() {
     );
     assert_eq!(
         route(&state, Named::Escape, Modifiers::default()),
-        Some(Message::DeleteCancel)
+        Some(Message::from(ncrs_ops::OpsMessage::DeleteCancel))
     );
     // Nothing else reaches the panels behind the dialog.
     assert_eq!(route(&state, Named::ArrowDown, Modifiers::default()), None);

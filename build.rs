@@ -104,8 +104,10 @@ fn display_version() -> String {
     }
 }
 
-// A build script reports a failure by panicking.
-#[allow(clippy::expect_used)]
+#[allow(
+    clippy::expect_used,
+    reason = "a build script reports a failure by panicking"
+)]
 fn embed_windows_resources() {
     use std::fmt::Write as _;
     use std::path::PathBuf;

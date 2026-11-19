@@ -90,7 +90,9 @@ fn merging_a_big_folder_keeps_what_only_the_target_has() {
         "no question about the folder"
     );
 
-    session.send(Message::TransferConflict(ConflictChoice::ThisOverwrite));
+    session.send(Message::from(ncrs_ops::OpsMessage::TransferConflict(
+        ConflictChoice::ThisOverwrite,
+    )));
 
     assert!(!session.app.conflict_is_pending());
     for index in 0..80 {
@@ -118,7 +120,9 @@ fn keeping_a_big_folder_leaves_the_target_as_it_was() {
     tag_and_copy(&mut session, &source_name());
     assert!(session.app.conflict_is_pending());
 
-    session.send(Message::TransferConflict(ConflictChoice::ThisKeep));
+    session.send(Message::from(ncrs_ops::OpsMessage::TransferConflict(
+        ConflictChoice::ThisKeep,
+    )));
 
     for index in 0..40 {
         assert_eq!(
@@ -140,7 +144,9 @@ fn cancelling_the_question_about_a_big_folder_changes_nothing() {
     tag_and_copy(&mut session, &source_name());
     assert!(session.app.conflict_is_pending());
 
-    session.send(Message::TransferConflict(ConflictChoice::Cancel));
+    session.send(Message::from(ncrs_ops::OpsMessage::TransferConflict(
+        ConflictChoice::Cancel,
+    )));
 
     assert!(!session.app.conflict_is_pending());
     assert!(session.app.job_is_idle());
@@ -165,7 +171,9 @@ fn a_cancel_in_the_middle_of_fifty_files_keeps_the_done_and_the_untouched() {
     tag_and_copy(&mut session, &names);
     assert!(session.app.conflict_is_pending(), "no question about a025");
 
-    session.send(Message::TransferConflict(ConflictChoice::Cancel));
+    session.send(Message::from(ncrs_ops::OpsMessage::TransferConflict(
+        ConflictChoice::Cancel,
+    )));
 
     assert!(session.app.job_is_idle());
     for name in &names[..25] {

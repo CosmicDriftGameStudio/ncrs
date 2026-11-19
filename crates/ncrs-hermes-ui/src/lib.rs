@@ -6,6 +6,7 @@
 pub mod action;
 pub mod condition_editor;
 pub mod ctx;
+pub mod cursor_roles;
 pub use ncrs_intake::filing_pieces;
 pub mod filing_setup;
 pub mod filing_status;
@@ -27,6 +28,7 @@ pub mod view;
 
 pub use action::{Action, ProgressJobBuilder, ProtectionStep, StartProgressJob};
 pub use ctx::Ctx;
+pub use cursor_roles::CursorRoles;
 pub use message::{
     FilingStatusMessage, HermesColumnMessage, HermesFileMessage, HermesOverviewMessage, HermesPage,
     Message, QuickFixMessage, RuleFormMessage, RulesMessage, SavedQueriesMessage, TagsMessage,

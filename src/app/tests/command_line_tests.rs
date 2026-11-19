@@ -295,11 +295,12 @@ fn focusing_does_nothing_while_an_overlay_is_open() {
     assert!(!app.command_line_for_test().is_focused());
 }
 
-#[test]
-fn an_overlay_that_opens_while_focused_takes_the_focus_away() {
+#[tokio::test]
+async fn an_overlay_that_opens_while_focused_takes_the_focus_away() {
     let mut app = focused_app();
     type_line(&mut app, "ls");
-    drop(app.update(Message::VolumeMenu(PanelSide::Left)));
+    app.settle_checks_for_test(Message::VolumeMenu(PanelSide::Left))
+        .await;
     assert!(app.panels.volume_menu.is_some());
     assert!(!app.command_line_for_test().is_focused());
     assert!(!app.prompt_key_state().command_line);

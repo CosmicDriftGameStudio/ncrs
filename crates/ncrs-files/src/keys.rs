@@ -44,6 +44,19 @@ pub enum VolumeMenuKey {
     Remove,
 }
 
+/// The keys of the column menu over a header: Escape closes it, the arrows
+/// move its highlight and Enter takes the entry; nothing else reaches the
+/// panels behind it.
+pub fn header_menu_key(key: &Key) -> Option<PanelMessage> {
+    match key.as_ref() {
+        Key::Named(Named::Escape) => Some(PanelMessage::HeaderMenuClose),
+        Key::Named(Named::Enter) => Some(PanelMessage::HeaderMenuChoose),
+        Key::Named(Named::ArrowUp) => Some(PanelMessage::HeaderMenuMove(-1)),
+        Key::Named(Named::ArrowDown) => Some(PanelMessage::HeaderMenuMove(1)),
+        _ => None,
+    }
+}
+
 /// The keys of the drive menu; any other key does nothing until it is closed.
 pub fn volume_menu_key(key: &Key) -> Option<VolumeMenuKey> {
     match key.as_ref() {

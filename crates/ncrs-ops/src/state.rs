@@ -194,12 +194,12 @@ pub struct BatchRun {
 pub struct Ops {
     /// The open modal prompt, if any.
     pub prompt: Option<Prompt>,
-    /// Panel the prompt belongs to, so a panel switch while it is open cannot
-    /// create a directory in the wrong place.
-    pub prompt_side: Option<PanelSide>,
     /// Id of the running prompt operation, so a late result cannot land on a
     /// prompt the user already dismissed.
     pub prompt_request_id: u64,
+    /// The entry the running create of the name prompt makes; the panels
+    /// reload and select it once the create has reported.
+    pub pending_create: Option<PathBuf>,
     /// Id of the latest rename, so the answer of one the user has since
     /// replaced is dropped.
     pub rename_request_id: u64,
@@ -301,6 +301,15 @@ impl Ops {
     /// a restore from the trash.
     pub fn conflict_is_open(&self) -> bool {
         self.pending_conflict.is_some() || self.restore_conflict.is_some()
+    }
+
+    /// Whether a flow is up or running that a new operation must not start over.
+    pub fn is_busy(&self) -> bool {
+        self.prompt.is_some()
+            || self.conflict_is_open()
+            || self.permissions_dialog.is_some()
+            || self.batch_rename.is_some()
+            || self.batch_running.is_some()
     }
 
     /// The file the open conflict dialog asks about.

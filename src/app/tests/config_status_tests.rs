@@ -218,3 +218,11 @@ fn dismissing_clears_the_config_error() {
     drop(app.update(Message::DismissConfigError));
     assert_eq!(app.status_error(), None);
 }
+
+#[test]
+fn a_config_without_a_language_keeps_the_system_language() {
+    let mut app = App::with_fixed_panels();
+    app.lang = Language::German;
+    let app = app.with_config(Ok(loaded("")));
+    assert_eq!(app.lang, Language::German);
+}

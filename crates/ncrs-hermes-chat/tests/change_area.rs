@@ -1,13 +1,6 @@
 //! The settings page names one area: the chat reads its folder and takes it
 //! up as a rule flow for exactly that area.
 
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 mod common;
 
 #[cfg(test)]

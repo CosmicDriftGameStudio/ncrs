@@ -17,14 +17,6 @@ impl App {
         self.with_ops(ncrs_ops::confirm_delete)
     }
 
-    fn end_delete(&mut self) -> Task<Message> {
-        self.with_ops(ncrs_ops::end_delete)
-    }
-
-    pub(in crate::app) fn end_restore(&mut self) -> Task<Message> {
-        self.with_ops(|ops, ctx| ncrs_ops::end_restore(ops, ctx, false))
-    }
-
     /// Runs `step` on the file operation flows and then what they ask of the app.
     pub(in crate::app) fn with_ops(
         &mut self,
@@ -48,12 +40,7 @@ impl App {
         &mut self,
         step: impl FnOnce(&mut ncrs_ops::Ops, &ncrs_ops::FlowCtx<'_>, &Panels) -> R,
     ) -> R {
-        let start_blocked = self.jobs.is_busy()
-            || self.ops.prompt.is_some()
-            || self.ops.conflict_is_open()
-            || self.ops.permissions_dialog.is_some()
-            || self.ops.batch_rename.is_some()
-            || self.ops.batch_running.is_some();
+        let start_blocked = self.jobs.is_busy() || self.ops.is_busy();
         let transfer_dialog_open = self.ops.transfer_dialog.is_some();
         let permanent_delete_key = self
             .keymap
@@ -78,6 +65,8 @@ impl App {
                 right_archive: self.panel(PanelSide::Right).archive.as_deref(),
                 left_server: self.panel(PanelSide::Left).remote().map(|s| s.root_path()),
                 right_server: self.panel(PanelSide::Right).remote().map(|s| s.root_path()),
+                left_folder: self.panel(PanelSide::Left).path.clone(),
+                right_folder: self.panel(PanelSide::Right).path.clone(),
                 remote: &self.remote,
                 permanent_delete_key,
                 restore_last_key,
@@ -222,6 +211,10 @@ impl App {
             }
             Ask::OpenTrash(side) => self.open_trash_on(side),
             Ask::OpenTrashInFinder => self.open_trash_in_finder(),
+            Ask::EditFile(path) => {
+                self.launch_external(fs::OpenKind::Edit, path, None, CopyOf::Nothing, false);
+                Task::none()
+            }
             Ask::ShowErrorWithFinderPress(text) => {
                 self.set_status_error_with_press(&text, Message::Trash(TrashMessage::OpenInFinder));
                 Task::none()
@@ -430,23 +423,7 @@ impl App {
             return Task::none();
         }
         self.drop_progress_channel();
-        if self.ops.extracting.is_some() {
-            ncrs_ops::end_extraction(&mut self.ops);
-            Task::none()
-        } else if let Some(outcome) = ncrs_ops::abort_archive_write(&mut self.ops) {
-            self.run_ops_outcome(outcome)
-        } else if let Some(outcome) = ncrs_ops::abort_batch_rename(&mut self.ops) {
-            self.run_ops_outcome(outcome)
-        } else if let Some(outcome) = ncrs_ops::abort_permissions(&mut self.ops) {
-            self.run_ops_outcome(outcome)
-        } else if self.ops.deleting.is_some() {
-            self.end_delete()
-        } else if self.ops.restoring.is_some() {
-            self.end_restore()
-        } else {
-            let outcome = ncrs_ops::end_transfer(&mut self.ops, self.lang);
-            self.run_ops_outcome(outcome)
-        }
+        self.with_ops(ncrs_ops::abort_running)
     }
 
     /// Both halves of the progress channel go together: a sender kept without
@@ -495,10 +472,7 @@ impl App {
     }
 
     pub(in crate::app) fn start_prompt_job(&mut self) -> Task<Message> {
-        let active = self.panels.active;
-        self.with_ops_and_panels(|ops, ctx, panels| {
-            ncrs_ops::start_prompt_job(ops, panel_facts(panels, active), ctx)
-        })
+        self.with_ops(ncrs_ops::start_prompt_job)
     }
 
     fn progress_sender(&mut self) -> mpsc::UnboundedSender<fs::transfer::Tick> {

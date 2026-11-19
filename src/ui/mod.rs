@@ -2,9 +2,9 @@
 //! components are generic over the message type where they emit messages,
 //! so they can be reused in other contexts.
 
-pub mod about;
 pub use ncrs_files::context_menu_view as context_menu;
 pub use ncrs_palette::command_line::view as command_line;
+pub use ncrs_settings::about;
 pub mod dialog;
 pub mod grant;
 pub mod layout;

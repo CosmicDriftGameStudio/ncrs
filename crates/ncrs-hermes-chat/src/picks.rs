@@ -86,7 +86,6 @@ pub fn launch(state: &mut State) -> Task<Message> {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::expect_used)]
 
     use std::path::Path;
     use std::sync::Mutex;

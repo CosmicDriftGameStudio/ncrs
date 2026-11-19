@@ -178,7 +178,7 @@ async fn copying_says_so_in_the_status_bar_and_an_overlay_blocks_it() {
     assert!(app.overlay_is_open(), "the delete dialog did not open");
     let _blocked = app.update(Message::CopyToClipboard(ClipboardKind::Path));
     assert_eq!(app.notice, None);
-    let _closed = app.update(Message::DeleteCancel);
+    let _closed = app.update(Message::from(ncrs_ops::OpsMessage::DeleteCancel));
 
     let _path = app.update(Message::CopyToClipboard(ClipboardKind::Path));
     assert_eq!(app.notice.as_deref(), Some("Path copied"));

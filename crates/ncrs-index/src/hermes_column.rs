@@ -378,12 +378,6 @@ fn excluded_ancestor(connection: &Connection, path: &Path) -> Result<Option<Path
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     fn p(path: &str) -> PathBuf {
         PathBuf::from(path.replace('/', std::path::MAIN_SEPARATOR_STR))

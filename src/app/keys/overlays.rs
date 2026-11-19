@@ -69,8 +69,10 @@ pub(in crate::app) fn conflict_key(
     let aborts =
         || bound_message(&prompt.keymap, &key, key_modifiers, scope) == Some(Message::AbortJob);
     ncrs_ops::keys::conflict_key(&key, key_modifiers, aborts).map(|pressed| match pressed {
-        ConflictKey::Answer(choice) => Message::TransferConflict(choice),
-        ConflictKey::ToggleAll => Message::ToggleConflictAll,
+        ConflictKey::Answer(choice) => {
+            Message::from(ncrs_ops::OpsMessage::TransferConflict(choice))
+        }
+        ConflictKey::ToggleAll => Message::from(ncrs_ops::OpsMessage::ToggleConflictAll),
         ConflictKey::Dialog(dialog) => dialog_message(dialog),
     })
 }

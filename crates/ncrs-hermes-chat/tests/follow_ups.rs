@@ -1,13 +1,6 @@
 //! What the playthrough with the real model showed: offers that lead
 //! nowhere, dead ends and questions that were never asked.
 
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 mod common;
 
 #[cfg(test)]

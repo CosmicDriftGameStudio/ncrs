@@ -2,6 +2,27 @@ use super::fixed::*;
 use crate::app::*;
 
 impl App {
+    /// Runs `message` and then the answers of the checks that ran off the UI
+    /// thread (the drive menu, and before a job start the target, pack name and staged paste), but not the
+    /// jobs those start.
+    pub async fn settle_checks_for_test(&mut self, message: Message) {
+        use iced_test::futures::futures::StreamExt as _;
+        use iced_test::runtime::{task, Action};
+        let mut queue = vec![message];
+        while let Some(next) = queue.pop() {
+            let Some(mut stream) = task::into_stream(self.update(next)) else {
+                continue;
+            };
+            while let Some(action) = stream.next().await {
+                if let Action::Output(reported) = action {
+                    if is_check_answer(&reported) {
+                        queue.push(reported);
+                    }
+                }
+            }
+        }
+    }
+
     /// Fixed panels with the connect dialog up.
     pub fn with_connect_dialog(dialog: ncrs_remote::dialog::ConnectDialog) -> Self {
         let mut app = Self::with_fixed_panels();
@@ -822,4 +843,18 @@ impl App {
             index: 0,
         });
     }
+}
+
+fn is_check_answer(message: &Message) -> bool {
+    use ncrs_ops::OpsMessage;
+    matches!(
+        message,
+        Message::VolumeMenuFacts { .. }
+            | Message::Ops(
+                OpsMessage::TransferChecked { .. }
+                    | OpsMessage::ExternalChecked { .. }
+                    | OpsMessage::PackChecked { .. }
+                    | OpsMessage::PasteStaged { .. }
+            )
+    )
 }

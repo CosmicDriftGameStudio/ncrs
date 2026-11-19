@@ -15,6 +15,8 @@ workspace = true
 ncrs-model-file = { path = "../ncrs-model-file", version = "0.0.0" }
 ncrs-index = { path = "../ncrs-index", version = "0.0.0" }
 ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
+# One list of the names Windows reads as devices, shared with the archive unpacking.
+ncrs-fs = { path = "../ncrs-fs", version = "0.0.0" }
 sha2 = "0.11"
 # Text with decomposed umlauts is composed once before the fields are read.
 unicode-normalization = "0.1.26"

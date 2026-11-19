@@ -3,7 +3,9 @@
 //! built from are public so a menu with other entries looks the same.
 
 use iced::widget::text::Wrapping;
-use iced::widget::{button, column, container, mouse_area, opaque, pin, row, text, Column};
+use iced::widget::{
+    button, column, container, mouse_area, opaque, pin, row, stack, text, Column, Space,
+};
 use iced::{alignment, Color, Element, Length, Point};
 
 use crate::layout::{MENU_ITEM_HEIGHT, MENU_PADDING, MENU_SEPARATOR_HEIGHT, MENU_WIDTH};
@@ -95,6 +97,33 @@ pub fn menu_box<'a, M: 'a>(
         .width(Length::Fill)
         .height(Length::Fill)
         .into()
+}
+
+/// What a right press beside an open menu does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RightPress {
+    /// It closes the menu like a left press.
+    Dismiss,
+    /// It reaches what is under the menu, so another row's menu can replace
+    /// this one.
+    PassThrough,
+}
+
+/// `menu` over a layer that catches the presses beside it. A left press sends
+/// `on_dismiss` (`None`: it passes through too).
+pub fn popup_layer<'a, M: Clone + 'a>(
+    menu: Element<'a, M>,
+    on_dismiss: Option<M>,
+    right_press: RightPress,
+) -> Element<'a, M> {
+    let mut catcher = mouse_area(Space::new().width(Length::Fill).height(Length::Fill));
+    if let Some(message) = on_dismiss.clone() {
+        catcher = catcher.on_press(message);
+    }
+    if let (RightPress::Dismiss, Some(message)) = (right_press, on_dismiss) {
+        catcher = catcher.on_right_press(message);
+    }
+    stack![catcher, menu].into()
 }
 
 pub fn popup_menu<'a, M: Clone + 'a>(

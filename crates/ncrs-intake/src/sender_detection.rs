@@ -347,7 +347,6 @@ fn is_register_line(line: &str) -> bool {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     #[test]
     fn a_letterhead_line_is_cut_where_the_address_starts() {

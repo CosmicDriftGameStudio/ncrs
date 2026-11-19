@@ -197,7 +197,6 @@ fn copy_sevenz_entry(
     job.step()
 }
 
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 #[cfg(test)]
 mod tests {
     use std::fs::File;

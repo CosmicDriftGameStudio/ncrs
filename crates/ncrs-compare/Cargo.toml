@@ -25,6 +25,7 @@ unicode-normalization = "0.1.26"
 [dev-dependencies]
 # The snapshots of the dialogs.
 iced_test = "0.14"
+ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0", features = ["test-support"] }
 iced = { version = "0.14", default-features = false, features = ["tokio", "advanced", "tiny-skia"] }
 
 [lints]

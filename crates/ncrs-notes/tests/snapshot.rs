@@ -1,11 +1,11 @@
 //! The notes tab in its three looks, rendered headless.
 
-// reason: a failing assertion is the signal in a test
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
-    clippy::tests_outside_test_module
+    clippy::tests_outside_test_module,
+    reason = "test code: a failing assertion is the signal; an integration test file: the tests are the file"
 )]
 
 // The CI runs `ui_tests` only on macOS, where the reference images were made.
@@ -21,6 +21,7 @@ mod ui_tests {
     use ncrs_notes::tree::RowKey;
     use ncrs_notes::{update, view, Ctx, Message, Mode, State, ViewCtx};
     use ncrs_ui_kit::palette::ThemePreset;
+    use ncrs_ui_kit::snapshot_support::ReferenceSnapshot as _;
 
     const CTX: Ctx = Ctx {
         lang: Language::English,
@@ -85,7 +86,7 @@ mod ui_tests {
         let matches = simulator
             .snapshot(&iced::Theme::Dark)
             .unwrap()
-            .matches_image(image)
+            .matches_reference_image(image)
             .unwrap();
         assert!(matches, "the notes picture differs from {image}");
     }

@@ -27,7 +27,8 @@ use crate::conditions::{
     SearchText,
 };
 use crate::extract::{compile, extract_amount, extract_date, extract_number};
-use crate::sanitise::{is_plain_literal, is_windows_device_name, sanitise_value, stays_below};
+use crate::sanitise::{is_plain_literal, sanitise_value, stays_below};
+use ncrs_fs::archive::is_device_name;
 
 /// What is known about a document before the rules run.
 #[derive(Debug, Clone, Copy)]
@@ -636,7 +637,8 @@ impl Pattern {
             Token::Literal(literal) => is_plain_literal(literal),
             Token::Placeholder(_) => true,
         });
-        let is_device = matches!(tokens.as_slice(), [Token::Literal(literal)] if is_windows_device_name(literal));
+        let is_device =
+            matches!(tokens.as_slice(), [Token::Literal(literal)] if is_device_name(literal));
         (!only_dots && plain && !is_device).then_some(tokens)
     }
 

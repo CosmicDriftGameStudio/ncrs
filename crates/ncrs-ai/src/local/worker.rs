@@ -448,7 +448,6 @@ fn chat_answer<'model>(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::panic, clippy::indexing_slicing)]
 mod queue_tests {
     use std::sync::mpsc::channel;
     use std::sync::Arc;

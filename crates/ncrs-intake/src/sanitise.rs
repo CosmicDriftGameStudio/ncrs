@@ -61,7 +61,7 @@ pub fn sanitise_value(value: &str) -> Option<String> {
     if trimmed.is_empty() {
         return None;
     }
-    if is_windows_device_name(trimmed) {
+    if ncrs_fs::archive::is_device_name(trimmed) {
         let (stem, extension) = split_stem(trimmed);
         return Some(format!("{stem}_{extension}"));
     }
@@ -71,27 +71,6 @@ pub fn sanitise_value(value: &str) -> Option<String> {
 /// The name before its first dot, and the rest from that dot on.
 fn split_stem(name: &str) -> (&str, &str) {
     name.split_at(name.find('.').unwrap_or(name.len()))
-}
-
-/// Whether Windows reads the name as a device (`CON`, `NUL`, `COM1` …) rather
-/// than a file or folder, with or without an extension and in any case.
-pub fn is_windows_device_name(name: &str) -> bool {
-    let stem = split_stem(name).0.trim_end_matches(' ');
-    const PLAIN: [&str; 4] = ["CON", "PRN", "AUX", "NUL"];
-    if PLAIN.iter().any(|device| stem.eq_ignore_ascii_case(device)) {
-        return true;
-    }
-    let numbered = |prefix: &str| {
-        stem.len() == prefix.len() + 1
-            && stem
-                .get(..prefix.len())
-                .is_some_and(|start| start.eq_ignore_ascii_case(prefix))
-            && stem
-                .bytes()
-                .last()
-                .is_some_and(|digit| (b'1'..=b'9').contains(&digit))
-    };
-    numbered("COM") || numbered("LPT")
 }
 
 /// Whether a relative path stays inside the folder it is joined to. Checked
@@ -104,12 +83,6 @@ pub fn stays_below(relative: &Path) -> bool {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     use super::*;
 
@@ -154,16 +127,6 @@ mod tests {
             ("a.CON", "a.CON"),
         ] {
             assert_eq!(sanitise_value(value).as_deref(), Some(expected), "{value}");
-        }
-    }
-
-    #[test]
-    fn device_names_are_told_from_other_names() {
-        for device in ["CON", "prn", "Aux.pdf", "NUL", "COM1", "lpt5.txt", "CON .x"] {
-            assert!(is_windows_device_name(device), "{device}");
-        }
-        for other in ["", "COM", "COM0", "COM12", "LPT", "console", "x.CON"] {
-            assert!(!is_windows_device_name(other), "{other}");
         }
     }
 

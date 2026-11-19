@@ -24,7 +24,9 @@ use ncrs_fs::transfer::{
     sweep_partials, transfer_to, Copy, Counting, Move, OnConflict, Progress, Source,
 };
 
+mod respell;
 mod trash;
+use respell::{is_respelling, respell, restore_respelled};
 pub use trash::{trash_can_restore, trash_run, TrashItem, TrashReport};
 
 /// One move. Paths are absolute.
@@ -939,74 +941,6 @@ fn is_cut_short_copy(copy: &Path, source: &Path) -> bool {
         if original.read_exact(original_part).is_err() || copied_part != original_part {
             return false;
         }
-    }
-}
-
-/// The same file under another spelling of its name, in the same folder: on a
-/// case-insensitive file system `Rechnung.pdf` and `rechnung.pdf` are one entry.
-/// Two names of one file (links) are two entries and do not count.
-fn is_respelling(from: &Path, to: &Path) -> bool {
-    let (Some(from_parent), Some(to_parent), Some(name)) =
-        (from.parent(), to.parent(), to.file_name())
-    else {
-        return false;
-    };
-    let same_folder = same_file::is_same_file(from_parent, to_parent).unwrap_or(false);
-    let same_entry = same_file::is_same_file(from, to).unwrap_or(false);
-    let to_is_listed = fs::read_dir(to_parent)
-        .map(|entries| entries.flatten().any(|entry| entry.file_name() == name))
-        .unwrap_or(true);
-    same_folder && same_entry && !to_is_listed
-}
-
-fn respell_hidden_name(to: &Path) -> PathBuf {
-    let name = to.file_name().unwrap_or_default().to_string_lossy();
-    to.with_file_name(format!(".{name}.ncrs-respell"))
-}
-
-/// A respell that stopped between its two renames left the file only under
-/// the hidden name: it goes to its new name when neither name is there.
-fn restore_respelled(item: &JournalItem) {
-    let hidden = respell_hidden_name(&item.to);
-    let nothing_at_either_name =
-        fs::symlink_metadata(&item.from).is_err() && fs::symlink_metadata(&item.to).is_err();
-    if nothing_at_either_name && has_hash(&hidden, item.hash) {
-        let _best_effort = fs::rename(&hidden, &item.to);
-    }
-}
-
-/// Renames through a hidden name, which also works where the old and the new
-/// name are one entry for the file system.
-fn respell(
-    index: &Index,
-    batch: BatchId,
-    item: &ExecutionItem,
-) -> Result<ItemOutcome, ExecuteError> {
-    let seq = index.add_journal_item(batch, &journal_entry(item, JournalState::Pending, None))?;
-    let journaled = JournalItem {
-        seq,
-        from: item.from.clone(),
-        to: item.to.clone(),
-        hash: item.expected_hash,
-        document_id: item.document_id,
-        duplicate: item.duplicate,
-        state: JournalState::Pending,
-        reason: None,
-    };
-    let hidden = respell_hidden_name(&item.to);
-    let renamed = fs::rename(&item.from, &hidden).and_then(|()| {
-        fs::rename(&hidden, &item.to).inspect_err(|_| {
-            let _put_back = fs::rename(&hidden, &item.from);
-        })
-    });
-    match renamed {
-        Ok(()) => settle_moved(index, batch, &journaled),
-        Err(err) => skip_pending(
-            index,
-            batch,
-            &journaled,
-            SkipReason::Failed(err.to_string()),
-        ),
     }
 }
 

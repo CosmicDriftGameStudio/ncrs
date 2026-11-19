@@ -1,8 +1,13 @@
 //! The about card: version, licence and the file with the licences of the
 //! libraries ncrs is built from. The state has no widgets; the view is
-//! `ui::about`.
+//! `view`.
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+
+pub mod view;
+
+pub use view::{view, CLOSE_FOCUS, LICENSES_FOCUS, REPOSITORY_FOCUS};
 
 pub const REPOSITORY_URL: &str = "https://github.com/CosmicDriftGameStudio/ncrs";
 
@@ -38,7 +43,7 @@ pub fn third_party_licenses_path(exe: &Path, exists: impl Fn(&Path) -> bool) -> 
 /// The licence file of the running installation. A failing `current_exe` or
 /// `canonicalize` means there is none to find.
 pub fn installed_third_party_licenses() -> Option<PathBuf> {
-    crate::config::forbid_user_machine_in_tests("about::installed_third_party_licenses");
+    ncrs_fs::forbid_user_machine_in_tests("about::installed_third_party_licenses");
     let exe = std::env::current_exe()
         .and_then(std::fs::canonicalize)
         .ok()?;
@@ -67,6 +72,61 @@ impl AboutCard {
     pub fn report_licenses_missing(&mut self) {
         self.licenses_missing = true;
     }
+}
+
+/// Everything the about card sends.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AboutMessage {
+    Open,
+    Close,
+    OpenLicenses,
+    OpenRepository,
+}
+
+/// What the card asks the app for: starting the system's opener, which can
+/// fail, and a failed launch closes the card so the error in the status bar is
+/// not hidden behind it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Action {
+    Launch { target: OsString, name: String },
+}
+
+/// Applies `message` to the card that is up, if any. `find_licenses` names the
+/// licence file of the running installation.
+pub fn update(
+    card: &mut Option<AboutCard>,
+    message: AboutMessage,
+    find_licenses: fn() -> Option<PathBuf>,
+) -> Option<Action> {
+    match message {
+        AboutMessage::Open => *card = Some(AboutCard::new()),
+        AboutMessage::Close => *card = None,
+        AboutMessage::OpenLicenses => match find_licenses() {
+            Some(path) => {
+                let name = path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .into_owned();
+                return Some(Action::Launch {
+                    target: path.into_os_string(),
+                    name,
+                });
+            }
+            None => {
+                if let Some(open) = card.as_mut() {
+                    open.report_licenses_missing();
+                }
+            }
+        },
+        AboutMessage::OpenRepository => {
+            return Some(Action::Launch {
+                target: REPOSITORY_URL.into(),
+                name: REPOSITORY_URL.to_owned(),
+            });
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -130,5 +190,30 @@ mod tests {
             third_party_licenses_url("1.2.3"),
             "https://github.com/CosmicDriftGameStudio/ncrs/releases/download/v1.2.3/THIRD_PARTY_LICENSES.html"
         );
+    }
+
+    #[test]
+    fn a_missing_licenses_file_is_reported_on_the_card_and_launches_nothing() {
+        let mut card = Some(AboutCard::new());
+        let action = update(&mut card, AboutMessage::OpenLicenses, || None);
+        assert_eq!(action, None);
+        assert!(card.is_some_and(|open| open.licenses_missing()));
+    }
+
+    #[test]
+    fn the_repository_button_asks_for_a_launch_and_close_drops_the_card() {
+        let mut card = None;
+        update(&mut card, AboutMessage::Open, || None);
+        assert!(card.is_some());
+        let action = update(&mut card, AboutMessage::OpenRepository, || None);
+        assert_eq!(
+            action,
+            Some(Action::Launch {
+                target: REPOSITORY_URL.into(),
+                name: REPOSITORY_URL.to_owned()
+            })
+        );
+        update(&mut card, AboutMessage::Close, || None);
+        assert!(card.is_none());
     }
 }

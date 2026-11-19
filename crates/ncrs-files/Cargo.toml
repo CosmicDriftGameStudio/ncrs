@@ -11,10 +11,14 @@ publish = false
 [dependencies]
 # Same as the kit: no renderer or window system, the app picks them.
 iced = { version = "0.14", default-features = false, features = ["tokio", "advanced"] }
+ncrs-config = { path = "../ncrs-config", version = "0.0.0" }
 ncrs-core = { path = "../ncrs-core", version = "0.0.0" }
 ncrs-fs = { path = "../ncrs-fs", version = "0.0.0" }
 ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
+ncrs-intake = { path = "../ncrs-intake", version = "0.0.0" }
 ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0" }
+# macOS hands out file names decomposed (NFD) while they are typed composed (NFC).
+unicode-normalization = "0.1.26"
 
 # The reads of the hit list run on the blocking pool.
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
@@ -27,6 +31,7 @@ test-support = []
 # The snapshot test of the Compare column renders headless.
 iced = { version = "0.14", default-features = false, features = ["tokio", "advanced", "svg", "tiny-skia"] }
 iced_test = "0.14"
+ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0", features = ["test-support"] }
 
 [lints]
 workspace = true

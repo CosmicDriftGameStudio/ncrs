@@ -210,16 +210,16 @@ fn cancel_in_the_passphrase_stage_closes_the_dialog_without_connecting() {
 }
 
 #[test]
-fn the_passphrase_is_remembered_unless_the_tick_is_taken_off() {
+fn the_passphrase_is_remembered_only_when_the_tick_is_set() {
     let setup = Setup::new(None);
     let mut remote = passphrase_stage(&setup);
-    assert!(dialog(&remote).remember_passphrase());
+    assert!(!dialog(&remote).remember_passphrase());
     drop(update(
         &mut remote,
         Message::ToggleRememberPassphrase,
         &setup.ctx(),
     ));
-    assert!(!dialog(&remote).remember_passphrase());
+    assert!(dialog(&remote).remember_passphrase());
 }
 
 #[test]

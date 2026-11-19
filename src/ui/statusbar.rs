@@ -557,8 +557,10 @@ fn format_error(
         ReadError::Remote { .. } => Msg::ErrorRemoteFailed,
     };
     let reason = match error {
-        ReadError::CannotRead { reason }
-        | ReadError::AccessBlocked { reason }
+        ReadError::CannotRead { kind, reason } => {
+            ncrs_ui_kit::io_reason::io_reason_text(*kind, reason, lang)
+        }
+        ReadError::AccessBlocked { reason }
         | ReadError::TaskFailed { reason }
         | ReadError::Remote { reason } => reason.clone(),
         ReadError::EntriesLeftOut { count } => count.to_string(),
@@ -577,12 +579,6 @@ fn format_error(
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -602,6 +598,7 @@ mod tests {
 
     fn cannot_read() -> ReadError {
         ReadError::CannotRead {
+            kind: std::io::ErrorKind::Other,
             reason: "Permission denied".to_string(),
         }
     }
@@ -620,6 +617,18 @@ mod tests {
             format_error(&cannot_read(), path, Language::German, false),
             "/etc/shadow nicht lesbar: Permission denied"
         );
+    }
+
+    #[test]
+    fn a_known_error_kind_is_told_in_the_language_not_in_the_system_text() {
+        let err = ReadError::CannotRead {
+            kind: std::io::ErrorKind::PermissionDenied,
+            reason: "Permission denied (os error 13)".to_string(),
+        };
+        let shown = format_error(&err, Path::new("/x"), Language::German, false);
+
+        assert!(shown.contains(Language::German.text(Msg::IoReasonPermissionDenied)));
+        assert!(!shown.contains("os error"));
     }
 
     #[test]

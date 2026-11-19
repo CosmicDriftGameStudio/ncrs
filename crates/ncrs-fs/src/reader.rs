@@ -10,8 +10,9 @@ use super::{archive, sort_entries, FileEntry, SortKey};
 /// formatted by the UI layer, which owns the language.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReadError {
-    /// The OS refused to read the directory. The inner string is the OS message.
-    CannotRead { reason: String },
+    /// The OS refused to read the directory. `reason` is the OS message; the
+    /// UI tells the `kind` in its own language where it knows it.
+    CannotRead { kind: io::ErrorKind, reason: String },
     /// macOS privacy protection (TCC) refused access; ordinary Unix
     /// permissions give EACCES instead, which stays `CannotRead`. The inner
     /// string is the OS message.
@@ -37,7 +38,7 @@ pub enum ReadError {
 impl std::fmt::Display for ReadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ReadError::CannotRead { reason }
+            ReadError::CannotRead { reason, .. }
             | ReadError::AccessBlocked { reason }
             | ReadError::TaskFailed { reason }
             | ReadError::Remote { reason } => f.write_str(reason),
@@ -105,6 +106,7 @@ async fn within<T: Send + 'static>(
     match tokio::time::timeout(limit, run).await {
         Ok(finished) => finished,
         Err(_elapsed) => Err(ReadError::CannotRead {
+            kind: io::ErrorKind::TimedOut,
             reason: io::Error::from(io::ErrorKind::TimedOut).to_string(),
         }),
     }
@@ -162,7 +164,10 @@ fn read_error_at(err: &io::Error, path: &Path, home: &Path) -> ReadError {
     {
         ReadError::AccessBlocked { reason }
     } else {
-        ReadError::CannotRead { reason }
+        ReadError::CannotRead {
+            kind: err.kind(),
+            reason,
+        }
     }
 }
 
@@ -231,6 +236,7 @@ fn read_archive(path: &Path, location: &archive::ArchiveLocation, sorted_by: Sor
                     ReadError::ArchiveDictionaryTooLarge
                 }
                 None => ReadError::CannotRead {
+                    kind: err.kind(),
                     reason: err.to_string(),
                 },
             }),
@@ -291,12 +297,6 @@ pub fn start_dir_from(cwd: Option<PathBuf>, home: PathBuf) -> PathBuf {
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -552,12 +552,6 @@ mod tests {
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod start_dir_tests {
     use super::*;

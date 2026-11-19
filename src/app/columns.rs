@@ -3,32 +3,12 @@
 //! changes is written back.
 
 use crate::app::*;
-use ncrs_config::config::FilingLocation;
 use ncrs_config::panel_columns::{Appearance, FontChoice, FontSizeChoice, PanelColumns};
 use ncrs_core::Column;
-use ncrs_files::special_folders::system_folders;
+use ncrs_files::special_folders::special_folders_of;
 use ncrs_settings::message::ColumnsEdit;
 use ncrs_settings::settings::columns as columns_page;
-use ncrs_ui_kit::file_icon::SpecialFolder;
 use ncrs_ui_kit::font;
-
-/// The folders with a symbol of their own: the ones Hermes reads and files
-/// into first, so a home folder that is also one of them shows that role.
-pub(in crate::app) fn special_folders_of(
-    locations: &[FilingLocation],
-    home: &Path,
-) -> Vec<(PathBuf, SpecialFolder)> {
-    let hermes = locations.iter().filter_map(|location| {
-        if location.is_target {
-            Some((location.path.clone(), SpecialFolder::WriteFolder))
-        } else if location.mode == ncrs_intake::LocationMode::Inbox {
-            Some((location.path.clone(), SpecialFolder::ReadFolder))
-        } else {
-            None
-        }
-    });
-    hermes.chain(system_folders(home)).collect()
-}
 
 /// The setting as the panels read it. A function of the field rather than of
 /// the app, so the panels can be updated while it is borrowed.
@@ -41,19 +21,6 @@ pub(in crate::app) fn column_settings_of(columns: &PanelColumns) -> ncrs_files::
         date_format: columns.date_format,
         size_format: columns.size_format,
     }
-}
-
-pub(in crate::app) fn with_column_width(
-    columns: &PanelColumns,
-    column: Column,
-    width: u16,
-) -> PanelColumns {
-    let mut changed = columns.clone();
-    match changed.widths.iter_mut().find(|(wide, _)| *wide == column) {
-        Some((_, current)) => *current = width,
-        None => changed.widths.push((column, width)),
-    }
-    changed
 }
 
 fn family_of(font: &FontChoice) -> Option<&str> {
@@ -124,21 +91,20 @@ impl App {
         self.special_folders_source.clone_from(locations);
     }
 
-    /// Writes `columns` to the config and takes the written result over; the
-    /// panels are drawn again with it.
+    /// Writes `columns` to the config on a blocking thread, one write after
+    /// the other with the other settings; the panels are drawn again with the
+    /// result.
     fn save_columns(&mut self, columns: PanelColumns) -> Task<Message> {
         if columns == self.columns {
             return Task::none();
         }
-        let Some(path) = self.config_path.clone() else {
+        if self.config_path.is_none() {
             self.columns = columns;
             return Task::none();
-        };
-        match config::write_columns(&path, &columns) {
-            Ok(written) => self.columns = written.columns,
-            Err(err) => self.set_status_error(&err.to_string()),
         }
-        Task::none()
+        self.update_settings(ncrs_settings::message::SettingsMessage::Change(
+            ncrs_settings::message::SettingChange::Columns(columns),
+        ))
     }
 
     pub(in crate::app) fn panel_columns_changed(
@@ -155,7 +121,7 @@ impl App {
         column: Column,
         width: u16,
     ) -> Task<Message> {
-        let columns = with_column_width(&self.columns, column, width);
+        let columns = columns_page::with_column_width(&self.columns, column, width);
         self.save_columns(columns)
     }
 
@@ -178,61 +144,5 @@ impl App {
 
     pub(in crate::app) fn open_column_settings(&mut self) -> Task<Message> {
         self.show_setting(crate::messages::SettingsFeature::Columns, None)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn per_panel_with_changes() -> PanelColumns {
-        let mut start = PanelColumns {
-            same_in_both: false,
-            ..PanelColumns::default()
-        };
-        start.left.push(Column::Created);
-        start.right.push(Column::Owner);
-        start.widths.push((Column::Size, 90));
-        start.date_format = ncrs_core::DateFormat::Short;
-        start
-    }
-
-    #[test]
-    fn one_list_for_both_panels_changes_both() {
-        let start = PanelColumns::default();
-        let list = vec![Column::Icon, Column::Name, Column::Owner];
-        let changed = columns_page::with_list(&start, PanelSide::Right, list.clone());
-        assert_eq!((changed.left, changed.right), (list.clone(), list));
-    }
-
-    #[test]
-    fn per_panel_lists_change_one_side() {
-        let start = per_panel_with_changes();
-        let list = vec![Column::Name, Column::Type];
-        let right = columns_page::with_list(&start, PanelSide::Right, list.clone());
-        assert_eq!(
-            (right.right, right.left),
-            (list.clone(), start.left.clone())
-        );
-        let left = columns_page::with_list(&start, PanelSide::Left, list.clone());
-        assert_eq!((left.left, left.right), (list, start.right));
-    }
-
-    #[test]
-    fn a_width_is_set_once_per_column() {
-        let start = PanelColumns::default();
-        let once = with_column_width(&start, Column::Size, 90);
-        let twice = with_column_width(&once, Column::Size, 120);
-        assert_eq!(twice.widths, vec![(Column::Size, 120)]);
-    }
-
-    #[test]
-    fn the_header_menu_and_the_settings_page_restore_the_same_way() {
-        let start = per_panel_with_changes();
-        let restored = columns_page::edited(&start, PanelSide::Right, ColumnsEdit::Restore);
-        assert_eq!(restored.right, Column::DEFAULT.to_vec());
-        assert_eq!(restored.left, start.left, "the other panel keeps its list");
-        assert!(restored.widths.is_empty());
-        assert_eq!(restored.date_format, ncrs_core::DateFormat::Short);
     }
 }

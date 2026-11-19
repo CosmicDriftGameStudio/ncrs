@@ -8,13 +8,13 @@
 // A build script must stop on bad input. A strings.json with a missing
 // translator context would otherwise produce modules whose translations are
 // wrong, and the failure would only show up in the running app. So the
-// restriction lints about panicking are off here by design, and on nowhere else.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
     clippy::indexing_slicing,
-    clippy::doc_markdown
+    clippy::doc_markdown,
+    reason = "a build script must stop on bad input: a wrong translation table would only show in the running app"
 )]
 
 use std::collections::BTreeMap;
@@ -270,7 +270,9 @@ fn generate_enum(entries: &[Entry]) -> String {
     }
     out.push_str("}\n\n");
     out.push_str("/// Every string, for the tests and the translation dump.\n");
-    out.push_str("#[allow(dead_code)]\n");
+    out.push_str(
+        "#[allow(dead_code, reason = \"read by the tests and the translation dump only\")]\n",
+    );
     out.push_str("pub const ALL: &[Msg] = &[\n");
     for entry in entries {
         out.push_str(&format!("    Msg::{},\n", variant_name(&entry.key)));
@@ -331,7 +333,9 @@ fn generate_futurama(entries: &[Entry]) -> String {
     }
     out.push_str("}\n\n");
     out.push_str("/// Every Futurama name, for the tests and the translation dump.\n");
-    out.push_str("#[allow(dead_code)]\n");
+    out.push_str(
+        "#[allow(dead_code, reason = \"read by the tests and the translation dump only\")]\n",
+    );
     out.push_str("pub const ALL_FUTURAMA_NAMES: &[FuturamaName] = &[\n");
     for entry in entries {
         out.push_str(&format!("    FuturamaName::{},\n", futurama_variant(entry)));

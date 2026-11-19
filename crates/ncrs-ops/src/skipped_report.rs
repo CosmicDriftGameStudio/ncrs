@@ -49,7 +49,6 @@ pub fn skipped_text(lang: Language, skipped: &[Skipped]) -> Option<String> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
     use std::path::PathBuf;

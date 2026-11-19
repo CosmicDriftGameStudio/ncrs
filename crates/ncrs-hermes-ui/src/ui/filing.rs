@@ -16,7 +16,7 @@ use ncrs_i18n::fill_template;
 use ncrs_i18n::{Language, Msg};
 use ncrs_ui_kit::frame::{DialogSize, Frame, KeyHints};
 use ncrs_ui_kit::kit::{self, error_line, paragraph, Check, Tone};
-use ncrs_ui_kit::theme::{font_size, spacing};
+use ncrs_ui_kit::theme::{font_size, size, spacing};
 
 pub const GROUP_FIELD_ID: &str = "filing-group-field";
 pub const KEY_FIELD_ID: &str = "filing-key-field";
@@ -24,7 +24,7 @@ pub const KEY_FIELD_ID: &str = "filing-key-field";
 const SIZE: DialogSize = DialogSize::Medium;
 
 /// Four characters of the key and a little room.
-const GROUP_FIELD_WIDTH: f32 = 160.0;
+const GROUP_FIELD_WIDTH: f32 = size::FIELD_SHORT;
 
 /// What a phase puts into the frame.
 struct Card<'a> {
@@ -308,13 +308,6 @@ fn failed<'a>(reason: &str, lang: Language, palette: &Palette) -> Card<'a> {
     }
 }
 
-// reason: a failing assertion is the signal in a test
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     #[test]

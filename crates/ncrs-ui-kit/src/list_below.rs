@@ -22,12 +22,18 @@ pub fn list_below<'a, M: 'a>(field: Element<'a, M>, list: Element<'a, M>) -> Ele
 
 // `children` is built by `children`/`diff` with exactly the field's tree
 // first and the list's second.
-#[allow(clippy::indexing_slicing)]
+#[allow(
+    clippy::indexing_slicing,
+    reason = "the children are built with exactly the field's tree first and the list's second"
+)]
 fn field_tree(tree: &Tree) -> &Tree {
     &tree.children[0]
 }
 
-#[allow(clippy::indexing_slicing)]
+#[allow(
+    clippy::indexing_slicing,
+    reason = "the children are built with exactly the field's tree first and the list's second"
+)]
 fn field_tree_mut(tree: &mut Tree) -> &mut Tree {
     &mut tree.children[0]
 }

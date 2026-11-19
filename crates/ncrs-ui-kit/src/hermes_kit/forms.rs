@@ -228,8 +228,6 @@ fn key_parts(key_text: &str, marked_block: usize) -> Vec<(String, bool)> {
     parts
 }
 
-// reason: a failing assertion is the signal in a test
-#[allow(clippy::unwrap_used)]
 #[cfg(test)]
 mod key_tests {
     use super::key_parts;

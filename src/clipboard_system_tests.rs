@@ -9,14 +9,6 @@
 //! held and puts it back when the test ends, also after a failed assertion, so
 //! a local run leaves the developer's clipboard as it was.
 
-// reason: a failing assertion is the signal in a test
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 

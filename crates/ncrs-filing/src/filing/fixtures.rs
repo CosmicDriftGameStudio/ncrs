@@ -2,7 +2,10 @@
 
 use super::*;
 
-#[allow(clippy::expect_used)]
+#[allow(
+    clippy::expect_used,
+    reason = "test fixtures: a failing setup is the signal"
+)]
 impl FilingModule {
     /// A module standing in `phase`, with nothing behind it: no work, an
     /// in-memory store, a path that is never written.

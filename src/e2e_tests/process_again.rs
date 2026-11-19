@@ -3,7 +3,6 @@
 //! in-memory key store. No AI is configured, the text steps need no model.
 
 #![cfg(unix)]
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 
 use std::time::Duration;
 

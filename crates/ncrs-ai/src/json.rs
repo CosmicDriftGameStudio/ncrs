@@ -103,12 +103,6 @@ fn write_string(out: &mut String, value: &str) {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     use jsonc_parser::{parse_to_value, JsonValue, ParseOptions};
 

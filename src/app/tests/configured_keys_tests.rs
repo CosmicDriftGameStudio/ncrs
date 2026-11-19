@@ -122,7 +122,9 @@ fn the_configured_abort_key_cancels_a_conflict() {
     };
     assert_eq!(
         route_key(&state, character("k"), Modifiers::CTRL),
-        Some(Message::TransferConflict(ConflictChoice::Cancel))
+        Some(Message::from(ncrs_ops::OpsMessage::TransferConflict(
+            ConflictChoice::Cancel
+        )))
     );
     assert_eq!(route_key(&state, character("c"), Modifiers::CTRL), None);
 }
@@ -272,7 +274,7 @@ fn the_notice_after_a_restore_counts_what_came_back_and_what_stayed() {
         skipped: 1,
         rule: None,
     });
-    drop(app.end_restore());
+    drop(app.with_ops(|ops, ctx| ncrs_ops::end_restore(ops, ctx, false)));
     assert_eq!(
         app.notice_for_test(),
         Some("Restored 2 from the trash. 1 left in the trash.")

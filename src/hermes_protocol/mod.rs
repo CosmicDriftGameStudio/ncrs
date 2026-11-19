@@ -24,12 +24,9 @@
 
 #![cfg(unix)]
 #![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing,
     clippy::print_stdout,
-    clippy::too_many_lines
+    clippy::too_many_lines,
+    reason = "the test reports on stdout; one test walks one long scenario"
 )]
 
 use std::cell::RefCell;
@@ -198,7 +195,6 @@ fn all(checks: impl IntoIterator<Item = Check>) -> Check {
     expect(failed.is_empty(), failed.join("; "))
 }
 
-#[allow(clippy::needless_pass_by_value)]
 fn start_protocol(
     original: &Path,
     workspace: &Path,

@@ -149,9 +149,8 @@ pub fn pattern_mismatches(
 #[cfg(test)]
 mod tests {
     #![allow(
-        clippy::indexing_slicing,
         clippy::shadow_unrelated,
-        clippy::unwrap_used
+        reason = "a test rebinds a name step by step"
     )]
 
     use ncrs_index::KindLanguage;

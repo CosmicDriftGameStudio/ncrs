@@ -1,5 +1,9 @@
-#![allow(clippy::panic_in_result_fn)]
+#![allow(
+    clippy::panic_in_result_fn,
+    reason = "a failing assertion is the signal in a test"
+)]
 
+use ncrs_ui_kit::snapshot_support::ReferenceSnapshot as _;
 use std::error::Error;
 
 use iced_test::Simulator;
@@ -132,7 +136,7 @@ fn matches_snapshot(app: &App, name: &str, height: f32) -> TestResult {
     );
     let matches = simulator
         .snapshot(&iced::Theme::Dark)?
-        .matches_image(format!("tests/snapshots/{name}.png"))?;
+        .matches_reference_image(format!("tests/snapshots/{name}.png"))?;
     assert!(
         matches,
         "the page does not match tests/snapshots/{name}.png"

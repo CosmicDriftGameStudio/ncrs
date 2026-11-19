@@ -22,6 +22,8 @@ pub struct Ctx<'a> {
     pub context_menu_open: bool,
     pub search_open: bool,
     pub hermes_active: bool,
+    /// The Hermes chat is open.
+    pub chat_open: bool,
     pub hermes_counts_missing: bool,
     pub jobs_busy: bool,
     pub window_size: Size,

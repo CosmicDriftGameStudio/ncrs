@@ -309,13 +309,16 @@ jobs:
         if: runner.os != 'macOS'
         run: cargo check --workspace --all-targets --features sandbox
 
-      # Pixel comparisons are only meaningful where the reference images were
-      # produced. Font rasterisation differs per operating system, so a
-      # reference made on macOS does not match Windows output, and asserting it
-      # there would be asserting nothing. The snapshot tests are therefore
-      # skipped away from macOS; everything else runs everywhere.
+      # Every test runs on every operating system. Only the pixel verdict of the
+      # snapshot tests is left to macOS, where the reference images were made:
+      # font rasterisation differs per operating system, so a comparison
+      # elsewhere would assert nothing (`ncrs_ui_kit::snapshot_support`).
+      # They render with tiny-skia whatever the build, see .cargo/config.toml.
+      # Dates are drawn in local time and the references were made in Berlin.
       - name: Tests
-        run: cargo test --workspace -- --skip ui_tests
+        env:
+          TZ: Europe/Berlin
+        run: cargo test --workspace
 
       - name: Tests, App Store build (macOS)
         if: runner.os == 'macOS'
@@ -326,17 +329,6 @@ jobs:
       - name: Key store tests (macOS and Windows)
         if: runner.os != 'Linux'
         run: cargo test -p ncrs-index key_store -- --ignored
-
-      # The snapshot tests run only here, where the reference images in
-      # tests/snapshots/ were produced. They are skipped above so a font
-      # difference on another operating system cannot fail the build. They
-      # render with tiny-skia whatever the build, see .cargo/config.toml.
-      # Dates are drawn in local time and the references were made in Berlin.
-      - name: Snapshot tests (macOS)
-        if: runner.os == 'macOS'
-        env:
-          TZ: Europe/Berlin
-        run: cargo test --workspace ui_tests
 
       # iced_test writes a missing reference and passes. A reference that
       # appeared in this run was not compared with anything.

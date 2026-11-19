@@ -2,7 +2,6 @@
 //! the app and is ignored by default, so the normal suite never touches
 //! `docs/screenshots/`. Regenerate with
 //! `cargo test readme_screenshots -- --ignored`.
-#![allow(clippy::expect_used)]
 
 use std::ffi::OsString;
 use std::path::PathBuf;
@@ -266,8 +265,8 @@ fn batch_rename_app() -> App {
             .toggle(&PathBuf::from(DOWNLOADS_DIRECTORY).join(name));
     }
     let _opened = app.update(Message::Panel(PanelMessage::RenameStart));
-    let _typed = app.update(Message::BatchRename(BatchRenameMessage::PatternInput(
-        "Holiday {date modified} {counter}{extension}".to_owned(),
+    let _typed = app.update(Message::from(ncrs_ops::OpsMessage::BatchRename(
+        BatchRenameMessage::PatternInput("Holiday {date modified} {counter}{extension}".to_owned()),
     )));
     app
 }

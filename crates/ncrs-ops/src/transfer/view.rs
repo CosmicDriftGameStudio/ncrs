@@ -13,7 +13,7 @@ use ncrs_ui_kit::frame::{self, DialogSize, Frame};
 use ncrs_ui_kit::kit::{self, Figure, Tone};
 use ncrs_ui_kit::numbered_hint::numbered_hint;
 use ncrs_ui_kit::palette::Palette;
-use ncrs_ui_kit::theme::spacing;
+use ncrs_ui_kit::theme::{size, spacing};
 
 use super::{Policy, Refusal, TransferDialog, FIRST_NAMES, LISTED_NAMES};
 use crate::message::{OpsMessage, TransferDialogMessage};
@@ -31,10 +31,10 @@ pub const TARGET_FIELD_ID: &str = "transfer-target";
 const COUNTING: &str = "…";
 
 /// The width the policy label takes, so the control starts at one place.
-const LABEL_WIDTH: f32 = 140.0;
+const LABEL_WIDTH: f32 = size::FORM_LABEL;
 
 /// The height of the list of all names, which scrolls inside the dialog.
-const LIST_HEIGHT: f32 = 160.0;
+const LIST_HEIGHT: f32 = size::LIST_BOX_HEIGHT;
 
 fn send(message: TransferDialogMessage) -> OpsMessage {
     OpsMessage::TransferDialog(message)

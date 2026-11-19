@@ -1,13 +1,5 @@
 //! Update and title of the filing tab on a hand-built plan, without a model.
 
-// reason: a failing assertion is the signal in a test
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 

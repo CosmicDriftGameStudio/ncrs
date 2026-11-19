@@ -1,6 +1,8 @@
 use crate::app::*;
 use iced::keyboard::key::Named;
+use ncrs_ops::prompt::PromptKind;
 use ncrs_ops::prompt::{PromptError, PromptProblem};
+use ncrs_ops::OpsMessage;
 
 fn app() -> App {
     App::with_environment(Environment::isolated()).0
@@ -8,7 +10,7 @@ fn app() -> App {
 
 fn with_prompt() -> App {
     let mut app = app();
-    app.ops.prompt = Some(Prompt::create_dir(PathBuf::from("/tmp")));
+    app.ops.prompt = Some(Prompt::create_dir(PathBuf::from("/tmp")).on_side(PanelSide::Left));
     app
 }
 
@@ -305,7 +307,6 @@ fn escape_closes_the_prompt() {
 
     press_and_update(&mut app, Key::Named(Named::Escape));
     assert!(app.ops.prompt.is_none());
-    assert_eq!(app.ops.prompt_side, None);
 }
 
 /// A result that arrives after the user dismissed the prompt is dropped:
@@ -317,13 +318,13 @@ fn a_result_from_a_dismissed_prompt_is_ignored() {
     app.ops.prompt_request_id = 7;
     press_and_update(&mut app, Key::Named(Named::Escape));
 
-    let stale = Message::PromptFinished {
-        prompt: PromptKind::CreateDir,
+    let stale = Message::Ops(OpsMessage::PromptFinished {
+        kind: PromptKind::CreateDir,
         request_id: 7,
         result: Err(fs::CreateDirError::TaskFailed {
             reason: "stale".into(),
         }),
-    };
+    });
     let _task = app.update(stale);
     assert!(app.ops.prompt.is_none());
 }

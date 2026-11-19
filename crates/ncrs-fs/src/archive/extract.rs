@@ -385,12 +385,6 @@ fn apply_mode(_file: &File, _mode: Option<u32>) -> io::Result<()> {
     Ok(())
 }
 
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::super::fixtures::{

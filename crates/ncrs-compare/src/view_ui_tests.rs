@@ -1,8 +1,6 @@
 //! The start dialog, the sync dialog with its delete list and the compare bar.
 
-// reason: a failing assertion is the signal in a test
-#![allow(clippy::unwrap_used)]
-
+use ncrs_ui_kit::snapshot_support::ReferenceSnapshot as _;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
@@ -178,7 +176,7 @@ mod ui_tests {
         let matches = simulator
             .snapshot(&iced::Theme::Dark)
             .unwrap()
-            .matches_image(image)
+            .matches_reference_image(image)
             .unwrap();
         assert!(matches, "{image} differs");
     }

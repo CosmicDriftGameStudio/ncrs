@@ -78,7 +78,8 @@ async fn confirming_starts_the_transfer_with_the_chosen_policy() {
     let _policy = app.update(dialog_message(TransferDialogMessage::SetPolicy(
         Policy::Overwrite,
     )));
-    let _confirm = app.update(dialog_message(TransferDialogMessage::Confirm));
+    app.settle_checks_for_test(dialog_message(TransferDialogMessage::Confirm))
+        .await;
     assert!(app.ops.transfer_dialog.is_none());
     let transfer = app.ops.transfer.as_ref().expect("nothing started");
     assert_eq!(transfer.target, std::fs::canonicalize(&to).unwrap());
@@ -93,7 +94,8 @@ async fn asking_leaves_no_standing_answer() {
     let root = tempfile::tempdir().unwrap();
     let (mut app, _, _) = dialog_app(root.path());
     let _open = app.update(Message::Transfer(TransferKind::Move));
-    let _confirm = app.update(dialog_message(TransferDialogMessage::Confirm));
+    app.settle_checks_for_test(dialog_message(TransferDialogMessage::Confirm))
+        .await;
     assert!(app.ops.transfer.is_some());
     assert_eq!(app.ops.conflict_rule, None);
 }
@@ -107,7 +109,8 @@ async fn a_target_inside_the_selection_is_refused_in_the_dialog() {
     let _typed = app.update(dialog_message(TransferDialogMessage::TargetInput(
         inside.display().to_string(),
     )));
-    let _confirm = app.update(dialog_message(TransferDialogMessage::Confirm));
+    app.settle_checks_for_test(dialog_message(TransferDialogMessage::Confirm))
+        .await;
     assert!(app.ops.transfer.is_none());
     let dialog = app.ops.transfer_dialog.as_ref().expect("dialog closed");
     assert!(dialog.refusal().is_some());
@@ -146,7 +149,8 @@ async fn f5_during_a_transfer_brings_the_progress_back() {
     let root = tempfile::tempdir().unwrap();
     let (mut app, _, _) = dialog_app(root.path());
     let _open = app.update(Message::Transfer(TransferKind::Copy));
-    let _confirm = app.update(dialog_message(TransferDialogMessage::Confirm));
+    app.settle_checks_for_test(dialog_message(TransferDialogMessage::Confirm))
+        .await;
     let _hidden = app.update(dialog_message(TransferDialogMessage::Background));
     assert!(!app.ops.progress_mask_is_open());
     let _again = app.update(Message::Transfer(TransferKind::Copy));
@@ -227,4 +231,17 @@ async fn the_target_follows_the_active_panel() {
     // and the target is the other.
     assert_eq!(transfer.sources, vec![PathBuf::from("/right/x.txt")]);
     assert_eq!(transfer.target, PathBuf::from("/left"));
+}
+
+#[tokio::test]
+async fn the_menu_is_blocked_while_the_progress_mask_is_up() {
+    let root = tempfile::tempdir().unwrap();
+    let (mut app, _, _) = dialog_app(root.path());
+    let _open = app.update(Message::Transfer(TransferKind::Copy));
+    app.settle_checks_for_test(dialog_message(TransferDialogMessage::Confirm))
+        .await;
+    assert!(app.ops.progress_mask_is_open());
+    assert_eq!(app.menu_state().availability, Availability::Blocked);
+    let _hidden = app.update(dialog_message(TransferDialogMessage::Background));
+    assert_ne!(app.menu_state().availability, Availability::Blocked);
 }

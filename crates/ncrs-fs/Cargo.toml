@@ -9,6 +9,13 @@ license = "MIT"
 publish = false
 
 [dependencies]
+# The crates behind ripgrep, for the file search.
+ignore = "0.4.33"
+globset = "0.4.20"
+grep-regex = "0.1.14"
+grep-searcher = "0.1.17"
+grep-matcher = "0.1.9"
+unicode-normalization = "0.1.26"
 ncrs-core = { path = "../ncrs-core", version = "0.0.0" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }

@@ -10,17 +10,17 @@ use ncrs_i18n::Msg;
 use ncrs_ui_kit::focus::release_focus;
 
 use crate::action::{Action, TransferAction};
-use crate::archive_flow::start_pack;
+use crate::checked_flow::{
+    check_external_copy, check_pack_target, check_transfer_dialog, stage_paste,
+};
 use crate::clipboard_paste::PastedContent;
 use crate::ctx::FlowCtx;
-use crate::delete_flow::{actions, busy_notice, idle, with_front, Outcome};
+use crate::delete_flow::{actions, busy_notice, idle, Outcome};
 use crate::message::{OpsMessage, TransferDialogMessage};
 use crate::prompt::{Prompt, PromptKind};
 use crate::state::Ops;
-use crate::transfer::view::{refusal_text, BACKGROUND_FOCUS};
-use crate::transfer::{self, Policy};
-use crate::transfer_flow::start_validated_transfer;
-use crate::transfer_open::{conflicts_task, unreachable_server_text, ValidTransfer};
+use crate::transfer::view::BACKGROUND_FOCUS;
+use crate::transfer_open::conflicts_task;
 
 /// What a panel shows, as far as the questions need it.
 #[derive(Debug, Clone)]
@@ -151,27 +151,10 @@ pub fn update_transfer_dialog_flow(
     }
 }
 
-/// Enter in the confirmation: refuse a target that cannot take the
-/// selection, with the reason in the dialog, or start the transfer.
-pub fn confirm_transfer(ops: &mut Ops, ctx: &FlowCtx<'_>) -> Outcome {
-    let Some(ValidTransfer {
-        kind,
-        sources,
-        target,
-        policy,
-    }) = ops.validate_transfer_dialog()
-    else {
-        return idle();
-    };
-    if let Some(refusal) = unreachable_server_text(ctx.remote, &target, ctx.lang) {
-        return actions(vec![Action::ShowError(refusal)]);
-    }
-    if ctx.jobs_busy {
-        return busy_notice(ctx);
-    }
-    ops.transfer_dialog = None;
-    let (started, asked) = start_validated_transfer(ops, kind, sources, target, policy, ctx);
-    (Task::batch([release_focus(), started]), asked)
+/// Enter in the confirmation: checks the target on the blocking pool; the
+/// answer refuses it, with the reason in the dialog, or starts the transfer.
+pub fn confirm_transfer(ops: &mut Ops, _ctx: &FlowCtx<'_>) -> Outcome {
+    check_transfer_dialog(ops)
 }
 
 /// Copies files that come from outside the panels (dropped from another
@@ -192,19 +175,9 @@ pub fn copy_external_files(
         let text = ctx.lang.text(Msg::StatusDropBusy).to_owned();
         return actions(vec![Action::ShowNotice(text)]);
     }
-    let resolved = match transfer::validate(TransferKind::Copy, &paths, active.path) {
-        Ok(resolved) => resolved,
-        Err(refusal) => {
-            let text = refusal_text(refusal, ctx.lang).to_owned();
-            return actions(vec![Action::ShowError(text)]);
-        }
-    };
-    if let Some(unreachable) = unreachable_server_text(ctx.remote, &resolved, ctx.lang) {
-        return actions(vec![Action::ShowError(unreachable)]);
-    }
-    with_front(
-        Action::ClearStatus,
-        start_validated_transfer(ops, TransferKind::Copy, paths, resolved, Policy::Ask, ctx),
+    (
+        check_external_copy(paths, active.path.to_path_buf()),
+        Vec::new(),
     )
 }
 
@@ -256,21 +229,10 @@ fn ask_for_pasted_file_name(
 
 /// Enter in a prompt that starts a job: the pack prompt writes the archive,
 /// the paste prompt copies the staged file.
-pub fn start_prompt_job(ops: &mut Ops, active: PanelFacts<'_>, ctx: &FlowCtx<'_>) -> Outcome {
+pub fn start_prompt_job(ops: &mut Ops, ctx: &FlowCtx<'_>) -> Outcome {
     match ops.prompt.as_ref().map(Prompt::kind) {
-        Some(PromptKind::Pack) => {
-            if ctx.jobs_busy {
-                return busy_notice(ctx);
-            }
-            let Some(request) = ops.take_pack_request(active.side) else {
-                return idle();
-            };
-            start_pack(ops, request, ctx)
-        }
-        Some(PromptKind::Paste) => match ops.stage_paste() {
-            Some(file) => copy_external_files(ops, vec![file], active, ctx),
-            None => idle(),
-        },
+        Some(PromptKind::Pack) => check_pack_target(ops, ctx),
+        Some(PromptKind::Paste) => stage_paste(ops),
         Some(PromptKind::CreateDir | PromptKind::CreateFile) | None => idle(),
     }
 }

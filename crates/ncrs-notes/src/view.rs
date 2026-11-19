@@ -12,7 +12,7 @@ use ncrs_ui_kit::page_scroll::page_scroll;
 use ncrs_ui_kit::page_status_bar::{page_status_bar, PageStatusBar, PageStatusLine};
 use ncrs_ui_kit::page_text::{page_heading, page_line};
 use ncrs_ui_kit::palette::Palette;
-use ncrs_ui_kit::theme::{self, font_size, spacing};
+use ncrs_ui_kit::theme::{self, font_size, size, spacing};
 use ncrs_ui_kit::tree_list::{result_row, tree_row, ResultRow, TreeRow, TREE_INDENT};
 
 use crate::ctx::ViewCtx;
@@ -27,7 +27,7 @@ pub const EDITOR_ID: &str = "notes-editor";
 const TREE_ID: &str = "notes-tree";
 const NOTE_ID: &str = "notes-note";
 
-const SIDEBAR_WIDTH: f32 = 300.0;
+const SIDEBAR_WIDTH: f32 = size::SIDE_PANE;
 /// From this width of the note pane the editor and the rendered note sit side by side.
 const SPLIT_MIN_WIDTH: f32 = 1100.0;
 

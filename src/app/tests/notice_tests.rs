@@ -94,7 +94,7 @@ fn quitting_while_a_job_runs_opens_a_question_that_keeps_or_stops_it() {
     assert_eq!(app.dialog_focus, ncrs_ops::quit_dialog::CANCEL_FOCUS);
     assert!(app.jobs.is_busy());
 
-    drop(app.update(Message::QuitCancel));
+    drop(app.update(Message::from(ncrs_ops::OpsMessage::QuitCancel)));
     assert!(!app.ops.quit_dialog);
     assert!(app.jobs.is_busy(), "keeping the job stopped it");
 

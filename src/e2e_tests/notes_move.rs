@@ -3,7 +3,6 @@
 //! with a plain index; the move is the user's own F6.
 
 #![cfg(unix)]
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 
 use std::path::PathBuf;
 use std::time::Duration;

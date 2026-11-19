@@ -15,6 +15,7 @@ use crate::ctx::Ctx;
 use crate::header_drag::{self, HeaderPhase, HeaderPress};
 use crate::header_menu::HeaderMenu;
 use crate::message::PanelMessage;
+use crate::name_match::{type_ahead_key, typed_key};
 use crate::panel::PanelState;
 use crate::panel_drag::{self, PanelDrag};
 use crate::state::Panels;
@@ -296,6 +297,27 @@ pub fn update(
             }
         }
         PanelMessage::HeaderMenuClose => panels.header_menu = None,
+        PanelMessage::HeaderMenuMove(step) => {
+            if let Some(menu) = panels.header_menu.as_mut() {
+                let entries = crate::header_menu::entry_messages(
+                    ctx.columns.of(menu.side),
+                    ctx.columns.same_in_both,
+                );
+                menu.selected = crate::header_menu::step_selection(menu.selected, &entries, step);
+            }
+        }
+        PanelMessage::HeaderMenuChoose => {
+            let chosen = panels.header_menu.and_then(|menu| {
+                let entries = crate::header_menu::entry_messages(
+                    ctx.columns.of(menu.side),
+                    ctx.columns.same_in_both,
+                );
+                entries.into_iter().nth(menu.selected?)?
+            });
+            if let Some(message) = chosen {
+                return update(panels, message, ctx);
+            }
+        }
 
         PanelMessage::RowActivated { side, index, name } => {
             activate_row(panels, ctx, (side, index, &name), &mut actions);
@@ -303,6 +325,34 @@ pub fn update(
 
         PanelMessage::RenameStart => task = panels.begin_rename(),
         PanelMessage::RenameInput(typed) => panels.type_rename(typed),
+        PanelMessage::VolumeMenuMove(delta) => {
+            if let Some(menu) = panels.volume_menu.as_mut() {
+                menu.move_by(delta);
+            }
+        }
+        PanelMessage::VolumeMenuFirst => {
+            if let Some(menu) = panels.volume_menu.as_mut() {
+                menu.selected = 0;
+            }
+        }
+        PanelMessage::VolumeMenuLast => {
+            if let Some(menu) = panels.volume_menu.as_mut() {
+                menu.selected = menu.last_row();
+            }
+        }
+        PanelMessage::VolumeMenuActivate => {
+            actions.extend(panels.go_to_selected_volume(ctx.lang));
+        }
+        PanelMessage::VolumeMenuClick(index) => {
+            if let Some(menu) = panels.volume_menu.as_mut() {
+                menu.selected = index;
+            }
+            actions.extend(panels.go_to_selected_volume(ctx.lang));
+        }
+        PanelMessage::VolumeMenuClose => panels.volume_menu = None,
+        PanelMessage::VolumeMenuRemove => {
+            actions.extend(panels.remove_highlighted_row(ctx.saved_servers));
+        }
         PanelMessage::RenameSubmit => actions.extend(panels.confirm_rename()),
     }
     (task, actions)
@@ -378,16 +428,12 @@ fn jump_to_typed(panels: &mut Panels, ctx: &Ctx<'_>, typed: &str) {
     }
     let rows = ctx.visible_rows;
     let now = (ctx.clock)();
-    let prefix = panels.type_ahead.extend(typed, now).to_lowercase();
+    let prefix = typed_key(panels.type_ahead.extend(typed, now));
     let panel = panels.active_panel_mut();
-    let found = panel.entries.iter().position(|entry| {
-        !entry.is_parent
-            && entry
-                .name
-                .to_string_lossy()
-                .to_lowercase()
-                .starts_with(&prefix)
-    });
+    let found = panel
+        .entries
+        .iter()
+        .position(|entry| !entry.is_parent && type_ahead_key(&entry.name).starts_with(&prefix));
     if let Some(index) = found {
         panel.select(index, rows);
     }

@@ -59,7 +59,9 @@ async fn a_drop_copies_all_files_into_the_active_panel() {
     let mut case = dropping();
     let generation = drop_both(&mut case);
 
-    drop(case.app.update(Message::DropSettled(generation)));
+    case.app
+        .settle_checks_for_test(Message::DropSettled(generation))
+        .await;
 
     let transfer = case.app.ops.transfer.as_ref().expect("no transfer started");
     assert_eq!(transfer.kind, TransferKind::Copy);
@@ -78,7 +80,9 @@ async fn a_drop_goes_to_the_left_panel_when_that_is_active() {
     case.app.panels.active = PanelSide::Left;
     let generation = drop_both(&mut case);
 
-    drop(case.app.update(Message::DropSettled(generation)));
+    case.app
+        .settle_checks_for_test(Message::DropSettled(generation))
+        .await;
 
     assert_eq!(
         case.app.ops.transfer.as_ref().unwrap().target,
@@ -147,7 +151,9 @@ async fn a_drop_into_the_folder_it_comes_from_is_refused_in_words() {
     case.app.panels.right.path = case.source_file.parent().unwrap().to_path_buf();
     let generation = drop_both(&mut case);
 
-    drop(case.app.update(Message::DropSettled(generation)));
+    case.app
+        .settle_checks_for_test(Message::DropSettled(generation))
+        .await;
 
     assert!(case.app.ops.transfer.is_none());
     assert!(case.app.job_error.is_some());

@@ -51,14 +51,38 @@ fn alt_f1_and_alt_f2_open_the_menu_for_their_panel() {
 fn an_open_menu_takes_the_movement_keys_and_nothing_else() {
     let menu = open_menu();
     let key = |named| route_key(&menu, Key::Named(named), Modifiers::default());
-    assert_eq!(key(Named::ArrowDown), Some(Message::VolumeMenuMove(1)));
-    assert_eq!(key(Named::ArrowUp), Some(Message::VolumeMenuMove(-1)));
-    assert_eq!(key(Named::Home), Some(Message::VolumeMenuFirst));
-    assert_eq!(key(Named::End), Some(Message::VolumeMenuLast));
-    assert_eq!(key(Named::Enter), Some(Message::VolumeMenuActivate));
-    assert_eq!(key(Named::Escape), Some(Message::VolumeMenuClose));
-    assert_eq!(key(Named::Delete), Some(Message::VolumeMenuRemove));
-    assert_eq!(key(Named::Backspace), Some(Message::VolumeMenuRemove));
+    assert_eq!(
+        key(Named::ArrowDown),
+        Some(Message::Panel(PanelMessage::VolumeMenuMove(1)))
+    );
+    assert_eq!(
+        key(Named::ArrowUp),
+        Some(Message::Panel(PanelMessage::VolumeMenuMove(-1)))
+    );
+    assert_eq!(
+        key(Named::Home),
+        Some(Message::Panel(PanelMessage::VolumeMenuFirst))
+    );
+    assert_eq!(
+        key(Named::End),
+        Some(Message::Panel(PanelMessage::VolumeMenuLast))
+    );
+    assert_eq!(
+        key(Named::Enter),
+        Some(Message::Panel(PanelMessage::VolumeMenuActivate))
+    );
+    assert_eq!(
+        key(Named::Escape),
+        Some(Message::Panel(PanelMessage::VolumeMenuClose))
+    );
+    assert_eq!(
+        key(Named::Delete),
+        Some(Message::Panel(PanelMessage::VolumeMenuRemove))
+    );
+    assert_eq!(
+        key(Named::Backspace),
+        Some(Message::Panel(PanelMessage::VolumeMenuRemove))
+    );
     for ignored in [Named::F5, Named::F8, Named::Tab] {
         assert_eq!(key(ignored), None, "{ignored:?} reached the panels");
     }
@@ -66,10 +90,10 @@ fn an_open_menu_takes_the_movement_keys_and_nothing_else() {
 
 #[test]
 fn movement_repeats_but_choosing_does_not() {
-    assert!(repeats(&Message::VolumeMenuMove(1)));
-    assert!(repeats(&Message::VolumeMenuFirst));
-    assert!(repeats(&Message::VolumeMenuLast));
-    assert!(!repeats(&Message::VolumeMenuActivate));
+    assert!(repeats(&Message::Panel(PanelMessage::VolumeMenuMove(1))));
+    assert!(repeats(&Message::Panel(PanelMessage::VolumeMenuFirst)));
+    assert!(repeats(&Message::Panel(PanelMessage::VolumeMenuLast)));
+    assert!(!repeats(&Message::Panel(PanelMessage::VolumeMenuActivate)));
     assert!(!repeats(&Message::VolumeMenu(PanelSide::Left)));
 }
 
@@ -93,10 +117,11 @@ fn the_highlight_stops_at_both_ends() {
     assert_eq!(menu.selected, 2);
 }
 
-#[test]
-fn the_menu_opens_for_the_panel_that_asked() {
+#[tokio::test]
+async fn the_menu_opens_for_the_panel_that_asked() {
     let mut app = App::with_fixed_panels().with_volumes(drives);
-    let _open = app.update(Message::VolumeMenu(PanelSide::Right));
+    app.settle_checks_for_test(Message::VolumeMenu(PanelSide::Right))
+        .await;
     assert_eq!(
         app.panels.volume_menu.as_ref().unwrap().side,
         PanelSide::Right
@@ -105,25 +130,27 @@ fn the_menu_opens_for_the_panel_that_asked() {
     assert_eq!(app.volume_menu_selected(), Some(1));
     assert!(app.prompt_key_state().volume_menu);
 
-    let _close = app.update(Message::VolumeMenuClose);
+    let _close = app.update(Message::Panel(PanelMessage::VolumeMenuClose));
     assert!(!app.volume_menu_is_open());
     assert!(!app.prompt_key_state().volume_menu);
 }
 
-#[test]
-fn a_dialog_keeps_the_menu_from_opening() {
+#[tokio::test]
+async fn a_dialog_keeps_the_menu_from_opening() {
     let mut app = App::with_fixed_panels().with_volumes(drives);
     app.open_delete_dialog_for_test(1, false);
-    let _open = app.update(Message::VolumeMenu(PanelSide::Left));
+    app.settle_checks_for_test(Message::VolumeMenu(PanelSide::Left))
+        .await;
     assert!(!app.volume_menu_is_open());
 }
 
 #[tokio::test]
 async fn choosing_a_drive_loads_it_and_activates_its_panel() {
     let mut app = App::with_fixed_panels().with_volumes(drives);
-    let _open = app.update(Message::VolumeMenu(PanelSide::Right));
-    let _down = app.update(Message::VolumeMenuMove(1));
-    let _enter = app.update(Message::VolumeMenuActivate);
+    app.settle_checks_for_test(Message::VolumeMenu(PanelSide::Right))
+        .await;
+    let _down = app.update(Message::Panel(PanelMessage::VolumeMenuMove(1)));
+    let _enter = app.update(Message::Panel(PanelMessage::VolumeMenuActivate));
     assert!(!app.volume_menu_is_open());
     assert_eq!(app.panels.active, PanelSide::Right);
     assert!(app.panel(PanelSide::Right).loading);

@@ -1,10 +1,3 @@
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -300,6 +293,8 @@ mod abort {
             right_archive: None,
             left_server: None,
             right_server: None,
+            left_folder: PathBuf::new(),
+            right_folder: PathBuf::new(),
             remote: &remote,
             permanent_delete_key: None,
             restore_last_key: None,

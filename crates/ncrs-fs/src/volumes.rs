@@ -2,7 +2,8 @@
 //! under "Locations".
 //!
 //! Listing must never touch a mount: a network share that went away hangs
-//! `stat` for as long as the kernel retries, and the menu opens synchronously.
+//! `stat` for as long as the kernel retries. The app reads the list off the UI thread, but
+//! a slow mount would still make the menu late.
 //! So this reads names only (`read_dir` of `/Volumes` and
 //! `~/Library/CloudStorage`, `/proc/mounts`, `read_link`) and checks nothing
 //! about what it finds. Whether a volume can be entered is found out by the
@@ -322,12 +323,6 @@ fn unescape_mount_field(field: &str) -> String {
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::*;

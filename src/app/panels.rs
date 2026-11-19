@@ -420,14 +420,13 @@ impl App {
         let Some(folder) = self.panels.local_folder_target() else {
             return;
         };
-        // Looked up only when nothing is set: Launch Services is asked on
-        // every use, not remembered.
+        // Only needed when no terminal is set.
         let detected = match self.open_programs.terminal {
-            Some(_) => Vec::new(),
-            None => fs::detect_terminals(),
+            Some(_) => &[],
+            None => fs::detected_terminals(),
         };
         let command =
-            match fs::terminal_command(self.open_programs.terminal.as_ref(), &detected, &folder) {
+            match fs::terminal_command(self.open_programs.terminal.as_ref(), detected, &folder) {
                 Ok(command) => command,
                 Err(fs::NoTerminal) => {
                     let text = self.lang.text(Msg::ErrorTerminalNone).to_owned();
@@ -579,6 +578,7 @@ impl App {
         let overlay_is_open = self.overlay_is_open();
         let context_menu_is_open = self.panels.context_menu.is_some();
         let pointer = self.input.lock().pointer;
+        let saved_servers = self.saved_server_ids();
         let ctx = ncrs_files::Ctx {
             columns: column_settings_of(&self.columns),
             has_hermes_column: self.hermes.is_active()
@@ -592,6 +592,8 @@ impl App {
             context_menu_is_open,
             clock: &*self.clock,
             nearest_existing_directory: session_state::nearest_existing_directory,
+            lang: self.lang,
+            saved_servers: &saved_servers,
         };
         let (task, actions) = ncrs_files::update(&mut self.panels, message, &ctx);
         let mapped = task.map(Message::Panel);
@@ -610,8 +612,31 @@ impl App {
         Task::batch(acted)
     }
 
-    /// What the drive menu lists, read when it opens.
-    pub(in crate::app) fn volume_facts_source(&self) -> impl FnOnce() -> ncrs_files::VolumeFacts {
+    /// Alt+F1 / Alt+F2 and the favourites key: reads what the menu lists on the
+    /// blocking pool, since listing the drives and looking at each favourite
+    /// touch the disks. The answer opens the menu.
+    pub(in crate::app) fn request_volume_menu(
+        &mut self,
+        side: PanelSide,
+        on_favourites: bool,
+    ) -> Task<Message> {
+        if self.overlay_is_open() {
+            return Task::none();
+        }
+        let request = self.panels.next_volume_menu_request();
+        let read = self.volume_facts_source();
+        Task::perform(tokio::task::spawn_blocking(read), move |facts| {
+            Message::VolumeMenuFacts {
+                request,
+                side,
+                on_favourites,
+                facts: facts.unwrap_or_default(),
+            }
+        })
+    }
+
+    /// What the drive menu lists.
+    fn volume_facts_source(&self) -> impl FnOnce() -> ncrs_files::VolumeFacts + Send + 'static {
         let list_volumes = Arc::clone(&self.list_volumes);
         let remote = Arc::clone(&self.remote);
         let trash = Arc::clone(&self.trash);
@@ -625,11 +650,19 @@ impl App {
                 connected: false,
             })
             .collect();
+        let favourites = self.panels.favourites.clone();
         move || ncrs_files::VolumeFacts {
             volumes: list_volumes(),
             saved_servers,
             connected: remote.connected(),
             trash: ncrs_ops::trash_menu_row(trash.reach()),
+            favourites: favourites
+                .into_iter()
+                .map(|path| ncrs_files::volumes_view::FavouriteRow {
+                    present: path.is_dir(),
+                    path,
+                })
+                .collect(),
         }
     }
 

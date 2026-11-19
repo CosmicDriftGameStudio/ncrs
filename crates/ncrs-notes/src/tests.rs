@@ -1,11 +1,3 @@
-// reason: a failing assertion is the signal in a test
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::indexing_slicing,
-    clippy::panic
-)]
-
 use std::fs;
 use std::path::{Path, PathBuf};
 

@@ -180,7 +180,6 @@ pub fn prefix_text(documents: &[ContextDocument], kinds: &Kinds) -> String {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used)]
 
     use super::*;
     use crate::rules::matrix::{all_cases, fixtures, Expected};

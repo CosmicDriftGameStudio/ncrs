@@ -183,12 +183,6 @@ impl From<&ModelPin> for ncrs_model_file::PinnedFile {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     use std::fs::OpenOptions;
     use std::io::Write as _;

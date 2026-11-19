@@ -225,7 +225,6 @@ fn step_in_open_list<M: Clone>(
 #[cfg(test)]
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use SettingsFeature::{Columns, Language, Look};

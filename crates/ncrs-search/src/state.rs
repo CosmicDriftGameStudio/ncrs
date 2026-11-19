@@ -10,17 +10,13 @@ use ncrs_ui_kit::focus::release_focus;
 use ncrs_ui_kit::layout::{self, HIT_LIST_ROW_HEIGHT};
 
 use crate::ctx::Ctx;
-use crate::engine::{self, CompiledSearch, SearchError, SearchEvent};
+use crate::engine::{self, search_events, SearchError, SearchEvent};
 use crate::message::SearchMessage;
 use crate::view::{field_id, NAMES_ID};
 use crate::view_state::SearchView;
 
 /// How long the search view waits for the next keystroke before it searches.
 const SEARCH_DEBOUNCE: Duration = Duration::from_millis(250);
-
-/// The most events one message carries, so a search that finds thousands of
-/// files does not make thousands of updates.
-const SEARCH_BATCH: usize = 256;
 
 #[derive(Debug)]
 pub struct Search {
@@ -38,28 +34,6 @@ pub struct Search {
     /// Stops the running search when dropped, which also drops the receiver
     /// of a search it abandoned.
     pub handle: Option<iced::task::Handle>,
-}
-
-/// The messages of one search, in batches. Ends when the engine is done or the
-/// task is aborted.
-///
-/// The engine is started inside the stream: it spawns onto the blocking pool,
-/// which needs the runtime a task runs in, and `update` does not run in one.
-pub fn search_events<T: Send + 'static>(
-    compiled: CompiledSearch,
-    generation: u64,
-    to_message: fn(u64, Vec<SearchEvent>) -> T,
-) -> impl iced::futures::Stream<Item = T> + Send + 'static {
-    use iced::futures::StreamExt as _;
-    iced::futures::stream::once(async move { engine::spawn(compiled) })
-        .map(move |receiver| {
-            iced::futures::stream::unfold(receiver, move |mut open| async move {
-                let mut events = Vec::new();
-                let received = open.recv_many(&mut events, SEARCH_BATCH).await;
-                (received > 0).then(|| (to_message(generation, events), open))
-            })
-        })
-        .flatten()
 }
 
 fn events_message(generation: u64, events: Vec<SearchEvent>) -> SearchMessage {

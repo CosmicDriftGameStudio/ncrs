@@ -25,6 +25,8 @@ towards them (see "Where code lives" below). Never copy a pattern from the code 
 - Before building UI, look in the kit. If something is missing, add it to the kit as a component that takes what it
   shows and returns an `Element`, generic over the message type.
 - The same thing looks the same everywhere: a list of files is always the kit's file row.
+- Sizes that two or more features use (label columns, field widths, side panes, list heights) are tokens in
+  `ncrs_ui_kit::theme::size`. A local `const` is for a size that belongs to one view alone.
 - User-facing text only in `strings.json`, with translator context (see CONTRIBUTING.md).
 
 ## Building and testing locally

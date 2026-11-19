@@ -57,6 +57,20 @@ pub enum PanelMessage {
     /// Ctrl+`*`: drop every tag.
     ClearTags,
 
+    // --- The drive menu ---
+    /// Up or Down in the open menu.
+    VolumeMenuMove(isize),
+    VolumeMenuFirst,
+    VolumeMenuLast,
+    /// Enter in the open menu: go to the highlighted drive.
+    VolumeMenuActivate,
+    /// A click on the entry at this index: highlight it and go there.
+    VolumeMenuClick(usize),
+    VolumeMenuClose,
+    /// Delete or Backspace in the drive menu: take the highlighted favourite
+    /// out of the list. A drive row ignores it.
+    VolumeMenuRemove,
+
     // --- Panel handling ---
     /// Wheel or trackpad over a panel.
     PanelScrolled {
@@ -127,6 +141,10 @@ pub enum PanelMessage {
     HeaderMenuConfigure,
     HeaderMenuRestore,
     HeaderMenuClose,
+    /// An arrow key in the open header menu.
+    HeaderMenuMove(isize),
+    /// Enter in the open header menu: the highlighted entry.
+    HeaderMenuChoose,
 
     // --- Renaming in place ---
     /// Shift+F6: the name of the cursor entry becomes an input.

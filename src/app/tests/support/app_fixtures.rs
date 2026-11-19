@@ -69,8 +69,6 @@ impl App {
             chat_model_error: None,
             turning_hermes_on: false,
             quick_open: None,
-            quick_open_walk_generation: 0,
-            quick_open_walk: None,
             command_palette: None,
             recent_commands: Vec::new(),
             wall_clock: Arc::new(ncrs_pipeline::SystemClock),

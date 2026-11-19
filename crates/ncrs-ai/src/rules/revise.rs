@@ -45,7 +45,6 @@ pub fn revise_question(previous: &Levels, sentence: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used)]
 
     use super::*;
     use crate::rules::parse::parse_revision;
