@@ -79,22 +79,7 @@ impl QueryAccess {
     }
 
     pub fn run(&self, spec: &QuerySpec) -> Result<Vec<QueryHit>, String> {
-        self.run_inside(spec, None)
-    }
-
-    fn run_inside(&self, spec: &QuerySpec, under: Option<&Path>) -> Result<Vec<QueryHit>, String> {
-        self.with_index(|index| {
-            Ok(index
-                .run_query_under(spec, under)?
-                .into_iter()
-                .map(|document| QueryHit {
-                    missing: document.missing_since.is_some(),
-                    stamp: document.stamp,
-                    path: document.path,
-                    fields: document.fields,
-                })
-                .collect())
-        })
+        self.with_index(|index| Ok(hits_of(index.run_query(spec)?)))
     }
 
     /// How many documents each of the queries finds.
@@ -118,9 +103,21 @@ impl QueryAccess {
 }
 
 impl ncrs_index::SearchIndex for QueryAccess {
-    /// Like [`QueryAccess::run`], but only the documents at or below `under`.
-    fn run_under(&self, spec: &QuerySpec, under: &Path) -> Result<Vec<QueryHit>, String> {
-        self.run_inside(spec, Some(under))
+    /// Like [`QueryAccess::run`], but only the documents at or below `under`
+    /// that are still there, at most `limit`.
+    fn run_under(
+        &self,
+        spec: &QuerySpec,
+        under: &Path,
+        limit: usize,
+    ) -> Result<Vec<QueryHit>, String> {
+        self.with_index(|index| {
+            Ok(hits_of(index.run_present_query_under(
+                spec,
+                Some(under),
+                limit,
+            )?))
+        })
     }
 
     /// The pieces of text around `words` of the documents at `paths`, marked
@@ -167,6 +164,18 @@ impl ncrs_index::SearchIndex for QueryAccess {
             index.update_saved_query(id, &saved.name, spec)
         })
     }
+}
+
+fn hits_of(documents: Vec<ncrs_index::Document>) -> Vec<QueryHit> {
+    documents
+        .into_iter()
+        .map(|document| QueryHit {
+            missing: document.missing_since.is_some(),
+            stamp: document.stamp,
+            path: document.path,
+            fields: document.fields,
+        })
+        .collect()
 }
 
 /// How many of the hits an export would copy: the ones that are not missing.

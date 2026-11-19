@@ -266,7 +266,7 @@ fn talk(data: &Path, store: Store, label: &str) -> bool {
 }
 
 fn shot(app: &App, out: &str, name: &str) {
-    crate::screenshot_tests::write_screenshot_to(app, out, WINDOW, &format!("{name}.png"));
+    crate::shot_file::write_screenshot_to(app, out, WINDOW, &format!("{name}.png"));
 }
 
 fn fresh(root: &Path, name: &str, config: Option<&str>, model: Option<&PathBuf>) -> PathBuf {

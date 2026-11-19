@@ -204,6 +204,7 @@ fn menu_place_of(action: KeyAction) -> MenuPlace {
         KeyAction::AbortJob => at(4),
         KeyAction::ShowProgress => at(4),
         KeyAction::GrantFolderAccess => at(4).dialog(),
+        KeyAction::OpenPrivacySettings => at(4),
         KeyAction::Quit => at(5),
         KeyAction::ToggleTag | KeyAction::TagAll | KeyAction::ClearTags => at(0),
         KeyAction::CopyPath | KeyAction::CopyName | KeyAction::CopyFiles | KeyAction::Paste => {
@@ -447,6 +448,9 @@ fn command_without_place(action: KeyAction) -> Option<Command> {
             FuturamaName::ActionDownloadAiModel,
         ),
         KeyAction::GrantFolderAccess => Command::plain(action, File, Msg::ActionGrantFolderAccess),
+        KeyAction::OpenPrivacySettings => {
+            Command::plain(action, File, Msg::ActionOpenPrivacySettings)
+        }
         KeyAction::ConnectServer => Command::themed(
             action,
             Go,

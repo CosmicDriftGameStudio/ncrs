@@ -439,7 +439,14 @@ fn ctrl_alt_c_is_altgr_on_windows_and_no_toggle() {
 fn alt_c_w_r_are_not_swallowed_in_panel_mode() {
     use keyboard::key::Code;
     for (typed, code) in [("ç", Code::KeyC), ("w", Code::KeyW), ("®", Code::KeyR)] {
-        assert_eq!(press(false, typed, code, Modifiers::ALT), None, "{typed}");
+        // Option types characters on a Mac, and the jump takes what it typed.
+        let expected = cfg!(target_os = "macos")
+            .then(|| Message::Panel(PanelMessage::TypeAhead(typed.to_owned())));
+        assert_eq!(
+            press(false, typed, code, Modifiers::ALT),
+            expected,
+            "{typed}"
+        );
     }
 }
 

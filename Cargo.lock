@@ -3620,6 +3620,7 @@ name = "ncrs-i18n"
 version = "0.0.0"
 dependencies = [
  "ncrs-index-types",
+ "sys-locale",
 ]
 
 [[package]]

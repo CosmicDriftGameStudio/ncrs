@@ -332,8 +332,8 @@ pub fn cell_text(
 
 /// Width of a digit in the small font, in font sizes, to see what fits.
 const DIGIT_WIDTH_PER_SIZE: f32 = 0.6;
-const SUMMARY_GAP: f32 = 6.0;
-const ICON_COUNT_GAP: f32 = 2.0;
+const SUMMARY_GAP: f32 = spacing::M;
+const ICON_COUNT_GAP: f32 = spacing::XS;
 const ROLE_TAG_FONT: f32 = 10.0;
 /// Room kept free beside the cells of a row, for borders and rounding.
 const NAME_SAFETY_MARGIN: f32 = 4.0;

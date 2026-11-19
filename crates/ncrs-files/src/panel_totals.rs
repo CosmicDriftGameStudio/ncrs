@@ -227,14 +227,14 @@ mod tests {
 
     #[test]
     fn the_text_names_the_missing_folder_sizes() {
-        let panel = panel(vec![entry("a", false, 2048), entry("d", true, 0)]);
+        let panel = panel(vec![entry("a", false, 2000), entry("d", true, 0)]);
         let text = footer_text(&panel_totals(&panel), Language::English);
         assert_eq!(text, "1 file, 1 folder · 2.0 KB · without folder sizes");
     }
 
     #[test]
     fn the_text_of_a_selection_reads_selected_of_all() {
-        let mut panel = panel(vec![entry("a", false, 2048), entry("b", false, 2048)]);
+        let mut panel = panel(vec![entry("a", false, 2000), entry("b", false, 2000)]);
         panel.selection.toggle(&PathBuf::from("/d/a"));
         let text = footer_text(&panel_totals(&panel), Language::English);
         assert_eq!(text, "1 of 2 selected · 2.0 KB of 4.0 KB");
@@ -244,7 +244,7 @@ mod tests {
     fn a_partly_measured_folder_marks_the_total_as_a_lower_bound() {
         let partly = FileEntry {
             folder_size: Some(FolderSize {
-                bytes: 2048,
+                bytes: 2000,
                 partial: true,
             }),
             ..entry("d", true, 0)

@@ -19,7 +19,7 @@ use crate::app::{route_press, App};
 use crate::fs::FileEntry;
 use crate::messages::{BatchRenameMessage, CommandPaletteMessage, Message, PanelSide};
 use crate::palette::ThemePreset;
-use crate::screenshot_tests::write_view_to;
+use crate::shot_file::write_view_to;
 use crate::trailer_data::{
     archive_listing, dense_compare_app, dense_search_results, dense_showcase_app,
     downloads_position, server_listing, FRAME_SIZE,
@@ -542,7 +542,7 @@ fn themed_app(preset: ThemePreset) -> App {
 }
 
 #[test]
-#[ignore = "writes target/trailer; run with `cargo test -p ncrs trailer_frames -- --ignored`"]
+#[ignore = "writes target/trailer; run with `scripts/trailer/render.sh`"]
 fn trailer_frames() {
     let runtime = tokio::runtime::Runtime::new().expect("runtime");
     let _entered = runtime.enter();

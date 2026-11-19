@@ -433,16 +433,19 @@ impl App {
         self.visible_rows
     }
 
+    #[cfg(feature = "media-tools")]
     pub fn with_favourites_for_test(mut self, list: &[&str]) -> Self {
         self.panels.favourites = list.iter().map(PathBuf::from).collect();
         self
     }
 
+    #[cfg(feature = "media-tools")]
     pub fn activate_panel_for_test(&mut self, side: PanelSide) {
         self.panels.active = side;
     }
 
     /// A finished comparison of the two panels' folders, as if it had been scanned.
+    #[cfg(feature = "media-tools")]
     pub fn with_comparison_for_test(mut self, compared: ncrs_compare::Compared) -> Self {
         self.compare.run = Some(ncrs_compare::state::Run {
             folders: ncrs_compare::state::Folders {
@@ -459,12 +462,14 @@ impl App {
     }
 
     /// The commands the command list shows under "Recent", most recent first.
+    #[cfg(feature = "media-tools")]
     pub fn with_recent_commands_for_test(mut self, recent: &[KeyAction]) -> Self {
         self.recent_commands = recent.to_vec();
         self
     }
 
     /// Shows the look of `preset`, as the settings page does after a change.
+    #[cfg(feature = "media-tools")]
     pub fn show_theme_preset_for_test(&mut self, preset: ThemePreset) {
         self.theme_preset = preset;
         self.palette = preset.palette();
@@ -472,6 +477,7 @@ impl App {
 
     /// The settings tab on the colour scheme row, as running "Color scheme"
     /// from the command list opens it, on a config that loads.
+    #[cfg(feature = "media-tools")]
     pub fn with_colour_scheme_row_for_test() -> Self {
         let mut app = Self::with_settings_file(
             crate::messages::SettingsFeature::Look,
@@ -486,6 +492,7 @@ impl App {
 
     /// What the key subscription would know now, so a recorded key takes the
     /// route it takes in the window.
+    #[cfg(feature = "media-tools")]
     pub fn prompt_key_state_for_test(&self) -> PromptKeyState {
         self.prompt_key_state()
     }
@@ -810,6 +817,7 @@ impl App {
     }
 
     /// Takes the progress mask of a finished copy away again.
+    #[cfg(feature = "media-tools")]
     pub fn finish_progress_for_test(&mut self) {
         self.ops.transfer = None;
         self.job_progress = None;

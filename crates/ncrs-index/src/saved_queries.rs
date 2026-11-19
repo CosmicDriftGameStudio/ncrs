@@ -219,15 +219,44 @@ impl Index {
         spec: &QuerySpec,
         under: Option<&Path>,
     ) -> Result<Vec<Document>, IndexError> {
-        let Some((conditions, values)) = self.query_filter(spec, under)? else {
+        self.documents_of(spec, under, None)
+    }
+
+    /// Like [`Self::run_query_under`], but only the documents whose file is
+    /// still there, and at most `limit` of them in the same order.
+    pub fn run_present_query_under(
+        &self,
+        spec: &QuerySpec,
+        under: Option<&Path>,
+        limit: usize,
+    ) -> Result<Vec<Document>, IndexError> {
+        self.documents_of(spec, under, Some(limit))
+    }
+
+    /// With a `limit`, missing documents are left out in the database, so
+    /// they do not use up the limit.
+    fn documents_of(
+        &self,
+        spec: &QuerySpec,
+        under: Option<&Path>,
+        limit: Option<usize>,
+    ) -> Result<Vec<Document>, IndexError> {
+        let Some((mut conditions, mut values)) = self.query_filter(spec, under)? else {
             return Ok(Vec::new());
         };
+        if let Some(limit) = limit {
+            conditions.push("d.missing_since IS NULL".to_owned());
+            values.push(Value::Integer(i64::try_from(limit).unwrap_or(i64::MAX)));
+        }
         let mut sql = DOCUMENT_COLUMNS.to_owned();
         if !conditions.is_empty() {
             sql.push_str(" WHERE ");
             sql.push_str(&conditions.join(" AND "));
         }
         sql.push_str(" ORDER BY d.document_date IS NULL, d.document_date, d.path, d.id");
+        if limit.is_some() {
+            sql.push_str(" LIMIT ?");
+        }
 
         let mut statement = self.connection().prepare(&sql)?;
         let rows = statement
@@ -753,6 +782,35 @@ mod tests {
 
         assert_eq!(documents.len(), 1);
         assert!(documents[0].missing_since.is_some());
+    }
+
+    #[test]
+    fn the_present_query_leaves_out_missing_documents_before_it_cuts_at_the_limit() {
+        let (_dir, index, ids) = stocked();
+        index
+            .connection()
+            .execute(
+                "UPDATE document SET missing_since = 1 WHERE id = ?1",
+                [ids[3].get()],
+            )
+            .unwrap();
+        let everything = QuerySpec::default();
+        let present = |limit| -> Vec<DocumentId> {
+            index
+                .run_present_query_under(&everything, None, limit)
+                .unwrap()
+                .into_iter()
+                .map(|document| document.id)
+                .collect()
+        };
+        let all_present: Vec<DocumentId> = found(&index, &everything)
+            .into_iter()
+            .filter(|id| *id != ids[3])
+            .collect();
+
+        assert_eq!(present(100), all_present);
+        assert_eq!(present(2), all_present[..2].to_vec());
+        assert!(present(0).is_empty());
     }
 
     #[test]

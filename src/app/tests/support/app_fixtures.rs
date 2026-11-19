@@ -690,6 +690,7 @@ impl App {
         app
     }
 
+    #[cfg(feature = "media-tools")]
     pub fn with_version_for_test(mut self, version: &'static str) -> Self {
         self.app_version = version;
         self

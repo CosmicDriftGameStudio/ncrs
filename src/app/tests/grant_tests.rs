@@ -313,3 +313,18 @@ fn the_command_has_no_key_and_works_in_an_archive() {
         .next()
         .is_none());
 }
+
+#[test]
+fn the_privacy_settings_are_in_the_command_list_on_a_mac_outside_the_sandbox() {
+    let listed =
+        crate::commands::all().find(|command| command.action == KeyAction::OpenPrivacySettings);
+    assert_eq!(
+        listed.is_some(),
+        cfg!(target_os = "macos") && !fs::sandbox_active()
+    );
+    assert_eq!(
+        KeyAction::OpenPrivacySettings.message(),
+        Message::OpenPrivacySettings
+    );
+    assert!(KeyAction::OpenPrivacySettings.allowed_in_archive());
+}

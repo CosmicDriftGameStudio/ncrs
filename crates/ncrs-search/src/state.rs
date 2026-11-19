@@ -1,6 +1,8 @@
 //! The search as the app holds it: the view, whether it is up, and the run
 //! that fills it, with the tasks that start and stop that run.
 
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use iced::widget::operation;
@@ -13,7 +15,7 @@ use crate::ctx::Ctx;
 use crate::engine::{self, search_events, SearchError, SearchEvent};
 use crate::message::SearchMessage;
 use crate::view::{field_id, NAMES_ID};
-use crate::view_state::SearchView;
+use crate::view_state::{SearchView, INDEX_HIT_LIMIT};
 
 /// How long the search view waits for the next keystroke before it searches.
 const SEARCH_DEBOUNCE: Duration = Duration::from_millis(250);
@@ -34,6 +36,9 @@ pub struct Search {
     /// Stops the running search when dropped, which also drops the receiver
     /// of a search it abandoned.
     pub handle: Option<iced::task::Handle>,
+    /// The question asked of the index last, shared with the blocking
+    /// threads that answer it.
+    index_asked: Arc<AtomicU64>,
 }
 
 fn events_message(generation: u64, events: Vec<SearchEvent>) -> SearchMessage {
@@ -49,6 +54,7 @@ impl Search {
             rows: layout::search_visible_rows(window, 0.0, false, false, HIT_LIST_ROW_HEIGHT),
             generation: 0,
             handle: None,
+            index_asked: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -214,8 +220,22 @@ impl Search {
             filters.failed(ncrs_core::INDEX_NOT_OPEN.to_owned());
             return Task::none();
         };
+        self.index_asked.store(generation, Ordering::Relaxed);
+        let latest = Arc::clone(&self.index_asked);
         Task::perform(
-            tokio::task::spawn_blocking(move || access.run_under(&spec, &root)),
+            async move {
+                tokio::task::spawn_blocking(move || {
+                    // Typing on queues one question per pause behind the lock
+                    // of the index; one that is no longer the latest is
+                    // skipped, its answer would be dropped anyway.
+                    if latest.load(Ordering::Relaxed) == generation {
+                        access.run_under(&spec, &root, INDEX_HIT_LIMIT)
+                    } else {
+                        Ok(Vec::new())
+                    }
+                })
+                .await
+            },
             move |joined| {
                 let result = joined.unwrap_or_else(|join| Err(join.to_string()));
                 SearchMessage::IndexRan { generation, result }

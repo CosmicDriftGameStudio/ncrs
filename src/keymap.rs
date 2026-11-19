@@ -129,6 +129,7 @@ impl KeyActionMessage for KeyAction {
             Self::DownloadOcrModels => Message::OcrModels(OcrModelsMessage::Open),
             Self::DownloadAiModel => Message::AiModel(AiModelMessage::Open),
             Self::GrantFolderAccess => Message::Grant(GrantMessage::Open),
+            Self::OpenPrivacySettings => Message::OpenPrivacySettings,
             Self::ConnectServer => Message::Remote(RemoteMessage::OpenConnect),
             Self::DisconnectServer => Message::Remote(RemoteMessage::DisconnectActive),
             Self::SearchCase => Message::Search(SearchMessage::ToggleCase),

@@ -175,18 +175,18 @@ fn a_second_file_with_the_content_of_a_filed_one_is_a_duplicate_of_it() {
     let alfa = |path: &str, seed: u8| plan_file(path, seed, Some("Alfa AG"), date(2022, 7, 4));
     let source = reading(
         "/inbox",
-        vec![alfa("scan.pdf", 100), alfa("scan copy.pdf", 100)],
+        vec![alfa("scan 1.pdf", 100), alfa("scan 2.pdf", 100)],
     );
 
     let plan = trial_of(&Setup::new(), source, AnsweredGroups::default());
 
     let first = PathBuf::from("Alfa/2022/2022-07-04 Alfa Rechnung.pdf");
     assert_eq!(
-        outcome(&plan, "scan.pdf"),
+        outcome(&plan, "scan 1.pdf"),
         &TrialOutcome::Filed { to: first.clone() }
     );
     assert_eq!(
-        outcome(&plan, "scan copy.pdf"),
+        outcome(&plan, "scan 2.pdf"),
         &TrialOutcome::AlreadyThere { at: first }
     );
 }

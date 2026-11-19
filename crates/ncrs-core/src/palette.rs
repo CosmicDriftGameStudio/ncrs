@@ -115,7 +115,7 @@ impl ThemePreset {
                 status_bar: Color::from_rgb8(0x18, 0x17, 0x1D),
                 dialog: Color::from_rgb8(0x24, 0x22, 0x2D),
                 menu: Color::from_rgb8(0x24, 0x22, 0x2D),
-                menu_shortcut: Color::from_rgb8(0x85, 0x82, 0x8F),
+                menu_shortcut: Color::from_rgb8(0x8E, 0x8B, 0x97),
                 menu_shortcut_on_cursor: Color::from_rgb8(0x14, 0x13, 0x18),
                 menu_disabled: Color::from_rgb8(0x85, 0x82, 0x8F),
                 accent: Color::from_rgb8(0xD4, 0xA3, 0x73),

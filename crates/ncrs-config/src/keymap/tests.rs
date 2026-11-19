@@ -211,6 +211,7 @@ fn every_action_has_a_default_key_and_no_key_is_twice_bound() {
         KeyAction::DownloadOcrModels,
         KeyAction::DownloadAiModel,
         KeyAction::GrantFolderAccess,
+        KeyAction::OpenPrivacySettings,
         KeyAction::ConnectServer,
         KeyAction::DisconnectServer,
         KeyAction::Trash,

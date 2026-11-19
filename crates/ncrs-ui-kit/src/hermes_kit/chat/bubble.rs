@@ -5,22 +5,22 @@ use iced::widget::{button, container, rich_text, span, text, Column, Row, Space}
 use iced::{alignment, Background, Border, Color, Element, Font, Length, Pixels, Theme};
 
 use crate::palette::Palette;
-use crate::theme::{self, DISABLED_OPACITY};
+use crate::theme::{self, spacing, DISABLED_OPACITY};
 
 use super::*;
 
 const AVATAR_SIZE: f32 = 30.0;
 const BUBBLE_RADIUS: f32 = 16.0;
-const BUBBLE_TIP: f32 = 4.0;
-const BUBBLE_PAD_Y: f32 = 10.0;
-const BUBBLE_PAD_X: f32 = 14.0;
+const BUBBLE_TIP: f32 = spacing::XS;
+const BUBBLE_PAD_Y: f32 = spacing::L;
+const BUBBLE_PAD_X: f32 = spacing::XL;
 const BUBBLE_MAX_WIDTH: f32 = 620.0;
 const CHAT_TEXT: f32 = 14.0;
 const CHAT_LINE: f32 = 20.0;
-const CHIP_PAD_Y: f32 = 6.0;
-const CHIP_PAD_X: f32 = 14.0;
-const SMALL_CHIP_PAD_Y: f32 = 2.0;
-const SMALL_CHIP_PAD_X: f32 = 10.0;
+const CHIP_PAD_Y: f32 = spacing::M;
+const CHIP_PAD_X: f32 = spacing::XL;
+const SMALL_CHIP_PAD_Y: f32 = spacing::XS;
+const SMALL_CHIP_PAD_X: f32 = spacing::L;
 /// Puts the avatar level with the first line of a bubble.
 const AVATAR_TOP_NUDGE: f32 = BUBBLE_PAD_Y + (CHAT_LINE - AVATAR_SIZE) / 2.0;
 const BOLD_MARK: &str = "**";

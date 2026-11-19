@@ -86,3 +86,27 @@ fn a_config_that_gives_copy_the_key_f12_keeps_working_and_f12_copies() {
         Some(KeyAction::Copy.message())
     );
 }
+
+#[tokio::test]
+async fn the_filing_status_the_rules_and_the_saved_queries_open_from_the_page() {
+    let chord = Modifiers::COMMAND | Modifiers::SHIFT;
+    for (letter, action, page) in [
+        ("d", KeyAction::FilingStatus, HermesPage::Inspection),
+        ("b", KeyAction::Rules, HermesPage::Rules),
+        ("a", KeyAction::SavedQueries, HermesPage::SavedQueries),
+    ] {
+        let mut app = App::with_fixed_filing(Phase::Ready);
+        drop(app.update(toggle()));
+        let pressed = route_key(
+            &app.prompt_key_state(),
+            Key::Character(letter.into()),
+            chord,
+        );
+        assert_eq!(pressed, Some(action.message()), "{letter}");
+        if let Some(message) = pressed {
+            drop(app.update(message));
+        }
+        assert!(!app.monitor_shown(), "{letter}");
+        assert_eq!(app.open_hermes_page(), Some(page), "{letter}");
+    }
+}

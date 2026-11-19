@@ -311,7 +311,9 @@ mod tests {
             .expect("a scratch directory")
     }
 
-    #[tokio::test(start_paused = true)]
+    // Real time: a paused clock does not move while a blocking task runs, and
+    // the hung read is one until the end of the test.
+    #[tokio::test]
     async fn a_read_that_hangs_keeps_its_place_and_the_next_one_gives_up() {
         use std::sync::atomic::{AtomicBool, Ordering};
         static PLACES: Semaphore = Semaphore::const_new(1);
@@ -320,9 +322,11 @@ mod tests {
         let hung = tokio::spawn(within(&PLACES, Duration::from_secs(5), move || {
             let _ = hold.recv();
         }));
-        tokio::time::sleep(Duration::from_secs(1)).await;
+        while PLACES.available_permits() > 0 {
+            tokio::task::yield_now().await;
+        }
 
-        let second = within(&PLACES, Duration::from_secs(5), || {
+        let second = within(&PLACES, Duration::from_millis(50), || {
             SECOND_RAN.store(true, Ordering::SeqCst);
         })
         .await;
