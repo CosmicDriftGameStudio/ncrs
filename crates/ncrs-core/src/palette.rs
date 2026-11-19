@@ -5,7 +5,7 @@
 //! sets every slot that has to move with it, so one line cannot leave the
 //! window half recolored.
 
-use iced::Color;
+use iced_core::Color;
 
 /// Below this ratio (WCAG calls 3:1 the floor for large or bold text) a
 /// pairing is reported, not refused: the user's choice stands.
