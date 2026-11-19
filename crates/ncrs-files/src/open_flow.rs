@@ -184,10 +184,10 @@ fn is_executable_row(panels: &Panels, path: &Path) -> bool {
         .active_panel()
         .selected_entry()
         .filter(|entry| entry.path == path)
-        .map_or_else(
-            || ncrs_fs::could_execute(path),
-            ncrs_fs::could_execute_listed,
-        )
+        .is_some_and(ncrs_fs::could_execute_listed)
+        // The listing can be stale (mode changed, file swapped for a link):
+        // a "no" from it is checked on disk before opening without asking.
+        || ncrs_fs::could_execute(path)
 }
 
 /// Clears the status line, then starts `command`; a refusal of the system is
