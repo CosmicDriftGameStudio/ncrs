@@ -164,8 +164,46 @@ pub(in crate::filing) fn remove_if_present(path: &Path) -> std::io::Result<()> {
     }
 }
 
-/// Closes the index, removes its files and then its key. A failure on the
-/// files opens the index again; one on the key only becomes a warning.
+/// What SQLite keeps beside the index file; these move with it when the index
+/// is set aside. Anything else `index_files` names is a leftover and goes.
+const SET_ASIDE_SUFFIXES: [&str; 4] = ["-journal", "-wal", "-shm", ""];
+
+/// Moves the index files to the set-aside names, the previous set-aside copy
+/// going first. Nothing else is deleted when a move fails, except leftovers
+/// of an unfinished encryption and the older set-aside copy.
+fn set_index_aside(db_path: &Path, data_dir: &Path) -> Result<(), String> {
+    let suffix_of = |file: &Path| {
+        file.file_name()?
+            .to_str()?
+            .strip_prefix(INDEX_FILE_NAME)
+            .map(str::to_owned)
+    };
+    let (kept, leftovers): (Vec<_>, Vec<_>) = index_files(db_path, data_dir)?
+        .into_iter()
+        .partition(|file| {
+            suffix_of(file).is_some_and(|suffix| SET_ASIDE_SUFFIXES.contains(&suffix.as_str()))
+        });
+    if db_path.exists() {
+        for suffix in SET_ASIDE_SUFFIXES {
+            let older =
+                ncrs_index::set_aside_path(db_path, suffix).map_err(|err| err.to_string())?;
+            remove_if_present(&older).map_err(|err| err.to_string())?;
+        }
+    }
+    for file in leftovers {
+        remove_if_present(&file).map_err(|err| err.to_string())?;
+    }
+    for file in kept.iter().filter(|file| file.exists()) {
+        let suffix = suffix_of(file).unwrap_or_default();
+        let target = ncrs_index::set_aside_path(db_path, &suffix).map_err(|err| err.to_string())?;
+        std::fs::rename(file, target).map_err(|err| err.to_string())?;
+    }
+    Ok(())
+}
+
+/// Closes the index, sets its files aside, so that the recovery key can bring
+/// them back, and then removes its key. A failure on the files opens the index
+/// again; one on the key only becomes a warning.
 pub(in crate::filing) fn start_over(
     db_path: &Path,
     data_dir: &Path,
@@ -175,14 +213,7 @@ pub(in crate::filing) fn start_over(
 ) -> StartOverReport {
     let mut held = lock(slot);
     drop(held.take());
-    let removed = index_files(db_path, data_dir).and_then(|files| {
-        let copies = ncrs_index::migration_backups(db_path);
-        files
-            .iter()
-            .chain(copies.iter())
-            .try_for_each(|file| remove_if_present(file))
-            .map_err(|err| err.to_string())
-    });
+    let removed = set_index_aside(db_path, data_dir);
     match removed {
         Ok(()) => StartOverReport {
             result: Ok(()),

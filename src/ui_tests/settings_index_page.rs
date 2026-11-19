@@ -68,7 +68,7 @@ fn the_settings_hold_the_protection_and_the_question_before_starting_over() {
         [overview_message(HermesOverviewMessage::CancelStartOver)]
     );
     assert_eq!(
-        clicks(&asking, "Remove index"),
+        clicks(&asking, "Set the index aside"),
         [overview_message(HermesOverviewMessage::ConfirmStartOver)]
     );
 }

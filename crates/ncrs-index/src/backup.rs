@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use crate::error::IndexError;
 
 const BACKUP_INFIX: &str = ".before-v";
+const SET_ASIDE_INFIX: &str = ".set-aside";
 
 fn file_name_of(db_path: &Path) -> Result<String, IndexError> {
     db_path
@@ -32,6 +33,16 @@ pub fn migration_backups(db_path: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
+/// Where the index file, or a file SQLite keeps beside it (`suffix` is `-wal`,
+/// `-shm`, … or empty), goes when the index is set aside. The names keep the
+/// pairing, so renaming them back lets SQLite open the copy with its log.
+pub fn set_aside_path(db_path: &Path, suffix: &str) -> Result<PathBuf, IndexError> {
+    Ok(db_path.with_file_name(format!(
+        "{}{SET_ASIDE_INFIX}{suffix}",
+        file_name_of(db_path)?
+    )))
+}
+
 /// Copies the file as it is, so an encrypted index stays encrypted, and keeps
 /// only this copy. Called when the file is at `applied` and steps are pending.
 pub fn before_migration(db_path: &Path, applied: u32) -> Result<(), IndexError> {
@@ -48,6 +59,19 @@ pub fn before_migration(db_path: &Path, applied: u32) -> Result<(), IndexError> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_set_aside_names_keep_the_suffix_after_the_infix() {
+        let db = Path::new("/data/index.db");
+        assert_eq!(
+            set_aside_path(db, "").unwrap(),
+            Path::new("/data/index.db.set-aside")
+        );
+        assert_eq!(
+            set_aside_path(db, "-wal").unwrap(),
+            Path::new("/data/index.db.set-aside-wal")
+        );
+    }
 
     #[test]
     fn only_the_newest_copy_stays_and_others_beside_it_are_not_touched() {

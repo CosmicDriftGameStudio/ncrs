@@ -152,7 +152,7 @@ pub fn protection_actions(facts: &OverviewFacts) -> Vec<ProtectionAction> {
     actions
 }
 
-/// Buttons: Cancel `0`, "Remove index" `1`.
+/// Buttons: Cancel `0`, "Set the index aside" `1`.
 pub const START_OVER_CANCEL_FOCUS: usize = 0;
 pub const START_OVER_CONFIRM_FOCUS: usize = 1;
 

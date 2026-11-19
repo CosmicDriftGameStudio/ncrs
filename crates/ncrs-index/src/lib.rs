@@ -31,7 +31,7 @@ mod tags;
 #[cfg(test)]
 mod test_support;
 
-pub use backup::migration_backups;
+pub use backup::{migration_backups, set_aside_path};
 pub use documents::{SNIPPET_MARK_END, SNIPPET_MARK_START};
 pub use error::{IndexError, KeyStoreError, RecoveryKeyError};
 pub use hermes_column::{FileTags, FolderCounts, IncludeOutcome, PathState};

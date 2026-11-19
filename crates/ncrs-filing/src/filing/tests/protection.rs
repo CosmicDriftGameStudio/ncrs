@@ -112,7 +112,7 @@ fn an_encrypted_index_is_not_encrypted_again() {
 }
 
 #[test]
-fn starting_over_removes_the_index_files_and_the_key_and_asks_again() {
+fn starting_over_sets_the_index_aside_removes_the_key_and_asks_again() {
     let dir = TempDir::new().unwrap();
     let db = db_in(&dir);
     let store = Arc::new(InMemoryKeyStore::empty());
@@ -120,17 +120,50 @@ fn starting_over_removes_the_index_files_and_the_key_and_asks_again() {
     let neighbour = data_dir(&dir).join("index.db.bak");
     fs::write(&neighbour, b"mine").unwrap();
     fs::write(data_dir(&dir).join("index.db.encrypting"), b"half").unwrap();
+    let copy = data_dir(&dir).join("index.db.before-v3");
+    fs::write(&copy, b"older").unwrap();
     let mut module = started(&db, shared(&store));
     assert_eq!(module.phase(), &Phase::Ready);
+    let content = fs::read(&db).unwrap();
 
     begin(&mut module, FilingModule::begin_starting_over);
 
     assert!(module.asks_encryption());
     assert!(!db.exists());
+    assert_eq!(
+        fs::read(data_dir(&dir).join("index.db.set-aside")).unwrap(),
+        content
+    );
+    assert_eq!(fs::read(&copy).unwrap(), b"older");
     assert!(!data_dir(&dir).join("index.db.encrypting").exists());
     assert!(neighbour.exists());
     assert_eq!(store.snapshot(), None);
     assert!(module.protection_note().is_none());
+}
+
+#[test]
+fn a_second_start_over_leaves_only_the_latest_set_aside_copy() {
+    let dir = TempDir::new().unwrap();
+    let db = db_in(&dir);
+    make_plain(&db);
+    let mut module = started(&db, Arc::new(UnavailableStore));
+    begin(&mut module, FilingModule::begin_starting_over);
+    make_plain(&db);
+    let second = fs::read(&db).unwrap();
+    let mut module = started(&db, Arc::new(UnavailableStore));
+
+    begin(&mut module, FilingModule::begin_starting_over);
+
+    let aside: Vec<_> = fs::read_dir(data_dir(&dir))
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|name| name.contains(".set-aside"))
+        .collect();
+    assert_eq!(aside, ["index.db.set-aside"]);
+    assert_eq!(
+        fs::read(data_dir(&dir).join("index.db.set-aside")).unwrap(),
+        second
+    );
 }
 
 #[test]

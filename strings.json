@@ -5612,9 +5612,9 @@
     },
     {
       "key": "hermes_overview.start_over_loss",
-      "context": "Body of the question in the Hermes overview whether to remove the index: names what is lost.",
-      "en": "This removes the index with its rules, rule suggestions, reports and the undo history. It also removes what ncrs knows about your documents and the entries waiting for review.",
-      "de": "Damit wird der Index entfernt, mit seinen Regeln, Regelvorschlägen, Auswertungen und dem Rückgängig-Verlauf. Auch das Wissen von ncrs über deine Dokumente und die Einträge, die auf Prüfung warten, gehen verloren."
+      "context": "Body of the question in the Hermes overview whether to start the index over: says that the index is set aside, not deleted, and what is in it. index.db.set-aside is the file name and stays as it is.",
+      "en": "The index is set aside, with its rules, rule suggestions, reports, the undo history, what ncrs knows about your documents and the entries waiting for review. It stays as index.db.set-aside in the data folder and can be brought back with the recovery key.",
+      "de": "Der Index wird zur Seite gelegt, mit seinen Regeln, Regelvorschlägen, Auswertungen, dem Rückgängig-Verlauf, dem Wissen von ncrs über deine Dokumente und den Einträgen, die auf Prüfung warten. Er bleibt als index.db.set-aside im Datenordner und lässt sich mit dem Wiederherstellungsschlüssel zurückholen."
     },
     {
       "key": "hermes_overview.start_over_files",
@@ -5624,9 +5624,9 @@
     },
     {
       "key": "hermes_overview.start_over_confirm",
-      "context": "Button of the question in the Hermes overview that removes the index. Destructive, red.",
-      "en": "Remove index",
-      "de": "Index entfernen"
+      "context": "Button of the question in the Hermes overview that sets the index aside and starts a new one. Destructive, red.",
+      "en": "Set the index aside",
+      "de": "Index zur Seite legen"
     },
     {
       "key": "hermes_overview.try_again",
