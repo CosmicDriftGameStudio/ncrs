@@ -62,6 +62,11 @@ yanked = "deny"
 # avoids it. The only SVGs ncrs draws are the icons compiled into the binary
 # from assets/icons, and none of them contains text. When usvg moves to
 # harfrust, this goes.
+#
+# RUSTSEC-2026-0543: chrono is unmaintained; no vulnerability is known. It also
+# arrives through pdfium-render and russh-sftp, so moving ncrs' own dates to
+# another crate would not remove it from the build. When both of them drop it,
+# ncrs moves too and this goes.
 ignore = [
     "RUSTSEC-2024-0436",
     "RUSTSEC-2026-0192",
@@ -69,6 +74,7 @@ ignore = [
     "RUSTSEC-2026-0370",
     "RUSTSEC-2026-0371",
     "RUSTSEC-2026-0372",
+    "RUSTSEC-2026-0543",
 ]
 
 [licenses]
