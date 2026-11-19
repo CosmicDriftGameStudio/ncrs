@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Security
+
+- SFTP: `known_hosts` lines marked `@revoked` that use a wildcard (`*`, `?`) or
+  `!` host pattern were ignored up to 1.5.1, so a revoked key only led to the
+  usual question instead of being refused. They are honoured now. Please update.
+- SFTP: a host name that contains a pattern character, a comma, white space or
+  a control character is no longer written to ncrs's own `known_hosts`.
+- Debug output of the AI connection no longer carries a fingerprint of your API
+  key.
+
 ### Fixed
 
 - Copy, move, rename, delete and unpacking never overwrite or lose data: files
@@ -25,6 +35,21 @@ All notable changes to this project are documented here. The format follows
   still being written, and a folder is looked through at most once an hour.
 - Copying onto FAT or exFAT drives no longer fails for files that carry a
   download mark on Windows.
+- The Filing tab says "needs the built-in language model" for the files an own
+  AI server cannot place, instead of showing "reading …" for ever; Hermes in the
+  chat says so once and goes on with the files the rules can place.
+- A file tagged "no folder" keeps the tag while another write folder still has a
+  current "no folder" answer for it.
+- Closing ncrs while a long text recognition runs no longer counts as a crash
+  of that file; two such closes do not put a healthy file aside.
+- Hermes no longer shows a technical English reason when its model cannot
+  start; the sentence is in your language and appears once.
+- `install.ps1 -Uninstall` removes only the files its install wrote, like
+  `install.sh --uninstall`, and both installers leave other files in an
+  existing `backends` folder alone.
+- A document in the inbox that Hermes asked you about is not sent to the AI a
+  second time at the next scan.
+
 - A `body.txt` beside its `.eml` is the mail's text, not a document: the Filing
   tab and the watched-folder intake leave it alone.
 - The window no longer waits for the index while a filing run or the intake
@@ -52,6 +77,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- Sender aliases can no longer be confirmed: the offers are gone. Earlier notes
+  and the README described confirmed aliases as a feature; the sender is read
+  from the letterhead or the footer, and an alias that was stored earlier is
+  still used for its identifier.
 - `PRIVACY.md`, `SECURITY.md`, the README and the consent card for an AI server
   on another computer now list what is sent and where to, and what ncrs keeps
   on your computer.
