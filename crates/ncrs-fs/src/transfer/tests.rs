@@ -483,7 +483,31 @@ fn a_cancel_stops_inside_a_large_file() {
     let src = dir.path().join("big.bin");
     let dst = dir.path().join("dst");
     fs::create_dir_all(&dst).unwrap();
-    fs::write(&src, vec![7_u8; 3 * 1024 * 1024]).unwrap();
+    fs::write(&src, vec![b'\x07'; 3 * 1024 * 1024]).unwrap();
+
+    let err = transfer(&src, &dst, &Copy, &mut StopAtOnce, OnConflict::Fail).unwrap_err();
+
+    assert_eq!(err.to_string(), "cancelled");
+    assert_eq!(fs::read_dir(&dst).unwrap().count(), 0);
+}
+
+/// Counting a large tree for the progress bar is asked about the cancel too.
+#[test]
+fn a_cancel_stops_the_counting_of_a_large_tree() {
+    struct StopAtOnce;
+    impl Progress for StopAtOnce {
+        fn advanced(&mut self, _done: usize, _total: usize) -> io::Result<()> {
+            Ok(())
+        }
+        fn keep_going(&mut self) -> io::Result<()> {
+            Err(io::Error::other("cancelled"))
+        }
+    }
+    let dir = scratch("cancel-count");
+    let src = dir.path().join("src");
+    let dst = dir.path().join("dst");
+    fs::create_dir_all(src.join("a/b/c")).unwrap();
+    fs::create_dir_all(&dst).unwrap();
 
     let err = transfer(&src, &dst, &Copy, &mut StopAtOnce, OnConflict::Fail).unwrap_err();
 
@@ -848,8 +872,8 @@ fn a_copy_carries_the_extended_attributes() {
 
     transfer(&src, &dst, &Copy, &mut Counting, OnConflict::Fail).unwrap();
 
-    let mut value = [0_u8; 64];
-    let got = rustix::fs::lgetxattr(dst.join("a.txt"), name, &mut value[..]).unwrap();
+    let mut value = [0; 64];
+    let got = rustix::fs::lgetxattr(dst.join("a.txt"), name, &mut value).unwrap();
     assert_eq!(value.get(..got), Some(&b"0081;5f3a;Safari"[..]));
 }
 

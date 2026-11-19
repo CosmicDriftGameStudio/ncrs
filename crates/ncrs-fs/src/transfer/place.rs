@@ -11,7 +11,7 @@ use crate::place_file::{copy_xattrs, rename_no_replace, set_folder_modified};
 /// How much of a file is written between two looks at the progress channel.
 const CHUNK: usize = 1024 * 1024;
 
-pub(super) fn place<S: Source, P: Progress>(
+pub(in crate::transfer) fn place<S: Source, P: Progress>(
     source: &Path,
     target: &Path,
     effect: &S,
@@ -99,7 +99,7 @@ impl<S: Source, P: Progress> Run<'_, S, P> {
             }
         }
 
-        self.ensure_total(source);
+        self.ensure_total(source)?;
         let staged = self.claim_partial(source, &source_meta, target)?;
         let mut verified = Vec::new();
         let finished = self
@@ -131,7 +131,7 @@ impl<S: Source, P: Progress> Run<'_, S, P> {
     /// A folder onto a folder: every entry of the source is placed into the
     /// target one by one, so nothing that only the target holds is touched.
     fn merge(&mut self, source: &Path, target: &Path) -> io::Result<()> {
-        self.ensure_total(source);
+        self.ensure_total(source)?;
         self.done += 1;
         self.progress.advanced(self.done, self.total)?;
         for listed in std::fs::read_dir(source)? {
@@ -146,10 +146,11 @@ impl<S: Source, P: Progress> Run<'_, S, P> {
         Ok(())
     }
 
-    fn ensure_total(&mut self, source: &Path) {
+    fn ensure_total(&mut self, source: &Path) -> io::Result<()> {
         if self.total == 0 {
-            self.total = count_items(source);
+            self.total = count_items(source, self.progress)?;
         }
+        Ok(())
     }
 
     /// Creates the first entry of a copy under a hidden name nobody else holds.
@@ -398,8 +399,53 @@ fn remove_entry(item: &Seen, base: Option<&Path>) -> io::Result<bool> {
     }
 }
 
+/// Whether every folder between `base` (not checked itself) and the parent of
+/// `path` is a real folder: not a link and, on Windows, not a junction or other
+/// reparse point. Without handles opened folder by folder, this is the check
+/// right before the removal that keeps a folder swapped for a link from
+/// steering it elsewhere.
+#[cfg(any(not(unix), test))]
+fn ancestors_are_plain_dirs(base: &Path, path: &Path) -> bool {
+    let Some(between) = path
+        .parent()
+        .and_then(|parent| parent.strip_prefix(base).ok())
+    else {
+        return false;
+    };
+    let mut current = base.to_path_buf();
+    for part in between.components() {
+        current.push(part);
+        match std::fs::symlink_metadata(&current) {
+            Ok(meta) if meta.is_dir() && !is_reparse_point(&meta) => {}
+            _ => return false,
+        }
+    }
+    true
+}
+
+#[cfg(all(windows, any(not(unix), test)))]
+fn is_reparse_point(meta: &std::fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt as _;
+    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+    meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+}
+
+#[cfg(all(not(windows), any(not(unix), test)))]
+fn is_reparse_point(_meta: &std::fs::Metadata) -> bool {
+    false
+}
+
 #[cfg(not(unix))]
-fn remove_entry(item: &Seen, _base: Option<&Path>) -> io::Result<bool> {
+fn remove_entry(item: &Seen, base: Option<&Path>) -> io::Result<bool> {
+    let Some(root) = base else {
+        return Ok(false);
+    };
+    if !ancestors_are_plain_dirs(root, &item.path) {
+        return match std::fs::symlink_metadata(&item.path) {
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(true),
+            _ => Ok(false),
+        };
+    }
     match (&item.kind, std::fs::symlink_metadata(&item.path)) {
         (_, Err(e)) if e.kind() == io::ErrorKind::NotFound => Ok(true),
         (_, Err(e)) => Err(e),
@@ -463,26 +509,28 @@ fn remove_path(path: &Path) -> io::Result<()> {
 
 /// How many items a directory holds, including the directories themselves.
 /// A file counts as one.
-fn count_items(path: &Path) -> usize {
+fn count_items<P: Progress>(path: &Path, progress: &mut P) -> io::Result<usize> {
+    progress.keep_going()?;
     let Ok(meta) = std::fs::symlink_metadata(path) else {
-        return 0;
+        return Ok(0);
     };
     if !meta.is_dir() {
-        return 1;
+        return Ok(1);
     }
     // This directory counts too, the same way the walk counts it — otherwise
     // the total is short by one per level and the bar never fills.
     let Ok(entries) = std::fs::read_dir(path) else {
-        return 1;
+        return Ok(1);
     };
-    1 + entries
-        .filter_map(Result::ok)
-        .map(|e| count_items(&e.path()))
-        .sum::<usize>()
+    let mut total = 1;
+    for entry in entries.filter_map(Result::ok) {
+        total += count_items(&entry.path(), progress)?;
+    }
+    Ok(total)
 }
 
 /// Makes one new entry at `target`, failing if the name is already taken.
-pub(super) fn create_entry<P: Progress>(
+pub(in crate::transfer) fn create_entry<P: Progress>(
     source: &Path,
     meta: &std::fs::Metadata,
     target: &Path,
@@ -536,8 +584,8 @@ fn create_private(target: &Path) -> io::Result<std::fs::File> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt as _;
-        options.mode(0o600);
-    }
+        options.mode(0o600)
+    };
     options.open(target)
 }
 
@@ -550,8 +598,8 @@ fn open_regular(source: &Path) -> io::Result<std::fs::File> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt as _;
-        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
-    }
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+    };
     #[cfg(windows)]
     {
         use std::os::windows::fs::OpenOptionsExt as _;
@@ -575,7 +623,7 @@ fn copy_in_chunks<P: Progress>(
     progress: &mut P,
 ) -> io::Result<()> {
     use io::{Read as _, Write as _};
-    let mut buffer = vec![0_u8; CHUNK];
+    let mut buffer = vec![0; CHUNK];
     loop {
         progress.keep_going()?;
         let read = match from.read(&mut buffer) {
@@ -736,6 +784,28 @@ mod tests {
         );
         assert_eq!(std::fs::read(outside.join("b.txt")).unwrap(), b"b");
         assert!(source.join("sub").is_symlink());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_link_as_a_folder_on_the_way_is_not_a_plain_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().join("base");
+        std::fs::create_dir_all(base.join("real/inner")).unwrap();
+        std::os::unix::fs::symlink(base.join("real"), base.join("link")).unwrap();
+
+        assert!(ancestors_are_plain_dirs(
+            &base,
+            &base.join("real/inner/a.txt")
+        ));
+        assert!(!ancestors_are_plain_dirs(
+            &base,
+            &base.join("link/inner/a.txt")
+        ));
+        assert!(!ancestors_are_plain_dirs(
+            &base,
+            &base.join("missing/a.txt")
+        ));
     }
 
     #[test]
