@@ -1,10 +1,11 @@
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
-use ncrs_ai::{AiError, ExtractedField, ExtractionRequest, Provider, CONFIDENT};
+use ncrs_ai::{AiError, ExtractedField, ExtractionRequest, FailureScope, Provider, CONFIDENT};
 use ncrs_index::{
-    Document, DocumentFields, DocumentStatus, Field, FieldOrigin, FieldOrigins, IndexError,
-    KindCatalog, KindLanguage, Kinds, ReviewReason,
+    Document, DocumentFields, DocumentId, DocumentStatus, Field, FieldOrigin, FieldOrigins,
+    IndexError, KindCatalog, KindLanguage, Kinds, ReviewReason,
 };
 use ncrs_intake::{
     plan, relative_to_location, LocationMode, PlanInput, Planning, AI_FIELD_ORDER, FIELD_ORDER,
@@ -34,7 +35,14 @@ pub struct AiStep {
     /// that is one of them is the addressee the provider mistook for the sender.
     own_names: Vec<String>,
     kind_language: KindLanguage,
+    /// Failed answers per document in this run of the app. After
+    /// `DOCUMENT_ATTEMPTS` the document counts as asked, so one it cannot
+    /// answer is not sent again on every scan.
+    failed_attempts: Mutex<HashMap<DocumentId, u8>>,
 }
+
+/// How often a document that makes the model fail is tried.
+const DOCUMENT_ATTEMPTS: u8 = 3;
 
 impl AiStep {
     pub fn new(
@@ -48,7 +56,22 @@ impl AiStep {
             provider,
             own_names,
             kind_language,
+            failed_attempts: Mutex::default(),
         }
+    }
+
+    /// Counts a failure of the document itself; true once it has had its tries.
+    fn out_of_attempts(&self, item: &Item) -> bool {
+        let Some(id) = item.document else {
+            return false;
+        };
+        let mut attempts = self
+            .failed_attempts
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let count = attempts.entry(id).or_insert(0);
+        *count = count.saturating_add(1);
+        *count >= DOCUMENT_ATTEMPTS
     }
 
     /// The document and the kinds the index knows; a document being planned
@@ -210,10 +233,18 @@ impl Step for AiStep {
             // Nothing was sent; the user is asked elsewhere, and the document
             // goes on to the review list as it was.
             Err(AiError::ConsentRequired(_)) => return Ok(StepOutcome::Continue),
-            // A provider failure (offline, timeout, broken reply) is not the
-            // document's failure: an `Err` would drop the item from the review
-            // list, so it continues with its reason and fields as they were.
-            Err(_) => return Ok(StepOutcome::Continue),
+            // An `Err` would drop the item from the review list, so it
+            // continues with its reason and fields as they were. Only a
+            // failure of the document itself counts against it; offline or a
+            // refused key says nothing about the document.
+            Err(error) => {
+                if self.provider.failure_scope(&error) == FailureScope::Document
+                    && self.out_of_attempts(item)
+                {
+                    self.remember_asked(item)?;
+                }
+                return Ok(StepOutcome::Continue);
+            }
         };
         // Nothing it read is worth keeping from a file that is no document,
         // and a rule must not plan it.
@@ -248,8 +279,9 @@ impl Step for AiStep {
             matches!(review_reason, Some(ReviewReason::MissingField(_))) && least_sure.is_none();
         let planning =
             self.write_and_plan(item, &confident, plan_again, review_reason.is_some())?;
+        // Asked and answered, also for a document that goes to review below.
+        self.remember_asked(item)?;
         if fields_only {
-            self.remember_asked(item)?;
             return Ok(StepOutcome::Continue);
         }
 

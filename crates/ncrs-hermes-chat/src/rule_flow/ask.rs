@@ -2,7 +2,7 @@
 
 use ncrs_ai::{
     file_names_share_structure, folder_depth, pattern_mismatches, AiError, ChatModel,
-    ContextDocument, Levels, Revision,
+    ContextDocument, Levels, ModelProblem, Revision,
 };
 use ncrs_index::{DocumentFields, Kinds, RuleSpec};
 
@@ -33,19 +33,20 @@ pub enum RuleAsk {
 /// What the model made of it.
 #[derive(Debug, Clone)]
 pub enum RuleAnswer {
-    Levels(Result<Levels, String>),
+    Levels(Result<Levels, ModelProblem>),
     /// The levels after a sentence about them, and whether the user is done.
-    Revised(Result<Revision, String>),
-    Rule(Result<RuleSpec, String>),
+    Revised(Result<Revision, ModelProblem>),
+    Rule(Result<RuleSpec, ModelProblem>),
     /// The thread that asked the model broke.
-    Failed(String),
+    Failed(ModelProblem),
 }
 
 impl RuleAsk {
     pub fn run(&self, model: &dyn ChatModel) -> RuleAnswer {
         match self {
             Self::Recognize { files, all, kinds } => RuleAnswer::Levels(
-                recognize_checked(model, files, all, kinds).map_err(|error| error.to_string()),
+                recognize_checked(model, files, all, kinds)
+                    .map_err(|error| ModelProblem::from(&error)),
             ),
             Self::Revise {
                 files,
@@ -55,7 +56,7 @@ impl RuleAsk {
             } => RuleAnswer::Revised(
                 model
                     .revise_levels(files, kinds, previous, sentence)
-                    .map_err(|error| error.to_string()),
+                    .map_err(|error| ModelProblem::from(&error)),
             ),
             Self::Generate {
                 description,
@@ -64,7 +65,7 @@ impl RuleAsk {
             } => RuleAnswer::Rule(
                 model
                     .generate_rule(description, documents, kinds)
-                    .map_err(|error| error.to_string()),
+                    .map_err(|error| ModelProblem::from(&error)),
             ),
         }
     }

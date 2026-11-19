@@ -3,7 +3,7 @@
 [![CI](https://github.com/CosmicDriftGameStudio/ncrs/actions/workflows/ci.yml/badge.svg)](https://github.com/CosmicDriftGameStudio/ncrs/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/CosmicDriftGameStudio/ncrs?label=release)](https://github.com/CosmicDriftGameStudio/ncrs/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-1.90%2B-orange.svg)](rust-toolchain.toml)
+[![Rust](https://img.shields.io/badge/rust-1.98%2B-orange.svg)](rust-toolchain.toml)
 
 A fast, keyboard-first **dual-panel file manager**, written in Rust
 with [iced](https://iced.rs) 0.14 (GPU-accelerated, cross-platform native UI).
@@ -17,9 +17,9 @@ application state.
 The dual-panel navigator, the file operations, archives, SFTP servers, color
 themes and localization with per-string translator context work, and there is a
 [config file](#configuration) with programs and keys. [Hermes](#filing), which
-reads PDFs and scans and files them by your rules, is a beta. See
-[ROADMAP.md](ROADMAP.md) for the state, the licensing audit and the reasoning
-behind the order.
+reads PDFs and scans and files them by your rules, is a beta. Old planning
+notes are kept in [docs/history/](docs/history/), not maintained; what ncrs sends over the
+network and what it stores is in [PRIVACY.md](PRIVACY.md).
 
 ## Install
 
@@ -199,8 +199,8 @@ The same window in German, switched with F9.
 - Search in file names and contents below a directory, in the panel, the way
   VS Code does it, with filters for the documents ncrs has read: see [Search](#search)
 - Hermes (beta): point it at a read folder with PDFs and scans, and ncrs reads them, recognises
-  sender, date and amount and files them where your rules say. Everything stays
-  on this computer. See [Filing](#filing)
+  sender, date and amount and files them where your rules say. With the built-in
+  model everything stays on this computer. See [Filing](#filing)
 - File lists show the tags of a document ncrs has read after its name (at most 3
   per file, then "+1"); the Tags page of the filing chooses which
 - Dropping files from the Finder, Explorer or another file manager onto the window copies them
@@ -706,14 +706,28 @@ color theme from [Open VSX](https://open-vsx.org) and switches it on at once.
   link (`https://marketplace.visualstudio.com/items?itemName=<publisher>.<name>`)
   or an Open VSX link (`https://open-vsx.org/extension/<publisher>/<name>`), and
   press Enter. An extension with several themes asks which one.
-- This is the only place where ncrs goes onto the network, and only after you
-  press Enter or Fetch. It talks to `open-vsx.org` (HTTPS) and to the download
-  host Open VSX redirects to, `openvsx.eclipsecontent.org`, and to nothing else.
+- This feature goes onto the network only after you press Enter or Fetch. It
+  talks to `open-vsx.org` (HTTPS) and to the download host Open VSX redirects
+  to, `openvsx.eclipsecontent.org`, and to nothing else; for a link to a theme
+  file it talks to the host in that link. All network use of ncrs is listed in
+  [PRIVACY.md](PRIVACY.md).
 - The files go to `themes/<publisher>.<name>/` next to the config file, together
   with the extension's license file, and `vscode` in `[theme]` points at the
   theme. The rest of the config file stays as written.
 - The license named by Open VSX is shown while you choose and in the status bar
   after the installation. Check that it allows what you do with the theme.
+
+### Update check
+
+ncrs can tell you when a newer release exists. The check is on by default for a
+download from the project's releases page, and off for a package-manager
+install (apt, dnf, zypper, Homebrew), a development build and the App Store
+version. It asks `api.github.com` for the newest release at most once every 24
+hours, without a click, and sends only the usual connection data and
+`ncrs/<version>`. The **Updates** page of the settings tab has the switch
+(`check_for_updates` in the config file), shows the installed and the newest
+version and the release notes, and can skip a version. A dot at the version in
+the status bar marks a newer release. See [PRIVACY.md](PRIVACY.md).
 
 ### Filing
 
@@ -861,14 +875,15 @@ threads = 4
   machine, or OpenAI, OpenRouter, Anthropic and the like. `endpoint` and `model`
   are required and `threads` is not allowed. Plain `http://` is only allowed
   on this machine (`localhost`, `127.0.0.1` or `::1`), and redirects are not
-  followed. Without a consent given for that server, nothing is sent.
+  followed. Without a consent given for that server, no document is sent; "Test
+  connection" does ask the server for its model list, with the key, when you press it.
 - Settings › AI sets it up: "Where does the model run?" with "This computer" or
   "Own server". For the own server the page has the address, the key (kept in
   the keychain, never in the file), the model, which "Test connection" can fill
   from the server's model list, and the buttons that test and save. A server saved
   here is used right away. For a server off this machine the page lists what
   goes out (document text, chat, rule samples, file names for batch rename) under
-  "What goes to the server", and nothing is sent until you press "Allow" for
+  "What goes to the server", and no document is sent until you press "Allow" for
   that server; the approval holds for that one server only.
 
   ![Settings › AI with an own server](docs/screenshots/own-server.png)
@@ -889,9 +904,10 @@ run plans every document against a fixed set of rules (word conditions, a
 regex for German compounds such as "Mietvertrag", and the IBAN for the first
 one), as the rules step does for a new document, and prints hits, wrong values and missing values per field.
 Before planning, the sender is detected from the text without an AI: from an
-identifier a confirmed alias knows (IBAN, tax id, e-mail or web domain), else
-from the letterhead or the footer. The run confirms three aliases: the IBAN of
-Nordlicht Energie and the short names "Kranich" and "Pixelwerk".
+identifier a stored alias knows (IBAN, tax id, e-mail or web domain), else
+from the letterhead or the footer. ncrs does not offer to confirm new aliases;
+the run stores three: the IBAN of Nordlicht Energie and the short names
+"Kranich" and "Pixelwerk".
 It is opt-in and not part of the normal `cargo test`:
 
 ```sh
@@ -902,7 +918,7 @@ cargo test -p ncrs-ai --features llama recognition_measured_against_the_model --
 
 **Rules only; the AI run was not measured because the model is not available
 locally.** The sender comes from the detection above, so it is found for every
-document of the corpus; the short-name cases rely on those three confirmed
+document of the corpus; the short-name cases rely on those three stored
 aliases. A document without the field (a letter has no amount)
 counts as a hit when nothing is found for it.
 
@@ -1092,13 +1108,13 @@ that pins it to the build configuration.
 cargo build --features gpu-with-fallback --release
 ```
 
-The repository is a Cargo workspace (`ncrs` plus the crates under `crates/`); `cargo test --workspace` checks all of it.
+The repository is a Cargo workspace (`ncrs` plus the crates under `crates/`); CI runs the whole workspace, locally test the crate you changed.
 
 ## Tests
 
 ```bash
-cargo test                                      # the default, release backend
-cargo test --no-default-features --features software-rendering
+cargo test -p <crate>                            # the crate you changed; CI runs the whole workspace
+cargo test -p <crate> --no-default-features --features software-rendering   # where the crate has the feature
 ```
 
 The snapshot tests render with tiny-skia in every build, because their references are
@@ -1109,8 +1125,8 @@ Three layers, and they cover different things:
 | Layer | What it covers | Where |
 |---|---|---|
 | Filesystem, state, routing, selection | what the app *decides* | `crates/ncrs-fs/`, `crates/ncrs-ops/`, `crates/ncrs-core/src/selection.rs`, `src/app/` |
-| UI, headless | what the user *sees* — clicks, rendering, layout | `src/ui_tests.rs` via `iced_test` |
-| Snapshots | the images themselves | `tests/snapshots/` — **macOS only in CI** |
+| UI, headless | what the user *sees* — clicks, rendering, layout | `src/ui_tests/` and the `view` tests of each feature crate, via `iced_test` |
+| Snapshots | the images themselves | `tests/snapshots/` of the crate that renders them (`crates/<crate>/tests/snapshots/`) — **macOS only in CI** |
 
 The snapshot tests run only where the reference images were produced. Font
 rasterisation differs per operating system, so a macOS reference does not match
@@ -1192,12 +1208,12 @@ Known limits at 100,000 files:
 
 ## Build & run
 
-Requirements: Rust (stable, 1.80+) via [rustup](https://rustup.rs).
+Requirements: Rust 1.98 (pinned in `rust-toolchain.toml`) via [rustup](https://rustup.rs).
 
 ```bash
 cargo run            # debug build
 cargo run --release  # optimized build
-cargo test           # unit tests (fs reader, formatting, panel selection logic)
+cargo test -p ncrs-fs   # unit tests of one crate; the full suite runs in CI
 ```
 
 **Linux** additionally needs the usual windowing/font dev packages, e.g. on Debian/Ubuntu:
@@ -1217,63 +1233,23 @@ environment with `CMAKE_GENERATOR=Ninja`.
 
 ## Architecture
 
-```
-src/
-├── main.rs          # Entry point: iced::application builder (tokio executor)
-├── app.rs           # App state, update() – the ONLY place state changes – and view()
-├── selection.rs     # Tagged rows: the rule an operation applies to
-├── dialog.rs        # State of the modal prompt (F7 and the operations after it)
-├── messages.rs      # Central Message enum + PanelSide
-├── keymap.rs        # Key press -> Message mapping, shortcut list for the header
-├── ui/              # Pure, reusable view components (no business logic)
-│   ├── panel.rs     # PanelState (data + selection/scroll helpers) + view()
-│   ├── dialog.rs    # The prompt: text field, buttons, scrim
-│   ├── statusbar.rs # Active path | selected entry | size | date (or error)
-│   ├── layout.rs    # Fixed metrics (row height, column widths, visible rows)
-│   └── format.rs    # File entry sizes, on top of the kit's formatting
-└── fs/              # Filesystem layer – knows nothing about the UI
-    ├── entry.rs     # FileEntry (name, path, size, modified, is_dir, ...) + sort order
-    ├── ops.rs       # create_dir() and friends, structured errors, no text
-    └── reader.rs    # async read_directory(), home_dir(), root_of()
+Every feature is its own crate under `crates/`, in nested Elm architecture: its own
+`State`, `Message`, `update` and `view`. Only `update` changes state; views are pure
+functions of state. The `ncrs` crate (`src/`) wires the features together: window,
+menu, title and status bar, and the routing of messages. The rules for where code
+goes are in [CLAUDE.md](CLAUDE.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
-crates/
-├── ncrs-i18n/       # Translated UI strings + per-string translator context
-│   ├── build.rs     # Generates the string modules from strings.json
-│   └── src/lib.rs   # Msg enum, Language, Msg::note() (context for translators)
-└── ncrs-ui-kit/     # Colors, spacing, theme, frame, menus and widgets, generic over the message
-```
+| Layer | Crates |
+| --- | --- |
+| Feature crates (state, messages, `update`, `view`) | `ncrs-files` (panels), `ncrs-ops` (copy, move, delete dialogs), `ncrs-search`, `ncrs-palette` (command line, Quick Open, command list), `ncrs-compare`, `ncrs-viewer`, `ncrs-notes`, `ncrs-monitor` (System page), `ncrs-settings`, `ncrs-updates`, `ncrs-remote` (SFTP connect), `ncrs-hermes-ui`, `ncrs-hermes-chat`, `ncrs-filing-view` |
+| UI kit | `ncrs-ui-kit`: colors, spacing, theme, frame, menus and widgets, generic over the message type |
+| Core | `ncrs-core`: plain data types several features share; `ncrs-i18n`: translated strings with translator context; `ncrs-config`: the config file |
+| Backend (no UI) | `ncrs-fs` (filesystem, SFTP, trash), `ncrs-jobs`, `ncrs-index` (encrypted index), `ncrs-intake`, `ncrs-pipeline`, `ncrs-filing`, `ncrs-ai`, `ncrs-ocr-vision` (macOS), `ncrs-sandbox` (App Store build), `ncrs-priority`, `ncrs-console` |
 
-### Data flow (Elm architecture)
+Feature crates depend on the kit, the core and the backend crates, never on each
+other; the crate docs (`//!` at the top of each `lib.rs`) say what each one owns.
 
-```
- keyboard / mouse / window events
-            │  (keymap::map_key, subscriptions)
-            ▼
-        Message ──► App::update(&mut self) ──► Task<Message> (async fs work)
-            ▲                │                         │
-            │                ▼                         │
-            │          App::view(&self)                │
-            │      (pure: state -> Element)            │
-            └──────── Message::DirectoryLoaded ◄───────┘
-```
-
-### Principles
-
-1. **No business logic in views.** `ui::*::view` functions take state and return
-   `Element`s – nothing else.
-2. **All state mutations go through messages.** `App::update` is the single place where
-   state changes.
-3. **Filesystem work is async.** `fs::read_directory` runs on tokio's blocking pool via
-   `Task::perform`; results come back as `Message::DirectoryLoaded`.
-4. **Components are functions, not stateful widgets.** `PanelState` lives in `App`;
-   `panel::view` just renders it.
-5. **Components are generic over the message type.** `panel::view` receives an
-   `on_row_click: impl Fn(usize) -> M` callback, and `statusbar::view` is
-   generic over `M` – they can be reused in any iced app or in other screens (dialogs, viewers…).
-6. **Minimal exports.** `fs` re-exports only `FileEntry` and the reader functions; the UI
-   module exposes components and `PanelState`/`PanelProps`.
-
-### Localization
+## Localization
 
 `strings.json` in the repository root is the **source of truth**. Per string it holds the
 stable key, the English text, the German text and a `context` field: where the string
@@ -1286,7 +1262,7 @@ It fails the build when a string has no usable context or is missing a translati
 
 ```bash
 # every string with its context and both translations, for a translator
-cargo test dump -- --nocapture
+cargo test -p ncrs-i18n dump -- --nocapture
 ```
 
 Adding or changing a string:
@@ -1303,63 +1279,14 @@ Adding a language:
    `ALL`, and a language missing there cannot be set with `lang`. A key ending in `.theme`
    in `strings.json` is a Futurama name: it becomes a `FuturamaName`, not a `Msg`, and only
    the `*Futurama` variants of a language return it from `Language::futurama_name`.
-3. `cargo test` — placeholder mismatches and untranslated copies fail the build, not the
+3. `cargo test -p ncrs-i18n` and the tests of the crate you changed — placeholder mismatches and untranslated copies fail the build, not the
    UI. `<DIR>` and `<UP>` are deliberately never translated.
 
 `<DIR>` and `<UP>` are deliberately never translated: they are a classic dual-panel
 convention, and the tests enforce it.
 
-### Scrolling
-
-Rows have a fixed height (`ui::layout::ROW_HEIGHT`). On window resize the app recomputes
-`visible_rows`; each panel renders `entries[scroll_offset .. scroll_offset + visible_rows]`
-and `PanelState::ensure_visible` keeps the selection on screen. This is O(visible rows)
-per frame, independent of directory size.
-
-## Extending NC-rs
-
-### Add a keyboard shortcut / action
-
-1. Add a variant to `Message` in `src/messages.rs`, e.g. `ToggleHidden`.
-2. Map a key in `keymap::map_key` (`Key::Named(Named::F3) => Some(Message::View)`),
-   optionally add it to `keymap::SHORTCUTS` so it shows up in the header.
-3. Handle it in `App::update`. Keep the view untouched unless something new is displayed.
-
-### Add a filesystem operation (copy, move, delete, mkdir …)
-
-1. Implement it as an `async fn` in a new file under `src/fs/` (use
-   `tokio::task::spawn_blocking` or `tokio::fs`), return a plain result type.
-2. Re-export it from `src/fs/mod.rs`.
-3. In `App::update`, start it with `Task::perform(fs::op(src, dst), |r| Message::OpDone(r))`.
-   Use `active_panel()` for the source and `inactive_panel_mut()` for the target panel.
-4. On completion, reload the affected panels with `App::load`.
-
-### Add a UI component (dialog, file viewer, command line …)
-
-1. Create `src/ui/<component>.rs` with a `pub fn view<'a, M: Clone + 'a>(…) -> Element<'a, M>`.
-   Pass everything it needs as arguments (state refs, props struct, message callbacks).
-2. Put its colors/styles into `ui/theme.rs` and fixed sizes into `ui/layout.rs`.
-3. Keep its state (if any) as a field in `App` (e.g. `dialog: Option<DialogState>`) and
-   compose it in `App::view` (e.g. with `iced::widget::stack` for overlays).
-
-### Add a column (permissions, extension …)
-
-1. Add the field to `FileEntry` and fill it in `FileEntry::from_dir_entry`.
-2. Add a formatter to `ui/format.rs`, a width to `ui/layout.rs`, and the cell to
-   `panel::column_header` / `panel::file_row`.
-
-### Ideas for next steps
-
-- Multi-selection (`Insert`), quick search by typing
-- Filesystem watching (`notify` crate) as an iced `Subscription`
-- Configurable theme (in the existing config file)
-
 ## Tech notes
 
-- Font: the built-in monospace font for an authentic commander look.
-- The `advanced` iced feature is **not** enabled: the app uses no `pane_grid`, `tooltip`,
-  `pick_list` or `text::Font` variant. Add it back in `Cargo.toml` when you reach for one
-  of those.
 - The compiler is pinned in `rust-toolchain.toml`, and that pin only takes effect
   under **rustup**. A Homebrew-installed Rust ignores the file, so a local
   `cargo test` can run a different compiler than CI. `thiserror` and `softbuffer`,
@@ -1381,7 +1308,7 @@ the Mac App Store; `deny.toml` explains how `cargo deny` enforces it.
 | --- | --- | --- |
 | pdfium, the PDF library next to the binary ([pdfium-binaries](https://github.com/bblanchon/pdfium-binaries) build) | BSD-3-Clause; the build itself MIT; bundled components such as FreeType, ICU, libjpeg-turbo and zlib under their own permissive licenses | `licenses/pdfium/` in the archive, `Contents/Resources/licenses/pdfium/` in the macOS app |
 | DejaVu Sans Mono (regular and bold), embedded in the program file on Windows and Linux | Bitstream Vera license with public-domain changes (free to embed and redistribute) | `assets/fonts/LICENSE-DejaVu`, and in the license notice (`about.hbs`) |
-| OCR models (`text-detection.onnx`, `text-recognition.onnx`), downloaded only after asking | CC-BY-SA-4.0 ([ocrs-models](https://github.com/robertknight/ocrs-models), trained on HierText) | not shipped; fetched from the ocrs project |
+| OCR models (`text-detection.onnx`, `text-recognition.onnx`), downloaded only after asking, on Windows and Linux | CC-BY-SA-4.0 ([ocrs-models](https://github.com/robertknight/ocrs-models), trained on HierText) | not shipped; fetched from `ocrs-models.s3-accelerate.amazonaws.com` (Amazon S3) |
 | Local AI model `Qwen3.5-4B-Q4_K_M.gguf`, downloaded only after asking | Apache-2.0 ([unsloth/Qwen3.5-4B-GGUF](https://huggingface.co/unsloth/Qwen3.5-4B-GGUF), quantized from Qwen/Qwen3.5-4B) | not shipped; fetched from Hugging Face |
 
 ## Contributing, security, changes
@@ -1389,6 +1316,6 @@ the Mac App Store; `deny.toml` explains how `cargo deny` enforces it.
 - [CONTRIBUTING.md](CONTRIBUTING.md) — the rules the code follows, and how to
   verify a change
 - [CHANGELOG.md](CHANGELOG.md) — what each release does, and what it does not
-- [SECURITY.md](SECURITY.md) — how to report a vulnerability privately
-- [ARCHITECTURE_REVIEW.md](ARCHITECTURE_REVIEW.md) — the state of the
-  architecture, the numbered findings, and the order they are being fixed in
+- [SECURITY.md](SECURITY.md) — how to report a vulnerability privately, and what
+  ncrs touches
+- [PRIVACY.md](PRIVACY.md) — what ncrs sends over the network and what it stores

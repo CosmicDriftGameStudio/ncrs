@@ -1,7 +1,9 @@
 //! Which host keys to trust. The user's own `~/.ssh/known_hosts` is read, never
 //! written; what the user confirms in ncrs goes to a file of ncrs's own. The
 //! parser is tolerant: a line it does not understand is skipped, because a
-//! file written by OpenSSH over the years holds all kinds.
+//! file written by OpenSSH over the years holds all kinds. Host patterns follow
+//! sshd(8): `*` and `?` match, `!` excludes, and a revoked key is revoked for
+//! every host.
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -25,6 +27,8 @@ pub struct KnownHostsFiles {
 enum HostPattern {
     /// `host` or `[host]:port`, as written.
     Plain(String),
+    /// A pattern with `*` or `?`, lower case.
+    Wildcard(String),
     Hashed {
         salt: Vec<u8>,
         hash: Vec<u8>,
@@ -37,7 +41,16 @@ pub struct Entry {
     line: usize,
     revoked: bool,
     hosts: Vec<HostPattern>,
+    /// `!pattern` words: a name that one of them matches is not on the line.
+    excluded: Vec<HostPattern>,
     key: PublicKey,
+}
+
+impl Entry {
+    fn applies_to(&self, name: &str) -> bool {
+        self.hosts.iter().any(|pattern| pattern.matches(name))
+            && !self.excluded.iter().any(|pattern| pattern.matches(name))
+    }
 }
 
 /// What one file says about a key a server offers.
@@ -80,8 +93,8 @@ pub enum HostVerdict {
     Revoked,
 }
 
-/// Reads the lines of a known_hosts file. Comments, `@cert-authority` lines,
-/// patterns with `*`, `?` or `!` and anything unreadable are left out.
+/// Reads the lines of a known_hosts file. Comments, `@cert-authority` lines
+/// and anything unreadable are left out.
 pub fn parse(text: &str) -> Vec<Entry> {
     text.lines()
         .enumerate()
@@ -100,7 +113,14 @@ fn parse_line(line_number: usize, line: &str) -> Option<Entry> {
     let algorithm = words.next()?;
     let base64 = words.next()?;
     let key = PublicKey::from_openssh(&format!("{algorithm} {base64}")).ok()?;
-    let hosts: Vec<HostPattern> = hosts_word.split(',').filter_map(pattern_of).collect();
+    let mut hosts = Vec::new();
+    let mut excluded = Vec::new();
+    for word in hosts_word.split(',') {
+        match word.strip_prefix('!') {
+            Some(negated) => excluded.extend(pattern_of(negated)),
+            None => hosts.extend(pattern_of(word)),
+        }
+    }
     if hosts.is_empty() {
         return None;
     }
@@ -108,6 +128,7 @@ fn parse_line(line_number: usize, line: &str) -> Option<Entry> {
         line: line_number,
         revoked,
         hosts,
+        excluded,
         key,
     })
 }
@@ -120,10 +141,44 @@ fn pattern_of(word: &str) -> Option<HostPattern> {
             hash: BASE64_MIME.decode(hash.as_bytes()).ok()?,
         });
     }
-    if word.is_empty() || word.starts_with('!') || word.contains(['*', '?']) {
+    if word.is_empty() {
         return None;
     }
+    if word.contains(['*', '?']) {
+        return Some(HostPattern::Wildcard(word.to_lowercase()));
+    }
     Some(HostPattern::Plain(word.to_lowercase()))
+}
+
+/// `*` matches any run of characters, `?` exactly one.
+fn wildcard_matches(pattern_word: &str, name: &str) -> bool {
+    let pattern: Vec<char> = pattern_word.chars().collect();
+    let text: Vec<char> = name.chars().collect();
+    let (mut p, mut t) = (0, 0);
+    let mut backtrack: Option<(usize, usize)> = None;
+    while t < text.len() {
+        match pattern.get(p) {
+            Some('*') => {
+                backtrack = Some((p, t));
+                p += 1;
+            }
+            Some(c) if *c == '?' || text.get(t) == Some(c) => {
+                p += 1;
+                t += 1;
+            }
+            _ => match backtrack {
+                Some((star, resume)) => {
+                    backtrack = Some((star, resume + 1));
+                    p = star + 1;
+                    t = resume + 1;
+                }
+                None => return false,
+            },
+        }
+    }
+    pattern
+        .get(p..)
+        .is_some_and(|rest| rest.iter().all(|c| *c == '*'))
 }
 
 /// The name a server is entered under: the bare host on port 22, otherwise
@@ -140,6 +195,7 @@ impl HostPattern {
     fn matches(&self, name: &str) -> bool {
         match self {
             Self::Plain(text) => text == name,
+            Self::Wildcard(pattern) => wildcard_matches(pattern, name),
             Self::Hashed { salt, hash } => Hmac::<Sha1>::new_from_slice(salt)
                 .is_ok_and(|mac| mac.chain_update(name).verify_slice(hash).is_ok()),
         }
@@ -147,7 +203,7 @@ impl HostPattern {
 }
 
 /// What `entries` say about `key` offered by `host:port`. A revoked key is
-/// refused whatever else is listed; a key of the same type that differs from
+/// refused for every host, whatever else is listed; a key of the same type that differs from
 /// the recorded one is a change; a recorded key of another type, with none of
 /// this type, is a change of type.
 pub fn check(entries: &[Entry], host: &str, port: u16, key: &PublicKey) -> Verdict {
@@ -155,17 +211,17 @@ pub fn check(entries: &[Entry], host: &str, port: u16, key: &PublicKey) -> Verdi
     let mut changed = None;
     let mut other_type = None;
     let mut known = false;
+    if entries
+        .iter()
+        .any(|entry| entry.revoked && entry.key.key_data() == key.key_data())
+    {
+        return Verdict::Revoked;
+    }
     for entry in entries
         .iter()
-        .filter(|entry| entry.hosts.iter().any(|pattern| pattern.matches(&name)))
+        .filter(|entry| !entry.revoked && entry.applies_to(&name))
     {
         let same_key = entry.key.key_data() == key.key_data();
-        if entry.revoked {
-            if same_key {
-                return Verdict::Revoked;
-            }
-            continue;
-        }
         if entry.key.algorithm() != key.algorithm() {
             other_type.get_or_insert(entry.line);
             continue;
@@ -191,7 +247,7 @@ pub fn algorithms_on_record(entries: &[Entry], host: &str, port: u16) -> Vec<Alg
     let mut found: Vec<Algorithm> = Vec::new();
     for entry in entries
         .iter()
-        .filter(|entry| !entry.revoked && entry.hosts.iter().any(|pattern| pattern.matches(&name)))
+        .filter(|entry| !entry.revoked && entry.applies_to(&name))
     {
         let algorithm = entry.key.algorithm();
         if !found.contains(&algorithm) {
@@ -284,9 +340,26 @@ impl KnownHosts {
     }
 }
 
+/// The host is written to the file unescaped, so a pattern character would
+/// turn the line into a wildcard entry.
+fn is_literal_host(host: &str) -> bool {
+    !host.is_empty()
+        && !host.chars().any(|character| {
+            character.is_whitespace()
+                || character.is_control()
+                || matches!(character, '*' | '?' | '!' | ',' | '[' | ']' | '#' | '|')
+        })
+}
+
 /// Appends the key the user confirmed to ncrs's own file. Never called with
 /// the OpenSSH file.
 pub fn learn(own: &Path, host: &str, port: u16, key: &PublicKey) -> io::Result<()> {
+    if !is_literal_host(host) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "host name cannot be written to known_hosts",
+        ));
+    }
     russh::keys::known_hosts::learn_known_hosts_path(host, port, key, own)
         .map_err(|error| io::Error::other(error.to_string()))
 }
@@ -418,7 +491,72 @@ mod tests {
         );
         assert_eq!(
             hosts.check("other.org", 22, &key(KEY_A)),
+            HostVerdict::Revoked
+        );
+        assert_eq!(
+            hosts.check("other.org", 22, &key(KEY_B)),
             HostVerdict::Unknown
+        );
+    }
+
+    #[test]
+    fn a_wildcard_revocation_in_the_ssh_file_refuses_the_key_of_the_own_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let ssh = dir.path().join("known_hosts");
+        let own = dir.path().join("own");
+        std::fs::write(&ssh, format!("@revoked * {KEY_A}\n")).unwrap();
+        std::fs::write(&own, format!("example.org {KEY_A}\n")).unwrap();
+        let hosts = KnownHosts::load(&KnownHostsFiles {
+            ssh: Some(ssh),
+            own: Some(own),
+        });
+
+        assert_eq!(
+            hosts.check("example.org", 22, &key(KEY_A)),
+            HostVerdict::Revoked
+        );
+    }
+
+    #[test]
+    fn a_wildcard_line_with_another_key_is_a_change() {
+        let entries = parse(&format!("*.corp.example {KEY_B}\n"));
+        assert_eq!(
+            check(&entries, "git.corp.example", 22, &key(KEY_A)),
+            Verdict::Changed { line: 1 }
+        );
+        assert_eq!(
+            check(&entries, "git.corp.example", 22, &key(KEY_B)),
+            Verdict::Known
+        );
+        assert_eq!(
+            check(&entries, "example.org", 22, &key(KEY_A)),
+            Verdict::Unknown
+        );
+    }
+
+    #[test]
+    fn a_negated_pattern_takes_its_host_out_of_the_line() {
+        let entries = parse(&format!("*.corp.example,!dev.corp.example {KEY_B}\n"));
+        assert_eq!(
+            check(&entries, "dev.corp.example", 22, &key(KEY_A)),
+            Verdict::Unknown
+        );
+        assert_eq!(
+            check(&entries, "git.corp.example", 22, &key(KEY_A)),
+            Verdict::Changed { line: 1 }
+        );
+    }
+
+    #[test]
+    fn a_question_mark_matches_one_character() {
+        let entries = parse(&format!("host-?.example {KEY_A}\n"));
+        assert_eq!(
+            check(&entries, "host-1.example", 22, &key(KEY_A)),
+            Verdict::Known
+        );
+        assert_eq!(
+            check(&entries, "host-12.example", 22, &key(KEY_A)),
+            Verdict::Unknown
         );
     }
 
@@ -446,7 +584,8 @@ mod tests {
             "\n# comment\n@cert-authority *.example.org {KEY_A}\n*.example.org {KEY_A}\n!x.org {KEY_A}\nbroken line\nexample.org ssh-ed25519 not-base64!!\nexample.org\ngood.org {KEY_A}\n"
         );
         let entries = parse(&text);
-        assert_eq!(entries.len(), 1);
+        // The wildcard line and good.org; `!x.org` alone names no host.
+        assert_eq!(entries.len(), 2);
         assert_eq!(check(&entries, "good.org", 22, &key(KEY_A)), Verdict::Known);
     }
 
@@ -531,6 +670,19 @@ mod tests {
             beside.check("example.org", 22, &key(KEY_A)),
             HostVerdict::Known
         );
+    }
+
+    #[test]
+    fn host_with_pattern_characters_is_not_learned() {
+        let dir = tempfile::tempdir().unwrap();
+        let own = dir.path().join("known_hosts");
+        for host in [
+            "*", "a?b", "!x", "a,b", "a b", "a\nb", "", "[::1]", "#x", "|1|x",
+        ] {
+            let error = learn(&own, host, 22, &key(KEY_A)).unwrap_err();
+            assert_eq!(error.kind(), io::ErrorKind::InvalidInput, "{host:?}");
+        }
+        assert!(!own.exists() || std::fs::read_to_string(&own).unwrap().is_empty());
     }
 
     #[test]

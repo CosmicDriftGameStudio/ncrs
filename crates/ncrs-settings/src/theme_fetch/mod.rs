@@ -1,6 +1,6 @@
 //! State of the card that fetches a VS Code color theme from Open VSX. No
-//! widgets and no network: `App` owns it and changes it from `update`, the
-//! view is `ui::theme_fetch`.
+//! widgets and no network: the settings state owns it and changes it from `update`, the
+//! view is [`view`].
 
 pub mod install;
 pub mod view;

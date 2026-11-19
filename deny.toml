@@ -40,7 +40,7 @@ yanked = "deny"
 # all — but recorded here so it is a decision rather than an oversight, and
 # re-checked whenever the lockfile moves. The practical exposure is small: it
 # parses font outlines, we only use it to measure text, and no untrusted input
-# reaches it. If ied ever ships a version that drops cosmic-text, this goes.
+# reaches it. If iced ever ships a version that drops cosmic-text, this goes.
 #
 # RUSTSEC-2026-0370, -0371, -0372: zvariant, zbus_names and zvariant_derive
 # are no longer released on their own; they were merged into zbus 6. They

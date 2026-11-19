@@ -436,13 +436,15 @@ async fn a_host_key_accepted_for_an_alias_is_known_under_what_the_alias_points_a
     )
     .unwrap();
     let alias = ServerId::new("", "files", 22);
-    let Err(ConnectFailure::UnknownHost { key, .. }) =
-        rig.pool.connect(&alias, &Fixture::login()).await
+    let Err(ConnectFailure::UnknownHost {
+        key, host, port, ..
+    }) = rig.pool.connect(&alias, &Fixture::login()).await
     else {
         panic!("the first connection must ask about the host key");
     };
 
-    rig.pool.trust(&alias, &key).unwrap();
+    assert_eq!((host.as_str(), port), ("test.invalid", 2200));
+    rig.pool.trust(&host, port, &key).unwrap();
     let again = rig.pool.connect(&alias, &Fixture::login()).await;
 
     assert_eq!(again, Ok(()));

@@ -191,6 +191,15 @@ impl ChatModel for CachedModel {
         parse_revision(&raw)
     }
 
+    fn choose_folders(
+        &self,
+        folders: &[(String, Vec<String>)],
+        documents: &[String],
+        lane: ncrs_ai::FolderChoiceLane,
+    ) -> Result<Vec<Option<usize>>, AiError> {
+        self.inner.choose_folders(folders, documents, lane)
+    }
+
     fn status(&self) -> LocalModelStatus {
         self.inner.status()
     }

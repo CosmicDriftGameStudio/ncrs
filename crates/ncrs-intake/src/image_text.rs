@@ -9,7 +9,8 @@ use image::imageops::{self, FilterType};
 use image::{DynamicImage, ImageDecoder as _, ImageReader, Limits};
 
 use crate::page_trim::trim_to_content;
-use crate::text::{Extracted, PageImage, TextError, TextSource, MAX_SCAN_SIDE_PIXELS};
+use crate::pdf_text::MAX_SCAN_SIDE_PIXELS;
+use crate::text::{Extracted, PageImage, TextError, TextSource};
 
 /// The image formats this source decodes; heic is not among them.
 pub const EXTENSIONS: [&str; 5] = ["jpg", "jpeg", "png", "tif", "tiff"];

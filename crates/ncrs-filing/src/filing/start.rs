@@ -43,6 +43,7 @@ impl FilingModule {
             dismissed_key_problem: None,
             kinds: Arc::default(),
             chat_text_chain: OnceLock::new(),
+            pipeline_text_chain: Mutex::new(None),
         };
         if db_path.is_none() {
             module.phase = Phase::Failed(NO_DATA_DIRECTORY.to_owned());

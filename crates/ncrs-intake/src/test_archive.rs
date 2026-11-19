@@ -18,7 +18,7 @@ use chrono::NaiveDate;
 
 pub const OWN_NAME: &str = "Marc Beispiel";
 
-const OWN_BLOCK: &str = "Marc Beispiel\nAndrestr. 12\n09112 Chemnitz";
+const OWN_BLOCK: &str = "Marc Beispiel\nMusterweg 1\n00000 Musterstadt";
 const SEED: u64 = 7;
 const YEARS: [i32; 9] = [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024];
 const INBOX_FILES: usize = 300;
@@ -300,9 +300,9 @@ impl Builder {
 
     fn financing(&mut self) {
         const OBJECTS: [(&str, &str); 3] = [
-            ("Chemnitz-Andrestr. 12", "595610814"),
-            ("Leipzig-Kurt-Eisner-Str. 5", "601122334"),
-            ("Dresden-Neustadt WE 3", "587700112"),
+            ("Musterstadt-Musterweg 1", "100000001"),
+            ("Beispielstadt-Beispielallee 5", "100000002"),
+            ("Testdorf-Neustadt WE 3", "100000003"),
         ];
         const DOCUMENTS: [&str; 10] = [
             "perso1",
@@ -499,10 +499,10 @@ impl Builder {
                 "Hausverwaltung Meyer & Co. KG",
                 "Brühl 5, 09111 Chemnitz",
                 "Betriebskostenabrechnung",
-                "Objekt Andrestr. 12, WE 4\nNachzahlung 120,00 EUR",
+                "Objekt Musterweg 1, WE 4\nNachzahlung 120,00 EUR",
             );
             self.add_letter(
-                &format!("Wohnung/Andrestr/Nebenkosten/{year}/Nebenkostenabrechnung_{year}.pdf"),
+                &format!("Wohnung/Musterweg/Nebenkosten/{year}/Nebenkostenabrechnung_{year}.pdf"),
                 &statement,
                 statement_date,
             );
@@ -510,7 +510,7 @@ impl Builder {
                 let (date, relative) = loop {
                     let candidate = self.random_date(year, None);
                     let trade = *self.rng.choose(&TRADES);
-                    let relative = format!("Wohnung/Andrestr/Handwerker/{candidate}_{trade}.pdf");
+                    let relative = format!("Wohnung/Musterweg/Handwerker/{candidate}_{trade}.pdf");
                     if self.is_free(&relative) {
                         break (candidate, relative);
                     }
@@ -532,10 +532,10 @@ impl Builder {
                 "Hausverwaltung Meyer & Co. KG",
                 "Brühl 5, 09111 Chemnitz",
                 document,
-                "Objekt Andrestr. 12",
+                "Objekt Musterweg 1",
             );
             self.add_letter(
-                &format!("Wohnung/Andrestr/Mietvertrag/{document}.pdf"),
+                &format!("Wohnung/Musterweg/Mietvertrag/{document}.pdf"),
                 &letter,
                 date,
             );
@@ -655,7 +655,7 @@ impl Builder {
                 let path = file.relative_path.to_str()?;
                 let belongs = path.starts_with("Versicherung")
                     || path.starts_with("Gesundheit")
-                    || path.starts_with("Wohnung/Andrestr/Handwerker");
+                    || path.starts_with("Wohnung/Musterweg/Handwerker");
                 belongs.then(|| {
                     Some((
                         file.relative_path.clone(),
@@ -754,7 +754,7 @@ impl Builder {
                 "Interhyp AG",
                 "Domagkstr. 34, 80807 München",
                 "Darlehensvertrag",
-                "Darlehensnummer 595610814\nObjekt Chemnitz-Andrestr. 12",
+                "Darlehensnummer 100000001\nObjekt Musterstadt-Musterweg 1",
             ),
             (
                 "Praxis Dr. Schmidt",

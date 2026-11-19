@@ -534,6 +534,65 @@ fn a_failing_provider_leaves_the_document_in_review_unchanged() {
     assert_eq!(fixture.fields(document), after_rules);
 }
 
+fn read_version_after_failures(error: AiError, times: usize) -> u32 {
+    let fixture = Fixture::new();
+    let provider = Arc::new(FakeProvider::failing(error));
+    let steps = fixture.steps(&provider);
+    let document = fixture.add_document(1);
+    set_status(&fixture, document, DocumentStatus::Filed);
+    for _ in 0..times {
+        let mut item = fixture.item(document, INVOICE_TEXT);
+        run(&steps, AI, &mut item);
+    }
+    let version = fixture
+        .index
+        .lock()
+        .unwrap()
+        .ai_read_version(document)
+        .unwrap();
+    version
+}
+
+#[test]
+fn a_document_the_model_keeps_failing_on_is_given_up_after_three_tries() {
+    assert_eq!(read_version_after_failures(AiError::BadReply("x"), 2), 0);
+    assert_eq!(
+        read_version_after_failures(AiError::BadReply("x"), 3),
+        AI_READ_VERSION
+    );
+}
+
+#[test]
+fn a_provider_that_is_down_never_marks_the_document_as_asked() {
+    assert_eq!(
+        read_version_after_failures(AiError::Transport("down"), 5),
+        0
+    );
+}
+
+#[test]
+fn an_inbox_document_in_review_that_the_model_keeps_failing_on_is_given_up_after_three_tries() {
+    let fixture = Fixture::new();
+    let provider = Arc::new(FakeProvider::failing(AiError::BadReply("x")));
+    let steps = fixture.steps(&provider);
+    let document = fixture.add_document(1);
+    let version = || {
+        fixture
+            .index
+            .lock()
+            .unwrap()
+            .ai_read_version(document)
+            .unwrap()
+    };
+    for round in 1..=3 {
+        let mut item = fixture.item(document, INVOICE_TEXT);
+        run(&steps, RULES, &mut item);
+        assert!(item.review.is_some(), "the document waits for a person");
+        run(&steps, AI, &mut item);
+        assert_eq!(version() == AI_READ_VERSION, round == 3, "round {round}");
+    }
+}
+
 /// Returns its fields whatever was asked, like a provider that ignores the
 /// request.
 #[derive(Debug)]
@@ -836,4 +895,38 @@ fn an_unsure_ai_value_replaces_no_guess() {
         .unwrap();
     assert_eq!(origins.of(Field::Sender), FieldOrigin::Rule(None));
     assert_eq!(origins.of(Field::Date), FieldOrigin::Rule(None));
+}
+
+#[test]
+fn an_inbox_document_that_goes_to_review_after_the_answer_is_remembered_as_asked() {
+    let fixture = Fixture::new();
+    let provider = Arc::new(reply("0.5"));
+    let steps = fixture.steps(&provider);
+    fixture
+        .index
+        .lock()
+        .unwrap()
+        .create_rule(&invoice_rule("{sender}/{number}.pdf", true))
+        .unwrap();
+    let document = fixture.add_document(1);
+    let mut item = fixture.item(document, INVOICE_TEXT);
+    run(&steps, RULES, &mut item);
+    assert!(item.review.is_some_and(wants_fields));
+
+    run(&steps, AI, &mut item);
+
+    assert_eq!(
+        item.review,
+        Some(ReviewReason::LowConfidence(Field::Sender))
+    );
+    assert_eq!(
+        fixture
+            .index
+            .lock()
+            .unwrap()
+            .ai_read_version(document)
+            .unwrap(),
+        AI_READ_VERSION,
+        "the next scan must not send the same text again"
+    );
 }

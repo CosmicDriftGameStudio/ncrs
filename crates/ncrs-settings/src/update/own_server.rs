@@ -15,8 +15,11 @@ use crate::state::Settings;
 pub fn update(settings: &mut Settings, message: SettingsMessage, ctx: &Ctx<'_>) -> Task<Message> {
     match message {
         SettingsMessage::AiKey(key) => in_page(settings, |state| state.type_key(key)),
-        SettingsMessage::ConfirmAiConsent => {
-            in_settings(settings, ctx, SettingsState::agree_to_server)
+        SettingsMessage::ConfirmAiConsent(purpose) => {
+            in_settings(settings, ctx, |state| state.agree_to_server(purpose))
+        }
+        SettingsMessage::WithdrawAiConsent(purpose) => {
+            in_settings(settings, ctx, |state| state.withdraw_from_server(purpose))
         }
         SettingsMessage::TestAiServer => test_server(settings, ctx),
         SettingsMessage::AiChecked { endpoint, result } => {

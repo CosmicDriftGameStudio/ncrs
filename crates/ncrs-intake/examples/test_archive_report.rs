@@ -41,14 +41,7 @@ fn field_counts(files: &[TestFile]) -> FieldCounts {
         date: 0,
     };
     for text in files.iter().filter_map(TestFile::text) {
-        let found = detect_fields(
-            text,
-            &DocumentFields::default(),
-            &aliases,
-            &[],
-            &own,
-            &catalog,
-        );
+        let found = detect_fields(text, &DocumentFields::default(), &aliases, &own, &catalog);
         counts.sender += usize::from(found.sender.is_some());
         counts.recipient += usize::from(found.recipient.is_some());
         counts.kind += usize::from(found.kind.is_some());
@@ -66,7 +59,6 @@ fn detected_fields(file: &TestFile) -> DocumentFields {
             text,
             &DocumentFields::default(),
             &SenderAliases::default(),
-            &[],
             &own_names(&names),
             &KindCatalog::built_in(),
         )

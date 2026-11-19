@@ -159,6 +159,8 @@ const EXECUTABLE_EXTENSIONS: &[&str] = &[
     "zsh",
     "csh",
     "py",
+    "pyw",
+    "pyz",
     "pl",
     "rb",
     "desktop",
@@ -186,6 +188,10 @@ const EXECUTABLE_EXTENSIONS: &[&str] = &[
     "cpl",
     "jar",
     "reg",
+    "rdp",
+    "theme",
+    "themepack",
+    "deskthemepack",
     // Windows: shortcuts, help and installer files, packages
     "appref-ms",
     "application",
@@ -709,6 +715,12 @@ mod tests {
             "m.website",
             "n.xll",
             "o.iqy",
+            "p.pyw",
+            "q.pyz",
+            "r.THEME",
+            "s.themepack",
+            "t.deskthemepack",
+            "u.rdp",
         ] {
             assert!(could_execute(Path::new(name)), "{name}");
         }

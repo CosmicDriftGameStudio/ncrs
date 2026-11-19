@@ -1,6 +1,6 @@
 //! Finds the sender of a document without an AI: from identifiers a confirmed
 //! alias knows, else from the letterhead or the footer. Pure; nothing is
-//! stored here, new identifiers and name variants come back as offers.
+//! stored here.
 
 use std::sync::LazyLock;
 
@@ -89,24 +89,8 @@ pub struct DetectedSender {
     pub source: SenderSource,
 }
 
-/// A value the user may confirm as another name of `sender`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AliasOffer {
-    pub sender: String,
-    pub kind: SenderAliasKind,
-    /// Normalised.
-    pub value: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SenderDetection {
-    pub sender: Option<DetectedSender>,
-    /// Empty when no sender was detected.
-    pub offers: Vec<AliasOffer>,
-}
-
 /// What belongs to the user, not to a sender: it stands in many letters
-/// (direct debit notices, tax letters) and is neither detected nor offered.
+/// (direct debit notices, tax letters) and is never detected.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct OwnIdentifiers {
     ibans: Vec<String>,
@@ -161,7 +145,7 @@ struct Identifiers {
 
 impl Identifiers {
     /// Without what is the user's own and without freemail domains: neither
-    /// says who wrote the letter, whether offered or already confirmed.
+    /// says who wrote the letter.
     fn find(text: &str, own: &OwnIdentifiers) -> Self {
         let lowered = text.to_lowercase();
         let not_own =
@@ -222,9 +206,8 @@ fn found_tax_ids(text: &str) -> Vec<String> {
 pub fn detect_sender(
     text: &str,
     aliases: &SenderAliases,
-    known_senders: &[String],
     own: &OwnIdentifiers,
-) -> SenderDetection {
+) -> Option<DetectedSender> {
     // The recipient stands in the addressee block; it is never the sender.
     let addressee = addressee_block_lines(text).unwrap_or_default();
     let lines: Vec<&str> = text
@@ -251,21 +234,11 @@ pub fn detect_sender(
             name_in(lines.iter().skip(footer_from), aliases)
                 .map(|name| (name, SenderSource::Footer))
         });
-    let Some((name, source)) = detected else {
-        return SenderDetection {
-            sender: None,
-            offers: Vec::new(),
-        };
-    };
-    let canonical = aliases.canonical_sender(&name).to_owned();
-    let offers = offers_for(&canonical, &identifiers, aliases, known_senders, own);
-    SenderDetection {
-        sender: Some(DetectedSender {
-            name: canonical,
-            source,
-        }),
-        offers,
-    }
+    let (name, source) = detected?;
+    Some(DetectedSender {
+        name: aliases.canonical_sender(&name).to_owned(),
+        source,
+    })
 }
 
 fn by_identifier(
@@ -281,63 +254,6 @@ fn by_identifier(
                     .sender_for(kind, value)
                     .map(|sender| (sender.to_owned(), SenderSource::Identifier(kind)))
             })
-        })
-}
-
-fn offers_for(
-    sender: &str,
-    identifiers: &Identifiers,
-    aliases: &SenderAliases,
-    known_senders: &[String],
-    own: &OwnIdentifiers,
-) -> Vec<AliasOffer> {
-    let mut offers: Vec<AliasOffer> = Vec::new();
-    for (kind, values) in identifiers.of_kind() {
-        for value in values {
-            let normalised = kind.normalise(value);
-            let new = aliases.sender_for(kind, value).is_none()
-                && !offers
-                    .iter()
-                    .any(|offer| offer.kind == kind && offer.value == normalised);
-            if new {
-                offers.push(AliasOffer {
-                    sender: sender.to_owned(),
-                    kind,
-                    value: normalised,
-                });
-            }
-        }
-    }
-    offers.extend(
-        name_variant_offer(sender, known_senders)
-            .filter(|offer| !own.holds(offer.kind, &offer.value)),
-    );
-    offers
-}
-
-/// "telekom" is a word prefix of "telekom deutschland gmbh".
-fn name_variant_offer(detected: &str, known_senders: &[String]) -> Option<AliasOffer> {
-    let kind = SenderAliasKind::Name;
-    let detected_key = kind.normalise(detected);
-    let known_keys: Vec<(String, &String)> = known_senders
-        .iter()
-        .map(|known| (kind.normalise(known), known))
-        .collect();
-    if known_keys.iter().any(|(key, _)| *key == detected_key) {
-        return None;
-    }
-    known_keys
-        .into_iter()
-        .filter(|(key, _)| {
-            detected_key
-                .strip_prefix(key.as_str())
-                .is_some_and(|rest| !key.is_empty() && rest.starts_with(' '))
-        })
-        .max_by_key(|(key, _)| key.len())
-        .map(|(_, known)| AliasOffer {
-            sender: known.clone(),
-            kind,
-            value: detected_key,
         })
 }
 
@@ -444,14 +360,12 @@ mod tests {
 
     #[test]
     fn a_letterhead_with_a_legal_form_names_the_sender() {
-        let detection = detect_sender(
+        let sender = detect_sender(
             LETTER,
             &SenderAliases::default(),
-            &[],
             &OwnIdentifiers::default(),
-        );
-
-        let sender = detection.sender.unwrap();
+        )
+        .unwrap();
         assert_eq!(sender.name, "Nordlicht Energie GmbH");
         assert_eq!(sender.source, SenderSource::Letterhead);
     }
@@ -460,14 +374,8 @@ mod tests {
     fn a_letterhead_with_an_authority_word_names_the_sender() {
         let text = "Finanzamt Berlin-Mitte\nKlosterstraße 59\n\nBescheid über Einkommensteuer\n";
 
-        let sender = detect_sender(
-            text,
-            &SenderAliases::default(),
-            &[],
-            &OwnIdentifiers::default(),
-        )
-        .sender
-        .unwrap();
+        let sender =
+            detect_sender(text, &SenderAliases::default(), &OwnIdentifiers::default()).unwrap();
 
         assert_eq!(sender.name, "Finanzamt Berlin-Mitte");
         assert_eq!(sender.source, SenderSource::Letterhead);
@@ -481,14 +389,8 @@ mod tests {
         }
         text.push_str("Pixelwerk Studio Ltd | London\n");
 
-        let sender = detect_sender(
-            &text,
-            &SenderAliases::default(),
-            &[],
-            &OwnIdentifiers::default(),
-        )
-        .sender
-        .unwrap();
+        let sender =
+            detect_sender(&text, &SenderAliases::default(), &OwnIdentifiers::default()).unwrap();
 
         assert_eq!(sender.name, "Pixelwerk Studio Ltd");
         assert_eq!(sender.source, SenderSource::Footer);
@@ -498,14 +400,8 @@ mod tests {
     fn the_top_company_wins_over_a_later_one() {
         let text = "Alpha Handels GmbH\nMusterweg 1\nBeta Logistik AG\n";
 
-        let sender = detect_sender(
-            text,
-            &SenderAliases::default(),
-            &[],
-            &OwnIdentifiers::default(),
-        )
-        .sender
-        .unwrap();
+        let sender =
+            detect_sender(text, &SenderAliases::default(), &OwnIdentifiers::default()).unwrap();
 
         assert_eq!(sender.name, "Alpha Handels GmbH");
     }
@@ -514,14 +410,8 @@ mod tests {
     fn the_addressee_block_is_never_the_sender() {
         let text = "Lieferant\nMusterstraße 5\n\nMusterfirma GmbH\nHauptstr. 1\n12345 Berlin\n\nRechnung 4711\nPosition 1\nPosition 2\nPosition 3\nPosition 4\nPosition 5\n\nLieferant Handels AG, Weg 1, 54321 Ort\n";
 
-        let sender = detect_sender(
-            text,
-            &SenderAliases::default(),
-            &[],
-            &OwnIdentifiers::default(),
-        )
-        .sender
-        .unwrap();
+        let sender =
+            detect_sender(text, &SenderAliases::default(), &OwnIdentifiers::default()).unwrap();
 
         assert_eq!(sender.name, "Lieferant Handels AG");
         assert_eq!(sender.source, SenderSource::Footer);
@@ -533,14 +423,8 @@ mod tests {
             Rechnung 4711\nPosition 1\nPosition 2\nPosition 3\nPosition 4\nPosition 5\n\n\
             Stadtwerke Musterstadt GmbH, Hauptstraße 1, 12345 Musterstadt\n";
 
-        let sender = detect_sender(
-            text,
-            &SenderAliases::default(),
-            &[],
-            &OwnIdentifiers::default(),
-        )
-        .sender
-        .unwrap();
+        let sender =
+            detect_sender(text, &SenderAliases::default(), &OwnIdentifiers::default()).unwrap();
 
         assert_eq!(sender.name, "Stadtwerke Musterstadt GmbH");
         assert_eq!(sender.source, SenderSource::Footer);
@@ -552,14 +436,8 @@ mod tests {
             "Stadtwerke Musterstadt GmbH\nHauptstraße 1\n12345 Musterstadt\nTel. 0123 456\n\n\
             Max Mustermann GmbH\nMusterweg 3\n54321 Andernorts\n\nRechnung 4711\n";
 
-        let sender = detect_sender(
-            text,
-            &SenderAliases::default(),
-            &[],
-            &OwnIdentifiers::default(),
-        )
-        .sender
-        .unwrap();
+        let sender =
+            detect_sender(text, &SenderAliases::default(), &OwnIdentifiers::default()).unwrap();
 
         assert_eq!(sender.name, "Stadtwerke Musterstadt GmbH");
         assert_eq!(sender.source, SenderSource::Letterhead);
@@ -572,22 +450,14 @@ mod tests {
             detect_sender(
                 street,
                 &SenderAliases::default(),
-                &[],
                 &OwnIdentifiers::default()
-            )
-            .sender,
+            ),
             None
         );
 
         let town = "Stadt Musterstadt\nBürgeramt\n";
-        let sender = detect_sender(
-            town,
-            &SenderAliases::default(),
-            &[],
-            &OwnIdentifiers::default(),
-        )
-        .sender
-        .unwrap();
+        let sender =
+            detect_sender(town, &SenderAliases::default(), &OwnIdentifiers::default()).unwrap();
         assert_eq!(sender.name, "Stadt Musterstadt");
     }
 
@@ -602,10 +472,8 @@ mod tests {
             detect_sender(
                 &only_register,
                 &SenderAliases::default(),
-                &[],
                 &OwnIdentifiers::default()
-            )
-            .sender,
+            ),
             None
         );
 
@@ -613,10 +481,8 @@ mod tests {
         let sender = detect_sender(
             &with_company,
             &SenderAliases::default(),
-            &[],
             &OwnIdentifiers::default(),
         )
-        .sender
         .unwrap();
         assert_eq!(sender.name, "Lieferant Handels AG");
     }
@@ -626,13 +492,7 @@ mod tests {
         let text = "Wir danken der Muster GmbH für den Auftrag.\nHallo\n";
 
         assert_eq!(
-            detect_sender(
-                text,
-                &SenderAliases::default(),
-                &[],
-                &OwnIdentifiers::default()
-            )
-            .sender,
+            detect_sender(text, &SenderAliases::default(), &OwnIdentifiers::default()),
             None
         );
     }
@@ -646,9 +506,7 @@ mod tests {
         )]);
         let text = "Irgendein Absender GmbH\nIBAN: DE89 3704 0044 0532 0130 00\n";
 
-        let sender = detect_sender(text, &aliases, &[], &OwnIdentifiers::default())
-            .sender
-            .unwrap();
+        let sender = detect_sender(text, &aliases, &OwnIdentifiers::default()).unwrap();
 
         assert_eq!(sender.name, "Stadtwerke Nord");
         assert_eq!(
@@ -666,9 +524,7 @@ mod tests {
         )]);
         let text = "Seite 1\nUSt-IdNr.: DE 123 456 789  Amtsgericht Köln\n";
 
-        let sender = detect_sender(text, &aliases, &[], &OwnIdentifiers::default())
-            .sender
-            .unwrap();
+        let sender = detect_sender(text, &aliases, &OwnIdentifiers::default()).unwrap();
 
         assert_eq!(sender.name, "Kranich Versicherung AG");
         assert_eq!(
@@ -686,9 +542,7 @@ mod tests {
         )]);
         let text = "Hallo\nKontakt: billing@Pixelwerk.example oder www.pixelwerk.example\n";
 
-        let sender = detect_sender(text, &aliases, &[], &OwnIdentifiers::default())
-            .sender
-            .unwrap();
+        let sender = detect_sender(text, &aliases, &OwnIdentifiers::default()).unwrap();
 
         assert_eq!(sender.name, "Pixelwerk Studio Ltd");
         assert_eq!(
@@ -698,44 +552,7 @@ mod tests {
     }
 
     #[test]
-    fn an_unconfirmed_identifier_does_not_resolve_but_is_offered() {
-        let text = "Nordlicht Energie GmbH\nIBAN DE89 3704 0044 0532 0130 00\nSteuernummer: 12/345/67890\nwww.nordlicht.example\n";
-
-        let detection = detect_sender(
-            text,
-            &SenderAliases::default(),
-            &[],
-            &OwnIdentifiers::default(),
-        );
-
-        assert_eq!(
-            detection.sender.as_ref().unwrap().source,
-            SenderSource::Letterhead
-        );
-        let offered: Vec<_> = detection
-            .offers
-            .iter()
-            .map(|offer| (offer.kind, offer.value.as_str()))
-            .collect();
-        assert_eq!(
-            offered,
-            [
-                (SenderAliasKind::Iban, "DE89370400440532013000"),
-                (
-                    SenderAliasKind::TaxId,
-                    "12345 67890".replace(' ', "").as_str()
-                ),
-                (SenderAliasKind::Domain, "nordlicht.example"),
-            ]
-        );
-        assert!(detection
-            .offers
-            .iter()
-            .all(|offer| offer.sender == "Nordlicht Energie GmbH"));
-    }
-
-    #[test]
-    fn an_identifier_in_the_running_text_is_neither_offered_nor_used_to_detect() {
+    fn an_identifier_in_the_running_text_is_not_used_to_detect() {
         let filler = "Zeile ohne Bedeutung\n".repeat(LETTERHEAD_LINES + FOOTER_LINES);
         let text = format!(
             "Nordlicht Energie GmbH\n{filler}Bitte zahlen Sie an Paymentprovider: IBAN DE89 3704 0044 0532 0130 00\n{filler}"
@@ -746,20 +563,9 @@ mod tests {
             "Paymentprovider AG",
         )]);
 
-        let detection = detect_sender(&text, &aliases, &[], &OwnIdentifiers::default());
-        let offered = detect_sender(
-            &text,
-            &SenderAliases::default(),
-            &[],
-            &OwnIdentifiers::default(),
-        )
-        .offers;
+        let sender = detect_sender(&text, &aliases, &OwnIdentifiers::default()).unwrap();
 
-        assert_eq!(
-            detection.sender.as_ref().unwrap().source,
-            SenderSource::Letterhead
-        );
-        assert!(offered.is_empty(), "{offered:?}");
+        assert_eq!(sender.source, SenderSource::Letterhead);
     }
 
     #[test]
@@ -767,39 +573,13 @@ mod tests {
         let aliases = confirmed(&[(SenderAliasKind::Name, "kranich", "Kranich Versicherung AG")]);
         let text = "Kranich\nPolice 4711\n";
 
-        let sender = detect_sender(text, &aliases, &[], &OwnIdentifiers::default())
-            .sender
-            .unwrap();
+        let sender = detect_sender(text, &aliases, &OwnIdentifiers::default()).unwrap();
 
         assert_eq!(sender.name, "Kranich Versicherung AG");
         assert_eq!(sender.source, SenderSource::Letterhead);
     }
 
-    #[test]
-    fn a_name_variant_of_a_known_sender_is_offered_not_merged() {
-        let text = "Telekom Deutschland GmbH\nRechnung\n";
-        let known = vec!["Telekom".to_owned(), "Tele".to_owned()];
-
-        let detection = detect_sender(
-            text,
-            &SenderAliases::default(),
-            &known,
-            &OwnIdentifiers::default(),
-        );
-
-        assert_eq!(detection.sender.unwrap().name, "Telekom Deutschland GmbH");
-        assert_eq!(
-            detection.offers,
-            [AliasOffer {
-                sender: "Telekom".to_owned(),
-                kind: SenderAliasKind::Name,
-                value: "telekom deutschland gmbh".to_owned(),
-            }]
-        );
-    }
-
     const OWN_IBAN: &str = "DE02 1203 0000 0000 2020 51";
-    const SENDER_IBAN: &str = "DE89 3704 0044 0532 0130 00";
 
     fn own_with_iban_and_tax_id() -> OwnIdentifiers {
         OwnIdentifiers::new(
@@ -807,51 +587,6 @@ mod tests {
             ["de02 1203 0000 0000 2020 51"],
             ["98/765/43210"],
         )
-    }
-
-    fn offered_values(detection: &SenderDetection) -> Vec<(SenderAliasKind, &str)> {
-        detection
-            .offers
-            .iter()
-            .map(|offer| (offer.kind, offer.value.as_str()))
-            .collect()
-    }
-
-    #[test]
-    fn the_users_own_iban_and_a_freemail_address_are_not_offered_as_the_senders() {
-        let text = format!(
-            "Stadtwerke Musterstadt GmbH\nIBAN {SENDER_IBAN}\nIhr Konto {OWN_IBAN}\nSteuernummer: 98/765/43210\nkontakt@gmail.com\n"
-        );
-
-        let detection = detect_sender(
-            &text,
-            &SenderAliases::default(),
-            &[],
-            &own_with_iban_and_tax_id(),
-        );
-
-        assert_eq!(
-            offered_values(&detection),
-            [(SenderAliasKind::Iban, "DE89370400440532013000")]
-        );
-    }
-
-    #[test]
-    fn a_subdomain_of_a_freemail_domain_is_not_offered_but_a_company_domain_is() {
-        let text =
-            "Nordlicht Energie GmbH\nmail@mail.gmx.net\nservice@nordlicht.example\nwww.web.de\n";
-
-        let detection = detect_sender(
-            text,
-            &SenderAliases::default(),
-            &[],
-            &OwnIdentifiers::default(),
-        );
-
-        assert_eq!(
-            offered_values(&detection),
-            [(SenderAliasKind::Domain, "nordlicht.example")]
-        );
     }
 
     #[test]
@@ -863,9 +598,9 @@ mod tests {
         )]);
         let text = "Hallo\nSchreiben Sie an someone@gmail.com\n";
 
-        let detection = detect_sender(text, &aliases, &[], &OwnIdentifiers::default());
+        let detection = detect_sender(text, &aliases, &OwnIdentifiers::default());
 
-        assert_eq!(detection.sender, None);
+        assert_eq!(detection, None);
     }
 
     #[test]
@@ -877,29 +612,11 @@ mod tests {
         )]);
         let text = format!("Hallo\nLastschrift von {OWN_IBAN}\n");
 
-        let without_own = detect_sender(&text, &aliases, &[], &OwnIdentifiers::default());
-        let with_own = detect_sender(&text, &aliases, &[], &own_with_iban_and_tax_id());
+        let without_own = detect_sender(&text, &aliases, &OwnIdentifiers::default());
+        let with_own = detect_sender(&text, &aliases, &own_with_iban_and_tax_id());
 
-        assert!(without_own.sender.is_some());
-        assert_eq!(with_own.sender, None);
-    }
-
-    #[test]
-    fn an_own_name_is_not_offered_as_a_name_variant_of_a_sender() {
-        let text = "Max Muster GmbH\nRechnung\n";
-        let known = vec!["Max".to_owned()];
-        let own = OwnIdentifiers::new(["Max Muster GmbH"], [], []);
-
-        let with_own = detect_sender(text, &SenderAliases::default(), &known, &own);
-        let without_own = detect_sender(
-            text,
-            &SenderAliases::default(),
-            &known,
-            &OwnIdentifiers::default(),
-        );
-
-        assert_eq!(without_own.offers.len(), 1);
-        assert!(with_own.offers.is_empty());
+        assert!(without_own.is_some());
+        assert_eq!(with_own, None);
     }
 
     #[test]
@@ -907,11 +624,9 @@ mod tests {
         let detection = detect_sender(
             "Hallo Welt\nBis bald\n",
             &SenderAliases::default(),
-            &[],
             &OwnIdentifiers::default(),
         );
 
-        assert_eq!(detection.sender, None);
-        assert!(detection.offers.is_empty());
+        assert_eq!(detection, None);
     }
 }

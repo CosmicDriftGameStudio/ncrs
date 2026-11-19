@@ -39,6 +39,7 @@ use crate::panel_columns::{
 };
 use crate::system_monitor::SystemSettings;
 use crate::vscode_theme::VscodeTheme;
+use ncrs_ai::ConsentedOrigins;
 use ncrs_core::Column;
 use ncrs_fs::OpenKind;
 use ncrs_i18n::Language;

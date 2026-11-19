@@ -446,7 +446,30 @@ mod tagging_tests {
         p
     }
 
-    /// Tagging is per panel, and survives navigation within that panel.
+    /// Tagging is per panel. Tags are full paths, so listing another folder
+    /// drops them: their files are not in the new list.
+    #[test]
+    fn listing_another_folder_clears_the_tags() {
+        let mut p = panel_with(&[("..", true), ("a", false)]);
+        let name = p.entries[1].path.clone();
+        p.selection.toggle(&name);
+        assert!(p.selection.is_tagged(&name));
+
+        let mut other = entry("b", false);
+        other.path = PathBuf::from("/elsewhere/b");
+        p.apply_listing(
+            PathBuf::from("/elsewhere"),
+            vec![entry("..", true), other],
+            None,
+            None,
+            10,
+        );
+
+        assert!(!p.selection.is_tagged(&name));
+        assert!(p.selection.is_empty());
+    }
+
+    /// Tagging is per panel.
     #[test]
     fn tags_live_on_the_panel() {
         let mut p = panel_with(&[("..", true), ("a", false), ("b", false)]);

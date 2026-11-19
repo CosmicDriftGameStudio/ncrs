@@ -3858,7 +3858,7 @@ mod title_bar {
         let provider = crate::filing::http_ai_provider(
             "http://127.0.0.1:1/v1",
             "model-x",
-            &[],
+            &ncrs_ai::ConsentedOrigins::default(),
             std::path::Path::new("index.db"),
         )
         .unwrap();
@@ -4915,6 +4915,8 @@ mod connect_dialog {
         dialog.set_stage(Stage::HostKey {
             fingerprint: "SHA256:abc".to_owned(),
             key: Box::new(key),
+            host: "example.org".to_owned(),
+            port: 22,
         });
         dialog
     }
@@ -5014,6 +5016,8 @@ mod connect_dialog {
         dialog.set_stage(Stage::HostKey {
             fingerprint: "SHA256:abc".to_owned(),
             key: Box::new(key),
+            host: "example.org".to_owned(),
+            port: 2222,
         });
 
         assert!(shows(

@@ -6,9 +6,10 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use iced::Task;
+use ncrs_ai::AiError;
 use ncrs_filing::chat_work::{
     mark_files, plan_live, run_plan, ChatAccess, ChatResult, ChatWork, LiveFile, LivePlan, LiveRun,
-    LiveState, Override, TrashItem,
+    LiveState, Override, PlanFailure, TrashItem,
 };
 use ncrs_i18n::Msg;
 use ncrs_index::Transfer;
@@ -45,16 +46,34 @@ pub fn start(state: &mut State, source: PathBuf, target: PathBuf, ctx: &Ctx) -> 
     };
     state.session = Some(session);
     let tags = tags(ctx.lang);
+    let lang = ctx.lang;
     Task::perform(
         async move {
             tokio::task::spawn_blocking(move || {
                 plan_live(&access, &source, &target, &*model, &tags, &run)
+                    .map_err(|failure| failure_text(lang, &failure))
             })
             .await
             .unwrap_or_else(|err| Err(err.to_string()))
         },
         Message::PlanFinished,
     )
+}
+
+/// What the user reads when planning ends early. The technical reason of a
+/// model failure is not shown.
+pub fn failure_text(lang: ncrs_i18n::Language, failure: &PlanFailure) -> String {
+    match failure {
+        PlanFailure::Model(AiError::Unsupported) => {
+            lang.text(Msg::FilingViewErrorFolderChoiceUnsupported)
+        }
+        PlanFailure::Model(AiError::ConsentRequired(_)) => {
+            lang.text(Msg::FilingViewErrorFolderConsentMissing)
+        }
+        PlanFailure::Model(_) => lang.text(Msg::FilingViewErrorModelFailed),
+        PlanFailure::Other(reason) => reason.as_str(),
+    }
+    .to_owned()
 }
 
 pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Step {
@@ -78,6 +97,16 @@ pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> Step {
             read_existing(session);
             if let Err(reason) = &result {
                 session.error = Some(reason.clone());
+            } else if session
+                .plan
+                .as_ref()
+                .is_some_and(|plan| plan.folder_choice_unsupported)
+            {
+                session.error = Some(
+                    ctx.lang
+                        .text(Msg::FilingViewErrorFolderChoiceUnsupported)
+                        .to_owned(),
+                );
             }
             session.finished = Some(result);
         }

@@ -36,6 +36,10 @@ pub enum Stage {
     HostKey {
         fingerprint: String,
         key: Box<PublicKey>,
+        /// The host and port the key was judged by, which the typed alias may
+        /// not show.
+        host: String,
+        port: u16,
     },
     /// The server asks for a key file that is locked. The user types its
     /// passphrase.

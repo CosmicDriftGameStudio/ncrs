@@ -16,11 +16,13 @@ ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0" }
 # The release look-up runs on the blocking pool.
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
 # One HTTPS request to GitHub, blocking, only in builds outside the sandbox.
-ureq = { version = "=3.5.0", default-features = false, features = ["rustls"] }
+ureq = { workspace = true }
 # Reads the answer of GitHub; the same parser as the theme fetch.
-jsonc-parser = { version = "=0.34.0", default-features = false }
+jsonc-parser = { workspace = true }
 # Compares the release with the running version.
 semver = "=1.0.28"
+# The day of the last check.
+chrono = { version = "0.4", default-features = false, features = ["std"] }
 serde = { version = "1", features = ["derive"] }
 # The remembered check: same format as the session state.
 toml_edit = { version = "0.25", default-features = false, features = ["parse", "serde", "display"] }

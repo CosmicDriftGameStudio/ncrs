@@ -310,7 +310,7 @@ fn main() -> iced::Result {
         Some("-V" | "--version") => {
             println!(
                 "ncrs {} ({})",
-                env!("CARGO_PKG_VERSION"),
+                env!("NCRS_DISPLAY_VERSION"),
                 backend::Backend::CURRENT.name()
             );
             return Ok(());

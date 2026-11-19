@@ -336,23 +336,22 @@ async fn an_unconsented_remote_server_is_not_allowed_and_agreeing_inline_writes_
 
     settle(&mut app, Message::Settings(SettingsMessage::SaveServer)).await;
     let agreed = |current: &App| {
-        current
-            .settings
-            .page
-            .as_ref()
-            .and_then(ncrs_settings::settings::SettingsState::server_agreed)
+        let page = current.settings.page.as_ref()?;
+        page.server_agreed(ncrs_ai::ConsentPurpose::Inbox)
     };
     assert_eq!(agreed(&app), Some(false));
-    assert!(!config_text(&config_dir).contains("consented_origins = [\""));
+    assert!(!config_text(&config_dir).contains("consented_inbox = [\""));
 
     settle(
         &mut app,
-        Message::Settings(SettingsMessage::ConfirmAiConsent),
+        Message::Settings(SettingsMessage::ConfirmAiConsent(
+            ncrs_ai::ConsentPurpose::Inbox,
+        )),
     )
     .await;
 
     assert!(
-        config_text(&config_dir).contains("consented_origins = [\"https://unreachable.invalid\"]")
+        config_text(&config_dir).contains("consented_inbox = [\"https://unreachable.invalid\"]")
     );
     assert_ne!(
         the_index_ai_state(&app),

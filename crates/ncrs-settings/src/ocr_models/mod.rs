@@ -1,8 +1,8 @@
 //! The card that asks before the models for reading scanned pages are
 //! downloaded, and the download itself. Nothing here runs unless the user
 //! pressed the button of the card; the download is blocking and belongs on a
-//! blocking thread. The card's state has no widgets and no network: `App` owns
-//! it, the view is `ui::ocr_models`.
+//! blocking thread. The card's state has no widgets and no network: it lives in
+//! the settings state, and the view is [`view`].
 
 pub mod view;
 

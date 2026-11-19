@@ -18,8 +18,7 @@ on:
   # is skipped. That is the guard working, not a broken file.
   workflow_dispatch:
 
-permissions:
-  contents: write
+permissions: {}
 
 env:
   CARGO_TERM_COLOR: always
@@ -83,6 +82,10 @@ jobs:
     permissions:
       actions: read
       contents: write
+      # The provenance attestation of the release assets is signed with the
+      # OIDC token of this run.
+      id-token: write
+      attestations: write
     # The Apple secrets are only readable from inside this environment, and the
     # environment's protection rules decide who may release. Without it, any
     # account with write access could dispatch the workflow from a branch
@@ -117,7 +120,30 @@ jobs:
             packaging/aur
             packaging/homebrew
             assets/ncrs.icns
+            install.sh
+            install.ps1
           sparse-checkout-cone-mode: false
+
+      # The binaries and packages carry the Cargo.toml version, the bundle, the
+      # cask and the AUR package the tag's. `releases/latest` and the installer
+      # need a stable tag, so a pre-release tag is refused as well.
+      - name: Check the tag against Cargo.toml
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          case "$REF_NAME" in
+            v[0-9]*) ;;
+            *) exit 0 ;;
+          esac
+          cargo_version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          if [ "${REF_NAME#v}" != "$cargo_version" ]; then
+            echo "::error::tag $REF_NAME does not match Cargo.toml version $cargo_version"
+            exit 1
+          fi
+          if ! printf '%s' "$cargo_version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::$REF_NAME is not a stable version; pre-releases are not published"
+            exit 1
+          fi
 
       # The artifacts of the CI push run on main for this commit: archives,
       # packages, the sandbox binaries and the licenses file, each under
@@ -185,6 +211,12 @@ jobs:
           # exits successfully — but it writes to the job summary, because a
           # silent pass would be read as "Gatekeeper will accept this".
           if [ -z "${APPLE_CERTIFICATE_P12:-}" ] || [ -z "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]; then
+            # The project's own release must never go out unsigned because a
+            # secret went missing.
+            if [ "$GITHUB_REPOSITORY" = "CosmicDriftGameStudio/ncrs" ]; then
+              echo "::error::Apple secrets are missing; refusing to publish unsigned binaries"
+              exit 1
+            fi
             echo "### Notarization skipped" >> "$GITHUB_STEP_SUMMARY"
             echo "No Apple secrets configured. macOS binaries are published" >> "$GITHUB_STEP_SUMMARY"
             echo "**unsigned**, and Gatekeeper will warn on first launch." >> "$GITHUB_STEP_SUMMARY"
@@ -405,6 +437,10 @@ jobs:
         # asset, so it has to exist on every release.
         run: cp artifacts/third-party-licenses/THIRD_PARTY_LICENSES.html dist/
 
+      - name: Installer scripts
+        # Read the exact version before running it; listed in SHA256SUMS.
+        run: cp install.sh install.ps1 dist/
+
       - name: Checksums
         # After notarization, never before: signing rewrites the binary, so a
         # checksum computed earlier would describe a file nobody downloads.
@@ -416,6 +452,13 @@ jobs:
           cd dist
           shasum -a 256 * > SHA256SUMS
           cat SHA256SUMS
+
+      - name: Attest the release assets
+        # Ties every asset to this workflow run, so a downloaded file can be
+        # checked with `gh attestation verify <file> --repo <owner>/ncrs`.
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*
 
       - name: Publish release
         id: publish

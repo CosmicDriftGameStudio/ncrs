@@ -284,9 +284,17 @@ impl ImageTextSource for OcrText {
 /// keeps the engine once it has found and verified them. Until then it yields
 /// no text, without an error and without any network, so a download takes
 /// effect without a restart.
+type ModelStamp = Vec<Option<(u64, std::time::SystemTime)>>;
+
 pub struct LazyOcrText {
     models_dir: PathBuf,
     engine: Mutex<Option<Arc<OcrText>>>,
+    /// A load that failed, with the stamp of the model files it failed on:
+    /// the models are not parsed again for every file until they change.
+    failed: Mutex<Option<(ModelStamp, TextError)>>,
+    /// How often the models were parsed, for the test of the cache above.
+    #[cfg(test)]
+    loads: std::sync::atomic::AtomicUsize,
 }
 
 impl fmt::Debug for LazyOcrText {
@@ -302,7 +310,20 @@ impl LazyOcrText {
         Self {
             models_dir,
             engine: Mutex::new(None),
+            failed: Mutex::new(None),
+            #[cfg(test)]
+            loads: std::sync::atomic::AtomicUsize::new(0),
         }
+    }
+
+    fn model_stamp(&self) -> ModelStamp {
+        OCR_MODEL_FILES
+            .iter()
+            .map(|file| {
+                let meta = fs::metadata(self.models_dir.join(file.name)).ok()?;
+                Some((meta.len(), meta.modified().ok()?))
+            })
+            .collect()
     }
 
     /// The lock is held while loading, so workers that meet the first scan
@@ -312,13 +333,31 @@ impl LazyOcrText {
         if let Some(engine) = cached.as_ref() {
             return Ok(Some(Arc::clone(engine)));
         }
-        let loaded =
-            OcrText::load(&self.models_dir).map_err(|err| TextError::EngineUnavailable {
-                path: self.models_dir.clone(),
-                reason: err.to_string(),
-            })?;
-        *cached = loaded.map(Arc::new);
-        Ok(cached.clone())
+        let stamp = self.model_stamp();
+        let mut failed = self.failed.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some((failed_on, error)) = failed.as_ref() {
+            if *failed_on == stamp {
+                return Err(error.clone());
+            }
+        }
+        #[cfg(test)]
+        self.loads
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        match OcrText::load(&self.models_dir) {
+            Ok(loaded) => {
+                *failed = None;
+                *cached = loaded.map(Arc::new);
+                Ok(cached.clone())
+            }
+            Err(err) => {
+                let error = TextError::EngineUnavailable {
+                    path: self.models_dir.clone(),
+                    reason: err.to_string(),
+                };
+                *failed = Some((stamp, error.clone()));
+                Err(error)
+            }
+        }
     }
 }
 
@@ -489,6 +528,37 @@ mod tests {
             panic!("expected an error");
         };
         assert!(reason.contains(detection.name), "{reason}");
+    }
+
+    #[test]
+    fn a_failed_load_is_kept_until_the_model_files_change() {
+        let dir = TempDir::new().unwrap();
+        let [detection, recognition] = OCR_MODEL_FILES;
+        for file in [detection, recognition] {
+            let mut bytes: Vec<u8> = vec![0; usize::try_from(file.size).unwrap()];
+            bytes[0] = 1;
+            fs::write(dir.path().join(file.name), bytes).unwrap();
+        }
+        let source = LazyOcrText::new(dir.path().to_path_buf());
+        let page = || PageImage {
+            width: 1,
+            height: 1,
+            pixels: vec![0],
+        };
+
+        let first = source.recognise(&[page()]);
+        let second = source.recognise(&[page()]);
+        assert!(matches!(first, Err(TextError::EngineUnavailable { .. })));
+        assert_eq!(first, second);
+        assert_eq!(
+            source.loads.load(std::sync::atomic::Ordering::Relaxed),
+            1,
+            "the second file did not parse the models again"
+        );
+
+        fs::remove_file(dir.path().join(detection.name)).unwrap();
+        fs::remove_file(dir.path().join(recognition.name)).unwrap();
+        assert_eq!(source.recognise(&[page()]), Ok(None));
     }
 
     #[test]

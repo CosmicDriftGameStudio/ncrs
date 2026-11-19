@@ -1,6 +1,8 @@
 //! The message loop and the routing of what the user typed or pressed.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 use iced::Task;
 use ncrs_filing::chat_work::{ChatAccess, ChatResult, ChatWork};
@@ -21,6 +23,9 @@ use crate::texts::{fill, folder_name, shown_folder, text};
 use crate::{learn, named_folders, photos, tidy, trial_end, understand, undo};
 
 pub fn update(state: &mut State, message: Message, ctx: &Ctx) -> (Task<Message>, Option<Action>) {
+    if !ctx.ai_on {
+        state.picks_stop.store(true, Ordering::Relaxed);
+    }
     let action = route(state, message, ctx).or_else(|| state.queued_action.take());
     (launch(state, ctx), action)
 }
@@ -193,6 +198,7 @@ fn change_area(state: &mut State, ctx: &Ctx, folder: PathBuf, area: String) -> O
             match &ctx.availability {
                 Availability::Off => say_off(state, ctx),
                 Availability::Failed(reason) => say_failed(state, ctx, reason),
+                Availability::ModelFailed(problem) => say_model_failed(state, ctx, *problem),
                 Availability::Starting | Availability::Ready(_) => {}
             }
         }
@@ -216,8 +222,13 @@ fn new_chat(state: &mut State, ctx: &Ctx) {
     if is_busy(state) {
         return;
     }
+    // The background job is not part of the conversation: a second one must
+    // not start beside it.
     *state = State {
         open: state.open,
+        picks_running: state.picks_running,
+        picks_stop: Arc::clone(&state.picks_stop),
+        picks_settled_at: state.picks_settled_at,
         ..State::default()
     };
     open_thread(state, ctx);
@@ -387,7 +398,7 @@ pub fn drop_working(state: &mut State) {
 fn handle_done(state: &mut State, ctx: &Ctx, result: ChatResult) -> Option<Action> {
     match result {
         ChatResult::Read(read) => learn::read_done(state, ctx, read),
-        ChatResult::Trial(trial) => tidy::trial_done(state, ctx, trial),
+        ChatResult::Trial(trial) => tidy::trial_done(state, ctx, trial.map(|plan| *plan)),
         // The chat no longer asks for group rules; the work stays in ncrs-filing.
         ChatResult::RuleSaved(_) => {}
         ChatResult::RuleTried(tried) => crate::rule_flow::trial_done(state, ctx, tried),
@@ -438,6 +449,10 @@ fn hold_until_ready(state: &mut State, ctx: &Ctx, held: Held) -> bool {
             say_failed(state, ctx, reason);
             true
         }
+        Availability::ModelFailed(problem) => {
+            say_model_failed(state, ctx, *problem);
+            true
+        }
         Availability::Off => {
             say_off(state, ctx);
             true
@@ -450,6 +465,14 @@ pub fn say_failed(state: &mut State, ctx: &Ctx, reason: &str) {
     say(
         state,
         text_with(ctx, Msg::HermesChatStartFailed, &[("reason", reason)]),
+        vec![chip(ctx, Msg::HermesChatRetry, ChipReply::TurnOn, true)],
+    );
+}
+
+pub fn say_model_failed(state: &mut State, ctx: &Ctx, problem: ncrs_ai::ModelProblem) {
+    say(
+        state,
+        crate::texts::problem_text(ctx.lang, problem),
         vec![chip(ctx, Msg::HermesChatRetry, ChipReply::TurnOn, true)],
     );
 }
@@ -626,6 +649,10 @@ pub fn open_thread(state: &mut State, ctx: &Ctx) {
         }
         Availability::Failed(reason) => {
             say_failed(state, ctx, reason);
+            return;
+        }
+        Availability::ModelFailed(problem) => {
+            say_model_failed(state, ctx, *problem);
             return;
         }
         Availability::Starting => {

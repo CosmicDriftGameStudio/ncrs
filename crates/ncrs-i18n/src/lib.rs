@@ -24,7 +24,7 @@ use ncrs_index::{KindCatalog, KindLanguage};
 // doc comment cannot sit here without a blank line before the item, and clippy
 // rejects a blank line between a doc comment and what it documents.
 mod gen {
-    /// English, the source language and the fallback.
+    /// English, the source language.
     pub mod en {
         include!(concat!(env!("OUT_DIR"), "/en.rs"));
     }
@@ -47,7 +47,7 @@ pub use gen::ALL as ALL_MESSAGES;
 pub use gen::{FuturamaName, Msg};
 
 impl Msg {
-    /// English text, also the fallback for languages that lack this key.
+    /// English text. Every key has one, `build.rs` refuses a blank.
     pub fn text(self) -> &'static str {
         gen::text(self)
     }
@@ -104,7 +104,7 @@ impl Language {
         }
     }
 
-    /// The text in this language, falling back to English for missing keys.
+    /// The text in this language. Every key has both texts, `build.rs` refuses a blank one.
     pub fn text(self, msg: Msg) -> &'static str {
         match self.base() {
             Language::German => gen::de_text(msg),

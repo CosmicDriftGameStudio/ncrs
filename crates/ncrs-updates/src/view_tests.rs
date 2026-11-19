@@ -20,18 +20,29 @@ fn never_fetch(_app_version: &str) -> Result<LatestRelease, String> {
     Err("no network in tests".to_owned())
 }
 
-fn state_without_news(channel: Channel) -> State {
-    State::new("1.2.0", channel, None)
-}
-
-fn state_with_news(channel: Channel) -> State {
-    let mut state = state_without_news(channel);
-    let ctx = Ctx {
+fn checked_ctx() -> Ctx<'static> {
+    Ctx {
         enabled: None,
         now_unix: 0,
         fetch: never_fetch,
         state_file: None,
+    }
+}
+
+/// A check that got an answer, and the answer is the running release.
+fn state_without_news(channel: Channel) -> State {
+    let mut state = State::new("1.2.0", channel, None);
+    let running = LatestRelease {
+        version: Version::new(1, 2, 0),
+        notes_url: format!("{TRUSTED_NOTES_PREFIX}tag/v1.2.0"),
     };
+    let _ = update(&mut state, Message::Checked(Ok(running)), &checked_ctx());
+    state
+}
+
+fn state_with_news(channel: Channel) -> State {
+    let mut state = state_without_news(channel);
+    let ctx = checked_ctx();
     let found = LatestRelease {
         version: Version::new(1, 3, 0),
         notes_url: format!("{TRUSTED_NOTES_PREFIX}tag/v1.3.0"),
@@ -112,6 +123,51 @@ fn without_news_the_page_says_so_only_while_the_check_is_on() {
     on.find("ncrs is up to date.").unwrap();
     let mut off = Simulator::new(page(&state, false, &palette));
     off.find("ncrs is up to date.").unwrap_err();
+}
+
+#[test]
+fn a_failed_check_never_says_up_to_date() {
+    let palette = Palette::default();
+    let mut state = State::new("1.2.0", Channel::Direct, None);
+    let _ = update(
+        &mut state,
+        Message::Checked(Err("offline".to_owned())),
+        &checked_ctx(),
+    );
+    let mut sim = Simulator::new(page(&state, true, &palette));
+    sim.find("ncrs is up to date.").unwrap_err();
+    sim.find("The last check for updates failed. ncrs tries again later.")
+        .unwrap();
+}
+
+#[test]
+fn before_any_check_has_finished_the_page_does_not_claim_up_to_date() {
+    let palette = Palette::default();
+    let state = State::new("1.2.0", Channel::Direct, None);
+    let mut sim = Simulator::new(page(&state, true, &palette));
+    sim.find("ncrs is up to date.").unwrap_err();
+    sim.find("No check for updates has finished yet.").unwrap();
+}
+
+#[test]
+fn a_file_from_before_the_outcome_was_kept_says_when_the_last_check_was() {
+    let palette = Palette::default();
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("updates.toml");
+    std::fs::write(&file, "last_checked_unix = 1700000000\n").unwrap();
+    let state = State::new("1.2.0", Channel::Direct, Some(&file));
+    let mut sim = Simulator::new(page(&state, true, &palette));
+    sim.find("ncrs is up to date.").unwrap_err();
+    sim.find("No check for updates has finished yet.")
+        .unwrap_err();
+    sim.find("Last checked for updates on 2023-11-14.").unwrap();
+}
+
+#[test]
+fn a_unix_time_is_written_as_a_utc_date() {
+    assert_eq!(crate::view::date_of(0), "1970-01-01");
+    assert_eq!(crate::view::date_of(1_700_000_000), "2023-11-14");
+    assert_eq!(crate::view::date_of(951_782_400), "2000-02-29");
 }
 
 fn matches_image(state: &State, enabled: bool, name: &str) {

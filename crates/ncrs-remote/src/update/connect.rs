@@ -104,8 +104,18 @@ pub(in crate::update) fn show_failure(
     lang: Language,
 ) -> Task<Message> {
     match failure {
-        ConnectFailure::UnknownHost { fingerprint, key } => {
-            dialog.set_stage(Stage::HostKey { fingerprint, key });
+        ConnectFailure::UnknownHost {
+            fingerprint,
+            key,
+            host,
+            port,
+        } => {
+            dialog.set_stage(Stage::HostKey {
+                fingerprint,
+                key,
+                host,
+                port,
+            });
             Task::none()
         }
         ConnectFailure::PassphraseNeeded { key_file } => {
@@ -202,10 +212,10 @@ pub fn trust_host_key(remote: &mut Remote, ctx: &Ctx<'_>) -> Task<Message> {
     let Some(dialog) = remote.dialog.as_mut() else {
         return Task::none();
     };
-    let Stage::HostKey { key, .. } = dialog.stage().clone() else {
-        return Task::none();
-    };
-    let Ok((server, _)) = dialog.target() else {
+    let Stage::HostKey {
+        key, host, port, ..
+    } = dialog.stage().clone()
+    else {
         return Task::none();
     };
     remote.attempts = remote.attempts.wrapping_add(1);
@@ -216,7 +226,8 @@ pub fn trust_host_key(remote: &mut Remote, ctx: &Ctx<'_>) -> Task<Message> {
     Task::perform(
         async move {
             tokio::task::spawn_blocking(move || {
-                pool.trust(&server, &key).map_err(|error| error.to_string())
+                pool.trust(&host, port, &key)
+                    .map_err(|error| error.to_string())
             })
             .await
             .unwrap_or_else(|failure| Err(failure.to_string()))

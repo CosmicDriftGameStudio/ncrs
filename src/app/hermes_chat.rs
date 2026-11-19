@@ -87,6 +87,7 @@ impl App {
         if !self.chat_ai_on() {
             self.chat_model = None;
             self.chat_model_setting = None;
+            self.chat_model_error = None;
             return;
         }
         if self.chat_model.is_some() && self.chat_model_setting.as_ref() == Some(&setting) {
@@ -95,20 +96,18 @@ impl App {
         let Some(index_path) = self.hermes.index_path.as_deref() else {
             return;
         };
-        let model: Option<Arc<dyn ncrs_ai::ChatModel>> = match &setting {
-            crate::config::AiSetting::Http {
-                endpoint,
-                model,
-                consented_origins,
-            } => crate::filing::http_ai_provider(endpoint, model, consented_origins, index_path)
-                .map(|server| server as Arc<dyn ncrs_ai::ChatModel>),
-            crate::config::AiSetting::Local { threads } => {
-                local_chat_model(index_path, self.hermes.filing_config.load, *threads)
+        match crate::filing::chat_model(&setting, self.hermes.filing_config.load, index_path) {
+            Ok(model) => {
+                self.chat_model = Some(model);
+                self.chat_model_setting = Some(setting);
+                self.chat_model_error = None;
             }
-            crate::config::AiSetting::Off => None,
-        };
-        self.chat_model_setting = model.is_some().then_some(setting);
-        self.chat_model = model;
+            Err(error) => {
+                self.chat_model = None;
+                self.chat_model_setting = None;
+                self.chat_model_error = Some(ncrs_ai::ModelProblem::from(&error));
+            }
+        }
     }
 
     pub(in crate::app) fn chat_ai_on(&self) -> bool {
@@ -125,7 +124,10 @@ impl App {
             }
             None => ncrs_hermes_chat::Availability::Off,
             Some(module) => match module.chat_access(Arc::clone(&self.trash)) {
-                Some(access) => ncrs_hermes_chat::Availability::Ready(Box::new(access)),
+                Some(access) => match self.chat_model_error.filter(|_| self.chat_ai_on()) {
+                    Some(problem) => ncrs_hermes_chat::Availability::ModelFailed(problem),
+                    None => ncrs_hermes_chat::Availability::Ready(Box::new(access)),
+                },
                 None if self.hermes.is_restarting() || module.is_starting() => {
                     ncrs_hermes_chat::Availability::Starting
                 }
@@ -278,22 +280,4 @@ impl App {
         .width(Length::Fill)
         .height(Length::Fill)
     }
-}
-
-#[cfg(feature = "local-ai")]
-fn local_chat_model(
-    index_path: &std::path::Path,
-    load: ncrs_pipeline::Load,
-    threads: Option<std::num::NonZeroU32>,
-) -> Option<Arc<dyn ncrs_ai::ChatModel>> {
-    Some(crate::filing::shared_local_model(index_path, load, threads))
-}
-
-#[cfg(not(feature = "local-ai"))]
-fn local_chat_model(
-    _index_path: &std::path::Path,
-    _load: ncrs_pipeline::Load,
-    _threads: Option<std::num::NonZeroU32>,
-) -> Option<Arc<dyn ncrs_ai::ChatModel>> {
-    None
 }

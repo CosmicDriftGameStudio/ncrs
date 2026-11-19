@@ -96,7 +96,11 @@ pub(in crate::app::tests) fn settle(
             let answer = ask.run(model);
             HermesChatMessage::RuleAnswered(answer)
         } else if let Some(turn) = chat.pending_turn().cloned() {
-            HermesChatMessage::Understood(model.understand(&turn).map_err(|err| err.to_string()))
+            HermesChatMessage::Understood(
+                model
+                    .understand(&turn)
+                    .map_err(|err| ncrs_ai::ModelProblem::from(&err)),
+            )
         } else {
             return;
         };

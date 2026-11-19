@@ -6,7 +6,7 @@ use ncrs_index::{DocumentFields, KindCatalog, SenderAliases};
 
 use crate::date_detection::detect_letter_date;
 use crate::recipient_detection::{detect_recipient, kind_from_heading};
-use crate::sender_detection::{detect_sender, AliasOffer, OwnIdentifiers};
+use crate::sender_detection::{detect_sender, OwnIdentifiers};
 
 /// Bump when the detection learns something new: archive documents are read
 /// again.
@@ -26,7 +26,6 @@ pub struct DetectedFields {
     pub recipient: Option<String>,
     pub kind: Option<String>,
     pub date: Option<NaiveDate>,
-    pub offers: Vec<AliasOffer>,
 }
 
 impl DetectedFields {
@@ -54,7 +53,6 @@ pub fn detect_fields(
     text: &str,
     current: &DocumentFields,
     aliases: &SenderAliases,
-    known_senders: &[String],
     own: &OwnNames<'_>,
     kinds: &KindCatalog,
 ) -> DetectedFields {
@@ -82,17 +80,14 @@ pub fn detect_fields(
             own.ibans.iter().map(String::as_str),
             own.tax_ids.iter().map(String::as_str),
         );
-        detect_sender(text, aliases, known_senders, &identifiers)
+        detect_sender(text, aliases, &identifiers)
     });
-    let (sender, offers) = detection.map_or((None, Vec::new()), |found| {
-        (found.sender.map(|sender| sender.name), found.offers)
-    });
+    let sender = detection.flatten().map(|found| found.name);
     DetectedFields {
         sender,
         recipient,
         kind,
         date,
-        offers,
     }
 }
 
@@ -106,7 +101,7 @@ pub fn detect_fields(
 mod tests {
     use super::*;
 
-    const LETTER: &str = "Muster GmbH\nHauptstr. 1, 09111 Chemnitz\n\nMarc Beispiel\nAndrestr. 12\n09112 Chemnitz\n\nChemnitz, 28.01.2019\n\nRechnung\n\nBetrag 10 EUR\n\nMit freundlichen Grüßen\nMuster GmbH\n";
+    const LETTER: &str = "Muster GmbH\nHauptstr. 1, 09111 Chemnitz\n\nMarc Beispiel\nMusterweg 1\n00000 Musterstadt\n\nChemnitz, 28.01.2019\n\nRechnung\n\nBetrag 10 EUR\n\nMit freundlichen Grüßen\nMuster GmbH\n";
 
     fn own() -> OwnNames<'static> {
         OwnNames {
@@ -121,7 +116,6 @@ mod tests {
             LETTER,
             current,
             &SenderAliases::default(),
-            &[],
             &own(),
             &KindCatalog::built_in(),
         )

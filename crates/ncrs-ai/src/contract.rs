@@ -6,7 +6,7 @@ use jsonc_parser::{parse_to_value, JsonObject, JsonValue, ParseOptions};
 use ncrs_index::{Currency, DocumentFields, Field, KindCatalog, KindLanguage};
 use ncrs_intake::{parse_amount, parse_date, AI_FIELD_ORDER};
 
-use crate::error::AiError;
+use crate::error::{AiError, FailureScope};
 use crate::json::Json;
 
 /// The longest value kept from a reply, in characters.
@@ -137,6 +137,11 @@ pub trait Provider: Send + Sync + fmt::Debug {
     /// false, so the pipeline does not ask for the whole archive at every start.
     fn can_answer(&self, _source: &Path) -> bool {
         true
+    }
+
+    /// Whom `error` is about, for a failure of `extract`.
+    fn failure_scope(&self, error: &AiError) -> FailureScope {
+        error.scope()
     }
 }
 

@@ -168,7 +168,7 @@ impl App {
         panels.config_path = config_path;
         panels.updates = ncrs_updates::State::new(
             panels.app_version,
-            ncrs_updates::Channel::detect_here(panels.app_version != env!("CARGO_PKG_VERSION")),
+            ncrs_updates::Channel::detect_here(env!("NCRS_BUILD_KIND") != "release"),
             state_path
                 .as_deref()
                 .map(ncrs_updates::file_beside)
@@ -494,6 +494,7 @@ impl App {
             hermes_chat: ncrs_hermes_chat::State::default(),
             chat_model: None,
             chat_model_setting: None,
+            chat_model_error: None,
             turning_hermes_on: false,
             quick_open: None,
             quick_open_walk_generation: 0,

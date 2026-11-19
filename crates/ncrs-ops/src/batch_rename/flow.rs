@@ -9,7 +9,7 @@ use std::sync::Arc;
 use chrono::NaiveDate;
 use iced::widget::operation;
 use iced::Task;
-use ncrs_ai::{propose_name_spec, NameBlock, NameSpec};
+use ncrs_ai::{propose_name_spec, AiError, ChatModel, NameBlock, NameSpec};
 use ncrs_core::{FileEntry, PanelSide};
 use ncrs_fs as fs;
 use ncrs_fs::remote::session::Pool;
@@ -21,7 +21,8 @@ use ncrs_ui_kit::focus::release_focus;
 
 use super::pattern::{plan, split_name, EntryFacts, NameRules, Step};
 use super::state::{
-    digits_only, ApplyFailure, BatchRename, BatchRenameMessage, Extras, Opening, VISIBLE_ROWS,
+    digits_only, ApplyFailure, BatchRename, BatchRenameMessage, Extras, Opening, Proposal,
+    VISIBLE_ROWS,
 };
 use super::view::PATTERN_FIELD_ID;
 use crate::action::{Action, StartJob};
@@ -112,22 +113,30 @@ pub fn open_batch_rename(ops: &mut Ops, request: BatchRenameRequest, ctx: &FlowC
     if let Some(model) = ctx.model.clone() {
         tasks.push(Task::perform(
             async move {
-                tokio::task::spawn_blocking(move || {
-                    let spec = propose_name_spec(model.as_ref(), &names).ok().flatten()?;
-                    pattern_of(&spec)
-                })
-                .await
-                .unwrap_or_default()
+                tokio::task::spawn_blocking(move || proposal_for(model.as_ref(), &names))
+                    .await
+                    .unwrap_or_default()
             },
-            move |pattern| {
+            move |proposal| {
                 send(BatchRenameMessage::Proposed {
                     dialog: id,
-                    pattern,
+                    proposal,
                 })
             },
         ));
     }
     (Task::batch(tasks), vec![Action::ClearStatus])
+}
+
+/// What Hermes proposes for the names of a folder. A server on another
+/// computer that has no agreement for folders and file names is asked
+/// nothing, and the dialog says so.
+pub fn proposal_for(model: &dyn ChatModel, names: &[String]) -> Proposal {
+    match propose_name_spec(model, names) {
+        Ok(Some(spec)) => Proposal::Pattern(pattern_of(&spec)),
+        Err(AiError::ConsentRequired(_)) => Proposal::ConsentMissing,
+        Ok(None) | Err(_) => Proposal::Pattern(None),
+    }
 }
 
 fn focus_pattern() -> Task<OpsMessage> {
@@ -257,10 +266,13 @@ fn edit(dialog: &mut BatchRename, message: BatchRenameMessage) -> Outcome {
         }
         BatchRenameMessage::Proposed {
             dialog: id,
-            pattern,
+            proposal,
         } => {
             if id == dialog.id {
-                dialog.suggestion = pattern;
+                match proposal {
+                    Proposal::Pattern(pattern) => dialog.suggestion = pattern,
+                    Proposal::ConsentMissing => dialog.consent_missing = true,
+                }
             }
             return idle();
         }

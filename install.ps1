@@ -6,7 +6,8 @@
     irm https://raw.githubusercontent.com/<owner>/ncrs/main/install.ps1 | iex
 
 Installs into %LOCALAPPDATA%\Programs\ncrs, which needs no administrator
-rights and is not removed on upgrade. Safe to re-run.
+rights. Re-running replaces the files of the previous install. -Uninstall
+removes the program files and leaves settings and data alone.
 #>
 
 [CmdletBinding()]
@@ -20,6 +21,8 @@ $Repo = if ($env:NCRS_REPO) { $env:NCRS_REPO } else { 'CosmicDriftGameStudio/ncr
 $BinName = 'ncrs.exe'
 # The PDF library sits next to the executable; ncrs looks for it there.
 $LibName = 'pdfium.dll'
+# One relative path per line of what an install put next to the executable.
+$ManifestName = '.ncrs-install-manifest'
 
 function Write-Info($message) { Write-Host "  $message" }
 
@@ -37,8 +40,34 @@ if ($Uninstall) {
         Remove-Item $libTarget
         Write-Info "removed $libTarget"
     }
+    # Only what the install listed: BinDir may be a folder other programs share.
+    $manifest = Join-Path $BinDir $ManifestName
+    $backends = Join-Path $BinDir 'backends'
+    if (Test-Path $manifest) {
+        foreach ($listed in Get-Content $manifest) {
+            if (-not $listed -or [System.IO.Path]::IsPathRooted($listed) -or $listed -like '*..*') { continue }
+            $listedPath = Join-Path $BinDir $listed
+            if (Test-Path -LiteralPath $listedPath -PathType Leaf) {
+                Remove-Item -LiteralPath $listedPath
+                Write-Info "removed $listedPath"
+            }
+        }
+        if (Test-Path $backends) {
+            Get-ChildItem -Path $backends -Recurse -Directory |
+                Sort-Object { $_.FullName.Length } -Descending |
+                Where-Object { -not (Get-ChildItem -LiteralPath $_.FullName -Force) } |
+                ForEach-Object { Remove-Item -LiteralPath $_.FullName }
+            if (-not (Get-ChildItem -LiteralPath $backends -Force)) { Remove-Item -LiteralPath $backends }
+        }
+        Remove-Item $manifest
+    }
+    elseif ((Test-Path $backends) -or (Test-Path (Join-Path $BinDir 'llama.dll'))) {
+        Write-Info "left $backends and the llama and ggml DLLs in place:"
+        Write-Info 'this install did not list them, and other programs may use the same names'
+    }
     $config = Join-Path $env:APPDATA 'ncrs'
-    Write-Info "config, if any, is in $config"
+    Write-Info "settings and data (index, notes, models), if any, are in $config"
+    Write-Info 'these are kept; delete the folder by hand to remove everything'
     return
 }
 
@@ -79,7 +108,37 @@ Write-Host ''
 # --- download ---------------------------------------------------------------
 
 $archive = "ncrs-$target.zip"
-$base = if ($env:NCRS_BASE_URL) { $env:NCRS_BASE_URL } else { "https://github.com/$Repo/releases/latest/download" }
+
+# The tag the latest release has right now. The archive and the checksum list
+# are both fetched from that tag, so a release published in between cannot
+# leave them from two different releases.
+function Get-LatestTag($repo) {
+    $request = [System.Net.HttpWebRequest]::Create("https://github.com/$repo/releases/latest")
+    $request.AllowAutoRedirect = $false
+    $response = $request.GetResponse()
+    try {
+        $location = $response.Headers['Location']
+    }
+    finally {
+        $response.Close()
+    }
+    if ($location -and $location -match '/tag/(v[0-9][^/]*)$') { return $Matches[1] }
+    return $null
+}
+
+if ($env:NCRS_BASE_URL) {
+    $base = $env:NCRS_BASE_URL
+}
+else {
+    $tag = $null
+    try { $tag = Get-LatestTag $Repo } catch { }
+    if (-not $tag) {
+        Write-Error "could not find the latest release of $Repo"
+        return
+    }
+    Write-Info "release    $tag"
+    $base = "https://github.com/$Repo/releases/download/$tag"
+}
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("ncrs-" + [System.Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $tmp | Out-Null
 
@@ -98,26 +157,30 @@ try {
     # install.sh: a checksum that is skipped when it is inconvenient verifies
     # nothing. The download already succeeded at this point, so a failure to
     # fetch SHA256SUMS means the release is malformed, not that the network
-    # is down.
+    # is down. Each case names itself: Write-Error under 'Stop' would throw
+    # into a catch that cannot tell them apart.
+    $sumsPath = Join-Path $tmp 'SHA256SUMS'
+    $sumsFetched = $false
     try {
-        $sumsPath = Join-Path $tmp 'SHA256SUMS'
         Invoke-WebRequest -Uri "$base/SHA256SUMS" -OutFile $sumsPath -UseBasicParsing
-        $expected = (Get-Content $sumsPath | Where-Object { $_ -match " $archive$" } | Select-Object -First 1)
-        if (-not $expected) {
-            Write-Error "SHA256SUMS has no entry for $archive. The release is incomplete."
-            return
-        }
-        $actual = (Get-FileHash -Path $archivePath -Algorithm SHA256).Hash.ToLower()
-        if ($actual -ne $expected.Split(' ')[0]) {
-            Write-Error "checksum mismatch for $archive"
-            return
-        }
-        Write-Info 'checksum ok'
+        $sumsFetched = $true
     }
-    catch {
-        Write-Error "no SHA256SUMS published for the latest release. Refusing to install an unverified binary."
+    catch { }
+    if (-not $sumsFetched) {
+        Write-Error "no SHA256SUMS published for this release. Refusing to install an unverified binary."
         return
     }
+    $expected = (Get-Content $sumsPath | Where-Object { $_ -match " $archive$" } | Select-Object -First 1)
+    if (-not $expected) {
+        Write-Error "SHA256SUMS has no entry for $archive. The release is incomplete."
+        return
+    }
+    $actual = (Get-FileHash -Path $archivePath -Algorithm SHA256).Hash.ToLower()
+    if ($actual -ne $expected.Split(' ')[0]) {
+        Write-Error "checksum mismatch for $archive"
+        return
+    }
+    Write-Info 'checksum ok'
 
     # --- install ------------------------------------------------------------
 
@@ -143,6 +206,8 @@ try {
     # modules in backends\. Archives without backends\ (aarch64) link it in.
     $srcDir = $src.DirectoryName
     $backendsSrc = Join-Path $srcDir 'backends'
+    $manifestPath = Join-Path $BinDir $ManifestName
+    $listedNow = @($LibName)
     if (Test-Path $backendsSrc) {
         foreach ($dll in 'llama.dll', 'ggml.dll', 'ggml-base.dll') {
             $dllSrc = Join-Path $srcDir $dll
@@ -152,14 +217,26 @@ try {
             }
             Copy-Item $dllSrc (Join-Path $BinDir $dll) -Force
         }
-        $backendsNew = Join-Path $BinDir 'backends.new'
         $backendsDst = Join-Path $BinDir 'backends'
-        Remove-Item -Recurse -Force $backendsNew -ErrorAction SilentlyContinue
-        Copy-Item $backendsSrc $backendsNew -Recurse -Force
-        Remove-Item -Recurse -Force $backendsDst -ErrorAction SilentlyContinue
-        Move-Item $backendsNew $backendsDst
+        # Replace what the previous install listed; other files in a folder of
+        # the same name stay.
+        if (Test-Path $manifestPath) {
+            foreach ($old in Get-Content $manifestPath) {
+                if ($old -like 'backends\*' -and $old -notlike '*..*' -and -not [System.IO.Path]::IsPathRooted($old)) {
+                    Remove-Item -LiteralPath (Join-Path $BinDir $old) -ErrorAction SilentlyContinue
+                }
+            }
+        }
+        New-Item -ItemType Directory -Force -Path $backendsDst | Out-Null
+        Copy-Item (Join-Path $backendsSrc '*') $backendsDst -Recurse -Force
+        $listedNow += 'llama.dll', 'ggml.dll', 'ggml-base.dll'
+        $backendsRoot = (Resolve-Path $backendsSrc).Path.TrimEnd('\') + '\'
+        foreach ($file in Get-ChildItem -Path $backendsSrc -Recurse -File) {
+            $listedNow += 'backends\' + $file.FullName.Substring($backendsRoot.Length)
+        }
         $installed += ", the llama.cpp libraries and $backendsDst"
     }
+    Set-Content -Path $manifestPath -Value $listedNow
     Write-Info "installed $installed"
 }
 finally {

@@ -109,7 +109,7 @@ impl App {
         match message {
             HermesFileMessage::RoleSaved(result) => {
                 return self.run_hermes_flow(Vec::new(), |hermes, ctx| {
-                    ncrs_hermes_ui::hermes_role_saved(hermes, result, ctx)
+                    ncrs_hermes_ui::hermes_role_saved(hermes, *result, ctx)
                 })
             }
             HermesFileMessage::ProcessAgainFound(result) => {

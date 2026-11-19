@@ -113,6 +113,12 @@ fn hermes_line<'a>(
     lang: Language,
     palette: &Palette,
 ) -> Option<Element<'a, OpsMessage>> {
+    if dialog.consent_missing {
+        return Some(kit::dim(
+            lang.text(Msg::BatchRenameHermesConsentMissing).to_owned(),
+            palette,
+        ));
+    }
     let pattern = dialog.suggestion.as_deref()?;
     let text = fill_template(lang.text(Msg::BatchRenameHermes), &[("{pattern}", pattern)]);
     Some(

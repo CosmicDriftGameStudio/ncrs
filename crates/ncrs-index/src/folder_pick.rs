@@ -76,6 +76,35 @@ impl Index {
         transaction.commit()?;
         Ok(())
     }
+    /// Drops the "no folder fits" picks stored before `version` and takes
+    /// `tags` off the files they were stored for: an answer of a model that
+    /// could not choose folders is no answer. Returns how many picks went.
+    pub fn forget_empty_picks_before(
+        &self,
+        version: i64,
+        tags: &[String],
+    ) -> Result<usize, IndexError> {
+        let mut statement = self.connection().prepare(
+            "SELECT DISTINCT hash FROM folder_pick
+             WHERE folder IS NULL AND version < ?1
+               AND hash NOT IN (
+                   SELECT hash FROM folder_pick WHERE folder IS NULL AND version >= ?1
+               )",
+        )?;
+        let hashes: Vec<[u8; 32]> = statement
+            .query_map([version], |row| row.get::<_, [u8; 32]>(0))?
+            .collect::<Result<_, _>>()?;
+        for hash in &hashes {
+            for tag in tags {
+                self.remove_document_tag(&ContentHash(*hash), tag)?;
+            }
+        }
+        let dropped = self.connection().execute(
+            "DELETE FROM folder_pick WHERE folder IS NULL AND version < ?1",
+            [version],
+        )?;
+        Ok(dropped)
+    }
 }
 
 #[cfg(test)]
@@ -146,5 +175,63 @@ mod tests {
         let found = index.folder_picks(&root, &[hash(1)], 1).unwrap();
 
         assert_eq!(found.get(&hash(1)), Some(&None));
+    }
+    #[test]
+    fn empty_picks_of_an_older_version_go_with_their_tags_and_the_rest_stays() {
+        let (_dir, index) = plain_index();
+        let root = PathBuf::from("/archive");
+        let stale = crate::test_support::new_document(1).hash;
+        let kept = crate::test_support::new_document(2).hash;
+        let stale_id = index
+            .insert_document(&crate::test_support::new_document(1))
+            .unwrap();
+        let kept_id = index
+            .insert_document(&crate::test_support::new_document(2))
+            .unwrap();
+        index.add_document_tag(&stale, "Hermes: no folder").unwrap();
+        index.add_document_tag(&kept, "Hermes: no folder").unwrap();
+        index
+            .store_folder_picks(&root, &[(stale, None), (kept, Some("Bank".to_owned()))], 1)
+            .unwrap();
+        index.store_folder_picks(&root, &[(kept, None)], 2).unwrap();
+
+        let dropped = index
+            .forget_empty_picks_before(2, &["Hermes: no folder".to_owned()])
+            .unwrap();
+
+        assert_eq!(dropped, 1);
+        assert!(index.document_tags(stale_id.get()).unwrap().is_empty());
+        assert!(!index.document_tags(kept_id.get()).unwrap().is_empty());
+        assert!(index.folder_picks(&root, &[stale], 1).unwrap().is_empty());
+        assert_eq!(index.folder_picks(&root, &[kept], 2).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_tag_stays_while_another_target_has_a_valid_empty_pick_for_the_file() {
+        let (_dir, index) = plain_index();
+        let old_root = PathBuf::from("/old");
+        let new_root = PathBuf::from("/new");
+        let hash = crate::test_support::new_document(1).hash;
+        let id = index
+            .insert_document(&crate::test_support::new_document(1))
+            .unwrap();
+        index.add_document_tag(&hash, "Hermes: no folder").unwrap();
+        index
+            .store_folder_picks(&old_root, &[(hash, None)], 1)
+            .unwrap();
+        index
+            .store_folder_picks(&new_root, &[(hash, None)], 2)
+            .unwrap();
+
+        let dropped = index
+            .forget_empty_picks_before(2, &["Hermes: no folder".to_owned()])
+            .unwrap();
+
+        assert_eq!(dropped, 1);
+        assert!(!index.document_tags(id.get()).unwrap().is_empty());
+        assert!(index
+            .folder_picks(&new_root, &[hash], 2)
+            .unwrap()
+            .contains_key(&hash));
     }
 }

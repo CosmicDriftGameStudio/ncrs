@@ -13,6 +13,11 @@ pub const THROTTLE_SECONDS: i64 = 24 * 60 * 60;
 pub struct Stored {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_checked_unix: Option<i64>,
+    /// When a check last got an answer. "Up to date" is only true after one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_ok_unix: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_failed_unix: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub skipped_version: Option<String>,
     /// The newest release the last check found, so the notice survives a
@@ -137,6 +142,8 @@ mod tests {
         assert_eq!(load(&path), Stored::default());
         let stored = Stored {
             last_checked_unix: Some(42),
+            last_ok_unix: Some(40),
+            last_failed_unix: Some(41),
             skipped_version: Some("1.3.0".to_owned()),
             found_version: Some("1.4.0".to_owned()),
             found_notes_url: Some("https://example.test/n".to_owned()),

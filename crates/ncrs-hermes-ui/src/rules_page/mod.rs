@@ -1,6 +1,6 @@
 //! State of the rules page: the confirmed rules in their order, the rule the
 //! last action was on, the delete question, and the sentences the rules are
-//! shown as. No widgets and no tasks; `App` owns it and changes it from
+//! shown as. No widgets and no tasks; the Hermes UI state owns it and changes it from
 //! `update`, the view is `ui::rules`.
 
 use std::sync::Arc;

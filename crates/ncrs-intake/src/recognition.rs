@@ -457,8 +457,7 @@ pub fn measure(
                 [],
             );
             let detected = DocumentFields {
-                sender: detect_sender(&document.text, &sender_aliases, &[], &own)
-                    .sender
+                sender: detect_sender(&document.text, &sender_aliases, &own)
                     .map(|found| found.name),
                 recipient,
                 kind: kind_from_heading(&document.text, &kinds.catalog),

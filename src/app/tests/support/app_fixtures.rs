@@ -66,6 +66,7 @@ impl App {
             hermes_chat: ncrs_hermes_chat::State::default(),
             chat_model: None,
             chat_model_setting: None,
+            chat_model_error: None,
             turning_hermes_on: false,
             quick_open: None,
             quick_open_walk_generation: 0,

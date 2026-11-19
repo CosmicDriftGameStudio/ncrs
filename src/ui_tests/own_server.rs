@@ -81,7 +81,13 @@ fn a_server_on_another_computer_not_allowed_yet_matches_its_snapshots() {
 #[test]
 fn a_server_on_another_computer_that_is_allowed_matches_its_snapshots() {
     both_languages(
-        || remote_server_app("consented_origins = [\"https://api.example.com\"]\n"),
+        || {
+            remote_server_app(
+                "consented_inbox = [\"https://api.example.com\"]\n\
+                 consented_archive = [\"https://api.example.com\"]\n\
+                 consented_folders = [\"https://api.example.com\"]\n",
+            )
+        },
         "settings_ki_remote_allowed",
     );
 }
@@ -215,6 +221,46 @@ fn the_ki_page_with_the_switch_off_shows_the_chip_hermes_off() {
             "[hermes]\nenabled = false\n\n[theme]\npreset = \"cosmic\"\n",
         )
         .in_language(language);
+        matches_snapshot_in_marcs_window(&mut app, name);
+    }
+}
+
+#[test]
+fn a_server_on_another_computer_allowed_for_one_kind_of_data_matches_its_snapshots() {
+    both_languages(
+        || {
+            remote_server_app(
+                "consented_inbox = [\"https://api.example.com\"]\n\
+                 consented_archive = []\nconsented_folders = []\n",
+            )
+        },
+        "settings_ki_remote_partly_allowed",
+    );
+}
+
+#[test]
+fn all_three_agreements_of_a_far_server_show_in_a_tall_window() {
+    for (language, name) in [
+        (Language::German, "settings_ki_remote_all_rows_de"),
+        (Language::English, "settings_ki_remote_all_rows_en"),
+    ] {
+        let mut app = remote_server_app(
+            "consented_inbox = [\"https://api.example.com\"]\n\
+             consented_archive = []\nconsented_folders = []\n",
+        )
+        .in_language(language);
+        matches_snapshot_in_marcs_window(&mut app, name);
+    }
+}
+
+#[test]
+fn a_file_with_the_single_agreement_of_before_shows_that_it_was_dropped() {
+    for (language, name) in [
+        (Language::German, "settings_ki_remote_legacy_dropped_de"),
+        (Language::English, "settings_ki_remote_legacy_dropped_en"),
+    ] {
+        let mut app = remote_server_app("consented_origins = [\"https://api.example.com\"]\n")
+            .in_language(language);
         matches_snapshot_in_marcs_window(&mut app, name);
     }
 }

@@ -88,6 +88,7 @@ mod ui_tests {
             target_root: session.target.clone(),
             files,
             done: resolved >= FILES,
+            folder_choice_unsupported: false,
         });
         for (at, folder) in FOLDERS.iter().enumerate() {
             let there = (0..at % 6 + 1)

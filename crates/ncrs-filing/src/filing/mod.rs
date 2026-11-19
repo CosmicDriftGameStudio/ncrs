@@ -55,10 +55,10 @@ pub const NO_DATA_DIRECTORY: &str = "no data directory";
 type SharedStore = Arc<dyn KeyStore + Send + Sync>;
 type IndexSlot = Arc<Mutex<Option<Index>>>;
 
-pub use ai::http_ai_provider;
 #[cfg(feature = "local-ai")]
 pub use ai::shared_local_model;
 pub use ai::AiStatus;
+pub use ai::{chat_model, http_ai_provider};
 use ai::{wire_ai, AiWiring};
 use index_ops::{
     apply_key, create_index, encrypt_index, open_existing, start_over, INDEX_NOT_REOPENED,
@@ -159,6 +159,9 @@ pub struct FilingModule {
     /// Built when the chat first needs it; the models are only loaded when a
     /// scan has to be read.
     chat_text_chain: OnceLock<Arc<TextChain>>,
+    /// The chain the pipeline reads with, kept so closing the app can clear
+    /// its crash marker while a reading still holds the chain.
+    pipeline_text_chain: Mutex<Option<Arc<TextChain>>>,
 }
 
 impl fmt::Debug for FilingModule {

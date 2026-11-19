@@ -1,7 +1,8 @@
 //! The passwords of saved servers, one keychain entry per account, and the
 //! passphrases of key files, one entry per absolute path. A secret is only ever
-//! written to the keychain, never to a file or a log, and only after the user
-//! ticked "remember". The calls block; the app makes them on the blocking pool.
+//! written to the keychain, never to a file or a log, and only while the
+//! "remember" box of the dialog is on (for a passphrase it starts on, and the
+//! box is visible). The calls block; the app makes them on the blocking pool.
 
 use std::fmt;
 use std::path::Path;

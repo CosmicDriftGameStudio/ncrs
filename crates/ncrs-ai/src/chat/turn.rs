@@ -4,7 +4,7 @@
 use std::fmt::Write as _;
 
 use super::intent::{ChatIntent, Schedule, Transfer};
-use crate::contract::clean_value;
+use crate::contract::{clean_value, MAX_VALUE_CHARS};
 use crate::error::AiError;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -46,11 +46,12 @@ pub fn chat_user_message(turn: &ChatTurn) -> Result<String, AiError> {
             let options: Vec<String> = question
                 .options
                 .iter()
-                .map(|option| without_control(option))
+                .take(MAX_OPTIONS)
+                .map(|option| capped(option, MAX_OPTION_CHARS))
                 .collect();
             format!(
                 "{} Options: {}",
-                without_control(&question.text),
+                capped(&question.text, MAX_QUESTION_CHARS),
                 options.join(" | ")
             )
         },
@@ -62,19 +63,29 @@ pub fn chat_user_message(turn: &ChatTurn) -> Result<String, AiError> {
     let previous_request = turn
         .previous_request
         .as_deref()
-        .map_or_else(|| "none".to_owned(), without_control);
+        .map_or_else(|| "none".to_owned(), |text| capped(text, MAX_REQUEST_CHARS));
     let previous_message = turn
         .previous_message
         .as_deref()
-        .map_or_else(|| "none".to_owned(), without_control);
+        .map_or_else(|| "none".to_owned(), |text| capped(text, MAX_VALUE_CHARS));
     Ok(format!(
         "Hermes' last question: {question}\nPrevious search: {previous}\n\
          Previous request: {previous_request}\nPrevious message: {previous_message}\nMessage: {message}"
     ))
 }
 
-fn without_control(text: &str) -> String {
-    text.chars().filter(|c| !c.is_control()).collect()
+/// Longer parts of a turn are cut, so one pasted text cannot make every later
+/// turn too long. A question holds up to 30 file names.
+const MAX_QUESTION_CHARS: usize = 300;
+const MAX_OPTIONS: usize = 30;
+const MAX_OPTION_CHARS: usize = 80;
+const MAX_REQUEST_CHARS: usize = 1000;
+
+fn capped(text: &str, limit: usize) -> String {
+    text.chars()
+        .filter(|c| !c.is_control())
+        .take(limit)
+        .collect()
 }
 
 /// Compact, keys in a fixed order, absent keys left out.
@@ -196,4 +207,37 @@ fn json_string(text: &str) -> String {
     }
     out.push('"');
     out
+}
+
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_pasted_text_of_the_last_turn_does_not_grow_the_next_one() {
+        let turn = ChatTurn {
+            message: "ok".to_owned(),
+            question: Some(ChatQuestion {
+                text: "q".repeat(5000),
+                options: vec!["o".repeat(5000); 100],
+            }),
+            previous_search: None,
+            previous_request: Some("r".repeat(5000)),
+            previous_message: Some("m".repeat(50_000)),
+        };
+
+        let message = chat_user_message(&turn).expect("turn");
+
+        assert!(
+            message.chars().count() < 5000,
+            "{}",
+            message.chars().count()
+        );
+    }
 }

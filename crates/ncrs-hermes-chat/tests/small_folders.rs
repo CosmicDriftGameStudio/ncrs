@@ -14,6 +14,7 @@ mod common;
 mod tests {
 
     use crate::common::{letter, say, Talk};
+    use ncrs_filing::chat_work::ChatResult;
     use ncrs_hermes_chat::{Action, Availability, ChipReply, Entry, Message, Part};
     use ncrs_i18n::Msg;
 
@@ -717,5 +718,72 @@ mod tests {
             )]
         );
         assert!(talk.actions.is_empty());
+    }
+
+    fn plan_the_model_failed_on(failure: ncrs_ai::AiError) -> ncrs_filing::chat_work::TrialPlan {
+        ncrs_filing::chat_work::TrialPlan {
+            source_root: "/inbox".into(),
+            target_root: "/archive".into(),
+            entries: Vec::new(),
+            filed: 0,
+            unsure: 0,
+            already_there: 0,
+            stays: 0,
+            taken: std::collections::BTreeSet::new(),
+            groups: ncrs_filing::chat_work::StayGroups::default(),
+            model_left: std::collections::BTreeSet::new(),
+            model_failure: Some(failure),
+        }
+    }
+
+    fn times_said(talk: &Talk, sentence: &str) -> usize {
+        talk.state
+            .thread
+            .iter()
+            .filter(|entry| {
+                matches!(entry, Entry::Hermes { parts, .. }
+                    if parts.iter().any(|part| matches!(part, Part::Text(text) if text == sentence)))
+            })
+            .count()
+    }
+
+    #[test]
+    fn a_model_that_cannot_choose_folders_is_said_once_and_the_trial_goes_on() {
+        let mut talk = small_talk();
+
+        talk.send(Message::Done(Box::new(ChatResult::Trial(Ok(Box::new(
+            plan_the_model_failed_on(ncrs_ai::AiError::Unsupported),
+        ))))));
+
+        let hint = say(Msg::HermesChatModelUnsupported, &[]);
+        assert_eq!(times_said(&talk, &hint), 1);
+        assert!(talk.state.session.trial.is_some());
+    }
+
+    #[test]
+    fn a_model_that_fails_otherwise_ends_the_trial_in_the_fallback() {
+        let mut talk = small_talk();
+
+        talk.send(Message::Done(Box::new(ChatResult::Trial(Ok(Box::new(
+            plan_the_model_failed_on(ncrs_ai::AiError::Model("closed")),
+        ))))));
+
+        assert!(talk.state.session.trial.is_none());
+        let hint = say(Msg::HermesChatModelUnsupported, &[]);
+        assert_eq!(times_said(&talk, &hint), 0);
+    }
+
+    #[test]
+    fn a_model_that_cannot_run_is_said_in_one_sentence_without_the_start_frame() {
+        let mut talk = small_talk();
+        talk.ctx.availability =
+            Availability::ModelFailed(ncrs_ai::ModelProblem::NotLoaded("no memory"));
+
+        talk.open();
+
+        assert_eq!(
+            talk.last_texts(),
+            vec![say(Msg::HermesChatModelNotLoaded, &[])]
+        );
     }
 }

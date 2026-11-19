@@ -53,7 +53,7 @@ pub fn revise(state: &mut State, ctx: &Ctx, sentence: &str) {
         files: sample(&flow.files, MODEL_FILES),
         kinds: flow.kinds.clone(),
         previous: flow.levels.clone(),
-        sentence: sentence.to_owned(),
+        sentence: ncrs_ai::first_chars(sentence, ncrs_ai::MAX_SENTENCE_CHARS).to_owned(),
     };
     ask_model(state, ctx, ask);
 }

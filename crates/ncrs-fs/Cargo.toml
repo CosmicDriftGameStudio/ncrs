@@ -25,7 +25,7 @@ futures = { version = "0.3", default-features = false, features = ["std"] }
 # The change notifications of a shown folder; the same version as ncrs-intake.
 notify = "8"
 # Browsing and writing .zip archives.
-zip = { version = "=9.1.2", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+zip = { workspace = true }
 # Browsing archives like folders. Entries are unpacked by our own code, never
 # with tar's `unpack`, so one name rule covers every format; no default features
 # keeps the xattr dependency out.
@@ -47,8 +47,8 @@ ncrs-sandbox = { path = "../ncrs-sandbox", version = "0.0.0", optional = true }
 # advisory (RUSTSEC-2023-0071), so servers that offer only RSA host keys are not
 # supported yet. Both are pinned, and russh pins ssh-key to a release candidate
 # that must match.
-russh = { version = "=0.65.0", default-features = false, features = ["ring"] }
-russh-sftp = "=3.0.1"
+russh = { workspace = true }
+russh-sftp = { workspace = true }
 # The login passwords of saved servers, one keychain entry per server; the same
 # crate and version as the index key in ncrs-index.
 keyring = "4.2"

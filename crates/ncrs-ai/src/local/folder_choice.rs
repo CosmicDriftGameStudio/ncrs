@@ -40,23 +40,26 @@ impl LocalModel {
                 }
             })
             .collect();
-        let head = format!(
-            "<|im_start|>system\n{SYSTEM_PROMPT}<|im_end|>\n<|im_start|>user\nOrdner:\n{list}\nDokument:\n"
-        );
-        let prefix = vocab.tokenize(head.as_bytes(), vocab.should_add_bos(), true);
+        // Folder and file names come from the archive: only the fixed frame may
+        // become control tokens, so the list is tokenized as plain text.
+        let frame_start =
+            format!("<|im_start|>system\n{SYSTEM_PROMPT}<|im_end|>\n<|im_start|>user\nOrdner:\n");
+        let mut prefix = vocab.tokenize(frame_start.as_bytes(), vocab.should_add_bos(), true);
+        prefix.extend(vocab.tokenize(list.as_bytes(), false, false));
+        prefix.extend(vocab.tokenize(b"\nDokument:\n", false, true));
         let tail = vocab.tokenize(ANSWER_START, false, true);
 
         let train_limit = usize::try_from(self.model.n_ctx_train()).unwrap_or(usize::MAX);
         let fixed = prefix.len() + tail.len() + MAX_REPLY_TOKENS;
         if fixed + 1 > train_limit {
-            return Err(AiError::Model("the folder list is too long"));
+            return Err(AiError::TooLong);
         }
         let room = DOCUMENT_TOKENS.min(train_limit - fixed);
         let context_tokens = fixed + room;
         let n_ctx = u32::try_from(context_tokens)
             .ok()
             .and_then(NonZeroU32::new)
-            .ok_or(AiError::Model("the prompt is too long"))?;
+            .ok_or(AiError::TooLong)?;
         let batch_tokens = n_ctx.get().min(MAX_BATCH_TOKENS);
         let batch_len = usize::try_from(batch_tokens).unwrap_or(1);
 

@@ -8,7 +8,8 @@ use ncrs_index::{DocumentFields, Kinds, RuleSpec};
 
 use super::*;
 use crate::chat::{
-    chat_user_message, parse_chat_reply, ChatIntent, ChatModel, ChatTurn, CHAT_SYSTEM_PROMPT,
+    chat_user_message, parse_chat_reply, ChatIntent, ChatModel, ChatTurn, FolderChoiceLane,
+    CHAT_SYSTEM_PROMPT,
 };
 use crate::rules::{
     annotated_paths, parse_generate, parse_levels, parse_revision, prefix_text, repair_note_for,
@@ -38,9 +39,18 @@ fn documents_of(files: &[(String, DocumentFields)]) -> Vec<ContextDocument> {
         .collect()
 }
 
+/// Rule questions show the model documents of the archive with their folders
+/// and file names.
+const RULE_QUESTION_NEEDS: &[ConsentPurpose] = &[ConsentPurpose::Archive, ConsentPurpose::Folders];
+
 impl OpenAiCompatible {
     /// One question, answered as a JSON object. The usage is logged.
-    fn ask_for_json(&self, system: &str, user: &str) -> Result<String, AiError> {
+    fn ask_for_json(
+        &self,
+        system: &str,
+        user: &str,
+        needs: &[ConsentPurpose],
+    ) -> Result<String, AiError> {
         let mut body = Json::object([
             ("model", Json::text(&self.model)),
             (
@@ -59,21 +69,48 @@ impl OpenAiCompatible {
         });
         self.include_usage(&mut body);
         // The chat and the rule questions have no inbox location; the consent
-        // is for the server.
-        if !self.may_send(Path::new("")) {
-            return Err(AiError::ConsentRequired(OutgoingPreview {
+        // is for the server and for each kind of data the question carries.
+        if !self.may_send_all(needs) {
+            let held_back = AiError::ConsentRequired(OutgoingPreview {
                 endpoint: self.endpoint.origin.clone(),
                 model: self.model.clone(),
                 body: body.pretty(),
-            }));
+            });
+            // Documents wait only while the inbox itself is not agreed to.
+            if !self.may_send(ConsentPurpose::Inbox, Path::new("")) {
+                self.remember_failure(&held_back);
+            }
+            return Err(held_back);
         }
-        let reply = self.post(&body.pretty())?;
+        let reply = match self.post(&body.pretty()) {
+            Ok(reply) => reply,
+            Err(failed) => {
+                self.remember_failure(&failed);
+                self.account(Some(&failed));
+                return Err(failed);
+            }
+        };
         self.log_usage(&reply);
-        message_content(&reply)
+        let content = message_content(&reply);
+        self.account(content.as_ref().err());
+        content
     }
 
     fn answer_rule_request(&self, request: &RuleRequest) -> Result<String, AiError> {
-        self.ask_for_json(system_of(&request.prefix), &request.task)
+        self.ask_for_json(
+            system_of(&request.prefix),
+            &request.task,
+            RULE_QUESTION_NEEDS,
+        )
+    }
+
+    fn understand_needing(
+        &self,
+        turn: &ChatTurn,
+        needs: &[ConsentPurpose],
+    ) -> Result<ChatIntent, AiError> {
+        let raw = self.ask_for_json(CHAT_SYSTEM_PROMPT, &chat_user_message(turn)?, needs)?;
+        parse_chat_reply(&raw, turn)
     }
 
     fn recognize_with(
@@ -92,8 +129,11 @@ impl OpenAiCompatible {
 
 impl ChatModel for OpenAiCompatible {
     fn understand(&self, turn: &ChatTurn) -> Result<ChatIntent, AiError> {
-        let raw = self.ask_for_json(CHAT_SYSTEM_PROMPT, &chat_user_message(turn)?)?;
-        parse_chat_reply(&raw, turn)
+        self.understand_needing(turn, &[ConsentPurpose::Archive])
+    }
+
+    fn understand_file_names(&self, turn: &ChatTurn) -> Result<ChatIntent, AiError> {
+        self.understand_needing(turn, &[ConsentPurpose::Folders])
     }
 
     fn generate_rule(
@@ -143,6 +183,25 @@ impl ChatModel for OpenAiCompatible {
         let prefix = prefix_text(&documents_of(files), kinds);
         let request = RuleRequest::revise(&prefix, &revise_question(previous, sentence));
         parse_revision(&self.answer_rule_request(&request)?)
+    }
+
+    /// The folder prompt is built for the built-in model only. Without the
+    /// agreement to folder and file names the answer says so, so the user is
+    /// told what is missing instead of seeing no folder.
+    fn choose_folders(
+        &self,
+        _folders: &[(String, Vec<String>)],
+        _documents: &[String],
+        _lane: FolderChoiceLane,
+    ) -> Result<Vec<Option<usize>>, AiError> {
+        if !self.may_send_all(&[ConsentPurpose::Folders]) {
+            return Err(AiError::ConsentRequired(OutgoingPreview {
+                endpoint: self.endpoint.origin.clone(),
+                model: self.model.clone(),
+                body: String::new(),
+            }));
+        }
+        Err(AiError::Unsupported)
     }
 
     /// A server is there when it is asked; nothing is loaded here.

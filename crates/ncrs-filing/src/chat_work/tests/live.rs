@@ -9,13 +9,14 @@ use super::picks::RecordingModel;
 use super::*;
 use crate::chat_work::{
     apply_overrides, classify, mark_files, plan_live, tally, LiveFile, LivePlan, LiveRun,
-    LiveState, LiveTags, Override,
+    LiveState, LiveTags, Override, PlanFailure,
 };
 
 fn tags() -> LiveTags {
     LiveTags {
         unreadable: "unreadable".to_owned(),
         no_folder: "no folder".to_owned(),
+        no_folder_in_every_language: vec!["no folder".to_owned(), "kein Ordner".to_owned()],
     }
 }
 
@@ -212,7 +213,7 @@ fn write_source(setup: &Setup) {
     setup.write("archive/Beta/old.txt", "Beta GmbH invoice");
 }
 
-fn run_live(setup: &Setup, model: &RecordingModel, run: &LiveRun) -> Result<(), String> {
+fn run_live(setup: &Setup, model: &RecordingModel, run: &LiveRun) -> Result<(), PlanFailure> {
     plan_live(
         &setup.access,
         &setup.dir.path().join("inbox"),
@@ -262,6 +263,91 @@ fn a_live_plan_starts_all_waiting_and_ends_done_with_every_bucket_counted() {
         last.files.len()
     );
     assert_eq!(state_of(&last, "blank.dat"), LiveState::Unreadable);
+}
+
+#[test]
+fn a_model_that_cannot_choose_folders_leaves_the_files_untagged_and_stores_nothing() {
+    let setup = Setup::new();
+    write_source(&setup);
+    let run = Arc::new(LiveRun::default());
+    let model = RecordingModel {
+        unsupported: true,
+        ..RecordingModel::default()
+    };
+
+    let result = run_live(&setup, &model, &run);
+
+    assert_eq!(result, Ok(()));
+    assert_eq!(tag_count(&setup, "no folder"), 0);
+    let stored: i64 = setup
+        .access
+        .with_index(|index| {
+            Ok(index
+                .connection()
+                .query_row("SELECT count(*) FROM folder_pick", (), |row| row.get(0))
+                .unwrap())
+        })
+        .unwrap();
+    assert_eq!(stored, 0);
+    let last = published(&run);
+    assert!(last.done);
+    assert!(last.folder_choice_unsupported);
+    assert_eq!(tally(&last).no_folder, 0);
+    assert!(
+        last.files
+            .iter()
+            .all(|file| file.state != LiveState::Looking),
+        "a finished plan has no file that is still being read"
+    );
+    assert!(last
+        .files
+        .iter()
+        .any(|file| file.state == LiveState::NeedsModel));
+}
+
+fn stored_document(seed: u8) -> NewDocument {
+    NewDocument {
+        hash: ContentHash([seed; 32]),
+        path: PathBuf::from(format!("/elsewhere/{seed}.pdf")),
+        source: DocumentSource::Inbox,
+        received_at: Utc.with_ymd_and_hms(2026, 3, 14, 9, 30, 0).unwrap(),
+        stamp: None,
+    }
+}
+
+#[test]
+fn a_none_fits_answer_of_an_older_version_loses_its_tag_in_every_language() {
+    let setup = Setup::new();
+    write_source(&setup);
+    setup
+        .access
+        .with_index(|index| {
+            index.insert_document(&stored_document(1)).unwrap();
+            index.insert_document(&stored_document(2)).unwrap();
+            let german_hash = ContentHash([1; 32]);
+            let other_hash = ContentHash([2; 32]);
+            index.add_document_tag(&german_hash, "kein Ordner").unwrap();
+            index.add_document_tag(&other_hash, "no folder").unwrap();
+            index
+                .store_folder_picks(
+                    &setup.dir.path().join("archive"),
+                    &[(german_hash, None), (other_hash, Some("Alfa".to_owned()))],
+                    1,
+                )
+                .unwrap();
+            Ok(())
+        })
+        .unwrap();
+    let run = Arc::new(LiveRun::default());
+    let model = RecordingModel {
+        unsupported: true,
+        ..RecordingModel::default()
+    };
+
+    run_live(&setup, &model, &run).unwrap();
+
+    assert_eq!(tag_count(&setup, "kein Ordner"), 0);
+    assert_eq!(tag_count(&setup, "no folder"), 1);
 }
 
 #[test]
@@ -374,6 +460,7 @@ fn plan_to_override() -> LivePlan {
             file("e.pdf", 5, LiveState::Unreadable),
         ],
         done: true,
+        folder_choice_unsupported: false,
     }
 }
 

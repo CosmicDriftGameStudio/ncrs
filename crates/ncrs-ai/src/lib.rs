@@ -28,12 +28,14 @@ pub use chat::{
     ChatIntent, ChatModel, ChatQuestion, ChatTurn, FolderChoiceLane, NameBlock, NameSpec, Order,
     QuestionKind, Schedule, SearchQuery, Transfer, CHAT_SYSTEM_PROMPT, EVERY_AREA, NAME_SEPARATORS,
 };
-pub use consent::{ConsentGivenInSettings, ConsentLedger, OutgoingPreview};
+pub use consent::{
+    ConsentGivenInSettings, ConsentLedger, ConsentPurpose, ConsentedOrigins, OutgoingPreview,
+};
 pub use contract::{
     output_schema, parse_reply, ExtractedField, Extraction, ExtractionRequest, Provider, CONFIDENT,
     MAX_VALUE_CHARS, NOT_A_DOCUMENT_HINT, NOT_A_DOCUMENT_KEY,
 };
-pub use error::{AiError, EndpointProblem};
+pub use error::{AiError, EndpointProblem, FailureScope, ModelProblem};
 pub use http::{
     check_endpoint, endpoint_host, endpoint_is_local, endpoint_key_name, endpoint_origin,
     list_models, ModelList, OpenAiCompatible, OpenAiCompatibleConfig, ReplyFailure, Secret,
@@ -47,6 +49,7 @@ pub use model_file::{
     has_partial_download, verify_model_file, ModelFileError, ModelPin, PartialDownload,
     LOCAL_MODEL, LOCAL_MODEL_FOLDER,
 };
+pub use prompt::{first_chars, MAX_SENTENCE_CHARS};
 pub use rules::{
     annotated_paths, condition_meaning, file_names_share_structure, folder_depth, parse_generate,
     parse_levels, parse_revision, pattern_mismatches, prefix_text, repair_note, repair_note_for,

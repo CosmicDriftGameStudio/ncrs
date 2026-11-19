@@ -13,7 +13,8 @@ use std::path::{Path, PathBuf};
 
 use tempfile::TempDir;
 
-use crate::text::{PageImage, PdfText};
+use crate::pdf_text::PdfText;
+use crate::text::PageImage;
 
 /// Every page of the PDF as the OCR sees a scan, text layer or not.
 pub fn rendered_pages(pdf: &PdfText, path: &Path) -> Vec<PageImage> {
@@ -75,4 +76,16 @@ pub fn write(dir: &TempDir, name: &str, bytes: &[u8]) -> PathBuf {
     let path = dir.path().join(name);
     fs::write(&path, bytes).unwrap();
     path
+}
+
+pub fn image_only_pdf() -> Vec<u8> {
+    pdf_bytes(
+        "q 160 0 0 160 20 20 cm /Im1 Do Q",
+        "/XObject<</Im1 5 0 R>>",
+        &[
+            "<</Type/XObject/Subtype/Image/Width 2/Height 2/ColorSpace/DeviceGray\
+           /BitsPerComponent 8/Filter/ASCIIHexDecode/Length 10>>\nstream\n00FFFF00>\nendstream"
+                .to_owned(),
+        ],
+    )
 }

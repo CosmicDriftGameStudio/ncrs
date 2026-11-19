@@ -144,6 +144,11 @@ pub enum ChatIntent {
 
 pub trait ChatModel: Send + Sync + fmt::Debug {
     fn understand(&self, turn: &ChatTurn) -> Result<ChatIntent, AiError>;
+    /// Like `understand`, for a turn that carries the file names of a folder;
+    /// a server needs the agreement to file names for it.
+    fn understand_file_names(&self, turn: &ChatTurn) -> Result<ChatIntent, AiError> {
+        self.understand(turn)
+    }
     /// The rule a described filing means; `documents` are what the model is
     /// shown of the archive.
     fn generate_rule(
@@ -181,16 +186,15 @@ pub trait ChatModel: Send + Sync + fmt::Debug {
         sentence: &str,
     ) -> Result<Revision, AiError>;
     /// For each document the index of the folder it belongs in, or `None`
-    /// when no folder fits or the model cannot say. Each folder comes with a
-    /// few names of files already in it.
+    /// when no folder fits. A model that cannot answer the question at all
+    /// says `AiError::Unsupported`. Each folder comes with a few names of
+    /// files already in it.
     fn choose_folders(
         &self,
-        _folders: &[(String, Vec<String>)],
+        folders: &[(String, Vec<String>)],
         documents: &[String],
-        _lane: FolderChoiceLane,
-    ) -> Result<Vec<Option<usize>>, AiError> {
-        Ok(vec![None; documents.len()])
-    }
+        lane: FolderChoiceLane,
+    ) -> Result<Vec<Option<usize>>, AiError>;
     /// Never blocks and never reads the disk.
     fn status(&self) -> LocalModelStatus;
     /// Looks for the model file again (after a download).

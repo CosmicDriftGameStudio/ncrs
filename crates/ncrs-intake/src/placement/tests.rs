@@ -89,14 +89,14 @@ fn two_documents_with_the_same_labelled_number_decide_before_anything_weaker() {
         "Loans/Flat",
         1..3,
         &sender,
-        Some("Darlehensnummer: 595610814"),
+        Some("Darlehensnummer: 100000001"),
     );
 
     let other_label = place(
         &documents,
         &ordered(),
         &fields(None, None),
-        Some("Loan number - 595610814"),
+        Some("Loan number - 100000001"),
     );
     assert_eq!(other_label, None, "another label is another number");
 
@@ -104,7 +104,7 @@ fn two_documents_with_the_same_labelled_number_decide_before_anything_weaker() {
         &documents,
         &ordered(),
         &fields(None, None),
-        Some("Darlehensnummer 595610814"),
+        Some("Darlehensnummer 100000001"),
     )
     .unwrap();
     assert_eq!(placement.folder, Path::new("Loans/Flat"));
@@ -112,7 +112,7 @@ fn two_documents_with_the_same_labelled_number_decide_before_anything_weaker() {
         placement.signal,
         Signal::SameNumber {
             label: "Darlehensnummer".to_owned(),
-            value: "595610814".to_owned()
+            value: "100000001".to_owned()
         }
     );
     assert!(placement.is_sure());
@@ -480,14 +480,7 @@ fn archive_files() -> (Vec<PlanFile>, Vec<TestFile>) {
         .zip(0..)
         .map(|(file, recorded_at)| {
             let found = file.text().map(|text| {
-                detect_fields(
-                    text,
-                    &DocumentFields::default(),
-                    &aliases,
-                    &[],
-                    &own,
-                    &catalog,
-                )
+                detect_fields(text, &DocumentFields::default(), &aliases, &own, &catalog)
             });
             PlanFile {
                 relative_path: file.relative_path.clone(),
@@ -514,7 +507,6 @@ fn archive_fields(letter: &str) -> DocumentFields {
         letter,
         &DocumentFields::default(),
         &SenderAliases::default(),
-        &[],
         &OwnNames {
             names: &[OWN_NAME.to_owned()],
             ibans: &[],
@@ -543,7 +535,7 @@ fn inbox_letter_with(inbox: &[TestFile], needle: &str) -> String {
 fn on_the_test_archive_a_loan_letter_lands_in_the_folder_of_that_loan() {
     let (files, inbox) = archive_files();
     let structure = location_structure(&files, &KindCatalog::built_in());
-    let letter = inbox_letter_with(&inbox, "Darlehensnummer 595610814");
+    let letter = inbox_letter_with(&inbox, "Darlehensnummer 100000001");
 
     let placement = NeighbourIndex::new(&files, &no_own(), &structure)
         .place(&archive_fields(&letter), Some(&letter))
@@ -551,13 +543,13 @@ fn on_the_test_archive_a_loan_letter_lands_in_the_folder_of_that_loan() {
 
     assert_eq!(
         placement.folder,
-        Path::new("Bank/Finanzierung/Chemnitz-Andrestr. 12")
+        Path::new("Bank/Finanzierung/Musterstadt-Musterweg 1")
     );
     assert_eq!(
         placement.signal,
         Signal::SameNumber {
             label: "Darlehensnummer".to_owned(),
-            value: "595610814".to_owned()
+            value: "100000001".to_owned()
         }
     );
     assert!(placement.is_sure());

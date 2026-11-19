@@ -1,40 +1,55 @@
 //! What goes to a model on another computer, and the agreement to it, given
-//! once for each server.
+//! for each server and each kind of data.
 
+use ncrs_ai::{ConsentPurpose, ConsentedOrigins};
 use ncrs_config::config::AiProviderChoice;
 use ncrs_i18n::Msg;
 
-/// A place of the code that hands text to the AI model, and the line of the
-/// question that tells the user about it. The guard below finds every such
-/// place, so a new one cannot go to a server unannounced.
+/// A place of the code that hands text to the AI model, the kinds of data it
+/// carries, and the line of the question that tells the user about it. The
+/// guard below finds every such place, so a new one cannot go to a server
+/// unannounced.
 #[derive(Debug, Clone, Copy)]
 pub struct ModelCallSite {
     /// From the root of the repository.
     pub file: &'static str,
-    pub announced_as: Msg,
+    /// The agreements the place needs; it sends nothing without all of them.
+    pub needs: &'static [ConsentPurpose],
+    /// `None` while the call goes to no server (the own-server model cannot
+    /// choose folders yet), so the card must not announce it.
+    pub announced_as: Option<Msg>,
 }
 
 pub const MODEL_CALL_SITES: &[ModelCallSite] = &[
     ModelCallSite {
         file: "crates/ncrs-pipeline/src/ai_step/mod.rs",
-        announced_as: Msg::SettingsAiConsentItemDocuments,
+        needs: &[ConsentPurpose::Inbox],
+        announced_as: Some(Msg::SettingsAiConsentItemDocuments),
     },
     ModelCallSite {
         file: "crates/ncrs-hermes-chat/src/understand.rs",
-        announced_as: Msg::SettingsAiConsentItemChat,
+        needs: &[ConsentPurpose::Archive],
+        announced_as: Some(Msg::SettingsAiConsentItemChat),
     },
     ModelCallSite {
         file: "crates/ncrs-hermes-chat/src/rule_flow/ask.rs",
-        announced_as: Msg::SettingsAiConsentItemRules,
+        needs: &[ConsentPurpose::Archive, ConsentPurpose::Folders],
+        announced_as: Some(Msg::SettingsAiConsentItemRules),
+    },
+    ModelCallSite {
+        file: "crates/ncrs-filing/src/chat_work/trial.rs",
+        needs: &[ConsentPurpose::Folders],
+        announced_as: None,
     },
     ModelCallSite {
         file: "crates/ncrs-ops/src/batch_rename/flow.rs",
-        announced_as: Msg::SettingsAiConsentItemNames,
+        needs: &[ConsentPurpose::Folders],
+        announced_as: Some(Msg::SettingsAiConsentItemNames),
     },
 ];
 
-/// The set-up server is off this computer and not agreed to: nothing is sent
-/// to it.
+/// The set-up server is off this computer and nothing is agreed to: nothing is
+/// sent to it.
 pub fn server_is_not_allowed(setting: &ncrs_config::config::AiSetting) -> bool {
     let ncrs_config::config::AiSetting::Http {
         endpoint,
@@ -44,50 +59,64 @@ pub fn server_is_not_allowed(setting: &ncrs_config::config::AiSetting) -> bool {
     else {
         return false;
     };
-    unagreed_origin(endpoint, consented_origins).is_some()
+    ConsentPurpose::ALL
+        .into_iter()
+        .all(|purpose| unagreed_origin(endpoint, consented_origins, purpose).is_some())
 }
 
 /// The origin of `endpoint` when it is a server off this computer that is not
-/// among the `consented` ones.
-fn unagreed_origin(endpoint: &str, consented: &[String]) -> Option<String> {
+/// among the ones agreed to for `purpose`.
+fn unagreed_origin(
+    endpoint: &str,
+    consented: &ConsentedOrigins,
+    purpose: ConsentPurpose,
+) -> Option<String> {
     if ncrs_ai::endpoint_is_local(endpoint) != Ok(false) {
         return None;
     }
     let origin = ncrs_ai::endpoint_origin(endpoint).ok()?;
     let granted = ncrs_ai::ConsentGivenInSettings::new(consented);
-    if ncrs_ai::ConsentLedger::granted(&granted, &origin, std::path::Path::new("")) {
+    if ncrs_ai::ConsentLedger::granted(&granted, &origin, std::path::Path::new(""), purpose) {
         return None;
     }
     Some(origin)
 }
 
-/// What the AI page lists under the server, in this order.
-pub fn announced_items() -> impl Iterator<Item = Msg> {
-    MODEL_CALL_SITES.iter().map(|site| site.announced_as)
+/// What the AI page lists under `purpose`, in this order.
+pub fn announced_items(purpose: ConsentPurpose) -> impl Iterator<Item = Msg> {
+    MODEL_CALL_SITES
+        .iter()
+        .filter(move |site| site.needs.contains(&purpose))
+        .filter_map(|site| site.announced_as)
 }
 
 /// The agreement a server still needs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConsentAsk {
     pub choice: AiProviderChoice,
+    pub purpose: ConsentPurpose,
     /// `scheme://host[:port]`, what the consent is kept for.
     pub origin: String,
 }
 
-/// Whether the user agreed to send to the server at `endpoint`: `None` for a
-/// server on this computer or an address that is no server, which need no
-/// agreement.
-pub fn server_agreed(endpoint: &str, consented_origins: &[String]) -> Option<bool> {
+/// Whether the user agreed to send `purpose` to the server at `endpoint`:
+/// `None` for a server on this computer or an address that is no server,
+/// which need no agreement.
+pub fn server_agreed(
+    endpoint: &str,
+    consented_origins: &ConsentedOrigins,
+    purpose: ConsentPurpose,
+) -> Option<bool> {
     if ncrs_ai::endpoint_is_local(endpoint) != Ok(false) {
         return None;
     }
-    Some(unagreed_origin(endpoint, consented_origins).is_none())
+    Some(unagreed_origin(endpoint, consented_origins, purpose).is_none())
 }
 
 impl ConsentAsk {
-    /// What `choice` still needs before it may send: its server is not on
-    /// this computer and not among the ones agreed to.
-    pub fn needed_for(choice: &AiProviderChoice) -> Option<Self> {
+    /// What `choice` still needs before it may send `purpose`: its server is
+    /// not on this computer and not among the ones agreed to for it.
+    pub fn needed_for(choice: &AiProviderChoice, purpose: ConsentPurpose) -> Option<Self> {
         let AiProviderChoice::Http {
             endpoint,
             consented_origins,
@@ -96,14 +125,15 @@ impl ConsentAsk {
         else {
             return None;
         };
-        let origin = unagreed_origin(endpoint, consented_origins)?;
+        let origin = unagreed_origin(endpoint, consented_origins, purpose)?;
         Some(Self {
             choice: choice.clone(),
+            purpose,
             origin,
         })
     }
 
-    /// The choice with the server added to the ones agreed to.
+    /// The choice with the server added to the ones agreed to for the purpose.
     pub fn agreed(self) -> AiProviderChoice {
         match self.choice {
             AiProviderChoice::Http {
@@ -111,7 +141,7 @@ impl ConsentAsk {
                 model,
                 mut consented_origins,
             } => {
-                consented_origins.push(self.origin);
+                consented_origins.of_mut(self.purpose).push(self.origin);
                 AiProviderChoice::Http {
                     endpoint,
                     model,
@@ -120,6 +150,27 @@ impl ConsentAsk {
             }
             local @ AiProviderChoice::Local { .. } => local,
         }
+    }
+}
+
+/// The choice with the server taken out of the ones agreed to for `purpose`.
+pub fn withdrawn(choice: AiProviderChoice, purpose: ConsentPurpose) -> AiProviderChoice {
+    match choice {
+        AiProviderChoice::Http {
+            endpoint,
+            model,
+            mut consented_origins,
+        } => {
+            if let Ok(origin) = ncrs_ai::endpoint_origin(&endpoint) {
+                consented_origins.withdraw(purpose, &origin);
+            }
+            AiProviderChoice::Http {
+                endpoint,
+                model,
+                consented_origins,
+            }
+        }
+        local @ AiProviderChoice::Local { .. } => local,
     }
 }
 
@@ -145,6 +196,7 @@ mod tests {
         ".recognize_levels(",
         ".recognize_levels_again(",
         ".revise_levels(",
+        ".choose_folders(",
         "propose_name_spec(",
     ];
 
@@ -238,34 +290,59 @@ mod tests {
         assert!(
             guarded_sources()
                 .iter()
-                .any(|(file, code)| file == page && code.contains("announced_items()")),
+                .any(|(file, code)| file == page && code.contains("announced_items(")),
             "the AI page must list every announced item"
         );
     }
 
     #[test]
-    fn every_line_of_the_list_is_announced_once() {
-        let mut lines: Vec<&str> = announced_items().map(|item| item.key()).collect();
+    fn every_line_of_the_list_is_announced_once_for_each_agreement_it_needs() {
+        let mut lines: Vec<(String, &str)> = ConsentPurpose::ALL
+            .into_iter()
+            .flat_map(|purpose| {
+                announced_items(purpose).map(move |item| (format!("{purpose:?}"), item.key()))
+            })
+            .collect();
+        let listed = lines.len();
         lines.sort_unstable();
         lines.dedup();
-        assert_eq!(lines.len(), MODEL_CALL_SITES.len());
+        assert_eq!(lines.len(), listed);
+        assert_eq!(
+            listed,
+            MODEL_CALL_SITES
+                .iter()
+                .filter(|site| site.announced_as.is_some())
+                .map(|site| site.needs.len())
+                .sum::<usize>()
+        );
+        assert!(
+            MODEL_CALL_SITES.iter().all(|site| !site.needs.is_empty()),
+            "a place that calls the model needs at least one agreement"
+        );
     }
 
-    fn http(endpoint: &str, consented: &[&str]) -> AiProviderChoice {
+    fn consents(origins: &[&str]) -> ConsentedOrigins {
+        ConsentedOrigins::all(origins.iter().map(|origin| (*origin).to_owned()).collect())
+    }
+
+    fn http_with(endpoint: &str, consented: ConsentedOrigins) -> AiProviderChoice {
         AiProviderChoice::Http {
             endpoint: endpoint.to_owned(),
             model: "m".to_owned(),
-            consented_origins: consented
-                .iter()
-                .map(|origin| (*origin).to_owned())
-                .collect(),
+            consented_origins: consented,
         }
     }
+
+    fn http(endpoint: &str, consented: &[&str]) -> AiProviderChoice {
+        http_with(endpoint, consents(consented))
+    }
+
+    const INBOX: ConsentPurpose = ConsentPurpose::Inbox;
 
     #[test]
     fn a_server_off_this_computer_needs_the_agreement_until_its_origin_is_agreed() {
         let far = http("https://ai.example.com/v1", &[]);
-        let ask = ConsentAsk::needed_for(&far).unwrap();
+        let ask = ConsentAsk::needed_for(&far, INBOX).unwrap();
         assert_eq!(ask.origin, "https://ai.example.com");
 
         let AiProviderChoice::Http {
@@ -274,60 +351,98 @@ mod tests {
         else {
             panic!("not an own server");
         };
-        assert_eq!(consented_origins, ["https://ai.example.com"]);
+        assert_eq!(consented_origins.inbox, ["https://ai.example.com"]);
+        assert!(consented_origins.archive.is_empty());
+        assert!(consented_origins.folders.is_empty());
         assert_eq!(
-            ConsentAsk::needed_for(&http(
-                "https://ai.example.com/other/path",
-                &["https://ai.example.com"]
-            )),
+            ConsentAsk::needed_for(
+                &http(
+                    "https://ai.example.com/other/path",
+                    &["https://ai.example.com"]
+                ),
+                INBOX
+            ),
             None
         );
-        assert!(ConsentAsk::needed_for(&http(
-            "https://ai.example.com:8443/v1",
-            &["https://ai.example.com"]
-        ))
+        assert!(ConsentAsk::needed_for(
+            &http(
+                "https://ai.example.com:8443/v1",
+                &["https://ai.example.com"]
+            ),
+            INBOX
+        )
         .is_some());
-        assert!(ConsentAsk::needed_for(&http(
-            "https://other.example.org",
-            &["https://ai.example.com"]
-        ))
+        assert!(ConsentAsk::needed_for(
+            &http("https://other.example.org", &["https://ai.example.com"]),
+            INBOX
+        )
         .is_some());
+    }
+
+    #[test]
+    fn each_kind_of_data_is_agreed_on_its_own() {
+        let only_inbox = ConsentedOrigins {
+            inbox: vec!["https://ai.example.com".to_owned()],
+            ..ConsentedOrigins::default()
+        };
+        let endpoint = "https://ai.example.com/v1";
+        assert_eq!(server_agreed(endpoint, &only_inbox, INBOX), Some(true));
+        assert_eq!(
+            server_agreed(endpoint, &only_inbox, ConsentPurpose::Archive),
+            Some(false)
+        );
+        assert_eq!(
+            server_agreed(endpoint, &only_inbox, ConsentPurpose::Folders),
+            Some(false)
+        );
+        assert!(
+            ConsentAsk::needed_for(&http_with(endpoint, only_inbox), ConsentPurpose::Folders)
+                .is_some()
+        );
     }
 
     #[test]
     fn the_agreement_is_asked_of_a_server_off_this_computer_only() {
-        let given = vec!["https://ai.example.com".to_owned()];
+        let given = consents(&["https://ai.example.com"]);
+        let none = ConsentedOrigins::default();
         assert_eq!(
-            server_agreed("https://ai.example.com/v1", &given),
+            server_agreed("https://ai.example.com/v1", &given, INBOX),
             Some(true)
         );
-        assert_eq!(server_agreed("https://ai.example.com/v1", &[]), Some(false));
-        assert_eq!(server_agreed("http://localhost:11434", &[]), None);
-        assert_eq!(server_agreed("not an address", &[]), None);
+        assert_eq!(
+            server_agreed("https://ai.example.com/v1", &none, INBOX),
+            Some(false)
+        );
+        assert_eq!(server_agreed("http://localhost:11434", &none, INBOX), None);
+        assert_eq!(server_agreed("not an address", &none, INBOX), None);
     }
 
     #[test]
-    fn only_a_server_off_this_computer_without_consent_is_not_allowed() {
+    fn only_a_server_off_this_computer_without_any_consent_is_not_allowed() {
         use ncrs_config::config::AiSetting;
-        let server = |endpoint: &str, consented: &[&str]| AiSetting::Http {
+        let server = |endpoint: &str, consented: ConsentedOrigins| AiSetting::Http {
             endpoint: endpoint.to_owned(),
             model: "m".to_owned(),
-            consented_origins: consented
-                .iter()
-                .map(|origin| (*origin).to_owned())
-                .collect(),
+            consented_origins: consented,
         };
         assert!(server_is_not_allowed(&server(
             "https://ai.example.com/v1",
-            &[]
+            ConsentedOrigins::default()
         )));
         assert!(!server_is_not_allowed(&server(
             "https://ai.example.com/v1",
-            &["https://ai.example.com"]
+            consents(&["https://ai.example.com"])
+        )));
+        assert!(!server_is_not_allowed(&server(
+            "https://ai.example.com/v1",
+            ConsentedOrigins {
+                folders: vec!["https://ai.example.com".to_owned()],
+                ..ConsentedOrigins::default()
+            }
         )));
         assert!(!server_is_not_allowed(&server(
             "http://localhost:11434",
-            &[]
+            ConsentedOrigins::default()
         )));
         assert!(!server_is_not_allowed(&AiSetting::Off));
     }
@@ -335,15 +450,15 @@ mod tests {
     #[test]
     fn the_model_on_this_computer_never_needs_the_agreement() {
         assert_eq!(
-            ConsentAsk::needed_for(&AiProviderChoice::Local { threads: None }),
+            ConsentAsk::needed_for(&AiProviderChoice::Local { threads: None }, INBOX),
             None
         );
         assert_eq!(
-            ConsentAsk::needed_for(&http("http://localhost:11434", &[])),
+            ConsentAsk::needed_for(&http("http://localhost:11434", &[]), INBOX),
             None
         );
         assert_eq!(
-            ConsentAsk::needed_for(&http("http://127.0.0.1:8080/v1", &[])),
+            ConsentAsk::needed_for(&http("http://127.0.0.1:8080/v1", &[]), INBOX),
             None
         );
     }

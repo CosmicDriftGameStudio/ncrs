@@ -3865,6 +3865,12 @@
       "de": "Der Server meldet Fehler {status}."
     },
     {
+      "key": "hermes_overview.server_consent_missing",
+      "context": "Line in the Hermes overview about the AI server on another computer: a request was held back because the user has not allowed that kind of data yet, so those documents wait. Points to the settings page.",
+      "en": "Documents wait: sending them to the server is not allowed yet (Settings, AI).",
+      "de": "Dokumente warten: sie an den Server zu senden ist noch nicht freigegeben (Einstellungen, KI)."
+    },
+    {
       "key": "settings.ai_test_no_answer",
       "context": "Status beside the Test connection button: no connection could be made or the server was too slow.",
       "en": "The server did not answer.",
@@ -3883,10 +3889,46 @@
       "de": "Was an den Server geht"
     },
     {
-      "key": "settings.ai_consent_row",
-      "context": "Label of the row under the list of what goes to an AI server on another computer: whether the user agreed to send it. Agreement is given for each server. The word server is meant to be searchable.",
-      "en": "Agreed for this server",
-      "de": "Freigabe für diesen Server"
+      "key": "settings.ai_consent_intro",
+      "context": "First paragraph of the section about sending data to an AI server on another computer. The three rows below are three separate agreements; each lists what it covers.",
+      "en": "You agree to each kind of data on its own. Of a kind you have not allowed, nothing is sent.",
+      "de": "Du stimmst jeder Art von Daten einzeln zu. Von einer Art, die du nicht freigegeben hast, wird nichts gesendet."
+    },
+    {
+      "key": "settings.ai_consent_legacy_dropped",
+      "context": "Dim line above the three rows about sending data to an AI server on another computer, shown when the settings file had the one agreement of an older version. That agreement no longer counts; the user allows each kind again.",
+      "en": "Allowing a server is now split by kind of data. Please allow again what may go to this server.",
+      "de": "Die Freigabe ist jetzt nach Art getrennt. Bitte gib neu frei, was an den Server darf."
+    },
+    {
+      "key": "settings.ai_consent_covers",
+      "context": "First line under the label of one of three agreements about sending data to an AI server on another computer; the list of what the agreement covers follows. The agreement is given for each server. The word server is meant to be searchable.",
+      "en": "Agreed for this server, covers:",
+      "de": "Freigabe für diesen Server, gilt für:"
+    },
+    {
+      "key": "settings.ai_consent_purpose_inbox",
+      "context": "Label of one of three agreements about sending data to an AI server on another computer: new documents that arrive in a folder Hermes watches and that Hermes reads to sort them. Hermes is the module that sorts documents.",
+      "en": "Server: incoming documents",
+      "de": "Server: eingehende Dokumente"
+    },
+    {
+      "key": "settings.ai_consent_purpose_archive",
+      "context": "Label of one of three agreements about sending data to an AI server on another computer: texts and data of documents that are already filed (the archive), which the chat and the rule learning of Hermes show to the model.",
+      "en": "Server: filed documents",
+      "de": "Server: abgelegte Dokumente"
+    },
+    {
+      "key": "settings.ai_consent_purpose_folders",
+      "context": "Label of one of three agreements about sending data to an AI server on another computer: the folder structure with the file names, which the model sees when it chooses a folder, learns how a folder is organised or proposes a file name pattern.",
+      "en": "Server: folders and file names",
+      "de": "Server: Ordner und Dateinamen"
+    },
+    {
+      "key": "settings.ai_consent_rules_need_both",
+      "context": "Last line under the row about folders and file names in the AI page: learning a filing rule sends data of two kinds, so both agreements are needed. Filed documents is the name of the other row.",
+      "en": "Learning a filing rule needs this agreement and the one for filed documents.",
+      "de": "Eine Ablageregel zu lernen braucht diese Freigabe und die für abgelegte Dokumente."
     },
     {
       "key": "settings.ai_consent_state_given",
@@ -3909,14 +3951,14 @@
     {
       "key": "settings.ai_consent_item_chat",
       "context": "One point of the list of what goes to the AI model on another computer: the chat with Hermes (the module that sorts documents).",
-      "en": "Everything you write to Hermes in the chat, and the last question, search and answer your message refers to.",
-      "de": "Alles, was du im Chat an Hermes schreibst, und die letzte Frage, Suche und Antwort, auf die sich deine Nachricht bezieht."
+      "en": "Everything you write to Hermes in the chat, the last question Hermes asked with its answer options, and your previous request and message that the new one refers to.",
+      "de": "Alles, was du im Chat an Hermes schreibst, die letzte Frage von Hermes mit ihren Antwortmöglichkeiten und deine vorige Anfrage und Nachricht, auf die sich die neue bezieht."
     },
     {
       "key": "settings.ai_consent_item_rules",
       "context": "One point of the list of what goes to the AI model on another computer: what Hermes (the module that sorts documents) shows the model when it learns a filing rule or works out how a folder is organised. The archive is the folder where filed documents are kept.",
-      "en": "When Hermes learns a filing rule or reads how a folder is organised: the paths of sample documents in your archive and what Hermes found in them (sender, date, kind, amount, number).",
-      "de": "Wenn Hermes eine Ablageregel lernt oder erkennt, wie ein Ordner aufgebaut ist: die Pfade von Beispieldokumenten aus deinem Archiv und was Hermes darin gefunden hat (Absender, Datum, Art, Betrag, Nummer)."
+      "en": "When Hermes learns a filing rule or reads how a folder is organised: the folders of sample documents in your archive and what Hermes found in them (sender, recipient, kind, date, number, tags).",
+      "de": "Wenn Hermes eine Ablageregel lernt oder erkennt, wie ein Ordner aufgebaut ist: die Ordner von Beispieldokumenten aus deinem Archiv und was Hermes darin gefunden hat (Absender, Empfänger, Art, Datum, Nummer, Tags)."
     },
     {
       "key": "settings.ai_consent_item_names",
@@ -3935,6 +3977,12 @@
       "context": "Button beside the status not allowed yet: the user agrees that the listed data is sent to the AI server on another computer. Saves the server too. Verb.",
       "en": "Allow",
       "de": "Freigeben"
+    },
+    {
+      "key": "settings.ai_consent_withdraw",
+      "context": "Button beside the status allowed: the user takes back the agreement to send this kind of data to the AI server on another computer. Nothing of that kind is sent afterwards. Verb.",
+      "en": "Withdraw",
+      "de": "Zurückziehen"
     },
     {
       "key": "settings.ai_key_not_stored",
@@ -5383,6 +5431,24 @@
       "de": "ncrs ist auf dem neuesten Stand."
     },
     {
+      "key": "updates.check_failed",
+      "context": "Dim line at the bottom of the Updates page of the settings tab while the update check is on and the last check of the newest release of ncrs did not get an answer, for example because there is no network. The app tries again later by itself.",
+      "en": "The last check for updates failed. ncrs tries again later.",
+      "de": "Die letzte Suche nach Updates ist fehlgeschlagen. ncrs versucht es später erneut."
+    },
+    {
+      "key": "updates.not_checked_yet",
+      "context": "Dim line at the bottom of the Updates page of the settings tab while the update check is on but no check has finished yet, for example right after the start. Shown instead of the statement that ncrs is up to date.",
+      "en": "No check for updates has finished yet.",
+      "de": "Noch keine Suche nach Updates abgeschlossen."
+    },
+    {
+      "key": "updates.last_checked",
+      "context": "Dim line at the bottom of the Updates page of the settings tab while the update check is on, for a copy that checked for updates before the app remembered how the check ended. {date} is the day of that check, like 2026-11-18. Shown instead of the statement that ncrs is up to date.",
+      "en": "Last checked for updates on {date}.",
+      "de": "Zuletzt am {date} nach Updates gesucht."
+    },
+    {
       "key": "updates.release_notes",
       "context": "Button of the Updates page of the settings tab, in the row that names a newer release. Opens the web page with the release notes of that version in the browser.",
       "en": "Release notes",
@@ -5837,6 +5903,12 @@
       "context": "Batch rename dialog. What Hermes thinks the names of this folder follow. {pattern} is a pattern with tokens in braces; keep it unchanged.",
       "en": "Hermes: {pattern} fits this folder",
       "de": "Hermes: {pattern} passt zu diesem Ordner"
+    },
+    {
+      "key": "batch_rename.hermes_consent_missing",
+      "context": "Batch rename dialog. Shown instead of a name proposal when the AI server is on another computer and the user has not allowed sending folders and file names. Points to the setting; do not name a button.",
+      "en": "Hermes did not look at this folder: sending folders and file names to the server is not allowed (Settings, AI).",
+      "de": "Hermes hat diesen Ordner nicht angesehen: Ordner und Dateinamen an den Server zu senden ist nicht freigegeben (Einstellungen, KI)."
     },
     {
       "key": "batch_rename.hermes_use",
@@ -7891,10 +7963,46 @@
       "de": "KI einschalten"
     },
     {
-      "key": "hermes_chat.model_failed",
-      "context": "Hermes chat (F2): Hermes says its language model cannot run. {reason} is a short technical reason. Buttons with things it can do follow.",
-      "en": "My language model doesn't start: {reason}. What would you like to do?",
-      "de": "Mein Sprachmodell startet nicht: {reason}. Was möchtest du tun?"
+      "key": "hermes_chat.model_not_loaded",
+      "context": "Hermes chat (F2): Hermes says its language model could not be loaded or run. Buttons with things it can do follow.",
+      "en": "My language model could not be loaded. What would you like to do?",
+      "de": "Mein Sprachmodell konnte nicht geladen werden. Was möchtest du tun?"
+    },
+    {
+      "key": "hermes_chat.model_too_long",
+      "context": "Hermes chat (F2): Hermes says the typed text was too long for the language model. The conversation about it is forgotten, so the next sentence works again.",
+      "en": "That was too long for me, so I forgot it. Please say it again, shorter.",
+      "de": "Das war zu lang für mich, darum habe ich es vergessen. Sag es bitte noch einmal, kürzer."
+    },
+    {
+      "key": "hermes_chat.model_unsupported",
+      "context": "Hermes chat (F2): Hermes says the language model set up cannot answer this kind of question.",
+      "en": "The language model you set up cannot answer that kind of question.",
+      "de": "Das eingestellte Sprachmodell kann diese Art von Frage nicht beantworten."
+    },
+    {
+      "key": "hermes_chat.model_bad_reply",
+      "context": "Hermes chat (F2): Hermes says the answer of the language model could not be used.",
+      "en": "I could not use the answer of my language model. Please try again, maybe in other words.",
+      "de": "Die Antwort meines Sprachmodells war nicht brauchbar. Versuche es bitte noch einmal, vielleicht mit anderen Worten."
+    },
+    {
+      "key": "hermes_chat.model_unreachable",
+      "context": "Hermes chat (F2): Hermes says the AI server does not answer or did not accept the request (wrong key, wrong model, no connection).",
+      "en": "The AI server does not answer or did not accept the request. Please check the connection and the AI settings.",
+      "de": "Der KI-Server antwortet nicht oder hat die Anfrage nicht angenommen. Prüfe bitte die Verbindung und die KI-Einstellungen."
+    },
+    {
+      "key": "hermes_chat.model_consent_missing",
+      "context": "Hermes chat (F2): Hermes says nothing was sent because the user has not agreed to send texts to the AI server yet.",
+      "en": "Nothing was sent: you have not agreed to send this kind of data to this AI server yet. You can do that in the AI settings.",
+      "de": "Es wurde nichts gesendet: Du hast dem Senden dieser Art von Daten an diesen KI-Server noch nicht zugestimmt. Das geht in den KI-Einstellungen."
+    },
+    {
+      "key": "hermes_chat.model_internal",
+      "context": "Hermes chat (F2): Hermes says something broke inside the app while the language model was asked; the model itself is not to blame.",
+      "en": "Something went wrong inside the app. Please try again.",
+      "de": "In der App ist etwas schiefgegangen. Versuche es bitte noch einmal."
     },
     {
       "key": "hermes_chat.thinking",
@@ -8216,9 +8324,9 @@
     },
     {
       "key": "settings.feature_index_intro",
-      "context": "Sentence under the title of the Index page of the settings tab. The index is the encrypted database in which ncrs keeps what it read from the files.",
-      "en": "What ncrs knows about your files: text, sender, kind, date. Stored encrypted on this Mac.",
-      "de": "Was ncrs über deine Dateien weiß: Text, Absender, Art, Datum. Liegt verschlüsselt auf diesem Mac."
+      "context": "Sentence under the title of the Index page of the settings tab. The index is the database in which ncrs keeps what it read from the files. The Hermes overview says whether it is encrypted.",
+      "en": "What ncrs knows about your files: text, sender, kind, date. Stored on this computer; the Hermes overview says whether it is encrypted.",
+      "de": "Was ncrs über deine Dateien weiß: Text, Absender, Art, Datum. Liegt auf diesem Computer; die Hermes-Übersicht zeigt, ob er verschlüsselt ist."
     },
     {
       "key": "settings.feature_hermes_sorting",
@@ -11137,6 +11245,12 @@
       "de": "◐ liest …"
     },
     {
+      "key": "filing_view.state_needs_model",
+      "context": "Filing tab: a file that stays without a folder because the AI in use cannot choose folders; the plan is finished for it. Starts with a hollow circle as the mark of the state.",
+      "en": "○ needs the built-in language model",
+      "de": "○ braucht das eingebaute Sprachmodell"
+    },
+    {
       "key": "filing_view.state_filed",
       "context": "Filing tab: where a file will be filed. {path} is the folder and the file name below the write folder. Starts with an arrow.",
       "en": "→ {path}",
@@ -11249,6 +11363,24 @@
       "context": "Filing tab: error line when the plan cannot start because Hermes or its language model is not ready.",
       "en": "Hermes or its language model is not ready, so the files cannot be planned.",
       "de": "Hermes oder sein Sprachmodell ist nicht bereit, darum lassen sich die Dateien nicht planen."
+    },
+    {
+      "key": "filing_view.error_folder_choice_unsupported",
+      "context": "Filing tab: error line when the AI is set up as a server of the user's own, which cannot choose the folder for a file yet. The files that need that choice stay unplanned.",
+      "en": "Choosing the folder needs the built-in language model. With your own AI server, only the files the rules can place are planned.",
+      "de": "Die Ordnerwahl braucht das eingebaute Sprachmodell. Mit einem eigenen KI-Server werden nur die Dateien geplant, die sich per Regel einordnen lassen."
+    },
+    {
+      "key": "filing_view.error_folder_consent_missing",
+      "context": "Filing tab: error line when the AI is set up as a server on another computer and the user has not agreed to send folder names and file names to it. Nothing was sent; the files that need the folder choice stay unplanned. The AI settings are where the agreement is given.",
+      "en": "Nothing was sent: choosing the folder needs your agreement to send folder names and file names to this AI server. You can give it in the AI settings.",
+      "de": "Es wurde nichts gesendet: Für die Ordnerwahl musst du dem Senden von Ordner- und Dateinamen an diesen KI-Server zustimmen. Das geht in den KI-Einstellungen."
+    },
+    {
+      "key": "filing_view.error_model_failed",
+      "context": "Filing tab: error line when the language model failed while choosing folders. The files it did not answer for stay unplanned and are not marked.",
+      "en": "The language model could not choose the folders. The files it did not answer for stay unplanned; try again later.",
+      "de": "Das Sprachmodell konnte die Ordner nicht wählen. Die Dateien, für die es keine Antwort gab, bleiben ungeplant; versuche es später noch einmal."
     },
     {
       "key": "filing_view.error_name",

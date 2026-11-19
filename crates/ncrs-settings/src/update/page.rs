@@ -183,7 +183,8 @@ pub fn update(
         own @ (SettingsMessage::AiKey(_)
         | SettingsMessage::TestAiServer
         | SettingsMessage::AiChecked { .. }
-        | SettingsMessage::ConfirmAiConsent
+        | SettingsMessage::ConfirmAiConsent(_)
+        | SettingsMessage::WithdrawAiConsent(_)
         | SettingsMessage::SaveServer
         | SettingsMessage::AiKeyStored(_)
         | SettingsMessage::UsagePeriod(_)

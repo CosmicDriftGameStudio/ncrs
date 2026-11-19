@@ -1,6 +1,6 @@
 //! State of the tags page: every tag with the documents that have it, in
 //! groups that fold, which of them the file list shows, and the steps of
-//! renaming and deleting an own tag. No widgets and no tasks; `App` owns it and
+//! renaming and deleting an own tag. No widgets and no tasks; the Hermes UI state owns it and
 //! changes it from `update`, the view is `ui::tags`.
 
 use ncrs_index::{tag_name, Kinds, RuleSpec};

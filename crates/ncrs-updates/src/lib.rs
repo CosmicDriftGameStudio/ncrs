@@ -13,6 +13,6 @@ mod view_tests;
 pub use channel::{Channel, PackageManager};
 pub use fetch::{latest_release, FetchFn};
 pub use release::LatestRelease;
-pub use state::{update, Action, Ctx, Message, State, CHECK_AVAILABLE};
+pub use state::{update, Action, CheckOutcome, Ctx, Message, State, CHECK_AVAILABLE};
 pub use store::file_beside;
 pub use view::{keys, view, ViewCtx, COMMAND_FIELD_ID};

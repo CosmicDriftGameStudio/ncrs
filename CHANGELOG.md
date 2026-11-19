@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Security
+
+- SFTP: revoked keys and host patterns in `known_hosts` are honoured in all
+  their forms. Please update.
+- SFTP: ncrs's own `known_hosts` records only plain host names.
+- Debug output of the AI connection holds nothing derived from your API key.
+
 ### Fixed
 
 - Copy, move, rename, delete and unpacking never overwrite or lose data: files
@@ -25,6 +32,58 @@ All notable changes to this project are documented here. The format follows
   still being written, and a folder is looked through at most once an hour.
 - Copying onto FAT or exFAT drives no longer fails for files that carry a
   download mark on Windows.
+- The Filing tab says "needs the built-in language model" for the files an own
+  AI server cannot place, instead of showing "reading …" for ever; Hermes in the
+  chat says so once and goes on with the files the rules can place.
+- A file tagged "no folder" keeps the tag while another write folder still has a
+  current "no folder" answer for it.
+- Closing ncrs while a long text recognition runs no longer counts as a crash
+  of that file; two such closes do not put a healthy file aside.
+- Hermes no longer shows a technical English reason when its model cannot
+  start; the sentence is in your language and appears once.
+- `install.ps1 -Uninstall` removes only the files its install wrote, like
+  `install.sh --uninstall`, and both installers leave other files in an
+  existing `backends` folder alone.
+- A document in the inbox that Hermes asked you about is not sent to the AI a
+  second time at the next scan.
+
+- A `body.txt` beside its `.eml` is the mail's text, not a document: the Filing
+  tab and the watched-folder intake leave it alone.
+- The window no longer waits for the index while a filing run or the intake
+  holds it.
+- The chat's answer to "Always" says that rules file at once and everything
+  else waits for your OK.
+- The Filing tab no longer tags files "no folder" when the model on your own
+  server cannot choose folders; it says so and leaves the files alone, and the
+  Copy and Move buttons work again.
+- Hermes says in your language why its model failed: not reachable, answered
+  nothing usable, no consent, or could not be loaded.
+- The Updates page shows the day of the last check when an older settings file
+  has no result of it, instead of "No check for updates has finished yet."
+- A refused API key is tried again once you correct it, without waiting out the
+  pause.
+- A file that was being read when you closed ncrs is read again at the next
+  start; only a file that crashed the reader at two starts in a row is skipped,
+  and "Process again" reads it anyway.
+- `ncrs --version` prints the same version the About card shows.
+- The install scripts are attached to each release and listed in
+  `SHA256SUMS`; `install.sh --uninstall` removes only the files its install
+  wrote.
+
+### Changed
+
+- An AI server on another computer is now agreed to for three kinds of data
+  one by one: incoming documents, filed documents, and folders with file names.
+  Of a kind you have not agreed to, nothing is sent. A settings file with the
+  single agreement of before no longer counts: the AI page says so, and you
+  allow each kind again.
+- Sender aliases can no longer be confirmed: the offers are gone. Earlier notes
+  and the README described confirmed aliases as a feature; the sender is read
+  from the letterhead or the footer, and an alias that was stored earlier is
+  still used for its identifier.
+- `PRIVACY.md`, `SECURITY.md`, the README and the consent card for an AI server
+  on another computer now list what is sent and where to, and what ncrs keeps
+  on your computer.
 
 ## [1.5.1] — 2026-11-15
 
