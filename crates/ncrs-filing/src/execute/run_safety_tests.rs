@@ -200,7 +200,10 @@ fn a_settle_removes_only_old_staging_names_never_a_live_or_foreign_one() {
     // The change time of a file cannot be set back: the sweep's clock goes
     // forward, and the live copy is dated ahead of it.
     ncrs_fs::transfer::let_time_pass_for_sweep(three_days);
-    fs::File::open(&live)
+    // Windows sets the time only through a handle opened for writing.
+    fs::OpenOptions::new()
+        .write(true)
+        .open(&live)
         .unwrap()
         .set_modified(std::time::SystemTime::now() + three_days)
         .unwrap();

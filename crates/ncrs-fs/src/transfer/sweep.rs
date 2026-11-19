@@ -138,8 +138,17 @@ mod tests {
     const THREE_DAYS: Duration = Duration::from_secs(3 * 24 * 60 * 60);
 
     fn backdate(path: &Path, age: Duration) {
-        let file = std::fs::File::open(path).unwrap();
-        file.set_modified(SystemTime::now() - age).unwrap();
+        date(path, SystemTime::now() - age);
+    }
+
+    // Windows sets the time only through a handle opened for writing.
+    fn date(path: &Path, modified: SystemTime) {
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(path)
+            .unwrap()
+            .set_modified(modified)
+            .unwrap();
     }
 
     /// Makes everything written so far three days old for the sweep, except
@@ -165,10 +174,7 @@ mod tests {
         std::fs::write(&old_remote, "x").unwrap();
         let_three_days_pass();
         let ahead = SystemTime::now() + THREE_DAYS;
-        std::fs::File::open(&fresh_file)
-            .unwrap()
-            .set_modified(ahead)
-            .unwrap();
+        date(&fresh_file, ahead);
 
         sweep_partials(dir.path());
 
