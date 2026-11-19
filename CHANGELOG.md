@@ -8,13 +8,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Security
 
-- SFTP: `known_hosts` lines marked `@revoked` that use a wildcard (`*`, `?`) or
-  `!` host pattern were ignored up to 1.5.1, so a revoked key only led to the
-  usual question instead of being refused. They are honoured now. Please update.
-- SFTP: a host name that contains a pattern character, a comma, white space or
-  a control character is no longer written to ncrs's own `known_hosts`.
-- Debug output of the AI connection no longer carries a fingerprint of your API
-  key.
+- SFTP: revoked keys and host patterns in `known_hosts` are honoured in all
+  their forms. Please update.
+- SFTP: ncrs's own `known_hosts` records only plain host names.
+- Debug output of the AI connection holds nothing derived from your API key.
 
 ### Fixed
 
@@ -68,8 +65,6 @@ All notable changes to this project are documented here. The format follows
 - A file that was being read when you closed ncrs is read again at the next
   start; only a file that crashed the reader at two starts in a row is skipped,
   and "Process again" reads it anyway.
-- SFTP: `known_hosts` lines with `*`, `?` and `!` host patterns and revoked keys
-  are honoured.
 - `ncrs --version` prints the same version the About card shows.
 - The install scripts are attached to each release and listed in
   `SHA256SUMS`; `install.sh --uninstall` removes only the files its install
