@@ -2,13 +2,14 @@
 
 use std::collections::{HashSet, VecDeque};
 use std::path::{Path, PathBuf};
+use std::sync::PoisonError;
 
 use iced::widget::text_editor;
 use ncrs_ui_kit::markdown_view::{parse_markdown, MarkdownItem};
 
 use crate::message::Mode;
 use crate::search::{search, Hit};
-use crate::store::{Kind, Ledger, Note, Scan};
+use crate::store::{Expect, Kind, Ledger, Note, Replaced, Scan};
 use crate::tree::{rows, Row, RowKey};
 
 /// Everything the tab keeps. The notes are held in memory: the folder is read
@@ -43,23 +44,37 @@ pub struct State {
     /// A note on this file is to be shown as soon as the folder is read.
     pub pending_file: Option<PathBuf>,
     pub open: bool,
-    /// A write is running on a blocking thread.
-    pub writing: bool,
+    /// The write running on a blocking thread.
+    pub running: Option<Write>,
     /// Writes asked for while one was running, oldest first.
     pub queued: VecDeque<Write>,
+    /// Writes that failed and wait for the next try, at most one per file.
+    pub unsaved: Vec<Write>,
+    /// The folder is being read.
+    pub loading: bool,
+    /// A read of the folder was thrown away because a write was in the way.
+    pub reload_after_writes: bool,
+    /// A quit was held back because a note could not be saved.
+    pub quit_warned: bool,
     /// Numbers the writes in the order they were asked for.
     pub write_counter: u64,
     /// The newest write done per file, shared with the blocking tasks.
     pub ledger: Ledger,
 }
 
-/// One note file to write, and the file a rename leaves behind.
+/// One note file to write: what the disk must look like for it to go ahead,
+/// and the file a rename leaves behind.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Write {
     pub path: PathBuf,
     pub text: String,
-    pub replaces: Option<PathBuf>,
+    pub expect: Expect,
+    pub replaces: Option<Replaced>,
     pub generation: u64,
+    /// The notes folder: a link is only written through when it leads inside it.
+    pub root: PathBuf,
+    /// Made by the program, not by an edit: a refusal drops it instead of saving a copy.
+    pub background: bool,
 }
 
 impl State {
@@ -117,14 +132,41 @@ impl State {
             .collect()
     }
 
-    /// A write numbered after all earlier ones.
-    pub fn next_write(&mut self, path: PathBuf, text: String, replaces: Option<PathBuf>) -> Write {
+    pub fn writing(&self) -> bool {
+        self.running.is_some()
+    }
+
+    /// Writes are on their way; the notes in memory are ahead of the disk. Failed
+    /// writes waiting for a retry do not count: a folder that stays read-only
+    /// must not block reading it, `apply_scan` keeps those notes as they are.
+    pub fn busy(&self) -> bool {
+        self.running.is_some() || !self.queued.is_empty()
+    }
+
+    /// `write` numbered after all earlier ones. A failed write of the same file
+    /// that waits for a retry gives way to it and hands over what it was based on.
+    pub fn numbered(&mut self, mut write: Write) -> Write {
         self.write_counter += 1;
-        Write {
-            path,
-            text,
-            replaces,
-            generation: self.write_counter,
+        write.generation = self.write_counter;
+        if let Some(at) = self.unsaved.iter().position(|old| old.path == write.path) {
+            let old = self.unsaved.remove(at);
+            write.expect = old.expect;
+            write.replaces = old.replaces.or(write.replaces);
+            write.background &= old.background;
+        }
+        write
+    }
+
+    /// Keeps a failed write for the next try.
+    pub fn keep_unsaved(&mut self, write: Write) {
+        self.unsaved.retain(|old| old.path != write.path);
+        self.unsaved.push(write);
+    }
+
+    /// What the file of the note holds now, after a write.
+    pub fn set_base(&mut self, path: &Path, hash: u64) {
+        if let Some(note) = self.note_mut(path) {
+            note.base = Some(hash);
         }
     }
 
@@ -140,23 +182,59 @@ impl State {
                 older.text = write.text;
                 older.generation = write.generation;
                 older.replaces = older.replaces.take().or(write.replaces);
+                older.background &= write.background;
             }
             None => self.queued.push_back(write),
         }
     }
 
     pub fn apply_scan(&mut self, scan: Scan) {
-        // A note that is being typed in stays as it is in memory.
+        // A note that is being typed in, or whose write failed, stays as it is
+        // in memory.
         let typing = self
             .current
             .clone()
             .filter(|_| self.dirty)
             .and_then(|path| self.note(&path).cloned());
+        let unsaved: Vec<Note> = self
+            .unsaved
+            .iter()
+            .filter_map(|write| self.note(&write.path).cloned())
+            .collect();
+        let left_behind: Vec<PathBuf> = self
+            .unsaved
+            .iter()
+            .filter_map(|write| write.replaces.as_ref().map(|old| old.path.clone()))
+            .collect();
+        let kept_in_memory = |path: &Path| {
+            typing.as_ref().is_some_and(|own| own.path == path)
+                || unsaved.iter().any(|note| note.path == path)
+        };
+        {
+            // What the disk holds is the new base, also of a file changed
+            // outside. Not for the note being typed in: it keeps the base it
+            // was typed on, so its next write sees the outside change.
+            let mut written = self.ledger.lock().unwrap_or_else(PoisonError::into_inner);
+            for note in &scan.notes {
+                let kept = kept_in_memory(&note.path);
+                if let (Some(hash), Some(last), false) =
+                    (note.base, written.get_mut(&note.path), kept)
+                {
+                    last.hash = hash;
+                }
+            }
+        }
         self.root = scan.root;
         self.notes = scan.notes;
+        // The file a failed rename left behind is the note held in memory.
+        self.notes.retain(|note| !left_behind.contains(&note.path));
         self.folders = scan.folders;
         self.loaded = true;
         self.problem = None;
+        for note in unsaved {
+            self.notes.retain(|other| other.path != note.path);
+            self.notes.push(note);
+        }
         if let Some(note) = typing {
             self.notes.retain(|other| other.path != note.path);
             self.notes.push(note);

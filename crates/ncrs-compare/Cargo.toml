@@ -19,6 +19,8 @@ ncrs-core = { path = "../ncrs-core", version = "0.0.0" }
 ncrs-fs = { path = "../ncrs-fs", version = "0.0.0" }
 ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
 ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0" }
+# macOS hands out decomposed names (NFD); the same file elsewhere is composed.
+unicode-normalization = "0.1.26"
 
 [dev-dependencies]
 # The snapshots of the dialogs.

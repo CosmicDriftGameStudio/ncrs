@@ -19,7 +19,7 @@ pub enum Message {
     /// A comparison ended; `generation` tells which one.
     Finished {
         generation: u64,
-        result: Result<Compared, ScanError>,
+        result: Result<Box<Compared>, ScanError>,
     },
     ToggleOnlyDifferences,
     Again,
@@ -34,5 +34,9 @@ pub enum Message {
     /// The panels moved, maybe out of the compared folders.
     PanelsChanged,
     /// The copy queue and the delete dialog have nothing left to do.
-    OpsIdle,
+    /// `completed` is whether the copies ran to the end, without a cancel or
+    /// an error; only then does the sync go on to delete.
+    OpsIdle {
+        completed: bool,
+    },
 }

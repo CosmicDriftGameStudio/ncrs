@@ -25,7 +25,7 @@ fn at(archive: &Path, inner: &[&str]) -> ArchiveLocation {
     }
 }
 
-fn listing(archive: &Path, inner: &[&str]) -> Vec<String> {
+pub(in crate::archive::write) fn listing(archive: &Path, inner: &[&str]) -> Vec<String> {
     list(&at(archive, inner))
         .unwrap()
         .entries
@@ -41,7 +41,7 @@ fn listing(archive: &Path, inner: &[&str]) -> Vec<String> {
         .collect()
 }
 
-fn bytes_of(archive: &Path, inner: &[&str]) -> Vec<u8> {
+pub(in crate::archive::write) fn bytes_of(archive: &Path, inner: &[&str]) -> Vec<u8> {
     let out = scratch("bytes-of");
     let source = inner
         .iter()
@@ -54,7 +54,7 @@ fn inner(parts: &[&str]) -> Vec<String> {
     parts.iter().map(|part| (*part).to_owned()).collect()
 }
 
-fn leftovers(dir: &Path) -> Vec<OsString> {
+pub(in crate::archive::write) fn leftovers(dir: &Path) -> Vec<OsString> {
     std::fs::read_dir(dir)
         .unwrap()
         .map(|entry| entry.unwrap().file_name())
@@ -62,7 +62,7 @@ fn leftovers(dir: &Path) -> Vec<OsString> {
         .collect()
 }
 
-fn names_in_file(archive: &Path) -> Vec<String> {
+pub(in crate::archive::write) fn names_in_file(archive: &Path) -> Vec<String> {
     let mut names: Vec<String> = match ArchiveFormat::of_name(archive.file_name().unwrap()).unwrap()
     {
         ArchiveFormat::Zip => {
@@ -105,7 +105,7 @@ fn names_in_file(archive: &Path) -> Vec<String> {
     names
 }
 
-fn make_tree(root: &Path) -> PathBuf {
+pub(in crate::archive::write) fn make_tree(root: &Path) -> PathBuf {
     let tree = root.join("pack-src");
     std::fs::create_dir_all(tree.join("sub")).unwrap();
     std::fs::create_dir(tree.join("empty")).unwrap();
@@ -282,111 +282,6 @@ fn pack_refuses_an_existing_archive_a_bad_name_and_nested_places() {
     assert!(leftovers(dir.path()).is_empty());
 }
 
-fn two_invoices(dir: &Path) -> Vec<PathBuf> {
-    let one = dir.join("firma");
-    let two = dir.join("privat");
-    std::fs::create_dir_all(&one).unwrap();
-    std::fs::create_dir_all(&two).unwrap();
-    std::fs::write(one.join("invoice.pdf"), b"from firma").unwrap();
-    std::fs::write(two.join("invoice.pdf"), b"from privat").unwrap();
-    vec![one.join("invoice.pdf"), two.join("invoice.pdf")]
-}
-
-#[test]
-fn pack_named_writes_flat_numbered_names_with_the_right_contents() {
-    let dir = scratch("pack-named-flat");
-    let sources = two_invoices(dir.path());
-    let names = crate::flat_names::flat_names(&sources);
-    let items: Vec<(PathBuf, String)> = sources
-        .into_iter()
-        .zip(names)
-        .map(|(path, name)| (path, name.unwrap().to_string_lossy().into_owned()))
-        .collect();
-    assert!(items.iter().all(|(_, name)| !name.contains('/')));
-    for extension in ["zip", "tar", "tar.gz", "tar.zst", "7z"] {
-        let archive = dir.path().join(format!("flat.{extension}"));
-        pack_named(&items, &archive, &mut Counting).unwrap();
-        assert_eq!(
-            names_in_file(&archive),
-            ["invoice (2).pdf", "invoice.pdf"],
-            "{extension}"
-        );
-        assert_eq!(bytes_of(&archive, &["invoice.pdf"]), b"from firma");
-        assert_eq!(bytes_of(&archive, &["invoice (2).pdf"]), b"from privat");
-    }
-}
-
-#[test]
-fn pack_named_nested_names_read_back_as_folders() {
-    let dir = scratch("pack-named-nested");
-    let sources = two_invoices(dir.path());
-    let items = vec![
-        (sources[0].clone(), "firma/invoice.pdf".to_owned()),
-        (sources[1].clone(), "privat/2024/invoice.pdf".to_owned()),
-    ];
-    for extension in ["zip", "tar", "7z"] {
-        let archive = dir.path().join(format!("nested.{extension}"));
-        pack_named(&items, &archive, &mut Counting).unwrap();
-        assert_eq!(listing(&archive, &[]), ["firma/", "privat/"], "{extension}");
-        assert_eq!(listing(&archive, &["privat"]), ["2024/"]);
-        assert_eq!(listing(&archive, &["privat", "2024"]), ["invoice.pdf"]);
-        assert_eq!(
-            bytes_of(&archive, &["privat", "2024", "invoice.pdf"]),
-            b"from privat"
-        );
-    }
-}
-
-#[test]
-fn pack_named_refuses_unsafe_empty_and_clashing_names_without_an_archive() {
-    let dir = scratch("pack-named-refuse");
-    let sources = two_invoices(dir.path());
-    let source = sources[0].clone();
-    for bad in [
-        "../x.pdf",
-        "/abs.pdf",
-        "",
-        "a//b.pdf",
-        "a/../b.pdf",
-        "./x.pdf",
-    ] {
-        let archive = dir.path().join("bad.zip");
-        let err =
-            pack_named(&[(source.clone(), bad.to_owned())], &archive, &mut Counting).unwrap_err();
-        assert_eq!(err.kind(), io::ErrorKind::InvalidInput, "{bad:?}");
-        assert!(!archive.exists(), "{bad:?}");
-    }
-    let archive = dir.path().join("twice.zip");
-    let clash = vec![
-        (sources[0].clone(), "same.pdf".to_owned()),
-        (sources[1].clone(), "same.pdf".to_owned()),
-    ];
-    pack_named(&clash, &archive, &mut Counting).unwrap_err();
-    let file_and_folder = vec![
-        (sources[0].clone(), "a".to_owned()),
-        (sources[1].clone(), "a/b.pdf".to_owned()),
-    ];
-    pack_named(&file_and_folder, &archive, &mut Counting).unwrap_err();
-    assert!(!archive.exists());
-    assert!(leftovers(dir.path()).is_empty());
-}
-
-#[test]
-fn pack_named_keeps_folder_sources_below_their_entry_name() {
-    let dir = scratch("pack-named-folder");
-    let tree = make_tree(dir.path());
-    let archive = dir.path().join("tree.zip");
-    pack_named(
-        &[(tree.clone(), "docs/kept".to_owned())],
-        &archive,
-        &mut Counting,
-    )
-    .unwrap();
-    let names = names_in_file(&archive);
-    assert!(names.contains(&"docs".to_owned()) && names.contains(&"docs/kept".to_owned()));
-    assert!(names.iter().all(|name| name.starts_with("docs")));
-}
-
 #[test]
 fn an_archive_can_be_packed_into_an_archive() {
     let dir = scratch("pack-archive");
@@ -486,7 +381,12 @@ fn add_follows_the_conflict_policy() {
         )
         .unwrap();
         assert_eq!(bytes_of(&archive, &["top.txt"]), b"replacement", "{file}");
-        assert_eq!(listing(&archive, &["2024"]), ["new.txt"], "{file}");
+        // A folder is merged: what only the archive held stays.
+        assert_eq!(
+            listing(&archive, &["2024"]),
+            ["b.jpg", "jan/", "new.txt"],
+            "{file}"
+        );
         assert_eq!(listing(&archive, &[]).len(), 3, "{file}");
     }
 }
@@ -997,4 +897,14 @@ fn a_link_to_a_folder_is_skipped_not_followed() {
     .unwrap();
     assert_eq!(report.skipped, 2);
     assert_eq!(listing(&archive, &["tree"]), Vec::<String>::new());
+}
+
+#[test]
+fn a_modification_time_no_calendar_holds_is_left_out_not_a_panic() {
+    // The year 10000: past what a zip entry can date, yet inside what a
+    // Windows `SystemTime` can hold (up to the year 30828).
+    let absurd = UNIX_EPOCH + std::time::Duration::from_secs(253_402_300_800);
+
+    assert!(zip_datetime(absurd).is_none());
+    assert!(zip_datetime(UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000)).is_some());
 }

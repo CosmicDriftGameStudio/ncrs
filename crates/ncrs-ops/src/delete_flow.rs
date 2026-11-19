@@ -23,6 +23,15 @@ pub fn idle() -> Outcome {
     (Task::none(), Vec::new())
 }
 
+/// The notice for a job asked for while another one runs.
+pub fn busy_text(lang: Language) -> String {
+    lang.text(Msg::StatusArchiveWriteBusy).to_owned()
+}
+
+pub fn busy_notice(ctx: &FlowCtx<'_>) -> Outcome {
+    actions(vec![Action::ShowNotice(busy_text(ctx.lang))])
+}
+
 pub fn actions(actions: Vec<Action>) -> Outcome {
     (Task::none(), actions)
 }

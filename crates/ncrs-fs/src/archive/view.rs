@@ -12,8 +12,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
-use super::zone_mark::carry_zone_mark;
-use super::{copy_out, locate_in_archive};
+use super::copy_out;
 use crate::transfer::{OnConflict, Progress};
 
 const INSTANCE_PREFIX: &str = "run-";
@@ -280,11 +279,6 @@ fn unpack_for_view<P: Progress>(
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "the entry has no name"))?;
     copy_out(source, slot, progress, OnConflict::Fail)?;
     let copy = slot.join(name);
-    if cfg!(windows) {
-        if let Some(location) = locate_in_archive(source) {
-            carry_zone_mark(&location.archive, &copy)?;
-        }
-    }
     let was_executable = has_exec_bit(&copy);
     restrict_to_owner(&copy, 0o600)?;
     // A cancel that came while the last block was written ends here.

@@ -21,7 +21,7 @@ use ncrs_index::{
 use ncrs_intake::{has_symlink_ancestor_under, hash_path, stays_below, IntakeError};
 
 use ncrs_fs::transfer::{
-    partial_prefix, transfer_to, Copy, Counting, Move, OnConflict, Progress, Source,
+    sweep_partials, transfer_to, Copy, Counting, Move, OnConflict, Progress, Source,
 };
 
 mod trash;
@@ -519,37 +519,12 @@ fn skip_pending(
     Ok(ItemOutcome::Skipped(reason))
 }
 
-/// Whether `name` is a hidden copy this process made next to `to`:
-/// `<prefix><this process id>-<counter>`, nothing else. A copy of another
-/// process may still be written to.
-fn is_staging_name(name: &str, prefix: &str) -> bool {
-    let own_process = std::process::id().to_string();
-    name.strip_prefix(prefix)
-        .and_then(|rest| rest.split_once('-'))
-        .is_some_and(|(process, counter)| {
-            let digits =
-                |part: &str| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit());
-            process == own_process && digits(counter)
-        })
-}
-
-/// Removes what an interrupted copy left under its hidden name: only regular
-/// files with exactly the name the transfer gives them.
+/// Removes what an interrupted copy left under its hidden name next to `to`.
+/// Not by process id: a crashed run's id is gone, and a second running instance
+/// keeps its own staging fresh, so only age tells a leftover from a live copy.
 pub(in crate::execute) fn remove_staging_copies(to: &Path) {
-    let (Some(parent), prefix) = (to.parent(), partial_prefix(to)) else {
-        return;
-    };
-    let Ok(entries) = fs::read_dir(parent) else {
-        return;
-    };
-    for entry in entries.filter_map(Result::ok) {
-        if !is_staging_name(&entry.file_name().to_string_lossy(), &prefix) {
-            continue;
-        }
-        let path = entry.path();
-        if fs::symlink_metadata(&path).is_ok_and(|meta| meta.is_file()) {
-            let _best_effort = fs::remove_file(&path);
-        }
+    if let Some(parent) = to.parent() {
+        sweep_partials(parent);
     }
 }
 

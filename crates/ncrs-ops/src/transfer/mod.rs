@@ -5,6 +5,7 @@
 //! Everything that touches the disk is a free function taking plain paths, so
 //! the app runs it on the blocking pool and the tests run it on a tempdir.
 
+use std::collections::HashSet;
 use std::ffi::{OsStr, OsString};
 use std::io;
 use std::path::{Path, PathBuf};
@@ -129,16 +130,23 @@ pub fn scan(sources: &[PathBuf], cancel: &AtomicBool) -> Scan {
 /// the copy would run into it too. A folder inside an archive is read from the
 /// archive's index.
 pub fn count_conflicts(sources: &[PathBuf], target: &Path, cancel: &AtomicBool) -> usize {
-    let names = sources
-        .iter()
+    // The names the transfer will really give: sources from several folders
+    // that share a name get numbered ones.
+    let names = ncrs_fs::flat_names::flat_names(sources)
+        .into_iter()
         .take_while(|_| !cancel.load(Ordering::Relaxed))
-        .filter_map(|source| source.file_name());
+        .flatten();
     if let Some(location) = archive::locate_in_archive(target) {
         let Ok(listing) = archive::list(&location) else {
             return 0;
         };
+        let taken: HashSet<&OsStr> = listing
+            .entries
+            .iter()
+            .map(|entry| entry.name.as_os_str())
+            .collect();
         return names
-            .filter(|name| listing.entries.iter().any(|entry| entry.name == **name))
+            .filter(|name| taken.contains(name.as_os_str()))
             .count();
     }
     names

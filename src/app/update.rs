@@ -322,10 +322,11 @@ impl App {
             // about a name that is in the way.
             Message::TransferRowDone {
                 result,
+                skipped,
                 index,
                 generation,
             } => self.with_ops(|ops, ctx| {
-                ncrs_ops::transfer_row_done(ops, result, index, generation, ctx)
+                ncrs_ops::transfer_row_done(ops, result, skipped, index, generation, ctx)
             }),
 
             Message::Renamed {
@@ -749,7 +750,20 @@ impl App {
                 native_menu::install(self.lang, &self.keymap, self.menu_state());
                 Task::none()
             }
-            Message::Quit => self.quit_after_settings_page(),
+            Message::Quit if self.jobs.is_busy() && !self.ops.quit_confirmed => {
+                self.ops.quit_dialog = true;
+                self.dialog_focus = ncrs_ops::quit_dialog::CANCEL_FOCUS;
+                Task::none()
+            }
+            Message::QuitCancel => {
+                self.ops.quit_dialog = false;
+                Task::none()
+            }
+            Message::QuitConfirm => self.confirm_quit_with_job(),
+            Message::Quit => {
+                self.ops.quit_confirmed = false;
+                self.quit_after_settings_page()
+            }
             // Handled in `update`, which owns the timer's generation check.
             Message::NoticeExpired(_) | Message::SaveSessionState(_) => Task::none(),
         };

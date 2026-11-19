@@ -933,8 +933,9 @@ mod tests {
         cursor_to(&mut session, "alpha.txt");
         session.press(Key::Named(Named::F5));
         session.press(Key::Named(Named::Enter));
-        // The answer goes in as a message: `Instruction` cannot carry a
-        // modifier, and this dialog is answered with Enter and Escape.
+        // Enter presses the focused button, which is "Keep"; Tab moves to
+        // "Overwrite".
+        session.press(Key::Named(Named::Tab));
         session.press(Key::Named(Named::Enter));
 
         assert_eq!(
@@ -1084,6 +1085,7 @@ mod tests {
     #[test]
     fn overwrite_with_for_all_ticked_does_not_ask_again() {
         let (_dir, home, mut session) = all_ticked_on_three_conflicts();
+        session.press(Key::Named(Named::Tab));
         session.press(Key::Named(Named::Enter));
 
         assert!(!session.app.conflict_is_pending(), "asked again");
@@ -1458,6 +1460,7 @@ mod tests {
 
         session.press(Key::Named(Named::Enter));
         assert!(session.app.conflict_is_pending());
+        session.press(Key::Named(Named::Tab));
         session.press(Key::Named(Named::Enter));
 
         assert_eq!(
@@ -1560,7 +1563,7 @@ mod tests {
     /// answers the question with `answer`.
     fn restore_onto_a_taken_name(
         test_name: &str,
-        answer: Named,
+        answer: &[Named],
         check: impl FnOnce(&crate::fs::real_trash_tests::Scene),
     ) {
         crate::fs::real_trash_tests::on_the_real_trash(test_name, |scene| {
@@ -1573,7 +1576,9 @@ mod tests {
 
             session.press_with(Key::Character("z".into()), Modifiers::COMMAND);
             assert!(session.app.conflict_is_pending(), "the restore did not ask");
-            session.press(Key::Named(answer));
+            for key in answer {
+                session.press(Key::Named(*key));
+            }
 
             assert!(!session.app.conflict_is_pending());
             assert!(session.app.restore_is_idle());
@@ -1586,7 +1591,7 @@ mod tests {
     fn keeping_the_file_in_the_way_leaves_the_deletion_in_the_real_trash() {
         restore_onto_a_taken_name(
             "e2e_tests::tests::keeping_the_file_in_the_way_leaves_the_deletion_in_the_real_trash",
-            Named::Escape,
+            &[Named::Escape],
             |scene| {
                 assert_eq!(
                     std::fs::read_to_string(scene.work().join("alpha.txt")).expect("the occupant"),
@@ -1606,7 +1611,7 @@ mod tests {
     fn overwriting_sends_the_file_in_the_way_to_the_real_trash() {
         restore_onto_a_taken_name(
             "e2e_tests::tests::overwriting_sends_the_file_in_the_way_to_the_real_trash",
-            Named::Enter,
+            &[Named::Tab, Named::Enter],
             |scene| {
                 assert_eq!(
                     std::fs::read_to_string(scene.work().join("alpha.txt")).expect("the original"),
@@ -1761,7 +1766,7 @@ mod tests {
     #[test]
     fn the_conflict_dialog_is_answered_with_focus_and_enter() {
         for (keys, expected) in [
-            (vec![(Named::Tab, Modifiers::default())], "old"),
+            (vec![(Named::Tab, Modifiers::default())], "new"),
             (vec![(Named::Tab, Modifiers::SHIFT)], "old"),
             (
                 vec![
@@ -1770,7 +1775,7 @@ mod tests {
                 ],
                 "old",
             ),
-            (vec![], "new"),
+            (vec![], "old"),
         ] {
             let dir = scratch("conflict-focus");
             let home = dir.path().join("home");
@@ -2657,6 +2662,7 @@ mod acceptance;
 #[cfg(test)]
 mod process_again;
 
+mod folder_merge;
 #[cfg(test)]
 mod notes;
 mod notes_move;

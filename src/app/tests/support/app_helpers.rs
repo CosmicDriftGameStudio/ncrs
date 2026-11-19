@@ -782,6 +782,7 @@ impl App {
             sources: vec![PathBuf::from("/home/test/links/entry-1")],
             target: self.panels.right.path.clone(),
             names: Vec::new(),
+            targets: Vec::new(),
         });
         self.job_progress = Some(fs::transfer::Tick { done, total });
         self.ops.transfer_mask_visible = true;
@@ -816,6 +817,7 @@ impl App {
                 sources: vec![PathBuf::from("/left").join(name)],
                 target,
                 names: Vec::new(),
+                targets: Vec::new(),
             },
             index: 0,
         });

@@ -344,6 +344,17 @@ impl App {
             return Stack::with_children([root, dialog::scrim(dialog_element)]).into();
         }
 
+        if self.ops.quit_dialog {
+            let dialog_element = ncrs_ops::quit_dialog::view(
+                self.dialog_focus,
+                self.window_size,
+                self.lang,
+                &self.palette,
+            )
+            .map(Message::from);
+            return Stack::with_children([root, dialog::scrim(dialog_element)]).into();
+        }
+
         if let Some(path) = self.ops.open_file_dialog.as_ref() {
             let name = path
                 .file_name()
@@ -492,6 +503,7 @@ impl App {
                 self.lang,
                 &self.palette,
                 self.ops.conflict_all,
+                self.ops.conflict_folder,
                 self.dialog_focus,
                 self.window_size,
             )

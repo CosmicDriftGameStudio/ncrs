@@ -560,6 +560,8 @@ pub struct PromptKeyState {
     pub delete_dialog: DeleteKeys,
     /// The question before a file that can run is opened is up, so keys answer it.
     pub open_file_dialog: bool,
+    /// The question whether to stop the running job and quit is up, so keys answer it.
+    pub quit_dialog: bool,
     /// The question whether to remove the Hermes index is up: keys answer it.
     pub start_over_dialog: bool,
     /// The drive menu is up, so keys move its highlight.
@@ -630,6 +632,7 @@ impl Default for PromptKeyState {
             filing_renaming: false,
             delete_dialog: DeleteKeys::default(),
             open_file_dialog: false,
+            quit_dialog: false,
             start_over_dialog: false,
             volume_menu: false,
             context_menu: false,

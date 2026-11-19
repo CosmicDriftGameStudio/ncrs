@@ -227,6 +227,7 @@ async fn a_paste_during_a_running_transfer_changes_nothing() {
         sources: vec![PathBuf::from("/busy")],
         target: PathBuf::from("/elsewhere"),
         names: Vec::new(),
+        targets: Vec::new(),
     };
     case.app.ops.transfer = Some(running.clone());
 

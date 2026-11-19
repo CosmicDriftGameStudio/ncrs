@@ -65,6 +65,9 @@ fn compared() -> Compared {
         ]),
         left_rows: vec![entry(LEFT, "new.pdf"), entry(LEFT, "same.pdf")],
         right_rows: vec![entry(RIGHT, "old.pdf"), entry(RIGHT, "same.pdf")],
+        left_folder: PathBuf::from(LEFT),
+        right_folder: PathBuf::from(RIGHT),
+        ..Compared::default()
     }
 }
 
@@ -79,7 +82,7 @@ fn finished_comparison() -> Compare {
         &mut compare,
         Message::Finished {
             generation,
-            result: Ok(compared()),
+            result: Ok(Box::new(compared())),
         },
         left,
         right,
@@ -139,7 +142,7 @@ fn the_marks_reach_the_panels_once_the_comparison_is_done() {
         &mut compare,
         Message::Finished {
             generation,
-            result: Ok(compared()),
+            result: Ok(Box::new(compared())),
         },
         left,
         right,
@@ -167,7 +170,7 @@ fn the_result_of_an_older_comparison_is_dropped() {
         &mut compare,
         Message::Finished {
             generation: first,
-            result: Ok(compared()),
+            result: Ok(Box::new(compared())),
         },
         left,
         right,
@@ -269,12 +272,16 @@ fn a_sync_copies_through_the_queue_and_deletes_nothing_unless_ticked() {
     assert_eq!(
         actions,
         [Action::Copy {
-            sources: vec![PathBuf::from(LEFT).join("new.pdf")],
-            target: PathBuf::from(RIGHT),
+            rows: vec![(PathBuf::from(LEFT).join("new.pdf"), PathBuf::from(RIGHT))],
         }]
     );
 
-    let after_copies = run(&mut compare, Message::OpsIdle, left, right);
+    let after_copies = run(
+        &mut compare,
+        Message::OpsIdle { completed: true },
+        left,
+        right,
+    );
     assert!(
         after_copies
             .iter()
@@ -306,7 +313,12 @@ fn a_ticked_delete_is_asked_for_after_the_copies_through_the_delete_flow() {
         .iter()
         .all(|action| !matches!(action, Action::Delete { .. })));
 
-    let after_copies = run(&mut compare, Message::OpsIdle, left, right);
+    let after_copies = run(
+        &mut compare,
+        Message::OpsIdle { completed: true },
+        left,
+        right,
+    );
     assert_eq!(
         after_copies,
         [Action::Delete {
@@ -315,8 +327,42 @@ fn a_ticked_delete_is_asked_for_after_the_copies_through_the_delete_flow() {
         }]
     );
 
-    let after_delete = run(&mut compare, Message::OpsIdle, left, right);
+    let after_delete = run(
+        &mut compare,
+        Message::OpsIdle { completed: true },
+        left,
+        right,
+    );
     assert!(after_delete.contains(&Action::MarksChanged));
+    assert!(!compare.waits_for_ops());
+}
+
+#[test]
+fn a_cancelled_or_failed_copy_does_not_go_on_to_delete() {
+    let mut compare = finished_comparison();
+    let (left, right) = (Path::new(LEFT), Path::new(RIGHT));
+    run(
+        &mut compare,
+        Message::OpenSync(crate::core::Direction::ToRight),
+        left,
+        right,
+    );
+    run(&mut compare, Message::ToggleDelete, left, right);
+    run(&mut compare, Message::Confirm, left, right);
+
+    let after_copies = run(
+        &mut compare,
+        Message::OpsIdle { completed: false },
+        left,
+        right,
+    );
+
+    assert!(
+        after_copies
+            .iter()
+            .all(|action| !matches!(action, Action::Delete { .. })),
+        "{after_copies:?}"
+    );
     assert!(!compare.waits_for_ops());
 }
 

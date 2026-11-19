@@ -13,7 +13,10 @@ use super::index::{open_tar, open_zip, tar_time, zip_error, zip_time, EntryKind}
 use super::names::{is_apple_double, safe_components};
 use super::sevenz;
 use super::{index_of, locate_in_archive, ArchiveFormat, ArchiveLocation};
-use crate::transfer::{resolve_conflict, transfer, Counting, Move, OnConflict, Progress};
+use crate::origin_mark::origin_mark;
+use crate::transfer::{
+    resolve_conflict, sweep_partials, transfer, Counting, Move, OnConflict, Progress,
+};
 
 /// How much of one file is written between two checks for a cancel. Small
 /// enough that Escape stops a huge file within a moment, never the whole file
@@ -52,6 +55,7 @@ pub fn copy_out<P: Progress>(
         return Ok(0);
     }
 
+    sweep_partials(target_dir);
     let staging = tempfile::Builder::new()
         .prefix(".ncrs-partial-")
         .tempdir_in(target_dir)?;
@@ -60,6 +64,7 @@ pub fn copy_out<P: Progress>(
         wants_folder: node.is_dir,
         root_out: staging.path().join(name),
         total,
+        origin: &location.archive,
     };
     let written = unpack_into_staging(&location, &plan, progress)?;
     let when_taken = if conflict == OnConflict::Overwrite {
@@ -82,6 +87,7 @@ fn unpack_into_staging<P: Progress>(
 ) -> io::Result<usize> {
     if plan.wants_folder {
         std::fs::create_dir(&plan.root_out)?;
+        origin_mark(plan.origin, &plan.root_out)?;
     }
     let written = unpack(location, plan, progress)?;
     if std::fs::symlink_metadata(&plan.root_out).is_err() {
@@ -99,6 +105,8 @@ pub(in crate::archive) struct Plan<'a> {
     wants_folder: bool,
     root_out: PathBuf,
     total: usize,
+    /// The archive on disk, whose origin mark every unpacked file carries.
+    origin: &'a Path,
 }
 
 impl<'a> Plan<'a> {
@@ -107,12 +115,14 @@ impl<'a> Plan<'a> {
         wants_folder: bool,
         root_out: PathBuf,
         total: usize,
+        origin: &'a Path,
     ) -> Self {
         Self {
             inner,
             wants_folder,
             root_out,
             total,
+            origin,
         }
     }
 }
@@ -283,8 +293,26 @@ struct Writer<'a, P> {
 
 impl<P: Progress> Writer<'_, P> {
     fn folder(&mut self, dest: &Path) -> io::Result<()> {
-        std::fs::create_dir_all(dest)?;
+        self.make_dirs(dest)?;
         self.step()
+    }
+
+    /// Creates `dir` and every missing folder above it, each with the origin
+    /// mark of the archive: a bundle folder is checked as a whole.
+    fn make_dirs(&self, dir: &Path) -> io::Result<()> {
+        let mut missing: Vec<&Path> = dir
+            .ancestors()
+            .take_while(|folder| std::fs::symlink_metadata(folder).is_err())
+            .collect();
+        missing.reverse();
+        for folder in missing {
+            match std::fs::create_dir(folder) {
+                Ok(()) => origin_mark(self.plan.origin, folder)?,
+                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(())
     }
 
     fn file<R: Read>(
@@ -295,7 +323,7 @@ impl<P: Progress> Writer<'_, P> {
         modified: Option<SystemTime>,
     ) -> io::Result<()> {
         if let Some(parent) = dest.parent() {
-            std::fs::create_dir_all(parent)?;
+            self.make_dirs(parent)?;
         }
         // The staging folder is ours and holds no links, because none is ever
         // created, so opening for write cannot be steered elsewhere.
@@ -311,6 +339,7 @@ impl<P: Progress> Writer<'_, P> {
             }
         }
         apply_mode(&file, mode)?;
+        origin_mark(self.plan.origin, dest)?;
         // A time that cannot be set is a nicety lost, not a failed copy.
         let _best_effort = modified.map(|time| file.set_modified(time));
         self.step()
@@ -514,6 +543,66 @@ mod tests {
         ]
     }
 
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn an_unpacked_file_carries_the_quarantine_of_its_archive() {
+        use rustix::fs::{lgetxattr, lsetxattr, XattrFlags};
+        let dir = scratch("quarantine");
+        let archive = dir.path().join("download.zip");
+        write_archive(&archive, &[Item::File("tool.command", b"echo")]);
+        let name = "com.apple.quarantine";
+        if lsetxattr(&archive, name, b"0081;5f3a;Safari", XattrFlags::empty()).is_err() {
+            return;
+        }
+        let out = out_dir(dir.path());
+
+        copy_out(
+            &archive.join("tool.command"),
+            &out,
+            &mut Counting,
+            OnConflict::Fail,
+        )
+        .unwrap();
+
+        let mut value = [0; 64];
+        let got = lgetxattr(out.join("tool.command"), name, &mut value[..]).unwrap();
+        assert_eq!(value.get(..got), Some(&b"0081;5f3a;Safari"[..]));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn an_unpacked_bundle_folder_carries_the_quarantine_of_its_archive() {
+        use rustix::fs::{lgetxattr, lsetxattr, XattrFlags};
+        let dir = scratch("quarantine-folder");
+        let archive = dir.path().join("download.zip");
+        write_archive(
+            &archive,
+            &[
+                Item::Dir("x.app"),
+                Item::File("x.app/Contents/run", b"echo"),
+            ],
+        );
+        let name = "com.apple.quarantine";
+        if lsetxattr(&archive, name, b"0081;5f3a;Safari", XattrFlags::empty()).is_err() {
+            return;
+        }
+        let out = out_dir(dir.path());
+
+        copy_out(
+            &archive.join("x.app"),
+            &out,
+            &mut Counting,
+            OnConflict::Fail,
+        )
+        .unwrap();
+
+        for folder in ["x.app", "x.app/Contents"] {
+            let mut value = [0; 64];
+            let got = lgetxattr(out.join(folder), name, &mut value[..]).unwrap();
+            assert_eq!(value.get(..got), Some(&b"0081;5f3a;Safari"[..]), "{folder}");
+        }
+    }
+
     #[test]
     fn hostile_entries_are_left_out_and_never_written() {
         for (file, _) in ALL_FORMATS.iter().filter(|(file, _)| {
@@ -649,7 +738,7 @@ mod tests {
             copy_out(&source, &out, &mut Counting, OnConflict::Overwrite).unwrap();
             assert_eq!(
                 names_in(&out.join("photos")),
-                ["2024", "b.jpg", "empty"],
+                ["2024", "b.jpg", "empty", "old.txt"],
                 "{file}"
             );
             assert_eq!(names_in(&out), ["photos"], "{file}");

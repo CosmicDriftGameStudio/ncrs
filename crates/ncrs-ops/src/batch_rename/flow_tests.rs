@@ -417,3 +417,23 @@ mod abort {
         assert!(abort_batch_rename(&mut ops).is_none());
     }
 }
+
+// A Windows `SystemTime` ends in the year 30828, well before chrono's calendar
+// does, so there the case cannot arise.
+#[cfg(not(windows))]
+#[test]
+fn a_modification_time_no_calendar_holds_gives_no_date_instead_of_a_panic() {
+    let entry = ncrs_core::FileEntry {
+        name: "a.txt".into(),
+        path: PathBuf::from("/x/a.txt"),
+        is_dir: false,
+        is_symlink: false,
+        is_parent: false,
+        size: 0,
+        modified: Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(u64::MAX >> 1)),
+        folder_size: None,
+        details: Default::default(),
+    };
+
+    assert_eq!(super::flow::facts_of(&entry).modified, None);
+}

@@ -39,7 +39,7 @@ fn press(app: &App, key: Key, modifiers: Modifiers) -> Option<Message> {
 /// The dialog has to be answerable without the mouse, and the keys are the
 /// ones a user expects from a question.
 #[test]
-fn enter_overwrites_and_escape_keeps() {
+fn enter_presses_the_focused_button_and_escape_keeps() {
     let (mut app, _scratch) = app_with_conflict();
     // The conflict is pending, so the keys answer it rather than the panels.
     app.ops.pending_conflict = Some(PendingConflict {
@@ -48,6 +48,7 @@ fn enter_overwrites_and_escape_keeps() {
             sources: vec![PathBuf::from("/left/a.txt")],
             target: PathBuf::from("/right"),
             names: Vec::new(),
+            targets: Vec::new(),
         },
         index: 0,
     });
@@ -64,6 +65,22 @@ fn enter_overwrites_and_escape_keeps() {
     );
 }
 
+/// The folder question opens with "Keep" in focus, so a stray Enter cannot
+/// overwrite; the focused button decides what Enter answers.
+#[test]
+fn enter_on_the_focused_keep_button_keeps() {
+    use crate::app::dialogs::choice_of_focus;
+
+    assert_eq!(
+        choice_of_focus(ncrs_ops::conflict::KEEP_FOCUS),
+        ConflictChoice::ThisKeep
+    );
+    assert_ne!(
+        choice_of_focus(ncrs_ops::conflict::KEEP_FOCUS),
+        ConflictChoice::ThisOverwrite
+    );
+}
+
 /// With the dialog up, Escape must not stop the job instead: the app is
 /// waiting for an answer, and Escape means "no" to a question.
 #[tokio::test]
@@ -76,6 +93,7 @@ async fn escape_does_not_stop_the_job_while_the_dialog_is_up() {
             sources: vec![PathBuf::from("/left/a.txt")],
             target: PathBuf::from("/right"),
             names: Vec::new(),
+            targets: Vec::new(),
         },
         index: 0,
     });
@@ -99,6 +117,7 @@ fn ctrl_c_cancels_the_operation_on_a_mac_and_does_nothing_elsewhere() {
             sources: vec![PathBuf::from("/left/a.txt")],
             target: PathBuf::from("/right"),
             names: Vec::new(),
+            targets: Vec::new(),
         },
         index: 0,
     });

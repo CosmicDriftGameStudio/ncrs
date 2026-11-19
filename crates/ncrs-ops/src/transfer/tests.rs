@@ -501,3 +501,19 @@ fn dropping_the_dialog_stops_the_background_work() {
 
     assert!(flag.load(Ordering::Relaxed));
 }
+
+#[test]
+fn only_the_source_that_keeps_its_name_is_counted_when_names_are_shared() {
+    let root = tempfile::tempdir().unwrap();
+    write(&root.path().join("from/one/x.txt"), 1);
+    write(&root.path().join("from/two/x.txt"), 1);
+    write(&root.path().join("to/x.txt"), 1);
+    let sources = vec![
+        root.path().join("from/one/x.txt"),
+        root.path().join("from/two/x.txt"),
+    ];
+
+    let count = count_conflicts(&sources, &root.path().join("to"), &never());
+
+    assert_eq!(count, 1, "the numbered name is free, so it is no conflict");
+}

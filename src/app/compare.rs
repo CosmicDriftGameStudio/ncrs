@@ -41,15 +41,8 @@ impl App {
                 self.apply_compare_filter();
                 Task::none()
             }
-            Ask::Copy { sources, target } => self.with_ops(|ops, ctx| {
-                ncrs_ops::start_validated_transfer(
-                    ops,
-                    TransferKind::Copy,
-                    sources,
-                    target,
-                    ncrs_ops::Policy::Ask,
-                    ctx,
-                )
+            Ask::Copy { rows } => self.with_ops(|ops, ctx| {
+                ncrs_ops::start_rows_transfer(ops, rows, ncrs_ops::Policy::Ask, ctx)
             }),
             Ask::Delete { side, sources } => {
                 let request = ncrs_ops::DeleteRequest {
@@ -82,7 +75,8 @@ impl App {
         }
         let mut tasks = vec![self.update_compare(CompareMessage::PanelsChanged)];
         if self.compare.waits_for_ops() && self.ops_are_idle() {
-            tasks.push(self.update_compare(CompareMessage::OpsIdle));
+            let completed = self.ops.transfer_completed;
+            tasks.push(self.update_compare(CompareMessage::OpsIdle { completed }));
         }
         self.apply_compare_filter();
         Task::batch(tasks)

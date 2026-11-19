@@ -13,7 +13,7 @@ use crate::action::{Action, TransferAction};
 use crate::archive_flow::start_pack;
 use crate::clipboard_paste::PastedContent;
 use crate::ctx::FlowCtx;
-use crate::delete_flow::{actions, idle, with_front, Outcome};
+use crate::delete_flow::{actions, busy_notice, idle, with_front, Outcome};
 use crate::message::{OpsMessage, TransferDialogMessage};
 use crate::prompt::{Prompt, PromptKind};
 use crate::state::Ops;
@@ -91,6 +91,9 @@ pub fn open_transfer_dialog(
     if ops.transfer_dialog_is_blocked() {
         return idle();
     }
+    if ctx.jobs_busy {
+        return busy_notice(ctx);
+    }
     if facts.sources.is_empty() {
         return idle();
     }
@@ -162,6 +165,9 @@ pub fn confirm_transfer(ops: &mut Ops, ctx: &FlowCtx<'_>) -> Outcome {
     };
     if let Some(refusal) = unreachable_server_text(ctx.remote, &target, ctx.lang) {
         return actions(vec![Action::ShowError(refusal)]);
+    }
+    if ctx.jobs_busy {
+        return busy_notice(ctx);
     }
     ops.transfer_dialog = None;
     let (started, asked) = start_validated_transfer(ops, kind, sources, target, policy, ctx);
@@ -254,8 +260,7 @@ pub fn start_prompt_job(ops: &mut Ops, active: PanelFacts<'_>, ctx: &FlowCtx<'_>
     match ops.prompt.as_ref().map(Prompt::kind) {
         Some(PromptKind::Pack) => {
             if ctx.jobs_busy {
-                let text = ctx.lang.text(Msg::StatusArchiveWriteBusy).to_owned();
-                return actions(vec![Action::ShowNotice(text)]);
+                return busy_notice(ctx);
             }
             let Some(request) = ops.take_pack_request(active.side) else {
                 return idle();

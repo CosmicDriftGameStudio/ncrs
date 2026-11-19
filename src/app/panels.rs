@@ -584,6 +584,12 @@ impl App {
         }
         if message == PanelMessage::RenameStart {
             let tagged = self.tagged_entries_to_rename();
+            if tagged.len() >= 2 && self.active_panel().hit_list.is_some() {
+                // The names of the hits are resolved against one folder, which
+                // is not where each of them lives.
+                let text = self.lang.text(Msg::StatusHitListBatchRename).to_owned();
+                return self.show_notice(text);
+            }
             if tagged.len() >= 2 {
                 return self.open_batch_rename_dialog(tagged);
             }

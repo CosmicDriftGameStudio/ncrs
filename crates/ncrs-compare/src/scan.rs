@@ -16,7 +16,7 @@ use ncrs_fs::remote::RemotePath;
 use ncrs_fs::transfer::Progress;
 use ncrs_fs::{read_directory, ReadError, SortKey};
 
-use crate::core::{judge_files, needs_content, Choices, Compared, Facts};
+use crate::core::{judge_files, name_key, needs_content, Choices, Compared, Facts};
 
 /// Why a comparison produced nothing.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -61,6 +61,12 @@ struct Level {
     differs: bool,
 }
 
+struct Pair {
+    left: CompareMark,
+    right: CompareMark,
+    below: Option<Compared>,
+}
+
 type Pending<'a> = Pin<Box<dyn std::future::Future<Output = Result<Level, ScanError>> + Send + 'a>>;
 
 /// Compares the folders `left` and `right`; the result is what their own
@@ -73,35 +79,45 @@ pub async fn compare(scan: Scan, left: PathBuf, right: PathBuf) -> Result<Compar
 fn compare_folders(scan: &Scan, left: PathBuf, right: PathBuf) -> Pending<'_> {
     Box::pin(async move {
         scan.check_stop()?;
-        let left_rows = list(scan, left).await?;
-        let right_rows = list(scan, right).await?;
-        let mut compared = Compared::default();
+        let left_rows = list(scan, left.clone()).await?;
+        let right_rows = list(scan, right.clone()).await?;
+        let mut compared = Compared {
+            left_folder: left,
+            right_folder: right,
+            ..Compared::default()
+        };
         let mut differs = false;
         let by_name = |rows: &[FileEntry]| -> BTreeMap<OsString, FileEntry> {
             rows.iter()
-                .map(|entry| (entry.name.clone(), entry.clone()))
+                .map(|entry| (name_key(&entry.name), entry.clone()))
                 .collect()
         };
         let right_by_name = by_name(&right_rows);
-        let left_names: HashSet<&OsString> = left_rows.iter().map(|entry| &entry.name).collect();
+        let left_keys: HashSet<OsString> = left_rows
+            .iter()
+            .map(|entry| name_key(&entry.name))
+            .collect();
         for left_entry in &left_rows {
-            let Some(right_entry) = right_by_name.get(&left_entry.name) else {
+            let Some(right_entry) = right_by_name.get(&name_key(&left_entry.name)) else {
                 compared
                     .left
                     .insert(left_entry.name.clone(), CompareMark::OnlyHere);
                 differs = true;
                 continue;
             };
-            let pair = compare_pair(scan, left_entry, right_entry).await?;
-            differs |= pair.is_some_and(|(left_mark, _)| left_mark.is_difference());
-            if let Some((left_mark, right_mark)) = pair {
-                compared.left.insert(left_entry.name.clone(), left_mark);
-                compared.right.insert(left_entry.name.clone(), right_mark);
+            let found = compare_pair(scan, left_entry, right_entry).await?;
+            if let Some(pair) = found {
+                differs |= pair.left.is_difference();
+                compared.left.insert(left_entry.name.clone(), pair.left);
+                compared.right.insert(right_entry.name.clone(), pair.right);
+                if let Some(below) = pair.below {
+                    compared.below.insert(name_key(&left_entry.name), below);
+                }
             }
         }
         for right_entry in &right_rows {
             if !compared.right.contains_key(&right_entry.name)
-                && !left_names.contains(&right_entry.name)
+                && !left_keys.contains(&name_key(&right_entry.name))
             {
                 compared
                     .right
@@ -115,23 +131,28 @@ fn compare_folders(scan: &Scan, left: PathBuf, right: PathBuf) -> Pending<'_> {
     })
 }
 
-/// The marks of the left and the right entry of one name. `None` for two
+/// The marks of the left and the right entry of one name, and for two folders
+/// that differ, what was found below them. `None` for two
 /// folders that are not looked into: with subfolders off, and links to
 /// folders, which can lead back into the folder they are in.
 async fn compare_pair(
     scan: &Scan,
     left: &FileEntry,
     right: &FileEntry,
-) -> Result<Option<(CompareMark, CompareMark)>, ScanError> {
+) -> Result<Option<Pair>, ScanError> {
     match (left.is_dir, right.is_dir) {
         (true, true) if scan.choices.subfolders && !left.is_symlink && !right.is_symlink => {
             let below = compare_folders(scan, left.path.clone(), right.path.clone()).await?;
-            let mark = if below.differs {
-                CompareMark::Different
+            let (mark, kept) = if below.differs {
+                (CompareMark::Different, Some(below.compared))
             } else {
-                CompareMark::Same
+                (CompareMark::Same, None)
             };
-            Ok(Some((mark, mark)))
+            Ok(Some(Pair {
+                left: mark,
+                right: mark,
+                below: kept,
+            }))
         }
         (true, true) => Ok(None),
         (false, false) => {
@@ -141,11 +162,19 @@ async fn compare_pair(
             } else {
                 true
             };
-            Ok(Some(
-                judge_files(scan.choices, left_facts, right_facts, same_content).marks(),
-            ))
+            let (left_mark, right_mark) =
+                judge_files(scan.choices, left_facts, right_facts, same_content).marks();
+            Ok(Some(Pair {
+                left: left_mark,
+                right: right_mark,
+                below: None,
+            }))
         }
-        (true, false) | (false, true) => Ok(Some((CompareMark::Different, CompareMark::Different))),
+        (true, false) | (false, true) => Ok(Some(Pair {
+            left: CompareMark::Different,
+            right: CompareMark::Different,
+            below: None,
+        })),
     }
 }
 
@@ -418,6 +447,48 @@ mod tests {
         assert_eq!(mark(&compared, true, "deep"), Some(CompareMark::Different));
         assert_eq!(mark(&compared, true, "quiet"), Some(CompareMark::Same));
         assert_eq!(mark(&shallow, true, "deep"), None);
+    }
+
+    #[tokio::test]
+    async fn a_sync_plans_the_files_of_a_folder_on_both_sides_not_the_folder() {
+        use crate::core::{sync_plan, Direction};
+
+        let left = tempfile::tempdir().unwrap();
+        let right = tempfile::tempdir().unwrap();
+        write(left.path(), "deep/er/new.txt", "left", 500);
+        write(left.path(), "deep/changed.txt", "left", 500);
+        write(right.path(), "deep/changed.txt", "right side", 500);
+        write(right.path(), "deep/target_only.txt", "keep", 500);
+        write(left.path(), "fresh/file.txt", "only left", 500);
+
+        let compared = compare(
+            scan(Choices::default()),
+            left.path().to_owned(),
+            right.path().to_owned(),
+        )
+        .await
+        .unwrap();
+        let plan = sync_plan(&compared, Direction::ToRight, true);
+
+        let mut copies: Vec<_> = plan
+            .copies
+            .iter()
+            .map(|row| (row.path.clone(), row.target_dir.clone()))
+            .collect();
+        copies.sort();
+        assert_eq!(
+            copies,
+            [
+                (
+                    left.path().join("deep/changed.txt"),
+                    right.path().join("deep")
+                ),
+                (left.path().join("deep/er"), right.path().join("deep")),
+                (left.path().join("fresh"), right.path().to_owned()),
+            ]
+        );
+        let deletions: Vec<_> = plan.deletions.iter().map(|row| row.path.clone()).collect();
+        assert_eq!(deletions, [right.path().join("deep/target_only.txt")]);
     }
 
     #[tokio::test]

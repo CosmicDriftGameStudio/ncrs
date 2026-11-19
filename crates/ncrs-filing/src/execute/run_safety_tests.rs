@@ -174,7 +174,7 @@ fn a_file_that_is_not_below_the_source_is_not_transferred() {
 }
 
 #[test]
-fn a_settle_removes_only_the_staging_file_of_the_transfer() {
+fn a_settle_removes_only_old_staging_names_never_a_live_or_foreign_one() {
     let place = Place::new();
     let item = place.item("a.pdf", "alpha");
     let batch = place
@@ -187,28 +187,36 @@ fn a_settle_removes_only_the_staging_file_of_the_transfer() {
         .unwrap();
     fs::create_dir_all(item.to.parent().unwrap()).unwrap();
     fs::copy(&item.from, &item.to).unwrap();
-    let prefix = partial_prefix(&item.to);
+    let prefix = ncrs_fs::transfer::partial_prefix(&item.to);
     let beside = |name: String| item.to.with_file_name(name);
-    let own = std::process::id();
-    let staging = beside(format!("{prefix}{own}-3"));
+    let crashed = beside(format!("{prefix}4242-3"));
+    let live = beside(format!("{prefix}4243-3"));
     let foreign_file = beside(format!("{prefix}notes"));
-    let foreign_folder = beside(format!("{prefix}{own}-4"));
-    let other_name = beside(".ncrs-partial-b.pdf-1-1".to_owned());
-    let other_process = beside(format!("{prefix}{}-5", own.wrapping_add(1)));
-    fs::write(&other_process, "half, written by another process").unwrap();
-    fs::write(&staging, "half").unwrap();
-    fs::write(&foreign_file, "mine").unwrap();
-    fs::create_dir(&foreign_folder).unwrap();
-    fs::write(foreign_folder.join("keep.txt"), "mine").unwrap();
-    fs::write(&other_name, "mine").unwrap();
+    let backup_scheme = beside(".a.pdf.ncrs-4242-1".to_owned());
+    for path in [&crashed, &live, &foreign_file, &backup_scheme] {
+        fs::write(path, "x").unwrap();
+    }
+    let three_days = std::time::Duration::from_secs(3 * 86_400);
+    // The change time of a file cannot be set back: the sweep's clock goes
+    // forward, and the live copy is dated ahead of it.
+    ncrs_fs::transfer::let_time_pass_for_sweep(three_days);
+    // Windows sets the time only through a handle opened for writing.
+    fs::OpenOptions::new()
+        .write(true)
+        .open(&live)
+        .unwrap()
+        .set_modified(std::time::SystemTime::now() + three_days)
+        .unwrap();
 
     reconcile(&place.index).unwrap();
 
-    assert!(!staging.exists());
+    assert!(
+        !crashed.exists(),
+        "the leftover of a crashed run is removed"
+    );
+    assert!(live.exists(), "a fresh one may still be written to");
     assert!(foreign_file.exists());
-    assert!(foreign_folder.join("keep.txt").exists());
-    assert!(other_name.exists());
-    assert!(other_process.exists(), "another process may still write it");
+    assert!(backup_scheme.exists());
 }
 
 #[test]

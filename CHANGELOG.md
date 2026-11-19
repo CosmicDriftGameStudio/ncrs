@@ -6,6 +6,26 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Copy, move, rename, delete and unpacking never overwrite or lose data: files
+  are written under a hidden name first and put in place at the end, and a move
+  removes the original only after the copy has been compared with it. What
+  changed in the original meanwhile stays where it was.
+- Files and folders copied out of an archive carry the download mark of the
+  archive, including folders such as `.app` bundles.
+- Files with very long names can be copied and moved again.
+- Files and folders downloaded over SFTP never get write access for other users.
+- A note that is a link leading out of the notes folder is no longer written
+  through; saving reports an error instead.
+- Notes are kept safe on save, reload and when files change outside the app.
+- "Stop and quit" no longer stops a running job when an unsaved note holds the
+  quit back, and a confirmed quit no longer skips the question for later jobs.
+- Leftovers of interrupted copies are removed without touching a copy that is
+  still being written, and a folder is looked through at most once an hour.
+- Copying onto FAT or exFAT drives no longer fails for files that carry a
+  download mark on Windows.
+
 ## [1.5.1] — 2026-11-15
 
 ### Added

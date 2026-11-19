@@ -55,7 +55,13 @@ pub fn update(compare: &mut Compare, message: Message, ctx: &Ctx<'_>) -> Outcome
             Task::none()
         }
         Message::Finished { generation, result } => {
-            finished(compare, generation, result, ctx, &mut actions);
+            finished(
+                compare,
+                generation,
+                result.map(|found| *found),
+                ctx,
+                &mut actions,
+            );
             Task::none()
         }
         Message::ToggleOnlyDifferences => {
@@ -94,8 +100,8 @@ pub fn update(compare: &mut Compare, message: Message, ctx: &Ctx<'_>) -> Outcome
             }
             Task::none()
         }
-        Message::OpsIdle => match compare.after_sync.take() {
-            Some(AfterSync::Copying { deletions, side }) if !deletions.is_empty() => {
+        Message::OpsIdle { completed } => match compare.after_sync.take() {
+            Some(AfterSync::Copying { deletions, side }) if completed && !deletions.is_empty() => {
                 compare.after_sync = Some(AfterSync::Deleting);
                 actions.push(Action::Delete {
                     side,
@@ -157,7 +163,10 @@ fn start_run(
         only_differences,
     });
     Task::perform(scan::compare(scanning, left, right), move |result| {
-        Message::Finished { generation, result }
+        Message::Finished {
+            generation,
+            result: result.map(Box::new),
+        }
     })
 }
 
@@ -241,14 +250,6 @@ fn confirm_sync(compare: &mut Compare, ctx: &Ctx<'_>, actions: &mut Vec<Action>)
         compare.sync = None;
         return Task::none();
     };
-    let Some(target) = compare
-        .run
-        .as_ref()
-        .map(|run| run.folders.of(direction.target()).to_owned())
-    else {
-        compare.sync = None;
-        return Task::none();
-    };
     compare.sync = None;
     let SyncPlan {
         copies,
@@ -269,8 +270,10 @@ fn confirm_sync(compare: &mut Compare, ctx: &Ctx<'_>, actions: &mut Vec<Action>)
     }
     compare.after_sync = Some(AfterSync::Copying { deletions, side });
     actions.push(Action::Copy {
-        sources: copies.into_iter().map(|row| row.path).collect(),
-        target,
+        rows: copies
+            .into_iter()
+            .map(|row| (row.path, row.target_dir))
+            .collect(),
     });
     Task::none()
 }

@@ -129,11 +129,13 @@ impl Trash for OsTrash {
                 item.original.display()
             )));
         };
-        // Windows does not create the folder itself, Linux does.
-        std::fs::create_dir_all(parent).map_err(|err| RestoreError::Failed(err.to_string()))?;
+        // Checked before the folders are made, so a refused restore leaves none
+        // behind.
         if std::fs::symlink_metadata(&item.original).is_ok() {
             return Err(RestoreError::Taken);
         }
+        // Windows does not create the folder itself, Linux does.
+        std::fs::create_dir_all(parent).map_err(|err| RestoreError::Failed(err.to_string()))?;
         let entry = trash::TrashItem {
             id: item.key.clone(),
             name: name.to_owned(),

@@ -16,8 +16,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use chrono::{Datelike as _, Timelike as _};
 use tempfile::NamedTempFile;
 
+mod copy;
+
+use self::copy::copy_original;
 use super::extract::CHUNK;
-use super::index::{open_tar, open_zip, zip_error};
+use super::index::zip_error;
+#[cfg(test)]
+use super::index::{open_tar, open_zip};
 use super::names::safe_components;
 use super::sevenz;
 use super::{forget, index_of, locate_in_archive, ArchiveFormat, ArchiveIndex};
@@ -131,7 +136,28 @@ pub fn add<P: Progress>(
         index.node(&path).is_some()
     };
     match conflict {
-        OnConflict::Overwrite => {}
+        OnConflict::Overwrite => {
+            // A file does not replace a folder or the other way round: what
+            // lies below the folder would be left without one.
+            for item in &planned {
+                let mut path = inner_dir.to_vec();
+                path.extend(item.name.split('/').map(str::to_owned));
+                if index
+                    .node(&path)
+                    .is_some_and(|node| node.is_dir != item.meta.is_dir())
+                {
+                    let kind = if item.meta.is_dir() {
+                        io::ErrorKind::NotADirectory
+                    } else {
+                        io::ErrorKind::IsADirectory
+                    };
+                    return Err(io::Error::new(
+                        kind,
+                        format!("{} is in the way in the archive", item.name),
+                    ));
+                }
+            }
+        }
         OnConflict::Fail => {
             if let Some(item) = planned.iter().find(|item| exists_already(item)) {
                 return Err(already_there(top_name(item)));
@@ -200,6 +226,7 @@ pub fn delete<P: Progress>(
     let mut selector = Selector {
         inner: &[],
         dropped: entries.to_vec(),
+        replaced: HashSet::new(),
         watched: HashSet::new(),
         taken: HashSet::new(),
     };
@@ -327,6 +354,7 @@ fn rewrite<P: Progress>(
     let entries = job.done;
     sink.finish()?.sync_all()?;
     temp.as_file().set_permissions(original.permissions())?;
+    let _unreported = crate::place_file::copy_xattrs(&real, temp.path());
     job.progress.keep_going()?;
     temp.persist(&real).map_err(|failed| failed.error)?;
     forget(archive);
@@ -339,6 +367,9 @@ struct Selector<'a> {
     inner: &'a [String],
     /// An entry at or below any of these is not copied.
     dropped: Vec<Vec<String>>,
+    /// An entry with exactly one of these names is not copied: what an
+    /// overwrite replaces. Entries below it stay, so a folder is merged.
+    replaced: HashSet<Vec<String>>,
     /// Names of the sources that must not meet an entry of the same name.
     watched: HashSet<String>,
     /// Watched names that were found, links and special files included.
@@ -347,20 +378,29 @@ struct Selector<'a> {
 
 impl<'a> Selector<'a> {
     fn new(inner: &'a [String], planned: &[Planned], conflict: OnConflict) -> Self {
-        let names = planned.iter().map(|item| top_name(item).to_owned());
-        let (dropped, watched) = if conflict == OnConflict::Overwrite {
-            let below = |name: String| {
-                let mut path = inner.to_vec();
-                path.push(name);
-                path
-            };
-            (names.map(below).collect(), HashSet::new())
+        let (replaced, watched) = if conflict == OnConflict::Overwrite {
+            let replaced = planned
+                .iter()
+                .map(|item| {
+                    let mut path = inner.to_vec();
+                    path.extend(item.name.split('/').map(str::to_owned));
+                    path
+                })
+                .collect();
+            (replaced, HashSet::new())
         } else {
-            (Vec::new(), names.collect())
+            (
+                HashSet::new(),
+                planned
+                    .iter()
+                    .map(|item| top_name(item).to_owned())
+                    .collect(),
+            )
         };
         Self {
             inner,
-            dropped,
+            dropped: Vec::new(),
+            replaced,
             watched,
             taken: HashSet::new(),
         }
@@ -378,10 +418,16 @@ impl<'a> Selector<'a> {
         if let Some(name) = first_below.filter(|name| self.watched.contains(*name)) {
             self.taken.insert(name.clone());
         }
-        !self
-            .dropped
-            .iter()
-            .any(|prefix| components.starts_with(prefix))
+        !self.drops(components)
+    }
+
+    /// Whether the entry with this name is left out of the new archive.
+    fn drops(&self, components: &[String]) -> bool {
+        self.replaced.contains(components)
+            || self
+                .dropped
+                .iter()
+                .any(|prefix| components.starts_with(prefix))
     }
 }
 
@@ -768,8 +814,20 @@ fn zip_options(
     options
 }
 
+/// The end of the year 9999. `DateTime::from(SystemTime)` panics on a time it
+/// cannot hold, and a file's time is whatever its file system says.
+const LATEST_ZIP_SECONDS: u64 = 253_402_300_799;
+
 fn zip_datetime(time: SystemTime) -> Option<zip::DateTime> {
-    let local = chrono::DateTime::<chrono::Local>::from(time);
+    let since = time.duration_since(UNIX_EPOCH).ok()?;
+    if since.as_secs() > LATEST_ZIP_SECONDS {
+        return None;
+    }
+    let local = chrono::DateTime::from_timestamp(
+        i64::try_from(since.as_secs()).ok()?,
+        since.subsec_nanos(),
+    )?
+    .with_timezone(&chrono::Local);
     zip::DateTime::from_date_and_time(
         u16::try_from(local.year()).ok()?,
         u8::try_from(local.month()).ok()?,
@@ -821,140 +879,14 @@ fn describe_sevenz(
     }
 }
 
-fn copy_original(
-    archive: &Path,
-    format: ArchiveFormat,
-    sink: &mut Sink,
-    job: &mut Job,
-    selector: &mut Selector,
-) -> io::Result<()> {
-    match sink {
-        Sink::Zip(writer) => copy_zip(archive, writer, job, selector),
-        Sink::Tar(builder) => copy_tar(archive, format, builder, job, selector),
-        Sink::SevenZip(writer) => copy_sevenz(archive, writer, job, selector),
-    }
-}
-
-/// Entries are copied raw, compressed as they are; a very large one is not
-/// interrupted by a cancel until it is through.
-fn copy_zip(
-    archive: &Path,
-    writer: &mut zip::ZipWriter<BufWriter<File>>,
-    job: &mut Job,
-    selector: &mut Selector,
-) -> io::Result<()> {
-    let mut zip = open_zip(archive)?;
-    for position in 0..zip.len() {
-        job.progress.keep_going()?;
-        let entry = zip.by_index_raw(position).map_err(zip_error)?;
-        let components = entry.name().ok().and_then(|name| safe_components(&name));
-        if selector.keeps(components.as_deref()) {
-            writer.raw_copy_file(entry).map_err(zip_error)?;
-            job.step()?;
-        }
-    }
-    Ok(())
-}
-
-fn copy_tar(
-    archive: &Path,
-    format: ArchiveFormat,
-    builder: &mut tar::Builder<TarOut>,
-    job: &mut Job,
-    selector: &mut Selector,
-) -> io::Result<()> {
-    for item in open_tar(archive, format)?.entries()? {
-        job.progress.keep_going()?;
-        let mut entry = item?;
-        let kind = entry.header().entry_type();
-        let mut header = entry.header().clone();
-        let path = entry.path()?.into_owned();
-        let components = safe_components(&String::from_utf8_lossy(&entry.path_bytes()));
-        if kind == tar::EntryType::XGlobalHeader {
-            let mut watched = Watched::new(&mut entry, &mut *job.progress);
-            builder.append(&header, &mut watched)?;
-            continue;
-        }
-        if components.is_none() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!(
-                    "the archive has an entry with an unsafe name: {}",
-                    path.display()
-                ),
-            ));
-        }
-        if !selector.keeps(components.as_deref()) {
-            continue;
-        }
-        match kind {
-            tar::EntryType::GNUSparse => {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!(
-                        "{} is a sparse entry, which ncrs cannot rewrite",
-                        path.display()
-                    ),
-                ));
-            }
-            tar::EntryType::Symlink | tar::EntryType::Link => {
-                let target = entry
-                    .link_name()?
-                    .ok_or_else(|| {
-                        io::Error::new(io::ErrorKind::InvalidData, "a link without a target")
-                    })?
-                    .into_owned();
-                builder.append_link(&mut header, &path, &target)?;
-            }
-            _ => {
-                let size = entry.size();
-                header.set_size(size);
-                let mut watched = Watched::new((&mut entry).take(size), &mut *job.progress);
-                builder.append_data(&mut header, &path, &mut watched)?;
-            }
-        }
-        job.step()?;
-    }
-    Ok(())
-}
-
-fn copy_sevenz(
-    archive: &Path,
-    writer: &mut sevenz_rust2::ArchiveWriter<BufWriter<File>>,
-    job: &mut Job,
-    selector: &mut Selector,
-) -> io::Result<()> {
-    let mut reader = sevenz::open(archive)?;
-    reader
-        .for_each_entries(|entry, content| {
-            copy_sevenz_entry(entry, content, writer, job, selector)
-                .map_err(sevenz_rust2::Error::from)?;
-            Ok(true)
-        })
-        .map_err(sevenz::io_error)
-}
-
-fn copy_sevenz_entry(
-    entry: &sevenz_rust2::ArchiveEntry,
-    content: &mut dyn Read,
-    writer: &mut sevenz_rust2::ArchiveWriter<BufWriter<File>>,
-    job: &mut Job,
-    selector: &mut Selector,
-) -> io::Result<()> {
-    job.progress.keep_going()?;
-    let components = safe_components(entry.name());
-    let mut watched = Watched::new(content, &mut *job.progress);
-    if !selector.keeps(components.as_deref()) {
-        io::copy(&mut watched, &mut io::sink())?;
-        return Ok(());
-    }
-    let data = (entry.has_stream && !entry.is_directory).then_some(&mut watched);
-    writer
-        .push_archive_entry(entry.clone(), data)
-        .map_err(sevenz::io_error)?;
-    job.step()
-}
-
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod pack_named_tests;
 #[allow(
     clippy::unwrap_used,
     clippy::expect_used,

@@ -7,7 +7,8 @@ use std::path::{Path, PathBuf};
 
 use super::extract::{unpack, Plan};
 use super::{index_of, locate_in_archive, without_archive_ending};
-use crate::transfer::Progress;
+use crate::place_file::rename_no_replace;
+use crate::transfer::{sweep_partials, Progress};
 
 #[derive(Debug)]
 pub struct Extracted {
@@ -22,10 +23,6 @@ const FALLBACK_FOLDER: &str = "archive";
 /// Unpacks `archive` next to itself and returns what was made. Nothing
 /// appears under its final name until everything is written, and a taken
 /// name becomes `x 2`, `x 3`.
-// ponytail: the free name is checked and then renamed to, two steps; a name
-// that appears in between is replaced if it is a file or an empty folder. An
-// atomic no-replace rename needs `unsafe` (macOS `renamex_np`), which the
-// workspace forbids, and `nix` wraps only the Linux one.
 pub fn extract_here<P: Progress>(archive: &Path, progress: &mut P) -> io::Result<Extracted> {
     let location = locate_in_archive(archive)
         .filter(|location| location.inner.is_empty())
@@ -44,12 +41,13 @@ pub fn extract_here<P: Progress>(archive: &Path, progress: &mut P) -> io::Result
         .filter(|(name, _)| is_usable_name(name))
         .map(|(name, node)| (name.clone(), node.is_dir));
 
+    sweep_partials(parent);
     let staging = tempfile::Builder::new()
         .prefix(".ncrs-partial-")
         .tempdir_in(parent)?;
     let content = staging.path().join("content");
     std::fs::create_dir(&content)?;
-    let plan = Plan::new(&[], true, content.clone(), total);
+    let plan = Plan::new(&[], true, content.clone(), total, &location.archive);
     let written = unpack(&location, &plan, progress)?;
 
     let (from, wanted, is_dir) = match single_top_entry {
@@ -70,8 +68,15 @@ pub fn extract_here<P: Progress>(archive: &Path, progress: &mut P) -> io::Result
             (content, wanted, true)
         }
     };
-    let placed = free_name_in(parent, &wanted, is_dir);
-    std::fs::rename(&from, &placed)?;
+    // A name taken since the check is never replaced: the next free one is tried.
+    let placed = loop {
+        let candidate = free_name_in(parent, &wanted, is_dir);
+        match rename_no_replace(&from, &candidate) {
+            Ok(()) => break candidate,
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+            Err(e) => return Err(e),
+        }
+    };
     let finished = total.max(written);
     let _best_effort = progress.advanced(finished, finished);
     Ok(Extracted { placed, written })

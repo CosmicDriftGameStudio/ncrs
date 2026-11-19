@@ -151,6 +151,8 @@ pub enum OpsMessage {
     DeleteCancel,
     OpenFileCancel,
     OpenFileConfirm,
+    QuitCancel,
+    QuitConfirm,
     DeleteConfirm,
     Permissions(PermissionsMessage),
     BatchRename(crate::batch_rename::state::BatchRenameMessage),
@@ -171,6 +173,8 @@ pub enum OpsMessage {
     /// not the current one.
     TransferRowDone {
         result: Result<Transfer, RowFailure>,
+        /// What the row left out while the rest went on.
+        skipped: Vec<ncrs_fs::transfer::Skipped>,
         index: usize,
         generation: u64,
     },

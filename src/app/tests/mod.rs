@@ -537,6 +537,15 @@ mod search_folder_ui_tests;
     clippy::indexing_slicing
 )]
 #[cfg(test)]
+mod conflict_folder_ui_tests;
+// reason: a failing assertion is the signal in a test, so unwrap belongs here
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
 mod open_file_ui_tests;
 // reason: a failing assertion is the signal in a test, so unwrap belongs here
 #[allow(

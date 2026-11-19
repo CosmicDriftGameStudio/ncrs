@@ -118,6 +118,7 @@ async fn a_drop_during_a_running_transfer_says_so_and_changes_nothing() {
         sources: vec![PathBuf::from("/busy")],
         target: PathBuf::from("/elsewhere"),
         names: Vec::new(),
+        targets: Vec::new(),
     };
     case.app.ops.transfer = Some(running.clone());
     let generation = drop_both(&mut case);

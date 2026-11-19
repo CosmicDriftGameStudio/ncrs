@@ -99,6 +99,20 @@ fn sidebar<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
 }
 
 fn tree<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
+    let empty_hint = match (state.loaded, state.rows().is_empty()) {
+        (false, _) => Some(Msg::NotesLoading),
+        (true, true) => Some(Msg::NotesEmpty),
+        (true, false) => None,
+    };
+    if let Some(hint) = empty_hint {
+        return container(page_line(
+            ctx.lang.text(hint),
+            font_size::BODY,
+            ctx.palette.dim_text,
+        ))
+        .padding(spacing::M)
+        .into();
+    }
     let rows = state.rows().into_iter().map(|entry| {
         let label = match &entry.key {
             RowKey::Folder(folder) => folder

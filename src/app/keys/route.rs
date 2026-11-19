@@ -21,6 +21,17 @@ fn delete_dialog_key(
     }
 }
 
+/// The dialogs whose only keys are Escape and moving the focus between buttons.
+fn escape_cancel_message(prompt: &PromptKeyState) -> Option<Message> {
+    if prompt.quit_dialog {
+        Some(Message::QuitCancel)
+    } else if prompt.open_file_dialog {
+        Some(Message::OpenFileCancel)
+    } else {
+        None
+    }
+}
+
 fn keys_without_prompt(
     prompt: &PromptKeyState,
     key: Key,
@@ -53,9 +64,9 @@ fn keys_without_prompt(
         return delete_dialog_key(prompt, &key, key_modifiers, scope);
     }
 
-    if prompt.open_file_dialog {
+    if let Some(cancel) = escape_cancel_message(prompt) {
         return match key.as_ref() {
-            Key::Named(Named::Escape) => Some(Message::OpenFileCancel),
+            Key::Named(Named::Escape) => Some(cancel),
             _ => dialog_focus_key(key.clone(), key_modifiers),
         };
     }
