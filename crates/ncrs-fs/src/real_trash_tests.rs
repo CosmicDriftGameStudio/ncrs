@@ -53,8 +53,13 @@ fn is_from_this_test(original: &Path, marker: &OsStr) -> bool {
 /// Takes everything this test put into the trash out again, also when an
 /// assertion panicked. Never panics itself.
 struct TrashCleanup {
-    // reason: only the macOS cleanup reads the trash through ncrs
-    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    #[cfg_attr(
+        not(target_os = "macos"),
+        allow(
+            dead_code,
+            reason = "only the macOS cleanup reads the trash through ncrs"
+        )
+    )]
     trash: Arc<dyn Trash>,
     marker: std::ffi::OsString,
 }

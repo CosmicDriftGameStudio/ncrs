@@ -27,12 +27,16 @@ pub enum TrashReach {
     )]
     Everything,
     /// Only what ncrs trashed itself, from a record it keeps (macOS).
-    // reason: only the trash of macOS says so
-    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    #[cfg_attr(
+        not(target_os = "macos"),
+        allow(dead_code, reason = "only the trash of macOS says so")
+    )]
     OwnDeletions,
     /// Nothing: the Finder is the only way to look into it.
-    // reason: only the sandboxed macOS build says so
-    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    #[cfg_attr(
+        not(target_os = "macos"),
+        allow(dead_code, reason = "only the sandboxed macOS build says so")
+    )]
     FinderOnly,
 }
 
