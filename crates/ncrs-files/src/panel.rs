@@ -321,10 +321,17 @@ impl PanelState {
         let index = wanted
             .as_deref()
             .and_then(|name| {
-                let wanted_name = composed(name);
+                // The exact name first: the composed form is lossy for names
+                // that are not UTF-8, and two of them can compose alike.
                 self.entries
                     .iter()
-                    .position(|e| composed(&e.name) == wanted_name)
+                    .position(|e| e.name == name)
+                    .or_else(|| {
+                        let wanted_name = composed(name);
+                        self.entries
+                            .iter()
+                            .position(|e| composed(&e.name) == wanted_name)
+                    })
             })
             .unwrap_or(fallback);
         self.select(index, visible_rows);
