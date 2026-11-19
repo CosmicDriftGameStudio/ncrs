@@ -340,9 +340,26 @@ impl KnownHosts {
     }
 }
 
+/// The host is written to the file unescaped, so a pattern character would
+/// turn the line into a wildcard entry.
+fn is_literal_host(host: &str) -> bool {
+    !host.is_empty()
+        && !host.chars().any(|character| {
+            character.is_whitespace()
+                || character.is_control()
+                || matches!(character, '*' | '?' | '!' | ',' | '[' | ']' | '#' | '|')
+        })
+}
+
 /// Appends the key the user confirmed to ncrs's own file. Never called with
 /// the OpenSSH file.
 pub fn learn(own: &Path, host: &str, port: u16, key: &PublicKey) -> io::Result<()> {
+    if !is_literal_host(host) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "host name cannot be written to known_hosts",
+        ));
+    }
     russh::keys::known_hosts::learn_known_hosts_path(host, port, key, own)
         .map_err(|error| io::Error::other(error.to_string()))
 }
@@ -653,6 +670,19 @@ mod tests {
             beside.check("example.org", 22, &key(KEY_A)),
             HostVerdict::Known
         );
+    }
+
+    #[test]
+    fn host_with_pattern_characters_is_not_learned() {
+        let dir = tempfile::tempdir().unwrap();
+        let own = dir.path().join("known_hosts");
+        for host in [
+            "*", "a?b", "!x", "a,b", "a b", "a\nb", "", "[::1]", "#x", "|1|x",
+        ] {
+            let error = learn(&own, host, 22, &key(KEY_A)).unwrap_err();
+            assert_eq!(error.kind(), io::ErrorKind::InvalidInput, "{host:?}");
+        }
+        assert!(!own.exists() || std::fs::read_to_string(&own).unwrap().is_empty());
     }
 
     #[test]

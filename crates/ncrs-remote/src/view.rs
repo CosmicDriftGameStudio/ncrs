@@ -55,7 +55,12 @@ pub fn view<'a>(
     palette: &Palette,
 ) -> Element<'a, Message> {
     match dialog.stage() {
-        Stage::HostKey { fingerprint, .. } => host_key(dialog, fingerprint, window, lang, palette),
+        Stage::HostKey {
+            fingerprint,
+            host,
+            port,
+            ..
+        } => host_key(dialog, fingerprint, (host, *port), window, lang, palette),
         Stage::Passphrase { key_file } => passphrase(dialog, key_file, window, lang, palette),
         Stage::Editing | Stage::Connecting => form(dialog, window, lang, palette),
     }
@@ -228,14 +233,34 @@ fn shown_host(dialog: &ConnectDialog) -> String {
     }
 }
 
+/// What the question names: the typed server, and where the key was judged
+/// when `~/.ssh/config` sent the connection elsewhere than the fields say.
+fn shown_target(dialog: &ConnectDialog, (host, port): (&str, u16)) -> String {
+    let typed_port = match dialog.value(ConnectField::Port).trim() {
+        "" => Some(22),
+        text => text.parse::<u16>().ok(),
+    };
+    let typed = shown_host(dialog);
+    if dialog.value(ConnectField::Host).trim() == host && typed_port == Some(port) {
+        return typed;
+    }
+    let judged = if host.contains(':') {
+        format!("[{host}]:{port}")
+    } else {
+        format!("{host}:{port}")
+    };
+    format!("{typed} ({judged})")
+}
+
 fn host_key<'a>(
     dialog: &ConnectDialog,
     fingerprint: &str,
+    judged: (&str, u16),
     window: Size,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let host = shown_host(dialog);
+    let host = shown_target(dialog, judged);
     let body = column![paragraph(
         fill_template(
             lang.text(Msg::RemoteHostkeyBody),
@@ -366,4 +391,47 @@ fn passphrase<'a>(
         tab: false,
     })
     .into_element()
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests {
+    use super::*;
+
+    fn dialog_for(host: &str, port: &str) -> ConnectDialog {
+        let mut dialog = ConnectDialog::new(1);
+        dialog.set(ConnectField::Host, host.to_owned());
+        dialog.set(ConnectField::Port, port.to_owned());
+        dialog
+    }
+
+    #[test]
+    fn the_question_names_where_an_alias_was_judged() {
+        let dialog = dialog_for("files", "");
+
+        assert_eq!(
+            shown_target(&dialog, ("nas.example.org", 2200)),
+            "files (nas.example.org:2200)"
+        );
+    }
+
+    #[test]
+    fn the_question_names_only_the_typed_server_when_nothing_was_redirected() {
+        assert_eq!(
+            shown_target(&dialog_for("example.org", ""), ("example.org", 22)),
+            "example.org"
+        );
+        assert_eq!(
+            shown_target(&dialog_for("example.org", "2222"), ("example.org", 2222)),
+            "example.org:2222"
+        );
+    }
+
+    #[test]
+    fn an_ipv6_address_the_alias_led_to_is_bracketed() {
+        assert_eq!(
+            shown_target(&dialog_for("files", ""), ("::1", 22)),
+            "files ([::1]:22)"
+        );
+    }
 }

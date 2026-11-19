@@ -59,7 +59,10 @@ async fn unknown_host_reports_sha256_fingerprint() {
         .await
         .unwrap_err();
 
-    let ConnectFailure::UnknownHost { fingerprint, key } = refused else {
+    let ConnectFailure::UnknownHost {
+        fingerprint, key, ..
+    } = refused
+    else {
         panic!("{refused:?}");
     };
     let expected = PublicKey::from_openssh(&public_key_text())
@@ -75,7 +78,9 @@ async fn unknown_host_reports_sha256_fingerprint() {
 #[tokio::test]
 async fn trusting_the_key_lets_the_next_connect_through() {
     let fixture = Fixture::untrusted();
-    let ConnectFailure::UnknownHost { key, .. } = fixture
+    let ConnectFailure::UnknownHost {
+        key, host, port, ..
+    } = fixture
         .pool
         .connect(&Fixture::id(), &Fixture::login())
         .await
@@ -84,7 +89,7 @@ async fn trusting_the_key_lets_the_next_connect_through() {
         panic!("expected an unknown host");
     };
 
-    fixture.pool.trust(&Fixture::id(), &key).unwrap();
+    fixture.pool.trust(&host, port, &key).unwrap();
     fixture
         .pool
         .connect(&Fixture::id(), &Fixture::login())

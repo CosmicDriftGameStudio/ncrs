@@ -4915,6 +4915,8 @@ mod connect_dialog {
         dialog.set_stage(Stage::HostKey {
             fingerprint: "SHA256:abc".to_owned(),
             key: Box::new(key),
+            host: "example.org".to_owned(),
+            port: 22,
         });
         dialog
     }
@@ -5014,6 +5016,8 @@ mod connect_dialog {
         dialog.set_stage(Stage::HostKey {
             fingerprint: "SHA256:abc".to_owned(),
             key: Box::new(key),
+            host: "example.org".to_owned(),
+            port: 2222,
         });
 
         assert!(shows(

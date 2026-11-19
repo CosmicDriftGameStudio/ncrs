@@ -93,6 +93,10 @@ pub enum ConnectFailure {
     UnknownHost {
         fingerprint: String,
         key: Box<PublicKey>,
+        /// The host and port the key was judged by, after `ssh_config`;
+        /// `Pool::trust` records the key under exactly these.
+        host: String,
+        port: u16,
     },
     HostKeyChanged {
         fingerprint: String,
@@ -275,6 +279,8 @@ impl Session {
 struct Seen {
     verdict: HostVerdict,
     key: PublicKey,
+    host: String,
+    port: u16,
 }
 
 /// Judges the key of the server during the key exchange, before any login.
@@ -300,7 +306,12 @@ impl client::Handler for HostCheck {
         };
         let verdict = self.known.check(&self.host, self.port, &key);
         let trusted = verdict == HostVerdict::Known;
-        *self.seen.lock().unwrap_or_else(PoisonError::into_inner) = Some(Seen { verdict, key });
+        *self.seen.lock().unwrap_or_else(PoisonError::into_inner) = Some(Seen {
+            verdict,
+            key,
+            host: self.host.clone(),
+            port: self.port,
+        });
         Ok(trusted)
     }
 }
@@ -604,21 +615,15 @@ impl Pool {
     }
 
     /// Writes the key the user confirmed to the file of ncrs, under the host
-    /// and port the address resolves to: the ones `connect` judges the key by.
+    /// and port `connect` judged it by (`ConnectFailure::UnknownHost`).
     /// Blocking.
-    pub fn trust(&self, server: &ServerId, key: &PublicKey) -> io::Result<()> {
+    pub fn trust(&self, host: &str, port: u16, key: &PublicKey) -> io::Result<()> {
         let own = self
             .known
             .own
             .as_deref()
             .ok_or_else(|| io::Error::other("there is no place to keep the host key"))?;
-        let settings = ssh_config::read_settings(self.env.home.as_deref(), &server.host);
-        let (host, port) = login::effective_server(server, &settings, self.env.os_user.as_deref())
-            .map_or_else(
-                || (server.host.clone(), server.port),
-                |at| (at.host, at.port),
-            );
-        known_hosts::learn(own, &host, port, key)
+        known_hosts::learn(own, host, port, key)
     }
 }
 
@@ -648,7 +653,12 @@ fn failure_of(step: Step, seen: &Mutex<Option<Seen>>) -> ConnectFailure {
         Step::Ssh(russh::Error::UnknownKey) => {
             let offered = seen.lock().unwrap_or_else(PoisonError::into_inner).take();
             match offered {
-                Some(Seen { verdict, key }) => {
+                Some(Seen {
+                    verdict,
+                    key,
+                    host,
+                    port,
+                }) => {
                     let fingerprint = key.fingerprint(HashAlg::Sha256).to_string();
                     match verdict {
                         HostVerdict::Changed { file, line } => ConnectFailure::HostKeyChanged {
@@ -670,6 +680,8 @@ fn failure_of(step: Step, seen: &Mutex<Option<Seen>>) -> ConnectFailure {
                         HostVerdict::Known | HostVerdict::Unknown => ConnectFailure::UnknownHost {
                             fingerprint,
                             key: Box::new(key),
+                            host,
+                            port,
                         },
                     }
                 }
