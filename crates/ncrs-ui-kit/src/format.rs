@@ -852,6 +852,9 @@ mod local_time_tests {
     use super::*;
     use std::time::Duration;
 
+    // A Windows `SystemTime` ends in the year 30828, well before chrono's
+    // calendar does, so there the case cannot arise.
+    #[cfg(not(windows))]
     #[test]
     fn a_time_chrono_cannot_hold_is_no_date_and_does_not_panic() {
         let far_future = UNIX_EPOCH + Duration::from_secs(u64::MAX >> 1);

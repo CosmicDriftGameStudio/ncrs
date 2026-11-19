@@ -901,7 +901,9 @@ fn a_link_to_a_folder_is_skipped_not_followed() {
 
 #[test]
 fn a_modification_time_no_calendar_holds_is_left_out_not_a_panic() {
-    let absurd = UNIX_EPOCH + std::time::Duration::from_secs(u64::MAX >> 1);
+    // The year 10000: past what a zip entry can date, yet inside what a
+    // Windows `SystemTime` can hold (up to the year 30828).
+    let absurd = UNIX_EPOCH + std::time::Duration::from_secs(253_402_300_800);
 
     assert!(zip_datetime(absurd).is_none());
     assert!(zip_datetime(UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000)).is_some());

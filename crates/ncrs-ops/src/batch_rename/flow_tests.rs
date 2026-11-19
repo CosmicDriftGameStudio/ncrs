@@ -418,6 +418,9 @@ mod abort {
     }
 }
 
+// A Windows `SystemTime` ends in the year 30828, well before chrono's calendar
+// does, so there the case cannot arise.
+#[cfg(not(windows))]
 #[test]
 fn a_modification_time_no_calendar_holds_gives_no_date_instead_of_a_panic() {
     let entry = ncrs_core::FileEntry {
