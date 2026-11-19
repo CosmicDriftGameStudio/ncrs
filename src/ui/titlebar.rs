@@ -7,7 +7,8 @@ use std::path::{Path, MAIN_SEPARATOR};
 use iced::widget::{button, column, container, mouse_area, row, text, Space};
 use iced::{alignment, mouse, Element, Length, Padding};
 
-use super::format::ellipsize_middle;
+use super::format::{ellipsize_middle, estimated_text_width};
+use super::kit::{self, TAB_LABEL_GAP as TAB_GAP, TAB_PADDING_X};
 use super::layout::{TITLE_BAR_HEIGHT, TRAFFIC_LIGHTS_INSET};
 use super::theme::{self, font_size, size, spacing};
 use crate::i18n::{Language, Msg};
@@ -28,7 +29,6 @@ pub const VIEWER_TAB_ID: &str = "title-tab-viewer";
 pub const NOTES_TAB_ID: &str = "title-tab-notes";
 pub const FILING_TAB_ID: &str = "title-tab-filing";
 pub const HERMES_TAB_ID: &str = "title-tab-hermes";
-const CLOSE_CROSS: &str = "×";
 /// Characters of room the cross of a hit list tab takes from its title.
 const CROSS_CHARS: usize = 3;
 
@@ -36,16 +36,12 @@ const CROSS_CHARS: usize = 3;
 /// ours.
 const OWN_WINDOW_BUTTONS: bool = cfg!(not(target_os = "macos"));
 const WINDOW_BUTTON_WIDTH: f32 = 44.0;
-const TAB_PADDING_X: f32 = spacing::L;
-const TAB_GAP: f32 = spacing::M;
 /// Room the panel letter at the right end of a tab takes.
 const TAB_LETTER_WIDTH: f32 = 8.0;
 const RIGHT_GAP: f32 = 2.0;
 const RIGHT_PADDING: f32 = spacing::M;
 const BUTTON_PADDING_X: f32 = spacing::M;
 const BUTTON_CONTENT_GAP: f32 = spacing::XS;
-/// Width of a character of the monospace font, in font sizes.
-const GLYPH_WIDTH_PER_SIZE: f32 = 0.6;
 const LOADING_MARK: &str = "  …";
 /// Width of the resize handles along the window edges.
 const EDGE_WIDTH: f32 = 5.0;
@@ -136,7 +132,7 @@ fn home_relative(path: &Path, home: &Path) -> String {
 }
 
 fn characters_that_fit(width: f32, font_size: f32) -> usize {
-    (width / (font_size * GLYPH_WIDTH_PER_SIZE))
+    (width / estimated_text_width(1, font_size))
         .floor()
         .max(1.0) as usize
 }
@@ -174,44 +170,16 @@ pub fn view<'a>(bar: &TitleBar<'a>) -> Element<'a, Message> {
             }
         };
         let letter: String = lang.text(letter_of).chars().take(1).collect();
-        let mut label_row = row![text(label)
-            .size(font_size::FILE)
-            .font(ncrs_ui_kit::APP_FONT)
-            .width(Length::Fill)
-            .wrapping(text::Wrapping::None)]
-        .spacing(TAB_GAP)
-        .height(Length::Fill)
-        .align_y(alignment::Vertical::Center);
-        if closable {
-            label_row = label_row.push(
-                button(text(CLOSE_CROSS).size(font_size::FILE))
-                    .on_press(Message::HitList(HitListMessage::Close(tab.side)))
-                    .padding([0.0, spacing::XS])
-                    .style(theme::close_button(palette)),
-            );
-        }
-        let content =
-            button(label_row.push(text(letter).size(font_size::SMALL).color(palette.dim_text)))
-                .on_press(Message::Panel(PanelMessage::ActivatePanel(tab.side)))
-                .padding([0.0, TAB_PADDING_X])
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .clip(true)
-                .style(theme::title_tab(palette, tab.active));
-        let left_edge: Element<'a, Message> = if tab.active {
-            theme::vertical_rule(palette.border_inactive)
-        } else {
-            Space::new().width(0.0).into()
-        };
-        container(row![
-            left_edge,
-            column![theme::tab_top_line(palette, tab.active), content],
-            theme::vertical_rule(palette.border_inactive),
-        ])
-        .id(id)
-        .width(size::TAB_WIDTH)
-        .height(Length::Fill)
-        .into()
+        kit::title_tab(
+            id,
+            label,
+            tab.active,
+            Message::Panel(PanelMessage::ActivatePanel(tab.side)),
+            closable.then_some(Message::HitList(HitListMessage::Close(tab.side))),
+        )
+        .mark(letter)
+        .left_edge(tab.active)
+        .view(palette)
     };
     let [left, right] = &bar.tabs;
     let mut tabs = row![
@@ -379,36 +347,14 @@ fn page_tab<'a>(
     (shown, close): (ShownTab, Message),
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let label = row![
-        text(title.to_owned())
-            .size(font_size::FILE)
-            .width(Length::Fill)
-            .wrapping(text::Wrapping::None),
-        button(text(CLOSE_CROSS).size(font_size::FILE))
-            .on_press(close)
-            .padding([0.0, spacing::XS])
-            .style(theme::close_button(palette)),
-    ]
-    .spacing(TAB_GAP)
-    .height(Length::Fill)
-    .align_y(alignment::Vertical::Center);
-    container(row![
-        theme::vertical_rule(palette.border_inactive),
-        column![
-            theme::tab_top_line(palette, active),
-            button(label)
-                .on_press(Message::ShowTab(shown))
-                .padding([0.0, TAB_PADDING_X])
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .style(theme::title_tab(palette, active)),
-        ],
-        theme::vertical_rule(palette.border_inactive),
-    ])
-    .id(id)
-    .width(size::TAB_WIDTH)
-    .height(Length::Fill)
-    .into()
+    kit::title_tab(
+        id,
+        title.to_owned(),
+        active,
+        Message::ShowTab(shown),
+        Some(close),
+    )
+    .view(palette)
 }
 
 fn window_buttons<'a>(palette: &Palette) -> Element<'a, Message> {

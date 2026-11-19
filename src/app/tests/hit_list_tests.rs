@@ -1,6 +1,6 @@
 use crate::app::*;
-use crate::fs::search::{LineMatch, SearchEvent};
 use crate::messages::SearchMessage;
+use ncrs_search::engine::{LineMatch, SearchEvent};
 
 struct Hits {
     app: App,
@@ -50,7 +50,7 @@ fn read_all(app: &mut App, side: PanelSide, files: &[PathBuf]) {
     let request_id = app.panel(side).request_id;
     let entries = files
         .iter()
-        .filter_map(|path| fs::FileEntry::from_path(path))
+        .filter_map(|path| fs::entry_from_path(path))
         .collect();
     drop(app.update(Message::HitList(HitListMessage::Read {
         side,
@@ -159,7 +159,7 @@ fn a_read_of_an_older_open_is_ignored() {
 fn a_file_that_is_gone_is_not_listed() {
     let hits = searched(&["a.txt"]);
     std::fs::remove_file(&hits.files[0]).unwrap();
-    assert!(fs::FileEntry::from_path(&hits.files[0]).is_none());
+    assert!(fs::entry_from_path(&hits.files[0]).is_none());
 }
 
 #[test]
@@ -357,7 +357,7 @@ fn a_list_is_refused_as_the_target_of_a_copy() {
     let mut hits = opened(&["a.txt"], PanelSide::Right);
     let own = hits.files[0].clone();
     let folder = hits.folder.path().to_path_buf();
-    let entry = fs::FileEntry::from_path(&own).unwrap();
+    let entry = fs::entry_from_path(&own).unwrap();
     hits.app
         .panel_mut(PanelSide::Left)
         .apply_listing(folder, vec![entry], None, None, 12);

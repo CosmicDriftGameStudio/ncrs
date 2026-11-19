@@ -894,21 +894,28 @@ pub fn dropdown_menu(palette: &Palette) -> impl Fn(&Theme) -> menu::Style {
     }
 }
 
-/// One of the match options next to the search field; lit while it is on.
+/// One of the match options next to the search field; lit while it is on,
+/// dimmed while it cannot be switched.
 pub fn search_toggle(
     palette: &Palette,
     on: bool,
+    disabled: bool,
 ) -> impl Fn(&Theme, button::Status) -> button::Style {
     let colors = *palette;
     move |_theme, status| {
         let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        let text_color = if on { colors.cursor_text } else { colors.text };
         button::Style {
             background: (on || hovered).then_some(Background::Color(if on {
                 colors.cursor
             } else {
                 colors.title
             })),
-            text_color: if on { colors.cursor_text } else { colors.text },
+            text_color: if disabled {
+                text_color.scale_alpha(DISABLED_OPACITY)
+            } else {
+                text_color
+            },
             border: Border {
                 radius: radius::CORNER.into(),
                 ..Border::default()

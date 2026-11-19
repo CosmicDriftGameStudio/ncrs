@@ -67,6 +67,7 @@ impl LazyLocalModel {
         let mut registry = registry().lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(live) = registry.get(&path).and_then(Weak::upgrade) {
             live.shared.set_threads(threads);
+            live.shared.raise_context_tokens(context_tokens);
             return live;
         }
         registry.retain(|_, model| model.strong_count() > 0);
@@ -92,7 +93,8 @@ impl LazyLocalModel {
     }
 
     /// How the model reads documents from the next one on. The chat is not
-    /// affected: it always runs at full priority.
+    /// affected: it always runs at full priority. The priority is not lowered
+    /// on Linux.
     pub fn set_extraction(&self, threads: NonZeroU32, priority: ThreadPriority) {
         self.shared.set_threads(threads);
         self.shared.set_extraction_priority(priority);

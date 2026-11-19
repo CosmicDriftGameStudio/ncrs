@@ -123,11 +123,10 @@ fn rights<'a>(
         .push(octal)
         .push(kit::dim(lang.text(Msg::PermissionsCheckboxNote), palette));
 
-    let chevron = if dialog.advanced_open() { "v" } else { ">" };
-    body = body.push(kit::button(
-        &format!("{chevron} {}", lang.text(Msg::PermissionsAdvanced)),
-        Some(send(PermissionsMessage::ToggleAdvanced)),
-        Tone::Secondary,
+    body = body.push(kit::disclosure(
+        lang.text(Msg::PermissionsAdvanced),
+        dialog.advanced_open(),
+        send(PermissionsMessage::ToggleAdvanced),
         palette,
     ));
     if dialog.advanced_open() {

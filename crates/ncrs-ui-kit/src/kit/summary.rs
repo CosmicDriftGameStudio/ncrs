@@ -47,23 +47,16 @@ pub fn figure_row<'a, M: Clone + 'a>(
         .into()
 }
 
-/// The size of a selection in a few numbers, with a button that shows or hides
-/// the list behind them; `note` goes between the two, set off by a divider.
-pub fn count_summary<'a, M: Clone + 'a>(
-    figures: &[(&str, Figure)],
-    note: Option<Element<'a, M>>,
-    expanded: bool,
+/// A full-width row that shows or hides what lies below it: an arrow that
+/// points right while closed and down while open, then the label.
+pub fn disclosure<'a, M: Clone + 'a>(
+    label: &str,
+    open: bool,
     on_toggle: M,
-    show_label: &str,
-    hide_label: &str,
     palette: &Palette,
 ) -> Element<'a, M> {
-    let (chevron, label) = if expanded {
-        ("v", hide_label)
-    } else {
-        (">", show_label)
-    };
-    let toggle = widget_button(
+    let chevron = if open { "v" } else { ">" };
+    widget_button(
         container(
             row![label_text(chevron), label_text(label)]
                 .spacing(spacing::M)
@@ -75,7 +68,23 @@ pub fn count_summary<'a, M: Clone + 'a>(
     .height(size::ROW_TALL)
     .width(Length::Fill)
     .on_press(on_toggle)
-    .style(theme::link_button(palette));
+    .style(theme::link_button(palette))
+    .into()
+}
+
+/// The size of a selection in a few numbers, with a button that shows or hides
+/// the list behind them; `note` goes between the two, set off by a divider.
+pub fn count_summary<'a, M: Clone + 'a>(
+    figures: &[(&str, Figure)],
+    note: Option<Element<'a, M>>,
+    expanded: bool,
+    on_toggle: M,
+    show_label: &str,
+    hide_label: &str,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let label = if expanded { hide_label } else { show_label };
+    let toggle = disclosure(label, expanded, on_toggle, palette);
     let mut parts = column![figure_cells(figures, palette), divider(palette)];
     if let Some(between) = note {
         parts = parts.push(container(between).padding([spacing::M, BUTTON_PADDING_X]));

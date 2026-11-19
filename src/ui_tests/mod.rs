@@ -129,32 +129,14 @@ mod tests {
             .expect("the view should render");
     }
 
-    /// A key press reaches the view without a panic. The routing decision is
-    /// tested in `app.rs`; this checks the wiring from the window to the view.
-    #[test]
-    fn a_key_press_reaches_the_view() {
-        let app = app_with_prompt();
-        let mut sim = simulator(&app);
-        sim.tap_key(iced::keyboard::Key::Named(
-            iced::keyboard::key::Named::Escape,
-        ));
-    }
-
-    /// The prompt is drawn over the panels. Compared against the plain view, so
-    /// a change that removes the overlay shows up as a failing comparison.
+    /// The prompt is drawn over the panels: the view differs from the plain
+    /// two-panel view, whose reference image is pinned by its own test.
     #[test]
     fn the_prompt_is_drawn_over_the_panels() {
-        // First run writes the reference and returns true; later runs compare.
-        simulator(&App::with_fixed_panels())
-            .snapshot(&iced::Theme::Dark)
-            .unwrap()
-            .matches_image("tests/snapshots/no_prompt.png")
-            .expect("reference");
-
         let same = simulator(&app_with_prompt())
             .snapshot(&iced::Theme::Dark)
             .unwrap()
-            .matches_image("tests/snapshots/no_prompt.png")
+            .matches_image("tests/snapshots/two_panels.png")
             .expect("compare");
 
         assert!(
@@ -163,51 +145,35 @@ mod tests {
         );
     }
 
-    /// A long name has to fit the text field, not stretch the dialog or the
-    /// window. A 300-character name that reaches the panel edge is the failure.
+    /// A long name has to fit the text field, not stretch the dialog.
     #[test]
     fn a_long_name_does_not_change_the_layout() {
         let mut app = app_with_prompt();
         app.set_prompt("kurz", None);
-        simulator(&app)
-            .snapshot(&iced::Theme::Dark)
-            .unwrap()
-            .matches_hash("tests/snapshots/prompt_short.txt")
-            .expect("reference");
+        let short = frame_bounds(&app);
 
         app.set_prompt(&"a".repeat(300), None);
-        let same = simulator(&app)
-            .snapshot(&iced::Theme::Dark)
-            .unwrap()
-            .matches_hash("tests/snapshots/prompt_short.txt")
-            .expect("compare");
 
-        assert!(
-            !same,
-            "a 300-character name changed the layout; the field is not clipping"
+        assert_eq!(
+            frame_bounds(&app),
+            short,
+            "a 300-character name changed the dialog; the field is not clipping"
         );
     }
 
-    /// The error line only appears when there is an error, and it is a visible
-    /// change — so a validation message that never reaches the view is caught.
+    /// A validation message that never reaches the view is caught here.
     #[test]
-    fn the_error_line_changes_the_prompt() {
+    fn the_error_line_is_shown_in_the_prompt() {
+        const ERROR: &str = "Bitte einen Namen eingeben";
         let mut app = app_with_prompt();
         app.set_prompt("kurz", None);
-        simulator(&app)
-            .snapshot(&iced::Theme::Dark)
-            .unwrap()
-            .matches_hash("tests/snapshots/prompt_no_error.txt")
-            .expect("reference");
+        assert!(simulator(&app).find(ERROR).is_err());
 
-        app.set_prompt("kurz", Some("Bitte einen Namen eingeben"));
-        let same = simulator(&app)
-            .snapshot(&iced::Theme::Dark)
-            .unwrap()
-            .matches_hash("tests/snapshots/prompt_no_error.txt")
-            .expect("compare");
-
-        assert!(!same, "the error text is not being shown");
+        app.set_prompt("kurz", Some(ERROR));
+        assert!(
+            simulator(&app).find(ERROR).is_ok(),
+            "the error text is not being shown"
+        );
     }
 
     /// Clicking where a file row is, with a prompt open, must not select the
@@ -219,22 +185,30 @@ mod tests {
         sim.point_at(Point::new(20.0, 400.0));
         sim.click(Point::new(20.0, 400.0))
             .expect("the scrim should absorb the click");
+        let messages: Vec<Message> = sim.into_messages().filter(is_action).collect();
+        assert!(
+            !messages
+                .iter()
+                .any(|message| matches!(message, Message::Panel(_))),
+            "the click reached the panels behind the prompt: {messages:?}"
+        );
     }
 
-    /// A click on the confirm button, found by the position the layout gives
-    /// it. This is the mouse path through the whole chain: click, message,
-    /// `update`.
+    /// A click on the dialog's own area reaches the prompt, not the panels.
     #[test]
-    fn clicking_confirm_submits() {
+    fn a_click_on_the_prompt_does_not_reach_the_panels() {
         let mut app = app_with_prompt();
         app.set_prompt("neuer ordner", None);
         let mut sim = simulator(&app);
-
-        // The confirm button sits at the bottom left of the dialog, which is
-        // centred in a 1200x760 window. Rather than hard-coding pixels, the
-        // click goes to the dialog's own area, which the layout test pins.
         sim.click(Point::new(600.0, 380.0))
             .expect("the dialog should be clickable");
+        let messages: Vec<Message> = sim.into_messages().filter(is_action).collect();
+        assert!(
+            !messages
+                .iter()
+                .any(|message| matches!(message, Message::Panel(_))),
+            "the click reached the panels: {messages:?}"
+        );
     }
 
     /// Reference image for the two-panel view.
@@ -627,11 +601,7 @@ mod tagging {
     #[test]
     fn tagging_changes_the_view() {
         let untagged = app_with_files();
-        simulator(&untagged)
-            .snapshot(&iced::Theme::Dark)
-            .unwrap()
-            .matches_hash("tests/snapshots/tags_none.sha256")
-            .expect("reference");
+        assert!(untagged_view_matches_its_reference(&untagged));
 
         let mut tagged = app_with_files();
         tagged.toggle_tag_for_test(1);
@@ -654,11 +624,7 @@ mod tagging {
     #[test]
     fn untagging_returns_to_the_untagged_view() {
         let mut app = app_with_files();
-        simulator(&app)
-            .snapshot(&iced::Theme::Dark)
-            .unwrap()
-            .matches_hash("tests/snapshots/tags_none.sha256")
-            .expect("reference");
+        assert!(untagged_view_matches_its_reference(&app));
 
         app.toggle_tag_for_test(1);
         app.toggle_tag_for_test(1); // same row again: untagged
@@ -678,11 +644,7 @@ mod tagging {
     #[test]
     fn one_tag_differs_from_two() {
         let none = app_with_files();
-        simulator(&none)
-            .snapshot(&iced::Theme::Dark)
-            .unwrap()
-            .matches_hash("tests/snapshots/tags_none.sha256")
-            .expect("reference");
+        assert!(untagged_view_matches_its_reference(&none));
 
         let mut one = app_with_files();
         one.toggle_tag_for_test(1);
@@ -699,12 +661,24 @@ mod tagging {
     /// name column sideways.
     #[test]
     fn tagging_does_not_shift_the_names() {
+        let name_bounds = |app: &App| {
+            simulator(app)
+                .find("gamma")
+                .expect("the name is drawn")
+                .bounds()
+        };
         let mut app = app_with_files();
-        app.toggle_tag_for_test(2);
-        let mut sim = simulator(&app);
-        // Rendering must succeed with tags present; a layout that only works
-        // for the untagged state would panic or misplace the column.
-        let _ = sim.snapshot(&iced::Theme::Dark).expect("renders with tags");
+        let untagged = name_bounds(&app);
+        app.toggle_tag_for_test(3);
+        assert_eq!(name_bounds(&app), untagged);
+    }
+
+    fn untagged_view_matches_its_reference(app: &App) -> bool {
+        simulator(app)
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_hash("tests/snapshots/tags_none.sha256")
+            .expect("reference")
     }
 
     /// Tagging everything marks the rows a bulk operation would use, and skips
@@ -712,11 +686,7 @@ mod tagging {
     #[test]
     fn tagging_everything_is_not_the_same_as_tagging_nothing() {
         let none = app_with_files();
-        simulator(&none)
-            .snapshot(&iced::Theme::Dark)
-            .unwrap()
-            .matches_hash("tests/snapshots/tags_none.sha256")
-            .expect("reference");
+        assert!(untagged_view_matches_its_reference(&none));
 
         let mut all = app_with_files();
         all.tag_all_for_test();
@@ -734,11 +704,7 @@ mod tagging {
     #[test]
     fn moving_the_cursor_does_not_tag() {
         let mut app = app_with_files();
-        simulator(&app)
-            .snapshot(&iced::Theme::Dark)
-            .unwrap()
-            .matches_hash("tests/snapshots/tags_none.sha256")
-            .expect("reference");
+        assert!(untagged_view_matches_its_reference(&app));
 
         // Moving the cursor changes the highlight, so the image is expected to
         // differ from the initial one. What must not happen is a tag: the panel
@@ -1315,6 +1281,7 @@ mod status_notice {
                 version: None,
                 monitor: None,
                 test_folder: None,
+                date_format: ncrs_core::DateFormat::Iso,
             },
             failure,
             None,
@@ -2315,9 +2282,9 @@ pub mod search_filters_card {
     use crate::keymap::KeyActionMessage as _;
     use crate::messages::{QuickOpenMessage, SavedQueriesMessage, SearchMessage};
     use crate::query_work::QueryHit;
-    use crate::search_filters::tests::found_hit;
-    use crate::search_filters::{Facet, FacetValue, SearchFilters};
     use ncrs_index::{Amount, Currency};
+    use ncrs_search::filters::{Facet, FacetValue, SearchFilters};
+    use ncrs_search::test_support::found_hit;
     use std::path::Path;
 
     const MONTHS: [u32; 4] = [1, 2, 3, 4];

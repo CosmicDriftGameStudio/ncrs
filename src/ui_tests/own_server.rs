@@ -136,7 +136,9 @@ fn usage_page_app() -> App {
          endpoint = \"https://api.example.com/v1\"\nmodel = \"gpt-5\"\nconsented_origins = [\"https://api.example.com\"]\n\n\
          [theme]\npreset = \"cosmic\"\n",
     );
-    drop(app.update(Message::Settings(SettingsMessage::UsageLoaded(summaries))));
+    drop(app.update(Message::Settings(SettingsMessage::UsageLoaded(
+        summaries, None,
+    ))));
     app
 }
 

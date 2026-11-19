@@ -26,8 +26,18 @@ pub struct Doc {
 #[derive(Debug, Clone)]
 pub enum Loaded {
     Doc(Doc),
-    TooLarge { path: PathBuf, size: u64 },
-    Failed { path: PathBuf, reason: String },
+    TooLarge {
+        path: PathBuf,
+        size: u64,
+    },
+    Failed {
+        path: PathBuf,
+        reason: String,
+    },
+    /// A pipe, a device or the like: reading it could block for good.
+    NotRegular {
+        path: PathBuf,
+    },
 }
 
 /// Reads `path`; a text that is not UTF-8 is shown with replacement characters.
@@ -40,6 +50,9 @@ pub fn load(path: PathBuf) -> Loaded {
         Ok(meta) => meta,
         Err(err) => return failed(err),
     };
+    if !meta.is_file() {
+        return Loaded::NotRegular { path };
+    }
     if meta.len() > MAX_BYTES {
         return Loaded::TooLarge {
             path,
@@ -85,7 +98,9 @@ impl Loaded {
     fn path(&self) -> &Path {
         match self {
             Loaded::Doc(doc) => &doc.path,
-            Loaded::TooLarge { path, .. } | Loaded::Failed { path, .. } => path,
+            Loaded::TooLarge { path, .. }
+            | Loaded::NotRegular { path }
+            | Loaded::Failed { path, .. } => path,
         }
     }
 }

@@ -40,7 +40,6 @@ impl Selection {
     /// which rows an operation covers is decided where the operation is built
     /// (T7). Part of this type's contract, and tested as such, so the rule
     /// cannot be lost before it has a caller.
-    #[allow(dead_code)]
     pub fn in_operation(&self, any_tagged: bool) -> bool {
         if any_tagged {
             self.tagged
@@ -65,12 +64,10 @@ impl SelectionSet {
         Self::default()
     }
 
-    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.tagged.is_empty()
     }
 
-    #[allow(dead_code)]
     pub fn len(&self) -> usize {
         self.tagged.len()
     }
@@ -85,7 +82,6 @@ impl SelectionSet {
         }
     }
 
-    #[allow(dead_code)]
     pub fn is_tagged(&self, path: &Path) -> bool {
         self.tagged.contains(path)
     }
@@ -95,9 +91,25 @@ impl SelectionSet {
         self.tagged.clear();
     }
 
+    /// A tag on `from`, or on anything inside it, moves to the same place
+    /// under `to`, so a renamed file stays tagged.
+    pub fn rename_path(&mut self, from: &Path, to: &Path) {
+        let moved: Vec<PathBuf> = self
+            .tagged
+            .iter()
+            .filter(|path| path.starts_with(from))
+            .cloned()
+            .collect();
+        for old in moved {
+            self.tagged.remove(&old);
+            if let Ok(rest) = old.strip_prefix(from) {
+                self.tagged.insert(to.join(rest));
+            }
+        }
+    }
+
     /// The tagged names in row order, so the operation and the UI agree on
     /// which file is first.
-    #[allow(dead_code)]
     pub fn ordered<'a>(&self, entries: &'a [FileEntry]) -> Vec<&'a FileEntry> {
         entries
             .iter()
@@ -117,7 +129,6 @@ impl SelectionSet {
 
     /// Whether anything is tagged, which is what decides whether the cursor row
     /// takes part in the operation.
-    #[allow(dead_code)]
     pub fn any_tagged(&self) -> bool {
         !self.tagged.is_empty()
     }
@@ -132,8 +143,9 @@ impl SelectionSet {
         if self.tagged.is_empty() {
             return;
         }
-        self.tagged
-            .retain(|path| entries.iter().any(|e| &e.path == path));
+        let present: std::collections::HashSet<&std::path::Path> =
+            entries.iter().map(|e| e.path.as_path()).collect();
+        self.tagged.retain(|path| present.contains(path.as_path()));
     }
 
     /// Tags every row in `entries`, as `*` does. The `..` entry is never

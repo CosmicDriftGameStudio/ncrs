@@ -1,5 +1,6 @@
 //! What happens in the filing tab.
 
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use ncrs_index::{BatchId, Transfer};
@@ -33,6 +34,11 @@ pub enum Message {
     /// The file stays where it is.
     Stay,
     ToggleOnlyNew,
+    /// The folders of the write folder, listed for the session with this id.
+    FoldersListed(u64, BTreeSet<PathBuf>),
+    /// The file names read in folders of the write folder, for the session with
+    /// this id.
+    ExistingRead(u64, Vec<(PathBuf, Vec<String>)>),
     ToggleTrashDupes,
     ToggleFolder(PathBuf),
     File(Transfer),

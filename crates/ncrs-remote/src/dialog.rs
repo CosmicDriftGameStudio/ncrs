@@ -88,6 +88,9 @@ pub struct ConnectDialog {
     /// The App Store build: no ssh agent, so the key file has to be chosen.
     sandboxed: bool,
     home: Option<PathBuf>,
+    connecting: Option<iced::task::Handle>,
+    /// The text of `~/.ssh/config`, read once when the dialog opened.
+    ssh_config: Option<String>,
 }
 
 impl fmt::Debug for ConnectDialog {
@@ -130,6 +133,8 @@ impl ConnectDialog {
             login_user_known: false,
             sandboxed: false,
             home: None,
+            connecting: None,
+            ssh_config: None,
         }
     }
 
@@ -163,6 +168,12 @@ impl ConnectDialog {
     }
 
     /// A new attempt id, so an answer to an earlier one is dropped.
+    /// Holds the running connection: dropping the dialog (Cancel) stops it, so
+    /// a password that was typed is not sent after the user backed out.
+    pub fn hold_connecting(&mut self, handle: iced::task::Handle) {
+        self.connecting = Some(handle);
+    }
+
     pub fn next_attempt(&mut self, id: u64) {
         self.attempt = id;
     }
@@ -190,6 +201,14 @@ impl ConnectDialog {
     pub fn set_ssh(&mut self, hint: SshHint, login_user_known: bool) {
         self.ssh_hint = hint;
         self.login_user_known = login_user_known;
+    }
+
+    pub fn set_ssh_config(&mut self, text: Option<String>) {
+        self.ssh_config = text;
+    }
+
+    pub fn ssh_config(&self) -> Option<&str> {
+        self.ssh_config.as_deref()
     }
 
     pub const fn ssh_hint(&self) -> &SshHint {
@@ -336,6 +355,12 @@ impl ConnectDialog {
         if !self.is_locked() {
             self.save = !self.save;
         }
+    }
+
+    /// Ticks "remember": a password that was dropped after a refusal is kept
+    /// again when the user types the right one.
+    pub fn remember_again(&mut self) {
+        self.remember = true;
     }
 
     pub fn toggle_remember(&mut self) {

@@ -47,7 +47,7 @@ use crate::hermes_overview::{ModuleState, Protection};
 use crate::hermes_status::HermesStatus;
 use crate::i18n::{Language, Msg};
 use crate::input_state::InputState;
-use crate::jobs::{self, JobEvent};
+use crate::jobs;
 use crate::key_bindings::KeyBindings;
 use crate::keymap::{self, KeyAction, KeyScope, Keymap};
 use crate::keymap::{KeyActionMessage as _, KeymapMessages as _};
@@ -78,8 +78,6 @@ use crate::review_work::ReviewItem;
 use crate::saved_queries::Draft;
 #[cfg(test)]
 use crate::saved_queries::SavedQueries;
-#[cfg(test)]
-use crate::search_filters::SearchFilters;
 #[cfg(test)]
 use crate::search_view::SearchField;
 use crate::search_view::{stays_on_file_system, SearchView};
@@ -149,6 +147,8 @@ use ncrs_palette::command_list::{
 };
 #[cfg(test)]
 use ncrs_pipeline::Load;
+#[cfg(test)]
+use ncrs_search::filters::SearchFilters;
 
 use ncrs_monitor::MonitorMessage;
 use ncrs_palette::keys::{CommandLineBound, CommandLineKey};
@@ -197,7 +197,7 @@ mod viewer;
 use self::columns::column_settings_of;
 use self::dialogs::*;
 pub use self::keys::*;
-use self::ops::*;
+
 use self::panels::*;
 use self::remote::*;
 use self::session::*;
@@ -205,7 +205,9 @@ use self::settings::*;
 pub use self::startup::*;
 #[cfg(test)]
 use self::subscription::receiver_stream;
+#[cfg(test)]
 use self::update::archive_refusal;
+use self::update::refusal_for;
 #[cfg(test)]
 use self::update::remote_refusal;
 
@@ -264,8 +266,6 @@ pub struct App {
     keymap: Arc<Keymap>,
     /// Long-running file operations, one at a time.
     jobs: jobs::Queue,
-    /// Folder sizes computed this session, by directory and then entry name.
-    /// Kept in memory only, so coming back to a folder shows them again.
     /// The question whether to remove the Hermes index and begin again.
     start_over_dialog: bool,
     /// The button the open dialog has focused, counted from the left.
@@ -318,7 +318,6 @@ pub struct App {
     /// subscription puts its cell here, and `update` keeps the value in it
     /// current after every message.
     key_state: OnceLock<Arc<KeyStateCell>>,
-    /// Folders the user bookmarked, in the order they were added.
     command_line: CommandLine,
     /// What a leading `~` in a typed path stands for.
     home: PathBuf,
@@ -376,6 +375,9 @@ pub struct App {
     /// The setting that switches Hermes on is being written; the chat counts
     /// Hermes as starting meanwhile.
     turning_hermes_on: bool,
+    /// A quit while the index protection changes or its recovery key is on
+    /// screen was held back once; a second quit ends the app.
+    protection_quit_warned: bool,
     /// Quick Open (Cmd/Ctrl+P), while its box is up.
     quick_open: Option<QuickOpen>,
     /// Counts the walks started, so the late batches of a closed one are dropped.
@@ -546,6 +548,10 @@ pub struct PromptKeyState {
     pub monitor_dialog: bool,
     /// Its context menu is up.
     pub monitor_menu: bool,
+    /// The drive list of the System page has the cursor.
+    pub monitor_drive_focused: bool,
+    /// The System page shows a drive list that Tab can reach.
+    pub monitor_drives_listed: bool,
     /// The viewer tab is up: its keys scroll and Escape closes it.
     pub viewer: bool,
     /// The viewer shows Markdown, so Tab switches rendered and source.
@@ -626,6 +632,8 @@ impl Default for PromptKeyState {
             monitor_filter: false,
             monitor_dialog: false,
             monitor_menu: false,
+            monitor_drive_focused: false,
+            monitor_drives_listed: false,
             viewer: false,
             viewer_markdown: false,
             notes: false,

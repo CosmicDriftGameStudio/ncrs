@@ -11,13 +11,6 @@
 //! Login is by password, then ssh-agent, then key files, and the host key
 //! is checked before anything is sent.
 
-// The layer is built up in steps; what the app does not call yet is not dead
-// for long.
-#![allow(
-    dead_code,
-    reason = "the app uses the SFTP layer from the next commits on"
-)]
-
 pub mod credentials;
 pub mod known_hosts;
 pub mod list;
@@ -44,7 +37,9 @@ pub const CHUNK: usize = 256 * 1024;
 /// How long the app waits for a server, by what it waits for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Timeouts {
-    /// TCP, key exchange and login together.
+    /// Each of the steps that only wait for the server: TCP with key exchange,
+    /// and the opening of the file channel. The login gets eight times as long,
+    /// since it may wait for a person.
     pub connect: Duration,
     /// Every single SFTP request.
     pub request: Duration,

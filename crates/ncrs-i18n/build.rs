@@ -2,7 +2,7 @@
 //!
 //! The JSON file is the source of truth: it holds the value, the stable key and
 //! the translator context together, so they cannot drift apart. Run
-//! `cargo build` after editing it; `cargo test -p ncrs-i18n dump -- --nocapture` prints the
+//! `cargo build` after editing it; `cargo test -p ncrs-i18n dump -- --ignored --nocapture` prints the
 //! same data for translators.
 
 // A build script must stop on bad input. A strings.json with a missing
@@ -14,11 +14,7 @@
     clippy::expect_used,
     clippy::panic,
     clippy::indexing_slicing,
-    clippy::str_to_string,
-    clippy::doc_markdown,
-    clippy::min_ident_chars,
-    clippy::single_char_lifetime_names,
-    clippy::std_instead_of_core
+    clippy::doc_markdown
 )]
 
 use std::collections::BTreeMap;
@@ -36,8 +32,7 @@ struct Entry {
     de: String,
 }
 
-/// Minimal reader for the fixed shape of `strings.json`. Written by hand so the
-/// build does not depend on `serde` before the config work lands (T10).
+/// Minimal reader for the fixed shape of `strings.json`, one key per line.
 fn parse(json: &str) -> Vec<Entry> {
     let mut entries = Vec::new();
     let mut current: BTreeMap<&str, String> = BTreeMap::new();

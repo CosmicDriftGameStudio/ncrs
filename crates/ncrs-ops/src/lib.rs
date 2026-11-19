@@ -51,7 +51,8 @@ pub use batch_rename::flow::{
 pub use batch_rename::state::BatchRenameMessage;
 pub use clipboard_flow::copy_files_to_clipboard;
 pub use clipboard_text::{
-    clipboard_text, clipboard_text_of_files, copied_notice, ClipboardKind, ClipboardText, PanelRows,
+    clipboard_text, clipboard_text_of_files, copied_notice, has_rows, ClipboardKind, ClipboardText,
+    PanelRows,
 };
 pub use ctx::{Ctx, FlowCtx};
 pub use delete_flow::{

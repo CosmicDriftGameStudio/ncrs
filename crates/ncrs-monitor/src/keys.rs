@@ -25,6 +25,10 @@ pub struct KeyFacts {
     pub context_menu_pressed: bool,
     /// The press is bound to something and is not a key a text field types.
     pub bound_untyped: bool,
+    /// The drive list has the cursor.
+    pub drive_focused: bool,
+    /// The page shows a drive list that Tab can reach.
+    pub drives_listed: bool,
 }
 
 impl KeyFacts {
@@ -35,6 +39,8 @@ impl KeyFacts {
             menu_open: state.menu.is_some(),
             context_menu_pressed,
             bound_untyped,
+            drive_focused: state.drive_focus.is_some(),
+            drives_listed: !state.drives_to_show().is_empty(),
         }
     }
 }
@@ -88,6 +94,22 @@ pub fn monitor_key(key: &Key, modifiers: Modifiers, facts: KeyFacts) -> Option<M
     }
     if facts.context_menu_pressed {
         return message(M::OpenMenuAtCursor);
+    }
+    if plain && !facts.filter_focused {
+        if facts.drive_focused {
+            let on_drives = match key.as_ref() {
+                Key::Named(Named::ArrowUp) => Some(M::DriveMove(-1)),
+                Key::Named(Named::ArrowDown) => Some(M::DriveMove(1)),
+                Key::Named(Named::Enter) => Some(M::DriveOpen),
+                Key::Named(Named::Tab) => Some(M::DriveFocus),
+                _ => None,
+            };
+            if on_drives.is_some() {
+                return on_drives.map(MonitorKey::Message);
+            }
+        } else if facts.drives_listed && named(Named::Tab) {
+            return message(M::DriveFocus);
+        }
     }
     if plain {
         let moved = match key.as_ref() {
@@ -147,6 +169,33 @@ mod tests {
             MonitorKey::Message(message) => Some(message),
             MonitorKey::Bound => None,
         }
+    }
+
+    #[test]
+    fn tab_moves_the_cursor_to_the_drives_and_enter_opens_one() {
+        let on_tasks = KeyFacts {
+            drives_listed: true,
+            ..KeyFacts::default()
+        };
+        let on_drives = KeyFacts {
+            drive_focused: true,
+            drives_listed: true,
+            ..KeyFacts::default()
+        };
+        let tab = Key::Named(Named::Tab);
+        let enter = Key::Named(Named::Enter);
+        assert!(matches!(
+            monitor_key(&tab, Modifiers::empty(), on_tasks),
+            Some(MonitorKey::Message(MonitorMessage::DriveFocus))
+        ));
+        assert!(matches!(
+            monitor_key(&enter, Modifiers::empty(), on_drives),
+            Some(MonitorKey::Message(MonitorMessage::DriveOpen))
+        ));
+        assert!(!matches!(
+            monitor_key(&tab, Modifiers::empty(), KeyFacts::default()),
+            Some(MonitorKey::Message(MonitorMessage::DriveFocus))
+        ));
     }
 
     #[test]

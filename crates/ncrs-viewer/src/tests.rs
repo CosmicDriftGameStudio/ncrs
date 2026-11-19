@@ -24,7 +24,10 @@ const CTX: Ctx = Ctx {
 fn opened(dir: &tempfile::TempDir, name: &str, text: &str) -> State {
     let path = dir.path().join(name);
     fs::write(&path, text).unwrap();
-    let mut state = State::default();
+    let mut state = State {
+        requested: Some(path.clone()),
+        ..State::default()
+    };
     let _ = update(&mut state, Message::Loaded(Box::new(load(path))), &CTX);
     state
 }
@@ -70,7 +73,10 @@ fn a_file_over_the_cap_asks_for_the_system_instead() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("big.md");
     fs::write(&path, vec![b'x'; MAX_BYTES as usize + 1]).unwrap();
-    let mut state = State::default();
+    let mut state = State {
+        requested: Some(path.clone()),
+        ..State::default()
+    };
     let (_, action) = update(
         &mut state,
         Message::Loaded(Box::new(load(path.clone()))),
@@ -91,8 +97,12 @@ fn a_file_over_the_cap_asks_for_the_system_instead() {
 #[test]
 fn a_missing_file_is_an_error() {
     let dir = tempfile::tempdir().unwrap();
-    let mut state = State::default();
-    let loaded = load(dir.path().join("gone.md"));
+    let missing = dir.path().join("gone.md");
+    let mut state = State {
+        requested: Some(missing.clone()),
+        ..State::default()
+    };
+    let loaded = load(missing);
     let (_, action) = update(&mut state, Message::Loaded(Box::new(loaded)), &CTX);
     assert!(matches!(action, Some(Action::Error(_))), "{action:?}");
     assert!(!state.is_open());
@@ -163,4 +173,28 @@ fn a_read_that_answers_after_a_newer_request_is_dropped() {
     let _ = update(&mut state, Message::Loaded(Box::new(load(second))), &CTX);
     let _ = update(&mut state, Message::Loaded(Box::new(load(first))), &CTX);
     assert_eq!(state.title(), Some("second.md"));
+}
+
+#[test]
+fn something_that_is_not_a_file_is_not_read() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut state = State {
+        requested: Some(dir.path().to_path_buf()),
+        ..State::default()
+    };
+    let loaded = load(dir.path().to_path_buf());
+    assert!(matches!(loaded, Loaded::NotRegular { .. }), "{loaded:?}");
+    let (_, action) = update(&mut state, Message::Loaded(Box::new(loaded)), &CTX);
+    assert!(matches!(action, Some(Action::Error(_))), "{action:?}");
+    assert!(!state.is_open());
+}
+
+#[test]
+fn a_read_that_answers_after_the_tab_was_closed_is_dropped() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut state = opened(&dir, "late.md", "late");
+    let path = dir.path().join("late.md");
+    state.close();
+    let _ = update(&mut state, Message::Loaded(Box::new(load(path))), &CTX);
+    assert!(!state.is_open());
 }

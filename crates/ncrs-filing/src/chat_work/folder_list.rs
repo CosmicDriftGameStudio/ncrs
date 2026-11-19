@@ -11,6 +11,9 @@ use ncrs_intake::PlanFile;
 /// File names shown per folder.
 const EXAMPLES: usize = 3;
 const EXAMPLE_CHARS: usize = 40;
+/// Folders the model is shown at most: the list is read again for every page,
+/// and an archive with thousands of folders would not fit the context.
+const MAX_FOLDERS: usize = 400;
 
 fn is_year_folder(segment: &str) -> bool {
     segment.len() == 4
@@ -31,6 +34,7 @@ impl FolderList {
     pub fn of(files: &[PlanFile]) -> Self {
         let mut names: BTreeMap<PathBuf, Vec<String>> = BTreeMap::new();
         let mut year_places: BTreeMap<PathBuf, BTreeMap<usize, usize>> = BTreeMap::new();
+        let mut weight: BTreeMap<PathBuf, usize> = BTreeMap::new();
         for file in files {
             let Some(parent) = file.relative_path.parent() else {
                 continue;
@@ -60,6 +64,7 @@ impl FolderList {
             for segment in &kept {
                 ancestor.push(segment);
                 names.entry(ancestor.clone()).or_default();
+                *weight.entry(ancestor.clone()).or_default() += 1;
             }
             if let (false, Some(raw_name)) =
                 (kept.as_os_str().is_empty(), file.relative_path.file_name())
@@ -69,6 +74,13 @@ impl FolderList {
                     names.entry(kept).or_default().push(name.into_owned());
                 }
             }
+        }
+        if names.len() > MAX_FOLDERS {
+            let mut by_use: Vec<&PathBuf> = names.keys().collect();
+            by_use.sort_by_key(|folder| (std::cmp::Reverse(weight.get(*folder)), *folder));
+            let kept: std::collections::BTreeSet<PathBuf> =
+                by_use.into_iter().take(MAX_FOLDERS).cloned().collect();
+            names.retain(|folder, _| kept.contains(folder));
         }
         let entries = names
             .into_iter()
@@ -154,5 +166,22 @@ mod tests {
             list.with_year(PathBuf::from("Post"), &dated(2020)),
             PathBuf::from("Post")
         );
+    }
+
+    #[test]
+    fn a_huge_archive_is_shown_with_its_fullest_folders() {
+        let mut files: Vec<PlanFile> = (0..MAX_FOLDERS + 50)
+            .map(|number| file(&format!("Folder{number:04}/a.pdf")))
+            .collect();
+        files.extend((0..5).map(|number| file(&format!("Folder0449/{number}.pdf"))));
+
+        let list = FolderList::of(&files);
+
+        assert_eq!(list.entries.len(), MAX_FOLDERS);
+        assert!(list.entries.iter().any(|(name, _)| name == "Folder0449"));
+        let names: Vec<&String> = list.entries.iter().map(|(name, _)| name).collect();
+        let mut sorted = names.clone();
+        sorted.sort();
+        assert_eq!(names, sorted);
     }
 }

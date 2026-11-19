@@ -2,7 +2,7 @@
 #
 # The permissive licenses require their text and copyright notice to travel
 # with a binary, so every release archive carries this file. Generated in CI
-# (see release.yml), not checked in: Cargo.lock moves with every Dependabot
+# (licenses job of ci.yml), not checked in: Cargo.lock moves with every Dependabot
 # bump and a committed copy would be stale on arrival.
 #
 # Run locally: cargo install cargo-about --locked --features cli

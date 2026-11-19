@@ -1,6 +1,7 @@
 //! Encrypted workspace index: a SQLCipher database whose key lives in the
 //! operating system's credential store.
 
+mod backup;
 mod condition_store;
 mod documents;
 mod error;
@@ -32,6 +33,7 @@ mod tags;
 #[cfg(test)]
 mod test_support;
 
+pub use backup::migration_backups;
 pub use documents::{SNIPPET_MARK_END, SNIPPET_MARK_START};
 pub use error::{IndexError, KeyStoreError, RecoveryKeyError};
 pub use hermes_column::{FileTags, FolderCounts, IncludeOutcome, PathState};
@@ -44,6 +46,7 @@ pub use key_store::{FileKeyStore, InMemoryKeyStore, KeyStore, KeyringKeyStore};
 pub use kinds::{
     CustomKind, KindCatalog, KindEntry, KindLanguage, KindSkip, Kinds, MAX_FREE_KIND_CHARS,
 };
+pub use model::{amount_digits, amount_text, MINOR_UNITS_PER_UNIT};
 pub use model::{iban_is_valid, is_iban_separator, is_tax_id_separator, tag_name};
 pub use model::{
     Amount, BatchId, Combinator, Condition, ConditionKind, ConflictReason, ContentHash, Currency,

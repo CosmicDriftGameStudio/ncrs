@@ -33,6 +33,8 @@ pub enum WorkOutcome {
     KeyApplied(Result<OpenOutcome, KeyError>),
     Encrypted(EncryptReport),
     StartedOver(StartOverReport),
+    /// The interrupted runs of a plain index were settled after the user accepted it.
+    Settled,
     /// The blocking thread did not finish (it panicked).
     Crashed(String),
 }

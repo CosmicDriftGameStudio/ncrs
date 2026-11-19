@@ -59,29 +59,24 @@ pub fn extract_amount(source: &str, text: &str) -> Option<Amount> {
     })
 }
 
-/// `dd.mm.yyyy`, `yyyy-mm-dd` or `dd/mm/yyyy`; `None` for anything else and
+/// `dd.mm.yyyy`, `yyyy-mm-dd` or a slash date (see `slash_month_and_day`); `None` for anything else and
 /// for a day that does not exist.
 pub fn parse_date(text: &str) -> Option<NaiveDate> {
     let value = text.trim();
-    let (separator, year_first) = if value.contains('.') {
-        ('.', false)
-    } else if value.contains('-') {
-        ('-', true)
-    } else if value.contains('/') {
-        ('/', false)
-    } else {
-        return None;
-    };
+    let separator = ['.', '-', '/'].into_iter().find(|&c| value.contains(c))?;
     let mut parts = value.split(separator);
     let (Some(first), Some(second), Some(third), None) =
         (parts.next(), parts.next(), parts.next(), parts.next())
     else {
         return None;
     };
-    let (year, month, day) = if year_first {
-        (first, second, third)
-    } else {
-        (third, second, first)
+    let (year, month, day) = match separator {
+        '-' => (first, second, third),
+        '/' => {
+            let (month, day) = slash_month_and_day(first, second)?;
+            (third, month, day)
+        }
+        _ => (third, second, first),
     };
     if year.len() != 4 {
         return None;
@@ -91,6 +86,20 @@ pub fn parse_date(text: &str) -> Option<NaiveDate> {
         ascii_number(month, 2)?,
         ascii_number(day, 2)?,
     )
+}
+
+/// A slash date reads day first when the first number cannot be a month and
+/// month first when the second cannot; when both readings are valid and
+/// differ, it is ambiguous and not read.
+fn slash_month_and_day<'a>(first: &'a str, second: &'a str) -> Option<(&'a str, &'a str)> {
+    let (a, b) = (ascii_number(first, 2)?, ascii_number(second, 2)?);
+    if a > 12 || a == b {
+        Some((second, first))
+    } else if b > 12 {
+        Some((first, second))
+    } else {
+        None
+    }
 }
 
 fn ascii_number(part: &str, max_digits: usize) -> Option<u32> {
@@ -164,21 +173,51 @@ fn strip_currency(value: &str) -> (String, Option<Currency>) {
 pub fn parse_amount(value: &str, fallback: Option<Currency>) -> Option<Amount> {
     let (number, written) = strip_currency(value);
     let currency = written.or(fallback)?;
-    let (whole, fraction) = split_number(&number)?;
+    let (negative, unsigned) = split_sign(&number);
+    let ungrouped = ungroup_apostrophes(unsigned)?;
+    let (whole, fraction) = split_number(&ungrouped)?;
     let fraction_minor = match fraction.len() {
         0 => 0,
         1 => ascii_number(fraction, 1)? * 10,
         _ => ascii_number(fraction, 2)?,
     };
-    let minor_units = whole
+    let magnitude = whole
         .parse::<i64>()
         .ok()?
         .checked_mul(100)?
         .checked_add(i64::from(fraction_minor))?;
+    let minor_units = if negative { -magnitude } else { magnitude };
     Some(Amount {
         minor_units,
         currency,
     })
+}
+
+const APOSTROPHES: [char; 2] = ['\'', '\u{2019}'];
+
+/// A leading `-`/`\u{2212}` or a trailing `-`/`CR` marks a credit.
+fn split_sign(number: &str) -> (bool, &str) {
+    if let Some(rest) = number.strip_prefix(['-', '\u{2212}']) {
+        return (true, rest);
+    }
+    for suffix in ["-", "CR", "cr"] {
+        if let Some(rest) = number.strip_suffix(suffix) {
+            return (true, rest);
+        }
+    }
+    (false, number)
+}
+
+/// Swiss grouping `1'234.56`: apostrophes must separate groups of three.
+fn ungroup_apostrophes(number: &str) -> Option<String> {
+    if !number.contains(APOSTROPHES) {
+        return Some(number.to_owned());
+    }
+    let (integer, rest) = number.split_at(number.find(is_separator).unwrap_or(number.len()));
+    let mut groups = integer.split(APOSTROPHES);
+    let first = groups.next()?;
+    let well_formed = (1..=3).contains(&first.len()) && groups.all(|group| group.len() == 3);
+    well_formed.then(|| format!("{}{rest}", integer.replace(APOSTROPHES, "")))
 }
 
 fn is_separator(character: char) -> bool {
@@ -199,7 +238,9 @@ fn split_number(number: &str) -> Option<(String, &str)> {
         (Some(only), None) | (None, Some(only)) => {
             let repeated = number.chars().filter(|&c| is_separator(c)).count() > 1;
             let after = number.get(only + 1..)?;
-            (!repeated && after.len() != 3).then_some(only)
+            // "0,500" is a fraction, never "0 thousand 500".
+            let leading_zero = only == 1 && number.starts_with('0');
+            (!repeated && (after.len() != 3 || leading_zero)).then_some(only)
         }
         (None, None) => None,
     };
@@ -245,7 +286,10 @@ mod tests {
         let expected = NaiveDate::from_ymd_opt(2026, 3, 1);
         assert_eq!(parse_date("01.03.2026"), expected);
         assert_eq!(parse_date("2026-03-01"), expected);
-        assert_eq!(parse_date("1/3/2026"), expected);
+        assert_eq!(
+            parse_date("13/3/2026"),
+            NaiveDate::from_ymd_opt(2026, 3, 13)
+        );
         assert_eq!(parse_date(" 1.3.2026 "), expected);
     }
 
@@ -259,6 +303,8 @@ mod tests {
             "",
             "a.b.cccc",
             "01.03.20260",
+            "1/3/2026",
+            "13/13/2026",
         ] {
             assert_eq!(parse_date(value), None, "{value:?}");
         }
@@ -278,6 +324,41 @@ mod tests {
             amount("1.234.567 €", None),
             Some((123_456_700, "EUR".to_owned()))
         );
+    }
+
+    #[test]
+    fn slash_dates_follow_the_number_that_cannot_be_a_month() {
+        assert_eq!(
+            parse_date("25/12/2024"),
+            NaiveDate::from_ymd_opt(2024, 12, 25)
+        );
+        assert_eq!(
+            parse_date("12/25/2024"),
+            NaiveDate::from_ymd_opt(2024, 12, 25)
+        );
+        assert_eq!(parse_date("5/5/2024"), NaiveDate::from_ymd_opt(2024, 5, 5));
+        assert_eq!(parse_date("11/05/2024"), None);
+    }
+
+    #[test]
+    fn credits_and_swiss_grouping_are_read() {
+        assert_eq!(amount("-12,50 €", None), Some((-1250, "EUR".to_owned())));
+        assert_eq!(
+            amount("\u{2212}12,50 €", None),
+            Some((-1250, "EUR".to_owned()))
+        );
+        assert_eq!(amount("12,50- €", None), Some((-1250, "EUR".to_owned())));
+        assert_eq!(
+            amount("12,50 CR EUR", None),
+            Some((-1250, "EUR".to_owned()))
+        );
+        assert_eq!(
+            amount("CHF 1'234.56", None),
+            Some((123_456, "CHF".to_owned()))
+        );
+        assert_eq!(amount("1'23.56 CHF", None), None);
+        assert_eq!(amount("0,500 €", None), None);
+        assert_eq!(amount("0,50 €", None), Some((50, "EUR".to_owned())));
     }
 
     #[test]

@@ -27,6 +27,8 @@ impl FilingModule {
             pipeline_text_chain: Mutex::new(None),
             ai: AiWiring::Off,
             own: OwnDetails::default(),
+            settle_problem: SettleNote::default(),
+            settling: false,
         }
     }
 

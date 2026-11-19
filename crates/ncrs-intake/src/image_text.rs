@@ -52,7 +52,6 @@ fn decode_page(bytes: Vec<u8>) -> Option<PageImage> {
     if longer_side > cap {
         let scaled = |side: u32| {
             // Rounded and at most the cap, so the value fits a u32.
-            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
             let pixels = (f64::from(side) * cap / longer_side).round() as u32;
             pixels.max(1)
         };

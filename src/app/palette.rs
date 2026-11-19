@@ -1,14 +1,13 @@
 use crate::app::*;
 
-fn quick_open_batch(generation: u64, events: Vec<fs::search::SearchEvent>) -> Message {
+fn quick_open_batch(generation: u64, events: Vec<ncrs_search::engine::SearchEvent>) -> Message {
     let walk_events = events
         .into_iter()
         .filter_map(|event| match event {
-            fs::search::SearchEvent::File { path, .. } => Some(WalkEvent::File { path }),
-            fs::search::SearchEvent::Folder { .. } | fs::search::SearchEvent::Progress { .. } => {
-                None
-            }
-            fs::search::SearchEvent::Finished(totals) => Some(WalkEvent::Finished {
+            ncrs_search::engine::SearchEvent::File { path, .. } => Some(WalkEvent::File { path }),
+            ncrs_search::engine::SearchEvent::Folder { .. }
+            | ncrs_search::engine::SearchEvent::Progress { .. } => None,
+            ncrs_search::engine::SearchEvent::Finished(totals) => Some(WalkEvent::Finished {
                 truncated: totals.truncated,
             }),
         })
@@ -30,11 +29,11 @@ impl App {
         if self.blocking_overlay_is_open() || self.page_dialog_is_open() {
             return Task::none();
         }
-        self.panels.context_menu = None;
+        self.close_context_menu();
         let root = self.active_panel().path.clone();
         self.quick_open_walk_generation = self.quick_open_walk_generation.wrapping_add(1);
         let generation = self.quick_open_walk_generation;
-        let walk = fs::search::all_files(
+        let walk = ncrs_search::engine::all_files(
             root.clone(),
             stays_on_file_system(&root),
             QUICK_OPEN_FILE_LIMIT,
@@ -82,7 +81,7 @@ impl App {
         ncrs_config::commands::all()
             .map(|command| command.action)
             .filter(|action| {
-                archive_refusal(panel, &action.message()).is_some()
+                refusal_for(panel, &action.message()).is_some()
                     || (*action == KeyAction::UndoRename && !self.ops.can_undo_rename())
             })
             .collect()
@@ -136,7 +135,7 @@ impl App {
         match action {
             None => task,
             Some(CommandPaletteAction::CloseContextMenu) => {
-                self.panels.context_menu = None;
+                self.close_context_menu();
                 task
             }
             // The closing task comes first and is chained, not batched: a

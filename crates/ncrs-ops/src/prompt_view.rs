@@ -9,13 +9,12 @@ use iced::{alignment, Element, Size};
 use ncrs_fs::archive::ArchiveFormat;
 use ncrs_i18n::{fill_template, Language, Msg};
 use ncrs_ui_kit::frame::{DialogSize, Frame, KeyHints};
-use ncrs_ui_kit::hermes_kit;
 use ncrs_ui_kit::kit::{self, Check, Tone};
 use ncrs_ui_kit::numbered_hint::numbered_hint;
 use ncrs_ui_kit::palette::Palette;
 use ncrs_ui_kit::theme::spacing;
 
-use crate::prompt::{Prompt, PromptKind};
+use crate::prompt::{Prompt, PromptError, PromptKind, PromptProblem};
 
 /// The text field carries an id, because `TextInput::id` exists and
 /// `iced_selector` can find it. The buttons do not — see the note where they
@@ -129,11 +128,9 @@ pub fn view<'a, Message: Clone + 'a>(
     }
 
     if let Some(error) = state.error() {
-        // A validation reason is a message id, not a sentence: the dialog layer
-        // asked the user for something impossible and gets to word it.
-        let message: &str = match validation_message(error) {
-            Some(mid) => lang.text(mid),
-            None => error,
+        let message: &str = match error {
+            PromptError::Problem(problem) => lang.text(problem_message(*problem)),
+            PromptError::Failed(text) => text,
         };
         body = body.push(kit::error_line(message, palette));
     }
@@ -191,7 +188,7 @@ fn keep_folders_row<'a, Message: Clone + 'a>(
 ) -> Element<'a, Message> {
     let state = if keep { Check::On } else { Check::Off };
     row![
-        hermes_kit::checkbox(
+        kit::labelled_checkbox(
             state,
             Some(on_toggle),
             Some(lang.text(Msg::DialogPackKeepFolders)),
@@ -204,17 +201,19 @@ fn keep_folders_row<'a, Message: Clone + 'a>(
     .into()
 }
 
-/// Maps a validation reason to its message, or `None` for a message the fs
-/// layer already wrote in full.
-fn validation_message(reason: &str) -> Option<Msg> {
-    match reason {
-        "empty_name" => Some(Msg::ErrorEmptyName),
-        "reserved_name" => Some(Msg::ErrorReservedName),
-        "separator_not_allowed" => Some(Msg::ErrorSeparatorNotAllowed),
-        "archive_extension" => Some(Msg::ErrorPackExtension),
-        "archive_exists" => Some(Msg::ErrorPackExists),
-        "archive_folder_missing" => Some(Msg::ErrorPackFolderMissing),
-        "archive_inside_source" => Some(Msg::ErrorPackInsideSource),
-        _ => None,
+fn problem_message(problem: PromptProblem) -> Msg {
+    match problem {
+        PromptProblem::EmptyName => Msg::ErrorEmptyName,
+        PromptProblem::ReservedName => Msg::ErrorReservedName,
+        PromptProblem::SeparatorNotAllowed => Msg::ErrorSeparatorNotAllowed,
+        PromptProblem::CharacterNotAllowed => Msg::ErrorNameCharacter,
+        PromptProblem::ControlNotAllowed => Msg::ErrorRenameControl,
+        PromptProblem::TrailingNotAllowed => Msg::ErrorRenameTrailing,
+        PromptProblem::NameTooLong => Msg::ErrorRenameTooLong,
+        PromptProblem::DeviceName => Msg::ErrorRenameDevice,
+        PromptProblem::ArchiveExtension => Msg::ErrorPackExtension,
+        PromptProblem::ArchiveExists => Msg::ErrorPackExists,
+        PromptProblem::ArchiveFolderMissing => Msg::ErrorPackFolderMissing,
+        PromptProblem::ArchiveInsideSource => Msg::ErrorPackInsideSource,
     }
 }

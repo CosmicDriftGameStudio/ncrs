@@ -8,6 +8,7 @@ pub mod keys;
 pub mod left;
 pub mod message;
 pub mod right;
+pub mod scroll;
 pub mod state;
 pub mod texts;
 pub mod tree;

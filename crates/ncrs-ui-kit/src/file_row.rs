@@ -2,7 +2,7 @@
 //! in a panel, the Hermes cell. Also the rows of a hit list.
 use std::path::Path;
 
-use iced::widget::{button, column, container, mouse_area, row, text, tooltip, Row, Space};
+use iced::widget::{button, column, container, mouse_area, row, text, Row, Space};
 use iced::{alignment, Element, Font, Length};
 use ncrs_core::{Column, FileEntry, Selection};
 use ncrs_i18n::{Language, Msg};
@@ -209,7 +209,7 @@ pub fn file_row<'a, M: Clone + 'a>(
         ),
         _ => name,
     };
-    let note_color = if highlighted { color } else { palette.accent };
+    let note_color = if highlighted { color } else { palette.dim_text };
     let name_cell = row![cell(shown_name)]
         .extend(has_note.then(|| note_marker(note_color, font_size::FILE)))
         .extend(hermes.as_ref().and_then(HermesCell::role_tag))
@@ -312,7 +312,7 @@ pub fn cell_text(
     }
     match column {
         Column::Icon | Column::Name => String::new(),
-        Column::Size => format::entry_size_in(entry, layout.size_format),
+        Column::Size => format::entry_size_in(entry, layout.size_format, layout.lang),
         Column::Modified => date(entry.modified),
         Column::Created => date(entry.details.created),
         Column::Accessed => date(entry.details.accessed),
@@ -629,30 +629,24 @@ impl<'a, M: 'a> HermesCell<'a, M> {
 /// managers do. A link is checked first: a link to a folder is a folder too,
 /// and would otherwise look like a real one.
 fn display_name(entry: &FileEntry) -> String {
-    let name = entry.name.to_string_lossy();
+    let name = format::shown_name(&entry.name.to_string_lossy());
     if entry.is_symlink {
         format!("~{name}")
     } else if entry.is_dir && !entry.is_parent {
         format!("/{name}")
     } else {
-        name.into_owned()
+        name
     }
 }
 
 /// `content` with `label` in a small box on hover.
 fn hint<'a, M: 'a>(content: Element<'a, M>, label: String, palette: &Palette) -> Element<'a, M> {
-    tooltip(
+    crate::kit::tooltip(
         content,
-        container(
-            text(label)
-                .size(font_size::SMALL)
-                .wrapping(text::Wrapping::None),
-        )
-        .padding([2.0, 6.0])
-        .style(theme::dialog(palette)),
-        tooltip::Position::Top,
+        label,
+        iced::widget::tooltip::Position::Top,
+        palette,
     )
-    .into()
 }
 
 #[cfg(test)]

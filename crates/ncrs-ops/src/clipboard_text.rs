@@ -90,6 +90,16 @@ pub fn clipboard_text(panel: PanelRows<'_>, kind: ClipboardKind) -> Option<Clipb
     })
 }
 
+/// Whether `clipboard_text` has a row to copy as a path or a name: a tagged
+/// row, else the cursor row. Cheaper than building the text.
+pub fn has_rows(panel: PanelRows<'_>) -> bool {
+    if panel.selection.any_tagged() {
+        !panel.selection.ordered(panel.entries).is_empty()
+    } else {
+        panel.cursor.is_some()
+    }
+}
+
 /// The status line after `count` paths or names went on the clipboard.
 pub fn copied_notice(lang: Language, kind: ClipboardKind, count: usize) -> String {
     let (one, many) = match kind {

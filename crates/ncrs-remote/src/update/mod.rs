@@ -13,7 +13,7 @@ use crate::dialog::{ConnectDialog, SshHint};
 use crate::message::{ConnectField, Message};
 use crate::state::Remote;
 use crate::view::field_id;
-use ncrs_fs::remote::ssh_config::read_settings;
+use ncrs_fs::remote::ssh_config::{read_config_text, settings_for};
 use ncrs_fs::remote::RemoteUrl;
 use ncrs_i18n::{fill_template, Msg};
 
@@ -72,6 +72,17 @@ pub fn update(remote: &mut Remote, message: Message, ctx: &Ctx<'_>) -> Outcome {
         Message::ToggleRemember => {
             if let Some(dialog) = remote.dialog.as_mut() {
                 dialog.toggle_remember();
+            }
+            Task::none()
+        }
+        Message::SshConfigRead { attempt, text } => {
+            if let Some(dialog) = remote
+                .dialog
+                .as_mut()
+                .filter(|dialog| dialog.attempt() == attempt)
+            {
+                dialog.set_ssh_config(text);
+                refresh_ssh(dialog, ctx);
             }
             Task::none()
         }
@@ -166,25 +177,40 @@ pub fn open_connect_dialog_for(remote: &mut Remote, ctx: &Ctx<'_>, url: &RemoteU
     }
     let attempt = remote.next_attempt();
     let mut dialog = ConnectDialog::for_address(attempt, url);
-    prepare_dialog(&mut dialog, ctx);
+    let reading = prepare_dialog(&mut dialog, ctx);
     remote.dialog = Some(dialog);
-    (operation::focus(field_id(ConnectField::User)), Vec::new())
+    (
+        Task::batch([reading, operation::focus(field_id(ConnectField::User))]),
+        Vec::new(),
+    )
 }
 
 /// Tells a new dialog what the machine provides, which it shows and which
-/// decides whether a user must be typed.
-fn prepare_dialog(dialog: &mut ConnectDialog, ctx: &Ctx<'_>) {
+/// decides whether a user must be typed. The task reads `~/.ssh/config` off the
+/// UI thread; the typed host is matched against its text in memory.
+fn prepare_dialog(dialog: &mut ConnectDialog, ctx: &Ctx<'_>) -> Task<Message> {
     dialog.set_surroundings(ctx.sandboxed, ctx.login_env.home.clone());
     refresh_ssh(dialog, ctx);
+    let attempt = dialog.attempt();
+    let home = ctx.login_env.home.clone();
+    Task::perform(
+        async move {
+            tokio::task::spawn_blocking(move || read_config_text(home.as_deref()))
+                .await
+                .unwrap_or_default()
+        },
+        move |text| Message::SshConfigRead { attempt, text },
+    )
 }
 
-/// Reads `~/.ssh/config` for the typed host.
+/// Matches the typed host against the config text the dialog holds.
 fn refresh_ssh(dialog: &mut ConnectDialog, ctx: &Ctx<'_>) {
     let alias = dialog.value(ConnectField::Host).trim().to_owned();
-    let settings = if alias.is_empty() {
-        Default::default()
-    } else {
-        read_settings(ctx.login_env.home.as_deref(), &alias)
+    let settings = match dialog.ssh_config() {
+        Some(text) if !alias.is_empty() => {
+            settings_for(text, &alias, ctx.login_env.home.as_deref())
+        }
+        _ => Default::default(),
     };
     let login_user_known = settings.user.is_some() || ctx.login_env.os_user.is_some();
     dialog.set_ssh(
@@ -208,9 +234,9 @@ fn open_connect_dialog(
     actions.push(Action::CloseContextMenu);
     let attempt = remote.next_attempt();
     let mut dialog = ConnectDialog::new(attempt);
-    prepare_dialog(&mut dialog, ctx);
+    let reading = prepare_dialog(&mut dialog, ctx);
     remote.dialog = Some(dialog);
-    operation::focus(field_id(ConnectField::Host))
+    Task::batch([reading, operation::focus(field_id(ConnectField::Host))])
 }
 
 #[cfg(test)]

@@ -107,7 +107,9 @@ impl MenuFacts {
             };
         }
         let panel = panels.active_panel();
-        if panel.archive.is_some() && !action.allowed_in_archive() {
+        if (panel.archive.is_some() && !action.allowed_in_archive())
+            || (panel.remote().is_some() && !action.allowed_on_server())
+        {
             return false;
         }
         let cursor_row = panel.selected_entry();
@@ -126,13 +128,8 @@ impl MenuFacts {
             | ContextAction::DeletePermanently
             | ContextAction::Permissions => self.has_sources,
             ContextAction::ExtractHere => {
-                let acts_on: Vec<_> = if panel.selection.any_tagged() {
-                    panel.selection.ordered(&panel.entries)
-                } else {
-                    cursor_row.into_iter().collect()
-                };
                 !panel.is_virtual()
-                    && acts_on.iter().any(|entry| {
+                    && panel.action_entries().iter().any(|entry| {
                         !entry.is_dir && !entry.is_parent && is_archive_name(&entry.name)
                     })
             }
@@ -227,7 +224,12 @@ impl Panels {
         window: Size,
         facts: &MenuFacts,
     ) {
-        let hermes_enabled = |action| facts.hermes.action_enabled(action);
+        let panel = self.panel(side);
+        let hermes_enabled = |action: HermesAction| {
+            let in_archive = panel.archive.is_some() && !action.allowed_in_archive();
+            let on_server = panel.remote().is_some() && !action.allowed_on_server();
+            !in_archive && !on_server && facts.hermes.action_enabled(action)
+        };
         let hermes = facts.hermes.ready.then(|| HermesMenu {
             excluded: facts.hermes.cursor.is_some_and(|cursor| cursor.excluded),
             is_enabled: &hermes_enabled,

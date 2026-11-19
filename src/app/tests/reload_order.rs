@@ -209,7 +209,10 @@ async fn an_existing_name_is_refused_and_nothing_is_opened() {
         .expect("the prompt stays for a retry");
     assert!(!prompt.busy());
     assert_eq!(prompt.name(), "note.txt");
-    assert!(prompt.error().is_some_and(|text| text.contains("note.txt")));
+    assert!(prompt.error().is_some_and(|error| matches!(
+        error,
+        ncrs_ops::prompt::PromptError::Failed(text) if text.contains("note.txt")
+    )));
     assert_eq!(std::fs::read(base.join("note.txt")).unwrap(), b"keep me");
     assert!(launcher.0.lock().unwrap().is_empty());
 }

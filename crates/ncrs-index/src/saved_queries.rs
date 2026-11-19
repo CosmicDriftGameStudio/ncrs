@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -233,12 +233,41 @@ impl Index {
         let rows = statement
             .query_map(params_from_iter(values), DocumentRow::read)?
             .collect::<Result<Vec<_>, _>>()?;
-        let mut documents = Vec::new();
-        for row in rows {
-            let tags = self.document_tags(row.id())?;
-            documents.push(row.into_document(tags)?);
+        let mut tags_by_document = self.own_tags_of(rows.iter().map(DocumentRow::id))?;
+        rows.into_iter()
+            .map(|row| {
+                let tags = tags_by_document.remove(&row.id()).unwrap_or_default();
+                row.into_document(tags)
+            })
+            .collect()
+    }
+
+    /// The tags the user set, for many documents in a few statements instead of
+    /// one per document.
+    fn own_tags_of(
+        &self,
+        ids: impl Iterator<Item = i64>,
+    ) -> Result<HashMap<i64, BTreeSet<String>>, IndexError> {
+        const IDS_PER_STATEMENT: usize = 500;
+        let ids: Vec<i64> = ids.collect();
+        let mut by_document: HashMap<i64, BTreeSet<String>> = HashMap::new();
+        for chunk in ids.chunks(IDS_PER_STATEMENT) {
+            let marks = vec!["?"; chunk.len()].join(",");
+            let mut statement = self.connection().prepare_cached(&format!(
+                "SELECT dt.document_id, t.name FROM document_tag dt
+                 JOIN tag t ON t.id = dt.tag_id
+                 WHERE dt.automatic = 0 AND dt.document_id IN ({marks})"
+            ))?;
+            let rows = statement
+                .query_map(params_from_iter(chunk), |row| {
+                    Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            for (id, tag) in rows {
+                by_document.entry(id).or_default().insert(tag);
+            }
         }
-        Ok(documents)
+        Ok(by_document)
     }
 
     /// How many documents [`Self::run_query`] would return, counted by the

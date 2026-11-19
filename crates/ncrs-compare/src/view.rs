@@ -174,7 +174,7 @@ fn list_rows<'a>(
             let size = if shown.is_dir {
                 String::new()
             } else {
-                format::size(shown.size)
+                format::size_shown(shown.size, lang)
             };
             let name_color = if shown.is_dir {
                 palette.directory
@@ -368,7 +368,7 @@ pub fn bar<'a>(
 ) -> Option<Element<'a, Message>> {
     let run = compare.run.as_ref()?;
     let figure = |count: usize, words: Msg, mark: CompareMark| Tally {
-        text: format!("{count} {}", lang.text(words)),
+        text: fill_template(lang.text(words), &[("{count}", &count.to_string())]),
         color: mark_color(palette, mark),
     };
     let (tallies, left_copies, right_copies) = match run.result.as_ref() {

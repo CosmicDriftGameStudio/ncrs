@@ -17,4 +17,5 @@ pub struct ViewCtx<'a> {
     pub lang: Language,
     pub palette: &'a Palette,
     pub home: &'a Path,
+    pub date_format: ncrs_ui_kit::format::DateFormat,
 }

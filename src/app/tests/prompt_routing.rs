@@ -1,5 +1,6 @@
 use crate::app::*;
 use iced::keyboard::key::Named;
+use ncrs_ops::prompt::{PromptError, PromptProblem};
 
 fn app() -> App {
     App::with_environment(Environment::isolated()).0
@@ -187,7 +188,7 @@ fn typing_and_backspace_edit_the_name() {
 #[test]
 fn typing_clears_a_validation_error() {
     let mut prompt = Prompt::create_dir(PathBuf::from("/tmp"));
-    prompt.set_validation_error("empty_name");
+    prompt.set_validation_error(PromptProblem::EmptyName);
     assert!(prompt.error().is_some());
 
     prompt.set_name("x".into());
@@ -289,7 +290,10 @@ fn submitting_an_empty_name_reports_it_without_closing() {
         "the prompt closed on an invalid name"
     );
     assert!(!app.ops.prompt.as_ref().unwrap().busy());
-    assert_eq!(app.ops.prompt.as_ref().unwrap().error(), Some("empty_name"));
+    assert_eq!(
+        app.ops.prompt.as_ref().unwrap().error(),
+        Some(&PromptError::Problem(PromptProblem::EmptyName))
+    );
 }
 
 /// Escape closes the prompt and leaves no state behind.

@@ -184,6 +184,44 @@ fn the_config_of_0_7_0_still_loads() {
     assert_the_filing_settings(&config);
 }
 
+#[test]
+fn the_configs_of_the_1_x_releases_still_load() {
+    use iced::keyboard::key::Named;
+    let releases = [
+        (
+            "1.0.0",
+            Named::F12,
+            include_str!("../../../../../tests/fixtures/config/v1.0.0.toml"),
+        ),
+        (
+            "1.2.0",
+            Named::F11,
+            include_str!("../../../../../tests/fixtures/config/v1.2.0.toml"),
+        ),
+        (
+            "1.5.1",
+            Named::F11,
+            include_str!("../../../../../tests/fixtures/config/v1.5.1.toml"),
+        ),
+    ];
+    for (release, copy_key, text) in releases {
+        let config = load_fixture(text);
+        assert_eq!(config.lang, Some(Language::German), "{release}");
+        assert_eq!(
+            pressed(&config, copy_key),
+            Some(KeyAction::Copy),
+            "{release}"
+        );
+        assert_eq!(
+            pressed(&config, Named::F3),
+            Some(KeyAction::Edit),
+            "{release}"
+        );
+        assert_eq!(config.filing.locations.len(), 2, "{release}");
+        assert_eq!(config.servers.len(), 1, "{release}");
+    }
+}
+
 pub fn default_pattern_of(content: &str) -> Option<String> {
     load_filing(content, None).unwrap().filing.default_pattern
 }

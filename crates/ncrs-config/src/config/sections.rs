@@ -117,6 +117,90 @@ impl ServerEntry {
     }
 }
 
+/// `servers` with `server` saved: an entry that is there takes the start folder
+/// and key file that were given, otherwise one is added. A start folder that is
+/// not an absolute path on the server is not kept. Never holds a password.
+pub fn merge_saved_server(
+    servers: &[ServerEntry],
+    server: &ncrs_fs::remote::ServerId,
+    typed_path: Option<&str>,
+    key_file: Option<String>,
+) -> Vec<ServerEntry> {
+    let path = typed_path
+        .filter(|text| text.starts_with('/'))
+        .map(str::to_owned);
+    let mut merged = servers.to_vec();
+    match merged.iter_mut().find(|entry| entry.server_id() == *server) {
+        Some(existing) => {
+            if path.is_some() {
+                existing.path = path;
+            }
+            if key_file.is_some() {
+                existing.key_file = key_file;
+            }
+        }
+        None => merged.push(ServerEntry {
+            name: None,
+            host: server.host.clone(),
+            port: server.port,
+            user: server.user.clone(),
+            path,
+            key_file,
+        }),
+    }
+    merged
+}
+
+#[cfg(test)]
+mod merge_saved_server_tests {
+    use super::*;
+
+    fn entry(path: Option<&str>) -> ServerEntry {
+        ServerEntry {
+            name: Some("Office".to_owned()),
+            host: "files.example".to_owned(),
+            port: 22,
+            user: "anna".to_owned(),
+            path: path.map(str::to_owned),
+            key_file: None,
+        }
+    }
+
+    #[test]
+    fn a_saved_server_keeps_its_name_and_takes_the_new_folder() {
+        let existing = entry(Some("/old"));
+        let server = existing.server_id();
+        let merged = merge_saved_server(&[existing], &server, Some("/new"), None);
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].name.as_deref(), Some("Office"));
+        assert_eq!(merged[0].path.as_deref(), Some("/new"));
+    }
+
+    #[test]
+    fn a_relative_folder_leaves_the_saved_one_alone() {
+        let existing = entry(Some("/old"));
+        let server = existing.server_id();
+        let merged = merge_saved_server(&[existing], &server, Some("docs"), None);
+        assert_eq!(merged[0].path.as_deref(), Some("/old"));
+    }
+
+    #[test]
+    fn an_unknown_server_is_added_with_the_key_file() {
+        let other = entry(None);
+        let server = ncrs_fs::remote::ServerId::new("bob", "other.example", 2222);
+        let merged = merge_saved_server(
+            &[other],
+            &server,
+            Some("/srv"),
+            Some("~/.ssh/id".to_owned()),
+        );
+        assert_eq!(merged.len(), 2);
+        assert_eq!(merged[1].host, "other.example");
+        assert_eq!(merged[1].port, 2222);
+        assert_eq!(merged[1].key_file.as_deref(), Some("~/.ssh/id"));
+    }
+}
+
 /// The `[modules]` table: one sub-table per module.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]

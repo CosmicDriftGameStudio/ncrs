@@ -96,6 +96,7 @@ impl FilingModule {
         Some(
             ReviewAccess::new(Arc::clone(&self.index), root)
                 .with_location_roots(self.location_roots())
+                .with_copy_roots(self.copy_roots())
                 .with_kind_language(self.own.kind_language)
                 .with_own(self.own.clone()),
         )
@@ -132,14 +133,18 @@ impl FilingModule {
             .collect()
     }
 
-    /// The roots of the read folders whose files are copied, not moved.
-    fn copy_roots(&self) -> Vec<PathBuf> {
+    /// The roots of the read folders whose files are copied, not moved. Every
+    /// configured one counts, whatever became of the folder since: one that
+    /// cannot be reached or overlaps another is still not to be emptied.
+    pub(in crate::filing) fn copy_roots(&self) -> Vec<PathBuf> {
         self.locations
             .iter()
             .filter(|entry| entry.configured.transfer == LocationTransfer::Copy)
-            .filter_map(|entry| match &entry.status {
-                LocationStatus::Ready(location) => Some(location.path.clone()),
-                LocationStatus::NotReachable { .. } | LocationStatus::Overlaps { .. } => None,
+            .map(|entry| match &entry.status {
+                LocationStatus::Ready(location) => location.path.clone(),
+                LocationStatus::NotReachable { .. } | LocationStatus::Overlaps { .. } => {
+                    entry.configured.path.clone()
+                }
             })
             .collect()
     }

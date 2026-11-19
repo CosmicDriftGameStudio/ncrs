@@ -139,6 +139,11 @@ fn rule_row<'a>(
 }
 
 fn problem_text(detail: &str, lang: Language) -> String {
+    let detail = if detail == ncrs_core::INDEX_NOT_OPEN {
+        lang.text(Msg::IndexNotOpen)
+    } else {
+        detail
+    };
     fill_template(lang.text(Msg::RulesProblemFailed), &[("{detail}", detail)])
 }
 
@@ -273,10 +278,7 @@ fn form_rows<'a>(form: &RuleForm, lang: Language, palette: &Palette) -> Vec<Elem
     };
     let mut rows: Vec<Element<'a, Message>> = Vec::new();
     if let Some(detail) = &form.failure {
-        rows.push(page_kit::error_line(
-            fill_template(lang.text(Msg::RulesProblemFailed), &[("{detail}", detail)]),
-            palette,
-        ));
+        rows.push(page_kit::error_line(problem_text(detail, lang), palette));
     }
     rows.push(page_kit::form_row(
         lang.text(Msg::RulesFormName),

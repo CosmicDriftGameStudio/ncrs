@@ -343,6 +343,12 @@
       "de": "{name} konnte nicht erstellt werden: {reason}"
     },
     {
+      "key": "error.mkdir_name_not_allowed",
+      "context": "Shown when the name the user typed for a new folder or file is refused before anything is created: it contains control or direction characters, or it is a name the system treats as a device. Takes the name.",
+      "en": "“{name}” is not an allowed name",
+      "de": "„{name}“ ist als Name nicht erlaubt"
+    },
+    {
       "key": "error.mkdir_taken",
       "context": "Shown when a directory with the name the user typed already exists. Takes the name. Do not suggest a different name — just say it is taken.",
       "en": "“{name}” already exists",
@@ -476,9 +482,9 @@
     },
     {
       "key": "status.archive_read_only",
-      "context": "Status bar notice when the user tries to do something an archive panel still refuses (move, edit, create a folder or file, rename, search, Hermes actions). Copying into an archive (F5) and deleting from it (F8) work; everything else is read only. 'Sealed chest compartment' is a wink at the Futurama chest of the app's Hermes theme; the second sentence says what works instead.",
-      "en": "Sealed chest compartment: in an archive only copying in (F5) and deleting (F8) work, not moving or editing. Copy the files out first.",
-      "de": "Versiegeltes Brustfach: In einem Archiv gehen nur Hineinkopieren (F5) und Löschen (F8), kein Verschieben oder Bearbeiten. Erst die Dateien herauskopieren."
+      "context": "Status bar notice when the user tries to do something an archive panel still refuses (move, edit, create a folder or file, rename, search, Hermes actions). Copying into an archive and deleting from it work; everything else is read only. 'Sealed chest compartment' is a wink at the Futurama chest of the app's Hermes theme; the second sentence says what works instead.",
+      "en": "Sealed chest compartment: in an archive only copying in and deleting work, not moving or editing. Copy the files out first.",
+      "de": "Versiegeltes Brustfach: In einem Archiv gehen nur Hineinkopieren und Löschen, kein Verschieben oder Bearbeiten. Erst die Dateien herauskopieren."
     },
     {
       "key": "status.pack_unavailable",
@@ -1213,12 +1219,6 @@
       "de": "Suche läuft … {scanned} Dateien durchsucht"
     },
     {
-      "key": "search.no_results",
-      "context": "Summary line of the search view when a finished search found nothing.",
-      "en": "No results",
-      "de": "Keine Treffer"
-    },
-    {
       "key": "search.no_results_in_folder",
       "context": "Shown in the empty result area of the search view when a finished search found nothing. {path} is the folder that was searched. Tells the user what was left out: links (symbolic links) and other drives are not followed.",
       "en": "No results in {path} and its subfolders. Links and other drives are not searched.",
@@ -1561,6 +1561,12 @@
       "de": "Laufenden Auftrag abbrechen"
     },
     {
+      "key": "action.show_progress",
+      "context": "Entry of the command palette that runs the key action show_progress. The name of what the action does, as short as a menu entry; it brings back the progress window of a running copy or move that was sent to the background; the key bound to it is shown beside it.",
+      "en": "Show progress of running job",
+      "de": "Fortschritt des laufenden Auftrags zeigen"
+    },
+    {
       "key": "action.copy_path",
       "context": "Entry of the command palette that runs the key action copy_path. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
       "en": "Copy path to clipboard",
@@ -1771,14 +1777,8 @@
       "de": "Inspektion"
     },
     {
-      "key": "action.filing_setup",
-      "context": "Entry of the command palette that runs the key action filing_setup. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
-      "en": "Choose folders",
-      "de": "Ordner wählen"
-    },
-    {
       "key": "action.filing_setup.theme",
-      "context": "Theme name of the key action filing_setup, shown dimmed after its plain name action.filing_setup in the command palette, and matched when typing. A playful name; the plain name beside it says what the action does.",
+      "context": "Theme name of the key action filing_setup, shown in the title bar chip of the filing module in the Futurama variants. A playful name; the plain name beside it says what the action does.",
       "en": "Hermes",
       "de": "Hermes"
     },
@@ -1850,9 +1850,9 @@
     },
     {
       "key": "filing.key_copied",
-      "context": "Short confirmation in the title bar after the master key was copied to the clipboard. Must not contain the key.",
-      "en": "Master key copied",
-      "de": "Generalschlüssel kopiert"
+      "context": "Short confirmation in the title bar after the master key was copied to the clipboard. Must not contain the key. The clipboard is emptied after a minute.",
+      "en": "Master key copied, the clipboard is emptied in a minute",
+      "de": "Generalschlüssel kopiert, die Zwischenablage wird in einer Minute geleert"
     },
     {
       "key": "filing.key_group_prompt",
@@ -2059,24 +2059,6 @@
       "de": "Hermes pausiert"
     },
     {
-      "key": "filing_status.load_gentle.theme",
-      "context": "Theme name of the gentle load, shown dimmed beside filing_status.load_gentle in the Futurama variants only. A playful name; the plain name beside it says what the load does.",
-      "en": "By the book",
-      "de": "Dienst nach Vorschrift"
-    },
-    {
-      "key": "filing_status.load_balanced.theme",
-      "context": "Theme name of the balanced load, shown dimmed beside filing_status.load_balanced in the Futurama variants only. A playful name; the plain name beside it says what the load does.",
-      "en": "Business as usual",
-      "de": "Normalbetrieb"
-    },
-    {
-      "key": "filing_status.load_full.theme",
-      "context": "Theme name of the full load, shown dimmed beside filing_status.load_full in the Futurama variants only. A playful name; the plain name beside it says what the load does.",
-      "en": "Grade 36",
-      "de": "Grad 36"
-    },
-    {
       "key": "filing_status.errors_none",
       "context": "Shown in the error list of the filing status page when there are no errors.",
       "en": "No errors",
@@ -2111,6 +2093,12 @@
       "context": "Rule message in the filing setup card: more than one folder is the target. Normally the card prevents this; it can come from a failed write.",
       "en": "Only one folder can be the target folder.",
       "de": "Nur ein Ordner kann der Zielordner sein."
+    },
+    {
+      "key": "filing_setup.rule_broken",
+      "context": "Reason in a failed-write message when a rule of the folder list is broken by a change that should not touch the folder list. Takes the place of the reason of filing_setup.write_failed.",
+      "en": "the folder list breaks a rule",
+      "de": "die Ordnerliste verstößt gegen eine Regel"
     },
     {
       "key": "filing_setup.rule_inbox_target",
@@ -2479,6 +2467,54 @@
       "de": "Download fehlgeschlagen ({detail})"
     },
     {
+      "key": "download_error.status",
+      "context": "Detail of a failed model download in the OCR and AI model cards when the server answers with an unexpected HTTP status. Takes the status number.",
+      "en": "The server answered {code}",
+      "de": "Der Server antwortete mit {code}"
+    },
+    {
+      "key": "download_error.timeout",
+      "context": "Detail of a failed model download in the OCR and AI model cards when the server does not answer within the time limit.",
+      "en": "The server did not answer in time",
+      "de": "Der Server hat nicht rechtzeitig geantwortet"
+    },
+    {
+      "key": "download_error.redirects",
+      "context": "Detail of a failed model download in the OCR and AI model cards when the server forwards the request too many times.",
+      "en": "The server forwarded the request too often",
+      "de": "Der Server hat zu oft weitergeleitet"
+    },
+    {
+      "key": "download_error.too_large",
+      "context": "Detail of a failed model download in the OCR and AI model cards when the file is larger than the expected size.",
+      "en": "The file is larger than expected",
+      "de": "Die Datei ist größer als erwartet"
+    },
+    {
+      "key": "download_error.refused",
+      "context": "Detail of a failed model download in the OCR and AI model cards when the request was sent on to a host that is not an allowed source. Takes the host name.",
+      "en": "{host} is not an allowed source",
+      "de": "{host} ist keine erlaubte Quelle"
+    },
+    {
+      "key": "download_error.unexpected",
+      "context": "Detail of a failed model download in the OCR and AI model cards when the server sends an answer the app cannot use.",
+      "en": "The server sent an unexpected answer",
+      "de": "Der Server hat unerwartet geantwortet"
+    },
+    {
+      "key": "download_error.no_connection",
+      "context": "Detail of a failed model download in the OCR and AI model cards when no connection to the server could be made. Takes the technical reason, which stays untranslated.",
+      "en": "No connection: {detail}",
+      "de": "Keine Verbindung: {detail}"
+    },
+    {
+      "key": "download_error.tls",
+      "context": "Detail of a failed model download in the OCR and AI model cards when the secure connection could not be set up. Takes the technical reason, which stays untranslated.",
+      "en": "The secure connection failed: {detail}",
+      "de": "Die sichere Verbindung ist fehlgeschlagen: {detail}"
+    },
+    {
       "key": "ocr_models.error_no_folder",
       "context": "Error in the OCR models card when there is no data folder to save the models in.",
       "en": "There is no data folder to save the models in.",
@@ -2659,12 +2695,6 @@
       "de": "Es gibt keinen Datenordner, in dem das Modell gespeichert werden könnte."
     },
     {
-      "key": "hermes.nav_inspection.theme",
-      "context": "Theme name shown dimmed behind the sidebar entry hermes.nav_inspection.",
-      "en": "Inspection",
-      "de": "Inspektion"
-    },
-    {
       "key": "review_list.reason_no_rule",
       "context": "Review reason in the review list: no rule matched the document.",
       "en": "No rule matches",
@@ -2705,66 +2735,6 @@
       "context": "Review reason in the review list: a field was read with low confidence. Takes the field name.",
       "en": "{field} uncertain",
       "de": "{field} unsicher"
-    },
-    {
-      "key": "document_preview.loading",
-      "context": "Placeholder in the document preview while the preview is being made.",
-      "en": "Loading preview...",
-      "de": "Vorschau wird geladen ..."
-    },
-    {
-      "key": "document_preview.unsupported",
-      "context": "Note in the document preview: the file type cannot be previewed.",
-      "en": "No preview for this file type.",
-      "de": "Für diesen Dateityp gibt es keine Vorschau."
-    },
-    {
-      "key": "document_preview.library_missing",
-      "context": "Note in the document preview: the PDF library is missing, so a PDF cannot be previewed.",
-      "en": "PDF library missing, no preview of PDFs.",
-      "de": "PDF-Bibliothek fehlt, keine Vorschau von PDFs."
-    },
-    {
-      "key": "document_preview.too_large",
-      "context": "Note in the document preview: the file is too big to preview.",
-      "en": "The file is too large for a preview.",
-      "de": "Die Datei ist zu groß für eine Vorschau."
-    },
-    {
-      "key": "document_preview.timed_out",
-      "context": "Note in the document preview: making the preview took too long and was stopped.",
-      "en": "The preview took too long.",
-      "de": "Die Vorschau hat zu lange gedauert."
-    },
-    {
-      "key": "document_preview.failed",
-      "context": "Note in the document preview: the file could not be read for a preview. Takes the technical detail, which stays English.",
-      "en": "No preview possible: {detail}",
-      "de": "Keine Vorschau möglich: {detail}"
-    },
-    {
-      "key": "document_preview.caption_page",
-      "context": "Caption under the preview of a PDF page. Takes the number of pages of the document.",
-      "en": "Page 1 of {count}",
-      "de": "Seite 1 von {count}"
-    },
-    {
-      "key": "document_preview.caption_image",
-      "context": "Caption under the preview of a picture. Takes its width and height in pixels.",
-      "en": "Image, {width} × {height}",
-      "de": "Bild, {width} × {height}"
-    },
-    {
-      "key": "document_preview.caption_text",
-      "context": "Caption under the preview of the text of a document: the start of the text is shown.",
-      "en": "Text excerpt",
-      "de": "Textauszug"
-    },
-    {
-      "key": "document_preview.caption_text_shortened",
-      "context": "Caption under the preview of the text of a document that is longer than what is shown.",
-      "en": "Text excerpt, shortened",
-      "de": "Textauszug, gekürzt"
     },
     {
       "key": "review_list.field_sender",
@@ -3146,9 +3116,9 @@
     },
     {
       "key": "settings.feature_hermes_intro",
-      "context": "Line under the heading of the Hermes page on the settings tab. Hermes is the name of the module that sorts documents; the chat (F2) is where he asks.",
-      "en": "Hermes sorts documents from your read folders. He asks in the chat (F2) before he moves anything.",
-      "de": "Hermes sortiert Dokumente aus deinen Lesen-Ordnern. Er fragt im Chat (F2), bevor er etwas verschiebt."
+      "context": "Line under the heading of the Hermes page on the settings tab. Hermes is the name of the module that sorts documents; the chat is where he asks.",
+      "en": "Hermes sorts documents from your read folders. He asks in the chat before he moves anything.",
+      "de": "Hermes sortiert Dokumente aus deinen Lesen-Ordnern. Er fragt im Chat, bevor er etwas verschiebt."
     },
     {
       "key": "settings.feature_rules",
@@ -3215,6 +3185,12 @@
       "context": "Shown on the usage page when Hermes has not yet asked the own server anything.",
       "en": "No requests yet.",
       "de": "Noch keine Anfragen."
+    },
+    {
+      "key": "settings.usage_log_unreadable",
+      "context": "Shown at the top of the usage page when the file that records the requests to the own server could not be read, so the sums may be too low. Takes the reason from the system.",
+      "en": "The usage log could not be read, so the figures may be incomplete: {reason}",
+      "de": "Das Nutzungsprotokoll ließ sich nicht lesen, die Zahlen können daher unvollständig sein: {reason}"
     },
     {
       "key": "settings.usage_overview",
@@ -3501,8 +3477,8 @@
     {
       "key": "settings.row_viewer",
       "context": "Name of a setting on the programs page: the program F3 opens a file with to look at it.",
-      "en": "Viewer (F3)",
-      "de": "Betrachter (F3)"
+      "en": "Viewer",
+      "de": "Betrachter"
     },
     {
       "key": "settings.row_viewer_note",
@@ -3513,8 +3489,8 @@
     {
       "key": "settings.row_editor",
       "context": "Name of a setting on the programs page: the program F4 opens a file with to change it.",
-      "en": "Editor (F4)",
-      "de": "Editor (F4)"
+      "en": "Editor",
+      "de": "Editor"
     },
     {
       "key": "settings.row_editor_note",
@@ -3945,14 +3921,14 @@
     {
       "key": "settings.ai_consent_item_documents",
       "context": "One point of the list of what goes to the AI model on another computer: the documents Hermes sorts into folders. Hermes is the module that sorts documents. Text recognition turns scans and photos into text.",
-      "en": "The text of every document Hermes reads to sort it, including the text recognised in scans and photos.",
-      "de": "Der Text jedes Dokuments, das Hermes zum Einsortieren liest, auch der Text, der in Scans und Fotos erkannt wurde."
+      "en": "The text of every document Hermes reads to sort it, including the text recognised in scans and photos, also of all documents in Read folders, again after updates.",
+      "de": "Der Text jedes Dokuments, das Hermes zum Einsortieren liest, auch der Text, der in Scans und Fotos erkannt wurde, auch von allen Dokumenten in Lesen-Ordnern, erneut nach Updates."
     },
     {
       "key": "settings.ai_consent_item_chat",
-      "context": "One point of the list of what goes to the AI model on another computer: the chat with Hermes (the module that sorts documents).",
-      "en": "Everything you write to Hermes in the chat, the last question Hermes asked with its answer options, and your previous request and message that the new one refers to.",
-      "de": "Alles, was du im Chat an Hermes schreibst, die letzte Frage von Hermes mit ihren Antwortmöglichkeiten und deine vorige Anfrage und Nachricht, auf die sich die neue bezieht."
+      "context": "One point of the list of what goes to the AI model on another computer: the chat with Hermes (the module that sorts documents). File and folder names can be part of the question.",
+      "en": "Everything you write to Hermes in the chat, the last question Hermes asked with its answer options (including file and folder names in them), and your previous request and message that the new one refers to.",
+      "de": "Alles, was du im Chat an Hermes schreibst, die letzte Frage von Hermes mit ihren Antwortmöglichkeiten (samt darin genannter Datei- und Ordnernamen) und deine vorige Anfrage und Nachricht, auf die sich die neue bezieht."
     },
     {
       "key": "settings.ai_consent_item_rules",
@@ -4969,6 +4945,12 @@
       "de": "Zugriff freigegeben: {folder}"
     },
     {
+      "key": "grant.no_data_folder",
+      "context": "Reason in the status bar, put in place of the reason of grant.failed, when the access to a folder cannot be saved because the app has no data folder to keep it in.",
+      "en": "there is no data folder to keep it in",
+      "de": "es gibt keinen Datenordner, in dem er bleiben könnte"
+    },
+    {
       "key": "grant.failed",
       "context": "Error in the status bar when the access the user allowed to a folder could not be saved, so it would be lost at the next start. Takes the folder and the reason, which stays untranslated.",
       "en": "Could not save the access to {folder}: {reason}",
@@ -5309,6 +5291,18 @@
       "context": "Status bar error when the view key is pressed on a file on an SFTP server but ncrs has no folder for the temporary copy: the cache folder could not be created or the system names none. Nothing was fetched.",
       "en": "No folder for temporary copies, so this file cannot be viewed from the server. Copy it out instead.",
       "de": "Kein Ordner für temporäre Kopien, die Datei lässt sich daher nicht vom Server ansehen. Stattdessen herauskopieren."
+    },
+    {
+      "key": "error.remote_view_unavailable_reason",
+      "context": "Like error.remote_view_unavailable, when the system also said why the folder for temporary copies could not be opened. Takes the reason, already in the user's language.",
+      "en": "No folder for temporary copies ({reason}), so this file cannot be viewed from the server. Copy it out instead.",
+      "de": "Kein Ordner für temporäre Kopien ({reason}), die Datei lässt sich daher nicht vom Server ansehen. Stattdessen herauskopieren."
+    },
+    {
+      "key": "error.archive_view_unavailable_reason",
+      "context": "Like error.archive_view_unavailable, when the system also said why the folder for temporary copies could not be opened. Takes the reason, already in the user's language.",
+      "en": "No folder for temporary copies ({reason}), so this file cannot be viewed from the archive. Copy it out instead.",
+      "de": "Kein Ordner für temporäre Kopien ({reason}), die Datei lässt sich daher nicht aus dem Archiv ansehen. Stattdessen herauskopieren."
     },
     {
       "key": "error.remote_view_executable",
@@ -5972,9 +5966,9 @@
     },
     {
       "key": "batch_rename.done",
-      "context": "Notice after a batch rename. {count} is how many entries were renamed. F1 opens the command list, where Undo rename takes it back.",
-      "en": "{count} entries renamed. To take it back: F1, Undo rename.",
-      "de": "{count} Einträge umbenannt. Zum Zurücknehmen: F1, Umbenennen zurücknehmen."
+      "context": "Notice after a batch rename. {count} is how many entries were renamed. The command list has Undo rename, which takes it back.",
+      "en": "{count} entries renamed. To take it back, use Undo rename in the command list.",
+      "de": "{count} Einträge umbenannt. Zum Zurücknehmen: Umbenennen zurücknehmen in der Befehlsliste."
     },
     {
       "key": "batch_rename.undone",
@@ -6785,6 +6779,12 @@
       "context": "Problem: the text typed for a piece of the file name holds an underscore, which separates the pieces.",
       "en": "Leave out the underscore, it separates the pieces.",
       "de": "Ohne Unterstrich, er trennt die Bausteine."
+    },
+    {
+      "key": "filing_pieces.name_device",
+      "context": "Problem: the name typed for a new folder is one Windows reserves for devices (for example Con, Aux, Nul, Com1), so the folder could not be created there.",
+      "en": "Windows reserves this name. Choose another folder name.",
+      "de": "Windows reserviert diesen Namen. Wähle einen anderen Ordnernamen."
     },
     {
       "key": "filing_pieces.file_name_label",
@@ -8827,6 +8827,18 @@
       "de": "Der letzte Lauf konnte nicht rückgängig gemacht werden: {reason}"
     },
     {
+      "key": "settings.hermes_history_undo_left",
+      "context": "Notice after a run was put back but some files stayed where Hermes had put them, because they changed or their old place is taken. {left} is a number.",
+      "en": "Run undone, but {left} files stayed where they are: they changed or their old place is taken.",
+      "de": "Lauf rückgängig gemacht, aber {left} Dateien sind geblieben: Sie haben sich geändert oder ihr alter Platz ist belegt."
+    },
+    {
+      "key": "settings.facts_read_failed",
+      "context": "Notice on the Index page when the numbers of the index could not be read, so the page shows nothing instead of the real figures. {reason} is the system's explanation.",
+      "en": "The index could not be read: {reason}",
+      "de": "Der Index konnte nicht gelesen werden: {reason}"
+    },
+    {
       "key": "settings.model_remove_title",
       "context": "Title of the question before a downloaded model is deleted from this computer.",
       "en": "Remove model",
@@ -9455,6 +9467,18 @@
       "context": "Status bar error when the terminal could not be started. Takes the folder name and the OS reason.",
       "en": "Could not open a terminal in {name}: {reason}",
       "de": "Terminal in {name} konnte nicht geöffnet werden: {reason}"
+    },
+    {
+      "key": "error.remote_hostkey_not_offered",
+      "context": "Error in the connect dialog when the server ended the connection setup without showing a host key, so it cannot be checked. Takes the host.",
+      "en": "{host} did not show a host key, so the server cannot be checked",
+      "de": "{host} hat keinen Hostschlüssel gezeigt, der Server lässt sich daher nicht prüfen"
+    },
+    {
+      "key": "error.remote_no_place_for_host_key",
+      "context": "Reason shown inside the failure text of the connect dialog when the user trusts a new host key but ncrs has no file to keep it in (no home folder known). Short, without a full stop.",
+      "en": "there is no file to keep the host key in",
+      "de": "es gibt keine Datei, in der der Hostschlüssel gespeichert werden kann"
     },
     {
       "key": "settings.row_terminal",
@@ -10994,9 +11018,9 @@
     },
     {
       "key": "notes.status_view",
-      "context": "Status line of the notes tab while a note is shown. The keys are written as they are on the keyboard; ⌘ is the Command key.",
-      "en": "⌘N new note · Enter edits · Esc closes",
-      "de": "⌘N neue Notiz · Enter bearbeitet · Esc schließt"
+      "context": "Status line of the notes tab while a note is shown. Takes {key}, the key that starts a new note, spelled for the platform (e.g. ⌘N or Ctrl+N); keep {key} as is. The other keys are written as they are on the keyboard.",
+      "en": "{key} new note · Enter edits · Esc closes",
+      "de": "{key} neue Notiz · Enter bearbeitet · Esc schließt"
     },
     {
       "key": "notes.status_edit",
@@ -11041,6 +11065,12 @@
       "de": "Die Notiz zu dieser Datei wurde nicht angelegt: {path} existiert und ist keine Notiz, die ncrs lesen kann. Sie wurde nicht verändert."
     },
     {
+      "key": "hermes.quit_protection_pending",
+      "context": "Error line when the user quits while the Hermes index is being encrypted or started over, or while its recovery key is still on screen. Quitting now would lose the recovery key. Quitting again ends the program.",
+      "en": "The recovery key of the Hermes index is not saved yet. Quit again to leave without it.",
+      "de": "Der Wiederherstellungsschlüssel des Hermes-Index ist noch nicht gesichert. Noch einmal beenden verlässt das Programm ohne ihn."
+    },
+    {
       "key": "notes.quit_unsaved",
       "context": "Error line when the user quits while a note could not be written. Quitting again ends the program and drops the unsaved text. {reason} is the system's reason with the path.",
       "en": "A note could not be saved: {reason}. Quit again to discard it.",
@@ -11067,20 +11097,14 @@
     {
       "key": "settings.by_type_title",
       "context": "Heading of a block on the programs page of the settings: one row per file type that says what F3 does with it. Upper case in German as the other block headings.",
-      "en": "F3 BY FILE TYPE",
-      "de": "F3 JE DATEITYP"
+      "en": "BY FILE TYPE",
+      "de": "JE DATEITYP"
     },
     {
       "key": "settings.by_type_intro",
       "context": "Explanation under the heading of the F3-by-file-type block. 'Internal' is the viewer tab of ncrs.",
       "en": "The first matching row wins. \"Internal\" shows the file in a tab of ncrs: Markdown rendered, other text as text.",
       "de": "Die erste passende Zeile gilt. „Intern“ zeigt die Datei in einem Tab von ncrs: Markdown gerendert, andere Texte als Text."
-    },
-    {
-      "key": "settings.by_type_new",
-      "context": "Small badge on the F3-by-file-type heading that marks it as a new feature. One word.",
-      "en": "new",
-      "de": "neu"
     },
     {
       "key": "settings.by_type_extensions",
@@ -11093,12 +11117,6 @@
       "context": "Placeholder in the extensions field of a file type row; the words are examples of file name endings.",
       "en": "md, markdown",
       "de": "md, markdown"
-    },
-    {
-      "key": "settings.by_type_open_with",
-      "context": "Label of the choice in a file type row for what F3 opens the file with.",
-      "en": "Open with",
-      "de": "Öffnen mit"
     },
     {
       "key": "settings.by_type_internal",
@@ -11117,12 +11135,6 @@
       "context": "Segment of the 'open with' choice: a program the user names, as in the viewer and editor settings.",
       "en": "Own program",
       "de": "Eigenes Programm"
-    },
-    {
-      "key": "settings.by_type_program_label",
-      "context": "Label of the program field in a file type row; it only matters when 'own program' is chosen.",
-      "en": "Program",
-      "de": "Programm"
     },
     {
       "key": "settings.by_type_program_hint_internal",
@@ -11384,15 +11396,177 @@
     },
     {
       "key": "filing_view.error_name",
-      "context": "Filing tab: error line when a new file name is empty or has a slash in it.",
-      "en": "A file name must not be empty or contain a slash.",
-      "de": "Ein Dateiname darf nicht leer sein und keinen Schrägstrich enthalten."
+      "context": "Filing tab: error line when a new file name is empty, has a slash in it, or is only one or two dots.",
+      "en": "A file name must not be empty, contain a slash or be only dots.",
+      "de": "Ein Dateiname darf nicht leer sein, keinen Schrägstrich enthalten und nicht nur aus Punkten bestehen."
     },
     {
       "key": "filing_view.rename_placeholder",
       "context": "Filing tab: placeholder of the field in which the new name of a file is typed.",
       "en": "New file name",
       "de": "Neuer Dateiname"
+    },
+    {
+      "key": "filing_view.error_filing_failed",
+      "context": "Filing tab: error line when carrying out the plan gave no usable result, for example because the write folder could not be used. Nothing is known about what was moved; the user can try again.",
+      "en": "The files could not be filed. Check the folders and try again.",
+      "de": "Die Dateien konnten nicht einsortiert werden. Prüfe die Ordner und versuche es noch einmal."
+    },
+    {
+      "key": "filing_view.empty",
+      "context": "Filing tab: line in the left list when the read folder has no files to file.",
+      "en": "No files to file in this folder.",
+      "de": "In diesem Ordner gibt es keine Dateien zum Einsortieren."
+    },
+    {
+      "key": "filing_view.filing",
+      "context": "Filing tab: figure in the bar while the files are being carried out. {count} is the number of files that go to the write folder.",
+      "en": "Filing {count} files …",
+      "de": "{count} Dateien werden einsortiert …"
+    },
+    {
+      "key": "filing_view.tab_filing",
+      "context": "Filing tab: title of the tab while the files are being carried out. {folder} is the name of the read folder.",
+      "en": "Filing · {folder} … filing",
+      "de": "Ablegen · {folder} … wird einsortiert"
+    },
+    {
+      "key": "io_reason.not_found",
+      "context": "Reason in an error line: the file or folder is not there (any more). Short, no full stop; it is put into a sentence like 'Comparison stopped: {reason}'.",
+      "en": "not found",
+      "de": "nicht gefunden"
+    },
+    {
+      "key": "io_reason.permission_denied",
+      "context": "Reason in an error line: the system refuses access to the file or folder. Short, no full stop.",
+      "en": "no permission",
+      "de": "keine Berechtigung"
+    },
+    {
+      "key": "io_reason.already_exists",
+      "context": "Reason in an error line: a file or folder of that name is already there. Short, no full stop.",
+      "en": "already exists",
+      "de": "existiert bereits"
+    },
+    {
+      "key": "io_reason.storage_full",
+      "context": "Reason in an error line: the disk has no space left. Short, no full stop.",
+      "en": "the disk is full",
+      "de": "der Datenträger ist voll"
+    },
+    {
+      "key": "io_reason.read_only",
+      "context": "Reason in an error line: the disk or folder cannot be written to, it is read-only. Short, no full stop.",
+      "en": "the disk is read-only",
+      "de": "der Datenträger ist schreibgeschützt"
+    },
+    {
+      "key": "io_reason.timed_out",
+      "context": "Reason in an error line: the disk or server did not answer in time. Short, no full stop.",
+      "en": "no answer in time",
+      "de": "keine Antwort in der erwarteten Zeit"
+    },
+    {
+      "key": "io_reason.directory_not_empty",
+      "context": "Reason in an error line: a folder cannot be removed because it still holds something. Short, no full stop.",
+      "en": "the folder is not empty",
+      "de": "der Ordner ist nicht leer"
+    },
+    {
+      "key": "io_reason.crosses_devices",
+      "context": "Reason in an error line: the operation cannot be done between two different disks. Short, no full stop.",
+      "en": "cannot be done between two disks",
+      "de": "zwischen zwei Datenträgern nicht möglich"
+    },
+    {
+      "key": "io_reason.quota_exceeded",
+      "context": "Reason in an error line: the user's storage quota on the disk or server is used up. Short, no full stop.",
+      "en": "the storage quota is used up",
+      "de": "das Speicherkontingent ist aufgebraucht"
+    },
+    {
+      "key": "index.not_open",
+      "context": "Status or error line when something needs the document index but it is not open (Hermes is off or still starting). Calm, one short sentence.",
+      "en": "The index is not open.",
+      "de": "Der Index ist nicht geöffnet."
+    },
+    {
+      "key": "skipped.kind_name_taken",
+      "context": "Plural noun in the list of what an unpacking left out: files whose name another file of the archive had already taken, for example two names that differ only in capital letters on a disk that does not tell them apart. Lower case, used inside a comma-separated list.",
+      "en": "names already taken",
+      "de": "bereits belegte Namen"
+    },
+    {
+      "key": "status.again_lost",
+      "context": "Notice when a file that was asked to be read again was not read, because Hermes was rebuilt or restarted meanwhile and forgot the request. Takes the file name; the user can ask again.",
+      "en": "{name}: could not be read again, Hermes was restarted. Ask again.",
+      "de": "{name}: konnte nicht erneut gelesen werden, Hermes wurde neu gestartet. Frag noch einmal."
+    },
+    {
+      "key": "status.hermes_column_read_failed",
+      "context": "Status bar error when Hermes could not read its information about files from the index (for the Hermes column or for processing a file again). {reason} is the technical cause.",
+      "en": "Hermes could not read the index: {reason}",
+      "de": "Hermes konnte den Index nicht lesen: {reason}"
+    },
+    {
+      "key": "status.index_settle_failed",
+      "context": "Status bar error shown when Hermes opened its index but could not finish the filing steps that an earlier run left half done. They stay pending and are tried again at the next start. {reason} is the technical cause.",
+      "en": "Hermes could not finish earlier filing steps, they are tried again at the next start: {reason}",
+      "de": "Hermes konnte frühere Ablageschritte nicht abschließen, sie werden beim nächsten Start erneut versucht: {reason}"
+    },
+    {
+      "key": "batch_rename.syntax_note",
+      "context": "Batch rename dialog. Dimmed line under the new-name pattern field. The words inside the curly braces (name, counter, date modified, date taken, extension, sender, document date, kind, amount) are the same in every language and must stay in English, as the pattern is typed that way. Keep the braces and the words inside them untouched.",
+      "en": "Parts in braces are written the same in every language, e.g. {name}, {counter}, {date modified}. The buttons below insert them.",
+      "de": "Teile in geschweiften Klammern werden in jeder Sprache gleich geschrieben, z. B. {name}, {counter}, {date modified}. Die Knöpfe unten fügen sie ein."
+    },
+    {
+      "key": "error.rename_too_long",
+      "context": "Shown under the name input of a row being renamed, in the batch rename preview and in the prompt for a new folder or file when the name is longer than the file system takes (255 bytes, on Windows 255 characters).",
+      "en": "The name is too long, a file system takes at most 255 characters",
+      "de": "Der Name ist zu lang, ein Dateisystem nimmt höchstens 255 Zeichen"
+    },
+    {
+      "key": "error.rename_device",
+      "context": "Shown on Windows when a typed name is one Windows opens as a device (CON, PRN, AUX, NUL, COM1 to COM9, LPT1 to LPT9), with or without an ending. Keep the device names in capitals.",
+      "en": "Windows reserves this name (CON, NUL, COM1 and similar)",
+      "de": "Windows hat diesen Namen reserviert (CON, NUL, COM1 und ähnliche)"
+    },
+    {
+      "key": "error.name_character",
+      "context": "Shown in the prompt for a new folder or file on Windows when the name holds one of the characters < > : \" | ? * which Windows does not allow in names. The character is not named here.",
+      "en": "A name cannot contain < > : \" | ? *",
+      "de": "Ein Name darf keines der Zeichen < > : \" | ? * enthalten"
+    },
+    {
+      "key": "permissions.failed_one",
+      "context": "Status bar notice when a permissions change could not be applied to one entry. {name} is its name, {reason} the system's reason, which stays untranslated.",
+      "en": "{name} not changed: {reason}",
+      "de": "{name} nicht geändert: {reason}"
+    },
+    {
+      "key": "permissions.done_one",
+      "context": "Status bar notice after a permissions change that changed exactly one entry. {count} is 1.",
+      "en": "Permissions of {count} entry changed",
+      "de": "Rechte von {count} Eintrag geändert"
+    },
+    {
+      "key": "error.view_copy_failed",
+      "context": "Shown when the copy that F3 opens for viewing could not be made, for an entry inside an archive or on a server. Takes the entry's name and the system's reason, which stays untranslated.",
+      "en": "Could not unpack {name} for viewing: {reason}",
+      "de": "{name} konnte zum Ansehen nicht entpackt werden: {reason}"
+    },
+    {
+      "key": "monitor.no_match",
+      "context": "Shown below the empty process table on the Monitor page when the filter field has text and no process matches it. {filter} is the text typed into the filter.",
+      "en": "No process matches \"{filter}\".",
+      "de": "Kein Prozess passt zu „{filter}“."
+    },
+    {
+      "key": "viewer.not_regular",
+      "context": "Error when F3 meets something that is not an ordinary file, such as a named pipe or a device. {name} is the file name.",
+      "en": "{name} is not an ordinary file and is not shown.",
+      "de": "{name} ist keine normale Datei und wird nicht angezeigt."
     }
   ]
 }

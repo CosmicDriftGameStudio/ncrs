@@ -2,7 +2,7 @@
 //! panel's path as its prompt, then a field. Lines, not boxes, like the bars
 //! around it.
 
-use iced::widget::{column, container, mouse_area, opaque, row, space, stack, text, text_input};
+use iced::widget::{column, container, mouse_area, opaque, row, space, stack, text};
 use iced::{alignment, mouse, Element, Length};
 
 use ncrs_i18n::{fill_template, Language, Msg};
@@ -68,15 +68,13 @@ pub fn view<'a>(props: Props<'a>) -> Element<'a, CommandLineMessage> {
             palette.dim_text
         },
     );
-    let field = text_input("", typed)
-        .id(COMMAND_LINE_ID)
-        .on_input(CommandLineMessage::Input)
-        .on_submit(CommandLineMessage::Submit)
-        .size(font_size::FILE)
-        .font(ncrs_ui_kit::APP_FONT)
-        .padding(0.0)
-        .style(theme::path_input(palette))
-        .width(Length::Fill);
+    let field = kit::line_field(
+        typed,
+        COMMAND_LINE_ID,
+        CommandLineMessage::Input,
+        Some(CommandLineMessage::Submit),
+        palette,
+    );
 
     let mut line = row![prompt_path, chevron, field]
         .spacing(spacing::XS)

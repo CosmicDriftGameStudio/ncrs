@@ -1,6 +1,10 @@
 use crate::app::*;
 
 impl App {
+    pub(in crate::app) fn close_context_menu(&mut self) {
+        self.panels.context_menu = None;
+    }
+
     pub(in crate::app) fn update_context_menu(&mut self, message: Message) -> Task<Message> {
         let nav = match message {
             Message::ContextMenuAt { side, index } => {
@@ -32,14 +36,14 @@ impl App {
     }
 
     pub(in crate::app) fn context_menu_facts(&self) -> MenuFacts {
-        let panel = self.active_panel();
+        let can_copy = ncrs_ops::has_rows(rows_of(self.active_panel()));
         MenuFacts {
             search_cursor: self
                 .open_search_view()
                 .map(|search| search.cursor_target().is_some()),
             has_sources: !self.action_sources().is_empty(),
-            can_copy_path: ncrs_ops::clipboard_text(rows_of(panel), ClipboardKind::Path).is_some(),
-            can_copy_name: ncrs_ops::clipboard_text(rows_of(panel), ClipboardKind::Name).is_some(),
+            can_copy_path: can_copy,
+            can_copy_name: can_copy,
             hermes: self.hermes_facts(),
         }
     }

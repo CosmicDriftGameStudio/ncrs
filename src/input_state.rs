@@ -7,7 +7,8 @@ use iced::{event, mouse, window, Point};
 use crate::messages::PanelMessage;
 use crate::messages::{
     CommandLineMessage, CommandPaletteMessage, HermesChatMessage, KeyBindingsMessage, Message,
-    PermissionsMessage, QuickOpenMessage, SearchMessage, SettingsMessage, ThemeFetchMessage,
+    PermissionsMessage, QuickOpenMessage, SearchMessage, SettingsMessage, ShownTab,
+    ThemeFetchMessage,
 };
 use crate::transfer_dialog::TransferDialogMessage;
 use ncrs_settings::focus::FocusKey;
@@ -164,6 +165,8 @@ impl InputState {
                 self.filing_renaming,
                 Message::FilingView(ncrs_filing_view::Message::RenameCancel),
             ),
+            // The plan stays; Escape only goes back to the panels.
+            (self.filing, Message::ShowTab(ShownTab::Panels)),
         ]
         .into_iter()
         .find_map(|(open, close)| open.then_some(close))
@@ -486,6 +489,70 @@ mod tests {
             input.handle(&click, event::Status::Ignored),
             Some(Message::ClickedOutside)
         );
+    }
+
+    #[test]
+    fn escape_goes_back_from_the_filing_tab_to_the_panels() {
+        let mut input = InputState {
+            filing: true,
+            ..InputState::default()
+        };
+        assert_eq!(
+            input.handle(
+                &key_pressed(Key::Named(Named::Escape)),
+                event::Status::Captured
+            ),
+            Some(Message::ShowTab(ShownTab::Panels))
+        );
+    }
+
+    /// Each overlay that Escape closes also keeps the Option tap from opening
+    /// a menu behind it: the two lists name the same overlays.
+    #[test]
+    fn every_overlay_escape_closes_also_blocks_the_tap() {
+        let overlays: [(&str, fn(&mut InputState)); 13] = [
+            ("monitor_filter", |input| {
+                input.monitor = true;
+                input.monitor_filter = true;
+            }),
+            ("hermes_chat", |input| input.hermes_chat = true),
+            ("command_line", |input| input.command_line = true),
+            ("quick_open", |input| input.quick_open = true),
+            ("command_palette", |input| input.command_palette = true),
+            ("key_bindings", |input| input.key_bindings = true),
+            ("theme_fetch", |input| input.theme_fetch = true),
+            ("transfer_dialog", |input| input.transfer_dialog = true),
+            ("permissions_dialog", |input| {
+                input.permissions_dialog = true
+            }),
+            ("batch_rename_dialog", |input| {
+                input.batch_rename_dialog = true;
+            }),
+            ("settings", |input| input.settings = true),
+            ("notes", |input| input.notes = true),
+            ("filing_renaming", |input| {
+                input.filing = true;
+                input.filing_renaming = true;
+            }),
+        ];
+        for (name, open) in overlays {
+            let mut input = InputState::default();
+            open(&mut input);
+            assert!(
+                input
+                    .handle(
+                        &key_pressed(Key::Named(Named::Escape)),
+                        event::Status::Captured
+                    )
+                    .is_some(),
+                "Escape does not close {name}"
+            );
+            let tap = [modifiers(Modifiers::ALT), modifiers(Modifiers::empty())];
+            assert!(
+                feed(&mut input, &tap).is_empty(),
+                "the tap opens a menu behind {name}"
+            );
+        }
     }
 
     #[test]

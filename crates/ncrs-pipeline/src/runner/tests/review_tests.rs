@@ -473,6 +473,26 @@ fn a_broken_archive_file_is_reported_once_and_not_read_again_on_every_scan() {
 }
 
 #[test]
+fn a_broken_inbox_file_is_reported_once_and_not_read_again_on_every_scan() {
+    let inbox_dir = TempDir::new().unwrap();
+    let inbox = location(&inbox_dir, LocationMode::Inbox);
+    put(&inbox, "invoice.pdf", INVOICE);
+    let fixture = IndexFixture::new();
+    let broken = TextError::Unreadable {
+        path: PathBuf::from("invoice.pdf"),
+        reason: "broken".to_owned(),
+    };
+    let chain = || TextChain::new().with_source(FixedText(Err(broken.clone())));
+
+    let first = archive_scan(&fixture, &inbox, chain());
+    assert_eq!(first.errors.len(), 1, "{:?}", first.errors);
+    archive_scan(&fixture, &inbox, chain());
+    let third = archive_scan(&fixture, &inbox, chain());
+
+    assert!(third.errors.is_empty(), "{:?}", third.errors);
+}
+
+#[test]
 fn an_archive_document_read_while_the_models_were_broken_gets_its_text_once_they_work() {
     let archive_dir = TempDir::new().unwrap();
     let archive = location(&archive_dir, LocationMode::Archive);

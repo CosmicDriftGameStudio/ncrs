@@ -13,19 +13,22 @@ const QUIET_FOR: Duration = Duration::from_millis(300);
 /// A stream of events that never goes quiet, such as a running download, is
 /// reported at least this often.
 const REPORT_AT_LEAST_EVERY: Duration = Duration::from_secs(2);
+/// How often a folder that cannot be watched is reported as changed anyway.
+const POLL_EVERY: Duration = Duration::from_secs(10);
 
 /// The watcher and the events it has seen. Dropping it stops the watching.
 struct FolderWatch {
     raw: mpsc::UnboundedReceiver<()>,
     _watcher: Option<RecommendedWatcher>,
+    /// The system would not watch the folder (for example a used-up inotify
+    /// limit), so the list is reloaded on a timer instead.
+    polling: bool,
 }
 
 impl FolderWatch {
-    /// Nothing when the system gives no native watcher for the folder; there
-    /// is no polling instead, the manual reload remains.
-    fn start(folder: &Path) -> Option<Self> {
+    fn start(folder: &Path) -> Self {
         let (sender, raw) = mpsc::unbounded_channel();
-        let mut watcher = notify::recommended_watcher(move |received: notify::Result<Event>| {
+        let watcher = notify::recommended_watcher(move |received: notify::Result<Event>| {
             // Reading the folder is no change. An error means events may have
             // been lost, so it counts as one.
             let is_change =
@@ -35,16 +38,24 @@ impl FolderWatch {
                 let _ = sender.send(());
             }
         })
-        .ok()?;
-        watcher.watch(folder, RecursiveMode::NonRecursive).ok()?;
-        Some(Self {
-            raw,
-            _watcher: Some(watcher),
+        .and_then(|mut watcher| {
+            watcher.watch(folder, RecursiveMode::NonRecursive)?;
+            Ok(watcher)
         })
+        .ok();
+        Self {
+            raw,
+            polling: watcher.is_none(),
+            _watcher: watcher,
+        }
     }
 
     /// Waits for a burst of events to end and counts it as one change.
     async fn next_change(&mut self) -> Option<()> {
+        if self.polling {
+            tokio::time::sleep(POLL_EVERY).await;
+            return Some(());
+        }
         self.raw.recv().await?;
         let deadline = Instant::now() + REPORT_AT_LEAST_EVERY;
         loop {
@@ -58,12 +69,12 @@ impl FolderWatch {
 }
 
 /// One item per change in `folder` (not its subfolders), after the burst of
-/// events has settled. Ends at once when the folder cannot be watched.
+/// events has settled. A folder that cannot be watched is reported every few
+/// seconds instead.
 pub fn folder_changes(folder: &Path) -> impl Stream<Item = ()> + Send + 'static {
-    futures::stream::unfold(FolderWatch::start(folder), |started| async move {
-        let mut watch = started?;
+    futures::stream::unfold(FolderWatch::start(folder), |mut watch| async move {
         watch.next_change().await?;
-        Some(((), Some(watch)))
+        Some(((), watch))
     })
 }
 
@@ -86,8 +97,20 @@ mod tests {
             FolderWatch {
                 raw,
                 _watcher: None,
+                polling: false,
             },
         )
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_folder_that_cannot_be_watched_is_reported_on_a_timer() {
+        let root = tempfile::tempdir().unwrap();
+        let mut watch = FolderWatch::start(&root.path().join("gone"));
+        assert!(watch.polling);
+
+        let started = Instant::now();
+        assert_eq!(watch.next_change().await, Some(()));
+        assert_eq!(started.elapsed(), POLL_EVERY);
     }
 
     #[tokio::test(start_paused = true)]

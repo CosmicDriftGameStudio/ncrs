@@ -122,7 +122,7 @@ impl Index {
         }
         let copy_path = path_with_suffix(db_path, ENCRYPTING_SUFFIX)?;
         remove_file_if_present(&copy_path)?;
-        let (key, entry_is_new) = match store.load()?.map(Zeroizing::new) {
+        let (key, entry_is_new) = match store.load_protected()? {
             Some(stored) => (IndexKey::from_stored(&stored)?, false),
             None => (IndexKey::generate()?, true),
         };
@@ -210,6 +210,7 @@ impl Index {
         let conn = Connection::open(db_path)
             .map_err(IndexError::from)
             .and_then(|mut conn| {
+                overwrite_deleted_pages(&conn)?;
                 write_header_and_migrate(&mut conn, migrations)?;
                 Ok(conn)
             })
@@ -232,11 +233,15 @@ impl Index {
         if encrypted {
             // A key is never made for a file that exists: a new key could not
             // open it, and the data would be gone for good.
-            let stored = store
-                .load()?
-                .map(Zeroizing::new)
-                .ok_or(IndexError::KeyMissing)?;
+            let stored = store.load_protected()?.ok_or(IndexError::KeyMissing)?;
             unlock(&conn, &IndexKey::from_stored(&stored)?)?;
+        }
+        if !encrypted {
+            overwrite_deleted_pages(&conn)?;
+        }
+        let applied: u32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
+        if applied > 0 && usize::try_from(applied).is_ok_and(|applied| applied < migrations.len()) {
+            crate::backup::before_migration(db_path, applied)?;
         }
         run_migrations(&mut conn, migrations)?;
         create_folder_pick_table(&conn)?;
@@ -290,7 +295,7 @@ fn starts_with_plaintext_header(db_path: &Path) -> Result<bool, IndexError> {
 /// leaves an entry behind. The user has already saved its recovery key, and an
 /// old database moved back into place opens with it, so it is reused.
 fn key_for_new_database(store: &dyn KeyStore) -> Result<IndexKey, IndexError> {
-    if let Some(stored) = store.load()?.map(Zeroizing::new) {
+    if let Some(stored) = store.load_protected()? {
         return IndexKey::from_stored(&stored);
     }
     let key = IndexKey::generate()?;
@@ -304,11 +309,9 @@ fn store_and_verify(store: &dyn KeyStore, key: &IndexKey) -> Result<(), IndexErr
 }
 
 fn verify_stored(store: &dyn KeyStore, key: &IndexKey) -> Result<(), IndexError> {
-    let read_back = Zeroizing::new(
-        store
-            .load()?
-            .ok_or(IndexError::KeyStoreVerificationFailed)?,
-    );
+    let read_back = store
+        .load_protected()?
+        .ok_or(IndexError::KeyStoreVerificationFailed)?;
     if read_back.as_slice() == key.as_bytes() {
         Ok(())
     } else {
@@ -433,6 +436,13 @@ fn sync_parent_directory(db_path: &Path) {
 /// random bytes, so stretching it would only cost start-up time.
 fn raw_key_text(key: &IndexKey) -> Zeroizing<String> {
     Zeroizing::new(format!("x'{}'", *key.to_hex()))
+}
+
+/// A plain index keeps removed text readable in free pages unless they are
+/// overwritten; an encrypted file has its free pages encrypted as well.
+fn overwrite_deleted_pages(conn: &Connection) -> Result<(), IndexError> {
+    conn.execute_batch("PRAGMA secure_delete = ON;")?;
+    Ok(())
 }
 
 fn unlock(conn: &Connection, key: &IndexKey) -> Result<(), IndexError> {

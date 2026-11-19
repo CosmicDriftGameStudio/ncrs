@@ -58,12 +58,18 @@ pub fn volume_menu_key(key: &Key) -> Option<VolumeMenuKey> {
     }
 }
 
-/// A printable character with at most Shift held. With Option held a Mac types
-/// another character, so Alt, Ctrl and Cmd all rule it out.
+/// A printable character with at most Shift held. On a Mac, Option types
+/// another character (`@`, `[`, `|` on a German layout), so it counts as typing
+/// there; the callers try the key bindings first. Ctrl and Cmd never type.
 pub fn type_ahead_message(key: &Key, modifiers: Modifiers) -> Option<PanelMessage> {
     let Key::Character(typed) = key else {
         return None;
     };
-    ((modifiers - Modifiers::SHIFT).is_empty() && typed.chars().all(|c| !c.is_control()))
+    let typing = if cfg!(target_os = "macos") {
+        Modifiers::SHIFT | Modifiers::ALT
+    } else {
+        Modifiers::SHIFT
+    };
+    ((modifiers - typing).is_empty() && typed.chars().all(|c| !c.is_control()))
         .then(|| PanelMessage::TypeAhead(typed.to_string()))
 }

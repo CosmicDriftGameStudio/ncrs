@@ -2,7 +2,7 @@
 //! shows: a filtered listing or a hit list as it is, not the folder behind it.
 
 use ncrs_core::FileEntry;
-use ncrs_i18n::{Language, Msg};
+use ncrs_i18n::{fill_template, Language, Msg};
 use ncrs_ui_kit::format;
 
 use crate::panel::PanelState;
@@ -15,6 +15,8 @@ pub struct Totals {
     pub bytes: u64,
     /// Folders that are not links and have no measured size yet.
     pub folders_without_size: usize,
+    /// A measured folder size in `bytes` is only a lower bound.
+    pub partial: bool,
 }
 
 impl Totals {
@@ -25,7 +27,10 @@ impl Totals {
         } else {
             self.folders += 1;
             match entry.folder_size {
-                Some(measured) => self.bytes += measured.bytes,
+                Some(measured) => {
+                    self.bytes += measured.bytes;
+                    self.partial |= measured.partial;
+                }
                 // Links are not entered, so their size is never measured.
                 None if !entry.is_symlink => self.folders_without_size += 1,
                 None => {}
@@ -61,26 +66,52 @@ pub fn panel_totals(panel: &PanelState) -> PanelTotals {
     }
 }
 
+fn sized(bytes: u64, partial: bool, lang: Language) -> String {
+    let text = format::size_shown(bytes, lang);
+    if partial {
+        format!("{text}{}", format::PARTIAL_SIZE_MARK)
+    } else {
+        text
+    }
+}
+
 pub fn footer_text(totals: &PanelTotals, lang: Language) -> String {
     let line = match &totals.selected {
-        None => lang
-            .text(Msg::PanelFooterTotals)
-            .replace("{files}", &format::files_counted(totals.shown.files, lang))
-            .replace(
-                "{folders}",
-                &format::folders_counted(totals.shown.folders, lang),
-            )
-            .replace("{size}", &format::size(totals.shown.bytes)),
-        Some(selected) => lang
-            .text(Msg::PanelFooterSelected)
-            .replace("{selected}", &format::grouped(selected.entries() as u64))
-            .replace("{total}", &format::grouped(totals.shown.entries() as u64))
-            .replace("{selected_size}", &format::size(selected.bytes))
-            .replace("{total_size}", &format::size(totals.shown.bytes)),
+        None => fill_template(
+            lang.text(Msg::PanelFooterTotals),
+            &[
+                ("{files}", &format::files_counted(totals.shown.files, lang)),
+                (
+                    "{folders}",
+                    &format::folders_counted(totals.shown.folders, lang),
+                ),
+                (
+                    "{size}",
+                    &sized(totals.shown.bytes, totals.shown.partial, lang),
+                ),
+            ],
+        ),
+        Some(selected) => fill_template(
+            lang.text(Msg::PanelFooterSelected),
+            &[
+                ("{selected}", &format::grouped(selected.entries() as u64)),
+                ("{total}", &format::grouped(totals.shown.entries() as u64)),
+                (
+                    "{selected_size}",
+                    &sized(selected.bytes, selected.partial, lang),
+                ),
+                (
+                    "{total_size}",
+                    &sized(totals.shown.bytes, totals.shown.partial, lang),
+                ),
+            ],
+        ),
     };
     if totals.shown.folders_without_size > 0 {
-        lang.text(Msg::PanelFooterWithoutFolderSizes)
-            .replace("{line}", &line)
+        fill_template(
+            lang.text(Msg::PanelFooterWithoutFolderSizes),
+            &[("{line}", &line)],
+        )
     } else {
         line
     }
@@ -213,5 +244,18 @@ mod tests {
         panel.selection.toggle(&PathBuf::from("/d/a"));
         let text = footer_text(&panel_totals(&panel), Language::English);
         assert_eq!(text, "1 of 2 selected · 2.0 KB of 4.0 KB");
+    }
+
+    #[test]
+    fn a_partly_measured_folder_marks_the_total_as_a_lower_bound() {
+        let partly = FileEntry {
+            folder_size: Some(FolderSize {
+                bytes: 2048,
+                partial: true,
+            }),
+            ..entry("d", true, 0)
+        };
+        let text = footer_text(&panel_totals(&panel(vec![partly])), Language::English);
+        assert_eq!(text, "0 files, 1 folder · 2.0 KB+");
     }
 }

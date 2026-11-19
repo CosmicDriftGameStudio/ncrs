@@ -47,6 +47,7 @@ pub mod frame;
 mod gallery_tests;
 pub mod hermes_kit;
 pub mod hermes_state;
+pub mod io_reason;
 pub mod key_intercept;
 pub mod kit;
 pub mod layout;

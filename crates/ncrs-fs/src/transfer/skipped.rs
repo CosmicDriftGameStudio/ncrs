@@ -11,6 +11,9 @@ pub enum SkipKind {
     Special,
     /// Extended attributes the target refused.
     Attributes,
+    /// An unpacked entry whose name another entry had already taken, as two
+    /// names that differ only in case do on most Mac and Windows disks.
+    NameTaken,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

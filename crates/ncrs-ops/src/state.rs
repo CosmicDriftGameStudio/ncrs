@@ -224,6 +224,9 @@ pub struct Ops {
     pub deleting: Option<Deletion>,
     /// What the latest F8 run moved to the trash, for the restore key.
     pub last_deletion: Vec<PathBuf>,
+    /// The delete that was stopped, with the generation it ran under, so the
+    /// entry still in flight when it stopped can be noted if it succeeds.
+    pub stopped_delete: Option<(u64, Deletion)>,
     /// A restore from the trash, while it runs.
     pub restoring: Option<Restoration>,
     /// The restore paused on a name that is taken: the index of its row.
@@ -258,11 +261,13 @@ pub struct Ops {
     /// The folders F3 unpacks archive files into. `None` when there is no
     /// cache folder to put them in.
     pub view_copies: Option<ViewCopies>,
+    /// Why `view_copies` is `None` when the folder was configured but could
+    /// not be opened.
+    pub view_copies_problem: Option<(std::io::ErrorKind, String)>,
     /// The file F3 is unpacking, while its job runs.
     pub extracting: Option<Extracting>,
     /// The pack, copy into an archive or delete from one that is running.
     pub archive_write: Option<ArchiveWrite>,
-    /// The trash view, in place of the panel on `trash_side`.
     /// Files from another app are held over the window.
     pub drop_hover: bool,
     /// The files of the drop still arriving.
@@ -279,6 +284,7 @@ pub struct Ops {
     /// Counts the confirmations opened, so a result of the background scan can
     /// tell if its dialog is still the one on screen.
     pub transfer_dialogs_opened: u64,
+    /// The trash view, in place of the panel on `trash_side`.
     pub trash_view: Option<TrashView>,
     pub trash_side: PanelSide,
     /// Counts the listings of the trash, so a late one is dropped.

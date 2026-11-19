@@ -7,7 +7,7 @@ use ncrs_fs::CreateDirError;
 use ncrs_i18n::{Language, Msg};
 
 use crate::archive_flow::PackRequest;
-use crate::prompt::PromptKind;
+use crate::prompt::{PromptKind, PromptProblem};
 use crate::state::Ops;
 
 impl Ops {
@@ -43,9 +43,9 @@ impl Ops {
     }
 
     /// Shows a validation failure in the open prompt.
-    pub fn set_prompt_error(&mut self, reason: &'static str) {
+    pub fn set_prompt_error(&mut self, problem: PromptProblem) {
         if let Some(prompt) = self.prompt.as_mut() {
-            prompt.set_validation_error(reason);
+            prompt.set_validation_error(problem);
         }
     }
 
@@ -56,15 +56,25 @@ impl Ops {
     pub fn prompt_error(&self, lang: Language, err: &CreateDirError) -> String {
         use std::io::ErrorKind;
         let name = self.prompt_name();
+        if matches!(err, CreateDirError::NameNotAllowed { .. }) {
+            return lang
+                .text(Msg::ErrorMkdirNameNotAllowed)
+                .replace("{name}", &name);
+        }
         match err.io_error().map(|e| e.kind()) {
             Some(ErrorKind::AlreadyExists) => {
                 lang.text(Msg::ErrorMkdirTaken).replace("{name}", &name)
             }
             Some(ErrorKind::NotFound) => lang.text(Msg::ErrorParentMissing).to_string(),
-            _ => lang
-                .text(Msg::ErrorMkdirFailed)
-                .replace("{name}", &name)
-                .replace("{reason}", &err.to_string()),
+            kind => {
+                let reason = kind.map_or_else(
+                    || err.to_string(),
+                    |kind| ncrs_ui_kit::io_reason::io_reason_text(kind, &err.to_string(), lang),
+                );
+                lang.text(Msg::ErrorMkdirFailed)
+                    .replace("{name}", &name)
+                    .replace("{reason}", &reason)
+            }
         }
     }
 

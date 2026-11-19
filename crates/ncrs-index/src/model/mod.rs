@@ -8,6 +8,9 @@ use chrono::{DateTime, NaiveDate, Utc};
 use crate::error::IndexError;
 use crate::kinds::KindCatalog;
 
+mod amount;
+pub use amount::{amount_digits, amount_text, MINOR_UNITS_PER_UNIT};
+
 macro_rules! id_newtype {
     ($name:ident) => {
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

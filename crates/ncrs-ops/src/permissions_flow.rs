@@ -98,6 +98,18 @@ fn confirm(ops: &mut Ops) -> Outcome {
     )
 }
 
+fn permissions_changed_text(ctx: &FlowCtx<'_>, changed: usize) -> String {
+    let template = if changed == 1 {
+        Msg::PermissionsDoneOne
+    } else {
+        Msg::PermissionsDone
+    };
+    fill_template(
+        ctx.lang.text(template),
+        &[("{count}", &changed.to_string())],
+    )
+}
+
 /// The job is over. A result of a job that was aborted meanwhile is dropped.
 pub fn permissions_done(
     ops: &mut Ops,
@@ -113,17 +125,31 @@ pub fn permissions_done(
     let mut asked = vec![Action::FinishJob, Action::ClearJobProgress];
     match result {
         Ok(changes) => match changes.failures.first() {
-            None => asked.push(Action::ShowNotice(fill_template(
-                ctx.lang.text(Msg::PermissionsDone),
-                &[("{count}", &changes.changed.to_string())],
+            None => asked.push(Action::ShowNotice(permissions_changed_text(
+                ctx,
+                changes.changed,
             ))),
-            Some(first) => asked.push(Action::ShowError(fill_template(
-                ctx.lang.text(Msg::PermissionsFailed),
-                &[
-                    ("{count}", &changes.failures.len().to_string()),
-                    ("{reason}", &first.reason),
-                ],
-            ))),
+            Some(first) => {
+                let count = changes.failures.len();
+                let name = first
+                    .path
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| first.path.display().to_string());
+                let template = if count == 1 {
+                    Msg::PermissionsFailedOne
+                } else {
+                    Msg::PermissionsFailed
+                };
+                asked.push(Action::ShowError(fill_template(
+                    ctx.lang.text(template),
+                    &[
+                        ("{count}", &count.to_string()),
+                        ("{name}", &name),
+                        ("{reason}", &first.reason),
+                    ],
+                )));
+            }
         },
         Err(reason) => asked.push(Action::ShowError(reason)),
     }

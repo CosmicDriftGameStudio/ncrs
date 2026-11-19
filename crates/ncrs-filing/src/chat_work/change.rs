@@ -8,7 +8,8 @@ use ncrs_intake::{render_pattern_in, Area, Branch, Level, PlanFile};
 
 use super::FolderReading;
 
-pub(in crate::chat_work) fn segments(path: &Path) -> Vec<String> {
+/// The normal components of a path as names, without root or prefix.
+pub fn segments(path: &Path) -> Vec<String> {
     path.components()
         .filter_map(|component| match component {
             Component::Normal(name) => Some(name.to_string_lossy().into_owned()),

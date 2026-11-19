@@ -1,10 +1,8 @@
 //! Form rows, fields and toggles.
 use iced::widget::text::LineHeight;
 use iced::widget::text::Wrapping;
-use iced::widget::{
-    button, column, container, mouse_area, row, text, text_input, Column, Row, Space,
-};
-use iced::{alignment, Background, Color, Element, Length, Pixels, Theme};
+use iced::widget::{button, column, container, row, text, Column, Row, Space};
+use iced::{alignment, Color, Element, Length, Pixels};
 
 use crate::kit::{self, Check};
 use crate::palette::Palette;
@@ -159,93 +157,6 @@ pub fn mono<'a, M: 'a>(
         .into()
 }
 
-fn field_style(palette: &Palette) -> impl Fn(&Theme, text_input::Status) -> text_input::Style {
-    let base = theme::field_input(palette);
-    let colors = *palette;
-    move |theme, status| {
-        let mut style = base(theme, status);
-        style.background = Background::Color(colors.background);
-        style
-    }
-}
-
-fn field_in<'a, M: Clone + 'a>(
-    placeholder: &str,
-    value: &str,
-    id: &'static str,
-    on_input: Option<impl Fn(String) -> M + 'a>,
-    on_submit: M,
-    monospace: bool,
-    palette: &Palette,
-) -> Element<'a, M> {
-    let field = text_input(placeholder, value).id(id);
-    let typed_in = if monospace {
-        field.font(crate::APP_FONT)
-    } else {
-        field
-    };
-    let wired = match on_input {
-        Some(typed) => typed_in.on_input(typed).on_submit(on_submit),
-        None => typed_in,
-    };
-    wired
-        .size(TEXT_BODY)
-        .line_height(LineHeight::Absolute(Pixels(BODY_LINE)))
-        .padding([CONTROL_PAD_Y, MENU_PAD_X])
-        .style(field_style(palette))
-        .width(Length::Fill)
-        .into()
-}
-
-/// A text field of 28 px. Without `on_input` it takes no typing.
-pub fn text_field<'a, M: Clone + 'a>(
-    placeholder: &str,
-    value: &str,
-    id: &'static str,
-    on_input: Option<impl Fn(String) -> M + 'a>,
-    on_submit: M,
-    palette: &Palette,
-) -> Element<'a, M> {
-    field_in(placeholder, value, id, on_input, on_submit, false, palette)
-}
-
-/// [`text_field`] in the monospace font.
-pub fn mono_text_field<'a, M: Clone + 'a>(
-    placeholder: &str,
-    value: &str,
-    id: &'static str,
-    on_input: Option<impl Fn(String) -> M + 'a>,
-    on_submit: M,
-    palette: &Palette,
-) -> Element<'a, M> {
-    field_in(placeholder, value, id, on_input, on_submit, true, palette)
-}
-
-/// A checkbox with its label; a click on either toggles.
-pub fn checkbox<'a, M: Clone + 'a>(
-    state: Check,
-    on_toggle: Option<M>,
-    label: Option<&str>,
-    palette: &Palette,
-) -> Element<'a, M> {
-    let mut line = Row::new()
-        .push(kit::checkbox(state, None, palette))
-        .spacing(GAP_S)
-        .align_y(alignment::Vertical::Center);
-    if let Some(caption) = label {
-        line = line.push(body(caption.to_owned(), palette.text));
-    }
-    let area = mouse_area(
-        container(line)
-            .height(CONTROL_HEIGHT)
-            .align_y(alignment::Vertical::Center),
-    );
-    match on_toggle {
-        Some(message) => area.on_press(message).into(),
-        None => area.into(),
-    }
-}
-
 /// Buttons side by side of which one is on.
 pub fn segmented<'a, M: Clone + 'a>(
     options: &[(&str, M)],
@@ -348,4 +259,38 @@ mod key_tests {
             .collect();
         assert_eq!(joined, key);
     }
+}
+
+/// A text field: the kit's, so a field looks the same on every page.
+pub fn text_field<'a, M: Clone + 'a>(
+    placeholder: &str,
+    value: &str,
+    id: &'static str,
+    on_input: Option<impl Fn(String) -> M + 'a>,
+    on_submit: M,
+    palette: &Palette,
+) -> Element<'a, M> {
+    kit::text_field(placeholder, value, id, on_input, on_submit, palette)
+}
+
+/// [`text_field`] in the monospace font.
+pub fn mono_text_field<'a, M: Clone + 'a>(
+    placeholder: &str,
+    value: &str,
+    id: &'static str,
+    on_input: Option<impl Fn(String) -> M + 'a>,
+    on_submit: M,
+    palette: &Palette,
+) -> Element<'a, M> {
+    kit::mono_text_field(placeholder, value, id, on_input, on_submit, palette)
+}
+
+/// A checkbox with its label: the kit's.
+pub fn checkbox<'a, M: Clone + 'a>(
+    state: Check,
+    on_toggle: Option<M>,
+    label: Option<&str>,
+    palette: &Palette,
+) -> Element<'a, M> {
+    kit::labelled_checkbox(state, on_toggle, label, palette)
 }

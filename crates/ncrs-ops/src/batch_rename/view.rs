@@ -9,6 +9,7 @@ use ncrs_ui_kit::frame::{content_chars, DialogSize, Frame, KeyHints};
 
 use ncrs_ui_kit::kit::{self, Check, Columns, ListView, Tone};
 use ncrs_ui_kit::palette::Palette;
+use ncrs_ui_kit::permission_grid;
 use ncrs_ui_kit::theme::spacing;
 
 use super::pattern::{Case, Field, Problem};
@@ -25,6 +26,9 @@ pub const REPLACE_FIELD_ID: &str = "batch-rename-replace";
 const PORTIONS: [u16; 3] = [4, 4, 3];
 
 const NUMBER_FIELD_WIDTH: f32 = 72.0;
+
+/// Room the subtitle leaves beside the title: the gap and the frame's close button.
+const TITLE_SLACK_CHARS: usize = 14;
 
 fn send(message: BatchRenameMessage) -> OpsMessage {
     OpsMessage::BatchRename(message)
@@ -100,12 +104,12 @@ fn labelled<'a>(
 }
 
 fn regex_check<'a>(state: Check, lang: Language, palette: &Palette) -> Element<'a, OpsMessage> {
-    row![
-        kit::checkbox(state, Some(send(BatchRenameMessage::ToggleRegex)), palette),
-        kit::paragraph(lang.text(Msg::BatchRenameRegex).to_owned(), palette),
-    ]
-    .spacing(spacing::XS)
-    .into()
+    permission_grid::labelled_box(
+        lang.text(Msg::BatchRenameRegex),
+        state,
+        send(BatchRenameMessage::ToggleRegex),
+        palette,
+    )
 }
 
 fn hermes_line<'a>(
@@ -142,37 +146,32 @@ fn settings_row<'a>(
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, OpsMessage> {
+    let field = |label: Msg,
+                 value: &str,
+                 id: &'static str,
+                 typed: fn(String) -> BatchRenameMessage,
+                 width: Length| {
+        container(labelled(
+            lang.text(label),
+            kit::mono_text_field(
+                "",
+                value,
+                id,
+                Some(move |entered| send(typed(entered))),
+                send(BatchRenameMessage::Confirm),
+                palette,
+            ),
+            palette,
+        ))
+        .width(width)
+    };
     let number =
         |label: Msg, value: &str, id: &'static str, typed: fn(String) -> BatchRenameMessage| {
-            container(labelled(
-                lang.text(label),
-                kit::mono_text_field(
-                    "",
-                    value,
-                    id,
-                    Some(move |text| send(typed(text))),
-                    send(BatchRenameMessage::Confirm),
-                    palette,
-                ),
-                palette,
-            ))
-            .width(NUMBER_FIELD_WIDTH)
+            field(label, value, id, typed, Length::Fixed(NUMBER_FIELD_WIDTH))
         };
     let text =
         |label: Msg, value: &str, id: &'static str, typed: fn(String) -> BatchRenameMessage| {
-            container(labelled(
-                lang.text(label),
-                kit::mono_text_field(
-                    "",
-                    value,
-                    id,
-                    Some(move |entered| send(typed(entered))),
-                    send(BatchRenameMessage::Confirm),
-                    palette,
-                ),
-                palette,
-            ))
-            .width(Length::Fill)
+            field(label, value, id, typed, Length::Fill)
         };
     let selected = match dialog.case {
         Case::Keep => 0,
@@ -304,6 +303,7 @@ pub fn view<'a>(
         ),
         palette,
     );
+    let syntax = kit::dim(lang.text(Msg::BatchRenameSyntaxNote).to_owned(), palette);
     let add = token_row(
         lang.text(Msg::BatchRenameAdd),
         &[
@@ -335,6 +335,7 @@ pub fn view<'a>(
     let regex_state = if dialog.regex { Check::On } else { Check::Off };
     let mut body = column![
         pattern,
+        syntax,
         add,
         document,
         settings_row(dialog, lang, palette),
@@ -364,8 +365,8 @@ pub fn view<'a>(
         lang.text(Msg::BatchRenameTitle),
         &[("{count}", &dialog.entries.len().to_string())],
     );
-    let folder_room =
-        content_chars(DialogSize::Large, window, 0.0).saturating_sub(title.chars().count() + 14);
+    let folder_room = content_chars(DialogSize::Large, window, 0.0)
+        .saturating_sub(title.chars().count() + TITLE_SLACK_CHARS);
     let folder = format::ellipsize_middle(&dialog.folder.display().to_string(), folder_room);
     Frame::new(title, body, DialogSize::Large, window, lang, palette)
         .subtitle(folder)

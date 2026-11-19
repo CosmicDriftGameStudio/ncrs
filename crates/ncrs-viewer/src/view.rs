@@ -59,8 +59,8 @@ fn header<'a>(state: &State, doc: &Doc, ctx: ViewCtx<'a>) -> Element<'a, Message
     let palette = ctx.palette;
     let facts = [
         format::shown_path(&doc.path, ctx.home),
-        format::size(doc.size),
-        format::time(doc.modified),
+        format::size_shown(doc.size, ctx.lang),
+        format::time_in(doc.modified, ctx.date_format, ctx.lang),
     ]
     .into_iter()
     .filter(|part| !part.is_empty())

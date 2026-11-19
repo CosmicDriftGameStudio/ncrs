@@ -13,13 +13,13 @@ use iced_test::Simulator;
 use ncrs_i18n::Language;
 
 use crate::app::{fixed_result_entry, App};
-use crate::fs::search::LineMatch;
 use crate::fs::{FileEntry, Volume};
 use crate::messages::{
     BatchRenameMessage, FavouritesBarMessage, Message, PanelMessage, PanelSide, SettingField,
     SettingsFeature, SettingsMessage,
 };
 use ncrs_core::CompareMark;
+use ncrs_search::engine::LineMatch;
 use ncrs_settings::AiCheckResult;
 
 const OUTPUT_DIRECTORY: &str = "docs/screenshots";

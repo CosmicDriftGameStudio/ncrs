@@ -33,6 +33,7 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Live for P {}
 /// An indexed location with a file and a subfolder, and a note on the file.
 pub(in crate::e2e_tests) struct NoteOnIndexedFile {
     pub _data: tempfile::TempDir,
+    pub _archive: tempfile::TempDir,
     pub notes: PathBuf,
     pub before: PathBuf,
     pub after: PathBuf,
@@ -65,7 +66,8 @@ pub(in crate::e2e_tests) fn boot_with_a_note_on_an_indexed_file(
     language: &str,
 ) -> (NoteOnIndexedFile, Session<impl Live>) {
     let data = tempfile::TempDir::new().unwrap();
-    let root = std::fs::canonicalize(tempfile::TempDir::new().unwrap().keep()).unwrap();
+    let archive = tempfile::TempDir::new().unwrap();
+    let root = std::fs::canonicalize(archive.path()).unwrap();
     write(
         &root.join("offer.txt"),
         "Angebot Heizung Vaillant, gueltig bis Dezember",
@@ -149,6 +151,7 @@ pub(in crate::e2e_tests) fn boot_with_a_note_on_an_indexed_file(
     (
         NoteOnIndexedFile {
             _data: data,
+            _archive: archive,
             notes,
             before,
             after,

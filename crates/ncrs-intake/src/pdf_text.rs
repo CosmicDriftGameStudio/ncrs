@@ -14,6 +14,8 @@ use crate::page_trim::trim_to_content;
 use crate::text::{Extracted, PageImage, PreviewPage, TextError, TextSource, MAX_TEXT_BYTES};
 
 const PDF_HEADER: &[u8] = b"%PDF-";
+/// The header may follow some leading bytes, as pdfium accepts it.
+const PDF_HEADER_WINDOW: u64 = 1024;
 
 /// Resolution of a rendered scan. OCR reads small print well from here on.
 const SCAN_DPI: f32 = 200.0;
@@ -383,13 +385,15 @@ fn is_pdf(path: &Path) -> Result<bool, TextError> {
         path: path.to_path_buf(),
         reason: err.to_string(),
     };
-    let mut header = Vec::with_capacity(PDF_HEADER.len());
+    let mut header = Vec::with_capacity(PDF_HEADER_WINDOW as usize);
     File::open(path)
         .map_err(unreadable)?
-        .take(PDF_HEADER.len() as u64)
+        .take(PDF_HEADER_WINDOW)
         .read_to_end(&mut header)
         .map_err(unreadable)?;
-    Ok(header == PDF_HEADER)
+    Ok(header
+        .windows(PDF_HEADER.len())
+        .any(|window| window == PDF_HEADER))
 }
 
 fn holds_library(dir: &Path) -> bool {
@@ -423,7 +427,7 @@ pub fn pdfium_library_candidates() -> Vec<PathBuf> {
 
 /// `canonicalize` returns `\\?\C:\...` on Windows, `current_exe` plain `C:\...`;
 /// without this the same folder would count as two.
-fn without_verbatim_prefix(dir: PathBuf) -> PathBuf {
+pub(crate) fn without_verbatim_prefix(dir: PathBuf) -> PathBuf {
     let plain = dir.to_str().and_then(|text| {
         let rest = text.strip_prefix(r"\\?\")?;
         let mut chars = rest.chars();

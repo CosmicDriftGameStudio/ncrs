@@ -98,7 +98,7 @@ impl IntakeStep {
     /// document that is not new alone.
     fn inbox_document_continues(
         &self,
-        index: &Index,
+        index: &mut Index,
         id: DocumentId,
         item: &mut Item,
     ) -> Result<bool, IndexError> {
@@ -106,7 +106,25 @@ impl IntakeStep {
             return Ok(false);
         };
         match document.status {
-            DocumentStatus::New => Ok(true),
+            // A file whose text was stored empty could not be read: the same
+            // bytes are not parsed again on every scan, and it goes to the
+            // review list, where an app quit before the rules step left it
+            // unseen. Reading it again is asked for by force.
+            DocumentStatus::New => {
+                let stored_empty = index
+                    .document_text(id)?
+                    .is_some_and(|text| text.trim().is_empty());
+                if stored_empty {
+                    match index.add_review(id, ReviewReason::NoMatchingRule) {
+                        Ok(_) => {}
+                        Err(IndexError::ReviewAlreadyOpen(_)) => {
+                            index.set_document_status(id, DocumentStatus::InReview)?;
+                        }
+                        Err(other) => return Err(other),
+                    }
+                }
+                Ok(!stored_empty)
+            }
             DocumentStatus::InReview => {
                 let has_text = index.has_document_text_row(id)?;
                 let continues = text_is_readable(&item.path)

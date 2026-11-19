@@ -831,18 +831,6 @@ fn a_target_that_appeared_during_the_copy_is_not_overwritten() {
     assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 2);
 }
 
-#[test]
-fn reports_a_conflicting_name_before_starting() {
-    let dir = scratch("conflict-name");
-    let src = dir.path().join("src");
-    let dst = dir.path().join("dst");
-    fs::create_dir_all(&src).unwrap();
-    fs::create_dir_all(dst.join("src")).unwrap();
-
-    assert_eq!(conflicts(&src, &dst), Some(dst.join("src")));
-    assert_eq!(conflicts(&src, &dir.path().join("empty")), None);
-}
-
 /// What a download marks a file with (the macOS quarantine, Finder tags) must
 /// follow the copy, or the copy opens without the check the original has.
 #[cfg(any(target_os = "macos", target_os = "linux"))]

@@ -119,6 +119,8 @@ pub struct SettingsState {
     pub usage_days: u32,
     /// The sums of the usage log per period; `None` until it was read.
     pub usage: Option<Vec<(u32, ncrs_ai::UsageSummary)>>,
+    /// The system's text when the usage log could not be read whole.
+    pub usage_problem: Option<String>,
 }
 
 /// Why the value of a field was not written.
@@ -180,6 +182,7 @@ impl SettingsState {
             ai_check: crate::settings::AiCheck::Idle,
             usage_days: crate::settings::DEFAULT_USAGE_DAYS,
             usage: None,
+            usage_problem: None,
         }
     }
 

@@ -2,6 +2,7 @@
 //! behind the "Move to" widget. A pattern is its stored form; no widgets here,
 //! the view is `ui::filing_pieces`.
 
+use crate::sanitise::is_windows_device_name;
 use crate::{is_plain_literal, render_pattern_in};
 use chrono::NaiveDate;
 use ncrs_index::{DocumentFields, Kinds};
@@ -206,6 +207,8 @@ pub enum FolderNameProblem {
     Character,
     /// An underscore in the text of a file name piece.
     Underscore,
+    /// A name Windows reserves for a device, such as `CON` or `AUX`.
+    DeviceName,
 }
 
 impl FolderNameProblem {
@@ -215,6 +218,7 @@ impl FolderNameProblem {
             Self::Dots => Msg::FilingPiecesNameDots,
             Self::Character => Msg::FilingPiecesNameCharacter,
             Self::Underscore => Msg::FilingPiecesNameUnderscore,
+            Self::DeviceName => Msg::FilingPiecesNameDevice,
         })
     }
 }
@@ -228,6 +232,8 @@ pub fn own_folder_name(input: &str) -> Result<String, FolderNameProblem> {
         Err(FolderNameProblem::Dots)
     } else if name.contains(['{', '}']) || name.ends_with('.') || !is_plain_literal(name) {
         Err(FolderNameProblem::Character)
+    } else if is_windows_device_name(name) {
+        Err(FolderNameProblem::DeviceName)
     } else {
         Ok(name.to_owned())
     }
@@ -851,6 +857,18 @@ mod tests {
                 "{bad:?}"
             );
         }
+    }
+
+    #[test]
+    fn a_windows_device_name_is_no_own_folder_name() {
+        for device in ["Con", "AUX", "nul", "COM1", "lpt3.txt"] {
+            assert_eq!(
+                own_folder_name(device),
+                Err(FolderNameProblem::DeviceName),
+                "{device}"
+            );
+        }
+        assert_eq!(own_folder_name("Console"), Ok("Console".to_owned()));
     }
 
     #[test]

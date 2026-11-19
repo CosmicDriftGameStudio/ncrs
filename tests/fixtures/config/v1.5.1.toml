@@ -1,0 +1,59 @@
+# The example configs of the README of v1.5.1, one file. Left out: the second
+# [theme] block (vscode = ...), the alternative to the preset block.
+
+version = 1
+lang = "de"
+
+[open]
+view = ["open"]
+edit = ["open", "-t"]
+
+[keys]
+copy = "F11"
+quit = ["F10", "primary+q"]
+delete_permanently = []
+view = "F4"
+edit = "F3"
+
+[theme]
+preset = "classic"
+directory = "#ffff55"
+tagged = "#a50"
+
+[modules.filing]
+load = "balanced"
+
+[[modules.filing.locations]]
+path = "~/Inbox"
+mode = "inbox"
+images = false
+
+[[modules.filing.locations]]
+path = "~/Documents/Archive"
+mode = "archive"
+images = true
+target = true
+
+[hermes]
+enabled = true
+
+[modules.filing.ai]
+provider = "local"
+threads = 4
+
+[[kinds]]
+id = "payslip"
+de = "Lohnabrechnung"
+en = "Payslip"
+words = ["Gehaltsabrechnung", "Entgeltabrechnung"]
+
+[[kinds]]
+id = "invoice"
+words = ["Honorarnote"]
+
+[[servers]]
+name = "Work"
+host = "files.example.org"
+port = 2222
+user = "marc"
+path = "/srv/files"

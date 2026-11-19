@@ -308,6 +308,21 @@ mod tests {
     }
 
     #[test]
+    fn a_mail_text_indexed_before_it_was_left_out_is_removed_on_settling() {
+        let mut fixture = Fixture::new();
+        let dir = TempDir::new().unwrap();
+        let archive = location(&dir, LocationMode::Archive, false);
+        let body = put(&archive, "mail/body.txt", INVOICE);
+        fixture.scan_settled(&archive);
+        assert!(fixture.index.document_by_path(&body).unwrap().is_some());
+        put(&archive, "mail/message.eml", b"From: a@example.org");
+
+        settle_location(&fixture.index, &archive).unwrap();
+
+        assert!(fixture.index.document_by_path(&body).unwrap().is_none());
+    }
+
+    #[test]
     fn settling_a_location_whose_root_is_gone_fails_and_marks_nothing_missing() {
         let mut fixture = Fixture::new();
         let dir = TempDir::new().unwrap();

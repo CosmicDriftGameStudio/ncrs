@@ -130,6 +130,8 @@ pub enum ConnectFailure {
     PasswordNotOffered,
     Timeout,
     NoCommonAlgorithm,
+    /// The server ended the key exchange without showing a host key.
+    HostKeyNotOffered,
     Unreachable(String),
     Keychain(String),
 }
@@ -174,6 +176,7 @@ impl fmt::Debug for ConnectFailure {
             Self::PasswordNotOffered => f.write_str("PasswordNotOffered"),
             Self::Timeout => f.write_str("Timeout"),
             Self::NoCommonAlgorithm => f.write_str("NoCommonAlgorithm"),
+            Self::HostKeyNotOffered => f.write_str("HostKeyNotOffered"),
             Self::Unreachable(reason) => write!(f, "Unreachable({reason})"),
             Self::Keychain(reason) => write!(f, "Keychain({reason})"),
         }
@@ -343,6 +346,16 @@ impl From<SftpError> for Step {
     fn from(error: SftpError) -> Self {
         Self::Sftp(error)
     }
+}
+
+/// `step`, or a timeout once `limit` has passed.
+async fn within<T>(
+    limit: Duration,
+    step: impl Future<Output = Result<T, Step>>,
+) -> Result<T, Step> {
+    timeout(limit, step)
+        .await
+        .unwrap_or_else(|_elapsed| Err(Step::Io(io::ErrorKind::TimedOut.into())))
 }
 
 /// The connections of the run.
@@ -544,14 +557,11 @@ impl Pool {
             port: target.port,
             seen: Arc::clone(&seen),
         };
-        let opened = timeout(
-            self.timeouts.connect,
-            self.open(&target, login, &settings, check, &on_record),
-        )
-        .await;
+        let opened = self
+            .open(&target, login, &settings, check, &on_record)
+            .await;
         match opened {
-            Err(_) => Err(ConnectFailure::Timeout),
-            Ok(Ok(opened_session)) => {
+            Ok(opened_session) => {
                 let session = Arc::new(opened_session);
                 // A concurrent connect may have got in first; its connection
                 // keeps serving requests, so the newcomer is the one to leave.
@@ -565,8 +575,15 @@ impl Pool {
                 self.say_goodbye(loser);
                 Ok(())
             }
-            Ok(Err(step)) => Err(failure_of(step, &seen)),
+            Err(step) => Err(failure_of(step, &seen)),
         }
+    }
+
+    /// The limit for `sign_in`. It waits for people as well as for the network
+    /// (a touch on a key, a keychain prompt), so it is far longer than the one
+    /// for the steps that only wait for the server.
+    fn sign_in_limit(&self) -> Duration {
+        self.timeouts.connect.saturating_mul(8)
     }
 
     async fn open(
@@ -586,13 +603,17 @@ impl Pool {
             preferred,
             ..client::Config::default()
         });
-        let stream = self.dial.dial(server).await?;
-        let mut handle = client::connect_stream(config, stream, check).await?;
-        // Ask what the server takes before anything secret is sent: a server
-        // that offers no password login gets none, and the user hears why
-        // instead of "wrong password". A server that names no methods is tried
-        // with everything all the same.
-        let probe = handle.authenticate_none(server.user.clone()).await?;
+        let (mut handle, probe) = within(self.timeouts.connect, async {
+            let stream = self.dial.dial(server).await?;
+            let mut handle = client::connect_stream(config, stream, check).await?;
+            // Ask what the server takes before anything secret is sent: a
+            // server that offers no password login gets none, and the user
+            // hears why instead of "wrong password". A server that names no
+            // methods is tried with everything all the same.
+            let probe = handle.authenticate_none(server.user.clone()).await?;
+            Ok((handle, probe))
+        })
+        .await?;
         if let client::AuthResult::Failure {
             remaining_methods, ..
         } = &probe
@@ -604,14 +625,21 @@ impl Pool {
                 identity_files: &settings.identity_files,
                 passphrases: &self.passphrases,
             };
-            login::sign_in(&mut handle, remaining_methods, &attempt).await?;
+            within(
+                self.sign_in_limit(),
+                login::sign_in(&mut handle, remaining_methods, &attempt),
+            )
+            .await?;
         }
-        let channel = handle.channel_open_session().await?;
-        channel.request_subsystem(true, "sftp").await?;
-        let sftp = SftpSession::new(channel.into_stream()).await?;
-        sftp.set_timeout(self.timeouts.request.as_secs().max(1));
-        let home = sftp.canonicalize(".").await?;
-        Ok(Session { handle, sftp, home })
+        within(self.timeouts.connect, async {
+            let channel = handle.channel_open_session().await?;
+            channel.request_subsystem(true, "sftp").await?;
+            let sftp = SftpSession::new(channel.into_stream()).await?;
+            sftp.set_timeout(self.timeouts.request.as_secs().max(1));
+            let home = sftp.canonicalize(".").await?;
+            Ok(Session { handle, sftp, home })
+        })
+        .await
     }
 
     /// Writes the key the user confirmed to the file of ncrs, under the host
@@ -622,7 +650,7 @@ impl Pool {
             .known
             .own
             .as_deref()
-            .ok_or_else(|| io::Error::other("there is no place to keep the host key"))?;
+            .ok_or_else(|| io::Error::from(io::ErrorKind::Unsupported))?;
         known_hosts::learn(own, host, port, key)
     }
 }
@@ -685,7 +713,7 @@ fn failure_of(step: Step, seen: &Mutex<Option<Seen>>) -> ConnectFailure {
                         },
                     }
                 }
-                None => ConnectFailure::Unreachable("the host key was not offered".to_owned()),
+                None => ConnectFailure::HostKeyNotOffered,
             }
         }
         Step::Ssh(russh::Error::NoCommonAlgo { .. }) => ConnectFailure::NoCommonAlgorithm,

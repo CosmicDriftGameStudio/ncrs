@@ -109,7 +109,16 @@ pub fn process_found_again(
     ctx: &Ctx<'_>,
     actions: &mut Vec<Action>,
 ) {
-    let found = result.unwrap_or_default();
+    let found = match result {
+        Ok(found) => found,
+        Err(reason) => {
+            actions.push(Action::ShowError(fill_template(
+                ctx.lang.text(Msg::StatusHermesColumnReadFailed),
+                &[("{reason}", &reason)],
+            )));
+            return;
+        }
+    };
     let in_inboxes = found
         .iter()
         .filter(|path| lies_in_an_inbox(hermes, path))

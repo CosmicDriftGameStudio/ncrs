@@ -75,21 +75,6 @@ pub struct StayGroups {
     pub single_pieces: usize,
 }
 
-impl StayGroups {
-    pub fn has_questions(&self) -> bool {
-        !self.asked.is_empty() || !self.rest.is_empty() || !self.name_taken.is_empty()
-    }
-
-    /// Files the first `questions` groups cover.
-    pub fn files_in_first(&self, questions: usize) -> usize {
-        self.asked
-            .iter()
-            .take(questions)
-            .map(StayGroup::count)
-            .sum()
-    }
-}
-
 struct Forming {
     label: String,
     entries: Vec<TrialEntry>,

@@ -183,17 +183,20 @@ fn ask_for_password(
         request_id,
     };
     let mut dialog = ConnectDialog::for_server(attempt, &server, Some(then));
-    prepare_dialog(&mut dialog, ctx);
+    let reading = prepare_dialog(&mut dialog, ctx);
     if let Some(file) = ctx.key_file_of(&server) {
         dialog.set(ConnectField::KeyFile, file.display().to_string());
     }
     if let Some(remembered) = password {
         dialog.keep_password(remembered);
     }
+    if matches!(failure, Some(ConnectFailure::AuthFailed)) {
+        dialog.remember_again();
+    }
     let focus = match (failure, failure_text) {
         (Some(reason), Some(text)) => show_failure(&mut dialog, reason, text, ctx.lang),
         _ => operation::focus(field_id(ConnectField::Password)),
     };
     remote.dialog = Some(dialog);
-    focus
+    Task::batch([reading, focus])
 }

@@ -196,6 +196,7 @@ struct FilingError {
 }
 
 mod error;
+pub mod instance_lock;
 mod loading;
 mod paths;
 mod resolving;
@@ -218,9 +219,9 @@ pub use self::paths::{
 use self::resolving::*;
 pub use self::resolving::{check_ai_endpoint, AiEndpointProblem};
 pub use self::sections::{
-    AiProviderName, AiSection, AiSetting, AppearanceSection, ColumnsSection, ContrastWarning,
-    FileListTagsSection, Filing, FilingLocation, FilingSection, HermesSection, KeyEntry,
-    KeySection, KindSection, KindWarning, LanguageWarning, LoadValue, LocationEntry,
+    merge_saved_server, AiProviderName, AiSection, AiSetting, AppearanceSection, ColumnsSection,
+    ContrastWarning, FileListTagsSection, Filing, FilingLocation, FilingSection, HermesSection,
+    KeyEntry, KeySection, KindSection, KindWarning, LanguageWarning, LoadValue, LocationEntry,
     LocationModeName, LocationTransfer, ModulesSection, ServerEntry, ServerSection, ThemeEntry,
     ThemeSection, VscodeWarning,
 };
@@ -231,7 +232,6 @@ pub use self::setting_writes::{
     write_own_details, write_program, write_system_settings, write_theme_preset, AiProviderChoice,
     KeyChange, OwnDetail,
 };
-pub use self::write_support::one_config_writer;
 use self::write_support::*;
 use self::writing::*;
 pub use self::writing::{

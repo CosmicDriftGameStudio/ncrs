@@ -28,23 +28,22 @@ pub use ncrs_ops::clipboard_paste;
 #[cfg(test)]
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod clipboard_system_tests;
-mod command_line;
 pub use ncrs_config::commands;
 pub use ncrs_config::config;
+pub use ncrs_palette::command_line;
 mod context_action_message;
 pub use ncrs_config::file_list_tags;
 pub use ncrs_files::context_menu;
+pub use ncrs_fs as fs;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub use ncrs_ops::drag_out;
-mod fs;
 mod input_state;
 pub use ncrs_filing::{
     execute, filing, filing_work, query_work, review_work, rules_work, tags_work,
 };
 pub use ncrs_hermes_ui::{
-    condition_editor, document_preview, filing_pieces, filing_setup, filing_status, hermes_column,
-    hermes_overview, hermes_status, quick_fix, reading_again, rule_form, rules_page, saved_queries,
-    tags_page,
+    condition_editor, filing_pieces, filing_setup, filing_status, hermes_column, hermes_overview,
+    hermes_status, quick_fix, reading_again, rule_form, rules_page, saved_queries, tags_page,
 };
 pub use ncrs_i18n as i18n;
 pub use ncrs_jobs as jobs;
@@ -56,13 +55,14 @@ mod messages;
 #[cfg(target_os = "macos")]
 mod native_menu;
 pub use ncrs_config::palette;
-pub use ncrs_files::panel_drag;
-mod quick_open;
-pub use ncrs_remote::dialog as remote_dialog;
-#[cfg(test)]
-mod search_filters;
-mod search_view;
 pub use ncrs_core::selection;
+pub use ncrs_files::panel_drag;
+pub use ncrs_palette::quick_open;
+pub use ncrs_remote::dialog as remote_dialog;
+pub use ncrs_search::view_state as search_view;
+#[cfg(test)]
+#[cfg(target_os = "macos")]
+mod sandbox_probe_tests;
 mod session_state;
 mod system_dialogs;
 pub use ncrs_ops::prompt as dialog;
@@ -74,6 +74,7 @@ pub use ncrs_config::vscode_theme;
 
 use app::App;
 use std::env;
+use std::path::Path;
 
 /// The application as iced runs it, window settings and all.
 ///
@@ -204,7 +205,9 @@ CONFIG:
     file and line in the status bar.
 
     state.toml next to index.db remembers the panels' folders and sort, the
-    active panel and the window size. ncrs writes it; delete it to start fresh.
+    active panel, the window size and your favourites. ncrs writes it; delete it
+    to start fresh, which also clears the favourites. A file that does not parse
+    is kept as state.toml.broken.
 
     --data-dir DIR keeps config, index, state and journal in DIR and the index
     key as a file there instead of the system keychain. For tests with
@@ -289,23 +292,24 @@ fn data_dir_of(value: Option<std::ffi::OsString>) -> Option<std::path::PathBuf> 
 }
 
 fn main() -> iced::Result {
-    let first_argument = env::args().nth(1);
-    if first_argument.is_some() {
+    let mut arguments: Vec<std::ffi::OsString> = env::args_os().skip(1).collect();
+    if !arguments.is_empty() {
         // The Windows build has no console of its own; every command line run
         // prints to the one it was started from.
         ncrs_console::attach_to_parent_console();
     }
-    let argument = if first_argument.as_deref() == Some("--data-dir") {
-        let Some(dir) = data_dir_of(env::args_os().nth(2)) else {
+    if let Some(at) = arguments.iter().position(|given| given == "--data-dir") {
+        let Some(dir) = data_dir_of(arguments.get(at + 1).cloned()) else {
             eprintln!("ncrs: --data-dir needs a folder");
             eprintln!("try 'ncrs --help'");
             std::process::exit(2);
         };
         config::use_data_dir(dir);
-        None
-    } else {
-        first_argument
-    };
+        arguments.drain(at..(at + 2).min(arguments.len()));
+    }
+    let argument = arguments
+        .first()
+        .map(|given| given.to_string_lossy().into_owned());
     match argument.as_deref() {
         Some("-V" | "--version") => {
             println!(
@@ -319,7 +323,7 @@ fn main() -> iced::Result {
             println!("{HELP}");
             return Ok(());
         }
-        Some("--check-ai") => std::process::exit(check_ai(env::args_os().nth(2))),
+        Some("--check-ai") => std::process::exit(check_ai(arguments.get(1).cloned())),
         Some(other) => {
             eprintln!("ncrs: unknown option: {other}");
             eprintln!("try 'ncrs --help'");
@@ -330,8 +334,13 @@ fn main() -> iced::Result {
 
     backend::log_backend();
 
-    let environment = app::Environment::of_the_user();
+    let mut environment = app::Environment::of_the_user();
     fs::restore_grants(environment.index_path.as_deref());
+    let instance = environment
+        .index_path
+        .as_deref()
+        .and_then(Path::parent)
+        .map(config::instance_lock::acquire);
     let saved = environment
         .state_path
         .as_deref()
@@ -340,6 +349,10 @@ fn main() -> iced::Result {
     let window_size = saved
         .window_size()
         .unwrap_or(ui::layout::INITIAL_WINDOW_SIZE);
+    if matches!(instance, Some(config::instance_lock::Instance::Second)) {
+        environment = environment.for_second_instance();
+    }
+    // `instance` holds the lock until the process ends.
     program(window_size, move || {
         App::new(environment.clone(), saved.clone())
     })

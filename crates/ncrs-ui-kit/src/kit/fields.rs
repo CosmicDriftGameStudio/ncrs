@@ -83,6 +83,30 @@ enum Look {
     Secret,
 }
 
+/// A borderless single-line field in the app font at the size of a file row,
+/// for a line that reads like text (the command line, the path in the status
+/// bar). `on_submit` is optional: a path that can only be edited has none.
+pub fn line_field<'a, M: Clone + 'a>(
+    value: &str,
+    id: impl Into<iced::widget::Id>,
+    on_input: impl Fn(String) -> M + 'a,
+    on_submit: Option<M>,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let field = text_input("", value)
+        .id(id)
+        .on_input(on_input)
+        .size(font_size::FILE)
+        .font(crate::APP_FONT)
+        .padding(0.0)
+        .style(theme::path_input(palette))
+        .width(Length::Fill);
+    match on_submit {
+        Some(message) => field.on_submit(message).into(),
+        None => field.into(),
+    }
+}
+
 fn field_in<'a, M: Clone + 'a>(
     placeholder: &str,
     value: &str,
@@ -148,6 +172,35 @@ pub fn checkbox<'a, M: Clone + 'a>(
         boxed = boxed.on_toggle(move |_| message.clone());
     }
     boxed.into()
+}
+
+/// A checkbox with its label; a click on either toggles.
+pub fn labelled_checkbox<'a, M: Clone + 'a>(
+    state: Check,
+    on_toggle: Option<M>,
+    label: Option<&str>,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let mut line = iced::widget::row![checkbox(state, None, palette)]
+        .spacing(spacing::M)
+        .align_y(iced::alignment::Vertical::Center);
+    if let Some(caption) = label {
+        line = line.push(
+            iced::widget::text(caption.to_owned())
+                .size(font_size::BODY)
+                .color(palette.text)
+                .wrapping(iced::widget::text::Wrapping::None),
+        );
+    }
+    let area = iced::widget::mouse_area(
+        iced::widget::container(line)
+            .height(theme::size::ROW_TALL)
+            .align_y(iced::alignment::Vertical::Center),
+    );
+    match on_toggle {
+        Some(message) => area.on_press(message).into(),
+        None => area.into(),
+    }
 }
 
 /// A field for a longer text that wraps and takes lines, set in the monospace

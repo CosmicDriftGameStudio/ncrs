@@ -33,6 +33,13 @@ pub fn update(
             leave_page(settings, ctx, close_settings)
         }
         SettingsMessage::Toggle => open_settings(settings, ctx),
+        SettingsMessage::SystemLoaded { terminals, fonts } => {
+            if let Some(state) = settings.page.as_mut() {
+                state.terminals = terminals;
+                state.installed_fonts = fonts;
+            }
+            Task::none()
+        }
         SettingsMessage::ToggleFileListTags => {
             let switched = ncrs_config::file_list_tags::FileListTags {
                 show: !ctx.file_list_tags.show,
@@ -188,7 +195,7 @@ pub fn update(
         | SettingsMessage::SaveServer
         | SettingsMessage::AiKeyStored(_)
         | SettingsMessage::UsagePeriod(_)
-        | SettingsMessage::UsageLoaded(_)) => own_server::update(settings, own, ctx),
+        | SettingsMessage::UsageLoaded(..)) => own_server::update(settings, own, ctx),
         SettingsMessage::Change(change) => write_setting(settings, change, ctx),
         SettingsMessage::Columns(edit) => columns_edit(settings, edit, ctx),
         SettingsMessage::Favourites(edit) => {
@@ -321,7 +328,7 @@ fn written(
                 if let Some(card) = settings.ai_model.as_mut() {
                     card.set_outcome(InstallOutcome::StillOff);
                 }
-                actions.push(Action::HermesNotTurnedOn(error.to_string()));
+                actions.push(Action::HermesNotTurnedOn(write_failure(&error, ctx)));
                 if settings.page.is_none() {
                     return Task::none();
                 }
@@ -349,9 +356,23 @@ pub fn open_settings(settings: &mut Settings, ctx: &Ctx<'_>) -> Task<Message> {
     }
     settings.failure = None;
     settings.page = Some(fresh_settings_state(ctx));
-    release_focus()
+    Task::batch([release_focus(), load_system_lists()])
 }
 
+/// Reads the terminals and fonts of this machine off the UI thread: finding
+/// them asks the system and parses font files.
+fn load_system_lists() -> Task<Message> {
+    Task::perform(
+        tokio::task::spawn_blocking(|| (ncrs_fs::detect_terminals(), font::installed_monospace())),
+        |joined| {
+            let (terminals, fonts) = joined.unwrap_or_default();
+            Message::Settings(SettingsMessage::SystemLoaded { terminals, fonts })
+        },
+    )
+}
+
+/// The settings state as the tab starts, without the terminals and fonts of
+/// this machine, which [`open_settings`] loads afterwards.
 pub fn fresh_settings_state(ctx: &Ctx<'_>) -> SettingsState {
     let ocr_models_present = models::ocr_models_present(ctx.ocr_models_dir.as_deref());
     // Read again rather than kept from the start: the tab shows the values
@@ -361,8 +382,6 @@ pub fn fresh_settings_state(ctx: &Ctx<'_>) -> SettingsState {
         None => Ok(Box::default()),
     };
     let mut state = SettingsState::new(ocr_models_present, file, runs_in_app_sandbox());
-    state.terminals = ncrs_fs::detect_terminals();
-    state.installed_fonts = font::installed_monospace();
     state.system_font = font::system_font();
     state.ai_model_present = ctx
         .ai_models_dir

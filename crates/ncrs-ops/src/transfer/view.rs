@@ -3,23 +3,26 @@
 
 use std::path::Path;
 
-use iced::widget::text::Wrapping;
-use iced::widget::{column, container, row, scrollable, text, Column, Row};
-use iced::{alignment, Element, Length, Size};
+use iced::widget::{column, container, row, Column, Row};
+use iced::{alignment, Element, Size};
 
 use ncrs_core::TransferKind;
-use ncrs_i18n::{Language, Msg};
+use ncrs_i18n::{fill_template, Language, Msg};
 use ncrs_ui_kit::format;
 use ncrs_ui_kit::frame::{self, DialogSize, Frame};
 use ncrs_ui_kit::kit::{self, Figure, Tone};
 use ncrs_ui_kit::numbered_hint::numbered_hint;
 use ncrs_ui_kit::palette::Palette;
-use ncrs_ui_kit::theme::{self, font_size, spacing};
+use ncrs_ui_kit::theme::spacing;
 
 use super::{Policy, Refusal, TransferDialog, FIRST_NAMES, LISTED_NAMES};
 use crate::message::{OpsMessage, TransferDialogMessage};
 
 const SIZE: DialogSize = DialogSize::Medium;
+
+/// The default keys of the two kinds, shown beside their names in the switch.
+const KEY_COPY: &str = "F5";
+const KEY_MOVE: &str = "F6";
 
 /// Lets the app focus the target field when the dialog opens.
 pub const TARGET_FIELD_ID: &str = "transfer-target";
@@ -70,23 +73,6 @@ fn policy_text(policy: Policy, lang: Language) -> &'static str {
     })
 }
 
-fn mono_name<'a>(name: String, palette: &Palette) -> Element<'a, OpsMessage> {
-    text(name)
-        .font(ncrs_ui_kit::APP_FONT)
-        .size(font_size::FILE)
-        .color(palette.text)
-        .wrapping(Wrapping::None)
-        .into()
-}
-
-fn plain_dim<'a>(content: String, palette: &Palette) -> Element<'a, OpsMessage> {
-    text(content)
-        .size(font_size::BODY)
-        .color(palette.dim_text)
-        .wrapping(Wrapping::None)
-        .into()
-}
-
 /// "{count} entries · {size}" under the title, the size an ellipsis until the
 /// scan has it.
 fn summary(dialog: &TransferDialog, lang: Language) -> String {
@@ -95,18 +81,20 @@ fn summary(dialog: &TransferDialog, lang: Language) -> String {
     } else {
         COUNTING
     };
-    let size = dialog
-        .scan()
-        .map_or_else(|| missing.to_string(), |scan| format::size(scan.bytes));
+    let size = dialog.scan().map_or_else(
+        || missing.to_string(),
+        |scan| format::size_shown(scan.bytes, lang),
+    );
     let count = dialog.sources().len();
     let template = lang.text(if count == 1 {
         Msg::TransferSummaryOne
     } else {
         Msg::TransferSummary
     });
-    template
-        .replace("{count}", &count.to_string())
-        .replace("{size}", &size)
+    fill_template(
+        template,
+        &[("{count}", &count.to_string()), ("{size}", &size)],
+    )
 }
 
 /// The numbers of a large selection, in the box of the kit.
@@ -137,7 +125,7 @@ fn figures<'a>(
         ),
         (
             lang.text(Msg::TransferFigureSize),
-            counted(scan.map(|found| format::size(found.bytes))),
+            counted(scan.map(|found| format::size_shown(found.bytes, lang))),
         ),
     ];
     if let Some(found) = scan.filter(|found| found.unreadable > 0) {
@@ -171,14 +159,14 @@ fn first_names<'a>(
     let template = lang.text(Msg::TransferFirstNames);
     let (head, tail) = template.split_once("{names}").unwrap_or(("", template));
     let count = left_out.to_string();
-    let before = head.replace("{count}", &count);
-    let after = tail.replace("{count}", &count);
+    let before = fill_template(head, &[("{count}", &count)]);
+    let after = fill_template(tail, &[("{count}", &count)]);
     let room = line_chars.saturating_sub(before.chars().count() + after.chars().count());
     let joined = format::ellipsize_end(&names.join(", "), room);
     Row::with_children([
-        plain_dim(before, palette),
-        mono_name(joined, palette),
-        plain_dim(after, palette),
+        kit::dim_line(before, palette),
+        kit::file_name(joined, palette),
+        kit::dim_line(after, palette),
     ])
     .into()
 }
@@ -190,25 +178,19 @@ fn name_list<'a>(
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, OpsMessage> {
-    let mut lines: Column<'a, OpsMessage> = Column::new().spacing(spacing::XS / 2.0);
-    for name in dialog.names().take(LISTED_NAMES) {
-        lines = lines.push(mono_name(
-            format::ellipsize_middle(&name, line_chars),
-            palette,
-        ));
-    }
+    let names = dialog
+        .names()
+        .take(LISTED_NAMES)
+        .map(|name| format::ellipsize_middle(&format::shown_name(&name), line_chars))
+        .collect();
     let left_out = dialog.sources().len().saturating_sub(LISTED_NAMES);
-    if left_out > 0 {
-        lines = lines.push(plain_dim(
-            lang.text(Msg::TransferListMore)
-                .replace("{count}", &left_out.to_string()),
-            palette,
-        ));
-    }
-    container(scrollable(container(lines).padding([spacing::M, spacing::M])).height(LIST_HEIGHT))
-        .width(Length::Fill)
-        .style(theme::outlined(palette))
-        .into()
+    let more = (left_out > 0).then(|| {
+        fill_template(
+            lang.text(Msg::TransferListMore),
+            &[("{count}", &left_out.to_string())],
+        )
+    });
+    kit::name_list(names, more, Some(LIST_HEIGHT), palette)
 }
 
 /// A short selection: all the names, one under the other.
@@ -217,18 +199,13 @@ fn names_directly<'a>(
     line_chars: usize,
     palette: &Palette,
 ) -> Element<'a, OpsMessage> {
-    let lines = Column::with_children(dialog.names().map(|name| {
-        mono_name(
-            format::ellipsize_middle(&name, line_chars.saturating_sub(4)),
-            palette,
-        )
-    }))
-    .spacing(spacing::XS / 2.0);
-    container(lines)
-        .padding([spacing::M, spacing::M])
-        .width(Length::Fill)
-        .style(theme::outlined(palette))
-        .into()
+    let names = dialog
+        .names()
+        .map(|name| {
+            format::ellipsize_middle(&format::shown_name(&name), line_chars.saturating_sub(4))
+        })
+        .collect();
+    kit::name_list(names, None, None, palette)
 }
 
 fn conflict_warning<'a>(
@@ -239,8 +216,10 @@ fn conflict_warning<'a>(
     let text = if count == 1 {
         lang.text(Msg::TransferConflictsOne).to_string()
     } else {
-        lang.text(Msg::TransferConflicts)
-            .replace("{count}", &count.to_string())
+        fill_template(
+            lang.text(Msg::TransferConflicts),
+            &[("{count}", &count.to_string())],
+        )
     };
     kit::warning_box(text, palette)
 }
@@ -257,11 +236,11 @@ pub fn confirm<'a>(
 
     let kinds = [
         (
-            format!("{} F5", title(TransferKind::Copy, lang)),
+            format!("{} {}", title(TransferKind::Copy, lang), KEY_COPY),
             send(TransferDialogMessage::SetKind(TransferKind::Copy)),
         ),
         (
-            format!("{} F6", title(TransferKind::Move, lang)),
+            format!("{} {}", title(TransferKind::Move, lang), KEY_MOVE),
             send(TransferDialogMessage::SetKind(TransferKind::Move)),
         ),
     ];
@@ -376,9 +355,14 @@ pub struct Progress<'a> {
     pub total: usize,
 }
 
+/// The buttons of the progress mask as the numbers the dialog focus takes.
+pub const BACKGROUND_FOCUS: usize = 0;
+pub const ABORT_FOCUS: usize = 1;
+
 /// The mask over a running copy or move. Closing it leaves the job running.
 pub fn progress<'a>(
     shown: &Progress<'a>,
+    focus: usize,
     window: Size,
     lang: Language,
     palette: &Palette,
@@ -388,10 +372,13 @@ pub fn progress<'a>(
         &shown.target.display().to_string(),
         line_chars.saturating_sub(24),
     );
-    let counter = lang
-        .text(Msg::JobProgress)
-        .replace("{done}", &shown.done.to_string())
-        .replace("{total}", &shown.total.to_string());
+    let counter = fill_template(
+        lang.text(Msg::JobProgress),
+        &[
+            ("{done}", &shown.done.to_string()),
+            ("{total}", &shown.total.to_string()),
+        ],
+    );
     let fraction = if shown.total == 0 {
         0.0
     } else {
@@ -414,22 +401,22 @@ pub fn progress<'a>(
         lang,
         palette,
     )
-    .subtitle(
-        lang.text(Msg::TransferProgressTo)
-            .replace("{target}", &target),
-    )
+    .subtitle(fill_template(
+        lang.text(Msg::TransferProgressTo),
+        &[("{target}", &target)],
+    ))
     .footer_note(lang.text(Msg::TransferProgressHint))
     .buttons(vec![
         kit::button(
             lang.text(Msg::TransferBackground),
             Some(send(TransferDialogMessage::Background)),
-            Tone::Secondary,
+            Tone::filled_if(focus == BACKGROUND_FOCUS),
             palette,
         ),
         kit::button(
             lang.text(Msg::JobAbort),
             Some(OpsMessage::AbortJob),
-            Tone::Secondary,
+            Tone::filled_if(focus == ABORT_FOCUS),
             palette,
         ),
     ])

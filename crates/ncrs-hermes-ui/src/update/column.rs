@@ -160,11 +160,21 @@ pub fn update_hermes_column(
             result,
         } => {
             hermes.hermes_reads.remove(&(directory.clone(), stage));
-            let Ok(reading) = result else {
-                // Not asked again until the next invalidation, so a broken
-                // index is not hammered.
-                hermes.hermes_failed_reads.insert((directory, stage));
-                return Task::none();
+            let reading = match result {
+                Ok(reading) => reading,
+                Err(reason) => {
+                    // Not asked again until the next invalidation, so a broken
+                    // index is not hammered; the first failure of a round is
+                    // said once.
+                    if hermes.hermes_failed_reads.is_empty() {
+                        actions.push(Action::ShowError(fill_template(
+                            ctx.lang.text(Msg::StatusHermesColumnReadFailed),
+                            &[("{reason}", &reason)],
+                        )));
+                    }
+                    hermes.hermes_failed_reads.insert((directory, stage));
+                    return Task::none();
+                }
             };
             if let Some(panel) = ctx.panel(side) {
                 if reading.generation == panel.request_id && reading.directory == panel.directory {

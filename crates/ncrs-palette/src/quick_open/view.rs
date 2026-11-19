@@ -8,7 +8,6 @@ use iced::{alignment, Element, Length, Size};
 use ncrs_core::{FoundDocument, TextSource};
 use ncrs_i18n::{fill_template, FuturamaName, Language, Msg};
 use ncrs_ui_kit::kit;
-use ncrs_ui_kit::layout::ROW_HEIGHT;
 use ncrs_ui_kit::palette::Palette;
 use ncrs_ui_kit::picker;
 use ncrs_ui_kit::theme::{font_size, spacing};
@@ -46,8 +45,9 @@ pub fn view<'a>(
         .map(|(index, hit)| hit_row(quick_open, hit, index, window, palette))
         .collect();
     if !quick_open.documents().is_empty() {
-        rows.push(documents_header(
+        rows.push(picker::group_header(
             lang.text(Msg::QuickopenDocuments),
+            &[],
             palette,
         ));
         let first = quick_open.hits().len();
@@ -157,27 +157,14 @@ fn all_hits_row<'a>(
     )
 }
 
-/// The heading of the documents section, not a place for the cursor.
-fn documents_header<'a>(label: &str, palette: &Palette) -> Element<'a, QuickOpenMessage> {
-    container(
-        text(label.to_uppercase())
-            .size(font_size::COLUMN_HEADER)
-            .color(palette.dim_text)
-            .wrapping(Wrapping::None),
-    )
-    .height(ROW_HEIGHT)
-    .padding([0.0, spacing::CELL_PADDING_X])
-    .align_y(alignment::Vertical::Center)
-    .into()
-}
-
 /// Characters kept free for the gaps and the mark beside a document's name.
 const MARK_GAP_CHARS: usize = 8;
 
 /// A folder is never cut shorter than this.
 const MIN_FOLDER_CHARS: usize = 12;
 
-/// The mark after the name: how the text was read, nothing for plain text.
+/// The mark after the name: how the text was read, nothing for plain text. The
+/// abbreviations are the same in every language and deliberately untranslated.
 fn read_by_mark(source: TextSource) -> Option<&'static str> {
     match source {
         TextSource::Pdf => Some("PDF"),

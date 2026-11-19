@@ -2,6 +2,7 @@
 
 pub mod archive;
 mod delete;
+mod entry_read;
 pub mod flat_names;
 mod folder_size;
 pub mod folder_watch;
@@ -34,6 +35,7 @@ mod volumes;
 pub use delete::{
     is_same_place, remove_permanently, system_trash, RestoreError, Trash, TrashReach, TrashedItem,
 };
+pub use entry_read::{entry_from_dir_entry, entry_from_path};
 pub use folder_size::measure_folder;
 pub use ncrs_core::{EntryDetails, FileEntry, FolderSize, WindowsAttributes};
 pub use open::OpenCommand;

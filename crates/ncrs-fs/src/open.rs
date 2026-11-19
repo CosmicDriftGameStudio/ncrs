@@ -71,6 +71,7 @@ pub struct SystemLauncher;
 
 impl Launcher for SystemLauncher {
     fn launch(&self, command: &OpenCommand) -> Result<(), String> {
+        crate::forbid_user_machine_in_tests("the system's program launcher");
         let mut process = Command::new(&command.program);
         process.args(&command.args);
         if let Some(folder) = &command.current_dir {

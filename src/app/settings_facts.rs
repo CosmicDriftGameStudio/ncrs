@@ -156,7 +156,13 @@ impl App {
                 })
                 .await
             },
-            |joined| Message::Settings(SettingsMessage::FactsLoaded(joined.unwrap_or_default())),
+            |joined| {
+                let loaded = joined.unwrap_or_else(|failure| LoadedFacts {
+                    error: Some(failure.to_string()),
+                    ..LoadedFacts::default()
+                });
+                Message::Settings(SettingsMessage::FactsLoaded(loaded))
+            },
         )
     }
 
@@ -240,12 +246,12 @@ impl App {
     }
 }
 
-fn undo_batch(access: &ChatAccess, batch: i64) -> Result<(), String> {
+fn undo_batch(access: &ChatAccess, batch: i64) -> Result<usize, String> {
     match access.run(ChatWork::Undo {
         batch: BatchId::from_number(batch),
     }) {
-        ChatResult::Undone(undone) => undone.map(|_report| ()),
-        _ => Ok(()),
+        ChatResult::Undone(undone) => undone.map(|report| report.left),
+        _ => Err("unexpected answer to the undo request".to_owned()),
     }
 }
 
@@ -272,19 +278,30 @@ fn read_documents_facts(
     let mut areas = Vec::new();
     let mut folder_files = BTreeMap::new();
     let mut read_folders = ReadFolderCoverage::default();
+    let mut error: Option<String> = None;
     for location in locations {
-        if let Ok(files) = access.documents_under(&location.path) {
-            if !disconnected.contains(&location.path) {
-                folder_files.insert(location.path.clone(), files);
-            }
-            // Counted from the index alone, so an unplugged drive keeps its numbers.
-            if location.mode == LocationMode::Archive {
-                if let Ok((with_text, understood)) = access.ai_coverage_under(&location.path) {
-                    let wide = |count: usize| u64::try_from(count).unwrap_or(u64::MAX);
-                    read_folders.documents += wide(files);
-                    read_folders.with_text += wide(with_text);
-                    read_folders.understood += wide(understood);
+        match access.documents_under(&location.path) {
+            Ok(files) => {
+                if !disconnected.contains(&location.path) {
+                    folder_files.insert(location.path.clone(), files);
                 }
+                // Counted from the index alone, so an unplugged drive keeps its numbers.
+                if location.mode == LocationMode::Archive {
+                    match access.ai_coverage_under(&location.path) {
+                        Ok((with_text, understood)) => {
+                            let wide = |count: usize| u64::try_from(count).unwrap_or(u64::MAX);
+                            read_folders.documents += wide(files);
+                            read_folders.with_text += wide(with_text);
+                            read_folders.understood += wide(understood);
+                        }
+                        Err(failure) => {
+                            error.get_or_insert(failure);
+                        }
+                    }
+                }
+            }
+            Err(failure) => {
+                error.get_or_insert(failure);
             }
         }
         let Ok(structure) = access.known_structure(&location.path) else {
@@ -304,18 +321,20 @@ fn read_documents_facts(
                 }),
         );
     }
-    let runs = access
+    let recent = access
         .recent_runs(RUNS_LISTED_AT_MOST)
-        .unwrap_or_default()
-        .iter()
-        .map(|run| run_facts(run, now))
-        .collect();
+        .unwrap_or_else(|failure| {
+            error.get_or_insert(failure);
+            Vec::new()
+        });
+    let runs = recent.iter().map(|run| run_facts(run, now)).collect();
     LoadedFacts {
         areas,
         runs,
         folder_files,
         read_folders: Some(read_folders),
         disconnected,
+        error,
     }
 }
 

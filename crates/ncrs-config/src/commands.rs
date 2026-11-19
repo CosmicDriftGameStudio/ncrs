@@ -202,6 +202,7 @@ fn menu_place_of(action: KeyAction) -> MenuPlace {
         | KeyAction::DeletePermanently
         | KeyAction::OpenTrashInFinder => at(3),
         KeyAction::AbortJob => at(4),
+        KeyAction::ShowProgress => at(4),
         KeyAction::GrantFolderAccess => at(4).dialog(),
         KeyAction::Quit => at(5),
         KeyAction::ToggleTag | KeyAction::TagAll | KeyAction::ClearTags => at(0),
@@ -302,6 +303,7 @@ fn command_without_place(action: KeyAction) -> Option<Command> {
         }
         KeyAction::OpenTrashInFinder => Command::plain(action, File, Msg::ActionOpenTrashInFinder),
         KeyAction::AbortJob => Command::plain(action, File, Msg::ActionAbortJob),
+        KeyAction::ShowProgress => Command::plain(action, File, Msg::ActionShowProgress),
         KeyAction::Quit => Command::plain(action, File, Msg::ActionQuit),
         KeyAction::ToggleTag => Command::themed(
             action,

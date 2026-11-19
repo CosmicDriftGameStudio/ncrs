@@ -17,6 +17,9 @@ pub(in crate::filing) enum Job {
         key: RecoveryKey,
     },
     Encrypt,
+    /// The interrupted runs of an index that was held back until the user
+    /// accepted it.
+    Settle,
     /// `data_dir` is the folder the module keeps its files in; only an
     /// `index.db` directly in it is removed.
     StartOver {
@@ -30,6 +33,7 @@ pub struct Work {
     db_path: PathBuf,
     store: SharedStore,
     index: IndexSlot,
+    settle_problem: SettleNote,
     job: Job,
 }
 
@@ -50,27 +54,33 @@ impl Work {
     pub fn run(self) -> FilingMessage {
         let db_path = self.db_path.as_path();
         let store = self.store.as_ref();
+        let slot = &self.index;
+        let note = &self.settle_problem;
         let outcome = match self.job {
             Job::Start { locations } => WorkOutcome::Started {
                 locations: resolve_locations(&locations),
-                opened: open_existing(db_path, store, &self.index),
+                opened: open_existing(db_path, store, slot, note),
             },
             Job::Create { encrypted } => {
-                WorkOutcome::Created(create_index(db_path, store, &self.index, encrypted))
+                WorkOutcome::Created(create_index(db_path, store, slot, note, encrypted))
             }
             Job::Restore { key } => {
-                WorkOutcome::KeyApplied(apply_key(db_path, store, &self.index, |path, target| {
+                WorkOutcome::KeyApplied(apply_key(db_path, store, slot, note, |path, target| {
                     Index::restore_key(path, &key, target)
                 }))
             }
             Job::Replace { key } => {
-                WorkOutcome::KeyApplied(apply_key(db_path, store, &self.index, |path, target| {
+                WorkOutcome::KeyApplied(apply_key(db_path, store, slot, note, |path, target| {
                     Index::replace_key(path, &key, target)
                 }))
             }
-            Job::Encrypt => WorkOutcome::Encrypted(encrypt_index(db_path, store, &self.index)),
+            Job::Encrypt => WorkOutcome::Encrypted(encrypt_index(db_path, store, slot, note)),
+            Job::Settle => {
+                settle_held(slot, note);
+                WorkOutcome::Settled
+            }
             Job::StartOver { data_dir } => {
-                WorkOutcome::StartedOver(start_over(db_path, &data_dir, store, &self.index))
+                WorkOutcome::StartedOver(start_over(db_path, &data_dir, store, slot, note))
             }
         };
         FilingMessage::WorkDone {
@@ -124,6 +134,7 @@ impl FilingModule {
             db_path: self.db_path.clone(),
             store: Arc::clone(&self.store),
             index: Arc::clone(&self.index),
+            settle_problem: Arc::clone(&self.settle_problem),
             job,
         }
     }

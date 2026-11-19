@@ -3,9 +3,8 @@
 
 use std::path::PathBuf;
 
-use iced::widget::container;
-use iced::widget::{button, column, text, Column, Row};
-use iced::{Element, Length, Size};
+use iced::widget::{column, Column};
+use iced::{Element, Size};
 
 use ncrs_core::PanelSide;
 use ncrs_fs::remote::ServerId;
@@ -13,7 +12,7 @@ use ncrs_fs::Volume;
 use ncrs_i18n::{FuturamaName, Language, Msg};
 use ncrs_ui_kit::frame::{self, DialogSize, Frame, KeyHints, PageHint};
 use ncrs_ui_kit::palette::Palette;
-use ncrs_ui_kit::theme::{self, font_size, spacing};
+use ncrs_ui_kit::theme::spacing;
 use ncrs_ui_kit::{format, kit};
 
 /// Medium rather than large: the list is short, and a large frame would be
@@ -202,17 +201,7 @@ pub fn view<'a, Message: Clone + 'a>(
         .take(VISIBLE_ROWS)
         .map(|line| {
             let (index, name, path, present) = match line {
-                Line::Heading(title) => {
-                    return column![
-                        kit::divider(palette),
-                        text(lang.text(title))
-                            .size(font_size::BODY)
-                            .color(palette.dim_text),
-                    ]
-                    .padding([0.0, spacing::CELL_PADDING_X])
-                    .spacing(spacing::LINE_GAP)
-                    .into();
-                }
+                Line::Heading(title) => return kit::group_heading(lang.text(title), palette),
                 Line::Divider => return kit::divider(palette),
                 Line::Trash(index, label) => {
                     (index, lang.text(label).to_owned(), String::new(), true)
@@ -239,47 +228,19 @@ pub fn view<'a, Message: Clone + 'a>(
                 }
             };
             let is_selected = index == selected;
-            let name_color = match (is_selected, present) {
-                (true, _) => palette.cursor_text,
-                (false, true) => palette.directory,
-                (false, false) => palette.dim_text,
-            };
-            let path_color = if is_selected {
-                palette.cursor_text
-            } else {
-                palette.dim_text
-            };
             let shown_name = if present {
                 format::ellipsize_end(&name, name_chars)
             } else {
                 format!("{} ({missing})", format::ellipsize_end(&name, name_chars))
             };
-            let content = Row::with_children([
-                container(
-                    text(shown_name)
-                        .size(font_size::BODY)
-                        .color(name_color)
-                        .wrapping(text::Wrapping::None),
-                )
-                .width(Length::FillPortion(2))
-                .clip(true)
-                .into(),
-                container(
-                    text(format::ellipsize_middle(&path, path_chars))
-                        .size(font_size::BODY)
-                        .color(path_color)
-                        .wrapping(text::Wrapping::None),
-                )
-                .width(Length::FillPortion(3))
-                .clip(true)
-                .into(),
-            ])
-            .spacing(spacing::CELL_PADDING_X);
-            button(content)
-                .on_press(on_click(index))
-                .width(Length::Fill)
-                .style(theme::row(palette, false, is_selected, true))
-                .into()
+            kit::place_row(
+                shown_name,
+                format::ellipsize_middle(&path, path_chars),
+                present,
+                is_selected,
+                on_click(index),
+                palette,
+            )
         });
 
     let on_favourite = !favourites.is_empty()

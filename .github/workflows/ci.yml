@@ -251,6 +251,10 @@ jobs:
         if: runner.os == 'Linux'
         run: cargo deny check advisories licenses bans sources
 
+      - name: Structure rules (crate edges, file size)
+        if: runner.os == 'Linux'
+        run: scripts/check-structure.sh
+
       # A lockfile update that moves winit past the vendored version makes cargo
       # drop the patch with only a warning, and the private CoreGraphics symbols
       # (see vendor/winit/NCRS-PATCH.md) are back in the binary. The patched
@@ -317,6 +321,12 @@ jobs:
         if: runner.os == 'macOS'
         run: cargo test -p ncrs -p ncrs-fs --features ncrs/sandbox -- --skip ui_tests
 
+      # The two tests that use the real operating system credential store are
+      # ignored by default; these runners have one.
+      - name: Key store tests (macOS and Windows)
+        if: runner.os != 'Linux'
+        run: cargo test -p ncrs-index key_store -- --ignored
+
       # The snapshot tests run only here, where the reference images in
       # tests/snapshots/ were produced. They are skipped above so a font
       # difference on another operating system cannot fail the build. They
@@ -327,6 +337,18 @@ jobs:
         env:
           TZ: Europe/Berlin
         run: cargo test --workspace ui_tests
+
+      # iced_test writes a missing reference and passes. A reference that
+      # appeared in this run was not compared with anything.
+      - name: No snapshot reference was newly written (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          new=$(git status --porcelain --untracked-files=all -- ':(glob)**/snapshots/**')
+          if [ -n "$new" ]; then
+            echo "::error::snapshot tests wrote references that are not in git:"
+            echo "$new"
+            exit 1
+          fi
 
       # The backend differs per feature set, so the app has to build and its
       # tests have to pass in every configuration. This is not a formality: the

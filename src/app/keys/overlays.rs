@@ -94,6 +94,7 @@ pub(in crate::app) fn transfer_overlay_key(
     )
     .map(|pressed| match pressed {
         TransferOverlayKey::Dialog(message) => Message::TransferDialog(message),
+        TransferOverlayKey::Button(pressed) => dialog_message(pressed),
         TransferOverlayKey::AbortJob => Message::AbortJob,
         TransferOverlayKey::Quit => Message::Quit,
     })
@@ -283,6 +284,8 @@ pub(in crate::app) fn monitor_page_key(
         filter_focused: prompt.monitor_filter,
         dialog_open: prompt.monitor_dialog,
         menu_open: prompt.monitor_menu,
+        drive_focused: prompt.monitor_drive_focused,
+        drives_listed: prompt.monitor_drives_listed,
         context_menu_pressed: bound == Some(KeyAction::ContextMenu.message()),
         bound_untyped: bound.as_ref().is_some_and(passes)
             && is_not_typed_by_text_field(key, key_modifiers),

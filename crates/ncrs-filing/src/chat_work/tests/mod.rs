@@ -557,6 +557,27 @@ fn the_trial_files_finds_duplicates_and_names_what_stays() {
 }
 
 #[test]
+fn a_second_file_with_the_content_of_a_filed_one_is_a_duplicate_of_it() {
+    let alfa = |path: &str, seed: u8| plan_file(path, seed, Some("Alfa AG"), date(2022, 7, 4));
+    let source = reading(
+        "/inbox",
+        vec![alfa("scan.pdf", 100), alfa("scan copy.pdf", 100)],
+    );
+
+    let plan = trial_of(&Setup::new(), source, AnsweredGroups::default());
+
+    let first = PathBuf::from("Alfa/2022/2022-07-04 Alfa Rechnung.pdf");
+    assert_eq!(
+        outcome(&plan, "scan.pdf"),
+        &TrialOutcome::Filed { to: first.clone() }
+    );
+    assert_eq!(
+        outcome(&plan, "scan copy.pdf"),
+        &TrialOutcome::AlreadyThere { at: first }
+    );
+}
+
+#[test]
 fn the_sample_shows_one_file_per_area_then_unsure_then_the_rest() {
     let plan = trial(&Setup::new());
     let order: Vec<&str> = plan

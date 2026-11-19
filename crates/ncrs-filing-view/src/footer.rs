@@ -7,7 +7,7 @@ use ncrs_filing::chat_work::{tally, LivePlan};
 use ncrs_i18n::{Language, Msg};
 use ncrs_index::Transfer;
 use ncrs_ui_kit::compare_bar::{compare_bar, Tally};
-use ncrs_ui_kit::kit::{button, checkbox, paragraph, Check, Tone};
+use ncrs_ui_kit::kit::{button, checkbox, key_button, paragraph, Check, Tone};
 use ncrs_ui_kit::palette::Palette;
 use ncrs_ui_kit::theme::spacing;
 
@@ -68,16 +68,27 @@ pub fn footer<'a>(
         palette.text,
         palette.error,
     ];
-    let tallies = texts
+    let filed = tally(plan).filed;
+    let mut tallies: Vec<Tally> = texts
         .into_iter()
         .zip(colors)
         .map(|(text, color)| Tally { text, color })
         .collect();
-    let filed = tally(plan).filed;
+    if session.filing {
+        tallies.push(Tally {
+            text: say(
+                lang,
+                Msg::FilingViewFiling,
+                &[("count", &filed.to_string())],
+            ),
+            color: palette.text,
+        });
+    }
     let ready = can_file(session) && filed > 0;
-    let carry = |transfer, label: Msg| {
-        button(
+    let carry = |transfer, label: Msg, key: &str| {
+        key_button(
             &say(lang, label, &[("count", &filed.to_string())]),
+            key,
             ready.then_some(Message::File(transfer)),
             Tone::Primary,
             palette,
@@ -100,12 +111,12 @@ pub fn footer<'a>(
         .into(),
         button(
             lang.text(Msg::DialogCancel),
-            Some(Message::Cancel),
+            (!session.filing).then_some(Message::Cancel),
             Tone::Secondary,
             palette,
         ),
-        carry(Transfer::Copy, Msg::FilingViewCopy),
-        carry(Transfer::Move, Msg::FilingViewMove),
+        carry(Transfer::Copy, Msg::FilingViewCopy, "↵"),
+        carry(Transfer::Move, Msg::FilingViewMove, "⇧↵"),
     ];
     compare_bar(lang.text(Msg::FilingViewTitle), tallies, controls, palette)
 }

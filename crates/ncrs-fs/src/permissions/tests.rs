@@ -157,12 +157,12 @@ fn a_folder_swapped_for_a_link_after_the_count_is_not_followed() {
         recurse: Some((ForFiles::AsAbove, ForFolders::AsAbove)),
     };
     let chosen = [top.clone()];
-    let total = count_work(&chosen, &plan);
+    let (sender, _receiver) = mpsc::unbounded_channel();
+    let total = count_work(&chosen, &plan, &sender).unwrap();
     assert_eq!(total, 3);
 
     fs::remove_dir_all(&inner).unwrap();
     symlink(&outside, &inner).unwrap();
-    let (sender, _receiver) = mpsc::unbounded_channel();
     let outcome = apply_counted(&chosen, &plan, total, &sender);
 
     assert_eq!(mode(&hidden), 0o600);
@@ -170,6 +170,25 @@ fn a_folder_swapped_for_a_link_after_the_count_is_not_followed() {
     assert_eq!(mode(&top), 0o704);
     assert!(outcome.failures.is_empty(), "{:?}", outcome.failures);
 }
+
+#[test]
+fn counting_stops_when_the_receiver_is_gone() {
+    let (_dir, top, _inner, _file) = tree();
+    let plan = PermissionPlan {
+        edit: edit(0o004, 0),
+        recurse: Some((ForFiles::AsAbove, ForFolders::AsAbove)),
+    };
+    let (sender, receiver) = mpsc::unbounded_channel();
+    drop(receiver);
+
+    assert_eq!(count_work(&[top.clone()], &plan, &sender), None);
+    let outcome = change_permissions(&[top.clone()], &plan, &sender);
+
+    assert!(outcome.cancelled);
+    assert_eq!(outcome.changed, 0);
+    assert_eq!(mode(&top), 0o700);
+}
+
 #[test]
 fn a_failure_is_listed_with_its_path() {
     let dir = tempfile::tempdir().unwrap();

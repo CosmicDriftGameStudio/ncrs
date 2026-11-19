@@ -17,7 +17,7 @@ use crate::delete_flow::{actions, busy_notice, idle, with_front, Outcome};
 use crate::message::{OpsMessage, TransferDialogMessage};
 use crate::prompt::{Prompt, PromptKind};
 use crate::state::Ops;
-use crate::transfer::view::refusal_text;
+use crate::transfer::view::{refusal_text, BACKGROUND_FOCUS};
 use crate::transfer::{self, Policy};
 use crate::transfer_flow::start_validated_transfer;
 use crate::transfer_open::{conflicts_task, unreachable_server_text, ValidTransfer};
@@ -82,7 +82,7 @@ pub fn open_transfer_dialog(
 ) -> Outcome {
     if ops.transfer.is_some() {
         ops.transfer_mask_visible = true;
-        return idle();
+        return actions(vec![Action::FocusDialogButton(BACKGROUND_FOCUS)]);
     }
     if ops.extracting.is_some() {
         let text = ctx.lang.text(Msg::StatusArchiveViewBusy).to_owned();
@@ -146,7 +146,7 @@ pub fn update_transfer_dialog_flow(
         }
         TransferAction::ShowProgress => {
             ops.transfer_mask_visible = ops.transfer.is_some();
-            idle()
+            actions(vec![Action::FocusDialogButton(BACKGROUND_FOCUS)])
         }
     }
 }

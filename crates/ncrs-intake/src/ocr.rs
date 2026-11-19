@@ -392,6 +392,15 @@ mod tests {
 
     const MODELS_DIR_VARIABLE: &str = "NCRS_OCR_MODELS_DIR";
 
+    #[test]
+    fn the_fetch_script_pins_the_same_files_as_the_app() {
+        let script = include_str!("../../../scripts/fetch-ocr-models.sh");
+        for file in &OCR_MODEL_FILES {
+            let line = format!("{} {} {}", file.name, file.size, file.sha256);
+            assert!(script.contains(&line), "{}", file.name);
+        }
+    }
+
     fn models_dir() -> PathBuf {
         std::env::var_os(MODELS_DIR_VARIABLE).map_or_else(
             || Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/ocr-models"),

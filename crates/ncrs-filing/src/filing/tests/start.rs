@@ -240,6 +240,28 @@ fn a_plain_file_next_to_a_stored_key_waits_for_confirmation() {
 }
 
 #[test]
+fn a_confirmed_plain_file_is_ready_only_when_the_settling_is_done() {
+    let dir = TempDir::new().unwrap();
+    let db = db_in(&dir);
+    make_plain(&db);
+    let store = Arc::new(InMemoryKeyStore::with_entry(vec![5; 32]));
+    let mut module = started(&db, shared(&store));
+
+    let work = module.update(FilingMessage::ConfirmPlainFile);
+
+    assert!(work.is_some());
+    assert!(module.is_settling());
+    assert_eq!(module.phase(), &Phase::PlainFileWarning);
+    assert_eq!(
+        module.start_pipeline().err(),
+        Some(HeldReason::PlainFileUnconfirmed)
+    );
+    settle(&mut module, work);
+    assert_eq!(module.phase(), &Phase::Ready);
+    assert!(!module.is_settling());
+}
+
+#[test]
 fn a_plain_file_opens_where_there_is_no_credential_store() {
     let dir = TempDir::new().unwrap();
     let db = db_in(&dir);

@@ -8,7 +8,7 @@ use std::time::SystemTime;
 use ncrs_index::Index;
 use walkdir::WalkDir;
 
-use crate::classify::{is_hidden_name, Skip};
+use crate::classify::{classify, is_hidden_name, Skip};
 use crate::error::IntakeError;
 use crate::location::Location;
 use crate::stability::StabilityTracker;
@@ -201,6 +201,10 @@ fn settle_vanished_documents(
 ) -> Result<(), IntakeError> {
     for (id, path) in index.documents_under(&location.path)? {
         match path_exists(&path) {
+            // Mail texts read before they were left out of the index.
+            Ok(true) if classify(location, &path) == Err(Skip::MailBody) => {
+                index.delete_document(id)?;
+            }
             Ok(true) => {}
             Ok(false) => {
                 let Some(document) = index.document(id)? else {

@@ -96,19 +96,37 @@ pub fn events() -> Subscription<Message> {
     Subscription::run(menu_event_ids).filter_map(|id| menu::command_message(&id))
 }
 
-fn menu_event_ids() -> impl iced::futures::Stream<Item = String> {
-    use iced::futures::{channel::mpsc, SinkExt as _, StreamExt as _};
-    iced::stream::channel(8, async |mut output| {
-        // The system's receiver blocks, so it waits on a thread of its own
-        // that hands the ids on.
-        let (ids, mut received) = mpsc::unbounded();
-        std::thread::spawn(move || {
+type IdSender = iced::futures::channel::mpsc::UnboundedSender<String>;
+
+/// Where the one reader thread hands the ids on: the stream that started last.
+/// The system's receiver is global and blocks, so a thread per stream start
+/// would leave old threads taking events from the new stream.
+fn subscriber() -> &'static std::sync::Mutex<Option<IdSender>> {
+    static SUBSCRIBER: std::sync::OnceLock<std::sync::Mutex<Option<IdSender>>> =
+        std::sync::OnceLock::new();
+    SUBSCRIBER.get_or_init(|| {
+        std::thread::spawn(|| {
             while let Ok(event) = MenuEvent::receiver().recv() {
-                if ids.unbounded_send(event.id.0).is_err() {
-                    break;
+                let current = subscriber()
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .clone();
+                if let Some(ids) = current {
+                    drop(ids.unbounded_send(event.id.0));
                 }
             }
         });
+        std::sync::Mutex::new(None)
+    })
+}
+
+fn menu_event_ids() -> impl iced::futures::Stream<Item = String> {
+    use iced::futures::{channel::mpsc, SinkExt as _, StreamExt as _};
+    iced::stream::channel(8, async |mut output| {
+        let (ids, mut received) = mpsc::unbounded();
+        *subscriber()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(ids);
         while let Some(id) = received.next().await {
             if output.send(id).await.is_err() {
                 break;

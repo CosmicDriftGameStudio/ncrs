@@ -13,9 +13,9 @@
 
 use std::path::{Path, PathBuf};
 
-use super::system_trash;
+use crate::fs::system_trash;
 
-const TEST_NAME: &str = "fs::sandbox_probe_tests::the_store_sandbox_allows_what_ncrs_relies_on";
+const TEST_NAME: &str = "sandbox_probe_tests::the_store_sandbox_allows_what_ncrs_relies_on";
 const STEP_VARIABLE: &str = "NCRS_SANDBOX_PROBE_STEP";
 const FOLDER_VARIABLE: &str = "NCRS_SANDBOX_PROBE_FOLDER";
 const BUNDLE_ID: &str = "rocks.ncrs.sandbox-probe";

@@ -75,6 +75,8 @@ pub struct State {
     pub kill_dialog: Option<KillDialog>,
     pub failure: Option<Failure>,
     pub notice: Option<String>,
+    /// The drive under the cursor while the drive list has it.
+    pub drive_focus: Option<usize>,
 }
 
 impl Default for State {
@@ -107,6 +109,7 @@ impl State {
             kill_dialog: None,
             failure: None,
             notice: None,
+            drive_focus: None,
         }
     }
 
@@ -147,6 +150,14 @@ impl State {
 
     pub fn dialog_is_open(&self) -> bool {
         self.kill_dialog.is_some()
+    }
+
+    pub fn drives_are_listed(&self) -> bool {
+        !self.drives_to_show().is_empty()
+    }
+
+    pub fn drive_list_has_focus(&self) -> bool {
+        self.drive_focus.is_some()
     }
 
     pub fn menu_is_open(&self) -> bool {

@@ -1,13 +1,13 @@
 //! The view of a file panel: a pure function of [`PanelState`]. The component
 //! owns no state; it lives in the app state and is only mutated by `update`.
 
-use iced::widget::{column, container, mouse_area, Column, Row};
+use iced::widget::{column, mouse_area, Column, Row};
 use iced::{Element, Length};
 use ncrs_ui_kit::compare_cell::CompareCell;
 use ncrs_ui_kit::file_row::{file_row, tag_star, RowClick, RowExtras};
+use ncrs_ui_kit::kit::panel_frame;
 use ncrs_ui_kit::panel_footer::panel_footer;
 use ncrs_ui_kit::rename_row::{rename_row, RenameRow};
-use ncrs_ui_kit::theme;
 
 use crate::ctx::ViewCtx;
 use crate::message::PanelMessage;
@@ -129,7 +129,7 @@ pub fn view<'a>(state: &'a PanelState, ctx: ViewCtx<'a>) -> Element<'a, PanelMes
     // The wheel belongs to the panel under the pointer. The rows are drawn from
     // the window `scroll_offset` selects, not by a `scrollable`, so the panel
     // has to ask for the wheel itself.
-    mouse_area(
+    mouse_area(panel_frame(
         column![
             column_header(
                 palette,
@@ -148,26 +148,11 @@ pub fn view<'a>(state: &'a PanelState, ctx: ViewCtx<'a>) -> Element<'a, PanelMes
             ),
             Column::with_children(rows).height(Length::Fill).clip(true),
             panel_footer(footer_text(&panel_totals(state), lang), palette),
-        ]
-        .apply_frame(palette),
-    )
+        ],
+        palette,
+    ))
     .on_scroll(move |delta| PanelMessage::PanelScrolled { side, delta })
     .on_enter(PanelMessage::PanelEntered(side))
     .on_exit(PanelMessage::PanelExited(side))
     .into()
-}
-
-/// Small extension to wrap the panel content in its styled frame.
-trait ApplyFrame<'a, M> {
-    fn apply_frame(self, palette: &ncrs_ui_kit::palette::Palette) -> Element<'a, M>;
-}
-
-impl<'a, M: 'a> ApplyFrame<'a, M> for Column<'a, M> {
-    fn apply_frame(self, palette: &ncrs_ui_kit::palette::Palette) -> Element<'a, M> {
-        container(self)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .style(theme::panel(palette))
-            .into()
-    }
 }

@@ -1,14 +1,5 @@
 use crate::app::*;
 
-/// Runs one job and reports what happens as messages.
-///
-/// Separate from `App` so the queue can hand it to `Task::abortable` without
-/// borrowing the app. The real work of F5/F6/F8 runs per row in `App`; a job
-/// that reaches the queue's `start_next` here has nothing left to do.
-pub(in crate::app) fn run_job(_job: jobs::Job) -> Task<Message> {
-    Task::done(Message::JobFinished(JobEvent::Done))
-}
-
 impl App {
     /// F8 / Shift+F8: ask before deleting.
     pub(in crate::app) fn open_delete_dialog(&mut self, permanent: bool) -> Task<Message> {
@@ -209,14 +200,14 @@ impl App {
             }
             Ask::ReloadPanels => {
                 self.panels.folder_sizes.clear();
-                let tasks = [PanelSide::Left, PanelSide::Right].map(|each| {
-                    let path = self.panel(each).path.clone();
-                    self.load(each, path, None)
-                });
+                let tasks = [PanelSide::Left, PanelSide::Right]
+                    .map(|each| self.reload_keeping_cursor(each));
                 Task::batch(tasks)
             }
             Ask::RenameRefused { from, text } => {
-                self.panels.refuse_rename(&from, text);
+                if !self.panels.refuse_rename(&from, text.clone()) {
+                    self.set_status_error(&text);
+                }
                 Task::none()
             }
             Ask::RenameEnded {
@@ -296,7 +287,7 @@ impl App {
         if reach == fs::TrashReach::FinderOnly {
             return self.open_trash_in_finder();
         }
-        self.panels.context_menu = None;
+        self.close_context_menu();
         self.job_error = None;
         self.notice = None;
         let closed_search = if self.search.open && self.search.side == side {
@@ -325,6 +316,7 @@ impl App {
             is_active: self.panels.active == side,
             panel_width: self.window_size.width / 2.0,
             lang: self.lang,
+            date_format: self.columns.date_format,
             palette: &self.palette,
             finder_key: self
                 .keymap
@@ -363,17 +355,10 @@ impl App {
 
     /// "Extract here": the tagged archives, else the one under the cursor.
     pub(in crate::app) fn extract_here(&mut self) -> Task<Message> {
-        let panel = self.active_panel();
-        let rows: Vec<&fs::FileEntry> = if panel.selection.any_tagged() {
-            panel.selection.ordered(&panel.entries)
-        } else {
-            panel.selected_entry().into_iter().collect()
-        };
-        let archives: Vec<PathBuf> = rows
+        let archives: Vec<PathBuf> = self
+            .action_rows()
             .into_iter()
-            .filter(|entry| {
-                !entry.is_dir && !entry.is_parent && fs::archive::is_archive_name(&entry.name)
-            })
+            .filter(|entry| !entry.is_dir && fs::archive::is_archive_name(&entry.name))
             .map(|entry| entry.path.clone())
             .collect();
         let side = self.panels.active;
@@ -387,17 +372,7 @@ impl App {
         if self.search_has_keys() || self.trash_has_keys() {
             return Task::none();
         }
-        let panel = self.active_panel();
-        let entries: Vec<fs::FileEntry> = if panel.selection.any_tagged() {
-            panel
-                .selection
-                .ordered(&panel.entries)
-                .into_iter()
-                .cloned()
-                .collect()
-        } else {
-            panel.selected_entry().cloned().into_iter().collect()
-        };
+        let entries: Vec<fs::FileEntry> = self.action_rows().into_iter().cloned().collect();
         let targets = ncrs_ops::targets_of(&entries);
         self.with_ops(|ops, ctx| ncrs_ops::open_permissions(ops, targets, ctx))
     }

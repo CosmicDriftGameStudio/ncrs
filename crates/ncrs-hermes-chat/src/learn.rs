@@ -253,7 +253,7 @@ pub fn keep(state: &mut State, ctx: &Ctx) -> Option<Action> {
     } else {
         parts.push(Part::Text(text(ctx.lang, Msg::HermesChatAskSource)));
         state.step = Step::Source;
-        hermes(state, parts, source_chips(state, ctx));
+        hermes(state, parts, source_chips(ctx));
     }
     role
 }

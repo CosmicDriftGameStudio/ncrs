@@ -74,6 +74,36 @@ async fn the_last_tick_is_the_finished_one() {
     assert_eq!(ticks.last().copied(), Some(Tick { done: 6, total: 6 }));
 }
 
+#[test]
+fn a_flood_of_small_steps_sends_few_ticks_and_the_finished_one() {
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let mut reporting = Reporting::new(&tx);
+
+    for done in 1..=5000 {
+        reporting.advanced(done, 5000).unwrap();
+    }
+
+    let ticks: Vec<Tick> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+    assert!(ticks.len() < 100, "{} ticks", ticks.len());
+    assert_eq!(
+        ticks.last().copied(),
+        Some(Tick {
+            done: 5000,
+            total: 5000
+        })
+    );
+}
+
+#[test]
+fn a_throttled_step_still_notices_that_the_app_is_gone() {
+    let (tx, rx) = mpsc::unbounded_channel();
+    let mut reporting = Reporting::new(&tx);
+    reporting.advanced(1, 10).unwrap();
+    drop(rx);
+
+    assert!(reporting.advanced(2, 10).is_err());
+}
+
 /// An app that is gone stops the copy rather than running to the end into
 /// nothing. This is also how a stopped app reaches the blocking thread.
 #[tokio::test]

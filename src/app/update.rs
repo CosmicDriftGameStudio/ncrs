@@ -59,6 +59,11 @@ pub(in crate::app) fn archive_refusal(panel: &PanelState, message: &Message) -> 
     }
 }
 
+/// What the panel refuses, whether it shows an archive or an SFTP server.
+pub(in crate::app) fn refusal_for(panel: &PanelState, message: &Message) -> Option<Msg> {
+    archive_refusal(panel, message).or_else(|| remote_refusal(panel, message))
+}
+
 /// What a panel on an SFTP server refuses: what would change something there,
 /// the command line, which runs on this computer, and whatever would take the
 /// folder into the config or to Hermes. Browsing, viewing and copying are what
@@ -177,6 +182,14 @@ impl App {
         self.refit_for_favourites_bar();
         self.refresh_special_folders();
         let chat = self.tell_chat_hermes_is_ready();
+        // The keyboard subscription cannot see `&self`, so it reads the routing
+        // state from a cell kept current here. This runs last: published any
+        // earlier, the cell would describe the state from before the message
+        // just handled, or from before a page was brought to the front, and
+        // the keys that follow would be routed to the wrong place.
+        self.publish_key_state();
+        #[cfg(target_os = "macos")]
+        native_menu::sync(self.lang, &self.keymap, self.menu_state());
         Task::batch([task, compare, chat])
     }
 
@@ -262,7 +275,7 @@ impl App {
         if self.show_hidden_tab(&message) {
             return Task::none();
         }
-        let task = match message {
+        match message {
             // A raw key press. Routed here rather than in the subscription,
             // because that one cannot see whether a prompt is open.
             // --- copy / move ---
@@ -476,20 +489,6 @@ impl App {
             } => self.with_ops(|ops, ctx| {
                 ncrs_ops::delete_row_done(ops, result, index, generation, ctx)
             }),
-
-            // --- job queue ---
-            Message::JobFinished(event) => {
-                // Progress arrives mid-run; only the terminal events free the
-                // slot for the next job.
-                let finished = matches!(event, JobEvent::Done);
-                if finished {
-                    self.jobs.finish();
-                }
-                if let Some(next) = self.jobs.start_next(run_job) {
-                    return next;
-                }
-                Task::none()
-            }
 
             // --- modal prompt ---
             // Handled before the panels: while a prompt is open every
@@ -766,20 +765,7 @@ impl App {
             }
             // Handled in `update`, which owns the timer's generation check.
             Message::NoticeExpired(_) | Message::SaveSessionState(_) => Task::none(),
-        };
-
-        // The keyboard subscription cannot see `&self`, so it reads the routing
-        // state from a cell this method keeps current.
-        //
-        // This runs *after* the match, and that ordering is the point. Published
-        // before it, the cell would always describe the state from before the
-        // message that has just been handled — one step behind — so the keys
-        // that follow a conflict would still be routed as panel keys and the
-        // dialog could not be answered at all.
-        self.publish_key_state();
-        #[cfg(target_os = "macos")]
-        native_menu::sync(self.lang, &self.keymap, self.menu_state());
-        task
+        }
     }
 
     /// A panel inside an archive can be read and copied from, nothing else.
@@ -797,7 +783,7 @@ impl App {
         if panel.is_hit_list() && is_not_offered_in_hit_list(&message) {
             return Task::none();
         }
-        match archive_refusal(panel, &message).or_else(|| remote_refusal(panel, &message)) {
+        match refusal_for(panel, &message) {
             Some(refusal) => {
                 let text = self.lang.text(refusal).to_string();
                 self.set_status_error(&text);

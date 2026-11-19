@@ -12,6 +12,20 @@ impl FilingModule {
         Self::start_picking(filing, db_path, store, random_group)
     }
 
+    /// Whether the settling that follows the confirmation of a plain file is
+    /// still running.
+    pub fn is_settling(&self) -> bool {
+        self.settling
+    }
+
+    /// Why the interrupted runs of the open index could not all be settled.
+    pub fn settle_problem(&self) -> Option<String> {
+        self.settle_problem
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
     pub(in crate::filing) fn start_picking(
         filing: &Filing,
         db_path: Option<PathBuf>,
@@ -44,6 +58,8 @@ impl FilingModule {
             kinds: Arc::default(),
             chat_text_chain: OnceLock::new(),
             pipeline_text_chain: Mutex::new(None),
+            settle_problem: SettleNote::default(),
+            settling: false,
         };
         if db_path.is_none() {
             module.phase = Phase::Failed(NO_DATA_DIRECTORY.to_owned());

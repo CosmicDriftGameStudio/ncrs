@@ -20,6 +20,7 @@ use crate::execute::{
     execute_copying, execute_with, ExecuteError, ExecutionItem, ExecutionReport, ItemOutcome,
     SkipReason,
 };
+use crate::filing::lies_within;
 use ncrs_core::INDEX_NOT_OPEN;
 use ncrs_fs::transfer::{Move, Progress, Source};
 
@@ -186,7 +187,8 @@ pub fn send_to_review(
 
 /// Files every `Planned` document into `root`. What lies below one of the
 /// `copy_roots` is copied and stays where it is, marked `Filed` so it is not
-/// planned again.
+/// planned again. What lies below neither a `copy_roots` nor a
+/// `location_roots` entry is left where it is, still planned.
 pub fn file_planned<P: Progress, S: Source>(
     index: &mut Index,
     root: &Path,
@@ -225,9 +227,17 @@ pub fn file_planned<P: Progress, S: Source>(
     if items.is_empty() {
         return Ok(summary);
     }
-    let (copied, moved): (Vec<_>, Vec<_>) = items
+    let (copied, others): (Vec<_>, Vec<_>) = items
         .into_iter()
-        .partition(|item| copy_roots.iter().any(|copy| item.from.starts_with(copy)));
+        .partition(|item| copy_roots.iter().any(|copy| lies_within(&item.from, copy)));
+    // A file from a folder that is no longer configured has no known transfer:
+    // it might be from a read folder that keeps its originals.
+    let (moved, unknown): (Vec<_>, Vec<_>) = others.into_iter().partition(|item| {
+        location_roots
+            .iter()
+            .any(|root| lies_within(&item.from, root))
+    });
+    summary.left += unknown.len();
     if !moved.is_empty() {
         let report = execute_with(index, BatchKind::Filing, root, &moved, progress, effect)?;
         settle_report(index, &moved, &report, false, &mut summary)?;
@@ -589,6 +599,30 @@ mod tests {
         assert_eq!(summary.left, 1);
         assert!(document.path.exists());
         assert!(!setup.target().exists());
+    }
+
+    #[test]
+    fn a_planned_document_from_a_folder_that_is_no_longer_configured_stays() {
+        let mut setup = Setup::new();
+        let document = setup.planned("scan 1.pdf", "Invoice from Company A");
+
+        let summary = file_planned(
+            &mut setup.index,
+            &setup.archive,
+            &[],
+            &[],
+            &mut Counting,
+            &Move,
+            KindLanguage::English,
+        )
+        .unwrap();
+
+        assert_eq!(summary.filed, 0);
+        assert_eq!(summary.left, 1);
+        assert!(document.path.exists());
+        assert!(!setup.target().exists());
+        let after = setup.index.document(document.id).unwrap().unwrap();
+        assert_eq!(after.status, DocumentStatus::Planned);
     }
 
     #[test]

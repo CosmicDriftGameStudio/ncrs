@@ -98,8 +98,13 @@ pub fn change_permissions(
     plan: &PermissionPlan,
     sender: &mpsc::UnboundedSender<Tick>,
 ) -> Outcome {
-    let total = count_work(chosen, plan);
-    apply_counted(chosen, plan, total, sender)
+    match count_work(chosen, plan, sender) {
+        Some(total) => apply_counted(chosen, plan, total, sender),
+        None => Outcome {
+            cancelled: true,
+            ..Outcome::default()
+        },
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -125,22 +130,34 @@ fn edits_below(plan: &PermissionPlan) -> Option<Edits> {
 
 /// How many entries [`apply_counted`] will touch, for the progress total. Only
 /// counts; nothing is remembered, so what is applied is decided while walking.
-fn count_work(chosen: &[PathBuf], plan: &PermissionPlan) -> usize {
+/// `None` once the receiver is gone, so a cancel does not wait for the walk.
+fn count_work(
+    chosen: &[PathBuf],
+    plan: &PermissionPlan,
+    sender: &mpsc::UnboundedSender<Tick>,
+) -> Option<usize> {
     let below = edits_below(plan);
-    chosen
-        .iter()
-        .map(|path| {
-            let is_real_folder = fs::symlink_metadata(path).is_ok_and(|m| m.is_dir());
-            1 + below
-                .filter(|_| is_real_folder)
-                .map_or(0, |edits| count_below(path, &edits))
-        })
-        .sum()
+    let mut total = 0;
+    for path in chosen {
+        let is_real_folder = fs::symlink_metadata(path).is_ok_and(|m| m.is_dir());
+        total += 1;
+        if let Some(edits) = below.filter(|_| is_real_folder) {
+            total += count_below(path, &edits, sender)?;
+        }
+    }
+    Some(total)
 }
 
-fn count_below(folder: &Path, edits: &Edits) -> usize {
+fn count_below(
+    folder: &Path,
+    edits: &Edits,
+    sender: &mpsc::UnboundedSender<Tick>,
+) -> Option<usize> {
+    if sender.is_closed() {
+        return None;
+    }
     let Ok(children) = fs::read_dir(folder) else {
-        return 0;
+        return Some(0);
     };
     let mut count = 0;
     for child in children.filter_map(Result::ok) {
@@ -148,12 +165,13 @@ fn count_below(folder: &Path, edits: &Edits) -> usize {
             continue;
         };
         if kind.is_dir() {
-            count += usize::from(edits.folders.is_some()) + count_below(&child.path(), edits);
+            count +=
+                usize::from(edits.folders.is_some()) + count_below(&child.path(), edits, sender)?;
         } else if !kind.is_symlink() {
             count += usize::from(edits.files.is_some());
         }
     }
-    count
+    Some(count)
 }
 
 struct Run<'a> {

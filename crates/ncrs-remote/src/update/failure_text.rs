@@ -51,6 +51,10 @@ pub fn connect_failure_text(lang: Language, failure: &ConnectFailure, host: &str
             lang.text(Msg::ErrorRemoteNoCommonAlgorithm),
             &[("{host}", host)],
         ),
+        ConnectFailure::HostKeyNotOffered => fill_template(
+            lang.text(Msg::ErrorRemoteHostkeyNotOffered),
+            &[("{host}", host)],
+        ),
         ConnectFailure::Unreachable(reason) => fill_template(
             lang.text(Msg::ErrorRemoteUnreachable),
             &[("{host}", host), ("{reason}", reason)],

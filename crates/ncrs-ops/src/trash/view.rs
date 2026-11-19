@@ -4,17 +4,18 @@
 use std::time::{Duration, SystemTime};
 
 use iced::widget::text::Wrapping;
-use iced::widget::{column, container, mouse_area, row, text, Space};
+use iced::widget::{column, container, row, text, Space};
 use iced::{alignment, Color, Element, Length};
 
+use ncrs_core::DateFormat;
 use ncrs_fs::TrashReach;
 use ncrs_i18n::{fill_template, Language, Msg};
 use ncrs_ui_kit::format;
 use ncrs_ui_kit::frame::chars_that_fit;
-use ncrs_ui_kit::kit::{scroll_list, Columns, ListView};
+use ncrs_ui_kit::kit::{cells_row, panel_frame, scroll_list, Columns, ListView, RowMarks};
 use ncrs_ui_kit::layout::{ROW_HEIGHT, TAG_COLUMN_WIDTH};
 use ncrs_ui_kit::palette::Palette;
-use ncrs_ui_kit::theme::{self, font_size, spacing};
+use ncrs_ui_kit::theme::{font_size, spacing};
 
 use super::TrashView;
 use crate::message::{OpsMessage, TrashMessage};
@@ -32,14 +33,18 @@ pub fn heading(reach: TrashReach, lang: Language) -> &'static str {
 }
 
 /// When an entry was deleted. Empty for a trash that did not say.
-fn deleted_text(deleted_at: i64) -> String {
+fn deleted_text(deleted_at: i64, date_format: DateFormat, lang: Language) -> String {
     let Ok(seconds) = u64::try_from(deleted_at) else {
         return String::new();
     };
     if seconds == 0 {
         return String::new();
     }
-    format::time(Some(SystemTime::UNIX_EPOCH + Duration::from_secs(seconds)))
+    format::time_in(
+        SystemTime::UNIX_EPOCH.checked_add(Duration::from_secs(seconds)),
+        date_format,
+        lang,
+    )
 }
 
 #[derive(Debug)]
@@ -49,6 +54,7 @@ pub struct Props<'a> {
     pub is_active: bool,
     pub panel_width: f32,
     pub lang: Language,
+    pub date_format: DateFormat,
     pub palette: &'a Palette,
     /// The key that opens the trash in the Finder, when it has one.
     pub finder_key: Option<String>,
@@ -61,6 +67,7 @@ pub fn view<'a>(props: Props<'a>) -> Element<'a, OpsMessage> {
         is_active,
         panel_width,
         lang,
+        date_format,
         palette,
         finder_key,
     } = props;
@@ -101,18 +108,22 @@ pub fn view<'a>(props: Props<'a>) -> Element<'a, OpsMessage> {
             let name = item
                 .original
                 .file_name()
-                .map(|name| name.to_string_lossy().into_owned())
+                .map(|name| format::shown_name(&name.to_string_lossy()))
                 .unwrap_or_default();
             let folder = item
                 .original
                 .parent()
-                .map(|parent| parent.display().to_string())
+                .map(|parent| format::shown_name(&parent.display().to_string()))
                 .unwrap_or_default();
-            entry_row(
-                index,
+            cells_row(
                 &columns,
-                [name, folder, deleted_text(item.deleted_at)],
+                [
+                    name,
+                    folder,
+                    deleted_text(item.deleted_at, date_format, lang),
+                ],
                 marks,
+                OpsMessage::Trash(TrashMessage::RowClicked(index)),
                 palette,
             )
         })
@@ -151,18 +162,17 @@ pub fn view<'a>(props: Props<'a>) -> Element<'a, OpsMessage> {
         footer = footer.push(dim_line(shown));
     }
 
-    container(column![
-        container(text(title).size(font_size::ROW).wrapping(Wrapping::None))
-            .padding([0.0, spacing::CELL_PADDING_X])
-            .height(ROW_HEIGHT)
-            .align_y(alignment::Vertical::Center),
-        container(body).height(Length::Fill).width(Length::Fill),
-        footer,
-    ])
-    .width(Length::Fill)
-    .height(Length::Fill)
-    .style(theme::panel(palette))
-    .into()
+    panel_frame(
+        column![
+            container(text(title).size(font_size::ROW).wrapping(Wrapping::None))
+                .padding([0.0, spacing::CELL_PADDING_X])
+                .height(ROW_HEIGHT)
+                .align_y(alignment::Vertical::Center),
+            container(body).height(Length::Fill).width(Length::Fill),
+            footer,
+        ],
+        palette,
+    )
 }
 
 /// What stands in place of the rows: the reading, the error or the empty list.
@@ -185,67 +195,13 @@ fn status_text(view: &TrashView, lang: Language, palette: &Palette) -> Option<(S
     })
 }
 
-#[derive(Clone, Copy)]
-struct RowMarks {
-    highlighted: bool,
-    tagged: bool,
-    panel_active: bool,
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-fn entry_row<'a>(
-    index: usize,
-    columns: &Columns<'_>,
-    cells: [String; 3],
-    marks: RowMarks,
-    palette: &Palette,
-) -> Element<'a, OpsMessage> {
-    let RowMarks {
-        highlighted,
-        tagged,
-        panel_active,
-    } = marks;
-    let plain = if highlighted {
-        palette.cursor_text
-    } else if tagged {
-        theme::tagged_text_color(palette, panel_active)
-    } else {
-        palette.text
-    };
-    let dim = if highlighted || tagged {
-        plain
-    } else {
-        palette.dim_text
-    };
-    let [name, folder, deleted] = cells;
-    let star = text(if tagged { "*" } else { " " })
-        .size(font_size::ROW)
-        .color(if tagged {
-            theme::tag_star_color(palette, highlighted, panel_active)
-        } else {
-            palette.dim_text
-        })
-        .width(TAG_COLUMN_WIDTH)
-        .wrapping(Wrapping::None);
-    mouse_area(
-        container(
-            row![
-                star,
-                columns.row_colored(&[(&name, plain), (&folder, dim), (&deleted, dim)])
-            ]
-            .align_y(alignment::Vertical::Center),
-        )
-        .padding([0.0, spacing::CELL_PADDING_X])
-        .height(ROW_HEIGHT)
-        .width(Length::Fill)
-        .align_y(alignment::Vertical::Center)
-        .clip(true)
-        .style(theme::search_row(
-            palette,
-            highlighted,
-            tagged,
-            panel_active,
-        )),
-    )
-    .on_press(OpsMessage::Trash(TrashMessage::RowClicked(index)))
-    .into()
+    #[test]
+    fn a_deletion_time_beyond_what_the_system_can_hold_shows_nothing() {
+        let text = deleted_text(i64::MAX, DateFormat::Iso, Language::default());
+        assert!(text.is_empty());
+    }
 }

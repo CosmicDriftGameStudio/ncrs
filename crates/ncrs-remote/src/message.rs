@@ -46,6 +46,12 @@ pub enum Message {
         result: Result<(), ConnectFailure>,
     },
     ToggleSave,
+    /// The text of `~/.ssh/config` for the dialog of `attempt`; `None` when
+    /// there is none to read.
+    SshConfigRead {
+        attempt: u64,
+        text: Option<String>,
+    },
     /// Opens the connect dialog with the box that saves the server ticked.
     OpenAdd,
     /// A saved server was chosen: its address opens in the active panel.

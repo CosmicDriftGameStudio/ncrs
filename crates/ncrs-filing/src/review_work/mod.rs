@@ -10,32 +10,32 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
-use chrono::NaiveDate;
 use ncrs_index::{
-    Amount, BatchKind, Condition, ConditionKind, Currency, DocumentFields, DocumentId,
-    DocumentStatus, Field, FieldOrigin, FieldOrigins, IncludeOutcome, Index, IndexError,
-    KindCatalog, KindLanguage, Kinds, ReviewEntryId, ReviewReason, Rule, RuleId, SenderAliases,
+    BatchKind, Condition, ConditionKind, DocumentFields, DocumentId, DocumentStatus, Field,
+    FieldOrigin, FieldOrigins, IncludeOutcome, Index, IndexError, KindCatalog, KindLanguage, Kinds,
+    ReviewEntryId, ReviewReason, Rule, RuleId, SenderAliases,
 };
 use ncrs_intake::{
     condition_match_ranges, location_documents, location_of, location_structure, plan,
-    relative_to_location, render_pattern_in, text_is_readable, NeighbourIndex, OwnNames, Placement,
-    PlanInput, Planning,
+    relative_to_location, render_pattern_in, stays_below, text_is_readable, NeighbourIndex,
+    OwnNames, Placement, PlanInput, Planning,
 };
 use ncrs_pipeline::OwnDetails;
 
-use crate::execute::{execute_with, ItemOutcome, SkipReason};
+use crate::execute::{execute_copying, execute_with, ItemOutcome, SkipReason};
+use crate::filing::lies_within;
 use crate::filing_work::target_of;
 use ncrs_core::INDEX_NOT_OPEN;
 use ncrs_fs::transfer::{Counting, Move, Source};
 
-use ncrs_ui_kit::format::MINOR_UNITS_PER_UNIT;
-pub use ncrs_ui_kit::format::{amount_digits, amount_text};
+pub use ncrs_index::{amount_digits, amount_text};
 
 type IndexSlot = Arc<Mutex<Option<Index>>>;
 
 pub const PATTERN_DOES_NOT_FIT: &str = "the pattern does not fit the fields";
 pub const DOCUMENT_EXCLUDED: &str = "the document is excluded from Hermes";
-const MINOR_DIGITS: usize = 2;
+pub const ITEM_CHANGED: &str = "the document changed in the meantime";
+pub const FOLDER_ESCAPES_TARGET: &str = "the folder does not lie below the target";
 /// The passages of a document that led to a field or a rule: how many, and how
 /// long each may be.
 const MAX_PASSAGES: usize = 16;
@@ -144,6 +144,7 @@ pub struct ReviewAccess {
     slot: IndexSlot,
     target_root: PathBuf,
     location_roots: Vec<PathBuf>,
+    copy_roots: Vec<PathBuf>,
     kind_language: KindLanguage,
     own: OwnDetails,
 }
@@ -160,6 +161,7 @@ impl ReviewAccess {
             slot,
             target_root,
             location_roots: Vec::new(),
+            copy_roots: Vec::new(),
             kind_language: KindLanguage::default(),
             own: OwnDetails::default(),
         }
@@ -171,6 +173,12 @@ impl ReviewAccess {
             location_roots,
             ..self
         }
+    }
+
+    /// The read folders whose files are copied: confirming a document from one
+    /// of them leaves the original where it is.
+    pub fn with_copy_roots(self, copy_roots: Vec<PathBuf>) -> Self {
+        Self { copy_roots, ..self }
     }
 
     pub fn with_kind_language(self, kind_language: KindLanguage) -> Self {
@@ -274,13 +282,31 @@ impl ReviewAccess {
     pub fn accept(&self, items: &[ReviewItem]) -> AcceptSummary {
         let mut summary = AcceptSummary::default();
         for item in items {
-            let outcome = match &item.proposed_pattern {
-                Some(pattern) => self.confirm(item.entry, item.document_id, &item.fields, pattern),
-                None => Err(PATTERN_DOES_NOT_FIT.to_owned()),
+            let outcome = match (&item.proposed_pattern, self.still_describes(item)) {
+                (_, Err(detail)) => Err(detail),
+                (Some(pattern), Ok(())) => {
+                    self.confirm(item.entry, item.document_id, &item.fields, pattern)
+                }
+                (None, Ok(())) => Err(PATTERN_DOES_NOT_FIT.to_owned()),
             };
             summary.record(outcome);
         }
         summary
+    }
+
+    /// An item that was kept for a while names the document it was made from
+    /// by number; after the index was replaced the number may be another file's.
+    fn still_describes(&self, item: &ReviewItem) -> Result<(), String> {
+        self.with_index(|index| {
+            let document = index
+                .document(item.document_id)
+                .map_err(|err| err.to_string())?;
+            if document.is_some_and(|found| found.path == item.path) {
+                Ok(())
+            } else {
+                Err(ITEM_CHANGED.to_owned())
+            }
+        })
     }
 
     /// Files each item under its own file name into `folder`, one after the
@@ -288,16 +314,20 @@ impl ReviewAccess {
     /// `folder` lies below the target.
     pub fn accept_into(&self, items: &[ReviewItem], folder: &Path) -> AcceptSummary {
         let root = self.target_root.join(folder);
+        let folder_fits = folder.as_os_str().is_empty() || stays_below(folder);
         let mut summary = AcceptSummary::default();
         for item in items {
             let outcome = match item.path.file_stem().and_then(|stem| stem.to_str()) {
-                Some(stem) => self.confirm_in(
-                    &root,
-                    item.entry,
-                    item.document_id,
-                    &item.fields,
-                    Naming::Fixed(stem),
-                ),
+                _ if !folder_fits => Err(FOLDER_ESCAPES_TARGET.to_owned()),
+                Some(stem) => self.still_describes(item).and_then(|()| {
+                    self.confirm_in(
+                        &root,
+                        item.entry,
+                        item.document_id,
+                        &item.fields,
+                        Naming::Fixed(stem),
+                    )
+                }),
                 None => Err(PATTERN_DOES_NOT_FIT.to_owned()),
             };
             summary.record(outcome);
@@ -360,7 +390,7 @@ impl ReviewAccess {
             (entry, document_id),
             fields,
             naming,
-            &Move,
+            (&Move, &self.copy_roots),
             self.kind_language,
         )
     }
@@ -672,7 +702,7 @@ fn confirm<S: Source>(
     (entry, document_id): (ReviewEntryId, DocumentId),
     fields: &DocumentFields,
     naming: Naming<'_>,
-    effect: &S,
+    (effect, copy_roots): (&S, &[PathBuf]),
     kind_language: KindLanguage,
 ) -> Result<ConfirmOutcome, String> {
     let failed = |err: IndexError| err.to_string();
@@ -689,6 +719,10 @@ fn confirm<S: Source>(
     if index.is_excluded(&document.path).map_err(failed)? {
         return Err(DOCUMENT_EXCLUDED.to_owned());
     }
+    let open_entry = index.open_review_of(document_id).map_err(failed)?;
+    if open_entry.map(|found| found.id) != Some(entry) {
+        return Err(ITEM_CHANGED.to_owned());
+    }
     let target = target_of(root, &relative, &document.path);
     let item = crate::execute::ExecutionItem {
         from: document.path.clone(),
@@ -697,18 +731,32 @@ fn confirm<S: Source>(
         document_id: Some(document_id),
         duplicate: false,
     };
-    let report = execute_with(
-        index,
-        BatchKind::Filing,
-        root,
-        &[item],
-        &mut Counting,
-        effect,
-    )
+    let copying = copy_roots
+        .iter()
+        .any(|copy| lies_within(&document.path, copy));
+    let report = if copying {
+        execute_copying(index, BatchKind::Filing, root, &[item], &mut Counting)
+    } else {
+        execute_with(
+            index,
+            BatchKind::Filing,
+            root,
+            &[item],
+            &mut Counting,
+            effect,
+        )
+    }
     .map_err(|err| err.to_string())?;
     let outcome = report.items.first().map(|reported| &reported.outcome);
     match outcome {
         Some(ItemOutcome::Moved) => {
+            if copying {
+                // The original stays in the read folder; the status is what
+                // keeps it from being planned or reviewed again.
+                index
+                    .set_document_status(document_id, DocumentStatus::Filed)
+                    .map_err(failed)?;
+            }
             index
                 .set_document_fields(document_id, fields, |_| FieldOrigin::Manual)
                 .map_err(failed)?;
@@ -729,61 +777,6 @@ fn confirm<S: Source>(
         Some(ItemOutcome::Skipped(other)) => Err(format!("the file was not moved: {other:?}")),
         None => Err("the file was not moved".to_owned()),
     }
-}
-
-/// A field the user typed that is not what the field holds.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FieldError {
-    Date,
-    Amount,
-}
-
-/// `YYYY-MM-DD`; nothing typed is no date.
-pub fn parse_date(typed: &str) -> Result<Option<NaiveDate>, FieldError> {
-    let text = typed.trim();
-    if text.is_empty() {
-        return Ok(None);
-    }
-    NaiveDate::parse_from_str(text, "%Y-%m-%d")
-        .map(Some)
-        .map_err(|_parse_error| FieldError::Date)
-}
-
-/// `12.34 EUR` or `12,34 EUR`; nothing typed is no amount.
-pub fn parse_amount(typed: &str) -> Result<Option<Amount>, FieldError> {
-    let text = typed.trim();
-    if text.is_empty() {
-        return Ok(None);
-    }
-    let mut words = text.split_whitespace();
-    let (Some(number_word), Some(code), None) = (words.next(), words.next(), words.next()) else {
-        return Err(FieldError::Amount);
-    };
-    let currency = Currency::new(&code.to_ascii_uppercase()).ok_or(FieldError::Amount)?;
-    let (negative, number) = match number_word.strip_prefix('-') {
-        Some(rest) => (true, rest),
-        None => (false, number_word),
-    };
-    let (whole, fraction) = number
-        .split_once(['.', ','])
-        .map_or((number, ""), |(whole, fraction)| (whole, fraction));
-    let digits = |part: &str| part.bytes().all(|byte| byte.is_ascii_digit());
-    if whole.is_empty() || !digits(whole) || !digits(fraction) || fraction.len() > MINOR_DIGITS {
-        return Err(FieldError::Amount);
-    }
-    let padded = format!("{fraction:0<MINOR_DIGITS$}");
-    let minor = |part: &str| {
-        part.parse::<i64>()
-            .map_err(|_parse_error| FieldError::Amount)
-    };
-    let magnitude = minor(whole)?
-        .checked_mul(MINOR_UNITS_PER_UNIT)
-        .and_then(|units| units.checked_add(minor(&padded).ok()?))
-        .ok_or(FieldError::Amount)?;
-    Ok(Some(Amount {
-        minor_units: if negative { -magnitude } else { magnitude },
-        currency,
-    }))
 }
 
 #[cfg(test)]

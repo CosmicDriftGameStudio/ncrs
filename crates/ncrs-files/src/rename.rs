@@ -103,12 +103,15 @@ impl Panels {
     }
 
     /// The name asked for `from` was refused: its input stays open and says
-    /// why. An answer for an entry whose input is no longer open is dropped.
-    pub fn refuse_rename(&mut self, from: &Path, text: String) {
-        if let Some(rename) = self.rename_mut().filter(|rename| rename.path == from) {
-            rename.busy = false;
-            rename.error = Some(text);
-        }
+    /// why. `false` when its input is no longer open: the caller has to tell the
+    /// user another way.
+    pub fn refuse_rename(&mut self, from: &Path, text: String) -> bool {
+        let Some(rename) = self.rename_mut().filter(|rename| rename.path == from) else {
+            return false;
+        };
+        rename.busy = false;
+        rename.error = Some(text);
+        true
     }
 
     /// The rename of `from` is over: its input closes, another entry's input
@@ -133,8 +136,11 @@ impl Panels {
 
     /// A hit list is a snapshot of paths, so what was renamed, and what lies in
     /// a renamed folder, is looked for under its new path when either panel's
-    /// list is read again.
+    /// list is read again. Tags follow the new path too.
     pub fn rename_hits(&mut self, from: &Path, to: &Path) {
+        for side in [PanelSide::Left, PanelSide::Right] {
+            self.panel_mut(side).selection.rename_path(from, to);
+        }
         for side in [PanelSide::Left, PanelSide::Right] {
             let panel = self.panel_mut(side);
             if !panel.is_hit_list() {
@@ -287,6 +293,25 @@ mod panels_tests {
 
         panels.type_rename("ab".to_owned());
         assert_eq!(panels.left.rename.as_ref().unwrap().error, None);
+    }
+
+    #[test]
+    fn a_refusal_for_a_closed_input_says_so() {
+        let mut panels = panels_on(1);
+        assert!(!panels.refuse_rename(Path::new("/d/notes.txt"), "taken".to_owned()));
+    }
+
+    #[test]
+    fn a_renamed_entry_and_what_is_inside_it_stay_tagged() {
+        let mut panels = panels_on(1);
+        panels.left.selection.toggle(Path::new("/d/photos"));
+        panels.left.selection.toggle(Path::new("/d/photos/a.jpg"));
+
+        panels.rename_hits(Path::new("/d/photos"), Path::new("/d/pics"));
+
+        assert!(panels.left.selection.is_tagged(Path::new("/d/pics")));
+        assert!(panels.left.selection.is_tagged(Path::new("/d/pics/a.jpg")));
+        assert!(!panels.left.selection.is_tagged(Path::new("/d/photos")));
     }
 
     #[test]

@@ -15,6 +15,37 @@ pub fn theme_file_entry(config_path: Option<&Path>, picked: &Path) -> Option<Str
     named.to_str().map(str::to_owned)
 }
 
+/// The name `file_name` gets in `folder`: its own when nothing is there or the
+/// file there already has the same content, otherwise the first free
+/// "name (2).ext", so a theme that was loaded or picked earlier is not
+/// replaced by a different one of the same name.
+pub fn name_in_folder(
+    folder: &Path,
+    file_name: &str,
+    same_content: impl Fn(&Path) -> bool,
+) -> String {
+    let free = |name: &str| {
+        let existing = folder.join(name);
+        !existing.exists() || same_content(&existing)
+    };
+    if free(file_name) {
+        return file_name.to_owned();
+    }
+    let (stem, extension) = match file_name.rsplit_once('.') {
+        Some((stem, extension)) => (stem, format!(".{extension}")),
+        None => (file_name, String::new()),
+    };
+    (2..1000)
+        .map(|number| format!("{stem} ({number}){extension}"))
+        .find(|name| free(name))
+        .unwrap_or_else(|| file_name.to_owned())
+}
+
+/// Whether the file at `path` holds exactly `bytes`.
+pub fn holds_bytes(path: &Path, bytes: &[u8]) -> bool {
+    std::fs::read(path).is_ok_and(|held| held == bytes)
+}
+
 /// The folder below the config's, next to the downloaded themes, where the
 /// sandbox keeps the theme file a user picked.
 const PICKED_THEMES_FOLDER: &str = "themes/picked";
@@ -89,8 +120,12 @@ pub fn copy_picked_theme_file(
         })?
         .join(PICKED_THEMES_FOLDER);
     std::fs::create_dir_all(&folder).map_err(io_failure(&folder))?;
-    let target = folder.join(file_name);
-    std::fs::copy(picked, &target).map_err(io_failure(picked))?;
+    let picked_bytes = std::fs::read(picked).map_err(io_failure(picked))?;
+    let stored_name = name_in_folder(&folder, &file_name.to_string_lossy(), |existing| {
+        holds_bytes(existing, &picked_bytes)
+    });
+    let target = folder.join(&stored_name);
+    std::fs::write(&target, &picked_bytes).map_err(io_failure(&target))?;
     let include_not_copied = match ncrs_config::vscode_theme::included_name(picked) {
         Ok(Some(name)) if !include_stays_in_folder(&name) => Some(IncludeNotCopied {
             name,
@@ -105,7 +140,7 @@ pub fn copy_picked_theme_file(
         Ok(None) | Err(_) => None,
     };
     Ok(PickedThemeCopy {
-        entry: format!("{PICKED_THEMES_FOLDER}/{}", file_name.to_string_lossy()),
+        entry: format!("{PICKED_THEMES_FOLDER}/{stored_name}"),
         include_not_copied,
     })
 }

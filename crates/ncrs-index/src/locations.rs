@@ -68,6 +68,13 @@ impl Index {
         Ok(())
     }
 
+    /// Removes the document with everything stored for it.
+    pub fn delete_document(&self, id: DocumentId) -> Result<(), IndexError> {
+        self.connection()
+            .execute("DELETE FROM document WHERE id = ?1", [id.get()])?;
+        Ok(())
+    }
+
     /// Documents that are not missing and whose path lies in `directory`,
     /// compared by path components. Sorted by path.
     pub fn documents_under(

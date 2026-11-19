@@ -59,7 +59,7 @@ impl App {
     /// The System page stands in for the panels and replaces whatever covers
     /// them.
     fn leave_panels_for_monitor(&mut self) {
-        self.panels.context_menu = None;
+        self.close_context_menu();
         self.panels.set_path_field(None);
         self.notice = None;
     }
@@ -78,7 +78,7 @@ impl App {
     /// The folder in the active panel, as the search shows a hit: whatever
     /// covered the panel is closed, and a panel in an archive or on a server
     /// reads the local folder instead.
-    fn show_folder_in_active_panel(
+    pub(in crate::app) fn show_folder_in_active_panel(
         &mut self,
         folder: std::path::PathBuf,
         file: Option<String>,

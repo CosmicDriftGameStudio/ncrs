@@ -16,6 +16,7 @@ pub fn skipped_text(lang: Language, skipped: &[Skipped]) -> Option<String> {
         (SkipKind::Link, Msg::SkippedKindLink),
         (SkipKind::Special, Msg::SkippedKindSpecial),
         (SkipKind::Attributes, Msg::SkippedKindAttributes),
+        (SkipKind::NameTaken, Msg::SkippedKindNameTaken),
     ] {
         if skipped.iter().any(|item| item.kind == kind) {
             kinds.push(lang.text(msg));

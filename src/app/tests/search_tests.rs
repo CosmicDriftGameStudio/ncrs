@@ -1,5 +1,5 @@
 use crate::app::*;
-use crate::fs::search::{LineMatch, SearchEvent};
+use ncrs_search::engine::{LineMatch, SearchEvent};
 
 fn route(search_open: bool, key: Key, modifiers: Modifiers) -> Option<Message> {
     let state = PromptKeyState {

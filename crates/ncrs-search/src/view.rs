@@ -90,14 +90,9 @@ pub fn view<'a>(
         plain_column_header(palette, ColumnLayout::standard(lang)),
         container(body).height(Length::Fill).width(Length::Fill),
     ];
-    mouse_area(
-        container(framed)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .style(theme::panel(palette)),
-    )
-    .on_scroll(SearchMessage::Scrolled)
-    .into()
+    mouse_area(kit::panel_frame(framed, palette))
+        .on_scroll(SearchMessage::Scrolled)
+        .into()
 }
 
 /// What the search view's tab in the title bar says.
@@ -147,12 +142,12 @@ fn header<'a>(
                   shortcut: &Option<String>,
                   on: bool,
                   message: SearchMessage| {
-        let look = theme::search_toggle(palette, on);
+        let look = theme::search_toggle(palette, on, toggles_disabled);
         let tip_text = match shortcut {
             Some(keys) => format!("{} ({keys})", lang.text(tip)),
             None => lang.text(tip).to_owned(),
         };
-        tooltip(
+        ncrs_ui_kit::kit::tooltip(
             button(
                 text(label)
                     .size(font_size::COLUMN_HEADER)
@@ -162,18 +157,11 @@ fn header<'a>(
             )
             .width(TOGGLE_WIDTH)
             .padding(spacing::XS)
-            .style(move |theme, status| {
-                let mut style = look(theme, status);
-                if toggles_disabled {
-                    style.text_color = style.text_color.scale_alpha(theme::DISABLED_OPACITY);
-                }
-                style
-            })
+            .style(look)
             .on_press_maybe((!toggles_disabled).then_some(message)),
-            container(text(tip_text).size(font_size::COLUMN_HEADER))
-                .padding(spacing::XS)
-                .style(theme::menu(palette)),
+            tip_text,
             tooltip::Position::Bottom,
+            palette,
         )
     };
     let label_width = label_column_width(lang);
@@ -223,7 +211,7 @@ fn header<'a>(
         .align_y(alignment::Vertical::Center)
         .into()
     };
-    let in_files_box = hermes_kit::checkbox(
+    let in_files_box = kit::labelled_checkbox(
         if search.in_files {
             Check::On
         } else {
@@ -532,7 +520,7 @@ fn summary_row<'a>(
         if let Some(total) = filters.total_amount() {
             let sum = fill_template(
                 lang.text(Msg::DocumentSearchSum),
-                &[("{amount}", &amount_text(&total))],
+                &[("{amount}", &format::amount_shown(&total, lang))],
             );
             line = line.push(
                 text(format!(" · {sum}"))
@@ -577,7 +565,12 @@ fn status_line(search: &SearchView, lang: Language, palette: &Palette) -> (Strin
         return (error_text(error, lang), palette.error);
     }
     if let Some(problem) = search.filters.as_ref().and_then(SearchFilters::problem) {
-        return (problem.to_owned(), palette.error);
+        let shown = if problem == ncrs_core::INDEX_NOT_OPEN {
+            lang.text(Msg::IndexNotOpen).to_owned()
+        } else {
+            problem.to_owned()
+        };
+        return (shown, palette.error);
     }
     if search.is_filtered() && search.running {
         return (String::new(), palette.dim_text);

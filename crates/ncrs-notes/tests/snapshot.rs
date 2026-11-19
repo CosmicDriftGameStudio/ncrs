@@ -72,6 +72,7 @@ mod ui_tests {
             lang: Language::English,
             palette: &palette,
             home,
+            date_format: ncrs_ui_kit::format::DateFormat::Iso,
         };
         let mut simulator = Simulator::with_size(
             iced::Settings {
@@ -79,7 +80,7 @@ mod ui_tests {
                 ..iced::Settings::default()
             },
             size,
-            view(state, ctx).map(|message: Message| message),
+            view(state, ctx, "\u{2318}N").map(|message: Message| message),
         );
         let matches = simulator
             .snapshot(&iced::Theme::Dark)

@@ -15,7 +15,7 @@ impl App {
                 self.shown_tab = ShownTab::Hermes;
                 return ncrs_hermes_chat::focus_input();
             }
-            self.panels.context_menu = None;
+            self.close_context_menu();
             let filing = &self.hermes.filing_config;
             if filing.first_run && !filing.enabled && self.hermes.filing.is_none() {
                 first_run = self.turn_on_hermes();

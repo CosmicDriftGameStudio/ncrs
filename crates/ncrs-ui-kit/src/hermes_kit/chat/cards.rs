@@ -22,7 +22,6 @@ const AREA_NAME_MAX_WIDTH: f32 = 2.0 * NAME_MAX_WIDTH;
 /// A path segment longer than this is cut in the middle so a path wraps
 /// between segments instead of running out of the card.
 const SEGMENT_MAX_CHARS: usize = 28;
-const TOOLTIP_PAD: [f32; 2] = [2.0, 6.0];
 
 fn card<'a, M: 'a>(content: Element<'a, M>, palette: &Palette) -> Element<'a, M> {
     let colors = *palette;
@@ -350,18 +349,7 @@ fn with_full_name<'a, M: 'a>(
     if shown == name {
         return content;
     }
-    tooltip(
-        content,
-        container(
-            text(name.to_owned())
-                .size(TEXT_BODY)
-                .wrapping(Wrapping::None),
-        )
-        .padding(TOOLTIP_PAD)
-        .style(theme::dialog(palette)),
-        tooltip::Position::Top,
-    )
-    .into()
+    crate::kit::tooltip(content, name.to_owned(), tooltip::Position::Top, palette)
 }
 
 fn path_pieces<'a, M: 'a>(

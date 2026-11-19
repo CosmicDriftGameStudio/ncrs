@@ -11,6 +11,9 @@ pub enum Message {
     Close,
     /// The header button: the conversation starts over with a fresh greeting.
     NewChat,
+    /// The index was started over: nothing of the conversation refers to it
+    /// any more.
+    IndexReplaced,
     InputChanged(String),
     Submit,
     ChipPressed {
@@ -96,6 +99,7 @@ impl PartialEq for Message {
             (Self::Open, Self::Open)
             | (Self::Close, Self::Close)
             | (Self::NewChat, Self::NewChat)
+            | (Self::IndexReplaced, Self::IndexReplaced)
             | (Self::Submit, Self::Submit)
             | (Self::ModelReady, Self::ModelReady)
             | (Self::AiTurnedOn, Self::AiTurnedOn)

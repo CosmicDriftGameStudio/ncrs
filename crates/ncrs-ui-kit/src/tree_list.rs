@@ -9,7 +9,7 @@ use crate::palette::Palette;
 use crate::theme::{self, font_size, size, spacing};
 
 /// Horizontal room one level of the tree takes.
-const INDENT: f32 = 16.0;
+pub const TREE_INDENT: f32 = 16.0;
 /// Room of the fold mark, so labels line up with and without one.
 const MARK_WIDTH: f32 = 14.0;
 const HIT_GAP: f32 = 2.0;
@@ -55,7 +55,7 @@ pub fn tree_row<'a, M: Clone + 'a>(row_of: TreeRow<M>, palette: &Palette) -> Ele
     .align_y(alignment::Vertical::Center);
     let content = container(line)
         .padding(Padding {
-            left: spacing::CELL_PADDING_X + INDENT * row_of.depth as f32,
+            left: spacing::CELL_PADDING_X + TREE_INDENT * row_of.depth as f32,
             ..Padding::ZERO
         })
         .clip(true)

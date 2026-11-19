@@ -56,7 +56,6 @@ impl Msg {
     ///
     /// Not read at runtime: this exists so a string cannot lose its context
     /// while the translation sheet is generated from the same source.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub fn note(self) -> &'static str {
         gen::note(self)
     }
@@ -72,13 +71,11 @@ impl Msg {
 
 impl FuturamaName {
     /// The full key from strings.json, `.theme` included.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub fn key(self) -> &'static str {
         gen::futurama_key(self)
     }
 
     /// Context for translators, like [`Msg::note`].
-    #[cfg_attr(not(test), allow(dead_code))]
     pub fn note(self) -> &'static str {
         gen::futurama_note(self)
     }
@@ -198,6 +195,51 @@ impl Language {
         Self::ALL.into_iter().find(|lang| lang.code() == code)
     }
 
+    /// The language a system locale tag such as `de_DE.UTF-8`, `de-AT` or
+    /// `en_US` asks for, among the two the app has texts for.
+    pub fn from_locale_tag(tag: &str) -> Option<Self> {
+        let primary = tag
+            .trim()
+            .split(|ch: char| matches!(ch, '_' | '-' | '.' | '@'))
+            .next()
+            .unwrap_or_default();
+        match primary.to_ascii_lowercase().as_str() {
+            "de" => Some(Language::German),
+            "en" => Some(Language::English),
+            _ => None,
+        }
+    }
+
+    /// The language of the system for a first start: the first language the
+    /// user's locale settings name that the app has texts for, English when
+    /// none or when the system cannot be asked.
+    pub fn from_system() -> Self {
+        let from_environment = ["LC_ALL", "LC_MESSAGES", "LANGUAGE", "LANG"]
+            .into_iter()
+            .filter_map(|name| std::env::var(name).ok())
+            .flat_map(|value| value.split(':').map(str::to_owned).collect::<Vec<_>>())
+            .find_map(|tag| Self::from_locale_tag(&tag));
+        from_environment
+            .or_else(Self::from_macos_preferences)
+            .unwrap_or_default()
+    }
+
+    /// An app started from the Finder has no locale in its environment; the
+    /// preferred languages are in the user defaults.
+    fn from_macos_preferences() -> Option<Self> {
+        if !cfg!(target_os = "macos") {
+            return None;
+        }
+        let output = std::process::Command::new("defaults")
+            .args(["read", "-g", "AppleLanguages"])
+            .output()
+            .ok()?;
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .map(|line| line.trim().trim_end_matches(',').trim_matches('"'))
+            .find_map(Self::from_locale_tag)
+    }
+
     /// Switches between English and German, keeping the Futurama variant, for
     /// the temporary key binding.
     pub fn other(self) -> Self {
@@ -312,8 +354,7 @@ mod tests {
     ///
     /// Excluded are the keys where the words genuinely coincide (`<DIR>`,
     /// `<UP>`, "Name") and the internal error, whose German wording is free to
-    /// change. `build.rs` emits `IDENTICAL` for the excluded set so this list
-    /// cannot drift.
+    /// change. The list is `is_allowed_identical` below, kept by hand.
     #[test]
     fn every_string_is_actually_translated() {
         for msg in ALL {
@@ -547,6 +588,19 @@ mod tests {
         }
     }
 
+    #[test]
+    fn a_locale_tag_picks_the_language_it_names() {
+        assert_eq!(
+            Language::from_locale_tag("de_DE.UTF-8"),
+            Some(Language::German)
+        );
+        assert_eq!(Language::from_locale_tag("de-AT"), Some(Language::German));
+        assert_eq!(Language::from_locale_tag("en_US"), Some(Language::English));
+        assert_eq!(Language::from_locale_tag("fr_FR"), None);
+        assert_eq!(Language::from_locale_tag("C"), None);
+        assert_eq!(Language::from_locale_tag(""), None);
+    }
+
     /// The marker convention is deliberately not translated.
     #[test]
     fn markers_stay_identical_across_languages() {
@@ -556,6 +610,25 @@ mod tests {
         }
     }
 
+    fn placeholder_names(text: &str) -> std::collections::BTreeSet<&str> {
+        let mut names = std::collections::BTreeSet::new();
+        let mut rest = text;
+        while let Some(open) = rest.find('{') {
+            let after = &rest[open + 1..];
+            let Some(close) = after.find('}') else { break };
+            let name = &after[..close];
+            if !name.is_empty()
+                && name
+                    .chars()
+                    .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+            {
+                names.insert(name);
+            }
+            rest = &after[close + 1..];
+        }
+        names
+    }
+
     /// Templates that interpolate values must use the same placeholder names in
     /// every language, otherwise one language shows `{reason}` to the user.
     #[test]
@@ -563,13 +636,11 @@ mod tests {
         for msg in ALL {
             let en = Language::English.text(*msg);
             let de = Language::German.text(*msg);
-            for placeholder in ["{path}", "{reason}"] {
-                assert_eq!(
-                    en.contains(placeholder),
-                    de.contains(placeholder),
-                    "{msg:?} uses {placeholder} in one language but not the other"
-                );
-            }
+            assert_eq!(
+                placeholder_names(en),
+                placeholder_names(de),
+                "{msg:?} uses different placeholders in the two languages"
+            );
         }
     }
 }
@@ -589,8 +660,9 @@ mod dump {
 
     /// Not a test: prints every string with its context and all translations,
     /// so a translator can work from this output alone.
-    /// Run with `cargo test dump -- --nocapture`.
+    /// Run with `cargo test dump -- --ignored --nocapture`.
     #[test]
+    #[ignore = "prints the translation sheet, checks nothing"]
     fn print_translation_sheet() {
         for msg in ALL {
             println!("\n## {msg}");
@@ -608,6 +680,70 @@ mod dump {
             "\n( {} strings, {} Futurama names )",
             ALL.len(),
             ALL_FUTURAMA_NAMES.len()
+        );
+    }
+}
+
+// Same reasoning as the other test modules: a panic is the failure signal.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod unused_strings {
+    use super::gen::{ALL, ALL_FUTURAMA_NAMES};
+    use std::fs;
+    use std::path::Path;
+
+    fn collect_sources(dir: &Path, into: &mut String) {
+        let Ok(entries) = fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_sources(&path, into);
+            } else if path.extension().is_some_and(|ext| ext == "rs") {
+                if let Ok(text) = fs::read_to_string(&path) {
+                    into.push_str(&text);
+                }
+            }
+        }
+    }
+
+    /// True when `source` names `needle` and not a longer name that starts with it.
+    fn names(source: &str, needle: &str) -> bool {
+        source.match_indices(needle).any(|(at, _)| {
+            source[at + needle.len()..]
+                .chars()
+                .next()
+                .is_none_or(|next| !next.is_alphanumeric() && next != '_')
+        })
+    }
+
+    #[test]
+    fn every_string_is_used_by_some_screen() {
+        let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let mut source = String::new();
+        for dir in ["src", "tests", "crates"] {
+            collect_sources(&workspace.join(dir), &mut source);
+        }
+        let mut unused: Vec<String> = ALL
+            .iter()
+            .filter(|msg| !names(&source, &format!("Msg::{msg:?}")))
+            .map(|msg| msg.key().to_owned())
+            .collect();
+        unused.extend(
+            ALL_FUTURAMA_NAMES
+                .iter()
+                .filter(|name| !names(&source, &format!("FuturamaName::{name:?}")))
+                .map(|name| name.key().to_owned()),
+        );
+        assert!(
+            unused.is_empty(),
+            "strings.json keys no code refers to, delete them: {unused:?}"
         );
     }
 }

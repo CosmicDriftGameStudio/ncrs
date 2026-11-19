@@ -87,6 +87,7 @@ pub fn boot_with(
                 passwords: Arc::new(crate::fs::remote::credentials::InMemoryPasswords::default()),
                 ssh_known_hosts: None,
                 own_known_hosts: None,
+                second_instance: false,
             };
             let (app, task) = App::restored(environment, saved.clone());
             (

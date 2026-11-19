@@ -6,25 +6,19 @@ use iced::widget::{container, row, text};
 use iced::{alignment, Element, Length, Size};
 
 use ncrs_i18n::{FuturamaName, Language, Msg};
-use ncrs_ui_kit::layout::ROW_HEIGHT;
 use ncrs_ui_kit::palette::Palette;
 use ncrs_ui_kit::theme::{font_size, spacing};
-use ncrs_ui_kit::{frame, kit, picker};
+use ncrs_ui_kit::{kit, picker};
 
 use super::{CommandPalette, Entry, Header, Hit, Row, MIN_VISIBLE_ROWS};
 use crate::message::CommandPaletteMessage;
 
 pub const COMMAND_PALETTE_ID: &str = "command-palette-query";
 
-/// What the frame, the field and the status line take of the frame's height,
-/// measured; the rest is the list.
-const LIST_CHROME: f32 = 170.0;
-
 /// The rows the list shows in a window of `window`: as many as the frame has
 /// room for, never fewer than [`MIN_VISIBLE_ROWS`].
 pub fn visible_rows(window: Size) -> usize {
-    let room = frame::frame_size(picker::SIZE, window).height - LIST_CHROME;
-    ((room / ROW_HEIGHT).floor().max(0.0) as usize).max(MIN_VISIBLE_ROWS)
+    picker::visible_rows(window).max(MIN_VISIBLE_ROWS)
 }
 
 /// Room kept at the right of a row for the key of the action.
@@ -142,31 +136,10 @@ fn command_row<'a>(
 
 /// A group heading, which is not a place for the cursor.
 fn header_row<'a>(header: &Header, palette: &Palette) -> Element<'a, CommandPaletteMessage> {
-    let mut line = row![text(header.label.to_uppercase())
-        .size(font_size::COLUMN_HEADER)
-        .color(palette.dim_text)
-        .wrapping(Wrapping::None)]
-    .spacing(spacing::SECTION_GAP)
-    .align_y(alignment::Vertical::Center);
-    if let Some(theme_name) = header.theme_name {
-        line = line.push(
-            text(theme_name.to_owned())
-                .size(font_size::COLUMN_HEADER)
-                .color(palette.dim_text)
-                .wrapping(Wrapping::None),
-        );
-    }
-    if let Some(beta_mark) = header.beta_mark {
-        line = line.push(
-            text(beta_mark.to_owned())
-                .size(font_size::COLUMN_HEADER)
-                .color(palette.dim_text)
-                .wrapping(Wrapping::None),
-        );
-    }
-    container(line)
-        .height(ROW_HEIGHT)
-        .padding([0.0, spacing::CELL_PADDING_X])
-        .align_y(alignment::Vertical::Center)
-        .into()
+    let marks: Vec<&str> = header
+        .theme_name
+        .into_iter()
+        .chain(header.beta_mark)
+        .collect();
+    picker::group_header(&header.label, &marks, palette)
 }

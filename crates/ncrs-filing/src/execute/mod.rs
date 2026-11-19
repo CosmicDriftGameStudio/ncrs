@@ -370,6 +370,9 @@ fn run_item<S: Source>(
         }
         Err(err) => return skip(index, batch, item, SkipReason::Failed(err.to_string())),
     }
+    if transfer == Transfer::Move && is_respelling(&item.from, &item.to) {
+        return respell(index, batch, item);
+    }
     match fs::symlink_metadata(&item.to) {
         Ok(_) => return skip(index, batch, item, SkipReason::TargetExists),
         Err(err) if err.kind() == io::ErrorKind::NotFound => {}
@@ -551,6 +554,7 @@ fn settle_move(
     batch: BatchId,
     item: &JournalItem,
 ) -> Result<ItemOutcome, ExecuteError> {
+    restore_respelled(item);
     remove_staging_copies(&item.to);
     let source_present = fs::symlink_metadata(&item.from).is_ok();
     let target_intact = has_hash(&item.to, item.hash);
@@ -558,6 +562,14 @@ fn settle_move(
         return settle_moved(index, batch, item);
     }
     if target_intact && has_hash(&item.from, item.hash) {
+        if !within_recorded_roots(index, batch, item) {
+            return skip_pending(
+                index,
+                batch,
+                item,
+                SkipReason::Failed("the item lies outside the folders of its run".to_owned()),
+            );
+        }
         fs::remove_file(&item.from).map_err(io_error(&item.from))?;
         return settle_moved(index, batch, item);
     }
@@ -586,6 +598,9 @@ fn settle_copy(
         return settle_copied(index, batch, item);
     }
     if has_hash(&item.from, item.hash) {
+        if within_recorded_roots(index, batch, item) && is_cut_short_copy(&item.to, &item.from) {
+            let _best_effort = fs::remove_file(&item.to);
+        }
         return skip_pending(index, batch, item, SkipReason::Interrupted);
     }
     skip_pending(
@@ -778,6 +793,131 @@ fn undo_item(
         &item.from,
     )?;
     Ok(None)
+}
+
+/// Whether both ends of an item lie in the folders the batch recorded, when it
+/// recorded any. A journal that is not the run's own must not make a settle
+/// remove files elsewhere.
+fn within_recorded_roots(index: &Index, batch: BatchId, item: &JournalItem) -> bool {
+    let Ok(Some(info)) = index.batch_info(batch) else {
+        return true;
+    };
+    let lies_in = |root: &SourceRoot, path: &Path| {
+        path.starts_with(&root.given) || path.starts_with(&root.resolved)
+    };
+    let roots: Vec<&SourceRoot> = [&info.source_root, &info.target_root]
+        .into_iter()
+        .flatten()
+        .collect();
+    let from_fits = roots.is_empty() || roots.iter().any(|root| lies_in(root, &item.from));
+    let to_fits = info
+        .target_root
+        .as_ref()
+        .is_none_or(|root| lies_in(root, &item.to));
+    from_fits && to_fits
+}
+
+/// What a copy that stopped half way leaves: a file that is only the start of
+/// its source. Anything else at the target is not ours to remove.
+fn is_cut_short_copy(copy: &Path, source: &Path) -> bool {
+    use std::io::Read as _;
+    let (Ok(copy_meta), Ok(source_meta)) =
+        (fs::symlink_metadata(copy), fs::symlink_metadata(source))
+    else {
+        return false;
+    };
+    if !copy_meta.is_file() || !source_meta.is_file() || copy_meta.len() >= source_meta.len() {
+        return false;
+    }
+    let (Ok(mut copied), Ok(mut original)) = (fs::File::open(copy), fs::File::open(source)) else {
+        return false;
+    };
+    let mut copied_block = [0_u8; 64 * 1024];
+    let mut original_block = [0_u8; 64 * 1024];
+    loop {
+        let Ok(read) = copied.read(&mut copied_block) else {
+            return false;
+        };
+        if read == 0 {
+            return true;
+        }
+        let (Some(copied_part), Some(original_part)) =
+            (copied_block.get(..read), original_block.get_mut(..read))
+        else {
+            return false;
+        };
+        if original.read_exact(original_part).is_err() || copied_part != original_part {
+            return false;
+        }
+    }
+}
+
+/// The same file under another spelling of its name, in the same folder: on a
+/// case-insensitive file system `Rechnung.pdf` and `rechnung.pdf` are one entry.
+/// Two names of one file (links) are two entries and do not count.
+fn is_respelling(from: &Path, to: &Path) -> bool {
+    let (Some(from_parent), Some(to_parent), Some(name)) =
+        (from.parent(), to.parent(), to.file_name())
+    else {
+        return false;
+    };
+    let same_folder = same_file::is_same_file(from_parent, to_parent).unwrap_or(false);
+    let same_entry = same_file::is_same_file(from, to).unwrap_or(false);
+    let to_is_listed = fs::read_dir(to_parent)
+        .map(|entries| entries.flatten().any(|entry| entry.file_name() == name))
+        .unwrap_or(true);
+    same_folder && same_entry && !to_is_listed
+}
+
+fn respell_hidden_name(to: &Path) -> PathBuf {
+    let name = to.file_name().unwrap_or_default().to_string_lossy();
+    to.with_file_name(format!(".{name}.ncrs-respell"))
+}
+
+/// A respell that stopped between its two renames left the file only under
+/// the hidden name: it goes to its new name when neither name is there.
+fn restore_respelled(item: &JournalItem) {
+    let hidden = respell_hidden_name(&item.to);
+    let nothing_at_either_name =
+        fs::symlink_metadata(&item.from).is_err() && fs::symlink_metadata(&item.to).is_err();
+    if nothing_at_either_name && has_hash(&hidden, item.hash) {
+        let _best_effort = fs::rename(&hidden, &item.to);
+    }
+}
+
+/// Renames through a hidden name, which also works where the old and the new
+/// name are one entry for the file system.
+fn respell(
+    index: &Index,
+    batch: BatchId,
+    item: &ExecutionItem,
+) -> Result<ItemOutcome, ExecuteError> {
+    let seq = index.add_journal_item(batch, &journal_entry(item, JournalState::Pending, None))?;
+    let journaled = JournalItem {
+        seq,
+        from: item.from.clone(),
+        to: item.to.clone(),
+        hash: item.expected_hash,
+        document_id: item.document_id,
+        duplicate: item.duplicate,
+        state: JournalState::Pending,
+        reason: None,
+    };
+    let hidden = respell_hidden_name(&item.to);
+    let renamed = fs::rename(&item.from, &hidden).and_then(|()| {
+        fs::rename(&hidden, &item.to).inspect_err(|_| {
+            let _put_back = fs::rename(&hidden, &item.from);
+        })
+    });
+    match renamed {
+        Ok(()) => settle_moved(index, batch, &journaled),
+        Err(err) => skip_pending(
+            index,
+            batch,
+            &journaled,
+            SkipReason::Failed(err.to_string()),
+        ),
+    }
 }
 
 #[cfg(test)]

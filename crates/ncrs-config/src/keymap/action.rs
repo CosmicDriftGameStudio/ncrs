@@ -46,6 +46,7 @@ key_actions! {
     TagAll => "tag_all",
     ClearTags => "clear_tags",
     AbortJob => "abort_job",
+    ShowProgress => "show_progress",
     CopyPath => "copy_path",
     CopyName => "copy_name",
     CopyFiles => "copy_files",
@@ -199,6 +200,7 @@ impl KeyAction {
             | Self::ClearTags => Reach::Both,
             Self::GoUp
             | Self::Open
+            | Self::ShowProgress
             | Self::OpenTerminal
             | Self::CopyPath
             | Self::CopyName
@@ -372,6 +374,7 @@ impl KeyAction {
             | Self::TagAll
             | Self::ClearTags
             | Self::AbortJob
+            | Self::ShowProgress
             | Self::CopyPath
             | Self::CopyName
             | Self::CopyFiles
@@ -480,6 +483,7 @@ impl KeyAction {
             | Self::TagAll
             | Self::ClearTags
             | Self::AbortJob
+            | Self::ShowProgress
             | Self::CopyPath
             | Self::CopyName
             | Self::CopyFiles

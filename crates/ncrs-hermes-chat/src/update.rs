@@ -55,6 +55,10 @@ fn route(state: &mut State, message: Message, ctx: &Ctx) -> Option<Action> {
             new_chat(state, ctx);
             None
         }
+        Message::IndexReplaced => {
+            restart_conversation(state, ctx);
+            None
+        }
         Message::InputChanged(input) => {
             state.input = input;
             None
@@ -222,6 +226,10 @@ fn new_chat(state: &mut State, ctx: &Ctx) {
     if is_busy(state) {
         return;
     }
+    restart_conversation(state, ctx);
+}
+
+fn restart_conversation(state: &mut State, ctx: &Ctx) {
     // The background job is not part of the conversation: a second one must
     // not start beside it.
     *state = State {
@@ -632,8 +640,7 @@ pub fn ask_chips(ctx: &Ctx) -> Vec<Chip> {
     chips
 }
 
-pub fn source_chips(state: &State, ctx: &Ctx) -> Vec<Chip> {
-    let _ = state;
+pub fn source_chips(ctx: &Ctx) -> Vec<Chip> {
     let mut chips = folder_chips(ctx, candidate_folders(ctx, false));
     chips.push(chip(ctx, Msg::HermesChatLater, ChipReply::Later, false));
     chips
@@ -795,7 +802,22 @@ fn handle_text(state: &mut State, ctx: &Ctx, typed: &str, asked: Asked) -> Optio
         state.fresh_resolve = true;
         return None;
     }
+    if let Some(reply) = chip_reply_for(&asked, typed) {
+        return handle_reply(state, ctx, reply);
+    }
     understand::ask(state, ctx, typed, asked)
+}
+
+/// A typed answer that is exactly the label of one of the buttons is that
+/// button, without asking the model.
+fn chip_reply_for(asked: &Asked, typed: &str) -> Option<ChipReply> {
+    let wanted = typed.trim().to_lowercase();
+    let mut matching = asked
+        .chips
+        .iter()
+        .filter(|chip| chip.label.trim().to_lowercase() == wanted);
+    let first = matching.next()?;
+    matching.next().is_none().then(|| first.reply.clone())
 }
 
 fn ask_tidy_folder(state: &mut State, ctx: &Ctx, folder: Option<PathBuf>) -> Option<Action> {
@@ -942,4 +964,35 @@ fn reset_flow(state: &mut State) {
     state.session.rule = None;
     crate::follow_up::forget(state);
     state.step = Step::Idle;
+}
+
+#[cfg(test)]
+mod typed_chip_tests {
+    use super::*;
+
+    fn asked_with(labels: &[&str]) -> Asked {
+        Asked {
+            question: Some("Which one?".to_owned()),
+            chips: labels
+                .iter()
+                .map(|label| Chip {
+                    label: (*label).to_owned(),
+                    reply: ChipReply::Later,
+                    primary: false,
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn a_typed_label_is_the_button_regardless_of_case() {
+        let asked = asked_with(&["Yes", "No"]);
+        assert_eq!(chip_reply_for(&asked, " yes "), Some(ChipReply::Later));
+    }
+
+    #[test]
+    fn other_text_and_twin_labels_go_to_the_model() {
+        assert_eq!(chip_reply_for(&asked_with(&["Yes"]), "yes please"), None);
+        assert_eq!(chip_reply_for(&asked_with(&["Same", "same"]), "same"), None);
+    }
 }

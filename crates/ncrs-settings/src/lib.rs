@@ -7,6 +7,7 @@ pub mod ai_model;
 pub mod ai_server;
 pub mod ctx;
 pub mod dialogs;
+pub mod download_error;
 pub mod facts;
 pub mod focus;
 pub mod folders;

@@ -133,7 +133,7 @@ impl App {
                 release_focus()
             }
             Message::ClickedOutside => {
-                self.panels.context_menu = None;
+                self.close_context_menu();
                 self.panels.set_path_field(None);
                 self.panels.end_rename();
                 self.command_line.leave();
@@ -159,11 +159,6 @@ impl App {
         self.panels.active_panel()
     }
 
-    #[allow(dead_code)] // Used by upcoming two-panel operations (copy/move).
-    pub fn inactive_panel_mut(&mut self) -> &mut PanelState {
-        self.panel_mut(self.panels.active.other())
-    }
-
     /// The classic rule for F5, F6 and F8: tagged rows win, otherwise the row under
     /// the cursor. The `..` entry is never a thing to act on. In the search
     /// view the same holds for its files, and never for all files found.
@@ -171,21 +166,15 @@ impl App {
         if let Some(search) = self.open_search_view() {
             return search.action_files();
         }
-        let panel = self.active_panel();
-        if panel.selection.any_tagged() {
-            panel
-                .selection
-                .ordered(&panel.entries)
-                .into_iter()
-                .map(|e| e.path.clone())
-                .collect()
-        } else {
-            panel
-                .selected_entry()
-                .filter(|e| !e.is_parent)
-                .map(|e| vec![e.path.clone()])
-                .unwrap_or_default()
-        }
+        self.action_rows()
+            .into_iter()
+            .map(|entry| entry.path.clone())
+            .collect()
+    }
+
+    /// The rows of the active panel the F5/F6/F8 rule acts on.
+    pub(in crate::app) fn action_rows(&self) -> Vec<&fs::FileEntry> {
+        self.active_panel().action_entries()
     }
 
     /// Puts the path or name of the target on the clipboard and says so in the
@@ -302,18 +291,11 @@ impl App {
 
     /// Starts `command`; a refusal of the system is the error of the status bar.
     fn start_command(&mut self, command: &fs::OpenCommand, path: &Path) {
-        if let Err(reason) = self.launcher.launch(command) {
-            let name = path
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            let message = self
-                .lang
-                .text(Msg::ErrorOpenFailed)
-                .replace("{name}", &name)
-                .replace("{reason}", &reason);
-            self.set_status_error(&message);
-        }
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        self.launch_or_report(command, &name);
     }
 
     /// Starts unpacking `source`, a file in `archive`, for the viewer. The
@@ -684,7 +666,7 @@ impl App {
                 self.update(Message::ContextMenuAt { side, index })
             }
             Action::CloseContextMenu => {
-                self.panels.context_menu = None;
+                self.close_context_menu();
                 Task::none()
             }
             Action::RunContextEntry(ContextAction::AddFavourite) => {
@@ -770,7 +752,8 @@ impl App {
         let directory = parent.to_path_buf();
         let name = file.to_string_lossy().into_owned();
         let left = self.leave_settings_page();
-        Task::batch([left, self.load(self.panels.active, directory, Some(name))])
+        let shown = self.show_folder_in_active_panel(directory, Some(name));
+        Task::batch([left, shown])
     }
 
     /// Switches to the panels and shows the file's directory in the active one, cursor on the file.
@@ -780,8 +763,7 @@ impl App {
             .file_name()
             .map(|name| name.to_string_lossy().into_owned());
         self.shown_tab = ShownTab::Panels;
-        let side = self.panels.active;
-        self.load(side, folder, name)
+        self.show_folder_in_active_panel(folder, name)
     }
 
     /// Starts an async directory read for `side`.

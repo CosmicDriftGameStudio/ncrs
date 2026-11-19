@@ -15,6 +15,12 @@ pub struct HostSettings {
     pub identity_files: Vec<PathBuf>,
 }
 
+/// The text of `~/.ssh/config` below `home`; `None` for no home or a file that
+/// cannot be read. Blocks on the file system.
+pub fn read_config_text(home: Option<&Path>) -> Option<String> {
+    std::fs::read_to_string(home?.join(".ssh").join("config")).ok()
+}
+
 /// The settings of `alias` in `~/.ssh/config` below `home`. Nothing for no
 /// home or a file that cannot be read.
 pub fn read_settings(home: Option<&Path>, alias: &str) -> HostSettings {

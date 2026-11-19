@@ -1,8 +1,8 @@
 //! Acceptance shots for 1.5.0: the real app, headless, each new flow driven
-//! through its messages and keys. The asserts are the check, the pictures in
-//! `target/acceptance/v150/` are the evidence for the acceptance.
+//! through its messages and keys. The asserts always run; the pictures in
+//! `target/acceptance/v150/` are only taken when `NCRS_ACCEPTANCE_SHOTS` is set.
 //!
-//! Run: `cargo test -p ncrs --bin ncrs acceptance_v150 -- --ignored --test-threads=1`.
+//! Pictures: `NCRS_ACCEPTANCE_SHOTS=1 cargo test -p ncrs --bin ncrs acceptance_v150 -- --test-threads=1`.
 
 #![cfg(unix)]
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
@@ -34,6 +34,9 @@ trait Live: iced::Program<State = App, Message = Message> + 'static {}
 impl<P: iced::Program<State = App, Message = Message> + 'static> Live for P {}
 
 fn shoot(app: &App, name: &str) {
+    if std::env::var_os("NCRS_ACCEPTANCE_SHOTS").is_none() {
+        return;
+    }
     std::fs::create_dir_all(SHOT_DIR).unwrap();
     let shot = PathBuf::from(SHOT_DIR);
     drop(std::fs::remove_file(
@@ -259,7 +262,6 @@ fn paste<P: Live>(session: &mut Session<P>, text: &str) {
 }
 
 #[test]
-#[ignore = "acceptance shots, run by hand"]
 fn viewer_markdown_and_source() {
     let world = World::new("viewer", "");
     let mut session = world.boot();
@@ -292,7 +294,6 @@ fn open_programs_page<P: Live>(session: &mut Session<P>) {
 }
 
 #[test]
-#[ignore = "acceptance shots, run by hand"]
 fn programs_page_by_type() {
     let world = World::new("programs", THREE_RULES);
     let mut session = world.boot();
@@ -301,7 +302,6 @@ fn programs_page_by_type() {
 }
 
 #[test]
-#[ignore = "acceptance shots, run by hand"]
 fn a_txt_rule_sends_f3_to_the_viewer() {
     let rules = "[open]\nby_type = [\n\
         { extensions = [\"md\", \"markdown\"], with = \"internal\" },\n\
@@ -343,7 +343,6 @@ fn a_txt_rule_sends_f3_to_the_viewer() {
 }
 
 #[test]
-#[ignore = "acceptance shots, run by hand"]
 fn process_again_asks_before_many_inbox_files() {
     let world = World::new("again", "");
     let inbox = world.downloads.parent().unwrap().join("Eingang");
@@ -469,7 +468,6 @@ fn press_note<P: Live>(session: &mut Session<P>, key: ncrs_notes::tree::RowKey) 
 }
 
 #[test]
-#[ignore = "acceptance shots, run by hand"]
 fn notes_view_edit_and_search() {
     use ncrs_notes::tree::RowKey;
     let world = notes_world("notes");
@@ -505,7 +503,6 @@ fn notes_view_edit_and_search() {
 }
 
 #[test]
-#[ignore = "acceptance shots, run by hand"]
 fn note_on_file_menu_and_marker() {
     let world = notes_world("note-on-file");
     let mut session = world.boot();
@@ -538,7 +535,6 @@ fn note_on_file_menu_and_marker() {
 }
 
 #[test]
-#[ignore = "acceptance shots, run by hand"]
 fn archive_menu_and_extract_here() {
     let world = World::new("extract", "");
     let mut session = world.boot();
@@ -569,7 +565,6 @@ fn archive_menu_and_extract_here() {
 }
 
 #[test]
-#[ignore = "acceptance shots, run by hand"]
 fn pack_three_files_as_7z() {
     let world = World::new("pack", "");
     let mut session = world.boot();
@@ -607,7 +602,6 @@ fn pack_three_files_as_7z() {
 }
 
 #[test]
-#[ignore = "acceptance shots, run by hand"]
 fn a_note_follows_its_file_when_it_is_moved() {
     let (moved, mut session) = super::notes_move::boot_with_a_note_on_an_indexed_file("de");
     let front_before = std::fs::read_to_string(

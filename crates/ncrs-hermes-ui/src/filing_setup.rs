@@ -69,7 +69,6 @@ impl FilingSetup {
             .enumerate()
             .map(|(index, location)| FilingLocation {
                 is_target: Some(index) == target,
-                transfer: Default::default(),
                 ..location.clone()
             })
             .collect()
@@ -143,7 +142,7 @@ pub fn locations_with_role(
 /// Blocking. The canonical path of the folder a panel shows: the rules
 /// compare canonical paths, and the intake works on them too.
 pub fn resolve_folder(folder: &Path) -> Result<PathBuf, String> {
-    let canonical = std::fs::canonicalize(folder).map_err(|err| err.to_string())?;
+    let canonical = ncrs_intake::canonical_path(folder).map_err(|err| err.to_string())?;
     if !canonical.is_dir() {
         return Err(std::io::Error::from(std::io::ErrorKind::NotADirectory).to_string());
     }
@@ -161,7 +160,8 @@ pub fn write_locations(
     let canonical: Vec<FilingLocation> = chosen
         .iter()
         .map(|location| FilingLocation {
-            path: std::fs::canonicalize(&location.path).unwrap_or_else(|_| location.path.clone()),
+            path: ncrs_intake::canonical_path(&location.path)
+                .unwrap_or_else(|_| location.path.clone()),
             ..location.clone()
         })
         .collect();
@@ -332,6 +332,15 @@ mod tests {
         let targets: Vec<_> = list.iter().filter(|l| l.is_target).collect();
         assert_eq!(targets.len(), 1);
         assert_eq!(targets[0].path, folder("Old"));
+    }
+
+    #[test]
+    fn giving_another_folder_a_role_keeps_copy_on_the_others() {
+        let mut list = configured();
+        list[0].transfer = config::LocationTransfer::Copy;
+        let written =
+            locations_with_role(&list, &folder("Old"), FolderRole::FilingLocation).unwrap();
+        assert_eq!(written[0].transfer, config::LocationTransfer::Copy);
     }
 
     #[test]

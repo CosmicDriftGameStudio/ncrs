@@ -103,8 +103,12 @@ pub fn plan_reorganisation(input: &ReorganisationInput<'_>) -> Vec<PlanItem> {
         })
         .collect();
     let patterns = pattern_per_document(&documents);
+    let mut learned: BTreeMap<&str, &SubtreePattern> = BTreeMap::new();
+    for entry in input.profile.iter().filter(|entry| entry.pattern.is_some()) {
+        learned.entry(entry.subtree.as_str()).or_insert(entry);
+    }
     let context = Context {
-        profile: input.profile,
+        learned,
         unordered: input.unordered,
         eligible: eligible_rules(input.rules, files.len()),
         sender_aliases: input.sender_aliases,
@@ -151,7 +155,8 @@ fn priority_of(kind: FindingKind) -> usize {
 }
 
 struct Context<'a> {
-    profile: &'a [SubtreePattern],
+    /// The first learned pattern of each subtree.
+    learned: BTreeMap<&'a str, &'a SubtreePattern>,
     unordered: &'a LocationStructure,
     eligible: Vec<Rule>,
     sender_aliases: &'a SenderAliases,
@@ -187,9 +192,7 @@ impl Context<'_> {
     }
 
     fn learned(&self, subtree: &str) -> Option<&SubtreePattern> {
-        self.profile
-            .iter()
-            .find(|entry| entry.subtree == subtree && entry.pattern.is_some())
+        self.learned.get(subtree).copied()
     }
 
     /// The file name pattern the folder follows when the file's own differs.

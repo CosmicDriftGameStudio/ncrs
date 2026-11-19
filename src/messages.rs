@@ -12,7 +12,6 @@ use crate::filing::FilingMessage;
 use crate::filing_work::FilingSummary;
 use crate::fs::CreateDirError;
 use crate::fs::{Destination, PathProblem};
-use crate::jobs::JobEvent;
 #[cfg(any(target_os = "macos", test))]
 use crate::keymap::KeyAction;
 pub use ncrs_core::PanelSide;
@@ -264,12 +263,6 @@ pub enum Message {
     /// A mouse press that no widget took.
     ClickedOutside,
 
-    // --- Job queue (see crate::jobs) ---
-    /// A job started, made progress, or finished. One variant for all three:
-    /// they are the same event arriving at different times, and splitting them
-    /// would mean the UI matching on the same enum in three places.
-    JobFinished(JobEvent),
-
     // --- Modal prompt (see crate::dialog) ---
     /// F7: open the create-directory prompt.
     CreateDirPrompt,
@@ -424,7 +417,6 @@ pub enum Message {
 
 pub use ncrs_config::SettingsFeature;
 
-/// What the title bar asks of the window.
 /// What the area under the title bar shows. Settings, the System page and the
 /// Hermes chat stay open while the panels are shown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

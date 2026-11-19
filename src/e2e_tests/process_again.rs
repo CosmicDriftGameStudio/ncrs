@@ -73,7 +73,8 @@ fn process_again_takes_the_marked_files_and_folders_and_skips_the_excluded() {
     write(&root.join("excluded.txt"), "Rechnung, nicht verarbeiten");
     write(&root.join("single.txt"), "Rechnung Einzeldatei");
     // Excluding needs the target archive; the folder under test stays read-only.
-    let target = std::fs::canonicalize(tempfile::TempDir::new().unwrap().keep()).unwrap();
+    let target_dir = tempfile::TempDir::new().unwrap();
+    let target = std::fs::canonicalize(target_dir.path()).unwrap();
     std::fs::write(
         data.path().join("config.toml"),
         format!(

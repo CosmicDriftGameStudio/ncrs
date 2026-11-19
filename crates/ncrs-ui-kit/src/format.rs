@@ -4,33 +4,16 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chrono::{DateTime, Datelike as _, Local};
-use ncrs_core::{DateFormat, FileEntry, SizeFormat, WindowsAttributes};
+pub use ncrs_core::DateFormat;
+use ncrs_core::{FileEntry, SizeFormat, WindowsAttributes};
 use ncrs_i18n::{fill_template, Language, Msg};
 use ncrs_index::Amount;
 
-/// How many minor units (cents) make one unit of an amount.
-pub const MINOR_UNITS_PER_UNIT: i64 = 100;
-
-/// The amount as the field shows it, parseable by the review's `parse_amount`.
-pub fn amount_text(amount: &Amount) -> String {
-    format!("{} {}", amount_digits(amount), amount.currency.as_str())
-}
-
-/// The number of an amount without its currency, with two decimals.
-pub fn amount_digits(amount: &Amount) -> String {
-    let magnitude = amount.minor_units.unsigned_abs();
-    let unit = MINOR_UNITS_PER_UNIT.unsigned_abs();
-    let sign = if amount.minor_units < 0 { "-" } else { "" };
-    format!(
-        "{sign}{}.{:02}",
-        magnitude.div_euclid(unit),
-        magnitude.rem_euclid(unit)
-    )
-}
+pub use ncrs_index::{amount_digits, amount_text, MINOR_UNITS_PER_UNIT};
 
 /// Appended to a computed folder size that missed unreadable parts. Untranslated
 /// like the markers.
-const PARTIAL_SIZE_MARK: char = '+';
+pub const PARTIAL_SIZE_MARK: char = '+';
 
 /// Size column text: `<UP>` / `<DIR>` for directories (the computed size once
 /// there is one), size otherwise.
@@ -38,15 +21,15 @@ const PARTIAL_SIZE_MARK: char = '+';
 /// The markers are a classic dual-panel convention and are deliberately not
 /// translated, so this takes no `Language`.
 pub fn entry_size(entry: &FileEntry) -> String {
-    entry_size_in(entry, SizeFormat::Readable)
+    entry_size_in(entry, SizeFormat::Readable, Language::English)
 }
 
 /// [`entry_size`] with the sizes written as `format` says.
-pub fn entry_size_in(entry: &FileEntry, format: SizeFormat) -> String {
+pub fn entry_size_in(entry: &FileEntry, format: SizeFormat, lang: Language) -> String {
     if entry.is_parent {
         Msg::MarkerUp.text().into()
     } else if let (true, Some(computed)) = (entry.is_dir, entry.folder_size) {
-        let text = size_in(computed.bytes, format);
+        let text = size_in(computed.bytes, format, lang);
         if computed.partial {
             format!("{text}{PARTIAL_SIZE_MARK}")
         } else {
@@ -55,13 +38,13 @@ pub fn entry_size_in(entry: &FileEntry, format: SizeFormat) -> String {
     } else if entry.is_dir {
         Msg::MarkerDir.text().into()
     } else {
-        size_in(entry.size, format)
+        size_in(entry.size, format, lang)
     }
 }
 
 /// `1 234 567 B`, `1 206 KB` or `1.2 MB`, as the Size setting says. A file
 /// with content is never shown as 0 KB.
-pub fn size_in(bytes: u64, format: SizeFormat) -> String {
+pub fn size_in(bytes: u64, format: SizeFormat, lang: Language) -> String {
     match format {
         SizeFormat::Bytes => format!("{} B", grouped(bytes)),
         SizeFormat::Kilobytes => {
@@ -69,7 +52,7 @@ pub fn size_in(bytes: u64, format: SizeFormat) -> String {
             let kilobytes = if bytes == 0 { 0 } else { rounded.max(1) };
             format!("{} KB", grouped(kilobytes))
         }
-        SizeFormat::Readable => size(bytes),
+        SizeFormat::Readable => size_shown(bytes, lang),
     }
 }
 
@@ -170,10 +153,10 @@ fn windows_attributes(attributes: WindowsAttributes) -> String {
     .collect()
 }
 
-/// Whole megabytes (1 MB = 1,000,000 bytes), rounded: the one unit and rounding
-/// of a download and of the model that is downloaded.
+/// Whole megabytes (1 MB = 1,048,576 bytes like the file sizes), rounded: the
+/// one unit and rounding of a download and of the model that is downloaded.
 fn whole_megabytes(bytes: u64) -> u64 {
-    (bytes + 500_000).div_euclid(1_000_000)
+    bytes.saturating_add(524_288).div_euclid(1_048_576)
 }
 
 /// `639 MB`: the size of a download as its card and its progress line say it.
@@ -181,7 +164,7 @@ pub fn megabytes(bytes: u64) -> String {
     format!("{} MB", whole_megabytes(bytes))
 }
 
-/// Megabytes (1 MB = 1,000,000 bytes) received and in all, and the percent
+/// Megabytes (as in [`size`]) received and in all, and the percent
 /// done, rounded and as text for the line under a download's bar.
 pub fn download_figures(received: u64, total: u64) -> (String, String, String) {
     let megabytes = whole_megabytes;
@@ -200,13 +183,19 @@ pub fn download_figures(received: u64, total: u64) -> (String, String, String) {
 
 /// Human readable size, e.g. `512 B`, `1.4 KB`, `3.0 GB`.
 pub fn size(bytes: u64) -> String {
+    size_shown(bytes, Language::English)
+}
+
+/// [`size`] with the decimal mark of `lang`.
+pub fn size_shown(bytes: u64, lang: Language) -> String {
     const UNITS: [&str; 6] = ["B", "KB", "MB", "GB", "TB", "PB"];
     if bytes < 1024 {
         return format!("{bytes} B");
     }
     let mut value = bytes as f64;
     let mut unit = 0;
-    while value >= 1024.0 && unit < UNITS.len() - 1 {
+    // Round first: 1 048 575 bytes is 1023.999 KB, which prints as 1024.0.
+    while (value * 10.0).round() / 10.0 >= 1024.0 && unit < UNITS.len() - 1 {
         value /= 1024.0;
         unit += 1;
     }
@@ -214,7 +203,51 @@ pub fn size(bytes: u64) -> String {
     // saying so with a type instead of relying on it means a later change to the
     // loop cannot turn a file size into a panic.
     let label = UNITS.get(unit).copied().unwrap_or("?");
-    format!("{value:.1} {label}")
+    with_decimal_mark(format!("{value:.1} {label}"), lang)
+}
+
+fn with_decimal_mark(text: String, lang: Language) -> String {
+    match lang {
+        Language::German | Language::GermanFuturama => text.replacen('.', ",", 1),
+        Language::English | Language::EnglishFuturama => text,
+    }
+}
+
+/// An amount for display: the decimal mark of `lang`. [`amount_text`] stays
+/// the form that is read back and put into names.
+pub fn amount_shown(amount: &Amount, lang: Language) -> String {
+    with_decimal_mark(amount_text(amount), lang)
+}
+
+/// A file name for display: control characters as their visible symbol
+/// (U+2400 block), direction and invisible characters as `<U+202E>`. Only for
+/// showing; the real name stays what is passed to the file system.
+pub fn shown_name(name: &str) -> String {
+    let mut shown = String::with_capacity(name.len());
+    for glyph in name.chars() {
+        let code = glyph as u32;
+        if glyph.is_control() {
+            match code {
+                0..=0x1f => shown.push(char::from_u32(0x2400 + code).unwrap_or('\u{fffd}')),
+                0x7f => shown.push('\u{2421}'),
+                _ => {
+                    let _ = write!(shown, "<U+{code:04X}>");
+                }
+            }
+        } else if is_hidden_format_glyph(glyph) {
+            let _ = write!(shown, "<U+{code:04X}>");
+        } else {
+            shown.push(glyph);
+        }
+    }
+    shown
+}
+
+fn is_hidden_format_glyph(glyph: char) -> bool {
+    matches!(
+        glyph as u32,
+        0x061C | 0x200B..=0x200F | 0x202A..=0x202E | 0x2066..=0x2069 | 0xFEFF
+    )
 }
 
 /// The folder of `path` as a hit list shows it below the name: relative to
@@ -399,13 +432,10 @@ pub fn ellipsize_keeping_both_ends(text: &str, max_chars: usize) -> String {
     shortened
 }
 
-const NARROW_GLYPHS: &str = "iljtfr.,:;'|! ";
 const WIDE_GLYPHS: &str = "mwMW@%—–";
-const NARROW_EM: f32 = 0.30;
 const WIDE_EM: f32 = 0.85;
-const CAPITAL_OR_DIGIT_EM: f32 = 0.62;
-const OTHER_ASCII_EM: f32 = 0.52;
-const OTHER_LETTER_EM: f32 = 0.62;
+/// Every glyph of the app's monospace font is this wide, in ems.
+pub const MONOSPACE_EM: f32 = 0.62;
 const FULL_WIDTH_EM: f32 = 1.0;
 /// Names without a separator keep this many glyphs before the extension.
 const KEPT_BEFORE_EXTENSION: f32 = 3.0;
@@ -414,16 +444,10 @@ const KEPT_BEFORE_EXTENSION: f32 = 3.0;
 /// that is estimated to fit must fit, so the cut loses a glyph now and then
 /// rather than letting text touch the next column.
 fn glyph_em(glyph: char) -> f32 {
-    if NARROW_GLYPHS.contains(glyph) {
-        NARROW_EM
-    } else if WIDE_GLYPHS.contains(glyph) {
+    if WIDE_GLYPHS.contains(glyph) {
         WIDE_EM
-    } else if glyph.is_ascii_uppercase() || glyph.is_ascii_digit() {
-        CAPITAL_OR_DIGIT_EM
-    } else if glyph.is_ascii() {
-        OTHER_ASCII_EM
-    } else if glyph.is_alphabetic() && !is_full_width(glyph) {
-        OTHER_LETTER_EM
+    } else if glyph.is_ascii() || (glyph.is_alphabetic() && !is_full_width(glyph)) {
+        MONOSPACE_EM
     } else {
         FULL_WIDTH_EM
     }
@@ -437,6 +461,11 @@ fn is_full_width(glyph: char) -> bool {
 /// the real width of the UI font.
 pub fn estimated_width(text: &str, font_size: f32) -> f32 {
     text.chars().map(glyph_em).sum::<f32>() * font_size
+}
+
+/// How wide `chars` characters of the monospace font are at `font_size`.
+pub fn estimated_text_width(chars: usize, font_size: f32) -> f32 {
+    chars as f32 * font_size * MONOSPACE_EM
 }
 
 /// A count with a no-break space between the thousands: `2 421`.
@@ -517,7 +546,7 @@ pub fn fit_middle(text: &str, width_px: f32, font_size: f32) -> String {
                 .and_then(|dot| text.get(dot..))
                 .unwrap_or_default();
             (estimated_width(extension, font_size)
-                + KEPT_BEFORE_EXTENSION * OTHER_ASCII_EM * font_size)
+                + KEPT_BEFORE_EXTENSION * MONOSPACE_EM * font_size)
                 .min(budget / 2.0)
         }
     };
@@ -571,7 +600,7 @@ mod tests {
         let figures = |received, total| download_figures(received, total);
         assert_eq!(
             figures(312_400_000, 639_000_000),
-            ("312".to_owned(), "639".to_owned(), "49".to_owned())
+            ("298".to_owned(), "609".to_owned(), "49".to_owned())
         );
         assert_eq!(figures(0, 0).2, "0");
         assert_eq!(figures(900, 600).2, "100");
@@ -592,6 +621,21 @@ mod tests {
         assert_eq!(size(1023), "1023 B");
         assert_eq!(size(1536), "1.5 KB");
         assert_eq!(size(5 * 1024 * 1024), "5.0 MB");
+    }
+
+    #[test]
+    fn shown_names_make_direction_and_control_characters_visible() {
+        assert_eq!(shown_name("plain.pdf"), "plain.pdf");
+        assert_eq!(shown_name("a\u{202E}fdp.exe"), "a<U+202E>fdp.exe");
+        assert_eq!(shown_name("a\nb"), "a\u{240A}b");
+    }
+
+    #[test]
+    fn a_size_just_below_a_unit_moves_up_and_german_gets_a_comma() {
+        assert_eq!(size(1_048_575), "1.0 MB");
+        assert_eq!(size(1_073_741_823), "1.0 GB");
+        assert_eq!(size_shown(1536, Language::German), "1,5 KB");
+        assert_eq!(size_shown(1536, Language::English), "1.5 KB");
     }
 
     const LONG_PATH: &str = "/home/user/documents/company-a/2024/invoices/invoice-0042.pdf";
@@ -655,10 +699,10 @@ mod tests {
     const BODY: f32 = 12.0;
 
     #[test]
-    fn narrow_glyphs_take_less_room_than_capitals_digits_and_wide_ones() {
-        assert!(estimated_width("illi", BODY) < estimated_width("abcd", BODY));
-        assert!(estimated_width("abcd", BODY) < estimated_width("ABCD", BODY));
-        assert!(estimated_width("1234", BODY) > estimated_width("abcd", BODY));
+    fn narrow_glyphs_take_as_much_room_as_any_glyph_of_the_monospace_font() {
+        assert_eq!(estimated_width("illi", BODY), estimated_width("abcd", BODY));
+        assert_eq!(estimated_width("abcd", BODY), estimated_width("ABCD", BODY));
+        assert_eq!(estimated_width("1234", BODY), estimated_width("abcd", BODY));
         assert!(estimated_width("mmmm", BODY) > estimated_width("ABCD", BODY));
         assert!(estimated_width("日本", BODY) > estimated_width("ÄÖ", BODY));
         assert_eq!(estimated_width("", BODY), 0.0);
@@ -716,15 +760,26 @@ mod tests {
     #[test]
     fn sizes_follow_the_size_setting() {
         assert_eq!(
-            size_in(1_234_567, SizeFormat::Bytes),
+            size_in(1_234_567, SizeFormat::Bytes, Language::English),
             "1\u{a0}234\u{a0}567 B"
         );
-        assert_eq!(size_in(1_234_567, SizeFormat::Kilobytes), "1\u{a0}206 KB");
-        assert_eq!(size_in(1_234_567, SizeFormat::Readable), "1.2 MB");
-        assert_eq!(size_in(0, SizeFormat::Kilobytes), "0 KB");
-        assert_eq!(size_in(10, SizeFormat::Kilobytes), "1 KB");
         assert_eq!(
-            size_in(u64::MAX, SizeFormat::Kilobytes).chars().last(),
+            size_in(1_234_567, SizeFormat::Kilobytes, Language::English),
+            "1\u{a0}206 KB"
+        );
+        assert_eq!(
+            size_in(1_234_567, SizeFormat::Readable, Language::English),
+            "1.2 MB"
+        );
+        assert_eq!(size_in(0, SizeFormat::Kilobytes, Language::English), "0 KB");
+        assert_eq!(
+            size_in(10, SizeFormat::Kilobytes, Language::English),
+            "1 KB"
+        );
+        assert_eq!(
+            size_in(u64::MAX, SizeFormat::Kilobytes, Language::English)
+                .chars()
+                .last(),
             Some('B')
         );
     }

@@ -312,10 +312,11 @@ impl App {
         use ncrs_hermes_ui::Action as Ask;
         match action {
             Ask::OpenChat => self.update_hermes_chat(HermesChatMessage::Open),
+            Ask::IndexReplaced => self.update_hermes_chat(HermesChatMessage::IndexReplaced),
             Ask::RevealFile(path) => self.reveal_file(&path),
             Ask::FilingRestarted(generation) => self.filing_restarted(generation),
             Ask::CloseContextMenu => {
-                self.panels.context_menu = None;
+                self.close_context_menu();
                 Task::none()
             }
             Ask::ClearStatus => {
@@ -325,7 +326,12 @@ impl App {
             }
             Ask::ShowNotice(text) => self.show_notice(text),
             Ask::ShowError(detail) => {
-                self.set_status_error(&detail);
+                let shown = if detail == ncrs_core::INDEX_NOT_OPEN {
+                    self.lang.text(Msg::IndexNotOpen).to_owned()
+                } else {
+                    detail
+                };
+                self.set_status_error(&shown);
                 Task::none()
             }
             Ask::RequestHermesCounts => self

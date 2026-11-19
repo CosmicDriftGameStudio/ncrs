@@ -4,6 +4,8 @@ use std::io::{ErrorKind, Write as _};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+use zeroize::Zeroizing;
+
 use crate::error::KeyStoreError;
 
 const SERVICE_NAME: &str = "ncrs";
@@ -13,6 +15,12 @@ const KEY_ID_BYTES: usize = 16;
 
 pub trait KeyStore {
     fn load(&self) -> Result<Option<Vec<u8>>, KeyStoreError>;
+
+    /// The key for use: wiped from memory when dropped. A store that hands
+    /// out the bytes from its own call overrides this so no plain copy exists.
+    fn load_protected(&self) -> Result<Option<Zeroizing<Vec<u8>>>, KeyStoreError> {
+        Ok(self.load()?.map(Zeroizing::new))
+    }
 
     /// Must fail with `AlreadyExists` instead of replacing an existing entry:
     /// the old key may be the only way to read a database.
@@ -288,6 +296,17 @@ impl KeyStore for KeyringKeyStore {
         }
     }
 
+    fn load_protected(&self) -> Result<Option<Zeroizing<Vec<u8>>>, KeyStoreError> {
+        let Some(entry) = self.existing_entry()? else {
+            return Ok(None);
+        };
+        match entry.get_secret() {
+            Ok(secret) => Ok(Some(Zeroizing::new(secret))),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(err) => Err(unavailable(err)),
+        }
+    }
+
     // The credential stores offer no atomic create-if-absent, so this is a
     // check followed by a write. Only one process creates the index key, on
     // the first start, which is the window this leaves open.
@@ -389,7 +408,14 @@ impl FileKeyStore {
     fn create(&self, options: &mut OpenOptions, key: &[u8]) -> std::io::Result<()> {
         #[cfg(unix)]
         std::os::unix::fs::OpenOptionsExt::mode(options, 0o600);
-        options.write(true).open(&self.path)?.write_all(key)
+        let mut file = options.write(true).open(&self.path)?;
+        file.write_all(key)?;
+        file.sync_all()?;
+        #[cfg(unix)]
+        if let Some(folder) = self.path.parent() {
+            std::fs::File::open(folder)?.sync_all()?;
+        }
+        Ok(())
     }
 
     /// The key goes into a file next to `path` first and is renamed over it,
@@ -427,6 +453,14 @@ impl KeyStore for FileKeyStore {
     fn load(&self) -> Result<Option<Vec<u8>>, KeyStoreError> {
         match std::fs::read(&self.path) {
             Ok(key) => Ok(Some(key)),
+            Err(err) if err.kind() == ErrorKind::NotFound => Ok(None),
+            Err(err) => Err(KeyStoreError::Unavailable(err.to_string())),
+        }
+    }
+
+    fn load_protected(&self) -> Result<Option<Zeroizing<Vec<u8>>>, KeyStoreError> {
+        match std::fs::read(&self.path) {
+            Ok(key) => Ok(Some(Zeroizing::new(key))),
             Err(err) if err.kind() == ErrorKind::NotFound => Ok(None),
             Err(err) => Err(KeyStoreError::Unavailable(err.to_string())),
         }

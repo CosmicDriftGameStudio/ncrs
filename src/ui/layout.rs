@@ -19,7 +19,6 @@ pub const STATUSBAR_HEIGHT: f32 = size::STATUS_BAR;
 pub const TITLE_BAR_HEIGHT: f32 = size::TITLE_BAR;
 /// Where the row starts on macOS: the traffic lights are drawn over its left end.
 pub const TRAFFIC_LIGHTS_INSET: f32 = 78.0;
-
 /// Number of file rows that fit into a panel for a given window size: the
 /// room less the chrome and the totals line under the rows.
 pub fn visible_rows(window: Size, bar_height: f32) -> usize {

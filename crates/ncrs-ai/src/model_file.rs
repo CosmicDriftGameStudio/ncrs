@@ -663,6 +663,20 @@ mod tests {
         assert!(LOCAL_MODEL.url.ends_with(LOCAL_MODEL.name));
     }
 
+    #[test]
+    fn the_fetch_script_pins_the_same_model_as_the_app() {
+        let script = include_str!("../../../scripts/fetch-ai-model.sh");
+        assert!(script.contains(&format!("NAME=\"{}\"", LOCAL_MODEL.name)));
+        assert!(script.contains(&format!("SIZE={}", LOCAL_MODEL.size)));
+        assert!(script.contains(&format!("SHA256=\"{}\"", LOCAL_MODEL.sha256)));
+        let revision = LOCAL_MODEL
+            .url
+            .trim_end_matches(LOCAL_MODEL.name)
+            .trim_end_matches('/');
+        let pinned_to = revision.rsplit('/').next().unwrap_or_default();
+        assert!(script.contains(pinned_to));
+    }
+
     fn hashed_so_far() -> usize {
         HASHED_FILES.with(std::cell::Cell::get)
     }

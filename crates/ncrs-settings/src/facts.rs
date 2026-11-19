@@ -117,6 +117,8 @@ pub struct LoadedFacts {
     /// What the read folders hold; `None` without an index.
     pub read_folders: Option<ReadFolderCoverage>,
     pub disconnected: Vec<PathBuf>,
+    /// The first failure of an index query, when one failed.
+    pub error: Option<String>,
 }
 
 /// What the Favourites page shows: the app keeps the list, the page reports

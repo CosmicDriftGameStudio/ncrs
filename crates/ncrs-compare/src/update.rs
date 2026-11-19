@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use iced::Task;
 use ncrs_i18n::{fill_template, Msg};
+use ncrs_ui_kit::io_reason::io_reason_text;
 
 use crate::action::Action;
 use crate::core::{Direction, SyncPlan};
@@ -201,15 +202,21 @@ fn finished(
             }
         }
         Err(ScanError::Cancelled) => compare.end(),
-        Err(ScanError::Failed(reason)) => {
-            compare.end();
-            actions.push(Action::ShowError(fill_template(
-                ctx.lang.text(Msg::CompareFailed),
-                &[("{reason}", &reason)],
-            )));
+        Err(ScanError::Failed(reason)) => end_with_failure(compare, &reason, ctx, actions),
+        Err(ScanError::Io { kind, text }) => {
+            let reason = io_reason_text(kind, &text, ctx.lang);
+            end_with_failure(compare, &reason, ctx, actions);
         }
     }
     actions.push(Action::MarksChanged);
+}
+
+fn end_with_failure(compare: &mut Compare, reason: &str, ctx: &Ctx<'_>, actions: &mut Vec<Action>) {
+    compare.end();
+    actions.push(Action::ShowError(fill_template(
+        ctx.lang.text(Msg::CompareFailed),
+        &[("{reason}", reason)],
+    )));
 }
 
 fn open_sync(compare: &mut Compare, direction: Direction) {

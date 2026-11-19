@@ -27,7 +27,7 @@ fn dialog_with_clashes() -> BatchRename {
         .map(|name| {
             let (stem, extension) = split_name(name, false);
             (
-                PathBuf::from("/Users/marc/Documents/Scans").join(name),
+                PathBuf::from("/Users/alex/Documents/Scans").join(name),
                 EntryFacts {
                     stem,
                     extension,
@@ -39,7 +39,7 @@ fn dialog_with_clashes() -> BatchRename {
     let mut dialog = BatchRename::new(Opening {
         id: 1,
         side: PanelSide::Left,
-        folder: PathBuf::from("/Users/marc/Documents/Scans"),
+        folder: PathBuf::from("/Users/alex/Documents/Scans"),
         entries,
         folder_names: names,
         rules: NameRules {

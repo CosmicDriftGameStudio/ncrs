@@ -44,6 +44,10 @@ pub struct Environment {
     pub ssh_known_hosts: Option<PathBuf>,
     /// The host keys the user confirmed in ncrs.
     pub own_known_hosts: Option<PathBuf>,
+    /// Another ncrs holds the data folder: this one runs as a plain file
+    /// manager, without Hermes and the index, and leaves the session state and
+    /// the trash record to the first.
+    pub second_instance: bool,
 }
 
 impl std::fmt::Debug for Environment {
@@ -73,6 +77,18 @@ impl Environment {
             passwords: Arc::new(KeyringPasswords::new()),
             ssh_known_hosts: Some(config::default_ssh_known_hosts_path()),
             own_known_hosts: config::default_known_hosts_path(),
+            second_instance: false,
+        }
+    }
+
+    /// The environment for a start that found another ncrs running.
+    pub fn for_second_instance(self) -> Self {
+        Self {
+            index_path: None,
+            state_path: None,
+            journal_path: None,
+            second_instance: true,
+            ..self
         }
     }
 
@@ -90,6 +106,7 @@ impl Environment {
             passwords: Arc::new(fs::remote::credentials::InMemoryPasswords::default()),
             ssh_known_hosts: None,
             own_known_hosts: None,
+            second_instance: false,
         }
     }
 }
@@ -120,7 +137,14 @@ impl App {
     /// `saved` left them; without a saved folder the left panel starts in the
     /// working directory and the right in `$HOME`.
     pub fn new(environment: Environment, saved: SessionState) -> (Self, Task<Message>) {
-        let (app, loading) = Self::restored(environment, saved);
+        // Only a first start takes the language of the system: with a config
+        // file the choice is the file's, or English when it names none.
+        let first_start = environment
+            .config_path
+            .as_deref()
+            .is_some_and(|path| !path.exists());
+        let start_language = first_start.then(ncrs_i18n::Language::from_system);
+        let (app, loading) = Self::restored_in(environment, saved, start_language);
         (app, then_install_native_menu(loading))
     }
 
@@ -133,7 +157,17 @@ impl App {
 
     /// Starts where `saved` left off: its folders (or their nearest existing
     /// parent), sort, active panel and window size.
+    #[cfg(test)]
     pub fn restored(environment: Environment, saved: SessionState) -> (Self, Task<Message>) {
+        Self::restored_in(environment, saved, None)
+    }
+
+    /// [`App::restored`] with the language to start in when the config names none.
+    fn restored_in(
+        environment: Environment,
+        saved: SessionState,
+        start_language: Option<ncrs_i18n::Language>,
+    ) -> (Self, Task<Message>) {
         let Environment {
             config_path,
             index_path,
@@ -144,6 +178,7 @@ impl App {
             passwords,
             ssh_known_hosts,
             own_known_hosts,
+            second_instance,
         } = environment;
         let loaded = config_path
             .as_deref()
@@ -151,21 +186,31 @@ impl App {
         if let Err(err) = &loaded {
             eprintln!("ncrs: {err}");
         }
-        let filing = loaded
+        let mut filing = loaded
             .as_ref()
             .map(|config| config.filing.clone())
             .unwrap_or_default();
+        if second_instance {
+            filing.enabled = false;
+            filing.first_run = false;
+        }
         let home = fs::home_dir();
+        let left_directory = saved.left.start_directory();
+        let right_directory = saved.right.start_directory();
+        let cursors = [
+            saved.left.start_cursor_in(left_directory.as_deref()),
+            saved.right.start_cursor_in(right_directory.as_deref()),
+        ];
         let (mut panels, panel_loads) = Self::starting_at(
-            saved.left.start_directory().unwrap_or_else(fs::start_dir),
-            saved
-                .right
-                .start_directory()
-                .unwrap_or_else(|| home.clone()),
+            left_directory.unwrap_or_else(fs::start_dir),
+            right_directory.unwrap_or_else(|| home.clone()),
             home,
-            [saved.left.start_cursor(), saved.right.start_cursor()],
+            cursors,
         );
         panels.config_path = config_path;
+        if let Some(language) = start_language {
+            panels.lang = language;
+        }
         panels.updates = ncrs_updates::State::new(
             panels.app_version,
             ncrs_updates::Channel::detect_here(env!("NCRS_BUILD_KIND") != "release"),
@@ -183,9 +228,14 @@ impl App {
         }));
         panels.passwords = passwords;
         panels.open_grant_dialog_if_needed();
-        panels.ops.view_copies = view_copies_dir
-            .as_deref()
-            .and_then(|dir| fs::archive::ViewCopies::open(dir).ok());
+        if let Some(dir) = view_copies_dir.as_deref() {
+            match fs::archive::ViewCopies::open(dir) {
+                Ok(copies) => panels.ops.view_copies = Some(copies),
+                Err(err) => {
+                    panels.ops.view_copies_problem = Some((err.kind(), err.to_string()));
+                }
+            }
+        }
         panels.apply_session_state(&saved);
         let (mut app, filing_start) = panels
             .with_config(loaded)
@@ -223,8 +273,7 @@ impl App {
                 if let Some(lang) = config.lang {
                     self.lang = lang;
                 }
-                self.theme_preset = config.theme_preset();
-                self.vscode_theme = config.vscode_theme_path().map(str::to_owned);
+                self.apply_look(config.clone());
                 self.open_programs = config.open;
                 if let Some(folder) = config.notes.folder {
                     self.notes = ncrs_notes::State::new(folder);
@@ -233,16 +282,11 @@ impl App {
                 self.file_list_tags = config.file_list_tags;
                 self.columns = config.columns;
                 self.start_appearance(config.appearance);
-                self.kinds = Kinds::new(config.kinds, self.lang.kind_language());
                 self.keymap = config.keymap;
                 self.monitor.set_settings(config.system);
                 self.update_check = config.check_for_updates;
                 self.favourites_bar_on = config.favourites_bar.unwrap_or(true);
                 self.refresh_function_keys();
-                self.palette = config.palette;
-                self.report_look_warnings(config.contrast_warning, config.vscode_warning);
-                self.report_language_warning(config.language_warning);
-                self.report_kind_warning(config.kind_warning);
             }
             Err(err) => self.report(ConfigProblem::Invalid(err)),
         }
@@ -496,6 +540,7 @@ impl App {
             chat_model_setting: None,
             chat_model_error: None,
             turning_hermes_on: false,
+            protection_quit_warned: false,
             quick_open: None,
             quick_open_walk_generation: 0,
             quick_open_walk: None,

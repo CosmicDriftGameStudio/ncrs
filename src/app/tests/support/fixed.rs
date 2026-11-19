@@ -5,8 +5,8 @@ use crate::app::*;
 #[cfg(test)]
 pub(in crate::app::tests::support) fn fixed_search_results(
     root: &Path,
-) -> Vec<(fs::FileEntry, Vec<crate::fs::search::LineMatch>)> {
-    use crate::fs::search::LineMatch;
+) -> Vec<(fs::FileEntry, Vec<ncrs_search::engine::LineMatch>)> {
+    use ncrs_search::engine::LineMatch;
     let hit = |number: u64, text: &str, from: usize, to: usize| LineMatch {
         number,
         text: text.to_string(),
@@ -50,8 +50,8 @@ pub(in crate::app::tests::support) fn fixed_hit_entries() -> Vec<fs::FileEntry> 
 
 #[cfg(test)]
 pub(in crate::app::tests::support) fn fixed_hit_search_results(
-) -> Vec<(fs::FileEntry, Vec<crate::fs::search::LineMatch>)> {
-    use crate::fs::search::LineMatch;
+) -> Vec<(fs::FileEntry, Vec<ncrs_search::engine::LineMatch>)> {
+    use ncrs_search::engine::LineMatch;
     fixed_hit_entries()
         .into_iter()
         .map(|entry| {

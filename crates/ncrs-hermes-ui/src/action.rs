@@ -36,6 +36,8 @@ impl std::fmt::Debug for StartProgressJob {
 #[derive(Debug)]
 pub enum Action {
     CloseContextMenu,
+    /// The index was started over: the chat forgets what refers to the old one.
+    IndexReplaced,
     /// Opens the Hermes chat.
     OpenChat,
     /// The settings show this page of the Hermes crate.

@@ -14,7 +14,6 @@ pub fn write_key_changes(
     path: &Path,
     changes: &[KeyChange],
 ) -> Result<Box<Config>, FilingWriteError> {
-    let _writing = config::one_config_writer();
     config::write_keys(path, changes).map(Box::new)
 }
 
@@ -23,7 +22,6 @@ pub fn write_setting_change(
     path: &Path,
     change: SettingChange,
 ) -> Result<Box<Config>, FilingWriteError> {
-    let _writing = config::one_config_writer();
     let written = match change {
         SettingChange::Preset(preset) => config::write_theme_preset(path, preset),
         SettingChange::Language(lang) => config::write_language(path, lang),
@@ -150,9 +148,9 @@ pub fn write_failure(error: &FilingWriteError, ctx: &Ctx<'_>) -> String {
             }
         }
         // The writers of the tab check no filing rules.
-        FilingWriteError::Rule(violation) => write_failed(
+        FilingWriteError::Rule(_) => write_failed(
             ctx.config_path.unwrap_or(Path::new("")),
-            &format!("{violation:?}"),
+            lang.text(Msg::FilingSetupRuleBroken),
         ),
     }
 }

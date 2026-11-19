@@ -121,7 +121,7 @@ pub fn notice(
             None => fill(Msg::StatusAgainDone),
         },
         Ending::Unchanged => fill(Msg::StatusAgainUnchanged),
-        Ending::Lost => fill(Msg::StatusAgainDone),
+        Ending::Lost => fill(Msg::StatusAgainLost),
         Ending::Failed(reason) => fill_template(
             lang.text(Msg::StatusAgainFailed),
             &[

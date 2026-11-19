@@ -16,7 +16,8 @@ use crate::messages::{
     AboutMessage, AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage,
     CompareMessage, FilingStatusMessage, GrantMessage, HermesChatMessage, HermesFileMessage,
     HermesPage, KeyBindingsMessage, OcrModelsMessage, PanelSide, QuickFixMessage, QuickOpenMessage,
-    RemoteMessage, SearchMessage, SettingsMessage, ThemeFetchMessage, TransferKind, TrashMessage,
+    RemoteMessage, SearchMessage, SettingsMessage, ThemeFetchMessage, TransferDialogMessage,
+    TransferKind, TrashMessage,
 };
 use ncrs_fs::SortColumn;
 
@@ -47,6 +48,7 @@ impl KeyActionMessage for KeyAction {
             Self::TagAll => Message::Panel(PanelMessage::TagAll),
             Self::ClearTags => Message::Panel(PanelMessage::ClearTags),
             Self::AbortJob => Message::AbortJob,
+            Self::ShowProgress => Message::TransferDialog(TransferDialogMessage::ShowProgress),
             Self::CopyPath => Message::CopyToClipboard(ClipboardKind::Path),
             Self::CopyName => Message::CopyToClipboard(ClipboardKind::Name),
             Self::CopyFiles => Message::CopyFilesToClipboard,

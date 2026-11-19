@@ -71,6 +71,8 @@ pub enum Bound {
 #[derive(Debug, Clone, PartialEq)]
 pub enum TransferOverlayKey {
     Dialog(TransferDialogMessage),
+    /// Focus or press a button of the progress mask.
+    Button(DialogKey),
     AbortJob,
     Quit,
 }
@@ -94,9 +96,15 @@ pub fn transfer_overlay_key(
         };
     }
     // The progress mask has no field. Escape stops the job, as it does with the
-    // mask closed; the panel keys do nothing behind it.
+    // mask closed; Enter presses the focused button, which starts on sending it
+    // to the background; the panel keys do nothing behind it.
     match key.as_ref() {
         Key::Named(Named::Escape) => Some(TransferOverlayKey::AbortJob),
+        Key::Named(Named::Enter) => Some(TransferOverlayKey::Button(DialogKey::Activate)),
+        Key::Named(Named::Tab | Named::ArrowRight) => {
+            Some(TransferOverlayKey::Button(DialogKey::Focus(1)))
+        }
+        Key::Named(Named::ArrowLeft) => Some(TransferOverlayKey::Button(DialogKey::Focus(-1))),
         _ => match bound() {
             Bound::Quit => Some(TransferOverlayKey::Quit),
             Bound::AbortJob => Some(TransferOverlayKey::AbortJob),
@@ -175,5 +183,26 @@ pub fn batch_rename_key(key: &Key) -> Option<BatchRenameMessage> {
         Key::Named(Named::Escape) => Some(BatchRenameMessage::Cancel),
         Key::Named(Named::Enter) => Some(BatchRenameMessage::Confirm),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod progress_mask_tests {
+    use super::*;
+
+    #[test]
+    fn enter_presses_the_focused_button_of_the_progress_mask_and_escape_stops_the_job() {
+        assert_eq!(
+            transfer_overlay_key(false, &Key::Named(Named::Enter), true, || Bound::Other),
+            Some(TransferOverlayKey::Button(DialogKey::Activate))
+        );
+        assert_eq!(
+            transfer_overlay_key(false, &Key::Named(Named::Tab), true, || Bound::Other),
+            Some(TransferOverlayKey::Button(DialogKey::Focus(1)))
+        );
+        assert_eq!(
+            transfer_overlay_key(false, &Key::Named(Named::Escape), true, || Bound::Other),
+            Some(TransferOverlayKey::AbortJob)
+        );
     }
 }

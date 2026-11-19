@@ -4,13 +4,40 @@
 //! app owns it and only its update changes it. The matching `view` function is
 //! in `prompt_view`.
 //!
-//! Not yet in the roadmap's T10 (config): the prompt remembers the name the
-//! user typed while the operation runs, so a failure can be shown next to the
-//! text that caused it.
+//! The prompt remembers the name the user typed while the operation runs, so a
+//! failure can be shown next to the text that caused it.
 use std::ffi::OsString;
 use std::path::PathBuf;
 
 use ncrs_fs::archive;
+use ncrs_fs::remote::RemotePath;
+
+use crate::rename_flow::{validate_name, NameProblem};
+
+/// Why a typed name is refused before anything is created.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PromptProblem {
+    EmptyName,
+    ReservedName,
+    SeparatorNotAllowed,
+    CharacterNotAllowed,
+    ControlNotAllowed,
+    TrailingNotAllowed,
+    NameTooLong,
+    DeviceName,
+    ArchiveExtension,
+    ArchiveExists,
+    ArchiveFolderMissing,
+    ArchiveInsideSource,
+}
+
+/// What the prompt shows under the field.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PromptError {
+    Problem(PromptProblem),
+    /// A failure of the file system, already worded.
+    Failed(String),
+}
 
 /// Which operation the prompt is collecting input for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,7 +67,7 @@ pub struct Prompt {
     /// Set while the operation runs.
     busy: bool,
     /// Why the last attempt failed, in the active language.
-    error: Option<String>,
+    error: Option<PromptError>,
     /// Set for a pack prompt that packs a hit list.
     hits: Option<PackHits>,
 }
@@ -175,53 +202,57 @@ impl Prompt {
     }
 
     /// Shows a validation failure, in the language the UI is in.
-    pub fn set_validation_error(&mut self, reason: &'static str) {
-        self.error = Some(reason.to_string());
+    pub fn set_validation_error(&mut self, problem: PromptProblem) {
+        self.error = Some(PromptError::Problem(problem));
     }
 
     /// Shows a failure from the filesystem.
     pub fn set_error(&mut self, message: String) {
-        self.error = Some(message);
+        self.error = Some(PromptError::Failed(message));
     }
 
-    pub fn error(&self) -> Option<&str> {
-        self.error.as_deref()
+    pub fn error(&self) -> Option<&PromptError> {
+        self.error.as_ref()
     }
 
     /// Whether the typed name could be a directory or file name. Empty, `.` and `..`
     /// are rejected before the filesystem is touched, so the error appears while
     /// the dialog is still open instead of after a round trip. A pack name also
     /// needs a known archive ending and must not be taken in the folder.
-    pub fn validate(&self) -> Result<(), &'static str> {
+    pub fn validate(&self) -> Result<(), PromptProblem> {
         let name = self.name().trim();
         if self.kind == PromptKind::Pack {
             return self.validate_pack(name);
         }
-        if name.is_empty() {
-            return Err("empty_name");
+        if name.contains('\\') {
+            return Err(PromptProblem::SeparatorNotAllowed);
         }
-        if name == "." || name == ".." {
-            return Err("reserved_name");
-        }
-        if name.contains('/') || name.contains('\\') {
-            return Err("separator_not_allowed");
-        }
-        Ok(())
+        let on_server = RemotePath::parse(&self.parent).is_some();
+        validate_name(name, cfg!(windows) && !on_server).map_err(|problem| match problem {
+            NameProblem::Empty => PromptProblem::EmptyName,
+            NameProblem::Dots => PromptProblem::ReservedName,
+            NameProblem::Separator => PromptProblem::SeparatorNotAllowed,
+            NameProblem::Character(_) => PromptProblem::CharacterNotAllowed,
+            NameProblem::Control => PromptProblem::ControlNotAllowed,
+            NameProblem::TrailingDotOrSpace => PromptProblem::TrailingNotAllowed,
+            NameProblem::TooLong => PromptProblem::NameTooLong,
+            NameProblem::Device => PromptProblem::DeviceName,
+        })
     }
 
-    fn validate_pack(&self, typed: &str) -> Result<(), &'static str> {
+    fn validate_pack(&self, typed: &str) -> Result<(), PromptProblem> {
         if typed.is_empty() {
-            return Err("empty_name");
+            return Err(PromptProblem::EmptyName);
         }
         let target = self.archive_path();
         let Some(file_name) = target.file_name() else {
-            return Err("reserved_name");
+            return Err(PromptProblem::ReservedName);
         };
         if !archive::is_archive_name(file_name) {
-            return Err("archive_extension");
+            return Err(PromptProblem::ArchiveExtension);
         }
         let Some(parent_folder) = target.parent().filter(|folder| folder.is_dir()) else {
-            return Err("archive_folder_missing");
+            return Err(PromptProblem::ArchiveFolderMissing);
         };
         let target_folder = parent_folder
             .canonicalize()
@@ -231,10 +262,10 @@ impl Prompt {
             target_folder.starts_with(resolved_source)
         });
         if inside_source {
-            return Err("archive_inside_source");
+            return Err(PromptProblem::ArchiveInsideSource);
         }
         if std::fs::symlink_metadata(&target).is_ok() {
-            return Err("archive_exists");
+            return Err(PromptProblem::ArchiveExists);
         }
         Ok(())
     }
@@ -301,12 +332,24 @@ mod tests {
     /// late and less clearly.
     #[test]
     fn names_that_cannot_be_created_are_rejected() {
-        assert_eq!(prompt_with("").validate(), Err("empty_name"));
-        assert_eq!(prompt_with("   ").validate(), Err("empty_name"));
-        assert_eq!(prompt_with(".").validate(), Err("reserved_name"));
-        assert_eq!(prompt_with("..").validate(), Err("reserved_name"));
-        assert_eq!(prompt_with("a/b").validate(), Err("separator_not_allowed"));
-        assert_eq!(prompt_with(r"a\b").validate(), Err("separator_not_allowed"));
+        assert_eq!(prompt_with("").validate(), Err(PromptProblem::EmptyName));
+        assert_eq!(prompt_with("   ").validate(), Err(PromptProblem::EmptyName));
+        assert_eq!(
+            prompt_with(".").validate(),
+            Err(PromptProblem::ReservedName)
+        );
+        assert_eq!(
+            prompt_with("..").validate(),
+            Err(PromptProblem::ReservedName)
+        );
+        assert_eq!(
+            prompt_with("a/b").validate(),
+            Err(PromptProblem::SeparatorNotAllowed)
+        );
+        assert_eq!(
+            prompt_with(r"a\b").validate(),
+            Err(PromptProblem::SeparatorNotAllowed)
+        );
     }
 
     /// A rejected name must never reach the filesystem, because `..` would
@@ -362,27 +405,27 @@ mod tests {
         assert_eq!(pack_prompt_in(folder.path(), "New.ZIP").validate(), Ok(()));
         assert_eq!(
             pack_prompt_in(folder.path(), "notes.txt").validate(),
-            Err("archive_extension")
+            Err(PromptProblem::ArchiveExtension)
         );
         assert_eq!(
             pack_prompt_in(folder.path(), "noending").validate(),
-            Err("archive_extension")
+            Err(PromptProblem::ArchiveExtension)
         );
         assert_eq!(
             pack_prompt_in(folder.path(), "taken.zip").validate(),
-            Err("archive_exists")
+            Err(PromptProblem::ArchiveExists)
         );
         assert_eq!(
             pack_prompt_in(folder.path(), "missing/b.zip").validate(),
-            Err("archive_folder_missing")
+            Err(PromptProblem::ArchiveFolderMissing)
         );
         assert_eq!(
             pack_prompt_in(folder.path(), "").validate(),
-            Err("empty_name")
+            Err(PromptProblem::EmptyName)
         );
         assert_eq!(
             pack_prompt_in(folder.path(), "..").validate(),
-            Err("reserved_name")
+            Err(PromptProblem::ReservedName)
         );
     }
 
@@ -395,10 +438,10 @@ mod tests {
         assert_eq!(prompt.validate(), Ok(()));
 
         prompt.set_name(packed.join("fotos.zip").to_string_lossy().into_owned());
-        assert_eq!(prompt.validate(), Err("archive_inside_source"));
+        assert_eq!(prompt.validate(), Err(PromptProblem::ArchiveInsideSource));
 
         prompt.set_name("fotos/deep/../fotos.zip".to_string());
-        assert_eq!(prompt.validate(), Err("archive_inside_source"));
+        assert_eq!(prompt.validate(), Err(PromptProblem::ArchiveInsideSource));
     }
 
     #[test]

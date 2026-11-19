@@ -8,7 +8,7 @@
 use std::collections::BTreeSet;
 use std::fs;
 
-use chrono::{TimeZone as _, Utc};
+use chrono::{NaiveDate, TimeZone as _, Utc};
 use ncrs_index::{Condition, ConditionKind, DocumentSource, NewDocument, RuleConditions, RuleSpec};
 use ncrs_intake::hash_path;
 use tempfile::TempDir;
@@ -271,7 +271,7 @@ fn a_rule_for_the_sender_files_the_next_document_without_a_review() {
         file_planned(
             index,
             &setup.archive,
-            &[],
+            std::slice::from_ref(&setup.inbox),
             &[],
             &mut Counting,
             &Move,
@@ -555,58 +555,6 @@ fn a_rule_proposal_wins_over_a_placement() {
 }
 
 #[test]
-fn dates_are_iso_and_empty_is_none() {
-    assert_eq!(parse_date(""), Ok(None));
-    assert_eq!(
-        parse_date(" 2024-03-09 "),
-        Ok(NaiveDate::from_ymd_opt(2024, 3, 9))
-    );
-    for bad in ["09.03.2024", "2024-13-01", "yesterday"] {
-        assert_eq!(parse_date(bad), Err(FieldError::Date), "{bad}");
-    }
-}
-
-#[test]
-fn amounts_take_a_point_or_a_comma_and_a_currency() {
-    let eur = |minor_units| {
-        Ok(Some(Amount {
-            minor_units,
-            currency: Currency::new("EUR").unwrap(),
-        }))
-    };
-
-    assert_eq!(parse_amount(""), Ok(None));
-    assert_eq!(parse_amount("12.34 EUR"), eur(1234));
-    assert_eq!(parse_amount("12,34 eur"), eur(1234));
-    assert_eq!(parse_amount("12 EUR"), eur(1200));
-    assert_eq!(parse_amount("0.5 EUR"), eur(50));
-    assert_eq!(parse_amount("-3.05 EUR"), eur(-305));
-    for bad in [
-        "12.34",
-        "EUR",
-        "12.345 EUR",
-        "1x EUR",
-        "12 EURO",
-        "12 EUR now",
-        ".5 EUR",
-    ] {
-        assert_eq!(parse_amount(bad), Err(FieldError::Amount), "{bad}");
-    }
-    assert_eq!(
-        parse_amount("99999999999999999999 EUR"),
-        Err(FieldError::Amount)
-    );
-}
-
-#[test]
-fn an_amount_shown_is_an_amount_that_parses() {
-    let amount = parse_amount("-7,05 EUR").unwrap().unwrap();
-
-    assert_eq!(amount_text(&amount), "-7.05 EUR");
-    assert_eq!(parse_amount(&amount_text(&amount)), Ok(Some(amount)));
-}
-
-#[test]
 fn the_reviews_of_some_files_come_in_the_order_of_the_paths_each_once() {
     let setup = Setup::new();
     setup.in_review("a.pdf");
@@ -628,4 +576,89 @@ fn the_reviews_of_some_files_come_in_the_order_of_the_paths_each_once() {
 
     let listed: Vec<_> = items.iter().map(|item| item.path.clone()).collect();
     assert_eq!(listed, vec![path("c.pdf"), path("a.pdf")]);
+}
+
+#[test]
+fn confirming_a_document_from_a_copy_folder_keeps_the_original_and_marks_it_filed() {
+    let setup = Setup::new();
+    setup.in_review("scan.pdf");
+    let access = setup.access().with_copy_roots(vec![setup.inbox.clone()]);
+    let item = first(&access);
+
+    let outcome = access
+        .confirm(
+            item.entry,
+            item.document_id,
+            &Setup::fields("Company A"),
+            "{sender}/{kind}",
+        )
+        .unwrap();
+
+    assert!(matches!(outcome, ConfirmOutcome::Filed { .. }));
+    assert!(setup.inbox.join("scan.pdf").exists());
+    assert!(setup.archive.join("Company A/Invoice.pdf").exists());
+    setup.with_index(|index| {
+        let document = index.document(item.document_id).unwrap().unwrap();
+        assert_eq!(document.status, DocumentStatus::Filed);
+    });
+}
+
+#[test]
+fn an_item_that_names_another_file_than_the_document_is_refused() {
+    let setup = Setup::new();
+    setup.in_review("scan.pdf");
+    let access = setup.access();
+    let mut item = first(&access);
+    item.path = setup.inbox.join("other.pdf");
+
+    let summary = access.accept(&[item]);
+
+    assert_eq!(summary.failed, 1);
+    assert_eq!(summary.first_failure.as_deref(), Some(ITEM_CHANGED));
+    assert!(setup.inbox.join("scan.pdf").exists());
+}
+
+#[test]
+fn confirming_an_entry_that_is_no_longer_open_files_nothing() {
+    let setup = Setup::new();
+    setup.in_review("scan.pdf");
+    let access = setup.access();
+    let item = first(&access);
+    setup
+        .with_index(|index| index.resolve_review(item.entry))
+        .unwrap();
+
+    let outcome = access.confirm(
+        item.entry,
+        item.document_id,
+        &Setup::fields("Company A"),
+        "{sender}/{kind}",
+    );
+
+    assert_eq!(outcome, Err(ITEM_CHANGED.to_owned()));
+    assert!(setup.inbox.join("scan.pdf").exists());
+    assert!(!setup.archive.join("Company A").exists());
+}
+
+#[test]
+fn a_folder_outside_the_target_files_nothing() {
+    let setup = Setup::new();
+    setup.in_review("scan.pdf");
+    let access = setup.access();
+    let outside = setup._dir.path().join("elsewhere");
+
+    for folder in [Path::new("../outside"), outside.as_path()] {
+        let item = first(&access);
+        let summary = access.accept_into(&[item], folder);
+
+        assert_eq!(summary.failed, 1, "{folder:?}");
+        assert_eq!(
+            summary.first_failure.as_deref(),
+            Some(FOLDER_ESCAPES_TARGET),
+            "{folder:?}"
+        );
+    }
+    assert!(setup.inbox.join("scan.pdf").exists());
+    assert!(!outside.exists());
+    assert!(!setup._dir.path().join("outside").exists());
 }

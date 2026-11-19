@@ -6,7 +6,7 @@
 //! `Element` out.
 
 use iced::widget::text::Wrapping;
-use iced::widget::{checkbox, column, container, text, Column, Row};
+use iced::widget::{column, container, text, Column, Row};
 use iced::{Element, Size};
 
 use crate::message::Message;
@@ -15,8 +15,8 @@ use ncrs_filing::filing::{FilingMessage, FilingModule, KeyError, KeyProblem, Pha
 use ncrs_i18n::fill_template;
 use ncrs_i18n::{Language, Msg};
 use ncrs_ui_kit::frame::{DialogSize, Frame, KeyHints};
-use ncrs_ui_kit::kit::{self, error_line, paragraph, Tone};
-use ncrs_ui_kit::theme::{self, font_size, spacing};
+use ncrs_ui_kit::kit::{self, error_line, paragraph, Check, Tone};
+use ncrs_ui_kit::theme::{font_size, spacing};
 
 pub const GROUP_FIELD_ID: &str = "filing-group-field";
 pub const KEY_FIELD_ID: &str = "filing-key-field";
@@ -220,10 +220,17 @@ fn ask_recovery_key<'a>(
     if reason == KeyProblem::Mismatch {
         body = body.push(
             Row::with_children([
-                checkbox(confirm_replace)
-                    .on_toggle(|confirmed| filing_message(FilingMessage::ConfirmReplace(confirmed)))
-                    .style(theme::dialog_checkbox(palette))
-                    .into(),
+                kit::checkbox(
+                    if confirm_replace {
+                        Check::On
+                    } else {
+                        Check::Off
+                    },
+                    Some(filing_message(FilingMessage::ConfirmReplace(
+                        !confirm_replace,
+                    ))),
+                    palette,
+                ),
                 text(lang.text(Msg::FilingRestoreReplaceCheckbox))
                     .size(font_size::BODY)
                     .into(),

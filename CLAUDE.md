@@ -6,7 +6,7 @@ towards them (see "Where code lives" below). Never copy a pattern from the code 
 ## Structure: one crate per feature
 
 - Every feature is its own crate under `crates/`, in nested TEA: its own `State`, `Message`,
-  `update(&mut State, Message, &Ctx) -> (Task<Message>, Option<Action>)` and
+  `update(&mut State, Message, &Ctx) -> (Task<Message>, Option<Action>)` (`Vec<Action>` where one message triggers several) and
   `view(&State, ViewCtx) -> Element<Message>` (`crates/ncrs-search` is the model).
   The app crate `ncrs` only wires them together (`.map(Message::Search)`), it holds no feature logic.
 - Feature crates depend on `ncrs-ui-kit`, `ncrs-core` and the backend crates (`ncrs-index`, `ncrs-intake`, …), never
@@ -42,7 +42,15 @@ towards them (see "Where code lives" below). Never copy a pattern from the code 
 
 ## Where code lives
 
-The migration into feature crates is done. `ncrs-ui-kit`, `ncrs-search`, `ncrs-fs`, `ncrs-files`, `ncrs-ops`,
-`ncrs-palette`, `ncrs-settings`, `ncrs-hermes-ui` and `ncrs-remote` own their features; the `ncrs` crate (`src/app/`,
+The migration into feature crates is done. The crates by kind:
+
+- Feature: `ncrs-search`, `ncrs-files`, `ncrs-ops`, `ncrs-palette`, `ncrs-settings`, `ncrs-hermes-ui`,
+  `ncrs-hermes-chat`, `ncrs-remote`, `ncrs-compare`, `ncrs-filing-view`, `ncrs-monitor`, `ncrs-notes`,
+  `ncrs-updates`, `ncrs-viewer`.
+- Backend (no UI): `ncrs-fs`, `ncrs-index`, `ncrs-intake`, `ncrs-pipeline`, `ncrs-ai`, `ncrs-filing`, `ncrs-config`,
+  `ncrs-jobs`, `ncrs-ocr-vision`, `ncrs-priority`, `ncrs-sandbox`, `ncrs-console`.
+- Kit: `ncrs-ui-kit`. Core: `ncrs-core`. Strings: `ncrs-i18n`.
+
+The `ncrs` crate (`src/app/`,
 `src/ui/`) is wiring: window, menu, title and status bar, message routing. New feature logic goes into the matching
 crate, not into `src/app/` or `src/ui/`; when you touch a part that is still there, move it.

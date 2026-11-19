@@ -208,11 +208,40 @@ pub fn update(state: &mut State, message: MonitorMessage, ctx: &Ctx) -> Outcome 
             state.menu = None;
             (check_filter_focus(), None)
         }
-        M::OpenDrive(folder) => {
-            let (close_task, _) = close(state);
-            (close_task, Some(Action::GoToFolder { folder, file: None }))
+        M::OpenDrive(folder) => open_drive(state, folder),
+        M::DriveFocus => {
+            state.drive_focus = match state.drive_focus {
+                Some(_) => None,
+                None if state.drives_to_show().is_empty() => None,
+                None => Some(0),
+            };
+            none()
+        }
+        M::DriveMove(by) => {
+            let last = state.drives_to_show().len().saturating_sub(1);
+            if let Some(at) = state.drive_focus.as_mut() {
+                *at = at.saturating_add_signed(by).min(last);
+            }
+            none()
+        }
+        M::DriveOpen => {
+            let folder = state.drive_focus.and_then(|at| {
+                state
+                    .drives_to_show()
+                    .get(at)
+                    .map(|drive| drive.mount.clone())
+            });
+            match folder {
+                Some(folder) => open_drive(state, folder),
+                None => none(),
+            }
         }
     }
+}
+
+fn open_drive(state: &mut State, folder: std::path::PathBuf) -> Outcome {
+    let (close_task, _) = close(state);
+    (close_task, Some(Action::GoToFolder { folder, file: None }))
 }
 
 /// A click can take the focus from the filter field without telling anyone, so
@@ -278,6 +307,7 @@ fn close(state: &mut State) -> Outcome {
     state.kill_dialog = None;
     state.filter_focused = false;
     state.drive_rows = None;
+    state.drive_focus = None;
     state.release_if_idle();
     (release_focus(), Some(Action::Closed))
 }
@@ -285,6 +315,8 @@ fn close(state: &mut State) -> Outcome {
 /// Esc closes one layer: the dialog, the menu, the filter field, the page.
 fn escape(state: &mut State) -> Outcome {
     if state.kill_dialog.take().is_some() || state.menu.take().is_some() {
+        none()
+    } else if state.drive_focus.take().is_some() {
         none()
     } else if state.filter_focused {
         state.filter_focused = false;

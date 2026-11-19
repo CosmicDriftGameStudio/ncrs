@@ -143,17 +143,6 @@ impl Columns<'_> {
         self.line(cells, alignment::Horizontal::Left, size::ROW.into())
     }
 
-    /// One row of the table, every cell in `color`, the last column set
-    /// against its right edge: a column of times or amounts.
-    pub fn row_last_right<'a, M: Clone + 'a>(
-        &self,
-        cells: &[&str],
-        color: Color,
-    ) -> Element<'a, M> {
-        let colored: Vec<(&str, Color)> = cells.iter().map(|cell| (*cell, color)).collect();
-        self.line(&colored, alignment::Horizontal::Right, size::ROW.into())
-    }
-
     fn line<'a, M: Clone + 'a>(
         &self,
         cells: &[(&str, Color)],
@@ -283,6 +272,75 @@ pub struct ListView {
     pub len: usize,
     pub visible: usize,
     pub offset: usize,
+}
+
+/// How a row of a list is marked.
+#[derive(Debug, Clone, Copy)]
+pub struct RowMarks {
+    pub highlighted: bool,
+    pub tagged: bool,
+    pub panel_active: bool,
+}
+
+/// A row of plain text cells under a [`Columns`] header, with the star column
+/// and the colors of the file list. A click anywhere on it sends `on_press`.
+pub fn cells_row<'a, M: Clone + 'a>(
+    columns: &Columns<'_>,
+    cells: [String; 3],
+    marks: RowMarks,
+    on_press: M,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let RowMarks {
+        highlighted,
+        tagged,
+        panel_active,
+    } = marks;
+    let plain = if highlighted {
+        palette.cursor_text
+    } else if tagged {
+        theme::tagged_text_color(palette, panel_active)
+    } else {
+        palette.text
+    };
+    let dim = if highlighted || tagged {
+        plain
+    } else {
+        palette.dim_text
+    };
+    let [first, second, third] = cells;
+    let star = text(if tagged { "*" } else { " " })
+        .size(font_size::FILE)
+        .font(crate::APP_FONT)
+        .color(if tagged {
+            theme::tag_star_color(palette, highlighted, panel_active)
+        } else {
+            palette.dim_text
+        })
+        .width(crate::layout::TAG_COLUMN_WIDTH)
+        .wrapping(Wrapping::None);
+    mouse_area(
+        container(
+            row![
+                star,
+                columns.row_colored(&[(&first, plain), (&second, dim), (&third, dim)])
+            ]
+            .align_y(alignment::Vertical::Center),
+        )
+        .padding([0.0, spacing::CELL_PADDING_X])
+        .height(crate::layout::ROW_HEIGHT)
+        .width(Length::Fill)
+        .align_y(alignment::Vertical::Center)
+        .clip(true)
+        .style(theme::search_row(
+            palette,
+            highlighted,
+            tagged,
+            panel_active,
+        )),
+    )
+    .on_press(on_press)
+    .into()
 }
 
 // reason: a failing assertion is the signal in a test

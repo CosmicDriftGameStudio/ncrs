@@ -61,4 +61,9 @@ pub enum MonitorMessage {
     MenuClose,
 
     OpenDrive(PathBuf),
+    /// Tab: the cursor goes to the drive list, and back to the tasks.
+    DriveFocus,
+    DriveMove(isize),
+    /// Enter on the drive under the cursor.
+    DriveOpen,
 }

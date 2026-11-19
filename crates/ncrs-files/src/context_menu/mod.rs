@@ -106,7 +106,6 @@ impl ContextAction {
 
     /// Whether a panel on an SFTP server may run the entry. See
     /// `KeyAction::allowed_on_server`.
-    #[cfg(any(test, feature = "test-support"))]
     pub fn allowed_on_server(self) -> bool {
         match self {
             ContextAction::Open
@@ -272,7 +271,6 @@ impl HermesAction {
 
     /// Every Hermes entry works on the file or folder under the cursor, whose
     /// path inside an archive is no place Hermes knows.
-    #[cfg(any(test, feature = "test-support"))]
     pub fn allowed_in_archive(self) -> bool {
         match self {
             HermesAction::ShowSuggestion
@@ -288,7 +286,6 @@ impl HermesAction {
     }
 
     /// Hermes knows no place on a server either.
-    #[cfg(any(test, feature = "test-support"))]
     pub fn allowed_on_server(self) -> bool {
         match self {
             HermesAction::ShowSuggestion

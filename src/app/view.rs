@@ -194,6 +194,7 @@ impl App {
                                     &[("dir", &dir.display().to_string())],
                                 )
                             }),
+                            date_format: self.columns.date_format,
                         },
                         self.status_error(),
                         self.search_status(),
@@ -231,7 +232,7 @@ impl App {
             let card = Column::with_children(cards)
                 .spacing(theme::spacing::LINE_GAP)
                 .align_x(iced::Alignment::Center);
-            Stack::with_children([window.into(), dialog::scrim(card.into())]).into()
+            Stack::with_children([window.into(), ncrs_ui_kit::kit::scrim(card.into())]).into()
         };
         let root = if cfg!(target_os = "macos") {
             base
@@ -259,7 +260,7 @@ impl App {
         {
             return Stack::with_children([
                 root,
-                dialog::scrim(dialog_element.map(Message::Monitor)),
+                ncrs_ui_kit::kit::scrim(dialog_element.map(Message::Monitor)),
             ])
             .into();
         }
@@ -328,7 +329,7 @@ impl App {
                     on_close: Message::VolumeMenuClose,
                 },
             );
-            return Stack::with_children([root, dialog::scrim(menu_element)]).into();
+            return Stack::with_children([root, ncrs_ui_kit::kit::scrim(menu_element)]).into();
         }
 
         if let Some(deletion) = self.ops.delete_dialog.as_ref() {
@@ -341,7 +342,7 @@ impl App {
                 &self.palette,
             )
             .map(Message::from);
-            return Stack::with_children([root, dialog::scrim(dialog_element)]).into();
+            return Stack::with_children([root, ncrs_ui_kit::kit::scrim(dialog_element)]).into();
         }
 
         if self.ops.quit_dialog {
@@ -352,7 +353,7 @@ impl App {
                 &self.palette,
             )
             .map(Message::from);
-            return Stack::with_children([root, dialog::scrim(dialog_element)]).into();
+            return Stack::with_children([root, ncrs_ui_kit::kit::scrim(dialog_element)]).into();
         }
 
         if let Some(path) = self.ops.open_file_dialog.as_ref() {
@@ -368,7 +369,7 @@ impl App {
                 &self.palette,
             )
             .map(Message::from);
-            return Stack::with_children([root, dialog::scrim(dialog_element)]).into();
+            return Stack::with_children([root, ncrs_ui_kit::kit::scrim(dialog_element)]).into();
         }
 
         if let Some(dialog) = self.ops.batch_rename.as_ref() {
@@ -379,7 +380,7 @@ impl App {
                 &self.palette,
             )
             .map(Message::from);
-            return Stack::with_children([root, dialog::scrim(dialog_element)]).into();
+            return Stack::with_children([root, ncrs_ui_kit::kit::scrim(dialog_element)]).into();
         }
 
         if let Some(dialog) = self.ops.permissions_dialog.as_ref() {
@@ -390,7 +391,7 @@ impl App {
                 &self.palette,
             )
             .map(Message::from);
-            return Stack::with_children([root, dialog::scrim(dialog_element)]).into();
+            return Stack::with_children([root, ncrs_ui_kit::kit::scrim(dialog_element)]).into();
         }
 
         if let Some(card) = self.about.as_ref() {
@@ -402,7 +403,7 @@ impl App {
                 self.lang,
                 &self.palette,
             );
-            return Stack::with_children([root, dialog::scrim(card_element)]).into();
+            return Stack::with_children([root, ncrs_ui_kit::kit::scrim(card_element)]).into();
         }
 
         if let Some(card) = self.settings.ocr_models.as_ref() {
@@ -415,7 +416,7 @@ impl App {
             );
             return Stack::with_children([
                 root,
-                dialog::scrim(card_element.map(Message::OcrModels)),
+                ncrs_ui_kit::kit::scrim(card_element.map(Message::OcrModels)),
             ])
             .into();
         }
@@ -428,8 +429,11 @@ impl App {
                 self.lang,
                 &self.palette,
             );
-            return Stack::with_children([root, dialog::scrim(card_element.map(Message::AiModel))])
-                .into();
+            return Stack::with_children([
+                root,
+                ncrs_ui_kit::kit::scrim(card_element.map(Message::AiModel)),
+            ])
+            .into();
         }
 
         if let Some(dialog_element) = self
@@ -443,7 +447,7 @@ impl App {
         {
             return Stack::with_children([
                 root,
-                dialog::scrim(dialog_element.map(Message::Settings)),
+                ncrs_ui_kit::kit::scrim(dialog_element.map(Message::Settings)),
             ])
             .into();
         }
@@ -452,8 +456,11 @@ impl App {
             .into_iter()
             .next()
         {
-            return Stack::with_children([root, dialog::scrim(dialog_element.map(Message::from))])
-                .into();
+            return Stack::with_children([
+                root,
+                ncrs_ui_kit::kit::scrim(dialog_element.map(Message::from)),
+            ])
+            .into();
         }
 
         if self.start_over_dialog {
@@ -464,21 +471,24 @@ impl App {
                 &self.palette,
             )
             .map(Message::from);
-            return Stack::with_children([root, dialog::scrim(question)]).into();
+            return Stack::with_children([root, ncrs_ui_kit::kit::scrim(question)]).into();
         }
 
         if let Some(dialog_element) =
             ncrs_compare::view::dialog(&self.compare, self.window_size, self.lang, &self.palette)
         {
-            return Stack::with_children([root, dialog::scrim(dialog_element.map(Message::from))])
-                .into();
+            return Stack::with_children([
+                root,
+                ncrs_ui_kit::kit::scrim(dialog_element.map(Message::from)),
+            ])
+            .into();
         }
 
         if let Some(dialog) = self.remote_ui.dialog.as_ref() {
             let dialog_element =
                 remote_ui::view(dialog, self.window_size, self.lang, &self.palette)
                     .map(Message::from);
-            return Stack::with_children([root, dialog::scrim(dialog_element)]).into();
+            return Stack::with_children([root, ncrs_ui_kit::kit::scrim(dialog_element)]).into();
         }
 
         if self.grant_dialog {
@@ -488,7 +498,7 @@ impl App {
                 self.lang,
                 &self.palette,
             );
-            return Stack::with_children([root, dialog::scrim(dialog_element)]).into();
+            return Stack::with_children([root, ncrs_ui_kit::kit::scrim(dialog_element)]).into();
         }
 
         // The conflict dialog comes first, before the prompt. A conflict is
@@ -508,28 +518,33 @@ impl App {
                 self.window_size,
             )
             .map(Message::from);
-            return Stack::with_children([root, dialog::scrim(conflict_element)]).into();
+            return Stack::with_children([root, ncrs_ui_kit::kit::scrim(conflict_element)]).into();
         }
 
         if let Some(confirm) = self.ops.transfer_dialog.as_ref() {
             let confirm_element =
                 transfer_ui::confirm(confirm, self.window_size, self.lang, &self.palette)
                     .map(Message::from);
-            return Stack::with_children([root, dialog::scrim(confirm_element)]).into();
+            return Stack::with_children([root, ncrs_ui_kit::kit::scrim(confirm_element)]).into();
         }
 
         if let Some(running) = self.ops.progress_mask(self.job_progress) {
-            let progress_element =
-                transfer_ui::progress(&running, self.window_size, self.lang, &self.palette)
-                    .map(Message::from);
-            return Stack::with_children([root, dialog::scrim(progress_element)]).into();
+            let progress_element = transfer_ui::progress(
+                &running,
+                self.dialog_focus,
+                self.window_size,
+                self.lang,
+                &self.palette,
+            )
+            .map(Message::from);
+            return Stack::with_children([root, ncrs_ui_kit::kit::scrim(progress_element)]).into();
         }
 
         if let Some(quick_open) = self.quick_open.as_ref() {
             let box_element =
                 quick_open_ui::view(quick_open, self.window_size, self.lang, &self.palette)
                     .map(Message::QuickOpen);
-            return Stack::with_children([root, dialog::scrim(box_element)]).into();
+            return Stack::with_children([root, ncrs_ui_kit::kit::scrim(box_element)]).into();
         }
 
         if let Some(shortcuts) = self.settings.key_bindings.as_ref() {
@@ -537,7 +552,7 @@ impl App {
                 key_bindings_ui::view(shortcuts, self.window_size, self.lang, &self.palette);
             return Stack::with_children([
                 root,
-                dialog::scrim(dialog_element.map(Message::KeyBindings)),
+                ncrs_ui_kit::kit::scrim(dialog_element.map(Message::KeyBindings)),
             ])
             .into();
         }
@@ -550,7 +565,7 @@ impl App {
                 &self.palette,
             )
             .map(Message::CommandPalette);
-            return Stack::with_children([root, dialog::scrim(box_element)]).into();
+            return Stack::with_children([root, ncrs_ui_kit::kit::scrim(box_element)]).into();
         }
 
         if let Some(card) = self.settings.theme_fetch.as_ref() {
@@ -558,7 +573,7 @@ impl App {
                 theme_fetch_ui::view(card, self.window_size, self.lang, &self.palette);
             return Stack::with_children([
                 root,
-                dialog::scrim(card_element.map(Message::ThemeFetch)),
+                ncrs_ui_kit::kit::scrim(card_element.map(Message::ThemeFetch)),
             ])
             .into();
         }
@@ -586,7 +601,7 @@ impl App {
 
         // The prompt sits above everything and takes every keystroke; the scrim
         // swallows clicks meant for the panels underneath.
-        Stack::with_children([root, dialog::scrim(prompt_element)]).into()
+        Stack::with_children([root, ncrs_ui_kit::kit::scrim(prompt_element)]).into()
     }
 
     pub(in crate::app) fn hermes_view_ctx(&self) -> ncrs_hermes_ui::ViewCtx<'_> {

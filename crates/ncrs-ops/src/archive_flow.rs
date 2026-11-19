@@ -308,11 +308,9 @@ fn write_failure_text(lang: Language, write: &ArchiveWrite, failure: RowFailure)
             lang.text(Msg::ErrorArchiveNameTaken),
             &[("{detail}", &detail)],
         ),
-        RowFailure::Conflict(reason)
-        | RowFailure::UnsafeName(reason)
-        | RowFailure::Other(reason) => fill_template(
+        other => fill_template(
             lang.text(Msg::ErrorArchiveWriteFailed),
-            &[("{reason}", &reason)],
+            &[("{reason}", &other.reason_text(lang))],
         ),
     }
 }

@@ -233,13 +233,24 @@ pub fn usage_sections<'a>(view: &SettingsView<'a>) -> Vec<Element<'a, Message>> 
         all.iter()
             .all(|(_, per_period)| per_period.totals.requests == 0)
     });
+    let problem = view.state.usage_problem.as_ref().map(|reason| {
+        kit::error_line(
+            fill_template(
+                lang.text(Msg::SettingsUsageLogUnreadable),
+                &[("{reason}", reason)],
+            ),
+            palette,
+        )
+    });
     if empty {
-        return vec![kit::dim(
+        let mut lines: Vec<Element<'a, Message>> = problem.into_iter().collect();
+        lines.push(kit::dim(
             lang.text(Msg::SettingsUsageNone).to_owned(),
             palette,
-        )];
+        ));
+        return lines;
     }
-    vec![
+    let sections = vec![
         kit::first_section(
             lang.text(Msg::SettingsUsageOverview),
             overview(summary, view),
@@ -255,5 +266,6 @@ pub fn usage_sections<'a>(view: &SettingsView<'a>) -> Vec<Element<'a, Message>> 
             by_model(summary, view),
             palette,
         ),
-    ]
+    ];
+    problem.into_iter().chain(sections).collect()
 }

@@ -265,5 +265,11 @@ fn a_conflict_is_recognised_by_its_kind() {
         RowFailure::Conflict("/tmp/dst/alpha.txt already exists".to_string())
     );
     let denied = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "Permission denied");
-    assert!(matches!(RowFailure::from_io(denied), RowFailure::Other(_)));
+    assert!(matches!(
+        RowFailure::from_io(denied),
+        RowFailure::Io {
+            kind: std::io::ErrorKind::PermissionDenied,
+            ..
+        }
+    ));
 }

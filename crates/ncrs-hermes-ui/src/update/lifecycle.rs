@@ -45,6 +45,7 @@ pub fn start_filing_module(hermes: &mut Hermes, filing: &Filing, ctx: &Ctx<'_>) 
 /// Dropping the runner stops it and lets go of the index before the new
 /// module opens it again.
 fn replace_module(hermes: &mut Hermes, filing: &Filing, ctx: &Ctx<'_>) -> Task<Message> {
+    drop(hermes.reading_again.give_up());
     hermes.pipeline = None;
     hermes.filing = None;
     let task = start_filing_module(hermes, filing, ctx);
@@ -202,6 +203,24 @@ fn first_run_creation(module: &mut FilingModule) -> Option<Work> {
     }
 }
 
+const CLIPBOARD_KEY_LIFETIME: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Puts the key on the clipboard and takes it off again after a minute,
+/// unless the user copied something else meanwhile.
+fn copy_and_clear_later(key_text: String) -> Task<Message> {
+    let copied = key_text.clone();
+    let clear = Task::perform(tokio::time::sleep(CLIPBOARD_KEY_LIFETIME), |()| ())
+        .then(|()| iced::clipboard::read())
+        .then(move |current| {
+            if current.as_deref() == Some(copied.as_str()) {
+                iced::clipboard::write(String::new())
+            } else {
+                Task::none()
+            }
+        });
+    Task::batch([iced::clipboard::write(key_text), clear])
+}
+
 pub fn update_filing(
     hermes: &mut Hermes,
     message: FilingMessage,
@@ -218,13 +237,23 @@ pub fn update_filing(
         actions.push(Action::ShowNotice(
             ctx.lang.text(Msg::FilingKeyCopied).to_owned(),
         ));
-        return iced::clipboard::write(key_text);
+        return copy_and_clear_later(key_text);
     }
     let work_finished = matches!(message, FilingMessage::WorkDone { .. });
     let was_starting = matches!(module.phase(), Phase::Starting);
     let was_starting_over = matches!(module.phase(), Phase::StartingOver);
+    let was_settling = module.is_settling();
     let work = module.update(message);
+    if (was_starting || was_starting_over || was_settling) && work_finished {
+        if let Some(reason) = module.settle_problem() {
+            actions.push(Action::ShowError(fill_template(
+                ctx.lang.text(Msg::StatusIndexSettleFailed),
+                &[("{reason}", &reason)],
+            )));
+        }
+    }
     if was_starting_over && !matches!(module.phase(), Phase::StartingOver) {
+        actions.push(Action::IndexReplaced);
         actions.push(Action::OpenChat);
     }
     let mut pipeline_started = false;

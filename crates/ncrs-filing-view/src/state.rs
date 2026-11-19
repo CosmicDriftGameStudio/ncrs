@@ -1,15 +1,19 @@
 //! The state of the filing tab: one session, from the start of the reading to
 //! the run.
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, PoisonError};
 
 use ncrs_filing::chat_work::{apply_overrides, LiveFile, LivePlan, LiveRun, LiveState, Override};
 use ncrs_i18n::{Language, Msg};
 
 use crate::texts::say;
+
+/// Tells a session from an earlier one when a read it started comes back.
+static NEXT_SESSION_ID: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Default)]
 pub struct State {
@@ -18,6 +22,7 @@ pub struct State {
 
 #[derive(Debug)]
 pub struct Session {
+    pub id: u64,
     pub source: PathBuf,
     pub target: PathBuf,
     pub run: Arc<LiveRun>,
@@ -41,11 +46,20 @@ pub struct Session {
     pub existing: BTreeMap<PathBuf, Vec<String>>,
     /// The folders of the write folder, read when the tree shows them all.
     pub target_folders: BTreeSet<PathBuf>,
+    /// The folders whose files are being read right now.
+    pub reading: BTreeSet<PathBuf>,
+    /// The folders of the write folder are being listed.
+    pub listing: bool,
+    /// `plan` with `overrides` on top, formed when either changes.
+    shown: Option<LivePlan>,
+    /// The version of the run's plan that `plan` holds.
+    seen_version: u64,
 }
 
 impl Session {
     pub fn new(source: PathBuf, target: PathBuf, run: Arc<LiveRun>) -> Self {
         Self {
+            id: NEXT_SESSION_ID.fetch_add(1, Ordering::Relaxed),
             source,
             target,
             run,
@@ -61,14 +75,37 @@ impl Session {
             error: None,
             existing: BTreeMap::new(),
             target_folders: BTreeSet::new(),
+            reading: BTreeSet::new(),
+            listing: false,
+            shown: None,
+            seen_version: 0,
         }
     }
 
     /// The plan the user sees: what the run published with the changes on top.
     pub fn shown_plan(&self) -> Option<LivePlan> {
-        self.plan
+        self.shown_ref().map(Cow::into_owned)
+    }
+
+    /// The same without a copy, as long as nothing changed since it was formed.
+    pub fn shown_ref(&self) -> Option<Cow<'_, LivePlan>> {
+        match (&self.shown, &self.plan) {
+            (Some(shown), _) => Some(Cow::Borrowed(shown)),
+            (None, Some(plan)) => Some(Cow::Owned(apply_overrides(plan, &self.overrides))),
+            (None, None) => None,
+        }
+    }
+
+    fn refresh_shown(&mut self) {
+        self.shown = self
+            .plan
             .as_ref()
-            .map(|plan| apply_overrides(plan, &self.overrides))
+            .map(|plan| apply_overrides(plan, &self.overrides));
+    }
+
+    pub fn set_override(&mut self, from: PathBuf, change: Override) {
+        self.overrides.insert(from, change);
+        self.refresh_shown();
     }
 
     pub fn plan_is_done(&self) -> bool {
@@ -77,6 +114,10 @@ impl Session {
 
     /// Takes over what the run has published since.
     pub fn take_snapshot(&mut self) {
+        let version = self.run.version.load(Ordering::Acquire);
+        if version == self.seen_version {
+            return;
+        }
         let published = self
             .run
             .plan
@@ -85,6 +126,8 @@ impl Session {
             .clone();
         if published.is_some() {
             self.plan = published;
+            self.seen_version = version;
+            self.refresh_shown();
         }
     }
 
@@ -111,10 +154,11 @@ impl Session {
     }
 
     pub fn file(&self, from: &Path) -> Option<LiveFile> {
-        self.shown_plan()?
+        self.shown_ref()?
             .files
-            .into_iter()
+            .iter()
             .find(|file| file.from == from)
+            .cloned()
     }
 }
 
@@ -143,6 +187,9 @@ pub fn tab_title(state: &State, lang: Language) -> Option<String> {
     let folder = session.source_name();
     if matches!(session.finished, Some(Err(_))) {
         return Some(say(lang, Msg::FilingViewTabFailed, &[("folder", &folder)]));
+    }
+    if session.filing {
+        return Some(say(lang, Msg::FilingViewTabFiling, &[("folder", &folder)]));
     }
     if session.plan_is_done() {
         return Some(say(lang, Msg::FilingViewTabReady, &[("folder", &folder)]));

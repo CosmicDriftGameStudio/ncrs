@@ -2,16 +2,35 @@
 
 use super::*;
 
-/// Every index goes through here before the watcher and the pipeline see it,
-/// so a move that was interrupted is settled before anything looks at the files.
+#[cfg(test)]
 pub(in crate::filing) fn put_index(slot: &IndexSlot, index: Index) {
-    *lock(slot) = Some(settled(index));
+    put_index_noting(slot, index, &SettleNote::default());
 }
 
-pub(in crate::filing) fn settled(index: Index) -> Index {
-    // A failure leaves the pending items pending; the next open settles them.
-    let _settled_or_retried_next_open = crate::execute::reconcile(&index);
+/// Every index goes through here before the watcher and the pipeline see it,
+/// so a move that was interrupted is settled before anything looks at the files.
+pub(in crate::filing) fn put_index_noting(slot: &IndexSlot, index: Index, note: &SettleNote) {
+    *lock(slot) = Some(settled(index, note));
+}
+
+pub(in crate::filing) fn settled(index: Index, note: &SettleNote) -> Index {
+    note_settling(&index, note);
     index
+}
+
+/// A failure leaves the pending items pending; the next open settles them.
+fn note_settling(index: &Index, note: &SettleNote) {
+    let problem = crate::execute::reconcile(index)
+        .err()
+        .map(|err| err.to_string());
+    *note.lock().unwrap_or_else(PoisonError::into_inner) = problem;
+}
+
+/// Settles the index that was held back until the user accepted it.
+pub(in crate::filing) fn settle_held(slot: &IndexSlot, note: &SettleNote) {
+    if let Some(index) = lock(slot).as_ref() {
+        note_settling(index, note);
+    }
 }
 
 /// Never creates the file or its directory: the user has not chosen yet.
@@ -19,8 +38,9 @@ pub(in crate::filing) fn open_existing(
     db_path: &Path,
     store: &dyn KeyStore,
     slot: &IndexSlot,
+    note: &SettleNote,
 ) -> OpenOutcome {
-    open_into(&mut lock(slot), db_path, store)
+    open_into(&mut lock(slot), db_path, store, note)
 }
 
 /// For a job that keeps the slot locked from closing the index to opening it
@@ -29,6 +49,7 @@ pub(in crate::filing) fn open_into(
     held: &mut Option<Index>,
     db_path: &Path,
     store: &dyn KeyStore,
+    note: &SettleNote,
 ) -> OpenOutcome {
     match Index::open(db_path, store) {
         Err(IndexError::NotFound) => OpenOutcome::NoIndexYet,
@@ -48,7 +69,13 @@ pub(in crate::filing) fn open_into(
                     Err(_) => OpenOutcome::OpenedWithoutKeyStore,
                 }
             };
-            *held = Some(settled(index));
+            // The journal of a file nobody has accepted yet is not acted on:
+            // it is settled when the user accepts it.
+            *held = Some(if outcome == OpenOutcome::PlainFileWithKeyEntry {
+                index
+            } else {
+                settled(index, note)
+            });
             outcome
         }
     }
@@ -60,9 +87,15 @@ pub(in crate::filing) fn reopen_after_failure(
     held: &mut Option<Index>,
     db_path: &Path,
     store: &dyn KeyStore,
+    note: &SettleNote,
 ) -> OpenOutcome {
-    match open_into(held, db_path, store) {
-        OpenOutcome::PlainFileWithKeyEntry => OpenOutcome::Opened,
+    match open_into(held, db_path, store, note) {
+        OpenOutcome::PlainFileWithKeyEntry => {
+            if let Some(index) = held.as_ref() {
+                note_settling(index, note);
+            }
+            OpenOutcome::Opened
+        }
         other => other,
     }
 }
@@ -73,17 +106,24 @@ pub(in crate::filing) fn encrypt_index(
     db_path: &Path,
     store: &dyn KeyStore,
     slot: &IndexSlot,
+    note: &SettleNote,
 ) -> EncryptReport {
     let mut held = lock(slot);
     drop(held.take());
     match Index::encrypt_plain(db_path, store) {
         Ok(recovery_key) => EncryptReport {
-            result: Ok(ShownRecoveryKey::new(recovery_key)),
-            opened: open_into(&mut held, db_path, store),
+            // The copies from before a migration are plain files.
+            result: {
+                ncrs_index::migration_backups(db_path)
+                    .iter()
+                    .for_each(|copy| drop(remove_if_present(copy)));
+                Ok(ShownRecoveryKey::new(recovery_key))
+            },
+            opened: open_into(&mut held, db_path, store, note),
         },
         Err(err) => EncryptReport {
             result: Err(err.to_string()),
-            opened: reopen_after_failure(&mut held, db_path, store),
+            opened: reopen_after_failure(&mut held, db_path, store, note),
         },
     }
 }
@@ -130,12 +170,15 @@ pub(in crate::filing) fn start_over(
     data_dir: &Path,
     store: &dyn KeyStore,
     slot: &IndexSlot,
+    note: &SettleNote,
 ) -> StartOverReport {
     let mut held = lock(slot);
     drop(held.take());
     let removed = index_files(db_path, data_dir).and_then(|files| {
+        let copies = ncrs_index::migration_backups(db_path);
         files
             .iter()
+            .chain(copies.iter())
             .try_for_each(|file| remove_if_present(file))
             .map_err(|err| err.to_string())
     });
@@ -143,12 +186,12 @@ pub(in crate::filing) fn start_over(
         Ok(()) => StartOverReport {
             result: Ok(()),
             key_entry_warning: store.delete().err().map(|err| err.to_string()),
-            opened: open_into(&mut held, db_path, store),
+            opened: open_into(&mut held, db_path, store, note),
         },
         Err(reason) => StartOverReport {
             result: Err(reason),
             key_entry_warning: None,
-            opened: reopen_after_failure(&mut held, db_path, store),
+            opened: reopen_after_failure(&mut held, db_path, store, note),
         },
     }
 }
@@ -157,19 +200,20 @@ pub(in crate::filing) fn create_index(
     db_path: &Path,
     store: &dyn KeyStore,
     slot: &IndexSlot,
+    note: &SettleNote,
     encrypted: bool,
 ) -> Result<Option<ShownRecoveryKey>, String> {
     if let Some(parent) = db_path.parent() {
-        std::fs::create_dir_all(parent).map_err(|err| err.to_string())?;
+        create_private_dir(parent).map_err(|err| err.to_string())?;
     }
     if encrypted {
         let (index, recovery_key) =
             Index::create_encrypted(db_path, store).map_err(|err| err.to_string())?;
-        put_index(slot, index);
+        put_index_noting(slot, index, note);
         Ok(Some(ShownRecoveryKey::new(recovery_key)))
     } else {
         let index = Index::create_plain(db_path).map_err(|err| err.to_string())?;
-        put_index(slot, index);
+        put_index_noting(slot, index, note);
         Ok(None)
     }
 }
@@ -178,11 +222,12 @@ pub(in crate::filing) fn apply_key(
     db_path: &Path,
     store: &dyn KeyStore,
     slot: &IndexSlot,
+    note: &SettleNote,
     write_key: impl FnOnce(&Path, &dyn KeyStore) -> Result<(), IndexError>,
 ) -> Result<OpenOutcome, KeyError> {
     write_key(db_path, store).map_err(key_error)?;
     let index = Index::open(db_path, store).map_err(key_error)?;
-    put_index(slot, index);
+    put_index_noting(slot, index, note);
     Ok(OpenOutcome::Opened)
 }
 
@@ -191,4 +236,17 @@ pub(in crate::filing) fn key_error(err: IndexError) -> KeyError {
         IndexError::WrongKey => KeyError::DoesNotOpen,
         other => KeyError::Other(other.to_string()),
     }
+}
+
+/// The folder holds the extracted text of every document, so only the user
+/// may enter it.
+fn create_private_dir(path: &Path) -> std::io::Result<()> {
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt as _;
+        builder.mode(0o700);
+    }
+    builder.create(path)
 }

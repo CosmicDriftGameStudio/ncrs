@@ -97,6 +97,7 @@ fn loaded_areas() -> LoadedFacts {
             understood: 298,
         }),
         disconnected: vec![PathBuf::from("/home/test/Documents/Filed")],
+        error: None,
     }
 }
 

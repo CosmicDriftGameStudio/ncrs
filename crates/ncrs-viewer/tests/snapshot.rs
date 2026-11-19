@@ -48,6 +48,7 @@ mod ui_tests {
             lang: Language::English,
             palette: &palette,
             home: dir.path(),
+            date_format: ncrs_ui_kit::format::DateFormat::Iso,
         };
         let mut simulator = Simulator::with_size(
             iced::Settings {

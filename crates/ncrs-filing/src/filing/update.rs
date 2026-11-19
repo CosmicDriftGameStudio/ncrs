@@ -53,8 +53,9 @@ impl FilingModule {
             }
             FilingMessage::KeySubmit => self.submit_key(),
             FilingMessage::ConfirmPlainFile => {
-                if matches!(self.phase, Phase::PlainFileWarning) {
-                    self.phase = Phase::Ready;
+                if matches!(self.phase, Phase::PlainFileWarning) && !self.settling {
+                    self.settling = true;
+                    return Some(self.new_work(Job::Settle));
                 }
                 None
             }
@@ -176,6 +177,12 @@ impl FilingModule {
             WorkOutcome::KeyApplied(result) => self.finish_key(result),
             WorkOutcome::Encrypted(report) => self.finish_encrypt(report),
             WorkOutcome::StartedOver(report) => self.finish_start_over(report),
+            WorkOutcome::Settled => {
+                if self.settling && matches!(self.phase, Phase::PlainFileWarning) {
+                    self.phase = Phase::Ready;
+                }
+                self.settling = false;
+            }
             WorkOutcome::Crashed(reason) => self.finish_crashed(reason),
         }
         self.refresh_index_encrypted();

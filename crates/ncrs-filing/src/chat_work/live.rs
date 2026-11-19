@@ -3,7 +3,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, PoisonError};
 
 use ncrs_ai::{AiError, ChatModel};
@@ -70,12 +70,15 @@ pub enum Override {
 pub struct LiveRun {
     pub progress: ReadProgress,
     pub plan: Mutex<Option<LivePlan>>,
+    /// Counts the plans published, so a poller copies only a new one.
+    pub version: AtomicU64,
     pub stop: AtomicBool,
 }
 
 impl LiveRun {
     fn publish(&self, plan: LivePlan) {
         *self.plan.lock().unwrap_or_else(PoisonError::into_inner) = Some(plan);
+        self.version.fetch_add(1, Ordering::Release);
     }
 }
 

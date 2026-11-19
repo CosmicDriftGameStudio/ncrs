@@ -120,6 +120,24 @@ impl UsageRecord {
 /// Adds the line to the log. The caller ignores a failure: a request is
 /// never lost for want of a line in the log.
 pub fn append_usage(path: &Path, record: &UsageRecord) -> io::Result<()> {
+    append_usage_within(path, record, MAX_LOG_BYTES)
+}
+
+/// A log past this size moves to `usage.jsonl.old` (replacing the one there)
+/// and a new one starts, so the file the usage page reads stays bounded.
+const MAX_LOG_BYTES: u64 = 8 * 1024 * 1024;
+
+fn older_log_path(path: &Path) -> PathBuf {
+    let mut older = path.as_os_str().to_owned();
+    older.push(".old");
+    PathBuf::from(older)
+}
+
+fn append_usage_within(path: &Path, record: &UsageRecord, max_bytes: u64) -> io::Result<()> {
+    if std::fs::metadata(path).is_ok_and(|meta| meta.len() >= max_bytes) {
+        // A failed move only means the log grows a little longer.
+        let _ = std::fs::rename(path, older_log_path(path));
+    }
     let mut file = OpenOptions::new().create(true).append(true).open(path)?;
     let mut line = record.to_line();
     line.push('\n');
@@ -279,19 +297,39 @@ pub fn summarize<'a>(
 
 /// The lines of the log, for [`summarize`]; none when there is no log yet.
 pub fn read_usage_log(path: &Path) -> String {
-    // ponytail: whole file is read on page open; fine up to ~100k requests, move into the index if it ever is not.
-    std::fs::read_to_string(path).unwrap_or_default()
+    read_usage_log_noting(path).0
 }
 
-/// The sums for each of `periods` (in days) as of now. Without a log they
-/// are all empty.
-pub fn usage_summaries(log: Option<&Path>, periods: &[u32]) -> Vec<(u32, UsageSummary)> {
-    let text = log.map(read_usage_log).unwrap_or_default();
+/// Like [`read_usage_log`], with the system's text for the first file that
+/// could not be read. A byte that is no UTF-8 spoils only its own line.
+pub fn read_usage_log_noting(path: &Path) -> (String, Option<String>) {
+    let mut text = String::new();
+    let mut problem = None;
+    for file in [older_log_path(path), path.to_path_buf()] {
+        match std::fs::read(&file) {
+            Ok(bytes) => text.push_str(&String::from_utf8_lossy(&bytes)),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => {}
+            Err(err) => {
+                problem.get_or_insert_with(|| err.to_string());
+            }
+        }
+    }
+    (text, problem)
+}
+
+/// The sums for each of `periods` (in days) as of now, and the system's text
+/// when the log could not be read whole. Without a log they are all empty.
+pub fn usage_summaries(
+    log: Option<&Path>,
+    periods: &[u32],
+) -> (Vec<(u32, UsageSummary)>, Option<String>) {
+    let (text, problem) = log.map_or_else(Default::default, read_usage_log_noting);
     let now = Local::now();
-    periods
+    let summaries = periods
         .iter()
         .map(|&days| (days, summarize(text.lines(), days, now)))
-        .collect()
+        .collect();
+    (summaries, problem)
 }
 
 #[cfg(test)]
@@ -390,6 +428,37 @@ mod tests {
     }
 
     #[test]
+    fn a_broken_byte_spoils_one_line_and_a_missing_file_is_no_problem() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = usage_log_path(dir.path());
+        let good = record(8, "a", 10, 5, None);
+        let mut bytes = format!("{good}\n").into_bytes();
+        bytes.extend_from_slice(b"\xff\n");
+        bytes.extend_from_slice(format!("{good}\n").as_bytes());
+        std::fs::write(&path, bytes).unwrap();
+
+        let (text, problem) = read_usage_log_noting(&path);
+
+        assert_eq!(problem, None);
+        assert_eq!(
+            text.lines().filter(|line| line.contains("\"a\"")).count(),
+            2
+        );
+        assert_eq!(read_usage_log_noting(&dir.path().join("missing")).1, None);
+    }
+
+    #[test]
+    fn a_log_that_cannot_be_read_is_reported() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = usage_log_path(dir.path());
+        std::fs::create_dir(&path).unwrap();
+
+        let (_, problem) = read_usage_log_noting(&path);
+
+        assert!(problem.is_some());
+    }
+
+    #[test]
     fn appended_lines_end_up_one_per_request() {
         let dir = tempfile::tempdir().unwrap();
         let path = usage_log_path(dir.path());
@@ -400,6 +469,20 @@ mod tests {
 
         assert_eq!(read_usage_log(&path).lines().count(), 2);
         assert_eq!(read_usage_log(&dir.path().join("missing")), "");
+    }
+
+    #[test]
+    fn a_log_past_the_limit_moves_aside_and_is_still_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = usage_log_path(dir.path());
+        let first = UsageRecord::from_line(&record(8, "a", 10, 5, None)).unwrap();
+
+        append_usage_within(&path, &first, 1).unwrap();
+        append_usage_within(&path, &first, 1).unwrap();
+        append_usage_within(&path, &first, 1).unwrap();
+
+        assert_eq!(std::fs::read_to_string(&path).unwrap().lines().count(), 1);
+        assert_eq!(read_usage_log(&path).lines().count(), 2);
     }
 
     #[test]

@@ -104,6 +104,8 @@ impl App {
         let monitor_filter = monitor && self.monitor.filter_has_focus();
         let monitor_dialog = monitor && self.monitor.dialog_is_open();
         let monitor_menu = monitor && self.monitor.menu_is_open();
+        let monitor_drive_focused = monitor && self.monitor.drive_list_has_focus();
+        let monitor_drives_listed = monitor && self.monitor.drives_are_listed();
         let viewer = self.viewer_shown();
         let viewer_markdown = viewer && self.viewer.shows_markdown();
         let notes = self.notes_shown();
@@ -165,6 +167,8 @@ impl App {
                 monitor_filter,
                 monitor_dialog,
                 monitor_menu,
+                monitor_drive_focused,
+                monitor_drives_listed,
                 viewer,
                 viewer_markdown,
                 notes,
@@ -219,6 +223,8 @@ impl App {
                 monitor_filter,
                 monitor_dialog,
                 monitor_menu,
+                monitor_drive_focused,
+                monitor_drives_listed,
                 viewer,
                 viewer_markdown,
                 notes,

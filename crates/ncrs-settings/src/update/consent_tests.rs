@@ -40,6 +40,7 @@ fn services() -> Services {
 }
 
 struct World {
+    _folder: tempfile::TempDir,
     keymap: Arc<Keymap>,
     tags: FileListTags,
     config_path: std::path::PathBuf,
@@ -48,11 +49,12 @@ struct World {
 
 impl World {
     fn saved(source: &str) -> Self {
-        let folder = tempfile::tempdir().unwrap().keep();
-        let config_path = folder.join("config.toml");
+        let folder = tempfile::tempdir().unwrap();
+        let config_path = folder.path().join("config.toml");
         std::fs::write(&config_path, source).unwrap();
         let file = config::load(&config_path).unwrap();
         Self {
+            _folder: folder,
             keymap: Arc::default(),
             tags: FileListTags::default(),
             config_path,

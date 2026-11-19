@@ -14,6 +14,7 @@ impl App {
             lang: self.lang,
             palette: &self.palette,
             home: &self.home,
+            date_format: self.columns.date_format,
         };
         container(ncrs_viewer::view(&self.viewer, ctx).map(Message::Viewer))
             .width(Length::Fill)
@@ -44,7 +45,7 @@ impl App {
         match action {
             Ask::Close => Task::none(),
             Ask::OpenUrl(url) => {
-                self.open_release_page(&url);
+                self.open_link(&url);
                 Task::none()
             }
             Ask::Reveal(file) => self.reveal_in_active_panel(&file),

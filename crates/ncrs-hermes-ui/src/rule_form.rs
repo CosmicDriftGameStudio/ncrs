@@ -513,7 +513,7 @@ mod tests {
             let mut rule = stored_rule();
             let condition = Condition {
                 kind: ConditionKind::ReadFolder,
-                value: "/Users/marc/Scans".to_owned(),
+                value: "/Users/alex/Scans".to_owned(),
                 negated,
             };
             rule.spec.conditions = RuleConditions::all_of(vec![condition.clone()]);

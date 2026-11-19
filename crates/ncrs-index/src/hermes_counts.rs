@@ -116,19 +116,28 @@ impl Index {
     }
 
     fn status_counts(&self, source: DocumentSource) -> Result<StatusCounts, IndexError> {
-        let of_status = |status: DocumentStatus| {
-            self.count(
-                "SELECT COUNT(*) FROM document
-                 WHERE source = ?1 AND status = ?2 AND missing_since IS NULL",
-                params![source.as_str(), status.as_str()],
-            )
-        };
-        Ok(StatusCounts {
-            new: of_status(DocumentStatus::New)?,
-            planned: of_status(DocumentStatus::Planned)?,
-            in_review: of_status(DocumentStatus::InReview)?,
-            filed: of_status(DocumentStatus::Filed)?,
-        })
+        let mut statement = self.connection().prepare(
+            "SELECT status, COUNT(*) FROM document
+             WHERE source = ?1 AND missing_since IS NULL GROUP BY status",
+        )?;
+        let rows = statement.query_map(params![source.as_str()], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })?;
+        let mut counts = StatusCounts::default();
+        for row in rows {
+            let (status, count) = row?;
+            let count = count.unsigned_abs();
+            if status == DocumentStatus::New.as_str() {
+                counts.new = count;
+            } else if status == DocumentStatus::Planned.as_str() {
+                counts.planned = count;
+            } else if status == DocumentStatus::InReview.as_str() {
+                counts.in_review = count;
+            } else if status == DocumentStatus::Filed.as_str() {
+                counts.filed = count;
+            }
+        }
+        Ok(counts)
     }
 
     fn count(&self, sql: &str, parameters: impl rusqlite::Params) -> Result<u64, IndexError> {

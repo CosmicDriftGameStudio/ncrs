@@ -21,7 +21,7 @@ use crate::state::{Compare, Folders, Run, SyncDialog};
 use crate::view;
 
 const WINDOW: Size = Size::new(1200.0, 800.0);
-const LEFT: &str = "/Users/marc/Documents/Scans";
+const LEFT: &str = "/Users/alex/Documents/Scans";
 const RIGHT: &str = "/Volumes/Archiv/Scans";
 
 fn entry(side: &str, name: &str, size: u64, is_dir: bool) -> FileEntry {

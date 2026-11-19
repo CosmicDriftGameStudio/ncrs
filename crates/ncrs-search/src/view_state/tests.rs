@@ -434,3 +434,16 @@ fn the_hit_list_is_named_after_the_text_or_else_the_names() {
     view.in_files = true;
     assert_eq!(view.hit_list_title(), "needle");
 }
+
+#[test]
+fn a_batch_is_merged_into_the_sorted_results_and_replaces_a_path_seen_before() {
+    let mut view = view_with(vec![found("/root/b", &[1])]);
+    view.apply_events(vec![
+        found("/root/c", &[]),
+        found("/root/a", &[]),
+        found("/root/b", &[2, 3]),
+    ]);
+
+    assert_eq!(paths(&view), ["/root/a", "/root/b", "/root/c"]);
+    assert_eq!(view.results[1].lines.len(), 2);
+}
