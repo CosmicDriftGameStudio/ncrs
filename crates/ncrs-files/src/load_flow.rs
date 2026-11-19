@@ -1,6 +1,7 @@
 //! Starting the read of a folder into a panel, and the reload that waits for
 //! an operation.
 
+use std::ffi::OsString;
 use std::path::PathBuf;
 
 use iced::Task;
@@ -28,7 +29,7 @@ impl Panels {
         &mut self,
         side: PanelSide,
         path: PathBuf,
-        select: Option<String>,
+        select: Option<OsString>,
     ) -> LoadStart {
         if self.panel(side).is_hit_list() {
             if path == self.panel(side).path {

@@ -132,3 +132,11 @@ pub fn count_indexable(dir: &Path) -> usize {
         })
         .unwrap_or(0)
 }
+
+/// Makes `link` point at the folder `target`.
+pub fn link_folder(target: &Path, link: &Path) -> io::Result<()> {
+    #[cfg(unix)]
+    return std::os::unix::fs::symlink(target, link);
+    #[cfg(windows)]
+    return std::os::windows::fs::symlink_dir(target, link);
+}

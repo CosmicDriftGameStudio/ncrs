@@ -5,6 +5,7 @@
 //! changes only when a setting is changed; this file is written by ncrs on every
 //! quit and shortly after changes, and may be deleted at any time to start fresh. Where it lives
 //! is decided once, by `config::default_state_path`.
+use std::ffi::OsString;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, PoisonError};
@@ -283,11 +284,12 @@ impl PanelRecord {
     /// The entry to put the cursor on in the first listing. Only for the saved
     /// folder itself: a name from a folder that has gone says nothing about its
     /// parent.
-    pub fn start_cursor_in(&self, start_directory: Option<&Path>) -> Option<String> {
+    pub fn start_cursor_in(&self, start_directory: Option<&Path>) -> Option<OsString> {
         let saved = Path::new(self.path.as_deref()?);
         (start_directory? == saved)
             .then(|| self.cursor.clone())
             .flatten()
+            .map(OsString::from)
     }
 
     /// The saved Back and Forward stacks, capped again.

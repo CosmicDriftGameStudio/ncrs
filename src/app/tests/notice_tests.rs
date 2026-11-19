@@ -99,7 +99,7 @@ fn quitting_while_a_job_runs_opens_a_question_that_keeps_or_stops_it() {
     assert!(app.jobs.is_busy(), "keeping the job stopped it");
 
     drop(app.update(Message::Quit));
-    drop(app.update(Message::QuitConfirm));
+    drop(app.update(Message::Ops(OpsMessage::QuitConfirm)));
     assert!(!app.ops.quit_dialog);
 }
 
@@ -157,7 +157,7 @@ fn a_quit_held_back_for_a_note_leaves_the_job_running() {
     unsaveable_note(&mut app, scratch.path());
 
     drop(app.update(Message::Quit));
-    drop(app.update(Message::QuitConfirm));
+    drop(app.update(Message::Ops(OpsMessage::QuitConfirm)));
 
     assert!(app.jobs.is_busy(), "the job was stopped, the app stayed");
     assert!(!app.ops.quit_confirmed);

@@ -96,17 +96,20 @@ fn a_server_panel_is_remembered_as_home_and_history_drops_server_paths() {
 async fn typing_an_sftp_address_tries_the_keys_and_opens_the_dialog_when_they_fail() {
     let fixture = Fixture::trusted();
     let mut app = app_over(&fixture);
-    drop(app.update(Message::PathFieldInput(
+    drop(app.update(Message::Panel(PanelMessage::PathFieldInput(
         "sftp://example.org:2222/srv/files".into(),
-    )));
+    ))));
 
-    let reported = reports(&mut app, Message::PathFieldSubmit).await;
+    let reported = reports(&mut app, Message::Panel(PanelMessage::PathFieldSubmit)).await;
 
     assert_eq!(app.path_field_for_test(), None);
     assert!(
-        !reported
-            .iter()
-            .any(|message| matches!(message, Message::PathChecked { .. })),
+        !reported.iter().any(|message| matches!(
+            message,
+            Message::Panel(PanelMessage::PathChecked(
+                ncrs_files::path_field::PathChecked { .. }
+            ))
+        )),
         "no look at the disk was started: {reported:?}"
     );
     assert!(app.remote_ui.dialog.is_none(), "the keys come first");
@@ -153,9 +156,11 @@ async fn typing_an_sftp_address_tries_the_keys_and_opens_the_dialog_when_they_fa
 #[tokio::test]
 async fn a_bad_sftp_address_is_reported_and_leaves_the_field() {
     let mut app = App::with_environment(Environment::isolated()).0;
-    drop(app.update(Message::PathFieldInput("sftp://host:99999/x".into())));
+    drop(app.update(Message::Panel(PanelMessage::PathFieldInput(
+        "sftp://host:99999/x".into(),
+    ))));
 
-    settle(&mut app, Message::PathFieldSubmit).await;
+    settle(&mut app, Message::Panel(PanelMessage::PathFieldSubmit)).await;
 
     assert_eq!(app.status_error(), Some("Not a valid sftp:// address"));
     assert!(app.remote_ui.dialog.is_none());
@@ -694,8 +699,8 @@ async fn a_path_typed_over_a_server_folder_is_read_on_the_server() {
         ("~", HOME),
         ("/", "/"),
     ] {
-        drop(app.update(Message::PathFieldInput(typed.into())));
-        settle(&mut app, Message::PathFieldSubmit).await;
+        drop(app.update(Message::Panel(PanelMessage::PathFieldInput(typed.into()))));
+        settle(&mut app, Message::Panel(PanelMessage::PathFieldSubmit)).await;
         assert_eq!(app.panels.left.path, url(expected), "{typed}");
         assert_eq!(app.path_field_for_test(), None);
     }
@@ -745,7 +750,7 @@ async fn the_drive_menu_lists_connected_servers_and_delete_disconnects() {
     let mut app = app_over(&fixture).with_volumes(Vec::new);
     open(&mut app, PanelSide::Left, url("/home"), None).await;
 
-    app.settle_checks_for_test(Message::VolumeMenu(PanelSide::Left))
+    app.settle_checks_for_test(Message::Files(MenuMessage::VolumeMenu(PanelSide::Left)))
         .await;
     let menu = app.panels.volume_menu.as_ref().unwrap();
     assert_eq!(menu.servers.len(), 1);
@@ -774,7 +779,7 @@ async fn the_drive_menu_lists_connected_servers_and_delete_disconnects() {
 async fn choosing_a_server_in_the_drive_menu_opens_its_root() {
     let fixture = Fixture::connected().await;
     let mut app = app_over(&fixture).with_volumes(Vec::new);
-    app.settle_checks_for_test(Message::VolumeMenu(PanelSide::Right))
+    app.settle_checks_for_test(Message::Files(MenuMessage::VolumeMenu(PanelSide::Right)))
         .await;
 
     settle(&mut app, Message::Panel(PanelMessage::VolumeMenuActivate)).await;

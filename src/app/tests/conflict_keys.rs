@@ -102,7 +102,7 @@ async fn escape_does_not_stop_the_job_while_the_dialog_is_up() {
 
     let message = press(&app, Key::Named(Named::Escape), Modifiers::default());
     assert!(
-        !matches!(message, Some(Message::AbortJob)),
+        !matches!(message, Some(Message::Ops(OpsMessage::AbortJob))),
         "Escape stopped the copy instead of answering the question"
     );
 }

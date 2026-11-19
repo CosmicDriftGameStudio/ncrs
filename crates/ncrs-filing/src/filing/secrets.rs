@@ -1,10 +1,12 @@
 //! Text that must not reach a log: the typed key and the key being shown.
 
+use zeroize::Zeroizing;
+
 use super::*;
 
 /// Text a user typed that may be, or may contain, key material.
 #[derive(Clone, PartialEq, Default)]
-pub struct SecretText(String);
+pub struct SecretText(Zeroizing<String>);
 
 impl SecretText {
     pub fn as_str(&self) -> &str {
@@ -14,13 +16,13 @@ impl SecretText {
 
 impl From<&str> for SecretText {
     fn from(text: &str) -> Self {
-        Self(text.to_owned())
+        Self(Zeroizing::new(text.to_owned()))
     }
 }
 
 impl From<String> for SecretText {
     fn from(text: String) -> Self {
-        Self(text)
+        Self(Zeroizing::new(text))
     }
 }
 

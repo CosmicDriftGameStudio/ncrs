@@ -48,9 +48,9 @@ fn status_bar<'a>(app: &'a App, failure: Option<&'a str>) -> iced::Element<'a, M
         None,
         crate::ui::statusbar::PathBar {
             editing: None,
-            on_input: Message::PathFieldInput,
-            on_submit: Message::PathFieldSubmit,
-            on_copy: Message::PathFieldCancel,
+            on_input: |typed| Message::Panel(PanelMessage::PathFieldInput(typed)),
+            on_submit: Message::Panel(PanelMessage::PathFieldSubmit),
+            on_copy: Message::Panel(PanelMessage::PathFieldCancel),
             hit_line: None,
         },
     )

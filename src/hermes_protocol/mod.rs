@@ -22,7 +22,6 @@
 //! trash of its own, so neither the user's configuration, index nor keychain is
 //! touched.
 
-#![cfg(unix)]
 #![allow(
     clippy::print_stdout,
     clippy::too_many_lines,
@@ -57,7 +56,8 @@ mod tidy_flows;
 mod waiting;
 
 use scratch::{
-    copy_tree, count_files, count_indexable, link_tree, path_hash, pdfs_below, report_removal,
+    copy_tree, count_files, count_indexable, link_folder, link_tree, path_hash, pdfs_below,
+    report_removal,
 };
 use thread::{
     areas_in_plain_words, busy, chat, chip_labels, has_chip, is_ready, last_hermes_has_chips,
@@ -239,10 +239,10 @@ fn start_protocol(
         drop(ncrs_index::Index::create_plain(&index_path).unwrap());
     }
     if let Some(models) = env_path("NCRS_AI_MODELS_DIR") {
-        std::os::unix::fs::symlink(models, data.join("ai-models")).unwrap();
+        link_folder(&models, &data.join("ai-models")).unwrap();
     }
     if let Some(models) = env_path("NCRS_OCR_MODELS_DIR") {
-        std::os::unix::fs::symlink(models, data.join("ocr-models")).unwrap();
+        link_folder(&models, &data.join("ocr-models")).unwrap();
     }
     let trash_folder = scratch.join("trash");
     std::fs::create_dir_all(&trash_folder).unwrap();

@@ -1,5 +1,6 @@
 //! Showing the hits of a search in a panel, and leaving that list again.
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use iced::Task;
@@ -29,11 +30,10 @@ pub struct Hits {
 }
 
 /// The folder a hit lies in and its file name.
-pub fn folder_and_name(hit: &Path) -> Option<(PathBuf, String)> {
+pub fn folder_and_name(hit: &Path) -> Option<(PathBuf, OsString)> {
     Some((
         hit.parent().map(PathBuf::from)?,
-        hit.file_name()
-            .map(|name| name.to_string_lossy().into_owned())?,
+        hit.file_name().map(OsString::from)?,
     ))
 }
 

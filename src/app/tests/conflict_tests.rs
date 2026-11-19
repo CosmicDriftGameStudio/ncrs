@@ -207,7 +207,7 @@ async fn a_late_result_of_a_stopped_transfer_is_ignored() {
     let (mut app, _scratch) = with_conflict();
     let _first = app.start_transfer(TransferKind::Copy);
     let stale = app.ops.generation;
-    let _stopped = app.update(Message::AbortJob);
+    let _stopped = app.update(Message::Ops(OpsMessage::AbortJob));
     let _second = app.start_transfer(TransferKind::Copy);
     assert!(app.jobs.is_busy());
 

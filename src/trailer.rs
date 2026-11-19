@@ -487,10 +487,12 @@ fn sftp(recorder: &mut Recorder) {
     recorder.frame(0.5);
     let address = "sftp://alex@nas.local/home/alex";
     recorder.aim(Focus::new(0.0, 1030.0, 960.0, 50.0));
-    recorder.type_into(address, 4, Message::PathFieldInput);
+    recorder.type_into(address, 4, |typed| {
+        Message::Panel(PanelMessage::PathFieldInput(typed))
+    });
     recorder.frame(0.45);
     recorder.press_for_fixture(Key::Named(Named::Enter), Modifiers::default());
-    recorder.send(Message::PathFieldCancel);
+    recorder.send(Message::Panel(PanelMessage::PathFieldCancel));
     let folder = PathBuf::from(address);
     let listing = server_listing(address);
     let left = recorder.panel(PanelSide::Left);

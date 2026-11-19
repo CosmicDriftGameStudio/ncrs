@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::path::PathBuf;
 
 use ncrs_core::PanelSide;
@@ -73,7 +74,7 @@ pub enum Message {
         side: PanelSide,
         request_id: u64,
         remote: RemotePath,
-        select: Option<String>,
+        select: Option<OsString>,
         result: Result<Option<Secret>, String>,
     },
     /// The silent connection with a password from the keychain is done.
@@ -81,7 +82,7 @@ pub enum Message {
         side: PanelSide,
         request_id: u64,
         remote: RemotePath,
-        select: Option<String>,
+        select: Option<OsString>,
         password: Secret,
         result: Result<(), ConnectFailure>,
     },

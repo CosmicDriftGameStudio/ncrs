@@ -55,9 +55,9 @@ use crate::messages::{
     AboutMessage, AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage,
     CompareMessage, ConflictChoice, FilingStatusMessage, GrantMessage, HermesChatMessage,
     HermesFileMessage, HermesOverviewMessage, HermesPage, HitListMessage, KeyBindingsMessage,
-    Message, OcrModelsMessage, PanelSide, QuickFixMessage, QuickOpenMessage, RemoteMessage,
-    SavedQueriesMessage, SearchMessage, SettingChange, SettingsMessage, ShownTab,
-    ThemeFetchMessage, TitleBarMessage, TransferKind, TrashMessage,
+    MenuMessage, Message, OcrModelsMessage, OpsMessage, PanelSide, QuickFixMessage,
+    QuickOpenMessage, RemoteMessage, SavedQueriesMessage, SearchMessage, SettingChange,
+    SettingsMessage, ShownTab, ThemeFetchMessage, TitleBarMessage, TransferKind, TrashMessage,
 };
 #[cfg(target_os = "macos")]
 use crate::native_menu;
@@ -119,7 +119,7 @@ use ncrs_files::hit_list::HitList;
 use ncrs_files::hit_list_flow::HitListAsk;
 use ncrs_files::keys::{ContextMenuKey, VolumeMenuKey};
 use ncrs_files::load_flow::LoadStart;
-use ncrs_files::open_plan::{open_refused_text, CopyOf, OpenPlan, OpenSource};
+use ncrs_files::open_plan::{CopyOf, OpenSource};
 #[cfg(test)]
 use ncrs_files::volumes::VolumeMenu;
 use ncrs_files::{PanelMessage, Panels};
@@ -132,6 +132,7 @@ use ncrs_ops::keys::{
 };
 use ncrs_ops::prompt_view::PromptMessages;
 use ncrs_ops::PanelRows;
+#[cfg(test)]
 pub use ncrs_ops::RowFailure;
 #[cfg(test)]
 pub use ncrs_ops::Transfer;
@@ -160,8 +161,7 @@ use ncrs_settings::theme_fetch::install::download_theme;
 use ncrs_settings::theme_file::theme_file_entry;
 use ncrs_settings::Settings;
 use ncrs_ui_kit::focus::release_focus;
-#[cfg(test)]
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use tokio::sync::mpsc;
 
 mod bars;
@@ -199,7 +199,6 @@ use self::dialogs::*;
 pub use self::keys::*;
 
 use self::panels::*;
-use self::remote::*;
 use self::session::*;
 use self::settings::*;
 pub use self::startup::*;

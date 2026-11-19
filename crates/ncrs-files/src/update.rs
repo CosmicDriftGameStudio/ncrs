@@ -1,6 +1,6 @@
 //! What a panel message does to the panels, and what it asks the app for.
 
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 
 use iced::Task;
@@ -12,12 +12,14 @@ use ncrs_ui_kit::column_header::{column_spans, ColumnSpan};
 
 use crate::action::Action;
 use crate::ctx::Ctx;
+use crate::folder_size::walk_task;
 use crate::header_drag::{self, HeaderPhase, HeaderPress};
 use crate::header_menu::HeaderMenu;
 use crate::message::PanelMessage;
 use crate::name_match::{type_ahead_key, typed_key};
 use crate::panel::PanelState;
 use crate::panel_drag::{self, PanelDrag};
+use crate::path_field::TypedPathCtx;
 use crate::state::Panels;
 
 /// Which way Alt+Left / Alt+Right walks a panel's history.
@@ -38,9 +40,7 @@ fn reload_after_change_on_disk(panels: &Panels, side: PanelSide) -> Option<Actio
     Some(Action::Load {
         side,
         path: panel.path.clone(),
-        select: panel
-            .selected_entry()
-            .map(|entry| entry.name.to_string_lossy().into_owned()),
+        select: panel.selected_entry().map(|entry| entry.name.clone()),
     })
 }
 
@@ -308,6 +308,32 @@ pub fn update(
             activate_row(panels, ctx, (side, index, &name), &mut actions);
         }
 
+        PanelMessage::PathFieldInput(typed) => {
+            panels.set_path_field(Some(typed));
+            actions.push(Action::LeaveCommandLine);
+        }
+        PanelMessage::PathFieldSubmit => {
+            let typed_path = TypedPathCtx {
+                lang: ctx.lang,
+                home: ctx.home,
+                session_home: ctx.session_home,
+            };
+            let (check, asked) = panels.go_to_typed_path(&typed_path);
+            task = check.map(PanelMessage::PathChecked);
+            actions.extend(asked);
+        }
+        PanelMessage::PathChecked(checked) => {
+            actions.extend(panels.finish_path_check(ctx.lang, checked));
+        }
+        PanelMessage::PathFieldCancel => {
+            panels.set_path_field(None);
+            panels.end_rename();
+            actions.push(Action::ReleaseFocus);
+        }
+        PanelMessage::FolderSizeMeasured { run, folder, size } => {
+            let walk = panels.folder_size_measured(run, folder, size, rows);
+            task = walk_task(walk);
+        }
         PanelMessage::RenameStart => task = panels.begin_rename(),
         PanelMessage::RenameInput(typed) => panels.type_rename(typed),
         PanelMessage::VolumeMenuMove(delta) => {
@@ -465,7 +491,7 @@ fn step_history(panels: &mut Panels, ctx: &Ctx<'_>, direction: HistoryDirection)
         // opening it; going up puts the cursor on the folder just left.
         let left = RemotePath::parse(&current)
             .filter(|from| from.parent().as_ref() == Some(&place))
-            .and_then(|from| from.file_name().map(str::to_owned));
+            .and_then(|from| from.file_name().map(OsString::from));
         (target, left)
     } else {
         let resolved = (ctx.nearest_existing_directory)(&target).unwrap_or(target);
@@ -474,7 +500,7 @@ fn step_history(panels: &mut Panels, ctx: &Ctx<'_>, direction: HistoryDirection)
             .strip_prefix(&resolved)
             .ok()
             .and_then(|below| below.components().next())
-            .map(|first| first.as_os_str().to_string_lossy().into_owned());
+            .map(|first| first.as_os_str().to_os_string());
         (resolved, select)
     };
     vec![
@@ -544,7 +570,7 @@ pub fn go_up(panels: &Panels, side: PanelSide) -> Option<Action> {
     // the root and does not know the root of a server.
     if let Some(place) = RemotePath::parse(current) {
         let above = place.parent()?;
-        let came_from = place.file_name().map(str::to_owned);
+        let came_from = place.file_name().map(OsString::from);
         return Some(Action::Load {
             side,
             path: above.to_path_buf(),
@@ -552,9 +578,7 @@ pub fn go_up(panels: &Panels, side: PanelSide) -> Option<Action> {
         });
     }
     let parent = current.parent().map(PathBuf::from)?;
-    let came_from = current
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned());
+    let came_from = current.file_name().map(OsStr::to_os_string);
     Some(Action::Load {
         side,
         path: parent,

@@ -480,7 +480,7 @@ impl App {
         left: PathBuf,
         right: PathBuf,
         home: PathBuf,
-        cursors: [Option<String>; 2],
+        cursors: [Option<OsString>; 2],
     ) -> (Self, Task<Message>) {
         let [left_cursor, right_cursor] = cursors;
         let notes_root = home.join("Notes");

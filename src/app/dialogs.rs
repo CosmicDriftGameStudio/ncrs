@@ -270,7 +270,9 @@ impl App {
             return if self.dialog_focus == transfer_ui::ABORT_FOCUS {
                 self.abort_job()
             } else {
-                self.update_transfer_dialog(TransferDialogMessage::Background)
+                self.update_ops(OpsMessage::TransferDialog(
+                    TransferDialogMessage::Background,
+                ))
             };
         }
         Task::none()

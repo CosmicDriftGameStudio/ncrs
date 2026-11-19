@@ -227,7 +227,7 @@ async fn a_click_on_a_favourite_row_opens_its_folder() {
     let favourite = scratch.path().join("c");
     let mut app = started_in(scratch.path()).with_volumes(two_drives);
     app.panels.favourites = vec![favourite.clone()];
-    app.settle_checks_for_test(Message::VolumeMenu(PanelSide::Left))
+    app.settle_checks_for_test(Message::Files(MenuMessage::VolumeMenu(PanelSide::Left)))
         .await;
 
     settle(&mut app, Message::Panel(PanelMessage::VolumeMenuClick(2))).await;
@@ -239,12 +239,12 @@ async fn a_click_on_a_favourite_row_opens_its_folder() {
 #[tokio::test]
 async fn the_menu_opens_with_a_favourite_and_no_drives() {
     let mut app = App::with_fixed_panels().with_volumes(Vec::new);
-    app.settle_checks_for_test(Message::VolumeMenu(PanelSide::Left))
+    app.settle_checks_for_test(Message::Files(MenuMessage::VolumeMenu(PanelSide::Left)))
         .await;
     assert!(!app.volume_menu_is_open());
 
     app.panels.favourites = vec![PathBuf::from("/nowhere/at/all")];
-    app.settle_checks_for_test(Message::VolumeMenu(PanelSide::Left))
+    app.settle_checks_for_test(Message::Files(MenuMessage::VolumeMenu(PanelSide::Left)))
         .await;
     assert!(app.volume_menu_is_open());
 }
@@ -269,7 +269,7 @@ async fn a_missing_favourite_reports_and_stays_in_the_list() {
 async fn delete_removes_a_favourite_row_and_ignores_a_drive_row() {
     let mut app = App::with_fixed_panels().with_volumes(two_drives);
     app.panels.favourites = vec![PathBuf::from("/x/one"), PathBuf::from("/x/two")];
-    app.settle_checks_for_test(Message::VolumeMenu(PanelSide::Left))
+    app.settle_checks_for_test(Message::Files(MenuMessage::VolumeMenu(PanelSide::Left)))
         .await;
     drop(app.update(Message::Panel(PanelMessage::VolumeMenuFirst)));
 
@@ -304,7 +304,7 @@ async fn delete_removes_a_favourite_row_and_ignores_a_drive_row() {
 async fn removing_the_last_favourite_without_drives_leaves_the_trash_row_open() {
     let mut app = App::with_fixed_panels().with_volumes(Vec::new);
     app.panels.favourites = vec![PathBuf::from("/x/one")];
-    app.settle_checks_for_test(Message::VolumeMenu(PanelSide::Left))
+    app.settle_checks_for_test(Message::Files(MenuMessage::VolumeMenu(PanelSide::Left)))
         .await;
 
     drop(app.update(Message::Panel(PanelMessage::VolumeMenuRemove)));

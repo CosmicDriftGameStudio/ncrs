@@ -40,10 +40,10 @@ fn ready_hermes_without_locations(config_dir: &tempfile::TempDir) -> App {
 }
 
 fn submenu_items(app: &mut App) -> Vec<(HermesAction, bool)> {
-    drop(app.update(Message::ContextMenuAt {
+    drop(app.update(Message::Files(MenuMessage::ContextMenuAt {
         side: LEFT,
         index: DOCUMENTS,
-    }));
+    })));
     let menu = app.panels.context_menu.as_mut().unwrap();
     menu.select_last();
     assert!(menu.selected_is_hermes());

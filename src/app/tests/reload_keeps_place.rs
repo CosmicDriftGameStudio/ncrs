@@ -73,7 +73,7 @@ fn an_explicit_selection_wins_over_the_remembered_row() {
         PathBuf::from("/left"),
         panel_with(&["a", "b", "c"]).entries,
         None,
-        Some("c"),
+        Some(OsStr::new("c")),
         10,
     );
 
@@ -169,4 +169,38 @@ fn tags_survive_a_reload() {
         1,
         "the tag was lost in the reload that followed the operation"
     );
+}
+
+/// A name that is not UTF-8 must be found again after a reload, whether the
+/// reload remembers the cursor or is told the name.
+#[cfg(unix)]
+#[test]
+fn a_name_that_is_not_utf8_keeps_the_cursor_across_a_reload() {
+    use std::os::unix::ffi::OsStrExt as _;
+
+    let odd = OsStr::from_bytes(b"caf\xe9-\xff.txt");
+    let other = OsStr::from_bytes(b"caf\xe9-\xfe.txt");
+    let names = [
+        OsString::from("a"),
+        other.to_os_string(),
+        odd.to_os_string(),
+    ];
+    let build = || {
+        let mut p = panel_with(&["a", "b", "c"]);
+        for (entry, name) in p.entries.iter_mut().zip(&names) {
+            entry.name = name.clone();
+            entry.path = PathBuf::from("/left").join(name);
+        }
+        p
+    };
+
+    let mut remembered = build();
+    remembered.selected = 2;
+    remembered.apply_listing(PathBuf::from("/left"), build().entries, None, None, 10);
+    assert_eq!(remembered.entries[remembered.selected].name, odd);
+
+    let mut told = build();
+    told.selected = 0;
+    told.apply_listing(PathBuf::from("/left"), build().entries, None, Some(odd), 10);
+    assert_eq!(told.entries[told.selected].name, odd);
 }

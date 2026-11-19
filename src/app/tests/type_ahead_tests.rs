@@ -174,6 +174,6 @@ fn printable_keys_route_to_type_ahead_but_not_with_ctrl_or_cmd_and_only_on_a_mac
     };
     assert_eq!(
         route_key(&prompt, Key::Character("a".into()), Modifiers::default()),
-        Some(Message::PromptInput("a".into()))
+        Some(Message::Ops(OpsMessage::PromptInput("a".into())))
     );
 }

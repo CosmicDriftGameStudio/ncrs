@@ -335,6 +335,7 @@ impl App {
         self.panels.left.selection.toggle(&path);
     }
 
+    #[cfg(target_os = "macos")]
     pub fn tag_all_for_test(&mut self) {
         let mut selection = crate::selection::SelectionSet::new();
         selection.tag_all(&self.panels.left.entries);
@@ -857,7 +858,7 @@ fn is_check_answer(message: &Message) -> bool {
     use ncrs_ops::OpsMessage;
     matches!(
         message,
-        Message::VolumeMenuFacts { .. }
+        Message::Files(MenuMessage::VolumeMenuFacts { .. })
             | Message::Ops(
                 OpsMessage::TransferChecked { .. }
                     | OpsMessage::ExternalChecked { .. }

@@ -34,11 +34,11 @@ fn alt_f1_and_alt_f2_open_the_menu_for_their_panel() {
     assert!(alt.alt());
     assert_eq!(
         route(Named::F1, alt),
-        Some(Message::VolumeMenu(PanelSide::Left))
+        Some(Message::Files(MenuMessage::VolumeMenu(PanelSide::Left)))
     );
     assert_eq!(
         route(Named::F2, alt),
-        Some(Message::VolumeMenu(PanelSide::Right))
+        Some(Message::Files(MenuMessage::VolumeMenu(PanelSide::Right)))
     );
     assert_eq!(
         route(Named::F1, Modifiers::default()),
@@ -94,7 +94,9 @@ fn movement_repeats_but_choosing_does_not() {
     assert!(repeats(&Message::Panel(PanelMessage::VolumeMenuFirst)));
     assert!(repeats(&Message::Panel(PanelMessage::VolumeMenuLast)));
     assert!(!repeats(&Message::Panel(PanelMessage::VolumeMenuActivate)));
-    assert!(!repeats(&Message::VolumeMenu(PanelSide::Left)));
+    assert!(!repeats(&Message::Files(MenuMessage::VolumeMenu(
+        PanelSide::Left
+    ))));
 }
 
 #[test]
@@ -120,7 +122,7 @@ fn the_highlight_stops_at_both_ends() {
 #[tokio::test]
 async fn the_menu_opens_for_the_panel_that_asked() {
     let mut app = App::with_fixed_panels().with_volumes(drives);
-    app.settle_checks_for_test(Message::VolumeMenu(PanelSide::Right))
+    app.settle_checks_for_test(Message::Files(MenuMessage::VolumeMenu(PanelSide::Right)))
         .await;
     assert_eq!(
         app.panels.volume_menu.as_ref().unwrap().side,
@@ -139,7 +141,7 @@ async fn the_menu_opens_for_the_panel_that_asked() {
 async fn a_dialog_keeps_the_menu_from_opening() {
     let mut app = App::with_fixed_panels().with_volumes(drives);
     app.open_delete_dialog_for_test(1, false);
-    app.settle_checks_for_test(Message::VolumeMenu(PanelSide::Left))
+    app.settle_checks_for_test(Message::Files(MenuMessage::VolumeMenu(PanelSide::Left)))
         .await;
     assert!(!app.volume_menu_is_open());
 }
@@ -147,7 +149,7 @@ async fn a_dialog_keeps_the_menu_from_opening() {
 #[tokio::test]
 async fn choosing_a_drive_loads_it_and_activates_its_panel() {
     let mut app = App::with_fixed_panels().with_volumes(drives);
-    app.settle_checks_for_test(Message::VolumeMenu(PanelSide::Right))
+    app.settle_checks_for_test(Message::Files(MenuMessage::VolumeMenu(PanelSide::Right)))
         .await;
     let _down = app.update(Message::Panel(PanelMessage::VolumeMenuMove(1)));
     let _enter = app.update(Message::Panel(PanelMessage::VolumeMenuActivate));

@@ -372,10 +372,10 @@ mod tests {
 
         let mut context = showcase_app();
         context.set_pointer_for_test(iced::Point::new(260.0, 150.0));
-        drop(context.update(Message::ContextMenuAt {
+        drop(context.update(Message::Files(MenuMessage::ContextMenuAt {
             side: PanelSide::Left,
             index: 5,
-        }));
+        })));
         write_screenshot(&context, "context-menu.png");
 
         let mut delete = showcase_app();
@@ -430,10 +430,10 @@ mod tests {
 
             let mut context = showcase();
             context.set_pointer_for_test(iced::Point::new(260.0, 150.0));
-            drop(context.update(Message::ContextMenuAt {
+            drop(context.update(Message::Files(MenuMessage::ContextMenuAt {
                 side: PanelSide::Left,
                 index: 5,
-            }));
+            })));
 
             let mut menu = showcase();
             menu.open_volume_menu_for_test(PanelSide::Left, drives());

@@ -1,6 +1,7 @@
 use super::trash::{trash_session, SHIFT_F8};
 use crate::e2e_tests::*;
 use crate::keymap::KeymapMessages as _;
+use crate::messages::OpsMessage;
 use iced::keyboard::key::Named;
 
 /// Deleting one file and answering the dialog reloads through the real read
@@ -176,7 +177,7 @@ fn shift_f8_confirmed_deletes_permanently() {
     // The button does the same as the chord.
     cursor_to(&mut session, "beta.txt");
     session.press_with(Key::Named(SHIFT_F8.0), SHIFT_F8.1);
-    session.send(Message::DeleteConfirm);
+    session.send(Message::Ops(OpsMessage::DeleteConfirm));
     assert!(
         !dir.path().join("beta.txt").exists(),
         "button did not delete"

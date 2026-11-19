@@ -1,4 +1,5 @@
 use crate::app::*;
+use crate::messages::MenuMessage;
 
 fn delete_dialog_key(
     prompt: &PromptKeyState,
@@ -16,7 +17,7 @@ fn delete_dialog_key(
             (permanent
                 && bound_message(&prompt.keymap, key, key_modifiers, scope)
                     == Some(Message::Delete { permanent: true }))
-            .then_some(Message::DeleteConfirm)
+            .then_some(Message::Ops(OpsMessage::DeleteConfirm))
         }),
     }
 }
@@ -443,13 +444,13 @@ pub(in crate::app) fn repeats(message: &Message) -> bool {
             | Message::Panel(PanelMessage::VolumeMenuMove(_))
             | Message::Panel(PanelMessage::VolumeMenuFirst)
             | Message::Panel(PanelMessage::VolumeMenuLast)
-            | Message::PromptInput(_)
+            | Message::Ops(OpsMessage::PromptInput(_))
             | Message::CommandLine(
                 CommandLineMessage::HistoryPrevious | CommandLineMessage::HistoryNext,
             )
-            | Message::ContextMenuMove(_)
-            | Message::ContextMenuFirst
-            | Message::ContextMenuLast
+            | Message::Files(MenuMessage::ContextMenuMove(_))
+            | Message::Files(MenuMessage::ContextMenuFirst)
+            | Message::Files(MenuMessage::ContextMenuLast)
             | Message::QuickFix(QuickFixMessage::Move(_))
             | Message::QuickOpen(QuickOpenMessage::Move(_))
             | Message::CommandPalette(CommandPaletteMessage::Move(_))
@@ -481,23 +482,23 @@ fn prompt_key(prompt: &PromptKeyState, key: &Key) -> Option<Message> {
     }
     let mut name = prompt.typed.to_string();
     match key.as_ref() {
-        Key::Named(Named::Enter) => Some(Message::PromptSubmit),
-        Key::Named(Named::Escape) => Some(Message::PromptCancel),
+        Key::Named(Named::Enter) => Some(Message::Ops(OpsMessage::PromptSubmit)),
+        Key::Named(Named::Escape) => Some(Message::Ops(OpsMessage::PromptCancel)),
         // Backspace edits the text; it must not walk to the parent directory.
         Key::Named(Named::Backspace) => {
             name.pop();
-            Some(Message::PromptInput(name))
+            Some(Message::Ops(OpsMessage::PromptInput(name)))
         }
         // No filtering: a directory name may contain anything but a path
         // separator, and `Prompt::validate` reports the rest.
         Key::Character(c) => {
             name.push_str(c);
-            Some(Message::PromptInput(name))
+            Some(Message::Ops(OpsMessage::PromptInput(name)))
         }
         // iced delivers the space bar as a named key, not as a character.
         Key::Named(Named::Space) => {
             name.push(' ');
-            Some(Message::PromptInput(name))
+            Some(Message::Ops(OpsMessage::PromptInput(name)))
         }
         _ => None,
     }

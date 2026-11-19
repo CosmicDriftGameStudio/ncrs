@@ -283,6 +283,7 @@ mod abort {
         step(&FlowCtx {
             lang: Language::default(),
             trash: &trash,
+            trash_rows: 10,
             jobs_busy: false,
             start_blocked: false,
             transfer_dialog_open: false,

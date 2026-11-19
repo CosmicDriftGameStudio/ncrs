@@ -1,8 +1,6 @@
 //! Folder merge and a cancel half way through, on trees of 50 to 100 entries
 //! at the real disk, driven by the real keys and the real conflict dialog.
 
-#![cfg(unix)]
-
 use std::path::{Path, PathBuf};
 
 use iced::keyboard::key::Named;

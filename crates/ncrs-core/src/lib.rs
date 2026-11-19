@@ -5,6 +5,7 @@ mod column;
 mod compare_mark;
 mod details;
 mod entry;
+pub mod facts;
 mod folder_size;
 mod found_document;
 mod function_keys;

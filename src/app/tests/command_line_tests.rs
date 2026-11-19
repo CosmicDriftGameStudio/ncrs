@@ -107,7 +107,9 @@ fn the_history_keys_repeat() {
 #[test]
 fn focusing_ends_a_path_edit_and_is_published_to_the_key_routing() {
     let mut app = App::with_fixed_panels();
-    drop(app.update(Message::PathFieldInput("/typed".into())));
+    drop(app.update(Message::Panel(PanelMessage::PathFieldInput(
+        "/typed".into(),
+    ))));
     drop(app.update(Message::CommandLine(CommandLineMessage::Focus)));
     assert_eq!(app.path_field_for_test(), None);
     assert!(app.command_line_for_test().is_focused());
@@ -119,7 +121,9 @@ fn focusing_ends_a_path_edit_and_is_published_to_the_key_routing() {
 fn typing_in_the_path_field_ends_the_command_line() {
     let mut app = focused_app();
     type_line(&mut app, "ls");
-    drop(app.update(Message::PathFieldInput("/typed".into())));
+    drop(app.update(Message::Panel(PanelMessage::PathFieldInput(
+        "/typed".into(),
+    ))));
     assert!(!app.command_line_for_test().is_focused());
     assert_eq!(app.command_line_for_test().typed(), "");
 }
@@ -299,7 +303,7 @@ fn focusing_does_nothing_while_an_overlay_is_open() {
 async fn an_overlay_that_opens_while_focused_takes_the_focus_away() {
     let mut app = focused_app();
     type_line(&mut app, "ls");
-    app.settle_checks_for_test(Message::VolumeMenu(PanelSide::Left))
+    app.settle_checks_for_test(Message::Files(MenuMessage::VolumeMenu(PanelSide::Left)))
         .await;
     assert!(app.panels.volume_menu.is_some());
     assert!(!app.command_line_for_test().is_focused());

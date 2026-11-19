@@ -10,6 +10,7 @@ use std::sync::Arc;
 use ncrs_core::{FolderSize, PanelSide};
 use ncrs_fs::SortColumn;
 
+use crate::message::PanelMessage;
 use crate::panel::PanelState;
 use crate::state::Panels;
 
@@ -33,6 +34,22 @@ pub struct FolderWalk {
     pub run: u64,
     pub folder: PathBuf,
     pub stop: Arc<AtomicBool>,
+}
+
+/// The walk of one folder, off the UI thread; nothing when the run is over.
+pub fn walk_task(walk: Option<FolderWalk>) -> iced::Task<PanelMessage> {
+    let Some(FolderWalk { run, folder, stop }) = walk else {
+        return iced::Task::none();
+    };
+    let walked = folder.clone();
+    iced::Task::perform(
+        tokio::task::spawn_blocking(move || ncrs_fs::measure_folder(&walked, &stop)),
+        move |done| PanelMessage::FolderSizeMeasured {
+            run,
+            folder: folder.clone(),
+            size: done.ok().flatten(),
+        },
+    )
 }
 
 /// The folders "Compute folder sizes" acts on: the tagged ones, else the one

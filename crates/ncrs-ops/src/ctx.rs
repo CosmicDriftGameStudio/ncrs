@@ -24,6 +24,8 @@ pub struct Ctx {
 pub struct FlowCtx<'a> {
     pub lang: Language,
     pub trash: &'a Arc<dyn Trash>,
+    /// Rows of the trash view that fit the window.
+    pub trash_rows: usize,
     /// A job runs.
     pub jobs_busy: bool,
     /// A job runs, or a prompt or a conflict question holds the keyboard.

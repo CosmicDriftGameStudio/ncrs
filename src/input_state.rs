@@ -1,6 +1,8 @@
 //! The two input sources the keyboard route cannot see: the Option tap and the
 //! pointer.
 
+use crate::messages::MenuMessage;
+use crate::messages::OpsMessage;
 use iced::keyboard::{self, key::Named, Key, Modifiers};
 use iced::{event, mouse, window, Point};
 
@@ -146,7 +148,7 @@ impl InputState {
             ),
             (
                 self.transfer_dialog,
-                Message::TransferDialog(TransferDialogMessage::Cancel),
+                Message::Ops(OpsMessage::TransferDialog(TransferDialogMessage::Cancel)),
             ),
             (
                 self.permissions_dialog,
@@ -198,7 +200,7 @@ impl InputState {
                 self.alt_tap.key_pressed(key);
                 let leaves_field = matches!(key, Key::Named(Named::Escape | Named::Tab));
                 if self.path_editing && leaves_field {
-                    return Some(Message::PathFieldCancel);
+                    return Some(Message::Panel(PanelMessage::PathFieldCancel));
                 }
                 if let Some(close) = self.closes_overlay(key) {
                     return Some(close);
@@ -209,7 +211,7 @@ impl InputState {
                     return None;
                 }
                 Some(if self.job_running {
-                    Message::AbortJob
+                    Message::Ops(OpsMessage::AbortJob)
                 } else {
                     Message::Search(SearchMessage::Close)
                 })
@@ -242,7 +244,7 @@ impl InputState {
                     return (nothing_else_up && self.monitor_menu)
                         .then_some(Message::Monitor(ncrs_monitor::MonitorMessage::MenuKey));
                 }
-                (nothing_else_up).then_some(Message::ContextMenuKey)
+                (nothing_else_up).then_some(Message::Files(MenuMessage::ContextMenuKey))
             }
             event::Event::Window(window::Event::Unfocused) => {
                 self.alt_tap.cancel();
@@ -295,7 +297,7 @@ mod tests {
                 modifiers(Modifiers::empty()),
             ],
         );
-        assert_eq!(messages, [Message::ContextMenuKey]);
+        assert_eq!(messages, [Message::Files(MenuMessage::ContextMenuKey)]);
     }
 
     #[test]
@@ -421,7 +423,7 @@ mod tests {
         );
         assert_eq!(
             after_editing,
-            [Message::ContextMenuKey],
+            [Message::Files(MenuMessage::ContextMenuKey)],
             "the next tap still works"
         );
     }
@@ -442,7 +444,7 @@ mod tests {
         input.job_running = true;
         assert_eq!(
             input.handle(&escape, event::Status::Ignored),
-            Some(Message::AbortJob),
+            Some(Message::Ops(OpsMessage::AbortJob)),
             "a running job is stopped before the search is closed"
         );
         input.job_running = false;
@@ -595,7 +597,7 @@ mod tests {
         for key in [Named::Escape, Named::Tab] {
             assert_eq!(
                 input.handle(&key_pressed(Key::Named(key)), event::Status::Captured),
-                Some(Message::PathFieldCancel)
+                Some(Message::Panel(PanelMessage::PathFieldCancel))
             );
         }
         let letter = key_pressed(Key::Character("a".into()));

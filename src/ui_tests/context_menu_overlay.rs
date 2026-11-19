@@ -1,6 +1,6 @@
 use super::*;
 use crate::context_menu::ContextAction;
-use crate::messages::PanelSide;
+use crate::messages::{MenuMessage, PanelSide};
 use iced::{mouse, Event, Point};
 
 /// The pointer is placed so the image does not depend on where a test
@@ -8,10 +8,10 @@ use iced::{mouse, Event, Point};
 fn app_with_menu() -> App {
     let mut app = App::with_fixed_panels();
     app.set_pointer_for_test(Point::new(150.0, 130.0));
-    drop(app.update(Message::ContextMenuAt {
+    drop(app.update(Message::Files(MenuMessage::ContextMenuAt {
         side: PanelSide::Left,
         index: 2,
-    }));
+    })));
     app
 }
 
@@ -76,7 +76,10 @@ fn a_click_on_an_entry_runs_it() {
         })
         .unwrap();
     let messages: Vec<Message> = sim.into_messages().collect();
-    assert_eq!(messages, [Message::ContextMenuClick(index)]);
+    assert_eq!(
+        messages,
+        [Message::Files(MenuMessage::ContextMenuClick(index))]
+    );
 }
 
 #[test]
@@ -86,10 +89,10 @@ fn a_greyed_out_entry_does_not_answer_a_click() {
 
     let mut app = App::with_fixed_panels();
     app.set_pointer_for_test(Point::new(150.0, 130.0));
-    drop(app.update(Message::ContextMenuAt {
+    drop(app.update(Message::Files(MenuMessage::ContextMenuAt {
         side: PanelSide::Left,
         index: 1,
-    }));
+    })));
     let menu = app.context_menu_for_test().unwrap();
     let mut top = menu.origin().y + MENU_PADDING;
     let mut view_row = None;

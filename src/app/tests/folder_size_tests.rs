@@ -89,11 +89,11 @@ fn run_id(app: &App) -> u64 {
 }
 
 fn measured(app: &mut App, run: u64, name: &str, bytes: u64) {
-    drop(app.update(Message::FolderSizeMeasured {
+    drop(app.update(Message::Panel(PanelMessage::FolderSizeMeasured {
         run,
         folder: directory().join(name),
         size: Some(size(bytes)),
-    }));
+    })));
 }
 
 fn names(app: &App) -> Vec<String> {
@@ -186,14 +186,14 @@ async fn a_partial_value_is_marked() {
     drop(app.update(Message::ComputeFolderSizes));
 
     let id = run_id(&app);
-    drop(app.update(Message::FolderSizeMeasured {
+    drop(app.update(Message::Panel(PanelMessage::FolderSizeMeasured {
         run: id,
         folder: directory().join("alpha"),
         size: Some(fs::FolderSize {
             bytes: 1024,
             partial: true,
         }),
-    }));
+    })));
 
     assert_eq!(shown(&app, "alpha"), "1.0 KB+");
 }
@@ -205,11 +205,11 @@ async fn a_stopped_walk_leaves_no_value_behind() {
     drop(app.update(Message::ComputeFolderSizes));
 
     let id = run_id(&app);
-    drop(app.update(Message::FolderSizeMeasured {
+    drop(app.update(Message::Panel(PanelMessage::FolderSizeMeasured {
         run: id,
         folder: directory().join("alpha"),
         size: None,
-    }));
+    })));
 
     assert_eq!(shown(&app, "alpha"), "<DIR>");
     assert!(app.panels.folder_sizes.is_empty());
@@ -283,7 +283,7 @@ async fn the_abort_key_stops_a_running_walk() {
     drop(app.update(Message::ComputeFolderSizes));
     let stop = Arc::clone(&app.panels.folder_size_run.as_ref().unwrap().stop);
 
-    drop(app.update(Message::AbortJob));
+    drop(app.update(Message::Ops(OpsMessage::AbortJob)));
 
     assert!(stop.load(Ordering::Relaxed));
     assert!(app.panels.folder_size_run.is_none());

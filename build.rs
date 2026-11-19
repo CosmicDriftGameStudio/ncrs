@@ -7,7 +7,8 @@
 //!
 //! The condition is the one of `dynamic_backends` in crates/ncrs-ai/build.rs.
 //!
-//! On Windows the icon (assets/ncrs.ico) and the version info (the Details tab
+//! On Windows the icon (assets/ncrs.ico), the manifest (assets/ncrs.manifest,
+//! long paths past MAX_PATH) and the version info (the Details tab
 //! of the file's properties) are compiled into ncrs.exe.
 //!
 //! `NCRS_DISPLAY_VERSION` is the version the status bar shows: the plain
@@ -113,12 +114,19 @@ fn embed_windows_resources() {
     use std::path::PathBuf;
 
     println!("cargo:rerun-if-changed=assets/ncrs.ico");
+    println!("cargo:rerun-if-changed=assets/ncrs.manifest");
     let manifest_dir = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("set by cargo"));
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("set by cargo"));
     // The resource compiler reads backslashes in a string as escapes.
     let icon = manifest_dir
         .join("assets")
         .join("ncrs.ico")
+        .display()
+        .to_string()
+        .replace('\\', "/");
+    let manifest = manifest_dir
+        .join("assets")
+        .join("ncrs.manifest")
         .display()
         .to_string()
         .replace('\\', "/");
@@ -132,6 +140,8 @@ fn embed_windows_resources() {
 
     let mut rc = String::new();
     writeln!(rc, "1 ICON \"{icon}\"").expect("writing to a String");
+    // 24 = RT_MANIFEST, 1 = the id of an executable's own manifest.
+    writeln!(rc, "1 24 \"{manifest}\"").expect("writing to a String");
     // 0x0409 = English (US), 0x04B0 = Unicode.
     writeln!(
         rc,
@@ -167,5 +177,5 @@ fn embed_windows_resources() {
     std::fs::write(&rc_path, rc).expect("the resource script is written to OUT_DIR");
     embed_resource::compile(rc_path, embed_resource::NONE)
         .manifest_required()
-        .expect("the icon and version info are embedded");
+        .expect("the icon, manifest and version info are embedded");
 }

@@ -5,30 +5,50 @@ impl App {
         self.panels.context_menu = None;
     }
 
-    pub(in crate::app) fn update_context_menu(&mut self, message: Message) -> Task<Message> {
+    pub(in crate::app) fn update_files_menu(&mut self, message: MenuMessage) -> Task<Message> {
+        match message {
+            MenuMessage::VolumeMenu(side) => self.request_volume_menu(side, false),
+            MenuMessage::VolumeMenuFacts {
+                request,
+                side,
+                on_favourites,
+                facts,
+            } => {
+                if request == self.panels.volume_menu_request {
+                    let overlay_is_open = self.overlay_is_open();
+                    self.panels
+                        .open_volume_menu_on(side, on_favourites, overlay_is_open, facts);
+                }
+                Task::none()
+            }
+            context_menu_message => self.update_context_menu(context_menu_message),
+        }
+    }
+
+    fn update_context_menu(&mut self, message: MenuMessage) -> Task<Message> {
         let nav = match message {
-            Message::ContextMenuAt { side, index } => {
+            MenuMessage::ContextMenuAt { side, index } => {
                 let pointer = self.input.lock().pointer;
                 self.open_context_menu(side, index, Some(pointer));
                 return Task::none();
             }
-            Message::ContextMenuKey => {
+            MenuMessage::ContextMenuKey => {
                 let side = self.panels.active;
                 let index = self.panel(side).selected;
                 self.open_context_menu(side, index, None);
                 return Task::none();
             }
-            Message::ContextMenuActivate => return self.run_context_menu_entry(),
-            Message::ContextMenuClick(index) => return self.click_context_menu(index, false),
-            Message::ContextMenuSubClick(index) => return self.click_context_menu(index, true),
-            Message::ContextMenuMove(delta) => MenuNav::Move(delta),
-            Message::ContextMenuFirst => MenuNav::First,
-            Message::ContextMenuLast => MenuNav::Last,
-            Message::ContextMenuHover(index) => MenuNav::Hover(index),
-            Message::ContextMenuOpenSub => MenuNav::OpenSub,
-            Message::ContextMenuCloseSub => MenuNav::CloseSub,
-            Message::ContextMenuSubHover(index) => MenuNav::SubHover(index),
-            Message::ContextMenuClose => MenuNav::Close,
+            MenuMessage::ContextMenuActivate => return self.run_context_menu_entry(),
+            MenuMessage::ContextMenuClick(index) => return self.click_context_menu(index, false),
+            MenuMessage::ContextMenuSubClick(index) => return self.click_context_menu(index, true),
+            MenuMessage::ContextMenuMove(delta) => MenuNav::Move(delta),
+            MenuMessage::ContextMenuFirst => MenuNav::First,
+            MenuMessage::ContextMenuLast => MenuNav::Last,
+            MenuMessage::ContextMenuHover(index) => MenuNav::Hover(index),
+            MenuMessage::ContextMenuOpenSub => MenuNav::OpenSub,
+            MenuMessage::ContextMenuCloseSub => MenuNav::CloseSub,
+            MenuMessage::ContextMenuSubHover(index) => MenuNav::SubHover(index),
+            MenuMessage::ContextMenuClose => MenuNav::Close,
             _ => return Task::none(),
         };
         self.panels.navigate_context_menu(nav);

@@ -82,6 +82,9 @@ pub struct Ctx<'a> {
     /// The first of a path and its ancestors that is a folder.
     pub nearest_existing_directory: fn(&Path) -> Option<PathBuf>,
     pub lang: Language,
+    pub home: &'a Path,
+    /// The home folder of the open session on a server, if there is one.
+    pub session_home: &'a dyn Fn(&ServerId) -> Option<String>,
     /// The servers saved in the settings: closing one from the drive menu
     /// keeps its row.
     pub saved_servers: &'a [ServerId],

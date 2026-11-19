@@ -10,7 +10,7 @@ use iced_test::futures::futures::StreamExt as _;
 use ncrs_hermes_chat::{ChipReply, Message as ChatMessage};
 use ncrs_index::{InMemoryKeyStore, KeyStore, KeyStoreError};
 
-use super::scratch::pdfs_below;
+use super::scratch::{link_folder, pdfs_below};
 use super::thread::{busy, chat, chip_labels, entry_text, is_ready, whole_thread};
 use super::{picker, TICK_EVERY, WINDOW};
 use crate::app::{App, Environment};
@@ -279,7 +279,7 @@ fn fresh(root: &Path, name: &str, config: Option<&str>, model: Option<&PathBuf>)
         std::fs::write(data.join("config.toml"), text).unwrap();
     }
     if let Some(models) = model {
-        std::os::unix::fs::symlink(models, data.join("ai-models")).unwrap();
+        link_folder(models, &data.join("ai-models")).unwrap();
     }
     data
 }

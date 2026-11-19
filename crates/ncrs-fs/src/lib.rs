@@ -8,6 +8,8 @@ mod folder_size;
 pub mod folder_watch;
 #[cfg(any(all(feature = "sandbox", target_os = "macos"), test))]
 mod grants;
+#[cfg(all(test, windows))]
+mod long_path_tests;
 mod open;
 mod open_programs;
 mod open_rules;
@@ -41,8 +43,8 @@ pub use folder_size::measure_folder;
 pub use ncrs_core::{EntryDetails, FileEntry, FolderSize, WindowsAttributes};
 pub use open::OpenCommand;
 pub use open::{
-    could_execute, is_app_bundle, open_command, program_command, runs_in_app_sandbox,
-    system_open_command, Launcher, OpenKind, SystemLauncher,
+    could_execute, could_execute_listed, is_app_bundle, open_command, program_command,
+    runs_in_app_sandbox, system_open_command, Launcher, OpenKind, SystemLauncher,
 };
 #[cfg(target_os = "macos")]
 pub use open::{privacy_settings_command, trash_in_finder_command};

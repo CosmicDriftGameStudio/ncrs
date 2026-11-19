@@ -2,8 +2,6 @@
 //! with a live pipeline over a read-only location, a plain index and an
 //! in-memory key store. No AI is configured, the text steps need no model.
 
-#![cfg(unix)]
-
 use std::time::Duration;
 
 use iced::keyboard::key::Named;

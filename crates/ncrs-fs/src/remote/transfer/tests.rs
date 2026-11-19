@@ -511,11 +511,13 @@ async fn rename_gives_an_entry_a_new_name_and_never_replaces_another() {
     );
 }
 
+#[cfg(unix)]
 #[derive(Default)]
 struct Collect {
     skipped: Vec<Skipped>,
 }
 
+#[cfg(unix)]
 impl Progress for Collect {
     fn advanced(&mut self, _done: usize, _total: usize) -> io::Result<()> {
         Ok(())

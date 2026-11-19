@@ -14,4 +14,4 @@ pub use action::Action;
 pub use ctx::Ctx;
 pub use message::{ConnectField, Message};
 pub use state::Remote;
-pub use update::{open_connect_dialog_for, update, Outcome};
+pub use update::{load_folder, open_connect_dialog_for, update, Outcome};

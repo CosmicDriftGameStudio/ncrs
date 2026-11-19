@@ -1,5 +1,6 @@
 //! Turning a path typed into the path field into a place to go.
 
+use std::ffi::OsString;
 use std::io;
 use std::path::{Component, Path, PathBuf};
 
@@ -8,7 +9,7 @@ use std::path::{Component, Path, PathBuf};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Destination {
     pub directory: PathBuf,
-    pub select: Option<String>,
+    pub select: Option<OsString>,
 }
 
 /// Why a typed path leads nowhere.
@@ -71,7 +72,7 @@ fn inspect(target: &Path) -> Result<Destination, PathProblem> {
     Ok(match target.parent().zip(target.file_name()) {
         Some((parent, name)) if !metadata.is_dir() => Destination {
             directory: parent.to_path_buf(),
-            select: Some(name.to_string_lossy().into_owned()),
+            select: Some(name.to_os_string()),
         },
         _ => Destination {
             directory: target.to_path_buf(),
@@ -121,7 +122,7 @@ mod tests {
             inspect(&sub.join("file.txt")),
             Ok(Destination {
                 directory: sub,
-                select: Some("file.txt".to_string())
+                select: Some("file.txt".into())
             })
         );
     }

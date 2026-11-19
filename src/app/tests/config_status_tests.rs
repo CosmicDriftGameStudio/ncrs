@@ -80,7 +80,7 @@ fn escape_dismisses_the_config_error_and_a_job_comes_first() {
     );
     assert_eq!(
         route_key(&state(true, true), escape.clone(), Modifiers::default()),
-        Some(Message::AbortJob)
+        Some(Message::Ops(OpsMessage::AbortJob))
     );
     assert_eq!(
         route_key(&state(false, false), escape, Modifiers::default()),

@@ -1,6 +1,7 @@
 //! The connect feature as the panels drive it: a folder on a server was asked
 //! for without a connection, or the connection is closed.
 
+use std::ffi::OsString;
 use std::sync::Arc;
 
 use iced::{widget::operation, Task};
@@ -21,7 +22,7 @@ use ncrs_i18n::{fill_template, Msg};
 
 /// The folder a panel asked for: the panel, the load it started, the place and
 /// what to select in it.
-pub type Asked = (PanelSide, u64, RemotePath, Option<String>);
+pub type Asked = (PanelSide, u64, RemotePath, Option<OsString>);
 
 /// Closes the connection. A panel that was on the server goes home.
 pub fn disconnect_server(
@@ -37,6 +38,39 @@ pub fn disconnect_server(
     actions.push(Action::ShowNotice(text));
     actions.push(Action::LeaveServer(server.clone()));
     Task::none()
+}
+
+/// Opens a folder on a server. With a connection the panel lists it; without
+/// one the keychain is asked for the password first, so a server whose
+/// password was remembered reconnects without a question.
+pub fn load_folder(ctx: &Ctx<'_>, asked: Asked) -> (Task<Message>, Vec<Action>) {
+    let (side, request_id, place, select) = asked;
+    if ctx.pool.is_connected(place.server()) {
+        let list = Action::ListFolder {
+            side,
+            request_id,
+            remote: place,
+            select,
+        };
+        return (Task::none(), vec![list]);
+    }
+    let passwords = Arc::clone(ctx.passwords);
+    let server = place.server().clone();
+    let asking = Task::perform(
+        async move {
+            tokio::task::spawn_blocking(move || passwords.get(&server))
+                .await
+                .unwrap_or_else(|failure| Err(failure.to_string()))
+        },
+        move |result| Message::PasswordLoaded {
+            side,
+            request_id,
+            remote: place.clone(),
+            select: select.clone(),
+            result,
+        },
+    );
+    (asking, Vec::new())
 }
 
 pub fn password_loaded(

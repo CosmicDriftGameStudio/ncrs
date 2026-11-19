@@ -102,114 +102,113 @@ impl App {
         ]
         .height(Length::Fill);
 
-        let below_title_bar =
-            if self.filing_shown() {
-                self.filing_area()
-            } else if self.notes_shown() {
-                self.notes_area()
-            } else if self.viewer_shown() {
-                self.viewer_area()
-            } else if self.monitor_shown() {
-                self.monitor_area()
-            } else if self.hermes_chat_shown() {
-                self.hermes_chat_area()
-            } else if let Some(state) = self
-                .settings
-                .page
-                .as_ref()
-                .filter(|_| self.settings_shown())
-            {
-                self.settings_area(state)
+        let below_title_bar = if self.filing_shown() {
+            self.filing_area()
+        } else if self.notes_shown() {
+            self.notes_area()
+        } else if self.viewer_shown() {
+            self.viewer_area()
+        } else if self.monitor_shown() {
+            self.monitor_area()
+        } else if self.hermes_chat_shown() {
+            self.hermes_chat_area()
+        } else if let Some(state) = self
+            .settings
+            .page
+            .as_ref()
+            .filter(|_| self.settings_shown())
+        {
+            self.settings_area(state)
+        } else {
+            let bars: Vec<Element<'_, Message>> = self
+                .favourites_bar_view()
+                .into_iter()
+                .chain(
+                    ncrs_compare::view::bar(&self.compare, self.lang, &self.palette)
+                        .map(|bar| bar.map(Message::from)),
+                )
+                .collect();
+            let panels_area: Element<'_, Message> = if bars.is_empty() {
+                panels.into()
             } else {
-                let bars: Vec<Element<'_, Message>> = self
-                    .favourites_bar_view()
-                    .into_iter()
-                    .chain(
-                        ncrs_compare::view::bar(&self.compare, self.lang, &self.palette)
-                            .map(|bar| bar.map(Message::from)),
-                    )
-                    .collect();
-                let panels_area: Element<'_, Message> = if bars.is_empty() {
-                    panels.into()
-                } else {
-                    iced::widget::Column::with_children(bars)
-                        .push(panels)
-                        .height(Length::Fill)
-                        .into()
-                };
-                container(column![
-                    panels_area,
-                    command_line_ui::view(command_line_ui::Props {
-                        prompt: self.active_panel().path.display().to_string(),
-                        typed: self.command_line.typed(),
-                        focused: self.command_line.is_focused(),
-                        focusable: !self.command_line_is_blocked(),
-                        running: self.command_line.running(),
-                        key_label: self
-                            .keymap
-                            .shortcut_label(&KeyAction::CommandLine.message()),
-                        lang: self.lang,
-                        palette: &self.palette,
-                    })
-                    .map(Message::CommandLine),
-                    fkeys::view_dimmed(
-                        &self.function_key_bar(),
-                        &self.function_key_dimmed(),
-                        &self.palette,
-                    ),
-                    statusbar::view(
-                        self.active_panel(),
-                        self.lang,
-                        &self.palette,
-                        statusbar::Activity {
-                            side: self.panels.active,
-                            theme_name: self.theme_name(),
-                            job: self.job_status(),
-                            job_press: self.ops.transfer.is_some().then_some(
-                                Message::TransferDialog(TransferDialogMessage::ShowProgress,)
-                            ),
-                            filing: self.filing_badge(),
-                            on_blocked_press: blocked_access_press(
-                                self.sandbox.active,
-                                &self.active_panel().path,
-                            ),
-                            on_failure_press: self
-                                .job_error
-                                .is_some()
-                                .then(|| self.job_error_press.clone())
-                                .flatten(),
-                            blocked_by_sandbox: cfg!(target_os = "macos") && self.sandbox.active,
-                            notice: self.notice.as_deref(),
-                            hermes_line: self.hermes_line(),
-                            note_line: self.note_line(),
-                            version: Some(statusbar::VersionBadge {
-                                text: self.app_version.to_owned(),
-                                on_press: Message::VersionPressed,
-                                update: self.newer_version_text(),
-                            }),
-                            monitor: self.monitor_badge(),
-                            test_folder: config::data_dir_override().map(|dir| {
-                                ncrs_i18n::fill_template(
-                                    self.lang.text(Msg::StatusTestFolder),
-                                    &[("dir", &dir.display().to_string())],
-                                )
-                            }),
-                            date_format: self.columns.date_format,
-                        },
-                        self.status_error(),
-                        self.search_status(),
-                        statusbar::PathBar {
-                            editing: self.panels.path_field.as_deref(),
-                            on_input: Message::PathFieldInput,
-                            on_submit: Message::PathFieldSubmit,
-                            on_copy: Message::CopyToClipboard(ClipboardKind::Directory),
-                            hit_line: self.hit_line(),
-                        },
-                    ),
-                ])
-                .width(Length::Fill)
-                .height(Length::Fill)
+                iced::widget::Column::with_children(bars)
+                    .push(panels)
+                    .height(Length::Fill)
+                    .into()
             };
+            container(column![
+                panels_area,
+                command_line_ui::view(command_line_ui::Props {
+                    prompt: self.active_panel().path.display().to_string(),
+                    typed: self.command_line.typed(),
+                    focused: self.command_line.is_focused(),
+                    focusable: !self.command_line_is_blocked(),
+                    running: self.command_line.running(),
+                    key_label: self
+                        .keymap
+                        .shortcut_label(&KeyAction::CommandLine.message()),
+                    lang: self.lang,
+                    palette: &self.palette,
+                })
+                .map(Message::CommandLine),
+                fkeys::view_dimmed(
+                    &self.function_key_bar(),
+                    &self.function_key_dimmed(),
+                    &self.palette,
+                ),
+                statusbar::view(
+                    self.active_panel(),
+                    self.lang,
+                    &self.palette,
+                    statusbar::Activity {
+                        side: self.panels.active,
+                        theme_name: self.theme_name(),
+                        job: self.job_status(),
+                        job_press: self.ops.transfer.is_some().then_some(Message::Ops(
+                            OpsMessage::TransferDialog(TransferDialogMessage::ShowProgress,)
+                        )),
+                        filing: self.filing_badge(),
+                        on_blocked_press: blocked_access_press(
+                            self.sandbox.active,
+                            &self.active_panel().path,
+                        ),
+                        on_failure_press: self
+                            .job_error
+                            .is_some()
+                            .then(|| self.job_error_press.clone())
+                            .flatten(),
+                        blocked_by_sandbox: cfg!(target_os = "macos") && self.sandbox.active,
+                        notice: self.notice.as_deref(),
+                        hermes_line: self.hermes_line(),
+                        note_line: self.note_line(),
+                        version: Some(statusbar::VersionBadge {
+                            text: self.app_version.to_owned(),
+                            on_press: Message::VersionPressed,
+                            update: self.newer_version_text(),
+                        }),
+                        monitor: self.monitor_badge(),
+                        test_folder: config::data_dir_override().map(|dir| {
+                            ncrs_i18n::fill_template(
+                                self.lang.text(Msg::StatusTestFolder),
+                                &[("dir", &dir.display().to_string())],
+                            )
+                        }),
+                        date_format: self.columns.date_format,
+                    },
+                    self.status_error(),
+                    self.search_status(),
+                    statusbar::PathBar {
+                        editing: self.panels.path_field.as_deref(),
+                        on_input: |typed| Message::Panel(PanelMessage::PathFieldInput(typed)),
+                        on_submit: Message::Panel(PanelMessage::PathFieldSubmit),
+                        on_copy: Message::CopyToClipboard(ClipboardKind::Directory),
+                        hit_line: self.hit_line(),
+                    },
+                ),
+            ])
+            .width(Length::Fill)
+            .height(Length::Fill)
+        };
 
         let window = container(column![self.title_bar_view(), below_title_bar])
             .width(Length::Fill)

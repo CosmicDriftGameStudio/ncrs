@@ -4,6 +4,7 @@
 //! The password is a [`Secret`]: this type prints without it, so no `{:?}` of
 //! the dialog or of a message that carries it can leak it.
 
+use std::ffi::OsString;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
@@ -20,7 +21,7 @@ use crate::message::ConnectField;
 pub struct Then {
     pub side: PanelSide,
     pub path: PathBuf,
-    pub select: Option<String>,
+    pub select: Option<OsString>,
     /// The load the panel started for it, so a dialog that outlives it does not
     /// leave the panel waiting.
     pub request_id: u64,

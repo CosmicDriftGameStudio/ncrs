@@ -10,7 +10,7 @@ fn is_not_offered_in_hit_list(message: &Message) -> bool {
             | Message::Paste
             | Message::ComputeFolderSizes
             | Message::OpenTerminal
-            | Message::PathFieldInput(_)
+            | Message::Panel(PanelMessage::PathFieldInput(_))
     )
 }
 
@@ -142,8 +142,8 @@ fn leaves_bar_fields(message: &Message) -> bool {
             | Message::Compare(CompareMessage::Open)
             | Message::Settings(_)
             | Message::FilingStatus(FilingStatusMessage::Open)
-            | Message::ContextMenuAt { .. }
-            | Message::ContextMenuKey
+            | Message::Files(MenuMessage::ContextMenuAt { .. })
+            | Message::Files(MenuMessage::ContextMenuKey)
             | Message::CopyToClipboard(_)
             | Message::CopyFilesToClipboard
             | Message::Panel(PanelMessage::SwitchPanel)
@@ -280,7 +280,6 @@ impl App {
             // because that one cannot see whether a prompt is open.
             // --- copy / move ---
             Message::Transfer(kind) => self.open_transfer_dialog(kind),
-            Message::TransferDialog(dialog_message) => self.update_transfer_dialog(dialog_message),
 
             Message::ModifiersChanged(modifiers) => {
                 self.modifiers = modifiers;
@@ -317,24 +316,10 @@ impl App {
             // A delete in flight finishes its current entry even so: it runs in
             // `spawn_blocking`, which cannot be cancelled, so the panel may
             // still list that entry for a moment after the abort.
-            Message::AbortJob => self.abort_job(),
-            Message::Trash(trash_message) => self.update_trash(trash_message),
             Message::HitList(hit_message) => self.update_hit_list(hit_message),
 
-            Message::Renamed {
-                request_id,
-                side,
-                from,
-                result,
-            } => self.with_ops(|ops, ctx| {
-                ncrs_ops::rename_done(ops, request_id, side, &from, result, ctx)
-            }),
-
             Message::OpenExternal(kind) => self.open_external(kind),
-            Message::OpenTerminal => {
-                self.open_terminal();
-                Task::none()
-            }
+            Message::OpenTerminal => self.open_terminal(),
 
             #[cfg(target_os = "macos")]
             Message::OpenPrivacySettings => {
@@ -344,21 +329,8 @@ impl App {
             #[cfg(not(target_os = "macos"))]
             Message::OpenPrivacySettings => Task::none(),
 
-            // --- drive menu ---
-            Message::VolumeMenu(side) => self.request_volume_menu(side, false),
-            Message::VolumeMenuFacts {
-                request,
-                side,
-                on_favourites,
-                facts,
-            } => {
-                if request == self.panels.volume_menu_request {
-                    let overlay_is_open = self.overlay_is_open();
-                    self.panels
-                        .open_volume_menu_on(side, on_favourites, overlay_is_open, facts);
-                }
-                Task::none()
-            }
+            // --- drive menu and context menu ---
+            Message::Files(menu_message) => self.update_files_menu(menu_message),
             Message::AddFavourite => {
                 let action = self.panels.add_favourite(self.lang);
                 self.run_panel_actions(vec![action])
@@ -374,31 +346,12 @@ impl App {
             Message::OpenFavourite(index) => self.open_favourite_by_key(index),
             Message::FavouritesBar(bar_message) => self.update_favourites_bar(bar_message),
 
-            // --- context menu ---
-            menu_message @ (Message::ContextMenuAt { .. }
-            | Message::ContextMenuKey
-            | Message::ContextMenuMove(_)
-            | Message::ContextMenuFirst
-            | Message::ContextMenuLast
-            | Message::ContextMenuHover(_)
-            | Message::ContextMenuActivate
-            | Message::ContextMenuClick(_)
-            | Message::ContextMenuOpenSub
-            | Message::ContextMenuCloseSub
-            | Message::ContextMenuSubHover(_)
-            | Message::ContextMenuSubClick(_)
-            | Message::ContextMenuClose) => self.update_context_menu(menu_message),
-
             Message::HermesFile(file_message) => self.update_hermes_file(file_message),
 
             Message::QuickFix(fix_message) => self.update_quick_fix(fix_message),
 
             // --- path field ---
-            path_message @ (Message::PathFieldInput(_)
-            | Message::PathFieldSubmit
-            | Message::PathFieldCancel
-            | Message::PathChecked { .. }
-            | Message::ClickedOutside) => self.update_path_field(path_message),
+            Message::ClickedOutside => self.update_path_field(Message::ClickedOutside),
 
             Message::CommandLine(line_message) => self.update_command_line(line_message),
 
@@ -411,7 +364,6 @@ impl App {
             Message::Paste => self.paste_from_clipboard(),
             Message::ClipboardRead(content) => self.paste_content(content),
             Message::CopyFilesToClipboard => self.copy_files_to_clipboard(),
-            Message::DeleteConfirm => self.confirm_delete(),
 
             // --- modal prompt ---
             // Handled before the panels: while a prompt is open every
@@ -427,33 +379,7 @@ impl App {
             Message::PackPrompt => self.open_pack_prompt(),
             Message::ExtractHere => self.extract_here(),
             Message::PermissionsPrompt => self.open_permissions_dialog(),
-            Message::Ops(ops_message) => {
-                self.with_ops(|ops, ctx| ncrs_ops::update(ops, ops_message, ctx))
-            }
-            Message::PromptInput(text) => {
-                if let Some(prompt) = self.ops.prompt.as_mut() {
-                    prompt.set_name(text);
-                }
-                Task::none()
-            }
-            Message::PromptToggleKeepFolders => self.toggle_keep_folders(),
-            Message::PromptFormat(format) => {
-                if let Some(prompt) = self.ops.prompt.as_mut() {
-                    prompt.set_archive_format(format);
-                }
-                Task::none()
-            }
-            // Its own arm, not an early return: starting the job changes what the
-            // keys mean, and the routing state is published after the match.
-            Message::PromptSubmit if self.ops.valid_prompt_has_its_own_job() => {
-                self.start_prompt_job()
-            }
-            Message::PromptSubmit => self.with_ops(|ops, ctx| {
-                ncrs_ops::update(ops, ncrs_ops::OpsMessage::PromptSubmit, ctx)
-            }),
-            Message::PromptCancel => self.with_ops(|ops, ctx| {
-                ncrs_ops::update(ops, ncrs_ops::OpsMessage::PromptCancel, ctx)
-            }),
+            Message::Ops(ops_message) => self.update_ops(ops_message),
 
             Message::PreviousTab => self.switch_tab(tab_stops::TabDirection::Backward),
             Message::NextTab => self.switch_tab(tab_stops::TabDirection::Forward),
@@ -486,12 +412,6 @@ impl App {
                 let walk = self.panels.start_folder_size_run();
                 folder_size_task(walk)
             }
-            Message::FolderSizeMeasured { run, folder, size } => {
-                let walk = self
-                    .panels
-                    .folder_size_measured(run, folder, size, self.visible_rows);
-                folder_size_task(walk)
-            }
             Message::SwitchLanguage => {
                 self.switch_language();
                 self.load_documents_facts()
@@ -504,25 +424,6 @@ impl App {
                 Task::none()
             }
             Message::WindowFocused => self.reload_local_panels(),
-            Message::FilesHovered => {
-                self.ops.drop_hover = true;
-                Task::none()
-            }
-            Message::FilesHoverLeft => {
-                self.ops.drop_hover = false;
-                Task::none()
-            }
-            Message::FileDropped(path) => {
-                self.ops.queue_dropped_file(path).map(Message::DropSettled)
-            }
-            Message::DropSettled(generation) => match self.ops.settled_drop(generation) {
-                Some(_) if self.blocking_overlay_is_open() => {
-                    let text = self.lang.text(Msg::StatusDropBusy).to_owned();
-                    self.show_notice(text)
-                }
-                Some(paths) => self.copy_external_files_into_active_panel(paths),
-                None => Task::none(),
-            },
             Message::OpenSearch => self.open_search(),
             Message::Search(search) => self.update_search(search),
             Message::HermesChat(chat) => self.update_hermes_chat(chat),
@@ -584,7 +485,6 @@ impl App {
                 self.dialog_focus = ncrs_ops::quit_dialog::CANCEL_FOCUS;
                 Task::none()
             }
-            Message::QuitConfirm => self.confirm_quit_with_job(),
             Message::Quit => {
                 self.ops.quit_confirmed = false;
                 self.quit_after_settings_page()

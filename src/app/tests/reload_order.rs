@@ -30,7 +30,7 @@ fn the_reload_waits_for_the_create() {
     app.ops.prompt = Some(Prompt::create_dir(base.clone()).on_side(PanelSide::Left));
     app.ops.prompt.as_mut().unwrap().set_name("neu".into());
     // Submitting queues the reload instead of running it.
-    let _ = app.update(Message::PromptSubmit);
+    let _ = app.update(Message::Ops(OpsMessage::PromptSubmit));
     assert!(
         app.ops.pending_create.is_some(),
         "no reload was queued, so the panel would never refresh"
@@ -137,7 +137,7 @@ async fn submit_new_file(base: &Path, name: &str) -> (App, Arc<RecordingLauncher
     app.panels.left.path = base.to_path_buf();
     drop(app.update(Message::CreateFilePrompt));
     app.ops.prompt.as_mut().unwrap().set_name(name.into());
-    drop(app.update(Message::PromptSubmit));
+    drop(app.update(Message::Ops(OpsMessage::PromptSubmit)));
 
     let result = fs::create_file(base.join(name)).await;
     drop(app.update(Message::Ops(OpsMessage::PromptFinished {

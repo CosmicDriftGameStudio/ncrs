@@ -1,6 +1,6 @@
 //! The state of a file panel ([`PanelState`]): the rows, the cursor, the tags,
 //! the sort, the history. The view is built from it in the app.
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 
 use iced::mouse::ScrollDelta;
@@ -265,7 +265,7 @@ impl PanelState {
         path: PathBuf,
         entries: Vec<FileEntry>,
         error: Option<ReadError>,
-        select: Option<&str>,
+        select: Option<&OsStr>,
         visible_rows: usize,
     ) {
         self.apply_sorted_listing(path, entries, error, select, visible_rows, None);
@@ -279,7 +279,7 @@ impl PanelState {
         path: PathBuf,
         mut entries: Vec<FileEntry>,
         error: Option<ReadError>,
-        select: Option<&str>,
+        select: Option<&OsStr>,
         visible_rows: usize,
         sorted_by: Option<SortKey>,
     ) {
@@ -293,10 +293,7 @@ impl PanelState {
         // `self.entries = entries` this would read the new list and remember the
         // file at that position, not the file the cursor was on.
         let previous_index = self.selected;
-        let previous: Option<String> = self
-            .entries
-            .get(self.selected)
-            .map(|e| e.name.to_string_lossy().into_owned());
+        let previous: Option<OsString> = self.entries.get(self.selected).map(|e| e.name.clone());
 
         // A reload replaces the rows. A tag whose name is still there stays; one
         // whose file is gone is dropped — the safe direction, since a forgotten
@@ -319,12 +316,12 @@ impl PanelState {
             self.scroll_offset = 0;
         }
         let wanted = select
-            .map(str::to_string)
+            .map(OsStr::to_os_string)
             .or(previous.filter(|_| same_directory));
         let index = wanted
             .as_deref()
             .and_then(|name| {
-                let wanted_name = composed(OsStr::new(name));
+                let wanted_name = composed(name);
                 self.entries
                     .iter()
                     .position(|e| composed(&e.name) == wanted_name)

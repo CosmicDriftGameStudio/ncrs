@@ -92,7 +92,7 @@ async fn pasted_text_asks_for_a_name_and_ends_as_a_txt_file_with_exactly_that_te
         PromptKind::Paste
     );
 
-    deliver(&mut case.app, Message::PromptSubmit).await;
+    deliver(&mut case.app, Message::Ops(OpsMessage::PromptSubmit)).await;
 
     assert!(case.app.ops.prompt.is_none());
     assert!(case.app.ops.pending_paste.is_none());
@@ -110,8 +110,11 @@ async fn a_typed_name_is_the_name_of_the_pasted_file() {
     case.app.read_clipboard = || Task::done(pasted_text());
     deliver(&mut case.app, Message::Paste).await;
 
-    drop(case.app.update(Message::PromptInput("notes.txt".into())));
-    deliver(&mut case.app, Message::PromptSubmit).await;
+    drop(
+        case.app
+            .update(Message::Ops(OpsMessage::PromptInput("notes.txt".into()))),
+    );
+    deliver(&mut case.app, Message::Ops(OpsMessage::PromptSubmit)).await;
 
     assert_eq!(
         std::fs::read_to_string(case.target.join("notes.txt")).unwrap(),
@@ -134,7 +137,7 @@ async fn a_pasted_picture_ends_as_a_png_file() {
         .name()
         .to_owned();
     assert!(name.ends_with(".png"), "{name}");
-    deliver(&mut case.app, Message::PromptSubmit).await;
+    deliver(&mut case.app, Message::Ops(OpsMessage::PromptSubmit)).await;
 
     let bytes = std::fs::read(only_file_in(&case.target)).unwrap();
     assert!(bytes.starts_with(&PNG_SIGNATURE));
@@ -146,11 +149,10 @@ async fn a_name_with_a_separator_is_refused_and_nothing_is_written() {
     case.app.read_clipboard = || Task::done(pasted_text());
     deliver(&mut case.app, Message::Paste).await;
 
-    drop(
-        case.app
-            .update(Message::PromptInput("../escape.txt".into())),
-    );
-    deliver(&mut case.app, Message::PromptSubmit).await;
+    drop(case.app.update(Message::Ops(OpsMessage::PromptInput(
+        "../escape.txt".into(),
+    ))));
+    deliver(&mut case.app, Message::Ops(OpsMessage::PromptSubmit)).await;
 
     assert!(case.app.ops.prompt.as_ref().unwrap().error().is_some());
     assert!(case.app.ops.paste_staging.is_none());
@@ -164,7 +166,7 @@ async fn escape_drops_the_pasted_content() {
     deliver(&mut case.app, Message::Paste).await;
     assert!(case.app.ops.pending_paste.is_some());
 
-    drop(case.app.update(Message::PromptCancel));
+    drop(case.app.update(Message::Ops(OpsMessage::PromptCancel)));
 
     assert!(case.app.ops.prompt.is_none());
     assert!(case.app.ops.pending_paste.is_none());
@@ -176,10 +178,13 @@ async fn a_taken_name_in_the_panel_asks_what_to_do() {
     let mut case = pasting();
     case.app.read_clipboard = || Task::done(pasted_text());
     deliver(&mut case.app, Message::Paste).await;
-    drop(case.app.update(Message::PromptInput("note.txt".into())));
+    drop(
+        case.app
+            .update(Message::Ops(OpsMessage::PromptInput("note.txt".into()))),
+    );
     std::fs::write(case.target.join("note.txt"), "old").unwrap();
 
-    deliver(&mut case.app, Message::PromptSubmit).await;
+    deliver(&mut case.app, Message::Ops(OpsMessage::PromptSubmit)).await;
 
     assert!(
         case.app.ops.pending_conflict.is_some(),

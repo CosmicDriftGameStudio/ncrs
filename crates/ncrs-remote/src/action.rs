@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::path::PathBuf;
 
 use ncrs_core::PanelSide;
@@ -21,7 +22,7 @@ pub enum Action {
     LoadFolder {
         side: PanelSide,
         path: PathBuf,
-        select: Option<String>,
+        select: Option<OsString>,
     },
     /// The server goes into `[[servers]]`, or its start folder is updated.
     SaveServer {
@@ -43,7 +44,7 @@ pub enum Action {
         side: PanelSide,
         request_id: u64,
         remote: RemotePath,
-        select: Option<String>,
+        select: Option<OsString>,
     },
     /// No dialog can open for the folder: the panel is told it has no
     /// connection.

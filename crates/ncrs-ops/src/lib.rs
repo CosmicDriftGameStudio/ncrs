@@ -63,7 +63,7 @@ pub use delete_flow::{
     confirm_delete, delete_failure, delete_row_done, delete_subject, end_delete, open_delete,
     DeleteRequest, Outcome,
 };
-pub use entry::{is_handled_by_update, update};
+pub use entry::update;
 pub use message::{
     ConflictChoice, OpsMessage, PermissionsMessage, TransferDialogMessage, TrashMessage,
 };

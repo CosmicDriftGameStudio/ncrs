@@ -1,4 +1,5 @@
 use crate::e2e_tests::*;
+use crate::messages::OpsMessage;
 use crate::messages::TrashMessage;
 use iced::keyboard::key::Named;
 
@@ -125,7 +126,7 @@ impl Bin {
 fn open_trash<P: iced::Program<State = App, Message = Message> + 'static>(
     session: &mut Session<P>,
 ) {
-    session.send(Message::Trash(TrashMessage::Open));
+    session.send(Message::Ops(OpsMessage::Trash(TrashMessage::Open)));
     assert!(
         session.app.trash_view_has_keys(),
         "the trash view did not open"

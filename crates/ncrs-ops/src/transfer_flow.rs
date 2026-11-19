@@ -406,6 +406,7 @@ mod tests {
         step(&FlowCtx {
             lang: Language::default(),
             trash: &trash,
+            trash_rows: 10,
             jobs_busy,
             start_blocked: false,
             transfer_dialog_open: false,

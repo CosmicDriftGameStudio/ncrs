@@ -1,5 +1,6 @@
 use crate::e2e_tests::*;
 use crate::messages::ConflictChoice;
+use crate::messages::OpsMessage;
 use iced::keyboard::key::Named;
 
 /// The panels have to be pointing at the scratch tree before a key means
@@ -411,9 +412,9 @@ fn escape_stops_a_running_copy() {
     let mut session = session_in(dir.path());
     cursor_to(&mut session, "alpha.txt");
     session.send(Message::Transfer(crate::messages::TransferKind::Copy));
-    let held = session.send_held_after_check(Message::TransferDialog(
+    let held = session.send_held_after_check(Message::Ops(OpsMessage::TransferDialog(
         crate::transfer_dialog::TransferDialogMessage::Confirm,
-    ));
+    )));
     assert!(!session.app.job_is_idle(), "F5 did not start a job");
 
     session.press(Key::Named(Named::Escape));

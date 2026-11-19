@@ -168,6 +168,6 @@ fn the_keys_go_to_the_overlay_the_view_draws_on_top() {
     assert_eq!(conflict_over_prompt.top_modal(), Some(Modal::Conflict));
     assert_ne!(
         route_key(&conflict_over_prompt, Key::Character("x".into()), none),
-        Some(Message::PromptInput("x".to_owned()))
+        Some(Message::Ops(OpsMessage::PromptInput("x".to_owned())))
     );
 }

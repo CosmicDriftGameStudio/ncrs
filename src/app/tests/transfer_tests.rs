@@ -56,7 +56,7 @@ fn dialog_app(root: &Path) -> (App, PathBuf, PathBuf) {
 }
 
 fn dialog_message(message: TransferDialogMessage) -> Message {
-    Message::TransferDialog(message)
+    Message::Ops(OpsMessage::TransferDialog(message))
 }
 
 #[tokio::test]

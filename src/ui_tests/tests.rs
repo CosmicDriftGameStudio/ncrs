@@ -109,7 +109,7 @@ fn clicking_the_confirm_button_of_the_prompt_submits_it() {
     assert!(
         messages
             .iter()
-            .any(|message| matches!(message, Message::PromptSubmit)),
+            .any(|message| matches!(message, Message::Ops(ncrs_ops::OpsMessage::PromptSubmit))),
         "the click did not submit: {messages:?}"
     );
     assert!(
@@ -243,9 +243,9 @@ fn the_pack_prompt_matches_its_snapshots() {
 #[test]
 fn the_pack_prompt_shows_the_chosen_format() {
     let mut app = App::with_fixed_pack_prompt().in_language(Language::English);
-    drop(app.update(Message::PromptFormat(
+    drop(app.update(Message::Ops(ncrs_ops::OpsMessage::PromptFormat(
         crate::fs::archive::ArchiveFormat::TarGz,
-    )));
+    ))));
     let matches = simulator(&app)
         .snapshot(&iced::Theme::Dark)
         .unwrap()

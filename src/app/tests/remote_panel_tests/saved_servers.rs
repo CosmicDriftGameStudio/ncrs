@@ -20,7 +20,7 @@ async fn drive_menu_lists_saved_servers_and_delete_disconnects() {
         saved(Some("Work"), HOST, Some("/home")),
         saved(None, "elsewhere.invalid", None),
     ];
-    app.settle_checks_for_test(Message::VolumeMenu(PanelSide::Left))
+    app.settle_checks_for_test(Message::Files(MenuMessage::VolumeMenu(PanelSide::Left)))
         .await;
 
     let menu = app.panels.volume_menu.as_ref().unwrap();
@@ -49,7 +49,7 @@ async fn choosing_a_saved_server_that_is_not_connected_asks_for_its_password() {
     let fixture = Fixture::trusted();
     let mut app = app_over(&fixture).with_volumes(Vec::new);
     app.saved_servers = vec![saved(Some("Work"), HOST, Some("/home"))];
-    app.settle_checks_for_test(Message::VolumeMenu(PanelSide::Right))
+    app.settle_checks_for_test(Message::Files(MenuMessage::VolumeMenu(PanelSide::Right)))
         .await;
 
     settle(&mut app, Message::Panel(PanelMessage::VolumeMenuActivate)).await;

@@ -112,7 +112,7 @@ async fn a_dialog_or_the_menu_keeps_the_panel_still() {
         }]
     });
     with_menu
-        .settle_checks_for_test(Message::VolumeMenu(PanelSide::Left))
+        .settle_checks_for_test(Message::Files(MenuMessage::VolumeMenu(PanelSide::Left)))
         .await;
     scroll(&mut with_menu, PanelSide::Left, lines(-4.0));
     assert_eq!(

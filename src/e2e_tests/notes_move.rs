@@ -2,8 +2,6 @@
 //! the file inside an indexed location. Hermes runs over a read-only location
 //! with a plain index; the move is the user's own F6.
 
-#![cfg(unix)]
-
 use std::path::PathBuf;
 use std::time::Duration;
 

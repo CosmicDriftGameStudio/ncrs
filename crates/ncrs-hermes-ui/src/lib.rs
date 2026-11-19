@@ -7,6 +7,7 @@ pub mod action;
 pub mod condition_editor;
 pub mod ctx;
 pub mod cursor_roles;
+pub mod documents_facts;
 pub use ncrs_intake::filing_pieces;
 pub mod filing_setup;
 pub mod filing_status;

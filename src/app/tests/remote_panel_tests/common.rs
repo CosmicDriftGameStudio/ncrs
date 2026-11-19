@@ -64,7 +64,7 @@ pub(in crate::app::tests::remote_panel_tests) async fn open(
     app: &mut App,
     side: PanelSide,
     path: PathBuf,
-    select: Option<String>,
+    select: Option<OsString>,
 ) {
     let task = app.load(side, path, select);
     run(app, task).await;

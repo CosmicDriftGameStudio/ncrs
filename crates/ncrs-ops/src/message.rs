@@ -147,6 +147,12 @@ pub enum OpsMessage {
     PromptSubmit,
     /// The user dismissed the prompt.
     PromptCancel,
+    /// A keystroke went to the open prompt.
+    PromptInput(String),
+    /// The "Keep folders" box of the pack prompt for a hit list was clicked.
+    PromptToggleKeepFolders,
+    /// A format of the pack dialog was chosen.
+    PromptFormat(ncrs_fs::archive::ArchiveFormat),
     /// The create of the name prompt has reported. Dropped when `request_id`
     /// is not the latest one.
     PromptFinished {
@@ -227,6 +233,14 @@ pub enum OpsMessage {
     },
     /// The progress mask's abort button.
     AbortJob,
+    /// Files from another app are held over the window.
+    FilesHovered,
+    /// The files held over the window were taken away again.
+    FilesHoverLeft,
+    /// One file of a drop; a drop sends one of these per file.
+    FileDropped(std::path::PathBuf),
+    /// The drop with this generation has had all its files delivered.
+    DropSettled(u64),
     Trash(TrashMessage),
     /// The rename of the entry at `from` has finished, with its new path.
     Renamed {

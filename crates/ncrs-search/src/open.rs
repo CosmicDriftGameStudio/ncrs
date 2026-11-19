@@ -1,5 +1,6 @@
 //! Opening the search and changing its fields from outside the view.
 
+use std::ffi::OsString;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -71,10 +72,10 @@ impl Search {
 
     /// The folder and the name of the file under the cursor, for showing it
     /// in its folder.
-    pub fn cursor_location(&self, has_keys: bool) -> Option<(PathBuf, String)> {
+    pub fn cursor_location(&self, has_keys: bool) -> Option<(PathBuf, OsString)> {
         let (path, _) = self.open_view(has_keys)?.cursor_target()?;
         let directory = path.parent()?.to_path_buf();
-        let name = path.file_name()?.to_string_lossy().into_owned();
+        let name = path.file_name()?.to_os_string();
         Some((directory, name))
     }
 

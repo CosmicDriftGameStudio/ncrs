@@ -157,4 +157,11 @@ pub enum Action {
     OpenTrashInFinder,
     /// Open this file in the editor.
     EditFile(PathBuf),
+    /// A drop is over: bring these files into the active panel, unless a
+    /// dialog or page on top of the panels takes them.
+    DropFiles(Vec<PathBuf>),
+    /// Stop the running job: the queue and the progress channel are the app's.
+    AbortJob,
+    /// The quit question was answered with "stop and quit".
+    ConfirmQuit,
 }

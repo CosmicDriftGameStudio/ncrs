@@ -3,6 +3,8 @@
 //! `Message`, so that mapping stays here as extension traits with the method
 //! names the call sites already use.
 
+use crate::messages::MenuMessage;
+use crate::messages::OpsMessage;
 use iced::keyboard::{Key, Modifiers};
 
 pub use ncrs_config::keymap::*;
@@ -47,18 +49,20 @@ impl KeyActionMessage for KeyAction {
             Self::TagUp => Message::Panel(PanelMessage::TagMove(-1)),
             Self::TagAll => Message::Panel(PanelMessage::TagAll),
             Self::ClearTags => Message::Panel(PanelMessage::ClearTags),
-            Self::AbortJob => Message::AbortJob,
-            Self::ShowProgress => Message::TransferDialog(TransferDialogMessage::ShowProgress),
+            Self::AbortJob => Message::Ops(OpsMessage::AbortJob),
+            Self::ShowProgress => Message::Ops(OpsMessage::TransferDialog(
+                TransferDialogMessage::ShowProgress,
+            )),
             Self::CopyPath => Message::CopyToClipboard(ClipboardKind::Path),
             Self::CopyName => Message::CopyToClipboard(ClipboardKind::Name),
             Self::CopyFiles => Message::CopyFilesToClipboard,
-            Self::Trash => Message::Trash(TrashMessage::Open),
-            Self::RestoreLastDeletion => Message::Trash(TrashMessage::RestoreLast),
+            Self::Trash => Message::Ops(OpsMessage::Trash(TrashMessage::Open)),
+            Self::RestoreLastDeletion => Message::Ops(OpsMessage::Trash(TrashMessage::RestoreLast)),
             Self::UndoRename => {
                 Message::from(ncrs_ops::OpsMessage::BatchRename(BatchRenameMessage::Undo))
             }
             Self::CompareFolders => Message::Compare(CompareMessage::Open),
-            Self::OpenTrashInFinder => Message::Trash(TrashMessage::OpenInFinder),
+            Self::OpenTrashInFinder => Message::Ops(OpsMessage::Trash(TrashMessage::OpenInFinder)),
             Self::Paste => Message::Paste,
             Self::View => Message::OpenExternal(OpenKind::View),
             Self::Edit => Message::OpenExternal(OpenKind::Edit),
@@ -73,8 +77,8 @@ impl KeyActionMessage for KeyAction {
             Self::Pack => Message::PackPrompt,
             Self::ExtractHere => Message::ExtractHere,
             Self::Permissions => Message::PermissionsPrompt,
-            Self::DriveMenuLeft => Message::VolumeMenu(PanelSide::Left),
-            Self::DriveMenuRight => Message::VolumeMenu(PanelSide::Right),
+            Self::DriveMenuLeft => Message::Files(MenuMessage::VolumeMenu(PanelSide::Left)),
+            Self::DriveMenuRight => Message::Files(MenuMessage::VolumeMenu(PanelSide::Right)),
             Self::HistoryBack => Message::Panel(PanelMessage::HistoryBack),
             Self::HistoryForward => Message::Panel(PanelMessage::HistoryForward),
             Self::AddFavourite => Message::AddFavourite,
@@ -89,7 +93,7 @@ impl KeyActionMessage for KeyAction {
             Self::SortByModified => Message::Panel(PanelMessage::SortActive(SortColumn::Modified)),
             Self::SortBySize => Message::Panel(PanelMessage::SortActive(SortColumn::Size)),
             Self::ComputeFolderSizes => Message::ComputeFolderSizes,
-            Self::ContextMenu => Message::ContextMenuKey,
+            Self::ContextMenu => Message::Files(MenuMessage::ContextMenuKey),
             Self::CursorUp => Message::Panel(PanelMessage::MoveSelection(-1)),
             Self::CursorDown => Message::Panel(PanelMessage::MoveSelection(1)),
             Self::PageUp => Message::Panel(PanelMessage::PageUp),
@@ -382,11 +386,11 @@ mod tests {
     fn alt_f1_and_alt_f2_open_the_drive_menu_of_their_panel() {
         assert_eq!(
             map_key(Key::Named(Named::F1), Modifiers::ALT),
-            Some(Message::VolumeMenu(PanelSide::Left))
+            Some(Message::Files(MenuMessage::VolumeMenu(PanelSide::Left)))
         );
         assert_eq!(
             map_key(Key::Named(Named::F2), Modifiers::ALT),
-            Some(Message::VolumeMenu(PanelSide::Right))
+            Some(Message::Files(MenuMessage::VolumeMenu(PanelSide::Right)))
         );
     }
 
@@ -538,7 +542,7 @@ mod tests {
     fn shift_f10_opens_the_context_menu_and_does_not_quit() {
         assert_eq!(
             map_key(Key::Named(Named::F10), Modifiers::SHIFT),
-            Some(Message::ContextMenuKey)
+            Some(Message::Files(MenuMessage::ContextMenuKey))
         );
         assert_eq!(
             map_key(Key::Named(Named::F10), Modifiers::default()),
@@ -567,7 +571,10 @@ mod tests {
             );
         }
         assert_eq!(shortcut_label(&Message::SwitchLanguage), Some("F9".into()));
-        assert_eq!(shortcut_label(&Message::ContextMenuClose), None);
+        assert_eq!(
+            shortcut_label(&Message::Files(MenuMessage::ContextMenuClose)),
+            None
+        );
     }
 
     /// A modifier must actually gate the binding: Alt+Enter is not Enter.
@@ -581,11 +588,11 @@ mod tests {
         let keymap = rebound("[keys]\nabort_job = \"primary+c\"\n");
         assert_eq!(
             press(&keymap, Key::Character("c".into()), Modifiers::COMMAND),
-            Some(Message::AbortJob)
+            Some(Message::Ops(OpsMessage::AbortJob))
         );
         assert_ne!(
             map_key(Key::Character("c".into()), Modifiers::COMMAND),
-            Some(Message::AbortJob)
+            Some(Message::Ops(OpsMessage::AbortJob))
         );
         assert!(keymap
             .shortcut_label(&Message::CopyFilesToClipboard)

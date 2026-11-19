@@ -1,6 +1,7 @@
 use super::*;
 use crate::fs::archive::fixtures::{write_archive, Item};
 use crate::fs::archive::locate_in_archive;
+use crate::messages::OpsMessage;
 use crate::transfer_dialog::{Policy, TransferDialogMessage};
 use iced::keyboard::key::Named;
 
@@ -120,8 +121,8 @@ fn a_name_in_the_way_stops_ask_and_overwrite_replaces_it() {
     assert_eq!(std::fs::read(&archive).unwrap(), before);
 
     session.press(Key::Named(Named::F5));
-    session.send(Message::TransferDialog(TransferDialogMessage::SetPolicy(
-        Policy::Overwrite,
+    session.send(Message::Ops(OpsMessage::TransferDialog(
+        TransferDialogMessage::SetPolicy(Policy::Overwrite),
     )));
     session.press(Key::Named(Named::Enter));
     assert_eq!(listed(&archive, ""), [("alpha.txt".to_string(), 3)]);
@@ -165,7 +166,7 @@ fn escape_during_a_pack_frees_the_queue_and_leaves_no_broken_archive() {
     let mut session = session_in(dir.path());
     cursor_to(&mut session, "alpha.txt");
     session.press_with(Key::Named(Named::F5), Modifiers::ALT);
-    let held = session.send_held_after_check(Message::PromptSubmit);
+    let held = session.send_held_after_check(Message::Ops(OpsMessage::PromptSubmit));
     assert!(!session.app.job_is_idle());
 
     session.press(Key::Named(Named::Escape));
@@ -193,8 +194,9 @@ fn escape_during_a_copy_in_frees_the_queue_and_leaves_the_archive_whole() {
     open_in_right_panel(&mut session, "box.zip");
     cursor_to(&mut session, "alpha.txt");
     session.press(Key::Named(Named::F5));
-    let held =
-        session.send_held_after_check(Message::TransferDialog(TransferDialogMessage::Confirm));
+    let held = session.send_held_after_check(Message::Ops(OpsMessage::TransferDialog(
+        TransferDialogMessage::Confirm,
+    )));
     assert!(!session.app.job_is_idle());
 
     session.press(Key::Named(Named::Escape));

@@ -55,6 +55,7 @@ impl App {
             &ncrs_ops::FlowCtx {
                 lang: self.lang,
                 trash: &self.trash,
+                trash_rows: self.trash_rows(),
                 jobs_busy: self.jobs.is_busy(),
                 start_blocked,
                 transfer_dialog_open,
@@ -162,7 +163,7 @@ impl App {
                 self.panels.folder_sizes.clear();
                 let tasks = [PanelSide::Left, PanelSide::Right].map(|each| {
                     let path = self.panel(each).path.clone();
-                    let select = (path == folder).then(|| name.clone());
+                    let select = (path == folder).then(|| OsString::from(name.clone()));
                     self.load(each, path, select)
                 });
                 Task::batch(tasks)
@@ -211,12 +212,25 @@ impl App {
             }
             Ask::OpenTrash(side) => self.open_trash_on(side),
             Ask::OpenTrashInFinder => self.open_trash_in_finder(),
+            Ask::DropFiles(paths) => {
+                if self.blocking_overlay_is_open() {
+                    let text = self.lang.text(Msg::StatusDropBusy).to_owned();
+                    self.show_notice(text)
+                } else {
+                    self.copy_external_files_into_active_panel(paths)
+                }
+            }
+            Ask::AbortJob => self.abort_job(),
+            Ask::ConfirmQuit => self.confirm_quit_with_job(),
             Ask::EditFile(path) => {
                 self.launch_external(fs::OpenKind::Edit, path, None, CopyOf::Nothing, false);
                 Task::none()
             }
             Ask::ShowErrorWithFinderPress(text) => {
-                self.set_status_error_with_press(&text, Message::Trash(TrashMessage::OpenInFinder));
+                self.set_status_error_with_press(
+                    &text,
+                    Message::Ops(OpsMessage::Trash(TrashMessage::OpenInFinder)),
+                );
                 Task::none()
             }
         }
@@ -236,9 +250,7 @@ impl App {
         };
         self.panels.rename_hits(from, &to);
         self.panels.folder_sizes.clear();
-        let name = to
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned());
+        let name = to.file_name().map(OsStr::to_os_string);
         let other = side.other();
         let own_path = self.panel(side).path.clone();
         let inside_renamed = self
@@ -258,12 +270,11 @@ impl App {
         ])
     }
 
-    // --- the trash ---
-
-    pub(in crate::app) fn update_trash(&mut self, message: TrashMessage) -> Task<Message> {
-        let rows = self.trash_rows();
-        self.with_ops(|ops, flow| ncrs_ops::update_trash_flow(ops, message, rows, flow))
+    pub(in crate::app) fn update_ops(&mut self, message: OpsMessage) -> Task<Message> {
+        self.with_ops(|ops, ctx| ncrs_ops::update(ops, message, ctx))
     }
+
+    // --- the trash ---
 
     /// Rows of the trash view that fit the window.
     pub(in crate::app) fn trash_rows(&self) -> usize {
@@ -290,13 +301,19 @@ impl App {
         };
         self.panels.active = side;
         let listing = self.ops.show_trash(side, reach, &self.trash);
-        Task::batch([closed_search, listing.map(Message::Trash)])
+        Task::batch([
+            closed_search,
+            listing.map(OpsMessage::Trash).map(Message::Ops),
+        ])
     }
 
     /// Reads the trash on the blocking pool; the answer carries the generation,
     /// so a late one finds the view closed or read again.
     fn list_trash(&mut self) -> Task<Message> {
-        self.ops.list_trash(&self.trash).map(Message::Trash)
+        self.ops
+            .list_trash(&self.trash)
+            .map(OpsMessage::Trash)
+            .map(Message::Ops)
     }
 
     pub(in crate::app) fn trash_panel(&self, side: PanelSide) -> Element<'_, Message> {
@@ -410,12 +427,7 @@ impl App {
         self.with_ops(|ops, ctx| ncrs_ops::open_batch_rename(ops, request, ctx))
     }
 
-    pub(in crate::app) fn toggle_keep_folders(&mut self) -> Task<Message> {
-        self.ops.toggle_keep_folders();
-        Task::none()
-    }
-
-    /// Stops the running job, see `Message::AbortJob`.
+    /// Stops the running job, see `OpsMessage::AbortJob`.
     pub(in crate::app) fn abort_job(&mut self) -> Task<Message> {
         // The folder size walks do not run through the queue.
         self.panels.stop_folder_size_run();
@@ -459,20 +471,9 @@ impl App {
         })
     }
 
-    pub(in crate::app) fn update_transfer_dialog(
-        &mut self,
-        message: TransferDialogMessage,
-    ) -> Task<Message> {
-        self.with_ops(|ops, ctx| ncrs_ops::update_transfer_dialog_flow(ops, message, ctx))
-    }
-
     #[cfg(test)]
     pub(in crate::app) fn prompt_error(&self, err: &CreateDirError) -> String {
         self.ops.prompt_error(self.lang, err)
-    }
-
-    pub(in crate::app) fn start_prompt_job(&mut self) -> Task<Message> {
-        self.with_ops(ncrs_ops::start_prompt_job)
     }
 
     fn progress_sender(&mut self) -> mpsc::UnboundedSender<fs::transfer::Tick> {

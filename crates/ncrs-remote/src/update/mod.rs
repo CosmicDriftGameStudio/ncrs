@@ -18,6 +18,7 @@ use ncrs_fs::remote::RemoteUrl;
 use ncrs_i18n::{fill_template, Msg};
 
 pub use self::failure_text::connect_failure_text;
+pub use self::folder::load_folder;
 
 pub type Outcome = (Task<Message>, Vec<Action>);
 

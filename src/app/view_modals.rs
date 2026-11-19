@@ -1,4 +1,5 @@
 use crate::app::*;
+use crate::messages::MenuMessage;
 use ncrs_ui_kit::kit::scrim;
 use ncrs_ui_kit::popup_menu::{popup_layer, RightPress};
 
@@ -30,7 +31,7 @@ impl App {
                 // through, so another row's menu replaces this one.
                 // A Ctrl+click on a Mac is a right click and passes through too.
                 let on_dismiss = (!ncrs_files::ctx::is_context_click(self.modifiers))
-                    .then_some(Message::ContextMenuClose);
+                    .then_some(Message::Files(MenuMessage::ContextMenuClose));
                 popup_layer(
                     context_menu_view::view(
                         menu,
@@ -223,11 +224,11 @@ impl App {
                 lang,
                 palette,
                 PromptMessages {
-                    on_input: Box::new(Message::PromptInput),
-                    on_submit: Message::PromptSubmit,
-                    on_cancel: Message::PromptCancel,
-                    on_toggle_keep_folders: Message::PromptToggleKeepFolders,
-                    on_format: Box::new(Message::PromptFormat),
+                    on_input: Box::new(|text| Message::Ops(OpsMessage::PromptInput(text))),
+                    on_submit: Message::Ops(OpsMessage::PromptSubmit),
+                    on_cancel: Message::Ops(OpsMessage::PromptCancel),
+                    on_toggle_keep_folders: Message::Ops(OpsMessage::PromptToggleKeepFolders),
+                    on_format: Box::new(|format| Message::Ops(OpsMessage::PromptFormat(format))),
                 },
             )?),
         };

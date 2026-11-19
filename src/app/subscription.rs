@@ -157,9 +157,15 @@ impl App {
             window::resize_events().map(|(_id, size)| Message::WindowResized(size)),
             window::events().filter_map(|(_id, event)| match event {
                 window::Event::Focused => Some(Message::WindowFocused),
-                window::Event::FileHovered(_) => Some(Message::FilesHovered),
-                window::Event::FilesHoveredLeft => Some(Message::FilesHoverLeft),
-                window::Event::FileDropped(path) => Some(Message::FileDropped(path)),
+                window::Event::FileHovered(_) => {
+                    Some(Message::Ops(ncrs_ops::OpsMessage::FilesHovered))
+                }
+                window::Event::FilesHoveredLeft => {
+                    Some(Message::Ops(ncrs_ops::OpsMessage::FilesHoverLeft))
+                }
+                window::Event::FileDropped(path) => {
+                    Some(Message::Ops(ncrs_ops::OpsMessage::FileDropped(path)))
+                }
                 _ => None,
             }),
             // The close button and Alt+F4 end the app through Quit, which saves

@@ -7,7 +7,7 @@ pub(in crate::app) fn remote_listing(
     request_id: u64,
     remote: RemotePath,
     sort: fs::SortKey,
-    select: Option<String>,
+    select: Option<OsString>,
 ) -> Task<Message> {
     Task::perform(
         async move { fs::remote::list::list(&pool, remote, sort).await },

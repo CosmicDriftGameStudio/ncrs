@@ -135,7 +135,7 @@ fn ctrl_cmd_c_works_although_the_mac_may_type_a_control_character() {
 #[test]
 fn ctrl_c_copies_the_files_off_a_mac_and_stops_the_job_on_one() {
     let (command_c, ctrl_c) = if cfg!(target_os = "macos") {
-        (Modifiers::LOGO, Message::AbortJob)
+        (Modifiers::LOGO, Message::Ops(OpsMessage::AbortJob))
     } else {
         (Modifiers::CTRL, Message::CopyFilesToClipboard)
     };

@@ -4,8 +4,7 @@
 //!
 //! Pictures: `NCRS_ACCEPTANCE_SHOTS=1 cargo test -p ncrs --bin ncrs acceptance_v150 -- --test-threads=1`.
 
-#![cfg(unix)]
-
+use crate::messages::MenuMessage;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -341,6 +340,16 @@ fn a_txt_rule_sends_f3_to_the_viewer() {
     shoot(&session.app, "04-f3-txt-intern");
 }
 
+/// How many documents the index knows below `folder`: what "process again"
+/// would find there. The scan indexes in no fixed order and takes as long as
+/// the machine takes.
+fn indexed_below(app: &App, folder: &Path) -> usize {
+    app.filing_module_for_test()
+        .and_then(|module| module.process_again_finder())
+        .and_then(|finder| finder.find(&[folder.to_path_buf()]).ok())
+        .map_or(0, |found| found.len())
+}
+
 #[test]
 fn process_again_asks_before_many_inbox_files() {
     let world = World::new("again", "");
@@ -388,7 +397,18 @@ fn process_again_asks_before_many_inbox_files() {
         }
     }
     pump_until(&mut session, 1, is_ready);
-    pump_for(&mut session, Duration::from_secs(5), |_| false);
+    let scans = inbox.join("Scans Oktober");
+    for _ in 0..300 {
+        pump_for(&mut session, Duration::from_millis(200), |_| false);
+        if indexed_below(&session.app, &scans) == 3 {
+            break;
+        }
+    }
+    assert_eq!(
+        indexed_below(&session.app, &scans),
+        3,
+        "the index never learned the scans"
+    );
 
     go_to(&mut session, "Scans Oktober");
     session.press(Key::Named(Named::Insert));
@@ -506,10 +526,10 @@ fn note_on_file_menu_and_marker() {
     let world = notes_world("note-on-file");
     let mut session = world.boot();
     go_to(&mut session, "Rechnung-Telekom-2025-10.pdf");
-    session.send(Message::ContextMenuKey);
+    session.send(Message::Files(MenuMessage::ContextMenuKey));
     assert!(session.app.context_menu_for_test().is_some());
     shoot(&session.app, "09-notiz-zur-datei-menue");
-    session.send(Message::ContextMenuClose);
+    session.send(Message::Files(MenuMessage::ContextMenuClose));
 
     session.press_with(
         Key::Character("n".into()),
@@ -538,10 +558,10 @@ fn archive_menu_and_extract_here() {
     let world = World::new("extract", "");
     let mut session = world.boot();
     go_to(&mut session, "Backup-Dokumente-2024.zip");
-    session.send(Message::ContextMenuKey);
+    session.send(Message::Files(MenuMessage::ContextMenuKey));
     assert!(session.app.context_menu_for_test().is_some());
     shoot(&session.app, "11-archiv-menue");
-    session.send(Message::ContextMenuClose);
+    session.send(Message::Files(MenuMessage::ContextMenuClose));
 
     go_to(&mut session, "Fotos-Urlaub.zip");
     session.send(Message::ExtractHere);
@@ -576,11 +596,13 @@ fn pack_three_files_as_7z() {
         session.press(Key::Named(Named::Insert));
     }
     session.send(Message::PackPrompt);
-    session.send(Message::PromptFormat(ArchiveFormat::SevenZip));
+    session.send(Message::Ops(ncrs_ops::OpsMessage::PromptFormat(
+        ArchiveFormat::SevenZip,
+    )));
     assert!(session.app.prompt_is_open_for_test());
     shoot(&session.app, "13-packen-dialog");
 
-    session.send(Message::PromptSubmit);
+    session.send(Message::Ops(ncrs_ops::OpsMessage::PromptSubmit));
     session.settle();
     let packed: Vec<PathBuf> = std::fs::read_dir(&world.other)
         .unwrap()

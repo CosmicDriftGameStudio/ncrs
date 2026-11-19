@@ -71,7 +71,9 @@ impl App {
                 let notice = self.lang.text(Msg::MonitorNoticeCopied).to_owned();
                 Task::batch([iced::clipboard::write(text), self.show_notice(notice)])
             }
-            Ask::GoToFolder { folder, file } => self.show_folder_in_active_panel(folder, file),
+            Ask::GoToFolder { folder, file } => {
+                self.show_folder_in_active_panel(folder, file.map(OsString::from))
+            }
         }
     }
 
@@ -81,7 +83,7 @@ impl App {
     pub(in crate::app) fn show_folder_in_active_panel(
         &mut self,
         folder: std::path::PathBuf,
-        file: Option<String>,
+        file: Option<OsString>,
     ) -> Task<Message> {
         let side = self.panels.active;
         let closed_search = if self.search.open && self.search.side == side {

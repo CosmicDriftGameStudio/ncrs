@@ -1,4 +1,5 @@
 use crate::app::*;
+use crate::messages::MenuMessage;
 
 /// Which keys the open delete dialog answers to.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
@@ -64,8 +65,10 @@ pub(in crate::app) fn conflict_key(
     key_modifiers: Modifiers,
     scope: KeyScope,
 ) -> Option<Message> {
-    let aborts =
-        || bound_message(&prompt.keymap, &key, key_modifiers, scope) == Some(Message::AbortJob);
+    let aborts = || {
+        bound_message(&prompt.keymap, &key, key_modifiers, scope)
+            == Some(Message::Ops(OpsMessage::AbortJob))
+    };
     ncrs_ops::keys::conflict_key(&key, key_modifiers, aborts).map(|pressed| match pressed {
         ConflictKey::Answer(choice) => {
             Message::from(ncrs_ops::OpsMessage::TransferConflict(choice))
@@ -83,7 +86,7 @@ pub(in crate::app) fn transfer_overlay_key(
 ) -> Option<Message> {
     let bound = || match bound_message(&prompt.keymap, key, key_modifiers, scope) {
         Some(Message::Quit) => OpsBound::Quit,
-        Some(Message::AbortJob) => OpsBound::AbortJob,
+        Some(Message::Ops(OpsMessage::AbortJob)) => OpsBound::AbortJob,
         _ => OpsBound::Other,
     };
     ncrs_ops::keys::transfer_overlay_key(
@@ -93,22 +96,22 @@ pub(in crate::app) fn transfer_overlay_key(
         bound,
     )
     .map(|pressed| match pressed {
-        TransferOverlayKey::Dialog(message) => Message::TransferDialog(message),
+        TransferOverlayKey::Dialog(message) => Message::Ops(OpsMessage::TransferDialog(message)),
         TransferOverlayKey::Button(button) => dialog_message(button),
-        TransferOverlayKey::AbortJob => Message::AbortJob,
+        TransferOverlayKey::AbortJob => Message::Ops(OpsMessage::AbortJob),
         TransferOverlayKey::Quit => Message::Quit,
     })
 }
 
 pub(in crate::app) fn context_menu_key(prompt: &PromptKeyState, key: &Key) -> Option<Message> {
     ncrs_files::keys::context_menu_key(prompt.context_submenu, key).map(|pressed| match pressed {
-        ContextMenuKey::CloseSub => Message::ContextMenuCloseSub,
-        ContextMenuKey::Close => Message::ContextMenuClose,
-        ContextMenuKey::OpenSub => Message::ContextMenuOpenSub,
-        ContextMenuKey::Activate => Message::ContextMenuActivate,
-        ContextMenuKey::Move(delta) => Message::ContextMenuMove(delta),
-        ContextMenuKey::First => Message::ContextMenuFirst,
-        ContextMenuKey::Last => Message::ContextMenuLast,
+        ContextMenuKey::CloseSub => Message::Files(MenuMessage::ContextMenuCloseSub),
+        ContextMenuKey::Close => Message::Files(MenuMessage::ContextMenuClose),
+        ContextMenuKey::OpenSub => Message::Files(MenuMessage::ContextMenuOpenSub),
+        ContextMenuKey::Activate => Message::Files(MenuMessage::ContextMenuActivate),
+        ContextMenuKey::Move(delta) => Message::Files(MenuMessage::ContextMenuMove(delta)),
+        ContextMenuKey::First => Message::Files(MenuMessage::ContextMenuFirst),
+        ContextMenuKey::Last => Message::Files(MenuMessage::ContextMenuLast),
     })
 }
 
@@ -307,7 +310,7 @@ pub(in crate::app) fn escape_message(prompt: &PromptKeyState) -> Option<Message>
     if prompt.filing_card {
         Some(Message::Filing(FilingMessage::Dismiss))
     } else if prompt.job_running {
-        Some(Message::AbortJob)
+        Some(Message::Ops(OpsMessage::AbortJob))
     } else if prompt.config_error {
         Some(Message::DismissConfigError)
     } else if prompt.hit_list {
@@ -370,8 +373,8 @@ pub(in crate::app) fn trash_key(
     };
     let pressed = ncrs_ops::keys::trash_key(prompt.job_running, key, key_modifiers, kind)?;
     match pressed {
-        TrashKey::Message(message) => Some(Message::Trash(message)),
-        TrashKey::AbortJob => Some(Message::AbortJob),
+        TrashKey::Message(message) => Some(Message::Ops(OpsMessage::Trash(message))),
+        TrashKey::AbortJob => Some(Message::Ops(OpsMessage::AbortJob)),
         TrashKey::Bound(_) => bound,
     }
 }
