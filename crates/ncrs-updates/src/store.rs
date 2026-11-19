@@ -2,6 +2,7 @@
 //! version the user skipped. A file of its own in the data folder next to the
 //! session state, not the config the user edits.
 
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -58,7 +59,8 @@ pub fn save(path: &Path, stored: &Stored) {
             if let Some(dir) = path.parent() {
                 std::fs::create_dir_all(dir).map_err(|err| err.to_string())?;
             }
-            std::fs::write(path, text).map_err(|err| err.to_string())
+            write_atomically(path, |file| file.write_all(text.as_bytes()))
+                .map_err(|err| err.to_string())
         });
     if let Err(err) = written {
         eprintln!(
@@ -66,6 +68,37 @@ pub fn save(path: &Path, stored: &Stored) {
             path.display()
         );
     }
+}
+
+/// Writes through a new file in the same folder and renames it over `path`, so
+/// a crash or a full disk never leaves a truncated state file behind: the old
+/// one stays until the new one is complete on disk.
+fn write_atomically(
+    path: &Path,
+    fill: impl FnOnce(&mut std::fs::File) -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static COUNTER: AtomicU32 = AtomicU32::new(0);
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    let temporary = path.with_file_name(format!(
+        ".{name}.{}-{}.part",
+        std::process::id(),
+        COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temporary)?;
+    let finished = fill(&mut file)
+        .and_then(|()| file.sync_all())
+        .and_then(|()| {
+            drop(file);
+            std::fs::rename(&temporary, path)
+        });
+    if finished.is_err() {
+        let _best_effort = std::fs::remove_file(&temporary);
+    }
+    finished
 }
 
 // reason: a failing assertion is the signal in a test
@@ -110,6 +143,25 @@ mod tests {
         };
         save(&path, &stored);
         assert_eq!(load(&path), stored);
+    }
+
+    #[test]
+    fn a_write_that_fails_halfway_leaves_the_old_state_and_no_leftover() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("updates.toml");
+        std::fs::write(&path, "last_checked_unix = 7\n").unwrap();
+
+        let result = write_atomically(&path, |file| {
+            file.write_all(b"last_checked_unix = ")?;
+            Err(std::io::Error::other("disk full"))
+        });
+
+        assert!(result.is_err());
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "last_checked_unix = 7\n"
+        );
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
     }
 
     #[test]
