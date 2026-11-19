@@ -159,6 +159,9 @@ pub struct FilingModule {
     /// Built when the chat first needs it; the models are only loaded when a
     /// scan has to be read.
     chat_text_chain: OnceLock<Arc<TextChain>>,
+    /// The chain the pipeline reads with, kept so closing the app can clear
+    /// its crash marker while a reading still holds the chain.
+    pipeline_text_chain: Mutex<Option<Arc<TextChain>>>,
 }
 
 impl fmt::Debug for FilingModule {

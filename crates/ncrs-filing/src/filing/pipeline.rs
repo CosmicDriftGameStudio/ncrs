@@ -16,15 +16,20 @@ impl FilingModule {
         let (chain, pdf_library_missing) = shipped_text_chain(
             ocr_models_dir(&self.db_path).unwrap_or_else(|| PathBuf::from(OCR_MODELS_FOLDER)),
         );
-        let chain_to_run = match self.db_path.parent() {
+        let marked_chain = match self.db_path.parent() {
             Some(data_dir) => chain.with_crash_marker(data_dir.join("reading-now")),
             None => chain,
         };
+        let chain_to_run = Arc::new(marked_chain);
+        *self
+            .pipeline_text_chain
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(Arc::clone(&chain_to_run));
         let runner = Runner::start(
             Settings::new(self.load, logical_cores),
             intake_steps(
                 Arc::new(handle),
-                Arc::new(chain_to_run),
+                chain_to_run,
                 self.ai_provider(),
                 self.own.clone(),
             ),
@@ -32,6 +37,18 @@ impl FilingModule {
             Arc::new(SystemClock),
         );
         Ok((runner, pdf_library_missing))
+    }
+
+    /// The app is closing: a file being read now is not named as a crash for
+    /// the next start.
+    pub fn forget_reading_marker(&self) {
+        let held = self
+            .pipeline_text_chain
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        if let Some(chain) = held.as_ref() {
+            chain.closing();
+        }
     }
 
     fn ai_provider(&self) -> Option<Arc<dyn ncrs_ai::Provider>> {

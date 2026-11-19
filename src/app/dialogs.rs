@@ -382,6 +382,7 @@ impl App {
         if self.notes_hold_quit() {
             return Task::none();
         }
+        ncrs_hermes_ui::closing(&self.hermes);
         ncrs_filing_view::stop(&self.filing_view);
         if let Some(path) = &self.state_path {
             write_session_state(

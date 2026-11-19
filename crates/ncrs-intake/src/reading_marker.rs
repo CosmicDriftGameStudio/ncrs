@@ -6,6 +6,7 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, PoisonError};
 
 /// How many starts in a row must have found a file in the marker before it
@@ -20,6 +21,7 @@ pub struct ReadingMarker {
     starts_seen: Mutex<BTreeMap<String, u32>>,
     /// The files being read, with the value written for them.
     in_flight: Mutex<Vec<(String, u32)>>,
+    closed: AtomicBool,
 }
 
 /// The line key of a path. Paths that are not UTF-8 compare by their lossy
@@ -45,6 +47,7 @@ impl ReadingMarker {
             file,
             starts_seen: Mutex::new(starts_seen),
             in_flight: Mutex::default(),
+            closed: AtomicBool::new(false),
         }
     }
 
@@ -64,7 +67,18 @@ impl ReadingMarker {
             .remove(&key_of(path));
     }
 
+    /// The app is closing: nothing named now counts as a crash at the next
+    /// start, and later reads name nothing. A reading still under way holds
+    /// the marker alive, so removing the file cannot wait for the drop.
+    pub fn closing(&self) {
+        self.closed.store(true, Ordering::SeqCst);
+        let _ = std::fs::remove_file(&self.file);
+    }
+
     fn write(&self, names: &[(String, u32)]) {
+        if self.closed.load(Ordering::SeqCst) {
+            return;
+        }
         if names.is_empty() {
             let _ = std::fs::remove_file(&self.file);
             return;
@@ -124,6 +138,8 @@ impl Drop for ReadingMarker {
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    use crate::text::{ChainReading, Extracted, TextChain, TextError, TextSource};
 
     /// Starts the app, begins reading `path` and "crashes": nothing is
     /// cleaned up.
@@ -188,5 +204,101 @@ mod tests {
         crash_while_reading(&file, path);
 
         assert!(!ReadingMarker::open(file).is_quarantined(path));
+    }
+
+    #[test]
+    fn closing_while_a_reading_still_holds_the_marker_leaves_no_file_and_no_names() {
+        let dir = TempDir::new().unwrap();
+        let file = dir.path().join("reading-now");
+        let path = Path::new("/inbox/a.pdf");
+        let marker = ReadingMarker::open(file.clone());
+        marker.begin(path);
+        assert!(file.exists());
+
+        marker.closing();
+
+        assert!(!file.exists());
+        marker.begin(Path::new("/inbox/b.pdf"));
+        assert!(!file.exists(), "a reading after closing names nothing");
+        std::mem::forget(marker);
+        assert!(!ReadingMarker::open(file).is_quarantined(path));
+    }
+
+    #[derive(Debug)]
+    struct Fixed(Result<Extracted, TextError>);
+
+    impl TextSource for Fixed {
+        fn extract(&self, _path: &Path) -> Result<Extracted, TextError> {
+            self.0.clone()
+        }
+    }
+
+    #[test]
+    fn a_file_in_the_marker_of_two_starts_in_a_row_is_quarantined_and_others_are_read() {
+        let dir = TempDir::new().unwrap();
+        let marker = dir.path().join("reading-now");
+        std::fs::write(&marker, "1\t/inbox/crashes.pdf").unwrap();
+        let chain = TextChain::new()
+            .with_source(Fixed(Ok(Extracted::Text("hello".to_owned()))))
+            .with_crash_marker(marker.clone());
+
+        assert!(!marker.exists(), "the old marker is consumed at start");
+        assert!(matches!(
+            chain.read(Path::new("/inbox/crashes.pdf")),
+            Err(TextError::Quarantined { .. })
+        ));
+        assert_eq!(
+            chain.read(Path::new("/inbox/fine.pdf")),
+            Ok(ChainReading::Text("hello".to_owned()))
+        );
+        assert!(
+            !marker.exists(),
+            "nothing is named once the reading is done"
+        );
+    }
+
+    #[test]
+    fn a_quarantined_file_is_read_again_after_forgetting_the_crash() {
+        let dir = TempDir::new().unwrap();
+        let marker = dir.path().join("reading-now");
+        std::fs::write(&marker, "1\t/inbox/crashes.pdf").unwrap();
+        let chain = TextChain::new()
+            .with_source(Fixed(Ok(Extracted::Text("hello".to_owned()))))
+            .with_crash_marker(marker);
+        let path = Path::new("/inbox/crashes.pdf");
+
+        chain.forget_crash(path);
+
+        assert_eq!(chain.read(path), Ok(ChainReading::Text("hello".to_owned())));
+    }
+
+    #[derive(Debug)]
+    struct SeesMarker(PathBuf);
+
+    impl TextSource for SeesMarker {
+        fn extract(&self, path: &Path) -> Result<Extracted, TextError> {
+            let named = std::fs::read_to_string(&self.0).unwrap_or_default();
+            let expected = format!("0\t{}", path.to_string_lossy());
+            if named != expected {
+                return Err(TextError::Unreadable {
+                    path: path.to_path_buf(),
+                    reason: format!("marker was {named:?}"),
+                });
+            }
+            Ok(Extracted::NotApplicable)
+        }
+    }
+
+    #[test]
+    fn the_file_being_read_is_named_in_the_marker_meanwhile() {
+        let dir = TempDir::new().unwrap();
+        let marker = dir.path().join("reading-now");
+        let chain = TextChain::new()
+            .with_source(SeesMarker(marker.clone()))
+            .with_crash_marker(marker.clone());
+
+        chain.read(Path::new("/inbox/a.pdf")).unwrap();
+
+        assert!(!marker.exists());
     }
 }

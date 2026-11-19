@@ -66,6 +66,13 @@ pub fn leave_pages(hermes: &mut Hermes) -> Task<Message> {
     release_focus()
 }
 
+/// The app is closing: a file being read now must not count as a crash.
+pub fn closing(hermes: &Hermes) {
+    if let Some(module) = &hermes.filing {
+        module.forget_reading_marker();
+    }
+}
+
 /// A dialog of the page is up, and the next Escape closes it.
 pub fn dialog_is_open(hermes: &Hermes) -> bool {
     hermes.rules.as_ref().is_some_and(RulesPage::dialog_is_open)
