@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use iced::Color;
+use iced_core::Color;
 use jsonc_parser::{parse_to_value, JsonValue, ParseOptions};
 
 use crate::config::read_source;

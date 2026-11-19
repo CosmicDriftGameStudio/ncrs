@@ -9,9 +9,9 @@ license = "MIT"
 publish = false
 
 [dependencies]
-# Keys and colors only: no renderer or window system, the app picks them. iced
-# refuses to build without an executor, so "tokio" stays on, as in the app.
-iced = { version = "0.14", default-features = false, features = ["tokio"] }
+# Keys and colors only: iced_core is the same types without a window system or
+# executor, so the crate also builds on Linux without x11 or wayland.
+iced_core = "0.14"
 ncrs-ai = { path = "../ncrs-ai", version = "0.0.0" }
 ncrs-core = { path = "../ncrs-core", version = "0.0.0" }
 ncrs-fs = { path = "../ncrs-fs", version = "0.0.0" }

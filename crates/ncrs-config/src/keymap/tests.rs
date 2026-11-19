@@ -1,6 +1,6 @@
 use super::*;
 use crate::config;
-use iced::keyboard::key::Named;
+use iced_core::keyboard::key::Named;
 
 #[test]
 fn restoring_the_last_deletion_is_on_primary_z_and_yields_it_to_a_config() {

@@ -8,7 +8,7 @@
 use std::ops::Range;
 use std::sync::{Arc, OnceLock};
 
-use iced::keyboard::{key, Key, Modifiers};
+use iced_core::keyboard::{key, Key, Modifiers};
 
 use crate::config::KeySection;
 use ncrs_fs::SortColumn;

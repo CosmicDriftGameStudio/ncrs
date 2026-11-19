@@ -114,7 +114,7 @@ impl PaletteFromSection for Palette {
 mod tests {
     use super::*;
     use crate::config::{load, ConfigError};
-    use iced::Color;
+    use iced_core::Color;
     use std::path::PathBuf;
 
     fn write(dir: &tempfile::TempDir, content: &str) -> PathBuf {
