@@ -208,3 +208,26 @@ fn the_last_page_asks_the_last_ten_files_and_leaves_the_first_ones() {
         .collect();
     assert_eq!(left, first_fifteen);
 }
+
+#[test]
+fn files_the_model_could_not_answer_for_do_not_count_as_staying() {
+    let setup = Setup::new();
+    let model = RecordingModel {
+        unsupported: true,
+        ..RecordingModel::default()
+    };
+
+    let plan = plan_with(&setup, &source_of(12), &model, &ModelScope::FirstPage);
+
+    assert_eq!(plan.model_failure, Some(AiError::Unsupported));
+    assert!(!plan.model_left.is_empty());
+    let staying = plan
+        .entries
+        .iter()
+        .filter(|entry| {
+            matches!(entry.outcome, TrialOutcome::Stays(_))
+                && !plan.model_left.contains(&entry.from)
+        })
+        .count();
+    assert_eq!(plan.stays, staying);
+}

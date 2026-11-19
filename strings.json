@@ -7909,12 +7909,6 @@
       "de": "KI einschalten"
     },
     {
-      "key": "hermes_chat.model_failed",
-      "context": "Hermes chat (F2): Hermes says its language model cannot run. {reason} is a short technical reason. Buttons with things it can do follow.",
-      "en": "My language model doesn't start: {reason}. What would you like to do?",
-      "de": "Mein Sprachmodell startet nicht: {reason}. Was möchtest du tun?"
-    },
-    {
       "key": "hermes_chat.model_not_loaded",
       "context": "Hermes chat (F2): Hermes says its language model could not be loaded or run. Buttons with things it can do follow.",
       "en": "My language model could not be loaded. What would you like to do?",
@@ -11195,6 +11189,12 @@
       "context": "Filing tab: a file Hermes is looking at right now. Starts with a half circle as the mark of the state.",
       "en": "◐ reading …",
       "de": "◐ liest …"
+    },
+    {
+      "key": "filing_view.state_needs_model",
+      "context": "Filing tab: a file that stays without a folder because the AI in use cannot choose folders; the plan is finished for it. Starts with a hollow circle as the mark of the state.",
+      "en": "○ needs the built-in language model",
+      "de": "○ braucht das eingebaute Sprachmodell"
     },
     {
       "key": "filing_view.state_filed",

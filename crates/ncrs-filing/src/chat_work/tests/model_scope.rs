@@ -111,20 +111,16 @@ fn trial_on(access: &ChatAccess, target: FolderReading, scope: ModelScope) -> Tr
     }
 }
 
-fn trial_with(model: &Arc<CountingModel>, scope: ModelScope) -> TrialPlan {
-    let (_setup, access) = access_with(model);
-    trial_on(&access, target_reading(), scope)
-}
-
 #[test]
 fn the_first_page_asks_the_model_about_ten_files_and_the_rest_follows_on_its_own() {
     let model = Arc::new(CountingModel::default());
-    let first = trial_with(&model, ModelScope::FirstPage);
+    let (_setup, access) = access_with(&model);
+    let first = trial_on(&access, target_reading(), ModelScope::FirstPage);
     assert_eq!(model.asked.load(Ordering::SeqCst), 10);
     assert_eq!(first.model_left.len(), 5);
     assert_eq!(first.unsure, 10);
 
-    let rest = trial_with(&model, ModelScope::Only(first.model_left.clone()));
+    let rest = trial_on(&access, target_reading(), ModelScope::FirstPage);
     assert_eq!(model.asked.load(Ordering::SeqCst), 15);
     assert!(rest.model_left.is_empty());
     for left in &first.model_left {
@@ -141,10 +137,11 @@ fn the_first_page_asks_the_model_about_ten_files_and_the_rest_follows_on_its_own
 fn a_second_trial_over_the_same_files_does_not_ask_the_model_again() {
     let model = Arc::new(CountingModel::default());
     let (_setup, access) = access_with(&model);
-    let first = trial_on(&access, target_reading(), ModelScope::All);
+    trial_on(&access, target_reading(), ModelScope::FirstPage);
+    let first = trial_on(&access, target_reading(), ModelScope::FirstPage);
     assert_eq!(model.asked.load(Ordering::SeqCst), 15);
 
-    let second = trial_on(&access, target_reading(), ModelScope::All);
+    let second = trial_on(&access, target_reading(), ModelScope::FirstPage);
 
     assert_eq!(model.asked.load(Ordering::SeqCst), 15);
     assert_eq!(second.unsure, first.unsure);
@@ -155,7 +152,8 @@ fn a_second_trial_over_the_same_files_does_not_ask_the_model_again() {
 fn a_stored_pick_whose_folder_is_gone_is_asked_again() {
     let model = Arc::new(CountingModel::default());
     let (_setup, access) = access_with(&model);
-    trial_on(&access, target_reading(), ModelScope::All);
+    trial_on(&access, target_reading(), ModelScope::FirstPage);
+    trial_on(&access, target_reading(), ModelScope::FirstPage);
     assert_eq!(model.asked.load(Ordering::SeqCst), 15);
 
     let without_alfa = reading(
@@ -172,7 +170,8 @@ fn a_stored_pick_whose_folder_is_gone_is_asked_again() {
             })
             .collect(),
     );
-    trial_on(&access, without_alfa, ModelScope::All);
+    trial_on(&access, without_alfa.clone(), ModelScope::FirstPage);
+    trial_on(&access, without_alfa, ModelScope::FirstPage);
 
     assert_eq!(model.asked.load(Ordering::SeqCst), 30);
 }

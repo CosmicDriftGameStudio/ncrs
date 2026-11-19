@@ -16,7 +16,7 @@ use ncrs_index::{
 use ncrs_intake::{
     date_in_file_stem, detect_fields, hash_path, is_eml_file, is_image_file, is_mail_body,
     learn_archive, location_structure, plan_reorganisation, ArchiveDocument, LocationStructure,
-    OwnNames, PlanFile, ReorganisationInput,
+    OwnNames, PlanFile, ReorganisationInput, TextError,
 };
 use ncrs_pipeline::Load;
 use ncrs_priority::{set_current_thread_priority, ThreadPriority};
@@ -300,26 +300,31 @@ pub fn read_folder(
     };
     let aliases = SenderAliases::default();
     let extracted = in_parallel(&unknown, access.load, |(position, _)| {
-        let text = walked.get(*position).and_then(|file| {
-            access
-                .text_chain
-                .extract(&folder.join(&file.relative))
-                .ok()
-                .flatten()
-        });
+        let read = walked
+            .get(*position)
+            .map(|file| access.text_chain.extract(&folder.join(&file.relative)));
         progress.done.fetch_add(1, Ordering::Relaxed);
-        text
+        read
     });
-    for ((position, hash), text) in unknown.into_iter().zip(extracted) {
-        if walked.get(position).is_none() {
-            continue;
-        }
+    for ((position, hash), read) in unknown.into_iter().zip(extracted) {
+        // A file that could not be opened, or whose reader is missing, says
+        // nothing about its text: it stays out of the picture like one that
+        // cannot be hashed, instead of being tagged as unreadable.
+        let text = match read {
+            None
+            | Some(Err(
+                TextError::LibraryMissing { .. }
+                | TextError::Io { .. }
+                | TextError::EngineUnavailable { .. },
+            )) => continue,
+            Some(Ok(text)) => text,
+            Some(Err(_)) => None,
+        };
         let detected = text.as_deref().map(|body| {
             detect_fields(
                 body,
                 &DocumentFields::default(),
                 &aliases,
-                &[],
                 &own,
                 &kinds.catalog,
             )

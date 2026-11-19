@@ -12,13 +12,18 @@ use ncrs_index::{ContentHash, Transfer};
 use super::groups::numbered_name;
 use super::picks::ask_until_done;
 use super::reading::{list_files, read_folder};
-use super::trial::{PlanFailure, StayReason, TrialEntry, TrialOutcome, TrialPlan};
+use super::trial::{
+    PlanFailure, StayReason, TrialEntry, TrialOutcome, TrialPlan, FOLDER_PICK_VERSION,
+};
 use super::{ChatAccess, FolderReading, ModelScope, ReadProgress, RunItem, RunPlan};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LiveState {
     Waiting,
     Looking,
+    /// Left without a folder because the AI cannot choose one; the plan is
+    /// finished, nothing is being read.
+    NeedsModel,
     /// `folder` is relative to the target.
     Filed {
         folder: PathBuf,
@@ -80,6 +85,9 @@ impl LiveRun {
 pub struct LiveTags {
     pub unreadable: String,
     pub no_folder: String,
+    /// The text of `no_folder` in every language, to find the tag an earlier
+    /// run put on a file under another language.
+    pub no_folder_in_every_language: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -129,6 +137,15 @@ pub fn plan_live(
         folder_choice_unsupported: false,
     });
 
+    // A "none fits" answer stored before the model could choose folders is not
+    // an answer, and the tag it put on the file is not true.
+    access
+        .with_index(|index| {
+            index
+                .forget_empty_picks_before(FOLDER_PICK_VERSION, &tags.no_folder_in_every_language)
+                .map_err(|err| err.to_string())
+        })
+        .map_err(PlanFailure::Other)?;
     let source_reading = read_folder(access, source, &run.progress).map_err(read_failed)?;
     let target_reading =
         read_folder(access, target, &ReadProgress::default()).map_err(read_failed)?;
@@ -144,6 +161,13 @@ pub fn plan_live(
             let mut live = classify(trial_plan, &source_reading);
             live.folder_choice_unsupported = trial_plan.model_failure == Some(AiError::Unsupported);
             live.done = trial_plan.model_left.is_empty() || live.folder_choice_unsupported;
+            if live.folder_choice_unsupported {
+                for file in &mut live.files {
+                    if file.state == LiveState::Looking {
+                        file.state = LiveState::NeedsModel;
+                    }
+                }
+            }
             run.publish(live.clone());
             last = Some(live);
         },
@@ -167,7 +191,7 @@ pub fn mark_files(access: &ChatAccess, plan: &LivePlan, tags: &LiveTags) -> Resu
                 LiveState::Unreadable => Some(&tags.unreadable),
                 LiveState::NoFolder => Some(&tags.no_folder),
                 LiveState::Filed { .. } | LiveState::AlreadyThere { .. } => None,
-                LiveState::Waiting | LiveState::Looking => continue,
+                LiveState::Waiting | LiveState::Looking | LiveState::NeedsModel => continue,
             };
             for tag in [&tags.unreadable, &tags.no_folder] {
                 if Some(tag) == marked {
@@ -408,7 +432,7 @@ pub fn tally(plan: &LivePlan) -> Tally {
     for file in &plan.files {
         match &file.state {
             LiveState::Waiting => tally.waiting += 1,
-            LiveState::Looking => tally.looking += 1,
+            LiveState::Looking | LiveState::NeedsModel => tally.looking += 1,
             LiveState::Filed { folder, .. } => {
                 tally.filed += 1;
                 folders.insert(folder);

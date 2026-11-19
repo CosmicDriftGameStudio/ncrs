@@ -355,16 +355,31 @@ fn brother_eval_trial() {
     let access = access_over(&kept.join("index.db"), work.path()).with_model(model);
     let archive = read(&access, &archive_folder);
     let source = read(&access, &source_folder);
-    let plan: TrialPlan = match access.run(ChatWork::Trial {
-        source: Arc::new(source.clone()),
-        target: Arc::new(archive.clone()),
-        answered: AnsweredGroups::default(),
-        layout: None,
-        scope: crate::chat_work::ModelScope::All,
-    }) {
-        ChatResult::Trial(Ok(plan)) => *plan,
-        other => panic!("{other:?}"),
-    };
+    // Each round asks a page of files; the picks it stores are not asked again.
+    // A model that never finishes the files must fail the test, not hang it.
+    const MAX_ROUNDS: usize = 200;
+    let mut rounds = 0;
+    let mut plan: TrialPlan;
+    loop {
+        plan = match access.run(ChatWork::Trial {
+            source: Arc::new(source.clone()),
+            target: Arc::new(archive.clone()),
+            answered: AnsweredGroups::default(),
+            layout: None,
+            scope: crate::chat_work::ModelScope::FirstPage,
+        }) {
+            ChatResult::Trial(Ok(plan)) => *plan,
+            other => panic!("{other:?}"),
+        };
+        rounds += 1;
+        assert!(
+            rounds <= MAX_ROUNDS,
+            "the model left files after {MAX_ROUNDS} rounds"
+        );
+        if plan.model_left.is_empty() || plan.model_failure.is_some() {
+            break;
+        }
+    }
 
     assert_eq!(
         file_list(&archive_folder),

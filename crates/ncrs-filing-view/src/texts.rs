@@ -1,5 +1,7 @@
 //! The words of the tab, in the user's language.
 
+use std::collections::BTreeSet;
+
 use ncrs_filing::chat_work::LiveTags;
 use ncrs_i18n::{fill_template, Language, Msg};
 
@@ -19,6 +21,12 @@ pub fn tags(lang: Language) -> LiveTags {
     LiveTags {
         unreadable: lang.text(Msg::FilingViewTagUnreadable).to_owned(),
         no_folder: lang.text(Msg::FilingViewTagNoFolder).to_owned(),
+        no_folder_in_every_language: Language::ALL
+            .into_iter()
+            .map(|each| each.text(Msg::FilingViewTagNoFolder).to_owned())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect(),
     }
 }
 

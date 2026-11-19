@@ -117,12 +117,9 @@ pub const MODEL_FIRST_PAGE: usize = 10;
 pub enum ModelScope {
     /// The first files in source order, as many as the trial page shows.
     FirstPage,
-    /// Only these files, by their source path.
-    Only(BTreeSet<PathBuf>),
     /// The last files in source order, as many as a page, in the background
     /// lane; the files before them are left for later.
     LastPage,
-    All,
 }
 
 impl TrialPlan {
@@ -231,7 +228,14 @@ pub fn trial(
     let filed = count(|outcome| matches!(outcome, TrialOutcome::Filed { .. }));
     let unsure = count(|outcome| matches!(outcome, TrialOutcome::Unsure { .. }));
     let already_there = count(|outcome| matches!(outcome, TrialOutcome::AlreadyThere { .. }));
-    let stays = count(|outcome| matches!(outcome, TrialOutcome::Stays(_)));
+    // The group questions skip the files the model left, so they are not
+    // counted as staying either.
+    let stays = entries
+        .iter()
+        .filter(|entry| {
+            matches!(entry.outcome, TrialOutcome::Stays(_)) && !model_left.contains(&entry.from)
+        })
+        .count();
     let mut plan = TrialPlan {
         source_root: source.root.clone(),
         target_root: target.root.clone(),
@@ -462,7 +466,7 @@ const MODEL_TEXT_CHARS: usize = 2000;
 /// version are asked again.
 /// Version 2: version 1 also held "no folder fits" for files the model never
 /// answered.
-const FOLDER_PICK_VERSION: i64 = 2;
+pub(super) const FOLDER_PICK_VERSION: i64 = 2;
 
 /// The files that did not get a sure place go to the model once, as a batch.
 /// A file it picks a folder for is unsure: the model's folder first, then the
@@ -487,7 +491,6 @@ fn ask_model(
     }
     let wanting = apply_stored_picks(ask, entries, needing_model);
     let (asked, not_asked): (Vec<usize>, Vec<usize>) = match scope {
-        ModelScope::All => (wanting, Vec::new()),
         ModelScope::FirstPage => {
             let mut asked = wanting;
             let rest = asked.split_off(MODEL_FIRST_PAGE.min(asked.len()));
@@ -498,21 +501,11 @@ fn ask_model(
             let asked = rest.split_off(rest.len().saturating_sub(MODEL_FIRST_PAGE));
             (asked, rest)
         }
-        ModelScope::Only(files) => wanting.into_iter().partition(|position| {
-            entries
-                .get(*position)
-                .is_some_and(|entry| files.contains(&entry.from))
-        }),
     };
-    // A named set is the rest itself: what it leaves out was settled before.
-    let left: BTreeSet<PathBuf> = if matches!(scope, ModelScope::Only(_)) {
-        BTreeSet::new()
-    } else {
-        not_asked
-            .into_iter()
-            .filter_map(|position| entries.get(position).map(|entry| entry.from.clone()))
-            .collect()
-    };
+    let left: BTreeSet<PathBuf> = not_asked
+        .into_iter()
+        .filter_map(|position| entries.get(position).map(|entry| entry.from.clone()))
+        .collect();
     if asked.is_empty() {
         return (left, None);
     }
@@ -526,8 +519,8 @@ fn ask_model(
         .map(document_text)
         .collect();
     let lane = match scope {
-        ModelScope::Only(_) | ModelScope::LastPage => FolderChoiceLane::Background,
-        ModelScope::FirstPage | ModelScope::All => FolderChoiceLane::Waiting,
+        ModelScope::LastPage => FolderChoiceLane::Background,
+        ModelScope::FirstPage => FolderChoiceLane::Waiting,
     };
     let picks = match ask
         .model

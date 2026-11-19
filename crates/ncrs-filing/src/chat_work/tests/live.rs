@@ -16,6 +16,7 @@ fn tags() -> LiveTags {
     LiveTags {
         unreadable: "unreadable".to_owned(),
         no_folder: "no folder".to_owned(),
+        no_folder_in_every_language: vec!["no folder".to_owned(), "kein Ordner".to_owned()],
     }
 }
 
@@ -292,6 +293,61 @@ fn a_model_that_cannot_choose_folders_leaves_the_files_untagged_and_stores_nothi
     assert!(last.done);
     assert!(last.folder_choice_unsupported);
     assert_eq!(tally(&last).no_folder, 0);
+    assert!(
+        last.files
+            .iter()
+            .all(|file| file.state != LiveState::Looking),
+        "a finished plan has no file that is still being read"
+    );
+    assert!(last
+        .files
+        .iter()
+        .any(|file| file.state == LiveState::NeedsModel));
+}
+
+fn stored_document(seed: u8) -> NewDocument {
+    NewDocument {
+        hash: ContentHash([seed; 32]),
+        path: PathBuf::from(format!("/elsewhere/{seed}.pdf")),
+        source: DocumentSource::Inbox,
+        received_at: Utc.with_ymd_and_hms(2026, 3, 14, 9, 30, 0).unwrap(),
+        stamp: None,
+    }
+}
+
+#[test]
+fn a_none_fits_answer_of_an_older_version_loses_its_tag_in_every_language() {
+    let setup = Setup::new();
+    write_source(&setup);
+    setup
+        .access
+        .with_index(|index| {
+            index.insert_document(&stored_document(1)).unwrap();
+            index.insert_document(&stored_document(2)).unwrap();
+            let german_hash = ContentHash([1; 32]);
+            let other_hash = ContentHash([2; 32]);
+            index.add_document_tag(&german_hash, "kein Ordner").unwrap();
+            index.add_document_tag(&other_hash, "no folder").unwrap();
+            index
+                .store_folder_picks(
+                    &setup.dir.path().join("archive"),
+                    &[(german_hash, None), (other_hash, Some("Alfa".to_owned()))],
+                    1,
+                )
+                .unwrap();
+            Ok(())
+        })
+        .unwrap();
+    let run = Arc::new(LiveRun::default());
+    let model = RecordingModel {
+        unsupported: true,
+        ..RecordingModel::default()
+    };
+
+    run_live(&setup, &model, &run).unwrap();
+
+    assert_eq!(tag_count(&setup, "kein Ordner"), 0);
+    assert_eq!(tag_count(&setup, "no folder"), 1);
 }
 
 #[test]

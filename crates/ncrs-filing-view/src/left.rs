@@ -34,6 +34,11 @@ pub fn what_happens(
             palette.text,
             None,
         ),
+        LiveState::NeedsModel => (
+            lang.text(Msg::FilingViewStateNeedsModel).to_owned(),
+            palette.dim_text,
+            None,
+        ),
         LiveState::Filed { folder, name, .. } => {
             let path = folder.join(name).display().to_string();
             (

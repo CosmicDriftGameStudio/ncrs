@@ -14,7 +14,8 @@ use chrono::NaiveDate;
 use ncrs_fs::{FolderBackend, JournaledTrash};
 use ncrs_index::{ContentHash, DocumentFields, Index, KindCatalog, Transfer};
 use ncrs_intake::{
-    hash_path, location_structure, ConditionProblem, PlainText, PlanFile, RuleProblem,
+    hash_path, location_structure, ConditionProblem, PdfUnavailable, PlainText, PlanFile,
+    RuleProblem, TextError,
 };
 use tempfile::TempDir;
 
@@ -156,6 +157,35 @@ fn reading_counts_files_photos_and_skips_hidden_files_and_links() {
         read.files[0].hash,
         hash_path(&setup.dir.path().join("in/a.txt")).unwrap()
     );
+}
+
+#[test]
+fn a_pdf_whose_reader_is_missing_stays_out_of_the_picture_instead_of_being_unreadable() {
+    let mut setup = Setup::new();
+    let library = TextError::LibraryMissing {
+        path: setup.dir.path().join("lib"),
+    };
+    setup.access = ChatAccess::new(
+        Arc::clone(&setup.access.slot),
+        Arc::new(
+            TextChain::new()
+                .with_source(PdfUnavailable::new(library))
+                .with_source(PlainText),
+        ),
+        Arc::clone(&setup.access.trash),
+    );
+    setup.write("in/a.txt", "Rechnung der Alfa AG");
+    setup.write("in/b.pdf", "%PDF-1.4 a pdf that cannot be read now");
+
+    let read = setup.read(&setup.dir.path().join("in")).unwrap();
+
+    let paths: Vec<&Path> = read
+        .files
+        .iter()
+        .map(|file| file.relative_path.as_path())
+        .collect();
+    assert_eq!(paths, [Path::new("a.txt")]);
+    assert_eq!(read.without_text, 0);
 }
 
 #[test]
