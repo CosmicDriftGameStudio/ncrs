@@ -605,8 +605,11 @@ impl App {
         // Right away, while the access the panel gave is fresh, but not on the
         // thread that draws: making a bookmark and writing its file can take a
         // moment on a slow volume.
-        self.grant_chosen_folder(&folder, |folder, result| {
-            Message::Grant(GrantMessage::Saved { folder, result })
+        self.grant_chosen_folder(&folder, |granted, result| {
+            Message::Grant(GrantMessage::Saved {
+                folder: granted,
+                result,
+            })
         })
     }
 

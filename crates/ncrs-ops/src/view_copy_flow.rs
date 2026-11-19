@@ -78,7 +78,7 @@ pub fn start_view_copy(
     let Some(slot) = made else {
         let on_server = group_is_server(&group);
         let text = match ops.view_copies_problem.as_ref() {
-            Some((kind, system_text)) => fill_template(
+            Some((problem_kind, system_text)) => fill_template(
                 ctx.lang.text(if on_server {
                     Msg::ErrorRemoteViewUnavailableReason
                 } else {
@@ -86,7 +86,7 @@ pub fn start_view_copy(
                 }),
                 &[(
                     "{reason}",
-                    &ncrs_ui_kit::io_reason::io_reason_text(*kind, system_text, ctx.lang),
+                    &ncrs_ui_kit::io_reason::io_reason_text(*problem_kind, system_text, ctx.lang),
                 )],
             ),
             None => ctx

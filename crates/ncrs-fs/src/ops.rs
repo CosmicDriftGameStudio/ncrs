@@ -48,7 +48,7 @@ pub async fn create_file(path: PathBuf) -> Result<(), CreateDirError> {
 /// would be created as something else than what the user typed.
 fn refuse_unfit_name(path: &std::path::Path) -> Result<(), CreateDirError> {
     match path.file_name().and_then(std::ffi::OsStr::to_str) {
-        Some(name) if !crate::archive::names::is_creatable_name(name) => {
+        Some(name) if !crate::archive::is_creatable_name(name) => {
             Err(CreateDirError::NameNotAllowed {
                 path: path.to_path_buf(),
             })

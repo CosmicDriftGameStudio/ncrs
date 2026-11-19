@@ -479,8 +479,8 @@ pub fn plan(pairs: &[(String, String)], taken: &[String], rules: NameRules) -> V
         waiting: (0..items.len()).collect(),
         free: BTreeSet::new(),
     };
-    for (index, item) in items.iter().enumerate() {
-        if let Some(item) = item {
+    for (index, slot) in items.iter().enumerate() {
+        if let Some(item) = slot {
             *queue.leaving.entry(item.from_key.clone()).or_default() += 1;
             queue
                 .wanting
@@ -489,8 +489,8 @@ pub fn plan(pairs: &[(String, String)], taken: &[String], rules: NameRules) -> V
                 .push(index);
         }
     }
-    for (index, item) in items.iter().enumerate() {
-        if item
+    for (index, slot) in items.iter().enumerate() {
+        if slot
             .as_ref()
             .is_some_and(|item| !queue.leaving.contains_key(&item.to_key))
         {

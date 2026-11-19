@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) fn plan_all(rules: &[Rule]) -> Planning {
+pub(in crate::filing_plan::tests) fn plan_all(rules: &[Rule]) -> Planning {
     plan(
         rules,
         &PlanInput {
@@ -91,7 +91,10 @@ fn a_missing_field_is_named() {
     assert_eq!(reason(&no_date), ReviewReason::MissingField(Field::Date));
 }
 
-pub(super) fn planned_path(pattern: &str, fields: &DocumentFields) -> Option<PathBuf> {
+pub(in crate::filing_plan::tests) fn planned_path(
+    pattern: &str,
+    fields: &DocumentFields,
+) -> Option<PathBuf> {
     let mut plain = spec(pattern);
     plain.extract_number = None;
     plain.extract_date = None;
@@ -102,7 +105,11 @@ pub(super) fn planned_path(pattern: &str, fields: &DocumentFields) -> Option<Pat
     }
 }
 
-pub(super) fn known(sender: Option<&str>, number: Option<&str>, date: bool) -> DocumentFields {
+pub(in crate::filing_plan::tests) fn known(
+    sender: Option<&str>,
+    number: Option<&str>,
+    date: bool,
+) -> DocumentFields {
     DocumentFields {
         sender: sender.map(str::to_owned),
         number: number.map(str::to_owned),

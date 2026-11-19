@@ -297,25 +297,10 @@ pub fn update(
             }
         }
         PanelMessage::HeaderMenuClose => panels.header_menu = None,
-        PanelMessage::HeaderMenuMove(step) => {
-            if let Some(menu) = panels.header_menu.as_mut() {
-                let entries = crate::header_menu::entry_messages(
-                    ctx.columns.of(menu.side),
-                    ctx.columns.same_in_both,
-                );
-                menu.selected = crate::header_menu::step_selection(menu.selected, &entries, step);
-            }
-        }
+        PanelMessage::HeaderMenuMove(step) => move_header_menu_selection(panels, ctx, step),
         PanelMessage::HeaderMenuChoose => {
-            let chosen = panels.header_menu.and_then(|menu| {
-                let entries = crate::header_menu::entry_messages(
-                    ctx.columns.of(menu.side),
-                    ctx.columns.same_in_both,
-                );
-                entries.into_iter().nth(menu.selected?)?
-            });
-            if let Some(message) = chosen {
-                return update(panels, message, ctx);
+            if let Some(chosen) = chosen_header_menu_entry(panels, ctx) {
+                return update(panels, chosen, ctx);
             }
         }
 
@@ -356,6 +341,21 @@ pub fn update(
         PanelMessage::RenameSubmit => actions.extend(panels.confirm_rename()),
     }
     (task, actions)
+}
+
+fn move_header_menu_selection(panels: &mut Panels, ctx: &Ctx<'_>, step: isize) {
+    if let Some(menu) = panels.header_menu.as_mut() {
+        let entries =
+            crate::header_menu::entry_messages(ctx.columns.of(menu.side), ctx.columns.same_in_both);
+        menu.selected = crate::header_menu::step_selection(menu.selected, &entries, step);
+    }
+}
+
+fn chosen_header_menu_entry(panels: &Panels, ctx: &Ctx<'_>) -> Option<PanelMessage> {
+    let menu = panels.header_menu?;
+    let entries =
+        crate::header_menu::entry_messages(ctx.columns.of(menu.side), ctx.columns.same_in_both);
+    entries.into_iter().nth(menu.selected?)?
 }
 
 /// Puts the values of this session into a fresh local listing. The returned

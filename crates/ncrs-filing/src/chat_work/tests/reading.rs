@@ -89,7 +89,7 @@ fn reading_a_file_or_a_missing_folder_or_too_many_files_is_refused() {
     );
 }
 
-pub(super) fn read_date_of(setup: &Setup, name: &str) -> Option<NaiveDate> {
+pub(in crate::chat_work::tests) fn read_date_of(setup: &Setup, name: &str) -> Option<NaiveDate> {
     let read = setup.read(&setup.dir.path().join("in")).unwrap();
     read.files
         .iter()
@@ -193,7 +193,11 @@ fn a_known_document_brings_its_fields_and_text_from_the_index() {
     assert_eq!(read.files[0].text.as_deref(), Some("stored text"));
 }
 
-pub(super) fn index_with_stored_hash(setup: &Setup, path: &Path, stamp: ncrs_index::FileStamp) {
+pub(in crate::chat_work::tests) fn index_with_stored_hash(
+    setup: &Setup,
+    path: &Path,
+    stamp: ncrs_index::FileStamp,
+) {
     let mut guard = setup.access.slot.lock().unwrap();
     let index = guard.as_mut().unwrap();
     let id = index
@@ -218,7 +222,7 @@ pub(super) fn index_with_stored_hash(setup: &Setup, path: &Path, stamp: ncrs_ind
     index.set_document_text(id, "stored text").unwrap();
 }
 
-pub(super) fn stamp_of_file(path: &Path) -> ncrs_index::FileStamp {
+pub(in crate::chat_work::tests) fn stamp_of_file(path: &Path) -> ncrs_index::FileStamp {
     let metadata = fs::metadata(path).unwrap();
     ncrs_index::FileStamp {
         size: metadata.len(),

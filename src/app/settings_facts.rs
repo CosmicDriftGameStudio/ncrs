@@ -248,7 +248,7 @@ impl App {
             async move {
                 tokio::task::spawn_blocking(move || undo_batch(&access, batch, unexpected))
                     .await
-                    .unwrap_or_else(|_| Err(stopped))
+                    .unwrap_or(Err(stopped))
             },
             |result| Message::Settings(SettingsMessage::RunUndone(result)),
         )

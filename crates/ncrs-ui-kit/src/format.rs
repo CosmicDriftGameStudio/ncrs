@@ -53,7 +53,7 @@ pub fn size_in(bytes: u64, format: SizeFormat, lang: Language) -> String {
         SizeFormat::Bytes => format!("{} B", grouped(bytes)),
         SizeFormat::Kilobytes => {
             let rounded = bytes
-                .saturating_add(BYTES_PER_KILOBYTE / 2)
+                .saturating_add(BYTES_PER_KILOBYTE.div_euclid(2))
                 .div_euclid(BYTES_PER_KILOBYTE);
             let kilobytes = if bytes == 0 { 0 } else { rounded.max(1) };
             format!("{} KB", grouped(kilobytes))
@@ -163,7 +163,9 @@ fn windows_attributes(attributes: WindowsAttributes) -> String {
 /// one unit and rounding of a download and of the model that is downloaded.
 fn whole_megabytes(bytes: u64) -> u64 {
     let megabyte = BYTES_PER_KILOBYTE * BYTES_PER_KILOBYTE;
-    bytes.saturating_add(megabyte / 2).div_euclid(megabyte)
+    bytes
+        .saturating_add(megabyte.div_euclid(2))
+        .div_euclid(megabyte)
 }
 
 /// `639 MB`: the size of a download as its card and its progress line say it.

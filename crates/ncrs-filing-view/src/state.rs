@@ -54,9 +54,9 @@ pub struct Session {
     /// The folders of the write folder are being listed.
     pub listing: bool,
     /// `plan` with `overrides` on top, formed when either changes.
-    shown: Option<LivePlan>,
+    pub shown: Option<LivePlan>,
     /// The version of the run's plan that `plan` holds.
-    seen_version: u64,
+    pub seen_version: u64,
 }
 
 impl Session {

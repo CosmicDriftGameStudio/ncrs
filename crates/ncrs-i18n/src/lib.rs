@@ -200,7 +200,7 @@ impl Language {
     pub fn from_locale_tag(tag: &str) -> Option<Self> {
         let primary = tag
             .trim()
-            .split(|ch: char| matches!(ch, '_' | '-' | '.' | '@'))
+            .split(['_', '-', '.', '@'])
             .next()
             .unwrap_or_default();
         match primary.to_ascii_lowercase().as_str() {

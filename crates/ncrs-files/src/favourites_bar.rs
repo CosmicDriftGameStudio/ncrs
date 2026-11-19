@@ -96,13 +96,13 @@ pub fn open_keys_run(label: impl Fn(usize) -> Option<String>) -> Option<(String,
     let labels: Vec<String> = (0..FAVOURITES_BAR_SLOTS)
         .map(label)
         .collect::<Option<_>>()?;
-    let split = |label: &str| {
-        let last = label.chars().last()?;
-        Some((label[..label.len() - last.len_utf8()].to_owned(), last))
+    let split = |key: &str| {
+        let last = key.chars().last()?;
+        Some((key[..key.len() - last.len_utf8()].to_owned(), last))
     };
     let (prefix, mut previous) = split(labels.first()?)?;
-    for label in labels.iter().skip(1) {
-        let (next_prefix, next) = split(label)?;
+    for key in labels.iter().skip(1) {
+        let (next_prefix, next) = split(key)?;
         if next_prefix != prefix || u32::from(next) != u32::from(previous) + 1 {
             return None;
         }

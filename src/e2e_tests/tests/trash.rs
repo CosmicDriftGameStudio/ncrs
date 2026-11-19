@@ -3,7 +3,7 @@ use crate::messages::TrashMessage;
 use iced::keyboard::key::Named;
 
 /// The trash folder and a session that deletes into it.
-pub(super) fn trash_session(
+pub(in crate::e2e_tests::tests) fn trash_session(
     dir: &Path,
 ) -> (
     tempfile::TempDir,
@@ -17,7 +17,7 @@ pub(super) fn trash_session(
     (bin, session_with_trash(dir, trash))
 }
 
-pub(super) const SHIFT_F8: (Named, Modifiers) = (Named::F8, Modifiers::SHIFT);
+pub(in crate::e2e_tests::tests) const SHIFT_F8: (Named, Modifiers) = (Named::F8, Modifiers::SHIFT);
 
 /// F8 and Enter: the file leaves its place for the trash, and the tagged
 /// rows are the ones that go, then the tags are gone with them.

@@ -6,20 +6,23 @@ use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
 
-pub(super) const FIXTURE_V0_6_0: &str = concat!(
+pub(in crate::index::tests) const FIXTURE_V0_6_0: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/tests/fixtures/index-v0.6.0.db"
 );
-pub(super) const PROBE_COLUMN: &str = "ALTER TABLE document ADD COLUMN probe INTEGER";
+pub(in crate::index::tests) const PROBE_COLUMN: &str =
+    "ALTER TABLE document ADD COLUMN probe INTEGER";
 
-pub(super) const FIXTURE_V1_2_0: &str = concat!(
+pub(in crate::index::tests) const FIXTURE_V1_2_0: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/tests/fixtures/index-v1.2.0.db"
 );
 
 /// A copy of an index a release wrote, and the store holding the key it was
 /// written with (bytes 0x00 to 0x1f).
-pub(super) fn copy_of_fixture(fixture: &str) -> (TempDir, PathBuf, InMemoryKeyStore) {
+pub(in crate::index::tests) fn copy_of_fixture(
+    fixture: &str,
+) -> (TempDir, PathBuf, InMemoryKeyStore) {
     let dir = TempDir::new().unwrap();
     let path = db_in(&dir);
     fs::copy(fixture, &path).unwrap();
@@ -27,40 +30,40 @@ pub(super) fn copy_of_fixture(fixture: &str) -> (TempDir, PathBuf, InMemoryKeySt
     (dir, path, InMemoryKeyStore::with_entry(key))
 }
 
-pub(super) fn copy_of_the_v0_6_0_index() -> (TempDir, PathBuf, InMemoryKeyStore) {
+pub(in crate::index::tests) fn copy_of_the_v0_6_0_index() -> (TempDir, PathBuf, InMemoryKeyStore) {
     copy_of_fixture(FIXTURE_V0_6_0)
 }
 
-pub(super) fn copy_of_the_v1_2_0_index() -> (TempDir, PathBuf, InMemoryKeyStore) {
+pub(in crate::index::tests) fn copy_of_the_v1_2_0_index() -> (TempDir, PathBuf, InMemoryKeyStore) {
     copy_of_fixture(FIXTURE_V1_2_0)
 }
 
-pub(super) const FIXTURE_V1_5_1: &str = concat!(
+pub(in crate::index::tests) const FIXTURE_V1_5_1: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/tests/fixtures/index-v1.5.1.db"
 );
 
-pub(super) fn copy_of_the_v1_5_1_index() -> (TempDir, PathBuf, InMemoryKeyStore) {
+pub(in crate::index::tests) fn copy_of_the_v1_5_1_index() -> (TempDir, PathBuf, InMemoryKeyStore) {
     copy_of_fixture(FIXTURE_V1_5_1)
 }
 
-pub(super) const FIXTURE_V0_6_0_VERSION: u32 = 9;
-pub(super) const FIXTURE_V1_2_0_VERSION: u32 = 25;
-pub(super) const FIXTURE_V1_5_1_VERSION: u32 = 26;
+pub(in crate::index::tests) const FIXTURE_V0_6_0_VERSION: u32 = 9;
+pub(in crate::index::tests) const FIXTURE_V1_2_0_VERSION: u32 = 25;
+pub(in crate::index::tests) const FIXTURE_V1_5_1_VERSION: u32 = 26;
 
-pub(super) fn latest_version() -> u32 {
+pub(in crate::index::tests) fn latest_version() -> u32 {
     u32::try_from(MIGRATIONS.len()).unwrap()
 }
 
-pub(super) fn probe_version() -> u32 {
+pub(in crate::index::tests) fn probe_version() -> u32 {
     latest_version() + 1
 }
 
-pub(super) fn migrations_and(extra: &[&'static str]) -> Vec<&'static str> {
+pub(in crate::index::tests) fn migrations_and(extra: &[&'static str]) -> Vec<&'static str> {
     MIGRATIONS.iter().chain(extra).copied().collect()
 }
 
-pub(super) fn has_column(index: &Index, table: &str, column: &str) -> bool {
+pub(in crate::index::tests) fn has_column(index: &Index, table: &str, column: &str) -> bool {
     index
         .conn
         .query_row(
@@ -72,7 +75,7 @@ pub(super) fn has_column(index: &Index, table: &str, column: &str) -> bool {
         == 1
 }
 
-pub(super) fn assert_v0_6_0_content(index: &Index) {
+pub(in crate::index::tests) fn assert_v0_6_0_content(index: &Index) {
     use crate::model::{DocumentSource, DocumentStatus};
 
     assert!(index.is_encrypted());
@@ -125,7 +128,7 @@ pub(super) fn assert_v0_6_0_content(index: &Index) {
     assert_v0_6_0_search_and_other_tables(index, &invoice, &receipt, &notice);
 }
 
-pub(super) fn assert_v0_6_0_search_and_other_tables(
+pub(in crate::index::tests) fn assert_v0_6_0_search_and_other_tables(
     index: &Index,
     invoice: &crate::model::Document,
     receipt: &crate::model::Document,
@@ -233,11 +236,11 @@ fn a_failing_second_step_leaves_the_release_0_6_0_file_byte_for_byte_as_it_was()
     assert_v0_6_0_content(&index);
 }
 
-pub(super) fn tag_set(names: &[&str]) -> std::collections::BTreeSet<String> {
+pub(in crate::index::tests) fn tag_set(names: &[&str]) -> std::collections::BTreeSet<String> {
     names.iter().map(|name| (*name).to_owned()).collect()
 }
 
-pub(super) fn assert_v1_2_0_content(index: &Index) {
+pub(in crate::index::tests) fn assert_v1_2_0_content(index: &Index) {
     let invoice = assert_v1_2_0_invoice(index);
     let (receipt, notice) = assert_v1_2_0_inbox_documents(index, invoice);
     assert_v1_2_0_rules(index);
@@ -246,7 +249,7 @@ pub(super) fn assert_v1_2_0_content(index: &Index) {
     assert_v1_2_0_hermes_runs(index);
 }
 
-pub(super) fn assert_v1_2_0_reading_versions(
+pub(in crate::index::tests) fn assert_v1_2_0_reading_versions(
     index: &Index,
     invoice: DocumentId,
     notice: DocumentId,
@@ -257,7 +260,7 @@ pub(super) fn assert_v1_2_0_reading_versions(
     assert_eq!(index.ai_read_version(notice).unwrap(), 1);
 }
 
-pub(super) fn assert_v1_2_0_hermes_runs(index: &Index) {
+pub(in crate::index::tests) fn assert_v1_2_0_hermes_runs(index: &Index) {
     use crate::journal::{BatchKind, SourceRoot, Transfer};
     use crate::model::BatchId;
 
@@ -287,7 +290,7 @@ pub(super) fn assert_v1_2_0_hermes_runs(index: &Index) {
     assert_eq!((trash.source_root, trash.target_root), (None, None));
 }
 
-pub(super) fn assert_v1_2_0_invoice(index: &Index) -> DocumentId {
+pub(in crate::index::tests) fn assert_v1_2_0_invoice(index: &Index) -> DocumentId {
     use crate::model::{DocumentSource, DocumentStatus, Field, FieldOrigin, RuleId};
 
     assert!(index.is_encrypted());
@@ -355,7 +358,7 @@ pub(super) fn assert_v1_2_0_invoice(index: &Index) -> DocumentId {
     invoice.id
 }
 
-pub(super) fn assert_v1_2_0_inbox_documents(
+pub(in crate::index::tests) fn assert_v1_2_0_inbox_documents(
     index: &Index,
     invoice: DocumentId,
 ) -> (DocumentId, DocumentId) {
@@ -387,7 +390,7 @@ pub(super) fn assert_v1_2_0_inbox_documents(
     (receipt.id, notice.id)
 }
 
-pub(super) fn assert_v1_2_0_rules(index: &Index) {
+pub(in crate::index::tests) fn assert_v1_2_0_rules(index: &Index) {
     let rules = index.rules().unwrap();
     let ids: Vec<(i64, i64)> = rules.iter().map(|r| (r.id.get(), r.position)).collect();
     assert_eq!(ids[..4], [(4, 1), (1, 2), (2, 3), (3, 4)]);
@@ -405,7 +408,9 @@ pub(super) fn assert_v1_2_0_rules(index: &Index) {
     assert_v1_2_0_discarded_suggestion(index);
 }
 
-pub(super) fn assert_v1_2_0_rule_with_identifiers(identifiers: &crate::model::Rule) {
+pub(in crate::index::tests) fn assert_v1_2_0_rule_with_identifiers(
+    identifiers: &crate::model::Rule,
+) {
     use crate::model::{Condition, ConditionKind, RuleOrigin};
 
     assert_eq!(identifiers.origin, RuleOrigin::Hand);
@@ -420,7 +425,10 @@ pub(super) fn assert_v1_2_0_rule_with_identifiers(identifiers: &crate::model::Ru
     );
 }
 
-pub(super) fn assert_v1_2_0_hosting_rule(index: &Index, hosting: &crate::model::Rule) {
+pub(in crate::index::tests) fn assert_v1_2_0_hosting_rule(
+    index: &Index,
+    hosting: &crate::model::Rule,
+) {
     use crate::model::{Combinator, Condition, ConditionKind, RuleOrigin};
 
     assert_eq!(hosting.origin, RuleOrigin::Hand);
@@ -450,7 +458,7 @@ pub(super) fn assert_v1_2_0_hosting_rule(index: &Index, hosting: &crate::model::
     assert_eq!(index.rule_evidence(hosting.id).unwrap(), None);
 }
 
-pub(super) fn assert_v1_2_0_inbox_rule(inbox: &crate::model::Rule) {
+pub(in crate::index::tests) fn assert_v1_2_0_inbox_rule(inbox: &crate::model::Rule) {
     use crate::model::{Combinator, Condition, ConditionKind, RuleOrigin};
 
     assert_eq!(inbox.origin, RuleOrigin::Filing);
@@ -471,7 +479,10 @@ pub(super) fn assert_v1_2_0_inbox_rule(inbox: &crate::model::Rule) {
     assert_eq!(inbox.spec.filing_pattern, "{year}/");
 }
 
-pub(super) fn assert_v1_2_0_suggested_rule(index: &Index, suggested: &crate::model::Rule) {
+pub(in crate::index::tests) fn assert_v1_2_0_suggested_rule(
+    index: &Index,
+    suggested: &crate::model::Rule,
+) {
     use crate::model::{Condition, ConditionKind, RuleEvidence, RuleOrigin};
 
     assert_eq!(suggested.origin, RuleOrigin::Suggestion);
@@ -493,7 +504,7 @@ pub(super) fn assert_v1_2_0_suggested_rule(index: &Index, suggested: &crate::mod
     assert_eq!(suggested_rule.id, suggested.id);
 }
 
-pub(super) fn assert_v1_2_0_discarded_suggestion(index: &Index) {
+pub(in crate::index::tests) fn assert_v1_2_0_discarded_suggestion(index: &Index) {
     let discarded: Vec<(String, String, String, String)> = index
         .conn
         .prepare(
@@ -518,7 +529,7 @@ pub(super) fn assert_v1_2_0_discarded_suggestion(index: &Index) {
     );
 }
 
-pub(super) fn assert_v1_2_0_aliases_reviews_queries_and_tags(
+pub(in crate::index::tests) fn assert_v1_2_0_aliases_reviews_queries_and_tags(
     index: &Index,
     receipt: DocumentId,
     notice: DocumentId,

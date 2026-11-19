@@ -643,7 +643,7 @@ impl App {
     }
 
     pub fn noted_for_test(&self) -> &std::collections::HashSet<PathBuf> {
-        self.notes.noted()
+        &self.notes.noted
     }
 
     pub fn viewer_for_test(&self) -> &ncrs_viewer::State {

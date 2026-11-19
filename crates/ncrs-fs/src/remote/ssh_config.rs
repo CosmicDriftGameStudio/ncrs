@@ -101,10 +101,8 @@ pub fn settings_for(text: &str, alias: &str, home: Option<&Path>) -> HostSetting
                     found.user_known_hosts = Some(files_of(&values, home));
                 }
             }
-            "globalknownhostsfile" => {
-                if found.global_known_hosts.is_none() {
-                    found.global_known_hosts = Some(files_of(&values, home));
-                }
+            "globalknownhostsfile" if found.global_known_hosts.is_none() => {
+                found.global_known_hosts = Some(files_of(&values, home));
             }
             _ => {}
         }

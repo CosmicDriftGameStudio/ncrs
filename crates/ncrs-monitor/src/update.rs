@@ -232,7 +232,7 @@ pub fn update(state: &mut State, message: MonitorMessage, ctx: &Ctx) -> Outcome 
                     .map(|drive| drive.mount.clone())
             });
             match folder {
-                Some(folder) => open_drive(state, folder),
+                Some(mount) => open_drive(state, mount),
                 None => none(),
             }
         }
@@ -314,9 +314,10 @@ fn close(state: &mut State) -> Outcome {
 
 /// Esc closes one layer: the dialog, the menu, the filter field, the page.
 fn escape(state: &mut State) -> Outcome {
-    if state.kill_dialog.take().is_some() || state.menu.take().is_some() {
-        none()
-    } else if state.drive_focus.take().is_some() {
+    if state.kill_dialog.take().is_some()
+        || state.menu.take().is_some()
+        || state.drive_focus.take().is_some()
+    {
         none()
     } else if state.filter_focused {
         state.filter_focused = false;

@@ -12,11 +12,11 @@ kit_allowance="ncrs-filing"
 oversized_allowance="
 src/ui_tests/mod.rs
 src/e2e_tests/mod.rs
-crates/ncrs-index/src/index.rs
-crates/ncrs-index/src/documents.rs
+crates/ncrs-index/src/index/mod.rs
+crates/ncrs-index/src/documents/mod.rs
 crates/ncrs-filing/src/chat_work/tests/mod.rs
 crates/ncrs-pipeline/src/runner/mod.rs
-crates/ncrs-intake/src/filing_plan/tests.rs
+crates/ncrs-intake/src/filing_plan/tests/mod.rs
 crates/ncrs-index/src/model/mod.rs
 crates/ncrs-hermes-chat/tests/rule_flow.rs
 "

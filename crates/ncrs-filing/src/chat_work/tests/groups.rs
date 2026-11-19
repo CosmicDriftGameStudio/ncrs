@@ -1,7 +1,7 @@
 use super::trial::*;
 use super::*;
 
-pub(super) fn source_with_staying_files() -> FolderReading {
+pub(in crate::chat_work::tests) fn source_with_staying_files() -> FolderReading {
     let sender =
         |path: &str, seed: u8, name: &str| plan_file(path, seed, Some(name), date(2022, 7, 4));
     let mut no_kind = plan_file("neither.pdf", 120, None, date(2022, 7, 4));
@@ -230,7 +230,7 @@ fn a_rule_the_form_would_refuse_is_refused_and_nothing_is_stored() {
 
 /// Alfa documents filed by year in two areas, three each, so a new one is
 /// unsure which area it belongs to.
-pub(super) fn alfa_in_two_areas() -> FolderReading {
+pub(in crate::chat_work::tests) fn alfa_in_two_areas() -> FolderReading {
     let mut files = Vec::new();
     for (area, base) in [("Haus", 10), ("Firma", 20)] {
         for (offset, year) in [2019, 2020, 2021].into_iter().enumerate() {
@@ -245,7 +245,9 @@ pub(super) fn alfa_in_two_areas() -> FolderReading {
     reading("/archive", files)
 }
 
-pub(super) fn unsure_in_two_areas(file: PlanFile) -> (Vec<PathBuf>, Vec<String>) {
+pub(in crate::chat_work::tests) fn unsure_in_two_areas(
+    file: PlanFile,
+) -> (Vec<PathBuf>, Vec<String>) {
     let setup = Setup::new();
     let plan = match setup.access.run(ChatWork::Trial {
         source: Arc::new(reading("/inbox", vec![file])),

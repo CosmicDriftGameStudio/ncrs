@@ -13,7 +13,7 @@ use super::{
 /// The same file under another spelling of its name, in the same folder: on a
 /// case-insensitive file system `Rechnung.pdf` and `rechnung.pdf` are one entry.
 /// Two names of one file (links) are two entries and do not count.
-pub(super) fn is_respelling(from: &Path, to: &Path) -> bool {
+pub(in crate::execute) fn is_respelling(from: &Path, to: &Path) -> bool {
     let (Some(from_parent), Some(to_parent), Some(name)) =
         (from.parent(), to.parent(), to.file_name())
     else {
@@ -34,7 +34,7 @@ fn respell_hidden_name(to: &Path) -> PathBuf {
 
 /// A respell that stopped between its two renames left the file only under
 /// the hidden name: it goes to its new name when neither name is there.
-pub(super) fn restore_respelled(item: &JournalItem) {
+pub(in crate::execute) fn restore_respelled(item: &JournalItem) {
     let hidden = respell_hidden_name(&item.to);
     let nothing_at_either_name =
         fs::symlink_metadata(&item.from).is_err() && fs::symlink_metadata(&item.to).is_err();
@@ -45,7 +45,7 @@ pub(super) fn restore_respelled(item: &JournalItem) {
 
 /// Renames through a hidden name, which also works where the old and the new
 /// name are one entry for the file system.
-pub(super) fn respell(
+pub(in crate::execute) fn respell(
     index: &Index,
     batch: BatchId,
     item: &ExecutionItem,

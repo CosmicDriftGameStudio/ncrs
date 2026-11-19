@@ -678,8 +678,8 @@ fn everything_one_accept_files_goes_into_one_batch_that_one_undo_takes_back() {
         info.name,
         Some(setup.archive.join("Box").to_string_lossy().into_owned())
     );
-    let items = setup.with_index(|index| index.journal_items(batch).unwrap());
-    assert_eq!(items.len(), 2);
+    let journal = setup.with_index(|index| index.journal_items(batch).unwrap());
+    assert_eq!(journal.len(), 2);
 
     setup.with_index(|index| {
         crate::execute::undo_with_trash(index, batch, &[], None).unwrap();

@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) fn run_plan(setup: &Setup, transfer: Transfer) -> RunPlan {
+pub(in crate::chat_work::tests) fn run_plan(setup: &Setup, transfer: Transfer) -> RunPlan {
     let source = setup.dir.path().join("inbox");
     let item = |name: &str, content: &str| {
         let from = setup.write(&format!("inbox/{name}"), content);
@@ -94,7 +94,7 @@ fn files_inside_the_target_are_renamed_in_the_same_run_and_undone_with_it() {
     assert!(setup.dir.path().join("inbox/a.txt").exists());
 }
 
-pub(super) fn last_run(setup: &Setup) -> Option<RunSummary> {
+pub(in crate::chat_work::tests) fn last_run(setup: &Setup) -> Option<RunSummary> {
     match setup.access.run(ChatWork::LastRun) {
         ChatResult::LastRun(result) => result.unwrap(),
         other => panic!("{other:?}"),

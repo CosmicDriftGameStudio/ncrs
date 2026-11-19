@@ -41,7 +41,7 @@ fn is_combining_mark(c: char) -> bool {
 }
 
 /// `text` in lower case with the marks taken off its Latin letters.
-pub(crate) fn base_letters(text: &str) -> String {
+pub fn base_letters(text: &str) -> String {
     let mut folded = String::with_capacity(text.len());
     for c in text.chars().flat_map(char::to_lowercase) {
         if is_combining_mark(c) {

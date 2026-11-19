@@ -3,7 +3,7 @@
 
 use chrono::NaiveDate;
 use ncrs_index::{DocumentFields, KindCatalog, SenderAliases};
-use unicode_normalization::{is_nfc, UnicodeNormalization};
+use unicode_normalization::{is_nfc, UnicodeNormalization as _};
 
 use crate::date_detection::detect_letter_date;
 use crate::recipient_detection::{detect_recipient, kind_from_heading};
@@ -51,7 +51,7 @@ impl DetectedFields {
 
 /// Detects only the fields that are empty in `current`.
 pub fn detect_fields(
-    text: &str,
+    raw_text: &str,
     current: &DocumentFields,
     aliases: &SenderAliases,
     own: &OwnNames<'_>,
@@ -60,10 +60,10 @@ pub fn detect_fields(
     // Text layers of some generators and macOS scans hold "a" and a combining
     // diaeresis apart, which no word pattern matches.
     let composed;
-    let text = if is_nfc(text) {
-        text
+    let text = if is_nfc(raw_text) {
+        raw_text
     } else {
-        composed = text.nfc().collect::<String>();
+        composed = raw_text.nfc().collect::<String>();
         &composed
     };
     let recipient = current

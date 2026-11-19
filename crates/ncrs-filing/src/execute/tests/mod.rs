@@ -696,7 +696,7 @@ fn a_new_name_that_differs_only_in_case_renames_the_file_where_the_file_system_d
         duplicate: false,
     };
 
-    let report = setup.run(&[item.clone()]);
+    let report = setup.run(std::slice::from_ref(&item));
 
     assert_eq!(report.moved(), 1);
     let names: Vec<_> = fs::read_dir(&setup.root)

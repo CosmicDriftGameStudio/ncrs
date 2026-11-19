@@ -924,8 +924,8 @@ fn is_cut_short_copy(copy: &Path, source: &Path) -> bool {
     let (Ok(mut copied), Ok(mut original)) = (fs::File::open(copy), fs::File::open(source)) else {
         return false;
     };
-    let mut copied_block = [0_u8; 64 * 1024];
-    let mut original_block = [0_u8; 64 * 1024];
+    let mut copied_block: [u8; 64 * 1024] = [0; 64 * 1024];
+    let mut original_block: [u8; 64 * 1024] = [0; 64 * 1024];
     loop {
         let Ok(read) = copied.read(&mut copied_block) else {
             return false;

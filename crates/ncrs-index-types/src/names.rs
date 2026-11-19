@@ -1,6 +1,6 @@
 //! The spellings names are compared by.
 
-use unicode_normalization::UnicodeNormalization;
+use unicode_normalization::UnicodeNormalization as _;
 
 /// The spelling of a tag: lowercase words joined by single hyphens.
 pub fn tag_name(text: &str) -> String {

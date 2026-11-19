@@ -138,11 +138,11 @@ fn rule_row<'a>(
     SettingRow::listed_buttons(label, Some(second), Some(status), actions, palette)
 }
 
-fn problem_text(detail: &str, lang: Language) -> String {
-    let detail = if detail == ncrs_core::INDEX_NOT_OPEN {
+fn problem_text(raw_detail: &str, lang: Language) -> String {
+    let detail = if raw_detail == ncrs_core::INDEX_NOT_OPEN {
         lang.text(Msg::IndexNotOpen)
     } else {
-        detail
+        raw_detail
     };
     fill_template(lang.text(Msg::RulesProblemFailed), &[("{detail}", detail)])
 }

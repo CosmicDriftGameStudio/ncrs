@@ -141,5 +141,5 @@ fn header_row<'a>(header: &Header, palette: &Palette) -> Element<'a, CommandPale
         .into_iter()
         .chain(header.beta_mark)
         .collect();
-    picker::group_header(&header.label, &marks, palette)
+    picker::group_header(header.label, &marks, palette)
 }

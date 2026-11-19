@@ -48,8 +48,10 @@ pub fn update(ops: &mut Ops, message: OpsMessage, ctx: &FlowCtx<'_>) -> Outcome 
             ops.quit_dialog = false;
             idle()
         }
-        OpsMessage::Permissions(message) => update_permissions(ops, message),
-        OpsMessage::BatchRename(message) => update_batch_rename(ops, message, ctx),
+        OpsMessage::Permissions(permissions_message) => {
+            update_permissions(ops, permissions_message)
+        }
+        OpsMessage::BatchRename(rename_message) => update_batch_rename(ops, rename_message, ctx),
         OpsMessage::DeleteRowDone {
             result,
             index,

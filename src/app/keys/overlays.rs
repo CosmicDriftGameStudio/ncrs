@@ -94,7 +94,7 @@ pub(in crate::app) fn transfer_overlay_key(
     )
     .map(|pressed| match pressed {
         TransferOverlayKey::Dialog(message) => Message::TransferDialog(message),
-        TransferOverlayKey::Button(pressed) => dialog_message(pressed),
+        TransferOverlayKey::Button(button) => dialog_message(button),
         TransferOverlayKey::AbortJob => Message::AbortJob,
         TransferOverlayKey::Quit => Message::Quit,
     })

@@ -317,7 +317,7 @@ fn parse_hash(hex: &str) -> Option<ContentHash> {
     if bytes.len() != 64 {
         return None;
     }
-    let mut out = [0u8; 32];
+    let mut out: [u8; 32] = [0; 32];
     for (slot, pair) in out.iter_mut().zip(bytes.chunks(2)) {
         let text = std::str::from_utf8(pair).ok()?;
         *slot = u8::from_str_radix(text, 16).ok()?;

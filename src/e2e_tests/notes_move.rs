@@ -61,7 +61,6 @@ fn has_document(app: &App, file: &std::path::Path) -> bool {
             note.kind,
             Kind::File {
                 document: Some(_),
-                hash: _,
                 ..
             }
         )

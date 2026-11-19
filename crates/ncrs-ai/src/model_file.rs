@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 use std::fs::{self, File};
-use std::io::Read;
+use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock, PoisonError};
 use std::time::SystemTime;

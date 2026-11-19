@@ -292,16 +292,17 @@ mod tests {
     use super::*;
 
     fn stopped(generation: u64, permanent: bool) -> Ops {
-        let mut ops = Ops::default();
-        ops.stopped_delete = Some((
-            generation,
-            Deletion {
-                sources: vec![PathBuf::from("/a"), PathBuf::from("/b")],
-                permanent,
-                side: PanelSide::Left,
-            },
-        ));
-        ops
+        Ops {
+            stopped_delete: Some((
+                generation,
+                Deletion {
+                    sources: vec![PathBuf::from("/a"), PathBuf::from("/b")],
+                    permanent,
+                    side: PanelSide::Left,
+                },
+            )),
+            ..Ops::default()
+        }
     }
 
     #[test]

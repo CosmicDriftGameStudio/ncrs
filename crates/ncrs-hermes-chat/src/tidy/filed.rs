@@ -38,8 +38,8 @@ pub fn filed_done(state: &mut State, ctx: &Ctx, result: Result<RunReport, String
         .and_then(|tidy| tidy.rule_now.clone());
     let went_well = result.is_ok();
     filed_report(state, ctx, result);
-    if let Some((source, left)) = chained {
-        archive_run(state, ctx, source, left);
+    if let Some((source, remaining)) = chained {
+        archive_run(state, ctx, source, remaining);
         if let Some(tidy) = state.session.tidy.as_mut() {
             tidy.rule_now = rule_prefix;
         }

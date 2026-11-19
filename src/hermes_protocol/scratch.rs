@@ -11,12 +11,12 @@ pub fn copy_tree(from: &Path, to: &Path) -> io::Result<()> {
         if name.to_string_lossy().starts_with('.') {
             continue;
         }
-        let Ok(kind) = entry.file_type() else {
+        let Ok(meta) = entry.metadata() else {
             continue;
         };
-        if kind.is_dir() {
+        if meta.is_dir() {
             copy_tree(&entry.path(), &to.join(&name))?;
-        } else if kind.is_file() {
+        } else if meta.is_file() {
             copy_file_reporting(&entry.path(), &to.join(&name));
         }
     }

@@ -91,8 +91,8 @@ impl PartialDownload {
     /// Keeps a regular `.part` that is not longer than the pin; anything else
     /// (a link, a file that is too long) is removed and the download starts at
     /// zero. A link is never written through.
-    pub fn open(dir: &Path, pin: impl Into<PinnedFile>) -> Result<Self, ModelFileError> {
-        let pin = pin.into();
+    pub fn open(dir: &Path, pinned: impl Into<PinnedFile>) -> Result<Self, ModelFileError> {
+        let pin = pinned.into();
         let part_path = part_path(dir, &pin);
         let write_failed = |target: &Path| {
             let path = target.to_path_buf();

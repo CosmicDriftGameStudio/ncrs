@@ -34,7 +34,7 @@ pub fn safe_components(raw: &str) -> Option<Vec<String>> {
 /// Whether `name`, one component, may be given to a new entry as it is: no
 /// control or text-direction character, and on Windows no device name, stream
 /// separator or trailing dot or space.
-pub(crate) fn is_creatable_name(name: &str) -> bool {
+pub fn is_creatable_name(name: &str) -> bool {
     !name.chars().any(is_deceptive)
         && !(cfg!(windows) && (name.contains(':') || is_device_name(name) || ends_unseen(name)))
 }

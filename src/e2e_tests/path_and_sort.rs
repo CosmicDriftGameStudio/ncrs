@@ -40,7 +40,9 @@ fn click_into_the_path<P: iced::Program<State = App, Message = Message> + 'stati
     session.press_in_widgets(Key::Named(keyboard::key::Named::End), Modifiers::default());
 }
 
-pub(super) fn focus_the_window<P: iced::Program<State = App, Message = Message> + 'static>(
+pub(in crate::e2e_tests) fn focus_the_window<
+    P: iced::Program<State = App, Message = Message> + 'static,
+>(
     session: &mut Session<P>,
 ) {
     session.interact(vec![

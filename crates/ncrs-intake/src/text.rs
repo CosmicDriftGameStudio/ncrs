@@ -253,14 +253,14 @@ impl TextChain {
         let mut images = Vec::new();
         for source in &self.sources {
             let extracted = match file {
-                Some(file) => {
-                    (&*file)
+                Some(open_file) => {
+                    (&*open_file)
                         .seek(SeekFrom::Start(0))
                         .map_err(|err| TextError::Io {
                             path: path.to_path_buf(),
                             reason: err.to_string(),
                         })?;
-                    source.extract_open(path, file)?
+                    source.extract_open(path, open_file)?
                 }
                 None => source.extract(path)?,
             };

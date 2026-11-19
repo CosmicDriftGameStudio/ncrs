@@ -76,8 +76,8 @@ pub fn name_list<'a, M: Clone + 'a>(
     for name in names {
         lines = lines.push(file_name(name, palette));
     }
-    if let Some(more) = more {
-        lines = lines.push(dim_line(more, palette));
+    if let Some(more_line) = more {
+        lines = lines.push(dim_line(more_line, palette));
     }
     let body = container(lines).padding([spacing::M, spacing::M]);
     let inside: Element<'a, M> = match scroll_height {

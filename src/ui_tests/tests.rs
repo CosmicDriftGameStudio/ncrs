@@ -54,7 +54,7 @@ fn the_error_line_is_shown_in_the_prompt() {
     const ERROR: &str = "Bitte einen Namen eingeben";
     let mut app = app_with_prompt();
     app.set_prompt("kurz", None);
-    assert!(simulator(&app).find(ERROR).is_err());
+    simulator(&app).find(ERROR).unwrap_err();
 
     app.set_prompt("kurz", Some(ERROR));
     assert!(

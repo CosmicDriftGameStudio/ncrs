@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension as _};
 
 use crate::error::IndexError;
 use crate::kinds::KindCatalog;

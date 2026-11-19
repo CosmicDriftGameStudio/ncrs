@@ -228,37 +228,6 @@ fn key_parts(key_text: &str, marked_block: usize) -> Vec<(String, bool)> {
     parts
 }
 
-#[cfg(test)]
-mod key_tests {
-    use super::key_parts;
-
-    #[test]
-    fn only_the_four_characters_of_the_requested_block_are_marked() {
-        let key = "AAAA-BBBB-CCCC-DDDD";
-        for block in 0..4 {
-            let parts = key_parts(key, block);
-            let texts: Vec<&str> = parts.iter().map(|(part, _)| part.as_str()).collect();
-            assert_eq!(texts, ["AAAA", "-", "BBBB", "-", "CCCC", "-", "DDDD"]);
-            let marked: Vec<&str> = parts
-                .iter()
-                .filter(|(_, marked)| *marked)
-                .map(|(part, _)| part.as_str())
-                .collect();
-            assert_eq!(marked, [key.split('-').nth(block).unwrap()]);
-        }
-    }
-
-    #[test]
-    fn the_parts_join_to_the_key_unchanged() {
-        let key = "H7QM-3IEN-VGN6-F5A2";
-        let joined: String = key_parts(key, 2)
-            .into_iter()
-            .map(|(part, _)| part)
-            .collect();
-        assert_eq!(joined, key);
-    }
-}
-
 /// A text field: the kit's, so a field looks the same on every page.
 pub fn text_field<'a, M: Clone + 'a>(
     placeholder: &str,
@@ -291,4 +260,35 @@ pub fn checkbox<'a, M: Clone + 'a>(
     palette: &Palette,
 ) -> Element<'a, M> {
     kit::labelled_checkbox(state, on_toggle, label, palette)
+}
+
+#[cfg(test)]
+mod key_tests {
+    use super::key_parts;
+
+    #[test]
+    fn only_the_four_characters_of_the_requested_block_are_marked() {
+        let key = "AAAA-BBBB-CCCC-DDDD";
+        for block in 0..4 {
+            let parts = key_parts(key, block);
+            let texts: Vec<&str> = parts.iter().map(|(part, _)| part.as_str()).collect();
+            assert_eq!(texts, ["AAAA", "-", "BBBB", "-", "CCCC", "-", "DDDD"]);
+            let marked: Vec<&str> = parts
+                .iter()
+                .filter(|(_, marked)| *marked)
+                .map(|(part, _)| part.as_str())
+                .collect();
+            assert_eq!(marked, [key.split('-').nth(block).unwrap()]);
+        }
+    }
+
+    #[test]
+    fn the_parts_join_to_the_key_unchanged() {
+        let key = "H7QM-3IEN-VGN6-F5A2";
+        let joined: String = key_parts(key, 2)
+            .into_iter()
+            .map(|(part, _)| part)
+            .collect();
+        assert_eq!(joined, key);
+    }
 }

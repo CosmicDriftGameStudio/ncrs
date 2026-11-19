@@ -235,7 +235,7 @@ pub fn file_planned<P: Progress, S: Source>(
     let (moved, unknown): (Vec<_>, Vec<_>) = others.into_iter().partition(|item| {
         location_roots
             .iter()
-            .any(|root| lies_within(&item.from, root))
+            .any(|location_root| lies_within(&item.from, location_root))
     });
     summary.left += unknown.len();
     if !moved.is_empty() {

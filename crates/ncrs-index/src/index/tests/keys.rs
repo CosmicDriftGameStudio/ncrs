@@ -5,20 +5,23 @@ use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
 
-pub(super) const TABLE_A: &str = "CREATE TABLE a (id INTEGER);";
-pub(super) const TABLE_B: &str = "CREATE TABLE b (id INTEGER);";
+pub(in crate::index::tests) const TABLE_A: &str = "CREATE TABLE a (id INTEGER);";
+pub(in crate::index::tests) const TABLE_B: &str = "CREATE TABLE b (id INTEGER);";
 
-pub(super) fn db_in(dir: &TempDir) -> PathBuf {
+pub(in crate::index::tests) fn db_in(dir: &TempDir) -> PathBuf {
     dir.path().join("index.db")
 }
 
-pub(super) fn create_encrypted_db(path: &Path, store: &InMemoryKeyStore) -> RecoveryKey {
+pub(in crate::index::tests) fn create_encrypted_db(
+    path: &Path,
+    store: &InMemoryKeyStore,
+) -> RecoveryKey {
     let (index, recovery_key) = Index::create_encrypted(path, store).unwrap();
     drop(index);
     recovery_key
 }
 
-pub(super) fn table_exists(index: &Index, name: &str) -> bool {
+pub(in crate::index::tests) fn table_exists(index: &Index, name: &str) -> bool {
     index
         .conn
         .query_row(
@@ -30,7 +33,7 @@ pub(super) fn table_exists(index: &Index, name: &str) -> bool {
         == 1
 }
 
-pub(super) fn user_version(index: &Index) -> u32 {
+pub(in crate::index::tests) fn user_version(index: &Index) -> u32 {
     index
         .conn
         .pragma_query_value(None, "user_version", |row| row.get(0))

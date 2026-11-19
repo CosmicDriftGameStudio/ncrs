@@ -84,9 +84,11 @@ fn real(path: &Path) -> PathBuf {
         .unwrap_or_else(|| path.to_path_buf())
 }
 
-pub(super) fn lies_in_copy_root(copy_roots: &[PathBuf], folder: &Path) -> bool {
-    let folder = real(folder);
-    copy_roots.iter().any(|root| folder.starts_with(real(root)))
+pub(in crate::chat_work) fn lies_in_copy_root(copy_roots: &[PathBuf], folder: &Path) -> bool {
+    let real_folder = real(folder);
+    copy_roots
+        .iter()
+        .any(|root| real_folder.starts_with(real(root)))
 }
 
 fn refusal(access: &ChatAccess, run: &RunPlan) -> Option<String> {

@@ -79,7 +79,7 @@ pub fn transfer_checked(
         }
     };
     let sources = open.sources().to_vec();
-    let policy: Policy = open.policy();
+    let policy = open.policy();
     if let Some(refusal) = unreachable_server_text(ctx.remote, &target, ctx.lang) {
         return actions(vec![Action::ShowError(refusal)]);
     }
@@ -188,7 +188,7 @@ pub fn pack_checked(
 /// Enter in the paste prompt: writes the picture or text under the name
 /// typed into a private folder. [`paste_staged`] copies the file on.
 pub fn stage_paste(ops: &mut Ops) -> Outcome {
-    let Some((prompt, bytes)) = ops.prompt.as_ref().zip(
+    let Some((prompt, pasted_bytes)) = ops.prompt.as_ref().zip(
         ops.pending_paste
             .as_ref()
             .and_then(PastedContent::file_bytes),
@@ -198,7 +198,7 @@ pub fn stage_paste(ops: &mut Ops) -> Outcome {
     if prompt.busy() {
         return idle();
     }
-    let (name, bytes) = (prompt.name().trim().to_owned(), bytes.to_vec());
+    let (name, bytes) = (prompt.name().trim().to_owned(), pasted_bytes.to_vec());
     let folder = match tempfile::Builder::new().prefix("ncrs-paste-").tempdir() {
         Ok(folder) => folder,
         Err(error) => {

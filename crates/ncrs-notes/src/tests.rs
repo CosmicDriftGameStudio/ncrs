@@ -219,7 +219,7 @@ async fn a_note_on_a_file_is_made_once_and_asks_the_index_for_the_document() {
     let asked = action(&mut state, Message::EditNoteOn(file.clone()));
     assert_eq!(asked, Some(Action::ResolveLinks(vec![link(None, &file)])));
     assert!(state.editing());
-    assert!(state.noted().contains(&file));
+    assert!(state.noted.contains(&file));
     let again = action(&mut state, Message::EditNoteOn(file.clone()));
     assert!(again.is_some());
     assert_eq!(state.notes.len(), 1);

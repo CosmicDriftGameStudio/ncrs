@@ -125,8 +125,8 @@ impl Index {
         })?;
         let mut counts = StatusCounts::default();
         for row in rows {
-            let (status, count) = row?;
-            let count = count.unsigned_abs();
+            let (status, signed_count) = row?;
+            let count = signed_count.unsigned_abs();
             if status == DocumentStatus::New.as_str() {
                 counts.new = count;
             } else if status == DocumentStatus::Planned.as_str() {

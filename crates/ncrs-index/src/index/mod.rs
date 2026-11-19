@@ -250,7 +250,9 @@ impl Index {
             overwrite_deleted_pages(&conn)?;
         }
         let applied: u32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if applied > 0 && usize::try_from(applied).is_ok_and(|applied| applied < migrations.len()) {
+        if applied > 0
+            && usize::try_from(applied).is_ok_and(|applied_count| applied_count < migrations.len())
+        {
             // A copy of the main file alone misses what still waits in a
             // write-ahead log.
             conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()))?;

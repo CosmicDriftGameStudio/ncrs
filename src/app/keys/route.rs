@@ -71,7 +71,8 @@ fn modal_key(
         // Cancel has the focus when a download card opens, so Enter alone
         // never downloads.
         Modal::About | Modal::OcrModels | Modal::AiModel | Modal::Grant | Modal::StartOver => {
-            card_close_message(prompt).and_then(|close| card_dialog_key(close, key, key_modifiers))
+            let close = card_close_message(prompt)?;
+            card_dialog_key(close, key, key_modifiers)
         }
         Modal::Conflict => conflict_key(prompt, key, key_modifiers, scope),
         // The target field takes the typing and Enter on its own; Escape is

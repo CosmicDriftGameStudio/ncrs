@@ -311,12 +311,12 @@ pub fn ask_mode(state: &mut State, ctx: &Ctx) {
     );
 }
 
-pub fn mode(state: &mut State, ctx: &Ctx, transfer: Transfer) {
+pub fn mode(state: &mut State, ctx: &Ctx, chosen: Transfer) {
     let transfer = state
         .session
         .tidy
         .as_ref()
-        .map_or(transfer, |tidy| transfer_from(ctx, &tidy.source, transfer));
+        .map_or(chosen, |tidy| transfer_from(ctx, &tidy.source, chosen));
     if state.session.deciding.is_some() {
         crate::decide::start(state, ctx, transfer);
         return;

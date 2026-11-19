@@ -36,7 +36,7 @@ impl App {
                     hermes_cell,
                     columns: self.column_settings(),
                     special_folders: &self.special_folders,
-                    noted: self.notes.noted(),
+                    noted: &self.notes.noted,
                     header_drag: self.panels.header_drag_view(side),
                 },
             )
@@ -247,7 +247,7 @@ impl App {
             .find_map(|modal| self.modal_layer(modal))
             .or_else(|| self.page_dialog_layer());
         match layer {
-            Some(layer) => Stack::with_children([root, layer]).into(),
+            Some(on_top) => Stack::with_children([root, on_top]).into(),
             None => root,
         }
     }

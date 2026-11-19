@@ -675,11 +675,9 @@ mod tests {
         assert_eq!(report.skipped.get(&Skip::Excluded), Some(&3));
         assert_eq!(report.error_total, 0);
         assert!(fixture.index.document_by_path(&another).unwrap().is_none());
-        assert!(fixture.index.document_by_path(&secret).unwrap().is_some());
-        assert_eq!(
-            fixture.index.document(known_id).unwrap().unwrap().hash,
-            hash_of(REMINDER)
-        );
+        assert!(fixture.index.document_by_path(&secret).unwrap().is_none());
+        assert!(fixture.index.document(known_id).unwrap().is_none());
+        assert!(fixture.index.document_by_path(&known).unwrap().is_none());
     }
 
     #[cfg(unix)]

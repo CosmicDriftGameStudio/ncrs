@@ -8,7 +8,7 @@
 mod extract;
 mod extract_here;
 mod index;
-pub(crate) mod names;
+mod names;
 mod sevenz;
 mod view;
 mod write;
@@ -22,7 +22,7 @@ use std::time::SystemTime;
 pub use extract::copy_out;
 pub use extract_here::{extract_here, Extracted};
 pub use index::{ArchiveIndex, Totals};
-pub use names::{is_device_name, safe_components};
+pub use names::{is_creatable_name, is_device_name, safe_components};
 pub use sevenz::{refusal_of, SevenZipRefusal};
 pub use view::restrict_to_owner;
 pub use view::{extract_for_view, ViewCopies, ViewCopy};

@@ -69,7 +69,7 @@ use index_ops::{
     apply_key, create_index, encrypt_index, open_existing, settle_held, start_over,
     INDEX_NOT_REOPENED,
 };
-pub(crate) use locations::lies_within;
+pub use locations::lies_within;
 pub use locations::{resolve_locations, LocationStatus, ResolvedLocation};
 pub use messages::{FilingMessage, OpenOutcome, WorkOutcome};
 pub use readers::{

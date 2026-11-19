@@ -255,7 +255,7 @@ impl RulesAccess {
             let Some(location) = self.locations.get(at) else {
                 continue;
             };
-            let subject = self.with_index(|index| {
+            let found = self.with_index(|index| {
                 let Some(text) = index.document_text(id)? else {
                     return Ok(None);
                 };
@@ -272,7 +272,7 @@ impl RulesAccess {
                     id: Some(id),
                 }))
             })?;
-            if let Some(subject) = subject {
+            if let Some(subject) = found {
                 trial.consider(subject);
             }
         }

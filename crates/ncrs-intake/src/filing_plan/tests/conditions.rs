@@ -1,13 +1,16 @@
 use super::*;
 
-pub(super) fn with_conditions(combinator: Combinator, list: Vec<Condition>) -> RuleSpec {
+pub(in crate::filing_plan::tests) fn with_conditions(
+    combinator: Combinator,
+    list: Vec<Condition>,
+) -> RuleSpec {
     RuleSpec {
         conditions: RuleConditions { combinator, list },
         ..spec("{number}")
     }
 }
 
-pub(super) fn matched(spec: RuleSpec) -> bool {
+pub(in crate::filing_plan::tests) fn matched(spec: RuleSpec) -> bool {
     let known = DocumentFields {
         sender: Some("Company A".to_owned()),
         ..DocumentFields::default()
@@ -15,7 +18,7 @@ pub(super) fn matched(spec: RuleSpec) -> bool {
     matches!(plan_for(spec, TEXT, &known), Planning::Plan(_))
 }
 
-pub(super) fn substring(text: &str) -> Condition {
+pub(in crate::filing_plan::tests) fn substring(text: &str) -> Condition {
     Condition::new(ConditionKind::Substring, text)
 }
 
@@ -145,11 +148,15 @@ fn a_sender_condition_follows_a_confirmed_name_alias_only() {
 }
 
 /// The rule found the document; fields it cannot fill do not matter here.
-pub(super) fn matched_at(condition: Condition, text: &str, path: Option<&Path>) -> bool {
+pub(in crate::filing_plan::tests) fn matched_at(
+    condition: Condition,
+    text: &str,
+    path: Option<&Path>,
+) -> bool {
     matched_in(condition, text, path, None)
 }
 
-pub(super) fn matched_in(
+pub(in crate::filing_plan::tests) fn matched_in(
     condition: Condition,
     text: &str,
     path: Option<&Path>,

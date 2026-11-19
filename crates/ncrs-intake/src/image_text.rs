@@ -66,10 +66,10 @@ fn decode_pages(bytes: &[u8]) -> Vec<PageImage> {
     }
     let mut limits = tiff::decoder::Limits::default();
     limits.decoding_buffer_size = usize::try_from(MAX_DECODE_BYTES).unwrap_or(usize::MAX);
-    let Ok(decoder) = tiff::decoder::Decoder::new(Cursor::new(bytes)) else {
+    let Ok(plain_decoder) = tiff::decoder::Decoder::new(Cursor::new(bytes)) else {
         return pages;
     };
-    let mut decoder = decoder.with_limits(limits);
+    let mut decoder = plain_decoder.with_limits(limits);
     for page in 1..MAX_SCAN_PAGES {
         if !decoder.more_images() || decoder.seek_to_image(page).is_err() {
             break;
@@ -93,18 +93,19 @@ fn later_tiff_page(decoder: &mut tiff::decoder::Decoder<Cursor<&[u8]>>) -> Optio
     match (colour, decoder.read_image().ok()?) {
         (ColorType::Gray(1), DecodingResult::U8(packed)) => {
             let row_bytes = usize::try_from(width.div_ceil(8)).ok()?;
-            let width = usize::try_from(width).ok()?;
+            let columns = usize::try_from(width).ok()?;
             let pixels = packed
                 .chunks_exact(row_bytes)
                 .flat_map(|row| {
-                    (0..width).map(move |x| {
-                        let bit = row.get(x / 8).map_or(0, |byte| (byte >> (7 - x % 8)) & 1);
+                    (0..columns).map(move |x| {
+                        let bit = row
+                            .get(x.div_euclid(8))
+                            .map_or(0, |byte| (byte >> (7 - x % 8)) & 1);
                         bit * u8::MAX
                     })
                 })
                 .collect();
-            image::GrayImage::from_raw(u32::try_from(width).ok()?, height, pixels)
-                .map(DynamicImage::ImageLuma8)
+            image::GrayImage::from_raw(width, height, pixels).map(DynamicImage::ImageLuma8)
         }
         (ColorType::Gray(8), DecodingResult::U8(pixels)) => {
             image::GrayImage::from_raw(width, height, pixels).map(DynamicImage::ImageLuma8)

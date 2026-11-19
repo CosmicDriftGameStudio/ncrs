@@ -487,8 +487,8 @@ pub fn same_bytes(
         }
         Ok(held)
     }
-    let mut left_block = vec![0_u8; BLOCK];
-    let mut right_block = vec![0_u8; BLOCK];
+    let mut left_block: Vec<u8> = vec![0; BLOCK];
+    let mut right_block: Vec<u8> = vec![0; BLOCK];
     loop {
         keep_going()?;
         let left_held = fill(left, &mut left_block)?;

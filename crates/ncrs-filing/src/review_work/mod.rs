@@ -323,13 +323,13 @@ impl ReviewAccess {
         })
     }
 
-    /// Files each item under its own file name into `folder`, one after the
+    /// Files each item under its own file name into `picked`, one after the
     /// other, through the same journaled move as [`Self::confirm`]. A relative
-    /// `folder` lies below the target, and so must an absolute one.
-    pub fn accept_into(&self, items: &[ReviewItem], folder: &Path) -> AcceptSummary {
+    /// `picked` folder lies below the target, and so must an absolute one.
+    pub fn accept_into(&self, items: &[ReviewItem], picked: &Path) -> AcceptSummary {
         let _running = self.index_work.begin();
         // A folder picked in a dialog comes absolute.
-        let folder = folder.strip_prefix(&self.target_root).unwrap_or(folder);
+        let folder = picked.strip_prefix(&self.target_root).unwrap_or(picked);
         let root = self.target_root.join(folder);
         let folder_fits = folder.as_os_str().is_empty() || stays_below(folder);
         let mut summary = AcceptSummary::default();

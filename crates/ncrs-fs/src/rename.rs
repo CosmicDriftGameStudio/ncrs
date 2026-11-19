@@ -38,7 +38,7 @@ fn rename_local(from: &Path, new_name: &str) -> io::Result<PathBuf> {
             "a name is one component",
         ));
     }
-    if !crate::archive::names::is_creatable_name(new_name) {
+    if !crate::archive::is_creatable_name(new_name) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "this name is not allowed",

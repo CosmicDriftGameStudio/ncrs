@@ -248,7 +248,7 @@ fn gpu_attempt() -> Option<(LlamaModelParams, String)> {
 
 /// The runtime took a verified file and could not load it: memory or the
 /// device, which can be different a minute later.
-pub(super) const LOAD_REFUSED: &str = "llama.cpp could not load the model file";
+const LOAD_REFUSED: &str = "llama.cpp could not load the model file";
 
 fn load_on_cpu(
     backend: &LlamaBackend,

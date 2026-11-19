@@ -244,9 +244,9 @@ impl Index {
         let Some((mut conditions, mut values)) = self.query_filter(spec, under)? else {
             return Ok(Vec::new());
         };
-        if let Some(limit) = limit {
+        if let Some(row_limit) = limit {
             conditions.push("d.missing_since IS NULL".to_owned());
-            values.push(Value::Integer(i64::try_from(limit).unwrap_or(i64::MAX)));
+            values.push(Value::Integer(i64::try_from(row_limit).unwrap_or(i64::MAX)));
         }
         let mut sql = DOCUMENT_COLUMNS.to_owned();
         if !conditions.is_empty() {
@@ -278,9 +278,9 @@ impl Index {
         ids: impl Iterator<Item = i64>,
     ) -> Result<HashMap<i64, BTreeSet<String>>, IndexError> {
         const IDS_PER_STATEMENT: usize = 500;
-        let ids: Vec<i64> = ids.collect();
+        let id_list: Vec<i64> = ids.collect();
         let mut by_document: HashMap<i64, BTreeSet<String>> = HashMap::new();
-        for chunk in ids.chunks(IDS_PER_STATEMENT) {
+        for chunk in id_list.chunks(IDS_PER_STATEMENT) {
             let marks = vec!["?"; chunk.len()].join(",");
             let mut statement = self.connection().prepare_cached(&format!(
                 "SELECT dt.document_id, t.name FROM document_tag dt

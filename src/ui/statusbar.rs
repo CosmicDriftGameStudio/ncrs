@@ -372,18 +372,18 @@ pub fn view<'a, M: Clone + 'a>(
     /// None when nothing is running, so the bar falls back to the file info.
     fn job_text<'a, M: 'a>(job: &JobStatus, lang: Language, palette: &Palette) -> Element<'a, M> {
         const SEPARATOR: &str = "  •  ";
-        let progress = [
+        let progress_values = [
             ("{done}", job.done.to_string()),
             ("{total}", job.total.to_string()),
         ];
-        let progress: Vec<(&str, &str)> = progress
+        let progress: Vec<(&str, &str)> = progress_values
             .iter()
             .map(|(name, value)| (*name, value.as_str()))
             .collect();
 
         // A label that carries its own counter, like the permissions one, is the whole line.
         let mut line = if job.label.contains("{done}") {
-            fill_template(&job.label, &progress)
+            fill_template(job.label, &progress)
         } else {
             let counter = fill_template(lang.text(Msg::JobProgress), &progress);
             format!("{}  {counter}", job.label)

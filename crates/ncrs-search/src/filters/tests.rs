@@ -487,8 +487,8 @@ fn a_saved_search_finds_the_documents_the_page_showed() {
             .unwrap();
         index.set_document_text(id, text).unwrap();
     }
-    let run = |index: &Index, spec: &ncrs_index::QuerySpec| -> Vec<QueryHit> {
-        index
+    let run = |queried: &Index, spec: &ncrs_index::QuerySpec| -> Vec<QueryHit> {
+        queried
             .run_query(spec)
             .unwrap()
             .into_iter()

@@ -99,7 +99,7 @@ fn items(
 
 /// What each entry sends when pressed, in order; `None` for one that is
 /// disabled.
-pub(crate) fn entry_messages(columns: &[Column], same_in_both: bool) -> Vec<Option<PanelMessage>> {
+pub fn entry_messages(columns: &[Column], same_in_both: bool) -> Vec<Option<PanelMessage>> {
     items(columns, same_in_both, Language::default())
         .into_iter()
         .filter_map(|item| match item {
@@ -112,7 +112,7 @@ pub(crate) fn entry_messages(columns: &[Column], same_in_both: bool) -> Vec<Opti
 /// The entry `step` places on from `selected`, skipping disabled ones and
 /// wrapping round. Nothing selected yet: down starts at the first, up at the
 /// last.
-pub(crate) fn step_selection(
+pub fn step_selection(
     selected: Option<usize>,
     entries: &[Option<PanelMessage>],
     step: isize,

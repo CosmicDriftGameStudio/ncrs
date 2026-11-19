@@ -59,7 +59,7 @@ impl App {
         let outcome = self.with_hermes(Vec::new(), |hermes, ctx| {
             ncrs_hermes_ui::update(hermes, page, ctx)
         });
-        outcome.map_or_else(Task::none, |outcome| self.run_hermes_outcome(outcome))
+        outcome.map_or_else(Task::none, |ran| self.run_hermes_outcome(ran))
     }
 
     pub(in crate::app) fn open_saved_queries(&mut self) -> Task<Message> {

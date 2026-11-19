@@ -221,8 +221,8 @@ fn dismissing_clears_the_config_error() {
 
 #[test]
 fn a_config_without_a_language_keeps_the_system_language() {
-    let mut app = App::with_fixed_panels();
-    app.lang = Language::German;
-    let app = app.with_config(Ok(loaded("")));
+    let mut unconfigured = App::with_fixed_panels();
+    unconfigured.lang = Language::German;
+    let app = unconfigured.with_config(Ok(loaded("")));
     assert_eq!(app.lang, Language::German);
 }

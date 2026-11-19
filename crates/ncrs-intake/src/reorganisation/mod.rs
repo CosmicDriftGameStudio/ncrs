@@ -436,7 +436,7 @@ fn proposed_target(proposal: &Proposal) -> Option<&PathBuf> {
 /// Case-insensitive and composed: a case-insensitive file system treats
 /// `A.pdf` and `a.pdf` as one file, and macOS lists the same name decomposed.
 fn key_of(path: &Path) -> String {
-    use unicode_normalization::UnicodeNormalization;
+    use unicode_normalization::UnicodeNormalization as _;
     path.to_string_lossy()
         .nfc()
         .collect::<String>()

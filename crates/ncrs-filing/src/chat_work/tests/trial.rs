@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) fn target_reading() -> FolderReading {
+pub(in crate::chat_work::tests) fn target_reading() -> FolderReading {
     let mut files = Vec::new();
     for (seed, (year, month)) in [(2020, 1), (2020, 5), (2020, 9), (2021, 2), (2021, 6)]
         .into_iter()
@@ -30,7 +30,7 @@ pub(super) fn target_reading() -> FolderReading {
     reading("/archive", files)
 }
 
-pub(super) fn source_reading() -> FolderReading {
+pub(in crate::chat_work::tests) fn source_reading() -> FolderReading {
     let alfa = |path: &str, seed: u8| plan_file(path, seed, Some("Alfa AG"), date(2022, 7, 4));
     reading(
         "/inbox",
@@ -44,11 +44,11 @@ pub(super) fn source_reading() -> FolderReading {
     )
 }
 
-pub(super) fn trial(setup: &Setup) -> TrialPlan {
+pub(in crate::chat_work::tests) fn trial(setup: &Setup) -> TrialPlan {
     trial_of(setup, source_reading(), AnsweredGroups::default())
 }
 
-pub(super) fn trial_of(
+pub(in crate::chat_work::tests) fn trial_of(
     setup: &Setup,
     source: FolderReading,
     answered: AnsweredGroups,
@@ -65,7 +65,12 @@ pub(super) fn trial_of(
     }
 }
 
-pub(super) fn save_group_rule(setup: &Setup, key: GroupKey, label: &str, area: &str) {
+pub(in crate::chat_work::tests) fn save_group_rule(
+    setup: &Setup,
+    key: GroupKey,
+    label: &str,
+    area: &str,
+) {
     match setup.access.run(ChatWork::SaveGroupRule {
         target: Arc::new(target_reading()),
         key,
@@ -77,7 +82,11 @@ pub(super) fn save_group_rule(setup: &Setup, key: GroupKey, label: &str, area: &
     }
 }
 
-pub(super) fn staying(name: &str, sender: Option<&str>, kind: Option<&str>) -> TrialEntry {
+pub(in crate::chat_work::tests) fn staying(
+    name: &str,
+    sender: Option<&str>,
+    kind: Option<&str>,
+) -> TrialEntry {
     TrialEntry {
         from: PathBuf::from("/inbox").join(name),
         name: name.to_owned(),
@@ -94,7 +103,7 @@ pub(super) fn staying(name: &str, sender: Option<&str>, kind: Option<&str>) -> T
     }
 }
 
-pub(super) fn plan_of(entries: Vec<TrialEntry>) -> TrialPlan {
+pub(in crate::chat_work::tests) fn plan_of(entries: Vec<TrialEntry>) -> TrialPlan {
     TrialPlan {
         source_root: PathBuf::from("/inbox"),
         target_root: PathBuf::from("/archive"),
@@ -110,7 +119,10 @@ pub(super) fn plan_of(entries: Vec<TrialEntry>) -> TrialPlan {
     }
 }
 
-pub(super) fn grouped(plan: &TrialPlan, answered: &AnsweredGroups) -> StayGroups {
+pub(in crate::chat_work::tests) fn grouped(
+    plan: &TrialPlan,
+    answered: &AnsweredGroups,
+) -> StayGroups {
     let setup = Setup::new();
     let kinds = setup.access.kinds().unwrap();
     stay_groups(
@@ -122,7 +134,10 @@ pub(super) fn grouped(plan: &TrialPlan, answered: &AnsweredGroups) -> StayGroups
     )
 }
 
-pub(super) fn outcome<'a>(plan: &'a TrialPlan, name: &str) -> &'a TrialOutcome {
+pub(in crate::chat_work::tests) fn outcome<'a>(
+    plan: &'a TrialPlan,
+    name: &str,
+) -> &'a TrialOutcome {
     &plan
         .entries
         .iter()

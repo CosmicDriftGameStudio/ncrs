@@ -181,8 +181,8 @@ fn counting_stops_when_the_receiver_is_gone() {
     let (sender, receiver) = mpsc::unbounded_channel();
     drop(receiver);
 
-    assert_eq!(count_work(&[top.clone()], &plan, &sender), None);
-    let outcome = change_permissions(&[top.clone()], &plan, &sender);
+    assert_eq!(count_work(std::slice::from_ref(&top), &plan, &sender), None);
+    let outcome = change_permissions(std::slice::from_ref(&top), &plan, &sender);
 
     assert!(outcome.cancelled);
     assert_eq!(outcome.changed, 0);

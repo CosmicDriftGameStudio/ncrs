@@ -456,7 +456,7 @@ pub struct SavedQuery {
 mod sender_alias;
 pub use sender_alias::*;
 
-pub(crate) fn parse_condition_kind(value: &str) -> Result<ConditionKind, IndexError> {
+pub fn parse_condition_kind(value: &str) -> Result<ConditionKind, IndexError> {
     match value {
         "substring" => Ok(ConditionKind::Substring),
         "word" => Ok(ConditionKind::Word),

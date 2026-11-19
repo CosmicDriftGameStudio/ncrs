@@ -508,7 +508,8 @@ mod tests {
     /// a menu behind it: the two lists name the same overlays.
     #[test]
     fn every_overlay_escape_closes_also_blocks_the_tap() {
-        let overlays: [(&str, fn(&mut InputState)); 13] = [
+        type OpenOverlay = fn(&mut InputState);
+        let overlays: [(&str, OpenOverlay); 13] = [
             ("monitor_filter", |input| {
                 input.monitor = true;
                 input.monitor_filter = true;

@@ -22,7 +22,7 @@ const SCAN_DPI: f32 = 200.0;
 const POINTS_PER_INCH: f32 = 72.0;
 /// A scanned book must not fill the memory with page images: later pages are
 /// left out. A single page is capped in size for the same reason.
-pub(crate) const MAX_SCAN_PAGES: usize = 20;
+pub const MAX_SCAN_PAGES: usize = 20;
 pub const MAX_SCAN_SIDE_PIXELS: f32 = 4000.0;
 /// pdfium's grey-only bitmap format stays blank for these pages, so they are
 /// rendered as BGRx and reduced to grey here.
@@ -447,7 +447,7 @@ pub fn pdfium_library_candidates() -> Vec<PathBuf> {
 
 /// `canonicalize` returns `\\?\C:\...` on Windows, `current_exe` plain `C:\...`;
 /// without this the same folder would count as two.
-pub(crate) fn without_verbatim_prefix(dir: PathBuf) -> PathBuf {
+pub fn without_verbatim_prefix(dir: PathBuf) -> PathBuf {
     let plain = dir.to_str().and_then(|text| {
         let rest = text.strip_prefix(r"\\?\")?;
         let mut chars = rest.chars();

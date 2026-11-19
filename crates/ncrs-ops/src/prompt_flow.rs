@@ -48,7 +48,7 @@ impl Ops {
             kind => {
                 let reason = kind.map_or_else(
                     || err.to_string(),
-                    |kind| ncrs_ui_kit::io_reason::io_reason_text(kind, &err.to_string(), lang),
+                    |known| ncrs_ui_kit::io_reason::io_reason_text(known, &err.to_string(), lang),
                 );
                 lang.text(Msg::ErrorMkdirFailed)
                     .replace("{name}", &name)

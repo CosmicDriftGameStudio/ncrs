@@ -38,7 +38,7 @@ pub struct Search {
     pub handle: Option<iced::task::Handle>,
     /// The question asked of the index last, shared with the blocking
     /// threads that answer it.
-    index_asked: Arc<AtomicU64>,
+    pub index_asked: Arc<AtomicU64>,
 }
 
 fn events_message(generation: u64, events: Vec<SearchEvent>) -> SearchMessage {
@@ -208,8 +208,8 @@ impl Search {
             // Only the name filter or the folder filter moved: the answer
             // stands, the list is rebuilt from it.
             let rows = self.rows;
-            if let Some(view) = self.view.as_mut().filter(|view| view.is_filtered()) {
-                view.mirror_index(rows);
+            if let Some(shown) = self.view.as_mut().filter(|shown| shown.is_filtered()) {
+                shown.mirror_index(rows);
             }
             self.refresh_rows(ctx);
             return self.request_snippets(ctx);

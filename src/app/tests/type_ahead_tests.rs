@@ -151,11 +151,8 @@ fn printable_keys_route_to_type_ahead_but_not_with_ctrl_or_cmd_and_only_on_a_mac
         route("A", Modifiers::SHIFT),
         Some(Message::Panel(PanelMessage::TypeAhead("A".into())))
     );
-    let with_option = if cfg!(target_os = "macos") {
-        Some(Message::Panel(PanelMessage::TypeAhead("ç".into())))
-    } else {
-        None
-    };
+    let with_option =
+        cfg!(target_os = "macos").then(|| Message::Panel(PanelMessage::TypeAhead("ç".into())));
     assert_eq!(route("ç", Modifiers::ALT), with_option);
     assert_eq!(route("a", Modifiers::CTRL), None);
     assert_eq!(route("a", Modifiers::LOGO), None);

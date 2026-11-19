@@ -86,7 +86,7 @@ pub(in crate::filing) fn paths_overlap(first: &Path, second: &Path) -> bool {
 
 /// `inner` is `outer` or below it. Compared by file identity, not by spelling:
 /// case-insensitive file systems and symlinks name one folder in several ways.
-pub(crate) fn lies_within(inner: &Path, outer: &Path) -> bool {
+pub fn lies_within(inner: &Path, outer: &Path) -> bool {
     inner
         .ancestors()
         .any(|ancestor| same_file::is_same_file(ancestor, outer).unwrap_or(false))

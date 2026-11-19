@@ -38,10 +38,10 @@ const MARKERS: [(&str, PackageManager); 5] = [
     ("/usr/local/Caskroom/ncrs", PackageManager::Homebrew),
 ];
 
-/// Whether a program at `exe` is where `manager` installs it. Not knowing the
+/// Whether a program at `exe_path` is where `manager` installs it. Not knowing the
 /// location counts as yes.
-fn installed_by(manager: PackageManager, exe: Option<&Path>) -> bool {
-    let Some(exe) = exe else {
+fn installed_by(manager: PackageManager, exe_path: Option<&Path>) -> bool {
+    let Some(exe) = exe_path else {
         return true;
     };
     match manager {

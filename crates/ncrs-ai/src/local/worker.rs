@@ -376,7 +376,7 @@ pub fn run(shared: &Shared) {
                 match served {
                     Served::Closed => return,
                     Served::Idle => {}
-                    Served::NeedsLargerContext(job) => waiting_job = Some(job),
+                    Served::NeedsLargerContext(job) => waiting_job = Some(*job),
                 }
             }
             Err(error) => first.fail(error),
@@ -392,7 +392,7 @@ enum Served {
     Idle,
     /// A caller asked for a larger context than the model was loaded with; the
     /// job goes first on the reloaded model.
-    NeedsLargerContext(Job),
+    NeedsLargerContext(Box<Job>),
 }
 
 /// Serves jobs with `model`, loaded with a context of `loaded_context` tokens.
@@ -415,7 +415,7 @@ fn serve_until_idle(
             },
         };
         if *locked(&shared.context_tokens) > loaded_context {
-            return Served::NeedsLargerContext(job);
+            return Served::NeedsLargerContext(Box::new(job));
         }
         shared.prepare_for(&job);
         match job {
