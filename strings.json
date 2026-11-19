@@ -5629,6 +5629,18 @@
       "de": "Index zur Seite legen"
     },
     {
+      "key": "hermes_overview.start_over_loss_plain",
+      "context": "Body of the question in the Hermes overview whether to start the index over, for an index that is not encrypted: names what is lost. Without encryption there is no recovery key, so nothing is kept.",
+      "en": "This removes the index with its rules, rule suggestions, reports and the undo history. It also removes what ncrs knows about your documents and the entries waiting for review.",
+      "de": "Damit wird der Index entfernt, mit seinen Regeln, Regelvorschlägen, Auswertungen und dem Rückgängig-Verlauf. Auch das Wissen von ncrs über deine Dokumente und die Einträge, die auf Prüfung warten, gehen verloren."
+    },
+    {
+      "key": "hermes_overview.start_over_confirm_plain",
+      "context": "Button of the question in the Hermes overview that removes an index that is not encrypted. Destructive, red.",
+      "en": "Remove index",
+      "de": "Index entfernen"
+    },
+    {
       "key": "hermes_overview.try_again",
       "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Button next to the sentence that says Hermes could not start.",
       "en": "Try again",

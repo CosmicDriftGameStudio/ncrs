@@ -152,8 +152,17 @@ impl App {
                     .map(Message::from),
             ),
             Modal::StartOver => scrim(
-                hermes_overview_ui::start_over_dialog(focus, window, lang, palette)
-                    .map(Message::from),
+                hermes_overview_ui::start_over_dialog(
+                    self.hermes
+                        .filing
+                        .as_ref()
+                        .is_some_and(crate::filing::FilingModule::index_is_plain),
+                    focus,
+                    window,
+                    lang,
+                    palette,
+                )
+                .map(Message::from),
             ),
             Modal::Compare => scrim(
                 ncrs_compare::view::dialog(&self.compare, window, lang, palette)?

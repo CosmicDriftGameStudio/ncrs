@@ -113,11 +113,14 @@ pub(in crate::filing) fn encrypt_index(
     drop(held.take());
     match Index::encrypt_plain(db_path, store) {
         Ok(recovery_key) => EncryptReport {
-            // The copies from before a migration are plain files.
+            // The copies from before a migration are plain files, and so is
+            // an index set aside earlier when it was not encrypted; an
+            // encrypted one stays, the recovery key brings it back.
             result: {
                 ncrs_index::migration_backups(db_path)
-                    .iter()
-                    .for_each(|copy| drop(remove_if_present(copy)));
+                    .into_iter()
+                    .chain(plain_set_aside_files(db_path))
+                    .for_each(|copy| drop(remove_if_present(&copy)));
                 Ok(ShownRecoveryKey::new(recovery_key))
             },
             opened: open_into(&mut held, db_path, store, note),
@@ -201,19 +204,51 @@ fn set_index_aside(db_path: &Path, data_dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// The set-aside files, but only when the set-aside index is not encrypted: an
+/// encrypted one is kept, the recovery key brings it back.
+fn plain_set_aside_files(db_path: &Path) -> Vec<PathBuf> {
+    let Ok(main) = ncrs_index::set_aside_path(db_path, "") else {
+        return Vec::new();
+    };
+    if !Index::file_is_plain(&main).unwrap_or(false) {
+        return Vec::new();
+    }
+    SET_ASIDE_SUFFIXES
+        .iter()
+        .filter_map(|suffix| ncrs_index::set_aside_path(db_path, suffix).ok())
+        .collect()
+}
+
+/// A plain index is readable by anyone and has no recovery key, so it goes
+/// with its migration copies and any older set-aside copy.
+fn remove_index(db_path: &Path, data_dir: &Path) -> Result<(), String> {
+    let mut files = index_files(db_path, data_dir)?;
+    files.extend(ncrs_index::migration_backups(db_path));
+    files.extend(plain_set_aside_files(db_path));
+    files
+        .iter()
+        .try_for_each(|file| remove_if_present(file))
+        .map_err(|err| err.to_string())
+}
+
 /// Closes the index, sets its files aside, so that the recovery key can bring
 /// them back, and then removes its key. A failure on the files opens the index
 /// again; one on the key only becomes a warning.
 pub(in crate::filing) fn start_over(
     db_path: &Path,
     data_dir: &Path,
+    plain: bool,
     store: &dyn KeyStore,
     slot: &IndexSlot,
     note: &SettleNote,
 ) -> StartOverReport {
     let mut held = lock(slot);
     drop(held.take());
-    let removed = set_index_aside(db_path, data_dir);
+    let removed = if plain {
+        remove_index(db_path, data_dir)
+    } else {
+        set_index_aside(db_path, data_dir)
+    };
     match removed {
         Ok(()) => StartOverReport {
             result: Ok(()),

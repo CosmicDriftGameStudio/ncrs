@@ -145,12 +145,13 @@ fn starting_over_sets_the_index_aside_removes_the_key_and_asks_again() {
 fn a_second_start_over_leaves_only_the_latest_set_aside_copy() {
     let dir = TempDir::new().unwrap();
     let db = db_in(&dir);
-    make_plain(&db);
-    let mut module = started(&db, Arc::new(UnavailableStore));
+    let store = Arc::new(InMemoryKeyStore::empty());
+    make_encrypted(&db, &store);
+    let mut module = started(&db, shared(&store));
     begin(&mut module, FilingModule::begin_starting_over);
-    make_plain(&db);
+    make_encrypted(&db, &store);
     let second = fs::read(&db).unwrap();
-    let mut module = started(&db, Arc::new(UnavailableStore));
+    let mut module = started(&db, shared(&store));
 
     begin(&mut module, FilingModule::begin_starting_over);
 
@@ -167,16 +168,40 @@ fn a_second_start_over_leaves_only_the_latest_set_aside_copy() {
 }
 
 #[test]
+fn an_encrypted_set_aside_copy_survives_the_start_over_of_a_plain_index() {
+    let dir = TempDir::new().unwrap();
+    let db = db_in(&dir);
+    make_plain(&db);
+    let aside = data_dir(&dir).join("index.db.set-aside");
+    fs::write(&aside, b"not a plain header, encrypted").unwrap();
+    let mut module = started(&db, Arc::new(UnavailableStore));
+
+    begin(&mut module, FilingModule::begin_starting_over);
+
+    assert!(!db.exists());
+    assert_eq!(fs::read(&aside).unwrap(), b"not a plain header, encrypted");
+}
+
+#[test]
 fn starting_over_a_plain_index_works_without_a_key_entry() {
     let dir = TempDir::new().unwrap();
     let db = db_in(&dir);
     make_plain(&db);
+    let copy = data_dir(&dir).join("index.db.before-v3");
+    fs::write(&copy, b"plain copy").unwrap();
+    let plain_aside = data_dir(&dir).join("index.db.set-aside");
+    fs::write(&plain_aside, b"SQLite format 3\0old").unwrap();
+    fs::write(data_dir(&dir).join("index.db.set-aside-wal"), b"old").unwrap();
     let mut module = started(&db, Arc::new(UnavailableStore));
 
     begin(&mut module, FilingModule::begin_starting_over);
 
     assert!(module.asks_encryption());
-    assert!(!db.exists());
+    let left: Vec<_> = fs::read_dir(data_dir(&dir))
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert!(left.is_empty(), "left behind: {left:?}");
 }
 
 #[test]

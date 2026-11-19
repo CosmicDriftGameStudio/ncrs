@@ -24,6 +24,9 @@ pub(in crate::filing) enum Job {
     /// `index.db` directly in it is removed.
     StartOver {
         data_dir: PathBuf,
+        /// A plain index has no recovery key to bring it back, so it is
+        /// removed instead of set aside.
+        plain: bool,
     },
 }
 
@@ -86,8 +89,8 @@ impl Work {
                 settle_held(slot, note);
                 WorkOutcome::Settled
             }
-            Job::StartOver { data_dir } => {
-                WorkOutcome::StartedOver(start_over(db_path, &data_dir, store, slot, note))
+            Job::StartOver { data_dir, plain } => {
+                WorkOutcome::StartedOver(start_over(db_path, &data_dir, plain, store, slot, note))
             }
         };
         FilingMessage::WorkDone {

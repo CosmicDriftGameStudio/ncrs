@@ -121,11 +121,12 @@ impl FilingModule {
             return None;
         }
         let data_dir = self.db_path.parent()?.to_path_buf();
+        let plain = self.index_is_plain();
         self.protection_note = None;
         self.dismissed_key_problem = None;
         self.index_encrypted = None;
         self.phase = Phase::StartingOver;
-        Some(self.new_work(Job::StartOver { data_dir }))
+        Some(self.new_work(Job::StartOver { data_dir, plain }))
     }
 
     pub(in crate::filing) fn may_dismiss(&self) -> bool {
