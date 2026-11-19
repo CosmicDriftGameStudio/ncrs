@@ -223,7 +223,7 @@ mod tests {
         talk.open();
         assert_eq!(
             first_hermes_texts(&talk),
-            vec![say(Msg::HermesChatModelFailed, &[("reason", "no memory")])]
+            vec![say(Msg::HermesChatModelNotLoaded, &[])]
         );
         assert_eq!(talk.labels().len(), 4);
     }
@@ -393,7 +393,7 @@ mod tests {
         talk.type_text("hallo");
         assert_eq!(
             talk.last_texts(),
-            vec![say(Msg::HermesChatModelFailed, &[("reason", "no memory")])]
+            vec![say(Msg::HermesChatModelNotLoaded, &[])]
         );
         assert_eq!(talk.labels().len(), 4);
         assert!(talk.model.turns().is_empty());

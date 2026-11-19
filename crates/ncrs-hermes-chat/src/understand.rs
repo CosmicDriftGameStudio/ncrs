@@ -19,7 +19,7 @@ use crate::state::{Asked, Chip, ChipReply, Entry, Part, State, Step, Thinking, U
 use crate::texts::{fill, problem_text, shown_folder, text};
 use crate::update::{
     batch_not_yet, cancel_chip, chip, drop_working, explain_not_yet, fallback, fallback_chips,
-    handle_reply, hermes, open_thread, say, say_failed, say_off, search_not_yet,
+    handle_reply, hermes, open_thread, say, say_failed, say_model_failed, say_off, search_not_yet,
 };
 use crate::{follow_up, undo};
 
@@ -105,7 +105,7 @@ pub fn gate(state: &mut State, ctx: &Ctx, unsent: Option<Unsent>) -> Gate {
         LocalModelStatus::Failed(reason) => {
             say(
                 state,
-                fill(ctx.lang, Msg::HermesChatModelFailed, &[("reason", reason)]),
+                crate::texts::problem_text(ctx.lang, ncrs_ai::ModelProblem::NotLoaded(reason)),
                 fallback_chips(ctx),
             );
             Gate::Said
@@ -264,6 +264,11 @@ pub fn hermes_ready(state: &mut State, ctx: &Ctx) -> Option<Action> {
         Availability::Failed(reason) => {
             stop_waiting_for_hermes(state);
             say_failed(state, ctx, reason);
+            return None;
+        }
+        Availability::ModelFailed(problem) => {
+            stop_waiting_for_hermes(state);
+            say_model_failed(state, ctx, *problem);
             return None;
         }
         Availability::Ready(_) => {}

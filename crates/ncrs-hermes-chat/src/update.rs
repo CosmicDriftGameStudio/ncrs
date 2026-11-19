@@ -198,6 +198,7 @@ fn change_area(state: &mut State, ctx: &Ctx, folder: PathBuf, area: String) -> O
             match &ctx.availability {
                 Availability::Off => say_off(state, ctx),
                 Availability::Failed(reason) => say_failed(state, ctx, reason),
+                Availability::ModelFailed(problem) => say_model_failed(state, ctx, *problem),
                 Availability::Starting | Availability::Ready(_) => {}
             }
         }
@@ -448,6 +449,10 @@ fn hold_until_ready(state: &mut State, ctx: &Ctx, held: Held) -> bool {
             say_failed(state, ctx, reason);
             true
         }
+        Availability::ModelFailed(problem) => {
+            say_model_failed(state, ctx, *problem);
+            true
+        }
         Availability::Off => {
             say_off(state, ctx);
             true
@@ -460,6 +465,14 @@ pub fn say_failed(state: &mut State, ctx: &Ctx, reason: &str) {
     say(
         state,
         text_with(ctx, Msg::HermesChatStartFailed, &[("reason", reason)]),
+        vec![chip(ctx, Msg::HermesChatRetry, ChipReply::TurnOn, true)],
+    );
+}
+
+pub fn say_model_failed(state: &mut State, ctx: &Ctx, problem: ncrs_ai::ModelProblem) {
+    say(
+        state,
+        crate::texts::problem_text(ctx.lang, problem),
         vec![chip(ctx, Msg::HermesChatRetry, ChipReply::TurnOn, true)],
     );
 }
@@ -636,6 +649,10 @@ pub fn open_thread(state: &mut State, ctx: &Ctx) {
         }
         Availability::Failed(reason) => {
             say_failed(state, ctx, reason);
+            return;
+        }
+        Availability::ModelFailed(problem) => {
+            say_model_failed(state, ctx, *problem);
             return;
         }
         Availability::Starting => {

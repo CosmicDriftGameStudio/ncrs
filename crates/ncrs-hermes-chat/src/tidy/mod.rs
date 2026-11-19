@@ -343,7 +343,15 @@ pub fn trial_done(state: &mut State, ctx: &Ctx, result: Result<TrialPlan, String
             return;
         }
     };
-    // A model that cannot choose folders counts as no model: the trial goes on.
+    // A model that cannot choose folders counts as no model: the trial goes
+    // on, after saying so once.
+    if matches!(plan.model_failure, Some(ncrs_ai::AiError::Unsupported)) {
+        say(
+            state,
+            crate::texts::problem_text(ctx.lang, ncrs_ai::ModelProblem::Unsupported),
+            Vec::new(),
+        );
+    }
     if let Some(failure) = plan
         .model_failure
         .as_ref()

@@ -124,14 +124,10 @@ impl App {
             }
             None => ncrs_hermes_chat::Availability::Off,
             Some(module) => match module.chat_access(Arc::clone(&self.trash)) {
-                Some(_) if self.chat_ai_on() && self.chat_model_error.is_some() => {
-                    ncrs_hermes_chat::Availability::Failed(
-                        self.chat_model_error
-                            .map(|problem| ncrs_hermes_chat::problem_text(self.lang, problem))
-                            .unwrap_or_default(),
-                    )
-                }
-                Some(access) => ncrs_hermes_chat::Availability::Ready(Box::new(access)),
+                Some(access) => match self.chat_model_error.filter(|_| self.chat_ai_on()) {
+                    Some(problem) => ncrs_hermes_chat::Availability::ModelFailed(problem),
+                    None => ncrs_hermes_chat::Availability::Ready(Box::new(access)),
+                },
                 None if self.hermes.is_restarting() || module.is_starting() => {
                     ncrs_hermes_chat::Availability::Starting
                 }

@@ -14,6 +14,9 @@ pub enum Availability {
     Starting,
     /// The module tried to start and stopped; the module's reason.
     Failed(String),
+    /// The built-in model cannot run; the sentence comes from the problem,
+    /// not from a technical reason.
+    ModelFailed(ncrs_ai::ModelProblem),
     Off,
 }
 

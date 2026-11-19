@@ -186,4 +186,18 @@ mod tests {
         assert!(Arc::ptr_eq(&state.picks_stop, &stop));
         assert_eq!(state.picks_settled_at, Some(5));
     }
+
+    #[test]
+    fn switching_the_ai_off_stops_the_job_that_runs() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut ctx = ctx(dir.path(), true);
+        let mut state = State::default();
+        assert!(begin(&mut state, &ctx, 5).is_some());
+        assert!(!state.picks_stop.load(Ordering::Relaxed));
+
+        ctx.ai_on = false;
+        let _ = crate::update::update(&mut state, crate::Message::NewChat, &ctx);
+
+        assert!(state.picks_stop.load(Ordering::Relaxed));
+    }
 }
