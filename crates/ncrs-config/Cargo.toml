@@ -9,8 +9,9 @@ license = "MIT"
 publish = false
 
 [dependencies]
-# Keys and colors only: no renderer or window system, the app picks them.
-iced = { version = "0.14", default-features = false }
+# Keys and colors only: no renderer or window system, the app picks them. iced
+# refuses to build without an executor, so "tokio" stays on, as in the app.
+iced = { version = "0.14", default-features = false, features = ["tokio"] }
 ncrs-ai = { path = "../ncrs-ai", version = "0.0.0" }
 ncrs-core = { path = "../ncrs-core", version = "0.0.0" }
 ncrs-fs = { path = "../ncrs-fs", version = "0.0.0" }

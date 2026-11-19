@@ -85,6 +85,7 @@ pub fn protection_text(facts: &OverviewFacts, lang: Language) -> ProtectionText 
             ProtectionNote::EncryptFailed(reason) => (Msg::HermesOverviewEncryptFailed, reason),
             ProtectionNote::StartOverFailed(reason) => (Msg::HermesOverviewStartOverFailed, reason),
             ProtectionNote::KeyEntryNotRemoved(reason) => (Msg::HermesOverviewKeyEntryKept, reason),
+            ProtectionNote::IndexDamaged(reason) => (Msg::HermesOverviewIndexDamaged, reason),
         };
         fill_template(lang.text(template), &[("{reason}", reason)])
     });

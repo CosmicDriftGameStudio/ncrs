@@ -51,6 +51,8 @@ pub enum Action {
     ReloadPanels,
     /// Clears the error and the notice in the status bar.
     ClearStatus,
+    /// Opens the move dialog for what the panel acts on, aimed at this inbox.
+    MoveToInbox(PathBuf),
     ShowNotice(String),
     ShowError(String),
     RequestHermesCounts,

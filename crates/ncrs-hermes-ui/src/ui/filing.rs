@@ -65,7 +65,12 @@ pub fn view<'a>(
             palette,
         ),
         Phase::PlainFileWarning => plain_file_warning(lang, palette),
-        Phase::Failed(reason) => failed(reason, lang, palette),
+        Phase::FromNewerVersion => failed(
+            lang.text(Msg::FilingFromNewerVersion).to_owned(),
+            lang,
+            palette,
+        ),
+        Phase::Failed(reason) => failed(failed_line(reason, lang), lang, palette),
         Phase::Starting
         | Phase::Encrypting
         | Phase::StartingOver
@@ -289,12 +294,15 @@ fn plain_file_warning<'a>(lang: Language, palette: &Palette) -> Card<'a> {
     }
 }
 
-fn failed<'a>(reason: &str, lang: Language, palette: &Palette) -> Card<'a> {
-    let line = if reason == ncrs_filing::filing::NO_DATA_DIRECTORY {
+fn failed_line(reason: &str, lang: Language) -> String {
+    if reason == ncrs_filing::filing::NO_DATA_DIRECTORY {
         lang.text(Msg::FilingFailedNoDataDir).to_owned()
     } else {
         fill_template(lang.text(Msg::FilingFailedReason), &[("{reason}", reason)])
-    };
+    }
+}
+
+fn failed<'a>(line: String, lang: Language, palette: &Palette) -> Card<'a> {
     Card {
         title: lang.text(Msg::FilingFailedTitle),
         body: column![error_line(line, palette)].spacing(spacing::LINE_GAP),

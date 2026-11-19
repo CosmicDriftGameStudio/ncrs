@@ -134,6 +134,12 @@ fn filing_status_step(
             }
             Task::none()
         }
+        FilingStatusMessage::LocationsForgotten(result) => {
+            if let Err(reason) = result {
+                actions.push(Action::ShowError(reason));
+            }
+            Task::none()
+        }
     }
 }
 

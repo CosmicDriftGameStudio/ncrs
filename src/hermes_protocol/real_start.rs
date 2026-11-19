@@ -145,6 +145,7 @@ fn phase_name(app: &App) -> String {
             Phase::Ready => "Ready".to_owned(),
             Phase::Encrypting => "Encrypting".to_owned(),
             Phase::StartingOver => "StartingOver".to_owned(),
+            Phase::FromNewerVersion => "FromNewerVersion".to_owned(),
             Phase::Failed(reason) => format!("Failed({reason})"),
             Phase::Dismissed => "Dismissed".to_owned(),
         },

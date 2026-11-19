@@ -33,6 +33,7 @@ impl FilingModule {
             Phase::ShowRecoveryKey { .. }
                 | Phase::AskRecoveryKey { .. }
                 | Phase::PlainFileWarning
+                | Phase::FromNewerVersion
                 | Phase::Failed(_)
         )
     }

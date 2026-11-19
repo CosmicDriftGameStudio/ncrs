@@ -137,6 +137,16 @@ impl Index {
         self.encrypted
     }
 
+    /// What SQLite's quick check finds wrong with the file; none when it is
+    /// sound. Only reports: the file is never changed for it.
+    pub fn damage(&self) -> Result<Option<String>, IndexError> {
+        let mut statement = self.conn.prepare("PRAGMA quick_check")?;
+        let lines = statement
+            .query_map([], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok((lines != ["ok"]).then(|| lines.join("; ")))
+    }
+
     pub fn connection(&self) -> &Connection {
         &self.conn
     }
@@ -241,6 +251,9 @@ impl Index {
         }
         let applied: u32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
         if applied > 0 && usize::try_from(applied).is_ok_and(|applied| applied < migrations.len()) {
+            // A copy of the main file alone misses what still waits in a
+            // write-ahead log.
+            conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()))?;
             crate::backup::before_migration(db_path, applied)?;
         }
         run_migrations(&mut conn, migrations)?;

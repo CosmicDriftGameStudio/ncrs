@@ -183,7 +183,9 @@ impl App {
     pub(in crate::app) fn activate_dialog_button(&mut self) -> Task<Message> {
         if self.start_over_dialog {
             return if self.dialog_focus == hermes_overview_ui::START_OVER_CONFIRM_FOCUS {
-                self.update_hermes_overview(HermesOverviewMessage::ConfirmStartOver)
+                self.update_hermes_plain(Message::HermesOverview(
+                    HermesOverviewMessage::ConfirmStartOver,
+                ))
             } else {
                 self.start_over_dialog = false;
                 Task::none()

@@ -145,6 +145,11 @@ impl App {
                     crate::filing::Phase::Failed(reason) => {
                         ncrs_hermes_chat::Availability::Failed(reason.clone())
                     }
+                    crate::filing::Phase::FromNewerVersion => {
+                        ncrs_hermes_chat::Availability::Failed(
+                            self.lang.text(Msg::FilingFromNewerVersion).to_owned(),
+                        )
+                    }
                     _ => ncrs_hermes_chat::Availability::Off,
                 },
             },

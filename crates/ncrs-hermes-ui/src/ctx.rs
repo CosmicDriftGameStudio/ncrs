@@ -46,6 +46,14 @@ pub struct Ctx<'a> {
     /// The entry under the cursor of the active panel; `None` for a virtual
     /// panel or an empty one.
     pub cursor_entry: Option<&'a Path>,
+    /// The row under the cursor of the active panel, not the `..` row, and
+    /// whether it is a folder: what the Hermes file commands act on.
+    pub cursor_row: Option<(&'a Path, bool)>,
+    /// A dialog or menu lies over the panels, so the panel keys are not theirs.
+    pub overlay_open: bool,
+    /// The files the F5/F6/F8 commands would act on; filled only for "process
+    /// again".
+    pub action_sources: Vec<PathBuf>,
 }
 
 impl<'a> Ctx<'a> {

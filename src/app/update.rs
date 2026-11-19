@@ -567,14 +567,9 @@ impl App {
             Message::Settings(SettingsMessage::FocusKey(key)) => self.settings_focus_key(key),
             Message::Settings(settings_message) => self.update_settings(settings_message),
             plain @ Message::Filing(_) => self.update_hermes_plain(plain),
-            Message::FilingStatus(page_message) => self
-                .run_hermes_flow(Vec::new(), |hermes, ctx| {
-                    ncrs_hermes_ui::update_filing_status(hermes, page_message, ctx)
-                }),
+            plain @ Message::FilingStatus(_) => self.update_hermes_plain(plain),
             plain @ Message::HermesColumn(_) => self.update_hermes_plain(plain),
-            Message::HermesOverview(overview_message) => {
-                self.update_hermes_overview(overview_message)
-            }
+            plain @ Message::HermesOverview(_) => self.update_hermes_plain(plain),
             #[cfg(any(target_os = "macos", test))]
             Message::RunCommand(action) => self.run_command(action),
             #[cfg(target_os = "macos")]

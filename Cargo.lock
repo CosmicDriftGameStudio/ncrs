@@ -3435,6 +3435,7 @@ dependencies = [
  "sha2 0.11.1",
  "tempfile",
  "ureq",
+ "zeroize",
 ]
 
 [[package]]
@@ -3666,6 +3667,7 @@ dependencies = [
  "same-file",
  "sha2 0.11.1",
  "tempfile",
+ "tiff",
  "unicode-normalization",
  "walkdir",
  "zip",

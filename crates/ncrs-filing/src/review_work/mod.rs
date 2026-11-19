@@ -325,9 +325,11 @@ impl ReviewAccess {
 
     /// Files each item under its own file name into `folder`, one after the
     /// other, through the same journaled move as [`Self::confirm`]. A relative
-    /// `folder` lies below the target.
+    /// `folder` lies below the target, and so must an absolute one.
     pub fn accept_into(&self, items: &[ReviewItem], folder: &Path) -> AcceptSummary {
         let _running = self.index_work.begin();
+        // A folder picked in a dialog comes absolute.
+        let folder = folder.strip_prefix(&self.target_root).unwrap_or(folder);
         let root = self.target_root.join(folder);
         let folder_fits = folder.as_os_str().is_empty() || stays_below(folder);
         let mut summary = AcceptSummary::default();
@@ -355,6 +357,16 @@ impl ReviewAccess {
     /// Hermes leaves these paths alone from now on.
     pub fn exclude(&self, paths: &[PathBuf]) -> Result<(), String> {
         self.with_index(|index| paths.iter().try_for_each(|path| index.exclude_path(path)))
+    }
+
+    /// The documents of locations that were removed from the settings leave
+    /// the index.
+    pub fn forget_locations(&self, paths: &[PathBuf]) -> Result<(), String> {
+        self.with_index(|index| {
+            paths
+                .iter()
+                .try_for_each(|path| index.forget_documents_at(path).map(drop))
+        })
     }
 
     /// Hermes looks at this path again. A folder around it that is excluded

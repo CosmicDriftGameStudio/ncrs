@@ -127,7 +127,7 @@ fn tree<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
                 .note(path)
                 .map(|note| match &note.kind {
                     Kind::File { file, .. } => {
-                        shortened_left(&path_below_home(file, ctx.home), entry.depth)
+                        path_fitted_to_row(&path_below_home(file, ctx.home), entry.depth)
                     }
                     Kind::Topic => note.title.clone(),
                 })
@@ -166,7 +166,7 @@ const LIST_INSET: f32 = 48.0;
 
 /// The path cut in the middle to fit the row, so the file name stays visible
 /// where the row is too narrow.
-fn shortened_left(path: &str, depth: usize) -> String {
+fn path_fitted_to_row(path: &str, depth: usize) -> String {
     let room = SIDEBAR_WIDTH - LIST_INSET - ROW_OVERHEAD - TREE_INDENT * depth as f32;
     format::fit_middle(path, room, font_size::BODY)
 }

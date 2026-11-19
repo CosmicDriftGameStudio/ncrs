@@ -17,15 +17,14 @@ use std::path::{Path, PathBuf};
 use iced::Task;
 use ncrs_config::config::FilingWriteError;
 use ncrs_filing::filing_work::FilingSummary;
-use ncrs_index::IncludeOutcome;
 use ncrs_ui_kit::focus::release_focus;
 
 use crate::action::{Action, ProtectionStep};
 use crate::ctx::Ctx;
 use crate::hermes_column::FolderRole;
 use crate::message::{
-    HermesColumnMessage, HermesOverviewMessage, HermesPage, Message, QuickFixMessage, RulesMessage,
-    SavedQueriesMessage, TagsMessage,
+    HermesColumnMessage, HermesFileMessage, HermesOverviewMessage, HermesPage, Message,
+    QuickFixMessage, RulesMessage, SavedQueriesMessage, TagsMessage,
 };
 use crate::rule_form::RuleForm;
 use crate::rules_page::RulesPage;
@@ -126,7 +125,8 @@ pub fn update(hermes: &mut Hermes, message: Message, ctx: &Ctx<'_>) -> Option<Ou
         Message::Tags(inner) => update_tags(hermes, inner, ctx),
         Message::DocumentsFiled(result) => documents_filed(result, ctx),
         Message::HermesColumn(inner) => update_hermes_column(hermes, inner, ctx),
-        Message::HermesFile(_) | Message::ToggleFileListTags => return None,
+        Message::HermesFile(inner) => update_hermes_file(hermes, inner, ctx),
+        Message::ToggleFileListTags => return None,
     })
 }
 
@@ -137,6 +137,12 @@ pub fn update_hermes_overview(
 ) -> Outcome {
     let mut actions = Vec::new();
     let task = overview::update(hermes, message, ctx, &mut actions);
+    (task, actions)
+}
+
+fn update_hermes_file(hermes: &mut Hermes, message: HermesFileMessage, ctx: &Ctx<'_>) -> Outcome {
+    let mut actions = Vec::new();
+    let task = hermes_file::update(hermes, message, ctx, &mut actions);
     (task, actions)
 }
 
@@ -200,35 +206,6 @@ pub fn read_paths_again(hermes: &mut Hermes, paths: Vec<PathBuf>, ctx: &Ctx<'_>)
     (Task::none(), actions)
 }
 
-pub fn process_again(hermes: &Hermes, paths: Vec<PathBuf>, ctx: &Ctx<'_>) -> Outcome {
-    let mut actions = Vec::new();
-    let task = hermes_file::process_again(hermes, paths, ctx, &mut actions);
-    (task, actions)
-}
-
-pub fn process_found_again(
-    hermes: &mut Hermes,
-    result: Result<Vec<PathBuf>, String>,
-    ctx: &Ctx<'_>,
-) -> Outcome {
-    let mut actions = Vec::new();
-    hermes_file::process_found_again(hermes, result, ctx, &mut actions);
-    (Task::none(), actions)
-}
-
-/// The question about many files to process again: yes queues them.
-pub fn confirm_process_again(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Outcome {
-    let mut actions = Vec::new();
-    hermes_file::confirm_process_again(hermes, ctx, &mut actions);
-    (Task::none(), actions)
-}
-
-/// The question about many files to process again: no, they are dropped.
-pub fn cancel_process_again(hermes: &mut Hermes) -> Outcome {
-    hermes.confirm_again = None;
-    (Task::none(), Vec::new())
-}
-
 pub fn set_folder_role(hermes: &Hermes, folder: &Path, role: FolderRole, ctx: &Ctx<'_>) -> Outcome {
     let mut actions = Vec::new();
     let task = hermes_file::set_folder_role(hermes, folder, role, ctx, &mut actions);
@@ -238,23 +215,6 @@ pub fn set_folder_role(hermes: &Hermes, folder: &Path, role: FolderRole, ctx: &C
 pub fn role_save_failed(hermes: &Hermes, error: &FilingWriteError, ctx: &Ctx<'_>) -> Outcome {
     let mut actions = Vec::new();
     hermes_file::role_save_failed(hermes, error, ctx, &mut actions);
-    (Task::none(), actions)
-}
-
-pub fn toggle_hermes_exclusion(hermes: &mut Hermes, path: PathBuf, excluded: bool) -> Outcome {
-    let mut actions = Vec::new();
-    let task = hermes_file::toggle_hermes_exclusion(hermes, path, excluded, &mut actions);
-    (task, actions)
-}
-
-pub fn hermes_included(
-    hermes: &mut Hermes,
-    path: &Path,
-    result: Result<IncludeOutcome, String>,
-    ctx: &Ctx<'_>,
-) -> Outcome {
-    let mut actions = Vec::new();
-    hermes_file::hermes_included(hermes, path, result, ctx, &mut actions);
     (Task::none(), actions)
 }
 
@@ -304,21 +264,4 @@ pub fn apply_ai_change(
 ) -> (SavedFilingApplies, Outcome) {
     let (applies, task) = lifecycle::apply_ai_change(hermes, filing, ctx);
     (applies, (task, Vec::new()))
-}
-
-pub fn hermes_role_saved(
-    hermes: &mut Hermes,
-    result: Result<Filing, FilingWriteError>,
-    ctx: &Ctx<'_>,
-) -> Outcome {
-    let mut actions = Vec::new();
-    let task = hermes_file::role_saved(hermes, result, ctx, &mut actions);
-    (task, actions)
-}
-
-/// Opens the settings on the Read errors page.
-pub fn show_in_inspection() -> Outcome {
-    let mut actions = Vec::new();
-    hermes_file::show_in_inspection(&mut actions);
-    (Task::none(), actions)
 }

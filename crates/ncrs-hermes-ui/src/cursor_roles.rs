@@ -5,7 +5,7 @@ use std::path::Path;
 
 use ncrs_intake::LocationMode;
 
-use crate::hermes_column::{role_of, FolderRole};
+use crate::hermes_column::{role_of, FolderRole, HermesFileState};
 use crate::state::Hermes;
 
 /// How a path relates to the folders Hermes reads and files.
@@ -23,18 +23,35 @@ impl Hermes {
     pub fn cursor_roles(&self, path: &Path) -> CursorRoles {
         let locations = &self.filing_config.locations;
         let role_free = |role| role_of(path, locations) != Some(role);
-        let inbox = locations
-            .iter()
-            .find(|location| location.mode == LocationMode::Inbox)
-            .map(|location| location.path.as_path());
+        let inbox = self.inbox_location();
         CursorRoles {
-            can_be_handed_to_inbox: inbox.is_some_and(|inbox| !path.starts_with(inbox)),
+            can_be_handed_to_inbox: inbox.is_some_and(|inbox_path| !path.starts_with(inbox_path)),
             lies_in_a_filing_location: locations
                 .iter()
                 .any(|location| path.starts_with(&location.path)),
             inbox_role_is_free: role_free(FolderRole::Inbox),
             filing_location_role_is_free: role_free(FolderRole::FilingLocation),
             archive_role_is_free: role_free(FolderRole::Archive),
+        }
+    }
+
+    /// The inbox the configured folders name, if any.
+    pub fn inbox_location(&self) -> Option<&Path> {
+        self.filing_config
+            .locations
+            .iter()
+            .find(|location| location.mode == LocationMode::Inbox)
+            .map(|location| location.path.as_path())
+    }
+
+    /// Hermes no longer looks at the file, or at the whole folder.
+    pub fn cursor_is_excluded(&self, path: &Path, is_dir: bool) -> bool {
+        if is_dir {
+            self.hermes_column
+                .summary_of(path)
+                .is_some_and(|summary| summary.excluded)
+        } else {
+            self.hermes_column.state_of(path) == Some(HermesFileState::Excluded)
         }
     }
 

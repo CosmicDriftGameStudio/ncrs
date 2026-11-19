@@ -590,7 +590,8 @@ mod tests {
         let summary = setup.run(&Move);
 
         assert_eq!(summary.filed, 0);
-        assert_eq!(summary.left, 1);
+        assert_eq!(summary.left, 0);
+        assert!(setup.index.document(document.id).unwrap().is_none());
         assert!(document.path.exists());
         assert!(!setup.target().exists());
     }

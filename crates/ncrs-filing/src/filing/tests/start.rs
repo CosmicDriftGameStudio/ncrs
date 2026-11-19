@@ -437,3 +437,27 @@ fn nothing_that_carries_a_recovery_key_prints_it() {
         }
     }
 }
+
+#[test]
+fn an_index_of_a_newer_version_is_left_alone_and_offers_no_start_over() {
+    let dir = TempDir::new().unwrap();
+    let db = db_in(&dir);
+    std::fs::create_dir_all(db.parent().unwrap()).unwrap();
+    let index = Index::create_plain(&db).unwrap();
+    index
+        .connection()
+        .execute_batch("PRAGMA user_version = 100000")
+        .unwrap();
+    drop(index);
+    let store = Arc::new(InMemoryKeyStore::empty());
+
+    let mut module = started(&db, shared(&store));
+
+    assert_eq!(module.phase(), &Phase::FromNewerVersion);
+    assert!(module.has_card());
+    assert!(!module.can_start_over());
+    assert!(module.begin_starting_over().is_none());
+    assert!(module.update(FilingMessage::CreateIndex).is_none());
+    assert!(db.exists());
+    assert!(!is_open(&module));
+}

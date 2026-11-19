@@ -127,12 +127,17 @@ fn is_direct_sql(column: &str) -> String {
 }
 
 impl Index {
+    /// Hermes no longer looks at this path, and what the index holds of the
+    /// files there goes with it.
     pub fn exclude_path(&self, path: &Path) -> Result<(), IndexError> {
         let key = stored(path);
-        self.connection().execute(
+        let transaction = self.connection().unchecked_transaction()?;
+        transaction.execute(
             "INSERT OR IGNORE INTO excluded_path (path) VALUES (?1)",
             [utf8(&key)?],
         )?;
+        self.forget_documents_at(&key)?;
+        transaction.commit()?;
         Ok(())
     }
 

@@ -55,6 +55,7 @@ pub(in crate::filing) fn open_into(
         Err(IndexError::NotFound) => OpenOutcome::NoIndexYet,
         Err(IndexError::KeyMissing) => OpenOutcome::KeyMissing,
         Err(IndexError::WrongKey | IndexError::InvalidKeyLength { .. }) => OpenOutcome::KeyMismatch,
+        Err(IndexError::SchemaTooNew { .. }) => OpenOutcome::FromNewerVersion,
         Err(other) => OpenOutcome::Failed(other.to_string()),
         Ok(index) => {
             let outcome = if index.is_encrypted() {

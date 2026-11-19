@@ -1975,6 +1975,12 @@
       "de": "Es konnte kein Datenverzeichnis ermittelt werden."
     },
     {
+      "key": "filing.from_newer_version",
+      "context": "Line in the failure card, also shown in the Hermes overview and the Hermes chat, when the index was written by a newer version of the app. The index is left untouched; the user should install the update. Keep 'ncrs' as the app name.",
+      "en": "The index comes from a newer ncrs version. Please update ncrs.",
+      "de": "Der Index stammt von einer neueren ncrs-Version. Bitte ncrs aktualisieren."
+    },
+    {
       "key": "filing.failed_close",
       "context": "Button in the failure card that closes it. One word, verb.",
       "en": "Close",
@@ -5585,6 +5591,12 @@
       "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Sentence in the protection section when the index was removed but its key stays in the key store. {reason} is the cause.",
       "en": "The index was removed, but its key could not be deleted from the key store: {reason}",
       "de": "Der Index wurde entfernt, aber sein Schlüssel ließ sich nicht aus dem Schlüsselspeicher löschen: {reason}"
+    },
+    {
+      "key": "hermes_overview.index_damaged",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Sentence in the protection section when the check on opening found damage in the index file. Nothing was changed; the index stays in use. {reason} is the technical finding of the check.",
+      "en": "The check on opening found damage in the index. Nothing was changed: {reason}",
+      "de": "Die Prüfung beim Öffnen hat Schäden im Index gefunden. Es wurde nichts verändert: {reason}"
     },
     {
       "key": "hermes_overview.start_over_title",

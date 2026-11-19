@@ -67,6 +67,9 @@ pub fn overview_facts(
         && !module.is_some_and(FilingModule::index_work_running);
     let failure = match module.map(FilingModule::phase) {
         Some(Phase::Failed(reason)) => Some(reason.clone()),
+        Some(Phase::FromNewerVersion) => {
+            Some(ctx.lang.text(Msg::FilingFromNewerVersion).to_owned())
+        }
         _ => None,
     };
     OverviewFacts {

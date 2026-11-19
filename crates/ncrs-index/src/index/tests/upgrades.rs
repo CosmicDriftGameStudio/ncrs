@@ -735,3 +735,36 @@ fn a_version_19_database_keeps_the_text_search_and_the_cascade_of_its_documents(
         .unwrap();
     assert_eq!(text_left, 0);
 }
+
+#[test]
+fn a_migration_on_open_leaves_a_copy_of_the_file_at_its_old_version_beside_it() {
+    let dir = TempDir::new().unwrap();
+    let path = db_in(&dir);
+    let store = InMemoryKeyStore::empty();
+    let older = MIGRATIONS.len() - 1;
+    drop(Index::create_plain_with_migrations(&path, &MIGRATIONS[..older]).unwrap());
+
+    let index = Index::open(&path, &store).unwrap();
+
+    assert_eq!(
+        user_version(&index),
+        u32::try_from(MIGRATIONS.len()).unwrap()
+    );
+    let copies = crate::backup::migration_backups(&path);
+    assert_eq!(copies.len(), 1);
+    assert!(copies[0]
+        .to_string_lossy()
+        .ends_with(&format!(".before-v{older}")));
+    let copy = rusqlite::Connection::open(&copies[0]).unwrap();
+    let copied_version: i64 = copy
+        .pragma_query_value(None, "user_version", |row| row.get(0))
+        .unwrap();
+    assert_eq!(copied_version, i64::try_from(older).unwrap());
+}
+
+#[test]
+fn a_sound_index_reports_no_damage() {
+    let dir = TempDir::new().unwrap();
+    let index = Index::create_plain(&db_in(&dir)).unwrap();
+    assert_eq!(index.damage().unwrap(), None);
+}

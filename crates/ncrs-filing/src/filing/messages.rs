@@ -27,6 +27,8 @@ pub enum WorkOutcome {
     Started {
         locations: Vec<ResolvedLocation>,
         opened: OpenOutcome,
+        /// What the check of the opened file found wrong with it.
+        damage: Option<String>,
     },
     /// `Some` holds the recovery key of a new encrypted index.
     Created(Result<Option<ShownRecoveryKey>, String>),
@@ -48,5 +50,7 @@ pub enum OpenOutcome {
     PlainFileWithKeyEntry,
     KeyMissing,
     KeyMismatch,
+    /// The file was written by a newer ncrs; this one leaves it alone.
+    FromNewerVersion,
     Failed(String),
 }

@@ -20,6 +20,7 @@ use crate::prompt::{user_message, SYSTEM_PROMPT};
 use crate::usage_log::{append_usage, parse_usage, UsageRecord};
 use chrono::Utc;
 use sha2::{Digest as _, Sha256};
+use zeroize::Zeroizing;
 
 mod chat;
 
@@ -32,11 +33,11 @@ pub const MAX_REPLY_BYTES: u64 = 256 * 1024;
 /// An API key. Debug and Display print `***`, and nothing else in this crate
 /// has a way to show it.
 #[derive(Clone, PartialEq, Eq)]
-pub struct Secret(String);
+pub struct Secret(Zeroizing<String>);
 
 impl Secret {
     pub fn new(key: String) -> Self {
-        Self(key)
+        Self(Zeroizing::new(key))
     }
 
     /// For the field that shows the key as dots and for the header it travels in.

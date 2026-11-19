@@ -324,7 +324,10 @@ fn an_excluded_document_is_neither_listed_nor_confirmed() {
         "{sender}/{kind}",
     );
 
-    assert_eq!(result, Err(DOCUMENT_EXCLUDED.to_owned()));
+    assert_eq!(
+        result,
+        Err("the document is no longer in the index".to_owned())
+    );
     assert!(setup.inbox.join("scan.pdf").exists());
 }
 

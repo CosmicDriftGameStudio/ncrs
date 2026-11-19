@@ -105,6 +105,35 @@ impl Index {
         Ok(purged)
     }
 
+    /// Removes the documents of the file at `path` and of every file below it,
+    /// missing or not, with their text and everything else stored for them.
+    /// What is kept by content hash (tags, note links) stays. Returns how many
+    /// went.
+    pub fn forget_documents_at(&self, path: &Path) -> Result<usize, IndexError> {
+        let text = path
+            .to_str()
+            .ok_or_else(|| IndexError::NonUtf8Path(path.to_path_buf()))?;
+        let (from, until) = SubtreeRange::of(path)?.into_bounds();
+        let candidates: Vec<(i64, String)> = {
+            let mut statement = self.connection().prepare(
+                "SELECT id, path FROM document WHERE path = ?1 OR (path >= ?2 AND path < ?3)",
+            )?;
+            let rows = statement.query_map(params![text, from, until], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })?;
+            rows.collect::<Result<_, _>>()?
+        };
+        let mut forgotten = 0;
+        for (id, stored) in candidates {
+            if Path::new(&stored).starts_with(path) {
+                forgotten += self
+                    .connection()
+                    .execute("DELETE FROM document WHERE id = ?1", [id])?;
+            }
+        }
+        Ok(forgotten)
+    }
+
     /// Documents that are not missing and whose path lies in `directory`,
     /// compared by path components. Sorted by path.
     pub fn documents_under(

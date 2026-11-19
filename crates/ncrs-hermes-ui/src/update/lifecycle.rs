@@ -1,11 +1,12 @@
 //! Starting, replacing and stopping the filing module and its pipeline, and
 //! the steps of the cards that lead there.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use iced::widget::operation;
 use iced::Task;
-use ncrs_config::config::Filing;
+use ncrs_config::config::{Filing, FilingLocation};
 use ncrs_filing::filing::{FilingMessage, FilingModule, LocationStatus, Phase, Work};
 use ncrs_i18n::{fill_template, Msg};
 
@@ -102,6 +103,7 @@ pub fn apply_saved_filing(
     filing: Filing,
     ctx: &Ctx<'_>,
 ) -> (SavedFilingApplies, Task<Message>) {
+    let forget = forget_removed_locations(hermes, &filing);
     let replaceable = hermes.key_store.is_some()
         && hermes
             .filing
@@ -109,11 +111,42 @@ pub fn apply_saved_filing(
             .is_none_or(|module| !module.has_configured_locations() && module.can_be_replaced());
     if !replaceable {
         hermes.filing_config = filing;
-        return (SavedFilingApplies::AtNextStart, Task::none());
+        return (SavedFilingApplies::AtNextStart, forget);
     }
     (
         SavedFilingApplies::Now,
-        replace_module(hermes, &filing, ctx),
+        Task::batch([forget, replace_module(hermes, &filing, ctx)]),
+    )
+}
+
+/// The locations of the old list that the new one no longer has, without
+/// those that overlap a location that stays: their documents are still the
+/// ones of a location.
+fn removed_locations(old: &[FilingLocation], new: &[FilingLocation]) -> Vec<PathBuf> {
+    old.iter()
+        .map(|location| location.path.clone())
+        .filter(|path| {
+            !new.iter()
+                .any(|kept| kept.path.starts_with(path) || path.starts_with(&kept.path))
+        })
+        .collect()
+}
+
+/// Runs at save time: a module that keeps the old list until the next start
+/// may still index a file that arrives in a removed location.
+fn forget_removed_locations(hermes: &Hermes, filing: &Filing) -> Task<Message> {
+    let removed = removed_locations(&hermes.filing_config.locations, &filing.locations);
+    let review_access = hermes.filing.as_ref().and_then(FilingModule::review_access);
+    let (false, Some(access)) = (removed.is_empty(), review_access) else {
+        return Task::none();
+    };
+    Task::perform(
+        tokio::task::spawn_blocking(move || access.forget_locations(&removed)),
+        |joined| {
+            Message::FilingStatus(FilingStatusMessage::LocationsForgotten(
+                joined.unwrap_or_else(|err| Err(err.to_string())),
+            ))
+        },
     )
 }
 
@@ -328,4 +361,40 @@ pub fn update_filing(
         actions.push(Action::ShowNotice(text));
     }
     Task::batch(tasks)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn at(path: &str) -> FilingLocation {
+        FilingLocation {
+            path: PathBuf::from(path),
+            mode: ncrs_intake::LocationMode::Archive,
+            images: false,
+            is_target: false,
+            transfer: Default::default(),
+        }
+    }
+
+    #[test]
+    fn only_a_location_that_no_kept_one_overlaps_counts_as_removed() {
+        let old = [
+            at("/docs/inbox"),
+            at("/docs/archive"),
+            at("/docs/old"),
+            at("/scans"),
+        ];
+        let new = [
+            at("/docs/archive"),
+            at("/docs/old/kept"),
+            at("/docs/inbox2"),
+        ];
+
+        assert_eq!(
+            removed_locations(&old, &new),
+            vec![PathBuf::from("/docs/inbox"), PathBuf::from("/scans")]
+        );
+        assert_eq!(removed_locations(&old, &old), Vec::<PathBuf>::new());
+    }
 }

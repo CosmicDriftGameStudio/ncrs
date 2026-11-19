@@ -34,6 +34,8 @@ keyring = "4.2"
 
 # Checks the model file against its pinned checksum before it is loaded.
 sha2 = "0.11"
+# Clears the API key from memory when it is dropped, as in ncrs-fs.
+zeroize = "1"
 # The built-in model provider: llama.cpp runs in this process. Versions and
 # default features: [workspace.dependencies] in the root Cargo.toml.
 llama-cpp-2 = { workspace = true, optional = true }

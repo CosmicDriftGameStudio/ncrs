@@ -57,10 +57,17 @@ impl Work {
         let slot = &self.index;
         let note = &self.settle_problem;
         let outcome = match self.job {
-            Job::Start { locations } => WorkOutcome::Started {
-                locations: resolve_locations(&locations),
-                opened: open_existing(db_path, store, slot, note),
-            },
+            Job::Start { locations } => {
+                let opened = open_existing(db_path, store, slot, note);
+                let damage = lock(slot)
+                    .as_ref()
+                    .and_then(|index| index.damage().unwrap_or_else(|err| Some(err.to_string())));
+                WorkOutcome::Started {
+                    locations: resolve_locations(&locations),
+                    opened,
+                    damage,
+                }
+            }
             Job::Create { encrypted } => {
                 WorkOutcome::Created(create_index(db_path, store, slot, note, encrypted))
             }
@@ -149,7 +156,7 @@ impl FilingModule {
             Phase::Encrypting | Phase::StartingOver => return Err(HeldReason::Starting),
             Phase::PlainFileWarning => return Err(HeldReason::PlainFileUnconfirmed),
             Phase::Dismissed => return Err(HeldReason::Dismissed),
-            Phase::Failed(_) => return Err(HeldReason::Failed),
+            Phase::FromNewerVersion | Phase::Failed(_) => return Err(HeldReason::Failed),
         }
         // Never waits: a job on the blocking pool may hold the index, and a
         // held index is an open one.

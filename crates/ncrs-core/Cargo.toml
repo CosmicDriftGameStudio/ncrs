@@ -9,8 +9,9 @@ license = "MIT"
 publish = false
 
 [dependencies]
-# Only `Color`, for the palette: no renderer or window system.
-iced = { version = "0.14", default-features = false }
+# Only `Color`, for the palette: no renderer or window system. iced refuses to
+# build without an executor, so "tokio" stays on, as in the app.
+iced = { version = "0.14", default-features = false, features = ["tokio"] }
 # The side is read from and written to the config.
 serde = { version = "1", features = ["derive"] }
 

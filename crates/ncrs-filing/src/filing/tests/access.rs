@@ -291,26 +291,32 @@ fn a_ready_module_stays_ready_whatever_it_is_sent() {
         WorkOutcome::Started {
             locations: Vec::new(),
             opened: OpenOutcome::NoIndexYet,
+            damage: None,
         },
         WorkOutcome::Started {
             locations: Vec::new(),
             opened: OpenOutcome::Opened,
+            damage: None,
         },
         WorkOutcome::Started {
             locations: Vec::new(),
             opened: OpenOutcome::PlainFileWithKeyEntry,
+            damage: None,
         },
         WorkOutcome::Started {
             locations: Vec::new(),
             opened: OpenOutcome::KeyMissing,
+            damage: None,
         },
         WorkOutcome::Started {
             locations: Vec::new(),
             opened: OpenOutcome::KeyMismatch,
+            damage: None,
         },
         WorkOutcome::Started {
             locations: Vec::new(),
             opened: OpenOutcome::Failed("broken".to_owned()),
+            damage: None,
         },
         WorkOutcome::Created(Ok(None)),
         WorkOutcome::Created(Ok(Some(FilingModule::fixed_recovery_key()))),
@@ -713,4 +719,57 @@ fn new_kinds_wait_for_the_index_while_a_run_holds_it() {
         lock(&module.index).as_ref().unwrap().kinds(),
         &kinds
     ));
+}
+
+#[test]
+fn an_excluded_folder_leaves_the_index_and_a_note_link_finds_its_file_again_by_hash() {
+    use ncrs_index::{ContentHash, DocumentSource, NewDocument};
+
+    let dir = TempDir::new().unwrap();
+    let module = FilingModule::in_phase(Phase::Ready);
+    let index = Index::create_plain(&dir.path().join("index.db")).unwrap();
+    let document_at = |path: &Path| NewDocument {
+        hash: ContentHash([7; 32]),
+        path: path.to_path_buf(),
+        source: DocumentSource::Archive,
+        received_at: chrono::Utc::now(),
+        stamp: None,
+    };
+    let first = PathBuf::from("/archive/old/offer.pdf");
+    let first_id = index.insert_document(&document_at(&first)).unwrap();
+    let neighbour = PathBuf::from("/archive/older/offer.pdf");
+    index
+        .insert_document(&NewDocument {
+            hash: ContentHash([8; 32]),
+            ..document_at(&neighbour)
+        })
+        .unwrap();
+    index.exclude_path(Path::new("/archive/old")).unwrap();
+    assert_eq!(index.document_by_path(&first).unwrap(), None);
+    assert!(index.document_by_path(&neighbour).unwrap().is_some());
+    put_index(&module.index, index);
+    let hash_of_seven = "07".repeat(32);
+    let link = note_link(Some(first_id.number()), Some(&hash_of_seven), &first);
+
+    let while_gone = module
+        .note_link_finder()
+        .unwrap()
+        .resolve(std::slice::from_ref(&link));
+    assert_eq!(while_gone, Ok(vec![link.clone()]));
+
+    let again = PathBuf::from("/archive/kept/offer.pdf");
+    let again_id = lock(&module.index)
+        .as_ref()
+        .unwrap()
+        .insert_document(&document_at(&again))
+        .unwrap();
+    let found = module.note_link_finder().unwrap().resolve(&[link]).unwrap();
+    assert_eq!(
+        found,
+        vec![note_link(
+            Some(again_id.number()),
+            Some(&hash_of_seven),
+            &again
+        )]
+    );
 }

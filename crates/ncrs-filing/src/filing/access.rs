@@ -26,7 +26,7 @@ impl FilingModule {
     pub fn is_starting(&self) -> bool {
         !matches!(
             self.phase,
-            Phase::Ready | Phase::Failed(_) | Phase::Dismissed
+            Phase::Ready | Phase::FromNewerVersion | Phase::Failed(_) | Phase::Dismissed
         )
     }
 

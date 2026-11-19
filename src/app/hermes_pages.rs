@@ -5,22 +5,6 @@ impl App {
         ncrs_hermes_ui::overview_facts(&self.hermes, &self.hermes_view_ctx(), ocr_models_present)
     }
 
-    pub(in crate::app) fn update_hermes_overview(
-        &mut self,
-        message: HermesOverviewMessage,
-    ) -> Task<Message> {
-        let before = match &message {
-            HermesOverviewMessage::EnterRecoveryKey => {
-                self.update_filing(FilingMessage::AskKeyAgain)
-            }
-            _ => Task::none(),
-        };
-        let after = self.run_hermes_flow(Vec::new(), |hermes, ctx| {
-            ncrs_hermes_ui::update_hermes_overview(hermes, message, ctx)
-        });
-        Task::batch([before, after])
-    }
-
     /// Opens the settings on the page of Settings that shows this Hermes page.
     pub(in crate::app) fn show_hermes_page(&mut self, page: HermesPage) -> Task<Message> {
         self.show_setting(settings_feature_of(page), None)
@@ -63,6 +47,8 @@ impl App {
         use ncrs_hermes_ui::Message as Page;
         let page = match message {
             Message::Filing(inner) => Page::Filing(inner),
+            Message::FilingStatus(inner) => Page::FilingStatus(inner),
+            Message::HermesOverview(inner) => Page::HermesOverview(inner),
             Message::Rules(inner) => Page::Rules(inner),
             Message::SavedQueries(inner) => Page::SavedQueries(inner),
             Message::Tags(inner) => Page::Tags(inner),
