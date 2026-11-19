@@ -310,6 +310,7 @@ impl App {
             || self.ops.transfer_dialog.is_some()
             || self.ops.delete_dialog.is_some()
             || self.ops.open_file_dialog.is_some()
+            || self.ops.progress_mask_is_open()
             || self.ops.quit_dialog
             || self.ops.permissions_dialog.is_some()
             || self.ops.batch_rename.is_some()
@@ -326,31 +327,6 @@ impl App {
             || self.grant_dialog
             || self.remote_ui.dialog.is_some()
             || self.compare.dialog_is_open()
-    }
-
-    /// The create of the name prompt has reported: close the prompt or show
-    /// why it failed, and reload the folder.
-    pub(in crate::app) fn finish_prompt(
-        &mut self,
-        kind: PromptKind,
-        request_id: u64,
-        result: Result<(), fs::CreateDirError>,
-    ) -> Task<Message> {
-        if !self.ops.is_current_prompt_request(request_id) {
-            return Task::none();
-        }
-        // The queued reload runs here, after the create has reported, never
-        // beside it. On success it selects the new entry; on failure it still
-        // re-reads, because the name may belong to something else that
-        // appeared meanwhile.
-        let pending = self.panels.take_pending_reload();
-        let created = pending.as_ref().map(ReloadNow::created);
-        let reload = pending.map(|due| self.load(due.side, due.path, Some(due.name)));
-        let lang = self.lang;
-        if let Some(path) = self.ops.finish_prompt(kind, result, created, lang) {
-            self.launch_external(fs::OpenKind::Edit, path, None, CopyOf::Nothing, false);
-        }
-        reload.unwrap_or_else(Task::none)
     }
 
     /// The quit question was answered with "stop and quit".
@@ -384,16 +360,24 @@ impl App {
     /// While the index is being encrypted or started over, or its recovery key
     /// is on screen, a quit would lose the key. It is held back once; asking
     /// again quits.
-    fn protection_holds_quit(&mut self) -> bool {
-        let pending = self.hermes.filing.as_ref().is_some_and(|module| {
-            matches!(
-                module.phase(),
-                crate::filing::Phase::ShowRecoveryKey { .. }
-                    | crate::filing::Phase::Encrypting
-                    | crate::filing::Phase::StartingOver
-            )
-        });
-        if !pending || std::mem::replace(&mut self.protection_quit_warned, true) {
+    pub(in crate::app) fn protection_holds_quit(&mut self) -> bool {
+        let pending = self
+            .hermes
+            .filing
+            .as_ref()
+            .map(|module| module.phase())
+            .filter(|phase| {
+                matches!(
+                    phase,
+                    crate::filing::Phase::ShowRecoveryKey { .. }
+                        | crate::filing::Phase::Encrypting
+                        | crate::filing::Phase::StartingOver
+                )
+            })
+            .map(std::mem::discriminant);
+        let already_warned = pending.is_some() && self.protection_quit_warned == pending;
+        self.protection_quit_warned = pending;
+        if already_warned || pending.is_none() {
             return false;
         }
         let text = self.lang.text(Msg::HermesQuitProtectionPending).to_string();
@@ -437,30 +421,17 @@ impl App {
     }
 
     pub(in crate::app) fn update_about(&mut self, message: AboutMessage) -> Task<Message> {
-        match message {
-            AboutMessage::Open => {
-                if self.blocking_overlay_is_open() {
-                    return Task::none();
-                }
-                self.close_context_menu();
-                self.dialog_focus = about_ui::CLOSE_FOCUS;
-                self.about = Some(AboutCard::new());
+        if message == AboutMessage::Open {
+            if self.blocking_overlay_is_open() {
+                return Task::none();
             }
-            AboutMessage::Close => self.about = None,
-            AboutMessage::OpenLicenses => match (self.find_third_party_licenses)() {
-                Some(path) => {
-                    let name = path.file_name().unwrap_or_default().to_string_lossy();
-                    self.launch_from_about(path.clone().into_os_string(), &name);
-                }
-                None => {
-                    if let Some(card) = self.about.as_mut() {
-                        card.report_licenses_missing();
-                    }
-                }
-            },
-            AboutMessage::OpenRepository => {
-                self.launch_from_about(REPOSITORY_URL.into(), REPOSITORY_URL);
-            }
+            self.close_context_menu();
+            self.dialog_focus = about_ui::CLOSE_FOCUS;
+        }
+        if let Some(about_ui::Action::Launch { target, name }) =
+            about_ui::update(&mut self.about, message, self.find_third_party_licenses)
+        {
+            self.launch_from_about(target, &name);
         }
         Task::none()
     }

@@ -5,7 +5,6 @@
 //! Pictures: `NCRS_ACCEPTANCE_SHOTS=1 cargo test -p ncrs --bin ncrs acceptance_v150 -- --test-threads=1`.
 
 #![cfg(unix)]
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;

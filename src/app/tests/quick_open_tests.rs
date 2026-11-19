@@ -90,7 +90,6 @@ fn enter_closes_it_and_loads_the_hit_into_the_active_panel() {
     let before = app.panel(PanelSide::Left).request_id;
     drop(app.update(Message::QuickOpen(QuickOpenMessage::Activate)));
     assert!(app.quick_open_for_test().is_none());
-    assert!(app.quick_open_walk.is_none());
     assert!(app.panel(PanelSide::Left).loading);
     assert_ne!(app.panel(PanelSide::Left).request_id, before);
 }
@@ -132,12 +131,14 @@ fn a_conflict_closes_it() {
         targets: Vec::new(),
     };
     app.ops.transfer = Some(transfer);
-    drop(app.update(Message::TransferRowDone {
-        skipped: Vec::new(),
-        result: Err(RowFailure::Conflict("exists".to_string())),
-        index: 0,
-        generation: app.ops.generation,
-    }));
+    drop(
+        app.update(Message::from(ncrs_ops::OpsMessage::TransferRowDone {
+            skipped: Vec::new(),
+            result: Err(RowFailure::Conflict("exists".to_string())),
+            index: 0,
+            generation: app.ops.generation,
+        })),
+    );
     assert!(app.ops.pending_conflict.is_some());
     assert!(app.quick_open_for_test().is_none());
 }

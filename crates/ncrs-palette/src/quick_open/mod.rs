@@ -24,7 +24,7 @@ pub mod walk;
 pub use action::QuickOpenAction;
 pub use ctx::QuickOpenCtx;
 pub use update::{close, update};
-pub use walk::find_documents;
+pub use walk::{find_documents, open};
 
 /// What the file walk reports to Quick Open: the files, and that it is over.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -128,6 +128,8 @@ pub struct QuickOpen {
     documents_state: DocumentsState,
     /// Off without Hermes or an index: then there is no documents section.
     documents_enabled: bool,
+    /// The file walk. Stops when the box is dropped, or when the walk is over.
+    walk: Option<iced::task::Handle>,
 }
 
 /// A full ranking over a snapshot of the candidates, for a worker thread.
@@ -325,6 +327,7 @@ impl QuickOpen {
             newest_documents_generation: Arc::new(AtomicU64::new(0)),
             documents_state: DocumentsState::Idle,
             documents_enabled: false,
+            walk: None,
         }
     }
 
@@ -333,6 +336,10 @@ impl QuickOpen {
     pub fn with_documents(mut self, enabled: bool) -> Self {
         self.documents_enabled = enabled;
         self
+    }
+
+    fn set_walk(&mut self, walk: iced::task::Handle) {
+        self.walk = Some(walk);
     }
 
     pub fn documents(&self) -> &[FoundDocument] {
@@ -507,6 +514,7 @@ impl QuickOpen {
                 WalkEvent::Finished { truncated } => {
                     self.walking = false;
                     self.truncated = truncated;
+                    self.walk = None;
                 }
             }
         }
@@ -610,11 +618,5 @@ impl QuickOpen {
     }
 }
 
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests;

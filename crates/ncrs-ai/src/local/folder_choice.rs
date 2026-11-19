@@ -103,14 +103,11 @@ impl LocalModel {
 #[cfg(test)]
 mod tests {
     #![allow(
-        clippy::unwrap_used,
-        clippy::expect_used,
         clippy::print_stdout,
-        clippy::panic,
         clippy::shadow_reuse,
         clippy::shadow_unrelated,
-        clippy::indexing_slicing,
-        clippy::cast_precision_loss
+        clippy::cast_precision_loss,
+        reason = "the test reports on stdout; a test rebinds a name step by step; a report ratio, not an exact figure"
     )]
 
     use std::path::PathBuf;

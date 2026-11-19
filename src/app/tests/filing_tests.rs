@@ -42,3 +42,24 @@ fn copying_the_recovery_key_needs_a_shown_key() {
     let notice = app.notice.clone().unwrap();
     assert!(!notice.contains("AAAA"), "{notice}");
 }
+
+#[test]
+fn a_quit_is_held_again_when_the_protection_phase_changes() {
+    let mut app = App::with_fixed_filing(Phase::Encrypting);
+    assert!(app.protection_holds_quit());
+    assert!(!app.protection_holds_quit());
+
+    app.hermes.filing = Some(FilingModule::in_phase(Phase::ShowRecoveryKey {
+        key: FilingModule::fixed_recovery_key(),
+        group: 0,
+        typed: crate::filing::SecretText::default(),
+        mismatch: false,
+    }));
+    assert!(app.protection_holds_quit());
+    assert!(!app.protection_holds_quit());
+
+    app.hermes.filing = Some(FilingModule::in_phase(Phase::Ready));
+    assert!(!app.protection_holds_quit());
+    app.hermes.filing = Some(FilingModule::in_phase(Phase::Encrypting));
+    assert!(app.protection_holds_quit());
+}

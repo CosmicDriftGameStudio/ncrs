@@ -1,13 +1,6 @@
 //! The documents no rule could place: the opening bubble says how many wait,
 //! and "Zeigen" walks through them group by group.
 
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 mod common;
 
 #[cfg(test)]

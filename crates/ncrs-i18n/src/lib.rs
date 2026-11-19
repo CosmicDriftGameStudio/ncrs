@@ -289,12 +289,6 @@ pub fn fill_template(template: &str, values: &[(&str, &str)]) -> String {
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::gen::{ALL, ALL_FUTURAMA_NAMES};
@@ -647,12 +641,6 @@ mod tests {
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod dump {
     use super::gen::{ALL, ALL_FUTURAMA_NAMES};
@@ -684,13 +672,6 @@ mod dump {
     }
 }
 
-// Same reasoning as the other test modules: a panic is the failure signal.
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod unused_strings {
     use super::gen::{ALL, ALL_FUTURAMA_NAMES};

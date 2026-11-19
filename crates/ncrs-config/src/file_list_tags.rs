@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use ncrs_index::{tag_name, FileTags, Kinds};
 
-pub use ncrs_ui_kit::tags::{FileChip, ShownTags};
+pub use ncrs_core::tags::{FileChip, ShownTags};
 
 /// Most chips after one name; the rest is counted.
 pub const MOST_CHIPS: usize = 3;

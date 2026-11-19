@@ -3464,7 +3464,6 @@ dependencies = [
  "ncrs-index",
  "ncrs-intake",
  "ncrs-pipeline",
- "ncrs-ui-kit",
  "serde",
  "serde_spanned 1.1.2",
  "tempfile",
@@ -3482,6 +3481,7 @@ dependencies = [
 name = "ncrs-core"
 version = "0.0.0"
 dependencies = [
+ "iced",
  "serde",
 ]
 
@@ -3491,11 +3491,14 @@ version = "0.0.0"
 dependencies = [
  "iced",
  "iced_test",
+ "ncrs-config",
  "ncrs-core",
  "ncrs-fs",
  "ncrs-i18n",
+ "ncrs-intake",
  "ncrs-ui-kit",
  "tokio",
+ "unicode-normalization",
 ]
 
 [[package]]
@@ -3539,7 +3542,12 @@ dependencies = [
  "data-encoding",
  "flate2",
  "futures",
+ "globset",
+ "grep-matcher",
+ "grep-regex",
+ "grep-searcher",
  "hmac",
+ "ignore",
  "keyring",
  "libc",
  "ncrs-core",
@@ -3560,6 +3568,7 @@ dependencies = [
  "tokio",
  "toml_edit 0.25.17+spec-1.1.0",
  "trash",
+ "unicode-normalization",
  "zeroize",
  "zip",
  "zstd",
@@ -3633,6 +3642,7 @@ dependencies = [
  "chrono",
  "image",
  "libc",
+ "ncrs-fs",
  "ncrs-i18n",
  "ncrs-index",
  "nix",
@@ -3781,19 +3791,14 @@ name = "ncrs-search"
 version = "0.0.0"
 dependencies = [
  "chrono",
- "globset",
- "grep-matcher",
- "grep-regex",
- "grep-searcher",
  "iced",
- "ignore",
  "ncrs-core",
+ "ncrs-fs",
  "ncrs-i18n",
  "ncrs-index",
  "ncrs-ui-kit",
  "tempfile",
  "tokio",
- "unicode-normalization",
 ]
 
 [[package]]

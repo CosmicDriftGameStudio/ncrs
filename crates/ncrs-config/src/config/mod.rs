@@ -212,9 +212,10 @@ use self::loading::*;
 pub use self::loading::{load, read_source};
 use self::paths::*;
 pub use self::paths::{
-    data_dir_override, default_index_path, default_journal_path, default_known_hosts_path,
-    default_path, default_ssh_known_hosts_path, default_state_path, default_view_copies_dir,
-    portable_data_dir, portable_data_dir_of, use_data_dir,
+    data_dir_override, default_global_ssh_known_hosts_path, default_index_path,
+    default_journal_path, default_known_hosts_path, default_path, default_ssh_known_hosts_path,
+    default_state_path, default_view_copies_dir, portable_data_dir, portable_data_dir_of,
+    use_data_dir,
 };
 use self::resolving::*;
 pub use self::resolving::{check_ai_endpoint, AiEndpointProblem};
@@ -261,12 +262,5 @@ impl Config {
     }
 }
 
-// reason: a failing assertion is the signal in a test
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests;

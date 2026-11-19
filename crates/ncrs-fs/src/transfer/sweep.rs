@@ -130,7 +130,6 @@ fn sweep_older_than(dir: &Path, age: Duration) {
     }
 }
 
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 #[cfg(test)]
 mod tests {
     use super::*;

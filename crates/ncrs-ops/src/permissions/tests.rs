@@ -1,6 +1,3 @@
-// A failing assertion in a test is the signal, so `unwrap` belongs here.
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
-
 use super::*;
 
 const LANG: Language = Language::English;

@@ -531,12 +531,6 @@ fn outcome_text(outcome: &TryOutcome, lang: Language) -> String {
 #[cfg(test)]
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     use super::*;
     use crate::rules_page::fixtures::page;

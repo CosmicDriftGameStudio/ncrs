@@ -1,6 +1,9 @@
 //! Hits to build the filters and the search view from, for the tests here and
 //! the snapshot tests of the app.
-#![allow(clippy::unwrap_used)]
+#![allow(
+    clippy::unwrap_used,
+    reason = "test code: a failing assertion is the signal"
+)]
 
 use std::path::PathBuf;
 

@@ -1,11 +1,9 @@
-// reason: a failing assertion is the signal in a test
-#![allow(clippy::unwrap_used)]
-
 use iced::widget::{column, container};
 use iced::{Element, Length, Size};
 use iced_test::Simulator;
 use ncrs_i18n::Language;
 use ncrs_ui_kit::palette::{Palette, ThemePreset};
+use ncrs_ui_kit::snapshot_support::ReferenceSnapshot as _;
 use ncrs_ui_kit::theme;
 use semver::Version;
 
@@ -187,7 +185,7 @@ fn matches_image(state: &State, enabled: bool, name: &str) {
     let matches = simulator
         .snapshot(&iced::Theme::Dark)
         .unwrap()
-        .matches_image(format!("tests/snapshots/{name}.png"))
+        .matches_reference_image(format!("tests/snapshots/{name}.png"))
         .unwrap();
     assert!(matches, "{name} differs from its image");
 }

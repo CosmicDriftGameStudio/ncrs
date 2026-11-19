@@ -1,13 +1,6 @@
 //! The switch to a server on another computer: asked once for each server,
 //! written only after the yes.
 
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 use std::path::Path;
 use std::sync::Arc;
 

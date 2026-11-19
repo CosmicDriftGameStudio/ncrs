@@ -76,7 +76,7 @@ pub use recipient_detection::{detect_recipient, kind_from_heading};
 pub use reorganisation::{plan_reorganisation, PlanFile, ReorganisationInput};
 pub use reorganisation_plan::{location_documents, location_structure};
 pub use rule_check::{condition_problem, rule_problem, ConditionProblem, RuleProblem};
-pub use sanitise::{is_plain_literal, is_windows_device_name, sanitise_value, stays_below};
+pub use sanitise::{is_plain_literal, sanitise_value, stays_below};
 pub use scan::{
     scan_location, settle_location, walk_location, Found, ScanReport, MAX_REPORTED_ERRORS,
 };

@@ -393,7 +393,6 @@ pub fn end_transfer(ops: &mut Ops, lang: Language) -> Outcome {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
     use ncrs_core::PanelSide;
@@ -417,6 +416,8 @@ mod tests {
             right_archive: None,
             left_server: None,
             right_server: None,
+            left_folder: PathBuf::new(),
+            right_folder: PathBuf::new(),
             remote: &remote,
             permanent_delete_key: None,
             restore_last_key: None,

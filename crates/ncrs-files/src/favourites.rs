@@ -104,8 +104,6 @@ impl Panels {
     }
 }
 
-// A failing assertion in a test is the signal, so `unwrap` belongs here.
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 #[cfg(test)]
 mod tests {
     use super::*;

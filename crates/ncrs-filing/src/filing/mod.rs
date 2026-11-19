@@ -99,12 +99,6 @@ mod secrets;
 mod start;
 mod state;
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests;
 mod text_chain;
 mod update;

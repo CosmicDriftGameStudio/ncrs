@@ -5,12 +5,10 @@ use std::path::PathBuf;
 
 use iced::Size;
 
-use crate::app::{RowFailure, Transfer};
+use crate::app::RowFailure;
 use crate::clipboard_paste::PastedContent;
-use crate::dialog::PromptKind;
 use crate::filing::FilingMessage;
 use crate::filing_work::FilingSummary;
-use crate::fs::CreateDirError;
 use crate::fs::{Destination, PathProblem};
 #[cfg(any(target_os = "macos", test))]
 use crate::keymap::KeyAction;
@@ -93,43 +91,12 @@ pub enum Message {
     /// The tagged files, else the one under the cursor, to the system
     /// clipboard as files.
     CopyFilesToClipboard,
-    /// The user answered the conflict dialog.
-    TransferConflict(ConflictChoice),
-    /// Ticks or unticks "for all files" in the conflict dialog.
-    ToggleConflictAll,
     /// The rename of the entry at `from` has finished.
     Renamed {
         request_id: u64,
         side: PanelSide,
         from: PathBuf,
         result: Result<PathBuf, RowFailure>,
-    },
-    /// One row of a transfer finished. Carries the whole transfer so the next
-    /// row can start without the app keeping it in a field that a later
-    /// message could overwrite.
-    TransferRowDone {
-        /// `Err` carries a typed [`RowFailure`], not a bare string: the app has
-        /// to tell "the name is taken" from any other error, and a message that
-        /// cannot be told apart is the reason the overwrite dialog was
-        /// unreachable.
-        result: Result<Transfer, RowFailure>,
-        /// What the row left out while the rest went on.
-        skipped: Vec<ncrs_fs::transfer::Skipped>,
-        /// Which row this was, so a conflict on the next one points at it.
-        index: usize,
-        /// The transfer it belongs to; a result from an earlier one is dropped.
-        generation: u64,
-    },
-
-    /// The file F3 unpacked from an archive is ready, or unpacking failed.
-    ViewExtracted {
-        /// The copy's folder, so a result that arrives after its job was
-        /// stopped can still clean up after itself.
-        slot: std::path::PathBuf,
-        /// The copy.
-        result: Result<crate::fs::archive::ViewCopy, RowFailure>,
-        /// The run it belongs to; a result of a stopped one only removes its slot.
-        generation: u64,
     },
 
     /// Left/Right/Tab in a button dialog: move the focus by one.
@@ -156,61 +123,29 @@ pub enum Message {
     },
     /// The user confirmed the delete dialog.
     DeleteConfirm,
-    /// The user dismissed the delete dialog.
-    DeleteCancel,
-    /// The user confirmed the open-file question.
-    OpenFileConfirm,
-    /// The user dismissed the open-file question.
-    OpenFileCancel,
     /// The user chose to stop the running job and quit.
     QuitConfirm,
-    /// The user chose to let the running job finish.
-    QuitCancel,
-    /// A message of the permissions dialog.
-    Permissions(PermissionsMessage),
-    /// A message of the batch rename dialog, or its undo.
-    BatchRename(BatchRenameMessage),
-    /// The permissions change is over; the result of a stopped one is dropped.
-    PermissionsDone {
-        generation: u64,
-        result: Result<crate::fs::permissions::Outcome, String>,
-    },
-    /// A pack, a copy into an archive or a delete from one finished.
-    ArchiveWritten {
-        result: Result<crate::fs::archive::WriteReport, RowFailure>,
-        /// The write it belongs to; the result of a stopped one is dropped.
-        generation: u64,
-    },
-    /// One entry of a delete finished.
-    DeleteRowDone {
-        /// The reason, as the OS or the trash worded it; the app adds the name.
-        result: Result<(), String>,
-        index: usize,
-        /// The delete it belongs to; a result from an earlier one is dropped.
-        generation: u64,
-    },
+    /// A message of the file operations that needs nothing from the app but
+    /// their own state: handled by `ncrs_ops::update`.
+    Ops(OpsMessage),
 
     // --- drive menu (Alt+F1, Alt+F2) ---
     /// Alt+F1 or Alt+F2: choose the drive of that panel.
     VolumeMenu(PanelSide),
-    /// Up or Down in the open menu.
-    VolumeMenuMove(isize),
-    VolumeMenuFirst,
-    VolumeMenuLast,
-    /// Enter in the open menu: go to the highlighted drive.
-    VolumeMenuActivate,
-    /// A click on the entry at this index: highlight it and go there.
-    VolumeMenuClick(usize),
-    VolumeMenuClose,
-    /// Delete or Backspace in the drive menu: take the highlighted favourite
-    /// out of the list. A drive row ignores it.
-    VolumeMenuRemove,
     /// Adds the active panel's folder to the favourites.
     AddFavourite,
     /// Takes the active panel's folder out of the favourites.
     RemoveFavourite,
     /// Opens the drive menu on the first favourite.
     OpenFavourites,
+    /// What the drive menu lists has been read. Dropped when `request` is not
+    /// the latest one.
+    VolumeMenuFacts {
+        request: u64,
+        side: PanelSide,
+        on_favourites: bool,
+        facts: ncrs_files::VolumeFacts,
+    },
     /// Opens favourite N (counted from 0) in the active panel: a key, the
     /// command list or the menu bar, only while the panels have the keys.
     OpenFavourite(usize),
@@ -284,13 +219,6 @@ pub enum Message {
     PromptSubmit,
     /// The user dismissed the prompt.
     PromptCancel,
-    /// The background task finished.
-    PromptFinished {
-        /// The operation, so a stale result can be matched to its prompt.
-        prompt: PromptKind,
-        request_id: u64,
-        result: Result<(), CreateDirError>,
-    },
 
     /// The window row: moving, zooming and, where the system draws no frame,
     /// the window buttons and the edges that resize.
@@ -471,14 +399,7 @@ impl ResizeEdge {
     }
 }
 
-/// Everything the about card sends.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AboutMessage {
-    Open,
-    Close,
-    OpenLicenses,
-    OpenRepository,
-}
+pub use ncrs_settings::about::AboutMessage;
 
 /// Everything the folder grants of the App Store build send.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -548,46 +469,8 @@ impl From<OpsMessage> for Message {
     fn from(ops: OpsMessage) -> Self {
         match ops {
             OpsMessage::TransferDialog(dialog) => Self::TransferDialog(dialog),
-            OpsMessage::TransferConflict(choice) => Self::TransferConflict(choice),
-            OpsMessage::ToggleConflictAll => Self::ToggleConflictAll,
-            OpsMessage::DeleteCancel => Self::DeleteCancel,
             OpsMessage::DeleteConfirm => Self::DeleteConfirm,
-            OpsMessage::OpenFileCancel => Self::OpenFileCancel,
-            OpsMessage::OpenFileConfirm => Self::OpenFileConfirm,
-            OpsMessage::QuitCancel => Self::QuitCancel,
             OpsMessage::QuitConfirm => Self::QuitConfirm,
-            OpsMessage::DeleteRowDone {
-                result,
-                index,
-                generation,
-            } => Self::DeleteRowDone {
-                result,
-                index,
-                generation,
-            },
-            OpsMessage::TransferRowDone {
-                result,
-                skipped,
-                index,
-                generation,
-            } => Self::TransferRowDone {
-                result,
-                skipped,
-                index,
-                generation,
-            },
-            OpsMessage::ViewExtracted {
-                generation,
-                slot,
-                result,
-            } => Self::ViewExtracted {
-                generation,
-                slot,
-                result,
-            },
-            OpsMessage::ArchiveWritten { result, generation } => {
-                Self::ArchiveWritten { result, generation }
-            }
             OpsMessage::AbortJob => Self::AbortJob,
             OpsMessage::Renamed {
                 request_id,
@@ -601,11 +484,7 @@ impl From<OpsMessage> for Message {
                 result,
             },
             OpsMessage::Trash(trash) => Self::Trash(trash),
-            OpsMessage::Permissions(permissions) => Self::Permissions(permissions),
-            OpsMessage::BatchRename(batch) => Self::BatchRename(batch),
-            OpsMessage::PermissionsDone { generation, result } => {
-                Self::PermissionsDone { generation, result }
-            }
+            handled_by_ops => Self::Ops(handled_by_ops),
         }
     }
 }
@@ -635,19 +514,4 @@ impl From<ncrs_files::context_menu_view::ContextMenuMessage> for Message {
     }
 }
 
-/// What the favourites bar sends: a click on a slot and the entries of its
-/// right-click menu. The number is the favourite's place in the list, from 0.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FavouritesBarMessage {
-    Open(usize),
-    /// A right click: the menu of this slot at the pointer.
-    Menu(usize),
-    CloseMenu,
-    OpenInOtherPanel(usize),
-    Move {
-        index: usize,
-        step: isize,
-    },
-    Remove(usize),
-    Manage,
-}
+pub use ncrs_files::FavouritesBarMessage;

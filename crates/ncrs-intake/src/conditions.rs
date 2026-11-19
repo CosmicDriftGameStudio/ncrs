@@ -319,7 +319,6 @@ pub fn folder_holds(path: &Path, value: &str) -> Option<bool> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
 

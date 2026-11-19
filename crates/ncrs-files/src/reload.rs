@@ -7,18 +7,6 @@ use ncrs_core::PanelSide;
 
 use crate::state::Panels;
 
-/// A reload waiting for its operation to finish.
-///
-/// F7 creates a directory and then reads the panel. Both were started at once,
-/// which races: a read that finishes first does not see the new entry. The
-/// reload waits here until the create has reported back.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PendingReload {
-    pub side: PanelSide,
-    /// Name to select afterwards, so Enter opens what was just created.
-    pub name: String,
-}
-
 impl Panels {
     /// Whether a panel is in `place`: an archive, or the root address of the
     /// server whose folder it shows.

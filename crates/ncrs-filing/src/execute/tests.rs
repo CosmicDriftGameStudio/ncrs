@@ -1,10 +1,3 @@
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 use chrono::{TimeZone as _, Utc};
 use ncrs_index::{DocumentSource, NewDocument};
 use tempfile::TempDir;

@@ -1,8 +1,12 @@
 //! The Rules, Tags, Reports and Read errors pages as pages of the Settings:
 //! what their dialogs and rows do, and the AI line on the Index page.
 
-#![allow(clippy::panic_in_result_fn)]
+#![allow(
+    clippy::panic_in_result_fn,
+    reason = "a failing assertion is the signal in a test"
+)]
 
+use ncrs_ui_kit::snapshot_support::ReferenceSnapshot as _;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
@@ -215,7 +219,7 @@ fn matches_ai_snapshot(status: &AiStatus, name: &str) -> TestResult {
     );
     let matches = simulator
         .snapshot(&iced::Theme::Dark)?
-        .matches_image(format!("tests/snapshots/{name}.png"))?;
+        .matches_reference_image(format!("tests/snapshots/{name}.png"))?;
     assert!(
         matches,
         "the page does not match tests/snapshots/{name}.png"
@@ -271,7 +275,7 @@ fn the_index_page_names_a_failing_own_server() -> TestResult {
     let name = "settings_index_own_server_failing_de";
     let matches = simulator
         .snapshot(&iced::Theme::Dark)?
-        .matches_image(format!("tests/snapshots/{name}.png"))?;
+        .matches_reference_image(format!("tests/snapshots/{name}.png"))?;
     assert!(
         matches,
         "the page does not match tests/snapshots/{name}.png"

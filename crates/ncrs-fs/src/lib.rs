@@ -23,6 +23,7 @@ pub mod remote;
 mod rename;
 mod replace_file;
 mod sandbox;
+pub mod search;
 mod sort;
 mod terminal;
 pub mod transfer;
@@ -56,7 +57,10 @@ pub use sandbox::{
     sandbox_home, SandboxAccess,
 };
 pub use sort::{sort_entries, SortColumn, SortKey};
-pub use terminal::{detect_terminals, terminal_command, KnownTerminal, NoTerminal};
+pub use terminal::{
+    detect_terminals, detected_terminals, terminal_command, warm_up_terminal_detection,
+    KnownTerminal, NoTerminal,
+};
 #[cfg(any(test, feature = "test-support"))]
 pub use trash_journal::{FolderBackend, JournaledTrash};
 pub use typed_path::{locate, resolve as resolve_typed_path, Destination, PathProblem};

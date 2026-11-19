@@ -1,3 +1,4 @@
+use super::trial::*;
 use std::sync::Mutex as StdMutex;
 
 use ncrs_ai::{

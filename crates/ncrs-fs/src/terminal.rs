@@ -11,6 +11,7 @@
 
 use std::ffi::{OsStr, OsString};
 use std::path::Path;
+use std::sync::OnceLock;
 
 use crate::open::OpenCommand;
 use crate::open_programs::ProgramLine;
@@ -225,6 +226,21 @@ pub fn detect_terminals() -> Vec<KnownTerminal> {
     detect_with(Os::current(), &find_on_this_machine)
 }
 
+static DETECTED_AT_START: OnceLock<Vec<KnownTerminal>> = OnceLock::new();
+
+/// The terminals found when this was first asked. The look-up can ask the
+/// system for installed apps, so [`warm_up_terminal_detection`] runs it off the
+/// thread that draws; a terminal installed later shows up after a restart, or at
+/// once on the settings page, which looks again.
+pub fn detected_terminals() -> &'static [KnownTerminal] {
+    DETECTED_AT_START.get_or_init(detect_terminals)
+}
+
+/// Starts the look-up of [`detected_terminals`] in the background.
+pub fn warm_up_terminal_detection() {
+    std::thread::spawn(detected_terminals);
+}
+
 fn detect_with(os: Os, find: &dyn Fn(Probe) -> Option<String>) -> Vec<KnownTerminal> {
     known_terminals(os)
         .iter()
@@ -337,13 +353,6 @@ fn is_program(candidate: &Path) -> bool {
     std::fs::symlink_metadata(candidate).is_ok()
 }
 
-// reason: a failing assertion is the signal in a test
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -6,12 +6,12 @@
 //! test put there. Linux re-runs each test in a child process whose
 //! `XDG_DATA_HOME` is inside the test folder, so the trash is a private one.
 
-// reason: a failing assertion is the signal in a test
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
-    clippy::indexing_slicing
+    clippy::indexing_slicing,
+    reason = "test code: a failing assertion is the signal"
 )]
 
 use std::ffi::OsStr;

@@ -308,13 +308,6 @@ fn scale_with(points: Option<u8>, system: Option<&SystemFont>, pixels_per_point:
     (wanted * pixels_per_point / BASE_UI_PIXELS).clamp(MIN_SCALE, MAX_SCALE)
 }
 
-// A failing assertion in a test is the signal, so `unwrap` belongs here.
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::*;

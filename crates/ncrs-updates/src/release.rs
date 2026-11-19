@@ -89,8 +89,6 @@ pub fn is_news(release: &LatestRelease, running: &Version, skipped: Option<&str>
         && skipped_version.is_none_or(|skip| skip != release.version)
 }
 
-// reason: a failing assertion is the signal in a test
-#[allow(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
     use super::*;

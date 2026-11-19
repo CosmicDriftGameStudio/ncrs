@@ -1,13 +1,6 @@
 //! What the chat does with typed sentences: they go to the (scripted) model,
 //! Hermes asks before it acts, and a button press never reaches the model.
 
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 mod common;
 
 #[cfg(test)]

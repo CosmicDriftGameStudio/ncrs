@@ -3,14 +3,6 @@
 //! child process. The copy runs in a real sandbox: it gets a container and is
 //! refused files outside it.
 
-// reason: a failing assertion is the signal in a test
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 use std::path::{Path, PathBuf};
 
 use crate::fs::system_trash;

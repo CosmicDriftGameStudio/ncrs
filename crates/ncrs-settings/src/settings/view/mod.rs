@@ -563,6 +563,5 @@ pub fn status_bar<'a>(bar: &StatusBar<'a>) -> Element<'a, Message> {
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 #[cfg(test)]
 mod tests;

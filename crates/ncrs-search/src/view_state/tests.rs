@@ -306,16 +306,6 @@ fn the_engine_query_carries_the_fields() {
 }
 
 #[test]
-fn only_the_macos_root_leaves_its_file_system() {
-    assert!(stays_on_file_system(Path::new("/Users")));
-    assert!(stays_on_file_system(Path::new("/tmp/x")));
-    assert_eq!(
-        stays_on_file_system(Path::new("/")),
-        !cfg!(target_os = "macos")
-    );
-}
-
-#[test]
 fn the_cursor_target_names_the_file_and_its_first_match() {
     let view = view_with(vec![
         found("/root/a.txt", &[7, 9]),

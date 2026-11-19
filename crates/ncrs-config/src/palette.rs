@@ -1,9 +1,9 @@
 //! How the `[theme]` section of the config changes the window colors. The
-//! colors themselves (`Palette`, `ThemePreset`, `ColorRole`) live in the UI kit.
+//! colors themselves (`Palette`, `ThemePreset`, `ColorRole`) live in `ncrs-core`.
 
 use std::ops::Range;
 
-pub use ncrs_ui_kit::palette::*;
+pub use ncrs_core::palette::*;
 
 use crate::config::ThemeSection;
 use crate::vscode_theme::VscodeTheme;
@@ -110,13 +110,6 @@ impl PaletteFromSection for Palette {
     }
 }
 
-// reason: a failing assertion is the signal in a test
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::*;

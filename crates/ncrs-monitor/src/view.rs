@@ -1,6 +1,6 @@
 //! The System page, and the menu and the dialog that stand over it.
 
-use iced::widget::{column, container, mouse_area, row, Space, Stack};
+use iced::widget::{column, container, mouse_area, row, Space};
 use iced::{alignment, Element, Length};
 
 use ncrs_config::system_monitor::{DriveColumn, NetworkUnit};
@@ -12,7 +12,7 @@ use ncrs_ui_kit::meter::{level_text_color, meter, meter_level, Meter};
 use ncrs_ui_kit::page_status_bar::{page_status_bar, PageStatusBar, PageStatusLine};
 use ncrs_ui_kit::page_text::{page_band, page_heading, page_line};
 use ncrs_ui_kit::palette::Palette;
-use ncrs_ui_kit::popup_menu::{popup_menu, PopupEntry};
+use ncrs_ui_kit::popup_menu::{popup_layer, popup_menu, PopupEntry, RightPress};
 use ncrs_ui_kit::theme::{self, font_size, spacing};
 
 use crate::ctx::ViewCtx;
@@ -558,15 +558,11 @@ pub fn menu_view<'a>(state: &State, ctx: ViewCtx<'a>) -> Option<Element<'a, Moni
             }
         })
         .collect();
-    let catcher = mouse_area(Space::new().width(Length::Fill).height(Length::Fill))
-        .on_press(MonitorMessage::MenuClose)
-        .on_right_press(MonitorMessage::MenuClose);
-    Some(
-        Stack::new()
-            .push(catcher)
-            .push(popup_menu(entries, menu.origin, ctx.palette))
-            .into(),
-    )
+    Some(popup_layer(
+        popup_menu(entries, menu.origin, ctx.palette),
+        Some(MonitorMessage::MenuClose),
+        RightPress::Dismiss,
+    ))
 }
 
 /// The kill confirmation; the app puts it over a scrim.

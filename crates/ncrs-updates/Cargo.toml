@@ -35,6 +35,7 @@ sandbox = []
 tempfile = "3.27"
 iced = { version = "0.14", default-features = false, features = ["tokio", "advanced", "tiny-skia"] }
 iced_test = "0.14"
+ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0", features = ["test-support"] }
 
 [lints]
 workspace = true

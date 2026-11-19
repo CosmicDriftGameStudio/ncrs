@@ -5,7 +5,6 @@
 //! `target/acceptance/`.
 
 #![cfg(feature = "local-ai")]
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use std::num::NonZeroU32;
 use std::sync::Mutex;

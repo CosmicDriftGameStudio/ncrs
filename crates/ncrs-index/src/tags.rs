@@ -291,12 +291,6 @@ fn tag_conditions(tx: &Transaction<'_>, tag: &str) -> Result<Vec<(i64, i64, Stri
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     use std::collections::BTreeSet;
 

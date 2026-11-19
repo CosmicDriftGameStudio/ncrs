@@ -747,7 +747,6 @@ fn symlink(source: &Path, original: &Path, link: &Path) -> io::Result<()> {
     }
 }
 
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 #[cfg(test)]
 mod tests {
     use super::*;

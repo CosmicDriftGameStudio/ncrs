@@ -677,29 +677,16 @@ fn edited(permissions: &mut fs::Permissions, edit: &PermissionEdit) -> bool {
 #[cfg(unix)]
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests;
 
 #[cfg(test)]
 #[cfg(unix)]
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod unreadable_tests;
 
 #[cfg(test)]
 #[cfg(unix)]
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod unreadable_folder_tests;

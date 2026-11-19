@@ -4,6 +4,7 @@
 use iced_test::futures::futures::StreamExt as _;
 use iced_test::runtime::{task, Action};
 use iced_test::Simulator;
+use ncrs_ui_kit::snapshot_support::ReferenceSnapshot as _;
 
 use crate::app::*;
 use crate::i18n::Language;
@@ -22,7 +23,7 @@ fn matches_snapshot(app: &App, name: &str) {
     )
     .snapshot(&iced::Theme::Dark)
     .unwrap()
-    .matches_image(format!("tests/snapshots/{name}.png"))
+    .matches_reference_image(format!("tests/snapshots/{name}.png"))
     .expect("snapshot comparison");
     assert!(
         matches,

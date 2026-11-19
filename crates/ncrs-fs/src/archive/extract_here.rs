@@ -107,12 +107,6 @@ fn free_name_in(folder: &Path, wanted: &str, is_dir: bool) -> PathBuf {
         .unwrap_or(first)
 }
 
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::super::fixtures::{scratch, write_archive, Item};

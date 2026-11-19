@@ -1,8 +1,6 @@
 //! The batch rename dialog with a clash in every row after the first.
 
-// reason: a failing assertion is the signal in a test
-#![allow(clippy::unwrap_used)]
-
+use ncrs_ui_kit::snapshot_support::ReferenceSnapshot as _;
 use std::path::PathBuf;
 
 use iced::Size;
@@ -73,7 +71,7 @@ mod ui_tests {
         let matches = simulator
             .snapshot(&iced::Theme::Dark)
             .unwrap()
-            .matches_image("tests/snapshots/batch-rename-clashes.png")
+            .matches_reference_image("tests/snapshots/batch-rename-clashes.png")
             .unwrap();
 
         assert!(matches, "the batch rename dialog differs from its image");

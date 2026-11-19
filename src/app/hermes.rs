@@ -72,21 +72,16 @@ impl App {
 
     /// What the Hermes entry of the context menu checks for the cursor row.
     pub(in crate::app) fn hermes_facts(&self) -> HermesFacts {
-        let locations = &self.hermes.filing_config.locations;
         let cursor = self.hermes_cursor_entry().map(|entry| {
-            let role_free = |role| role_of(&entry.path, locations) != Some(role);
+            let roles = self.hermes.cursor_roles(&entry.path);
             HermesCursor {
                 is_dir: entry.is_dir,
                 excluded: self.cursor_is_excluded_from_hermes(),
-                can_be_handed_to_inbox: self
-                    .inbox_location()
-                    .is_some_and(|inbox| !entry.path.starts_with(inbox)),
-                lies_in_a_filing_location: locations
-                    .iter()
-                    .any(|location| entry.path.starts_with(&location.path)),
-                inbox_role_is_free: role_free(FolderRole::Inbox),
-                filing_location_role_is_free: role_free(FolderRole::FilingLocation),
-                archive_role_is_free: role_free(FolderRole::Archive),
+                can_be_handed_to_inbox: roles.can_be_handed_to_inbox,
+                lies_in_a_filing_location: roles.lies_in_a_filing_location,
+                inbox_role_is_free: roles.inbox_role_is_free,
+                filing_location_role_is_free: roles.filing_location_role_is_free,
+                archive_role_is_free: roles.archive_role_is_free,
             }
         });
         HermesFacts {
@@ -222,6 +217,7 @@ impl App {
             context_menu_open: self.panels.context_menu.is_some(),
             search_open: self.search.open,
             hermes_active: hermes.is_active(),
+            chat_open: self.hermes_chat.open,
             hermes_counts_missing: hermes.filing_status.hermes_counts().is_none(),
             jobs_busy: self.jobs.is_busy(),
             window_size: self.window_size,
@@ -333,6 +329,15 @@ impl App {
                 };
                 self.set_status_error(&shown);
                 Task::none()
+            }
+            Ask::RefreshDocumentsFacts => self.refresh_documents_facts(),
+            Ask::EnsureChatModel => {
+                self.ensure_chat_model();
+                Task::none()
+            }
+            Ask::CheckChatWaiting => self.update_hermes_chat(HermesChatMessage::WaitingCheck),
+            Ask::ReadingSettled(sequence) => {
+                self.update_hermes_chat(HermesChatMessage::ReadingSettled(sequence))
             }
             Ask::RequestHermesCounts => self
                 .with_hermes(Vec::new(), |hermes, _| {

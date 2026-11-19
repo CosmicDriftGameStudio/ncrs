@@ -97,7 +97,6 @@ fn is_same_entry(first: &Path, second: &Path) -> bool {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
 

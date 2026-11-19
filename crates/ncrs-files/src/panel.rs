@@ -1,5 +1,6 @@
 //! The state of a file panel ([`PanelState`]): the rows, the cursor, the tags,
 //! the sort, the history. The view is built from it in the app.
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use iced::mouse::ScrollDelta;
@@ -9,6 +10,7 @@ use ncrs_fs::{sort_entries, ReadError, SortColumn, SortKey};
 use ncrs_ui_kit::layout::{self, HIT_LIST_ROW_HEIGHT, ROW_HEIGHT};
 
 use crate::hit_list::HitList;
+use crate::name_match::composed;
 use crate::panel_history::PanelHistory;
 use crate::rename::RenameState;
 
@@ -321,7 +323,12 @@ impl PanelState {
             .or(previous.filter(|_| same_directory));
         let index = wanted
             .as_deref()
-            .and_then(|name| self.entries.iter().position(|e| e.name == name))
+            .and_then(|name| {
+                let wanted_name = composed(OsStr::new(name));
+                self.entries
+                    .iter()
+                    .position(|e| composed(&e.name) == wanted_name)
+            })
             .unwrap_or(fallback);
         self.select(index, visible_rows);
     }
@@ -439,12 +446,6 @@ mod tests {
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tagging_tests {
     use super::*;
@@ -638,12 +639,6 @@ mod tagging_tests {
     }
 }
 
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod sort_tests {
     use super::*;

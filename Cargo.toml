@@ -198,6 +198,7 @@ russh = { workspace = true }
 # snapshot images, and Ice scripts.
 iced_test = "0.14"
 iced_selector = "0.14"
+ncrs-ui-kit = { path = "crates/ncrs-ui-kit", version = "0.0.0", features = ["test-support"] }
 # A one-page PDF for the tests of the document preview.
 ncrs-intake = { path = "crates/ncrs-intake", version = "0.0.0", features = ["test-support"] }
 # The checksum of the bytes a test server hands out for the AI model download.
@@ -252,19 +253,20 @@ missing_debug_implementations = "warn"
 # warnings, so the unwanted members are named "allow" after it.
 #
 # Verified by putting an `expect` into production code: silent without the group,
-# reported with it. The `#![allow]` on each `mod tests` keeps the test tree out
-# of the count, since a failing assertion there *is* the signal.
+# reported with it. Every other `allow` names its reason, so the reasons stay
+# next to the exception and a stale one is noticed. Tests may unwrap, expect,
+# panic and index (clippy.toml), since a failing assertion there is the signal.
 restriction = { level = "warn", priority = -1 }
 unwrap_used = "warn"
 expect_used = "warn"
 panic = "warn"
 indexing_slicing = "warn"
+allow_attributes_without_reason = "warn"
 
 # The rest of the group, off again. Each was in the warning list after enabling
 # it; the names are taken from clippy's own output, not guessed.
 absolute_paths = "allow"
 allow_attributes = "allow"
-allow_attributes_without_reason = "allow"
 arbitrary_source_item_ordering = "allow"
 arithmetic_side_effects = "allow"
 as_conversions = "allow"

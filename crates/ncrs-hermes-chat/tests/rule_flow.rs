@@ -2,13 +2,6 @@
 //! levels, what goes into the folder, the trial, and the click that stores the
 //! rule. Nothing is saved before that click.
 
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 mod common;
 
 #[cfg(test)]

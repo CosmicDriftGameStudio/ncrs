@@ -1,11 +1,5 @@
 //! What a run and its undo do when the folders under them are swapped for
 //! links, and which leftovers a settle may remove.
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 
 use ncrs_fs::transfer::Counting;
 use ncrs_fs::{FolderBackend, JournaledTrash, Trash as _};

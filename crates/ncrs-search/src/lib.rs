@@ -3,7 +3,7 @@
 
 pub mod action;
 pub mod ctx;
-pub mod engine;
+pub use ncrs_fs::search as engine;
 pub mod filters;
 pub mod keys;
 pub mod message;
@@ -19,6 +19,7 @@ pub use action::Action;
 pub use ctx::{Ctx, SearchIndex, TogglePress, ToggleShortcuts, ViewCtx};
 pub use keys::{search_key, SearchKey, SearchKeyFacts};
 pub use message::SearchMessage;
-pub use state::{search_events, Search};
+pub use ncrs_fs::search::search_events;
+pub use state::Search;
 pub use update::{activates_panel, needs_keys, update};
 pub use view::{field_id, title, view, NAMES_ID, QUERY_ID};

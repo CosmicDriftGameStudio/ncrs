@@ -6,6 +6,7 @@ use std::time::Instant;
 use iced::keyboard::Modifiers;
 use iced::{Point, Size};
 use ncrs_core::{Column, CompareMarks, DateFormat, FileEntry, PanelSide, SizeFormat};
+use ncrs_fs::remote::ServerId;
 use ncrs_i18n::Language;
 use ncrs_ui_kit::column_header::{ColumnLayout, HeaderDrag};
 use ncrs_ui_kit::file_icon::SpecialFolder;
@@ -80,6 +81,10 @@ pub struct Ctx<'a> {
     pub clock: &'a (dyn Fn() -> Instant + Send + Sync),
     /// The first of a path and its ancestors that is a folder.
     pub nearest_existing_directory: fn(&Path) -> Option<PathBuf>,
+    pub lang: Language,
+    /// The servers saved in the settings: closing one from the drive menu
+    /// keeps its row.
+    pub saved_servers: &'a [ServerId],
 }
 
 impl std::fmt::Debug for Ctx<'_> {

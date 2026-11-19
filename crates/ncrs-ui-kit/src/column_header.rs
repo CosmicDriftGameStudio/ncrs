@@ -15,6 +15,7 @@ use crate::layout::{
     MENU_PADDING, MENU_SEPARATOR_HEIGHT, MENU_WIDTH, MIN_COLUMN_WIDTH, TAG_COLUMN_WIDTH,
 };
 use crate::palette::Palette;
+use crate::popup_menu::{popup_layer, RightPress};
 use crate::theme::{self, font_size, spacing};
 
 /// Room for the check mark in front of a menu entry.
@@ -378,6 +379,8 @@ pub enum ColumnMenuItem<M> {
         note: Option<String>,
         /// `None` draws the entry as disabled.
         on_press: Option<M>,
+        /// The keyboard highlight, drawn like a hover.
+        is_selected: bool,
     },
     Separator,
 }
@@ -418,6 +421,7 @@ pub fn column_menu<'a, M: Clone + 'a>(
                 checked,
                 note,
                 on_press,
+                is_selected,
             } => {
                 let enabled = on_press.is_some();
                 let content = Row::new()
@@ -446,7 +450,8 @@ pub fn column_menu<'a, M: Clone + 'a>(
                     .height(MENU_ITEM_HEIGHT)
                     .width(Length::Fill)
                     .style(move |_: &Theme, status| {
-                        let hovered = enabled && matches!(status, button::Status::Hovered);
+                        let hovered =
+                            enabled && (is_selected || matches!(status, button::Status::Hovered));
                         button::Style {
                             background: hovered.then_some(Background::Color(colors.cursor)),
                             text_color: if !enabled {
@@ -468,18 +473,16 @@ pub fn column_menu<'a, M: Clone + 'a>(
         .padding(MENU_PADDING)
         .width(MENU_WIDTH)
         .style(theme::menu(palette));
-    let backdrop = mouse_area(Space::new().width(Length::Fill).height(Length::Fill))
-        .on_press(on_close.clone())
-        .on_right_press(on_close);
-    stack![
-        backdrop,
+    popup_layer(
         pin(opaque(body))
             .x(origin.x)
             .y(origin.y)
             .width(Length::Fill)
             .height(Length::Fill)
-    ]
-    .into()
+            .into(),
+        Some(on_close),
+        RightPress::Dismiss,
+    )
 }
 
 /// The column titles of a list that cannot be sorted or changed.
@@ -490,13 +493,6 @@ pub fn plain_column_header<'a, M: Clone + 'a>(
     column_header(palette, layout, None, TrailingColumn::None, None, None)
 }
 
-// A failing assertion in a test is the signal, so `unwrap` belongs here.
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::*;

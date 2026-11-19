@@ -130,12 +130,6 @@ fn compare(a: &FileEntry, folded_a: &str, b: &FileEntry, folded_b: &str, key: So
         })
 }
 
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::*;

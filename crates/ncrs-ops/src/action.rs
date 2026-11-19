@@ -155,4 +155,6 @@ pub enum Action {
     OpenTrash(PanelSide),
     /// Shows the trash folder in the Finder, where the app cannot list it.
     OpenTrashInFinder,
+    /// Open this file in the editor.
+    EditFile(PathBuf),
 }

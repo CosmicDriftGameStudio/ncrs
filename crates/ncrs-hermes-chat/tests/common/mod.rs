@@ -7,7 +7,8 @@
     clippy::expect_used,
     clippy::panic,
     clippy::indexing_slicing,
-    dead_code
+    dead_code,
+    reason = "test code: a failing assertion is the signal; each test file uses a part of the shared helpers"
 )]
 
 use std::collections::BTreeMap;

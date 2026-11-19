@@ -67,12 +67,6 @@ pub fn location_documents(index: &Index, root: &Path) -> Result<Vec<PlanFile>, I
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     use std::collections::BTreeMap;
     use std::fs;

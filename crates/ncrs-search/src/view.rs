@@ -827,8 +827,6 @@ fn match_spans<'a>(
     spans
 }
 
-// reason: a failing assertion is the signal in a test
-#[allow(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
     use super::*;

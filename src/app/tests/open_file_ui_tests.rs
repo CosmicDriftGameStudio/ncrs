@@ -1,6 +1,7 @@
 //! Snapshots of the question before a file that could run is opened.
 
 use crate::app::*;
+use ncrs_ui_kit::snapshot_support::ReferenceSnapshot as _;
 
 #[test]
 fn the_question_matches_its_snapshots() {
@@ -17,7 +18,7 @@ fn the_question_matches_its_snapshots() {
         )
         .snapshot(&iced::Theme::Dark)
         .expect("the view renders")
-        .matches_image(format!("tests/snapshots/{name}.png"))
+        .matches_reference_image(format!("tests/snapshots/{name}.png"))
         .expect("snapshot comparison");
         assert!(matches, "the question does not match {name}.png");
     }

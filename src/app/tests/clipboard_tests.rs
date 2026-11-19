@@ -3,6 +3,7 @@ use crate::clipboard_paste::RgbaImage;
 use crate::fs::FileEntry;
 use iced_test::futures::futures::StreamExt as _;
 use iced_test::runtime::{task, Action};
+use ncrs_ops::prompt::PromptKind;
 use std::cell::RefCell;
 use std::ffi::OsString;
 use std::rc::Rc;
@@ -192,12 +193,11 @@ async fn pasted_files_start_a_copy_into_the_active_panel() {
     let source = case.target.parent().unwrap().join("outside.txt");
     std::fs::write(&source, "x").unwrap();
 
-    drop(
-        case.app
-            .update(Message::ClipboardRead(Some(PastedContent::Files(vec![
-                source.clone(),
-            ])))),
-    );
+    case.app
+        .settle_checks_for_test(Message::ClipboardRead(Some(PastedContent::Files(vec![
+            source.clone(),
+        ]))))
+        .await;
 
     let transfer = case.app.ops.transfer.as_ref().expect("no transfer started");
     assert_eq!(transfer.kind, TransferKind::Copy);

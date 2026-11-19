@@ -14,6 +14,8 @@ workspace = true
 [dependencies]
 ncrs-index = { path = "../ncrs-index", version = "0.0.0" }
 ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
+# One list of the names Windows reads as devices, shared with the archive unpacking.
+ncrs-fs = { path = "../ncrs-fs", version = "0.0.0" }
 sha2 = "0.11"
 walkdir = "2.5"
 same-file = "1.0"

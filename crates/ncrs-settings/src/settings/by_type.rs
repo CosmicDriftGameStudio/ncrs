@@ -200,7 +200,6 @@ impl SettingsState {
     }
 }
 
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 #[cfg(test)]
 mod tests {
     use super::*;

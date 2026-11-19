@@ -59,8 +59,17 @@ pub fn view<'a>(
             fingerprint,
             host,
             port,
+            cert_authority_listed,
             ..
-        } => host_key(dialog, fingerprint, (host, *port), window, lang, palette),
+        } => host_key(
+            dialog,
+            fingerprint,
+            (host, *port),
+            *cert_authority_listed,
+            window,
+            lang,
+            palette,
+        ),
         Stage::Passphrase { key_file } => passphrase(dialog, key_file, window, lang, palette),
         Stage::Editing | Stage::Connecting => form(dialog, window, lang, palette),
     }
@@ -256,12 +265,13 @@ fn host_key<'a>(
     dialog: &ConnectDialog,
     fingerprint: &str,
     judged: (&str, u16),
+    cert_authority_listed: bool,
     window: Size,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
     let host = shown_target(dialog, judged);
-    let body = column![paragraph(
+    let mut body = column![paragraph(
         fill_template(
             lang.text(Msg::RemoteHostkeyBody),
             &[("{host}", &host), ("{fingerprint}", fingerprint)],
@@ -269,6 +279,12 @@ fn host_key<'a>(
         palette,
     )]
     .spacing(spacing::LINE_GAP);
+    if cert_authority_listed {
+        body = body.push(paragraph(
+            lang.text(Msg::RemoteHostkeyCaNote).to_owned(),
+            palette,
+        ));
+    }
     let cancel = Message::Cancel;
     Frame::new(
         lang.text(Msg::RemoteHostkeyTitle),
@@ -394,7 +410,6 @@ fn passphrase<'a>(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
 

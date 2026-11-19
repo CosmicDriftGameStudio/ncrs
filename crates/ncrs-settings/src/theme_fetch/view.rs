@@ -265,12 +265,6 @@ pub fn error_text(error: &FetchError, lang: Language) -> String {
     }
 }
 
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -198,7 +198,9 @@ async fn a_name_taken_on_the_server_asks_and_overwrite_replaces_it() {
 
     settle(
         &mut app,
-        Message::TransferConflict(ConflictChoice::ThisOverwrite),
+        Message::from(ncrs_ops::OpsMessage::TransferConflict(
+            ConflictChoice::ThisOverwrite,
+        )),
     )
     .await;
 
@@ -287,7 +289,8 @@ async fn confirming_a_bad_address_shows_the_refusal_and_starts_nothing() {
         ))),
     );
 
-    drop(app.update(Message::TransferDialog(TransferDialogMessage::Confirm)));
+    app.settle_checks_for_test(Message::TransferDialog(TransferDialogMessage::Confirm))
+        .await;
 
     let dialog = app.ops.transfer_dialog.as_ref().unwrap();
     assert_eq!(dialog.refusal(), Some(transfer_dialog::Refusal::BadAddress));
@@ -377,7 +380,8 @@ async fn confirming_a_move_from_a_server_shows_the_refusal_and_keeps_the_dialog(
         ))),
     );
 
-    drop(app.update(Message::TransferDialog(TransferDialogMessage::Confirm)));
+    app.settle_checks_for_test(Message::TransferDialog(TransferDialogMessage::Confirm))
+        .await;
 
     let dialog = app.ops.transfer_dialog.as_ref().unwrap();
     assert_eq!(

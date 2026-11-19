@@ -39,8 +39,15 @@ pub trait TrashBackend: Send + Sync {
 pub struct JournaledTrash<B> {
     journal: PathBuf,
     backend: B,
-    /// One read-change-write of the file at a time.
+    /// One read-change-write of the file at a time within this process; the
+    /// lock file beside the journal does the same across processes.
     writing: Mutex<()>,
+}
+
+/// Both locks of the journal, released together when it goes out of scope.
+struct Held<'a> {
+    _in_process: MutexGuard<'a, ()>,
+    _across_processes: Option<std::fs::File>,
 }
 
 /// A tagged enum so a later general undo can add kinds to the same file.
@@ -146,8 +153,30 @@ impl<B: TrashBackend> JournaledTrash<B> {
         }
     }
 
-    fn lock(&self) -> MutexGuard<'_, ()> {
-        self.writing.lock().unwrap_or_else(PoisonError::into_inner)
+    fn lock(&self) -> Held<'_> {
+        let in_process = self.writing.lock().unwrap_or_else(PoisonError::into_inner);
+        Held {
+            _in_process: in_process,
+            _across_processes: self.lock_file(),
+        }
+    }
+
+    /// The journal is replaced atomically, so it cannot carry the lock itself:
+    /// a file beside it does, and a second running ncrs waits on it instead
+    /// of overwriting what the first one wrote. Without the lock (a folder
+    /// that cannot be written) the in-process lock still holds.
+    fn lock_file(&self) -> Option<std::fs::File> {
+        std::fs::create_dir_all(self.journal.parent()?).ok()?;
+        let mut name = self.journal.as_os_str().to_owned();
+        name.push(".lock");
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(false)
+            .open(name)
+            .ok()?;
+        file.lock().ok()?;
+        Some(file)
     }
 
     /// A missing file is an empty journal. One that cannot be read, or that a
@@ -237,7 +266,11 @@ impl<B: TrashBackend> Trash for JournaledTrash<B> {
                 original: path.to_path_buf(),
                 trashed: landed,
             });
-            self.save_quietly(entries);
+            self.save(entries).map_err(|err| {
+                format!(
+                    "moved to the trash, but the record for putting it back could not be written: {err}"
+                )
+            })?;
         }
         Ok(())
     }
@@ -344,13 +377,6 @@ impl TrashBackend for FolderBackend {
     }
 }
 
-// reason: a failing assertion is the signal in a test
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::*;

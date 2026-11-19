@@ -48,7 +48,7 @@ ncrs can tell you when a newer version exists. If the check is on, ncrs sends on
 - The host keys of SFTP servers you trusted are kept in `known_hosts` next to the index; your own `~/.ssh/known_hosts` is only read.
 - The index behind Quick Open, the content search and Hermes is a database on your computer. It is encrypted unless you chose otherwise; the Hermes overview says which.
 - What Hermes used on your own AI server (requests, tokens, the price when the server reports one, no document text) is counted in a small log file on your computer, shown on the Usage page of the settings tab. It is never sent anywhere.
-- SFTP passwords, the API key of an AI server and the key of that index are stored in the system's credential store (Keychain on macOS). The passphrase of a key file is stored there too, when you tick "remember" (the box starts ticked). With `--data-dir`, which is meant for throwaway test data, the index key is a file `index.key` (readable by you only) next to the index instead, so the encryption does not protect a copy of that folder.
+- SFTP passwords, the API key of an AI server and the key of that index are stored in the system's credential store (Keychain on macOS). The passphrase of a key file is stored there too, when you tick "remember". With `--data-dir`, which is meant for throwaway test data, the index key is a file `index.key` (readable by you only) next to the index instead, so the encryption does not protect a copy of that folder.
 
 ## Contact
 

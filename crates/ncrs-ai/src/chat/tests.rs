@@ -1,10 +1,3 @@
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 use super::eval::{rows, search_of_json, Expect, HOLDOUT_ROWS, MAIN_ROWS};
 use super::*;
 use crate::error::AiError;

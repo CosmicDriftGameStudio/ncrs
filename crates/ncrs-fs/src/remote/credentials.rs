@@ -1,8 +1,8 @@
 //! The passwords of saved servers, one keychain entry per account, and the
 //! passphrases of key files, one entry per absolute path. A secret is only ever
 //! written to the keychain, never to a file or a log, and only while the
-//! "remember" box of the dialog is on (the box for a password starts off, the
-//! one for a passphrase starts on; both are visible). The calls block; the app
+//! "remember" box of the dialog is on (the boxes for a password and for a
+//! passphrase both start off and are visible). The calls block; the app
 //! makes them on the blocking pool.
 
 use std::fmt;
@@ -273,12 +273,6 @@ impl PasswordStore for InMemoryPasswords {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     use super::*;
 

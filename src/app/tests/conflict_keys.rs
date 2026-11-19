@@ -60,7 +60,9 @@ fn enter_presses_the_focused_button_and_escape_keeps() {
     );
     assert_eq!(
         press(&app, Key::Named(Named::Escape), Modifiers::default()),
-        Some(Message::TransferConflict(ConflictChoice::ThisKeep)),
+        Some(Message::from(ncrs_ops::OpsMessage::TransferConflict(
+            ConflictChoice::ThisKeep
+        ))),
         "Escape does not answer the question"
     );
 }
@@ -122,8 +124,11 @@ fn ctrl_c_cancels_the_operation_on_a_mac_and_does_nothing_elsewhere() {
         index: 0,
     });
 
-    let expected =
-        cfg!(target_os = "macos").then(|| Message::TransferConflict(ConflictChoice::Cancel));
+    let expected = cfg!(target_os = "macos").then(|| {
+        Message::from(ncrs_ops::OpsMessage::TransferConflict(
+            ConflictChoice::Cancel,
+        ))
+    });
     assert_eq!(
         press(&app, Key::Character("c".into()), Modifiers::CTRL),
         expected,

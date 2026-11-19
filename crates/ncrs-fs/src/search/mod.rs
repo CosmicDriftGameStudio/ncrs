@@ -767,11 +767,41 @@ pub fn spawn(search: CompiledSearch) -> mpsc::Receiver<SearchEvent> {
     receiver
 }
 
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
+/// The most events one message carries, so a search that finds thousands of
+/// files does not make thousands of updates.
+const SEARCH_BATCH: usize = 256;
+
+/// The messages of one search, in batches. Ends when the engine is done or the
+/// stream is dropped.
+///
+/// The engine is started inside the stream: it spawns onto the blocking pool,
+/// which needs the runtime the stream runs in, and the caller of this may not be
+/// in one.
+pub fn search_events<T: Send + 'static>(
+    compiled: CompiledSearch,
+    generation: u64,
+    to_message: fn(u64, Vec<SearchEvent>) -> T,
+) -> impl futures::Stream<Item = T> + Send + 'static {
+    use futures::StreamExt as _;
+    futures::stream::once(async move { spawn(compiled) })
+        .map(move |receiver| {
+            futures::stream::unfold(receiver, move |mut open| async move {
+                let mut events = Vec::new();
+                let received = open.recv_many(&mut events, SEARCH_BATCH).await;
+                (received > 0).then(|| (to_message(generation, events), open))
+            })
+        })
+        .flatten()
+}
+
+/// Whether the walk may leave the file system `root` is on.
+///
+/// From `/` on macOS it may not: the volume with `/Users` is another file
+/// system than the read-only system volume that `/` is, so staying on one
+/// would search nothing the user means.
+pub fn stays_on_file_system(root: &Path) -> bool {
+    !(cfg!(target_os = "macos") && root == Path::new("/"))
+}
+
 #[cfg(test)]
 mod tests;

@@ -275,12 +275,6 @@ fn push_reference(reference: &BytesRef<'_>, out: &mut String) -> Result<(), Stri
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     use std::io::{Cursor, Write as _};
 

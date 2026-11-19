@@ -52,12 +52,6 @@ fn at_most_share(count: usize, of: usize, percent: u32) -> bool {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     use ncrs_index::Condition;
 

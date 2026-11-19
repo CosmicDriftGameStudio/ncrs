@@ -40,6 +40,8 @@ pub enum Stage {
         /// not show.
         host: String,
         port: u16,
+        /// A known_hosts file lists a certificate authority for the host.
+        cert_authority_listed: bool,
     },
     /// The server asks for a key file that is locked. The user types its
     /// passphrase.
@@ -124,7 +126,7 @@ impl ConnectDialog {
             save: false,
             key_file: String::new(),
             passphrase: Secret::default(),
-            remember_passphrase: true,
+            remember_passphrase: false,
             start_path: String::new(),
             stage: Stage::Editing,
             error: None,
@@ -409,12 +411,6 @@ impl ConnectDialog {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     use super::*;
 

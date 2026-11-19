@@ -21,7 +21,6 @@ mod trailer_data;
 #[cfg(test)]
 mod ui_tests;
 
-mod about;
 mod app;
 mod backend;
 pub use ncrs_ops::clipboard_paste;
@@ -336,6 +335,7 @@ fn main() -> iced::Result {
 
     let mut environment = app::Environment::of_the_user();
     fs::restore_grants(environment.index_path.as_deref());
+    fs::warm_up_terminal_detection();
     let instance = environment
         .index_path
         .as_deref()

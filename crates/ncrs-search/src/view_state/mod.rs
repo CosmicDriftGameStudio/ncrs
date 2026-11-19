@@ -11,7 +11,10 @@ use iced::mouse::ScrollDelta;
 use ncrs_core::FileEntry;
 use ncrs_ui_kit::layout::{HIT_LIST_ROW_HEIGHT, SEARCH_CONTENT_ROW_HEIGHT};
 
-use crate::engine::{LineMatch, PathFilter, SearchError, SearchEvent, SearchQuery, SearchTotals};
+use crate::engine::{
+    stays_on_file_system, LineMatch, PathFilter, SearchError, SearchEvent, SearchQuery,
+    SearchTotals,
+};
 use crate::filters::SearchFilters;
 
 /// The line number of a snippet from the index, which does not know lines;
@@ -161,15 +164,6 @@ pub struct SearchView {
     pub filters: Option<SearchFilters>,
     /// Documents of the index left out of `results` by `INDEX_HIT_LIMIT`.
     pub not_shown: usize,
-}
-
-/// Whether the walk may leave the file system `root` is on.
-///
-/// From `/` on macOS it may not: the volume with `/Users` is another file
-/// system than the read-only system volume that `/` is, so staying on one
-/// would search nothing the user means.
-pub fn stays_on_file_system(root: &Path) -> bool {
-    !(cfg!(target_os = "macos") && root == Path::new("/"))
 }
 
 impl SearchView {
@@ -600,12 +594,5 @@ impl SearchView {
     }
 }
 
-// reason: a failing assertion is the signal in a test
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests;

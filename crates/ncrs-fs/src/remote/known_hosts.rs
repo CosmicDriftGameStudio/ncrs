@@ -13,12 +13,17 @@ use hmac::{Hmac, KeyInit as _, Mac as _};
 use russh::keys::{Algorithm, PublicKey};
 use sha1::Sha1;
 
-/// Where the host keys are looked up. Both are optional: tests and a machine
-/// without a home folder have neither.
+use super::ssh_config::HostSettings;
+
+/// Where the host keys are looked up. All are optional: tests and a machine
+/// without a home folder have none.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct KnownHostsFiles {
     /// The user's OpenSSH file, read only.
     pub ssh: Option<PathBuf>,
+    /// The system-wide OpenSSH file, read only. Not being able to read it does
+    /// not stop a login: it is the administrator's file, not the user's.
+    pub global: Option<PathBuf>,
     /// The file ncrs writes the keys the user confirmed to.
     pub own: Option<PathBuf>,
 }
@@ -40,6 +45,9 @@ enum HostPattern {
 pub struct Entry {
     line: usize,
     revoked: bool,
+    /// An `@cert-authority` line: the key signs host certificates and is not a
+    /// host key, so it never makes a server known.
+    cert_authority: bool,
     hosts: Vec<HostPattern>,
     /// `!pattern` words: a name that one of them matches is not on the line.
     excluded: Vec<HostPattern>,
@@ -93,7 +101,7 @@ pub enum HostVerdict {
     Revoked,
 }
 
-/// Reads the lines of a known_hosts file. Comments, `@cert-authority` lines
+/// Reads the lines of a known_hosts file. Comments
 /// and anything unreadable are left out.
 pub fn parse(text: &str) -> Vec<Entry> {
     text.lines()
@@ -105,10 +113,11 @@ pub fn parse(text: &str) -> Vec<Entry> {
 fn parse_line(line_number: usize, line: &str) -> Option<Entry> {
     let mut words = line.split_whitespace();
     let first = words.next().filter(|word| !word.starts_with('#'))?;
-    let (revoked, hosts_word) = match first {
-        "@revoked" => (true, words.next()?),
+    let (revoked, cert_authority, hosts_word) = match first {
+        "@revoked" => (true, false, words.next()?),
+        "@cert-authority" => (false, true, words.next()?),
         marker if marker.starts_with('@') => return None,
-        hosts => (false, hosts),
+        hosts => (false, false, hosts),
     };
     let algorithm = words.next()?;
     let base64 = words.next()?;
@@ -127,6 +136,7 @@ fn parse_line(line_number: usize, line: &str) -> Option<Entry> {
     Some(Entry {
         line: line_number,
         revoked,
+        cert_authority,
         hosts,
         excluded,
         key,
@@ -219,7 +229,7 @@ pub fn check(entries: &[Entry], host: &str, port: u16, key: &PublicKey) -> Verdi
     }
     for entry in entries
         .iter()
-        .filter(|entry| !entry.revoked && entry.applies_to(&name))
+        .filter(|entry| !entry.revoked && !entry.cert_authority && entry.applies_to(&name))
     {
         let same_key = entry.key.key_data() == key.key_data();
         if entry.key.algorithm() != key.algorithm() {
@@ -247,7 +257,7 @@ pub fn algorithms_on_record(entries: &[Entry], host: &str, port: u16) -> Vec<Alg
     let mut found: Vec<Algorithm> = Vec::new();
     for entry in entries
         .iter()
-        .filter(|entry| !entry.revoked && entry.applies_to(&name))
+        .filter(|entry| !entry.revoked && !entry.cert_authority && entry.applies_to(&name))
     {
         let algorithm = entry.key.algorithm();
         if !found.contains(&algorithm) {
@@ -255,6 +265,14 @@ pub fn algorithms_on_record(entries: &[Entry], host: &str, port: u16) -> Vec<Alg
         }
     }
     found
+}
+
+/// The files the config names, else the default one.
+fn files_or(configured: Option<&[PathBuf]>, default: Option<&PathBuf>) -> Vec<PathBuf> {
+    match configured {
+        Some(files) => files.to_vec(),
+        None => default.cloned().into_iter().collect(),
+    }
 }
 
 /// The parsed files, in the order they are asked.
@@ -270,19 +288,58 @@ impl KnownHosts {
     /// cannot be read does not: it may hold the very key that decides, so a
     /// server whose key no readable file knows is not trusted on that basis.
     pub fn load(files: &KnownHostsFiles) -> Self {
+        Self::load_with(files, &HostSettings::default())
+    }
+
+    /// As [`Self::load`], with the files `UserKnownHostsFile` and
+    /// `GlobalKnownHostsFile` of the host's `ssh_config` block in place of the
+    /// default user and system-wide ones.
+    pub fn load_with(files: &KnownHostsFiles, settings: &HostSettings) -> Self {
         let mut loaded = Self::default();
-        for path in [&files.ssh, &files.own].into_iter().flatten() {
-            match std::fs::read(path) {
-                Ok(bytes) => loaded
+        let user = files_or(settings.user_known_hosts.as_deref(), files.ssh.as_ref());
+        let global = files_or(
+            settings.global_known_hosts.as_deref(),
+            files.global.as_ref(),
+        );
+        for path in &user {
+            loaded.read_required(path);
+        }
+        for path in &global {
+            if let Ok(bytes) = std::fs::read(path) {
+                loaded
                     .files
-                    .push((path.clone(), parse(&String::from_utf8_lossy(&bytes)))),
-                Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                    loaded.files.push((path.clone(), Vec::new()));
-                }
-                Err(error) => loaded.unreadable.push((path.clone(), error.to_string())),
+                    .push((path.clone(), parse(&String::from_utf8_lossy(&bytes))));
             }
         }
+        if let Some(own) = &files.own {
+            loaded.read_required(own);
+        }
         loaded
+    }
+
+    fn read_required(&mut self, path: &Path) {
+        match std::fs::read(path) {
+            Ok(bytes) => self
+                .files
+                .push((path.to_path_buf(), parse(&String::from_utf8_lossy(&bytes)))),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                self.files.push((path.to_path_buf(), Vec::new()));
+            }
+            Err(error) => self
+                .unreadable
+                .push((path.to_path_buf(), error.to_string())),
+        }
+    }
+
+    /// Whether a file lists a certificate authority for the host. ncrs does not
+    /// check host certificates, so such a server is asked about like an unknown one.
+    pub fn lists_cert_authority(&self, host: &str, port: u16) -> bool {
+        let name = entry_name(host, port);
+        self.files.iter().any(|(_, entries)| {
+            entries
+                .iter()
+                .any(|entry| entry.cert_authority && entry.applies_to(&name))
+        })
     }
 
     /// The key types on record for the host, to ask the server for them first.
@@ -365,12 +422,6 @@ pub fn learn(own: &Path, host: &str, port: u16, key: &PublicKey) -> io::Result<(
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     use super::*;
 
@@ -465,6 +516,7 @@ mod tests {
         let hosts = KnownHosts::load(&KnownHostsFiles {
             ssh: Some(ssh.clone()),
             own: None,
+            global: None,
         });
 
         assert_eq!(
@@ -483,6 +535,7 @@ mod tests {
         let hosts = KnownHosts::load(&KnownHostsFiles {
             ssh: Some(ssh),
             own: Some(own),
+            global: None,
         });
 
         assert_eq!(
@@ -509,6 +562,7 @@ mod tests {
         let hosts = KnownHosts::load(&KnownHostsFiles {
             ssh: Some(ssh),
             own: Some(own),
+            global: None,
         });
 
         assert_eq!(
@@ -570,6 +624,7 @@ mod tests {
         let hosts = KnownHosts::load(&KnownHostsFiles {
             ssh: Some(ssh.clone()),
             own: Some(own),
+            global: None,
         });
 
         assert_eq!(
@@ -584,8 +639,8 @@ mod tests {
             "\n# comment\n@cert-authority *.example.org {KEY_A}\n*.example.org {KEY_A}\n!x.org {KEY_A}\nbroken line\nexample.org ssh-ed25519 not-base64!!\nexample.org\ngood.org {KEY_A}\n"
         );
         let entries = parse(&text);
-        // The wildcard line and good.org; `!x.org` alone names no host.
-        assert_eq!(entries.len(), 2);
+        // The authority line, the wildcard line and good.org; `!x.org` alone names no host.
+        assert_eq!(entries.len(), 3);
         assert_eq!(check(&entries, "good.org", 22, &key(KEY_A)), Verdict::Known);
     }
 
@@ -635,6 +690,7 @@ mod tests {
         let hosts = KnownHosts::load(&KnownHostsFiles {
             ssh: Some(unreadable.clone()),
             own: Some(dir.path().join("missing")),
+            global: None,
         });
 
         let verdict = hosts.check("example.org", 22, &key(KEY_A));
@@ -656,10 +712,12 @@ mod tests {
         let none = KnownHosts::load(&KnownHostsFiles {
             ssh: Some(dir.path().join("missing")),
             own: Some(dir.path().join("also-missing")),
+            global: None,
         });
         let beside = KnownHosts::load(&KnownHostsFiles {
             ssh: Some(unreadable),
             own: Some(own),
+            global: None,
         });
 
         assert_eq!(
@@ -670,6 +728,71 @@ mod tests {
             beside.check("example.org", 22, &key(KEY_A)),
             HostVerdict::Known
         );
+    }
+
+    #[test]
+    fn the_system_wide_file_counts_and_a_config_can_name_other_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let global = dir.path().join("global");
+        std::fs::write(
+            &global,
+            format!("example.org {KEY_A}\n@revoked * {KEY_B}\n"),
+        )
+        .unwrap();
+        let named = dir.path().join("named");
+        std::fs::write(&named, format!("other.org {KEY_A}\n")).unwrap();
+        let files = KnownHostsFiles {
+            ssh: Some(dir.path().join("missing")),
+            own: None,
+            global: Some(global),
+        };
+
+        let plain = KnownHosts::load(&files);
+        assert_eq!(
+            plain.check("example.org", 22, &key(KEY_A)),
+            HostVerdict::Known
+        );
+        assert_eq!(
+            plain.check("example.org", 22, &key(KEY_B)),
+            HostVerdict::Revoked
+        );
+
+        let configured = KnownHosts::load_with(
+            &files,
+            &HostSettings {
+                user_known_hosts: Some(vec![named]),
+                global_known_hosts: Some(Vec::new()),
+                ..HostSettings::default()
+            },
+        );
+        assert_eq!(
+            configured.check("example.org", 22, &key(KEY_A)),
+            HostVerdict::Unknown
+        );
+        assert_eq!(
+            configured.check("other.org", 22, &key(KEY_A)),
+            HostVerdict::Known
+        );
+    }
+
+    #[test]
+    fn a_listed_certificate_authority_is_noted_but_does_not_make_the_host_known() {
+        let dir = tempfile::tempdir().unwrap();
+        let own = dir.path().join("own");
+        std::fs::write(&own, format!("@cert-authority *.example.org {KEY_A}\n")).unwrap();
+        let hosts = KnownHosts::load(&KnownHostsFiles {
+            ssh: None,
+            own: Some(own),
+            global: None,
+        });
+
+        assert!(hosts.lists_cert_authority("web.example.org", 22));
+        assert!(!hosts.lists_cert_authority("web.other.org", 22));
+        assert_eq!(
+            hosts.check("web.example.org", 22, &key(KEY_A)),
+            HostVerdict::Unknown
+        );
+        assert!(hosts.algorithms_for("web.example.org", 22).is_empty());
     }
 
     #[test]
@@ -701,6 +824,7 @@ mod tests {
         let hosts = KnownHosts::load(&KnownHostsFiles {
             ssh: Some(ssh),
             own: Some(own),
+            global: None,
         });
         assert_eq!(
             hosts.check("example.org", 2222, &key(KEY_A)),

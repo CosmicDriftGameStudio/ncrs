@@ -33,6 +33,7 @@ impl Rig {
         let known = KnownHostsFiles {
             ssh: Some(hosts.join("ssh_known_hosts")),
             own: Some(hosts.join("known_hosts")),
+            global: None,
         };
         if trusted {
             std::fs::write(
@@ -385,6 +386,7 @@ async fn a_dead_agent_is_no_failure() {
     let known = KnownHostsFiles {
         ssh: None,
         own: Some(home.path().join("known_hosts")),
+        global: None,
     };
     std::fs::write(
         known.own.as_deref().unwrap(),

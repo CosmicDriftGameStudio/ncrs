@@ -18,6 +18,11 @@ ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
 ncrs-index = { path = "../ncrs-index", version = "0.0.0" }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 ttf-parser = "0.25"
+# Only for the shared snapshot helper that other crates use in their tests.
+iced_test = { version = "0.14", optional = true }
+
+[features]
+test-support = ["dep:iced_test"]
 
 [dev-dependencies]
 # The snapshot test of the style guide gallery renders headless.

@@ -1,13 +1,6 @@
 //! A rule made in the chat files the waiting documents: the click on
 //! "Rearrange now" is the confirmation and files at once; undo puts it back.
 
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 mod common;
 
 #[cfg(test)]

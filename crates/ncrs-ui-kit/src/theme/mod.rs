@@ -19,82 +19,17 @@ pub const SCRIM: Color = Color {
     a: 0.65,
 };
 
-pub mod spacing {
-    pub const OUTER_PADDING: f32 = 6.0;
-    pub const SECTION_GAP: f32 = 6.0;
-    pub const CELL_PADDING_X: f32 = 8.0;
-    pub const BORDER_WIDTH: f32 = 1.0;
-
-    /// The scale of the dialogs and the kit.
-    pub const XS: f32 = 4.0;
-    pub const M: f32 = 8.0;
-    pub const L: f32 = 12.0;
-    pub const XL: f32 = 16.0;
-    pub const XXL: f32 = 24.0;
-
-    /// The one gap between the lines and rows of a dialog's content.
-    pub const LINE_GAP: f32 = 6.0;
-    /// Room before the heading of a section.
-    pub const SECTION_LEAD: f32 = L;
-}
+pub mod spacing;
 
 /// Heights and widths of the dialog parts, in pixels.
-pub mod size {
-    pub const ROW: f32 = 22.0;
-    pub const ROW_TALL: f32 = 24.0;
-    pub const BUTTON: f32 = 24.0;
-    pub const HEADER: f32 = 32.0;
-    pub const FOOTER: f32 = 40.0;
-    pub const CONTROL_WIDTH: f32 = 260.0;
-    pub const SIDEBAR_WIDTH: f32 = 200.0;
-    pub const SIDEBAR_ITEM: f32 = 26.0;
+pub mod size;
 
-    /// The main window: the bars across top and bottom, the column titles and
-    /// the path tabs.
-    pub const TITLE_BAR: f32 = 34.0;
-    pub const STATUS_BAR: f32 = 22.0;
-    pub const FKEY_BAR: f32 = 24.0;
-    /// The row of numbered favourites under the path tabs.
-    pub const FAVOURITES_BAR: f32 = 24.0;
-    /// The bar of a running folder comparison under the favourites bar.
-    pub const COMPARE_BAR: f32 = 32.0;
-    pub const COMMAND_LINE: f32 = 24.0;
-    pub const COLUMN_HEADER: f32 = 22.0;
-    /// The line of totals under the rows of a file panel.
-    pub const PANEL_FOOTER: f32 = 22.0;
-    pub const TAB_WIDTH: f32 = 240.0;
-    pub const DOT: f32 = 6.0;
-    /// The side of a status or folder icon: the line height of a panel row's text.
-    pub const ICON: f32 = 14.0;
-}
-
-pub mod radius {
-    /// The one corner radius of frames, controls, chips and key caps. List
-    /// rows, tabs and bars are square.
-    pub const CORNER: f32 = 4.0;
-}
+pub mod radius;
 
 /// How much of a button's look stays while it is disabled.
 pub const DISABLED_OPACITY: f32 = 0.45;
 
-pub mod font_size {
-    pub const TITLE: f32 = 14.0;
-    /// The title of a dialog.
-    pub const HEADER: f32 = 13.0;
-    pub const ROW: f32 = 14.0;
-    pub const COLUMN_HEADER: f32 = 12.0;
-    pub const STATUS: f32 = 13.0;
-
-    /// The text of dialogs and the kit.
-    pub const BODY: f32 = 12.0;
-    pub const KEY_CAP: f32 = 10.0;
-    /// Column titles, hints and the status bar of the main window.
-    pub const SMALL: f32 = 11.0;
-    /// File names and paths, set in the monospace font.
-    pub const FILE: f32 = 12.0;
-    /// A number shown large.
-    pub const FIGURE: f32 = 16.0;
-}
+pub mod font_size;
 
 /// Base theme handed to iced (our widgets override most colors).
 pub fn app_theme() -> Theme {

@@ -1,13 +1,6 @@
 //! The chat against the test archive: real folders, a real index, a folder
 //! backed trash, no model.
 
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 mod common;
 
 #[cfg(test)]

@@ -209,7 +209,6 @@ pub fn shifted_command_offset(offset: usize, direction: isize, longest_command: 
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
     use crate::snapshot::TaskStatus;

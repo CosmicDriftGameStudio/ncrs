@@ -1,6 +1,7 @@
 //! Snapshots of the panel with its extra columns, the header menu, the Columns
 //! and font pages and the permissions dialog, in both languages.
 
+use ncrs_ui_kit::snapshot_support::ReferenceSnapshot as _;
 use std::ffi::OsString;
 use std::path::PathBuf;
 
@@ -145,7 +146,7 @@ fn panel_app(language: Language) -> App {
         folder("Public", ncrs_intake::LocationMode::Inbox, false),
         folder("Documents", ncrs_intake::LocationMode::Archive, true),
     ];
-    app.special_folders = crate::app::columns::special_folders_of(&hermes, &app.home);
+    app.special_folders = ncrs_files::special_folders::special_folders_of(&hermes, &app.home);
     app.in_language(language)
 }
 
@@ -160,7 +161,7 @@ fn matches_snapshot(app: &App, size: iced::Size, name: &str) {
     )
     .snapshot(&iced::Theme::Dark)
     .unwrap()
-    .matches_image(format!("tests/snapshots/{name}.png"))
+    .matches_reference_image(format!("tests/snapshots/{name}.png"))
     .expect("snapshot comparison");
     assert!(
         matches,
@@ -239,7 +240,9 @@ fn the_permissions_dialog_for_a_folder_offers_the_contents() {
         let mut app = panel_app(language);
         app.panel_mut(PanelSide::Left).selected = 8;
         drop(app.update(Message::PermissionsPrompt));
-        drop(app.update(Message::Permissions(PermissionsMessage::ToggleContents)));
+        drop(app.update(Message::from(ncrs_ops::OpsMessage::Permissions(
+            PermissionsMessage::ToggleContents,
+        ))));
         matches_snapshot(&app, WINDOW, &format!("permissions_folder_{suffix}"));
     }
 }
@@ -337,4 +340,20 @@ fn a_smaller_font_size_lets_the_panels_count_the_rows_that_now_fit() {
         crate::ui::layout::visible_rows(WINDOW * (1.0 / app.scale_factor()), 0.0)
     );
     assert!(app.visible_rows > rows_before);
+}
+
+#[test]
+fn the_arrows_move_the_highlight_of_the_header_menu() {
+    let mut app = panel_app(Language::English);
+    drop(app.update(Message::Panel(PanelMessage::HeaderContext(PanelSide::Left))));
+    assert!(app.prompt_key_state().header_menu);
+    drop(app.update(Message::Panel(PanelMessage::HeaderMenuMove(1))));
+    let first = app.panels.header_menu.and_then(|menu| menu.selected);
+    assert!(first.is_some());
+    drop(app.update(Message::Panel(PanelMessage::HeaderMenuMove(1))));
+    assert_ne!(app.panels.header_menu.and_then(|menu| menu.selected), first);
+    drop(app.update(Message::Panel(PanelMessage::HeaderMenuMove(-1))));
+    assert_eq!(app.panels.header_menu.and_then(|menu| menu.selected), first);
+    drop(app.update(Message::Panel(PanelMessage::HeaderMenuClose)));
+    assert!(!app.prompt_key_state().header_menu);
 }

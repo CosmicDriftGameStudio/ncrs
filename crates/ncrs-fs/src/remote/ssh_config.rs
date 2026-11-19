@@ -1,5 +1,6 @@
 //! The part of `~/.ssh/config` a login needs: where a host alias really points
-//! (`HostName`, `Port`, `User`) and which keys (`IdentityFile`) to offer. Read
+//! (`HostName`, `Port`, `User`), which keys (`IdentityFile`) to offer and which
+//! host key files (`UserKnownHostsFile`, `GlobalKnownHostsFile`) to ask. Read
 //! only, and forgiving: a file that is missing, unreadable or odd gives less,
 //! never an error, because the login works without it.
 
@@ -13,6 +14,11 @@ pub struct HostSettings {
     pub port: Option<u16>,
     /// In the order of the file, `~` expanded.
     pub identity_files: Vec<PathBuf>,
+    /// `UserKnownHostsFile`: the files that replace `~/.ssh/known_hosts`;
+    /// empty for `none`. `None` when the config does not say.
+    pub user_known_hosts: Option<Vec<PathBuf>>,
+    /// `GlobalKnownHostsFile`: the files that replace the system-wide one.
+    pub global_known_hosts: Option<Vec<PathBuf>>,
 }
 
 /// The text of `~/.ssh/config` below `home`; `None` for no home or a file that
@@ -90,10 +96,31 @@ pub fn settings_for(text: &str, alias: &str, home: Option<&Path>) -> HostSetting
                     .filter(|file| file.is_absolute());
                 found.identity_files.extend(expanded);
             }
+            "userknownhostsfile" => {
+                if found.user_known_hosts.is_none() {
+                    found.user_known_hosts = Some(files_of(&values, home));
+                }
+            }
+            "globalknownhostsfile" => {
+                if found.global_known_hosts.is_none() {
+                    found.global_known_hosts = Some(files_of(&values, home));
+                }
+            }
             _ => {}
         }
     }
     found
+}
+
+/// The absolute files a list value names. `none` and a name that needs
+/// OpenSSH's `%` expansion give no file.
+fn files_of(values: &[String], home: Option<&Path>) -> Vec<PathBuf> {
+    values
+        .iter()
+        .filter(|file| !file.eq_ignore_ascii_case("none") && !file.contains('%'))
+        .filter_map(|file| expand_home(Path::new(file), home))
+        .filter(|file| file.is_absolute())
+        .collect()
 }
 
 /// The keyword and the rest of a line: `key value` or `key=value`. `None` for
@@ -194,12 +221,6 @@ fn glob(pattern: &[char], text: &[char]) -> bool {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 mod tests {
     use super::*;
 
@@ -216,6 +237,21 @@ mod tests {
 
     fn below_home(path: &str) -> PathBuf {
         Path::new(HOME).join(path)
+    }
+
+    #[test]
+    fn known_hosts_files_come_from_the_first_value_and_none_means_no_file() {
+        let found = settings(
+            "Host web\n  UserKnownHostsFile ~/.ssh/a /etc/b\n  GlobalKnownHostsFile none\n\
+             Host *\n  UserKnownHostsFile ~/.ssh/c\n",
+            "web",
+        );
+        assert_eq!(
+            found.user_known_hosts,
+            Some(vec![below_home(".ssh/a"), PathBuf::from("/etc/b")])
+        );
+        assert_eq!(found.global_known_hosts, Some(Vec::new()));
+        assert_eq!(settings("Host x\n  User u\n", "x").user_known_hosts, None);
     }
 
     #[test]

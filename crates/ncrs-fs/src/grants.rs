@@ -263,13 +263,6 @@ fn same_folder(a: &Path, b: &Path) -> bool {
     a == b || same_file::is_same_file(a, b).unwrap_or(false)
 }
 
-// reason: a failing assertion is the signal in a test
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;

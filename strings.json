@@ -5221,6 +5221,12 @@
       "de": "{host} ist noch unbekannt. Fingerabdruck mit dem vom Server-Admin genannten vergleichen: {fingerprint}"
     },
     {
+      "key": "remote.hostkey_ca_note",
+      "context": "Extra line in the dialog stage that asks whether to trust an unknown server, shown when a known_hosts file lists a certificate authority for this server. ncrs does not check host certificates, so the server is asked about like any other.",
+      "en": "A known_hosts file lists a certificate authority for this server. ncrs does not check host certificates, so the fingerprint has to be compared.",
+      "de": "Eine known_hosts-Datei nennt für diesen Server eine Zertifizierungsstelle. ncrs prüft keine Host-Zertifikate, der Fingerabdruck muss deshalb verglichen werden."
+    },
+    {
       "key": "remote.hostkey_trust",
       "context": "Button of the dialog stage that asks whether to trust an unknown server: remembers its host key and connects. Several words.",
       "en": "Trust and connect",
@@ -8825,6 +8831,12 @@
       "context": "Notice when the last run could not be put back. {reason} is the system's explanation.",
       "en": "The last run could not be undone: {reason}",
       "de": "Der letzte Lauf konnte nicht rückgängig gemacht werden: {reason}"
+    },
+    {
+      "key": "settings.hermes_history_undo_unexpected",
+      "context": "Reason inside the notice that the last run could not be undone, when the index answered something other than the undo result. Short clause, no full stop.",
+      "en": "the index gave an unexpected answer",
+      "de": "der Index hat unerwartet geantwortet"
     },
     {
       "key": "settings.hermes_history_undo_left",

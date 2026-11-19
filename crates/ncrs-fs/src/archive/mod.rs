@@ -224,17 +224,12 @@ fn recently_used(key: &IndexKey) -> Option<Arc<ArchiveIndex>> {
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
-    clippy::indexing_slicing
+    clippy::indexing_slicing,
+    reason = "test code: a failing assertion is the signal"
 )]
 #[cfg(any(test, feature = "test-support"))]
 pub mod fixtures;
 
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests {
     use super::fixtures::{

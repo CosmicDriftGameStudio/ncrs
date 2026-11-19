@@ -2,12 +2,6 @@
 //! model: `NCRS_AI_MODELS_DIR` names the folder with it.
 
 #![cfg(feature = "llama")]
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 
 mod common;
 

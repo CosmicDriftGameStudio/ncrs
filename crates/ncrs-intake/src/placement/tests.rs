@@ -1,10 +1,3 @@
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 use chrono::NaiveDate;
 use ncrs_index::{ContentHash, KindCatalog, KindLanguage, Kinds, SenderAliases};
 use sha2::{Digest as _, Sha256};

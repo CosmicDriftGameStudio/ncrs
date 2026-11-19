@@ -1,6 +1,7 @@
 //! Snapshots of the folder conflict dialog and of the question on quitting
 //! with a job running.
 
+use ncrs_ui_kit::snapshot_support::ReferenceSnapshot as _;
 use std::path::PathBuf;
 
 use crate::app::*;
@@ -13,7 +14,7 @@ fn matches_snapshot(app: &App, name: &str) -> bool {
     )
     .snapshot(&iced::Theme::Dark)
     .expect("the view renders")
-    .matches_image(format!("tests/snapshots/{name}.png"))
+    .matches_reference_image(format!("tests/snapshots/{name}.png"))
     .expect("snapshot comparison")
 }
 

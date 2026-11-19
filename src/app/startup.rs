@@ -137,13 +137,13 @@ impl App {
     /// `saved` left them; without a saved folder the left panel starts in the
     /// working directory and the right in `$HOME`.
     pub fn new(environment: Environment, saved: SessionState) -> (Self, Task<Message>) {
-        // Only a first start takes the language of the system: with a config
-        // file the choice is the file's, or English when it names none.
-        let first_start = environment
+        // The system language is the start; a `lang` entry in the config
+        // replaces it in `with_config`, so a config written without one (a
+        // column width, a server) keeps the system language.
+        let start_language = environment
             .config_path
-            .as_deref()
-            .is_some_and(|path| !path.exists());
-        let start_language = first_start.then(ncrs_i18n::Language::from_system);
+            .is_some()
+            .then(ncrs_i18n::Language::from_system);
         let (app, loading) = Self::restored_in(environment, saved, start_language);
         (app, then_install_native_menu(loading))
     }
@@ -222,8 +222,16 @@ impl App {
         panels.state_path = state_path;
         panels.trash = fs::system_trash(journal_path);
         panels.sandbox = fs::SandboxAccess::detect(index_path.as_deref());
+        // The system-wide file is read wherever the user's own is: a start
+        // that has no user file (tests) must not read this machine's either.
+        let global = if ssh_known_hosts.is_some() {
+            config::default_global_ssh_known_hosts_path()
+        } else {
+            None
+        };
         panels.remote = Arc::new(Pool::over_tcp(KnownHostsFiles {
             ssh: ssh_known_hosts,
+            global,
             own: own_known_hosts,
         }));
         panels.passwords = passwords;
@@ -540,10 +548,8 @@ impl App {
             chat_model_setting: None,
             chat_model_error: None,
             turning_hermes_on: false,
-            protection_quit_warned: false,
+            protection_quit_warned: None,
             quick_open: None,
-            quick_open_walk_generation: 0,
-            quick_open_walk: None,
             command_palette: None,
             recent_commands: Vec::new(),
             wall_clock: Arc::new(ncrs_pipeline::SystemClock),
@@ -573,7 +579,7 @@ impl App {
             fetch_extension: open_vsx::fetch_extension,
             install_theme: ncrs_settings::theme_fetch::install::install_picked_theme,
             about: None,
-            find_third_party_licenses: crate::about::installed_third_party_licenses,
+            find_third_party_licenses: ncrs_settings::about::installed_third_party_licenses,
             app_version: env!("NCRS_DISPLAY_VERSION"),
             download_ocr_models: download_models,
             download_ai_model,

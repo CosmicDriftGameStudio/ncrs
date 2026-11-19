@@ -1,13 +1,6 @@
 //! "New folder …" and "I'll decide per file" in the question where the files
 //! of a source go.
 
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 mod common;
 
 #[cfg(test)]

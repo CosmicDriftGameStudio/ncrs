@@ -288,7 +288,6 @@ pub fn delete_failure(ops: &Ops, ctx: &FlowCtx<'_>, index: usize, reason: &str) 
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
 
@@ -338,6 +337,8 @@ mod tests {
             right_archive: None,
             left_server: None,
             right_server: None,
+            left_folder: PathBuf::new(),
+            right_folder: PathBuf::new(),
             remote: &remote,
             permanent_delete_key: None,
             restore_last_key: None,

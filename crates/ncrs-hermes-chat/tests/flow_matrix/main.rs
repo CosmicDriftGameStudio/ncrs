@@ -5,13 +5,7 @@
 //! without a change to either does not ask again.
 
 #![cfg(feature = "llama")]
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing,
-    clippy::print_stdout
-)]
+#![allow(clippy::print_stdout)]
 
 #[path = "../common/mod.rs"]
 mod common;

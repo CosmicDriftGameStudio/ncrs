@@ -517,22 +517,8 @@ pub fn run(
     }
 }
 
-// reason: a failing assertion is the signal in a test, so unwrap belongs here
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod tests;
 
-// reason: a failing assertion is the signal in a test, so unwrap belongs here
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 #[cfg(test)]
 mod reporting_tests;

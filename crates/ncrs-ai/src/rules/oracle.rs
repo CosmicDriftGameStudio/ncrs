@@ -2,13 +2,6 @@
 //! a rule is right when it files every fixture document where the expected
 //! rule does, and a pattern is right when it renders the same paths.
 
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 use std::path::PathBuf;
 
 use ncrs_index::{DocumentFields, Kinds, Rule, RuleId, RuleOrigin, RuleSpec, SenderAliases};

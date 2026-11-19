@@ -5,14 +5,12 @@
 use iced::widget::column;
 use iced::{Element, Size};
 
-use super::frame::{DialogSize, Frame, KeyHints};
-use super::kit::{self, paragraph, Tone};
-use super::theme::spacing;
-use crate::about::{third_party_licenses_url, AboutCard, REPOSITORY_URL};
-use crate::app::fill_template;
-use crate::i18n::{FuturamaName, Language, Msg};
-use crate::messages::{AboutMessage, Message};
-use crate::palette::Palette;
+use super::{third_party_licenses_url, AboutCard, AboutMessage, REPOSITORY_URL};
+use ncrs_i18n::{fill_template, FuturamaName, Language, Msg};
+use ncrs_ui_kit::frame::{DialogSize, Frame, KeyHints};
+use ncrs_ui_kit::kit::{self, paragraph, Tone};
+use ncrs_ui_kit::palette::Palette;
+use ncrs_ui_kit::theme::spacing;
 
 const SIZE: DialogSize = DialogSize::Medium;
 
@@ -29,7 +27,7 @@ pub fn view<'a>(
     window: Size,
     lang: Language,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, AboutMessage> {
     let mut body = column![
         paragraph(
             fill_template(lang.text(Msg::AboutVersion), &[("{version}", version)]),
@@ -61,24 +59,24 @@ pub fn view<'a>(
     .buttons(vec![
         kit::button(
             lang.text(Msg::AboutRepository),
-            Some(Message::About(AboutMessage::OpenRepository)),
+            Some(AboutMessage::OpenRepository),
             Tone::filled_if(focus == REPOSITORY_FOCUS),
             palette,
         ),
         kit::button(
             lang.text(Msg::AboutLicenses),
-            Some(Message::About(AboutMessage::OpenLicenses)),
+            Some(AboutMessage::OpenLicenses),
             Tone::filled_if(focus == LICENSES_FOCUS),
             palette,
         ),
         kit::button(
             lang.text(Msg::AboutClose),
-            Some(Message::About(AboutMessage::Close)),
+            Some(AboutMessage::Close),
             Tone::filled_if(focus == CLOSE_FOCUS),
             palette,
         ),
     ])
-    .on_close(Message::About(AboutMessage::Close))
+    .on_close(AboutMessage::Close)
     .hints(KeyHints {
         enter: false,
         tab: true,
