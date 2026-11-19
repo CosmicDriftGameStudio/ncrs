@@ -76,7 +76,10 @@ impl OpenAiCompatible {
                 model: self.model.clone(),
                 body: body.pretty(),
             });
-            self.remember_failure(&held_back);
+            // Documents wait only while the inbox itself is not agreed to.
+            if !self.may_send(ConsentPurpose::Inbox, Path::new("")) {
+                self.remember_failure(&held_back);
+            }
             return Err(held_back);
         }
         let reply = match self.post(&body.pretty()) {

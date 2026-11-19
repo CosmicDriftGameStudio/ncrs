@@ -592,7 +592,7 @@ fn the_chat_and_the_rule_questions_to_a_far_server_need_its_consent_too() {
     assert_eq!(far.last_failure(), Some(ReplyFailure::ConsentMissing));
     assert_eq!(
         *ledger.asked.lock().unwrap(),
-        vec![("https://ai.example.invalid".to_owned(), PathBuf::new())]
+        vec![("https://ai.example.invalid".to_owned(), PathBuf::new()); 2]
     );
 }
 
@@ -837,4 +837,17 @@ fn a_file_that_agreed_to_nothing_holds_every_kind_back_and_says_so() {
     assert!(is_refused_for_consent(
         model.understand_file_names(&a_turn())
     ));
+}
+
+#[test]
+fn a_chat_held_back_only_for_the_archive_does_not_say_documents_wait() {
+    use crate::chat::ChatModel as _;
+    let ledger = Arc::new(Ledger {
+        grants: vec![ConsentPurpose::Inbox, ConsentPurpose::Folders],
+        ..Ledger::default()
+    });
+    let model = provider("https://ai.example.invalid/v1", &ledger);
+
+    assert!(is_refused_for_consent(model.understand(&a_turn())));
+    assert_eq!(model.last_failure(), None);
 }
