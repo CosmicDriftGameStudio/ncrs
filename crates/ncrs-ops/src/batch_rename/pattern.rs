@@ -446,9 +446,17 @@ pub fn plan(pairs: &[(String, String)], taken: &[String], rules: NameRules) -> V
             steps.push(Step { from, to });
             continue;
         }
+        // Named after the file it holds, so a run that dies half way leaves it
+        // findable; a very long name cannot take the suffix.
+        let stem = pending
+            .first()
+            .map(|(from, _)| from.as_str())
+            .filter(|from| from.len() <= 200)
+            .unwrap_or_default()
+            .to_owned();
         let temporary = loop {
             spare += 1;
-            let candidate = format!(".ncrs-rename-{spare}");
+            let candidate = format!("{stem}.ncrs-rename-{spare}");
             if !used.contains(&key_of(&candidate, rules)) {
                 break candidate;
             }
@@ -866,18 +874,18 @@ mod tests {
         assert_eq!(
             steps,
             vec![
-                step("a", ".ncrs-rename-1"),
+                step("a", "a.ncrs-rename-1"),
                 step("b", "a"),
-                step(".ncrs-rename-1", "b"),
+                step("a.ncrs-rename-1", "b"),
             ]
         );
     }
 
     #[test]
     fn a_temporary_name_avoids_the_names_of_the_folder() {
-        let taken = [".ncrs-rename-1".to_owned(), "a".to_owned(), "b".to_owned()];
+        let taken = ["a.ncrs-rename-1".to_owned(), "a".to_owned(), "b".to_owned()];
         let steps = plan(&[pair("a", "b"), pair("b", "a")], &taken, LOCAL);
-        assert_eq!(steps.first(), Some(&step("a", ".ncrs-rename-2")));
+        assert_eq!(steps.first(), Some(&step("a", "a.ncrs-rename-2")));
     }
 
     #[test]
@@ -888,7 +896,7 @@ mod tests {
             LOCAL,
         );
         assert_eq!(steps.len(), 4);
-        assert_eq!(steps.first(), Some(&step("a", ".ncrs-rename-1")));
+        assert_eq!(steps.first(), Some(&step("a", "a.ncrs-rename-1")));
     }
 
     #[test]
