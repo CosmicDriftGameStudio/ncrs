@@ -896,3 +896,37 @@ fn an_unsure_ai_value_replaces_no_guess() {
     assert_eq!(origins.of(Field::Sender), FieldOrigin::Rule(None));
     assert_eq!(origins.of(Field::Date), FieldOrigin::Rule(None));
 }
+
+#[test]
+fn an_inbox_document_that_goes_to_review_after_the_answer_is_remembered_as_asked() {
+    let fixture = Fixture::new();
+    let provider = Arc::new(reply("0.5"));
+    let steps = fixture.steps(&provider);
+    fixture
+        .index
+        .lock()
+        .unwrap()
+        .create_rule(&invoice_rule("{sender}/{number}.pdf", true))
+        .unwrap();
+    let document = fixture.add_document(1);
+    let mut item = fixture.item(document, INVOICE_TEXT);
+    run(&steps, RULES, &mut item);
+    assert!(item.review.is_some_and(wants_fields));
+
+    run(&steps, AI, &mut item);
+
+    assert_eq!(
+        item.review,
+        Some(ReviewReason::LowConfidence(Field::Sender))
+    );
+    assert_eq!(
+        fixture
+            .index
+            .lock()
+            .unwrap()
+            .ai_read_version(document)
+            .unwrap(),
+        AI_READ_VERSION,
+        "the next scan must not send the same text again"
+    );
+}
