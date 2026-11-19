@@ -135,6 +135,16 @@ fn read_sync(path: &Path, sorted_by: SortKey) -> Read {
                 .filter_map(Result::ok)
                 .map(|e| FileEntry::from_dir_entry(&e))
                 .collect();
+            // The leftover of an interrupted transfer is found where the user
+            // looks, also in a folder nothing is copied into again. Names only
+            // here; the sweep itself keeps its age and once-an-hour limits, and
+            // this runs on the blocking pool.
+            if entries
+                .iter()
+                .any(|entry| crate::transfer::is_staging_name(&entry.name.to_string_lossy()))
+            {
+                crate::transfer::sweep_partials(path);
+            }
             crate::owners::fill_owners(&mut entries);
             Read {
                 entries: with_parent(entries, path, sorted_by),
@@ -262,6 +272,22 @@ mod tests {
             .prefix(&format!("ncrs-{label}-"))
             .tempdir()
             .expect("a scratch directory")
+    }
+
+    #[test]
+    fn listing_a_folder_sweeps_the_old_leftovers_of_an_interrupted_transfer() {
+        let scratch = scratch_dir("read-sweep");
+        let old = scratch.path().join(".ncrs-partial-a.pdf-1234-7");
+        let users_own = scratch.path().join(".ncrs-partial-notes");
+        std::fs::write(&old, "x").unwrap();
+        std::fs::write(&users_own, "x").unwrap();
+        crate::transfer::let_time_pass_for_sweep(std::time::Duration::from_secs(3 * 24 * 3600));
+
+        let read = read_sync(scratch.path(), SortKey::default());
+
+        assert!(read.error.is_none());
+        assert!(!old.exists());
+        assert!(users_own.exists());
     }
 
     #[tokio::test]

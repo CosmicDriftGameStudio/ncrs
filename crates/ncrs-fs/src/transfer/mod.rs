@@ -31,7 +31,7 @@ use place::place;
 pub use skipped::{SkipKind, Skipped};
 #[cfg(any(test, feature = "test-support"))]
 pub use sweep::let_time_pass_for_sweep;
-pub use sweep::sweep_partials;
+pub use sweep::{is_staging_name, sweep_partials};
 
 /// What to do with the source after a successful operation.
 ///

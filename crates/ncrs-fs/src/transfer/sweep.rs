@@ -17,7 +17,7 @@ const STALE_AFTER: Duration = Duration::from_secs(24 * 60 * 60);
 /// random suffix of a temporary folder (6 letters/digits) or of a server
 /// download (16 hex digits). Anything else that merely starts alike is the
 /// user's.
-fn is_staging_name(name: &str) -> bool {
+pub fn is_staging_name(name: &str) -> bool {
     let Some(rest) = name.strip_prefix(PREFIX) else {
         return false;
     };
