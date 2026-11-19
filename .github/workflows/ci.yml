@@ -179,6 +179,24 @@ jobs:
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
+      # A new runner image moves the MSVC compiler, but llama.cpp's cached CMake
+      # build still points at the old one and CMake refuses to build. Without
+      # its CMake folder the build script configures afresh; the installed
+      # libraries beside it stay, so a run that does not rebuild still links.
+      - name: Drop a llama.cpp CMake build for a compiler the runner lacks (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          foreach ($root in 'target', 'D:/t') {
+            Get-ChildItem "$root/*/build/llama-cpp-sys-2-*/out/build/CMakeCache.txt", "$root/*/*/build/llama-cpp-sys-2-*/out/build/CMakeCache.txt" -ErrorAction SilentlyContinue | ForEach-Object {
+              $compiler = (Select-String -Path $_.FullName -Pattern '^CMAKE_C_COMPILER:[A-Z]+=(.+)$' | Select-Object -First 1).Matches.Groups[1].Value
+              if ($compiler -and -not (Test-Path $compiler)) {
+                Write-Output "removing $($_.DirectoryName): $compiler is gone"
+                Remove-Item -Recurse -Force $_.DirectoryName
+              }
+            }
+          }
+
       # llama-cpp-sys-2 hard-links its `lib*.so` symlinks into target/debug and
       # deps, where they dangle. A later build of it in the same target folder
       # sees them as missing and fails on hard_link with AlreadyExists. They
@@ -410,6 +428,21 @@ jobs:
           shared-key: target-${{ matrix.target }}${{ matrix.target == 'x86_64-pc-windows-msvc' && '-short-folder' || '' }}
           workspaces: ${{ matrix.target == 'x86_64-pc-windows-msvc' && '. -> ../../../t' || '.' }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      # Same as in the tests job: a new runner image moved the compiler.
+      - name: Drop a llama.cpp CMake build for a compiler the runner lacks (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          foreach ($root in 'target', 'D:/t') {
+            Get-ChildItem "$root/*/build/llama-cpp-sys-2-*/out/build/CMakeCache.txt", "$root/*/*/build/llama-cpp-sys-2-*/out/build/CMakeCache.txt" -ErrorAction SilentlyContinue | ForEach-Object {
+              $compiler = (Select-String -Path $_.FullName -Pattern '^CMAKE_C_COMPILER:[A-Z]+=(.+)$' | Select-Object -First 1).Matches.Groups[1].Value
+              if ($compiler -and -not (Test-Path $compiler)) {
+                Write-Output "removing $($_.DirectoryName): $compiler is gone"
+                Remove-Item -Recurse -Force $_.DirectoryName
+              }
+            }
+          }
 
       # The dangling llama.cpp links of the tests job, here from the cache.
       - name: Remove dangling llama.cpp links from the cache (x86_64 Linux)
