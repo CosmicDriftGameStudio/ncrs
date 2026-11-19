@@ -40,10 +40,13 @@ impl LocalModel {
                 }
             })
             .collect();
-        let head = format!(
-            "<|im_start|>system\n{SYSTEM_PROMPT}<|im_end|>\n<|im_start|>user\nOrdner:\n{list}\nDokument:\n"
-        );
-        let prefix = vocab.tokenize(head.as_bytes(), vocab.should_add_bos(), true);
+        // Folder and file names come from the archive: only the fixed frame may
+        // become control tokens, so the list is tokenized as plain text.
+        let frame_start =
+            format!("<|im_start|>system\n{SYSTEM_PROMPT}<|im_end|>\n<|im_start|>user\nOrdner:\n");
+        let mut prefix = vocab.tokenize(frame_start.as_bytes(), vocab.should_add_bos(), true);
+        prefix.extend(vocab.tokenize(list.as_bytes(), false, false));
+        prefix.extend(vocab.tokenize(b"\nDokument:\n", false, true));
         let tail = vocab.tokenize(ANSWER_START, false, true);
 
         let train_limit = usize::try_from(self.model.n_ctx_train()).unwrap_or(usize::MAX);

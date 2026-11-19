@@ -209,7 +209,7 @@ pub struct OpenAiCompatible {
 /// What the calls of this provider so far say about the server. A provider is
 /// built anew when the setting changes, so a corrected key or model starts
 /// from a clean state.
-#[derive(Debug, Default)]
+#[derive(Default)]
 struct Health {
     /// A reply was parsed at least once.
     answered: bool,
@@ -220,6 +220,17 @@ struct Health {
     /// the user corrected it in the settings, which does not rebuild the
     /// provider.
     key_fingerprint: Option<[u8; 32]>,
+}
+
+/// Leaves the key fingerprint out: a hash of the key confirms a guessed key.
+impl std::fmt::Debug for Health {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Health")
+            .field("answered", &self.answered)
+            .field("transient_streak", &self.transient_streak)
+            .field("paused_until", &self.paused_until)
+            .finish_non_exhaustive()
+    }
 }
 
 fn fingerprint_of(key: Option<&Secret>) -> Option<[u8; 32]> {
