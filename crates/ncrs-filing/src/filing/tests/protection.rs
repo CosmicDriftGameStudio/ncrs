@@ -151,9 +151,9 @@ fn a_second_start_over_leaves_only_the_latest_set_aside_copy() {
     begin(&mut module, FilingModule::begin_starting_over);
     make_encrypted(&db, &store);
     let second = fs::read(&db).unwrap();
-    let mut module = started(&db, shared(&store));
+    let mut second_module = started(&db, shared(&store));
 
-    begin(&mut module, FilingModule::begin_starting_over);
+    begin(&mut second_module, FilingModule::begin_starting_over);
 
     let aside: Vec<_> = fs::read_dir(data_dir(&dir))
         .unwrap()
