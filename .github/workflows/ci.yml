@@ -75,9 +75,10 @@ jobs:
 
   # Commit messages are public text. The three shapes of a tool's attribution
   # (a co-author trailer, a session link, a session trailer) are written out
-  # here; only the tool's name is a repository variable (an extended regular
+  # here; only the tool's name is a repository secret (an extended regular
   # expression, for example `name1|name2`), so it is not written into the
-  # repository.
+  # repository and its value is masked in the logs. Without the secret the
+  # check is skipped with a notice.
   commit-texts:
     name: Commit messages
     if: github.event_name == 'pull_request'
@@ -90,13 +91,14 @@ jobs:
 
       - name: Check the commit messages of the pull request
         env:
-          BLOCKED_BRAND: ${{ vars.BLOCKED_COMMIT_BRAND }}
+          BLOCKED_BRAND: ${{ secrets.BLOCKED_COMMIT_BRAND }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           if [ -z "$BLOCKED_BRAND" ]; then
-            echo "::error::the repository variable BLOCKED_COMMIT_BRAND is not set; commit messages cannot be checked"
-            exit 1
+            echo "::warning::the repository secret BLOCKED_COMMIT_BRAND is not set; the commit messages were not checked"
+            echo "Commit message check skipped: set the repository secret BLOCKED_COMMIT_BRAND." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
           fi
           pattern="^co-authored-by:.*($BLOCKED_BRAND)|https?://[^[:space:]]*($BLOCKED_BRAND)[^[:space:]]*session|^($BLOCKED_BRAND)-session:"
           if git log --format=%B "$BASE_SHA..$HEAD_SHA" | grep -Eiq -e "$pattern"; then

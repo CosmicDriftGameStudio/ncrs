@@ -40,9 +40,13 @@ the same GitHub release and refuse to continue when the checksum does not
 match. The trust anchor is GitHub: releases of this repository are immutable
 once published, so a published archive and its checksums cannot be replaced
 afterwards. The installer script is also attached to each release as an asset,
-so you can read the exact version before you run it. There is no separate
-signature of the archives; the checksum protects against a damaged or
-mismatched download, not against a compromised GitHub account.
+so you can read the exact version before you run it. Every release asset also
+carries a build provenance attestation that ties it to the release workflow
+run; check a downloaded file with
+`gh attestation verify <file> --repo CosmicDriftGameStudio/ncrs`. The archives
+have no separate detached signature; the checksum protects against a damaged or
+mismatched download, and the attestation against a file that did not come from
+the release workflow, not against a compromised GitHub account.
 
 ## Supported versions
 
