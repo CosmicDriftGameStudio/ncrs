@@ -71,6 +71,8 @@ pub struct Write {
     pub expect: Expect,
     pub replaces: Option<Replaced>,
     pub generation: u64,
+    /// The notes folder: a link is only written through when it leads inside it.
+    pub root: PathBuf,
     /// Made by the program, not by an edit: a refusal drops it instead of saving a copy.
     pub background: bool,
 }
@@ -134,10 +136,11 @@ impl State {
         self.running.is_some()
     }
 
-    /// Writes are on their way or waiting for a retry; the notes in memory are
-    /// ahead of the disk.
+    /// Writes are on their way; the notes in memory are ahead of the disk. Failed
+    /// writes waiting for a retry do not count: a folder that stays read-only
+    /// must not block reading it, `apply_scan` keeps those notes as they are.
     pub fn busy(&self) -> bool {
-        self.running.is_some() || !self.queued.is_empty() || !self.unsaved.is_empty()
+        self.running.is_some() || !self.queued.is_empty()
     }
 
     /// `write` numbered after all earlier ones. A failed write of the same file
@@ -186,19 +189,34 @@ impl State {
     }
 
     pub fn apply_scan(&mut self, scan: Scan) {
-        // A note that is being typed in stays as it is in memory.
+        // A note that is being typed in, or whose write failed, stays as it is
+        // in memory.
         let typing = self
             .current
             .clone()
             .filter(|_| self.dirty)
             .and_then(|path| self.note(&path).cloned());
+        let unsaved: Vec<Note> = self
+            .unsaved
+            .iter()
+            .filter_map(|write| self.note(&write.path).cloned())
+            .collect();
+        let left_behind: Vec<PathBuf> = self
+            .unsaved
+            .iter()
+            .filter_map(|write| write.replaces.as_ref().map(|old| old.path.clone()))
+            .collect();
+        let kept_in_memory = |path: &Path| {
+            typing.as_ref().is_some_and(|own| own.path == path)
+                || unsaved.iter().any(|note| note.path == path)
+        };
         {
             // What the disk holds is the new base, also of a file changed
             // outside. Not for the note being typed in: it keeps the base it
             // was typed on, so its next write sees the outside change.
             let mut written = self.ledger.lock().unwrap_or_else(PoisonError::into_inner);
             for note in &scan.notes {
-                let kept = typing.as_ref().is_some_and(|own| own.path == note.path);
+                let kept = kept_in_memory(&note.path);
                 if let (Some(hash), Some(last), false) =
                     (note.base, written.get_mut(&note.path), kept)
                 {
@@ -208,9 +226,15 @@ impl State {
         }
         self.root = scan.root;
         self.notes = scan.notes;
+        // The file a failed rename left behind is the note held in memory.
+        self.notes.retain(|note| !left_behind.contains(&note.path));
         self.folders = scan.folders;
         self.loaded = true;
         self.problem = None;
+        for note in unsaved {
+            self.notes.retain(|other| other.path != note.path);
+            self.notes.push(note);
+        }
         if let Some(note) = typing {
             self.notes.retain(|other| other.path != note.path);
             self.notes.push(note);

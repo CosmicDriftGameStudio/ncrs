@@ -296,13 +296,24 @@ pub enum WriteError {
     Io(String),
 }
 
-/// Where a path that is a link leads; links are written through, not replaced.
-fn followed(path: &Path) -> PathBuf {
+/// Where a path that is a link leads; links are written through, not replaced,
+/// but only when they lead inside the notes folder `root`.
+fn followed(path: &Path, root: &Path) -> std::io::Result<PathBuf> {
     let is_link = fs::symlink_metadata(path).is_ok_and(|meta| meta.file_type().is_symlink());
-    if is_link {
-        return fs::canonicalize(path).unwrap_or_else(|_| path.to_owned());
+    if !is_link {
+        return Ok(path.to_owned());
     }
-    path.to_owned()
+    let Ok(target) = fs::canonicalize(path) else {
+        return Ok(path.to_owned());
+    };
+    if target.starts_with(fs::canonicalize(root)?) {
+        Ok(target)
+    } else {
+        Err(std::io::Error::new(
+            ErrorKind::PermissionDenied,
+            "the link leads out of the notes folder",
+        ))
+    }
 }
 
 #[cfg(unix)]
@@ -323,9 +334,14 @@ fn new_file_builder() -> tempfile::Builder<'static, 'static> {
 /// Writes `content` next to `path` and moves it into place, so a crash leaves
 /// the old file or the new one. Refuses when the disk does not match `expect`.
 /// Returns the hash of what was written.
-fn write_atomic(path: &Path, content: &str, expect: Expect) -> Result<u64, WriteError> {
+fn write_atomic(
+    path: &Path,
+    root: &Path,
+    content: &str,
+    expect: Expect,
+) -> Result<u64, WriteError> {
     let describe = |err: std::io::Error| WriteError::Io(format!("{}: {err}", path.display()));
-    let target = followed(path);
+    let target = followed(path, root).map_err(describe)?;
     let folder = target
         .parent()
         .ok_or_else(|| WriteError::Io(path.display().to_string()))?;
@@ -437,7 +453,7 @@ pub fn write_note(write: &Write, ledger: &Ledger) -> Result<u64, WriteError> {
             let expect = known
                 .or_else(|| other_name_of_path.and_then(|old| done.get(&old.path).copied()))
                 .map_or(write.expect, |last| Expect::Content(last.hash));
-            let hash = write_atomic(path, &write.text, expect)?;
+            let hash = write_atomic(path, &write.root, &write.text, expect)?;
             done.insert(
                 path.to_owned(),
                 Written {

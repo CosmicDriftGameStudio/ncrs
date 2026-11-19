@@ -238,6 +238,7 @@ fn resolve_conflict(
         expect: Expect::Absent,
         replaces: name_was_taken.then(|| write.replaces.clone()).flatten(),
         generation: 0,
+        root: state.root.clone(),
         background: false,
     });
     (Some(retry), copy_name)
@@ -382,6 +383,7 @@ fn planned_write(state: &mut State, old: &Path) -> Option<Write> {
         expect,
         replaces,
         generation: 0,
+        root: state.root.clone(),
         background: false,
     }))
 }
@@ -659,6 +661,7 @@ fn links_resolved(
                 expect,
                 replaces: None,
                 generation: 0,
+                root: state.root.clone(),
                 background: true,
             });
             written(state, write)

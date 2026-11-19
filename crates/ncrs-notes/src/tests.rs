@@ -47,6 +47,7 @@ fn job(path: &Path, text: &str, expect: Expect, generation: u64) -> Write {
         expect,
         replaces: None,
         generation,
+        root: path.parent().unwrap().to_owned(),
         background: false,
     }
 }
@@ -654,6 +655,27 @@ fn a_note_that_is_a_link_is_written_through_it() {
     assert_eq!(fs::read_to_string(&target).unwrap(), "new");
 }
 
+#[cfg(unix)]
+#[test]
+fn a_note_that_is_a_link_out_of_the_notes_folder_is_not_written_through() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("notes");
+    fs::create_dir(&root).unwrap();
+    let outside = dir.path().join("zshrc");
+    fs::write(&outside, "keep").unwrap();
+    let link = root.join("x.md");
+    std::os::unix::fs::symlink(&outside, &link).unwrap();
+    let ledger = store::Ledger::default();
+
+    let result = store::write_note(
+        &job(&link, "new", Expect::Content(hash_of("keep")), 1),
+        &ledger,
+    );
+
+    assert!(matches!(result, Err(store::WriteError::Io(_))));
+    assert_eq!(fs::read_to_string(&outside).unwrap(), "keep");
+}
+
 #[tokio::test]
 async fn a_file_note_with_windows_line_ends_and_a_mark_is_read_and_never_emptied() {
     let dir = tempfile::tempdir().unwrap();
@@ -787,6 +809,7 @@ async fn a_failed_write_is_kept_and_the_note_shown_now_is_not_marked() {
         expect: Expect::Content(hash_of("a")),
         replaces: None,
         generation: 1,
+        root: a.parent().unwrap().to_owned(),
         background: false,
     };
     state.dirty = false;
@@ -850,4 +873,33 @@ fn front_matter_accepts_windows_line_ends_and_a_mark() {
     let (front, body) = split("\u{feff}---\r\nfile: /a.pdf\r\n---\r\ntext");
     assert_eq!(front.unwrap().file, PathBuf::from("/a.pdf"));
     assert_eq!(body, "text");
+}
+
+#[tokio::test]
+async fn a_failed_write_does_not_stop_the_folder_from_being_read_and_keeps_its_note() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "A.md", "a");
+    let mut state = loaded(dir.path());
+    state.open = true;
+    let a = dir.path().join("A.md");
+    let _ = update(&mut state, Message::Pressed(RowKey::Note(a.clone())), &CTX);
+    let _ = update(&mut state, Message::Enter, &CTX);
+    paste(&mut state, "1");
+    let typed = state.shown().unwrap().file_text();
+    state.dirty = false;
+    state.keep_unsaved(job(&a, &typed, Expect::Content(hash_of("a")), 1));
+    assert!(!state.busy());
+    write(dir.path(), "Other.md", "x");
+    let task = crate::reload(&mut state);
+    assert!(state.loading, "the read starts");
+    drop(task);
+    let _ = update(
+        &mut state,
+        Message::Loaded(Box::new(scan(dir.path()))),
+        &CTX,
+    );
+    assert_eq!(state.notes.len(), 2, "the new file shows up");
+    assert_eq!(state.note(&a).unwrap().file_text(), typed);
+    flush_all(&mut state);
+    assert!(fs::read_to_string(&a).unwrap().contains('1'));
 }
