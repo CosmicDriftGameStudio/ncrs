@@ -174,6 +174,9 @@ pub enum ReplyFailure {
     Status(u16),
     /// No connection, no answer in time, or a reply that could not be read.
     NoAnswer,
+    /// A request was held back for want of the agreement to send that kind
+    /// of data; nothing went out.
+    ConsentMissing,
 }
 
 /// The part of a reply content from the first `{` to the last `}`: a model may
@@ -448,6 +451,7 @@ impl OpenAiCompatible {
 fn reply_failure(failed: &AiError) -> ReplyFailure {
     match failed {
         AiError::Status(status) => ReplyFailure::Status(*status),
+        AiError::ConsentRequired(_) => ReplyFailure::ConsentMissing,
         _ => ReplyFailure::NoAnswer,
     }
 }
@@ -576,7 +580,9 @@ impl Provider for OpenAiCompatible {
         // First, before an agent or a request exists: without consent nothing
         // is sent.
         if !self.may_send(ConsentPurpose::Inbox, &request.source) {
-            return Err(AiError::ConsentRequired(self.preview(request)));
+            let held_back = AiError::ConsentRequired(self.preview(request));
+            self.remember_failure(&held_back);
+            return Err(held_back);
         }
         let outcome = self.post(&self.request_body(request).pretty());
         self.remember(&outcome);

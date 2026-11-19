@@ -589,7 +589,7 @@ fn the_chat_and_the_rule_questions_to_a_far_server_need_its_consent_too() {
     assert_eq!(preview.endpoint, "https://ai.example.invalid");
     assert!(preview.body.contains("File invoices by year"));
     assert!(!preview.body.contains(KEY));
-    assert_eq!(far.last_failure(), None);
+    assert_eq!(far.last_failure(), Some(ReplyFailure::ConsentMissing));
     assert_eq!(
         *ledger.asked.lock().unwrap(),
         vec![("https://ai.example.invalid".to_owned(), PathBuf::new())]
@@ -798,4 +798,19 @@ fn a_withdrawn_agreement_stops_that_kind_at_the_request() {
         &[],
         &ncrs_index::Kinds::default()
     )));
+}
+
+#[test]
+fn a_request_held_back_for_consent_shows_as_the_reason_the_documents_wait() {
+    use crate::chat::ChatModel as _;
+    let nothing_agreed = Arc::new(Ledger::default());
+    let model = provider("https://ai.example.invalid/v1", &nothing_agreed);
+    assert_eq!(model.last_failure(), None);
+
+    assert!(is_refused_for_consent(model.extract(&request())));
+    assert_eq!(model.last_failure(), Some(ReplyFailure::ConsentMissing));
+
+    let chat = provider("https://ai.example.invalid/v1", &nothing_agreed);
+    assert!(is_refused_for_consent(chat.understand(&a_turn())));
+    assert_eq!(chat.last_failure(), Some(ReplyFailure::ConsentMissing));
 }

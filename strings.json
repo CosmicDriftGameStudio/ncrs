@@ -3865,6 +3865,12 @@
       "de": "Der Server meldet Fehler {status}."
     },
     {
+      "key": "hermes_overview.server_consent_missing",
+      "context": "Line in the Hermes overview about the AI server on another computer: a request was held back because the user has not allowed that kind of data yet, so those documents wait. Points to the settings page.",
+      "en": "Documents wait: sending them to the server is not allowed yet (Settings, AI).",
+      "de": "Dokumente warten: sie an den Server zu senden ist noch nicht freigegeben (Einstellungen, KI)."
+    },
+    {
       "key": "settings.ai_test_no_answer",
       "context": "Status beside the Test connection button: no connection could be made or the server was too slow.",
       "en": "The server did not answer.",

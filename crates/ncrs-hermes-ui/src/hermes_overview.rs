@@ -19,6 +19,9 @@ pub fn server_failure_text(failure: ReplyFailure, lang: Language) -> String {
             &[("{status}", &status.to_string())],
         ),
         ReplyFailure::NoAnswer => lang.text(Msg::SettingsAiTestNoAnswer).to_owned(),
+        ReplyFailure::ConsentMissing => lang
+            .text(Msg::HermesOverviewServerConsentMissing)
+            .to_owned(),
     }
 }
 
@@ -367,6 +370,10 @@ mod tests {
         assert_eq!(
             server_failure_text(ReplyFailure::NoAnswer, lang),
             lang.text(Msg::SettingsAiTestNoAnswer)
+        );
+        assert_eq!(
+            server_failure_text(ReplyFailure::ConsentMissing, lang),
+            lang.text(Msg::HermesOverviewServerConsentMissing)
         );
     }
 

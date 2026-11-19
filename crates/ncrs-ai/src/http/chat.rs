@@ -71,11 +71,13 @@ impl OpenAiCompatible {
         // The chat and the rule questions have no inbox location; the consent
         // is for the server and for each kind of data the question carries.
         if !self.may_send_all(needs) {
-            return Err(AiError::ConsentRequired(OutgoingPreview {
+            let held_back = AiError::ConsentRequired(OutgoingPreview {
                 endpoint: self.endpoint.origin.clone(),
                 model: self.model.clone(),
                 body: body.pretty(),
-            }));
+            });
+            self.remember_failure(&held_back);
+            return Err(held_back);
         }
         let reply = match self.post(&body.pretty()) {
             Ok(reply) => reply,
