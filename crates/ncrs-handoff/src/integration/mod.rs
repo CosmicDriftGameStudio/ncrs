@@ -89,13 +89,9 @@ pub fn apply(switch: Switch, on: bool, context: &Context<'_>) -> Result<State, S
         return Err("this switch does not exist on this system".to_owned());
     }
     #[cfg(windows)]
-    {
-        windows::apply(switch, on, context)?;
-    }
+    windows::apply(switch, on, context)?;
     #[cfg(target_os = "linux")]
-    {
-        linux::apply(switch, on, context)?;
-    }
+    linux::apply(switch, on, context)?;
     #[cfg(not(any(windows, target_os = "linux")))]
     {
         let _ = (on, context);

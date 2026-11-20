@@ -45,14 +45,12 @@ pub fn serve_file_manager(data_dir: PathBuf) {
         std::thread::Builder::new()
             .name("ncrs-file-manager-service".to_owned())
             .spawn(move || {
-                let Ok(_connection) = connect(data_dir) else {
+                let Ok(connection) = connect(data_dir) else {
                     return;
                 };
                 // The connection answers calls on its own executor; it only
                 // has to stay alive for as long as the process runs.
-                loop {
-                    std::thread::park();
-                }
+                Box::leak(Box::new(connection));
             }),
     );
 }
