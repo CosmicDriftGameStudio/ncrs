@@ -231,7 +231,6 @@ fn every_action_has_a_default_key_and_no_key_is_twice_bound() {
         KeyAction::UndoRename,
         KeyAction::CompareFolders,
         KeyAction::Notes,
-        KeyAction::GitView,
         KeyAction::ExtractHere,
         KeyAction::ShowProgress,
     ];
@@ -472,4 +471,20 @@ fn the_trash_actions_are_offered_only_where_they_work() {
     assert_eq!(KeyAction::OpenTrashInFinder.is_offered(), on_a_mac);
     assert!(KeyAction::Trash.is_offered());
     assert!(KeyAction::RestoreLastDeletion.is_offered());
+}
+
+#[test]
+fn the_git_view_is_on_primary_shift_g() {
+    let keys: Vec<_> = default_bindings()
+        .into_iter()
+        .filter(|(action, _)| *action == KeyAction::GitView)
+        .map(|(_, binding)| binding)
+        .collect();
+    assert_eq!(
+        keys,
+        [Binding::with_modifiers(
+            Key::Character("g".into()),
+            Modifiers::COMMAND | Modifiers::SHIFT
+        )]
+    );
 }

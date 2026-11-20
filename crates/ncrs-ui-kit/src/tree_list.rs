@@ -35,7 +35,7 @@ pub struct TreeRow<M> {
 }
 
 pub fn tree_row<'a, M: Clone + 'a>(row_of: TreeRow<M>, palette: &Palette) -> Element<'a, M> {
-    tree_row_with_lock(row_of, false, palette)
+    tree_row_with_lock(row_of, false, None, palette)
 }
 
 /// The size of the lock after the label of a locked row.
@@ -56,10 +56,12 @@ fn lock_mark<'a, M: 'a>(color: iced::Color) -> Element<'a, M> {
 }
 
 /// [`tree_row`], with a green lock after the label when `locked` is set (an
-/// encrypted note or folder).
+/// encrypted note or folder). With `on_lock` a press on the lock sends it
+/// instead of pressing the row.
 pub fn tree_row_with_lock<'a, M: Clone + 'a>(
     row_of: TreeRow<M>,
     locked: bool,
+    on_lock: Option<M>,
     palette: &Palette,
 ) -> Element<'a, M> {
     let ink = if row_of.chosen {
@@ -84,7 +86,16 @@ pub fn tree_row_with_lock<'a, M: Clone + 'a>(
     .spacing(spacing::XS)
     .align_y(alignment::Vertical::Center);
     if locked {
-        line = line.push(lock_mark(palette.success));
+        let lock = lock_mark(palette.success);
+        line = line.push(match on_lock {
+            Some(message) => Element::from(
+                button(lock)
+                    .on_press(message)
+                    .padding(0.0)
+                    .style(|_, _| button::Style::default()),
+            ),
+            None => lock,
+        });
     }
     let content = container(line)
         .padding(Padding {

@@ -173,7 +173,7 @@ pub enum Message {
     Notes(ncrs_notes::Message),
     OpenNotes,
     // --- The Git tab, opened from the command list or the folder context menu ---
-    GitView(ncrs_git_view::Message),
+    GitView(GitTabId, ncrs_git_view::Message),
     OpenGitView,
     // --- The filing tab, a source folder planned live into the write folder ---
     FilingView(ncrs_filing_view::Message),
@@ -268,6 +268,11 @@ pub use ncrs_config::SettingsFeature;
 
 /// What the area under the title bar shows. Settings, the System page and the
 /// Hermes chat stay open while the panels are shown.
+/// Which of the open Git tabs a message or a tab stop belongs to; stays the
+/// same while other Git tabs open and close.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct GitTabId(pub u32);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ShownTab {
     #[default]
@@ -276,7 +281,7 @@ pub enum ShownTab {
     Monitor,
     Viewer,
     Notes,
-    Git,
+    Git(GitTabId),
     Filing,
     Hermes,
 }

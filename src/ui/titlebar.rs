@@ -13,11 +13,11 @@ use super::layout::{TITLE_BAR_HEIGHT, TRAFFIC_LIGHTS_INSET};
 use super::theme::{self, font_size, size, spacing};
 use crate::i18n::{Language, Msg};
 use crate::messages::PanelMessage;
-use crate::messages::ShownTab;
 use crate::messages::{
     CommandPaletteMessage, FilingStatusMessage, HermesChatMessage, HitListMessage, Message,
     PanelSide, ResizeEdge, SettingsMessage, TitleBarMessage,
 };
+use crate::messages::{GitTabId, ShownTab};
 use crate::palette::Palette;
 
 pub const LEFT_TAB_ID: &str = "title-tab-left";
@@ -78,8 +78,8 @@ pub enum PageTab {
     Notes,
     /// The filing tab; the title is already worded.
     Filing(String),
-    /// The Git tab; the title is already worded.
-    Git(String),
+    /// A Git tab; the title is already worded.
+    Git(GitTabId, String),
     Hermes,
 }
 
@@ -229,13 +229,13 @@ pub fn view<'a>(bar: &TitleBar<'a>) -> Element<'a, Message> {
                 (ShownTab::Notes, Message::Notes(ncrs_notes::Message::Close)),
                 palette,
             ),
-            PageTab::Git(title) => page_tab(
+            PageTab::Git(id, title) => page_tab(
                 title,
-                GIT_TAB_ID,
+                format!("{GIT_TAB_ID}-{}", id.0),
                 open.active,
                 (
-                    ShownTab::Git,
-                    Message::GitView(ncrs_git_view::Message::Close),
+                    ShownTab::Git(*id),
+                    Message::GitView(*id, ncrs_git_view::Message::Close),
                 ),
                 palette,
             ),
@@ -355,7 +355,7 @@ pub fn view<'a>(bar: &TitleBar<'a>) -> Element<'a, Message> {
 /// The tab of an open page, with a cross that closes it; a click shows it.
 fn page_tab<'a>(
     title: &str,
-    id: &'static str,
+    id: impl Into<iced::widget::Id>,
     active: bool,
     (shown, close): (ShownTab, Message),
     palette: &Palette,

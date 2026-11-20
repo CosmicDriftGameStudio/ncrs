@@ -1,7 +1,7 @@
 //! A tab of the title bar: rules at its sides, a line on top, the label, and
 //! optionally a cross that closes it and a small mark after the label.
 
-use iced::widget::{button, column, container, row, text, Space};
+use iced::widget::{button, column, container, row, text, Id, Space};
 use iced::{alignment, Element, Length};
 
 use crate::palette::Palette;
@@ -16,7 +16,7 @@ pub const TAB_PADDING_X: f32 = spacing::L;
 /// What a title bar tab shows and does. `id` anchors overlays to the tab.
 #[derive(Debug)]
 pub struct TitleTab<'a, M> {
-    id: &'static str,
+    id: Id,
     label: String,
     active: bool,
     on_press: M,
@@ -29,14 +29,14 @@ pub struct TitleTab<'a, M> {
 /// A tab showing `label`; a press selects it, the cross (when `on_close` is
 /// given) closes it.
 pub fn title_tab<'a, M: Clone + 'a>(
-    id: &'static str,
+    id: impl Into<Id>,
     label: String,
     active: bool,
     on_press: M,
     on_close: Option<M>,
 ) -> TitleTab<'a, M> {
     TitleTab {
-        id,
+        id: id.into(),
         label,
         active,
         on_press,

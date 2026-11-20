@@ -397,7 +397,7 @@ impl App {
         }
         ncrs_hermes_ui::closing(&self.hermes);
         ncrs_filing_view::stop(&self.filing_view);
-        self.git_view.stop();
+        self.git_tabs.stop();
         if let Some(path) = &self.state_path {
             write_session_state(
                 &self.session_writes,

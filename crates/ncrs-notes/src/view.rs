@@ -200,6 +200,11 @@ fn tree<'a>(state: &'a State, ctx: ViewCtx<'a>) -> Element<'a, Message> {
                 on_press: Message::Pressed(entry.key),
             },
             locked,
+            locked.then_some(if state.vault.is_unlocked() {
+                Message::Lock
+            } else {
+                Message::Unlock
+            }),
             ctx.palette,
         );
         Element::from(mouse_area(row).on_right_press(Message::OpenMenu(key)))

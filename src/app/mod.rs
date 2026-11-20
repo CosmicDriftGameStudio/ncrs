@@ -53,7 +53,7 @@ use crate::keymap::{KeyActionMessage as _, KeymapMessages as _};
 use crate::menu::Availability;
 use crate::messages::{
     AboutMessage, AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage,
-    CompareMessage, ConflictChoice, FilingStatusMessage, GrantMessage, HermesChatMessage,
+    CompareMessage, ConflictChoice, FilingStatusMessage, GitTabId, GrantMessage, HermesChatMessage,
     HermesFileMessage, HermesOverviewMessage, HermesPage, HitListMessage, KeyBindingsMessage,
     MenuMessage, Message, OcrModelsMessage, OpsMessage, PanelSide, QuickFixMessage,
     QuickOpenMessage, RemoteMessage, SavedQueriesMessage, SearchMessage, SettingChange,
@@ -172,6 +172,7 @@ mod dialogs;
 mod favourites_bar;
 mod filing_tab;
 mod git_tab;
+mod git_tabs;
 mod handoff;
 mod hermes;
 mod hermes_chat;
@@ -349,8 +350,8 @@ pub struct App {
     notes: ncrs_notes::State,
     /// The filing tab, shown while it has a session.
     filing_view: ncrs_filing_view::State,
-    /// The Git tab, shown while a repository is open in it.
-    git_view: ncrs_git_view::State,
+    /// The Git tabs, one per repository that is open.
+    git_tabs: git_tabs::GitTabs,
     /// Which of the open tabs the area under the title bar shows.
     shown_tab: ShownTab,
     /// The check for a newer release and what it found.
@@ -561,8 +562,8 @@ pub struct PromptKeyState {
     pub filing: bool,
     /// A file name is being typed in the filing tab, so the keys are the field's.
     pub filing_renaming: bool,
-    /// The Git tab is up: its keys move in its lists and Escape goes back.
-    pub git: bool,
+    /// A Git tab is up: its keys move in its lists and Escape goes back.
+    pub git: Option<GitTabId>,
     /// The filter field of the Git tab has the keyboard.
     pub git_filter: bool,
     /// A diff is shown in the Git tab.
@@ -598,7 +599,7 @@ pub struct PromptKeyState {
 impl PromptKeyState {
     /// The viewer, the notes or the System page is up and takes the keys.
     pub fn shows_viewer_or_monitor(&self) -> bool {
-        self.viewer || self.monitor || self.notes || self.filing || self.git
+        self.viewer || self.monitor || self.notes || self.filing || self.git.is_some()
     }
 }
 
@@ -645,7 +646,7 @@ impl Default for PromptKeyState {
             notes_editing: false,
             filing: false,
             filing_renaming: false,
-            git: false,
+            git: None,
             git_filter: false,
             git_diff: false,
             delete_dialog: DeleteKeys::default(),

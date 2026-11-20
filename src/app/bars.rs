@@ -217,7 +217,7 @@ impl App {
             viewer: self.viewer.is_open(),
             notes: self.notes.is_open(),
             filing: self.filing_view.session.is_some(),
-            git: self.git_view.is_open(),
+            git: self.git_tabs.ids(),
             hermes: self.hermes_chat.open,
         }
     }
@@ -239,7 +239,7 @@ impl App {
     }
 
     pub(in crate::app) fn git_shown(&self) -> bool {
-        self.git_view.is_open() && self.shown_tab == ShownTab::Git
+        self.shown_git_tab().is_some()
     }
 
     pub(in crate::app) fn filing_shown(&self) -> bool {
@@ -277,11 +277,13 @@ impl App {
                 active: self.shown_tab == ShownTab::Notes,
             });
         }
-        if let Some(title) = ncrs_git_view::tab_title(&self.git_view, self.lang) {
-            tabs.push(titlebar::PageTabState {
-                page: titlebar::PageTab::Git(title),
-                active: self.shown_tab == ShownTab::Git,
-            });
+        for (id, state) in self.git_tabs.iter() {
+            if let Some(title) = ncrs_git_view::tab_title(state, self.lang) {
+                tabs.push(titlebar::PageTabState {
+                    page: titlebar::PageTab::Git(id, title),
+                    active: self.shown_tab == ShownTab::Git(id),
+                });
+            }
         }
         if let Some(title) = ncrs_filing_view::tab_title(&self.filing_view, self.lang) {
             tabs.push(titlebar::PageTabState {

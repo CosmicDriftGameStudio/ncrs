@@ -55,6 +55,10 @@ pub enum Message {
     EditNoteOn(PathBuf),
     Up,
     Down,
+    /// ←: folds the folder under the cursor, else goes to the folder above.
+    Left,
+    /// →: unfolds the folder under the cursor.
+    Right,
     Enter,
     /// Escape: leaves the editor, then the search, then the tab.
     Escape,
@@ -65,6 +69,8 @@ pub enum Message {
     Tick(Instant),
     /// "Unlock": fetch the key from the credential store.
     Unlock,
+    /// ⌘L: locks an open vault, unlocks a locked one.
+    ToggleLock,
     /// The key from the credential store, `None` when none was stored, and
     /// when it came.
     Unlocked(Result<Option<NoteKey>, String>, Instant),

@@ -447,7 +447,7 @@ impl App {
             Message::Viewer(viewer_message) => self.update_viewer(viewer_message),
             Message::Notes(notes_message) => self.update_notes(notes_message),
             Message::OpenNotes => self.open_notes(),
-            Message::GitView(git_message) => self.update_git_tab(git_message),
+            Message::GitView(id, git_message) => self.update_git_tab(id, git_message),
             Message::OpenGitView => self.open_git_view(),
             Message::FilingView(filing_message) => self.update_filing_tab(filing_message),
             Message::NoteOnFile => self.note_on_file(),

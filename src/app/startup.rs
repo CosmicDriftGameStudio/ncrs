@@ -554,7 +554,7 @@ impl App {
             viewer: ncrs_viewer::State::default(),
             notes: ncrs_notes::State::new(notes_root),
             filing_view: ncrs_filing_view::State::default(),
-            git_view: ncrs_git_view::State::default(),
+            git_tabs: git_tabs::GitTabs::default(),
             shown_tab: crate::messages::ShownTab::default(),
             updates: ncrs_updates::State::new(
                 env!("NCRS_DISPLAY_VERSION"),

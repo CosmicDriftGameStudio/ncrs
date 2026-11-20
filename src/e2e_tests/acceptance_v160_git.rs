@@ -14,7 +14,7 @@ use ncrs_ui_kit::git_mark::GitMark;
 use super::acceptance_v160::{go_to, pump_until, shoot, Live, World};
 use super::Session;
 use crate::app::App;
-use crate::messages::{MenuMessage, Message, PanelSide, ShownTab};
+use crate::messages::{GitTabId, MenuMessage, Message, PanelSide, ShownTab};
 
 const AUTHORS: [(&str, &str); 3] = [
     ("Anna Becker", "anna@example.org"),
@@ -322,7 +322,7 @@ fn plain_repository(path: &Path, commits: u64) {
 
 /// `Entwicklung` with the main repository, its linked worktree, three more
 /// repositories, plain folders and loose files: 56 rows.
-fn build_development_folder(root: &Path) -> PathBuf {
+pub(super) fn build_development_folder(root: &Path) -> PathBuf {
     let parent = root.join("Entwicklung");
     std::fs::create_dir_all(&parent).unwrap();
     build_main_repository(&parent);
@@ -342,7 +342,7 @@ fn git_ready(app: &App) -> bool {
     app.panel(PanelSide::Left).git.summary.is_some()
 }
 
-fn git_scanned(app: &App) -> bool {
+pub(super) fn git_scanned(app: &App) -> bool {
     app.panel(PanelSide::Left)
         .git
         .marks
@@ -450,6 +450,13 @@ fn outside_a_repository_there_is_no_git_column() {
     shoot(&session.app, "19-ohne-git-spalte");
 }
 
+fn shown_git_tab<P: Live>(session: &Session<P>) -> GitTabId {
+    match session.app.shown_tab_for_test() {
+        ShownTab::Git(id) => id,
+        other => panic!("a Git tab is shown, not {other:?}"),
+    }
+}
+
 fn open_git_view_from_the_context_menu<P: Live>(session: &mut Session<P>) {
     go_to(session, "ncrs-demo");
     session.send(Message::Files(MenuMessage::ContextMenuKey));
@@ -484,7 +491,7 @@ fn the_git_view_shows_the_graph_details_diff_and_filter() {
     pump_until(&mut session, 20, git_scanned);
     open_git_view_from_the_context_menu(&mut session);
 
-    assert_eq!(session.app.shown_tab_for_test(), ShownTab::Git);
+    assert!(matches!(session.app.shown_tab_for_test(), ShownTab::Git(_)));
     let view = session.app.git_view_for_test();
     let overview = view.overview.clone().expect("the refs were read");
     assert_eq!(overview.tags.len(), 2);
@@ -512,9 +519,10 @@ fn the_git_view_shows_the_graph_details_diff_and_filter() {
             .iter()
             .position(|commit| commit.is_merge)
             .expect("the merge commit");
-    session.send(Message::GitView(ncrs_git_view::Message::CommitPressed(
-        merge_row,
-    )));
+    session.send(Message::GitView(
+        shown_git_tab(&session),
+        ncrs_git_view::Message::CommitPressed(merge_row),
+    ));
     let detail = session
         .app
         .git_view_for_test()
@@ -531,9 +539,10 @@ fn the_git_view_shows_the_graph_details_diff_and_filter() {
         .iter()
         .position(|commit| commit.summary == "Add the command palette")
         .expect("the commit with two hunks");
-    session.send(Message::GitView(ncrs_git_view::Message::CommitPressed(
-        working_row + two_hunks,
-    )));
+    session.send(Message::GitView(
+        shown_git_tab(&session),
+        ncrs_git_view::Message::CommitPressed(working_row + two_hunks),
+    ));
     let file_detail = session
         .app
         .git_view_for_test()
@@ -566,7 +575,10 @@ fn the_git_view_shows_the_graph_details_diff_and_filter() {
         .is_some_and(|diff| diff.hunks.len() >= 2));
     shoot(&session.app, "23-git-diff-nebeneinander");
 
-    session.send(Message::GitView(ncrs_git_view::Message::SetUnified(true)));
+    session.send(Message::GitView(
+        shown_git_tab(&session),
+        ncrs_git_view::Message::SetUnified(true),
+    ));
     assert!(
         session
             .app
@@ -595,7 +607,7 @@ fn the_git_view_shows_the_graph_details_diff_and_filter() {
         session.app.git_view_for_test().diff.is_none(),
         "Esc leaves the diff"
     );
-    assert_eq!(session.app.shown_tab_for_test(), ShownTab::Git);
+    assert!(matches!(session.app.shown_tab_for_test(), ShownTab::Git(_)));
 
     // The filter by author.
     let everyone = session
@@ -606,9 +618,10 @@ fn the_git_view_shows_the_graph_details_diff_and_filter() {
         .unwrap()
         .commits
         .len();
-    session.send(Message::GitView(ncrs_git_view::Message::FilterChanged(
-        "Anna".to_owned(),
-    )));
+    session.send(Message::GitView(
+        shown_git_tab(&session),
+        ncrs_git_view::Message::FilterChanged("Anna".to_owned()),
+    ));
     let filtered = session.app.git_view_for_test().log.clone().unwrap();
     assert!(!filtered.commits.is_empty() && filtered.commits.len() < everyone);
     assert!(filtered

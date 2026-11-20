@@ -38,7 +38,9 @@ impl App {
                 .session
                 .as_ref()
                 .is_some_and(|session| session.renaming.is_some());
-        input.git = self.git_shown() && !self.blocking_overlay_is_open();
+        input.git = self
+            .shown_git_tab()
+            .filter(|_| !self.blocking_overlay_is_open());
         input.monitor_filter = self.monitor_shown()
             && self.monitor.filter_has_focus()
             && !self.blocking_overlay_is_open();
@@ -119,9 +121,10 @@ impl App {
                 .session
                 .as_ref()
                 .is_some_and(|session| session.renaming.is_some());
-        let git = self.git_shown();
-        let git_filter = git && self.git_view.filter_focused;
-        let git_diff = git && self.git_view.diff.is_some();
+        let git = self.shown_git_tab();
+        let git_state = git.and_then(|id| self.git_tabs.get(id));
+        let git_filter = git_state.is_some_and(|state| state.filter_focused);
+        let git_diff = git_state.is_some_and(|state| state.diff.is_some());
         let transfer_dialog = self.ops.transfer_dialog.is_some();
         let transfer_progress = self.ops.progress_mask_is_open();
         let permissions_dialog = self.ops.permissions_dialog.is_some();
