@@ -35,17 +35,19 @@ pub fn measure_folder_tree(root: &Path, cancel: &AtomicBool) -> Option<MeasuredT
 }
 
 /// How often a running walk reports what it has counted so far.
-const RUNNING_REPORT_INTERVAL: Duration = Duration::from_millis(100);
+pub const RUNNING_REPORT_INTERVAL: Duration = Duration::from_millis(100);
 
 /// [`measure_folder_tree`] that also calls `on_running` with the bytes counted
-/// so far, at most every 100 ms. The bytes only grow and the last value is at
-/// most the final total (hard links and skipped folders are not in it).
+/// so far, at most every `report_every`. The bytes only grow and the last
+/// value is at most the final total (hard links and skipped folders are not
+/// in it).
 pub fn measure_folder_tree_reporting(
     root: &Path,
     cancel: &AtomicBool,
+    report_every: Duration,
     on_running: impl FnMut(u64),
 ) -> Option<MeasuredTree> {
-    measure_tree_on(root, cancel, device_of, on_running, RUNNING_REPORT_INTERVAL)
+    measure_tree_on(root, cancel, device_of, on_running, report_every)
 }
 
 #[cfg(unix)]

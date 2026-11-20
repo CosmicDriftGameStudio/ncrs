@@ -4540,6 +4540,7 @@ name = "ncrs-files"
 version = "0.0.0"
 dependencies = [
  "iced",
+ "iced_runtime",
  "iced_test",
  "ncrs-config",
  "ncrs-core",

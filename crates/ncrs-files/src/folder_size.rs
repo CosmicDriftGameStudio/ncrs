@@ -60,6 +60,13 @@ pub struct FolderWalk {
 
 /// The walk of one folder, off the UI thread; nothing when the run is over.
 pub fn walk_task(walk: Option<FolderWalk>) -> iced::Task<PanelMessage> {
+    walk_task_reporting_every(walk, ncrs_fs::RUNNING_REPORT_INTERVAL)
+}
+
+fn walk_task_reporting_every(
+    walk: Option<FolderWalk>,
+    report_every: std::time::Duration,
+) -> iced::Task<PanelMessage> {
     let Some(FolderWalk { run, folder, stop }) = walk else {
         return iced::Task::none();
     };
@@ -69,7 +76,7 @@ pub fn walk_task(walk: Option<FolderWalk>) -> iced::Task<PanelMessage> {
             let mut running_output = output.clone();
             let running_folder = folder.clone();
             let done = tokio::task::spawn_blocking(move || {
-                ncrs_fs::measure_folder_tree_reporting(&walked, &stop, |bytes| {
+                ncrs_fs::measure_folder_tree_reporting(&walked, &stop, report_every, |bytes| {
                     // A full channel drops a report: the next one is larger anyway.
                     drop(running_output.try_send(PanelMessage::FolderSizeRunning {
                         run,
@@ -288,6 +295,63 @@ impl Panels {
 mod tests {
     use super::*;
     use crate::panel::PanelState;
+    use iced::futures::StreamExt as _;
+
+    #[tokio::test]
+    async fn the_real_walk_stream_reports_growing_totals_before_the_measured_folder() {
+        const FILES: u64 = 20;
+        let root = tempfile::tempdir().unwrap();
+        let folder = root.path().join("big");
+        std::fs::create_dir_all(folder.join("inner")).unwrap();
+        for index in 0..FILES {
+            let size = usize::try_from(index + 1).unwrap() * 10;
+            std::fs::write(folder.join(format!("a{index}")), vec![b'x'; size]).unwrap();
+            std::fs::write(
+                folder.join("inner").join(format!("b{index}")),
+                vec![b'x'; size],
+            )
+            .unwrap();
+        }
+        let expected: u64 = (1..=FILES).map(|count| count * 10 * 2).sum();
+        let walk = FolderWalk {
+            run: 7,
+            folder: folder.clone(),
+            stop: Arc::new(AtomicBool::new(false)),
+        };
+        let stream = iced_runtime::task::into_stream(walk_task_reporting_every(
+            Some(walk),
+            std::time::Duration::ZERO,
+        ))
+        .unwrap();
+        let messages: Vec<PanelMessage> = stream
+            .filter_map(|action| async move {
+                match action {
+                    iced_runtime::Action::Output(message) => Some(message),
+                    _ => None,
+                }
+            })
+            .collect()
+            .await;
+
+        let Some((PanelMessage::FolderSizeMeasured { run, size, .. }, running)) =
+            messages.split_last()
+        else {
+            panic!("no messages");
+        };
+        assert_eq!(*run, 7);
+        let totals: Vec<u64> = running
+            .iter()
+            .map(|message| match message {
+                PanelMessage::FolderSizeRunning { run: 7, bytes, .. } => *bytes,
+                other => panic!("only running totals before the end, got {other:?}"),
+            })
+            .collect();
+        assert!(!totals.is_empty(), "at least one running total comes first");
+        assert!(totals.is_sorted(), "{totals:?}");
+        let measured = size.expect("the folder was measured");
+        assert_eq!(measured.bytes, expected);
+        assert!(totals.last().copied().unwrap() <= expected);
+    }
 
     #[test]
     fn the_sizes_of_the_folders_below_are_kept_under_their_own_parent() {
