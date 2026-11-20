@@ -119,7 +119,10 @@ fn without_own_folder_default(list: &str) -> String {
         if trimmed.starts_with('[') {
             in_defaults = trimmed == "[Default Applications]";
         } else if in_defaults {
-            if let Some(value) = trimmed.strip_prefix(&prefix) {
+            if let Some(value) = trimmed
+                .strip_prefix(&prefix)
+                .filter(|value| value.split(';').any(is_ours))
+            {
                 let others: Vec<&str> = value
                     .split(';')
                     .map(str::trim)

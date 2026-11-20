@@ -180,7 +180,12 @@ impl World {
     pub(super) fn new(label: &str, config_tail: &str) -> Self {
         let data = tempfile::Builder::new()
             .prefix(&format!("a{label}-"))
-            .tempdir_in("/tmp")
+            // A short root keeps the pasted path in the shots readable.
+            .tempdir_in(if cfg!(unix) {
+                PathBuf::from("/tmp")
+            } else {
+                std::env::temp_dir()
+            })
             .unwrap();
         let root = std::fs::canonicalize(data.path()).unwrap();
         let downloads = root.join("Downloads");
