@@ -194,7 +194,7 @@ jobs:
           rustup toolchain install --profile minimal
 
       - name: Install the Vulkan SDK
-        uses: jakoch/install-vulkan-sdk-action@6d320c543af48e7e45b02c8c9ab14d5ffad48eba # v1.8.0
+        uses: jakoch/install-vulkan-sdk-action@188c1d3f81ee2c59e9b082f97b4baed622accd96 # v1.8.0
         with:
           install_runtime: false
           cache: true
